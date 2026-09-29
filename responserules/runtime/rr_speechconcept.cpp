@@ -47,7 +47,8 @@ CRR_Concept &CRR_Concept::operator=(const char *fromString)
 bool CRR_Concept::operator==(const char *pszConcept)
 {
 	int otherConcept = g_pRRConceptTable->Find(pszConcept);
-	return ( otherConcept != UTL_INVAL_SYMBOL && m_iConcept == static_cast<UtlSymId_t>( otherConcept ) );
+	return (
+	    otherConcept != UTL_INVAL_SYMBOL && m_iConcept == static_cast<UtlSymId_t>( otherConcept ) );
 }
 
 const char *CRR_Concept::GetStringConcept() const
