@@ -19,6 +19,14 @@
 //			    Source angles, scales and translates; ModelWorldBox is the box of
 //			    the transformed corners; ModelTint is the selection fill, else
 //			    the render color, times the instance tint for instance content;
+//			G14 posed models: ModelSequence takes the labelled sequence when
+//			    the model has it, else the index when in range, else 0 (-1
+//			    without sequences); PosedModel is the model at that sequence's
+//			    first frame (a Y-up reference turned Z-up by its root, as the
+//			    turbine elevator and the cube dropper are); ModelWorldBox of the
+//			    posed model bounds the drawn model, not the bind pose;
+//			V11 staging is per (sequence, skin, tint): one model file, two
+//			    sequences, two variants; the moved entity reuses its variant;
 //			V10 the renderer reads each model file once, stages a model once
 //			    per (skin, tint) and draws it as one indexed draw per batch and
 //			    entity; a missing model draws its marker and is counted; moving
@@ -69,7 +77,7 @@ ModelAsset TwoMeshes()
 	    mdltest::BoxMesh( { 0, 0, 12 }, { 4, 4, 4 }, 1 ) } } };
 	const mdltest::SyntheticFiles files = mdltest::WriteModel( model );
 	ModelAsset asset;
-	asset.model = mdl::ParseModel( { files.mdl, files.vvd, files.vtx } ).Value();
+	asset.model = mdl::ParseModel( { files.mdl, files.vvd, files.vtx, files.ani } ).Value();
 	asset.materials = { { "m/crate", true }, { "m/lid", false }, { "m/rust", true } };
 	return asset;
 }
@@ -102,6 +110,33 @@ EntityDraw ModelEntity( std::uint64_t id, Vec3d origin, Vec3d angles, bool selec
 	return entity;
 }
 
+// A tall box authored Y-up, (-4 0 -2)-(4 40 2), with two sequences: "BindPose"
+// (the root unrotated) and "stand" (the root's raw Quaternion64 (0.5 0.5 0.5
+// 0.5), which maps x y z to z x y: the box stands along z, (-2 -4 0)-(2 4 40)).
+ModelAsset Standing()
+{
+	mdltest::SyntheticModel model = mdltest::BoxModel( { 4, 20, 2 }, "m/", "crate" );
+	model.bodyParts[0][0][0] = mdltest::BoxMesh( { 0, 20, 0 }, { 4, 20, 2 } );
+	for ( const char *label : { "BindPose", "stand" } )
+	{
+		mdltest::SyntheticAnimation anim;
+		const bool stand = std::string( label ) == "stand";
+		anim.data = mdltest::Records( { { 0, 0x20,
+		    mdltest::Quaternion64(
+		        stand ? mdl::Quaternion{ 0.5f, 0.5f, 0.5f, 0.5f } : mdl::Quaternion{} ) } } );
+		model.animations.push_back( anim );
+		mdltest::SyntheticSequence seq;
+		seq.label = label;
+		seq.blends = { static_cast<std::int16_t>( model.animations.size() - 1 ) };
+		model.sequences.push_back( seq );
+	}
+	const mdltest::SyntheticFiles files = mdltest::WriteModel( model );
+	ModelAsset asset;
+	asset.model = mdl::ParseModel( { files.mdl, files.vvd, files.vtx, files.ani } ).Value();
+	asset.materials = { { "m/crate", true } };
+	return asset;
+}
+
 class FakeModels final : public IModelSource
 {
 public:
@@ -109,6 +144,8 @@ public:
 	foundation::Expected<ModelAsset, mdl::ModelError> Model( const std::string &path ) override
 	{
 		++reads[path];
+		if ( path == "models/test/stand.mdl" )
+			return Standing();
 		if ( path != "models/test/crate.mdl" )
 			return foundation::MakeUnexpected(
 			    mdl::ModelError{ mdl::ModelStatus::MissingFile, mdl::ModelFile::Mdl, 0 } );
@@ -292,6 +329,79 @@ int main()
 		checks.That( hammer::render_adapter::ModelTint( colored, true ) ==
 		                 hammer::scene::Rgb{ 255, 158, 71 },
 		    "G13.a-selected-model-is-tinted-with-the-selection-fill" );
+	}
+
+	// --- G14 ---------------------------------------------------------------------------
+	{
+		using hammer::render_adapter::ModelSequence;
+		using hammer::render_adapter::ModelWorldBox;
+		using hammer::render_adapter::PosedModel;
+		const ModelAsset asset = Standing();
+		hammer::viewport::ModelKeys keys;
+		keys.sequence = "STAND";
+		checks.That( ModelSequence( asset.model, keys ) == 1, "G14.the-label-names-the-sequence" );
+		keys.sequence = "missing";
+		keys.sequenceIndex = 1;
+		checks.That( ModelSequence( asset.model, keys ) == 1,
+		    "G14.a-label-the-model-lacks-falls-back-to-the-index" );
+		keys.sequence.clear();
+		keys.sequenceIndex = 9;
+		checks.That( ModelSequence( asset.model, keys ) == 0 &&
+		                 ModelSequence( TwoMeshes().model, keys ) == -1,
+		    "G14.an-index-out-of-range-is-0-and-no-sequences-is--1" );
+		const ModelAsset posed = PosedModel( asset, 1 );
+		const Vec3d lo( posed.model.mins.x, posed.model.mins.y, posed.model.mins.z );
+		const Vec3d hi( posed.model.maxs.x, posed.model.maxs.y, posed.model.maxs.z );
+		checks.That( Near( lo, Vec3d( -2, -4, 0 ), 1e-3 ) && Near( hi, Vec3d( 2, 4, 40 ), 1e-3 ) &&
+		                 posed.materials.size() == 1,
+		    "G14.the-posed-model-stands-along-z" );
+		checks.That( PosedModel( asset, 0 ).model.maxs.y > 39.0f,
+		    "G14.the-bind-pose-sequence-keeps-the-authored-y-up-model" );
+		EntityDraw e = ModelEntity( 1, Vec3d( 100, 0, 0 ), Vec3d( 0, 90, 0 ) );
+		const hammer::scene::Box box = ModelWorldBox( posed.model, e );
+		// Yaw 90 turns (x y z) to (-y x z): (-4 -2 0)-(4 2 40), then + (100 0 0).
+		checks.That( Near( box.mins, Vec3d( 96, -2, 0 ), 1e-3 ) &&
+		                 Near( box.maxs, Vec3d( 104, 2, 40 ), 1e-3 ),
+		    "G14.the-world-box-bounds-the-posed-model" );
+	}
+
+	// --- V11 ---------------------------------------------------------------------------
+	{
+		nulldev::NullOptions nullOptions;
+		auto device = nulldev::Create( nullOptions ).Value();
+		const std::size_t baseline = device->LiveResourceCount();
+		{
+			FakeModels models;
+			FakeTextures textures;
+			auto made = ViewportRenderer::Create( *device, &textures, &models );
+			if ( !checks.That( made.HasValue(), "V11.setup" ) )
+				return checks.Report();
+			ViewportRenderer &renderer = *made.Value();
+			hammer::viewport::RenderSnapshot snapshot;
+			for ( int i = 0; i < 3; ++i )
+			{
+				EntityDraw e =
+				    ModelEntity( std::uint64_t( 10 + i ), Vec3d( 64.0 * i, 0, 0 ), Vec3d() );
+				e.classname = "prop_dynamic";
+				e.model = "models/test/stand.mdl";
+				e.modelKeys.sequence = i == 0 ? "" : "stand";
+				snapshot.entities.push_back( e );
+			}
+			snapshot.bounds = hammer::scene::Box{ Vec3d( -64, -64, -64 ), Vec3d( 256, 64, 64 ) };
+			checks.That( renderer.SetScene( snapshot, 1 ).HasValue(), "V11.the-scene-stages" );
+			const hammer::render_adapter::SceneStats first = renderer.Scene();
+			checks.That( models.reads["models/test/stand.mdl"] == 1 && first.modelVariants == 2 &&
+			                 first.modelEntities == 3,
+			    "V11.one-file-two-sequences-two-variants" );
+			snapshot.entities[2].origin = Vec3d( 200, 0, 0 );
+			checks.That( renderer.SetScene( snapshot, 2 ).HasValue() &&
+			                 renderer.Scene().modelVariants == 2 &&
+			                 models.reads["models/test/stand.mdl"] == 1,
+			    "V11.a-moved-posed-model-reuses-its-variant" );
+		}
+		(void)device->WaitIdle();
+		(void)device->Poll();
+		checks.Equal( device->LiveResourceCount(), baseline, "V11.everything-is-released" );
 	}
 
 	// --- V10 ---------------------------------------------------------------------------

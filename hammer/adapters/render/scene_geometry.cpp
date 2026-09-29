@@ -420,6 +420,32 @@ scene::Rgb ModelTint( const viewport::EntityDraw &entity, bool instanceContent )
 	return tint;
 }
 
+std::int32_t ModelSequence( const mdl::Model &model, const viewport::ModelKeys &keys )
+{
+	if ( model.sequences.empty() )
+	{
+		return -1;
+	}
+	if ( !keys.sequence.empty() )
+	{
+		if ( const std::int32_t found = mdl::FindSequence( model, keys.sequence ); found >= 0 )
+		{
+			return found;
+		}
+	}
+	if ( keys.sequenceIndex >= 0 &&
+	     static_cast<std::size_t>( keys.sequenceIndex ) < model.sequences.size() )
+	{
+		return keys.sequenceIndex;
+	}
+	return 0;
+}
+
+ModelAsset PosedModel( const ModelAsset &asset, std::int32_t sequence )
+{
+	return ModelAsset{ mdl::PoseModel( asset.model, sequence ), asset.materials };
+}
+
 ::render::math::float4x4 ModelWorld( const viewport::EntityDraw &entity )
 {
 	const mapgeometry::Mat3 rotation =

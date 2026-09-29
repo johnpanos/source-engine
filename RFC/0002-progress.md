@@ -1547,6 +1547,148 @@ The GTK viewports draw `func_instance` contents and studio-model entities
     function split mid-body). The working tree holds the fix, uncommitted,
     from the session that made it; this change's hunks apply on either.
 
+### R17 follow-up: posed models in the viewport (2026-09-28)
+
+User report on `sp_a2_trust_fling`: "the offsets/rotations are wrong" on the
+models. The cube dropper (`item_dropper_wrecked.mdl`) drew on its side under
+its tube, the panel arms (`arm64x64_interior_rusty.mdl`, four copies at one
+origin) piled up at that origin, and the turbine elevator's drum, tube opener
+and blades were turned. The user also asked to check the panels.
+
+- **Root cause (confirmed).** `content.studio-model` returned the VVD's bind
+  vertices, and the viewport drew them unposed. Source draws a model at its
+  sequence's frame: bone-to-model = parent x local(frame), and skin =
+  bone-to-model x poseToBone. These models are authored Y-up. Their reference
+  skeleton is the Maya pose, and frame 0 of every sequence turns the root.
+  - Evidence (a Python walk of the records, then the C++ reader):
+    - `elevator_tube_opener` `close_idle`, `elevator_b` `BindPose` and
+      `faith_plate` / `turret` `idle` store a raw root quaternion of
+      (0.5 0.5 0.5 0.5), which maps x y z to z x y.
+    - `item_dropper_idle_closed` turns the dropper's roots from Rz90 (the
+      reference) to 180 degrees about (1 0 1).
+    - The panel arms' `trustflings_platfor_*_idleend` sequences are not in
+      the model at all. They come from its `$includemodel`,
+      `arm64x64_interior_animation.mdl` (1350 sequences, data in 14 `.ani`
+      blocks). Unposed, all four copies are the same bind pose.
+  - Ruled out:
+    - the Euler convention: `mapgeometry::AngleMatrix` is Source's;
+    - the row convention of `ModelWorld`: `G13` checks it;
+    - roll handling: the `$staticprop` vactube segments at roll -90 stack
+      into one vertical column, the same before and after;
+    - nested-instance angle composition: it is `xf.linear` x the entity's
+      matrix in `ComposeAngles`, as legacy does;
+    - `modelscale`: 1 on these entities.
+    The corpus result below also shows the defect in the data: the unposed
+    bind vertices lie outside the compiler's own sequence box for 6586
+    Portal 2 sequences.
+- **Model library** (`public/mdl/studio_model.h`, `mdl/studio_model.cpp`,
+  still strict C++20 over bytes; `studio.h` and `bone_setup.cpp` were
+  reading references only):
+  - `Bone` (name, parent before child, reference position and quaternion,
+    euler base, posscale, rotscale, poseToBone, flags), per-vertex
+    `BoneWeights` (bounded: 1 to 3 bones, each naming a bone), and
+    `Sequence` (label, group, flags, stored box, blends, animation, bone
+    weights, and the local pose of every bone at frame 0).
+  - The frame-0 decode follows `bone_setup.cpp`:
+    - RLE records: raw Quaternion48/64, raw Vector48, run-length streams
+      times rotscale/posscale on the euler/position base, and delta
+      records, with the engine's empty-run and no-valid-value readings;
+    - `STUDIO_FRAMEANIM` frame x bone data: Quaternion48 or Quaternion48S,
+      Vector48 or float, per frame or constant;
+    - section 0 of a sectioned animation;
+    - `.ani` blocks, with the MDL's zero-frame data standing in when the
+      `.ani` is absent (`MissingFile` in ani when neither exists).
+  - Sequence weights blend with the reference: weight 0 keeps the
+    reference, a fraction slerps, and a delta sequence adds (a post delta
+    after the reference).
+  - Decision: a blend grid draws its first animation, since pose parameters
+    are not modelled.
+  - `$includemodel` sequences are merged as `studio_virtualmodel.cpp` merges
+    them:
+    - the model's own sequences come first, then the includes depth first;
+    - a duplicate label keeps the first unless that one is
+      `STUDIO_OVERRIDE`;
+    - bones map by name in any case;
+    - a bone the include lacks keeps the model's reference.
+    `LoadModel` resolves includes and `.ani` files through the same
+    `IModelFiles` and skips an absent include, as the engine does.
+    Animations shared across includes by name are not merged.
+  - `PoseModel` skins positions and normals by their weights and recomputes
+    the bounds. By sequence, a `$staticprop` model is returned unchanged, as
+    the engine's static-prop path draws it.
+  - Malformed input is a structured error: bone counts and parents,
+    weights, blend counts, animation indices, record bones and chains,
+    blocks and their ranges, frame blocks. Errors in an include are reported
+    in `included mdl` / `included ani`. Quaternion32 zero-frame data
+    (`BONE_HAS_SAVEFRAME_ROT32`) is refused rather than misread.
+- **Domain and viewport.**
+  - `viewport::ModelKeys` gains `sequence` (the `DefaultAnim` label, else a
+    non-numeric `sequence` key) and `sequenceIndex` (a numeric `sequence`).
+    Keys match in any case.
+  - `render_adapter::ModelSequence` resolves them: the label, else the
+    index, else 0. This follows the engine, which keeps the current sequence
+    when `DefaultAnim` names none.
+  - `PosedModel` gives the posed model. The renderer poses each (path,
+    sequence) once and stages per (path, sequence, skin, tint).
+    `ModelWorldBox` bounds the posed model, so the 2D boxes match the mesh.
+  - The GTK layer is unchanged: `CatalogModels` calls `LoadModel`.
+- **Evidence** (all pass, g++ and clang++):
+  - `content.studio-model.pose`: new suite, 85 checks. Hand-worked expected
+    poses for every encoding, hierarchy, blended weights, deltas, blocks and
+    includes. Seeded defects (swapped quaternion components, a dropped
+    parent concatenation, an ignored posscale) are rejected by the same
+    checks. The defects were also seeded into the reader itself; the suite
+    and the corpus both fail on each.
+  - `content.studio-model` passes unchanged (99 checks).
+  - `content.studio-model.corpus` (73 checks, 43 s):
+    - Portal 2: 8681 of 8682 full-weight sequences posed at frame 0 lie
+      inside their stored box. That includes 3199 sequences from
+      animation-only includes, judged by bone origins, because the compiler
+      boxes those by bones. The one miss is `a4_hallwaydest_bits`
+      `anim_1_land`, whose `.ani` records decode cleanly.
+    - Portal 2: 1249 layer sequences (some bone weight 0) are counted but
+      not judged. The compiler boxes them at full weight, while the engine
+      keeps the reference for weight-0 bones.
+    - Portal 2: the reference pose gives the bind vertices for 2033 of 2033
+      models, and 1444 of 1444 static props are unchanged.
+    - Portal 2: the box rejects the swapped-component defect 2163 times of
+      3064, the dropped parent 2448 of 2653 and the ignored posscale 3336
+      of 3360.
+    - Portal: 285 of 285 sequences inside their box, and 119 of 119 static
+      props unchanged.
+    - Named models match root rotations from an independent Python walk,
+      pose inside their stored boxes and lie outside them unposed: the cube
+      dropper, the eight trust_fling panel-arm sequences (from the include,
+      reaching eight different places), the elevator tube opener, blades
+      and car, the faith plate and the turret.
+  - `hammer.viewport.extraction.content` (35 checks) covers the sequence
+    keys. `hammer.adapters.render.models` (40 checks) adds G14 (resolution,
+    posed model, world box) and V11 (staging per sequence).
+  - The render suites all pass: geometry (41), viewport.null (46), service
+    (11), viewport (34), viewport.models (20, Vulkan), service.vulkan (11),
+    extraction (64). `service.tsan` is skipped on this host.
+  - `corpus.hammer.ui` (X11 row) passes: 47 checks with this shell.
+  - `archlint check --all`: no findings in this change. Its 2 new findings
+    are in another agent's `game/shared/fstop` work. Style is clean on the
+    touched files.
+- **Pictures** (`hammer_gtk --textured` with `HAMMER_INSTANCE_ROOTS` on
+  Portal 2's `pak01_dir.vpk`, before = the shell built at 20:28, after =
+  this change; left and right halves):
+  - Cube dropper, `--eye 1000,-800,180,768,-576,260`: before, the olive drum
+    lies on its side under its tube; after, it stands under the tube, open
+    end down.
+  - Panels, `--eye 1720,300,-250,1880,470,-80`: before, the four arms stick
+    out of the wall at their shared origin; after, they are tucked under the
+    panel they hold.
+  - The vactube column above the dropper is identical before and after.
+- **Open.**
+  - Pose parameters, bone controllers, procedural bones and IK are not
+    applied. Blend grids draw their first animation.
+  - Animations shared by name across includes are not merged.
+  - Zero-frame Quaternion32 data is refused.
+  - Picking still uses the marker box, not the posed mesh.
+  - The editor shows frame 0 only; there is no sequence playback.
+
 ### Viewports on ResolvePreview (2026-09-28)
 
 The viewports draw every material through the render core's editor preview,

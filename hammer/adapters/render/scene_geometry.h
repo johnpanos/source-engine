@@ -40,9 +40,15 @@
 //			    stores it, shaded by the model-space normal (the shading
 //			    turns with the model: a preview approximation), times a
 //			    tint.
+//			  * ModelSequence / PosedModel: the sequence a model entity is
+//			    drawn at (its ModelKeys, resolved against the model's
+//			    sequences, $includemodel ones included) and the model at
+//			    that sequence's first frame (mdl::PoseModel: the bones'
+//			    frame, not the bind pose; Source draws a model so).
 //			  * ModelWorld / ModelWorldBox: a model entity's placement
 //			    (origin, Source angles through mapgeometry::AngleMatrix,
-//			    uniform model scale) and its world box.
+//			    uniform model scale) and the world box of its posed
+//			    model.
 //			  * ChunkOf: the chunk an object's geometry is resident in.
 //			  * AppendOverlay: a tools::OverlayList as line items (world
 //			    lines, boxes and polygons; screen rects; filled screen
@@ -169,10 +175,20 @@ std::vector<ModelBatch> BuildModelBatches( const ModelAsset &asset, std::int32_t
 // instance content.
 scene::Rgb ModelTint( const viewport::EntityDraw &entity, bool instanceContent );
 
+// The sequence 'keys' draw 'model' at: the labelled one when the model has
+// it (mdl::FindSequence), else sequenceIndex when in range, else 0; -1 when
+// the model has no sequences.
+std::int32_t ModelSequence( const mdl::Model &model, const viewport::ModelKeys &keys );
+
+// 'asset' at the first frame of 'sequence' (mdl::PoseModel; unchanged for a
+// $staticprop or a sequence the model lacks).
+ModelAsset PosedModel( const ModelAsset &asset, std::int32_t sequence );
+
 // The entity's model-to-world transform: translate(origin) * rotate(angles) *
 // scale(modelKeys.scale).
 ::render::math::float4x4 ModelWorld( const viewport::EntityDraw &entity );
-// The world box of the model's bounds (its eight corners) under ModelWorld.
+// The world box of the model's bounds (its eight corners) under ModelWorld;
+// pass the posed model (PosedModel) the entity is drawn as.
 scene::Box ModelWorldBox( const mdl::Model &model, const viewport::EntityDraw &entity );
 
 // Tool feedback is drawn over the scene in every view (no depth test), as the

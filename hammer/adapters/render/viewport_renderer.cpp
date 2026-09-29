@@ -536,10 +536,21 @@ ViewportRenderer::ModelEntry *ViewportRenderer::ModelFor( const viewport::Entity
 	return found->second.asset ? &found->second : nullptr;
 }
 
-foundation::Expected<const std::vector<ViewportRenderer::ModelMesh> *, ViewportStatus>
-ViewportRenderer::VariantFor( ModelEntry &entry, std::int32_t skin, const scene::Rgb &tint )
+const ModelAsset &ViewportRenderer::ModelEntry::Posed( std::int32_t sequence )
 {
-	const std::array<int, 4> key = { skin, tint.r, tint.g, tint.b };
+	auto found = posed.find( sequence );
+	if ( found == posed.end() )
+	{
+		found = posed.emplace( sequence, PosedModel( *asset, sequence ) ).first;
+	}
+	return found->second;
+}
+
+foundation::Expected<const std::vector<ViewportRenderer::ModelMesh> *, ViewportStatus>
+ViewportRenderer::VariantFor(
+    ModelEntry &entry, std::int32_t sequence, std::int32_t skin, const scene::Rgb &tint )
+{
+	const std::array<int, 5> key = { sequence, skin, tint.r, tint.g, tint.b };
 	if ( auto found = entry.variants.find( key ); found != entry.variants.end() )
 	{
 		return &found->second;
@@ -558,7 +569,7 @@ ViewportRenderer::VariantFor( ModelEntry &entry, std::int32_t skin, const scene:
 		return foundation::MakeUnexpected( resolved.Error() );
 	}
 	const std::vector<ModelBatch> batches = BuildModelBatches(
-	    *entry.asset, skin,
+	    entry.Posed( sequence ), skin,
 	    [this]( const std::string &material ) -> std::optional<TextureSize>
 	    {
 		    auto found = m_Materials.find( material );
@@ -671,7 +682,9 @@ foundation::Expected<void, ViewportStatus> ViewportRenderer::StageChunk(
 		{
 			return std::nullopt;
 		}
-		return ModelWorldBox( models[at]->asset->model, entity );
+		ModelEntry &entry = *models[at];
+		return ModelWorldBox(
+		    entry.Posed( ModelSequence( entry.asset->model, entity.modelKeys ) ).model, entity );
 	};
 	const SceneGeometry geometry = BuildSceneGeometry( objects, options );
 	staged.solids = std::move( objects.solids );
@@ -723,8 +736,8 @@ foundation::Expected<void, ViewportStatus> ViewportRenderer::StageChunk(
 			continue;
 		}
 		const viewport::EntityDraw &entity = staged.entities[i];
-		auto variant = VariantFor(
-		    *entry, entity.modelKeys.skin, ModelTint( entity, staged.instanceContent ) );
+		auto variant = VariantFor( *entry, ModelSequence( entry->asset->model, entity.modelKeys ),
+		    entity.modelKeys.skin, ModelTint( entity, staged.instanceContent ) );
 		if ( !variant )
 		{
 			return foundation::MakeUnexpected( variant.Error() );

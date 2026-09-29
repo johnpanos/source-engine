@@ -5,7 +5,11 @@
 //			layouts public/mdl/studio_model.h documents (the engine's on-disk
 //			records), independently of the reader: a model is described as
 //			body parts, models and meshes whose triangles are given in the
-//			files' order (clockwise seen from outside).
+//			files' order (clockwise seen from outside). Bones, per-vertex
+//			weights, animations (their frame-0 bytes, encoded by the helpers
+//			below: RLE records or frame x bone data, in the MDL, a section or
+//			an .ani block, or zero-frame data) and sequences are written as
+//			the reader's header documents them.
 //
 //=============================================================================//
 
@@ -14,9 +18,14 @@
 
 #include "mdl/studio_model.h"
 
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <initializer_list>
+#include <iterator>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace mdltest
@@ -26,11 +35,44 @@ struct SyntheticMesh
 {
 	std::int32_t textureRef = 0;
 	std::vector<mdl::Vertex> vertices;
+	std::vector<mdl::BoneWeights> weights; // empty: every vertex bone 0, weight 1
 	std::vector<std::uint16_t> stored; // as the file stores them: clockwise from outside
 	bool tristrip = false;             // 'stored' is one triangle strip
 };
 
 using SyntheticSubModel = std::vector<SyntheticMesh>; // one mstudiomodel_t
+
+struct SyntheticBone
+{
+	std::string name = "root";
+	std::int32_t parent = -1;
+	mdl::Float3 position;
+	mdl::Quaternion rotation;
+	mdl::Float3 euler;
+	mdl::Float3 positionScale;
+	mdl::Float3 rotationScale;
+	mdl::Matrix3x4 poseToBone;
+	std::uint32_t flags = 0;
+};
+
+struct SyntheticAnimation
+{
+	std::uint32_t flags = 0; // animdesc flags: 0x04 delta, 0x40 frame x bone
+	std::string data;        // frame 0's encoded data (see Records / FrameAnim)
+	std::int32_t block = 0;  // 0: in the MDL; n > 0: .ani block n; -1: no block
+	bool sectioned = false;  // reached through section 0 (sectionframes 30)
+	std::string zeroFrame;   // zero-frame data (count 1); empty: none
+};
+
+struct SyntheticSequence
+{
+	std::string label = "idle";
+	std::uint32_t flags = 0;
+	mdl::Float3 bbMin;
+	mdl::Float3 bbMax;
+	std::vector<std::int16_t> blends = { 0 }; // the blend grid's animations (groupsize n x 1)
+	std::vector<float> weights;               // per bone; empty: 1 for every bone
+};
 
 struct SyntheticModel
 {
@@ -42,6 +84,12 @@ struct SyntheticModel
 	std::vector<std::vector<std::int16_t>> skins; // [family][ref]
 	std::vector<std::vector<SyntheticSubModel>> bodyParts;
 	bool fixups = false; // store the VVD vertices rotated, restored by two fixups
+	std::uint32_t flags = 0;
+	std::vector<SyntheticBone> bones; // empty: one identity root
+	std::vector<SyntheticAnimation> animations;
+	std::vector<SyntheticSequence> sequences;
+	std::string aniName = "synthetic/box.ani";
+	std::vector<std::string> includes; // $includemodel paths
 };
 
 struct SyntheticFiles
@@ -49,6 +97,7 @@ struct SyntheticFiles
 	std::string mdl;
 	std::string vvd;
 	std::string vtx;
+	std::string ani; // written when an animation lives in a block
 };
 
 namespace detail
@@ -93,6 +142,168 @@ inline std::size_t AppendString( std::string &out, const std::string &text )
 
 } // namespace detail
 
+// --- Frame-0 encoders (compressed_vector.h and studio.h layouts) --------------------------
+
+inline std::string Bytes16( std::initializer_list<std::uint16_t> words )
+{
+	std::string out;
+	for ( std::uint16_t w : words )
+	{
+		out.push_back( static_cast<char>( w & 0xff ) );
+		out.push_back( static_cast<char>( w >> 8 ) );
+	}
+	return out;
+}
+
+// float16 of 'value' (normal range, rounded toward zero).
+inline std::uint16_t Half( float value )
+{
+	std::uint32_t bits = 0;
+	std::memcpy( &bits, &value, 4 );
+	const std::uint16_t sign = static_cast<std::uint16_t>( ( bits >> 16 ) & 0x8000 );
+	const int exponent = int( ( bits >> 23 ) & 0xff ) - 127 + 15;
+	if ( value == 0.0f || exponent <= 0 )
+	{
+		return sign;
+	}
+	return static_cast<std::uint16_t>(
+	    sign | ( std::min( exponent, 30 ) << 10 ) | ( ( bits >> 13 ) & 0x3ff ) );
+}
+
+inline std::string Vector48( mdl::Float3 p )
+{
+	return Bytes16( { Half( p.x ), Half( p.y ), Half( p.z ) } );
+}
+
+inline std::string Quaternion48( mdl::Quaternion q )
+{
+	const auto x = static_cast<std::uint16_t>(
+	    std::clamp<long>( std::lround( q.x * 32768.0f ) + 32768, 0, 65535 ) );
+	const auto y = static_cast<std::uint16_t>(
+	    std::clamp<long>( std::lround( q.y * 32768.0f ) + 32768, 0, 65535 ) );
+	const auto z = static_cast<std::uint16_t>(
+	    std::clamp<long>( std::lround( q.z * 16384.0f ) + 16384, 0, 32767 ) );
+	return Bytes16(
+	    { x, y, static_cast<std::uint16_t>( ( z & 0x7fff ) | ( q.w < 0 ? 0x8000 : 0 ) ) } );
+}
+
+inline std::string Quaternion64( mdl::Quaternion q )
+{
+	const auto part = []( float v )
+	{
+		return static_cast<std::uint64_t>( std::lround( v * 1048576.0f ) + 1048576 ) & 0x1fffff;
+	};
+	const std::uint64_t bits = part( q.x ) | ( part( q.y ) << 21 ) | ( part( q.z ) << 42 ) |
+	                           ( std::uint64_t( q.w < 0 ? 1 : 0 ) << 63 );
+	std::string out;
+	for ( int i = 0; i < 8; ++i )
+	{
+		out.push_back( static_cast<char>( ( bits >> ( 8 * i ) ) & 0xff ) );
+	}
+	return out;
+}
+
+// Quaternion48S: components 'first', first+1 and first+2 (cyclic) stored, the
+// fourth (its sign in the last bit) rebuilt.
+inline std::string Quaternion48S( mdl::Quaternion q, int first )
+{
+	const float c[4] = { q.x, q.y, q.z, q.w };
+	const auto part = []( float v )
+	{
+		return static_cast<std::uint16_t>( std::lround( v * 23168.0f ) + 16384 ) & 0x7fff;
+	};
+	const std::uint16_t a = part( c[first] ) | ( ( first >> 1 ) << 15 );
+	const std::uint16_t b = part( c[( first + 1 ) % 4] ) | ( ( first & 1 ) << 15 );
+	const std::uint16_t d =
+	    part( c[( first + 2 ) % 4] ) | ( c[( first + 3 ) % 4] < 0 ? 0x8000 : 0 );
+	return Bytes16( { a, b, d } );
+}
+
+// An mstudioanim_valueptr_t and its three streams, each one run of one valid
+// frame holding 'values[k]' (a zero value writes no stream).
+inline std::string ValueStreams( const std::int16_t ( &values )[3] )
+{
+	std::string pointers( 6, '\0' );
+	std::string streams;
+	for ( int k = 0; k < 3; ++k )
+	{
+		if ( values[k] == 0 )
+		{
+			continue;
+		}
+		detail::Put16( pointers, 2 * k, static_cast<std::uint16_t>( 6 + streams.size() ) );
+		streams += Bytes16( { 0x0101, static_cast<std::uint16_t>( values[k] ) } );
+	}
+	return pointers + streams;
+}
+
+// Animated rotation and position together: the rotation's value pointer, the
+// position's right after it, then both pointers' streams.
+inline std::string RotationPositionStreams(
+    const std::int16_t ( &rotation )[3], const std::int16_t ( &position )[3] )
+{
+	std::string pointers( 12, '\0' );
+	std::string streams;
+	for ( int k = 0; k < 6; ++k )
+	{
+		const std::int16_t value = k < 3 ? rotation[k] : position[k - 3];
+		if ( value == 0 )
+		{
+			continue;
+		}
+		const std::size_t pointer = k < 3 ? 0 : 6;
+		detail::Put16(
+		    pointers, 2 * k, static_cast<std::uint16_t>( 12 + streams.size() - pointer ) );
+		streams += Bytes16( { 0x0101, static_cast<std::uint16_t>( value ) } );
+	}
+	return pointers + streams;
+}
+
+// One RLE record's bone, flags and data (the bytes after its 4-byte header).
+struct Record
+{
+	std::uint8_t bone = 0;
+	std::uint8_t flags = 0;
+	std::string data;
+};
+
+// Records chained by nextoffset (the last 0).
+inline std::string Records( const std::vector<Record> &records )
+{
+	std::string out;
+	for ( std::size_t i = 0; i < records.size(); ++i )
+	{
+		const Record &r = records[i];
+		std::string header( 4, '\0' );
+		header[0] = static_cast<char>( r.bone );
+		header[1] = static_cast<char>( r.flags );
+		const std::size_t next = i + 1 < records.size() ? 4 + r.data.size() : 0;
+		detail::Put16( header, 2, static_cast<std::uint16_t>( next ) );
+		out += header + r.data;
+	}
+	return out;
+}
+
+// Frame x bone data for frame 0: per-bone flags, the constant block and the
+// frame's block (mstudio_frame_anim_t).
+inline std::string FrameAnim(
+    const std::vector<std::uint8_t> &flags, const std::string &constants, const std::string &frame )
+{
+	std::string out( 24, '\0' );
+	for ( std::uint8_t f : flags )
+	{
+		out.push_back( static_cast<char>( f ) );
+	}
+	const std::size_t constantsAt = out.size();
+	out += constants;
+	const std::size_t frameAt = out.size();
+	out += frame;
+	detail::Put32( out, 0, static_cast<std::int32_t>( constantsAt ) );
+	detail::Put32( out, 4, static_cast<std::int32_t>( frameAt ) );
+	detail::Put32( out, 8, static_cast<std::int32_t>( frame.size() ) );
+	return out;
+}
+
 inline SyntheticFiles WriteModel( const SyntheticModel &model )
 {
 	using namespace detail;
@@ -101,6 +312,7 @@ inline SyntheticFiles WriteModel( const SyntheticModel &model )
 
 	// --- VVD: every mesh's vertices, body part / model / mesh order ---
 	std::vector<mdl::Vertex> all;
+	std::vector<mdl::BoneWeights> allWeights;
 	for ( const auto &part : model.bodyParts )
 	{
 		for ( const SyntheticSubModel &sub : part )
@@ -108,6 +320,11 @@ inline SyntheticFiles WriteModel( const SyntheticModel &model )
 			for ( const SyntheticMesh &mesh : sub )
 			{
 				all.insert( all.end(), mesh.vertices.begin(), mesh.vertices.end() );
+				for ( std::size_t v = 0; v < mesh.vertices.size(); ++v )
+				{
+					allWeights.push_back(
+					    v < mesh.weights.size() ? mesh.weights[v] : mdl::BoneWeights{} );
+				}
 			}
 		}
 	}
@@ -120,12 +337,17 @@ inline SyntheticFiles WriteModel( const SyntheticModel &model )
 	Put32( vvd, 16, static_cast<std::int32_t>( all.size() ) );
 	const std::size_t half = all.size() / 2;
 	std::vector<mdl::Vertex> stored = all;
+	std::vector<mdl::BoneWeights> storedWeights = allWeights;
 	if ( model.fixups )
 	{
 		// stored = all[half..] ++ all[..half]; fixups restore 'all'.
 		stored.assign( all.begin() + static_cast<std::ptrdiff_t>( half ), all.end() );
 		stored.insert(
 		    stored.end(), all.begin(), all.begin() + static_cast<std::ptrdiff_t>( half ) );
+		storedWeights.assign(
+		    allWeights.begin() + static_cast<std::ptrdiff_t>( half ), allWeights.end() );
+		storedWeights.insert( storedWeights.end(), allWeights.begin(),
+		    allWeights.begin() + static_cast<std::ptrdiff_t>( half ) );
 		Put32( vvd, 48, 2 );
 		const std::size_t table = Grow( vvd, 24 );
 		Put32( vvd, 52, static_cast<std::int32_t>( table ) );
@@ -141,9 +363,13 @@ inline SyntheticFiles WriteModel( const SyntheticModel &model )
 	for ( std::size_t i = 0; i < stored.size(); ++i )
 	{
 		const std::size_t at = data + i * 48;
-		vvd[at] = 0; // weights: one bone, weight 1
-		PutF( vvd, at, 1.0f );
-		vvd[at + 15] = 1;
+		const mdl::BoneWeights &w = storedWeights[i];
+		for ( int k = 0; k < 3; ++k )
+		{
+			PutF( vvd, at + 4 * k, w.weights[k] );
+			vvd[at + 12 + k] = static_cast<char>( w.bones[k] );
+		}
+		vvd[at + 15] = static_cast<char>( w.count );
 		const mdl::Vertex &v = stored[i];
 		PutF( vvd, at + 16, v.position.x );
 		PutF( vvd, at + 20, v.position.y );
@@ -229,6 +455,152 @@ inline SyntheticFiles WriteModel( const SyntheticModel &model )
 	{
 		Put32( mdl, cd + c * 4,
 		    static_cast<std::int32_t>( AppendString( mdl, model.cdMaterials[c] ) ) );
+	}
+	// --- Skeleton, animations, sequences ---
+	Put32( mdl, 152, static_cast<std::int32_t>( model.flags ) );
+	std::vector<SyntheticBone> bones = model.bones;
+	if ( bones.empty() )
+	{
+		bones.emplace_back();
+	}
+	const std::size_t boneAt = Grow( mdl, bones.size() * 216 );
+	Put32( mdl, 156, static_cast<std::int32_t>( bones.size() ) );
+	Put32( mdl, 160, static_cast<std::int32_t>( boneAt ) );
+	for ( std::size_t b = 0; b < bones.size(); ++b )
+	{
+		const SyntheticBone &bone = bones[b];
+		const std::size_t at = boneAt + b * 216;
+		Put32( mdl, at + 4, bone.parent );
+		const float fields[] = { bone.position.x, bone.position.y, bone.position.z, bone.rotation.x,
+		    bone.rotation.y, bone.rotation.z, bone.rotation.w, bone.euler.x, bone.euler.y,
+		    bone.euler.z, bone.positionScale.x, bone.positionScale.y, bone.positionScale.z,
+		    bone.rotationScale.x, bone.rotationScale.y, bone.rotationScale.z };
+		for ( std::size_t f = 0; f < std::size( fields ); ++f )
+		{
+			PutF( mdl, at + 32 + f * 4, fields[f] );
+		}
+		for ( int r = 0; r < 3; ++r )
+		{
+			for ( int c = 0; c < 4; ++c )
+			{
+				PutF( mdl, at + 96 + ( r * 4 + c ) * 4, bone.poseToBone.m[r][c] );
+			}
+		}
+		Put32( mdl, at + 160, static_cast<std::int32_t>( bone.flags ) );
+	}
+	for ( std::size_t b = 0; b < bones.size(); ++b )
+	{
+		const std::size_t at = boneAt + b * 216;
+		Put32( mdl, at, static_cast<std::int32_t>( AppendString( mdl, bones[b].name ) - at ) );
+	}
+	const std::size_t descs = Grow( mdl, model.animations.size() * 100 );
+	Put32( mdl, 180, static_cast<std::int32_t>( model.animations.size() ) );
+	Put32( mdl, 184, static_cast<std::int32_t>( descs ) );
+	std::int32_t blockCount = 0;
+	for ( const SyntheticAnimation &a : model.animations )
+	{
+		blockCount = std::max( blockCount, a.block + 1 );
+	}
+	std::vector<std::pair<std::size_t, std::size_t>> blockRanges(
+	    static_cast<std::size_t>( blockCount ) );
+	if ( blockCount > 1 )
+	{
+		files.ani.assign( 16, '\0' ); // a stand-in header
+	}
+	for ( std::size_t a = 0; a < model.animations.size(); ++a )
+	{
+		const SyntheticAnimation &anim = model.animations[a];
+		const std::size_t desc = descs + a * 100;
+		Put32( mdl, desc + 12, static_cast<std::int32_t>( anim.flags ) );
+		Put32( mdl, desc + 16, 1 );
+		PutF( mdl, desc + 8, 30.0f );
+		std::int32_t index = 0;
+		if ( anim.block == 0 )
+		{
+			index = static_cast<std::int32_t>( mdl.size() - desc );
+			mdl += anim.data;
+		}
+		else if ( anim.block > 0 )
+		{
+			const std::size_t start = files.ani.size();
+			files.ani += anim.data;
+			blockRanges[static_cast<std::size_t>( anim.block )] = { start, files.ani.size() };
+		}
+		if ( anim.sectioned )
+		{
+			const std::size_t sections = Grow( mdl, 16 );
+			Put32( mdl, desc + 80, static_cast<std::int32_t>( sections - desc ) );
+			Put32( mdl, desc + 84, 30 );
+			Put32( mdl, sections, anim.block );
+			Put32( mdl, sections + 4, index );
+			Put32( mdl, desc + 52, 0 );
+			Put32( mdl, desc + 56, 0 );
+		}
+		else
+		{
+			Put32( mdl, desc + 52, anim.block );
+			Put32( mdl, desc + 56, index );
+		}
+		if ( !anim.zeroFrame.empty() )
+		{
+			Put16( mdl, desc + 90, 1 );
+			Put32( mdl, desc + 92, static_cast<std::int32_t>( mdl.size() - desc ) );
+			mdl += anim.zeroFrame;
+		}
+		Put32( mdl, desc + 4, static_cast<std::int32_t>( AppendString( mdl, "@anim" ) - desc ) );
+	}
+	if ( blockCount > 1 )
+	{
+		const std::size_t table = Grow( mdl, blockRanges.size() * 8 );
+		Put32( mdl, 352, blockCount );
+		Put32( mdl, 356, static_cast<std::int32_t>( table ) );
+		for ( std::size_t b = 0; b < blockRanges.size(); ++b )
+		{
+			Put32( mdl, table + b * 8, static_cast<std::int32_t>( blockRanges[b].first ) );
+			Put32( mdl, table + b * 8 + 4, static_cast<std::int32_t>( blockRanges[b].second ) );
+		}
+		Put32( mdl, 348, static_cast<std::int32_t>( AppendString( mdl, model.aniName ) ) );
+	}
+	const std::size_t seqs = Grow( mdl, model.sequences.size() * 212 );
+	Put32( mdl, 188, static_cast<std::int32_t>( model.sequences.size() ) );
+	Put32( mdl, 192, static_cast<std::int32_t>( seqs ) );
+	for ( std::size_t q = 0; q < model.sequences.size(); ++q )
+	{
+		const SyntheticSequence &seq = model.sequences[q];
+		const std::size_t at = seqs + q * 212;
+		Put32( mdl, at + 12, static_cast<std::int32_t>( seq.flags ) );
+		const float box[] = {
+		    seq.bbMin.x, seq.bbMin.y, seq.bbMin.z, seq.bbMax.x, seq.bbMax.y, seq.bbMax.z };
+		for ( std::size_t f = 0; f < 6; ++f )
+		{
+			PutF( mdl, at + 32 + f * 4, box[f] );
+		}
+		Put32( mdl, at + 56, static_cast<std::int32_t>( seq.blends.size() ) );
+		Put32( mdl, at + 68, static_cast<std::int32_t>( seq.blends.size() ) );
+		Put32( mdl, at + 72, 1 );
+		const std::size_t blends = Grow( mdl, seq.blends.size() * 2 + 2 );
+		for ( std::size_t b = 0; b < seq.blends.size(); ++b )
+		{
+			Put16( mdl, blends + b * 2, static_cast<std::uint16_t>( seq.blends[b] ) );
+		}
+		Put32( mdl, at + 60, static_cast<std::int32_t>( blends - at ) );
+		const std::size_t weights = Grow( mdl, bones.size() * 4 );
+		for ( std::size_t b = 0; b < bones.size(); ++b )
+		{
+			PutF( mdl, weights + b * 4, b < seq.weights.size() ? seq.weights[b] : 1.0f );
+		}
+		Put32( mdl, at + 156, static_cast<std::int32_t>( weights - at ) );
+		Put32( mdl, at + 4, static_cast<std::int32_t>( AppendString( mdl, seq.label ) - at ) );
+	}
+	const std::size_t groups = Grow( mdl, model.includes.size() * 8 );
+	Put32( mdl, 336, static_cast<std::int32_t>( model.includes.size() ) );
+	Put32( mdl, 340, static_cast<std::int32_t>( groups ) );
+	for ( std::size_t g = 0; g < model.includes.size(); ++g )
+	{
+		const std::size_t at = groups + g * 8;
+		Put32( mdl, at, static_cast<std::int32_t>( AppendString( mdl, "" ) - at ) );
+		Put32(
+		    mdl, at + 4, static_cast<std::int32_t>( AppendString( mdl, model.includes[g] ) - at ) );
 	}
 	Put32( mdl, 76, static_cast<std::int32_t>( mdl.size() ) );
 

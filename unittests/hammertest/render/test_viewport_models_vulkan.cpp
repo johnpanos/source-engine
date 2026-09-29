@@ -135,7 +135,7 @@ ModelAsset Crate()
 	const mdltest::SyntheticFiles files =
 	    mdltest::WriteModel( mdltest::BoxModel( { 32, 16, 8 }, "models/test/", "crate" ) );
 	ModelAsset asset;
-	asset.model = mdl::ParseModel( { files.mdl, files.vvd, files.vtx } ).Value();
+	asset.model = mdl::ParseModel( { files.mdl, files.vvd, files.vtx, files.ani } ).Value();
 	asset.materials = { mdl::ResolvedMaterial{ kCrate, true } };
 	return asset;
 }

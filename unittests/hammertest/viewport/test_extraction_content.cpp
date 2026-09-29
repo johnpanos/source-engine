@@ -116,7 +116,7 @@ int main()
 	// --- Model keys -------------------------------------------------------------------
 	{
 		scene::MapDocument doc( 1 );
-		ObjectId prop, bad, start, sprite;
+		ObjectId prop, bad, start, sprite, animated, indexed, labelled;
 		{
 			scene::DocumentEdit edit( doc );
 			scene::Entity p = PointEntity( "prop_static", Vec3d( 0, 0, 0 ) );
@@ -136,6 +136,20 @@ int main()
 			s.SetKey( "model", "sprites/glow01.vmt" );
 			s.SetKey( "skin", "3" );
 			sprite = edit.Add( s );
+			scene::Entity a = PointEntity( "prop_dynamic", Vec3d( 0, 0, 128 ) );
+			a.SetKey( "model", "models/props/crate.mdl" );
+			a.SetKey( "DefaultAnim", "close_idle" );
+			a.SetKey( "Sequence", "3" );
+			animated = edit.Add( a );
+			scene::Entity i = PointEntity( "prop_dynamic", Vec3d( 0, 0, 192 ) );
+			i.SetKey( "model", "models/props/crate.mdl" );
+			i.SetKey( "defaultanim", "" );
+			i.SetKey( "sequence", "2" );
+			indexed = edit.Add( i );
+			scene::Entity l = PointEntity( "prop_dynamic", Vec3d( 0, 0, 256 ) );
+			l.SetKey( "model", "models/props/crate.mdl" );
+			l.SetKey( "sequence", "Open" );
+			labelled = edit.Add( l );
 			scene::CommitEdit( doc, edit );
 		}
 		viewport::ExtractOptions options;
@@ -156,6 +170,16 @@ int main()
 		checks.That( sp && !viewport::IsStudioModelPath( sp->model ) &&
 		                 sp->modelKeys == viewport::ModelKeys{},
 		    "a sprite is not a model and reads no model keys" );
+		const viewport::EntityDraw *an = EntityOf( snapshot, animated );
+		checks.That(
+		    an && an->modelKeys.sequence == "close_idle" && an->modelKeys.sequenceIndex == 3,
+		    "DefaultAnim names the sequence; the sequence key's index is kept (keys in any case)" );
+		const viewport::EntityDraw *in = EntityOf( snapshot, indexed );
+		checks.That( in && in->modelKeys.sequence.empty() && in->modelKeys.sequenceIndex == 2,
+		    "an empty DefaultAnim is none: the sequence key's index" );
+		const viewport::EntityDraw *la = EntityOf( snapshot, labelled );
+		checks.That( la && la->modelKeys.sequence == "Open" && la->modelKeys.sequenceIndex == 0,
+		    "a sequence key that is not a number is a label" );
 		checks.That( snapshot.instances.empty(), "no instance port: no InstanceDraws" );
 		checks.That(
 		    !viewport::IsStudioModelPath( ".mdl" ) && viewport::IsStudioModelPath( "a.MdL" ),

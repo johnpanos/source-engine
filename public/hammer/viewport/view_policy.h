@@ -93,6 +93,14 @@ struct ModelKeys
 	std::int32_t skin = 0;
 	double scale = 1.0;
 	std::optional<scene::Rgb> renderColor;
+	// The sequence the model is drawn at (its first frame; RFC 0002 R17
+	// follow-up, posed models): the label "DefaultAnim" names when it is set
+	// (as prop_dynamic starts it), else the "sequence" key (an index, or a
+	// label), else sequence 0. Keys match without regard to case, as the
+	// engine's do. A label the model lacks falls back to the index, as the
+	// engine keeps the current sequence when DefaultAnim names none.
+	std::string sequence = {};      // a label; empty: none
+	std::int32_t sequenceIndex = 0; // when no label names one
 
 	friend bool operator==( const ModelKeys &, const ModelKeys & ) = default;
 };

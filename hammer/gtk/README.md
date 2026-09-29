@@ -123,7 +123,11 @@ mounted ("Mount Game Assets…", or `--mount VPK[,VPK...]` at start), the camera
 textured: each material's base texture comes from the mounted VPKs through its
 own `MaterialCatalog` on the render sequence (`catalog_textures.cpp`), and the
 solids draw through the render core's `unlit` material family (RFC 0016 K4).
-Faces whose texture is missing draw with the flat fill colors. The viewports
+Faces whose texture is missing draw with the flat fill colors. Studio models
+draw at the first frame of the sequence their entity names (`DefaultAnim`, else
+`sequence`, else sequence 0), sequences from `$includemodel` animation models
+included, not in their bind pose; pose parameters, bone controllers and
+procedural bones are not applied. The viewports
 render on their own thread (`ViewportService`). When the device exports images
 (RFC 0016 clause D18), each frame is an exported image GTK shows as a
 `GdkDmabufTexture` without a copy; the image goes back to the renderer when GTK

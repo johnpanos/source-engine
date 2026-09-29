@@ -74,9 +74,53 @@ bool IsStudioModelPath( std::string_view path )
 	    } );
 }
 
+namespace
+{
+
+// The value of 'key' in any case (the engine matches keys without regard to
+// case); nothing when absent.
+const std::string *KeyNoCase( const scene::Entity &entity, std::string_view key )
+{
+	for ( const kvtext::KeyValue &kv : entity.keys )
+	{
+		if ( kv.key.size() == key.size() &&
+		     std::equal( kv.key.begin(), kv.key.end(), key.begin(),
+		         []( char a, char b )
+		         {
+			         return std::tolower( static_cast<unsigned char>( a ) ) ==
+			                std::tolower( static_cast<unsigned char>( b ) );
+		         } ) )
+		{
+			return &kv.value;
+		}
+	}
+	return nullptr;
+}
+
+} // namespace
+
 ModelKeys ReadModelKeys( const scene::Entity &entity )
 {
 	ModelKeys keys;
+	const std::string *defaultAnim = KeyNoCase( entity, "DefaultAnim" );
+	if ( defaultAnim && !defaultAnim->empty() )
+	{
+		keys.sequence = *defaultAnim;
+	}
+	if ( const std::string *sequence = KeyNoCase( entity, "sequence" );
+	    sequence && !sequence->empty() )
+	{
+		int value = 0;
+		const char *end = sequence->data() + sequence->size();
+		if ( std::from_chars( sequence->data(), end, value ).ptr == end )
+		{
+			keys.sequenceIndex = value >= 0 ? value : 0;
+		}
+		else if ( keys.sequence.empty() )
+		{
+			keys.sequence = *sequence;
+		}
+	}
 	if ( const std::string *skin = entity.Key( "skin" ) )
 	{
 		int value = 0;

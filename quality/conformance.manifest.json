@@ -3094,7 +3094,7 @@
       "contract": "unittests/hammertest/contracts/render_adapter.viewport-geometry.v1.md",
       "kind": "positive",
       "profile": "linux-headless-core",
-      "description": "R17 follow-up (props and instances), clauses G12, G13 and V10 of render_adapter.viewport-geometry.v1: model entities have no marker faces and their model box in 2D edges (selected: every view, selection color); instance content faces are multiplied by the tint and its edges drawn in the instance edge color; BuildModelBatches (untextured first, model uv, shading times tint, skin families, indices in range), ModelWorld, ModelWorldBox and ModelTint; on render.device.null the renderer reads each model once, stages it once per (skin, tint), draws one indexed draw per batch and entity, counts a missing model, restages only the moved entity's chunk without restaging the model, and releases everything.",
+      "description": "R17 follow-up (props and instances), clauses G12, G13 and V10 of render_adapter.viewport-geometry.v1: model entities have no marker faces and their model box in 2D edges (selected: every view, selection color); instance content faces are multiplied by the tint and its edges drawn in the instance edge color; BuildModelBatches (untextured first, model uv, shading times tint, skin families, indices in range), ModelWorld, ModelWorldBox and ModelTint; G14 posed models (ModelSequence: label, else index, else 0, -1 without sequences; PosedModel stands a Y-up reference along z by its root's first frame; the world box bounds the posed model); V11 staging per (sequence, skin, tint); on render.device.null the renderer reads each model once, stages it once per (skin, tint), draws one indexed draw per batch and entity, counts a missing model, restages only the moved entity's chunk without restaging the model, and releases everything.",
       "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/viewport/extraction.cpp",
@@ -4729,7 +4729,7 @@
       "contract": "unittests/hammertest/contracts/viewport.extraction.v1.md",
       "kind": "positive",
       "profile": "linux-headless-core",
-      "description": "The render snapshot's models and instances (R17 follow-up): studio-model EntityDraws carry skin, model scale and render color (malformed keys give defaults, sprites are not models); one InstanceDraw per func_instance from InstancePreview with the content's solids, brush-entity solids and point entities, colors, selection through the instance's group, visibility and keepHidden, bounds outside the snapshot's; a hand-computed placement oracle accepts the content and rejects four seeded wrong transforms (yaw sign, dropped translation, rotation after translation, pitch for yaw); the SnapshotCache re-extracts exactly the instances on a new port revision, moves content with an instance edit, and equals a full Extract throughout.",
+      "description": "The render snapshot's models and instances (R17 follow-up): studio-model EntityDraws carry skin, model scale and render color (malformed keys give defaults, sprites are not models) and the sequence they are drawn at (DefaultAnim, else the sequence key as an index or label; keys in any case); one InstanceDraw per func_instance from InstancePreview with the content's solids, brush-entity solids and point entities, colors, selection through the instance's group, visibility and keepHidden, bounds outside the snapshot's; a hand-computed placement oracle accepts the content and rejects four seeded wrong transforms (yaw sign, dropped translation, rotation after translation, pitch for yaw); the SnapshotCache re-extracts exactly the instances on a new port revision, moves content with an instance edit, and equals a full Extract throughout.",
       "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/formats/vmf_map_codec.cpp",
@@ -5564,6 +5564,23 @@
       "expect": "pass"
     },
     {
+      "id": "content.studio-model.pose",
+      "domain": "Q-CONTENT",
+      "rfc": "0002",
+      "migration": "R17",
+      "contract": "unittests/mdltest/contracts/content.studio-model.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "description": "Skeleton, first frames and posing of content.studio-model (public/mdl/studio_model.h): synthetic models from the independent writer, with expected poses worked out by hand, for every first-frame encoding (raw Quaternion64: the turbine elevator's Y-up to Z-up root; raw Quaternion48 and Vector48; run-length values with rotscale/posscale and the euler base, including the engine's empty-run and no-valid-value readings; frame x bone data with Quaternion48S in all four layouts, float and Vector48 positions and constants; section 0; .ani blocks, with zero-frame data standing in and MissingFile in ani without either; LoadModel reading the .ani the header names); parent concatenation; blended vertex weights; sequence bone weights (0.5 halfway, 0 the reference); delta sequences; blend grids; the $staticprop rule; $includemodel merging as the engine's virtual model builds it (own sequences first, a duplicate label keeps the first unless it is a forward declaration, bones mapped by name in any case, a bone the include lacks keeps the reference; LoadModel resolves includes through the same files and skips an absent one; a malformed include fails in included mdl); Quaternion32 zero-frame data refused. The reference pose gives the bind vertices, normals and bounds. Seeded defects (swapped quaternion components, a dropped parent concatenation, an ignored posscale) are rejected by the same checks. Malformed skeletons, weights, sequences, records, blocks and frame data fail with their named status and file; 3000 damaged files pose without leaving their data; every strict MDL prefix fails.",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "mdl/studio_model.cpp",
+        "unittests/mdltest/test_studio_model_pose.cpp"
+      ],
+      "min_checks": 80,
+      "expect": "pass"
+    },
+    {
       "id": "content.studio-model.corpus",
       "domain": "Q-CONTENT",
       "rfc": "0002",
@@ -5571,7 +5588,7 @@
       "contract": "unittests/mdltest/contracts/content.studio-model.v1.md",
       "kind": "positive",
       "profile": "linux-host-corpus",
-      "description": "content.studio-model over the game VPKs STUDIO_MODEL_CORPUS_VPKS names (comma-separated _dir.vpk paths: Portal's portal/portal_pak_dir.vpk and Portal 2's portal2/pak01_dir.vpk; not in the repository, so the row is optional): every model with a .vvd parses (199 and 2033), every model with triangles has a box, at least 97% of triangles face their vertex normals, and each game's metal_box.mdl matches an independent reader's figures (version, triangle and texture counts, $cdmaterials, its resolved material). The VPK reader is hammer.formats'.",
+      "description": "content.studio-model over the game VPKs STUDIO_MODEL_CORPUS_VPKS names (comma-separated _dir.vpk paths: Portal's portal/portal_pak_dir.vpk and Portal 2's portal2/pak01_dir.vpk; not in the repository, so the row is optional): every model with a .vvd parses (199 and 2033), every model with triangles has a box, at least 97% of triangles face their vertex normals, and each game's metal_box.mdl matches an independent reader's figures (version, triangle and texture counts, $cdmaterials, its resolved material). Posing (R17 follow-up, posed models) is judged against the compiler's own data: at least 99.5% of full-weight sequences pose at their first frame inside their stored box (vertices; bone origins for sequences from animation-only $includemodel models), the bind pose misses it for at least 10% (the viewport defect), the reference pose gives the bind vertices for every model, every $staticprop is unchanged at its first frame, and seeded defects (quaternion x/y swapped, parent concatenation dropped, posscale ignored) are caught for at least 60% of the sequences each changes. Named models of sp_a2_trust_fling (the cube dropper, the eight panel-arm sequences from their included animation model's .ani blocks, the turbine elevator), the faith plate and the turret match root rotations from an independent Python walk, pose inside their boxes and are outside them unposed. The VPK reader is hammer.formats'.",
       "result_protocol": "checks-v1",
       "sources": [
         "mdl/studio_model.cpp",
@@ -5579,7 +5596,7 @@
         "hammer/adapters/platform/disk_byte_store.cpp",
         "unittests/mdltest/test_studio_model_corpus.cpp"
       ],
-      "min_checks": 20,
+      "min_checks": 60,
       "requires": [
         "env:STUDIO_MODEL_CORPUS_VPKS"
       ],

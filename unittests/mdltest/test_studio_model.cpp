@@ -43,7 +43,7 @@ using mdltest::SyntheticModel;
 foundation::Expected<mdl::Model, mdl::ModelError> Parse(
     const SyntheticFiles &files, std::int32_t body = 0 )
 {
-	return mdl::ParseModel( mdl::ModelBytes{ files.mdl, files.vvd, files.vtx }, body );
+	return mdl::ParseModel( mdl::ModelBytes{ files.mdl, files.vvd, files.vtx, files.ani }, body );
 }
 
 bool Fails( const SyntheticFiles &files, mdl::ModelStatus status, mdl::ModelFile file )

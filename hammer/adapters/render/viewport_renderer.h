@@ -34,9 +34,11 @@
 //
 //			Studio models (R17 follow-up): with a model source
 //			(IModelSource) a point entity whose model is a studio model is
-//			drawn as the model. Its file is read once per path; its meshes
-//			are staged once per (path, skin, tint) as indexed per-material
-//			batches in model space (BuildModelBatches) and drawn as scene
+//			drawn as the model, posed at the first frame of the sequence its
+//			keys choose (ModelSequence, PosedModel). Its file is read once per
+//			path and posed once per sequence; its meshes are staged once per
+//			(path, sequence, skin, tint) as indexed per-material batches in
+//			posed model space (BuildModelBatches) and drawn as scene
 //			instances with the entity's world matrix (ModelWorld), textured
 //			through the same material programs. The tint is the selection
 //			fill when selected, else its render color times the instance
@@ -306,11 +308,15 @@ private:
 		bool blended = false;
 		::render::math::Aabb bounds; // model space
 	};
-	// A model file and its staged variants, keyed by (skin, tint r, g, b).
+	// A model file, its posed models by sequence, and its staged variants,
+	// keyed by (sequence, skin, tint r, g, b).
 	struct ModelEntry
 	{
 		std::optional<ModelAsset> asset; // nothing: missing, malformed or without triangles
-		std::map<std::array<int, 4>, std::vector<ModelMesh>> variants;
+		std::map<std::int32_t, ModelAsset> posed;
+		std::map<std::array<int, 5>, std::vector<ModelMesh>> variants;
+
+		const ModelAsset &Posed( std::int32_t sequence );
 	};
 
 	class Meshes final : public ::render::pass::opaque::IMeshResolver
@@ -337,7 +343,7 @@ private:
 	// draws its marker (no model source, not a studio model, or unusable).
 	ModelEntry *ModelFor( const viewport::EntityDraw &entity );
 	foundation::Expected<const std::vector<ModelMesh> *, ViewportStatus> VariantFor(
-	    ModelEntry &entry, std::int32_t skin, const scene::Rgb &tint );
+	    ModelEntry &entry, std::int32_t sequence, std::int32_t skin, const scene::Rgb &tint );
 	// Resolves a material's preview, stages the textures its program samples
 	// and its draw and frame groups, and sets the program under 'id'.
 	foundation::Expected<Preview, ViewportStatus> AddPreview(
