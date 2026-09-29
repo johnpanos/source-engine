@@ -310,6 +310,18 @@ foundation::Expected<ViewportRenderer::Preview, ViewportStatus> ViewportRenderer
 	std::optional<TextureSize> size;
 	for ( const material::ProgramTexture &texture : program.request.material.textures )
 	{
+		// An input named empty is a term that is off: the programs bind their
+		// neutral texture there themselves.
+		if ( texture.name.empty() )
+		{
+			continue;
+		}
+		if ( texture.dimension != device::TextureDimension::k2D )
+		{
+			out.failure = "its program samples a cube map (" + texture.name +
+			              "), which the editor does not stage";
+			return out;
+		}
 		auto image = source.textures.find( texture.name );
 		if ( m_StagedTextures.count( texture.name ) == 0 )
 		{

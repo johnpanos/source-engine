@@ -250,6 +250,28 @@ struct AppState
 // Presentation refresh: the workspace's state onto the widgets.
 // ---------------------------------------------------------------------------
 
+// Why the renderer refused a view, for the status bar and the log.
+const char *ViewportStatusText( hammer::render_adapter::ViewportStatus status )
+{
+	using hammer::render_adapter::ViewportStatus;
+	switch ( status )
+	{
+	case ViewportStatus::kDevice:
+		return "the device refused a resource, submission or readback";
+	case ViewportStatus::kGraph:
+		return "the view's render graph failed";
+	case ViewportStatus::kPass:
+		return "a pass or material refused the view";
+	case ViewportStatus::kInvalidView:
+		return "no camera or a zero-size view";
+	case ViewportStatus::kUnknownTicket:
+		return "unknown frame ticket";
+	case ViewportStatus::kUnsupported:
+		return "exported frames are unsupported";
+	}
+	return "unknown";
+}
+
 void SetHelp( AppState *st, const std::string &text )
 {
 	if ( st->helpLabel )
@@ -1095,7 +1117,9 @@ void PumpViews( AppState *st )
 			    }
 			    else
 			    {
-				    SetHelp( st, "Viewport frame lost" );
+				    const char *why = ViewportStatusText( result.Error() );
+				    std::fprintf( stderr, "hammer_gtk: viewport frame lost (%s)\n", why );
+				    SetHelp( st, std::string( "Viewport frame lost: " ) + why );
 			    }
 			    if ( view.dirty )
 			    {

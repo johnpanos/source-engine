@@ -1688,6 +1688,20 @@ and blades were turned. The user also asked to check the panels.
   - Zero-frame Quaternion32 data is refused.
   - Picking still uses the marker box, not the posed mesh.
   - The editor shows frame 0 only; there is no sequence playback.
+- **Regression after render core b4773b13 (fixed the same day).** Every view
+  lost its frames ("Viewport frame lost"), and `--textured` reported "the
+  viewport renderer did not start". The core's programs now list an input
+  named empty for each term that is off and bind their own neutral texture
+  there (a 1x1 2D and a 1x1 cube). The renderer looked that empty name up
+  among the material's images, found none and marked the neutral material
+  missing, so `ViewportRenderer::Create` failed. The renderer now skips
+  empty inputs and refuses a named cube map input with a named failure. The
+  status bar and the log name the frame-loss reason (`ViewportStatusText`).
+  V8 counts the programs' neutral uploads (17 copies). All seven
+  `hammer.adapters.render` suites pass on g++ and clang++, and
+  `corpus.hammer.ui` (X11, 47 checks). sp_a2_trust_fling in a headless
+  Wayland session renders all four views, with 165 of 168 materials
+  textured offscreen.
 
 ### Viewports on ResolvePreview (2026-09-28)
 
