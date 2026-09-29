@@ -2280,8 +2280,28 @@ by the target's frame serial, not consumed by the first recording (RenderDoc
 capture `testchmb_a_01_frame492`: the tint was the frame's last draw, and the
 redraw was missing).
 
-Open for D0–D1: the Fold7 run (required for D0), and the recorded frame-time
-A/B (binding rule 7).
+Frame time (binding rule 7, recorded, not blocking):
+- Setup: `frame_pacing.py` on `portal-frame-pacing-v1`, `mat_queue_mode 2`,
+  8 interleaved rounds. A is the pre-D0 build (9d422eff), B the landed D1
+  build (4f1ace10, which also carries the upstream HDR-output commits).
+- Result: warm median A 5.495 ms, B 6.607 ms (B/A 1.20); p99 1.06.
+- Reading: both builds are bimodal, A's rounds spanning 4.4–7.8 ms and B's
+  4.5–7.9 ms, and B had more rounds in the slow mode. The backend's emit
+  and vertex conversion, which neither D0 nor D1 touches, move with the
+  frame time round by round (B/A 1.25). The controls add no measurable
+  per-frame work at their defaults. It stays an optimization item for the
+  step-10 pass: measure on a quiet host with the `frame_pacing` bimodality
+  explained first.
+
+**The Fold7 run (required for D0) is blocked.** The phone is on adb, but its
+screen is locked with a secure credential (`deviceLocked=1`), so the app
+cannot come to the front. Once it is unlocked:
+`adb install -r build-android/portal-0.1.0-arm64-v8a-debug.apk` (built from
+4f1ace10), then `python3 tools/render/debug_views_product.py run --platform
+android --device <serial> --queue-mode 0 --out <dir>` and `--queue-mode 2`.
+D0 and D1 pass every non-perf check on Linux in both queued modes.
+R95-DEBUG-CONTROLS stays `active`: D0–D1 are done apart from the Fold7 run,
+and D2–D7 are step 7 of the goal.
 
 ## Output and `render_lab`'s presenting host on iPhone and Apple TV (2026-09-28)
 

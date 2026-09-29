@@ -1599,8 +1599,12 @@ Keep the table concise and link details below or from the domain progress file.
   - 8 self-tests detect dropped, swapped and changed events.
   - The remaining R10 items closed in R10-SEQCHECK and R10-POOLRUNNER.
 
-- R95-DEBUG-CONTROLS (was R32-DEBUG-CONTROLS): `active` (2026-09-28, D0–D1
-  first, owner source-engine-43; [record](RFC/0016-progress.md#k11-and-rfc-0014-the-lab-first-then-its-instruments-2026-09-28)). Added
+- R95-DEBUG-CONTROLS (was R32-DEBUG-CONTROLS): `active` (owner
+  source-engine-43). D0 (the view catalog) and D1 (the lighting-model
+  controls) pass on Linux native Vulkan in both queued modes and in
+  `render_lab` (2026-09-29, [D0](RFC/0016-progress.md#rfc-0014-d0-in-the-product-the-views-on-native-vulkan-2026-09-28),
+  [D1](RFC/0016-progress.md#rfc-0014-d1-the-lighting-model-controls-in-the-lab-and-the-product-2026-09-29)).
+  Their Fold7 run is blocked because the phone is locked; D2–D7 are open. Added
   2026-09-25 at the user's direction and retargeted to the render core on
   2026-09-28 (user decision: "they must be on core").
   - These are the `cl_render_debug_*` (was `cl_vk_debug_*`) and `cl_bsp2_*`
