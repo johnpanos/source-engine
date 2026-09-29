@@ -5013,6 +5013,46 @@
       "expect": "pass"
     },
     {
+      "id": "content.studio-model",
+      "domain": "Q-CONTENT",
+      "rfc": "0002",
+      "migration": "R17",
+      "contract": "unittests/mdltest/contracts/content.studio-model.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "description": "Studio model mesh reader (content.studio-model, public/mdl/studio_model.h): synthetic MDL/VVD/VTX files from an independent writer (versions 44, 45, 48, 49; VVD fixups; tristrips; body groups; skin families) parse to the meshes, vertices, counter-clockwise winding, bounds, skins and materials they describe; material resolution follows $cdmaterials order; LoadModel prefers .dx90.vtx; 23 malformed cases fail with their named status and file; every strict prefix of each file fails; 3000 random byte-damage trials never yield an out-of-range index.",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "mdl/studio_model.cpp",
+        "unittests/mdltest/test_studio_model.cpp"
+      ],
+      "min_checks": 90,
+      "expect": "pass"
+    },
+    {
+      "id": "content.studio-model.corpus",
+      "domain": "Q-CONTENT",
+      "rfc": "0002",
+      "migration": "R17",
+      "contract": "unittests/mdltest/contracts/content.studio-model.v1.md",
+      "kind": "positive",
+      "profile": "linux-host-corpus",
+      "description": "content.studio-model over the game VPKs STUDIO_MODEL_CORPUS_VPKS names (comma-separated _dir.vpk paths: Portal's portal/portal_pak_dir.vpk and Portal 2's portal2/pak01_dir.vpk; not in the repository, so the row is optional): every model with a .vvd parses (199 and 2033), every model with triangles has a box, at least 97% of triangles face their vertex normals, and each game's metal_box.mdl matches an independent reader's figures (version, triangle and texture counts, $cdmaterials, its resolved material). The VPK reader is hammer.formats'.",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "mdl/studio_model.cpp",
+        "hammer/core/formats/vpk_archive.cpp",
+        "hammer/adapters/platform/disk_byte_store.cpp",
+        "unittests/mdltest/test_studio_model_corpus.cpp"
+      ],
+      "min_checks": 20,
+      "requires": [
+        "env:STUDIO_MODEL_CORPUS_VPKS"
+      ],
+      "optional": true,
+      "expect": "pass"
+    },
+    {
       "id": "hammer.formats.vmf_portal2_roundtrip",
       "domain": "Q-EDITOR",
       "rfc": "0002",

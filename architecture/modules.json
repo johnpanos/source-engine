@@ -57,6 +57,16 @@
         ]
       },
       {
+        "id": "content.studio-model",
+        "paths": [
+          "public/mdl/",
+          "mdl/"
+        ],
+        "allowedEdges": [
+          "foundation"
+        ]
+      },
+      {
         "id": "content.texture-contract",
         "paths": [
           "public/texturecontainer/"
@@ -1237,6 +1247,9 @@
           "kvtext",
           "mapgeometry"
         ]
+      },
+      "mdl": {
+        "allowedUse": []
       },
       "render_math": {
         "allowedUse": []

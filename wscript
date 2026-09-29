@@ -150,6 +150,7 @@ projects={
 		'mapgeometry',
 		'kvtext',
 		'vmf',
+		'mdl',
 		'platform',
 		'hammer/core',
 		'hammer/adapters/platform',

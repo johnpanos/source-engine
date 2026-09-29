@@ -154,6 +154,10 @@
       "dialect": "cxx20",
       "rfc": "0002"
     },
+    "mdl": {
+      "dialect": "cxx20",
+      "rfc": "0002"
+    },
     "debugapi_core": {
       "dialect": "cxx20",
       "rfc": "0005"

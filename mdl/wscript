@@ -1,0 +1,34 @@
+#! /usr/bin/env python
+# encoding: utf-8
+
+# Studio model mesh reader (content.studio-model): the level of detail 0
+# meshes, materials and bounds of a Source model from its MDL, VVD and VTX
+# bytes. A strict, portable C++20 static library (layered format libraries):
+# no tier0/tier1/mathlib, no studio.h and no application header. The editor,
+# compile tools and engine compose it; it never depends on them. Its dialect
+# is declared in quality/toolchain/policy.json and its permissions in
+# architecture/modules.json.
+
+top = '.'
+PROJECT_NAME = 'mdl'
+
+def options(opt):
+	return
+
+def configure(conf):
+	conf.load('strict_cpp20', tooldir='scripts/waifulib')
+
+def build(bld):
+	bld.stlib(
+		env       = bld.strict_cpp20_env(),
+		source    = [ 'studio_model.cpp' ],
+		target    = PROJECT_NAME,
+		name      = PROJECT_NAME,
+		arch_module = 'content.studio-model',
+		features  = 'cxx capability_strict',
+		includes  = [ '../public' ],
+		defines   = [],
+		use       = [],
+		subsystem = bld.env.MSVC_SUBSYSTEM,
+		idx       = bld.get_taskgen_count()
+	)
