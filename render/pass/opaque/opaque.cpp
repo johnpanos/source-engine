@@ -26,6 +26,7 @@ struct Draw
 	resources::MeshEntry mesh;
 	const material::DrawProgram *program = nullptr;
 	const material::DrawGroup *drawGroup = nullptr;
+	const material::DrawGroup *frameGroup = nullptr; // the frame group of its program's layout
 	material::FamilyDrawConstants constants;
 };
 
@@ -77,7 +78,17 @@ foundation::Expected<OpaqueStats, OpaqueStatus> AddOpaquePasses( graph::GraphBui
 		{
 			return !layout.IsValid() || ( group && group->layout == layout );
 		};
-		if ( !matches( sources.frame, program->frameLayout ) ||
+		const material::DrawGroup *frameGroup = sources.frame;
+		if ( program->frameLayout.IsValid() && !matches( frameGroup, program->frameLayout ) )
+		{
+			frameGroup = nullptr;
+			for ( const material::DrawGroup *candidate : sources.frames )
+			{
+				if ( matches( candidate, program->frameLayout ) )
+					frameGroup = candidate;
+			}
+		}
+		if ( !matches( frameGroup, program->frameLayout ) ||
 		     !matches( sources.view, program->viewLayout ) )
 		{
 			++stats.unresolved;
@@ -87,6 +98,7 @@ foundation::Expected<OpaqueStats, OpaqueStatus> AddOpaquePasses( graph::GraphBui
 		draw.mesh = *mesh;
 		draw.program = program;
 		draw.drawGroup = drawGroup;
+		draw.frameGroup = program->frameLayout.IsValid() ? frameGroup : nullptr;
 		const math::float4x4 &world = instance.world;
 		Store( math::Multiply( view.viewProjection, world ), draw.constants.toClip );
 		Store( world, draw.constants.world );
@@ -117,7 +129,7 @@ foundation::Expected<OpaqueStats, OpaqueStatus> AddOpaquePasses( graph::GraphBui
 		if ( draw.mesh.indices.IsValid() )
 			importBuffer( draw.mesh.indices, ResourceUsage::kIndex, indexRefs );
 		const material::ResidentGroup *frame =
-		    draw.program->frameLayout.IsValid() ? &sources.frame->resident : nullptr;
+		    draw.frameGroup ? &draw.frameGroup->resident : nullptr;
 		const material::ResidentGroup *view =
 		    draw.program->viewLayout.IsValid() ? &sources.view->resident : nullptr;
 		for ( const material::ResidentGroup *group : { &draw.program->material,
@@ -148,12 +160,10 @@ foundation::Expected<OpaqueStats, OpaqueStatus> AddOpaquePasses( graph::GraphBui
 		pass.Read( ref, ResourceUsage::kUniform );
 	for ( const auto &[texture, ref] : textureRefs )
 		pass.Read( ref, ResourceUsage::kSampled );
-	const device::BindGroupId frameGroup =
-	    sources.frame ? sources.frame->resident.group : device::BindGroupId();
 	const device::BindGroupId viewGroup =
 	    sources.view ? sources.view->resident.group : device::BindGroupId();
 	pass.Execute(
-	    [draws, targets, frameGroup, viewGroup]( graph::RecordContext &context )
+	    [draws, targets, viewGroup]( graph::RecordContext &context )
 	    {
 		    CommandEncoder &encoder = context.Encoder();
 		    ColorAttachment color;
@@ -179,8 +189,9 @@ foundation::Expected<OpaqueStats, OpaqueStatus> AddOpaquePasses( graph::GraphBui
 			    if ( draw.program != bound )
 			    {
 				    encoder.SetPipeline( draw.program->pipeline );
-				    if ( draw.program->frameLayout.IsValid() )
-					    encoder.SetBindGroup( BindGroupRole::kFrame, frameGroup );
+				    if ( draw.frameGroup )
+					    encoder.SetBindGroup(
+					        BindGroupRole::kFrame, draw.frameGroup->resident.group );
 				    if ( draw.program->viewLayout.IsValid() )
 					    encoder.SetBindGroup( BindGroupRole::kView, viewGroup );
 				    encoder.SetBindGroup( BindGroupRole::kMaterial, draw.program->material.group );

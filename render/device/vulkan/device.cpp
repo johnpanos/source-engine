@@ -105,6 +105,8 @@ DeviceResult<void> VulkanDevice::Initialize()
 	m_Facts.capabilities = { Capability::kCompute, Capability::kStorageBuffers };
 	if ( m_Adapter.externalImages || m_Options.sensitivity.nullExternalImages )
 		m_Facts.capabilities.Add( Capability::kExternalImages );
+	if ( m_Adapter.textureCompressionBC )
+		m_Facts.capabilities.Add( Capability::kTextureCompressionBC );
 	for ( std::uint32_t bit = 0; bit < static_cast<std::uint32_t>( Capability::kCount ); ++bit )
 	{
 		const Capability claimed = static_cast<Capability>( bit );
@@ -198,10 +200,12 @@ struct RequiredFeatures
 	VkPhysicalDeviceSynchronization2FeaturesKHR sync2{};
 	VkPhysicalDeviceDynamicRenderingFeaturesKHR rendering{};
 
-	void Merge( VkPhysicalDeviceFeatures2 &head, bool core13, bool anisotropy )
+	void Merge( VkPhysicalDeviceFeatures2 &head, bool core13, bool anisotropy, bool compressionBC )
 	{
 		if ( anisotropy )
 			head.features.samplerAnisotropy = VK_TRUE;
+		if ( compressionBC )
+			head.features.textureCompressionBC = VK_TRUE;
 		if ( auto *have =
 		         FindInChain( &head, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES ) )
 			reinterpret_cast<VkPhysicalDeviceVulkan12Features *>( have )->timelineSemaphore =
@@ -312,7 +316,8 @@ DeviceResult<void> VulkanDevice::CreateLogical()
 		}
 	}
 	RequiredFeatures required;
-	required.Merge( *features, m_Adapter.core13, m_Adapter.anisotropy );
+	required.Merge(
+	    *features, m_Adapter.core13, m_Adapter.anisotropy, m_Adapter.textureCompressionBC );
 
 	VkDeviceCreateInfo info{};
 	info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;

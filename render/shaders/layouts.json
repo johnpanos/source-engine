@@ -1088,7 +1088,7 @@
  },
  "families": {
   "lightmapped": {
-   "description": "render.material family `lightmapped` (RFC 0016 K4): the material group holds the constants, the base texture and its sampler; the draw group holds the draw's lightmap page and its sampler; world-to-clip is a draw-constant block.",
+   "description": "render.material family `lightmapped` (RFC 0016 K4, K5): the frame group holds the frame's light terms (lightmap scale for the pages' encoding, output tone-map scale); the material group holds the constants, the base texture and its sampler; the draw group holds the draw's lightmap page and its sampler; world-to-clip is a draw-constant block.",
    "sources": [
     "render/material/families/lightmapped.vert",
     "render/material/families/lightmapped.frag"
@@ -1097,6 +1097,15 @@
     "vertex"
    ],
    "groups": {
+    "frame": [
+     {
+      "binding": 0,
+      "kind": "uniform-buffer",
+      "stages": [
+       "fragment"
+      ]
+     }
+    ],
     "material": [
      {
       "binding": 0,

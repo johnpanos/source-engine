@@ -39,6 +39,7 @@
 #include "paint.h"
 #include "paint_render.h"
 #include "render_core_host.h"
+#include "render_core_world_draw.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -299,6 +300,9 @@ void R_LevelInit( void )
 	// Build the overlay fragments.
 	OverlayMgr()->CreateFragments();
 
+	// RFC 0016 K5: the world's surfaces and materials to the render core.
+	RenderCoreWorldDraw_LevelInit();
+
 #ifdef _XBOX
 	extern void CompactTextureHeap();
 	CompactTextureHeap();
@@ -309,6 +313,7 @@ void R_LevelInit( void )
 
 void R_LevelShutdown()
 {
+	RenderCoreWorldDraw_LevelShutdown();
 	RenderCoreHost_LevelShutdown();
 
 	R_PaintShutdown();

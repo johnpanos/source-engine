@@ -8,6 +8,7 @@
 
 #include "jobsystem/pooled_executor.h"
 #include "render/device/null/provider.h"
+#include "core_world.h"
 #include "render/legacy/core_backend.h"
 #include "render/pass/present/feature.h"
 #include "render/renderer/renderer_factory.h"
@@ -26,6 +27,8 @@ struct RenderCore
 {
 	std::unique_ptr<render::device::IRenderDevice2> device;
 	std::unique_ptr<render::legacy::ILegacyFrontend> frontend;
+	// The BSP world drawn by the core; the frontend forwards its slots to it.
+	std::unique_ptr<render::composition::CoreWorld> world;
 	std::unique_ptr<render::frame::IRenderer> renderer;
 	std::string deviceName;
 	RenderCoreBinding binding;
@@ -38,7 +41,11 @@ struct RenderCore
 		// Borrowers first: the markers forward to the renderer, and the
 		// renderer's frames reference the device.
 		if ( frontend )
+		{
 			frontend->BindRenderer( nullptr );
+			frontend->SetForwardedRecorder( nullptr );
+		}
+		world.reset();
 		renderer.reset();
 		cullJobs.reset();
 		if ( device )
@@ -166,6 +173,9 @@ extern "C" RenderCore *RenderCore_Create( const RenderCoreConfig *config, Render
 		return Fail( result, RENDER_CORE_INVALID_CONFIG,
 		    "core passes '" + std::string( probe ) + "' are not empty or seeded-clear" );
 	core->binding.corePasses = core->frontend->CorePasses();
+	core->world = std::make_unique<render::composition::CoreWorld>( *core->frontend );
+	core->frontend->SetForwardedRecorder( core->world.get() );
+	core->binding.world = core->world.get();
 	core->binding.deviceName = core->deviceName.c_str();
 	return core.release();
 }
@@ -195,5 +205,8 @@ extern "C" void RenderCore_BindRenderCallQueue(
     RenderCore *core, const render::legacy::RenderCallQueueHost *host )
 {
 	if ( core )
+	{
 		core->frontend->BindRenderCallQueue( host );
+		core->world->BindHost( host );
+	}
 }

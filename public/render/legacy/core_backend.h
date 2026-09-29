@@ -71,6 +71,10 @@ public:
 	virtual ICorePassRecorder *CorePasses() = 0;
 	virtual void SetCorePassProbe( CorePassProbe probe ) = 0;
 	virtual std::uint64_t CorePassesRecorded() const = 0;
+	// The recorder of forwarded tags (kCorePassForwarded), and the backend's
+	// slots in frame order for them; null when the backend has none.
+	virtual void SetForwardedRecorder( ICorePassRecorder *recorder ) = 0;
+	virtual ICorePassSlots *CorePassSlots() = 0;
 };
 
 // backend: the linked legacy backend the frontend wraps; it outlives the

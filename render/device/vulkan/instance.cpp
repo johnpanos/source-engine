@@ -173,6 +173,7 @@ DeviceResult<AdapterChoice> Evaluate( VkPhysicalDevice physical )
 	if ( !features12.timelineSemaphore || !synchronization2 || !dynamicRendering )
 		return Fail( DeviceStatus::kUnsupported, op );
 	choice.anisotropy = features.features.samplerAnisotropy == VK_TRUE;
+	choice.textureCompressionBC = features.features.textureCompressionBC == VK_TRUE;
 	return choice;
 }
 

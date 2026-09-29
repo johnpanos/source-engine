@@ -153,11 +153,17 @@ int main()
 		auto c = SceneC();
 		const material::DrawGroup *frameGroup = materials->drawGroups.Group( kPbrFrameGroup );
 		const material::DrawGroup *viewGroup = materials->drawGroups.Group( kPbrViewGroup );
-		const FrameResult frameC =
-		    DrawScene( *device, programs, *meshes, *c->Snapshot(), frameGroup, viewGroup );
-		checks.That( frameGroup && viewGroup && frameC.ok && frameC.stats.drawn == 3 &&
-		                 frameC.stats.unresolved == 0,
-		    "O6.lightmapped-and-pbr-draws-resolve" );
+		// The lightmapped family's frame terms are another frame layout.
+		const material::DrawGroup *const lightmappedFrame[] = {
+		    materials->drawGroups.Group( kLightmappedFrameGroup ) };
+		const FrameResult frameC = DrawScene(
+		    *device, programs, *meshes, *c->Snapshot(), frameGroup, viewGroup, lightmappedFrame );
+		if ( !checks.That( frameGroup && viewGroup && frameC.ok && frameC.stats.drawn == 3 &&
+		                       frameC.stats.unresolved == 0,
+		         "O6.lightmapped-and-pbr-draws-resolve" ) )
+			std::printf( "O6: ok %d drawn %u unresolved %u lightmapped frame group %s\n",
+			    int( frameC.ok ), frameC.stats.drawn, frameC.stats.unresolved,
+			    lightmappedFrame[0] ? "set" : "missing" );
 		const Rgb page{ Unorm( SrgbToLinear( kPageTexel[0] ) * material::kLightmapScaleLinear ),
 		    Unorm( SrgbToLinear( kPageTexel[1] ) * material::kLightmapScaleLinear ),
 		    Unorm( SrgbToLinear( kPageTexel[2] ) * material::kLightmapScaleLinear ) };
@@ -170,8 +176,8 @@ int main()
 		    Unorm( kVertexLitAmbient[2] ) };
 		checks.That( Near( At( frameC, Pixel( view, { 0.0f, 1.6f, -5.5f } ) ), vertexLit ),
 		    "O6.the-vertexlit-cube-shows-its-draw-group-s-lighting" );
-		const FrameResult noView =
-		    DrawScene( *device, programs, *meshes, *c->Snapshot(), frameGroup, nullptr );
+		const FrameResult noView = DrawScene(
+		    *device, programs, *meshes, *c->Snapshot(), frameGroup, nullptr, lightmappedFrame );
 		checks.That( noView.ok && noView.stats.drawn == 2 && noView.stats.unresolved == 1 &&
 		                 At( noView, Pixel( view, { 1.5f, 0.0f, -5.25f } ) ) == kClear,
 		    "O6.without-the-view-group-the-pbr-draw-is-unresolved" );

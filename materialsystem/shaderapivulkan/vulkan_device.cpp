@@ -4259,6 +4259,7 @@ void CVulkanContext::DestroyManagedTexture( int handle )
 		return;
 	// Retired after the frame being recorded is submitted and complete: until
 	// then no record can see the handle reused.
+	ReleaseManagedImport( handle );
 	ManagedTexture &slot = m_managedTextures[static_cast<size_t>( handle )];
 	// Texels still waiting to be uploaded to it are of no use now.
 	size_t keptUploads = 0;
@@ -6646,10 +6647,14 @@ void CVulkanContext::AttachFrameStage( FrameStage stage, render::device::Command
 	m_hostDevice->AddSubmitSignal( encoder, m_renderFinished[m_acquiredImage] );
 }
 
-void CVulkanContext::QueueCorePass( uint32_t tag )
+void CVulkanContext::QueueCorePass( uint32_t tag, float lightmapScale, float outputScale )
 {
-	if ( m_corePassRecorder )
-		AppendRecord( kRecordCorePass ).corePass = tag;
+	if ( !m_corePassRecorder )
+		return;
+	DynDraw &record = AppendRecord( kRecordCorePass );
+	record.corePass = tag;
+	record.corePassLight[0] = lightmapScale;
+	record.corePassLight[1] = outputScale;
 }
 
 void CVulkanContext::RecordCorePassSections( render::device::CommandEncoder &encoder )
@@ -6664,7 +6669,10 @@ void CVulkanContext::RecordCorePassSections( render::device::CommandEncoder &enc
 		if ( d.kind != kRecordCorePass )
 			continue;
 		m_hostDevice->BeginSection( encoder );
-		m_corePassRecorder->RecordSlot( d.corePass, encoder, CorePassTargetFor( d.target ) );
+		render::legacy::CorePassTarget target = CorePassTargetFor( d.target );
+		target.lightmapScale = d.corePassLight[0];
+		target.outputScale = d.corePassLight[1];
+		m_corePassRecorder->RecordSlot( d.corePass, encoder, target );
 		m_hostDevice->EndSection( encoder );
 	}
 }
@@ -6686,12 +6694,43 @@ render::device::Format PortFormat( VkFormat format )
 		return render::device::Format::kD32FloatS8;
 	case VK_FORMAT_D32_SFLOAT:
 		return render::device::Format::kD32Float;
+	case VK_FORMAT_BC1_RGBA_UNORM_BLOCK:
+		return render::device::Format::kBC1Unorm;
+	case VK_FORMAT_BC2_UNORM_BLOCK:
+		return render::device::Format::kBC2Unorm;
+	case VK_FORMAT_BC3_UNORM_BLOCK:
+		return render::device::Format::kBC3Unorm;
+	case VK_FORMAT_R16G16B16A16_UNORM:
+		return render::device::Format::kRGBA16Unorm;
+	case VK_FORMAT_R16G16B16A16_SFLOAT:
+		return render::device::Format::kRGBA16Float;
 	default:
 		return render::device::Format::kUnknown;
 	}
 }
 
 } // namespace
+
+// The sRGB view format of a unorm 8-bit or BC format; kUnknown for others.
+static render::device::Format SrgbPortFormat( render::device::Format format )
+{
+	using render::device::Format;
+	switch ( format )
+	{
+	case Format::kRGBA8Unorm:
+		return Format::kRGBA8Srgb;
+	case Format::kBGRA8Unorm:
+		return Format::kBGRA8Srgb;
+	case Format::kBC1Unorm:
+		return Format::kBC1Srgb;
+	case Format::kBC2Unorm:
+		return Format::kBC2Srgb;
+	case Format::kBC3Unorm:
+		return Format::kBC3Srgb;
+	default:
+		return Format::kUnknown;
+	}
+}
 
 render::legacy::CorePassTarget CVulkanContext::CorePassTargetFor( int target )
 {
@@ -6705,6 +6744,12 @@ render::legacy::CorePassTarget CVulkanContext::CorePassTargetFor( int target )
 	out.width = extent.width;
 	out.height = extent.height;
 	out.samples = multisampled ? static_cast<uint32_t>( m_activeSamples ) : 1u;
+	out.device = Port();
+	out.textures = &m_coreTextures;
+	out.colorSrgbFormat = SrgbPortFormat( out.colorFormat );
+	if ( m_hostDevice )
+		out.submitted = { render::device::QueueKind::kGraphics, m_hostDevice->Port().Epoch(),
+		    m_hostDevice->SubmittedValue() };
 	// Render-target textures are not imported yet.
 	if ( target != -1 || !m_hostDevice || m_acquiredImage >= m_swapImages.size() )
 		return out;
@@ -6728,6 +6773,10 @@ render::legacy::CorePassTarget CVulkanContext::CorePassTargetFor( int target )
 	{
 		import( m_msColor, out.colorFormat, ResourceUsage::kColorAttachment,
 		    "multisampled back buffer", &m_coreMsColor );
+		if ( m_srgbAttachments && m_msColorViewSrgb != VK_NULL_HANDLE )
+			import( m_msColor, SrgbPortFormat( out.colorFormat ), ResourceUsage::kColorAttachment,
+			    "multisampled back buffer (sRGB)", &m_coreMsColorSrgb );
+		out.colorSrgb = m_coreMsColorSrgb;
 		import( m_msDepth, out.depthFormat, ResourceUsage::kDepthWrite, "multisampled depth",
 		    &m_coreMsDepth );
 		out.color = m_coreMsColor;
@@ -6735,16 +6784,103 @@ render::legacy::CorePassTarget CVulkanContext::CorePassTargetFor( int target )
 		return out;
 	}
 	m_coreColor.resize( m_swapImages.size() );
+	m_coreColorSrgb.resize( m_swapImages.size() );
 	m_coreDepth.resize( m_swapImages.size() );
 	const uint32_t i = m_acquiredImage;
 	import( m_swapImages[i], out.colorFormat, ResourceUsage::kColorAttachment, "back buffer",
 	    &m_coreColor[i] );
+	if ( m_srgbAttachments )
+		import( m_swapImages[i], SrgbPortFormat( out.colorFormat ), ResourceUsage::kColorAttachment,
+		    "back buffer (sRGB)", &m_coreColorSrgb[i] );
+	out.colorSrgb = m_coreColorSrgb[i];
 	if ( i < m_depthImages.size() )
 		import( m_depthImages[i], out.depthFormat, ResourceUsage::kDepthWrite, "depth",
 		    &m_coreDepth[i] );
 	out.color = m_coreColor[i];
 	out.depth = m_coreDepth[i];
 	return out;
+}
+
+render::device::TextureId CVulkanContext::ImportManagedTexture( int handle, bool srgb )
+{
+	using render::device::ResourceUsage;
+	if ( !m_hostDevice || handle < 0 || handle >= static_cast<int>( m_managedTextures.size() ) )
+		return {};
+	const ManagedTexture &texture = m_managedTextures[static_cast<size_t>( handle )];
+	// srgb asks for linear values: an 8-bit or BC image decodes through its
+	// sRGB view; a 16-bit or float image already holds linear values.
+	const render::device::Format stored = PortFormat( texture.format );
+	const bool linearStorage = stored == render::device::Format::kRGBA16Unorm ||
+	                           stored == render::device::Format::kRGBA16Float;
+	if ( srgb && linearStorage )
+		srgb = false;
+	const render::device::Format format = srgb ? SrgbPortFormat( stored ) : stored;
+	if ( texture.image == VK_NULL_HANDLE || !texture.uploaded || texture.renderTarget ||
+	     texture.layers != 1 || texture.depth > 1 || format == render::device::Format::kUnknown ||
+	     ( srgb && texture.srgbView == VK_NULL_HANDLE ) )
+		return {};
+	if ( m_coreTextureImports.size() < m_managedTextures.size() )
+		m_coreTextureImports.resize( m_managedTextures.size() );
+	CoreTextureImport &import = m_coreTextureImports[static_cast<size_t>( handle )];
+	if ( import.image != texture.image )
+		ReleaseManagedImport( handle ); // the handle's image was replaced
+	if ( import.id[srgb].IsValid() )
+		return import.id[srgb];
+	render::device::TextureDesc desc;
+	desc.format = format;
+	desc.width = texture.width;
+	desc.height = texture.height;
+	desc.mipLevels = texture.mipLevels;
+	desc.usages = { ResourceUsage::kSampled };
+	desc.debugName = texture.debugName.empty() ? "managed texture" : texture.debugName.c_str();
+	render::device::TextureId id;
+	if ( !m_hostDevice->ImportImage( texture.image, desc, ResourceUsage::kSampled, &id ) )
+		return {};
+	import.image = texture.image;
+	import.id[srgb] = id;
+	return id;
+}
+
+render::device::SamplerDesc CVulkanContext::ManagedTextureSampler( int handle ) const
+{
+	using render::device::AddressMode;
+	using render::device::Filter;
+	const int state = ManagedTextureSamplerState( handle );
+	render::device::SamplerDesc desc;
+	const Filter filter = ( state & kSamplerLinear ) ? Filter::kLinear : Filter::kNearest;
+	desc.magFilter = filter;
+	desc.minFilter = filter;
+	desc.mipFilter = ( state & kSamplerMipLinear ) ? Filter::kLinear : Filter::kNearest;
+	desc.address = ( state & kSamplerClampU ) && ( state & kSamplerClampV )
+	                   ? AddressMode::kClampToEdge
+	                   : AddressMode::kRepeat;
+	if ( ( state & kSamplerAnisotropic ) && m_anisotropyLevel > 1 )
+	{
+		desc.magFilter = Filter::kLinear;
+		desc.minFilter = Filter::kLinear;
+		desc.mipFilter = Filter::kLinear;
+		desc.maxAnisotropy = static_cast<std::uint32_t>( m_anisotropyLevel );
+	}
+	return desc;
+}
+
+void CVulkanContext::ReleaseManagedImport( int handle )
+{
+	if ( handle < 0 || handle >= static_cast<int>( m_coreTextureImports.size() ) )
+		return;
+	CoreTextureImport &import = m_coreTextureImports[static_cast<size_t>( handle )];
+	render::device::IRenderDevice2 *port = Port();
+	for ( render::device::TextureId &id : import.id )
+	{
+		if ( id.IsValid() && port )
+		{
+			// Behind the frame being recorded, the last that can sample it.
+			const render::device::CompletionToken after{ render::device::QueueKind::kGraphics,
+			    port->Epoch(), m_hostDevice->SubmittedValue() + 1 };
+			(void)port->Release( id, after );
+		}
+	}
+	import = CoreTextureImport();
 }
 
 void CVulkanContext::ReleaseCorePassImports( bool msaaOnly )
@@ -6758,11 +6894,15 @@ void CVulkanContext::ReleaseCorePassImports( bool msaaOnly )
 		id = render::device::TextureId();
 	};
 	release( m_coreMsColor );
+	release( m_coreMsColorSrgb );
 	release( m_coreMsDepth );
 	if ( !msaaOnly )
 	{
 		for ( render::device::TextureId &id : m_coreColor )
 			release( id );
+		for ( render::device::TextureId &id : m_coreColorSrgb )
+			release( id );
+		m_coreColorSrgb.clear();
 		for ( render::device::TextureId &id : m_coreDepth )
 			release( id );
 		m_coreColor.clear();
@@ -9718,6 +9858,9 @@ void CVulkanContext::Shutdown()
 	}
 	if ( m_device != VK_NULL_HANDLE )
 		vkDeviceWaitIdle( m_device );
+	// Core passes release what they made on this device before it goes.
+	if ( m_corePassRecorder && m_hostDevice )
+		m_corePassRecorder->ReleaseDevice( m_hostDevice->Port() );
 
 	if ( m_captureImage != VK_NULL_HANDLE )
 	{

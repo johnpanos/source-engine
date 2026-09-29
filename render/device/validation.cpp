@@ -46,6 +46,23 @@ DeviceResult<void> ValidateTexture( const TextureDesc &desc, const Limits &limit
 	// Only IExternalImages::CreateExported makes a texture another API reads.
 	if ( desc.usages.Has( ResourceUsage::kExternal ) )
 		return Fail( DeviceStatus::kInvalidDescription, op );
+	// D19: a block-compressed texture is sampled and copied, single-sampled,
+	// and not a volume. Whether the device has the formats is its facts'
+	// kTextureCompressionBC, which each adapter checks.
+	if ( IsBlockCompressed( desc.format ) )
+	{
+		const UsageSet allowed{
+		    ResourceUsage::kSampled, ResourceUsage::kCopySource, ResourceUsage::kCopyDestination };
+		for ( std::uint32_t bit = 0; bit < static_cast<std::uint32_t>( ResourceUsage::kCount );
+		    ++bit )
+		{
+			const ResourceUsage usage = static_cast<ResourceUsage>( bit );
+			if ( desc.usages.Has( usage ) && !allowed.Has( usage ) )
+				return Fail( DeviceStatus::kInvalidDescription, op );
+		}
+		if ( desc.sampleCount != 1 || desc.dimension == TextureDimension::k3D )
+			return Fail( DeviceStatus::kInvalidDescription, op );
+	}
 	std::uint32_t extent = std::max( desc.width, desc.height );
 	std::uint32_t mips = 1;
 	while ( extent > 1 )

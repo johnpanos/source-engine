@@ -53,6 +53,7 @@ constexpr std::uint64_t kLightmappedMaterial = 20;
 constexpr std::uint64_t kPbrMaterial = 21;
 constexpr std::uint64_t kLightmapPage = 40; // the lightmapped cube's draw group
 constexpr std::uint64_t kPbrFrameGroup = 41;
+constexpr std::uint64_t kLightmappedFrameGroup = 44; // the LDR lightmap scale, output scale 1
 constexpr std::uint64_t kPbrViewGroup = 42;
 constexpr std::uint64_t kVertexLitCubeMesh = 5;
 constexpr std::uint64_t kVertexLitMaterial = 22;
@@ -324,7 +325,8 @@ struct FrameResult
 // Draws `snapshot` into fresh targets and reads the color back.
 inline FrameResult DrawScene( device::IRenderDevice2 &device, const Materials &materials,
     const Meshes &meshes, const scene::SceneSnapshot &snapshot,
-    const material::DrawGroup *frame = nullptr, const material::DrawGroup *viewGroup = nullptr )
+    const material::DrawGroup *frame = nullptr, const material::DrawGroup *viewGroup = nullptr,
+    std::span<const material::DrawGroup *const> frames = {} )
 {
 	FrameResult result;
 	const scene::SceneView view = View();
@@ -354,7 +356,7 @@ inline FrameResult DrawScene( device::IRenderDevice2 &device, const Materials &m
 	    readbackDesc, device::ResourceUsage::kUndefined, device::ResourceUsage::kCopyDestination );
 	OpaqueTargets targets{ colorRef, depthRef, kSize, kSize, { 0.0f, 0.0f, 0.0f, 1.0f } };
 	auto stats = AddOpaquePasses( builder, snapshot, list, view,
-	    { meshes, materials.programs, &materials.drawGroups, frame, viewGroup }, targets );
+	    { meshes, materials.programs, &materials.drawGroups, frame, viewGroup, frames }, targets );
 	if ( stats )
 	{
 		result.stats = stats.Value();
@@ -493,7 +495,9 @@ inline bool StageSceneCMaterials( device::IRenderDevice2 &device, Materials &mat
 	auto lit = materials.lightmapped->Request( litClaim, "white" );
 	if ( !lit || !materials.programs.Set( kLightmappedMaterial, lit.Value() ) ||
 	     !materials.drawGroups.Set(
-	         kLightmapPage, materials.lightmapped->LightmapGroup( "page" ) ) )
+	         kLightmapPage, materials.lightmapped->LightmapGroup( "page" ) ) ||
+	     !materials.drawGroups.Set(
+	         kLightmappedFrameGroup, materials.lightmapped->FrameGroup( {} ) ) )
 		return false;
 
 	material::PbrClaim pbrClaim;

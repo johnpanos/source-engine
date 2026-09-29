@@ -34,6 +34,10 @@ bool RenderCoreHost_IsBound();
 world_mesh_gpu::IWorldMeshUpload *RenderCoreHost_WorldMeshUpload();
 light_set::ILightSetConsumer *RenderCoreHost_LightSetConsumer();
 gpu_compute::IGpuCompute *RenderCoreHost_GpuCompute();
+// RFC 0016 K5: the BSP world drawn by the core (render_core_world.h in
+// public/render/composition); null when no core is bound.
+class IRenderCoreWorld;
+IRenderCoreWorld *RenderCoreHost_World();
 
 // Host render steps (host_render_steps.h): EngineFrameBegin and EngineFrameEnd.
 void RenderCoreHost_BeginFrame();

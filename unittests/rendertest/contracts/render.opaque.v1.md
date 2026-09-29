@@ -25,3 +25,15 @@ that read them (`lightmapped`'s draw group, `pbr`'s frame and view groups).
 Open for K5: world mesh groups, static props and brush models drawn from the
 engine's scene (the legacy culling comparison on the K0 views), GPU-resident
 instance storage, and the submission-cost target.
+
+## render.pass.world (RFC 0016 K5)
+
+`render.world.null` (`unittests/rendertest/core/pass/world/test_world_pass.cpp`):
+
+| Clause | Obligation |
+| --- | --- |
+| W1 | SetWorld claims each material through `material::ProgramResolver` (the one place that names families): LightmappedGeneric, and UnlitGeneric as the lightmapped term with lighting fixed at one; a material outside the model or blended stays legacy, with its gap named |
+| W2 | A queued view records at its slot with its materials' textures and lightmap pages imported through `IWorldTextures`; a surface without a page samples a neutral white |
+| W3 | A slot recorded again (the backend re-records a frame's stream for a capture) draws the same view |
+| W4 | A slot whose view was queued against an earlier world draws nothing, and a view naming a surface the pass does not draw is counted; neither is silent |
+| W5 | The stats name the claimed materials and their surface counts |

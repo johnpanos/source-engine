@@ -1,0 +1,17 @@
+#! /usr/bin/env python
+# encoding: utf-8
+# render.pass.world (RFC 0016 layer 6 feature, K5): the BSP world at a core
+# pass slot of the legacy stream.
+
+def build(bld):
+	bld.stlib(
+		env         = bld.strict_cpp20_env(),
+		features    = 'cxx capability_strict',
+		arch_module = 'render.pass.world',
+		target      = 'render_pass_world',
+		name        = 'render_pass_world',
+		source      = bld.path.ant_glob('*.cpp'),
+		includes    = ['../../../public'],
+		use         = ['render_material', 'render_device'],
+		idx         = bld.get_taskgen_count()
+	)

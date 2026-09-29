@@ -93,6 +93,8 @@ const char *CapabilityName( Capability capability )
 		return "ray-query";
 	case Capability::kExternalImages:
 		return "external-images";
+	case Capability::kTextureCompressionBC:
+		return "texture-compression-bc";
 	case Capability::kCount:
 		break;
 	}
@@ -127,9 +129,18 @@ std::uint32_t BytesPerTexel( Format format )
 	case Format::kD32FloatS8: // the depth aspect, as copies address it
 		return 4;
 	case Format::kRGBA16Float:
+	case Format::kRGBA16Unorm:
 		return 8;
 	case Format::kRGBA32Float:
 		return 16;
+	case Format::kBC1Unorm: // blocks: BlockOf
+	case Format::kBC1Srgb:
+	case Format::kBC2Unorm:
+	case Format::kBC2Srgb:
+	case Format::kBC3Unorm:
+	case Format::kBC3Srgb:
+	case Format::kBC4Unorm:
+	case Format::kBC5Unorm:
 	case Format::kUnknown:
 	case Format::kCount:
 		break;
@@ -140,6 +151,48 @@ std::uint32_t BytesPerTexel( Format format )
 bool IsDepthFormat( Format format )
 {
 	return format == Format::kD32Float || HasStencil( format );
+}
+
+bool IsBlockCompressed( Format format )
+{
+	return format >= Format::kBC1Unorm && format <= Format::kBC5Unorm;
+}
+
+FormatBlock BlockOf( Format format )
+{
+	switch ( format )
+	{
+	case Format::kBC1Unorm:
+	case Format::kBC1Srgb:
+	case Format::kBC4Unorm:
+		return { 4, 4, 8 };
+	case Format::kBC2Unorm:
+	case Format::kBC2Srgb:
+	case Format::kBC3Unorm:
+	case Format::kBC3Srgb:
+	case Format::kBC5Unorm:
+		return { 4, 4, 16 };
+	default:
+		return { 1, 1, BytesPerTexel( format ) };
+	}
+}
+
+std::uint64_t RegionBytes( Format format, std::uint32_t width, std::uint32_t height )
+{
+	const FormatBlock block = BlockOf( format );
+	const std::uint64_t across = ( std::uint64_t( width ) + block.width - 1 ) / block.width;
+	const std::uint64_t down = ( std::uint64_t( height ) + block.height - 1 ) / block.height;
+	return across * down * block.bytes;
+}
+
+bool CopyRegionAligned( Format format, std::uint32_t mipWidth, std::uint32_t mipHeight,
+    std::uint32_t width, std::uint32_t height, std::uint64_t bufferOffset )
+{
+	const FormatBlock block = BlockOf( format );
+	if ( block.bytes == 0 || bufferOffset % block.bytes != 0 )
+		return false;
+	return ( width % block.width == 0 || width == mipWidth ) &&
+	       ( height % block.height == 0 || height == mipHeight );
 }
 
 bool HasStencil( Format format )

@@ -178,6 +178,24 @@ VkFormat ToVkFormat( Format format )
 		return VK_FORMAT_D24_UNORM_S8_UINT;
 	case Format::kD32FloatS8:
 		return VK_FORMAT_D32_SFLOAT_S8_UINT;
+	case Format::kRGBA16Unorm:
+		return VK_FORMAT_R16G16B16A16_UNORM;
+	case Format::kBC1Unorm:
+		return VK_FORMAT_BC1_RGBA_UNORM_BLOCK; // D3D9's DXT1 keeps its one-bit alpha
+	case Format::kBC1Srgb:
+		return VK_FORMAT_BC1_RGBA_SRGB_BLOCK;
+	case Format::kBC2Unorm:
+		return VK_FORMAT_BC2_UNORM_BLOCK;
+	case Format::kBC2Srgb:
+		return VK_FORMAT_BC2_SRGB_BLOCK;
+	case Format::kBC3Unorm:
+		return VK_FORMAT_BC3_UNORM_BLOCK;
+	case Format::kBC3Srgb:
+		return VK_FORMAT_BC3_SRGB_BLOCK;
+	case Format::kBC4Unorm:
+		return VK_FORMAT_BC4_UNORM_BLOCK;
+	case Format::kBC5Unorm:
+		return VK_FORMAT_BC5_UNORM_BLOCK;
 	case Format::kUnknown:
 	case Format::kCount:
 		break;

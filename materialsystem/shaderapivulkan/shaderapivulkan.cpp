@@ -3157,7 +3157,13 @@ public:
 	void MarkSlot( std::uint32_t tag ) override
 	{
 		NoteDeviceUse( "ICorePassSlots::MarkSlot" );
-		g_VulkanContext.QueueCorePass( tag );
+		// The frame's light terms as the legacy shaders read them here (c30):
+		// the lightmap scale for the pages' encoding and the linear tone-map
+		// scale (GetLightMapScaleFactor, SetToneMappingScaleLinear).
+		const bool integerHdr = CurrentHDRType() == HDR_TYPE_INTEGER;
+		const float lightmapScale = integerHdr ? 16.0f : powf( 2.0f, 2.2f );
+		const float outputScale = CurrentHDRType() == HDR_TYPE_NONE ? 1.0f : g_ToneMappingScale.x;
+		g_VulkanContext.QueueCorePass( tag, lightmapScale, outputScale );
 	}
 };
 static CVulkanCorePassSlots g_CorePassSlots;

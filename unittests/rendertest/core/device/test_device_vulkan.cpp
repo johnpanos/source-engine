@@ -1063,13 +1063,14 @@ void DescriptorClauses( testing::Checks &checks )
 	if ( device )
 	{
 		const DeviceFacts &facts = device.Value()->Facts();
-		checks.That(
-		    facts.diagnosticBackend == "vulkan" && !facts.adapterName.empty() &&
-		        facts.artifactFormat == ArtifactFormat::kSpirv &&
-		        CapabilitySet( facts.capabilities ).Remove( Capability::kExternalImages ) ==
-		            CapabilitySet{ Capability::kCompute, Capability::kStorageBuffers },
+		checks.That( facts.diagnosticBackend == "vulkan" && !facts.adapterName.empty() &&
+		                 facts.artifactFormat == ArtifactFormat::kSpirv &&
+		                 CapabilitySet( facts.capabilities )
+		                         .Remove( Capability::kExternalImages )
+		                         .Remove( Capability::kTextureCompressionBC ) ==
+		                     CapabilitySet{ Capability::kCompute, Capability::kStorageBuffers },
 		    "vulkan.facts name the backend and adapter and claim only compute and storage "
-		    "(and external images where the driver exports dmabufs, D18)" );
+		    "(and external images where the driver exports dmabufs, D18, and BC formats, D19)" );
 		auto compute = device.Value()->BeginEncoder( QueueKind::kCompute );
 		checks.That( !compute && compute.Error().status == DeviceStatus::kUnsupported,
 		    "vulkan.queues a compute-queue encoder is unsupported (no async compute)" );
@@ -1222,8 +1223,40 @@ void ComputeClauses(
 // A texture uploaded through a buffer, sampled with a nearest sampler at
 // texel centers: every texel lands on the pixel with the same coordinates
 // (row 0 at the top for textures and framebuffers alike).
+// A 4x4 texture of `format` holding `texels`, drawn full screen with a point
+// sampler into an RGBA8 target: the pixels must equal `expected`.
+bool SampleTexture( testing::Checks &checks, rendertest::detail::Suite &suite,
+    IRenderDevice2 &device, Format format, const std::vector<std::byte> &texels,
+    const std::vector<std::byte> &expected, const char *what );
+
 void SampledClauses(
     testing::Checks &checks, rendertest::detail::Suite &suite, IRenderDevice2 &device )
+{
+	const std::vector<std::byte> texels = rendertest::detail::Pattern( 4 * 4 * 4, 5 );
+	(void)SampleTexture( checks, suite, device, Format::kRGBA8Unorm, texels, texels,
+	    "vulkan.sampled texels sampled at their centers land on the same pixels (row 0 on top)" );
+	if ( !device.Facts().capabilities.Has( Capability::kTextureCompressionBC ) )
+		return;
+	// D19: one BC1 block in its three-color mode (color0 <= color1): each row
+	// is color0 (blue), color1 (red) and two transparent blacks, which D3D9's
+	// DXT1 keeps (one-bit alpha).
+	const std::uint8_t block[8] = { 0x1f, 0x00, 0x00, 0xf8, 0xf4, 0xf4, 0xf4, 0xf4 };
+	std::vector<std::byte> bc1( 8 );
+	std::memcpy( bc1.data(), block, sizeof( block ) );
+	static const std::uint8_t row[16] = { 0, 0, 255, 255, 255, 0, 0, 255, 0, 0, 0, 0, 0, 0, 0, 0 };
+	std::vector<std::byte> decoded;
+	for ( int y = 0; y < 4; ++y )
+	{
+		for ( const std::uint8_t value : row )
+			decoded.push_back( std::byte( value ) );
+	}
+	(void)SampleTexture( checks, suite, device, Format::kBC1Unorm, bc1, decoded,
+	    "vulkan.sampled D19 a BC1 block decodes as D3D9's DXT1, one-bit alpha kept" );
+}
+
+bool SampleTexture( testing::Checks &checks, rendertest::detail::Suite &suite,
+    IRenderDevice2 &device, Format format, const std::vector<std::byte> &texels,
+    const std::vector<std::byte> &expected, const char *what )
 {
 	using rendertest::detail::Code;
 	constexpr std::uint32_t kSize = 4;
@@ -1232,7 +1265,7 @@ void SampledClauses(
 	    { 1, BindingKind::kSampler, 1, { ShaderStage::kFragment } } };
 	auto layout = device.CreateBindGroupLayout( { BindGroupRole::kMaterial, material } );
 	if ( !layout )
-		return;
+		return false;
 	const BindGroupLayoutId layouts[] = { {}, {}, layout.Value() };
 	static const ReflectedBinding used[] = {
 	    { 2, 0, BindingKind::kSampledTexture }, { 2, 1, BindingKind::kSampler } };
@@ -1250,11 +1283,12 @@ void SampledClauses(
 	auto pipeline = device.CreatePipeline( desc );
 
 	TextureDesc image;
-	image.format = Format::kRGBA8Unorm;
+	image.format = format;
 	image.width = kSize;
 	image.height = kSize;
 	image.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kSampled };
 	auto texture = device.CreateTexture( image );
+	image.format = Format::kRGBA8Unorm;
 	image.usages = { ResourceUsage::kColorAttachment, ResourceUsage::kCopySource };
 	auto target = device.CreateTexture( image );
 	SamplerDesc point;
@@ -1264,16 +1298,15 @@ void SampledClauses(
 	checks.That( pipeline && texture && target && sampler,
 	    "vulkan.sampled a sampling pipeline, texture and sampler are created" );
 	if ( !pipeline || !texture || !target || !sampler )
-		return;
+		return false;
 	const BindGroupEntry entries[] = {
 	    { 0, {}, 0, 0, texture.Value(), {} }, { 1, {}, 0, 0, {}, sampler.Value() } };
 	auto group = device.CreateBindGroup( { layout.Value(), entries } );
-	const std::vector<std::byte> texels = rendertest::detail::Pattern( kSize * kSize * 4, 5 );
 	const BufferId staging = suite.Buffer(
 	    device, texels.size(), { ResourceUsage::kCopyDestination, ResourceUsage::kCopySource } );
 	auto encoder = device.BeginEncoder( QueueKind::kGraphics );
 	if ( !group || !encoder )
-		return;
+		return false;
 	CommandEncoder &e = encoder.Value();
 	e.TransitionBuffer( staging, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
 	e.WriteBuffer( staging, 0, texels );
@@ -1299,8 +1332,7 @@ void SampledClauses(
 	e.TransitionTexture(
 	    target.Value(), ResourceUsage::kColorAttachment, ResourceUsage::kCopySource );
 	const std::vector<std::byte> pixels = ReadTexture( suite, device, e, target.Value(), kSize );
-	checks.That( pixels == texels,
-	    "vulkan.sampled texels sampled at their centers land on the same pixels (row 0 on top)" );
+	return checks.That( pixels == expected, what );
 }
 
 // An indexed draw from a vertex buffer into a 4x multisampled target that

@@ -7721,7 +7721,7 @@
       "contract": "unittests/rendertest/contracts/render.device.v2.md",
       "kind": "positive",
       "profile": "linux-headless-core",
-      "description": "render.device.v2 (RFC 0016 K1): the shared device suite (clauses D1-D13; D13 is skipped on a non-rasterizing adapter) against render.device.null in manual completion and in the products' on-poll mode, plus the recording adapter's own clauses (nothing runs before completion, a full ring defers, the stream is in submission order).",
+      "description": "render.device.v2 (RFC 0016 K1): the shared device suite (clauses D1-D13; D13 is skipped on a non-rasterizing adapter) against render.device.null in manual completion and in the products' on-poll mode, plus the recording adapter's own clauses (nothing runs before completion, a full ring defers, the stream is in submission order). D19 (RFC 0016 K5): block-compressed formats, whose regions take whole blocks and copy in and back unchanged, with attachments, samples, split blocks and clears refused.",
       "result_protocol": "checks-v1",
       "sources": [
         "render/device/port.cpp",
@@ -7730,7 +7730,7 @@
         "render/device/null/recording_device.cpp",
         "unittests/rendertest/core/device/test_device_null.cpp"
       ],
-      "min_checks": 279,
+      "min_checks": 411,
       "extra_flags": [
         "-pthread"
       ],
@@ -7744,7 +7744,7 @@
       "contract": "unittests/rendertest/contracts/render.device.v2.md",
       "kind": "sensitivity",
       "profile": "linux-headless-core",
-      "description": "The shared device suite must fail ten deliberately bad adapters on the clause each breaks (early release, changing facts, out-of-order completion, stale epoch accepted, reflection ignored, leak on failure, fifth bind group, early upload reuse, partial submission, usage state ignored) while the undecorated control passes.",
+      "description": "The shared device suite must fail ten deliberately bad adapters on the clause each breaks (early release, changing facts, out-of-order completion, stale epoch accepted, reflection ignored, leak on failure, fifth bind group, early upload reuse, partial submission, usage state ignored) while the undecorated control passes. A bad adapter that creates a block-compressed attachment fails D19.",
       "result_protocol": "checks-v1",
       "sources": [
         "render/device/port.cpp",
@@ -7753,7 +7753,7 @@
         "render/device/null/recording_device.cpp",
         "unittests/rendertest/core/device/test_device_negative.cpp"
       ],
-      "min_checks": 11,
+      "min_checks": 13,
       "extra_flags": [
         "-pthread"
       ],
@@ -7767,7 +7767,7 @@
       "contract": "unittests/rendertest/contracts/render.device.v2.md",
       "kind": "positive",
       "profile": "linux-native-vulkan-gpu",
-      "description": "render.device.v2 on render.device.vulkan (RFC 0016 K1): the shared suite with real pixels (D13 conventions: clip depth 0 to 1, clip Y up, row 0 at the top), a small-ring run, ring reuse, compute, sampling, an indexed 4x MSAA draw with resolve, a pass under the Khronos validation layer with synchronization validation that must report no message, the host interop (vulkan.host), and host images imported as port textures (vulkan.import, RFC 0016 K5: host work and port commands in one encoder read each other's writes, an import away from its home usage at host work or at the end is refused, release frees only the views; synchronization validation on the host instance is silent, and a host that skips its barrier is reported). D7 is skipped: loss cannot be forced on Vulkan.",
+      "description": "render.device.v2 on render.device.vulkan (RFC 0016 K1): the shared suite with real pixels (D13 conventions: clip depth 0 to 1, clip Y up, row 0 at the top), a small-ring run, ring reuse, compute, sampling, an indexed 4x MSAA draw with resolve, a pass under the Khronos validation layer with synchronization validation that must report no message, the host interop (vulkan.host), and host images imported as port textures (vulkan.import, RFC 0016 K5: host work and port commands in one encoder read each other's writes, an import away from its home usage at host work or at the end is refused, release frees only the views; synchronization validation on the host instance is silent, and a host that skips its barrier is reported). D7 is skipped: loss cannot be forced on Vulkan. D19 on Vulkan also samples a BC1 block in its three-color mode: it decodes as D3D9's DXT1, one-bit alpha kept.",
       "result_protocol": "checks-v1",
       "sources": [
         "render/device/port.cpp",
@@ -7784,7 +7784,7 @@
         "render/device/vulkan/upload_ring.cpp",
         "unittests/rendertest/core/device/test_device_vulkan.cpp"
       ],
-      "min_checks": 745,
+      "min_checks": 800,
       "extra_flags": [
         "-pthread",
         "-isystemdependencies/vulkan-memory-allocator/include"
@@ -7984,6 +7984,42 @@
         "unittests/rendertest/core/material/test_material_programs.cpp"
       ],
       "min_checks": 25,
+      "expect": "pass"
+    },
+    {
+      "id": "render.world.null",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "migration": "R89",
+      "contract": "unittests/rendertest/contracts/render.opaque.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "description": "render.pass.world (RFC 0016 K5, the BSP world drawn by the core) on render.device.null: materials are claimed through the one program resolver (LightmappedGeneric, and UnlitGeneric as the lightmapped term with lighting one) and the others stay legacy with named gaps ($envmap, blended); a queued view records at its slot with its lightmap pages and a neutral white for a surface without one; a slot recorded again (a capture) draws the same view; a view queued against an earlier world, or naming a surface the pass does not draw, is counted.",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "render/device/port.cpp",
+        "render/device/encoder.cpp",
+        "render/device/validation.cpp",
+        "render/device/null/recording_device.cpp",
+        "kvtext/keyvalues.cpp",
+        "render/material/material.cpp",
+        "render/material/vmt_mapping.cpp",
+        "render/material/vmt_import.cpp",
+        "render/material/family_program.cpp",
+        "render/material/unlit_family.cpp",
+        "render/material/lightmapped_family.cpp",
+        "render/material/pbr_family.cpp",
+        "render/material/vertexlit_family.cpp",
+        "render/resources/caches.cpp",
+        "render/material/material_programs.cpp",
+        "render/material/program_resolver.cpp",
+        "render/pass/world/world_pass.cpp",
+        "unittests/rendertest/core/pass/world/test_world_pass.cpp"
+      ],
+      "min_checks": 9,
+      "extra_flags": [
+        "-pthread"
+      ],
       "expect": "pass"
     },
     {
@@ -9498,6 +9534,14 @@
         "render/legacy/queued_capabilities.cpp",
         "jobsystem/parallel_executor.cpp",
         "render/composition/render_core.cpp",
+        "render/composition/core_world.cpp",
+        "render/pass/world/world_pass.cpp",
+        "render/material/program_resolver.cpp",
+        "render/material/family_program.cpp",
+        "render/material/unlit_family.cpp",
+        "render/material/lightmapped_family.cpp",
+        "render/material/material_programs.cpp",
+        "render/resources/caches.cpp",
         "render/composition/feature_catalog.cpp",
         "unittests/rendertest/core/composition/test_composition.cpp"
       ],

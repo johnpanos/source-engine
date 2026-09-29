@@ -160,6 +160,9 @@ DeviceResult<TextureId> VulkanDevice::CreateTexture( const TextureDesc &desc )
 	// device has no swapchain, so a presentable texture is unsupported here.
 	if ( desc.usages.Has( ResourceUsage::kPresent ) )
 		return Fail( DeviceStatus::kUnsupported, op );
+	if ( IsBlockCompressed( desc.format ) &&
+	     !m_Facts.capabilities.Has( Capability::kTextureCompressionBC ) )
+		return Fail( DeviceStatus::kUnsupported, op );
 	const VkImageUsageFlags usage = ImageUsageFlags( desc.usages );
 	if ( usage == 0 )
 		return Fail( DeviceStatus::kInvalidDescription, op );

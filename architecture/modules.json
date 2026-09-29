@@ -707,6 +707,19 @@
         ]
       },
       {
+        "id": "render.pass.world",
+        "paths": [
+          "public/render/pass/world/",
+          "render/pass/world/"
+        ],
+        "allowedEdges": [
+          "foundation",
+          "render.math",
+          "render.device",
+          "render.material"
+        ]
+      },
+      {
         "id": "render.pass.lines",
         "paths": [
           "public/render/pass/lines/",
@@ -818,6 +831,7 @@
           "render.frame",
           "render.renderer",
           "render.pass.present",
+          "render.pass.world",
           "render.legacy-frontend",
           "render.legacy-provider-contract"
         ]
@@ -847,6 +861,7 @@
           "render.pass.present",
           "render.pass.skinning",
           "render.pass.opaque",
+          "render.pass.world",
           "render.pass.lines",
           "render.pass.lights",
           "render.pass.shadows",
@@ -1350,6 +1365,13 @@
           "render_spv"
         ]
       },
+      "render_pass_world": {
+        "allowedUse": [
+          "render_material",
+          "render_device",
+          "render_spv"
+        ]
+      },
       "render_pass_lines": {
         "allowedUse": [
           "render_resources",
@@ -1370,6 +1392,7 @@
         "allowedUse": [
           "render_renderer",
           "render_pass_present",
+          "render_pass_world",
           "render_legacy",
           "render_scene",
           "render_frame",

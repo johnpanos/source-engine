@@ -24,6 +24,7 @@
 #ifndef RENDER_LEGACY_CORE_PASSES_H
 #define RENDER_LEGACY_CORE_PASSES_H
 
+#include "render/device/device.h"
 #include "render/device/encoder.h"
 #include "render/device/resources.h"
 
@@ -32,19 +33,57 @@
 namespace render::legacy
 {
 
+class ICoreTextures;
+
 // The target a slot's pass draws into: the backend's open target at the
 // slot, as port textures in their home usages (color kColorAttachment, depth
 // kDepthWrite). Invalid textures when the backend has not imported that
 // target (a render-target texture).
 struct CorePassTarget
 {
+	// The device the slot records on: the backend's.
+	device::IRenderDevice2 *device = nullptr;
 	device::TextureId color;
+	device::TextureId colorSrgb; // the same image through its sRGB view, when it has one
 	device::TextureId depth;
 	device::Format colorFormat = device::Format::kUnknown;
+	device::Format colorSrgbFormat = device::Format::kUnknown;
 	device::Format depthFormat = device::Format::kUnknown;
 	std::uint32_t width = 0;
 	std::uint32_t height = 0;
 	std::uint32_t samples = 1;
+	// The backend's textures, for the pass's materials; null when the backend
+	// imports none.
+	ICoreTextures *textures = nullptr;
+	// No earlier than every submission made before this frame's: what the
+	// previous frames used can be released behind it.
+	device::CompletionToken submitted;
+	// The frame's light terms at the slot: the lightmap scale for how the
+	// pages encode light, and the output's linear (tone-mapping) scale.
+	float lightmapScale = 1.0f;
+	float outputScale = 1.0f;
+};
+
+// The backend's textures as port textures (RFC 0016 K5 step 4): the image
+// behind a material system texture handle (ITexture::GetTextureHandle, or a
+// lightmap page's), imported on first use in the usage it rests in between
+// uses (kSampled) and released, behind the frame being recorded, when the
+// backend deletes or replaces it. Called on the render sequence while a slot
+// records. An invalid id when the handle names no uploaded, single-layer,
+// non-volume image, a render target, or a format with no port format.
+class ICoreTextures
+{
+public:
+	// srgb asks for linear values: an 8-bit or BC image through its sRGB view
+	// (an invalid id when it has none); a 16-bit or float image as it is.
+	virtual device::TextureId Import( int handle, bool srgb ) = 0;
+	// The sampler the backend binds the texture with: its sampler state
+	// (wrap, filters, mips) and the anisotropy setting. The port has one
+	// address mode, which clamps only when both axes do.
+	virtual device::SamplerDesc Sampler( int handle ) = 0;
+
+protected:
+	~ICoreTextures() = default;
 };
 
 // A slot's tag: the stage it was marked at (frame::Stage) and the number of
@@ -61,6 +100,9 @@ inline std::uint32_t CorePassTagDepth( std::uint32_t tag )
 {
 	return tag >> 8;
 }
+// A tag with the high bit set was marked by a pass the composition root
+// forwards to (ILegacyFrontend::SetForwardedRecorder), not by a stage.
+inline constexpr std::uint32_t kCorePassForwarded = 0x80000000u;
 
 // A backend's slots (LegacyShaderServices::corePassSlots). Called in frame
 // order on the thread that replays the material system's calls.
@@ -88,6 +130,9 @@ public:
 	// records, once per slot in stream order.
 	virtual void RecordSlot(
 	    std::uint32_t tag, device::CommandEncoder &encoder, const CorePassTarget &target ) = 0;
+	// The backend's device is about to go, after an idle wait: release every
+	// object made on it now (later releases would reach a destroyed device).
+	virtual void ReleaseDevice( device::IRenderDevice2 &device ) = 0;
 
 protected:
 	~ICorePassRecorder() = default;

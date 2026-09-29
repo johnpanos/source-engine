@@ -123,6 +123,18 @@ std::vector<std::byte> EncodeTexel( Format format, const ClearColor &color )
 		putBytes( 0, h, sizeof( h ) );
 		break;
 	}
+	case Format::kRGBA16Unorm:
+	{
+		const auto unorm16 = []( float value )
+		{
+			return static_cast<std::uint16_t>(
+			    std::lround( std::clamp( value, 0.0f, 1.0f ) * 65535.0f ) );
+		};
+		const std::uint16_t u[4] = {
+		    unorm16( color.r ), unorm16( color.g ), unorm16( color.b ), unorm16( color.a ) };
+		putBytes( 0, u, sizeof( u ) );
+		break;
+	}
 	case Format::kR32Float:
 	case Format::kD32Float:
 	case Format::kD32FloatS8:
@@ -141,6 +153,14 @@ std::vector<std::byte> EncodeTexel( Format format, const ClearColor &color )
 		putBytes( 0, &depth, sizeof( depth ) );
 		break;
 	}
+	case Format::kBC1Unorm: // never cleared (D19)
+	case Format::kBC1Srgb:
+	case Format::kBC2Unorm:
+	case Format::kBC2Srgb:
+	case Format::kBC3Unorm:
+	case Format::kBC3Srgb:
+	case Format::kBC4Unorm:
+	case Format::kBC5Unorm:
 	case Format::kUnknown:
 	case Format::kCount:
 		break;
@@ -176,12 +196,12 @@ struct Texture
 	{
 		if ( subresources.empty() )
 		{
-			const std::uint32_t bpp = BytesPerTexel( desc.format );
 			for ( std::uint32_t m = 0; m < desc.mipLevels; ++m )
 			{
 				for ( std::uint32_t l = 0; l < layers; ++l )
-					subresources.emplace_back(
-					    static_cast<std::size_t>( Width( m ) ) * Height( m ) * Depth( m ) * bpp,
+					subresources.emplace_back( static_cast<std::size_t>( RegionBytes(
+					                               desc.format, Width( m ), Height( m ) ) ) *
+					                               Depth( m ),
 					    std::byte{ 0 } );
 			}
 		}
@@ -589,6 +609,9 @@ public:
 			return Fail( DeviceStatus::kDeviceLost, DeviceOperation::kCreateTexture );
 		if ( auto valid = ValidateTexture( desc, m_Facts.limits ); !valid )
 			return foundation::MakeUnexpected( valid.Error() );
+		if ( IsBlockCompressed( desc.format ) &&
+		     !m_Facts.capabilities.Has( Capability::kTextureCompressionBC ) )
+			return Fail( DeviceStatus::kUnsupported, DeviceOperation::kCreateTexture );
 		Texture texture;
 		texture.desc = desc;
 		texture.desc.debugName = {};
@@ -1007,9 +1030,13 @@ private:
 				break;
 			}
 			case RecordedOp::kClearTexture:
-				if ( !texture( command.a, ResourceUsage::kCopyDestination ) )
+			{
+				// A block-compressed texture is written by copies only (D19).
+				if ( !texture( command.a, ResourceUsage::kCopyDestination ) ||
+				     IsBlockCompressed( LiveTexture( command.a )->desc.format ) )
 					return false;
 				break;
+			}
 			case RecordedOp::kWriteBuffer:
 			{
 				Buffer *b = LiveBuffer( command.a );
@@ -1099,8 +1126,11 @@ private:
 		     copy.width == 0 || copy.height == 0 || copy.width > texture.Width( copy.mip ) ||
 		     copy.height > texture.Height( copy.mip ) )
 			return false;
-		const std::uint64_t bytes = static_cast<std::uint64_t>( copy.width ) * copy.height *
-		                            BytesPerTexel( texture.desc.format );
+		const Format format = texture.desc.format;
+		if ( !CopyRegionAligned( format, texture.Width( copy.mip ), texture.Height( copy.mip ),
+		         copy.width, copy.height, copy.bufferOffset ) )
+			return false;
+		const std::uint64_t bytes = RegionBytes( format, copy.width, copy.height );
 		return copy.bufferOffset + bytes <= buffer.data.size();
 	}
 
@@ -1186,11 +1216,13 @@ private:
 			if ( !t || !b )
 				break;
 			const TextureBufferCopy &copy = command.textureCopy;
-			const std::uint32_t bpp = BytesPerTexel( t->desc.format );
+			// Rows of blocks (of texels, for an uncompressed format).
+			const FormatBlock block = BlockOf( t->desc.format );
 			std::vector<std::byte> &data = t->Subresource( copy.mip, copy.layer );
-			const std::size_t pitch = static_cast<std::size_t>( t->Width( copy.mip ) ) * bpp;
-			const std::size_t row = static_cast<std::size_t>( copy.width ) * bpp;
-			for ( std::uint32_t y = 0; y < copy.height; ++y )
+			const std::size_t pitch = RegionBytes( t->desc.format, t->Width( copy.mip ), 1 );
+			const std::size_t row = RegionBytes( t->desc.format, copy.width, 1 );
+			const std::uint32_t rows = ( copy.height + block.height - 1 ) / block.height;
+			for ( std::uint32_t y = 0; y < rows; ++y )
 			{
 				std::byte *image = data.data() + y * pitch;
 				std::byte *linear = b->data.data() + copy.bufferOffset + y * row;
@@ -1199,7 +1231,7 @@ private:
 				else
 					std::memcpy( image, linear, row );
 			}
-			command.count = static_cast<std::uint64_t>( row ) * copy.height;
+			command.count = static_cast<std::uint64_t>( row ) * rows;
 			break;
 		}
 		case RecordedOp::kBeginRendering:

@@ -34,6 +34,7 @@
 #include "render/world_mesh_upload.h"
 
 class IMaterial;
+class ITexture;
 
 namespace render::legacy
 {
@@ -52,6 +53,11 @@ struct RenderCallQueueHost
 	    void ( *destroy )( void *payload ) ) = nullptr;
 	// The material the calling thread's render context has bound.
 	IMaterial *( *boundMaterial )() = nullptr;
+	// RFC 0016 K5: the shader API handle of a texture's first frame, and of a
+	// lightmap page (render/legacy/core_passes.h ICoreTextures imports them);
+	// 0 for none.
+	int ( *textureHandle )( ITexture *texture ) = nullptr;
+	int ( *lightmapPageHandle )( int page ) = nullptr;
 };
 
 class ILegacyCapabilities

@@ -740,6 +740,23 @@ A graph is built each frame on the render sequence:
   `water`, `sky`, `eyes` (Eyes, EyeRefract, Teeth), `spritecard`, `post`,
   and `legacy`. The `legacy` family runs the 86 ports keyed by program and
   is defined in the frontend module.
+- **One model; legacy cases are degenerate (user direction, 2026-09-28).**
+  The core keeps the legacy material system's intent and exceeds it. Its
+  families converge on one general surface model whose terms each have a
+  neutral value, so each legacy shader and branch is a parameter point:
+  - unlit is lighting fixed at one;
+  - a flat lightmap is a bumped lightmap with a flat normal;
+  - WorldVertexTransition with blend zero is one layer;
+  - no env map is reflectance zero, and no detail is a neutral detail;
+  - VertexLitGeneric is the same surface lit by model lighting instead of a
+    lightmap.
+  Legacy quirks (the 0.7 alpha-test reference, the 2.0 overbright, gamma
+  rules) are parameter defaults with one owner each, not code paths.
+  The narrow families above (`unlit`, `lightmapped`, `vertexlit`, `pbr`)
+  are stepping stones folded into that model. A claim that refuses a
+  material is a gap in the model to close, not a boundary to keep.
+  Passes (world, props, models) never name a family: they resolve a
+  material to a program through one resolver.
 - **Material proxies.** `IMaterialProxy::OnBind` keeps its timing: the
   legacy frontend calls proxies when a renderable's draw is extracted, which
   is when the legacy path binds the material. `IMaterialVar` writes land in

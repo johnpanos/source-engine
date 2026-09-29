@@ -1772,4 +1772,111 @@ backend's scene, at a *slot* of its stream
 | Sync validation | `empty` under `-vkvalidate` (host instance with synchronization validation): 0 messages, 820 sections | pass |
 | No regression | all 16 pixel families in both HDR modes on the new backend: 31 of 32 pass, and integer `sky` keeps its recorded failure. The static-composition product builds, and `static_composition.py check` passes (22 linked entries) | pass |
 
-Next: step 4, the world drawn by the core at the view's first opaque slot.
+Next: step 4, the world drawn by the core (next section). The world's slot is
+marked by the engine in R_DrawWorldLists, with a forwarded tag, not taken from
+the positional opaque stage marker.
+
+## K5 step 4a: block-compressed formats in the port, clause D19 (2026-09-28)
+
+Step 4 draws the world from the scene with the backend's own images. Those
+are mostly BC-compressed (D3D9's DXT1/DXT3/DXT5), and `render.device.v2` had
+no compressed format. This slice adds them.
+
+- **Formats.** `kBC1Unorm`/`kBC1Srgb`, `kBC2Unorm`/`kBC2Srgb`,
+  `kBC3Unorm`/`kBC3Srgb`, `kBC4Unorm` and `kBC5Unorm`, behind
+  `Capability::kTextureCompressionBC`. `BlockOf`, `RegionBytes` and
+  `CopyRegionAligned` own block sizes and copy alignment. The adapters' copy
+  checks and the null adapter's storage use them instead of texel sizes.
+  BC1 is Vulkan's `BC1_RGBA`, as the backend uses, so D3D9's one-bit alpha
+  survives.
+- **Rules (shared validation).** Sampled and copied only, one sample, no
+  volume. A copy covers whole blocks or reaches the mip's edge, and a clear
+  is refused.
+- **Vulkan.** The adapter enables `textureCompressionBC` when the device has
+  it, and claims the capability. The null adapter claims it too, and stores
+  whole blocks.
+
+| Check | Evidence | Result |
+| --- | --- | --- |
+| D19, shared suite | null 411 checks, Vulkan 800 (RADV): BC1 and BC3 with a 12x6 mip and a 6x3 mip copy in and back unchanged; attachment and multisampled descriptions fail; a split block and a clear are refused | pass |
+| Decode | Vulkan: a BC1 block in three-color mode samples as blue, red and two transparent blacks, D3D9's DXT1 | pass |
+| Bad adapter | `render.device.v2.sensitivity`: an adapter that creates a block-compressed attachment fails D19 (13 checks) | detected |
+
+Next (4b): the backend's managed textures and lightmap pages imported as
+port textures, which needs `kRGBA16Unorm` for integer-HDR lightmap pages.
+
+## K5 step 4 (first slice): the BSP world drawn by the core (2026-09-28)
+
+The core now draws the BSP world surfaces its material model takes, inside
+the legacy scene, and legacy skips exactly those. It is off by default
+(`r_core_world 1`, or `./play --core-world`).
+
+- **One material model (user direction, 2026-09-28).** The legacy material
+  system's special cases are degenerate cases of one model (RFC 0016
+  "Materials"). The world pass names no family: `render.material`'s new
+  `ProgramResolver` (program_resolver.h) is the one place that maps a
+  material to a program.
+  - UnlitGeneric is the lightmapped term with lighting fixed at one
+    (`flags.w`).
+  - The frame terms (`material::FrameTerms`, the lightmapped frame group)
+    are the lightmap scale for the pages' encoding (2^2.2 for LDR gamma
+    pages, 16 for integer-HDR pages), the output tone-map scale, and the
+    output encoding. The encoding is hardware sRGB, or in-shader onto a unorm
+    target when the back buffer has no sRGB view, with one
+    `LinearToSrgb` in render/shaders/common/color_encoding.glsl.
+  - `ProgramTexture::srgb` means "linear values wanted": gamma-encoded
+    images decode through their sRGB view, linear images pass as they are.
+  - A surface without a lightmap page samples a neutral white.
+  - A material the model can't draw stays legacy, with a named gap in the
+    stats.
+- **render.pass.world** (new module, layer 6). SetWorld takes the world's
+  vertices, fan indices, surfaces and materials (variables and texture
+  handles). QueueView records a view's visible taken surfaces, its
+  world-to-clip and its viewport, and returns a forwarded tag. Record draws
+  at the slot:
+  - into the back buffer (or the multisampled pair; the families take a
+    sample count);
+  - with the backend's imported textures and samplers
+    (`ICoreTextures::Import`/`Sampler`, `kRGBA16Unorm` for integer-HDR
+    pages);
+  - with the frame terms captured when the slot was marked.
+
+  Queued views carry their world generation. Recorded views are kept so a
+  re-recorded stream draws the same views: `ReadPixels` re-runs the frame
+  for a screenshot. The previous world's objects are released behind the
+  submitted token, and `ICorePassRecorder::ReleaseDevice` releases them
+  before the backend's device goes.
+- **Composition.** `IRenderCoreWorld` (render_core_world.h, engine-facing
+  and plain) over the pass. The frontend forwards high-bit tags to it
+  (`SetForwardedRecorder`), and texture and lightmap-page handles come
+  through the render call queue host (`textureHandle`,
+  `lightmapPageHandle`).
+- **Engine.** `render_core_world_draw.cpp` extracts the surfaces at the end
+  of R_LevelInit. R_DrawWorldLists queues the outermost back-buffer view's
+  taken, non-dynamic surfaces when the view has no fog and is not a shadow,
+  SSAO, reflection or refraction list; `Shader_DrawChainsStatic` then skips
+  them.
+  - `r_core_world_stats` prints the counts, the gaps and the claimed
+    materials.
+  - `r_core_world_isolate 1` makes legacy draw only the taken surfaces (the
+    pixel oracle).
+  - `r_core_world 3` is the negative control: the surfaces are skipped and
+    not drawn.
+
+| Check | Evidence | Result |
+| --- | --- | --- |
+| Suites | `render.world.null` W1–W5 (11): claims and named gaps, a slot's draw with its pages and the neutral white, re-record, stale-world and unclaimed-surface counting. `render.opaque` O6 and `render.opaque.null` N4 with per-layout frame groups. `render.family.lightmapped` (95, the frame group at LDR defaults) and `render.family.unlit`; composition (22), capabilities (18), device null (411) and Vulkan (800). g++ and clang++ | pass |
+| Coverage, testchmb_a_01 | 13 of 133 materials, 1,243 of 5,398 surfaces. Gaps: `$envmap` 98 materials, `$detail` 17, Refract 4, `$bumpmap` 1. Views with fog are not taken yet, so the escape maps draw nothing through the core | recorded |
+| Views draw | integer HDR, 4x MSAA, headless: 201–204 views queued and drawn per boot, 0 failed; `mat_queue_mode 2`: 202, 0 failed | pass |
+| Sync validation | `-vkvalidate` (synchronization validation on the host instance): 0 messages | pass |
+| Pixels, isolated | `r_core_world_isolate 1`, `-deterministicrender`. The negative control (`r_core_world 3`) differs from legacy in 28,686 pixels (9,896 by more than 8 levels). With the core drawing, the core-attributable residual is 538 pixels over 8 levels, max 49, on the alpha-tested `metalgrate018` and one edge line; the lightmapped floor matches at sampled points. The portal's animated particles differ between runs of either mode (2,784 pixels over 8 levels between two legacy runs) | partial |
+
+Open, in order:
+- the alpha-tested grate residual (sampling or alpha-to-coverage);
+- the fog view term (Black, from source-engine-b7's port, is its first
+  consumer);
+- the env map term (98 materials);
+- detail and bump;
+- render-target and nested views (stencil-equal and clip-plane oracle cases);
+- the Submission cost row (render_submission, both queued modes);
+- static props.

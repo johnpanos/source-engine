@@ -48,6 +48,7 @@
 #include "coordsize.h"
 #include "mempool.h"
 #include "render_core_world.h"
+#include "render_core_world_draw.h"
 #ifndef SWDS
 #include "Overlay.h"
 #include "render/world_mesh_upload.h"
@@ -1437,6 +1438,9 @@ void Shader_DrawChainsStatic( const CMSurfaceSortList &sortList, int nSortGroup,
 				dynamicGroups.AddToTail( &group );
 				continue;
 			}
+			// RFC 0016 K5: the render core draws this surface in this view.
+			if ( RenderCoreWorldDraw_Skips( surfID ) )
+				continue;
 
 			Assert( group.triangleCount > 0 );
 			int numIndex = group.triangleCount * 3;
@@ -4003,7 +4007,33 @@ void R_DrawWorldLists( IWorldRenderList *pRenderListIn, unsigned long flags, flo
 	VPROF("R_DrawWorldLists");
 	tmZone( TELEMETRY_LEVEL0, TMZF_NONE, "%s", __FUNCTION__  );
 	R_PaintUpdateTextures();
+	// RFC 0016 K5 (r_core_world): the core draws the visible surfaces its
+	// material model takes, at a slot here; the static chains skip them.
+	if ( RenderCoreWorldDraw_ViewEligible( flags ) )
+	{
+		CUtlVector<unsigned int> coreSurfaces;
+		const CMSurfaceSortList &sortList = pRenderList->m_SortList;
+		for ( int nSortGroup = 0; nSortGroup < MAX_MAT_SORT_GROUPS; ++nSortGroup )
+		{
+			if ( !( flags & ( 1 << nSortGroup ) ) )
+				continue;
+			const CUtlVector<surfacesortgroup_t *> &groups = sortList.GetSortList( nSortGroup );
+			for ( int g = 0; g < groups.Count(); ++g )
+			{
+				CUtlVector<msurface2_t *> surfaces;
+				sortList.GetSurfaceListForGroup( surfaces, *groups[g] );
+				for ( int i = 0; i < surfaces.Count(); ++i )
+				{
+					if ( !( MSurf_Flags( surfaces[i] ) & SURFDRAW_DYNAMIC ) &&
+					     RenderCoreWorldDraw_Takes( surfaces[i] ) )
+						coreSurfaces.AddToTail( MSurf_Index( surfaces[i] ) );
+				}
+			}
+		}
+		RenderCoreWorldDraw_BeginView( coreSurfaces.Base(), coreSurfaces.Count() );
+	}
 	Shader_WorldEnd( pRenderList, flags, waterZAdjust );
+	RenderCoreWorldDraw_EndView();
 
 #ifdef DEBUG_SURF
 	{

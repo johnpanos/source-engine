@@ -1382,6 +1382,114 @@ inline bool DoublesOn( Suite &s, IRenderDevice2 &device, QueueKind queue, const 
 	return s.That( doubled, "D15", what );
 }
 
+// D19 block-compressed formats: without kTextureCompressionBC a kBC* texture
+// fails kUnsupported. With it, a BC1 and a BC3 texture of 12x6 texels and two
+// mips (the second 6x3, so not a multiple of the block) take whole blocks
+// (RegionBytes); uploaded mip by mip and copied back, their bytes are
+// unchanged. A copy that splits a block, a clear, an attachment usage and a
+// multisampled description fail.
+inline void BlockCompressedFormats( Suite &s )
+{
+	auto device = s.Create();
+	if ( !device )
+		return;
+	TextureDesc desc;
+	desc.format = Format::kBC1Unorm;
+	desc.width = 12;
+	desc.height = 6;
+	desc.mipLevels = 2;
+	desc.usages = {
+	    ResourceUsage::kSampled, ResourceUsage::kCopyDestination, ResourceUsage::kCopySource };
+	if ( !device->Facts().capabilities.Has( Capability::kTextureCompressionBC ) )
+	{
+		auto made = device->CreateTexture( desc );
+		s.That( !made && made.Error().status == DeviceStatus::kUnsupported, "D19",
+		    "without kTextureCompressionBC a block-compressed texture fails kUnsupported" );
+		return;
+	}
+	s.That( RegionBytes( Format::kBC1Unorm, 12, 6 ) == 48 &&
+	            RegionBytes( Format::kBC3Unorm, 12, 6 ) == 96 &&
+	            RegionBytes( Format::kBC1Unorm, 6, 3 ) == 16 &&
+	            RegionBytes( Format::kBC5Unorm, 1, 1 ) == 16,
+	    "D19", "a region takes whole blocks" );
+	TextureDesc attachment = desc;
+	attachment.usages = { ResourceUsage::kSampled, ResourceUsage::kColorAttachment };
+	TextureDesc multisampled = desc;
+	multisampled.mipLevels = 1;
+	multisampled.sampleCount = 4;
+	auto badAttachment = device->CreateTexture( attachment );
+	auto badSamples = device->CreateTexture( multisampled );
+	s.That( !badAttachment && badAttachment.Error().status == DeviceStatus::kInvalidDescription &&
+	            !badSamples && badSamples.Error().status == DeviceStatus::kInvalidDescription,
+	    "D19", "an attachment usage or several samples fail kInvalidDescription" );
+
+	for ( const Format format : { Format::kBC1Unorm, Format::kBC3Unorm } )
+	{
+		TextureDesc blocks = desc;
+		blocks.format = format;
+		auto texture = device->CreateTexture( blocks );
+		if ( !s.That( texture.HasValue(), "D19", "a block-compressed texture is created" ) )
+			return;
+		const std::uint64_t first = RegionBytes( format, 12, 6 );
+		const std::uint64_t bytes = first + RegionBytes( format, 6, 3 );
+		const std::vector<std::byte> pattern = Pattern( bytes, 19 );
+		const BufferId source = s.Buffer(
+		    *device, bytes, { ResourceUsage::kCopyDestination, ResourceUsage::kCopySource } );
+		const BufferId out = s.Buffer(
+		    *device, bytes, { ResourceUsage::kCopyDestination, ResourceUsage::kCopySource } );
+		auto encoder = device->BeginEncoder( QueueKind::kGraphics );
+		if ( !encoder )
+			return;
+		CommandEncoder &e = encoder.Value();
+		const TextureId id = texture.Value();
+		e.TransitionBuffer( source, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+		e.WriteBuffer( source, 0, pattern );
+		e.TransitionBuffer( source, ResourceUsage::kCopyDestination, ResourceUsage::kCopySource );
+		e.TransitionTexture( id, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+		e.CopyBufferToTexture( source, id, { 0, 0, 0, 12, 6 } );
+		e.CopyBufferToTexture( source, id, { first, 1, 0, 6, 3 } );
+		e.TransitionTexture( id, ResourceUsage::kCopyDestination, ResourceUsage::kCopySource );
+		e.TransitionBuffer( out, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+		e.CopyTextureToBuffer( id, out, { 0, 0, 0, 12, 6 } );
+		e.CopyTextureToBuffer( id, out, { first, 1, 0, 6, 3 } );
+		e.TransitionBuffer( out, ResourceUsage::kCopyDestination, ResourceUsage::kCopySource );
+		const std::optional<CompletionToken> token = s.Run( *device, e );
+		const bool finished = token && s.Finish( *device, *token );
+		const std::string what = std::string( format == Format::kBC1Unorm ? "BC1" : "BC3" ) +
+		                         ": both mips copy in and back unchanged";
+		s.That( finished && s.ReadBack( *device, out, bytes ) == pattern, "D19", what.c_str() );
+
+		// A copy that splits a block, and a clear, fail their submissions.
+		auto refused = [&]( auto &&record )
+		{
+			auto bad = device->BeginEncoder( QueueKind::kGraphics );
+			if ( !bad )
+				return false;
+			record( bad.Value() );
+			auto submitted = device->Submit( QueueKind::kGraphics, { &bad.Value(), 1 }, {} );
+			return !submitted && submitted.Error().status == DeviceStatus::kInvalidState;
+		};
+		const bool split = refused(
+		    [&]( CommandEncoder &bad )
+		    {
+			    bad.TransitionTexture(
+			        id, ResourceUsage::kCopySource, ResourceUsage::kCopyDestination );
+			    bad.CopyBufferToTexture( source, id, { 0, 0, 0, 3, 4 } );
+		    } );
+		const bool cleared = refused(
+		    [&]( CommandEncoder &bad )
+		    {
+			    bad.TransitionTexture(
+			        id, ResourceUsage::kCopySource, ResourceUsage::kCopyDestination );
+			    bad.ClearTexture( id, { 1.0f, 0.0f, 0.0f, 1.0f } );
+		    } );
+		s.That( split && cleared, "D19", "a copy that splits a block, and a clear, are refused" );
+		(void)device->Release( id, token.value_or( CompletionToken{} ) );
+		(void)device->Release( source, token.value_or( CompletionToken{} ) );
+		(void)device->Release( out, token.value_or( CompletionToken{} ) );
+	}
+}
+
 inline void CapabilityHonesty( Suite &s )
 {
 	if ( !s.m_Driver.rasterizes )
@@ -1461,6 +1569,7 @@ inline void RunDeviceConformance( testing::Checks &checks, const DeviceDriver &d
 	detail::DrawConstants( suite );
 	detail::ColorWriteMasks( suite );
 	detail::ExternalImagesClause( suite );
+	detail::BlockCompressedFormats( suite );
 	detail::CapabilityHonesty( suite );
 }
 

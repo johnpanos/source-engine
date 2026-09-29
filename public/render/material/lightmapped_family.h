@@ -57,10 +57,26 @@ inline constexpr float kLightmapScaleLinear = 4.5947938f;
 // The family's shader constants (std140, the Material block of lightmapped.frag).
 struct LightmappedConstants
 {
-	float tint[4] = { kLightmapScaleLinear, kLightmapScaleLinear, kLightmapScaleLinear, 1.0f };
-	float flags[4] = {}; // vertexcolor, alphatest, reference, unused
+	float tint[4] = { 1.0f, 1.0f, 1.0f, 1.0f }; // $color, $alpha
+	// vertexcolor, alphatest, reference, 1 when lighting is one (an unlit
+	// material drawn as this term's degenerate case)
+	float flags[4] = {};
 };
 static_assert( sizeof( LightmappedConstants ) == 32 );
+
+// The frame's terms (std140, the Frame block of lightmapped.frag): one
+// lightmap term whose scale depends on how the pages encode light, and the
+// output's linear scale. LDR pages hold gamma light at half overbright
+// (scale 2^2.2 after sRGB decode); integer-HDR pages hold linear light / 16
+// (scale 16); the output scale is the frame's linear tone-mapping scale
+// (1 without HDR). The defaults are LDR's, where the family's pixel cases sit.
+struct LightmappedFrame
+{
+	// lightmap scale, output scale, 1 to encode sRGB in the shader (a target
+	// without an sRGB view), unused
+	float light[4] = { kLightmapScaleLinear, 1.0f, 0.0f, 0.0f };
+};
+static_assert( sizeof( LightmappedFrame ) == 16 );
 
 // The draw constants (lightmapped.vert): row-major with column vectors.
 struct LightmappedDrawConstants
@@ -104,7 +120,8 @@ class LightmappedFamily
 {
 public:
 	static foundation::Expected<std::unique_ptr<LightmappedFamily>, LightmappedStatus> Create(
-	    device::IRenderDevice2 &device, device::Format colorFormat, device::Format depthFormat );
+	    device::IRenderDevice2 &device, device::Format colorFormat, device::Format depthFormat,
+	    std::uint32_t sampleCount = 1 );
 	~LightmappedFamily();
 	LightmappedFamily( const LightmappedFamily & ) = delete;
 	LightmappedFamily &operator=( const LightmappedFamily & ) = delete;
@@ -112,6 +129,8 @@ public:
 	device::BindGroupLayoutId MaterialLayout() const { return m_MaterialLayout; }
 	// The draw group's layout: binding 0 the lightmap page, 1 its sampler.
 	device::BindGroupLayoutId DrawLayout() const { return m_DrawLayout; }
+	// The frame group's layout: binding 0 the LightmappedFrame block.
+	device::BindGroupLayoutId FrameLayout() const { return m_FrameLayout; }
 	// The pipeline for a claim's blend mode and alpha write (created on first use).
 	foundation::Expected<device::PipelineId, LightmappedStatus> Pipeline(
 	    const LightmappedClaim &claim );
@@ -124,6 +143,8 @@ public:
 	// A draw group for a lightmap page ('page', a TextureCache name staged as
 	// sRGB, at binding 0 with its sampler at 1), for DrawGroups.
 	GroupRequest LightmapGroup( std::string page, const device::SamplerDesc &sampler = {} ) const;
+	// The frame group for these terms (role kFrame).
+	GroupRequest FrameGroup( const LightmappedFrame &frame ) const;
 
 private:
 	explicit LightmappedFamily( device::IRenderDevice2 &device ) : m_Device( device ) {}
@@ -131,8 +152,10 @@ private:
 	device::IRenderDevice2 &m_Device;
 	device::Format m_ColorFormat = device::Format::kUnknown;
 	device::Format m_DepthFormat = device::Format::kUnknown;
+	std::uint32_t m_SampleCount = 1;
 	device::BindGroupLayoutId m_MaterialLayout;
 	device::BindGroupLayoutId m_DrawLayout;
+	device::BindGroupLayoutId m_FrameLayout;
 	std::map<std::pair<device::BlendMode, bool>, device::PipelineId> m_Pipelines;
 };
 

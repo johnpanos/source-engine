@@ -34,6 +34,7 @@ struct RenderCoreHostState
 	render::scene::SceneFactory sceneFactory;
 	const char *deviceName = nullptr;
 	render::legacy::ILegacyCapabilities *capabilities = nullptr;
+	IRenderCoreWorld *world = nullptr;
 	std::unique_ptr<render::scene::IRenderScene> worldScene;
 	std::vector<int> worldLeaves; // snapshot index -> leaf, or -(prop + 1) (RFC 0016 K5)
 	bool inFrame = false;
@@ -67,6 +68,7 @@ DLL_EXPORT bool Engine_BindRenderCore( const RenderCoreBinding *pBinding )
 	host.sceneFactory = pBinding->sceneFactory;
 	host.deviceName = pBinding->deviceName;
 	host.capabilities = pBinding->capabilities;
+	host.world = pBinding->world;
 	host.bound = true;
 	return true;
 }
@@ -74,6 +76,11 @@ DLL_EXPORT bool Engine_BindRenderCore( const RenderCoreBinding *pBinding )
 bool RenderCoreHost_IsBound()
 {
 	return Host().bound;
+}
+
+IRenderCoreWorld *RenderCoreHost_World()
+{
+	return Host().bound ? Host().world : nullptr;
 }
 
 world_mesh_gpu::IWorldMeshUpload *RenderCoreHost_WorldMeshUpload()

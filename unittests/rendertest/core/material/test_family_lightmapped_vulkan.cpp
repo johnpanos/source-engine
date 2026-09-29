@@ -49,6 +49,8 @@ using namespace render::material;
 using namespace rendertest::families;
 namespace vulkan = render::device::vulkan;
 
+const LightmappedFrame kLdrFrame;
+
 const char *const kCaseFile = "quality/fixtures/legacy-shaders/families/lightmapped.vdf";
 const char *const kFixture = "quality/fixtures/render-families/lightmapped-port-v1.vdf";
 
@@ -190,6 +192,9 @@ int main()
 			        std::as_bytes( std::span( &claim.constants, 1 ) ), { texture } } );
 			draw.groups.push_back( { device::BindGroupRole::kDraw, family.Value()->DrawLayout(), {},
 			    { testCase.lightmap } } );
+			// The frame terms at their LDR defaults (the port's cases are LDR).
+			draw.groups.push_back( { device::BindGroupRole::kFrame, family.Value()->FrameLayout(),
+			    std::as_bytes( std::span( &kLdrFrame, 1 ) ), {} } );
 			draw.vertices = std::as_bytes( std::span( quad ) );
 			draw.vertexCount = std::uint32_t( quad.size() );
 			std::copy( testCase.clear, testCase.clear + 4, draw.clear );

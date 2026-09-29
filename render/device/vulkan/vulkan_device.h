@@ -156,6 +156,7 @@ struct AdapterChoice
 	std::uint32_t presentFamily = 0; // host mode: the family that presents
 	bool core13 = false;             // else Vulkan 1.2 with the KHR extensions
 	bool anisotropy = false;
+	bool textureCompressionBC = false; // the kBC* formats (D19)
 	// dmabuf export of LINEAR images (external memory fd, dma_buf, DRM
 	// format modifiers): the adapter claims kExternalImages.
 	bool externalImages = false;

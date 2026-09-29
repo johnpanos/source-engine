@@ -28,6 +28,7 @@ class IRenderStageMarkers;   // render/legacy/stage_markers.h (legacy-interop)
 class IRenderMaterialBlocks; // render/legacy/material_blocks.h (legacy-interop)
 #include "render/legacy/capabilities.h"
 #include "render/legacy/core_passes.h"
+#include "render/composition/render_core_world.h"
 #include "render/legacy_shader_provider.h"
 #include "render/scene/scene.h"
 
@@ -101,6 +102,8 @@ struct RenderCoreBinding
 	// The frontend's core-pass recorder, which the root binds into a legacy
 	// backend that has slots (render/legacy/core_passes.h).
 	render::legacy::ICorePassRecorder *corePasses = nullptr;
+	// The BSP world drawn by the core; null when no legacy backend is composed.
+	IRenderCoreWorld *world = nullptr;
 	// For logs and evidence only (CAP011 rule 5): "null", "vulkan", "gl".
 	const char *deviceName = nullptr;
 };

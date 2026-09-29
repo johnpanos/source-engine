@@ -38,7 +38,8 @@ enum class Defect
 	kRecyclesUploads,     // D10: upload ranges retire at submission, not completion
 	kSubmitsPartially,    // D8: drops erroring encoders and runs the rest
 	kIgnoresUsageState,   // D12: accepts transitions from any usage
-	kFillsDrawConstants   // D16: zero-fills a bound pipeline's draw constants
+	kFillsDrawConstants,  // D16: zero-fills a bound pipeline's draw constants
+	kAttachesBlocks       // D19: creates a block-compressed attachment without it
 };
 
 // Draw-constant block sizes by pipeline, for kFillsDrawConstants.
@@ -186,6 +187,13 @@ public:
 			if ( texture && leaked )
 				(void)m_Inner->Release( leaked.Value(), {} );
 			return texture;
+		}
+		if ( m_Defect == Defect::kAttachesBlocks && IsBlockCompressed( desc.format ) &&
+		     desc.usages.Has( ResourceUsage::kColorAttachment ) )
+		{
+			TextureDesc sampled = desc;
+			sampled.usages = { ResourceUsage::kSampled };
+			return m_Inner->CreateTexture( sampled );
 		}
 		return m_Inner->CreateTexture( desc );
 	}
@@ -352,6 +360,7 @@ int main()
 	    { Defect::kSubmitsPartially, "under-test.D8 " },
 	    { Defect::kIgnoresUsageState, "under-test.D12 " },
 	    { Defect::kFillsDrawConstants, "under-test.D16 " },
+	    { Defect::kAttachesBlocks, "under-test.D19 " },
 	};
 	for ( const Case &c : cases )
 	{

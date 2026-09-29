@@ -320,7 +320,7 @@ public:
 	}
 	// Appends a slot record at this point of the stream (a no-op without a
 	// recorder).
-	void QueueCorePass( uint32_t tag );
+	void QueueCorePass( uint32_t tag, float lightmapScale, float outputScale );
 	// Slots whose sections this context ran, and the frames that had one.
 	uint64_t CorePassesRun() const { return m_corePassesRun; }
 
@@ -1408,9 +1408,40 @@ private:
 	// The scene stage's sections: one per slot record, in stream order.
 	void RecordCorePassSections( render::device::CommandEncoder &encoder );
 	render::legacy::ICorePassRecorder *m_corePassRecorder = nullptr;
-	std::vector<render::device::TextureId> m_coreColor; // per back buffer
+	// Managed textures imported for core passes (ICoreTextures), by handle:
+	// the image imported and its port texture.
+	class CoreTextures final : public render::legacy::ICoreTextures
+	{
+	public:
+		explicit CoreTextures( CVulkanContext &context ) : m_context( context ) {}
+		render::device::TextureId Import( int handle, bool srgb ) override
+		{
+			return m_context.ImportManagedTexture( handle - 1, srgb );
+		}
+		render::device::SamplerDesc Sampler( int handle ) override
+		{
+			return m_context.ManagedTextureSampler( handle - 1 );
+		}
+
+	private:
+		CVulkanContext &m_context;
+	};
+	struct CoreTextureImport
+	{
+		VkImage image = VK_NULL_HANDLE;
+		render::device::TextureId id[2]; // unorm, sRGB
+	};
+	render::device::TextureId ImportManagedTexture( int handle, bool srgb );
+	render::device::SamplerDesc ManagedTextureSampler( int handle ) const;
+	// Releases a managed texture's import behind the frame being recorded.
+	void ReleaseManagedImport( int handle );
+	CoreTextures m_coreTextures{ *this };
+	std::vector<CoreTextureImport> m_coreTextureImports;
+	std::vector<render::device::TextureId> m_coreColor;     // per back buffer
+	std::vector<render::device::TextureId> m_coreColorSrgb; // its sRGB view
 	std::vector<render::device::TextureId> m_coreDepth;
 	render::device::TextureId m_coreMsColor;
+	render::device::TextureId m_coreMsColorSrgb;
 	render::device::TextureId m_coreMsDepth;
 	uint64_t m_corePassesRun = 0;
 	bool RecreateSwapchain( std::string *outError );
@@ -2274,7 +2305,8 @@ private:
 		bool clearDepth = false;
 		float clearValue[4] = { 0, 0, 0, 1 };
 		int copyDst = -1;
-		uint32_t corePass = 0; // kRecordCorePass: the slot's tag
+		uint32_t corePass = 0;             // kRecordCorePass: the slot's tag
+		float corePassLight[2] = { 1, 1 }; // and its lightmap and output scales
 		// Occlusion query slot of a begin/end record, and which issue of that
 		// query the begin record is.
 		int query = -1;

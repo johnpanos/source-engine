@@ -167,8 +167,16 @@ void RenderCoreWorld_EndFrame()
 	capture.records.Clear();
 }
 
+static int s_nViewDepth = 0;
+
+int RenderCoreWorld_ViewDepth()
+{
+	return s_nViewDepth;
+}
+
 void RenderCoreWorld_ViewBegin()
 {
+	++s_nViewDepth;
 	CaptureState &capture = Capture();
 	if ( capture.capturing )
 		capture.stack.emplace_back();
@@ -318,6 +326,7 @@ void WriteViewRecord( const ViewRecord &view )
 
 void RenderCoreWorld_ViewEnd()
 {
+	s_nViewDepth = MAX( 0, s_nViewDepth - 1 );
 	CaptureState &capture = Capture();
 	if ( !capture.capturing || capture.stack.empty() )
 		return;

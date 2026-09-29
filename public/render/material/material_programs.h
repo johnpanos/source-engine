@@ -53,6 +53,9 @@ struct ProgramTexture
 	std::string name;                 // its TextureCache name
 	std::uint32_t samplerBinding = 0; // the sampler's binding
 	device::SamplerDesc sampler;
+	// Sampled through an sRGB view of its format (the family decodes it
+	// before filtering, as D3D9's SRGBTEXTURE does).
+	bool srgb = false;
 };
 
 struct GroupRequest

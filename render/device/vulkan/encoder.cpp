@@ -431,13 +431,13 @@ bool VulkanDevice::Validate(
 	auto copyFits =
 	    []( const TextureRecord &t, const BufferRecord &b, const TextureBufferCopy &copy )
 	{
-		const std::uint32_t texel = BytesPerTexel( t.desc.format );
 		if ( copy.mip >= t.desc.mipLevels || copy.layer >= t.layers || copy.width == 0 ||
 		     copy.height == 0 || copy.width > t.Width( copy.mip ) ||
 		     copy.height > t.Height( copy.mip ) || t.desc.sampleCount != 1 ||
-		     copy.bufferOffset % texel != 0 )
+		     !CopyRegionAligned( t.desc.format, t.Width( copy.mip ), t.Height( copy.mip ),
+		         copy.width, copy.height, copy.bufferOffset ) )
 			return false;
-		const std::uint64_t bytes = static_cast<std::uint64_t>( copy.width ) * copy.height * texel;
+		const std::uint64_t bytes = RegionBytes( t.desc.format, copy.width, copy.height );
 		return copy.bufferOffset <= b.desc.size && bytes <= b.desc.size - copy.bufferOffset;
 	};
 
@@ -469,9 +469,13 @@ bool VulkanDevice::Validate(
 			break;
 		}
 		case Op::kClearTexture:
-			if ( !texture( command.a, ResourceUsage::kCopyDestination ) )
+		{
+			// A block-compressed texture is written by copies only (D19).
+			const TextureRecord *t = texture( command.a, ResourceUsage::kCopyDestination );
+			if ( !t || IsBlockCompressed( t->desc.format ) )
 				return false;
 			break;
+		}
 		case Op::kWriteBuffer:
 		{
 			BufferRecord *b = buffer( command.a, ResourceUsage::kCopyDestination );

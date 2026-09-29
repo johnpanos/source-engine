@@ -28,6 +28,8 @@ void RenderCoreWorld_LevelInit();
 // view), so records are a stack.
 void RenderCoreWorld_ViewBegin();
 void RenderCoreWorld_ViewEnd();
+// The number of 3D views open now (1 inside the outermost).
+int RenderCoreWorld_ViewDepth();
 
 // Whether a capture records this frame (a cheap test for the prop hook).
 bool RenderCoreWorld_Capturing();

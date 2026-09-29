@@ -72,10 +72,18 @@ public:
 		           : 1u << static_cast<std::uint32_t>( frame::Stage::kOpaque );
 	}
 
+	void SetForwarded( ICorePassRecorder *recorder ) { m_Forwarded = recorder; }
+
 	void RecordSlot(
 	    std::uint32_t tag, device::CommandEncoder &encoder, const CorePassTarget &target ) override
 	{
 		m_Recorded.fetch_add( 1, std::memory_order_relaxed );
+		if ( tag & kCorePassForwarded )
+		{
+			if ( m_Forwarded )
+				m_Forwarded->RecordSlot( tag, encoder, target );
+			return;
+		}
 		encoder.BeginLabel( "core pass" );
 		if ( m_Probe == CorePassProbe::kSeededClear && target.color.IsValid() )
 		{
@@ -92,10 +100,17 @@ public:
 		(void)tag;
 	}
 
+	void ReleaseDevice( device::IRenderDevice2 &device ) override
+	{
+		if ( m_Forwarded )
+			m_Forwarded->ReleaseDevice( device );
+	}
+
 	std::uint64_t Recorded() const { return m_Recorded.load( std::memory_order_relaxed ); }
 
 private:
 	CorePassProbe m_Probe = CorePassProbe::kNone;
+	ICorePassRecorder *m_Forwarded = nullptr;
 	std::atomic<std::uint64_t> m_Recorded{ 0 };
 };
 
@@ -181,6 +196,11 @@ public:
 	ICorePassRecorder *CorePasses() override { return &m_CorePasses; }
 	void SetCorePassProbe( CorePassProbe probe ) override { m_CorePasses.SetProbe( probe ); }
 	std::uint64_t CorePassesRecorded() const override { return m_CorePasses.Recorded(); }
+	void SetForwardedRecorder( ICorePassRecorder *recorder ) override
+	{
+		m_CorePasses.SetForwarded( recorder );
+	}
+	ICorePassSlots *CorePassSlots() override { return m_Capabilities.CorePassSlots(); }
 	std::uint32_t ProviderCreates() const override { return m_Creates; }
 	ILegacyCapabilities *Capabilities() override { return &m_Capabilities; }
 	void BindRenderCallQueue( const RenderCallQueueHost *host ) override

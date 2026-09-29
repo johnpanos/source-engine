@@ -90,7 +90,8 @@ class UnlitFamily
 {
 public:
 	static foundation::Expected<std::unique_ptr<UnlitFamily>, UnlitStatus> Create(
-	    device::IRenderDevice2 &device, device::Format colorFormat, device::Format depthFormat );
+	    device::IRenderDevice2 &device, device::Format colorFormat, device::Format depthFormat,
+	    std::uint32_t sampleCount = 1 );
 	~UnlitFamily();
 	UnlitFamily( const UnlitFamily & ) = delete;
 	UnlitFamily &operator=( const UnlitFamily & ) = delete;
@@ -111,6 +112,7 @@ private:
 	device::IRenderDevice2 &m_Device;
 	device::Format m_ColorFormat = device::Format::kUnknown;
 	device::Format m_DepthFormat = device::Format::kUnknown;
+	std::uint32_t m_SampleCount = 1;
 	device::BindGroupLayoutId m_MaterialLayout;
 	std::map<std::pair<device::BlendMode, bool>, device::PipelineId> m_Pipelines;
 };

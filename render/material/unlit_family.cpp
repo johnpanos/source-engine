@@ -75,11 +75,12 @@ UnlitClaim ClaimUnlit( const ParameterBlock &block )
 }
 
 foundation::Expected<std::unique_ptr<UnlitFamily>, UnlitStatus> UnlitFamily::Create(
-    IRenderDevice2 &device, Format colorFormat, Format depthFormat )
+    IRenderDevice2 &device, Format colorFormat, Format depthFormat, std::uint32_t sampleCount )
 {
 	std::unique_ptr<UnlitFamily> family( new UnlitFamily( device ) );
 	family->m_ColorFormat = colorFormat;
 	family->m_DepthFormat = depthFormat;
+	family->m_SampleCount = sampleCount;
 	const BindingDesc bindings[] = {
 	    { 0, BindingKind::kUniformBuffer, 1, { ShaderStage::kFragment } },
 	    { 1, BindingKind::kSampledTexture, 1, { ShaderStage::kFragment } },
@@ -135,6 +136,7 @@ foundation::Expected<PipelineId, UnlitStatus> UnlitFamily::Pipeline( const Unlit
 	desc.blends = blends;
 	desc.colorWriteMasks = writes;
 	desc.depthFormat = m_DepthFormat;
+	desc.sampleCount = m_SampleCount;
 	desc.debugName = "render.material.unlit";
 	auto pipeline = m_Device.CreatePipeline( desc );
 	if ( !pipeline )
@@ -157,7 +159,7 @@ foundation::Expected<ProgramRequest, UnlitStatus> UnlitFamily::Request(
 	request.material.constantsBinding = 0;
 	const auto bytes = std::as_bytes( std::span( &claim.constants, 1 ) );
 	request.material.constants.assign( bytes.begin(), bytes.end() );
-	request.material.textures.push_back( { 1, std::move( baseTexture ), 2, sampler } );
+	request.material.textures.push_back( { 1, std::move( baseTexture ), 2, sampler, true } );
 	return request;
 }
 

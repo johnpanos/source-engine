@@ -70,12 +70,43 @@ enum class Format : std::uint8_t
 	kRGBA32Float,
 	kD32Float,
 	kD24UnormS8,
-	kD32FloatS8, // D32 depth with an 8-bit stencil
+	kD32FloatS8,  // D32 depth with an 8-bit stencil
+	kRGBA16Unorm, // D3D9's A16B16G16R16 (integer-HDR lightmap pages)
+	// Block-compressed, 4x4 texels per block (D3D9's DXT1/DXT3/DXT5, ATI1N,
+	// ATI2N); sampled and copied only, on a device that claims
+	// Capability::kTextureCompressionBC. BC1 keeps its one-bit alpha.
+	kBC1Unorm,
+	kBC1Srgb,
+	kBC2Unorm,
+	kBC2Srgb,
+	kBC3Unorm,
+	kBC3Srgb,
+	kBC4Unorm,
+	kBC5Unorm,
 	kCount
 };
 
+// Bytes per texel of an uncompressed format; 0 for a block-compressed one
+// (use BlockOf and RegionBytes).
 std::uint32_t BytesPerTexel( Format format );
 bool IsDepthFormat( Format format );
+bool IsBlockCompressed( Format format );
+
+// A format's unit of storage: one texel, or a block of a compressed format.
+struct FormatBlock
+{
+	std::uint32_t width = 1;
+	std::uint32_t height = 1;
+	std::uint32_t bytes = 0;
+};
+FormatBlock BlockOf( Format format );
+// The bytes of a tightly packed width x height region: whole blocks.
+std::uint64_t RegionBytes( Format format, std::uint32_t width, std::uint32_t height );
+// Whether a copy of width x height texels at the origin of a mip that is
+// mipWidth x mipHeight covers whole blocks (or reaches the mip's edge), and
+// its buffer offset is a multiple of the block's bytes.
+bool CopyRegionAligned( Format format, std::uint32_t mipWidth, std::uint32_t mipHeight,
+    std::uint32_t width, std::uint32_t height, std::uint64_t bufferOffset );
 // A depth format with a stencil aspect.
 bool HasStencil( Format format );
 

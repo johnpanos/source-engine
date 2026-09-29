@@ -42,6 +42,7 @@
 #include "render/scene/draw_list.h"
 
 #include <cstdint>
+#include <span>
 
 namespace render::pass::opaque
 {
@@ -85,6 +86,9 @@ struct OpaqueSources
 	// that read them (a lookup table, a view's lighting).
 	const material::DrawGroup *frame = nullptr;
 	const material::DrawGroup *view = nullptr;
+	// More frame groups, for families whose frame layouts differ; a draw
+	// takes the group (frame or one of these) of its program's frame layout.
+	std::span<const material::DrawGroup *const> frames;
 };
 
 // Adds the draw pass. The snapshot, list and sources are read here; the

@@ -32,7 +32,8 @@ enum class Capability : std::uint8_t
 	kAsyncCompute,      // a compute queue separate from graphics
 	kAsyncTransfer,     // a transfer queue separate from graphics
 	kRayQuery,
-	kExternalImages, // textures whose memory is exported (external_images.h, clause D18)
+	kExternalImages,       // textures whose memory is exported (external_images.h, clause D18)
+	kTextureCompressionBC, // the kBC* formats (clause D19)
 	kCount
 };
 
