@@ -1618,3 +1618,69 @@ for it alone. The device isn't attached.
 The K1 frame-time check is the same one, and the K0 binaries predate K1,
 so the measurement closes K1's desktop frame time too. K1 is open only for
 the Fold7.
+
+## K5 plan: drawing the world and props from the scene (2026-09-28)
+
+This is the design for K5's open checks ("Pixels", "Submission cost").
+K6–K8's product items rest on the same steps. It was written from the
+current code, and nothing below is implemented yet.
+
+Facts:
+- The frame runs as stage passes on the core's device, which is the null
+  device in the Portal product. The backend records its GPU work into its
+  own command buffers (host work).
+- The backend's `VkDevice` is already an adapter `VulkanDevice`: K1's "one
+  Vulkan stack" (`host_binding.h`).
+- The backend buffers each frame as an ordered stream of draw records
+  (`DynDraw`: draw, clear, copy, query, scene capture). It records them
+  into the scene stage at frame end.
+- The world must draw inside that stream: after the view's clear and the 3D
+  skybox, and before models and translucents. A pass before or after the
+  scene stage would be cleared or drawn over.
+
+Steps, each its own slice with its own oracle:
+1. **One device for the frame.** The host device exposes its port device,
+   and the core's renderer adopts it when the backend creates its device
+   (a late binding, since the core is composed before the video mode is
+   set). Dedicated and test products keep the null device. Oracle: the
+   stage passes record on a Vulkan encoder, and the pixel families and view
+   oracles are unchanged.
+2. **The backend's scene targets as port textures.** The adapter imports a
+   native image and its current layout as a `TextureId` that the backend
+   keeps in step as it transitions. This is private to the Vulkan family
+   (CAP007). Oracle: a port pass reads and writes an imported target with
+   sync validation silent.
+3. **A core pass inside the stream.** A new record kind marks where the
+   core draws. The frontend inserts it when the client marks
+   `RENDER_STAGE_OPAQUE` for a view. At record time the backend closes its
+   rendering scope, runs the core's pass on a port encoder over the same
+   command buffer, and reopens. Oracle: an empty core pass leaves every
+   pixel family byte-identical.
+4. **World and props content.**
+   - World: batches per (material, lightmap page) from the BSP surfaces,
+     in `render.resources`' mesh cache.
+   - Materials: through `MapVariables` into their families.
+   - Textures: the backend's own images, imported (no second decode), in
+     the texture cache.
+   - Static props: meshes through the model path.
+   - The legacy world lists skip what the core draws, by leaf and prop
+     from K5's culling.
+   - Oracles: K0 views within the pixel-family tolerance, and
+     `frame_pacing.py` main-thread submission time against K5's 30% target.
+
+Order: 1, 2, 3, then the world, then static props.
+
+## K2 closure: done (2026-09-28)
+
+| K2 check | Evidence | Result |
+| --- | --- | --- |
+| Graph suite | `render.graph.v1` null (31, g++/clang++, TSan lane) and `render.graph.v1.vulkan` (the 1,000 random graphs with real work, serial and pooled, on RADV) | pass |
+| Independent model agrees | G7 on 1,000 seeded graphs | pass |
+| Bad graphs caught | `render.graph.v1.sensitivity`, 5 of 5 | pass |
+| Synchronization validated | sync validation (the adapter always enables it under `-vkvalidate`) over all 16 pixel families in both HDR modes: 32 runs, 0 validation messages; and a `testchmb_a_01` product boot: 0 messages. Integer `sky` keeps its recorded, unrelated magenta failure (R32-LEGACY-SHADERS) with no message | pass |
+| Serial equals pooled | G9 (`render.graph.recording`) on the 1,000 graphs | pass |
+| Pixels unchanged | the pixel families are byte-identical before and after the graph frames (K1 record, 17 families both HDR modes; K3 record, 32 of 32) | pass |
+
+Present, gamma, MSAA resolve, capture and queued compute run as passes of
+the frame graph (K3 slice 3). Their commands are still the backend's own,
+and their resources become port textures with the K5 plan's step 2.
