@@ -7,7 +7,7 @@
   "renders": {
     "default": {
       "blender": "5.2.2 LTS",
-      "composed_stage_sha256": "e72fb602bf6e529faf80f9e5c40d0f7c2e0ac64f2f399477f87f32c7e1e38edc",
+      "composed_stage_sha256": "916315a23bd545c818bfde523ef23ce3f7b8347743d042be05718a03d720b417",
       "cycles_device": "CPU",
       "denoising": {
         "denoiser": "OPENIMAGEDENOISE",
@@ -34,7 +34,7 @@
       "samples": 256,
       "seed": 20260929,
       "stage_layers": {
-        "quality-results/relight/testchmb_a_00_relit-preview/legacy-scene/scene.usda": "38f841b047d475fb59b88c428ebc22a5ea27fe479e7f9bc1d615f131a1b7411f"
+        "quality-results/relight/testchmb_a_00_relit-preview/legacy-scene/scene.usda": "14d3b2bc0ac4c620b79405892f66f1484471fedea18a26e433bd40fa3be173c7"
       }
     }
   },
@@ -68,13 +68,13 @@
         },
         "total": {
           "file": "default.room2.total.exr",
-          "sha256": "09c99ab3f753b9a1ed6f6e1cfef5179520a4488ad0cd6726bde79e69d953197f"
+          "sha256": "2f63a853f8ac142787638d9000cfded00dc7eb2d9d2ec16667ddbfe723436344"
         }
       },
       "finite": true,
       "index_from_state": "default",
       "judged_pixels": 196595,
-      "mean_luminance": 0.034153117843745424,
+      "mean_luminance": 0.03418827282059677,
       "object_index": {
         "LightDisk06": 1,
         "LightDisk09": 2,
@@ -162,13 +162,13 @@
         },
         "total": {
           "file": "default.vault.total.exr",
-          "sha256": "e9c2e0641e16a5c592fdaa5fc39141ab1949196af6c9d8538331360bb8d9a5c1"
+          "sha256": "9b16e95828cb227739d0861b522c5c609787083356f573e8684aaf55ea49c785"
         }
       },
       "finite": true,
       "index_from_state": "default",
       "judged_pixels": 196597,
-      "mean_luminance": 0.044207660191317305,
+      "mean_luminance": 0.04464361655682217,
       "object_index": {
         "LightDisk06": 1,
         "LightDisk09": 2,

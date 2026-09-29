@@ -2999,3 +2999,33 @@ Reproduce:
     PYTHONPATH=<usd_pythonpath> /usr/bin/python3.12 tools/quality/lighting_fixtures.py \
         render --fixture portal-pair --samples 256 --denoise
     python3 tools/quality/lighting_fixtures.py gallery --fixture portal-pair
+
+### Gallery after defects A and B (2026-09-29)
+
+Both lab defects the first gallery found are fixed, and neither was in a
+lighting term.
+- **A** (`adae3958`): the Portal 2 chamber's LMAP is a directional 2:1
+  page, and the lab now stages its flat half. portal2-chamber drops from
+  9.42 to 0.213 (chamber) and from 4.51 to 0.396 (spawn).
+- **B** (`6bed4b82`): testchmb_a_00_relit had been baked from a scene
+  extracted before `widest_triangulation`, with 1,402 zero-area triangles.
+  Blender's split normals turned sideways next to them, and part of a wall
+  baked black.
+  - The map is rebaked with current tools (preview).
+  - The bake now refuses a planar face shaded from behind.
+  - portal-chamber's denoised references were re-rendered against the new
+    scene.
+  - portal-chamber drops from 0.394 to 0.257 (room2) and from 0.595 to 0.327
+    (vault).
+
+Gallery against denoised references, `build-rc-lab` at the shared HEAD: 3
+of 35 views pass:
+- sun-colonnade yard 0.041;
+- foggy-hall clear side 0.076;
+- portal-pair closed a-portal 0.041.
+
+The remaining gaps are the unbuilt terms:
+- specular and image-based light (material-sweep, mirror-corridor);
+- projected light (projector-cookie, about 1.0);
+- media (foggy-hall fog, 0.42–0.50);
+- portals (portal-pair, which K8 draws; room B is dark in the lab).
