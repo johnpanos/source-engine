@@ -204,17 +204,17 @@ struct AppState
 	std::string openOnStart;
 	bool startMaximized = false; // --maximized: window at the screen origin
 	std::string mountOnStart;    // comma-separated _dir.vpk paths to mount at launch
-
-	// Mounted game assets and the material catalog resolved over them. The catalog
-	// borrows the search path, which borrows the archives; declaration order here
-	// keeps them alive together and destroyed in the correct (reverse) order.
-	hammer::adapters::platform::DiskByteStore byteStore;
 	std::string mounted;         // the list mounted now ("Reload Game Assets" remounts it)
 	std::string instanceRoots;   // --instances: more func_instance search roots (comma-separated)
 	// The device's live resources once the viewports were composed, so
 	// teardown can report what they left behind.
 	render::device::IRenderDevice2 *device = nullptr;
 	std::size_t deviceBaseline = 0;
+
+	// Mounted game assets and the material catalog resolved over them. The catalog
+	// borrows the search path, which borrows the archives; declaration order here
+	// keeps them alive together and destroyed in the correct (reverse) order.
+	hammer::adapters::platform::DiskByteStore byteStore;
 	std::vector<std::unique_ptr<hammer::formats::VpkArchive>> archives;
 	hammer::formats::SearchPathAssets assets;
 	std::unique_ptr<hammer::formats::MaterialCatalog> catalog;
@@ -465,12 +465,12 @@ gboolean OnInstanceFilesTick( gpointer user_data )
 // number of materials the catalog can enumerate (0 on total failure).
 std::size_t MountAssets( AppState *st, const std::string &vpkList )
 {
+	st->mounted = vpkList;
 	st->catalog.reset();
 	st->archives.clear();
 	st->assets = hammer::formats::SearchPathAssets();
 
 	std::size_t begin = 0;
-	st->mounted = vpkList;
 	while ( begin <= vpkList.size() )
 	{
 		const std::size_t comma = vpkList.find( ',', begin );
@@ -845,21 +845,6 @@ void ActionQuit( GSimpleAction *, GVariant *, gpointer user_data )
 	}
 }
 
-void ActionResetViews( GSimpleAction *, GVariant *, gpointer user_data )
-{
-	AppState *st = static_cast<AppState *>( user_data );
-	for ( Viewport &vp : st->viewports )
-	{
-		SyncViewSize( vp );
-	}
-	st->workspace.FrameDocument();
-	RefreshScene( st );
-}
-
-void SetTool( AppState *st, const char *actionId )
-{
-	RunCatalogAction( st, actionId );
-	const std::string tool = ActiveToolName( st );
 // Writes each view's current frame as <map>-<view>.png into
 // HAMMER_GTK_CAPTURE_DIR, else beside the map (or the working directory for an
 // unsaved map). The frame is the texture the view shows.
@@ -903,6 +888,21 @@ void ActionReloadAssets( GSimpleAction *, GVariant *, gpointer user_data )
 	MountAssets( st, list );
 }
 
+void ActionResetViews( GSimpleAction *, GVariant *, gpointer user_data )
+{
+	AppState *st = static_cast<AppState *>( user_data );
+	for ( Viewport &vp : st->viewports )
+	{
+		SyncViewSize( vp );
+	}
+	st->workspace.FrameDocument();
+	RefreshScene( st );
+}
+
+void SetTool( AppState *st, const char *actionId )
+{
+	RunCatalogAction( st, actionId );
+	const std::string tool = ActiveToolName( st );
 	SetHelp(
 	    st, tool == tools::BlockTool::kName
 	            ? "Block tool (Shift+B): drag in a 2D view (again in another view for the height), "
@@ -1067,6 +1067,13 @@ void PumpViews( AppState *st )
 		    {
 			    Viewport &view = st->viewports[index];
 			    view.inFlight = false;
+			    if ( !view.area )
+			    {
+				    // The window is gone: an exported frame goes straight back.
+				    if ( result && result.Value().external && st->views )
+					    (void)st->views->ReturnFrame( result.Value().external->lease );
+				    return;
+			    }
 			    GError *error = nullptr;
 			    GdkTexture *texture =
 			        result ? TextureOf( st, view.area, result.Value(), &error ) : nullptr;
@@ -1082,13 +1089,6 @@ void PumpViews( AppState *st )
 				    std::fprintf( stderr, "hammer_gtk: dmabuf frames refused (%s); reading back\n",
 				        error ? error->message : "no reason" );
 				    g_clear_error( &error );
-			    if ( !view.area )
-			    {
-				    // The window is gone: an exported frame goes straight back.
-				    if ( result && result.Value().external && st->views )
-					    (void)st->views->ReturnFrame( result.Value().external->lease );
-				    return;
-			    }
 				    st->dmabuf = false;
 				    view.dirty = true;
 			    }
@@ -1127,21 +1127,6 @@ void OnViewResized( HammerViewport *, int, int, gpointer user_data )
 	ScheduleRender( vp->app );
 }
 
-// Composes the render core the viewports draw through. Failing leaves the
-// views blank and says why in the status bar; editing still works.
-void ComposeRenderer( AppState *st )
-{
-	RenderCoreConfig config;
-	config.device = "vulkan";
-	config.features = "";
-	config.legacyBackend = nullptr;
-	RenderCoreResult result;
-	RenderCore *core = RenderCore_Create( &config, &result );
-	const RenderCoreBinding *binding = core ? RenderCore_GetBinding( core ) : nullptr;
-	if ( !core || !binding || !binding->device )
-	{
-		st->renderError = std::string( "Viewports unavailable: " ) +
-		                  ( result.message[0] ? result.message : "no render device" );
 // The views' widgets go with the window: nothing may reach them afterwards
 // (a pending render idle, a late frame reply).
 void OnMainWindowDestroy( GtkWidget *, gpointer user_data )
@@ -1160,6 +1145,21 @@ void OnMainWindowDestroy( GtkWidget *, gpointer user_data )
 	st->window = nullptr;
 }
 
+// Composes the render core the viewports draw through. Failing leaves the
+// views blank and says why in the status bar; editing still works.
+void ComposeRenderer( AppState *st )
+{
+	RenderCoreConfig config;
+	config.device = "vulkan";
+	config.features = "";
+	config.legacyBackend = nullptr;
+	RenderCoreResult result;
+	RenderCore *core = RenderCore_Create( &config, &result );
+	const RenderCoreBinding *binding = core ? RenderCore_GetBinding( core ) : nullptr;
+	if ( !core || !binding || !binding->device )
+	{
+		st->renderError = std::string( "Viewports unavailable: " ) +
+		                  ( result.message[0] ? result.message : "no render device" );
 		if ( core )
 		{
 			RenderCore_Destroy( core );
@@ -1171,6 +1171,8 @@ void OnMainWindowDestroy( GtkWidget *, gpointer user_data )
 	st->views = std::make_unique<hammer::render_adapter::ViewportService>(
 	    *binding->device, *st->renderThread, st->uiRunner );
 	st->frameReturns->service = st->views.get();
+	st->device = binding->device;
+	st->deviceBaseline = binding->device->LiveResourceCount();
 	const char *readback = std::getenv( "HAMMER_GTK_READBACK" );
 	st->dmabuf = binding->device->ExternalImages() != nullptr && !( readback && *readback == '1' );
 	std::fprintf( stderr, "hammer_gtk: viewport frames as %s\n",
@@ -1186,8 +1188,6 @@ tools::Modifiers ModifiersOf( GdkModifierType state )
 		bits |= tools::kShift;
 	if ( state & GDK_CONTROL_MASK )
 		bits |= tools::kCtrl;
-	st->device = binding->device;
-	st->deviceBaseline = binding->device->LiveResourceCount();
 	if ( state & GDK_ALT_MASK )
 		bits |= tools::kAlt;
 	return tools::Mods( bits );
@@ -2213,6 +2213,8 @@ GMenu *MakeMenuModel()
 			GMenu *more = g_menu_new();
 			g_menu_append( more, "Save As…", "app.saveas" );
 			g_menu_append( more, "Mount Game Assets…", "app.mount-assets" );
+			g_menu_append( more, "Reload Game Assets", "app.reload-assets" );
+			g_menu_append( more, "Save View Captures", "app.capture-views" );
 			g_menu_append( more, "Texture Application…", "app.browse-materials" );
 			g_menu_append_section( menu, nullptr, G_MENU_MODEL( more ) );
 			g_object_unref( more );
@@ -2228,8 +2230,6 @@ GMenu *MakeMenuModel()
 			g_menu_append_section( menu, nullptr, G_MENU_MODEL( more ) );
 			g_object_unref( more );
 		}
-			g_menu_append( more, "Reload Game Assets", "app.reload-assets" );
-			g_menu_append( more, "Save View Captures", "app.capture-views" );
 		g_menu_append_submenu( bar, category.c_str(), G_MENU_MODEL( menu ) );
 		g_object_unref( menu );
 	}
@@ -2243,6 +2243,7 @@ void OnActivate( GtkApplication *app, gpointer user_data )
 
 	GtkWidget *window = gtk_application_window_new( app );
 	st->window = window;
+	g_signal_connect( window, "destroy", G_CALLBACK( OnMainWindowDestroy ), st );
 	gtk_window_set_default_size( GTK_WINDOW( window ), 1320, 840 );
 	gtk_window_set_title( GTK_WINDOW( window ), "Hammer - [untitled]" );
 
@@ -2258,7 +2259,6 @@ void OnActivate( GtkApplication *app, gpointer user_data )
 
 	// Body: [tool palette | [viewports | object bar]] with drag-resizable panels.
 	GtkWidget *rightPane = gtk_paned_new( GTK_ORIENTATION_HORIZONTAL );
-	g_signal_connect( window, "destroy", G_CALLBACK( OnMainWindowDestroy ), st );
 	gtk_paned_set_start_child( GTK_PANED( rightPane ), MakeViewportGrid( st ) );
 	gtk_paned_set_end_child( GTK_PANED( rightPane ), MakeObjectBar( st ) );
 	gtk_paned_set_resize_start_child( GTK_PANED( rightPane ), TRUE );
@@ -2693,6 +2693,8 @@ void AddActions( GtkApplication *app, AppState *st )
 	    { "saveas", ActionSaveAs, nullptr, nullptr, nullptr, { 0, 0, 0 } },
 	    { "quit", ActionQuit, nullptr, nullptr, nullptr, { 0, 0, 0 } },
 	    { "reset-views", ActionResetViews, nullptr, nullptr, nullptr, { 0, 0, 0 } },
+	    { "capture-views", ActionCaptureViews, nullptr, nullptr, nullptr, { 0, 0, 0 } },
+	    { "reload-assets", ActionReloadAssets, nullptr, nullptr, nullptr, { 0, 0, 0 } },
 	    { "mount-assets", ActionMountAssets, nullptr, nullptr, nullptr, { 0, 0, 0 } },
 	    { "browse-materials", ActionBrowseMaterials, nullptr, nullptr, nullptr, { 0, 0, 0 } },
 	};
@@ -2708,8 +2710,6 @@ void AddActions( GtkApplication *app, AppState *st )
 		GSimpleAction *action = toggle ? g_simple_action_new_stateful(
 		                                     name.c_str(), nullptr, g_variant_new_boolean( FALSE ) )
 		                               : g_simple_action_new( name.c_str(), nullptr );
-	    { "capture-views", ActionCaptureViews, nullptr, nullptr, nullptr, { 0, 0, 0 } },
-	    { "reload-assets", ActionReloadAssets, nullptr, nullptr, nullptr, { 0, 0, 0 } },
 		auto &entry = CatalogActions().emplace_back(
 		    std::make_unique<CatalogAction>( CatalogAction{ st, spec.id, action } ) );
 		g_signal_connect( action, "activate", G_CALLBACK( OnCatalogAction ), entry.get() );
@@ -2726,6 +2726,8 @@ void AddActions( GtkApplication *app, AppState *st )
 	    { "app.saveas", "<Control><Shift>s" },
 	    { "app.quit", "<Control>q" },
 	    { "app.reset-views", "<Control>r" },
+	    { "app.capture-views", "F12" },
+	    { "app.reload-assets", "<Control><Shift>r" },
 	};
 	for ( const Accel &a : accels )
 	{
@@ -2734,23 +2736,6 @@ void AddActions( GtkApplication *app, AppState *st )
 	}
 }
 
-int RunApp( AppState *st, char **argv )
-{
-	AdwApplication *app = adw_application_new( kAppId, G_APPLICATION_NON_UNIQUE );
-	AddActions( GTK_APPLICATION( app ), st );
-	g_signal_connect( app, "activate", G_CALLBACK( OnActivate ), st );
-	char *only[] = { argv[0], nullptr };
-	const int status = g_application_run( G_APPLICATION( app ), 1, only );
-	    { "app.capture-views", "F12" },
-	    { "app.reload-assets", "<Control><Shift>r" },
-	g_object_unref( app );
-	return status;
-}
-
-} // namespace
-
-// Headless offscreen rendering (offscreen.cpp).
-int RenderScreenshot(
 // Takes the viewports down before the render core: frames still in flight
 // complete, then the device should hold only what it held before the
 // viewports existed. The log reports what they left behind.
@@ -2771,6 +2756,22 @@ void ShutdownRenderer( AppState *st )
 	    live > st->deviceBaseline ? live - st->deviceBaseline : 0 );
 }
 
+int RunApp( AppState *st, char **argv )
+{
+	AdwApplication *app = adw_application_new( kAppId, G_APPLICATION_NON_UNIQUE );
+	AddActions( GTK_APPLICATION( app ), st );
+	g_signal_connect( app, "activate", G_CALLBACK( OnActivate ), st );
+	char *only[] = { argv[0], nullptr };
+	const int status = g_application_run( G_APPLICATION( app ), 1, only );
+	g_object_unref( app );
+	ShutdownRenderer( st );
+	return status;
+}
+
+} // namespace
+
+// Headless offscreen rendering (offscreen.cpp).
+int RenderScreenshot(
     const std::string &vmfPath, const std::string &outPpm, int width, int height );
 int RenderQuad( const std::string &vmfPath, const std::string &outPpm, int tileW, int tileH );
 int RenderWorkspaceDemo( const std::string &outPpm, int tileW, int tileH );
@@ -2779,7 +2780,6 @@ int RenderTexturedScreenshot( const std::string &vmfPath, const std::string &out
 int RenderEditBudget( const std::string &vmfPath, const std::string &outJson, int width, int height,
     int warmup, int edits, const std::string &vpkList, bool external );
 
-	ShutdownRenderer( st );
 int main( int argc, char **argv )
 {
 	std::string screenshotOut;
