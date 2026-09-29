@@ -43,6 +43,7 @@
 #include "render/device/completion.h"
 #include "render/device/device.h"
 #include "render/device/encoder.h"
+#include "render/legacy/core_passes.h"
 
 #include <vulkan/vulkan.h>
 
@@ -310,6 +311,18 @@ public:
 	bool RenderFrame( bool *outSkip, std::string *outError );
 	// The host device's port (render.device.v2), for frame executors.
 	render::device::IRenderDevice2 *Port();
+
+	// RFC 0016 K5: core passes at slots of the stream (core_passes.h). The
+	// recorder the composition root bound; null marks no slot.
+	void BindCorePassRecorder( render::legacy::ICorePassRecorder *recorder )
+	{
+		m_corePassRecorder = recorder;
+	}
+	// Appends a slot record at this point of the stream (a no-op without a
+	// recorder).
+	void QueueCorePass( uint32_t tag );
+	// Slots whose sections this context ran, and the frames that had one.
+	uint64_t CorePassesRun() const { return m_corePassesRun; }
 
 	// The color the next frame's render pass clears to (linear RGBA, 0..1).
 	void SetClearColor( float r, float g, float b, float a );
@@ -1381,6 +1394,20 @@ private:
 
 	void DestroySwapchainObjects();
 	void DestroyBackBuffers();
+	// Core passes (RFC 0016 K5). The back buffers, their depth and the
+	// multisampled targets imported as port textures on first use (homes:
+	// color attachment and depth write, the layouts they rest in between
+	// passes), and released with them.
+	render::legacy::CorePassTarget CorePassTargetFor( int target );
+	void ReleaseCorePassImports( bool msaaOnly );
+	// The scene stage's sections: one per slot record, in stream order.
+	void RecordCorePassSections( render::device::CommandEncoder &encoder );
+	render::legacy::ICorePassRecorder *m_corePassRecorder = nullptr;
+	std::vector<render::device::TextureId> m_coreColor; // per back buffer
+	std::vector<render::device::TextureId> m_coreDepth;
+	render::device::TextureId m_coreMsColor;
+	render::device::TextureId m_coreMsDepth;
+	uint64_t m_corePassesRun = 0;
 	bool RecreateSwapchain( std::string *outError );
 	bool RecreateBackBuffers( std::string *outError );
 	// Whether the surface's extent or transform differs from the ones the
@@ -2222,7 +2249,10 @@ private:
 		kRecordQueryEnd = 4,
 		// Copies the open target's color and depth to the scene capture images
 		// (RecordSceneCapture), outside any pass, for the glass draws after it.
-		kRecordSceneCapture = 5
+		kRecordSceneCapture = 5,
+		// A core pass's slot (RFC 0016 K5, core_passes.h): the replay closes
+		// its pass and runs the slot's section of the scene record there.
+		kRecordCorePass = 6
 	};
 	struct DynDraw
 	{
@@ -2239,6 +2269,7 @@ private:
 		bool clearDepth = false;
 		float clearValue[4] = { 0, 0, 0, 1 };
 		int copyDst = -1;
+		uint32_t corePass = 0; // kRecordCorePass: the slot's tag
 		// Occlusion query slot of a begin/end record, and which issue of that
 		// query the begin record is.
 		int query = -1;

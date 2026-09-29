@@ -21,6 +21,7 @@
 #include "render/frame/feature.h"
 #include "render/frame/renderer.h"
 #include "render/legacy/capabilities.h"
+#include "render/legacy/core_passes.h"
 class IRenderStageMarkers;   // render/legacy/stage_markers.h (legacy-interop)
 class IRenderMaterialBlocks; // render/legacy/material_blocks.h (legacy-interop)
 #include "render/legacy_shader_provider.h"
@@ -30,6 +31,15 @@ class IRenderMaterialBlocks; // render/legacy/material_blocks.h (legacy-interop)
 
 namespace render::legacy
 {
+
+// What the frontend's core-pass recorder records until the world draws from
+// the scene (RFC 0016 K5 plan, step 3's oracle).
+enum class CorePassProbe : std::uint8_t
+{
+	kNone,       // no slot is marked: the legacy stream replays unchanged
+	kEmpty,      // a slot at each view's opaque stage, recording only a label
+	kSeededClear // as kEmpty, clearing the slot's color target (negative control)
+};
 
 class ILegacyFrontend
 {
@@ -55,6 +65,12 @@ public:
 	// The render call queue the capabilities order their calls on; null
 	// (the default) calls the backend directly.
 	virtual void BindRenderCallQueue( const RenderCallQueueHost *host ) = 0;
+	// The recorder the composition root binds into the backend
+	// (NativeVulkanShaderBackend_BindCorePassRecorder), what it records, and
+	// how many slots it has recorded.
+	virtual ICorePassRecorder *CorePasses() = 0;
+	virtual void SetCorePassProbe( CorePassProbe probe ) = 0;
+	virtual std::uint64_t CorePassesRecorded() const = 0;
 };
 
 // backend: the linked legacy backend the frontend wraps; it outlives the

@@ -158,6 +158,15 @@ extern "C" RenderCore *RenderCore_Create( const RenderCoreConfig *config, Render
 	core->binding.stageMarkers = core->frontend->Markers();
 	core->binding.materialBlocks = core->frontend->MaterialBlocks();
 	core->binding.capabilities = core->frontend->Capabilities();
+	const std::string_view probe = config->corePasses ? config->corePasses : "";
+	if ( probe == "empty" )
+		core->frontend->SetCorePassProbe( render::legacy::CorePassProbe::kEmpty );
+	else if ( probe == "seeded-clear" )
+		core->frontend->SetCorePassProbe( render::legacy::CorePassProbe::kSeededClear );
+	else if ( !probe.empty() )
+		return Fail( result, RENDER_CORE_INVALID_CONFIG,
+		    "core passes '" + std::string( probe ) + "' are not empty or seeded-clear" );
+	core->binding.corePasses = core->frontend->CorePasses();
 	core->binding.deviceName = core->deviceName.c_str();
 	return core.release();
 }

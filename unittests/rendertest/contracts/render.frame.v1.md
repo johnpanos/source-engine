@@ -18,6 +18,7 @@ Rows: R87 (RFC 0016 K3; this is the wiring slice)
 | P2 | The frontend's legacy provider keeps the wrapped backend's id and module and forwards creation through `createFor` (no global) |
 | P3 | `RenderStageMarkers001` forwards the client's marks; the engine owns frame begin and end |
 | P4 | A composed frame runs the legacy-stream pass, then present |
+| P6 | Core-pass slots (`public/render/legacy/core_passes.h`, RFC 0016 K5): `RenderCoreConfig::corePasses` (`-render-core-passes`) selects the frontend's probe (`empty`, `seeded-clear`) and fails `RENDER_CORE_INVALID_CONFIG` naming any other value; with a probe the frontend queues one slot on the backend's `ICorePassSlots` at each view's opaque stage, tagged with the stage and the view depth (`CorePassTag`), in frame order through the render call queue (`render.legacy-capabilities`); without one it queues none. The backend records the recorder's pass for each slot as a section of its scene record and runs it at the slot outside its own render pass; an `empty` probe leaves the frame's pixels unchanged |
 
 The frontend's ABI face, `public/render/legacy/stage_markers.h`, is a preserved
 C++11 package (CAP010); its enum values equal `render::frame::Stage`.

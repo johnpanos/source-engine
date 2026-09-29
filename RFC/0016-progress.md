@@ -1730,7 +1730,46 @@ owns that rule for both families. Each suite gains two claim checks (0.7 as
 lightmapped 95 checks. `vertexlit` already held the byte, and its 0.7 is
 the Hammer session's to adopt.
 
-Next: step 3's backend half, a core-pass record in the stream. The frontend
-queues it in frame order, as its capability adapters queue calls; the
-scene's host record calls `RunSection` at it. The oracle is an empty core
-pass with every pixel family byte-identical.
+Next: step 3's backend half (next section).
+
+## K5 step 3: core passes at slots of the legacy stream (2026-09-28)
+
+The backend half of the K5 plan's step 3. A core pass now runs inside the
+backend's scene, at a *slot* of its stream
+(`public/render/legacy/core_passes.h`):
+
+- **Marking.** The frontend's stage hook queues a slot on the backend's
+  `ICorePassSlots` at each stage its recorder asks for. The slot goes
+  through the material system's render call queue, as the capability
+  adapters queue their calls, so it lands among the stream's draws in frame
+  order in both queued modes. Its tag holds the stage and the view depth.
+- **Recording.** The backend appends a `kRecordCorePass` record. When the
+  scene pass records, it records the recorder's pass for each slot as a
+  section after its scene record (`RecordCorePassSections`). The slot's
+  target is the back buffer and its depth (or the multisampled pair),
+  imported on first use (homes: color attachment, depth write) and released
+  with them. Render-target textures are not imported yet.
+- **Replay.** At the slot the replay ends its render pass and runs the
+  section (`RunSection`). It then rebinds its stream buffers and pipeline;
+  the next record reopens a pass that loads what the core drew.
+  `FirstPassWantsSrgb` and the view scan treat the slot as a pass break.
+  Without a recorder, or with no slot, the stream replays as before.
+- **Probe.** Until step 4 the frontend's recorder is a probe chosen by
+  `-render-core-passes` (`RenderCoreConfig::corePasses`). `empty` records
+  only a label at each view's opaque stage. `seeded-clear` clears the slot's
+  color target, as its negative control.
+- **Found.** The client marks `RENDER_STAGE_OPAQUE` twice per view: before
+  `DrawWorld` and before `DrawOpaqueRenderables`. The seeded clear at the
+  second slot wipes the world, so the whole frame turns magenta. Step 4's
+  world pass must take the view's first opaque slot.
+
+| Check | Evidence | Result |
+| --- | --- | --- |
+| Slots in frame order | `render.legacy-capabilities` (18): a slot is marked at once without a queue, and lands among the queued calls (`...; shadow 44; slot 259; context-b; ...`); the seeded unordered adapter fails it | pass |
+| Probe composition | `render.composition` P6 (22): an unknown probe fails by name; `empty` queues one slot per view, at its opaque stage with depth 1; no probe queues none | pass |
+| Empty probe changes nothing | `testchmb_a_01` headless, `-deterministicrender`, screenshot compared with no probe. Sync (`mat_queue_mode 0`): byte-identical (0 of 786,432 pixels differ; two runs without the probe differ from each other in 9,223 pixels by at most 2 levels), 824 slot sections ran. Queued (`mat_queue_mode 2`): byte-identical, 826 sections ran. Queued, both runs without the probe are identical too | pass |
+| Negative control | `seeded-clear`: every pixel differs in both modes (magenta at the center) | detected |
+| Sync validation | `empty` under `-vkvalidate` (host instance with synchronization validation): 0 messages, 820 sections | pass |
+| No regression | all 16 pixel families in both HDR modes on the new backend: 31 of 32 pass, and integer `sky` keeps its recorded failure. The static-composition product builds, and `static_composition.py check` passes (22 linked entries) | pass |
+
+Next: step 4, the world drawn by the core at the view's first opaque slot.

@@ -32,6 +32,10 @@ namespace gpu_compute
 {
 class IGpuCompute;
 }
+namespace render::legacy
+{
+class ICorePassSlots;
+}
 
 namespace render
 {
@@ -54,6 +58,9 @@ struct LegacyShaderServices
 	// Optional compute service for engine-side GPU producers
 	// (render/gpu_compute.h, RFC 0011 G6), reached the same way.
 	gpu_compute::IGpuCompute *gpuCompute = nullptr;
+	// Optional slots for core passes inside the legacy stream
+	// (render/legacy/core_passes.h, RFC 0016 K5), reached the same way.
+	render::legacy::ICorePassSlots *corePassSlots = nullptr;
 
 	// Optional. Backend-owned facts the legacy MaterialAdapterInfo_t cannot carry:
 	// semantic features, driverApi, memory and software status for an adapter the

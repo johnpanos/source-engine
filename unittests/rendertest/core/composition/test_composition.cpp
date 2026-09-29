@@ -15,6 +15,11 @@
 //			   its block (an UnlitGeneric's $color read back from the unlit
 //			   block), writes nothing for a legacy-family shader and refuses
 //			   an unknown shader.
+//			P6 core passes (RFC 0016 K5): -render-core-passes selects the
+//			   frontend's probe and refuses an unknown one by name; with a
+//			   probe the frontend queues one slot on the backend at each
+//			   view's opaque stage, tagged with the stage and view depth, and
+//			   none without one.
 //
 //=============================================================================//
 
@@ -25,17 +30,44 @@
 #include "testing/checks.h"
 
 #include <cstring>
+#include <vector>
 
 namespace
 {
 
 int g_Creates = 0;
 
+class FakeSlots final : public render::legacy::ICorePassSlots
+{
+public:
+	void MarkSlot( std::uint32_t tag ) override { tags.push_back( tag ); }
+	std::vector<std::uint32_t> tags;
+};
+FakeSlots g_Slots;
+
 bool FakeCreate( render::LegacyShaderServices *services )
 {
 	++g_Creates;
 	services->manager = reinterpret_cast<IShaderDeviceMgr *>( 0x10 );
+	services->corePassSlots = &g_Slots;
 	return true;
+}
+
+// The slots one frame with one view queues.
+std::vector<std::uint32_t> SlotsOfAFrame( const RenderCoreBinding &binding )
+{
+	g_Slots.tags.clear();
+	render::frame::FrameDesc frame;
+	frame.width = 320;
+	frame.height = 200;
+	(void)binding.renderer->BeginFrame( frame );
+	(void)binding.stageMarkers->MarkStage( RENDER_STAGE_VIEW_BEGIN );
+	(void)binding.stageMarkers->MarkStage( RENDER_STAGE_SKYBOX );
+	(void)binding.stageMarkers->MarkStage( RENDER_STAGE_OPAQUE );
+	(void)binding.stageMarkers->MarkStage( RENDER_STAGE_TRANSLUCENT );
+	(void)binding.stageMarkers->MarkStage( RENDER_STAGE_VIEW_END );
+	(void)binding.renderer->EndFrame();
+	return g_Slots.tags;
 }
 
 const render::LegacyShaderProvider g_Backend = { "fixture", "fixture_module", &FakeCreate, true };
@@ -144,11 +176,43 @@ int main()
 	    "P4.the-frame-runs-legacy-stream-then-present" );
 	checks.Equal( markers->GetOrderViolations(), 3u, "P3.rejected-marks-are-counted" );
 
+	// P6: no probe, no slot; the fake backend was created above, so the
+	// frontend holds its slots.
+	checks.That( binding->corePasses && binding->corePasses->SlotStages() == 0 &&
+	                 SlotsOfAFrame( *binding ).empty(),
+	    "P6.without-a-probe-no-slot-is-marked" );
+
 	auto scene = binding->sceneFactory.create();
 	checks.That( scene && scene->Revision() == 0, "P1.the-scene-factory-makes-scenes" );
 	scene.reset();
 	RenderCore_Destroy( core );
 	RenderCore_Destroy( nullptr );
 	checks.That( true, "P1.destroy-tears-down" );
+
+	RenderCoreConfig unknownProbe;
+	unknownProbe.legacyBackend = &g_Backend;
+	unknownProbe.corePasses = "world";
+	checks.That( !RenderCore_Create( &unknownProbe, &result ) &&
+	                 result.status == RENDER_CORE_INVALID_CONFIG &&
+	                 std::strstr( result.message, "world" ),
+	    "P6.an-unknown-probe-fails-by-name" );
+	RenderCoreConfig probed;
+	probed.legacyBackend = &g_Backend;
+	probed.corePasses = "empty";
+	RenderCore *probedCore = RenderCore_Create( &probed, &result );
+	const RenderCoreBinding *probedBinding = RenderCore_GetBinding( probedCore );
+	const render::LegacyShaderProvider *probedProvider = RenderCore_GetLegacyProvider( probedCore );
+	render::LegacyShaderServices probedServices;
+	if ( checks.That( probedBinding && probedProvider &&
+	                      probedProvider->createFor( probedProvider->context, &probedServices ),
+	         "P6.a-probed-core-composes" ) )
+	{
+		const std::vector<std::uint32_t> tags = SlotsOfAFrame( *probedBinding );
+		checks.That( tags.size() == 1 &&
+		                 render::legacy::CorePassTagStage( tags[0] ) == RENDER_STAGE_OPAQUE &&
+		                 render::legacy::CorePassTagDepth( tags[0] ) == 1,
+		    "P6.a-probe-marks-one-slot-at-the-views-opaque-stage" );
+	}
+	RenderCore_Destroy( probedCore );
 	return checks.Report();
 }

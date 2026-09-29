@@ -174,6 +174,19 @@ private:
 	std::vector<std::string> &m_Log;
 };
 
+class RecordingSlots final : public render::legacy::ICorePassSlots
+{
+public:
+	explicit RecordingSlots( std::vector<std::string> &log ) : m_Log( log ) {}
+	void MarkSlot( std::uint32_t tag ) override
+	{
+		m_Log.push_back( "slot " + std::to_string( tag ) );
+	}
+
+private:
+	std::vector<std::string> &m_Log;
+};
+
 std::string Join( const std::vector<std::string> &log )
 {
 	std::string joined;
@@ -194,6 +207,7 @@ int main()
 	const RenderCallQueueHost host = MakeHost();
 	RecordingWorldMesh mesh( log );
 	RecordingLightSet lights( log );
+	RecordingSlots slots( log );
 	gpu_compute::IGpuCompute *const compute = reinterpret_cast<gpu_compute::IGpuCompute *>( &log );
 
 	QueuedCapabilities capabilities;
@@ -204,12 +218,16 @@ int main()
 	services.worldMeshUpload = &mesh;
 	services.lightSetConsumer = &lights;
 	services.gpuCompute = compute;
+	services.corePassSlots = &slots;
 	capabilities.Adopt( services );
 	world_mesh_gpu::IWorldMeshUpload *upload = capabilities.WorldMeshUpload();
 	light_set::ILightSetConsumer *publish = capabilities.LightSetConsumer();
 	if ( !checks.That( upload && publish, "adopt.the-backend-capabilities-are-offered" ) )
 		return checks.Report();
 	checks.That( capabilities.GpuCompute() == compute, "adopt.compute-passes-through" );
+	render::legacy::ICorePassSlots *slotsQueued = capabilities.CorePassSlots();
+	if ( !checks.That( slotsQueued, "adopt.core-pass-slots-are-offered" ) )
+		return checks.Report();
 
 	unsigned char vertices[4] = { 11, 0, 0, 0 };
 	unsigned char indices[4] = { 22, 0, 0, 0 };
@@ -228,6 +246,9 @@ int main()
 	checks.Equal(
 	    Join( log ), std::string( "upload 11 22" ), "direct.while-the-context-does-not-queue" );
 	checks.Equal( queue.queued, 0, "direct.nothing-queued" );
+	log.clear();
+	slotsQueued->MarkSlot( 5 );
+	checks.Equal( Join( log ), std::string( "slot 5" ), "direct.a-slot-is-marked-at-once" );
 	log.clear();
 
 	// Queued: ordered among the context's calls, with copied bytes.
@@ -253,6 +274,7 @@ int main()
 	shadow.distances = distances;
 	upload->UploadShadowField( shadow );
 	distances[5] = 0;
+	slotsQueued->MarkSlot( 259 ); // RFC 0016 K5: a slot lands among the stream's calls
 	queue.Context( "context-b" );
 	light_set::Snapshot snapshot;
 	snapshot.epoch = 7;
@@ -266,7 +288,8 @@ int main()
 	queue.Run();
 	checks.Equal( Join( log ),
 	    std::string(
-	        "context-a; upload 11 22; lightmap 33; shadow 44; context-b; lights 3 7; release" ),
+	        "context-a; upload 11 22; lightmap 33; shadow 44; slot 259; context-b; lights 3 7; "
+	        "release" ),
 	    "queued.calls-run-in-order-with-copied-bytes" );
 	checks.Equal( queue.destroyed, queue.queued, "queued.every-payload-is-released" );
 	std::printf( "INFO legacy capabilities: queued run: %s\n", Join( log ).c_str() );
@@ -315,7 +338,7 @@ int main()
 	// A new backend replaces the old one's capabilities.
 	capabilities.Adopt( render::LegacyShaderServices() );
 	checks.That( !capabilities.WorldMeshUpload() && !capabilities.LightSetConsumer() &&
-	                 !capabilities.GpuCompute(),
+	                 !capabilities.GpuCompute() && !capabilities.CorePassSlots(),
 	    "adopt.a-backend-without-capabilities-offers-none" );
 	return checks.Report();
 }

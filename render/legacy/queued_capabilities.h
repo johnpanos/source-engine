@@ -9,6 +9,7 @@
 #define RENDER_LEGACY_QUEUED_CAPABILITIES_H
 
 #include "render/legacy/capabilities.h"
+#include "render/legacy/core_passes.h"
 #include "render/legacy_shader_provider.h"
 
 #include <memory>
@@ -33,13 +34,18 @@ public:
 	world_mesh_gpu::IWorldMeshUpload *WorldMeshUpload() override;
 	light_set::ILightSetConsumer *LightSetConsumer() override;
 	gpu_compute::IGpuCompute *GpuCompute() override { return m_GpuCompute; }
+	// The backend's core-pass slots in frame order (core_passes.h); null
+	// when the backend has none.
+	ICorePassSlots *CorePassSlots();
 
 private:
 	class WorldMesh;
 	class LightSet;
+	class CoreSlots;
 	const RenderCallQueueHost *m_Host = nullptr;
 	std::unique_ptr<WorldMesh> m_WorldMesh;
 	std::unique_ptr<LightSet> m_LightSet;
+	std::unique_ptr<CoreSlots> m_CoreSlots;
 	gpu_compute::IGpuCompute *m_GpuCompute = nullptr;
 };
 

@@ -11,6 +11,7 @@
 #include "render/legacy/core_backend.h"
 #include "render/legacy/stage_markers.h"
 
+#include <atomic>
 #include <utility>
 
 namespace render::legacy
@@ -52,6 +53,73 @@ public:
 
 	frame::IRenderer *m_Renderer = nullptr;
 	unsigned int m_Violations = 0;
+};
+
+// The frontend's core-pass recorder (core_passes.h). Until the world and
+// props draw from the scene (K5 plan, step 4) it records a probe: nothing
+// but a label (kEmpty, whose frames must equal a frame without slots), or a
+// clear of the slot's color target (kSeededClear, the probe's negative
+// control).
+class CorePassRecorder final : public ICorePassRecorder
+{
+public:
+	void SetProbe( CorePassProbe probe ) { m_Probe = probe; }
+
+	std::uint32_t SlotStages() const override
+	{
+		return m_Probe == CorePassProbe::kNone
+		           ? 0u
+		           : 1u << static_cast<std::uint32_t>( frame::Stage::kOpaque );
+	}
+
+	void RecordSlot(
+	    std::uint32_t tag, device::CommandEncoder &encoder, const CorePassTarget &target ) override
+	{
+		m_Recorded.fetch_add( 1, std::memory_order_relaxed );
+		encoder.BeginLabel( "core pass" );
+		if ( m_Probe == CorePassProbe::kSeededClear && target.color.IsValid() )
+		{
+			const device::ColorAttachment colors[] = { { target.color, device::LoadOp::kClear,
+			    device::StoreOp::kStore, { 1.0f, 0.0f, 1.0f, 1.0f }, {} } };
+			device::RenderingDesc rendering;
+			rendering.colors = colors;
+			rendering.width = target.width;
+			rendering.height = target.height;
+			encoder.BeginRendering( rendering );
+			encoder.EndRendering();
+		}
+		encoder.EndLabel();
+		(void)tag;
+	}
+
+	std::uint64_t Recorded() const { return m_Recorded.load( std::memory_order_relaxed ); }
+
+private:
+	CorePassProbe m_Probe = CorePassProbe::kNone;
+	std::atomic<std::uint64_t> m_Recorded{ 0 };
+};
+
+// Queues a slot, in frame order, at each stage the recorder asks for.
+class CoreSlotHook final : public frame::IRenderStageHooks
+{
+public:
+	CoreSlotHook( const CorePassRecorder &recorder, QueuedCapabilities &capabilities )
+	    : m_Recorder( recorder ), m_Capabilities( capabilities )
+	{
+	}
+
+	void OnStage( frame::Stage stage, std::uint32_t depth ) override
+	{
+		const std::uint32_t bit = 1u << static_cast<std::uint32_t>( stage );
+		if ( !( m_Recorder.SlotStages() & bit ) )
+			return;
+		if ( ICorePassSlots *slots = m_Capabilities.CorePassSlots() )
+			slots->MarkSlot( CorePassTag( static_cast<std::uint32_t>( stage ), depth ) );
+	}
+
+private:
+	const CorePassRecorder &m_Recorder;
+	QueuedCapabilities &m_Capabilities;
 };
 
 class LegacyStreamFeature final : public frame::IRenderFeature
@@ -102,7 +170,17 @@ public:
 	{
 		return std::make_unique<LegacyStreamFeature>();
 	}
-	void BindRenderer( frame::IRenderer *renderer ) override { m_Markers.m_Renderer = renderer; }
+	void BindRenderer( frame::IRenderer *renderer ) override
+	{
+		if ( m_Markers.m_Renderer )
+			m_Markers.m_Renderer->RemoveStageHooks( &m_SlotHook );
+		m_Markers.m_Renderer = renderer;
+		if ( renderer )
+			renderer->AddStageHooks( &m_SlotHook );
+	}
+	ICorePassRecorder *CorePasses() override { return &m_CorePasses; }
+	void SetCorePassProbe( CorePassProbe probe ) override { m_CorePasses.SetProbe( probe ); }
+	std::uint64_t CorePassesRecorded() const override { return m_CorePasses.Recorded(); }
 	std::uint32_t ProviderCreates() const override { return m_Creates; }
 	ILegacyCapabilities *Capabilities() override { return &m_Capabilities; }
 	void BindRenderCallQueue( const RenderCallQueueHost *host ) override
@@ -128,6 +206,8 @@ private:
 	StageMarkers m_Markers;
 	FrontendMaterialBlocks m_MaterialBlocks;
 	QueuedCapabilities m_Capabilities;
+	CorePassRecorder m_CorePasses;
+	CoreSlotHook m_SlotHook{ m_CorePasses, m_Capabilities };
 	std::uint32_t m_Creates = 0;
 };
 

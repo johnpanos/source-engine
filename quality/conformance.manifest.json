@@ -9167,7 +9167,7 @@
       "contract": "unittests/rendertest/contracts/render.frame.v1.md",
       "kind": "positive",
       "profile": "linux-headless-core",
-      "description": "render.composition and render.legacy-frontend (RFC 0016 A.7) through the launcher's C entry points: RenderCore_Create composes or fails naming the unknown device or feature; the frontend's provider keeps the backend identity and forwards creation; RenderStageMarkers001 marks stages of engine frames; a frame runs legacy-stream then present.",
+      "description": "render.composition and render.legacy-frontend (RFC 0016 A.7) through the launcher's C entry points: RenderCore_Create composes or fails naming the unknown device or feature; the frontend's provider keeps the backend identity and forwards creation; RenderStageMarkers001 marks stages of engine frames; a frame runs legacy-stream then present. P6 (RFC 0016 K5): -render-core-passes selects the frontend's core-pass probe and refuses an unknown one by name; with a probe the frontend queues one slot on the backend at each view's opaque stage, tagged with the stage and view depth, and none without one.",
       "result_protocol": "checks-v1",
       "sources": [
         "render/device/port.cpp",
@@ -9199,7 +9199,7 @@
         "render/composition/feature_catalog.cpp",
         "unittests/rendertest/core/composition/test_composition.cpp"
       ],
-      "min_checks": 14,
+      "min_checks": 22,
       "extra_flags": [
         "-pthread",
         "-DPOSIX",
@@ -9219,13 +9219,13 @@
       "contract": "unittests/rendertest/contracts/render.frame.v1.md",
       "kind": "positive",
       "profile": "linux-headless-core",
-      "description": "RFC 0016 K3 'Side channels gone': the legacy frontend's world mesh, light set and compute capabilities (render/legacy/capabilities.h) over a fake render call queue. Direct without a queue or while the context does not queue; while it queues, calls run in order among the context's calls with copies of every borrowed byte, a flushed queue releases payloads unrun, and a queued DrawBatch learns a material's rejection one frame late.",
+      "description": "RFC 0016 K3 'Side channels gone': the legacy frontend's world mesh, light set and compute capabilities (render/legacy/capabilities.h) over a fake render call queue. Direct without a queue or while the context does not queue; while it queues, calls run in order among the context's calls with copies of every borrowed byte, a flushed queue releases payloads unrun, and a queued DrawBatch learns a material's rejection one frame late. Core-pass slots (RFC 0016 K5) are marked at once without a queue and land among the stream's calls when queued.",
       "result_protocol": "checks-v1",
       "sources": [
         "render/legacy/queued_capabilities.cpp",
         "unittests/rendertest/core/legacy/test_legacy_capabilities.cpp"
       ],
-      "min_checks": 15,
+      "min_checks": 18,
       "extra_flags": [
         "-pthread"
       ],

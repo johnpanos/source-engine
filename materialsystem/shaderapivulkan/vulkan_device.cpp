@@ -5520,6 +5520,9 @@ bool CVulkanContext::FirstPassWantsSrgb() const
 			return false;
 	for ( const DynDraw &r : m_dynDrawRecords )
 	{
+		// A slot closes the pass; the view it reopens with is chosen there.
+		if ( r.kind == kRecordCorePass )
+			continue;
 		if ( r.target != -1 || r.kind == kRecordCopy || r.kind == kRecordSceneCapture )
 			return false;
 		if ( !RecordViewAgnostic( r ) )
@@ -6631,6 +6634,8 @@ void CVulkanContext::AttachFrameStage( FrameStage stage, render::device::Command
 	    },
 	};
 	m_hostDevice->RecordNative( encoder, kRecords[stage], this );
+	if ( stage == kFrameStageScene )
+		RecordCorePassSections( encoder );
 	if ( stage != kFrameStagePresent )
 		return;
 	// Only the present (a blit, or the gamma pass's color writes) touches the
@@ -6639,6 +6644,132 @@ void CVulkanContext::AttachFrameStage( FrameStage stage, render::device::Command
 	m_hostDevice->AddSubmitWait( encoder, m_imageAvailable[m_currentFrame],
 	    VK_PIPELINE_STAGE_2_TRANSFER_BIT | VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT );
 	m_hostDevice->AddSubmitSignal( encoder, m_renderFinished[m_acquiredImage] );
+}
+
+void CVulkanContext::QueueCorePass( uint32_t tag )
+{
+	if ( m_corePassRecorder )
+		AppendRecord( kRecordCorePass ).corePass = tag;
+}
+
+void CVulkanContext::RecordCorePassSections( render::device::CommandEncoder &encoder )
+{
+	if ( !m_corePassRecorder )
+		return;
+	// One section per slot record, whether the replay reaches it or not (an
+	// unreached section runs after the scene record, drawing into the back
+	// buffer as it then stands).
+	for ( const DynDraw &d : m_dynDrawRecords )
+	{
+		if ( d.kind != kRecordCorePass )
+			continue;
+		m_hostDevice->BeginSection( encoder );
+		m_corePassRecorder->RecordSlot( d.corePass, encoder, CorePassTargetFor( d.target ) );
+		m_hostDevice->EndSection( encoder );
+	}
+}
+
+namespace
+{
+
+render::device::Format PortFormat( VkFormat format )
+{
+	switch ( format )
+	{
+	case VK_FORMAT_B8G8R8A8_UNORM:
+		return render::device::Format::kBGRA8Unorm;
+	case VK_FORMAT_R8G8B8A8_UNORM:
+		return render::device::Format::kRGBA8Unorm;
+	case VK_FORMAT_D24_UNORM_S8_UINT:
+		return render::device::Format::kD24UnormS8;
+	case VK_FORMAT_D32_SFLOAT_S8_UINT:
+		return render::device::Format::kD32FloatS8;
+	case VK_FORMAT_D32_SFLOAT:
+		return render::device::Format::kD32Float;
+	default:
+		return render::device::Format::kUnknown;
+	}
+}
+
+} // namespace
+
+render::legacy::CorePassTarget CVulkanContext::CorePassTargetFor( int target )
+{
+	using render::device::ResourceUsage;
+	using render::device::TextureId;
+	render::legacy::CorePassTarget out;
+	const bool multisampled = m_activeSamples > 1;
+	const VkExtent2D extent = multisampled ? m_msExtent : m_swapExtent;
+	out.colorFormat = PortFormat( m_swapFormat );
+	out.depthFormat = PortFormat( m_depthFormat );
+	out.width = extent.width;
+	out.height = extent.height;
+	out.samples = multisampled ? static_cast<uint32_t>( m_activeSamples ) : 1u;
+	// Render-target textures are not imported yet.
+	if ( target != -1 || !m_hostDevice || m_acquiredImage >= m_swapImages.size() )
+		return out;
+	const auto import = [&]( VkImage image, render::device::Format format, ResourceUsage home,
+	                        const char *name, TextureId *id )
+	{
+		if ( id->IsValid() || image == VK_NULL_HANDLE ||
+		     format == render::device::Format::kUnknown )
+			return;
+		render::device::TextureDesc desc;
+		desc.format = format;
+		desc.width = extent.width;
+		desc.height = extent.height;
+		desc.sampleCount = out.samples;
+		desc.usages = { home };
+		desc.debugName = name;
+		if ( !m_hostDevice->ImportImage( image, desc, home, id ) )
+			*id = TextureId();
+	};
+	if ( multisampled )
+	{
+		import( m_msColor, out.colorFormat, ResourceUsage::kColorAttachment,
+		    "multisampled back buffer", &m_coreMsColor );
+		import( m_msDepth, out.depthFormat, ResourceUsage::kDepthWrite, "multisampled depth",
+		    &m_coreMsDepth );
+		out.color = m_coreMsColor;
+		out.depth = m_coreMsDepth;
+		return out;
+	}
+	m_coreColor.resize( m_swapImages.size() );
+	m_coreDepth.resize( m_swapImages.size() );
+	const uint32_t i = m_acquiredImage;
+	import( m_swapImages[i], out.colorFormat, ResourceUsage::kColorAttachment, "back buffer",
+	    &m_coreColor[i] );
+	if ( i < m_depthImages.size() )
+		import( m_depthImages[i], out.depthFormat, ResourceUsage::kDepthWrite, "depth",
+		    &m_coreDepth[i] );
+	out.color = m_coreColor[i];
+	out.depth = m_coreDepth[i];
+	return out;
+}
+
+void CVulkanContext::ReleaseCorePassImports( bool msaaOnly )
+{
+	render::device::IRenderDevice2 *port = Port();
+	// The images go now: nothing submitted uses them any more.
+	const auto release = [&]( render::device::TextureId &id )
+	{
+		if ( id.IsValid() && port )
+			(void)port->Release( id, render::device::CompletionToken() );
+		id = render::device::TextureId();
+	};
+	release( m_coreMsColor );
+	release( m_coreMsDepth );
+	if ( !msaaOnly )
+	{
+		for ( render::device::TextureId &id : m_coreColor )
+			release( id );
+		for ( render::device::TextureId &id : m_coreDepth )
+			release( id );
+		m_coreColor.clear();
+		m_coreDepth.clear();
+	}
+	if ( port )
+		(void)port->Poll();
 }
 
 bool CVulkanContext::RenderFrame( bool *outSkip, std::string *outError )
@@ -6891,6 +7022,7 @@ void CVulkanContext::RecordFrameScene( VkCommandBuffer cmd )
 		// frame's instance stream (vertex binding 1 of the textured and world
 		// pipelines); each draw's first instance selects its record.
 		std::vector<uint32_t> fogIndex( m_dynDrawRecords.size(), 0 );
+		VkBuffer fogBuffer = VK_NULL_HANDLE; // bound at vertex binding 1
 		{
 			std::vector<DrawFog> fogRecords( 1 ); // record 0: no fog
 			for ( size_t i = 0; i < m_dynDrawRecords.size(); ++i )
@@ -6909,6 +7041,7 @@ void CVulkanContext::RecordFrameScene( VkCommandBuffer cmd )
 				std::memcpy( fogStream.mapped, fogRecords.data(), fogBytes );
 				VkDeviceSize offset = 0;
 				vkCmdBindVertexBuffers( cmd, 1, 1, &fogStream.buffer, &offset );
+				fogBuffer = fogStream.buffer;
 			}
 			else
 				std::fill( fogIndex.begin(), fogIndex.end(), 0u );
@@ -6923,6 +7056,22 @@ void CVulkanContext::RecordFrameScene( VkCommandBuffer cmd )
 		bool openSrgb = firstPassSrgb; // entered through the target's sRGB view
 		VkPipeline boundPipeline = VK_NULL_HANDLE;
 		bool worldBuffersBound = false;
+		// A core pass's section (RFC 0016 K5) may bind anything: the stream's
+		// buffers are bound again after it, and the next draw its pipeline.
+		const auto rebindStreams = [&]()
+		{
+			VkDeviceSize offset = 0;
+			if ( geometryOk && needed > 0 )
+				vkCmdBindVertexBuffers( cmd, 0, 1, &vertexStream.buffer, &offset );
+			if ( indicesOk && indexBytes > 0 )
+				vkCmdBindIndexBuffer( cmd, indexStream.buffer, 0, VK_INDEX_TYPE_UINT32 );
+			if ( fogBuffer != VK_NULL_HANDLE )
+				vkCmdBindVertexBuffers( cmd, 1, 1, &fogBuffer, &offset );
+			boundPipeline = VK_NULL_HANDLE;
+			worldBuffersBound = false;
+		};
+		// The index of the next slot record's section in the scene record.
+		uint32_t coreSection = 0;
 		// A query must begin and end inside one render pass, and only one
 		// occlusion query may be active at a time. One that would span a pass
 		// boundary is ended there and fails rather than report a partial count.
@@ -6951,7 +7100,7 @@ void CVulkanContext::RecordFrameScene( VkCommandBuffer cmd )
 				{
 					const DynDraw &n = m_dynDrawRecords[next];
 					if ( n.target != r.target || n.kind == kRecordCopy ||
-					     n.kind == kRecordSceneCapture )
+					     n.kind == kRecordSceneCapture || n.kind == kRecordCorePass )
 						break;
 					if ( !RecordViewAgnostic( n ) )
 						return RecordWantsSrgb( n );
@@ -6992,6 +7141,27 @@ void CVulkanContext::RecordFrameScene( VkCommandBuffer cmd )
 		{
 			ReplayFrameLabels( &labelCursor, recordIndex );
 			const DynDraw &d = m_dynDrawRecords[recordIndex];
+			if ( d.kind == kRecordCorePass )
+			{
+				// Outside any pass, like a copy: the slot's section runs here,
+				// and the next record opens a pass that loads what it drew.
+				const uint32_t section = coreSection++;
+				if ( !m_corePassRecorder ||
+				     ( d.target >= 0 && !IsRenderTargetTexture( d.target ) ) )
+					continue;
+				endActiveQuery( false );
+				if ( passOpen )
+					vkCmdEndRenderPass( cmd );
+				passOpen = false;
+				lastCopy = nullptr;
+				if ( m_hostDevice->RunSection( cmd, section ) )
+				{
+					if ( m_corePassesRun++ == 0 )
+						Log( "core passes: the first slot's section ran in the scene replay\n" );
+					rebindStreams();
+				}
+				continue;
+			}
 			// A render target deleted after these records were issued: what was
 			// rendered into it is discarded, as it would be on D3D9.
 			if ( ( d.target >= 0 && !IsRenderTargetTexture( d.target ) ) ||
@@ -8302,6 +8472,7 @@ void CVulkanContext::DestroyMsaaTargets()
 {
 	if ( m_device == VK_NULL_HANDLE )
 		return;
+	ReleaseCorePassImports( true );
 	for ( VkFramebuffer *fb : { &m_msFramebuffer, &m_msFramebufferSrgb } )
 	{
 		if ( *fb != VK_NULL_HANDLE )
@@ -9421,6 +9592,7 @@ void CVulkanContext::DestroySwapchainObjects()
 
 void CVulkanContext::DestroyBackBuffers()
 {
+	ReleaseCorePassImports( false );
 	for ( VkFramebuffer fb : m_framebuffers )
 		if ( fb != VK_NULL_HANDLE )
 			vkDestroyFramebuffer( m_device, fb, nullptr );
@@ -9533,6 +9705,9 @@ bool CVulkanContext::Resize( int width, int height, std::string *outError )
 
 void CVulkanContext::Shutdown()
 {
+	if ( m_corePassRecorder || m_corePassesRun )
+		Log( "core passes: %llu slot sections ran\n",
+		    static_cast<unsigned long long>( m_corePassesRun ) );
 	m_adapterCaps = VulkanAdapterCaps();
 	CloseFrameStats();
 	if ( m_device != VK_NULL_HANDLE && !m_pipelineStoreDirectory.empty() )

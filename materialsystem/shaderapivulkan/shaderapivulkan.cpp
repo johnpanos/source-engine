@@ -3148,6 +3148,19 @@ private:
 
 static CVulkanGpuCompute g_GpuCompute;
 
+// RFC 0016 K5: core-pass slots in the stream (render/legacy/core_passes.h),
+// marked in frame order by the frontend and recorded by the bound recorder.
+class CVulkanCorePassSlots final : public render::legacy::ICorePassSlots
+{
+public:
+	void MarkSlot( std::uint32_t tag ) override
+	{
+		NoteDeviceUse( "ICorePassSlots::MarkSlot" );
+		g_VulkanContext.QueueCorePass( tag );
+	}
+};
+static CVulkanCorePassSlots g_CorePassSlots;
+
 static bool CreateNativeVulkanShaderBackend( render::LegacyShaderServices *services )
 {
 	if ( !services )
@@ -3162,6 +3175,7 @@ static bool CreateNativeVulkanShaderBackend( render::LegacyShaderServices *servi
 	services->lightSetConsumer = &g_LightSetConsumer;
 	g_GpuCompute.Install();
 	services->gpuCompute = &g_GpuCompute;
+	services->corePassSlots = &g_CorePassSlots;
 	services->describeAdapter = DescribeNativeVulkanAdapter;
 	return true;
 }
@@ -3182,6 +3196,12 @@ extern "C" DLL_EXPORT void NativeVulkanShaderBackend_BindFrameExecutor(
     render::legacy::ILegacyFrameExecutor *executor )
 {
 	g_FrameExecutor = executor;
+}
+
+extern "C" DLL_EXPORT void NativeVulkanShaderBackend_BindCorePassRecorder(
+    render::legacy::ICorePassRecorder *recorder )
+{
+	g_VulkanContext.BindCorePassRecorder( recorder );
 }
 
 extern "C" DLL_EXPORT const render::LegacyShaderProvider *NativeVulkanShaderBackend_Describe()

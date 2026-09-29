@@ -96,6 +96,7 @@ int MessageBox( HWND hWnd, const char *message, const char *header, unsigned uTy
 #include "render/composition/render_core.h"
 #if defined( LINKED_NATIVE_VULKAN_BACKEND )
 #include "render/device/vulkan/host_binding.h"
+#include "render/legacy/core_passes.h"
 #include "render/legacy/frame_source.h"
 #endif
 #include "render/legacy/material_blocks.h"
@@ -935,6 +936,7 @@ bool CSourceAppSystemGroup::Create()
 		config.features = CommandLine()->ParmValue( "-render-features", RENDER_CORE_FEATURES );
 		config.legacyBackend = selected;
 		config.validation = CommandLine()->FindParm( "-render-validation" ) != 0;
+		config.corePasses = CommandLine()->ParmValue( "-render-core-passes", "" );
 		RenderCoreResult result;
 		m_pRenderCore = RenderCore_Create( &config, &result );
 		if ( !m_pRenderCore )
@@ -954,6 +956,10 @@ bool CSourceAppSystemGroup::Create()
 		// The legacy backend's capabilities order their calls on the material
 		// system's render call queue (render/legacy/capabilities.h).
 		RenderCore_BindRenderCallQueue( m_pRenderCore, MaterialSystem_RenderCallQueueHost() );
+#if defined( LINKED_NATIVE_VULKAN_BACKEND )
+		// RFC 0016 K5: core passes at slots of the backend's stream.
+		NativeVulkanShaderBackend_BindCorePassRecorder( binding->corePasses );
+#endif
 		Msg( "Render core: device %s, features %s\n", binding->deviceName, config.features );
 	}
 #endif
@@ -1106,6 +1112,9 @@ void CSourceAppSystemGroup::Destroy()
 
 #if defined( LINKED_RENDER_CORE )
 	// Every system and module that borrowed the core is gone.
+#if defined( LINKED_NATIVE_VULKAN_BACKEND )
+	NativeVulkanShaderBackend_BindCorePassRecorder( nullptr );
+#endif
 	RenderCore_Destroy( m_pRenderCore );
 	m_pRenderCore = nullptr;
 #endif

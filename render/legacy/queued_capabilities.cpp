@@ -286,6 +286,35 @@ private:
 	const RenderCallQueueHost *const &m_Host;
 };
 
+// Slots land in the stream in the order of the calls around them.
+class QueuedCapabilities::CoreSlots final : public ICorePassSlots
+{
+public:
+	CoreSlots( ICorePassSlots *provider, const RenderCallQueueHost *const &host )
+	    : m_Provider( provider ), m_Host( host )
+	{
+	}
+
+	void MarkSlot( std::uint32_t tag ) override
+	{
+		if ( !Active( m_Host ) )
+		{
+			m_Provider->MarkSlot( tag );
+			return;
+		}
+		ICorePassSlots *provider = m_Provider;
+		Queue( m_Host,
+		    [provider, tag]()
+		    {
+			    provider->MarkSlot( tag );
+		    } );
+	}
+
+private:
+	ICorePassSlots *m_Provider;
+	const RenderCallQueueHost *const &m_Host;
+};
+
 QueuedCapabilities::QueuedCapabilities() = default;
 QueuedCapabilities::~QueuedCapabilities() = default;
 
@@ -298,6 +327,9 @@ void QueuedCapabilities::Adopt( const LegacyShaderServices &services )
 {
 	m_WorldMesh.reset();
 	m_LightSet.reset();
+	m_CoreSlots.reset();
+	if ( services.corePassSlots )
+		m_CoreSlots = std::make_unique<CoreSlots>( services.corePassSlots, m_Host );
 	if ( services.worldMeshUpload )
 		m_WorldMesh = std::make_unique<WorldMesh>( services.worldMeshUpload, m_Host );
 	if ( services.lightSetConsumer )
@@ -313,6 +345,11 @@ world_mesh_gpu::IWorldMeshUpload *QueuedCapabilities::WorldMeshUpload()
 light_set::ILightSetConsumer *QueuedCapabilities::LightSetConsumer()
 {
 	return m_LightSet.get();
+}
+
+ICorePassSlots *QueuedCapabilities::CorePassSlots()
+{
+	return m_CoreSlots.get();
 }
 
 } // namespace render::legacy

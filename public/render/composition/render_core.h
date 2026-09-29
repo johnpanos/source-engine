@@ -27,6 +27,7 @@
 class IRenderStageMarkers;   // render/legacy/stage_markers.h (legacy-interop)
 class IRenderMaterialBlocks; // render/legacy/material_blocks.h (legacy-interop)
 #include "render/legacy/capabilities.h"
+#include "render/legacy/core_passes.h"
 #include "render/legacy_shader_provider.h"
 #include "render/scene/scene.h"
 
@@ -41,6 +42,11 @@ struct RenderCoreConfig
 	// The linked legacy backend the frontend wraps; may be null.
 	const render::LegacyShaderProvider *legacyBackend = nullptr;
 	bool validation = false;
+	// What the legacy frontend's core passes record until the world draws
+	// from the scene (RFC 0016 K5 plan, step 3): null or "" marks no slot,
+	// "empty" a label-only pass at each view's opaque stage, "seeded-clear"
+	// its negative control. The root takes it from -render-core-passes.
+	const char *corePasses = nullptr;
 };
 
 enum RenderCoreStatus
@@ -79,6 +85,9 @@ struct RenderCoreBinding
 	// The legacy backend's world mesh, light set and compute capabilities, in
 	// frame order (render/legacy/capabilities.h).
 	render::legacy::ILegacyCapabilities *capabilities = nullptr;
+	// The frontend's core-pass recorder, which the root binds into a legacy
+	// backend that has slots (render/legacy/core_passes.h).
+	render::legacy::ICorePassRecorder *corePasses = nullptr;
 	// For logs and evidence only (CAP011 rule 5): "null", "vulkan", "gl".
 	const char *deviceName = nullptr;
 };
