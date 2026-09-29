@@ -13459,6 +13459,174 @@
       ],
       "expect": "fail",
       "expected_divergence": "FAIL sp_a1_intro6.info_panel.core-world.core-draws-receivers"
+    },
+    {
+      "id": "corpus.core-world.portal",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "kind": "positive",
+      "profile": "linux-host-corpus",
+      "migration": "R89",
+      "description": "RFC 0016 K5 core-world smoke test on every retail Portal map (tools/quality/core_world_smoke.py; RFC/0016-progress.md, 'Core-world smoke test'): the maps/*.bsp of run/runtime's portal search path load one after another in one headless native Vulkan process (SDL offscreen) with r_core_world 1 and r_core_world_strict 1; per map the settle wait, a six-angle look around and r_core_world_stats. Pass: loaded, no fatal error, views drawn > 0, failed 0; no-claims when the core queued nothing. A process that dies or hangs is restarted from the next map; a failing map is loaded again with r_core_world 0 to tell a core failure from an engine one. Known failures are listed in quality/workloads/core-world-smoke-v1.json with their owner.",
+      "command": [
+        "{python}",
+        "tools/quality/core_world_smoke.py",
+        "run",
+        "--game",
+        "portal",
+        "--out",
+        "{out}"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 27,
+      "timeout_seconds": 1800,
+      "requires": [
+        "path:run/runtime/portal/gameinfo.txt",
+        "path:build/c4che/_cache.py",
+        "vulkan-device:gpu"
+      ],
+      "sources": [
+        "tools/quality/core_world_smoke.py",
+        "tools/quality/portal_boot.py",
+        "tools/quality/stage_portal2_runtime.py",
+        "tools/quality/source_content.py",
+        "tools/quality/launch_sandbox.py",
+        "tools/quality/conformance_result.py",
+        "quality/workloads/core-world-smoke-v1.json",
+        "engine/render_core_world_draw.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "corpus.core-world.seeded-failure",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "kind": "sensitivity",
+      "profile": "linux-host-corpus",
+      "migration": "R89",
+      "description": "Negative control for corpus.core-world.portal: testchmb_a_00 with r_core_world_seed_failure lights/light_recessedcool002 (a material the core claims reaches it without its texture handles, fatal at its first view under r_core_world_strict). The map must be rejected as a core failure: the control run with r_core_world 0 loads it.",
+      "command": [
+        "{python}",
+        "tools/quality/core_world_smoke.py",
+        "run",
+        "--game",
+        "portal",
+        "--map",
+        "testchmb_a_00",
+        "--seed-failure",
+        "lights/light_recessedcool002",
+        "--out",
+        "{out}"
+      ],
+      "result_protocol": "checks-v1",
+      "timeout_seconds": 600,
+      "requires": [
+        "path:run/runtime/portal/gameinfo.txt",
+        "path:build/c4che/_cache.py",
+        "vulkan-device:gpu"
+      ],
+      "sources": [
+        "tools/quality/core_world_smoke.py",
+        "tools/quality/portal_boot.py",
+        "tools/quality/stage_portal2_runtime.py",
+        "tools/quality/source_content.py",
+        "tools/quality/launch_sandbox.py",
+        "tools/quality/conformance_result.py",
+        "quality/workloads/core-world-smoke-v1.json",
+        "engine/render_core_world_draw.cpp"
+      ],
+      "expect": "fail",
+      "expected_divergence": "FAIL unexpected.portal.testchmb_a_00: core-failure: core: material lights/light_recessedcool002"
+    },
+    {
+      "id": "corpus.core-world.self-test",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "kind": "self-test",
+      "profile": "linux-host-corpus",
+      "migration": "R89",
+      "description": "The core-world smoke test's log parser, verdicts and expectations on synthetic engine logs, no game: clean maps pass; no-claims; a strict Sys_Error on the second of three maps (the first passes, the second fails with the core's reason); a missing stats line; failed > 0; process-wide cumulative counters; a map that never loaded; a crash; a timeout; claimed surfaces outside every view (no-claims); control classification; unexpected results printed before known failures.",
+      "command": [
+        "{python}",
+        "tools/quality/core_world_smoke.py",
+        "self-test"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 20,
+      "sources": [
+        "tools/quality/core_world_smoke.py",
+        "tools/quality/conformance_result.py"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "corpus.core-world.self-test.seeded-ignore-failed",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "kind": "sensitivity",
+      "profile": "linux-host-corpus",
+      "migration": "R89",
+      "description": "Negative control for corpus.core-world.self-test: seeded fault 'ignore-failed' (a verdict that ignores failed views) must be rejected.",
+      "command": [
+        "{python}",
+        "tools/quality/core_world_smoke.py",
+        "self-test",
+        "--seed-fault",
+        "ignore-failed"
+      ],
+      "result_protocol": "checks-v1",
+      "sources": [
+        "tools/quality/core_world_smoke.py",
+        "tools/quality/conformance_result.py"
+      ],
+      "expect": "fail",
+      "expected_divergence": "FAIL self_test.failed-views"
+    },
+    {
+      "id": "corpus.core-world.self-test.seeded-ignore-sys-error",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "kind": "sensitivity",
+      "profile": "linux-host-corpus",
+      "migration": "R89",
+      "description": "Negative control for corpus.core-world.self-test: seeded fault 'ignore-sys-error' (a verdict that ignores a fatal error and a dead process) must be rejected.",
+      "command": [
+        "{python}",
+        "tools/quality/core_world_smoke.py",
+        "self-test",
+        "--seed-fault",
+        "ignore-sys-error"
+      ],
+      "result_protocol": "checks-v1",
+      "sources": [
+        "tools/quality/core_world_smoke.py",
+        "tools/quality/conformance_result.py"
+      ],
+      "expect": "fail",
+      "expected_divergence": "FAIL self_test.sys-error-mid-list"
+    },
+    {
+      "id": "corpus.core-world.self-test.seeded-absolute-counters",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "kind": "sensitivity",
+      "profile": "linux-host-corpus",
+      "migration": "R89",
+      "description": "Negative control for corpus.core-world.self-test: seeded fault 'absolute-counters' (a verdict that reads the process-wide view counters as the map's own) must be rejected.",
+      "command": [
+        "{python}",
+        "tools/quality/core_world_smoke.py",
+        "self-test",
+        "--seed-fault",
+        "absolute-counters"
+      ],
+      "result_protocol": "checks-v1",
+      "sources": [
+        "tools/quality/core_world_smoke.py",
+        "tools/quality/conformance_result.py"
+      ],
+      "expect": "fail",
+      "expected_divergence": "FAIL self_test.no-claims"
     }
   ]
 }

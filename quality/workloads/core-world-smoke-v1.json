@@ -1,0 +1,29 @@
+{
+  "schema": "core-world-smoke-workload/v1",
+  "version": 1,
+  "description": "RFC 0016 K5 (R89) core-world smoke test: tools/quality/core_world_smoke.py boots every retail map of Portal (run/runtime) and Portal 2 (the Steam installation) headless with r_core_world 1 and r_core_world_strict at its default 1, and judges the core per map from r_core_world_stats. Maps come from the content; this file only excludes non-playable maps (each with its reason) and records known failures (each with its owner).",
+  "settle_frames": 240,
+  "views": [
+    "setang 0 0 0",
+    "setang 0 90 0",
+    "setang 0 180 0",
+    "setang 0 270 0",
+    "setang -60 0 0",
+    "setang 60 0 0"
+  ],
+  "view_frames": 30,
+  "map_timeout_seconds": 180,
+  "startup_timeout_seconds": 180,
+  "engine_args": [
+    "-physics",
+    "vphysics_box3d"
+  ],
+  "startup_commands": [
+    "mat_queue_mode 2",
+    "mat_vsync 0",
+    "fps_max 120",
+    "volume 0"
+  ],
+  "exclusions": [],
+  "known_failures": []
+}
