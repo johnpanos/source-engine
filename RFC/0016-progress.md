@@ -3135,13 +3135,10 @@ into the product (binding rule 3).
       optimization.
 - **Lights and units.**
   - Lights use `light_set::InverseSquareFalloff`'s rule.
-  - Spots use vrad's spot rule: the axis cosine times the cone ramp to its
-    exponent. The fixtures' Cycles lamps follow the same rule.
+  - Spots used vrad's spot rule in this slice (superseded by the c1 follow-up
+    below, which takes light_set::SpotFactor through `runtime_light.glsl`).
   - Projectors use `projected_light::Project` and `Attenuation`, without a
     Lambert term.
-  - The GLSL mirrors are in `medium_light.glsl` and move to
-    `render/shaders/common` with K7's clustered shading.
-  - The light set has no spot exponent, so the caller supplies it.
 - **Neutral value.** Density zero gives T = 1 and L = 0 exactly, and the
   frame is bitwise unchanged. The pass keeps no state between frames: its
   froxel volume is created per frame and released behind the frame's token.
@@ -3264,7 +3261,7 @@ The Fold7 is unavailable (the keyguard is showing).
 - The translucent application (43's frame-group diff).
 - Legacy fog off where volumetric fog is on (43's frame-group diff).
 - The fog state's bake without its medium (the fixture's and bake owner's).
-- The light set's missing spot exponent.
+- The light set's spot rule differs from vrad's (see the c1 follow-up below).
 - The cluster lists (performance).
 - Clamping at the screen edge in the half froxel beyond the first and last
   column and row centres.
@@ -3317,3 +3314,34 @@ On the nave, the lab's surface part is now 0.483 of the clear frame, against
 Cycles' 0.490. The clear nave's p99 was already 1.08 before this change.
 The likely cause, unverified, is the projector's light on surfaces, which the
 lab doesn't draw yet (the projected-light term).
+
+### K11 step g follow-up: the fog's lights through runtime_light.glsl (2026-09-29)
+
+43's c1 (`ad33056a`) made `render/shaders/common/runtime_light.glsl` the one
+GLSL copy of light_set.h's falloff and spot rules. The fog's inject stage now
+includes it (rule 6):
+- `medium_light.glsl`'s own falloff and spot code is deleted;
+- `MediumLight` loses its exponent, and `MediumLightFrom` takes the light set
+  light alone;
+- render_lab no longer reads `_exponent`.
+
+**The light set has no spot exponent, and its spot rule differs from the
+fixtures'.** `light_set::SpotFactor` is a smoothstep between the cones, with
+no exponent and no axis cosine. vrad compiles, and the fixtures' Cycles lamps
+render, `cos x ((cos - outer) / (inner - outer))^exponent`, and the fog
+followed that rule before this change. The fog now follows the light set, as
+the surface program does. Which rule the one definition should hold (vrad's
+for baked-light parity, or the smoothstep the native backend used) is the
+light set owner's decision (RFC 0011, render.light-set.v1).
+
+| Check | Result |
+| --- | --- |
+| `render.lab.volumetric` | 18 checks pass (its point-light oracle has no spot) |
+| `render.lab.volumetric.sensitivity` | 5 pass (4 of 4 seeded stages caught) |
+| `render.lab.clustered-lights` | 16 pass |
+
+Gallery, foggy-hall (denoised references, tolerance mean 0.10). On the
+rebased tree the vrad rule gave fog nave 0.070 / 0.59 and side 0.076 / 0.38.
+With SpotFactor, fog nave is 0.075 / 0.59 and side 0.083 / 0.38; both still
+pass, slightly worse, which is the spot-rule difference above. The clear views
+are unchanged (0.098 / 1.08, 0.076 / 0.37).

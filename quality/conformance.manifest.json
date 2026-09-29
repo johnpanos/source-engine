@@ -9712,6 +9712,7 @@
         "render/pass/volumetric/volumetric.cpp",
         "render/pass/volumetric/volumetric_common.glsl",
         "render/pass/volumetric/medium_light.glsl",
+        "render/shaders/common/runtime_light.glsl",
         "render/pass/volumetric/volumetric_inject.comp",
         "render/pass/volumetric/volumetric_composite.frag",
         "render/pass/lights/clusters.cpp",

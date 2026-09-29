@@ -131,7 +131,7 @@ math::float4x4 InverseView( const math::float4x4 &view )
 
 } // namespace
 
-MediumLight MediumLightFrom( const light_set::RuntimeLight &light, float spotExponent )
+MediumLight MediumLightFrom( const light_set::RuntimeLight &light )
 {
 	MediumLight out;
 	out.kind = light.shape == light_set::LightShape::Spot ? MediumLightKind::kSpot
@@ -145,7 +145,6 @@ MediumLight MediumLightFrom( const light_set::RuntimeLight &light, float spotExp
 	out.minLight = light.minLight;
 	out.innerCos = light.innerCos;
 	out.outerCos = light.outerCos;
-	out.exponent = spotExponent;
 	return out;
 }
 
@@ -229,7 +228,7 @@ MediumLightGpu PackMediumLight( const MediumLight &light )
 	Copy3( out.positionKind, light.position, light.kind == MediumLightKind::kSpot ? 1.0f : 0.0f );
 	Copy3( out.colorFalloff, light.color,
 	    light.falloff == light_set::LightFalloff::Legacy ? 1.0f : 0.0f );
-	Copy3( out.directionExponent, light.direction, light.exponent );
+	Copy3( out.direction, light.direction, 0.0f );
 	out.cone[0] = light.innerCos;
 	out.cone[1] = light.outerCos;
 	out.cone[2] = light.radius;

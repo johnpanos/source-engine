@@ -131,12 +131,10 @@ enum class MediumLightKind : std::uint8_t
 	kSpot
 };
 
-// A point or spot light as the medium sees it. The falloff is the light
-// set's (light_set::InverseSquareFalloff or light_set::Falloff); a spot
-// multiplies it by vrad's spot rule (utils/vrad/lightmap.cpp, and the
-// fixtures' Cycles lamps): the cosine to its axis times its cone, 1 inside
-// innerCos, 0 at and outside outerCos, ( ( cos - outer ) / ( inner - outer
-// ) )^exponent between.
+// A point or spot light as the medium sees it, by render.light-set.v1's rules
+// (light_set::InverseSquareFalloff or light_set::Falloff, times
+// light_set::SpotFactor for a spot), as the surface program's clustered
+// lights take them.
 struct MediumLight
 {
 	MediumLightKind kind = MediumLightKind::kPoint;
@@ -149,12 +147,10 @@ struct MediumLight
 	float minLight = 0.0f; // the legacy falloff's threshold
 	float innerCos = 1.0f;
 	float outerCos = 1.0f;
-	float exponent = 1.0f;
 };
 
-// A light set light as the medium sees it (points and spots; the set carries
-// no spot exponent, so the caller gives it).
-MediumLight MediumLightFrom( const light_set::RuntimeLight &light, float spotExponent = 1.0f );
+// A light set light as the medium sees it (points and spots).
+MediumLight MediumLightFrom( const light_set::RuntimeLight &light );
 
 struct MediumProjector
 {
@@ -306,7 +302,7 @@ struct MediumLightGpu
 {
 	float positionKind[4] = {}; // xyz; w 0 point, 1 spot
 	float colorFalloff[4] = {}; // rgb; w 0 inverse square, 1 legacy
-	float directionExponent[4] = {};
+	float direction[4] = {};    // spot axis
 	float cone[4] = {}; // innerCos, outerCos, radius, sourceRadius
 	float misc[4] = {}; // minLight, 0, 0, 0
 };

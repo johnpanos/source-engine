@@ -1,19 +1,20 @@
 // render.pass.volumetric: the lights' light at a point of the medium, and the
 // medium itself (RFC 0016 "Lighting model", participating media).
 //
-// GLSL mirrors of their C++ owners, which the suite's oracle evaluates
-// independently:
-// - light_set::InverseSquareFalloff and light_set::Falloff
-//   (public/render/light_set.h, render.light-set.v1);
-// - vrad's spot rule (utils/vrad/lightmap.cpp: the cosine to the axis times
-//   the cone ramp to its exponent), which the fixtures' Cycles lamps follow;
-// - projected_light::Project and Attenuation (public/render/projected_light.h,
-//   render.projected-light.v1) with no Lambert term (a medium has no normal).
-// When the core's clustered surface lighting lands (K7) these move to
-// render/shaders/common as the core's one GLSL copy.
+// A runtime light's falloff and spot cone are render.light-set.v1's
+// (public/render/light_set.h: Falloff, InverseSquareFalloff, SpotFactor),
+// through their one GLSL copy, render/shaders/common/runtime_light.glsl, as
+// the surface program's clustered lights take them. The projector's rule is
+// a GLSL mirror of projected_light::Project and Attenuation
+// (public/render/projected_light.h, render.projected-light.v1) with no
+// Lambert term (a medium has no normal); it moves to render/shaders/common
+// with the surface program's projected-light term. The suite's oracle
+// evaluates each independently.
 //
 // SEEDED_PHASE_IGNORED and SEEDED_ALBEDO_IGNORED build the defective variants
 // render.lab.volumetric's sensitivity row must reject; no product uses them.
+
+#include "../../shaders/common/runtime_light.glsl"
 
 const float kPi = 3.14159265358979;
 
@@ -28,7 +29,7 @@ struct MediumLight
 {
 	vec4 positionKind;      // w 0 point, 1 spot
 	vec4 colorFalloff;      // w 0 inverse square, 1 legacy
-	vec4 directionExponent; // spot axis, exponent
+	vec4 direction;         // spot axis
 	vec4 cone;              // innerCos, outerCos, radius, sourceRadius
 	vec4 misc;              // minLight
 };
@@ -44,57 +45,21 @@ struct MediumProjector
 	vec4 atten;
 };
 
-float InverseSquareFalloff( float distanceSquared, float radius, float sourceRadius )
-{
-	float window = 1.0;
-	if ( radius > 0.0 )
-	{
-		const float ratio = distanceSquared / ( radius * radius );
-		if ( ratio >= 1.0 )
-			return 0.0;
-		const float edge = 1.0 - ratio * ratio;
-		window = edge * edge;
-	}
-	const float d2 = max( distanceSquared, sourceRadius * sourceRadius );
-	return 100.0 * 100.0 / d2 * window;
-}
-
-float LegacyFalloff( float distanceSquared, float radius, float minLight )
-{
-	const float radiusSquared = radius * radius;
-	if ( !( radiusSquared > 0.0 ) || distanceSquared >= radiusSquared )
-		return 0.0;
-	float scale = distanceSquared > 0.0 ? radiusSquared * minLight / distanceSquared : 1.0;
-	scale *= 1.0 - distanceSquared / radiusSquared;
-	return min( scale, 2.0 );
-}
-
 // The light's diffuse light at normal incidence at `p` (lightmap unit),
 // unshadowed and unattenuated by the medium.
 vec3 LightAt( MediumLight light, vec3 p )
 {
 	const vec3 toPoint = p - light.positionKind.xyz;
 	const float distanceSquared = dot( toPoint, toPoint );
-	float falloff = light.colorFalloff.w > 0.5
-	                    ? LegacyFalloff( distanceSquared, light.cone.z, light.misc.x )
-	                    : InverseSquareFalloff( distanceSquared, light.cone.z, light.cone.w );
+	float falloff =
+	    light.colorFalloff.w > 0.5
+	        ? RuntimeLightFalloffLegacy( distanceSquared, light.cone.z, light.misc.x )
+	        : RuntimeLightFalloffInverseSquare( distanceSquared, light.cone.z, light.cone.w );
 	if ( light.positionKind.w > 0.5 )
 	{
 		const float cosAxis =
-		    dot( toPoint * inversesqrt( max( distanceSquared, 1e-30 ) ), light.directionExponent.xyz );
-		const float innerCos = light.cone.x;
-		const float outerCos = light.cone.y;
-		if ( !( cosAxis > outerCos ) )
-			return vec3( 0.0 );
-		float cone = 1.0;
-		if ( cosAxis <= innerCos )
-		{
-			cone = ( cosAxis - outerCos ) / max( innerCos - outerCos, 1e-6 );
-			const float exponent = light.directionExponent.w;
-			if ( exponent != 0.0 && exponent != 1.0 )
-				cone = pow( cone, exponent );
-		}
-		falloff *= cosAxis * cone;
+		    dot( toPoint * inversesqrt( max( distanceSquared, 1e-30 ) ), light.direction.xyz );
+		falloff *= RuntimeLightSpot( cosAxis, light.cone.x, light.cone.y );
 	}
 	return light.colorFalloff.rgb * falloff;
 }
