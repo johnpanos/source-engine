@@ -186,7 +186,7 @@ platform acceptance.
 - Deliver bounded migrations with named callers and a deletion condition.
   Extracting a directory, increasing worker count, or adding interfaces is not
   an architectural outcome by itself.
-- **Render work follow RFC 0016's binding rules** (user decision,
+- **Render work follows RFC 0016's binding rules** (user decision,
   2026-09-28; mandatory, not negotiable, and only the user can change them):
   [binding rules](RFC/0016-render-core.md#binding-rules-for-all-render-work-user-decision-2026-09-28).
   - The legacy render paths (`materialsystem/shaderapivulkan/`, the D3D9
