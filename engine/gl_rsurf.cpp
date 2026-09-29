@@ -47,6 +47,7 @@
 #include "materialsystem/imaterialvar.h"
 #include "coordsize.h"
 #include "mempool.h"
+#include "render_core_world.h"
 #ifndef SWDS
 #include "Overlay.h"
 #include "render/world_mesh_upload.h"
@@ -3795,6 +3796,13 @@ void R_BuildWorldLists( IWorldRenderList *pRenderListIn, WorldListInfo_t* pInfo,
 		pInfo->m_pLeafList = pRenderList->m_VisibleLeaves.Base();
 		pInfo->m_pLeafFogVolume = pRenderList->m_VisibleLeafFogVolumes.Base();
 	}
+
+	// RFC 0016 K5: the render core's culling of the world scene, against
+	// these visible leaves, when r_core_cull_capture runs.
+	if ( !r_drawtopview && !bShadowDepth )
+		RenderCoreWorld_OnWorldList( pRenderList->m_VisibleLeaves.Base(),
+		    pRenderList->m_VisibleLeaves.Count(), modelorg.Base(), iForceViewLeaf >= 0,
+		    pVisData != NULL, pWaterReflectionHeight != NULL );
 }
 
 

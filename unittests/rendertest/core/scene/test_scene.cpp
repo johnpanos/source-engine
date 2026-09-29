@@ -255,5 +255,26 @@ int main()
 	checks.Equal( failed, 0, "C6.pooled-culling-runs" );
 	checks.Equal( equal, 1000, "C6.pooled-culling-equals-serial" );
 	checks.That( items > 10000, "C6.the-scenes-draw-something" );
+
+	// C7: a view's explicit frustum replaces the one its matrices imply. The
+	// matrices see all six boxes (x within +-0.5); a frustum whose one real
+	// plane is x >= 1 keeps none of them, and x >= -1 keeps all.
+	{
+		ViewDesc explicitDesc = front;
+		math::Frustum planes;
+		for ( math::Plane &plane : planes.planes )
+			plane = { { 0.0f, 0.0f, 0.0f }, 1.0f };         // always inside
+		planes.planes[0] = { { 1.0f, 0.0f, 0.0f }, -1.0f }; // x >= 1
+		explicitDesc.frustum = planes;
+		const SceneView explicitView = MakeView( explicitDesc );
+		const DrawList none = BuildDrawList( *sorted->Snapshot(), explicitView );
+		planes.planes[0] = { { 1.0f, 0.0f, 0.0f }, 1.0f }; // x >= -1
+		explicitDesc.frustum = planes;
+		const DrawList all = BuildDrawList( *sorted->Snapshot(), MakeView( explicitDesc ) );
+		checks.That(
+		    none.items.empty() && none.frustumCulled == 6 && all.items.size() == 6 &&
+		        explicitView.viewProjection.rows[0].x == frontView.viewProjection.rows[0].x,
+		    "C7.an-explicit-frustum-replaces-the-extracted-one" );
+	}
 	return checks.Report();
 }

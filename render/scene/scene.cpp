@@ -134,7 +134,7 @@ SceneView MakeView( const ViewDesc &desc )
 	SceneView view;
 	view.desc = desc;
 	view.viewProjection = math::Multiply( desc.projection, desc.view );
-	view.frustum = math::ExtractFrustum( view.viewProjection );
+	view.frustum = desc.frustum ? *desc.frustum : math::ExtractFrustum( view.viewProjection );
 	return view;
 }
 

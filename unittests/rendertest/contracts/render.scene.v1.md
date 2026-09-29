@@ -15,6 +15,8 @@ Rows: R89 (RFC 0016 K5)
 | C4 | A visibility provider can only remove candidates |
 | C5 | Scenes are independent, and a held snapshot outlives its scene |
 | C6 | Pooled culling (`BuildDrawListPooled`, frustum chunks as `jobs.graph` jobs merged in index order) gives the serial draw list exactly, items, depths and counts, on 1,000 seeded scenes, views and chunk sizes, with and without a provider; the serial function is the oracle |
+| C7 | A view's explicit frustum (`ViewDesc::frustum`, the planes its owner culls with) replaces the one its matrices imply; the factory's `makeView` and `buildDrawList` entries let a host that links no render module cull its own scenes |
+| K5 culling | `render.scene.culling`: the engine's world scene (non-solid BSP leaves, static props) culled by `BuildDrawList` with the legacy view's planes and its visibility as the provider equals the legacy visible leaves and drawn props at every K0 shot, except items legacy's own view-frustum test rejects, each listed and checked outside the view; the judge's faults are in `render.scene.culling.selftest` |
 | P1–P4 | Publication: while the owner commits, readers on other threads only ever see complete snapshots, in revision order, and `Revision()` never runs ahead of the snapshot a reader can take next. The TSan lane runs this clean; a scene built with `RENDER_SCENE_SEEDED_UNSYNCHRONIZED_PUBLICATION` (no release/acquire edge) must fail it |
 
 Engine-facing: the headers carry no dual-ABI library type, because the engine

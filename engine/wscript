@@ -271,6 +271,7 @@ def build(bld):
 			# RFC 0016: the engine drives the render core through its ports;
 			# it links no render module (Engine_BindRenderCore).
 			'render_core_host.cpp',
+			'render_core_world.cpp',
 			'rpt_engine.cpp',
 			'cl_steamauth.cpp',
 			'cdll_engine_int.cpp',

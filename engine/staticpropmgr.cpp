@@ -46,6 +46,7 @@
 #include "generichash.h"
 #include "tier2/renderutils.h"
 #include "ipooledvballocator.h"
+#include "render_core_world.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -387,6 +388,21 @@ public:
 	void DrawStaticProps_Slow( IClientRenderable **pProps, int count, bool bShadowDepth, bool drawVCollideWireframe );
 	void DrawStaticProps_Fast( IClientRenderable **pProps, int count, bool bShadowDepth );
 	void DrawStaticProps_FastPipeline( IClientRenderable **pProps, int count, bool bShadowDepth );
+
+	// RFC 0016 K5 (render_core_world.cpp): each prop's world render box, and
+	// the index of a drawn prop's renderable (-1 for another renderable).
+	int CorePropCount() const { return m_StaticProps.Count(); }
+	void CorePropBounds( int nProp, Vector &mins, Vector &maxs ) const
+	{
+		mins = m_StaticProps[nProp].m_WorldRenderBBoxMin;
+		maxs = m_StaticProps[nProp].m_WorldRenderBBoxMax;
+	}
+	int CorePropIndex( IClientRenderable *pRenderable ) const
+	{
+		const CStaticProp *pProp = static_cast<const CStaticProp *>( pRenderable );
+		const int nIndex = int( pProp - m_StaticProps.Base() );
+		return ( nIndex >= 0 && nIndex < m_StaticProps.Count() ) ? nIndex : -1;
+	}
 
 private:
 	void OutputLevelStats( void );
@@ -1969,6 +1985,19 @@ void CStaticPropMgr::DrawStaticProps( IClientRenderable **pProps, int count, boo
 	if ( !r_drawstaticprops.GetBool() )
 		return;
 
+	// RFC 0016 K5: the props this view draws, for r_core_cull_capture.
+	if ( !bShadowDepth && RenderCoreWorld_Capturing() )
+	{
+		CUtlVector<int> drawn;
+		for ( int i = 0; i < count; ++i )
+		{
+			const int nIndex = CorePropIndex( pProps[i] );
+			if ( nIndex >= 0 )
+				drawn.AddToTail( nIndex );
+		}
+		RenderCoreWorld_OnStaticPropsDrawn( drawn.Base(), drawn.Count() );
+	}
+
 	if ( IsUsingStaticPropDebugModes() || drawVCollideWireframe )
 	{
 		DrawStaticProps_Slow( pProps, count, bShadowDepth, drawVCollideWireframe );
@@ -2335,3 +2364,15 @@ void Cmd_PropCrosshair_f (void)
 
 static ConCommand prop_crosshair( "prop_crosshair", Cmd_PropCrosshair_f, "Shows name for prop looking at", FCVAR_CHEAT );
 
+//-----------------------------------------------------------------------------
+// RFC 0016 K5: the static props' world render boxes, for the world scene.
+//-----------------------------------------------------------------------------
+int StaticPropMgr_CorePropCount()
+{
+	return s_StaticPropMgr.CorePropCount();
+}
+
+void StaticPropMgr_CorePropBounds( int nProp, Vector &mins, Vector &maxs )
+{
+	s_StaticPropMgr.CorePropBounds( nProp, mins, maxs );
+}

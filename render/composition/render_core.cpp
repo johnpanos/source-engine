@@ -5,6 +5,8 @@
 //=============================================================================//
 
 #include "render/composition/render_core.h"
+
+#include "jobsystem/parallel_executor.h"
 #include "render/device/null/provider.h"
 #include "render/legacy/core_backend.h"
 #include "render/pass/present/feature.h"
@@ -27,6 +29,9 @@ struct RenderCore
 	std::unique_ptr<render::frame::IRenderer> renderer;
 	std::string deviceName;
 	RenderCoreBinding binding;
+	// The pooled culling executor, created on first use (the world scene's
+	// culling check; the product does not cull on it yet).
+	std::unique_ptr<jobsystem::ParallelExecutor> cullJobs;
 
 	~RenderCore()
 	{
@@ -35,6 +40,7 @@ struct RenderCore
 		if ( frontend )
 			frontend->BindRenderer( nullptr );
 		renderer.reset();
+		cullJobs.reset();
 		if ( device )
 			(void)device->WaitIdle(); // reviewed idle wait: teardown
 		frontend.reset();
@@ -44,6 +50,18 @@ struct RenderCore
 
 namespace
 {
+
+constexpr int kCullWorkers = 4;
+
+foundation::Expected<render::scene::DrawList, render::scene::CullStatus> BuildDrawListPooledOnCore(
+    void *context, const render::scene::SceneSnapshot &snapshot,
+    const render::scene::SceneView &view, render::scene::IVisibilityProvider *provider )
+{
+	RenderCore &core = *static_cast<RenderCore *>( context );
+	if ( !core.cullJobs )
+		core.cullJobs = std::make_unique<jobsystem::ParallelExecutor>( kCullWorkers );
+	return render::scene::BuildDrawListPooled( snapshot, view, *core.cullJobs, provider );
+}
 
 const render::device::DeviceProviderDescriptor *FindDevice( std::string_view name )
 {
@@ -133,6 +151,10 @@ extern "C" RenderCore *RenderCore_Create( const RenderCoreConfig *config, Render
 	core->binding.device = core->device.get();
 	core->binding.renderer = core->renderer.get();
 	core->binding.sceneFactory.create = &render::scene::CreateRenderScene;
+	core->binding.sceneFactory.makeView = &render::scene::MakeView;
+	core->binding.sceneFactory.buildDrawList = &render::scene::BuildDrawList;
+	core->binding.sceneFactory.context = core.get();
+	core->binding.sceneFactory.buildDrawListPooled = &BuildDrawListPooledOnCore;
 	core->binding.stageMarkers = core->frontend->Markers();
 	core->binding.materialBlocks = core->frontend->MaterialBlocks();
 	core->binding.capabilities = core->frontend->Capabilities();

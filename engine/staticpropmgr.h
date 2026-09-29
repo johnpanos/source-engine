@@ -77,5 +77,8 @@ public:
 //-----------------------------------------------------------------------------
 IStaticPropMgrEngine* StaticPropMgr();
 
+// RFC 0016 K5 (render_core_world.cpp): the static props' world render boxes.
+int StaticPropMgr_CorePropCount();
+void StaticPropMgr_CorePropBounds( int nProp, Vector &mins, Vector &maxs );
 
 #endif	// STATICPROPMGR_H

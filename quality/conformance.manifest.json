@@ -7981,6 +7981,69 @@
       "expected_divergence": "FAIL"
     },
     {
+      "id": "render.scene.culling",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "migration": "R89",
+      "contract": "unittests/rendertest/contracts/render.scene.v1.md",
+      "kind": "positive",
+      "profile": "linux-host-corpus",
+      "description": "RFC 0016 K5 'Culling matches' (tools/render/culling_capture.py suite): the engine's world render scene holds one instance per non-solid BSP leaf (bounded by the box the legacy traversal last tests for it) and one per static prop (its world render box); at every shot of the K0 view workload (quality/workloads/render-view-oracles-v1.json: testchmb_a_00, testchmb_a_08, the testchmb_a_01 legacy-ports set and Portal 2's sp_a1_wakeup), r_core_cull_capture culls it for every 3D view of the frame through scene::BuildDrawList with the view's own frustum planes (ViewDesc::frustum) and the legacy view's visibility as the provider (the BSP traversal's PVS, area bits and area frustums; the props the client drew). Every view's core leaves and props must equal the legacy ones, except items legacy's own view-frustum test rejects (legacy tests a leaf in an area it sees through an area portal against that area's frustum only), each listed and checked outside the view; the core's frustum pass must remove leaves and props must be compared in every scenario.",
+      "command": [
+        "{python}",
+        "tools/render/culling_capture.py",
+        "suite",
+        "--out",
+        "{out}"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 120,
+      "timeout_seconds": 3000,
+      "requires": [
+        "path:../source-engine/run/runtime/portal/portal_pak_dir.vpk",
+        "path:build-rc-client/install/hl2_launcher",
+        "path:build-rc-p2/install/hl2_launcher",
+        "path:build-rc-p2/p2content/portal2",
+        "vulkan-device:gpu"
+      ],
+      "sources": [
+        "tools/render/culling_capture.py",
+        "tools/render/view_oracle.py",
+        "tools/quality/portal_boot.py",
+        "tools/quality/conformance_result.py",
+        "quality/workloads/render-view-oracles-v1.json",
+        "engine/render_core_world.cpp",
+        "engine/render_core_host.cpp",
+        "engine/gl_rsurf.cpp",
+        "engine/gl_rmain.cpp",
+        "engine/staticpropmgr.cpp",
+        "render/scene/scene.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.scene.culling.selftest",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "migration": "R89",
+      "contract": "unittests/rendertest/contracts/render.scene.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "description": "The culling judge (culling_capture.py selftest): a matching view and a legacy leaf outside the view pass; a leaf or prop the core dropped inside the view, an extra leaf or prop, a view the core did not cull, a wrong schema and an empty capture are each reported.",
+      "command": [
+        "{python}",
+        "tools/render/culling_capture.py",
+        "selftest"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 8,
+      "sources": [
+        "tools/render/culling_capture.py",
+        "tools/quality/conformance_result.py"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "render.math.builders",
       "domain": "Q-PRESENTATION",
       "rfc": "0016",
@@ -8878,6 +8941,7 @@
         "render/material/vmt_import.cpp",
         "kvtext/keyvalues.cpp",
         "render/legacy/queued_capabilities.cpp",
+        "jobsystem/parallel_executor.cpp",
         "render/composition/render_core.cpp",
         "render/composition/feature_catalog.cpp",
         "unittests/rendertest/core/composition/test_composition.cpp"

@@ -1530,3 +1530,56 @@ clang++ (above and the Hammer session's `vertexlit` record).
 Not claimed: hosted CI (not run), the Fold7 and Apple devices (K4 declares
 none), and the product drawing materials through families. K5 routes the
 world and props through the scene, and K8 does the other cohorts.
+
+## K5 slice: the engine's world scene and "Culling matches" (2026-09-28)
+
+State: K5's "Culling matches" and "Serial equals pooled" checks pass on the
+K0 views. K5 stays open for pixels (the world and props drawn from the
+scene) and submission cost.
+
+- **The world scene** (`engine/render_core_world.cpp`): at level load the
+  engine fills the world render scene it owns.
+  - Each non-solid BSP leaf gets one instance, bounded by the box the legacy
+    traversal last tests for it: its own, or the parent of its enclosing
+    "too small to cull" subtree (`MarkSmallNode`, contents -2).
+  - Each static prop gets one instance, bounded by its world render box.
+  - The engine links no render module. `render_core_host.cpp` calls the
+    core through `SceneFactory`, and the world file, which names no render
+    type, passes it plain arrays. The engine's global `render` and the
+    core's namespace cannot meet in one file.
+- **Port changes:**
+  - `ViewDesc::frustum`: a view's owner may pass the planes it culls with
+    (scene clause C7).
+  - `SceneFactory` gains `makeView`, `buildDrawList`, and
+    `buildDrawListPooled` with a context. The composition runs the pooled
+    builder on a four-worker `jobsystem::ParallelExecutor` it creates on
+    first use.
+- **The check:** `r_core_cull_capture` records every world list of a
+  frame, with the props the client drew in the same 3D view (views nest).
+  For each, the core culls the scene with that view's own frustum planes,
+  using the legacy view's visibility as the provider. The provider is the
+  BSP traversal's PVS, area bits and area frustums for leaves, and the
+  drawn props for props. The core then builds the pooled list beside the
+  serial one.
+  - `tools/render/culling_capture.py` runs the K0 view workload with the
+    capture in place of each screenshot: `render.scene.culling`, and
+    `.selftest` with 12 checks and 9 seeded faults.
+- **Result** (136 checks, 0 failures):
+
+  | Scenario | Views | Legacy leaves | Outside the view | Props | Leaves the core's frustum culled |
+  | --- | --- | --- | --- | --- | --- |
+  | testchmb_a_00 | 111 | 1,248 | 255 | 202 | 96,659 |
+  | testchmb_a_08 | 141 | 6,237 | 335 | 1,144 | 127,559 |
+  | testchmb_a_01 legacy-ports | 17 | 529 | 14 | 56 | 15,550 |
+  | Portal 2 sp_a1_wakeup | 82 | 1,294 | 153 | 1,021 | 131,428 |
+
+  - The core's leaves and props equal the legacy ones in every view, with
+    one exception: 757 leaves that legacy keeps outside the view. Legacy
+    tests a leaf in an area it sees through an area portal only against
+    that area's frustum. Every one of the 757 lies outside the view by
+    legacy's own box test, and there is no other difference. The RFC check
+    is amended to allow exactly these ("Culling amendment" under K5).
+  - The pooled draw list equals the serial one item for item in all 351
+    views.
+- **Not done:** the product still draws the world and props through the
+  legacy lists. Pixels, the frame-time budget and the Fold7 remain.

@@ -951,11 +951,20 @@ move onto the graph in K2.
 | Check | Runs as | Passes when |
 | --- | --- | --- |
 | Scene suite | `render.scene.v1` | change-set, snapshot and revision clauses pass; a seeded publication without release ordering is caught by the TSan stress lane |
-| Culling matches | `render.scene.culling` on the K0 views | visible world groups and props equal the legacy sets exactly |
+| Culling matches | `render.scene.culling` on the K0 views | visible world groups and props equal the legacy sets exactly, except items legacy's own view-frustum test rejects (amended below) |
 | Serial equals pooled | same suite | serial and pooled culling give identical draw lists |
 | Pixels | K0 views, world and prop draws | within tolerance |
 | Two scenes | `render.scene.multi` | two scenes with different content render independently in one process, and destroying one leaves the other's handles valid |
 | Submission cost | `frame_pacing.py` main-thread submission time | at least 30 % below K0 on desktop (target set here, before optimizing), and within the frame allowance on the Fold7 |
+
+Culling amendment (2026-09-28, agent decision under the user's standing
+instruction): legacy tests a BSP leaf in an area it sees through an area
+portal against that area's frustum and not the view's, so it keeps leaves
+wholly outside the view, which draw no pixel. The core culls every leaf with
+the view's own planes. The first run found 757 such leaves across the four
+K0 scenarios, every one outside the view frustum under legacy's own box
+test, and no other difference. The check therefore requires equality except
+for those items, and lists and verifies each one.
 
 ### K6: Skinned models
 

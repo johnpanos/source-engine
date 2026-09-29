@@ -372,8 +372,10 @@ def expand_shots(scenario):
     return shots + last
 
 
-def console_script(scenario, shots):
-    """Console lines for portal_boot's command cfg.
+def console_script(scenario, shots, frame=lambda index, shot: "screenshot"):
+    """Console lines for portal_boot's command cfg. `frame(index, shot)` is
+    the command that takes each shot's frame (a screenshot here; the culling
+    capture's r_core_cull_capture).
 
     Every line of an exec'd cfg runs at once, and a long `wait` chain on one
     line is not reliable, so the setup runs first (at once: it may quote, as
@@ -385,7 +387,7 @@ def console_script(scenario, shots):
         steps = commands + ["wait %d" % shot.get("settle", 30)]
         # Re-place the camera right before the frame: nothing may drift it.
         steps += [c for c in commands if c.startswith("cmd setpos") or c.startswith("cmd setang")]
-        steps += ["wait 3", "screenshot", "wait %d" % shot.get("after", 10)]
+        steps += ["wait 3", frame(index, shot), "wait %d" % shot.get("after", 10)]
         steps += list(shot.get("post", []))
         if index + 1 < len(shots):
             steps.append("vo_shot%d" % (index + 1))

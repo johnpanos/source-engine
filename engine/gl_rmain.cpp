@@ -35,6 +35,7 @@
 #include "r_decal.h"
 #include "cl_main.h"
 #include "render_core_host.h"
+#include "render_core_world.h"
 #include "tier0/icommandline.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
@@ -687,6 +688,7 @@ void CRender::Push3DView( const CViewSetup &view, int nFlags, ITexture* pRenderT
 	m_ViewStack[i].m_View = view;
 	m_ViewStack[i].m_bIs2DView = false;
 	RenderCoreHost_MarkViewBegin();
+	RenderCoreWorld_ViewBegin();
 	m_ViewStack[i].m_bNoDraw = ( ( nFlags & VIEW_NO_DRAW ) != 0 );
 	m_ViewStack[i].m_bExplicitTarget = pRenderTarget != NULL;
 	if ( ViewOracleEnabled() )
@@ -788,7 +790,10 @@ void CRender::Push2DView( const CViewSetup &view, int nFlags, ITexture* pRenderT
 void CRender::PopView( Frustum frustumPlanes )
 {
 	if ( !m_ViewStack.Top().m_bIs2DView )
+	{
+		RenderCoreWorld_ViewEnd();
 		RenderCoreHost_MarkViewEnd();
+	}
 	if ( ViewOracleEnabled() )
 		ViewOracleEnd();
 
