@@ -28,6 +28,11 @@ void RenderCoreWorldDraw_LevelShutdown();
 bool RenderCoreWorldDraw_ViewEligible( unsigned long flags, bool bWorldMeshWorld );
 // Whether the core draws this surface when it draws a view.
 bool RenderCoreWorldDraw_Takes( SurfaceHandle_t surfID );
+// Whether the core lights this surface's runtime light (r_core_world on and
+// the core takes it): lighting the core evaluates per pixel (area lights)
+// stays out of its lightmap, so each light counts once. Nested views, which
+// the legacy stream draws, then show the surface without it (until K8).
+bool RenderCoreWorldDraw_OwnsLighting( SurfaceHandle_t surfID );
 // Queues the view's visible surfaces the core takes (surface indices) and
 // marks the core's slot; from then until EndView the legacy chains skip them.
 void RenderCoreWorldDraw_BeginView( const unsigned int *pSurfaces, int nCount );

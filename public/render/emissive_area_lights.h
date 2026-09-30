@@ -411,10 +411,13 @@ struct Candidate
 // the rest. `inView` is asked in rank order and only until the budget is
 // filled, so a caller may make it a trace. A lit candidate is preferred over
 // an unlit one less than kKeepMargin stronger. Ties go to the lower index.
+// `order`, when given, receives the lit candidates' indices in that order.
 template <class InView>
 inline void SelectLit( const Candidate *candidates, int count, int budget, const float view[3],
-    bool *lit, InView &&inView )
+    bool *lit, InView &&inView, std::vector<int> *order = nullptr )
 {
+	if ( order )
+		order->clear();
 	std::vector<std::pair<float, int>> ranked;
 	ranked.reserve( size_t( count ) );
 	for ( int i = 0; i < count; ++i )
@@ -441,6 +444,8 @@ inline void SelectLit( const Candidate *candidates, int count, int budget, const
 		{
 			lit[index] = true;
 			++nLit;
+			if ( order )
+				order->push_back( index );
 		}
 		else
 		{
@@ -448,7 +453,11 @@ inline void SelectLit( const Candidate *candidates, int count, int budget, const
 		}
 	}
 	for ( size_t h = 0; h < hidden.size() && nLit < budget; ++h, ++nLit )
+	{
 		lit[hidden[h]] = true;
+		if ( order )
+			order->push_back( hidden[h] );
+	}
 }
 
 // Every candidate in view.

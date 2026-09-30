@@ -232,6 +232,9 @@ void CoreWorld::SetStage()
 	data.stage = std::move( stage );
 	m_Pass.SetWorld( std::move( data ) );
 	m_StageSet = true;
+	// The change the capture holds (parts arrive relative to it).
+	if ( m_Capture.table )
+		m_Pass.SetStageChange( m_Capture.change, *m_Capture.table );
 }
 
 bool CoreWorld::StageCapture::UploadLightmap(
@@ -271,7 +274,7 @@ bool CoreWorld::StageCapture::UploadLightmap(
 bool CoreWorld::StageCapture::UploadProbeVolume(
     const world_mesh_gpu::ProbeVolumeUploadRequest &request )
 {
-	if ( !request.atlas || !request.gridTable || request.tableFloats % 4 != 0 )
+	if ( !request.gridTable || request.tableFloats % 4 != 0 )
 		return false;
 	pass::world::StageProbeVolume volume;
 	volume.atlasWidth = request.atlasWidth;
@@ -281,35 +284,79 @@ bool CoreWorld::StageCapture::UploadProbeVolume(
 	volume.table.assign(
 	    request.gridTable, request.gridTable + std::size_t( volume.rows ) * request.tableFloats );
 	const std::size_t atlasBytes = std::size_t( request.atlasWidth ) * request.atlasHeight * 8;
+	if ( request.regions )
+	{
+		// A part of the change: applied to the kept change, and passed on as
+		// regions. Before any whole volume there is nothing to apply it to.
+		if ( !probes || probes->atlas.size() != atlasBytes )
+			return true;
+		std::vector<pass::world::WorldPass::StageRegion> regions;
+		std::vector<std::byte> texels;
+		if ( request.regionDelta )
+		{
+			const std::byte *packed = static_cast<const std::byte *>( request.regionDelta );
+			if ( change.size() != atlasBytes )
+				change.assign( atlasBytes, std::byte( 0 ) );
+			std::size_t offset = 0;
+			for ( std::uint32_t i = 0; i < request.regionCount; ++i )
+			{
+				const world_mesh_gpu::ProbeAtlasRegion &region = request.regions[i];
+				if ( region.x + region.width > request.atlasWidth ||
+				     region.y + region.height > request.atlasHeight )
+					return false;
+				regions.push_back( { region.x, region.y, region.width, region.height } );
+				const std::size_t row = std::size_t( region.width ) * 8;
+				for ( std::uint32_t y = 0; y < region.height; ++y )
+				{
+					std::memcpy( change.data() +
+					                 ( std::size_t( region.y + y ) * request.atlasWidth + region.x ) *
+					                     8,
+					    packed + offset, row );
+					offset += row;
+				}
+			}
+			texels.assign( packed, packed + offset );
+		}
+		table = volume;
+		if ( m_Owner.m_StageSet )
+			m_Owner.m_Pass.SetStageChangeRegions(
+			    std::move( regions ), std::move( texels ), std::move( volume ) );
+		return true;
+	}
+	if ( !request.atlas )
+		return false;
 	// The stage's probe atlas is the first volume published (a traced
 	// producer publishes a change from its first frame, so the bake alone may
 	// never come): a world surface reads the lightmap and adds the change
 	// (kSurfaceProbeBounce); the atlas itself lights only surfaces without a
 	// lightmap.
-	std::vector<std::byte> change;
+	change.clear();
 	if ( request.deltaAtlas )
 	{
 		const std::byte *delta = static_cast<const std::byte *>( request.deltaAtlas );
 		change.assign( delta, delta + atlasBytes );
 	}
+	table = volume;
 	if ( !probes || probes->atlas.size() != atlasBytes )
 	{
 		const bool late = m_Owner.m_StageSet;
 		const std::byte *atlas = static_cast<const std::byte *>( request.atlas );
-		volume.atlas.assign( atlas, atlas + atlasBytes );
 		// The stage's own table has the grids' rows alone.
 		pass::world::StageProbeVolume first = volume;
+		first.atlas.assign( atlas, atlas + atlasBytes );
 		first.rows = request.gridCount;
 		first.table.resize( std::size_t( first.rows ) * request.tableFloats );
 		probes = std::move( first );
-		volume.atlas.clear();
 		// The stage was set before its first volume arrived: set it again
-		// with it, then take this change.
+		// with it (SetStage passes the change on).
 		if ( late )
+		{
 			m_Owner.SetStage();
+			return true;
+		}
 	}
 	if ( m_Owner.m_StageSet )
-		m_Owner.m_Pass.SetStageChange( std::move( change ), std::move( volume ) );
+		m_Owner.m_Pass.SetStageChange( change, std::move( volume ) );
 	return true;
 }
 
@@ -332,6 +379,8 @@ void CoreWorld::StageCapture::Release()
 	lightmap = pass::world::LightmapPages();
 	indirect.clear();
 	probes.reset();
+	change.clear();
+	table.reset();
 	reflectionWidth = reflectionHeight = 0;
 	reflection.clear();
 }
@@ -421,11 +470,7 @@ std::shared_ptr<const pass::world::StageViewLights> CoreWorld::StageViewLightsFo
 	}
 	// The area lights: the map's (baked light fixtures) and the frame's
 	// emitting surfaces; the sun: the map's.
-	std::vector<area_light::AreaLight> areas = m_MapLights.areas;
-	for ( const light_set::RuntimeAreaLight &area : m_Lights.areas )
-		areas.push_back( area.light );
-	if ( areas.size() > std::size_t( material::kSurfaceMaxAreaLights ) )
-		areas.resize( std::size_t( material::kSurfaceMaxAreaLights ) );
+	const std::vector<area_light::AreaLight> areas = ViewAreaLights( true );
 	const std::optional<pass::lights::MapSun> &sun = m_MapLights.sun;
 	pass::shadows::ShadowPlan plan;
 	if ( !shadowed.empty() || !areas.empty() || sun )
@@ -480,11 +525,9 @@ std::shared_ptr<const pass::world::StageViewLights> CoreWorld::StageViewLightsFo
 		const int tiles = tile >= 0 ? plan.lightTileCount[k] : 1;
 		out->lights.push_back( material::PackSurfaceLight( light, tile, tiles, light.baked ) );
 	}
-	// The area lights and the sun, with their tiles (their diffuse light is
-	// the bake's; the surface program adds the rest).
-	for ( std::size_t i = 0; i < areas.size(); ++i )
-		out->areas.push_back( material::PackAreaLight(
-		    areas[i], true, i < plan.areaTiles.size() ? plan.areaTiles[i] : -1 ) );
+	// The area lights and the sun, with their tiles.
+	PackViewAreaLights(
+	    areas, std::min( m_MapLights.areas.size(), areas.size() ), plan.areaTiles, *out );
 	if ( sun )
 	{
 		out->sunDirection[0] = sun->toSun.x;
@@ -515,6 +558,41 @@ std::shared_ptr<const pass::world::StageViewLights> CoreWorld::StageViewLightsFo
 	return out;
 }
 
+std::vector<area_light::AreaLight> CoreWorld::ViewAreaLights( bool withMapAreas ) const
+{
+	std::vector<area_light::AreaLight> areas;
+	if ( withMapAreas )
+		areas = m_MapLights.areas;
+	for ( const light_set::RuntimeAreaLight &area : m_Lights.areas )
+		areas.push_back( area.light );
+	if ( areas.size() > std::size_t( material::kSurfaceMaxAreaLights ) )
+		areas.resize( std::size_t( material::kSurfaceMaxAreaLights ) );
+	return areas;
+}
+
+void CoreWorld::PackViewAreaLights( const std::vector<area_light::AreaLight> &areas,
+    std::size_t mapAreas, const std::vector<int> &areaTiles,
+    pass::world::StageViewLights &out ) const
+{
+	// A map's light fixture is in the bake (the surface program adds its
+	// specular alone); an emitting surface is not: the engine leaves the
+	// surfaces the core draws out of its lightmap (area_lights.h), and a
+	// stage's lightmap never held it.
+	for ( std::size_t i = 0; i < areas.size(); ++i )
+		out.areas.push_back( material::PackAreaLight(
+		    areas[i], i < mapAreas, i < areaTiles.size() ? areaTiles[i] : -1 ) );
+}
+
+std::shared_ptr<const pass::world::StageViewLights> CoreWorld::AreaViewLights() const
+{
+	const std::vector<area_light::AreaLight> areas = ViewAreaLights( false );
+	if ( areas.empty() )
+		return nullptr;
+	auto out = std::make_shared<pass::world::StageViewLights>();
+	PackViewAreaLights( areas, 0, {}, *out );
+	return out;
+}
+
 bool CoreWorld::DrawView( const unsigned int *surfaces, unsigned int count,
     const float worldToClip[16], const float viewport[6], unsigned long long hostFrame,
     const float worldToView[16], const float viewToClip[16] )
@@ -534,6 +612,10 @@ bool CoreWorld::DrawView( const unsigned int *surfaces, unsigned int count,
 	{
 		view.lights = StageViewLightsFor( worldToView, viewToClip, viewport, &shadows );
 		m_StageLitViews += view.lights ? 1 : 0;
+	}
+	else
+	{
+		view.lights = AreaViewLights();
 	}
 	const std::uint32_t tag = m_Pass.QueueView( std::move( view ) );
 	if ( tag == 0 )

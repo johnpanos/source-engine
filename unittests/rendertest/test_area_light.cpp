@@ -141,9 +141,11 @@ void SelectUnderTest(
 #endif
 }
 
-// Selection with the caller's view test; `asked` counts its calls.
+// Selection with the caller's view test; `asked` counts its calls, and
+// `order` receives the lit candidates in rank order.
 void SelectInViewUnderTest( const emissive::Candidate *candidates, int count, int budget,
-    const float view[3], bool *lit, const bool *inView, int &asked )
+    const float view[3], bool *lit, const bool *inView, int &asked,
+    std::vector<int> *order = nullptr )
 {
 	asked = 0;
 	auto test = [&]( int index )
@@ -158,7 +160,7 @@ void SelectInViewUnderTest( const emissive::Candidate *candidates, int count, in
 		return inView[index];
 #endif
 	};
-	emissive::SelectLit( candidates, count, budget, view, lit, test );
+	emissive::SelectLit( candidates, count, budget, view, lit, test, order );
 }
 
 // The independent oracle (area_light_oracle.h).
@@ -583,8 +585,11 @@ int main()
 		SelectInViewUnderTest( unseen, 2, 1, view, litUnseen, unseenInView, asked );
 		Check( !litUnseen[0] && litUnseen[1],
 		    "an emitter in view is lit before a stronger one out of view" );
-		SelectInViewUnderTest( unseen, 2, 2, view, litUnseen, unseenInView, asked );
+		std::vector<int> order;
+		SelectInViewUnderTest( unseen, 2, 2, view, litUnseen, unseenInView, asked, &order );
 		Check( litUnseen[0] && litUnseen[1], "an emitter out of view takes budget left over" );
+		Check( order == std::vector<int>{ 1, 0 },
+		    "the lit are listed most important first, those out of view last" );
 
 		// The view test is asked in rank order only until the budget fills.
 		const emissive::Candidate four[] = { make( 0, 1.0f, false ), make( 10, 1.0f, false ),

@@ -26,6 +26,10 @@
 //          each publish is a new generation, kept in a small ring, and a
 //          build evaluates the generation current when it was queued.
 //
+//          The render core. Surfaces the core draws take their area light
+//          from it, per pixel, from the light set (every frame light, not
+//          only the slotted ones); their lightmaps take none.
+//
 //          Known gaps: displacements, static props and the WMSH world draw no
 //          area light yet; there is no occlusion (a light reaches through
 //          walls within its reach).
@@ -65,6 +69,17 @@ unsigned int AreaLights_SlotMask();
 
 // The current light in a dlight slot, or null.
 const AreaLightSlot *AreaLights_ForSlot( int slot );
+
+// The frame's lights, most important first: those with dlight slots, then
+// (slot -1) those beyond the slots' budget. Returns the count, at most
+// area_light::kMaxFrameAreaLights; `out` stays valid until the next publish.
+int AreaLights_Frame( const AreaLightSlot **out );
+
+// Whether the render core lights this surface's area light (it draws the
+// surface, render_core_world_draw.h): its lightmap then takes none, so each
+// light counts once. Views the core does not draw (portal and monitor views,
+// until RFC 0016 K8) show such a surface without area light.
+bool AreaLights_CoreOwns( msurface2_t *surfID );
 
 // Whether a surface is the world's (not a brush entity's, which moves).
 bool AreaLights_IsWorldSurface( msurface2_t *surfID );

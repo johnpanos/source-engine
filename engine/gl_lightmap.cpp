@@ -31,6 +31,7 @@
 #include "area_lights.h"
 #include "dynamic_occlusion.h"
 #include "projected_lights.h"
+#include <algorithm>
 #include <mutex>
 #include <unordered_map>
 #include <vector>
@@ -424,7 +425,8 @@ static void R_AddAreaLightsTimed(
     SurfaceHandle_t surfID, const matrix3x4_t &entityToWorld, bool needsBumpmap, int generation )
 {
 	AreaLightSlot lights[area_light::kMaxAreaLights];
-	const int count = AreaLights_Get( generation, lights );
+	// The render core lights the surfaces it draws per pixel: none here.
+	const int count = AreaLights_CoreOwns( surfID ) ? 0 : AreaLights_Get( generation, lights );
 	const bool worldSurface = AreaLights_IsWorldSurface( surfID );
 	AreaLightSlot reaching[area_light::kMaxAreaLights];
 	int reachingCount = 0;
@@ -1750,10 +1752,15 @@ static bool LuxelPosition( SurfaceHandle_t surfID, int s, int t, Vector *out )
 // face at the volume's edge (a door's bottom row, on the floor) can lie just
 // outside every grid: it takes the light of the nearest point inside one.
 static bool ProbeSampleClamped( const mapcontainer::ProbeVolumeView &view, const float at[3],
-    const float normal[3], float light[3] )
+    const float normal[3], float light[3], std::vector<uint32_t> *probes )
 {
+	uint32_t read[8];
 	if ( view.Sample( at, normal, mapcontainer::ProbeVolumeLayer::Total, true, light ) )
+	{
+		if ( probes )
+			probes->insert( probes->end(), read, read + view.SampleProbes( at, normal, read ) );
 		return true;
+	}
 	const mapcontainer::ProbeVolumeLayout &layout = view.Layout();
 	float best[3] = {};
 	float bestDistance2 = -1.0f;
@@ -1777,9 +1784,17 @@ static bool ProbeSampleClamped( const mapcontainer::ProbeVolumeView &view, const
 			best[0] = clamped[0], best[1] = clamped[1], best[2] = clamped[2];
 		}
 	}
-	return bestDistance2 >= 0.0f &&
-	       view.Sample( best, normal, mapcontainer::ProbeVolumeLayer::Total, true, light );
+	if ( bestDistance2 < 0.0f ||
+	     !view.Sample( best, normal, mapcontainer::ProbeVolumeLayer::Total, true, light ) )
+		return false;
+	if ( probes )
+		probes->insert( probes->end(), read, read + view.SampleProbes( best, normal, read ) );
+	return true;
 }
+
+// The probes each probe-lit surface's luxels read, from the last relight of
+// every surface: a sparse relight redoes the surfaces that read a changed one.
+static std::unordered_map<SurfaceHandle_t, std::vector<uint32_t>> s_ProbeLitReads;
 
 // One surface's probe light: kept for its later rebuilds (dynamic lights
 // rebuild from it) and built into its lightmap now. With the queued material
@@ -1815,12 +1830,14 @@ private:
 	std::vector<Vector4D> m_luxels;
 };
 
-bool R_RelightBrushEntitiesFromProbes( const mapcontainer::ProbeVolumeView *view )
+bool R_RelightBrushEntitiesFromProbes(
+    const mapcontainer::ProbeVolumeView *view, const uint32_t *changedProbes, uint32_t changedCount )
 {
 	CMatRenderContextPtr pRenderContext( materials );
 	ICallQueue *pCallQueue = pRenderContext->GetCallQueue();
 	if ( !view )
 	{
+		s_ProbeLitReads.clear();
 		if ( pCallQueue )
 			pCallQueue->QueueCall( ClearProbeLitSurfaces );
 		else
@@ -1838,7 +1855,23 @@ bool R_RelightBrushEntitiesFromProbes( const mapcontainer::ProbeVolumeView *view
 			smallest = fminf( smallest, spacing );
 	const float offset = smallest < FLT_MAX ? 0.5f * smallest : 1.0f;
 	std::vector<Vector4D> luxels;
-	int lit = 0, noLight = 0, baked = 0, noLightmap = 0, whitePage = 0;
+	int lit = 0, noLight = 0, baked = 0, noLightmap = 0, whitePage = 0, unchanged = 0;
+	// Sparse: the changed probes marked; the reads are rebuilt on a full pass.
+	const bool sparse = changedProbes && !s_ProbeLitReads.empty();
+	std::vector<uint8_t> changed;
+	if ( sparse )
+	{
+		for ( uint32_t i = 0; i < changedCount; ++i )
+		{
+			if ( changedProbes[i] >= changed.size() )
+				changed.resize( size_t( changedProbes[i] ) + 1, 0 );
+			changed[changedProbes[i]] = 1;
+		}
+	}
+	else
+	{
+		s_ProbeLitReads.clear();
+	}
 	size_t luxelCount = 0, unsampled = 0;
 	double luxelSum = 0.0;
 	for ( int model = 1; model < host_state.worldbrush->numsubmodels; ++model )
@@ -1871,7 +1904,22 @@ bool R_RelightBrushEntitiesFromProbes( const mapcontainer::ProbeVolumeView *view
 				++whitePage;
 				continue;
 			}
+			if ( sparse )
+			{
+				const auto reads = s_ProbeLitReads.find( surfID );
+				bool readsChanged = reads == s_ProbeLitReads.end();
+				for ( size_t k = 0; !readsChanged && k < reads->second.size(); ++k )
+					readsChanged =
+					    reads->second[k] < changed.size() && changed[reads->second[k]];
+				if ( !readsChanged )
+				{
+					++unchanged;
+					continue;
+				}
+			}
 			++lit;
+			std::vector<uint32_t> &reads = s_ProbeLitReads[surfID];
+			reads.clear();
 			const int width = MSurf_LightmapExtents( surfID )[0] + 1;
 			const int height = MSurf_LightmapExtents( surfID )[1] + 1;
 			// The face's own plane: SURFDRAW_PLANEBACK only relates it to its node.
@@ -1894,7 +1942,7 @@ bool R_RelightBrushEntitiesFromProbes( const mapcontainer::ProbeVolumeView *view
 					const float facing[3] = { normal.x, normal.y, normal.z };
 					float light[3] = {};
 					++luxelCount;
-					if ( ProbeSampleClamped( *view, at, facing, light ) )
+					if ( ProbeSampleClamped( *view, at, facing, light, &reads ) )
 					{
 						luxels[size_t( t ) * width + s].Init( light[0], light[1], light[2], 1.0f );
 						luxelSum += ( light[0] + light[1] + light[2] ) / 3.0f;
@@ -1902,6 +1950,8 @@ bool R_RelightBrushEntitiesFromProbes( const mapcontainer::ProbeVolumeView *view
 					else
 						++unsampled;
 				}
+			std::sort( reads.begin(), reads.end() );
+			reads.erase( std::unique( reads.begin(), reads.end() ), reads.end() );
 			if ( pCallQueue )
 			{
 				CFunctor *apply = new CQueuedProbeLitSurface( surfID, luxels );
@@ -1917,9 +1967,9 @@ bool R_RelightBrushEntitiesFromProbes( const mapcontainer::ProbeVolumeView *view
 	if ( report.IsValid() && report.GetBool() )
 		Msg(
 		    "indirect light: %d brush-entity surface(s) lit from probes (%d replacing baked light; "
-		    "skipped: %d unlit, %d without a lightmap, %d on the white page); %zu luxels, "
-		    "%zu outside the volume, mean %.4f; %.3f ms\n",
-		    lit, baked, noLight, noLightmap, whitePage, luxelCount, unsampled,
+		    "skipped: %d unlit, %d without a lightmap, %d on the white page, %d reading no "
+		    "changed probe); %zu luxels, %zu outside the volume, mean %.4f; %.3f ms\n",
+		    lit, baked, noLight, noLightmap, whitePage, unchanged, luxelCount, unsampled,
 		    luxelCount > unsampled ? luxelSum / double( luxelCount - unsampled ) : 0.0,
 		    ( Plat_FloatTime() - start ) * 1000.0 );
 	return true;

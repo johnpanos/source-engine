@@ -273,8 +273,9 @@ struct WorldView
 	// when the view was queued: the render sequence draws with the main
 	// thread's frame value, in either queued mode.
 	frame::DebugControls debug;
-	// A world stage's view: its clustered lights; null draws the program's
-	// neutral view (no runtime light).
+	// A world stage's view: its clustered lights, area lights and sun. A
+	// view without a stage reads its area lights alone. Null draws the
+	// program's neutral view (no runtime light).
 	std::shared_ptr<const StageViewLights> lights;
 };
 
@@ -326,6 +327,18 @@ public:
 	// stage's is a failure.
 	void SetStageLightmap( LightmapPages pages );
 	void SetStageChange( std::vector<std::byte> change, StageProbeVolume table );
+	// A part of the probe change: `regions` of the atlas changed, their
+	// texels (RGBA16F) packed region after region, rows top first; the grid
+	// table whole. Applied over the change in place at the next slot.
+	struct StageRegion
+	{
+		std::uint32_t x = 0;
+		std::uint32_t y = 0;
+		std::uint32_t width = 0;
+		std::uint32_t height = 0;
+	};
+	void SetStageChangeRegions(
+	    std::vector<StageRegion> regions, std::vector<std::byte> texels, StageProbeVolume table );
 	// Whether the pass draws the material's surfaces (valid after SetWorld).
 	bool Draws( std::uint32_t material ) const;
 	// The tag of the slot to mark for the view; 0 when there is nothing to draw.

@@ -15,6 +15,7 @@
 #include "gl_model_private.h"
 #include "host.h"
 #include "r_efxextern.h"
+#include "render_core_world_draw.h"
 #include "world_emitters.h"
 
 #include <algorithm>
@@ -83,6 +84,10 @@ struct State
 	std::unordered_map<msurface2_t *, std::vector<Applied>> applied;
 	std::unordered_map<int, std::vector<msurface2_t *>> surfacesOfKey;
 	std::unordered_set<msurface2_t *> dirty;
+	// The frame's lights, most important first (at most
+	// kMaxFrameAreaLights): those in the current generation with their
+	// slots, the rest with slot -1. The light set publishes them all.
+	std::vector<AreaLightSlot> frame;
 };
 
 State &S()
@@ -131,6 +136,7 @@ void ResetForMap()
 		g.count = 0;
 	for ( int &slot : s.bySlot )
 		slot = -1;
+	s.frame.clear();
 	std::lock_guard<std::mutex> lock( s.mutex );
 	s.applied.clear();
 	s.surfacesOfKey.clear();
@@ -202,18 +208,25 @@ public:
 		const Generation &previous = Current();
 		Generation next;
 		int dropped = 0;
+		// Past the slots' budget (or with every slot held) a light reaches
+		// the light set alone.
+		std::vector<AreaLightSlot> slotless;
 		for ( int i = 0; lights && keys && i < count; ++i )
 		{
-			if ( next.count == kMaxAreaLights || !( lights[i].reach > 0.0f ) )
+			if ( !( lights[i].reach > 0.0f ) ||
+			     next.count + int( slotless.size() ) == area_light::kMaxFrameAreaLights )
 			{
 				++dropped;
 				continue;
 			}
 			const int key = keys[i] & kAreaKeyMask;
 			const int dlightKey = kAreaKeyBase | key;
-			if ( FindSlot( dlightKey ) < 0 )
+			if ( next.count == kMaxAreaLights || FindSlot( dlightKey ) < 0 )
 			{
-				++dropped;
+				AreaLightSlot entry;
+				entry.key = key;
+				entry.light = lights[i];
+				slotless.push_back( entry );
 				continue;
 			}
 			AreaLightSlot entry;
@@ -279,6 +292,8 @@ public:
 			slot = -1;
 		for ( int n = 0; n < next.count; ++n )
 			s.bySlot[next.lights[n].slot] = n;
+		s.frame.assign( next.lights, next.lights + next.count );
+		s.frame.insert( s.frame.end(), slotless.begin(), slotless.end() );
 
 		if ( r_area_lights_report.GetBool() )
 		{
@@ -289,13 +304,13 @@ public:
 				applied = s.applied.size();
 				dirty = s.dirty.size();
 			}
-			Msg( "area lights generation %d: %d lit, %d dropped; %zu surface(s) hold area light, "
-			     "%zu "
+			Msg( "area lights generation %d: %d lit (%zu without a slot), %d dropped; %zu "
+			     "surface(s) hold area light, %zu "
 			     "dirty; since the last report (%d frames): %d luxel(s) lit, %.3f light added, %d "
 			     "lightmap build(s) took %.3f ms\n",
-			    s.generation, next.count, dropped, applied, dirty, host_framecount - s_nReportFrame,
-			    g_AreaLightsLitLuxels, g_AreaLightsAddedEnergy, g_AreaLightsSurfaces,
-			    g_AreaLightsSeconds * 1000.0 );
+			    s.generation, next.count, slotless.size(), dropped, applied, dirty,
+			    host_framecount - s_nReportFrame, g_AreaLightsLitLuxels, g_AreaLightsAddedEnergy,
+			    g_AreaLightsSurfaces, g_AreaLightsSeconds * 1000.0 );
 			g_AreaLightsLitLuxels = 0;
 			g_AreaLightsAddedEnergy = 0.0;
 			g_AreaLightsSurfaces = 0;
@@ -375,6 +390,20 @@ const AreaLightSlot *AreaLights_ForSlot( int slot )
 	return Live( slot );
 }
 
+int AreaLights_Frame( const AreaLightSlot **out )
+{
+	State &s = S();
+	*out = s.frame.data();
+	if ( s.map != g_nMapLoadCount )
+		return 0;
+	return int( s.frame.size() );
+}
+
+bool AreaLights_CoreOwns( msurface2_t *surfID )
+{
+	return RenderCoreWorldDraw_OwnsLighting( surfID );
+}
+
 bool AreaLights_IsWorldSurface( msurface2_t *surfID )
 {
 	const model_t *world = host_state.worldmodel;
@@ -390,9 +419,16 @@ bool AreaLights_ShouldMark( int slot, msurface2_t *surfID, bool worldSurface )
 	const AreaLightSlot *entry = Live( slot );
 	if ( !entry )
 		return false;
+	State &s = S();
+	// The render core lights the surfaces it draws (they take no area light
+	// here): mark one only to clear the light its lightmap still holds.
+	if ( AreaLights_CoreOwns( surfID ) )
+	{
+		std::lock_guard<std::mutex> lock( s.mutex );
+		return worldSurface && s.applied.count( surfID ) != 0;
+	}
 	if ( !worldSurface )
 		return true;
-	State &s = S();
 	std::lock_guard<std::mutex> lock( s.mutex );
 	const auto found = s.applied.find( surfID );
 	if ( found == s.applied.end() )

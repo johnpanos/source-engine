@@ -4047,3 +4047,54 @@ back-buffer view alone: views through portals and monitors are nested and
 drawn by the legacy stream from the same pages, so stopping the CPU dlights
 would drop them there. That term waits for the core drawing nested views
 (RFC 0016 K8, portal views), and stays the CPU path's meanwhile.
+
+## K12: emitting surfaces lit by the core on retail BSP faces (2026-09-29, source-engine-89)
+
+User request: self-illuminated emitters (Portal 2's arm-panel strips, cores,
+panels) light their surroundings through the render core, not the CPU
+lightmap path. Agreed with the core world's owner (source-engine-cb).
+
+- **Light set.** The client publishes up to `kMaxFrameAreaLights` (64)
+  emitters a frame, most important first (`r_area_lights` 64 on desktop, 4
+  on Android). The first 8 keep dlight slots for the CPU paths (models'
+  stand-in lights, the lightmaps of surfaces the core does not draw); the
+  engine publishes all of them in `Snapshot::areas` (`AreaLights_Frame`).
+- **The core.** A view without a stage (the claimed BSP faces of a retail
+  map) binds its frame area lights alone (`CoreWorld::AreaViewLights`,
+  sharing `PackViewAreaLights` with the stage's packing); the world pass
+  hands every view's areas to its frame terms. The `lightmapped` point adds
+  `tint x AreaLightIrradiance` (the form factor at the mapped normal times
+  radiance and window, unshadowed) to its diffuse light, for the lights
+  whose diffuse is not in the bake. `surface_program.glsl` gains
+  `AreaLightCorners` (shared with the pbr loop) and `AreaLightIrradiance`.
+- **Each light counts once.** Emitting surfaces are packed with their
+  diffuse *not* in the bake, on stages too (a stage's LMAP never held them;
+  slice 5 packed them as baked, so a stage showed their specular only). A
+  map's `light_rect` fixtures stay baked. The engine leaves area light out of
+  the lightmaps of surfaces the core draws (`RenderCoreWorldDraw_OwnsLighting`:
+  `r_core_world` on and the core takes the surface), and marks such a
+  surface only to clear light its page still holds.
+
+### Held back: area light in nested views
+
+As for dlights (slice 5), the core draws the outermost back-buffer view
+alone. Portal and monitor views are drawn by the legacy stream from the same
+pages, which no longer hold area light for surfaces the core takes, so those
+surfaces show no emitter light through a portal or on a monitor until the
+core draws nested views (K8). Surfaces the core does not take keep the CPU
+path's 8 slotted lights in every view.
+
+Evidence:
+
+| Check | Result |
+| --- | --- |
+| `render.family.lightmapped` (+4 area checks: an unbaked light brightens, twice the radiance adds twice the light within 2 levels, a baked light and one facing away add nothing) | 198 checks pass; seeded gamma variant still rejected |
+| `render.family.unlit`, `.pbr`, `render.lab.area-lights` (+sensitivity), `render.world.null`, `render.composition`, `render.material.programs` | pass |
+| sp_a2_intro exit corridor, paused, arms on skin 0, `r_area_lights_scale 50`, core on against off | walls cyan across the view; the legacy path (8 slots) about a third as much |
+| Same, physical strength (scale 1) | no pixel changes by more than 2 levels (auto exposure) |
+
+Not done: shadows (the lightmapped point's area term is unshadowed: the core
+holds no casters for a retail world, and models are not in the core's
+scene); models still take the 8 slotted lights through the CPU stand-in;
+`surface_program.glsl`'s term was changed without source-engine-43 (not
+running), recorded here for its review. Frame time: not measured (rule 7).

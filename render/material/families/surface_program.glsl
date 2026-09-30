@@ -436,6 +436,43 @@ uint ClusterFroxel( vec2 pixel, float distance )
 	return ( slice * clusterView.grid.y + y ) * clusterView.grid.x + x;
 }
 
+// An area light's corners, counterclockwise seen from its front.
+void AreaLightCorners( AreaLight light, out vec3 corners[4] )
+{
+	corners[0] = light.center.xyz - light.halfU.xyz - light.halfV.xyz;
+	corners[1] = light.center.xyz + light.halfU.xyz - light.halfV.xyz;
+	corners[2] = light.center.xyz + light.halfU.xyz + light.halfV.xyz;
+	corners[3] = light.center.xyz - light.halfU.xyz + light.halfV.xyz;
+}
+
+// The irradiance the frame's area lights whose diffuse light is not in the
+// bake (the emitting surfaces) give a point with normal n, in the lightmap's
+// units: each light's radiance times its form factor (the cosine's integral
+// over the rectangle, clipped to the horizon) and its window. Unshadowed.
+vec3 AreaLightIrradiance( vec3 n, vec3 p )
+{
+	vec3 sum = vec3( 0.0 );
+	const int areaCount = DebugTermOn( kDebugTermArea ) ? min( int( frame.areaCount.x ), kMaxAreaLights ) : 0;
+	for ( int i = 0; i < kMaxAreaLights; ++i )
+	{
+		if ( i >= areaCount )
+			break;
+		const AreaLight light = frame.areas[i];
+		if ( light.halfV.w >= 0.5 )
+			continue;
+		const float window = AreaLightWindow(
+		    light.center.xyz, light.halfU.xyz, light.halfV.xyz, light.halfU.w, p );
+		if ( window <= 0.0 )
+			continue;
+		vec3 corners[4];
+		AreaLightCorners( light, corners );
+		sum += light.radiance.rgb * window *
+		       LtcRectangle( n, normalize( frame.eye.xyz - p ), p, mat3( 1.0 ), corners,
+		           light.center.w > 0.5 );
+	}
+	return sum;
+}
+
 // The ambient cube (surface_lighting.glsl). In the furnace (RFC 0014) every
 // face is a uniform radiance of 1.
 vec3 AmbientCube( vec3 n )
@@ -728,10 +765,8 @@ void PbrSurface()
 			    light.center.xyz, light.halfU.xyz, light.halfV.xyz, light.halfU.w, worldPosition );
 			if ( window <= 0.0 )
 				continue;
-			const vec3 corners[4] = vec3[4]( light.center.xyz - light.halfU.xyz - light.halfV.xyz,
-			    light.center.xyz + light.halfU.xyz - light.halfV.xyz,
-			    light.center.xyz + light.halfU.xyz + light.halfV.xyz,
-			    light.center.xyz - light.halfU.xyz + light.halfV.xyz );
+			vec3 corners[4];
+			AreaLightCorners( light, corners );
 			const bool twoSided = light.center.w > 0.5;
 			float visibility = 1.0;
 			const int firstTile = int( light.radiance.w );
@@ -1107,6 +1142,19 @@ void main()
 	if ( !lightingOne && !DebugTermOn( kDebugTermBaked ) )
 		diffuse = vec3( 0.0 );
 #endif
+	// The frame's emitting surfaces (render.area-light.v1), which the
+	// engine leaves out of the pages of the surfaces the core draws: their
+	// irradiance at the mapped normal, tinted as the lightmap is.
+	if ( !lightingOne && !furnace && frame.areaCount.x > 0.0 &&
+	     dot( worldNormal, worldNormal ) > 0.0 )
+	{
+		// The shading normal below: an ssbump's weights are a tangent-space
+		// normal by now.
+		const vec3 n = normalize( bumpmap ? normalSample.x * tangentS + normalSample.y * tangentT +
+		                                        normalSample.z * worldNormal
+		                                  : worldNormal );
+		diffuse += tint * AreaLightIrradiance( n, worldPosition );
+	}
 
 	vec3 lit = kDebugBrdf == kDebugBrdfSpecularOnly ? vec3( 0.0 ) : albedo * diffuse;
 	// Self-illumination replaces the diffuse term by its tint times albedo

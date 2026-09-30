@@ -51,15 +51,18 @@
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
-// The RFC 0011 budget: 8 area lights on desktop, 4 on Android.
+// The frame's budget: the light set's 64 on desktop (the render core
+// evaluates them per pixel; the most important 8 also take the CPU lightmap
+// and model paths' dlight slots), the RFC 0011 budget of 4 on Android.
 #if defined( ANDROID )
 #define AREA_LIGHTS_DEFAULT "4"
 #else
-#define AREA_LIGHTS_DEFAULT "8"
+#define AREA_LIGHTS_DEFAULT "64"
 #endif
 static ConVar r_area_lights( "r_area_lights", AREA_LIGHTS_DEFAULT, 0,
     "Most emissive surfaces that light their surroundings at once, the most important at the "
-    "view (0: none; at most 8)." );
+    "view (0: none; at most 64; the first 8 also light models and the lightmaps the render core "
+    "does not draw)." );
 static ConVar r_area_lights_scale( "r_area_lights_scale", "1", FCVAR_ARCHIVE,
     "Strength of emissive area lights: 1 is physical (a surface lights with exactly the "
     "radiance it draws); more exaggerates it." );
@@ -484,7 +487,7 @@ void CEmissiveAreaLights::PreRender()
 	m_nFrame = gpGlobals->framecount;
 	if ( !arealights )
 		return;
-	const int nBudget = MIN( r_area_lights.GetInt(), area_light::kMaxAreaLights );
+	const int nBudget = MIN( r_area_lights.GetInt(), area_light::kMaxFrameAreaLights );
 	if ( nBudget <= 0 || !engine->IsInGame() )
 	{
 		Publish( NULL, NULL, 0 );
@@ -633,12 +636,15 @@ void CEmissiveAreaLights::PreRender()
 	std::unique_ptr<bool[]> lit( new bool[candidates.size() + 1] );
 	// -1 not asked, 0 hidden, 1 in view.
 	std::vector<signed char> seen( candidates.size(), -1 );
-	emissive::SelectLit( ranked.data(), int( ranked.size() ), nBudget, view, lit.get(),
+	std::vector<int> order;
+	emissive::SelectLit(
+	    ranked.data(), int( ranked.size() ), nBudget, view, lit.get(),
 	    [&]( int index )
 	    {
 		    seen[size_t( index )] = InView( ranked[size_t( index )].light.rect, vecView ) ? 1 : 0;
 		    return seen[size_t( index )] == 1;
-	    } );
+	    },
+	    &order );
 	if ( r_area_lights_debug.GetInt() >= 3 )
 	{
 		r_area_lights_debug.SetValue( 1 );
@@ -657,42 +663,44 @@ void CEmissiveAreaLights::PreRender()
 		}
 	}
 
-	area_light::AreaLight lights[area_light::kMaxAreaLights];
-	int keys[area_light::kMaxAreaLights];
+	// The lit ones, most important first (the engine gives the first
+	// kMaxAreaLights its dlight slots).
+	area_light::AreaLight lights[area_light::kMaxFrameAreaLights];
+	int keys[area_light::kMaxFrameAreaLights];
 	int nLit = 0;
 	m_Lit.clear();
-	for ( size_t i = 0; i < candidates.size(); ++i )
+	for ( int index : order )
 	{
-		Candidate_t &candidate = candidates[i];
-		if ( lit[i] && nLit < area_light::kMaxAreaLights )
+		if ( nLit == area_light::kMaxFrameAreaLights )
+			break;
+		Candidate_t &candidate = candidates[size_t( index )];
+		area_light::AreaLight &light = candidate.m_Candidate.light;
+		// A lit emitter follows its entity's bones for this frame.
+		if ( candidate.m_pAnim && !candidate.m_pAnim->IsBoneCacheValid() )
 		{
-			area_light::AreaLight &light = candidate.m_Candidate.light;
-			// A lit emitter follows its entity's bones for this frame.
-			if ( candidate.m_pAnim && !candidate.m_pAnim->IsBoneCacheValid() )
-			{
-				C_BaseAnimating::PushAllowBoneAccess( true, false, "EmissiveAreaLights" );
-				candidate.m_pAnim->SetupBones(
-				    NULL, -1, BONE_USED_BY_ANYTHING, gpGlobals->curtime );
-				C_BaseAnimating::PopBoneAccess( "EmissiveAreaLights" );
-			}
-			if ( candidate.m_pAnim )
-			{
-				matrix3x4_t poseToWorld;
-				const studiohdr_t *pHdr =
-				    modelinfo->GetStudiomodel( candidate.m_pAnim->GetModel() );
-				PoseToWorld( candidate.m_pAnim, pHdr, candidate.m_pEmitter->m_nBone,
-				    candidate.m_pAnim->IsBoneCacheValid(), poseToWorld );
-				PlaceRect( candidate.m_pEmitter->m_Rect, poseToWorld, light.rect );
-				light.reach = area_light::Reach( light.rect, light.radiance );
-			}
-			lights[nLit] = light;
-			keys[nLit] = candidate.m_nKey;
-			++nLit;
-			m_Lit.push_back( candidate.m_nKey );
+			C_BaseAnimating::PushAllowBoneAccess( true, false, "EmissiveAreaLights" );
+			candidate.m_pAnim->SetupBones( NULL, -1, BONE_USED_BY_ANYTHING, gpGlobals->curtime );
+			C_BaseAnimating::PopBoneAccess( "EmissiveAreaLights" );
 		}
-		if ( r_area_lights_debug.GetBool() )
+		if ( candidate.m_pAnim )
 		{
-			const area_light::Rect &rect = candidate.m_Candidate.light.rect;
+			matrix3x4_t poseToWorld;
+			const studiohdr_t *pHdr = modelinfo->GetStudiomodel( candidate.m_pAnim->GetModel() );
+			PoseToWorld( candidate.m_pAnim, pHdr, candidate.m_pEmitter->m_nBone,
+			    candidate.m_pAnim->IsBoneCacheValid(), poseToWorld );
+			PlaceRect( candidate.m_pEmitter->m_Rect, poseToWorld, light.rect );
+			light.reach = area_light::Reach( light.rect, light.radiance );
+		}
+		lights[nLit] = light;
+		keys[nLit] = candidate.m_nKey;
+		++nLit;
+		m_Lit.push_back( candidate.m_nKey );
+	}
+	if ( r_area_lights_debug.GetBool() )
+	{
+		for ( size_t i = 0; i < candidates.size(); ++i )
+		{
+			const area_light::Rect &rect = candidates[i].m_Candidate.light.rect;
 			float corners[4][3];
 			area_light::Corners( rect, corners );
 			const int r = lit[i] ? 0 : 255, g = lit[i] ? 255 : 0;

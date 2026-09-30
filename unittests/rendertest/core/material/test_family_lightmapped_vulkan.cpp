@@ -179,6 +179,7 @@ int main()
 		options.adapterIndex = std::atoi( adapter );
 	int drawnCases = 0;
 	bool fogChecked = false;
+	bool areaChecked = false;
 	{
 		auto created = vulkan::Create( options );
 		if ( !checks.That( created.HasValue(), "device.a-vulkan-device-is-created" ) )
@@ -301,6 +302,109 @@ int main()
 			++drawnCases;
 			JudgeCase( checks, testCase, drawn );
 
+			// The frame's emitting surfaces (render.area-light.v1) on the
+			// first opaque case with world vertices, lit by a rectangle
+			// covering its hemisphere: an unbaked light brightens it by
+			// albedo x tint x radiance, so twice the radiance adds twice the
+			// light in linear light; a light whose diffuse is in the bake, or
+			// one facing away, adds nothing.
+			if ( !areaChecked && surface && claim.blend == device::BlendMode::kOpaque &&
+			     ( claim.terms & ( kSurfaceUnlit | kSurfaceSelfIllum ) ) == 0 &&
+			     !testCase.triangles.empty() )
+			{
+				areaChecked = true;
+				const CaseVertex &corner = testCase.triangles[0];
+				auto frameWith = [&]( float radiance, bool baked, bool away )
+				{
+					SurfaceFrame frame;
+					area_light::AreaLight light;
+					const float side = away ? -1.0f : 1.0f;
+					// Just off the surface, facing it (or away), far wider
+					// than the quad: its form factor is 1 over the quad.
+					for ( int k = 0; k < 3; ++k )
+						light.rect.center[k] = corner.position[k] + 0.05f * corner.normal[k];
+					float u[3], v[3];
+					const float *t = corner.tangentS;
+					const float *n = corner.normal;
+					// V = t x n, so U x V = t x ( t x n ) = -n: the front
+					// faces the surface (unless away).
+					v[0] = t[1] * n[2] - t[2] * n[1];
+					v[1] = t[2] * n[0] - t[0] * n[2];
+					v[2] = t[0] * n[1] - t[1] * n[0];
+					for ( int k = 0; k < 3; ++k )
+					{
+						u[k] = 1000.0f * t[k];
+						light.rect.halfU[k] = u[k];
+						light.rect.halfV[k] = 1000.0f * side * v[k];
+					}
+					for ( float &c : light.radiance )
+						c = radiance;
+					light.reach = area_light::kMaxReach;
+					frame.areaCount[0] = 1.0f;
+					frame.areas[0] = PackAreaLight( light, baked, -1 );
+					return frame;
+				};
+				auto drawWith = [&]( const SurfaceFrame &frame )
+				{
+					CaseDraw lit = draw;
+					lit.groups.back().constants = std::as_bytes( std::span( &frame, 1 ) );
+					return DrawCase( *device, lit );
+				};
+				const SurfaceFrame once = frameWith( 0.05f, false, false );
+				const SurfaceFrame twice = frameWith( 0.1f, false, false );
+				const SurfaceFrame baked = frameWith( 0.1f, true, false );
+				const SurfaceFrame away = frameWith( 0.1f, false, true );
+				const Drawn withOnce = drawWith( once );
+				const Drawn withTwice = drawWith( twice );
+				const Drawn withBaked = drawWith( baked );
+				const Drawn withAway = drawWith( away );
+				if ( checks.That( withOnce.ok && withTwice.ok && withBaked.ok && withAway.ok,
+				         "area.draws" ) )
+				{
+					const auto toLinear = []( float c )
+					{
+						c /= 255.0f;
+						return c <= 0.04045f ? c / 12.92f
+						                     : std::pow( ( c + 0.055f ) / 1.055f, 2.4f );
+					};
+					int brighter = 0, pixels = 0, linearOff = 0;
+					bool bakedSame = withBaked.rgba == drawn.rgba;
+					bool awaySame = withAway.rgba == drawn.rgba;
+					for ( std::size_t i = 0; i + 3 < drawn.rgba.size(); i += 4 )
+					{
+						for ( int c = 0; c < 3; ++c )
+						{
+							const float plain = toLinear( drawn.rgba[i + c] );
+							const float one = toLinear( withOnce.rgba[i + c] ) - plain;
+							// Unsaturated, lit channels only.
+							if ( withTwice.rgba[i + c] >= 250 || one <= 0.004f )
+								continue;
+							++pixels;
+							brighter += one > 0.0f ? 1 : 0;
+							// Judged in output levels: twice the first gain,
+							// encoded, within 2 levels of the second draw.
+							const float expected = 2.0f * one + plain;
+							const float encoded =
+							    255.0f *
+							    ( expected <= 0.0031308f
+							            ? expected * 12.92f
+							            : 1.055f * std::pow( expected, 1.0f / 2.4f ) - 0.055f );
+							if ( std::fabs( encoded - float( withTwice.rgba[i + c] ) ) > 2.0f )
+								++linearOff;
+						}
+					}
+					That( checks, pixels > 0 && brighter == pixels,
+					    "area.an-unbaked-light-brightens-the-surface",
+					    std::to_string( pixels ) + " channels lit" );
+					That( checks, pixels > 0 && linearOff == 0,
+					    "area.twice-the-radiance-adds-twice-the-light",
+					    std::to_string( linearOff ) + " of " + std::to_string( pixels ) +
+					        " channels off" );
+					checks.That( bakedSame, "area.a-baked-light-adds-no-diffuse" );
+					checks.That( awaySame, "area.a-light-facing-away-adds-nothing" );
+				}
+			}
+
 			// The view's range fog, on the first opaque case: with 1 / range 0
 			// and start / range -0.5 the factor is 0.5 everywhere, squared to
 			// 0.25, so each pixel is a quarter of the way to the fog color in
@@ -345,6 +449,7 @@ int main()
 		}
 		checks.That( drawnCases == int( set->cases.size() ), "cases.every-case-drew" );
 		checks.That( fogChecked, "fog.an-opaque-case-was-fogged" );
+		checks.That( areaChecked, "area.an-opaque-world-case-was-lit" );
 		(void)device->WaitIdle();
 	}
 	if ( layer )

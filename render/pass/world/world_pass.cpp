@@ -220,9 +220,20 @@ struct WorldPass::State
 	// SetStageChange), with revisions that rise with each.
 	std::shared_ptr<const LightmapPages> stageLightmap;
 	std::uint64_t stageLightmapRevision = 0;
-	std::shared_ptr<const std::vector<std::byte>> stageChange;
 	std::shared_ptr<const StageProbeVolume> stageTable;
 	std::uint64_t stageChangeRevision = 0;
+	// The probe change: `stageChangeBase` as of `stageBaseRevision` (empty:
+	// zero), then the parts set since, in revision order. A part every
+	// resource set has applied folds into the base.
+	struct StagePatch
+	{
+		std::uint64_t revision = 0;
+		std::vector<WorldPass::StageRegion> regions;
+		std::vector<std::byte> texels;
+	};
+	std::vector<std::byte> stageChangeBase;
+	std::uint64_t stageBaseRevision = 0;
+	std::deque<StagePatch> stagePatches;
 
 	// A queued view dropped because its slot never recorded (lock held): a
 	// failure when a slot of its host frame recorded (or its frame is
@@ -416,8 +427,10 @@ void WorldPass::SetWorld( WorldData data )
 	++s.generation;
 	// A new world starts from its stage's own lighting.
 	s.stageLightmap.reset();
-	s.stageChange.reset();
+	s.stageChangeBase.clear();
+	s.stagePatches.clear();
 	s.stageTable.reset();
+	s.stageBaseRevision = ++s.stageChangeRevision;
 	// Queued views stay with their world's generation: in queued mode the
 	// slots of a frame that straddles a level change record after it, and
 	// skip their views (an earlier world's) rather than fail.
@@ -453,12 +466,22 @@ void WorldPass::SetStageLightmap( LightmapPages pages )
 void WorldPass::SetStageChange( std::vector<std::byte> change, StageProbeVolume table )
 {
 	State &s = *m_State;
-	auto sharedChange = std::make_shared<const std::vector<std::byte>>( std::move( change ) );
 	auto sharedTable = std::make_shared<const StageProbeVolume>( std::move( table ) );
 	std::lock_guard<std::mutex> guard( s.lock );
-	s.stageChange = std::move( sharedChange );
+	s.stageChangeBase = std::move( change );
+	s.stagePatches.clear();
 	s.stageTable = std::move( sharedTable );
-	++s.stageChangeRevision;
+	s.stageBaseRevision = ++s.stageChangeRevision;
+}
+
+void WorldPass::SetStageChangeRegions(
+    std::vector<StageRegion> regions, std::vector<std::byte> texels, StageProbeVolume table )
+{
+	State &s = *m_State;
+	auto sharedTable = std::make_shared<const StageProbeVolume>( std::move( table ) );
+	std::lock_guard<std::mutex> guard( s.lock );
+	s.stageTable = std::move( sharedTable );
+	s.stagePatches.push_back( { ++s.stageChangeRevision, std::move( regions ), std::move( texels ) } );
 }
 
 bool WorldPass::Draws( std::uint32_t material ) const
@@ -540,9 +563,6 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 	std::uint64_t generation = 0;
 	std::shared_ptr<const LightmapPages> stageLightmap;
 	std::uint64_t stageLightmapRevision = 0;
-	std::shared_ptr<const std::vector<std::byte>> stageChange;
-	std::shared_ptr<const StageProbeVolume> stageTable;
-	std::uint64_t stageChangeRevision = 0;
 	WorldView view;
 	bool found = false;
 	bool earlierWorld = false; // the slot's view was queued against an earlier world
@@ -601,9 +621,6 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		generation = s.generation;
 		stageLightmap = s.stageLightmap;
 		stageLightmapRevision = s.stageLightmapRevision;
-		stageChange = s.stageChange;
-		stageTable = s.stageTable;
-		stageChangeRevision = s.stageChangeRevision;
 	}
 	if ( earlierWorld )
 	{
@@ -791,6 +808,49 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		    texture, ResourceUsage::kCopyDestination, ResourceUsage::kSampled );
 		return true;
 	};
+	// Rectangles of an RGBA16F stage texture from their packed texels.
+	auto stageRegions = [&]( TextureId texture, const TextureDesc &desc,
+	                        const std::vector<StageRegion> &regions,
+	                        std::span<const std::byte> texels ) -> bool
+	{
+		if ( regions.empty() )
+			return true;
+		if ( texels.empty() )
+			return false;
+		BufferDesc staging;
+		staging.size = texels.size();
+		staging.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kCopySource };
+		staging.debugName = "world stage region staging";
+		auto buffer = device.CreateBuffer( staging );
+		if ( !buffer )
+			return false;
+		s.retiredBuffers.emplace_back( target.frame, buffer.Value() );
+		encoder.TransitionBuffer(
+		    buffer.Value(), ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+		encoder.WriteBuffer( buffer.Value(), 0, texels );
+		encoder.TransitionBuffer(
+		    buffer.Value(), ResourceUsage::kCopyDestination, ResourceUsage::kCopySource );
+		encoder.TransitionTexture(
+		    texture, ResourceUsage::kSampled, ResourceUsage::kCopyDestination );
+		std::uint64_t offset = 0;
+		for ( const StageRegion &region : regions )
+		{
+			if ( region.x + region.width > desc.width || region.y + region.height > desc.height ||
+			     offset + std::uint64_t( region.width ) * region.height * 8 > texels.size() )
+				return false;
+			TextureBufferCopy copy;
+			copy.bufferOffset = offset;
+			copy.x = region.x;
+			copy.y = region.y;
+			copy.width = region.width;
+			copy.height = region.height;
+			encoder.CopyBufferToTexture( buffer.Value(), texture, copy );
+			offset += std::uint64_t( region.width ) * region.height * 8;
+		}
+		encoder.TransitionTexture(
+		    texture, ResourceUsage::kCopyDestination, ResourceUsage::kSampled );
+		return true;
+	};
 	auto stageMake = [&]( const char *name, Format format, std::uint32_t width,
 	                     std::uint32_t height, std::span<const std::byte> bytes ) -> bool
 	{
@@ -879,26 +939,73 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 			return;
 		}
 	}
-	if ( world->stage && world->stage->probes && stageTable &&
-	     r.stageChangeRevision != stageChangeRevision )
+	if ( world->stage && world->stage->probes )
 	{
-		r.stageChangeRevision = stageChangeRevision;
-		const StageProbeVolume &probes = *world->stage->probes;
-		const std::uint32_t rows = probes.rows + kStageOccluderRows;
-		const std::vector<std::byte> zero(
-		    stageChange && !stageChange->empty() ? 0 : probes.atlas.size(), std::byte( 0 ) );
-		const std::vector<std::byte> &change =
-		    stageChange && !stageChange->empty() ? *stageChange : zero;
-		const std::vector<float> table = paddedTable( *stageTable, rows );
-		if ( change.size() != probes.atlas.size() ||
-		     stageTable->tableTexels != probes.tableTexels || stageTable->rows > rows ||
-		     !stageUpload( r.stageTextures[kStageChange], r.stageDescs[kStageChange], change,
-		         ResourceUsage::kSampled ) ||
-		     !stageUpload( r.stageTextures[kStageProbeGrids], r.stageDescs[kStageProbeGrids],
-		         std::as_bytes( std::span( table ) ), ResourceUsage::kSampled ) )
+		// Under the lock: the change's base and parts are the state's (the
+		// uploads copy what they read at once).
+		std::unique_lock<std::mutex> guard( s.lock );
+		if ( s.stageTable && r.stageChangeRevision != s.stageChangeRevision )
 		{
-			s.Fail( "the world stage's probe change does not fit its volume" );
-			return;
+			const StageProbeVolume &probes = *world->stage->probes;
+			const std::uint32_t rows = probes.rows + kStageOccluderRows;
+			const StageProbeVolume &stageTable = *s.stageTable;
+			const bool whole = r.stageChangeRevision < s.stageBaseRevision;
+			bool fits = stageTable.tableTexels == probes.tableTexels && stageTable.rows <= rows;
+			if ( fits && whole )
+			{
+				const std::vector<std::byte> zero(
+				    s.stageChangeBase.empty() ? probes.atlas.size() : 0, std::byte( 0 ) );
+				const std::vector<std::byte> &change =
+				    s.stageChangeBase.empty() ? zero : s.stageChangeBase;
+				fits = change.size() == probes.atlas.size() &&
+				       stageUpload( r.stageTextures[kStageChange], r.stageDescs[kStageChange],
+				           change, ResourceUsage::kSampled );
+			}
+			for ( const State::StagePatch &patch : s.stagePatches )
+			{
+				if ( !fits || ( !whole && patch.revision <= r.stageChangeRevision ) )
+					continue;
+				fits = stageRegions( r.stageTextures[kStageChange], r.stageDescs[kStageChange],
+				    patch.regions, patch.texels );
+			}
+			const std::vector<float> table = paddedTable( stageTable, rows );
+			if ( !fits || !stageUpload( r.stageTextures[kStageProbeGrids],
+			                  r.stageDescs[kStageProbeGrids],
+			                  std::as_bytes( std::span( table ) ), ResourceUsage::kSampled ) )
+			{
+				guard.unlock();
+				s.Fail( "the world stage's probe change does not fit its volume" );
+				return;
+			}
+			r.stageChangeRevision = s.stageChangeRevision;
+			// The parts every resource set holds fold into the base.
+			std::uint64_t applied = r.stageChangeRevision;
+			for ( const Resources &set : s.variants )
+				if ( set.stageMade )
+					applied = std::min( applied, set.stageChangeRevision );
+			while ( !s.stagePatches.empty() && s.stagePatches.front().revision <= applied )
+			{
+				const State::StagePatch &patch = s.stagePatches.front();
+				if ( s.stageChangeBase.empty() )
+					s.stageChangeBase.assign( probes.atlas.size(), std::byte( 0 ) );
+				std::size_t offset = 0;
+				for ( const StageRegion &region : patch.regions )
+				{
+					for ( std::uint32_t y = 0; y < region.height; ++y )
+					{
+						const std::size_t row = std::size_t( region.width ) * 8;
+						const std::size_t at =
+						    ( std::size_t( region.y + y ) * probes.atlasWidth + region.x ) * 8;
+						if ( at + row <= s.stageChangeBase.size() &&
+						     offset + row <= patch.texels.size() )
+							std::memcpy( s.stageChangeBase.data() + at,
+							    patch.texels.data() + offset, row );
+						offset += row;
+					}
+				}
+				s.stageBaseRevision = patch.revision;
+				s.stagePatches.pop_front();
+			}
 		}
 	}
 
@@ -1168,6 +1275,9 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 	terms.envmapScale = target.envmapScale;
 	terms.specular = target.specular;
 	terms.ssbumpNormalized = target.ssbumpNormalized;
+	// The view's area lights (every point reads them).
+	if ( view.lights )
+		terms.areas = view.lights->areas;
 	if ( world->stage )
 	{
 		// The stage's pages hold linear light (LMAP); the pbr point's tables
@@ -1185,10 +1295,9 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		}
 		if ( !world->stage->reflectionProbes.empty() )
 			terms.map.reflectionProbes = kStageReflection;
-		// The view's area lights and sun.
+		// The view's sun.
 		if ( view.lights )
 		{
-			terms.areas = view.lights->areas;
 			std::copy(
 			    view.lights->sunDirection, view.lights->sunDirection + 4, terms.sunDirection );
 			std::copy( view.lights->sunColor, view.lights->sunColor + 4, terms.sunColor );

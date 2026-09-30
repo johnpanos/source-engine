@@ -2151,6 +2151,22 @@ budget than 8 dlight slots of 32, or the core's per-pixel area lights (K7,
 64 per frame, `render_lab` only so far). GI emission (probe-volume
 producers) needs a map with a PRBV, which retail maps do not have.
 
+### The render core lights emitting surfaces (2026-09-29, user request)
+
+The user asked for emitters to light through the core, not the CPU path.
+Up to 64 emitters a frame now reach the light set (the first 8 keep dlight
+slots), and the core's `lightmapped` point adds them per pixel on the
+retail BSP faces it draws; the CPU path leaves them out of those surfaces'
+lightmaps. Details, evidence and the nested-view hold-back are in
+[RFC 0016 progress](0016-progress.md#k12-emitting-surfaces-lit-by-the-core-on-retail-bsp-faces-2026-09-29-source-engine-89).
+
+Strength: at `r_area_lights_scale 1` the arm strips change no pixel by more
+than 2 levels (they are about half a unit wide; retail `$selfillum` tops out
+at radiance 1 and reads bright only through exposure and bloom). At 16 the
+corridor walls take a visible cyan. The default stays 1 pending the user's
+choice: a global scale also multiplies large emitters, some of which
+`lights.rad` may already bake.
+
 ## Moving objects block light (2026-09-28, user request)
 
 The user asked to fix the static blob shadow under props, with these

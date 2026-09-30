@@ -40,6 +40,10 @@ using namespace light_set;
 ConVar r_lightset_report( "r_lightset_report", "0", FCVAR_CHEAT,
     "Print the next published light set (RFC 0011 render.light-set.v1) once" );
 
+// The slot of an area light beyond the dlight slots' budget (it is keyed by
+// its client key alone).
+constexpr uint32_t kAreaLightNoSlot = 0xffffffffu;
+
 Builder s_builder;
 int s_builtMap = -1;
 ILightSetConsumer *s_consumer = nullptr;
@@ -138,16 +142,20 @@ void LightSet_PublishFrame()
 	GatherDynamic(
 	    cl_dlights, MAX_DLIGHTS, LightKind::Dynamic, PortalDLights_ImageMask(), &dynamic );
 	GatherDynamic( cl_elights, MAX_ELIGHTS, LightKind::Entity, 0, &dynamic );
+	// Every frame area light, most important first: the slotted ones while
+	// their slot carries them, then those beyond the slots' budget.
 	std::vector<AreaLightInput> areas;
-	for ( int slot = 0; slot < MAX_DLIGHTS; ++slot )
+	const AreaLightSlot *frameAreas = nullptr;
+	const int frameAreaCount = AreaLights_Frame( &frameAreas );
+	for ( int i = 0; i < frameAreaCount; ++i )
 	{
-		const AreaLightSlot *area = AreaLights_ForSlot( slot );
-		if ( !area )
+		const AreaLightSlot &area = frameAreas[i];
+		if ( area.slot >= 0 && AreaLights_ForSlot( area.slot ) == nullptr )
 			continue;
 		AreaLightInput input;
-		input.slot = uint32_t( slot );
-		input.key = area->key;
-		input.light = area->light;
+		input.slot = area.slot >= 0 ? uint32_t( area.slot ) : kAreaLightNoSlot;
+		input.key = area.key;
+		input.light = area.light;
 		areas.push_back( input );
 	}
 	Snapshot snapshot = s_builder.Build( worldLights, styles, dynamic, areas );

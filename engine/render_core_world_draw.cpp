@@ -626,6 +626,11 @@ bool RenderCoreWorldDraw_Takes( SurfaceHandle_t surfID )
 	return state.loaded && index >= 0 && index < state.takes.Count() && state.takes[index];
 }
 
+bool RenderCoreWorldDraw_OwnsLighting( SurfaceHandle_t surfID )
+{
+	return r_core_world.GetBool() && RenderCoreWorldDraw_Takes( surfID );
+}
+
 // Queues the core's surfaces (its entries) for the current view, with the
 // view's transform and viewport, and marks its slot here in the stream.
 static bool QueueCoreView( IRenderCoreWorld *pWorld, const unsigned int *pEntries, int nCount )

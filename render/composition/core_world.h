@@ -140,6 +140,10 @@ private:
 		pass::world::LightmapPages lightmap;                 // the total layer's pages
 		std::vector<std::byte> indirect;                     // the indirect layer's flat page
 		std::optional<pass::world::StageProbeVolume> probes; // the bake
+		// The latest change from the bake (empty: none) and its grid table,
+		// which a stage set later starts from.
+		std::vector<std::byte> change;
+		std::optional<pass::world::StageProbeVolume> table;
 		std::uint32_t reflectionWidth = 0;
 		std::uint32_t reflectionHeight = 0;
 		std::vector<std::byte> reflection;
@@ -189,6 +193,17 @@ private:
 	std::shared_ptr<const pass::world::StageViewLights> StageViewLightsFor(
 	    const float worldToView[16], const float viewToClip[16], const float viewport[6],
 	    std::shared_ptr<const ShadowWork> *shadows ) const;
+	// The view's area lights: the map's (baked light fixtures, a stage's
+	// alone) then the frame's emitting surfaces, at most the surface
+	// program's count. Each is packed with its tile from `areaTiles` (-1
+	// past its end) and whether its diffuse light is in the bake.
+	std::vector<area_light::AreaLight> ViewAreaLights( bool withMapAreas ) const;
+	void PackViewAreaLights( const std::vector<area_light::AreaLight> &areas, std::size_t mapAreas,
+	    const std::vector<int> &areaTiles, pass::world::StageViewLights &out ) const;
+	// A view of a world without a stage (the claimed BSP faces of a retail
+	// map): its frame area lights alone, unshadowed (the core holds no
+	// casters for it); null when the frame has none.
+	std::shared_ptr<const pass::world::StageViewLights> AreaViewLights() const;
 	// Render sequence: draws a view's shadow work into an atlas of this
 	// frame's pool, as a submission of its own ahead of the frame's; the atlas
 	// in kSampled, or invalid when it could not be drawn.

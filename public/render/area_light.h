@@ -35,8 +35,11 @@
 //
 //          Identity and count. A light keeps its light-set ID while it stays
 //          lit (the engine keeps its dlight slot by the client's key; the
-//          light set keys IDs by slot and key). A snapshot holds at most
-//          kMaxAreaLights area lights; the engine drops the rest.
+//          light set keys IDs by slot and key). The client publishes at most
+//          kMaxFrameAreaLights, most important first; the first
+//          kMaxAreaLights carry dlight slots (the CPU lightmap and model
+//          paths), and a snapshot holds them all (the render core evaluates
+//          them per pixel).
 //
 //          Reach. Beyond its reach a light gives nothing, so consumers can
 //          bound the surfaces and clusters it touches. The reach is where the
@@ -346,9 +349,12 @@ constexpr float kRepresentativeMinDistance = 1.0f;
 // light-set paths find it; `keys` are the client's stable identities (the
 // same emitter keeps its key while it stays lit).
 static const char *const kAreaLightsVersion = "VEngineAreaLights002";
-// At most this many area lights at once (the desktop budget, RFC 0011; the
-// client's r_area_lights may ask for fewer).
+// At most this many area lights carry dlight slots at once (the CPU lightmap
+// and model paths' budget, RFC 0011).
 constexpr int kMaxAreaLights = 8;
+// At most this many area lights in a frame (the light set's, which the render
+// core evaluates per pixel; the client's r_area_lights may ask for fewer).
+constexpr int kMaxFrameAreaLights = 64;
 
 // A self-illuminated world face or overlay the engine found (world_emitters):
 // its rectangle and radiance at tint 1 (reach unset), and its material, whose
@@ -366,8 +372,9 @@ public:
 	// there are (writing at most `max`).
 	virtual int GetWorldEmitters( WorldEmitterInfo *out, int max ) = 0;
 
-	// Replaces the frame's area lights (at most kMaxAreaLights; more are
-	// dropped). A light left out goes dark; `count` 0 clears them all.
+	// Replaces the frame's area lights, most important first (at most
+	// kMaxFrameAreaLights; more are dropped). The first kMaxAreaLights take
+	// dlight slots. A light left out goes dark; `count` 0 clears them all.
 	virtual void SetAreaLights( const AreaLight *lights, const int *keys, int count ) = 0;
 
 protected:
