@@ -15,11 +15,13 @@ RNM basis normals in each texel's lightmap tangent frame (T from the
 and that frame is baked too (EMIT of T and N, encoded 0.5 + 0.5 v).
 `lightmap_directional.py` fits the per-texel irradiance gradient the runtime
 shader applies to normal-mapped surfaces. With `--layers` naming `indirect`
-the basis normals are baked a second time with direct light alone
-(`rnm_direct<i>.exr`), so the indirect layer gets its own gradient: the
-core draws the indirect layer and every light's direct light at runtime
-(RFC 0016's runtime direct light), and a normal-mapped surface keeps the
-direction its bounced light arrives from.
+the basis normals see the indirect layer's light instead
+(`rnm_indirect<i>.exr`), so that layer gets its own gradient: the core
+draws the indirect layer and every light's direct light at runtime (RFC
+0016's runtime direct light), and a normal-mapped surface keeps the
+direction its bounced light arrives from. Such a map's total page is flat
+(it serves only the fallback), and its direct layer bakes at
+`--direct-samples`.
 
 A scene with a distant light (sun) also gets `sun_visibility.exr`: the sun's
 direct diffuse bake with shadows divided by the same bake without them, so
@@ -58,6 +60,9 @@ RNM_BASIS = ((0.816496580927726, 0.0, 0.5773502691896258),
              (-0.408248290463863, 0.7071067811865475, 0.5773502691896258),
              (-0.408248290463863, -0.7071067811865475, 0.5773502691896258))
 FRAME_SAMPLES = 16
+# The UV coverage is an EMIT bake of white: a mask, not light; 16 samples
+# resolve a partly covered texel as FRAME_SAMPLES do the frame.
+COVERAGE_SAMPLES = 16
 SUN_SAMPLES = 256
 PROJECTED_PART_LIMIT = 4096
 PROXY_PREFIX = "_lightmap_footprint_"
@@ -529,7 +534,43 @@ def bake_sun_visibility(merged, scene, path, size, render):
 # total is their sum (summed_total) instead of another bake, so total =
 # direct + indirect exactly.
 SEPARATED_PASSES = {"direct": {"DIRECT"}, "indirect": {"INDIRECT"}}
-SCENE = {"emitters": (), "static": False}
+# direct_samples: the direct layer's samples (the atlas's when 0): under
+# runtime direct light the core draws the runtime lights' direct light
+# itself, and the layer serves only the total page (its fallback) and
+# converges much faster than the bounces.
+SCENE = {"emitters": (), "static": False, "direct_samples": 0}
+
+
+@contextlib.contextmanager
+def samples_of(render, samples):
+    """The enclosed bakes at `samples` (unchanged when 0)."""
+    saved = render.cycles.samples
+    try:
+        if samples:
+            render.cycles.samples = samples
+        yield
+    finally:
+        render.cycles.samples = saved
+
+
+def bake_indirect_light(image, label, size, render, keep=None):
+    """The indirect layer's light into `image`: every bounce (Cycles'
+    INDIRECT pass) plus the direct light of what is not a runtime light (the
+    sky, glowing surfaces), when the scene has any. Returns the halves as
+    bake_light does."""
+    import numpy as np
+    halves = bake_light(image, SEPARATED_PASSES["indirect"], label, size, render, keep=keep)
+    if not SCENE["static"]:
+        return halves
+    bounced = np.array(image.pixels[:], dtype=np.float32)
+    with static_emitters_only():
+        static = bake_light(image, {"DIRECT"}, label + ": static emitters", size, render)
+    summed = bounced + np.array(image.pixels[:], dtype=np.float32)
+    summed[3::4] = bounced[3::4]  # the bake's coverage
+    image.pixels.foreach_set(summed)
+    if halves is not None:
+        halves = [a + b for a, b in zip(halves, static)]
+    return halves
 
 
 def emitter_objects():
@@ -632,22 +673,10 @@ def bake_separated_layers(merged, layers, out_dir, size, render, parts=None):
         merged.select_set(True)
         bpy.context.view_layer.objects.active = merged
         if role == "direct":
-            with runtime_lights_only():
+            with runtime_lights_only(), samples_of(render, SCENE["direct_samples"]):
                 halves = bake_light(image, SEPARATED_PASSES[role], role, size, render)
         else:
-            halves = bake_light(image, SEPARATED_PASSES[role], role, size, render)
-            if role == "indirect" and SCENE["static"]:
-                # The sky's and the glowing surfaces' direct light joins the
-                # bounces: the runtime does not evaluate them.
-                bounced = np.array(image.pixels[:], dtype=np.float32)
-                with static_emitters_only():
-                    static = bake_light(image, {"DIRECT"}, "indirect: static emitters", size,
-                                        render)
-                summed = bounced + np.array(image.pixels[:], dtype=np.float32)
-                summed[3::4] = bounced[3::4]  # the bake's coverage
-                image.pixels.foreach_set(summed)
-                if halves is not None:
-                    halves = [a + b for a, b in zip(halves, static)]
+            halves = bake_indirect_light(image, role, size, render)
         if parts is not None:
             parts[role] = (np.array(image.pixels[:], dtype=np.float32), halves)
         path = out_dir / (role + ".exr")
@@ -661,13 +690,13 @@ def bake_separated_layers(merged, layers, out_dir, size, render, parts=None):
     return result
 
 
-# The RNM bakes: the total light (rnm<i>.exr, the total page's gradient) and,
-# for a map with an indirect layer, the direct light alone
-# (rnm_direct<i>.exr): the indirect layer's gradient is fitted to their
-# difference (lightmap_directional.py --layer indirect), so total = direct +
-# indirect holds at every basis normal as it does on the flat pages. Direct
-# light runs no bounces, so its bakes cost a fraction of the total's.
-RNM_PASSES = {"rnm": {"DIRECT", "INDIRECT"}, "rnm_direct": {"DIRECT"}}
+# The RNM bakes: the total light (rnm<i>.exr, the total page's gradient), or
+# for a map with an indirect layer the indirect layer's light
+# (rnm_indirect<i>.exr, bake_indirect_light): the indirect layer's gradient
+# (lightmap_directional.py --layer indirect). Under runtime direct light
+# (RFC 0016) the core draws the direct light itself, so such a map's total
+# page is flat: its gradient only served the fallback.
+RNM_PASSES = {"rnm": {"DIRECT", "INDIRECT"}, "rnm_indirect": None}
 
 
 def bake_rnm(merged, out_dir, size, render, samples=None, stem="rnm"):
@@ -704,9 +733,8 @@ def bake_rnm_passes(merged, out_dir, size, render, stem="rnm"):
             target = tree.nodes["BakeTarget"]
             target.image = image
             tree.nodes.active = target
-        if stem == "rnm_direct":
-            with runtime_lights_only():
-                bake_light(image, RNM_PASSES[stem], "%s basis %d" % (stem, index), size, render)
+        if stem == "rnm_indirect":
+            bake_indirect_light(image, "%s basis %d" % (stem, index), size, render)
         else:
             bake_light(image, RNM_PASSES[stem], "%s basis %d" % (stem, index), size, render)
         path = out_dir / ("%s%d.exr" % (stem, index))
@@ -811,6 +839,10 @@ def main():
                         help="undilated white UV footprint for safe gutter filling")
     parser.add_argument("--size", type=int, default=2048)
     parser.add_argument("--samples", type=int, default=64)
+    parser.add_argument("--direct-samples", type=int, default=0,
+                        help="the direct layer's samples (the atlas's when 0): the runtime "
+                             "draws the runtime lights' direct light, and it converges faster "
+                             "than the bounces")
     parser.add_argument("--exclude-material", action="append", default=[])
     parser.add_argument("--device", choices=pbrt_blender.DEVICES,
                         default=pbrt_blender.DEFAULT_DEVICE)
@@ -864,6 +896,7 @@ def main():
         parser.error("--layers needs --layers-dir")
     scene = map_scene.parse(args.scene)
     SCENE["emitters"] = tuple(scene["emitters"])
+    SCENE["direct_samples"] = args.direct_samples
     unknown = set(args.exclude_material) - set(scene["materials"])
     if unknown:
         parser.error("excluded materials are not in the PBRT scene: " + ", ".join(sorted(unknown)))
@@ -1057,12 +1090,11 @@ def main():
                                   args.size, render)
     directional = None
     if args.directional_dir:
+        # A map with an indirect layer: that layer's gradient alone.
+        stem = "rnm_indirect" if "indirect" in layers else "rnm"
         directional = bake_rnm(merged, args.directional_dir, args.size, render,
-                               args.directional_samples)
-        if "indirect" in layers:
-            direct = bake_rnm(merged, args.directional_dir, args.size, render,
-                              args.directional_samples, stem="rnm_direct")
-            directional["direct_rnm_exr_sha256"] = direct["rnm_exr_sha256"]
+                               args.directional_samples, stem=stem)
+        directional["stem"] = stem
     if args.out_coverage_exr:
         coverage = bpy.data.images.new("PbrtUvCoverage", width=args.size, height=args.size,
                                        alpha=True, float_buffer=True)
@@ -1081,8 +1113,9 @@ def main():
         merged.data.materials.append(material)
         render.render.bake.margin = 0
         announce("coverage", args.size)
-        if bpy.ops.object.bake(type="EMIT") != {"FINISHED"}:
-            raise RuntimeError("Cycles could not bake the UV footprint")
+        with samples_of(render, COVERAGE_SAMPLES):
+            if bpy.ops.object.bake(type="EMIT") != {"FINISHED"}:
+                raise RuntimeError("Cycles could not bake the UV footprint")
         args.out_coverage_exr.parent.mkdir(parents=True, exist_ok=True)
         coverage.save_render(filepath=str(args.out_coverage_exr.resolve()), scene=render)
         if not args.out_coverage_exr.is_file():
@@ -1129,6 +1162,8 @@ def main():
                 # The layers' split: the direct layer is the runtime's lights
                 # (the analytic emitters and distant lights); the indirect
                 # layer every bounce and the static emitters' direct light.
+                "direct_samples": args.direct_samples or args.samples,
+                "coverage_samples": COVERAGE_SAMPLES,
                 "separation": {"runtime_emitters": len(scene["emitters"]),
                                "runtime_distant_lights": len(scene.get("distant_lights", [])),
                                "static_emitters_in_indirect": bool(SCENE["static"])}

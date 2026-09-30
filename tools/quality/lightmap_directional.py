@@ -25,11 +25,11 @@ the colour residual of the luminance model at the RNM directions and how many
 texels were clamped.
 
 With `--layer indirect` the flat page is the bake's indirect layer (its
-denoised EXR and receipt) and the basis measurements are the indirect light
-at each RNM normal: the total bakes less the direct-only bakes
-(`rnm_direct<i>.exr`, `pbrt_lightmap_bake.py` bakes them for a map with an
-indirect layer), each denoised before the difference and clamped at zero.
-The fit is the same, so the indirect layer carries its own gradient: the
+denoised EXR and receipt) and the basis measurements are the indirect
+layer's light at each RNM normal (`rnm_indirect<i>.exr`, which
+`pbrt_lightmap_bake.py` bakes in place of the total's for a map with an
+indirect layer). The fit is the same, so the indirect layer carries its own
+gradient: the
 runtime draws it under every light's direct light (RFC 0016's runtime direct
 light) and a normal-mapped surface still sees where its bounced light comes
 from, rather than the total's gradient, which the direct light dominates.
@@ -147,16 +147,18 @@ def main():
         raise ValueError("flat %s page differs from its denoise receipt or bake" % role)
     if sha256(args.coverage_exr) != bake.get("coverage_exr_sha256"):
         raise ValueError("UV coverage differs from the bake receipt")
-    rnm_paths = [args.directional_dir / ("rnm%d.exr" % i) for i in range(3)]
+    # The basis bakes of the page fitted: the total's (rnm<i>) or the
+    # indirect layer's (rnm_indirect<i>).
+    stem = directional.get("stem", "rnm")
+    wanted = "rnm_%s" % role if args.layer else "rnm"
+    if stem != wanted:
+        raise ValueError("bake receipt's RNM bakes are %s, not the %s page's (%s)" % (
+            stem, role, wanted))
+    rnm_paths = [args.directional_dir / ("%s%d.exr" % (stem, i)) for i in range(3)]
     frame_paths = {axis: args.directional_dir / ("frame_%s.exr" % axis) for axis in ("t", "n")}
-    direct_paths = [args.directional_dir / ("rnm_direct%d.exr" % i) for i in range(3)]
-    if args.layer and not directional.get("direct_rnm_exr_sha256"):
-        raise ValueError("bake receipt has no direct-only RNM bakes for the %s layer" % role)
     if [sha256(path) for path in rnm_paths] != directional["rnm_exr_sha256"] or \
             {axis: sha256(path) for axis, path in frame_paths.items()} != \
-            directional["frame_exr_sha256"] or \
-            (args.layer and [sha256(path) for path in direct_paths] !=
-             directional["direct_rnm_exr_sha256"]):
+            directional["frame_exr_sha256"]:
         raise ValueError("directional bakes differ from the bake receipt")
     flat = read_rgba(args.flat_exr)
     coverage = read_rgba(args.coverage_exr)
@@ -164,10 +166,6 @@ def main():
     library = None if args.skip_denoise else lightmap_denoise.load_oidn(args.oidn_library)
     rnm = [fill_and_denoise(read_rgba(path), covered, library).astype(np.float64)
            for path in rnm_paths]
-    if args.layer:
-        # The indirect light at each basis normal: total less direct.
-        rnm = [np.maximum(total - fill_and_denoise(read_rgba(path), covered, library), 0.0)
-               for total, path in zip(rnm, direct_paths)]
     tangent = decode_unit(read_rgba(frame_paths["t"]))
     normal = decode_unit(read_rgba(frame_paths["n"]))
     frame_ok = covered & (np.linalg.norm(normal, axis=2) > 0.5) & \
@@ -187,9 +185,7 @@ def main():
     args.out.parent.mkdir(parents=True, exist_ok=True)
     lightmap_denoise.write_linear_exr(args.out, output)
     magnitude = np.linalg.norm(beta[usable], axis=1)
-    receipt = {"status": "pass", "scope": SCOPE, "layer": role,
-               "direct_rnm_exr_sha256": directional.get("direct_rnm_exr_sha256")
-               if args.layer else None,
+    receipt = {"status": "pass", "scope": SCOPE, "layer": role, "rnm_stem": stem,
                "model": "E0_rgb * clamp(1 + beta.(n - N), 0, "
                "%g), beta = luminance gradient / E0 luminance, world space" % GAIN_MAX,
                "beta_max": BETA_MAX, "gain_max": GAIN_MAX,

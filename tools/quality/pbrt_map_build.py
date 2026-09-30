@@ -430,6 +430,12 @@ class Pipeline:
                          "light_paths": lightmap.get("light_paths", "blender-default"),
                          # RFC 0011 separated light: LMAP v2 layers beside the total.
                          "layers": list(lightmap.get("layers", [])),
+                         # The direct layer's samples (None: a quarter of the
+                         # atlas's, at least 64): under runtime direct light
+                         # (RFC 0016) the core draws the runtime lights' direct
+                         # light itself; the layer serves the total page, the
+                         # fallback, and converges faster than the bounces.
+                         "direct_samples": lightmap.get("direct_samples"),
                          # Cycles seed of the bake and probe (pbrt_blender.pin_sampling).
                          "seed": lightmap.get("seed", 0),
                          "exclude_materials": lightmap.get("exclude_materials", []),
@@ -861,6 +867,11 @@ class Pipeline:
         layers = self.lightmap["layers"]
         if layers:
             bake_args += ["--layers", ",".join(layers), "--layers-dir", p["layers"]]
+        direct_samples = None
+        if "direct" in layers:
+            direct_samples = self.lightmap["direct_samples"] or \
+                max(64, self.lightmap["samples"] // 4)
+            bake_args += ["--direct-samples", str(direct_samples)]
         noise_target = self.lightmap["noise_target"]
         if noise_target:
             bake_args += ["--noise-pair-dir", p["noise_pair"]]
@@ -870,6 +881,8 @@ class Pipeline:
                                                        "noise_target")}
         if self.lightmap["directional_samples"]:
             bake_settings["directional_samples"] = self.lightmap["directional_samples"]
+        if direct_samples:
+            bake_settings["direct_samples"] = direct_samples
         if self.medium:
             # Only a map with a medium names one, so every other map's cache
             # key is unchanged.
@@ -935,9 +948,30 @@ class Pipeline:
         atlas, atlas_receipt = p["denoised"], p["denoised_receipt"]
         scope = BAKE_SCOPE + ("-denoised" if self.lightmap["denoise"] else "-gutter-filled")
         directional_args = []
-        if directional:
-            bakes = [p["directional_bakes"] / name for name in
-                     ("rnm0.exr", "rnm1.exr", "rnm2.exr", "frame_t.exr", "frame_n.exr")]
+        frames = [p["directional_bakes"] / name for name in ("frame_t.exr", "frame_n.exr")]
+        if directional and "indirect" in denoised_layers:
+            # The indirect layer's own gradient (its RNM bakes), for the
+            # core's runtime direct light; the total page stays flat.
+            indirect = denoised_layers["indirect"]
+            bakes = [p["directional_bakes"] / ("rnm_indirect%d.exr" % i) for i in range(3)]
+            out = p["directional_indirect"]
+            self.step("directional-indirect",
+                      [indirect, indirect.with_name(indirect.name + ".json"),
+                       p["atlas_receipt"], p["coverage"]] + bakes + frames,
+                      {"denoise": self.lightmap["denoise"], "layer": "indirect"},
+                      ["lightmap_directional.py", "lightmap_denoise.py"],
+                      [out, out.with_name(out.name + ".json")],
+                      lambda: self.run("directional", [
+                          sys.executable, HERE / "lightmap_directional.py",
+                          "--layer", "indirect", "--flat-exr", indirect,
+                          "--flat-evidence", indirect.with_name(indirect.name + ".json"),
+                          "--bake-evidence", p["atlas_receipt"], "--directional-dir",
+                          p["directional_bakes"], "--coverage-exr", p["coverage"],
+                          "--out", out] +
+                          ([] if self.lightmap["denoise"] else ["--skip-denoise"])))
+            directional_args = ["--layer-directional", "indirect=%s" % out]
+        elif directional:
+            bakes = [p["directional_bakes"] / ("rnm%d.exr" % i) for i in range(3)] + frames
             self.step("directional", [atlas, atlas_receipt, p["atlas_receipt"], p["coverage"]] +
                       bakes, {"denoise": self.lightmap["denoise"]},
                       ["lightmap_directional.py", "lightmap_denoise.py"],
@@ -951,28 +985,6 @@ class Pipeline:
                           "--out", p["directional"]] +
                           ([] if self.lightmap["denoise"] else ["--skip-denoise"])))
             directional_args = ["--directional-exr", p["directional"]]
-            if "indirect" in denoised_layers:
-                # The indirect layer's own gradient (the total's bakes less the
-                # direct-only ones), for the core's runtime direct light.
-                indirect = denoised_layers["indirect"]
-                direct_bakes = [p["directional_bakes"] / ("rnm_direct%d.exr" % i)
-                                for i in range(3)]
-                out = p["directional_indirect"]
-                self.step("directional-indirect",
-                          [indirect, indirect.with_name(indirect.name + ".json"),
-                           p["atlas_receipt"], p["coverage"]] + bakes + direct_bakes,
-                          {"denoise": self.lightmap["denoise"], "layer": "indirect"},
-                          ["lightmap_directional.py", "lightmap_denoise.py"],
-                          [out, out.with_name(out.name + ".json")],
-                          lambda: self.run("directional", [
-                              sys.executable, HERE / "lightmap_directional.py",
-                              "--layer", "indirect", "--flat-exr", indirect,
-                              "--flat-evidence", indirect.with_name(indirect.name + ".json"),
-                              "--bake-evidence", p["atlas_receipt"], "--directional-dir",
-                              p["directional_bakes"], "--coverage-exr", p["coverage"],
-                              "--out", out] +
-                              ([] if self.lightmap["denoise"] else ["--skip-denoise"])))
-                directional_args += ["--layer-directional", "indirect=%s" % out]
         # Chart seams of the lighting stage, gated on the chart invariants.
         self.step("seams", [p["lighting_stage"]], {"size": self.lightmap["size"]},
                   ["lightmap_seams.py"], [p["seams"], p["seams"].with_suffix(".json")],
@@ -1096,9 +1108,8 @@ class Pipeline:
         self.step("ktx2", [atlas, atlas_receipt, p["lighting_stage"], p["seams"],
                            p["coverage"], p["atlas"]] +
                   list(denoised_layers.values()) +
-                  ([p["directional"]] if directional else []) +
                   ([p["directional_indirect"]] if directional and "indirect" in denoised_layers
-                   else []) + sun_inputs,
+                   else [p["directional"]] if directional else []) + sun_inputs,
                   {"preview_gain": self.lightmap["preview_gain"], "scope": scope},
                   ["lightmap_ktx2.py"], [p["ktx2"]],
                   lambda: self.run("ktx2", [sys.executable, HERE / "lightmap_ktx2.py",
@@ -1353,7 +1364,8 @@ class Pipeline:
                 p["atlas_receipt"], p["denoised_receipt"], p["ktx2"].with_name(
                     p["ktx2"].name + ".json"), p["content"].with_suffix(".json"),
                 p["wmsh"].with_name(p["wmsh"].name + ".json"), p["runtime_gate"],
-                p["directional"].with_name(p["directional"].name + ".json"))
+                p["directional"].with_name(p["directional"].name + ".json"),
+                p["directional_indirect"].with_name(p["directional_indirect"].name + ".json"))
                 if path.is_file()]
             self.step("audit", receipts, {"profile": self.profile["name"], "boot": self.boot},
                       ["map_export_audit.py"], [p["audit"]],

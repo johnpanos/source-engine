@@ -74,13 +74,13 @@ class Ktx2LayerDirectionalTest(unittest.TestCase):
             "directional_exr_sha256": sha256(path), "flat_exr_sha256": sha256(flat)}))
         return path
 
-    def package(self, extra):
+    def package(self, extra, total_beta=True):
         out = self.root / "atlas.ktx2"
         command = [sys.executable, str(HERE.parent / "lightmap_ktx2.py"), "--exr",
                    str(self.total), "--bake-evidence", str(self.receipt), "--lighting-stage",
-                   str(self.stage), "--ktx-tool", str(ktx_tool()), "--expected-scope", SCOPE,
-                   "--directional-exr", str(self.total_beta),
-                   "--layer", "indirect=%s" % self.indirect, "--out", str(out)] + list(extra)
+                   str(self.stage), "--ktx-tool", str(ktx_tool()), "--expected-scope", SCOPE] + \
+            (["--directional-exr", str(self.total_beta)] if total_beta else []) + \
+            ["--layer", "indirect=%s" % self.indirect, "--out", str(out)] + list(extra)
         return subprocess.run(command, capture_output=True, text=True), out
 
     def layer(self, out, index):
@@ -103,6 +103,19 @@ class Ktx2LayerDirectionalTest(unittest.TestCase):
         record = json.loads(out.with_name(out.name + ".json").read_text())
         self.assertEqual(record["separated_layers"]["indirect"]["directional_exr_sha256"],
                          sha256(self.indirect_beta))
+
+    def test_the_layers_gradient_alone_makes_a_directional_page(self):
+        # Runtime direct light: the total page is flat (its gradient half
+        # zero) and the indirect layer carries its own.
+        result, out = self.package(["--layer-directional", "indirect=%s" % self.indirect_beta],
+                                   total_beta=False)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(float(np.abs(self.layer(out, 0)[:, SIZE:, :3]).max()), 0.0)
+        np.testing.assert_allclose(self.layer(out, 1)[:, SIZE:, :3].astype(np.float64),
+                                   np.broadcast_to((0.0, -0.2, 0.05), (SIZE, SIZE, 3)),
+                                   atol=1e-3)
+        record = json.loads(out.with_name(out.name + ".json").read_text())
+        self.assertEqual(record["layout"], "directional-2x1")
 
     def test_without_it_the_gradient_half_is_zero(self):
         result, out = self.package([])

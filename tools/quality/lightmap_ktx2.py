@@ -35,7 +35,8 @@ texels. On a directional page a layer's gradient half is zero, except the
 indirect layer's with `--layer-directional indirect=EXR` (its beta from
 `lightmap_directional.py --layer indirect`): the core then draws the
 indirect layer as a directional page under every light's direct light
-(RFC 0016's runtime direct light).
+(RFC 0016's runtime direct light). Without `--directional-exr` the page is
+still directional then, with the total's gradient half zero.
 """
 
 import argparse
@@ -162,8 +163,6 @@ def main():
         if role != "indirect" or not path or role in layer_betas or role not in separated:
             parser.error("--layer-directional takes indirect=EXR, beside --layer indirect=EXR")
         layer_betas[role] = Path(path)
-    if layer_betas and not args.directional_exr:
-        parser.error("--layer-directional needs the total's --directional-exr")
     # Roles follow the layer count (world_lightmap.h): total, [direct,] indirect.
     order = {(): [], ("indirect",): ["indirect"],
              ("direct", "indirect"): ["direct", "indirect"]}.get(tuple(sorted(separated)))
@@ -196,7 +195,11 @@ def main():
             raise ValueError("directional page has invalid dimensions or pixels")
         beta = stitch("directional", beta, absolute=True)
         width = 2 * size
-    rgba = np.empty((size, width, 4), dtype="<f2")
+    elif layer_betas:
+        # A layer's own gradient without the total's (runtime direct light,
+        # RFC 0016): the page is directional, the total's gradient half zero.
+        width = 2 * size
+    rgba = np.zeros((size, width, 4), dtype="<f2")
     rgba[:, :size, :3] = (pixels[::-1, :, :3] * args.preview_gain).astype("<f2")
     if directional:
         # beta is a ratio: the preview gain does not scale it.
@@ -334,7 +337,7 @@ def main():
               "ktx2_sha256": sha256(args.out), "format": "R16G16B16A16_SFLOAT",
               "orientation": "top-left", "width": width,
               "height": size, "preview_gain": args.preview_gain,
-              "layout": "directional-2x1" if directional else "flat",
+              "layout": "directional-2x1" if width == 2 * size else "flat",
               "lmap_version": 2 if len(pages) > 1 else 1,
               "layers": ["total"] + order, "separated_layers": layer_receipts,
               "directional_exr_sha256": sha256(args.directional_exr) if directional else None,

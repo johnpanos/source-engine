@@ -52,7 +52,10 @@ def audit(build, profile, booted):
         check("lightmap-denoise", bool(denoise.get("denoiser")),
               {"denoiser": denoise.get("denoiser")})
     if rules.get("require_directional"):
-        directional = load(build / "lighting" / "atlas-directional.exr.json") or {}
+        # The total page's gradient, or under runtime direct light (a map
+        # with an indirect layer) the indirect layer's own.
+        directional = load(build / "lighting" / "atlas-directional.exr.json") or \
+            load(build / "lighting" / "indirect-directional.exr.json") or {}
         check("directional-lightmap",
               bool(bake.get("directional")) and directional.get("status") == "pass" and
               ktx2.get("layout") == "directional-2x1",

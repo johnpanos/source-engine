@@ -80,7 +80,7 @@ class DirectionalFitTest(unittest.TestCase):
 
 class IndirectLayerFitTest(unittest.TestCase):
     """`lightmap_directional.py --layer indirect`: the indirect layer's own
-    gradient, fitted to the total's RNM bakes less the direct-only ones."""
+    gradient, fitted to the indirect layer's RNM bakes (rnm_indirect<i>)."""
 
     SIZE = 8
 
@@ -111,23 +111,21 @@ class IndirectLayerFitTest(unittest.TestCase):
         lightmap_denoise.write_linear_exr(path, pixels)
         return path
 
-    def run_fit(self, direct_hashes=True, layer="indirect"):
+    def run_fit(self, stem="rnm_indirect", layer="indirect"):
         sha = lightmap_directional.sha256
         bakes = self.root / "directional"
-        rnm = [self.write("directional/rnm%d.exr" % i,
-                          linear_light(*self.indirect, d) + linear_light(*self.direct, d))
+        # The indirect layer's light at each basis normal (or, for the
+        # negative control, the total's under its own stem).
+        light = (lambda d: linear_light(*self.indirect, d)) if stem == "rnm_indirect" else \
+            (lambda d: linear_light(*self.indirect, d) + linear_light(*self.direct, d))
+        rnm = [self.write("directional/%s%d.exr" % (stem, i), light(d))
                for i, d in enumerate(self.directions)]
-        rnm_direct = [self.write("directional/rnm_direct%d.exr" % i,
-                                 linear_light(*self.direct, d))
-                      for i, d in enumerate(self.directions)]
         frame = {"t": self.write("directional/frame_t.exr", 0.5 + 0.5 * self.tangent),
                  "n": self.write("directional/frame_n.exr", 0.5 + 0.5 * self.normal)}
         coverage = self.write("coverage.exr", np.ones((self.SIZE, self.SIZE, 3)))
         indirect = self.write("layers/indirect.exr", linear_light(*self.indirect, self.normal))
-        directional = {"rnm_exr_sha256": [sha(p) for p in rnm],
+        directional = {"rnm_exr_sha256": [sha(p) for p in rnm], "stem": stem,
                        "frame_exr_sha256": {k: sha(v) for k, v in frame.items()}}
-        if direct_hashes:
-            directional["direct_rnm_exr_sha256"] = [sha(p) for p in rnm_direct]
         bake = self.root / "atlas.exr.json"
         bake.write_text(json.dumps({"status": "pass", "size": self.SIZE,
                                     "atlas_exr_sha256": "total",
@@ -157,8 +155,7 @@ class IndirectLayerFitTest(unittest.TestCase):
         a, g = self.indirect
         expected = np.asarray(g) / (a + g[2])
         np.testing.assert_allclose(beta, np.broadcast_to(expected, beta.shape), atol=1e-4)
-        self.assertEqual(receipt["layer"], "indirect")
-        self.assertIsNotNone(receipt["direct_rnm_exr_sha256"])
+        self.assertEqual((receipt["layer"], receipt["rnm_stem"]), ("indirect", "rnm_indirect"))
 
     def test_it_is_not_the_totals_gradient(self):
         # Negative control: the total's beta (what the indirect page borrowed
@@ -169,9 +166,9 @@ class IndirectLayerFitTest(unittest.TestCase):
         total_beta = total_g / (a_i + a_d + total_g[2])
         self.assertGreater(float(np.abs(beta[0, 0] - total_beta).max()), 0.2)
 
-    def test_a_bake_without_direct_only_rnm_is_refused(self):
-        with self.assertRaisesRegex(ValueError, "no direct-only RNM bakes"):
-            self.run_fit(direct_hashes=False)
+    def test_the_totals_rnm_bakes_are_refused_for_the_indirect_layer(self):
+        with self.assertRaisesRegex(ValueError, "not the indirect page's"):
+            self.run_fit(stem="rnm")
 
     def test_a_total_receipt_is_refused_as_the_indirect_layer(self):
         with self.assertRaisesRegex(ValueError, "flat indirect page differs"):
