@@ -10825,6 +10825,9 @@ void CShaderAPIVulkan::TexImageFromVTF( IVTFTexture *pVTF, int iVTFFrame )
 
 // The texture TexLock locked (0-based), or -1.
 static int g_lockedTexture = -1;
+// The rectangle TexLock handed out (TexUnlock uploads it alone).
+static int g_lockedRect[4] = {}; // x, y, width, height
+static int g_lockedTexelBytes = 0;
 
 // Locks a rectangle of mip 0 of the texture selected by ModifyTexture for the
 // material system's pixel writer, as CShaderAPIDx8::TexLock does. The writer
@@ -10861,6 +10864,11 @@ bool CShaderAPIVulkan::TexLock( int level, int cubeFaceID, int xOffset, int yOff
 	                        static_cast<size_t>( xOffset ) * texelBytes],
 	    static_cast<int>( pitch ) );
 	g_lockedTexture = handle;
+	g_lockedRect[0] = xOffset;
+	g_lockedRect[1] = yOffset;
+	g_lockedRect[2] = width;
+	g_lockedRect[3] = height;
+	g_lockedTexelBytes = texelBytes;
 	return true;
 }
 
@@ -10870,10 +10878,31 @@ void CShaderAPIVulkan::TexUnlock()
 		return;
 	const TextureRecord &record = g_TextureRecords[static_cast<size_t>( g_lockedTexture )];
 	std::string error;
-	// The copy is already in the image's layout, so it uploads as that format.
-	if ( !UploadTextureSurface( g_lockedTexture, record.width, record.height, record.format,
-	         record.lockSurface.data(), 0, &error ) &&
-	     !error.empty() )
+	// The copy is already in the image's layout, so it uploads as that format:
+	// the locked rectangle alone (a lightmap page is locked a surface at a
+	// time; uploading the whole page for each cost a page copy per surface).
+	const int x = g_lockedRect[0], y = g_lockedRect[1];
+	const int width = g_lockedRect[2], height = g_lockedRect[3];
+	bool uploaded;
+	if ( x == 0 && y == 0 && width == record.width && height == record.height )
+	{
+		uploaded = UploadTextureSurface( g_lockedTexture, record.width, record.height,
+		    record.format, record.lockSurface.data(), 0, &error );
+	}
+	else
+	{
+		const size_t pitch = static_cast<size_t>( record.width ) * g_lockedTexelBytes;
+		const size_t row = static_cast<size_t>( width ) * g_lockedTexelBytes;
+		std::vector<uint8_t> packed( row * static_cast<size_t>( height ) );
+		for ( int r = 0; r < height; ++r )
+			memcpy( packed.data() + static_cast<size_t>( r ) * row,
+			    record.lockSurface.data() + static_cast<size_t>( y + r ) * pitch +
+			        static_cast<size_t>( x ) * g_lockedTexelBytes,
+			    row );
+		uploaded = UploadTextureSurface(
+		    g_lockedTexture, width, height, record.format, packed.data(), 0, &error, 0, x, y );
+	}
+	if ( !uploaded && !error.empty() )
 		Warning( "[NativeVulkan] TexUnlock upload failed: %s\n", error.c_str() );
 	g_lockedTexture = -1;
 }
