@@ -66,7 +66,8 @@ enum class RecordedOp : std::uint8_t
 	kDispatch,
 	kBeginLabel,
 	kEndLabel,
-	kSetDrawConstants // count: the bytes written
+	kSetDrawConstants, // count: the bytes written
+	kWriteTimestamp    // D23: count is the tick written
 };
 
 // One executed command. resource is the command's main handle value;

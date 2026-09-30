@@ -192,7 +192,8 @@ enum class Op : std::uint8_t
 	kDispatch,
 	kSetDrawConstants,
 	kBeginLabel,
-	kEndLabel
+	kEndLabel,
+	kWriteTimestamp // D23: buffer a, at offset
 };
 
 struct Command
@@ -262,6 +263,7 @@ public:
 	void SetDrawConstants( std::uint32_t offset, std::span<const std::byte> bytes ) override;
 	void BeginLabel( std::string_view label ) override;
 	void EndLabel() override;
+	void WriteTimestamp( BufferId buffer, std::uint64_t offset ) override;
 	bool HasError() const override { return m_Error; }
 
 	bool Complete() const { return !m_Error && !m_Rendering && m_Labels == 0; }
@@ -391,12 +393,13 @@ private:
 		std::uint64_t value;
 		GLsync sync;
 	};
-	// A GL object the device made for one submission (its draw constants),
-	// deleted once the submission completes.
+	// A GL object the device made for one submission (its draw constants, or
+	// a timestamp query), deleted once the submission completes.
 	struct Transient
 	{
 		GLuint buffer;
 		std::uint64_t value;
+		bool query = false; // `buffer` names a query object
 	};
 	// A submission accepted while held: its encoders, kept until issued.
 	struct HeldSubmission

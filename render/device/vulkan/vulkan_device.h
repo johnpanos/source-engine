@@ -362,8 +362,9 @@ enum class Op : std::uint8_t
 	kBeginLabel,
 	kEndLabel,
 	kSetDrawConstants,
-	kNative,       // host work (host_device.h RecordNative)
-	kSectionBegin, // port commands host work runs (host_device.h BeginSection)
+	kWriteTimestamp, // D23: buffer a, at offset
+	kNative,         // host work (host_device.h RecordNative)
+	kSectionBegin,   // port commands host work runs (host_device.h BeginSection)
 	kSectionEnd
 };
 
@@ -434,6 +435,7 @@ public:
 	void SetDrawConstants( std::uint32_t offset, std::span<const std::byte> bytes ) override;
 	void BeginLabel( std::string_view label ) override;
 	void EndLabel() override;
+	void WriteTimestamp( BufferId buffer, std::uint64_t offset ) override;
 	bool HasError() const override { return m_Error; }
 
 	bool Complete() const { return !m_Error && !m_Rendering && m_Labels == 0 && !m_InSection; }
@@ -607,6 +609,9 @@ private:
 		VkCommandBuffer buffer = VK_NULL_HANDLE;
 		std::uint64_t value = 0;
 		std::vector<HostBuffer> staging;
+		// D23: the submission's timestamps, reset at its start.
+		VkQueryPool queries = VK_NULL_HANDLE;
+		std::uint32_t queryCapacity = 0;
 	};
 
 	// Per-encoder validation state (Submit rejects before anything records).

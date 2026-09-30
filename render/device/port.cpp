@@ -95,6 +95,8 @@ const char *CapabilityName( Capability capability )
 		return "external-images";
 	case Capability::kTextureCompressionBC:
 		return "texture-compression-bc";
+	case Capability::kTimestamps:
+		return "timestamps";
 	case Capability::kCount:
 		break;
 	}

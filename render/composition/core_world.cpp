@@ -14,6 +14,7 @@
 #include "render/pass/lights/clusters.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdlib>
 #include <cstddef>
@@ -710,6 +711,82 @@ void CoreWorld::GetStats( RenderCoreWorldStats *out ) const
 	}
 }
 
+void CoreWorld::SetGpuTimers( bool enabled )
+{
+	m_GpuTimersOn.store( enabled, std::memory_order_relaxed );
+}
+
+unsigned int CoreWorld::TakeGpuTimes( char *out, unsigned int size )
+{
+	if ( !out || size == 0 )
+		return 0;
+	out[0] = '\0';
+	graph::PassTimerReport report;
+	{
+		std::lock_guard<std::mutex> guard( m_TimersLock );
+		if ( !m_Timers )
+			return 0;
+		report = m_Timers->Take();
+	}
+	if ( report.frames == 0 )
+		return 0;
+	std::size_t used = 0;
+	const double frames = double( report.frames );
+	for ( const graph::PassTime &pass : report.passes )
+	{
+		if ( used + 1 >= size )
+			break;
+		const int written = std::snprintf( out + used, size - used, "%u %.3f %.2f %s\n", pass.depth,
+		    pass.milliseconds / frames, double( pass.count ) / frames, pass.name.c_str() );
+		if ( written < 0 )
+			break;
+		used = std::min( std::size_t( size ) - 1, used + std::size_t( written ) );
+	}
+	// The same views' CPU recording (shadows, prepass, lit world, GTAO).
+	const std::uint64_t recordNs = m_RecordNs.exchange( 0, std::memory_order_relaxed );
+	const std::uint64_t recordViews = m_RecordViews.exchange( 0, std::memory_order_relaxed );
+	if ( recordViews && used + 1 < size )
+	{
+		const int written = std::snprintf( out + used, size - used,
+		    "0 %.3f %.2f core world view (CPU recording, render sequence)\n",
+		    double( recordNs ) * 1e-6 / frames, double( recordViews ) / frames );
+		if ( written > 0 )
+			used = std::min( std::size_t( size ) - 1, used + std::size_t( written ) );
+	}
+	if ( report.overflowed && used + 1 < size )
+		std::snprintf(
+		    out + used, size - used, "0 0 %u (timestamps dropped)\n", report.overflowed );
+	return report.frames;
+}
+
+graph::GpuPassTimers *CoreWorld::SlotTimers( const legacy::CorePassTarget &target )
+{
+	std::lock_guard<std::mutex> guard( m_TimersLock );
+	// One decision per frame: the frame's slots share its encoders.
+	if ( target.frame != m_TimersFrame )
+	{
+		m_TimersFrame = target.frame;
+		m_TimersThisFrame = m_GpuTimersOn.load( std::memory_order_relaxed );
+	}
+	if ( !m_TimersThisFrame )
+	{
+		if ( m_Timers )
+		{
+			// This frame's `submitted` covers every frame the timers wrote;
+			// their buffers go behind it.
+			m_Timers->BeginFrame( target.frame, target.submitted );
+			m_Timers.reset();
+		}
+		return nullptr;
+	}
+	if ( !m_Timers || &m_Timers->Device() != target.device )
+		m_Timers = std::make_unique<graph::GpuPassTimers>( *target.device );
+	if ( !m_Timers->Supported() )
+		return nullptr;
+	m_Timers->BeginFrame( target.frame, target.submitted );
+	return m_Timers.get();
+}
+
 void CoreWorld::RecordSlot(
     std::uint32_t tag, device::CommandEncoder &encoder, const legacy::CorePassTarget &target )
 {
@@ -801,6 +878,15 @@ void CoreWorld::RecordSlot(
 				shadows = work;
 		}
 	}
+	// RFC 0014 D4: the view's sections are timed while the timers are on.
+	graph::GpuPassTimers *timers = target.device ? SlotTimers( target ) : nullptr;
+	m_SlotTimers = timers;
+	const auto recordStarted = std::chrono::steady_clock::now();
+	if ( timers )
+	{
+		timers->Attach( encoder );
+		encoder.BeginLabel( "core world view" );
+	}
 	if ( shadows && target.device && !shadows->views.empty() )
 		world.shadowAtlas =
 		    DrawStageShadows( *target.device, *shadows, target.frame, &world.shadowAtlasDesc );
@@ -825,10 +911,24 @@ void CoreWorld::RecordSlot(
 			aoView.view = work->view;
 			aoView.projection = work->projection;
 			std::copy( work->eye, work->eye + 3, aoView.eye );
-			return bool( m_Ao->Record( screen, targets, aoView ) );
+			screen.BeginLabel( "core world gtao" );
+			const bool recorded = bool( m_Ao->Record( screen, targets, aoView ) );
+			screen.EndLabel();
+			return recorded;
 		};
 	}
 	m_Pass.Record( tag, encoder, world );
+	if ( timers )
+	{
+		encoder.EndLabel();
+		timers->Detach( encoder );
+		m_RecordNs.fetch_add( std::uint64_t( std::chrono::duration_cast<std::chrono::nanoseconds>(
+		                          std::chrono::steady_clock::now() - recordStarted )
+		                              .count() ),
+		    std::memory_order_relaxed );
+		m_RecordViews.fetch_add( 1, std::memory_order_relaxed );
+	}
+	m_SlotTimers = nullptr;
 	bool topLevel = false;
 	{
 		std::lock_guard<std::mutex> guard( m_TopLevelLock );
@@ -926,6 +1026,7 @@ device::TextureId CoreWorld::DrawStageShadows( device::IRenderDevice2 &device,
 	if ( !compiled )
 		return {};
 	graph::SerialGraphExecutor executor;
+	executor.SetLabelObserver( m_SlotTimers );
 	auto executed = executor.Execute( compiled.Value(), device );
 	if ( !executed )
 		return {};
@@ -1010,6 +1111,10 @@ void CoreWorld::ReleaseShadows( device::IRenderDevice2 &device )
 	m_ShadowRenderer.reset();
 	m_CastersStaged = 0;
 	m_ShadowDevice = nullptr;
+	// After the idle wait: the timers' buffers may go at once.
+	std::lock_guard<std::mutex> guard( m_TimersLock );
+	if ( m_Timers && &m_Timers->Device() == &device )
+		m_Timers.reset();
 }
 
 } // namespace render::composition

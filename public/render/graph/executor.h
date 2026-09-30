@@ -105,8 +105,12 @@ public:
 	foundation::Expected<ExecuteResult, device::DeviceError> Execute( const CompiledGraph &graph,
 	    device::IRenderDevice2 &device, const device::SubmitWaits &waits = {} );
 
+	// Sees every pass's label (RFC 0014 D4's GPU timers); null: none.
+	void SetLabelObserver( device::ILabelObserver *observer ) { m_Observer = observer; }
+
 private:
 	TransientPool *m_Pool = nullptr;
+	device::ILabelObserver *m_Observer = nullptr;
 };
 
 // The pooled executor: each kept pass records into its own encoder as one job
@@ -125,9 +129,13 @@ public:
 	foundation::Expected<ExecuteResult, device::DeviceError> Execute( const CompiledGraph &graph,
 	    device::IRenderDevice2 &device, const device::SubmitWaits &waits = {} );
 
+	// Sees every pass's label (RFC 0014 D4's GPU timers); null: none.
+	void SetLabelObserver( device::ILabelObserver *observer ) { m_Observer = observer; }
+
 private:
 	jobsystem::IGraphExecutor &m_Jobs;
 	TransientPool *m_Pool;
+	device::ILabelObserver *m_Observer = nullptr;
 };
 
 } // namespace render::graph

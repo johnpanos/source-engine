@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <iterator>
 #include <string>
@@ -87,6 +88,12 @@ ConVar cl_render_debug_force_metalness( "cl_render_debug_force_metalness", "-1",
     "-1 off; otherwise the metalness every material takes." );
 ConVar cl_render_debug_legacy( "cl_render_debug_legacy", "0", FCVAR_CHEAT,
     "0 off; 2 skips the legacy stream, leaving the grey hatch where the core draws nothing." );
+// RFC 0014 D4: GPU timers around every labeled core section, reported by
+// cl_render_debug_stats once a second (per-frame means over that second).
+ConVar cl_render_debug_gpu_timers( "cl_render_debug_gpu_timers", "0", 0,
+    "Time the render core's GPU passes (RFC 0014 D4); cl_render_debug_stats prints them." );
+ConVar cl_render_debug_stats( "cl_render_debug_stats", "0", 0,
+    "Print the render core's per-pass GPU times (cl_render_debug_gpu_timers) every second." );
 
 void DebugProgramChanged( IConVar *var, const char *, float )
 {
@@ -334,6 +341,44 @@ void RenderCoreHost_EndFrame()
 		return;
 	host.inFrame = false;
 	RenderCoreWorld_EndFrame();
+	if ( host.world )
+	{
+		host.world->SetGpuTimers( cl_render_debug_gpu_timers.GetBool() );
+		static double s_LastStats = 0.0;
+		const double now = Plat_FloatTime();
+		if ( cl_render_debug_stats.GetBool() && cl_render_debug_gpu_timers.GetBool() &&
+		     now - s_LastStats >= 1.0 )
+		{
+			s_LastStats = now;
+			char times[4096];
+			const unsigned int frames = host.world->TakeGpuTimes( times, sizeof( times ) );
+			if ( frames )
+			{
+				// "depth ms count name" lines: indent by depth.
+				Msg( "cl_render_debug_stats: core GPU passes, mean of %u frame(s):\n", frames );
+				for ( char *line = times; *line; )
+				{
+					char *end = strchr( line, '\n' );
+					if ( end )
+						*end = '\0';
+					unsigned int depth = 0;
+					double ms = 0.0, count = 0.0;
+					int name = 0;
+					if ( sscanf( line, "%u %lf %lf %n", &depth, &ms, &count, &name ) >= 3 )
+						Msg( "  %*s%-*s %7.3f ms  x%.1f\n", int( depth * 2 ), "",
+						    32 - int( depth * 2 ), line + name, ms, count );
+					if ( !end )
+						break;
+					line = end + 1;
+				}
+			}
+			else
+			{
+				Msg( "cl_render_debug_stats: no core GPU pass timed yet (a device without "
+				     "timestamps, or no core view drawn).\n" );
+			}
+		}
+	}
 	auto result = host.renderer->EndFrame();
 	if ( !result && host.failedFrames++ == 0 )
 		Warning( "Render core: frame %llu failed (status %u).\n", (unsigned long long)host.frame,

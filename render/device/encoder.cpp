@@ -19,7 +19,7 @@ CommandEncoder::CommandEncoder( QueueKind queue, std::unique_ptr<IEncoderBackend
 
 CommandEncoder::CommandEncoder( CommandEncoder &&other ) noexcept
     : m_Queue( other.m_Queue ), m_Backend( std::move( other.m_Backend ) ), m_Owner( other.m_Owner ),
-      m_Violations( other.m_Violations )
+      m_Violations( other.m_Violations ), m_LabelObserver( other.m_LabelObserver )
 {
 }
 
@@ -31,6 +31,7 @@ CommandEncoder &CommandEncoder::operator=( CommandEncoder &&other ) noexcept
 		m_Backend = std::move( other.m_Backend );
 		m_Owner = other.m_Owner;
 		m_Violations = other.m_Violations;
+		m_LabelObserver = other.m_LabelObserver;
 	}
 	return *this;
 }
@@ -171,14 +172,28 @@ void CommandEncoder::SetDrawConstants( std::uint32_t offset, std::span<const std
 
 void CommandEncoder::BeginLabel( std::string_view label )
 {
-	if ( IEncoderBackend *backend = Enter() )
-		backend->BeginLabel( label );
+	IEncoderBackend *backend = Enter();
+	if ( !backend )
+		return;
+	backend->BeginLabel( label );
+	if ( m_LabelObserver )
+		m_LabelObserver->OnBeginLabel( *this, label );
 }
 
 void CommandEncoder::EndLabel()
 {
+	IEncoderBackend *backend = Enter();
+	if ( !backend )
+		return;
+	if ( m_LabelObserver )
+		m_LabelObserver->OnEndLabel( *this );
+	backend->EndLabel();
+}
+
+void CommandEncoder::WriteTimestamp( BufferId buffer, std::uint64_t offset )
+{
 	if ( IEncoderBackend *backend = Enter() )
-		backend->EndLabel();
+		backend->WriteTimestamp( buffer, offset );
 }
 
 } // namespace render::device

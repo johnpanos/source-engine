@@ -54,6 +54,7 @@ namespace render::device::gl
 	    glCompressedTextureSubImage3D )                                                            \
 	X( CopyNamedBufferSubData, PFNGLCOPYNAMEDBUFFERSUBDATAPROC, glCopyNamedBufferSubData )         \
 	X( CreateBuffers, PFNGLCREATEBUFFERSPROC, glCreateBuffers )                                    \
+	X( CreateQueries, PFNGLCREATEQUERIESPROC, glCreateQueries )                                    \
 	X( CreateFramebuffers, PFNGLCREATEFRAMEBUFFERSPROC, glCreateFramebuffers )                     \
 	X( CreateProgram, PFNGLCREATEPROGRAMPROC, glCreateProgram )                                    \
 	X( CreateSamplers, PFNGLCREATESAMPLERSPROC, glCreateSamplers )                                 \
@@ -64,6 +65,7 @@ namespace render::device::gl
 	X( DebugMessageCallback, PFNGLDEBUGMESSAGECALLBACKPROC, glDebugMessageCallback )               \
 	X( DebugMessageControl, PFNGLDEBUGMESSAGECONTROLPROC, glDebugMessageControl )                  \
 	X( DeleteBuffers, PFNGLDELETEBUFFERSPROC, glDeleteBuffers )                                    \
+	X( DeleteQueries, PFNGLDELETEQUERIESPROC, glDeleteQueries )                                    \
 	X( DeleteFramebuffers, PFNGLDELETEFRAMEBUFFERSPROC, glDeleteFramebuffers )                     \
 	X( DeleteProgram, PFNGLDELETEPROGRAMPROC, glDeleteProgram )                                    \
 	X( DeleteSamplers, PFNGLDELETESAMPLERSPROC, glDeleteSamplers )                                 \
@@ -97,6 +99,9 @@ namespace render::device::gl
 	X( GetGraphicsResetStatus, PFNGLGETGRAPHICSRESETSTATUSPROC, glGetGraphicsResetStatus )         \
 	X( GetIntegerv, PFNGLGETINTEGERVPROC, glGetIntegerv )                                          \
 	X( GetNamedBufferSubData, PFNGLGETNAMEDBUFFERSUBDATAPROC, glGetNamedBufferSubData )            \
+	X( GetQueryBufferObjectui64v, PFNGLGETQUERYBUFFEROBJECTUI64VPROC,                              \
+	    glGetQueryBufferObjectui64v )                                                              \
+	X( GetQueryiv, PFNGLGETQUERYIVPROC, glGetQueryiv )                                             \
 	X( GetProgramInfoLog, PFNGLGETPROGRAMINFOLOGPROC, glGetProgramInfoLog )                        \
 	X( GetProgramInterfaceiv, PFNGLGETPROGRAMINTERFACEIVPROC, glGetProgramInterfaceiv )            \
 	X( GetProgramResourceiv, PFNGLGETPROGRAMRESOURCEIVPROC, glGetProgramResourceiv )               \
@@ -129,6 +134,7 @@ namespace render::device::gl
 	X( PopDebugGroup, PFNGLPOPDEBUGGROUPPROC, glPopDebugGroup )                                    \
 	X( ProgramUniform1i, PFNGLPROGRAMUNIFORM1IPROC, glProgramUniform1i )                           \
 	X( PushDebugGroup, PFNGLPUSHDEBUGGROUPPROC, glPushDebugGroup )                                 \
+	X( QueryCounter, PFNGLQUERYCOUNTERPROC, glQueryCounter )                                       \
 	X( SamplerParameterf, PFNGLSAMPLERPARAMETERFPROC, glSamplerParameterf )                        \
 	X( SamplerParameteri, PFNGLSAMPLERPARAMETERIPROC, glSamplerParameteri )                        \
 	X( ScissorIndexed, PFNGLSCISSORINDEXEDPROC, glScissorIndexed )                                 \

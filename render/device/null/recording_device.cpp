@@ -433,6 +433,14 @@ public:
 		command.op = RecordedOp::kEndLabel;
 		Push( std::move( command ) );
 	}
+	void WriteTimestamp( BufferId buffer, std::uint64_t offset ) override
+	{
+		Command command;
+		command.op = RecordedOp::kWriteTimestamp;
+		command.a = buffer.value;
+		command.copy.destinationOffset = offset;
+		Push( std::move( command ) );
+	}
 	bool HasError() const override { return m_Error; }
 
 	bool Complete() const { return !m_Error && !m_Rendering && m_Labels == 0; }
@@ -580,6 +588,9 @@ public:
 		m_Facts.limits.uniformBufferAlignment = 256;
 		m_Facts.limits.sampleCounts = 0xfu; // 1, 2, 4 and 8
 		m_Facts.artifactFormat = options.artifactFormat;
+		// D23: one tick per nanosecond; every command advances the clock.
+		if ( m_Facts.capabilities.Has( Capability::kTimestamps ) )
+			m_Facts.timestampPeriodNs = 1.0;
 	}
 
 	// IRenderDevice2 ---------------------------------------------------------
@@ -1112,6 +1123,18 @@ private:
 				if ( !buffer( command.a, ResourceUsage::kIndex ) )
 					return false;
 				break;
+			case RecordedOp::kWriteTimestamp:
+			{
+				// D23: kReadback memory in kCopyDestination, 8-byte aligned.
+				const std::uint64_t offset = command.copy.destinationOffset;
+				if ( !buffer( command.a, ResourceUsage::kCopyDestination ) )
+					return false;
+				const Buffer *b = LiveBuffer( command.a );
+				if ( b->desc.memory != MemoryKind::kReadback || offset % 8 != 0 ||
+				     offset > b->data.size() || b->data.size() - offset < 8 )
+					return false;
+				break;
+			}
 			default:
 				break;
 			}
@@ -1137,6 +1160,7 @@ private:
 	{
 		for ( Command &command : batch.commands )
 		{
+			m_Clock += 10; // each command takes 10 ns of the null GPU's time
 			Apply( command );
 			RecordedCommand recorded;
 			recorded.op = command.op;
@@ -1236,6 +1260,15 @@ private:
 			command.count = static_cast<std::uint64_t>( row ) * rows;
 			break;
 		}
+		case RecordedOp::kWriteTimestamp:
+			if ( Buffer *b = ExistingBuffer( command.a ) )
+			{
+				const std::uint64_t tick = m_Clock;
+				std::memcpy(
+				    b->data.data() + command.copy.destinationOffset, &tick, sizeof( tick ) );
+				command.count = tick;
+			}
+			break;
 		case RecordedOp::kBeginRendering:
 			for ( const ColorAttachment &color : command.colors )
 			{
@@ -1272,6 +1305,7 @@ private:
 	std::uint64_t m_Completed[kQueueCount] = {};
 	std::deque<Batch> m_Pending[kQueueCount];
 	std::vector<RecordedCommand> m_Recorded;
+	std::uint64_t m_Clock = 0; // D23: the null GPU's time, in ticks
 	UploadRing m_Ring;
 	std::mutex m_RingLock; // guards m_Ring, m_NextAllocation, m_DeferredUploads
 };
@@ -1330,6 +1364,21 @@ DeviceResult<CompletionToken> RecordingDevice::Submit(
 		if ( !encoder->Complete() || !Validate( encoder->Commands(), states ) )
 			return Fail( DeviceStatus::kInvalidState, op );
 		recorded.push_back( encoder );
+	}
+	// D23: timestamps need the capability, and each buffer ends the
+	// submission in kCopyDestination.
+	for ( NullEncoder *encoder : recorded )
+	{
+		for ( const Command &command : encoder->Commands() )
+		{
+			if ( command.op != RecordedOp::kWriteTimestamp )
+				continue;
+			if ( !m_Facts.capabilities.Has( Capability::kTimestamps ) )
+				return Fail( DeviceStatus::kUnsupported, op );
+			const auto found = states.find( command.a );
+			if ( found == states.end() || found->second != ResourceUsage::kCopyDestination )
+				return Fail( DeviceStatus::kInvalidState, op );
+		}
 	}
 	// Usage state is the state after every accepted submission, whether or
 	// not it has run yet: the next submission continues from it.

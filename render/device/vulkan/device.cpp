@@ -108,6 +108,21 @@ DeviceResult<void> VulkanDevice::Initialize()
 		m_Facts.capabilities.Add( Capability::kExternalImages );
 	if ( m_Adapter.textureCompressionBC )
 		m_Facts.capabilities.Add( Capability::kTextureCompressionBC );
+	// D23: timestamps where the queue family writes them.
+	{
+		std::uint32_t families = 0;
+		vkGetPhysicalDeviceQueueFamilyProperties( m_Adapter.physical, &families, nullptr );
+		std::vector<VkQueueFamilyProperties> properties( families );
+		vkGetPhysicalDeviceQueueFamilyProperties(
+		    m_Adapter.physical, &families, properties.data() );
+		if ( m_Adapter.queueFamily < families &&
+		     properties[m_Adapter.queueFamily].timestampValidBits > 0 &&
+		     m_Properties.limits.timestampPeriod > 0.0f )
+		{
+			m_Facts.capabilities.Add( Capability::kTimestamps );
+			m_Facts.timestampPeriodNs = m_Properties.limits.timestampPeriod;
+		}
+	}
 	for ( std::uint32_t bit = 0; bit < static_cast<std::uint32_t>( Capability::kCount ); ++bit )
 	{
 		const Capability claimed = static_cast<Capability>( bit );
@@ -480,10 +495,16 @@ void VulkanDevice::DestroyLogical()
 		return;
 
 	for ( CommandContext &context : m_FreeContexts )
+	{
 		vkDestroyCommandPool( m_Device, context.pool, nullptr );
+		if ( context.queries != VK_NULL_HANDLE )
+			vkDestroyQueryPool( m_Device, context.queries, nullptr );
+	}
 	for ( CommandContext &context : m_InFlight )
 	{
 		vkDestroyCommandPool( m_Device, context.pool, nullptr );
+		if ( context.queries != VK_NULL_HANDLE )
+			vkDestroyQueryPool( m_Device, context.queries, nullptr );
 		for ( HostBuffer &staging : context.staging )
 			DestroyHostBuffer( staging );
 	}
@@ -554,9 +575,15 @@ void VulkanDevice::RecycleCompleted()
 			DestroyHostBuffer( staging );
 		context.staging.clear();
 		if ( vkResetCommandPool( m_Device, context.pool, 0 ) == VK_SUCCESS )
+		{
 			m_FreeContexts.push_back( std::move( context ) );
+		}
 		else
+		{
 			vkDestroyCommandPool( m_Device, context.pool, nullptr );
+			if ( context.queries != VK_NULL_HANDLE )
+				vkDestroyQueryPool( m_Device, context.queries, nullptr );
+		}
 	}
 	m_Ring.Retire( completed );
 }

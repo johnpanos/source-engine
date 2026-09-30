@@ -18,6 +18,7 @@
 #include "render/composition/render_core.h"
 #include "render/legacy/core_backend.h"
 #include "render/frame/renderer.h"
+#include "render/graph/pass_timers.h"
 #include "render/legacy/core_passes.h"
 #include "render/pass/debug/debug_overlays.h"
 #include "render/pass/ao/ao.h"
@@ -87,6 +88,8 @@ public:
 	void OnStage( frame::Stage stage, std::uint32_t depth ) override;
 	unsigned long long Failures() const override;
 	void GetStats( RenderCoreWorldStats *out ) const override;
+	void SetGpuTimers( bool enabled ) override;
+	unsigned int TakeGpuTimes( char *out, unsigned int size ) override;
 
 	// legacy::ICorePassRecorder (the backend, render sequence).
 	std::uint32_t SlotStages() const override { return 0; }
@@ -217,6 +220,9 @@ private:
 	// Render sequence: the stage's objects live on this device (a new one
 	// drops the old one's handles, which went with it).
 	void BindStageDevice( device::IRenderDevice2 &device );
+	// RFC 0014 D4: the timers of the slot's frame while they are on (render
+	// sequence), else null.
+	graph::GpuPassTimers *SlotTimers( const legacy::CorePassTarget &target );
 
 	legacy::ILegacyFrontend &m_Frontend;
 	const frame::IRenderer &m_Renderer;
@@ -268,6 +274,18 @@ private:
 	std::uint64_t m_AtlasFrame = 0;
 	// The screen passes (render sequence): GTAO and its output.
 	std::unique_ptr<pass::ao::AmbientOcclusion> m_Ao;
+	// RFC 0014 D4: made and replaced on the render sequence; m_TimersLock
+	// guards the pointer against the main thread's TakeGpuTimes.
+	std::atomic<bool> m_GpuTimersOn{ false };
+	std::mutex m_TimersLock;
+	std::unique_ptr<graph::GpuPassTimers> m_Timers;
+	graph::GpuPassTimers *m_SlotTimers = nullptr; // during a slot's recording
+	std::uint64_t m_TimersFrame = 0;              // the frame the decision is for
+	bool m_TimersThisFrame = false;
+	// The CPU time the timed views took to record (render sequence), in ns,
+	// reported beside the GPU sections.
+	std::atomic<std::uint64_t> m_RecordNs{ 0 };
+	std::atomic<std::uint64_t> m_RecordViews{ 0 };
 	device::TextureId m_Occlusion;
 	device::TextureDesc m_OcclusionDesc;
 	bool m_StageSet = false; // the pass holds a world stage

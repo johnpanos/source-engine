@@ -4183,3 +4183,76 @@ Frozen-path: `materialsystem/shaderapivulkan/vulkan_world_lightmap.cpp`
 (region uploads) and `engine/gl_lightmap.cpp` (the sparse brush relight;
 committed inside `1666232fb` with source-engine-89's hunks) are defect
 fixes for the frame-time failure.
+
+## RFC 0014 D4, first part: per-pass GPU timers on the core (2026-09-30, source-engine-5a)
+
+User direction (2026-09-30): make perf diagnosis easy, starting with RFC
+0014 D4's GPU timers on each pass, reported per frame. source-engine-43
+owned R95-DEBUG-CONTROLS but is not running; this session took D4's
+`_gpu_timers` and `_stats` controls. The rest of D4 (`_sync_paranoid`,
+`_poison_reuse`, `_graph`, `_rt_list`, `_rt_view`, `_pipeline_miss_log`,
+`_pass_merge`) is still open.
+
+- `render.device.v2` gains timestamps: `Capability::kTimestamps`,
+  `DeviceFacts::timestampPeriodNs` and `CommandEncoder::WriteTimestamp`
+  (clause D23, in the contract with D22). Vulkan uses a query pool per
+  submission, reset at its start and copied into the buffer at its end.
+  GL uses `glQueryCounter` with a query-buffer-object write. The null
+  device keeps a clock of 10 ticks per command.
+- `CommandEncoder` takes an `ILabelObserver`. `render.graph`'s
+  `GpuPassTimers` (`pass_timers.h`) writes a timestamp after each label
+  opens and before it closes. Graph passes are labeled by name, so every
+  graph pass is timed. Both executors take the observer
+  (`SetLabelObserver`).
+- A frame's times are read only after a token covering its submissions
+  completes. Each encoder takes its own 64-timestamp chunk buffer, so no
+  encoder's transition can discard another's timestamps.
+- The core world stage times each view: shadow depth, prepass, GTAO (now
+  labeled) and the lit world, plus the view's CPU recording time.
+  `cl_render_debug_gpu_timers 1` turns them on (latched per frame), and
+  `cl_render_debug_stats 1` prints per-frame means once a second.
+  `-vkgputimers` stays until the frozen backend is deleted (the RFC's rule).
+
+Checks:
+
+- D23 on the null, Vulkan (RADV) and GL (radeonsi) adapters:
+  - timestamps inside and outside rendering land;
+  - they do not decrease;
+  - a later submission's are no earlier;
+  - device-local memory and unaligned offsets are refused;
+  - without the capability, submission fails `kUnsupported`.
+
+  `kDropsTimestamps` is caught (`render.device.v2.sensitivity`).
+- `render.graph.v1`'s D4 clause:
+  - every label is timed at its depth;
+  - nothing is read before completion;
+  - the timers are monotonic;
+  - pass times sum within the frame's span;
+  - a device without timestamps records none.
+- Graph, device, composition, world, lab (composition, GTAO, shadowed
+  lights), SDF and Hammer viewport suites pass on g++ and clang++.
+
+### First per-pass numbers (rule 7: recorded, not judged)
+
+`./play_p2 sp_a2_laser_intro_relit` (user's perf fixture), 1920x1080,
+offscreen, `mat_vsync 0`, desktop RADV (Strix Halo). Per-frame means over
+about 67 frames, on a quiet host:
+
+| Section | GPU ms |
+| --- | --- |
+| core world view (total) | 5.9 |
+| GTAO | 3.2 |
+| lit world | 2.4 |
+| prepass | 0.25 |
+| shadow depth (its own submission) | 0.1 |
+
+- The core view's CPU recording is 0.44 ms.
+- The whole frame's GPU time (`-vkframestats`) has a median of 6.6 ms,
+  and the core sections sum within it.
+- The frame interval is 14.8 ms, of which 10.7 ms is backend CPU:
+  `mesh_draw` 3.2 ms, `emit` 2.9 ms, `record` 1.5 ms.
+
+So on this fixture the frame is CPU-bound in the legacy draw stream. On
+the core's GPU side, GTAO (full resolution) is the largest term. A second
+run on a GPU loaded by other sessions scaled every section by about 1.8x.
+Fold7: unavailable.

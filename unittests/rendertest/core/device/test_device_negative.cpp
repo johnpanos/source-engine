@@ -40,7 +40,8 @@ enum class Defect
 	kIgnoresUsageState,   // D12: accepts transitions from any usage
 	kFillsDrawConstants,  // D16: zero-fills a bound pipeline's draw constants
 	kAttachesBlocks,      // D19: creates a block-compressed attachment without it
-	kDropsRegionOrigin    // D22: copies every buffer-to-texture region to (0, 0)
+	kDropsRegionOrigin,   // D22: copies every buffer-to-texture region to (0, 0)
+	kDropsTimestamps      // D23: records no timestamp
 };
 
 // Draw-constant block sizes by pipeline, for kFillsDrawConstants.
@@ -142,6 +143,11 @@ public:
 	}
 	void BeginLabel( std::string_view label ) override { m_Inner->BeginLabel( label ); }
 	void EndLabel() override { m_Inner->EndLabel(); }
+	void WriteTimestamp( BufferId buffer, std::uint64_t offset ) override
+	{
+		if ( m_Defect != Defect::kDropsTimestamps )
+			m_Inner->WriteTimestamp( buffer, offset );
+	}
 	bool HasError() const override { return m_Inner->HasError(); }
 
 	std::unique_ptr<IEncoderBackend> TakeInner() { return std::move( m_Inner ); }
@@ -366,6 +372,7 @@ int main()
 	    { Defect::kFillsDrawConstants, "under-test.D16 " },
 	    { Defect::kAttachesBlocks, "under-test.D19 " },
 	    { Defect::kDropsRegionOrigin, "under-test.D22 " },
+	    { Defect::kDropsTimestamps, "under-test.D23 " },
 	};
 	for ( const Case &c : cases )
 	{

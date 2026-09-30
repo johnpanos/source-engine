@@ -351,4 +351,13 @@ void GlEncoder::EndLabel()
 	Push( std::move( command ) );
 }
 
+void GlEncoder::WriteTimestamp( BufferId buffer, std::uint64_t offset )
+{
+	Command command;
+	command.op = Op::kWriteTimestamp;
+	command.a = buffer.value;
+	command.offset = offset;
+	Push( std::move( command ) );
+}
+
 } // namespace render::device::gl

@@ -22,6 +22,7 @@ foundation::Expected<ExecuteResult, device::DeviceError> SerialGraphExecutor::Ex
 		return foundation::MakeUnexpected( encoder.Error() );
 	}
 	device::CommandEncoder &e = encoder.Value();
+	e.SetLabelObserver( m_Observer );
 	for ( std::size_t i = 0; i < graph.order.size(); ++i )
 		detail::RecordPass( e, graph, plan.Value(), i );
 	detail::RecordFinal( e, graph, plan.Value() );

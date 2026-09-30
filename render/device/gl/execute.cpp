@@ -270,6 +270,15 @@ bool GlDevice::Validate(
 			     !v.constants.Ready() )
 				return false;
 			break;
+		case Op::kWriteTimestamp:
+		{
+			// D23: kReadback memory in kCopyDestination, 8-byte aligned.
+			const BufferRecord *b = buffer( command.a, ResourceUsage::kCopyDestination );
+			if ( !b || b->desc.memory != MemoryKind::kReadback || command.offset % 8 != 0 ||
+			     command.offset > b->desc.size || b->desc.size - command.offset < 8 )
+				return false;
+			break;
+		}
 		case Op::kSetViewport:
 		case Op::kBeginLabel:
 		case Op::kEndLabel:
@@ -536,6 +545,18 @@ private:
 		case Op::kEndLabel:
 			m_Gl.PopDebugGroup();
 			break;
+		case Op::kWriteTimestamp:
+		{
+			// The GPU writes the result into the buffer when it is available.
+			const BufferRecord &b = *m_D.ExistingBuffer( command.a );
+			GLuint query = 0;
+			m_Gl.CreateQueries( GL_TIMESTAMP, 1, &query );
+			m_Gl.QueryCounter( query, GL_TIMESTAMP );
+			m_Gl.GetQueryBufferObjectui64v(
+			    query, b.name, GL_QUERY_RESULT, static_cast<GLintptr>( command.offset ) );
+			m_D.m_Transients.push_back( { query, m_Token.value, true } );
+			break;
+		}
 		}
 	}
 

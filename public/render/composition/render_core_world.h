@@ -150,6 +150,14 @@ public:
 	// costs).
 	virtual unsigned long long Failures() const = 0;
 	virtual void GetStats( RenderCoreWorldStats *out ) const = 0;
+	// RFC 0014 D4 (cl_render_debug_gpu_timers): whether the stage times its
+	// labeled GPU sections (shadows, prepass, lit world, GTAO), from its next
+	// slot. Main thread.
+	virtual void SetGpuTimers( bool enabled ) = 0;
+	// The sections' GPU time since the last call, over the frames read (the
+	// return value; 0 when none was), as "depth ms-per-frame
+	// count-per-frame name" lines in `out`. Main thread.
+	virtual unsigned int TakeGpuTimes( char *out, unsigned int size ) = 0;
 
 protected:
 	~IRenderCoreWorld() = default;

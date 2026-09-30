@@ -34,6 +34,7 @@ enum class Capability : std::uint8_t
 	kRayQuery,
 	kExternalImages,       // textures whose memory is exported (external_images.h, clause D18)
 	kTextureCompressionBC, // the kBC* formats (clause D19)
+	kTimestamps,           // CommandEncoder::WriteTimestamp (clause D23)
 	kCount
 };
 
@@ -112,6 +113,8 @@ struct DeviceFacts
 	CapabilitySet capabilities;
 	Limits limits;
 	ArtifactFormat artifactFormat = ArtifactFormat::kSpirv;
+	// Nanoseconds per timestamp tick (clause D23); 0 without kTimestamps.
+	double timestampPeriodNs = 0.0;
 
 	friend constexpr bool operator==( const DeviceFacts &, const DeviceFacts & ) = default;
 };

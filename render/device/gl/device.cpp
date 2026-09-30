@@ -170,7 +170,12 @@ void GlDevice::DestroyContextObjects()
 	for ( auto &[key, framebuffer] : m_Framebuffers )
 		gl.DeleteFramebuffers( 1, &framebuffer );
 	for ( const Transient &transient : m_Transients )
-		gl.DeleteBuffers( 1, &transient.buffer );
+	{
+		if ( transient.query )
+			gl.DeleteQueries( 1, &transient.buffer );
+		else
+			gl.DeleteBuffers( 1, &transient.buffer );
+	}
 	for ( const Fence &fence : m_Fences )
 		gl.DeleteSync( fence.sync );
 	if ( m_RingBuffer )
@@ -219,6 +224,11 @@ void GlDevice::QueryFacts()
 	     ( HasExtension( gl, "GL_EXT_texture_sRGB" ) ||
 	         HasExtension( gl, "GL_EXT_texture_compression_s3tc_srgb" ) ) )
 		have.Add( Capability::kTextureCompressionBC );
+	// D23: GL timestamps are nanoseconds.
+	GLint timestampBits = 0;
+	gl.GetQueryiv( GL_TIMESTAMP, GL_QUERY_COUNTER_BITS, &timestampBits );
+	if ( timestampBits > 0 )
+		have.Add( Capability::kTimestamps );
 	CapabilitySet claimed;
 	for ( std::uint32_t bit = 0; bit < static_cast<std::uint32_t>( Capability::kCount ); ++bit )
 	{
@@ -228,6 +238,8 @@ void GlDevice::QueryFacts()
 			claimed.Add( capability );
 	}
 	m_Facts.capabilities = claimed;
+	if ( claimed.Has( Capability::kTimestamps ) )
+		m_Facts.timestampPeriodNs = 1.0;
 	m_Anisotropy = HasExtension( gl, "GL_ARB_texture_filter_anisotropic" ) ||
 	               HasExtension( gl, "GL_EXT_texture_filter_anisotropic" );
 
@@ -648,6 +660,21 @@ DeviceResult<CompletionToken> GlDevice::Submit(
 			return Fail( DeviceStatus::kInvalidState, op );
 		recorded.push_back( encoder );
 	}
+	// D23: timestamps need the capability, and each buffer ends the
+	// submission in kCopyDestination.
+	for ( GlEncoder *encoder : recorded )
+	{
+		for ( const Command &command : encoder->Commands() )
+		{
+			if ( command.op != Op::kWriteTimestamp )
+				continue;
+			if ( !m_Facts.capabilities.Has( Capability::kTimestamps ) )
+				return Fail( DeviceStatus::kUnsupported, op );
+			const auto found = states.find( command.a );
+			if ( found == states.end() || found->second != ResourceUsage::kCopyDestination )
+				return Fail( DeviceStatus::kInvalidState, op );
+		}
+	}
 	ContextScope scope( *m_Context );
 	if ( !scope.Ok() )
 		return Fail( DeviceStatus::kUnavailable, op );
@@ -775,7 +802,10 @@ std::size_t GlDevice::Collect()
 			++it;
 			continue;
 		}
-		gl.DeleteBuffers( 1, &it->buffer );
+		if ( it->query )
+			gl.DeleteQueries( 1, &it->buffer );
+		else
+			gl.DeleteBuffers( 1, &it->buffer );
 		it = m_Transients.erase( it );
 	}
 	std::lock_guard<std::mutex> ring( m_RingLock );

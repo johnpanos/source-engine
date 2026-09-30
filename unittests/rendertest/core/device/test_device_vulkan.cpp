@@ -978,10 +978,12 @@ void DescriptorClauses( testing::Checks &checks )
 		                 facts.artifactFormat == ArtifactFormat::kSpirv &&
 		                 CapabilitySet( facts.capabilities )
 		                         .Remove( Capability::kExternalImages )
-		                         .Remove( Capability::kTextureCompressionBC ) ==
+		                         .Remove( Capability::kTextureCompressionBC )
+		                         .Remove( Capability::kTimestamps ) ==
 		                     CapabilitySet{ Capability::kCompute, Capability::kStorageBuffers },
 		    "vulkan.facts name the backend and adapter and claim only compute and storage "
-		    "(and external images where the driver exports dmabufs, D18, and BC formats, D19)" );
+		    "(and external images where the driver exports dmabufs, D18, BC formats, D19, and "
+		    "timestamps, D23)" );
 		auto compute = device.Value()->BeginEncoder( QueueKind::kCompute );
 		checks.That( !compute && compute.Error().status == DeviceStatus::kUnsupported,
 		    "vulkan.queues a compute-queue encoder is unsupported (no async compute)" );

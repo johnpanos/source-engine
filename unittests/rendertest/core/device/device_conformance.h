@@ -1831,6 +1831,97 @@ inline void RegionCopies( Suite &s )
 	(void)device->Release( out, token.value_or( CompletionToken{} ) );
 }
 
+// D23 timestamps: with kTimestamps, timestamps around work (one inside
+// rendering) land in their readback buffer once the submission completes,
+// do not decrease in recording order, and a later submission's are no
+// earlier; one into device-local memory or at an unaligned offset is
+// refused. Without the capability a submission with one fails kUnsupported.
+inline void Timestamps( Suite &s )
+{
+	auto device = s.Create();
+	if ( !device )
+		return;
+	const bool claimed = device->Facts().capabilities.Has( Capability::kTimestamps );
+	s.That( claimed == ( device->Facts().timestampPeriodNs > 0.0 ), "D23",
+	    "the timestamp period is set exactly when timestamps are claimed" );
+	const BufferId times =
+	    s.Buffer( *device, 64, { ResourceUsage::kCopyDestination }, MemoryKind::kReadback );
+	TextureDesc desc;
+	desc.format = Format::kRGBA8Unorm;
+	desc.width = 4;
+	desc.height = 4;
+	desc.usages = { ResourceUsage::kColorAttachment };
+	auto texture = device->CreateTexture( desc );
+	if ( !s.That( texture.HasValue(), "D23", "an RGBA8 attachment is created" ) )
+		return;
+	const std::vector<std::byte> unset( 64, std::byte{ 0xff } );
+	auto encoder = device->BeginEncoder( QueueKind::kGraphics );
+	if ( !encoder )
+		return;
+	CommandEncoder &e = encoder.Value();
+	e.TransitionBuffer( times, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+	e.WriteBuffer( times, 0, unset );
+	e.WriteTimestamp( times, 0 );
+	e.TransitionTexture(
+	    texture.Value(), ResourceUsage::kUndefined, ResourceUsage::kColorAttachment );
+	const ColorAttachment colors[] = {
+	    { texture.Value(), LoadOp::kClear, StoreOp::kStore, { 0, 0, 0, 1 }, {} } };
+	RenderingDesc rendering;
+	rendering.colors = colors;
+	rendering.width = 4;
+	rendering.height = 4;
+	e.BeginRendering( rendering );
+	e.WriteTimestamp( times, 8 );
+	e.EndRendering();
+	e.WriteTimestamp( times, 16 );
+	auto first = device->Submit( QueueKind::kGraphics, { &e, 1 }, {} );
+	if ( !claimed )
+	{
+		s.That( !first && first.Error().status == DeviceStatus::kUnsupported, "D23",
+		    "without the capability a timestamp fails its submission kUnsupported" );
+		(void)device->Release( texture.Value(), CompletionToken{} );
+		(void)device->Release( times, CompletionToken{} );
+		return;
+	}
+	s.That( first.HasValue(), "D23", "timestamps around work, one inside rendering, submit" );
+	std::optional<CompletionToken> last = first ? std::optional( first.Value() ) : std::nullopt;
+	auto second = device->BeginEncoder( QueueKind::kGraphics );
+	if ( second )
+	{
+		second.Value().WriteTimestamp( times, 24 );
+		auto submitted = device->Submit( QueueKind::kGraphics, { &second.Value(), 1 }, {} );
+		if ( submitted )
+			last = submitted.Value();
+	}
+	std::uint64_t t[4] = {};
+	const bool finished = last && s.Finish( *device, *last ) &&
+	                      device->ReadBuffer( times, 0, std::as_writable_bytes( std::span( t ) ) );
+	const std::uint64_t kUnset = ~std::uint64_t( 0 );
+	s.That( finished && t[0] != kUnset && t[1] != kUnset && t[2] != kUnset && t[3] != kUnset, "D23",
+	    "every timestamp lands in its buffer" );
+	s.That( finished && t[0] <= t[1] && t[1] <= t[2], "D23",
+	    "timestamps do not decrease in recording order" );
+	s.That( finished && t[2] <= t[3], "D23", "a later submission's timestamp is no earlier" );
+	const BufferId local = s.Buffer( *device, 64, { ResourceUsage::kCopyDestination } );
+	auto refuse = [&]( BufferId buffer, std::uint64_t offset, const char *what )
+	{
+		auto bad = device->BeginEncoder( QueueKind::kGraphics );
+		if ( !bad )
+			return;
+		bad.Value().TransitionBuffer(
+		    buffer, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+		bad.Value().WriteTimestamp( buffer, offset );
+		auto submitted = device->Submit( QueueKind::kGraphics, { &bad.Value(), 1 }, {} );
+		s.That(
+		    !submitted && submitted.Error().status == DeviceStatus::kInvalidState, "D23", what );
+	};
+	refuse( local, 0, "a timestamp into device-local memory is refused" );
+	refuse( times, 4, "a timestamp at an unaligned offset is refused" );
+	(void)device->Release( texture.Value(), last.value_or( CompletionToken{} ) );
+	(void)device->Release( times, last.value_or( CompletionToken{} ) );
+	(void)device->Release( local, last.value_or( CompletionToken{} ) );
+}
+
 inline void CapabilityHonesty( Suite &s )
 {
 	if ( !s.m_Driver.rasterizes )
@@ -2243,6 +2334,7 @@ inline void RunDeviceConformance( testing::Checks &checks, const DeviceDriver &d
 	detail::ExternalImagesClause( suite );
 	detail::BlockCompressedFormats( suite );
 	detail::RegionCopies( suite );
+	detail::Timestamps( suite );
 	detail::CapabilityHonesty( suite );
 }
 

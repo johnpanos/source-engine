@@ -1645,7 +1645,11 @@ Keep the table concise and link details below or from the domain progress file.
   controls) pass on Linux native Vulkan in both queued modes and in
   `render_lab` (2026-09-29, [D0](RFC/0016-progress.md#rfc-0014-d0-in-the-product-the-views-on-native-vulkan-2026-09-28),
   [D1](RFC/0016-progress.md#rfc-0014-d1-the-lighting-model-controls-in-the-lab-and-the-product-2026-09-29)).
-  Their Fold7 run is blocked because the phone is locked; D2–D7 are open. Added
+  Their Fold7 run is blocked because the phone is locked. D4's GPU timers
+  (`cl_render_debug_gpu_timers`, reported by `cl_render_debug_stats`, over
+  the device port's new timestamps, clause D23) pass on native Vulkan and GL
+  (2026-09-30, [record](RFC/0016-progress.md#rfc-0014-d4-first-part-per-pass-gpu-timers-on-the-core-2026-09-30-source-engine-5a));
+  the rest of D4 and D2, D3, D5–D7 are open. Added
   2026-09-25 at the user's direction and retargeted to the render core on
   2026-09-28 (user decision: "they must be on core").
   - These are the `cl_render_debug_*` (was `cl_vk_debug_*`) and `cl_bsp2_*`
@@ -1685,8 +1689,9 @@ Keep the table concise and link details below or from the domain progress file.
   - Feature budgets stay with their owners: `indirect-light-v1.json`
     (RFC 0011), RFC 0012 A0 (MSAA) and RFC 0008 F10. The render file links
     to them and doesn't copy their numbers.
-  - Per-pass GPU rows can use `-vkgputimers` now; `cl_render_debug_gpu_timers`
-    (R95-DEBUG-CONTROLS D4) replaces it later. The frame-level rows need
+  - Per-pass GPU rows use `cl_render_debug_gpu_timers` (R95-DEBUG-CONTROLS
+    D4, installed 2026-09-30) for the core's passes and `-vkgputimers` for
+    the frozen backend's until it is deleted. The frame-level rows need
     neither.
   - Done: both first profiles have recorded budgets and a passing check;
     the baseline entry is `recorded`; and an RFC 0001 progress record holds

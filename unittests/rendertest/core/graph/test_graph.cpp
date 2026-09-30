@@ -20,6 +20,7 @@
 #include "render/device/null/provider.h"
 #include "render/graph/compiled_graph.h"
 #include "render/graph/executor.h"
+#include "render/graph/pass_timers.h"
 #include "render/graph/validate.h"
 #include "graph_fixtures.h"
 #include "jobsystem/parallel_executor.h"
@@ -234,6 +235,119 @@ void Execution( testing::Checks &checks )
 	    "G6.every-compiled-transition-is-recorded" );
 }
 
+// --- RFC 0014 D4: GPU pass timers --------------------------------------------
+
+// Every pass's label is timed, nested labels at their depth; nothing is read
+// before the frame's token completes; timestamps do not decrease, and the
+// passes' times sum within the frame's span; a device without timestamps
+// records none.
+void PassTimers( testing::Checks &checks )
+{
+	auto device = ManualDevice();
+	auto *control = device::null::Control( *device );
+	GraphBuilder builder;
+	const ResourceRef scene = builder.CreateTexture( "scene", Color() );
+	auto clear = [scene]( RecordContext &context )
+	{
+		device::ColorAttachment color[1];
+		color[0].texture = context.Texture( scene );
+		color[0].load = device::LoadOp::kClear;
+		device::RenderingDesc rendering;
+		rendering.colors = color;
+		rendering.width = 16;
+		rendering.height = 16;
+		context.Encoder().BeginRendering( rendering );
+		context.Encoder().EndRendering();
+	};
+	builder.AddPass( "first", PassKind::kRender )
+	    .Write( scene, ResourceUsage::kColorAttachment )
+	    .Execute( clear );
+	builder.AddPass( "second", PassKind::kRender )
+	    .Write( scene, ResourceUsage::kColorAttachment )
+	    .Execute(
+	        [clear]( RecordContext &context )
+	        {
+		        context.Encoder().BeginLabel( "inner" );
+		        clear( context );
+		        context.Encoder().EndLabel();
+	        } );
+	builder.AddPass( "third", PassKind::kRender )
+	    .Write( scene, ResourceUsage::kColorAttachment )
+	    .SideEffect()
+	    .Execute( clear );
+	auto graph = CompileGraph( std::move( builder ) );
+	if ( !checks.That( graph.HasValue(), "D4.compiles" ) )
+		return;
+	GpuPassTimers timers( *device );
+	checks.That( timers.Supported(), "D4.the-null-device-has-timestamps" );
+	SerialGraphExecutor executor;
+	executor.SetLabelObserver( &timers );
+	timers.BeginFrame( 1, device::CompletionToken() );
+	auto result = executor.Execute( graph.Value(), *device );
+	if ( !checks.That( result.HasValue(), "D4.a-timed-execution-submits" ) )
+		return;
+	timers.EndFrame( result.Value().token );
+	checks.Equal(
+	    timers.Take().frames, std::uint32_t( 0 ), "D4.nothing-is-read-before-completion" );
+	control->CompleteThrough( device::QueueKind::kGraphics, result.Value().token.value );
+	const PassTimerReport report = timers.Take();
+	checks.Equal( report.frames, std::uint32_t( 1 ), "D4.the-frame-is-read-after-completion" );
+	auto time = [&]( const char *name, std::uint32_t depth ) -> const PassTime *
+	{
+		for ( const PassTime &pass : report.passes )
+		{
+			if ( pass.name == name && pass.depth == depth )
+				return &pass;
+		}
+		return nullptr;
+	};
+	const PassTime *first = time( "first", 0 );
+	const PassTime *second = time( "second", 0 );
+	const PassTime *inner = time( "inner", 1 );
+	const PassTime *third = time( "third", 0 );
+	checks.That( first && second && inner && third && report.passes.size() == 4,
+	    "D4.every-label-is-timed-at-its-depth" );
+	checks.That( first && second && inner && third && first->milliseconds > 0.0 &&
+	                 inner->milliseconds > 0.0 && inner->milliseconds <= second->milliseconds,
+	    "D4.times-are-positive-and-a-nested-label-within-its-parent" );
+	std::vector<std::uint64_t> ticks;
+	for ( const auto &command : control->Recorded() )
+	{
+		if ( command.op == device::null::RecordedOp::kWriteTimestamp )
+			ticks.push_back( command.count );
+	}
+	checks.That( ticks.size() == 8 && std::is_sorted( ticks.begin(), ticks.end() ),
+	    "D4.timers-are-monotonic" );
+	const double span =
+	    ticks.empty() ? 0.0 : double( ticks.back() - ticks.front() ) * 1e-6; // 1 ns ticks
+	const double sum = ( first ? first->milliseconds : 0.0 ) +
+	                   ( second ? second->milliseconds : 0.0 ) +
+	                   ( third ? third->milliseconds : 0.0 );
+	checks.That( sum > 0.0 && sum <= span, "D4.pass-times-sum-within-the-frame" );
+
+	device::null::NullOptions without;
+	without.capabilities.Remove( device::Capability::kTimestamps );
+	auto plain = device::null::Create( without ).Value();
+	GpuPassTimers none( *plain );
+	SerialGraphExecutor plainExecutor;
+	plainExecutor.SetLabelObserver( &none );
+	GraphBuilder again;
+	const ResourceRef target = again.CreateTexture( "scene", Color() );
+	again.AddPass( "only", PassKind::kRender )
+	    .Write( target, ResourceUsage::kColorAttachment )
+	    .SideEffect()
+	    .Execute( Noop );
+	auto plainGraph = CompileGraph( std::move( again ) );
+	none.BeginFrame( 1, device::CompletionToken() );
+	const bool ran = plainGraph && plainExecutor.Execute( plainGraph.Value(), *plain ).HasValue();
+	device::null::Control( *plain )->CompleteAll();
+	bool anyTimestamp = false;
+	for ( const auto &command : device::null::Control( *plain )->Recorded() )
+		anyTimestamp |= command.op == device::null::RecordedOp::kWriteTimestamp;
+	checks.That( !none.Supported() && ran && !anyTimestamp && none.Take().frames == 0,
+	    "D4.a-device-without-timestamps-records-none" );
+}
+
 // --- G7-G10: seeded random graphs ------------------------------------------
 
 std::vector<device::null::RecordedCommand> Stream( device::IRenderDevice2 &device )
@@ -379,5 +493,6 @@ int main()
 	Execution( checks );
 	RandomGraphs( checks, 1000 );
 	Pooling( checks );
+	PassTimers( checks );
 	return checks.Report();
 }

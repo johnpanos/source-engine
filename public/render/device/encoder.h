@@ -152,9 +152,25 @@ public:
 	virtual void SetDrawConstants( std::uint32_t offset, std::span<const std::byte> bytes ) = 0;
 	virtual void BeginLabel( std::string_view label ) = 0;
 	virtual void EndLabel() = 0;
+	virtual void WriteTimestamp( BufferId buffer, std::uint64_t offset ) = 0;
 
 	// True once any recorded call was invalid; Submit then fails.
 	virtual bool HasError() const = 0;
+};
+
+class CommandEncoder;
+
+// Sees an encoder's labels as they record, on the recording thread: RFC 0014
+// D4's GPU timers write a timestamp after each label opens and before it
+// closes. It may record into the encoder (not labels).
+class ILabelObserver
+{
+public:
+	virtual void OnBeginLabel( CommandEncoder &encoder, std::string_view label ) = 0;
+	virtual void OnEndLabel( CommandEncoder &encoder ) = 0;
+
+protected:
+	~ILabelObserver() = default;
 };
 
 class CommandEncoder
@@ -204,6 +220,18 @@ public:
 	void SetDrawConstants( std::uint32_t offset, std::span<const std::byte> bytes );
 	void BeginLabel( std::string_view label );
 	void EndLabel();
+	// D23 (Capability::kTimestamps): the GPU's time when the commands recorded
+	// before it have run, in ticks (DeviceFacts::timestampPeriodNs), as a
+	// 64-bit value at `offset` of `buffer` once the submission completes.
+	// Allowed inside rendering. The buffer is kReadback memory in
+	// kCopyDestination here and at the end of the submission; the offset is
+	// a multiple of 8. Timestamps of one queue do not decrease in submission
+	// order. Without the capability the submission fails (kUnsupported).
+	void WriteTimestamp( BufferId buffer, std::uint64_t offset );
+
+	// The observer of this encoder's labels (null: none); not owned.
+	void SetLabelObserver( ILabelObserver *observer ) { m_LabelObserver = observer; }
+	ILabelObserver *LabelObserver() const { return m_LabelObserver; }
 
 	// For adapters: takes the recorded backend at submission and closes the
 	// encoder. Returns nullptr for a closed encoder.
@@ -218,6 +246,7 @@ private:
 	std::unique_ptr<IEncoderBackend> m_Backend;
 	std::thread::id m_Owner;
 	std::uint32_t m_Violations = 0;
+	ILabelObserver *m_LabelObserver = nullptr;
 };
 
 } // namespace render::device

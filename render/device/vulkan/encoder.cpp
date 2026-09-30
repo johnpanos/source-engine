@@ -316,6 +316,15 @@ void VulkanEncoder::BeginLabel( std::string_view label )
 	Push( std::move( command ) );
 }
 
+void VulkanEncoder::WriteTimestamp( BufferId buffer, std::uint64_t offset )
+{
+	Command command;
+	command.op = Op::kWriteTimestamp;
+	command.a = buffer.value;
+	command.offset = offset;
+	Push( std::move( command ) );
+}
+
 void VulkanEncoder::EndLabel()
 {
 	if ( m_Labels == 0 )
@@ -627,6 +636,15 @@ bool VulkanDevice::Validate(
 			     !v.constants.Ready() )
 				return false;
 			break;
+		case Op::kWriteTimestamp:
+		{
+			// D23: kReadback memory in kCopyDestination, 8-byte aligned.
+			const BufferRecord *b = buffer( command.a, ResourceUsage::kCopyDestination );
+			if ( !b || b->desc.memory != MemoryKind::kReadback || command.offset % 8 != 0 ||
+			     command.offset > b->desc.size || b->desc.size - command.offset < 8 )
+				return false;
+			break;
+		}
 		case Op::kSetViewport:
 		case Op::kBeginLabel:
 		case Op::kEndLabel:
@@ -667,9 +685,22 @@ public:
 		return true;
 	}
 
+	// D23: the submission's timestamps and the pool they are written to.
+	void SetQueries( VkQueryPool queries ) { m_Queries = queries; }
+
 	// Device writes become visible to the host (ReadBuffer) at completion.
 	void Finish()
 	{
+		// The timestamps reach their buffers after every command, outside
+		// rendering (Submit checked that each buffer ends in kCopyDestination).
+		for ( const PendingTimestamp &timestamp : m_Timestamps )
+		{
+			const BufferRecord *buffer = m_D.LiveBuffer( timestamp.buffer );
+			Access( timestamp.buffer, true );
+			vkCmdCopyQueryPoolResults( m_Cmd, m_Queries, timestamp.query, 1, buffer->buffer,
+			    timestamp.offset, sizeof( std::uint64_t ),
+			    VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT );
+		}
 		VkMemoryBarrier2 barrier{};
 		barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2;
 		barrier.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
@@ -1130,6 +1161,11 @@ private:
 			if ( m_D.m_Instance->endLabel )
 				m_D.m_Instance->endLabel( m_Cmd );
 			break;
+		case Op::kWriteTimestamp:
+			vkCmdWriteTimestamp(
+			    m_Cmd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, m_Queries, m_NextQuery );
+			m_Timestamps.push_back( { m_NextQuery++, command.a, command.offset } );
+			break;
 		}
 	}
 
@@ -1182,8 +1218,18 @@ private:
 		m_Viewport.reset();
 	}
 
+	struct PendingTimestamp
+	{
+		std::uint32_t query = 0;
+		std::uint64_t buffer = 0;
+		std::uint64_t offset = 0;
+	};
+
 	VulkanDevice &m_D;
 	VkCommandBuffer m_Cmd;
+	VkQueryPool m_Queries = VK_NULL_HANDLE;
+	std::uint32_t m_NextQuery = 0;
+	std::vector<PendingTimestamp> m_Timestamps;
 	// The host work being translated and its sections ([first, end) command
 	// ranges), for RunSection.
 	const std::vector<Command> *m_Commands = nullptr;
@@ -1286,6 +1332,23 @@ DeviceResult<CompletionToken> VulkanDevice::Submit(
 	// The host resumes after the submission, too.
 	if ( !ImportsAtHome( states ) )
 		return Fail( DeviceStatus::kInvalidState, op );
+	// D23: timestamps need the capability, and each buffer ends the
+	// submission in kCopyDestination (their copies run at its end).
+	std::uint32_t timestamps = 0;
+	for ( VulkanEncoder *encoder : recorded )
+	{
+		for ( const Command &command : encoder->Commands() )
+		{
+			if ( command.op != Op::kWriteTimestamp )
+				continue;
+			if ( !m_Facts.capabilities.Has( Capability::kTimestamps ) )
+				return Fail( DeviceStatus::kUnsupported, op );
+			const auto found = states.find( command.a );
+			if ( found == states.end() || found->second != ResourceUsage::kCopyDestination )
+				return Fail( DeviceStatus::kInvalidState, op );
+			++timestamps;
+		}
+	}
 
 	RecycleCompleted();
 	auto acquired = AcquireContext();
@@ -1297,11 +1360,39 @@ DeviceResult<CompletionToken> VulkanDevice::Submit(
 		if ( result == VK_ERROR_DEVICE_LOST )
 			MarkLost();
 		if ( vkResetCommandPool( m_Device, context.pool, 0 ) == VK_SUCCESS )
+		{
 			m_FreeContexts.push_back( std::move( context ) );
+		}
 		else
+		{
 			vkDestroyCommandPool( m_Device, context.pool, nullptr );
+			if ( context.queries != VK_NULL_HANDLE )
+				vkDestroyQueryPool( m_Device, context.queries, nullptr );
+		}
 		return Fail( StatusOf( result ), op, result );
 	};
+	if ( timestamps > context.queryCapacity )
+	{
+		if ( context.queries != VK_NULL_HANDLE )
+			vkDestroyQueryPool( m_Device, context.queries, nullptr );
+		context.queries = VK_NULL_HANDLE;
+		context.queryCapacity = 0;
+		std::uint32_t capacity = 64;
+		while ( capacity < timestamps )
+			capacity *= 2;
+		VkQueryPoolCreateInfo queryInfo{};
+		queryInfo.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
+		queryInfo.queryType = VK_QUERY_TYPE_TIMESTAMP;
+		queryInfo.queryCount = capacity;
+		const VkResult created =
+		    vkCreateQueryPool( m_Device, &queryInfo, nullptr, &context.queries );
+		if ( created != VK_SUCCESS )
+		{
+			context.queries = VK_NULL_HANDLE;
+			return giveBack( created );
+		}
+		context.queryCapacity = capacity;
+	}
 
 	VkCommandBufferBeginInfo begin{};
 	begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -1310,6 +1401,11 @@ DeviceResult<CompletionToken> VulkanDevice::Submit(
 	if ( result != VK_SUCCESS )
 		return giveBack( result );
 	Translator translator( *this, context.buffer );
+	if ( timestamps > 0 )
+	{
+		vkCmdResetQueryPool( context.buffer, context.queries, 0, timestamps );
+		translator.SetQueries( context.queries );
+	}
 	m_Translating = &translator;
 	for ( VulkanEncoder *encoder : recorded )
 		translator.Encoder( encoder->Commands() );

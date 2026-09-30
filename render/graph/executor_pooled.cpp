@@ -33,6 +33,7 @@ foundation::Expected<ExecuteResult, device::DeviceError> PooledGraphExecutor::Ex
 			return foundation::MakeUnexpected( encoder.Error() );
 		}
 		encoders.push_back( std::move( encoder ).Value() );
+		encoders.back().SetLabelObserver( m_Observer );
 	}
 
 	const detail::Plan &shared = plan.Value();
