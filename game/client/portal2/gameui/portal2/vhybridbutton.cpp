@@ -1204,6 +1204,14 @@ void BaseModHybridButton::SetCurrentSelection( const char *pText )
 	}
 }
 
+const char *BaseModHybridButton::GetCurrentSelection()
+{
+	if ( m_nStyle != BUTTON_DIALOGLIST ||
+	     !m_DialogListItems.IsValidIndex( m_nDialogListCurrentIndex ) )
+		return NULL;
+	return m_DialogListItems[m_nDialogListCurrentIndex].m_String.Get();
+}
+
 void BaseModHybridButton::ModifySelectionString( const char *pCommand, const char *pNewText )
 {
 	for ( int i = 0; i < m_DialogListItems.Count(); i++ )

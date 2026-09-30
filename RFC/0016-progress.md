@@ -4184,6 +4184,39 @@ Frozen-path: `materialsystem/shaderapivulkan/vulkan_world_lightmap.cpp`
 committed inside `1666232fb` with source-engine-89's hunks) are defect
 fixes for the frame-time failure.
 
+### The core's quality settings in the video options (2026-09-30, user request)
+
+`r_core_ao_quality` (0 off to 4 ultra) and `r_core_shadow_quality` (0 off
+to 3 high, the shadow atlas size) are rows of the advanced video options.
+Each row's index is the ConVar's value; both take effect from the next
+frame.
+
+- Portal: `gameui/OptionsSubVideo.cpp` makes an "Ambient occlusion" and a
+  "Dynamic shadows" combo below High Dynamic Range and Indirect lighting.
+  The retail `.res` predates them. The dialog grows only when a visible
+  control lies too close below the row; on the retail layout it does not.
+- Portal 2: `CAdvancedVideo::PreApplyControlSettings` adds two dialog-list
+  rows to the retail `advancedvideo.res` data, copied from Model / Texture
+  Detail, and grows the frame by a tile. Use Defaults restores the
+  ConVars' defaults.
+- The retail localization has no such tokens, and its `GameUI_Ultra` reads
+  "Very High". Each dialog registers English text for
+  `GameUI_AmbientOcclusion`, `GameUI_DynamicShadows`, `GameUI_QualityOff`
+  and `GameUI_QualityUltra` unless a loaded file defines them.
+- A product without the ConVars shows neither row.
+
+Evidence (headless, native Vulkan, private runtimes): the developer
+commands `gameui_show_video_advanced [ao shadows]` (Portal) and
+`ui_show_video_advanced [ao shadows]` (Portal 2) open the dialog, print
+the selected rows and apply a choice as OK/Apply do. Portal: the dialog
+showed `High *`/`Medium *` (defaults marked recommended), applying `1 3`
+set the ConVars to 1 and 3, and after `r_core_ao_quality 4;
+r_core_shadow_quality 0` it reopened on `Ultra`/`Off`. Portal 2: the
+dialog opened on `Low`/`High` after the ConVars were set to 1 and 3, and
+applying `4 0` set them to 4 and 0. Neither log has a localization or
+resource warning from the new rows. Not covered: mouse or keyboard input
+on the new rows.
+
 ## RFC 0014 D4, first part: per-pass GPU timers on the core (2026-09-30, source-engine-5a)
 
 User direction (2026-09-30): make perf diagnosis easy, starting with RFC

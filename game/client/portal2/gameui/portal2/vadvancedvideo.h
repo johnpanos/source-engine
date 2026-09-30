@@ -50,12 +50,18 @@ public:
 	void SetDefaults();
 	void DiscardChangesAndClose();
 
+	// For the developer check (ui_show_video_advanced): the shown render core
+	// quality, and selecting its rows and applying as the A button does.
+	bool DescribeRenderCoreQuality( char *pOut, int nOutSize );
+	void ApplyRenderCoreQualityChoice( int nAO, int nShadows );
+
 protected:
 	virtual void	Activate();
 	virtual void	ApplySchemeSettings( vgui::IScheme* pScheme );
 	virtual void	OnKeyCodePressed( vgui::KeyCode code );
 	virtual void	OnCommand( const char *pCommand );
 	virtual void	OnThink();
+	virtual void PreApplyControlSettings( KeyValues *pResourceData );
 
 private:
 	void	GetCurrentSettings( void );
@@ -74,6 +80,7 @@ private:
 	void	SetShaderDetailState();
 	void	SetCPUDetailState();
 	void	SetModelDetailState();
+	void SetRenderCoreQualityState();
 
 private:
 	int					m_nNumAAModes;
@@ -87,6 +94,8 @@ private:
 	BaseModHybridButton		*m_drpQueuedMode;
 	BaseModHybridButton		*m_drpShaderDetail;
 	BaseModHybridButton		*m_drpCPUDetail;
+	BaseModHybridButton *m_drpCoreAO;
+	BaseModHybridButton *m_drpCoreShadows;
 
 	bool	m_bDirtyValues;
 	bool	m_bEnableApply;
@@ -101,6 +110,8 @@ private:
 	int		m_iQueuedMode;
 	int		m_iGPUDetail;
 	int		m_iCPUDetail;
+	int m_iCoreAO;
+	int m_iCoreShadows;
 
 	VideoWarning_e	m_VideoWarning;
 	bool			m_bAcceptWarning[VW_MAXWARNINGS];

@@ -245,6 +245,42 @@ private:
 	float				m_flOriginalGamma;
 };
 
+//-----------------------------------------------------------------------------
+// The render core's quality settings (RFC 0016 K12): each choice's row is the
+// ConVar's value. Ambient occlusion lists all five, Dynamic shadows the first
+// four (0 off to 3 high).
+//-----------------------------------------------------------------------------
+static const char *const s_RenderCoreQualityNames[] = {
+    "#GameUI_QualityOff",
+    "#GameUI_Low",
+    "#GameUI_Medium",
+    "#GameUI_High",
+    "#GameUI_QualityUltra",
+};
+static const int kRenderCoreAOChoices = 5;
+static const int kRenderCoreShadowChoices = 4;
+
+// The shipped gameui_english.txt has none of these tokens (and its
+// GameUI_Ultra reads "Very High"), so the English text is added unless a
+// loaded localization file already defines the token.
+static void AddRenderCoreQualityStrings()
+{
+	static const struct
+	{
+		const char *token;
+		const wchar_t *text;
+	} kStrings[] = {
+	    { "GameUI_AmbientOcclusion", L"Ambient occlusion" },
+	    { "GameUI_DynamicShadows", L"Dynamic shadows" },
+	    { "GameUI_QualityOff", L"Off" },
+	    { "GameUI_QualityUltra", L"Ultra" },
+	};
+	for ( const auto &entry : kStrings )
+	{
+		if ( !g_pVGuiLocalize->Find( entry.token ) )
+			g_pVGuiLocalize->AddString( entry.token, const_cast<wchar_t *>( entry.text ), NULL );
+	}
+}
 
 //-----------------------------------------------------------------------------
 // Purpose: advanced keyboard settings dialog
@@ -433,6 +469,7 @@ public:
 		m_pMotionBlur->AddItem("#gameui_enabled", NULL);
 
 		LoadControlSettings( "resource/OptionsSubVideoAdvancedDlg.res" );
+		CreateRenderCoreQualityControls();
 		MoveToCenterOfScreen();
 		SetSizeable( false );
 		CreateIndirectLightingControl();
@@ -758,6 +795,139 @@ public:
 		}
 	}
 
+	// The render core's quality settings (RFC 0016 K12): Ambient occlusion
+	// (r_core_ao_quality) and Dynamic shadows (r_core_shadow_quality), which
+	// take effect from the next frame. The shipped .res predates them, so
+	// their row is made here, one row below the row under Motion Blur. When a
+	// visible control lies too close below it, everything below the row moves
+	// down and the dialog grows by that much. A product without the render
+	// core has neither ConVar and shows no row.
+	void CreateRenderCoreQualityControls()
+	{
+		ConVarRef ao( "r_core_ao_quality" );
+		ConVarRef shadows( "r_core_shadow_quality" );
+		if ( !ao.IsValid() || !shadows.IsValid() )
+			return;
+		AddRenderCoreQualityStrings();
+
+		int x, y, wide, tall, column, unused;
+		m_pMotionBlur->GetBounds( x, y, wide, tall );
+		m_pFilteringMode->GetBounds( column, unused, unused, unused );
+		// The layout's rows are 58 units apart: Motion Blur's combo at 258,
+		// the next row's label at 292 and combo at 316, in its 24-unit height.
+		const float scale = tall / 24.0f;
+		const int labelY = y + int( 34 * scale ) + int( 58 * scale );
+		// The row's combo ends 48 units below its label; the layout keeps 12
+		// units under a row's combo before the next control.
+		const int rowBottom = labelY + int( 60 * scale );
+		int nextY = INT_MAX;
+		for ( int i = 0; i < GetChildCount(); ++i )
+		{
+			Panel *child = GetChild( i );
+			int childX, childY;
+			child->GetPos( childX, childY );
+			if ( child->IsVisible() && childY >= labelY && !IsPinnedToBottom( child ) )
+				nextY = MIN( nextY, childY );
+		}
+		const int shift = nextY == INT_MAX ? 0 : MAX( 0, rowBottom - nextY );
+		if ( shift > 0 )
+		{
+			for ( int i = 0; i < GetChildCount(); ++i )
+			{
+				Panel *child = GetChild( i );
+				int childX, childY;
+				child->GetPos( childX, childY );
+				if ( childY < labelY || IsPinnedToBottom( child ) )
+					continue;
+				// EditablePanel::OnSizeChanged places children at their pin offsets.
+				int pinX, pinY, resizeX, resizeY;
+				child->GetPinOffset( pinX, pinY );
+				child->GetResizeOffset( resizeX, resizeY );
+				child->SetAutoResize( child->GetPinCorner(), child->GetAutoResize(), pinX,
+				    pinY + shift, resizeX, resizeY );
+				child->SetPos( childX, childY + shift );
+			}
+			SetTall( GetTall() + shift );
+		}
+
+		m_pCoreAO = AddRenderCoreQualityRow( "CoreAmbientOcclusion", "#GameUI_AmbientOcclusion",
+		    kRenderCoreAOChoices, x, labelY, wide, tall, scale );
+		m_pCoreShadows = AddRenderCoreQualityRow( "CoreDynamicShadows", "#GameUI_DynamicShadows",
+		    kRenderCoreShadowChoices, column, labelY, wide, tall, scale );
+		SetComboItemAsRecommended(
+		    m_pCoreAO, clamp( atoi( ao.GetDefault() ), 0, kRenderCoreAOChoices - 1 ) );
+		SetComboItemAsRecommended( m_pCoreShadows,
+		    clamp( atoi( shadows.GetDefault() ), 0, kRenderCoreShadowChoices - 1 ) );
+	}
+
+	static bool IsPinnedToBottom( Panel *child )
+	{
+		const PinCorner_e pin = child->GetPinCorner();
+		return pin == PIN_BOTTOMLEFT || pin == PIN_BOTTOMRIGHT;
+	}
+
+	ComboBox *AddRenderCoreQualityRow( const char *name, const char *labelToken, int choices, int x,
+	    int labelY, int wide, int tall, float scale )
+	{
+		const int comboY = labelY + int( 24 * scale );
+		char labelName[64];
+		Q_snprintf( labelName, sizeof( labelName ), "%sLabel", name );
+		Label *label = new Label( this, labelName, labelToken );
+		label->SetBounds( x, labelY, int( 150 * scale ), tall );
+		label->SetPinCorner( PIN_TOPLEFT, x, labelY );
+		ComboBox *combo = new ComboBox( this, name, choices, false );
+		for ( int i = 0; i < choices; ++i )
+			combo->AddItem( s_RenderCoreQualityNames[i], NULL );
+		combo->SetBounds( x, comboY, wide, tall );
+		combo->SetPinCorner( PIN_TOPLEFT, x, comboY );
+		return combo;
+	}
+
+	void ResetRenderCoreQuality()
+	{
+		if ( !m_pCoreAO )
+			return;
+		ConVarRef ao( "r_core_ao_quality" );
+		ConVarRef shadows( "r_core_shadow_quality" );
+		m_pCoreAO->ActivateItem( clamp( ao.GetInt(), 0, kRenderCoreAOChoices - 1 ) );
+		m_pCoreShadows->ActivateItem( clamp( shadows.GetInt(), 0, kRenderCoreShadowChoices - 1 ) );
+	}
+
+	void ApplyRenderCoreQuality()
+	{
+		if ( !m_pCoreAO )
+			return;
+		ApplyChangesToConVar( "r_core_ao_quality", m_pCoreAO->GetActiveItem() );
+		ApplyChangesToConVar( "r_core_shadow_quality", m_pCoreShadows->GetActiveItem() );
+	}
+
+	// The shown quality choices, for the developer check below.
+	void DescribeRenderCoreQuality( char *out, int size )
+	{
+		if ( !m_pCoreAO )
+		{
+			V_strncpy( out, "none", size );
+			return;
+		}
+		// The active items' text: the combo's own text follows a message later.
+		char ao[64], shadows[64];
+		m_pCoreAO->GetItemText( m_pCoreAO->GetActiveItem(), ao, sizeof( ao ) );
+		m_pCoreShadows->GetItemText( m_pCoreShadows->GetActiveItem(), shadows, sizeof( shadows ) );
+		Q_snprintf( out, size, "ambient occlusion \"%s\", dynamic shadows \"%s\"", ao, shadows );
+	}
+
+	// Selects the quality rows and confirms the dialog as OK and Apply do.
+	void ApplyRenderCoreQualityChoice( int ao, int shadows )
+	{
+		if ( !m_pCoreAO )
+			return;
+		m_pCoreAO->ActivateItem( clamp( ao, 0, kRenderCoreAOChoices - 1 ) );
+		m_pCoreShadows->ActivateItem( clamp( shadows, 0, kRenderCoreShadowChoices - 1 ) );
+		m_bUseChanges = true;
+		ApplyChanges();
+		m_bUseChanges = false;
+	}
+
 	void ApplyChangesToConVar( const char *pConVarName, int value )
 	{
 		Assert( cvar->FindVar( pConVarName ) );
@@ -871,6 +1041,8 @@ public:
 			    producer->GetString( "value", "baked" ) );
 			engine->ClientCmd_Unrestricted( szCmd );
 		}
+
+		ApplyRenderCoreQuality();
 
 		CCvarSlider *pFOV = (CCvarSlider *)FindChildByName( "FOVSlider" );
 		if ( pFOV ) 
@@ -986,6 +1158,7 @@ public:
 		m_pMotionBlur->ActivateItem( mat_motion_blur_enabled.GetInt() );
 
 		ResetIndirectLighting();
+		ResetRenderCoreQuality();
 
 		// get current hardware dx support level
 		char dxVer[64];
@@ -1078,6 +1251,8 @@ private:
 	vgui::ComboBox *m_pDXLevel;
 	vgui::Label *m_pIndirectLightingLabel = nullptr;
 	vgui::ComboBox *m_pIndirectLighting = nullptr;
+	vgui::ComboBox *m_pCoreAO = nullptr;
+	vgui::ComboBox *m_pCoreShadows = nullptr;
 
 	int m_nNumAAModes;
 	AAMode_t m_nAAModes[16];
@@ -1965,17 +2140,25 @@ bool COptionsSubVideo::RequiresRestart()
 // Purpose: Opens advanced video mode options dialog
 //-----------------------------------------------------------------------------
 // Developer check (RFC 0011 G3.2): opens the advanced video dialog and prints
-// the Indirect lighting options it lists.
+// the Indirect lighting options it lists and the render core quality it shows
+// (RFC 0016 K12). With two arguments it selects those Ambient occlusion and
+// Dynamic shadows rows and confirms the dialog as OK and Apply do.
 CON_COMMAND_F( gameui_show_video_advanced,
-    "Opens the advanced video options dialog and lists its indirect-lighting options", FCVAR_CHEAT )
+    "Opens the advanced video options dialog and lists its indirect-lighting options; "
+    "[ao shadows] also selects and applies those render core quality rows",
+    FCVAR_CHEAT )
 {
 	static vgui::DHANDLE<COptionsSubVideoAdvancedDlg> s_dialog;
 	if ( !s_dialog.Get() )
 		s_dialog = new COptionsSubVideoAdvancedDlg( BasePanel() );
 	s_dialog->Activate();
+	if ( args.ArgC() >= 3 )
+		s_dialog->ApplyRenderCoreQualityChoice( atoi( args[1] ), atoi( args[2] ) );
 	char options[256];
 	s_dialog->DescribeIndirectLighting( options, sizeof( options ) );
 	Msg( "advanced video: indirect lighting options: %s\n", options );
+	s_dialog->DescribeRenderCoreQuality( options, sizeof( options ) );
+	Msg( "advanced video: render core quality: %s\n", options );
 }
 
 void COptionsSubVideo::OpenAdvanced()

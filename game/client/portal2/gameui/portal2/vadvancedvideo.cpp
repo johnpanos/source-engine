@@ -18,6 +18,8 @@
 #include "vgenericconfirmation.h"
 
 #include "materialsystem/materialsystem_config.h"
+#include "tier1/fmtstr.h"
+#include "vgui/ILocalize.h"
 
 #ifdef _X360
 #include "xbox/xbox_launch.h"
@@ -30,6 +32,50 @@ using namespace vgui;
 using namespace BaseModUI;
 
 #define VIDEO_ANTIALIAS_COMMAND_PREFIX "_antialias"
+#define VIDEO_CORE_AO_COMMAND_PREFIX "_coreao"
+#define VIDEO_CORE_SHADOWS_COMMAND_PREFIX "_coreshadows"
+
+// The render core's quality settings (RFC 0016 K12): Ambient occlusion
+// (r_core_ao_quality) and Dynamic shadows (r_core_shadow_quality), which take
+// effect from the next frame. Each choice's row is the ConVar's value: Ambient
+// occlusion lists all five, Dynamic shadows the first four (0 off to 3 high).
+static const char *const s_RenderCoreQualityNames[] = {
+    "#GameUI_QualityOff",
+    "#GameUI_Low",
+    "#GameUI_Medium",
+    "#GameUI_High",
+    "#GameUI_QualityUltra",
+};
+static const int kRenderCoreAOChoices = 5;
+static const int kRenderCoreShadowChoices = 4;
+
+// The shipped localization has none of these tokens (and its GameUI_Ultra
+// reads "Very High"), so the English text, in this dialog's title case, is
+// added unless a loaded localization file already defines the token.
+static void AddRenderCoreQualityStrings()
+{
+	static const struct
+	{
+		const char *token;
+		const wchar_t *text;
+	} kStrings[] = {
+	    { "GameUI_AmbientOcclusion", L"Ambient Occlusion" },
+	    { "GameUI_DynamicShadows", L"Dynamic Shadows" },
+	    { "GameUI_QualityOff", L"Off" },
+	    { "GameUI_QualityUltra", L"Ultra" },
+	};
+	for ( const auto &entry : kStrings )
+	{
+		if ( !g_pVGuiLocalize->Find( entry.token ) )
+			g_pVGuiLocalize->AddString( entry.token, const_cast<wchar_t *>( entry.text ), NULL );
+	}
+}
+
+static bool HasRenderCoreQuality()
+{
+	return CGameUIConVarRef( "r_core_ao_quality" ).IsValid() &&
+	       CGameUIConVarRef( "r_core_shadow_quality" ).IsValid();
+}
 
 CAdvancedVideo::CAdvancedVideo(Panel *parent, const char *panelName):
 BaseClass(parent, panelName)
@@ -49,6 +95,8 @@ BaseClass(parent, panelName)
 	m_drpVSync = NULL;
 	m_drpShaderDetail = NULL;
 	m_drpCPUDetail = NULL;
+	m_drpCoreAO = NULL;
+	m_drpCoreShadows = NULL;
 
 	m_bDirtyValues = false;
 	m_bEnableApply = false;
@@ -71,6 +119,8 @@ BaseClass(parent, panelName)
 	m_bTripleBuffered = false;
 	m_iGPUDetail = 0;
 	m_iCPUDetail = 0;
+	m_iCoreAO = 0;
+	m_iCoreShadows = 0;
 	m_iQueuedMode = -1;
 
 	SetFooterEnabled( true );
@@ -95,6 +145,8 @@ void CAdvancedVideo::ApplySchemeSettings( vgui::IScheme *pScheme )
 	m_drpQueuedMode = dynamic_cast< BaseModHybridButton* >( FindChildByName( "DrpQueuedMode" ) );
 	m_drpShaderDetail = dynamic_cast< BaseModHybridButton* >( FindChildByName( "DrpShaderDetail" ) );
 	m_drpCPUDetail = dynamic_cast< BaseModHybridButton* >( FindChildByName( "DrpCPUDetail" ) );
+	m_drpCoreAO = dynamic_cast<BaseModHybridButton *>( FindChildByName( "DrpCoreAO" ) );
+	m_drpCoreShadows = dynamic_cast<BaseModHybridButton *>( FindChildByName( "DrpCoreShadows" ) );
 
 	SetupState( false );
 
@@ -214,6 +266,14 @@ void CAdvancedVideo::GetCurrentSettings( void )
 
 	CGameUIConVarRef cpu_level( "cpu_level" );
 	m_iCPUDetail = clamp( cpu_level.GetInt(), 0, 2 );
+
+	if ( HasRenderCoreQuality() )
+	{
+		CGameUIConVarRef r_core_ao_quality( "r_core_ao_quality" );
+		CGameUIConVarRef r_core_shadow_quality( "r_core_shadow_quality" );
+		m_iCoreAO = clamp( r_core_ao_quality.GetInt(), 0, kRenderCoreAOChoices - 1 );
+		m_iCoreShadows = clamp( r_core_shadow_quality.GetInt(), 0, kRenderCoreShadowChoices - 1 );
+	}
 }
 
 bool CAdvancedVideo::GetRecommendedSettings( void )
@@ -241,6 +301,17 @@ bool CAdvancedVideo::GetRecommendedSettings( void )
 	m_iQueuedMode = pConfigKeys->GetInt( "setting.mat_queue_mode", -1 );
 
 	pConfigKeys->deleteThis();
+
+	// The render core's settings are not in the video config; their
+	// defaults are the ConVars' defaults.
+	if ( HasRenderCoreQuality() )
+	{
+		CGameUIConVarRef r_core_ao_quality( "r_core_ao_quality" );
+		CGameUIConVarRef r_core_shadow_quality( "r_core_shadow_quality" );
+		m_iCoreAO = clamp( atoi( r_core_ao_quality.GetDefault() ), 0, kRenderCoreAOChoices - 1 );
+		m_iCoreShadows =
+		    clamp( atoi( r_core_shadow_quality.GetDefault() ), 0, kRenderCoreShadowChoices - 1 );
+	}
 
 	m_bDirtyValues = true;
 #endif
@@ -531,6 +602,14 @@ void CAdvancedVideo::SetModelDetailState()
 	}
 }
 
+void CAdvancedVideo::SetRenderCoreQualityState()
+{
+	if ( m_drpCoreAO )
+		m_drpCoreAO->SetCurrentSelection( s_RenderCoreQualityNames[m_iCoreAO] );
+	if ( m_drpCoreShadows )
+		m_drpCoreShadows->SetCurrentSelection( s_RenderCoreQualityNames[m_iCoreShadows] );
+}
+
 void CAdvancedVideo::SetPagedPoolState()
 {
 #ifndef POSIX
@@ -603,6 +682,7 @@ void CAdvancedVideo::SetupState( bool bRecommendedSettings )
 	SetCPUDetailState();
 	SetModelDetailState();
 	SetPagedPoolState();
+	SetRenderCoreQualityState();
 
 	UpdateFooter();
 }
@@ -1017,6 +1097,18 @@ void CAdvancedVideo::OnCommand(const char *command)
 			m_bDirtyValues = true;
 		}
 	}
+	else if ( StringHasPrefix( command, VIDEO_CORE_AO_COMMAND_PREFIX ) )
+	{
+		m_iCoreAO = clamp( atoi( command + V_strlen( VIDEO_CORE_AO_COMMAND_PREFIX ) ), 0,
+		    kRenderCoreAOChoices - 1 );
+		m_bDirtyValues = true;
+	}
+	else if ( StringHasPrefix( command, VIDEO_CORE_SHADOWS_COMMAND_PREFIX ) )
+	{
+		m_iCoreShadows = clamp( atoi( command + V_strlen( VIDEO_CORE_SHADOWS_COMMAND_PREFIX ) ), 0,
+		    kRenderCoreShadowChoices - 1 );
+		m_bDirtyValues = true;
+	}
 	else if ( !V_stricmp( "Cancel", command ) || !V_stricmp( "Back", command ) )
 	{
 		OnKeyCodePressed( ButtonCodeToJoystickButtonCode( KEY_XBUTTON_B, CBaseModPanel::GetSingleton().GetLastActiveUserId() ) );
@@ -1079,6 +1171,14 @@ void CAdvancedVideo::ApplyChanges()
 	CGameUIConVarRef gpu_level( "gpu_level" );
 	gpu_level.SetValue( m_iGPUDetail );
 
+	if ( HasRenderCoreQuality() )
+	{
+		CGameUIConVarRef r_core_ao_quality( "r_core_ao_quality" );
+		CGameUIConVarRef r_core_shadow_quality( "r_core_shadow_quality" );
+		r_core_ao_quality.SetValue( m_iCoreAO );
+		r_core_shadow_quality.SetValue( m_iCoreShadows );
+	}
+
 	// apply changes
 	engine->ClientCmd_Unrestricted( "mat_savechanges\n" );
 	engine->ClientCmd_Unrestricted( VarArgs( "host_writeconfig_ss %d", XBX_GetPrimaryUserId() ) );
@@ -1114,4 +1214,149 @@ void CAdvancedVideo::UpdateFooter()
 		pFooter->SetButtonText( FB_BBUTTON, "#L4D360UI_Back" );
 		pFooter->SetButtonText( FB_XBUTTON, "#GameUI_UseDefaults" );
 	}
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Adds the render core quality rows (Ambient occlusion, Dynamic
+//			shadows) below the last row: copies of Model Detail's row, so they
+//			look and navigate like the others. The shipped advancedvideo.res
+//			predates them. The dialog grows by a tile when they no longer fit.
+//-----------------------------------------------------------------------------
+static KeyValues *AddRenderCoreQualityRow( KeyValues *pResourceData, KeyValues *pTemplate,
+    const char *pName, const char *pLabel, const char *pCommandPrefix, int nChoices, int nY )
+{
+	KeyValues *pRow = pTemplate->MakeCopy();
+	pRow->SetName( pName );
+	pRow->SetString( "fieldName", pName );
+	pRow->SetString( "labelText", pLabel );
+	pRow->SetInt( "ypos", nY );
+	pRow->SetInt( "visible", 1 );
+	pRow->SetInt( "enabled", 1 );
+	if ( KeyValues *pOldList = pRow->FindKey( "list" ) )
+	{
+		pRow->RemoveSubKey( pOldList );
+		pOldList->deleteThis();
+	}
+	KeyValues *pList = pRow->FindKey( "list", true );
+	for ( int i = 0; i < nChoices; ++i )
+		pList->SetString( s_RenderCoreQualityNames[i], CFmtStr( "%s%d", pCommandPrefix, i ) );
+	pResourceData->AddSubKey( pRow );
+	return pRow;
+}
+
+void CAdvancedVideo::PreApplyControlSettings( KeyValues *pResourceData )
+{
+	if ( !pResourceData || pResourceData->FindKey( "DrpCoreAO" ) || !HasRenderCoreQuality() )
+		return;
+
+	// The last row is the lowest list row; it navigates down to the first.
+	KeyValues *pTemplate = pResourceData->FindKey( "DrpModelDetail" );
+	KeyValues *pFrame = NULL;
+	KeyValues *pLast = NULL;
+	for ( KeyValues *pKey = pResourceData->GetFirstTrueSubKey(); pKey;
+	    pKey = pKey->GetNextTrueSubKey() )
+	{
+		if ( !V_stricmp( pKey->GetString( "ControlName" ), "Frame" ) )
+			pFrame = pKey;
+		else if ( !V_stricmp( pKey->GetString( "style" ), "DialogListButton" ) &&
+		          ( !pLast || pKey->GetInt( "ypos" ) > pLast->GetInt( "ypos" ) ) )
+			pLast = pKey;
+	}
+	if ( !pTemplate || !pLast )
+		return;
+	AddRenderCoreQualityStrings();
+
+	KeyValues *pAboveLast = pResourceData->FindKey( pLast->GetString( "navUp" ) );
+	int nPitch = pAboveLast ? pLast->GetInt( "ypos" ) - pAboveLast->GetInt( "ypos" ) : 0;
+	if ( nPitch <= 0 )
+		nPitch = 25;
+	const int nAOY = pLast->GetInt( "ypos" ) + nPitch;
+	KeyValues *pAO = AddRenderCoreQualityRow( pResourceData, pTemplate, "DrpCoreAO",
+	    "#GameUI_AmbientOcclusion", VIDEO_CORE_AO_COMMAND_PREFIX, kRenderCoreAOChoices, nAOY );
+	KeyValues *pShadows = AddRenderCoreQualityRow( pResourceData, pTemplate, "DrpCoreShadows",
+	    "#GameUI_DynamicShadows", VIDEO_CORE_SHADOWS_COMMAND_PREFIX, kRenderCoreShadowChoices,
+	    nAOY + nPitch );
+
+	const char *pFirst = pLast->GetString( "navDown" );
+	if ( KeyValues *pFirstRow = pResourceData->FindKey( pFirst ) )
+		pFirstRow->SetString( "navUp", "DrpCoreShadows" );
+	pShadows->SetString( "navDown", pFirst );
+	pShadows->SetString( "navUp", "DrpCoreAO" );
+	pAO->SetString( "navDown", "DrpCoreShadows" );
+	pAO->SetString( "navUp", pLast->GetName() );
+	pLast->SetString( "navDown", "DrpCoreAO" );
+
+	// The frame's size is in dialog tiles (Dialog.TileHeight, the same
+	// proportional units as the rows).
+	vgui::IScheme *pScheme = vgui::scheme()->GetIScheme( GetScheme() );
+	const int nTileTall = pScheme ? atoi( pScheme->GetResourceString( "Dialog.TileHeight" ) ) : 0;
+	if ( pFrame && nTileTall > 0 )
+	{
+		const int nBottom = pShadows->GetInt( "ypos" ) + pShadows->GetInt( "tall" );
+		const int nTiles = ( nBottom + nTileTall - 1 ) / nTileTall;
+		if ( nTiles > pFrame->GetInt( "tall" ) )
+			pFrame->SetInt( "tall", nTiles );
+	}
+}
+
+bool CAdvancedVideo::DescribeRenderCoreQuality( char *pOut, int nOutSize )
+{
+	if ( !m_drpCoreAO || !m_drpCoreShadows )
+		return false;
+	const char *szAO = m_drpCoreAO->GetCurrentSelection();
+	const char *szShadows = m_drpCoreShadows->GetCurrentSelection();
+	if ( !szAO )
+		szAO = "";
+	if ( !szShadows )
+		szShadows = "";
+	// The localized text as the list shows it; a missing token reads "?".
+	const wchar_t *wszAO = g_pVGuiLocalize->Find( szAO );
+	const wchar_t *wszShadows = g_pVGuiLocalize->Find( szShadows );
+	char szAOText[64], szShadowsText[64];
+	g_pVGuiLocalize->ConvertUnicodeToANSI( wszAO ? wszAO : L"?", szAOText, sizeof( szAOText ) );
+	g_pVGuiLocalize->ConvertUnicodeToANSI(
+	    wszShadows ? wszShadows : L"?", szShadowsText, sizeof( szShadowsText ) );
+	V_snprintf( pOut, nOutSize, "ambient occlusion \"%s\" (%s), dynamic shadows \"%s\" (%s)",
+	    szAOText, szAO, szShadowsText, szShadows );
+	return true;
+}
+
+void CAdvancedVideo::ApplyRenderCoreQualityChoice( int nAO, int nShadows )
+{
+	OnCommand( CFmtStr( "%s%d", VIDEO_CORE_AO_COMMAND_PREFIX, nAO ) );
+	OnCommand( CFmtStr( "%s%d", VIDEO_CORE_SHADOWS_COMMAND_PREFIX, nShadows ) );
+	SetRenderCoreQualityState();
+	ApplyChanges();
+}
+
+// Developer check (RFC 0016 K12): opens the advanced video dialog and prints
+// the render core quality it shows. With two arguments it selects those
+// Ambient occlusion and Dynamic shadows rows and applies them as the A button
+// does. The dialog lays out on its first frame, so run it again after a wait.
+CON_COMMAND_F( ui_show_video_advanced,
+    "Opens the advanced video dialog and prints its render core quality; [ao shadows] also "
+    "selects and applies those rows",
+    FCVAR_CHEAT )
+{
+	CBaseModPanel &panel = CBaseModPanel::GetSingleton();
+	CAdvancedVideo *pDialog = static_cast<CAdvancedVideo *>( panel.GetWindow( WT_ADVANCEDVIDEO ) );
+	if ( !pDialog )
+	{
+		pDialog = static_cast<CAdvancedVideo *>(
+		    panel.OpenWindow( WT_ADVANCEDVIDEO, panel.GetWindow( panel.GetActiveWindowType() ) ) );
+	}
+	if ( !pDialog )
+		return;
+	char szQuality[256];
+	if ( !pDialog->DescribeRenderCoreQuality( szQuality, sizeof( szQuality ) ) )
+	{
+		Msg( "advanced video: render core quality: not laid out yet\n" );
+		return;
+	}
+	if ( args.ArgC() >= 3 )
+	{
+		pDialog->ApplyRenderCoreQualityChoice( atoi( args[1] ), atoi( args[2] ) );
+		pDialog->DescribeRenderCoreQuality( szQuality, sizeof( szQuality ) );
+	}
+	Msg( "advanced video: render core quality: %s\n", szQuality );
 }

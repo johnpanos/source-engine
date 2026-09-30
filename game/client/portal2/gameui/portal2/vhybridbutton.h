@@ -92,6 +92,7 @@ public:
 	void		SetShowDropDownIndicator( bool bShowIndicator ) { m_bShowDropDownIndicator = bShowIndicator; }
 	void		SetOverrideDropDownIndicator( bool bOverrideDropDownIndicator ) { m_bOverrideDropDownIndicator = bOverrideDropDownIndicator; }
 	void		SetCurrentSelection( const char *pText );
+	const char *GetCurrentSelection(); // the shown list item's text, or NULL
 	void		ModifySelectionString( const char *pCommand, const char *pNewText );
 	void		EnableListItem( const char *pText, bool bEnable );
 	bool		GetListSelectionString( const char *pCommand, char *pOutBuff, int nOutBuffSize );
