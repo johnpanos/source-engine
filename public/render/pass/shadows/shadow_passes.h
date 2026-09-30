@@ -11,6 +11,14 @@
 //			draws each view with its viewport set to the tile's viewport (the
 //			tile less its guard band), depth test less, no culling.
 //
+//			A kept atlas (ShadowAtlasTarget::keep) is loaded instead: each
+//			view given first clears its whole tile to the far plane (a
+//			triangle at depth 1, depth test always), then draws, and the
+//			other tiles keep what earlier executions drew. So a caller that
+//			draws only the tiles whose view changed (static casters, lights
+//			that did not move) gets the atlas a full redraw would (Doom
+//			Eternal's and HDRP's cached shadow maps).
+//
 //			The receiver helper is render/shaders/common/shadow_sample.glsl
 //			with ShadowTileGpu (render/shadow_tile.h), its record: families
 //			that receive shadows include it. ShadowReceiverRenderer draws receivers lit by one shadowed
@@ -63,6 +71,10 @@ struct ShadowCaster
 {
 	resources::MeshEntry mesh; // positions (float3) at offset 0 of each vertex
 	math::float4x4 world;
+	// A range of an indexed mesh's indices, so one mesh's spatial chunks cull
+	// apart; indexCount 0 draws the whole mesh.
+	std::uint32_t firstIndex = 0;
+	std::uint32_t indexCount = 0;
 };
 
 struct ShadowDepthView
@@ -77,6 +89,9 @@ struct ShadowAtlasTarget
 	graph::ResourceRef atlas; // written as kDepthWrite
 	std::uint32_t atlasSize = 0;
 	std::uint32_t guardTexels = 0;
+	// Load the atlas and clear only the given views' tiles (see above); the
+	// atlas must come in with its contents (not from kUndefined).
+	bool keep = false;
 };
 
 struct ShadowDepthStats
@@ -104,12 +119,15 @@ public:
 
 private:
 	explicit ShadowDepthRenderer( device::IRenderDevice2 &device ) : m_Device( device ) {}
-	foundation::Expected<device::PipelineId, ShadowPassStatus> PipelineFor( std::uint32_t stride );
+	// clear: the tile clear's pipeline (depth test always).
+	foundation::Expected<device::PipelineId, ShadowPassStatus> PipelineFor(
+	    std::uint32_t stride, bool clear = false );
 
 	device::IRenderDevice2 &m_Device;
 	device::Format m_DepthFormat = device::Format::kUnknown;
 	device::BindGroupLayoutId m_DrawLayout;
 	std::map<std::uint32_t, device::PipelineId> m_Pipelines; // by vertex stride
+	device::PipelineId m_ClearPipeline;                      // float3 positions
 	mutable std::mutex m_PendingLock;
 	std::vector<device::BindGroupId> m_Pending;
 	std::uint32_t m_RecordFailures = 0;

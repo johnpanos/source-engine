@@ -38,6 +38,7 @@ struct RenderCoreHostState
 	const char *deviceName = nullptr;
 	render::legacy::ILegacyCapabilities *capabilities = nullptr;
 	IRenderCoreWorld *world = nullptr;
+	IRenderCorePanels *panels = nullptr;
 	gpu_compute::IGpuCompute *gpuCompute = nullptr; // the core's (RFC 0016 K12)
 	std::unique_ptr<render::scene::IRenderScene> worldScene;
 	std::vector<int> worldLeaves; // snapshot index -> leaf, or -(prop + 1) (RFC 0016 K5)
@@ -94,6 +95,13 @@ ConVar cl_render_debug_gpu_timers( "cl_render_debug_gpu_timers", "0", 0,
     "Time the render core's GPU passes (RFC 0014 D4); cl_render_debug_stats prints them." );
 ConVar cl_render_debug_stats( "cl_render_debug_stats", "0", 0,
     "Print the render core's per-pass GPU times (cl_render_debug_gpu_timers) every second." );
+// The render core's quality settings (RFC 0016 K12; the video options).
+ConVar r_core_ao_quality( "r_core_ao_quality", "3", FCVAR_ARCHIVE,
+    "Render core ambient occlusion (GTAO): 0 off, 1 low, 2 medium, 3 high, 4 ultra.", true, 0, true,
+    4 );
+ConVar r_core_shadow_quality( "r_core_shadow_quality", "2", FCVAR_ARCHIVE,
+    "Render core shadows: 0 off, 1 low (2048 atlas), 2 medium (4096), 3 high (8192).", true, 0,
+    true, 3 );
 
 void DebugProgramChanged( IConVar *var, const char *, float )
 {
@@ -164,6 +172,7 @@ DLL_EXPORT bool Engine_BindRenderCore( const RenderCoreBinding *pBinding )
 	host.deviceName = pBinding->deviceName;
 	host.capabilities = pBinding->capabilities;
 	host.world = pBinding->world;
+	host.panels = pBinding->panels;
 	host.gpuCompute = pBinding->gpuCompute;
 	host.bound = true;
 	return true;
@@ -177,6 +186,11 @@ bool RenderCoreHost_IsBound()
 IRenderCoreWorld *RenderCoreHost_World()
 {
 	return Host().bound ? Host().world : nullptr;
+}
+
+IRenderCorePanels *RenderCoreHost_Panels()
+{
+	return Host().bound ? Host().panels : nullptr;
 }
 
 // RFC 0016 K12: each world mesh upload the renderer's provider accepts
@@ -344,6 +358,9 @@ void RenderCoreHost_EndFrame()
 	if ( host.world )
 	{
 		host.world->SetGpuTimers( cl_render_debug_gpu_timers.GetBool() );
+		const RenderCoreWorldQuality quality{
+		    r_core_ao_quality.GetInt(), r_core_shadow_quality.GetInt() };
+		host.world->SetQuality( quality );
 		static double s_LastStats = 0.0;
 		const double now = Plat_FloatTime();
 		if ( cl_render_debug_stats.GetBool() && cl_render_debug_gpu_timers.GetBool() &&

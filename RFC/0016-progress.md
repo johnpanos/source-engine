@@ -4391,3 +4391,61 @@ Open:
   `$pseudotranslucent` blending, the flashlight on water, and the water
   cohort's K8 legacy-stream census. No Fold7 or Apple run; frame time not
   measured (rule 7).
+
+## K12 performance: cached shadow tiles, quality settings, and the SDF read-back (2026-09-30, source-engine-5a)
+
+User direction (2026-09-30): reach a playable frame rate without losing
+quality, following the published implementations: Doom Eternal's and
+HDRP's cached shadow maps, XeGTAO's presets (cloned to `~/src/refs/XeGTAO`,
+MIT), and Activision's GTAO. Each change was located with RFC 0014 D4's
+timers or a perf profile.
+
+- **Shadows** (K12 goal step 2), in `render.pass.shadows`, proven in
+  `render.shadows.pixels`:
+  - `ShadowAtlasTarget::keep` loads the atlas and clears only the given
+    views' tiles (a depth-always triangle), so the stage redraws only the
+    tiles whose view changed. Its casters are static.
+  - C1: an atlas kept across executions, with only the moved light's tile
+    redrawn, equals a full redraw texel for texel, and keeping the old
+    tile is caught.
+  - `ShadowCaster` takes index ranges. C2: casters split into ranges equal
+    the whole meshes, and dropping half is caught.
+  - The stage chunks its casters into 512-unit cells and draws only the
+    chunks inside each tile's frustum.
+  - The stage shadows only the lights its clusters list for the view.
+- **Quality settings** (`IRenderCoreWorld::SetQuality`), both archived:
+  - `r_core_ao_quality`: 0 off (no prepass or GTAO), then XeGTAO's presets
+    1–4 (1×2, 2×2, 3×3, 9×3 slices × steps); default 3.
+  - `r_core_shadow_quality`: 0 off, then a 2048/4096/8192 atlas; default 2.
+  - The Video > Advanced rows in P1 and P2 are `f4c981624`.
+- **SDF read-back:** `gpu_compute::IGpuCompute::WrittenRanges` lets a
+  producer say which bytes its dispatches write. `PortCompute` copies home
+  only those ranges. The SDF producer names its scheduled probes (1,728
+  bytes each), and a slot changes only there, so the host copy stays
+  exact. Before this, every update copied the whole field back on the
+  render thread (57% of that thread). Halving the range fails
+  `render.indirect-light.sdf`'s sparse-publication checks.
+
+Frame time (rule 7: recorded), offscreen at the SDL cap of 1024x768,
+`mat_vsync 0`, desktop RADV, quiet host:
+
+| Fixture | Before | After | GPU (after) |
+| --- | --- | --- | --- |
+| `./play_p2 sp_a2_laser_intro_relit` | 15.6 ms median (64 fps) | 8.8 ms (112 fps), p99 10.6 | 4.4 ms |
+| `./play testchmb_a_15_relit` | 22.4 ms (45 fps) | 15.2 ms (72 fps), p99 21.9 | 6.0 ms |
+
+On a_15, 255 shadow tiles are kept and 0 drawn per frame, and GTAO is
+1.2 ms (it was 3.2).
+
+Checks:
+
+- `render.shadows.pixels` (C1, C2) and the lab suites (shadowed lights,
+  GTAO, composition) pass;
+- `render.world.null`, `render.indirect-light(.sdf)`, `render.graph.v1`
+  and the Hammer viewport suites pass on g++ and clang++;
+- `render.composition(.capabilities)` pass on HEAD with this change
+  alone. In the shared tree they fail to link on source-engine-e2's
+  unfinished panels wiring.
+
+Next: the a_15 frame waits about 7 ms beyond its CPU work (profile
+next), and the 30 s GI settle after a load.

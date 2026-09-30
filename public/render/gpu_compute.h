@@ -52,6 +52,13 @@ struct SceneInstance
 	uint32_t mask = 0xFF;
 };
 
+// A byte range of a buffer.
+struct ByteRange
+{
+	size_t offset = 0;
+	size_t bytes = 0;
+};
+
 struct Caps
 {
 	bool compute = false;
@@ -86,6 +93,17 @@ public:
 	[[nodiscard]] virtual uint64_t QueueDispatch( uint32_t program, const uint32_t *buffers,
 	    uint32_t count, const void *push, uint32_t pushBytes, uint32_t groupsX, uint32_t groupsY,
 	    uint32_t groupsZ ) = 0;
+	// What the dispatches queued from now to the next submission write to a
+	// Readback `buffer`: only these ranges change, and the rest keeps its
+	// contents. An implementation that copies read-backs home copies only
+	// them (without the call, the whole buffer). Ranges may overlap. A
+	// host-mapped implementation ignores it.
+	virtual void WrittenRanges( uint32_t buffer, const ByteRange *ranges, uint32_t count )
+	{
+		(void)buffer;
+		(void)ranges;
+		(void)count;
+	}
 	[[nodiscard]] virtual uint64_t CompletedSerial() const = 0;
 	// Frees `resource` once CompletedSerial() reaches `afterSerial`.
 	virtual void Retire( uint32_t resource, uint64_t afterSerial ) = 0;

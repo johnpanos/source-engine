@@ -93,6 +93,10 @@ public:
 
 	foundation::Expected<void, AoStatus> Record(
 	    device::CommandEncoder &encoder, const AoTargets &targets, const AoView &view );
+	// New parameters from the next Record (a quality setting); refused, and
+	// the old kept, when they are not valid.
+	foundation::Expected<void, AoStatus> SetParams( const AoParams &params );
+	const AoParams &Params() const { return m_Params; }
 	void Collect( device::CompletionToken token );
 
 private:

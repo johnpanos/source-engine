@@ -60,6 +60,19 @@ struct RenderCoreWorldMaterial
 	const char *const *defaults;
 };
 
+// The world stage's quality settings (RFC 0016 K12; the engine's
+// r_core_ao_quality and r_core_shadow_quality, the video options' entries).
+struct RenderCoreWorldQuality
+{
+	// 0 off (no prepass, no GTAO: the term is neutral), then XeGTAO's
+	// presets: 1 low (1 slice x 2 steps), 2 medium (2 x 2), 3 high (3 x 3),
+	// 4 ultra (9 x 3).
+	int ambientOcclusion;
+	// 0 off (the stage's lights unshadowed), then the shadow atlas: 1 low
+	// (2048 texels), 2 medium (4096), 3 high (8192).
+	int shadows;
+};
+
 struct RenderCoreWorldStats
 {
 	unsigned int materials;
@@ -157,6 +170,8 @@ public:
 	// labeled GPU sections (shadows, prepass, lit world, GTAO), from its next
 	// slot. Main thread.
 	virtual void SetGpuTimers( bool enabled ) = 0;
+	// The stage's quality settings, from its next view. Main thread.
+	virtual void SetQuality( const RenderCoreWorldQuality &quality ) = 0;
 	// The sections' GPU time since the last call, over the frames read (the
 	// return value; 0 when none was), as "depth ms-per-frame
 	// count-per-frame name" lines in `out`. Main thread.

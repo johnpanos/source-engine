@@ -75,6 +75,8 @@ public:
 	std::uint64_t QueueDispatch( std::uint32_t program, const std::uint32_t *buffers,
 	    std::uint32_t count, const void *push, std::uint32_t pushBytes, std::uint32_t groupsX,
 	    std::uint32_t groupsY, std::uint32_t groupsZ ) override;
+	void WrittenRanges(
+	    std::uint32_t buffer, const gpu_compute::ByteRange *ranges, std::uint32_t count ) override;
 	std::uint64_t CompletedSerial() const override;
 	void Retire( std::uint32_t resource, std::uint64_t afterSerial ) override;
 

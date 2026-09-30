@@ -65,6 +65,15 @@ foundation::Expected<std::unique_ptr<AmbientOcclusion>, AoStatus> AmbientOcclusi
 	return CreateWithProgram( device, params, {} );
 }
 
+foundation::Expected<void, AoStatus> AmbientOcclusion::SetParams( const AoParams &params )
+{
+	if ( !( params.radius > 0.0f ) || !( params.falloff >= 0.0f && params.falloff < 1.0f ) ||
+	     params.slices == 0 || params.steps == 0 )
+		return foundation::MakeUnexpected( AoStatus::kInvalidParams );
+	m_Params = params;
+	return {};
+}
+
 foundation::Expected<std::unique_ptr<AmbientOcclusion>, AoStatus>
 AmbientOcclusion::CreateWithProgram(
     IRenderDevice2 &device, const AoParams &params, std::span<const std::uint32_t> spirv )

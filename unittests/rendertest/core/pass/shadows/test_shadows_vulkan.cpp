@@ -69,6 +69,7 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <cstring>
 #include <cstdio>
 #include <cstdlib>
 #include <memory>
@@ -1049,6 +1050,156 @@ void CheckSun( testing::Checks &checks, IRenderDevice2 &device, ShadowDepthRende
 
 } // namespace
 
+// Draws `views` into a kept atlas (keep: load it and redraw only their
+// tiles) and reads the whole atlas back. `usage` is the atlas's usage in and
+// out.
+std::vector<float> DrawKept( IRenderDevice2 &device, ShadowDepthRenderer &depth, TextureId atlas,
+    const TextureDesc &atlasDesc, ResourceUsage &usage, std::uint32_t guard,
+    std::span<const ShadowDepthView> views, bool keep )
+{
+	const std::uint32_t size = atlasDesc.width;
+	BufferDesc readDesc;
+	readDesc.size = std::uint64_t( size ) * size * 4;
+	readDesc.usages = { ResourceUsage::kCopyDestination };
+	readDesc.memory = MemoryKind::kReadback;
+	auto read = device.CreateBuffer( readDesc );
+	if ( !read )
+		return {};
+	graph::GraphBuilder builder;
+	const graph::ResourceRef atlasRef =
+	    builder.ImportTexture( "atlas", atlas, atlasDesc, usage, ResourceUsage::kSampled );
+	ShadowAtlasTarget target{ atlasRef, size, guard };
+	target.keep = keep;
+	bool ok = depth.AddPasses( builder, target, views ).HasValue();
+	const graph::ResourceRef copy = builder.ImportBuffer( "atlas-readback", read.Value(), readDesc,
+	    ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+	builder.AddPass( "atlas-readback", graph::PassKind::kCopy )
+	    .Read( atlasRef, ResourceUsage::kCopySource )
+	    .Write( copy, ResourceUsage::kCopyDestination )
+	    .SideEffect()
+	    .Execute(
+	        [atlasRef, copy, size]( graph::RecordContext &context )
+	        {
+		        context.Encoder().CopyTextureToBuffer(
+		            context.Texture( atlasRef ), context.Buffer( copy ), { 0, 0, 0, size, size } );
+	        } );
+	std::vector<float> out;
+	auto compiled = graph::CompileGraph( std::move( builder ) );
+	if ( ok && compiled )
+	{
+		graph::SerialGraphExecutor executor;
+		auto executed = executor.Execute( compiled.Value(), device );
+		if ( executed && Wait( device, executed.Value().token ) )
+		{
+			depth.Collect( executed.Value().token );
+			usage = ResourceUsage::kSampled;
+			out.resize( std::size_t( size ) * size );
+			if ( !device.ReadBuffer( read.Value(), 0, std::as_writable_bytes( std::span( out ) ) ) )
+				out.clear();
+		}
+	}
+	(void)device.Release( read.Value(), CompletionToken() );
+	(void)device.Poll();
+	return out;
+}
+
+// Cached tiles (Doom Eternal's and HDRP's static shadow caching, K12 step 2):
+// an atlas kept across executions, with only the moved light's tile drawn
+// again, equals the atlas a full redraw gives, texel for texel; one where
+// that tile is not redrawn does not (the check's sensitivity). And casters
+// split into index ranges draw what the whole meshes draw.
+void CheckCachedTiles( testing::Checks &checks, IRenderDevice2 &device, ShadowDepthRenderer &depth,
+    const Meshes &meshes )
+{
+	const Scene scene = SpotScene();
+	const std::vector<ShadowCaster> casters = Casters( meshes, scene.casters );
+	constexpr std::uint32_t kAtlas = 1024;
+	constexpr std::uint32_t kGuard = 2;
+	auto viewA = BuildSpotShadowView(
+	    { { 1.0f, 0.5f, 11.0f }, { 0.05f, 0.1f, -1.0f }, std::cos( 0.66f ), 0.5f, 40.0f } );
+	auto viewB = BuildSpotShadowView(
+	    { { -6.0f, -6.0f, 9.0f }, { 0.6f, 0.6f, -1.0f }, std::cos( 0.6f ), 0.5f, 40.0f } );
+	auto movedB = BuildSpotShadowView(
+	    { { 7.0f, 5.0f, 8.0f }, { -0.7f, -0.5f, -1.0f }, std::cos( 0.5f ), 0.5f, 40.0f } );
+	if ( !checks.That( viewA && viewB && movedB, "C1.spot-views" ) )
+		return;
+	const ShadowTile tileA{ 0, 0, 512 };
+	const ShadowTile tileB{ 512, 256, 512 };
+	const ShadowDepthView before[] = { { viewA.Value().viewProjection, tileA, casters },
+	    { viewB.Value().viewProjection, tileB, casters } };
+	const ShadowDepthView after[] = {
+	    before[0], { movedB.Value().viewProjection, tileB, casters } };
+	const ShadowDepthView movedOnly[] = { after[1] };
+
+	TextureDesc atlasDesc;
+	atlasDesc.format = Format::kD32Float;
+	atlasDesc.width = atlasDesc.height = kAtlas;
+	atlasDesc.usages = {
+	    ResourceUsage::kDepthWrite, ResourceUsage::kSampled, ResourceUsage::kCopySource };
+	auto fresh = device.CreateTexture( atlasDesc );
+	auto kept = device.CreateTexture( atlasDesc );
+	auto stale = device.CreateTexture( atlasDesc );
+	if ( !checks.That( fresh && kept && stale, "C1.atlases" ) )
+		return;
+	ResourceUsage freshUsage = ResourceUsage::kUndefined;
+	ResourceUsage keptUsage = ResourceUsage::kUndefined;
+	ResourceUsage staleUsage = ResourceUsage::kUndefined;
+	const std::vector<float> full =
+	    DrawKept( device, depth, fresh.Value(), atlasDesc, freshUsage, kGuard, after, false );
+	(void)DrawKept( device, depth, kept.Value(), atlasDesc, keptUsage, kGuard, before, false );
+	const std::vector<float> cached =
+	    DrawKept( device, depth, kept.Value(), atlasDesc, keptUsage, kGuard, movedOnly, true );
+	(void)DrawKept( device, depth, stale.Value(), atlasDesc, staleUsage, kGuard, before, false );
+	const std::vector<float> notRedrawn =
+	    DrawKept( device, depth, stale.Value(), atlasDesc, staleUsage, kGuard, {}, true );
+	const bool read =
+	    !full.empty() && full.size() == cached.size() && full.size() == notRedrawn.size();
+	checks.That( read, "C1.the-atlases-read-back" );
+	std::uint64_t written = 0;
+	for ( float d : full )
+		written += d < 1.0f;
+	checks.That( read && written > 0, "C1.the-casters-write-depth" );
+	checks.That( read && std::memcmp( full.data(), cached.data(), full.size() * 4 ) == 0,
+	    "C1.redrawing-only-the-moved-lights-tile-equals-a-full-redraw" );
+	checks.That( read && std::memcmp( full.data(), notRedrawn.data(), full.size() * 4 ) != 0,
+	    "C1.an-atlas-that-keeps-the-old-tile-differs-(sensitivity)" );
+
+	// Casters split into two index ranges each.
+	std::vector<ShadowCaster> halves;
+	for ( const ShadowCaster &caster : casters )
+	{
+		const std::uint32_t half = ( caster.mesh.indexCount / 6 ) * 3;
+		ShadowCaster first = caster;
+		first.firstIndex = 0;
+		first.indexCount = half;
+		ShadowCaster second = caster;
+		second.firstIndex = half;
+		second.indexCount = caster.mesh.indexCount - half;
+		halves.push_back( first );
+		halves.push_back( second );
+	}
+	const ShadowDepthView split[] = {
+	    { after[0].viewProjection, tileA, halves }, { after[1].viewProjection, tileB, halves } };
+	ResourceUsage splitUsage = ResourceUsage::kSampled;
+	const std::vector<float> chunked =
+	    DrawKept( device, depth, fresh.Value(), atlasDesc, splitUsage, kGuard, split, false );
+	checks.That( !chunked.empty() && chunked.size() == full.size() &&
+	                 std::memcmp( chunked.data(), full.data(), full.size() * 4 ) == 0,
+	    "C2.casters-drawn-as-index-ranges-equal-the-whole-meshes" );
+	std::vector<ShadowCaster> firstHalves;
+	for ( std::size_t i = 0; i < halves.size(); i += 2 )
+		firstHalves.push_back( halves[i] );
+	const ShadowDepthView halfOnly[] = { { after[0].viewProjection, tileA, firstHalves },
+	    { after[1].viewProjection, tileB, firstHalves } };
+	const std::vector<float> partial =
+	    DrawKept( device, depth, fresh.Value(), atlasDesc, splitUsage, kGuard, halfOnly, false );
+	checks.That( !partial.empty() && partial.size() == full.size() &&
+	                 std::memcmp( partial.data(), full.data(), full.size() * 4 ) != 0,
+	    "C2.dropping-half-of-each-mesh-differs-(sensitivity)" );
+	for ( auto *texture : { &fresh, &kept, &stale } )
+		(void)device.Release( texture->Value(), CompletionToken() );
+}
+
 int main()
 {
 	testing::Checks checks;
@@ -1077,6 +1228,7 @@ int main()
 
 		CheckSpot( checks, *device, *depth.Value(), *receiver.Value(), *reversed.Value(), *meshes );
 		CheckSun( checks, *device, *depth.Value(), *receiver.Value(), *meshes );
+		CheckCachedTiles( checks, *device, *depth.Value(), *meshes );
 		checks.That( depth.Value()->RecordFailures() == 0 &&
 		                 receiver.Value()->RecordFailures() == 0 &&
 		                 reversed.Value()->RecordFailures() == 0,

@@ -15,6 +15,7 @@
 #include <deque>
 #include <map>
 #include <mutex>
+#include <span>
 #include <string_view>
 #include <vector>
 
@@ -57,12 +58,42 @@ struct Dispatch
 	std::uint32_t groups[3] = { 1, 1, 1 };
 };
 
+struct Readback
+{
+	std::uint32_t buffer = 0;
+	std::vector<gpu_compute::ByteRange> ranges; // merged, ascending; empty: all of it
+};
+
 struct Submitted
 {
 	std::uint64_t serial = 0;
 	CompletionToken token;
-	std::vector<std::uint32_t> readbacks; // buffers written in it
+	std::vector<Readback> readbacks; // buffers written in it, and what came home
 };
+
+// Sorted, clipped to the buffer and merged.
+std::vector<gpu_compute::ByteRange> Merged(
+    std::vector<gpu_compute::ByteRange> ranges, std::size_t bytes )
+{
+	std::vector<gpu_compute::ByteRange> out;
+	std::sort( ranges.begin(), ranges.end(),
+	    []( const gpu_compute::ByteRange &a, const gpu_compute::ByteRange &b )
+	    {
+		    return a.offset < b.offset;
+	    } );
+	for ( gpu_compute::ByteRange range : ranges )
+	{
+		if ( range.offset >= bytes || range.bytes == 0 )
+			continue;
+		range.bytes = std::min( range.bytes, bytes - range.offset );
+		if ( !out.empty() && range.offset <= out.back().offset + out.back().bytes )
+			out.back().bytes =
+			    std::max( out.back().bytes, range.offset + range.bytes - out.back().offset );
+		else
+			out.push_back( range );
+	}
+	return out;
+}
 
 } // namespace
 
@@ -74,6 +105,9 @@ struct PortCompute::State
 	std::map<std::uint32_t, Program> programs;
 	std::uint32_t nextId = 1;
 	std::vector<Dispatch> queued;
+	// WrittenRanges since the last submission, per read-back; a buffer
+	// written without them comes home whole.
+	std::map<std::uint32_t, std::vector<gpu_compute::ByteRange>> hinted;
 	std::uint64_t nextSerial = 1;
 	std::atomic<std::uint64_t> completed{ 0 };
 	// Render sequence only.
@@ -197,6 +231,15 @@ std::uint64_t PortCompute::QueueDispatch( std::uint32_t program, const std::uint
 	return s.nextSerial;
 }
 
+void PortCompute::WrittenRanges(
+    std::uint32_t buffer, const gpu_compute::ByteRange *ranges, std::uint32_t count )
+{
+	State &s = *m_State;
+	std::lock_guard<std::mutex> guard( s.lock );
+	std::vector<gpu_compute::ByteRange> &hinted = s.hinted[buffer];
+	hinted.insert( hinted.end(), ranges, ranges + count );
+}
+
 std::uint64_t PortCompute::CompletedSerial() const
 {
 	return m_State->completed.load( std::memory_order_acquire );
@@ -229,12 +272,17 @@ bool PortCompute::Flush( IRenderDevice2 &device )
 	while ( !s.inFlight.empty() && device.IsComplete( s.inFlight.front().token ) )
 	{
 		const Submitted &done = s.inFlight.front();
-		for ( const std::uint32_t id : done.readbacks )
+		for ( const Readback &readback : done.readbacks )
 		{
-			const auto found = s.buffers.find( id );
+			const auto found = s.buffers.find( readback.buffer );
 			if ( found == s.buffers.end() || !found->second.staging.IsValid() )
 				continue;
-			(void)device.ReadBuffer( found->second.staging, 0, found->second.copy );
+			Buffer &buffer = found->second;
+			if ( readback.ranges.empty() )
+				(void)device.ReadBuffer( buffer.staging, 0, buffer.copy );
+			for ( const gpu_compute::ByteRange &range : readback.ranges )
+				(void)device.ReadBuffer( buffer.staging, range.offset,
+				    std::span( buffer.copy ).subspan( range.offset, range.bytes ) );
 		}
 		completed = done.serial;
 		s.inFlight.pop_front();
@@ -269,6 +317,8 @@ bool PortCompute::Flush( IRenderDevice2 &device )
 	// The programs this submission uses, made on first use.
 	std::vector<Dispatch> work;
 	work.swap( s.queued );
+	std::map<std::uint32_t, std::vector<gpu_compute::ByteRange>> hinted;
+	hinted.swap( s.hinted );
 	const std::uint64_t serial = s.nextSerial++;
 	for ( const Dispatch &dispatch : work )
 	{
@@ -383,19 +433,41 @@ bool PortCompute::Flush( IRenderDevice2 &device )
 			encoder.SetDrawConstants( 0, dispatch.push );
 		encoder.Dispatch( dispatch.groups[0], dispatch.groups[1], dispatch.groups[2] );
 	}
-	// The read-backs: every buffer a dispatch wrote, copied home.
+	// The read-backs: every buffer a dispatch wrote, copied home: the ranges
+	// its producer said the dispatches write, else all of it. The host copy
+	// holds the rest already.
+	std::vector<Readback> readbacks;
 	for ( const std::uint32_t id : written )
 	{
 		if ( !ok )
 			break;
 		Buffer &buffer = s.buffers[id];
+		Readback readback{ id, {} };
+		if ( const auto found = hinted.find( id ); found != hinted.end() )
+		{
+			readback.ranges = Merged( found->second, buffer.bytes );
+			if ( readback.ranges.empty() )
+				continue; // it wrote nothing
+		}
 		encoder.TransitionBuffer( buffer.device, buffer.usage, ResourceUsage::kCopySource );
 		buffer.usage = ResourceUsage::kCopySource;
 		encoder.TransitionBuffer(
 		    buffer.staging, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
-		BufferCopy copy;
-		copy.size = buffer.bytes;
-		encoder.CopyBuffer( buffer.device, buffer.staging, copy );
+		if ( readback.ranges.empty() )
+		{
+			BufferCopy copy;
+			copy.size = buffer.bytes;
+			encoder.CopyBuffer( buffer.device, buffer.staging, copy );
+		}
+		for ( const gpu_compute::ByteRange &range : readback.ranges )
+		{
+			BufferCopy copy;
+			copy.sourceOffset = range.offset;
+			copy.destinationOffset = range.offset;
+			copy.size = range.bytes;
+			encoder.CopyBuffer( buffer.device, buffer.staging, copy );
+		}
+		readbacks.push_back( std::move( readback ) );
 	}
 	encoder.EndLabel();
 	CommandEncoder encoders[] = { std::move( encoded ).Value() };
@@ -412,7 +484,7 @@ bool PortCompute::Flush( IRenderDevice2 &device )
 		return false;
 	}
 	s.tokens[serial] = token.Value();
-	s.inFlight.push_back( { serial, token.Value(), std::move( written ) } );
+	s.inFlight.push_back( { serial, token.Value(), std::move( readbacks ) } );
 	return true;
 }
 

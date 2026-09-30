@@ -89,6 +89,7 @@ public:
 	unsigned long long Failures() const override;
 	void GetStats( RenderCoreWorldStats *out ) const override;
 	void SetGpuTimers( bool enabled ) override;
+	void SetQuality( const RenderCoreWorldQuality &quality ) override;
 	unsigned int TakeGpuTimes( char *out, unsigned int size ) override;
 
 	// legacy::ICorePassRecorder (the backend, render sequence).
@@ -170,7 +171,15 @@ private:
 	// The world stage's shadow atlas (per shadowed view of a frame): 4096
 	// texels square, depth 32 (64 MB each) on the desktop profiles; a mobile
 	// size is K12's per-profile atlas budget (not set yet).
-	static constexpr std::uint32_t kStageShadowAtlas = 4096;
+	// The shadow atlas's texels by r_core_shadow_quality (0: unshadowed).
+	static std::uint32_t ShadowAtlasFor( int quality )
+	{
+		return quality <= 0 ? 0u : quality == 1 ? 2048u : quality == 2 ? 4096u : 8192u;
+	}
+	// RenderCoreWorldQuality, set on the main thread, read where views are
+	// queued and recorded.
+	std::atomic<int> m_AoQuality{ 3 };
+	std::atomic<int> m_ShadowQuality{ 2 };
 	// A world stage view's work at its slot: the shadow plan's depth views,
 	// drawn into an atlas (none without shadowed lights), and the view and
 	// projection its screen passes (GTAO) reconstruct positions with.
@@ -188,7 +197,17 @@ private:
 	struct Casters
 	{
 		std::vector<float> positions; // float3 per vertex
+		// Grouped into spatial chunks, so each shadow view draws only the
+		// chunks inside its frustum.
 		std::vector<std::uint32_t> indices;
+		struct Chunk
+		{
+			std::uint32_t firstIndex = 0;
+			std::uint32_t indexCount = 0;
+			float min[3] = {};
+			float max[3] = {};
+		};
+		std::vector<Chunk> chunks;
 		std::uint64_t generation = 0;
 	};
 	// A world stage view's lights, clustered for it and planned into shadow
@@ -211,7 +230,7 @@ private:
 	// frame's pool, as a submission of its own ahead of the frame's; the atlas
 	// in kSampled, or invalid when it could not be drawn.
 	device::TextureId DrawStageShadows( device::IRenderDevice2 &device, const ShadowWork &work,
-	    std::uint64_t frame, device::TextureDesc *desc );
+	    device::CompletionToken submitted, std::uint64_t frame, device::TextureDesc *desc );
 	void ReleaseShadows( device::IRenderDevice2 &device );
 	// Render sequence: the stage's ambient occlusion target for a target
 	// size (kSampled; made and first transitioned in `encoder`).
@@ -263,12 +282,20 @@ private:
 	std::unique_ptr<resources::MeshCache> m_CasterMeshes;
 	std::uint64_t m_CastersStaged = 0;
 	std::string m_CasterName;
+	// An atlas keeps its tiles across frames (static casters): a frame
+	// redraws only the views not already drawn into it as they are now.
 	struct Atlas
 	{
 		device::TextureId texture;
 		device::TextureDesc desc;
 		device::ResourceUsage usage = device::ResourceUsage::kUndefined;
+		std::vector<pass::shadows::ShadowPlanView> drawn; // what its tiles hold
+		std::uint64_t generation = 0;                     // of the casters drawn
+		std::uint32_t guardTexels = 0;
 	};
+	// Shadow tiles drawn and kept (RFC 0014 D4's report, render sequence).
+	std::atomic<std::uint64_t> m_ShadowTilesDrawn{ 0 };
+	std::atomic<std::uint64_t> m_ShadowTilesKept{ 0 };
 	std::vector<Atlas> m_Atlases;
 	std::size_t m_AtlasNext = 0;
 	std::uint64_t m_AtlasFrame = 0;

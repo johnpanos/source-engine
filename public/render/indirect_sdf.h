@@ -873,6 +873,17 @@ private:
 			return m_gpu->QueueDispatch( m_program, buffers.data(), uint32_t( buffers.size() ),
 			    &push, sizeof( push ), count, 1, 1 );
 		};
+		// The slot changes only at its scheduled probes (traced, or carried
+		// forward), so only they come home (a copying compute service reads
+		// back those ranges; the rest of its copy is the slot's already).
+		std::vector<gpu_compute::ByteRange> written;
+		written.reserve( lives + references );
+		constexpr size_t kProbeBytes = size_t( kTexels ) * 3 * 16;
+		for ( uint32_t i = 0; i < lives; ++i )
+			written.push_back( { size_t( liveSchedule[i * 2] ) * kProbeBytes, kProbeBytes } );
+		for ( uint32_t i = 0; i < references; ++i )
+			written.push_back( { size_t( referenceSchedule[i * 2] ) * kProbeBytes, kProbeBytes } );
+		m_gpu->WrittenRanges( m_field[slot], written.data(), uint32_t( written.size() ) );
 		uint64_t serial = 0;
 		if ( lives )
 			serial = queue( m_params[slot], m_liveLights[slot], m_liveSchedule[slot], lives, true );

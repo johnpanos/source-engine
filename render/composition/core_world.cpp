@@ -14,12 +14,15 @@
 #include "render/pass/lights/clusters.h"
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
 #include <cstddef>
 #include <cstdio>
 #include <cstring>
+#include <limits>
+#include <map>
 #include <optional>
 
 namespace render::composition
@@ -172,12 +175,54 @@ void CoreWorld::SetWorldMesh( const void *wmsh, unsigned long long wmshBytes,
 		to.tangentT[2] = ( n[0] * t[1] - n[1] * t[0] ) * from.tangentSign;
 	}
 	data.indices = std::move( mesh.indices );
-	// The stage's shadow casters: its positions and triangles.
+	// The stage's shadow casters: its positions and triangles, grouped into
+	// chunks of kCasterCell units by their centroids.
 	auto casters = std::make_shared<Casters>();
 	casters->positions.reserve( data.vertices.size() * 3 );
 	for ( const pass::world::WorldVertex &vertex : data.vertices )
 		casters->positions.insert( casters->positions.end(), vertex.position, vertex.position + 3 );
-	casters->indices = data.indices;
+	{
+		constexpr float kCasterCell = 512.0f;
+		std::map<std::array<int, 3>, std::vector<std::uint32_t>> cells;
+		const std::vector<float> &p = casters->positions;
+		for ( std::size_t t = 0; t + 2 < data.indices.size(); t += 3 )
+		{
+			std::array<int, 3> cell{};
+			for ( int a = 0; a < 3; ++a )
+			{
+				const float centroid =
+				    ( p[data.indices[t] * 3 + a] + p[data.indices[t + 1] * 3 + a] +
+				        p[data.indices[t + 2] * 3 + a] ) /
+				    3.0f;
+				cell[a] = int( std::floor( centroid / kCasterCell ) );
+			}
+			auto &triangles = cells[cell];
+			triangles.insert( triangles.end(), data.indices.begin() + std::ptrdiff_t( t ),
+			    data.indices.begin() + std::ptrdiff_t( t + 3 ) );
+		}
+		casters->indices.reserve( data.indices.size() );
+		for ( const auto &[cell, triangles] : cells )
+		{
+			Casters::Chunk chunk;
+			chunk.firstIndex = std::uint32_t( casters->indices.size() );
+			chunk.indexCount = std::uint32_t( triangles.size() );
+			for ( int a = 0; a < 3; ++a )
+			{
+				chunk.min[a] = std::numeric_limits<float>::max();
+				chunk.max[a] = -std::numeric_limits<float>::max();
+			}
+			for ( std::uint32_t index : triangles )
+			{
+				for ( int a = 0; a < 3; ++a )
+				{
+					chunk.min[a] = std::min( chunk.min[a], p[index * 3 + a] );
+					chunk.max[a] = std::max( chunk.max[a], p[index * 3 + a] );
+				}
+			}
+			casters->indices.insert( casters->indices.end(), triangles.begin(), triangles.end() );
+			casters->chunks.push_back( chunk );
+		}
+	}
 	{
 		std::lock_guard<std::mutex> guard( m_ShadowLock );
 		casters->generation = ++m_CasterGeneration;
@@ -457,13 +502,21 @@ std::shared_ptr<const pass::world::StageViewLights> CoreWorld::StageViewLightsFo
 	out->indices.insert( out->indices.end(), listed.begin(), listed.end() );
 	// The shadows of the view's point and spot lights (render.shadows.v1:
 	// one tile per spot, six per point light), planned for this view.
+	// Only the lights the view's clusters list reach what it draws; the
+	// others need no shadow for this view.
+	std::vector<char> reaches( frameLights.size(), 0 );
+	for ( std::uint32_t index : lists.lightIndices )
+	{
+		if ( index < reaches.size() )
+			reaches[index] = 1;
+	}
 	std::vector<light_set::RuntimeLight> shadowed;
 	std::vector<int> shadowedOf( frameLights.size(), -1 );
 	for ( std::size_t i = 0; i < frameLights.size(); ++i )
 	{
 		const light_set::RuntimeLight &light = frameLights[i];
-		if ( light.shape == light_set::LightShape::Point ||
-		     light.shape == light_set::LightShape::Spot )
+		if ( reaches[i] && ( light.shape == light_set::LightShape::Point ||
+		                       light.shape == light_set::LightShape::Spot ) )
 		{
 			shadowedOf[i] = int( shadowed.size() );
 			shadowed.push_back( light );
@@ -474,7 +527,8 @@ std::shared_ptr<const pass::world::StageViewLights> CoreWorld::StageViewLightsFo
 	const std::vector<area_light::AreaLight> areas = ViewAreaLights( true );
 	const std::optional<pass::lights::MapSun> &sun = m_MapLights.sun;
 	pass::shadows::ShadowPlan plan;
-	if ( !shadowed.empty() || !areas.empty() || sun )
+	if ( ( !shadowed.empty() || !areas.empty() || sun ) &&
+	     m_ShadowQuality.load( std::memory_order_relaxed ) > 0 )
 	{
 		pass::shadows::ShadowPlanInput input;
 		input.lights = shadowed;
@@ -492,7 +546,7 @@ std::shared_ptr<const pass::world::StageViewLights> CoreWorld::StageViewLightsFo
 			input.camera.aspect = yScale / xScale;
 		}
 		input.camera.nearZ = desc.nearZ;
-		input.atlasSize = kStageShadowAtlas;
+		input.atlasSize = ShadowAtlasFor( m_ShadowQuality.load( std::memory_order_relaxed ) );
 		input.guardTexels = 4;
 		if ( pass::shadows::PlanShadows( input, plan ) )
 			plan = pass::shadows::ShadowPlan(); // refused: unshadowed
@@ -724,6 +778,12 @@ void CoreWorld::GetStats( RenderCoreWorldStats *out ) const
 	}
 }
 
+void CoreWorld::SetQuality( const RenderCoreWorldQuality &quality )
+{
+	m_AoQuality.store( std::clamp( quality.ambientOcclusion, 0, 4 ), std::memory_order_relaxed );
+	m_ShadowQuality.store( std::clamp( quality.shadows, 0, 3 ), std::memory_order_relaxed );
+}
+
 void CoreWorld::SetGpuTimers( bool enabled )
 {
 	m_GpuTimersOn.store( enabled, std::memory_order_relaxed );
@@ -763,6 +823,18 @@ unsigned int CoreWorld::TakeGpuTimes( char *out, unsigned int size )
 		const int written = std::snprintf( out + used, size - used,
 		    "0 %.3f %.2f core world view (CPU recording, render sequence)\n",
 		    double( recordNs ) * 1e-6 / frames, double( recordViews ) / frames );
+		if ( written > 0 )
+			used = std::min( std::size_t( size ) - 1, used + std::size_t( written ) );
+	}
+	// The shadow tiles the views drew, and kept from earlier frames (CPU
+	// counts; the time is the shadow-depth passes').
+	const std::uint64_t tilesDrawn = m_ShadowTilesDrawn.exchange( 0, std::memory_order_relaxed );
+	const std::uint64_t tilesKept = m_ShadowTilesKept.exchange( 0, std::memory_order_relaxed );
+	if ( tilesDrawn + tilesKept && used + 1 < size )
+	{
+		const int written = std::snprintf( out + used, size - used,
+		    "0 0 %.2f shadow tiles drawn (count; %.2f kept per frame)\n",
+		    double( tilesDrawn ) / frames, double( tilesKept ) / frames );
 		if ( written > 0 )
 			used = std::min( std::size_t( size ) - 1, used + std::size_t( written ) );
 	}
@@ -903,12 +975,22 @@ void CoreWorld::RecordSlot(
 		encoder.BeginLabel( "core world view" );
 	}
 	if ( shadows && target.device && !shadows->views.empty() )
-		world.shadowAtlas =
-		    DrawStageShadows( *target.device, *shadows, target.frame, &world.shadowAtlasDesc );
+		world.shadowAtlas = DrawStageShadows(
+		    *target.device, *shadows, target.submitted, target.frame, &world.shadowAtlasDesc );
 	// The stage view's screen passes: GTAO over the pass's prepass.
-	if ( shadows && target.device &&
+	const int aoQuality = m_AoQuality.load( std::memory_order_relaxed );
+	if ( shadows && target.device && aoQuality > 0 &&
 	     EnsureOcclusion( *target.device, encoder, target.width, target.height, target.submitted ) )
 	{
+		// XeGTAO's presets (slices x steps per side): the 4 x 4 pattern and
+		// the blur spread each pixel's few slices over its neighbours.
+		static constexpr std::uint32_t kSlices[] = { 1, 2, 3, 9 };
+		static constexpr std::uint32_t kSteps[] = { 2, 2, 3, 3 };
+		const int preset = std::min( aoQuality, 4 ) - 1;
+		pass::ao::AoParams params = m_Ao->Params();
+		params.slices = kSlices[preset];
+		params.steps = kSteps[preset];
+		(void)m_Ao->SetParams( params );
 		world.ambientOcclusion = m_Occlusion;
 		world.ambientOcclusionDesc = m_OcclusionDesc;
 		const std::shared_ptr<const ShadowWork> work = shadows;
@@ -959,7 +1041,8 @@ void CoreWorld::RecordSlot(
 }
 
 device::TextureId CoreWorld::DrawStageShadows( device::IRenderDevice2 &device,
-    const ShadowWork &work, std::uint64_t frame, device::TextureDesc *desc )
+    const ShadowWork &work, device::CompletionToken submitted, std::uint64_t frame,
+    device::TextureDesc *desc )
 {
 	using namespace render::device;
 	BindStageDevice( device );
@@ -1018,12 +1101,91 @@ device::TextureId CoreWorld::DrawStageShadows( device::IRenderDevice2 &device,
 	}
 	Atlas &atlas = m_Atlases[m_AtlasNext];
 	if ( atlas.desc.width != work.atlasSize )
-		return {};
-	const pass::shadows::ShadowCaster caster[] = { { *mesh, math::float4x4::Identity() } };
-	std::vector<pass::shadows::ShadowDepthView> views;
-	views.reserve( work.views.size() );
+	{
+		// A new shadow quality: this slot's atlas was last used by an earlier
+		// frame, which `submitted` covers.
+		(void)device.Release( atlas.texture, submitted );
+		atlas = Atlas();
+		atlas.desc.format = Format::kD32Float;
+		atlas.desc.width = atlas.desc.height = work.atlasSize;
+		atlas.desc.usages = { ResourceUsage::kDepthWrite, ResourceUsage::kSampled };
+		atlas.desc.debugName = "stage shadow atlas";
+		auto texture = device.CreateTexture( atlas.desc );
+		atlas.desc.debugName = {};
+		if ( !texture )
+		{
+			m_Atlases.erase( m_Atlases.begin() + std::ptrdiff_t( m_AtlasNext ) );
+			return {};
+		}
+		atlas.texture = texture.Value();
+	}
+	// The views the atlas does not hold as they are now; all of them for a
+	// new atlas or new casters (Doom Eternal's and HDRP's cached shadows:
+	// the stage's casters are static, so a light that did not move keeps
+	// its tiles).
+	auto same = []( const pass::shadows::ShadowPlanView &a, const pass::shadows::ShadowPlanView &b )
+	{
+		return a.tile == b.tile &&
+		       std::memcmp( &a.viewProjection, &b.viewProjection, sizeof( a.viewProjection ) ) == 0;
+	};
+	const bool whole = atlas.usage == ResourceUsage::kUndefined ||
+	                   atlas.generation != casters->generation ||
+	                   atlas.guardTexels != work.guardTexels;
+	std::vector<const pass::shadows::ShadowPlanView *> dirty;
 	for ( const pass::shadows::ShadowPlanView &view : work.views )
-		views.push_back( { view.viewProjection, view.tile, caster } );
+	{
+		if ( whole || std::none_of( atlas.drawn.begin(), atlas.drawn.end(),
+		                  [&]( const pass::shadows::ShadowPlanView &held )
+		                  {
+			                  return same( held, view );
+		                  } ) )
+			dirty.push_back( &view );
+	}
+	m_ShadowTilesKept.fetch_add( work.views.size() - dirty.size(), std::memory_order_relaxed );
+	m_ShadowTilesDrawn.fetch_add( dirty.size(), std::memory_order_relaxed );
+	if ( dirty.empty() )
+	{
+		++m_AtlasNext;
+		*desc = atlas.desc;
+		return atlas.texture;
+	}
+	// Each view draws the chunks inside its frustum (a chunk's box wholly
+	// outside one clip plane is culled).
+	auto inside = []( const math::float4x4 &clip, const Casters::Chunk &chunk )
+	{
+		int outside[6] = {};
+		for ( int corner = 0; corner < 8; ++corner )
+		{
+			const math::float4 h =
+			    math::Transform( clip, { corner & 1 ? chunk.max[0] : chunk.min[0],
+			                               corner & 2 ? chunk.max[1] : chunk.min[1],
+			                               corner & 4 ? chunk.max[2] : chunk.min[2], 1.0f } );
+			outside[0] += h.x < -h.w;
+			outside[1] += h.x > h.w;
+			outside[2] += h.y < -h.w;
+			outside[3] += h.y > h.w;
+			outside[4] += h.z < 0.0f;
+			outside[5] += h.z > h.w;
+		}
+		return std::none_of( outside, outside + 6,
+		    []( int count )
+		    {
+			    return count == 8;
+		    } );
+	};
+	std::vector<std::vector<pass::shadows::ShadowCaster>> chunkCasters( dirty.size() );
+	std::vector<pass::shadows::ShadowDepthView> views;
+	views.reserve( dirty.size() );
+	for ( std::size_t v = 0; v < dirty.size(); ++v )
+	{
+		for ( const Casters::Chunk &chunk : casters->chunks )
+		{
+			if ( inside( dirty[v]->viewProjection, chunk ) )
+				chunkCasters[v].push_back(
+				    { *mesh, math::float4x4::Identity(), chunk.firstIndex, chunk.indexCount } );
+		}
+		views.push_back( { dirty[v]->viewProjection, dirty[v]->tile, chunkCasters[v] } );
+	}
 	graph::GraphBuilder builder;
 	builder.AddPass( "stage caster uploads", graph::PassKind::kCopy )
 	    .SideEffect()
@@ -1034,8 +1196,9 @@ device::TextureId CoreWorld::DrawStageShadows( device::IRenderDevice2 &device,
 	        } );
 	const graph::ResourceRef atlasRef = builder.ImportTexture(
 	    "stage shadow atlas", atlas.texture, atlas.desc, atlas.usage, ResourceUsage::kSampled );
-	if ( !m_ShadowRenderer->AddPasses(
-	         builder, { atlasRef, work.atlasSize, work.guardTexels }, views ) )
+	pass::shadows::ShadowAtlasTarget target{ atlasRef, work.atlasSize, work.guardTexels };
+	target.keep = !whole;
+	if ( !m_ShadowRenderer->AddPasses( builder, target, views ) )
 		return {};
 	auto compiled = graph::CompileGraph( std::move( builder ) );
 	if ( !compiled )
@@ -1048,6 +1211,9 @@ device::TextureId CoreWorld::DrawStageShadows( device::IRenderDevice2 &device,
 	m_ShadowRenderer->Collect( executed.Value().token );
 	m_CasterMeshes->Retire( executed.Value().token );
 	atlas.usage = ResourceUsage::kSampled;
+	atlas.drawn = work.views;
+	atlas.generation = casters->generation;
+	atlas.guardTexels = work.guardTexels;
 	++m_AtlasNext;
 	*desc = atlas.desc;
 	return atlas.texture;
