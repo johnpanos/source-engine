@@ -694,7 +694,7 @@ void Consume( const FrameVolume &frame )
 			target->staleMark[probe] = 0;
 		target->stale.clear();
 		target->full = false;
-		OccludeProbeVisibility( volume, proxies, &cut );
+		OccludeProbeVisibility( volume, proxies, &cut, false, &host.occlusionExecutor );
 		for ( uint32_t probe : cut )
 			touch( probe );
 		host.current = target->volume;
@@ -783,7 +783,8 @@ void Consume( const FrameVolume &frame )
 	// topology, with or without a change atlas as before.
 	bool partial = sparse && host.partialReady && delta == host.uploadedDelta;
 	if ( partial && delta )
-		partial = ChangeAtlasProbes( *host.current, *host.scene.baked, touched, &host.change );
+		partial = ChangeAtlasProbes(
+		    *host.current, *host.scene.baked, touched, &host.change, &host.occlusionExecutor );
 	bool withDelta = delta;
 	if ( !partial && delta )
 		withDelta = ChangeAtlas( *host.current, *host.scene.baked, &host.change );

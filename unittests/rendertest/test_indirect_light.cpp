@@ -17,6 +17,7 @@
 #include "testing/conformance_result.h"
 
 #include <algorithm>
+#include <atomic>
 #include <random>
 #include <chrono>
 #include <cmath>
@@ -329,6 +330,30 @@ FrameVolume Step( Switcher &switcher, FakeGpu &gpu, Run *run, float seedMean )
 	return frame;
 }
 
+// Runs a batch on four threads, items taken from the last (the pooled
+// executor's stand-in; items must be independent).
+class ThreadedExecutor final : public IBatchExecutor
+{
+public:
+	void ParallelFor(
+	    const char *, uint32_t count, void ( *body )( void *, uint32_t ), void *context ) override
+	{
+		std::atomic<uint32_t> next{ 0 };
+		std::vector<std::thread> threads;
+		for ( int t = 0; t < 4; ++t )
+			threads.emplace_back(
+			    [&]
+			    {
+				    for ( uint32_t i = next++; i < count; i = next++ )
+					    body( context, count - 1 - i );
+			    } );
+		for ( std::thread &thread : threads )
+			thread.join();
+		++batches;
+	}
+	uint32_t batches = 0;
+};
+
 // The sparse update's helpers (RFC 0016 K12, the change volume): tile
 // rectangles, the change atlas and copies probe by probe, the probes the
 // proxies cut, and the probes a sample reads.
@@ -436,6 +461,16 @@ void SparseHelpers( const Volume &seed )
 						}
 					}
 		}
+		{
+			// The change atlas of the changed probes, serially and on four threads.
+			std::vector<unsigned char> serial( to.bytes.size() - to.layout.atlasOffset, 0 );
+			std::vector<unsigned char> threaded = serial;
+			ThreadedExecutor threads;
+			const bool made = ChangeAtlasProbes( to, seed, chosen, &serial ) &&
+			                  ChangeAtlasProbes( to, seed, chosen, &threaded, &threads );
+			Check( made && serial == threaded && threads.batches > 0,
+			    "change atlas: batches of probes on four threads equal the serial atlas" );
+		}
 		const std::vector<uint32_t> differing = DifferingProbes( seed, to );
 		Check( differing == chosen, "fade: DifferingProbes names exactly the changed probes" );
 		const auto whole = Blend( seed, to, 0.4f );
@@ -482,15 +517,20 @@ void SparseHelpers( const Volume &seed )
 					proxy.lo[k] = at - half;
 					proxy.hi[k] = at + half;
 				}
-			Volume near = seed, all = seed;
-			std::vector<uint32_t> nearCut, allCut;
+			Volume near = seed, all = seed, pooled = seed;
+			std::vector<uint32_t> nearCut, allCut, pooledCut;
 			const size_t nearCount = OccludeProbeVisibility( near, proxies, &nearCut );
 			const size_t allCount = OccludeProbeVisibility( all, proxies, &allCut, true );
-			same = nearCount == allCount && nearCut == allCut && near.bytes == all.bytes;
+			ThreadedExecutor threads;
+			const size_t pooledCount =
+			    OccludeProbeVisibility( pooled, proxies, &pooledCut, false, &threads );
+			same = nearCount == allCount && nearCut == allCut && near.bytes == all.bytes &&
+			       pooledCount == allCount && pooledCut == allCut && pooled.bytes == all.bytes;
 			cutTotal += allCount;
 		}
 		Check( same && cutTotal > 0,
-		    "occlusion: visiting the probes within the proxies' reach equals visiting all" );
+		    "occlusion: visiting the probes within the proxies' reach, serially or on four "
+		    "threads, equals visiting all" );
 	}
 
 	// A sample reads the eight probes SampleProbes names: scaling every

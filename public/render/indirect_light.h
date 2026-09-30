@@ -788,14 +788,48 @@ inline void ChangeAtlasRect( const Volume &published, const Volume &baked,
 // ChangeAtlas for the listed probes alone, into a change atlas `out` that
 // ChangeAtlas made from a volume of the same topology: their irradiance
 // tiles' change, and their visibility tiles as published.
+inline void ChangeAtlasProbe(
+    const Volume &published, const Volume &baked, uint32_t probe, std::vector<unsigned char> *out );
+
 [[nodiscard]] inline bool ChangeAtlasProbes( const Volume &published, const Volume &baked,
-    std::span<const uint32_t> probes, std::vector<unsigned char> *out )
+    std::span<const uint32_t> probes, std::vector<unsigned char> *out,
+    IBatchExecutor *executor = nullptr )
 {
 	const mapcontainer::ProbeVolumeLayout &layout = published.layout;
 	if ( layout.layerCount < 2 || !published.SameTopology( baked ) ||
 	     out->size() != published.bytes.size() - layout.atlasOffset )
 		return false;
-	for ( uint32_t probe : probes )
+	// Each probe writes its own rectangles: batches of probes run on the
+	// executor.
+	struct Batch
+	{
+		const Volume *published;
+		const Volume *baked;
+		std::span<const uint32_t> probes;
+		std::vector<unsigned char> *out;
+		size_t block;
+	} batch{ &published, &baked, probes, out, ChangeComposer::ProbeBlock( probes.size() ) };
+	const uint32_t blocks = uint32_t( ( probes.size() + batch.block - 1 ) / batch.block );
+	const auto run = []( void *raw, uint32_t b )
+	{
+		const Batch &c = *static_cast<const Batch *>( raw );
+		const size_t end = std::min( c.probes.size(), size_t( b + 1 ) * c.block );
+		for ( size_t k = size_t( b ) * c.block; k < end; ++k )
+			ChangeAtlasProbe( *c.published, *c.baked, c.probes[k], c.out );
+	};
+	if ( executor && blocks > 1 )
+		executor->ParallelFor( "indirect.change-atlas", blocks, run, &batch );
+	else
+		for ( uint32_t b = 0; b < blocks; ++b )
+			run( &batch, b );
+	return true;
+}
+
+// ChangeAtlasProbes' one probe.
+inline void ChangeAtlasProbe(
+    const Volume &published, const Volume &baked, uint32_t probe, std::vector<unsigned char> *out )
+{
+	const mapcontainer::ProbeVolumeLayout &layout = published.layout;
 	{
 		mapcontainer::ProbeAtlasRect rects[mapcontainer::kProbeTileRectsMax];
 		const uint32_t count = mapcontainer::ProbeTileRects( layout, probe,
@@ -815,7 +849,6 @@ inline void ChangeAtlasRect( const Volume &published, const Volume &baked,
 			}
 		}
 	}
-	return true;
 }
 
 // Copies the listed probes' tiles in `sections` (mapcontainer::

@@ -586,7 +586,7 @@ private:
 // the visibility range and the largest relocation the format allows, in grid
 // cells); `scanAll` visits every probe (the oracle the tests compare with).
 inline size_t OccludeProbeVisibility( Volume &volume, std::span<const Proxy> proxies,
-    std::vector<uint32_t> *cut = nullptr, bool scanAll = false )
+    std::vector<uint32_t> *cut = nullptr, bool scanAll = false, IBatchExecutor *executor = nullptr )
 {
 	if ( proxies.empty() )
 		return 0;
@@ -672,12 +672,14 @@ inline size_t OccludeProbeVisibility( Volume &volume, std::span<const Proxy> pro
 			candidates.erase(
 			    std::unique( candidates.begin(), candidates.end() ), candidates.end() );
 		}
-		for ( const uint32_t i : candidates )
+		// Each probe writes its own tiles: the visited probes run in batches on
+		// the executor, and the changed ones are listed in grid order.
+		const auto visit = [&]( uint32_t i ) -> bool
 		{
 			const unsigned char *state =
 			    texel( grid.stateOrigin[0] + i % stateRow, grid.stateOrigin[1] + i / stateRow );
 			if ( read( state, 3 ) < 0.5f )
-				continue;
+				return false;
 			const uint32_t index[3] = { i % grid.dims[0], ( i / grid.dims[0] ) % grid.dims[1],
 			    i / ( grid.dims[0] * grid.dims[1] ) };
 			float probe[3];
@@ -697,7 +699,7 @@ inline size_t OccludeProbeVisibility( Volume &volume, std::span<const Proxy> pro
 				near = near || d2 < grid.maxDistance * grid.maxDistance;
 			}
 			if ( !near )
-				continue;
+				return false;
 			const uint32_t x0 = grid.visibilityOrigin[0] + ( i % grid.tilesPerRow ) * kTile;
 			const uint32_t y0 = grid.visibilityOrigin[1] + ( i / grid.tilesPerRow ) * kTile;
 			bool changed = false;
@@ -738,10 +740,7 @@ inline size_t OccludeProbeVisibility( Volume &volume, std::span<const Proxy> pro
 					}
 				}
 			if ( !changed )
-				continue;
-			++changedProbes;
-			if ( cut )
-				cut->push_back( first + i );
+				return false;
 			// The octahedral border (probe_volume.py with_border).
 			const auto copy = [&]( uint32_t tx, uint32_t ty, uint32_t sx, uint32_t sy )
 			{
@@ -759,6 +758,37 @@ inline size_t OccludeProbeVisibility( Volume &volume, std::span<const Proxy> pro
 			copy( n + 1, 0, 0, n - 1 );
 			copy( 0, n + 1, n - 1, 0 );
 			copy( n + 1, n + 1, 0, 0 );
+			return true;
+		};
+		std::vector<uint8_t> changedFlags( candidates.size(), 0 );
+		struct Batch
+		{
+			const decltype( visit ) *apply;
+			const std::vector<uint32_t> *candidates;
+			std::vector<uint8_t> *changed;
+			size_t block;
+		} batch{
+		    &visit, &candidates, &changedFlags, ChangeComposer::ProbeBlock( candidates.size() ) };
+		const uint32_t blocks = uint32_t( ( candidates.size() + batch.block - 1 ) / batch.block );
+		const auto run = []( void *raw, uint32_t b )
+		{
+			const Batch &c = *static_cast<const Batch *>( raw );
+			const size_t end = std::min( c.candidates->size(), size_t( b + 1 ) * c.block );
+			for ( size_t k = size_t( b ) * c.block; k < end; ++k )
+				( *c.changed )[k] = ( *c.apply )( ( *c.candidates )[k] ) ? 1 : 0;
+		};
+		if ( executor && blocks > 1 )
+			executor->ParallelFor( "indirect.occlude-visibility", blocks, run, &batch );
+		else
+			for ( uint32_t b = 0; b < blocks; ++b )
+				run( &batch, b );
+		for ( size_t k = 0; k < candidates.size(); ++k )
+		{
+			if ( !changedFlags[k] )
+				continue;
+			++changedProbes;
+			if ( cut )
+				cut->push_back( first + candidates[k] );
 		}
 	}
 	return changedProbes;
