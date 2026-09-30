@@ -1,0 +1,33 @@
+{
+  "schema": "portal2-scenarios/v1",
+  "description": "Frame-rate floor workloads, run by tools/quality/frame_floor.py: a scripted route through a map that a player would take, judged frame by frame between the script's floor_begin and floor_end frame marks. The run stops at the first frame below floor_fps; a completed route must also reach the 1% and 0.1% low targets (fps from the mean of the slowest 1% / 0.1% of frame intervals). User direction 2026-09-30: sp_a2_laser_intro_relit is the performance fixture, with a steady 30-60 fps minimum.",
+  "driver": "../portal2-wheatley-v1/qa_driver.nut",
+  "frame_floor": {
+    "floor_fps": 30,
+    "low_1pct_fps": 60,
+    "low_01pct_fps": 30
+  },
+  "scenarios": [
+    {
+      "name": "sp_a2_laser_intro_tour",
+      "map": "sp_a2_laser_intro_relit",
+      "script": "sp_a2_laser_intro_tour.nut",
+      "timeout_seconds": 400,
+      "required_checks": [
+        "arrival.settled",
+        "corridor.reached",
+        "entry_door.opens",
+        "chamber.reached",
+        "wall.falls",
+        "stand.reached",
+        "laser.on",
+        "catcher.powered",
+        "floor_portal.viewed",
+        "lift.reached",
+        "exit_door.opens",
+        "departure.reached",
+        "departure_elevator.arrives"
+      ]
+    }
+  ]
+}
