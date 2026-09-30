@@ -979,9 +979,26 @@ void CoreWorld::RecordSlot(
 		    *target.device, *shadows, target.submitted, target.frame, &world.shadowAtlasDesc );
 	// The stage view's screen passes: GTAO over the pass's prepass.
 	const int aoQuality = m_AoQuality.load( std::memory_order_relaxed );
+	if ( shadows && target.device && aoQuality == 0 &&
+	     EnsureOcclusion( *target.device, encoder, target.width, target.height, target.submitted ) )
+	{
+		// Off: the pass binds the target, held at one (the neutral term).
+		if ( !m_OcclusionNeutral )
+		{
+			encoder.TransitionTexture( m_Occlusion, device::ResourceUsage::kSampled,
+			    device::ResourceUsage::kCopyDestination );
+			encoder.ClearTexture( m_Occlusion, { 1, 1, 1, 1 } );
+			encoder.TransitionTexture( m_Occlusion, device::ResourceUsage::kCopyDestination,
+			    device::ResourceUsage::kSampled );
+			m_OcclusionNeutral = true;
+		}
+		world.ambientOcclusion = m_Occlusion;
+		world.ambientOcclusionDesc = m_OcclusionDesc;
+	}
 	if ( shadows && target.device && aoQuality > 0 &&
 	     EnsureOcclusion( *target.device, encoder, target.width, target.height, target.submitted ) )
 	{
+		m_OcclusionNeutral = false;
 		// Slices x steps per side and resolution, set by render.lab.gtao
 		// against Cycles: ultra (8 x 8, full) and high (5 x 8 at half
 		// resolution, a sixth of ultra's cost) pass every check; fewer than 8
@@ -1272,6 +1289,7 @@ bool CoreWorld::EnsureOcclusion( device::IRenderDevice2 &device, device::Command
 		return false;
 	}
 	m_Occlusion = texture.Value();
+	m_OcclusionNeutral = true; // cleared to one below
 	// One (no occlusion) until a view records it.
 	encoder.TransitionTexture(
 	    m_Occlusion, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );

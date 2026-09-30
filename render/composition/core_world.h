@@ -301,6 +301,7 @@ private:
 	std::uint64_t m_AtlasFrame = 0;
 	// The screen passes (render sequence): GTAO and its output.
 	std::unique_ptr<pass::ao::AmbientOcclusion> m_Ao;
+	bool m_OcclusionNeutral = true; // m_Occlusion holds one (made so, or cleared since)
 	// RFC 0014 D4: made and replaced on the render sequence; m_TimersLock
 	// guards the pointer against the main thread's TakeGpuTimes.
 	std::atomic<bool> m_GpuTimersOn{ false };

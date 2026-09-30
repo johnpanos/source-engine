@@ -1761,6 +1761,10 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 				viewOcclusion = target.ambientOcclusion;
 		}
 	}
+	// No screen passes (ambient occlusion off): the target holds the
+	// neutral occlusion, one.
+	if ( world->stage && !target.screenPasses && target.ambientOcclusion.IsValid() )
+		viewOcclusion = target.ambientOcclusion;
 	// The lit view groups, with the occlusion when it was recorded.
 	std::erase_if( order,
 	    [&]( std::uint32_t index )
