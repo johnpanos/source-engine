@@ -214,6 +214,14 @@ def leaf_volumes(bsp_path):
             for index in range(len(leaves) // 32)]
 
 
+FLOAT32 = struct.Struct("<3f")
+
+
+def single_point(point):
+    """A point as the payload stores it (float32)."""
+    return FLOAT32.unpack(FLOAT32.pack(*point))
+
+
 def write_payload(faces, leaves, meshlet_leaves=None):
     """Serialize WMSH v1. `leaves` holds each BSP leaf's face IDs; a leaf
     references the meshlets of its faces. With `meshlet_leaves`, a callable
@@ -256,12 +264,19 @@ def write_payload(faces, leaves, meshlet_leaves=None):
                         indices.append(len(indices))
                         positions.append(point)
                     triangle_faces.append(face_id)
-                center = tuple(sum(point[axis] for point in positions) / len(positions)
-                               for axis in range(3))
-                # The reader tests containment in float32 (squared distances),
-                # where one rounding step of a 2000-unit meshlet exceeds a fixed
-                # slack; the relative pad covers it at any size.
-                radius = max(math.dist(center, point) for point in positions) * (1 + 1e-6) + 1e-5
+                # The bound is measured on what the payload stores: float32
+                # positions and a float32 centre. Rounding the centre alone
+                # moved testchmb_a_15's far corner 0.00008 outside a bound
+                # measured on float64 values at ~2500 units. The reader then
+                # tests containment in float32 (squared differences), which
+                # errs by the coordinates' magnitude: the relative pad covers
+                # a large meshlet, the magnitude pad a far one.
+                stored = [single_point(point) for point in positions]
+                center = single_point(tuple(sum(point[axis] for point in positions) /
+                                            len(positions) for axis in range(3)))
+                magnitude = max(abs(value) for point in stored + [center] for value in point)
+                radius = (max(math.dist(center, point) for point in stored) * (1 + 1e-6) + 1e-5 +
+                          2 * magnitude * 2.0 ** -23)
                 axis, cutoff = front_face_cone([triangle[0] for triangle in chunk])
                 meshlet_boxes.append((tuple(min(point[axis] for point in positions)
                                             for axis in range(3)),

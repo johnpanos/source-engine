@@ -9,7 +9,7 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from worldstage_mesh_compare import read_payload  # noqa: E402
-from worldstage_mesh_pack import (face_triangles, front_face_cone, tangent_frame,  # noqa: E402
+from worldstage_mesh_pack import (cross, face_triangles, front_face_cone, tangent_frame, unit,  # noqa: E402
                                   write_payload)
 
 
@@ -29,6 +29,44 @@ class WorldMeshPayloadTests(unittest.TestCase):
         self.assertEqual(decoded["faces"], (7,))
         self.assertEqual(decoded["leaves"], [(0,), ()])
         self.assertEqual(decoded["counts"]["triangles"], 1)
+
+    def test_far_meshlets_contain_their_vertices_in_float32(self):
+        """testchmb_a_15's meshlet 1642 (2026-09-29): measured on float64
+        values, its float32 centre left the far corner (2528, 864, 1408)
+        outside the bound. Both readers must accept it: the Python one
+        (float64, +1e-4) and the C++ one (ValidateWorldMesh: float32 squared
+        differences against (radius + 0.0001) squared)."""
+        # Its corners within a float32 step (the stage's float64 values):
+        # this draw failed the previous bound.
+        points = [(2436.000080302437, 911.999978151682, 1408.0000587113482),
+                  (2436.0001170220057, 911.9999532807822, 1343.999920875078),
+                  (2436.00002880809, 896.0000074294833, 1407.9999662612877),
+                  (2527.999880844618, 863.9999733990339, 1407.9999822086734),
+                  (2495.9999772604974, 896.0000866988742, 1408.0000202627266),
+                  (2496.00005611939, 896.0000954982012, 1344.0000597056312)]
+        triangles = []
+        for corners in (points[0:3], points[3:6]):
+            uv = [(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]
+            normal = unit(cross(tuple(corners[1][i] - corners[0][i] for i in range(3)),
+                                tuple(corners[2][i] - corners[0][i] for i in range(3))))
+            tangent, sign = tangent_frame(corners, uv, normal)
+            triangles.append((corners, uv, uv, normal, tangent, sign))
+        decoded = read_payload(write_payload({3: {"material": "far", "triangles": triangles}},
+                                             [{3}])[0])
+        f32 = struct.Struct("<f")
+
+        def single(value):
+            return f32.unpack(f32.pack(value))[0]
+
+        for meshlet in decoded["meshlets"]:
+            first, count = meshlet[0], meshlet[1]
+            center = [single(v) for v in meshlet[4:7]]
+            radius = single(single(meshlet[7]) + single(0.0001))
+            for point, *_ in decoded["vertices"][first:first + count]:
+                d = [single(single(point[axis]) - center[axis]) for axis in range(3)]
+                square = single(single(single(d[0] * d[0]) + single(d[1] * d[1])) +
+                                single(d[2] * d[2]))
+                self.assertLessEqual(square, single(radius * radius), point)
 
     def test_truncation_and_bad_sections_are_rejected(self):
         payload = self.make_payload()
