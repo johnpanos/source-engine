@@ -124,9 +124,10 @@ def collect_sources(scene, materials):
 
 
 def isolate(sources, active):
-    """Enable only source `active` (None: every source)."""
+    """Enable only the sources whose indices are in `active` (None: every
+    source)."""
     for index, source in enumerate(sources):
-        on = active is None or index == active
+        on = active is None or index in active
         for name in source.get("objects", []):
             obj = bpy.data.objects.get(name)
             if obj is None:
@@ -683,8 +684,12 @@ def main():
     args.work.mkdir(parents=True, exist_ok=True)
     owners = np.asarray(owners)
     injection, probe_direct, images = [], [], {}
-    for s, source in enumerate(sources):
-        isolate(sources, s)
+    groups = radiosity_transfer.transfer_sources(sources)
+    if len(groups) < len(sources):
+        progress("radiosity: %d fixed lights transported as one source (%d sources, %d max)"
+                 % (len(groups[-1]["members"]), len(sources), radiosity_transfer.MAX_SOURCES))
+    for s, source in enumerate(groups):
+        isolate(sources, set(source["members"]))
         light, path = bake_direct(receivers, target, height, "RadiosityDirect_%02d" % s, args.work)
         images[source["name"]] = {"exr": path.name, "exr_sha256": sha256(path)}
         per_patch = np.zeros((len(keep), 3))
@@ -708,7 +713,7 @@ def main():
     gather_rows = [[(int(remap[q]), list(w)) for q, w in entry.items() if remap[q] >= 0]
                    for entry in gather]
     data = radiosity_transfer.build(
-        [{"name": s["name"], "kind": s["kind"], "style": s["style"]} for s in sources],
+        [{"name": s["name"], "kind": s["kind"], "style": s["style"]} for s in groups],
         patch_records, transfer_rows, injection, gather_rows,
         np.clip(np.stack(probe_direct), 0.0, None), radiosity_transfer.prbv_topology_hash(prbv))
     result = radiosity_transfer.Transfer(data, prbv)
@@ -752,6 +757,11 @@ def main():
                "gather_rays": args.gather_rays, "receivers_per_patch": RECEIVERS_PER_PATCH,
                "sources": [{"name": s["name"], "kind": s["kind"], "style": s["style"]}
                            for s in sources],
+               # The RTRN's sources: the scene's, or with the fixed lights as
+               # one (radiosity_transfer.transfer_sources).
+               "transfer_sources": [{"name": g["name"], "kind": g["kind"], "style": g["style"],
+                                     "members": [sources[i]["name"] for i in g["members"]]}
+                                    for g in groups],
                "patches": {"sampled": count, "kept": int(len(keep)),
                            "closed_meshes": int(sum(closed)), "meshes": len(world),
                            "kept_area_m2_by_mesh": {

@@ -254,6 +254,42 @@ class SceneSourcesTest(unittest.TestCase):
         self.assertEqual(names[:2], ["A", "A_1"])
 
 
+class TransferSourcesTest(unittest.TestCase):
+    @staticmethod
+    def sources(lights, switched=0, emissive=0):
+        out = [{"name": "light%d" % i, "kind": "light",
+                "style": radiosity_transfer.FIRST_STYLE + i if i < switched else -1}
+               for i in range(lights)]
+        return out + [{"name": "sign%d" % i, "kind": "emissive", "style": -1}
+                      for i in range(emissive)]
+
+    def test_each_source_stays_its_own_within_the_limit(self):
+        sources = self.sources(60, switched=5, emissive=4)
+        groups = radiosity_transfer.transfer_sources(sources)
+        self.assertEqual([g["name"] for g in groups], [s["name"] for s in sources])
+        self.assertEqual([g["members"] for g in groups], [[i] for i in range(64)])
+
+    def test_fixed_lights_become_one_source_over_the_limit(self):
+        """testchmb_a_15: 84 lights (1 switched) and 3 emissive surfaces."""
+        sources = self.sources(84, switched=1, emissive=3)
+        groups = radiosity_transfer.transfer_sources(sources)
+        self.assertEqual([g["name"] for g in groups],
+                         ["light0", "sign0", "sign1", "sign2", "fixed_lights"])
+        self.assertEqual(groups[-1]["style"], -1)
+        self.assertEqual(groups[-1]["members"], list(range(1, 84)))
+        # Every source is transported exactly once.
+        self.assertEqual(sorted(i for g in groups for i in g["members"]), list(range(87)))
+
+    def test_too_many_separate_sources_fail(self):
+        with self.assertRaises(ValueError):
+            radiosity_transfer.transfer_sources(self.sources(40, switched=32, emissive=40))
+
+    def test_the_aggregate_name_does_not_collide(self):
+        sources = self.sources(70) + [{"name": "fixed_lights", "kind": "emissive", "style": -1}]
+        names = [g["name"] for g in radiosity_transfer.transfer_sources(sources)]
+        self.assertEqual(names, ["fixed_lights", "fixed_lights_1"])
+
+
 class FrontEndTest(unittest.TestCase):
     def test_vmf_front_end_hands_its_bsp_to_the_back_end(self):
         tmp = Path(tempfile.mkdtemp())

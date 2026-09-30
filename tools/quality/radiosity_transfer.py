@@ -169,6 +169,37 @@ def scene_sources(scene, emissive=None):
     return sources
 
 
+FIXED_LIGHTS = "fixed_lights"
+
+
+def transfer_sources(sources):
+    """The transfer's sources, from `sources` (scene_sources): each one, with
+    `members` [its index]. A map with more than MAX_SOURCES has its fixed
+    lights (kind light, style -1) as one source, named FIXED_LIGHTS, after the
+    others: the product publishes the bake plus the change, and a fixed
+    light's scalar stays at its bake, so only their sum ever reaches the
+    solve (render/indirect_radiosity.h). Switchable lights, the sky and
+    emissive sources stay separate; if those alone exceed MAX_SOURCES the map
+    cannot be transported. testchmb_a_15 has 84 lights and 3 emissive
+    surfaces; sp_a2_bts6 159 sources."""
+    groups = [dict(source, members=[index]) for index, source in enumerate(sources)]
+    if len(groups) <= MAX_SOURCES:
+        return groups
+    fixed = [i for i, source in enumerate(sources)
+             if source["kind"] == "light" and source["style"] < 0]
+    kept = [group for group in groups if group["members"][0] not in set(fixed)]
+    names = {group["name"] for group in kept}
+    name, suffix = FIXED_LIGHTS, 1
+    while name in names:
+        name, suffix = "%s_%d" % (FIXED_LIGHTS, suffix), suffix + 1
+    merged = kept + ([{"name": name, "kind": "light", "style": -1, "members": fixed}]
+                     if fixed else [])
+    if len(merged) > MAX_SOURCES:
+        raise ValueError("%d switchable, sky and emissive sources exceed the transfer's %d"
+                         % (len(kept), MAX_SOURCES))
+    return merged
+
+
 def switchable_sources(scene):
     """The sources the game switches (style >= 0), in style order."""
     return [source for source in scene_sources(scene) if source["style"] >= 0]
