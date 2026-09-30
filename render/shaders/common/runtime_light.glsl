@@ -32,6 +32,17 @@ float RuntimeLightFalloffInverseSquare( float distanceSquared, float radius, flo
 	return 100.0 * 100.0 / d2 * window;
 }
 
+// light_set::AttenuatedFalloff: a world light as vrad bakes it, 1 / ( c + l d
+// + q d^2 ), 0 at or beyond a positive radius.
+float RuntimeLightFalloffAttenuated( float distanceSquared, float radius, vec3 attenuation )
+{
+	if ( radius > 0.0 && distanceSquared >= radius * radius )
+		return 0.0;
+	const float denominator = attenuation.x + attenuation.y * sqrt( distanceSquared ) +
+	                          attenuation.z * distanceSquared;
+	return denominator > 0.0 ? 1.0 / denominator : 0.0;
+}
+
 // light_set::SpotFactor (light set v3, vrad's rule): the cosine to the axis
 // times the cone ramp to its exponent (0 and 1 linear); 0 outside the cone.
 // SEEDED_SPOT_NO_COSINE drops the cosine (render.lab.clustered-lights'

@@ -109,7 +109,11 @@ SurfaceLightGpu PackSurfaceLight(
 	packed.color[3] = light.minLight;
 	packed.direction[3] = spot ? light.outerCos : -2.0f;
 	packed.cone[0] = spot ? light.innerCos : 1.0f;
-	packed.cone[1] = light.falloff == light_set::LightFalloff::InverseSquare ? 1.0f : 0.0f;
+	packed.cone[1] = light.falloff == light_set::LightFalloff::InverseSquare ? 1.0f
+	                 : light.falloff == light_set::LightFalloff::Attenuated  ? 2.0f
+	                                                                         : 0.0f;
+	for ( int k = 0; k < 3; ++k )
+		packed.attenuation[k] = light.attenuation[k];
 	packed.cone[2] = light.sourceRadius;
 	packed.cone[3] = float( shadowTile );
 	packed.spot[0] = light.spotExponent;

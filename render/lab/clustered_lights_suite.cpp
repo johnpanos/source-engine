@@ -87,6 +87,19 @@ light_set::RuntimeLight Point( float3 at, float r, float g, float b, float radiu
 	return light;
 }
 
+// A world light as vrad bakes it: intensity over ( c + l d + q d^2 ), here
+// Portal 2's _fifty_percent_distance form ( d50^2, 0, 1 ), nearly flat to d50.
+light_set::RuntimeLight Attenuated( light_set::RuntimeLight light, float fiftyPercent )
+{
+	light.falloff = light_set::LightFalloff::Attenuated;
+	light.attenuation[0] = fiftyPercent * fiftyPercent;
+	light.attenuation[1] = 0.0f;
+	light.attenuation[2] = 1.0f;
+	for ( float &c : light.color )
+		c *= fiftyPercent * fiftyPercent;
+	return light;
+}
+
 light_set::RuntimeLight Spot( light_set::RuntimeLight light, float3 direction,
     float innerDegrees, float outerDegrees, float exponent = 0.0f )
 {
@@ -122,6 +135,13 @@ std::map<std::string, std::vector<light_set::RuntimeLight>> LightSets()
 		}
 	}
 	sets["dense"] = dense;
+	// World lights as vrad bakes them (LightFalloff::Attenuated): Portal 2's
+	// fifty-percent form, one with a hard radius.
+	sets["attenuated"] = {
+	    Attenuated( Point( { -60, 20, 90 }, 0.6f, 0.5f, 0.4f, 0, LightFalloff::Legacy ), 120.0f ),
+	    Attenuated( Spot( Point( { 90, -40, 110 }, 0.5f, 0.6f, 0.7f, 260, LightFalloff::Legacy ),
+	                    { -0.2f, 0.1f, -1.0f }, 25, 40, 1.0f ),
+	        80.0f ) };
 	return sets;
 }
 

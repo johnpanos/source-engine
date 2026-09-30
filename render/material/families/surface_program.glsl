@@ -142,7 +142,8 @@ struct RuntimeLightRecord
 	vec4 direction; // w: outerCos, below -1 for a point light
 	vec4 cone;      // innerCos, 1 for an inverse-square falloff, sourceRadius,
 	                // the shadow tile or -1
-	vec4 spot;      // the cone ramp's exponent
+	vec4 spot;      // the cone ramp's exponent, baked diffuse, shadow tiles
+	vec4 attenuation; // vrad's c, l, q (cone.y 2)
 };
 layout( set = 1, binding = 0 ) uniform ClusterView
 {
@@ -649,11 +650,14 @@ void PbrSurface()
 			                    : RuntimeLightFalloffLegacy(
 			                          distanceSquared, runtime.position.w, runtime.color.w );
 #else
-			float falloff = runtime.cone.y > 0.5
-			                    ? RuntimeLightFalloffInverseSquare(
-			                          distanceSquared, runtime.position.w, runtime.cone.z )
-			                    : RuntimeLightFalloffLegacy(
-			                          distanceSquared, runtime.position.w, runtime.color.w );
+			float falloff =
+			    runtime.cone.y > 1.5
+			        ? RuntimeLightFalloffAttenuated(
+			              distanceSquared, runtime.position.w, runtime.attenuation.xyz )
+			    : runtime.cone.y > 0.5
+			        ? RuntimeLightFalloffInverseSquare(
+			              distanceSquared, runtime.position.w, runtime.cone.z )
+			        : RuntimeLightFalloffLegacy( distanceSquared, runtime.position.w, runtime.color.w );
 #endif
 			if ( falloff <= 0.0 )
 				continue;

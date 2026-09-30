@@ -140,7 +140,8 @@ struct SurfaceLightGpu
 	float position[4] = {};  // w: radius (0 unbounded)
 	float color[4] = {};     // linear, times the style scalar; w: minLight
 	float direction[4] = {}; // the spot's axis; w: outerCos, or -2 for a point light
-	// innerCos, 1 for an inverse-square falloff, sourceRadius, and the
+	// innerCos, the falloff (0 Source's dlight, 1 inverse square, 2 vrad's
+	// attenuation), sourceRadius, and the
 	// light's shadow tile in the view's tile list (binding 4), or -1 when it
 	// has none (unshadowed: its visibility is one).
 	float cone[4] = {};
@@ -148,8 +149,11 @@ struct SurfaceLightGpu
 	// diffuse light is in the surface's baked light (the specular lobe only);
 	// z: its shadow tiles from cone.w (1 a spot's, 6 a point light's cube)
 	float spot[4] = {};
+	// xyz: vrad's constant, linear and quadratic terms (cone.y 2: an
+	// Attenuated world light, light_set::AttenuatedFalloff)
+	float attenuation[4] = {};
 };
-static_assert( sizeof( SurfaceLightGpu ) == 80 );
+static_assert( sizeof( SurfaceLightGpu ) == 96 );
 
 SurfaceLightGpu PackSurfaceLight( const light_set::RuntimeLight &light, int shadowTile = -1,
     int shadowTiles = 1, bool diffuseInBake = false );

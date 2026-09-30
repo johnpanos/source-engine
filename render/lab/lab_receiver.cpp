@@ -83,10 +83,12 @@ float RuntimeLightOracle( const light_set::RuntimeLight &light, const ReceiverMa
 	const math::float3 toLight{
 	    light.position[0] - p.x, light.position[1] - p.y, light.position[2] - p.z };
 	const float distanceSquared = math::Dot( toLight, toLight );
-	float falloff = light.falloff == light_set::LightFalloff::InverseSquare
-	                    ? light_set::InverseSquareFalloff(
-	                          distanceSquared, light.radius, light.sourceRadius )
-	                    : light_set::Falloff( distanceSquared, light.radius, light.minLight );
+	float falloff =
+	    light.falloff == light_set::LightFalloff::Attenuated
+	        ? light_set::AttenuatedFalloff( distanceSquared, light.radius, light.attenuation )
+	    : light.falloff == light_set::LightFalloff::InverseSquare
+	        ? light_set::InverseSquareFalloff( distanceSquared, light.radius, light.sourceRadius )
+	        : light_set::Falloff( distanceSquared, light.radius, light.minLight );
 	if ( !( falloff > 0.0f ) )
 		return 0.0f;
 	const math::float3 l = math::Normalize( toLight );
