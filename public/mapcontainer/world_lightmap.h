@@ -35,7 +35,11 @@ namespace mapcontainer
 static const uint32_t kWorldLightmapMinVersion = 1;
 static const uint32_t kWorldLightmapLayeredVersion = 2;
 static const uint32_t kWorldLightmapMaxLayers = 3;
-static const uint64_t kWorldLightmapMaxBytes = 256ull * 1024 * 1024;
+// A sanity bound on map input, not a budget: a relit 4096 atlas with its
+// direct and indirect layers is 384 MiB of RGBA16F, sp_a2_triple_laser's
+// 8192x4096 768 MiB. Per-profile budgets (compressed mobile lightmaps)
+// belong to the package (RFC 0008 F3/F7).
+static const uint64_t kWorldLightmapMaxBytes = 1024ull * 1024 * 1024;
 static const uint32_t kWorldLightmapMaxDimension = 16384;
 static const uint32_t kWorldLightmapTexelBytes = 8; // RGBA16F
 

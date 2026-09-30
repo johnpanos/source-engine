@@ -576,6 +576,8 @@ def main():
     parser.add_argument("--environment", type=Path)
     parser.add_argument("--prbv", type=Path, required=True)
     parser.add_argument("--patch-size", type=float, required=True, help="meters")
+    parser.add_argument("--max-patches", type=int,
+                        help="grow the patch size until the patches fit (radiosity.fit_limit)")
     parser.add_argument("--transfer-rays", type=int, default=256)
     parser.add_argument("--gather-rays", type=int, default=4096)
     parser.add_argument("--samples", type=int, required=True)
@@ -622,10 +624,25 @@ def main():
 
     # Patches.
     albedo = Albedo(scene, calibration)
-    spacing = args.patch_size / SAMPLES_PER_PATCH_EDGE
-    samples, closed = sample_surfaces(
-        world, lambda obj, uv: albedo.evaluate(assignments[obj.name], uv), spacing, rng)
-    patches = PatchIndex(samples, closed, args.patch_size)
+    # With --max-patches, a map whose patches at the requested size exceed
+    # the budget gets the smallest coarser size that fits (a whole retail
+    # map at 1 m: 277696 patches and a 1.4 GB transfer, over the RTRN's
+    # 1 GiB and the runtime solve's reach), as the probe volume's fit_limit
+    # grows its spacing. The receipt records both sizes.
+    patch_size = args.patch_size
+    for _ in range(8):
+        samples, closed = sample_surfaces(
+            world, lambda obj, uv: albedo.evaluate(assignments[obj.name], uv),
+            patch_size / SAMPLES_PER_PATCH_EDGE, rng)
+        patches = PatchIndex(samples, closed, patch_size)
+        if not args.max_patches or len(patches.members) <= args.max_patches:
+            break
+        grown = patch_size * max(1.1, math.sqrt(len(patches.members) / args.max_patches))
+        progress("radiosity: %d patches at %.2f m exceed %d; resampling at %.2f m"
+                 % (len(patches.members), patch_size, args.max_patches, grown))
+        patch_size = grown
+    else:
+        raise ValueError("no patch size fits %d patches" % args.max_patches)
     bvh, owner = world_bvh(world + emitters)
     owner = np.where(owner < len(world), owner, -1)
     sampled = time.monotonic()
@@ -797,7 +814,8 @@ def main():
                "rtrn": args.out.name, "rtrn_sha256": hashlib.sha256(data).hexdigest(),
                "rtrn_bytes": len(data), "cycles_device": device, "samples": args.samples,
                "seed": SEED, "light_paths": light_paths, "normal_maps": False,
-               "patch_size_m": args.patch_size, "transfer_rays": args.transfer_rays,
+               "patch_size_m": patch_size, "requested_patch_size_m": args.patch_size,
+               "max_patches": args.max_patches, "transfer_rays": args.transfer_rays,
                "material_reflectance": {name: {"specular": round(v[0], 5),
                                                "diffuse": round(v[1], 5)}
                                         for name, v in calibration.items()},

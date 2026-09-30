@@ -1025,6 +1025,8 @@ class Pipeline:
                               "--device", self.lightmap["device"],
                               "--light-paths", self.lightmap["light_paths"],
                               "--out", p["rtrn"], "--work", p["rtrn_work"]] + env_args
+            if radiosity.get("fit_limit") and radiosity.get("max_patches"):
+                radiosity_args += ["--max-patches", str(radiosity["max_patches"])]
             self.step("radiosity", [p["stage"], p["prbv"]] + self.scene_sources() +
                       ([environment] if environment else []),
                       dict(radiosity, light_paths=self.lightmap["light_paths"]),
