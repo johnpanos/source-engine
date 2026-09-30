@@ -162,7 +162,7 @@ def calibrate_materials(scene, names, device, light_paths, work):
     plane = bpy.context.active_object
     uv = plane.data.uv_layers.active
     uv.name = "st"
-    receiver, target, height = receiver_mesh([((0.0, 0.0, 1e-3), (0.0, 0.0, -1.0))])
+    receiver, target, height = receiver_mesh([(0.0, 0.0, 1e-3)], [(0.0, 0.0, -1.0)])
     pbrt_blender.configure_cycles(CALIBRATION_SAMPLES, device)
     pbrt_blender.configure_light_paths(light_paths)
     bpy.context.scene.cycles.use_adaptive_sampling = False
@@ -473,6 +473,38 @@ def _gather_entry(i):
     return entry
 
 
+def links_from_dicts(rows, width=1):
+    """radiosity_transfer.Rows of per-row {column: value} dicts (the workers'
+    sums, taken exactly), each row's links in dict order, not sorted."""
+    counts = np.fromiter((len(row) for row in rows), np.int64, len(rows))
+    ptr = np.zeros(len(rows) + 1, dtype=np.int64)
+    ptr[1:] = np.cumsum(counts)
+    columns = np.fromiter((q for row in rows for q in row), np.int64, int(ptr[-1]))
+    if width == 1:
+        values = np.fromiter((v for row in rows for v in row.values()), np.float64,
+                             int(ptr[-1])).reshape(-1, 1)
+    else:
+        parts = [np.asarray(list(row.values()), dtype=np.float64).reshape(-1, width)
+                 for row in rows if row]
+        values = np.concatenate(parts) if parts else np.zeros((0, width))
+    return radiosity_transfer.Rows(ptr, columns, values)
+
+
+def row_owner(rows):
+    """Each link's row."""
+    return np.repeat(np.arange(rows.count), np.diff(rows.ptr))
+
+
+def row_columns(rows, selected):
+    """The columns of rows `selected`, concatenated."""
+    starts, lengths = rows.ptr[selected], np.diff(rows.ptr)[selected]
+    total = int(lengths.sum())
+    if not total:
+        return np.zeros(0, dtype=np.int64)
+    first = np.repeat(starts - (np.cumsum(lengths) - lengths), lengths)
+    return rows.columns[first + np.arange(total)]
+
+
 @contextlib.contextmanager
 def worker_pool(workers):
     """One pool of forked workers for every fan_out of a trace (None with one
@@ -500,11 +532,12 @@ def progress(message):
 
 # ---------------------------------------------------------------- receivers
 
-def receiver_mesh(quads):
-    """One small quad per (position, normal) receiver, each on its own bake
-    texel (pbrt_blender.receiver_mesh, shared with the probe volume bake)."""
-    positions = np.array([position for position, _ in quads], dtype=np.float64).reshape(-1, 3)
-    normals = np.array([normal for _, normal in quads], dtype=np.float64).reshape(-1, 3)
+def receiver_mesh(positions, normals):
+    """One small quad per receiver (rows of `positions` and `normals`), each on
+    its own bake texel (pbrt_blender.receiver_mesh, shared with the probe
+    volume bake)."""
+    positions = np.asarray(positions, dtype=np.float64).reshape(-1, 3)
+    normals = np.asarray(normals, dtype=np.float64).reshape(-1, 3)
     return pbrt_blender.receiver_mesh("RadiosityReceivers", "receivers", positions, normals,
                                       QUAD_HALF_METERS, BAKE_WIDTH, normalize=True)
 
@@ -644,34 +677,36 @@ def main():
         _RAYS.clear()
     gathered = time.monotonic()
 
-    # Keep the patches whose light reaches a probe, directly or through others.
-    reached = set()
-    frontier = [q for entry in gather for q in entry]
-    while frontier:
-        q = frontier.pop()
-        if q in reached:
-            continue
-        reached.add(q)
-        frontier.extend(r for r in transfer[q] if r not in reached)
-    keep = np.array(sorted(reached), dtype=int)
+    # Keep the patches whose light reaches a probe, directly or through
+    # others: a breadth-first expansion over the transfer's links.
+    transfer_links = links_from_dicts(transfer)
+    gather_links = links_from_dicts(gather, radiosity_transfer.SH_COEFFICIENTS)
+    reached = np.zeros(count, dtype=bool)
+    frontier = np.unique(gather_links.columns)
+    while len(frontier):
+        reached[frontier] = True
+        neighbours = row_columns(transfer_links, frontier)
+        frontier = np.unique(neighbours[~reached[neighbours]])
+    keep = np.flatnonzero(reached)
     remap = np.full(count, -1)
     remap[keep] = np.arange(len(keep))
 
     # Direct light per source: patch receivers (a few samples each) and probe
-    # receivers (the PRBV interior directions).
+    # receivers (the PRBV interior directions). The samples are drawn per
+    # patch in the serial order.
     directions = probe_volume.interior_directions(INTERIOR).reshape(-1, 3)
-    quads, owners = [], []
-    for new, p in enumerate(keep):
-        members = patches.members[p]
-        chosen = members[rng.integers(0, len(members), RECEIVERS_PER_PATCH)]
-        for s in chosen:
-            normal = samples["normal"][s] * patches.side[p]
-            quads.append((samples["position"][s] + normal * RECEIVER_OFFSET, normal))
-            owners.append(new)
-    patch_quads = len(quads)
-    for position in probe_positions:
-        for d in directions:
-            quads.append((position, d))
+    chosen = np.concatenate([patches.members[p][rng.integers(0, len(patches.members[p]),
+                                                             RECEIVERS_PER_PATCH)]
+                             for p in keep]) if len(keep) else np.zeros(0, dtype=np.int64)
+    side = np.repeat(patches.side[keep], RECEIVERS_PER_PATCH)
+    patch_normals = samples["normal"][chosen] * side[:, None]
+    patch_positions = samples["position"][chosen] + patch_normals * RECEIVER_OFFSET
+    owners = np.repeat(np.arange(len(keep)), RECEIVERS_PER_PATCH)
+    patch_quads = len(chosen)
+    positions = np.concatenate([patch_positions.reshape(-1, 3),
+                                np.repeat(probe_positions, len(directions), axis=0)])
+    normals = np.concatenate([patch_normals.reshape(-1, 3),
+                              np.tile(directions, (len(probe_positions), 1))])
     device = pbrt_blender.configure_cycles(args.samples, args.device)
     light_paths = pbrt_blender.configure_light_paths(args.light_paths)
     render = bpy.context.scene
@@ -680,10 +715,10 @@ def main():
     render.render.bake.use_clear = True
     render.render.bake.margin = 0
     render.render.bake.use_pass_color = False
-    receivers, target, height = receiver_mesh(quads)
+    receivers, target, height = receiver_mesh(positions, normals)
     args.work.mkdir(parents=True, exist_ok=True)
-    owners = np.asarray(owners)
-    injection, probe_direct, images = [], [], {}
+    injection_rows, injection_columns, injection_values = [], [], []
+    probe_direct, images = [], {}
     groups = radiosity_transfer.transfer_sources(sources)
     if len(groups) < len(sources):
         progress("radiosity: %d fixed lights transported as one source (%d sources, %d max)"
@@ -695,8 +730,10 @@ def main():
         per_patch = np.zeros((len(keep), 3))
         np.add.at(per_patch, owners, light[:patch_quads])
         per_patch /= RECEIVERS_PER_PATCH
-        injection.append([(int(p), tuple(float(v) for v in per_patch[p]))
-                          for p in np.nonzero(per_patch.max(axis=1) > 0)[0]])
+        lit = np.flatnonzero(per_patch.max(axis=1) > 0)
+        injection_rows.append(np.full(len(lit), s))
+        injection_columns.append(lit)
+        injection_values.append(per_patch[lit])
         direct = light[patch_quads:patch_quads + len(probe_positions) * len(
             directions)].reshape(len(probe_positions), len(directions), 3).copy()
         direct[~probe_active.astype(bool)] = 0.0  # inside geometry: never sampled
@@ -708,10 +745,20 @@ def main():
                      "normal": patches.normal[keep],
                      "area": patches.area[keep] * SOURCE_UNITS_PER_METER ** 2,
                      "albedo": patches.albedo[keep]}
-    transfer_rows = [[(int(remap[q]), f) for q, f in transfer[p].items() if remap[q] >= 0]
-                     for p in keep]
-    gather_rows = [[(int(remap[q]), list(w)) for q, w in entry.items() if remap[q] >= 0]
-                   for entry in gather]
+    # The kept patches' rows and every probe's, in kept-patch indices, each
+    # row's links ascending.
+    owner = row_owner(transfer_links)
+    kept = reached[owner] & (remap[transfer_links.columns] >= 0)
+    transfer_rows = radiosity_transfer.Rows.sorted_from(
+        remap[owner[kept]], remap[transfer_links.columns[kept]],
+        transfer_links.values[kept], len(keep))
+    kept = remap[gather_links.columns] >= 0
+    gather_rows = radiosity_transfer.Rows.sorted_from(
+        row_owner(gather_links)[kept], remap[gather_links.columns[kept]],
+        gather_links.values[kept], len(gather))
+    injection = radiosity_transfer.Rows.sorted_from(
+        np.concatenate(injection_rows), np.concatenate(injection_columns),
+        np.concatenate(injection_values), len(groups))
     data = radiosity_transfer.build(
         [{"name": s["name"], "kind": s["kind"], "style": s["style"]} for s in groups],
         patch_records, transfer_rows, injection, gather_rows,

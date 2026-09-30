@@ -276,6 +276,51 @@ def rows_from_lists(lists):
     return rows
 
 
+class Rows:
+    """A section's rows as flat arrays: row r's links are columns and values
+    [ptr[r], ptr[r + 1]), each row's columns ascending. `build` takes these
+    or lists of (patch, values) per row; a whole map's links are tens of
+    millions, too many for a tuple each."""
+
+    def __init__(self, ptr, columns, values):
+        self.ptr = np.asarray(ptr, dtype=np.int64)
+        self.columns = np.asarray(columns, dtype=np.int64)
+        values = np.asarray(values, dtype=np.float64)
+        self.values = values if values.ndim == 2 else values.reshape(len(self.columns), -1)
+        if self.ptr[0] != 0 or self.ptr[-1] != len(self.columns) or (np.diff(self.ptr) < 0).any():
+            raise TransferError("invalid-rows", "row pointers")
+
+    @classmethod
+    def from_lists(cls, lists, width):
+        """Rows from per-row lists of (patch, value or values), sorted by patch."""
+        ordered = [sorted(entries, key=lambda e: e[0]) for entries in lists]
+        ptr = np.zeros(len(lists) + 1, dtype=np.int64)
+        ptr[1:] = np.cumsum([len(entries) for entries in ordered])
+        flat = [link for entries in ordered for link in entries]
+        columns = np.array([int(patch) for patch, _ in flat], dtype=np.int64)
+        values = np.asarray([values for _, values in flat], dtype=np.float64).reshape(
+            len(flat), width)
+        return cls(ptr, columns, values)
+
+    @classmethod
+    def sorted_from(cls, rows, columns, values, count):
+        """Rows from unordered links (row, column, values) of `count` rows:
+        sorted by row, then column."""
+        order = np.lexsort((columns, rows))
+        rows, columns = np.asarray(rows)[order], np.asarray(columns)[order]
+        ptr = np.zeros(count + 1, dtype=np.int64)
+        ptr[1:] = np.cumsum(np.bincount(rows, minlength=count))
+        return cls(ptr, columns, np.asarray(values, dtype=np.float64)[order])
+
+    @property
+    def count(self):
+        return len(self.ptr) - 1
+
+    @property
+    def links(self):
+        return len(self.columns)
+
+
 def build(sources, patches, transfer, injection, gather, probe_direct, prbv_hash):
     """RTRN bytes.
 
@@ -288,12 +333,15 @@ def build(sources, patches, transfer, injection, gather, probe_direct, prbv_hash
     area = np.asarray(patches["area"], dtype="<f4")
     albedo = np.asarray(patches["albedo"], dtype="<f4")
     count = len(position)
-    probes = len(gather)
+    transfer, injection, gather = (
+        rows if isinstance(rows, Rows) else Rows.from_lists(rows, width)
+        for rows, width in ((transfer, 1), (injection, 3), (gather, SH_COEFFICIENTS)))
+    probes = gather.count
     direct = np.asarray(probe_direct, dtype="<f4")
-    if direct.shape != (len(sources), probes, PROBE_TEXELS, 3) or len(transfer) != count or \
-            len(injection) != len(sources):
+    if direct.shape != (len(sources), probes, PROBE_TEXELS, 3) or transfer.count != count or \
+            injection.count != len(sources):
         raise TransferError("invalid-counts", "section shapes disagree")
-    links = [sum(len(r) for r in rows) for rows in (transfer, injection, gather)]
+    links = [rows.links for rows in (transfer, injection, gather)]
     sizes = section_sizes(len(sources), count, probes, *links)
     offsets, total = layout(sizes)
     blob = bytearray(total)
@@ -313,24 +361,20 @@ def build(sources, patches, transfer, injection, gather, probe_direct, prbv_hash
     records[:, 7:10] = albedo
     blob[offsets[1]:offsets[1] + sizes[1]] = records.tobytes()
 
-    def put_rows(section, lists, link_bytes, width):
-        """Each row's links sorted by patch, packed as <I then `width` <f4 (the
-        same bytes struct.pack_into gave one link at a time, in one array)."""
+    def put_rows(section, rows, link_bytes):
+        """Row pointers, then each link as <I and its <f4 values."""
         blob[offsets[section]:offsets[section] + sizes[section]] = \
-            rows_from_lists(lists).tobytes()
-        ordered = [link for entries in lists for link in sorted(entries, key=lambda e: e[0])]
-        if not ordered:
-            return
-        links = np.zeros(len(ordered), dtype=[("patch", "<u4"), ("values", "<f4", (width,))])
-        links["patch"] = [int(patch) for patch, _ in ordered]
-        links["values"] = np.asarray([values for _, values in ordered],
-                                     dtype=np.float64).reshape(len(ordered), width)
+            rows.ptr.astype("<u4").tobytes()
+        width = rows.values.shape[1]
+        links = np.zeros(rows.links, dtype=[("patch", "<u4"), ("values", "<f4", (width,))])
+        links["patch"] = rows.columns
+        links["values"] = rows.values
         assert links.itemsize == link_bytes
         blob[offsets[section + 1]:offsets[section + 1] + links.nbytes] = links.tobytes()
 
-    put_rows(2, transfer, TRANSFER_LINK_BYTES, 1)
-    put_rows(4, injection, INJECTION_LINK_BYTES, 3)
-    put_rows(6, gather, GATHER_LINK_BYTES, 9)
+    put_rows(2, transfer, TRANSFER_LINK_BYTES)
+    put_rows(4, injection, INJECTION_LINK_BYTES)
+    put_rows(6, gather, GATHER_LINK_BYTES)
     blob[offsets[8]:offsets[8] + sizes[8]] = direct.tobytes()
     return bytes(blob)
 
@@ -391,21 +435,33 @@ class Transfer:
                 (self.albedo < 0).any() or (self.albedo > 1).any() or \
                 (np.abs(np.linalg.norm(self.normal, axis=1) - 1) > NORMAL_TOLERANCE).any():
             raise TransferError("invalid-patch")
-        self.transfer = self._rows(data, offsets, 2, patches, transfer, "<If", patches)
-        self.injection = self._rows(data, offsets, 4, sources, injection, "<I3f", patches)
-        self.gather = self._rows(data, offsets, 6, probes, gather, "<I9f", patches)
-        for p, row in enumerate(self.transfer):
-            factors = row[1][:, 0] if len(row[0]) else np.zeros(0)
-            if (factors < 0).any():
-                raise TransferError("invalid-weight", "transfer row %d" % p)
-            if float(factors.astype(np.float64).sum()) > ROW_SUM_LIMIT:
-                raise TransferError("transfer-not-normalized", "row %d" % p)
-        for s, row in enumerate(self.injection):
-            if (row[1] < 0).any():
-                raise TransferError("invalid-weight", "injection source %d" % s)
-        for i, row in enumerate(self.gather):
-            if len(row[0]) and float(row[1][:, 0].astype(np.float64).sum()) * Y00 > ROW_SUM_LIMIT:
-                raise TransferError("gather-not-normalized", "probe %d" % i)
+        self.transfer, self.transfer_rows = self._rows(data, offsets, 2, patches, transfer,
+                                                       "<If", patches)
+        self.injection, injection_rows = self._rows(data, offsets, 4, sources, injection, "<I3f",
+                                                    patches)
+        self.gather, gather_rows = self._rows(data, offsets, 6, probes, gather, "<I9f", patches)
+
+        def first_row(rows, bad_links):
+            return int(np.searchsorted(rows.ptr, np.flatnonzero(bad_links)[0], side="right") - 1)
+
+        def row_sums(rows, weights):
+            return np.bincount(np.repeat(np.arange(rows.count), np.diff(rows.ptr)), weights,
+                               minlength=rows.count)
+
+        factors = self.transfer_rows.values[:, 0]
+        if (factors < 0).any():
+            raise TransferError("invalid-weight", "transfer row %d"
+                                % first_row(self.transfer_rows, factors < 0))
+        over = np.flatnonzero(row_sums(self.transfer_rows, factors) > ROW_SUM_LIMIT)
+        if len(over):
+            raise TransferError("transfer-not-normalized", "row %d" % over[0])
+        if (injection_rows.values < 0).any():
+            raise TransferError("invalid-weight", "injection source %d" % first_row(
+                injection_rows, (injection_rows.values < 0).any(axis=1)))
+        over = np.flatnonzero(row_sums(gather_rows, gather_rows.values[:, 0]) * Y00 >
+                              ROW_SUM_LIMIT)
+        if len(over):
+            raise TransferError("gather-not-normalized", "probe %d" % over[0])
         with np.errstate(invalid="ignore", over="ignore"):
             self.probe_direct = np.frombuffer(
                 data, "<f4", sources * probes * PROBE_TEXELS * 3, offsets[8]).reshape(
@@ -432,13 +488,15 @@ class Transfer:
             raise TransferError("index-out-of-bounds", "section %d" % section)
         if not np.isfinite(values).all():
             raise TransferError("invalid-weight", "section %d non-finite" % section)
-        result = []
-        for r in range(count):
-            a, b = rows[r], rows[r + 1]
-            if (np.diff(index[a:b]) <= 0).any():
-                raise TransferError("index-out-of-bounds", "section %d row %d order" % (section, r))
-            result.append((index[a:b], values[a:b]))
-        return result
+        # Each row's patches strictly ascending: between neighbouring links of
+        # one row the index rises.
+        owner = np.repeat(np.arange(count), np.diff(rows))
+        unordered = np.flatnonzero((np.diff(index) <= 0) & (owner[1:] == owner[:-1]))
+        if len(unordered):
+            raise TransferError("index-out-of-bounds", "section %d row %d order"
+                                % (section, owner[unordered[0] + 1]))
+        result = [(index[a:b], values[a:b]) for a, b in zip(rows[:-1], rows[1:])]
+        return result, Rows(rows, index, values)
 
     # ------------------------------------------------------------ reference
     def solve(self, scalars=None, iterations=200, bounces=None):
@@ -451,13 +509,9 @@ class Transfer:
         # The transfer as flat links (row, column, factor): each iteration is
         # one gather and one bincount over every link, not a Python loop over
         # the patches (200 x 279723 on testchmb_a_15).
-        counts = np.array([len(index) for index, _ in self.transfer], dtype=np.int64)
-        if counts.sum():
-            columns = np.concatenate([index for index, _ in self.transfer])
-            factors = np.concatenate([values[:, 0] for _, values in self.transfer])
-        else:
-            columns, factors = np.zeros(0, np.int64), np.zeros(0)
-        slots = (np.repeat(np.arange(self.patch_count), counts)[:, None] * 3 +
+        rows = self.transfer_rows
+        columns, factors = rows.columns, rows.values[:, 0]
+        slots = (np.repeat(np.arange(self.patch_count), np.diff(rows.ptr))[:, None] * 3 +
                  np.arange(3)).ravel()
         light = direct.copy()
         for _ in range(iterations if bounces is None else bounces):
