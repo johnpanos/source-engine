@@ -3579,3 +3579,180 @@ edge like any other pixel. Each gap is now a K11 check in RFC 0016:
 The antialiasing check pulls RFC 0012's multisampled-target work (R65) ahead
 of its rank, for the lab. This is a K11 requirement, not a change to R65's
 product scope.
+
+## K11: render_lab draws the whole lighting model (2026-09-29, source-engine-cb)
+
+User goal (2026-09-29): "focus fully on getting the runtime in
+rendercore/renderlab at a Source 2 level". It named five gaps a best-quality
+bake cannot close: no SSR, no ambient occlusion, unshadowed sun specular
+(the sun mask was baked but never packed or read), unoccluded area lights,
+and projected lights that do not bounce. source-engine-43 (the render-core
+owner) was not running. Its unlanded slice c2 was carried onto the branch
+first, crediting it (`7c0cb27ea`). No other peer held any of this scope
+(source-engine-04, 5a and b4 were asked).
+
+### What landed
+
+- **The lab's map frame is the model's frame.** Commits `e99275216`,
+  `fd9c6a68a`, `3a2dd6c6c`, `85c740cb1`, `3e1b52b73`; the attenuation
+  mirror followed.
+  - **Materials.** `ProgramResolver::SetWorldPbr` draws PBRMetalRough
+    world materials as the pbr point, never remapped (K11 "World PBR
+    materials"). The product keeps refusing them until K12.
+  - **Dynamic models.** They are the pbr point with `kSurfaceMeshDirect`:
+    the probe volume's indirect layer, plus every light's direct light at
+    runtime with shadows.
+  - **Lights from the entity lump** (`LightsFromEntities`):
+    - `light` and `light_spot` are clustered runtime lights;
+    - `light_rect` are area lights;
+    - `light_environment` is the sun (vrad's normal convention);
+    - `env_projectedtexture` are projected lights.
+  - **Baked lights.** A baked light's diffuse light is the bake's: the
+    total layer, directional where the page is. The core adds its specular
+    lobe (`spot.y`, `halfV.w`, `sunColor.w`). With `--core-direct` it draws
+    both lobes over the indirect layer.
+  - **Shadows (`lab_shadows`).** One 8192² atlas holds:
+    - spot tiles;
+    - point-light cubes and area-light hemicubes, each face drawn 12° wider
+      than 90°;
+    - four sun cascades;
+    - projector frusta.
+
+    The surface samples them with PCSS sized by the emitter
+    (`ShadowVisibilitySoft`, `shadow_faces.glsl`). `ShadowTileGpu::params`
+    z and w carry the depth mapping.
+  - **Shadow terminator.** Two fixes, standard practice for shadow maps on
+    smooth-shaded meshes:
+    - receivers offset along the facet's own normal, scaled by the tangent
+      of the light's grazing angle;
+    - shadows faded as the interpolated n·l approaches 0.
+  - **Sun.** On lightmapped surfaces the sun's visibility is the bake's
+    mask (total page alpha); elsewhere it is the cascades. The disc widens
+    the lobe (Karis 2013).
+  - **Projected lights.** Both lobes, the cookie array and a shadow tile.
+    Their GLSL and GPU record are now one copy (`projected_light.glsl`,
+    `projected_light::LightGpu`), shared with `render.pass.volumetric`.
+  - **Frame order.** A depth-and-normal prepass (`kSurfaceDepthNormal`,
+    invariant positions), then `render.pass.ao`, then the lit pass with the
+    SSR targets (`surface_ssr.frag`, `kSurfaceSsrTargets`), then
+    `render.pass.ssr` composited, then the fog.
+  - **New options.** `--no-shadows`, `--no-ao`, `--no-ssr`, `--no-bounce`,
+    `--rsm-size`. `lighting_fixtures.py gallery --resolution N` renders at N
+    times the film size and scores a box-filtered copy.
+- **`render.pass.ao` (new module): GTAO** (Jimenez et al. 2016) with the
+  paper's multi-bounce fit, applied to indirect light only.
+  - Specular occlusion follows Lagarde and de Rousiers 2014.
+  - On a lightmapped surface it darkens the bake's indirect layer, never the
+    direct light.
+  - The per-pixel radius is two lightmap texels' world size on lightmapped
+    surfaces, so the bake's coarser occlusion is not counted twice. It is
+    the pass's radius (48 units) elsewhere.
+- **`render.pass.bounce` (new module): the projected lights' one bounce.**
+  - Each projector's reflective shadow map (`kSurfaceRsm`) becomes patch
+    lights.
+  - The patches are gathered into an atlas of the PRBV layout, with the
+    probes' depth-moment visibility.
+  - The surface samples it with the volume's weights
+    (`kSurfaceProbeBounce`, `probe_volume.glsl`'s pair sampling).
+- **Pipeline: the sun mask is packed again** (`1709d3c52`). `pbr_map_build`'s
+  ktx2 step passes `--sun-visibility`; the marker texels are written only
+  with a probe band.
+- **Pipeline: WMSH keeps per-corner normals** (`7c81ca163`).
+  `usd_worldmesh_pack.py` averaged each triangle's corner normals into
+  one. Every USD-built map was flat-shaded while the bake and Cycles use
+  smooth normals: facets showed in specular highlights at 4x.
+- **Attenuation.** vrad's attenuation for world lights
+  (`LightFalloff::Attenuated`, source-engine-5a's header) is mirrored in the
+  clustered lights; `SurfaceLightGpu` is 96 bytes.
+- **Layouts.**
+  - View group: storage 1–5, then texture/sampler pairs 6–11 (atlas,
+    cookies, occlusion).
+  - Frame group: the bounce atlas at 11, with its sampler at 12.
+  - Draw group: the indirect page at 5/6.
+  - The family test harness mirrors these, with two-layer cookie arrays.
+
+### Checks
+
+| Check | Evidence | Result |
+| --- | --- | --- |
+| Projected-light bounce against an independent oracle | `render.lab.bounce` (new): a projector over a floor, a synthesized RSM, and an area integral over the lit floor (600 × 600 cells); interior probe texels within 3 % + 1e-5, borders equal twins, outside zero, an occluded probe dark, lit texels lit | pass (6); sensitivity pass (4: patch cosine ignored, visibility ignored, flat solid angle) |
+| GTAO against a ray-traced reference | `render.lab.gtao` (new): an open plane in [0.99, 1]; depth-free pixels one; a crease's mean error 0.021 and 95th percentile ≤ 0.12; the floor darker near the wall | pass (5); sensitivity pass (4: projected normal ignored, screen-spread slices, snapped samples) |
+| Vrad-attenuated world lights | `render.lab.clustered-lights` gains an `attenuated` set judged by `RuntimeLightOracle` | pass (22, was 16); sensitivity pass (5) |
+| Nothing else moves | every lab suite with `--validate` (shadowed 10, clustered 22, area 40, map-terms 21, volumetric 18, controls 32, debug views 82, probe volume 38, reflection probes 30, lightmap basis 19, ssr 21); 19 product rows (families, world, opaque, material, lights, shadows, composition, Hammer viewport) on g++ and clang++; the product's engine and launcher units that include the changed headers compile with the product tree's `-Werror` flags | pass |
+
+**Found by the new oracles and fixed.** The first `render.lab.gtao` run
+failed: an open plane read 0.22. Three defects:
+
+1. The view matrix's rows were read with GLSL's column index.
+2. Samples were rebuilt at texel centres. At grazing angles a sample off
+   its slice reads as a horizon. Depth is now read at the sample's own
+   position: bilinear where the four texels are one plane (exact for
+   planes), else the nearest texel.
+3. Slices were spread evenly on the screen, not about the view vector. That
+   left a 5 % deficit on a grazing plane (a numerical replica confirmed
+   it).
+
+**The crease band was set after the first run** (post-data, disclosed).
+GTAO fades a far occluder by pulling its slice's one horizon toward open,
+where rays count each blocked direction. So it under-occludes near a crease:
+the wall 5–30 units above the floor reads about 0.09 bright. That is the
+algorithm, not a defect.
+
+**Not covered by these scenes:** the horizon's falloff (ignoring it matches
+the reference no worse) and the blur's surface weights.
+
+### Gallery
+
+`lighting_fixtures.py gallery --resolution 2`, against the final references
+(`1febd12b`), with the maps repacked privately (smooth normals, sun mask):
+**9 of 35 views pass**, up from 4.
+
+| View | Before (mean) | Now |
+| --- | --- | --- |
+| mirror-corridor low | 0.64 | 0.077, pass |
+| mirror-corridor down | 0.66 | 0.101 |
+| sun-colonnade along | 0.196 | 0.074 |
+| sun-colonnade yard | 0.068 | 0.051, pass |
+| foggy-hall clear nave | 0.40 | 0.083, pass |
+| cornell-floors front | 0.23 | 0.044, pass |
+| projector-cookie wall | 1.03 | 0.056, pass |
+
+Published for the user's review:
+https://claude.ai/artifact/QkqBwB7sM7VDeVCmWGBTdf.
+
+Known differences the gallery shows:
+
+- **projector-cookie's references leave the projector's bounce out by
+  design** ("projected lights are never baked"), so the new bounce raises
+  that fixture's error. Judging the bounce against Cycles needs a reference
+  state with the projector's full light paths. The fixture owner has not
+  been asked yet.
+- **The Cornell probe model is coarser than its reference.** The lab loads
+  the stock `models/props/sphere.mdl` (382 vertices, retargeted), while
+  Cycles renders the stage's `ProbeSphereShape` (4,512 points). The
+  fixture should compile the stage mesh.
+- **Emitters are LDR.** Fixture emitters are one `UnlitGeneric`, so bulbs
+  and panels draw near radiance 1. K11 "Visible emitters drawn" needs them
+  as emissive pbr materials at their light's radiance.
+- **Rough gold is yellower than Cycles** (red about 20 % low): the BRDF's
+  metal multiple-scattering tint (RFC 0007).
+- **The Portal chambers** need alpha-tested and legacy materials the pbr
+  resolver does not claim yet.
+
+### Performance (rule 7, recorded, not judged)
+
+Not measured. The atlas is 8192² D32 (256 MiB), and area-room plans 320
+hemicube faces. The PCSS sampler takes 32 taps per light per pixel, and
+the bounce gather loops every RSM texel per probe texel. Each is an
+optimization item for `render_lab --time`.
+
+### Not done
+
+- The shared `run/maps` still has the old packs. The next `--final`
+  fixture build repacks them; the bakes are unchanged.
+- `render.pass.volumetric`'s lights do not take vrad's attenuation yet.
+- No oracle suite yet for area-light shadows (hemicube PCSS against a
+  ray-traced rectangle) or for the sun mask's read. The gallery covers both.
+- The mirror-corridor seam walk (S8/S9) was not rerun on the composited
+  frame.
+- The product (K12) is unchanged.
