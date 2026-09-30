@@ -212,6 +212,14 @@ void TestImportReading( testing::Checks &checks )
 	    "V6.metadata-keys-are-kept-apart" );
 	checks.That( m.editorKeys.size() == 1 && m.editorKeys[0].key == "%keywords",
 	    "V6.editor-keys-are-preserved" );
+	// The sky casts no shadow: %compilesky (any case) or %compile2Dsky marks it.
+	checks.That( !IsSkySurface( m ), "V6.a-surface-without-a-sky-key-is-not-sky" );
+	auto sky = ImportVmt( "UnlitGeneric { $basetexture sky \"%CompileSky\" 1 }", context );
+	auto skybox = ImportVmt( "UnlitGeneric { $basetexture sky %compile2Dsky 1 }", context );
+	auto notSky = ImportVmt( "UnlitGeneric { $basetexture sky %compilesky 0 }", context );
+	checks.That( sky && IsSkySurface( sky.Value() ) && skybox && IsSkySurface( skybox.Value() ),
+	    "V6.compilesky-and-compile2dsky-mark-a-sky-surface" );
+	checks.That( notSky && !IsSkySurface( notSky.Value() ), "V6.compilesky-0-is-not-sky" );
 	checks.That( m.unmapped == std::vector<std::string>{ "$notakey" },
 	    "V6.keys-the-family-does-not-map-are-reported" );
 	checks.That( m.proxies.size() == 1 && m.proxies[0].name == "AnimatedTexture" &&

@@ -39,7 +39,8 @@
 //			Usage: render_lab --game <dir> --map <file.bsp> --eye x,y,z
 //			           --forward x,y,z --up x,y,z --hfov degrees --size WxH
 //			           --out <file.pfm> [--model <models/x.mdl> --model-origin
-//			           x,y,z] [--validate] [--dump-mesh] [--core-direct]
+//			           x,y,z] [--model-no-shadow] [--mover x0,y0,z0,x1,y1,z1,material]
+//			           [--validate] [--dump-mesh] [--core-direct]
 //			           [--debug-view n] [--fog-scale s] [--no-volumetric] [--time n]
 //			           [--debug-program name] [--debug-scale s]
 //			           [--debug-range r] [--debug-threshold t] [--debug-brdf n]
@@ -139,6 +140,20 @@ struct Options
 	bool noAo = false;
 	bool noSsr = false;
 	bool noBounce = false;
+	// The model is drawn but casts no shadow: the fixtures' references make
+	// every prop a receiver only (gi_reference_blender.py).
+	bool modelNoShadow = false;
+	// Moving objects the bake did not see (a closed door): boxes in world
+	// units, drawn as a mesh (the probe volume's indirect light and every
+	// light's direct light at runtime) with a world material, and cast into
+	// the atlas as the product's movers are (render.dynamic-occlusion).
+	struct Mover
+	{
+		math::float3 min{ 0, 0, 0 };
+		math::float3 max{ 0, 0, 0 };
+		std::string material;
+	};
+	std::vector<Mover> movers;
 	std::uint32_t rsmSize = 128; // a projector's reflective shadow map, texels across
 	std::uint32_t timeRepeats = 0;
 	// The inject stage's stratified samples per froxel (across, along).
@@ -164,6 +179,21 @@ bool ParseVector( const char *text, math::float3 &out )
 	return std::sscanf( text, "%f,%f,%f", &out.x, &out.y, &out.z ) == 3;
 }
 
+// --mover x0,y0,z0,x1,y1,z1,material: a box's corners and its material.
+bool ParseMover( const char *text, Options::Mover &out )
+{
+	if ( !text )
+		return false;
+	int consumed = 0;
+	if ( std::sscanf( text, "%f,%f,%f,%f,%f,%f,%n", &out.min.x, &out.min.y, &out.min.z, &out.max.x,
+	         &out.max.y, &out.max.z, &consumed ) != 6 ||
+	     consumed <= 0 )
+		return false;
+	out.material = text + consumed;
+	return !out.material.empty() && out.min.x < out.max.x && out.min.y < out.max.y &&
+	       out.min.z < out.max.z;
+}
+
 std::optional<Options> ParseOptions( int argc, char **argv )
 {
 	Options options;
@@ -184,6 +214,8 @@ std::optional<Options> ParseOptions( int argc, char **argv )
 			options.dumpMesh = true;
 		else if ( arg == "--core-direct" )
 			options.coreDirect = true;
+		else if ( arg == "--model-no-shadow" )
+			options.modelNoShadow = true;
 		else if ( arg == "--no-volumetric" )
 			options.noVolumetric = true;
 		else if ( arg == "--inscatter-only" )
@@ -214,6 +246,14 @@ std::optional<Options> ParseOptions( int argc, char **argv )
 			take();
 		else if ( arg == "--model-origin" && ParseVector( value, options.modelOrigin ) )
 			take();
+		else if ( arg == "--mover" )
+		{
+			Options::Mover mover;
+			if ( !ParseMover( value, mover ) )
+				return std::nullopt;
+			options.movers.push_back( std::move( mover ) );
+			take();
+		}
 		else if ( arg == "--rsm-size" )
 			options.rsmSize = std::uint32_t( std::max( 16, std::atoi( take() ) ) );
 		else if ( arg == "--hfov" )
@@ -246,6 +286,7 @@ struct SceneMaterial
 	material::ResolvedProgram program;
 	std::uint64_t groupId = 0;
 	bool mesh = false; // a model's: drawn without the lightmap
+	bool sky = false;  // the sky (material::IsSkySurface): no shadow caster
 };
 
 std::optional<std::string> ImportMaterial(
@@ -310,6 +351,7 @@ std::optional<std::string> ResolveMaterial( const GameFiles &files,
 		return "material " + path + ": " + program.Error();
 	out.program = std::move( program ).Value();
 	out.mesh = mesh;
+	out.sky = material::IsSkySurface( desc );
 	return StageProgramTextures( files, cache, out.program );
 }
 
@@ -634,6 +676,10 @@ int Run( const Options &options )
 		std::vector<Draw> draws;
 		for ( const mapcontainer::WorldMeshBatch &batch : mesh.batches )
 			draws.push_back( { batch.material, batch.firstIndex, batch.indexCount } );
+		// The model's indices (after the world's), left out of the casters
+		// with --model-no-shadow.
+		std::uint32_t modelFirstIndex = std::uint32_t( indices.size() );
+		std::uint32_t modelIndexCount = 0;
 
 		// The studio model: its first body at the origin, in world space on
 		// the world vertex. A PBRMetalRough material draws as the pbr point
@@ -723,6 +769,80 @@ int Run( const Options &options )
 			}
 		}
 
+		modelIndexCount = std::uint32_t( indices.size() ) - modelFirstIndex;
+
+		// The movers: each box's six faces, outward, as the model's parts
+		// are drawn (a mesh: its material's mesh point).
+		for ( const Options::Mover &mover : options.movers )
+		{
+			SceneMaterial resolved;
+			if ( std::optional<std::string> why = ResolveMaterial(
+			         files, *resolver.Value(), cache, mover.material, true, resolved ) )
+				return Fail( "mover material " + mover.material + ": " + *why );
+			materials.push_back( std::move( resolved ) );
+			const math::float3 lo = mover.min, hi = mover.max;
+			// Each face: its normal, its tangent and four corners, counter-
+			// clockwise seen from outside.
+			struct Face
+			{
+				math::float3 normal, tangent;
+				math::float3 corners[4];
+			};
+			const Face faces[6] = {
+			    { { 1, 0, 0 }, { 0, 1, 0 },
+			        { { hi.x, lo.y, lo.z }, { hi.x, hi.y, lo.z }, { hi.x, hi.y, hi.z },
+			            { hi.x, lo.y, hi.z } } },
+			    { { -1, 0, 0 }, { 0, -1, 0 },
+			        { { lo.x, hi.y, lo.z }, { lo.x, lo.y, lo.z }, { lo.x, lo.y, hi.z },
+			            { lo.x, hi.y, hi.z } } },
+			    { { 0, 1, 0 }, { -1, 0, 0 },
+			        { { hi.x, hi.y, lo.z }, { lo.x, hi.y, lo.z }, { lo.x, hi.y, hi.z },
+			            { hi.x, hi.y, hi.z } } },
+			    { { 0, -1, 0 }, { 1, 0, 0 },
+			        { { lo.x, lo.y, lo.z }, { hi.x, lo.y, lo.z }, { hi.x, lo.y, hi.z },
+			            { lo.x, lo.y, hi.z } } },
+			    { { 0, 0, 1 }, { 1, 0, 0 },
+			        { { lo.x, lo.y, hi.z }, { hi.x, lo.y, hi.z }, { hi.x, hi.y, hi.z },
+			            { lo.x, hi.y, hi.z } } },
+			    { { 0, 0, -1 }, { 1, 0, 0 },
+			        { { lo.x, hi.y, lo.z }, { hi.x, hi.y, lo.z }, { hi.x, lo.y, lo.z },
+			            { lo.x, lo.y, lo.z } } },
+			};
+			const std::uint32_t first = std::uint32_t( indices.size() );
+			for ( const Face &face : faces )
+			{
+				const std::uint32_t base = std::uint32_t( vertices.size() );
+				const math::float3 b = math::Cross( face.normal, face.tangent );
+				const float uvs[4][2] = { { 0, 1 }, { 1, 1 }, { 1, 0 }, { 0, 0 } };
+				for ( int c = 0; c < 4; ++c )
+				{
+					material::SurfaceWorldVertex v;
+					v.position[0] = face.corners[c].x;
+					v.position[1] = face.corners[c].y;
+					v.position[2] = face.corners[c].z;
+					v.uv[0] = uvs[c][0];
+					v.uv[1] = uvs[c][1];
+					v.normal[0] = face.normal.x;
+					v.normal[1] = face.normal.y;
+					v.normal[2] = face.normal.z;
+					v.tangentS[0] = face.tangent.x;
+					v.tangentS[1] = face.tangent.y;
+					v.tangentS[2] = face.tangent.z;
+					v.tangentT[0] = b.x;
+					v.tangentT[1] = b.y;
+					v.tangentT[2] = b.z;
+					vertices.push_back( v );
+				}
+				for ( std::uint32_t index : { 0u, 1u, 2u, 0u, 2u, 3u } )
+					indices.push_back( base + index );
+			}
+			draws.push_back(
+			    { materials.size() - 1, first, std::uint32_t( indices.size() ) - first } );
+		}
+		if ( !options.movers.empty() )
+			std::printf( "render_lab: %zu mover%s\n", options.movers.size(),
+			    options.movers.size() == 1 ? "" : "s" );
+
 		// The camera: the fixture's eye and basis, its horizontal field of view.
 		const float aspect = float( options.width ) / float( options.height );
 		const float horizontal = options.horizontalFov * 3.14159265358979f / 180.0f;
@@ -746,7 +866,19 @@ int Run( const Options &options )
 			resources::MeshData casterMesh;
 			casterMesh.vertices = vertexBytes;
 			casterMesh.vertexStride = sizeof( material::SurfaceWorldVertex );
-			casterMesh.indices = indexBytes;
+			// The casters: every draw but the sky's (it casts no shadow) and,
+			// with --model-no-shadow, the model's.
+			std::vector<std::uint32_t> casterIndices;
+			for ( const Draw &draw : draws )
+			{
+				const bool model = draw.firstIndex >= modelFirstIndex &&
+				                   draw.firstIndex < modelFirstIndex + modelIndexCount;
+				if ( materials[draw.material].sky || ( model && options.modelNoShadow ) )
+					continue;
+				casterIndices.insert( casterIndices.end(), indices.begin() + draw.firstIndex,
+				    indices.begin() + draw.firstIndex + draw.indexCount );
+			}
+			casterMesh.indices = std::as_bytes( std::span( casterIndices ) );
 			casterMesh.indexFormat = IndexFormat::kUint32;
 			auto staged = meshes.Stage( "lab:casters", casterMesh );
 			if ( !staged )
@@ -1494,7 +1626,8 @@ int main( int argc, char **argv )
 		std::fprintf( stderr,
 		    "usage: render_lab --game <dir> --map <file.bsp> --eye x,y,z --forward x,y,z --up "
 		    "x,y,z --hfov degrees --size WxH --out <file.pfm> [--model <models/x.mdl> "
-		    "--model-origin x,y,z] [--validate] [--dump-mesh] [--core-direct] [--debug-* ...]\n"
+		    "--model-origin x,y,z] [--model-no-shadow] [--mover x0,y0,z0,x1,y1,z1,material] "
+		    "[--validate] [--dump-mesh] [--core-direct] [--debug-* ...]\n"
 		    "           [--fog-scale s] [--no-volumetric] [--time n]\n"
 		    "       render_lab suite <name> [--validate] [--seeded <defect>]\n" );
 		return 2;

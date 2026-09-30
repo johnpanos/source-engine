@@ -800,10 +800,15 @@ void PbrSurface()
 			const int firstTile = int( light.radiance.w );
 			if ( firstTile >= 0 )
 			{
-				// The rectangle as a disc of its area, seen from its centre.
-				const float size = sqrt( 4.0 * length( light.halfU.xyz ) *
-				                         length( light.halfV.xyz ) / kPi );
+				// The rectangle as a disc of its area as the point sees it: its
+				// extent across the ray shrinks with the cosine of the ray's
+				// angle to the rectangle's normal, so the disc of the same
+				// projected area has sqrt( cosine ) of the radius.
 				const vec3 toCenter = normalize( light.center.xyz - worldPosition );
+				const vec3 facing = normalize( cross( light.halfU.xyz, light.halfV.xyz ) );
+				const float size =
+				    sqrt( 4.0 * length( light.halfU.xyz ) * length( light.halfV.xyz ) / kPi ) *
+				    sqrt( max( abs( dot( facing, toCenter ) ), 0.05 ) );
 				visibility = ShadowTerminatorFade( smoothNormal, toCenter,
 				    ShadowFacesVisibility( shadowAtlas, shadowSampler, firstTile,
 				        twoSided ? 6 : 5, worldPosition,

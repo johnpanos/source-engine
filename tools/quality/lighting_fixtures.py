@@ -2320,6 +2320,9 @@ def main():
     y.add_argument("--resolution", type=int, default=1,
                    help="render_lab at this multiple of the film size; the page shows it, and the "
                         "comparison judges its box-filtered copy at the reference's size")
+    y.add_argument("--core-direct", action="store_true",
+                   help="render_lab --core-direct: the indirect layer and every light's direct "
+                        "light at runtime (RFC 0016's runtime direct light)")
     args = parser.parse_args()
     if args.command == "gallery":
         import lighting_gallery

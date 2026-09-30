@@ -898,4 +898,15 @@ foundation::Expected<void, MaterialError> ApplyValues(
 	return {};
 }
 
+bool IsSkySurface( const MaterialDesc &material )
+{
+	for ( const VmtPair &pair : material.editorKeys )
+	{
+		if ( ( SameName( pair.key, "%compilesky" ) || SameName( pair.key, "%compile2dsky" ) ) &&
+		     std::atof( pair.value.c_str() ) != 0.0 )
+			return true;
+	}
+	return false;
+}
+
 } // namespace render::material

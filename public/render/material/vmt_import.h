@@ -149,6 +149,11 @@ int VmtNumbers( std::string_view value, float ( &out )[4] );
 foundation::Expected<void, MaterialError> ApplyValues(
     const MaterialDesc &material, ParameterBlock &block );
 
+// A sky surface: Source's %compilesky or %compile2Dsky set to a nonzero
+// value (the map pipeline's sky dome carries it). The sky casts no shadow,
+// so every renderer's shadow casters leave its surfaces out.
+bool IsSkySurface( const MaterialDesc &material );
+
 } // namespace render::material
 
 #endif // RENDER_MATERIAL_VMT_IMPORT_H

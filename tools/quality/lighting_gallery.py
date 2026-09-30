@@ -100,10 +100,13 @@ def fog_scale(fixture, state):
     return None
 
 
-def render_camera(lab, fixture, camera_name, out, scale=None, state=None, resolution=1):
+def render_camera(lab, fixture, camera_name, out, scale=None, state=None, resolution=1,
+                  core_direct=False):
     """render_lab's frame of a camera from the state's map (lf.map_for: a
     state that owns a map, such as a medium state baked with its medium,
-    renders from it)."""
+    renders from it). With `core_direct` the lab draws the indirect layer and
+    every light's direct light at runtime (--core-direct), as the product
+    does under RFC 0016's runtime direct light."""
     camera = fixture["cameras"][camera_name]
     bsp = (lf.ROOT / lf.map_for(fixture, state)["bsp"]).resolve()
     game = str(bsp).rsplit("/maps/", 1)[0]
@@ -117,9 +120,18 @@ def render_camera(lab, fixture, camera_name, out, scale=None, state=None, resolu
                "--out", str(out)]
     model = probe_model(fixture, state)
     if model:
-        command += ["--model", model[0], "--model-origin", ",".join("%.4f" % v for v in model[1])]
+        # The references make every prop a receiver only (gi_reference_blender.py).
+        command += ["--model", model[0], "--model-origin", ",".join("%.4f" % v for v in model[1]),
+                    "--model-no-shadow"]
+    # The state's movers (lighting.movers: boxes the bake did not see, such as
+    # a closed door), in Source units, with their world material.
+    for mover in fixture["lighting"].get("movers", {}).get(state or "", []):
+        command += ["--mover", ",".join("%.4f" % v for v in list(mover["min"]) +
+                                        list(mover["max"])) + "," + mover["material"]]
     if scale is not None:
         command += ["--fog-scale", "%g" % scale]
+    if core_direct:
+        command.append("--core-direct")
     result = subprocess.run(command, env=lab_environment(lab), capture_output=True, text=True,
                             timeout=600)
     message = (result.stdout + result.stderr).strip().splitlines()
@@ -339,7 +351,8 @@ def cmd_gallery(args):
                     name, camera, "" if map_name == fixture["lighting"]["map"]["name"]
                     else "." + map_name, "" if scale is None else ".fog-scale-%g" % scale))
                 rendered[view] = render_camera(lab, fixture, camera, image, scale, state,
-                                               getattr(args, "resolution", 1)) + (image,)
+                                               getattr(args, "resolution", 1),
+                                               getattr(args, "core_direct", False)) + (image,)
             ok, message, model, image = rendered[view]
             if not ok:
                 entry["error"] = message or "render_lab failed"
