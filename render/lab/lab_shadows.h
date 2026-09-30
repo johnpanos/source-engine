@@ -1,19 +1,9 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
-// Purpose: render_lab's shadows (RFC 0016 K11, render.shadows.v1): one atlas
-//			for the frame's shadowed lights, planned by render.pass.shadows'
-//			PlanShadowAtlas and drawn by its ShadowDepthRenderer, and the tile
-//			records the surface program reads (ShadowTileGpu, with the depth
-//			mapping in params.z and w that its soft shadows need):
-//			- a spot: one tile around its cone;
-//			- a point light: the six faces of a cube;
-//			- an area light: the five faces of a hemicube on its emitting
-//			  side (six when two-sided);
-//			- the sun: its cascades over the view;
-//			- a projector: its frustum.
-//			Cube faces are drawn wider than 90 degrees, so a soft shadow's
-//			filter near a face's edge stays inside the face. Private to
-//			render.lab.
+// Purpose: render_lab's shadows (RFC 0016 K11, render.shadows.v1): the
+//			frame's shadow plan (render.pass.shadows' PlanShadows, which owns
+//			the tiles each light kind takes) drawn into one atlas by
+//			render.pass.shadows' ShadowDepthRenderer. Private to render.lab.
 //
 //=============================================================================//
 
@@ -22,6 +12,7 @@
 
 #include "lab_media.h"
 
+#include "render/pass/shadows/shadow_plan.h"
 #include "render/device/device.h"
 #include "render/math/matrix.h"
 #include "render/pass/shadows/shadow_passes.h"
@@ -36,15 +27,8 @@
 namespace render::lab
 {
 
-// The camera the sun's cascades cover.
-struct LabShadowCamera
-{
-	math::float4x4 view;
-	float verticalFovRadians = 1.0f;
-	float aspect = 1.0f;
-	float nearZ = 1.0f;
-	float shadowDistance = 4096.0f;
-};
+// The camera the sun's cascades cover (the one plan's).
+using LabShadowCamera = pass::shadows::ShadowCamera;
 
 struct LabShadows
 {

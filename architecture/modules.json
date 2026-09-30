@@ -748,7 +748,8 @@
           "render.device",
           "render.material",
           "render.frame",
-          "render.shader-library"
+          "render.shader-library",
+          "render.contracts"
         ]
       },
       {
@@ -909,7 +910,8 @@
           "render.device",
           "render.graph",
           "render.resources",
-          "render.shader-library"
+          "render.shader-library",
+          "render.contracts"
         ]
       },
       {
@@ -1032,6 +1034,7 @@
           "render.pass.debug",
           "render.pass.output",
           "render.pass.lights",
+          "render.pass.shadows",
           "render.contracts",
           "world.map-container"
         ]
@@ -1678,7 +1681,8 @@
           "render_pass_skinning",
           "render_pass_debug",
           "mapcontainer",
-          "render_pass_lights"
+          "render_pass_lights",
+          "render_pass_shadows"
         ]
       },
       "jobsystem": {

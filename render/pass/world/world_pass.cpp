@@ -1163,8 +1163,22 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 			if ( lit.group.IsValid() )
 				return &lit;
 			const StageViewLights &lights = *view.lights;
+			// The lights' shadow tiles index the slot's atlas: tiles without
+			// one would index nothing, which fails the view by name.
+			material::SurfaceShadows shadows;
+			if ( !lights.shadowTiles.empty() )
+			{
+				if ( !target.shadowAtlas.IsValid() )
+				{
+					note( "the view's lights have shadow tiles and the slot no atlas" );
+					return nullptr;
+				}
+				shadows.atlas = target.shadowAtlas;
+				shadows.atlasDesc = target.shadowAtlasDesc;
+				shadows.tiles = lights.shadowTiles;
+			}
 			const material::GroupRequest request = r.resolver->Program().ViewGroup(
-			    lights.view, lights.froxels, lights.indices, lights.lights );
+			    lights.view, lights.froxels, lights.indices, lights.lights, shadows );
 			std::string why;
 			if ( request.layout != m.program.request.viewLayout ||
 			     !buildGroup( request, {}, lit, &why ) )

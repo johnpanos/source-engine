@@ -20,14 +20,19 @@
 #include "render/frame/renderer.h"
 #include "render/legacy/core_passes.h"
 #include "render/pass/debug/debug_overlays.h"
+#include "render/pass/shadows/shadow_passes.h"
+#include "render/pass/shadows/shadow_plan.h"
 #include "render/pass/world/world_pass.h"
+#include "render/resources/mesh_cache.h"
 
 #include <atomic>
+#include <deque>
 #include <cstddef>
 #include <map>
 #include <mutex>
 #include <optional>
 #include <set>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -88,6 +93,7 @@ public:
 		m_Pass.ReleaseDevice( device );
 		m_Overlays.ReleaseDevice( device );
 		m_Output.ReleaseDevice( device );
+		ReleaseShadows( device );
 	}
 
 private:
@@ -136,10 +142,37 @@ private:
 		}
 		std::vector<light_set::RuntimeLight> lights;
 	};
-	// A world stage view's lights, clustered for it; null without lights or
-	// matrices.
+	// The world stage's shadow atlas (per shadowed view of a frame): 4096
+	// texels square, depth 32 (64 MB each) on the desktop profiles; a mobile
+	// size is K12's per-profile atlas budget (not set yet).
+	static constexpr std::uint32_t kStageShadowAtlas = 4096;
+	// A world stage view's shadow work: the plan's depth views, drawn into an
+	// atlas at the view's slot.
+	struct ShadowWork
+	{
+		std::vector<pass::shadows::ShadowPlanView> views;
+		std::uint32_t atlasSize = 0;
+		std::uint32_t guardTexels = 0;
+	};
+	// The world stage's shadow casters (the stage mesh's positions and
+	// indices; main thread writes at SetWorldMesh, the render sequence reads).
+	struct Casters
+	{
+		std::vector<float> positions; // float3 per vertex
+		std::vector<std::uint32_t> indices;
+		std::uint64_t generation = 0;
+	};
+	// A world stage view's lights, clustered for it and planned into shadow
+	// tiles; null without lights or matrices.
 	std::shared_ptr<const pass::world::StageViewLights> StageViewLightsFor(
-	    const float worldToView[16], const float viewToClip[16], const float viewport[6] ) const;
+	    const float worldToView[16], const float viewToClip[16], const float viewport[6],
+	    std::shared_ptr<const ShadowWork> *shadows ) const;
+	// Render sequence: draws a view's shadow work into an atlas of this
+	// frame's pool, as a submission of its own ahead of the frame's; the atlas
+	// in kSampled, or invalid when it could not be drawn.
+	device::TextureId DrawStageShadows( device::IRenderDevice2 &device, const ShadowWork &work,
+	    std::uint64_t frame, device::TextureDesc *desc );
+	void ReleaseShadows( device::IRenderDevice2 &device );
 
 	legacy::ILegacyFrontend &m_Frontend;
 	const frame::IRenderer &m_Renderer;
@@ -162,6 +195,28 @@ private:
 	StageCapture m_Capture{ *this };
 	LightSink m_Lights;
 	unsigned long long m_StageLitViews = 0; // main thread
+	// Shadow work by world tag (DrawView writes, RecordSlot reads), and the
+	// stage's casters.
+	std::mutex m_ShadowLock;
+	std::deque<std::pair<std::uint32_t, std::shared_ptr<const ShadowWork>>> m_ShadowWork;
+	std::shared_ptr<const Casters> m_Casters;
+	std::uint64_t m_CasterGeneration = 0;
+	// Render sequence: the depth renderer, the casters' mesh and the atlases
+	// (one per shadowed view of a frame, reused from frame to frame).
+	device::IRenderDevice2 *m_ShadowDevice = nullptr;
+	std::unique_ptr<pass::shadows::ShadowDepthRenderer> m_ShadowRenderer;
+	std::unique_ptr<resources::MeshCache> m_CasterMeshes;
+	std::uint64_t m_CastersStaged = 0;
+	std::string m_CasterName;
+	struct Atlas
+	{
+		device::TextureId texture;
+		device::TextureDesc desc;
+		device::ResourceUsage usage = device::ResourceUsage::kUndefined;
+	};
+	std::vector<Atlas> m_Atlases;
+	std::size_t m_AtlasNext = 0;
+	std::uint64_t m_AtlasFrame = 0;
 	bool m_StageSet = false; // the pass holds a world stage
 };
 

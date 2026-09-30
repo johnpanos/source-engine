@@ -3913,3 +3913,36 @@ reach the game" (goal step 6).
 Not done: shadows for the stage's lights (the atlas), projectors, area
 lights and the sun in the stage's frame terms; lightmapped materials take no
 runtime light yet.
+
+## K12 slice 3: shadows for the world stage's lights (2026-09-29)
+
+- The shadow plan moved out of `render_lab` into `render.pass.shadows`
+  (`shadow_plan.h`, `PlanShadows`): which tiles each light kind takes
+  (spot one, point six, area light a hemicube, the sun its cascades, a
+  projector its frustum), `PlanShadowAtlas` and the tile records. The lab
+  draws its atlas from it (one copy; `render.lab.composition` still finds no
+  render.composition in the lab).
+- For a world stage, the composition plans each view's shadows with its
+  lights (points and spots for now) and packs every light with its tiles.
+  At the view's slot it draws the plan's depth views of the stage mesh
+  (its positions staged once per map) into a 4096-texel atlas as a graph
+  submission ahead of the frame's; the atlases are a per-frame pool (one per
+  shadowed view), reused frame to frame. The world pass binds the atlas
+  (`WorldTarget::shadowAtlas`); a light with tiles and no atlas fails the
+  view by name.
+
+Evidence (`build/`, headless native Vulkan):
+
+| Map | Result |
+| --- | --- |
+| gi_swing (paused) | the swinging lamp's point light is shadowed by the room; against the legacy frame (SDF shadows) 15,167 pixels over 8 levels, max 34: the legacy SDF shadows darken the room's seams where the core's cube shadows do not; Cycles decides (the G9 references, next) |
+| testchmb_a_00_relit (fixed camera) | 41,835 pixels over 8 levels, max 16 |
+| gi_door, lt_material_sweep, living_room | unchanged from slice 1 |
+
+`render.lab.shadowed-lights`, `.area-lights`, `.composition`,
+`render.composition`, `.capabilities`, `render.world.null` pass;
+`debug_views_product.py` 20 of 20 (testchmb_a_01, mode 2).
+
+Not done: moving objects as casters (props, R89), static-tile caching, a
+mobile atlas budget, area lights, projectors and the sun on the stage.
+Frame time not recorded.

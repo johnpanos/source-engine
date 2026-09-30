@@ -52,6 +52,7 @@
 #include "render/device/device.h"
 #include "render/frame/debug_controls.h"
 #include "render/material/surface_program.h"
+#include "render/shadow_tile.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -213,6 +214,10 @@ struct WorldTarget
 	float fogColor[3] = { 0.0f, 0.0f, 0.0f };
 	float fogParams[4] = { 0.0f, 0.0f, 1.0f, 0.0f };
 	float fogEyeZ = 0.0f;
+	// The shadow atlas the composition drew for this slot's view (a world
+	// stage's lights with shadow tiles), in kSampled; invalid without one.
+	device::TextureId shadowAtlas;
+	device::TextureDesc shadowAtlasDesc;
 };
 
 // A world stage's view lights (RFC 0016 K12): the frame's runtime lights
@@ -225,6 +230,9 @@ struct StageViewLights
 	std::vector<std::byte> froxels; // FroxelRange records
 	std::vector<std::byte> indices; // ClusterIndexHeader, then indices
 	std::vector<material::SurfaceLightGpu> lights;
+	// The view's shadow tiles (render.shadows.v1), which the lights index;
+	// their atlas is the slot's (WorldTarget::shadowAtlas).
+	std::vector<ShadowTileGpu> shadowTiles;
 };
 
 struct WorldView
