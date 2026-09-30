@@ -519,10 +519,94 @@ def bake_sun_visibility(merged, scene, path, size, render):
             "ignored_distant_lights": len(scene["distant_lights"]) - 1}
 
 
-# Separated diffuse light (RFC 0011): the same bake as the total atlas with
-# one Cycles pass filter. When both are baked the total is their sum
-# (summed_total) instead of a third bake, so total = direct + indirect exactly.
+# Separated diffuse light (RFC 0011, RFC 0016's runtime direct light). The
+# direct layer is the direct light of the lights the runtime evaluates: the
+# scene's analytic emitters (the map's light entities) and its distant
+# lights, each shading the surfaces directly with its shadows. Everything
+# else is the indirect layer: every bounce (Cycles' INDIRECT pass) and the
+# direct light of what is not a runtime light (the sky, glowing surfaces), a
+# second DIRECT bake with only those on. When both layers are baked the
+# total is their sum (summed_total) instead of another bake, so total =
+# direct + indirect exactly.
 SEPARATED_PASSES = {"direct": {"DIRECT"}, "indirect": {"INDIRECT"}}
+SCENE = {"emitters": (), "static": False}
+
+
+def emitter_objects():
+    """The Blender objects of the runtime's lights: the lamps (analytic
+    emitters and distant lights) and the analytic emitters' meshes."""
+    names = {map_scene.emitter_name(index, shape) for index, shape in enumerate(SCENE["emitters"])}
+    return [obj for obj in bpy.data.objects
+            if obj.type == "LIGHT" or (obj.type == "MESH" and obj.name in names)]
+
+
+def static_emission_sockets():
+    """The strength sockets of the glowing surfaces' materials (shapes, not
+    the analytic emitters): Principled BSDFs that emit."""
+    emitters = {obj.name for obj in emitter_objects()}
+    sockets = []
+    for obj in bpy.data.objects:
+        if obj.type != "MESH" or obj.name in emitters:
+            continue
+        for slot in obj.material_slots:
+            if not slot.material or not slot.material.node_tree:
+                continue
+            for node in slot.material.node_tree.nodes:
+                if node.type != "BSDF_PRINCIPLED":
+                    continue
+                strength, color = node.inputs["Emission Strength"], node.inputs["Emission Color"]
+                emits = color.is_linked or max(color.default_value[:3]) > 0
+                if not strength.is_linked and strength.default_value > 0 and emits and \
+                        strength not in sockets:
+                    sockets.append(strength)
+    return sockets
+
+
+def background_strength():
+    world = bpy.context.scene.world
+    nodes = world.node_tree.nodes if world and world.use_nodes else None
+    background = nodes.get("Background") if nodes else None
+    return background.inputs["Strength"] if background else None
+
+
+def has_static_emitters():
+    strength = background_strength()
+    return bool((strength is not None and strength.default_value > 0) or static_emission_sockets())
+
+
+@contextlib.contextmanager
+def runtime_lights_only():
+    """The enclosed bakes see only the runtime's lights: the sky and the
+    glowing surfaces emit nothing (they still occlude)."""
+    sockets = static_emission_sockets()
+    background = background_strength()
+    saved = [socket.default_value for socket in sockets]
+    saved_background = background.default_value if background is not None else None
+    try:
+        for socket in sockets:
+            socket.default_value = 0.0
+        if background is not None:
+            background.default_value = 0.0
+        yield
+    finally:
+        for socket, value in zip(sockets, saved):
+            socket.default_value = value
+        if background is not None:
+            background.default_value = saved_background
+
+
+@contextlib.contextmanager
+def static_emitters_only():
+    """The enclosed bakes see only what is not a runtime light: the runtime's
+    lamps and emitter meshes are out of the render."""
+    hidden = [obj for obj in emitter_objects() if not obj.hide_render]
+    try:
+        for obj in hidden:
+            obj.hide_render = True
+        yield
+    finally:
+        for obj in hidden:
+            obj.hide_render = False
 
 
 def summed_total(layers):
@@ -547,7 +631,23 @@ def bake_separated_layers(merged, layers, out_dir, size, render, parts=None):
         bpy.ops.object.select_all(action="DESELECT")
         merged.select_set(True)
         bpy.context.view_layer.objects.active = merged
-        halves = bake_light(image, SEPARATED_PASSES[role], role, size, render)
+        if role == "direct":
+            with runtime_lights_only():
+                halves = bake_light(image, SEPARATED_PASSES[role], role, size, render)
+        else:
+            halves = bake_light(image, SEPARATED_PASSES[role], role, size, render)
+            if role == "indirect" and SCENE["static"]:
+                # The sky's and the glowing surfaces' direct light joins the
+                # bounces: the runtime does not evaluate them.
+                bounced = np.array(image.pixels[:], dtype=np.float32)
+                with static_emitters_only():
+                    static = bake_light(image, {"DIRECT"}, "indirect: static emitters", size,
+                                        render)
+                summed = bounced + np.array(image.pixels[:], dtype=np.float32)
+                summed[3::4] = bounced[3::4]  # the bake's coverage
+                image.pixels.foreach_set(summed)
+                if halves is not None:
+                    halves = [a + b for a, b in zip(halves, static)]
         if parts is not None:
             parts[role] = (np.array(image.pixels[:], dtype=np.float32), halves)
         path = out_dir / (role + ".exr")
@@ -604,7 +704,11 @@ def bake_rnm_passes(merged, out_dir, size, render, stem="rnm"):
             target = tree.nodes["BakeTarget"]
             target.image = image
             tree.nodes.active = target
-        bake_light(image, RNM_PASSES[stem], "%s basis %d" % (stem, index), size, render)
+        if stem == "rnm_direct":
+            with runtime_lights_only():
+                bake_light(image, RNM_PASSES[stem], "%s basis %d" % (stem, index), size, render)
+        else:
+            bake_light(image, RNM_PASSES[stem], "%s basis %d" % (stem, index), size, render)
         path = out_dir / ("%s%d.exr" % (stem, index))
         image.save_render(filepath=str(path.resolve()), scene=render)
         if not path.is_file():
@@ -759,6 +863,7 @@ def main():
     if layers and not args.layers_dir:
         parser.error("--layers needs --layers-dir")
     scene = map_scene.parse(args.scene)
+    SCENE["emitters"] = tuple(scene["emitters"])
     unknown = set(args.exclude_material) - set(scene["materials"])
     if unknown:
         parser.error("excluded materials are not in the PBRT scene: " + ", ".join(sorted(unknown)))
@@ -864,6 +969,7 @@ def main():
     pbrt_blender.rebind_materials(scene, normal_maps=False)
     pbrt_blender.restore_emitters(scene)
     pbrt_blender.apply_environment(scene, args.environment)
+    SCENE["static"] = has_static_emitters()
     if medium:
         participating_medium.apply_world_medium(medium)
     for obj in meshes:
@@ -1020,6 +1126,13 @@ def main():
                 "excluded_dynamic_models": sorted(props),
                 "layers": separated,
                 "total": "direct + indirect" if summed_total(layers) else "baked",
+                # The layers' split: the direct layer is the runtime's lights
+                # (the analytic emitters and distant lights); the indirect
+                # layer every bounce and the static emitters' direct light.
+                "separation": {"runtime_emitters": len(scene["emitters"]),
+                               "runtime_distant_lights": len(scene.get("distant_lights", [])),
+                               "static_emitters_in_indirect": bool(SCENE["static"])}
+                if layers else None,
                 "light_paths": light_paths,
                 "emitter_count": len(scene["emitters"]),
                 "atlas_coverage_estimate": covered,

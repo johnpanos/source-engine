@@ -364,8 +364,10 @@ def main():
                 ("$fallbackmaterial", "%s_fallback/%s" % (prefix, name))] + common)
         elif summary["pbrt_type"] == "sky":
             preview = "unlit-sky"
+            # %compilesky: Source's mark of a sky surface, which casts no
+            # shadow (the renderers leave it out of their shadow casters).
             fallback = vmt("UnlitGeneric", [("$basetexture", texture), ("$nocull", "1"),
-                                            ("$nofog", "1")] + common)
+                                            ("$nofog", "1"), ("%compilesky", "1")] + common)
             world = fallback
         elif summary["pbrt_type"] == "emitter":
             preview = "unlit"
