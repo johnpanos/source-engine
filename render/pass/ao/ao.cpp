@@ -27,12 +27,13 @@ struct ViewConstants
 {
 	float view[16];
 	float fromClip[16];
+	float toClip[16];
 	float eye[4];
 	float extent[4];
 	float params[4];
 	float blur[4];
 };
-static_assert( sizeof( ViewConstants ) == 192, "gtao.comp's AoView" );
+static_assert( sizeof( ViewConstants ) == 256, "gtao.comp's AoView" );
 
 enum Binding : std::uint32_t
 {
@@ -60,6 +61,13 @@ void CopyMatrix( const math::float4x4 &m, float out[16] )
 
 foundation::Expected<std::unique_ptr<AmbientOcclusion>, AoStatus> AmbientOcclusion::Create(
     IRenderDevice2 &device, const AoParams &params )
+{
+	return CreateWithProgram( device, params, {} );
+}
+
+foundation::Expected<std::unique_ptr<AmbientOcclusion>, AoStatus>
+AmbientOcclusion::CreateWithProgram(
+    IRenderDevice2 &device, const AoParams &params, std::span<const std::uint32_t> spirv )
 {
 	if ( !( params.radius > 0.0f ) || !( params.falloff >= 0.0f && params.falloff < 1.0f ) ||
 	     params.slices == 0 || params.steps == 0 )
@@ -90,8 +98,11 @@ foundation::Expected<std::unique_ptr<AmbientOcclusion>, AoStatus> AmbientOcclusi
 	shaderlib::PipelineRecipe recipe = shaderlib::CoreRecipe( { kSource }, PipelineKind::kCompute );
 	recipe.layouts = { {}, {}, {}, pass->m_Layout };
 	recipe.debugName = kSource;
-	auto resolved =
-	    shaderlib::Resolve( recipe, shaderlib::CoreArtifacts(), device.Facts().artifactFormat );
+	shaderlib::ArtifactOverlay artifacts( shaderlib::CoreArtifacts() );
+	if ( !spirv.empty() &&
+	     !artifacts.ReplaceSpirv( kSource, spirv, device.Facts().artifactFormat ) )
+		return foundation::MakeUnexpected( AoStatus::kDevice );
+	auto resolved = shaderlib::Resolve( recipe, artifacts, device.Facts().artifactFormat );
 	if ( !resolved )
 		return foundation::MakeUnexpected( AoStatus::kDevice );
 	PipelineDesc desc = resolved.Value().Desc();
@@ -128,7 +139,8 @@ foundation::Expected<void, AoStatus> AmbientOcclusion::Record(
 	if ( !targets.depth.IsValid() || !targets.normalRoughness.IsValid() ||
 	     !targets.output.IsValid() || targets.width == 0 || targets.height == 0 )
 		return foundation::MakeUnexpected( AoStatus::kInvalidTargets );
-	const auto fromClip = math::Inverse( math::Multiply( view.projection, view.view ) );
+	const math::float4x4 toClip = math::Multiply( view.projection, view.view );
+	const auto fromClip = math::Inverse( toClip );
 	if ( !fromClip )
 		return foundation::MakeUnexpected( AoStatus::kInvalidTargets );
 	if ( targets.width != m_Width || targets.height != m_Height || !m_Scratch.IsValid() )
@@ -151,6 +163,7 @@ foundation::Expected<void, AoStatus> AmbientOcclusion::Record(
 	ViewConstants constants{};
 	CopyMatrix( view.view, constants.view );
 	CopyMatrix( *fromClip, constants.fromClip );
+	CopyMatrix( toClip, constants.toClip );
 	constants.eye[0] = view.eye[0];
 	constants.eye[1] = view.eye[1];
 	constants.eye[2] = view.eye[2];

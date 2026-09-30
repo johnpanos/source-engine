@@ -1,7 +1,8 @@
 // render.pass.ao (public/render/pass/ao/ao.h): ground-truth ambient
 // occlusion (Jimenez et al. 2016). Mode 0 integrates each pixel's slices
 // into the scratch buffer; mode 1 blurs it (depth- and normal-aware) into
-// the output image.
+// the output image. SEEDED_* build the defective programs render.lab.gtao's
+// sensitivity row must reject.
 #version 450
 
 layout( local_size_x = 8, local_size_y = 8 ) in;
@@ -10,6 +11,7 @@ layout( set = 3, binding = 0, std140 ) uniform AoView
 {
 	layout( row_major ) mat4 view;
 	layout( row_major ) mat4 fromClip; // clip to world
+	layout( row_major ) mat4 toClip;   // world to clip
 	vec4 eye;     // xyz
 	vec4 extent;  // width, height, pixels per world unit at view distance 1, 0
 	vec4 params;  // radius, falloff (of the radius), slices, steps
@@ -39,11 +41,46 @@ float DepthAt( ivec2 p )
 	return texelFetch( sampler2D( depthTexture, pointSampler ), p, 0 ).r;
 }
 
+// The depth at a continuous pixel position: bilinear between the four texels
+// around it (exact on a plane, whose clip depth is affine across the screen),
+// or the nearest texel's where they straddle a discontinuity (a texel with
+// no depth, or four texels that are not one plane).
+float DepthBetween( vec2 at )
+{
+	const ivec2 size = ivec2( ao.extent.xy );
+	const vec2 position = at - 0.5;
+	const ivec2 base = ivec2( floor( position ) );
+	const vec2 f = position - vec2( base );
+	const ivec2 lo = clamp( base, ivec2( 0 ), size - 1 );
+	const ivec2 hi = clamp( base + 1, ivec2( 0 ), size - 1 );
+	const float d00 = DepthAt( lo );
+	const float d10 = DepthAt( ivec2( hi.x, lo.y ) );
+	const float d01 = DepthAt( ivec2( lo.x, hi.y ) );
+	const float d11 = DepthAt( hi );
+	const float lowest = min( min( d00, d10 ), min( d01, d11 ) );
+	const float highest = max( max( d00, d10 ), max( d01, d11 ) );
+	// Clip depth is affine across a plane: its four texels' second
+	// difference is zero. A larger one is an edge (or a curve), where the
+	// nearest texel's depth is taken instead of a blend of two surfaces.
+	if ( highest >= 1.0 ||
+	     abs( d00 - d10 - d01 + d11 ) > 0.02 * ( highest - lowest ) + 1e-7 * ( 1.0 - lowest ) )
+		return DepthAt( ivec2( at ) );
+	return mix( mix( d00, d10, f.x ), mix( d01, d11, f.x ), f.y );
+}
+
 vec3 WorldAt( vec2 pixel, float depth )
 {
 	const vec2 ndc = vec2( pixel.x / ao.extent.x * 2.0 - 1.0, 1.0 - pixel.y / ao.extent.y * 2.0 );
 	const vec4 h = ao.fromClip * vec4( ndc, depth, 1.0 );
 	return h.xyz / h.w;
+}
+
+// A world point's pixel position (x right, y down).
+vec2 PixelOf( vec3 world )
+{
+	const vec4 h = ao.toClip * vec4( world, 1.0 );
+	const vec2 ndc = h.xy / h.w;
+	return vec2( ( ndc.x + 1.0 ) * 0.5 * ao.extent.x, ( 1.0 - ndc.y ) * 0.5 * ao.extent.y );
 }
 
 vec3 OctDecode( vec2 e )
@@ -54,9 +91,15 @@ vec3 OctDecode( vec2 e )
 	return normalize( n );
 }
 
+// Row r of world to view (GLSL indexes a matrix by column, row_major or not).
+vec4 ViewRow( int r )
+{
+	return vec4( ao.view[0][r], ao.view[1][r], ao.view[2][r], ao.view[3][r] );
+}
+
 float ViewDistance( vec3 world )
 {
-	return -dot( vec4( world, 1.0 ), vec4( ao.view[2] ) );
+	return -dot( vec4( world, 1.0 ), ViewRow( 2 ) );
 }
 
 float Integrate( ivec2 p )
@@ -75,8 +118,15 @@ float Integrate( ivec2 p )
 	const float radiusPixels = radius * ao.extent.z / distance;
 	if ( radiusPixels < 1.0 )
 		return 1.0;
-	const vec3 right = ao.view[0].xyz;
-	const vec3 up = ao.view[1].xyz;
+	// The slices are spread evenly about the view vector (the integral's
+	// measure), each marched along its own line on the screen: the screen
+	// line from the pixel along a slice's in-plane direction lies in the
+	// slice's plane. (Spread evenly on the screen instead, off-centre pixels
+	// would weigh slices unevenly: 5 percent too dark on a grazing plane.)
+	const vec3 t1 = normalize( cross( viewDir, abs( viewDir.z ) < 0.9 ? vec3( 0.0, 0.0, 1.0 )
+	                                                                   : vec3( 1.0, 0.0, 0.0 ) ) );
+	const vec3 t2 = cross( viewDir, t1 );
+	const vec2 origin = PixelOf( position );
 	const int slices = int( ao.params.z );
 	const int steps = int( ao.params.w );
 	// A 4 x 4 pattern turns the slices and offsets the steps; the blur
@@ -88,10 +138,21 @@ float Integrate( ivec2 p )
 	for ( int s = 0; s < slices; ++s )
 	{
 		const float phi = ( float( s ) + turn ) * kPi / float( slices );
-		const vec2 direction = vec2( cos( phi ), sin( phi ) );
-		// The slice plane holds the view direction and the screen direction.
-		const vec3 along = right * direction.x - up * direction.y;
+#ifdef SEEDED_GTAO_SCREEN_SLICES
+		// The defect: slices spread evenly on the screen.
+		vec2 direction = vec2( cos( phi ), sin( phi ) );
+		const vec3 along = ViewRow( 0 ).xyz * direction.x - ViewRow( 1 ).xyz * direction.y;
 		const vec3 ortho = normalize( along - viewDir * dot( along, viewDir ) );
+#else
+		const vec3 ortho = cos( phi ) * t1 + sin( phi ) * t2;
+		vec2 direction = PixelOf( position + ortho * ( 0.01 * distance ) ) - origin;
+#endif
+		if ( dot( direction, direction ) < 1e-12 )
+		{
+			visibility += 1.0;
+			continue;
+		}
+		direction = normalize( direction );
 		const vec3 axis = cross( ortho, viewDir );
 		const vec3 projected = normal - axis * dot( normal, axis );
 		const float projectedLength = length( projected );
@@ -100,8 +161,13 @@ float Integrate( ivec2 p )
 			visibility += 1.0;
 			continue;
 		}
+#ifdef SEEDED_GTAO_PROJECTION_IGNORED
+		const float cosN = 1.0;
+		const float n = 0.0;
+#else
 		const float cosN = clamp( dot( projected, viewDir ) / projectedLength, -1.0, 1.0 );
 		const float n = ( dot( projected, ortho ) < 0.0 ? -1.0 : 1.0 ) * acos( cosN );
+#endif
 		float horizons[2];
 		for ( int side = 0; side < 2; ++side )
 		{
@@ -111,13 +177,24 @@ float Integrate( ivec2 p )
 			{
 				const float t = ( float( k ) + jitter ) / float( steps );
 				const vec2 offset = sign * direction * max( t * t * radiusPixels, 1.0 + float( k ) );
-				const vec2 at = pixel + offset;
+				const vec2 at = origin + offset;
 				if ( any( lessThan( at, vec2( 0.0 ) ) ) || any( greaterThanEqual( at, ao.extent.xy ) ) )
 					break;
+#ifdef SEEDED_GTAO_SNAPPED_SAMPLES
+				const vec2 snapped = floor( at ) + 0.5;
 				const float sampleDepth = DepthAt( ivec2( at ) );
 				if ( sampleDepth >= 1.0 )
 					continue;
-				const vec3 d = WorldAt( floor( at ) + 0.5, sampleDepth ) - position;
+				const vec3 d = WorldAt( snapped, sampleDepth ) - position;
+#else
+				const float sampleDepth = DepthBetween( at );
+				if ( sampleDepth >= 1.0 )
+					continue;
+				// The sample at its own screen position, so it lies in the
+				// slice plane (a texel centre need not: at grazing angles one
+				// pixel's offset out of the slice reads as a horizon).
+				const vec3 d = WorldAt( at, sampleDepth ) - position;
+#endif
 				const float len = length( d );
 				if ( len < 1e-4 )
 					continue;
@@ -135,7 +212,10 @@ float Integrate( ivec2 p )
 		                  0.25 * ( -cos( 2.0 * h1 - n ) + cosN + 2.0 * h1 * sinN );
 		visibility += projectedLength * arc;
 	}
-	return clamp( visibility / float( slices ), 0.0, 1.0 );
+	// Unclamped above: a pixel's few slices scatter about the integral on
+	// both sides at grazing angles, and clamping one side before the blur
+	// would bias the mean down (the output is clamped after it).
+	return max( visibility / float( slices ), 0.0 );
 }
 
 void main()
@@ -185,6 +265,6 @@ void main()
 			weights += w;
 		}
 	}
-	const float visibility = weights > 0.0 ? sum / weights : scratch[index];
+	const float visibility = clamp( weights > 0.0 ? sum / weights : scratch[index], 0.0, 1.0 );
 	imageStore( outputImage, p, vec4( visibility, visibility, visibility, 1.0 ) );
 }

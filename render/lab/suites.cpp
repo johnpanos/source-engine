@@ -44,6 +44,8 @@ int RunSuite( int argc, char **argv )
 		return RunShadowedLightsSuite( argc - 1, argv + 1 );
 	if ( name == "bounce" )
 		return RunBounceSuite( argc - 1, argv + 1 );
+	if ( name == "gtao" )
+		return RunGtaoSuite( argc - 1, argv + 1 );
 	std::fprintf( stderr, "render_lab suite: no suite %s\n", name.c_str() );
 	return 2;
 }

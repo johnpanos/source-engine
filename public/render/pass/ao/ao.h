@@ -38,6 +38,7 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
+#include <span>
 #include <vector>
 
 namespace render::pass::ao
@@ -81,6 +82,11 @@ class AmbientOcclusion
 public:
 	static foundation::Expected<std::unique_ptr<AmbientOcclusion>, AoStatus> Create(
 	    device::IRenderDevice2 &device, const AoParams &params = {} );
+	// Test endpoint: the pass with another program (a suite's seeded variant
+	// of render/pass/ao/gtao.comp, SPIR-V, the same interface).
+	static foundation::Expected<std::unique_ptr<AmbientOcclusion>, AoStatus> CreateWithProgram(
+	    device::IRenderDevice2 &device, const AoParams &params,
+	    std::span<const std::uint32_t> spirv );
 	~AmbientOcclusion();
 	AmbientOcclusion( const AmbientOcclusion & ) = delete;
 	AmbientOcclusion &operator=( const AmbientOcclusion & ) = delete;

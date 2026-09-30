@@ -10307,6 +10307,72 @@
       "expect": "pass"
     },
     {
+      "id": "render.lab.gtao",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "migration": "R95",
+      "contract": "RFC/0016-render-core.md",
+      "profile": "linux-native-vulkan-gpu",
+      "kind": "positive",
+      "description": "RFC 0016 K11 'Ambient occlusion' (render.pass.ao; render/lab/gtao_suite.cpp, render_lab suite gtao --validate): the pass on synthesized depth and normals of analytic scenes against a ray-traced cosine-weighted visibility (1024 stratified rays, occluders weighted by the pass's linear falloff from 0.6 R to R), sharing no code with the shader. An open plane seen at 35 degrees down: every pixel in [0.99, 1]; pixels with no depth one; a floor meeting a wall: mean error at most 0.025 and 95th percentile at most 0.12 (GTAO's one horizon per slice side occludes less than rays near a crease; band set after the first run, disclosed), and floor near the wall darker than 0.9 of the floor 100 units away. 0 validation messages.",
+      "command": [
+        "{python}",
+        "tools/render/lab.py",
+        "suite",
+        "gtao",
+        "--validate"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 5,
+      "timeout_seconds": 600,
+      "requires": [
+        "path:build-rc-lab/render/lab/render_lab",
+        "vulkan-device:gpu"
+      ],
+      "sources": [
+        "render/lab/gtao_suite.cpp",
+        "render/lab/lab_suite.cpp",
+        "render/pass/ao/ao.cpp",
+        "render/pass/ao/gtao.comp",
+        "public/render/pass/ao/ao.h",
+        "tools/render/lab.py"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.lab.gtao.sensitivity",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "migration": "R95",
+      "contract": "RFC/0016-render-core.md",
+      "profile": "linux-native-vulkan-gpu",
+      "kind": "sensitivity",
+      "description": "render.lab.gtao's seeded programs: the projected normal ignored, slices spread evenly on the screen instead of about the view vector, and samples snapped to texel centres each fail the check they break.",
+      "command": [
+        "{python}",
+        "tools/render/lab.py",
+        "suite",
+        "gtao",
+        "--sensitivity"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 4,
+      "timeout_seconds": 900,
+      "requires": [
+        "path:build-rc-lab/render/lab/render_lab",
+        "vulkan-device:gpu"
+      ],
+      "sources": [
+        "render/lab/gtao_suite.cpp",
+        "render/lab/lab_suite.cpp",
+        "render/pass/ao/ao.cpp",
+        "render/pass/ao/gtao.comp",
+        "public/render/pass/ao/ao.h",
+        "tools/render/lab.py"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "render.debug-views.product.mode0",
       "domain": "Q-PRESENTATION",
       "rfc": "0014",

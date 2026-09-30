@@ -216,6 +216,14 @@ GENERATED = {
          DEVICE_OPTIONS + ("-DSEEDED_BOUNCE_VISIBILITY_IGNORED",)),
         ("kBounceFlatSolidAngle", BOUNCE + "/bounce.comp",
          DEVICE_OPTIONS + ("-DSEEDED_BOUNCE_FLAT_SOLID_ANGLE",)))),
+    "gtao_defects_spv.h": ("render::lab::spirv",
+        "render_lab's gtao suite's seeded programs (render.lab.gtao sensitivity, RFC 0016 K11)", (
+        ("kGtaoProjectionIgnored", AO + "/gtao.comp",
+         DEVICE_OPTIONS + ("-DSEEDED_GTAO_PROJECTION_IGNORED",)),
+        ("kGtaoScreenSlices", AO + "/gtao.comp",
+         DEVICE_OPTIONS + ("-DSEEDED_GTAO_SCREEN_SLICES",)),
+        ("kGtaoSnappedSamples", AO + "/gtao.comp",
+         DEVICE_OPTIONS + ("-DSEEDED_GTAO_SNAPPED_SAMPLES",)))),
     "ao_spv.h": ("render::pass::ao::spirv",
         "render.pass.ao: ground-truth ambient occlusion (RFC 0016 K11)", (
         ("kGtaoCompute", AO + "/gtao.comp", DEVICE_OPTIONS),)),
