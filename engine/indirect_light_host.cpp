@@ -730,8 +730,11 @@ void Consume( const FrameVolume &frame )
 	host.view.emplace( host.current->bytes.data(), host.current->layout );
 	// Every model's ambient cube is re-evaluated from the new volume, and
 	// brush entities without baked light (doors) are lit from it: on a
-	// sparse update those reading a touched probe.
-	R_StudioInitLightingCache();
+	// sparse update the static props and brushes reading a touched probe.
+	if ( sparse )
+		R_StudioRelightFromProbes( touched.data(), uint32_t( touched.size() ) );
+	else
+		R_StudioInitLightingCache();
 	if ( !sparse || !host.brushesLit )
 		host.brushesLit = R_RelightBrushEntitiesFromProbes( &*host.view );
 	else if ( !touched.empty() )
@@ -794,12 +797,16 @@ void Consume( const FrameVolume &frame )
 		                  ( !partial || !withDelta ||
 		                      ( ChangeAtlas( *host.current, *host.scene.baked, &wholeChange ) &&
 		                          wholeChange == host.change ) );
+		// The static props the sparse relight skipped hold what a full
+		// relight gives.
+		const int staleProps = R_StudioCountStaleStaticLighting();
 		++host.sparseVerified;
-		host.sparseMismatches += !same;
-		if ( !same || host.sparseVerified % 100 == 1 )
-			Msg( "indirect light: sparse verify: %llu update(s), %llu differ from whole%s\n",
+		host.sparseMismatches += !same || staleProps != 0;
+		if ( !same || staleProps || host.sparseVerified % 100 == 1 )
+			Msg( "indirect light: sparse verify: %llu update(s), %llu differ from whole%s "
+			     "(%d stale static prop(s))\n",
 			    (unsigned long long)host.sparseVerified, (unsigned long long)host.sparseMismatches,
-			    same ? "" : " (this one differs)" );
+			    same ? "" : " (this one differs)", staleProps );
 	}
 	std::vector<world_mesh_gpu::ProbeAtlasRegion> regions;
 	std::vector<unsigned char> texels, changeTexels;

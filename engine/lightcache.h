@@ -120,6 +120,12 @@ ITexture *LightcacheGetDynamic( const Vector& origin, LightingState_t& lightingS
 
 // Reset the light cache.
 void R_StudioInitLightingCache( void );
+// RFC 0011: a sparse probe-volume publication's relight (the changed probes'
+// global indices): only the static props whose lighting read one of them.
+void R_StudioRelightFromProbes( const uint32_t *pChanged, uint32_t nChanged );
+// r_indirect_sparse_verify: static props whose lighting was stale, after
+// recomputing them all.
+int R_StudioCountStaleStaticLighting();
 
 // force recomputation for static lighting cache entries
 void InvalidateStaticLightingCache(void);

@@ -292,6 +292,9 @@ public:
 									// recomputed by AddDlightsForStaticProps
 	int				m_DLightMarkFrame;	// last frame in which a dlight was marked on this prop (helps detect lights that are marked but have moved away from this prop)
 	CUtlVector<short> m_LightStyleWorldLights;	// This is a list of lights that affect this static prop cache entry.
+	// The probe volume's probes its static lighting read (RFC 0011): a
+	// sparse publication recomputes the props that read a changed probe.
+	CUtlVector<uint32> m_ProbeReads;
 	int				m_SwitchableLightFrame;		// This is the last frame that switchable lights were calculated.
 	Vector			mins; // fixme: make these smaller
 	Vector			maxs; // fixme: make these smaller
@@ -368,7 +371,8 @@ inline lightcache_t& GetLightLRUTail()
 //-----------------------------------------------------------------------------
 // Purpose: Set up the LRU
 //-----------------------------------------------------------------------------
-void R_StudioInitLightingCache( void )
+// Empties the LRU of dynamic entities' entries (each recomputes on use).
+static void ResetLightCacheLRU()
 {
 	unsigned short i;
 
@@ -395,6 +399,11 @@ void R_StudioInitLightingCache( void )
 	// link the sentinels
 	lightcache[LIGHT_LRU_HEAD_INDEX].lru_next = 0;
 	lightcache[LIGHT_LRU_TAIL_INDEX].lru_prev = i;
+}
+
+void R_StudioInitLightingCache( void )
+{
+	ResetLightCacheLRU();
 
 	// Lower number of lights on older hardware
 	if ( g_pMaterialSystemHardwareConfig->MaxNumLights() < r_worldlights.GetInt() )
@@ -413,7 +422,6 @@ void R_StudioInitLightingCache( void )
 	// Recompute all static lighting
 	InvalidateStaticLightingCache();
 }
-
 
 void R_StudioCheckReinitLightingCache()
 {
@@ -2412,6 +2420,91 @@ void ClearStaticLightingCache()
 	s_pAllStaticProps = NULL;
 }
 
+//-----------------------------------------------------------------------------
+// The probes a static prop's ambient cube reads (its six faces' samples, as
+// ProbeVolumeView::AmbientCube takes them); none outside every grid.
+//-----------------------------------------------------------------------------
+static void RecordProbeReads( PropLightcache_t *pcache )
+{
+	pcache->m_ProbeReads.RemoveAll();
+	const mapcontainer::ProbeVolumeView *pVolume = IndirectLight_CurrentVolume();
+	if ( !pVolume || !r_probevolume.GetBool() )
+		return;
+	static const float kAxes[6][3] = {
+	    { 1, 0, 0 }, { -1, 0, 0 }, { 0, 1, 0 }, { 0, -1, 0 }, { 0, 0, 1 }, { 0, 0, -1 } };
+	const Vector &origin = pcache->m_LightingOrigin;
+	const float position[3] = { origin.x, origin.y, origin.z };
+	for ( int face = 0; face < 6; ++face )
+	{
+		uint32_t probes[8];
+		const uint32_t count = pVolume->SampleProbes( position, kAxes[face], probes );
+		for ( uint32_t k = 0; k < count; ++k )
+		{
+			if ( pcache->m_ProbeReads.Find( probes[k] ) < 0 )
+				pcache->m_ProbeReads.AddToTail( probes[k] );
+		}
+	}
+}
+
+//-----------------------------------------------------------------------------
+// A sparse probe-volume publication (RFC 0011): dynamic entities' entries
+// recompute on use, and a static prop recomputes only when its lighting read
+// one of the changed probes (global indices).
+//-----------------------------------------------------------------------------
+void R_StudioRelightFromProbes( const uint32_t *pChanged, uint32_t nChanged )
+{
+	ResetLightCacheLRU();
+	uint32_t nMax = 0;
+	for ( uint32_t i = 0; i < nChanged; ++i )
+		nMax = MAX( nMax, pChanged[i] + 1 );
+	CUtlVector<uint8> changed;
+	changed.SetCount( nMax );
+	if ( nMax )
+		memset( changed.Base(), 0, nMax );
+	for ( uint32_t i = 0; i < nChanged; ++i )
+		changed[pChanged[i]] = 1;
+	for ( PropLightcache_t *pCur = s_pAllStaticProps; pCur; pCur = pCur->m_pNextPropLightcache )
+	{
+		bool bReads = false;
+		for ( int k = 0; k < pCur->m_ProbeReads.Count() && !bReads; ++k )
+			bReads = pCur->m_ProbeReads[k] < nMax && changed[pCur->m_ProbeReads[k]];
+		if ( !bReads )
+			continue;
+		pCur->m_Flags = 0;
+		pCur->m_LightingFlags &= ~HACKLIGHTCACHEFLAGS_HASDONESTATICLIGHTING;
+		LightcacheGetStatic( (LightCacheHandle_t)pCur, NULL, LIGHTCACHEFLAGS_STATIC );
+	}
+}
+
+//-----------------------------------------------------------------------------
+// r_indirect_sparse_verify: recomputes every static prop's lighting and
+// counts those whose ambient cube differed from what they held (a sparse
+// relight that missed a prop). Leaves every prop recomputed.
+//-----------------------------------------------------------------------------
+int R_StudioCountStaleStaticLighting()
+{
+	int nStale = 0;
+	for ( PropLightcache_t *pCur = s_pAllStaticProps; pCur; pCur = pCur->m_pNextPropLightcache )
+	{
+		if ( !( pCur->m_LightingFlags & HACKLIGHTCACHEFLAGS_HASDONESTATICLIGHTING ) )
+			continue;
+		Vector held[6];
+		for ( int i = 0; i < 6; ++i )
+			held[i] = pCur->m_StaticLightingState.r_boxcolor[i];
+		pCur->m_Flags = 0;
+		pCur->m_LightingFlags &= ~HACKLIGHTCACHEFLAGS_HASDONESTATICLIGHTING;
+		LightcacheGetStatic( (LightCacheHandle_t)pCur, NULL, LIGHTCACHEFLAGS_STATIC );
+		for ( int i = 0; i < 6; ++i )
+		{
+			if ( held[i] != pCur->m_StaticLightingState.r_boxcolor[i] )
+			{
+				++nStale;
+				break;
+			}
+		}
+	}
+	return nStale;
+}
 
 //-----------------------------------------------------------------------------
 // Recomputes all static prop lighting
@@ -2491,6 +2584,7 @@ LightingState_t *LightcacheGetStatic( LightCacheHandle_t cache, ITexture **pEnvC
 		{	
 			ComputeStaticLightingForCacheEntry( pcache, pcache->m_LightingOrigin, pcache->leaf, true );
 			pcache->m_LightingFlags |= HACKLIGHTCACHEFLAGS_HASDONESTATICLIGHTING;
+			RecordProbeReads( pcache );
 		}
 
 		// set as start values for accumulation
