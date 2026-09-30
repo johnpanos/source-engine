@@ -505,6 +505,17 @@ foundation::Expected<ClusterStats, ClusterFailure> AssignLights(
 	std::vector<std::uint64_t> pairs;
 	std::vector<std::uint32_t> columns;
 	std::vector<std::uint32_t> rows;
+	// Each froxel's box, made the first time a light reaches it (the same
+	// arithmetic every light would repeat).
+	struct FroxelBox
+	{
+		float3 lo;
+		float3 hi;
+		float3 middle;
+		float bound = 0.0f;
+		bool made = false;
+	};
+	std::vector<FroxelBox> boxes( froxelCount );
 
 	for ( const std::uint32_t lightIndex : admitted )
 	{
@@ -545,23 +556,34 @@ foundation::Expected<ClusterStats, ClusterFailure> AssignLights(
 			{
 				for ( const std::uint32_t x : columns )
 				{
-					const float3 rays[4] = { grid.cornerRays[y * rayStride + x],
-					    grid.cornerRays[y * rayStride + x + 1],
-					    grid.cornerRays[( y + 1 ) * rayStride + x],
-					    grid.cornerRays[( y + 1 ) * rayStride + x + 1] };
-					float3 lo = rays[0] * sliceNear;
-					float3 hi = lo;
-					float3 corners[8];
-					for ( int c = 0; c < 4; ++c )
+					const std::uint32_t froxel = grid.FroxelIndex( x, y, k );
+					FroxelBox &box = boxes[froxel];
+					if ( !box.made )
 					{
-						corners[c] = rays[c] * sliceNear;
-						corners[c + 4] = rays[c] * sliceFar;
+						const float3 rays[4] = { grid.cornerRays[y * rayStride + x],
+						    grid.cornerRays[y * rayStride + x + 1],
+						    grid.cornerRays[( y + 1 ) * rayStride + x],
+						    grid.cornerRays[( y + 1 ) * rayStride + x + 1] };
+						float3 corners[8];
+						for ( int c = 0; c < 4; ++c )
+						{
+							corners[c] = rays[c] * sliceNear;
+							corners[c + 4] = rays[c] * sliceFar;
+						}
+						box.lo = rays[0] * sliceNear;
+						box.hi = box.lo;
+						for ( const float3 &corner : corners )
+						{
+							box.lo = math::Min( box.lo, corner );
+							box.hi = math::Max( box.hi, corner );
+						}
+						box.middle = ( box.lo + box.hi ) * 0.5f;
+						for ( const float3 &corner : corners )
+							box.bound = std::max( box.bound, math::Length( corner - box.middle ) );
+						box.made = true;
 					}
-					for ( const float3 &corner : corners )
-					{
-						lo = math::Min( lo, corner );
-						hi = math::Max( hi, corner );
-					}
+					const float3 lo = box.lo;
+					const float3 hi = box.hi;
 					if ( !unbounded )
 					{
 						const float3 nearest = math::Max( lo, math::Min( light.center, hi ) );
@@ -571,16 +593,13 @@ foundation::Expected<ClusterStats, ClusterFailure> AssignLights(
 					}
 					if ( light.spot )
 					{
-						const float3 middle = ( lo + hi ) * 0.5f;
-						float bound = 0.0f;
-						for ( const float3 &corner : corners )
-							bound = std::max( bound, math::Length( corner - middle ) );
+						const float3 middle = box.middle;
+						const float bound = box.bound;
 						const float slack =
 						    kRelativeSlack * ( math::Length( middle ) + bound + centerLength );
 						if ( !SphereMayTouchCone( light, middle, bound + slack ) )
 							continue;
 					}
-					const std::uint32_t froxel = grid.FroxelIndex( x, y, k );
 					++candidates[froxel];
 					pairs.push_back( ( std::uint64_t( froxel ) << 32 ) | lightIndex );
 				}
@@ -610,11 +629,9 @@ foundation::Expected<ClusterStats, ClusterFailure> AssignLights(
 	if ( grid.limits.overflow == OverflowPolicy::kFail && stats.Overflowed() )
 		return foundation::MakeUnexpected( ClusterFailure{ ClusterError::kOverflow, stats } );
 
-	std::stable_sort( pairs.begin(), pairs.end(),
-	    []( std::uint64_t a, std::uint64_t b )
-	    {
-		    return ( a >> 32 ) < ( b >> 32 );
-	    } );
+	// The pairs are in light order, and each froxel's list keeps that order:
+	// filling the lists in pair order places them as a stable sort by froxel
+	// would, with no sort.
 	std::vector<std::uint32_t> indices( stats.assignments );
 	std::vector<std::uint32_t> written( froxelCount, 0 );
 	for ( const std::uint64_t pair : pairs )
