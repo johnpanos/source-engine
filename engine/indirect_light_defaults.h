@@ -12,10 +12,10 @@
 
 #if defined( ANDROID )
 // quality/product_profiles/portal-android-native-vulkan.json
-static const char *const kIndirectDefaultProducers[] = { "radiosity", "baked" };
+static const char *const kIndirectDefaultProducers[] = { "baked" };
 #else
 // quality/product_profiles/portal-linux-wayland-native-vulkan.json
-static const char *const kIndirectDefaultProducers[] = { "sdf", "radiosity", "baked" };
+static const char *const kIndirectDefaultProducers[] = { "baked" };
 #endif
 
 #endif // ENGINE_INDIRECT_LIGHT_DEFAULTS_H

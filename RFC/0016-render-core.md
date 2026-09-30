@@ -1328,19 +1328,17 @@ Rules for the whole model:
   copy, and their C++ oracles are unchanged. Binding rule 4 deletes each old
   copy per surface set as its term moves; K12 and K9 check that none
   remains.
-- **Moving-light GI is kept (user decision, 2026-09-29).** Deleting the
-  native backend's copies must not delete RFC 0011's indirect response to
-  moved and unbaked lights (G9: the traced producers bounce them, SDF
-  shadows occlude them). Before K12 deletes `probe_volume.glsl`, the
-  producers' compute in `vulkan_compute.cpp` and the backend's reads of the
-  runtime volume, the core runs the RFC 0011 producers' GPU work in
-  `render/pass/indirect/`, and its surfaces read the published volume under
-  the map's indirect policy. RFC 0011 still owns the producer contract
-  (`render.indirect-light.v1`), `r_indirect_producer` and the producers'
-  math; the core only moves where their GPU work runs. No K12 slice may
-  make a map lose a producer its profile offers today. There is no "first
-  cut without runtime GI"; a profile that declares a producer unsupported
-  (Android: the traced ones) keeps that declaration unchanged.
+- **Moving-light GI is out of scope (user decision, 2026-09-30; it
+  reverses the 2026-09-29 decision to keep it).** The indirect light is the
+  bake's: every product profile's `r_indirect_producer auto` is `baked`,
+  and `./play` and `./play_p2` pass `baked`. RFC 0011's producers (radiosity,
+  SDF, ray query) stay in the tree as opt-ins (`r_indirect_producer`,
+  `./play --moving-light-gi`), but no K12 slice owes them a place on the
+  core, and deleting the native backend's copies may drop their runtime
+  response to moved and unbaked lights. Direct light is not affected: under
+  runtime direct light every light's direct light is drawn at runtime,
+  shadowed, so moved and switched lights and moving objects change it
+  (id Tech's split, [runtime direct light](#runtime-direct-light-amended-2026-09-30)).
 - **Profiles declare, they don't skip.** A term that a profile cannot
   support (a missing capability) is declared off by name in that profile's
   capability record. Being over budget is not a reason to turn a term off
@@ -1429,6 +1427,48 @@ shadows together; GTAO without double occlusion on baked light;
 screen-space reflections over the probes; volumetric fog with shadowed
 projectors and the sun. Their combined cost comes after (binding rule 7):
 it is measured from the start, and optimized once they look right.
+
+### Runtime direct light (amended 2026-09-30)
+
+User goal (2026-09-30), after comparing the engine with id Tech 6 and 7
+(SIGGRAPH 2016 "The Devil is in the Details", SIGGRAPH 2020 "Rendering the
+Hellscape of Doom Eternal", SIGGRAPH 2025's recap of id Tech 7's GI): the
+lightmap holds indirect light only, and every light's direct light is
+drawn at runtime, shadowed by the cached atlas with moving casters. A door
+that closes then darkens what it shadows through its atlas tiles, and no
+baked direct light is recomposed on the CPU (RFC 0011's DirectOcclusion
+took 200-960 ms per change on `sp_a2_laser_intro_relit`).
+
+- **The layers.** LMAP v2's direct layer is the direct light of exactly
+  the lights the runtime evaluates (the scene's analytic emitters, which
+  are the map's light entities, and its distant lights). Its indirect layer
+  is everything else: every bounce, and the direct light of what is not a
+  runtime light (the sky, glowing surfaces). total = direct + indirect
+  still holds. The indirect layer carries its own directional gradient
+  (fitted to the total's RNM bakes less direct-only ones), so a
+  normal-mapped surface keeps the direction its bounced light comes from.
+  Owner: `tools/quality/pbrt_lightmap_bake.py`, `lightmap_directional.py
+  --layer indirect`, `lightmap_ktx2.py --layer-directional`.
+- **The surface.** `material::kSurfaceRuntimeDirect` on the pbr point of a
+  world stage: the basis reads the indirect layer, and the clustered, area
+  and sun loops draw every light's diffuse lobe, the baked ones included.
+  The draw's page stays the total layer (the sun's baked mask in its
+  alpha; the water point's `$lightmapwaterfog`). The world stage sets it
+  (`WorldStage::runtimeDirect`) from `r_core_runtime_direct` (default 1;
+  RenderCoreWorldQuality::runtimeDirect) when the map has an indirect
+  layer. A map without one draws its total layer, and the stage's log says
+  which.
+- **DirectOcclusion.** The engine builds it once the core's batches are
+  known (`IndirectLight_BuildDirectOcclusion`), over the triangles the
+  core does not light: the frozen backend's batches, or every triangle
+  when the core does not draw the stage under runtime direct light.
+- **What stays baked.** Indirect light does not follow a closed door or a
+  switched light; moving-light GI is out of scope (user decision,
+  2026-09-30).
+- **Proof.** `render_lab --core-direct` binds what the product binds, and
+  the lighting fixture `door-room` (a door the bake never saw, a
+  `--mover`) judges the direct term against Cycles' direct diffuse pass,
+  with a negative control of the door not casting.
 
 ## Threading
 
@@ -1756,7 +1796,7 @@ ahead of the product rows.
 | --- | --- | --- |
 | One light per surface | the `RuntimeLight` census and the doubled-light control | every term the core evaluates has its flag set on exactly the surfaces it shades; forcing both paths fails as doubled light for each term |
 | One copy of the math | static scan | the model's GLSL exists only under `render/`; `world_pbr.frag`, `model_pbr.frag`, `probe_volume.glsl` and `reflection_probes.glsl` are gone from the native backend |
-| Moving-light GI kept (user decision, 2026-09-29) | RFC 0011 G9's `swing` (frozen and swinging), G3's switching over `gi_door`, and `portal-view`, booted with the core drawing the world and the native backend's copies deleted | every G9 done condition still passes on the core: each frozen state matches Cycles within the producer's tolerance, radiosity and shadows-off still fail it, and the swing shows no flicker; `r_indirect_producer_offered` lists every producer the profile offered before K12; switching has no black frame or early free; seeded controls (the volume never read, or published without the unbaked lights) fail |
+| Moving-light GI (out of scope, user decision 2026-09-30) | none | not judged: the bake's indirect light is the product's (`r_indirect_producer auto` is `baked` in every profile); the producers stay opt-in and unjudged by K12 |
 | Game matches lab | the Portal and Portal 2 chambers booted with the lab's cameras | each in-game frame within tolerance of the same scene's `render_lab` frame |
 | Game output | Portal and Portal 2 on the iPhone and the Apple TV | the product presents through `render.presentation.v1` (no backend-owned swapchain), its frames reach it through `render.pass.output` at the presentation's headroom, and each profile records its declared range |
 | Frame budgets (perf) | `portal-frame-pacing-v1` and a Portal 2 workload | within the frame allowance of K0 with every declared term on, per profile; the declared-off terms are listed per profile |

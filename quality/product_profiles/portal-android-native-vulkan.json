@@ -226,10 +226,9 @@
   },
   "indirect_light": {
     "default_producers": [
-      "radiosity",
       "baked"
     ],
-    "chosen_from": "RFC/0011-progress.md#g8-product: radiosity passes the light toggles on the Fold7 at about 1.2 ms CPU per update (budget 2.0); sdf and rayquery are declared unsupported on Android until measured within a budget (quality/budgets/indirect-light-v1.json)",
+    "chosen_from": "User decision 2026-09-30: moving-light GI is out of scope, so the indirect light is the bake's (the other producers stay opt-in through r_indirect_producer). Before it: RFC/0011-progress.md#g8-product: radiosity passes the light toggles on the Fold7 at about 1.2 ms CPU per update (budget 2.0); sdf and rayquery are declared unsupported on Android until measured within a budget (quality/budgets/indirect-light-v1.json)",
     "rollback": "r_indirect_producer baked"
   }
 }

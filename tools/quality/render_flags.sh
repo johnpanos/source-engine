@@ -27,6 +27,15 @@
 #                       (-novklegacyports)
 #   --validate          Khronos validation with synchronization validation
 #                       (-vkvalidate)
+#   --moving-light-gi   runtime indirect light for moved and switched lights
+#                       (RFC 0011's SDF producer, +r_indirect_producer sdf).
+#                       Off by default: moving-light GI is out of scope (user
+#                       decision, 2026-09-30), so the indirect light is the
+#                       bake's (+r_indirect_producer baked)
+#   --baked-direct      the bake's direct light on the core's world (the total
+#                       lightmap layer, +r_core_runtime_direct 0) instead of
+#                       every light's direct light drawn at runtime, shadowed
+#                       (id Tech's split, the default)
 #   --render-help       this list
 render_flags_usage()
 {
@@ -40,6 +49,8 @@ render_flags_parse()
 	RENDER_REST=()
 	local core_world=${RENDER_CORE_WORLD_DEFAULT:-0}
 	local no_core=0
+	local producer=baked
+	local runtime_direct=1
 	while [ $# -gt 0 ]; do
 		case "$1" in
 			--native) RENDER_BACKEND=native ;;
@@ -51,6 +62,8 @@ render_flags_parse()
 			--core-probe=*) RENDER_GAME_ARGS+=(-render-core-passes "${1#--core-probe=}") ;;
 			--no-legacy-ports) RENDER_GAME_ARGS+=(-novklegacyports) ;;
 			--validate) RENDER_GAME_ARGS+=(-vkvalidate) ;;
+			--moving-light-gi) producer=sdf ;;
+			--baked-direct) runtime_direct=0 ;;
 			--render-help) render_flags_usage; exit 0 ;;
 			*) break ;;
 		esac
@@ -61,4 +74,7 @@ render_flags_parse()
 	if [ "$core_world" = 1 ] && [ "$no_core" = 0 ] && [ "$RENDER_BACKEND" = native ]; then
 		RENDER_GAME_ARGS+=(+sv_cheats 1 +r_core_world 1)
 	fi
+	# The indirect-light producer (an archived setting, so always passed) and
+	# the core's direct light.
+	RENDER_GAME_ARGS+=(+r_indirect_producer "$producer" +r_core_runtime_direct "$runtime_direct")
 }
