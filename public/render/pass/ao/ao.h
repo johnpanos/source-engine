@@ -51,6 +51,9 @@ struct AoParams
 	std::uint32_t slices = 8;   // directions per pixel
 	std::uint32_t steps = 8;    // samples per direction each way
 	std::uint32_t blurRadius = 3; // texels; 0 leaves the raw visibility
+	// Integrate once per 2 x 2 pixels, and upsample in the blur (depth- and
+	// normal-aware): a quarter of the integration's cost.
+	bool halfResolution = false;
 };
 
 enum class AoStatus : std::uint8_t

@@ -186,6 +186,8 @@ foundation::Expected<void, AoStatus> AmbientOcclusion::Record(
 	constants.params[2] = float( m_Params.slices );
 	constants.params[3] = float( m_Params.steps );
 	constants.blur[0] = float( m_Params.blurRadius );
+	const std::uint32_t scale = m_Params.halfResolution ? 2u : 1u;
+	constants.blur[1] = float( scale );
 
 	const BindGroupEntry entries[kBindingCount] = {
 	    { kView, m_Constants, 0, sizeof( ViewConstants ), {}, {} },
@@ -212,7 +214,9 @@ foundation::Expected<void, AoStatus> AmbientOcclusion::Record(
 	const std::uint32_t groupsY = ( targets.height + kGroup - 1 ) / kGroup;
 	const std::uint32_t integrate[4] = { 0, 0, 0, 0 };
 	encoder.SetDrawConstants( 0, std::as_bytes( std::span( integrate ) ) );
-	encoder.Dispatch( groupsX, groupsY );
+	const std::uint32_t cellsX = ( targets.width + scale - 1 ) / scale;
+	const std::uint32_t cellsY = ( targets.height + scale - 1 ) / scale;
+	encoder.Dispatch( ( cellsX + kGroup - 1 ) / kGroup, ( cellsY + kGroup - 1 ) / kGroup );
 	encoder.TransitionBuffer( m_Scratch, ResourceUsage::kStorageWrite, ResourceUsage::kStorageWrite );
 	const std::uint32_t blur[4] = { 1, 0, 0, 0 };
 	encoder.SetDrawConstants( 0, std::as_bytes( std::span( blur ) ) );

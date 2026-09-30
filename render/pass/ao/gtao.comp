@@ -15,7 +15,7 @@ layout( set = 3, binding = 0, std140 ) uniform AoView
 	vec4 eye;     // xyz
 	vec4 extent;  // width, height, pixels per world unit at view distance 1, 0
 	vec4 params;  // radius, falloff (of the radius), slices, steps
-	vec4 blur;    // radius in texels
+	vec4 blur;    // radius in texels, scale (1 full resolution, 2 half)
 }
 ao;
 
@@ -102,7 +102,9 @@ float ViewDistance( vec3 world )
 	return -dot( vec4( world, 1.0 ), ViewRow( 2 ) );
 }
 
-float Integrate( ivec2 p )
+// `cell` indexes the 4 x 4 pattern: the pixel's own, or at half resolution
+// its cell's (so neighbouring cells still take different turns).
+float Integrate( ivec2 p, ivec2 cell2 )
 {
 	const float depth = DepthAt( p );
 	if ( depth >= 1.0 )
@@ -131,7 +133,7 @@ float Integrate( ivec2 p )
 	const int steps = int( ao.params.w );
 	// A 4 x 4 pattern turns the slices and offsets the steps; the blur
 	// averages it out.
-	const int cell = ( p.x & 3 ) + 4 * ( p.y & 3 );
+	const int cell = ( cell2.x & 3 ) + 4 * ( cell2.y & 3 );
 	const float turn = float( ( cell * 7 ) & 15 ) / 16.0;
 	const float jitter = float( ( cell * 11 + 5 ) & 15 ) / 16.0;
 	float visibility = 0.0;
@@ -224,12 +226,19 @@ void main()
 	const ivec2 size = ivec2( ao.extent.xy );
 	if ( p.x >= size.x || p.y >= size.y )
 		return;
-	const uint index = uint( p.y * size.x + p.x );
+	// Half resolution (scale 2): the integration runs once per 2 x 2 cell,
+	// on its top-left pixel, and the blur upsamples (Doom 2016's half
+	// resolution AO, a joint bilateral upsample).
+	const int scale = max( int( ao.blur.y ), 1 );
+	const ivec2 cells = ( size + scale - 1 ) / scale;
 	if ( step.mode.x == 0u )
 	{
-		scratch[index] = Integrate( p );
+		if ( p.x >= cells.x || p.y >= cells.y )
+			return;
+		scratch[uint( p.y * cells.x + p.x )] = Integrate( p * scale, p );
 		return;
 	}
+	const uint index = uint( ( p.y / scale ) * cells.x + p.x / scale );
 	// The blur: neighbours on the same surface (view distance within 5
 	// percent, normals within ~25 degrees) weigh in.
 	const float depth = DepthAt( p );
@@ -238,30 +247,39 @@ void main()
 		imageStore( outputImage, p, vec4( 1.0 ) );
 		return;
 	}
-	const float centerDistance = ViewDistance( WorldAt( vec2( p ) + 0.5, depth ) );
+	const vec3 centerPosition = WorldAt( vec2( p ) + 0.5, depth );
+	const float centerDistance = ViewDistance( centerPosition );
 	const vec3 centerNormal =
 	    OctDecode( texelFetch( sampler2D( normalTexture, pointSampler ), p, 0 ).xy );
+	// The taps are cells: at half resolution each is its source pixel.
+	// At half resolution the window spans as many cells as the full one does
+	// pixels, so it still covers the 4 x 4 pattern about evenly.
 	const int r = int( ao.blur.x );
+	const ivec2 home = p / scale;
 	float sum = 0.0;
 	float weights = 0.0;
 	for ( int y = -r; y <= r; ++y )
 	{
 		for ( int x = -r; x <= r; ++x )
 		{
-			const ivec2 q = p + ivec2( x, y );
-			if ( any( lessThan( q, ivec2( 0 ) ) ) || any( greaterThanEqual( q, size ) ) )
+			const ivec2 c = home + ivec2( x, y );
+			if ( any( lessThan( c, ivec2( 0 ) ) ) || any( greaterThanEqual( c, cells ) ) )
 				continue;
+			const ivec2 q = c * scale;
 			const float d = DepthAt( q );
 			if ( d >= 1.0 )
 				continue;
-			const float distance = ViewDistance( WorldAt( vec2( q ) + 0.5, d ) );
+			const vec3 position = WorldAt( vec2( q ) + 0.5, d );
 			const vec3 normal =
 			    OctDecode( texelFetch( sampler2D( normalTexture, pointSampler ), q, 0 ).xy );
-			const float depthWeight =
-			    max( 0.0, 1.0 - abs( distance - centerDistance ) / ( 0.05 * centerDistance ) );
+			// Off the centre's tangent plane (XeGTAO's slope-adjusted edges):
+			// a plane's neighbours stay in at grazing angles, where their view
+			// distances differ a lot, and another surface drops out.
+			const float offPlane = abs( dot( position - centerPosition, centerNormal ) );
+			const float depthWeight = max( 0.0, 1.0 - offPlane / ( 0.05 * centerDistance ) );
 			const float normalWeight = pow( max( dot( normal, centerNormal ), 0.0 ), 8.0 );
 			const float w = depthWeight * normalWeight;
-			sum += w * scratch[uint( q.y * size.x + q.x )];
+			sum += w * scratch[uint( c.y * cells.x + c.x )];
 			weights += w;
 		}
 	}

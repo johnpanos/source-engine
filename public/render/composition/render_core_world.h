@@ -64,9 +64,10 @@ struct RenderCoreWorldMaterial
 // r_core_ao_quality and r_core_shadow_quality, the video options' entries).
 struct RenderCoreWorldQuality
 {
-	// 0 off (no prepass, no GTAO: the term is neutral), then XeGTAO's
-	// presets: 1 low (1 slice x 2 steps), 2 medium (2 x 2), 3 high (3 x 3),
-	// 4 ultra (9 x 3).
+	// 0 off (no prepass, no GTAO: the term is neutral), then slices x steps
+	// set by render.lab.gtao against Cycles: 1 low (2 x 6) and 2 medium
+	// (3 x 8) at half resolution, 3 high (5 x 8 at half resolution, every lab
+	// check passes), 4 ultra (8 x 8 at full resolution, the lab's own).
 	int ambientOcclusion;
 	// 0 off (the stage's lights unshadowed), then the shadow atlas: 1 low
 	// (2048 texels), 2 medium (4096), 3 high (8192).

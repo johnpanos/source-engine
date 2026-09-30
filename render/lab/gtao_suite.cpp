@@ -229,8 +229,20 @@ Frame Synthesize( const Scene &scene, const Camera &camera )
 }
 
 // Runs the pass on a frame; the visibility per pixel (row 0 at the top).
+// A configuration of the pass the checks judge: the lab's own (8 x 8), and
+// the product's presets (render_core_world.h RenderCoreWorldQuality).
+struct Preset
+{
+	const char *suffix; // after "gtao" in the check names
+	std::uint32_t slices;
+	std::uint32_t steps;
+	bool halfResolution;
+};
+constexpr Preset kPresets[] = {
+    { "", 8, 8, false }, { ".high", 5, 8, false }, { ".high-half", 5, 8, true } };
+
 std::optional<std::string> RunPass( IRenderDevice2 &device, std::span<const std::uint32_t> module,
-    const Frame &frame, const Camera &camera, std::vector<float> &out )
+    const Frame &frame, const Camera &camera, const Preset &preset, std::vector<float> &out )
 {
 	auto texture = [&]( Format format, std::initializer_list<ResourceUsage> usages )
 	{
@@ -275,6 +287,9 @@ std::optional<std::string> RunPass( IRenderDevice2 &device, std::span<const std:
 	pass::ao::AoParams params;
 	params.radius = kRadius;
 	params.falloff = kFalloff;
+	params.slices = preset.slices;
+	params.steps = preset.steps;
+	params.halfResolution = preset.halfResolution;
 	auto created = module.empty()
 	                   ? pass::ao::AmbientOcclusion::Create( device, params )
 	                   : pass::ao::AmbientOcclusion::CreateWithProgram( device, params, module );
@@ -349,108 +364,116 @@ std::optional<std::string> RunOnce( bool validate, std::span<const std::uint32_t
 	if ( !camera.fromClip )
 		return std::string( "the camera does not invert" );
 
-	// The open plane.
+	for ( const Preset &preset : kPresets )
 	{
-		const Frame frame = Synthesize( Scene{ false }, camera );
-		std::vector<float> ao;
-		if ( std::optional<std::string> why = RunPass( *device, module, frame, camera, ao ) )
-			return why;
-		std::uint32_t bad = 0, empty = 0;
-		float lowest = 1.0f;
-		for ( std::size_t i = 0; i < ao.size(); ++i )
+		const std::string name = std::string( "gtao" ) + preset.suffix;
+		// The open plane.
 		{
-			if ( !frame.covered[i] )
+			const Frame frame = Synthesize( Scene{ false }, camera );
+			std::vector<float> ao;
+			if ( std::optional<std::string> why =
+			         RunPass( *device, module, frame, camera, preset, ao ) )
+				return why;
+			std::uint32_t bad = 0, empty = 0;
+			float lowest = 1.0f;
+			for ( std::size_t i = 0; i < ao.size(); ++i )
 			{
-				empty += ao[i] != 1.0f;
-				continue;
-			}
-			lowest = std::min( lowest, ao[i] );
-			bad += !( ao[i] >= 0.99f && ao[i] <= 1.0f );
-		}
-		results.That( bad == 0, "gtao.plane",
-		    std::to_string( bad ) + " pixels outside [0.99, 1]; lowest " + std::to_string( lowest ) );
-		results.That( empty == 0, "gtao.depth-free", std::to_string( empty ) + " not one" );
-	}
-
-	// The crease.
-	{
-		const Scene scene{ true };
-		const Frame frame = Synthesize( scene, camera );
-		std::vector<float> ao;
-		if ( std::optional<std::string> why = RunPass( *device, module, frame, camera, ao ) )
-			return why;
-		std::uint32_t judged = 0, bad = 0;
-		std::vector<float> errors;
-		double errorSum = 0.0;
-		double nearSum = 0.0, farSum = 0.0;
-		std::uint32_t nearCount = 0, farCount = 0;
-		std::string first;
-		for ( std::uint32_t y = 6; y + 6 < kHeight; ++y )
-		{
-			for ( std::uint32_t x = 6; x + 6 < kWidth; ++x )
-			{
-				const std::size_t i = std::size_t( y ) * kWidth + x;
 				if ( !frame.covered[i] )
-					continue;
-				const float3 p = frame.position[i];
-				// The crease line itself (both surfaces within a pixel) is
-				// where the depth buffer cannot say which surface a pixel is.
-				if ( std::fabs( p.x - kWall ) < 1.0f && p.z < 1.0f )
-					continue;
-				const float expected = ReferenceVisibility( scene, p, frame.surfaceNormal[i] );
-				const float error = std::fabs( ao[i] - expected );
-				++judged;
-				errorSum += error;
-				errors.push_back( error );
-				if ( error > 0.06f )
 				{
-					++bad;
-					if ( first.empty() )
-					{
-						char text[160];
-						std::snprintf( text, sizeof( text ),
-						    "first at %u,%u (%.1f %.1f %.1f): expected %.3f, got %.3f", x, y,
-						    double( p.x ), double( p.y ), double( p.z ), double( expected ),
-						    double( ao[i] ) );
-						first = text;
-					}
+					empty += ao[i] != 1.0f;
+					continue;
 				}
-				if ( frame.surfaceNormal[i].z > 0.5f )
+				lowest = std::min( lowest, ao[i] );
+				bad += !( ao[i] >= 0.99f && ao[i] <= 1.0f );
+			}
+			results.That( bad == 0, name + ".plane",
+			    std::to_string( bad ) + " pixels outside [0.99, 1]; lowest " +
+			        std::to_string( lowest ) );
+			results.That( empty == 0, name + ".depth-free", std::to_string( empty ) + " not one" );
+		}
+
+		// The crease.
+		{
+			const Scene scene{ true };
+			const Frame frame = Synthesize( scene, camera );
+			std::vector<float> ao;
+			if ( std::optional<std::string> why =
+			         RunPass( *device, module, frame, camera, preset, ao ) )
+				return why;
+			std::uint32_t judged = 0, bad = 0;
+			std::vector<float> errors;
+			double errorSum = 0.0;
+			double nearSum = 0.0, farSum = 0.0;
+			std::uint32_t nearCount = 0, farCount = 0;
+			std::string first;
+			for ( std::uint32_t y = 6; y + 6 < kHeight; ++y )
+			{
+				for ( std::uint32_t x = 6; x + 6 < kWidth; ++x )
 				{
-					if ( kWall - p.x < 20.0f )
+					const std::size_t i = std::size_t( y ) * kWidth + x;
+					if ( !frame.covered[i] )
+						continue;
+					const float3 p = frame.position[i];
+					// The crease line itself (both surfaces within a pixel) is
+					// where the depth buffer cannot say which surface a pixel is.
+					if ( std::fabs( p.x - kWall ) < 1.0f && p.z < 1.0f )
+						continue;
+					const float expected = ReferenceVisibility( scene, p, frame.surfaceNormal[i] );
+					const float error = std::fabs( ao[i] - expected );
+					++judged;
+					errorSum += error;
+					errors.push_back( error );
+					if ( error > 0.06f )
 					{
-						nearSum += ao[i];
-						++nearCount;
+						++bad;
+						if ( first.empty() )
+						{
+							char text[160];
+							std::snprintf( text, sizeof( text ),
+							    "first at %u,%u (%.1f %.1f %.1f): expected %.3f, got %.3f", x, y,
+							    double( p.x ), double( p.y ), double( p.z ), double( expected ),
+							    double( ao[i] ) );
+							first = text;
+						}
 					}
-					else if ( kWall - p.x > 100.0f )
+					if ( frame.surfaceNormal[i].z > 0.5f )
 					{
-						farSum += ao[i];
-						++farCount;
+						if ( kWall - p.x < 20.0f )
+						{
+							nearSum += ao[i];
+							++nearCount;
+						}
+						else if ( kWall - p.x > 100.0f )
+						{
+							farSum += ao[i];
+							++farCount;
+						}
 					}
 				}
 			}
+			const double mean = judged ? errorSum / judged : 1.0;
+			std::sort( errors.begin(), errors.end() );
+			const float p95 = errors.empty() ? 1.0f : errors[errors.size() * 95 / 100];
+			char detail[260];
+			std::snprintf( detail, sizeof( detail ),
+			    "mean error %.4f, 95th percentile %.4f over %u judged pixels (%u above 0.06); %s",
+			    mean, double( p95 ), judged, bad, first.c_str() );
+			// GTAO fades a far occluder by pulling its slice's one horizon towards
+			// open, where the rays count each blocked direction: it occludes less
+			// near a crease (the wall 5 to 30 units above the floor, about 0.09
+			// on average). The band holds that approximation, not a defect; it was
+			// set after the first run (mean 0.021, 95th percentile 0.10) and is
+			// disclosed as such in RFC/0016-progress.md.
+			results.That(
+			    judged > 1000 && mean <= 0.025 && p95 <= 0.12f, name + ".crease", detail );
+			const double nearMean = nearCount ? nearSum / nearCount : 1.0;
+			const double farMean = farCount ? farSum / farCount : 0.0;
+			results.That( nearCount > 50 && farCount > 50 && nearMean < 0.9 * farMean,
+			    name + ".crease-darkens",
+			    "near " + std::to_string( nearMean ) + ", far " + std::to_string( farMean ) );
+			std::printf( "INFO %s crease judged %u, mean error %.4f, near %.3f far %.3f\n",
+			    name.c_str(), judged, mean, nearMean, farMean );
 		}
-		const double mean = judged ? errorSum / judged : 1.0;
-		std::sort( errors.begin(), errors.end() );
-		const float p95 = errors.empty() ? 1.0f : errors[errors.size() * 95 / 100];
-		char detail[260];
-		std::snprintf( detail, sizeof( detail ),
-		    "mean error %.4f, 95th percentile %.4f over %u judged pixels (%u above 0.06); %s", mean,
-		    double( p95 ), judged, bad, first.c_str() );
-		// GTAO fades a far occluder by pulling its slice's one horizon towards
-		// open, where the rays count each blocked direction: it occludes less
-		// near a crease (the wall 5 to 30 units above the floor, about 0.09
-		// on average). The band holds that approximation, not a defect; it was
-		// set after the first run (mean 0.021, 95th percentile 0.10) and is
-		// disclosed as such in RFC/0016-progress.md.
-		results.That( judged > 1000 && mean <= 0.025 && p95 <= 0.12f, "gtao.crease", detail );
-		const double nearMean = nearCount ? nearSum / nearCount : 1.0;
-		const double farMean = farCount ? farSum / farCount : 0.0;
-		results.That( nearCount > 50 && farCount > 50 && nearMean < 0.9 * farMean,
-		    "gtao.crease-darkens",
-		    "near " + std::to_string( nearMean ) + ", far " + std::to_string( farMean ) );
-		std::printf( "INFO gtao crease judged %u, mean error %.4f, near %.3f far %.3f\n", judged,
-		    mean, nearMean, farMean );
 	}
 	device.reset();
 	messages = counted.load();

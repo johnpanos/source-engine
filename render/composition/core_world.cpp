@@ -982,14 +982,19 @@ void CoreWorld::RecordSlot(
 	if ( shadows && target.device && aoQuality > 0 &&
 	     EnsureOcclusion( *target.device, encoder, target.width, target.height, target.submitted ) )
 	{
-		// XeGTAO's presets (slices x steps per side): the 4 x 4 pattern and
-		// the blur spread each pixel's few slices over its neighbours.
-		static constexpr std::uint32_t kSlices[] = { 1, 2, 3, 9 };
-		static constexpr std::uint32_t kSteps[] = { 2, 2, 3, 3 };
+		// Slices x steps per side and resolution, set by render.lab.gtao
+		// against Cycles: ultra (8 x 8, full) and high (5 x 8 at half
+		// resolution, a sixth of ultra's cost) pass every check; fewer than 8
+		// steps miss a crease's near occluders and fewer than 5 slices leave
+		// an open plane below 0.99 (medium 3 x 8 and low 2 x 6, both half).
+		static constexpr std::uint32_t kSlices[] = { 2, 3, 5, 8 };
+		static constexpr std::uint32_t kSteps[] = { 6, 8, 8, 8 };
+		static constexpr bool kHalf[] = { true, true, true, false };
 		const int preset = std::min( aoQuality, 4 ) - 1;
 		pass::ao::AoParams params = m_Ao->Params();
 		params.slices = kSlices[preset];
 		params.steps = kSteps[preset];
+		params.halfResolution = kHalf[preset];
 		(void)m_Ao->SetParams( params );
 		world.ambientOcclusion = m_Occlusion;
 		world.ambientOcclusionDesc = m_OcclusionDesc;
