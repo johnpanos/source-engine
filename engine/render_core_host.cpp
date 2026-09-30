@@ -237,10 +237,35 @@ world_mesh_gpu::IWorldMeshUpload *RenderCoreHost_WorldMeshUpload()
 	return &s_Tee;
 }
 
+// RFC 0016 K12: the frame's light set reaches the renderer's consumer and the
+// render core's world stage, which lights the world it draws with it.
+class CLightSetTee final : public light_set::ILightSetConsumer
+{
+public:
+	light_set::ILightSetConsumer *m_pConsumer = nullptr;
+	light_set::ILightSetConsumer *m_pStage = nullptr;
+
+	void PublishLightSet( const light_set::Snapshot &snapshot ) override
+	{
+		if ( m_pConsumer )
+			m_pConsumer->PublishLightSet( snapshot );
+		m_pStage->PublishLightSet( snapshot );
+	}
+};
+
 light_set::ILightSetConsumer *RenderCoreHost_LightSetConsumer()
 {
 	RenderCoreHostState &host = Host();
-	return host.capabilities ? host.capabilities->LightSetConsumer() : nullptr;
+	light_set::ILightSetConsumer *pConsumer =
+	    host.capabilities ? host.capabilities->LightSetConsumer() : nullptr;
+	light_set::ILightSetConsumer *pStage =
+	    host.bound && host.world ? host.world->StageLights() : nullptr;
+	if ( !pStage )
+		return pConsumer;
+	static CLightSetTee s_Tee;
+	s_Tee.m_pConsumer = pConsumer;
+	s_Tee.m_pStage = pStage;
+	return &s_Tee;
 }
 
 gpu_compute::IGpuCompute *RenderCoreHost_GpuCompute()

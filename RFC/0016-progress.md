@@ -3882,3 +3882,34 @@ Not done in this slice:
 - The two living_room gaps and the relit map's 20-level residual are
   unexamined.
 - Frame time not recorded.
+
+## K12 slice 2: runtime lights on the world stage (2026-09-29)
+
+- The engine's light set (`light_set_publisher.cpp`, every frame) reaches
+  the core too: `IRenderCoreWorld::StageLights()`, teed beside the backend's
+  consumer in `render_core_host.cpp`.
+- `DrawView` now carries the view's world-to-view and projection. For a
+  world stage the composition clusters the frame's runtime lights for each
+  view (`render.pass.lights` `CreateClusterGrid`, `AssignLights`, desktop
+  limits; near and far from the projection), packs each light with its
+  baked flag (a baked light's diffuse is the lightmap's, the core adds its
+  specular), and the world pass binds the view group per view
+  (`StageViewLights`); the stage's scene terms gain `kSurfaceClustered`.
+- `r_core_world_stats` names the stage's runtime lights and lit views.
+
+Evidence (`build/`, headless native Vulkan, paused):
+
+| Map | Lights | Core with and without `cl_render_debug_term clustered` | Core against the legacy WMSH frame |
+| --- | --- | --- | --- |
+| gi_swing (G9's swinging `light_dynamic`) | 1 | 723,566 pixels over 8 levels: the lamp lights the world | max 2 levels |
+| testchmb_a_00_relit | 4 (baked: specular only) | max 6 levels (its pbr surfaces are two light materials) | as slice 1 |
+| lt_material_sweep | 0 | none | as slice 1 |
+
+Found: PBRT- and fixture-built maps carry no worldlights lump (no vrad pass
+writes one), so the engine's light set is empty there and `render_lab`'s
+entity lights have no in-game source yet. That is the content item "lights
+reach the game" (goal step 6).
+
+Not done: shadows for the stage's lights (the atlas), projectors, area
+lights and the sun in the stage's frame terms; lightmapped materials take no
+runtime light yet.

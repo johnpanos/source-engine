@@ -51,6 +51,7 @@
 
 #include "render/device/device.h"
 #include "render/frame/debug_controls.h"
+#include "render/material/surface_program.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -214,6 +215,18 @@ struct WorldTarget
 	float fogEyeZ = 0.0f;
 };
 
+// A world stage's view lights (RFC 0016 K12): the frame's runtime lights
+// clustered for the view (render.pass.lights' layout, as the surface
+// program's view group reads it), each packed with whether its diffuse light
+// is in the bake. The composition root clusters them; the pass binds them.
+struct StageViewLights
+{
+	material::SurfaceViewGpu view;
+	std::vector<std::byte> froxels; // FroxelRange records
+	std::vector<std::byte> indices; // ClusterIndexHeader, then indices
+	std::vector<material::SurfaceLightGpu> lights;
+};
+
 struct WorldView
 {
 	std::vector<std::uint32_t> surfaces; // into WorldData::surfaces
@@ -228,6 +241,9 @@ struct WorldView
 	// when the view was queued: the render sequence draws with the main
 	// thread's frame value, in either queued mode.
 	frame::DebugControls debug;
+	// A world stage's view: its clustered lights; null draws the program's
+	// neutral view (no runtime light).
+	std::shared_ptr<const StageViewLights> lights;
 };
 
 struct WorldStats

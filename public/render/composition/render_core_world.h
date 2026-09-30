@@ -11,6 +11,7 @@
 #ifndef RENDER_COMPOSITION_RENDER_CORE_WORLD_H
 #define RENDER_COMPOSITION_RENDER_CORE_WORLD_H
 
+#include "render/light_set.h"
 #include "render/world_mesh_upload.h"
 
 class ITexture;
@@ -76,6 +77,10 @@ struct RenderCoreWorldStats
 	unsigned long long debugHatches;
 	unsigned long long debugTints;
 	unsigned long long debugViewsRedrawn;
+	// A world stage's runtime lights (RFC 0016 K12): the frame's light set
+	// as last published, and the views queued with their lights clustered.
+	unsigned int stageLights;
+	unsigned long long stageLitViews;
 	char lastFailure[256];
 	char gaps[1024];    // "count reason" lines, most frequent first
 	char claimed[1024]; // "surfaces material" lines the core draws
@@ -104,6 +109,10 @@ public:
 	// volume and its change from the bake; the reflection probes). The mesh
 	// upload and DrawBatch are not used. Main thread.
 	virtual world_mesh_gpu::IWorldMeshUpload *StageUpload() = 0;
+	// The world stage's copy of the frame's light set (RFC 0011
+	// render.light-set.v1): the engine publishes each frame's set here as it
+	// does to the renderer. Main thread.
+	virtual light_set::ILightSetConsumer *StageLights() = 0;
 	virtual void ClearWorld() = 0;
 	// Whether the core draws the material's surfaces.
 	virtual bool Draws( unsigned int material ) const = 0;
@@ -113,8 +122,12 @@ public:
 	// slot at this point of the frame's stream. False when nothing was queued
 	// (no surface, or no backend slots): then the caller draws them itself.
 	// A view of a host frame the backend never records counts as skipped.
+	// worldToView and viewToClip (the same conventions; either may be null)
+	// place a world stage's view lights: the core clusters the frame's
+	// runtime lights for the view with them.
 	virtual bool DrawView( const unsigned int *surfaces, unsigned int count,
-	    const float worldToClip[16], const float viewport[6], unsigned long long hostFrame ) = 0;
+	    const float worldToClip[16], const float viewport[6], unsigned long long hostFrame,
+	    const float worldToView[16], const float viewToClip[16] ) = 0;
 	// Main thread, at the start of each frame, after the renderer began it
 	// (its debug controls are applied). Under a pixel view or
 	// cl_render_debug_legacy 2 (RFC 0014) it marks the frame's first slot:

@@ -8,8 +8,10 @@
 
 #include "mapcontainer/world_lightmap.h"
 #include "mapcontainer/world_mesh_decode.h"
+#include "render/pass/lights/clusters.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
 #include <cstddef>
 #include <cstdio>
@@ -268,8 +270,67 @@ void CoreWorld::StageCapture::Release()
 	reflection.clear();
 }
 
+std::shared_ptr<const pass::world::StageViewLights> CoreWorld::StageViewLightsFor(
+    const float worldToView[16], const float viewToClip[16], const float viewport[6] ) const
+{
+	if ( !worldToView || !viewToClip || m_Lights.lights.empty() || viewport[2] < 1.0f ||
+	     viewport[3] < 1.0f )
+		return nullptr;
+	auto matrix = []( const float m[16] )
+	{
+		math::float4x4 out;
+		for ( int r = 0; r < 4; ++r )
+			out.rows[r] = { m[r * 4 + 0], m[r * 4 + 1], m[r * 4 + 2], m[r * 4 + 3] };
+		return out;
+	};
+	pass::lights::ClusterViewDesc desc;
+	desc.view = matrix( worldToView );
+	desc.projection = matrix( viewToClip );
+	desc.widthPixels = std::uint32_t( viewport[2] );
+	desc.heightPixels = std::uint32_t( viewport[3] );
+	// The depth range from the projection (depth 0 at the near plane, 1 at
+	// the far one, clip w = -view z): near = m23 / m22, far = m23 / (m22 + 1).
+	const float a = viewToClip[2 * 4 + 2];
+	const float b = viewToClip[2 * 4 + 3];
+	desc.nearZ = a != 0.0f ? b / a : 0.0f;
+	desc.farZ = a + 1.0f != 0.0f ? b / ( a + 1.0f ) : 0.0f;
+	if ( !std::isfinite( desc.farZ ) || desc.farZ <= desc.nearZ )
+		desc.farZ = 65536.0f;
+	const pass::lights::ClusterLimits limits = pass::lights::DesktopClusterLimits();
+	auto grid = pass::lights::CreateClusterGrid( desc, limits );
+	if ( !grid )
+		return nullptr;
+	pass::lights::ClusterLists lists;
+	if ( !pass::lights::AssignLights( grid.Value(), m_Lights.lights, lists ) )
+		return nullptr;
+	auto out = std::make_shared<pass::world::StageViewLights>();
+	out->view.grid[0] = grid.Value().tilesX;
+	out->view.grid[1] = grid.Value().tilesY;
+	out->view.grid[2] = grid.Value().slices;
+	out->view.grid[3] = limits.tileSizePixels;
+	out->view.slices[0] = grid.Value().sliceScale;
+	out->view.slices[1] = grid.Value().sliceBias;
+	out->view.slices[2] = grid.Value().nearZ;
+	const math::float4 &z = desc.view.rows[2];
+	out->view.viewDistance[0] = -z.x;
+	out->view.viewDistance[1] = -z.y;
+	out->view.viewDistance[2] = -z.z;
+	out->view.viewDistance[3] = -z.w;
+	out->froxels.resize( lists.froxels.size() * sizeof( pass::lights::FroxelRange ) );
+	std::memcpy( out->froxels.data(), lists.froxels.data(), out->froxels.size() );
+	out->indices.assign( 16, std::byte( 0 ) ); // ClusterIndexHeader
+	const auto listed = std::as_bytes( std::span( lists.lightIndices ) );
+	out->indices.insert( out->indices.end(), listed.begin(), listed.end() );
+	// A baked light's diffuse light is in the lightmap: the core adds its
+	// specular lobe alone (each light counts once per surface).
+	for ( const light_set::RuntimeLight &light : m_Lights.lights )
+		out->lights.push_back( material::PackSurfaceLight( light, -1, 1, light.baked ) );
+	return out;
+}
+
 bool CoreWorld::DrawView( const unsigned int *surfaces, unsigned int count,
-    const float worldToClip[16], const float viewport[6], unsigned long long hostFrame )
+    const float worldToClip[16], const float viewport[6], unsigned long long hostFrame,
+    const float worldToView[16], const float viewToClip[16] )
 {
 	legacy::ICorePassSlots *slots = m_Frontend.CorePassSlots();
 	if ( !slots || count == 0 )
@@ -281,6 +342,11 @@ bool CoreWorld::DrawView( const unsigned int *surfaces, unsigned int count,
 	    viewport[0], viewport[1], viewport[2], viewport[3], viewport[4], viewport[5] };
 	view.hostFrame = hostFrame;
 	view.debug = m_Renderer.AppliedDebug();
+	if ( m_StageSet )
+	{
+		view.lights = StageViewLightsFor( worldToView, viewToClip, viewport );
+		m_StageLitViews += view.lights ? 1 : 0;
+	}
 	const std::uint32_t tag = m_Pass.QueueView( std::move( view ) );
 	if ( tag == 0 )
 		return false;
@@ -340,6 +406,8 @@ void CoreWorld::GetStats( RenderCoreWorldStats *out ) const
 	out->debugHatches = m_Hatches.load( std::memory_order_relaxed );
 	out->debugTints = m_Tints.load( std::memory_order_relaxed );
 	out->debugViewsRedrawn = m_Redrawn.load( std::memory_order_relaxed );
+	out->stageLights = unsigned( m_Lights.lights.size() );
+	out->stageLitViews = m_StageLitViews;
 	std::snprintf( out->lastFailure, sizeof( out->lastFailure ), "%s", stats.lastFailure.c_str() );
 	std::size_t used = 0;
 	for ( const auto &[reason, count] : stats.gaps )

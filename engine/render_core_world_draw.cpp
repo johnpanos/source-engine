@@ -588,8 +588,19 @@ static bool QueueCoreView( IRenderCoreWorld *pWorld, const unsigned int *pEntrie
 	pRenderContext->GetViewport( x, y, width, height );
 	const float viewport[6] = {
 	    float( x ), float( y ), float( width ), float( height ), 0.0f, 1.0f };
+	// The view and projection alone too: a world stage clusters the frame's
+	// lights for the view with them.
+	float toView[16], projectionRows[16];
+	for ( int r = 0; r < 4; ++r )
+	{
+		for ( int c = 0; c < 4; ++c )
+		{
+			toView[r * 4 + c] = view.m[r][c];
+			projectionRows[r * 4 + c] = projection.m[r][c];
+		}
+	}
 	return pWorld->DrawView( pEntries, unsigned( nCount ), toClip, viewport,
-	    static_cast<unsigned long long>( host_framecount ) + 1 );
+	    static_cast<unsigned long long>( host_framecount ) + 1, toView, projectionRows );
 }
 
 void RenderCoreWorldDraw_BeginView( const unsigned int *pSurfaces, int nCount )
@@ -699,6 +710,9 @@ CON_COMMAND( r_core_world_stats, "RFC 0016 K5: the core world's surfaces, views 
 		Msg( "r_core_world_stats: gaps:\n%s", stats.gaps );
 	if ( stats.claimed[0] )
 		Msg( "r_core_world_stats: drawn by the core:\n%s", stats.claimed );
+	if ( State().stageWorld )
+		Msg( "r_core_world_stats: world stage: %u runtime lights, %llu lit views\n",
+		    stats.stageLights, stats.stageLitViews );
 	if ( State().worldMeshViews )
 		Msg( "r_core_world_stats: declined %llu view(s): the map's world is its WMSH\n",
 		    State().worldMeshViews );

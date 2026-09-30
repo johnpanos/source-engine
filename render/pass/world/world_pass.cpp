@@ -108,11 +108,12 @@ constexpr const char *kStageLtc = "stage:ltc";
 constexpr std::uint32_t kStageOccluderRows = 16;
 
 // The pbr point's scene terms a stage's data supports (as render_lab sets
-// them for the same map, less the view's lights, occlusion and reflections,
+// them for the same map, less the view's shadows, occlusion and reflections,
 // which the stage does not draw yet).
 std::uint32_t StageTerms( const WorldStage &stage )
 {
-	std::uint32_t terms = 0;
+	// The view's runtime lights (a view without them binds the neutral view).
+	std::uint32_t terms = material::kSurfaceClustered;
 	if ( stage.lightmap.Directional() )
 		terms |= material::kSurfaceDirectionalLightmap;
 	if ( stage.probes )
@@ -230,8 +231,10 @@ struct WorldPass::State
 	std::uint64_t variantsGeneration = 0;
 	std::vector<Resources> variants;
 	std::vector<std::pair<std::uint64_t, Resources>> retired;
-	// Staging buffers of stage uploads, with the frame that recorded them.
+	// Staging buffers of stage uploads, and a stage's per-view groups, with
+	// the frame that recorded them.
 	std::vector<std::pair<std::uint64_t, BufferId>> retiredBuffers;
+	std::vector<std::pair<std::uint64_t, Group>> retiredGroups;
 
 	void Fail( const std::string &why )
 	{
@@ -467,6 +470,9 @@ void WorldPass::ReleaseDevice( IRenderDevice2 &device )
 	for ( auto &[frame, buffer] : s.retiredBuffers )
 		(void)device.Release( buffer, CompletionToken() );
 	s.retiredBuffers.clear();
+	for ( auto &[frame, group] : s.retiredGroups )
+		s.ReleaseGroup( group, CompletionToken() );
+	s.retiredGroups.clear();
 	(void)device.Poll();
 	s.device = nullptr;
 }
@@ -634,6 +640,14 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		    if ( target.frame == 0 || old.first >= target.frame )
 			    return false;
 		    (void)device.Release( old.second, target.submitted );
+		    return true;
+	    } );
+	std::erase_if( s.retiredGroups,
+	    [&]( std::pair<std::uint64_t, Group> &old )
+	    {
+		    if ( target.frame == 0 || old.first >= target.frame )
+			    return false;
+		    s.ReleaseGroup( old.second, target.submitted );
 		    return true;
 	    } );
 	if ( !r.resolver )
@@ -1137,9 +1151,31 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 	};
 
 	// A program's view group: its neutral one (built once per layout).
+	// A world stage's lit view: one group per view layout for this view, with
+	// the view's clustered lights, retired behind this frame after drawing.
+	std::map<std::uint64_t, Group> litViews;
 	auto viewGroupReady = [&]( const Resources::Material &m ) -> const Group *
 	{
 		const std::uint64_t layout = m.program.request.viewLayout.value;
+		if ( world->stage && view.lights )
+		{
+			Group &lit = litViews[layout];
+			if ( lit.group.IsValid() )
+				return &lit;
+			const StageViewLights &lights = *view.lights;
+			const material::GroupRequest request = r.resolver->Program().ViewGroup(
+			    lights.view, lights.froxels, lights.indices, lights.lights );
+			std::string why;
+			if ( request.layout != m.program.request.viewLayout ||
+			     !buildGroup( request, {}, lit, &why ) )
+			{
+				s.ReleaseGroup( lit, CompletionToken() );
+				note( "the view's lights: " +
+				      ( why.empty() ? std::string( "another view layout" ) : why ) );
+				return nullptr;
+			}
+			return &lit;
+		}
 		Group &group = r.viewGroups[layout];
 		if ( group.group.IsValid() )
 			return &group;
@@ -1265,8 +1301,12 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 				encoder.SetBindGroup( BindGroupRole::kFrame,
 				    r.frameGroups[m.program.request.frameLayout.value].group );
 			if ( m.program.request.viewLayout.IsValid() )
-				encoder.SetBindGroup(
-				    BindGroupRole::kView, r.viewGroups[m.program.request.viewLayout.value].group );
+			{
+				const std::uint64_t layout = m.program.request.viewLayout.value;
+				const auto lit = litViews.find( layout );
+				encoder.SetBindGroup( BindGroupRole::kView,
+				    lit != litViews.end() ? lit->second.group : r.viewGroups[layout].group );
+			}
 			encoder.SetBindGroup( BindGroupRole::kMaterial, m.group.group );
 			encoder.SetVertexBuffer( 0, r.vertices, 0 );
 			encoder.SetIndexBuffer( r.indices, 0, IndexFormat::kUint32 );
@@ -1299,6 +1339,8 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 	flushRun();
 	encoder.EndRendering();
 	encoder.EndLabel();
+	for ( auto &[layout, group] : litViews )
+		s.retiredGroups.emplace_back( target.frame, group );
 
 	std::lock_guard<std::mutex> guard( s.lock );
 	++s.stats.viewsDrawn;

@@ -1031,6 +1031,7 @@
           "render.legacy-provider-contract",
           "render.pass.debug",
           "render.pass.output",
+          "render.pass.lights",
           "render.contracts",
           "world.map-container"
         ]
@@ -1676,7 +1677,8 @@
           "render_device_gl",
           "render_pass_skinning",
           "render_pass_debug",
-          "mapcontainer"
+          "mapcontainer",
+          "render_pass_lights"
         ]
       },
       "jobsystem": {

@@ -61,8 +61,10 @@ public:
 		m_Pass.ClearWorld();
 	}
 	bool Draws( unsigned int material ) const override { return m_Pass.Draws( material ); }
+	light_set::ILightSetConsumer *StageLights() override { return &m_Lights; }
 	bool DrawView( const unsigned int *surfaces, unsigned int count, const float worldToClip[16],
-	    const float viewport[6], unsigned long long hostFrame ) override;
+	    const float viewport[6], unsigned long long hostFrame, const float worldToView[16],
+	    const float viewToClip[16] ) override;
 	void BeginFrame() override;
 	void EndFrame() override;
 	// frame::IRenderStageHooks (the main thread): the open views' depth, so a
@@ -124,6 +126,21 @@ private:
 		CoreWorld &m_Owner;
 	};
 
+	// The frame's light set, as the engine last published it (main thread).
+	class LightSink final : public light_set::ILightSetConsumer
+	{
+	public:
+		void PublishLightSet( const light_set::Snapshot &snapshot ) override
+		{
+			lights = snapshot.lights;
+		}
+		std::vector<light_set::RuntimeLight> lights;
+	};
+	// A world stage view's lights, clustered for it; null without lights or
+	// matrices.
+	std::shared_ptr<const pass::world::StageViewLights> StageViewLightsFor(
+	    const float worldToView[16], const float viewToClip[16], const float viewport[6] ) const;
+
 	legacy::ILegacyFrontend &m_Frontend;
 	const frame::IRenderer &m_Renderer;
 	const legacy::RenderCallQueueHost *m_Host = nullptr;
@@ -143,6 +160,8 @@ private:
 	std::atomic<unsigned long long> m_Redrawn{ 0 };
 	CoreOutput m_Output;
 	StageCapture m_Capture{ *this };
+	LightSink m_Lights;
+	unsigned long long m_StageLitViews = 0; // main thread
 	bool m_StageSet = false; // the pass holds a world stage
 };
 
