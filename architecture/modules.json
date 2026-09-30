@@ -1035,6 +1035,7 @@
           "render.pass.output",
           "render.pass.lights",
           "render.pass.shadows",
+          "render.pass.ao",
           "render.contracts",
           "world.map-container"
         ]
@@ -1682,7 +1683,8 @@
           "render_pass_debug",
           "mapcontainer",
           "render_pass_lights",
-          "render_pass_shadows"
+          "render_pass_shadows",
+          "render_pass_ao"
         ]
       },
       "jobsystem": {

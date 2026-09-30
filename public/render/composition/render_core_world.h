@@ -113,6 +113,9 @@ public:
 	// render.light-set.v1): the engine publishes each frame's set here as it
 	// does to the renderer. Main thread.
 	virtual light_set::ILightSetConsumer *StageLights() = 0;
+	// Whether a texture has reached the renderer (the core imports it by its
+	// material system handle). Main thread.
+	virtual bool TextureResident( ITexture *texture ) const = 0;
 	virtual void ClearWorld() = 0;
 	// Whether the core draws the material's surfaces.
 	virtual bool Draws( unsigned int material ) const = 0;

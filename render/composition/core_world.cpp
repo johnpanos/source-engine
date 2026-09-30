@@ -124,6 +124,7 @@ void CoreWorld::SetWorldMesh( const void *wmsh, unsigned long long wmshBytes,
     const RenderCoreWorldMaterial *materials, unsigned int materialCount )
 {
 	m_StageSet = false;
+	m_StageWorld.reset();
 	mapcontainer::WorldMeshData mesh;
 	// A stage needs the map's mesh and its lightmap: without either the
 	// core holds no world (every view draws legacy's), and says why.
@@ -179,6 +180,15 @@ void CoreWorld::SetWorldMesh( const void *wmsh, unsigned long long wmshBytes,
 		data.surfaces.push_back( surface );
 	}
 	data.materials = WorldMaterials( materials, materialCount );
+	m_StageWorld = std::make_shared<const pass::world::WorldData>( std::move( data ) );
+	SetStage();
+}
+
+void CoreWorld::SetStage()
+{
+	if ( !m_StageWorld )
+		return;
+	pass::world::WorldData data = *m_StageWorld;
 	auto stage = std::make_shared<pass::world::WorldStage>();
 	stage->lightmap = m_Capture.lightmap;
 	if ( m_Capture.indirect.size() == m_Capture.lightmap.flat.size() )
@@ -187,6 +197,13 @@ void CoreWorld::SetWorldMesh( const void *wmsh, unsigned long long wmshBytes,
 	stage->reflectionWidth = m_Capture.reflectionWidth;
 	stage->reflectionHeight = m_Capture.reflectionHeight;
 	stage->reflectionProbes = m_Capture.reflection;
+	std::fprintf( stderr,
+	    "Render core: world stage: %zu meshlets, lightmap %ux%u%s%s, probes %s, reflection "
+	    "probes %s\n",
+	    data.surfaces.size(), stage->lightmap.width, stage->lightmap.height,
+	    stage->lightmap.Directional() ? " directional" : "",
+	    stage->indirect.empty() ? ", no indirect layer" : ", indirect layer",
+	    stage->probes ? "yes" : "no", stage->reflectionProbes.empty() ? "no" : "yes" );
 	data.stage = std::move( stage );
 	m_Pass.SetWorld( std::move( data ) );
 	m_StageSet = true;
@@ -239,23 +256,32 @@ bool CoreWorld::StageCapture::UploadProbeVolume(
 	volume.table.assign(
 	    request.gridTable, request.gridTable + std::size_t( volume.rows ) * request.tableFloats );
 	const std::size_t atlasBytes = std::size_t( request.atlasWidth ) * request.atlasHeight * 8;
-	// A volume without a change is the bake (world_mesh_upload.h): the one a
-	// stage starts from, and its change is none.
+	// The stage's probe atlas is the first volume published (a traced
+	// producer publishes a change from its first frame, so the bake alone may
+	// never come): a world surface reads the lightmap and adds the change
+	// (kSurfaceProbeBounce); the atlas itself lights only surfaces without a
+	// lightmap.
 	std::vector<std::byte> change;
 	if ( request.deltaAtlas )
 	{
 		const std::byte *delta = static_cast<const std::byte *>( request.deltaAtlas );
 		change.assign( delta, delta + atlasBytes );
 	}
-	else if ( !probes || probes->atlas.size() != atlasBytes || !m_Owner.m_StageSet )
+	if ( !probes || probes->atlas.size() != atlasBytes )
 	{
+		const bool late = m_Owner.m_StageSet;
 		const std::byte *atlas = static_cast<const std::byte *>( request.atlas );
 		volume.atlas.assign( atlas, atlas + atlasBytes );
 		// The stage's own table has the grids' rows alone.
-		pass::world::StageProbeVolume baked = volume;
-		baked.rows = request.gridCount;
-		baked.table.resize( std::size_t( baked.rows ) * request.tableFloats );
-		probes = std::move( baked );
+		pass::world::StageProbeVolume first = volume;
+		first.rows = request.gridCount;
+		first.table.resize( std::size_t( first.rows ) * request.tableFloats );
+		probes = std::move( first );
+		volume.atlas.clear();
+		// The stage was set before its first volume arrived: set it again
+		// with it, then take this change.
+		if ( late )
+			m_Owner.SetStage();
 	}
 	if ( m_Owner.m_StageSet )
 		m_Owner.m_Pass.SetStageChange( std::move( change ), std::move( volume ) );
@@ -290,8 +316,7 @@ std::shared_ptr<const pass::world::StageViewLights> CoreWorld::StageViewLightsFo
     std::shared_ptr<const ShadowWork> *shadows ) const
 {
 	*shadows = nullptr;
-	if ( !worldToView || !viewToClip || m_Lights.lights.empty() || viewport[2] < 1.0f ||
-	     viewport[3] < 1.0f )
+	if ( !worldToView || !viewToClip || viewport[2] < 1.0f || viewport[3] < 1.0f )
 		return nullptr;
 	auto matrix = []( const float m[16] )
 	{
@@ -365,6 +390,24 @@ std::shared_ptr<const pass::world::StageViewLights> CoreWorld::StageViewLightsFo
 	}
 	// A baked light's diffuse light is in the lightmap: the core adds its
 	// specular lobe alone (each light counts once per surface).
+	auto work = std::make_shared<ShadowWork>();
+	work->view = desc.view;
+	// The projection the world pass rasterizes with: D3D9 pixel centers, a
+	// half pixel right and down (render.pass.world), so the screen passes
+	// reconstruct each pixel where it was drawn.
+	work->projection = desc.projection;
+	if ( const auto fromView = math::Inverse( desc.view ) )
+	{
+		work->eye[0] = fromView->rows[0].w;
+		work->eye[1] = fromView->rows[1].w;
+		work->eye[2] = fromView->rows[2].w;
+	}
+	for ( int c = 0; c < 4; ++c )
+	{
+		const float w = ( &desc.projection.rows[3].x )[c];
+		( &work->projection.rows[0].x )[c] += w / viewport[2];
+		( &work->projection.rows[1].x )[c] -= w / viewport[3];
+	}
 	for ( std::size_t i = 0; i < m_Lights.lights.size(); ++i )
 	{
 		const light_set::RuntimeLight &light = m_Lights.lights[i];
@@ -374,15 +417,18 @@ std::shared_ptr<const pass::world::StageViewLights> CoreWorld::StageViewLightsFo
 		const int tiles = tile >= 0 ? plan.lightTileCount[k] : 1;
 		out->lights.push_back( material::PackSurfaceLight( light, tile, tiles, light.baked ) );
 	}
+	// The view group's light records: at least one (an empty view's lists
+	// name none of them).
+	if ( out->lights.empty() )
+		out->lights.emplace_back();
 	if ( !plan.views.empty() )
 	{
 		out->shadowTiles = std::move( plan.tiles );
-		auto work = std::make_shared<ShadowWork>();
 		work->views = std::move( plan.views );
 		work->atlasSize = plan.atlasSize;
 		work->guardTexels = plan.guardTexels;
-		*shadows = std::move( work );
 	}
+	*shadows = std::move( work );
 	return out;
 }
 
@@ -590,9 +636,33 @@ void CoreWorld::RecordSlot(
 				shadows = work;
 		}
 	}
-	if ( shadows && target.device )
+	if ( shadows && target.device && !shadows->views.empty() )
 		world.shadowAtlas =
 		    DrawStageShadows( *target.device, *shadows, target.frame, &world.shadowAtlasDesc );
+	// The stage view's screen passes: GTAO over the pass's prepass.
+	if ( shadows && target.device &&
+	     EnsureOcclusion( *target.device, encoder, target.width, target.height, target.submitted ) )
+	{
+		world.ambientOcclusion = m_Occlusion;
+		world.ambientOcclusionDesc = m_OcclusionDesc;
+		const std::shared_ptr<const ShadowWork> work = shadows;
+		world.screenPasses = [this, work]( device::CommandEncoder &screen,
+		                         const pass::world::WorldTarget::Prepass &prepass ) -> bool
+		{
+			pass::ao::AoTargets targets;
+			targets.depth = prepass.depth;
+			targets.normalRoughness = prepass.normalRoughness;
+			targets.output = m_Occlusion;
+			targets.outputUsage = device::ResourceUsage::kSampled;
+			targets.width = prepass.width;
+			targets.height = prepass.height;
+			pass::ao::AoView aoView;
+			aoView.view = work->view;
+			aoView.projection = work->projection;
+			std::copy( work->eye, work->eye + 3, aoView.eye );
+			return bool( m_Ao->Record( screen, targets, aoView ) );
+		};
+	}
 	m_Pass.Record( tag, encoder, world );
 	bool topLevel = false;
 	{
@@ -612,15 +682,7 @@ device::TextureId CoreWorld::DrawStageShadows( device::IRenderDevice2 &device,
     const ShadowWork &work, std::uint64_t frame, device::TextureDesc *desc )
 {
 	using namespace render::device;
-	if ( m_ShadowDevice != &device )
-	{
-		// A new backend device: the old one's objects went with it.
-		m_ShadowRenderer.reset();
-		m_CasterMeshes.reset();
-		m_Atlases.clear();
-		m_CastersStaged = 0;
-		m_ShadowDevice = &device;
-	}
+	BindStageDevice( device );
 	if ( !m_ShadowRenderer )
 	{
 		auto created = pass::shadows::ShadowDepthRenderer::Create( device );
@@ -710,10 +772,72 @@ device::TextureId CoreWorld::DrawStageShadows( device::IRenderDevice2 &device,
 	return atlas.texture;
 }
 
+void CoreWorld::BindStageDevice( device::IRenderDevice2 &device )
+{
+	if ( m_ShadowDevice == &device )
+		return;
+	// A new backend device: the old one's objects went with it.
+	m_ShadowRenderer.reset();
+	m_CasterMeshes.reset();
+	m_Atlases.clear();
+	m_CastersStaged = 0;
+	m_Ao.reset();
+	m_Occlusion = device::TextureId();
+	m_OcclusionDesc = device::TextureDesc();
+	m_ShadowDevice = &device;
+}
+
+bool CoreWorld::EnsureOcclusion( device::IRenderDevice2 &device, device::CommandEncoder &encoder,
+    std::uint32_t width, std::uint32_t height, device::CompletionToken submitted )
+{
+	using namespace render::device;
+	BindStageDevice( device );
+	if ( !m_Ao )
+	{
+		auto created = pass::ao::AmbientOcclusion::Create( device );
+		if ( !created )
+			return false;
+		m_Ao = std::move( created ).Value();
+	}
+	if ( m_Occlusion.IsValid() && m_OcclusionDesc.width == width &&
+	     m_OcclusionDesc.height == height )
+		return true;
+	// A resize: the old target goes behind the frames that used it.
+	if ( m_Occlusion.IsValid() )
+		(void)device.Release( m_Occlusion, submitted );
+	m_OcclusionDesc = TextureDesc();
+	m_OcclusionDesc.format = Format::kRGBA16Float;
+	m_OcclusionDesc.width = width;
+	m_OcclusionDesc.height = height;
+	m_OcclusionDesc.usages = {
+	    ResourceUsage::kStorageWrite, ResourceUsage::kSampled, ResourceUsage::kCopyDestination };
+	m_OcclusionDesc.debugName = "stage ambient occlusion";
+	auto texture = device.CreateTexture( m_OcclusionDesc );
+	m_OcclusionDesc.debugName = {};
+	if ( !texture )
+	{
+		m_Occlusion = TextureId();
+		return false;
+	}
+	m_Occlusion = texture.Value();
+	// One (no occlusion) until a view records it.
+	encoder.TransitionTexture(
+	    m_Occlusion, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+	encoder.ClearTexture( m_Occlusion, { 1, 1, 1, 1 } );
+	encoder.TransitionTexture(
+	    m_Occlusion, ResourceUsage::kCopyDestination, ResourceUsage::kSampled );
+	return true;
+}
+
 void CoreWorld::ReleaseShadows( device::IRenderDevice2 &device )
 {
 	if ( m_ShadowDevice != &device )
 		return;
+	if ( m_Occlusion.IsValid() )
+		(void)device.Release( m_Occlusion, device::CompletionToken() );
+	m_Occlusion = device::TextureId();
+	m_OcclusionDesc = device::TextureDesc();
+	m_Ao.reset();
 	for ( const Atlas &atlas : m_Atlases )
 		(void)device.Release( atlas.texture, device::CompletionToken() );
 	m_Atlases.clear();

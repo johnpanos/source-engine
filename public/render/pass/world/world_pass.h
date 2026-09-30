@@ -56,6 +56,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <span>
@@ -218,6 +219,23 @@ struct WorldTarget
 	// stage's lights with shadow tiles), in kSampled; invalid without one.
 	device::TextureId shadowAtlas;
 	device::TextureDesc shadowAtlasDesc;
+	// A world stage view's screen passes (RFC 0016 K12, render_lab's order:
+	// prepass, then the ambient occlusion the lit pass reads). With them the
+	// pass draws the view's depth and normal prepass into its own targets
+	// (single-sample, the view's size) and calls screenPasses, which records
+	// the occlusion into `ambientOcclusion` (the composition's, in kSampled
+	// before and after) and says whether it did. Without them, or when it
+	// did not, the occlusion's neutral value (one) applies.
+	struct Prepass
+	{
+		device::TextureId depth;           // D32, kSampled
+		device::TextureId normalRoughness; // RGBA16F, kSampled
+		std::uint32_t width = 0;
+		std::uint32_t height = 0;
+	};
+	std::function<bool( device::CommandEncoder &, const Prepass & )> screenPasses;
+	device::TextureId ambientOcclusion;
+	device::TextureDesc ambientOcclusionDesc;
 };
 
 // A world stage's view lights (RFC 0016 K12): the frame's runtime lights

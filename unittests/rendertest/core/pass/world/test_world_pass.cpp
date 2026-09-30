@@ -220,18 +220,22 @@ int main()
 	checks.That( stats.viewsDrawn == 2 && stats.surfacesDrawn == 4 && stats.viewsFailed == 0,
 	    "W3.a-re-recorded-slot-draws-the-same-view" );
 
+	// A frame that straddles a level change (queued mode records its slots
+	// after the change): its view was the earlier world's, which is gone. It
+	// draws nothing and is skipped, not failed.
 	const std::uint32_t stale = pass.QueueView( View( { 0 } ) );
+	const std::uint64_t skippedBefore = pass.Stats().viewsSkipped;
 	pass.SetWorld( TestWorld() );
 	(void)RecordSlot( device, pass, stale, target );
 	stats = pass.Stats();
-	checks.That( stats.viewsDrawn == 2 && stats.viewsFailed == 1 &&
-	                 stats.lastFailure.find( "no queued view" ) != std::string::npos,
-	    "W4.a-view-of-an-earlier-world-draws-nothing" );
+	checks.That(
+	    stats.viewsDrawn == 2 && stats.viewsFailed == 0 && stats.viewsSkipped == skippedBefore + 1,
+	    "W4.a-view-of-an-earlier-world-draws-nothing-and-is-skipped" );
 
 	const std::uint32_t mixed = pass.QueueView( View( { 0, 2 } ) );
 	(void)RecordSlot( device, pass, mixed, target );
 	stats = pass.Stats();
-	checks.That( stats.viewsDrawn == 3 && stats.surfacesDrawn == 5 && stats.viewsFailed == 2,
+	checks.That( stats.viewsDrawn == 3 && stats.surfacesDrawn == 5 && stats.viewsFailed == 1,
 	    "W4.a-surface-the-pass-does-not-draw-is-counted" );
 
 	// W9: unread variables against their neutral values.
@@ -308,11 +312,14 @@ int main()
 		const std::uint32_t next = pass.QueueView( View( { 0, 1 } ) );
 		const std::uint64_t before = pass.Failures();
 		const std::uint64_t drawn = pass.Stats().viewsDrawn;
+		const std::uint64_t skipped = pass.Stats().viewsSkipped;
 		target.frame = 12;
 		(void)RecordSlot( device, pass, old, target );
-		checks.That( pass.Failures() == before + 1, "W7.the-earlier-worlds-slot-fails" );
+		checks.That( pass.Failures() == before && pass.Stats().viewsSkipped == skipped + 1 &&
+		                 pass.Stats().viewsDrawn == drawn,
+		    "W7.the-earlier-worlds-slot-is-skipped" );
 		(void)RecordSlot( device, pass, next, target );
-		checks.That( pass.Failures() == before + 1 && pass.Stats().viewsDrawn == drawn + 1,
+		checks.That( pass.Failures() == before && pass.Stats().viewsDrawn == drawn + 1,
 		    "W7.the-next-worlds-view-is-still-queued-and-draws" );
 	}
 

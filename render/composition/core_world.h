@@ -20,6 +20,7 @@
 #include "render/frame/renderer.h"
 #include "render/legacy/core_passes.h"
 #include "render/pass/debug/debug_overlays.h"
+#include "render/pass/ao/ao.h"
 #include "render/pass/shadows/shadow_passes.h"
 #include "render/pass/shadows/shadow_plan.h"
 #include "render/pass/world/world_pass.h"
@@ -63,10 +64,15 @@ public:
 	void ClearWorld() override
 	{
 		m_StageSet = false;
+		m_StageWorld.reset();
 		m_Pass.ClearWorld();
 	}
 	bool Draws( unsigned int material ) const override { return m_Pass.Draws( material ); }
 	light_set::ILightSetConsumer *StageLights() override { return &m_Lights; }
+	bool TextureResident( ITexture *texture ) const override
+	{
+		return m_Host && m_Host->textureHandle && m_Host->textureHandle( texture ) != 0;
+	}
 	bool DrawView( const unsigned int *surfaces, unsigned int count, const float worldToClip[16],
 	    const float viewport[6], unsigned long long hostFrame, const float worldToView[16],
 	    const float viewToClip[16] ) override;
@@ -97,6 +103,8 @@ public:
 	}
 
 private:
+	// Sets the pass's world stage from m_StageWorld and the captured lighting.
+	void SetStage();
 	std::vector<pass::world::WorldMaterial> WorldMaterials(
 	    const RenderCoreWorldMaterial *materials, unsigned int materialCount ) const;
 
@@ -146,13 +154,17 @@ private:
 	// texels square, depth 32 (64 MB each) on the desktop profiles; a mobile
 	// size is K12's per-profile atlas budget (not set yet).
 	static constexpr std::uint32_t kStageShadowAtlas = 4096;
-	// A world stage view's shadow work: the plan's depth views, drawn into an
-	// atlas at the view's slot.
+	// A world stage view's work at its slot: the shadow plan's depth views,
+	// drawn into an atlas (none without shadowed lights), and the view and
+	// projection its screen passes (GTAO) reconstruct positions with.
 	struct ShadowWork
 	{
 		std::vector<pass::shadows::ShadowPlanView> views;
 		std::uint32_t atlasSize = 0;
 		std::uint32_t guardTexels = 0;
+		math::float4x4 view;
+		math::float4x4 projection;
+		float eye[3] = {}; // the view's origin (the view matrix's inverse)
 	};
 	// The world stage's shadow casters (the stage mesh's positions and
 	// indices; main thread writes at SetWorldMesh, the render sequence reads).
@@ -173,6 +185,13 @@ private:
 	device::TextureId DrawStageShadows( device::IRenderDevice2 &device, const ShadowWork &work,
 	    std::uint64_t frame, device::TextureDesc *desc );
 	void ReleaseShadows( device::IRenderDevice2 &device );
+	// Render sequence: the stage's ambient occlusion target for a target
+	// size (kSampled; made and first transitioned in `encoder`).
+	bool EnsureOcclusion( device::IRenderDevice2 &device, device::CommandEncoder &encoder,
+	    std::uint32_t width, std::uint32_t height, device::CompletionToken submitted );
+	// Render sequence: the stage's objects live on this device (a new one
+	// drops the old one's handles, which went with it).
+	void BindStageDevice( device::IRenderDevice2 &device );
 
 	legacy::ILegacyFrontend &m_Frontend;
 	const frame::IRenderer &m_Renderer;
@@ -217,7 +236,14 @@ private:
 	std::vector<Atlas> m_Atlases;
 	std::size_t m_AtlasNext = 0;
 	std::uint64_t m_AtlasFrame = 0;
+	// The screen passes (render sequence): GTAO and its output.
+	std::unique_ptr<pass::ao::AmbientOcclusion> m_Ao;
+	device::TextureId m_Occlusion;
+	device::TextureDesc m_OcclusionDesc;
 	bool m_StageSet = false; // the pass holds a world stage
+	// The stage's world without its lighting, kept to set the stage again
+	// when the bake's probe volume arrives after it (main thread).
+	std::shared_ptr<const pass::world::WorldData> m_StageWorld;
 };
 
 } // namespace render::composition

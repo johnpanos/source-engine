@@ -31,8 +31,7 @@ class RenderFlagsTest(unittest.TestCase):
         self.assertEqual(parse("--no-core-world", "x", default=1), ("native", "", "x"))
 
     def test_without_a_default_the_legacy_world(self):
-        # ./play_p2 sets no default: three Portal 2 maps still fail fatally
-        # under the core (quality/workloads/core-world-smoke-v1.json).
+        # A caller that sets no default keeps the legacy world.
         self.assertEqual(parse(), ("native", "", ""))
         self.assertEqual(parse("--core-world"), ("native", CORE_WORLD, ""))
 

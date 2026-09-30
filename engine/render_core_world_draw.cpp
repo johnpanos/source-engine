@@ -17,7 +17,9 @@
 #include "materialsystem/IShader.h"
 #include "materialsystem/imaterialsystemhardwareconfig.h"
 #include "materialsystem/itexture.h"
+#include "filesystem.h"
 #include "tier1/KeyValues.h"
+#include "tier1/fmtstr.h"
 #include "tier1/convar.h"
 #include "tier1/utldict.h"
 #include "tier2/tier2.h"
@@ -66,6 +68,9 @@ struct CoreWorldState
 	unsigned long long worldMeshViews = 0;
 	unsigned long long failuresSeen = 0;
 	CUtlVector<unsigned char> takes; // per surface index
+	// Textures the core's materials name that their shaders did not load,
+	// held until the level ends.
+	CUtlVector<ITexture *> heldTextures;
 	// Per surface index: its entry in the core's world (only eligible
 	// surfaces have one), or -1. Views name the core's entries.
 	CUtlVector<int> entryOf;
@@ -197,8 +202,52 @@ void ReadVariables( IMaterial *pMaterial, NeutralMaterials &neutrals, MaterialVa
 			continue;
 		out.keys.AddToTail( CUtlString( pVar->GetName() ) );
 		out.values.AddToTail( CUtlString( pVar->GetStringValue() ) );
-		out.textures.AddToTail(
-		    pVar->GetType() == MATERIAL_VAR_TYPE_TEXTURE ? pVar->GetTextureValue() : NULL );
+		const bool declaredHere = pShader && i < pShader->GetNumParams() &&
+		                          !V_stricmp( pShader->GetParamName( i ), pVar->GetName() );
+		ITexture *pTexture =
+		    pVar->GetType() == MATERIAL_VAR_TYPE_TEXTURE ? pVar->GetTextureValue() : NULL;
+		// A texture parameter its shader did not load (a cubemap-patched
+		// brush material's bump map, sp_a3_crazy_box): the texture it names,
+		// held for the level, so the core samples what the material names.
+		if ( !pTexture && declaredHere && pShader->GetParamType( i ) == SHADER_PARAM_TYPE_TEXTURE &&
+		     pVar->GetStringValue() && pVar->GetStringValue()[0] )
+		{
+			ITexture *pFound =
+			    materials->FindTexture( pVar->GetStringValue(), TEXTURE_GROUP_WORLD, false );
+			if ( pFound && !pFound->IsError() )
+			{
+				pFound->IncrementReferenceCount();
+				State().heldTextures.AddToTail( pFound );
+				pTexture = pFound;
+			}
+		}
+		// A texture no draw has used yet has not reached the renderer (Portal
+		// 2 loads a patched material's bump map when first drawn): the core
+		// imports by handle, so it is sent now.
+		IRenderCoreWorld *pCore = RenderCoreHost_World();
+		if ( pTexture && pCore && !pCore->TextureResident( pTexture ) )
+			pTexture->Download();
+		// A texture the content does not ship (sp_a3_crazy_box's patched
+		// walls name metal/metalwall_bts_001a_normal, which no Portal 2
+		// archive holds) never reaches the renderer: the variable is absent
+		// for the core (its neutral value, a flat normal for a bump map),
+		// named once, not a failure of the core.
+		if ( pTexture && pCore && !pCore->TextureResident( pTexture ) &&
+		     !g_pFileSystem->FileExists(
+		         CFmtStr( "materials/%s.vtf", pVar->GetStringValue() ).Get(), "GAME" ) )
+		{
+			static CUtlDict<bool, int> s_Reported;
+			if ( s_Reported.Find( pVar->GetStringValue() ) == s_Reported.InvalidIndex() )
+			{
+				s_Reported.Insert( pVar->GetStringValue(), true );
+				Msg( "r_core_world: material %s names %s %s, which the content lacks; the core "
+				     "draws it without\n",
+				    pMaterial->GetName(), pVar->GetName(), pVar->GetStringValue() );
+			}
+			out.values.Tail() = CUtlString( "" );
+			pTexture = NULL;
+		}
+		out.textures.AddToTail( pTexture );
 		// A detail texture flagged as an ssbump selects the ssbump detail
 		// modes (10, 11): a key the model does not read yet, so it is named.
 		if ( pVar->GetType() == MATERIAL_VAR_TYPE_TEXTURE && pVar->GetTextureValue() &&
@@ -528,6 +577,9 @@ void RenderCoreWorldDraw_LevelInit()
 void RenderCoreWorldDraw_LevelShutdown()
 {
 	CoreWorldState &state = State();
+	for ( int i = 0; i < state.heldTextures.Count(); ++i )
+		state.heldTextures[i]->DecrementReferenceCount();
+	state.heldTextures.RemoveAll();
 	state.loaded = false;
 	state.viewActive = false;
 	state.stageWorld = false;

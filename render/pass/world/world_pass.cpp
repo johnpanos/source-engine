@@ -19,9 +19,12 @@
 #include <cstddef>
 #include <cstring>
 #include <deque>
+#include <functional>
 #include <map>
+#include <optional>
 #include <mutex>
 #include <span>
+#include <tuple>
 
 namespace render::pass::world
 {
@@ -61,14 +64,29 @@ struct Resources
 	struct Material
 	{
 		material::ResolvedProgram program;
+		material::ProgramResolver *resolver = nullptr; // the one that resolved it
 		Group group;
 		bool ready = false;
 		bool failed = false;
 		std::string failure; // why, when failed
 	};
 	std::vector<Material> materials;
+	// A world stage's depth-and-normal prepass (the screen passes' input): a
+	// single-sample resolver of its own (its layouts, so its groups, differ
+	// from the lit one's; the group maps below are keyed by layout), its
+	// materials and targets.
+	std::unique_ptr<material::ProgramResolver> prepassResolver;
+	std::vector<Material> prepassMaterials;
+	TextureId prepassDepth;
+	TextureId prepassNormal;
+	TextureDesc prepassDepthDesc;
+	TextureDesc prepassNormalDesc;
+	bool prepassUsed = false; // the targets rest in kSampled after their first view
 	// Draw groups by (draw layout, lightmap page).
-	std::map<std::pair<std::uint64_t, int>, Group> drawGroups;
+	// Draw groups by (draw layout, lightmap page, the program's draw inputs):
+	// programs that share a layout may read different inputs (the pbr point
+	// its three pages, unlit and lightmapped points the page alone).
+	std::map<std::tuple<std::uint64_t, int, std::string>, Group> drawGroups;
 	// Frame groups by frame layout; their constants are written per slot.
 	std::map<std::uint64_t, Group> frameGroups;
 	// The programs' neutral view groups, by view layout (the world pass
@@ -108,12 +126,13 @@ constexpr const char *kStageLtc = "stage:ltc";
 constexpr std::uint32_t kStageOccluderRows = 16;
 
 // The pbr point's scene terms a stage's data supports (as render_lab sets
-// them for the same map, less the view's shadows, occlusion and reflections,
-// which the stage does not draw yet).
+// them for the same map, less the screen-space reflections, which the stage
+// does not draw yet). The view's occlusion is one where no screen pass
+// recorded it.
 std::uint32_t StageTerms( const WorldStage &stage )
 {
 	// The view's runtime lights (a view without them binds the neutral view).
-	std::uint32_t terms = material::kSurfaceClustered;
+	std::uint32_t terms = material::kSurfaceClustered | material::kSurfaceAmbientOcclusion;
 	if ( stage.lightmap.Directional() )
 		terms |= material::kSurfaceDirectionalLightmap;
 	if ( stage.probes )
@@ -210,6 +229,12 @@ struct WorldPass::State
 	// unknown), else skipped with its frame.
 	void Drop( const Queued &dropped, std::uint64_t recordingFrame )
 	{
+		// An earlier world's view: its level is gone, so is its slot.
+		if ( dropped.generation != generation )
+		{
+			++stats.viewsSkipped;
+			return;
+		}
 		const std::uint64_t frame = dropped.view.hostFrame;
 		const bool frameRecorded = frame == 0 || frame == recordingFrame ||
 		                           std::find( recordedFrames.begin(), recordedFrames.end(),
@@ -235,6 +260,7 @@ struct WorldPass::State
 	// the frame that recorded them.
 	std::vector<std::pair<std::uint64_t, BufferId>> retiredBuffers;
 	std::vector<std::pair<std::uint64_t, Group>> retiredGroups;
+	std::vector<std::pair<std::uint64_t, TextureId>> retiredTextures;
 
 	void Fail( const std::string &why )
 	{
@@ -265,6 +291,13 @@ struct WorldPass::State
 		{
 			for ( Resources::Material &m : old.materials )
 				ReleaseGroup( m.group, after );
+			for ( Resources::Material &m : old.prepassMaterials )
+				ReleaseGroup( m.group, after );
+			for ( TextureId texture : { old.prepassDepth, old.prepassNormal } )
+			{
+				if ( texture.IsValid() )
+					(void)device->Release( texture, after );
+			}
 			for ( auto &[key, group] : old.drawGroups )
 				ReleaseGroup( group, after );
 			for ( auto &[key, group] : old.frameGroups )
@@ -385,7 +418,9 @@ void WorldPass::SetWorld( WorldData data )
 	s.stageLightmap.reset();
 	s.stageChange.reset();
 	s.stageTable.reset();
-	s.views.clear(); // recorded views stay: a re-recorded slot of theirs fails alone
+	// Queued views stay with their world's generation: in queued mode the
+	// slots of a frame that straddles a level change record after it, and
+	// skip their views (an earlier world's) rather than fail.
 	s.stats.materials = counts.materials;
 	s.stats.claimedMaterials = counts.claimedMaterials;
 	s.stats.surfaces = counts.surfaces;
@@ -401,7 +436,9 @@ void WorldPass::ClearWorld()
 	s.world.reset();
 	s.claims.reset();
 	++s.generation;
-	s.views.clear(); // recorded views stay: a re-recorded slot of theirs fails alone
+	// Queued views stay with their world's generation: in queued mode the
+	// slots of a frame that straddles a level change record after it, and
+	// skip their views (an earlier world's) rather than fail.
 }
 
 void WorldPass::SetStageLightmap( LightmapPages pages )
@@ -473,6 +510,9 @@ void WorldPass::ReleaseDevice( IRenderDevice2 &device )
 	for ( auto &[frame, group] : s.retiredGroups )
 		s.ReleaseGroup( group, CompletionToken() );
 	s.retiredGroups.clear();
+	for ( auto &[frame, texture] : s.retiredTextures )
+		(void)device.Release( texture, CompletionToken() );
+	s.retiredTextures.clear();
 	(void)device.Poll();
 	s.device = nullptr;
 }
@@ -505,6 +545,7 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 	std::uint64_t stageChangeRevision = 0;
 	WorldView view;
 	bool found = false;
+	bool earlierWorld = false; // the slot's view was queued against an earlier world
 	{
 		std::lock_guard<std::mutex> guard( s.lock );
 		// A slot recorded again (the same stream for a capture) draws the
@@ -517,6 +558,7 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 			{
 				again = true;
 				found = kept->generation == s.generation;
+				earlierWorld = !found;
 				view = kept->view;
 			}
 		}
@@ -538,6 +580,7 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 			// Only against the world it was queued for (SetWorld also clears
 			// the queue; this holds if a slot records across the change).
 			found = s.views.front().generation == s.generation;
+			earlierWorld = !found;
 			view = s.views.front().view;
 			if ( view.hostFrame != 0 &&
 			     ( s.recordedFrames.empty() || s.recordedFrames.back() != view.hostFrame ) )
@@ -561,6 +604,14 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		stageChange = s.stageChange;
 		stageTable = s.stageTable;
 		stageChangeRevision = s.stageChangeRevision;
+	}
+	if ( earlierWorld )
+	{
+		// A frame recorded across a level change: its views were the earlier
+		// world's, which is gone. Nothing to draw, and nothing failed.
+		std::lock_guard<std::mutex> guard( s.lock );
+		++s.stats.viewsSkipped;
+		return;
 	}
 	if ( !found || !world || !claims )
 	{
@@ -636,6 +687,14 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 	    } );
 	std::erase_if( s.retiredBuffers,
 	    [&]( const std::pair<std::uint64_t, BufferId> &old )
+	    {
+		    if ( target.frame == 0 || old.first >= target.frame )
+			    return false;
+		    (void)device.Release( old.second, target.submitted );
+		    return true;
+	    } );
+	std::erase_if( s.retiredTextures,
+	    [&]( const std::pair<std::uint64_t, TextureId> &old )
 	    {
 		    if ( target.frame == 0 || old.first >= target.frame )
 			    return false;
@@ -1007,16 +1066,18 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		if ( failure.empty() )
 			failure = std::move( why );
 	};
-	auto materialReady = [&]( std::uint32_t index ) -> Resources::Material *
+	auto materialReadyIn = [&]( material::ProgramResolver &resolver,
+	                           std::vector<Resources::Material> &materials,
+	                           std::uint32_t index ) -> Resources::Material *
 	{
-		Resources::Material &m = r.materials[index];
+		Resources::Material &m = materials[index];
 		if ( m.failed )
 			note( m.failure );
 		if ( m.ready || m.failed )
 			return m.ready ? &m : nullptr;
 		const Claimed &claimed = ( *claims )[index];
 		const std::string &name = world->materials[index].name;
-		auto program = r.resolver->Resolve( claimed.desc );
+		auto program = resolver.Resolve( claimed.desc );
 		std::string why;
 		if ( !program )
 			why = program.Error();
@@ -1032,12 +1093,24 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 			return nullptr;
 		}
 		m.program = std::move( program ).Value();
+		m.resolver = &resolver;
 		m.ready = true;
 		return &m;
 	};
+	auto materialReady = [&]( std::uint32_t index )
+	{
+		return materialReadyIn( *r.resolver, r.materials, index );
+	};
+	auto drawKey = []( const Resources::Material &m, int page )
+	{
+		std::string inputs;
+		for ( const std::string &input : m.program.drawInputs )
+			inputs += input + ";";
+		return std::make_tuple( m.program.request.drawLayout.value, page, std::move( inputs ) );
+	};
 	auto drawGroupReady = [&]( const Resources::Material &m, int page ) -> const Group *
 	{
-		const auto key = std::make_pair( m.program.request.drawLayout.value, page );
+		const auto key = drawKey( m, page );
 		if ( auto found = r.drawGroups.find( key ); found != r.drawGroups.end() )
 			return found->second.group.IsValid() ? &found->second : nullptr;
 		Group &group = r.drawGroups[key];
@@ -1071,7 +1144,7 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 			handles[PageName( page )] = page;
 		}
 		const std::optional<material::GroupRequest> request =
-		    r.resolver->DrawGroup( m.program, inputs );
+		    m.resolver->DrawGroup( m.program, inputs );
 		std::string why;
 		if ( !request || !buildGroup( *request, handles, group, &why ) )
 		{
@@ -1120,7 +1193,7 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		if ( framesWritten[layout] )
 			return &r.frameGroups[layout];
 		const std::optional<material::GroupRequest> request =
-		    r.resolver->FrameGroup( m.program, terms );
+		    m.resolver->FrameGroup( m.program, terms );
 		if ( !request )
 		{
 			note( "a frame group was not resolved" );
@@ -1154,6 +1227,8 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 	// A world stage's lit view: one group per view layout for this view, with
 	// the view's clustered lights, retired behind this frame after drawing.
 	std::map<std::uint64_t, Group> litViews;
+	// The view's ambient occlusion once the screen passes recorded it.
+	TextureId viewOcclusion;
 	auto viewGroupReady = [&]( const Resources::Material &m ) -> const Group *
 	{
 		const std::uint64_t layout = m.program.request.viewLayout.value;
@@ -1177,8 +1252,14 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 				shadows.atlasDesc = target.shadowAtlasDesc;
 				shadows.tiles = lights.shadowTiles;
 			}
-			const material::GroupRequest request = r.resolver->Program().ViewGroup(
-			    lights.view, lights.froxels, lights.indices, lights.lights, shadows );
+			material::SurfaceScreenInputs screen;
+			if ( viewOcclusion.IsValid() )
+			{
+				screen.ambientOcclusion = viewOcclusion;
+				screen.ambientOcclusionDesc = target.ambientOcclusionDesc;
+			}
+			const material::GroupRequest request = m.resolver->Program().ViewGroup(
+			    lights.view, lights.froxels, lights.indices, lights.lights, shadows, {}, screen );
 			std::string why;
 			if ( request.layout != m.program.request.viewLayout ||
 			     !buildGroup( request, {}, lit, &why ) )
@@ -1229,8 +1310,7 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		if ( !m ||
 		     ( m->program.request.drawLayout.IsValid() &&
 		         !drawGroupReady( *m, surface.lightmapPage ) ) ||
-		     ( m->program.request.frameLayout.IsValid() && !frameGroupReady( *m ) ) ||
-		     ( m->program.request.viewLayout.IsValid() && !viewGroupReady( *m ) ) )
+		     ( m->program.request.frameLayout.IsValid() && !frameGroupReady( *m ) ) )
 		{
 			complete = false;
 			continue;
@@ -1248,17 +1328,9 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		                                            : x.firstIndex < y.firstIndex;
 	    } );
 
-	const ColorAttachment colors[] = { { target.color, LoadOp::kLoad, StoreOp::kStore, {}, {} } };
-	RenderingDesc rendering;
-	rendering.colors = colors;
-	rendering.depth = DepthAttachment{ target.depth, LoadOp::kLoad, StoreOp::kStore, 1.0f };
-	rendering.width = target.width;
-	rendering.height = target.height;
-	encoder.BeginLabel( "core world" );
-	encoder.BeginRendering( rendering );
-	encoder.SetViewport( view.viewport );
-	// D3D9 puts pixel centers on integer coordinates: a D3D9 transform is
-	// shifted right and down by half a pixel of the viewport.
+	// The view's draw constants. D3D9 puts pixel centers on integer
+	// coordinates: a D3D9 transform is shifted right and down by half a pixel
+	// of the viewport.
 	material::FamilyDrawConstants constants;
 	std::memcpy( constants.toClip, view.toClip, sizeof( constants.toClip ) );
 	if ( view.viewport.width > 0.0f && view.viewport.height > 0.0f )
@@ -1273,84 +1345,251 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 	for ( int i = 0; i < 4; ++i )
 		constants.world[i * 5] = 1.0f;
 	const auto constantBytes = std::as_bytes( std::span( &constants, 1 ) );
-	std::uint32_t boundMaterial = ~0u;
-	int boundPage = 0;
-	bool pageBound = false;
 	// The frame's debug controls (RFC 0014), as the view was queued: each
 	// program's pipeline under its specialization (the shipped one when the
 	// controls are neutral). A refused debug pipeline fails the view loudly.
 	const bool debugNeutral = frame::DebugControlsNeutral( view.debug );
+
+	// Draws `list`'s surfaces, inside the caller's rendering, with their
+	// materials in `materials` and each material's pipeline from
+	// `pipelineOf` (none: the surfaces are not drawn and the view fails).
 	// Surfaces of one binding whose index ranges touch draw as one range (a
 	// world stage's meshlets, in the mesh's order).
-	std::uint32_t runFirst = 0;
-	std::uint32_t runCount = 0;
-	auto flushRun = [&]()
+	auto drawSurfaces =
+	    [&]( const std::vector<std::uint32_t> &list,
+	        const std::vector<Resources::Material> &materials,
+	        const std::function<std::optional<PipelineId>( const Resources::Material & )>
+	            &pipelineOf )
 	{
-		if ( runCount )
-			encoder.DrawIndexed( runCount, 1, runFirst, 0, 0 );
-		runCount = 0;
-	};
-	for ( const std::uint32_t index : order )
-	{
-		const WorldSurface &surface = world->surfaces[index];
-		const Resources::Material &m = r.materials[surface.material];
-		if ( surface.material != boundMaterial )
+		std::uint32_t boundMaterial = ~0u;
+		int boundPage = 0;
+		bool pageBound = false;
+		bool skipping = false;
+		std::uint32_t runFirst = 0;
+		std::uint32_t runCount = 0;
+		auto flushRun = [&]()
 		{
-			flushRun();
-			PipelineId pipeline = m.program.request.pipeline;
-			if ( !debugNeutral )
+			if ( runCount )
+				encoder.DrawIndexed( runCount, 1, runFirst, 0, 0 );
+			runCount = 0;
+		};
+		for ( const std::uint32_t index : list )
+		{
+			const WorldSurface &surface = world->surfaces[index];
+			const Resources::Material &m = materials[surface.material];
+			if ( surface.material != boundMaterial )
 			{
-				auto debug = r.resolver->DebugPipeline(
-				    m.program, frame::DebugSpecializationFor( view.debug, m.program.name ) );
-				if ( !debug )
+				flushRun();
+				boundMaterial = surface.material;
+				pageBound = false;
+				const std::optional<PipelineId> pipeline = pipelineOf( m );
+				skipping = !pipeline;
+				if ( skipping )
 				{
-					note( "debug view: " + debug.Error() );
 					complete = false;
 					continue;
 				}
-				pipeline = debug.Value();
+				encoder.SetPipeline( *pipeline );
+				if ( m.program.request.frameLayout.IsValid() )
+					encoder.SetBindGroup( BindGroupRole::kFrame,
+					    r.frameGroups[m.program.request.frameLayout.value].group );
+				if ( m.program.request.viewLayout.IsValid() )
+				{
+					const std::uint64_t layout = m.program.request.viewLayout.value;
+					const auto lit = litViews.find( layout );
+					encoder.SetBindGroup( BindGroupRole::kView,
+					    lit != litViews.end() ? lit->second.group : r.viewGroups[layout].group );
+				}
+				encoder.SetBindGroup( BindGroupRole::kMaterial, m.group.group );
+				encoder.SetVertexBuffer( 0, r.vertices, 0 );
+				encoder.SetIndexBuffer( r.indices, 0, IndexFormat::kUint32 );
+				encoder.SetDrawConstants(
+				    0, constantBytes.first( m.program.request.drawConstantBytes ) );
 			}
-			encoder.SetPipeline( pipeline );
-			if ( m.program.request.frameLayout.IsValid() )
-				encoder.SetBindGroup( BindGroupRole::kFrame,
-				    r.frameGroups[m.program.request.frameLayout.value].group );
-			if ( m.program.request.viewLayout.IsValid() )
+			if ( skipping )
+				continue;
+			if ( m.program.request.drawLayout.IsValid() &&
+			     ( !pageBound || surface.lightmapPage != boundPage ) )
 			{
-				const std::uint64_t layout = m.program.request.viewLayout.value;
-				const auto lit = litViews.find( layout );
-				encoder.SetBindGroup( BindGroupRole::kView,
-				    lit != litViews.end() ? lit->second.group : r.viewGroups[layout].group );
+				flushRun();
+				encoder.SetBindGroup(
+				    BindGroupRole::kDraw, r.drawGroups[drawKey( m, surface.lightmapPage )].group );
+				boundPage = surface.lightmapPage;
+				pageBound = true;
 			}
-			encoder.SetBindGroup( BindGroupRole::kMaterial, m.group.group );
-			encoder.SetVertexBuffer( 0, r.vertices, 0 );
-			encoder.SetIndexBuffer( r.indices, 0, IndexFormat::kUint32 );
-			encoder.SetDrawConstants(
-			    0, constantBytes.first( m.program.request.drawConstantBytes ) );
-			boundMaterial = surface.material;
-			pageBound = false;
+			if ( runCount && surface.firstIndex == runFirst + runCount )
+			{
+				runCount += surface.indexCount;
+			}
+			else
+			{
+				flushRun();
+				runFirst = surface.firstIndex;
+				runCount = surface.indexCount;
+			}
 		}
-		if ( m.program.request.drawLayout.IsValid() &&
-		     ( !pageBound || surface.lightmapPage != boundPage ) )
+		flushRun();
+	};
+
+	// A world stage's screen passes (render_lab's order): the depth and
+	// normal prepass into the pass's own single-sample targets, with a
+	// resolver of their own, then the composition's ambient occlusion, which
+	// the lit view groups read.
+	if ( world->stage && target.screenPasses && target.ambientOcclusion.IsValid() &&
+	     !order.empty() )
+	{
+		if ( !r.prepassResolver )
 		{
-			flushRun();
-			const auto key =
-			    std::make_pair( m.program.request.drawLayout.value, surface.lightmapPage );
-			encoder.SetBindGroup( BindGroupRole::kDraw, r.drawGroups[key].group );
-			boundPage = surface.lightmapPage;
-			pageBound = true;
+			auto resolver = material::ProgramResolver::Create( device, Format::kRGBA16Float,
+			    Format::kD32Float, 1, material::VertexLayout::kSurface );
+			if ( resolver )
+			{
+				r.prepassResolver = std::move( resolver ).Value();
+				r.prepassResolver->SetWorldPbr( true, StageTerms( *world->stage ) );
+				r.prepassMaterials.resize( world->materials.size() );
+			}
+			else
+			{
+				note( "the prepass resolver: " + resolver.Error() );
+			}
 		}
-		if ( runCount && surface.firstIndex == runFirst + runCount )
+		if ( r.prepassResolver && ( r.prepassDepthDesc.width != target.width ||
+		                              r.prepassDepthDesc.height != target.height ) )
 		{
-			runCount += surface.indexCount;
+			for ( TextureId old : { r.prepassDepth, r.prepassNormal } )
+			{
+				if ( old.IsValid() )
+					s.retiredTextures.emplace_back( target.frame, old );
+			}
+			r.prepassDepth = r.prepassNormal = TextureId();
+			TextureDesc depthDesc;
+			depthDesc.format = Format::kD32Float;
+			depthDesc.width = target.width;
+			depthDesc.height = target.height;
+			depthDesc.usages = { ResourceUsage::kDepthWrite, ResourceUsage::kSampled };
+			depthDesc.debugName = "world prepass depth";
+			TextureDesc normalDesc = depthDesc;
+			normalDesc.format = Format::kRGBA16Float;
+			normalDesc.usages = { ResourceUsage::kColorAttachment, ResourceUsage::kSampled };
+			normalDesc.debugName = "world prepass normal";
+			auto depthTexture = device.CreateTexture( depthDesc );
+			auto normalTexture = device.CreateTexture( normalDesc );
+			if ( depthTexture && normalTexture )
+			{
+				r.prepassDepth = depthTexture.Value();
+				r.prepassNormal = normalTexture.Value();
+				depthDesc.debugName = normalDesc.debugName = {};
+				r.prepassDepthDesc = depthDesc;
+				r.prepassNormalDesc = normalDesc;
+				r.prepassUsed = false;
+			}
+			else
+			{
+				for ( auto *made : { &depthTexture, &normalTexture } )
+				{
+					if ( *made )
+						(void)device.Release( made->Value(), CompletionToken() );
+				}
+				r.prepassDepthDesc = TextureDesc();
+				note( "the prepass targets were refused" );
+			}
 		}
-		else
+		if ( r.prepassResolver && r.prepassDepth.IsValid() )
 		{
-			flushRun();
-			runFirst = surface.firstIndex;
-			runCount = surface.indexCount;
+			std::vector<std::uint32_t> prepass;
+			for ( const std::uint32_t index : order )
+			{
+				const WorldSurface &surface = world->surfaces[index];
+				const Resources::Material *m =
+				    materialReadyIn( *r.prepassResolver, r.prepassMaterials, surface.material );
+				if ( !m ||
+				     ( m->program.request.drawLayout.IsValid() &&
+				         !drawGroupReady( *m, surface.lightmapPage ) ) ||
+				     ( m->program.request.frameLayout.IsValid() && !frameGroupReady( *m ) ) ||
+				     ( m->program.request.viewLayout.IsValid() && !viewGroupReady( *m ) ) )
+				{
+					complete = false;
+					continue;
+				}
+				prepass.push_back( index );
+			}
+			// The targets rest in kSampled between views (undefined before
+			// their first); their contents are rewritten whole.
+			const ResourceUsage rest =
+			    r.prepassUsed ? ResourceUsage::kSampled : ResourceUsage::kUndefined;
+			encoder.TransitionTexture( r.prepassNormal, rest, ResourceUsage::kColorAttachment );
+			encoder.TransitionTexture( r.prepassDepth, rest, ResourceUsage::kDepthWrite );
+			r.prepassUsed = true;
+			const ColorAttachment normal[] = {
+			    { r.prepassNormal, LoadOp::kClear, StoreOp::kStore, { 0, 0, 1, 0 }, {} } };
+			RenderingDesc prepassRendering;
+			prepassRendering.colors = normal;
+			prepassRendering.depth =
+			    DepthAttachment{ r.prepassDepth, LoadOp::kClear, StoreOp::kStore, 1.0f };
+			prepassRendering.width = target.width;
+			prepassRendering.height = target.height;
+			encoder.BeginLabel( "core world prepass" );
+			encoder.BeginRendering( prepassRendering );
+			encoder.SetViewport( view.viewport );
+			drawSurfaces( prepass, r.prepassMaterials,
+			    [&]( const Resources::Material &m ) -> std::optional<PipelineId>
+			    {
+				    auto variant = m.resolver->VariantPipeline(
+				        m.program, material::kSurfaceDepthNormal, material::kSurfaceSsrTargets );
+				    if ( !variant )
+				    {
+					    note( "the prepass: " + variant.Error() );
+					    return std::nullopt;
+				    }
+				    return variant.Value();
+			    } );
+			encoder.EndRendering();
+			encoder.EndLabel();
+			encoder.TransitionTexture(
+			    r.prepassNormal, ResourceUsage::kColorAttachment, ResourceUsage::kSampled );
+			encoder.TransitionTexture(
+			    r.prepassDepth, ResourceUsage::kDepthWrite, ResourceUsage::kSampled );
+			if ( target.screenPasses(
+			         encoder, { r.prepassDepth, r.prepassNormal, target.width, target.height } ) )
+				viewOcclusion = target.ambientOcclusion;
 		}
 	}
-	flushRun();
+	// The lit view groups, with the occlusion when it was recorded.
+	std::erase_if( order,
+	    [&]( std::uint32_t index )
+	    {
+		    const Resources::Material &m = r.materials[world->surfaces[index].material];
+		    if ( m.program.request.viewLayout.IsValid() && !viewGroupReady( m ) )
+		    {
+			    complete = false;
+			    return true;
+		    }
+		    return false;
+	    } );
+
+	const ColorAttachment colors[] = { { target.color, LoadOp::kLoad, StoreOp::kStore, {}, {} } };
+	RenderingDesc rendering;
+	rendering.colors = colors;
+	rendering.depth = DepthAttachment{ target.depth, LoadOp::kLoad, StoreOp::kStore, 1.0f };
+	rendering.width = target.width;
+	rendering.height = target.height;
+	encoder.BeginLabel( "core world" );
+	encoder.BeginRendering( rendering );
+	encoder.SetViewport( view.viewport );
+	drawSurfaces( order, r.materials,
+	    [&]( const Resources::Material &m ) -> std::optional<PipelineId>
+	    {
+		    if ( debugNeutral )
+			    return m.program.request.pipeline;
+		    auto debug = m.resolver->DebugPipeline(
+		        m.program, frame::DebugSpecializationFor( view.debug, m.program.name ) );
+		    if ( !debug )
+		    {
+			    note( "debug view: " + debug.Error() );
+			    return std::nullopt;
+		    }
+		    return debug.Value();
+	    } );
 	encoder.EndRendering();
 	encoder.EndLabel();
 	for ( auto &[layout, group] : litViews )

@@ -6,9 +6,9 @@
 #   RENDER_REST         the remaining arguments, unchanged (an array)
 #
 # RENDER_CORE_WORLD_DEFAULT (1 or 0, set by the caller before parsing) is
-# whether the render core draws the world without a flag: ./play sets 1, the
-# render core's best default on native Vulkan (user direction, 2026-09-29);
-# CORE_WORLD=0 ./play or --no-core-world turns it off. The engine's own
+# whether the render core draws the world without a flag: ./play and ./play_p2
+# set 1, the render core's best default on native Vulkan (user direction,
+# 2026-09-29); CORE_WORLD=0 or --no-core-world turns it off. The engine's own
 # default stays r_core_world 0 until RFC 0016 K12's "game matches lab".
 #
 # Flags (any order, before the map and game arguments):
@@ -17,7 +17,7 @@
 #   --null              no rendering (shaderapiempty), for headless checks
 #   --core-world        the render core draws the BSP world it can (RFC 0016 K5,
 #                       r_core_world 1, strict); legacy draws the rest. The
-#                       default in ./play on native Vulkan
+#                       default in ./play and ./play_p2 on native Vulkan
 #   --no-core-world     the legacy world only (r_core_world 0)
 #   --no-core           no render core at all (-norendercore): the legacy
 #                       backend alone, as before RFC 0016

@@ -3946,3 +3946,56 @@ Evidence (`build/`, headless native Vulkan):
 Not done: moving objects as casters (props, R89), static-tile caching, a
 mobile atlas budget, area lights, projectors and the sun on the stage.
 Frame time not recorded.
+
+## K12 slice 4: GTAO on the world stage, and `./play_p2` on the core (2026-09-29)
+
+GTAO in the product, in render_lab's order:
+
+- For a world stage view the world pass draws the view's depth and normal
+  prepass into its own single-sample targets (a second, single-sample
+  resolver: the backend's target may be multisampled, and GTAO samples a
+  plain depth), then calls the composition's screen passes, which run
+  `render.pass.ao` into the stage's occlusion target; the lit view group
+  reads it (`kSurfaceAmbientOcclusion`, which darkens the bake's indirect
+  layer only). Stage views always bind a view group of their own now, with
+  or without runtime lights. The occlusion reconstructs positions with the
+  projection the world pass rasterizes with (its D3D9 half-pixel shift) and
+  the eye from the view matrix.
+- Found on the way: the world pass keyed its draw groups by (layout,
+  page), but the pbr point shares its draw layout with the unlit and
+  lightmapped points while reading three pages. Whichever program built
+  the group first won: on gi_door the unlit emitter did, so the pbr walls
+  read the neutral white texture as their indirect page and any occlusion
+  blacked them out. Draw groups are now keyed by the program's draw inputs
+  too. It affects every stage mixing pbr with unlit or lightmapped
+  materials (the relit Portal maps).
+- The stage takes its probe volume from the first volume the host
+  publishes: a traced producer publishes a change from its first frame, so
+  a bake-only volume may never come; a stage set before it arrives is set
+  again.
+
+| Check | Result |
+| --- | --- |
+| gi_door, `cl_render_debug_term ao` on against off | 0 pixels over 8 levels (max 3): the crease darkens from 26 to 24, as render_lab's GTAO does at the same camera (0.94 of the total at the crease) |
+| living_room against legacy | 46,443 pixels over 8 levels, of which 45,425 are the ao term (GTAO and the materials' AO, which the legacy WMSH path lacks) |
+| gi_portal_light, gi_portal_view, lt_portal_pair (user request: portal light in the testing) | within 4, 14 and 2 levels of the legacy frames |
+
+`./play_p2` (user direction: "make play_p2 use the render core totally as
+well") now defaults to the core world, as `./play` does (`--no-core-world`
+or `CORE_WORLD=0` opt out). The four known core-world smoke failures are
+fixed, and the workload lists none:
+
+- sp_a3_03, sp_a3_speed_ramp, mp_coop_tbeam_polarity2: a frame straddling a
+  level change (queued mode records its slots after it) named views of the
+  earlier world, which the pass failed. They are skipped now: the queue keeps
+  each view's world generation, and an earlier world's view draws nothing
+  and counts as skipped (`render.world.null` W4 and W7 changed to this rule).
+- sp_a3_crazy_box: its cubemap-patched walls name
+  `metal/metalwall_bts_001a_normal`, which no Portal 2 archive holds. A
+  texture the content lacks is absent for the core (its neutral value) and
+  named once at level load; a texture that exists but no draw has used yet
+  is downloaded first.
+
+Sweeps: all 117 retail Portal 2 maps (`core_world_smoke.py --game portal2
+--build build-p2`): 115 pass, 2 no-claims, 0 fail; all 26 retail Portal
+maps pass (`build/`).
