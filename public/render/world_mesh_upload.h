@@ -61,6 +61,15 @@ struct WorldLightmapUploadRequest
 // reflection probes test their line of sight against them): texel 0 the
 // box's low corner and its reflectance, texel 1 its high corner and 0, the
 // rest 0; row 0 texel 5's z holds occluderCount.
+// A rectangle of a probe atlas, in texels.
+struct ProbeAtlasRegion
+{
+	uint32_t x = 0;
+	uint32_t y = 0;
+	uint32_t width = 0;
+	uint32_t height = 0;
+};
+
 struct ProbeVolumeUploadRequest
 {
 	uint32_t atlasWidth = 0;
@@ -75,8 +84,28 @@ struct ProbeVolumeUploadRequest
 	// world then reads the bake).
 	const void *deltaAtlas = nullptr;
 	uint32_t occluderCount = 0; // at most kProbeVolumeMaxOccluders
+	// A partial update of the provider's current volume (the last whole
+	// request's size, with a change atlas exactly when it had one): `atlas`
+	// and `deltaAtlas` are null, and `regionCount` rectangles of the atlas
+	// changed, their texels packed rectangle after rectangle (rows top first)
+	// in `regionAtlas`, and the change atlas's in `regionDelta` when the
+	// volume has one. The grid table is whole. A provider with no such current
+	// volume refuses it; the caller then sends the whole volume.
+	const ProbeAtlasRegion *regions = nullptr;
+	uint32_t regionCount = 0;
+	const void *regionAtlas = nullptr;
+	const void *regionDelta = nullptr;
 };
 static const uint32_t kProbeVolumeMaxOccluders = 16;
+
+// The texels of `regions` in a packed region buffer: their bytes, RGBA16F.
+inline size_t ProbeRegionBytes( const ProbeAtlasRegion *regions, uint32_t count )
+{
+	size_t texels = 0;
+	for ( uint32_t i = 0; i < count; ++i )
+		texels += size_t( regions[i].width ) * regions[i].height;
+	return texels * 8;
+}
 
 // RFC 0011 G9: the map's SDFV signed distances, which shadow the frame's
 // unbaked lights: half floats in Source units, x fastest, the first voxel's

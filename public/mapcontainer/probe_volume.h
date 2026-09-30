@@ -108,6 +108,10 @@ public:
 	// Source's six-direction ambient cube (+X -X +Y -Y +Z -Z) at a point.
 	bool AmbientCube( const float position[3], ProbeVolumeLayer layer, bool useVisibility,
 	    float outCube[6][3] ) const noexcept;
+	// The probes (the grids' probes in grid order) Sample reads at a point:
+	// the eight corners of its cell in the grid it samples; 0 when outside.
+	uint32_t SampleProbes(
+	    const float position[3], const float normal[3], uint32_t outProbes[8] ) const noexcept;
 	const ProbeVolumeLayout &Layout() const noexcept { return m_layout; }
 
 private:
@@ -117,6 +121,11 @@ private:
 	    const float direction[3], float out[4] ) const noexcept;
 	bool SampleGrid( const ProbeGridLayout &grid, const float position[3], const float normal[3],
 	    ProbeVolumeLayer layer, bool useVisibility, float out[3] ) const noexcept;
+	// The cell a unit-normal sample reads in `grid`: the normal-biased point,
+	// the cell's low corner and the point's fraction along each axis; false
+	// outside the grid.
+	static bool SampleCell( const ProbeGridLayout &grid, const float position[3],
+	    const float normal[3], float biased[3], int base[3], float alpha[3] ) noexcept;
 
 	const unsigned char *m_texels;
 	ProbeVolumeLayout m_layout;
@@ -137,6 +146,21 @@ static const uint32_t kProbeGridTableTexels = 6;
 static const uint32_t kProbeGridTableFloats = kProbeGridTableTexels * 4;
 // Writes layout.gridCount rows of kProbeGridTableFloats to `out`.
 void WriteProbeGridTable( const ProbeVolumeLayout &layout, float *out ) noexcept;
+
+// A rectangle of the atlas, in texels.
+struct ProbeAtlasRect
+{
+	uint32_t x, y, width, height;
+};
+// The sections of a probe's tiles ProbeTileRects names.
+static const uint32_t kProbeTilesIrradiance = 1; // one tile per irradiance layer
+static const uint32_t kProbeTilesVisibility = 2;
+static const uint32_t kProbeTileRectsMax = kProbeVolumeMaxLayers + 1;
+// The atlas rectangles of probe `probe` (the grids' probes numbered in grid
+// order) in `sections`: each irradiance layer's tile, then its visibility
+// tile. Returns how many were written, 0 for a probe past the last grid.
+uint32_t ProbeTileRects( const ProbeVolumeLayout &layout, uint32_t probe, uint32_t sections,
+    ProbeAtlasRect out[kProbeTileRectsMax] ) noexcept;
 
 } // namespace mapcontainer
 

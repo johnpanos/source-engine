@@ -104,6 +104,63 @@ bool UploadWorldShadowField( CVulkanContext &context,
 	return true;
 }
 
+// A partial update (world_mesh_upload.h): the changed rectangles of the
+// current atlas and change atlas, written in place, and a new grid table.
+static bool UpdateWorldProbeVolume( CVulkanContext &context,
+    const world_mesh_gpu::ProbeVolumeUploadRequest &request, std::string *error )
+{
+	const auto fail = [&]( const std::string &message )
+	{
+		if ( error )
+			*error = message;
+		return false;
+	};
+	const uint32_t kTableFloats = 24;
+	const int atlas = context.ProbeAtlasHandle();
+	const int delta = context.ProbeDeltaHandle();
+	uint32_t width = 0, height = 0;
+	context.ManagedTextureSize( atlas, &width, &height );
+	if ( !context.ProbeVolumeResident() || width != request.atlasWidth ||
+	     height != request.atlasHeight || ( request.regionCount && !request.regionAtlas ) ||
+	     ( request.regionCount && ( request.regionDelta != nullptr ) != ( delta >= 0 ) ) ||
+	     !request.gridTable || request.gridCount == 0 || request.gridCount > 16 ||
+	     request.tableFloats != kTableFloats ||
+	     request.occluderCount > world_mesh_gpu::kProbeVolumeMaxOccluders )
+		return fail( "PRBV partial update without its current volume" );
+	std::string detail;
+	size_t offset = 0;
+	for ( uint32_t i = 0; i < request.regionCount; ++i )
+	{
+		const world_mesh_gpu::ProbeAtlasRegion &region = request.regions[i];
+		const size_t bytes = size_t( region.width ) * region.height * 8;
+		if ( !context.UploadManagedTextureRegion( atlas, region.x, region.y, region.width,
+		         region.height, static_cast<const uint8_t *>( request.regionAtlas ) + offset, bytes,
+		         &detail ) ||
+		     ( delta >= 0 &&
+		         !context.UploadManagedTextureRegion( delta, region.x, region.y, region.width,
+		             region.height, static_cast<const uint8_t *>( request.regionDelta ) + offset,
+		             bytes, &detail ) ) )
+			return fail( "PRBV partial update failed: " + detail );
+		offset += bytes;
+	}
+	const uint32_t rows = request.gridCount + request.occluderCount;
+	const int grids = context.CreateManagedTexture(
+	    int( kTableFloats / 4 ), int( rows ), VK_FORMAT_R32G32B32A32_SFLOAT, &detail );
+	if ( grids < 0 || !context.UploadManagedTexture( grids,
+	                      reinterpret_cast<const uint8_t *>( request.gridTable ),
+	                      size_t( rows ) * kTableFloats * sizeof( float ), &detail ) )
+	{
+		if ( grids >= 0 )
+			context.DestroyManagedTexture( grids );
+		return fail( "PRBV grid table upload failed: " + detail );
+	}
+	context.NameManagedTexture( grids, "PRBV grid table" );
+	context.SetManagedTextureSamplerState(
+	    grids, CVulkanContext::kSamplerClampU | CVulkanContext::kSamplerClampV );
+	context.SetProbeVolumeHandles( atlas, grids, request.gridCount );
+	return true;
+}
+
 bool UploadWorldProbeVolume( CVulkanContext &context,
     const world_mesh_gpu::ProbeVolumeUploadRequest &request, std::string *error )
 {
@@ -117,6 +174,8 @@ bool UploadWorldProbeVolume( CVulkanContext &context,
 	const uint32_t kTableFloats = 24;
 	if ( !context.WorldMeshResident() )
 		return fail( "PRBV requires a resident world mesh" );
+	if ( request.regions )
+		return UpdateWorldProbeVolume( context, request, error );
 	if ( !request.atlas || !request.gridTable || request.atlasWidth == 0 ||
 	     request.atlasHeight == 0 || request.atlasWidth > 16384 || request.atlasHeight > 16384 ||
 	     request.gridCount == 0 || request.gridCount > 16 || request.tableFloats != kTableFloats ||

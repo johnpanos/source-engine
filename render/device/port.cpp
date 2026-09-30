@@ -186,13 +186,16 @@ std::uint64_t RegionBytes( Format format, std::uint32_t width, std::uint32_t hei
 }
 
 bool CopyRegionAligned( Format format, std::uint32_t mipWidth, std::uint32_t mipHeight,
-    std::uint32_t width, std::uint32_t height, std::uint64_t bufferOffset )
+    std::uint32_t x, std::uint32_t y, std::uint32_t width, std::uint32_t height,
+    std::uint64_t bufferOffset )
 {
 	const FormatBlock block = BlockOf( format );
-	if ( block.bytes == 0 || bufferOffset % block.bytes != 0 )
+	if ( block.bytes == 0 || bufferOffset % block.bytes != 0 || x > mipWidth ||
+	     width > mipWidth - x || y > mipHeight || height > mipHeight - y || x % block.width != 0 ||
+	     y % block.height != 0 )
 		return false;
-	return ( width % block.width == 0 || width == mipWidth ) &&
-	       ( height % block.height == 0 || height == mipHeight );
+	return ( width % block.width == 0 || x + width == mipWidth ) &&
+	       ( height % block.height == 0 || y + height == mipHeight );
 }
 
 bool HasStencil( Format format )

@@ -39,7 +39,8 @@ enum class Defect
 	kSubmitsPartially,    // D8: drops erroring encoders and runs the rest
 	kIgnoresUsageState,   // D12: accepts transitions from any usage
 	kFillsDrawConstants,  // D16: zero-fills a bound pipeline's draw constants
-	kAttachesBlocks       // D19: creates a block-compressed attachment without it
+	kAttachesBlocks,      // D19: creates a block-compressed attachment without it
+	kDropsRegionOrigin    // D22: copies every buffer-to-texture region to (0, 0)
 };
 
 // Draw-constant block sizes by pipeline, for kFillsDrawConstants.
@@ -90,7 +91,10 @@ public:
 	void CopyBufferToTexture(
 	    BufferId source, TextureId destination, const TextureBufferCopy &copy ) override
 	{
-		m_Inner->CopyBufferToTexture( source, destination, copy );
+		TextureBufferCopy region = copy;
+		if ( m_Defect == Defect::kDropsRegionOrigin )
+			region.x = region.y = 0;
+		m_Inner->CopyBufferToTexture( source, destination, region );
 	}
 	void BeginRendering( const RenderingDesc &desc ) override { m_Inner->BeginRendering( desc ); }
 	void EndRendering() override { m_Inner->EndRendering(); }
@@ -361,6 +365,7 @@ int main()
 	    { Defect::kIgnoresUsageState, "under-test.D12 " },
 	    { Defect::kFillsDrawConstants, "under-test.D16 " },
 	    { Defect::kAttachesBlocks, "under-test.D19 " },
+	    { Defect::kDropsRegionOrigin, "under-test.D22 " },
 	};
 	for ( const Case &c : cases )
 	{

@@ -359,24 +359,11 @@ void ProbeVolumeView::TileSample( const uint32_t origin[2], uint32_t tile, uint3
 bool ProbeVolumeView::SampleGrid( const ProbeGridLayout &grid, const float position[3],
     const float normal[3], ProbeVolumeLayer layer, bool useVisibility, float out[3] ) const noexcept
 {
-	float minSpacing = grid.spacing[0];
-	for ( int i = 1; i < 3; ++i )
-		if ( grid.spacing[i] < minSpacing )
-			minSpacing = grid.spacing[i];
-	float biased[3], g[3];
+	float biased[3];
 	int base[3];
 	float alpha[3];
-	for ( int i = 0; i < 3; ++i )
-	{
-		biased[i] = position[i] + normal[i] * kProbeNormalBias * minSpacing;
-		g[i] = ( biased[i] - grid.origin[i] ) / grid.spacing[i];
-		if ( g[i] < 0.0f || g[i] > float( grid.dims[i] - 1 ) )
-			return false;
-		base[i] = int( std::floor( g[i] ) );
-		if ( base[i] > int( grid.dims[i] ) - 2 )
-			base[i] = int( grid.dims[i] ) - 2;
-		alpha[i] = g[i] - float( base[i] );
-	}
+	if ( !SampleCell( grid, position, normal, biased, base, alpha ) )
+		return false;
 	const uint32_t stateRow = grid.tilesPerRow * kProbeVisibilityTile;
 	float total[3] = { 0, 0, 0 };
 	float weights = 0.0f;
@@ -460,6 +447,57 @@ bool ProbeVolumeView::SampleGrid( const ProbeGridLayout &grid, const float posit
 	return true;
 }
 
+bool ProbeVolumeView::SampleCell( const ProbeGridLayout &grid, const float position[3],
+    const float normal[3], float biased[3], int base[3], float alpha[3] ) noexcept
+{
+	float minSpacing = grid.spacing[0];
+	for ( int i = 1; i < 3; ++i )
+		if ( grid.spacing[i] < minSpacing )
+			minSpacing = grid.spacing[i];
+	for ( int i = 0; i < 3; ++i )
+	{
+		biased[i] = position[i] + normal[i] * kProbeNormalBias * minSpacing;
+		const float g = ( biased[i] - grid.origin[i] ) / grid.spacing[i];
+		if ( g < 0.0f || g > float( grid.dims[i] - 1 ) )
+			return false;
+		base[i] = int( std::floor( g ) );
+		if ( base[i] > int( grid.dims[i] ) - 2 )
+			base[i] = int( grid.dims[i] ) - 2;
+		alpha[i] = g - float( base[i] );
+	}
+	return true;
+}
+
+uint32_t ProbeVolumeView::SampleProbes(
+    const float position[3], const float normal[3], uint32_t outProbes[8] ) const noexcept
+{
+	float length =
+	    std::sqrt( normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2] );
+	if ( !( length > 0.0f ) )
+		return 0;
+	const float n[3] = { normal[0] / length, normal[1] / length, normal[2] / length };
+	uint32_t first = 0;
+	for ( uint32_t g = 0; g < m_layout.gridCount; first += m_layout.grids[g].probeCount, ++g )
+	{
+		const ProbeGridLayout &grid = m_layout.grids[g];
+		float biased[3];
+		int base[3];
+		float alpha[3];
+		if ( !SampleCell( grid, position, n, biased, base, alpha ) )
+			continue;
+		for ( int corner = 0; corner < 8; ++corner )
+		{
+			uint32_t index3[3];
+			for ( int k = 0; k < 3; ++k )
+				index3[k] = uint32_t( base[k] + ( ( corner >> k ) & 1 ) );
+			outProbes[corner] =
+			    first + index3[0] + grid.dims[0] * ( index3[1] + grid.dims[1] * index3[2] );
+		}
+		return 8;
+	}
+	return 0;
+}
+
 bool ProbeVolumeView::Sample( const float position[3], const float normal[3],
     ProbeVolumeLayer layer, bool useVisibility, float outIrradiance[3] ) const noexcept
 {
@@ -498,6 +536,34 @@ void WriteProbeGridTable( const ProbeVolumeLayout &layout, float *out ) noexcept
 		for ( uint32_t i = 0; i < kProbeGridTableFloats; ++i )
 			row[i] = values[i];
 	}
+}
+
+uint32_t ProbeTileRects( const ProbeVolumeLayout &layout, uint32_t probe, uint32_t sections,
+    ProbeAtlasRect out[kProbeTileRectsMax] ) noexcept
+{
+	for ( uint32_t g = 0; g < layout.gridCount; ++g )
+	{
+		const ProbeGridLayout &grid = layout.grids[g];
+		if ( probe >= grid.probeCount )
+		{
+			probe -= grid.probeCount;
+			continue;
+		}
+		const uint32_t column = probe % grid.tilesPerRow;
+		const uint32_t row = probe / grid.tilesPerRow;
+		uint32_t count = 0;
+		if ( sections & kProbeTilesIrradiance )
+			for ( uint32_t layer = 0; layer < layout.layerCount; ++layer )
+				out[count++] = { grid.irradianceOrigin[layer][0] + column * kProbeIrradianceTile,
+				    grid.irradianceOrigin[layer][1] + row * kProbeIrradianceTile,
+				    kProbeIrradianceTile, kProbeIrradianceTile };
+		if ( sections & kProbeTilesVisibility )
+			out[count++] = { grid.visibilityOrigin[0] + column * kProbeVisibilityTile,
+			    grid.visibilityOrigin[1] + row * kProbeVisibilityTile, kProbeVisibilityTile,
+			    kProbeVisibilityTile };
+		return count;
+	}
+	return 0;
 }
 
 bool ProbeVolumeView::AmbientCube( const float position[3], ProbeVolumeLayer layer,

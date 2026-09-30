@@ -102,11 +102,13 @@ struct FormatBlock
 FormatBlock BlockOf( Format format );
 // The bytes of a tightly packed width x height region: whole blocks.
 std::uint64_t RegionBytes( Format format, std::uint32_t width, std::uint32_t height );
-// Whether a copy of width x height texels at the origin of a mip that is
-// mipWidth x mipHeight covers whole blocks (or reaches the mip's edge), and
-// its buffer offset is a multiple of the block's bytes.
+// Whether a copy of width x height texels at (x, y) of a mip that is
+// mipWidth x mipHeight lies inside it, starts on a block, covers whole blocks
+// (or reaches the mip's edge), and its buffer offset is a multiple of the
+// block's bytes.
 bool CopyRegionAligned( Format format, std::uint32_t mipWidth, std::uint32_t mipHeight,
-    std::uint32_t width, std::uint32_t height, std::uint64_t bufferOffset );
+    std::uint32_t x, std::uint32_t y, std::uint32_t width, std::uint32_t height,
+    std::uint64_t bufferOffset );
 // A depth format with a stencil aspect.
 bool HasStencil( Format format );
 

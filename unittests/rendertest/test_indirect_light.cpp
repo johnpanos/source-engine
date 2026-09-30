@@ -10,6 +10,7 @@
 //===========================================================================//
 
 #include "render/indirect_light.h"
+#include "render/direct_occlusion.h"
 #include "render/indirect_radiosity.h"
 #include "indirect_contract.h"
 #include "render/indirect_switcher.h"
@@ -310,6 +311,109 @@ FrameVolume Step( Switcher &switcher, FakeGpu &gpu, Run *run, float seedMean )
 	return frame;
 }
 
+// The sparse update's helpers (RFC 0016 K12, the change volume): tile
+// rectangles, the change atlas and copies probe by probe, the probes the
+// proxies cut, and the probes a sample reads.
+void SparseHelpers( const Volume &seed )
+{
+	const mapcontainer::ProbeVolumeLayout &layout = seed.layout;
+	const mapcontainer::ProbeGridLayout &grid = layout.grids[0];
+	const uint32_t probes = ChangeComposer::TotalProbes( seed );
+	mapcontainer::ProbeAtlasRect rects[mapcontainer::kProbeTileRectsMax];
+	const uint32_t count = mapcontainer::ProbeTileRects( layout, 1,
+	    mapcontainer::kProbeTilesIrradiance | mapcontainer::kProbeTilesVisibility, rects );
+	Check( count == layout.layerCount + 1 &&
+	           rects[0].x == grid.irradianceOrigin[0][0] +
+	                             1 % grid.tilesPerRow * mapcontainer::kProbeIrradianceTile &&
+	           rects[0].width == mapcontainer::kProbeIrradianceTile &&
+	           rects[count - 1].width == mapcontainer::kProbeVisibilityTile &&
+	           mapcontainer::ProbeTileRects(
+	               layout, probes, mapcontainer::kProbeTilesIrradiance, rects ) == 0,
+	    "sparse: a probe's tiles are its layers' and its visibility tile; none past the grids" );
+
+	// Two probes change: the change atlas updated for them alone equals the
+	// one made whole; for the first alone it does not (the control).
+	const std::shared_ptr<Volume> scaled = Scaled( seed, 1, 1.75f );
+	std::vector<uint32_t> changed; // two probes the scaling changes
+	for ( uint32_t p = 0; p < probes && changed.size() < 2; ++p )
+	{
+		Volume probe = seed;
+		const std::vector<uint32_t> single = { p };
+		CopyProbeTiles( probe, *scaled, single, mapcontainer::kProbeTilesIrradiance );
+		if ( probe.bytes != seed.bytes )
+			changed.push_back( p );
+	}
+	Volume now = seed;
+	CopyProbeTiles( now, *scaled, changed, mapcontainer::kProbeTilesIrradiance );
+	std::vector<unsigned char> whole, sparse, control;
+	Check( changed.size() == 2 && ChangeAtlas( now, seed, &whole ) &&
+	           ChangeAtlas( seed, seed, &sparse ) &&
+	           ChangeAtlasProbes( now, seed, changed, &sparse ) && sparse == whole,
+	    "sparse: the change atlas updated for the changed probes equals the whole one" );
+	const std::vector<uint32_t> one(
+	    changed.begin(), changed.begin() + ( changed.empty() ? 0 : 1 ) );
+	Check( ChangeAtlas( seed, seed, &control ) && ChangeAtlasProbes( now, seed, one, &control ) &&
+	           control != whole,
+	    "sparse: a change atlas missing a changed probe differs (the control)" );
+	Volume copied = seed;
+	CopyProbeTiles( copied, now, changed, mapcontainer::kProbeTilesIrradiance );
+	Check(
+	    copied.bytes == now.bytes, "sparse: copying the changed probes' tiles copies the change" );
+
+	// The proxies' cut: exactly the probes whose visibility tiles changed.
+	Volume occluded = seed;
+	const float mid[3] = { grid.origin[0] + 0.5f * grid.spacing[0],
+	    grid.origin[1] + 0.5f * grid.spacing[1], grid.origin[2] + 0.5f * grid.spacing[2] };
+	Proxy box;
+	for ( int k = 0; k < 3; ++k )
+	{
+		box.lo[k] = mid[k] - 0.1f * grid.spacing[k];
+		box.hi[k] = mid[k] + 0.1f * grid.spacing[k];
+	}
+	std::vector<uint32_t> cut;
+	const size_t cutCount =
+	    OccludeProbeVisibility( occluded, std::span<const Proxy>( &box, 1 ), &cut );
+	std::vector<uint32_t> differs;
+	for ( uint32_t p = 0; p < probes; ++p )
+	{
+		Volume restored = occluded;
+		const std::vector<uint32_t> single = { p };
+		CopyProbeTiles( restored, seed, single, mapcontainer::kProbeTilesVisibility );
+		if ( restored.bytes != occluded.bytes )
+			differs.push_back( p );
+	}
+	std::sort( cut.begin(), cut.end() );
+	Check( cutCount > 0 && cut.size() == cutCount && cut == differs,
+	    "sparse: the cut list names exactly the probes whose visibility the proxy cut" );
+	Volume restored = occluded;
+	CopyProbeTiles( restored, seed, cut, mapcontainer::kProbeTilesVisibility );
+	Check( restored.bytes == seed.bytes, "sparse: restoring the cut tiles gives the volume back" );
+
+	// A sample reads the eight probes SampleProbes names: scaling every
+	// other probe leaves it unchanged, scaling one of them does not.
+	const mapcontainer::ProbeVolumeView view = seed.View();
+	const float up[3] = { 0, 0, 1 };
+	uint32_t read[8];
+	const uint32_t reads = view.SampleProbes( mid, up, read );
+	std::vector<uint32_t> others;
+	for ( uint32_t p = 0; p < probes; ++p )
+		if ( std::find( read, read + reads, p ) == read + reads )
+			others.push_back( p );
+	const std::shared_ptr<Volume> bright = Scaled( seed, 0, 4.0f );
+	Volume away = seed, near = seed;
+	CopyProbeTiles( away, *bright, others, mapcontainer::kProbeTilesIrradiance );
+	CopyProbeTiles( near, *bright, std::vector<uint32_t>( read, read + reads ),
+	    mapcontainer::kProbeTilesIrradiance );
+	float base[3] = {}, fromAway[3] = {}, fromNear[3] = {};
+	const bool sampled =
+	    view.Sample( mid, up, mapcontainer::ProbeVolumeLayer::Total, true, base ) &&
+	    away.View().Sample( mid, up, mapcontainer::ProbeVolumeLayer::Total, true, fromAway ) &&
+	    near.View().Sample( mid, up, mapcontainer::ProbeVolumeLayer::Total, true, fromNear );
+	Check( reads == 8 && sampled && std::memcmp( base, fromAway, sizeof( base ) ) == 0 &&
+	           fromNear[0] > base[0],
+	    "sparse: a sample reads the eight probes SampleProbes names and no other" );
+}
+
 } // namespace
 
 int main()
@@ -326,6 +430,7 @@ int main()
 	    "the seed's transfer (quality/fixtures/gi/rtrn/contract.rtrn) loads and pairs with it" );
 	if ( !transfer )
 		return testing::ReportConformance( g_checks, g_failures );
+	SparseHelpers( *seed );
 	// The fake's world: its scripted door, opened, raises the indirect light
 	// by kDoorGain.
 	Scenario world;

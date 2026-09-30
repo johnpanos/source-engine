@@ -397,6 +397,10 @@ public:
 		m_marks.assign( m_probes, 0 );
 		m_mark = 0;
 		m_inFlight.clear();
+		m_dirty.clear();
+		m_dirtyMark.assign( m_probes, 0 );
+		m_pool.clear();
+		m_publishedField = false;
 		m_lastSerial = 0;
 		m_frame = 0;
 		m_changed = false;
@@ -428,6 +432,12 @@ public:
 		{
 			const InFlight &done = m_inFlight.front();
 			CaptureReferences( done );
+			for ( uint32_t p : done.traced )
+				if ( !m_dirtyMark[p] )
+				{
+					m_dirtyMark[p] = 1;
+					m_dirty.push_back( p );
+				}
 			readable = done.written;
 			live = live || done.live;
 			m_inFlight.pop_front();
@@ -510,6 +520,34 @@ public:
 	// The converged baked-scene field: per probe, per texel, total, indirect
 	// and analytic direct (4 floats each); a probe's is zero until captured.
 	[[nodiscard]] const std::vector<float> &ReferenceField() const { return m_reference; }
+	// The last publication composed whole from its field (every probe's
+	// change applied to the bake): the oracle of the sparse publication.
+	// Null before the first publication from a field.
+	[[nodiscard]] std::shared_ptr<const Volume> ComposedWhole() const
+	{
+		if ( !m_publishedField || !m_gpu )
+			return nullptr;
+		const float *field = static_cast<const float *>( m_gpu->Map( m_field[m_publishedSlot] ) );
+		const size_t count = size_t( m_probes ) * kTexels;
+		std::vector<float> total( count * 3, 0.0f ), indirect( count * 3, 0.0f );
+		for ( uint32_t probe = 0; probe < m_probes; ++probe )
+		{
+			if ( !m_referenced[probe] || !m_active[probe] )
+				continue;
+			const float *baseTotal = m_composer.BaseInterior( *m_baked, m_probes, probe, 0 );
+			const float *baseIndirect = m_composer.BaseInterior( *m_baked, m_probes, probe, 1 );
+			for ( uint32_t k = 0; k < kTexels * 3; ++k )
+			{
+				const size_t t = size_t( probe ) * kTexels + k / 3;
+				const int c = int( k % 3 );
+				total[t * 3 + c] =
+				    Change( field[t * 12 + c], m_reference[t * 12 + c], baseTotal[k] );
+				indirect[t * 3 + c] =
+				    Change( field[t * 12 + 4 + c], m_reference[t * 12 + 4 + c], baseIndirect[k] );
+			}
+		}
+		return m_composer.Compose( *m_baked, total.data(), indirect.data(), m_probes, nullptr );
+	}
 
 private:
 	enum class Phase
@@ -554,6 +592,7 @@ private:
 		uint32_t written;
 		std::vector<uint32_t> referencedNow;
 		bool live;
+		std::vector<uint32_t> traced; // the probes whose field this update changed
 	};
 
 	// A probe's blend weight for its next update: half-and-half first, so
@@ -788,7 +827,7 @@ private:
 					liveSchedule[lives * 2 + 1] = 0; // 0.0f: carried forward
 					++lives;
 				}
-		InFlight update{ 0, slot, {}, false };
+		InFlight update{ 0, slot, {}, false, {} };
 		uint32_t references = 0;
 		for ( uint32_t p : chosen )
 		{
@@ -842,6 +881,7 @@ private:
 			    m_bakedParams, m_bakedLights, m_referenceSchedule[slot], references, false );
 		if ( !serial )
 			return;
+		update.traced = chosen;
 		m_recent.push_back( chosen );
 		if ( m_recent.size() > kRing - 1 )
 			m_recent.pop_front();
@@ -912,15 +952,48 @@ private:
 
 	// The published volume from a completed field: each referenced probe's
 	// change from its reference applied to the bake; an unreferenced probe
-	// stays the bake.
+	// stays the bake. Only the probes the updates since the last publication
+	// traced changed (a probe's field changes only when traced), so a pooled
+	// volume no one else holds takes those and the ones it missed since it was
+	// last published; a new one starts from the bake.
 	void Publish( uint32_t readable )
 	{
 		const float *field = static_cast<const float *>( m_gpu->Map( m_field[readable] ) );
-		const size_t count = size_t( m_probes ) * kTexels;
-		m_total.assign( count * 3, 0.0f );
-		m_indirect.assign( count * 3, 0.0f );
-		for ( uint32_t probe = 0; probe < m_probes; ++probe )
+		Pooled *target = nullptr;
+		for ( Pooled &pooled : m_pool )
+			if ( pooled.volume.use_count() == 1 )
+			{
+				target = &pooled;
+				break;
+			}
+		if ( !target )
 		{
+			// Every pooled volume is still held: the oldest leaves the pool
+			// (its holders keep it) for a new one.
+			if ( m_pool.size() >= kPoolVolumes )
+				m_pool.erase( m_pool.begin() );
+			m_pool.push_back( { std::make_shared<Volume>( *m_baked ), {}, {}, true } );
+			target = &m_pool.back();
+		}
+		std::vector<uint32_t> write;
+		if ( target->full )
+		{
+			for ( uint32_t p = 0; p < m_probes; ++p )
+				if ( m_referenced[p] && m_active[p] )
+					write.push_back( p );
+		}
+		else
+		{
+			write = target->stale;
+			for ( uint32_t p : m_dirty )
+				if ( !target->staleMark[p] )
+					write.push_back( p );
+		}
+		m_total.assign( write.size() * kTexels * 3, 0.0f );
+		m_indirect.assign( write.size() * kTexels * 3, 0.0f );
+		for ( size_t n = 0; n < write.size(); ++n )
+		{
+			const uint32_t probe = write[n];
 			if ( !m_referenced[probe] || !m_active[probe] )
 				continue;
 			const float *baseTotal = m_composer.BaseInterior( *m_baked, m_probes, probe, 0 );
@@ -929,14 +1002,40 @@ private:
 			{
 				const size_t t = size_t( probe ) * kTexels + k / 3;
 				const int c = int( k % 3 );
-				m_total[t * 3 + c] =
+				m_total[n * kTexels * 3 + k] =
 				    Change( field[t * 12 + c], m_reference[t * 12 + c], baseTotal[k] );
-				m_indirect[t * 3 + c] =
+				m_indirect[n * kTexels * 3 + k] =
 				    Change( field[t * 12 + 4 + c], m_reference[t * 12 + 4 + c], baseIndirect[k] );
 			}
 		}
-		m_published = PublishedVolume{ ++m_epoch,
-		    m_composer.Compose( *m_baked, m_total.data(), m_indirect.data(), m_probes, nullptr ) };
+		m_composer.ComposeProbes(
+		    *target->volume, *m_baked, write, m_total.data(), m_indirect.data() );
+		for ( uint32_t p : target->stale )
+			target->staleMark[p] = 0;
+		target->stale.clear();
+		target->full = false;
+		for ( Pooled &pooled : m_pool )
+		{
+			if ( &pooled == target || pooled.full )
+				continue;
+			if ( pooled.staleMark.size() != m_probes )
+				pooled.staleMark.assign( m_probes, 0 );
+			for ( uint32_t p : m_dirty )
+				if ( !pooled.staleMark[p] )
+				{
+					pooled.staleMark[p] = 1;
+					pooled.stale.push_back( p );
+				}
+		}
+		if ( target->staleMark.size() != m_probes )
+			target->staleMark.assign( m_probes, 0 );
+		auto changed = std::make_shared<const std::vector<uint32_t>>( m_dirty );
+		for ( uint32_t p : m_dirty )
+			m_dirtyMark[p] = 0;
+		m_dirty.clear();
+		m_published = PublishedVolume{ ++m_epoch, target->volume, std::move( changed ) };
+		m_publishedField = true;
+		m_publishedSlot = readable;
 	}
 
 	// The change of one texel from the bake. Light removed is relative (the
@@ -971,8 +1070,25 @@ private:
 	SdfLightCells m_cells; // the grid only; its lists are on the GPU
 	std::vector<float> m_overrides;
 	std::vector<float> m_reference;
-	std::vector<float> m_total;
+	std::vector<float> m_total; // Publish's changes, per probe it writes
 	std::vector<float> m_indirect;
+	// The probes traced since the last publication, and a mark per probe.
+	std::vector<uint32_t> m_dirty;
+	std::vector<uint8_t> m_dirtyMark;
+	// Published volumes, reused once no one else holds them: each with the
+	// probes published since it was last written (all of them when `full`, a
+	// copy of the bake).
+	struct Pooled
+	{
+		std::shared_ptr<Volume> volume;
+		std::vector<uint32_t> stale;
+		std::vector<uint8_t> staleMark;
+		bool full = true;
+	};
+	static constexpr size_t kPoolVolumes = 3;
+	std::vector<Pooled> m_pool;
+	bool m_publishedField = false; // the publication is from field slot m_publishedSlot
+	uint32_t m_publishedSlot = 0;
 	std::vector<uint8_t> m_active;
 	std::vector<uint8_t> m_referenced;
 	std::vector<uint32_t> m_referenceUpdates;

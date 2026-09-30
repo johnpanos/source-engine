@@ -89,6 +89,12 @@ ConVar r_indirect_shadows( "r_indirect_shadows", "1", FCVAR_CHEAT,
 ConVar r_indirect_occlusion( "r_indirect_occlusion", "1", FCVAR_CHEAT,
     "Moving geometry (drawn brush entities) blocks the baked direct light and the probe "
     "visibility behind it (0: the bake's, the negative control of the door test)" );
+ConVar r_indirect_sparse( "r_indirect_sparse", "1", FCVAR_NONE,
+    "A published volume that follows the consumed one updates only the probes it changed and "
+    "those moving geometry cuts, on the CPU and in the uploads (0: the whole volume every time)" );
+ConVar r_indirect_sparse_verify( "r_indirect_sparse_verify", "0", FCVAR_NONE,
+    "Recompute each sparse update whole (the consumed volume and the change atlas) and count the "
+    "updates that differ, reported every 100 updates (the sparse path's live oracle)" );
 ConVar r_indirect_report( "r_indirect_report", "0", FCVAR_NONE,
     "Print each indirect-light update: the producer's CPU time and the published volume's mean "
     "indirect light, and the traced producers' focus when it changes (2: its probes too)" );
@@ -426,6 +432,27 @@ struct Host
 	std::vector<Portal> portals;               // the client's open portals (G10)
 	ProbeFocus focus;                          // the traced producers' probes near the camera
 	uint64_t uploadedGeneration = 0;
+	// The consumed volume's copies with their visibility cut by the proxies,
+	// reused once no one else holds them: each with the probes consumed since
+	// it was last written (all of them when `full`).
+	struct OccludedCopy
+	{
+		std::shared_ptr<Volume> volume;
+		std::vector<uint32_t> stale;
+		std::vector<uint8_t> staleMark;
+		bool full = true;
+	};
+	std::vector<OccludedCopy> occludedCopies;
+	std::vector<uint32_t> cut; // the probes the consumed volume's visibility was cut at
+	// The provider holds the last upload (a partial one can follow), and
+	// whether it had a change atlas.
+	bool partialReady = false;
+	bool uploadedDelta = false;
+	// The last consume, for r_indirect_report: sparse (with the probes it
+	// touched) or whole, and why.
+	std::string consumed;
+	uint64_t sparseVerified = 0; // r_indirect_sparse_verify's counts
+	uint64_t sparseMismatches = 0;
 	uint64_t mapSerial = 0;
 	bool deviceLost = false;
 	bool reverting = false;
@@ -537,33 +564,185 @@ world_mesh_gpu::IWorldMeshUpload *Uploader()
 	return RenderCoreHost_WorldMeshUpload();
 }
 
+// The atlas rectangles of `probes`' tiles (irradiance layers and
+// visibility), runs of neighbouring tiles merged, with their texels packed
+// from `atlas` (and from `change`, a change atlas, when given).
+void ProbeRegions( const mapcontainer::ProbeVolumeLayout &layout, std::vector<uint32_t> probes,
+    const unsigned char *atlas, const unsigned char *change,
+    std::vector<world_mesh_gpu::ProbeAtlasRegion> *regions, std::vector<unsigned char> *texels,
+    std::vector<unsigned char> *changeTexels )
+{
+	std::sort( probes.begin(), probes.end() );
+	regions->clear();
+	for ( uint32_t section = 0; section < mapcontainer::kProbeTileRectsMax; ++section )
+	{
+		const size_t first = regions->size();
+		for ( uint32_t probe : probes )
+		{
+			mapcontainer::ProbeAtlasRect rects[mapcontainer::kProbeTileRectsMax];
+			const uint32_t count = mapcontainer::ProbeTileRects( layout, probe,
+			    mapcontainer::kProbeTilesIrradiance | mapcontainer::kProbeTilesVisibility, rects );
+			if ( section >= count )
+				continue;
+			const mapcontainer::ProbeAtlasRect &rect = rects[section];
+			world_mesh_gpu::ProbeAtlasRegion *last =
+			    regions->size() > first ? &regions->back() : nullptr;
+			if ( last && last->y == rect.y && last->height == rect.height &&
+			     last->x + last->width == rect.x )
+				last->width += rect.width;
+			else
+				regions->push_back( { rect.x, rect.y, rect.width, rect.height } );
+		}
+	}
+	const size_t bytes =
+	    world_mesh_gpu::ProbeRegionBytes( regions->data(), uint32_t( regions->size() ) );
+	texels->resize( bytes );
+	changeTexels->resize( change ? bytes : 0 );
+	size_t offset = 0;
+	for ( const world_mesh_gpu::ProbeAtlasRegion &region : *regions )
+	{
+		const size_t row = size_t( region.width ) * 8;
+		for ( uint32_t y = 0; y < region.height; ++y )
+		{
+			const size_t at = ( size_t( region.y + y ) * layout.atlasWidth + region.x ) * 8;
+			std::memcpy( texels->data() + offset, atlas + at, row );
+			if ( change )
+				std::memcpy( changeTexels->data() + offset, change + at, row );
+			offset += row;
+		}
+	}
+}
+
 // Makes `frame` what consumers sample: the CPU view (the ambient cube) and
-// the renderer's per-pixel copy.
+// the renderer's per-pixel copy. A volume that follows the consumed one (its
+// changed probes, or the same volume under moved proxies) updates only the
+// tiles that differ: the changed probes', and those the proxies cut or cut
+// before.
 void Consume( const FrameVolume &frame )
 {
 	Host &host = TheHost();
-	if ( !frame.volume || frame.generation == host.uploadedGeneration )
+	static const std::vector<Proxy> none;
+	const std::vector<Proxy> &proxies = r_indirect_occlusion.GetBool() ? host.proxies : none;
+	const bool newVolume = frame.generation != host.uploadedGeneration;
+	if ( !frame.volume || ( !newVolume && proxies == host.visibilityProxies ) )
 		return;
-	host.uploadedGeneration = frame.generation;
-	host.current = frame.volume;
-	// Moving geometry in the probes' visibility: a closed door stops probes
-	// on its far side from lighting through it (a copy; the producer's
-	// volume stays as published).
-	host.visibilityProxies = host.proxies;
-	if ( !host.proxies.empty() && r_indirect_occlusion.GetBool() )
+	const bool follows =
+	    !newVolume || ( frame.changed && frame.changedSince == host.uploadedGeneration );
+	const bool sparse = r_indirect_sparse.GetBool() && host.uploadedGeneration != 0 && follows &&
+	                    host.current && host.current->SameTopology( *frame.volume );
+	host.consumed =
+	    sparse                         ? "sparse"
+	    : !r_indirect_sparse.GetBool() ? "whole (r_indirect_sparse 0)"
+	    : host.uploadedGeneration == 0 ? "whole (first)"
+	    : !follows ? ( frame.changed ? "whole (skipped a publication)" : "whole (no changed list)" )
+	               : "whole (new topology)";
+	const uint32_t probeCount = ChangeComposer::TotalProbes( *frame.volume );
+	std::vector<uint32_t> touched;
+	std::vector<uint8_t> marked( sparse ? probeCount : 0, 0 );
+	const auto touch = [&]( uint32_t probe )
 	{
-		auto occluded = std::make_shared<Volume>( *frame.volume );
-		if ( OccludeProbeVisibility( *occluded, host.proxies ) )
-			host.current = occluded;
+		if ( probe < marked.size() && !marked[probe] )
+		{
+			marked[probe] = 1;
+			touched.push_back( probe );
+		}
+	};
+	if ( sparse && newVolume )
+		for ( uint32_t probe : *frame.changed )
+			touch( probe );
+	// Tiles the last proxies cut return to the volume's own visibility.
+	for ( uint32_t probe : host.cut )
+		touch( probe );
+	host.uploadedGeneration = frame.generation;
+	host.visibilityProxies = proxies;
+	// Moving geometry in the probes' visibility: a closed door stops probes
+	// on its far side from lighting through it (on a copy; the producer's
+	// volume stays as published).
+	std::vector<uint32_t> cut;
+	Host::OccludedCopy *target = nullptr;
+	if ( !proxies.empty() )
+	{
+		for ( Host::OccludedCopy &copy : host.occludedCopies )
+			if ( copy.volume.use_count() == 1 )
+			{
+				target = &copy;
+				break;
+			}
+		if ( !target )
+		{
+			if ( host.occludedCopies.size() >= 3 )
+				host.occludedCopies.erase( host.occludedCopies.begin() );
+			host.occludedCopies.push_back( { std::make_shared<Volume>(), {}, {}, true } );
+			target = &host.occludedCopies.back();
+		}
+		Volume &volume = *target->volume;
+		if ( !sparse || target->full || !volume.SameTopology( *frame.volume ) )
+		{
+			volume.bytes = frame.volume->bytes;
+			volume.layout = frame.volume->layout;
+		}
+		else
+		{
+			std::vector<uint32_t> restore = target->stale;
+			for ( uint32_t probe : touched )
+				if ( probe >= target->staleMark.size() || !target->staleMark[probe] )
+					restore.push_back( probe );
+			CopyProbeTiles( volume, *frame.volume, restore,
+			    mapcontainer::kProbeTilesIrradiance | mapcontainer::kProbeTilesVisibility );
+		}
+		for ( uint32_t probe : target->stale )
+			target->staleMark[probe] = 0;
+		target->stale.clear();
+		target->full = false;
+		OccludeProbeVisibility( volume, proxies, &cut );
+		for ( uint32_t probe : cut )
+			touch( probe );
+		host.current = target->volume;
 	}
+	else
+	{
+		host.current = frame.volume;
+	}
+	// The other copies are behind by what changed now.
+	for ( Host::OccludedCopy &copy : host.occludedCopies )
+	{
+		if ( &copy == target || copy.full )
+			continue;
+		if ( !sparse )
+		{
+			copy.full = true;
+			continue;
+		}
+		if ( copy.staleMark.size() != probeCount )
+			copy.staleMark.assign( probeCount, 0 );
+		for ( uint32_t probe : touched )
+			if ( !copy.staleMark[probe] )
+			{
+				copy.staleMark[probe] = 1;
+				copy.stale.push_back( probe );
+			}
+	}
+	if ( target && target->staleMark.size() != probeCount )
+		target->staleMark.assign( probeCount, 0 );
+	host.cut = std::move( cut );
+	if ( sparse )
+		host.consumed += " " + std::to_string( touched.size() ) + " probe(s)";
 	host.view.emplace( host.current->bytes.data(), host.current->layout );
 	// Every model's ambient cube is re-evaluated from the new volume, and
-	// brush entities without baked light (doors) are lit from it.
+	// brush entities without baked light (doors) are lit from it: on a
+	// sparse update those reading a touched probe.
 	R_StudioInitLightingCache();
-	host.brushesLit = R_RelightBrushEntitiesFromProbes( &*host.view );
+	if ( !sparse || !host.brushesLit )
+		host.brushesLit = R_RelightBrushEntitiesFromProbes( &*host.view );
+	else if ( !touched.empty() )
+		host.brushesLit = R_RelightBrushEntitiesFromProbes(
+		    &*host.view, touched.data(), uint32_t( touched.size() ) );
 	world_mesh_gpu::IWorldMeshUpload *uploader = Uploader();
 	if ( host.deviceLost || !uploader || !uploader->IsResident() )
+	{
+		host.partialReady = false;
 		return;
+	}
 	const mapcontainer::ProbeVolumeLayout &layout = host.current->layout;
 	// The grid rows, then the moving occluders this volume's visibility was
 	// cut by (world_mesh_upload.h): relit reflection probes test their line
@@ -590,17 +769,58 @@ void Consume( const FrameVolume &frame )
 	world_mesh_gpu::ProbeVolumeUploadRequest request;
 	request.atlasWidth = layout.atlasWidth;
 	request.atlasHeight = layout.atlasHeight;
-	request.atlas = host.current->bytes.data() + layout.atlasOffset;
 	request.gridCount = layout.gridCount;
 	request.tableFloats = mapcontainer::kProbeGridTableFloats;
 	request.gridTable = table.data();
 	request.occluderCount = occluders;
 	// BakedPlusDelta: the world adds the change from the bake.
-	if ( frame.policy == indirect_policy::Policy::BakedPlusDelta && host.scene.baked &&
-	     host.current != host.scene.baked &&
-	     ChangeAtlas( *host.current, *host.scene.baked, &host.change ) )
-		request.deltaAtlas = host.change.data();
-	if ( !uploader->UploadProbeVolume( request ) )
+	const bool delta = frame.policy == indirect_policy::Policy::BakedPlusDelta &&
+	                   host.scene.baked && host.current != host.scene.baked;
+	// A partial upload updates what the provider holds: the same volume
+	// topology, with or without a change atlas as before.
+	bool partial = sparse && host.partialReady && delta == host.uploadedDelta;
+	if ( partial && delta )
+		partial = ChangeAtlasProbes( *host.current, *host.scene.baked, touched, &host.change );
+	bool withDelta = delta;
+	if ( !partial && delta )
+		withDelta = ChangeAtlas( *host.current, *host.scene.baked, &host.change );
+	if ( sparse && r_indirect_sparse_verify.GetBool() )
+	{
+		Volume whole = *frame.volume;
+		if ( !proxies.empty() )
+			OccludeProbeVisibility( whole, proxies );
+		std::vector<unsigned char> wholeChange;
+		const bool same = whole.bytes == host.current->bytes &&
+		                  ( !partial || !withDelta ||
+		                      ( ChangeAtlas( *host.current, *host.scene.baked, &wholeChange ) &&
+		                          wholeChange == host.change ) );
+		++host.sparseVerified;
+		host.sparseMismatches += !same;
+		if ( !same || host.sparseVerified % 100 == 1 )
+			Msg( "indirect light: sparse verify: %llu update(s), %llu differ from whole%s\n",
+			    (unsigned long long)host.sparseVerified, (unsigned long long)host.sparseMismatches,
+			    same ? "" : " (this one differs)" );
+	}
+	std::vector<world_mesh_gpu::ProbeAtlasRegion> regions;
+	std::vector<unsigned char> texels, changeTexels;
+	static const world_mesh_gpu::ProbeAtlasRegion kNoRegion;
+	if ( partial )
+	{
+		ProbeRegions( layout, touched, host.current->bytes.data() + layout.atlasOffset,
+		    withDelta ? host.change.data() : nullptr, &regions, &texels, &changeTexels );
+		request.regions = regions.empty() ? &kNoRegion : regions.data();
+		request.regionCount = uint32_t( regions.size() );
+		request.regionAtlas = texels.empty() ? nullptr : texels.data();
+		request.regionDelta = changeTexels.empty() ? nullptr : changeTexels.data();
+	}
+	else
+	{
+		request.atlas = host.current->bytes.data() + layout.atlasOffset;
+		request.deltaAtlas = withDelta ? host.change.data() : nullptr;
+	}
+	host.partialReady = uploader->UploadProbeVolume( request );
+	host.uploadedDelta = withDelta;
+	if ( !host.partialReady )
 		Warning( "indirect light: probe volume upload failed; models use the ambient cube\n" );
 }
 
@@ -823,6 +1043,9 @@ void IndirectLight_EndMap()
 	host.occluded.clear();
 	host.occludedTotal.clear();
 	host.visibilityProxies.clear();
+	host.occludedCopies.clear();
+	host.cut.clear();
+	host.partialReady = false;
 	host.uploadedGeneration = 0;
 	host.scene = IndirectScene();
 }
@@ -892,20 +1115,25 @@ void IndirectLight_Frame( const light_set::Snapshot &lights )
 	const double updateMs = ( Plat_FloatTime() - started ) * 1000.0;
 	host.tracker.Advance();
 	// New proxies re-consume the same volume with their visibility.
-	if ( host.proxies != host.visibilityProxies )
-		host.uploadedGeneration = 0;
-	const bool published = frame.volume && frame.generation != host.uploadedGeneration;
+	const bool published =
+	    frame.volume &&
+	    ( frame.generation != host.uploadedGeneration ||
+	        ( r_indirect_occlusion.GetBool() ? host.proxies : std::vector<Proxy>() ) !=
+	            host.visibilityProxies );
+	const double consumeStarted = Plat_FloatTime();
 	Consume( frame );
+	const double consumeMs = ( Plat_FloatTime() - consumeStarted ) * 1000.0;
 	// The volume the map loaded with, once its brush lightmaps exist.
 	if ( !host.brushesLit && host.view )
 		host.brushesLit = R_RelightBrushEntitiesFromProbes( &*host.view );
 	if ( r_indirect_report.GetBool() && ( !work.jobs.empty() || published ) )
 		Msg( "indirect light: frame %llu %s update %.3f ms (%s), generation %llu, policy %d, "
-		     "indirect mean %.5f\n",
+		     "indirect mean %.5f, consumed %s (%.2f ms)\n",
 		    (unsigned long long)work.frameSerial, ProducerName( frame.producer ), updateMs,
 		    r_indirect_executor.GetInt() == 1 ? "pooled" : "serial",
 		    (unsigned long long)frame.generation, int( frame.policy ),
-		    frame.volume ? frame.volume->MeanIrradiance( 1 ) : 0.0f );
+		    frame.volume ? frame.volume->MeanIrradiance( 1 ) : 0.0f,
+		    published ? host.consumed.c_str() : "nothing", consumeMs );
 }
 
 const mapcontainer::ProbeVolumeView *IndirectLight_CurrentVolume()

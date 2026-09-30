@@ -1751,6 +1751,86 @@ inline void BlockCompressedFormats( Suite &s )
 	}
 }
 
+// D22 region copies: a buffer-to-texture copy at (x, y) writes that
+// rectangle alone, a texture-to-buffer copy at (x, y) reads it back, and a
+// region past the mip's edge is refused at submission.
+inline void RegionCopies( Suite &s )
+{
+	auto device = s.Create();
+	if ( !device )
+		return;
+	TextureDesc desc;
+	desc.format = Format::kRGBA8Unorm;
+	desc.width = 8;
+	desc.height = 8;
+	desc.usages = {
+	    ResourceUsage::kSampled, ResourceUsage::kCopyDestination, ResourceUsage::kCopySource };
+	auto texture = device->CreateTexture( desc );
+	if ( !s.That( texture.HasValue(), "D22", "an RGBA8 texture is created" ) )
+		return;
+	const TextureId id = texture.Value();
+	constexpr std::uint32_t kX = 4, kY = 5, kW = 3, kH = 2;
+	const std::vector<std::byte> whole = Pattern( 8 * 8 * 4, 22 );
+	const std::vector<std::byte> region = Pattern( kW * kH * 4, 23 );
+	const std::uint64_t regionAt = 8 * 8 * 4;
+	const BufferId source = s.Buffer( *device, regionAt + region.size(),
+	    { ResourceUsage::kCopyDestination, ResourceUsage::kCopySource } );
+	const BufferId out = s.Buffer( *device, regionAt + region.size(),
+	    { ResourceUsage::kCopyDestination, ResourceUsage::kCopySource } );
+	auto encoder = device->BeginEncoder( QueueKind::kGraphics );
+	if ( !encoder )
+		return;
+	CommandEncoder &e = encoder.Value();
+	e.TransitionBuffer( source, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+	e.WriteBuffer( source, 0, whole );
+	e.WriteBuffer( source, regionAt, region );
+	e.TransitionBuffer( source, ResourceUsage::kCopyDestination, ResourceUsage::kCopySource );
+	e.TransitionTexture( id, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+	e.CopyBufferToTexture( source, id, { 0, 0, 0, 8, 8 } );
+	TextureBufferCopy part;
+	part.bufferOffset = regionAt;
+	part.width = kW;
+	part.height = kH;
+	part.x = kX;
+	part.y = kY;
+	e.CopyBufferToTexture( source, id, part );
+	e.TransitionTexture( id, ResourceUsage::kCopyDestination, ResourceUsage::kCopySource );
+	e.TransitionBuffer( out, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+	e.CopyTextureToBuffer( id, out, { 0, 0, 0, 8, 8 } );
+	e.CopyTextureToBuffer( id, out, part );
+	e.TransitionBuffer( out, ResourceUsage::kCopyDestination, ResourceUsage::kCopySource );
+	const std::optional<CompletionToken> token = s.Run( *device, e );
+	const bool finished = token && s.Finish( *device, *token );
+	const std::vector<std::byte> read = s.ReadBack( *device, out, regionAt + region.size() );
+	bool placed = finished && read.size() == regionAt + region.size();
+	for ( std::uint32_t y = 0; placed && y < 8; ++y )
+		for ( std::uint32_t x = 0; placed && x < 8; ++x )
+		{
+			const bool inside = x >= kX && x < kX + kW && y >= kY && y < kY + kH;
+			const std::byte *want =
+			    inside ? &region[( ( y - kY ) * kW + ( x - kX ) ) * 4] : &whole[( y * 8 + x ) * 4];
+			placed = std::memcmp( &read[( y * 8 + x ) * 4], want, 4 ) == 0;
+		}
+	s.That( placed, "D22", "a copy at (x, y) writes its rectangle alone" );
+	s.That( placed && std::memcmp( read.data() + regionAt, region.data(), region.size() ) == 0,
+	    "D22", "a copy out at (x, y) reads that rectangle" );
+	auto bad = device->BeginEncoder( QueueKind::kGraphics );
+	if ( bad )
+	{
+		TextureBufferCopy past = part;
+		past.x = 6; // 6 + 3 > 8
+		bad.Value().TransitionTexture(
+		    id, ResourceUsage::kCopySource, ResourceUsage::kCopyDestination );
+		bad.Value().CopyBufferToTexture( source, id, past );
+		auto submitted = device->Submit( QueueKind::kGraphics, { &bad.Value(), 1 }, {} );
+		s.That( !submitted && submitted.Error().status == DeviceStatus::kInvalidState, "D22",
+		    "a region past the mip's edge is refused" );
+	}
+	(void)device->Release( id, token.value_or( CompletionToken{} ) );
+	(void)device->Release( source, token.value_or( CompletionToken{} ) );
+	(void)device->Release( out, token.value_or( CompletionToken{} ) );
+}
+
 inline void CapabilityHonesty( Suite &s )
 {
 	if ( !s.m_Driver.rasterizes )
@@ -2162,6 +2242,7 @@ inline void RunDeviceConformance( testing::Checks &checks, const DeviceDriver &d
 	detail::TransmittanceBlend( suite );
 	detail::ExternalImagesClause( suite );
 	detail::BlockCompressedFormats( suite );
+	detail::RegionCopies( suite );
 	detail::CapabilityHonesty( suite );
 }
 

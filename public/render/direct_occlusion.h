@@ -581,7 +581,10 @@ private:
 // stored mean distance takes the proxy's distance (mean, and its square as
 // the second moment), and the tile's octahedral border is rewritten. Returns
 // the number of probes changed; a volume no proxy is near is unchanged.
-inline size_t OccludeProbeVisibility( Volume &volume, std::span<const Proxy> proxies )
+// `cut`, when given, receives the changed probes (the grids' probes in grid
+// order).
+inline size_t OccludeProbeVisibility(
+    Volume &volume, std::span<const Proxy> proxies, std::vector<uint32_t> *cut = nullptr )
 {
 	if ( proxies.empty() )
 		return 0;
@@ -625,7 +628,8 @@ inline size_t OccludeProbeVisibility( Volume &volume, std::span<const Proxy> pro
 			directions[v][u][2] = z / length;
 		}
 	size_t changedProbes = 0;
-	for ( uint32_t g = 0; g < layout.gridCount; ++g )
+	uint32_t first = 0; // the grid's first probe
+	for ( uint32_t g = 0; g < layout.gridCount; first += layout.grids[g].probeCount, ++g )
 	{
 		const mapcontainer::ProbeGridLayout &grid = layout.grids[g];
 		const uint32_t stateRow = grid.tilesPerRow * kTile;
@@ -697,6 +701,8 @@ inline size_t OccludeProbeVisibility( Volume &volume, std::span<const Proxy> pro
 			if ( !changed )
 				continue;
 			++changedProbes;
+			if ( cut )
+				cut->push_back( first + i );
 			// The octahedral border (probe_volume.py with_border).
 			const auto copy = [&]( uint32_t tx, uint32_t ty, uint32_t sx, uint32_t sy )
 			{

@@ -86,11 +86,9 @@ bool GlDevice::Validate(
 	{
 		// D24's depth has no 32-bit transfer equal to the port's (formats.cpp).
 		if ( copy.mip >= t.desc.mipLevels || copy.layer >= t.layers || copy.width == 0 ||
-		     copy.height == 0 || copy.width > t.Width( copy.mip ) ||
-		     copy.height > t.Height( copy.mip ) || t.desc.sampleCount != 1 ||
-		     t.desc.format == Format::kD24UnormS8 ||
-		     !CopyRegionAligned( t.desc.format, t.Width( copy.mip ), t.Height( copy.mip ),
-		         copy.width, copy.height, copy.bufferOffset ) )
+		     copy.height == 0 || t.desc.sampleCount != 1 || t.desc.format == Format::kD24UnormS8 ||
+		     !CopyRegionAligned( t.desc.format, t.Width( copy.mip ), t.Height( copy.mip ), copy.x,
+		         copy.y, copy.width, copy.height, copy.bufferOffset ) )
 			return false;
 		const std::uint64_t bytes = RegionBytes( t.desc.format, copy.width, copy.height );
 		return copy.bufferOffset <= b.desc.size && bytes <= b.desc.size - copy.bufferOffset;
@@ -606,12 +604,14 @@ private:
 		    static_cast<GLsizei>( RegionBytes( t.desc.format, copy.width, copy.height ) );
 		void *offset = reinterpret_cast<void *>( static_cast<std::uintptr_t>( copy.bufferOffset ) );
 		m_Gl.BindBuffer( GL_PIXEL_PACK_BUFFER, b.name );
+		const auto x = static_cast<GLint>( copy.x );
+		const auto y = static_cast<GLint>( copy.y );
 		if ( format.compressed )
-			m_Gl.GetCompressedTextureSubImage( t.name, static_cast<GLint>( copy.mip ), 0, 0,
+			m_Gl.GetCompressedTextureSubImage( t.name, static_cast<GLint>( copy.mip ), x, y,
 			    static_cast<GLint>( copy.layer ), static_cast<GLsizei>( copy.width ),
 			    static_cast<GLsizei>( copy.height ), 1, bytes, offset );
 		else
-			m_Gl.GetTextureSubImage( t.name, static_cast<GLint>( copy.mip ), 0, 0,
+			m_Gl.GetTextureSubImage( t.name, static_cast<GLint>( copy.mip ), x, y,
 			    static_cast<GLint>( copy.layer ), static_cast<GLsizei>( copy.width ),
 			    static_cast<GLsizei>( copy.height ), 1, format.format, format.type, bytes, offset );
 		m_Gl.BindBuffer( GL_PIXEL_PACK_BUFFER, 0 );
@@ -630,24 +630,26 @@ private:
 		const auto mip = static_cast<GLint>( copy.mip );
 		const auto width = static_cast<GLsizei>( copy.width );
 		const auto height = static_cast<GLsizei>( copy.height );
+		const auto x = static_cast<GLint>( copy.x );
+		const auto y = static_cast<GLint>( copy.y );
 		m_Gl.BindBuffer( GL_PIXEL_UNPACK_BUFFER, b.name );
 		if ( t.target == GL_TEXTURE_2D )
 		{
 			if ( format.compressed )
 				m_Gl.CompressedTextureSubImage2D(
-				    t.name, mip, 0, 0, width, height, format.internal, bytes, offset );
+				    t.name, mip, x, y, width, height, format.internal, bytes, offset );
 			else
 				m_Gl.TextureSubImage2D(
-				    t.name, mip, 0, 0, width, height, format.format, format.type, offset );
+				    t.name, mip, x, y, width, height, format.format, format.type, offset );
 		}
 		else
 		{
 			const auto layer = static_cast<GLint>( copy.layer );
 			if ( format.compressed )
 				m_Gl.CompressedTextureSubImage3D(
-				    t.name, mip, 0, 0, layer, width, height, 1, format.internal, bytes, offset );
+				    t.name, mip, x, y, layer, width, height, 1, format.internal, bytes, offset );
 			else
-				m_Gl.TextureSubImage3D( t.name, mip, 0, 0, layer, width, height, 1, format.format,
+				m_Gl.TextureSubImage3D( t.name, mip, x, y, layer, width, height, 1, format.format,
 				    format.type, offset );
 		}
 		m_Gl.BindBuffer( GL_PIXEL_UNPACK_BUFFER, 0 );

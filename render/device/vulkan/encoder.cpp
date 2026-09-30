@@ -432,10 +432,9 @@ bool VulkanDevice::Validate(
 	    []( const TextureRecord &t, const BufferRecord &b, const TextureBufferCopy &copy )
 	{
 		if ( copy.mip >= t.desc.mipLevels || copy.layer >= t.layers || copy.width == 0 ||
-		     copy.height == 0 || copy.width > t.Width( copy.mip ) ||
-		     copy.height > t.Height( copy.mip ) || t.desc.sampleCount != 1 ||
-		     !CopyRegionAligned( t.desc.format, t.Width( copy.mip ), t.Height( copy.mip ),
-		         copy.width, copy.height, copy.bufferOffset ) )
+		     copy.height == 0 || t.desc.sampleCount != 1 ||
+		     !CopyRegionAligned( t.desc.format, t.Width( copy.mip ), t.Height( copy.mip ), copy.x,
+		         copy.y, copy.width, copy.height, copy.bufferOffset ) )
 			return false;
 		const std::uint64_t bytes = RegionBytes( t.desc.format, copy.width, copy.height );
 		return copy.bufferOffset <= b.desc.size && bytes <= b.desc.size - copy.bufferOffset;
@@ -1000,6 +999,7 @@ private:
 		region.imageSubresource.mipLevel = copy.mip;
 		region.imageSubresource.baseArrayLayer = copy.layer;
 		region.imageSubresource.layerCount = 1;
+		region.imageOffset = { std::int32_t( copy.x ), std::int32_t( copy.y ), 0 };
 		region.imageExtent = { copy.width, copy.height, 1 };
 		if ( toBuffer )
 			vkCmdCopyImageToBuffer( m_Cmd, texture->image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,

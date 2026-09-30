@@ -59,6 +59,11 @@ struct FrameVolume
 	indirect_policy::Policy policy = indirect_policy::Policy::Baked;
 	bool fading = false;
 	float weight = 1.0f;
+	// The probes whose tiles changed from generation `changedSince`'s volume
+	// (the one before): a consumer holding that generation updates only
+	// these. Null: the whole volume.
+	ChangedProbes changed = nullptr;
+	uint64_t changedSince = 0;
 };
 
 class Switcher
@@ -183,8 +188,18 @@ public:
 			const auto newest = m_active.producer->Published();
 			if ( newest && newest->epoch != m_activeEpoch )
 			{
+				// The producer's next publication after the one this frame
+				// held, with no fade between: its changed probes carry over.
+				const bool next = m_frameIsActive && newest->epoch == m_activeEpoch + 1;
 				m_activeEpoch = newest->epoch;
+				const uint64_t since = m_frame.generation;
 				Publish( newest->volume, false, 1.0f );
+				m_frameIsActive = true;
+				if ( next && newest->changed )
+				{
+					m_frame.changed = newest->changed;
+					m_frame.changedSince = since;
+				}
 			}
 		}
 		// Step 5: ended producers go once their tickets complete.
@@ -281,6 +296,9 @@ private:
 		m_frame.volume = std::move( volume );
 		m_frame.fading = fading;
 		m_frame.weight = weight;
+		m_frame.changed.reset();
+		m_frame.changedSince = 0;
+		m_frameIsActive = false;
 		++m_frame.generation;
 	}
 
@@ -326,6 +344,8 @@ private:
 	std::shared_ptr<const Volume> m_fromVolume;
 	uint32_t m_fade = 0;
 	uint64_t m_activeEpoch = 0;
+	// The frame's volume is the active producer's publication m_activeEpoch.
+	bool m_frameIsActive = false;
 	uint64_t m_lastFrame = 0;
 	bool m_background = false;
 	FrameVolume m_frame;

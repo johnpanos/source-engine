@@ -177,6 +177,8 @@ public:
 	void SetReflectionProbeMode( int mode, bool relight );
 	int ReflectionProbeHandle() const { return m_reflectionProbeHandle; }
 	bool ProbeVolumeResident() const { return m_probeAtlasHandle >= 0 && m_probeGridCount > 0; }
+	int ProbeAtlasHandle() const { return m_probeAtlasHandle; }
+	int ProbeDeltaHandle() const { return m_probeDeltaHandle; }
 	// RFC 0011 G4: a BakedPlusDelta producer's change volume (an RGBA16F atlas
 	// in the volume's layout whose indirect layer holds the signed change),
 	// sampled with the volume's grid table; -1 when none. Replacing or
@@ -790,6 +792,13 @@ public:
 	bool UploadManagedTextureRegion( int handle, uint32_t x, uint32_t y, uint32_t width,
 	    uint32_t height, const uint8_t *data, size_t dataSize, std::string *outError,
 	    uint32_t level = 0, uint32_t face = 0 );
+	// A managed texture's level-0 size (0 x 0 for an invalid handle).
+	void ManagedTextureSize( int handle, uint32_t *width, uint32_t *height ) const
+	{
+		const bool valid = handle >= 0 && handle < static_cast<int>( m_managedTextures.size() );
+		*width = valid ? m_managedTextures[static_cast<size_t>( handle )].width : 0;
+		*height = valid ? m_managedTextures[static_cast<size_t>( handle )].height : 0;
+	}
 	uint32_t ManagedTextureMipLevels( int handle ) const
 	{
 		return ( handle >= 0 && handle < static_cast<int>( m_managedTextures.size() ) )

@@ -88,7 +88,8 @@ struct BufferCopy
 	std::uint64_t size = 0;
 };
 
-// A tightly packed image region at the origin of one mip and layer.
+// A tightly packed image region of one mip and layer, at texel (x, y) (a
+// block-compressed region starts on a block).
 struct TextureBufferCopy
 {
 	std::uint64_t bufferOffset = 0;
@@ -96,6 +97,8 @@ struct TextureBufferCopy
 	std::uint32_t layer = 0;
 	std::uint32_t width = 0;
 	std::uint32_t height = 0;
+	std::uint32_t x = 0;
+	std::uint32_t y = 0;
 };
 
 enum class IndexFormat : std::uint8_t

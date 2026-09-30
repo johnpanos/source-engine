@@ -616,6 +616,135 @@ void NativeLights( Frames &frames, const std::shared_ptr<const Volume> &seed, co
 	    "a light cell that omits the light leaves its probes unlit" );
 }
 
+// Whether probe `probe`'s irradiance tiles are byte-identical in two volumes
+// of one topology.
+bool SameTiles( const Volume &a, const std::vector<unsigned char> &b, uint32_t probe )
+{
+	const mapcontainer::ProbeVolumeLayout &layout = a.layout;
+	mapcontainer::ProbeAtlasRect rects[mapcontainer::kProbeTileRectsMax];
+	const uint32_t count =
+	    mapcontainer::ProbeTileRects( layout, probe, mapcontainer::kProbeTilesIrradiance, rects );
+	for ( uint32_t r = 0; r < count; ++r )
+		for ( uint32_t y = rects[r].y; y < rects[r].y + rects[r].height; ++y )
+		{
+			const size_t at =
+			    layout.atlasOffset + ( size_t( y ) * layout.atlasWidth + rects[r].x ) * 8;
+			if ( std::memcmp( a.bytes.data() + at, b.data() + at, size_t( rects[r].width ) * 8 ) )
+				return false;
+		}
+	return true;
+}
+
+// Sparse publication: under a budget and a moving focus, every publication
+// equals the one composed whole from its field (ComposedWhole), and its
+// changed probes cover every irradiance tile that differs from the
+// publication before it. The comparator's control: a publication with one
+// changed probe's tiles put back as they were is caught.
+void SparsePublication(
+    Frames &frames, const std::shared_ptr<const Volume> &seed, const SdfData &sdf )
+{
+	const uint32_t warm = SdfTracedProducer{}.Caps().warmupFrames;
+	const uint32_t probes = seed->layout.grids[0].probeCount;
+	const auto field = WithLights( sdf, { SmallLight( false, 0.0f, 0.0f, 32.0f, 32 ) }, false );
+	if ( !field )
+		return;
+	SdfTracedProducer producer;
+	IndirectScene scene;
+	scene.baked = seed;
+	scene.sdf = field;
+	scene.gpu = &frames.SdfService();
+	scene.policy = indirect_policy::Policy::BakedPlusDelta;
+	if ( !producer.Begin( scene, PublishedVolume{ 0, seed }, frames ) )
+	{
+		Check( false, "sparse publication: the producer begins" );
+		return;
+	}
+	light_set::Snapshot lights;
+	uint64_t epoch = 0;
+	uint32_t publications = 0, whole = 0, differ = 0, uncovered = 0, sparse = 0;
+	bool caught = false, controlRan = false;
+	std::vector<unsigned char> previous;
+	for ( uint32_t frame = 0; frame < warm + 160; ++frame )
+	{
+		if ( frame == warm )
+		{
+			lights.styleScalars.assign( 64, 1.0f );
+			lights.styleScalars[32] = 0.5f;
+		}
+		FrameWork work;
+		work.resources = &frames;
+		work.frameSerial = uint64_t( frame ) + 1;
+		// Every probe until the references converge; then a focus that moves
+		// every 16 frames, and a budget of 3 more.
+		const std::vector<uint32_t> focus = { ( frame / 16 ) % probes };
+		if ( frame >= warm )
+		{
+			work.focusProbes = focus;
+			work.probeBudget = 3;
+		}
+		producer.Schedule( work, lights );
+		for ( auto &job : work.jobs )
+			job();
+		const auto published = producer.Published();
+		if ( published && published->epoch != epoch && published->volume )
+		{
+			epoch = published->epoch;
+			++publications;
+			const auto composed = producer.ComposedWhole();
+			if ( composed )
+			{
+				++whole;
+				differ += composed->bytes != published->volume->bytes;
+			}
+			if ( published->changed && previous.size() == published->volume->bytes.size() )
+			{
+				++sparse;
+				std::vector<uint8_t> changed( probes, 0 );
+				for ( uint32_t p : *published->changed )
+					if ( p < probes )
+						changed[p] = 1;
+				for ( uint32_t p = 0; p < probes; ++p )
+					uncovered += !changed[p] && !SameTiles( *published->volume, previous, p );
+				// Control: put one changed, differing probe's tiles back.
+				for ( uint32_t p = 0; p < probes && !controlRan && composed; ++p )
+				{
+					if ( !changed[p] || SameTiles( *published->volume, previous, p ) )
+						continue;
+					Volume stale = *published->volume;
+					mapcontainer::ProbeAtlasRect rects[mapcontainer::kProbeTileRectsMax];
+					const uint32_t count = mapcontainer::ProbeTileRects(
+					    stale.layout, p, mapcontainer::kProbeTilesIrradiance, rects );
+					for ( uint32_t r = 0; r < count; ++r )
+						for ( uint32_t y = rects[r].y; y < rects[r].y + rects[r].height; ++y )
+						{
+							const size_t at =
+							    stale.layout.atlasOffset +
+							    ( size_t( y ) * stale.layout.atlasWidth + rects[r].x ) * 8;
+							std::memcpy( stale.bytes.data() + at, previous.data() + at,
+							    size_t( rects[r].width ) * 8 );
+						}
+					controlRan = true;
+					caught = stale.bytes != composed->bytes;
+				}
+			}
+			previous = published->volume->bytes;
+		}
+		frames.Submit();
+	}
+	frames.Drain();
+	(void)producer.End();
+	frames.Drain();
+	std::printf( "sparse publication: %u publications (%u sparse), %u compared whole, %u differ, "
+	             "%u uncovered tiles\n",
+	    publications, sparse, whole, differ, uncovered );
+	Check( whole > 8 && sparse > 8,
+	    "sparse publication: the producer publishes sparsely under a budget" );
+	Check( differ == 0, "sparse publication: every publication equals the one composed whole" );
+	Check( uncovered == 0, "sparse publication: the changed probes cover every changed tile" );
+	Check( controlRan && caught,
+	    "sparse publication: a changed probe's tiles left as they were are caught" );
+}
+
 // Focus and budget: with a focus of probe 0 and no budget, only probe 0
 // builds its reference; a focus of every probe is the no-focus schedule byte
 // for byte; after a change, a focused probe updates while an unfocused one
@@ -1082,6 +1211,7 @@ int main( int argc, char **argv )
 
 	NativeLights( frames, seed, *sdf );
 	Scheduling( frames, seed, *sdf );
+	SparsePublication( frames, seed, *sdf );
 
 	// A device without ray query does not run the ray-query producer: Begin
 	// fails with missing-feature and creates nothing.

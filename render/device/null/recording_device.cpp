@@ -1123,12 +1123,11 @@ private:
 	    const Texture &texture, const Buffer &buffer, const TextureBufferCopy &copy )
 	{
 		if ( copy.mip >= texture.desc.mipLevels || copy.layer >= texture.layers ||
-		     copy.width == 0 || copy.height == 0 || copy.width > texture.Width( copy.mip ) ||
-		     copy.height > texture.Height( copy.mip ) )
+		     copy.width == 0 || copy.height == 0 )
 			return false;
 		const Format format = texture.desc.format;
 		if ( !CopyRegionAligned( format, texture.Width( copy.mip ), texture.Height( copy.mip ),
-		         copy.width, copy.height, copy.bufferOffset ) )
+		         copy.x, copy.y, copy.width, copy.height, copy.bufferOffset ) )
 			return false;
 		const std::uint64_t bytes = RegionBytes( format, copy.width, copy.height );
 		return copy.bufferOffset + bytes <= buffer.data.size();
@@ -1222,9 +1221,12 @@ private:
 			const std::size_t pitch = RegionBytes( t->desc.format, t->Width( copy.mip ), 1 );
 			const std::size_t row = RegionBytes( t->desc.format, copy.width, 1 );
 			const std::uint32_t rows = ( copy.height + block.height - 1 ) / block.height;
+			// The region's first block: its block row, then its block column.
+			const std::size_t origin =
+			    ( copy.y / block.height ) * pitch + RegionBytes( t->desc.format, copy.x, 1 );
 			for ( std::uint32_t y = 0; y < rows; ++y )
 			{
-				std::byte *image = data.data() + y * pitch;
+				std::byte *image = data.data() + origin + y * pitch;
 				std::byte *linear = b->data.data() + copy.bufferOffset + y * row;
 				if ( toBuffer )
 					std::memcpy( linear, image, row );

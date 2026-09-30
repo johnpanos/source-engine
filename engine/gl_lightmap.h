@@ -46,9 +46,12 @@ namespace mapcontainer
 class ProbeVolumeView;
 }
 // RFC 0011: light brush entities without baked light from the probe volume
-// (null: forget every such surface, at map end). False when the map's
-// lightmap pages are not allocated yet (try again later).
-bool R_RelightBrushEntitiesFromProbes( const mapcontainer::ProbeVolumeView *view );
+// (null: forget every such surface, at map end). With `changedProbes`, only
+// the surfaces whose luxels read one of those probes (the grids' probes in
+// grid order) since the last relight of every surface; null: every surface.
+// False when the map's lightmap pages are not allocated yet (try again later).
+bool R_RelightBrushEntitiesFromProbes( const mapcontainer::ProbeVolumeView *view,
+    const uint32_t *changedProbes = nullptr, uint32_t changedCount = 0 );
 void GL_RebuildLightmaps( void );
 void FASTCALL R_RenderDynamicLightmaps( dlight_t *pLights, ICallQueue *pCallQueue, SurfaceHandle_t surfID, const matrix3x4_t& entityToWorld );
 int R_AddLightmapPolyChain( SurfaceHandle_t surfID );

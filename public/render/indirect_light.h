@@ -356,12 +356,19 @@ struct LightOverride
 	float direction[3] = { 0, 0, -1 };
 };
 
+// The probes (the grids' probes in grid order) whose tiles one publication
+// changed from the one before it. Null: the whole volume may have changed.
+using ChangedProbes = std::shared_ptr<const std::vector<uint32_t>>;
+
 struct PublishedVolume
 {
 	uint64_t epoch = 0;
 	// Shared by the producer, the switcher's fade and the frames that sample
 	// it until the host retires them behind the completion serial.
 	std::shared_ptr<const Volume> volume;
+	// The irradiance tiles this publication changed from epoch - 1's, so a
+	// consumer that holds that one updates only these; null: all of them.
+	ChangedProbes changed = nullptr;
 };
 
 // A scripted scene change (a door opening, a light toggled): the scenario
@@ -508,6 +515,46 @@ private:
 		m_baseSize = base.bytes.size();
 	}
 
+public:
+	// Writes the listed probes' irradiance tiles into `volume` (the topology
+	// of `base`): each probe's base plus its change, where `total` and
+	// `indirect` hold kTexels * 3 floats per listed probe in the list's order.
+	// A zero change writes the base's tiles back.
+	void ComposeProbes( Volume &volume, const Volume &base, std::span<const uint32_t> probes,
+	    const float *total, const float *indirect ) const
+	{
+		if ( m_baseBytes != base.bytes.data() || m_baseSize != base.bytes.size() )
+			DecodeBase( base, TotalProbes( base ) );
+		const mapcontainer::ProbeVolumeLayout &layout = volume.layout;
+		for ( size_t n = 0; n < probes.size(); ++n )
+		{
+			uint32_t local = probes[n];
+			for ( uint32_t g = 0; g < layout.gridCount; ++g )
+			{
+				const mapcontainer::ProbeGridLayout &grid = layout.grids[g];
+				if ( local >= grid.probeCount )
+				{
+					local -= grid.probeCount;
+					continue;
+				}
+				for ( uint32_t layer = 0; layer < layout.layerCount && layer < 2; ++layer )
+					WriteTile( volume, grid.irradianceOrigin[layer], local, grid.tilesPerRow,
+					    &m_baseInterior[( size_t( probes[n] ) * 2 + layer ) * kTexels * 3],
+					    ( layer == 0 ? total : indirect ) + n * kTexels * 3 );
+				break;
+			}
+		}
+	}
+
+	[[nodiscard]] static uint32_t TotalProbes( const Volume &volume )
+	{
+		uint32_t count = 0;
+		for ( uint32_t g = 0; g < volume.layout.gridCount; ++g )
+			count += volume.layout.grids[g].probeCount;
+		return count;
+	}
+
+private:
 	static void Block( void *context, uint32_t block )
 	{
 		const Context &compose = *static_cast<const Context *>( context );
@@ -582,6 +629,33 @@ private:
 	mutable size_t m_baseSize = 0;
 };
 
+// Writes rectangle `rect` of the change atlas `out` (atlas bytes): each
+// texel's rgb is published minus baked, its alpha the published one's.
+inline void ChangeAtlasRect( const Volume &published, const Volume &baked,
+    const mapcontainer::ProbeAtlasRect &rect, unsigned char *out )
+{
+	const mapcontainer::ProbeVolumeLayout &layout = published.layout;
+	for ( uint32_t y = rect.y; y < rect.y + rect.height; ++y )
+	{
+		for ( uint32_t x = rect.x; x < rect.x + rect.width; ++x )
+		{
+			const uint64_t texel = ( uint64_t( y ) * layout.atlasWidth + x ) * 8;
+			const unsigned char *now = published.bytes.data() + layout.atlasOffset + texel;
+			const unsigned char *then = baked.bytes.data() + layout.atlasOffset + texel;
+			for ( int c = 0; c < 3; ++c )
+			{
+				uint16_t a, b;
+				std::memcpy( &a, now + 2 * c, 2 );
+				std::memcpy( &b, then + 2 * c, 2 );
+				const uint16_t change =
+				    FloatToHalf( mapcontainer::HalfToFloat( a ) - mapcontainer::HalfToFloat( b ) );
+				std::memcpy( out + texel + 2 * c, &change, 2 );
+			}
+			std::memcpy( out + texel + 6, now + 6, 2 );
+		}
+	}
+}
+
 // The world's change atlas under BakedPlusDelta: `published`'s atlas with the
 // irradiance texels of its total and indirect layers replaced by published
 // minus baked (the world adds the indirect change; relit reflection probes
@@ -598,31 +672,68 @@ private:
 		const mapcontainer::ProbeGridLayout &grid = layout.grids[g];
 		const uint32_t rows = ( grid.probeCount + grid.tilesPerRow - 1 ) / grid.tilesPerRow;
 		for ( uint32_t layer = 0; layer < 2; ++layer )
+			ChangeAtlasRect( published, baked,
+			    { grid.irradianceOrigin[layer][0], grid.irradianceOrigin[layer][1],
+			        grid.tilesPerRow * mapcontainer::kProbeIrradianceTile,
+			        rows * mapcontainer::kProbeIrradianceTile },
+			    out->data() );
+	}
+	return true;
+}
+
+// ChangeAtlas for the listed probes alone, into a change atlas `out` that
+// ChangeAtlas made from a volume of the same topology: their irradiance
+// tiles' change, and their visibility tiles as published.
+[[nodiscard]] inline bool ChangeAtlasProbes( const Volume &published, const Volume &baked,
+    std::span<const uint32_t> probes, std::vector<unsigned char> *out )
+{
+	const mapcontainer::ProbeVolumeLayout &layout = published.layout;
+	if ( layout.layerCount < 2 || !published.SameTopology( baked ) ||
+	     out->size() != published.bytes.size() - layout.atlasOffset )
+		return false;
+	for ( uint32_t probe : probes )
+	{
+		mapcontainer::ProbeAtlasRect rects[mapcontainer::kProbeTileRectsMax];
+		const uint32_t count = mapcontainer::ProbeTileRects( layout, probe,
+		    mapcontainer::kProbeTilesIrradiance | mapcontainer::kProbeTilesVisibility, rects );
+		for ( uint32_t r = 0; r < count; ++r )
 		{
-			for ( uint32_t y = 0; y < rows * mapcontainer::kProbeIrradianceTile; ++y )
+			if ( r < layout.layerCount && r < 2 )
 			{
-				const uint64_t row =
-				    uint64_t( grid.irradianceOrigin[layer][1] + y ) * layout.atlasWidth;
-				for ( uint32_t x = 0; x < grid.tilesPerRow * mapcontainer::kProbeIrradianceTile;
-				      ++x )
-				{
-					const uint64_t texel = ( row + grid.irradianceOrigin[layer][0] + x ) * 8;
-					for ( int c = 0; c < 3; ++c )
-					{
-						uint16_t now, then;
-						std::memcpy(
-						    &now, published.bytes.data() + layout.atlasOffset + texel + 2 * c, 2 );
-						std::memcpy(
-						    &then, baked.bytes.data() + layout.atlasOffset + texel + 2 * c, 2 );
-						const uint16_t change = FloatToHalf(
-						    mapcontainer::HalfToFloat( now ) - mapcontainer::HalfToFloat( then ) );
-						std::memcpy( out->data() + texel + 2 * c, &change, 2 );
-					}
-				}
+				ChangeAtlasRect( published, baked, rects[r], out->data() );
+				continue;
+			}
+			for ( uint32_t y = rects[r].y; y < rects[r].y + rects[r].height; ++y )
+			{
+				const uint64_t at = ( uint64_t( y ) * layout.atlasWidth + rects[r].x ) * 8;
+				std::memcpy( out->data() + at, published.bytes.data() + layout.atlasOffset + at,
+				    size_t( rects[r].width ) * 8 );
 			}
 		}
 	}
 	return true;
+}
+
+// Copies the listed probes' tiles in `sections` (mapcontainer::
+// kProbeTilesIrradiance, kProbeTilesVisibility) from `from` to `to`, volumes
+// of the same topology.
+inline void CopyProbeTiles(
+    Volume &to, const Volume &from, std::span<const uint32_t> probes, uint32_t sections )
+{
+	const mapcontainer::ProbeVolumeLayout &layout = from.layout;
+	for ( uint32_t probe : probes )
+	{
+		mapcontainer::ProbeAtlasRect rects[mapcontainer::kProbeTileRectsMax];
+		const uint32_t count = mapcontainer::ProbeTileRects( layout, probe, sections, rects );
+		for ( uint32_t r = 0; r < count; ++r )
+			for ( uint32_t y = rects[r].y; y < rects[r].y + rects[r].height; ++y )
+			{
+				const uint64_t at =
+				    layout.atlasOffset + ( uint64_t( y ) * layout.atlasWidth + rects[r].x ) * 8;
+				std::memcpy(
+				    to.bytes.data() + at, from.bytes.data() + at, size_t( rects[r].width ) * 8 );
+			}
+	}
 }
 
 // One frame's work: CPU jobs the frame's executor runs (a producer never

@@ -4098,3 +4098,88 @@ holds no casters for a retail world, and models are not in the core's
 scene); models still take the 8 slotted lights through the CPU stand-in;
 `surface_program.glsl`'s term was changed without source-engine-43 (not
 running), recorded here for its review. Frame time: not measured (rule 7).
+
+## K12 slices 6 and 7: the SDF producer on the core, and sparse probe-volume publication (2026-09-30, source-engine-5a)
+
+Slice 6 (`273f37c6a`): `render.pass.indirect`'s `PortCompute` implements
+`gpu_compute::IGpuCompute` over `render.device.v2`, and the SDF producer
+(the desktop default for moving lights and occluders) runs its traces
+through it on the render sequence. `sdf_probe_trace.comp` lives in
+`render/pass/indirect/` and builds as a core artifact. The backend's
+builtin, its SPIR-V row and its layout are deleted. The ray-query producer
+keeps the backend's compute until the port has acceleration structures.
+`render.indirect-light.sdf` passes 36/36 on the core device, and the
+`gi_door`, `gi_swing` and `gi_portal_light` stage frames are unchanged.
+
+Slice 7: publishing and consuming a probe volume costs what changed, not
+the whole volume. On `testchmb_a_15_relit`, a SDF producer re-sent the
+whole 203 MB volume about every other frame. Moving doors and rotators
+also forced a full re-occlusion, copy and re-upload each frame. That was
+87% of the main thread, and the map ran at 5.6 fps.
+
+- The producer keeps a pool of three volumes. Each publication writes only
+  the probes a pooled volume is stale in plus the ones traced this frame.
+  It publishes the changed list (`PublishedVolume::changed`), and the
+  switcher forwards it when the publication follows the one consumed
+  (`FrameVolume::changedSince`).
+- The host follows the consumed volume when the SDF producer sends a
+  changed list, or when only proxies moved. The touched probes are the
+  changed ones plus the probes the old and new proxy cuts reach
+  (`OccludeProbeVisibility`'s cut list). The pooled occluded copy restores
+  and re-occludes only those tiles. Brush entities are relit only where
+  their luxels read a touched probe (`ProbeVolumeView::SampleProbes`). The
+  upload carries only the touched tiles' regions (`ProbeTileRects`, merged
+  per section).
+- The upload path is regions end to end: the `world_mesh_upload` request's
+  partial form, the queued capabilities, the backend's region uploads into
+  its current atlas and delta, and the core world stage's patch log.
+- The device port gains region copies (`TextureBufferCopy::x, y`, clause
+  D22 `RegionCopies`, with the bad adapter `kDropsRegionOrigin`). It
+  passes on the null, Vulkan and GL adapters.
+- Controls: `r_indirect_sparse` (1; 0 consumes every publication whole).
+  `r_indirect_sparse_verify 1` recomputes each sparse update whole and
+  counts differences.
+
+Checks:
+
+- `render.indirect-light.sdf`'s `SparsePublication`: 160 publications
+  under a moving focus with budget 3, 159 sparse, 0 differ from the
+  composed whole, 0 uncovered probes. A control that drops the stale set
+  is caught.
+- `render.indirect-light`'s `SparseHelpers`: tile rects, change atlas by
+  probe against whole, tile copies, cut list against changed visibility,
+  restore, and probe sampling isolation. The control is caught.
+- In game, verifying: 0 of the sparse updates differ from whole.
+- `render.device.v2` (null 471, Vulkan 930, GL 879 and their sensitivity
+  suites), the indirect-light, radiosity, policy and switching suites,
+  `render.world.null`, composition, legacy capabilities and
+  `world.probe-volume` pass on g++. The main ones also pass on clang++.
+
+### Cost (rule 7: recorded, not judged)
+
+Fixture `./play_p2 sp_a2_laser_intro_relit` (user direction), 1920x1080,
+offscreen SDL, `mat_vsync 0`, desktop Linux on a host shared with other
+sessions. Time to consume a publication (`r_indirect_report 1`, new
+`(N ms)` field), over the first 20 s after spawn:
+
+| `r_indirect_sparse` | Consumed whole | Consumed sparse | Total |
+| --- | --- | --- | --- |
+| 0 | 66, median 187 ms, max 251 ms | — | 12.7 s |
+| 1 | 30 (the start fade has no changed list), median 190 ms | 39, median 44 ms, max 76 ms, about 3,200 probes each | 7.9 s |
+
+Once the map settles, publications stop, and frame time over the last
+1,200 frames does not separate. Interleaved rounds gave sparse on 15.8
+and 17.2 ms median, and sparse off 17.3 and 16.3 ms. Steady-state cost is
+elsewhere, most likely the world stage's GPU passes. Those need
+per-pass timers (RFC 0014 D4, next). Fold7: unavailable in this session.
+
+Optimization items:
+
+- a sparse consume still takes 44 ms, mostly re-occlusion and brush
+  relight on the main thread;
+- the start fade publishes without a changed list.
+
+Frozen-path: `materialsystem/shaderapivulkan/vulkan_world_lightmap.cpp`
+(region uploads) and `engine/gl_lightmap.cpp` (the sparse brush relight;
+committed inside `1666232fb` with source-engine-89's hunks) are defect
+fixes for the frame-time failure.

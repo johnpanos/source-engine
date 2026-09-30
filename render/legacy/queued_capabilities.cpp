@@ -137,10 +137,17 @@ public:
 	{
 		if ( !Queued() )
 			return m_Provider->UploadProbeVolume( request );
+		// A partial update copies its rectangles' texels alone.
 		const std::size_t atlasBytes =
-		    std::size_t( request.atlasWidth ) * request.atlasHeight * kRgba16fTexelBytes;
-		std::shared_ptr<Bytes> atlas = CopyBytes( request.atlas, atlasBytes );
-		std::shared_ptr<Bytes> delta = CopyBytes( request.deltaAtlas, atlasBytes );
+		    request.regions
+		        ? world_mesh_gpu::ProbeRegionBytes( request.regions, request.regionCount )
+		        : std::size_t( request.atlasWidth ) * request.atlasHeight * kRgba16fTexelBytes;
+		std::shared_ptr<Bytes> atlas =
+		    CopyBytes( request.regions ? request.regionAtlas : request.atlas, atlasBytes );
+		std::shared_ptr<Bytes> delta =
+		    CopyBytes( request.regions ? request.regionDelta : request.deltaAtlas, atlasBytes );
+		std::shared_ptr<Bytes> regions = CopyBytes(
+		    request.regions, std::size_t( request.regionCount ) * sizeof( *request.regions ) );
 		// The grid rows, then the moving occluders' rows (R50-RELIGHT).
 		std::shared_ptr<Bytes> table =
 		    CopyBytes( request.gridTable, std::size_t( request.gridCount + request.occluderCount ) *
@@ -148,10 +155,20 @@ public:
 		world_mesh_gpu::ProbeVolumeUploadRequest copy = request;
 		world_mesh_gpu::IWorldMeshUpload *provider = m_Provider;
 		Queue( m_Host,
-		    [provider, copy, atlas, delta, table]() mutable
+		    [provider, copy, atlas, delta, table, regions]() mutable
 		    {
-			    copy.atlas = DataOrNull( atlas );
-			    copy.deltaAtlas = DataOrNull( delta );
+			    if ( copy.regions )
+			    {
+				    copy.regions = static_cast<const world_mesh_gpu::ProbeAtlasRegion *>(
+				        DataOrNull( regions ) );
+				    copy.regionAtlas = DataOrNull( atlas );
+				    copy.regionDelta = DataOrNull( delta );
+			    }
+			    else
+			    {
+				    copy.atlas = DataOrNull( atlas );
+				    copy.deltaAtlas = DataOrNull( delta );
+			    }
 			    copy.gridTable = static_cast<const float *>( DataOrNull( table ) );
 			    provider->UploadProbeVolume( copy );
 		    } );
