@@ -4575,3 +4575,42 @@ In the lab:
   view.
 - `sign-on`'s thresholds need recalibrating by the sign-light suite's
   owner.
+
+## K12 performance, second round: profile and burn down (2026-09-30, source-engine-5a)
+
+User direction: profile the CPU and GPU, then burn down without losing
+quality, using the job system, better algorithms and the GPU where they
+fit. Each item was found in a steady-state `perf` profile or with RFC 0014
+D4's timers, and each has an oracle:
+
+| Commit | What | Oracle |
+| --- | --- | --- |
+| `fd4e118e3` | A sparse publication relights only the static props whose ambient cube reads a touched probe | `r_indirect_sparse_verify`: 410 updates, 0 stale props |
+| `0308156f8` | Probe visibility occlusion visits only probes within a proxy's reach | scan-all oracle, 40 random proxy sets; a zero reach is caught |
+| `a233ee5bb` | The producer switch fades sparsely (only probes that differ); publications compose on the pool | every fade frame names every changed probe; a half list is caught; four threads equal serial |
+| `a4c75aa0b` | GTAO at half resolution with a plane-aware upsample; presets set by `render.lab.gtao` against Cycles | `gtao.high-half` passes all 12 lab checks; the earlier 3x3 default failed them and was replaced |
+| `b5057bd5e` | `r_core_ao_quality 0` binds a neutral occlusion (one), not black | in game: off against ultra 0.11% of pixels (> 8 levels) |
+| `22e658988` | The SDF producer's previous field slot is not read back (84 MB per update on the render thread) | `render.indirect-light.sdf` |
+| `7046c0a83` | Occlusion and the change atlas run on the pool | four threads equal serial |
+| `edb03f6d2` | Native Vulkan `TexUnlock` uploads the locked rectangle, not the whole texture (Frozen-path, defect) | same view: 0.013% of pixels against a 0.005% noise floor |
+
+In-game quality at the presets on sp_a2_laser_intro_relit: high against
+ultra differs in 0.010% of pixels (> 8 levels).
+
+Frame time (rule 7: recorded), offscreen (SDL's 1024x768), `mat_vsync 0`,
+desktop RADV:
+
+| Fixture | Morning | After round 1 | Now |
+| --- | --- | --- | --- |
+| `./play_p2 sp_a2_laser_intro_relit` median | 15.6 ms | 8.8 ms | 5.42 ms (183 fps), p99 6.2 |
+| `./play testchmb_a_15_relit` median | 22.4 ms | 15.2 ms | 7.83 ms (128 fps), p95 15.0 |
+| GI settle after a load (consume stalls) | 12.7 s | 7.9 s | 0.95 s |
+
+Remaining, largest first:
+- a_15's p95: consumes while its doors move;
+- the lit pass (step 3: a depth prepass into the target's depth, MSAA
+  included);
+- the GTAO upsample blur;
+- CPU clustering, to move to the GPU (K12 goal step 2).
+
+Fold7: unavailable in this session.
