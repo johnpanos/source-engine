@@ -289,15 +289,18 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::Pipeline(
 	// The prepass writes the normal and roughness alone; the SSR targets are
 	// three more attachments (RGBA16F) after the lit color.
 	const bool prepass = ( variant.terms & ( kSurfaceDepthNormal | kSurfaceRsm ) ) != 0;
+	const bool depthOnly = ( variant.terms & kSurfaceDepthOnly ) != 0;
 	const bool ssrTargets = ( variant.terms & kSurfaceSsrTargets ) != 0 && !prepass;
 	const std::uint8_t firstWrite =
 	    variant.alphaWrite ? kColorWriteAll : std::uint8_t( kColorWriteAll & ~kColorWriteAlpha );
-	const Format colors[] = { prepass ? Format::kRGBA16Float : m_ColorFormat, Format::kRGBA16Float,
-	    Format::kRGBA16Float, Format::kRGBA16Float };
+	const Format colors[] = { prepass && !depthOnly ? Format::kRGBA16Float : m_ColorFormat,
+	    Format::kRGBA16Float, Format::kRGBA16Float, Format::kRGBA16Float };
 	const BlendMode blends[] = { prepass ? BlendMode::kOpaque : variant.blend, BlendMode::kOpaque,
 	    BlendMode::kOpaque, BlendMode::kOpaque };
-	const std::uint8_t writes[] = { prepass ? kColorWriteAll : firstWrite, kColorWriteAll,
-	    kColorWriteAll, kColorWriteAll };
+	const std::uint8_t writes[] = { depthOnly ? std::uint8_t( 0 )
+	                                : prepass ? kColorWriteAll
+	                                          : firstWrite,
+	    kColorWriteAll, kColorWriteAll, kColorWriteAll };
 	const std::size_t attachments = ssrTargets ? 4 : 1;
 	PipelineDesc desc = resolved.Value().Desc();
 	desc.layouts = layouts;

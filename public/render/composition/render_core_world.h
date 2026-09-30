@@ -72,6 +72,9 @@ struct RenderCoreWorldQuality
 	// 0 off (the stage's lights unshadowed), then the shadow atlas: 1 low
 	// (2048 texels), 2 medium (4096), 3 high (8192).
 	int shadows;
+	// Nonzero: the stage's opaque surfaces' depth is drawn before they are
+	// lit, so each pixel is shaded once (a performance setting only).
+	int depthPrepass;
 };
 
 struct RenderCoreWorldStats

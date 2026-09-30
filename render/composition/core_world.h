@@ -180,6 +180,7 @@ private:
 	// queued and recorded.
 	std::atomic<int> m_AoQuality{ 3 };
 	std::atomic<int> m_ShadowQuality{ 2 };
+	std::atomic<bool> m_DepthPrepass{ true };
 	// A world stage view's work at its slot: the shadow plan's depth views,
 	// drawn into an atlas (none without shadowed lights), and the view and
 	// projection its screen passes (GTAO) reconstruct positions with.

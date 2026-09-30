@@ -378,6 +378,12 @@ inline constexpr std::uint32_t kSurfaceRsm = 16777216;
 // The water point (water_family.h): Portal 2's water_ps2x above water, with
 // the material group's flow map, flow noise and reflection target.
 inline constexpr std::uint32_t kSurfaceWater = 33554432;
+// A depth pass into the lit pass's own targets (with kSurfaceDepthNormal's
+// fragment program, so alpha tests discard as the lit pass does): attachment
+// 0 is the target's color format with nothing written, and depth is written
+// for opaque programs. Drawn before the lit surfaces, the lit pass's depth
+// test (less-equal) then shades each pixel once (Doom 2016's prepass).
+inline constexpr std::uint32_t kSurfaceDepthOnly = 67108864;
 // The terms that read the normal (not on the flat vertex), and those the
 // model vertex alone evaluates.
 inline constexpr std::uint32_t kSurfaceNormalTerms =

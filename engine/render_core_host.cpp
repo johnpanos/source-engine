@@ -99,6 +99,9 @@ ConVar cl_render_debug_stats( "cl_render_debug_stats", "0", 0,
 ConVar r_core_ao_quality( "r_core_ao_quality", "3", FCVAR_ARCHIVE,
     "Render core ambient occlusion (GTAO): 0 off, 1 low, 2 medium, 3 high, 4 ultra.", true, 0, true,
     4 );
+ConVar r_core_depth_prepass( "r_core_depth_prepass", "1", 0,
+    "Render core: draw the world's opaque depth before lighting it, so each pixel is shaded "
+    "once (0 lights every fragment the depth test passes)." );
 ConVar r_core_shadow_quality( "r_core_shadow_quality", "2", FCVAR_ARCHIVE,
     "Render core shadows: 0 off, 1 low (2048 atlas), 2 medium (4096), 3 high (8192).", true, 0,
     true, 3 );
@@ -358,8 +361,8 @@ void RenderCoreHost_EndFrame()
 	if ( host.world )
 	{
 		host.world->SetGpuTimers( cl_render_debug_gpu_timers.GetBool() );
-		const RenderCoreWorldQuality quality{
-		    r_core_ao_quality.GetInt(), r_core_shadow_quality.GetInt() };
+		const RenderCoreWorldQuality quality{ r_core_ao_quality.GetInt(),
+		    r_core_shadow_quality.GetInt(), r_core_depth_prepass.GetInt() };
 		host.world->SetQuality( quality );
 		static double s_LastStats = 0.0;
 		const double now = Plat_FloatTime();

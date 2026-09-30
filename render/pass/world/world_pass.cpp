@@ -1787,6 +1787,42 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 	rendering.depth = DepthAttachment{ target.depth, LoadOp::kLoad, StoreOp::kStore, 1.0f };
 	rendering.width = target.width;
 	rendering.height = target.height;
+	// The opaque (and alpha-tested) surfaces' depth first, into the target's
+	// own depth with its color masked: the lit pass's less-equal test then
+	// rejects hidden fragments before shading them (Doom 2016's prepass). A
+	// translucent surface's depth would hide what the stream draws behind
+	// it, so it is not drawn here.
+	if ( target.depthPrepass && world->stage )
+	{
+		std::vector<std::uint32_t> opaque;
+		opaque.reserve( order.size() );
+		for ( const std::uint32_t index : order )
+		{
+			if ( r.materials[world->surfaces[index].material].program.blend == BlendMode::kOpaque )
+				opaque.push_back( index );
+		}
+		if ( !opaque.empty() )
+		{
+			encoder.BeginLabel( "core world depth" );
+			encoder.BeginRendering( rendering );
+			encoder.SetViewport( view.viewport );
+			drawSurfaces( opaque, r.materials,
+			    [&]( const Resources::Material &m ) -> std::optional<PipelineId>
+			    {
+				    auto variant = m.resolver->VariantPipeline( m.program,
+				        material::kSurfaceDepthNormal | material::kSurfaceDepthOnly,
+				        material::kSurfaceSsrTargets );
+				    if ( !variant )
+				    {
+					    note( "the depth prepass: " + variant.Error() );
+					    return std::nullopt;
+				    }
+				    return variant.Value();
+			    } );
+			encoder.EndRendering();
+			encoder.EndLabel();
+		}
+	}
 	encoder.BeginLabel( "core world" );
 	encoder.BeginRendering( rendering );
 	encoder.SetViewport( view.viewport );

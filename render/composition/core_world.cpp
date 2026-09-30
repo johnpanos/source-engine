@@ -805,6 +805,7 @@ void CoreWorld::SetQuality( const RenderCoreWorldQuality &quality )
 {
 	m_AoQuality.store( std::clamp( quality.ambientOcclusion, 0, 4 ), std::memory_order_relaxed );
 	m_ShadowQuality.store( std::clamp( quality.shadows, 0, 3 ), std::memory_order_relaxed );
+	m_DepthPrepass.store( quality.depthPrepass != 0, std::memory_order_relaxed );
 }
 
 void CoreWorld::SetGpuTimers( bool enabled )
@@ -968,6 +969,7 @@ void CoreWorld::RecordSlot(
 	world.submitted = target.submitted;
 	world.frame = target.frame;
 	world.lightmapScale = target.lightmapScale;
+	world.depthPrepass = m_DepthPrepass.load( std::memory_order_relaxed );
 	world.outputScale = target.outputScale;
 	std::copy( target.eye, target.eye + 3, world.eye );
 	world.envmapScale = target.envmapScale;

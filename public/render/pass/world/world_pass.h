@@ -184,6 +184,9 @@ struct WorldTarget
 	// Replaces the queued view's lights when set: a stage view's clustered
 	// lights, made when its slot records rather than when it was queued.
 	std::shared_ptr<const StageViewLights> lights;
+	// Draw the opaque surfaces' depth into the target first
+	// (material::kSurfaceDepthOnly), so the lit pass shades each pixel once.
+	bool depthPrepass = false;
 	// The device the slot records on (the legacy backend's); the pass's
 	// device objects live on it.
 	device::IRenderDevice2 *device = nullptr;
