@@ -1,7 +1,7 @@
 {
   "schema": "map-export-profile/v1",
   "name": "source2-max",
-  "description": "The highest export quality a scene-derived map can carry into the engine: every lighting product the native Vulkan world path loads, each at the limit of its format or of the portable Vulkan device. The lightmap is a 4096 atlas (Vulkan's guaranteed maxImageDimension2D, so every declared profile can sample it; its total, direct and indirect RGBA16F pages are 384 MiB, inside the LMAP reader's 1 GiB, which an 8192 square atlas with layers would exceed) at 4096 samples with the gi-reference light paths (64 diffuse bounces, no clamping), the directional page at the same samples, separated direct and indirect LMAP v2 layers for the RFC 0011 producers, and the per-chart denoise; the noise gate is recorded, not enforced, as in the release relight profiles. Reflection probes are rendered at the RPRB reader's largest width (2048, from 512 cube faces) at 1024 samples on the gi-reference light paths, with relight bands (RPRB v2). The probe volume is a 0.5 m grid at 4096 samples; the radiosity transfer uses 0.25 m patches (under the relight profiles' 60000-patch budget); the SDFV uses 0.05 m voxels (a room is well under the 16M-voxel reader limit) with 1 m light cells. The pipeline's Cycles reference renders at full scale and 1024 samples. Material textures stay at their source resolution (pbrt_playable_content.MAX_TEXTURE 2048 bounds the encoding). The audit is source2's with the lightmap sample floor raised to this profile's.",
+  "description": "The highest export quality a scene-derived map can carry into the engine: every lighting product the native Vulkan world path loads, each at the limit of its format or of the portable Vulkan device. The lightmap is a 4096 atlas (Vulkan's guaranteed maxImageDimension2D, so every declared profile can sample it; its total, direct and indirect RGBA16F pages are 384 MiB, inside the LMAP reader's 1 GiB, which an 8192 square atlas with layers would exceed) at 4096 samples with the gi-reference light paths (64 diffuse bounces, no clamping), the directional page at the same samples, separated direct and indirect LMAP v2 layers for the RFC 0011 producers, and the per-chart denoise; the noise gate is recorded, not enforced, as in the release relight profiles. Reflection probes are rendered at the RPRB reader's largest width (2048, from 512 cube faces) at 1024 samples on the gi-reference light paths, with relight bands (RPRB v2). The probe volume is a 0.5 m grid at 4096 samples; the radiosity transfer uses 0.25 m patches (under the relight profiles' 60000-patch budget); the SDFV uses 0.05 m voxels (a room is well under the 16M-voxel reader limit) with 1 m light cells. The pipeline's Cycles reference renders at full scale and 1024 samples. Material textures stay at their source resolution (pbrt_playable_content.MAX_TEXTURE 2048 bounds the encoding). The audit is source2's with the lightmap sample floor raised to this profile's. Since 2026-09-30 the radiosity transfer (RTRN), the SDF volume (SDFV) and the reflection probes' relight bands are not baked: moving-light GI is out of scope (user decision), so the indirect light is the bake's and those data served only RFC 0011's opt-in producers.",
   "lightmap": {
     "size": 4096,
     "samples": 4096,
@@ -21,25 +21,14 @@
     "spacing_m": 0.5,
     "samples": 4096
   },
-  "radiosity": {
-    "patch_size_m": 0.25,
-    "fit_limit": true,
-    "max_patches": 60000,
-    "transfer_rays": 256,
-    "gather_rays": 4096,
-    "samples": 1024
-  },
-  "sdf_volume": {
-    "voxel_m": 0.05,
-    "light_cell_m": 1.0,
-    "light_cutoff": 0.001
-  },
+  "radiosity": null,
+  "sdf_volume": null,
   "reflection_probe": {
     "width": 2048,
     "face_size": 512,
     "samples": 1024,
     "light_paths": "gi-reference",
-    "relight": true
+    "relight": false
   },
   "reference": {
     "render": {

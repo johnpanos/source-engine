@@ -1,7 +1,7 @@
 {
   "schema": "map-export-profile/v1",
   "name": "legacy-relight",
-  "description": "Relight of a compiled legacy map (tools/quality/legacy_bsp_relight.py): the gi-fixture light paths (64 diffuse bounces, no clamping) baked at 4096 samples (on the CPU) into a 4096 atlas with separated direct and indirect LMAP v2 layers (the total is their sum), denoised per chart as a finishing step; the noise gate requires the halves' residual difference after that denoise to stay under 15% at the 99th percentile (testchmb_a_00 at 2048 texels measured 28% at 256 samples and 17% at 1024; raw noise falls as 1 / sqrt(samples)), a PRBV probe volume at 2 m (a whole Portal map spans about 100 x 60 x 40 m), a radiosity transfer at 1 m patches and an SDFV at 0.4 m voxels for the SDF-traced producer. The map's nodraw brush sides (relight_occluder) occlude in every bake but get no atlas space and are left out of the world mesh. No reflection probe, directional page or pipeline reference render; the SDFV's light cells are 2 m, culled by range (0.001), side and the map's PVS. A map whose volume at 2 m would exceed 50000 probes gets the smallest spacing that fits (fit_limit, max_probes; recorded in the PRBV receipt), as in the fast profile: whole retail maps (escape_02 3.3M probes at 2 m, sp_a2_core 1.3M, sp_a2_bts6 2.3M) exceed the PRBV's 1M and would take hours to trace; maps within 50000 keep 2 m. The noise gate is recorded, not enforced (lightmap.noise_gate \"record\", user decision 2026-09-29): its p99 statistic lives in near-black texels and one-texel grooves, and on testchmb_a_15 it read 0.33 after the per-chart denoise at 4096 samples and asked for about 19500; each map's noise.json records the measurement and that sample count. Radiosity patches are budgeted too (radiosity.fit_limit, max_patches 60000): at 1 m testchmb_a_15 has 277696 patches and a 1.4 GB transfer, over the RTRN reader's 1 GiB; a map over the budget gets the smallest coarser patch size that fits (recorded in rtrn-bake.json). Chambers keep 1 m.",
+  "description": "Relight of a compiled legacy map (tools/quality/legacy_bsp_relight.py): the gi-fixture light paths (64 diffuse bounces, no clamping) baked at 4096 samples (on the CPU) into a 4096 atlas with separated direct and indirect LMAP v2 layers (the total is their sum), denoised per chart as a finishing step; the noise gate requires the halves' residual difference after that denoise to stay under 15% at the 99th percentile (testchmb_a_00 at 2048 texels measured 28% at 256 samples and 17% at 1024; raw noise falls as 1 / sqrt(samples)), a PRBV probe volume at 2 m (a whole Portal map spans about 100 x 60 x 40 m), a radiosity transfer at 1 m patches and an SDFV at 0.4 m voxels for the SDF-traced producer. The map's nodraw brush sides (relight_occluder) occlude in every bake but get no atlas space and are left out of the world mesh. No reflection probe, directional page or pipeline reference render; the SDFV's light cells are 2 m, culled by range (0.001), side and the map's PVS. A map whose volume at 2 m would exceed 50000 probes gets the smallest spacing that fits (fit_limit, max_probes; recorded in the PRBV receipt), as in the fast profile: whole retail maps (escape_02 3.3M probes at 2 m, sp_a2_core 1.3M, sp_a2_bts6 2.3M) exceed the PRBV's 1M and would take hours to trace; maps within 50000 keep 2 m. The noise gate is recorded, not enforced (lightmap.noise_gate \"record\", user decision 2026-09-29): its p99 statistic lives in near-black texels and one-texel grooves, and on testchmb_a_15 it read 0.33 after the per-chart denoise at 4096 samples and asked for about 19500; each map's noise.json records the measurement and that sample count. Radiosity patches are budgeted too (radiosity.fit_limit, max_patches 60000): at 1 m testchmb_a_15 has 277696 patches and a 1.4 GB transfer, over the RTRN reader's 1 GiB; a map over the budget gets the smallest coarser patch size that fits (recorded in rtrn-bake.json). Chambers keep 1 m. Since 2026-09-30 the radiosity transfer (RTRN), the SDF volume (SDFV) and the reflection probes' relight bands are not baked: moving-light GI is out of scope (user decision), so the indirect light is the bake's and those data served only RFC 0011's opt-in producers.",
   "lightmap": {
     "size": 4096,
     "samples": 4096,
@@ -26,19 +26,8 @@
     "fit_limit": true,
     "max_probes": 50000
   },
-  "radiosity": {
-    "patch_size_m": 1.0,
-    "fit_limit": true,
-    "max_patches": 60000,
-    "transfer_rays": 256,
-    "gather_rays": 4096,
-    "samples": 1024
-  },
-  "sdf_volume": {
-    "voxel_m": 0.4,
-    "light_cell_m": 2.0,
-    "light_cutoff": 0.001
-  },
+  "radiosity": null,
+  "sdf_volume": null,
   "world_mesh": {
     "exclude_materials": [
       "relight_occluder"

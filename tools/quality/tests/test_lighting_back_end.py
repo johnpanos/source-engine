@@ -127,16 +127,31 @@ class PlanTest(unittest.TestCase):
         self.bsp = write(self.tmp / "room.bsp", "VBSP")
         self.model = write(self.tmp / "room.json", json.dumps(MODEL))
 
-    def check_back_end(self, pipeline):
+    def check_back_end(self, pipeline, moving_light_gi=False):
+        # Moving-light GI is out of scope (user decision, 2026-09-30): no
+        # profile bakes the radiosity transfer or the SDF volume; a manifest
+        # may still ask for them, through the same seam.
         order = pipeline.order
-        for step in ("bake", "probe-volume", "radiosity", "sdf", "pack", "identity", "finish"):
+        gi = ("radiosity", "sdf")
+        for step in ("bake", "probe-volume", "pack", "identity", "finish") + (
+                gi if moving_light_gi else ()):
             self.assertIn(step, order)
+        for step in () if moving_light_gi else gi:
+            self.assertNotIn(step, order)
         self.assertLess(order.index("pack"), order.index("identity"))
         self.assertLess(order.index("identity"), order.index("finish"))
         self.assertEqual([script for _, script in pipeline.baked],
                          [light_baker.OPERATIONS[op][0] for op, _ in pipeline.baked])
         self.assertEqual({op for op, _ in pipeline.baked},
-                         {"bake", "probe-volume", "radiosity", "sdf"})
+                         {"bake", "probe-volume"} | (set(gi) if moving_light_gi else set()))
+
+    def test_a_manifest_can_still_ask_for_moving_light_gi(self):
+        pipeline = plan({"schema": "pbrt-map-manifest/v1", "map": "room", "bsp": str(self.bsp),
+                         "quality": "legacy-relight-preview",
+                         "radiosity": {"patch_size_m": 1.0, "transfer_rays": 16,
+                                       "gather_rays": 64, "samples": 16},
+                         "sdf_volume": {"voxel_m": 0.4}}, self.tmp / "gi")
+        self.check_back_end(pipeline, moving_light_gi=True)
 
     def test_derived_scene(self):
         pipeline = plan({"schema": "pbrt-map-manifest/v1", "map": "room", "bsp": str(self.bsp),

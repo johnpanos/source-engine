@@ -1,13 +1,17 @@
 {
   "schema": "map-export-profile/v1",
   "name": "source2",
-  "description": "Default export quality for scene-derived maps: path-traced lightmaps (Cycles on the CPU) with OIDN, directional (normal-map-aware) baked light, a map reflection probe, every authored material channel, and a camera-matched Cycles reference for the runtime gate.",
+  "description": "Default export quality for scene-derived maps: path-traced lightmaps (Cycles on the CPU) with OIDN, directional (normal-map-aware) baked light, a map reflection probe, every authored material channel, and a camera-matched Cycles reference for the runtime gate. Since 2026-09-30 the lightmap is baked as direct and indirect layers (the total their sum): the render core draws the indirect layer and every light's direct light at runtime (RFC 0016's runtime direct light, id Tech's split).",
   "lightmap": {
     "size": 2048,
     "samples": 2048,
     "device": "cpu",
     "denoise": true,
-    "directional": true
+    "directional": true,
+    "layers": [
+      "direct",
+      "indirect"
+    ]
   },
   "probe_volume": {
     "spacing_m": 1.0,

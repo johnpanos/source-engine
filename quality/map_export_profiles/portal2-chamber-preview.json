@@ -1,7 +1,7 @@
 {
   "schema": "map-export-profile/v1",
   "name": "portal2-chamber-preview",
-  "description": "portal2-chamber at preview cost, for checking the chain and the look: the legacy-relight-preview bake with the directional page and 64-sample relightable reflection probes.",
+  "description": "portal2-chamber at preview cost, for checking the chain and the look: the legacy-relight-preview bake with the directional page and 64-sample relightable reflection probes. Since 2026-09-30 the radiosity transfer (RTRN), the SDF volume (SDFV) and the reflection probes' relight bands are not baked: moving-light GI is out of scope (user decision), so the indirect light is the bake's and those data served only RFC 0011's opt-in producers.",
   "lightmap": {
     "size": 2048,
     "samples": 256,
@@ -22,17 +22,8 @@
     "spacing_m": 4.0,
     "samples": 256
   },
-  "radiosity": {
-    "patch_size_m": 2.0,
-    "transfer_rays": 128,
-    "gather_rays": 1024,
-    "samples": 256
-  },
-  "sdf_volume": {
-    "voxel_m": 0.5,
-    "light_cell_m": 2.0,
-    "light_cutoff": 0.001
-  },
+  "radiosity": null,
+  "sdf_volume": null,
   "world_mesh": {
     "exclude_materials": [
       "relight_occluder"
@@ -43,7 +34,7 @@
     "face_size": 128,
     "samples": 64,
     "light_paths": "gi-reference",
-    "relight": true
+    "relight": false
   },
   "reference": null,
   "runtime_gate": null,
