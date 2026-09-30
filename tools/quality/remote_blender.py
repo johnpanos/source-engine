@@ -204,27 +204,37 @@ class RemoteBlender:
 # ============================================================ detached jobs
 # A remote step runs as a job on the host, not as the ssh session's child: a
 # dropped connection (seen on a rented host mid-radiosity, leaving the Blender
-# running as an orphan) no longer fails the step. The client streams the job's
-# output from a byte offset, reconnecting after a drop, and touches a
-# heartbeat; the host's watchdog kills a job whose client has been gone for
-# LEASE_S (the pipeline SIGKILLs a silent step's process group, so the client
-# cannot always stop the job itself).
+# running as an orphan) no longer fails the step, nor does this machine
+# sleeping: the client streams the job's output from a byte offset and
+# reconnects after a drop or a resume (RECONNECT_S counts only time awake).
+# A job whose command line matches a live one (the same step, the same
+# inputs) replaces it, so a rerun never overlaps its own orphan. The client
+# touches a heartbeat, and the host's watchdog kills a job whose client has
+# been gone for LEASE_S: long enough for a laptop to sleep through a bake
+# (a 15-minute lease killed testchmb_a_15's radiosity while this machine
+# slept), short of a rental's reaper deadline.
 JOBS = "/tmp/remote-blender"
 HEARTBEAT_S = 60
-LEASE_S = 900
+LEASE_S = 6 * 3600
 RECONNECT_S = 600
 
 
 def start_script(directory, line):
-    """The host script that starts `line` as a detached job with its watchdog."""
+    """The host script that starts `line` as a detached job with its watchdog,
+    after stopping any live job with the same command line."""
+    key = hashlib.sha256(line.encode()).hexdigest()[:16]
     job = "(%s); echo $? > %s/rc" % (line, directory)
     watchdog = ("job=$(cat {d}/pid); while kill -0 $job 2>/dev/null; do "
                 "if [ $(( $(date +%s) - $(stat -c %Y {d}/hb) )) -gt {lease} ]; then "
                 "kill -TERM -$job; sleep 10; kill -KILL -$job 2>/dev/null; fi; sleep 30; done"
                 ).format(d=directory, lease=LEASE_S)
+    replace = ("for d in {jobs}/*/; do if [ \"$(cat $d/key 2>/dev/null)\" = {key} ] && "
+               "[ ! -f $d/rc ] && kill -0 $(cat $d/pid) 2>/dev/null; then "
+               "echo replacing $d; kill -TERM -$(cat $d/pid); fi; done").format(jobs=JOBS, key=key)
     return "\n".join([
+        replace,
         "set -e",
-        "mkdir -p %s && cd %s && touch hb" % (directory, directory),
+        "mkdir -p %s && cd %s && touch hb && echo %s > key" % (directory, directory, key),
         "nohup setsid bash -c %s > out 2>&1 < /dev/null &" % shlex.quote(job),
         "echo $! > pid",
         "nohup setsid bash -c %s > /dev/null 2>&1 < /dev/null &" % shlex.quote(watchdog),

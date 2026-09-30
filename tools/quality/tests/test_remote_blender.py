@@ -153,6 +153,34 @@ class DetachedJobTest(unittest.TestCase):
         self.assertEqual(reader.wait(), 5)
         self.assertGreaterEqual(received, 3000000)
 
+    def test_a_rerun_replaces_its_live_orphan(self):
+        """A job with the same command line as a live one stops it first."""
+        line = "sleep 30; echo late"
+        first = subprocess.Popen([sys.executable, "-c",
+                                  "import sys; sys.path.insert(0, %r); import remote_blender as r; "
+                                  "r.JOBS = %r; sys.exit(r.execute(%r, 'host', %r))"
+                                  % (str(Path(remote_blender.__file__).parent), remote_blender.JOBS,
+                                     self.ssh, line)],
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        jobs = Path(remote_blender.JOBS)
+        for _ in range(100):
+            if any((d / "pid").is_file() for d in jobs.glob("*")):
+                break
+            time.sleep(0.1)
+        orphan = next(d for d in jobs.glob("*") if (d / "pid").is_file())
+        first.kill()   # the client dies; its job lives on
+        out = io.BytesIO()
+        started = time.monotonic()
+        code = remote_blender.execute(self.ssh, "host", "echo second", out, sleep=lambda s: None)
+        self.assertEqual((code, out.getvalue()), (0, b"second\n"))
+        for _ in range(50):
+            if subprocess.run(["kill", "-0", (orphan / "pid").read_text().strip()],
+                              capture_output=True).returncode:
+                break
+            time.sleep(0.1)
+        self.assertFalse((orphan / "rc").is_file())   # stopped, not finished
+        self.assertLess(time.monotonic() - started, 20)
+
     def test_the_job_runs_detached_with_a_watchdog(self):
         script = remote_blender.start_script("/tmp/remote-blender/x", "blender -b")
         self.assertIn("setsid bash -c '(blender -b); echo $? > /tmp/remote-blender/x/rc'", script)
