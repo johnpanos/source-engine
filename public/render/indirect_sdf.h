@@ -884,6 +884,9 @@ private:
 		for ( uint32_t i = 0; i < references; ++i )
 			written.push_back( { size_t( referenceSchedule[i * 2] ) * kProbeBytes, kProbeBytes } );
 		m_gpu->WrittenRanges( m_field[slot], written.data(), uint32_t( written.size() ) );
+		// The previous slot is only read.
+		if ( previous != m_field[slot] )
+			m_gpu->WrittenRanges( previous, nullptr, 0 );
 		uint64_t serial = 0;
 		if ( lives )
 			serial = queue( m_params[slot], m_liveLights[slot], m_liveSchedule[slot], lives, true );
