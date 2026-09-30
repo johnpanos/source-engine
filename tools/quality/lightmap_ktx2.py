@@ -13,8 +13,9 @@ lightmap coordinate. A reflection probe band stays in the top rows (mips from
 x = 0) with its marker at the page's top-right texel.
 
 With `--sun-visibility` (the bake's sun mask) the flat half's alpha holds the
-sun's [0, 1] visibility, gutter-filled from `--coverage-exr`, and the marker row
-carries the sun beside the probe marker: texel (W - 2, 0) = direction toward
+sun's [0, 1] visibility, gutter-filled from `--coverage-exr` (the render core's
+surface program shadows the sun's runtime light with it), and with a probe
+band the marker row carries the sun beside the probe marker: texel (W - 2, 0) = direction toward
 the sun (xyz, w = 2) and texel (W - 3, 0) = its irradiance (rgb, w = disc
 angle in degrees). `world_pbr.frag` adds the sun's specular dynamically,
 shadowed by that alpha; its diffuse light is already in the bake.
@@ -237,12 +238,16 @@ def main():
         rgba[:band] = staging[:band].astype("<f2")
         probe["receipt_sha256"] = sha256(args.probe_dir / "probe.json")
     if sun:
-        if not probe:
-            raise ValueError("the sun texels live in the probe band's marker row")
-        direction = -np.asarray(sun["direction"], dtype=np.float64)
-        direction /= np.linalg.norm(direction)
-        rgba[0, width - 2] = np.array((*direction, 2.0), dtype="<f2")
-        rgba[0, width - 3] = np.array((*sun["irradiance"], sun["angle_degrees"]), dtype="<f2")
+        # The marker texels (the sun's direction and irradiance) live in the
+        # probe band's marker row and are written only with one; the mask in
+        # the flat page's alpha stands alone (its readers take the sun from
+        # the map's light_environment).
+        if probe:
+            direction = -np.asarray(sun["direction"], dtype=np.float64)
+            direction /= np.linalg.norm(direction)
+            rgba[0, width - 2] = np.array((*direction, 2.0), dtype="<f2")
+            rgba[0, width - 3] = np.array((*sun["irradiance"], sun["angle_degrees"]),
+                                          dtype="<f2")
     pages = [rgba]
     layer_receipts = {}
     source_bake = evidence.get("source_bake_evidence_sha256")

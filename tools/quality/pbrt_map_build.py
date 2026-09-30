@@ -1052,8 +1052,18 @@ class Pipeline:
                       SCENE_SCRIPTS + self.baker.scripts("sdf"),
                       [p["sdfv"], p["sdfv_work"]],
                       lambda: self.baker.bake("sdf", field_args))
-        # The scene sun's LMAP marker texels lived in the retired probe band's
-        # marker row and had no shader reader; scene maps no longer write them.
+        # The sun's baked visibility rides in the total page's alpha (the
+        # render core shadows the sun's runtime light with it on world
+        # surfaces, RFC 0016 K11); the marker texels need the retired probe
+        # band and are not written.
+        sun_args = []
+        sun_inputs = []
+        raw_receipt = p["atlas"].with_name(p["atlas"].name + ".json")
+        if p["sun_visibility"].is_file() and raw_receipt.is_file() and \
+                json.loads(raw_receipt.read_text()).get("sun"):
+            sun_args = ["--sun-visibility", p["sun_visibility"],
+                        "--sun-bake-evidence", raw_receipt]
+            sun_inputs = [p["sun_visibility"], raw_receipt]
         layer_args = [item for role, out in denoised_layers.items()
                       for item in ("--layer", "%s=%s" % (role, out))]
         # The raw total marks buried texels, which stitching may move freely.
@@ -1062,7 +1072,7 @@ class Pipeline:
         self.step("ktx2", [atlas, atlas_receipt, p["lighting_stage"], p["seams"],
                            p["coverage"], p["atlas"]] +
                   list(denoised_layers.values()) +
-                  ([p["directional"]] if directional else []),
+                  ([p["directional"]] if directional else []) + sun_inputs,
                   {"preview_gain": self.lightmap["preview_gain"], "scope": scope},
                   ["lightmap_ktx2.py"], [p["ktx2"]],
                   lambda: self.run("ktx2", [sys.executable, HERE / "lightmap_ktx2.py",
@@ -1071,7 +1081,8 @@ class Pipeline:
                                             "--ktx-tool", self.tools["ktx"],
                                             "--preview-gain", str(self.lightmap["preview_gain"]),
                                             "--expected-scope", scope, "--out", p["ktx2"]] +
-                                           directional_args + layer_args + seam_args))
+                                           directional_args + layer_args + seam_args +
+                                           sun_args))
         pack_stage = p["lighting_stage"]
         # A relit map keeps its own skybox; no sky dome joins its world mesh.
         if environment and not self.derived:
