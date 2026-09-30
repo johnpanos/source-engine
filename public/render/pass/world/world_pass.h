@@ -311,11 +311,12 @@ struct WorldStats
 	std::vector<std::pair<std::string, std::uint32_t>> claimed;
 };
 
-// A world tag: the high bit set, then the view's serial in the low 29 bits
+// A world tag: the high bit set, then the view's serial in the low 28 bits
 // (bits 30 and 29 are the core-pass slots' kCorePassLegacyOff and
-// kCorePassFrameEnd).
+// kCorePassFrameEnd; bit 28 marks render.pass.panels' tags, 0x90000000 |
+// serial, so the two never overlap).
 inline constexpr std::uint32_t kWorldTag = 0x80000000u;
-inline constexpr std::uint32_t kWorldSerialMask = 0x1fffffffu;
+inline constexpr std::uint32_t kWorldSerialMask = 0x0fffffffu;
 inline bool IsWorldTag( std::uint32_t tag )
 {
 	return ( tag & kWorldTag ) != 0 && ( tag & ~( kWorldTag | kWorldSerialMask ) ) == 0;
