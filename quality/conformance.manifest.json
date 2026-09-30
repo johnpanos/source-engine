@@ -10235,6 +10235,78 @@
       "expect": "pass"
     },
     {
+      "id": "render.lab.bounce",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "migration": "R95",
+      "contract": "RFC/0016-render-core.md",
+      "profile": "linux-native-vulkan-gpu",
+      "kind": "positive",
+      "description": "RFC 0016 K11, the projected lights' one bounce (render.pass.bounce; render/lab/bounce_suite.cpp, render_lab suite bounce --validate): a white projector 256 units above a floor of albedo (0.8, 0.5, 0.3), a synthesized 128 x 128 reflective shadow map, a 3 x 3 x 2 probe grid. Oracle: the bounce's definition as an area integral over the lit floor (600 x 600 cells, projected_light::IrradianceAt), sharing no code with the shader. Every interior probe texel within 3 percent + 1e-5 of the largest value; border texels equal their interior twins; texels outside the layer-0 tiles zero; a probe whose moments hide the floor gathers nothing; lit texels lit. 0 validation messages.",
+      "command": [
+        "{python}",
+        "tools/render/lab.py",
+        "suite",
+        "bounce",
+        "--validate"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 6,
+      "timeout_seconds": 600,
+      "requires": [
+        "path:build-rc-lab/render/lab/render_lab",
+        "vulkan-device:gpu"
+      ],
+      "sources": [
+        "render/lab/bounce_suite.cpp",
+        "render/lab/lab_suite.cpp",
+        "render/pass/bounce/bounce.cpp",
+        "render/pass/bounce/bounce.comp",
+        "render/shaders/common/probe_volume.glsl",
+        "render/shaders/common/projected_light.glsl",
+        "public/render/pass/bounce/bounce.h",
+        "public/render/projected_light.h",
+        "tools/render/lab.py"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.lab.bounce.sensitivity",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "migration": "R95",
+      "contract": "RFC/0016-render-core.md",
+      "profile": "linux-native-vulkan-gpu",
+      "kind": "sensitivity",
+      "description": "render.lab.bounce's seeded programs: the patch's cosine ignored, the probe visibility ignored and a flat solid angle each fail the check they break.",
+      "command": [
+        "{python}",
+        "tools/render/lab.py",
+        "suite",
+        "bounce",
+        "--sensitivity"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 4,
+      "timeout_seconds": 900,
+      "requires": [
+        "path:build-rc-lab/render/lab/render_lab",
+        "vulkan-device:gpu"
+      ],
+      "sources": [
+        "render/lab/bounce_suite.cpp",
+        "render/lab/lab_suite.cpp",
+        "render/pass/bounce/bounce.cpp",
+        "render/pass/bounce/bounce.comp",
+        "render/shaders/common/probe_volume.glsl",
+        "render/shaders/common/projected_light.glsl",
+        "public/render/pass/bounce/bounce.h",
+        "public/render/projected_light.h",
+        "tools/render/lab.py"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "render.debug-views.product.mode0",
       "domain": "Q-PRESENTATION",
       "rfc": "0014",
