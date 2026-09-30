@@ -149,6 +149,24 @@ def source_triangles(stage, material_prefix, require_lightmap_uv, include_emitte
                 reference = (0.0, 0.0, 1.0) if abs(normal[2]) < 0.9 else (0.0, 1.0, 0.0)
                 tangent, sign = unit(cross(reference, normal)), 1
                 tangent_fallbacks += 1
+            # The corners keep their authored normals (a smooth-shaded mesh
+            # is shaded as the bake and Cycles shade it: the lightmap is
+            # baked on these normals); the face's normal groups the triangle
+            # and gives its tangent, made orthogonal to each corner's normal.
+            if len(valid_normals) == 3:
+                corner_normals = tuple(valid_normals)
+                corner_tangents = []
+                for corner in corner_normals:
+                    along = sum(tangent[axis] * corner[axis] for axis in range(3))
+                    try:
+                        corner_tangents.append(unit(tuple(tangent[axis] - corner[axis] * along
+                                                          for axis in range(3))))
+                    except ValueError:
+                        corner_tangents.append(tangent)
+                corner_tangents = tuple(corner_tangents)
+            else:
+                corner_normals = normal
+                corner_tangents = tangent
             bucket = normal_bucket(normal)
             face_id = IMPORTED_FACE_BASE | (mesh_index << 3) | bucket
             item = faces.setdefault(face_id, {"material": material_path, "triangles": []})
@@ -158,8 +176,8 @@ def source_triangles(stage, material_prefix, require_lightmap_uv, include_emitte
             # normal map is still image-up.
             stored_uv = [(u, 1.0 - v) for u, v in texture_uv]
             item["triangles"].append((positions, stored_uv,
-                                      chart_uv, normal,
-                                      tangent, sign))
+                                      chart_uv, corner_normals,
+                                      corner_tangents, sign))
             triangle_count += 1
         inventory.append({"prim": str(prim.GetPath()), "material": material_path,
                           "emitter": is_emitter,

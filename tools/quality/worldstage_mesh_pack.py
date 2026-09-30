@@ -256,11 +256,20 @@ def write_payload(faces, leaves, meshlet_leaves=None):
                 meshlet_first_vertex = len(vertex_bytes) // VERTEX.size
                 positions = []
                 for points, texture, lightmap, normal, tangent, sign in chunk:
-                    for point, uv, chart_uv in zip(points, texture, lightmap):
+                    # A triangle's normal and tangent are one vector for its
+                    # three corners (a flat face) or one per corner (a
+                    # smooth-shaded mesh's vertex normals).
+                    corners = (list(normal) if isinstance(normal[0], (tuple, list))
+                               else [normal] * 3)
+                    corner_tangents = (list(tangent) if isinstance(tangent[0], (tuple, list))
+                                       else [tangent] * 3)
+                    for point, uv, chart_uv, corner_normal, corner_tangent in zip(
+                            points, texture, lightmap, corners, corner_tangents):
                         if not all(math.isfinite(value) for value in (*point, *uv, *chart_uv)):
                             raise ValueError("World Stage mesh has a non-finite vertex")
-                        vertex_bytes.extend(VERTEX.pack(*point, *oct16(normal),
-                                                        *oct16(tangent), sign, *uv, *chart_uv))
+                        vertex_bytes.extend(VERTEX.pack(*point, *oct16(corner_normal),
+                                                        *oct16(corner_tangent), sign, *uv,
+                                                        *chart_uv))
                         indices.append(len(indices))
                         positions.append(point)
                     triangle_faces.append(face_id)
