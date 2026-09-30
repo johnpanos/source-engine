@@ -17,6 +17,7 @@
 #include "testing/conformance_result.h"
 
 #include <algorithm>
+#include <random>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -388,6 +389,36 @@ void SparseHelpers( const Volume &seed )
 	Volume restored = occluded;
 	CopyProbeTiles( restored, seed, cut, mapcontainer::kProbeTilesVisibility );
 	Check( restored.bytes == seed.bytes, "sparse: restoring the cut tiles gives the volume back" );
+
+	// Visiting only the probes within the proxies' reach equals visiting every
+	// probe: proxies of many sizes, inside, straddling and outside the grid.
+	{
+		std::mt19937 rng( 1234 );
+		std::uniform_real_distribution<float> unit( -0.5f, 1.5f );
+		bool same = true;
+		size_t cutTotal = 0;
+		for ( int round = 0; round < 40 && same; ++round )
+		{
+			std::vector<Proxy> proxies( 1 + round % 4 );
+			for ( Proxy &proxy : proxies )
+				for ( int k = 0; k < 3; ++k )
+				{
+					const float extent = float( grid.dims[k] ) * grid.spacing[k];
+					const float at = grid.origin[k] + unit( rng ) * extent;
+					const float half = ( 0.05f + 0.3f * float( round % 5 ) ) * grid.spacing[k];
+					proxy.lo[k] = at - half;
+					proxy.hi[k] = at + half;
+				}
+			Volume near = seed, all = seed;
+			std::vector<uint32_t> nearCut, allCut;
+			const size_t nearCount = OccludeProbeVisibility( near, proxies, &nearCut );
+			const size_t allCount = OccludeProbeVisibility( all, proxies, &allCut, true );
+			same = nearCount == allCount && nearCut == allCut && near.bytes == all.bytes;
+			cutTotal += allCount;
+		}
+		Check( same && cutTotal > 0,
+		    "occlusion: visiting the probes within the proxies' reach equals visiting all" );
+	}
 
 	// A sample reads the eight probes SampleProbes names: scaling every
 	// other probe leaves it unchanged, scaling one of them does not.

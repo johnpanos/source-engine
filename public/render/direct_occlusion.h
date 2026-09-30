@@ -582,9 +582,11 @@ private:
 // the second moment), and the tile's octahedral border is rewritten. Returns
 // the number of probes changed; a volume no proxy is near is unchanged.
 // `cut`, when given, receives the changed probes (the grids' probes in grid
-// order).
-inline size_t OccludeProbeVisibility(
-    Volume &volume, std::span<const Proxy> proxies, std::vector<uint32_t> *cut = nullptr )
+// order). Only probes within a proxy's reach are visited (its box grown by
+// the visibility range and the largest relocation the format allows, in grid
+// cells); `scanAll` visits every probe (the oracle the tests compare with).
+inline size_t OccludeProbeVisibility( Volume &volume, std::span<const Proxy> proxies,
+    std::vector<uint32_t> *cut = nullptr, bool scanAll = false )
 {
 	if ( proxies.empty() )
 		return 0;
@@ -633,7 +635,44 @@ inline size_t OccludeProbeVisibility(
 	{
 		const mapcontainer::ProbeGridLayout &grid = layout.grids[g];
 		const uint32_t stateRow = grid.tilesPerRow * kTile;
-		for ( uint32_t i = 0; i < grid.probeCount; ++i )
+		std::vector<uint32_t> candidates;
+		if ( scanAll )
+		{
+			candidates.resize( grid.probeCount );
+			for ( uint32_t i = 0; i < grid.probeCount; ++i )
+				candidates[i] = i;
+		}
+		else
+		{
+			const float reach = grid.maxDistance + grid.maxRelocation * 1.001f + 1.0e-3f;
+			for ( const Proxy &proxy : proxies )
+			{
+				uint32_t lo[3] = {}, hi[3] = {};
+				bool outside = false;
+				for ( int k = 0; k < 3 && !outside; ++k )
+				{
+					const float last = float( grid.dims[k] - 1 );
+					const float a = ( proxy.lo[k] - reach - grid.origin[k] ) / grid.spacing[k];
+					const float b = ( proxy.hi[k] + reach - grid.origin[k] ) / grid.spacing[k];
+					outside = !( b >= 0.0f && a <= last ); // NaN: outside
+					if ( !outside )
+					{
+						lo[k] = uint32_t( std::max( 0.0f, std::floor( a ) ) );
+						hi[k] = uint32_t( std::min( last, std::ceil( b ) ) );
+					}
+				}
+				if ( outside )
+					continue;
+				for ( uint32_t z = lo[2]; z <= hi[2]; ++z )
+					for ( uint32_t y = lo[1]; y <= hi[1]; ++y )
+						for ( uint32_t x = lo[0]; x <= hi[0]; ++x )
+							candidates.push_back( x + grid.dims[0] * ( y + grid.dims[1] * z ) );
+			}
+			std::sort( candidates.begin(), candidates.end() );
+			candidates.erase(
+			    std::unique( candidates.begin(), candidates.end() ), candidates.end() );
+		}
+		for ( const uint32_t i : candidates )
 		{
 			const unsigned char *state =
 			    texel( grid.stateOrigin[0] + i % stateRow, grid.stateOrigin[1] + i / stateRow );
