@@ -1,0 +1,262 @@
+{
+  "analytic": [],
+  "denoised": true,
+  "fixture": "door-room",
+  "fixture_reference_digest": "4cf48bc0cfbd3b78dd46e260f0719b330822e9b51a42afa125a353ce1fc4d71b",
+  "light_units": "the pipeline's lightmap unit (Cycles E / pi for a white Lambertian); total = Combined, linear scene radiance",
+  "renders": {
+    "closed": {
+      "blender": "5.2.2 LTS",
+      "composed_stage_sha256": "9283db0bfd7fd4505facd050004d8eb318c1af99438e699416509cc26bd01677",
+      "cycles_device": "CPU",
+      "denoising": {
+        "denoiser": "OPENIMAGEDENOISE",
+        "guides": "albedo+normal",
+        "prefilter": "ACCURATE"
+      },
+      "extras_applied": {
+        "medium": null,
+        "projectors": []
+      },
+      "light_paths": {
+        "diffuse_bounces": 64,
+        "glossy_bounces": 16,
+        "max_bounces": 64,
+        "policy": "gi-reference",
+        "sample_clamp_direct": 0.0,
+        "sample_clamp_indirect": 0.0,
+        "transmission_bounces": 16
+      },
+      "lighting_renderer_sha256": "9927c57ae004d8873c1445d10dd039928f694d6568bd2e27aa82a87a3caa6d2a",
+      "normal_maps": false,
+      "ocio_configuration_sha256": "7812ed39935cb1f7ab5392293c914c0c0f595720af22fc1b289bf19cc0af7ef6",
+      "renderer_sha256": "be4345ca1b53205f3ca822e8ae1bf541f67b83ca19324555cfccf91f6a3496f9",
+      "samples": 512,
+      "seed": 20260929,
+      "stage_layers": {
+        "quality/fixtures/lighting/door-room/door-room.usda": "af75033f3611a2cc75d39fddaae833dd1f34d90129b6f95ec7cca62aa40adec0",
+        "quality/fixtures/lighting/door-room/states/closed.usda": "16398b798523545c7c98b5e84f89d7ec7fcfb3e482b0260c06bbddb9674eec4f"
+      }
+    },
+    "open": {
+      "blender": "5.2.2 LTS",
+      "composed_stage_sha256": "2b10d1ce76894677eddb083fbdf975860e2f89002600039ab3554e7e6b777000",
+      "cycles_device": "CPU",
+      "denoising": {
+        "denoiser": "OPENIMAGEDENOISE",
+        "guides": "albedo+normal",
+        "prefilter": "ACCURATE"
+      },
+      "extras_applied": {
+        "medium": null,
+        "projectors": []
+      },
+      "light_paths": {
+        "diffuse_bounces": 64,
+        "glossy_bounces": 16,
+        "max_bounces": 64,
+        "policy": "gi-reference",
+        "sample_clamp_direct": 0.0,
+        "sample_clamp_indirect": 0.0,
+        "transmission_bounces": 16
+      },
+      "lighting_renderer_sha256": "9927c57ae004d8873c1445d10dd039928f694d6568bd2e27aa82a87a3caa6d2a",
+      "normal_maps": false,
+      "ocio_configuration_sha256": "7812ed39935cb1f7ab5392293c914c0c0f595720af22fc1b289bf19cc0af7ef6",
+      "renderer_sha256": "be4345ca1b53205f3ca822e8ae1bf541f67b83ca19324555cfccf91f6a3496f9",
+      "samples": 512,
+      "seed": 20260929,
+      "stage_layers": {
+        "quality/fixtures/lighting/door-room/door-room.usda": "af75033f3611a2cc75d39fddaae833dd1f34d90129b6f95ec7cca62aa40adec0"
+      }
+    }
+  },
+  "samples": 512,
+  "schema": "lighting-references/v1",
+  "seed": 20260929,
+  "status": "denoised",
+  "views": {
+    "closed.a-door": {
+      "camera": "a-door",
+      "emitter_indices": [
+        15,
+        16,
+        17
+      ],
+      "files": {
+        "direct": {
+          "file": "closed.a-door.direct.exr",
+          "sha256": "f5b0c343edbfdbd595ebe4e9d7b98a6a71be9ecd44096a623fcbbe7e6e70644e"
+        },
+        "index": {
+          "file": "closed.a-door.index.png",
+          "sha256": "11aa4093336acac1bdaefaab92da49a6a4f5f8938ccc82cf8203ccfc3e8c14f1"
+        },
+        "total": {
+          "file": "closed.a-door.total.exr",
+          "sha256": "debf15888b003bdf7183b4d6539519b43d2a1c2874387093439898da936f594a"
+        }
+      },
+      "finite": true,
+      "index_from_state": "closed",
+      "judged_pixels": 196608,
+      "mean_luminance": 0.0868162753021051,
+      "object_index": {
+        "A_Xn": 1,
+        "A_Xp": 2,
+        "A_Yn": 3,
+        "A_Yp": 4,
+        "A_Zp": 5,
+        "B_Xn": 6,
+        "B_Xp": 7,
+        "B_Yn": 8,
+        "B_Yp": 9,
+        "B_Zp": 10,
+        "Door": 11,
+        "Doorway": 12,
+        "FloorA": 13,
+        "FloorB": 14,
+        "LightDisk02": 15,
+        "LightQuad00": 16,
+        "LightQuad01": 17
+      },
+      "state": "closed"
+    },
+    "closed.b-door": {
+      "camera": "b-door",
+      "emitter_indices": [
+        15,
+        16,
+        17
+      ],
+      "files": {
+        "direct": {
+          "file": "closed.b-door.direct.exr",
+          "sha256": "7ebff3aeb0f7ff99db258dde68fd7f6538cadcd75d042c39e31c6c96460caa52"
+        },
+        "index": {
+          "file": "closed.b-door.index.png",
+          "sha256": "712e065233dd2ca758af25c48705dbd4f181d603056bd47832c1b364681cfd7a"
+        },
+        "total": {
+          "file": "closed.b-door.total.exr",
+          "sha256": "369964acf461f7c22ee4466557796f2697508d1bdb02b39ccc79adc329ea9642"
+        }
+      },
+      "finite": true,
+      "index_from_state": "closed",
+      "judged_pixels": 196608,
+      "mean_luminance": 0.17286945428343656,
+      "object_index": {
+        "A_Xn": 1,
+        "A_Xp": 2,
+        "A_Yn": 3,
+        "A_Yp": 4,
+        "A_Zp": 5,
+        "B_Xn": 6,
+        "B_Xp": 7,
+        "B_Yn": 8,
+        "B_Yp": 9,
+        "B_Zp": 10,
+        "Door": 11,
+        "Doorway": 12,
+        "FloorA": 13,
+        "FloorB": 14,
+        "LightDisk02": 15,
+        "LightQuad00": 16,
+        "LightQuad01": 17
+      },
+      "state": "closed"
+    },
+    "open.a-door": {
+      "camera": "a-door",
+      "emitter_indices": [
+        14,
+        15,
+        16
+      ],
+      "files": {
+        "direct": {
+          "file": "open.a-door.direct.exr",
+          "sha256": "acb117d9d830ce8dc86cd58f842e33c2a08d25a5f68d8fa228ef22b531ccec25"
+        },
+        "index": {
+          "file": "open.a-door.index.png",
+          "sha256": "815a1be80231a96c864222b701168b6624ca25ff7277e1560757d40242e8a3cd"
+        },
+        "total": {
+          "file": "open.a-door.total.exr",
+          "sha256": "d8612f4919bfd23dd5fbe4e0a0c40f79cb8709b5de4d111a26ff5b4c15038493"
+        }
+      },
+      "finite": true,
+      "index_from_state": "open",
+      "judged_pixels": 196608,
+      "mean_luminance": 0.10400536909219542,
+      "object_index": {
+        "A_Xn": 1,
+        "A_Xp": 2,
+        "A_Yn": 3,
+        "A_Yp": 4,
+        "A_Zp": 5,
+        "B_Xn": 6,
+        "B_Xp": 7,
+        "B_Yn": 8,
+        "B_Yp": 9,
+        "B_Zp": 10,
+        "Doorway": 11,
+        "FloorA": 12,
+        "FloorB": 13,
+        "LightDisk02": 14,
+        "LightQuad00": 15,
+        "LightQuad01": 16
+      },
+      "state": "open"
+    },
+    "open.b-door": {
+      "camera": "b-door",
+      "emitter_indices": [
+        14,
+        15,
+        16
+      ],
+      "files": {
+        "direct": {
+          "file": "open.b-door.direct.exr",
+          "sha256": "93a9689d7812e1629e51edf1412337887a98f8ce7c2ec74306c60e7b2ed57ed8"
+        },
+        "index": {
+          "file": "open.b-door.index.png",
+          "sha256": "f9ca8d3feac38386e300759edffe8e51701bbfc5f92e0b0e874b42bf104929cb"
+        },
+        "total": {
+          "file": "open.b-door.total.exr",
+          "sha256": "7b043fd94ac03ff57dceac85657c1264edde53f421bce778283625d323d9f64b"
+        }
+      },
+      "finite": true,
+      "index_from_state": "open",
+      "judged_pixels": 196608,
+      "mean_luminance": 0.34923447313640993,
+      "object_index": {
+        "A_Xn": 1,
+        "A_Xp": 2,
+        "A_Yn": 3,
+        "A_Yp": 4,
+        "A_Zp": 5,
+        "B_Xn": 6,
+        "B_Xp": 7,
+        "B_Yn": 8,
+        "B_Yp": 9,
+        "B_Zp": 10,
+        "Doorway": 11,
+        "FloorA": 12,
+        "FloorB": 13,
+        "LightDisk02": 14,
+        "LightQuad00": 15,
+        "LightQuad01": 16
+      },
+      "state": "open"
+    }
+  }
+}

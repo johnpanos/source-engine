@@ -2,6 +2,7 @@
   "fixtures": [
     "area-room",
     "cornell-floors",
+    "door-room",
     "foggy-hall",
     "material-sweep",
     "mirror-corridor",

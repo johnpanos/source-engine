@@ -100,8 +100,15 @@ def fog_scale(fixture, state):
     return None
 
 
+# `gallery --direct`: the runtime direct diffuse light alone, as Cycles'
+# DiffDir x DiffCol shows it (every term but the lights off, diffuse lobe).
+DIRECT_ARGS = ["--core-direct", "--debug-brdf", "1", "--debug-term",
+               "baked,probes,ibl,ssr,ao,specular_occlusion,emission,volumetric", "--no-ao",
+               "--no-ssr", "--no-bounce"]
+
+
 def render_camera(lab, fixture, camera_name, out, scale=None, state=None, resolution=1,
-                  core_direct=False):
+                  core_direct=False, direct=False):
     """render_lab's frame of a camera from the state's map (lf.map_for: a
     state that owns a map, such as a medium state baked with its medium,
     renders from it). With `core_direct` the lab draws the indirect layer and
@@ -130,7 +137,9 @@ def render_camera(lab, fixture, camera_name, out, scale=None, state=None, resolu
                                         list(mover["max"])) + "," + mover["material"]]
     if scale is not None:
         command += ["--fog-scale", "%g" % scale]
-    if core_direct:
+    if direct:
+        command += DIRECT_ARGS
+    elif core_direct:
         command.append("--core-direct")
     result = subprocess.run(command, env=lab_environment(lab), capture_output=True, text=True,
                             timeout=600)
@@ -198,20 +207,21 @@ def downsampled(lab_image, factor):
     return path
 
 
-def view_images(fixture, state, camera, lab_image, resolution=1):
-    """(lab, reference, error) as display pixels, and the comparison result.
-    With a resolution factor the lab frame shows at its own size and the
-    reference and error map at theirs, enlarged to it (nearest)."""
+def view_images(fixture, state, camera, lab_image, resolution=1, kind="total"):
+    """(lab, reference, error) as display pixels, and the comparison result
+    against the view's `kind` reference (total, or direct). With a
+    resolution factor the lab frame shows at its own size and the reference
+    and error map at theirs, enlarged to it (nearest)."""
     import numpy as np
     from PIL import Image
     full_image = lab_image
     if resolution > 1:
         lab_image = downsampled(lab_image, resolution)
-    result = lf.compare(fixture["name"], state, camera, lab_image)
+    result = lf.compare(fixture["name"], state, camera, lab_image, kind=kind)
     references = fixture["directory"] / "references"
     record = json.loads((references / "references.json").read_text())
     view = record["views"]["%s.%s" % (state, camera)]
-    reference = np.asarray(lf.read_rgb_exr(references / view["files"]["total"]["file"]),
+    reference = np.asarray(lf.read_rgb_exr(references / view["files"][kind]["file"]),
                            np.float64)[..., :3]
     index_image = np.asarray(Image.open(references / view["files"]["index"]["file"]), np.int64)
     test = np.asarray(lf.read_image(lab_image), np.float64)[..., :3]
@@ -345,21 +355,26 @@ def cmd_gallery(args):
             entry = {"fixture": name, "state": state, "camera": camera}
             scale = fog_scale(fixture, state)
             map_name = lf.map_for(fixture, state)["name"]
-            view = (camera, scale, map_name)
+            # A state with movers renders on its own (the movers are its).
+            movers = state if fixture["lighting"].get("movers", {}).get(state) else None
+            view = (camera, scale, map_name, movers)
             if view not in rendered:
-                image = out / "lab" / ("%s.%s%s%s.pfm" % (
+                image = out / "lab" / ("%s.%s%s%s%s.pfm" % (
                     name, camera, "" if map_name == fixture["lighting"]["map"]["name"]
-                    else "." + map_name, "" if scale is None else ".fog-scale-%g" % scale))
+                    else "." + map_name, "" if scale is None else ".fog-scale-%g" % scale,
+                    "" if movers is None else "." + movers))
                 rendered[view] = render_camera(lab, fixture, camera, image, scale, state,
                                                getattr(args, "resolution", 1),
-                                               getattr(args, "core_direct", False)) + (image,)
+                                               getattr(args, "core_direct", False),
+                                               getattr(args, "direct", False)) + (image,)
             ok, message, model, image = rendered[view]
             if not ok:
                 entry["error"] = message or "render_lab failed"
             else:
                 try:
-                    pixels, result, status = view_images(fixture, state, camera, image,
-                                                         getattr(args, "resolution", 1))
+                    pixels, result, status = view_images(
+                        fixture, state, camera, image, getattr(args, "resolution", 1),
+                        "direct" if getattr(args, "direct", False) else "total")
                     entry.update(result=result, status=status, model=model and model[0],
                                  images=[jpeg_uri(p) for p in pixels])
                 except (ValueError, KeyError, OSError) as error:

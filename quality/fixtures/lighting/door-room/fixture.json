@@ -1,0 +1,168 @@
+{
+  "baked_state": "open",
+  "cameras": {
+    "a-door": {
+      "eye": [
+        0.3,
+        0.4,
+        1.7
+      ],
+      "forward": [
+        0.8784659171140354,
+        0.4273617975149362,
+        -0.21368089875746804
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "b-door": {
+      "eye": [
+        7.9,
+        3.6,
+        1.7
+      ],
+      "forward": [
+        -0.8263362881372999,
+        -0.47219216464988567,
+        -0.30692490702242564
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  },
+  "dynamic_models": [],
+  "family": "lighting",
+  "film": {
+    "height": 384,
+    "width": 512
+  },
+  "horizontal_fov_degrees": 90.0,
+  "lambertian": false,
+  "lighting": {
+    "entities": "entities.json",
+    "lights": {
+      "point": 0,
+      "rect": 2,
+      "sky": 0,
+      "spot": 1,
+      "sun": 0
+    },
+    "map": {
+      "baked_state": "open",
+      "bsp": "run/maps/lt_door_room/maps/lt_door_room.bsp",
+      "layout": "planar",
+      "name": "lt_door_room",
+      "overrides": {
+        "lightmap": {
+          "directional": true,
+          "directional_samples": 64,
+          "samples": 64
+        },
+        "probe_volume": {
+          "samples": 256
+        },
+        "radiosity": null,
+        "reflection_probe": {
+          "face_size": 128,
+          "light_paths": "gi-reference",
+          "samples": 16,
+          "width": 512
+        },
+        "sdf_volume": null
+      },
+      "solid_meshes": []
+    },
+    "media": {},
+    "movers": {
+      "closed": [
+        {
+          "material": "lt_door_room/doordark",
+          "max": [
+            163.38582677165357,
+            102.36220472440945,
+            86.61417322834646
+          ],
+          "min": [
+            159.4488188976378,
+            55.118110236220474,
+            0.0
+          ],
+          "name": "Door"
+        }
+      ]
+    },
+    "projectors": [],
+    "terms": [
+      "runtime-lights",
+      "area-lights",
+      "direct-visibility",
+      "moving-occluders",
+      "indirect-diffuse-static",
+      "brdf"
+    ]
+  },
+  "map_manifest": null,
+  "name": "door-room",
+  "oracles": [],
+  "probe_model": {
+    "model": "models/props/sphere.mdl",
+    "radius_m": 0.51435
+  },
+  "purpose": "A door the bake never saw: room A's spot shines through a doorway onto room B's floor. Baked open; judged open and with the door closed, when every runtime light's shadow must take the patch off B's floor and leave the lightmap's indirect light",
+  "regions": {
+    "a-door": {
+      "door": [
+        "Door"
+      ],
+      "doorway": [
+        "Doorway"
+      ],
+      "floor": [
+        "FloorA"
+      ],
+      "walls": [
+        "A_Xp",
+        "A_Yn",
+        "A_Yp",
+        "A_Xn",
+        "A_Zp"
+      ]
+    },
+    "b-door": {
+      "door": [
+        "Door"
+      ],
+      "doorway": [
+        "Doorway"
+      ],
+      "floor": [
+        "FloorB"
+      ],
+      "walls": [
+        "B_Xn",
+        "B_Yn",
+        "B_Yp",
+        "B_Xp",
+        "B_Zp"
+      ]
+    }
+  },
+  "schema": "gi-fixture/v1",
+  "stage": "door-room.usda",
+  "states": {
+    "closed": {
+      "layer": "states/closed.usda",
+      "note": "the door closed in the doorway: a moving object the bake never saw"
+    },
+    "open": {
+      "layer": null,
+      "note": "the doorway open (the door hidden): the map is built and baked from it"
+    }
+  }
+}

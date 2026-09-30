@@ -89,6 +89,24 @@
       "mean": 0.07,
       "p99": 0.8,
       "version": 1
+    },
+    {
+      "basis": "a rectangle and a spot through a doorway, the door a mover the bake never saw: the indirect layer stays as baked open (the door's own change to it is not modelled) and the spot's shadow edge under a filtered atlas lookup carry the error",
+      "digest": "f34c373211db02426b1d6e0d13a16f650a6c5c4d4e7948040de85d6894be0000",
+      "fixed": "2026-09-30T16:05:25+00:00",
+      "fixture": "door-room",
+      "mean": 0.08,
+      "p99": 0.8,
+      "version": 1
+    },
+    {
+      "basis": "the runtime direct diffuse light alone against Cycles' DiffDir x DiffCol: exact without shadows (LTC rectangles, a spot), so the door's and the doorway's shadow edges under a filtered atlas lookup carry the p99",
+      "digest": "b1485b0dfa8ba902d45cf44859c4590e357f37555394c688174917d06be4d1d1",
+      "fixed": "2026-09-30T16:13:36+00:00",
+      "fixture": "door-room/direct",
+      "mean": 0.06,
+      "p99": 0.6,
+      "version": 1
     }
   ],
   "metric": "manifest.json error_metric: e = max channel |lab - ref| / mean reference luminance over the judged pixels",

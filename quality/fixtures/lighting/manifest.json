@@ -299,6 +299,40 @@
       ]
     },
     {
+      "bsp": "run/maps/lt_door_room/maps/lt_door_room.bsp",
+      "cameras": [
+        "a-door",
+        "b-door"
+      ],
+      "directory": "door-room",
+      "entities": "entities.json",
+      "lights": {
+        "point": 0,
+        "rect": 2,
+        "sky": 0,
+        "spot": 1,
+        "sun": 0
+      },
+      "map": "lt_door_room",
+      "media": [],
+      "name": "door-room",
+      "projectors": 0,
+      "purpose": "A door the bake never saw: room A's spot shines through a doorway onto room B's floor. Baked open; judged open and with the door closed, when every runtime light's shadow must take the patch off B's floor and leave the lightmap's indirect light",
+      "reused_map": false,
+      "states": [
+        "closed",
+        "open"
+      ],
+      "terms": [
+        "runtime-lights",
+        "area-lights",
+        "direct-visibility",
+        "moving-occluders",
+        "indirect-diffuse-static",
+        "brdf"
+      ]
+    },
+    {
       "bsp": "run/maps/testchmb_a_00_relit/maps/testchmb_a_00_relit.bsp",
       "cameras": [
         "room2",
@@ -384,7 +418,8 @@
         "area-room",
         "mirror-corridor",
         "material-sweep",
-        "portal-pair"
+        "portal-pair",
+        "door-room"
       ],
       "negative_control": "each rectangle evaluated as a point at its centre (no LTC) and without horizon clipping: the glossy floor stripes' elongated highlights and the wall strips' grazing light fail",
       "owner": "RFC/0011-runtime-indirect-lighting.md#area-lights-light-set-v2-amendment-2026-09-28"
@@ -399,6 +434,7 @@
         "mirror-corridor",
         "material-sweep",
         "portal-pair",
+        "door-room",
         "portal-chamber",
         "portal2-chamber"
       ],
@@ -413,6 +449,7 @@
         "sun-colonnade",
         "foggy-hall",
         "portal-pair",
+        "door-room",
         "portal-chamber",
         "portal2-chamber"
       ],
@@ -469,11 +506,19 @@
         "mirror-corridor",
         "material-sweep",
         "portal-pair",
+        "door-room",
         "portal-chamber",
         "portal2-chamber"
       ],
       "negative_control": "the lightmap's indirect layer zero (or the total layer used with runtime direct light, doubling it): every closed room fails its mean",
       "owner": "RFC/0011-runtime-indirect-lighting.md#indirect-light-policy-renderindirect-policyv1"
+    },
+    "moving-occluders": {
+      "fixtures": [
+        "door-room"
+      ],
+      "negative_control": "the bake's total layer with the door closed (a mover that blocks no baked light), or runtime direct light without the door as a caster: the spot's patch on room B's floor stays lit and p99 fails",
+      "owner": "RFC/0016-render-core.md#runtime-direct-light-amended-2026-09-30"
     },
     "output": {
       "fixtures": [],
@@ -508,6 +553,7 @@
         "foggy-hall",
         "material-sweep",
         "portal-pair",
+        "door-room",
         "portal-chamber",
         "portal2-chamber"
       ],

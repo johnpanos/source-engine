@@ -1,0 +1,135 @@
+{
+  "entities": [
+    {
+      "_fixture_light": "LampA",
+      "angles": "90.0000 0.0000 90.0000",
+      "brightness": "3.000000",
+      "classname": "light_rect",
+      "color": "255.0000 255.0000 255.0000",
+      "height": "23.6220",
+      "origin": "59.0551 78.7402 117.7165",
+      "two_sided": "0",
+      "width": "23.6220"
+    },
+    {
+      "_fixture_light": "LampB",
+      "angles": "90.0000 0.0000 90.0000",
+      "brightness": "6.000000",
+      "classname": "light_rect",
+      "color": "255.0000 255.0000 255.0000",
+      "height": "47.2440",
+      "origin": "283.4646 78.7402 117.7165",
+      "two_sided": "0",
+      "width": "47.2440"
+    },
+    {
+      "_cone": "16.0000",
+      "_constant_attn": "0",
+      "_exponent": "1.0000",
+      "_fixture_light": "SpotA",
+      "_inner_cone": "10.0000",
+      "_light": "255.0000 247.1272 234.7192 3060.0000",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "angles": "-28.5231 0.0000 0",
+      "classname": "light_spot",
+      "origin": "39.3701 78.7402 98.4252",
+      "pitch": "-28.5231"
+    }
+  ],
+  "fixture": "door-room",
+  "lights": [
+    {
+      "center_m": [
+        1.5,
+        2.0,
+        2.99
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "half_u_m": [
+        0.3,
+        0.0,
+        0.0
+      ],
+      "half_v_m": [
+        0.0,
+        -0.3,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "LampA",
+      "radiance": [
+        3.0,
+        3.0,
+        3.0
+      ],
+      "size_m": [
+        0.6,
+        0.6
+      ]
+    },
+    {
+      "center_m": [
+        7.2,
+        2.0,
+        2.99
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "half_u_m": [
+        0.6,
+        0.0,
+        0.0
+      ],
+      "half_v_m": [
+        0.0,
+        -0.6,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "LampB",
+      "radiance": [
+        6.0,
+        6.0,
+        6.0
+      ],
+      "size_m": [
+        1.2,
+        1.2
+      ]
+    },
+    {
+      "center_m": [
+        1.0,
+        2.0,
+        2.5
+      ],
+      "direction": [
+        0.8786245095725466,
+        0.0,
+        -0.47751332041986233
+      ],
+      "exponent": 1.0,
+      "inner_degrees": 10.0,
+      "kind": "spot",
+      "name": "SpotA",
+      "outer_degrees": 16.0,
+      "radiance": [
+        30000.0,
+        28000.0,
+        25000.0
+      ]
+    }
+  ],
+  "schema": "lighting-entities/v1",
+  "units": "Source units"
+}
