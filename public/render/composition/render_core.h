@@ -119,6 +119,12 @@ struct RenderCoreBinding
 	render::legacy::ICorePassRecorder *corePasses = nullptr;
 	// The BSP world drawn by the core; null when no legacy backend is composed.
 	IRenderCoreWorld *world = nullptr;
+	// The renderer's compute service for the engine's indirect-light
+	// producers (render/gpu_compute.h) on the core (RFC 0016 K12,
+	// render.pass.indirect): it runs the SDF producer's program. Null when
+	// the backend has no core frames to run it before. The ray-query
+	// producer keeps the legacy backend's service (capabilities).
+	gpu_compute::IGpuCompute *gpuCompute = nullptr;
 	// For logs and evidence only (CAP011 rule 5): "null", "vulkan", "gl".
 	const char *deviceName = nullptr;
 };

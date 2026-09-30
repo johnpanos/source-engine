@@ -321,6 +321,8 @@ private:
 		// Pushed with its own render target (water, monitors) instead of the
 		// current one.
 		bool m_bExplicitTarget;
+		// Draws to the back buffer: the target it resolved at its push.
+		bool m_bBackBuffer;
 	};
 
 
@@ -344,6 +346,7 @@ private:
 
 public:
 	bool IsOutermostSceneView() const;
+	bool CurrentSceneView( VMatrix &view, VMatrix &projection, int viewport[4] ) const;
 };
 
 
@@ -370,6 +373,27 @@ bool CRender::IsOutermostSceneView() const
 bool R_IsOutermostSceneView()
 {
 	return gRender.IsOutermostSceneView();
+}
+
+// The top 3D view as it was pushed: its matrices, its viewport and whether
+// it draws to the back buffer.
+bool CRender::CurrentSceneView( VMatrix &view, VMatrix &projection, int viewport[4] ) const
+{
+	if ( !m_ViewStack.Count() || m_ViewStack.Top().m_bIs2DView )
+		return false;
+	const ViewStack_t &top = m_ViewStack.Top();
+	view = top.m_matrixView;
+	projection = top.m_matrixProjection;
+	viewport[0] = top.m_View.x;
+	viewport[1] = top.m_View.y;
+	viewport[2] = top.m_View.width;
+	viewport[3] = top.m_View.height;
+	return top.m_bBackBuffer;
+}
+
+bool R_CurrentSceneView( VMatrix &view, VMatrix &projection, int viewport[4] )
+{
+	return gRender.CurrentSceneView( view, projection, viewport );
 }
 
 //-----------------------------------------------------------------------------
@@ -691,6 +715,7 @@ void CRender::Push3DView( const CViewSetup &view, int nFlags, ITexture* pRenderT
 	RenderCoreWorld_ViewBegin();
 	m_ViewStack[i].m_bNoDraw = ( ( nFlags & VIEW_NO_DRAW ) != 0 );
 	m_ViewStack[i].m_bExplicitTarget = pRenderTarget != NULL;
+	m_ViewStack[i].m_bBackBuffer = false;
 	if ( ViewOracleEnabled() )
 		ViewOracleBegin( false, view, nFlags, pRenderTarget, m_ViewStack[i].m_bNoDraw, i );
 
@@ -719,6 +744,7 @@ void CRender::Push3DView( const CViewSetup &view, int nFlags, ITexture* pRenderT
 		{
 			pRenderTarget = pRenderContext->GetRenderTarget();
 		}
+		m_ViewStack[i].m_bBackBuffer = pRenderTarget == NULL;
 
 		// Push render target and viewport 
 		pRenderContext->PushRenderTargetAndViewport( pRenderTarget, pDepthTexture, topView.x, topView.y, topView.width, topView.height );

@@ -251,12 +251,13 @@ public:
 			return foundation::MakeUnexpected( IndirectError::MissingSceneData );
 		if ( scene.policy != indirect_policy::Policy::BakedPlusDelta )
 			return foundation::MakeUnexpected( IndirectError::UnsupportedPolicy );
-		if ( !scene.gpu || !scene.gpu->Capabilities().compute ||
-		     ( rayQuery && !scene.gpu->Capabilities().rayQuery ) )
+		gpu_compute::IGpuCompute *gpu =
+		    rayQuery && scene.rayQueryGpu ? scene.rayQueryGpu : scene.gpu;
+		if ( !gpu || !gpu->Capabilities().compute || ( rayQuery && !gpu->Capabilities().rayQuery ) )
 			return foundation::MakeUnexpected( IndirectError::MissingFeature );
 		if ( scene.baked->layout.gridCount != 1 || scene.sdf->layout.lightCount == 0 )
 			return foundation::MakeUnexpected( IndirectError::MissingSceneData );
-		m_gpu = scene.gpu;
+		m_gpu = gpu;
 		m_baked = scene.baked;
 		m_sdf = scene.sdf;
 		const mapcontainer::ProbeGridLayout &grid = m_baked->layout.grids[0];
@@ -750,11 +751,15 @@ private:
 					taken[p] = 1;
 					consider( p );
 				}
+			// The walk starts at the cursor as it was: moving the start
+			// while walking revisits probes already chosen.
+			const uint32_t start = m_cursor;
 			for ( uint32_t n = 0, added = 0; n < m_probes && added < budget; ++n )
 			{
-				const uint32_t p = ( m_cursor + n ) % m_probes;
+				const uint32_t p = ( start + n ) % m_probes;
 				if ( taken[p] || !( NeedsReference( p ) || NeedsLive( p ) ) )
 					continue;
+				taken[p] = 1;
 				chosen.push_back( p );
 				++added;
 				m_cursor = ( p + 1 ) % m_probes;

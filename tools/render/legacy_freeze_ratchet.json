@@ -412,7 +412,6 @@
       "materialsystem/shaderapivulkan/shaders/regen_material_spv.py": 397,
       "materialsystem/shaderapivulkan/shaders/screenspace_post.frag": 288,
       "materialsystem/shaderapivulkan/shaders/screenspace_post.vert": 14,
-      "materialsystem/shaderapivulkan/shaders/sdf_probe_trace.comp": 913,
       "materialsystem/shaderapivulkan/shaders/skin.frag": 338,
       "materialsystem/shaderapivulkan/shaders/skin.vert": 80,
       "materialsystem/shaderapivulkan/shaders/solidenergy.frag": 363,

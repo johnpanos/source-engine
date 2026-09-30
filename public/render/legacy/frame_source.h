@@ -81,11 +81,26 @@ protected:
 	~ILegacyFrameSource() = default;
 };
 
+// Work the composition root runs on the render sequence ahead of each frame's
+// graph, on the frame's device (RFC 0016 K12: the indirect-light producers'
+// compute, in a submission of its own before the frame's).
+class ILegacyFrameWork
+{
+public:
+	virtual void BeforeFrame( device::IRenderDevice2 &device ) = 0;
+
+protected:
+	~ILegacyFrameWork() = default;
+};
+
 class ILegacyFrameExecutor
 {
 public:
 	// Runs one frame: Prepare, the graph with one pass per stage, Finish.
 	virtual bool RunFrame( ILegacyFrameSource &source ) = 0;
+	// Binds (or with null, unbinds) the work run before each frame. Called
+	// by the composition root while no frame runs.
+	virtual void SetFrameWork( ILegacyFrameWork *work ) = 0;
 	// Frames run so far, and the last frame's graph passes (evidence).
 	virtual unsigned long long Frames() const = 0;
 	virtual unsigned int LastFramePasses() const = 0;

@@ -28,7 +28,9 @@
 #include "../rendertest/indirect_contract.h"
 #include "headless_vulkan.h"
 #include "render/indirect_radiosity.h"
+#include "render/device/vulkan/provider.h"
 #include "render/indirect_sdf.h"
+#include "render/pass/indirect/port_compute.h"
 #include "testing/conformance_result.h"
 
 #include <algorithm>
@@ -79,9 +81,34 @@ public:
 	                                                        } )
 	{
 	}
+	// The SDF producer's service (RFC 0016 K12): render.pass.indirect on a
+	// core device of its own (the Vulkan adapter), flushed with every frame.
+	// The ray-query producer keeps the backend's service (Service()).
+	bool CreateCore()
+	{
+		render::device::vulkan::VulkanAdapterOptions options;
+		auto device = render::device::vulkan::Create( options );
+		if ( !device )
+			return false;
+		m_core = std::move( device ).Value();
+		m_sdf = render::pass::indirect::PortCompute::Create();
+		return true;
+	}
+	gpu_compute::IGpuCompute &SdfService() { return *m_sdf; }
+	gpu_compute::IGpuCompute &ServiceFor( TraceMode mode )
+	{
+		return mode == TraceMode::Sdf ? SdfService() : Service();
+	}
 	// Before the device goes.
 	void Release()
 	{
+		if ( m_sdf && m_core )
+		{
+			(void)m_core->WaitIdle();
+			m_sdf->ReleaseDevice( *m_core );
+		}
+		m_sdf.reset();
+		m_core.reset();
 		if ( m_queries != VK_NULL_HANDLE )
 			vkDestroyQueryPool( m_device.device, m_queries, nullptr );
 		m_queries = VK_NULL_HANDLE;
@@ -94,6 +121,16 @@ public:
 
 	void Submit()
 	{
+		if ( m_sdf )
+		{
+			// The frame's producer work, completed and read back before the
+			// next frame, as a paced renderer's would be a frame or two later.
+			const bool submitted = m_sdf->Flush( *m_core );
+			(void)m_core->WaitIdle();
+			(void)m_sdf->Flush( *m_core );
+			if ( !submitted )
+				++m_coreFailures;
+		}
 		const uint64_t serial = ++m_submitted;
 		VkCommandBuffer cmd = VK_NULL_HANDLE;
 		const auto start = std::chrono::steady_clock::now();
@@ -137,6 +174,13 @@ public:
 	}
 	void Drain()
 	{
+		if ( m_sdf )
+		{
+			// Submit what is queued, wait, and read back what completed.
+			(void)m_sdf->Flush( *m_core );
+			(void)m_core->WaitIdle();
+			(void)m_sdf->Flush( *m_core );
+		}
 		while ( !m_inFlight.empty() )
 		{
 			vkWaitForFences( m_device.device, 1, &m_inFlight.front().fence, VK_TRUE, UINT64_MAX );
@@ -186,6 +230,12 @@ private:
 	Device &m_device;
 	ComputeResources &m_resources;
 	GpuComputeService m_service;
+	std::unique_ptr<render::device::IRenderDevice2> m_core;
+	std::unique_ptr<render::pass::indirect::PortCompute> m_sdf;
+
+public:
+	// Core submissions that failed (checked once at the end).
+	uint32_t m_coreFailures = 0;
 	std::deque<Pending> m_inFlight;
 	uint64_t m_submitted = 0;
 	uint64_t m_completed = 0;
@@ -303,7 +353,7 @@ bool ReferenceSides( Frames &frames, TraceMode mode, const std::shared_ptr<const
 	scene.baked = seed;
 	scene.sdf = sdf;
 	scene.geometry = geometry;
-	scene.gpu = &frames.Service();
+	scene.gpu = &frames.ServiceFor( mode );
 	scene.policy = indirect_policy::Policy::BakedPlusDelta;
 	if ( !producer.Begin( scene, PublishedVolume{ 0, seed }, frames ) )
 		return false;
@@ -468,7 +518,7 @@ Driven Drive( Frames &frames, const std::shared_ptr<const Volume> &seed,
 	IndirectScene scene;
 	scene.baked = seed;
 	scene.sdf = sdf;
-	scene.gpu = &frames.Service();
+	scene.gpu = &frames.SdfService();
 	scene.policy = indirect_policy::Policy::BakedPlusDelta;
 	if ( !producer.Begin( scene, PublishedVolume{ 0, seed }, frames ) )
 		return out;
@@ -653,7 +703,7 @@ int Bench( Device &d, Frames &frames, const BenchOptions &options )
 	scene.baked = baked;
 	scene.sdf = sdf;
 	scene.geometry = geometry;
-	scene.gpu = &frames.Service();
+	scene.gpu = &frames.ServiceFor( options.wmsh ? TraceMode::RayQuery : TraceMode::Sdf );
 	scene.policy = indirect_policy::Policy::BakedPlusDelta;
 	if ( !producer.Begin( scene, PublishedVolume{ 0, baked }, frames ) )
 		return 2;
@@ -759,7 +809,7 @@ std::string PortalTransport(
 	{
 		TracedProducer producer( mode );
 		IndirectScene scene = base;
-		scene.gpu = &frames.Service();
+		scene.gpu = &frames.ServiceFor( mode );
 		scene.policy = indirect_policy::Policy::BakedPlusDelta;
 		if ( !producer.Begin( scene, PublishedVolume{ 0, scene.baked }, frames ) )
 			return false;
@@ -842,7 +892,7 @@ std::string UnbakedLights( Frames &frames, TraceMode mode, const IndirectScene &
 {
 	TracedProducer producer( mode );
 	IndirectScene scene = base;
-	scene.gpu = &frames.Service();
+	scene.gpu = &frames.ServiceFor( mode );
 	scene.policy = indirect_policy::Policy::BakedPlusDelta;
 	if ( !producer.Begin( scene, PublishedVolume{ 0, scene.baked }, frames ) )
 		return "Begin failed";
@@ -909,6 +959,7 @@ int main( int argc, char **argv )
 	std::string error;
 	Check( resources.Init( *d.host, d.chain.Enabled(), &error ), "compute: " + error );
 	Frames frames( d, resources );
+	Check( frames.CreateCore(), "a core device (the Vulkan adapter) for the SDF producer" );
 	if ( argc >= 4 && std::string( argv[1] ) == "--bench" )
 	{
 		BenchOptions options;
@@ -991,6 +1042,7 @@ int main( int argc, char **argv )
 			std::printf( "the ray-query producer: no ray query on this device\n" );
 			continue;
 		}
+		scene.gpu = &frames.ServiceFor( mode );
 		const auto started = std::chrono::steady_clock::now();
 		const auto broken = RunContract(
 		    [mode]( const FakeGpu & )
@@ -1115,7 +1167,7 @@ int main( int argc, char **argv )
 		IndirectScene scene2;
 		scene2.baked = seed;
 		scene2.sdf = sdf;
-		scene2.gpu = &frames.Service();
+		scene2.gpu = &frames.SdfService();
 		scene2.policy = indirect_policy::Policy::BakedPlusDelta;
 		Check( bool( producer.Begin( scene2, PublishedVolume{ 0, seed }, frames ) ),
 		    "Begin on the contract scene" );

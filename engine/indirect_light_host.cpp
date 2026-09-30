@@ -376,8 +376,11 @@ public:
 			       scene.gpu->Capabilities().compute;
 		// Ray query: also the world's triangles and a device that has it.
 		if ( kind == ProducerKind::RayQuery )
+		{
+			gpu_compute::IGpuCompute *gpu = scene.rayQueryGpu ? scene.rayQueryGpu : scene.gpu;
 			return kRayQueryProfileSupported && scene.sdf != nullptr && scene.geometry != nullptr &&
-			       scene.gpu != nullptr && scene.gpu->Capabilities().rayQuery;
+			       gpu != nullptr && gpu->Capabilities().rayQuery;
+		}
 		// The contract's scripted fake: switching tests only, never players.
 		return kind == ProducerKind::ScriptedFake && r_indirect_test_fake.GetBool();
 	}
@@ -754,6 +757,7 @@ void IndirectLight_BeginMap( const IndirectLightMapData &map )
 	if ( map.wmsh && map.wmshSize && host.scene.sdf )
 		host.scene.geometry = WorldGeometryFromMesh( map.wmsh, map.wmshSize );
 	host.scene.gpu = GpuCompute();
+	host.scene.rayQueryGpu = RenderCoreHost_RayQueryGpuCompute();
 	host.occluded.clear();
 	if ( host.scene.sdf )
 		host.focus.Build( *baked );

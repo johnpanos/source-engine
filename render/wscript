@@ -33,6 +33,7 @@ PORTABLE = [
 	'pass/ssr',
 	'pass/ao',
 	'pass/bounce',
+	'pass/indirect',
 	'legacy',
 	'composition',
 ]

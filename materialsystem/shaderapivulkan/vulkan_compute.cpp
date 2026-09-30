@@ -861,7 +861,6 @@ uint32_t GpuComputeService::CreateProgram(
 		size_t bytes;
 	};
 	static const Builtin builtins[] = {
-	    { "sdf-probe-trace", g_sdfProbeTraceSpv, sizeof( g_sdfProbeTraceSpv ) },
 	    { "ray-query-probe-trace", g_rayQueryProbeTraceSpv, sizeof( g_rayQueryProbeTraceSpv ) },
 	};
 	std::vector<ComputeBinding> kinds( count );

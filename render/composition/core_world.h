@@ -21,6 +21,7 @@
 #include "render/legacy/core_passes.h"
 #include "render/pass/debug/debug_overlays.h"
 #include "render/pass/ao/ao.h"
+#include "render/pass/indirect/port_compute.h"
 #include "render/pass/lights/map_lights.h"
 #include "render/pass/shadows/shadow_passes.h"
 #include "render/pass/shadows/shadow_plan.h"
@@ -96,8 +97,13 @@ public:
 	{
 		return m_Output.Record( encoder, targets );
 	}
+	// The indirect-light producers' compute (render.pass.indirect), whose
+	// device objects go with the backend's device.
+	void BindCompute( pass::indirect::PortCompute *compute ) { m_Compute = compute; }
 	void ReleaseDevice( device::IRenderDevice2 &device ) override
 	{
+		if ( m_Compute )
+			m_Compute->ReleaseDevice( device );
 		m_Pass.ReleaseDevice( device );
 		m_Overlays.ReleaseDevice( device );
 		m_Output.ReleaseDevice( device );
@@ -216,6 +222,7 @@ private:
 	std::atomic<unsigned long long> m_Redrawn{ 0 };
 	CoreOutput m_Output;
 	StageCapture m_Capture{ *this };
+	pass::indirect::PortCompute *m_Compute = nullptr;
 	LightSink m_Lights;
 	// The stage map's authored lights (its entity lump), and whether its
 	// lightmap packs the sun's baked visibility (the total page's alpha).

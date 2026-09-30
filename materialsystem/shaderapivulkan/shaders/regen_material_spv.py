@@ -78,13 +78,13 @@ SHADERS = (
                                                                "-DCLIP_PLANES"]),
     # RFC 0011 G5: the compute conformance suite's program.
     ("g_computeFillSpv", "compute_fill.comp", []),
-    # RFC 0011 G6: the SDF-traced producer's probe update.
-    ("g_sdfProbeTraceSpv", "sdf_probe_trace.comp", []),
     # R50-PARALLAX: the reflection-probe GLSL suite's program.
     ("g_reflectionProbesCheckSpv", "reflection_probes_check.comp", []),
-    # RFC 0011 G7: the same update traced with ray queries (SPIR-V 1.5).
-    ("g_rayQueryProbeTraceSpv", "sdf_probe_trace.comp", ["--target-env=vulkan1.2",
-                                                         "-DRAY_QUERY"]),
+    # RFC 0011 G7: the probe update traced with ray queries (SPIR-V 1.5), from
+    # the one copy of the GLSL (render.pass.indirect, which runs the SDF
+    # variant on the core since RFC 0016 K12).
+    ("g_rayQueryProbeTraceSpv", "../../../render/pass/indirect/sdf_probe_trace.comp",
+     ["--target-env=vulkan1.2", "-DRAY_QUERY"]),
     ("g_worldGlassFragSpv", "world_pbr_glass.frag", []),
     ("g_worldGlassClipFragSpv", "world_pbr_glass.frag", ["-DCLIP_PLANES"]),
     ("g_materialTexFragSpv", "demo_dyn_tex.frag", []),

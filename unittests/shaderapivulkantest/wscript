@@ -236,7 +236,8 @@ def build(bld):
 		target='indirect_sdf_native_conformance',
 		name='indirect_sdf_native_conformance',
 		includes=includes,
-		use=['VULKAN', 'mapcontainer', 'vulkan_debug', 'render_device_vulkan', 'render_spv'],
+		use=['VULKAN', 'mapcontainer', 'vulkan_debug', 'render_pass_indirect', 'render_shaderlib',
+			'render_device_vulkan', 'render_device', 'render_spv'],
 		install_path=None)
 
 	# RFC 0011 render.indirect-switching on native Vulkan: the producer

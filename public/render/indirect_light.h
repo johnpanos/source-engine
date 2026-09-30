@@ -387,6 +387,11 @@ struct IndirectScene
 	std::shared_ptr<const SdfData> sdf;       // SDFV: the SDF-traced producer's input
 	std::shared_ptr<const WorldGeometry> geometry; // the ray-query producer's triangles
 	gpu_compute::IGpuCompute *gpu = nullptr;  // the renderer's compute service, if any
+	// The service the ray-query producer traces on when it differs (RFC 0016
+	// K12: the core runs the SDF producer, and its device port has no
+	// acceleration structures yet, so the legacy backend's keeps ray query);
+	// null: `gpu`.
+	gpu_compute::IGpuCompute *rayQueryGpu = nullptr;
 };
 
 // GPU resources a producer owns, released behind the provider's completion

@@ -12,6 +12,7 @@
 #include "render_core_world.h"
 #include "render/composition/render_core_world.h"
 #include "gl_matsysiface.h"
+#include "gl_rmain.h"
 #include "host.h"
 #include "materialsystem/imaterial.h"
 #include "materialsystem/imaterialvar.h"
@@ -611,10 +612,11 @@ bool RenderCoreWorldDraw_ViewEligible( unsigned long flags, bool bWorldMeshWorld
 			     "the WMSH path draws the world\n" );
 		return false;
 	}
-	CMatRenderContextPtr pRenderContext( materials );
 	// Only the back buffer is a slot target. The view's fog (range or height)
 	// is a frame term, captured when the slot is marked.
-	return pRenderContext->GetRenderTarget() == NULL;
+	VMatrix view, projection;
+	int viewport[4];
+	return R_CurrentSceneView( view, projection, viewport );
 }
 
 bool RenderCoreWorldDraw_Takes( SurfaceHandle_t surfID )
@@ -628,19 +630,18 @@ bool RenderCoreWorldDraw_Takes( SurfaceHandle_t surfID )
 // view's transform and viewport, and marks its slot here in the stream.
 static bool QueueCoreView( IRenderCoreWorld *pWorld, const unsigned int *pEntries, int nCount )
 {
-	CMatRenderContextPtr pRenderContext( materials );
+	// The engine's view as pushed: the legacy context holds the same
+	// matrices and viewport, and the core reads no legacy stream.
 	VMatrix view, projection;
-	pRenderContext->GetMatrix( MATERIAL_VIEW, &view );
-	pRenderContext->GetMatrix( MATERIAL_PROJECTION, &projection );
+	int rect[4];
+	R_CurrentSceneView( view, projection, rect );
 	const VMatrix worldToClip = projection * view;
 	float toClip[16];
 	for ( int r = 0; r < 4; ++r )
 		for ( int c = 0; c < 4; ++c )
 			toClip[r * 4 + c] = worldToClip.m[r][c];
-	int x, y, width, height;
-	pRenderContext->GetViewport( x, y, width, height );
 	const float viewport[6] = {
-	    float( x ), float( y ), float( width ), float( height ), 0.0f, 1.0f };
+	    float( rect[0] ), float( rect[1] ), float( rect[2] ), float( rect[3] ), 0.0f, 1.0f };
 	// The view and projection alone too: a world stage clusters the frame's
 	// lights for the view with them.
 	float toView[16], projectionRows[16];

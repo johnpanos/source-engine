@@ -944,6 +944,20 @@
         ]
       },
       {
+        "id": "render.pass.indirect",
+        "description": "RFC 0016 K12, render.lighting.v1 indirect diffuse: the indirect-light producers' GPU work (RFC 0011's SDF producer, render.gpu-compute.v1) on the core's device port.",
+        "paths": [
+          "public/render/pass/indirect/",
+          "render/pass/indirect/"
+        ],
+        "allowedEdges": [
+          "foundation",
+          "render.device",
+          "render.contracts",
+          "render.shader-library"
+        ]
+      },
+      {
         "id": "render.pass.ao",
         "description": "RFC 0016 render.lighting.v1 'Ambient occlusion': ground-truth ambient occlusion (Jimenez et al. 2016) from the view's depth and normals, applied by the surface program to indirect light only.",
         "paths": [
@@ -1036,6 +1050,7 @@
           "render.pass.lights",
           "render.pass.shadows",
           "render.pass.ao",
+          "render.pass.indirect",
           "render.contracts",
           "world.map-container"
         ]
@@ -1583,6 +1598,13 @@
           "render_shaderlib"
         ]
       },
+      "render_pass_indirect": {
+        "allowedUse": [
+          "render_device",
+          "render_spv",
+          "render_shaderlib"
+        ]
+      },
       "render_pass_ao": {
         "allowedUse": [
           "render_device",
@@ -1684,7 +1706,8 @@
           "mapcontainer",
           "render_pass_lights",
           "render_pass_shadows",
-          "render_pass_ao"
+          "render_pass_ao",
+          "render_pass_indirect"
         ]
       },
       "jobsystem": {

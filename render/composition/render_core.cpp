@@ -10,6 +10,8 @@
 #include "render/device/null/provider.h"
 #include "core_world.h"
 #include "render/legacy/core_backend.h"
+#include "render/legacy/frame_source.h"
+#include "render/pass/indirect/port_compute.h"
 #include "render/pass/present/feature.h"
 #include "render/material/program_resolver.h"
 #include "render/renderer/renderer_factory.h"
@@ -41,9 +43,23 @@ struct RenderCore
 	// Pooled culling over the root's compute workers (RenderCoreConfig::
 	// computeWorkers); inline on the caller when the root gave none.
 	std::unique_ptr<jobsystem::PooledExecutor> cullJobs;
+	// The indirect-light producers' compute (render.pass.indirect), flushed
+	// ahead of each legacy frame.
+	std::unique_ptr<render::pass::indirect::PortCompute> compute;
+	struct ComputeFlush final : render::legacy::ILegacyFrameWork
+	{
+		render::pass::indirect::PortCompute *compute = nullptr;
+		void BeforeFrame( render::device::IRenderDevice2 &device ) override
+		{
+			(void)compute->Flush( device );
+		}
+	} computeFlush;
+	bool computeBound = false;
 
 	~RenderCore()
 	{
+		if ( computeBound )
+			render::legacy::LegacyFrameExecutor().SetFrameWork( nullptr );
 		// Borrowers first: the markers forward to the renderer, and the
 		// renderer's frames reference the device.
 		if ( frontend )
@@ -276,6 +292,19 @@ extern "C" RenderCore *RenderCore_Create( const RenderCoreConfig *config, Render
 	core->binding.corePasses = core->frontend->CorePasses();
 	core->world =
 	    std::make_unique<render::composition::CoreWorld>( *core->frontend, *core->renderer );
+	// RFC 0016 K12: the indirect-light producers' GPU work runs on the core,
+	// flushed on the render sequence ahead of each frame the legacy frame
+	// executor runs; only the native Vulkan backend runs its frames there.
+	if ( config->legacyBackend && config->legacyBackend->id &&
+	     std::string_view( config->legacyBackend->id ) == "native-vulkan" )
+	{
+		core->compute = render::pass::indirect::PortCompute::Create();
+		core->computeFlush.compute = core->compute.get();
+		render::legacy::LegacyFrameExecutor().SetFrameWork( &core->computeFlush );
+		core->computeBound = true;
+		core->world->BindCompute( core->compute.get() );
+		core->binding.gpuCompute = core->compute.get();
+	}
 	core->renderer->AddStageHooks( core->world.get() );
 	core->frontend->SetForwardedRecorder( core->world.get() );
 	core->binding.world = core->world.get();

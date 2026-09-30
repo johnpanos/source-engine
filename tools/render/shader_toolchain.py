@@ -96,6 +96,7 @@ LAB = "render/lab"
 SSR = "render/pass/ssr"
 AO = "render/pass/ao"
 BOUNCE = "render/pass/bounce"
+INDIRECT = "render/pass/indirect"
 LIGHTS_TESTS = "unittests/rendertest/core/pass/lights"
 SHADOWS_TESTS = "unittests/rendertest/core/pass/shadows"
 
@@ -204,6 +205,10 @@ GENERATED = {
         "the output pass: exposure, tone map and output encoding (RFC 0016, render.output.v1)", (
         ("kOutputVertex", OUTPUT + "/output.vert", DEVICE_OPTIONS),
         ("kOutputFragment", OUTPUT + "/output.frag", DEVICE_OPTIONS))),
+    "indirect_spv.h": ("render::pass::indirect::spirv",
+        "render.pass.indirect: the indirect-light producers' GPU work (RFC 0016 K12, "
+        "RFC 0011's SDF producer)", (
+        ("kSdfProbeTraceCompute", INDIRECT + "/sdf_probe_trace.comp", DEVICE_OPTIONS),)),
     "bounce_spv.h": ("render::pass::bounce::spirv",
         "render.pass.bounce: the projected lights' one bounce (RFC 0016 K11)", (
         ("kBounceCompute", BOUNCE + "/bounce.comp", DEVICE_OPTIONS),)),
@@ -370,7 +375,7 @@ GLSL_GENERATED = {
 # ::glsl sibling, with the same array names.
 CORE_PROGRAM_HEADERS = ("cluster_assign_spv.h", "debug_spv.h", "families_spv.h", "lines_spv.h",
                         "output_spv.h", "shadow_spv.h", "skin_spv.h", "volumetric_spv.h",
-                        "ssr_spv.h", "ao_spv.h", "bounce_spv.h")
+                        "ssr_spv.h", "ao_spv.h", "bounce_spv.h", "indirect_spv.h")
 for _header in CORE_PROGRAM_HEADERS:
     _namespace, _purpose, _rows = GENERATED[_header]
     GLSL_GENERATED[_header.replace("_spv.h", "_glsl.h")] = (

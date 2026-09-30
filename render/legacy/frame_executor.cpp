@@ -8,6 +8,7 @@
 #include "render/graph/executor.h"
 #include "render/legacy/frame_source.h"
 
+#include <atomic>
 #include <string>
 #include <utility>
 
@@ -27,6 +28,8 @@ public:
 			return false;
 		if ( skip )
 			return true;
+		if ( ILegacyFrameWork *work = m_Work.load( std::memory_order_acquire ) )
+			work->BeforeFrame( source.Device() );
 		// One side-effect pass per stage: the compiler keeps side-effect
 		// passes in declaration order, and the serial executor records them
 		// on one encoder, so the stages form one submission in order.
@@ -62,11 +65,16 @@ public:
 		return submitted && recorded && finished;
 	}
 
+	void SetFrameWork( ILegacyFrameWork *work ) override
+	{
+		m_Work.store( work, std::memory_order_release );
+	}
 	unsigned long long Frames() const override { return m_Frames; }
 	unsigned int LastFramePasses() const override { return m_LastPasses; }
 
 private:
 	graph::SerialGraphExecutor m_Executor;
+	std::atomic<ILegacyFrameWork *> m_Work{ nullptr };
 	unsigned long long m_Frames = 0;
 	unsigned int m_LastPasses = 0;
 };

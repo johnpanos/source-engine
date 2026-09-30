@@ -37,6 +37,7 @@ struct RenderCoreHostState
 	const char *deviceName = nullptr;
 	render::legacy::ILegacyCapabilities *capabilities = nullptr;
 	IRenderCoreWorld *world = nullptr;
+	gpu_compute::IGpuCompute *gpuCompute = nullptr; // the core's (RFC 0016 K12)
 	std::unique_ptr<render::scene::IRenderScene> worldScene;
 	std::vector<int> worldLeaves; // snapshot index -> leaf, or -(prop + 1) (RFC 0016 K5)
 	bool inFrame = false;
@@ -156,6 +157,7 @@ DLL_EXPORT bool Engine_BindRenderCore( const RenderCoreBinding *pBinding )
 	host.deviceName = pBinding->deviceName;
 	host.capabilities = pBinding->capabilities;
 	host.world = pBinding->world;
+	host.gpuCompute = pBinding->gpuCompute;
 	host.bound = true;
 	return true;
 }
@@ -269,6 +271,15 @@ light_set::ILightSetConsumer *RenderCoreHost_LightSetConsumer()
 }
 
 gpu_compute::IGpuCompute *RenderCoreHost_GpuCompute()
+{
+	// RFC 0016 K12: the producers' compute runs on the core when it offers it.
+	RenderCoreHostState &host = Host();
+	if ( host.bound && host.gpuCompute )
+		return host.gpuCompute;
+	return host.capabilities ? host.capabilities->GpuCompute() : nullptr;
+}
+
+gpu_compute::IGpuCompute *RenderCoreHost_RayQueryGpuCompute()
 {
 	RenderCoreHostState &host = Host();
 	return host.capabilities ? host.capabilities->GpuCompute() : nullptr;

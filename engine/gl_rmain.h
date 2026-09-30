@@ -36,6 +36,9 @@ void R_DrawPortals();
 // True while drawing the outermost perspective 3D view into the current
 // target, which no client clip plane restricts.
 bool R_IsOutermostSceneView();
+// The top 3D view's matrices and viewport as pushed; true when it draws to
+// the back buffer.
+bool R_CurrentSceneView( VMatrix &view, VMatrix &projection, int viewport[4] );
 float GetScreenAspect( );
 void R_CheckForLightingConfigChanges();
 

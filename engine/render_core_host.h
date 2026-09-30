@@ -34,6 +34,9 @@ bool RenderCoreHost_IsBound();
 world_mesh_gpu::IWorldMeshUpload *RenderCoreHost_WorldMeshUpload();
 light_set::ILightSetConsumer *RenderCoreHost_LightSetConsumer();
 gpu_compute::IGpuCompute *RenderCoreHost_GpuCompute();
+// The legacy backend's compute service, for the ray-query producer alone:
+// the core's device port has no acceleration structures yet (RFC 0016 K12).
+gpu_compute::IGpuCompute *RenderCoreHost_RayQueryGpuCompute();
 // RFC 0016 K5: the BSP world drawn by the core (render_core_world.h in
 // public/render/composition); null when no core is bound.
 class IRenderCoreWorld;
