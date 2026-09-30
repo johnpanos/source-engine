@@ -11,6 +11,7 @@
 #include "family_program.h"
 
 #include "render/material/lightmapped_family.h"
+#include "render/material/pbr_family.h"
 #include "render/material/registry.h"
 #include "render/material/unlit_family.h"
 #include "render/material/vmt_mapping.h"
@@ -184,6 +185,9 @@ struct ProgramResolver::State
 	// Owns the surface program; every point the resolver makes is drawn
 	// through it.
 	std::unique_ptr<LightmappedFamily> lightmapped;
+	// World pbr (SetWorldPbr) and the scene terms its points take.
+	bool worldPbr = false;
+	std::uint32_t sceneTerms = 0;
 };
 
 ProgramResolver::ProgramResolver( std::unique_ptr<State> state ) : m_State( std::move( state ) )
@@ -193,7 +197,7 @@ ProgramResolver::~ProgramResolver() = default;
 
 namespace
 {
-constexpr std::string_view kProgramNames[] = { "lightmapped", "unlit", "preview" };
+constexpr std::string_view kProgramNames[] = { "lightmapped", "unlit", "preview", "pbr" };
 }
 
 std::span<const std::string_view> ProgramResolver::ProgramNames()
@@ -290,7 +294,51 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 		out.drawInputs = { "lightmap" }; // bound, not read: a neutral page serves
 		return out;
 	}
+	if ( material.family == "pbr" )
+	{
+		// The pbr point on the world vertex (SetWorldPbr): the lightmap basis
+		// for its indirect diffuse and the scene's terms.
+		if ( !s.worldPbr )
+			return foundation::MakeUnexpected( std::string(
+			    "world pbr is not enabled: the pbr point draws world surfaces only in "
+			    "render_lab (RFC 0016 K11) until K12" ) );
+		const PbrClaim claim = ClaimPbr( *block );
+		if ( !claim.claimed )
+			return foundation::MakeUnexpected( claim.reason );
+		if ( s.layout != SurfaceVertexLayout::kWorld )
+			return foundation::MakeUnexpected( std::string(
+			    "the pbr point reads the surface vertex, and the resolver's is flat" ) );
+		SurfaceVariant variant = claim.Variant();
+		variant.layout = SurfaceVertexLayout::kWorld;
+		variant.terms |= kSurfaceBakedLightmap | s.sceneTerms;
+		SurfaceTextures textures;
+		textures.base = TextureOf( material, "basetexture" );
+		textures.mrao = TextureOf( material, "mraotexture" );
+		if ( claim.normalMap )
+			textures.bump = TextureOf( material, "bumpmap" );
+		if ( claim.emission )
+			textures.emission = TextureOf( material, "emissiontexture" );
+		auto request = s.lightmapped->Program().Request( variant, claim.constants, textures );
+		if ( !request )
+			return foundation::MakeUnexpected( std::string( "a pbr pipeline was refused" ) );
+		out.name = "pbr";
+		out.request = std::move( request ).Value();
+		out.blend = device::BlendMode::kOpaque;
+		out.drawInputs = { "lightmap", "lightmap-gradient" };
+		return out;
+	}
 	return foundation::MakeUnexpected( "family " + material.family + " has no program yet" );
+}
+
+void ProgramResolver::SetWorldPbr( bool enabled, std::uint32_t sceneTerms )
+{
+	m_State->worldPbr = enabled;
+	m_State->sceneTerms = sceneTerms;
+}
+
+SurfaceProgram &ProgramResolver::Program() const
+{
+	return m_State->lightmapped->Program();
 }
 
 foundation::Expected<device::PipelineId, std::string> ProgramResolver::DebugPipeline(
@@ -398,6 +446,8 @@ std::optional<GroupRequest> ProgramResolver::DrawGroup(
 	if ( !program.request.drawLayout.IsValid() ||
 	     inputTextures.size() != program.drawInputs.size() )
 		return std::nullopt;
+	if ( program.name == "pbr" && inputTextures.size() == 2 )
+		return s.lightmapped->Program().DrawGroup( inputTextures[0], {}, {}, inputTextures[1] );
 	if ( program.request.drawLayout == s.lightmapped->DrawLayout() )
 		return s.lightmapped->LightmapGroup( inputTextures[0] );
 	return std::nullopt;
@@ -423,7 +473,12 @@ std::optional<GroupRequest> ProgramResolver::FrameGroup(
 		std::copy( terms.eye, terms.eye + 3, frame.eye );
 		frame.eye[3] = terms.envmapScale;
 		frame.fogMisc[1] = terms.ssbumpNormalized ? 1.0f : 0.0f;
-		return s.lightmapped->FrameGroup( frame );
+		const std::size_t areas =
+		    std::min<std::size_t>( terms.areas.size(), std::size_t( kSurfaceMaxAreaLights ) );
+		frame.areaCount[0] = float( areas );
+		std::copy( terms.areas.begin(), terms.areas.begin() + std::ptrdiff_t( areas ), frame.areas );
+		return s.lightmapped->Program().FrameGroup(
+		    frame, terms.splitSumTable, terms.ltcTable, terms.map );
 	}
 	return std::nullopt;
 }

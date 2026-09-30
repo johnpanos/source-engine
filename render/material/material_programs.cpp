@@ -39,7 +39,7 @@ GroupResidency::~GroupResidency()
 		(void)m_Device.Release( resource, m_LastToken );
 	for ( const auto &[desc, sampler] : m_Samplers )
 		(void)m_Device.Release( sampler, m_LastToken );
-	for ( TextureId neutral : { m_Neutral2D, m_NeutralCube } )
+	for ( TextureId neutral : { m_Neutral2D, m_NeutralCube, m_Neutral2DArray } )
 	{
 		if ( neutral.IsValid() )
 			(void)m_Device.Release( neutral, m_LastToken );
@@ -48,16 +48,18 @@ GroupResidency::~GroupResidency()
 		(void)m_Device.Release( m_NeutralStaging, m_LastToken );
 }
 
-TextureId GroupResidency::Neutral( TextureDimension dimension )
+TextureId GroupResidency::Neutral( TextureDimension dimension, bool array )
 {
-	TextureId &slot = dimension == TextureDimension::kCube ? m_NeutralCube : m_Neutral2D;
+	TextureId &slot = dimension == TextureDimension::kCube ? m_NeutralCube
+	                  : array                              ? m_Neutral2DArray
+	                                                       : m_Neutral2D;
 	if ( slot.IsValid() )
 		return slot;
 	TextureDesc desc;
 	desc.dimension = dimension;
 	desc.format = Format::kRGBA8Unorm;
 	desc.width = desc.height = 1;
-	desc.depthOrLayers = dimension == TextureDimension::kCube ? 6 : 1;
+	desc.depthOrLayers = dimension == TextureDimension::kCube ? 6 : array ? 2 : 1;
 	desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kSampled };
 	desc.debugName = "material neutral texture";
 	auto texture = m_Device.CreateTexture( desc );
@@ -173,7 +175,7 @@ void GroupResidency::Refresh( Entry &entry )
 		// dimension, which the program does not read.
 		if ( texture.name.empty() )
 		{
-			const TextureId neutral = Neutral( texture.dimension );
+			const TextureId neutral = Neutral( texture.dimension, texture.array );
 			if ( !neutral.IsValid() || !m_NeutralUploaded )
 			{
 				complete = false;
@@ -183,7 +185,9 @@ void GroupResidency::Refresh( Entry &entry )
 			desc.dimension = texture.dimension;
 			desc.format = Format::kRGBA8Unorm;
 			desc.width = desc.height = 1;
-			desc.depthOrLayers = texture.dimension == TextureDimension::kCube ? 6 : 1;
+			desc.depthOrLayers = texture.dimension == TextureDimension::kCube ? 6
+			                     : texture.array                             ? 2
+			                                                                 : 1;
 			sampled.push_back( { neutral, desc } );
 			revisions.push_back( 0 );
 			continue;
@@ -232,7 +236,8 @@ void GroupResidency::Refresh( Entry &entry )
 			return;
 		}
 		bindings.push_back( { texture.binding, {}, 0, 0, sampled[i].texture, {} } );
-		bindings.push_back( { texture.samplerBinding, {}, 0, 0, {}, sampler.Value() } );
+		if ( texture.samplerBinding != kNoSamplerBinding )
+			bindings.push_back( { texture.samplerBinding, {}, 0, 0, {}, sampler.Value() } );
 	}
 	auto group = m_Device.CreateBindGroup( { entry.request.layout, bindings } );
 	if ( !group )
@@ -257,10 +262,11 @@ std::size_t GroupResidency::RecordUploads( CommandEncoder &encoder )
 		for ( const ProgramTexture &texture : entry.request.textures )
 		{
 			if ( texture.name.empty() && !texture.external.IsValid() )
-				(void)Neutral( texture.dimension );
+				(void)Neutral( texture.dimension, texture.array );
 		}
 	}
-	if ( !m_NeutralUploaded && ( m_Neutral2D.IsValid() || m_NeutralCube.IsValid() ) )
+	if ( !m_NeutralUploaded &&
+	     ( m_Neutral2D.IsValid() || m_NeutralCube.IsValid() || m_Neutral2DArray.IsValid() ) )
 	{
 		if ( !m_NeutralStaging.IsValid() )
 		{
@@ -280,11 +286,13 @@ std::size_t GroupResidency::RecordUploads( CommandEncoder &encoder )
 			encoder.WriteBuffer( m_NeutralStaging, 0, white );
 			encoder.TransitionBuffer(
 			    m_NeutralStaging, ResourceUsage::kCopyDestination, ResourceUsage::kCopySource );
-			for ( TextureId neutral : { m_Neutral2D, m_NeutralCube } )
+			for ( TextureId neutral : { m_Neutral2D, m_NeutralCube, m_Neutral2DArray } )
 			{
 				if ( !neutral.IsValid() )
 					continue;
-				const std::uint32_t layers = neutral == m_NeutralCube ? 6 : 1;
+				const std::uint32_t layers = neutral == m_NeutralCube      ? 6
+				                             : neutral == m_Neutral2DArray ? 2
+				                                                           : 1;
 				encoder.TransitionTexture(
 				    neutral, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
 				for ( std::uint32_t layer = 0; layer < layers; ++layer )

@@ -27,6 +27,8 @@ layout( push_constant ) uniform Draw
 	layout( row_major ) mat4 toClip;
 } draw;
 
+invariant gl_Position;
+
 layout( location = 0 ) out vec2 baseUv;
 layout( location = 1 ) out vec2 lightmapUv;
 layout( location = 2 ) out vec4 color;

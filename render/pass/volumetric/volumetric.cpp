@@ -72,14 +72,6 @@ void Copy3( float out[4], const math::float3 &v, float w )
 	out[3] = w;
 }
 
-void Copy3( float out[4], const float v[3], float w )
-{
-	out[0] = v[0];
-	out[1] = v[1];
-	out[2] = v[2];
-	out[3] = w;
-}
-
 template <typename T> std::span<const std::byte> Bytes( const std::vector<T> &values )
 {
 	return std::as_bytes( std::span<const T>( values ) );
@@ -241,19 +233,7 @@ MediumLightGpu PackMediumLight( const MediumLight &light )
 
 MediumProjectorGpu PackMediumProjector( const MediumProjector &projector )
 {
-	const projected_light::Light &light = projector.light;
-	MediumProjectorGpu out;
-	Copy3( out.origin, light.origin, float( projector.cookieLayer ) );
-	Copy3( out.forward, light.forward, 0.0f );
-	Copy3( out.right, light.right, 0.0f );
-	Copy3( out.up, light.up, 0.0f );
-	out.frustum[0] = std::tan( 0.5f * light.horizontalFovDegrees * projected_light::kPi / 180.0f );
-	out.frustum[1] = std::tan( 0.5f * light.verticalFovDegrees * projected_light::kPi / 180.0f );
-	out.frustum[2] = light.nearZ;
-	out.frustum[3] = light.farZ;
-	Copy3( out.color, light.color, 0.0f );
-	Copy3( out.atten, light.atten, 0.0f );
-	return out;
+	return projected_light::PackLightGpu( projector.light, int( projector.cookieLayer ) );
 }
 
 foundation::Expected<std::unique_ptr<VolumetricRenderer>, VolumetricStatus>

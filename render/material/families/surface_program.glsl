@@ -1,0 +1,1144 @@
+// render.material program `surface` (RFC 0016 K11 "Model assembly"): the one
+// surface program. Each lighting-model term is a specialization constant, so
+// a neutral term costs nothing, and the legacy families are points of it:
+// - the `lightmapped` point is LightmappedGeneric's arithmetic (the port's
+//   lightmapped.frag, from lightmappedgeneric_ps2_3_x.h) in linear light: the
+//   flat lightmap, or the three bumped pages weighted by the normal map (RNM)
+//   or by an ssbump's basis weights; the env map with its mask (base alpha,
+//   normal map alpha or $envmapmask), tint, contrast, saturation and fresnel;
+//   detail (TextureCombine) and self-illumination;
+// - the `pbr` point (kPbr) is the RFC 0007 layered metal/roughness BRDF
+//   (render/shaders/common/pbr_brdf.glsl, the one GLSL copy of
+//   public/render/pbr_brdf.h) under the draw's model lighting: the model
+//   port's arithmetic (model_pbr.frag) without map probes, environment maps,
+//   the probe volume or clear coat. Units follow Source's model lighting: a
+//   local light is incident radiance pi * color * attenuation, the ambient
+//   cube a Lambertian return, and the cube in the reflected direction the
+//   specular image light. On a world surface (kBakedLightmap) the indirect
+//   diffuse is the draw's lightmap basis (lightmap_basis.glsl) at the mapped
+//   normal in place of the ambient cube: the flat page, or with
+//   kDirectionalLightmap the page and its gradient page. The draw's page is
+//   the LMAP layer the indirect policy picks (the indirect layer where the
+//   core draws the direct light, so no light counts twice). With
+//   kProbeVolume a surface without a lightmap takes its indirect diffuse
+//   from the map's probe volume (probe_volume.glsl, with visibility), the
+//   ambient cube where no grid covers the point; with kReflectionProbes the
+//   specular image light is the map's reflection probes
+//   (reflection_probes.glsl: blended, parallax-corrected, relit), the
+//   ambient cube in the reflected direction where none carries light. Both
+//   are weighted as before (the diffuse color; the split-sum directional
+//   albedo).
+// - the `unlit` point (kUnlit) is UnlitGeneric: the lightmapped point with
+//   the lighting fixed at one and UnlitGeneric's vertex color and alpha;
+// - the `vertexlit` point (kVertexLit) is VertexLitGeneric's lit path: the
+//   model vertex stage evaluates Source's per-vertex lighting (DoLighting),
+//   and the pixel is the base texture times $color times that lighting.
+// All end in the view's fog and the output encoding. Blending is pipeline
+// state. The debug views and lighting-model controls (RFC 0014) come from
+// debug_view.glsl; at their neutral values they are dead code. In the pbr
+// point the local lights answer to the `clustered` term, the ambient cube to
+// `probes` and the cube in the reflected direction to `ibl`.
+
+#include "../../shaders/common/color_encoding.glsl"
+#include "../../shaders/common/debug_view.glsl"
+#include "../../shaders/common/pbr_brdf.glsl"
+#include "../../shaders/common/ltc.glsl"
+#include "../../shaders/common/runtime_light.glsl"
+#include "../../shaders/common/shadow_sample.glsl"
+#include "../../shaders/common/projected_light.glsl"
+#include "../../shaders/common/lightmap_basis.glsl"
+#include "surface_lighting.glsl"
+
+// The terms (the port's static combo bits where they exist).
+layout( constant_id = 0 ) const int kTerms = 0;
+layout( constant_id = 1 ) const int kDetailMode = 0;
+const int kUnlit = 1;
+const int kDetailTexture = 2;
+const int kBumpmap = 4;
+const int kSsbump = 8;
+const int kCubemap = 32;
+const int kEnvmapMask = 64;
+const int kBaseAlphaEnvmapMask = 128;
+const int kSelfIllum = 256;
+const int kNormalMapAlphaEnvmapMask = 512;
+const int kDiffuseBumpmap = 1024;
+// The pbr point: the metal/roughness BRDF; kBumpmap is then its tangent-space
+// normal map (two channels), and kEmissionTexture its emission texture.
+const int kPbr = 2048;
+const int kEmissionTexture = 4096;
+// The vertexlit point (its vertex stage reads kHalfLambert, 16).
+const int kVertexLit = 8192;
+// The view's clustered runtime lights (the view group).
+const int kClustered = 16384;
+// The pbr point on a world surface: its indirect diffuse from the draw's
+// lightmap page, and the page's gradient page when it is directional.
+const int kBakedLightmap = 32768;
+const int kDirectionalLightmap = 65536;
+// The pbr point with the map's probe volume and reflection probes (frame
+// group bindings 5 to 10).
+const int kProbeVolume = 131072;
+const int kReflectionProbes = 262144;
+// The view's ambient occlusion (render.pass.ao), the SSR targets, the
+// depth-and-normal prepass and the projected lights' bounce
+// (surface_program.h).
+const int kAmbientOcclusion = 524288;
+const int kSsrTargets = 1048576;
+const int kDepthNormal = 2097152;
+const int kProbeBounce = 4194304;
+
+// An area light (render.area-light.v1, area_light::AreaLight): its
+// rectangle, its radiance and its reach.
+struct AreaLight
+{
+	vec4 center; // w: 1 when two-sided
+	vec4 halfU;  // w: the reach
+	vec4 halfV;
+	vec4 radiance;
+};
+const int kMaxAreaLights = 64;
+
+layout( set = 0, binding = 0 ) uniform Frame
+{
+	// x: the lightmap scale for how the pages encode light (2^2.2 for LDR
+	// gamma pages, 16 for integer-HDR pages); y: the output's linear scale
+	// (the frame's tone-mapping scale, 1 without HDR); z: 1 when the target
+	// has no sRGB view and the shader encodes the output itself; w: 1 when
+	// specular shows (mat_specular), else the env map's tint is zero.
+	vec4 light;
+	// The view's fog (common_ps_fxc.h CalcPixelFogFactor, BlendPixelFog):
+	// color with its type in w (-1 none, 0 range, 1 height), parameters
+	// (range: start / range, water z, max density, 1 / range; height: 0,
+	// water z, 1, 1 / range), and the eye's world z in misc.x.
+	vec4 fogColor;
+	vec4 fogParams;
+	vec4 fogMisc; // x: the eye's world z, y: 1 when the game scales every ssbump by 1/sqrt(3)
+	// xyz: the eye's world position (c10); w: ENV_MAP_SCALE (16 in integer
+	// HDR, where cube maps hold light / 16, else 1).
+	vec4 eye;
+	vec4 areaCount; // x: the frame's area lights (the pbr point reads them)
+	// The sun: towards it (w the tangent of its disc's angular radius), its
+	// diffuse light (w 1 when that is in the baked light) and its shadow (x
+	// the first cascade tile or -1, y the cascades, z 1 to read the baked
+	// mask in the lightmap page's alpha).
+	vec4 sunDirection;
+	vec4 sunColor;
+	vec4 sunShadow;
+	AreaLight areas[kMaxAreaLights];
+} frame;
+// The split-sum table (RFC 0007, pbr_split_sum_table.h), read by the pbr point.
+layout( set = 0, binding = 1 ) uniform texture2D splitSumTexture;
+layout( set = 0, binding = 2 ) uniform sampler splitSumSampler;
+// The view group: the view's clustered runtime lights (render.pass.lights
+// lists render.light-set.v1's point and spot lights per froxel). Read only
+// with kClustered.
+struct RuntimeLightRecord
+{
+	vec4 position;  // w: radius (0 unbounded)
+	vec4 color;     // w: minLight
+	vec4 direction; // w: outerCos, below -1 for a point light
+	vec4 cone;      // innerCos, 1 for an inverse-square falloff, sourceRadius,
+	                // the shadow tile or -1
+	vec4 spot;      // the cone ramp's exponent
+};
+layout( set = 1, binding = 0 ) uniform ClusterView
+{
+	uvec4 grid;         // tilesX, tilesY, slices, tile size in pixels
+	vec4 slices;        // sliceScale, sliceBias, nearZ
+	vec4 viewDistance;  // a world point's view distance: dot( xyz, p ) + w
+	vec4 counts;        // x: the projected lights (binding 7)
+} clusterView;
+layout( set = 1, binding = 1, std430 ) readonly buffer ClusterFroxels
+{
+	uvec2 froxelRanges[]; // offset, count into the index list
+};
+layout( set = 1, binding = 2, std430 ) readonly buffer ClusterIndices
+{
+	uvec4 clusterHeader;
+	uint clusterIndices[];
+};
+layout( set = 1, binding = 3, std430 ) readonly buffer ClusterLights
+{
+	RuntimeLightRecord runtimeLights[];
+};
+// The view's shadow tiles (ShadowTileGpu) and atlas: a light whose cone.w is
+// a tile index (not -1) is shadowed by that tile (render.shadows.v1).
+layout( set = 1, binding = 4, std430, row_major ) readonly buffer ShadowTiles
+{
+	ShadowTile shadowTiles[];
+};
+layout( set = 1, binding = 5 ) uniform texture2D shadowAtlas;
+layout( set = 1, binding = 6 ) uniform sampler shadowSampler;
+#include "../../shaders/common/shadow_faces.glsl"
+// The view's projected lights (render.projected-light.v1) and their cookies,
+// and the view's ambient occlusion (fetched per pixel).
+layout( set = 1, binding = 7, std430 ) readonly buffer ProjectedLights
+{
+	ProjectedLight projectors[];
+};
+layout( set = 1, binding = 8 ) uniform texture2DArray cookieTexture;
+layout( set = 1, binding = 9 ) uniform sampler cookieSampler;
+layout( set = 1, binding = 10 ) uniform texture2D occlusionTexture;
+
+// The GGX LTC table (public/render/pbr_ltc_table.h), read by the pbr point.
+layout( set = 0, binding = 3 ) uniform texture2D ltcTexture;
+layout( set = 0, binding = 4 ) uniform sampler ltcSampler;
+// The map's probe volume (PRBV: its atlas and grid table) and reflection
+// probes (RPRB, WriteReflectionProbeTexture's form), read under
+// kProbeVolume and kReflectionProbes.
+layout( set = 0, binding = 5 ) uniform texture2D probeAtlas;
+layout( set = 0, binding = 6 ) uniform sampler probeAtlasSampler;
+layout( set = 0, binding = 7 ) uniform texture2D probeGrids;
+layout( set = 0, binding = 8 ) uniform sampler probeGridsSampler;
+layout( set = 0, binding = 9 ) uniform texture2D reflectionProbes;
+layout( set = 0, binding = 10 ) uniform sampler reflectionProbesSampler;
+// The projected lights' bounce: an atlas of the probe atlas's layout.
+layout( set = 0, binding = 11 ) uniform texture2D probeSecondAtlas;
+#define PROBE_VOLUME_SECOND
+#include "../../shaders/common/probe_volume.glsl"
+
+vec4 ReflectionProbesFetch( ivec2 texel )
+{
+	return texelFetch( sampler2D( reflectionProbes, reflectionProbesSampler ), texel, 0 );
+}
+
+vec4 ReflectionProbesSample( vec2 texel )
+{
+	return textureLod( sampler2D( reflectionProbes, reflectionProbesSampler ),
+	    texel / vec2( textureSize( sampler2D( reflectionProbes, reflectionProbesSampler ), 0 ) ),
+	    0.0 );
+}
+#include "../../shaders/common/reflection_probes.glsl"
+layout( set = 2, binding = 0 ) uniform Material
+{
+	vec4 tint;  // rgb: $color, a: $alpha
+	vec4 flags; // x: $vertexcolor, y: $alphatest, z: $alphatestreference
+	// x: 1 when fully opaque (height fog's factor is the output alpha), y:
+	// gamma vertex color (vertex stage), z: the ssbump weights' scale
+	// (0.57735 with $ssbumpmathfix, else 1), w: $vertexalpha (the unlit point)
+	vec4 state;
+	vec4 envTint;       // rgb: $envmaptint, a: $fresnelreflection
+	vec4 envContrast;   // rgb: the contrast in effect, a: 1 - $fresnelreflection
+	vec4 envSaturation; // rgb: the saturation in effect
+	vec4 selfIllumTint; // rgb: $selfillumtint
+	vec4 detailTint;    // rgb: $detailtint, a: $detailblendfactor
+	vec4 detailScale;   // xy: $detailscale
+	vec4 envLightScale; // x: min, y: min + max, z: $envmaplightscale (Portal 2)
+	vec4 emission;      // x: $emissionscale (the pbr point)
+} material;
+layout( set = 2, binding = 1 ) uniform texture2D baseTexture;
+layout( set = 2, binding = 2 ) uniform sampler baseSampler;
+layout( set = 2, binding = 3 ) uniform textureCube envmapTexture;
+layout( set = 2, binding = 4 ) uniform sampler envmapSampler;
+layout( set = 2, binding = 5 ) uniform texture2D envmapMaskTexture;
+layout( set = 2, binding = 6 ) uniform sampler envmapMaskSampler;
+layout( set = 2, binding = 7 ) uniform texture2D bumpTexture;
+layout( set = 2, binding = 8 ) uniform sampler bumpSampler;
+layout( set = 2, binding = 9 ) uniform texture2D detailTexture;
+layout( set = 2, binding = 10 ) uniform sampler detailSampler;
+layout( set = 2, binding = 11 ) uniform texture2D mraoTexture;
+layout( set = 2, binding = 12 ) uniform sampler mraoSampler;
+layout( set = 2, binding = 13 ) uniform texture2D emissionTexture;
+layout( set = 2, binding = 14 ) uniform sampler emissionSampler;
+// The lightmap page is the draw's: surfaces of one material share pages
+// with others. So is the model lighting (surface_lighting.glsl, binding 2).
+layout( set = 3, binding = 0 ) uniform texture2D lightmap;
+layout( set = 3, binding = 1 ) uniform sampler lightmapSampler;
+// A directional page's gradient page (kDirectionalLightmap).
+layout( set = 3, binding = 3 ) uniform texture2D lightmapGradient;
+layout( set = 3, binding = 4 ) uniform sampler lightmapGradientSampler;
+// The bake's indirect layer of the same page (kAmbientOcclusion).
+layout( set = 3, binding = 5 ) uniform texture2D lightmapIndirect;
+layout( set = 3, binding = 6 ) uniform sampler lightmapIndirectSampler;
+
+layout( location = 0 ) in vec2 baseUv;
+layout( location = 1 ) in vec2 lightmapUv;
+layout( location = 2 ) in vec4 color;
+layout( location = 3 ) in vec2 fogDepth; // the clip-space z (D3D9's projPos.z) and world z
+layout( location = 4 ) in vec3 worldPosition;
+layout( location = 5 ) in vec3 worldNormal;
+layout( location = 6 ) in vec3 tangentS;
+layout( location = 7 ) in vec3 tangentT;
+layout( location = 8 ) in float lightmapOffset; // the bumped pages' offset (TEXCOORD2.x)
+layout( location = 9 ) in vec4 lightAtten;      // each model light's vertex attenuation
+layout( location = 10 ) in vec3 vertexLighting; // the vertexlit point's DoLighting
+layout( location = 0 ) out vec4 outColor;
+#ifdef SURFACE_SSR_TARGETS
+// render.pass.ssr's inputs (ssr.h): the octahedral normal and roughness, the
+// image-specular radiance and its weight.
+layout( location = 1 ) out vec4 outNormalRoughness;
+layout( location = 2 ) out vec4 outIblRadiance;
+layout( location = 3 ) out vec4 outSpecularWeight;
+#endif
+
+// ssr.h's Octahedral (OctEncode).
+vec2 SurfaceOctEncode( vec3 n )
+{
+	n /= abs( n.x ) + abs( n.y ) + abs( n.z );
+	vec2 p = n.xy;
+	if ( n.z < 0.0 )
+		p = ( vec2( 1.0 ) - abs( p.yx ) ) * vec2( p.x >= 0.0 ? 1.0 : -1.0, p.y >= 0.0 ? 1.0 : -1.0 );
+	return p;
+}
+
+void WriteSsrTargets( vec3 normal, float roughness, vec3 iblRadiance, vec3 weight )
+{
+#ifdef SURFACE_SSR_TARGETS
+	outNormalRoughness = vec4( SurfaceOctEncode( normal ), roughness, 1.0 );
+	outIblRadiance = vec4( iblRadiance, 1.0 );
+	outSpecularWeight = vec4( weight, 1.0 );
+#endif
+}
+
+// Interleaved gradient noise (Jimenez 2014): a per-pixel angle that turns
+// the soft shadows' discs.
+float PixelRotation()
+{
+	return 6.2831853 *
+	       fract( 52.9829189 * fract( dot( gl_FragCoord.xy, vec2( 0.06711056, 0.00583715 ) ) ) );
+}
+
+// Multi-bounce ambient occlusion (Jimenez et al. 2016, "Practical Real-Time
+// Strategies for Accurate Indirect Occlusion", the cubic fit): the
+// visibility with the light the occluders' own albedo returns.
+vec3 MultiBounceOcclusion( float visibility, vec3 albedo )
+{
+	const vec3 a = 2.0404 * albedo - 0.3324;
+	const vec3 b = -4.7951 * albedo + 0.6417;
+	const vec3 c = 2.7552 * albedo + 0.6903;
+	return max( vec3( visibility ), ( ( visibility * a + b ) * visibility + c ) * visibility );
+}
+
+// Specular occlusion from the ambient occlusion (Lagarde and de Rousiers
+// 2014, "Moving Frostbite to PBR").
+float SpecularOcclusion( float normalDotView, float visibility, float roughness )
+{
+	return clamp( pow( normalDotView + visibility, exp2( -16.0 * roughness - 1.0 ) ) - 1.0 +
+	                  visibility,
+	    0.0, 1.0 );
+}
+
+// common_fxc.h
+const float OO_SQRT_3 = 0.57735025882720947;
+const vec3 bumpBasis[3] = vec3[3]( vec3( 0.81649661064147949, 0.0, OO_SQRT_3 ),
+    vec3( -0.40824833512306213, 0.70710676908493042, OO_SQRT_3 ),
+    vec3( -0.40824821591377258, -0.7071068286895752, OO_SQRT_3 ) );
+
+bool Term( int term )
+{
+	return ( kTerms & term ) != 0;
+}
+
+float FogFactor()
+{
+	const float type = frame.fogColor.w;
+	if ( type < -0.5 )
+		return 0.0;
+	const float projZ = fogDepth.x;
+	if ( type < 0.5 )
+		return clamp( min( frame.fogParams.z, projZ * frame.fogParams.w - frame.fogParams.x ), 0.0,
+		    1.0 );
+	const float depthFromWater = frame.fogParams.y - fogDepth.y;
+	const float depthFromEye = frame.fogMisc.x - fogDepth.y;
+	const float f = clamp( depthFromWater * ( 1.0 / depthFromEye ), 0.0, 1.0 );
+	return clamp( f * projZ * frame.fogParams.w, 0.0, 1.0 );
+}
+
+// common_ps_fxc.h TextureCombine for the modes the family claims.
+vec4 TextureCombine( vec4 baseColor, vec4 detailColor, float blendFactor )
+{
+	if ( kDetailMode == 0 )
+		baseColor.rgb *= mix( vec3( 1.0 ), 2.0 * detailColor.rgb, blendFactor );
+	if ( kDetailMode == 1 )
+		baseColor.rgb += blendFactor * detailColor.rgb;
+	if ( kDetailMode == 2 )
+		baseColor.rgb = mix( baseColor.rgb, detailColor.rgb, blendFactor * detailColor.a );
+	if ( kDetailMode == 3 )
+		baseColor = mix( baseColor, detailColor, blendFactor );
+	if ( kDetailMode == 4 )
+	{
+		baseColor.rgb = mix( baseColor.rgb, detailColor.rgb, blendFactor * ( 1.0 - baseColor.a ) );
+		baseColor.a = detailColor.a;
+	}
+	if ( kDetailMode == 7 )
+	{
+		vec3 dc = vec3( mix( detailColor.r, detailColor.a, baseColor.a ) );
+		baseColor.rgb *= mix( vec3( 1.0 ), 2.0 * dc, blendFactor );
+	}
+	if ( kDetailMode == 8 )
+		baseColor = mix( baseColor, baseColor * detailColor, blendFactor );
+	if ( kDetailMode == 9 )
+		baseColor.a = mix( baseColor.a, baseColor.a * detailColor.a, blendFactor );
+	return baseColor;
+}
+
+// The debug view's pixel, encoded as the output is.
+vec4 DebugOutput( DebugInputs inputs )
+{
+	vec4 view = DebugViewOutput( inputs );
+	if ( frame.light.z != 0.0 )
+		view.rgb = LinearToSrgb( view.rgb );
+	return view;
+}
+
+// Every point's output: the tone-mapping scale, then the view's fog (its
+// color is scaled too): range fog squares its factor; a fully opaque surface
+// under height fog writes the factor to alpha. Then the encoding.
+vec4 Output( vec3 lit, float alpha )
+{
+	lit *= frame.light.y;
+	const float fogType = frame.fogColor.w;
+	if ( fogType > -0.5 )
+	{
+		const float factor = FogFactor();
+		if ( fogType > 0.5 && material.state.x != 0.0 )
+			alpha = factor;
+		lit = mix( lit, frame.fogColor.rgb, fogType < 0.5 ? factor * factor : factor );
+	}
+	if ( frame.light.z != 0.0 )
+		lit = LinearToSrgb( lit );
+	return vec4( lit, alpha );
+}
+
+// render.pass.lights FroxelAt: the froxel of a pixel position (x right, y
+// down) and a view distance, clamped to the grid.
+uint ClusterAxis( float pixel, uint count )
+{
+	const float t = floor( pixel / float( clusterView.grid.w ) );
+	if ( !( t > 0.0 ) )
+		return 0u;
+	return t < float( count - 1u ) ? uint( t ) : count - 1u;
+}
+
+uint ClusterFroxel( vec2 pixel, float distance )
+{
+	const uint slices = clusterView.grid.z;
+	uint slice = 0u;
+	if ( distance > clusterView.slices.z )
+	{
+		const float s = floor( log( distance ) * clusterView.slices.x + clusterView.slices.y );
+#ifdef SEEDED_CLUSTER_SLICE_OFF_BY_ONE
+		slice = s + 1.0 < float( slices - 1u ) ? ( s + 1.0 > 0.0 ? uint( s + 1.0 ) : 0u ) : slices - 1u;
+#else
+		slice = s < float( slices - 1u ) ? ( s > 0.0 ? uint( s ) : 0u ) : slices - 1u;
+#endif
+	}
+	const uint x = ClusterAxis( pixel.x, clusterView.grid.x );
+	const uint y = ClusterAxis( pixel.y, clusterView.grid.y );
+	return ( slice * clusterView.grid.y + y ) * clusterView.grid.x + x;
+}
+
+// The ambient cube (surface_lighting.glsl). In the furnace (RFC 0014) every
+// face is a uniform radiance of 1.
+vec3 AmbientCube( vec3 n )
+{
+	if ( DebugFurnace() )
+	{
+		const vec3 squared = n * n;
+		return vec3( squared.x + squared.y + squared.z );
+	}
+	return ModelAmbientCube( n );
+}
+
+// The pbr point. Base and emission are sampled as sRGB, MRAO and the normal
+// map as linear data.
+void PbrSurface()
+{
+	const bool furnace = DebugFurnace();
+	const bool normalMap = Term( kBumpmap );
+	const bool emissive = Term( kEmissionTexture );
+	const vec2 uv = baseUv;
+	const vec4 baseSample = texture( sampler2D( baseTexture, baseSampler ), uv );
+	const vec3 base = furnace ? vec3( 1.0 ) : baseSample.rgb;
+	const vec3 mrao = texture( sampler2D( mraoTexture, mraoSampler ), uv ).rgb;
+	const float metalness =
+	    kDebugForceMetalness >= 0.0 ? kDebugForceMetalness : clamp( mrao.r, 0.0, 1.0 );
+	const float roughness =
+	    max( kDebugForceRoughness >= 0.0 ? kDebugForceRoughness : mrao.g, 0.02 );
+	const float occlusion = DebugTermOn( kDebugTermAo ) ? clamp( mrao.b, 0.0, 1.0 ) : 1.0;
+	// The view's occlusion of the indirect light (render.pass.ao).
+	const float screenOcclusion =
+	    Term( kAmbientOcclusion ) && DebugTermOn( kDebugTermAo )
+	        ? clamp( texelFetch( sampler2D( occlusionTexture, shadowSampler ),
+	                     ivec2( gl_FragCoord.xy ), 0 )
+	                     .r,
+	              0.0, 1.0 )
+	        : 1.0;
+
+	const vec3 view = normalize( frame.eye.xyz - worldPosition );
+	vec3 normal = dot( worldNormal, worldNormal ) > 1e-12 ? normalize( worldNormal ) : view;
+	const vec3 smoothNormal = normal;
+	vec3 mapped = vec3( 0.0, 0.0, 1.0 );
+	if ( normalMap )
+	{
+		const vec2 xy = texture( sampler2D( bumpTexture, bumpSampler ), uv ).rg * 2.0 - 1.0;
+		mapped = vec3( xy, sqrt( max( 0.0, 1.0 - dot( xy, xy ) ) ) );
+		normal = normalize( normalize( tangentS ) * mapped.x + normalize( tangentT ) * mapped.y +
+		                    normal * mapped.z );
+	}
+	const float normalDotView = max( dot( normal, view ), 0.0 );
+	if ( Term( kDepthNormal ) )
+	{
+		outColor = vec4( SurfaceOctEncode( normal ), roughness, 1.0 );
+		return;
+	}
+	const vec3 f0 = mix( vec3( 0.04 ), base, metalness );
+	const vec2 splitSum = texture( sampler2D( splitSumTexture, splitSumSampler ),
+	    PbrSplitSumCoordinate( vec2( textureSize( sampler2D( splitSumTexture, splitSumSampler ), 0 ) ),
+	        normalDotView, roughness ) )
+	                          .rg;
+	// cl_render_debug_brdf 3: multiple-scattering compensation off.
+	const bool compensate = kDebugBrdf != kDebugBrdfNoEnergyCompensation;
+	const vec3 compensation = compensate ? PbrEnergyCompensation( f0, splitSum ) : vec3( 1.0 );
+	const vec3 directionalAlbedo = compensate
+	                                   ? PbrDirectionalAlbedo( f0, splitSum )
+	                                   : min( vec3( 1.0 ), f0 * splitSum.x + vec3( splitSum.y ) );
+	const vec3 diffuseColor = base * ( 1.0 - metalness ) * ( vec3( 1.0 ) - directionalAlbedo );
+	// cl_render_debug_brdf 1 and 2: one lobe.
+	const bool diffuseLobe = kDebugBrdf != kDebugBrdfSpecularOnly;
+	const bool specularLobe = kDebugBrdf != kDebugBrdfDiffuseOnly;
+
+	// Indirect diffuse: the lightmap basis on a world surface (the `baked`
+	// term), else the ambient cube (`probes`).
+	const bool lightmapped = Term( kBakedLightmap );
+	vec3 baked = vec3( 0.0 );
+	if ( lightmapped )
+	{
+		baked = LightmapPageSample( lightmap, lightmapSampler, lightmapUv );
+		if ( Term( kDirectionalLightmap ) )
+			baked = LightmapDirectional( baked,
+			    LightmapPageSample( lightmapGradient, lightmapGradientSampler, lightmapUv ), normal,
+			    smoothNormal );
+		baked = furnace ? vec3( 1.0 ) : baked * frame.light.x;
+	}
+	// The indirect light's occlusion: the material's, times the view's with
+	// its interreflection (the occluders' albedo taken as the surface's).
+	const vec3 indirectOcclusion =
+	    occlusion * MultiBounceOcclusion( screenOcclusion, diffuseColor + directionalAlbedo );
+	vec3 color = vec3( 0.0 );
+	if ( diffuseLobe && lightmapped && DebugTermOn( kDebugTermBaked ) )
+	{
+		// The view's occlusion darkens the bake's indirect layer only: the
+		// page less the part of its indirect light the occlusion removes,
+		// carried to the mapped normal as the page is.
+		vec3 light = baked;
+		if ( Term( kAmbientOcclusion ) && !furnace )
+		{
+			vec3 indirect =
+			    LightmapPageSample( lightmapIndirect, lightmapIndirectSampler, lightmapUv );
+			if ( Term( kDirectionalLightmap ) )
+				indirect = LightmapDirectional( indirect,
+				    LightmapPageSample( lightmapGradient, lightmapGradientSampler, lightmapUv ),
+				    normal, smoothNormal );
+			light = max( baked - indirect * frame.light.x *
+			                         ( vec3( 1.0 ) - MultiBounceOcclusion( screenOcclusion,
+			                                             diffuseColor + directionalAlbedo ) ),
+			    vec3( 0.0 ) );
+		}
+		color = diffuseColor * light * occlusion;
+	}
+	else if ( diffuseLobe && !lightmapped && DebugTermOn( kDebugTermProbes ) )
+	{
+		vec3 irradiance;
+		if ( furnace || !Term( kProbeVolume ) ||
+		     !ProbeIrradiance( worldPosition, normal, 0, true, irradiance ) )
+			irradiance = AmbientCube( normal );
+		color = diffuseColor * irradiance * indirectOcclusion;
+	}
+	// The projected lights' bounce, on every surface the volume covers.
+	if ( diffuseLobe && Term( kProbeBounce ) && Term( kProbeVolume ) && !furnace &&
+	     DebugTermOn( kDebugTermProjected ) )
+	{
+		vec3 unused;
+		vec3 bounce;
+		if ( ProbeIrradiancePair( worldPosition, normal, 0, true, unused, bounce ) )
+			color += diffuseColor * bounce * indirectOcclusion;
+	}
+	const float rotation = PixelRotation();
+	vec3 direct = vec3( 0.0 );
+	const int count = DebugTermOn( kDebugTermClustered ) && !furnace ? int( lighting.eye.w ) : 0;
+	for ( int i = 0; i < 4; ++i )
+	{
+		if ( i >= count )
+			break;
+		// A directional light shines along its direction. (The port's pixel
+		// constants place it 10,000 units from the lighting origin against
+		// that direction, CommitPixelShaderLighting; the vertex term reads
+		// the light's own position, which is 1 for it.)
+		const vec3 light = lighting.lights[i].color.w > 0.5
+		                       ? -normalize( lighting.lights[i].direction.xyz )
+		                       : normalize( lighting.lights[i].position.xyz - worldPosition );
+		const float normalDotLight = max( dot( normal, light ), 0.0 );
+		if ( normalDotLight <= 0.0 )
+			continue;
+		const vec3 incident = lighting.lights[i].color.rgb * lightAtten[i];
+		if ( diffuseLobe )
+		{
+			const vec3 diffuse = diffuseColor * incident * normalDotLight;
+			color += diffuse;
+			direct += diffuse;
+		}
+		if ( specularLobe )
+		{
+			const vec3 specular = kPi * incident * PbrSpecular( normal, view, light, f0, roughness ) *
+			                      compensation * normalDotLight;
+			color += specular;
+			direct += specular;
+		}
+	}
+	// The view's clustered runtime lights (render.light-set.v1): each light
+	// of the fragment's froxel, its falloff and cone (runtime_light.glsl),
+	// both lobes. A light's color is its diffuse light on a surface facing it
+	// (the lightmap unit), so its irradiance is pi times that.
+	if ( Term( kClustered ) && DebugTermOn( kDebugTermClustered ) && !furnace )
+	{
+		const float distance =
+		    dot( clusterView.viewDistance.xyz, worldPosition ) + clusterView.viewDistance.w;
+		const uvec2 range = froxelRanges[ClusterFroxel( gl_FragCoord.xy, distance )];
+		for ( uint k = 0u; k < range.y; ++k )
+		{
+#ifdef SEEDED_CLUSTER_SKIPS_FIRST
+			if ( k == 0u )
+				continue;
+#endif
+			const RuntimeLightRecord runtime = runtimeLights[clusterIndices[range.x + k]];
+			const vec3 toLight = runtime.position.xyz - worldPosition;
+			const float distanceSquared = dot( toLight, toLight );
+#ifdef SEEDED_RUNTIME_FALLOFF_UNWINDOWED
+			float falloff = runtime.cone.y > 0.5
+			                    ? 1e4 / max( distanceSquared, runtime.cone.z * runtime.cone.z )
+			                    : RuntimeLightFalloffLegacy(
+			                          distanceSquared, runtime.position.w, runtime.color.w );
+#else
+			float falloff = runtime.cone.y > 0.5
+			                    ? RuntimeLightFalloffInverseSquare(
+			                          distanceSquared, runtime.position.w, runtime.cone.z )
+			                    : RuntimeLightFalloffLegacy(
+			                          distanceSquared, runtime.position.w, runtime.color.w );
+#endif
+			if ( falloff <= 0.0 )
+				continue;
+			const vec3 light = toLight * inversesqrt( max( distanceSquared, 1e-8 ) );
+			if ( runtime.direction.w >= -1.0 )
+				falloff *= RuntimeLightSpot( dot( -light, normalize( runtime.direction.xyz ) ),
+				    runtime.cone.x, runtime.direction.w, runtime.spot.x );
+			const float normalDotLight = max( dot( normal, light ), 0.0 );
+			if ( falloff <= 0.0 || normalDotLight <= 0.0 )
+				continue;
+			const int tile = int( runtime.cone.w );
+			const int tiles = int( runtime.spot.z );
+#ifdef SEEDED_SHADOW_TILE_NEXT
+			if ( tile >= 0 )
+				falloff *= ShadowVisibility( shadowAtlas, shadowSampler,
+				    shadowTiles[( tile + 1 ) % shadowTiles.length()], worldPosition );
+#elif !defined( SEEDED_SHADOW_IGNORED )
+			if ( tile >= 0 && tiles > 1 )
+				falloff *= ShadowFacesVisibility( shadowAtlas, shadowSampler, tile, tiles,
+				    worldPosition, max( runtime.cone.z, 0.5 ), rotation );
+			else if ( tile >= 0 )
+				falloff *= ShadowVisibilitySoft( shadowAtlas, shadowSampler, shadowTiles[tile],
+				    worldPosition, max( runtime.cone.z, 0.5 ), rotation );
+#endif
+			const vec3 incident = runtime.color.rgb * falloff;
+			// A baked light's diffuse light is already in the bake.
+			if ( diffuseLobe && runtime.spot.y < 0.5 )
+			{
+				const vec3 diffuse = diffuseColor * incident * normalDotLight;
+				color += diffuse;
+				direct += diffuse;
+			}
+			if ( specularLobe )
+			{
+				const vec3 specular = kPi * incident *
+				                      PbrSpecular( normal, view, light, f0, roughness ) * compensation *
+				                      normalDotLight;
+				color += specular;
+				direct += specular;
+			}
+		}
+	}
+	// Area lights (render.area-light.v1): both lobes by linearly transformed
+	// cosines, windowed by each light's reach. The GGX lobe's magnitude and
+	// Fresnel split are the split-sum's A and B, as the image light's are.
+	const int areaCount = DebugTermOn( kDebugTermArea ) && !furnace
+	                          ? min( int( frame.areaCount.x ), kMaxAreaLights )
+	                          : 0;
+	if ( areaCount > 0 )
+	{
+		const mat3 ltc =
+		    LtcInverse( LtcLookup( ltcTexture, ltcSampler, roughness, normalDotView ) );
+#ifdef SEEDED_LTC_NO_MAGNITUDE
+		const vec3 areaSpecular = vec3( 1.0 );
+#else
+		const vec3 areaSpecular = ( f0 * splitSum.x + vec3( splitSum.y ) ) * compensation;
+#endif
+		for ( int i = 0; i < kMaxAreaLights; ++i )
+		{
+			if ( i >= areaCount )
+				break;
+			const AreaLight light = frame.areas[i];
+			const float window = AreaLightWindow(
+			    light.center.xyz, light.halfU.xyz, light.halfV.xyz, light.halfU.w, worldPosition );
+			if ( window <= 0.0 )
+				continue;
+			const vec3 corners[4] = vec3[4]( light.center.xyz - light.halfU.xyz - light.halfV.xyz,
+			    light.center.xyz + light.halfU.xyz - light.halfV.xyz,
+			    light.center.xyz + light.halfU.xyz + light.halfV.xyz,
+			    light.center.xyz - light.halfU.xyz + light.halfV.xyz );
+			const bool twoSided = light.center.w > 0.5;
+			float visibility = 1.0;
+			const int firstTile = int( light.radiance.w );
+			if ( firstTile >= 0 )
+			{
+				// The rectangle as a disc of its area, seen from its centre.
+				const float size = sqrt( 4.0 * length( light.halfU.xyz ) *
+				                         length( light.halfV.xyz ) / kPi );
+				visibility = ShadowFacesVisibility( shadowAtlas, shadowSampler, firstTile,
+				    twoSided ? 6 : 5, worldPosition, size, rotation );
+				if ( visibility <= 0.0 )
+					continue;
+			}
+			const vec3 radiance = light.radiance.rgb * window * visibility;
+			// A baked light's diffuse light is already in the bake.
+			if ( diffuseLobe && light.halfV.w < 0.5 )
+			{
+				const vec3 diffuse = diffuseColor * radiance *
+				                     LtcRectangle( normal, view, worldPosition, mat3( 1.0 ),
+				                         corners, twoSided );
+				color += diffuse;
+				direct += diffuse;
+			}
+			if ( specularLobe )
+			{
+				const vec3 specular =
+				    areaSpecular * radiance *
+				    LtcRectangle( normal, view, worldPosition, ltc, corners, twoSided );
+				color += specular;
+				direct += specular;
+			}
+		}
+	}
+	// The sun: both lobes (the specular only when its diffuse light is
+	// baked), its visibility the bake's mask on a world surface, else its
+	// cascades; its disc widens the specular lobe (Karis 2013).
+	if ( dot( frame.sunColor.rgb, vec3( 1.0 ) ) > 0.0 && DebugTermOn( kDebugTermSun ) && !furnace )
+	{
+		const vec3 light = frame.sunDirection.xyz;
+		const float normalDotLight = max( dot( normal, light ), 0.0 );
+		if ( normalDotLight > 0.0 )
+		{
+			float visibility = 1.0;
+			if ( lightmapped && frame.sunShadow.z > 0.5 )
+				visibility = clamp(
+				    textureLod( sampler2D( lightmap, lightmapSampler ), lightmapUv, 0.0 ).a, 0.0,
+				    1.0 );
+			else if ( frame.sunShadow.x >= 0.0 )
+			{
+				// The first cascade holding the point.
+				const int first = int( frame.sunShadow.x );
+				const int count = int( frame.sunShadow.y );
+				for ( int c = 0; c < count; ++c )
+				{
+					const ShadowTile tile = shadowTiles[first + c];
+					const vec4 h = tile.viewProjection * vec4( worldPosition, 1.0 );
+					const vec3 ndc = h.xyz / h.w;
+					if ( all( lessThan( abs( ndc.xy ), vec2( 0.98 ) ) ) && ndc.z <= 1.0 )
+					{
+						visibility = ShadowVisibilitySoft( shadowAtlas, shadowSampler, tile,
+						    worldPosition, frame.sunDirection.w, rotation );
+						break;
+					}
+				}
+			}
+			const vec3 incident = frame.sunColor.rgb * visibility;
+			if ( diffuseLobe && frame.sunColor.w < 0.5 )
+			{
+				const vec3 diffuse = diffuseColor * incident * normalDotLight;
+				color += diffuse;
+				direct += diffuse;
+			}
+			if ( specularLobe && visibility > 0.0 )
+			{
+				const float alpha = roughness * roughness;
+				const float widened = min( alpha + 0.5 * frame.sunDirection.w, 1.0 );
+				const vec3 specular = kPi * incident *
+				                      PbrSpecular( normal, view, light, f0, sqrt( widened ) ) *
+				                      compensation * normalDotLight * ( alpha * alpha ) /
+				                      ( widened * widened );
+				color += specular;
+				direct += specular;
+			}
+		}
+	}
+	// The view's projected lights: never baked, so both lobes, shadowed by
+	// their tiles (a lens of atten.w).
+	const int projectorCount = Term( kClustered ) && DebugTermOn( kDebugTermProjected ) && !furnace
+	                               ? int( clusterView.counts.x )
+	                               : 0;
+	for ( int i = 0; i < projectorCount; ++i )
+	{
+		const ProjectedLight projector = projectors[i];
+		vec2 cookieUv;
+		float distance;
+		if ( !ProjectorProject( projector, worldPosition, cookieUv, distance ) )
+			continue;
+		const vec3 light = ( projector.origin.xyz - worldPosition ) / max( distance, 1e-4 );
+		const float normalDotLight = max( dot( normal, light ), 0.0 );
+		float scale = ProjectorAttenuation( projector, distance );
+		if ( normalDotLight <= 0.0 || scale <= 0.0 )
+			continue;
+		const int tile = int( projector.color.w );
+		if ( tile >= 0 )
+			scale *= ShadowVisibilitySoft( shadowAtlas, shadowSampler, shadowTiles[tile],
+			    worldPosition, projector.atten.w, rotation );
+		const vec3 cookie =
+		    textureLod( sampler2DArray( cookieTexture, cookieSampler ),
+		        vec3( cookieUv, projector.origin.w ), 0.0 )
+		        .rgb;
+		const vec3 incident = projector.color.rgb * cookie * scale;
+		if ( diffuseLobe )
+		{
+			const vec3 diffuse = diffuseColor * incident * normalDotLight;
+			color += diffuse;
+			direct += diffuse;
+		}
+		if ( specularLobe )
+		{
+			const vec3 specular = kPi * incident *
+			                      PbrSpecular( normal, view, light, f0, roughness ) * compensation *
+			                      normalDotLight;
+			color += specular;
+			direct += specular;
+		}
+	}
+	vec3 imageSpecular = vec3( 0.0 );
+	vec3 iblRadiance = vec3( 0.0 );
+	vec3 iblWeight = vec3( 0.0 );
+	if ( specularLobe && DebugTermOn( kDebugTermIbl ) )
+	{
+		const vec3 reflected = reflect( -view, normal );
+		vec3 radiance;
+		if ( furnace || !Term( kReflectionProbes ) ||
+		     !ReflectionProbesRadiance( worldPosition, smoothNormal, reflected, roughness, radiance ) )
+			radiance = AmbientCube( reflected );
+		// The specular occlusion from the view's occlusion (one without it).
+		const float specularOcclusion =
+		    Term( kAmbientOcclusion ) && DebugTermOn( kDebugTermSpecularOcclusion ) && !furnace
+		        ? SpecularOcclusion( normalDotView, screenOcclusion, roughness )
+		        : 1.0;
+		iblRadiance = radiance;
+		iblWeight = directionalAlbedo * occlusion * specularOcclusion;
+		imageSpecular = radiance * iblWeight;
+		color += imageSpecular;
+	}
+	WriteSsrTargets( normal, roughness, iblRadiance, iblWeight );
+	vec3 emission = vec3( 0.0 );
+	if ( emissive && DebugTermOn( kDebugTermEmission ) && !furnace )
+	{
+		emission =
+		    texture( sampler2D( emissionTexture, emissionSampler ), uv ).rgb * material.emission.x;
+		color += emission;
+	}
+
+	if ( DebugViewActive() )
+	{
+		DebugInputs inputs = DebugInputsNone();
+		inputs.mask = kDebugHasAlbedo | kDebugHasNormal | kDebugHasRoughness | kDebugHasMetalness |
+		              kDebugHasAo | kDebugHasDirect | kDebugHasImageSpecular | kDebugHasUv0;
+		inputs.albedo = base;
+		inputs.normal = normal;
+		if ( normalMap )
+		{
+			inputs.mask |= kDebugHasNormalMap;
+			inputs.normalMap = mapped;
+		}
+		inputs.roughness = roughness;
+		inputs.metalness = metalness;
+		inputs.ao = occlusion;
+		inputs.direct = direct;
+		inputs.imageSpecular = imageSpecular;
+		if ( lightmapped )
+		{
+			inputs.mask |= kDebugHasBaked;
+			inputs.baked = baked;
+		}
+		if ( emissive )
+		{
+			inputs.mask |= kDebugHasEmission;
+			inputs.emission = emission;
+		}
+		inputs.uv0 = uv;
+		inputs.final = color;
+		outColor = DebugOutput( inputs );
+		return;
+	}
+	// cl_render_debug_brdf 4: the split-sum table's sample as red and green.
+	if ( kDebugBrdf == kDebugBrdfSplitSumSample )
+	{
+		outColor = vec4( splitSum, 0.0, 1.0 );
+		return;
+	}
+	outColor = Output( color, baseSample.a );
+}
+
+// The vertexlit point: the vertexlit_and_unlit_generic port's DIFFUSELIGHTING
+// path, the vertex lighting mixing the ambient cube and the lights, so no
+// light term is separable; the furnace takes albedo 1 under a uniform
+// radiance of 1.
+void VertexLitSurface()
+{
+	const bool furnace = DebugFurnace();
+	const vec4 baseColor = texture( sampler2D( baseTexture, baseSampler ), baseUv );
+	const vec3 albedo = furnace ? vec3( 1.0 ) : baseColor.rgb * material.tint.rgb;
+	const float alpha = material.tint.a * baseColor.a;
+	if ( material.flags.y != 0.0 && alpha < material.flags.z )
+		discard;
+	const vec3 lit = albedo * ( furnace ? vec3( 1.0 ) : vertexLighting );
+	if ( DebugViewActive() )
+	{
+		DebugInputs inputs = DebugInputsNone();
+		inputs.mask = kDebugHasAlbedo | kDebugHasAo | kDebugHasUv0;
+		inputs.albedo = albedo;
+		inputs.uv0 = baseUv;
+		inputs.final = lit;
+		outColor = DebugOutput( inputs );
+		return;
+	}
+	outColor = Output( lit, alpha );
+}
+
+void main()
+{
+	// Points without image specular leave the SSR targets empty (weight 0:
+	// render.pass.ssr leaves their pixels unchanged).
+	WriteSsrTargets( vec3( 0.0, 0.0, 1.0 ), 1.0, vec3( 0.0 ), vec3( 0.0 ) );
+	if ( Term( kPbr ) )
+	{
+		PbrSurface();
+		return;
+	}
+	if ( Term( kDepthNormal ) )
+	{
+		const vec3 n = dot( worldNormal, worldNormal ) > 1e-12 ? normalize( worldNormal )
+		                                                     : vec3( 0.0, 0.0, 1.0 );
+		outColor = vec4( SurfaceOctEncode( n ), 1.0, 1.0 );
+		return;
+	}
+	if ( Term( kVertexLit ) )
+	{
+		VertexLitSurface();
+		return;
+	}
+	const bool bumpmap = Term( kBumpmap | kSsbump );
+	const bool ssbump = Term( kSsbump );
+	const bool diffuseBumpmap = bumpmap && Term( kDiffuseBumpmap );
+	const bool lightingOne = Term( kUnlit );
+
+	const vec4 base = texture( sampler2D( baseTexture, baseSampler ), baseUv );
+	// GetBaseTextureAndNormal: the bump map is read at the base coordinates;
+	// with only $normalmapalphaenvmapmask its texels are used undecoded, as
+	// the port does.
+	vec4 normalSample = vec4( 0.0, 0.0, 1.0, 1.0 );
+	if ( bumpmap || Term( kNormalMapAlphaEnvmapMask ) )
+		normalSample = texture( sampler2D( bumpTexture, bumpSampler ), baseUv );
+	if ( bumpmap && !ssbump )
+		normalSample.xyz = normalSample.xyz * 2.0 - 1.0;
+
+	const bool furnace = DebugFurnace();
+	vec3 albedo = base.rgb;
+	// The port's vertex fast path (no texture transform): the vertex color
+	// replaces the modulation alpha, which otherwise applies $alpha a second
+	// time; self-illumination and a base-alpha env map mask use the base
+	// alpha as their mask instead.
+	float alpha = Term( kBaseAlphaEnvmapMask ) || Term( kSelfIllum ) ? 1.0 : base.a;
+	alpha *= material.tint.a;
+	if ( Term( kDetailTexture ) )
+	{
+		const vec4 detail = vec4( material.detailTint.rgb, 1.0 ) *
+		                    texture( sampler2D( detailTexture, detailSampler ),
+		                        baseUv * material.detailScale.xy );
+		albedo = TextureCombine( vec4( albedo, base.a ), detail, material.detailTint.a ).rgb;
+	}
+	if ( lightingOne )
+	{
+		// UnlitGeneric: $alpha once, the vertex color and the vertex alpha
+		// each by its own flag.
+		if ( material.flags.x != 0.0 )
+			albedo *= color.rgb;
+		if ( material.state.w != 0.0 )
+			alpha *= color.a;
+	}
+	else if ( material.flags.x != 0.0 )
+	{
+		// Off the vertex fast path (detail) the modulation alpha multiplies
+		// the vertex alpha instead of being replaced by it.
+		albedo *= color.rgb;
+		alpha *= color.a * ( Term( kDetailTexture ) ? material.tint.a : 1.0 );
+	}
+	else
+	{
+		alpha *= material.tint.a;
+	}
+	if ( material.flags.y != 0.0 && alpha < material.flags.z )
+		discard;
+
+	// The furnace (RFC 0014): albedo 1 after every modulation, the light a
+	// uniform radiance of 1 in place of the lightmap and the env map.
+	vec3 tint = material.tint.rgb;
+	if ( furnace )
+	{
+		albedo = vec3( 1.0 );
+		tint = vec3( 1.0 );
+	}
+	// The diffuse light: c12 is the tint times the lightmap scale.
+	const vec3 c12 = tint * ( lightingOne ? 1.0 : frame.light.x );
+	// The baked light with albedo 1 (the debug view), before the tint.
+	vec3 baked = vec3( 0.0 );
+	vec3 diffuse;
+	if ( lightingOne )
+	{
+		diffuse = c12;
+	}
+	else if ( diffuseBumpmap )
+	{
+		const vec2 offset = vec2( lightmapOffset, 0.0 );
+		const vec3 light1 =
+		    texture( sampler2D( lightmap, lightmapSampler ), lightmapUv + offset ).rgb;
+		const vec3 light2 =
+		    texture( sampler2D( lightmap, lightmapSampler ), lightmapUv + 2.0 * offset ).rgb;
+		const vec3 light3 =
+		    texture( sampler2D( lightmap, lightmapSampler ), lightmapUv + 3.0 * offset ).rgb;
+		if ( ssbump )
+		{
+			diffuse = normalSample.x * light1 + normalSample.y * light2 + normalSample.z * light3;
+			// The running game's shaders may scale every ssbump (Portal 2's
+			// do); else $ssbumpmathfix does.
+			const float weightScale = frame.fogMisc.y != 0.0 ? OO_SQRT_3 : material.state.z;
+			baked = diffuse * weightScale * frame.light.x;
+			diffuse *= weightScale * c12;
+			normalSample.xyz = normalize( bumpBasis[0] * normalSample.x +
+			                              bumpBasis[1] * normalSample.y +
+			                              bumpBasis[2] * normalSample.z );
+		}
+		else
+		{
+			vec3 dp;
+			dp.x = clamp( dot( normalSample.xyz, bumpBasis[0] ), 0.0, 1.0 );
+			dp.y = clamp( dot( normalSample.xyz, bumpBasis[1] ), 0.0, 1.0 );
+			dp.z = clamp( dot( normalSample.xyz, bumpBasis[2] ), 0.0, 1.0 );
+			dp *= dp;
+			diffuse = dp.x * light1 + dp.y * light2 + dp.z * light3;
+			baked = diffuse / dot( dp, vec3( 1.0 ) ) * frame.light.x;
+			diffuse *= c12 / dot( dp, vec3( 1.0 ) );
+		}
+	}
+	else
+	{
+		const vec3 page = texture( sampler2D( lightmap, lightmapSampler ), lightmapUv ).rgb;
+		baked = page * frame.light.x;
+		diffuse = page * c12;
+	}
+	// cl_render_debug_term baked: the frame of a zero lightmap page;
+	// cl_render_debug_brdf 2 (specular only) drops the diffuse lobe.
+	if ( !lightingOne && furnace )
+		diffuse = baked = vec3( 1.0 );
+#ifndef SEEDED_DEBUG_TERM_IGNORED
+	if ( !lightingOne && !DebugTermOn( kDebugTermBaked ) )
+		diffuse = vec3( 0.0 );
+#endif
+
+	vec3 lit = kDebugBrdf == kDebugBrdfSpecularOnly ? vec3( 0.0 ) : albedo * diffuse;
+	// Self-illumination replaces the diffuse term by its tint times albedo
+	// where base alpha is set. Its emission is that tint's share; turning the
+	// term off is the frame of $selfillumtint 0.
+	vec3 emission = vec3( 0.0 );
+	if ( Term( kSelfIllum ) )
+	{
+		const vec3 selfIllum =
+		    DebugTermOn( kDebugTermEmission ) && !furnace ? material.selfIllumTint.rgb : vec3( 0.0 );
+		emission = selfIllum * albedo * base.a;
+		lit = mix( lit, selfIllum * albedo, base.a );
+	}
+
+	vec3 imageSpecular = vec3( 0.0 );
+	vec3 shadingNormal = vec3( 0.0 );
+	const bool hasNormal = dot( worldNormal, worldNormal ) > 0.0;
+	if ( hasNormal )
+	{
+		shadingNormal = normalize( bumpmap ? normalSample.x * tangentS + normalSample.y * tangentT +
+		                                         normalSample.z * worldNormal
+		                                   : worldNormal );
+	}
+	if ( Term( kCubemap ) && DebugTermOn( kDebugTermIbl ) &&
+	     kDebugBrdf != kDebugBrdfDiffuseOnly )
+	{
+		vec3 specularFactor = vec3( 1.0 );
+		if ( Term( kNormalMapAlphaEnvmapMask ) )
+			specularFactor *= normalSample.a;
+		if ( Term( kEnvmapMask ) )
+			specularFactor *=
+			    texture( sampler2D( envmapMaskTexture, envmapMaskSampler ), baseUv ).xyz;
+		if ( Term( kBaseAlphaEnvmapMask ) )
+			specularFactor *= 1.0 - base.a;
+		// mul( vNormal, tangentSpaceTranspose ): rows S, T, N.
+		const vec3 normal = normalSample.x * tangentS + normalSample.y * tangentT +
+		                    normalSample.z * worldNormal;
+		const vec3 toEye = frame.eye.xyz - worldPosition;
+		const vec3 reflected =
+		    2.0 * dot( normal, toEye ) * normal - dot( normal, normal ) * toEye;
+		float fresnel = pow( 1.0 - dot( normal, normalize( toEye ) ), 5.0 );
+		fresnel = fresnel * material.envContrast.a + material.envTint.a;
+		vec3 specular = furnace ? vec3( 1.0 )
+		                        : frame.eye.w * texture( samplerCube( envmapTexture, envmapSampler ),
+		                                            reflected )
+		                                            .rgb;
+		// Portal 2's $envmaplightscale: darker where the diffuse light is.
+		if ( material.envLightScale.z > 0.0 )
+		{
+			const vec3 cubemapLight =
+			    clamp( ( diffuse - material.envLightScale.x ) * material.envLightScale.y, 0.0, 1.0 );
+			specular = mix( specular, specular * cubemapLight, material.envLightScale.z );
+		}
+		specular *= specularFactor * material.envTint.rgb * frame.light.w;
+		specular = mix( specular, specular * specular, material.envContrast.rgb );
+		const vec3 grey = vec3( dot( specular, vec3( 0.299, 0.587, 0.114 ) ) );
+		specular = mix( grey, specular, material.envSaturation.rgb );
+		// The port adds the specular term after the lightmap scale; the
+		// tint's lightmap scale is in c12 only.
+		imageSpecular = specular * fresnel;
+		lit += imageSpecular;
+	}
+
+	if ( DebugViewActive() )
+	{
+		DebugInputs inputs = DebugInputsNone();
+		inputs.mask = kDebugHasAlbedo | kDebugHasAo | kDebugHasUv0 | kDebugHasVertexColor;
+		if ( Term( kCubemap ) )
+			inputs.mask |= kDebugHasImageSpecular;
+		if ( Term( kSelfIllum ) )
+			inputs.mask |= kDebugHasEmission;
+		inputs.albedo = albedo * tint;
+		if ( hasNormal )
+		{
+			inputs.mask |= kDebugHasNormal;
+			inputs.normal = shadingNormal;
+		}
+		if ( bumpmap )
+		{
+			inputs.mask |= kDebugHasNormalMap;
+			inputs.normalMap = normalSample.xyz;
+		}
+		if ( !lightingOne )
+		{
+			inputs.mask |= kDebugHasBaked;
+			inputs.baked = baked;
+		}
+		inputs.imageSpecular = imageSpecular;
+		inputs.emission = emission;
+		inputs.uv0 = baseUv;
+		inputs.vertexColor = color;
+		inputs.final = lit;
+		outColor = DebugOutput( inputs );
+		return;
+	}
+	outColor = Output( lit, alpha );
+}

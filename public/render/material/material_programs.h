@@ -53,7 +53,8 @@ struct ProgramTexture
 {
 	std::uint32_t binding = 0;        // the sampled texture's binding
 	std::string name;                 // its TextureCache name
-	std::uint32_t samplerBinding = 0; // the sampler's binding
+	// The sampler's binding; kNoSamplerBinding for a texture only fetched.
+	std::uint32_t samplerBinding = 0;
 	device::SamplerDesc sampler;
 	// Sampled through an sRGB view of its format (the family decodes it
 	// before filtering, as D3D9's SRGBTEXTURE does).
@@ -67,7 +68,11 @@ struct ProgramTexture
 	// wherever the group is read; the group is rebuilt when the id changes.
 	device::TextureId external = {};
 	device::TextureDesc externalDesc = {};
+	// A 2D binding the program reads as an array (texture2DArray): its
+	// neutral texture has two layers, so an array view is made.
+	bool array = false;
 };
+inline constexpr std::uint32_t kNoSamplerBinding = 0xFFFFFFFFu;
 
 // A read-only storage buffer of a group: its binding and contents (at least
 // one byte).
@@ -154,9 +159,10 @@ private:
 	// filled at the next RecordUploads.
 	device::TextureId m_Neutral2D;
 	device::TextureId m_NeutralCube;
+	device::TextureId m_Neutral2DArray;
 	device::BufferId m_NeutralStaging;
 	bool m_NeutralUploaded = false;
-	device::TextureId Neutral( device::TextureDimension dimension );
+	device::TextureId Neutral( device::TextureDimension dimension, bool array = false );
 	std::uint32_t m_Failures = 0;
 	device::CompletionToken m_LastToken;
 };

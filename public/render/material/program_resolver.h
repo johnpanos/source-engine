@@ -28,6 +28,7 @@
 #include "foundation/expected.h"
 #include "render/device/device.h"
 #include "render/material/material_programs.h"
+#include "render/material/surface_program.h"
 #include "render/material/vmt_import.h"
 #include "render/shaderlib/debug_view.h"
 
@@ -63,6 +64,14 @@ struct FrameTerms
 	bool specular = true;
 	// The running game's shaders scale every ssbump by 1/sqrt(3) (Portal 2).
 	bool ssbumpNormalized = false;
+	// The pbr point's frame inputs (world pbr, SetWorldPbr): the split-sum
+	// and LTC tables by TextureCache name (SplitSumTable(), LtcTable()), the
+	// map's probe textures, and the frame's area lights (at most
+	// kSurfaceMaxAreaLights, PackAreaLight).
+	std::string splitSumTable;
+	std::string ltcTable;
+	SurfaceMapTextures map;
+	std::vector<SurfaceAreaLight> areas;
 };
 
 // The vertex a resolver's programs read: the flat vertex (position, base and
@@ -111,6 +120,18 @@ public:
 
 	// The program for a mapped material, or why it has none.
 	foundation::Expected<ResolvedProgram, std::string> Resolve( const MaterialDesc &material );
+	// World pbr (RFC 0016 K11 "World PBR materials"): with it, a surface
+	// resolver claims PBRMetalRough materials as the surface program's pbr
+	// point on the world vertex, with kSurfaceBakedLightmap and these scene
+	// terms (kSurfaceDirectionalLightmap, kSurfaceMapProbeTerms,
+	// kSurfaceClustered and the other scene terms of surface_program.h),
+	// taking the draw inputs "lightmap" and "lightmap-gradient". Without it
+	// (the default, and the product until K12) a pbr material is refused by
+	// name. Call before resolving; programs already resolved keep theirs.
+	void SetWorldPbr( bool enabled, std::uint32_t sceneTerms = 0 );
+	// The one surface program every point is drawn through (its layouts for
+	// the view group, SurfaceProgram::ViewGroup).
+	SurfaceProgram &Program() const;
 	// The draw group a resolved program reads, with its inputs' textures by
 	// name (in drawInputs order); nullopt when the program reads none.
 	std::optional<GroupRequest> DrawGroup(

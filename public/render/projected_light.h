@@ -100,6 +100,45 @@ inline bool Project( const Light &light, const float p[3], float *u, float *v, f
 	return atten * end;
 }
 
+// A projector as the render core's programs read it (std430/std140; the one
+// layout of render/shaders/common/projected_light.glsl's ProjectedLight):
+// origin (w: its cookie's layer), the frustum's basis, tan half-angles, near
+// and far, color (w: its shadow tile in the view's list, or -1) and the
+// attenuation (w: the lens radius its soft shadows take).
+struct LightGpu
+{
+	float origin[4] = {};
+	float forward[4] = {};
+	float right[4] = {};
+	float up[4] = {};
+	float frustum[4] = {};
+	float color[4] = { 0.0f, 0.0f, 0.0f, -1.0f };
+	float atten[4] = {};
+};
+static_assert( sizeof( LightGpu ) == 112 );
+
+inline LightGpu PackLightGpu( const Light &light, int cookieLayer, int shadowTile = -1 )
+{
+	LightGpu gpu;
+	for ( int k = 0; k < 3; ++k )
+	{
+		gpu.origin[k] = light.origin[k];
+		gpu.forward[k] = light.forward[k];
+		gpu.right[k] = light.right[k];
+		gpu.up[k] = light.up[k];
+		gpu.color[k] = light.color[k];
+		gpu.atten[k] = light.atten[k];
+	}
+	gpu.origin[3] = float( cookieLayer );
+	gpu.frustum[0] = std::tan( 0.5f * light.horizontalFovDegrees * kPi / 180.0f );
+	gpu.frustum[1] = std::tan( 0.5f * light.verticalFovDegrees * kPi / 180.0f );
+	gpu.frustum[2] = light.nearZ;
+	gpu.frustum[3] = light.farZ;
+	gpu.color[3] = float( shadowTile );
+	gpu.atten[3] = kSourceRadius;
+	return gpu;
+}
+
 // The light a point with unit normal n receives, the cookie sampled by
 // `cookie( u, v, rgb )` (the contract's oracle, unshadowed).
 template <typename Cookie>

@@ -307,16 +307,8 @@ struct MediumLightGpu
 	float cone[4] = {}; // innerCos, outerCos, radius, sourceRadius
 	float misc[4] = {}; // minLight, spot exponent, 0, 0
 };
-struct MediumProjectorGpu
-{
-	float origin[4] = {}; // xyz; w cookie layer
-	float forward[4] = {};
-	float right[4] = {};
-	float up[4] = {};
-	float frustum[4] = {}; // tan half horizontal, tan half vertical, near, far
-	float color[4] = {};   // rgb, 0
-	float atten[4] = {};   // constant, linear, quadratic, 0
-};
+// The projector record is render.projected-light.v1's one GPU layout.
+using MediumProjectorGpu = projected_light::LightGpu;
 static_assert( sizeof( FogVolumeGpu ) == 48 && sizeof( MediumLightGpu ) == 80 &&
                sizeof( MediumProjectorGpu ) == 112 );
 

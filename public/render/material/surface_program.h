@@ -49,6 +49,7 @@
 #include "render/light_set.h"
 #include "render/material/material_programs.h"
 #include "render/material/model_lighting.h"
+#include "render/projected_light.h"
 #include "render/shadow_tile.h"
 #include "render/shaderlib/debug_view.h"
 
@@ -101,14 +102,20 @@ struct SurfaceAreaLight
 {
 	float center[4] = {}; // w: 1 when two-sided
 	float halfU[4] = {};  // w: the reach
-	float halfV[4] = {};
+	float halfV[4] = {};  // w: 1 when its diffuse light is in the surface's baked light
+	// rgb: the radiance; w: the first of its shadow tiles in the view's list
+	// (the faces of its hemicube, five, or six when two-sided), or -1
 	float radiance[4] = {};
 };
 static_assert( sizeof( SurfaceAreaLight ) == 64 );
 inline constexpr int kSurfaceMaxAreaLights = 64;
 
-// Packs an area light (area_light::AreaLight, its reach set).
-SurfaceAreaLight PackAreaLight( const area_light::AreaLight &light );
+// Packs an area light (area_light::AreaLight, its reach set). diffuseInBake:
+// the surfaces' baked light (lightmap, probe volume) already holds its
+// diffuse light, so the program adds its specular lobe only. firstTile: its
+// shadow faces in the view's tile list (SurfaceShadows), or -1 unshadowed.
+SurfaceAreaLight PackAreaLight(
+    const area_light::AreaLight &light, bool diffuseInBake = false, int firstTile = -1 );
 
 // The view group's parameters (std140, binding 0): the cluster grid a
 // fragment's froxel is found in (render.pass.lights FroxelAt) and the view
@@ -120,8 +127,11 @@ struct SurfaceViewGpu
 	// The view distance of a world point p: dot( xyz, p ) + w (the negated z
 	// row of world-to-view).
 	float viewDistance[4] = {};
+	// x: the view's projected lights (binding 7), y: the pixel-to-texel
+	// scale of the view's screen inputs (1), z, w: 0
+	float counts[4] = { 0.0f, 1.0f, 0.0f, 0.0f };
 };
-static_assert( sizeof( SurfaceViewGpu ) == 48 );
+static_assert( sizeof( SurfaceViewGpu ) == 64 );
 
 // A runtime point or spot light as the view group holds it (std430,
 // binding 3), light_set::RuntimeLight packed.
@@ -134,11 +144,15 @@ struct SurfaceLightGpu
 	// light's shadow tile in the view's tile list (binding 4), or -1 when it
 	// has none (unshadowed: its visibility is one).
 	float cone[4] = {};
-	float spot[4] = {}; // the cone ramp's exponent (light_set::SpotFactor), 0, 0, 0
+	// x: the cone ramp's exponent (light_set::SpotFactor); y: 1 when its
+	// diffuse light is in the surface's baked light (the specular lobe only);
+	// z: its shadow tiles from cone.w (1 a spot's, 6 a point light's cube)
+	float spot[4] = {};
 };
 static_assert( sizeof( SurfaceLightGpu ) == 80 );
 
-SurfaceLightGpu PackSurfaceLight( const light_set::RuntimeLight &light, int shadowTile = -1 );
+SurfaceLightGpu PackSurfaceLight( const light_set::RuntimeLight &light, int shadowTile = -1,
+    int shadowTiles = 1, bool diffuseInBake = false );
 
 // A view's shadows as the view group binds them: the atlas the view's shadow
 // passes drew (render.pass.shadows; kSampled wherever the group is read, and
@@ -149,6 +163,26 @@ struct SurfaceShadows
 	device::TextureId atlas;
 	device::TextureDesc atlasDesc;
 	std::span<const ShadowTileGpu> tiles;
+};
+
+// A view's projected lights (render.projected-light.v1, both lobes, never
+// baked): their records (projected_light::PackLightGpu, the cookie layer and
+// shadow tile set) and the cookies as one 2D array texture (at least two
+// layers), made and kept by the owner in kSampled where the group is read.
+struct SurfaceProjectors
+{
+	std::span<const projected_light::LightGpu> lights;
+	device::TextureId cookies;
+	device::TextureDesc cookiesDesc;
+};
+
+// A view's screen inputs (made by passes before the surface pass, kSampled
+// while it runs): the ambient occlusion (render.pass.ao, one channel at the
+// view's size), read under kSurfaceAmbientOcclusion.
+struct SurfaceScreenInputs
+{
+	device::TextureId ambientOcclusion;
+	device::TextureDesc ambientOcclusionDesc;
 };
 
 // The frame's terms (std140, the Frame block of surface.frag): one lightmap
@@ -178,9 +212,19 @@ struct SurfaceFrame
 	float eye[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
 	// The frame's area lights (the pbr point reads them): x their count.
 	float areaCount[4] = {};
+	// The sun (render.shadows.v1; the pbr point reads it): xyz towards the
+	// sun, w the tangent of its disc's angular radius.
+	float sunDirection[4] = {};
+	// rgb its diffuse light on a surface facing it (the lightmap unit); w 1
+	// when that diffuse light is in the surfaces' baked light.
+	float sunColor[4] = {};
+	// x: the first of its cascade tiles in the view's list, or -1; y: the
+	// cascades' count; z: 1 when a world surface's visibility is the baked
+	// mask in its lightmap page's alpha (LMAP --sun-visibility); w: 0.
+	float sunShadow[4] = { -1.0f, 0.0f, 0.0f, 0.0f };
 	SurfaceAreaLight areas[kSurfaceMaxAreaLights];
 };
-static_assert( sizeof( SurfaceFrame ) == 96 + 64 * kSurfaceMaxAreaLights );
+static_assert( sizeof( SurfaceFrame ) == 144 + 64 * kSurfaceMaxAreaLights );
 
 // The flat vertex (surface_flat.vert): position, base and lightmap
 // coordinates, and color as UNORM8x4 (RGBA).
@@ -264,6 +308,22 @@ inline constexpr std::uint32_t kSurfaceDirectionalLightmap = 65536;
 // frame group's SurfaceMapTextures.
 inline constexpr std::uint32_t kSurfaceProbeVolume = 131072;
 inline constexpr std::uint32_t kSurfaceReflectionProbes = 262144;
+// Ambient occlusion (render.pass.ao): the view's occlusion multiplies the
+// indirect light only, and derives the specular occlusion; on a world
+// surface it darkens the bake's indirect layer (the draw group's third page),
+// never its direct light.
+inline constexpr std::uint32_t kSurfaceAmbientOcclusion = 524288;
+// Screen-space reflection targets (render.pass.ssr): attachments 1 to 3
+// hold the octahedral normal and roughness, the image-specular radiance and
+// its weight, as ssr.h names them.
+inline constexpr std::uint32_t kSurfaceSsrTargets = 1048576;
+// The depth-and-normal prepass: attachment 0 holds the octahedral normal and
+// roughness only.
+inline constexpr std::uint32_t kSurfaceDepthNormal = 2097152;
+// The projected lights' bounce (the frame group's bounce atlas, a probe
+// atlas of the probe volume's layout sampled with its weights), added to the
+// indirect diffuse light of every surface.
+inline constexpr std::uint32_t kSurfaceProbeBounce = 4194304;
 // The terms that read the normal (not on the flat vertex), and those the
 // model vertex alone evaluates.
 inline constexpr std::uint32_t kSurfaceNormalTerms =
@@ -285,6 +345,10 @@ struct SurfaceMapTextures
 	std::string probeAtlas;
 	std::string probeGrids;
 	std::string reflectionProbes;
+	// The projected lights' bounce atlas (kSurfaceProbeBounce): a texture
+	// the owner made (render.pass.bounce), bound as it is.
+	device::TextureId probeBounce;
+	device::TextureDesc probeBounceDesc;
 };
 
 // One point of the program: its pipeline state and specialization.
@@ -387,15 +451,19 @@ public:
 	// light records, as render.pass.lights lays them out.
 	GroupRequest ViewGroup( const SurfaceViewGpu &view, std::span<const std::byte> froxels,
 	    std::span<const std::byte> indices, std::span<const SurfaceLightGpu> lights,
-	    const SurfaceShadows &shadows = {} ) const;
+	    const SurfaceShadows &shadows = {}, const SurfaceProjectors &projectors = {},
+	    const SurfaceScreenInputs &screen = {} ) const;
 	// The view group of a view with no clustered lights.
 	GroupRequest NeutralViewGroup() const;
 	// A draw group: the lightmap page ('page', a TextureCache name staged as
 	// sRGB; empty for a mesh), the draw's model lighting and a directional
 	// page's gradient page ('gradient', read under
 	// kSurfaceDirectionalLightmap; empty otherwise).
+	// 'indirect' names the bake's indirect layer of the same page
+	// (kSurfaceAmbientOcclusion on a world surface; empty otherwise).
 	GroupRequest DrawGroup( std::string page, const ModelLighting &lighting = {},
-	    const device::SamplerDesc &sampler = {}, std::string gradient = {} ) const;
+	    const device::SamplerDesc &sampler = {}, std::string gradient = {},
+	    std::string indirect = {} ) const;
 
 private:
 	explicit SurfaceProgram( device::IRenderDevice2 &device ) : m_Device( device ) {}

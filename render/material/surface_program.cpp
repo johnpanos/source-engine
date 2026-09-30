@@ -25,6 +25,8 @@ constexpr std::uint32_t kMaterialTextures = 7;
 
 // The program's stages in the core artifact store (RFC 0016 K10).
 constexpr const char *kFragmentSource = "render/material/families/surface.frag";
+// The same program with the SSR targets (kSurfaceSsrTargets).
+constexpr const char *kSsrFragmentSource = "render/material/families/surface_ssr.frag";
 
 const char *VertexSource( SurfaceVertexLayout layout )
 {
@@ -92,7 +94,8 @@ PbrSplitSumTable LtcTable()
 	return table;
 }
 
-SurfaceLightGpu PackSurfaceLight( const light_set::RuntimeLight &light, int shadowTile )
+SurfaceLightGpu PackSurfaceLight(
+    const light_set::RuntimeLight &light, int shadowTile, int shadowTiles, bool diffuseInBake )
 {
 	SurfaceLightGpu packed;
 	const bool spot = light.shape == light_set::LightShape::Spot;
@@ -110,10 +113,13 @@ SurfaceLightGpu PackSurfaceLight( const light_set::RuntimeLight &light, int shad
 	packed.cone[2] = light.sourceRadius;
 	packed.cone[3] = float( shadowTile );
 	packed.spot[0] = light.spotExponent;
+	packed.spot[1] = diffuseInBake ? 1.0f : 0.0f;
+	packed.spot[2] = float( shadowTiles );
 	return packed;
 }
 
-SurfaceAreaLight PackAreaLight( const area_light::AreaLight &light )
+SurfaceAreaLight PackAreaLight(
+    const area_light::AreaLight &light, bool diffuseInBake, int firstTile )
 {
 	SurfaceAreaLight packed;
 	for ( int k = 0; k < 3; ++k )
@@ -125,6 +131,8 @@ SurfaceAreaLight PackAreaLight( const area_light::AreaLight &light )
 	}
 	packed.center[3] = light.rect.twoSided ? 1.0f : 0.0f;
 	packed.halfU[3] = light.reach;
+	packed.halfV[3] = diffuseInBake ? 1.0f : 0.0f;
+	packed.radiance[3] = float( firstTile );
 	return packed;
 }
 
@@ -147,7 +155,8 @@ foundation::Expected<std::unique_ptr<SurfaceProgram>, SurfaceStatus> SurfaceProg
 	    { 7, BindingKind::kSampledTexture, 1, { ShaderStage::kFragment } },
 	    { 8, BindingKind::kSampler, 1, { ShaderStage::kFragment } },
 	    { 9, BindingKind::kSampledTexture, 1, { ShaderStage::kFragment } },
-	    { 10, BindingKind::kSampler, 1, { ShaderStage::kFragment } } };
+	    { 10, BindingKind::kSampler, 1, { ShaderStage::kFragment } },
+	    { 11, BindingKind::kSampledTexture, 1, { ShaderStage::kFragment } } };
 	std::vector<BindingDesc> material = {
 	    { 0, BindingKind::kUniformBuffer, 1, { ShaderStage::kVertex, ShaderStage::kFragment } } };
 	for ( std::uint32_t texture = 0; texture < kMaterialTextures; ++texture )
@@ -161,14 +170,20 @@ foundation::Expected<std::unique_ptr<SurfaceProgram>, SurfaceStatus> SurfaceProg
 	    { 1, BindingKind::kSampler, 1, { ShaderStage::kFragment } },
 	    { 2, BindingKind::kUniformBuffer, 1, { ShaderStage::kVertex, ShaderStage::kFragment } },
 	    { 3, BindingKind::kSampledTexture, 1, { ShaderStage::kFragment } },
-	    { 4, BindingKind::kSampler, 1, { ShaderStage::kFragment } } };
+	    { 4, BindingKind::kSampler, 1, { ShaderStage::kFragment } },
+	    { 5, BindingKind::kSampledTexture, 1, { ShaderStage::kFragment } },
+	    { 6, BindingKind::kSampler, 1, { ShaderStage::kFragment } } };
 	const BindingDesc view[] = { { 0, BindingKind::kUniformBuffer, 1, { ShaderStage::kFragment } },
 	    { 1, BindingKind::kStorageBuffer, 1, { ShaderStage::kFragment } },
 	    { 2, BindingKind::kStorageBuffer, 1, { ShaderStage::kFragment } },
 	    { 3, BindingKind::kStorageBuffer, 1, { ShaderStage::kFragment } },
 	    { 4, BindingKind::kStorageBuffer, 1, { ShaderStage::kFragment } },
 	    { 5, BindingKind::kSampledTexture, 1, { ShaderStage::kFragment } },
-	    { 6, BindingKind::kSampler, 1, { ShaderStage::kFragment } } };
+	    { 6, BindingKind::kSampler, 1, { ShaderStage::kFragment } },
+	    { 7, BindingKind::kStorageBuffer, 1, { ShaderStage::kFragment } },
+	    { 8, BindingKind::kSampledTexture, 1, { ShaderStage::kFragment } },
+	    { 9, BindingKind::kSampler, 1, { ShaderStage::kFragment } },
+	    { 10, BindingKind::kSampledTexture, 1, { ShaderStage::kFragment } } };
 	auto frameLayout = device.CreateBindGroupLayout( { BindGroupRole::kFrame, frame } );
 	auto viewLayout = device.CreateBindGroupLayout( { BindGroupRole::kView, view } );
 	auto materialLayout = device.CreateBindGroupLayout( { BindGroupRole::kMaterial, material } );
@@ -234,8 +249,10 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::Pipeline(
 	if ( !m_FragmentModule.empty() &&
 	     !artifacts.ReplaceSpirv( kFragmentSource, m_FragmentModule, format ) )
 		return foundation::MakeUnexpected( SurfaceStatus::kDevice );
-	shaderlib::PipelineRecipe recipe =
-	    shaderlib::CoreRecipe( { VertexSource( variant.layout ), kFragmentSource } );
+	const bool withSsrTargets =
+	    ( variant.terms & kSurfaceSsrTargets ) != 0 && !( variant.terms & kSurfaceDepthNormal );
+	shaderlib::PipelineRecipe recipe = shaderlib::CoreRecipe(
+	    { VertexSource( variant.layout ), withSsrTargets ? kSsrFragmentSource : kFragmentSource } );
 	recipe.debugName = "render.material.surface";
 	auto resolved = shaderlib::Resolve( recipe, artifacts, format );
 	if ( !resolved )
@@ -261,10 +278,19 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::Pipeline(
 	const VertexBufferLayout buffers[] = { { SurfaceVertexStride( variant.layout ), false } };
 	const BindGroupLayoutId layouts[] = {
 	    m_FrameLayout, m_ViewLayout, m_MaterialLayout, m_DrawLayout };
-	const Format colors[] = { m_ColorFormat };
-	const BlendMode blends[] = { variant.blend };
-	const std::uint8_t writes[] = {
-	    variant.alphaWrite ? kColorWriteAll : std::uint8_t( kColorWriteAll & ~kColorWriteAlpha ) };
+	// The prepass writes the normal and roughness alone; the SSR targets are
+	// three more attachments (RGBA16F) after the lit color.
+	const bool prepass = ( variant.terms & kSurfaceDepthNormal ) != 0;
+	const bool ssrTargets = ( variant.terms & kSurfaceSsrTargets ) != 0 && !prepass;
+	const std::uint8_t firstWrite =
+	    variant.alphaWrite ? kColorWriteAll : std::uint8_t( kColorWriteAll & ~kColorWriteAlpha );
+	const Format colors[] = { prepass ? Format::kRGBA16Float : m_ColorFormat, Format::kRGBA16Float,
+	    Format::kRGBA16Float, Format::kRGBA16Float };
+	const BlendMode blends[] = { prepass ? BlendMode::kOpaque : variant.blend, BlendMode::kOpaque,
+	    BlendMode::kOpaque, BlendMode::kOpaque };
+	const std::uint8_t writes[] = { prepass ? kColorWriteAll : firstWrite, kColorWriteAll,
+	    kColorWriteAll, kColorWriteAll };
+	const std::size_t attachments = ssrTargets ? 4 : 1;
 	PipelineDesc desc = resolved.Value().Desc();
 	desc.layouts = layouts;
 	desc.drawConstantBytes = drawConstantBytes;
@@ -285,9 +311,9 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::Pipeline(
 	const bool depth = m_DepthFormat != Format::kUnknown;
 	desc.depthStencil = {
 	    depth, depth && variant.blend == BlendMode::kOpaque, CompareOp::kLessEqual };
-	desc.colorFormats = colors;
-	desc.blends = blends;
-	desc.colorWriteMasks = writes;
+	desc.colorFormats = std::span<const Format>( colors, attachments );
+	desc.blends = std::span<const BlendMode>( blends, attachments );
+	desc.colorWriteMasks = std::span<const std::uint8_t>( writes, attachments );
 	desc.depthFormat = m_DepthFormat;
 	desc.sampleCount = m_SampleCount;
 	desc.debugName = "render.material.surface";
@@ -351,12 +377,21 @@ GroupRequest SurfaceProgram::FrameGroup( const SurfaceFrame &frame, std::string 
 	request.textures.push_back( { 5, map.probeAtlas, 6, clamped } );
 	request.textures.push_back( { 7, map.probeGrids, 8, clamped } );
 	request.textures.push_back( { 9, map.reflectionProbes, 10, clamped } );
+	// The bounce atlas has the probe atlas's layout and is sampled with its
+	// sampler (binding 6).
+	ProgramTexture bounce;
+	bounce.binding = 11;
+	bounce.samplerBinding = kNoSamplerBinding;
+	bounce.external = map.probeBounce;
+	bounce.externalDesc = map.probeBounceDesc;
+	request.textures.push_back( std::move( bounce ) );
 	return request;
 }
 
 GroupRequest SurfaceProgram::ViewGroup( const SurfaceViewGpu &view,
     std::span<const std::byte> froxels, std::span<const std::byte> indices,
-    std::span<const SurfaceLightGpu> lights, const SurfaceShadows &shadows ) const
+    std::span<const SurfaceLightGpu> lights, const SurfaceShadows &shadows,
+    const SurfaceProjectors &projectors, const SurfaceScreenInputs &screen ) const
 {
 	GroupRequest request;
 	request.layout = m_ViewLayout;
@@ -387,6 +422,24 @@ GroupRequest SurfaceProgram::ViewGroup( const SurfaceViewGpu &view,
 	atlas.external = shadows.atlas;
 	atlas.externalDesc = shadows.atlasDesc;
 	request.textures.push_back( std::move( atlas ) );
+	storage( 7, std::as_bytes( projectors.lights ) );
+	// The cookies: a 2D array, filtered and clamped (the legacy flashlight
+	// samples its cookie so).
+	ProgramTexture cookies;
+	cookies.binding = 8;
+	cookies.samplerBinding = 9;
+	cookies.sampler.address = AddressMode::kClampToEdge;
+	cookies.external = projectors.cookies;
+	cookies.externalDesc = projectors.cookiesDesc;
+	cookies.array = true;
+	request.textures.push_back( std::move( cookies ) );
+	// The occlusion is fetched per pixel (texelFetch).
+	ProgramTexture occlusion;
+	occlusion.binding = 10;
+	occlusion.samplerBinding = kNoSamplerBinding;
+	occlusion.external = screen.ambientOcclusion;
+	occlusion.externalDesc = screen.ambientOcclusionDesc;
+	request.textures.push_back( std::move( occlusion ) );
 	return request;
 }
 
@@ -402,7 +455,7 @@ GroupRequest SurfaceProgram::NeutralViewGroup() const
 }
 
 GroupRequest SurfaceProgram::DrawGroup( std::string page, const ModelLighting &lighting,
-    const SamplerDesc &sampler, std::string gradient ) const
+    const SamplerDesc &sampler, std::string gradient, std::string indirect ) const
 {
 	GroupRequest request;
 	request.layout = m_DrawLayout;
@@ -412,6 +465,7 @@ GroupRequest SurfaceProgram::DrawGroup( std::string page, const ModelLighting &l
 	request.textures.push_back( { 0, std::move( page ), 1, sampler, true } );
 	// The gradient page is signed linear data, filtered as the page is.
 	request.textures.push_back( { 3, std::move( gradient ), 4, sampler } );
+	request.textures.push_back( { 5, std::move( indirect ), 6, sampler } );
 	return request;
 }
 
