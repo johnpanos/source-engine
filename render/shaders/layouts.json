@@ -1005,7 +1005,7 @@
  },
  "families": {
   "surface": {
-   "description": "render.material program `surface` (RFC 0016 K11 \"Model assembly\"; the lightmapped, unlit, vertexlit and pbr families are its points): the frame group holds the frame's light terms (lightmap scale, output scale, fog, eye) the split-sum table and the LTC table with their samplers, and the frame's area lights and sun, and the projected lights' bounce atlas; the view group holds the view's clustered runtime lights (grid, froxel ranges, index list, light records) and its shadows (the ShadowTileGpu records, the atlas and its point sampler), its projected lights (records, the cookie array and its sampler) and its ambient occlusion; the material group holds the constants and the base, env map, env map mask, bump or normal map, detail, MRAO and emission textures with their samplers; the draw group holds the draw's lightmap page with its sampler, its model lighting, the directional gradient page and the bake's indirect layer; world-to-clip (and object-to-world for meshes) is a draw-constant block.",
+   "description": "render.material program `surface` (RFC 0016 K11 \"Model assembly\"; the lightmapped, unlit, vertexlit, pbr and water families are its points): the frame group holds the frame's light terms (lightmap scale, output scale, fog, eye, the water point's time and the view's viewport) the split-sum table and the LTC table with their samplers, and the frame's area lights and sun, and the projected lights' bounce atlas; the view group holds the view's clustered runtime lights (grid, froxel ranges, index list, light records) and its shadows (the ShadowTileGpu records, the atlas and its point sampler), its projected lights (records, the cookie array and its sampler), its ambient occlusion and its planar reflection (the water point's reflection target); the material group holds the constants and the base, env map, env map mask, bump or normal map, detail, MRAO and emission textures with their samplers (the water point reads its flow map and flow noise through the env map mask and MRAO bindings); the draw group holds the draw's lightmap page with its sampler, its model lighting, the directional gradient page and the bake's indirect layer; world-to-clip (and object-to-world for meshes) is a draw-constant block.",
    "sources": [
     "render/material/families/surface_flat.vert",
     "render/material/families/surface_world.vert",
@@ -1190,6 +1190,20 @@
      },
      {
       "binding": 11,
+      "kind": "sampler",
+      "stages": [
+       "fragment"
+      ]
+     },
+     {
+      "binding": 12,
+      "kind": "sampled-texture",
+      "stages": [
+       "fragment"
+      ]
+     },
+     {
+      "binding": 13,
       "kind": "sampler",
       "stages": [
        "fragment"

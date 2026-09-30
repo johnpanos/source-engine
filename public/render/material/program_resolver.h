@@ -76,6 +76,14 @@ struct FrameTerms
 	float sunDirection[4] = {};
 	float sunColor[4] = {};
 	float sunShadow[4] = { -1.0f, 0.0f, 0.0f, 0.0f };
+	// The water point's (SurfaceFrame::water, viewport): the shaders' time
+	// in seconds, its reflection tint's scale (4 in integer HDR), the
+	// camera's right in the water plane (normalized) and the view's viewport
+	// (x, y, 1 / width, 1 / height).
+	float time = 0.0f;
+	float waterReflectTintScale = 1.0f;
+	float viewRight[2] = { 1.0f, 0.0f };
+	float viewport[4] = { 0.0f, 0.0f, 1.0f, 1.0f };
 };
 
 // The vertex a resolver's programs read: the flat vertex (position, base and
@@ -98,6 +106,11 @@ struct ResolvedProgram
 	device::BlendMode blend = device::BlendMode::kOpaque;
 	// The per-draw inputs the draw group takes, in binding order.
 	std::vector<std::string> drawInputs;
+	// The view's render targets the program reads through its view group's
+	// screen inputs, by the importer's texture names (the water point's
+	// planar reflection, SurfaceScreenInputs::planarReflection): the pass
+	// imports the target each view, as the stream drew it before the slot.
+	std::vector<std::string> viewInputs;
 };
 
 // Replacement program modules (SPIR-V words): the debug suites' seeded

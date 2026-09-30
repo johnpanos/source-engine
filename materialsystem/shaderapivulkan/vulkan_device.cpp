@@ -6732,6 +6732,8 @@ void CVulkanContext::RecordCorePassSections( render::device::CommandEncoder &enc
 			target.specular = terms.specular;
 			target.ssbumpNormalized = terms.ssbumpNormalized;
 			target.fog = terms.fog;
+			target.time = terms.time;
+			target.waterReflectTintScale = terms.waterReflectTintScale;
 		}
 		m_corePassRecorder->RecordSlot( d.corePass, encoder, target );
 		m_hostDevice->EndSection( encoder );
@@ -6877,11 +6879,15 @@ render::device::TextureId CVulkanContext::ImportManagedTexture( int handle, bool
 	if ( srgb && linearStorage )
 		srgb = false;
 	const render::device::Format format = srgb ? SrgbPortFormat( stored ) : stored;
-	// A 2D image, or a cube map (six layers, sampled as a cube).
+	// A 2D image, or a cube map (six layers, sampled as a cube). A render
+	// target (single-sample, 2D) rests in the sampled layout between the
+	// passes that draw into it ("sampled-layout in/out"), as a managed
+	// texture does, so it imports the same way: the core reads what the
+	// stream drew into it before the slot (the water point's reflection).
 	const bool cube = texture.layers == 6;
-	if ( texture.image == VK_NULL_HANDLE || !texture.uploaded || texture.renderTarget ||
-	     ( texture.layers != 1 && !cube ) || texture.depth > 1 ||
-	     format == render::device::Format::kUnknown ||
+	if ( texture.image == VK_NULL_HANDLE || !texture.uploaded ||
+	     ( texture.renderTarget && texture.layers != 1 ) || ( texture.layers != 1 && !cube ) ||
+	     texture.depth > 1 || format == render::device::Format::kUnknown ||
 	     ( srgb && texture.srgbView == VK_NULL_HANDLE ) )
 		return {};
 	if ( m_coreTextureImports.size() < m_managedTextures.size() )

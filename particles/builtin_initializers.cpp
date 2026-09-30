@@ -1652,6 +1652,75 @@ BEGIN_PARTICLE_OPERATOR_UNPACK( C_INIT_RandomYaw )
 	DMXELEMENT_UNPACK_FIELD( "yaw_random_exponent", "1", float, m_flRotationRandExponent )
 END_PARTICLE_OPERATOR_UNPACK( C_INIT_RandomYaw )
 
+// clang-format off
+// This file's operator macros (DECLARE_PARTICLE_OPERATOR, DMXELEMENT_UNPACK_FIELD)
+// are not C++ clang-format can lay out; edits keep the file's own style.
+// Portal 2's lit particle color (its particles library): the random color
+// tinted toward the lighting (already scaled by the light amplification)
+// through a blend mode, clamped to one. "Color Random" and "Color Lit Per
+// Particle" share it; mode 0 with amplification 1 is this SDK's rule.
+#define PARTICLEBLEND_DEFAULT 0
+#define PARTICLEBLEND_OVERLAY 1
+#define PARTICLEBLEND_DARKEN 2
+#define PARTICLEBLEND_LIGHTEN 3
+#define PARTICLEBLEND_MULTIPLY 4
+
+static void ComputeLitParticleColor( float *pColorToWrite, const float flBaseColor1[3],
+    const float flBaseColor2[3], float flRandomValue, const Vector &vLightingColor,
+    float flTintFraction, int nBlendMode )
+{
+	Vector vLightingTint;
+
+	pColorToWrite[0] = flBaseColor1[0] + ( ( flBaseColor2[0] - flBaseColor1[0] ) * flRandomValue );
+	pColorToWrite[4] = flBaseColor1[1] + ( ( flBaseColor2[1] - flBaseColor1[1] ) * flRandomValue );
+	pColorToWrite[8] = flBaseColor1[2] + ( ( flBaseColor2[2] - flBaseColor1[2] ) * flRandomValue );
+
+	switch ( nBlendMode )
+	{
+	case PARTICLEBLEND_OVERLAY:
+		vLightingTint.x = ( vLightingColor.x < .5 )
+		                      ? ( 2 * pColorToWrite[0] * vLightingColor.x )
+		                      : ( 1 - ( 2 * ( 1 - pColorToWrite[0] ) * ( 1 - vLightingColor.x ) ) );
+		vLightingTint.y = ( vLightingColor.y < .5 )
+		                      ? ( 2 * pColorToWrite[4] * vLightingColor.y )
+		                      : ( 1 - ( 2 * ( 1 - pColorToWrite[4] ) * ( 1 - vLightingColor.y ) ) );
+		vLightingTint.z = ( vLightingColor.z < .5 )
+		                      ? ( 2 * pColorToWrite[8] * vLightingColor.z )
+		                      : ( 1 - ( 2 * ( 1 - pColorToWrite[8] ) * ( 1 - vLightingColor.z ) ) );
+		break;
+
+	case PARTICLEBLEND_DARKEN:
+		vLightingTint.x = MIN( pColorToWrite[0], vLightingColor.x );
+		vLightingTint.y = MIN( pColorToWrite[4], vLightingColor.y );
+		vLightingTint.z = MIN( pColorToWrite[8], vLightingColor.z );
+		break;
+
+	case PARTICLEBLEND_LIGHTEN:
+		vLightingTint.x = MAX( pColorToWrite[0], vLightingColor.x );
+		vLightingTint.y = MAX( pColorToWrite[4], vLightingColor.y );
+		vLightingTint.z = MAX( pColorToWrite[8], vLightingColor.z );
+		break;
+
+	case PARTICLEBLEND_MULTIPLY:
+		vLightingTint.x = pColorToWrite[0] * vLightingColor.x;
+		vLightingTint.y = pColorToWrite[4] * vLightingColor.y;
+		vLightingTint.z = pColorToWrite[8] * vLightingColor.z;
+		break;
+
+	case PARTICLEBLEND_DEFAULT:
+	default:
+		vLightingTint = vLightingColor;
+		break;
+	}
+
+	pColorToWrite[0] = Lerp( flTintFraction, pColorToWrite[0], vLightingTint.x );
+	pColorToWrite[4] = Lerp( flTintFraction, pColorToWrite[4], vLightingTint.y );
+	pColorToWrite[8] = Lerp( flTintFraction, pColorToWrite[8], vLightingTint.z );
+
+	pColorToWrite[0] = MIN( pColorToWrite[0], 1.0f );
+	pColorToWrite[4] = MIN( pColorToWrite[4], 1.0f );
+	pColorToWrite[8] = MIN( pColorToWrite[8], 1.0f );
+}
 
 //-----------------------------------------------------------------------------
 // Random color
@@ -1732,27 +1801,27 @@ class C_INIT_RandomColor : public CParticleOperatorInstance
 			tint[1] = max ( m_TintMin[1], min( tint[1], m_TintMax[1] ) );
 			tint[2] = max ( m_TintMin[2], min( tint[2], m_TintMax[2] ) );	
 		}
+		// The lighting, amplified (Portal 2's "light amplification amount").
+		const Vector vecLightingColor =
+		    Vector( tint[0], tint[1], tint[2] ) * ( m_flLightAmplification / 255.0f );
 
 		float randomPerc;
 		float *pColor;
 		for( ; nParticleCount--; start_p++ )
 		{
 			pColor = pParticles->GetFloatAttributePtrForWrite( PARTICLE_ATTRIBUTE_TINT_RGB, start_p );
-			
 			randomPerc = pParticles->RandomFloat( 0.0f, 1.0f );
-			
-			// Randomly choose a range between the two colors
+			// A random color between the two, tinted toward the lighting
+			// through the blend mode.
+			if ( m_flTintPerc )
+			{
+				ComputeLitParticleColor( pColor, m_flNormColorMin, m_flNormColorMax, randomPerc,
+				    vecLightingColor, m_flTintPerc, m_nTintBlendMode );
+				continue;
+			}
 			pColor[0] = m_flNormColorMin[0] + ( ( m_flNormColorMax[0] - m_flNormColorMin[0] ) * randomPerc );
 			pColor[4] = m_flNormColorMin[1] + ( ( m_flNormColorMax[1] - m_flNormColorMin[1] ) * randomPerc );
 			pColor[8] = m_flNormColorMin[2] + ( ( m_flNormColorMax[2] - m_flNormColorMin[2] ) * randomPerc );
-
-			// Tint the particles
-			if ( m_flTintPerc )
-			{
-				pColor[0] = Lerp( m_flTintPerc, (float) pColor[0], (float) tint.r() / 255.0f );
-				pColor[4] = Lerp( m_flTintPerc, (float) pColor[4], (float) tint.g() / 255.0f );
-				pColor[8] = Lerp( m_flTintPerc, (float) pColor[8], (float) tint.b() / 255.0f );
-			}
 		}
 	}
 
@@ -1806,22 +1875,22 @@ class C_INIT_RandomColor : public CParticleOperatorInstance
 			tint[1] = max ( m_TintMin[1], min( tint[1], m_TintMax[1] ) );
 			tint[2] = max ( m_TintMin[2], min( tint[2], m_TintMax[2] ) );
 
-			FourVectors fvTint;
-			fvTint.DuplicateVector( Vector ( tint[0], tint[1], tint[2] ) );
-			fltx4 fl4Divisor = ReplicateX4( 1.0f / 255.0f );
-			fvTint *= fl4Divisor;
-			fltx4 fl4TintPrc = ReplicateX4( m_flTintPerc );
-
-			while( n_blocks-- )
+			// The lighting, amplified, and each lane's color tinted through
+			// the blend mode (ComputeLitParticleColor; a lane's components
+			// sit four floats apart, as it writes them).
+			const Vector vecLightingColor =
+			    Vector( tint[0], tint[1], tint[2] ) * ( m_flLightAmplification / 255.0f );
+			while ( n_blocks-- )
 			{
-				FourVectors fvColor = fvColorWidth;
-				FourVectors fvColor2 = fvTint;
-				fvColor *= RandSIMD( nRandContext );
-				fvColor += fvColorMin;
-				fvColor2 -= fvColor;
-				fvColor2 *= fl4TintPrc;
-				fvColor2 += fvColor;
-				*pColor = fvColor2;
+				const fltx4 fl4Random = RandSIMD( nRandContext );
+				FourVectors fvColor;
+				for ( int nLane = 0; nLane < 4; ++nLane )
+				{
+					ComputeLitParticleColor( reinterpret_cast<float *>( &fvColor.x ) + nLane,
+					    m_flNormColorMin, m_flNormColorMax, SubFloat( fl4Random, nLane ),
+					    vecLightingColor, m_flTintPerc, m_nTintBlendMode );
+				}
+				*pColor = fvColor;
 				pColor += attr_stride;
 			}
 		}
@@ -1853,6 +1922,8 @@ class C_INIT_RandomColor : public CParticleOperatorInstance
 	float	m_flTintPerc;
 	float	m_flUpdateThreshold;
 	int		m_nTintCP;
+	int		m_nTintBlendMode;
+	float	m_flLightAmplification;
 };
 
 DEFINE_PARTICLE_OPERATOR( C_INIT_RandomColor, "Color Random", OPERATOR_PI_TINT_RGB );
@@ -1865,6 +1936,9 @@ BEGIN_PARTICLE_OPERATOR_UNPACK( C_INIT_RandomColor )
 	DMXELEMENT_UNPACK_FIELD( "tint clamp min", "0 0 0 0", Color, m_TintMin )
 	DMXELEMENT_UNPACK_FIELD( "tint clamp max", "255 255 255 255", Color, m_TintMax )
 	DMXELEMENT_UNPACK_FIELD( "tint update movement threshold", "32", float, m_flUpdateThreshold )
+	// Portal 2's (its particles library; the defaults keep this SDK's rule).
+	DMXELEMENT_UNPACK_FIELD( "tint blend mode", "0", int, m_nTintBlendMode )
+	DMXELEMENT_UNPACK_FIELD( "light amplification amount", "1", float, m_flLightAmplification )
 END_PARTICLE_OPERATOR_UNPACK( C_INIT_RandomColor )
 
 
@@ -5622,68 +5696,6 @@ void C_INIT_VelocityFromCP::InitNewParticlesScalar( CParticleCollection *pPartic
 //-----------------------------------------------------------------------------
 // Color Lit Per Particle Initializer
 //-----------------------------------------------------------------------------
-#define PARTICLEBLEND_DEFAULT 0
-#define PARTICLEBLEND_OVERLAY 1
-#define PARTICLEBLEND_DARKEN 2
-#define PARTICLEBLEND_LIGHTEN 3
-#define PARTICLEBLEND_MULTIPLY 4
-
-static void ComputeLitParticleColor( float *pColorToWrite, const float flBaseColor1[3],
-    const float flBaseColor2[3], float flRandomValue, const Vector &vLightingColor,
-    float flTintFraction, int nBlendMode )
-{
-	Vector vLightingTint;
-
-	pColorToWrite[0] = flBaseColor1[0] + ( ( flBaseColor2[0] - flBaseColor1[0] ) * flRandomValue );
-	pColorToWrite[4] = flBaseColor1[1] + ( ( flBaseColor2[1] - flBaseColor1[1] ) * flRandomValue );
-	pColorToWrite[8] = flBaseColor1[2] + ( ( flBaseColor2[2] - flBaseColor1[2] ) * flRandomValue );
-
-	switch ( nBlendMode )
-	{
-	case PARTICLEBLEND_OVERLAY:
-		vLightingTint.x = ( vLightingColor.x < .5 )
-		                      ? ( 2 * pColorToWrite[0] * vLightingColor.x )
-		                      : ( 1 - ( 2 * ( 1 - pColorToWrite[0] ) * ( 1 - vLightingColor.x ) ) );
-		vLightingTint.y = ( vLightingColor.y < .5 )
-		                      ? ( 2 * pColorToWrite[4] * vLightingColor.y )
-		                      : ( 1 - ( 2 * ( 1 - pColorToWrite[4] ) * ( 1 - vLightingColor.y ) ) );
-		vLightingTint.z = ( vLightingColor.z < .5 )
-		                      ? ( 2 * pColorToWrite[8] * vLightingColor.z )
-		                      : ( 1 - ( 2 * ( 1 - pColorToWrite[8] ) * ( 1 - vLightingColor.z ) ) );
-		break;
-
-	case PARTICLEBLEND_DARKEN:
-		vLightingTint.x = MIN( pColorToWrite[0], vLightingColor.x );
-		vLightingTint.y = MIN( pColorToWrite[4], vLightingColor.y );
-		vLightingTint.z = MIN( pColorToWrite[8], vLightingColor.z );
-		break;
-
-	case PARTICLEBLEND_LIGHTEN:
-		vLightingTint.x = MAX( pColorToWrite[0], vLightingColor.x );
-		vLightingTint.y = MAX( pColorToWrite[4], vLightingColor.y );
-		vLightingTint.z = MAX( pColorToWrite[8], vLightingColor.z );
-		break;
-
-	case PARTICLEBLEND_MULTIPLY:
-		vLightingTint.x = pColorToWrite[0] * vLightingColor.x;
-		vLightingTint.y = pColorToWrite[4] * vLightingColor.y;
-		vLightingTint.z = pColorToWrite[8] * vLightingColor.z;
-		break;
-
-	case PARTICLEBLEND_DEFAULT:
-	default:
-		vLightingTint = vLightingColor;
-		break;
-	}
-
-	pColorToWrite[0] = Lerp( flTintFraction, pColorToWrite[0], vLightingTint.x );
-	pColorToWrite[4] = Lerp( flTintFraction, pColorToWrite[4], vLightingTint.y );
-	pColorToWrite[8] = Lerp( flTintFraction, pColorToWrite[8], vLightingTint.z );
-
-	pColorToWrite[0] = MIN( pColorToWrite[0], 1.0f );
-	pColorToWrite[4] = MIN( pColorToWrite[4], 1.0f );
-	pColorToWrite[8] = MIN( pColorToWrite[8], 1.0f );
-}
 
 class C_INIT_ColorLitPerParticle : public CParticleOperatorInstance
 {
@@ -5943,3 +5955,4 @@ void AddBuiltInParticleInitializers( void )
 	REGISTER_PARTICLE_OPERATOR( FUNCTION_INITIALIZER, C_INIT_ColorLitPerParticle );
 	REGISTER_PARTICLE_OPERATOR( FUNCTION_INITIALIZER, C_INIT_RtEnvCull );
 }
+// clang-format on

@@ -15,6 +15,7 @@
 #include "render/material/registry.h"
 #include "render/material/unlit_family.h"
 #include "render/material/vmt_mapping.h"
+#include "render/material/water_family.h"
 
 #include <cctype>
 #include <cmath>
@@ -125,6 +126,16 @@ std::optional<std::string> UnreadVariable( const MaterialDesc &material )
 	return std::nullopt;
 }
 
+// A render target a family's parameter may name: the image a view drew
+// earlier in the frame, which the pass imports per frame (the world pass
+// re-imports it when the backend replaces it). Every other per-view texture
+// keeps the material out.
+bool ViewRenderTarget( const MaterialDesc &material, const MaterialValue &value )
+{
+	return material.family == "water" && value.parameter == "reflecttexture" &&
+	       SameKey( value.text, "_rt_WaterReflection" );
+}
+
 // The material's block, with a stand-in for every texture it binds (a claim
 // asks only whether one is bound).
 std::optional<ParameterBlock> BlockFor( const MaterialDesc &material, std::string *why )
@@ -153,8 +164,9 @@ std::optional<ParameterBlock> BlockFor( const MaterialDesc &material, std::strin
 			continue;
 		// A per-view texture (the view's local env_cubemap, a render target)
 		// has no one image for the material.
-		if ( value.text == "env_cubemap" || value.text.starts_with( "_rt_" ) ||
-		     value.text.starts_with( "[" ) )
+		if ( ( value.text == "env_cubemap" || value.text.starts_with( "_rt_" ) ||
+		         value.text.starts_with( "[" ) ) &&
+		     !ViewRenderTarget( material, value ) )
 		{
 			*why = "the model does not bind the per-view texture " + value.text + " (" + value.key +
 			       ")";
@@ -198,7 +210,7 @@ ProgramResolver::~ProgramResolver() = default;
 
 namespace
 {
-constexpr std::string_view kProgramNames[] = { "lightmapped", "unlit", "preview", "pbr" };
+constexpr std::string_view kProgramNames[] = { "lightmapped", "unlit", "preview", "pbr", "water" };
 }
 
 std::span<const std::string_view> ProgramResolver::ProgramNames()
@@ -251,6 +263,13 @@ foundation::Expected<device::BlendMode, std::string> ClaimForDrawing(
 		if ( !claim.claimed )
 			return foundation::MakeUnexpected( claim.reason );
 		return device::BlendMode::kOpaque;
+	}
+	if ( material.family == "water" )
+	{
+		const WaterClaim claim = ClaimWater( *block );
+		if ( !claim.claimed )
+			return foundation::MakeUnexpected( claim.reason );
+		return claim.blend;
 	}
 	return foundation::MakeUnexpected( "family " + material.family + " has no program yet" );
 }
@@ -338,6 +357,39 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 		out.request = std::move( request ).Value();
 		out.blend = device::BlendMode::kOpaque;
 		out.drawInputs = { "lightmap", "lightmap-gradient", "lightmap-indirect" };
+		return out;
+	}
+	if ( material.family == "water" )
+	{
+		// The water point on the world vertex (its lightmap page is the
+		// draw's, for $lightmapwaterfog).
+		const WaterClaim claim = ClaimWater( *block );
+		if ( !claim.claimed )
+			return foundation::MakeUnexpected( claim.reason );
+		if ( s.layout != SurfaceVertexLayout::kWorld )
+			return foundation::MakeUnexpected( std::string(
+			    "the water point reads the surface vertex, and the resolver's is flat" ) );
+		SurfaceTextures textures;
+		textures.bump = TextureOf( material, "normalmap" );
+		if ( claim.sludge )
+			textures.base = TextureOf( material, "basetexture" );
+		if ( claim.flow )
+		{
+			textures.flowmap = TextureOf( material, "flowmap" );
+			textures.flowNoise = TextureOf( material, "flow_noise_texture" );
+		}
+		if ( claim.reflectTarget )
+			out.viewInputs = { TextureOf( material, "reflecttexture" ) };
+		else
+			textures.envmap = TextureOf( material, "envmap" );
+		auto request =
+		    s.lightmapped->Program().Request( claim.Variant(), claim.constants, textures );
+		if ( !request )
+			return foundation::MakeUnexpected( std::string( "a water pipeline was refused" ) );
+		out.name = "water";
+		out.request = std::move( request ).Value();
+		out.blend = claim.blend;
+		out.drawInputs = { "lightmap" };
 		return out;
 	}
 	return foundation::MakeUnexpected( "family " + material.family + " has no program yet" );
@@ -513,6 +565,11 @@ std::optional<GroupRequest> ProgramResolver::FrameGroup(
 		std::copy( terms.sunDirection, terms.sunDirection + 4, frame.sunDirection );
 		std::copy( terms.sunColor, terms.sunColor + 4, frame.sunColor );
 		std::copy( terms.sunShadow, terms.sunShadow + 4, frame.sunShadow );
+		frame.water[0] = terms.time;
+		frame.water[1] = terms.waterReflectTintScale;
+		frame.water[2] = terms.viewRight[0];
+		frame.water[3] = terms.viewRight[1];
+		std::copy( terms.viewport, terms.viewport + 4, frame.viewport );
 		std::copy( terms.areas.begin(), terms.areas.begin() + std::ptrdiff_t( areas ), frame.areas );
 		return s.lightmapped->Program().FrameGroup(
 		    frame, terms.splitSumTable, terms.ltcTable, terms.map );

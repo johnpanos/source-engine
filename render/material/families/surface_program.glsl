@@ -32,7 +32,11 @@
 //   the lighting fixed at one and UnlitGeneric's vertex color and alpha;
 // - the `vertexlit` point (kVertexLit) is VertexLitGeneric's lit path: the
 //   model vertex stage evaluates Source's per-vertex lighting (DoLighting),
-//   and the pixel is the base texture times $color times that lighting.
+//   and the pixel is the base texture times $color times that lighting;
+// - the `water` point (kWater, render/material/water_family.h) is Portal 2's
+//   water_ps2x above water without refraction: flowing normal maps, the
+//   flowing sludge layer, the lightmapped water fog color and a fresnel
+//   reflection of the view's reflection target or of the env map.
 // All end in the view's fog and the output encoding. Blending is pipeline
 // state. The debug views and lighting-model controls (RFC 0014) come from
 // debug_view.glsl; at their neutral values they are dead code. In the pbr
@@ -89,6 +93,9 @@ const int kMeshDirect = 8388608;
 // A reflective shadow map's albedo (render.pass.bounce): attachment 0 holds
 // the surface's diffuse reflectance only.
 const int kRsm = 16777216;
+// The water point (the flow map and noise at material bindings 5 and 11,
+// the view's planar reflection at view binding 12).
+const int kWater = 33554432;
 
 // An area light (render.area-light.v1, area_light::AreaLight): its
 // rectangle, its radiance and its reach.
@@ -127,6 +134,11 @@ layout( set = 0, binding = 0 ) uniform Frame
 	vec4 sunDirection;
 	vec4 sunColor;
 	vec4 sunShadow;
+	// The water point: x the shaders' time in seconds, y its reflection
+	// tint's scale (4 in integer HDR), zw the camera's right in the water
+	// plane.
+	vec4 water;
+	vec4 viewport; // the view's x, y, 1 / width, 1 / height in the target
 	AreaLight areas[kMaxAreaLights];
 } frame;
 // The split-sum table (RFC 0007, pbr_split_sum_table.h), read by the pbr point.
@@ -184,6 +196,9 @@ layout( set = 1, binding = 8 ) uniform texture2DArray cookieTexture;
 layout( set = 1, binding = 9 ) uniform sampler cookieSampler;
 layout( set = 1, binding = 10 ) uniform texture2D occlusionTexture;
 layout( set = 1, binding = 11 ) uniform sampler occlusionSampler;
+// The view's planar reflection (the water point's reflection target).
+layout( set = 1, binding = 12 ) uniform texture2D reflectionTexture;
+layout( set = 1, binding = 13 ) uniform sampler reflectionSampler;
 
 // The GGX LTC table (public/render/pbr_ltc_table.h), read by the pbr point.
 layout( set = 0, binding = 3 ) uniform texture2D ltcTexture;
@@ -233,6 +248,13 @@ layout( set = 2, binding = 0 ) uniform Material
 	vec4 detailScale;   // xy: $detailscale
 	vec4 envLightScale; // x: min, y: min + max, z: $envmaplightscale (Portal 2)
 	vec4 emission;      // x: $emissionscale (the pbr point)
+	// The water point (SurfaceConstants::water*, water_family.h).
+	vec4 waterFlow;      // 1/$flow_worlduvscale, 1/$flow_normaluvscale, bump strength, displacement
+	vec4 waterFlowTime;  // interval, scroll distance, noise scale, 1 with a flow map
+	vec4 waterColorFlow; // 1/$color_flow_uvscale, interval, scroll distance, lerp exponent
+	vec4 waterReflect;   // rgb: $reflecttint (linear); a: $waterblendfactor
+	vec4 waterFog;       // rgb: $fogcolor (linear); a: $reflectamount
+	vec4 waterMode;      // x: reflection target, y: sludge, z: $lightmapwaterfog, w: $forcefresnel
 } material;
 layout( set = 2, binding = 1 ) uniform texture2D baseTexture;
 layout( set = 2, binding = 2 ) uniform sampler baseSampler;
@@ -248,6 +270,12 @@ layout( set = 2, binding = 11 ) uniform texture2D mraoTexture;
 layout( set = 2, binding = 12 ) uniform sampler mraoSampler;
 layout( set = 2, binding = 13 ) uniform texture2D emissionTexture;
 layout( set = 2, binding = 14 ) uniform sampler emissionSampler;
+// The water point reads its flow map through the env map mask's binding and
+// its flow noise through MRAO's (a group has 16 GL slots; it reads neither).
+#define flowTexture envmapMaskTexture
+#define flowSampler envmapMaskSampler
+#define flowNoiseTexture mraoTexture
+#define flowNoiseSampler mraoSampler
 // The lightmap page is the draw's: surfaces of one material share pages
 // with others. So is the model lighting (surface_lighting.glsl, binding 2).
 layout( set = 3, binding = 0 ) uniform texture2D lightmap;
@@ -996,6 +1024,143 @@ void VertexLitSurface()
 	outColor = Output( lit, alpha );
 }
 
+// The water point: water_ps2x's main (Portal 2's; the CS:GO source has its
+// parameter set) with REFLECT or the forced env map, BASETEXTURE with
+// FLOWMAP or neither, LIGHTMAPWATERFOG, ABOVEWATER and no REFRACT. It
+// computes the shader's output (TONEMAP_SCALE_NONE: the reflection is not
+// scaled again) and hands Output its value before the tone-map scale.
+void WaterSurface()
+{
+	const vec3 toEye = normalize( frame.eye.xyz - worldPosition );
+	const vec2 worldUv = vec2( worldPosition.x, -worldPosition.y );
+	vec4 normal;
+	vec4 flowColor = vec4( 0.0 );
+	if ( material.waterFlowTime.w != 0.0 )
+	{
+		// The noise offsets each point's interval, so the layers don't pulse.
+		const float noise = texture( sampler2D( flowNoiseTexture, flowNoiseSampler ),
+		    worldUv * material.waterFlowTime.z )
+		                        .g;
+		const vec4 flowTexel =
+		    texture( sampler2D( flowTexture, flowSampler ), baseUv * material.waterFlow.x );
+		const vec2 flowVector = flowTexel.rg * 2.0 - 1.0;
+		const float intervals = frame.water.x / ( material.waterFlowTime.x * 2.0 ) + noise;
+		const vec2 uv = worldUv * material.waterFlow.y;
+		const vec2 flowUv1 = uv + floor( intervals ) * 0.311 +
+		                     fract( intervals ) * ( material.waterFlowTime.y * flowVector );
+		const vec2 flowUv2 = uv + ( floor( intervals + 0.5 ) * 0.311 + 0.5 ) +
+		                     fract( intervals + 0.5 ) * ( material.waterFlowTime.y * flowVector );
+		const float weight2 = abs( 2.0 * fract( intervals ) - 1.0 );
+		const vec4 normal1 = texture( sampler2D( bumpTexture, bumpSampler ), flowUv1 );
+		const vec4 normal2 = texture( sampler2D( bumpTexture, bumpSampler ), flowUv2 );
+		vec2 xy = mix( normal1.xy, normal2.xy, weight2 ) * 2.0 - 1.0;
+		// The bump strength follows the flow's speed.
+		xy *= ( dot( flowVector, flowVector ) + 0.1 ) * material.waterFlow.z;
+		normal = vec4( xy, sqrt( clamp( 1.0 - dot( xy, xy ), 0.0, 1.0 ) ), 1.0 );
+		if ( material.waterMode.y != 0.0 )
+		{
+			// The sludge: the base texture scrolled the same way, displaced
+			// along the view by the normal maps' alpha.
+			const float parallax =
+			    mix( normal1.a, normal2.a, weight2 ) * material.waterFlow.w;
+			const vec2 colorUv =
+			    worldUv * material.waterColorFlow.x + ( toEye.xy - normal.xy ) * parallax;
+			const float colorIntervals =
+			    frame.water.x / ( material.waterColorFlow.y * 2.0 ) + noise;
+			const vec2 colorUv1 = colorUv + floor( colorIntervals ) * 0.311 +
+			                      ( fract( colorIntervals ) - 0.5 ) *
+			                          ( material.waterColorFlow.z * flowVector );
+			const vec2 colorUv2 = colorUv + ( floor( colorIntervals + 0.5 ) * 0.311 + 0.5 ) +
+			                      ( fract( colorIntervals + 0.5 ) - 0.5 ) *
+			                          ( material.waterColorFlow.z * flowVector );
+			const float colorWeight1 = pow(
+			    abs( 2.0 * fract( colorIntervals + 0.5 ) - 1.0 ), material.waterColorFlow.w );
+			const float colorWeight2 =
+			    pow( abs( 2.0 * fract( colorIntervals ) - 1.0 ), material.waterColorFlow.w );
+			flowColor = texture( sampler2D( baseTexture, baseSampler ), colorUv1 ) * colorWeight1 +
+			            texture( sampler2D( baseTexture, baseSampler ), colorUv2 ) * colorWeight2;
+			flowColor *= flowTexel.a; // the flow map's alpha masks the sludge
+		}
+	}
+	else
+	{
+		// DecompressNormal( NORM_DECODE_NONE ) at the surface's coordinates.
+		const vec4 texel = texture( sampler2D( bumpTexture, bumpSampler ), baseUv );
+		normal = vec4( texel.xyz * 2.0 - 1.0, texel.a );
+	}
+
+	// The reflection: the view's reflection target at the fragment's view
+	// position (flipped vertically: the reflected view), offset along the
+	// camera's right and forward in the water plane by the normal; or the
+	// env map in the reflected direction.
+	vec3 reflection;
+	if ( material.waterMode.x != 0.0 )
+	{
+		const vec2 view = ( gl_FragCoord.xy - frame.viewport.xy ) * frame.viewport.zw;
+		const vec2 right = frame.water.zw;
+		const vec2 forward = vec2( -right.y, right.x );
+		const vec2 offset =
+		    vec2( dot( right, normal.xy ), dot( forward, normal.xy ) ) * normal.a * material.waterFog.a;
+		reflection = texture( sampler2D( reflectionTexture, reflectionSampler ),
+		    vec2( view.x, 1.0 - view.y ) + offset )
+		                 .rgb;
+	}
+	else
+	{
+		const vec3 reflected = 2.0 * dot( normal.xyz, toEye ) * normal.xyz -
+		                       dot( normal.xyz, normal.xyz ) * toEye;
+		reflection =
+		    frame.eye.w * texture( samplerCube( envmapTexture, envmapSampler ), reflected ).rgb;
+	}
+	reflection *= material.waterReflect.rgb * frame.water.y;
+
+	const float fresnel =
+	    material.waterMode.w != -1.0
+	        ? material.waterMode.w
+	        : 0.2 + 0.8 * pow( 1.0 - clamp( dot( toEye, normal.xyz ), 0.0, 1.0 ), 5.0 );
+	// LIGHT_MAP_SCALE * LINEAR_LIGHT_SCALE: the lightmap in the output's
+	// scale, as the shader's output is.
+	vec3 light = vec3( 1.0 );
+	vec3 fog = material.waterFog.rgb;
+	if ( material.waterMode.z != 0.0 )
+	{
+		light = texture( sampler2D( lightmap, lightmapSampler ), lightmapUv ).rgb * frame.light.x *
+		        frame.light.y;
+		fog *= light;
+	}
+	vec3 lit;
+	if ( material.waterMode.y != 0.0 )
+	{
+		// The sludge's alpha: 0 to 0.5 its translucency in the water, 0.5
+		// to 0.7 floating above it, where nothing reflects.
+		const vec3 underWater =
+		    mix( fog, flowColor.rgb * light, clamp( flowColor.a * 2.0, 0.0, 1.0 ) );
+		const float aboveWater = smoothstep( 0.5, 0.7, flowColor.a );
+		lit = mix( underWater, reflection, clamp( fresnel * ( 1.0 - aboveWater ), 0.0, 1.0 ) );
+	}
+	else
+	{
+		lit = mix( fog, reflection, fresnel );
+	}
+	if ( DebugViewActive() )
+	{
+		DebugInputs inputs = DebugInputsNone();
+		inputs.mask = kDebugHasAlbedo | kDebugHasNormal | kDebugHasUv0;
+		inputs.albedo = material.waterMode.y != 0.0 ? flowColor.rgb : material.waterFog.rgb;
+		inputs.normal = normal.xyz;
+		inputs.uv0 = baseUv;
+		if ( material.waterMode.z != 0.0 )
+		{
+			inputs.mask |= kDebugHasBaked;
+			inputs.baked = light / frame.light.y;
+		}
+		inputs.final = lit / frame.light.y;
+		outColor = DebugOutput( inputs );
+		return;
+	}
+	outColor = Output( lit / frame.light.y, material.waterReflect.a );
+}
+
 void main()
 {
 	// Points without image specular leave the SSR targets empty (weight 0:
@@ -1004,6 +1169,11 @@ void main()
 	if ( Term( kPbr ) )
 	{
 		PbrSurface();
+		return;
+	}
+	if ( Term( kWater ) )
+	{
+		WaterSurface();
 		return;
 	}
 	if ( Term( kRsm ) )

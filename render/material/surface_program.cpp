@@ -189,7 +189,9 @@ foundation::Expected<std::unique_ptr<SurfaceProgram>, SurfaceStatus> SurfaceProg
 	    { 8, BindingKind::kSampledTexture, 1, { ShaderStage::kFragment } },
 	    { 9, BindingKind::kSampler, 1, { ShaderStage::kFragment } },
 	    { 10, BindingKind::kSampledTexture, 1, { ShaderStage::kFragment } },
-	    { 11, BindingKind::kSampler, 1, { ShaderStage::kFragment } } };
+	    { 11, BindingKind::kSampler, 1, { ShaderStage::kFragment } },
+	    { 12, BindingKind::kSampledTexture, 1, { ShaderStage::kFragment } },
+	    { 13, BindingKind::kSampler, 1, { ShaderStage::kFragment } } };
 	auto frameLayout = device.CreateBindGroupLayout( { BindGroupRole::kFrame, frame } );
 	auto viewLayout = device.CreateBindGroupLayout( { BindGroupRole::kView, view } );
 	auto materialLayout = device.CreateBindGroupLayout( { BindGroupRole::kMaterial, material } );
@@ -366,13 +368,20 @@ foundation::Expected<ProgramRequest, SurfaceStatus> SurfaceProgram::Request(
 	const auto bytes = std::as_bytes( std::span( &packed, 1 ) );
 	request.material.constants.assign( bytes.begin(), bytes.end() );
 	request.material.textures.push_back( { 1, textures.base, 2, sampler, true } );
+	// The water point reads its env map without sRGB decoding, as
+	// water_ps2x's sampler does.
+	request.material.textures.push_back( { 3, textures.envmap, 4, sampler,
+	    ( variant.terms & kSurfaceWater ) == 0, TextureDimension::kCube } );
+	// The water point reads its flow map through the env map mask's binding
+	// and its flow noise through MRAO's (data, like those; it reads neither).
+	const bool water = ( variant.terms & kSurfaceWater ) != 0;
 	request.material.textures.push_back(
-	    { 3, textures.envmap, 4, sampler, true, TextureDimension::kCube } );
-	request.material.textures.push_back( { 5, textures.envmapMask, 6, sampler, false } );
+	    { 5, water ? textures.flowmap : textures.envmapMask, 6, sampler, false } );
 	request.material.textures.push_back( { 7, textures.bump, 8, sampler, false } );
 	request.material.textures.push_back(
 	    { 9, textures.detail, 10, sampler, variant.detailMode == 1 } );
-	request.material.textures.push_back( { 11, textures.mrao, 12, sampler, false } );
+	request.material.textures.push_back(
+	    { 11, water ? textures.flowNoise : textures.mrao, 12, sampler, false } );
 	request.material.textures.push_back( { 13, textures.emission, 14, sampler, true } );
 	return request;
 }
@@ -461,18 +470,27 @@ GroupRequest SurfaceProgram::ViewGroup( const SurfaceViewGpu &view,
 	occlusion.external = screen.ambientOcclusion;
 	occlusion.externalDesc = screen.ambientOcclusionDesc;
 	request.textures.push_back( std::move( occlusion ) );
+	// The planar reflection: filtered, clamped (the water point offsets its
+	// coordinates by the normal, and the legacy target clamps).
+	ProgramTexture reflection;
+	reflection.binding = 12;
+	reflection.samplerBinding = 13;
+	reflection.sampler.address = AddressMode::kClampToEdge;
+	reflection.external = screen.planarReflection;
+	reflection.externalDesc = screen.planarReflectionDesc;
+	request.textures.push_back( std::move( reflection ) );
 	return request;
 }
 
-GroupRequest SurfaceProgram::NeutralViewGroup() const
+GroupRequest SurfaceProgram::NeutralViewGroup( const SurfaceScreenInputs &screen ) const
 {
 	// One froxel with no lights; no variant without kSurfaceClustered reads it.
 	SurfaceViewGpu view;
 	view.grid[0] = view.grid[1] = view.grid[2] = view.grid[3] = 1;
 	const std::uint32_t froxel[2] = { 0, 0 };
 	const std::uint32_t indices[4] = {};
-	return ViewGroup(
-	    view, std::as_bytes( std::span( froxel ) ), std::as_bytes( std::span( indices ) ), {} );
+	return ViewGroup( view, std::as_bytes( std::span( froxel ) ),
+	    std::as_bytes( std::span( indices ) ), {}, {}, {}, screen );
 }
 
 GroupRequest SurfaceProgram::DrawGroup( std::string page, const ModelLighting &lighting,

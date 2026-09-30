@@ -72,8 +72,9 @@ void TestFamiliesFromMapping( testing::Checks &checks )
 	std::vector<std::string> names;
 	for ( const FamilyDesc &family : families )
 		names.push_back( family.name );
-	checks.That( names == std::vector<std::string>{ "lightmapped", "vertexlit", "unlit", "pbr" },
-	    "F1.the-mapping-defines-the-four-core-families-in-order" );
+	checks.That(
+	    names == std::vector<std::string>{ "lightmapped", "vertexlit", "unlit", "pbr", "water" },
+	    "F1.the-mapping-defines-the-five-core-families-in-order" );
 	FamilyRegistry registry;
 	bool registered = true;
 	bool fourGroups = true;

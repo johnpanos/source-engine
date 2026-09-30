@@ -17,6 +17,10 @@
 #include "Water_ps20.inc"
 #include "water_ps20b.inc"
 
+// clang-format off
+// This file's shader macros (BEGIN_VS_SHADER, SHADER_PARAM, SHADOW_STATE) are not
+// C++ clang-format can lay out; edits keep the file's own style.
+
 static ConVar r_waterforceexpensive( "r_waterforceexpensive", "0", FCVAR_ARCHIVE );
 
 DEFINE_FALLBACK_SHADER( Water, Water_DX9_HDR )
@@ -54,6 +58,33 @@ BEGIN_VS_SHADER( Water_DX90,
 		SHADER_PARAM( SCROLL1, SHADER_PARAM_TYPE_COLOR, "", "" )
 		SHADER_PARAM( SCROLL2, SHADER_PARAM_TYPE_COLOR, "", "" )
 		SHADER_PARAM( BLURREFRACT, SHADER_PARAM_TYPE_BOOL, "0", "Cause the refraction to be blurry on ps2b hardware" )
+
+		// Portal 2's water parameters (its shipped stdshader_dx9 declares
+		// them; the CS:GO water.cpp has the same set). This shader does not
+		// draw them: they are declared so the material system keeps and
+		// loads them for the render core's water point (RFC 0016,
+		// render/material/water_family.h), which reads them.
+		SHADER_PARAM( FLOWMAP, SHADER_PARAM_TYPE_TEXTURE, "", "flowmap" )
+		SHADER_PARAM( FLOWMAPFRAME, SHADER_PARAM_TYPE_INTEGER, "0", "frame number for $flowmap" )
+		SHADER_PARAM( FLOWMAPSCROLLRATE, SHADER_PARAM_TYPE_VEC2, "[0 0", "2D rate to scroll $flowmap" )
+		SHADER_PARAM( FLOW_NOISE_TEXTURE, SHADER_PARAM_TYPE_TEXTURE, "", "flow noise texture" )
+		SHADER_PARAM( FLASHLIGHTTINT, SHADER_PARAM_TYPE_FLOAT, "0", "" )
+		SHADER_PARAM( LIGHTMAPWATERFOG, SHADER_PARAM_TYPE_BOOL, "0", "" )
+		SHADER_PARAM( FORCEFRESNEL, SHADER_PARAM_TYPE_FLOAT, "0", "" )
+		SHADER_PARAM( FORCEENVMAP, SHADER_PARAM_TYPE_BOOL, "0", "" )
+		SHADER_PARAM( WATERBLENDFACTOR, SHADER_PARAM_TYPE_FLOAT, "1.0", "" )
+		SHADER_PARAM( FLOW_WORLDUVSCALE, SHADER_PARAM_TYPE_FLOAT, "", "" )
+		SHADER_PARAM( FLOW_NORMALUVSCALE, SHADER_PARAM_TYPE_FLOAT, "", "" )
+		SHADER_PARAM( FLOW_TIMEINTERVALINSECONDS, SHADER_PARAM_TYPE_FLOAT, "", "" )
+		SHADER_PARAM( FLOW_UVSCROLLDISTANCE, SHADER_PARAM_TYPE_FLOAT, "", "" )
+		SHADER_PARAM( FLOW_BUMPSTRENGTH, SHADER_PARAM_TYPE_FLOAT, "", "" )
+		SHADER_PARAM( FLOW_NOISE_SCALE, SHADER_PARAM_TYPE_FLOAT, "", "" )
+		SHADER_PARAM( FLOW_DEBUG, SHADER_PARAM_TYPE_INTEGER, "0", "" )
+		SHADER_PARAM( COLOR_FLOW_UVSCALE, SHADER_PARAM_TYPE_FLOAT, "", "" )
+		SHADER_PARAM( COLOR_FLOW_TIMEINTERVALINSECONDS, SHADER_PARAM_TYPE_FLOAT, "", "" )
+		SHADER_PARAM( COLOR_FLOW_UVSCROLLDISTANCE, SHADER_PARAM_TYPE_FLOAT, "", "" )
+		SHADER_PARAM( COLOR_FLOW_LERPEXP, SHADER_PARAM_TYPE_FLOAT, "", "" )
+		SHADER_PARAM( COLOR_FLOW_DISPLACEBYNORMALSTRENGTH, SHADER_PARAM_TYPE_FLOAT, "", "" )
 	END_SHADER_PARAMS
 
 	SHADER_INIT_PARAMS()
@@ -97,6 +128,25 @@ BEGIN_VS_SHADER( Water_DX90,
 		{
 			params[REFLECTBLENDFACTOR]->SetFloatValue( 1.0f );
 		}
+
+		// Portal 2's defaults for its water parameters (the CS:GO water.cpp's
+		// InitParams), so an absent parameter reads as retail's.
+		InitFloatParam( FLOW_WORLDUVSCALE, params, 1.0f );
+		InitFloatParam( FLOW_NORMALUVSCALE, params, 1.0f );
+		InitFloatParam( FLOW_TIMEINTERVALINSECONDS, params, 0.4f );
+		InitFloatParam( FLOW_UVSCROLLDISTANCE, params, 0.2f );
+		InitFloatParam( FLOW_BUMPSTRENGTH, params, 1.0f );
+		InitFloatParam( FLOW_NOISE_SCALE, params, 0.0002f );
+		InitFloatParam( COLOR_FLOW_UVSCALE, params, 1.0f );
+		InitFloatParam( COLOR_FLOW_TIMEINTERVALINSECONDS, params, 0.4f );
+		InitFloatParam( COLOR_FLOW_UVSCROLLDISTANCE, params, 0.2f );
+		InitFloatParam( COLOR_FLOW_LERPEXP, params, 1.0f );
+		InitFloatParam( COLOR_FLOW_DISPLACEBYNORMALSTRENGTH, params, 0.0025f );
+		InitIntParam( FORCEENVMAP, params, 0 );
+		InitFloatParam( FLASHLIGHTTINT, params, 1.0f );
+		InitIntParam( LIGHTMAPWATERFOG, params, 0 );
+		InitFloatParam( FORCEFRESNEL, params, -1.0f );
+		InitFloatParam( WATERBLENDFACTOR, params, 1.0f );
 
 		// By default, we're force expensive on dx9.  NO WE DON'T!!!!
 		if( !params[FORCEEXPENSIVE]->IsDefined() )
@@ -154,6 +204,12 @@ BEGIN_VS_SHADER( Water_DX90,
 		{
 			LoadTexture( BASETEXTURE, TEXTUREFLAGS_SRGB );
 		}
+		// Loaded for the render core's water point (it reads them; this
+		// shader does not).
+		if ( params[FLOWMAP]->IsDefined() )
+			LoadTexture( FLOWMAP );
+		if ( params[FLOW_NOISE_TEXTURE]->IsDefined() )
+			LoadTexture( FLOW_NOISE_TEXTURE );
 	}
 
 	inline void GetVecParam( int constantVar, float *val )
@@ -544,8 +600,13 @@ BEGIN_VS_SHADER( Water_DX90,
 		if( !bReflection && params[ENVMAP]->IsTexture() && !IS_FLAG_SET( MATERIAL_VAR_DECAL ) )
 		{
 			bDrewSomething = true;
-			DrawCheapWater( params, pShaderShadow, pShaderAPI, !bForceCheap, bRefraction );
-		}
+				// Portal 2's $forceenvmap water is opaque: its shader draws the
+			// expensive path with the env map in place of the reflection
+			// target (no blend), so the engine sorts its surfaces with the
+			// opaque world, where the render core's water point takes them.
+			const bool bForceEnvMap = !bRefraction && params[FORCEENVMAP]->GetIntValue() != 0;
+			DrawCheapWater( params, pShaderShadow, pShaderAPI, !bForceCheap && !bForceEnvMap, bRefraction );
+			}
 
 		if( !bDrewSomething )
 		{
@@ -571,4 +632,4 @@ BEGIN_INHERITED_SHADER( Water_DX9_HDR, Water_DX90,
 		return 0;
 	}
 END_INHERITED_SHADER
-
+// clang-format on

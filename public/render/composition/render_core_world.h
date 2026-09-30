@@ -131,10 +131,13 @@ public:
 	// A view of a host frame the backend never records counts as skipped.
 	// worldToView and viewToClip (the same conventions; either may be null)
 	// place a world stage's view lights: the core clusters the frame's
-	// runtime lights for the view with them.
+	// runtime lights for the view with them; worldToView's x axis also
+	// orients the water point's reflection. waterZOffset is the height the
+	// view moves its water surfaces by (the client's waterZAdjust, 0 but for
+	// an eye within r_eyewaterepsilon of a water plane).
 	virtual bool DrawView( const unsigned int *surfaces, unsigned int count,
 	    const float worldToClip[16], const float viewport[6], unsigned long long hostFrame,
-	    const float worldToView[16], const float viewToClip[16] ) = 0;
+	    const float worldToView[16], const float viewToClip[16], float waterZOffset ) = 0;
 	// Main thread, at the start of each frame, after the renderer began it
 	// (its debug controls are applied). Under a pixel view or
 	// cl_render_debug_legacy 2 (RFC 0014) it marks the frame's first slot:

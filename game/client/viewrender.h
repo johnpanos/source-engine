@@ -156,7 +156,9 @@ struct WaterRenderInfo_t
 	bool m_bReflectEntities : 1;
 	bool m_bDrawWaterSurface : 1;
 	bool m_bOpaqueWater : 1;
-
+	// The reflection draws the 2D sky box; else it clears to black (Portal
+	// 2's rule: only with $reflect2dskybox).
+	bool m_bReflect2DSkybox : 1;
 };
 
 //-----------------------------------------------------------------------------

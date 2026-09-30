@@ -35,7 +35,9 @@ bool RenderCoreWorldDraw_Takes( SurfaceHandle_t surfID );
 bool RenderCoreWorldDraw_OwnsLighting( SurfaceHandle_t surfID );
 // Queues the view's visible surfaces the core takes (surface indices) and
 // marks the core's slot; from then until EndView the legacy chains skip them.
-void RenderCoreWorldDraw_BeginView( const unsigned int *pSurfaces, int nCount );
+// waterZOffset: the height the view moves water surfaces by (the client's
+// waterZAdjust).
+void RenderCoreWorldDraw_BeginView( const unsigned int *pSurfaces, int nCount, float waterZOffset );
 // A world stage (RFC 0016 K12: the map's world is its WMSH, and the core
 // holds it): BeginStageView after the view is eligible, then the WMSH path
 // asks StageView and StageTakesBatch, leaves the batches the core takes

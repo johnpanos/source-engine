@@ -4289,3 +4289,105 @@ So on this fixture the frame is CPU-bound in the legacy draw stream. On
 the core's GPU side, GTAO (full resolution) is the largest term. A second
 run on a GPU loaded by other sessions scaled every section by about 1.8x.
 Fold7: unavailable.
+
+## K8 water, first slice: Portal 2 goo on the core (2026-09-30, user request)
+
+User report: "the water/goo texture looks terrible on portal 2. fix it on
+rendercore", then "make sure this is rendercore native". The goo in
+`sp_a2_catapult_intro` drew as black water with large orange blotches.
+
+Causes, each found against retail captures (`portal2_material_shots.py`):
+
+- The goo is Portal 2's `Water` with `$flowmap`: flowing normal maps, a
+  flowing sludge layer (`$basetexture` with `$color_flow_*`), lightmapped
+  water fog and a fresnel reflection. This SDK's water shader has none of
+  it; its port drew the base texture at the surface's scale with bumped
+  lightmaps.
+- Retail's water shader is the CS:GO `water.cpp`/`water_ps2x.fxc` (its
+  stdshader_dx9 names `$color_flow_displacebynormalstrength` and
+  `$forceenvmap`, and no `$flow_timescale`), not F-Stop's older copy.
+- Without `$reflect2dskybox`, retail's reflection view clears to black and
+  draws no sky; this client drew the 2D sky box into it, which showed as
+  white blobs through the broken ceilings.
+- Old Aperture goo (`$forceenvmap`, `sp_a3_jump_intro`) is opaque in
+  retail; this SDK's shader blended it as cheap water, so the engine sorted
+  it into the translucent world pass (no core view ever saw it) and drew a
+  dark blue plane.
+- The `water_mist_*` particles over the goo lerped toward raw point
+  lighting: this SDK's "Color Random" initializer ignores Portal 2's `tint
+  blend mode` (multiply) and `light amplification amount`.
+
+What landed:
+
+- A `water` family (`render/material/water_family.{h,cpp}`, VMT rows in
+  `vmt_mapping.cpp`) and a water point of the surface program
+  (`kSurfaceWater`, `WaterSurface()` in `surface_program.glsl`): Portal 2's
+  `water_ps2x` above water without refraction, with the CS:GO constants
+  (reciprocal flow scales, sRGB-curve fog color, Source's gamma table for
+  the tint, the tint's x4 in integer HDR as a frame term). The flow map and
+  flow noise ride the material group's env map mask and MRAO bindings (a
+  group has 16 GL slots); the planar reflection is a view input (view group
+  binding 12, `SurfaceScreenInputs::planarReflection`,
+  `ResolvedProgram::viewInputs`), imported per view because the backend
+  replaces the target's image on resize. `SurfaceFrame` gains the shaders'
+  time, the tint scale, the camera's right in the water plane and the
+  view's viewport. Refraction, water seen from below, the cheap path,
+  bumped-lightmap water, flow debug views and bump transforms are refused
+  by name (claim-time gaps).
+- The core world takes water surfaces (`SurfaceEligible` no longer drops
+  `SURFDRAW_WATERSURFACE`); a view's water-plane offset (the client's
+  `waterZAdjust`) reaches the world pass (`DrawView`'s `waterZOffset`).
+- Frozen-path plumbing, each named in its commit: the backend imports
+  render targets (they rest in the sampled layout between their passes) and
+  passes the slot's time and tint scale (`CorePassTarget`); the legacy
+  `Water` shader declares Portal 2's parameters with retail's defaults and
+  draws `$forceenvmap` water opaque (retail's rule).
+- Not render paths: the Portal 2 client's `$reflect2dskybox` rule
+  (`viewrender.cpp`), and Portal 2's tint blend modes in "Color Random"
+  (`particles/builtin_initializers.cpp`, sharing the existing
+  `ComputeLitParticleColor`; mode 0 with amplification 1 is the old rule).
+
+Evidence (worktree `water-core`, build-p2 and a Portal build, `-Werror`):
+
+- `render.family.water` (41 checks): the claim on Portal 2's VMTs and six
+  GPU cases judged per pixel against an independent C++ transcription of
+  `water_ps2x` (1x1 inputs, a 1x2 reflection target so the vertical flip
+  and viewport mapping are judged; `$fogcolor` and `$reflecttint` decoded
+  from the VMT, not the packed constants). Its seeded row
+  (`RENDER_MATERIAL_WATER_SEEDED_GAMMA_FOG_COLOR`) fails 5 pixel cases and
+  the packing check.
+- `corpus.portal2.water-retail` (39 checks, 2 of 2 repeats): the new
+  `quality/workloads/portal2-water-v1` views of `sp_a2_laser_over_goo` (a
+  second-apart series and a grazing view), `sp_a2_catapult_intro` and
+  `sp_a3_jump_intro` with `r_core_world 1`, judged against a retail
+  reference recorded from retail portal2_linux (numbers only). Its control
+  with the core's world off (the legacy port) fails 13 checks.
+  `portal2_material_shots.py` now reads a workload's own checks and
+  reference.
+- Unchanged: `render.family.{unlit,lightmapped,vertexlit,pbr}` and their
+  seeded rows, `render.material.programs`, `render.world.null`, the world
+  pbr and glass pixel suites, the Hammer render suites, and every
+  `render.lab.*` suite and sensitivity row on a fresh `build-rc-lab`.
+  `render.material.v2` pins the five families; `vmt-corpus-v1.json` moves
+  46 Portal and 59 Portal 2 materials from `legacy` to `water` (no other
+  change). A Portal `escape_00` boot with `r_core_world 1` passes.
+- Pre-existing, not from this slice: `vmt-corpus`'s `shader-table.current`
+  (`black.cpp` was added without regenerating `legacy_shaders.inc`) and
+  `render.material.proxies.inventory` (line numbers in untouched files).
+
+Open:
+
+- The reflection image is still drawn by the client's reflection view
+  through the legacy stream (core slots draw only into the back buffer);
+  the water surface itself is the core's. A core-drawn reflection view
+  needs render-target slots.
+- `$reflectonlymarkedentities`: this client reflects no entities (no
+  `EF_MARKED_FOR_FAST_REFLECTION`), where retail reflects marked ones.
+- The mist particles still show orange smoke tiles at some instants: the
+  native SpriteCard stage does not implement `$DUALSEQUENCE` or
+  `$MAXLUMFRAMEBLEND` (its own unimplemented notes), so a smoke sheet's fire
+  frames can show. That is the particle cohort, next.
+- Refraction (Portal 2's `*_beneath` materials, seen from under the goo),
+  `$pseudotranslucent` blending, the flashlight on water, and the water
+  cohort's K8 legacy-stream census. No Fold7 or Apple run; frame time not
+  measured (rule 7).

@@ -596,7 +596,7 @@ std::shared_ptr<const pass::world::StageViewLights> CoreWorld::AreaViewLights() 
 
 bool CoreWorld::DrawView( const unsigned int *surfaces, unsigned int count,
     const float worldToClip[16], const float viewport[6], unsigned long long hostFrame,
-    const float worldToView[16], const float viewToClip[16] )
+    const float worldToView[16], const float viewToClip[16], float waterZOffset )
 {
 	legacy::ICorePassSlots *slots = m_Frontend.CorePassSlots();
 	if ( !slots || count == 0 )
@@ -608,6 +608,19 @@ bool CoreWorld::DrawView( const unsigned int *surfaces, unsigned int count,
 	    viewport[0], viewport[1], viewport[2], viewport[3], viewport[4], viewport[5] };
 	view.hostFrame = hostFrame;
 	view.debug = m_Renderer.AppliedDebug();
+	// The camera's right in the water plane: the view's x axis (the first
+	// row of world-to-view) with its z dropped, normalized.
+	if ( worldToView )
+	{
+		const float length =
+		    std::sqrt( worldToView[0] * worldToView[0] + worldToView[1] * worldToView[1] );
+		if ( length > 0.0f )
+		{
+			view.viewRight[0] = worldToView[0] / length;
+			view.viewRight[1] = worldToView[1] / length;
+		}
+	}
+	view.waterZOffset = waterZOffset;
 	std::shared_ptr<const ShadowWork> shadows;
 	if ( m_StageSet )
 	{
@@ -869,6 +882,8 @@ void CoreWorld::RecordSlot(
 	std::copy( target.fog.color, target.fog.color + 3, world.fogColor );
 	std::copy( target.fog.params, target.fog.params + 4, world.fogParams );
 	world.fogEyeZ = target.fog.eyeZ;
+	world.time = target.time;
+	world.waterReflectTintScale = target.waterReflectTintScale;
 	std::shared_ptr<const ShadowWork> shadows;
 	{
 		std::lock_guard<std::mutex> guard( m_ShadowLock );

@@ -629,7 +629,7 @@ public:
 	public:
 		CReflectionView(CViewRender *pMainView) : CBaseWorldView( pMainView ) {}
 
-		void Setup( bool bReflectEntities );
+		void Setup( bool bReflectEntities, bool bReflect2DSkybox );
 		void Draw();
 
 	private:
@@ -2527,8 +2527,7 @@ void CViewRender::DetermineWaterRenderInfo( const VisibleFogVolumeInfo_t &fogVol
 	info.m_bReflectEntities = false;
 	info.m_bDrawWaterSurface = false;
 	info.m_bOpaqueWater = true;
-
-
+	info.m_bReflect2DSkybox = true;
 
 	IMaterial *pWaterMaterial = fogVolumeInfo.m_pFogVolumeMaterial;
 	if (( fogVolumeInfo.m_nVisibleFogVolume == -1 ) || !pWaterMaterial )
@@ -2652,6 +2651,13 @@ void CViewRender::DetermineWaterRenderInfo( const VisibleFogVolumeInfo_t &fogVol
 			IMaterialVar *pReflectEntitiesVar = pWaterMaterial->FindVar( "$reflectentities", NULL, false );
 			info.m_bReflectEntities = pReflectEntitiesVar && (pReflectEntitiesVar->GetIntValueFast() != 0);
 		}
+#ifdef PORTAL2
+		// Portal 2's water reflects the 2D sky box only with
+		// $reflect2dskybox; otherwise its reflection clears to black (the
+		// retail client's DetermineWaterRenderInfo and CReflectionView).
+		IMaterialVar *pReflect2DSkybox = pWaterMaterial->FindVar( "$reflect2dskybox", NULL, false );
+		info.m_bReflect2DSkybox = pReflect2DSkybox && ( pReflect2DSkybox->GetIntValueFast() != 0 );
+#endif
 	}
 
 	info.m_bCheapWater = !info.m_bReflect && !info.m_bRefract;
@@ -6082,7 +6088,7 @@ void CAboveWaterView::Draw()
 	// render the reflection
 	if( m_waterInfo.m_bReflect )
 	{
-		m_ReflectionView.Setup( m_waterInfo.m_bReflectEntities );
+		m_ReflectionView.Setup( m_waterInfo.m_bReflectEntities, m_waterInfo.m_bReflect2DSkybox );
 		m_pMainView->AddViewToScene( &m_ReflectionView );
 	}
 	
@@ -6142,7 +6148,7 @@ void CAboveWaterView::Draw()
 //-----------------------------------------------------------------------------
 // 
 //-----------------------------------------------------------------------------
-void CAboveWaterView::CReflectionView::Setup( bool bReflectEntities )
+void CAboveWaterView::CReflectionView::Setup( bool bReflectEntities, bool bReflect2DSkybox )
 {
 	BaseClass::Setup( *GetOuter() );
 
@@ -6155,7 +6161,15 @@ void CAboveWaterView::CReflectionView::Setup( bool bReflectEntities )
 
 	// NOTE: This will cause us to draw the 2d skybox in the reflection 
 	// (which we want to do instead of drawing the 3d skybox)
-	m_DrawFlags |= DF_DRAWSKYBOX;
+	if ( bReflect2DSkybox )
+	{
+		m_DrawFlags |= DF_DRAWSKYBOX;
+	}
+	else
+	{
+		// No sky box: the reflection clears to black (DrawSetup's clear).
+		m_ClearFlags |= VIEW_CLEAR_COLOR;
+	}
 
 	if( bReflectEntities )
 	{
@@ -6184,6 +6198,12 @@ void CAboveWaterView::CReflectionView::Draw()
 	DrawSetup( GetOuter()->m_fogInfo.m_flWaterHeight, m_DrawFlags, 0.0f, GetOuter()->m_fogInfo.m_nVisibleFogVolumeLeaf );
 
 	EnableWorldFog();
+	if ( m_ClearFlags & VIEW_CLEAR_COLOR )
+	{
+		// A reflection without the sky box clears to black.
+		CMatRenderContextPtr pRenderContext( materials );
+		pRenderContext->ClearColor4ub( 0, 0, 0, 255 );
+	}
 	DrawExecute( GetOuter()->m_fogInfo.m_flWaterHeight, VIEW_REFLECTION, 0.0f );
 
 	r_visocclusion.SetValue( bVisOcclusion );

@@ -69,6 +69,10 @@ struct Resources
 		bool ready = false;
 		bool failed = false;
 		std::string failure; // why, when failed
+		// The material system handle of the view render target the program
+		// reads through its view group (ResolvedProgram::viewInputs: the
+		// water point's planar reflection), or 0.
+		int viewInput = 0;
 	};
 	std::vector<Material> materials;
 	// A world stage's depth-and-normal prepass (the screen passes' input): a
@@ -1202,6 +1206,21 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		m.program = std::move( program ).Value();
 		m.resolver = &resolver;
 		m.ready = true;
+		m.viewInput = 0;
+		for ( const std::string &input : m.program.viewInputs )
+		{
+			const auto handle = claimed.handles.find( input );
+			if ( handle == claimed.handles.end() || handle->second == 0 )
+			{
+				m.ready = false;
+				m.failed = true;
+				m.failure = "material " + name + ": its view input " + input +
+				            " has no material system handle";
+				note( m.failure );
+				return nullptr;
+			}
+			m.viewInput = handle->second;
+		}
 		return &m;
 	};
 	auto materialReady = [&]( std::uint32_t index )
@@ -1278,6 +1297,16 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 	// The view's area lights (every point reads them).
 	if ( view.lights )
 		terms.areas = view.lights->areas;
+	terms.time = target.time;
+	terms.waterReflectTintScale = target.waterReflectTintScale;
+	std::copy( view.viewRight, view.viewRight + 2, terms.viewRight );
+	if ( view.viewport.width > 0.0f && view.viewport.height > 0.0f )
+	{
+		terms.viewport[0] = view.viewport.x;
+		terms.viewport[1] = view.viewport.y;
+		terms.viewport[2] = 1.0f / view.viewport.width;
+		terms.viewport[3] = 1.0f / view.viewport.height;
+	}
 	if ( world->stage )
 	{
 		// The stage's pages hold linear light (LMAP); the pbr point's tables
@@ -1347,9 +1376,19 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 	std::map<std::uint64_t, Group> litViews;
 	// The view's ambient occlusion once the screen passes recorded it.
 	TextureId viewOcclusion;
+	// The view's planar reflection (a program's view input, imported below
+	// once the view's materials resolved), and the view groups that bind it
+	// for programs without the view's lights, retired behind this frame.
+	TextureId viewReflection;
+	std::map<std::uint64_t, Group> reflectViews;
 	auto viewGroupReady = [&]( const Resources::Material &m ) -> const Group *
 	{
 		const std::uint64_t layout = m.program.request.viewLayout.value;
+		if ( m.viewInput != 0 && !viewReflection.IsValid() )
+		{
+			note( "a program reads the view's planar reflection, which did not import" );
+			return nullptr;
+		}
 		if ( world->stage && view.lights )
 		{
 			Group &lit = litViews[layout];
@@ -1376,6 +1415,7 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 				screen.ambientOcclusion = viewOcclusion;
 				screen.ambientOcclusionDesc = target.ambientOcclusionDesc;
 			}
+			screen.planarReflection = viewReflection;
 			const material::GroupRequest request = m.resolver->Program().ViewGroup(
 			    lights.view, lights.froxels, lights.indices, lights.lights, shadows, {}, screen );
 			std::string why;
@@ -1388,6 +1428,25 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 				return nullptr;
 			}
 			return &lit;
+		}
+		if ( m.viewInput != 0 )
+		{
+			Group &reflect = reflectViews[layout];
+			if ( reflect.group.IsValid() )
+				return &reflect;
+			material::SurfaceScreenInputs screen;
+			screen.planarReflection = viewReflection;
+			const material::GroupRequest request = m.resolver->Program().NeutralViewGroup( screen );
+			std::string why;
+			if ( request.layout != m.program.request.viewLayout ||
+			     !buildGroup( request, {}, reflect, &why ) )
+			{
+				s.ReleaseGroup( reflect, CompletionToken() );
+				note( "the view's planar reflection: " +
+				      ( why.empty() ? std::string( "another view layout" ) : why ) );
+				return nullptr;
+			}
+			return &reflect;
 		}
 		Group &group = r.viewGroups[layout];
 		if ( group.group.IsValid() )
@@ -1446,6 +1505,24 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		                                            : x.firstIndex < y.firstIndex;
 	    } );
 
+	// The view's planar reflection: the render target the view's programs
+	// name (one per view: the client draws one reflection view), imported
+	// now, as the stream drew it before this slot (a resize replaces its
+	// image, so it is not kept across views).
+	int reflectionHandle = 0;
+	for ( const std::uint32_t index : order )
+	{
+		const Resources::Material &m = r.materials[world->surfaces[index].material];
+		if ( m.viewInput == 0 || m.viewInput == reflectionHandle )
+			continue;
+		if ( reflectionHandle != 0 )
+			note( "the view's programs read two planar reflections" );
+		else
+			reflectionHandle = m.viewInput;
+	}
+	if ( reflectionHandle != 0 )
+		viewReflection = textures.Import( reflectionHandle, true );
+
 	// The view's draw constants. D3D9 puts pixel centers on integer
 	// coordinates: a D3D9 transform is shifted right and down by half a pixel
 	// of the viewport.
@@ -1463,6 +1540,12 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 	for ( int i = 0; i < 4; ++i )
 		constants.world[i * 5] = 1.0f;
 	const auto constantBytes = std::as_bytes( std::span( &constants, 1 ) );
+	// The water point's draws with the view's water plane moved (the
+	// client's waterZAdjust): world-to-clip after a translation along z.
+	material::FamilyDrawConstants waterConstants = constants;
+	for ( int row = 0; row < 4; ++row )
+		waterConstants.toClip[row * 4 + 3] += constants.toClip[row * 4 + 2] * view.waterZOffset;
+	const auto waterConstantBytes = std::as_bytes( std::span( &waterConstants, 1 ) );
 	// The frame's debug controls (RFC 0014), as the view was queued: each
 	// program's pipeline under its specialization (the shipped one when the
 	// controls are neutral). A refused debug pipeline fails the view loudly.
@@ -1515,14 +1598,20 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 				{
 					const std::uint64_t layout = m.program.request.viewLayout.value;
 					const auto lit = litViews.find( layout );
-					encoder.SetBindGroup( BindGroupRole::kView,
-					    lit != litViews.end() ? lit->second.group : r.viewGroups[layout].group );
+					const auto reflect = reflectViews.find( layout );
+					encoder.SetBindGroup(
+					    BindGroupRole::kView, lit != litViews.end() ? lit->second.group
+					                          : m.viewInput != 0 && reflect != reflectViews.end()
+					                              ? reflect->second.group
+					                              : r.viewGroups[layout].group );
 				}
 				encoder.SetBindGroup( BindGroupRole::kMaterial, m.group.group );
 				encoder.SetVertexBuffer( 0, r.vertices, 0 );
 				encoder.SetIndexBuffer( r.indices, 0, IndexFormat::kUint32 );
 				encoder.SetDrawConstants(
-				    0, constantBytes.first( m.program.request.drawConstantBytes ) );
+				    0, ( m.program.name == "water" && view.waterZOffset != 0.0f ? waterConstantBytes
+				                                                                : constantBytes )
+				           .first( m.program.request.drawConstantBytes ) );
 			}
 			if ( skipping )
 				continue;
@@ -1711,6 +1800,8 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 	encoder.EndRendering();
 	encoder.EndLabel();
 	for ( auto &[layout, group] : litViews )
+		s.retiredGroups.emplace_back( target.frame, group );
+	for ( auto &[layout, group] : reflectViews )
 		s.retiredGroups.emplace_back( target.frame, group );
 
 	std::lock_guard<std::mutex> guard( s.lock );

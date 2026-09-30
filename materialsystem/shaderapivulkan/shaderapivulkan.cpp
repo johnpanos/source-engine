@@ -3196,6 +3196,11 @@ public:
 			// The ssbump policy has one owner, which the port reads too.
 			terms.ssbumpNormalized = SsbumpBasisNormalized();
 		}
+		// The shaders' time (CurrentTime's), and the water reflection tint's
+		// scale: the client draws the water views at a quarter of the tone-map
+		// scale in integer HDR, which Water's tint multiplies back.
+		terms.time = static_cast<float>( Sys_FloatTime() ); // CShaderAPIVulkan::CurrentTime
+		terms.waterReflectTintScale = integerHdr ? 4.0f : 1.0f;
 		// The view's fog as SetPixelShaderFogParams and UpdatePixelFogColorConstant
 		// give it to a pass that writes sRGB and fogs to the scene's color.
 		if ( g_Fog.sceneMode == MATERIAL_FOG_LINEAR ||

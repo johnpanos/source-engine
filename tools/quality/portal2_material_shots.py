@@ -809,15 +809,19 @@ def main(argv=None):
     p.add_argument("--steam-settle", type=int, default=30)
 
     p = sub.add_parser("record", help="write the reference from a retail capture")
+    p.add_argument("--workload", type=Path, default=WORKLOAD / "scenarios.json")
     p.add_argument("--retail", type=Path, required=True)
-    p.add_argument("--reference", type=Path, default=WORKLOAD / "reference.json")
+    p.add_argument("--reference", type=Path,
+                   help="default: reference.json beside the workload")
     p.add_argument("--scenario", action="append", default=[],
                    help="record only this scenario (repeatable) and keep the others' "
                         "entries in the existing reference")
 
     p = sub.add_parser("check", help="judge a build capture against retail")
+    p.add_argument("--workload", type=Path, default=WORKLOAD / "scenarios.json")
     p.add_argument("--capture", type=Path, required=True)
-    p.add_argument("--reference", type=Path, default=WORKLOAD / "reference.json")
+    p.add_argument("--reference", type=Path,
+                   help="default: reference.json beside the workload")
     p.add_argument("--retail", type=Path, help="judge against this retail capture instead")
     p.add_argument("--only", help="count only the checks this regular expression matches")
 
@@ -827,7 +831,8 @@ def main(argv=None):
     p.add_argument("--out", type=Path, help="capture directory (default: $CONFORMANCE_OUT or "
                                             "quality-results/portal2-material-shots-<time>)")
     p.add_argument("--steam-root", type=Path, default=steam)
-    p.add_argument("--reference", type=Path, default=WORKLOAD / "reference.json")
+    p.add_argument("--reference", type=Path,
+                   help="default: reference.json beside the workload")
     p.add_argument("--only", help="count only the checks this regular expression matches")
 
     p = sub.add_parser("self-test", help="the comparator on synthetic frames")
@@ -840,7 +845,11 @@ def main(argv=None):
             return self_test(args)
         if args.command == "_retail-session":
             return retail_session(args)
-        checks = load_checks(WORKLOAD)
+        # A workload's checks and retail reference sit beside its scenarios.
+        workload_dir = Path(args.workload).parent
+        checks = load_checks(workload_dir)
+        if getattr(args, "reference", None) is None:
+            args.reference = workload_dir / "reference.json"
         if args.command == "record":
             return record_reference(args, checks)
         if args.command == "check":

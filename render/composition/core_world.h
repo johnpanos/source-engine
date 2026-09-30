@@ -79,7 +79,7 @@ public:
 	}
 	bool DrawView( const unsigned int *surfaces, unsigned int count, const float worldToClip[16],
 	    const float viewport[6], unsigned long long hostFrame, const float worldToView[16],
-	    const float viewToClip[16] ) override;
+	    const float viewToClip[16], float waterZOffset ) override;
 	void BeginFrame() override;
 	void EndFrame() override;
 	// frame::IRenderStageHooks (the main thread): the open views' depth, so a

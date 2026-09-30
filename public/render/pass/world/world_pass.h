@@ -215,6 +215,12 @@ struct WorldTarget
 	float fogColor[3] = { 0.0f, 0.0f, 0.0f };
 	float fogParams[4] = { 0.0f, 0.0f, 1.0f, 0.0f };
 	float fogEyeZ = 0.0f;
+	// The water point's terms at the slot (material::FrameTerms): the
+	// shaders' time in seconds and the reflection tint's scale (4 in integer
+	// HDR, where the client draws the water views at a quarter of the tone-map
+	// scale).
+	float time = 0.0f;
+	float waterReflectTintScale = 1.0f;
 	// The shadow atlas the composition drew for this slot's view (a world
 	// stage's lights with shadow tiles), in kSampled; invalid without one.
 	device::TextureId shadowAtlas;
@@ -277,6 +283,13 @@ struct WorldView
 	// view without a stage reads its area lights alone. Null draws the
 	// program's neutral view (no runtime light).
 	std::shared_ptr<const StageViewLights> lights;
+	// The camera's right in the water plane, normalized (the view's x axis
+	// with its z dropped): the water point offsets its reflection along it.
+	float viewRight[2] = { 1.0f, 0.0f };
+	// The height the view moves water surfaces by (the client's waterZAdjust:
+	// an eye within r_eyewaterepsilon of a water plane moves the plane off
+	// it); the water point's draws are translated by it.
+	float waterZOffset = 0.0f;
 };
 
 struct WorldStats

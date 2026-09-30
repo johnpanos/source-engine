@@ -304,7 +304,10 @@ bool SurfaceEligible( SurfaceHandle_t surfID )
 {
 	if ( SurfaceHasDispInfo( surfID ) || MSurf_VertCount( surfID ) < 3 )
 		return false;
-	if ( MSurf_Flags( surfID ) & ( SURFDRAW_NODRAW | SURFDRAW_SKY | SURFDRAW_WATERSURFACE ) )
+	// Water surfaces are eligible: the water family claims their materials
+	// (render/material/water_family.h); its point draws them at the height
+	// the view moves them to (RenderCoreWorldDraw_BeginView's waterZOffset).
+	if ( MSurf_Flags( surfID ) & ( SURFDRAW_NODRAW | SURFDRAW_SKY ) )
 		return false;
 	mtexinfo_t *pTexInfo = MSurf_TexInfo( surfID );
 	return pTexInfo && pTexInfo->material;
@@ -633,7 +636,8 @@ bool RenderCoreWorldDraw_OwnsLighting( SurfaceHandle_t surfID )
 
 // Queues the core's surfaces (its entries) for the current view, with the
 // view's transform and viewport, and marks its slot here in the stream.
-static bool QueueCoreView( IRenderCoreWorld *pWorld, const unsigned int *pEntries, int nCount )
+static bool QueueCoreView(
+    IRenderCoreWorld *pWorld, const unsigned int *pEntries, int nCount, float waterZOffset )
 {
 	// The engine's view as pushed: the legacy context holds the same
 	// matrices and viewport, and the core reads no legacy stream.
@@ -659,10 +663,11 @@ static bool QueueCoreView( IRenderCoreWorld *pWorld, const unsigned int *pEntrie
 		}
 	}
 	return pWorld->DrawView( pEntries, unsigned( nCount ), toClip, viewport,
-	    static_cast<unsigned long long>( host_framecount ) + 1, toView, projectionRows );
+	    static_cast<unsigned long long>( host_framecount ) + 1, toView, projectionRows,
+	    waterZOffset );
 }
 
-void RenderCoreWorldDraw_BeginView( const unsigned int *pSurfaces, int nCount )
+void RenderCoreWorldDraw_BeginView( const unsigned int *pSurfaces, int nCount, float waterZOffset )
 {
 	CoreWorldState &state = State();
 	state.viewActive = false;
@@ -690,7 +695,7 @@ void RenderCoreWorldDraw_BeginView( const unsigned int *pSurfaces, int nCount )
 	}
 	if ( entries.Count() == 0 )
 		return;
-	state.viewActive = QueueCoreView( pWorld, entries.Base(), entries.Count() );
+	state.viewActive = QueueCoreView( pWorld, entries.Base(), entries.Count(), waterZOffset );
 }
 
 void RenderCoreWorldDraw_BeginStageView()
@@ -725,7 +730,7 @@ void RenderCoreWorldDraw_DrawStageView( const unsigned int *pMeshlets, int nCoun
 		return;
 	if ( r_core_world.GetInt() == 3 )
 		return; // negative control: taken and not drawn
-	state.viewActive = QueueCoreView( pWorld, pMeshlets, nCount );
+	state.viewActive = QueueCoreView( pWorld, pMeshlets, nCount, 0.0f );
 }
 
 void RenderCoreWorldDraw_EndView()

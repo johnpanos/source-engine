@@ -91,6 +91,13 @@ struct CorePassTarget
 	// 1/sqrt(3) (Portal 2's LightmappedGeneric; the backend's policy).
 	bool ssbumpNormalized = false;
 	CorePassFog fog; // the view's fog at the slot
+	// The shaders' time at the slot (the backend's CurrentTime, in seconds),
+	// which animated terms read (the water point's flow).
+	float time = 0.0f;
+	// The scale of the water point's reflection tint: 4 in integer HDR, where
+	// the client draws the water views at a quarter of the tone-map scale
+	// (SetLightmapScaleForWater) and Water multiplies its tint back; else 1.
+	float waterReflectTintScale = 1.0f;
 };
 
 // The backend's textures as port textures (RFC 0016 K5 step 4): the image
@@ -98,9 +105,12 @@ struct CorePassTarget
 // lightmap page's), imported on first use in the usage it rests in between
 // uses (kSampled) and released, behind the frame being recorded, when the
 // backend deletes or replaces it. Called on the render sequence while a slot
-// records. A cube map (six layers) imports as a kCube texture. An invalid id
-// when the handle names no uploaded 2D or cube image (a volume, an array), a
-// render target, or a format with no port format.
+// records. A cube map (six layers) imports as a kCube texture. A render
+// target imports too: it rests in kSampled between the passes that draw into
+// it, and a slot reads what the stream drew into it before the slot (a
+// resize replaces its image: the caller re-imports per frame). An invalid id
+// when the handle names no uploaded 2D or cube image (a volume, an array) or
+// a format with no port format.
 class ICoreTextures
 {
 public:

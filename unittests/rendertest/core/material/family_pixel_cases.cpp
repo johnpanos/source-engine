@@ -506,7 +506,8 @@ CaseGroup NeutralViewGroup( device::BindGroupLayoutId layout )
 	group.storage = { std::as_bytes( std::span( kFroxel ) ), std::as_bytes( std::span( kIndices ) ),
 	    std::as_bytes( std::span( &kLight, 1 ) ), std::as_bytes( std::span( &kTile, 1 ) ),
 	    std::as_bytes( std::span( &kProjector, 1 ) ) };
-	// No projectors: a two-layer cookie array; no occlusion pass: white.
+	// No projectors: a two-layer cookie array; no occlusion pass and no planar
+	// reflection: white.
 	static const CaseTexture kCookies = []
 	{
 		CaseTexture cookies = kAtlas;
@@ -514,7 +515,7 @@ CaseGroup NeutralViewGroup( device::BindGroupLayoutId layout )
 		cookies.texels = { 255, 255, 255, 255, 255, 255, 255, 255 };
 		return cookies;
 	}();
-	group.textures = { &kAtlas, &kCookies, &kAtlas };
+	group.textures = { &kAtlas, &kCookies, &kAtlas, &kAtlas };
 	return group;
 }
 

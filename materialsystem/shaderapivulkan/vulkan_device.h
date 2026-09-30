@@ -332,6 +332,8 @@ public:
 		bool specular = true;
 		bool ssbumpNormalized = false;
 		render::legacy::CorePassFog fog;
+		float time = 0.0f;
+		float waterReflectTintScale = 1.0f;
 	};
 	void QueueCorePass( uint32_t tag, const CorePassTerms &terms );
 	// Slots whose sections this context ran, and the frames that had one.

@@ -1,0 +1,178 @@
+{
+  "schema": "portal2-material-checks/v1",
+  "description": "What tools/quality/portal2_material_shots.py checks on each shot of portal2-water-v1 against the retail reference (reference.json, numbers only). Tiles: a 16x12 grid of mean colours; a tile matches when every channel is within the tolerance (8-bit sRGB) of retail's. The goo animates (its flow and sludge), so regions judge its mean colour and contrast over a patch, as portal2-materials-v1 does for animated goo. Every region names the defect it pins.",
+  "tiles": {
+    "columns": 16,
+    "rows": 12,
+    "tolerance": 24,
+    "min_fraction": 0.85
+  },
+  "exempt_unknown_shaders": {
+    "DebugDepth": "retail lacks it too (dev material ___debugdepth)",
+    "DebugDrawEnvmapMask": "retail lacks it too",
+    "DebugLuxels": "retail lacks it too (debug/debugluxels)",
+    "DebugNormalMap": "retail lacks it too",
+    "FillRate": "retail lacks it too"
+  },
+  "exempt_native_drops": {
+    "___error": "CTextureManager::ForceAllTexturesIntoHardware's precache draws; nothing a view shows (portal2-materials-v1)"
+  },
+  "shots": {
+    "water_laser_over_goo": {
+      "goo_t0": {
+        "regions": {
+          "goo_surface": {
+            "rect": [
+              0,
+              420,
+              640,
+              768
+            ],
+            "mean_tolerance": 16,
+            "std_ratio": [
+              0.6,
+              2.2
+            ],
+            "pins": "toxic goo (Water with Portal 2's $flowmap, sludge and the view's reflection, nature/toxicslime_*) drawn by the render core's water point: before it the legacy port drew the base texture at the surface's scale with bumped lightmaps, black water with large orange blotches (shot 0 of a second-apart series: the flow animates); the upper contrast bound is 2.2 because the map's water_mist particles, drawn by the legacy native SpriteCard stage without $DUALSEQUENCE (an open defect, not the water), add orange smoke tiles at some instants"
+          }
+        }
+      },
+      "goo_t1": {
+        "regions": {
+          "goo_surface": {
+            "rect": [
+              0,
+              420,
+              640,
+              768
+            ],
+            "mean_tolerance": 16,
+            "std_ratio": [
+              0.6,
+              2.2
+            ],
+            "pins": "toxic goo (Water with Portal 2's $flowmap, sludge and the view's reflection, nature/toxicslime_*) drawn by the render core's water point: before it the legacy port drew the base texture at the surface's scale with bumped lightmaps, black water with large orange blotches (shot 1 of a second-apart series: the flow animates); the upper contrast bound is 2.2 because the map's water_mist particles, drawn by the legacy native SpriteCard stage without $DUALSEQUENCE (an open defect, not the water), add orange smoke tiles at some instants"
+          }
+        }
+      },
+      "goo_t2": {
+        "regions": {
+          "goo_surface": {
+            "rect": [
+              0,
+              420,
+              640,
+              768
+            ],
+            "mean_tolerance": 16,
+            "std_ratio": [
+              0.6,
+              2.2
+            ],
+            "pins": "toxic goo (Water with Portal 2's $flowmap, sludge and the view's reflection, nature/toxicslime_*) drawn by the render core's water point: before it the legacy port drew the base texture at the surface's scale with bumped lightmaps, black water with large orange blotches (shot 2 of a second-apart series: the flow animates); the upper contrast bound is 2.2 because the map's water_mist particles, drawn by the legacy native SpriteCard stage without $DUALSEQUENCE (an open defect, not the water), add orange smoke tiles at some instants"
+          }
+        }
+      },
+      "goo_t3": {
+        "regions": {
+          "goo_surface": {
+            "rect": [
+              0,
+              420,
+              640,
+              768
+            ],
+            "mean_tolerance": 16,
+            "std_ratio": [
+              0.6,
+              2.2
+            ],
+            "pins": "toxic goo (Water with Portal 2's $flowmap, sludge and the view's reflection, nature/toxicslime_*) drawn by the render core's water point: before it the legacy port drew the base texture at the surface's scale with bumped lightmaps, black water with large orange blotches (shot 3 of a second-apart series: the flow animates); the upper contrast bound is 2.2 because the map's water_mist particles, drawn by the legacy native SpriteCard stage without $DUALSEQUENCE (an open defect, not the water), add orange smoke tiles at some instants"
+          }
+        }
+      },
+      "goo_far": {
+        "regions": {
+          "goo_surface": {
+            "rect": [
+              0,
+              460,
+              1024,
+              768
+            ],
+            "mean_tolerance": 16,
+            "std_ratio": [
+              0.6,
+              1.6
+            ],
+            "pins": "toxic goo (Water with Portal 2's $flowmap, sludge and the view's reflection, nature/toxicslime_*) drawn by the render core's water point: before it the legacy port drew the base texture at the surface's scale with bumped lightmaps, black water with large orange blotches, seen at a grazing angle, where the reflection dominates"
+          }
+        }
+      }
+    },
+    "water_catapult_intro": {
+      "goo_across": {
+        "regions": {
+          "goo_band": {
+            "rect": [
+              0,
+              350,
+              1024,
+              400
+            ],
+            "mean_tolerance": 16,
+            "pins": "the goo between the faith plates and the exit door (sp_a2_catapult_intro, the chamber the defect report came from), at a grazing angle"
+          }
+        }
+      },
+      "goo_down": {
+        "regions": {
+          "goo_surface": {
+            "rect": [
+              0,
+              480,
+              1024,
+              768
+            ],
+            "mean_tolerance": 16,
+            "std_ratio": [
+              0.6,
+              1.6
+            ],
+            "pins": "toxic goo (Water with Portal 2's $flowmap, sludge and the view's reflection, nature/toxicslime_*) drawn by the render core's water point: before it the legacy port drew the base texture at the surface's scale with bumped lightmaps, black water with large orange blotches (sp_a2_catapult_intro)"
+          }
+        }
+      }
+    },
+    "water_jump_intro": {
+      "goo_down": {
+        "regions": {
+          "goo_surface": {
+            "rect": [
+              300,
+              60,
+              1000,
+              380
+            ],
+            "mean_tolerance": 16,
+            "pins": "old Aperture goo ($forceenvmap: the patched cube map in place of the reflection target): before, the legacy shader drew it as blended cheap water in the translucent pass, a dark blue plane with khaki blobs"
+          }
+        }
+      },
+      "goo_grazing": {
+        "regions": {
+          "goo_surface": {
+            "rect": [
+              640,
+              620,
+              1024,
+              768
+            ],
+            "mean_tolerance": 16,
+            "pins": "old Aperture goo at a grazing angle ($forceenvmap water, sp_a3_jump_intro)"
+          }
+        }
+      }
+    }
+  }
+}

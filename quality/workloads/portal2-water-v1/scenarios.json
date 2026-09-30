@@ -1,0 +1,43 @@
+{
+  "schema": "portal2-scenarios/v1",
+  "description": "Portal 2 water and goo (Water with $flowmap, the render core's water point, render/material/water_family.h): fixed views of toxic goo, shot on this build and on retail Portal 2 at 1024x768, and a time series of one view (the flow animates). Run by tools/quality/portal2_material_shots.py --workload quality/workloads/portal2-water-v1/scenarios.json.",
+  "driver": "../portal2-wheatley-v1/qa_driver.nut",
+  "includes": [
+    "../portal2-materials-v1/materials_views.nut"
+  ],
+  "scenarios": [
+    {
+      "name": "water_laser_over_goo",
+      "map": "sp_a2_laser_over_goo",
+      "script": "water_laser_over_goo.nut",
+      "timeout_seconds": 150,
+      "required_checks": [
+        "view.goo_t0",
+        "view.goo_t1",
+        "view.goo_t2",
+        "view.goo_t3",
+        "view.goo_far"
+      ]
+    },
+    {
+      "name": "water_catapult_intro",
+      "map": "sp_a2_catapult_intro",
+      "script": "water_catapult_intro.nut",
+      "timeout_seconds": 150,
+      "required_checks": [
+        "view.goo_across",
+        "view.goo_down"
+      ]
+    },
+    {
+      "name": "water_jump_intro",
+      "map": "sp_a3_jump_intro",
+      "script": "water_jump_intro.nut",
+      "timeout_seconds": 150,
+      "required_checks": [
+        "view.goo_down",
+        "view.goo_grazing"
+      ]
+    }
+  ]
+}

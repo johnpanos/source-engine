@@ -5,10 +5,11 @@
   "portal": {
    "materials": 6000,
    "families": {
-    "legacy": 784,
+    "legacy": 738,
     "lightmapped": 2253,
     "unlit": 1384,
-    "vertexlit": 1547
+    "vertexlit": 1547,
+    "water": 46
    },
    "unsupported": {
     "malformed": 1,
@@ -48,15 +49,16 @@
     "materials/tools/toolsskyfog.vmt: unknown-shader (SkyFog)",
     "materials/vgui/screens/vgui_overlay.vmt: malformed (material line 12: expected a name or key before '{')"
    ],
-   "digest": "945d94eaa75eabbb03e604a2e29532ca20be3f87e6d344520f4ce5c00d81be19"
+   "digest": "6724b23768f8624df8045b962f6fe2357f79df32aa0f17312e99c5e242a1f203"
   },
   "portal2": {
    "materials": 3738,
    "families": {
-    "legacy": 541,
+    "legacy": 482,
     "lightmapped": 829,
     "unlit": 1144,
-    "vertexlit": 1211
+    "vertexlit": 1211,
+    "water": 59
    },
    "unsupported": {
     "missing-include": 1,
@@ -77,7 +79,7 @@
     "materials/tools/toolsblack_cheap.vmt: unknown-shader (black)",
     "materials/tools/toolsblack_noportal_skybox.vmt: unknown-shader (Black)"
    ],
-   "digest": "fdd24430e70c22819c9c8dcc51355d481e0dec9a9f614961d9cc75326d8236cc"
+   "digest": "1ec1786dba9ebc347a6a3f8772d02804eb3e9b60d89b86c885e7e232771b4037"
   }
  }
 }

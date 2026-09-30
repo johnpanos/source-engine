@@ -4069,7 +4069,7 @@ void R_DrawWorldLists( IWorldRenderList *pRenderListIn, unsigned long flags, flo
 				}
 			}
 		}
-		RenderCoreWorldDraw_BeginView( coreSurfaces.Base(), coreSurfaces.Count() );
+		RenderCoreWorldDraw_BeginView( coreSurfaces.Base(), coreSurfaces.Count(), waterZAdjust );
 	}
 	Shader_WorldEnd( pRenderList, flags, waterZAdjust );
 	RenderCoreWorldDraw_EndView();

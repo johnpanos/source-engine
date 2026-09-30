@@ -40,6 +40,13 @@ constexpr VmtShaderRow kShaders[] = {
     { "pbrmetalrough", "pbr",
         "RFC 0007 metalness/roughness materials, drawn natively by world_pbr and model_pbr; "
         "the schema is render/pbr_material_schema.h" },
+    { "water", "water",
+        "water surfaces: Portal 2's Water shader (water_ps2x's expensive path: flowing normal "
+        "maps, the flowing sludge layer, lightmapped water fog and a fresnel reflection of the "
+        "view's reflection target or of an env map); render/material/water_family.h" },
+    { "water_dx9_hdr", "water",
+        "Water's fallback on an HDR DirectX 9 profile (DEFINE_FALLBACK_SHADER), the same shader" },
+    { "water_dx90", "water", "Water's DirectX 9 shader, which Water_DX9_HDR inherits" },
     { "subrect", kLegacyFamily,
         "not a shader: a sub-rectangle ($pos, $size) of another material ($material) that "
         "the material system resolves (CMaterialSubRect) and draws as that material" },
@@ -151,6 +158,61 @@ constexpr VmtKeyRow kLegacyDerivedKeys[] = {
     { "unlit", "$ignorevertexcolors", "ignorevertexcolors", ValueKind::kBool, "1" },
 };
 
+// The water family's keys (not legacy-derived: Water reads none of the
+// common keys but $basetexture and $frame).
+constexpr VmtKeyRow kWaterKeys[] = {
+    // Portal 2's shipped parameters and defaults (its stdshader_dx9, the
+    // CS:GO water.cpp's InitParams); water_family.h reads them.
+    { "water", "$basetexture", "basetexture", ValueKind::kTexture, "" },
+    { "water", "$frame", "frame", ValueKind::kInt, "0" },
+    { "water", "$normalmap", "normalmap", ValueKind::kTexture, "" },
+    { "water", "$bumpframe", "bumpframe", ValueKind::kInt, "0" },
+    { "water", "$bumptransform", "bumptransform", ValueKind::kTransform, "" },
+    { "water", "$flowmap", "flowmap", ValueKind::kTexture, "" },
+    { "water", "$flowmapframe", "flowmapframe", ValueKind::kInt, "0" },
+    { "water", "$flowmapscrollrate", "flowmapscrollrate", ValueKind::kFloat2, "[0 0]" },
+    { "water", "$flow_noise_texture", "flow_noise_texture", ValueKind::kTexture, "" },
+    { "water", "$flow_worlduvscale", "flow_worlduvscale", ValueKind::kFloat, "1" },
+    { "water", "$flow_normaluvscale", "flow_normaluvscale", ValueKind::kFloat, "1" },
+    { "water", "$flow_timeintervalinseconds", "flow_timeintervalinseconds", ValueKind::kFloat,
+        "0.4" },
+    { "water", "$flow_uvscrolldistance", "flow_uvscrolldistance", ValueKind::kFloat, "0.2" },
+    { "water", "$flow_bumpstrength", "flow_bumpstrength", ValueKind::kFloat, "1" },
+    { "water", "$flow_noise_scale", "flow_noise_scale", ValueKind::kFloat, "0.0002" },
+    { "water", "$flow_debug", "flow_debug", ValueKind::kInt, "0" },
+    // Not a parameter of Portal 2's shipped water shader (earlier ones had
+    // it): some of its VMTs set it, and retail ignores it, as the family does.
+    { "water", "$flow_timescale", "flow_timescale", ValueKind::kFloat, "1" },
+    { "water", "$color_flow_uvscale", "color_flow_uvscale", ValueKind::kFloat, "1" },
+    { "water", "$color_flow_timeintervalinseconds", "color_flow_timeintervalinseconds",
+        ValueKind::kFloat, "0.4" },
+    { "water", "$color_flow_uvscrolldistance", "color_flow_uvscrolldistance", ValueKind::kFloat,
+        "0.2" },
+    { "water", "$color_flow_lerpexp", "color_flow_lerpexp", ValueKind::kFloat, "1" },
+    { "water", "$color_flow_displacebynormalstrength", "color_flow_displacebynormalstrength",
+        ValueKind::kFloat, "0.0025" },
+    { "water", "$reflecttexture", "reflecttexture", ValueKind::kTexture, "" },
+    { "water", "$reflectamount", "reflectamount", ValueKind::kFloat, "0.8" },
+    { "water", "$reflecttint", "reflecttint", ValueKind::kFloat3, "[1 1 1]" },
+    { "water", "$refracttexture", "refracttexture", ValueKind::kTexture, "" },
+    { "water", "$refractamount", "refractamount", ValueKind::kFloat, "0" },
+    { "water", "$refracttint", "refracttint", ValueKind::kFloat3, "[1 1 1]" },
+    { "water", "$envmap", "envmap", ValueKind::kTexture, "" },
+    { "water", "$envmapframe", "envmapframe", ValueKind::kInt, "0" },
+    { "water", "$forceenvmap", "forceenvmap", ValueKind::kBool, "0" },
+    { "water", "$fogcolor", "fogcolor", ValueKind::kFloat3, "[1 0 0]" },
+    { "water", "$fogstart", "fogstart", ValueKind::kFloat, "0" },
+    { "water", "$fogend", "fogend", ValueKind::kFloat, "0" },
+    { "water", "$lightmapwaterfog", "lightmapwaterfog", ValueKind::kBool, "0" },
+    { "water", "$abovewater", "abovewater", ValueKind::kBool, "1" },
+    { "water", "$forcefresnel", "forcefresnel", ValueKind::kFloat, "-1" },
+    { "water", "$waterblendfactor", "waterblendfactor", ValueKind::kFloat, "1" },
+    { "water", "$flashlighttint", "flashlighttint", ValueKind::kFloat, "1" },
+    { "water", "$forceexpensive", "forceexpensive", ValueKind::kBool, "0" },
+    { "water", "$forcecheap", "forcecheap", ValueKind::kBool, "0" },
+    { "water", "$nofog", "nofog", ValueKind::kBool, "0" },
+};
+
 constexpr VmtMetadataRow kMetadata[] = {
     { "$surfaceprop", "physics surface properties (the physics and sound systems)" },
     { "$surfaceprop2", "physics surface properties of a blend's second layer" },
@@ -170,6 +232,12 @@ constexpr VmtMetadataRow kMetadata[] = {
     { "$maxsize", "particle size limits read by the particle system" },
     { "$maxdistance", "particle distance limit read by the particle system" },
     { "$farfadeinterval", "particle fade read by the particle system" },
+    { "$reflectentities", "water: the client's reflection view draws entities" },
+    { "$reflectskyboxonly", "water: the client's reflection view draws only the sky box" },
+    { "$reflectonlymarkedentities",
+        "water: the client's reflection view draws only entities marked to reflect" },
+    { "$fogenable", "water: the engine's water fog volume (R_SetFogVolumeState)" },
+    { "$waterdepth", "water: the depth vbsp writes into cube-map patches (no shader reads it)" },
 };
 
 #include "legacy_shaders.inc"
@@ -210,6 +278,8 @@ std::vector<VmtKeyRow> BuildKeyRows()
 				rows.push_back( row );
 		}
 	}
+	for ( const VmtKeyRow &row : kWaterKeys )
+		rows.push_back( row );
 	for ( const pbr::MaterialParameterSpec &spec : pbr::kMaterialParameters )
 	{
 		const std::string_view key = spec.name;

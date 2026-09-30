@@ -20,7 +20,9 @@
 //			  pbr point's area lights) and 4 its sampler;
 //			- material (role kMaterial): binding 0 SurfaceConstants; 1 base,
 //			  3 env map (a cube), 5 env map mask, 7 bump or normal map, 9
-//			  detail, 11 MRAO and 13 emission, each with its sampler after it;
+//			  detail, 11 MRAO and 13 emission, each with its sampler after it
+//			  (the water point binds its flow map at 5 and its flow noise at
+//			  11: a group has 16 GL slots, and it reads neither of those);
 //			- view (role kView): the view's clustered runtime lights
 //			  (render.light-set.v1's point and spot lights; render.pass.lights
 //			  lists them per froxel, RFC 0016 K7): binding 0 SurfaceViewGpu,
@@ -30,7 +32,9 @@
 //			  shadow atlas (render.shadows.v1, a depth texture) and 6 its point
 //			  sampler. Only a variant with kSurfaceClustered reads them; the
 //			  others bind the neutral view group (NeutralViewGroup), which
-//			  MaterialPrograms keeps;
+//			  MaterialPrograms keeps. Binding 12 is the view's planar
+//			  reflection (SurfaceScreenInputs), which the water point reads,
+//			  and 13 its sampler;
 //			- draw (role kDraw): binding 0 the draw's lightmap page, 1 its
 //			  sampler, 2 its model lighting (model_lighting.h; neutral for a
 //			  world surface).
@@ -93,8 +97,27 @@ struct SurfaceConstants
 	// the Portal 2 helper packs them), z: $envmaplightscale (0 off).
 	float envLightScale[4] = { 0.0f, 1.0f, 0.0f, 0.0f };
 	float emission[4] = { 1.0f, 0.0f, 0.0f, 0.0f }; // x: $emissionscale (the pbr point)
+	// The water point (kSurfaceWater, water_family.h): water_ps2x's
+	// constants. Flow: 1 / $flow_worlduvscale, 1 / $flow_normaluvscale,
+	// $flow_bumpstrength, $color_flow_displacebynormalstrength.
+	float waterFlow[4] = { 1.0f, 1.0f, 1.0f, 0.0025f };
+	// $flow_timeintervalinseconds, $flow_uvscrolldistance, $flow_noise_scale,
+	// and 1 with a flow map (else the normal map at the surface coordinates).
+	float waterFlowTime[4] = { 0.4f, 0.2f, 0.0002f, 0.0f };
+	// 1 / $color_flow_uvscale, $color_flow_timeintervalinseconds,
+	// $color_flow_uvscrolldistance, $color_flow_lerpexp.
+	float waterColorFlow[4] = { 1.0f, 0.4f, 0.2f, 1.0f };
+	// rgb: $reflecttint (Source's GammaToLinear); w: $waterblendfactor, the
+	// output alpha.
+	float waterReflect[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
+	// rgb: $fogcolor (the sRGB curve); w: $reflectamount.
+	float waterFog[4] = { 1.0f, 0.0f, 0.0f, 0.8f };
+	// x: 1 when the reflection is the view's reflection target, 0 the env
+	// map (binding 3); y: 1 with the sludge ($basetexture and a flow map); z:
+	// $lightmapwaterfog; w: $forcefresnel (-1: the fresnel term).
+	float waterMode[4] = { 1.0f, 0.0f, 0.0f, -1.0f };
 };
-static_assert( sizeof( SurfaceConstants ) == 176 );
+static_assert( sizeof( SurfaceConstants ) == 272 );
 
 // An area light as the frame block holds it (render.area-light.v1: the
 // rectangle, its radiance and its reach).
@@ -187,6 +210,11 @@ struct SurfaceScreenInputs
 {
 	device::TextureId ambientOcclusion;
 	device::TextureDesc ambientOcclusionDesc;
+	// The view's planar reflection (the image a reflection view drew before
+	// this pass; its sRGB view), read by the water point
+	// (kSurfaceWater, binding 12, filtered and clamped).
+	device::TextureId planarReflection;
+	device::TextureDesc planarReflectionDesc;
 };
 
 // The frame's terms (std140, the Frame block of surface.frag): one lightmap
@@ -226,9 +254,21 @@ struct SurfaceFrame
 	// cascades' count; z: 1 when a world surface's visibility is the baked
 	// mask in its lightmap page's alpha (LMAP --sun-visibility); w: 0.
 	float sunShadow[4] = { -1.0f, 0.0f, 0.0f, 0.0f };
+	// The water point's frame terms: x the shaders' time in seconds (the
+	// backend's CurrentTime, which water_ps2x's flow reads); y the scale of
+	// its reflection tint (4 in integer HDR, where the client draws the
+	// water views at a quarter of the tone-map scale, SetLightmapScaleForWater;
+	// 1 otherwise); z, w: the camera's right in the water plane (the view's
+	// x axis projected on the z = 0 plane, normalized: water_ps2x's
+	// g_vWorldToViewWater0), along which the reflection is offset.
+	float water[4] = { 0.0f, 1.0f, 1.0f, 0.0f };
+	// The view's viewport in the target: x, y, 1 / width, 1 / height (a
+	// fragment's position in the view, where the water point samples its
+	// reflection target).
+	float viewport[4] = { 0.0f, 0.0f, 1.0f, 1.0f };
 	SurfaceAreaLight areas[kSurfaceMaxAreaLights];
 };
-static_assert( sizeof( SurfaceFrame ) == 144 + 64 * kSurfaceMaxAreaLights );
+static_assert( sizeof( SurfaceFrame ) == 176 + 64 * kSurfaceMaxAreaLights );
 
 // The flat vertex (surface_flat.vert): position, base and lightmap
 // coordinates, and color as UNORM8x4 (RGBA).
@@ -335,6 +375,9 @@ inline constexpr std::uint32_t kSurfaceMeshDirect = 8388608;
 // A reflective shadow map's pass (render.pass.bounce): attachment 0 holds
 // the surface's diffuse reflectance (RGBA16F).
 inline constexpr std::uint32_t kSurfaceRsm = 16777216;
+// The water point (water_family.h): Portal 2's water_ps2x above water, with
+// the material group's flow map, flow noise and reflection target.
+inline constexpr std::uint32_t kSurfaceWater = 33554432;
 // The terms that read the normal (not on the flat vertex), and those the
 // model vertex alone evaluates.
 inline constexpr std::uint32_t kSurfaceNormalTerms =
@@ -392,6 +435,10 @@ struct SurfaceTextures
 	std::string detail;
 	std::string mrao;
 	std::string emission;
+	// The water point's flow map and flow noise (data), bound in the env map
+	// mask's and MRAO's places (the water point reads neither).
+	std::string flowmap;
+	std::string flowNoise;
 };
 
 // The split-sum table (RFC 0007, pbr_split_sum_table.h): the texels for a
@@ -469,8 +516,9 @@ public:
 	    std::span<const std::byte> indices, std::span<const SurfaceLightGpu> lights,
 	    const SurfaceShadows &shadows = {}, const SurfaceProjectors &projectors = {},
 	    const SurfaceScreenInputs &screen = {} ) const;
-	// The view group of a view with no clustered lights.
-	GroupRequest NeutralViewGroup() const;
+	// The view group of a view with no clustered lights (and its screen
+	// inputs, when a point reads one).
+	GroupRequest NeutralViewGroup( const SurfaceScreenInputs &screen = {} ) const;
 	// A draw group: the lightmap page ('page', a TextureCache name staged as
 	// sRGB; empty for a mesh), the draw's model lighting and a directional
 	// page's gradient page ('gradient', read under
