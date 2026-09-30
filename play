@@ -7,8 +7,9 @@
 #   ./play native testchmb_a_02 -console      a map, then any game arguments
 #   ./play living_room        a PBRT map published by pbrt_map_build.py
 #                             (list: python3 tools/quality/playable_maps.py list)
-#   ./play --core-world testchmb_a_01    render switches first (./play --render-help):
-#                             --native --dxvk --null --core-world --no-core
+#   ./play --no-core-world testchmb_a_01   render switches first (./play --render-help):
+#                             --native --dxvk --null --core-world (default)
+#                             --no-core-world --no-core
 #                             --core-probe=MODE --no-legacy-ports --validate
 #
 # It picks the build tree and renderer id that belong together, builds that tree
@@ -20,8 +21,11 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-# Render switches (tools/quality/render_flags.sh), then the backend word.
+# Render switches (tools/quality/render_flags.sh), then the backend word. The
+# render core draws the world by default (--no-core-world or CORE_WORLD=0 for
+# the legacy world alone).
 . tools/quality/render_flags.sh
+RENDER_CORE_WORLD_DEFAULT=${CORE_WORLD:-1}
 render_flags_parse "$@"
 set -- ${RENDER_REST[@]+"${RENDER_REST[@]}"}
 backend=$RENDER_BACKEND

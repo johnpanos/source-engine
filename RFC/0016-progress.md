@@ -3807,3 +3807,23 @@ legacy world at the same time".
   - gi_door, both parts: the neutral frame matches the before frame (2,718
     dark pixels), every tint frame fully legacy, the decline named.
   - testchmb_a_01 (no WMSH): 20 of 20 checks pass.
+
+### `./play` defaults to the core world (2026-09-29, user direction)
+
+User direction: "use the same build that ./play uses and configure it to by
+default be the best render core defaults".
+
+- `./play` (tree `build/`) now passes `+sv_cheats 1 +r_core_world 1` by
+  default on native Vulkan; `--no-core-world` or `CORE_WORLD=0 ./play` opts
+  out. `tools/quality/render_flags.sh` takes the default from the caller
+  (`RENDER_CORE_WORLD_DEFAULT`); `./play_p2` sets none, because three Portal
+  2 maps still fail fatally under the core (core-world smoke known failures).
+  The engine's `r_core_world` default stays 0 until K12's "game matches lab".
+  `tools/quality/tests/test_render_flags.py` covers the cases.
+- Configure defaults unchanged, on purpose: the core's world pass records
+  into the backend's own device (the Vulkan adapter's `Port()`), so the
+  configured core device (`null`) only carries the frame graph's features.
+  `-render-device vulkan` would compose a second VkDevice that nothing draws
+  with, and the `skinning` feature adds no passes until K6's product
+  skinning feeds it. The best configure line for `build/` is its current one;
+  a host-device choice for the core's own frame is K12 work.
