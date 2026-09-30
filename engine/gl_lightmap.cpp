@@ -31,6 +31,7 @@
 #include "area_lights.h"
 #include "dynamic_occlusion.h"
 #include "projected_lights.h"
+#include "vstdlib/jobgraph_parallel.h"
 #include <algorithm>
 #include <mutex>
 #include <unordered_map>
@@ -1795,6 +1796,68 @@ static bool ProbeSampleClamped( const mapcontainer::ProbeVolumeView &view, const
 // The probes each probe-lit surface's luxels read, from the last relight of
 // every surface: a sparse relight redoes the surfaces that read a changed one.
 static std::unordered_map<SurfaceHandle_t, std::vector<uint32_t>> s_ProbeLitReads;
+// The luxels each surface was last lit with (main thread; g_ProbeLitSurfaces
+// is the render thread's under the queued material system): a relight whose
+// luxels come out the same rebuilds nothing.
+static std::unordered_map<SurfaceHandle_t, std::vector<Vector4D>> s_ProbeLitLast;
+
+// One surface of a relight: sampled on the pool, applied in order after.
+struct ProbeLitJob
+{
+	SurfaceHandle_t surfID;
+	std::vector<Vector4D> luxels;
+	std::vector<uint32_t> reads;
+	size_t unsampled = 0;
+	double sum = 0.0;
+};
+
+struct ProbeLitBatch
+{
+	const mapcontainer::ProbeVolumeView *view;
+	float offset;
+	ProbeLitJob *jobs;
+};
+
+// Samples one surface's luxels from the volume: reads only the surface and
+// the volume, so surfaces run in parallel.
+static void SampleProbeLitSurface( void *context, unsigned index )
+{
+	const ProbeLitBatch &batch = *static_cast<const ProbeLitBatch *>( context );
+	ProbeLitJob &job = batch.jobs[index];
+	const SurfaceHandle_t surfID = job.surfID;
+	const int width = MSurf_LightmapExtents( surfID )[0] + 1;
+	const int height = MSurf_LightmapExtents( surfID )[1] + 1;
+	// The face's own plane: SURFDRAW_PLANEBACK only relates it to its node.
+	const Vector normal = MSurf_Plane( surfID ).normal;
+	job.luxels.assign( size_t( width ) * height, Vector4D( 0, 0, 0, 1 ) );
+	// Degenerate lightmap vectors (an axis along the normal) place no
+	// luxel: the whole face then takes its centroid's light.
+	Vector centroid;
+	Surf_ComputeCentroid( surfID, &centroid );
+	const float offset = batch.offset;
+	for ( int t = 0; t < height; ++t )
+		for ( int s = 0; s < width; ++s )
+		{
+			Vector position;
+			if ( !LuxelPosition( surfID, s, t, &position ) )
+				position = centroid;
+			// Half a probe spacing off the face, toward the side it shows,
+			// so a thin door takes the probes of its own side.
+			const float at[3] = { position.x + normal.x * offset, position.y + normal.y * offset,
+			    position.z + normal.z * offset };
+			const float facing[3] = { normal.x, normal.y, normal.z };
+			float light[3] = {};
+			if ( ProbeSampleClamped( *batch.view, at, facing, light, &job.reads ) )
+			{
+				job.luxels[size_t( t ) * width + s].Init( light[0], light[1], light[2], 1.0f );
+				job.sum += ( light[0] + light[1] + light[2] ) / 3.0f;
+			}
+			else
+				++job.unsampled;
+		}
+	std::sort( job.reads.begin(), job.reads.end() );
+	job.reads.erase( std::unique( job.reads.begin(), job.reads.end() ), job.reads.end() );
+}
 
 // One surface's probe light: kept for its later rebuilds (dynamic lights
 // rebuild from it) and built into its lightmap now. With the queued material
@@ -1838,6 +1901,7 @@ bool R_RelightBrushEntitiesFromProbes(
 	if ( !view )
 	{
 		s_ProbeLitReads.clear();
+		s_ProbeLitLast.clear();
 		if ( pCallQueue )
 			pCallQueue->QueueCall( ClearProbeLitSurfaces );
 		else
@@ -1854,8 +1918,8 @@ bool R_RelightBrushEntitiesFromProbes(
 		for ( const float spacing : view->Layout().grids[g].spacing )
 			smallest = fminf( smallest, spacing );
 	const float offset = smallest < FLT_MAX ? 0.5f * smallest : 1.0f;
-	std::vector<Vector4D> luxels;
-	int lit = 0, noLight = 0, baked = 0, noLightmap = 0, whitePage = 0, unchanged = 0;
+	std::vector<ProbeLitJob> jobs;
+	int lit = 0, noLight = 0, baked = 0, noLightmap = 0, whitePage = 0, unchanged = 0, same = 0;
 	// Sparse: the changed probes marked; the reads are rebuilt on a full pass.
 	const bool sparse = changedProbes && !s_ProbeLitReads.empty();
 	std::vector<uint8_t> changed;
@@ -1918,58 +1982,58 @@ bool R_RelightBrushEntitiesFromProbes(
 				}
 			}
 			++lit;
-			std::vector<uint32_t> &reads = s_ProbeLitReads[surfID];
-			reads.clear();
-			const int width = MSurf_LightmapExtents( surfID )[0] + 1;
-			const int height = MSurf_LightmapExtents( surfID )[1] + 1;
-			// The face's own plane: SURFDRAW_PLANEBACK only relates it to its node.
-			const Vector normal = MSurf_Plane( surfID ).normal;
-			luxels.assign( size_t( width ) * height, Vector4D( 0, 0, 0, 1 ) );
-			// Degenerate lightmap vectors (an axis along the normal) place no
-			// luxel: the whole face then takes its centroid's light.
-			Vector centroid;
-			Surf_ComputeCentroid( surfID, &centroid );
-			for ( int t = 0; t < height; ++t )
-				for ( int s = 0; s < width; ++s )
-				{
-					Vector position;
-					if ( !LuxelPosition( surfID, s, t, &position ) )
-						position = centroid;
-					// Half a probe spacing off the face, toward the side it shows,
-					// so a thin door takes the probes of its own side.
-					const float at[3] = { position.x + normal.x * offset,
-					    position.y + normal.y * offset, position.z + normal.z * offset };
-					const float facing[3] = { normal.x, normal.y, normal.z };
-					float light[3] = {};
-					++luxelCount;
-					if ( ProbeSampleClamped( *view, at, facing, light, &reads ) )
-					{
-						luxels[size_t( t ) * width + s].Init( light[0], light[1], light[2], 1.0f );
-						luxelSum += ( light[0] + light[1] + light[2] ) / 3.0f;
-					}
-					else
-						++unsampled;
-				}
-			std::sort( reads.begin(), reads.end() );
-			reads.erase( std::unique( reads.begin(), reads.end() ), reads.end() );
-			if ( pCallQueue )
-			{
-				CFunctor *apply = new CQueuedProbeLitSurface( surfID, luxels );
-				pCallQueue->QueueFunctor( apply );
-				apply->Release();
-			}
-			else
-			{
-				ApplyProbeLitSurface( surfID, luxels );
-			}
+			jobs.emplace_back();
+			jobs.back().surfID = surfID;
+		}
+	}
+	// The surfaces sample the volume on the engine's pool (each reads only
+	// itself and the volume); their lightmaps are rebuilt in order after.
+	ProbeLitBatch batch{ view, offset, jobs.data() };
+	jobsystem::BatchDesc desc;
+	desc.name = "lightmap.probe-lit-surfaces";
+	desc.context = &batch;
+	desc.count = unsigned( jobs.size() );
+	desc.process = &SampleProbeLitSurface;
+	desc.maxParticipants = g_pThreadPool ? unsigned( g_pThreadPool->NumThreads() ) + 1u : 1u;
+	if ( !jobs.empty() &&
+	     !RunThreadPoolJobBatch( g_pThreadPool, desc,
+	         g_pThreadPool ? jobsystem::BatchMode::Parallel : jobsystem::BatchMode::Serial ) )
+	{
+		// Rejected before any surface ran (invalid input): sample them here.
+		for ( unsigned i = 0; i < desc.count; ++i )
+			SampleProbeLitSurface( &batch, i );
+	}
+	for ( ProbeLitJob &job : jobs )
+	{
+		luxelCount += job.luxels.size();
+		unsampled += job.unsampled;
+		luxelSum += job.sum;
+		s_ProbeLitReads[job.surfID] = std::move( job.reads );
+		std::vector<Vector4D> &last = s_ProbeLitLast[job.surfID];
+		if ( sparse && last == job.luxels )
+		{
+			++same;
+			continue;
+		}
+		last = job.luxels;
+		if ( pCallQueue )
+		{
+			CFunctor *apply = new CQueuedProbeLitSurface( job.surfID, job.luxels );
+			pCallQueue->QueueFunctor( apply );
+			apply->Release();
+		}
+		else
+		{
+			ApplyProbeLitSurface( job.surfID, std::move( job.luxels ) );
 		}
 	}
 	if ( report.IsValid() && report.GetBool() )
 		Msg(
 		    "indirect light: %d brush-entity surface(s) lit from probes (%d replacing baked light; "
 		    "skipped: %d unlit, %d without a lightmap, %d on the white page, %d reading no "
-		    "changed probe); %zu luxels, %zu outside the volume, mean %.4f; %.3f ms\n",
-		    lit, baked, noLight, noLightmap, whitePage, unchanged, luxelCount, unsampled,
+		    "changed probe; %d relit to the same luxels); %zu luxels, %zu outside the volume, "
+		    "mean %.4f; %.3f ms\n",
+		    lit, baked, noLight, noLightmap, whitePage, unchanged, same, luxelCount, unsampled,
 		    luxelCount > unsampled ? luxelSum / double( luxelCount - unsampled ) : 0.0,
 		    ( Plat_FloatTime() - start ) * 1000.0 );
 	return true;
