@@ -9,7 +9,7 @@ def build(bld):
 		'render_legacy', 'render_scene',
 		'render_frame', 'render_graph', 'render_resources', 'render_material',
 		'render_pass_skinning',
-		'render_shaderlib', 'render_device_null', 'render_device', 'render_math']
+		'render_shaderlib', 'render_device_null', 'render_device', 'render_math', 'mapcontainer']
 	defines = []
 	if bld.env.RENDER_CORE_VULKAN:
 		use.append('render_device_vulkan')

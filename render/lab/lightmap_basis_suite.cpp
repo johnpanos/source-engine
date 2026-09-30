@@ -19,7 +19,7 @@
 //			  direction's clamped cosine squared, and the three bumped pages
 //			  at one, two and three page offsets weighted by them over their
 //			  sum, within 1e-5 relative + 1e-6;
-//			- the directional page split (render_lab's SplitLightmapLayer):
+//			- the directional page split (render.pass.world's SplitLightmapLayer):
 //			  the flat and gradient pages the kernel samples are split from
 //			  one 2:1 LMAP layer, so the flat checks fail if the whole layer
 //			  is staged as flat light (sp_gi_chamber_01's defect);

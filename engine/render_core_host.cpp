@@ -170,10 +170,71 @@ IRenderCoreWorld *RenderCoreHost_World()
 	return Host().bound ? Host().world : nullptr;
 }
 
+// RFC 0016 K12: each world mesh upload the renderer's provider accepts
+// reaches the render core's world stage too (IRenderCoreWorld::StageUpload),
+// so the core draws a BSP2 map's world from the same lightmap, probes and
+// reflection probes, and follows their changes. Drawing stays the provider's.
+class CWorldMeshUploadTee final : public world_mesh_gpu::IWorldMeshUpload
+{
+public:
+	world_mesh_gpu::IWorldMeshUpload *m_pProvider = nullptr;
+	world_mesh_gpu::IWorldMeshUpload *m_pStage = nullptr;
+
+	bool Upload( const world_mesh_gpu::WorldMeshUploadRequest &request ) override
+	{
+		return m_pProvider->Upload( request );
+	}
+	bool UploadLightmap( const world_mesh_gpu::WorldLightmapUploadRequest &request ) override
+	{
+		const bool accepted = m_pProvider->UploadLightmap( request );
+		if ( accepted )
+			m_pStage->UploadLightmap( request );
+		return accepted;
+	}
+	bool UploadProbeVolume( const world_mesh_gpu::ProbeVolumeUploadRequest &request ) override
+	{
+		const bool accepted = m_pProvider->UploadProbeVolume( request );
+		if ( accepted )
+			m_pStage->UploadProbeVolume( request );
+		return accepted;
+	}
+	bool UploadShadowField( const world_mesh_gpu::ShadowFieldUploadRequest &request ) override
+	{
+		return m_pProvider->UploadShadowField( request );
+	}
+	bool UploadReflectionProbes(
+	    const world_mesh_gpu::ReflectionProbesUploadRequest &request ) override
+	{
+		const bool accepted = m_pProvider->UploadReflectionProbes( request );
+		if ( accepted )
+			m_pStage->UploadReflectionProbes( request );
+		return accepted;
+	}
+	bool DrawBatch( uint32_t firstIndex, uint32_t indexCount ) override
+	{
+		return m_pProvider->DrawBatch( firstIndex, indexCount );
+	}
+	void Release() override
+	{
+		m_pProvider->Release();
+		m_pStage->Release();
+	}
+	bool IsResident() const override { return m_pProvider->IsResident(); }
+};
+
 world_mesh_gpu::IWorldMeshUpload *RenderCoreHost_WorldMeshUpload()
 {
 	RenderCoreHostState &host = Host();
-	return host.capabilities ? host.capabilities->WorldMeshUpload() : nullptr;
+	world_mesh_gpu::IWorldMeshUpload *pProvider =
+	    host.capabilities ? host.capabilities->WorldMeshUpload() : nullptr;
+	world_mesh_gpu::IWorldMeshUpload *pStage =
+	    pProvider && host.bound && host.world ? host.world->StageUpload() : nullptr;
+	if ( !pStage )
+		return pProvider;
+	static CWorldMeshUploadTee s_Tee;
+	s_Tee.m_pProvider = pProvider;
+	s_Tee.m_pStage = pStage;
+	return &s_Tee;
 }
 
 light_set::ILightSetConsumer *RenderCoreHost_LightSetConsumer()

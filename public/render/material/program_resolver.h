@@ -181,9 +181,10 @@ private:
 
 // Whether a material's variables claim no more than the model draws, without
 // a device (the pass's main-thread decision to take its surfaces). The same
-// rules as Resolve, minus pipelines.
+// rules as Resolve, minus pipelines; worldPbr as SetWorldPbr (a pbr material
+// is claimed only with it).
 foundation::Expected<device::BlendMode, std::string> ClaimForDrawing(
-    const MaterialDesc &material );
+    const MaterialDesc &material, bool worldPbr = false );
 
 } // namespace render::material
 

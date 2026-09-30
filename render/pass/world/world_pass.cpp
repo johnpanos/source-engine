@@ -9,7 +9,9 @@
 
 #include "render/frame/debug_specialization.h"
 #include "render/material/draw_program.h"
+#include "render/material/material_programs.h"
 #include "render/material/program_resolver.h"
+#include "render/material/surface_program.h"
 #include "render/material/vmt_import.h"
 
 #include <algorithm>
@@ -78,9 +80,47 @@ struct Resources
 	// buffer.
 	TextureId neutralWhite;
 	TextureId neutralCube;
+	TextureId neutralArray; // two layers, for a binding read as an array
 	BufferId neutralStaging;
 	bool uploaded = false;
+	// A world stage's textures (WorldStage), by the names its groups use,
+	// made at the first slot and updated in place; the stage revisions
+	// they hold.
+	std::map<std::string, TextureId> stageTextures;
+	std::map<std::string, TextureDesc> stageDescs;
+	bool stageMade = false;
+	std::uint64_t stageLightmapRevision = 0;
+	std::uint64_t stageChangeRevision = 0;
 };
+
+// The names a world stage's groups use for its textures.
+constexpr const char *kStageLightmap = "stage:lightmap";
+constexpr const char *kStageGradient = "stage:lightmap-gradient";
+constexpr const char *kStageIndirect = "stage:lightmap-indirect";
+constexpr const char *kStageProbeAtlas = "stage:probe-atlas";
+constexpr const char *kStageProbeGrids = "stage:probe-grids";
+constexpr const char *kStageChange = "stage:change";
+constexpr const char *kStageReflection = "stage:reflection-probes";
+constexpr const char *kStageSplitSum = "stage:split-sum";
+constexpr const char *kStageLtc = "stage:ltc";
+// Room in the grid table for the moving occluders' rows
+// (world_mesh_gpu::kProbeVolumeMaxOccluders).
+constexpr std::uint32_t kStageOccluderRows = 16;
+
+// The pbr point's scene terms a stage's data supports (as render_lab sets
+// them for the same map, less the view's lights, occlusion and reflections,
+// which the stage does not draw yet).
+std::uint32_t StageTerms( const WorldStage &stage )
+{
+	std::uint32_t terms = 0;
+	if ( stage.lightmap.Directional() )
+		terms |= material::kSurfaceDirectionalLightmap;
+	if ( stage.probes )
+		terms |= material::kSurfaceProbeVolume | material::kSurfaceProbeBounce;
+	if ( !stage.reflectionProbes.empty() )
+		terms |= material::kSurfaceReflectionProbes;
+	return terms;
+}
 
 std::string Lower( std::string text )
 {
@@ -103,6 +143,34 @@ std::string PageName( int handle )
 }
 
 } // namespace
+
+LightmapPages SplitLightmapLayer(
+    std::span<const std::byte> layer, std::uint32_t width, std::uint32_t height )
+{
+	constexpr std::size_t kTexel = 8; // RGBA16F
+	LightmapPages pages;
+	if ( layer.size() != std::size_t( width ) * height * kTexel )
+		return pages; // no page: the caller reports it
+	pages.height = height;
+	if ( width != 2 * height )
+	{
+		pages.width = width;
+		pages.flat.assign( layer.begin(), layer.end() );
+		return pages;
+	}
+	pages.width = height;
+	const std::size_t row = std::size_t( width ) * kTexel;
+	const std::size_t half = std::size_t( pages.width ) * kTexel;
+	pages.flat.resize( std::size_t( height ) * half );
+	pages.gradient.resize( std::size_t( height ) * half );
+	for ( std::uint32_t y = 0; y < height; ++y )
+	{
+		const std::byte *from = layer.data() + std::size_t( y ) * row;
+		std::copy( from, from + half, pages.flat.data() + std::size_t( y ) * half );
+		std::copy( from + half, from + row, pages.gradient.data() + std::size_t( y ) * half );
+	}
+	return pages;
+}
 
 struct WorldPass::State
 {
@@ -128,6 +196,13 @@ struct WorldPass::State
 	// Host frames with a recorded slot, newest last.
 	std::deque<std::uint64_t> recordedFrames;
 	WorldStats stats;
+	// A world stage's lighting as it changes (SetStageLightmap,
+	// SetStageChange), with revisions that rise with each.
+	std::shared_ptr<const LightmapPages> stageLightmap;
+	std::uint64_t stageLightmapRevision = 0;
+	std::shared_ptr<const std::vector<std::byte>> stageChange;
+	std::shared_ptr<const StageProbeVolume> stageTable;
+	std::uint64_t stageChangeRevision = 0;
 
 	// A queued view dropped because its slot never recorded (lock held): a
 	// failure when a slot of its host frame recorded (or its frame is
@@ -155,6 +230,8 @@ struct WorldPass::State
 	std::uint64_t variantsGeneration = 0;
 	std::vector<Resources> variants;
 	std::vector<std::pair<std::uint64_t, Resources>> retired;
+	// Staging buffers of stage uploads, with the frame that recorded them.
+	std::vector<std::pair<std::uint64_t, BufferId>> retiredBuffers;
 
 	void Fail( const std::string &why )
 	{
@@ -195,6 +272,10 @@ struct WorldPass::State
 				(void)device->Release( old.neutralWhite, after );
 			if ( old.neutralCube.IsValid() )
 				(void)device->Release( old.neutralCube, after );
+			if ( old.neutralArray.IsValid() )
+				(void)device->Release( old.neutralArray, after );
+			for ( auto &[name, texture] : old.stageTextures )
+				(void)device->Release( texture, after );
 			if ( old.neutralStaging.IsValid() )
 				(void)device->Release( old.neutralStaging, after );
 			if ( old.vertices.IsValid() )
@@ -248,7 +329,8 @@ void WorldPass::SetWorld( WorldData data )
 						claimed.handles[value.text] = handle;
 				}
 			}
-			auto blend = material::ClaimForDrawing( claimed.desc );
+			// A world stage's materials resolve with world pbr.
+			auto blend = material::ClaimForDrawing( claimed.desc, data.stage != nullptr );
 			if ( !blend )
 				gap = claimed.desc.family + ": " + blend.Error();
 			else if ( blend.Value() != BlendMode::kOpaque )
@@ -296,6 +378,10 @@ void WorldPass::SetWorld( WorldData data )
 	s.world = std::make_shared<const WorldData>( std::move( data ) );
 	s.claims = std::move( claims );
 	++s.generation;
+	// A new world starts from its stage's own lighting.
+	s.stageLightmap.reset();
+	s.stageChange.reset();
+	s.stageTable.reset();
 	s.views.clear(); // recorded views stay: a re-recorded slot of theirs fails alone
 	s.stats.materials = counts.materials;
 	s.stats.claimedMaterials = counts.claimedMaterials;
@@ -313,6 +399,26 @@ void WorldPass::ClearWorld()
 	s.claims.reset();
 	++s.generation;
 	s.views.clear(); // recorded views stay: a re-recorded slot of theirs fails alone
+}
+
+void WorldPass::SetStageLightmap( LightmapPages pages )
+{
+	State &s = *m_State;
+	auto shared = std::make_shared<const LightmapPages>( std::move( pages ) );
+	std::lock_guard<std::mutex> guard( s.lock );
+	s.stageLightmap = std::move( shared );
+	++s.stageLightmapRevision;
+}
+
+void WorldPass::SetStageChange( std::vector<std::byte> change, StageProbeVolume table )
+{
+	State &s = *m_State;
+	auto sharedChange = std::make_shared<const std::vector<std::byte>>( std::move( change ) );
+	auto sharedTable = std::make_shared<const StageProbeVolume>( std::move( table ) );
+	std::lock_guard<std::mutex> guard( s.lock );
+	s.stageChange = std::move( sharedChange );
+	s.stageTable = std::move( sharedTable );
+	++s.stageChangeRevision;
 }
 
 bool WorldPass::Draws( std::uint32_t material ) const
@@ -358,6 +464,9 @@ void WorldPass::ReleaseDevice( IRenderDevice2 &device )
 	for ( auto &[frame, old] : s.retired )
 		s.Release( old, CompletionToken() );
 	s.retired.clear();
+	for ( auto &[frame, buffer] : s.retiredBuffers )
+		(void)device.Release( buffer, CompletionToken() );
+	s.retiredBuffers.clear();
 	(void)device.Poll();
 	s.device = nullptr;
 }
@@ -383,6 +492,11 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 	std::shared_ptr<const WorldData> world;
 	std::shared_ptr<const std::vector<Claimed>> claims;
 	std::uint64_t generation = 0;
+	std::shared_ptr<const LightmapPages> stageLightmap;
+	std::uint64_t stageLightmapRevision = 0;
+	std::shared_ptr<const std::vector<std::byte>> stageChange;
+	std::shared_ptr<const StageProbeVolume> stageTable;
+	std::uint64_t stageChangeRevision = 0;
 	WorldView view;
 	bool found = false;
 	{
@@ -436,6 +550,11 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		world = s.world;
 		claims = s.claims;
 		generation = s.generation;
+		stageLightmap = s.stageLightmap;
+		stageLightmapRevision = s.stageLightmapRevision;
+		stageChange = s.stageChange;
+		stageTable = s.stageTable;
+		stageChangeRevision = s.stageChangeRevision;
 	}
 	if ( !found || !world || !claims )
 	{
@@ -509,6 +628,14 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		    s.Release( old.second, target.submitted );
 		    return true;
 	    } );
+	std::erase_if( s.retiredBuffers,
+	    [&]( const std::pair<std::uint64_t, BufferId> &old )
+	    {
+		    if ( target.frame == 0 || old.first >= target.frame )
+			    return false;
+		    (void)device.Release( old.second, target.submitted );
+		    return true;
+	    } );
 	if ( !r.resolver )
 	{
 		auto resolver = material::ProgramResolver::Create( device, target.colorFormat,
@@ -519,6 +646,10 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 			return;
 		}
 		r.resolver = std::move( resolver ).Value();
+		// A world stage draws with world pbr (the pbr point on the world
+		// vertex) and the scene terms its data supports.
+		if ( world->stage )
+			r.resolver->SetWorldPbr( true, StageTerms( *world->stage ) );
 		r.materials.resize( world->materials.size() );
 	}
 	if ( !r.uploaded )
@@ -558,12 +689,154 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		r.uploaded = true;
 	}
 
+	// A world stage's textures: made at the first slot from the stage, then
+	// updated in place as its lighting changes (SetStageLightmap,
+	// SetStageChange), so the groups that bind them stay valid. Each upload
+	// has a staging buffer of its own, released behind a later frame.
+	auto stageUpload = [&]( TextureId texture, const TextureDesc &desc,
+	                       std::span<const std::byte> bytes, ResourceUsage from ) -> bool
+	{
+		BufferDesc staging;
+		staging.size = bytes.size();
+		staging.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kCopySource };
+		staging.debugName = "world stage staging";
+		auto buffer = device.CreateBuffer( staging );
+		if ( !buffer )
+			return false;
+		s.retiredBuffers.emplace_back( target.frame, buffer.Value() );
+		encoder.TransitionBuffer(
+		    buffer.Value(), ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+		encoder.WriteBuffer( buffer.Value(), 0, bytes );
+		encoder.TransitionBuffer(
+		    buffer.Value(), ResourceUsage::kCopyDestination, ResourceUsage::kCopySource );
+		encoder.TransitionTexture( texture, from, ResourceUsage::kCopyDestination );
+		TextureBufferCopy copy;
+		copy.width = desc.width;
+		copy.height = desc.height;
+		encoder.CopyBufferToTexture( buffer.Value(), texture, copy );
+		encoder.TransitionTexture(
+		    texture, ResourceUsage::kCopyDestination, ResourceUsage::kSampled );
+		return true;
+	};
+	auto stageMake = [&]( const char *name, Format format, std::uint32_t width,
+	                     std::uint32_t height, std::span<const std::byte> bytes ) -> bool
+	{
+		const std::size_t texel = format == Format::kRGBA32Float ? 16 : 8;
+		if ( width == 0 || height == 0 || bytes.size() != std::size_t( width ) * height * texel )
+			return false;
+		TextureDesc desc;
+		desc.format = format;
+		desc.width = width;
+		desc.height = height;
+		desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kSampled };
+		desc.debugName = name;
+		auto texture = device.CreateTexture( desc );
+		if ( !texture )
+			return false;
+		r.stageTextures[name] = texture.Value();
+		desc.debugName = {};
+		r.stageDescs[name] = desc;
+		return stageUpload( texture.Value(), desc, bytes, ResourceUsage::kUndefined );
+	};
+	// The grid table's rows, with room for the moving occluders' rows.
+	auto paddedTable = []( const StageProbeVolume &table, std::uint32_t rows )
+	{
+		std::vector<float> padded( std::size_t( table.tableTexels ) * 4 * rows, 0.0f );
+		std::copy_n(
+		    table.table.begin(), std::min( padded.size(), table.table.size() ), padded.begin() );
+		return padded;
+	};
+	if ( world->stage && !r.stageMade )
+	{
+		const WorldStage &stage = *world->stage;
+		const LightmapPages &pages = stage.lightmap;
+		bool made = stageMake(
+		    kStageLightmap, Format::kRGBA16Float, pages.width, pages.height, pages.flat );
+		if ( made && pages.Directional() )
+			made = stageMake(
+			    kStageGradient, Format::kRGBA16Float, pages.width, pages.height, pages.gradient );
+		if ( made && !stage.indirect.empty() )
+			made = stageMake(
+			    kStageIndirect, Format::kRGBA16Float, pages.width, pages.height, stage.indirect );
+		if ( made && stage.probes )
+		{
+			const StageProbeVolume &probes = *stage.probes;
+			const std::vector<std::byte> zero( probes.atlas.size(), std::byte( 0 ) );
+			const std::vector<float> table =
+			    paddedTable( probes, probes.rows + kStageOccluderRows );
+			made = stageMake( kStageProbeAtlas, Format::kRGBA16Float, probes.atlasWidth,
+			           probes.atlasHeight, probes.atlas ) &&
+			       stageMake( kStageChange, Format::kRGBA16Float, probes.atlasWidth,
+			           probes.atlasHeight, zero ) &&
+			       stageMake( kStageProbeGrids, Format::kRGBA32Float, probes.tableTexels,
+			           probes.rows + kStageOccluderRows, std::as_bytes( std::span( table ) ) );
+		}
+		if ( made && !stage.reflectionProbes.empty() )
+			made = stageMake( kStageReflection, Format::kRGBA16Float, stage.reflectionWidth,
+			    stage.reflectionHeight, stage.reflectionProbes );
+		for ( const auto &[name, table] : { std::pair{ kStageSplitSum, material::SplitSumTable() },
+		          std::pair{ kStageLtc, material::LtcTable() } } )
+		{
+			if ( made )
+				made = stageMake( name, table.format, table.width, table.height,
+				    std::as_bytes( std::span( table.texels ) ) );
+		}
+		if ( !made )
+		{
+			s.Fail( "the world stage's textures were refused" );
+			return;
+		}
+		r.stageMade = true;
+	}
+	if ( world->stage && stageLightmap && r.stageLightmapRevision != stageLightmapRevision )
+	{
+		r.stageLightmapRevision = stageLightmapRevision;
+		const TextureDesc &desc = r.stageDescs[kStageLightmap];
+		const bool fits = stageLightmap->width == desc.width &&
+		                  stageLightmap->height == desc.height &&
+		                  stageLightmap->Directional() == world->stage->lightmap.Directional();
+		if ( !fits ||
+		     !stageUpload( r.stageTextures[kStageLightmap], desc, stageLightmap->flat,
+		         ResourceUsage::kSampled ) ||
+		     ( stageLightmap->Directional() &&
+		         !stageUpload( r.stageTextures[kStageGradient], desc, stageLightmap->gradient,
+		             ResourceUsage::kSampled ) ) )
+		{
+			s.Fail( "the world stage's lightmap update does not fit its pages" );
+			return;
+		}
+	}
+	if ( world->stage && world->stage->probes && stageTable &&
+	     r.stageChangeRevision != stageChangeRevision )
+	{
+		r.stageChangeRevision = stageChangeRevision;
+		const StageProbeVolume &probes = *world->stage->probes;
+		const std::uint32_t rows = probes.rows + kStageOccluderRows;
+		const std::vector<std::byte> zero(
+		    stageChange && !stageChange->empty() ? 0 : probes.atlas.size(), std::byte( 0 ) );
+		const std::vector<std::byte> &change =
+		    stageChange && !stageChange->empty() ? *stageChange : zero;
+		const std::vector<float> table = paddedTable( *stageTable, rows );
+		if ( change.size() != probes.atlas.size() ||
+		     stageTable->tableTexels != probes.tableTexels || stageTable->rows > rows ||
+		     !stageUpload( r.stageTextures[kStageChange], r.stageDescs[kStageChange], change,
+		         ResourceUsage::kSampled ) ||
+		     !stageUpload( r.stageTextures[kStageProbeGrids], r.stageDescs[kStageProbeGrids],
+		         std::as_bytes( std::span( table ) ), ResourceUsage::kSampled ) )
+		{
+			s.Fail( "the world stage's probe change does not fit its volume" );
+			return;
+		}
+	}
+
 	// The neutral textures, made on first use: a white 2D texture and a
 	// black cube, filled from one 4-byte white upload (the cube's term is off
 	// wherever it is bound; filling it keeps it defined).
-	auto neutral = [&]( TextureDimension dimension ) -> TextureId
+	auto neutral = [&]( TextureDimension dimension, bool array ) -> TextureId
 	{
-		TextureId &slot = dimension == TextureDimension::kCube ? r.neutralCube : r.neutralWhite;
+		TextureId &slot = dimension == TextureDimension::kCube ? r.neutralCube
+		                  : array                              ? r.neutralArray
+		                                                       : r.neutralWhite;
 		if ( slot.IsValid() )
 			return slot;
 		if ( !r.neutralStaging.IsValid() )
@@ -587,10 +860,11 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		desc.dimension = dimension;
 		desc.format = Format::kRGBA8Unorm;
 		desc.width = desc.height = 1;
-		desc.depthOrLayers = dimension == TextureDimension::kCube ? 6 : 1;
+		desc.depthOrLayers = dimension == TextureDimension::kCube ? 6 : array ? 2 : 1;
 		desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kSampled };
-		desc.debugName =
-		    dimension == TextureDimension::kCube ? "world neutral cube" : "world neutral white";
+		desc.debugName = dimension == TextureDimension::kCube ? "world neutral cube"
+		                 : array                              ? "world neutral array"
+		                                                      : "world neutral white";
 		auto texture = device.CreateTexture( desc );
 		if ( !texture )
 			return {};
@@ -648,11 +922,18 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 			// A texture the group's owner made (the view's shadow atlas) is
 			// bound as it is, with the request's own sampler.
 			const bool external = texture.external.IsValid();
+			// A world stage's own texture (its lightmap pages, probes and
+			// tables), bound as it is.
+			const auto stageTexture = r.stageTextures.find( texture.name );
+			const bool staged =
+			    !external && !texture.name.empty() && stageTexture != r.stageTextures.end();
 			const auto handle = handles.find( texture.name );
-			const bool absent = !external && ( texture.name.empty() ||
-			                                     ( handle != handles.end() && handle->second == 0 ) );
+			const bool absent =
+			    !external && !staged &&
+			    ( texture.name.empty() || ( handle != handles.end() && handle->second == 0 ) );
 			const TextureId id = external ? texture.external
-			                     : absent ? neutral( texture.dimension )
+			                     : staged ? stageTexture->second
+			                     : absent ? neutral( texture.dimension, texture.array )
 			                     : handle == handles.end()
 			                         ? TextureId()
 			                         : textures.Import( handle->second, texture.srgb );
@@ -664,7 +945,10 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 				                 ( texture.srgb ? " through an sRGB view" : "" );
 				return false;
 			}
-			auto sampler = device.CreateSampler( external ? texture.sampler
+			entries.push_back( { texture.binding, {}, 0, 0, id, {} } );
+			if ( texture.samplerBinding == material::kNoSamplerBinding )
+				continue; // only fetched
+			auto sampler = device.CreateSampler( external || staged ? texture.sampler
 			                                     : absent ? SamplerDesc()
 			                                              : textures.Sampler( handle->second ) );
 			if ( !sampler )
@@ -673,7 +957,6 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 				return false;
 			}
 			out.samplers.push_back( sampler.Value() );
-			entries.push_back( { texture.binding, {}, 0, 0, id, {} } );
 			entries.push_back( { texture.samplerBinding, {}, 0, 0, {}, sampler.Value() } );
 		}
 		auto group = device.CreateBindGroup( { request.layout, entries } );
@@ -748,6 +1031,23 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		std::map<std::string, int> handles;
 		for ( const std::string &input : m.program.drawInputs )
 		{
+			if ( world->stage )
+			{
+				// A world stage's pages; an input the stage lacks is off.
+				const WorldStage &stage = *world->stage;
+				if ( input == "lightmap" )
+					inputs.push_back( kStageLightmap );
+				else if ( input == "lightmap-gradient" )
+					inputs.push_back( stage.lightmap.Directional() ? kStageGradient : "" );
+				else if ( input == "lightmap-indirect" )
+					inputs.push_back( stage.indirect.empty() ? "" : kStageIndirect );
+				else
+				{
+					note( "a program reads draw input " + input + ", which the world stage lacks" );
+					return nullptr;
+				}
+				continue;
+			}
 			if ( input != "lightmap" )
 			{
 				note( "a program reads draw input " + input + ", which the world lacks" );
@@ -781,6 +1081,24 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 	terms.envmapScale = target.envmapScale;
 	terms.specular = target.specular;
 	terms.ssbumpNormalized = target.ssbumpNormalized;
+	if ( world->stage )
+	{
+		// The stage's pages hold linear light (LMAP); the pbr point's tables
+		// and the map's probes, with the host's change volume as the second
+		// probe atlas (kSurfaceProbeBounce).
+		terms.lightmapScale = 1.0f;
+		terms.splitSumTable = kStageSplitSum;
+		terms.ltcTable = kStageLtc;
+		if ( world->stage->probes )
+		{
+			terms.map.probeAtlas = kStageProbeAtlas;
+			terms.map.probeGrids = kStageProbeGrids;
+			terms.map.probeBounce = r.stageTextures[kStageChange];
+			terms.map.probeBounceDesc = r.stageDescs[kStageChange];
+		}
+		if ( !world->stage->reflectionProbes.empty() )
+			terms.map.reflectionProbes = kStageReflection;
+	}
 	std::map<std::uint64_t, bool> framesWritten;
 	auto frameGroupReady = [&]( const Resources::Material &m ) -> const Group *
 	{
@@ -874,8 +1192,10 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 	    {
 		    const WorldSurface &x = world->surfaces[a];
 		    const WorldSurface &y = world->surfaces[b];
-		    return x.material != y.material ? x.material < y.material
-		                                    : x.lightmapPage < y.lightmapPage;
+		    if ( x.material != y.material )
+			    return x.material < y.material;
+		    return x.lightmapPage != y.lightmapPage ? x.lightmapPage < y.lightmapPage
+		                                            : x.firstIndex < y.firstIndex;
 	    } );
 
 	const ColorAttachment colors[] = { { target.color, LoadOp::kLoad, StoreOp::kStore, {}, {} } };
@@ -910,12 +1230,23 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 	// program's pipeline under its specialization (the shipped one when the
 	// controls are neutral). A refused debug pipeline fails the view loudly.
 	const bool debugNeutral = frame::DebugControlsNeutral( view.debug );
+	// Surfaces of one binding whose index ranges touch draw as one range (a
+	// world stage's meshlets, in the mesh's order).
+	std::uint32_t runFirst = 0;
+	std::uint32_t runCount = 0;
+	auto flushRun = [&]()
+	{
+		if ( runCount )
+			encoder.DrawIndexed( runCount, 1, runFirst, 0, 0 );
+		runCount = 0;
+	};
 	for ( const std::uint32_t index : order )
 	{
 		const WorldSurface &surface = world->surfaces[index];
 		const Resources::Material &m = r.materials[surface.material];
 		if ( surface.material != boundMaterial )
 		{
+			flushRun();
 			PipelineId pipeline = m.program.request.pipeline;
 			if ( !debugNeutral )
 			{
@@ -947,14 +1278,25 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		if ( m.program.request.drawLayout.IsValid() &&
 		     ( !pageBound || surface.lightmapPage != boundPage ) )
 		{
+			flushRun();
 			const auto key =
 			    std::make_pair( m.program.request.drawLayout.value, surface.lightmapPage );
 			encoder.SetBindGroup( BindGroupRole::kDraw, r.drawGroups[key].group );
 			boundPage = surface.lightmapPage;
 			pageBound = true;
 		}
-		encoder.DrawIndexed( surface.indexCount, 1, surface.firstIndex, 0, 0 );
+		if ( runCount && surface.firstIndex == runFirst + runCount )
+		{
+			runCount += surface.indexCount;
+		}
+		else
+		{
+			flushRun();
+			runFirst = surface.firstIndex;
+			runCount = surface.indexCount;
+		}
 	}
+	flushRun();
 	encoder.EndRendering();
 	encoder.EndLabel();
 

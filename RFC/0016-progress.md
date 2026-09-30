@@ -3827,3 +3827,58 @@ default be the best render core defaults".
   with, and the `skinning` feature adds no passes until K6's product
   skinning feeds it. The best configure line for `build/` is its current one;
   a host-device choice for the core's own frame is K12 work.
+
+## K12 slice 1: the core draws a BSP2 map's world as a world stage (2026-09-29)
+
+User direction: "have bias for action to start integrating the modern
+renderlab render core into the game". This slice replaces the decline added
+earlier today (a WMSH map's world was left to the legacy WMSH path) with the
+core drawing that world, with world pbr, as `render_lab` does.
+
+What landed:
+
+- `render.pass.world` holds a world stage (`WorldData::stage`): a BSP2
+  map's WMSH, its surfaces the meshlets, resolved with world pbr
+  (`SetWorldPbr`) and lit by the map's own data: the LMAP pages (linear,
+  directional split), the baked PRBV, the RPRB reflection probes, the
+  split-sum and LTC tables, and the indirect-light host's change volume as
+  the second probe atlas (`kSurfaceProbeBounce`). The lightmap (moving
+  objects blocking baked light) and the change volume update in place, so
+  moving-light GI reaches the core's world through the same change atlas
+  the backend reads (the K12 rule recorded this morning).
+- `SplitLightmapLayer` moved from `render_lab` into `render.pass.world`
+  (one copy; the lab aliases it). `ClaimForDrawing` claims pbr materials
+  for a world stage.
+- `render.composition`: `IRenderCoreWorld::SetWorldMesh` (the WMSH lump,
+  meshlets, batch materials) and `StageUpload()`, a capture of the
+  engine's world mesh uploads.
+- Engine: every world mesh upload the backend accepts is teed to the
+  stage (`render_core_host.cpp`); at level load a WMSH map sends its
+  meshlets and batch materials; in a view the core draws, the WMSH path
+  hands the visible meshlets of the batches the core claims to the core at
+  the point it would have drawn them, and draws the rest (and every
+  translucent meshlet) itself. One world per view holds.
+
+Evidence (`build/`, the tree `./play` boots; headless native Vulkan):
+
+| Map | Claimed | Core against the legacy WMSH frame |
+| --- | --- | --- |
+| gi_door (mode 0 and 2) | 2 of 2 materials | 3,427 pixels differ, all in the far room, where the legacy frame shows streak and scan-line artifacts the core's does not; every other pixel byte-identical; modes 0 and 2 identical |
+| lt_material_sweep | 28 of 28 | 15 pixels over 8 levels (max 26) |
+| living_room | 18 of 20 (the two gaps stay legacy's) | 3,170 pixels over 8 levels |
+| testchmb_a_00_relit (paused) | 42 of 43 | 57,409 pixels over 8 levels, max 20 (LightmappedGeneric on linear LMAP pages) |
+
+- `render.composition`, `.capabilities` and `render.world.null` pass;
+  `debug_views_product.py` passes 20 of 20 on testchmb_a_01 (BSP faces) in
+  both queued modes; `render_lab` builds with the shared page split.
+- No map failed a view (strict mode on).
+
+Not done in this slice:
+
+- The view's runtime lights, shadows, GTAO, SSR and fog: the stage draws
+  the baked and probe terms only (no `kSurfaceClustered` view group yet).
+- A moving-light check on the core (G9 `swing`) and the change volume's
+  pixels: wired, not yet measured.
+- The two living_room gaps and the relit map's 20-level residual are
+  unexamined.
+- Frame time not recorded.

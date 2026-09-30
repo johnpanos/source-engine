@@ -23,8 +23,10 @@
 #include "render/pass/world/world_pass.h"
 
 #include <atomic>
+#include <cstddef>
 #include <map>
 #include <mutex>
+#include <optional>
 #include <set>
 #include <utility>
 #include <vector>
@@ -49,7 +51,15 @@ public:
 	    const unsigned int *indices, unsigned int indexCount,
 	    const RenderCoreWorldSurface *surfaces, unsigned int surfaceCount,
 	    const RenderCoreWorldMaterial *materials, unsigned int materialCount ) override;
-	void ClearWorld() override { m_Pass.ClearWorld(); }
+	void SetWorldMesh( const void *wmsh, unsigned long long wmshBytes,
+	    const RenderCoreWorldMeshlet *meshlets, unsigned int meshletCount,
+	    const RenderCoreWorldMaterial *materials, unsigned int materialCount ) override;
+	world_mesh_gpu::IWorldMeshUpload *StageUpload() override { return &m_Capture; }
+	void ClearWorld() override
+	{
+		m_StageSet = false;
+		m_Pass.ClearWorld();
+	}
 	bool Draws( unsigned int material ) const override { return m_Pass.Draws( material ); }
 	bool DrawView( const unsigned int *surfaces, unsigned int count, const float worldToClip[16],
 	    const float viewport[6], unsigned long long hostFrame ) override;
@@ -79,6 +89,41 @@ public:
 	}
 
 private:
+	std::vector<pass::world::WorldMaterial> WorldMaterials(
+	    const RenderCoreWorldMaterial *materials, unsigned int materialCount ) const;
+
+	// The engine's world mesh uploads, kept for the world stage (main
+	// thread): the lightmap's pages, the baked probe volume and the
+	// reflection probes a stage starts from; once a stage is set, the
+	// lightmap and the probe volume's change go to the pass as they come.
+	class StageCapture final : public world_mesh_gpu::IWorldMeshUpload
+	{
+	public:
+		explicit StageCapture( CoreWorld &owner ) : m_Owner( owner ) {}
+		bool Upload( const world_mesh_gpu::WorldMeshUploadRequest & ) override { return true; }
+		bool UploadLightmap( const world_mesh_gpu::WorldLightmapUploadRequest &request ) override;
+		bool UploadProbeVolume( const world_mesh_gpu::ProbeVolumeUploadRequest &request ) override;
+		bool UploadShadowField( const world_mesh_gpu::ShadowFieldUploadRequest & ) override
+		{
+			return true;
+		}
+		bool UploadReflectionProbes(
+		    const world_mesh_gpu::ReflectionProbesUploadRequest &request ) override;
+		bool DrawBatch( std::uint32_t, std::uint32_t ) override { return false; }
+		void Release() override;
+		bool IsResident() const override { return true; }
+
+		pass::world::LightmapPages lightmap;                 // the total layer's pages
+		std::vector<std::byte> indirect;                     // the indirect layer's flat page
+		std::optional<pass::world::StageProbeVolume> probes; // the bake
+		std::uint32_t reflectionWidth = 0;
+		std::uint32_t reflectionHeight = 0;
+		std::vector<std::byte> reflection;
+
+	private:
+		CoreWorld &m_Owner;
+	};
+
 	legacy::ILegacyFrontend &m_Frontend;
 	const frame::IRenderer &m_Renderer;
 	const legacy::RenderCallQueueHost *m_Host = nullptr;
@@ -97,6 +142,8 @@ private:
 	std::atomic<unsigned long long> m_Tints{ 0 };
 	std::atomic<unsigned long long> m_Redrawn{ 0 };
 	CoreOutput m_Output;
+	StageCapture m_Capture{ *this };
+	bool m_StageSet = false; // the pass holds a world stage
 };
 
 } // namespace render::composition

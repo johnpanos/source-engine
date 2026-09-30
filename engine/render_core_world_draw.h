@@ -22,16 +22,24 @@ void RenderCoreWorldDraw_LevelShutdown();
 // R_DrawWorldLists: whether the core may draw this view's world (r_core_world,
 // the outermost view, into the back buffer, no fog, not a shadow, SSAO,
 // reflection or refraction list). bWorldMeshWorld: the view's opaque world is
-// the map's WMSH (r_worldmesh_draw 2 with a resident WMSH). Its faces, PBR
-// materials and LMAP lighting are not the BSP faces the core holds, so the
-// core declines the view by name (r_core_world_stats) until it draws WMSH
-// (RFC 0016 K12); the WMSH path alone draws it.
+// the map's WMSH (r_worldmesh_draw 2 with a resident WMSH): eligible when the
+// core holds it as a world stage, else declined by name (r_core_world_stats)
+// and drawn by the WMSH path alone.
 bool RenderCoreWorldDraw_ViewEligible( unsigned long flags, bool bWorldMeshWorld );
 // Whether the core draws this surface when it draws a view.
 bool RenderCoreWorldDraw_Takes( SurfaceHandle_t surfID );
 // Queues the view's visible surfaces the core takes (surface indices) and
 // marks the core's slot; from then until EndView the legacy chains skip them.
 void RenderCoreWorldDraw_BeginView( const unsigned int *pSurfaces, int nCount );
+// A world stage (RFC 0016 K12: the map's world is its WMSH, and the core
+// holds it): BeginStageView after the view is eligible, then the WMSH path
+// asks StageView and StageTakesBatch, leaves the batches the core takes
+// undrawn, and hands their visible meshlets to DrawStageView at the point of
+// the stream where it would have drawn them.
+void RenderCoreWorldDraw_BeginStageView();
+bool RenderCoreWorldDraw_StageView();
+bool RenderCoreWorldDraw_StageTakesBatch( unsigned int batch );
+void RenderCoreWorldDraw_DrawStageView( const unsigned int *pMeshlets, int nCount );
 void RenderCoreWorldDraw_EndView();
 // Shader_DrawChainsStatic: whether the core draws this surface in the
 // current view.

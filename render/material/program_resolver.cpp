@@ -221,7 +221,8 @@ foundation::Expected<std::unique_ptr<ProgramResolver>, std::string> ProgramResol
 	return std::unique_ptr<ProgramResolver>( new ProgramResolver( std::move( state ) ) );
 }
 
-foundation::Expected<device::BlendMode, std::string> ClaimForDrawing( const MaterialDesc &material )
+foundation::Expected<device::BlendMode, std::string> ClaimForDrawing(
+    const MaterialDesc &material, bool worldPbr )
 {
 	std::string why;
 	const std::optional<ParameterBlock> block = BlockFor( material, &why );
@@ -240,6 +241,16 @@ foundation::Expected<device::BlendMode, std::string> ClaimForDrawing( const Mate
 		if ( !claim.claimed )
 			return foundation::MakeUnexpected( claim.reason );
 		return claim.blend;
+	}
+	if ( material.family == "pbr" )
+	{
+		if ( !worldPbr )
+			return foundation::MakeUnexpected( std::string(
+			    "world pbr is not enabled: the pbr point draws a world stage's surfaces only" ) );
+		const PbrClaim claim = ClaimPbr( *block );
+		if ( !claim.claimed )
+			return foundation::MakeUnexpected( claim.reason );
+		return device::BlendMode::kOpaque;
 	}
 	return foundation::MakeUnexpected( "family " + material.family + " has no program yet" );
 }

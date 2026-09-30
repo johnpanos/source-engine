@@ -6,6 +6,9 @@
 
 #include "core_world.h"
 
+#include "mapcontainer/world_lightmap.h"
+#include "mapcontainer/world_mesh_decode.h"
+
 #include <algorithm>
 #include <cstdlib>
 #include <cstddef>
@@ -80,7 +83,16 @@ void CoreWorld::SetWorld( const RenderCoreWorldVertex *vertices, unsigned int ve
 		surface.indexCount = surfaces[i].indexCount;
 		data.surfaces.push_back( surface );
 	}
-	data.materials.reserve( materialCount );
+	data.materials = WorldMaterials( materials, materialCount );
+	m_StageSet = false;
+	m_Pass.SetWorld( std::move( data ) );
+}
+
+std::vector<pass::world::WorldMaterial> CoreWorld::WorldMaterials(
+    const RenderCoreWorldMaterial *materials, unsigned int materialCount ) const
+{
+	std::vector<pass::world::WorldMaterial> out;
+	out.reserve( materialCount );
 	for ( unsigned int i = 0; i < materialCount; ++i )
 	{
 		const RenderCoreWorldMaterial &source = materials[i];
@@ -97,9 +109,163 @@ void CoreWorld::SetWorld( const RenderCoreWorldVertex *vertices, unsigned int ve
 			if ( texture && m_Host && m_Host->textureHandle )
 				material.textures.emplace_back( key, m_Host->textureHandle( texture ) );
 		}
-		data.materials.push_back( std::move( material ) );
+		out.push_back( std::move( material ) );
 	}
+	return out;
+}
+
+void CoreWorld::SetWorldMesh( const void *wmsh, unsigned long long wmshBytes,
+    const RenderCoreWorldMeshlet *meshlets, unsigned int meshletCount,
+    const RenderCoreWorldMaterial *materials, unsigned int materialCount )
+{
+	m_StageSet = false;
+	mapcontainer::WorldMeshData mesh;
+	// A stage needs the map's mesh and its lightmap: without either the
+	// core holds no world (every view draws legacy's), and says why.
+	if ( !wmsh ||
+	     mapcontainer::DecodeWorldMesh( wmsh, std::size_t( wmshBytes ), mesh ) !=
+	         mapcontainer::WorldMeshError::Ok ||
+	     m_Capture.lightmap.flat.empty() )
+	{
+		std::fprintf( stderr, "Render core: the world stage has no %s; the core draws no world\n",
+		    m_Capture.lightmap.flat.empty() ? "lightmap (LMAP)" : "valid world mesh (WMSH)" );
+		m_Pass.ClearWorld();
+		return;
+	}
+	pass::world::WorldData data;
+	// The world vertex: its normal and tangent frame, T = N x S times the
+	// handedness (as render_lab builds it).
+	data.vertices.resize( mesh.vertices.size() );
+	for ( std::size_t i = 0; i < mesh.vertices.size(); ++i )
+	{
+		const mapcontainer::WorldMeshVertex &from = mesh.vertices[i];
+		pass::world::WorldVertex &to = data.vertices[i];
+		std::copy( from.position, from.position + 3, to.position );
+		std::copy( from.uv, from.uv + 2, to.uv );
+		std::copy( from.lightmapUv, from.lightmapUv + 2, to.lightmapUv );
+		std::copy( from.normal, from.normal + 3, to.normal );
+		std::copy( from.tangent, from.tangent + 3, to.tangentS );
+		const float *n = from.normal;
+		const float *t = from.tangent;
+		to.tangentT[0] = ( n[1] * t[2] - n[2] * t[1] ) * from.tangentSign;
+		to.tangentT[1] = ( n[2] * t[0] - n[0] * t[2] ) * from.tangentSign;
+		to.tangentT[2] = ( n[0] * t[1] - n[1] * t[0] ) * from.tangentSign;
+	}
+	data.indices = std::move( mesh.indices );
+	data.surfaces.reserve( meshletCount );
+	for ( unsigned int i = 0; i < meshletCount; ++i )
+	{
+		pass::world::WorldSurface surface;
+		surface.material = meshlets[i].material;
+		surface.firstIndex = meshlets[i].firstIndex;
+		surface.indexCount = meshlets[i].indexCount;
+		data.surfaces.push_back( surface );
+	}
+	data.materials = WorldMaterials( materials, materialCount );
+	auto stage = std::make_shared<pass::world::WorldStage>();
+	stage->lightmap = m_Capture.lightmap;
+	if ( m_Capture.indirect.size() == m_Capture.lightmap.flat.size() )
+		stage->indirect = m_Capture.indirect;
+	stage->probes = m_Capture.probes;
+	stage->reflectionWidth = m_Capture.reflectionWidth;
+	stage->reflectionHeight = m_Capture.reflectionHeight;
+	stage->reflectionProbes = m_Capture.reflection;
+	data.stage = std::move( stage );
 	m_Pass.SetWorld( std::move( data ) );
+	m_StageSet = true;
+}
+
+bool CoreWorld::StageCapture::UploadLightmap(
+    const world_mesh_gpu::WorldLightmapUploadRequest &request )
+{
+	// The total layer's pages (the baked diffuse light, as render_lab draws
+	// it without runtime direct light) and the indirect layer's flat page.
+	const std::size_t layerBytes = std::size_t( request.width ) * request.height * 8;
+	pass::world::LightmapPages total;
+	std::vector<std::byte> indirect;
+	for ( std::uint32_t i = 0;
+	    i < request.layerCount && i < world_mesh_gpu::kWorldLightmapMaxUploadLayers; ++i )
+	{
+		if ( !request.layers[i] )
+			continue;
+		const std::span<const std::byte> layer(
+		    static_cast<const std::byte *>( request.layers[i] ), layerBytes );
+		if ( request.roles[i] == world_mesh_gpu::WorldLightmapRole::Total )
+			total = pass::world::SplitLightmapLayer( layer, request.width, request.height );
+		else if ( request.roles[i] == world_mesh_gpu::WorldLightmapRole::Indirect )
+			indirect = pass::world::SplitLightmapLayer( layer, request.width, request.height ).flat;
+	}
+	if ( total.flat.empty() )
+		return false;
+	// Recomposed while a stage draws: the pass updates its pages in place.
+	if ( m_Owner.m_StageSet && !lightmap.flat.empty() )
+	{
+		lightmap = total;
+		m_Owner.m_Pass.SetStageLightmap( std::move( total ) );
+		return true;
+	}
+	lightmap = std::move( total );
+	indirect.swap( this->indirect );
+	return true;
+}
+
+bool CoreWorld::StageCapture::UploadProbeVolume(
+    const world_mesh_gpu::ProbeVolumeUploadRequest &request )
+{
+	if ( !request.atlas || !request.gridTable || request.tableFloats % 4 != 0 )
+		return false;
+	pass::world::StageProbeVolume volume;
+	volume.atlasWidth = request.atlasWidth;
+	volume.atlasHeight = request.atlasHeight;
+	volume.tableTexels = request.tableFloats / 4;
+	volume.rows = request.gridCount + request.occluderCount;
+	volume.table.assign(
+	    request.gridTable, request.gridTable + std::size_t( volume.rows ) * request.tableFloats );
+	const std::size_t atlasBytes = std::size_t( request.atlasWidth ) * request.atlasHeight * 8;
+	// A volume without a change is the bake (world_mesh_upload.h): the one a
+	// stage starts from, and its change is none.
+	std::vector<std::byte> change;
+	if ( request.deltaAtlas )
+	{
+		const std::byte *delta = static_cast<const std::byte *>( request.deltaAtlas );
+		change.assign( delta, delta + atlasBytes );
+	}
+	else if ( !probes || probes->atlas.size() != atlasBytes || !m_Owner.m_StageSet )
+	{
+		const std::byte *atlas = static_cast<const std::byte *>( request.atlas );
+		volume.atlas.assign( atlas, atlas + atlasBytes );
+		// The stage's own table has the grids' rows alone.
+		pass::world::StageProbeVolume baked = volume;
+		baked.rows = request.gridCount;
+		baked.table.resize( std::size_t( baked.rows ) * request.tableFloats );
+		probes = std::move( baked );
+	}
+	if ( m_Owner.m_StageSet )
+		m_Owner.m_Pass.SetStageChange( std::move( change ), std::move( volume ) );
+	return true;
+}
+
+bool CoreWorld::StageCapture::UploadReflectionProbes(
+    const world_mesh_gpu::ReflectionProbesUploadRequest &request )
+{
+	reflectionWidth = request.texels ? request.width : 0;
+	reflectionHeight = request.texels ? request.height : 0;
+	reflection.clear();
+	if ( request.texels )
+	{
+		const std::byte *texels = reinterpret_cast<const std::byte *>( request.texels );
+		reflection.assign( texels, texels + std::size_t( request.width ) * request.height * 8 );
+	}
+	return true;
+}
+
+void CoreWorld::StageCapture::Release()
+{
+	lightmap = pass::world::LightmapPages();
+	indirect.clear();
+	probes.reset();
+	reflectionWidth = reflectionHeight = 0;
+	reflection.clear();
 }
 
 bool CoreWorld::DrawView( const unsigned int *surfaces, unsigned int count,

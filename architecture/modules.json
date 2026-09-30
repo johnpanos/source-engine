@@ -818,6 +818,7 @@
           "render.pass.ssr",
           "render.pass.ao",
           "render.pass.bounce",
+          "render.pass.world",
           "render.contracts",
           "jobs.graph",
           "testing.contracts"
@@ -1029,7 +1030,9 @@
           "render.legacy-frontend",
           "render.legacy-provider-contract",
           "render.pass.debug",
-          "render.pass.output"
+          "render.pass.output",
+          "render.contracts",
+          "world.map-container"
         ]
       },
       {
@@ -1628,7 +1631,7 @@
           "render_shaderlib"
         ]
       },
-      "render_lab": {"allowedUse": ["render_device", "render_device_vulkan", "render_resources", "render_material", "render_math", "render_spv", "mapcontainer", "mdl", "vtf_texture_reader", "vtf", "bitmap", "mathlib", "tier0", "tier1", "tier2", "render_shaderlib", "render_frame", "render_graph", "jobsystem", "render_pass_lines", "render_pass_lights", "render_pass_volumetric", "render_pass_ssr", "render_pass_ao", "render_pass_bounce"]},
+      "render_lab": {"allowedUse": ["render_device", "render_device_vulkan", "render_resources", "render_material", "render_math", "render_spv", "mapcontainer", "mdl", "vtf_texture_reader", "vtf", "bitmap", "mathlib", "tier0", "tier1", "tier2", "render_shaderlib", "render_frame", "render_graph", "jobsystem", "render_pass_lines", "render_pass_lights", "render_pass_volumetric", "render_pass_ssr", "render_pass_ao", "render_pass_bounce", "render_pass_world"]},
       "render_pass_debug": {
         "allowedUse": [
           "render_device",
@@ -1672,7 +1675,8 @@
           "render_device_vulkan",
           "render_device_gl",
           "render_pass_skinning",
-          "render_pass_debug"
+          "render_pass_debug",
+          "mapcontainer"
         ]
       },
       "jobsystem": {

@@ -276,12 +276,17 @@ static void CollectWorldMeshTranslucent( const worldbrushdata_t *pWorld,
 // pView is NULL when the list was built without frustum culling. Translucent
 // batches are not drawn here: their visible meshlets go to pTranslucent for
 // the translucent pass. Without bDrawOpaque only the translucent meshlets are
-// collected (the render core draws the view's opaque world; RFC 0016 K5).
+// collected (the render core draws the view's opaque world; RFC 0016 K5). In
+// a world stage's view (RFC 0016 K12) the batches the core takes are not
+// drawn here: their visible meshlets go to the core, which draws them at this
+// point of the stream.
 static void Shader_DrawWorldMeshBatches( IMatRenderContext *pRenderContext,
     const unsigned short *pVisibleLeaves, int nVisibleLeaves, CUtlVector<unsigned char> &visible,
     const WorldMeshCullView_t *pView, unsigned long flags,
     CUtlVector<WorldMeshTranslucent_t> &translucent, bool bDrawOpaque )
 {
+	const bool coreStage = RenderCoreWorldDraw_StageView();
+	CUtlVector<unsigned int> coreMeshlets;
 	world_mesh_gpu::IWorldMeshUpload *uploader = WorldMeshDrawProvider();
 	if ( !uploader )
 		return;
@@ -497,6 +502,19 @@ static void Shader_DrawWorldMeshBatches( IMatRenderContext *pRenderContext,
 		if ( pBatchCull[i].translucent )
 			continue;
 		const worldmeshbatch_t &batch = pWorld->pWorldMeshBatches[i];
+		if ( coreStage && RenderCoreWorldDraw_StageTakesBatch( i ) )
+		{
+			for ( unsigned int m = batch.firstMeshlet; m < batch.firstMeshlet + batch.meshletCount;
+			    ++m )
+			{
+				if ( pVisible[m] )
+					coreMeshlets.AddToTail( m );
+			}
+			// The core draws the batch with depth: it may occlude.
+			if ( s_WorldMeshBatchDraw[i] == WORLDMESH_BATCH_UNKNOWN )
+				s_WorldMeshBatchDraw[i] = WORLDMESH_BATCH_DRAWN;
+			continue;
+		}
 		pRenderContext->Bind( batch.material, NULL );
 		// Meshlets are the visibility unit, not the draw unit: visible meshlets
 		// whose index ranges are adjacent go out as one range, in the same
@@ -589,6 +607,8 @@ static void Shader_DrawWorldMeshBatches( IMatRenderContext *pRenderContext,
 		else if ( drew && s_WorldMeshBatchDraw[i] == WORLDMESH_BATCH_UNKNOWN )
 			s_WorldMeshBatchDraw[i] = WORLDMESH_BATCH_DRAWN;
 	}
+	if ( coreStage )
+		RenderCoreWorldDraw_DrawStageView( coreMeshlets.Base(), coreMeshlets.Count() );
 	static bool s_reported = false;
 	if ( !s_reported )
 	{
@@ -4021,7 +4041,14 @@ void R_DrawWorldLists( IWorldRenderList *pRenderListIn, unsigned long flags, flo
 #else
 	const bool worldMeshWorld = false;
 #endif
-	if ( RenderCoreWorldDraw_ViewEligible( flags, worldMeshWorld ) )
+	const bool coreEligible = RenderCoreWorldDraw_ViewEligible( flags, worldMeshWorld );
+	if ( coreEligible && worldMeshWorld )
+	{
+		// A world stage (RFC 0016 K12): the WMSH path hands the core its
+		// meshlets.
+		RenderCoreWorldDraw_BeginStageView();
+	}
+	else if ( coreEligible )
 	{
 		CUtlVector<unsigned int> coreSurfaces;
 		const CMSurfaceSortList &sortList = pRenderList->m_SortList;

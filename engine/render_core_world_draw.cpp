@@ -56,6 +56,12 @@ struct CoreWorldState
 {
 	bool loaded = false;
 	bool viewActive = false;
+	// The map's world is its WMSH, which the core holds as a world stage
+	// (RFC 0016 K12): views name meshlets, and stageTakes says per WMSH batch
+	// whether the core draws its material.
+	bool stageWorld = false;
+	bool stageView = false; // this view's WMSH world is the core's
+	CUtlVector<unsigned char> stageTakes;
 	// Views declined because the map's world is its WMSH, this level.
 	unsigned long long worldMeshViews = 0;
 	unsigned long long failuresSeen = 0;
@@ -280,10 +286,99 @@ void CheckFailures( IRenderCoreWorld *pWorld )
 
 } // namespace
 
+// A BSP2 map's world is its WMSH (RFC 0016 K12): the core holds it as a
+// world stage, its meshlets the surfaces and its batches' materials read as
+// the BSP faces' are; the stage's lighting reached the core with the world
+// mesh uploads (RenderCoreHost_WorldMeshUpload).
+static void LevelInitStage( IRenderCoreWorld *pWorld, worldbrushdata_t *pBrush )
+{
+	CoreWorldState &state = State();
+	CUtlVector<MaterialVars> materials;
+	NeutralMaterials neutrals;
+	CUtlVector<int> materialOfBatch;
+	for ( unsigned int b = 0; b < pBrush->worldMeshBatchCount; ++b )
+	{
+		IMaterial *pMaterial = pBrush->pWorldMeshBatches[b].material;
+		int material = -1;
+		for ( int m = 0; m < materials.Count() && pMaterial; ++m )
+		{
+			if ( materials[m].material == pMaterial )
+				material = m;
+		}
+		if ( material < 0 && pMaterial )
+		{
+			material = materials.AddToTail();
+			ReadVariables( pMaterial, neutrals, materials[material] );
+		}
+		materialOfBatch.AddToTail( material );
+	}
+	// One surface per meshlet, in the mesh's meshlet order: a view names the
+	// visible meshlets by their index. A batch without a material has no
+	// surface the core can take.
+	CUtlVector<RenderCoreWorldMeshlet> meshlets;
+	meshlets.SetCount( pBrush->worldMeshClusterCount );
+	for ( unsigned int m = 0; m < pBrush->worldMeshClusterCount; ++m )
+	{
+		meshlets[m].material = ~0u;
+		meshlets[m].firstIndex = pBrush->pWorldMeshClusters[m].firstIndex;
+		meshlets[m].indexCount = pBrush->pWorldMeshClusters[m].indexCount;
+	}
+	for ( unsigned int b = 0; b < pBrush->worldMeshBatchCount; ++b )
+	{
+		const worldmeshbatch_t &batch = pBrush->pWorldMeshBatches[b];
+		for ( unsigned int m = batch.firstMeshlet;
+		    m < batch.firstMeshlet + batch.meshletCount && m < pBrush->worldMeshClusterCount; ++m )
+			meshlets[m].material = materialOfBatch[b] >= 0 ? unsigned( materialOfBatch[b] ) : ~0u;
+	}
+	CUtlVector<RenderCoreWorldMaterial> materialDescs;
+	for ( int m = 0; m < materials.Count(); ++m )
+	{
+		RenderCoreWorldMaterial desc;
+		desc.name = materials[m].material->GetName();
+		desc.shader = materials[m].material->GetShaderName();
+		desc.variableCount = materials[m].keys.Count();
+		desc.keys = materials[m].keyPtrs.Base();
+		desc.values = materials[m].valuePtrs.Base();
+		desc.textures = materials[m].textures.Base();
+		desc.defaults = materials[m].defaults.Base();
+		materialDescs.AddToTail( desc );
+	}
+	pWorld->SetWorldMesh( pBrush->pWorldMeshData, pBrush->worldMeshSize, meshlets.Base(),
+	    meshlets.Count(), materialDescs.Base(), materialDescs.Count() );
+	state.stageTakes.SetCount( pBrush->worldMeshBatchCount );
+	int taken = 0;
+	for ( unsigned int b = 0; b < pBrush->worldMeshBatchCount; ++b )
+	{
+		state.stageTakes[b] =
+		    materialOfBatch[b] >= 0 && pWorld->Draws( unsigned( materialOfBatch[b] ) ) ? 1 : 0;
+		taken += state.stageTakes[b];
+	}
+	state.takes.SetCount( pBrush->numsurfaces );
+	for ( int i = 0; i < state.takes.Count(); ++i )
+		state.takes[i] = 0;
+	RenderCoreWorldStats stats;
+	pWorld->GetStats( &stats );
+	// The core holds no stage without the map's lightmap (it said why):
+	// then its views are declined by name.
+	state.stageWorld = stats.surfaces != 0;
+	state.loaded = true;
+	if ( r_core_world.GetBool() )
+	{
+		Msg( "r_core_world: world stage (WMSH): %d of %u batches, %u of %u materials in the "
+		     "core's model\n",
+		    taken, pBrush->worldMeshBatchCount, stats.claimedMaterials, stats.materials );
+		if ( stats.gaps[0] )
+			Msg( "r_core_world: materials outside the model yet:\n%s", stats.gaps );
+	}
+}
+
 void RenderCoreWorldDraw_LevelInit()
 {
 	CoreWorldState &state = State();
 	state.loaded = false;
+	state.stageWorld = false;
+	state.stageView = false;
+	state.stageTakes.RemoveAll();
 	state.worldMeshViews = 0;
 	state.takes.RemoveAll();
 	state.entryOf.RemoveAll();
@@ -293,6 +388,12 @@ void RenderCoreWorldDraw_LevelInit()
 	worldbrushdata_t *pBrush = host_state.worldbrush;
 	if ( !pWorld || !pBrush )
 		return;
+	if ( pBrush->pWorldMeshData && pBrush->pWorldMeshBatches && pBrush->worldMeshBatchCount &&
+	     pBrush->pWorldMeshClusters )
+	{
+		LevelInitStage( pWorld, pBrush );
+		return;
+	}
 	CUtlVector<RenderCoreWorldVertex> vertices;
 	CUtlVector<unsigned int> indices;
 	CUtlVector<RenderCoreWorldSurface> surfaces;
@@ -429,6 +530,9 @@ void RenderCoreWorldDraw_LevelShutdown()
 	CoreWorldState &state = State();
 	state.loaded = false;
 	state.viewActive = false;
+	state.stageWorld = false;
+	state.stageView = false;
+	state.stageTakes.RemoveAll();
 	state.takes.RemoveAll();
 	state.entryOf.RemoveAll();
 	if ( IRenderCoreWorld *pWorld = RenderCoreHost_World() )
@@ -446,12 +550,12 @@ bool RenderCoreWorldDraw_ViewEligible( unsigned long flags, bool bWorldMeshWorld
 	if ( flags & ( DRAWWORLDLISTS_DRAW_SHADOWDEPTH | DRAWWORLDLISTS_DRAW_SSAO |
 	                 DRAWWORLDLISTS_DRAW_REFRACTION | DRAWWORLDLISTS_DRAW_REFLECTION ) )
 		return false;
-	if ( bWorldMeshWorld )
+	if ( bWorldMeshWorld && !state.stageWorld )
 	{
 		if ( state.worldMeshViews++ == 0 )
-			Msg( "r_core_world: this map's world is its WMSH (its own faces, PBR materials and "
-			     "LMAP lighting); the core draws BSP faces only until RFC 0016 K12, so it "
-			     "declines the view and the WMSH path draws the world\n" );
+			Msg( "r_core_world: this map's world is its WMSH, and the core holds no world "
+			     "stage for it (the level-load line says why), so it declines the view and "
+			     "the WMSH path draws the world\n" );
 		return false;
 	}
 	CMatRenderContextPtr pRenderContext( materials );
@@ -465,6 +569,27 @@ bool RenderCoreWorldDraw_Takes( SurfaceHandle_t surfID )
 	const CoreWorldState &state = State();
 	const int index = MSurf_Index( surfID );
 	return state.loaded && index >= 0 && index < state.takes.Count() && state.takes[index];
+}
+
+// Queues the core's surfaces (its entries) for the current view, with the
+// view's transform and viewport, and marks its slot here in the stream.
+static bool QueueCoreView( IRenderCoreWorld *pWorld, const unsigned int *pEntries, int nCount )
+{
+	CMatRenderContextPtr pRenderContext( materials );
+	VMatrix view, projection;
+	pRenderContext->GetMatrix( MATERIAL_VIEW, &view );
+	pRenderContext->GetMatrix( MATERIAL_PROJECTION, &projection );
+	const VMatrix worldToClip = projection * view;
+	float toClip[16];
+	for ( int r = 0; r < 4; ++r )
+		for ( int c = 0; c < 4; ++c )
+			toClip[r * 4 + c] = worldToClip.m[r][c];
+	int x, y, width, height;
+	pRenderContext->GetViewport( x, y, width, height );
+	const float viewport[6] = {
+	    float( x ), float( y ), float( width ), float( height ), 0.0f, 1.0f };
+	return pWorld->DrawView( pEntries, unsigned( nCount ), toClip, viewport,
+	    static_cast<unsigned long long>( host_framecount ) + 1 );
 }
 
 void RenderCoreWorldDraw_BeginView( const unsigned int *pSurfaces, int nCount )
@@ -482,19 +607,6 @@ void RenderCoreWorldDraw_BeginView( const unsigned int *pSurfaces, int nCount )
 		state.viewActive = true; // negative control: skipped and not drawn
 		return;
 	}
-	CMatRenderContextPtr pRenderContext( materials );
-	VMatrix view, projection;
-	pRenderContext->GetMatrix( MATERIAL_VIEW, &view );
-	pRenderContext->GetMatrix( MATERIAL_PROJECTION, &projection );
-	const VMatrix worldToClip = projection * view;
-	float toClip[16];
-	for ( int r = 0; r < 4; ++r )
-		for ( int c = 0; c < 4; ++c )
-			toClip[r * 4 + c] = worldToClip.m[r][c];
-	int x, y, width, height;
-	pRenderContext->GetViewport( x, y, width, height );
-	const float viewport[6] = {
-	    float( x ), float( y ), float( width ), float( height ), 0.0f, 1.0f };
 	// The view names surface indices; the core's world holds only the
 	// eligible surfaces, as entries (a displacement, a sky or water face has
 	// none, and a taken surface always has one).
@@ -508,13 +620,48 @@ void RenderCoreWorldDraw_BeginView( const unsigned int *pSurfaces, int nCount )
 	}
 	if ( entries.Count() == 0 )
 		return;
-	state.viewActive = pWorld->DrawView( entries.Base(), entries.Count(), toClip, viewport,
-	    static_cast<unsigned long long>( host_framecount ) + 1 );
+	state.viewActive = QueueCoreView( pWorld, entries.Base(), entries.Count() );
+}
+
+void RenderCoreWorldDraw_BeginStageView()
+{
+	CoreWorldState &state = State();
+	state.viewActive = false;
+	state.stageView = false;
+	IRenderCoreWorld *pWorld = RenderCoreHost_World();
+	if ( !pWorld || !state.stageWorld )
+		return;
+	CheckFailures( pWorld );
+	state.stageView = true;
+}
+
+bool RenderCoreWorldDraw_StageView()
+{
+	return State().stageView;
+}
+
+bool RenderCoreWorldDraw_StageTakesBatch( unsigned int batch )
+{
+	const CoreWorldState &state = State();
+	return state.stageView && batch < unsigned( state.stageTakes.Count() ) &&
+	       state.stageTakes[batch];
+}
+
+void RenderCoreWorldDraw_DrawStageView( const unsigned int *pMeshlets, int nCount )
+{
+	CoreWorldState &state = State();
+	IRenderCoreWorld *pWorld = RenderCoreHost_World();
+	if ( !pWorld || !state.stageView || nCount <= 0 )
+		return;
+	if ( r_core_world.GetInt() == 3 )
+		return; // negative control: taken and not drawn
+	state.viewActive = QueueCoreView( pWorld, pMeshlets, nCount );
 }
 
 void RenderCoreWorldDraw_EndView()
 {
 	State().viewActive = false;
+	State().stageView = false;
 }
 
 bool RenderCoreWorldDraw_Skips( SurfaceHandle_t surfID )
@@ -528,7 +675,9 @@ bool RenderCoreWorldDraw_Skips( SurfaceHandle_t surfID )
 bool RenderCoreWorldDraw_ChainsOnly()
 {
 	const CoreWorldState &state = State();
-	return state.viewActive || ( state.loaded && r_core_world_isolate.GetBool() );
+	// A world stage's view goes through the WMSH path (RenderCoreWorldDraw_StageView).
+	return !state.stageWorld &&
+	       ( state.viewActive || ( state.loaded && r_core_world_isolate.GetBool() ) );
 }
 
 CON_COMMAND( r_core_world_stats, "RFC 0016 K5: the core world's surfaces, views and gaps" )

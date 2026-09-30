@@ -11,6 +11,8 @@
 #ifndef RENDER_COMPOSITION_RENDER_CORE_WORLD_H
 #define RENDER_COMPOSITION_RENDER_CORE_WORLD_H
 
+#include "render/world_mesh_upload.h"
+
 class ITexture;
 
 struct RenderCoreWorldVertex
@@ -30,6 +32,15 @@ struct RenderCoreWorldSurface
 	unsigned int material;   // into the materials
 	int lightmapPage;        // the material system's lightmap page index
 	unsigned int firstIndex; // into the indices
+	unsigned int indexCount;
+};
+
+// A world stage's surface (RFC 0016 K12): one WMSH meshlet, an index range
+// of the world mesh drawn with one material.
+struct RenderCoreWorldMeshlet
+{
+	unsigned int material;   // into the materials
+	unsigned int firstIndex; // into the mesh's indices
 	unsigned int indexCount;
 };
 
@@ -78,6 +89,21 @@ public:
 	    const unsigned int *indices, unsigned int indexCount,
 	    const RenderCoreWorldSurface *surfaces, unsigned int surfaceCount,
 	    const RenderCoreWorldMaterial *materials, unsigned int materialCount ) = 0;
+	// A BSP2 map's world mesh, drawn as a world stage (RFC 0016 K12, as
+	// render_lab draws it: world pbr from the map's lightmap, probes and
+	// reflection probes): the validated WMSH lump, its meshlets and their
+	// materials. Views then name meshlets. The stage's lighting arrives
+	// through StageUpload() before this call and changes through it after.
+	// In place of SetWorld; ClearWorld ends both.
+	virtual void SetWorldMesh( const void *wmsh, unsigned long long wmshBytes,
+	    const RenderCoreWorldMeshlet *meshlets, unsigned int meshletCount,
+	    const RenderCoreWorldMaterial *materials, unsigned int materialCount ) = 0;
+	// The world stage's copy of the engine's world mesh uploads: the engine
+	// makes every upload it makes to the renderer here too (its lightmap
+	// layers, recomposed as moving objects block baked light; the probe
+	// volume and its change from the bake; the reflection probes). The mesh
+	// upload and DrawBatch are not used. Main thread.
+	virtual world_mesh_gpu::IWorldMeshUpload *StageUpload() = 0;
 	virtual void ClearWorld() = 0;
 	// Whether the core draws the material's surfaces.
 	virtual bool Draws( unsigned int material ) const = 0;

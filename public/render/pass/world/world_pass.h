@@ -52,8 +52,11 @@
 #include "render/device/device.h"
 #include "render/frame/debug_controls.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
+#include <span>
 #include <string>
 #include <utility>
 #include <vector>
@@ -95,12 +98,69 @@ struct WorldSurface
 	std::uint32_t indexCount = 0;
 };
 
+// One LMAP layer as the lightmap basis reads it (RFC 0008's LMAP;
+// tools/quality/lightmap_directional.py writes the directional form). A flat
+// page holds the diffuse light (irradiance / pi) at every texel. A
+// directional page is twice as wide as it is tall: its left half is that flat
+// light E0, baked on the smooth normal N, and its right half holds at the same
+// texel the signed world-space luminance gradient beta of E(n) = a + g . n,
+// relative to E0. The world mesh's lightmap coordinates span the flat half,
+// so the halves become two pages of the same size.
+struct LightmapPages
+{
+	std::uint32_t width = 0; // of each page
+	std::uint32_t height = 0;
+	std::vector<std::byte> flat;     // RGBA16F texels, row 0 at the top
+	std::vector<std::byte> gradient; // RGBA16F beta; empty for a flat page
+
+	bool Directional() const { return !gradient.empty(); }
+};
+
+// Splits one layer of `width` x `height` RGBA16F texels; a page whose width
+// is twice its height is directional. No page (flat empty) when `layer` does
+// not hold exactly that many texels.
+LightmapPages SplitLightmapLayer(
+    std::span<const std::byte> layer, std::uint32_t width, std::uint32_t height );
+
+// The probe volume as render/shaders/common/probe_volume.glsl reads it (RFC
+// 0011 render.probe-volume.v1): the atlas and the grid table rows
+// (mapcontainer::WriteProbeGridTable, then the moving occluders' rows).
+struct StageProbeVolume
+{
+	std::uint32_t atlasWidth = 0;
+	std::uint32_t atlasHeight = 0;
+	std::vector<std::byte> atlas;  // RGBA16F, rows top first
+	std::uint32_t tableTexels = 0; // per row
+	std::uint32_t rows = 0;
+	std::vector<float> table; // RGBA32F texels
+};
+
+// A world stage (RFC 0016 K12, "Draw what the lab draws"): a BSP2 map's world
+// mesh (WMSH), drawn as the lab draws it. Its surfaces are the mesh's
+// meshlets; its materials resolve with world pbr (the pbr point on the world
+// vertex, ProgramResolver::SetWorldPbr) and its lighting comes from the
+// map's own data: the lightmap pages (LMAP, linear light), the baked probe
+// volume (PRBV), the reflection probes (RPRB), and the indirect-light host's
+// change volume (RFC 0011 BakedPlusDelta), added to every surface the volume
+// covers (kSurfaceProbeBounce). A surface's lightmapPage is not read.
+struct WorldStage
+{
+	LightmapPages lightmap;          // the baked (total) layer's pages
+	std::vector<std::byte> indirect; // the indirect layer's flat page; empty without one
+	std::optional<StageProbeVolume> probes;
+	std::uint32_t reflectionWidth = 0;
+	std::uint32_t reflectionHeight = 0;
+	std::vector<std::byte> reflectionProbes; // RGBA16F (WriteReflectionProbeTexture); empty without
+};
+
 struct WorldData
 {
 	std::vector<WorldVertex> vertices;
 	std::vector<std::uint32_t> indices; // triangle lists, into vertices
 	std::vector<WorldSurface> surfaces;
 	std::vector<WorldMaterial> materials;
+	// Set for a world stage (a BSP2 map's WMSH); null for the BSP surfaces.
+	std::shared_ptr<const WorldStage> stage;
 };
 
 // The backend's textures (render/legacy/core_passes.h ICoreTextures).
@@ -210,6 +270,14 @@ public:
 	// Main thread.
 	void SetWorld( WorldData data );
 	void ClearWorld();
+	// A world stage's lighting as it changes (main thread): the total page
+	// recomposed (moving objects blocking baked direct light), and the probe
+	// volume's change from the bake (the atlas's size and layout; empty for
+	// none) with its grid table (the occluders' rows change with it). Each is
+	// uploaded in place at the next slot; a size that differs from the
+	// stage's is a failure.
+	void SetStageLightmap( LightmapPages pages );
+	void SetStageChange( std::vector<std::byte> change, StageProbeVolume table );
 	// Whether the pass draws the material's surfaces (valid after SetWorld).
 	bool Draws( std::uint32_t material ) const;
 	// The tag of the slot to mark for the view; 0 when there is nothing to draw.
