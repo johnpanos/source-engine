@@ -199,6 +199,8 @@ void ProcessOnDataChangedEvents();
 void SimulateEntities();
 #include "client_render_start_steps.h"
 #include "render_stage_marks.h"
+#include "engine/iworldpanels.h"
+#include "vgui/IWorldPanelRecorder.h"
 
 #ifdef FSTOP
 #include "blob_networkbypass.h"
@@ -1050,6 +1052,14 @@ int CHLClient::Init( CreateInterfaceFn appSystemFactory, CreateInterfaceFn physi
 
 	// Not fatal if the material system stub isn't around.
 	materials_stub = (IMaterialSystemStub*)appSystemFactory( MATERIAL_SYSTEM_STUB_INTERFACE_VERSION, NULL );
+
+	// RFC 0016 render.pass.panels: the engine's in-world panels and the
+	// surface's recorder (c_vguiscreen.h); a lit screen draws through the
+	// legacy 2D path without them.
+	g_pEngineWorldPanels =
+	    (IEngineWorldPanels *)appSystemFactory( ENGINE_WORLD_PANELS_INTERFACE_VERSION, NULL );
+	g_pWorldPanelRecorder = (IWorldPanelRecorder *)appSystemFactory(
+	    VGUI_WORLD_PANEL_RECORDER_INTERFACE_VERSION, NULL );
 
 	// The render core's stage markers (RFC 0016); absent without a core.
 	g_pRenderStageMarkers =

@@ -45,8 +45,18 @@ inline int EmissiveAreaLights_PanelKey( int nEntIndex )
 	return ( ( nEntIndex & 0xffff ) << 8 ) | 0x80;
 }
 
-// The mean linear radiance a material draws at full brightness (its base
-// texture, decoded on the CPU and cached for the level). False without one.
-bool EmissiveAreaLights_MaterialRadiance( const char *pMaterialName, float out[3] );
+// A panel's tile (RFC 0016 render.world-panel.v1: a panel casts one light per
+// tile of its image); tile 0 is the panel's key.
+inline int EmissiveAreaLights_PanelTileKey( int nEntIndex, int nTile )
+{
+	return EmissiveAreaLights_PanelKey( nEntIndex ) | ( nTile & 0x3f );
+}
+
+// A texture's gamma-encoded RGBA at (s, t) (wrapping, nearest texel of its
+// mip no larger than 256 texels), decoded on the CPU and cached for the
+// level: the sampler of a panel's light (world_panel::TileRadiance). False for
+// a texture only the GPU holds (a render target, a font's glyph page).
+class ITexture;
+bool EmissiveAreaLights_SampleTexture( ITexture *pTexture, float s, float t, float rgba[4] );
 
 #endif // EMISSIVE_AREA_LIGHTS_H

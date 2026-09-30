@@ -273,6 +273,7 @@ def build(bld):
 			'render_core_host.cpp',
 			'render_core_world.cpp',
 			'render_core_world_draw.cpp',
+			'render_core_panels.cpp',
 			'rpt_engine.cpp',
 			'cl_steamauth.cpp',
 			'cdll_engine_int.cpp',

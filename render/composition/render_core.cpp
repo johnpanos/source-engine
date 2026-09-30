@@ -8,6 +8,7 @@
 
 #include "jobsystem/pooled_executor.h"
 #include "render/device/null/provider.h"
+#include "core_panels.h"
 #include "core_world.h"
 #include "render/legacy/core_backend.h"
 #include "render/legacy/frame_source.h"
@@ -37,6 +38,10 @@ struct RenderCore
 	std::unique_ptr<render::legacy::ILegacyFrontend> frontend;
 	// The BSP world drawn by the core; the frontend forwards its slots to it.
 	std::unique_ptr<render::composition::CoreWorld> world;
+	// In-world panels (render.pass.panels): their tags reach them through
+	// the router, which sends every other forwarded slot to the world.
+	std::unique_ptr<render::composition::CorePanels> panels;
+	std::unique_ptr<render::composition::ForwardedSlots> forwarded;
 	std::unique_ptr<render::frame::IRenderer> renderer;
 	std::string deviceName;
 	RenderCoreBinding binding;
@@ -69,6 +74,8 @@ struct RenderCore
 		}
 		if ( renderer && world )
 			renderer->RemoveStageHooks( world.get() );
+		forwarded.reset();
+		panels.reset();
 		world.reset();
 		renderer.reset();
 		cullJobs.reset();
@@ -305,9 +312,14 @@ extern "C" RenderCore *RenderCore_Create( const RenderCoreConfig *config, Render
 		core->world->BindCompute( core->compute.get() );
 		core->binding.gpuCompute = core->compute.get();
 	}
+	core->panels =
+	    std::make_unique<render::composition::CorePanels>( *core->frontend, *core->renderer );
+	core->forwarded =
+	    std::make_unique<render::composition::ForwardedSlots>( *core->world, *core->panels );
 	core->renderer->AddStageHooks( core->world.get() );
-	core->frontend->SetForwardedRecorder( core->world.get() );
+	core->frontend->SetForwardedRecorder( core->forwarded.get() );
 	core->binding.world = core->world.get();
+	core->binding.panels = core->panels.get();
 	core->binding.deviceName = core->deviceName.c_str();
 	if ( result )
 	{
@@ -346,5 +358,6 @@ extern "C" void RenderCore_BindRenderCallQueue(
 	{
 		core->frontend->BindRenderCallQueue( host );
 		core->world->BindHost( host );
+		core->panels->BindHost( host );
 	}
 }

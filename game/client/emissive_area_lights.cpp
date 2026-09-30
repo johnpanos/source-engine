@@ -760,22 +760,18 @@ void EmissiveAreaLights_RemoveSource( IEmissiveAreaLightSource *pSource )
 	s_Sources.FindAndRemove( pSource );
 }
 
-bool EmissiveAreaLights_MaterialRadiance( const char *pMaterialName, float out[3] )
+bool EmissiveAreaLights_SampleTexture( ITexture *pTexture, float s, float t, float rgba[4] )
 {
-	IMaterial *pMaterial = materials->FindMaterial( pMaterialName, TEXTURE_GROUP_VGUI, false );
-	if ( !pMaterial || pMaterial->IsErrorMaterial() )
+	if ( !pTexture || pTexture->IsError() || pTexture->IsRenderTarget() ||
+	     pTexture->IsProcedural() )
 		return false;
-	SampleLoader_t load;
-	const vtf_sample::Texture *pBase =
-	    selfillum_emission::TextureOfVar( pMaterial, "$basetexture", load );
-	if ( !pBase )
+	const vtf_sample::Texture &texture = LoadSampleTexture( pTexture->GetName() );
+	if ( !texture.valid )
 		return false;
-	double sum[3] = { 0, 0, 0 };
-	const int nTexels = pBase->width * pBase->height;
-	for ( int i = 0; i < nTexels; ++i )
-		for ( int k = 0; k < 3; ++k )
-			sum[k] += pBase->rgb[3 * i + k];
+	float rgb[3], alpha;
+	texture.Fetch( s, t, rgb, &alpha );
 	for ( int k = 0; k < 3; ++k )
-		out[k] = nTexels ? float( sum[k] / nTexels ) : 0.0f;
-	return nTexels > 0;
+		rgba[k] = SrgbLinearToGamma( rgb[k] );
+	rgba[3] = alpha;
+	return true;
 }

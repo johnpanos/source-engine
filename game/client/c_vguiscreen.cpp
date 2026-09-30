@@ -28,6 +28,12 @@
 #include "vgui_bitmappanel.h"
 #include "filesystem.h"
 #include "iinput.h"
+#include "emissive_area_lights.h"
+#include "engine/iworldpanels.h"
+#include "materialsystem/itexture.h"
+#include "vgui/IWorldPanelRecorder.h"
+#include "view_scene.h"
+#include "tier1/fmtstr.h"
 
 #include <vgui/IInputInternal.h>
 extern vgui::IInputInternal *g_InputInternal;
@@ -78,21 +84,26 @@ void ClearKeyValuesCache()
 
 
 IMPLEMENT_CLIENTCLASS_DT(C_VGuiScreen, DT_VGuiScreen, CVGuiScreen)
-	RecvPropFloat( RECVINFO(m_flWidth) ),
-	RecvPropFloat( RECVINFO(m_flHeight) ),
-	RecvPropInt( RECVINFO(m_fScreenFlags) ),
-	RecvPropInt( RECVINFO(m_nPanelName) ),
-	RecvPropInt( RECVINFO(m_nAttachmentIndex) ),
-	RecvPropInt( RECVINFO(m_nOverlayMaterial) ),
-	RecvPropEHandle( RECVINFO(m_hPlayerOwner) ),
-END_RECV_TABLE()
+RecvPropFloat( RECVINFO( m_flWidth ) ), RecvPropFloat( RECVINFO( m_flHeight ) ),
+    RecvPropInt( RECVINFO( m_fScreenFlags ) ), RecvPropInt( RECVINFO( m_nPanelName ) ),
+    RecvPropInt( RECVINFO( m_nAttachmentIndex ) ), RecvPropInt( RECVINFO( m_nOverlayMaterial ) ),
+    RecvPropEHandle( RECVINFO( m_hPlayerOwner ) ),
+    END_RECV_TABLE()
 
+    //-----------------------------------------------------------------------------
+    // Constructor
+    //-----------------------------------------------------------------------------
+    IEngineWorldPanels *g_pEngineWorldPanels = NULL;
+IWorldPanelRecorder *g_pWorldPanelRecorder = NULL;
 
-//-----------------------------------------------------------------------------
-// Constructor 
-//-----------------------------------------------------------------------------
 C_VGuiScreen::C_VGuiScreen()
 {
+	m_PanelResolution = world_panel::Resolution();
+	m_RecordedResolution = world_panel::Resolution();
+	m_nRecordedFrame = -1;
+	m_bRecordingValid = false;
+	m_bRecordingRefusalLogged = false;
+	m_bSubmittedToCore = false;
 	m_nOldPanelName = m_nPanelName = -1;
 	m_nOldOverlayMaterial = m_nOverlayMaterial = -1;
 	m_nOldPx = m_nOldPy = -1;
@@ -201,9 +212,311 @@ void C_VGuiScreen::CreateVguiScreen( const char *pTypeName )
 
 void C_VGuiScreen::DestroyVguiScreen( )
 {
+	if ( m_bSubmittedToCore && g_pEngineWorldPanels )
+		g_pEngineWorldPanels->RemovePanel( PanelId() );
+	m_bSubmittedToCore = false;
+	m_nRecordedFrame = -1;
+	m_RecordedQuads.RemoveAll();
+	m_RecordedTextures.RemoveAll();
 	m_PanelWrapper.Deactivate();
 }
 
+//-----------------------------------------------------------------------------
+// RFC 0016 render.pass.panels: the screen as an emissive surface
+//-----------------------------------------------------------------------------
+
+// The recording's sink: quads in paint order, each texture indexed once.
+class C_VGuiScreen::CPanelRecording final : public IWorldPanelRecording
+{
+public:
+	CPanelRecording( C_VGuiScreen &screen, const CVGuiScreenPanel *pScreenPanel )
+	    : m_Screen( screen ), m_pScreenPanel( pScreenPanel )
+	{
+	}
+	void AddQuad( const world_panel::Quad &quad, ITexture *pTexture ) override
+	{
+		world_panel::Quad recorded = quad;
+		recorded.texture = world_panel::kWhite;
+		recorded.layer = pTexture && m_pScreenPanel && m_pScreenPanel->PaintsCoating( pTexture )
+		                     ? world_panel::kLayerCoating
+		                     : world_panel::kLayerEmissive;
+		if ( pTexture )
+		{
+			int nIndex = m_Screen.m_RecordedTextures.Find( pTexture );
+			if ( nIndex < 0 )
+				nIndex = m_Screen.m_RecordedTextures.AddToTail( pTexture );
+			recorded.texture = unsigned( nIndex );
+		}
+		m_Screen.m_RecordedQuads.AddToTail( recorded );
+	}
+
+private:
+	C_VGuiScreen &m_Screen;
+	const CVGuiScreenPanel *m_pScreenPanel;
+};
+
+unsigned long long C_VGuiScreen::PanelId() const
+{
+	// The entity's handle: stable for the entity's life, never reused while
+	// the core holds its image (RemovePanel on destruction).
+	return (unsigned long long)(unsigned int)GetRefEHandle().ToInt();
+}
+
+world_panel::Placement C_VGuiScreen::PanelPlacement()
+{
+	Vector upperLeft, upperRight, lowerLeft;
+	ComputeEdges( &upperLeft, &upperRight, &lowerLeft );
+	world_panel::Placement placement;
+	for ( int k = 0; k < 3; ++k )
+	{
+		placement.origin[k] = upperLeft[k];
+		placement.right[k] = upperRight[k] - upperLeft[k];
+		placement.down[k] = lowerLeft[k] - upperLeft[k];
+	}
+	return placement;
+}
+
+// The panel painted once this frame into its draw list, at the resolution the
+// views last asked for: every view of the frame and the lights it casts take
+// this one list, so they show and cast the same state.
+bool C_VGuiScreen::RecordFrame()
+{
+	if ( m_nRecordedFrame == gpGlobals->framecount )
+		return m_bRecordingValid;
+	m_nRecordedFrame = gpGlobals->framecount;
+	m_bRecordingValid = false;
+	m_RecordedQuads.RemoveAll();
+	m_RecordedTextures.RemoveAll();
+	vgui::Panel *pPanel = m_PanelWrapper.GetPanel();
+	if ( !pPanel || !g_pWorldPanelRecorder || m_nPixelWidth <= 0 || m_nPixelHeight <= 0 )
+		return false;
+	// The resolution the main view needs (its last world-to-screen transform):
+	// at least one texel per screen pixel where the screen is densest on it.
+	{
+		int nScreenWide = 0, nScreenTall = 0;
+		engine->GetScreenSize( nScreenWide, nScreenTall );
+		const VMatrix &worldToScreen = engine->WorldToScreenMatrix();
+		float toClip[16];
+		for ( int r = 0; r < 4; ++r )
+			for ( int c = 0; c < 4; ++c )
+				toClip[r * 4 + c] = worldToScreen.m[r][c];
+		const float viewport[4] = { 0.0f, 0.0f, float( nScreenWide ), float( nScreenTall ) };
+		const float flPixelsPerUnit = world_panel::PixelsPerUnit(
+		    PanelPlacement(), float( m_nPixelWidth ), float( m_nPixelHeight ), toClip, viewport );
+		m_PanelResolution = world_panel::ChooseResolution(
+		    float( m_nPixelWidth ), float( m_nPixelHeight ), flPixelsPerUnit, m_PanelResolution );
+	}
+	m_RecordedResolution = m_PanelResolution;
+#ifdef PORTAL2
+	// As DrawModel: the panel sees the screen's active state as its enabled state.
+	pPanel->SetEnabled( IsActive() );
+#endif
+	CPanelRecording recording( *this, dynamic_cast<const CVGuiScreenPanel *>( pPanel ) );
+	char szWhy[128] = {};
+	m_bRecordingValid = g_pWorldPanelRecorder->RecordPanel( pPanel->GetVPanel(), m_nPixelWidth,
+	    m_nPixelHeight, m_RecordedResolution.texelsPerUnit, &recording, szWhy, sizeof( szWhy ) );
+	if ( !m_bRecordingValid && !m_bRecordingRefusalLogged )
+	{
+		m_bRecordingRefusalLogged = true;
+		DevWarning(
+		    "vgui_screen %s: its panel cannot be recorded (%s); it draws through the legacy "
+		    "2D path and casts no light\n",
+		    PanelName(), szWhy );
+	}
+	return m_bRecordingValid;
+}
+
+static ConVar cl_world_panel_report( "cl_world_panel_report", "0", FCVAR_CHEAT,
+    "RFC 0016 render.pass.panels: each frame, print every lit screen's recorded list (its "
+    "textures with their quad counts and highest alpha), its screen corners, and its tile "
+    "lights with and without the quads of textures cl_world_panel_report_exclude names" );
+static ConVar cl_world_panel_report_exclude( "cl_world_panel_report_exclude",
+    "elevator_video_overlay", FCVAR_CHEAT,
+    "The texture name part whose quads cl_world_panel_report leaves out of its "
+    "second set of tile lights (the chamber sign's grime)" );
+
+int C_VGuiScreen::EmissiveAreaLights( area_light::AreaLight *pLights, int *pKeys, int nMax )
+{
+	CVGuiScreenPanel *pScreenPanel = dynamic_cast<CVGuiScreenPanel *>( m_PanelWrapper.GetPanel() );
+	if ( nMax < 1 || !pScreenPanel || IsDormant() || !IsActive() || IsEffectActive( EF_NODRAW ) ||
+	     !RecordFrame() )
+		return 0;
+	const float flUnitsWide = float( m_nPixelWidth ), flUnitsTall = float( m_nPixelHeight );
+	int nAcross = 1, nDown = 1;
+	world_panel::Tiles( flUnitsWide, flUnitsTall, nAcross, nDown );
+	if ( nAcross * nDown > nMax )
+		nAcross = nDown = 1;
+	// The list's texture keys are indices into m_RecordedTextures.
+	CUtlVector<int> keys;
+	for ( int i = 0; i < m_RecordedTextures.Count(); ++i )
+		keys.AddToTail( i );
+	const world_panel::DrawListView list = { flUnitsWide, flUnitsTall, m_RecordedQuads.Base(),
+	    unsigned( m_RecordedQuads.Count() ), keys.Base(), unsigned( keys.Count() ) };
+	float radiance[world_panel::kMaxTiles][3];
+	world_panel::TileRadiance(
+	    list, pScreenPanel->EmissionScale(), nAcross, nDown, 16,
+	    [&]( int nTexture, float s, float t, float, float rgba[4] )
+	    {
+		    return EmissiveAreaLights_SampleTexture( m_RecordedTextures[nTexture], s, t, rgba );
+	    },
+	    radiance );
+
+	const world_panel::Placement placement = PanelPlacement();
+	if ( cl_world_panel_report.GetBool() )
+	{
+		// The list as recorded this frame, its screen corners (the main view,
+		// -1 to 1, y up), and its lights with and without the excluded quads.
+		CUtlString line;
+		line.Format( "cl_world_panel_report: frame %d ent %d res %ux%u quads %d textures",
+		    gpGlobals->framecount, entindex(), m_RecordedResolution.width,
+		    m_RecordedResolution.height, m_RecordedQuads.Count() );
+		const char *pszExclude = cl_world_panel_report_exclude.GetString();
+		CUtlVector<world_panel::Quad> kept;
+		for ( int t = 0; t < m_RecordedTextures.Count(); ++t )
+		{
+			int nQuads = 0, nAlpha = 0;
+			for ( const world_panel::Quad &quad : m_RecordedQuads )
+			{
+				if ( quad.texture == unsigned( t ) )
+				{
+					++nQuads;
+					nAlpha = MAX( nAlpha, int( quad.color[3] ) );
+				}
+			}
+			line += CFmtStr( " %s:%d:%d", m_RecordedTextures[t]->GetName(), nQuads, nAlpha ).Get();
+		}
+		for ( const world_panel::Quad &quad : m_RecordedQuads )
+		{
+			if ( !pszExclude[0] || quad.texture == world_panel::kWhite ||
+			     !V_stristr( m_RecordedTextures[quad.texture]->GetName(), pszExclude ) )
+				kept.AddToTail( quad );
+		}
+		line += CFmtStr( " placement %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.2f units %d %d",
+		    placement.origin[0], placement.origin[1], placement.origin[2], placement.right[0],
+		    placement.right[1], placement.right[2], placement.down[0], placement.down[1],
+		    placement.down[2], m_nPixelWidth, m_nPixelHeight )
+		            .Get();
+		line += " screen";
+		for ( int c = 0; c < 4; ++c )
+		{
+			Vector corner;
+			for ( int k = 0; k < 3; ++k )
+				corner[k] = placement.origin[k] + ( c == 1 || c == 2 ? placement.right[k] : 0.0f ) +
+				            ( c >= 2 ? placement.down[k] : 0.0f );
+			Vector screen;
+			ScreenTransform( corner, screen );
+			line += CFmtStr( " %.4f %.4f", screen.x, screen.y ).Get();
+		}
+		float without[world_panel::kMaxTiles][3];
+		const world_panel::DrawListView keptList = { flUnitsWide, flUnitsTall, kept.Base(),
+		    unsigned( kept.Count() ), keys.Base(), unsigned( keys.Count() ) };
+		world_panel::TileRadiance(
+		    keptList, pScreenPanel->EmissionScale(), nAcross, nDown, 16,
+		    [&]( int nTexture, float s, float t, float, float rgba[4] )
+		    {
+			    return EmissiveAreaLights_SampleTexture( m_RecordedTextures[nTexture], s, t, rgba );
+		    },
+		    without );
+		line += CFmtStr( " tiles %dx%d", nAcross, nDown ).Get();
+		for ( int i = 0; i < nAcross * nDown; ++i )
+			line +=
+			    CFmtStr( " %.5f %.5f %.5f", radiance[i][0], radiance[i][1], radiance[i][2] ).Get();
+		line += " without";
+		for ( int i = 0; i < nAcross * nDown; ++i )
+			line += CFmtStr( " %.5f %.5f %.5f", without[i][0], without[i][1], without[i][2] ).Get();
+		Msg( "%s\n", line.Get() );
+	}
+	// The panel is one emitter: every tile reaches as far as the whole panel
+	// at its mean radiance does (a tile's own reach, a fraction of the
+	// panel's power, would cut the sum's far field short).
+	float flPanelReach = 0.0f;
+	{
+		area_light::Rect whole;
+		float mean[3] = { 0.0f, 0.0f, 0.0f };
+		for ( int k = 0; k < 3; ++k )
+		{
+			whole.center[k] =
+			    placement.origin[k] + 0.5f * ( placement.right[k] + placement.down[k] );
+			whole.halfU[k] = 0.5f * placement.right[k];
+			whole.halfV[k] = -0.5f * placement.down[k];
+			for ( int t = 0; t < nAcross * nDown; ++t )
+				mean[k] += radiance[t][k] / float( nAcross * nDown );
+		}
+		flPanelReach = area_light::Reach( whole, mean );
+	}
+	int nCount = 0;
+	for ( int ty = 0; ty < nDown; ++ty )
+	{
+		for ( int tx = 0; tx < nAcross; ++tx )
+		{
+			area_light::AreaLight &light = pLights[nCount];
+			light = area_light::AreaLight();
+			// Front (halfU x halfV) on the drawn side: halfV points up the panel.
+			for ( int k = 0; k < 3; ++k )
+			{
+				light.rect.center[k] = placement.origin[k] +
+				                       placement.right[k] * ( tx + 0.5f ) / nAcross +
+				                       placement.down[k] * ( ty + 0.5f ) / nDown;
+				light.rect.halfU[k] = 0.5f * placement.right[k] / nAcross;
+				light.rect.halfV[k] = -0.5f * placement.down[k] / nDown;
+			}
+			for ( int k = 0; k < 3; ++k )
+				light.radiance[k] = radiance[ty * nAcross + tx][k];
+			light.reach =
+			    area_light::Reach( light.rect, light.radiance ) > 0.0f ? flPanelReach : 0.0f;
+			if ( !( light.reach > 0.0f ) )
+				continue;
+			pKeys[nCount] = EmissiveAreaLights_PanelTileKey( entindex(), ty * nAcross + tx );
+			++nCount;
+		}
+	}
+	return nCount;
+}
+
+// DrawModel's path through the render core: in a view the core draws, this
+// frame's list as an emissive surface; false leaves the view to the legacy
+// 2D path.
+bool C_VGuiScreen::DrawOnRenderCore()
+{
+	CVGuiScreenPanel *pScreenPanel = dynamic_cast<CVGuiScreenPanel *>( m_PanelWrapper.GetPanel() );
+	if ( !pScreenPanel || !pScreenPanel->DrawsAsEmissiveSurface() || IsTransparent() ||
+	     !g_pEngineWorldPanels || !g_pWorldPanelRecorder ||
+	     !g_pEngineWorldPanels->CoreDrawsPanels() )
+		return false;
+	const world_panel::Placement placement = PanelPlacement();
+	if ( !RecordFrame() )
+		return false;
+	RenderCorePanel panel;
+	panel.id = PanelId();
+	panel.placement = placement;
+	panel.unitsWide = float( m_nPixelWidth );
+	panel.unitsTall = float( m_nPixelHeight );
+	panel.quads = m_RecordedQuads.Base();
+	panel.quadCount = unsigned( m_RecordedQuads.Count() );
+	panel.textures = m_RecordedTextures.Base();
+	panel.textureCount = unsigned( m_RecordedTextures.Count() );
+	panel.resolution = m_RecordedResolution;
+	panel.emissionScale = pScreenPanel->EmissionScale();
+	// The scene's light at the screen's face, which its coatings reflect: the
+	// engine's lighting cube a model there would take.
+	{
+		Vector center, normal, color, box[6];
+		for ( int k = 0; k < 3; ++k )
+			center[k] = placement.origin[k] + 0.5f * ( placement.right[k] + placement.down[k] );
+		const Vector right( placement.right[0], placement.right[1], placement.right[2] );
+		const Vector down( placement.down[0], placement.down[1], placement.down[2] );
+		normal = CrossProduct( down, right );
+		VectorNormalize( normal );
+		engine->ComputeLighting( center + normal * 4.0f, &normal, false, color, box );
+		for ( int f = 0; f < 6; ++f )
+			for ( int k = 0; k < 3; ++k )
+				panel.ambientCube[f][k] = box[f][k];
+	}
+	if ( !g_pEngineWorldPanels->DrawPanel( panel ) )
+		return false;
+	m_bSubmittedToCore = true;
+	return true;
+}
 
 //-----------------------------------------------------------------------------
 // Is the screen active?
@@ -603,8 +916,13 @@ int	C_VGuiScreen::DrawModel( int flags )
 	// FIXME: Can this be cached off?
 	ComputePanelToWorld();
 
-	g_pMatSystemSurface->DrawPanelIn3DSpace( pPanel->GetVPanel(), m_PanelToWorld, 
-		m_nPixelWidth, m_nPixelHeight, m_flWidth, m_flHeight );
+	// RFC 0016 render.pass.panels: a lit board is an emissive surface on the
+	// render core in the views it draws; the overlay pass below still runs.
+	if ( !DrawOnRenderCore() )
+	{
+		g_pMatSystemSurface->DrawPanelIn3DSpace( pPanel->GetVPanel(), m_PanelToWorld, m_nPixelWidth,
+		    m_nPixelHeight, m_flWidth, m_flHeight );
+	}
 
 	// Finally, a pass to set the z buffer...
 	DrawScreenOverlay();

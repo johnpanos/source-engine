@@ -4449,3 +4449,129 @@ Checks:
 
 Next: the a_15 frame waits about 7 ms beyond its CPU work (profile
 next), and the 30 s GI settle after a load.
+
+## In-world panels: the chamber sign as an emissive surface on the core (2026-09-30, user request)
+
+User request: "make sure the test chamber signage is a first class emissive
+material, and is rendered at the proper resolution for the screen space it
+takes up. no blurry text here". Follow-ups in the same session:
+- its flicker shows a valid frame;
+- its dirt is on it in every flicker state;
+- it works with the render core and is an area light;
+- it casts light "like it would in real life if the screen was actually
+  dirty".
+
+Owner: source-engine-e2. 5a (core world) agreed the separate module and the
+router in front of `CoreWorld`.
+
+**Found.**
+- Portal 2's sign (`vgui_screen info_panel`, `sp_progress_sign`) was a
+  400 x 808 VGUI panel drawn into the world through
+  `DrawPanelIn3DSpace`. Its "06/19" label comes from a 28-pixel bitmap font,
+  magnified about 3 times at a close look.
+- It went through the legacy UnlitGeneric path, with no emission term.
+- Its flicker advanced in every `Paint`, so each view that painted the
+  sign in a frame (portal views) advanced it again. Its area light read the
+  previous paint's brightness.
+- Retail paints the grime over the lit image as grey. In the dim flicker
+  states that adds light: the sign cast 0.0322 with grime against 0.0266
+  without.
+
+**Installed.**
+- `render.world-panel.v1` (`public/render/world_panel.h`, the one
+  definition): the draw list, the resolution policy (`PixelsPerUnit`,
+  `ChooseResolution`), coatings (`CompositeAt`, `ScatterField`,
+  `EmissionAt`) and the cast light (`Tiles`, `TileRadiance`).
+- `render.pass.panels` (layer 6): per panel and frame, it rasterizes the
+  emissive quads (gamma, legacy blending) and the coatings (premultiplied
+  linear, half float), and a 4-unit scatter grid. A compute kernel builds
+  the emission (E (1 - A.a) + field A.rgb) and albedo chains in linear
+  light. The panel draws as `PBRMetalRough` through `ResolveMesh`, with the
+  albedo image as its base and the emission image as its emission (nearest
+  mip, clamped), lit by the ambient cube at the panel.
+- Composition: `CorePanels` (`IRenderCorePanels`) and `ForwardedSlots`, the
+  router that sends panel tags (`0x90000000 | serial`) to the panels and
+  everything else to `CoreWorld`.
+- `vguimatsurface`: `VGuiWorldPanelRecorder001`. It records a panel's
+  paint as quads and refuses lines, polygons, fades, circles, 3D paint and
+  render targets by name. Text draws from twin fonts rasterized at the
+  image's density, and layout keeps the font's own metrics. Glyph quads
+  carry their coverage from the font pages' backing bits.
+- Engine: `VEngineWorldPanels001` (`engine/render_core_panels.cpp`). The
+  core takes panels in the views it draws the world in (r_core_world 1,
+  the outermost back-buffer view), and `r_core_panels 0` opts out. A failure
+  after the core takes a panel is fatal under `r_core_world_strict`. Also
+  `r_core_panels_stats`, and `r_area_lights_report` now lists slotless
+  lights.
+- Client:
+  - `C_VGuiScreen` records a lit screen once per frame, at the main view's
+    resolution.
+  - The core draws it in the core's views; other views (portal, monitor,
+    reflection) keep the legacy 2D path, as the world does.
+  - It publishes 2 x 4 tile area lights from that same list, each with the
+    whole panel's reach.
+  - `cl_world_panel_report` prints each frame's list, screen corners and
+    tile lights, with and without the grime.
+- The sign:
+  - opts in (`DrawsAsEmissiveSurface`);
+  - declares its dirt overlays coatings;
+  - advances its flicker once per frame;
+  - takes its light from the image. `EmissiveAreaLights_MaterialRadiance`
+    (the board's mean) is deleted.
+
+**Evidence** (2026-09-30, on HEAD `0308156f8` with this change; desktop
+RADV; `build-rc-lab` and `build-p2`).
+
+| Suite | Result |
+| --- | --- |
+| `render.lab.panel` | 44 of 44, 0 validation messages |
+| `render.lab.panel.sensitivity` | 4 of 4: gamma-space mips, no scatter, coating ignored |
+| `corpus.portal2.sign-panel.selftest` | 18 of 18 (8 seeded judge defects) |
+| `corpus.portal2.sign-panel` | 12 of 12 |
+| `render.composition`, `.capabilities` | 22, 14 (after adding the panels sources to their rows) |
+
+Measured on the product:
+- The close shot holds 1.35 texels per screen pixel. The label's edges span
+  1.32 pixels on the core and 2.99 on the legacy 2D path.
+- The 39-frame flicker burst spans a light range of 9.8x. Every frame's
+  sign pixels equal 1.046 times the light it publishes that frame, plus
+  0.0002, with worst excess -0.0013. The neighbour-frame control's excess
+  is 0.069.
+- The dirt is in all 39 lists at overlay alpha 63, 127 or 255, and it
+  dims the cast light in every frame.
+- All 8 tile lights are published with the frame's radiances.
+
+In the lab:
+- `PixelsPerUnit` is within 1 percent of a ray cast.
+- A hard edge spans 0.84 pixels at the chosen resolution, and 2.46 at one
+  texel per unit.
+- The coated scatter matches `EmissionAt` to 0.2 percent.
+
+**Regressions checked.** `corpus.portal.sign-light.legacy` and
+`.core-world` on `sp_a1_intro6`:
+- The first run cut the sign's far field. Each tile's own reach (100 to
+  130 units) was shorter than the panel's (394), and the near receiver
+  rose only 1.24 levels. Each tile now takes the whole panel's reach, and
+  every casts-light check passes on both paths.
+- Still failing:
+  - `sign-on`'s lit fraction. The legacy sign measures luma 85 against a
+    threshold of 100 on 30 percent of the pixels, with identical pixels
+    whether or not the panel is recorded (`r_area_lights 0` control). It
+    measured 90 on 09-28, so the drift predates this change. On the core
+    path the sign measures 71: the grime is now a translucent diffuser, not
+    grey paint.
+  - The recorded `core-draws-receivers` expected failure (R89).
+- Portal's `testchmb` hue checks fail on the core-world path. Those signs
+  are models this change does not reach.
+
+**Not done.**
+- Other `vgui_screen` panels do not opt in yet: elevator video screens,
+  indicator panels and the co-op lobby screens.
+- No monitor, portal or reflection views draw the core surface (K8 view
+  generators).
+- The recorder refuses lines and polygons instead of drawing them.
+- No Fold7 or Apple run, and no frame-time record (rule 7: recorded when
+  measured). The sign's images are 100 MB at 1600 x 3232 at the closest
+  view.
+- `sign-on`'s thresholds need recalibrating by the sign-light suite's
+  owner.

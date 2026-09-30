@@ -273,7 +273,8 @@
           "public/render/portal_lights.h",
           "public/render/indirect_policy.h",
           "public/render/gpu_compute.h",
-          "public/render/world_mesh_upload.h"
+          "public/render/world_mesh_upload.h",
+          "public/render/world_panel.h"
         ],
         "allowedEdges": []
       },
@@ -820,6 +821,7 @@
           "render.pass.ao",
           "render.pass.bounce",
           "render.pass.world",
+          "render.pass.panels",
           "render.contracts",
           "jobs.graph",
           "testing.contracts"
@@ -839,6 +841,24 @@
           "foundation",
           "render.device",
           "render.shader-library"
+        ]
+      },
+      {
+        "id": "render.pass.panels",
+        "description": "RFC 0016 layer 6 feature (RFC 0010 in-world panels): a UI panel placed in the world (Portal 2's chamber sign) drawn as a PBRMetalRough emissive surface, its image rasterized from the frame's draw list at the resolution of its footprint on screen, with a linear-light mip chain.",
+        "paths": [
+          "public/render/pass/panels/",
+          "render/pass/panels/"
+        ],
+        "allowedEdges": [
+          "foundation",
+          "render.math",
+          "render.device",
+          "render.material",
+          "render.frame",
+          "render.resources",
+          "render.shader-library",
+          "render.contracts"
         ]
       },
       {
@@ -1052,7 +1072,8 @@
           "render.pass.ao",
           "render.pass.indirect",
           "render.contracts",
-          "world.map-container"
+          "world.map-container",
+          "render.pass.panels"
         ]
       },
       {
@@ -1658,12 +1679,23 @@
           "render_shaderlib"
         ]
       },
-      "render_lab": {"allowedUse": ["render_device", "render_device_vulkan", "render_resources", "render_material", "render_math", "render_spv", "mapcontainer", "mdl", "vtf_texture_reader", "vtf", "bitmap", "mathlib", "tier0", "tier1", "tier2", "render_shaderlib", "render_frame", "render_graph", "jobsystem", "render_pass_lines", "render_pass_lights", "render_pass_volumetric", "render_pass_ssr", "render_pass_ao", "render_pass_bounce", "render_pass_world"]},
+      "render_lab": {"allowedUse": ["render_device", "render_device_vulkan", "render_resources", "render_material", "render_math", "render_spv", "mapcontainer", "mdl", "vtf_texture_reader", "vtf", "bitmap", "mathlib", "tier0", "tier1", "tier2", "render_shaderlib", "render_frame", "render_graph", "jobsystem", "render_pass_lines", "render_pass_lights", "render_pass_volumetric", "render_pass_ssr", "render_pass_ao", "render_pass_bounce", "render_pass_world", "render_pass_panels"]},
       "render_pass_debug": {
         "allowedUse": [
           "render_device",
           "render_spv",
           "render_shaderlib"
+        ]
+      },
+      "render_pass_panels": {
+        "allowedUse": [
+          "render_material",
+          "render_frame",
+          "render_resources",
+          "render_shaderlib",
+          "render_device",
+          "render_math",
+          "render_spv"
         ]
       },
       "render_pass_lines": {
@@ -1707,7 +1739,8 @@
           "render_pass_lights",
           "render_pass_shadows",
           "render_pass_ao",
-          "render_pass_indirect"
+          "render_pass_indirect",
+          "render_pass_panels"
         ]
       },
       "jobsystem": {

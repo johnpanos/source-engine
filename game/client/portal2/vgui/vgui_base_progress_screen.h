@@ -78,8 +78,10 @@ extern CProgressSignScreenKeys g_ProgressSignScreenKeys;
 //-----------------------------------------------------------------------------
 // Base lightboard screen
 //-----------------------------------------------------------------------------
-// The sign is a lit board: it lights its surroundings as an area light
-// (emissive_area_lights.h), its board's mean color at the brightness it paints.
+// The sign is a lit board: an emissive surface on the render core (RFC 0016
+// render.pass.panels), and it lights its surroundings with the light of the
+// image it shows (render.world-panel.v1: its grime and icons included, in
+// the frame's one flicker state).
 class CVGUI_Base_ProgressSignScreen : public CVGuiScreenPanel, public IEmissiveAreaLightSource
 {
 	DECLARE_CLASS( CVGUI_Base_ProgressSignScreen, CVGuiScreenPanel );
@@ -94,13 +96,20 @@ public:
 	// IEmissiveAreaLightSource
 	virtual int GetAreaLights( area_light::AreaLight *pLights, int *pKeys, int nMax );
 
+	// CVGuiScreenPanel: a lit board, and its dirt overlays are grime on its
+	// face (a coating: it dims the board's light and reflects the room's).
+	virtual bool DrawsAsEmissiveSurface() const { return true; }
+	virtual bool PaintsCoating( ITexture *pTexture ) const;
+
 protected:
 	void ClearIcons( void );
 	void StartFlicker( void );
 
-	// Advances the flicker and returns the alpha for the level number, the
-	// progress bar and the label text.
+	// Advances the flicker, once per frame (every paint of a frame, in any
+	// view, and the frame's recording see one state), and returns the alpha
+	// for the level number, the progress bar and the label text.
 	float UpdateFlicker( void );
+	float UpdateFlickerState( void );
 
 	void PaintBoardBackground( void );
 	void PaintLevelNumber( int nLevel, float flAlpha );
@@ -136,8 +145,8 @@ protected:
 	float	m_flQuickFlickerDuration;
 	int		m_nDirtTextureIDs[ LIGHTBOARD_DIRT_LEVELS ];
 	bool	m_bShownOnce;
-	bool m_bHasBoardRadiance;
-	float m_BoardRadiance[3]; // the board's mean linear color at full brightness
+	int m_nFlickerFrame;    // the frame UpdateFlicker last advanced
+	float m_flFlickerAlpha; // and what it returned
 };
 
 #endif // VGUI_BASE_PROGRESS_SCREEN_H

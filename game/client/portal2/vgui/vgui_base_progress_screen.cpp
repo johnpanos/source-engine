@@ -12,6 +12,7 @@
 
 #include "cbase.h"
 #include "vgui_base_progress_screen.h"
+#include "materialsystem/itexture.h"
 #include <vgui/IVGui.h>
 #include <vgui/ISurface.h>
 #include "filesystem.h"
@@ -199,8 +200,8 @@ CVGUI_Base_ProgressSignScreen::CVGUI_Base_ProgressSignScreen( vgui::Panel *pPare
 	m_bShownOnce = false;
 	m_nBaseBrightness = 0;
 	m_flDisabledIconAlpha = 0.0f;
-	m_bHasBoardRadiance = false;
-	m_BoardRadiance[0] = m_BoardRadiance[1] = m_BoardRadiance[2] = 0.0f;
+	m_nFlickerFrame = -1;
+	m_flFlickerAlpha = 255.0f;
 
 	SetScheme( "basemodui_scheme" );
 
@@ -258,8 +259,6 @@ bool CVGUI_Base_ProgressSignScreen::Init( KeyValues *pKeyValues, VGuiScreenInitD
 	m_flDisabledIconAlpha = 134.0f;
 	m_nBaseBrightness = 140;
 
-	m_bHasBoardRadiance = EmissiveAreaLights_MaterialRadiance(
-	    "vgui/screens/vgui_coop_progress_board", m_BoardRadiance );
 	EmissiveAreaLights_AddSource( this );
 
 	vgui::ivgui()->AddTickSignal( GetVPanel() );
@@ -339,6 +338,17 @@ void CVGUI_Base_ProgressSignScreen::StartFlicker( void )
 
 float CVGUI_Base_ProgressSignScreen::UpdateFlicker( void )
 {
+	// One state per frame: the frame's recording, its lights and every view's
+	// paint (portal views paint the sign again) share it.
+	if ( m_nFlickerFrame == gpGlobals->framecount )
+		return m_flFlickerAlpha;
+	m_nFlickerFrame = gpGlobals->framecount;
+	m_flFlickerAlpha = UpdateFlickerState();
+	return m_flFlickerAlpha;
+}
+
+float CVGUI_Base_ProgressSignScreen::UpdateFlickerState( void )
+{
 	m_flIconAlphaScale = 1.0f;
 
 	if ( !m_bFlickering )
@@ -384,41 +394,20 @@ float CVGUI_Base_ProgressSignScreen::UpdateFlicker( void )
 }
 
 //-----------------------------------------------------------------------------
-// The lit board as an area light: the screen's quad, its board's mean color
-// at the brightness it paints (the startup flicker included; before it has
-// painted, its steady brightness).
+// The lit board's light: the screen's image this frame (C_VGuiScreen::
+// EmissiveAreaLights, render.world-panel.v1), its tiles' mean emission.
 //-----------------------------------------------------------------------------
 int CVGUI_Base_ProgressSignScreen::GetAreaLights(
     area_light::AreaLight *pLights, int *pKeys, int nMax )
 {
 	C_VGuiScreen *pScreen = dynamic_cast<C_VGuiScreen *>( GetEntity() );
-	if ( nMax < 1 || !m_bHasBoardRadiance || !pScreen || pScreen->IsDormant() ||
-	     !pScreen->IsActive() || pScreen->IsEffectActive( EF_NODRAW ) )
-		return 0;
+	return pScreen ? pScreen->EmissiveAreaLights( pLights, pKeys, nMax ) : 0;
+}
 
-	Vector lowerLeft, width, height, normal;
-	pScreen->GetWorldQuad( &lowerLeft, &width, &height, &normal );
-	area_light::AreaLight &light = pLights[0];
-	light = area_light::AreaLight();
-	const Vector center = lowerLeft + 0.5f * width + 0.5f * height;
-	Vector halfU = 0.5f * width, halfV = 0.5f * height;
-	// Front (halfU x halfV) on the drawn side.
-	if ( DotProduct( CrossProduct( halfU, halfV ), normal ) < 0.0f )
-		halfV = -halfV;
-	for ( int k = 0; k < 3; ++k )
-	{
-		light.rect.center[k] = center[k];
-		light.rect.halfU[k] = halfU[k];
-		light.rect.halfV[k] = halfV[k];
-	}
-	const int nBrightness =
-	    ( m_bFlickering || m_nBrightness > 0 ) ? m_nBrightness : m_nBaseBrightness;
-	const float flScale = SrgbGammaToLinear( nBrightness / 255.0f );
-	for ( int k = 0; k < 3; ++k )
-		light.radiance[k] = m_BoardRadiance[k] * flScale;
-	light.reach = area_light::Reach( light.rect, light.radiance );
-	pKeys[0] = EmissiveAreaLights_PanelKey( pScreen->entindex() );
-	return light.reach > 0.0f ? 1 : 0;
+bool CVGUI_Base_ProgressSignScreen::PaintsCoating( ITexture *pTexture ) const
+{
+	// PaintDirt's overlays (vgui/elevator_video_overlay1 to 3).
+	return pTexture && V_stristr( pTexture->GetName(), "elevator_video_overlay" ) != NULL;
 }
 
 void CVGUI_Base_ProgressSignScreen::PaintBoardBackground( void )

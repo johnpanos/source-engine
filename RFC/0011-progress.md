@@ -2679,3 +2679,25 @@ Reproduce (keep `--out` short: deep paths crash the headless boot in
         --manifest quality/fixtures/gi/portal-light/map.json \
         --out quality-results/rfc0011-maps/portal-light
     python3 tools/quality/gi_portal.py --out /tmp/g10
+
+## The chamber sign's light from its image (2026-09-30, user request)
+
+The Portal 2 sign (`sp_progress_sign`) no longer publishes one area light
+at its board's mean color. It publishes a grid of 2 x 4 tile lights
+(`render.world-panel.v1` `TileRadiance`). Each tile carries the mean
+emission of its part of the frame's recorded image: the flicker state, the
+icons and the grime included.
+
+The grime is a coating. It dims and tints the board's light, catches the
+light around it, and never adds light of its own, as a real dirty screen
+behaves. The same list draws the sign on the render core, so the surface
+and its light show one state per frame.
+
+Each tile takes the whole panel's reach. A tile's own reach, from an eighth
+of the power, cut the far field short, and `casts-light.near` dropped to
+1.24.
+
+See the
+[RFC 0016 record](0016-progress.md#in-world-panels-the-chamber-sign-as-an-emissive-surface-on-the-core-2026-09-30-user-request),
+including the `corpus.portal.sign-light` results (casts-light passes; the
+`sign-on` threshold drift predates this change).

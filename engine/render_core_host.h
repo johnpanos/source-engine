@@ -40,7 +40,11 @@ gpu_compute::IGpuCompute *RenderCoreHost_RayQueryGpuCompute();
 // RFC 0016 K5: the BSP world drawn by the core (render_core_world.h in
 // public/render/composition); null when no core is bound.
 class IRenderCoreWorld;
+class IRenderCorePanels;
 IRenderCoreWorld *RenderCoreHost_World();
+// The in-world panels drawn by the core (RFC 0016 render.pass.panels,
+// render_core_panels.h); null when unbound.
+IRenderCorePanels *RenderCoreHost_Panels();
 
 // Host render steps (host_render_steps.h): EngineFrameBegin and EngineFrameEnd.
 void RenderCoreHost_BeginFrame();

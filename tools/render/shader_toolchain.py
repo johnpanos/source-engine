@@ -85,6 +85,7 @@ SHADERS = "materialsystem/shaderapivulkan/shaders"
 DEVICE = "unittests/rendertest/core/device"
 SKINNING = "render/pass/skinning"
 LINES = "render/pass/lines"
+PANELS = "render/pass/panels"
 FAMILIES = "render/material/families"
 SKINNING_TESTS = "unittests/rendertest/core/skinning"
 LIGHTS = "render/pass/lights"
@@ -167,6 +168,20 @@ GENERATED = {
         "the lines pass: wireframe, grid and overlays (RFC 0016, Hammer viewports)", (
         ("kLinesVertex", LINES + "/lines.vert", DEVICE_OPTIONS),
         ("kLinesFragment", LINES + "/lines.frag", DEVICE_OPTIONS))),
+    "panels_spv.h": ("render::pass::panels::spirv",
+        "the panels pass: in-world panels as emissive surfaces (RFC 0016, RFC 0010)", (
+        ("kPanelRasterVertex", PANELS + "/panel_raster.vert", DEVICE_OPTIONS),
+        ("kPanelRasterFragment", PANELS + "/panel_raster.frag", DEVICE_OPTIONS),
+        ("kPanelCoatingFragment", PANELS + "/panel_coating.frag", DEVICE_OPTIONS),
+        ("kPanelMipsCompute", PANELS + "/panel_mips.comp", DEVICE_OPTIONS))),
+    "panels_defects_spv.h": ("render::lab::spirv",
+        "render_lab's panel suite's seeded programs (render.lab.panel sensitivity, RFC 0016 K11)", (
+        ("kPanelMipsGamma", PANELS + "/panel_mips.comp",
+         DEVICE_OPTIONS + ("-DSEEDED_PANEL_GAMMA_MIPS",)),
+        ("kPanelMipsNoScatter", PANELS + "/panel_mips.comp",
+         DEVICE_OPTIONS + ("-DSEEDED_PANEL_NO_SCATTER",)),
+        ("kPanelMipsCoatingIgnored", PANELS + "/panel_mips.comp",
+         DEVICE_OPTIONS + ("-DSEEDED_PANEL_COATING_IGNORED",)))),
     "debug_spv.h": ("render::pass::debug::spirv",
         "render.pass.debug: the not-applicable hatch (RFC 0014)", (
         ("kFullscreenVertex", DEBUG + "/fullscreen.vert", DEVICE_OPTIONS),
@@ -375,7 +390,8 @@ GLSL_GENERATED = {
 # ::glsl sibling, with the same array names.
 CORE_PROGRAM_HEADERS = ("cluster_assign_spv.h", "debug_spv.h", "families_spv.h", "lines_spv.h",
                         "output_spv.h", "shadow_spv.h", "skin_spv.h", "volumetric_spv.h",
-                        "ssr_spv.h", "ao_spv.h", "bounce_spv.h", "indirect_spv.h")
+                        "ssr_spv.h", "ao_spv.h", "bounce_spv.h", "indirect_spv.h",
+                        "panels_spv.h")
 for _header in CORE_PROGRAM_HEADERS:
     _namespace, _purpose, _rows = GENERATED[_header]
     GLSL_GENERATED[_header.replace("_spv.h", "_glsl.h")] = (

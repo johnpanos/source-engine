@@ -154,6 +154,20 @@ DLL_EXPORT vgui::ISurface *VGuiSurface_Create()
 	return &g_MatSystemSurface;
 }
 
+// VGuiWorldPanelRecorder001 (RFC 0010 in-world panels): the surface's
+// recording, served through its QueryInterface.
+class CWorldPanelRecorder final : public IWorldPanelRecorder
+{
+public:
+	bool RecordPanel( vgui::VPANEL root, int wide, int tall, float texelsPerUnit,
+	    IWorldPanelRecording *pRecording, char *pszWhy, int nWhySize ) override
+	{
+		return g_MatSystemSurface.RecordWorldPanel(
+		    root, wide, tall, texelsPerUnit, pRecording, pszWhy, nWhySize );
+	}
+};
+static CWorldPanelRecorder s_WorldPanelRecorder;
+
 #if defined(LINUX) || defined(OSX) || defined(PLATFORM_BSD)
 CUtlDict< CMatSystemSurface::font_entry, unsigned short > CMatSystemSurface::m_FontData;
 #endif
@@ -300,6 +314,9 @@ void *CMatSystemSurface::QueryInterface( const char *pInterfaceName )
 	// We also implement the IMatSystemSurface interface
 	if (!Q_strncmp(	pInterfaceName, VGUI_SURFACE_INTERFACE_VERSION, Q_strlen(VGUI_SURFACE_INTERFACE_VERSION) + 1))
 		return (vgui::ISurface*)this;
+
+	if ( !Q_strcmp( pInterfaceName, VGUI_WORLD_PANEL_RECORDER_INTERFACE_VERSION ) )
+		return static_cast<IWorldPanelRecorder *>( &s_WorldPanelRecorder );
 
 	return BaseClass::QueryInterface( pInterfaceName );
 }
@@ -607,6 +624,190 @@ void CMatSystemSurface::DrawPanelIn3DSpace( vgui::VPANEL pRootPanel, const VMatr
 	m_bDrawingIn3DWorld = false;
 }
 
+//-----------------------------------------------------------------------------
+// RFC 0010 in-world panels (vgui/IWorldPanelRecorder.h): the panel painted
+// once into a draw list, set up as a panel drawn in 3D space is (its units
+// are its surface, text off the pixel grid) but with nothing drawn.
+//-----------------------------------------------------------------------------
+bool CMatSystemSurface::RecordWorldPanel( vgui::VPANEL root, int wide, int tall,
+    float texelsPerUnit, IWorldPanelRecording *pRecording, char *pszWhy, int nWhySize )
+{
+	auto refuse = [&]( const char *pszReason )
+	{
+		if ( pszWhy && nWhySize > 0 )
+			V_strncpy( pszWhy, pszReason, nWhySize );
+		return false;
+	};
+	if ( !root || !pRecording || wide <= 0 || tall <= 0 || !( texelsPerUnit > 0.0f ) )
+		return refuse( "an empty panel or recording" );
+	if ( g_bInDrawing || m_pRecording )
+		return refuse( "the surface is already drawing" );
+
+	SolveTraverse( root, false );
+
+	m_pRecording = pRecording;
+	m_flRecordingScale = texelsPerUnit;
+	m_pRecordingMaterial = NULL;
+	m_nRecordingTextureId = -1;
+	m_szRecordingRefusal[0] = '\0';
+	g_bInDrawing = true;
+	m_iBoundTexture = -1;
+	m_pSurfaceExtents[0] = 0;
+	m_pSurfaceExtents[1] = 0;
+	m_pSurfaceExtents[2] = wide;
+	m_pSurfaceExtents[3] = tall;
+	m_nTranslateX = 0;
+	m_nTranslateY = 0;
+	m_flAlphaMultiplier = 1.0f;
+	const bool bWasIn3DWorld = m_bDrawingIn3DWorld;
+	m_bDrawingIn3DWorld = true;
+	EnableScissor( true );
+
+	( (VPanel *)root )->Client()->Repaint();
+	( (VPanel *)root )->Client()->PaintTraverse( true, false );
+	if ( m_nBatchedCharVertCount > 0 )
+		DrawFlushText();
+
+	EnableScissor( false );
+	m_bDrawingIn3DWorld = bWasIn3DWorld;
+	g_bInDrawing = false;
+	m_pRecording = NULL;
+	m_pRecordingMaterial = NULL;
+	m_iBoundTexture = -1;
+	if ( m_szRecordingRefusal[0] )
+		return refuse( m_szRecordingRefusal );
+	return true;
+}
+
+bool CMatSystemSurface::RecordingRefuses( const char *pszWhat )
+{
+	if ( !m_pRecording )
+		return false;
+	if ( !m_szRecordingRefusal[0] )
+		V_snprintf( m_szRecordingRefusal, sizeof( m_szRecordingRefusal ), "it paints %s", pszWhat );
+	return true;
+}
+
+void CMatSystemSurface::RecordQuads(
+    int nCount, const vgui::Vertex_t *pVerts, const unsigned char *pColor, bool bClip )
+{
+	IMaterial *pMaterial = m_pRecordingMaterial ? m_pRecordingMaterial : m_pWhite;
+	ITexture *pTexture = NULL;
+	if ( pMaterial && pMaterial != m_pWhite )
+	{
+		bool bFound = false;
+		IMaterialVar *pVar = pMaterial->FindVar( "$basetexture", &bFound, false );
+		if ( bFound && pVar && pVar->IsTexture() )
+			pTexture = pVar->GetTextureValue();
+		if ( pTexture && pTexture->IsRenderTarget() )
+		{
+			RecordingRefuses( "a render target" );
+			return;
+		}
+		if ( pTexture && pTexture->IsError() )
+		{
+			RecordingRefuses( "a missing texture" );
+			return;
+		}
+	}
+	// The legacy 2D material's blend and vertex terms: UnlitGeneric modulates
+	// by the vertex color with $vertexcolor and by its alpha with
+	// $vertexalpha; it blends when translucent (or vertex alpha), adds with
+	// $additive.
+	std::uint8_t blend = world_panel::kBlendOpaque;
+	if ( pMaterial && pMaterial->GetMaterialVarFlag( MATERIAL_VAR_ADDITIVE ) )
+		blend = world_panel::kBlendAdditive;
+	else if ( pMaterial && ( pMaterial->IsTranslucent() ||
+	                           pMaterial->GetMaterialVarFlag( MATERIAL_VAR_VERTEXALPHA ) ) )
+		blend = world_panel::kBlendAlpha;
+	const bool bVertexColor =
+	    !pMaterial || pMaterial->GetMaterialVarFlag( MATERIAL_VAR_VERTEXCOLOR );
+	const bool bVertexAlpha =
+	    !pMaterial || pMaterial->GetMaterialVarFlag( MATERIAL_VAR_VERTEXALPHA );
+	// The surface texture behind the material, for a glyph's coverage.
+	int nTextureId = -1;
+	for ( int nCandidate : { m_nRecordingTextureId, m_iBoundTexture } )
+	{
+		if ( nTextureId < 0 && nCandidate >= 0 &&
+		     TextureDictionary()->GetTextureMaterial( nCandidate ) == pMaterial )
+			nTextureId = nCandidate;
+	}
+
+	for ( int i = 0; i < nCount; ++i )
+	{
+		vgui::Vertex_t ul = pVerts[2 * i];
+		vgui::Vertex_t lr = pVerts[2 * i + 1];
+		if ( bClip )
+		{
+			vgui::Vertex_t clippedUl, clippedLr;
+			if ( !ClipRect( ul, lr, &clippedUl, &clippedLr ) )
+				continue;
+			ul = clippedUl;
+			lr = clippedLr;
+		}
+		world_panel::Quad quad;
+		quad.x0 = ul.m_Position.x;
+		quad.y0 = ul.m_Position.y;
+		quad.x1 = lr.m_Position.x;
+		quad.y1 = lr.m_Position.y;
+		quad.s0 = ul.m_TexCoord.x;
+		quad.t0 = ul.m_TexCoord.y;
+		quad.s1 = lr.m_TexCoord.x;
+		quad.t1 = lr.m_TexCoord.y;
+		for ( int k = 0; k < 3; ++k )
+			quad.color[k] = bVertexColor ? pColor[k] : 255;
+		quad.color[3] = bVertexAlpha || blend == world_panel::kBlendAlpha ? pColor[3] : 255;
+		quad.texture = world_panel::kWhite;
+		quad.blend = blend;
+		quad.layer = world_panel::kLayerEmissive; // the panel's owner says what is a coating
+		quad.coverage = -1.0f;
+		float flAlpha = 0.0f;
+		if ( pTexture && nTextureId >= 0 &&
+		     TextureDictionary()->MeanAlpha(
+		         nTextureId, quad.s0, quad.t0, quad.s1, quad.t1, flAlpha ) )
+			quad.coverage = flAlpha;
+		m_pRecording->AddQuad( quad, pTexture );
+	}
+}
+
+HFont CMatSystemSurface::GlyphFont( HFont font )
+{
+	if ( !m_pRecording || font == INVALID_FONT || size_t( font ) >= m_FontGlyphSets.size() )
+		return font;
+	const float flScale = m_flRecordingScale;
+	if ( FontRasterScale( font ) == flScale )
+		return font;
+	const FontGlyphSets &sets = m_FontGlyphSets[font];
+	if ( sets.bitmap || sets.sets.empty() || sets.generation != m_nFontGeneration )
+		return font; // a bitmap font scales as a texture; a stale font has no sets now
+	TwinFont *pTwin = NULL;
+	for ( TwinFont &twin : m_TwinFonts )
+	{
+		if ( twin.font == font && twin.scale == flScale )
+			pTwin = &twin;
+	}
+	if ( pTwin && pTwin->generation == m_nFontGeneration )
+		return pTwin->twin;
+	if ( !pTwin )
+	{
+		m_TwinFonts.push_back( { font, flScale, FontManager().CreateFont(), -1 } );
+		pTwin = &m_TwinFonts.back();
+	}
+	// The font's glyph sets at the recording's pixels per unit.
+	for ( const FontGlyphSet &set : sets.sets )
+	{
+		FontManager().SetFontGlyphSet( pTwin->twin, set.name.c_str(),
+		    MAX( 1, uiscale::UnitsToPixelsRounded( set.tall, flScale ) ), set.weight,
+		    uiscale::UnitsToPixelsRounded( set.blur, flScale ),
+		    uiscale::UnitsToPixelsRounded( set.scanlines, flScale ), set.flags, set.rangeMin,
+		    set.rangeMax );
+	}
+	while ( m_FontRasterScales.Count() <= static_cast<int>( pTwin->twin ) )
+		m_FontRasterScales.AddToTail( 1.0f );
+	m_FontRasterScales[pTwin->twin] = flScale;
+	pTwin->generation = m_nFontGeneration;
+	return pTwin->twin;
+}
 
 //-----------------------------------------------------------------------------
 // Purpose: Setup rendering for vgui on a panel existing in 3D space
@@ -908,6 +1109,13 @@ void CMatSystemSurface::InternalSetMaterial( IMaterial *pMaterial )
 		pMaterial = m_pWhite;
 	}
 
+	// A recording takes the material's texture and blend with each quad.
+	if ( m_pRecording )
+	{
+		m_pRecordingMaterial = pMaterial;
+		return;
+	}
+
 	CMatRenderContextPtr pRenderContext( g_pMaterialSystem );
 	m_pMesh = pRenderContext->GetDynamicMesh( true, NULL, NULL, pMaterial );
 }
@@ -931,6 +1139,9 @@ void CMatSystemSurface::DrawTexturedLineInternal( const Vertex_t &a, const Verte
 	MAT_FUNC;
 
 	Assert( !m_bIn3DPaintMode );
+
+	if ( RecordingRefuses( "a line" ) )
+		return;
 
 	// Don't bother drawing fully transparent lines
 	if( m_DrawColor[3] == 0 )
@@ -1003,6 +1214,9 @@ void CMatSystemSurface::DrawPolyLine( int *px, int *py ,int n )
 
 	Assert( !m_bIn3DPaintMode );
 
+	if ( RecordingRefuses( "a polyline" ) )
+		return;
+
 	// Don't bother drawing fully transparent lines
 	if( m_DrawColor[3] == 0 )
 		return;
@@ -1068,6 +1282,13 @@ void CMatSystemSurface::DrawQuad( const vgui::Vertex_t &ul, const vgui::Vertex_t
 	
 	Assert( !m_bIn3DPaintMode );
 
+	if ( m_pRecording )
+	{
+		const vgui::Vertex_t quad[2] = { ul, lr };
+		RecordQuads( 1, quad, pColor, false );
+		return;
+	}
+
 	if ( !m_pMesh )
 		return;
 
@@ -1106,6 +1327,12 @@ void CMatSystemSurface::DrawQuadArray( int quadCount, vgui::Vertex_t *pVerts, un
 	MAT_FUNC;
 
 	Assert( !m_bIn3DPaintMode );
+
+	if ( m_pRecording )
+	{
+		RecordQuads( quadCount, pVerts, pColor, bShouldClip );
+		return;
+	}
 
 	if ( !m_pMesh )
 		return;
@@ -1228,6 +1455,19 @@ void CMatSystemSurface::DrawFilledRectArray( IntRect *pRects, int numRects )
 	if( m_DrawColor[3]==0 )
 		return;
 
+	if ( m_pRecording )
+	{
+		InternalSetMaterial();
+		for ( int i = 0; i < numRects; ++i )
+		{
+			vgui::Vertex_t rect[2];
+			InitVertex( rect[0], pRects[i].x0, pRects[i].y0, 0, 0 );
+			InitVertex( rect[1], pRects[i].x1, pRects[i].y1, 0, 0 );
+			RecordQuads( 1, rect, m_DrawColor, true );
+		}
+		return;
+	}
+
 	if ( !m_pMesh )
 		return;
 
@@ -1316,6 +1556,9 @@ void CMatSystemSurface::DrawFilledRectFade( int x0, int y0, int x1, int y1, unsi
 	MAT_FUNC;
 
 	Assert( g_bInDrawing );
+
+	if ( RecordingRefuses( "a per-vertex fade" ) )
+		return;
 
 	// Scale the desired alphas by the surface alpha
 	float alphaScale = m_DrawColor[3] / 255.f;
@@ -1416,6 +1659,9 @@ void CMatSystemSurface::DrawOutlinedCircle(int x, int y, int radius, int segment
 	MAT_FUNC;
 
 	Assert( g_bInDrawing );
+
+	if ( RecordingRefuses( "a circle" ) )
+		return;
 
 	Assert( !m_bIn3DPaintMode );
 
@@ -1681,6 +1927,9 @@ void CMatSystemSurface::DrawTexturedPolygon(int n, Vertex_t *pVertices, bool bCl
 
 	Assert( !m_bIn3DPaintMode );
 
+	if ( RecordingRefuses( "a polygon" ) )
+		return;
+
 	Assert( g_bInDrawing );
 
 	// Don't even bother drawing fully transparent junk
@@ -1755,6 +2004,21 @@ HFont CMatSystemSurface::CreateFont()
 //-----------------------------------------------------------------------------
 bool CMatSystemSurface::SetFontGlyphSet(HFont font, const char *windowsFontName, int tall, int weight, int blur, int scanlines, int flags, int nRangeMin, int nRangeMax)
 {
+	// The glyph sets as given (in UI units), for the font's twins.
+	if ( font != INVALID_FONT )
+	{
+		if ( m_FontGlyphSets.size() <= size_t( font ) )
+			m_FontGlyphSets.resize( size_t( font ) + 1 );
+		FontGlyphSets &sets = m_FontGlyphSets[font];
+		if ( sets.generation != m_nFontGeneration )
+		{
+			sets = FontGlyphSets();
+			sets.generation = m_nFontGeneration;
+		}
+		sets.sets.push_back( { windowsFontName ? windowsFontName : "", tall, weight, blur,
+		    scanlines, flags, nRangeMin, nRangeMax } );
+	}
+
 	// The font's size is in UI units; it rasterizes at its size in pixels.
 	const float flScale = UIScale();
 	if ( font != INVALID_FONT )
@@ -1811,6 +2075,14 @@ bool CMatSystemSurface::SetBitmapFontGlyphSet(HFont font, const char *windowsFon
 	// Bitmap fonts are textures; they scale with the rest of the UI.
 	if ( m_FontRasterScales.IsValidIndex( font ) )
 		m_FontRasterScales[font] = 1.0f;
+	if ( font != INVALID_FONT )
+	{
+		if ( m_FontGlyphSets.size() <= size_t( font ) )
+			m_FontGlyphSets.resize( size_t( font ) + 1 );
+		m_FontGlyphSets[font] = FontGlyphSets();
+		m_FontGlyphSets[font].generation = m_nFontGeneration;
+		m_FontGlyphSets[font].bitmap = true;
+	}
 	return FontManager().SetBitmapFontGlyphSet(font, windowsFontName, scalex, scaley, flags);
 }
 
@@ -2419,10 +2691,13 @@ bool CMatSystemSurface::DrawGetUnicodeCharRenderInfo( wchar_t ch, CharRenderInfo
 		info.x += info.abcA;
 	}
 
-	// get the character texture from the cache
+	// get the character texture from the cache (a recording's twin draws the
+	// glyph at the recording's density; the metrics above stay the font's)
+	const HFont glyphFont = GlyphFont( m_hCurrentFont );
 	info.textureId = 0;
 	float *texCoords = NULL;
-	if (!g_FontTextureCache.GetTextureForChar(m_hCurrentFont, info.drawType, ch, &info.textureId, &texCoords))
+	if ( !g_FontTextureCache.GetTextureForChar(
+	         glyphFont, info.drawType, ch, &info.textureId, &texCoords ) )
 	{
 		info.valid = false;
 		return info.valid;
@@ -2449,13 +2724,13 @@ bool CMatSystemSurface::DrawGetUnicodeCharRenderInfo( wchar_t ch, CharRenderInfo
 
 	// A font rasterized at another scale spans its glyph's pixels; the rounded
 	// metrics above only advance the pen.
-	const float flFontScale = FontRasterScale( m_hCurrentFont );
+	const float flFontScale = FontRasterScale( glyphFont );
 	if ( flFontScale != 1.0f )
 	{
 		int a, b, c;
-		FontManager().GetCharABCwide( m_hCurrentFont, ch, a, b, c );
+		FontManager().GetCharABCwide( glyphFont, ch, a, b, c );
 		GetGlyphQuad( nPenX + m_nTranslateX, info.y + m_nTranslateY, bUnderlined ? -a : a,
-		    bUnderlined ? a + b + c : b, FontManager().GetFontTall( m_hCurrentFont ), flFontScale,
+		    bUnderlined ? a + b + c : b, FontManager().GetFontTall( glyphFont ), flFontScale,
 		    info.verts[0], info.verts[1] );
 	}
 
@@ -2538,9 +2813,11 @@ void CMatSystemSurface::DrawPrintText(const wchar_t *text, int iTextLen, FontDra
 	int iTall = GetFontTall(m_hCurrentFont);
 	int iLastTexId = -1;
 
-	// A font rasterized at another scale draws each glyph at its pixel size.
-	const float flFontScale = FontRasterScale( m_hCurrentFont );
-	const int iTallPixels = FontManager().GetFontTall( m_hCurrentFont );
+	// A font rasterized at another scale draws each glyph at its pixel size
+	// (a recording's twin: at the recording's density).
+	const HFont glyphFont = GlyphFont( m_hCurrentFont );
+	const float flFontScale = FontRasterScale( glyphFont );
+	const int iTallPixels = FontManager().GetFontTall( glyphFont );
 
 	int iCount = 0;
 	vgui::Vertex_t *pQuads = (vgui::Vertex_t*)stackalloc((2 * iTextLen) * sizeof(vgui::Vertex_t) );
@@ -2593,7 +2870,8 @@ void CMatSystemSurface::DrawPrintText(const wchar_t *text, int iTextLen, FontDra
 			// get the character texture from the cache
 			int iTexId = 0;
 			float *texCoords = NULL;
-			if (!g_FontTextureCache.GetTextureForChar(m_hCurrentFont, drawType, ch, &iTexId, &texCoords))
+			if ( !g_FontTextureCache.GetTextureForChar(
+			         glyphFont, drawType, ch, &iTexId, &texCoords ) )
 				continue;
 
 			Assert( texCoords );
@@ -2605,6 +2883,7 @@ void CMatSystemSurface::DrawPrintText(const wchar_t *text, int iTextLen, FontDra
 				// and *then* draw
 				if (iCount)
 				{
+					m_nRecordingTextureId = iLastTexId; // a recording's glyph coverage
 					IMaterial *pMaterial = TextureDictionary()->GetTextureMaterial(iLastTexId);
 					InternalSetMaterial( pMaterial );
 					DrawQuadArray( iCount, pQuads, m_DrawTextColor, IsPC() );
@@ -2625,7 +2904,7 @@ void CMatSystemSurface::DrawPrintText(const wchar_t *text, int iTextLen, FontDra
 			if ( flFontScale != 1.0f )
 			{
 				int nPixelA, nPixelB, nPixelC;
-				FontManager().GetCharABCwide( m_hCurrentFont, ch, nPixelA, nPixelB, nPixelC );
+				FontManager().GetCharABCwide( glyphFont, ch, nPixelA, nPixelB, nPixelC );
 				GetGlyphQuad( x + iTotalWidth, y, bUnderlined ? 0 : nPixelA,
 				    bUnderlined ? nPixelA + nPixelB + nPixelC : nPixelB, iTallPixels, flFontScale,
 				    ul, lr );
@@ -2656,6 +2935,7 @@ void CMatSystemSurface::DrawPrintText(const wchar_t *text, int iTextLen, FontDra
 	// Draw any left-over characters
 	if (iCount)
 	{
+		m_nRecordingTextureId = iLastTexId; // a recording's glyph coverage
 		IMaterial *pMaterial = TextureDictionary()->GetTextureMaterial(iLastTexId);
 		InternalSetMaterial( pMaterial );
 		DrawQuadArray( iCount, pQuads, m_DrawTextColor, IsPC() );
@@ -2927,8 +3207,9 @@ void CMatSystemSurface::ResetFontCaches()
 	g_FontTextureCache.Clear();
 	m_iBoundTexture = -1;
 
-	// reload fonts
+	// reload fonts (their glyph sets and twins are made again)
 	m_bFontResetPending = false;
+	++m_nFontGeneration;
 	FontManager().ClearAllFonts();
 	scheme()->ReloadFonts();
 	
@@ -3633,6 +3914,8 @@ void CMatSystemSurface::Begin3DPaint( int iLeft, int iTop, int iRight, int iBott
 
 	// Can't use this while drawing in the 3D world since it relies on
 	// whacking the shared depth buffer
+	if ( RecordingRefuses( "3D paint" ) )
+		return;
 	Assert( !m_bDrawingIn3DWorld );
 	if ( m_bDrawingIn3DWorld )
 		return;

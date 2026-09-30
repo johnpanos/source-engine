@@ -16,9 +16,18 @@
 #include <vgui_controls/EditablePanel.h>
 #include "c_baseentity.h"
 #include "panelmetaclassmgr.h"
+#include "render/area_light.h"
+#include "render/world_panel.h"
 
 class KeyValues;
+class IEngineWorldPanels;
+class IWorldPanelRecorder;
+class ITexture;
 
+// RFC 0016 render.pass.panels: the engine's in-world panels and the surface's
+// recorder (null when a product has neither).
+extern IEngineWorldPanels *g_pEngineWorldPanels;
+extern IWorldPanelRecorder *g_pWorldPanelRecorder;
 
 //-----------------------------------------------------------------------------
 // Helper macro to make overlay factories one line of code. Use like this:
@@ -49,6 +58,18 @@ public:
 	virtual bool Init( KeyValues* pKeyValues, VGuiScreenInitData_t* pInitData );
 	vgui::Panel *CreateControlByName(const char *controlName);
 	virtual void OnCommand( const char *command );
+
+	// RFC 0016 render.pass.panels (render.world-panel.v1): a panel that is a
+	// lit board draws as an emissive surface on the render core in the views
+	// the core draws, and casts the light of its image
+	// (C_VGuiScreen::EmissiveAreaLights). Its emission scale is the scene
+	// radiance per decoded image value.
+	virtual bool DrawsAsEmissiveSurface() const { return false; }
+	virtual float EmissionScale() const { return 1.0f; }
+	// What of the panel's paint is a coating on its face (grime): it blocks
+	// the board's light and reflects the scene's, emitting none
+	// (render/world_panel.h kLayerCoating).
+	virtual bool PaintsCoating( ITexture *pTexture ) const { return false; }
 
 protected:
 	C_BaseEntity *GetEntity() const { return m_hEntity.Get(); }
@@ -101,6 +122,13 @@ public:
 	// Is the screen turned on?
 	bool IsActive() const;
 
+	// RFC 0016 render.pass.panels: the lights this frame's image casts
+	// (render.world-panel.v1: a grid of the screen's tiles, each with the mean
+	// emission of its part of the image, in the frame's one state), at most
+	// nMax, with their keys; 0 when the screen is off or its panel cannot be
+	// recorded.
+	int EmissiveAreaLights( area_light::AreaLight *pLights, int *pKeys, int nMax );
+
 	// Are we only visible to teammates?
 	bool IsVisibleOnlyToTeammates() const;
 
@@ -130,6 +158,23 @@ private:
 
 	// Writes the z buffer
 	void DrawScreenOverlay();
+
+	// RFC 0016 render.pass.panels: the frame's recording of the panel (once
+	// per frame, at the resolution the views last asked for), and DrawModel's
+	// path through the render core.
+	class CPanelRecording;
+	bool RecordFrame();
+	bool DrawOnRenderCore();
+	world_panel::Placement PanelPlacement();
+	unsigned long long PanelId() const;
+	CUtlVector<world_panel::Quad> m_RecordedQuads;
+	CUtlVector<ITexture *> m_RecordedTextures;
+	world_panel::Resolution m_PanelResolution;    // what the next recording paints at
+	world_panel::Resolution m_RecordedResolution; // what this frame's recording painted at
+	int m_nRecordedFrame;
+	bool m_bRecordingValid;
+	bool m_bRecordingRefusalLogged;
+	bool m_bSubmittedToCore;
 
 private:
 	int m_nPixelWidth; 

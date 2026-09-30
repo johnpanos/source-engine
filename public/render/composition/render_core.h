@@ -28,6 +28,7 @@ class IRenderStageMarkers;   // render/legacy/stage_markers.h (legacy-interop)
 class IRenderMaterialBlocks; // render/legacy/material_blocks.h (legacy-interop)
 #include "render/legacy/capabilities.h"
 #include "render/legacy/core_passes.h"
+#include "render/composition/render_core_panels.h"
 #include "render/composition/render_core_world.h"
 #include "render/legacy_shader_provider.h"
 #include "render/scene/scene.h"
@@ -119,6 +120,9 @@ struct RenderCoreBinding
 	render::legacy::ICorePassRecorder *corePasses = nullptr;
 	// The BSP world drawn by the core; null when no legacy backend is composed.
 	IRenderCoreWorld *world = nullptr;
+	// In-world panels drawn by the core as emissive surfaces
+	// (render_core_panels.h); null when no legacy backend is composed.
+	IRenderCorePanels *panels = nullptr;
 	// The renderer's compute service for the engine's indirect-light
 	// producers (render/gpu_compute.h) on the core (RFC 0016 K12,
 	// render.pass.indirect): it runs the SDF producer's program. Null when

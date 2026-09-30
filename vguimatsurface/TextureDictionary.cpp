@@ -77,6 +77,12 @@ public:
 
 	float	m_s0, m_t0, m_s1, m_t1;
 
+	// The mean alpha of the backing bits over a texture-coordinate rectangle;
+	// false without backing bits (a file texture, or a reference: its owner
+	// holds them).
+	bool MeanAlpha( float s0, float t0, float s1, float t1, float &alpha ) const;
+	int ReferencedId() const { return m_nReferencedId; }
+
 private:
 	void CreateRegen( int nWidth, int nHeight, ImageFormat format );
 	void ReleaseRegen( void );
@@ -103,6 +109,7 @@ private:
 	int					m_ID;
 	int					m_Flags;
 	CFontTextureRegen	*m_pRegen;
+	int m_nReferencedId = -1; // the procedural texture a reference shares
 };
 
 
@@ -138,6 +145,7 @@ public:
 	void SetSubTextureRGBA( int id, int drawX, int drawY, unsigned const char *rgba, int subTextureWide, int subTextureTall );
 	void SetSubTextureRGBAEx( int id, int drawX, int drawY, unsigned const char *rgba, int subTextureWide, int subTextureTall, ImageFormat imageFormat );
 	void UpdateSubTextureRGBA( int id, int drawX, int drawY, unsigned const char *rgba, int subTextureWide, int subTextureTall, ImageFormat imageFormat );
+	bool MeanAlpha( int id, float s0, float t0, float s1, float t1, float &alpha );
 
 	int	FindTextureIdForTextureFile( char const *pFileName );
 
@@ -290,6 +298,25 @@ public:
 	{
 		// Called by the material system when this needs to go away
 		DeleteTextureBits();
+	}
+
+	// The mean alpha of the bits over [s0, s1] x [t0, t1] (texture
+	// coordinates of the whole texture), by the texels the rectangle covers.
+	bool MeanAlpha( float s0, float t0, float s1, float t1, float &alpha ) const
+	{
+		if ( !m_pTextureBits || ImageLoader::SizeInBytes( m_nFormat ) != 4 || m_nWidth <= 0 ||
+		     m_nHeight <= 0 )
+			return false;
+		const int x0 = clamp( (int)floorf( MIN( s0, s1 ) * m_nWidth ), 0, m_nWidth - 1 );
+		const int x1 = clamp( (int)ceilf( MAX( s0, s1 ) * m_nWidth ), x0 + 1, m_nWidth );
+		const int y0 = clamp( (int)floorf( MIN( t0, t1 ) * m_nHeight ), 0, m_nHeight - 1 );
+		const int y1 = clamp( (int)ceilf( MAX( t0, t1 ) * m_nHeight ), y0 + 1, m_nHeight );
+		double sum = 0.0;
+		for ( int y = y0; y < y1; ++y )
+			for ( int x = x0; x < x1; ++x )
+				sum += m_pTextureBits[( y * m_nWidth + x ) * 4 + 3];
+		alpha = float( sum / ( 255.0 * ( x1 - x0 ) * ( y1 - y0 ) ) );
+		return true;
 	}
 
 	void DeleteTextureBits()
@@ -660,6 +687,7 @@ void CMatSystemTexture::ReferenceOtherProcedural( CMatSystemTexture *pTexture, I
 	Assert( pTexture->IsProcedural() );
 
 	m_Flags |= TEXTURE_IS_REFERENCE;
+	m_nReferencedId = pTexture->m_ID;
 
 	m_pMaterial = pMaterial;
 
@@ -899,6 +927,25 @@ void CTextureDictionary::BindTextureToMaterialReference( int id, int referenceId
 //-----------------------------------------------------------------------------
 // Returns the material associated with an id
 //-----------------------------------------------------------------------------
+bool CMatSystemTexture::MeanAlpha( float s0, float t0, float s1, float t1, float &alpha ) const
+{
+	return m_pRegen && m_pRegen->MeanAlpha( s0, t0, s1, t1, alpha );
+}
+
+bool CTextureDictionary::MeanAlpha( int id, float s0, float t0, float s1, float t1, float &alpha )
+{
+	if ( !IsValidId( id ) )
+		return false;
+	const CMatSystemTexture *pTexture = &m_Textures[id];
+	if ( pTexture->IsReference() )
+	{
+		if ( !IsValidId( pTexture->ReferencedId() ) )
+			return false;
+		pTexture = &m_Textures[pTexture->ReferencedId()];
+	}
+	return pTexture->MeanAlpha( s0, t0, s1, t1, alpha );
+}
+
 IMaterial *CTextureDictionary::GetTextureMaterial( int id )
 {
 	if (!IsValidId(id))

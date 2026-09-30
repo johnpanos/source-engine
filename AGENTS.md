@@ -880,6 +880,20 @@ Keep the table concise and link details below or from the domain progress file.
     (or "unavailable"). The lab publishes a gallery page per term for the
     user's review.
   - `render_lab` and every `render.lab.*` suite are still proposed.
+- R91-PANELS (RFC 0016 K8 UI cohort; RFC 0010 in-world panels): `partial`
+  (2026-09-30, user request: the chamber sign as a first-class emissive
+  material at the resolution of its footprint, a valid flicker frame, dirt
+  in every state, an area light that casts like a real dirty screen).
+  - `render.pass.panels` over `render.world-panel.v1` draws Portal 2's sign
+    as a PBRMetalRough emissive surface on the core, with text rasterized
+    at the image's density.
+  - One recorded list per frame is the image and the sign's 2 x 4 tile area
+    lights; its grime is a coating.
+  - `render.lab.panel` (44 checks, 4 seeded kernels) and
+    `corpus.portal2.sign-panel` (12) pass.
+  - Other screens, the core's nested views, mobile runs and frame time are
+    open. See the
+    [record](RFC/0016-progress.md#in-world-panels-the-chamber-sign-as-an-emissive-surface-on-the-core-2026-09-30-user-request).
 - R91-VK11 (RFC 0016, user decision 2026-09-29): Portal 2 quit at start on
   the Galaxy Tab S8 Ultra (Adreno 730). Samsung's driver is Vulkan 1.1
   without `VK_KHR_dynamic_rendering`, and since K1 the legacy backend's

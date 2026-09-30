@@ -1,0 +1,162 @@
+// render.pass.panels (RFC 0016): a panel's images, one step per dispatch,
+// into buffers of packed RGBA8 texels (sRGB-encoded) that the pass copies
+// into the images' levels.
+// - Mode 3, the scatter field (render.world-panel.v1 ScatterField): cell
+//   (i, j) is the mean in linear light of the scatter raster's (the emissive
+//   composite sampled at the grid's cell centers) cells within
+//   kCoatingScatterReach of it that exist.
+// - Mode 0, the emission: level 0 is the emissive raster E in linear light
+//   (the exact sRGB curve) through the coatings' clear part plus the light
+//   they scatter: E (1 - A.a) + field A.rgb (the coating raster A:
+//   premultiplied linear color; the field bilinear between cell centers).
+// - Mode 1, the albedo: level 0 is A.rgb with coverage A.a.
+// For modes 0 and 1, level k's texel (i, j) is the mean in linear light of
+// the level k - 1 texels (2i + a, 2j + b), each clamped to that level's edge,
+// encoded back to sRGB; alpha is averaged as stored. Sizes are halved
+// rounding down, at least 1.
+#version 450
+
+layout( local_size_x = 8, local_size_y = 8 ) in;
+
+layout( set = 3, binding = 0 ) uniform texture2D emissiveTexture;
+layout( set = 3, binding = 1 ) uniform texture2D coatingTexture;
+layout( set = 3, binding = 2 ) uniform texture2D scatterTexture;
+layout( set = 3, binding = 3 ) uniform sampler pointSampler;
+layout( set = 3, binding = 4 ) buffer EmissionLevels
+{
+	uint texels[];
+}
+emission;
+layout( set = 3, binding = 5 ) buffer AlbedoLevels
+{
+	uint texels[];
+}
+albedo;
+layout( set = 3, binding = 6 ) buffer ScatterField
+{
+	uint texels[];
+}
+field;
+
+layout( push_constant ) uniform Step
+{
+	uvec4 level;    // x: the level, y: its first texel, z: width, w: height
+	uvec4 previous; // x: the level before's first texel, y: width, z: height, w: the mode
+	uvec4 scatter;  // x, y: the scatter grid's cells; z: the reach in cells
+}
+s;
+
+vec3 Decode( vec3 c )
+{
+	return mix( c / 12.92, pow( ( c + 0.055 ) / 1.055, vec3( 2.4 ) ), step( vec3( 0.04045 ), c ) );
+}
+
+vec3 Encode( vec3 c )
+{
+	return mix( c * 12.92, 1.055 * pow( c, vec3( 1.0 / 2.4 ) ) - 0.055,
+	    step( vec3( 0.0031308 ), c ) );
+}
+
+uint Texel( uint mode, uint index )
+{
+	return mode == 0u ? emission.texels[index] : albedo.texels[index];
+}
+
+// The scatter field at the level-0 texel p (bilinear between cell centers,
+// clamped).
+vec3 FieldAt( ivec2 p )
+{
+	const vec2 g = clamp( ( vec2( p ) + 0.5 ) / vec2( s.level.z, s.level.w ) * vec2( s.scatter.xy ) - 0.5,
+	    vec2( 0.0 ), vec2( s.scatter.xy ) - 1.0 );
+	const ivec2 c0 = ivec2( g );
+	const ivec2 c1 = min( c0 + 1, ivec2( s.scatter.xy ) - 1 );
+	const vec2 f = g - vec2( c0 );
+	vec3 v[4];
+	const ivec2 corners[4] = ivec2[4]( c0, ivec2( c1.x, c0.y ), ivec2( c0.x, c1.y ), c1 );
+	for ( int i = 0; i < 4; ++i )
+		v[i] = Decode( unpackUnorm4x8( field.texels[uint( corners[i].y ) * s.scatter.x + uint( corners[i].x )] ).rgb );
+	return mix( mix( v[0], v[1], f.x ), mix( v[2], v[3], f.x ), f.y );
+}
+
+void main()
+{
+	const ivec2 p = ivec2( gl_GlobalInvocationID.xy );
+	const uint mode = s.previous.w;
+	if ( mode == 3u )
+	{
+		if ( p.x >= int( s.scatter.x ) || p.y >= int( s.scatter.y ) )
+			return;
+		const int reach = int( s.scatter.z );
+		vec3 sum = vec3( 0.0 );
+		float count = 0.0;
+		for ( int dy = -reach; dy <= reach; ++dy )
+		{
+			for ( int dx = -reach; dx <= reach; ++dx )
+			{
+				const ivec2 c = p + ivec2( dx, dy );
+				if ( c.x < 0 || c.y < 0 || c.x >= int( s.scatter.x ) || c.y >= int( s.scatter.y ) )
+					continue;
+				sum += Decode( texelFetch( sampler2D( scatterTexture, pointSampler ), c, 0 ).rgb );
+				count += 1.0;
+			}
+		}
+		field.texels[uint( p.y ) * s.scatter.x + uint( p.x )] =
+		    packUnorm4x8( vec4( Encode( sum / count ), 1.0 ) );
+		return;
+	}
+	if ( p.x >= int( s.level.z ) || p.y >= int( s.level.w ) )
+		return;
+	vec4 value;
+	if ( s.level.x == 0u )
+	{
+		const vec4 coating = texelFetch( sampler2D( coatingTexture, pointSampler ), p, 0 );
+		if ( mode == 0u )
+		{
+			const vec4 emissive = texelFetch( sampler2D( emissiveTexture, pointSampler ), p, 0 );
+#ifdef SEEDED_PANEL_COATING_IGNORED
+			vec3 emitted = Decode( emissive.rgb );
+#else
+			vec3 emitted = Decode( emissive.rgb ) * ( 1.0 - coating.a );
+#endif
+#ifndef SEEDED_PANEL_NO_SCATTER
+			if ( coating.a > 0.0 )
+				emitted += FieldAt( p ) * coating.rgb;
+#endif
+			value = vec4( Encode( clamp( emitted, 0.0, 1.0 ) ), 1.0 );
+		}
+		else
+		{
+			value = vec4( Encode( clamp( coating.rgb, 0.0, 1.0 ) ), coating.a );
+		}
+	}
+	else
+	{
+		vec4 sum = vec4( 0.0 );
+		for ( int b = 0; b < 2; ++b )
+		{
+			for ( int a = 0; a < 2; ++a )
+			{
+				const ivec2 child =
+				    min( 2 * p + ivec2( a, b ), ivec2( s.previous.y, s.previous.z ) - 1 );
+				const vec4 texel = unpackUnorm4x8(
+				    Texel( mode, s.previous.x + uint( child.y ) * s.previous.y + uint( child.x ) ) );
+#ifdef SEEDED_PANEL_GAMMA_MIPS
+				sum += texel;
+#else
+				sum += vec4( Decode( texel.rgb ), texel.a );
+#endif
+			}
+		}
+		sum *= 0.25;
+#ifdef SEEDED_PANEL_GAMMA_MIPS
+		value = sum;
+#else
+		value = vec4( Encode( sum.rgb ), sum.a );
+#endif
+	}
+	const uint index = s.level.y + uint( p.y ) * s.level.z + uint( p.x );
+	if ( mode == 0u )
+		emission.texels[index] = packUnorm4x8( value );
+	else
+		albedo.texels[index] = packUnorm4x8( value );
+}

@@ -1,0 +1,18 @@
+#! /usr/bin/env python
+# encoding: utf-8
+# render.pass.panels (RFC 0016 layer 6 feature; RFC 0010 in-world panels):
+# panels placed in the world drawn as emissive surfaces at a core-pass slot.
+
+def build(bld):
+	bld.stlib(
+		env         = bld.strict_cpp20_env(),
+		features    = 'cxx capability_strict',
+		arch_module = 'render.pass.panels',
+		target      = 'render_pass_panels',
+		name        = 'render_pass_panels',
+		source      = bld.path.ant_glob('*.cpp'),
+		includes    = ['../../../public'],
+		use         = ['render_material', 'render_frame', 'render_resources', 'render_shaderlib',
+		               'render_device', 'render_math', 'render_spv'],
+		idx         = bld.get_taskgen_count()
+	)

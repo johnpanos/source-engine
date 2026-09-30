@@ -297,6 +297,13 @@ uploads keep the native fixes already recorded.
   embeds a browser engine for VGUI.
 - **In-world panels** (`StartDrawingIn3DSpace`). They require the legacy
   material capability until a consumer declares a world-space UI path.
+  First consumer (2026-09-30): Portal 2's chamber sign. The surface records
+  the panel's paint as a draw list (`VGuiWorldPanelRecorder001`, text
+  rasterized at the image's density by twin fonts), and the render core
+  draws it as an emissive surface (RFC 0016
+  [in-world panels](0016-render-core.md#in-world-panels-ui-cohort-amended-2026-09-30-user-request),
+  `render.world-panel.v1`). A panel that paints lines, polygons or 3D paint
+  is refused by name and stays on the legacy path.
 - **Native window integration** in `ISurface` (title, tray notify icon, window
   flashing, cursor capture): routed to the window provider's optional
   capabilities, each explicitly supported or unsupported per profile.

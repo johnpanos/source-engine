@@ -56,6 +56,11 @@ public:
 	virtual void SetTextureRGBAEx( int id, const char* rgba, int wide, int tall, ImageFormat format, bool bFixupTextCoordsForDimensions ) = 0;
 
 	virtual void UpdateSubTextureRGBA( int id, int drawX, int drawY, unsigned const char *rgba, int subTextureWide, int subTextureTall, ImageFormat imageFormat ) = 0;
+
+	// The mean alpha of a procedural texture's texels over a texture-coordinate
+	// rectangle (a font glyph's coverage, RFC 0010 in-world panels); false for
+	// a texture without CPU backing bits.
+	virtual bool MeanAlpha( int id, float s0, float t0, float s1, float t1, float &alpha ) = 0;
 };
 
 ITextureDictionary *TextureDictionary();

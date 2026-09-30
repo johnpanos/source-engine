@@ -29,6 +29,10 @@
 #include "tier1/utldict.h"
 #include "tier3/tier3.h"
 #include "tier1/convar.h"
+#include "vgui/IWorldPanelRecorder.h"
+
+#include <string>
+#include <vector>
 
 using namespace vgui;
 
@@ -511,6 +515,52 @@ private:
 	void GetGlyphQuad( float flPenX, float flPenY, int nPixelOffsetX, int nPixelsWide,
 	    int nPixelsTall, float flFontScale, vgui::Vertex_t &ul, vgui::Vertex_t &lr ) const;
 	CUtlVector<float> m_FontRasterScales;
+
+public:
+	// RFC 0010 in-world panels (vgui/IWorldPanelRecorder.h): paints a panel
+	// into a draw list, with text rasterized at the image's density.
+	bool RecordWorldPanel( vgui::VPANEL root, int wide, int tall, float texelsPerUnit,
+	    IWorldPanelRecording *pRecording, char *pszWhy, int nWhySize );
+
+private:
+	// While recording: quads go to the recording instead of the screen, the
+	// material the surface set says their texture and blend, and a primitive
+	// a draw list cannot hold refuses the recording (the first reason kept).
+	void RecordQuads(
+	    int nCount, const vgui::Vertex_t *pVerts, const unsigned char *pColor, bool bClip );
+	bool RecordingRefuses( const char *pszWhat );
+	IWorldPanelRecording *m_pRecording = NULL;
+	float m_flRecordingScale = 1.0f;
+	IMaterial *m_pRecordingMaterial = NULL;
+	int m_nRecordingTextureId = -1; // the surface texture DrawPrintText last set
+	char m_szRecordingRefusal[128] = {};
+
+	// The font whose glyphs draw text in `font`: itself, or while recording a
+	// copy of it rasterized at the recording's pixels per unit (a twin), which
+	// replays the font's glyph sets at that size. Metrics stay the font's own,
+	// so the layout does not change.
+	vgui::HFont GlyphFont( vgui::HFont font );
+	struct FontGlyphSet
+	{
+		std::string name;
+		int tall, weight, blur, scanlines, flags, rangeMin, rangeMax;
+	};
+	struct FontGlyphSets
+	{
+		int generation = -1; // the font generation the sets were made in
+		bool bitmap = false; // a bitmap font: no twin
+		std::vector<FontGlyphSet> sets;
+	};
+	std::vector<FontGlyphSets> m_FontGlyphSets; // by font
+	struct TwinFont
+	{
+		vgui::HFont font;
+		float scale;
+		vgui::HFont twin;
+		int generation;
+	};
+	std::vector<TwinFont> m_TwinFonts;
+	int m_nFontGeneration = 0; // rises when the fonts are cleared and reloaded
 
 	// font drawing batching code
 	enum { MAX_BATCHED_CHAR_VERTS = 4096 };

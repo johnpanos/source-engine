@@ -330,6 +330,17 @@ public:
 				    l.rect.twoSided ? "two-sided" : "one-sided", l.radiance[0], l.radiance[1],
 				    l.radiance[2], l.reach );
 			}
+			// The lights the core evaluates without a CPU slot (the light set
+			// carries them all).
+			for ( size_t n = 0; n < slotless.size(); ++n )
+			{
+				const AreaLightSlot &e = slotless[n];
+				const AreaLight &l = e.light;
+				Msg( "  slotless area %zu key %d at %.1f %.1f %.1f radiance %.3f %.3f %.3f reach "
+				     "%.0f\n",
+				    n, e.key, l.rect.center[0], l.rect.center[1], l.rect.center[2], l.radiance[0],
+				    l.radiance[1], l.radiance[2], l.reach );
+			}
 		}
 	}
 };

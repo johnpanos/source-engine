@@ -1671,6 +1671,37 @@ mirrors and monitors as view generators):
 | Legacy stream use | runtime census over the K0 views and `portal-frame-pacing-v1` | zero legacy-stream draws from the cohort on native Portal and Portal 2 |
 | Portal recursion (portal cohort) | K0 recursion views | every depth up to the limit within tolerance |
 
+#### In-world panels (UI cohort, amended 2026-09-30, user request)
+
+A UI panel placed in the world (a `vgui_screen`: Portal 2's chamber sign)
+is a first-class emissive surface of the core, not a 2D draw in 3D space.
+One definition, `render.world-panel.v1` (`public/render/world_panel.h`,
+header-only, shared by the core, engine, client and UI surface), owns:
+- the panel's image, a draw list of quads in the panel's layout units;
+- its resolution: at least one texel per screen pixel where the panel is
+  densest on screen, on a 2^(1/4) ladder with a 2^(1/2) hold;
+- coatings (grime on the face): a translucent diffuser that passes
+  (1 - A.a) of the emission, scatters the light around it tinted by A.rgb,
+  never emits its own, and is the face's albedo;
+- what the panel emits and casts: the same image as its surface emission and
+  as a grid of RFC 0011 area lights (`TileRadiance`).
+
+`render.pass.panels` (layer 6) rasterizes the frame's list at that
+resolution, builds linear-light mip chains for the emission and albedo, and
+draws the panel as a PBRMetalRough material through the one resolver, at a
+forwarded core-pass slot. One frame has one list, drawn by every view and
+cast as the frame's lights. The UI surface records the list
+(`VGuiWorldPanelRecorder001`: text rasterized at the image's density), and
+the engine decides which views the core takes (`VEngineWorldPanels001`: the
+core world's views). Other views (portal, monitor, reflection) draw the
+panel through the legacy 2D path until they are the core's, as the world
+does.
+
+| Check | Runs as | Passes when |
+| --- | --- | --- |
+| Lab | `render.lab.panel` and its sensitivity | resolution against a ray-cast oracle; edges sharp at the chosen resolution and blurred at the legacy one (the control); emission value, scale and term; one list and one raster per frame; linear-light mips; tile lights against the GPU image per flicker state; coatings never add light, scatter as defined, and reflect |
+| Product | `corpus.portal2.sign-panel` | the core draws the sign; its text is sharp where the legacy path's is blurred; through its flicker every frame's pixels follow the light it publishes in that frame; its dirt is in every state and dims its light; it publishes its tile lights |
+
 ### K9: Retirement
 
 | Check | Runs as | Passes when |
