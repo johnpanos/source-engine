@@ -3756,3 +3756,22 @@ optimization item for `render_lab --time`.
 - The mirror-corridor seam walk (S8/S9) was not rerun on the composited
   frame.
 - The product (K12) is unchanged.
+
+## K12 decision: moving-light GI is kept (2026-09-29, user decision)
+
+Asked what integrating the lab into the game (K12, R96) needs, the agent
+listed the runtime-GI producer as an open decision: the frozen native
+backend's PBR path reads RFC 0011's runtime volume, and deleting its copies
+would drop the traced producers' response to moved and unbaked lights
+unless the core took it over first. The user decided: "keep moving-light
+GI when the old path is removed".
+
+- Recorded as a rule of the lighting model and a K12 check, "Moving-light
+  GI kept", in [RFC 0016](0016-render-core.md#k12-lighting-model-integrated-in-the-product),
+  and in R96's done condition.
+- Consequence for the K12 order: the producers' GPU work moves to
+  `render/pass/indirect/` (the file map already names it) before the
+  backend's `probe_volume.glsl` and producer compute are deleted. RFC
+  0011's contract, `r_indirect_producer` and the producers' math are
+  unchanged; G9's `swing` is the in-game proof on the core.
+- Nothing is implemented by this entry, and no row changes state.

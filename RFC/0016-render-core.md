@@ -1328,6 +1328,19 @@ Rules for the whole model:
   copy, and their C++ oracles are unchanged. Binding rule 4 deletes each old
   copy per surface set as its term moves; K12 and K9 check that none
   remains.
+- **Moving-light GI is kept (user decision, 2026-09-29).** Deleting the
+  native backend's copies must not delete RFC 0011's indirect response to
+  moved and unbaked lights (G9: the traced producers bounce them, SDF
+  shadows occlude them). Before K12 deletes `probe_volume.glsl`, the
+  producers' compute in `vulkan_compute.cpp` and the backend's reads of the
+  runtime volume, the core runs the RFC 0011 producers' GPU work in
+  `render/pass/indirect/`, and its surfaces read the published volume under
+  the map's indirect policy. RFC 0011 still owns the producer contract
+  (`render.indirect-light.v1`), `r_indirect_producer` and the producers'
+  math; the core only moves where their GPU work runs. No K12 slice may
+  make a map lose a producer its profile offers today. There is no "first
+  cut without runtime GI"; a profile that declares a producer unsupported
+  (Android: the traced ones) keeps that declaration unchanged.
 - **Profiles declare, they don't skip.** A term that a profile cannot
   support (a missing capability) is declared off by name in that profile's
   capability record. Being over budget is not a reason to turn a term off
@@ -1712,6 +1725,7 @@ ahead of the product rows.
 | --- | --- | --- |
 | One light per surface | the `RuntimeLight` census and the doubled-light control | every term the core evaluates has its flag set on exactly the surfaces it shades; forcing both paths fails as doubled light for each term |
 | One copy of the math | static scan | the model's GLSL exists only under `render/`; `world_pbr.frag`, `model_pbr.frag`, `probe_volume.glsl` and `reflection_probes.glsl` are gone from the native backend |
+| Moving-light GI kept (user decision, 2026-09-29) | RFC 0011 G9's `swing` (frozen and swinging), G3's switching over `gi_door`, and `portal-view`, booted with the core drawing the world and the native backend's copies deleted | every G9 done condition still passes on the core: each frozen state matches Cycles within the producer's tolerance, radiosity and shadows-off still fail it, and the swing shows no flicker; `r_indirect_producer_offered` lists every producer the profile offered before K12; switching has no black frame or early free; seeded controls (the volume never read, or published without the unbaked lights) fail |
 | Game matches lab | the Portal and Portal 2 chambers booted with the lab's cameras | each in-game frame within tolerance of the same scene's `render_lab` frame |
 | Game output | Portal and Portal 2 on the iPhone and the Apple TV | the product presents through `render.presentation.v1` (no backend-owned swapchain), its frames reach it through `render.pass.output` at the presentation's headroom, and each profile records its declared range |
 | Frame budgets (perf) | `portal-frame-pacing-v1` and a Portal 2 workload | within the frame allowance of K0 with every declared term on, per profile; the declared-off terms are listed per profile |
