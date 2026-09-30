@@ -25,6 +25,12 @@ centre, emitting normal, radius, and vrad's cone: full inside the inner cone,
 outside the outer one; exponent 0 is linear). Each light carries its light
 style (-1: fixed), matching the map's RTRN sources.
 
+Version 3 adds a sphere's or spot's Source falloff: vrad's constant, linear
+and quadratic terms and its hard radius (Source units; all zero: the physical
+inverse square). The light at distance d from its centre is then its
+inverse-square light times d^2 / (c + l d + q d^2), and 0 at or beyond a
+positive radius (`light_falloff`, map_scene.vrad_falloff).
+
 Version 2 adds the light cells: a coarse grid over the world whose every cell
 lists the lights that may reach points in it (the bake culls by range and,
 for a compiled map, by its visibility). A point outside the grid uses the
@@ -34,7 +40,7 @@ point.
 Encoding (little-endian):
 
   header (64 bytes; 96 in version 2)
-    0  u32 magic 'SDFV'   4  u32 version (1 or 2)   8  u32 header bytes (64 or 96)
+    0  u32 magic 'SDFV'   4  u32 version (1, 2 or 3)   8  u32 header bytes (64; 96 from 2)
     12 u32 flags (0)
     16 f32 origin[3] (the first voxel's centre)  28 f32 voxel size
     32 u32 dims[3]        44 u32 lights        48 f32 max distance (clamp)
@@ -44,7 +50,7 @@ Encoding (little-endian):
     80 u32 cell dims[3]   92 u32 cell entries
   voxels   dims.x * dims.y * dims.z records of 16 bytes, x fastest:
            f16 distance, f16 reflectance rgb, f16 emission rgb, u16 source (0xFFFF none)
-  lights   records of 64 bytes:
+  lights   records of 64 bytes (80 in version 3):
            u32 kind (0 rect, 1 distant, 2 dome, 3 sphere, 4 spot; 3 and 4 in version 2),
            i32 style, f32 rgb[3] (radiance; distant: irradiance), f32 a[3], f32 b[3],
            f32 c[3], f32 d[2] (zero but for a spot's exponent)
@@ -54,6 +60,8 @@ Encoding (little-endian):
            sphere: a centre, b[0] radius (> 0)
            spot: a centre, b emitting normal (unit), c radius (> 0), cos inner, cos outer
                  (-1 <= outer <= inner <= 1), d[0] exponent (>= 0)
+           version 3: f32 attenuation[4] (constant, linear, quadratic, radius; >= 0,
+           zero but for a sphere or spot, and then all zero or c + l + q > 0)
   cells    (version 2) u32 first entry per cell, x fastest, then the entry count;
            u16 light index per entry, zero-padded to 4 bytes
 """
@@ -68,14 +76,17 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import map_scene  # noqa: E402
 import radiosity_transfer  # noqa: E402  (its byte-diff recipe for the corpus)
 
 MAGIC = 0x56464453  # "SDFV"
-VERSION = 2
+VERSION = 3
 HEADER_BYTES = 96
 V1_HEADER_BYTES = 64
 VOXEL_BYTES = 16
-LIGHT_BYTES = 64
+LIGHT_BYTES = 80
+V2_LIGHT_BYTES = 64
+NO_ATTENUATION = (0.0, 0.0, 0.0, 0.0)
 MAX_VOXELS = 1 << 24
 MAX_LIGHTS = 4096
 MAX_CELLS = 1 << 22
@@ -97,8 +108,22 @@ def check_light(light, index):
             -1.0 <= c[2] <= c[1] <= 1.0 and d[0] >= 0 and d[1] == 0
     else:
         ok = not any(d)
+    attenuation = light.get("attenuation", NO_ATTENUATION)
+    if min(attenuation) < 0 or (any(attenuation) and (
+            kind not in ("sphere", "spot") or sum(attenuation[:3]) <= 0)):
+        ok = False
     if not ok:
         raise SdfError("invalid-light", "light %d %s" % (index, kind))
+
+
+def light_falloff(light, distance):
+    """A light's Source falloff relative to its inverse square at `distance`
+    (Source units) from its centre: 1 without one (all zero)."""
+    c, l, q, radius = light.get("attenuation", NO_ATTENUATION)
+    if not any((c, l, q, radius)):
+        return 1.0 if np.ndim(distance) == 0 else np.ones(np.shape(distance))
+    return map_scene.vrad_falloff({"constant": c, "linear": l, "quadratic": q,
+                                   "radius_m": radius}, distance)
 
 
 def spot_multiplier(cos_angle, inner, outer, exponent):
@@ -119,7 +144,7 @@ class SdfError(ValueError):
 
 
 def build(origin, voxel, dims, distance, reflectance, emission, source, lights, max_distance,
-          cells=None):
+          cells=None, version=VERSION):
     """SDFV bytes. distance (Z, Y, X); reflectance and emission (Z, Y, X, 3);
     source (Z, Y, X) u16; lights: [{kind, style, rgb, a, b, c, d}]; cells:
     {origin, size, dims, lists: [[light index, ...] per cell, x fastest]}
@@ -140,7 +165,9 @@ def build(origin, voxel, dims, distance, reflectance, emission, source, lights, 
     if len(lists) != int(np.prod(cells["dims"])):
         raise SdfError("invalid-cells", "one list per cell")
     entries = sum(len(entry) for entry in lists)
-    header = struct.pack("<IIII3ff3IIf3I3ff3II", MAGIC, VERSION, HEADER_BYTES, 0, *origin, voxel,
+    if version not in (2, 3):
+        raise SdfError("unsupported-version", "writes versions 2 and 3")
+    header = struct.pack("<IIII3ff3IIf3I3ff3II", MAGIC, version, HEADER_BYTES, 0, *origin, voxel,
                          *dims, len(lights), max_distance, 0, 0, 0, *cells["origin"],
                          cells["size"], *cells["dims"], entries)
     records = b""
@@ -149,6 +176,10 @@ def build(origin, voxel, dims, distance, reflectance, emission, source, lights, 
                                *light["rgb"], *light.get("a", (0, 0, 0)),
                                *light.get("b", (0, 0, 0)), *light.get("c", (0, 0, 0)),
                                *light.get("d", (0, 0)))
+        if version >= 3:
+            records += struct.pack("<4f", *light.get("attenuation", NO_ATTENUATION))
+        elif any(light.get("attenuation", NO_ATTENUATION)):
+            raise SdfError("invalid-light", "version 2 has no attenuation")
     offsets = np.concatenate([[0], np.cumsum([len(entry) for entry in lists])]).astype("<u4")
     indices = np.asarray([i for entry in lists for i in entry], "<u2")
     padding = b"\0\0" if entries % 2 else b""
@@ -165,7 +196,8 @@ class Volume:
         magic, version, header, flags = values[0:4]
         if magic != MAGIC:
             raise SdfError("bad-magic")
-        if (version, header) not in ((1, V1_HEADER_BYTES), (2, HEADER_BYTES)) or flags or \
+        if (version, header) not in ((1, V1_HEADER_BYTES), (2, HEADER_BYTES),
+                                     (3, HEADER_BYTES)) or flags or \
                 any(values[13:16]) or len(data) < header:
             raise SdfError("unsupported-version")
         self.version = version
@@ -179,7 +211,8 @@ class Volume:
                 or min(self.dims) < 2 or count > MAX_VOXELS or self.light_count > MAX_LIGHTS or \
                 not (self.max_distance > 0 and math.isfinite(self.max_distance)):
             raise SdfError("invalid-grid")
-        lights_end = header + count * VOXEL_BYTES + self.light_count * LIGHT_BYTES
+        record_bytes = LIGHT_BYTES if version >= 3 else V2_LIGHT_BYTES
+        lights_end = header + count * VOXEL_BYTES + self.light_count * record_bytes
         if version == 1:
             cell_count = entries = 0
             if len(data) != lights_end:
@@ -215,13 +248,17 @@ class Volume:
         self.lights = []
         base = header + count * VOXEL_BYTES
         for i in range(self.light_count):
-            v = struct.unpack_from("<Ii3f3f3f3f2f", data, base + i * LIGHT_BYTES)
+            v = struct.unpack_from("<Ii3f3f3f3f2f", data, base + i * record_bytes)
+            attenuation = struct.unpack_from("<4f", data, base + i * record_bytes + 64) \
+                if version >= 3 else NO_ATTENUATION
             kinds = V1_KINDS if version == 1 else len(KINDS)
             if v[0] >= kinds or not -1 <= v[1] <= 63 or \
-                    not all(math.isfinite(x) for x in v[2:16]) or min(v[2:5]) < 0:
+                    not all(math.isfinite(x) for x in v[2:16] + tuple(attenuation)) or \
+                    min(v[2:5]) < 0:
                 raise SdfError("invalid-light", "light %d" % i)
             light = {"kind": KINDS[v[0]], "style": v[1], "rgb": list(v[2:5]), "a": list(v[5:8]),
-                     "b": list(v[8:11]), "c": list(v[11:14]), "d": list(v[14:16])}
+                     "b": list(v[8:11]), "c": list(v[11:14]), "d": list(v[14:16]),
+                     "attenuation": list(attenuation)}
             check_light(light, i)
             self.lights.append(light)
         if version == 1:
@@ -301,6 +338,9 @@ def malformations(data):
             ("sphere-radius", patched(first_light, "<I", 3)),
             ("spot-cone", edited((first_light, "<I", 4), (first_light + 32, "<3f", 0.0, 0.0, 1.0),
                                  (first_light + 44, "<3f", 1.0, 0.2, 0.9))),
+            # Version 3: a negative falloff term, a falloff on a dome.
+            ("light-attenuation", patched(first_light + 64, "<f", -1.0)),
+            ("dome-attenuation", patched(first_light + 72, "<f", 1.0)),
             ("cell-size", patched(76, "<f", 0.0)),
             ("cell-dims", patched(80, "<I", 0)),
             ("cell-offsets", patched(cells, "<I", 1)),
@@ -349,7 +389,7 @@ def fixture_contract():
                  [{"kind": "dome", "style": -1, "rgb": (0.0, 0.0, 0.0)}], max_distance)
 
 
-def fixture_lights():
+def fixture_lights(version=VERSION):
     """Every light kind and a 2 x 2 x 1 cell grid, over a small empty volume
     (the readers' positive fixture): a rect, a distant light, a dome, a
     sphere and a spot; the global lights are in every cell, the sphere in the
@@ -364,13 +404,17 @@ def fixture_lights():
          "b": (0.01, 0.0, 0.0)},
         {"kind": "dome", "style": -1, "rgb": (0.1, 0.1, 0.1)},
         {"kind": "sphere", "style": -1, "rgb": (5.0, 4.0, 3.0), "a": (8.0, 8.0, 16.0),
-         "b": (2.0, 0.0, 0.0)},
+         "b": (2.0, 0.0, 0.0), "attenuation": (2500.0, 0.0, 1.0, 0.0)},
         {"kind": "spot", "style": 33, "rgb": (9.0, 9.0, 9.0), "a": (48.0, 48.0, 30.0),
-         "b": (0.0, 0.0, -1.0), "c": (2.0, 0.9659, 0.8660), "d": (2.0, 0.0)}]
+         "b": (0.0, 0.0, -1.0), "c": (2.0, 0.9659, 0.8660), "d": (2.0, 0.0),
+         "attenuation": (0.0, 1.0, 0.0, 256.0)}]
     cells = {"origin": [-8.0, -8.0, -8.0], "size": 40.0, "dims": [2, 2, 1],
              "lists": [[0, 1, 2, 3], [0, 1, 2], [0, 1, 2, 3], [0, 1, 2, 4]]}
+    if version < 3:
+        lights = [{k: v for k, v in light.items() if k != "attenuation"} for light in lights]
     return build([0.0, 0.0, 0.0], voxel, dims, np.full(shape, 32.0), np.zeros(shape + (3,)),
-                 np.zeros(shape + (3,)), np.full(shape, NO_SOURCE), lights, 64.0, cells)
+                 np.zeros(shape + (3,)), np.full(shape, NO_SOURCE), lights, 64.0, cells,
+                 version=version)
 
 
 CONTRACT_ROOMS = (((-16.0, -16.0, -16.0), (47.0, 48.0, 48.0)),
@@ -411,6 +455,9 @@ def write_fixtures(out):
     lights = fixture_lights()
     Volume(lights)
     (out / "lights.sdfv").write_bytes(lights)
+    lights_v2 = fixture_lights(version=2)
+    Volume(lights_v2)
+    (out / "lights-v2.sdfv").write_bytes(lights_v2)
     (out / "contract.tris").write_bytes(write_tris(*contract_geometry()))
     variants = []
     for name, variant in malformations(data):
@@ -420,9 +467,10 @@ def write_fixtures(out):
         except SdfError as error:
             code = error.code
         variants.append({"name": name, "error": code, **radiosity_transfer.recipe(data, variant)})
-    (out / "fixtures.json").write_text(json.dumps({"schema": "sdfv-fixtures/v2",
+    (out / "fixtures.json").write_text(json.dumps({"schema": "sdfv-fixtures/v3",
                                                    "contract": Volume(data).info(),
                                                    "lights": Volume(lights).info(),
+                                                   "lights_v2": Volume(lights_v2).info(),
                                                    "malformations": variants}, indent=1) + "\n")
     # The same corpus as plain text for the C++ reader's test:
     #   name error length [offset:hex ...]

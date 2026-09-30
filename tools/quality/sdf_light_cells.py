@@ -12,8 +12,12 @@ of it:
 
   range      its brightest possible light at the cell's nearest point is
              below `cutoff`: a rect L A / (pi d^2), a sphere or spot L r^2 / d^2
-             (d from the light's surface); a styled light counts at
-             STYLE_HEADROOM x, the brightest the stock styles drive a light;
+             (d from the light's surface), times a sphere's or spot's Source
+             falloff at that point's distance from its centre
+             (sdf_volume.light_falloff: 1 / (c + l d + q d^2) falls with d, so
+             the nearest point is still the brightest; 0 past a hard radius);
+             a styled light counts at STYLE_HEADROOM x, the brightest the
+             stock styles drive a light;
   side       the cell lies wholly behind a one-sided rect or spot;
   visibility (a compiled map's PVS) no cluster of the cell's open leaves is
              potentially visible from a cluster of the light's open leaves.
@@ -25,8 +29,13 @@ leaf without a cluster are treated as seeing everything.
 """
 
 import math
+import sys
+from pathlib import Path
 
 import numpy as np
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import sdf_volume  # noqa: E402
 
 STYLE_HEADROOM = 2.1   # the stock light styles peak at 'z' = 25/12 of 'm'
 LEAF_MARGIN = 1.0      # units: leaf bounds are rounded shorts
@@ -144,8 +153,13 @@ def build(lights, lo, hi, size, cutoff, visibility=None):
         centre, extent, strength, normal = light_reach(light)
         ok = np.ones(count, dtype=bool)
         if math.isfinite(strength):
-            distance = np.maximum(box_distance(centre, boxes_lo, boxes_hi) - extent, 0.0)
-            in_range = strength / np.maximum(distance, 1e-6) ** 2 >= cutoff
+            nearest = box_distance(centre, boxes_lo, boxes_hi)
+            distance = np.maximum(nearest - extent, 0.0)
+            # A cell reaching into the light is lit; past its surface the
+            # bound falls with distance.
+            in_range = (nearest <= extent) | (
+                strength * sdf_volume.light_falloff(light, nearest) /
+                np.maximum(distance, 1e-6) ** 2 >= cutoff)
             culled["range"] += int((ok & ~in_range).sum())
             ok &= in_range
         if normal is not None:

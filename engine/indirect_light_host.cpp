@@ -761,8 +761,8 @@ void IndirectLight_BeginMap( const IndirectLightMapData &map )
 	{
 		const mapcontainer::SdfVolumeLayout &f = host.scene.sdf->layout;
 		std::vector<mapcontainer::SdfLight> lights( f.lightCount );
-		std::memcpy( lights.data(), host.scene.sdf->bytes.data() + f.lightOffset,
-		    lights.size() * sizeof( mapcontainer::SdfLight ) );
+		for ( uint32_t i = 0; i < f.lightCount; ++i )
+			lights[i] = mapcontainer::ReadSdfLight( host.scene.sdf->bytes.data(), f, i );
 		if ( host.occlusion.Build(
 		         map.wmsh, map.wmshSize, map.lmap, map.lmapSize, map.lmapVersion, lights ) )
 			Msg( "indirect light: baked direct light follows moving geometry (%zu texels, %u "

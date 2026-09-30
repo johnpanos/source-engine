@@ -660,8 +660,8 @@ bool BenchOcclusion( const OcclusionOptions &options )
 			return false;
 		const mapcontainer::SdfVolumeLayout &f = sdf->layout;
 		std::vector<mapcontainer::SdfLight> lights( f.lightCount );
-		std::memcpy( lights.data(), sdf->bytes.data() + f.lightOffset,
-		    lights.size() * sizeof( mapcontainer::SdfLight ) );
+		for ( uint32_t i = 0; i < f.lightCount; ++i )
+			lights[i] = mapcontainer::ReadSdfLight( sdf->bytes.data(), f, i );
 		const Clock::time_point started = Clock::now();
 		const bool built =
 		    occlusion.Build( wmsh.data(), wmsh.size(), lmap.data(), lmap.size(), 0, lights );

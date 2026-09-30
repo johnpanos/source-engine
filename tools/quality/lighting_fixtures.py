@@ -1848,7 +1848,7 @@ def cmd_build(args):
             overrides["lightmap"] = dict(overrides["lightmap"], layout=lighting["map"]["layout"])
         identity = map_lighting.light(bsp, map_name, work / "lighting", toolchain, scene=baked,
                                       quality="gi-fixture", extra=overrides,
-                                      keep_going=args.keep_going)
+                                      keep_going=args.keep_going, device=args.device)
         cookies = install_cookies(fixture, map_name, tools, toolchain)
         # States with their own map: the same compiled BSP and baked state, the
         # lightmap bake crossing the state's medium (map_lighting's `medium`).
@@ -1858,7 +1858,7 @@ def cmd_build(args):
             state_identity = map_lighting.light(
                 bsp, entry["name"], work / ("lighting-" + state), toolchain, scene=baked,
                 quality="gi-fixture", extra=overrides, keep_going=args.keep_going,
-                medium=medium)
+                medium=medium, device=args.device)
             state_maps[state] = {"map": entry["name"], "medium": medium,
                                  "identity": state_identity.get("status"),
                                  "cookies": install_cookies(fixture, entry["name"], tools,
@@ -2300,6 +2300,8 @@ def main():
     b.add_argument("--keep-going", action="store_true")
     b.add_argument("--final", action="store_true",
                    help="bake at the profiles' full sample counts (not the preview overrides)")
+    b.add_argument("--device", choices=("cpu", "gpu", "auto"),
+                   help="Cycles device of every bake (default: the gi-fixture profile's)")
     c = commands.add_parser("check")
     c.add_argument("--fixture", action="append")
     c.add_argument("--no-maps", action="store_true",

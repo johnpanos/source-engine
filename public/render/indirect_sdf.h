@@ -264,10 +264,7 @@ public:
 		const size_t field = size_t( m_probes ) * kTexels * 3 * 16;
 		m_lights.resize( m_sdf->layout.lightCount );
 		for ( uint32_t i = 0; i < m_sdf->layout.lightCount; ++i )
-			std::memcpy( &m_lights[i],
-			    m_sdf->bytes.data() + m_sdf->layout.lightOffset +
-			        i * sizeof( mapcontainer::SdfLight ),
-			    sizeof( mapcontainer::SdfLight ) );
+			m_lights[i] = mapcontainer::ReadSdfLight( m_sdf->bytes.data(), m_sdf->layout, i );
 		const SdfLightCells cells = SdfLightCells::From( *m_sdf );
 		std::vector<uint32_t> made;
 		const auto make = [&]( size_t bytes, gpu_compute::BufferUse use )
@@ -701,6 +698,15 @@ private:
 			}
 			record.d[0] = light.reserved[0];
 			record.d[1] = light.reserved[1];
+			if ( light.kind == uint32_t( mapcontainer::SdfLightKind::Sphere ) ||
+			     light.kind == uint32_t( mapcontainer::SdfLightKind::Spot ) )
+			{
+				// The Source falloff (sdf_probe_trace.comp SourceFalloff): d.yzw
+				// its constant, linear, quadratic terms, a.w its hard radius.
+				for ( int k = 0; k < 3; ++k )
+					record.d[1 + k] = light.attenuation[k];
+				record.a[3] = light.attenuation[3];
+			}
 		}
 		std::copy( config.unbaked.begin(), config.unbaked.end(), out + m_lights.size() );
 	}

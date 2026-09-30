@@ -3,23 +3,15 @@
   "map": "living_room",
   "scene": "living-room/scene-v4.pbrt",
   "credit": "The Grey & White Room by Wig42 (CC BY 3.0), pbrt-v4 conversion by Benedikt Bitterli",
+  "quality": "source2-max",
   "reference": {
     "png": "living-room/TungstenRender.png",
     "exr": "living-room/TungstenRender.exr",
-    "render": {
-      "samples": 64,
-      "scale": 1.0
-    },
     "gate": {
       "max_mae": 10,
       "min_ssim": 0.86,
       "max_exposure_stops": 0.3
     }
-  },
-  "lightmap": {
-    "size": 2048,
-    "samples": 4096,
-    "device": "cpu"
   },
   "collision": {
     "envelope_meshes": [
@@ -44,9 +36,6 @@
     "max_mottle_ratio": 1.15
   },
   "reflection_probe": {
-    "width": 512,
-    "face_size": 256,
-    "samples": 512,
     "position": [
       2.3,
       1.5,

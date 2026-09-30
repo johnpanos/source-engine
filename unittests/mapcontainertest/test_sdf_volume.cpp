@@ -76,9 +76,9 @@ void ReadsTheContract( const std::vector<unsigned char> &sdfv )
 	Check( layout.origin[0] == -32.0f && layout.origin[1] == -32.0f && layout.origin[2] == -32.0f,
 	    "the contract's origin" );
 	Check( layout.lightCount == 1, "the contract's one light (a dome)" );
-	Check( layout.version == 2 && layout.cellDims[0] == 1 && layout.cellDims[1] == 1 &&
-	           layout.cellDims[2] == 1 && layout.cellEntries == 1,
-	    "the contract is version 2 with one cell listing its light" );
+	Check( layout.version == 3 && layout.lightStride == kSdfLightBytes && layout.cellDims[0] == 1 &&
+	           layout.cellDims[1] == 1 && layout.cellDims[2] == 1 && layout.cellEntries == 1,
+	    "the contract is version 3 with one cell listing its light" );
 	// Header, voxels, the light, two cell offsets, one entry and its padding.
 	Check( layout.voxelOffset == kSdfVolumeHeaderBytes &&
 	           layout.lightOffset == kSdfVolumeHeaderBytes + 21ull * 13 * 13 * kSdfVoxelBytes &&
@@ -86,8 +86,7 @@ void ReadsTheContract( const std::vector<unsigned char> &sdfv )
 	           layout.cellEntryOffset == layout.cellOffset + 8 &&
 	           layout.cellEntryOffset + 4 == sdfv.size(),
 	    "the contract's sections tile its bytes" );
-	SdfLight light;
-	std::memcpy( &light, sdfv.data() + layout.lightOffset, sizeof( light ) );
+	const SdfLight light = ReadSdfLight( sdfv.data(), layout, 0 );
 	Check( light.kind == uint32_t( SdfLightKind::Dome ) && light.style == -1,
 	    "the contract's light is a fixed dome" );
 }
@@ -102,7 +101,7 @@ uint32_t CellEntry( const std::vector<unsigned char> &bytes, const SdfVolumeLayo
 	return light;
 }
 
-void ReadsEveryLightKind( const std::vector<unsigned char> &sdfv )
+void ReadsEveryLightKind( const std::vector<unsigned char> &sdfv, uint32_t version )
 {
 	SdfVolumeLayout layout = {};
 	const SdfVolumeError error = Validate( sdfv, &layout );
@@ -110,20 +109,37 @@ void ReadsEveryLightKind( const std::vector<unsigned char> &sdfv )
 	    std::string( "the light-kinds volume validates: " ) + SdfVolumeErrorName( error ) );
 	if ( error != SdfVolumeError::Ok )
 		return;
-	// quality/fixtures/gi/sdfv/fixtures.json's "lights" record.
-	Check( layout.lightCount == 5, "five lights, one of each kind" );
+	// quality/fixtures/gi/sdfv/fixtures.json's "lights" and "lights_v2" records.
+	const std::string label = "version " + std::to_string( version ) + ": ";
+	Check( layout.version == version &&
+	           layout.lightStride == ( version >= 3 ? kSdfLightBytes : kSdfV2LightBytes ),
+	    label + "the version and its light stride" );
+	Check( layout.lightCount == 5, label + "five lights, one of each kind" );
 	bool kinds = true;
 	for ( uint32_t i = 0; i < 5 && layout.lightCount == 5; ++i )
 	{
-		SdfLight light;
-		std::memcpy(
-		    &light, sdfv.data() + layout.lightOffset + i * kSdfLightBytes, sizeof( light ) );
+		const SdfLight light = ReadSdfLight( sdfv.data(), layout, i );
 		kinds = kinds && light.kind == i;
 		if ( light.kind == uint32_t( SdfLightKind::Spot ) )
+		{
 			Check( light.reserved[0] == 2.0f && light.c[1] > light.c[2] && light.style == 33,
-			    "the spot's exponent, cone and style" );
+			    label + "the spot's exponent, cone and style" );
+			// A linear falloff cut at 256 units (none before version 3).
+			const bool falloff =
+			    version >= 3 ? light.attenuation[0] == 0.0f && light.attenuation[1] == 1.0f &&
+			                       light.attenuation[2] == 0.0f && light.attenuation[3] == 256.0f
+			                 : light.attenuation[1] == 0.0f && light.attenuation[3] == 0.0f;
+			Check( falloff, label + "the spot's falloff" );
+		}
 		if ( light.kind == uint32_t( SdfLightKind::Sphere ) )
-			Check( light.b[0] == 2.0f && light.a[2] == 16.0f, "the sphere's radius and centre" );
+		{
+			Check( light.b[0] == 2.0f && light.a[2] == 16.0f,
+			    label + "the sphere's radius and centre" );
+			// c = 50^2, q = 1: a _fifty_percent_distance falloff.
+			Check( version >= 3 ? light.attenuation[0] == 2500.0f && light.attenuation[2] == 1.0f
+			                    : light.attenuation[0] == 0.0f && light.attenuation[2] == 0.0f,
+			    label + "the sphere's falloff" );
+		}
 	}
 	Check( kinds, "light i has kind i (rect, distant, dome, sphere, spot)" );
 	Check( layout.cellDims[0] == 2 && layout.cellDims[1] == 2 && layout.cellDims[2] == 1 &&
@@ -142,8 +158,9 @@ void ReadsVersionOne( const std::vector<unsigned char> &sdfv )
 	    std::string( "the version-1 contract validates: " ) + SdfVolumeErrorName( error ) );
 	Check( layout.version == 1 && layout.voxelOffset == kSdfVolumeV1HeaderBytes &&
 	           layout.cellDims[0] == 0 && layout.cellEntries == 0 && layout.lightCount == 1 &&
-	           layout.lightOffset + kSdfLightBytes == sdfv.size(),
-	    "a version-1 volume: 64-byte header, no cells" );
+	           layout.lightStride == kSdfV2LightBytes &&
+	           layout.lightOffset + kSdfV2LightBytes == sdfv.size(),
+	    "a version-1 volume: 64-byte header and lights, no cells" );
 }
 
 void RejectsTheCorpus( const std::vector<unsigned char> &sdfv )
@@ -174,8 +191,8 @@ void RejectsTheCorpus( const std::vector<unsigned char> &sdfv )
 		    "malformation " + name + ": expected " + error + ", got " + SdfVolumeErrorName( got ) );
 		++count;
 	}
-	Check( count >= 20,
-	    "the malformation corpus has its 20 cases (read " + std::to_string( count ) + ")" );
+	Check( count >= 22,
+	    "the malformation corpus has its 22 cases (read " + std::to_string( count ) + ")" );
 }
 
 void SurvivesFuzzing( const std::vector<unsigned char> &sdfv )
@@ -204,7 +221,7 @@ void SurvivesFuzzing( const std::vector<unsigned char> &sdfv )
 		++accepted;
 		const uint64_t voxels = uint64_t( layout.dims[0] ) * layout.dims[1] * layout.dims[2];
 		const uint64_t lightsEnd =
-		    layout.lightOffset + uint64_t( layout.lightCount ) * kSdfLightBytes;
+		    layout.lightOffset + uint64_t( layout.lightCount ) * layout.lightStride;
 		const uint64_t end = layout.version == 1
 		                         ? lightsEnd
 		                         : layout.cellEntryOffset + uint64_t( layout.cellEntries ) * 2 +
@@ -227,7 +244,8 @@ int main()
 	if ( sdfv.empty() )
 		return testing::ReportConformance( g_checks, g_failures );
 	ReadsTheContract( sdfv );
-	ReadsEveryLightKind( Load( "quality/fixtures/gi/sdfv/lights.sdfv" ) );
+	ReadsEveryLightKind( Load( "quality/fixtures/gi/sdfv/lights.sdfv" ), 3 );
+	ReadsEveryLightKind( Load( "quality/fixtures/gi/sdfv/lights-v2.sdfv" ), 2 );
 	ReadsVersionOne( Load( "quality/fixtures/gi/sdfv/contract-v1.sdfv" ) );
 	RejectsTheCorpus( sdfv );
 	SurvivesFuzzing( sdfv );

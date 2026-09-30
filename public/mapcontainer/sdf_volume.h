@@ -19,13 +19,15 @@ namespace mapcontainer
 {
 
 static const uint32_t kLumpSdfVolume = 0x56464453u; // "SDFV"
-// Version 2 adds sphere and spot lights and the light cells; version 1
-// volumes (no cells: every light reaches every point) are still read.
-static const uint32_t kSdfVolumeVersion = 2;
+// Version 2 adds sphere and spot lights and the light cells; version 3 a
+// sphere's or spot's Source falloff (SdfLight::attenuation). Version 1
+// volumes (no cells: every light reaches every point) and 2 are still read.
+static const uint32_t kSdfVolumeVersion = 3;
 static const uint32_t kSdfVolumeHeaderBytes = 96;
 static const uint32_t kSdfVolumeV1HeaderBytes = 64;
 static const uint32_t kSdfVoxelBytes = 16;
-static const uint32_t kSdfLightBytes = 64;
+static const uint32_t kSdfLightBytes = 80;   // version 3
+static const uint32_t kSdfV2LightBytes = 64; // versions 1 and 2
 static const uint32_t kSdfMaxVoxels = 1u << 24;
 static const uint32_t kSdfMaxLights = 4096;
 static const uint32_t kSdfMaxCells = 1u << 22;
@@ -62,8 +64,14 @@ struct SdfLight
 	float b[3];
 	float c[3];
 	float reserved[2]; // a spot's exponent in [0]; otherwise zero
+	// Version 3: a sphere's or spot's Source falloff, vrad's constant, linear
+	// and quadratic terms and hard radius (Source units; all zero, and always
+	// in older versions: the inverse square). Its light at distance d from
+	// its centre is the inverse-square light times d^2 / (c + l d + q d^2),
+	// 0 at or beyond a positive radius (light_set::AttenuatedFalloff).
+	float attenuation[4];
 };
-static_assert( sizeof( SdfLight ) == 64, "SDFV light record" );
+static_assert( sizeof( SdfLight ) == kSdfLightBytes, "SDFV light record" );
 
 struct SdfVolumeLayout
 {
@@ -82,11 +90,15 @@ struct SdfVolumeLayout
 	uint32_t cellEntries;
 	uint64_t cellOffset;      // (cells + 1) u32 first entries
 	uint64_t cellEntryOffset; // cellEntries u16 light indices
+	uint32_t lightStride;     // kSdfLightBytes, or kSdfV2LightBytes before version 3
 };
 
 SdfVolumeError ValidateSdfVolume(
     const void *pData, size_t size, SdfVolumeLayout *pLayout = nullptr ) noexcept;
 const char *SdfVolumeErrorName( SdfVolumeError error ) noexcept;
+
+// Light `index` of a validated volume, its attenuation zero before version 3.
+SdfLight ReadSdfLight( const void *pData, const SdfVolumeLayout &layout, uint32_t index ) noexcept;
 
 } // namespace mapcontainer
 

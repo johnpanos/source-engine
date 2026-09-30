@@ -75,6 +75,7 @@ enum class LightFalloff : uint8_t
 {
 	Legacy,        // Source's dlight falloff (Falloff below)
 	InverseSquare, // a physical bulb (InverseSquareFalloff below)
+	Attenuated,    // a world light: vrad's 1 / (c + l d + q d^2) (AttenuatedFalloff below)
 };
 
 // An inverse-square light's color is its diffuse light at this distance
@@ -99,6 +100,7 @@ struct RuntimeLight
 	float minLight = 0.0f; // dynamic lights: the falloff's threshold (see Falloff)
 	LightFalloff falloff = LightFalloff::Legacy;
 	float sourceRadius = 0.0f; // the emitting sphere (InverseSquare)
+	float attenuation[3] = {}; // Attenuated: vrad's constant, linear, quadratic terms
 	int style = 0;
 	float styleScalar = 1.0f;
 	// The spot cone ramp's exponent (vrad's `_exponent`; 0 and 1 are both a
@@ -161,6 +163,9 @@ struct WorldLightInput
 	float innerCos = 1.0f;
 	float outerCos = 1.0f;
 	int style = 0;
+	// vrad's falloff 1 / (c + l d + q d^2) (dworldlight_t constant_attn,
+	// linear_attn, quadratic_attn); `color` is the intensity it divides.
+	float attenuation[3] = { 0.0f, 0.0f, 1.0f };
 };
 
 struct DynamicLightInput
@@ -222,6 +227,35 @@ struct AreaLightInput
 	const float nearest = sourceRadius * sourceRadius;
 	const float d2 = distanceSquared > nearest ? distanceSquared : nearest;
 	return kInverseSquareReferenceDistance * kInverseSquareReferenceDistance / d2 * window;
+}
+
+// A world light's distance falloff, as vrad bakes it (utils/vrad/lightmap.cpp,
+// GatherSampleLight): its intensity (a RuntimeLight's color) times
+// 1 / ( c + l d + q d^2 ), with d in units from the light, and 0 at or beyond a
+// positive radius (vrad's hard cut). The relight's bakes apply the same law
+// (tools/quality/map_scene.vrad_falloff).
+[[nodiscard]] inline float AttenuatedFalloff(
+    float distanceSquared, float radius, const float ( &attenuation )[3] )
+{
+	if ( radius > 0.0f && distanceSquared >= radius * radius )
+		return 0.0f;
+	const float denominator = attenuation[0] + attenuation[1] * std::sqrt( distanceSquared ) +
+	                          attenuation[2] * distanceSquared;
+	return denominator > 0.0f ? 1.0f / denominator : 0.0f;
+}
+
+// A light's Source falloff relative to its inverse square: d^2 times
+// AttenuatedFalloff, for a light whose power already falls as 1 / d^2 (an
+// SDFV sphere or spot record: `attenuation` c, l, q and radius); all zero is
+// no falloff (1).
+[[nodiscard]] inline float AttenuationRelative(
+    float distanceSquared, const float ( &attenuation )[4] )
+{
+	if ( attenuation[0] == 0.0f && attenuation[1] == 0.0f && attenuation[2] == 0.0f &&
+	     attenuation[3] == 0.0f )
+		return 1.0f;
+	const float terms[3] = { attenuation[0], attenuation[1], attenuation[2] };
+	return distanceSquared * AttenuatedFalloff( distanceSquared, attenuation[3], terms );
 }
 
 // A spot light's cone at the cosine between its axis and the direction from
@@ -298,6 +332,9 @@ public:
 			light.radius = input.radius;
 			light.innerCos = input.innerCos;
 			light.outerCos = input.outerCos;
+			light.falloff = LightFalloff::Attenuated;
+			for ( int k = 0; k < 3; ++k )
+				light.attenuation[k] = input.attenuation[k];
 			snapshot.lights.push_back( light );
 		}
 		std::map<Key, uint32_t> live;

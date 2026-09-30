@@ -1,8 +1,8 @@
 {
- "schema": "sdfv-fixtures/v2",
+ "schema": "sdfv-fixtures/v3",
  "contract": {
-  "bytes": 56956,
-  "version": 2,
+  "bytes": 56972,
+  "version": 3,
   "origin": [
    -32.0,
    -32.0,
@@ -41,6 +41,12 @@
     "d": [
      0.0,
      0.0
+    ],
+    "attenuation": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
     ]
    }
   ],
@@ -65,6 +71,212 @@
   "emissive_voxels": 1690
  },
  "lights": {
+  "bytes": 1748,
+  "version": 3,
+  "origin": [
+   0.0,
+   0.0,
+   0.0
+  ],
+  "voxel": 16.0,
+  "dims": [
+   5,
+   5,
+   3
+  ],
+  "lights": [
+   {
+    "kind": "rect",
+    "style": 32,
+    "rgb": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "a": [
+     16.0,
+     16.0,
+     30.0
+    ],
+    "b": [
+     4.0,
+     0.0,
+     0.0
+    ],
+    "c": [
+     0.0,
+     -4.0,
+     0.0
+    ],
+    "d": [
+     0.0,
+     0.0
+    ],
+    "attenuation": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ]
+   },
+   {
+    "kind": "distant",
+    "style": -1,
+    "rgb": [
+     2.0,
+     2.0,
+     2.0
+    ],
+    "a": [
+     0.0,
+     0.0,
+     -1.0
+    ],
+    "b": [
+     0.009999999776482582,
+     0.0,
+     0.0
+    ],
+    "c": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "d": [
+     0.0,
+     0.0
+    ],
+    "attenuation": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ]
+   },
+   {
+    "kind": "dome",
+    "style": -1,
+    "rgb": [
+     0.10000000149011612,
+     0.10000000149011612,
+     0.10000000149011612
+    ],
+    "a": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "b": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "c": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "d": [
+     0.0,
+     0.0
+    ],
+    "attenuation": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ]
+   },
+   {
+    "kind": "sphere",
+    "style": -1,
+    "rgb": [
+     5.0,
+     4.0,
+     3.0
+    ],
+    "a": [
+     8.0,
+     8.0,
+     16.0
+    ],
+    "b": [
+     2.0,
+     0.0,
+     0.0
+    ],
+    "c": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "d": [
+     0.0,
+     0.0
+    ],
+    "attenuation": [
+     2500.0,
+     0.0,
+     1.0,
+     0.0
+    ]
+   },
+   {
+    "kind": "spot",
+    "style": 33,
+    "rgb": [
+     9.0,
+     9.0,
+     9.0
+    ],
+    "a": [
+     48.0,
+     48.0,
+     30.0
+    ],
+    "b": [
+     0.0,
+     0.0,
+     -1.0
+    ],
+    "c": [
+     2.0,
+     0.9659000039100647,
+     0.8659999966621399
+    ],
+    "d": [
+     2.0,
+     0.0
+    ],
+    "attenuation": [
+     0.0,
+     1.0,
+     0.0,
+     256.0
+    ]
+   }
+  ],
+  "max_distance": 64.0,
+  "cells": {
+   "origin": [
+    -8.0,
+    -8.0,
+    -8.0
+   ],
+   "size": 40.0,
+   "dims": [
+    2,
+    2,
+    1
+   ],
+   "entries": 15,
+   "max_lights": 4,
+   "mean_lights": 3.75
+  },
+  "inside_fraction": 0.0,
+  "emissive_voxels": 0
+ },
+ "lights_v2": {
   "bytes": 1668,
   "version": 2,
   "origin": [
@@ -105,6 +317,12 @@
     "d": [
      0.0,
      0.0
+    ],
+    "attenuation": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
     ]
    },
    {
@@ -131,6 +349,12 @@
      0.0
     ],
     "d": [
+     0.0,
+     0.0
+    ],
+    "attenuation": [
+     0.0,
+     0.0,
      0.0,
      0.0
     ]
@@ -161,6 +385,12 @@
     "d": [
      0.0,
      0.0
+    ],
+    "attenuation": [
+     0.0,
+     0.0,
+     0.0,
+     0.0
     ]
    },
    {
@@ -187,6 +417,12 @@
      0.0
     ],
     "d": [
+     0.0,
+     0.0
+    ],
+    "attenuation": [
+     0.0,
+     0.0,
      0.0,
      0.0
     ]
@@ -216,6 +452,12 @@
     ],
     "d": [
      2.0,
+     0.0
+    ],
+    "attenuation": [
+     0.0,
+     0.0,
+     0.0,
      0.0
     ]
    }
@@ -250,13 +492,13 @@
   {
    "name": "short",
    "error": "size-mismatch",
-   "length": 56948,
+   "length": 56964,
    "edits": []
   },
   {
    "name": "bad-magic",
    "error": "bad-magic",
-   "length": 56956,
+   "length": 56972,
    "edits": [
     [
      0,
@@ -267,7 +509,7 @@
   {
    "name": "version",
    "error": "unsupported-version",
-   "length": 56956,
+   "length": 56972,
    "edits": [
     [
      4,
@@ -278,7 +520,7 @@
   {
    "name": "flags",
    "error": "unsupported-version",
-   "length": 56956,
+   "length": 56972,
    "edits": [
     [
      12,
@@ -289,7 +531,7 @@
   {
    "name": "voxel-size",
    "error": "invalid-grid",
-   "length": 56956,
+   "length": 56972,
    "edits": [
     [
      31,
@@ -300,7 +542,7 @@
   {
    "name": "dims",
    "error": "invalid-grid",
-   "length": 56956,
+   "length": 56972,
    "edits": [
     [
      32,
@@ -311,7 +553,7 @@
   {
    "name": "max-distance",
    "error": "invalid-grid",
-   "length": 56956,
+   "length": 56972,
    "edits": [
     [
      50,
@@ -322,7 +564,7 @@
   {
    "name": "reflectance",
    "error": "invalid-voxel",
-   "length": 56956,
+   "length": 56972,
    "edits": [
     [
      98,
@@ -333,7 +575,7 @@
   {
    "name": "emission",
    "error": "invalid-voxel",
-   "length": 56956,
+   "length": 56972,
    "edits": [
     [
      104,
@@ -344,7 +586,7 @@
   {
    "name": "distance",
    "error": "invalid-voxel",
-   "length": 56956,
+   "length": 56972,
    "edits": [
     [
      96,
@@ -355,7 +597,7 @@
   {
    "name": "light-kind",
    "error": "invalid-light",
-   "length": 56956,
+   "length": 56972,
    "edits": [
     [
      56880,
@@ -366,7 +608,7 @@
   {
    "name": "light-style",
    "error": "invalid-light",
-   "length": 56956,
+   "length": 56972,
    "edits": [
     [
      56884,
@@ -377,7 +619,7 @@
   {
    "name": "light-reserved",
    "error": "invalid-light",
-   "length": 56956,
+   "length": 56972,
    "edits": [
     [
      56938,
@@ -388,7 +630,7 @@
   {
    "name": "sphere-radius",
    "error": "invalid-light",
-   "length": 56956,
+   "length": 56972,
    "edits": [
     [
      56880,
@@ -399,7 +641,7 @@
   {
    "name": "spot-cone",
    "error": "invalid-light",
-   "length": 56956,
+   "length": 56972,
    "edits": [
     [
      56880,
@@ -416,9 +658,31 @@
    ]
   },
   {
+   "name": "light-attenuation",
+   "error": "invalid-light",
+   "length": 56972,
+   "edits": [
+    [
+     56946,
+     "80bf"
+    ]
+   ]
+  },
+  {
+   "name": "dome-attenuation",
+   "error": "invalid-light",
+   "length": 56972,
+   "edits": [
+    [
+     56954,
+     "803f"
+    ]
+   ]
+  },
+  {
    "name": "cell-size",
    "error": "invalid-cells",
-   "length": 56956,
+   "length": 56972,
    "edits": [
     [
      78,
@@ -429,7 +693,7 @@
   {
    "name": "cell-dims",
    "error": "invalid-cells",
-   "length": 56956,
+   "length": 56972,
    "edits": [
     [
      80,
@@ -440,10 +704,10 @@
   {
    "name": "cell-offsets",
    "error": "invalid-cells",
-   "length": 56956,
+   "length": 56972,
    "edits": [
     [
-     56944,
+     56960,
      "01"
     ]
    ]
@@ -451,10 +715,10 @@
   {
    "name": "cell-index",
    "error": "invalid-cells",
-   "length": 56956,
+   "length": 56972,
    "edits": [
     [
-     56952,
+     56968,
      "e703"
     ]
    ]

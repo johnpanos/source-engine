@@ -228,6 +228,39 @@ int main()
 		    "the window reaches 0 at the radius and keeps most of the light within it" );
 	}
 
+	// World lights carry vrad's falloff: intensity / ( c + l d + q d^2 ), 0 at
+	// or beyond a positive radius (utils/vrad lightmap.cpp).
+	{
+		UnderTest attenuated;
+		attenuated.BeginMap( 9 );
+		WorldLightInput flat = World( 0, 0, 1.0f );
+		flat.attenuation[0] = 10000.0f; // a _fifty_percent_distance of 100
+		flat.attenuation[1] = 0.0f;
+		flat.attenuation[2] = 1.0f;
+		flat.radius = 512.0f;
+		const Snapshot a = attenuated.Build( std::vector<WorldLightInput>{ flat }, styles, {} );
+		const RuntimeLight &light = a.lights[0];
+		Check( light.falloff == LightFalloff::Attenuated && light.attenuation[0] == 10000.0f &&
+		           light.attenuation[2] == 1.0f && light.radius == 512.0f,
+		    "a world light is Attenuated with its constants and radius" );
+		const float d = 300.0f;
+		Check( std::fabs( AttenuatedFalloff( d * d, light.radius, light.attenuation ) -
+		                  1.0f / ( 10000.0f + d * d ) ) < 1e-12f,
+		    "AttenuatedFalloff is 1 / ( c + l d + q d^2 )" );
+		Check( AttenuatedFalloff( 512.0f * 512.0f, light.radius, light.attenuation ) == 0.0f &&
+		           AttenuatedFalloff( 511.0f * 511.0f, light.radius, light.attenuation ) > 0.0f,
+		    "AttenuatedFalloff is 0 from the hard radius on" );
+		const float linear[3] = { 0.0f, 2.0f, 0.0f };
+		Check( std::fabs( AttenuatedFalloff( 50.0f * 50.0f, 0.0f, linear ) - 0.01f ) < 1e-8f,
+		    "a linear falloff is 1 / ( l d )" );
+		const float none[4] = {};
+		const float record[4] = { 10000.0f, 0.0f, 1.0f, 0.0f };
+		Check( AttenuationRelative( 123.0f, none ) == 1.0f &&
+		           std::fabs( AttenuationRelative( d * d, record ) -
+		                      d * d / ( 10000.0f + d * d ) ) < 1e-6f,
+		    "AttenuationRelative is 1 without a falloff and d^2 / ( c + l d + q d^2 ) with one" );
+	}
+
 	if ( kSeeded )
 	{
 		std::fprintf( stderr, "%lu seeded rejection(s)\n", g_rejected );

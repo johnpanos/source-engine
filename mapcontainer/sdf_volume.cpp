@@ -40,6 +40,16 @@ float Half( const unsigned char *p )
 
 } // namespace
 
+SdfLight ReadSdfLight( const void *pData, const SdfVolumeLayout &layout, uint32_t index ) noexcept
+{
+	SdfLight light = {};
+	std::memcpy( &light,
+	    static_cast<const unsigned char *>( pData ) + layout.lightOffset +
+	        uint64_t( index ) * layout.lightStride,
+	    layout.lightStride );
+	return light;
+}
+
 SdfVolumeError ValidateSdfVolume( const void *pData, size_t size, SdfVolumeLayout *pLayout ) noexcept
 {
 	const unsigned char *p = static_cast<const unsigned char *>( pData );
@@ -50,12 +60,13 @@ SdfVolumeError ValidateSdfVolume( const void *pData, size_t size, SdfVolumeLayou
 	const uint32_t version = U32( p + 4 );
 	const uint32_t headerBytes = U32( p + 8 );
 	if ( !( ( version == 1 && headerBytes == kSdfVolumeV1HeaderBytes ) ||
-	         ( version == 2 && headerBytes == kSdfVolumeHeaderBytes ) ) ||
+	         ( ( version == 2 || version == 3 ) && headerBytes == kSdfVolumeHeaderBytes ) ) ||
 	     size < headerBytes || U32( p + 12 ) != 0 || U32( p + 52 ) || U32( p + 56 ) ||
 	     U32( p + 60 ) )
 		return SdfVolumeError::UnsupportedVersion;
 	SdfVolumeLayout layout = {};
 	layout.version = version;
+	layout.lightStride = version >= 3 ? kSdfLightBytes : kSdfV2LightBytes;
 	for ( int k = 0; k < 3; ++k )
 	{
 		layout.origin[k] = F32( p + 16 + 4 * k );
@@ -75,7 +86,8 @@ SdfVolumeError ValidateSdfVolume( const void *pData, size_t size, SdfVolumeLayou
 		return SdfVolumeError::InvalidGrid;
 	layout.voxelOffset = headerBytes;
 	layout.lightOffset = layout.voxelOffset + count * kSdfVoxelBytes;
-	const uint64_t lightsEnd = layout.lightOffset + uint64_t( layout.lightCount ) * kSdfLightBytes;
+	const uint64_t lightsEnd =
+	    layout.lightOffset + uint64_t( layout.lightCount ) * layout.lightStride;
 	uint64_t cellCount = 0;
 	if ( version == 1 )
 	{
@@ -126,8 +138,7 @@ SdfVolumeError ValidateSdfVolume( const void *pData, size_t size, SdfVolumeLayou
 	}
 	for ( uint32_t i = 0; i < layout.lightCount; ++i )
 	{
-		SdfLight light;
-		std::memcpy( &light, p + layout.lightOffset + uint64_t( i ) * kSdfLightBytes, sizeof( light ) );
+		const SdfLight light = ReadSdfLight( p, layout, i );
 		const uint32_t lastKind =
 		    uint32_t( version == 1 ? SdfLightKind::Dome : SdfLightKind::Spot );
 		bool ok = light.kind <= lastKind && light.style >= -1 && light.style <= 63 &&
@@ -141,6 +152,18 @@ SdfVolumeError ValidateSdfVolume( const void *pData, size_t size, SdfVolumeLayou
 		{
 			return std::sqrt( v[0] * v[0] + v[1] * v[1] + v[2] * v[2] );
 		};
+		// A falloff: finite, not negative, only on a sphere or spot, and then
+		// all zero or with c + l + q > 0.
+		bool falloff = false;
+		for ( int k = 0; k < 4 && ok; ++k )
+		{
+			ok = foundation::IsFinite( light.attenuation[k] ) && light.attenuation[k] >= 0.0f;
+			falloff = falloff || light.attenuation[k] != 0.0f;
+		}
+		if ( ok && falloff )
+			ok = ( light.kind == uint32_t( SdfLightKind::Sphere ) ||
+			         light.kind == uint32_t( SdfLightKind::Spot ) ) &&
+			     light.attenuation[0] + light.attenuation[1] + light.attenuation[2] > 0.0f;
 		if ( ok && light.kind == uint32_t( SdfLightKind::Distant ) )
 			ok = std::fabs( length( light.a ) - 1.0f ) <= 1e-3f;
 		if ( ok && light.kind == uint32_t( SdfLightKind::Sphere ) )

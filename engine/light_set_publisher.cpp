@@ -126,6 +126,9 @@ void LightSet_PublishFrame()
 		input.innerCos = wl.stopdot;
 		input.outerCos = wl.stopdot2;
 		input.style = wl.style;
+		input.attenuation[0] = wl.constant_attn;
+		input.attenuation[1] = wl.linear_attn;
+		input.attenuation[2] = wl.quadratic_attn;
 		worldLights.push_back( input );
 	}
 	float styles[MAX_LIGHTSTYLES];

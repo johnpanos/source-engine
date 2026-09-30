@@ -58,6 +58,26 @@ class LightCellTests(unittest.TestCase):
         # 2.1x brighter: d <= 40 sqrt(2.1) = 58 from the surface.
         self.assertEqual(lights_at(styled, (55, 5, 5)), [0])
 
+    def test_source_falloff_widens_or_cuts_the_range(self):
+        """A flat Source falloff (c = 100^2, q = 1: 1 / (10000 + d^2)), its
+        intensity scaled as vrad stores it (by c + l 100 + q 100^2, so it
+        matches the inverse square at 100 units), reaches cells the inverse
+        square does not; a hard radius culls every cell whose nearest point
+        lies beyond it; the reached cells are exactly where light_falloff
+        times L r^2 / d^2 is above the cutoff."""
+        flat = dict(sphere((0, 0, 0), 8.0), attenuation=(10000.0, 0.0, 1.0, 0.0))
+        cut = dict(sphere((0, 0, 0), 4.0), attenuation=(0.0, 0.0, 1.0, 55.0))
+        plain, _ = cells.build([sphere((0, 0, 0), 4.0)], (0, 0, 0), (400, 10, 10), 10.0, 1e-3)
+        wide, _ = cells.build([flat], (0, 0, 0), (400, 10, 10), 10.0, 1e-3)
+        short, _ = cells.build([cut], (0, 0, 0), (400, 10, 10), 10.0, 1e-3)
+        reached = lambda result: sum(1 for entry in result["lists"] if entry)
+        self.assertGreater(reached(wide), reached(plain))
+        self.assertEqual(reached(short), 6)          # cells from x 0 to 60: nearest < 55
+        for x in (35.0, 125.0, 145.0, 155.0, 395.0):
+            d = x - 5.0                             # the cell's nearest point
+            light = 8.0 * 4.0 * sdf_volume.light_falloff(flat, d) / (d - 2.0) ** 2
+            self.assertEqual(bool(lights_at(wide, (x, 5, 5))), light >= 1e-3, x)
+
     def test_global_lights_reach_every_cell(self):
         lights = [{"kind": "distant", "style": -1, "rgb": (1, 1, 1), "a": (0, 0, -1)},
                   {"kind": "dome", "style": -1, "rgb": (0.1, 0.1, 0.1)}]

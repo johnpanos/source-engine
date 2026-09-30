@@ -626,8 +626,10 @@ private:
 						if ( cosLight <= 0.0f )
 							continue;
 						const float cone = SpotCone( light, cosLight );
+						// Its Source falloff along the path through the portal.
 						const float scale = m_portalLightScalars[l] * cone * cosLight /
-						                    ( float( M_PI ) * d2 );
+						                    ( float( M_PI ) * d2 ) *
+						                    light_set::AttenuationRelative( d2, light.attenuation );
 						const float value[3] = { sample.power[0] * scale, sample.power[1] * scale,
 						    sample.power[2] * scale };
 						use( w, value );
@@ -931,8 +933,8 @@ public:
 		{
 			const mapcontainer::SdfVolumeLayout &f = scene.sdf->layout;
 			portalLights.resize( f.lightCount );
-			std::memcpy( portalLights.data(), scene.sdf->bytes.data() + f.lightOffset,
-			    portalLights.size() * sizeof( mapcontainer::SdfLight ) );
+			for ( uint32_t i = 0; i < f.lightCount; ++i )
+				portalLights[i] = mapcontainer::ReadSdfLight( scene.sdf->bytes.data(), f, i );
 		}
 		m_solver.Init( scene.transfer, std::vector<float>( layout.sourceCount, 1.0f ), m_options );
 		m_solver.SetPortalLights( std::move( portalLights ) );

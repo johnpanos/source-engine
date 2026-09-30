@@ -122,17 +122,24 @@ def rect_records(obj, radiance, one_sided):
              "c": (b * SOURCE_UNITS_PER_METER).tolist()} for c, a, b in records], exact
 
 
-def shape_record(shape, cone, radiance):
+def shape_record(shape, cone, radiance, attenuation=None):
     """A sphere or disk emitter as its exact SDFV record (Source units): a
     sphere, or a spot (a disk; without a Source cone it lights its whole
-    hemisphere)."""
+    hemisphere), with a Source light's falloff (the emitter's `attenuation`,
+    meters, back in units: c u^2, l u, q and radius u for u units per meter)."""
     centre = (np.asarray(shape["centre"], np.float64) * SOURCE_UNITS_PER_METER).tolist()
     radius = shape["radius_m"] * SOURCE_UNITS_PER_METER
+    u = SOURCE_UNITS_PER_METER
+    falloff = sdf_volume.NO_ATTENUATION if not attenuation else (
+        attenuation["constant"] * u * u, attenuation["linear"] * u, attenuation["quadratic"],
+        attenuation.get("radius_m", 0.0) * u)
     if shape["kind"] == "sphere":
-        return {"kind": "sphere", "rgb": radiance.tolist(), "a": centre, "b": (radius, 0.0, 0.0)}
+        return {"kind": "sphere", "rgb": radiance.tolist(), "a": centre, "b": (radius, 0.0, 0.0),
+                "attenuation": falloff}
     cone = cone or {"inner": -1.0, "outer": -1.0, "exponent": 1.0}
     return {"kind": "spot", "rgb": radiance.tolist(), "a": centre, "b": list(shape["normal"]),
-            "c": (radius, cone["inner"], cone["outer"]), "d": (cone["exponent"], 0.0)}
+            "c": (radius, cone["inner"], cone["outer"]), "d": (cone["exponent"], 0.0),
+            "attenuation": falloff}
 
 
 def emitted(albedo, summary, uv):
@@ -290,7 +297,8 @@ def main():
             shape["emission"]["scale"]
         analytic = shape.get("shape") or {}
         if analytic.get("kind") in ("sphere", "disk"):
-            records, exact = [shape_record(analytic, shape.get("cone"), radiance)], True
+            records, exact = [shape_record(analytic, shape.get("cone"), radiance,
+                                           shape.get("attenuation"))], True
         else:
             records, exact = rect_records(obj, radiance,
                                           shape["emission"].get("one_sided", False))

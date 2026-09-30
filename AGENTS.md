@@ -319,6 +319,13 @@ latency/memory budgets before optimization and include low-core/small workloads.
 
 ## Working protocol
 
+No subagents (user decision, 2026-09-29). Each session does its own work
+directly: do not spawn subagents, forked agents, background agents or
+multi-agent workflows, and do not delegate searches, builds, reviews or
+row slices to them. This overrides any earlier record of a subagent split
+or budget. Messaging another independent session that the user started
+(such as source-engine-43) to coordinate ownership is not a subagent.
+
 1. Choose the highest-ranked dependency-ready bounded task below, unless the
    user's request selects another scope. Read its domain contracts and identify
    existing changes before editing. Preserve unrelated work and submodule state.
@@ -382,7 +389,8 @@ that independent work wait for all earlier rows. Dependencies are hard gate
 prerequisites; lower-ranked work may proceed when its prerequisites and resources
 are available without delaying higher-ranked ready work. Baseline captures and
 bounded feasibility experiments may precede a full implementation gate, but must
-not claim that gate complete. No row requires parallel agents by default.
+not claim that gate complete. No row requires or permits subagents (see the
+working protocol).
 
 IDs stay stable when priorities change. Add child tasks for caller cohorts or
 feature families; a parent closes only when its full declared scope passes.
@@ -859,9 +867,9 @@ Keep the table concise and link details below or from the domain progress file.
     user's direction.
   - Split (user-approved, agreed with source-engine-43):
     - source-engine-43: `render_lab` and every term;
-    - this session's subagents: the K11 lighting fixtures
-      (`quality/fixtures/lighting/`) and R92/K10 (the OpenGL adapter, in its
-      own worktree).
+    - this session, itself (no subagents; see the working protocol): the
+      K11 lighting fixtures (`quality/fixtures/lighting/`) and R92/K10 (the
+      OpenGL adapter, in its own worktree).
   - Every slice that changes pixels records desktop and Fold7 frame time
     (or "unavailable"). The lab publishes a gallery page per term for the
     user's review.

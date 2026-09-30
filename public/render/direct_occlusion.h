@@ -29,6 +29,7 @@
 #include "mapcontainer/sdf_volume.h"
 #include "mapcontainer/world_lightmap.h"
 #include "mapcontainer/world_mesh.h"
+#include "render/light_set.h"
 #include "mapcontainer/world_mesh_format.h"
 #include "render/indirect_light.h"
 
@@ -191,6 +192,9 @@ private:
 		// A spot's vrad cone: cosines of the inner and outer cones and the
 		// exponent; inner < -1 when the sample has none.
 		float cone[3] = { -2.0f, -2.0f, 1.0f };
+		// A sphere's or spot's Source falloff (the SDFV record's; all zero:
+		// none), relative to the inverse square Weight applies.
+		float attenuation[4] = {};
 	};
 	struct Context
 	{
@@ -259,6 +263,8 @@ private:
 			}
 			sample.power = Luminance( light.rgb ) * 3.14159265f * radius * radius;
 			sample.omni = sphere;
+			for ( int k = 0; k < 4; ++k )
+				sample.attenuation[k] = light.attenuation[k];
 			if ( !sphere )
 			{
 				sample.cone[0] = light.c[1];
@@ -430,7 +436,8 @@ private:
 			if ( sample.cone[2] != 0.0f && sample.cone[2] != 1.0f )
 				cone = std::pow( cone, sample.cone[2] );
 		}
-		return sample.power * std::max( 0.0f, cosSurface ) * cosLight * cone / d2;
+		return sample.power * std::max( 0.0f, cosSurface ) * cosLight * cone / d2 *
+		       light_set::AttenuationRelative( d2, sample.attenuation );
 	}
 
 	// A triangle's winding does not say which side the bake lit (fan

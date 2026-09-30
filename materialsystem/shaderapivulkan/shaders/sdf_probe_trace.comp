@@ -58,7 +58,9 @@ struct Light
 	vec4 b;    // rect half-axis u; distant: x the angular diameter; sphere: x radius;
 	           // spot: the emitting normal
 	vec4 c;    // rect half-axis v; spot: x radius, y cos inner, z cos outer
-	vec4 d;    // spot: x the cone exponent
+	vec4 d;    // spot: x the cone exponent; sphere, spot: yzw the Source falloff's
+	           // constant, linear, quadratic terms, and a.w its hard radius (all zero:
+	           // none; SourceFalloff)
 	// point: a the position; b x radius, y minLight, z source radius, w 1 for
 	// the inverse square (else Source's dlight falloff); c.xyz its cone's
 	// axis, c.w the outer cone cosine (below -1: no cone); d.x the inner.
@@ -487,6 +489,21 @@ uvec2 CellRange( vec3 p )
 
 // One sample of analytic light `l` at `p`: the unshadowed diffuse light
 // along `w` for a normal facing it (irradiance / pi), 0 when it cannot light p.
+// A sphere's or spot's Source falloff relative to its inverse square, at p's
+// distance d from its centre: d^2 / (c + l d + q d^2), 0 at or beyond a
+// positive radius; 1 without one (render/light_set.h AttenuationRelative).
+float SourceFalloff( Light light, vec3 p )
+{
+	if ( light.d.y == 0.0 && light.d.z == 0.0 && light.d.w == 0.0 && light.a.w == 0.0 )
+		return 1.0;
+	const vec3 delta = light.a.xyz - p;
+	const float d2 = dot( delta, delta );
+	if ( light.a.w > 0.0 && d2 >= light.a.w * light.a.w )
+		return 0.0;
+	const float denominator = light.d.y + light.d.z * sqrt( d2 ) + light.d.w * d2;
+	return denominator > 0.0 ? d2 / denominator : 0.0;
+}
+
 vec3 LightSampleOf( Light light, vec3 p, inout uint rng, out vec3 w, out vec3 target )
 {
 	const uint kind = uint( light.kind.x );
@@ -530,7 +547,7 @@ vec3 LightSampleOf( Light light, vec3 p, inout uint rng, out vec3 w, out vec3 ta
 		{
 			w = axis;
 			target = light.a.xyz;
-			return light.rgb.rgb;
+			return light.rgb.rgb * SourceFalloff( light, p );
 		}
 		const float cosMax = sqrt( max( 0.0, 1.0 - r * r / d2 ) );
 		const float cosTheta = mix( cosMax, 1.0, Random( rng ) );
@@ -543,7 +560,7 @@ vec3 LightSampleOf( Light light, vec3 p, inout uint rng, out vec3 w, out vec3 ta
 		// The near side of the sphere along w.
 		const float along = dot( toCentre, w );
 		target = p + w * ( along - sqrt( max( 0.0, r * r - ( d2 - along * along ) ) ) );
-		return light.rgb.rgb * ( 2.0 * kPi * ( 1.0 - cosMax ) ) / kPi;
+		return light.rgb.rgb * ( 2.0 * kPi * ( 1.0 - cosMax ) ) / kPi * SourceFalloff( light, p );
 	}
 	if ( kind == 4u )
 	{
@@ -569,7 +586,7 @@ vec3 LightSampleOf( Light light, vec3 p, inout uint rng, out vec3 w, out vec3 ta
 				cone = pow( cone, light.d.x );
 		}
 		const float area = kPi * light.c.x * light.c.x;
-		return light.rgb.rgb * cone * cosLight * area / ( kPi * d2 );
+		return light.rgb.rgb * cone * cosLight * area / ( kPi * d2 ) * SourceFalloff( light, p );
 	}
 	if ( kind == 5u )
 	{
