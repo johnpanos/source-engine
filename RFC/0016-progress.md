@@ -4635,3 +4635,22 @@ Later CPU items:
 
 testchmb_a_15_relit now runs at about 8.2 ms median with 3.5 ms of GPU.
 sp_a2_laser_intro_relit runs at about 5.5 ms.
+
+### Moving casters over the cached tiles (2026-09-30, source-engine-5a)
+
+`5e9b11b8a` completes step 2 (Doom Eternal's cached shadow maps with
+moving casters):
+- The frame's moving-object boxes are drawn as cube casters into a
+  frame atlas, over tiles restored from the cached static atlas
+  (`AddTileCopy`).
+- A tile is copied and drawn again only when its movers' signature
+  (entity, part, pose version) or its static depth changes.
+- `r_core_shadow_movers` turns it off.
+- Oracle: `render.shadows.pixels` C3. The restore with movers drawn over
+  it equals a full draw texel for texel, and the version without the
+  restore is caught.
+- Cost at rest on testchmb_a_15_relit: none. A first version that redrew
+  every tile a mover reached every frame (234 of 255 tiles, +1.7 ms GPU)
+  was replaced.
+- No in-game image of a moving shadow yet: the test views have no mover
+  under a shadowed light.
