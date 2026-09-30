@@ -36,8 +36,10 @@ environment-map mask (the bump or base alpha, or `$envmapmask`) scaled by the
 
 Lights come from vrad's compiled world lights (the HDR lump when present),
 in the engine's lightmap unit, which is the pipeline's (irradiance / pi):
-  point  a SphereLight of radius 2 units whose light at 100 units (where vrad
-         normalizes a light's brightness) matches vrad's falloff there;
+  point  a SphereLight of radius 2 units of vrad's intensity, carrying vrad's
+         attenuation 1 / (c + l d + q d^2) and its hard radius
+         (`sourceEngine:attenuation`, `falloffRadius`), which every bake's
+         emitter applies at each distance (pbrt_blender.attenuation_factor);
   spot   a one-sided DiskLight of that size facing the spot's direction,
          matched on its axis, with vrad's cone (`sourceEngine:coneInner`,
          `coneOuter`, `coneExponent`), which the disk's projected area
@@ -76,7 +78,6 @@ import vtf_decode  # noqa: E402
 SCHEMA = "legacy-relight-scene/v1"
 METERS_PER_UNIT = 0.0254
 LIGHT_RADIUS_UNITS = 2.0
-NORMALIZE_DISTANCE = 100.0  # vrad scales a light's brightness to its value here
 OCCLUDER = "relight_occluder"
 DEFAULT_ROUGHNESS = 0.8
 # Source's bump basis (tangent space, DirectX +Y down), the directions an
@@ -341,15 +342,14 @@ def match_surface_lights(lights, faces):
     return sums, unmatched
 
 
-def falloff_match(light):
-    """vrad's falloff 1 / (c + l d + q d^2) matched by an inverse square at
-    the normalization distance: the effective intensity I' with I'/d^2 = I/(...)."""
-    c, l, q = light["attenuation"]
-    d = NORMALIZE_DISTANCE
-    denominator = c + l * d + q * d * d
-    if denominator <= 0:
+def vrad_attenuation(light):
+    """A world light's falloff 1 / (c + l d + q d^2) and hard radius (0:
+    none), in Source units: what every bake's emitter applies at each
+    distance (map_scene.vrad_falloff)."""
+    c, l, q = (float(v) for v in light["attenuation"])
+    if min(c, l, q) < 0 or c + l + q <= 0:
         raise ValueError("world light %d has no falloff" % light["index"])
-    return d * d / denominator, not (c == 0 and l == 0)
+    return [c, l, q], max(0.0, float(light.get("radius", 0.0)))
 
 
 def entity_for_light(entities, light):
@@ -598,25 +598,21 @@ def build_model(bsp, resolver, texture_dir):
             continue
         intensity = np.asarray(light["intensity"], np.float64)
         if kind in ("point", "spot"):
-            scale, approximated = falloff_match(light)
-            effective = intensity * scale
-            record["radiance"] = (effective / LIGHT_RADIUS_UNITS ** 2).tolist()
+            # vrad's own falloff at every distance: the emitter emits the
+            # intensity and applies 1 / (c + l d + q d^2), 0 beyond a positive
+            # radius (it used to be one inverse square matched at 100 units,
+            # 5-25x too dark far from a flat light).
+            record["attenuation"], record["falloff_radius_units"] = vrad_attenuation(light)
+            record["radiance"] = (intensity / LIGHT_RADIUS_UNITS ** 2).tolist()
             record["origin"] = list(light["origin"])
             record["normal"] = list(light["normal"])
             record["radius_units"] = LIGHT_RADIUS_UNITS
-            if approximated:
-                record["approximation"] = ("constant/linear falloff %s matched at %g units" %
-                                           (list(light["attenuation"]), NORMALIZE_DISTANCE))
             if kind == "spot":
                 # vrad's cone: cosines of the inner and outer cones.
                 inner = float(np.clip(light["stopdot"], -1.0, 1.0))
                 record["cone"] = {"inner": inner,
                                   "outer": float(np.clip(light["stopdot2"], -1.0, inner)),
                                   "exponent": max(0.0, float(light["exponent"]))}
-            if light["radius"] > 0:
-                record["approximation"] = "; ".join(filter(None, [
-                    record.get("approximation"), "hard falloff radius %g ignored" %
-                    light["radius"]]))
         elif kind == "sky":
             record["irradiance"] = (math.pi * intensity).tolist()
             record["direction"] = list(light["normal"])
@@ -974,6 +970,13 @@ def write_usd(model, path, map_name):
             for key, value in (("Inner", "inner"), ("Outer", "outer"), ("Exponent", "exponent")):
                 light.GetPrim().CreateAttribute("sourceEngine:cone" + key, Sdf.ValueTypeNames.Float,
                                                 custom=True).Set(float(record["cone"][value]))
+        if record["type"] in ("point", "spot"):
+            # vrad's attenuation in stage units (usd_scene.source_attenuation).
+            light.GetPrim().CreateAttribute("sourceEngine:attenuation", Sdf.ValueTypeNames.Float3,
+                                            custom=True).Set(Gf.Vec3f(*record["attenuation"]))
+            light.GetPrim().CreateAttribute("sourceEngine:falloffRadius",
+                                            Sdf.ValueTypeNames.Float, custom=True).Set(
+                                                float(record["falloff_radius_units"]))
         elif record["type"] == "sky":
             light = UsdLux.DistantLight.Define(stage, path)
             light.CreateAngleAttr(float(record["angle_degrees"]))

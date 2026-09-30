@@ -18,6 +18,7 @@ import bsp_worldlights  # noqa: E402
 import legacy_bsp  # noqa: E402
 import legacy_bsp_relight  # noqa: E402
 import legacy_bsp_scene as scene  # noqa: E402
+import map_scene  # noqa: E402
 import vtf_decode  # noqa: E402
 
 
@@ -473,24 +474,32 @@ class MaterialTests(unittest.TestCase):
 
 
 class LightConversionTests(unittest.TestCase):
-    def light(self, attenuation):
-        return {"index": 0, "attenuation": attenuation}
+    def light(self, attenuation, radius=0.0):
+        return {"index": 0, "attenuation": attenuation, "radius": radius}
 
-    def test_inverse_square_light_is_unchanged(self):
-        scale, approximated = scene.falloff_match(self.light((0.0, 0.0, 1.0)))
-        self.assertEqual((scale, approximated), (1.0, False))
+    def test_vrad_attenuation_is_carried_not_matched(self):
+        """The constants and hard radius travel to the emitter, which applies
+        them at every distance (no inverse square matched at 100 units)."""
+        self.assertEqual(scene.vrad_attenuation(self.light((0.0, 0.0, 1.0))),
+                         ([0.0, 0.0, 1.0], 0.0))
+        self.assertEqual(scene.vrad_attenuation(self.light((200000.0, 0.0, 1.0), 512.0)),
+                         ([200000.0, 0.0, 1.0], 512.0))
 
-    def test_constant_falloff_matches_vrad_at_the_normalization_distance(self):
-        attenuation = (200000.0, 0.0, 1.0)
-        scale, approximated = scene.falloff_match(self.light(attenuation))
-        self.assertTrue(approximated)
-        d = scene.NORMALIZE_DISTANCE
-        vrad = 1.0 / (attenuation[0] + d * d)
-        self.assertAlmostEqual(scale / (d * d), vrad)
+    def test_emitter_falloff_is_vrads_at_every_distance(self):
+        # A _fifty_percent_distance light: c = d50^2, q = 1 (in meters here).
+        attenuation = {"constant": 4.0, "linear": 0.0, "quadratic": 1.0, "radius_m": 0.0}
+        for d in (0.5, 2.0, 7.0, 30.0):
+            vrad = 1.0 / (4.0 + d * d)
+            self.assertAlmostEqual(map_scene.vrad_falloff(attenuation, d) / (d * d), vrad)
+        linear = {"constant": 0.0, "linear": 1.0, "quadratic": 0.0, "radius_m": 10.0}
+        self.assertAlmostEqual(map_scene.vrad_falloff(linear, 4.0), 4.0)   # 1 / d, not 1 / d^2
+        self.assertEqual(map_scene.vrad_falloff(linear, 10.0), 0.0)        # the hard radius
 
     def test_a_light_without_falloff_is_rejected(self):
         with self.assertRaises(ValueError):
-            scene.falloff_match(self.light((0.0, 0.0, 0.0)))
+            scene.vrad_attenuation(self.light((0.0, 0.0, 0.0)))
+        with self.assertRaises(ValueError):
+            scene.vrad_attenuation(self.light((-1.0, 0.0, 1.0)))
 
     def test_only_switchable_styles_start_dark(self):
         lights = [{"index": i, "style": style} for i, style in enumerate((0, 1, 32, 33, 33))]

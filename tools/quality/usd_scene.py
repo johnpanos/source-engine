@@ -261,6 +261,25 @@ def source_cone(prim):
     return {"inner": inner, "outer": outer, "exponent": exponent}
 
 
+def source_attenuation(prim, meters_per_unit):
+    """A light's authored Source falloff (`sourceEngine:attenuation`: vrad's
+    constant, linear and quadratic terms in stage units; `falloffRadius`: its
+    hard radius, 0 for none), converted to meters for the emitter
+    (map_scene.vrad_falloff), or None. With d in units d_m / m, d^2 / (c +
+    l d + q d^2) = d_m^2 / (c m^2 + l m d_m + q d_m^2)."""
+    attribute = prim.GetAttribute("sourceEngine:attenuation")
+    if not (attribute and attribute.HasAuthoredValue()):
+        return None
+    c, l, q = (float(v) for v in attribute.Get())
+    if min(c, l, q) < 0 or c + l + q <= 0:
+        raise ValueError("%s: invalid Source attenuation %g %g %g" % (prim.GetPath(), c, l, q))
+    radius = prim.GetAttribute("sourceEngine:falloffRadius")
+    radius = float(radius.Get()) if radius and radius.HasAuthoredValue() else 0.0
+    m = meters_per_unit
+    return {"constant": c * m * m, "linear": l * m, "quadratic": q,
+            "radius_m": max(0.0, radius) * m}
+
+
 def light_style(prim):
     """A light's authored `sourceEngine:lightStyle` (a compiled map's switchable
     light style, which the radiosity transfer then uses), or None."""
@@ -875,6 +894,9 @@ class Extractor:
             "normalized": normalized, "area_m2": float(area), "shape": shape})
         if cone:
             self.emitters[-1]["cone"] = cone
+        attenuation = source_attenuation(prim, self.convert.meters)
+        if attenuation:
+            self.emitters[-1]["attenuation"] = attenuation
         style = light_style(prim)
         if style is not None:
             self.emitters[-1]["style"] = style

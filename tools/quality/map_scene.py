@@ -14,7 +14,9 @@ branches on the source format itself. The shared model:
                   geometry already in stage (Z-up) space; USD emitters also
                   carry their analytic `shape` (rect, disk or sphere: centre,
                   radius_m, a disk's emitting normal), a DiskLight its Source
-                  `cone` ({inner, outer, exponent}) and a styled light `style`
+                  `cone` ({inner, outer, exponent}), a Source light its
+                  `attenuation` ({constant, linear, quadratic, radius_m} in
+                  meters; `vrad_falloff`) and a styled light `style`
   distant_lights  [{direction, irradiance, angle_degrees}] (USD only)
   environment     sky / dome light or None; `environment_equirect` resamples it
   camera, film    reference view; `camera_pose` gives eye/forward/up in stage space
@@ -36,6 +38,8 @@ defaults; PBRT coateddiffuse keeps its `coat_roughness` model.
 import json
 import sys
 from pathlib import Path
+
+import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import pbrt_scene  # noqa: E402
@@ -91,6 +95,24 @@ def source_files(scene):
     if scene["environment"]:
         names.append(scene["environment"]["filename"])
     return [scene["source"]] + sorted({str(root / name) for name in names})
+
+
+def vrad_falloff(attenuation, distance_m):
+    """A Source light's attenuation relative to an inverse square at
+    `distance_m` (an emitter's `attenuation`, in meters: constant, linear,
+    quadratic and a hard radius, 0 for none): d^2 / (c + l d + q d^2), and 0
+    beyond the radius. An emitter of intensity I then lights I / (c + l d +
+    q d^2), vrad's falloff. pbrt_blender.attenuation_factor builds the same
+    expression in Cycles nodes; sdf_light_cells uses it for light ranges."""
+    d = np.asarray(distance_m, dtype=np.float64)
+    radius = float(attenuation.get("radius_m", 0.0))
+    denominator = (attenuation["constant"] + attenuation["linear"] * d +
+                   attenuation["quadratic"] * d * d)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        factor = np.where(denominator > 0, d * d / denominator, 0.0)
+    if radius > 0:
+        factor = np.where(d >= radius, 0.0, factor)
+    return float(factor) if factor.ndim == 0 else factor
 
 
 def input_files(scene):

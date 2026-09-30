@@ -24,6 +24,12 @@ L * cone(cos_l) * cos_l * cos_r * dA / d^2.
     radiance, it throws no shadow on its own lamp, and nothing is lit twice
   * switching: hiding pbrt_blender.emitter_objects together leaves the
     floor black
+  * Source falloff: an emitter's `attenuation` (vrad's constant, linear and
+    quadratic terms and hard radius, in meters) makes its lamp light the
+    floor at intensity / (c + l d + q d^2), 0 past the radius: the analytic
+    integrand times map_scene.vrad_falloff at the distance to the light's
+    centre, as vrad measures it. A lamp carries the falloff, so
+    these cases check the lamp path only (its bulb mesh is camera-only)
 
 Prints one `EMITTER_LAMPS <json>` line; exits nonzero on any violation.
 """
@@ -38,6 +44,7 @@ import numpy as np
 
 HERE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(HERE))
+import map_scene  # noqa: E402
 import pbrt_blender  # noqa: E402
 
 RESOLUTION = 96
@@ -139,6 +146,8 @@ def emitter(case):
                            "two_sided": not one_sided}, "shape": shape}
     if case.get("cone"):
         record["cone"] = case["cone"]
+    if case.get("attenuation"):
+        record["attenuation"] = case["attenuation"]
     return record, (samples, normals, areas)
 
 
@@ -151,6 +160,7 @@ def expected_floor(record, surface):
     floor = np.stack([x.reshape(-1), y.reshape(-1), np.zeros(x.size)], -1)
     luminance = np.mean(RADIANCE)
     cone = record.get("cone")
+    attenuation = record.get("attenuation")
     total = np.zeros(len(floor))
     for start in range(0, len(samples), 512):
         s, n, a = samples[start:start + 512], normals[start:start + 512], \
@@ -166,6 +176,11 @@ def expected_floor(record, surface):
                            max(cone["inner"] - cone["outer"], 1e-6), 0.0, 1.0)
             weight = weight * (ramp ** cone["exponent"] if cone["exponent"] not in (0.0, 1.0)
                                else ramp)
+        if attenuation:
+            # vrad measures from the light's centre.
+            centre = np.asarray(record["shape"]["centre"])
+            weight = weight * map_scene.vrad_falloff(
+                attenuation, np.linalg.norm(floor - centre, axis=-1))[:, None]
         total += (luminance * weight * cos_r * a[None] / d2).sum(-1)
     image = total.reshape(RESOLUTION * sub, RESOLUTION * sub) / math.pi
     return image.reshape(RESOLUTION, sub, RESOLUTION, sub).mean(axis=(1, 3))
@@ -240,6 +255,13 @@ CASES = [
      "normal": (0.2, 0.1, -1.0), "spin": 30.0},
     {"name": "LightDisk02", "kind": "disk", "centre": (-0.5, 0.2, 1.0), "radius": 0.06,
      "normal": (0.5, -0.1, -0.85), "cone": {"inner": 0.95, "outer": 0.8, "exponent": 2.0}},
+    # A _fifty_percent_distance light: nearly flat out to d50 (c = d50^2, q = 1).
+    {"name": "LightQuad03", "kind": "sphere", "centre": (-0.3, 0.3, 0.8), "radius": 0.08,
+     "attenuation": {"constant": 1.44, "linear": 0.0, "quadratic": 1.0, "radius_m": 0.0}},
+    # A linear-falloff spot cut at a hard radius inside the floor's reach.
+    {"name": "LightDisk04", "kind": "disk", "centre": (0.2, -0.3, 0.9), "radius": 0.06,
+     "normal": (-0.3, 0.2, -0.93), "cone": {"inner": 0.9, "outer": 0.6, "exponent": 1.0},
+     "attenuation": {"constant": 0.0, "linear": 1.0, "quadratic": 0.0, "radius_m": 1.6}},
 ]
 
 
@@ -258,7 +280,7 @@ def main():
         clear = np.hypot(gx - case["centre"][0], gy - case["centre"][1]) > reach
         region = lit & clear
         row = {"pixels": int(region.sum())}
-        for lamp in (True, False):
+        for lamp in (True, False) if not case.get("attenuation") else (True,):
             label = "lamp" if lamp else "mesh"
             mesh = build(record, lamp)
             if pbrt_blender.lamp_kind(record) != case["kind"]:
@@ -296,8 +318,9 @@ def main():
                 if dark.max() > 0:
                     failures.append("%s: light left on after hiding %s" % (case["name"],
                                                                            objects))
-        row["noise_ratio"] = row["mesh"]["noise"] / max(row["lamp"]["noise"], 1e-12)
-        if row["noise_ratio"] < NOISE_RATIO[case["kind"]]:
+        row["noise_ratio"] = row["mesh"]["noise"] / max(row["lamp"]["noise"], 1e-12) \
+            if "mesh" in row else None
+        if row["noise_ratio"] is not None and row["noise_ratio"] < NOISE_RATIO[case["kind"]]:
             failures.append("%s: lamp noise only %.1fx below the mesh" % (case["name"],
                                                                           row["noise_ratio"]))
         report[case["name"]] = row

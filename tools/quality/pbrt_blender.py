@@ -307,6 +307,80 @@ def cone_strength(tree, cone, scale, cosine):
     return strength.outputs["Value"]
 
 
+def attenuation_factor(tree, attenuation, centre):
+    """A Source light's falloff relative to an inverse square, as nodes:
+    d^2 / (c + l d + q d^2), and 0 at or beyond a positive hard radius -
+    map_scene.vrad_falloff's expression. d is vrad's distance, from the
+    shaded point to the light's centre (meters): the emitting point plus the
+    ray back to the shaded point (Incoming x Ray Length), less `centre`.
+    Cycles already applies the inverse square, so the light lands at
+    intensity / (c + l d + q d^2), vrad's."""
+    nodes, links = tree.nodes, tree.links
+
+    def math_node(operation, a, b):
+        node = nodes.new("ShaderNodeMath")
+        node.operation = operation
+        for socket, value in zip(node.inputs, (a, b)):
+            if isinstance(value, (int, float)):
+                socket.default_value = value
+            else:
+                links.new(value, socket)
+        return node.outputs["Value"]
+
+    def vector_node(operation, a, b, value=None):
+        node = nodes.new("ShaderNodeVectorMath")
+        node.operation = operation
+        for socket, item in zip(node.inputs, (a, b)):
+            if isinstance(item, tuple):
+                socket.default_value = item
+            elif item is not None:
+                links.new(item, socket)
+        if value is not None:
+            node.inputs["Scale"].default_value = value
+        return node
+
+    geometry = nodes.new("ShaderNodeNewGeometry")
+    ray = nodes.new("ShaderNodeLightPath").outputs["Ray Length"]
+    back = vector_node("SCALE", geometry.outputs["Incoming"], None)
+    links.new(ray, back.inputs["Scale"])
+    shaded = vector_node("ADD", geometry.outputs["Position"], back.outputs["Vector"])
+    offset = vector_node("SUBTRACT", shaded.outputs["Vector"], tuple(float(v) for v in centre))
+    distance = vector_node("LENGTH", offset.outputs["Vector"], None).outputs["Value"]
+    squared = math_node("MULTIPLY", distance, distance)
+    denominator = math_node("ADD", math_node("ADD", attenuation["constant"],
+                                             math_node("MULTIPLY", distance,
+                                                       attenuation["linear"])),
+                            math_node("MULTIPLY", squared, attenuation["quadratic"]))
+    factor = math_node("DIVIDE", squared, denominator)
+    if attenuation.get("radius_m", 0.0) > 0:
+        factor = math_node("MULTIPLY", factor,
+                           math_node("LESS_THAN", distance, attenuation["radius_m"]))
+    return factor
+
+
+def scaled_strength(tree, strength, attenuation, centre):
+    """`strength` (a socket or a number) times the emitter's attenuation."""
+    node = tree.nodes.new("ShaderNodeMath")
+    node.operation = "MULTIPLY"
+    if isinstance(strength, (int, float)):
+        node.inputs[0].default_value = strength
+    else:
+        tree.links.new(strength, node.inputs[0])
+    tree.links.new(attenuation_factor(tree, attenuation, centre), node.inputs[1])
+    return node.outputs["Value"]
+
+
+def emitter_centre(shape):
+    """Where a Source light's falloff distance is measured from: its analytic
+    centre, else its mesh's vertex mean (stage space)."""
+    analytic = shape.get("shape") or {}
+    if "centre" in analytic:
+        return analytic["centre"]
+    world = matrix(map_scene.emitter_to_stage(shape))
+    points = [world @ Vector(point) for point in shape["points"]]
+    return tuple(sum(p[i] for p in points) / len(points) for i in range(3))
+
+
 def emitter_material(index, shape):
     emission = shape["emission"]
     result = bpy.data.materials.new("Emitter%02d_Cycles" % index)
@@ -318,6 +392,7 @@ def emitter_material(index, shape):
     node.inputs["Color"].default_value = tuple(emission["radiance"]) + (1.0,)
     node.inputs["Strength"].default_value = emission["scale"]
     cone = shape.get("cone")
+    strength = emission["scale"]
     if cone:
         # The disk's projected area supplies the cosine vrad also applies.
         geometry = nodes.new("ShaderNodeNewGeometry")
@@ -325,9 +400,15 @@ def emitter_material(index, shape):
         cosine.operation = "DOT_PRODUCT"
         result.node_tree.links.new(geometry.outputs["Incoming"], cosine.inputs[0])
         result.node_tree.links.new(geometry.outputs["True Normal"], cosine.inputs[1])
-        result.node_tree.links.new(
-            cone_strength(result.node_tree, cone, emission["scale"], cosine.outputs["Value"]),
-            node.inputs["Strength"])
+        strength = cone_strength(result.node_tree, cone, emission["scale"],
+                                 cosine.outputs["Value"])
+    # A lamp carries the falloff when there is one (the mesh is then seen by
+    # camera rays only, whose bulb must not dim with distance).
+    if shape.get("attenuation") and not lamp_kind(shape):
+        strength = scaled_strength(result.node_tree, strength, shape["attenuation"],
+                                   emitter_centre(shape))
+    if not isinstance(strength, (int, float)):
+        result.node_tree.links.new(strength, node.inputs["Strength"])
     surface = node.outputs["Emission"]
     if emission.get("one_sided"):
         # UsdLux area lights emit from their front face only.
@@ -413,17 +494,22 @@ def add_lamp(index, shape, mesh):
     data.energy = peak * math.pi * area
     data.color = tuple(value / peak for value in radiance) if peak > 0 else (1.0, 1.0, 1.0)
     cone = shape.get("cone")
-    if cone:
+    attenuation = shape.get("attenuation")
+    if cone or attenuation:
         data.use_nodes = True
         tree = data.node_tree
         node = next(node for node in tree.nodes if node.type == "EMISSION")
-        geometry = tree.nodes.new("ShaderNodeNewGeometry")
-        cosine = tree.nodes.new("ShaderNodeVectorMath")
-        cosine.operation = "DOT_PRODUCT"
-        tree.links.new(geometry.outputs["Incoming"], cosine.inputs[0])
-        cosine.inputs[1].default_value = tuple(-rotation.col[2])
-        tree.links.new(cone_strength(tree, cone, 1.0, cosine.outputs["Value"]),
-                       node.inputs["Strength"])
+        strength = 1.0
+        if cone:
+            geometry = tree.nodes.new("ShaderNodeNewGeometry")
+            cosine = tree.nodes.new("ShaderNodeVectorMath")
+            cosine.operation = "DOT_PRODUCT"
+            tree.links.new(geometry.outputs["Incoming"], cosine.inputs[0])
+            cosine.inputs[1].default_value = tuple(-rotation.col[2])
+            strength = cone_strength(tree, cone, 1.0, cosine.outputs["Value"])
+        if attenuation:
+            strength = scaled_strength(tree, strength, attenuation, analytic["centre"])
+        tree.links.new(strength, node.inputs["Strength"])
     obj = bpy.data.objects.new(name, data)
     bpy.context.scene.collection.objects.link(obj)
     obj.matrix_world = Matrix.Translation(centre) @ rotation.to_4x4()
