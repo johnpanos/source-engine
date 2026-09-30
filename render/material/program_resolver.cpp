@@ -356,7 +356,11 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 		out.name = "pbr";
 		out.request = std::move( request ).Value();
 		out.blend = device::BlendMode::kOpaque;
-		out.drawInputs = { "lightmap", "lightmap-gradient", "lightmap-indirect" };
+		// Runtime direct light: the gradient page is the indirect layer's own.
+		out.drawInputs = { "lightmap",
+		    ( variant.terms & kSurfaceRuntimeDirect ) ? "lightmap-indirect-gradient"
+		                                              : "lightmap-gradient",
+		    "lightmap-indirect" };
 		return out;
 	}
 	if ( material.family == "water" )

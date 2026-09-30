@@ -119,6 +119,7 @@ struct Resources
 constexpr const char *kStageLightmap = "stage:lightmap";
 constexpr const char *kStageGradient = "stage:lightmap-gradient";
 constexpr const char *kStageIndirect = "stage:lightmap-indirect";
+constexpr const char *kStageIndirectGradient = "stage:lightmap-indirect-gradient";
 constexpr const char *kStageProbeAtlas = "stage:probe-atlas";
 constexpr const char *kStageProbeGrids = "stage:probe-grids";
 constexpr const char *kStageChange = "stage:change";
@@ -137,7 +138,12 @@ std::uint32_t StageTerms( const WorldStage &stage )
 {
 	// The view's runtime lights (a view without them binds the neutral view).
 	std::uint32_t terms = material::kSurfaceClustered | material::kSurfaceAmbientOcclusion;
-	if ( stage.lightmap.Directional() )
+	// Runtime direct light reads the indirect layer, directional when the
+	// bake wrote its own gradient page; else the total layer's pages.
+	const bool runtimeDirect = stage.runtimeDirect && !stage.indirect.empty();
+	if ( runtimeDirect )
+		terms |= material::kSurfaceRuntimeDirect;
+	if ( runtimeDirect ? !stage.indirectGradient.empty() : stage.lightmap.Directional() )
 		terms |= material::kSurfaceDirectionalLightmap;
 	if ( stage.probes )
 		terms |= material::kSurfaceProbeVolume | material::kSurfaceProbeBounce;
@@ -912,6 +918,9 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		if ( made && !stage.indirect.empty() )
 			made = stageMake(
 			    kStageIndirect, Format::kRGBA16Float, pages.width, pages.height, stage.indirect );
+		if ( made && !stage.indirectGradient.empty() )
+			made = stageMake( kStageIndirectGradient, Format::kRGBA16Float, pages.width,
+			    pages.height, stage.indirectGradient );
 		if ( made && stage.probes )
 		{
 			const StageProbeVolume &probes = *stage.probes;
@@ -1318,6 +1327,9 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 					inputs.push_back( stage.lightmap.Directional() ? kStageGradient : "" );
 				else if ( input == "lightmap-indirect" )
 					inputs.push_back( stage.indirect.empty() ? "" : kStageIndirect );
+				else if ( input == "lightmap-indirect-gradient" )
+					inputs.push_back(
+					    stage.indirectGradient.empty() ? "" : kStageIndirectGradient );
 				else
 				{
 					note( "a program reads draw input " + input + ", which the world stage lacks" );

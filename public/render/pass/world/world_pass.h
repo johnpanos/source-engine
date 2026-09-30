@@ -150,6 +150,13 @@ struct WorldStage
 {
 	LightmapPages lightmap;          // the baked (total) layer's pages
 	std::vector<std::byte> indirect; // the indirect layer's flat page; empty without one
+	// The indirect layer's gradient page (its own directional half); empty
+	// when the bake wrote none.
+	std::vector<std::byte> indirectGradient;
+	// Runtime direct light (material::kSurfaceRuntimeDirect): the surfaces'
+	// basis is the indirect layer and every light's direct light is drawn at
+	// runtime. Needs the indirect layer.
+	bool runtimeDirect = false;
 	std::optional<StageProbeVolume> probes;
 	std::uint32_t reflectionWidth = 0;
 	std::uint32_t reflectionHeight = 0;

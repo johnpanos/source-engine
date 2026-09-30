@@ -427,6 +427,10 @@ struct Host
 	std::vector<unsigned char> occludedTotal;
 	// The provider holds occludedTotal (a partial upload can follow).
 	bool occludedUploaded = false;
+	// The map's inputs to DirectOcclusion, kept from BeginMap until the
+	// renderer says which surfaces still need it (BuildDirectOcclusion).
+	IndirectLightMapData occlusionMap;
+	std::vector<mapcontainer::SdfLight> occlusionLights;
 	std::vector<Proxy> visibilityProxies;      // the proxies the consumed volume's visibility has
 	bool brushesLit = false;                   // brush entities lit from the consumed volume
 	bool shadowFieldUploaded = false;          // the SDFV's distances, for direct-light shadows
@@ -1037,17 +1041,18 @@ void IndirectLight_BeginMap( const IndirectLightMapData &map )
 	host.occludedUploaded = false;
 	if ( host.scene.sdf )
 		host.focus.Build( *baked );
+	// DirectOcclusion is built once the renderer knows which surfaces it
+	// draws (IndirectLight_BuildDirectOcclusion).
+	host.occlusionMap = IndirectLightMapData();
+	host.occlusionLights.clear();
 	if ( host.scene.sdf && map.wmsh && map.lmap )
 	{
 		const mapcontainer::SdfVolumeLayout &f = host.scene.sdf->layout;
-		std::vector<mapcontainer::SdfLight> lights( f.lightCount );
+		host.occlusionLights.resize( f.lightCount );
 		for ( uint32_t i = 0; i < f.lightCount; ++i )
-			lights[i] = mapcontainer::ReadSdfLight( host.scene.sdf->bytes.data(), f, i );
-		if ( host.occlusion.Build(
-		         map.wmsh, map.wmshSize, map.lmap, map.lmapSize, map.lmapVersion, lights ) )
-			Msg( "indirect light: baked direct light follows moving geometry (%zu texels, %u "
-			     "light(s))\n",
-			    host.occlusion.CoveredTexels(), f.lightCount );
+			host.occlusionLights[i] =
+			    mapcontainer::ReadSdfLight( host.scene.sdf->bytes.data(), f, i );
+		host.occlusionMap = map;
 	}
 	host.switcher = std::make_unique<Switcher>( host.catalog, host.tracker );
 	ReportOffered();
@@ -1080,6 +1085,36 @@ void IndirectLight_BeginMap( const IndirectLightMapData &map )
 	    r_indirect_producer_offered.GetString() );
 }
 
+void IndirectLight_BuildDirectOcclusion(
+    const IndirectLightIndexRange *ranges, int count, bool everyTriangle )
+{
+	Host &host = TheHost();
+	host.occlusion = DirectOcclusion();
+	host.occluded.clear();
+	host.occludedTotal.clear();
+	host.occludedUploaded = false;
+	const IndirectLightMapData &map = host.occlusionMap;
+	if ( host.occlusionLights.empty() || !map.wmsh || !map.lmap )
+		return;
+	std::vector<DirectOcclusion::IndexRange> only;
+	for ( int i = 0; i < count && ranges; ++i )
+		only.push_back( { ranges[i].first, ranges[i].count } );
+	if ( !everyTriangle && only.empty() )
+	{
+		Msg( "indirect light: the render core draws every lightmapped surface's direct light "
+		     "(runtime direct light); baked direct light is not recomposed\n" );
+		return;
+	}
+	const double started = Plat_FloatTime();
+	if ( host.occlusion.Build( map.wmsh, map.wmshSize, map.lmap, map.lmapSize, map.lmapVersion,
+	         host.occlusionLights, everyTriangle ? nullptr : &only ) )
+		Msg( "indirect light: baked direct light follows moving geometry (%zu texels%s, %zu "
+		     "light(s), built in %.0f ms)\n",
+		    host.occlusion.CoveredTexels(),
+		    everyTriangle ? "" : ", the surfaces the render core does not light",
+		    host.occlusionLights.size(), ( Plat_FloatTime() - started ) * 1000.0 );
+}
+
 void IndirectLight_EndMap()
 {
 	Host &host = TheHost();
@@ -1100,6 +1135,8 @@ void IndirectLight_EndMap()
 	host.occluded.clear();
 	host.occludedTotal.clear();
 	host.occludedUploaded = false;
+	host.occlusionMap = IndirectLightMapData();
+	host.occlusionLights.clear();
 	host.visibilityProxies.clear();
 	host.occludedCopies.clear();
 	host.cut.clear();

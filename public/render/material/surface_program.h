@@ -384,6 +384,13 @@ inline constexpr std::uint32_t kSurfaceWater = 33554432;
 // for opaque programs. Drawn before the lit surfaces, the lit pass's depth
 // test (less-equal) then shades each pixel once (Doom 2016's prepass).
 inline constexpr std::uint32_t kSurfaceDepthOnly = 67108864;
+// Runtime direct light on a world surface (RFC 0016's runtime direct light,
+// id Tech's split): with kSurfaceBakedLightmap the lightmap basis reads the
+// bake's indirect layer (the draw group's third page, directional with the
+// gradient page the group then binds, the indirect layer's own), and every
+// light's direct light is drawn at runtime, shadowed, baked lights included.
+// The draw's page stays the bake's total layer (the sun's baked mask).
+inline constexpr std::uint32_t kSurfaceRuntimeDirect = 134217728;
 // The terms that read the normal (not on the flat vertex), and those the
 // model vertex alone evaluates.
 inline constexpr std::uint32_t kSurfaceNormalTerms =
@@ -391,7 +398,7 @@ inline constexpr std::uint32_t kSurfaceNormalTerms =
 inline constexpr std::uint32_t kSurfaceModelTerms = kSurfaceVertexLit;
 // The terms that read the lightmap coordinates (not on the model vertex).
 inline constexpr std::uint32_t kSurfaceLightmapTerms =
-    kSurfaceBakedLightmap | kSurfaceDirectionalLightmap;
+    kSurfaceBakedLightmap | kSurfaceDirectionalLightmap | kSurfaceRuntimeDirect;
 // The terms that read the map's probes (the pbr point's).
 inline constexpr std::uint32_t kSurfaceMapProbeTerms =
     kSurfaceProbeVolume | kSurfaceReflectionProbes;

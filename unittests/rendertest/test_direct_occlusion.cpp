@@ -325,5 +325,36 @@ int main()
 		           positions, uvs, indices, kSize, kSize, total.data(), direct.data(), {} ),
 		    "no lights: not built" );
 	}
+
+	// Only some triangles (the surfaces whose baked direct light is still
+	// drawn): their texels alone are covered and recomposed.
+	{
+		const mapcontainer::SdfLight light = SunDown();
+		const std::span<const mapcontainer::SdfLight> lights( &light, 1 );
+		const std::vector<DirectOcclusion::IndexRange> first = { { 0, 3 } };
+		DirectOcclusion part;
+		Check( part.BuildLayers( positions, uvs, indices, kSize, kSize, total.data(), direct.data(),
+		           lights, &first ),
+		    "index ranges: one triangle builds" );
+		const size_t covered = part.CoveredTexels();
+		Check( covered > 0 && covered < kSize * kSize,
+		    "index ranges: only the kept triangle's texels are covered" );
+		// A box over the whole floor darkens the kept triangle (x > y: the
+		// triangle 0, 1, 2) and leaves the other's texels as baked.
+		const Proxy roof = Box( -10, -10, 40, 110, 110, 60 );
+		part.Compose( std::span<const Proxy>( &roof, 1 ), nullptr, &out );
+		Check( std::fabs( Red( out, kSize - 2, 1 ) - 0.1f ) < 0.01f &&
+		           Red( out, 1, kSize - 2 ) == Red( total, 1, kSize - 2 ),
+		    "index ranges: the kept triangle loses its direct light, the other keeps its bytes" );
+		const std::vector<DirectOcclusion::IndexRange> none;
+		Check( !part.BuildLayers( positions, uvs, indices, kSize, kSize, total.data(),
+		           direct.data(), lights, &none ) &&
+		           !part.Ready(),
+		    "index ranges: an empty list builds nothing" );
+		const std::vector<DirectOcclusion::IndexRange> past = { { 3, 6 } };
+		Check( !part.BuildLayers( positions, uvs, indices, kSize, kSize, total.data(),
+		           direct.data(), lights, &past ),
+		    "index ranges: a range past the indices is refused" );
+	}
 	return testing::ReportConformance( g_checks, g_failures );
 }

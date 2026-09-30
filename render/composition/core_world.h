@@ -143,6 +143,7 @@ private:
 
 		pass::world::LightmapPages lightmap;                 // the total layer's pages
 		std::vector<std::byte> indirect;                     // the indirect layer's flat page
+		std::vector<std::byte> indirectGradient;             // its gradient page, or empty
 		std::optional<pass::world::StageProbeVolume> probes; // the bake
 		// The latest change from the bake (empty: none) and its grid table,
 		// which a stage set later starts from.
@@ -184,6 +185,10 @@ private:
 	std::atomic<int> m_ShadowQuality{ 2 };
 	std::atomic<bool> m_DepthPrepass{ true };
 	std::atomic<bool> m_ShadowMovers{ true };
+	// Runtime direct light on the next stage (RenderCoreWorldQuality), and
+	// on the stage set.
+	std::atomic<bool> m_RuntimeDirect{ true };
+	std::atomic<bool> m_StageRuntimeDirect{ false };
 	// A world stage view's work at its slot: the shadow plan's depth views,
 	// drawn into an atlas (none without shadowed lights), and the view and
 	// projection its screen passes (GTAO) reconstruct positions with.

@@ -47,12 +47,26 @@ struct IndirectLightMapData
 // the volume) and offers each producer only with what it needs: radiosity a
 // valid transfer; the SDF producer a valid SDFV and a renderer compute
 // service; the ray-query producer those, the world's triangles and a device
-// with ray query. With an SDFV's lights, the WMSH and an LMAP direct layer it
-// also removes the baked direct light moving geometry blocks (the proxies)
-// from the world's lightmap. It starts the Baked producer, then the saved
+// with ray query. It starts the Baked producer, then the saved
 // r_indirect_producer (an unoffered value is reported and Baked kept).
 void IndirectLight_BeginMap( const IndirectLightMapData &map );
 void IndirectLight_EndMap();
+
+// Once the renderer knows which surfaces it draws (the level's render
+// init): with an SDFV's lights, the WMSH and an LMAP direct layer, the
+// baked direct light moving geometry blocks (the proxies) is removed from
+// the world's lightmap, but only on the triangles of `ranges` (index
+// ranges of the WMSH; null for every triangle). Under RFC 0016's runtime
+// direct light the render core draws the other surfaces' direct light
+// itself, shadowed, so their baked direct light needs no recomposing; an
+// empty list builds nothing.
+struct IndirectLightIndexRange
+{
+	uint32_t first;
+	uint32_t count;
+};
+void IndirectLight_BuildDirectOcclusion(
+    const IndirectLightIndexRange *ranges, int count, bool everyTriangle );
 
 // Once per rendered frame on the main thread, before the view renders, with
 // the frame's light set. Uploads the published volume when it changes.

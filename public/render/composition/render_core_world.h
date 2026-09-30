@@ -78,6 +78,12 @@ struct RenderCoreWorldQuality
 	// Nonzero: the frame's moving objects (render.dynamic-occlusion boxes)
 	// cast shadows over the cached static tiles.
 	int shadowMovers;
+	// Nonzero: runtime direct light (id Tech's split): the world's lightmap
+	// is its indirect layer and every light's direct light is drawn at
+	// runtime, shadowed, so moving objects block it; zero draws the bake's
+	// total layer. A map without an indirect layer draws its total layer.
+	// Read when a stage is set (a map load).
+	int runtimeDirect;
 };
 
 struct RenderCoreWorldStats
@@ -101,6 +107,9 @@ struct RenderCoreWorldStats
 	// as last published, and the views queued with their lights clustered.
 	unsigned int stageLights;
 	unsigned long long stageLitViews;
+	// Nonzero: the world stage draws its lights' direct light at runtime
+	// over the lightmap's indirect layer (RenderCoreWorldQuality::runtimeDirect).
+	unsigned int stageRuntimeDirect;
 	char lastFailure[256];
 	char gaps[1024];    // "count reason" lines, most frequent first
 	char claimed[1024]; // "surfaces material" lines the core draws

@@ -2085,9 +2085,9 @@
       "rfc": "0011",
       "kind": "positive",
       "profile": "linux-headless-core",
-      "description": "RFC 0011 baked direct light blocked by moving geometry (render/direct_occlusion.h) on a synthetic floor: no occluder leaves the bake's bytes; a box between the floor and a rectangle light, or under a distant light, takes exactly the direct light of the texels it shadows (the sun's footprint only) and leaves the rest as baked; a box beside every path or behind the lit side changes nothing; a box over the centre takes a sphere's or a spot's direct light, and a box on the path to a corner darkens it under the sphere but not under the spot, whose cone never reaches it; no lights, nothing built. Incremental recomposition (Recompose): over a 60-step moving room, each step equals a whole Compose byte for byte, every changed texel lies in a reported tile, fewer texels are visited than Compose visits, and a Recompose told that nothing moved is caught (negative control)",
+      "description": "RFC 0011 baked direct light blocked by moving geometry (render/direct_occlusion.h) on a synthetic floor: no occluder leaves the bake's bytes; a box between the floor and a rectangle light, or under a distant light, takes exactly the direct light of the texels it shadows (the sun's footprint only) and leaves the rest as baked; a box beside every path or behind the lit side changes nothing; a box over the centre takes a sphere's or a spot's direct light, and a box on the path to a corner darkens it under the sphere but not under the spot, whose cone never reaches it; no lights, nothing built. Incremental recomposition (Recompose): over a 60-step moving room, each step equals a whole Compose byte for byte, every changed texel lies in a reported tile, fewer texels are visited than Compose visits, and a Recompose told that nothing moved is caught (negative control). A build restricted to index ranges (the surfaces the render core does not light under runtime direct light) covers and recomposes only their triangles' texels; an empty list builds nothing and a range past the indices is refused",
       "result_protocol": "checks-v1",
-      "min_checks": 28,
+      "min_checks": 33,
       "sources": [
         "unittests/rendertest/test_direct_occlusion.cpp",
         "mapcontainer/probe_volume.cpp",

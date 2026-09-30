@@ -243,7 +243,7 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::Pipeline(
 	// The lightmap basis is the pbr point's, on a world surface.
 	if ( ( variant.terms & kSurfaceLightmapTerms ) &&
 	     ( variant.layout != SurfaceVertexLayout::kWorld || !( variant.terms & kSurfacePbr ) ||
-	         ( ( variant.terms & kSurfaceDirectionalLightmap ) &&
+	         ( ( variant.terms & ( kSurfaceDirectionalLightmap | kSurfaceRuntimeDirect ) ) &&
 	             !( variant.terms & kSurfaceBakedLightmap ) ) ) )
 		return foundation::MakeUnexpected( SurfaceStatus::kInvalidRequest );
 	const auto key = std::make_pair( variant, debug );

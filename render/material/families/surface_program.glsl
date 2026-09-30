@@ -96,6 +96,9 @@ const int kRsm = 16777216;
 // The water point (the flow map and noise at material bindings 5 and 11,
 // the view's planar reflection at view binding 12).
 const int kWater = 33554432;
+// Runtime direct light on a world surface (surface_program.h): the basis
+// reads the indirect layer, and every light's direct light is drawn here.
+const int kRuntimeDirect = 134217728;
 
 // An area light (render.area-light.v1, area_light::AreaLight): its
 // rectangle, its radiance and its reach.
@@ -592,10 +595,15 @@ void PbrSurface()
 	// Indirect diffuse: the lightmap basis on a world surface (the `baked`
 	// term), else the ambient cube (`probes`).
 	const bool lightmapped = Term( kBakedLightmap );
+	// kRuntimeDirect: the bake's indirect layer is the basis (the gradient
+	// page is its own), and the loops below draw every light's diffuse lobe.
+	const bool runtimeDirect = lightmapped && Term( kRuntimeDirect );
 	vec3 baked = vec3( 0.0 );
 	if ( lightmapped )
 	{
-		baked = LightmapPageSample( lightmap, lightmapSampler, lightmapUv );
+		baked = runtimeDirect
+		            ? LightmapPageSample( lightmapIndirect, lightmapIndirectSampler, lightmapUv )
+		            : LightmapPageSample( lightmap, lightmapSampler, lightmapUv );
 		if ( Term( kDirectionalLightmap ) )
 			baked = LightmapDirectional( baked,
 			    LightmapPageSample( lightmapGradient, lightmapGradientSampler, lightmapUv ), normal,
@@ -752,8 +760,9 @@ void PbrSurface()
 				        max( runtime.cone.z, 0.5 ), rotation ) );
 #endif
 			const vec3 incident = runtime.color.rgb * falloff;
-			// A baked light's diffuse light is already in the bake.
-			if ( diffuseLobe && ( runtime.spot.y < 0.5 || meshDirect ) )
+			// A baked light's diffuse light is already in the bake, unless
+			// the bake is the indirect layer (runtime direct light).
+			if ( diffuseLobe && ( runtime.spot.y < 0.5 || meshDirect || runtimeDirect ) )
 			{
 				const vec3 diffuse = diffuseColor * incident * normalDotLight;
 				color += diffuse;
@@ -817,8 +826,9 @@ void PbrSurface()
 					continue;
 			}
 			const vec3 radiance = light.radiance.rgb * window * visibility;
-			// A baked light's diffuse light is already in the bake.
-			if ( diffuseLobe && ( light.halfV.w < 0.5 || meshDirect ) )
+			// A baked light's diffuse light is already in the bake, unless
+			// the bake is the indirect layer (runtime direct light).
+			if ( diffuseLobe && ( light.halfV.w < 0.5 || meshDirect || runtimeDirect ) )
 			{
 				const vec3 diffuse = diffuseColor * radiance *
 				                     LtcRectangle( normal, view, worldPosition, mat3( 1.0 ),
@@ -871,7 +881,7 @@ void PbrSurface()
 				}
 			}
 			const vec3 incident = frame.sunColor.rgb * visibility;
-			if ( diffuseLobe && ( frame.sunColor.w < 0.5 || meshDirect ) )
+			if ( diffuseLobe && ( frame.sunColor.w < 0.5 || meshDirect || runtimeDirect ) )
 			{
 				const vec3 diffuse = diffuseColor * incident * normalDotLight;
 				color += diffuse;

@@ -143,7 +143,8 @@ public:
 	// terms (kSurfaceDirectionalLightmap, kSurfaceMapProbeTerms,
 	// kSurfaceClustered and the other scene terms of surface_program.h),
 	// taking the draw inputs "lightmap", "lightmap-gradient" and
-	// "lightmap-indirect". Without it
+	// "lightmap-indirect" ("lightmap-indirect-gradient" in place of the
+	// second with kSurfaceRuntimeDirect among the terms). Without it
 	// (the default, and the product until K12) a pbr material is refused by
 	// name. Call before resolving; programs already resolved keep theirs.
 	void SetWorldPbr( bool enabled, std::uint32_t sceneTerms = 0 );

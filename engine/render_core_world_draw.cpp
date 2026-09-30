@@ -10,6 +10,7 @@
 #include "render_core_host.h"
 #include "cmodel_engine.h"
 #include "render_core_world.h"
+#include "indirect_light_host.h"
 #include "render/composition/render_core_world.h"
 #include "gl_matsysiface.h"
 #include "gl_rmain.h"
@@ -426,7 +427,54 @@ static void LevelInitStage( IRenderCoreWorld *pWorld, worldbrushdata_t *pBrush )
 	}
 }
 
+// The index ranges of the world mesh the render core does not light itself
+// (the frozen backend's batches, or every batch without a stage drawn under
+// runtime direct light): DirectOcclusion's surfaces (indirect_light_host.h).
+static void BuildDirectOcclusion()
+{
+	CoreWorldState &state = State();
+	worldbrushdata_t *pBrush = host_state.worldbrush;
+	IRenderCoreWorld *pWorld = RenderCoreHost_World();
+	RenderCoreWorldStats stats{};
+	if ( pWorld )
+		pWorld->GetStats( &stats );
+	const bool coreLights =
+	    pWorld && state.stageWorld && r_core_world.GetBool() && stats.stageRuntimeDirect != 0;
+	if ( !coreLights || !pBrush || !pBrush->pWorldMeshBatches || !pBrush->pWorldMeshClusters )
+	{
+		IndirectLight_BuildDirectOcclusion( nullptr, 0, true );
+		return;
+	}
+	CUtlVector<IndirectLightIndexRange> ranges;
+	for ( unsigned int b = 0; b < pBrush->worldMeshBatchCount; ++b )
+	{
+		if ( b < unsigned( state.stageTakes.Count() ) && state.stageTakes[b] )
+			continue;
+		const worldmeshbatch_t &batch = pBrush->pWorldMeshBatches[b];
+		for ( unsigned int m = batch.firstMeshlet;
+		    m < batch.firstMeshlet + batch.meshletCount && m < pBrush->worldMeshClusterCount; ++m )
+		{
+			const IndirectLightIndexRange range = { pBrush->pWorldMeshClusters[m].firstIndex,
+			    pBrush->pWorldMeshClusters[m].indexCount };
+			if ( ranges.Count() && ranges.Tail().first + ranges.Tail().count == range.first )
+				ranges.Tail().count += range.count;
+			else
+				ranges.AddToTail( range );
+		}
+	}
+	IndirectLight_BuildDirectOcclusion( ranges.Base(), ranges.Count(), false );
+}
+
+static void LevelInitWorld();
+
 void RenderCoreWorldDraw_LevelInit()
+{
+	LevelInitWorld();
+	// Only now is it known which surfaces the core lights itself.
+	BuildDirectOcclusion();
+}
+
+static void LevelInitWorld()
 {
 	CoreWorldState &state = State();
 	state.loaded = false;

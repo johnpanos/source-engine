@@ -50,9 +50,21 @@ public:
 	static constexpr uint32_t kRectSamples = 4; // per axis
 	static constexpr int kDilation = 2;         // texels grown past coverage
 
+	// A range of the world mesh's indices (whole triangles).
+	struct IndexRange
+	{
+		uint32_t first = 0;
+		uint32_t count = 0;
+	};
+
 	// False (and nothing built) without a direct layer, lights or triangles.
+	// With `only`, just the texels of those index ranges' triangles are
+	// covered (the surfaces whose baked direct light is still drawn: under
+	// RFC 0016's runtime direct light the core draws the others' direct
+	// light itself); an empty list builds nothing.
 	[[nodiscard]] bool Build( const void *wmsh, size_t wmshSize, const void *lmap, size_t lmapSize,
-	    uint32_t lmapVersion, std::span<const mapcontainer::SdfLight> lights )
+	    uint32_t lmapVersion, std::span<const mapcontainer::SdfLight> lights,
+	    const std::vector<IndexRange> *only = nullptr )
 	{
 		*this = DirectOcclusion();
 		mapcontainer::WorldMeshSummary mesh = {};
@@ -81,6 +93,7 @@ public:
 		}
 		std::vector<uint32_t> indices( mesh.indexCount );
 		std::memcpy( indices.data(), base + mesh.sectionOffsets[1], indices.size() * 4 );
+
 		const unsigned char *bytes = static_cast<const unsigned char *>( lmap );
 		m_lmap.assign( bytes, bytes + lmapSize );
 		m_layout = layout;
@@ -88,17 +101,38 @@ public:
 		m_directIndex = direct;
 		return BuildLayers( positions, uvs, indices, layout.width, layout.height,
 		    m_lmap.data() + layout.layerOffset[total], m_lmap.data() + layout.layerOffset[direct],
-		    lights );
+		    lights, only );
 	}
 
 	// The core, for any source of triangles: xyz positions, lightmap UVs in
 	// [0, 1] of the page's flat light, and RGBA16F total and direct layers of
-	// width x height texels (rows top first), which must outlive this.
+	// width x height texels (rows top first), which must outlive this. With
+	// `only`, just those index ranges' triangles (Build).
 	[[nodiscard]] bool BuildLayers( const std::vector<float> &positions,
-	    const std::vector<float> &uvs, const std::vector<uint32_t> &indices, uint32_t width,
+	    const std::vector<float> &uvs, const std::vector<uint32_t> &allIndices, uint32_t width,
 	    uint32_t height, const unsigned char *total, const unsigned char *direct,
-	    std::span<const mapcontainer::SdfLight> lights )
+	    std::span<const mapcontainer::SdfLight> lights,
+	    const std::vector<IndexRange> *only = nullptr )
 	{
+		std::vector<uint32_t> kept;
+		if ( only )
+		{
+			for ( const IndexRange &range : *only )
+			{
+				if ( range.first > allIndices.size() ||
+				     range.count > allIndices.size() - range.first )
+					return false;
+				const uint32_t whole = range.count - range.count % 3;
+				kept.insert( kept.end(), allIndices.begin() + range.first,
+				    allIndices.begin() + range.first + whole );
+			}
+			if ( kept.empty() )
+			{
+				*this = DirectOcclusion();
+				return false;
+			}
+		}
+		const std::vector<uint32_t> &indices = only ? kept : allIndices;
 		m_texels.clear();
 		m_samples.clear();
 		for ( const mapcontainer::SdfLight &light : lights )

@@ -94,6 +94,7 @@ void CoreWorld::SetWorld( const RenderCoreWorldVertex *vertices, unsigned int ve
 	}
 	data.materials = WorldMaterials( materials, materialCount );
 	m_StageSet = false;
+	m_StageRuntimeDirect.store( false, std::memory_order_relaxed );
 	m_Pass.SetWorld( std::move( data ) );
 }
 
@@ -128,6 +129,7 @@ void CoreWorld::SetWorldMesh( const void *wmsh, unsigned long long wmshBytes,
     const RenderCoreWorldMaterial *materials, unsigned int materialCount, const char *entities )
 {
 	m_StageSet = false;
+	m_StageRuntimeDirect.store( false, std::memory_order_relaxed );
 	m_StageWorld.reset();
 	m_MapLights = pass::lights::MapLights();
 	if ( entities )
@@ -263,17 +265,29 @@ void CoreWorld::SetStage()
 	}
 	stage->lightmap = m_Capture.lightmap;
 	if ( m_Capture.indirect.size() == m_Capture.lightmap.flat.size() )
+	{
 		stage->indirect = m_Capture.indirect;
+		if ( m_Capture.indirectGradient.size() == m_Capture.indirect.size() )
+			stage->indirectGradient = m_Capture.indirectGradient;
+	}
+	// Runtime direct light (r_core_runtime_direct) needs the indirect layer;
+	// a map without one draws its total layer.
+	stage->runtimeDirect =
+	    m_RuntimeDirect.load( std::memory_order_relaxed ) && !stage->indirect.empty();
+	m_StageRuntimeDirect.store( stage->runtimeDirect, std::memory_order_relaxed );
 	stage->probes = m_Capture.probes;
 	stage->reflectionWidth = m_Capture.reflectionWidth;
 	stage->reflectionHeight = m_Capture.reflectionHeight;
 	stage->reflectionProbes = m_Capture.reflection;
 	std::fprintf( stderr,
-	    "Render core: world stage: %zu meshlets, lightmap %ux%u%s%s, probes %s, reflection "
+	    "Render core: world stage: %zu meshlets, lightmap %ux%u%s%s%s, probes %s, reflection "
 	    "probes %s\n",
 	    data.surfaces.size(), stage->lightmap.width, stage->lightmap.height,
 	    stage->lightmap.Directional() ? " directional" : "",
-	    stage->indirect.empty() ? ", no indirect layer" : ", indirect layer",
+	    stage->indirect.empty()           ? ", no indirect layer"
+	    : stage->indirectGradient.empty() ? ", indirect layer (flat)"
+	                                      : ", indirect layer (directional)",
+	    stage->runtimeDirect ? ", runtime direct light" : ", baked direct light",
 	    stage->probes ? "yes" : "no", stage->reflectionProbes.empty() ? "no" : "yes" );
 	data.stage = std::move( stage );
 	m_Pass.SetWorld( std::move( data ) );
@@ -340,10 +354,11 @@ bool CoreWorld::StageCapture::UploadLightmap(
 		return true;
 	}
 	// The total layer's pages (the baked diffuse light, as render_lab draws
-	// it without runtime direct light) and the indirect layer's flat page.
+	// it without runtime direct light) and the indirect layer's pages (its
+	// gradient page when the bake wrote its own).
 	const std::size_t layerBytes = std::size_t( request.width ) * request.height * 8;
 	pass::world::LightmapPages total;
-	std::vector<std::byte> indirect;
+	pass::world::LightmapPages indirect;
 	for ( std::uint32_t i = 0;
 	    i < request.layerCount && i < world_mesh_gpu::kWorldLightmapMaxUploadLayers; ++i )
 	{
@@ -354,7 +369,7 @@ bool CoreWorld::StageCapture::UploadLightmap(
 		if ( request.roles[i] == world_mesh_gpu::WorldLightmapRole::Total )
 			total = pass::world::SplitLightmapLayer( layer, request.width, request.height );
 		else if ( request.roles[i] == world_mesh_gpu::WorldLightmapRole::Indirect )
-			indirect = pass::world::SplitLightmapLayer( layer, request.width, request.height ).flat;
+			indirect = pass::world::SplitLightmapLayer( layer, request.width, request.height );
 	}
 	if ( total.flat.empty() )
 		return false;
@@ -366,7 +381,8 @@ bool CoreWorld::StageCapture::UploadLightmap(
 		return true;
 	}
 	lightmap = std::move( total );
-	indirect.swap( this->indirect );
+	this->indirect = std::move( indirect.flat );
+	indirectGradient = std::move( indirect.gradient );
 	return true;
 }
 
@@ -834,6 +850,7 @@ void CoreWorld::GetStats( RenderCoreWorldStats *out ) const
 	out->debugViewsRedrawn = m_Redrawn.load( std::memory_order_relaxed );
 	out->stageLights = unsigned( m_Lights.lights.size() );
 	out->stageLitViews = m_StageLitViews;
+	out->stageRuntimeDirect = m_StageRuntimeDirect.load( std::memory_order_relaxed ) ? 1u : 0u;
 	std::snprintf( out->lastFailure, sizeof( out->lastFailure ), "%s", stats.lastFailure.c_str() );
 	std::size_t used = 0;
 	for ( const auto &[reason, count] : stats.gaps )
@@ -865,6 +882,7 @@ void CoreWorld::SetQuality( const RenderCoreWorldQuality &quality )
 	m_ShadowQuality.store( std::clamp( quality.shadows, 0, 3 ), std::memory_order_relaxed );
 	m_DepthPrepass.store( quality.depthPrepass != 0, std::memory_order_relaxed );
 	m_ShadowMovers.store( quality.shadowMovers != 0, std::memory_order_relaxed );
+	m_RuntimeDirect.store( quality.runtimeDirect != 0, std::memory_order_relaxed );
 }
 
 void CoreWorld::SetGpuTimers( bool enabled )
