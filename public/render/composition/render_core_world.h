@@ -100,9 +100,13 @@ public:
 	// materials. Views then name meshlets. The stage's lighting arrives
 	// through StageUpload() before this call and changes through it after.
 	// In place of SetWorld; ClearWorld ends both.
+	// `entities`: the map's entity lump, whose authored lights (light,
+	// light_spot, light_rect, light_environment) light the stage when the
+	// frame's light set has no world lights (a map compiled without vrad).
 	virtual void SetWorldMesh( const void *wmsh, unsigned long long wmshBytes,
 	    const RenderCoreWorldMeshlet *meshlets, unsigned int meshletCount,
-	    const RenderCoreWorldMaterial *materials, unsigned int materialCount ) = 0;
+	    const RenderCoreWorldMaterial *materials, unsigned int materialCount,
+	    const char *entities ) = 0;
 	// The world stage's copy of the engine's world mesh uploads: the engine
 	// makes every upload it makes to the renderer here too (its lightmap
 	// layers, recomposed as moving objects block baked light; the probe

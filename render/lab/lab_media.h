@@ -38,6 +38,7 @@
 #include "lab_support.h"
 #include "render/device/device.h"
 #include "render/pass/lights/clusters.h"
+#include "render/pass/lights/map_lights.h"
 #include "render/pass/volumetric/volumetric.h"
 
 #include <map>
@@ -48,11 +49,10 @@
 namespace render::lab
 {
 
-using Entity = std::map<std::string, std::string>;
-
-// The entity lump's blocks of quoted key/value pairs; nullopt when it does
-// not parse.
-std::optional<std::vector<Entity>> ParseEntityLump( const std::string &text );
+// The entity lump and a map's authored lights: render.pass.lights owns them
+// (map_lights.h, shared with the product's world stage).
+using Entity = pass::lights::Entity;
+using pass::lights::ParseEntityLump;
 
 // What the map's entities give the medium.
 struct LabMedia
@@ -67,33 +67,12 @@ struct LabMedia
 
 LabMedia MediaFromEntities( const std::vector<Entity> &entities );
 
-// The sun: light_environment as vrad compiles it (README "Lights in the
-// entity lump"): `_light` is its diffuse light on a surface facing it (the
-// lightmap unit, E / pi), the direction from its `angles` with the `pitch`
-// key, SunSpreadAngle the disc's angular diameter in degrees.
-struct LabSun
+using LabSun = pass::lights::MapSun;
+using LabLights = pass::lights::MapLights;
+inline LabLights LightsFromEntities( const std::vector<Entity> &entities )
 {
-	math::float3 toSun{ 0, 0, 1 }; // unit, towards the sun
-	math::float3 color{ 0, 0, 0 };  // the lightmap unit
-	float spreadDegrees = 0.0f;
-	math::float3 ambient{ 0, 0, 0 }; // `_ambient`, the sky's radiance (the lightmap unit)
-};
-
-// The map's lights as the frame's light set (render.light-set.v1, v2): every
-// light the bake saw is baked (its diffuse light is in the lightmap and the
-// probe volume; the surface program adds its specular lobe); projectors are
-// never baked (RFC 0011).
-struct LabLights
-{
-	std::vector<light_set::RuntimeLight> lights;  // light, light_spot
-	std::vector<area_light::AreaLight> areas;      // light_rect
-	std::optional<LabSun> sun;                     // light_environment
-	std::vector<projected_light::Light> projectors; // env_projectedtexture
-	std::vector<std::string> cookieNames;           // per projector
-	std::uint32_t unsupported = 0; // attenuations other than inverse square
-};
-
-LabLights LightsFromEntities( const std::vector<Entity> &entities );
+	return pass::lights::MapLightsFromEntities( entities );
+}
 
 // The subdivided grid as render.pass.volumetric reads it; the grid must
 // outlive the layout (its slice depths are borrowed).

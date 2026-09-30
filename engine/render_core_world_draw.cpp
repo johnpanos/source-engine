@@ -8,6 +8,7 @@
 #include "render_pch.h"
 #include "render_core_world_draw.h"
 #include "render_core_host.h"
+#include "cmodel_engine.h"
 #include "render_core_world.h"
 #include "render/composition/render_core_world.h"
 #include "gl_matsysiface.h"
@@ -393,7 +394,7 @@ static void LevelInitStage( IRenderCoreWorld *pWorld, worldbrushdata_t *pBrush )
 		materialDescs.AddToTail( desc );
 	}
 	pWorld->SetWorldMesh( pBrush->pWorldMeshData, pBrush->worldMeshSize, meshlets.Base(),
-	    meshlets.Count(), materialDescs.Base(), materialDescs.Count() );
+	    meshlets.Count(), materialDescs.Base(), materialDescs.Count(), CM_EntityString() );
 	state.stageTakes.SetCount( pBrush->worldMeshBatchCount );
 	int taken = 0;
 	for ( unsigned int b = 0; b < pBrush->worldMeshBatchCount; ++b )

@@ -121,10 +121,23 @@ std::vector<pass::world::WorldMaterial> CoreWorld::WorldMaterials(
 
 void CoreWorld::SetWorldMesh( const void *wmsh, unsigned long long wmshBytes,
     const RenderCoreWorldMeshlet *meshlets, unsigned int meshletCount,
-    const RenderCoreWorldMaterial *materials, unsigned int materialCount )
+    const RenderCoreWorldMaterial *materials, unsigned int materialCount, const char *entities )
 {
 	m_StageSet = false;
 	m_StageWorld.reset();
+	m_MapLights = pass::lights::MapLights();
+	if ( entities )
+	{
+		if ( const auto parsed = pass::lights::ParseEntityLump( entities ) )
+			m_MapLights = pass::lights::MapLightsFromEntities( *parsed );
+		else
+			std::fprintf( stderr, "Render core: the world stage's entity lump does not parse\n" );
+	}
+	std::fprintf( stderr,
+	    "Render core: world stage's authored lights: %zu lights, %zu area lights, sun %s, %zu "
+	    "projectors, %u unsupported\n",
+	    m_MapLights.lights.size(), m_MapLights.areas.size(), m_MapLights.sun ? "yes" : "no",
+	    m_MapLights.projectors.size(), m_MapLights.unsupported );
 	mapcontainer::WorldMeshData mesh;
 	// A stage needs the map's mesh and its lightmap: without either the
 	// core holds no world (every view draws legacy's), and says why.
@@ -190,6 +203,18 @@ void CoreWorld::SetStage()
 		return;
 	pass::world::WorldData data = *m_StageWorld;
 	auto stage = std::make_shared<pass::world::WorldStage>();
+	// The sun's baked visibility packed in the total page's alpha: any texel
+	// below one (render_lab's rule).
+	m_StageSunMask = false;
+	const std::vector<std::byte> &flat = m_Capture.lightmap.flat;
+	for ( std::size_t t = 0; t + 8 <= flat.size() && !m_StageSunMask; t += 8 )
+	{
+		std::uint16_t alpha;
+		std::memcpy( &alpha, flat.data() + t + 6, sizeof( alpha ) );
+		// Half 0.999 is 0x3BFE; any alpha below it (positive halves order as
+		// integers).
+		m_StageSunMask = ( alpha & 0x8000u ) == 0 && alpha < 0x3BFEu;
+	}
 	stage->lightmap = m_Capture.lightmap;
 	if ( m_Capture.indirect.size() == m_Capture.lightmap.flat.size() )
 		stage->indirect = m_Capture.indirect;
@@ -342,8 +367,25 @@ std::shared_ptr<const pass::world::StageViewLights> CoreWorld::StageViewLightsFo
 	auto grid = pass::lights::CreateClusterGrid( desc, limits );
 	if ( !grid )
 		return nullptr;
+	// The frame's runtime lights, and the map's authored ones when the frame
+	// has no world lights (a map compiled without vrad): each light once.
+	std::vector<light_set::RuntimeLight> frameLights = m_Lights.lights;
+	const bool worldLights = std::any_of( frameLights.begin(), frameLights.end(),
+	    []( const light_set::RuntimeLight &light )
+	    {
+		    return light.kind == light_set::LightKind::World;
+	    } );
+	if ( !worldLights )
+	{
+		std::uint32_t nextId = 0x40000000u; // the map's own ids, apart from the engine's
+		for ( light_set::RuntimeLight light : m_MapLights.lights )
+		{
+			light.id = nextId++;
+			frameLights.push_back( light );
+		}
+	}
 	pass::lights::ClusterLists lists;
-	if ( !pass::lights::AssignLights( grid.Value(), m_Lights.lights, lists ) )
+	if ( !pass::lights::AssignLights( grid.Value(), frameLights, lists ) )
 		return nullptr;
 	auto out = std::make_shared<pass::world::StageViewLights>();
 	out->view.grid[0] = grid.Value().tilesX;
@@ -366,10 +408,10 @@ std::shared_ptr<const pass::world::StageViewLights> CoreWorld::StageViewLightsFo
 	// The shadows of the view's point and spot lights (render.shadows.v1:
 	// one tile per spot, six per point light), planned for this view.
 	std::vector<light_set::RuntimeLight> shadowed;
-	std::vector<int> shadowedOf( m_Lights.lights.size(), -1 );
-	for ( std::size_t i = 0; i < m_Lights.lights.size(); ++i )
+	std::vector<int> shadowedOf( frameLights.size(), -1 );
+	for ( std::size_t i = 0; i < frameLights.size(); ++i )
 	{
-		const light_set::RuntimeLight &light = m_Lights.lights[i];
+		const light_set::RuntimeLight &light = frameLights[i];
 		if ( light.shape == light_set::LightShape::Point ||
 		     light.shape == light_set::LightShape::Spot )
 		{
@@ -377,12 +419,33 @@ std::shared_ptr<const pass::world::StageViewLights> CoreWorld::StageViewLightsFo
 			shadowed.push_back( light );
 		}
 	}
+	// The area lights: the map's (baked light fixtures) and the frame's
+	// emitting surfaces; the sun: the map's.
+	std::vector<area_light::AreaLight> areas = m_MapLights.areas;
+	for ( const light_set::RuntimeAreaLight &area : m_Lights.areas )
+		areas.push_back( area.light );
+	if ( areas.size() > std::size_t( material::kSurfaceMaxAreaLights ) )
+		areas.resize( std::size_t( material::kSurfaceMaxAreaLights ) );
+	const std::optional<pass::lights::MapSun> &sun = m_MapLights.sun;
 	pass::shadows::ShadowPlan plan;
-	if ( !shadowed.empty() )
+	if ( !shadowed.empty() || !areas.empty() || sun )
 	{
 		pass::shadows::ShadowPlanInput input;
 		input.lights = shadowed;
+		input.areas = areas;
+		if ( sun )
+			input.toSun = sun->toSun;
 		input.camera.view = desc.view;
+		// The cascades cover the view's frustum: its vertical field of view
+		// and aspect from the projection's scales.
+		const float yScale = desc.projection.rows[1].y;
+		const float xScale = desc.projection.rows[0].x;
+		if ( yScale > 0.0f && xScale > 0.0f )
+		{
+			input.camera.verticalFovRadians = 2.0f * std::atan( 1.0f / yScale );
+			input.camera.aspect = yScale / xScale;
+		}
+		input.camera.nearZ = desc.nearZ;
 		input.atlasSize = kStageShadowAtlas;
 		input.guardTexels = 4;
 		if ( pass::shadows::PlanShadows( input, plan ) )
@@ -408,14 +471,34 @@ std::shared_ptr<const pass::world::StageViewLights> CoreWorld::StageViewLightsFo
 		( &work->projection.rows[0].x )[c] += w / viewport[2];
 		( &work->projection.rows[1].x )[c] -= w / viewport[3];
 	}
-	for ( std::size_t i = 0; i < m_Lights.lights.size(); ++i )
+	for ( std::size_t i = 0; i < frameLights.size(); ++i )
 	{
-		const light_set::RuntimeLight &light = m_Lights.lights[i];
+		const light_set::RuntimeLight &light = frameLights[i];
 		const int k = shadowedOf[i];
 		const int tile =
 		    k >= 0 && std::size_t( k ) < plan.lightTiles.size() ? plan.lightTiles[k] : -1;
 		const int tiles = tile >= 0 ? plan.lightTileCount[k] : 1;
 		out->lights.push_back( material::PackSurfaceLight( light, tile, tiles, light.baked ) );
+	}
+	// The area lights and the sun, with their tiles (their diffuse light is
+	// the bake's; the surface program adds the rest).
+	for ( std::size_t i = 0; i < areas.size(); ++i )
+		out->areas.push_back( material::PackAreaLight(
+		    areas[i], true, i < plan.areaTiles.size() ? plan.areaTiles[i] : -1 ) );
+	if ( sun )
+	{
+		out->sunDirection[0] = sun->toSun.x;
+		out->sunDirection[1] = sun->toSun.y;
+		out->sunDirection[2] = sun->toSun.z;
+		out->sunDirection[3] =
+		    float( std::tan( 0.5 * double( sun->spreadDegrees ) * 3.14159265358979 / 180.0 ) );
+		out->sunColor[0] = sun->color.x;
+		out->sunColor[1] = sun->color.y;
+		out->sunColor[2] = sun->color.z;
+		out->sunColor[3] = 1.0f;
+		out->sunShadow[0] = float( plan.sunFirst );
+		out->sunShadow[1] = float( plan.sunCount );
+		out->sunShadow[2] = m_StageSunMask ? 1.0f : 0.0f;
 	}
 	// The view group's light records: at least one (an empty view's lists
 	// name none of them).

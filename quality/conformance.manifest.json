@@ -2466,6 +2466,23 @@
       "expect": "pass"
     },
     {
+      "id": "render.area-light.no-view",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0011",
+      "contract": "unittests/rendertest/contracts/render.area-light.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "description": "seeded: a selection that ranks emitters out of the view's visible set with those in it must be rejected",
+      "extra_flags": [
+        "-DAREA_LIGHT_SEEDED_NO_VIEW"
+      ],
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/rendertest/test_area_light.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "render.dynamic-occlusion",
       "domain": "Q-PRESENTATION",
       "rfc": "0011",
@@ -9713,6 +9730,7 @@
         "render/shaderlib/core_artifacts.cpp",
         "render/lab/volumetric_suite.cpp",
         "render/lab/lab_media.cpp",
+        "render/pass/lights/map_lights.cpp",
         "render/device/vulkan/pipelines.cpp",
         "render/lab/lab_canvas.cpp",
         "render/lab/lab_suite.cpp",
@@ -10404,6 +10422,7 @@
         "tools/render/debug_views_product.py",
         "engine/render_core_host.cpp",
         "render/composition/core_world.cpp",
+        "render/pass/lights/map_lights.cpp",
         "render/pass/ao/ao.cpp",
         "render/pass/shadows/shadow_plan.cpp",
         "render/pass/shadows/shadow_passes.cpp",
@@ -10452,6 +10471,7 @@
         "tools/render/debug_views_product.py",
         "engine/render_core_host.cpp",
         "render/composition/core_world.cpp",
+        "render/pass/lights/map_lights.cpp",
         "render/pass/ao/ao.cpp",
         "render/pass/shadows/shadow_plan.cpp",
         "render/pass/shadows/shadow_passes.cpp",
@@ -11453,6 +11473,7 @@
         "jobsystem/pooled_executor.cpp",
         "render/composition/render_core.cpp",
         "render/composition/core_world.cpp",
+        "render/pass/lights/map_lights.cpp",
         "render/pass/ao/ao.cpp",
         "render/pass/shadows/shadow_plan.cpp",
         "render/pass/shadows/shadow_passes.cpp",
@@ -11533,6 +11554,7 @@
         "jobsystem/pooled_executor.cpp",
         "render/composition/render_core.cpp",
         "render/composition/core_world.cpp",
+        "render/pass/lights/map_lights.cpp",
         "render/pass/ao/ao.cpp",
         "render/pass/shadows/shadow_plan.cpp",
         "render/pass/shadows/shadow_passes.cpp",
@@ -11613,6 +11635,7 @@
         "jobsystem/pooled_executor.cpp",
         "render/composition/render_core.cpp",
         "render/composition/core_world.cpp",
+        "render/pass/lights/map_lights.cpp",
         "render/pass/ao/ao.cpp",
         "render/pass/shadows/shadow_plan.cpp",
         "render/pass/shadows/shadow_passes.cpp",

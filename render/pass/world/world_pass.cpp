@@ -1185,6 +1185,15 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		}
 		if ( !world->stage->reflectionProbes.empty() )
 			terms.map.reflectionProbes = kStageReflection;
+		// The view's area lights and sun.
+		if ( view.lights )
+		{
+			terms.areas = view.lights->areas;
+			std::copy(
+			    view.lights->sunDirection, view.lights->sunDirection + 4, terms.sunDirection );
+			std::copy( view.lights->sunColor, view.lights->sunColor + 4, terms.sunColor );
+			std::copy( view.lights->sunShadow, view.lights->sunShadow + 4, terms.sunShadow );
+		}
 	}
 	std::map<std::uint64_t, bool> framesWritten;
 	auto frameGroupReady = [&]( const Resources::Material &m ) -> const Group *

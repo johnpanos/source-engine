@@ -251,6 +251,12 @@ struct StageViewLights
 	// The view's shadow tiles (render.shadows.v1), which the lights index;
 	// their atlas is the slot's (WorldTarget::shadowAtlas).
 	std::vector<ShadowTileGpu> shadowTiles;
+	// The frame terms the view's lights set (material::FrameTerms): its
+	// area lights (with their shadow tiles) and the sun.
+	std::vector<material::SurfaceAreaLight> areas;
+	float sunDirection[4] = {};
+	float sunColor[4] = {};
+	float sunShadow[4] = { -1.0f, 0.0f, 0.0f, 0.0f };
 };
 
 struct WorldView

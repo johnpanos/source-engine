@@ -21,6 +21,7 @@
 #include "render/legacy/core_passes.h"
 #include "render/pass/debug/debug_overlays.h"
 #include "render/pass/ao/ao.h"
+#include "render/pass/lights/map_lights.h"
 #include "render/pass/shadows/shadow_passes.h"
 #include "render/pass/shadows/shadow_plan.h"
 #include "render/pass/world/world_pass.h"
@@ -59,7 +60,8 @@ public:
 	    const RenderCoreWorldMaterial *materials, unsigned int materialCount ) override;
 	void SetWorldMesh( const void *wmsh, unsigned long long wmshBytes,
 	    const RenderCoreWorldMeshlet *meshlets, unsigned int meshletCount,
-	    const RenderCoreWorldMaterial *materials, unsigned int materialCount ) override;
+	    const RenderCoreWorldMaterial *materials, unsigned int materialCount,
+	    const char *entities ) override;
 	world_mesh_gpu::IWorldMeshUpload *StageUpload() override { return &m_Capture; }
 	void ClearWorld() override
 	{
@@ -147,8 +149,10 @@ private:
 		void PublishLightSet( const light_set::Snapshot &snapshot ) override
 		{
 			lights = snapshot.lights;
+			areas = snapshot.areas;
 		}
 		std::vector<light_set::RuntimeLight> lights;
+		std::vector<light_set::RuntimeAreaLight> areas;
 	};
 	// The world stage's shadow atlas (per shadowed view of a frame): 4096
 	// texels square, depth 32 (64 MB each) on the desktop profiles; a mobile
@@ -213,6 +217,10 @@ private:
 	CoreOutput m_Output;
 	StageCapture m_Capture{ *this };
 	LightSink m_Lights;
+	// The stage map's authored lights (its entity lump), and whether its
+	// lightmap packs the sun's baked visibility (the total page's alpha).
+	pass::lights::MapLights m_MapLights;
+	bool m_StageSunMask = false;
 	unsigned long long m_StageLitViews = 0; // main thread
 	// Shadow work by world tag (DrawView writes, RecordSlot reads), and the
 	// stage's casters.

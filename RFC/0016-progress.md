@@ -3999,3 +3999,30 @@ fixed, and the workload lists none:
 Sweeps: all 117 retail Portal 2 maps (`core_world_smoke.py --game portal2
 --build build-p2`): 115 pass, 2 no-claims, 0 fail; all 26 retail Portal
 maps pass (`build/`).
+
+## K12 slice 5: the map's authored lights, area lights and the sun on the stage (2026-09-29)
+
+- `render.pass.lights` owns a map's authored lights now
+  (`map_lights.h`: the entity lump parser, the value helpers, and
+  `MapLightsFromEntities`: inverse-square `light` and `light_spot`,
+  `light_rect` area lights, the `light_environment` sun, projectors),
+  moved from `render_lab` (one copy; the lab aliases it).
+- The engine hands the stage its entity lump (`SetWorldMesh`). Maps
+  compiled without vrad (the PBRT and USD pipelines, the lighting fixtures)
+  have no worldlights lump, so their lights reach the game only this way:
+  when the frame's light set has no world lights, the stage adds the map's
+  lights (each light counts once). The stage's views pack the map's and the
+  frame's area lights (with hemicube shadow tiles) and the sun (with
+  cascades, or the lightmap's baked mask when the page packs one) into the
+  frame terms.
+- Level load names the stage's authored lights.
+
+| Map | Term toggled | Pixels over 8 levels |
+| --- | --- | --- |
+| lt_material_sweep | clustered (the map's light) | 5,316: the glossy spheres' highlights |
+| lt_area_room | area | 3,942 |
+| lt_sun_colonnade | sun | 0: its pack predates the sun-mask fix (the lab's note), so the mask reads no sun; a repack (goal step 6) decides |
+
+`render.composition`, `render.world.null` and the lab suites (area and
+clustered lights, volumetric, map terms, composition, shadowed lights)
+pass; `render_lab` builds.
