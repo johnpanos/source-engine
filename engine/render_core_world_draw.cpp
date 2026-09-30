@@ -56,6 +56,8 @@ struct CoreWorldState
 {
 	bool loaded = false;
 	bool viewActive = false;
+	// Views declined because the map's world is its WMSH, this level.
+	unsigned long long worldMeshViews = 0;
 	unsigned long long failuresSeen = 0;
 	CUtlVector<unsigned char> takes; // per surface index
 	// Per surface index: its entry in the core's world (only eligible
@@ -282,6 +284,7 @@ void RenderCoreWorldDraw_LevelInit()
 {
 	CoreWorldState &state = State();
 	state.loaded = false;
+	state.worldMeshViews = 0;
 	state.takes.RemoveAll();
 	state.entryOf.RemoveAll();
 	IRenderCoreWorld *pWorld = RenderCoreHost_World();
@@ -435,14 +438,22 @@ void RenderCoreWorldDraw_LevelShutdown()
 	}
 }
 
-bool RenderCoreWorldDraw_ViewEligible( unsigned long flags )
+bool RenderCoreWorldDraw_ViewEligible( unsigned long flags, bool bWorldMeshWorld )
 {
-	const CoreWorldState &state = State();
+	CoreWorldState &state = State();
 	if ( !state.loaded || !r_core_world.GetBool() || RenderCoreWorld_ViewDepth() != 1 )
 		return false;
 	if ( flags & ( DRAWWORLDLISTS_DRAW_SHADOWDEPTH | DRAWWORLDLISTS_DRAW_SSAO |
 	                 DRAWWORLDLISTS_DRAW_REFRACTION | DRAWWORLDLISTS_DRAW_REFLECTION ) )
 		return false;
+	if ( bWorldMeshWorld )
+	{
+		if ( state.worldMeshViews++ == 0 )
+			Msg( "r_core_world: this map's world is its WMSH (its own faces, PBR materials and "
+			     "LMAP lighting); the core draws BSP faces only until RFC 0016 K12, so it "
+			     "declines the view and the WMSH path draws the world\n" );
+		return false;
+	}
 	CMatRenderContextPtr pRenderContext( materials );
 	// Only the back buffer is a slot target. The view's fog (range or height)
 	// is a frame term, captured when the slot is marked.
@@ -514,6 +525,12 @@ bool RenderCoreWorldDraw_Skips( SurfaceHandle_t surfID )
 	return state.viewActive && RenderCoreWorldDraw_Takes( surfID );
 }
 
+bool RenderCoreWorldDraw_ChainsOnly()
+{
+	const CoreWorldState &state = State();
+	return state.viewActive || ( state.loaded && r_core_world_isolate.GetBool() );
+}
+
 CON_COMMAND( r_core_world_stats, "RFC 0016 K5: the core world's surfaces, views and gaps" )
 {
 	IRenderCoreWorld *pWorld = RenderCoreHost_World();
@@ -533,6 +550,9 @@ CON_COMMAND( r_core_world_stats, "RFC 0016 K5: the core world's surfaces, views 
 		Msg( "r_core_world_stats: gaps:\n%s", stats.gaps );
 	if ( stats.claimed[0] )
 		Msg( "r_core_world_stats: drawn by the core:\n%s", stats.claimed );
+	if ( State().worldMeshViews )
+		Msg( "r_core_world_stats: declined %llu view(s): the map's world is its WMSH\n",
+		    State().worldMeshViews );
 }
 
 // RFC 0014: what the core claims, per program and material, and each named gap

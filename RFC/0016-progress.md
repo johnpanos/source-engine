@@ -3775,3 +3775,35 @@ GI when the old path is removed".
   0011's contract, `r_indirect_producer` and the producers' math are
   unchanged; G9's `swing` is the in-game proof on the core.
 - Nothing is implemented by this entry, and no row changes state.
+
+## r_core_world: one world per view (2026-09-29, user request)
+
+User request: "when render world is on do not render the new world and
+legacy world at the same time".
+
+- Found: on a map with a resident WMSH (`r_worldmesh_draw 2`, the default),
+  the opaque world is drawn by the WMSH batches, not the static chains. Only
+  the chains skip the core's surfaces (`RenderCoreWorldDraw_Skips`), so with
+  `r_core_world 1` the core drew the BSP faces at its slot and the WMSH
+  batches drew the same room again over them. `r_core_world 3` and
+  `r_core_world_isolate` did nothing on those maps for the same reason.
+- Fixed in two parts (`engine/gl_rsurf.cpp`, `render_core_world_draw.*`):
+  - In a view the core draws (or under `r_core_world_isolate`), the opaque
+    world goes through the chains, which skip per surface, and the WMSH batches
+    only collect their translucent meshlets (`RenderCoreWorldDraw_ChainsOnly`).
+  - On a map whose world is its WMSH, the core declines the view by name
+    (console line at the first view, and `r_core_world_stats: declined N
+    view(s)`). The map's WMSH has its own faces, PBR materials and LMAP
+    lighting; the BSP faces the core holds carry the LightmappedGeneric
+    fallbacks (`gi_door_fallback/wall`) over legacy lightmap pages the bake
+    never lit. Drawing them was a silent remap that showed a black room once
+    the WMSH stopped drawing over it. The core draws WMSH with world PBR in
+    K12 step 2; the decline goes then.
+- Evidence (`tools/render/debug_views_product.py`, new `--content-root`):
+  - gi_door, before the fix: `cl_render_debug_legacy 1` frames black, and
+    the neutral frame lit only because WMSH drew over the core.
+  - gi_door, chains-only without the decline: the core's world black
+    (727,516 dark pixels of 786,432); this is what the decline prevents.
+  - gi_door, both parts: the neutral frame matches the before frame (2,718
+    dark pixels), every tint frame fully legacy, the decline named.
+  - testchmb_a_01 (no WMSH): 20 of 20 checks pass.

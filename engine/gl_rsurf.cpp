@@ -275,11 +275,12 @@ static void CollectWorldMeshTranslucent( const worldbrushdata_t *pWorld,
 // Draws the meshlets of the visible leaves that pass the view's culling.
 // pView is NULL when the list was built without frustum culling. Translucent
 // batches are not drawn here: their visible meshlets go to pTranslucent for
-// the translucent pass.
+// the translucent pass. Without bDrawOpaque only the translucent meshlets are
+// collected (the render core draws the view's opaque world; RFC 0016 K5).
 static void Shader_DrawWorldMeshBatches( IMatRenderContext *pRenderContext,
     const unsigned short *pVisibleLeaves, int nVisibleLeaves, CUtlVector<unsigned char> &visible,
     const WorldMeshCullView_t *pView, unsigned long flags,
-    CUtlVector<WorldMeshTranslucent_t> &translucent )
+    CUtlVector<WorldMeshTranslucent_t> &translucent, bool bDrawOpaque )
 {
 	world_mesh_gpu::IWorldMeshUpload *uploader = WorldMeshDrawProvider();
 	if ( !uploader )
@@ -480,6 +481,8 @@ static void Shader_DrawWorldMeshBatches( IMatRenderContext *pRenderContext,
 	CollectWorldMeshTranslucent( pWorld, pBatchCull, pVisibleLeaves, nVisibleLeaves, pVisible,
 	    pView ? Vector( pView->eye[0], pView->eye[1], pView->eye[2] ) : CurrentViewOrigin(),
 	    translucent );
+	if ( !bDrawOpaque )
+		return;
 
 	// Drawing a culled meshlet never changes a pixel, so a culled gap shorter
 	// than the bridge is drawn: that costs less than another draw.
@@ -2789,13 +2792,17 @@ static void Shader_WorldEnd( CWorldRenderList *pRenderList, unsigned long flags,
 #ifndef SWDS
 		const bool drawWorldMesh =
 		    nSortGroup == MAT_SORT_GROUP_STRICTLY_ABOVEWATER && WorldMeshDrawProvider() != NULL;
-		if ( !( drawWorldMesh && r_worldmesh_draw.GetInt() == 2 ) )
+		// RFC 0016 K5: where the core draws the view's world, the opaque
+		// world goes through the chains, which skip the core's surfaces; the
+		// WMSH batches would draw them a second time.
+		const bool coreChainsOnly = RenderCoreWorldDraw_ChainsOnly();
+		if ( !( drawWorldMesh && r_worldmesh_draw.GetInt() == 2 ) || coreChainsOnly )
 			Shader_DrawChains( pRenderList, nSortGroup, false );
 		if ( drawWorldMesh )
 			Shader_DrawWorldMeshBatches( pRenderContext, pRenderList->m_VisibleLeaves.Base(),
 			    pRenderList->m_VisibleLeaves.Count(), pRenderList->m_WorldMeshVisibility,
 			    pRenderList->m_WorldMeshView.frustumValid ? &pRenderList->m_WorldMeshView : NULL,
-			    flags, pRenderList->m_WorldMeshTranslucent );
+			    flags, pRenderList->m_WorldMeshTranslucent, !coreChainsOnly );
 #else
 		Shader_DrawChains( pRenderList, nSortGroup, false );
 #endif
@@ -4009,7 +4016,12 @@ void R_DrawWorldLists( IWorldRenderList *pRenderListIn, unsigned long flags, flo
 	R_PaintUpdateTextures();
 	// RFC 0016 K5 (r_core_world): the core draws the visible surfaces its
 	// material model takes, at a slot here; the static chains skip them.
-	if ( RenderCoreWorldDraw_ViewEligible( flags ) )
+#ifndef SWDS
+	const bool worldMeshWorld = WorldMeshDrawProvider() != NULL && r_worldmesh_draw.GetInt() == 2;
+#else
+	const bool worldMeshWorld = false;
+#endif
+	if ( RenderCoreWorldDraw_ViewEligible( flags, worldMeshWorld ) )
 	{
 		CUtlVector<unsigned int> coreSurfaces;
 		const CMSurfaceSortList &sortList = pRenderList->m_SortList;

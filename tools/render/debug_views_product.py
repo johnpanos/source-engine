@@ -159,6 +159,8 @@ def boot_desktop(args, out):
                "--capture-wait", str(len(SHOTS) * 60 + 200), "--timeout", "600",
                "--startup-command", "sv_cheats 1", "--startup-command", "r_core_world 1",
                "--startup-command", "mat_queue_mode %d" % args.queue_mode]
+    if args.content_root:
+        command += ["--content-root", str(args.content_root)]
     for line in console_script(SHOTS):
         command += ["--console-command", line]
     completed = subprocess.run(command, capture_output=True, text=True)
@@ -357,6 +359,8 @@ def main():
     run_parser.add_argument("--out", required=True)
     run_parser.add_argument("--build", default=str(ROOT / "build-rc-client" / "install"))
     run_parser.add_argument("--runtime", default=str(RUNTIME))
+    run_parser.add_argument("--content-root",
+                            help="a published map's tree (run/maps/<map>) staged into the game")
     run_parser.add_argument("--map", default="testchmb_a_01")
     run_parser.add_argument("--queue-mode", type=int, choices=(0, 2), default=0)
     run_parser.add_argument("--platform", choices=("linux", "android"), default="linux")
