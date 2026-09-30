@@ -61,6 +61,12 @@ struct ProgramTexture
 	// A cube map binding takes a kCube texture (an absent one, a neutral
 	// cube).
 	device::TextureDimension dimension = device::TextureDimension::k2D;
+	// A texture the group's owner made on the device instead of a cache
+	// name (a pass's output: the frame's shadow atlas), bound as it is. The
+	// owner keeps it alive past the group's last use and has it in kSampled
+	// wherever the group is read; the group is rebuilt when the id changes.
+	device::TextureId external = {};
+	device::TextureDesc externalDesc = {};
 };
 
 // A read-only storage buffer of a group: its binding and contents (at least

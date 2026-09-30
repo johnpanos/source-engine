@@ -92,7 +92,7 @@ PbrSplitSumTable LtcTable()
 	return table;
 }
 
-SurfaceLightGpu PackSurfaceLight( const light_set::RuntimeLight &light )
+SurfaceLightGpu PackSurfaceLight( const light_set::RuntimeLight &light, int shadowTile )
 {
 	SurfaceLightGpu packed;
 	const bool spot = light.shape == light_set::LightShape::Spot;
@@ -108,6 +108,8 @@ SurfaceLightGpu PackSurfaceLight( const light_set::RuntimeLight &light )
 	packed.cone[0] = spot ? light.innerCos : 1.0f;
 	packed.cone[1] = light.falloff == light_set::LightFalloff::InverseSquare ? 1.0f : 0.0f;
 	packed.cone[2] = light.sourceRadius;
+	packed.cone[3] = float( shadowTile );
+	packed.spot[0] = light.spotExponent;
 	return packed;
 }
 
@@ -163,7 +165,10 @@ foundation::Expected<std::unique_ptr<SurfaceProgram>, SurfaceStatus> SurfaceProg
 	const BindingDesc view[] = { { 0, BindingKind::kUniformBuffer, 1, { ShaderStage::kFragment } },
 	    { 1, BindingKind::kStorageBuffer, 1, { ShaderStage::kFragment } },
 	    { 2, BindingKind::kStorageBuffer, 1, { ShaderStage::kFragment } },
-	    { 3, BindingKind::kStorageBuffer, 1, { ShaderStage::kFragment } } };
+	    { 3, BindingKind::kStorageBuffer, 1, { ShaderStage::kFragment } },
+	    { 4, BindingKind::kStorageBuffer, 1, { ShaderStage::kFragment } },
+	    { 5, BindingKind::kSampledTexture, 1, { ShaderStage::kFragment } },
+	    { 6, BindingKind::kSampler, 1, { ShaderStage::kFragment } } };
 	auto frameLayout = device.CreateBindGroupLayout( { BindGroupRole::kFrame, frame } );
 	auto viewLayout = device.CreateBindGroupLayout( { BindGroupRole::kView, view } );
 	auto materialLayout = device.CreateBindGroupLayout( { BindGroupRole::kMaterial, material } );
@@ -351,7 +356,7 @@ GroupRequest SurfaceProgram::FrameGroup( const SurfaceFrame &frame, std::string 
 
 GroupRequest SurfaceProgram::ViewGroup( const SurfaceViewGpu &view,
     std::span<const std::byte> froxels, std::span<const std::byte> indices,
-    std::span<const SurfaceLightGpu> lights ) const
+    std::span<const SurfaceLightGpu> lights, const SurfaceShadows &shadows ) const
 {
 	GroupRequest request;
 	request.layout = m_ViewLayout;
@@ -370,6 +375,18 @@ GroupRequest SurfaceProgram::ViewGroup( const SurfaceViewGpu &view,
 	storage( 1, froxels );
 	storage( 2, indices );
 	storage( 3, std::as_bytes( lights ) );
+	storage( 4, std::as_bytes( shadows.tiles ) );
+	// The atlas is read with a point sampler: shadow_sample.glsl filters the
+	// compare itself (the device port has no comparison samplers).
+	ProgramTexture atlas;
+	atlas.binding = 5;
+	atlas.samplerBinding = 6;
+	atlas.sampler.minFilter = atlas.sampler.magFilter = atlas.sampler.mipFilter =
+	    Filter::kNearest;
+	atlas.sampler.address = AddressMode::kClampToEdge;
+	atlas.external = shadows.atlas;
+	atlas.externalDesc = shadows.atlasDesc;
+	request.textures.push_back( std::move( atlas ) );
 	return request;
 }
 

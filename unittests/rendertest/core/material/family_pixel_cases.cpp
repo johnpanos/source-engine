@@ -487,12 +487,24 @@ CaseGroup NeutralViewGroup( device::BindGroupLayoutId layout )
 	static const std::uint32_t kFroxel[2] = { 0, 0 };
 	static const std::uint32_t kIndices[4] = {};
 	static const render::material::SurfaceLightGpu kLight;
+	static const render::ShadowTileGpu kTile;
+	// No atlas: a texture no tile indexes.
+	static const CaseTexture kAtlas = []
+	{
+		CaseTexture atlas;
+		atlas.width = atlas.height = 1;
+		atlas.clamp = atlas.point = true;
+		atlas.format = device::Format::kRGBA8Unorm;
+		atlas.texels = { 255, 255, 255, 255 };
+		return atlas;
+	}();
 	CaseGroup group;
 	group.role = device::BindGroupRole::kView;
 	group.layout = layout;
 	group.constants = std::as_bytes( std::span( &kView, 1 ) );
 	group.storage = { std::as_bytes( std::span( kFroxel ) ), std::as_bytes( std::span( kIndices ) ),
-	    std::as_bytes( std::span( &kLight, 1 ) ) };
+	    std::as_bytes( std::span( &kLight, 1 ) ), std::as_bytes( std::span( &kTile, 1 ) ) };
+	group.textures = { &kAtlas };
 	return group;
 }
 

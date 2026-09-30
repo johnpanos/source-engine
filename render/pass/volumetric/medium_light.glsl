@@ -31,7 +31,7 @@ struct MediumLight
 	vec4 colorFalloff;      // w 0 inverse square, 1 legacy
 	vec4 direction;         // spot axis
 	vec4 cone;              // innerCos, outerCos, radius, sourceRadius
-	vec4 misc;              // minLight
+	vec4 misc;              // minLight, spot exponent
 };
 
 struct MediumProjector
@@ -59,7 +59,7 @@ vec3 LightAt( MediumLight light, vec3 p )
 	{
 		const float cosAxis =
 		    dot( toPoint * inversesqrt( max( distanceSquared, 1e-30 ) ), light.direction.xyz );
-		falloff *= RuntimeLightSpot( cosAxis, light.cone.x, light.cone.y );
+		falloff *= RuntimeLightSpot( cosAxis, light.cone.x, light.cone.y, light.misc.y );
 	}
 	return light.colorFalloff.rgb * falloff;
 }

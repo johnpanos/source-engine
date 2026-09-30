@@ -10087,7 +10087,7 @@
       "contract": "RFC/0016-render-core.md",
       "profile": "linux-native-vulkan-gpu",
       "kind": "positive",
-      "description": "RFC 0016 K11 'Model assembly', the runtime-lights term (render/lab/clustered_lights_suite.cpp, render_lab suite clustered-lights --validate): the surface program's pbr point (kSurfaceClustered) lit by render.light-set.v1 point and spot lights through the view group (the view's cluster grid, froxel ranges, index list from render.pass.lights AssignLights, and SurfaceLightGpu records), judged against every light of the set with light_set.h's Falloff, InverseSquareFalloff and SpotFactor and pbr_brdf.h's lobes: a mixed set (legacy and inverse-square, bounded and unbounded, points and spots) and 256 small lights, on three materials from an overhead and a grazing view; each sampled pixel within 0.5 percent + 3e-4, widened by the oracle's own change within 0.1 units. No lights and the term off are the frame without the term, bitwise. 0 validation messages.",
+      "description": "RFC 0016 K11 'Model assembly', the runtime-lights term (render/lab/clustered_lights_suite.cpp, render_lab suite clustered-lights --validate): the surface program's pbr point (kSurfaceClustered) lit by render.light-set.v1 point and spot lights through the view group (the view's cluster grid, froxel ranges, index list from render.pass.lights AssignLights, and SurfaceLightGpu records), judged against every light of the set with light_set.h's Falloff, InverseSquareFalloff and SpotFactor (light set v3: vrad's spot rule, the cosine to the axis times the cone ramp to its exponent; one spot at exponent 2) and pbr_brdf.h's lobes: a mixed set (legacy and inverse-square, bounded and unbounded, points and spots) and 256 small lights, on three materials from an overhead and a grazing view; each sampled pixel within 0.5 percent + 3e-4, widened by the oracle's own change within 0.1 units. No lights and the term off are the frame without the term, bitwise. 0 validation messages.",
       "command": [
         "{python}",
         "tools/render/lab.py",
@@ -10124,7 +10124,7 @@
       "contract": "RFC/0016-render-core.md",
       "profile": "linux-native-vulkan-gpu",
       "kind": "sensitivity",
-      "description": "RFC 0016 K11 runtime-lights term, seeded programs (clustered_light_defects_spv.h, built from surface.frag): the froxel's slice off by one fails clustered.dense; each list's first light skipped fails a clustered check; the inverse-square window dropped fails clustered.mixed; the control passes.",
+      "description": "RFC 0016 K11 runtime-lights term, seeded programs (clustered_light_defects_spv.h, built from surface.frag): the froxel's slice off by one fails clustered.dense; each list's first light skipped fails a clustered check; the inverse-square window dropped fails clustered.mixed; the spot cone's cosine to the axis dropped fails clustered.mixed; the control passes.",
       "command": [
         "{python}",
         "tools/render/lab.py",
@@ -10133,7 +10133,7 @@
         "--sensitivity"
       ],
       "result_protocol": "checks-v1",
-      "min_checks": 4,
+      "min_checks": 5,
       "timeout_seconds": 900,
       "requires": [
         "path:build-rc-lab/render/lab/render_lab",
@@ -10144,6 +10144,86 @@
         "render/shaders/common/runtime_light.glsl",
         "render/material/families/surface.frag",
         "tools/render/shader_toolchain.py"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.lab.shadowed-lights",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "migration": "R95",
+      "contract": "RFC/0016-render-core.md",
+      "profile": "linux-native-vulkan-gpu",
+      "kind": "positive",
+      "description": "RFC 0016 K11 'Model assembly', the direct-visibility term (render.shadows.v1; render/lab/shadowed_lights_suite.cpp, render_lab suite shadowed-lights --validate): the surface program's clustered runtime lights shadowed through the view group's atlas (binding 4 the ShadowTileGpu records, 5 the atlas, 6 a point sampler; SurfaceLightGpu cone.w the light's tile), the atlas planned by render.pass.shadows PlanShadowAtlas and drawn by ShadowDepthRenderer from two box casters; two spots with tiles and a point light without one over the receiver plane. Oracle: each light's RuntimeLightOracle times a ray test from the receiver point to the light against the boxes, sharing no code with the shader or the depth pass. Where visibility is the same over 2.5 atlas texels around the point (seen along the light), each sampled pixel is within 0.5 percent + 3e-4 of the oracle, widened by its change within 0.1 units; on a shadow's edge it lies between the edge lights shadowed and lit; each spot shadows at least 50 judged pixels and the point light none; lights with no tile are the frame without an atlas, bitwise. 0 validation messages.",
+      "command": [
+        "{python}",
+        "tools/render/lab.py",
+        "suite",
+        "shadowed-lights",
+        "--validate"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 8,
+      "timeout_seconds": 600,
+      "requires": [
+        "path:build-rc-lab/render/lab/render_lab",
+        "vulkan-device:gpu"
+      ],
+      "sources": [
+        "render/lab/shadowed_lights_suite.cpp",
+        "render/lab/lab_receiver.cpp",
+        "render/lab/lab_suite.cpp",
+        "render/shaders/common/shadow_sample.glsl",
+        "render/shaders/common/runtime_light.glsl",
+        "render/material/families/surface.frag",
+        "render/material/surface_program.cpp",
+        "render/material/material_programs.cpp",
+        "render/pass/shadows/atlas.cpp",
+        "render/pass/shadows/shadow_passes.cpp",
+        "public/render/shadow_tile.h",
+        "public/render/light_set.h",
+        "tools/render/lab.py"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.lab.shadowed-lights.sensitivity",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "migration": "R95",
+      "contract": "RFC/0016-render-core.md",
+      "profile": "linux-native-vulkan-gpu",
+      "kind": "sensitivity",
+      "description": "RFC 0016 K11 direct-visibility term, seeded programs (shadowed_light_defects_spv.h, built from surface.frag): the visibility ignored, each light reading the next light's tile, and the depth compare reversed (shadow_sample.glsl's SEEDED_DEPTH_REVERSED) each fail a shadowed check; the control passes.",
+      "command": [
+        "{python}",
+        "tools/render/lab.py",
+        "suite",
+        "shadowed-lights",
+        "--sensitivity"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 4,
+      "timeout_seconds": 900,
+      "requires": [
+        "path:build-rc-lab/render/lab/render_lab",
+        "vulkan-device:gpu"
+      ],
+      "sources": [
+        "render/lab/shadowed_lights_suite.cpp",
+        "render/lab/lab_receiver.cpp",
+        "render/lab/lab_suite.cpp",
+        "render/shaders/common/shadow_sample.glsl",
+        "render/shaders/common/runtime_light.glsl",
+        "render/material/families/surface.frag",
+        "render/material/surface_program.cpp",
+        "render/material/material_programs.cpp",
+        "render/pass/shadows/atlas.cpp",
+        "render/pass/shadows/shadow_passes.cpp",
+        "public/render/shadow_tile.h",
+        "public/render/light_set.h",
+        "tools/render/lab.py"
       ],
       "expect": "pass"
     },

@@ -1,11 +1,12 @@
-// render.pass.shadows receiver helper (RFC 0016 K7, render.shadows.v1): the
+// The shadow receiver helper (RFC 0016 K7, render.shadows.v1): the
 // visibility of a world point from one shadow view's atlas tile.
 //
-// ShadowTile is ShadowTileGpu (public/render/pass/shadows/shadow_passes.h):
+// ShadowTile is ShadowTileGpu (public/render/shadow_tile.h, render.contracts):
 // the view's world to clip matrix, the tile transform applied after the
 // perspective divide (u = x * scaleU + biasU, v = y * scaleV + biasV), the
 // tile viewport's rectangle in atlas texture coordinates, and the receiver
-// depth bias and the atlas size in texels.
+// depth bias and the atlas size in texels. The matrix is stored row-major, so
+// a block holding ShadowTile records is declared row_major.
 //
 // The device port has no comparison samplers, so the compare is done here:
 // a 2x2 bilinear percentage-closer filter over the four texels around the

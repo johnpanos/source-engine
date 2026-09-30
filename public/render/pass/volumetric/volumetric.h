@@ -147,6 +147,7 @@ struct MediumLight
 	float minLight = 0.0f; // the legacy falloff's threshold
 	float innerCos = 1.0f;
 	float outerCos = 1.0f;
+	float spotExponent = 0.0f; // the cone ramp's (light set v3)
 };
 
 // A light set light as the medium sees it (points and spots).
@@ -304,7 +305,7 @@ struct MediumLightGpu
 	float colorFalloff[4] = {}; // rgb; w 0 inverse square, 1 legacy
 	float direction[4] = {};    // spot axis
 	float cone[4] = {}; // innerCos, outerCos, radius, sourceRadius
-	float misc[4] = {}; // minLight, 0, 0, 0
+	float misc[4] = {}; // minLight, spot exponent, 0, 0
 };
 struct MediumProjectorGpu
 {

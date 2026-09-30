@@ -161,6 +161,14 @@ void GroupResidency::Refresh( Entry &entry )
 	bool complete = true;
 	for ( const ProgramTexture &texture : entry.request.textures )
 	{
+		if ( texture.external.IsValid() )
+		{
+			SampledTexture resident{ texture.external, texture.externalDesc };
+			resident.desc.debugName = {}; // the owner's name view is not ours to keep
+			sampled.push_back( resident );
+			revisions.push_back( 0 );
+			continue;
+		}
 		// An input named empty is off: it takes the neutral texture of its
 		// dimension, which the program does not read.
 		if ( texture.name.empty() )
@@ -248,7 +256,7 @@ std::size_t GroupResidency::RecordUploads( CommandEncoder &encoder )
 	{
 		for ( const ProgramTexture &texture : entry.request.textures )
 		{
-			if ( texture.name.empty() )
+			if ( texture.name.empty() && !texture.external.IsValid() )
 				(void)Neutral( texture.dimension );
 		}
 	}

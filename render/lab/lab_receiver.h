@@ -10,6 +10,7 @@
 #ifndef RENDER_LAB_LAB_RECEIVER_H
 #define RENDER_LAB_LAB_RECEIVER_H
 
+#include "render/light_set.h"
 #include "render/math/matrix.h"
 #include "render/math/vector.h"
 
@@ -62,6 +63,13 @@ inline constexpr ReceiverMaterial kReceiverMaterials[] = { { "dielectric-r50", 0
 
 // The plane as two triangles of SurfaceModelVertex (normal +z, tangent +x).
 std::vector<std::byte> ReceiverMesh( float extent );
+
+// The oracle of one runtime light (render.light-set.v1) at receiver point p
+// seen from direction v (unit, toward the eye): light_set.h's falloff and
+// cone and pbr_brdf.h's lobes, both of them, in the red channel. It shares no
+// code with the shader; the clustered- and shadowed-light suites sum it.
+float RuntimeLightOracle( const light_set::RuntimeLight &light, const ReceiverMaterial &material,
+    math::float3 p, math::float3 v );
 
 } // namespace render::lab
 

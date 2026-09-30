@@ -101,6 +101,9 @@ struct RuntimeLight
 	float sourceRadius = 0.0f; // the emitting sphere (InverseSquare)
 	int style = 0;
 	float styleScalar = 1.0f;
+	// The spot cone ramp's exponent (vrad's `_exponent`; 0 and 1 are both a
+	// linear ramp). Light set v3 (RFC 0016 K11 step c): see SpotFactor.
+	float spotExponent = 0.0f;
 };
 
 // An area light in the frame (render/area_light.h), its identity kept as a
@@ -222,17 +225,28 @@ struct AreaLightInput
 }
 
 // A spot light's cone at the cosine between its axis and the direction from
-// the light to the receiver: 0 outside the outer cone, 1 inside the inner
-// one, and a smoothstep between (a hard edge when the cones meet). The native
-// backend's world_pbr.frag evaluated this rule before it was defined here;
-// the render core's runtime_light.glsl mirrors it.
-[[nodiscard]] inline float SpotFactor( float cosine, float innerCos, float outerCos )
+// the light to the receiver, as vrad bakes it (utils/vrad/lightmap.cpp,
+// emit_spotlight) and the lighting fixtures' Cycles lamps render it: the
+// cosine itself, times, between the outer and inner cones, the linear ramp
+// from the outer cone to the inner one raised to the exponent (vrad skips the
+// power for exponents 0 and 1: both are linear); 0 outside the outer cone.
+// Light set v3 (RFC 0016 K11 step c, 2026-09-29) replaced a smoothstep
+// between the cones, which the frozen native backend's world_pbr.frag keeps
+// until RFC 0016 K12 deletes it, so runtime spots equal the same spots baked.
+[[nodiscard]] inline float SpotFactor( float cosine, float innerCos, float outerCos,
+    float exponent )
 {
-	if ( !( innerCos > outerCos + 1e-4f ) )
-		return cosine >= outerCos ? 1.0f : 0.0f;
-	float t = ( cosine - outerCos ) / ( innerCos - outerCos );
-	t = t < 0.0f ? 0.0f : ( t > 1.0f ? 1.0f : t );
-	return t * t * ( 3.0f - 2.0f * t );
+	if ( !( cosine > outerCos ) )
+		return 0.0f;
+	float ramp = 1.0f;
+	if ( !( cosine > innerCos ) )
+	{
+		ramp = innerCos > outerCos ? ( cosine - outerCos ) / ( innerCos - outerCos ) : 1.0f;
+		ramp = ramp < 0.0f ? 0.0f : ( ramp > 1.0f ? 1.0f : ramp );
+		if ( exponent != 0.0f && exponent != 1.0f )
+			ramp = std::pow( ramp, exponent );
+	}
+	return cosine * ramp;
 }
 
 // A world light matches its bake when its style scalar is the baked value.

@@ -7,6 +7,7 @@
 #include "lab_receiver.h"
 
 #include "render/material/surface_program.h"
+#include "render/pbr_brdf.h"
 
 #include <cmath>
 
@@ -66,6 +67,44 @@ std::vector<std::byte> ReceiverMesh( float extent )
 		bytes.insert( bytes.end(), raw, raw + sizeof( vertex ) );
 	}
 	return bytes;
+}
+
+float RuntimeLightOracle( const light_set::RuntimeLight &light, const ReceiverMaterial &material,
+    math::float3 p, math::float3 v )
+{
+	const math::float3 n{ 0, 0, 1 };
+	const float normalDotView = std::max( math::Dot( n, v ), 0.0f );
+	const float f0 = material.F0();
+	const pbr::SplitSumCoefficients split =
+	    pbr::SampleSplitSum( normalDotView, material.Roughness() );
+	const float compensation = pbr::SpecularEnergyCompensation( f0, split );
+	const float diffuseColor =
+	    ( 1.0f - material.Metal() ) * ( 1.0f - pbr::SpecularDirectionalAlbedo( f0, split ) );
+	const math::float3 toLight{
+	    light.position[0] - p.x, light.position[1] - p.y, light.position[2] - p.z };
+	const float distanceSquared = math::Dot( toLight, toLight );
+	float falloff = light.falloff == light_set::LightFalloff::InverseSquare
+	                    ? light_set::InverseSquareFalloff(
+	                          distanceSquared, light.radius, light.sourceRadius )
+	                    : light_set::Falloff( distanceSquared, light.radius, light.minLight );
+	if ( !( falloff > 0.0f ) )
+		return 0.0f;
+	const math::float3 l = math::Normalize( toLight );
+	if ( light.shape == light_set::LightShape::Spot )
+	{
+		const math::float3 axis{ light.direction[0], light.direction[1], light.direction[2] };
+		falloff *= light_set::SpotFactor( -math::Dot( l, math::Normalize( axis ) ),
+		    light.innerCos, light.outerCos, light.spotExponent );
+	}
+	const float normalDotLight = std::max( l.z, 0.0f );
+	if ( !( falloff > 0.0f ) || !( normalDotLight > 0.0f ) )
+		return 0.0f;
+	const float incident = light.color[0] * falloff;
+	const math::float3 h = math::Normalize( { l.x + v.x, l.y + v.y, l.z + v.z } );
+	const pbr::Color specular = pbr::EvaluateSpecular( { f0, f0, f0 }, normalDotView,
+	    normalDotLight, math::Dot( n, h ), math::Dot( v, h ), material.Roughness() );
+	return diffuseColor * incident * normalDotLight +
+	       pbr::kPi * incident * specular.red * compensation * normalDotLight;
 }
 
 } // namespace render::lab

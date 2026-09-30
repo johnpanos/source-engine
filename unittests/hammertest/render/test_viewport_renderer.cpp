@@ -363,8 +363,10 @@ int main()
 		// programs' neutral textures for the terms that are off (a 1x1 2D and
 		// a 1x1 cube's six faces; MaterialPrograms makes them) and the frame
 		// group's neutral 2D for the surface program's unread split-sum slot
-		// (the group residency that holds it makes its own).
-		checks.Equal( copies, std::size_t( 3 * 3 + 1 + 1 + 6 + 1 ),
+		// (the group residency that holds it makes its own), and the neutral
+		// view group's neutral 2D for its unread shadow atlas (RFC 0016 K11
+		// c2; the programs' view residency makes its own).
+		checks.Equal( copies, std::size_t( 3 * 3 + 1 + 1 + 6 + 1 + 1 ),
 		    "V8.each-texture-uploads-its-three-levels" );
 		checks.That( renderer.Scene().blendedBatches == 1 && renderer.Scene().texturedBatches == 3,
 		    "V8.the-translucent-batch-alone-is-blended" );

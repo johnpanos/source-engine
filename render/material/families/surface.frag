@@ -45,6 +45,7 @@
 #include "../../shaders/common/pbr_brdf.glsl"
 #include "../../shaders/common/ltc.glsl"
 #include "../../shaders/common/runtime_light.glsl"
+#include "../../shaders/common/shadow_sample.glsl"
 #include "../../shaders/common/lightmap_basis.glsl"
 #include "surface_lighting.glsl"
 
@@ -121,7 +122,9 @@ struct RuntimeLightRecord
 	vec4 position;  // w: radius (0 unbounded)
 	vec4 color;     // w: minLight
 	vec4 direction; // w: outerCos, below -1 for a point light
-	vec4 cone;      // innerCos, 1 for an inverse-square falloff, sourceRadius
+	vec4 cone;      // innerCos, 1 for an inverse-square falloff, sourceRadius,
+	                // the shadow tile or -1
+	vec4 spot;      // the cone ramp's exponent
 };
 layout( set = 1, binding = 0 ) uniform ClusterView
 {
@@ -142,6 +145,14 @@ layout( set = 1, binding = 3, std430 ) readonly buffer ClusterLights
 {
 	RuntimeLightRecord runtimeLights[];
 };
+// The view's shadow tiles (ShadowTileGpu) and atlas: a light whose cone.w is
+// a tile index (not -1) is shadowed by that tile (render.shadows.v1).
+layout( set = 1, binding = 4, std430, row_major ) readonly buffer ShadowTiles
+{
+	ShadowTile shadowTiles[];
+};
+layout( set = 1, binding = 5 ) uniform texture2D shadowAtlas;
+layout( set = 1, binding = 6 ) uniform sampler shadowSampler;
 
 // The GGX LTC table (public/render/pbr_ltc_table.h), read by the pbr point.
 layout( set = 0, binding = 3 ) uniform texture2D ltcTexture;
@@ -478,10 +489,20 @@ void PbrSurface()
 			const vec3 light = toLight * inversesqrt( max( distanceSquared, 1e-8 ) );
 			if ( runtime.direction.w >= -1.0 )
 				falloff *= RuntimeLightSpot( dot( -light, normalize( runtime.direction.xyz ) ),
-				    runtime.cone.x, runtime.direction.w );
+				    runtime.cone.x, runtime.direction.w, runtime.spot.x );
 			const float normalDotLight = max( dot( normal, light ), 0.0 );
 			if ( falloff <= 0.0 || normalDotLight <= 0.0 )
 				continue;
+			const int tile = int( runtime.cone.w );
+#ifdef SEEDED_SHADOW_TILE_NEXT
+			if ( tile >= 0 )
+				falloff *= ShadowVisibility( shadowAtlas, shadowSampler,
+				    shadowTiles[( tile + 1 ) % shadowTiles.length()], worldPosition );
+#elif !defined( SEEDED_SHADOW_IGNORED )
+			if ( tile >= 0 )
+				falloff *= ShadowVisibility(
+				    shadowAtlas, shadowSampler, shadowTiles[tile], worldPosition );
+#endif
 			const vec3 incident = runtime.color.rgb * falloff;
 			if ( diffuseLobe )
 			{

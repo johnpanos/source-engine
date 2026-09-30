@@ -244,7 +244,18 @@ GENERATED = {
         ("kSurfaceClusterSkipsFirst", FAMILIES + "/surface.frag",
          DEVICE_OPTIONS + ("-DSEEDED_CLUSTER_SKIPS_FIRST",)),
         ("kSurfaceRuntimeFalloffUnwindowed", FAMILIES + "/surface.frag",
-         DEVICE_OPTIONS + ("-DSEEDED_RUNTIME_FALLOFF_UNWINDOWED",)))),
+         DEVICE_OPTIONS + ("-DSEEDED_RUNTIME_FALLOFF_UNWINDOWED",)),
+        ("kSurfaceSpotNoCosine", FAMILIES + "/surface.frag",
+         DEVICE_OPTIONS + ("-DSEEDED_SPOT_NO_COSINE",)))),
+    "shadowed_light_defects_spv.h": ("render::lab::spirv",
+        "render_lab's shadowed-light suite's seeded programs (render.lab.shadowed-lights "
+        "sensitivity, RFC 0016 K11)", (
+        ("kSurfaceShadowIgnored", FAMILIES + "/surface.frag",
+         DEVICE_OPTIONS + ("-DSEEDED_SHADOW_IGNORED",)),
+        ("kSurfaceShadowTileNext", FAMILIES + "/surface.frag",
+         DEVICE_OPTIONS + ("-DSEEDED_SHADOW_TILE_NEXT",)),
+        ("kSurfaceShadowDepthReversed", FAMILIES + "/surface.frag",
+         DEVICE_OPTIONS + ("-DSEEDED_DEPTH_REVERSED",)))),
     "area_light_defects_spv.h": ("render::lab::spirv",
         "render_lab's area-light suite's seeded programs (render.lab.area-lights sensitivity, "
         "RFC 0016 K11)", (

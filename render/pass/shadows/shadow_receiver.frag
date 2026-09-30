@@ -9,7 +9,7 @@
 // split the point is lit. Output: red = ambient + ( 1 - ambient ) * light,
 // green 1 (a receiver), blue = the cascade used / 4 (4 beyond the last).
 
-#include "shadow_sample.glsl"
+#include "../../shaders/common/shadow_sample.glsl"
 
 layout( set = 0, binding = 0 ) uniform texture2D shadowAtlas;
 layout( set = 0, binding = 1 ) uniform sampler shadowSampler;

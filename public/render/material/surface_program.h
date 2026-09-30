@@ -25,9 +25,12 @@
 //			  (render.light-set.v1's point and spot lights; render.pass.lights
 //			  lists them per froxel, RFC 0016 K7): binding 0 SurfaceViewGpu,
 //			  1 the froxels' ranges, 2 the index list, 3 SurfaceLightGpu
-//			  records, in the order the index list counts them. Only a variant
-//			  with kSurfaceClustered reads them; the others bind the neutral
-//			  view group (NeutralViewGroup), which MaterialPrograms keeps;
+//			  records, in the order the index list counts them, 4 the
+//			  ShadowTileGpu records a light's shadow tile indexes, 5 the view's
+//			  shadow atlas (render.shadows.v1, a depth texture) and 6 its point
+//			  sampler. Only a variant with kSurfaceClustered reads them; the
+//			  others bind the neutral view group (NeutralViewGroup), which
+//			  MaterialPrograms keeps;
 //			- draw (role kDraw): binding 0 the draw's lightmap page, 1 its
 //			  sampler, 2 its model lighting (model_lighting.h; neutral for a
 //			  world surface).
@@ -46,6 +49,7 @@
 #include "render/light_set.h"
 #include "render/material/material_programs.h"
 #include "render/material/model_lighting.h"
+#include "render/shadow_tile.h"
 #include "render/shaderlib/debug_view.h"
 
 #include <cstdint>
@@ -126,11 +130,26 @@ struct SurfaceLightGpu
 	float position[4] = {};  // w: radius (0 unbounded)
 	float color[4] = {};     // linear, times the style scalar; w: minLight
 	float direction[4] = {}; // the spot's axis; w: outerCos, or -2 for a point light
-	float cone[4] = {};      // innerCos, 1 for an inverse-square falloff, sourceRadius, 0
+	// innerCos, 1 for an inverse-square falloff, sourceRadius, and the
+	// light's shadow tile in the view's tile list (binding 4), or -1 when it
+	// has none (unshadowed: its visibility is one).
+	float cone[4] = {};
+	float spot[4] = {}; // the cone ramp's exponent (light_set::SpotFactor), 0, 0, 0
 };
-static_assert( sizeof( SurfaceLightGpu ) == 64 );
+static_assert( sizeof( SurfaceLightGpu ) == 80 );
 
-SurfaceLightGpu PackSurfaceLight( const light_set::RuntimeLight &light );
+SurfaceLightGpu PackSurfaceLight( const light_set::RuntimeLight &light, int shadowTile = -1 );
+
+// A view's shadows as the view group binds them: the atlas the view's shadow
+// passes drew (render.pass.shadows; kSampled wherever the group is read, and
+// alive past its last use) and its tiles. No atlas binds a neutral texture no
+// tile may index.
+struct SurfaceShadows
+{
+	device::TextureId atlas;
+	device::TextureDesc atlasDesc;
+	std::span<const ShadowTileGpu> tiles;
+};
 
 // The frame's terms (std140, the Frame block of surface.frag): one lightmap
 // term whose scale depends on how the pages encode light, and the output's
@@ -367,7 +386,8 @@ public:
 	// records), its index list (ClusterIndexHeader then indices) and its
 	// light records, as render.pass.lights lays them out.
 	GroupRequest ViewGroup( const SurfaceViewGpu &view, std::span<const std::byte> froxels,
-	    std::span<const std::byte> indices, std::span<const SurfaceLightGpu> lights ) const;
+	    std::span<const std::byte> indices, std::span<const SurfaceLightGpu> lights,
+	    const SurfaceShadows &shadows = {} ) const;
 	// The view group of a view with no clustered lights.
 	GroupRequest NeutralViewGroup() const;
 	// A draw group: the lightmap page ('page', a TextureCache name staged as

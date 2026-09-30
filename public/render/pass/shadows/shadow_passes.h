@@ -11,9 +11,9 @@
 //			draws each view with its viewport set to the tile's viewport (the
 //			tile less its guard band), depth test less, no culling.
 //
-//			The receiver helper is render/pass/shadows/shadow_sample.glsl with
-//			ShadowTileGpu, its record: families that receive shadows include
-//			it. ShadowReceiverRenderer draws receivers lit by one shadowed
+//			The receiver helper is render/shaders/common/shadow_sample.glsl
+//			with ShadowTileGpu (render/shadow_tile.h), its record: families
+//			that receive shadows include it. ShadowReceiverRenderer draws receivers lit by one shadowed
 //			light (a spot, or the sun through its cascades) and writes the
 //			light at each pixel; it is the pass the pixel oracles run and
 //			the shadow mask a legacy family can read.
@@ -33,6 +33,7 @@
 #include "render/math/matrix.h"
 #include "render/pass/shadows/atlas.h"
 #include "render/resources/mesh_cache.h"
+#include "render/shadow_tile.h"
 
 #include <array>
 #include <cstdint>
@@ -45,15 +46,8 @@
 namespace render::pass::shadows
 {
 
-// shadow_sample.glsl's ShadowTile (std140 and std430 alike), 112 bytes.
-struct ShadowTileGpu
-{
-	float viewProjection[4][4] = {}; // row-major, column vectors
-	float transform[4] = {};         // scaleU, biasU, scaleV, biasV
-	float bounds[4] = {};            // the tile viewport: u0, v0, u1, v1
-	float params[4] = {};            // receiver depth bias, atlas size in texels, 0, 0
-};
-static_assert( sizeof( ShadowTileGpu ) == 112 );
+// The record's one definition is render.contracts' (render/shadow_tile.h).
+using render::ShadowTileGpu;
 
 ShadowTileGpu PackShadowTile(
     const ShadowTileProjection &projection, std::uint32_t atlasSize, float depthBias );

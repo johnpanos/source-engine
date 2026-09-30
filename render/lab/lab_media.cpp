@@ -212,6 +212,7 @@ LabMedia MediaFromEntities( const std::vector<Entity> &entities )
 					light.kind = volumetric::MediumLightKind::kSpot;
 					light.innerCos = float( std::cos( std::min( inner, 90.0f ) * kPi / 180.0 ) );
 					light.outerCos = float( std::cos( std::min( outer, 90.0f ) * kPi / 180.0 ) );
+					light.spotExponent = Numbers( entity, "_exponent", 1, 0.0f )[0];
 				}
 			}
 			media.lights.push_back( light );

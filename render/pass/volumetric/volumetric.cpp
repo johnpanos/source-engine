@@ -145,6 +145,7 @@ MediumLight MediumLightFrom( const light_set::RuntimeLight &light )
 	out.minLight = light.minLight;
 	out.innerCos = light.innerCos;
 	out.outerCos = light.outerCos;
+	out.spotExponent = light.spotExponent;
 	return out;
 }
 
@@ -234,6 +235,7 @@ MediumLightGpu PackMediumLight( const MediumLight &light )
 	out.cone[2] = light.radius;
 	out.cone[3] = light.sourceRadius;
 	out.misc[0] = light.minLight;
+	out.misc[1] = light.spotExponent;
 	return out;
 }
 

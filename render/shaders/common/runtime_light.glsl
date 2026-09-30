@@ -32,13 +32,27 @@ float RuntimeLightFalloffInverseSquare( float distanceSquared, float radius, flo
 	return 100.0 * 100.0 / d2 * window;
 }
 
-// light_set::SpotFactor.
-float RuntimeLightSpot( float cosine, float innerCos, float outerCos )
+// light_set::SpotFactor (light set v3, vrad's rule): the cosine to the axis
+// times the cone ramp to its exponent (0 and 1 linear); 0 outside the cone.
+// SEEDED_SPOT_NO_COSINE drops the cosine (render.lab.clustered-lights'
+// sensitivity row rejects it).
+float RuntimeLightSpot( float cosine, float innerCos, float outerCos, float exponent )
 {
-	if ( !( innerCos > outerCos + 1e-4 ) )
-		return cosine >= outerCos ? 1.0 : 0.0;
-	const float t = clamp( ( cosine - outerCos ) / ( innerCos - outerCos ), 0.0, 1.0 );
-	return t * t * ( 3.0 - 2.0 * t );
+	if ( !( cosine > outerCos ) )
+		return 0.0;
+	float ramp = 1.0;
+	if ( !( cosine > innerCos ) )
+	{
+		ramp = innerCos > outerCos ? clamp( ( cosine - outerCos ) / ( innerCos - outerCos ), 0.0, 1.0 )
+		                           : 1.0;
+		if ( exponent != 0.0 && exponent != 1.0 )
+			ramp = pow( ramp, exponent );
+	}
+#ifdef SEEDED_SPOT_NO_COSINE
+	return ramp;
+#else
+	return cosine * ramp;
+#endif
 }
 
 #endif // RUNTIME_LIGHT_GLSL

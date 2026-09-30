@@ -23,7 +23,8 @@
 //
 //			Seeded programs (--sensitivity): the froxel's slice off by one,
 //			each list's first light skipped, the inverse-square window
-//			dropped.
+//			dropped, the spot cone's cosine to the axis dropped (vrad's rule,
+//			light set v3; one mixed spot has exponent 2, the others 0).
 //
 //=============================================================================//
 
@@ -36,7 +37,6 @@
 #include "render/light_set.h"
 #include "render/material/pbr_family.h"
 #include "render/pass/lights/clusters.h"
-#include "render/pbr_brdf.h"
 #include "render/shaderlib/debug_view.h"
 #include "spv/clustered_light_defects_spv.h"
 
@@ -87,9 +87,10 @@ light_set::RuntimeLight Point( float3 at, float r, float g, float b, float radiu
 	return light;
 }
 
-light_set::RuntimeLight Spot(
-    light_set::RuntimeLight light, float3 direction, float innerDegrees, float outerDegrees )
+light_set::RuntimeLight Spot( light_set::RuntimeLight light, float3 direction,
+    float innerDegrees, float outerDegrees, float exponent = 0.0f )
 {
+	light.spotExponent = exponent;
 	light.shape = light_set::LightShape::Spot;
 	const float3 unit = math::Normalize( direction );
 	std::memcpy( light.direction, &unit, sizeof( light.direction ) );
@@ -107,7 +108,7 @@ std::map<std::string, std::vector<light_set::RuntimeLight>> LightSets()
 	    Spot( Point( { -100, -50, 120 }, 0.5f, 0.45f, 0.3f, 600, LightFalloff::InverseSquare ),
 	        { 0.2f, 0.1f, -1.0f }, 20, 35 ),
 	    Spot( Point( { 150, -120, 80 }, 0.9f, 0.5f, 0.4f, 300, LightFalloff::Legacy, 0.05f ),
-	        { 0.3f, 0.2f, -1.0f }, 15, 30 ),
+	        { 0.3f, 0.2f, -1.0f }, 15, 30, 2.0f ),
 	    Point( { 0, 300, 200 }, 1.0f, 1.0f, 1.0f, 0, LightFalloff::InverseSquare ) };
 	std::vector<light_set::RuntimeLight> dense;
 	for ( int i = 0; i < 16; ++i )
@@ -128,43 +129,9 @@ std::map<std::string, std::vector<light_set::RuntimeLight>> LightSets()
 float Oracle( const std::vector<light_set::RuntimeLight> &lights, const ReceiverMaterial &material,
     float3 p, float3 v )
 {
-	const float3 n{ 0, 0, 1 };
-	const float normalDotView = std::max( math::Dot( n, v ), 0.0f );
-	const float f0 = material.F0();
-	const pbr::SplitSumCoefficients split =
-	    pbr::SampleSplitSum( normalDotView, material.Roughness() );
-	const float compensation = pbr::SpecularEnergyCompensation( f0, split );
-	const float diffuseColor =
-	    ( 1.0f - material.Metal() ) * ( 1.0f - pbr::SpecularDirectionalAlbedo( f0, split ) );
 	double total = 0.0;
 	for ( const light_set::RuntimeLight &light : lights )
-	{
-		const float3 toLight{
-		    light.position[0] - p.x, light.position[1] - p.y, light.position[2] - p.z };
-		const float distanceSquared = math::Dot( toLight, toLight );
-		float falloff = light.falloff == light_set::LightFalloff::InverseSquare
-		                    ? light_set::InverseSquareFalloff(
-		                          distanceSquared, light.radius, light.sourceRadius )
-		                    : light_set::Falloff( distanceSquared, light.radius, light.minLight );
-		if ( !( falloff > 0.0f ) )
-			continue;
-		const float3 l = math::Normalize( toLight );
-		if ( light.shape == light_set::LightShape::Spot )
-		{
-			const float3 axis{ light.direction[0], light.direction[1], light.direction[2] };
-			falloff *= light_set::SpotFactor(
-			    -math::Dot( l, math::Normalize( axis ) ), light.innerCos, light.outerCos );
-		}
-		const float normalDotLight = std::max( l.z, 0.0f );
-		if ( !( falloff > 0.0f ) || !( normalDotLight > 0.0f ) )
-			continue;
-		const float incident = light.color[0] * falloff;
-		const float3 h = math::Normalize( { l.x + v.x, l.y + v.y, l.z + v.z } );
-		const pbr::Color specular = pbr::EvaluateSpecular( { f0, f0, f0 }, normalDotView,
-		    normalDotLight, math::Dot( n, h ), math::Dot( v, h ), material.Roughness() );
-		total += double( diffuseColor * incident * normalDotLight );
-		total += double( pbr::kPi * incident * specular.red * compensation * normalDotLight );
-	}
+		total += double( RuntimeLightOracle( light, material, p, v ) );
 	return float( total );
 }
 
@@ -454,7 +421,8 @@ std::optional<std::string> RunOnce( bool validate, std::span<const std::uint32_t
 const Seeded kClusteredSeeded[] = {
     { "slice-off-by-one", spirv::kSurfaceClusterSliceOffByOne, "clustered.dense" },
     { "skips-first", spirv::kSurfaceClusterSkipsFirst, "clustered." },
-    { "falloff-unwindowed", spirv::kSurfaceRuntimeFalloffUnwindowed, "clustered.mixed" } };
+    { "falloff-unwindowed", spirv::kSurfaceRuntimeFalloffUnwindowed, "clustered.mixed" },
+    { "spot-no-cosine", spirv::kSurfaceSpotNoCosine, "clustered.mixed" } };
 
 } // namespace
 

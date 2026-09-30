@@ -645,10 +645,14 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		}
 		for ( const material::ProgramTexture &texture : request.textures )
 		{
+			// A texture the group's owner made (the view's shadow atlas) is
+			// bound as it is, with the request's own sampler.
+			const bool external = texture.external.IsValid();
 			const auto handle = handles.find( texture.name );
-			const bool absent =
-			    texture.name.empty() || ( handle != handles.end() && handle->second == 0 );
-			const TextureId id = absent ? neutral( texture.dimension )
+			const bool absent = !external && ( texture.name.empty() ||
+			                                     ( handle != handles.end() && handle->second == 0 ) );
+			const TextureId id = external ? texture.external
+			                     : absent ? neutral( texture.dimension )
 			                     : handle == handles.end()
 			                         ? TextureId()
 			                         : textures.Import( handle->second, texture.srgb );
@@ -660,8 +664,9 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 				                 ( texture.srgb ? " through an sRGB view" : "" );
 				return false;
 			}
-			auto sampler =
-			    device.CreateSampler( absent ? SamplerDesc() : textures.Sampler( handle->second ) );
+			auto sampler = device.CreateSampler( external ? texture.sampler
+			                                     : absent ? SamplerDesc()
+			                                              : textures.Sampler( handle->second ) );
 			if ( !sampler )
 			{
 				*why = "a sampler was refused";

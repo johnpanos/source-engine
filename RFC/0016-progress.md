@@ -2552,7 +2552,8 @@ and assignment), evaluated per pixel in the surface program.
   declares their reads, and the world pass builds them the same way.
 - **One definition of the spot cone**: `light_set::SpotFactor` in
   `public/render/light_set.h` (RFC 0011's contract). It was only in the
-  frozen `world_pbr.frag`, which keeps its copy until K12 deletes it.
+  frozen `world_pbr.frag`, which keeps its copy until K12 deletes it. (c2
+  replaced this smoothstep with vrad's rule, light set v3.)
   `render/shaders/common/runtime_light.glsl` is the core's one GLSL copy of
   the two falloffs and the cone.
 - **Froxel lookup**: `ClusterFroxel` in `surface.frag` mirrors
@@ -2585,6 +2586,81 @@ projector list, sun cascades, and the lightmapped and vertexlit points'
 runtime lights. The lists are the serial path's here; the GPU kernel's
 equality to it is `render.lights.clusters.gpu`. Frame time: lab only, no
 product draw changes; the Fold7 is locked.
+
+### K11 step (c), slice c2: atlas shadows for clustered spots, and vrad's spot rule (2026-09-29)
+
+The direct-visibility term of `render.lighting.v1` for the clustered lights:
+a runtime light with an atlas tile is shadowed by it, per pixel, through the
+one receiver helper. The same slice fixes the spot cone's one definition.
+- **The shadow record's owner.** `ShadowTileGpu` moves from
+  render.pass.shadows to render.contracts (`public/render/shadow_tile.h`).
+  Its receivers are material programs and sibling passes, and neither may
+  depend on render.pass.shadows under CAP011. render.frame, the earlier
+  recommendation, is above the material layer, so it could not hold it.
+  `shadow_sample.glsl` moves to `render/shaders/common/`. The shadow pass
+  keeps `PackShadowTile` and names the record with a using-declaration. A
+  block of `ShadowTile` records is declared `row_major`, as the receiver
+  pass's is (the helper's header says so; the first lab run found it).
+- **The view group** gains binding 4 (the view's `ShadowTileGpu` records), 5
+  (the atlas, a depth texture) and 6 (its point sampler), through
+  `SurfaceShadows` on `SurfaceProgram::ViewGroup`. `SurfaceLightGpu.cone.w`
+  is the light's tile, or -1. The neutral view group binds a neutral
+  texture that no tile indexes. `layouts.json` declares the bindings.
+- **Owner-made textures in groups.** `ProgramTexture::external` binds a
+  device texture that the group's owner made, such as a pass's output. The
+  owner keeps it alive and in `kSampled` where the group is read.
+  `GroupResidency` rebuilds the group when the id changes, and the world
+  pass binds it with the request's sampler. Product wiring must also declare
+  the graph read (K12).
+- **vrad's spot rule** (light set v3, agreed with source-engine-5c):
+  - `light_set::SpotFactor( cosine, innerCos, outerCos, exponent )` is the
+    cosine to the axis times, between the cones, the linear ramp raised to
+    the exponent. Exponents 0 and 1 are both linear, as in vrad
+    (`utils/vrad/lightmap.cpp` emit_spotlight). Outside the outer cone it
+    is 0.
+  - `RuntimeLight::spotExponent` is new.
+  - It replaces c1's smoothstep, which came from the frozen native
+    `world_pbr.frag` (kept there until K12), so runtime spots equal the same
+    spots baked and the fixtures' Cycles lamps.
+  - `SurfaceLightGpu` grows to 80 bytes (`spot.x`, the exponent).
+  - The fog's `MediumLight` carries the exponent (`misc.y`), and
+    `lab_media` reads `_exponent` again.
+- **Shared oracle.** `RuntimeLightOracle` (one light's falloff, cone and both
+  lobes on the receiver) moves to `lab_receiver`. The clustered- and
+  shadowed-light suites sum it.
+
+| Check | Evidence | Result |
+| --- | --- | --- |
+| Shadowed clustered spots against a ray-test oracle | `render.lab.shadowed-lights`: two box casters drawn into two planned 512² tiles (render.pass.shadows `PlanShadowAtlas`, `ShadowDepthRenderer`), two spots with tiles and a point light without one, over the receiver plane, on two materials from an overhead and an oblique view. Oracle: each light's `RuntimeLightOracle` times a ray test to the boxes, sharing no code with the shader or the depth pass. Where visibility is the same over 2.5 atlas texels around the point (seen along the light), every sampled pixel is within 0.5 percent + 3e-4, widened by the oracle's change within 0.1 units; on an edge it lies between that light shadowed and lit. 4,096 and 2,607 judged pixels a case (262 and 135 on edges), worst relative 1.2 percent | pass (4 cases) |
+| Coverage | each spot shadows judged pixels (332 and 533), the point light none | pass |
+| Neutral bitwise | lights with no tile, with the atlas bound, are the frame without an atlas; the shadowed frame differs | pass |
+| Seeded programs | `.sensitivity`: the visibility ignored, each light reading the next tile, the depth compare reversed | pass (4) |
+| Spot rule | `render.lab.clustered-lights` judges the mixed set under vrad's rule (one spot at exponent 2); `.sensitivity` adds the cosine to the axis dropped | pass (16); pass (5) |
+| Nothing else moves | family, opaque, world, composition and Hammer rows, and the shadow pass's own rows (`render.shadows.atlas`, `.sensitivity`, `.pixels`, `render.lights.clusters`), on g++ and clang++ (22 rows each); every lab suite with `--validate` | pass: 22 of 22 on both compilers after one expectation change. Hammer's `V8` upload count gains the neutral view group's neutral 2D texture (the programs' view residency makes its own for the unread atlas slot), a one-time 1×1 upload. Lab: area-lights 40, debug-views 82, lighting-controls 32, map-terms 21, volumetric 18, probe-volume 38, reflection-probes 30, lightmap-basis 19 |
+
+Post-data change, recorded. The first run failed 12 pixels, all receiver
+points inside the pillar's footprint that one spot lit. The cause was the
+depth bias, not the tolerance. The tile's receiver bias (2e-4) is in clip
+depth, whose world size grows with distance squared over the near plane. At
+the spot view's near plane of 1 it came to about 32 units at the receiver,
+so points that far behind a caster's face passed the compare. The lab's spot
+views now use a near plane of 16, about 2 units of bias, with no change to
+the band, the rule or the scene's geometry. A bias in world units (or
+slope-scaled) is a render.shadows.v1 open item for K7. Every receiver needs
+it, the fog's included.
+
+Not in c2, next in step (c):
+- the projector list and its cookies;
+- sun cascades in the surface program;
+- point-light shadows (RFC 0016 leaves them optional);
+- debug view 21 (shadow visibility);
+- the lightmapped and vertexlit points' runtime lights;
+- the unbounded-light list;
+- the shared froxel grid for the fog (still the interim `FroxelLayout`).
+
+The light-set publisher filling `spotExponent` and a runtime-against-baked
+spot parity check are source-engine-5c's, after this lands. Frame time: lab
+only, no product draw changes; the Fold7 is locked.
 
 ## Output and `render_lab`'s presenting host on iPhone and Apple TV (2026-09-28)
 

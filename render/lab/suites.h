@@ -48,7 +48,13 @@
 //			                RFC 0016 K11: the runtime point and spot lights
 //			                through the view's cluster lists against every
 //			                light of the set; neutral bitwise. Seeded:
-//			                slice-off-by-one, skips-first, falloff-unwindowed.
+//			                slice-off-by-one, skips-first, falloff-unwindowed,
+//			                spot-no-cosine.
+//			shadowed-lights
+//			                RFC 0016 K11: the clustered spots shadowed through
+//			                the view's atlas (render.shadows.v1) against a ray
+//			                test to box casters. Seeded: shadow-ignored,
+//			                tile-next, depth-reversed.
 //
 //=============================================================================//
 
@@ -70,6 +76,7 @@ int RunVolumetricSuite( int argc, char **argv );
 int RunClusteredLightsSuite( int argc, char **argv );
 int RunMapTermsSuite( int argc, char **argv );
 int RunSsrSuite( int argc, char **argv );
+int RunShadowedLightsSuite( int argc, char **argv );
 
 } // namespace render::lab
 
