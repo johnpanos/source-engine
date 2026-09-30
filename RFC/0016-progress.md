@@ -4614,3 +4614,24 @@ Remaining, largest first:
 - CPU clustering, to move to the GPU (K12 goal step 2).
 
 Fold7: unavailable in this session.
+
+### The plan's four steps, closed (2026-09-30)
+
+The user's performance plan (D4 timers, shadows, the lit pass, GTAO) is
+done:
+
+- D4 is `8b0a40d6b`.
+- Shadows are `ff2f83881`: lights the clusters reach, casters culled per
+  tile, static tiles cached.
+- GTAO at half resolution, proven in the lab, is `a4c75aa0b`.
+- The lit pass's depth prepass is `e20440f16`. It is drawn into the
+  target's own depth at its sample count, which removes the MSAA
+  mismatch.
+
+Later CPU items:
+- `33010c15e`: view lights are clustered on the render sequence;
+- `3016534ea`: light assignment builds each froxel's box once, with no
+  sort.
+
+testchmb_a_15_relit now runs at about 8.2 ms median with 3.5 ms of GPU.
+sp_a2_laser_intro_relit runs at about 5.5 ms.
