@@ -14,7 +14,12 @@ RNM basis normals in each texel's lightmap tangent frame (T from the
 `lightmap_st` tangent orthogonalized against the smooth normal N, B = N x T),
 and that frame is baked too (EMIT of T and N, encoded 0.5 + 0.5 v).
 `lightmap_directional.py` fits the per-texel irradiance gradient the runtime
-shader applies to normal-mapped surfaces.
+shader applies to normal-mapped surfaces. With `--layers` naming `indirect`
+the basis normals are baked a second time with direct light alone
+(`rnm_direct<i>.exr`), so the indirect layer gets its own gradient: the
+core draws the indirect layer and every light's direct light at runtime
+(RFC 0016's runtime direct light), and a normal-mapped surface keeps the
+direction its bounced light arrives from.
 
 A scene with a distant light (sun) also gets `sun_visibility.exr`: the sun's
 direct diffuse bake with shadows divided by the same bake without them, so
@@ -556,24 +561,34 @@ def bake_separated_layers(merged, layers, out_dir, size, render, parts=None):
     return result
 
 
-def bake_rnm(merged, out_dir, size, render, samples=None):
+# The RNM bakes: the total light (rnm<i>.exr, the total page's gradient) and,
+# for a map with an indirect layer, the direct light alone
+# (rnm_direct<i>.exr): the indirect layer's gradient is fitted to their
+# difference (lightmap_directional.py --layer indirect), so total = direct +
+# indirect holds at every basis normal as it does on the flat pages. Direct
+# light runs no bounces, so its bakes cost a fraction of the total's.
+RNM_PASSES = {"rnm": {"DIRECT", "INDIRECT"}, "rnm_direct": {"DIRECT"}}
+
+
+def bake_rnm(merged, out_dir, size, render, samples=None, stem="rnm"):
     """Bake diffuse irradiance for each RNM basis normal, at `samples` (the
-    atlas's when None); return EXR hashes and the samples used."""
+    atlas's when None), with the light of RNM_PASSES[stem]; return EXR
+    hashes and the samples used."""
     out_dir.mkdir(parents=True, exist_ok=True)
     atlas_samples = render.cycles.samples
     render.cycles.samples = samples or atlas_samples
     try:
-        return dict(bake_rnm_passes(merged, out_dir, size, render),
+        return dict(bake_rnm_passes(merged, out_dir, size, render, stem),
                     samples=render.cycles.samples)
     finally:
         render.cycles.samples = atlas_samples
 
 
-def bake_rnm_passes(merged, out_dir, size, render):
+def bake_rnm_passes(merged, out_dir, size, render, stem="rnm"):
     hashes = []
     for index, basis in enumerate(RNM_BASIS):
-        image = bpy.data.images.new("PbrtLightmapRnm%d" % index, width=size, height=size,
-                                    alpha=True, float_buffer=True)
+        image = bpy.data.images.new("PbrtLightmap_%s%d" % (stem, index), width=size,
+                                    height=size, alpha=True, float_buffer=True)
         for material in {slot.material for slot in merged.material_slots}:
             tree = material.node_tree
             material.cycles.use_bump_map_correction = False
@@ -589,8 +604,8 @@ def bake_rnm_passes(merged, out_dir, size, render):
             target = tree.nodes["BakeTarget"]
             target.image = image
             tree.nodes.active = target
-        bake_light(image, {"DIRECT", "INDIRECT"}, "RNM basis %d" % index, size, render)
-        path = out_dir / ("rnm%d.exr" % index)
+        bake_light(image, RNM_PASSES[stem], "%s basis %d" % (stem, index), size, render)
+        path = out_dir / ("%s%d.exr" % (stem, index))
         image.save_render(filepath=str(path.resolve()), scene=render)
         if not path.is_file():
             raise RuntimeError("Cycles did not save RNM bake %d" % index)
@@ -938,6 +953,10 @@ def main():
     if args.directional_dir:
         directional = bake_rnm(merged, args.directional_dir, args.size, render,
                                args.directional_samples)
+        if "indirect" in layers:
+            direct = bake_rnm(merged, args.directional_dir, args.size, render,
+                              args.directional_samples, stem="rnm_direct")
+            directional["direct_rnm_exr_sha256"] = direct["rnm_exr_sha256"]
     if args.out_coverage_exr:
         coverage = bpy.data.images.new("PbrtUvCoverage", width=args.size, height=args.size,
                                        alpha=True, float_buffer=True)

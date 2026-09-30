@@ -30,8 +30,12 @@ statistics before and after.
 With `--layer ROLE=EXR` (denoised separated light from the bake's `--layers`)
 the package is an LMAP v2 2D array (public/mapcontainer/world_lightmap.h):
 layer 0 is the total page above; then `indirect` (two layers) or `direct`
-and `indirect` (three), each the flat light only, with a zero gradient half
-on a directional page and no probe or sun texels.
+and `indirect` (three), each the flat light only, with no probe or sun
+texels. On a directional page a layer's gradient half is zero, except the
+indirect layer's with `--layer-directional indirect=EXR` (its beta from
+`lightmap_directional.py --layer indirect`): the core then draws the
+indirect layer as a directional page under every light's direct light
+(RFC 0016's runtime direct light).
 """
 
 import argparse
@@ -63,7 +67,7 @@ def seam_stitcher(args):
     """A function (page name, EXR-oriented image) -> stitched image, with a
     `record` of per-page seam statistics; the identity without --seams."""
     if not args.seams:
-        identity = lambda name, image: image  # noqa: E731
+        identity = lambda name, image, reference=None, absolute=False: image  # noqa: E731
         identity.record = None
         return identity
     if not args.coverage_exr:
@@ -130,6 +134,10 @@ def main():
                         help="the bake receipt whose `sun` names the visibility EXR")
     parser.add_argument("--layer", action="append", default=[], metavar="ROLE=EXR",
                         help="separated-light layer (direct, indirect) and its denoised EXR")
+    parser.add_argument("--layer-directional", action="append", default=[],
+                        metavar="ROLE=EXR",
+                        help="a separated layer's beta page (indirect only), from "
+                             "lightmap_directional.py --layer (receipt beside it)")
     parser.add_argument("--seams", type=Path,
                         help="lightmap-seams/v1 samples of the lighting stage (needs --coverage-exr)")
     parser.add_argument("--buried-exr", type=Path,
@@ -148,6 +156,14 @@ def main():
         if role not in ("direct", "indirect") or not path or role in separated:
             parser.error("--layer takes distinct direct=EXR / indirect=EXR entries")
         separated[role] = Path(path)
+    layer_betas = {}
+    for item in args.layer_directional:
+        role, _, path = item.partition("=")
+        if role != "indirect" or not path or role in layer_betas or role not in separated:
+            parser.error("--layer-directional takes indirect=EXR, beside --layer indirect=EXR")
+        layer_betas[role] = Path(path)
+    if layer_betas and not args.directional_exr:
+        parser.error("--layer-directional needs the total's --directional-exr")
     # Roles follow the layer count (world_lightmap.h): total, [direct,] indirect.
     order = {(): [], ("indirect",): ["indirect"],
              ("direct", "indirect"): ["direct", "indirect"]}.get(tuple(sorted(separated)))
@@ -265,9 +281,28 @@ def main():
         page = np.zeros((size, width, 4), dtype="<f2")
         page[:, :size, :3] = (light[::-1, :, :3] * args.preview_gain).astype("<f2")
         page[:, :, 3] = 1.0
+        layer_beta = None
+        if role in layer_betas:
+            beta_path = layer_betas[role]
+            beta_receipt = json.loads(Path(str(beta_path) + ".json").read_text())
+            if (beta_receipt.get("status") != "pass" or beta_receipt.get("layer") != role or
+                    beta_receipt.get("directional_exr_sha256") != sha256(beta_path) or
+                    beta_receipt.get("flat_exr_sha256") != sha256(path) or
+                    beta_receipt.get("size") != size):
+                raise ValueError("%s layer's directional page differs from its receipt or "
+                                 "layer" % role)
+            layer_beta = iio.imread(beta_path)
+            if layer_beta.shape != pixels.shape or not np.isfinite(layer_beta).all():
+                raise ValueError("%s layer's directional page has invalid dimensions or "
+                                 "pixels" % role)
+            layer_beta = stitch(role + "_directional", layer_beta, absolute=True)
+            # beta is a ratio: the preview gain does not scale it.
+            page[:, size:, :3] = layer_beta[::-1, :, :3].astype("<f2")
         pages.append(page)
         layer_receipts[role] = {"exr_sha256": sha256(path),
                                 "receipt_sha256": sha256(Path(str(path) + ".json")),
+                                "directional_exr_sha256": sha256(layer_betas[role])
+                                if layer_beta is not None else None,
                                 "mean_rgb": light[..., :3].reshape(-1, 3).mean(axis=0).tolist()}
     args.out.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="lightmap-ktx2-", dir=args.out.parent) as name:

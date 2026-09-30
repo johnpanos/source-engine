@@ -151,9 +151,9 @@ import reference_compare  # noqa: E402
 import remote_blender  # noqa: E402
 
 STEPS = ("legacy-scene", "scene", "environment", "stage", "reference-gate", "collision", "compile",
-         "layout", "bake", "noise", "denoise", "directional", "seams", "probe", "rprb",
-         "probe-volume", "radiosity", "sdf", "ktx2", "sky", "pack", "identity", "content", "boot",
-         "camera-boot", "runtime-gate", "traversal-boot", "traversal", "audit")
+         "layout", "bake", "noise", "denoise", "directional", "directional-indirect", "seams",
+         "probe", "rprb", "probe-volume", "radiosity", "sdf", "ktx2", "sky", "pack", "identity",
+         "content", "boot", "camera-boot", "runtime-gate", "traversal-boot", "traversal", "audit")
 BAKE_SCOPE = "pbrt-shared-lightmap-uv-and-cycles-bake"
 GATES = ("reference-gate", "noise", "runtime-gate", "traversal", "audit")
 PROFILES = ROOT / "quality" / "map_export_profiles"
@@ -168,7 +168,8 @@ USD_TOOLS = ("openusd", "compile_tools")
 STEP_TOOLS = {"legacy-scene": USD_TOOLS, "scene": USD_TOOLS, "stage": BLENDER_TOOLS,
               "layout": USD_TOOLS + ("xatlas",), "bake": BLENDER_TOOLS, "denoise": ("openimagedenoise",),
               "noise": ("openimagedenoise",),
-              "directional": ("openimagedenoise",), "probe": BLENDER_TOOLS,
+              "directional": ("openimagedenoise",),
+              "directional-indirect": ("openimagedenoise",), "probe": BLENDER_TOOLS,
               "probe-volume": BLENDER_TOOLS, "radiosity": BLENDER_TOOLS, "sdf": BLENDER_TOOLS,
               "seams": USD_TOOLS, "ktx2": ("ktx",), "sky": USD_TOOLS, "collision": USD_TOOLS,
               "compile": ("compile_tools",), "pack": USD_TOOLS, "content": ("compile_tools",)}
@@ -491,6 +492,7 @@ class Pipeline:
             "directional_bakes": self.out / "lighting" / "directional",
             "sun_visibility": self.out / "lighting" / "sun_visibility.exr",
             "directional": self.out / "lighting" / "atlas-directional.exr",
+            "directional_indirect": self.out / "lighting" / "indirect-directional.exr",
             "audit": self.out / "audit.json",
             "ktx2": self.out / "lighting" / "atlas.ktx2",
             "seams": self.out / "lighting" / "seams.npz",
@@ -949,6 +951,28 @@ class Pipeline:
                           "--out", p["directional"]] +
                           ([] if self.lightmap["denoise"] else ["--skip-denoise"])))
             directional_args = ["--directional-exr", p["directional"]]
+            if "indirect" in denoised_layers:
+                # The indirect layer's own gradient (the total's bakes less the
+                # direct-only ones), for the core's runtime direct light.
+                indirect = denoised_layers["indirect"]
+                direct_bakes = [p["directional_bakes"] / ("rnm_direct%d.exr" % i)
+                                for i in range(3)]
+                out = p["directional_indirect"]
+                self.step("directional-indirect",
+                          [indirect, indirect.with_name(indirect.name + ".json"),
+                           p["atlas_receipt"], p["coverage"]] + bakes + direct_bakes,
+                          {"denoise": self.lightmap["denoise"], "layer": "indirect"},
+                          ["lightmap_directional.py", "lightmap_denoise.py"],
+                          [out, out.with_name(out.name + ".json")],
+                          lambda: self.run("directional", [
+                              sys.executable, HERE / "lightmap_directional.py",
+                              "--layer", "indirect", "--flat-exr", indirect,
+                              "--flat-evidence", indirect.with_name(indirect.name + ".json"),
+                              "--bake-evidence", p["atlas_receipt"], "--directional-dir",
+                              p["directional_bakes"], "--coverage-exr", p["coverage"],
+                              "--out", out] +
+                              ([] if self.lightmap["denoise"] else ["--skip-denoise"])))
+                directional_args += ["--layer-directional", "indirect=%s" % out]
         # Chart seams of the lighting stage, gated on the chart invariants.
         self.step("seams", [p["lighting_stage"]], {"size": self.lightmap["size"]},
                   ["lightmap_seams.py"], [p["seams"], p["seams"].with_suffix(".json")],
@@ -1072,7 +1096,9 @@ class Pipeline:
         self.step("ktx2", [atlas, atlas_receipt, p["lighting_stage"], p["seams"],
                            p["coverage"], p["atlas"]] +
                   list(denoised_layers.values()) +
-                  ([p["directional"]] if directional else []) + sun_inputs,
+                  ([p["directional"]] if directional else []) +
+                  ([p["directional_indirect"]] if directional and "indirect" in denoised_layers
+                   else []) + sun_inputs,
                   {"preview_gain": self.lightmap["preview_gain"], "scope": scope},
                   ["lightmap_ktx2.py"], [p["ktx2"]],
                   lambda: self.run("ktx2", [sys.executable, HERE / "lightmap_ktx2.py",

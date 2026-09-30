@@ -78,6 +78,106 @@ class DirectionalFitTest(unittest.TestCase):
         self.assertGreater(float(np.abs(beta - np.asarray(self.g) / flat[..., :1]).max()), 0.05)
 
 
+class IndirectLayerFitTest(unittest.TestCase):
+    """`lightmap_directional.py --layer indirect`: the indirect layer's own
+    gradient, fitted to the total's RNM bakes less the direct-only ones."""
+
+    SIZE = 8
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        size = self.SIZE
+        self.normal = np.zeros((size, size, 3))
+        self.normal[..., 2] = 1.0
+        self.tangent = np.zeros((size, size, 3))
+        self.tangent[..., 0] = 1.0
+        bitangent = np.cross(self.normal, self.tangent)
+        # Indirect light from the side (+y), direct light from above and +x.
+        self.indirect = (0.3, (0.0, 0.12, 0.05))
+        self.direct = (1.5, (0.9, 0.0, 0.6))
+        self.directions = [basis[0] * self.tangent + basis[1] * bitangent +
+                           basis[2] * self.normal for basis in RNM]
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def write(self, name, rgb):
+        import lightmap_denoise
+        pixels = np.ones((self.SIZE, self.SIZE, 4), dtype=np.float32)
+        pixels[..., :3] = rgb
+        path = self.root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        lightmap_denoise.write_linear_exr(path, pixels)
+        return path
+
+    def run_fit(self, direct_hashes=True, layer="indirect"):
+        sha = lightmap_directional.sha256
+        bakes = self.root / "directional"
+        rnm = [self.write("directional/rnm%d.exr" % i,
+                          linear_light(*self.indirect, d) + linear_light(*self.direct, d))
+               for i, d in enumerate(self.directions)]
+        rnm_direct = [self.write("directional/rnm_direct%d.exr" % i,
+                                 linear_light(*self.direct, d))
+                      for i, d in enumerate(self.directions)]
+        frame = {"t": self.write("directional/frame_t.exr", 0.5 + 0.5 * self.tangent),
+                 "n": self.write("directional/frame_n.exr", 0.5 + 0.5 * self.normal)}
+        coverage = self.write("coverage.exr", np.ones((self.SIZE, self.SIZE, 3)))
+        indirect = self.write("layers/indirect.exr", linear_light(*self.indirect, self.normal))
+        directional = {"rnm_exr_sha256": [sha(p) for p in rnm],
+                       "frame_exr_sha256": {k: sha(v) for k, v in frame.items()}}
+        if direct_hashes:
+            directional["direct_rnm_exr_sha256"] = [sha(p) for p in rnm_direct]
+        bake = self.root / "atlas.exr.json"
+        bake.write_text(json.dumps({"status": "pass", "size": self.SIZE,
+                                    "atlas_exr_sha256": "total",
+                                    "coverage_exr_sha256": sha(coverage),
+                                    "layers": {"indirect": {"exr_sha256": sha(indirect)}},
+                                    "directional": directional}))
+        receipt = self.root / "layers/indirect.exr.json"
+        receipt.write_text(json.dumps({"status": "pass", "layer": layer,
+                                       "atlas_exr_sha256": sha(indirect),
+                                       "source_atlas_exr_sha256": sha(indirect)}))
+        out = self.root / "indirect-directional.exr"
+        argv = ["lightmap_directional.py", "--layer", "indirect", "--flat-exr", str(indirect),
+                "--flat-evidence", str(receipt), "--bake-evidence", str(bake),
+                "--directional-dir", str(bakes), "--coverage-exr", str(coverage),
+                "--skip-denoise", "--out", str(out)]
+        saved = sys.argv
+        sys.argv = argv
+        try:
+            lightmap_directional.main()
+        finally:
+            sys.argv = saved
+        return lightmap_directional.read_rgba(out)[..., :3], json.loads(
+            out.with_name(out.name + ".json").read_text())
+
+    def test_the_indirect_gradient_is_recovered(self):
+        beta, receipt = self.run_fit()
+        a, g = self.indirect
+        expected = np.asarray(g) / (a + g[2])
+        np.testing.assert_allclose(beta, np.broadcast_to(expected, beta.shape), atol=1e-4)
+        self.assertEqual(receipt["layer"], "indirect")
+        self.assertIsNotNone(receipt["direct_rnm_exr_sha256"])
+
+    def test_it_is_not_the_totals_gradient(self):
+        # Negative control: the total's beta (what the indirect page borrowed
+        # before it had its own) is far from the indirect light's.
+        beta, _ = self.run_fit()
+        (a_i, g_i), (a_d, g_d) = self.indirect, self.direct
+        total_g = np.asarray(g_i) + np.asarray(g_d)
+        total_beta = total_g / (a_i + a_d + total_g[2])
+        self.assertGreater(float(np.abs(beta[0, 0] - total_beta).max()), 0.2)
+
+    def test_a_bake_without_direct_only_rnm_is_refused(self):
+        with self.assertRaisesRegex(ValueError, "no direct-only RNM bakes"):
+            self.run_fit(direct_hashes=False)
+
+    def test_a_total_receipt_is_refused_as_the_indirect_layer(self):
+        with self.assertRaisesRegex(ValueError, "flat indirect page differs"):
+            self.run_fit(layer="total")
+
+
 class ProbePrefilterTest(unittest.TestCase):
     def solid_angle_weights(self, image):
         height = image.shape[0]
