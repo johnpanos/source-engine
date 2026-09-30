@@ -292,6 +292,13 @@ struct Run
 {
 	float lowest = 1e9f;
 	uint32_t fadeFrames = 0;
+	// Frames naming their changed probes, and probes that changed without
+	// being named (against the frame before).
+	uint32_t sparseFrames = 0;
+	uint32_t sparseFadeFrames = 0;
+	size_t uncovered = 0;
+	std::shared_ptr<const Volume> previous;
+	uint64_t previousGeneration = 0;
 };
 
 FrameVolume Step( Switcher &switcher, FakeGpu &gpu, Run *run, float seedMean )
@@ -308,6 +315,16 @@ FrameVolume Step( Switcher &switcher, FakeGpu &gpu, Run *run, float seedMean )
 	{
 		run->lowest = std::min( run->lowest, frame.volume->MeanIrradiance( 0 ) / seedMean );
 		run->fadeFrames += frame.fading;
+		if ( frame.changed && run->previous && frame.changedSince == run->previousGeneration )
+		{
+			++run->sparseFrames;
+			run->sparseFadeFrames += frame.fading;
+			for ( uint32_t p : DifferingProbes( *run->previous, *frame.volume ) )
+				run->uncovered +=
+				    !std::binary_search( frame.changed->begin(), frame.changed->end(), p );
+		}
+		run->previous = frame.volume;
+		run->previousGeneration = frame.generation;
 	}
 	return frame;
 }
@@ -389,6 +406,62 @@ void SparseHelpers( const Volume &seed )
 	Volume restored = occluded;
 	CopyProbeTiles( restored, seed, cut, mapcontainer::kProbeTilesVisibility );
 	Check( restored.bytes == seed.bytes, "sparse: restoring the cut tiles gives the volume back" );
+
+	// The fade's probes (RFC 0016 K12): DifferingProbes names exactly the
+	// probes whose tiles differ, and BlendProbes over them is Blend within a
+	// half-float step (it leaves equal texels as they are); naming half of
+	// them is caught.
+	{
+		Volume to = seed;
+		std::vector<uint32_t> chosen;
+		for ( uint32_t p = 1; p < probes; p += 5 )
+			chosen.push_back( p );
+		for ( uint32_t p : chosen )
+		{
+			mapcontainer::ProbeAtlasRect rects[mapcontainer::kProbeTileRectsMax];
+			const uint32_t count = mapcontainer::ProbeTileRects(
+			    to.layout, p, mapcontainer::kProbeTilesIrradiance, rects );
+			for ( uint32_t r = 0; r < count; ++r )
+				for ( uint32_t y = rects[r].y; y < rects[r].y + rects[r].height; ++y )
+					for ( uint32_t x = rects[r].x; x < rects[r].x + rects[r].width; ++x )
+					{
+						unsigned char *texel = to.bytes.data() + to.layout.atlasOffset +
+						                       ( size_t( y ) * to.layout.atlasWidth + x ) * 8;
+						for ( int c = 0; c < 3; ++c )
+						{
+							uint16_t h;
+							std::memcpy( &h, texel + 2 * c, 2 );
+							h = FloatToHalf( mapcontainer::HalfToFloat( h ) * 1.5f + 0.25f );
+							std::memcpy( texel + 2 * c, &h, 2 );
+						}
+					}
+		}
+		const std::vector<uint32_t> differing = DifferingProbes( seed, to );
+		Check( differing == chosen, "fade: DifferingProbes names exactly the changed probes" );
+		const auto whole = Blend( seed, to, 0.4f );
+		const auto part = BlendProbes( seed, to, 0.4f, differing );
+		const std::vector<uint32_t> firstHalf(
+		    differing.begin(), differing.begin() + std::ptrdiff_t( differing.size() / 2 ) );
+		const auto missing = BlendProbes( seed, to, 0.4f, firstHalf );
+		const auto within = [&]( const Volume &a, const Volume &b )
+		{
+			for ( size_t i = a.layout.atlasOffset; i + 1 < a.bytes.size(); i += 2 )
+			{
+				uint16_t x, y;
+				std::memcpy( &x, a.bytes.data() + i, 2 );
+				std::memcpy( &y, b.bytes.data() + i, 2 );
+				const float fx = mapcontainer::HalfToFloat( x );
+				const float fy = mapcontainer::HalfToFloat( y );
+				if ( std::fabs( fx - fy ) > 1e-3f * std::max( 1.0f, std::fabs( fx ) ) )
+					return false;
+			}
+			return true;
+		};
+		Check( whole && part && within( *whole, *part ),
+		    "fade: blending only the differing probes is the whole blend" );
+		Check( whole && missing && !within( *whole, *missing ),
+		    "fade: a blend that misses half the differing probes is caught" );
+	}
 
 	// Visiting only the probes within the proxies' reach equals visiting every
 	// probe: proxies of many sizes, inside, straddling and outside the grid.
@@ -601,6 +674,8 @@ int main()
 		Check( switcher.Active() == ProducerKind::ScriptedFake && !switcher.Pending(),
 		    "the fake becomes active after its first publication and the fade" );
 		Check( run.fadeFrames >= 7, "the switch fades over the declared frames" );
+		Check( run.sparseFadeFrames >= 7 && run.uncovered == 0,
+		    "the fade's frames name their changed probes, and every changed probe is named" );
 		Check( run.lowest >= 1.0f - kBlackTolerance,
 		    "no black frame: every frame's mean stays within tolerance of the seed's" );
 		Check( switcher.PeakResidentBytes() <= 3 * seed->bytes.size(),

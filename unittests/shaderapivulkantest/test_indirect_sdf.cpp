@@ -34,6 +34,8 @@
 #include "testing/conformance_result.h"
 
 #include <algorithm>
+#include <thread>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -640,9 +642,34 @@ bool SameTiles( const Volume &a, const std::vector<unsigned char> &b, uint32_t p
 // changed probes cover every irradiance tile that differs from the
 // publication before it. The comparator's control: a publication with one
 // changed probe's tiles put back as they were is caught.
-void SparsePublication(
-    Frames &frames, const std::shared_ptr<const Volume> &seed, const SdfData &sdf )
+// Runs a batch on four threads, items taken from the last: the pooled
+// composition's stand-in (items must be independent).
+class ThreadedReverseExecutor final : public IBatchExecutor
 {
+public:
+	void ParallelFor(
+	    const char *, uint32_t count, void ( *body )( void *, uint32_t ), void *context ) override
+	{
+		std::atomic<uint32_t> next{ 0 };
+		std::vector<std::thread> threads;
+		for ( int t = 0; t < 4; ++t )
+			threads.emplace_back(
+			    [&]
+			    {
+				    for ( uint32_t i = next++; i < count; i = next++ )
+					    body( context, count - 1 - i );
+			    } );
+		for ( std::thread &thread : threads )
+			thread.join();
+		++batches;
+	}
+	uint32_t batches = 0;
+};
+
+void SparsePublication( Frames &frames, const std::shared_ptr<const Volume> &seed,
+    const SdfData &sdf, IBatchExecutor *compose = nullptr, const char *mode = "" )
+{
+	const std::string label = std::string( "sparse publication" ) + mode + ": ";
 	const uint32_t warm = SdfTracedProducer{}.Caps().warmupFrames;
 	const uint32_t probes = seed->layout.grids[0].probeCount;
 	const auto field = WithLights( sdf, { SmallLight( false, 0.0f, 0.0f, 32.0f, 32 ) }, false );
@@ -674,6 +701,7 @@ void SparsePublication(
 		FrameWork work;
 		work.resources = &frames;
 		work.frameSerial = uint64_t( frame ) + 1;
+		work.composeExecutor = compose;
 		// Every probe until the references converge; then a focus that moves
 		// every 16 frames, and a budget of 3 more.
 		const std::vector<uint32_t> focus = { ( frame / 16 ) % probes };
@@ -734,15 +762,13 @@ void SparsePublication(
 	frames.Drain();
 	(void)producer.End();
 	frames.Drain();
-	std::printf( "sparse publication: %u publications (%u sparse), %u compared whole, %u differ, "
+	std::printf( "%s%u publications (%u sparse), %u compared whole, %u differ, "
 	             "%u uncovered tiles\n",
-	    publications, sparse, whole, differ, uncovered );
-	Check( whole > 8 && sparse > 8,
-	    "sparse publication: the producer publishes sparsely under a budget" );
-	Check( differ == 0, "sparse publication: every publication equals the one composed whole" );
-	Check( uncovered == 0, "sparse publication: the changed probes cover every changed tile" );
-	Check( controlRan && caught,
-	    "sparse publication: a changed probe's tiles left as they were are caught" );
+	    label.c_str(), publications, sparse, whole, differ, uncovered );
+	Check( whole > 8 && sparse > 8, label + "the producer publishes sparsely under a budget" );
+	Check( differ == 0, label + "every publication equals the one composed whole" );
+	Check( uncovered == 0, label + "the changed probes cover every changed tile" );
+	Check( controlRan && caught, label + "a changed probe's tiles left as they were are caught" );
 }
 
 // Focus and budget: with a focus of probe 0 and no budget, only probe 0
@@ -1212,6 +1238,13 @@ int main( int argc, char **argv )
 	NativeLights( frames, seed, *sdf );
 	Scheduling( frames, seed, *sdf );
 	SparsePublication( frames, seed, *sdf );
+	{
+		// The same on a threaded executor: the pooled composition equals the
+		// serial whole compose.
+		ThreadedReverseExecutor threaded;
+		SparsePublication( frames, seed, *sdf, &threaded, " (threaded)" );
+		Check( threaded.batches > 0, "sparse publication (threaded): the executor ran batches" );
+	}
 
 	// A device without ray query does not run the ray-query producer: Begin
 	// fails with missing-feature and creates nothing.

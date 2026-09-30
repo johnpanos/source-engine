@@ -241,6 +241,76 @@ struct Volume
 	return blended;
 }
 
+// The probes (global indices, ascending) whose irradiance or visibility tiles
+// differ between two volumes of one topology; every probe when they differ in
+// topology.
+[[nodiscard]] inline std::vector<uint32_t> DifferingProbes( const Volume &a, const Volume &b )
+{
+	uint32_t probes = 0;
+	for ( uint32_t g = 0; g < a.layout.gridCount; ++g )
+		probes += a.layout.grids[g].probeCount;
+	std::vector<uint32_t> out;
+	const bool same = a.SameTopology( b );
+	for ( uint32_t p = 0; p < probes; ++p )
+	{
+		bool differs = !same;
+		mapcontainer::ProbeAtlasRect rects[mapcontainer::kProbeTileRectsMax];
+		const uint32_t count =
+		    same ? mapcontainer::ProbeTileRects( a.layout, p,
+		               mapcontainer::kProbeTilesIrradiance | mapcontainer::kProbeTilesVisibility,
+		               rects )
+		         : 0;
+		for ( uint32_t r = 0; r < count && !differs; ++r )
+			for ( uint32_t y = rects[r].y; y < rects[r].y + rects[r].height && !differs; ++y )
+			{
+				const size_t at = size_t( a.layout.atlasOffset ) +
+				                  ( size_t( y ) * a.layout.atlasWidth + rects[r].x ) * 8;
+				differs = std::memcmp( a.bytes.data() + at, b.bytes.data() + at,
+				              size_t( rects[r].width ) * 8 ) != 0;
+			}
+		if ( differs )
+			out.push_back( p );
+	}
+	return out;
+}
+
+// Blend's frame over `probes`' tiles only; the rest is `from`'s (where the
+// volumes are equal, a blend of equal values is that value). With the probes
+// where the volumes differ, it is Blend without re-rounding equal texels.
+// Null when the topologies differ.
+[[nodiscard]] inline std::shared_ptr<const Volume> BlendProbes(
+    const Volume &from, const Volume &to, float weight, std::span<const uint32_t> probes )
+{
+	if ( !from.SameTopology( to ) )
+		return nullptr;
+	auto blended = std::make_shared<Volume>( from );
+	for ( const uint32_t p : probes )
+	{
+		mapcontainer::ProbeAtlasRect rects[mapcontainer::kProbeTileRectsMax];
+		const uint32_t count = mapcontainer::ProbeTileRects( from.layout, p,
+		    mapcontainer::kProbeTilesIrradiance | mapcontainer::kProbeTilesVisibility, rects );
+		for ( uint32_t r = 0; r < count; ++r )
+			for ( uint32_t y = rects[r].y; y < rects[r].y + rects[r].height; ++y )
+			{
+				const size_t at = size_t( from.layout.atlasOffset ) +
+				                  ( size_t( y ) * from.layout.atlasWidth + rects[r].x ) * 8;
+				for ( size_t i = at; i < at + size_t( rects[r].width ) * 8; i += 2 )
+				{
+					uint16_t x, z;
+					std::memcpy( &x, from.bytes.data() + i, 2 );
+					std::memcpy( &z, to.bytes.data() + i, 2 );
+					if ( x == z )
+						continue;
+					const float value = mapcontainer::HalfToFloat( x ) * ( 1.0f - weight ) +
+					                    mapcontainer::HalfToFloat( z ) * weight;
+					const uint16_t half = FloatToHalf( value );
+					std::memcpy( blended->bytes.data() + i, &half, 2 );
+				}
+			}
+	}
+	return blended;
+}
+
 // A validated RTRN radiosity transfer paired with the map's volume (the
 // precomputed radiosity producer's input).
 struct Transfer
@@ -521,29 +591,41 @@ public:
 	// `indirect` hold kTexels * 3 floats per listed probe in the list's order.
 	// A zero change writes the base's tiles back.
 	void ComposeProbes( Volume &volume, const Volume &base, std::span<const uint32_t> probes,
-	    const float *total, const float *indirect ) const
+	    const float *total, const float *indirect, IBatchExecutor *executor = nullptr ) const
 	{
 		if ( m_baseBytes != base.bytes.data() || m_baseSize != base.bytes.size() )
 			DecodeBase( base, TotalProbes( base ) );
-		const mapcontainer::ProbeVolumeLayout &layout = volume.layout;
-		for ( size_t n = 0; n < probes.size(); ++n )
+		// Each probe writes its own tiles: blocks of probes run on the executor.
+		struct Probes
 		{
-			uint32_t local = probes[n];
-			for ( uint32_t g = 0; g < layout.gridCount; ++g )
-			{
-				const mapcontainer::ProbeGridLayout &grid = layout.grids[g];
-				if ( local >= grid.probeCount )
-				{
-					local -= grid.probeCount;
-					continue;
-				}
-				for ( uint32_t layer = 0; layer < layout.layerCount && layer < 2; ++layer )
-					WriteTile( volume, grid.irradianceOrigin[layer], local, grid.tilesPerRow,
-					    &m_baseInterior[( size_t( probes[n] ) * 2 + layer ) * kTexels * 3],
-					    ( layer == 0 ? total : indirect ) + n * kTexels * 3 );
-				break;
-			}
-		}
+			const ChangeComposer *self;
+			Volume *volume;
+			std::span<const uint32_t> probes;
+			const float *total;
+			const float *indirect;
+			size_t block;
+		} context{ this, &volume, probes, total, indirect, 1 };
+		context.block = ProbeBlock( probes.size() );
+		const uint32_t blocks = uint32_t( ( probes.size() + context.block - 1 ) / context.block );
+		const auto block = []( void *raw, uint32_t b )
+		{
+			const Probes &c = *static_cast<const Probes *>( raw );
+			const size_t end = std::min( c.probes.size(), size_t( b + 1 ) * c.block );
+			for ( size_t n = size_t( b ) * c.block; n < end; ++n )
+				c.self->ComposeProbe( *c.volume, c.probes[n], n, c.total, c.indirect );
+		};
+		if ( executor && blocks > 1 )
+			executor->ParallelFor( "indirect.compose-probes", blocks, block, &context );
+		else
+			for ( uint32_t b = 0; b < blocks; ++b )
+				block( &context, b );
+	}
+
+	// Probes per batch item when `count` probes are composed: at most 64
+	// items (ComposeProbes and the producers' publications).
+	static constexpr size_t ProbeBlock( size_t count )
+	{
+		return count > 64 ? ( count + 63 ) / 64 : 1;
 	}
 
 	[[nodiscard]] static uint32_t TotalProbes( const Volume &volume )
@@ -555,6 +637,28 @@ public:
 	}
 
 private:
+	// ComposeProbes' probe `probe`, the `n`th of its list (its changes' row).
+	void ComposeProbe(
+	    Volume &volume, uint32_t probe, size_t n, const float *total, const float *indirect ) const
+	{
+		const mapcontainer::ProbeVolumeLayout &layout = volume.layout;
+		uint32_t local = probe;
+		for ( uint32_t g = 0; g < layout.gridCount; ++g )
+		{
+			const mapcontainer::ProbeGridLayout &grid = layout.grids[g];
+			if ( local >= grid.probeCount )
+			{
+				local -= grid.probeCount;
+				continue;
+			}
+			for ( uint32_t layer = 0; layer < layout.layerCount && layer < 2; ++layer )
+				WriteTile( volume, grid.irradianceOrigin[layer], local, grid.tilesPerRow,
+				    &m_baseInterior[( size_t( probe ) * 2 + layer ) * kTexels * 3],
+				    ( layer == 0 ? total : indirect ) + n * kTexels * 3 );
+			break;
+		}
+	}
+
 	static void Block( void *context, uint32_t block )
 	{
 		const Context &compose = *static_cast<const Context *>( context );
@@ -745,6 +849,9 @@ struct FrameWork
 	uint64_t frameSerial = 0;
 	std::vector<std::function<void()>> jobs;
 	IBatchExecutor *executor = nullptr;
+	// A publication's per-probe composition (independent probes): the pool
+	// in products whatever `executor` is, null inline.
+	IBatchExecutor *composeExecutor = nullptr;
 	IResourceTracker *resources = nullptr;
 	std::span<const SceneChange> changes;
 	std::span<const Proxy> proxies;

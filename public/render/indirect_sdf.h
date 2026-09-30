@@ -444,7 +444,7 @@ public:
 			fresh = true;
 		}
 		if ( fresh && live )
-			Publish( readable );
+			Publish( readable, work.composeExecutor );
 		// This frame's configuration: a change restarts every referenced
 		// probe's live updates.
 		const Config config = LiveConfig( work, lights );
@@ -967,7 +967,7 @@ private:
 	// traced changed (a probe's field changes only when traced), so a pooled
 	// volume no one else holds takes those and the ones it missed since it was
 	// last published; a new one starts from the bake.
-	void Publish( uint32_t readable )
+	void Publish( uint32_t readable, IBatchExecutor *executor = nullptr )
 	{
 		const float *field = static_cast<const float *>( m_gpu->Map( m_field[readable] ) );
 		Pooled *target = nullptr;
@@ -1002,25 +1002,31 @@ private:
 		}
 		m_total.assign( write.size() * kTexels * 3, 0.0f );
 		m_indirect.assign( write.size() * kTexels * 3, 0.0f );
-		for ( size_t n = 0; n < write.size(); ++n )
+		// The base is decoded once, here; then each probe's changes are its
+		// own rows, computed in blocks on the executor.
+		(void)m_composer.BaseInterior( *m_baked, m_probes, 0, 0 );
+		struct Changes
 		{
-			const uint32_t probe = write[n];
-			if ( !m_referenced[probe] || !m_active[probe] )
-				continue;
-			const float *baseTotal = m_composer.BaseInterior( *m_baked, m_probes, probe, 0 );
-			const float *baseIndirect = m_composer.BaseInterior( *m_baked, m_probes, probe, 1 );
-			for ( uint32_t k = 0; k < kTexels * 3; ++k )
-			{
-				const size_t t = size_t( probe ) * kTexels + k / 3;
-				const int c = int( k % 3 );
-				m_total[n * kTexels * 3 + k] =
-				    Change( field[t * 12 + c], m_reference[t * 12 + c], baseTotal[k] );
-				m_indirect[n * kTexels * 3 + k] =
-				    Change( field[t * 12 + 4 + c], m_reference[t * 12 + 4 + c], baseIndirect[k] );
-			}
-		}
+			TracedProducer *self;
+			const float *field;
+			const std::vector<uint32_t> *write;
+			size_t block;
+		} context{ this, field, &write, ChangeComposer::ProbeBlock( write.size() ) };
+		const uint32_t blocks = uint32_t( ( write.size() + context.block - 1 ) / context.block );
+		const auto changes = []( void *raw, uint32_t b )
+		{
+			const Changes &c = *static_cast<const Changes *>( raw );
+			const size_t end = std::min( c.write->size(), size_t( b + 1 ) * c.block );
+			for ( size_t n = size_t( b ) * c.block; n < end; ++n )
+				c.self->ProbeChanges( c.field, ( *c.write )[n], n );
+		};
+		if ( executor && blocks > 1 )
+			executor->ParallelFor( "indirect.sdf-changes", blocks, changes, &context );
+		else
+			for ( uint32_t b = 0; b < blocks; ++b )
+				changes( &context, b );
 		m_composer.ComposeProbes(
-		    *target->volume, *m_baked, write, m_total.data(), m_indirect.data() );
+		    *target->volume, *m_baked, write, m_total.data(), m_indirect.data(), executor );
 		for ( uint32_t p : target->stale )
 			target->staleMark[p] = 0;
 		target->stale.clear();
@@ -1047,6 +1053,26 @@ private:
 		m_published = PublishedVolume{ ++m_epoch, target->volume, std::move( changed ) };
 		m_publishedField = true;
 		m_publishedSlot = readable;
+	}
+
+	// Publish's rows for `probe`, the `n`th probe written: its texels' change
+	// from the bake (each row written by one caller).
+	void ProbeChanges( const float *field, uint32_t probe, size_t n )
+	{
+		if ( !m_referenced[probe] || !m_active[probe] )
+			return;
+		const float *baseTotal = m_composer.BaseInterior( *m_baked, m_probes, probe, 0 );
+		const float *baseIndirect = m_composer.BaseInterior( *m_baked, m_probes, probe, 1 );
+		float *total = m_total.data() + n * kTexels * 3;
+		float *indirect = m_indirect.data() + n * kTexels * 3;
+		for ( uint32_t k = 0; k < kTexels * 3; ++k )
+		{
+			const size_t t = size_t( probe ) * kTexels + k / 3;
+			const int c = int( k % 3 );
+			total[k] = Change( field[t * 12 + c], m_reference[t * 12 + c], baseTotal[k] );
+			indirect[k] =
+			    Change( field[t * 12 + 4 + c], m_reference[t * 12 + 4 + c], baseIndirect[k] );
+		}
 	}
 
 	// The change of one texel from the bake. Light removed is relative (the

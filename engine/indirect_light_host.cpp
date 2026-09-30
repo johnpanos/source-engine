@@ -1019,6 +1019,7 @@ void IndirectLight_BeginMap( const IndirectLightMapData &map )
 	work.frameSerial = host.tracker.Frame() + 1;
 	work.resources = &host.tracker;
 	work.executor = &host.executor;
+	work.composeExecutor = &host.occlusionExecutor;
 	const light_set::Snapshot none;
 	Consume( host.switcher->Frame( work, none ) );
 	for ( auto &job : work.jobs )
@@ -1097,6 +1098,7 @@ void IndirectLight_Frame( const light_set::Snapshot &lights )
 	work.frameSerial = host.tracker.Frame() + 1;
 	work.resources = &host.tracker;
 	work.executor = &host.executor;
+	work.composeExecutor = &host.occlusionExecutor;
 	const size_t proxiesBefore = host.proxies.size();
 	GatherProxies( &host.proxies );
 	if ( r_indirect_report.GetBool() && host.proxies.size() != proxiesBefore )
@@ -1194,6 +1196,7 @@ void IndirectLight_DeviceRestored()
 	work.frameSerial = host.tracker.Frame() + 1;
 	work.resources = &host.tracker;
 	work.executor = &host.executor;
+	work.composeExecutor = &host.occlusionExecutor;
 	const light_set::Snapshot none;
 	const FrameVolume frame = host.switcher->Frame( work, none );
 	for ( auto &job : work.jobs )

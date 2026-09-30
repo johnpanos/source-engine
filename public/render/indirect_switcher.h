@@ -159,6 +159,7 @@ public:
 			if ( m_fading.producer )
 				Retire( std::move( m_fading.producer ), work.frameSerial );
 			m_fromVolume = m_frame.volume;
+			m_fadeProbes.reset();
 			m_fade = 1;
 			m_fading = std::move( m_active );
 			m_active = std::move( m_pending );
@@ -168,19 +169,40 @@ public:
 		{
 			const auto newest = m_active.producer->Published();
 			const float weight = float( m_fade ) / float( m_fadeFrames );
-			auto blended =
-			    newest && m_fromVolume ? Blend( *m_fromVolume, *newest->volume, weight ) : nullptr;
+			const uint64_t since = m_frame.generation;
+			// Only the probes where the two volumes differ change: they are
+			// found once, then grown by each later publication's changed
+			// probes, and each fade frame blends and names only them.
+			std::shared_ptr<const Volume> blended;
+			const bool sparse = newest && m_fromVolume &&
+			                    m_fromVolume->SameTopology( *newest->volume ) &&
+			                    FadeProbes( *newest );
+			if ( sparse )
+				blended = weight >= 1.0f ? newest->volume
+				                         : BlendProbes( *m_fromVolume, *newest->volume, weight,
+				                               *m_fadeProbes );
+			else if ( newest && m_fromVolume )
+				blended = Blend( *m_fromVolume, *newest->volume, weight );
 			if ( !blended )
 				blended = newest ? newest->volume : m_fromVolume;
 			Publish( blended, m_fade < m_fadeFrames, weight );
+			if ( sparse )
+			{
+				m_frame.changed = m_fadeProbes;
+				m_frame.changedSince = since;
+			}
 			if ( ++m_fade > m_fadeFrames )
 			{
 				// Step 5: this frame is the last that samples the old volume.
 				m_fade = 0;
 				m_fromVolume.reset();
+				m_fadeProbes.reset();
 				Retire( std::move( m_fading.producer ), work.frameSerial );
 				m_fading = Slot();
 				m_activeEpoch = newest ? newest->epoch : 0;
+				// The last fade frame held the producer's volume itself: its
+				// next publication's changed probes carry over.
+				m_frameIsActive = sparse;
 			}
 		}
 		else if ( m_active.producer )
@@ -291,6 +313,30 @@ private:
 		return indirect_policy::Policy::Baked;
 	}
 
+	// The fade's probes for the active producer's `newest` publication: where
+	// the fade's source and it differ (a superset: each later publication's
+	// changed probes are added). False when they cannot be known.
+	bool FadeProbes( const PublishedVolume &newest )
+	{
+		if ( m_fadeProbes && newest.epoch == m_fadeEpoch )
+			return true;
+		if ( m_fadeProbes && newest.changed && newest.epoch == m_fadeEpoch + 1 )
+		{
+			std::vector<uint32_t> grown = *m_fadeProbes;
+			grown.insert( grown.end(), newest.changed->begin(), newest.changed->end() );
+			std::sort( grown.begin(), grown.end() );
+			grown.erase( std::unique( grown.begin(), grown.end() ), grown.end() );
+			m_fadeProbes = std::make_shared<const std::vector<uint32_t>>( std::move( grown ) );
+		}
+		else
+		{
+			m_fadeProbes = std::make_shared<const std::vector<uint32_t>>(
+			    DifferingProbes( *m_fromVolume, *newest.volume ) );
+		}
+		m_fadeEpoch = newest.epoch;
+		return true;
+	}
+
 	void Publish( std::shared_ptr<const Volume> volume, bool fading, float weight )
 	{
 		m_frame.volume = std::move( volume );
@@ -346,6 +392,9 @@ private:
 	uint64_t m_activeEpoch = 0;
 	// The frame's volume is the active producer's publication m_activeEpoch.
 	bool m_frameIsActive = false;
+	// The fade's changing probes, and the publication they were found for.
+	ChangedProbes m_fadeProbes;
+	uint64_t m_fadeEpoch = 0;
 	uint64_t m_lastFrame = 0;
 	bool m_background = false;
 	FrameVolume m_frame;
