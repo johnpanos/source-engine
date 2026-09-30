@@ -210,18 +210,47 @@ private:
 		std::vector<Chunk> chunks;
 		std::uint64_t generation = 0;
 	};
+	// What a world stage view's lights are made from, taken when the main
+	// thread queues it (the frame's lights change there), so the render
+	// sequence clusters them and plans their shadows when it records the view.
+	struct ViewLightInputs
+	{
+		float worldToView[16] = {};
+		float viewToClip[16] = {};
+		float viewport[6] = {};
+		std::vector<light_set::RuntimeLight> lights; // the frame's, or the map's
+		std::vector<area_light::AreaLight> areas;    // the map's then the frame's
+		std::size_t mapAreas = 0;
+		std::optional<pass::lights::MapSun> sun;
+		bool sunMask = false;
+		int shadowQuality = 0;
+	};
+	// A queued stage view: its inputs, and the lights and shadow work made
+	// from them once, on the render sequence (a view recorded again keeps
+	// them).
+	struct PendingView
+	{
+		ViewLightInputs inputs;
+		mutable std::once_flag made;
+		mutable std::shared_ptr<const pass::world::StageViewLights> lights;
+		mutable std::shared_ptr<const ShadowWork> shadows;
+	};
+	// A queued view's inputs, taken on the main thread.
+	ViewLightInputs TakeViewLightInputs(
+	    const float worldToView[16], const float viewToClip[16], const float viewport[6] ) const;
 	// A world stage view's lights, clustered for it and planned into shadow
-	// tiles; null without lights or matrices.
-	std::shared_ptr<const pass::world::StageViewLights> StageViewLightsFor(
-	    const float worldToView[16], const float viewToClip[16], const float viewport[6],
-	    std::shared_ptr<const ShadowWork> *shadows ) const;
+	// tiles; null without lights or matrices. Any thread: it reads its inputs
+	// alone.
+	static std::shared_ptr<const pass::world::StageViewLights> StageViewLightsFor(
+	    const ViewLightInputs &inputs, std::shared_ptr<const ShadowWork> *shadows );
 	// The view's area lights: the map's (baked light fixtures, a stage's
 	// alone) then the frame's emitting surfaces, at most the surface
 	// program's count. Each is packed with its tile from `areaTiles` (-1
 	// past its end) and whether its diffuse light is in the bake.
 	std::vector<area_light::AreaLight> ViewAreaLights( bool withMapAreas ) const;
-	void PackViewAreaLights( const std::vector<area_light::AreaLight> &areas, std::size_t mapAreas,
-	    const std::vector<int> &areaTiles, pass::world::StageViewLights &out ) const;
+	static void PackViewAreaLights( const std::vector<area_light::AreaLight> &areas,
+	    std::size_t mapAreas, const std::vector<int> &areaTiles,
+	    pass::world::StageViewLights &out );
 	// A view of a world without a stage (the claimed BSP faces of a retail
 	// map): its frame area lights alone, unshadowed (the core holds no
 	// casters for it); null when the frame has none.
@@ -272,7 +301,7 @@ private:
 	// Shadow work by world tag (DrawView writes, RecordSlot reads), and the
 	// stage's casters.
 	std::mutex m_ShadowLock;
-	std::deque<std::pair<std::uint32_t, std::shared_ptr<const ShadowWork>>> m_ShadowWork;
+	std::deque<std::pair<std::uint32_t, std::shared_ptr<const PendingView>>> m_ShadowWork;
 	std::shared_ptr<const Casters> m_Casters;
 	std::uint64_t m_CasterGeneration = 0;
 	// Render sequence: the depth renderer, the casters' mesh and the atlases

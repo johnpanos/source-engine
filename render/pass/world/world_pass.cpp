@@ -634,6 +634,9 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		++s.stats.viewsSkipped;
 		return;
 	}
+	// A stage view's lights made when its slot records (WorldTarget::lights).
+	if ( target.lights )
+		view.lights = target.lights;
 	if ( !found || !world || !claims )
 	{
 		s.Fail( "a slot names no queued view of the current world" );

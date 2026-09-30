@@ -431,12 +431,51 @@ void CoreWorld::StageCapture::Release()
 	reflection.clear();
 }
 
+CoreWorld::ViewLightInputs CoreWorld::TakeViewLightInputs(
+    const float worldToView[16], const float viewToClip[16], const float viewport[6] ) const
+{
+	ViewLightInputs in;
+	if ( worldToView )
+		std::copy( worldToView, worldToView + 16, in.worldToView );
+	if ( viewToClip )
+		std::copy( viewToClip, viewToClip + 16, in.viewToClip );
+	if ( viewport )
+		std::copy( viewport, viewport + 6, in.viewport );
+	// The frame's runtime lights, and the map's authored ones when the frame
+	// has no world lights (a map compiled without vrad): each light once.
+	in.lights = m_Lights.lights;
+	const bool worldLights = std::any_of( in.lights.begin(), in.lights.end(),
+	    []( const light_set::RuntimeLight &light )
+	    {
+		    return light.kind == light_set::LightKind::World;
+	    } );
+	if ( !worldLights )
+	{
+		std::uint32_t nextId = 0x40000000u; // the map's own ids, apart from the engine's
+		for ( light_set::RuntimeLight light : m_MapLights.lights )
+		{
+			light.id = nextId++;
+			in.lights.push_back( light );
+		}
+	}
+	// The area lights: the map's (baked light fixtures) and the frame's
+	// emitting surfaces; the sun: the map's.
+	in.areas = ViewAreaLights( true );
+	in.mapAreas = std::min( m_MapLights.areas.size(), in.areas.size() );
+	in.sun = m_MapLights.sun;
+	in.sunMask = m_StageSunMask;
+	in.shadowQuality = m_ShadowQuality.load( std::memory_order_relaxed );
+	return in;
+}
+
 std::shared_ptr<const pass::world::StageViewLights> CoreWorld::StageViewLightsFor(
-    const float worldToView[16], const float viewToClip[16], const float viewport[6],
-    std::shared_ptr<const ShadowWork> *shadows ) const
+    const ViewLightInputs &in, std::shared_ptr<const ShadowWork> *shadows )
 {
 	*shadows = nullptr;
-	if ( !worldToView || !viewToClip || viewport[2] < 1.0f || viewport[3] < 1.0f )
+	const float *worldToView = in.worldToView;
+	const float *viewToClip = in.viewToClip;
+	const float *viewport = in.viewport;
+	if ( viewport[2] < 1.0f || viewport[3] < 1.0f )
 		return nullptr;
 	auto matrix = []( const float m[16] )
 	{
@@ -462,23 +501,7 @@ std::shared_ptr<const pass::world::StageViewLights> CoreWorld::StageViewLightsFo
 	auto grid = pass::lights::CreateClusterGrid( desc, limits );
 	if ( !grid )
 		return nullptr;
-	// The frame's runtime lights, and the map's authored ones when the frame
-	// has no world lights (a map compiled without vrad): each light once.
-	std::vector<light_set::RuntimeLight> frameLights = m_Lights.lights;
-	const bool worldLights = std::any_of( frameLights.begin(), frameLights.end(),
-	    []( const light_set::RuntimeLight &light )
-	    {
-		    return light.kind == light_set::LightKind::World;
-	    } );
-	if ( !worldLights )
-	{
-		std::uint32_t nextId = 0x40000000u; // the map's own ids, apart from the engine's
-		for ( light_set::RuntimeLight light : m_MapLights.lights )
-		{
-			light.id = nextId++;
-			frameLights.push_back( light );
-		}
-	}
+	const std::vector<light_set::RuntimeLight> &frameLights = in.lights;
 	pass::lights::ClusterLists lists;
 	if ( !pass::lights::AssignLights( grid.Value(), frameLights, lists ) )
 		return nullptr;
@@ -524,11 +547,10 @@ std::shared_ptr<const pass::world::StageViewLights> CoreWorld::StageViewLightsFo
 	}
 	// The area lights: the map's (baked light fixtures) and the frame's
 	// emitting surfaces; the sun: the map's.
-	const std::vector<area_light::AreaLight> areas = ViewAreaLights( true );
-	const std::optional<pass::lights::MapSun> &sun = m_MapLights.sun;
+	const std::vector<area_light::AreaLight> &areas = in.areas;
+	const std::optional<pass::lights::MapSun> &sun = in.sun;
 	pass::shadows::ShadowPlan plan;
-	if ( ( !shadowed.empty() || !areas.empty() || sun ) &&
-	     m_ShadowQuality.load( std::memory_order_relaxed ) > 0 )
+	if ( ( !shadowed.empty() || !areas.empty() || sun ) && in.shadowQuality > 0 )
 	{
 		pass::shadows::ShadowPlanInput input;
 		input.lights = shadowed;
@@ -546,7 +568,7 @@ std::shared_ptr<const pass::world::StageViewLights> CoreWorld::StageViewLightsFo
 			input.camera.aspect = yScale / xScale;
 		}
 		input.camera.nearZ = desc.nearZ;
-		input.atlasSize = ShadowAtlasFor( m_ShadowQuality.load( std::memory_order_relaxed ) );
+		input.atlasSize = ShadowAtlasFor( in.shadowQuality );
 		input.guardTexels = 4;
 		if ( pass::shadows::PlanShadows( input, plan ) )
 			plan = pass::shadows::ShadowPlan(); // refused: unshadowed
@@ -581,8 +603,7 @@ std::shared_ptr<const pass::world::StageViewLights> CoreWorld::StageViewLightsFo
 		out->lights.push_back( material::PackSurfaceLight( light, tile, tiles, light.baked ) );
 	}
 	// The area lights and the sun, with their tiles.
-	PackViewAreaLights(
-	    areas, std::min( m_MapLights.areas.size(), areas.size() ), plan.areaTiles, *out );
+	PackViewAreaLights( areas, in.mapAreas, plan.areaTiles, *out );
 	if ( sun )
 	{
 		out->sunDirection[0] = sun->toSun.x;
@@ -596,7 +617,7 @@ std::shared_ptr<const pass::world::StageViewLights> CoreWorld::StageViewLightsFo
 		out->sunColor[3] = 1.0f;
 		out->sunShadow[0] = float( plan.sunFirst );
 		out->sunShadow[1] = float( plan.sunCount );
-		out->sunShadow[2] = m_StageSunMask ? 1.0f : 0.0f;
+		out->sunShadow[2] = in.sunMask ? 1.0f : 0.0f;
 	}
 	// The view group's light records: at least one (an empty view's lists
 	// name none of them).
@@ -626,8 +647,7 @@ std::vector<area_light::AreaLight> CoreWorld::ViewAreaLights( bool withMapAreas 
 }
 
 void CoreWorld::PackViewAreaLights( const std::vector<area_light::AreaLight> &areas,
-    std::size_t mapAreas, const std::vector<int> &areaTiles,
-    pass::world::StageViewLights &out ) const
+    std::size_t mapAreas, const std::vector<int> &areaTiles, pass::world::StageViewLights &out )
 {
 	// A map's light fixture is in the bake (the surface program adds its
 	// specular alone); an emitting surface is not: the engine leaves the
@@ -675,23 +695,26 @@ bool CoreWorld::DrawView( const unsigned int *surfaces, unsigned int count,
 		}
 	}
 	view.waterZOffset = waterZOffset;
-	std::shared_ptr<const ShadowWork> shadows;
-	if ( m_StageSet )
+	// A stage view's lights are clustered and its shadows planned when its
+	// slot records (the render sequence), from what the frame holds now.
+	std::shared_ptr<PendingView> pending;
+	if ( m_StageSet && worldToView && viewToClip )
 	{
-		view.lights = StageViewLightsFor( worldToView, viewToClip, viewport, &shadows );
-		m_StageLitViews += view.lights ? 1 : 0;
+		pending = std::make_shared<PendingView>();
+		pending->inputs = TakeViewLightInputs( worldToView, viewToClip, viewport );
+		++m_StageLitViews;
 	}
-	else
+	else if ( !m_StageSet )
 	{
 		view.lights = AreaViewLights();
 	}
 	const std::uint32_t tag = m_Pass.QueueView( std::move( view ) );
 	if ( tag == 0 )
 		return false;
-	if ( shadows )
+	if ( pending )
 	{
 		std::lock_guard<std::mutex> guard( m_ShadowLock );
-		m_ShadowWork.emplace_back( tag, std::move( shadows ) );
+		m_ShadowWork.emplace_back( tag, std::move( pending ) );
 		while ( m_ShadowWork.size() > 64 ) // a frame's views, re-recorded ones included
 			m_ShadowWork.pop_front();
 	}
@@ -956,14 +979,25 @@ void CoreWorld::RecordSlot(
 	world.fogEyeZ = target.fog.eyeZ;
 	world.time = target.time;
 	world.waterReflectTintScale = target.waterReflectTintScale;
-	std::shared_ptr<const ShadowWork> shadows;
+	std::shared_ptr<const PendingView> pending;
 	{
 		std::lock_guard<std::mutex> guard( m_ShadowLock );
-		for ( const auto &[queued, work] : m_ShadowWork )
+		for ( const auto &[queued, view] : m_ShadowWork )
 		{
 			if ( queued == tag )
-				shadows = work;
+				pending = view;
 		}
+	}
+	std::shared_ptr<const ShadowWork> shadows;
+	if ( pending )
+	{
+		std::call_once( pending->made,
+		    [&]
+		    {
+			    pending->lights = StageViewLightsFor( pending->inputs, &pending->shadows );
+		    } );
+		world.lights = pending->lights;
+		shadows = pending->shadows;
 	}
 	// RFC 0014 D4: the view's sections are timed while the timers are on.
 	graph::GpuPassTimers *timers = target.device ? SlotTimers( target ) : nullptr;
