@@ -237,6 +237,35 @@ class PlanarLayoutTest(unittest.TestCase):
         self.assertEqual(record["charts"], 2)
         self.assertLess(seams.chart_invariants(positions, uvs, SIZE)["density_spread"], 1.001)
 
+    def test_density_ignores_slivers_that_float32_uvs_cannot_resolve(self):
+        """Stored UVs are float32. A sliver thinner than their rounding has no
+        measurable density and is left out (living_room at 4096 read 0.42x on
+        two 0.005 mm^2 slivers); a small real triangle off the atlas density
+        is still a violation."""
+        size = 4096
+        rng = np.random.default_rng(5)
+        wall = grid(rng, 2, 2, 1.0, 1.0)
+        # A 5 mm x 1 um sliver along the wall's edge, as a mesh can carry.
+        sliver = np.array([[[0.2, 0.5, 0.0], [0.205, 0.5, 0.0], [0.2, 0.500001, 0.0]]])
+        positions = np.concatenate([wall, sliver])
+        uvs, _ = layout.planar_layout(positions, size)
+        stored = uvs.astype(np.float32).astype(np.float64)
+        exact = seams.chart_invariants(positions, uvs, size)
+        result = seams.chart_invariants(positions, stored, size)
+        self.assertLess(exact["density_spread"], 1.001)
+        self.assertLess(result["density_spread"], 1.01)
+        self.assertEqual(result["density_violation"], 0)
+        self.assertGreaterEqual(result["density_unmeasured"], 1)
+        # Negative control: a whole-texel triangle at 1.6x the density is caught.
+        t = int(np.argmax(seams.uv_area(uvs)[:len(wall)] > 0))
+        small = positions.copy()
+        small[t] = small[t].mean(axis=0) + (small[t] - small[t].mean(axis=0)) * 1e-3
+        bad = uvs.copy()
+        centre = bad[t].mean(axis=0)
+        bad[t] = centre + (bad[t] - centre) * 1e-3 * math.sqrt(1.6)
+        result = seams.chart_invariants(small, bad.astype(np.float32).astype(np.float64), size)
+        self.assertEqual(result["density_violation"], 1)
+
     def test_a_bent_panel_is_two_charts(self):
         """Negative control: two quads meeting at 1 degree are not one plane.
         The layout keeps them apart; the invariant code sees the crease as a

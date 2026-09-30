@@ -50,6 +50,14 @@ FLAT_COS = math.cos(math.radians(0.01))
 QUANTUM = 1e-5            # world position key (stage metres)
 LINE_QUANTUM = 1e-4       # line direction and offset key
 MIN_UV_AREA = 1e-12       # triangles with no chart (excluded materials)
+# Stored lightmap UVs are float32 (texCoord2f): each coordinate is rounded by
+# at most 2^-24 in [0, 1]. A triangle's texel density is measured only when
+# that rounding moves its UV area by at most DENSITY_RESOLUTION; a sliver
+# thinner than the rounding has no measurable density (living_room at 4096:
+# two 0.005 mm^2 slivers of 8e-5 texels read 0.42x after storage, 1.0x as
+# laid out).
+UV_ROUNDING = 2.0 ** -24
+DENSITY_RESOLUTION = 0.01
 SAMPLES_PER_TEXEL = 2
 # Boundary pairs whose UVs agree this closely (texels) are one chart.
 CONTINUOUS_TEXELS = 1e-3
@@ -418,6 +426,9 @@ def chart_invariants(positions, uvs, size, max_density_spread=1.5, curved=None,
                          charts both read (one chart's light leaks into the other)
       density_spread     max/min texels per square metre, reported, and
                          `density_violation` when above the bound
+      density_unmeasured charted triangles whose UV area float32 storage
+                         cannot resolve (DENSITY_RESOLUTION), left out of
+                         the spreads
 
     With `curved` (bool per triangle, lightmap_layout.curved_mask), whose
     charts stretch within the layout's limit, `density_spread` covers only the
@@ -455,9 +466,15 @@ def chart_invariants(positions, uvs, size, max_density_spread=1.5, curved=None,
     result["bleed_texels"] = int(bleed.sum())
     area_world = 0.5 * np.linalg.norm(np.cross(positions[:, 1] - positions[:, 0],
                                                positions[:, 2] - positions[:, 0]), axis=1)
-    usable = charted & (area_world > 1e-12)
+    # Moving each corner by UV_ROUNDING per coordinate changes the area by at
+    # most UV_ROUNDING * sqrt(2) / 2 per unit of perimeter.
+    area_uv = uv_area(uvs)
+    perimeter_uv = sum(np.linalg.norm(uvs[:, (i + 1) % 3] - uvs[:, i], axis=1) for i in range(3))
+    resolved = area_uv * DENSITY_RESOLUTION >= UV_ROUNDING * math.sqrt(0.5) * perimeter_uv
+    result["density_unmeasured"] = int((charted & ~resolved).sum())
+    usable = charted & (area_world > 1e-12) & resolved
     density = np.zeros(len(positions))
-    density[usable] = uv_area(uvs)[usable] * size * size / np.maximum(area_world[usable], 1e-30)
+    density[usable] = area_uv[usable] * size * size / np.maximum(area_world[usable], 1e-30)
 
     def spread(mask):
         return float(density[mask].max() / density[mask].min()) if mask.any() else 1.0
