@@ -154,6 +154,7 @@ public:
 	// layer destroys the previous image behind the frames that sample it;
 	// SetWorldLightmapHandle( -1 ) releases every layer.
 	void SetWorldLightmapHandles( int total, int direct, int indirect );
+	int WorldLightmapTotalHandle() const { return m_worldLightmapHandle; }
 	int WorldLightmapIndirectHandle() const { return m_worldLightmapIndirectHandle; }
 	int WorldLightmapDirectHandle() const { return m_worldLightmapDirectHandle; }
 	// The map's RFC 0011 PRBV probe volume: its RGBA16F atlas and the RGBA32F
@@ -2316,6 +2317,10 @@ private:
 	StreamBuffer m_uploadStreams[kMaxFramesInFlight];
 	void RecordTextureUpload( VkCommandBuffer cmd, VkImage image, const PendingUpload &upload,
 	    VkBuffer staging, VkDeviceSize offset );
+	// Uploads of one image level that keep the rest of it and do not overlap:
+	// one pair of barriers and one copy for all of them.
+	void RecordTextureUploadRun( VkCommandBuffer cmd, VkImage image, const PendingUpload *uploads,
+	    size_t count, VkBuffer staging );
 	// Records every pending upload into `cmd`, staging from `stream`.
 	bool RecordPendingUploads( VkCommandBuffer cmd, StreamBuffer &stream );
 	// Runs the pending uploads now, in their own submission (before a

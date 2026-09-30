@@ -18,6 +18,7 @@
 #include <cstring>
 #include <initializer_list>
 #include <limits>
+#include <unordered_map>
 
 namespace render_vulkan
 {
@@ -1101,9 +1102,15 @@ bool CVulkanContext::CreateCaptureImage( VkExtent2D extent, std::string *outErro
 	img.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	img.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
-	// Host-visible, coherent where the device has such a linear image type.
-	std::string coherentError;
+	// Host-visible and host-cached first: the CPU reads every texel back
+	// (ResolveCapturedPixels), and uncached (write-combined) memory made that
+	// read take 1.3 s for a 1080p frame on RADV, every save's thumbnail a
+	// hitch. Then coherent, then any host-visible type (reads invalidate).
+	std::string cachedError, coherentError;
 	if ( !CreateImage( img,
+	         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
+	         &m_captureImage, &m_captureMemory, "capture", &cachedError ) &&
+	     !CreateImage( img,
 	         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
 	         &m_captureImage, &m_captureMemory, "capture", &coherentError ) &&
 	     !CreateImage( img, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, &m_captureImage, &m_captureMemory,
@@ -4850,6 +4857,46 @@ void CVulkanContext::RecordTextureUpload( VkCommandBuffer cmd, VkImage image,
 	    VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &toRead );
 }
 
+void CVulkanContext::RecordTextureUploadRun( VkCommandBuffer cmd, VkImage image,
+    const PendingUpload *uploads, size_t count, VkBuffer staging )
+{
+	// RecordTextureUpload's barriers once for the run: every region keeps the
+	// texels outside it (preserve) and none overlaps another.
+	const PendingUpload &first = uploads[0];
+	VkImageMemoryBarrier toDst = {};
+	toDst.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+	toDst.oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	toDst.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+	toDst.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	toDst.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	toDst.image = image;
+	toDst.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, first.level, 1, first.face, 1 };
+	toDst.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+	toDst.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+	vkCmdPipelineBarrier( cmd, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+	    VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &toDst );
+	std::vector<VkBufferImageCopy> copies( count );
+	for ( size_t i = 0; i < count; ++i )
+	{
+		VkBufferImageCopy &copy = copies[i];
+		copy = {};
+		copy.bufferOffset = uploads[i].offset;
+		copy.imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, first.level, first.face, 1 };
+		copy.imageOffset = {
+		    static_cast<int32_t>( uploads[i].x ), static_cast<int32_t>( uploads[i].y ), 0 };
+		copy.imageExtent = { uploads[i].width, uploads[i].height, 1 };
+	}
+	vkCmdCopyBufferToImage( cmd, staging, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+	    static_cast<uint32_t>( count ), copies.data() );
+	VkImageMemoryBarrier toRead = toDst;
+	toRead.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+	toRead.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	toRead.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+	toRead.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+	vkCmdPipelineBarrier( cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
+	    VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &toRead );
+}
+
 bool CVulkanContext::RecordPendingUploads( VkCommandBuffer cmd, StreamBuffer &stream )
 {
 	if ( m_pendingUploads.empty() )
@@ -4860,11 +4907,65 @@ bool CVulkanContext::RecordPendingUploads( VkCommandBuffer cmd, StreamBuffer &st
 	         stream, m_pendingUploadData.size(), VK_BUFFER_USAGE_TRANSFER_SRC_BIT ) )
 		return false;
 	std::memcpy( stream.mapped, m_pendingUploadData.data(), m_pendingUploadData.size() );
-	for ( const PendingUpload &upload : m_pendingUploads )
+	// Consecutive regions of one image level that keep the rest of it and do
+	// not overlap share one pair of barriers and one copy (a probe volume's
+	// publication is thousands of tiles; a barrier pair each cost milliseconds
+	// of recording). Overlapping regions start a new run, so later texels
+	// still land after earlier ones.
+	std::unordered_map<uint64_t, std::vector<uint32_t>> cells;
+	const auto cellKey = []( uint32_t cx, uint32_t cy )
 	{
-		const ManagedTexture &t = m_managedTextures[static_cast<size_t>( upload.handle )];
+		return ( uint64_t( cy ) << 32 ) | cx;
+	};
+	constexpr uint32_t kCell = 64;
+	const auto overlaps = [&]( const PendingUpload &a, size_t first, bool add )
+	{
+		for ( uint32_t cy = a.y / kCell; cy <= ( a.y + a.height - 1 ) / kCell; ++cy )
+			for ( uint32_t cx = a.x / kCell; cx <= ( a.x + a.width - 1 ) / kCell; ++cx )
+			{
+				std::vector<uint32_t> &list = cells[cellKey( cx, cy )];
+				if ( !add )
+				{
+					for ( uint32_t k : list )
+					{
+						const PendingUpload &b = m_pendingUploads[first + k];
+						if ( a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height &&
+						     b.y < a.y + a.height )
+							return true;
+					}
+				}
+				else
+					list.push_back( uint32_t( &a - &m_pendingUploads[first] ) );
+			}
+		return false;
+	};
+	const auto joins = []( const PendingUpload &first, const PendingUpload &u )
+	{
+		return u.handle == first.handle && u.level == first.level && u.face == first.face &&
+		       u.preserve && !u.clearRest && u.depth <= 1;
+	};
+	for ( size_t i = 0; i < m_pendingUploads.size(); )
+	{
+		const PendingUpload &first = m_pendingUploads[i];
+		const ManagedTexture &t = m_managedTextures[static_cast<size_t>( first.handle )];
+		size_t end = i + 1;
+		if ( joins( first, first ) )
+		{
+			cells.clear();
+			overlaps( first, i, true );
+			while ( end < m_pendingUploads.size() && joins( first, m_pendingUploads[end] ) &&
+			        !overlaps( m_pendingUploads[end], i, false ) )
+				overlaps( m_pendingUploads[end++], i, true );
+		}
 		if ( t.image != VK_NULL_HANDLE )
-			RecordTextureUpload( cmd, t.image, upload, stream.buffer, upload.offset );
+		{
+			if ( end - i == 1 )
+				RecordTextureUpload( cmd, t.image, first, stream.buffer, first.offset );
+			else
+				RecordTextureUploadRun(
+				    cmd, t.image, &m_pendingUploads[i], end - i, stream.buffer );
+		}
+		i = end;
 	}
 	m_pendingUploads.clear();
 	m_pendingUploadData.clear();
