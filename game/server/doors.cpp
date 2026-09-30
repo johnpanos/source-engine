@@ -266,6 +266,21 @@ void CBaseDoor::Spawn()
 
 	// Subtract 2 from size because the engine expands bboxes by 1 in all directions making the size too big
 	Vector vecOBB = CollisionProp()->OBBSize();
+#ifdef PORTAL2
+	// Portal 2 (as its 2010 server and CS:GO): a door rotated by an instance keeps its
+	// model in local space while movedir is in world space, so measure the travel along
+	// the rotated bounds.
+	if ( GetLocalAngles() != vec3_angle )
+	{
+		Vector vMinsOut, vMaxsOut;
+		matrix3x4_t mat;
+
+		AngleMatrix( GetLocalAngles(), mat );
+		RotateAABB(
+		    mat, CollisionProp()->OBBMins(), CollisionProp()->OBBMaxs(), vMinsOut, vMaxsOut );
+		vecOBB = vMaxsOut - vMinsOut;
+	}
+#endif
 	vecOBB -= Vector( 2, 2, 2 );
 	m_vecPosition2	= m_vecPosition1 + (m_vecMoveDir * (DotProductAbs( m_vecMoveDir, vecOBB ) - m_flLip));
 
