@@ -75,6 +75,9 @@ struct RenderCoreWorldQuality
 	// Nonzero: the stage's opaque surfaces' depth is drawn before they are
 	// lit, so each pixel is shaded once (a performance setting only).
 	int depthPrepass;
+	// Nonzero: the frame's moving objects (render.dynamic-occlusion boxes)
+	// cast shadows over the cached static tiles.
+	int shadowMovers;
 };
 
 struct RenderCoreWorldStats

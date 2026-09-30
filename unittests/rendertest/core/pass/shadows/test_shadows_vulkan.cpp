@@ -1200,6 +1200,123 @@ void CheckCachedTiles( testing::Checks &checks, IRenderDevice2 &device, ShadowDe
 		(void)device.Release( texture->Value(), CompletionToken() );
 }
 
+// Doom Eternal's cached shadows with moving casters (K12 step 2): a static
+// atlas's tiles restored into the frame's atlas, with the moving casters
+// drawn over them (no tile clear), equal the atlas one full draw of both
+// gives, texel for texel; the frame's atlas without the restore does not.
+void CheckMovingCasters( testing::Checks &checks, IRenderDevice2 &device,
+    ShadowDepthRenderer &depth, const Meshes &meshes )
+{
+	const Scene scene = SpotScene();
+	std::vector<ShadowCaster> all = Casters( meshes, scene.casters );
+	if ( !checks.That( all.size() >= 2, "C3.the-scene-has-casters" ) )
+		return;
+	// The last caster moves; the rest are static.
+	const std::vector<ShadowCaster> statics( all.begin(), all.end() - 1 );
+	const std::vector<ShadowCaster> movers( all.end() - 1, all.end() );
+	constexpr std::uint32_t kAtlas = 1024;
+	constexpr std::uint32_t kGuard = 2;
+	auto viewA = BuildSpotShadowView(
+	    { { 1.0f, 0.5f, 11.0f }, { 0.05f, 0.1f, -1.0f }, std::cos( 0.66f ), 0.5f, 40.0f } );
+	auto viewB = BuildSpotShadowView(
+	    { { -6.0f, -6.0f, 9.0f }, { 0.6f, 0.6f, -1.0f }, std::cos( 0.6f ), 0.5f, 40.0f } );
+	if ( !checks.That( viewA && viewB, "C3.spot-views" ) )
+		return;
+	const ShadowTile tiles[] = { { 0, 0, 512 }, { 512, 256, 512 } };
+	const ShadowDepthView fullViews[] = { { viewA.Value().viewProjection, tiles[0], all },
+	    { viewB.Value().viewProjection, tiles[1], all } };
+	const ShadowDepthView staticViews[] = { { viewA.Value().viewProjection, tiles[0], statics },
+	    { viewB.Value().viewProjection, tiles[1], statics } };
+	ShadowDepthView movingViews[] = { { viewA.Value().viewProjection, tiles[0], movers },
+	    { viewB.Value().viewProjection, tiles[1], movers } };
+	for ( ShadowDepthView &view : movingViews )
+		view.clearTile = false;
+
+	TextureDesc atlasDesc;
+	atlasDesc.format = Format::kD32Float;
+	atlasDesc.width = atlasDesc.height = kAtlas;
+	atlasDesc.usages = { ResourceUsage::kDepthWrite, ResourceUsage::kSampled,
+	    ResourceUsage::kCopySource, ResourceUsage::kCopyDestination };
+	auto full = device.CreateTexture( atlasDesc );
+	auto kept = device.CreateTexture( atlasDesc );
+	auto frame = device.CreateTexture( atlasDesc );
+	auto unrestored = device.CreateTexture( atlasDesc );
+	if ( !checks.That( full && kept && frame && unrestored, "C3.atlases" ) )
+		return;
+	ResourceUsage fullUsage = ResourceUsage::kUndefined, keptUsage = ResourceUsage::kUndefined;
+	const std::vector<float> reference =
+	    DrawKept( device, depth, full.Value(), atlasDesc, fullUsage, kGuard, fullViews, false );
+	(void)DrawKept( device, depth, kept.Value(), atlasDesc, keptUsage, kGuard, staticViews, false );
+	// The frame's atlas: every texel starts far (as a fresh one would), then
+	// the tiles are restored from the kept atlas and the movers drawn over.
+	const auto composite = [&]( TextureId target, bool restore ) -> std::vector<float>
+	{
+		ResourceUsage usage = ResourceUsage::kUndefined;
+		const ShadowDepthView none[1] = {};
+		(void)DrawKept( device, depth, target, atlasDesc, usage, kGuard,
+		    std::span<const ShadowDepthView>( none, 0 ), false );
+		BufferDesc readDesc;
+		readDesc.size = std::uint64_t( kAtlas ) * kAtlas * 4;
+		readDesc.usages = { ResourceUsage::kCopyDestination };
+		readDesc.memory = MemoryKind::kReadback;
+		auto read = device.CreateBuffer( readDesc );
+		if ( !read )
+			return {};
+		graph::GraphBuilder builder;
+		const graph::ResourceRef keptRef = builder.ImportTexture(
+		    "kept", kept.Value(), atlasDesc, ResourceUsage::kSampled, ResourceUsage::kSampled );
+		const graph::ResourceRef frameRef = builder.ImportTexture(
+		    "frame", target, atlasDesc, ResourceUsage::kSampled, ResourceUsage::kSampled );
+		if ( restore )
+			ShadowDepthRenderer::AddTileCopy( builder, keptRef, frameRef, tiles );
+		ShadowAtlasTarget targetDesc{ frameRef, kAtlas, kGuard };
+		targetDesc.keep = true;
+		bool ok = depth.AddPasses( builder, targetDesc, movingViews ).HasValue();
+		const graph::ResourceRef copy = builder.ImportBuffer( "readback", read.Value(), readDesc,
+		    ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+		builder.AddPass( "readback", graph::PassKind::kCopy )
+		    .Read( frameRef, ResourceUsage::kCopySource )
+		    .Write( copy, ResourceUsage::kCopyDestination )
+		    .SideEffect()
+		    .Execute(
+		        [frameRef, copy]( graph::RecordContext &context )
+		        {
+			        context.Encoder().CopyTextureToBuffer( context.Texture( frameRef ),
+			            context.Buffer( copy ), { 0, 0, 0, kAtlas, kAtlas } );
+		        } );
+		std::vector<float> out;
+		auto compiled = graph::CompileGraph( std::move( builder ) );
+		if ( ok && compiled )
+		{
+			graph::SerialGraphExecutor executor;
+			auto executed = executor.Execute( compiled.Value(), device );
+			if ( executed && Wait( device, executed.Value().token ) )
+			{
+				depth.Collect( executed.Value().token );
+				out.resize( std::size_t( kAtlas ) * kAtlas );
+				if ( !device.ReadBuffer(
+				         read.Value(), 0, std::as_writable_bytes( std::span( out ) ) ) )
+					out.clear();
+			}
+		}
+		(void)device.Release( read.Value(), CompletionToken() );
+		(void)device.Poll();
+		return out;
+	};
+	const std::vector<float> restored = composite( frame.Value(), true );
+	const std::vector<float> bare = composite( unrestored.Value(), false );
+	const bool read = !reference.empty() && restored.size() == reference.size() &&
+	                  bare.size() == reference.size();
+	checks.That( read, "C3.the-atlases-read-back" );
+	checks.That(
+	    read && std::memcmp( reference.data(), restored.data(), reference.size() * 4 ) == 0,
+	    "C3.static-tiles-restored-with-movers-drawn-over-equal-a-full-draw" );
+	checks.That( read && std::memcmp( reference.data(), bare.data(), reference.size() * 4 ) != 0,
+	    "C3.movers-without-the-restore-differ-(sensitivity)" );
+	for ( auto *texture : { &full, &kept, &frame, &unrestored } )
+		(void)device.Release( texture->Value(), CompletionToken() );
+}
+
 int main()
 {
 	testing::Checks checks;
@@ -1229,6 +1346,7 @@ int main()
 		CheckSpot( checks, *device, *depth.Value(), *receiver.Value(), *reversed.Value(), *meshes );
 		CheckSun( checks, *device, *depth.Value(), *receiver.Value(), *meshes );
 		CheckCachedTiles( checks, *device, *depth.Value(), *meshes );
+		CheckMovingCasters( checks, *device, *depth.Value(), *meshes );
 		checks.That( depth.Value()->RecordFailures() == 0 &&
 		                 receiver.Value()->RecordFailures() == 0 &&
 		                 reversed.Value()->RecordFailures() == 0,

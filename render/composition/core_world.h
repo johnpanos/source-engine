@@ -164,9 +164,11 @@ private:
 		{
 			lights = snapshot.lights;
 			areas = snapshot.areas;
+			occluders = snapshot.occluders;
 		}
 		std::vector<light_set::RuntimeLight> lights;
 		std::vector<light_set::RuntimeAreaLight> areas;
+		std::vector<light_set::RuntimeOccluder> occluders; // the moving objects
 	};
 	// The world stage's shadow atlas (per shadowed view of a frame): 4096
 	// texels square, depth 32 (64 MB each) on the desktop profiles; a mobile
@@ -181,6 +183,7 @@ private:
 	std::atomic<int> m_AoQuality{ 3 };
 	std::atomic<int> m_ShadowQuality{ 2 };
 	std::atomic<bool> m_DepthPrepass{ true };
+	std::atomic<bool> m_ShadowMovers{ true };
 	// A world stage view's work at its slot: the shadow plan's depth views,
 	// drawn into an atlas (none without shadowed lights), and the view and
 	// projection its screen passes (GTAO) reconstruct positions with.
@@ -192,6 +195,9 @@ private:
 		math::float4x4 view;
 		math::float4x4 projection;
 		float eye[3] = {}; // the view's origin (the view matrix's inverse)
+		// The frame's moving objects' boxes (with their pose versions):
+		// casters drawn over the cached static tiles.
+		std::vector<light_set::RuntimeOccluder> movers;
 	};
 	// The world stage's shadow casters (the stage mesh's positions and
 	// indices; main thread writes at SetWorldMesh, the render sequence reads).
@@ -225,6 +231,7 @@ private:
 		std::optional<pass::lights::MapSun> sun;
 		bool sunMask = false;
 		int shadowQuality = 0;
+		std::vector<light_set::RuntimeOccluder> movers; // the frame's moving objects
 	};
 	// A queued stage view: its inputs, and the lights and shadow work made
 	// from them once, on the render sequence (a view recorded again keeps
@@ -322,10 +329,22 @@ private:
 		std::vector<pass::shadows::ShadowPlanView> drawn; // what its tiles hold
 		std::uint64_t generation = 0;                     // of the casters drawn
 		std::uint32_t guardTexels = 0;
+		// The frame's atlas while movers cast: the static tiles restored,
+		// the movers drawn over them. What its tiles were restored for, and
+		// the tiles the movers were drawn in (restored again next frame).
+		device::TextureId composite;
+		device::ResourceUsage compositeUsage = device::ResourceUsage::kUndefined;
+		std::vector<pass::shadows::ShadowPlanView> compositeHeld;
+		// Each tile's movers as drawn in the frame's atlas (a hash of their
+		// entities, parts and pose versions; 0: none): a tile is drawn again
+		// only when they change.
+		std::vector<std::pair<pass::shadows::ShadowTile, std::uint64_t>> moverTiles;
 	};
 	// Shadow tiles drawn and kept (RFC 0014 D4's report, render sequence).
 	std::atomic<std::uint64_t> m_ShadowTilesDrawn{ 0 };
 	std::atomic<std::uint64_t> m_ShadowTilesKept{ 0 };
+	std::atomic<std::uint64_t> m_ShadowTilesMoving{ 0 }; // tiles movers were drawn in
+	const resources::MeshEntry *BoxCasterMesh();
 	std::vector<Atlas> m_Atlases;
 	std::size_t m_AtlasNext = 0;
 	std::uint64_t m_AtlasFrame = 0;

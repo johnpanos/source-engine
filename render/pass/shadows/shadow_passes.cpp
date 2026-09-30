@@ -205,6 +205,7 @@ foundation::Expected<ShadowDepthStats, ShadowPassStatus> ShadowDepthRenderer::Ad
 			ShadowViewport viewport;
 			std::pair<std::size_t, std::size_t> draws;
 			ShadowViewport tile; // the whole tile, guard band included
+			bool clear = true;
 		};
 		std::vector<View> views;
 	};
@@ -245,8 +246,9 @@ foundation::Expected<ShadowDepthStats, ShadowPassStatus> ShadowDepthRenderer::Ad
 			frame->clips.push_back( clip );
 			imports.Add( builder, caster.mesh );
 		}
-		frame->views.push_back( { TileViewport( view.tile, target.guardTexels ),
-		    { first, frame->draws.size() }, { view.tile.x, view.tile.y, view.tile.size } } );
+		frame->views.push_back(
+		    { TileViewport( view.tile, target.guardTexels ), { first, frame->draws.size() },
+		        { view.tile.x, view.tile.y, view.tile.size }, view.clearTile } );
 		++stats.views;
 	}
 	stats.draws = static_cast<std::uint32_t>( frame->draws.size() );
@@ -308,10 +310,10 @@ foundation::Expected<ShadowDepthStats, ShadowPassStatus> ShadowDepthRenderer::Ad
 		    rendering.width = target.atlasSize;
 		    rendering.height = target.atlasSize;
 		    encoder.BeginRendering( rendering );
-		    for ( const auto &[viewport, range, tile] : frame->views )
+		    for ( const auto &[viewport, range, tile, clearTile] : frame->views )
 		    {
 			    PipelineId bound;
-			    if ( target.keep )
+			    if ( target.keep && clearTile )
 			    {
 				    // The whole tile, guard band included, back to the far plane.
 				    encoder.SetViewport( { float( tile.x ), float( tile.y ), float( tile.size ),
@@ -339,6 +341,57 @@ foundation::Expected<ShadowDepthStats, ShadowPassStatus> ShadowDepthRenderer::Ad
 		    encoder.EndRendering();
 	    } );
 	return stats;
+}
+
+void ShadowDepthRenderer::AddTileCopy( graph::GraphBuilder &builder, graph::ResourceRef from,
+    graph::ResourceRef to, std::span<const ShadowTile> tiles )
+{
+	if ( tiles.empty() )
+		return;
+	auto list = std::make_shared<std::vector<std::pair<ShadowTile, std::uint64_t>>>();
+	std::uint64_t bytes = 0;
+	for ( const ShadowTile &tile : tiles )
+	{
+		list->emplace_back( tile, bytes );
+		bytes += std::uint64_t( tile.size ) * tile.size * 4; // D32: 4 bytes a texel
+	}
+	BufferDesc desc;
+	desc.size = bytes;
+	const graph::ResourceRef staging = builder.CreateBuffer( "shadow-tile-copy", desc );
+	builder.AddPass( "shadow-tile-save", graph::PassKind::kCopy )
+	    .Read( from, ResourceUsage::kCopySource )
+	    .Write( staging, ResourceUsage::kCopyDestination )
+	    .Execute(
+	        [list, from, staging]( graph::RecordContext &context )
+	        {
+		        for ( const auto &[tile, offset] : *list )
+		        {
+			        TextureBufferCopy copy;
+			        copy.bufferOffset = offset;
+			        copy.x = tile.x;
+			        copy.y = tile.y;
+			        copy.width = copy.height = tile.size;
+			        context.Encoder().CopyTextureToBuffer(
+			            context.Texture( from ), context.Buffer( staging ), copy );
+		        }
+	        } );
+	builder.AddPass( "shadow-tile-restore", graph::PassKind::kCopy )
+	    .Read( staging, ResourceUsage::kCopySource )
+	    .Write( to, ResourceUsage::kCopyDestination )
+	    .Execute(
+	        [list, to, staging]( graph::RecordContext &context )
+	        {
+		        for ( const auto &[tile, offset] : *list )
+		        {
+			        TextureBufferCopy copy;
+			        copy.bufferOffset = offset;
+			        copy.x = tile.x;
+			        copy.y = tile.y;
+			        copy.width = copy.height = tile.size;
+			        context.Encoder().CopyBufferToTexture(
+			            context.Buffer( staging ), context.Texture( to ), copy );
+		        }
+	        } );
 }
 
 void ShadowDepthRenderer::Collect( CompletionToken token )

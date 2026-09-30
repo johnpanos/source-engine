@@ -465,6 +465,10 @@ CoreWorld::ViewLightInputs CoreWorld::TakeViewLightInputs(
 	in.sun = m_MapLights.sun;
 	in.sunMask = m_StageSunMask;
 	in.shadowQuality = m_ShadowQuality.load( std::memory_order_relaxed );
+	if ( in.shadowQuality > 0 && m_ShadowMovers.load( std::memory_order_relaxed ) )
+	{
+		in.movers = m_Lights.occluders;
+	}
 	return in;
 }
 
@@ -627,6 +631,7 @@ std::shared_ptr<const pass::world::StageViewLights> CoreWorld::StageViewLightsFo
 	{
 		out->shadowTiles = std::move( plan.tiles );
 		work->views = std::move( plan.views );
+		work->movers = in.movers;
 		work->atlasSize = plan.atlasSize;
 		work->guardTexels = plan.guardTexels;
 	}
@@ -806,6 +811,7 @@ void CoreWorld::SetQuality( const RenderCoreWorldQuality &quality )
 	m_AoQuality.store( std::clamp( quality.ambientOcclusion, 0, 4 ), std::memory_order_relaxed );
 	m_ShadowQuality.store( std::clamp( quality.shadows, 0, 3 ), std::memory_order_relaxed );
 	m_DepthPrepass.store( quality.depthPrepass != 0, std::memory_order_relaxed );
+	m_ShadowMovers.store( quality.shadowMovers != 0, std::memory_order_relaxed );
 }
 
 void CoreWorld::SetGpuTimers( bool enabled )
@@ -857,8 +863,9 @@ unsigned int CoreWorld::TakeGpuTimes( char *out, unsigned int size )
 	if ( tilesDrawn + tilesKept && used + 1 < size )
 	{
 		const int written = std::snprintf( out + used, size - used,
-		    "0 0 %.2f shadow tiles drawn (count; %.2f kept per frame)\n",
-		    double( tilesDrawn ) / frames, double( tilesKept ) / frames );
+		    "0 0 %.2f shadow tiles drawn (count; %.2f kept, %.2f with movers per frame)\n",
+		    double( tilesDrawn ) / frames, double( tilesKept ) / frames,
+		    double( m_ShadowTilesMoving.exchange( 0, std::memory_order_relaxed ) ) / frames );
 		if ( written > 0 )
 			used = std::min( std::size_t( size ) - 1, used + std::size_t( written ) );
 	}
@@ -1148,7 +1155,8 @@ device::TextureId CoreWorld::DrawStageShadows( device::IRenderDevice2 &device,
 		Atlas atlas;
 		atlas.desc.format = Format::kD32Float;
 		atlas.desc.width = atlas.desc.height = work.atlasSize;
-		atlas.desc.usages = { ResourceUsage::kDepthWrite, ResourceUsage::kSampled };
+		atlas.desc.usages = { ResourceUsage::kDepthWrite, ResourceUsage::kSampled,
+		    ResourceUsage::kCopySource, ResourceUsage::kCopyDestination };
 		atlas.desc.debugName = "stage shadow atlas";
 		auto texture = device.CreateTexture( atlas.desc );
 		if ( !texture )
@@ -1163,10 +1171,13 @@ device::TextureId CoreWorld::DrawStageShadows( device::IRenderDevice2 &device,
 		// A new shadow quality: this slot's atlas was last used by an earlier
 		// frame, which `submitted` covers.
 		(void)device.Release( atlas.texture, submitted );
+		if ( atlas.composite.IsValid() )
+			(void)device.Release( atlas.composite, submitted );
 		atlas = Atlas();
 		atlas.desc.format = Format::kD32Float;
 		atlas.desc.width = atlas.desc.height = work.atlasSize;
-		atlas.desc.usages = { ResourceUsage::kDepthWrite, ResourceUsage::kSampled };
+		atlas.desc.usages = { ResourceUsage::kDepthWrite, ResourceUsage::kSampled,
+		    ResourceUsage::kCopySource, ResourceUsage::kCopyDestination };
 		atlas.desc.debugName = "stage shadow atlas";
 		auto texture = device.CreateTexture( atlas.desc );
 		atlas.desc.debugName = {};
@@ -1201,12 +1212,6 @@ device::TextureId CoreWorld::DrawStageShadows( device::IRenderDevice2 &device,
 	}
 	m_ShadowTilesKept.fetch_add( work.views.size() - dirty.size(), std::memory_order_relaxed );
 	m_ShadowTilesDrawn.fetch_add( dirty.size(), std::memory_order_relaxed );
-	if ( dirty.empty() )
-	{
-		++m_AtlasNext;
-		*desc = atlas.desc;
-		return atlas.texture;
-	}
 	// Each view draws the chunks inside its frustum (a chunk's box wholly
 	// outside one clip plane is culled).
 	auto inside = []( const math::float4x4 &clip, const Casters::Chunk &chunk )
@@ -1231,50 +1236,217 @@ device::TextureId CoreWorld::DrawStageShadows( device::IRenderDevice2 &device,
 			    return count == 8;
 		    } );
 	};
-	std::vector<std::vector<pass::shadows::ShadowCaster>> chunkCasters( dirty.size() );
-	std::vector<pass::shadows::ShadowDepthView> views;
-	views.reserve( dirty.size() );
-	for ( std::size_t v = 0; v < dirty.size(); ++v )
+	// The moving casters (the frame's occluder boxes, render.dynamic-occlusion):
+	// a unit cube placed by each box, per view that sees it.
+	std::vector<std::vector<pass::shadows::ShadowCaster>> moverCasters( work.views.size() );
+	std::vector<std::uint64_t> moverSignature( work.views.size(), 0 );
+	bool anyMover = false;
+	if ( !work.movers.empty() )
 	{
-		for ( const Casters::Chunk &chunk : casters->chunks )
+		const resources::MeshEntry *box = BoxCasterMesh();
+		for ( std::size_t v = 0; box && v < work.views.size(); ++v )
 		{
-			if ( inside( dirty[v]->viewProjection, chunk ) )
-				chunkCasters[v].push_back(
-				    { *mesh, math::float4x4::Identity(), chunk.firstIndex, chunk.indexCount } );
+			for ( const light_set::RuntimeOccluder &occluder : work.movers )
+			{
+				const dynamic_occlusion::Box &mover = occluder.box;
+				Casters::Chunk bounds;
+				math::float4x4 place;
+				for ( int r = 0; r < 3; ++r )
+				{
+					const float extent = std::fabs( mover.axes[0][r] ) +
+					                     std::fabs( mover.axes[1][r] ) +
+					                     std::fabs( mover.axes[2][r] );
+					bounds.min[r] = mover.center[r] - extent;
+					bounds.max[r] = mover.center[r] + extent;
+					( &place.rows[r].x )[0] = mover.axes[0][r];
+					( &place.rows[r].x )[1] = mover.axes[1][r];
+					( &place.rows[r].x )[2] = mover.axes[2][r];
+					( &place.rows[r].x )[3] = mover.center[r];
+				}
+				place.rows[3] = { 0.0f, 0.0f, 0.0f, 1.0f };
+				if ( inside( work.views[v].viewProjection, bounds ) )
+				{
+					moverCasters[v].push_back( { *box, place } );
+					// Order-independent: a sum of each mover's mixed key.
+					std::uint64_t key = ( std::uint64_t( std::uint32_t( mover.entity ) ) << 32 ) ^
+					                    ( std::uint64_t( std::uint32_t( mover.part ) ) << 20 ) ^
+					                    occluder.version;
+					key ^= key >> 33;
+					key *= 0xff51afd7ed558ccdull;
+					key ^= key >> 33;
+					moverSignature[v] += key | 1u; // never 0 with a mover
+					anyMover = true;
+				}
+			}
 		}
-		views.push_back( { dirty[v]->viewProjection, dirty[v]->tile, chunkCasters[v] } );
+	}
+	const bool composite = anyMover || !atlas.moverTiles.empty();
+	if ( dirty.empty() && !composite )
+	{
+		++m_AtlasNext;
+		*desc = atlas.desc;
+		return atlas.texture;
+	}
+	const auto uploads = [this]( graph::GraphBuilder &builder )
+	{
+		builder.AddPass( "stage caster uploads", graph::PassKind::kCopy )
+		    .SideEffect()
+		    .Execute(
+		        [this]( graph::RecordContext &context )
+		        {
+			        m_CasterMeshes->RecordUploads( context.Encoder() );
+		        } );
+	};
+	const auto execute = [&]( graph::GraphBuilder &&builder ) -> bool
+	{
+		auto compiled = graph::CompileGraph( std::move( builder ) );
+		if ( !compiled )
+			return false;
+		graph::SerialGraphExecutor executor;
+		executor.SetLabelObserver( m_SlotTimers );
+		auto executed = executor.Execute( compiled.Value(), device );
+		if ( !executed )
+			return false;
+		m_ShadowRenderer->Collect( executed.Value().token );
+		m_CasterMeshes->Retire( executed.Value().token );
+		return true;
+	};
+	// The static tiles whose view changed (cached otherwise).
+	if ( !dirty.empty() )
+	{
+		std::vector<std::vector<pass::shadows::ShadowCaster>> chunkCasters( dirty.size() );
+		std::vector<pass::shadows::ShadowDepthView> views;
+		views.reserve( dirty.size() );
+		for ( std::size_t v = 0; v < dirty.size(); ++v )
+		{
+			for ( const Casters::Chunk &chunk : casters->chunks )
+			{
+				if ( inside( dirty[v]->viewProjection, chunk ) )
+					chunkCasters[v].push_back(
+					    { *mesh, math::float4x4::Identity(), chunk.firstIndex, chunk.indexCount } );
+			}
+			views.push_back( { dirty[v]->viewProjection, dirty[v]->tile, chunkCasters[v] } );
+		}
+		graph::GraphBuilder builder;
+		uploads( builder );
+		const graph::ResourceRef atlasRef = builder.ImportTexture(
+		    "stage shadow atlas", atlas.texture, atlas.desc, atlas.usage, ResourceUsage::kSampled );
+		pass::shadows::ShadowAtlasTarget target{ atlasRef, work.atlasSize, work.guardTexels };
+		target.keep = !whole;
+		if ( !m_ShadowRenderer->AddPasses( builder, target, views ) ||
+		     !execute( std::move( builder ) ) )
+			return {};
+		atlas.usage = ResourceUsage::kSampled;
+		atlas.drawn = work.views;
+		atlas.generation = casters->generation;
+		atlas.guardTexels = work.guardTexels;
+	}
+	if ( !composite )
+	{
+		++m_AtlasNext;
+		*desc = atlas.desc;
+		return atlas.texture;
+	}
+	// The frame's atlas (Doom Eternal's cached shadows with moving casters):
+	// a tile a mover reaches now or reached last frame, one whose static
+	// depth changed, or one the frame's atlas never held, is restored from
+	// the static atlas; the movers are drawn over their tiles.
+	if ( !atlas.composite.IsValid() )
+	{
+		TextureDesc compositeDesc = atlas.desc;
+		compositeDesc.debugName = "stage shadow atlas (movers)";
+		auto texture = device.CreateTexture( compositeDesc );
+		if ( !texture )
+			return {};
+		atlas.composite = texture.Value();
+		atlas.compositeUsage = ResourceUsage::kUndefined;
+		atlas.compositeHeld.clear();
+	}
+	std::vector<pass::shadows::ShadowTile> restore;
+	std::vector<pass::shadows::ShadowDepthView> moverViews;
+	std::vector<std::pair<pass::shadows::ShadowTile, std::uint64_t>> moverTiles;
+	for ( std::size_t v = 0; v < work.views.size(); ++v )
+	{
+		const pass::shadows::ShadowPlanView &view = work.views[v];
+		// What the frame's atlas holds in this tile: this view's static depth
+		// with the movers of `drawnSignature` over it.
+		const bool held = atlas.compositeUsage != ResourceUsage::kUndefined &&
+		                  std::any_of( atlas.compositeHeld.begin(), atlas.compositeHeld.end(),
+		                      [&]( const pass::shadows::ShadowPlanView &kept )
+		                      {
+			                      return same( kept, view );
+		                      } ) &&
+		                  std::none_of( dirty.begin(), dirty.end(),
+		                      [&]( const pass::shadows::ShadowPlanView *changed )
+		                      {
+			                      return changed->tile == view.tile;
+		                      } );
+		std::uint64_t drawnSignature = 0;
+		for ( const auto &[tile, signature] : atlas.moverTiles )
+		{
+			if ( tile == view.tile )
+				drawnSignature = signature;
+		}
+		if ( moverSignature[v] )
+			moverTiles.emplace_back( view.tile, moverSignature[v] );
+		if ( held && drawnSignature == moverSignature[v] )
+			continue; // nothing in the tile moved
+		restore.push_back( view.tile );
+		if ( !moverCasters[v].empty() )
+		{
+			pass::shadows::ShadowDepthView drawn{ view.viewProjection, view.tile, moverCasters[v] };
+			drawn.clearTile = false;
+			moverViews.push_back( drawn );
+		}
 	}
 	graph::GraphBuilder builder;
-	builder.AddPass( "stage caster uploads", graph::PassKind::kCopy )
-	    .SideEffect()
-	    .Execute(
-	        [this]( graph::RecordContext &context )
-	        {
-		        m_CasterMeshes->RecordUploads( context.Encoder() );
-	        } );
-	const graph::ResourceRef atlasRef = builder.ImportTexture(
+	uploads( builder );
+	const graph::ResourceRef staticRef = builder.ImportTexture(
 	    "stage shadow atlas", atlas.texture, atlas.desc, atlas.usage, ResourceUsage::kSampled );
-	pass::shadows::ShadowAtlasTarget target{ atlasRef, work.atlasSize, work.guardTexels };
-	target.keep = !whole;
-	if ( !m_ShadowRenderer->AddPasses( builder, target, views ) )
+	const graph::ResourceRef compositeRef = builder.ImportTexture( "stage shadow atlas (movers)",
+	    atlas.composite, atlas.desc, atlas.compositeUsage, ResourceUsage::kSampled );
+	if ( restore.empty() )
+	{
+		atlas.compositeHeld = work.views;
+		atlas.moverTiles = std::move( moverTiles );
+		++m_AtlasNext;
+		*desc = atlas.desc;
+		return atlas.composite;
+	}
+	pass::shadows::ShadowDepthRenderer::AddTileCopy( builder, staticRef, compositeRef, restore );
+	pass::shadows::ShadowAtlasTarget target{ compositeRef, work.atlasSize, work.guardTexels };
+	target.keep = true;
+	if ( ( !moverViews.empty() && !m_ShadowRenderer->AddPasses( builder, target, moverViews ) ) ||
+	     !execute( std::move( builder ) ) )
 		return {};
-	auto compiled = graph::CompileGraph( std::move( builder ) );
-	if ( !compiled )
-		return {};
-	graph::SerialGraphExecutor executor;
-	executor.SetLabelObserver( m_SlotTimers );
-	auto executed = executor.Execute( compiled.Value(), device );
-	if ( !executed )
-		return {};
-	m_ShadowRenderer->Collect( executed.Value().token );
-	m_CasterMeshes->Retire( executed.Value().token );
-	atlas.usage = ResourceUsage::kSampled;
-	atlas.drawn = work.views;
-	atlas.generation = casters->generation;
-	atlas.guardTexels = work.guardTexels;
+	m_ShadowTilesMoving.fetch_add( moverViews.size(), std::memory_order_relaxed );
+	atlas.compositeUsage = ResourceUsage::kSampled;
+	atlas.compositeHeld = work.views;
+	atlas.moverTiles = std::move( moverTiles );
 	++m_AtlasNext;
 	*desc = atlas.desc;
-	return atlas.texture;
+	return atlas.composite;
+}
+
+// The moving casters' mesh: a cube of half-size one (an occluder box's
+// placement scales it), staged once.
+const resources::MeshEntry *CoreWorld::BoxCasterMesh()
+{
+	static constexpr char kName[] = "stage box caster";
+	if ( const resources::MeshEntry *found = m_CasterMeshes->Find( kName ) )
+		return found;
+	static const float kCorners[24] = {
+	    -1, -1, -1, 1, -1, -1, -1, 1, -1, 1, 1, -1, -1, -1, 1, 1, -1, 1, -1, 1, 1, 1, 1, 1 };
+	static const std::uint32_t kTriangles[36] = { 0, 1, 3, 0, 3, 2, 4, 6, 7, 4, 7, 5, 0, 4, 5, 0, 5,
+	    1, 2, 3, 7, 2, 7, 6, 0, 2, 6, 0, 6, 4, 1, 5, 7, 1, 7, 3 };
+	resources::MeshData data;
+	data.vertices = std::as_bytes( std::span( kCorners ) );
+	data.vertexStride = 3 * sizeof( float );
+	data.indices = std::as_bytes( std::span( kTriangles ) );
+	data.indexFormat = device::IndexFormat::kUint32;
+	if ( !m_CasterMeshes->Stage( kName, data ) )
+		return nullptr;
+	return m_CasterMeshes->Find( kName );
 }
 
 void CoreWorld::BindStageDevice( device::IRenderDevice2 &device )
@@ -1345,7 +1517,11 @@ void CoreWorld::ReleaseShadows( device::IRenderDevice2 &device )
 	m_OcclusionDesc = device::TextureDesc();
 	m_Ao.reset();
 	for ( const Atlas &atlas : m_Atlases )
+	{
 		(void)device.Release( atlas.texture, device::CompletionToken() );
+		if ( atlas.composite.IsValid() )
+			(void)device.Release( atlas.composite, device::CompletionToken() );
+	}
 	m_Atlases.clear();
 	m_CasterMeshes.reset();
 	m_ShadowRenderer.reset();

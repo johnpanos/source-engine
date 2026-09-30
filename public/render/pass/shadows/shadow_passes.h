@@ -82,6 +82,10 @@ struct ShadowDepthView
 	math::float4x4 viewProjection;
 	ShadowTile tile;
 	std::span<const ShadowCaster> casters; // read by AddPasses
+	// In a kept atlas: clear the tile before drawing. False draws the
+	// casters over what the tile holds (moving casters over a tile restored
+	// from the static atlas, AddTileCopy).
+	bool clearTile = true;
 };
 
 struct ShadowAtlasTarget
@@ -116,6 +120,14 @@ public:
 	    std::span<const ShadowDepthView> views );
 	void Collect( device::CompletionToken token );
 	std::uint32_t RecordFailures() const;
+
+	// Copies `tiles` (guard bands included) from atlas `from` to atlas `to`,
+	// both of `atlasSize` (written as kCopySource and kCopyDestination),
+	// through a buffer: Doom Eternal's cached shadow maps, where a tile's
+	// static depth is copied into the frame's atlas and the moving casters
+	// are drawn over it.
+	static void AddTileCopy( graph::GraphBuilder &builder, graph::ResourceRef from,
+	    graph::ResourceRef to, std::span<const ShadowTile> tiles );
 
 private:
 	explicit ShadowDepthRenderer( device::IRenderDevice2 &device ) : m_Device( device ) {}
