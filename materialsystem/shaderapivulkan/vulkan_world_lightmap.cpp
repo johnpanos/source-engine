@@ -23,6 +23,33 @@ bool UploadWorldLightmapLayers( CVulkanContext &context,
 	};
 	if ( !context.WorldMeshResident() )
 		return fail( "WMSH LMAP requires a resident world mesh" );
+	if ( request.regions )
+	{
+		// A partial update of the total layer the map already has.
+		const int total = context.WorldLightmapTotalHandle();
+		uint32_t width = 0, height = 0;
+		context.ManagedTextureSize( total, &width, &height );
+		if ( total < 0 || width != request.width || height != request.height ||
+		     ( request.regionCount && !request.regionTotal ) )
+			return fail( "WMSH LMAP partial update without its current lightmap" );
+		std::string detail;
+		size_t offset = 0;
+		for ( uint32_t i = 0; i < request.regionCount; ++i )
+		{
+			const world_mesh_gpu::ProbeAtlasRegion &region = request.regions[i];
+			const size_t bytes = size_t( region.width ) * region.height * 8;
+			if ( !context.UploadManagedTextureRegion( total, region.x, region.y, region.width,
+			         region.height, static_cast<const uint8_t *>( request.regionTotal ) + offset,
+			         bytes, &detail ) )
+			{
+				if ( error )
+					*error = "WMSH LMAP partial update failed: " + detail;
+				return false;
+			}
+			offset += bytes;
+		}
+		return true;
+	}
 	if ( request.width == 0 || request.height == 0 || request.width > 16384 ||
 	     request.height > 16384 || request.layerCount == 0 ||
 	     request.layerCount > world_mesh_gpu::kWorldLightmapMaxUploadLayers ||

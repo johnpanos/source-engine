@@ -286,6 +286,59 @@ void CoreWorld::SetStage()
 bool CoreWorld::StageCapture::UploadLightmap(
     const world_mesh_gpu::WorldLightmapUploadRequest &request )
 {
+	if ( request.regions )
+	{
+		// A partial update of the total layer: rectangles of its flat page
+		// (a directional layer's left half), patched into this capture's
+		// copy and sent to the pass as they are. One in the gradient half
+		// sends the whole page.
+		if ( lightmap.flat.empty() || request.height != lightmap.height ||
+		     request.width != ( lightmap.Directional() ? 2 : 1 ) * lightmap.width )
+			return false;
+		std::vector<pass::world::WorldPass::StageRegion> regions;
+		bool flatOnly = true;
+		std::size_t offset = 0;
+		for ( std::uint32_t i = 0; i < request.regionCount; ++i )
+		{
+			const world_mesh_gpu::ProbeAtlasRegion &region = request.regions[i];
+			if ( region.x + region.width > lightmap.width ||
+			     region.y + region.height > lightmap.height )
+				flatOnly = false;
+			regions.push_back( { region.x, region.y, region.width, region.height } );
+			offset += std::size_t( region.width ) * region.height * 8;
+		}
+		const std::byte *texels = static_cast<const std::byte *>( request.regionTotal );
+		if ( offset && !texels )
+			return false;
+		// The capture's copy, as the pass's page will be.
+		std::size_t at = 0;
+		for ( const auto &region : regions )
+		{
+			const std::size_t row = std::size_t( region.width ) * 8;
+			for ( std::uint32_t y = 0; y < region.height; ++y, at += row )
+			{
+				const std::uint32_t py = region.y + y;
+				for ( std::uint32_t x = 0; x < region.width; ++x )
+				{
+					const std::uint32_t px = region.x + x;
+					std::vector<std::byte> &page =
+					    px < lightmap.width ? lightmap.flat : lightmap.gradient;
+					const std::uint32_t pageX = px < lightmap.width ? px : px - lightmap.width;
+					std::memcpy( page.data() + ( std::size_t( py ) * lightmap.width + pageX ) * 8,
+					    texels + at + std::size_t( x ) * 8, 8 );
+				}
+			}
+		}
+		if ( m_Owner.m_StageSet )
+		{
+			if ( flatOnly )
+				m_Owner.m_Pass.SetStageLightmapRegions(
+				    std::move( regions ), std::vector<std::byte>( texels, texels + offset ) );
+			else
+				m_Owner.m_Pass.SetStageLightmap( lightmap );
+		}
+		return true;
+	}
 	// The total layer's pages (the baked diffuse light, as render_lab draws
 	// it without runtime direct light) and the indirect layer's flat page.
 	const std::size_t layerBytes = std::size_t( request.width ) * request.height * 8;

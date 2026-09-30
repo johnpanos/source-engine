@@ -45,6 +45,17 @@ const void *DataOrNull( const std::shared_ptr<Bytes> &bytes )
 	return bytes->empty() ? nullptr : bytes->data();
 }
 
+// A partial update's rectangles: never null, even when there are none (a
+// partial update that changes only the probe grid table), so the provider
+// still takes it as partial.
+const world_mesh_gpu::ProbeAtlasRegion *RegionsOrEmpty( const std::shared_ptr<Bytes> &regions )
+{
+	static const world_mesh_gpu::ProbeAtlasRegion kNone;
+	return regions->empty()
+	           ? &kNone
+	           : reinterpret_cast<const world_mesh_gpu::ProbeAtlasRegion *>( regions->data() );
+}
+
 // The sizes of the borrowed bytes, as world_mesh_upload.h documents them.
 constexpr std::size_t kRgba16fTexelBytes = 8;
 
@@ -115,6 +126,24 @@ public:
 	{
 		if ( !Queued() )
 			return m_Provider->UploadLightmap( request );
+		if ( request.regions )
+		{
+			// A partial update copies its rectangles' texels alone.
+			std::shared_ptr<Bytes> total = CopyBytes( request.regionTotal,
+			    world_mesh_gpu::ProbeRegionBytes( request.regions, request.regionCount ) );
+			std::shared_ptr<Bytes> regions = CopyBytes(
+			    request.regions, std::size_t( request.regionCount ) * sizeof( *request.regions ) );
+			world_mesh_gpu::WorldLightmapUploadRequest copy = request;
+			world_mesh_gpu::IWorldMeshUpload *provider = m_Provider;
+			Queue( m_Host,
+			    [provider, copy, total, regions]() mutable
+			    {
+				    copy.regions = RegionsOrEmpty( regions );
+				    copy.regionTotal = DataOrNull( total );
+				    provider->UploadLightmap( copy );
+			    } );
+			return true;
+		}
 		const std::size_t layerBytes =
 		    std::size_t( request.width ) * request.height * kRgba16fTexelBytes;
 		std::vector<std::shared_ptr<Bytes>> layers;
@@ -159,8 +188,7 @@ public:
 		    {
 			    if ( copy.regions )
 			    {
-				    copy.regions = static_cast<const world_mesh_gpu::ProbeAtlasRegion *>(
-				        DataOrNull( regions ) );
+				    copy.regions = RegionsOrEmpty( regions );
 				    copy.regionAtlas = DataOrNull( atlas );
 				    copy.regionDelta = DataOrNull( delta );
 			    }

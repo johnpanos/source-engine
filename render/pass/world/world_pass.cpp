@@ -222,8 +222,13 @@ struct WorldPass::State
 	WorldStats stats;
 	// A world stage's lighting as it changes (SetStageLightmap,
 	// SetStageChange), with revisions that rise with each.
-	std::shared_ptr<const LightmapPages> stageLightmap;
+	// The total page: `stageLightmap` as of `stageLightmapBaseRevision`
+	// (null: the stage's own pages), then the parts set since
+	// (SetStageLightmapRegions), in revision order; a part every resource
+	// set has applied folds into it.
+	std::shared_ptr<LightmapPages> stageLightmap;
 	std::uint64_t stageLightmapRevision = 0;
+	std::uint64_t stageLightmapBaseRevision = 0;
 	std::shared_ptr<const StageProbeVolume> stageTable;
 	std::uint64_t stageChangeRevision = 0;
 	// The probe change: `stageChangeBase` as of `stageBaseRevision` (empty:
@@ -238,6 +243,7 @@ struct WorldPass::State
 	std::vector<std::byte> stageChangeBase;
 	std::uint64_t stageBaseRevision = 0;
 	std::deque<StagePatch> stagePatches;
+	std::deque<StagePatch> stageLightmapPatches;
 
 	// A queued view dropped because its slot never recorded (lock held): a
 	// failure when a slot of its host frame recorded (or its frame is
@@ -431,6 +437,8 @@ void WorldPass::SetWorld( WorldData data )
 	++s.generation;
 	// A new world starts from its stage's own lighting.
 	s.stageLightmap.reset();
+	s.stageLightmapPatches.clear();
+	s.stageLightmapBaseRevision = s.stageLightmapRevision;
 	s.stageChangeBase.clear();
 	s.stagePatches.clear();
 	s.stageTable.reset();
@@ -461,10 +469,20 @@ void WorldPass::ClearWorld()
 void WorldPass::SetStageLightmap( LightmapPages pages )
 {
 	State &s = *m_State;
-	auto shared = std::make_shared<const LightmapPages>( std::move( pages ) );
+	auto shared = std::make_shared<LightmapPages>( std::move( pages ) );
 	std::lock_guard<std::mutex> guard( s.lock );
 	s.stageLightmap = std::move( shared );
-	++s.stageLightmapRevision;
+	s.stageLightmapPatches.clear();
+	s.stageLightmapBaseRevision = ++s.stageLightmapRevision;
+}
+
+void WorldPass::SetStageLightmapRegions(
+    std::vector<StageRegion> regions, std::vector<std::byte> texels )
+{
+	State &s = *m_State;
+	std::lock_guard<std::mutex> guard( s.lock );
+	s.stageLightmapPatches.push_back(
+	    { ++s.stageLightmapRevision, std::move( regions ), std::move( texels ) } );
 }
 
 void WorldPass::SetStageChange( std::vector<std::byte> change, StageProbeVolume table )
@@ -565,8 +583,6 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 	std::shared_ptr<const WorldData> world;
 	std::shared_ptr<const std::vector<Claimed>> claims;
 	std::uint64_t generation = 0;
-	std::shared_ptr<const LightmapPages> stageLightmap;
-	std::uint64_t stageLightmapRevision = 0;
 	WorldView view;
 	bool found = false;
 	bool earlierWorld = false; // the slot's view was queued against an earlier world
@@ -623,8 +639,6 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		world = s.world;
 		claims = s.claims;
 		generation = s.generation;
-		stageLightmap = s.stageLightmap;
-		stageLightmapRevision = s.stageLightmapRevision;
 	}
 	if ( earlierWorld )
 	{
@@ -928,22 +942,69 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		}
 		r.stageMade = true;
 	}
-	if ( world->stage && stageLightmap && r.stageLightmapRevision != stageLightmapRevision )
+	if ( world->stage )
 	{
-		r.stageLightmapRevision = stageLightmapRevision;
-		const TextureDesc &desc = r.stageDescs[kStageLightmap];
-		const bool fits = stageLightmap->width == desc.width &&
-		                  stageLightmap->height == desc.height &&
-		                  stageLightmap->Directional() == world->stage->lightmap.Directional();
-		if ( !fits ||
-		     !stageUpload( r.stageTextures[kStageLightmap], desc, stageLightmap->flat,
-		         ResourceUsage::kSampled ) ||
-		     ( stageLightmap->Directional() &&
-		         !stageUpload( r.stageTextures[kStageGradient], desc, stageLightmap->gradient,
-		             ResourceUsage::kSampled ) ) )
+		// Under the lock: the page's base and parts are the state's (the
+		// uploads copy what they read at once).
+		std::unique_lock<std::mutex> guard( s.lock );
+		if ( r.stageLightmapRevision != s.stageLightmapRevision )
 		{
-			s.Fail( "the world stage's lightmap update does not fit its pages" );
-			return;
+			const LightmapPages &own = world->stage->lightmap;
+			const TextureDesc &desc = r.stageDescs[kStageLightmap];
+			// A set behind the base takes it whole, then the parts after it.
+			const bool whole = r.stageLightmapRevision < s.stageLightmapBaseRevision;
+			const LightmapPages &base = s.stageLightmap ? *s.stageLightmap : own;
+			bool fits = true;
+			if ( whole )
+				fits = base.width == desc.width && base.height == desc.height &&
+				       base.Directional() == own.Directional() &&
+				       stageUpload( r.stageTextures[kStageLightmap], desc, base.flat,
+				           ResourceUsage::kSampled ) &&
+				       ( !base.Directional() || stageUpload( r.stageTextures[kStageGradient], desc,
+				                                    base.gradient, ResourceUsage::kSampled ) );
+			for ( const State::StagePatch &patch : s.stageLightmapPatches )
+			{
+				if ( !fits || ( !whole && patch.revision <= r.stageLightmapRevision ) )
+					continue;
+				fits = stageRegions(
+				    r.stageTextures[kStageLightmap], desc, patch.regions, patch.texels );
+			}
+			if ( !fits )
+			{
+				guard.unlock();
+				s.Fail( "the world stage's lightmap update does not fit its pages" );
+				return;
+			}
+			r.stageLightmapRevision = s.stageLightmapRevision;
+			// The parts every resource set holds fold into the base.
+			std::uint64_t applied = r.stageLightmapRevision;
+			for ( const Resources &set : s.variants )
+				if ( set.stageMade )
+					applied = std::min( applied, set.stageLightmapRevision );
+			while ( !s.stageLightmapPatches.empty() &&
+			        s.stageLightmapPatches.front().revision <= applied )
+			{
+				const State::StagePatch &patch = s.stageLightmapPatches.front();
+				if ( !s.stageLightmap )
+					s.stageLightmap = std::make_shared<LightmapPages>( own );
+				LightmapPages &pages = *s.stageLightmap;
+				std::size_t offset = 0;
+				for ( const StageRegion &region : patch.regions )
+				{
+					const std::size_t row = std::size_t( region.width ) * 8;
+					for ( std::uint32_t y = 0; y < region.height; ++y )
+					{
+						const std::size_t at =
+						    ( std::size_t( region.y + y ) * pages.width + region.x ) * 8;
+						if ( at + row <= pages.flat.size() && offset + row <= patch.texels.size() )
+							std::memcpy(
+							    pages.flat.data() + at, patch.texels.data() + offset, row );
+						offset += row;
+					}
+				}
+				s.stageLightmapBaseRevision = patch.revision;
+				s.stageLightmapPatches.pop_front();
+			}
 		}
 	}
 	if ( world->stage && world->stage->probes )

@@ -34,6 +34,7 @@
 #include "render/indirect_light.h"
 
 #include <algorithm>
+#include <bit>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -138,8 +139,20 @@ public:
 		m_flatWidth = m_width == 2 * m_height ? m_height : m_width;
 		Rasterize( positions, uvs, indices );
 		Orient();
+		Cluster( lights );
 		return !m_texels.empty();
 	}
+
+	// A rectangle of the total layer, in texels.
+	struct Rect
+	{
+		uint32_t x = 0;
+		uint32_t y = 0;
+		uint32_t width = 0;
+		uint32_t height = 0;
+	};
+	// The side of the square tiles Recompose reports changed texels in.
+	static constexpr uint32_t kDirtyTile = 64;
 
 	[[nodiscard]] bool Ready() const { return !m_texels.empty(); }
 	[[nodiscard]] const mapcontainer::WorldLightmapLayout &Layout() const { return m_layout; }
@@ -169,7 +182,162 @@ public:
 		return changed;
 	}
 
+	// Compose for a change of occluders: `total` holds the layer Compose (or
+	// Recompose) made for `previous` (an empty `total` stands for the bake:
+	// it is filled first); it becomes the layer for `proxies`, equal to
+	// Compose( proxies ) byte for byte. Only texels a path through a proxy
+	// that appeared, left or moved can reach are recomposed: the texels are
+	// clustered in space at Build, and a cluster (centre c, radius r) is
+	// visited when some light's segment from c (to the light's centre, grown
+	// by the light's radius R) passes within max( r, R ) of such a proxy:
+	// every path from its texels to that light lies in that capsule. `dirty`
+	// receives the kDirtyTile tiles holding a recomposed texel, rows merged,
+	// in rows top first. Returns the recomposed texels.
+	size_t Recompose( std::span<const Proxy> previous, std::span<const Proxy> proxies,
+	    IBatchExecutor *executor, std::vector<unsigned char> *total,
+	    std::vector<Rect> *dirty ) const
+	{
+		dirty->clear();
+		std::vector<Proxy> changed;
+		if ( total->size() != m_layerBytes )
+		{
+			total->assign( m_total, m_total + m_layerBytes );
+			changed.assign( proxies.begin(), proxies.end() );
+		}
+		else
+		{
+			const auto contains = []( std::span<const Proxy> set, const Proxy &proxy )
+			{
+				return std::find( set.begin(), set.end(), proxy ) != set.end();
+			};
+			for ( const Proxy &proxy : proxies )
+				if ( !contains( previous, proxy ) )
+					changed.push_back( proxy );
+			for ( const Proxy &proxy : previous )
+				if ( !contains( proxies, proxy ) )
+					changed.push_back( proxy );
+		}
+		if ( changed.empty() || m_clusters.empty() )
+			return 0;
+		// The clusters a changed proxy can reach: superclusters first, then
+		// the clusters of each one reached, on the executor.
+		std::vector<std::vector<uint32_t>> reached( m_supers.size() );
+		struct Find
+		{
+			const DirectOcclusion *self;
+			const std::vector<Proxy> *changed;
+			std::vector<std::vector<uint32_t>> *reached;
+		} find{ this, &changed, &reached };
+		const auto findClusters = []( void *raw, uint32_t s )
+		{
+			const Find &f = *static_cast<const Find *>( raw );
+			const DirectOcclusion &self = *f.self;
+			if ( !self.Reaches( self.m_supers[s], *f.changed ) )
+				return;
+			const uint32_t first = s * kSuperClusters;
+			const uint32_t last =
+			    std::min( uint32_t( self.m_clusters.size() ), first + kSuperClusters );
+			for ( uint32_t c = first; c < last; ++c )
+				if ( self.Reaches( self.m_clusters[c], *f.changed ) )
+					( *f.reached )[s].push_back( c );
+		};
+		if ( executor && m_supers.size() > 1 )
+			executor->ParallelFor( "indirect.direct-occlusion.find", uint32_t( m_supers.size() ),
+			    findClusters, &find );
+		else
+			for ( uint32_t s = 0; s < m_supers.size(); ++s )
+				findClusters( &find, s );
+		std::vector<uint32_t> candidates;
+		for ( const std::vector<uint32_t> &clusters : reached )
+			candidates.insert( candidates.end(), clusters.begin(), clusters.end() );
+		if ( candidates.empty() )
+			return 0;
+		// The tiles the recomposed texels are in.
+		const uint32_t tilesX = ( m_width + kDirtyTile - 1 ) / kDirtyTile;
+		const uint32_t tilesY = ( m_height + kDirtyTile - 1 ) / kDirtyTile;
+		std::vector<uint8_t> tiles( size_t( tilesX ) * tilesY, 0 );
+		size_t texels = 0;
+		for ( uint32_t c : candidates )
+		{
+			const size_t end = std::min( m_texels.size(), size_t( c + 1 ) * kClusterTexels );
+			for ( size_t i = size_t( c ) * kClusterTexels; i < end; ++i )
+			{
+				const uint32_t index = m_texels[i].index;
+				tiles[size_t( index / m_width / kDirtyTile ) * tilesX +
+				      ( index % m_width ) / kDirtyTile] = 1;
+				++texels;
+			}
+		}
+		// Each texel from the bake again, less what the proxies now block.
+		struct Redo
+		{
+			const DirectOcclusion *self;
+			std::span<const Proxy> proxies;
+			const std::vector<uint32_t> *candidates;
+			unsigned char *total;
+		} redo{ this, proxies, &candidates, total->data() };
+		const auto recompose = []( void *raw, uint32_t k )
+		{
+			const Redo &r = *static_cast<const Redo *>( raw );
+			const uint32_t c = ( *r.candidates )[k];
+			const size_t end =
+			    std::min( r.self->m_texels.size(), size_t( c + 1 ) * kClusterTexels );
+			std::vector<const Proxy *> near;
+			std::vector<uint64_t> masks;
+			const bool masked = r.self->GroupMasks( r.self->m_clusters[c], r.proxies, &masks );
+			for ( size_t i = size_t( c ) * kClusterTexels; i < end; ++i )
+			{
+				const size_t at = size_t( r.self->m_texels[i].index ) * 8;
+				std::memcpy( r.total + at, r.self->m_total + at, 8 );
+				if ( masked )
+					r.self->ComposeTexelMasked( r.self->m_texels[i], r.proxies, masks, r.total );
+				else
+					r.self->ComposeTexel( r.self->m_texels[i], r.proxies, r.total, near );
+			}
+		};
+		if ( executor && candidates.size() > 1 )
+			executor->ParallelFor( "indirect.direct-occlusion.recompose",
+			    uint32_t( candidates.size() ), recompose, &redo );
+		else
+			for ( uint32_t k = 0; k < candidates.size(); ++k )
+				recompose( &redo, k );
+		for ( uint32_t ty = 0; ty < tilesY; ++ty )
+			for ( uint32_t tx = 0; tx < tilesX; ++tx )
+			{
+				if ( !tiles[size_t( ty ) * tilesX + tx] )
+					continue;
+				const uint32_t x = tx * kDirtyTile;
+				const uint32_t y = ty * kDirtyTile;
+				const uint32_t width = std::min( kDirtyTile, m_width - x );
+				const uint32_t height = std::min( kDirtyTile, m_height - y );
+				if ( !dirty->empty() && dirty->back().y == y &&
+				     dirty->back().x + dirty->back().width == x )
+					dirty->back().width += width;
+				else
+					dirty->push_back( { x, y, width, height } );
+			}
+		return texels;
+	}
+
 private:
+	static constexpr uint32_t kClusterTexels = 64; // texels per cluster, in Morton order
+	static constexpr uint32_t kSuperClusters = 64; // clusters per supercluster
+
+	// A cluster's bounds: the box of its texels' path origins, as a centre
+	// and the radius of the sphere around the box.
+	struct Bounds
+	{
+		float center[3];
+		float radius;
+	};
+	// A light for the cluster test: its centre (a distant light's direction)
+	// and the radius of the sphere its samples lie in.
+	struct LightBound
+	{
+		bool distant;
+		float point[3];
+		float radius;
+	};
 	static constexpr uint32_t kBlock = 4096;
 	static constexpr float kFar = 1.0e6f; // a distant light's segment length
 	static constexpr double kPi = 3.14159265358979323846;
@@ -479,84 +647,329 @@ private:
 		return true;
 	}
 
+	// One texel of Compose: `total` holds its baked light; the share of its
+	// direct light the proxies block is removed. True when some was.
+	bool ComposeTexel( const Texel &texel, std::span<const Proxy> proxies, unsigned char *total,
+	    std::vector<const Proxy *> &near ) const
+	{
+		const unsigned char *direct = m_direct;
+		// A little off the surface, so the texel's own face never blocks.
+		float origin[3];
+		for ( int k = 0; k < 3; ++k )
+			origin[k] = texel.position[k] + texel.normal[k] * 0.5f;
+		// Prefilter: only a proxy overlapping the bounds of every path from
+		// this texel (the texel, the rectangles' samples, the distant
+		// lights' far ends) can block one; most texels have none.
+		float lo[3], hi[3];
+		for ( int k = 0; k < 3; ++k )
+		{
+			lo[k] = std::min( origin[k], m_lightLo[k] );
+			hi[k] = std::max( origin[k], m_lightHi[k] );
+			if ( m_hasDistant )
+			{
+				lo[k] = std::min( lo[k], origin[k] + m_distantLo[k] );
+				hi[k] = std::max( hi[k], origin[k] + m_distantHi[k] );
+			}
+		}
+		near.clear();
+		for ( const Proxy &proxy : proxies )
+			if ( proxy.lo[0] <= hi[0] && proxy.hi[0] >= lo[0] && proxy.lo[1] <= hi[1] &&
+			     proxy.hi[1] >= lo[1] && proxy.lo[2] <= hi[2] && proxy.hi[2] >= lo[2] )
+				near.push_back( &proxy );
+		if ( near.empty() )
+			return false;
+		double all = 0.0, blocked = 0.0;
+		for ( const Sample &sample : m_samples )
+		{
+			float d[3];
+			const float weight = Weight( sample, origin, texel.normal, d );
+			if ( !( weight > 0.0f ) )
+				continue;
+			all += weight;
+			for ( const Proxy *proxy : near )
+				if ( Blocks( origin, d, *proxy ) )
+				{
+					blocked += weight;
+					break;
+				}
+		}
+		if ( !( blocked > 0.0 ) || !( all > 0.0 ) )
+			return false;
+		// Static occlusion is in the bake, not in these samples: the bake's
+		// direct light over the samples' unoccluded light (both E / pi) is
+		// the part of them the texel actually sees. A moving occluder blocks
+		// a share of that part (a door shuts all of the light that came
+		// through its doorway), assuming what it blocks was visible.
+		const unsigned char *light = direct + size_t( texel.index ) * 8;
+		const float baked[3] = { Half( light ), Half( light + 2 ), Half( light + 4 ) };
+		const double visible = std::clamp( double( Luminance( baked ) ) * kPi, 1e-9, all );
+		const float share = float( std::min( 1.0, blocked / visible ) );
+		unsigned char *out = total + size_t( texel.index ) * 8;
+		for ( int c = 0; c < 3; ++c )
+		{
+			const float value =
+			    std::max( 0.0f, Half( out + 2 * c ) - share * Half( light + 2 * c ) );
+			const uint16_t half = FloatToHalf( value );
+			std::memcpy( out + 2 * c, &half, 2 );
+		}
+		return true;
+	}
+
+	// Whether a path from the cluster to some light can pass through one of
+	// `proxies`: the segment from its centre to the light's, against each
+	// box grown by the larger of the two radii (Recompose).
+	bool Reaches( const Bounds &bounds, std::span<const Proxy> proxies ) const
+	{
+		for ( const LightBound &light : m_lightBounds )
+			for ( const Proxy &proxy : proxies )
+				if ( Reaches( bounds, light, proxy ) )
+					return true;
+		return false;
+	}
+
+	bool Reaches( const Bounds &bounds, const LightBound &light, const Proxy &proxy ) const
+	{
+		float d[3];
+		for ( int k = 0; k < 3; ++k )
+			d[k] = light.distant ? light.point[k] * kFar : light.point[k] - bounds.center[k];
+		const float grow = std::max( bounds.radius, light.radius ) + 1.0f;
+		Proxy grown = proxy;
+		for ( int k = 0; k < 3; ++k )
+		{
+			grown.lo[k] -= grow;
+			grown.hi[k] += grow;
+		}
+		return Blocks( bounds.center, d, grown );
+	}
+
+	// Per light group, the proxies (bits, the first 64) a path from the
+	// cluster to one of its samples can pass through. False when there are
+	// more proxies than bits (the caller then composes every sample).
+	bool GroupMasks(
+	    const Bounds &bounds, std::span<const Proxy> proxies, std::vector<uint64_t> *masks ) const
+	{
+		if ( proxies.size() > 64 )
+			return false;
+		masks->assign( m_lightBounds.size(), 0 );
+		for ( size_t g = 0; g < m_lightBounds.size(); ++g )
+			for ( size_t p = 0; p < proxies.size(); ++p )
+				if ( Reaches( bounds, m_lightBounds[g], proxies[p] ) )
+					( *masks )[g] |= uint64_t( 1 ) << p;
+		return true;
+	}
+
+	// ComposeTexel with the cluster's GroupMasks: a sample whose group no
+	// proxy reaches blocks nothing, so only the others are traced; the
+	// unoccluded light (the share's bound) is summed only for a texel some
+	// proxy blocks. The sums run in sample order: byte for byte the same.
+	bool ComposeTexelMasked( const Texel &texel, std::span<const Proxy> proxies,
+	    const std::vector<uint64_t> &masks, unsigned char *total ) const
+	{
+		float origin[3];
+		for ( int k = 0; k < 3; ++k )
+			origin[k] = texel.position[k] + texel.normal[k] * 0.5f;
+		double blocked = 0.0;
+		for ( size_t i = 0; i < m_samples.size(); ++i )
+		{
+			uint64_t mask = masks[m_sampleGroup[i]];
+			if ( !mask )
+				continue;
+			float d[3];
+			const float weight = Weight( m_samples[i], origin, texel.normal, d );
+			if ( !( weight > 0.0f ) )
+				continue;
+			for ( ; mask; mask &= mask - 1 )
+				if ( Blocks( origin, d, proxies[size_t( std::countr_zero( mask ) )] ) )
+				{
+					blocked += weight;
+					break;
+				}
+		}
+		if ( !( blocked > 0.0 ) )
+			return false;
+		double all = 0.0;
+		for ( const Sample &sample : m_samples )
+		{
+			float d[3];
+			const float weight = Weight( sample, origin, texel.normal, d );
+			if ( weight > 0.0f )
+				all += weight;
+		}
+		if ( !( all > 0.0 ) )
+			return false;
+		const unsigned char *light = m_direct + size_t( texel.index ) * 8;
+		const float baked[3] = { Half( light ), Half( light + 2 ), Half( light + 4 ) };
+		const double visible = std::clamp( double( Luminance( baked ) ) * kPi, 1e-9, all );
+		const float share = float( std::min( 1.0, blocked / visible ) );
+		unsigned char *out = total + size_t( texel.index ) * 8;
+		for ( int c = 0; c < 3; ++c )
+		{
+			const float value =
+			    std::max( 0.0f, Half( out + 2 * c ) - share * Half( light + 2 * c ) );
+			const uint16_t half = FloatToHalf( value );
+			std::memcpy( out + 2 * c, &half, 2 );
+		}
+		return true;
+	}
+
+	// Recompose's clusters: the texels in Morton order of their path
+	// origins, kClusterTexels a cluster, kSuperClusters clusters a
+	// supercluster; and each light's bound.
+	void Cluster( std::span<const mapcontainer::SdfLight> lights )
+	{
+		float lo[3] = { 1e30f, 1e30f, 1e30f }, hi[3] = { -1e30f, -1e30f, -1e30f };
+		const auto origin = []( const Texel &texel, int k )
+		{
+			return texel.position[k] + texel.normal[k] * 0.5f;
+		};
+		for ( const Texel &texel : m_texels )
+			for ( int k = 0; k < 3; ++k )
+			{
+				lo[k] = std::min( lo[k], origin( texel, k ) );
+				hi[k] = std::max( hi[k], origin( texel, k ) );
+			}
+		const auto spread = []( uint64_t v )
+		{
+			v &= 0x1fffff;
+			v = ( v | v << 32 ) & 0x1f00000000ffffull;
+			v = ( v | v << 16 ) & 0x1f0000ff0000ffull;
+			v = ( v | v << 8 ) & 0x100f00f00f00f00full;
+			v = ( v | v << 4 ) & 0x10c30c30c30c30c3ull;
+			v = ( v | v << 2 ) & 0x1249249249249249ull;
+			return v;
+		};
+		std::vector<std::pair<uint64_t, uint32_t>> keys( m_texels.size() );
+		for ( size_t i = 0; i < m_texels.size(); ++i )
+		{
+			uint64_t code = 0;
+			for ( int k = 0; k < 3; ++k )
+			{
+				const float extent = std::max( hi[k] - lo[k], 1e-3f );
+				const uint64_t q = uint64_t(
+				    std::clamp( ( origin( m_texels[i], k ) - lo[k] ) / extent, 0.0f, 1.0f ) *
+				    2097151.0f );
+				code |= spread( q ) << k;
+			}
+			keys[i] = { code, uint32_t( i ) };
+		}
+		std::sort( keys.begin(), keys.end() );
+		std::vector<Texel> sorted( m_texels.size() );
+		for ( size_t i = 0; i < keys.size(); ++i )
+			sorted[i] = m_texels[keys[i].second];
+		m_texels.swap( sorted );
+		const auto bound = [&]( size_t first, size_t last )
+		{
+			float blo[3] = { 1e30f, 1e30f, 1e30f }, bhi[3] = { -1e30f, -1e30f, -1e30f };
+			for ( size_t i = first; i < last; ++i )
+				for ( int k = 0; k < 3; ++k )
+				{
+					blo[k] = std::min( blo[k], origin( m_texels[i], k ) );
+					bhi[k] = std::max( bhi[k], origin( m_texels[i], k ) );
+				}
+			Bounds b = {};
+			float r2 = 0.0f;
+			for ( int k = 0; k < 3; ++k )
+			{
+				b.center[k] = 0.5f * ( blo[k] + bhi[k] );
+				r2 += 0.25f * ( bhi[k] - blo[k] ) * ( bhi[k] - blo[k] );
+			}
+			b.radius = std::sqrt( r2 );
+			return b;
+		};
+		m_clusters.clear();
+		m_supers.clear();
+		for ( size_t first = 0; first < m_texels.size(); first += kClusterTexels )
+			m_clusters.push_back(
+			    bound( first, std::min( m_texels.size(), first + kClusterTexels ) ) );
+		const size_t superTexels = size_t( kClusterTexels ) * kSuperClusters;
+		for ( size_t first = 0; first < m_texels.size(); first += superTexels )
+			m_supers.push_back( bound( first, std::min( m_texels.size(), first + superTexels ) ) );
+		// The light groups: each light's samples (AddLight's), a
+		// rectangle's in quadrants of 2 x 2, bounded by a sphere.
+		m_lightBounds.clear();
+		m_sampleGroup.assign( m_samples.size(), 0 );
+		size_t sample = 0;
+		for ( const mapcontainer::SdfLight &light : lights )
+		{
+			const size_t count = SampleCount( light );
+			if ( !count || sample + count > m_samples.size() )
+			{
+				sample += count;
+				continue;
+			}
+			const bool rect = count == size_t( kRectSamples ) * kRectSamples;
+			const size_t groups = rect ? 4 : 1;
+			for ( size_t g = 0; g < groups; ++g )
+			{
+				std::vector<size_t> members;
+				for ( size_t i = 0; i < count; ++i )
+				{
+					const size_t row = i / kRectSamples, column = i % kRectSamples;
+					const size_t quadrant =
+					    ( row * 2 / kRectSamples ) * 2 + column * 2 / kRectSamples;
+					if ( !rect || quadrant == g )
+						members.push_back( sample + i );
+				}
+				LightBound b = {};
+				b.distant = m_samples[sample].distant;
+				for ( size_t i : members )
+					for ( int k = 0; k < 3; ++k )
+						b.point[k] += m_samples[i].point[k] / float( members.size() );
+				for ( size_t i : members )
+				{
+					float d2 = 0.0f;
+					for ( int k = 0; k < 3; ++k )
+						d2 += ( m_samples[i].point[k] - b.point[k] ) *
+						      ( m_samples[i].point[k] - b.point[k] );
+					b.radius = std::max( b.radius, std::sqrt( d2 ) );
+					m_sampleGroup[i] = uint32_t( m_lightBounds.size() );
+				}
+				if ( b.distant )
+					b.radius *= kFar; // directions: a spread of far ends
+				m_lightBounds.push_back( b );
+			}
+			sample += count;
+		}
+	}
+
+	// How many samples AddLight makes for `light`.
+	static size_t SampleCount( const mapcontainer::SdfLight &light )
+	{
+		if ( light.kind == uint32_t( mapcontainer::SdfLightKind::Rect ) )
+		{
+			const float n[3] = { light.b[1] * light.c[2] - light.b[2] * light.c[1],
+			    light.b[2] * light.c[0] - light.b[0] * light.c[2],
+			    light.b[0] * light.c[1] - light.b[1] * light.c[0] };
+			const float area = 4.0f * std::sqrt( n[0] * n[0] + n[1] * n[1] + n[2] * n[2] );
+			return area > 0.0f ? size_t( kRectSamples ) * kRectSamples : 0;
+		}
+		if ( light.kind == uint32_t( mapcontainer::SdfLightKind::Distant ) ||
+		     light.kind == uint32_t( mapcontainer::SdfLightKind::Sphere ) ||
+		     light.kind == uint32_t( mapcontainer::SdfLightKind::Spot ) )
+			return 1;
+		return 0;
+	}
+
 	static void Block( void *opaque, uint32_t block )
 	{
 		Context &context = *static_cast<Context *>( opaque );
 		const DirectOcclusion &self = *context.self;
-		const unsigned char *direct = self.m_direct;
 		const size_t begin = size_t( block ) * kBlock;
 		const size_t end = std::min( begin + kBlock, self.m_texels.size() );
 		uint32_t changed = 0;
 		std::vector<const Proxy *> near;
 		for ( size_t i = begin; i < end; ++i )
-		{
-			const Texel &texel = self.m_texels[i];
-			// A little off the surface, so the texel's own face never blocks.
-			float origin[3];
-			for ( int k = 0; k < 3; ++k )
-				origin[k] = texel.position[k] + texel.normal[k] * 0.5f;
-			// Prefilter: only a proxy overlapping the bounds of every path from
-			// this texel (the texel, the rectangles' samples, the distant
-			// lights' far ends) can block one; most texels have none.
-			float lo[3], hi[3];
-			for ( int k = 0; k < 3; ++k )
-			{
-				lo[k] = std::min( origin[k], self.m_lightLo[k] );
-				hi[k] = std::max( origin[k], self.m_lightHi[k] );
-				if ( self.m_hasDistant )
-				{
-					lo[k] = std::min( lo[k], origin[k] + self.m_distantLo[k] );
-					hi[k] = std::max( hi[k], origin[k] + self.m_distantHi[k] );
-				}
-			}
-			near.clear();
-			for ( const Proxy &proxy : context.proxies )
-				if ( proxy.lo[0] <= hi[0] && proxy.hi[0] >= lo[0] && proxy.lo[1] <= hi[1] &&
-				     proxy.hi[1] >= lo[1] && proxy.lo[2] <= hi[2] && proxy.hi[2] >= lo[2] )
-					near.push_back( &proxy );
-			if ( near.empty() )
-				continue;
-			double all = 0.0, blocked = 0.0;
-			for ( const Sample &sample : self.m_samples )
-			{
-				float d[3];
-				const float weight = Weight( sample, origin, texel.normal, d );
-				if ( !( weight > 0.0f ) )
-					continue;
-				all += weight;
-				for ( const Proxy *proxy : near )
-					if ( Blocks( origin, d, *proxy ) )
-					{
-						blocked += weight;
-						break;
-					}
-			}
-			if ( !( blocked > 0.0 ) || !( all > 0.0 ) )
-				continue;
-			// Static occlusion is in the bake, not in these samples: the bake's
-			// direct light over the samples' unoccluded light (both E / pi) is
-			// the part of them the texel actually sees. A moving occluder blocks
-			// a share of that part (a door shuts all of the light that came
-			// through its doorway), assuming what it blocks was visible.
-			const unsigned char *light = direct + size_t( texel.index ) * 8;
-			const float baked[3] = { Half( light ), Half( light + 2 ), Half( light + 4 ) };
-			const double visible = std::clamp( double( Luminance( baked ) ) * kPi, 1e-9, all );
-			const float share = float( std::min( 1.0, blocked / visible ) );
-			unsigned char *out = context.total + size_t( texel.index ) * 8;
-			for ( int c = 0; c < 3; ++c )
-			{
-				const float value =
-				    std::max( 0.0f, Half( out + 2 * c ) - share * Half( light + 2 * c ) );
-				const uint16_t half = FloatToHalf( value );
-				std::memcpy( out + 2 * c, &half, 2 );
-			}
-			++changed;
-		}
+			changed +=
+			    self.ComposeTexel( self.m_texels[i], context.proxies, context.total, near ) ? 1 : 0;
 		context.changed[block] = changed;
 	}
 
 	std::vector<Texel> m_texels;
 	std::vector<Sample> m_samples;
+	std::vector<Bounds> m_clusters;
+	std::vector<Bounds> m_supers;
+	std::vector<LightBound> m_lightBounds;
+	std::vector<uint32_t> m_sampleGroup; // each sample's light group
 	std::vector<unsigned char> m_lmap; // Build's copy of the LMAP bytes
 	const unsigned char *m_total = nullptr;
 	const unsigned char *m_direct = nullptr;

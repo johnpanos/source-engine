@@ -425,6 +425,8 @@ struct Host
 	EngineExecutor occlusionExecutor{ true };
 	std::vector<Proxy> occluded;
 	std::vector<unsigned char> occludedTotal;
+	// The provider holds occludedTotal (a partial upload can follow).
+	bool occludedUploaded = false;
 	std::vector<Proxy> visibilityProxies;      // the proxies the consumed volume's visibility has
 	bool brushesLit = false;                   // brush entities lit from the consumed volume
 	bool shadowFieldUploaded = false;          // the SDFV's distances, for direct-light shadows
@@ -534,29 +536,73 @@ void ApplyOcclusion( Host &host )
 	if ( !uploader || !uploader->IsResident() )
 		return;
 	const double started = Plat_FloatTime();
-	const size_t blocked =
-	    host.occlusion.Compose( proxies, &host.occlusionExecutor, &host.occludedTotal );
+	// Only the texels a moved occluder reaches are recomposed, and only
+	// their tiles uploaded, into the lightmap the provider holds (the whole
+	// layer the first time, or after a device recovery).
+	const bool partial = host.occludedUploaded && host.occludedTotal.size() > 0;
+	if ( !partial )
+		host.occludedTotal.clear();
+	std::vector<indirect_light::DirectOcclusion::Rect> dirty;
+	const size_t recomposed = host.occlusion.Recompose(
+	    host.occluded, proxies, &host.occlusionExecutor, &host.occludedTotal, &dirty );
 	const mapcontainer::WorldLightmapLayout &layout = host.occlusion.Layout();
 	world_mesh_gpu::WorldLightmapUploadRequest request;
 	request.width = layout.width;
 	request.height = layout.height;
 	request.layerCount = layout.layerCount;
 	for ( uint32_t i = 0; i < layout.layerCount; ++i )
-	{
 		request.roles[i] = static_cast<world_mesh_gpu::WorldLightmapRole>( layout.roles[i] );
-		request.layers[i] = layout.roles[i] == mapcontainer::WorldLightmapLayer::Total
-		                        ? static_cast<const void *>( host.occludedTotal.data() )
-		                        : host.occlusion.Bytes() + layout.layerOffset[i];
-	}
-	if ( !uploader->UploadLightmap( request ) )
+	std::vector<world_mesh_gpu::ProbeAtlasRegion> regions;
+	std::vector<unsigned char> texels;
+	bool uploaded = false;
+	if ( partial )
 	{
-		Warning( "indirect light: the occluded lightmap upload failed; the bake stays\n" );
-		return;
+		static const world_mesh_gpu::ProbeAtlasRegion kNoRegion;
+		size_t bytes = 0;
+		for ( const indirect_light::DirectOcclusion::Rect &rect : dirty )
+		{
+			regions.push_back( { rect.x, rect.y, rect.width, rect.height } );
+			bytes += size_t( rect.width ) * rect.height * 8;
+		}
+		texels.resize( bytes );
+		size_t offset = 0;
+		for ( const indirect_light::DirectOcclusion::Rect &rect : dirty )
+			for ( uint32_t y = 0; y < rect.height; ++y )
+			{
+				const size_t row = size_t( rect.width ) * 8;
+				std::memcpy( texels.data() + offset,
+				    host.occludedTotal.data() +
+				        ( size_t( rect.y + y ) * layout.width + rect.x ) * 8,
+				    row );
+				offset += row;
+			}
+		request.regions = regions.empty() ? &kNoRegion : regions.data();
+		request.regionCount = uint32_t( regions.size() );
+		request.regionTotal = texels.empty() ? nullptr : texels.data();
+		uploaded = regions.empty() || uploader->UploadLightmap( request );
 	}
+	if ( !uploaded )
+	{
+		request.regions = nullptr;
+		request.regionCount = 0;
+		request.regionTotal = nullptr;
+		for ( uint32_t i = 0; i < layout.layerCount; ++i )
+			request.layers[i] = layout.roles[i] == mapcontainer::WorldLightmapLayer::Total
+			                        ? static_cast<const void *>( host.occludedTotal.data() )
+			                        : host.occlusion.Bytes() + layout.layerOffset[i];
+		if ( !uploader->UploadLightmap( request ) )
+		{
+			host.occludedUploaded = false;
+			Warning( "indirect light: the occluded lightmap upload failed; the bake stays\n" );
+			return;
+		}
+	}
+	host.occludedUploaded = true;
 	host.occluded = proxies;
 	if ( r_indirect_report.GetBool() )
-		Msg( "indirect light: %zu occluder(s) block baked direct light at %zu texels (%.2f ms)\n",
-		    proxies.size(), blocked, ( Plat_FloatTime() - started ) * 1000.0 );
+		Msg( "indirect light: %zu occluder(s): %zu texels recomposed, %zu region(s)%s (%.2f ms)\n",
+		    proxies.size(), recomposed, regions.size(), uploaded ? "" : ", whole upload",
+		    ( Plat_FloatTime() - started ) * 1000.0 );
 }
 
 world_mesh_gpu::IWorldMeshUpload *Uploader()
@@ -987,6 +1033,8 @@ void IndirectLight_BeginMap( const IndirectLightMapData &map )
 	host.scene.gpu = GpuCompute();
 	host.scene.rayQueryGpu = RenderCoreHost_RayQueryGpuCompute();
 	host.occluded.clear();
+	host.occludedTotal.clear();
+	host.occludedUploaded = false;
 	if ( host.scene.sdf )
 		host.focus.Build( *baked );
 	if ( host.scene.sdf && map.wmsh && map.lmap )
@@ -1051,6 +1099,7 @@ void IndirectLight_EndMap()
 	host.occlusion = DirectOcclusion();
 	host.occluded.clear();
 	host.occludedTotal.clear();
+	host.occludedUploaded = false;
 	host.visibilityProxies.clear();
 	host.occludedCopies.clear();
 	host.cut.clear();
@@ -1184,6 +1233,7 @@ void IndirectLight_DeviceRestored()
 	// The recreated device has the bake's lightmap: re-compose for the
 	// occluders on the next frame.
 	host.occluded.clear();
+	host.occludedUploaded = false;
 	if ( !host.switcher )
 		return;
 	const auto recovered = host.switcher->DeviceRecovered();

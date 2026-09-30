@@ -39,6 +39,8 @@ static const uint32_t kWorldLightmapMaxUploadLayers = 3;
 // Linear RGBA16F texels, rows top-left first, one pointer per layer; layer 0
 // is the total page. The caller validated the LMAP lump and owns the bytes
 // until UploadLightmap returns.
+struct ProbeAtlasRegion;
+
 struct WorldLightmapUploadRequest
 {
 	uint32_t width = 0;
@@ -46,6 +48,15 @@ struct WorldLightmapUploadRequest
 	uint32_t layerCount = 0;
 	const void *layers[kWorldLightmapMaxUploadLayers] = {};
 	WorldLightmapRole roles[kWorldLightmapMaxUploadLayers] = {};
+	// A partial update of the provider's current lightmap (the last whole
+	// request's size and layers): `layers` are null, and `regionCount`
+	// rectangles of the total layer changed, their texels packed rectangle
+	// after rectangle (rows top first) in `regionTotal` (RFC 0011: moving
+	// occluders recompose only the texels they reach). A provider with no
+	// such current lightmap refuses it; the caller then sends the whole one.
+	const ProbeAtlasRegion *regions = nullptr;
+	uint32_t regionCount = 0;
+	const void *regionTotal = nullptr;
 };
 
 // The caller validates WMSH and owns request bytes until Upload returns.
@@ -61,7 +72,7 @@ struct WorldLightmapUploadRequest
 // reflection probes test their line of sight against them): texel 0 the
 // box's low corner and its reflectance, texel 1 its high corner and 0, the
 // rest 0; row 0 texel 5's z holds occluderCount.
-// A rectangle of a probe atlas, in texels.
+// A rectangle of a probe atlas (or of a lightmap layer), in texels.
 struct ProbeAtlasRegion
 {
 	uint32_t x = 0;

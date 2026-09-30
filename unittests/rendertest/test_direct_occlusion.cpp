@@ -21,6 +21,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <string>
 #include <vector>
 
@@ -215,6 +216,106 @@ int main()
 		           occlusion.Compose( std::span<const Proxy>( &between, 1 ), nullptr, &out ) > 0 &&
 		           std::fabs( Red( out, kSize / 2, kSize / 2 ) - 0.1f ) < 0.01f,
 		    "a floor wound downward still loses the light the box blocks" );
+	}
+
+	// Recompose (a change of occluders) equals Compose byte for byte: a room
+	// (a floor chart and a wall chart on a 128 x 128 page) under a rectangle,
+	// a sphere, a spot and a distant light, through 60 seeded steps of boxes
+	// moving, appearing and leaving; every texel that changed is in a tile
+	// Recompose reports. Negative control: told that nothing moved when a box
+	// did, it keeps stale texels, which the comparison catches.
+	{
+		constexpr uint32_t kRoom = 128;
+		const std::vector<float> roomPositions = { 0, 0, 0, 100, 0, 0, 100, 100, 0, 0, 100, 0, 0,
+		    100, 0, 100, 100, 0, 100, 100, 100, 0, 100, 100 };
+		const std::vector<float> roomUvs = {
+		    0, 0, 0.49f, 0, 0.49f, 1, 0, 1, 0.51f, 0, 1, 0, 1, 1, 0.51f, 1 };
+		const std::vector<uint32_t> roomIndices = { 0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7 };
+		std::vector<unsigned char> roomTotal( size_t( kRoom ) * kRoom * 8 ),
+		    roomDirect( size_t( kRoom ) * kRoom * 8 );
+		for ( size_t t = 0; t < size_t( kRoom ) * kRoom; ++t )
+			for ( int c = 0; c < 4; ++c )
+			{
+				const float d = c == 3 ? 1.0f : 0.5f + 0.5f * float( ( t * 7 + c ) % 13 ) / 13.0f;
+				const uint16_t hd = FloatToHalf( d ), ht = FloatToHalf( c == 3 ? 1.0f : d + 0.1f );
+				std::memcpy( &roomDirect[t * 8 + 2 * c], &hd, 2 );
+				std::memcpy( &roomTotal[t * 8 + 2 * c], &ht, 2 );
+			}
+		mapcontainer::SdfLight lights[4] = {
+		    RectAbove(), SmallAbove( false ), SmallAbove( true ), SunDown() };
+		lights[1].a[0] = 20.0f, lights[1].a[1] = 70.0f, lights[1].a[2] = 60.0f;
+		lights[3].a[1] = 0.6f, lights[3].a[2] = -0.8f; // slanting onto the wall
+		DirectOcclusion occlusion;
+		Check( occlusion.BuildLayers( roomPositions, roomUvs, roomIndices, kRoom, kRoom,
+		           roomTotal.data(), roomDirect.data(), lights ),
+		    "room: builds" );
+		uint32_t seed = 12345;
+		const auto next = [&]()
+		{
+			return ( seed = seed * 1664525u + 1013904223u ) >> 8;
+		};
+		const auto uniform = [&]( float lo, float hi )
+		{
+			return lo + ( hi - lo ) * float( next() % 10000 ) / 10000.0f;
+		};
+		std::vector<Proxy> previous, proxies;
+		std::vector<unsigned char> incremental, whole, before;
+		std::vector<DirectOcclusion::Rect> dirty;
+		bool equal = true, covered = true, skipped = false;
+		size_t recomposed = 0, steps = 0;
+		for ( int step = 0; step < 60; ++step )
+		{
+			previous = proxies;
+			const uint32_t action = next() % 4;
+			if ( action == 0 || proxies.empty() )
+			{
+				const float x = uniform( 0, 90 ), y = uniform( 0, 90 ), z = uniform( 5, 80 );
+				proxies.push_back( Box(
+				    x, y, z, x + uniform( 3, 20 ), y + uniform( 3, 20 ), z + uniform( 3, 20 ) ) );
+			}
+			else if ( action == 1 && proxies.size() > 1 )
+				proxies.erase( proxies.begin() + ptrdiff_t( next() % proxies.size() ) );
+			else
+			{
+				// A box moves a little, as a door or a lift does between frames.
+				Proxy &box = proxies[next() % proxies.size()];
+				const float dx = uniform( -4, 4 ), dz = uniform( -4, 4 );
+				box.lo[0] += dx, box.hi[0] += dx, box.lo[2] += dz, box.hi[2] += dz;
+			}
+			before = incremental;
+			recomposed += occlusion.Recompose( previous, proxies, nullptr, &incremental, &dirty );
+			occlusion.Compose( proxies, nullptr, &whole );
+			equal = equal && incremental == whole;
+			++steps;
+			if ( before.size() == incremental.size() )
+				for ( uint32_t y = 0; y < kRoom && covered; ++y )
+					for ( uint32_t x = 0; x < kRoom && covered; ++x )
+					{
+						const size_t at = ( size_t( y ) * kRoom + x ) * 8;
+						if ( std::memcmp( &before[at], &incremental[at], 8 ) == 0 )
+							continue;
+						bool in = false;
+						for ( const DirectOcclusion::Rect &r : dirty )
+							in = in || ( x >= r.x && x < r.x + r.width && y >= r.y &&
+							               y < r.y + r.height );
+						covered = in;
+					}
+			// The negative control on a copy: "nothing moved".
+			std::vector<unsigned char> stale = before;
+			if ( stale.size() == incremental.size() && previous != proxies )
+			{
+				std::vector<DirectOcclusion::Rect> none;
+				occlusion.Recompose( proxies, proxies, nullptr, &stale, &none );
+				skipped = skipped || stale != whole;
+			}
+		}
+		std::printf( "room: %zu steps, %zu texels recomposed (of %zu a step whole)\n", steps,
+		    recomposed, occlusion.CoveredTexels() );
+		Check( equal, "room: Recompose equals Compose byte for byte at every step" );
+		Check( covered, "room: every changed texel is in a reported tile" );
+		Check( recomposed < steps * occlusion.CoveredTexels(),
+		    "room: Recompose visits fewer texels than Compose" );
+		Check( skipped, "room: negative control: a Recompose told nothing moved is caught" );
 	}
 
 	// Without a light there is nothing to occlude: not built.

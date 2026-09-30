@@ -127,13 +127,23 @@ public:
 	}
 	bool UploadLightmap( const world_mesh_gpu::WorldLightmapUploadRequest &request ) override
 	{
+		if ( request.regions )
+		{
+			const auto *texels = static_cast<const unsigned char *>( request.regionTotal );
+			m_Log.push_back( "lightmap-part " + std::to_string( request.regionCount ) + " " +
+			                 std::to_string( request.regions[0].width ) + " " +
+			                 std::to_string( texels ? texels[0] : -1 ) );
+			return true;
+		}
 		const auto *layer = static_cast<const unsigned char *>( request.layers[0] );
 		m_Log.push_back( "lightmap " + std::to_string( layer ? layer[7] : -1 ) );
 		return true;
 	}
-	bool UploadProbeVolume( const world_mesh_gpu::ProbeVolumeUploadRequest & ) override
+	bool UploadProbeVolume( const world_mesh_gpu::ProbeVolumeUploadRequest &request ) override
 	{
-		m_Log.push_back( "probes" );
+		// A partial update keeps its (possibly empty) rectangle list.
+		m_Log.push_back( request.regions ? "probes-part " + std::to_string( request.regionCount )
+		                                 : std::string( "probes" ) );
 		return true;
 	}
 	bool UploadShadowField( const world_mesh_gpu::ShadowFieldUploadRequest &request ) override
@@ -294,6 +304,41 @@ int main()
 	checks.Equal( queue.destroyed, queue.queued, "queued.every-payload-is-released" );
 	std::printf( "INFO legacy capabilities: queued run: %s\n", Join( log ).c_str() );
 	log.clear();
+
+	// Partial updates are copied as rectangles: a lightmap's changed tiles,
+	// and a probe update with no rectangles (only its grid table changed)
+	// that stays partial.
+	{
+		world_mesh_gpu::ProbeAtlasRegion region;
+		region.width = 2;
+		region.height = 1;
+		unsigned char texels[16] = { 55 };
+		world_mesh_gpu::WorldLightmapUploadRequest part;
+		part.width = 2;
+		part.height = 1;
+		part.layerCount = 1;
+		part.regions = &region;
+		part.regionCount = 1;
+		part.regionTotal = texels;
+		upload->UploadLightmap( part );
+		texels[0] = 0;
+		region.width = 9;
+		static const world_mesh_gpu::ProbeAtlasRegion kNone;
+		float table[24] = {};
+		world_mesh_gpu::ProbeVolumeUploadRequest probes;
+		probes.atlasWidth = 8;
+		probes.atlasHeight = 8;
+		probes.gridCount = 1;
+		probes.tableFloats = 24;
+		probes.gridTable = table;
+		probes.regions = &kNone;
+		probes.regionCount = 0;
+		upload->UploadProbeVolume( probes );
+		queue.Run();
+		checks.Equal( Join( log ), std::string( "lightmap-part 1 2 55; probes-part 0" ),
+		    "queued.partial-updates-copy-their-rectangles-and-stay-partial" );
+		log.clear();
+	}
 
 	// A flushed queue releases its payloads unrun.
 	const int before = queue.destroyed;

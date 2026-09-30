@@ -361,6 +361,12 @@ public:
 	};
 	void SetStageChangeRegions(
 	    std::vector<StageRegion> regions, std::vector<std::byte> texels, StageProbeVolume table );
+	// Rectangles of the total page's flat light recomposed (moving objects
+	// blocking baked direct light, RFC 0011), their texels packed rectangle
+	// after rectangle, rows top first: updated in place at the next slot of
+	// each resource set, on the page as SetStageLightmap or the stage last
+	// set it.
+	void SetStageLightmapRegions( std::vector<StageRegion> regions, std::vector<std::byte> texels );
 	// Whether the pass draws the material's surfaces (valid after SetWorld).
 	bool Draws( std::uint32_t material ) const;
 	// The tag of the slot to mark for the view; 0 when there is nothing to draw.
