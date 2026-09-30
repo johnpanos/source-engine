@@ -100,7 +100,7 @@ def fog_scale(fixture, state):
     return None
 
 
-def render_camera(lab, fixture, camera_name, out, scale=None, state=None):
+def render_camera(lab, fixture, camera_name, out, scale=None, state=None, resolution=1):
     """render_lab's frame of a camera from the state's map (lf.map_for: a
     state that owns a map, such as a medium state baked with its medium,
     renders from it)."""
@@ -113,7 +113,8 @@ def render_camera(lab, fixture, camera_name, out, scale=None, state=None):
                "--forward", ",".join("%.6f" % v for v in camera["forward"]),
                "--up", ",".join("%.6f" % v for v in camera["up"]),
                "--hfov", str(fixture.get("horizontal_fov_degrees", 90)),
-               "--size", "%dx%d" % (film["width"], film["height"]), "--out", str(out)]
+               "--size", "%dx%d" % (film["width"] * resolution, film["height"] * resolution),
+               "--out", str(out)]
     model = probe_model(fixture, state)
     if model:
         command += ["--model", model[0], "--model-origin", ",".join("%.4f" % v for v in model[1])]
@@ -163,10 +164,37 @@ def jpeg_uri(pixels, quality=86):
     return "data:image/jpeg;base64," + base64.b64encode(buffer.getvalue()).decode()
 
 
-def view_images(fixture, state, camera, lab_image):
-    """(lab, reference, error) as display pixels, and the comparison result."""
+def write_pfm(path, rgb):
+    import numpy as np
+    height, width = rgb.shape[:2]
+    with open(path, "wb") as stream:
+        stream.write(b"PF\n%d %d\n-1.0\n" % (width, height))
+        stream.write(np.ascontiguousarray(rgb[::-1, :, :3], "<f4").tobytes())
+
+
+def downsampled(lab_image, factor):
+    """A box-filtered copy of a lab frame rendered `factor` times the
+    reference's size, beside it, for the comparison (the metric is judged at
+    the reference's resolution)."""
+    import numpy as np
+    image = np.asarray(lf.read_image(lab_image), np.float64)[..., :3]
+    height, width = image.shape[0] // factor, image.shape[1] // factor
+    small = image[:height * factor, :width * factor].reshape(
+        height, factor, width, factor, 3).mean(axis=(1, 3))
+    path = Path(str(lab_image).replace(".pfm", ".down%d.pfm" % factor))
+    write_pfm(path, small)
+    return path
+
+
+def view_images(fixture, state, camera, lab_image, resolution=1):
+    """(lab, reference, error) as display pixels, and the comparison result.
+    With a resolution factor the lab frame shows at its own size and the
+    reference and error map at theirs, enlarged to it (nearest)."""
     import numpy as np
     from PIL import Image
+    full_image = lab_image
+    if resolution > 1:
+        lab_image = downsampled(lab_image, resolution)
     result = lf.compare(fixture["name"], state, camera, lab_image)
     references = fixture["directory"] / "references"
     record = json.loads((references / "references.json").read_text())
@@ -178,8 +206,13 @@ def view_images(fixture, state, camera, lab_image):
     key = log_average(reference)
     mask = lf.judged_mask(index_image, view["emitter_indices"])
     limit = 2.0 * result["tolerance"]["p99"]
-    return (tone_map(test, key), tone_map(reference, key),
-            error_map(test, reference, mask, limit)), result, record["status"]
+    images = [tone_map(test, key), tone_map(reference, key),
+              error_map(test, reference, mask, limit)]
+    if resolution > 1:
+        full = np.asarray(lf.read_image(full_image), np.float64)[..., :3]
+        images = [tone_map(full, key)] + [
+            np.repeat(np.repeat(i, resolution, axis=0), resolution, axis=1) for i in images[1:]]
+    return tuple(images), result, record["status"]
 
 
 def lab_revision(lab):
@@ -305,14 +338,15 @@ def cmd_gallery(args):
                 image = out / "lab" / ("%s.%s%s%s.pfm" % (
                     name, camera, "" if map_name == fixture["lighting"]["map"]["name"]
                     else "." + map_name, "" if scale is None else ".fog-scale-%g" % scale))
-                rendered[view] = render_camera(lab, fixture, camera, image, scale,
-                                               state) + (image,)
+                rendered[view] = render_camera(lab, fixture, camera, image, scale, state,
+                                               getattr(args, "resolution", 1)) + (image,)
             ok, message, model, image = rendered[view]
             if not ok:
                 entry["error"] = message or "render_lab failed"
             else:
                 try:
-                    pixels, result, status = view_images(fixture, state, camera, image)
+                    pixels, result, status = view_images(fixture, state, camera, image,
+                                                         getattr(args, "resolution", 1))
                     entry.update(result=result, status=status, model=model and model[0],
                                  images=[jpeg_uri(p) for p in pixels])
                 except (ValueError, KeyError, OSError) as error:

@@ -327,6 +327,17 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::Pipeline(
 	return pipeline.Value();
 }
 
+foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::VariantPipeline(
+    PipelineId shipped, std::uint32_t add, std::uint32_t remove )
+{
+	const auto found = m_Shipped.find( shipped.value );
+	if ( found == m_Shipped.end() )
+		return foundation::MakeUnexpected( SurfaceStatus::kInvalidRequest );
+	SurfaceVariant variant = found->second;
+	variant.terms = ( variant.terms | add ) & ~remove;
+	return Pipeline( variant );
+}
+
 foundation::Expected<ProgramRequest, SurfaceStatus> SurfaceProgram::Request(
     const SurfaceVariant &variant, const SurfaceConstants &constants,
     const SurfaceTextures &textures, const SamplerDesc &sampler )

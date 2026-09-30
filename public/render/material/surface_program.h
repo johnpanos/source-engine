@@ -324,6 +324,10 @@ inline constexpr std::uint32_t kSurfaceDepthNormal = 2097152;
 // atlas of the probe volume's layout sampled with its weights), added to the
 // indirect diffuse light of every surface.
 inline constexpr std::uint32_t kSurfaceProbeBounce = 4194304;
+// A dynamic mesh's direct light: a surface without a lightmap reads the
+// probe volume's indirect layer (when it has one) and takes every light's
+// diffuse lobe at runtime, shadowed, baked lights included.
+inline constexpr std::uint32_t kSurfaceMeshDirect = 8388608;
 // The terms that read the normal (not on the flat vertex), and those the
 // model vertex alone evaluates.
 inline constexpr std::uint32_t kSurfaceNormalTerms =
@@ -434,6 +438,11 @@ public:
 	// neutral specialization returns the pipeline itself.
 	foundation::Expected<device::PipelineId, SurfaceStatus> DebugPipeline(
 	    device::PipelineId shipped, const shaderlib::DebugSpecialization &debug );
+	// A shipped pipeline's variant with terms added and removed (a pass's
+	// variant: the prepass, the SSR targets); kInvalidRequest when this
+	// program did not make it.
+	foundation::Expected<device::PipelineId, SurfaceStatus> VariantPipeline(
+	    device::PipelineId shipped, std::uint32_t add, std::uint32_t remove );
 	// A point as a MaterialPrograms request: the pipeline, the frame and draw
 	// layouts, and the material group (the constants, with state.x set from
 	// the variant, and the seven textures, one sampler description for all).

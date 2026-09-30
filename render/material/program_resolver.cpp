@@ -188,6 +188,7 @@ struct ProgramResolver::State
 	// World pbr (SetWorldPbr) and the scene terms its points take.
 	bool worldPbr = false;
 	std::uint32_t sceneTerms = 0;
+	bool mesh = false; // ResolveMesh's call of Resolve
 };
 
 ProgramResolver::ProgramResolver( std::unique_ptr<State> state ) : m_State( std::move( state ) )
@@ -310,7 +311,8 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 			    "the pbr point reads the surface vertex, and the resolver's is flat" ) );
 		SurfaceVariant variant = claim.Variant();
 		variant.layout = SurfaceVertexLayout::kWorld;
-		variant.terms |= kSurfaceBakedLightmap | s.sceneTerms;
+		variant.terms |= s.mesh ? ( ( s.sceneTerms & ~kSurfaceLightmapTerms ) | kSurfaceMeshDirect )
+		                        : ( kSurfaceBakedLightmap | s.sceneTerms );
 		SurfaceTextures textures;
 		textures.base = TextureOf( material, "basetexture" );
 		textures.mrao = TextureOf( material, "mraotexture" );
@@ -324,7 +326,7 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 		out.name = "pbr";
 		out.request = std::move( request ).Value();
 		out.blend = device::BlendMode::kOpaque;
-		out.drawInputs = { "lightmap", "lightmap-gradient" };
+		out.drawInputs = { "lightmap", "lightmap-gradient", "lightmap-indirect" };
 		return out;
 	}
 	return foundation::MakeUnexpected( "family " + material.family + " has no program yet" );
@@ -334,6 +336,26 @@ void ProgramResolver::SetWorldPbr( bool enabled, std::uint32_t sceneTerms )
 {
 	m_State->worldPbr = enabled;
 	m_State->sceneTerms = sceneTerms;
+}
+
+foundation::Expected<ResolvedProgram, std::string> ProgramResolver::ResolveMesh(
+    const MaterialDesc &material )
+{
+	m_State->mesh = true;
+	auto resolved = Resolve( material );
+	m_State->mesh = false;
+	return resolved;
+}
+
+foundation::Expected<device::PipelineId, std::string> ProgramResolver::VariantPipeline(
+    const ResolvedProgram &program, std::uint32_t add, std::uint32_t remove )
+{
+	auto pipeline =
+	    m_State->lightmapped->Program().VariantPipeline( program.request.pipeline, add, remove );
+	if ( !pipeline )
+		return foundation::MakeUnexpected(
+		    "the variant of " + program.name + " was refused or not made by this resolver" );
+	return pipeline.Value();
 }
 
 SurfaceProgram &ProgramResolver::Program() const
@@ -446,8 +468,9 @@ std::optional<GroupRequest> ProgramResolver::DrawGroup(
 	if ( !program.request.drawLayout.IsValid() ||
 	     inputTextures.size() != program.drawInputs.size() )
 		return std::nullopt;
-	if ( program.name == "pbr" && inputTextures.size() == 2 )
-		return s.lightmapped->Program().DrawGroup( inputTextures[0], {}, {}, inputTextures[1] );
+	if ( program.name == "pbr" && inputTextures.size() == 3 )
+		return s.lightmapped->Program().DrawGroup(
+		    inputTextures[0], {}, {}, inputTextures[1], inputTextures[2] );
 	if ( program.request.drawLayout == s.lightmapped->DrawLayout() )
 		return s.lightmapped->LightmapGroup( inputTextures[0] );
 	return std::nullopt;
@@ -476,6 +499,9 @@ std::optional<GroupRequest> ProgramResolver::FrameGroup(
 		const std::size_t areas =
 		    std::min<std::size_t>( terms.areas.size(), std::size_t( kSurfaceMaxAreaLights ) );
 		frame.areaCount[0] = float( areas );
+		std::copy( terms.sunDirection, terms.sunDirection + 4, frame.sunDirection );
+		std::copy( terms.sunColor, terms.sunColor + 4, frame.sunColor );
+		std::copy( terms.sunShadow, terms.sunShadow + 4, frame.sunShadow );
 		std::copy( terms.areas.begin(), terms.areas.begin() + std::ptrdiff_t( areas ), frame.areas );
 		return s.lightmapped->Program().FrameGroup(
 		    frame, terms.splitSumTable, terms.ltcTable, terms.map );

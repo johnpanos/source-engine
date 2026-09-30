@@ -31,6 +31,7 @@ PORTABLE = [
 	'pass/output',
 	'pass/volumetric',
 	'pass/ssr',
+	'pass/ao',
 	'legacy',
 	'composition',
 ]

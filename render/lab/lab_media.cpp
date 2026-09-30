@@ -387,6 +387,17 @@ LabLights LightsFromEntities( const std::vector<Entity> &entities )
 	return out;
 }
 
+device::TextureDesc CookieArray::Desc() const
+{
+	device::TextureDesc desc;
+	desc.format = device::Format::kRGBA8Unorm;
+	desc.width = m_Width;
+	desc.height = m_Height;
+	desc.depthOrLayers = m_Layers;
+	desc.usages = { device::ResourceUsage::kCopyDestination, device::ResourceUsage::kSampled };
+	return desc;
+}
+
 pass::volumetric::FroxelLayout FroxelLayoutOf( const pass::lights::ClusterGrid &grid )
 {
 	pass::volumetric::FroxelLayout layout;

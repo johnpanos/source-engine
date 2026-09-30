@@ -78,7 +78,8 @@ float ShadowVisibility( texture2D atlas, sampler pointSampler, ShadowTile tile, 
 // search averages the depth of the occluders between the point and the
 // emitter; the penumbra is the emitter seen past that depth, filtered by a
 // Poisson disc of bilinear compares, never narrower than 1.5 texels.
-// `rotation` turns both discs (radians; 0 for a fixed pattern).
+// `rotation` turns both discs (radians; 0 for a fixed pattern); `normal` is
+// the receiver's offset (ShadowReceiverOffset).
 
 const vec2 kShadowDisc[16] = vec2[16]( vec2( -0.94201624, -0.39906216 ),
     vec2( 0.94558609, -0.76890725 ), vec2( -0.09418410, -0.92938870 ),
@@ -89,6 +90,29 @@ const vec2 kShadowDisc[16] = vec2[16]( vec2( -0.94201624, -0.39906216 ),
     vec2( 0.79197514, 0.19090188 ), vec2( -0.24188840, 0.99706507 ),
     vec2( -0.81409955, 0.91437590 ), vec2( 0.19984126, 0.78641367 ),
     vec2( 0.14383161, -0.14100790 ) );
+
+// The receiver's offset for a light towards `toLight`: along the surface's
+// geometric normal (a coarse mesh's facet, not its interpolated normal,
+// which the shadow map does not see: the shadow terminator), longer as the
+// light grazes the facet (the tangent of its angle, from 1 to 4).
+vec3 ShadowReceiverOffset( vec3 geometricNormal, vec3 toLight )
+{
+	const float c = clamp( abs( dot( geometricNormal, toLight ) ), 0.05, 1.0 );
+	const float slope = sqrt( 1.0 - c * c ) / c;
+	const vec3 facing = dot( geometricNormal, toLight ) < 0.0 ? -geometricNormal : geometricNormal;
+	return facing * clamp( 1.0 + slope, 1.0, 4.0 );
+}
+
+// The shadow terminator's fade: a light's shadow darkens a surface fully
+// only where its interpolated normal faces the light by more than 0.2 in
+// cosine. Below that a coarse mesh's own facets, which the shadow map sees
+// and its interpolated normal smooths away, would cut a staircase across
+// its terminator; the light there is at most a fifth of its facing value,
+// so a shadow cast by something else loses little.
+float ShadowTerminatorFade( vec3 smoothNormal, vec3 toLight, float visibility )
+{
+	return mix( 1.0, visibility, smoothstep( 0.0, 0.2, dot( smoothNormal, toLight ) ) );
+}
 
 // The distance from the view's origin plane of a clip depth on this tile.
 float ShadowLinearDepth( ShadowTile tile, float depth )
@@ -131,10 +155,24 @@ float ShadowBilinear( texture2D atlas, sampler pointSampler, ShadowTile tile, ve
 }
 
 float ShadowVisibilitySoft( texture2D atlas, sampler pointSampler, ShadowTile tile, vec3 world,
-    float size, float rotation )
+    vec3 normal, float size, float rotation )
 {
 	if ( tile.params.z == 0.0 )
 		return ShadowVisibility( atlas, pointSampler, tile, world );
+	// The receiver moved off its surface along `normal` (the caller's offset
+	// direction, its length a multiplier: ShadowReceiverOffset) by one and a
+	// half of the tile's texels at its depth per unit (normal offset), so the
+	// compare needs only a small depth bias at any distance.
+	{
+		const vec4 h0 = tile.viewProjection * vec4( world, 1.0 );
+		if ( h0.w > 0.0 )
+		{
+			const float d0 = ShadowLinearDepth( tile, h0.z / h0.w );
+			const float texelWorld = 2.0 / ( tile.params.y * abs( tile.transform.x ) ) /
+			                         ShadowClipPerWorld( tile, d0 );
+			world += normal * 1.5 * texelWorld;
+		}
+	}
 	const vec4 h = tile.viewProjection * vec4( world, 1.0 );
 	if ( !( h.w > 0.0 ) )
 		return 1.0;

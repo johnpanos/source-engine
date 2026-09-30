@@ -9,7 +9,7 @@
 // of a cube or hemicube, each wide enough that its filter stays inside): the
 // tile whose view holds the point nearest its centre.
 float ShadowFacesVisibility( texture2D atlas, sampler pointSampler, int first, int count,
-    vec3 world, float size, float rotation )
+    vec3 world, vec3 normal, float size, float rotation )
 {
 	int best = -1;
 	float bestExtent = 2.0;
@@ -29,7 +29,7 @@ float ShadowFacesVisibility( texture2D atlas, sampler pointSampler, int first, i
 	}
 	if ( best < 0 || bestExtent > 1.0 )
 		return 1.0;
-	return ShadowVisibilitySoft( atlas, pointSampler, shadowTiles[best], world, size, rotation );
+	return ShadowVisibilitySoft( atlas, pointSampler, shadowTiles[best], world, normal, size, rotation );
 }
 
 #endif // SHADOW_FACES_GLSL

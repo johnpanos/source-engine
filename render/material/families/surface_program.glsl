@@ -85,6 +85,7 @@ const int kAmbientOcclusion = 524288;
 const int kSsrTargets = 1048576;
 const int kDepthNormal = 2097152;
 const int kProbeBounce = 4194304;
+const int kMeshDirect = 8388608;
 
 // An area light (render.area-light.v1, area_light::AreaLight): its
 // rectangle, its radiance and its reach.
@@ -478,7 +479,20 @@ void PbrSurface()
 	const float normalDotView = max( dot( normal, view ), 0.0 );
 	if ( Term( kDepthNormal ) )
 	{
-		outColor = vec4( SurfaceOctEncode( normal ), roughness, 1.0 );
+		// render.pass.ao's radius: two lightmap texels' world size on a
+		// lightmapped surface (the bake holds coarser occlusion), else 0
+		// (the pass's radius).
+		float radius = 0.0;
+		if ( Term( kBakedLightmap ) )
+		{
+			const vec2 size = vec2( textureSize( sampler2D( lightmap, lightmapSampler ), 0 ) );
+			const float texelsX = length( dFdx( lightmapUv ) * size );
+			const float texelsY = length( dFdy( lightmapUv ) * size );
+			const float worldX = length( dFdx( worldPosition ) );
+			const float worldY = length( dFdy( worldPosition ) );
+			radius = worldX / max( texelsX, 1e-6 ) + worldY / max( texelsY, 1e-6 );
+		}
+		outColor = vec4( SurfaceOctEncode( normal ), roughness, radius );
 		return;
 	}
 	const vec3 f0 = mix( vec3( 0.04 ), base, metalness );
@@ -512,6 +526,12 @@ void PbrSurface()
 	}
 	// The indirect light's occlusion: the material's, times the view's with
 	// its interreflection (the occluders' albedo taken as the surface's).
+	// kMeshDirect: a surface without a lightmap takes the baked lights'
+	// direct light at runtime (shadowed, both lobes) over the probe volume's
+	// indirect layer, when the volume carries one (RFC 0011's layers: total,
+	// indirect).
+	const bool meshDirect = Term( kMeshDirect ) && !lightmapped && Term( kProbeVolume ) &&
+	                        ProbeGridRow( 5, 0 ).x >= 2.0 && !furnace;
 	const vec3 indirectOcclusion =
 	    occlusion * MultiBounceOcclusion( screenOcclusion, diffuseColor + directionalAlbedo );
 	vec3 color = vec3( 0.0 );
@@ -538,9 +558,12 @@ void PbrSurface()
 	}
 	else if ( diffuseLobe && !lightmapped && DebugTermOn( kDebugTermProbes ) )
 	{
+		// A surface the probe volume lights reads its indirect layer when it
+		// has one, and then takes every light's direct light itself
+		// (meshDirect below); else the total layer holds the baked lights.
 		vec3 irradiance;
 		if ( furnace || !Term( kProbeVolume ) ||
-		     !ProbeIrradiance( worldPosition, normal, 0, true, irradiance ) )
+		     !ProbeIrradiance( worldPosition, normal, meshDirect ? 1 : 0, true, irradiance ) )
 			irradiance = AmbientCube( normal );
 		color = diffuseColor * irradiance * indirectOcclusion;
 	}
@@ -554,6 +577,11 @@ void PbrSurface()
 			color += diffuseColor * bounce * indirectOcclusion;
 	}
 	const float rotation = PixelRotation();
+	// The facet's normal (the shadows' receiver offset), facing the view as
+	// the interpolated normal does.
+	vec3 geometricNormal = normalize( cross( dFdx( worldPosition ), dFdy( worldPosition ) ) );
+	if ( dot( geometricNormal, smoothNormal ) < 0.0 )
+		geometricNormal = -geometricNormal;
 	vec3 direct = vec3( 0.0 );
 	const int count = DebugTermOn( kDebugTermClustered ) && !furnace ? int( lighting.eye.w ) : 0;
 	for ( int i = 0; i < 4; ++i )
@@ -632,15 +660,19 @@ void PbrSurface()
 				    shadowTiles[( tile + 1 ) % shadowTiles.length()], worldPosition );
 #elif !defined( SEEDED_SHADOW_IGNORED )
 			if ( tile >= 0 && tiles > 1 )
-				falloff *= ShadowFacesVisibility( shadowAtlas, shadowSampler, tile, tiles,
-				    worldPosition, max( runtime.cone.z, 0.5 ), rotation );
+				falloff *= ShadowTerminatorFade( smoothNormal, light,
+				    ShadowFacesVisibility( shadowAtlas, shadowSampler, tile, tiles, worldPosition,
+				        ShadowReceiverOffset( geometricNormal, light ), max( runtime.cone.z, 0.5 ),
+				        rotation ) );
 			else if ( tile >= 0 )
-				falloff *= ShadowVisibilitySoft( shadowAtlas, shadowSampler, shadowTiles[tile],
-				    worldPosition, max( runtime.cone.z, 0.5 ), rotation );
+				falloff *= ShadowTerminatorFade( smoothNormal, light,
+				    ShadowVisibilitySoft( shadowAtlas, shadowSampler, shadowTiles[tile],
+				        worldPosition, ShadowReceiverOffset( geometricNormal, light ),
+				        max( runtime.cone.z, 0.5 ), rotation ) );
 #endif
 			const vec3 incident = runtime.color.rgb * falloff;
 			// A baked light's diffuse light is already in the bake.
-			if ( diffuseLobe && runtime.spot.y < 0.5 )
+			if ( diffuseLobe && ( runtime.spot.y < 0.5 || meshDirect ) )
 			{
 				const vec3 diffuse = diffuseColor * incident * normalDotLight;
 				color += diffuse;
@@ -692,14 +724,17 @@ void PbrSurface()
 				// The rectangle as a disc of its area, seen from its centre.
 				const float size = sqrt( 4.0 * length( light.halfU.xyz ) *
 				                         length( light.halfV.xyz ) / kPi );
-				visibility = ShadowFacesVisibility( shadowAtlas, shadowSampler, firstTile,
-				    twoSided ? 6 : 5, worldPosition, size, rotation );
+				const vec3 toCenter = normalize( light.center.xyz - worldPosition );
+				visibility = ShadowTerminatorFade( smoothNormal, toCenter,
+				    ShadowFacesVisibility( shadowAtlas, shadowSampler, firstTile,
+				        twoSided ? 6 : 5, worldPosition,
+				        ShadowReceiverOffset( geometricNormal, toCenter ), size, rotation ) );
 				if ( visibility <= 0.0 )
 					continue;
 			}
 			const vec3 radiance = light.radiance.rgb * window * visibility;
 			// A baked light's diffuse light is already in the bake.
-			if ( diffuseLobe && light.halfV.w < 0.5 )
+			if ( diffuseLobe && ( light.halfV.w < 0.5 || meshDirect ) )
 			{
 				const vec3 diffuse = diffuseColor * radiance *
 				                     LtcRectangle( normal, view, worldPosition, mat3( 1.0 ),
@@ -743,14 +778,16 @@ void PbrSurface()
 					const vec3 ndc = h.xyz / h.w;
 					if ( all( lessThan( abs( ndc.xy ), vec2( 0.98 ) ) ) && ndc.z <= 1.0 )
 					{
-						visibility = ShadowVisibilitySoft( shadowAtlas, shadowSampler, tile,
-						    worldPosition, frame.sunDirection.w, rotation );
+						visibility = ShadowTerminatorFade( smoothNormal, light,
+						    ShadowVisibilitySoft( shadowAtlas, shadowSampler, tile,
+						        worldPosition, ShadowReceiverOffset( geometricNormal, light ),
+						        frame.sunDirection.w, rotation ) );
 						break;
 					}
 				}
 			}
 			const vec3 incident = frame.sunColor.rgb * visibility;
-			if ( diffuseLobe && frame.sunColor.w < 0.5 )
+			if ( diffuseLobe && ( frame.sunColor.w < 0.5 || meshDirect ) )
 			{
 				const vec3 diffuse = diffuseColor * incident * normalDotLight;
 				color += diffuse;
@@ -788,8 +825,10 @@ void PbrSurface()
 			continue;
 		const int tile = int( projector.color.w );
 		if ( tile >= 0 )
-			scale *= ShadowVisibilitySoft( shadowAtlas, shadowSampler, shadowTiles[tile],
-			    worldPosition, projector.atten.w, rotation );
+			scale *= ShadowTerminatorFade( smoothNormal, light,
+			    ShadowVisibilitySoft( shadowAtlas, shadowSampler, shadowTiles[tile],
+			        worldPosition, ShadowReceiverOffset( geometricNormal, light ),
+			        projector.atten.w, rotation ) );
 		const vec3 cookie =
 		    textureLod( sampler2DArray( cookieTexture, cookieSampler ),
 		        vec3( cookieUv, projector.origin.w ), 0.0 )
@@ -920,7 +959,7 @@ void main()
 	{
 		const vec3 n = dot( worldNormal, worldNormal ) > 1e-12 ? normalize( worldNormal )
 		                                                     : vec3( 0.0, 0.0, 1.0 );
-		outColor = vec4( SurfaceOctEncode( n ), 1.0, 1.0 );
+		outColor = vec4( SurfaceOctEncode( n ), 1.0, 0.0 );
 		return;
 	}
 	if ( Term( kVertexLit ) )

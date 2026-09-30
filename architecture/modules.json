@@ -816,6 +816,7 @@
           "render.pass.shadows",
           "render.pass.volumetric",
           "render.pass.ssr",
+          "render.pass.ao",
           "render.contracts",
           "jobs.graph",
           "testing.contracts"
@@ -919,6 +920,20 @@
           "foundation",
           "render.math",
           "render.contracts",
+          "render.device",
+          "render.shader-library"
+        ]
+      },
+      {
+        "id": "render.pass.ao",
+        "description": "RFC 0016 render.lighting.v1 'Ambient occlusion': ground-truth ambient occlusion (Jimenez et al. 2016) from the view's depth and normals, applied by the surface program to indirect light only.",
+        "paths": [
+          "public/render/pass/ao/",
+          "render/pass/ao/"
+        ],
+        "allowedEdges": [
+          "foundation",
+          "render.math",
           "render.device",
           "render.shader-library"
         ]
@@ -1536,6 +1551,14 @@
           "render_shaderlib"
         ]
       },
+      "render_pass_ao": {
+        "allowedUse": [
+          "render_device",
+          "render_math",
+          "render_spv",
+          "render_shaderlib"
+        ]
+      },
       "render_pass_ssr": {
         "allowedUse": [
           "render_graph",
@@ -1581,7 +1604,7 @@
           "render_shaderlib"
         ]
       },
-      "render_lab": {"allowedUse": ["render_device", "render_device_vulkan", "render_resources", "render_material", "render_math", "render_spv", "mapcontainer", "mdl", "vtf_texture_reader", "vtf", "bitmap", "mathlib", "tier0", "tier1", "tier2", "render_shaderlib", "render_frame", "render_graph", "jobsystem", "render_pass_lines", "render_pass_lights", "render_pass_volumetric", "render_pass_ssr"]},
+      "render_lab": {"allowedUse": ["render_device", "render_device_vulkan", "render_resources", "render_material", "render_math", "render_spv", "mapcontainer", "mdl", "vtf_texture_reader", "vtf", "bitmap", "mathlib", "tier0", "tier1", "tier2", "render_shaderlib", "render_frame", "render_graph", "jobsystem", "render_pass_lines", "render_pass_lights", "render_pass_volumetric", "render_pass_ssr", "render_pass_ao"]},
       "render_pass_debug": {
         "allowedUse": [
           "render_device",

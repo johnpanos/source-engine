@@ -111,6 +111,7 @@ public:
 	    const std::vector<std::string> &names );
 	void RecordUpload( device::CommandEncoder &encoder );
 	device::TextureId Texture() const { return m_Texture; }
+	device::TextureDesc Desc() const;
 
 private:
 	device::IRenderDevice2 *m_Device = nullptr;

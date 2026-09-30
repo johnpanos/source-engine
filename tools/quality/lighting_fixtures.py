@@ -2317,6 +2317,9 @@ def main():
     y.add_argument("--lab", help="the render_lab binary (default: $RENDER_LAB, then build-rc-lab)")
     y.add_argument("--fixture", action="append")
     y.add_argument("--out", type=Path)
+    y.add_argument("--resolution", type=int, default=1,
+                   help="render_lab at this multiple of the film size; the page shows it, and the "
+                        "comparison judges its box-filtered copy at the reference's size")
     args = parser.parse_args()
     if args.command == "gallery":
         import lighting_gallery

@@ -72,6 +72,10 @@ struct FrameTerms
 	std::string ltcTable;
 	SurfaceMapTextures map;
 	std::vector<SurfaceAreaLight> areas;
+	// The sun (SurfaceFrame::sunDirection, sunColor, sunShadow).
+	float sunDirection[4] = {};
+	float sunColor[4] = {};
+	float sunShadow[4] = { -1.0f, 0.0f, 0.0f, 0.0f };
 };
 
 // The vertex a resolver's programs read: the flat vertex (position, base and
@@ -125,10 +129,20 @@ public:
 	// point on the world vertex, with kSurfaceBakedLightmap and these scene
 	// terms (kSurfaceDirectionalLightmap, kSurfaceMapProbeTerms,
 	// kSurfaceClustered and the other scene terms of surface_program.h),
-	// taking the draw inputs "lightmap" and "lightmap-gradient". Without it
+	// taking the draw inputs "lightmap", "lightmap-gradient" and
+	// "lightmap-indirect". Without it
 	// (the default, and the product until K12) a pbr material is refused by
 	// name. Call before resolving; programs already resolved keep theirs.
 	void SetWorldPbr( bool enabled, std::uint32_t sceneTerms = 0 );
+	// A PBRMetalRough mesh drawn on the world vertex in world space (a
+	// dynamic model: the probe volume's indirect light, not a lightmap's),
+	// with the scene terms less the lightmap's; other materials resolve as
+	// Resolve does.
+	foundation::Expected<ResolvedProgram, std::string> ResolveMesh( const MaterialDesc &material );
+	// A resolved program's pipeline with terms added and removed (a pass's
+	// variant of it: the prepass's kSurfaceDepthNormal, the SSR targets).
+	foundation::Expected<device::PipelineId, std::string> VariantPipeline(
+	    const ResolvedProgram &program, std::uint32_t add, std::uint32_t remove );
 	// The one surface program every point is drawn through (its layouts for
 	// the view group, SurfaceProgram::ViewGroup).
 	SurfaceProgram &Program() const;
