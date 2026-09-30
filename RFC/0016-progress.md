@@ -4026,3 +4026,24 @@ maps pass (`build/`).
 `render.composition`, `render.world.null` and the lab suites (area and
 clustered lights, volumetric, map terms, composition, shadowed lights)
 pass; `render_lab` builds.
+
+### Frame time with the core world (perf, rule 7: recorded, not judged)
+
+`frame_pacing.py --runtime run/runtime --build build --ab-build build
+--ab-extra-arg +sv_cheats --ab-extra-arg 1 --ab-extra-arg +r_core_world
+--ab-extra-arg 1 --rounds 3 --mat-queue-mode 2` (portal-frame-pacing-v1,
+testchmb_a_01, desktop Linux, `build/` at 3293a047d, host load 5-9 from
+other sessions' work): legacy warm median 6.59 ms, core world 7.38 ms (B/A
+1.12), p99 43.5 against 46.2 ms (1.06). Noisy host; interleaved rounds
+disagree by up to 2 ms. Fold7: unavailable in this session. Optimization
+items only: the core world's per-view cost has not been profiled.
+
+### Held back: dynamic lights on the BSP faces
+
+The CPU lightmap path adds dlights into the pages; the core may take that
+term for the surfaces it draws only if the CPU path stops adding it for
+them (rule 4, "each light counts once"). The core draws the outermost
+back-buffer view alone: views through portals and monitors are nested and
+drawn by the legacy stream from the same pages, so stopping the CPU dlights
+would drop them there. That term waits for the core drawing nested views
+(RFC 0016 K8, portal views), and stays the CPU path's meanwhile.
