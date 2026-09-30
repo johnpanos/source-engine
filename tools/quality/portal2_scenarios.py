@@ -114,6 +114,8 @@ def load_workload(path):
         names.add(name)
         if not SIMPLE_NAME.fullmatch(str(scenario.get("map", ""))):
             raise ScenarioError("%s: %s needs a simple map name" % (path, name))
+        if "retail_map" in scenario and not SIMPLE_NAME.fullmatch(str(scenario["retail_map"])):
+            raise ScenarioError("%s: %s needs a simple retail map name" % (path, name))
         script = scenario.get("script")
         if not isinstance(script, str) or not script.endswith(".nut") or \
                 not (path.parent / script).is_file():
@@ -136,6 +138,13 @@ def load_workload(path):
             raise ScenarioError("%s: %s needs unique dotted required checks" % (path, name))
         load_console_checks(path, scenario)
     return workload
+
+
+def retail_map(scenario):
+    """The shipped map retail runs, and whose BSP holds the gameplay data:
+    ``retail_map`` for a scenario on a published derivative of a shipped map
+    (a relit map keeps every gameplay lump byte-identical), else ``map``."""
+    return scenario.get("retail_map", scenario["map"])
 
 
 def scenario_scripts(scenario):

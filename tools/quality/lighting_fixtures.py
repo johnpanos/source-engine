@@ -2007,8 +2007,8 @@ def cmd_build(args):
 
 
 # The final bakes: the gi-fixture profile's samples (lightmap 2048, probe
-# volume 4096) and the reflection-fixture profile's probes; still no
-# radiosity or SDF volume, which K11 does not read.
+# volume 4096), the reflection-fixture profile's probes, and the profile's
+# radiosity transfer (RTRN) and SDF volume (SDFV), which the previews switch off.
 FINAL_PROBES = {"width": 1024, "face_size": 256, "samples": 64, "light_paths": "gi-reference"}
 
 
@@ -2021,6 +2021,8 @@ def final_overrides(preview):
                 continue
         elif key == "reflection_probe" and value:
             value = dict(FINAL_PROBES)
+        elif key in ("radiosity", "sdf_volume") and value is None:
+            continue  # the profile's own setting
         overrides[key] = value
     return overrides
 

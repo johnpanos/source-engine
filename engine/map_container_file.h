@@ -10,6 +10,7 @@
 #define MAP_CONTAINER_FILE_H
 
 #include "filesystem.h"
+#include "filesystem_large_file.h"
 #include "mapcontainer/map_container.h"
 
 // Reads through an open filesystem handle. The handle and this object must
@@ -17,11 +18,16 @@
 class CMapFileByteSource : public mapcontainer::IMapByteSource
 {
 public:
-	CMapFileByteSource() : m_hFile( FILESYSTEM_INVALID_HANDLE ), m_nBase( 0 ), m_nSize( 0 ) {}
+	CMapFileByteSource()
+	    : m_hFile( FILESYSTEM_INVALID_HANDLE ), m_nBase( 0 ), m_nSize( 0 ), m_pLargeFile( NULL )
+	{
+	}
 
 	// nBase is the map's first byte within the handle (COM_OpenFile can
 	// return handles into pack files); nSize is the map's byte length.
-	void Attach( FileHandle_t hFile, uint64_t nBase, uint64_t nSize );
+	// pLargeFile reads past 2 GiB; without it only the first 2 GiB are read.
+	void Attach( FileHandle_t hFile, uint64_t nBase, uint64_t nSize,
+	    IFileSystemLargeFile *pLargeFile = NULL );
 	void Detach();
 
 	virtual uint64_t Size() const { return m_nSize; }
@@ -31,6 +37,7 @@ private:
 	FileHandle_t m_hFile;
 	uint64_t m_nBase;
 	uint64_t m_nSize;
+	IFileSystemLargeFile *m_pLargeFile;
 };
 
 // Opens a container over hFile (whole file from its current size). Reports

@@ -358,7 +358,48 @@ void *CBaseFileSystem::QueryInterface( const char *pInterfaceName )
 	if (!Q_strncmp(	pInterfaceName, BASEFILESYSTEM_INTERFACE_VERSION, Q_strlen(BASEFILESYSTEM_INTERFACE_VERSION) + 1))
 		return (IBaseFileSystem*)this;
 
+	if ( !Q_strcmp( pInterfaceName, FILESYSTEM_LARGE_FILE_INTERFACE_VERSION ) )
+		return static_cast<IFileSystemLargeFile *>( &m_LargeFile );
+
 	return NULL;
+}
+
+//-----------------------------------------------------------------------------
+// FILESYSTEM_LARGE_FILE_INTERFACE_VERSION
+//-----------------------------------------------------------------------------
+uint64 CBaseFileSystem::CLargeFile::Size64( FileHandle_t file )
+{
+	CFileHandle *fh = (CFileHandle *)file;
+	if ( !fh )
+		return 0;
+	// A loose file keeps its 64-bit length; pack, VPK and memory files are
+	// 32-bit containers, whose Size() is exact.
+	if ( fh->m_pFile )
+		return fh->m_nLength > 0 ? uint64( fh->m_nLength ) : 0;
+	const int nSize = fh->Size();
+	return nSize > 0 ? uint64( nSize ) : 0;
+}
+
+bool CBaseFileSystem::CLargeFile::ReadAt(
+    FileHandle_t file, uint64 offset, void *pDest, size_t size )
+{
+	CFileHandle *fh = (CFileHandle *)file;
+	const uint64 nLength = Size64( file );
+	if ( !fh || offset > nLength || size > nLength - offset )
+		return false;
+	fh->Seek( int64( offset ), FILESYSTEM_SEEK_HEAD );
+	// CFileHandle reads take an int length: read in pieces below 2 GiB.
+	const size_t kMaxPiece = size_t( 1 ) << 30;
+	char *pOut = static_cast<char *>( pDest );
+	while ( size > 0 )
+	{
+		const int nPiece = int( size < kMaxPiece ? size : kMaxPiece );
+		if ( fh->Read( pOut, nPiece, nPiece ) != nPiece )
+			return false;
+		pOut += nPiece;
+		size -= size_t( nPiece );
+	}
+	return true;
 }
 
 InitReturnVal_t CBaseFileSystem::Init()

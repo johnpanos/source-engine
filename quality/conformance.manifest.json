@@ -14309,7 +14309,51 @@
         "quality/workloads/portal2-storybeats-v1/scenarios.json",
         "quality/workloads/portal2-storybeats-v1/reference.json",
         "quality/workloads/portal2-storybeats-v1/qa_walker.nut",
+        "quality/workloads/portal2-storybeats-v1/qa_beats.nut",
         "quality/workloads/portal2-storybeats-v1/sp_a1_wakeup_walk.nut",
+        "quality/workloads/portal2-wheatley-v1/qa_driver.nut"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "corpus.portal2.storybeats-laser-intro",
+      "domain": "Q-PRODUCT",
+      "rfc": "0005",
+      "kind": "positive",
+      "profile": "linux-host-corpus",
+      "description": "Portal 2 puzzle solved on the player's own input (game/shared/portal2/README.md, 'sp_a2_laser_intro solved on player input'). Plays the relit sp_a2_laser_intro_relit (the map pipeline's published map in run/maps, mounted as ./play_p2 mounts it; its gameplay lumps are the shipped map's) on build-p2 from the arrival elevator to the level's end: quality/workloads/portal2-storybeats-laser-v1 walks with qa_walker.nut, fires the floor portal where the laser lands and, from the lowered lift, the ceiling portal over the catcher with +attack/+attack2 at points the player looks at, then rides the lift to the exit and walks into the departure elevator. Nothing sets the player's position or angles or places a portal. Judges the run (every walk arrived, both portals placed, the catcher powered, the exit door opened, the level ended) and where the player stood at each of 14 beats against the retail reference (reference.json, recorded from retail on the shipped map; numbers only). Needs a local Portal 2 install (SOURCE_PORTAL2_STEAM_ROOT), a built build-p2 and the published relit map; loading the relit map dominates the run time.",
+      "command": [
+        "{python}",
+        "tools/quality/portal2_storybeats.py",
+        "suite",
+        "--workload",
+        "quality/workloads/portal2-storybeats-laser-v1/scenarios.json",
+        "--out",
+        "{out}"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 17,
+      "timeout_seconds": 1800,
+      "requires": [
+        "env:SOURCE_PORTAL2_STEAM_ROOT",
+        "vulkan-device:gpu",
+        "path:build-p2/c4che/_cache.py",
+        "path:run/maps/sp_a2_laser_intro_relit/published.json"
+      ],
+      "optional": true,
+      "sources": [
+        "tools/quality/portal2_storybeats.py",
+        "tools/quality/portal2_material_shots.py",
+        "tools/quality/portal2_scenarios.py",
+        "tools/quality/stage_portal2_runtime.py",
+        "tools/quality/playable_maps.py",
+        "tools/quality/legacy_bsp.py",
+        "tools/quality/conformance_result.py",
+        "quality/workloads/portal2-storybeats-laser-v1/scenarios.json",
+        "quality/workloads/portal2-storybeats-laser-v1/reference.json",
+        "quality/workloads/portal2-storybeats-laser-v1/sp_a2_laser_intro_walk.nut",
+        "quality/workloads/portal2-storybeats-v1/qa_walker.nut",
+        "quality/workloads/portal2-storybeats-v1/qa_beats.nut",
         "quality/workloads/portal2-wheatley-v1/qa_driver.nut"
       ],
       "expect": "pass"

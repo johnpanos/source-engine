@@ -1,0 +1,54 @@
+{
+  "schema": "portal2-scenarios/v1",
+  "description": "sp_a2_laser_intro played through and solved with the player's own input (A* over a grid measured in the running game; keys, turn rates and both portal-gun buttons through the console) and screenshotted at each story beat: this build plays the relit map sp_a2_laser_intro_relit (published by the map pipeline, gameplay lumps byte-identical), retail Portal 2 the shipped sp_a2_laser_intro. Run by tools/quality/portal2_storybeats.py.",
+  "driver": "../portal2-wheatley-v1/qa_driver.nut",
+  "includes": [
+    "../portal2-storybeats-v1/qa_walker.nut",
+    "../portal2-storybeats-v1/qa_beats.nut"
+  ],
+  "scenarios": [
+    {
+      "name": "sp_a2_laser_intro_walk",
+      "map": "sp_a2_laser_intro_relit",
+      "retail_map": "sp_a2_laser_intro",
+      "script": "sp_a2_laser_intro_walk.nut",
+      "timeout_seconds": 1200,
+      "required_checks": [
+        "start.map_time",
+        "view.arrival",
+        "entry.reached",
+        "entry_door.opens",
+        "view.entry_door",
+        "chamber.reached",
+        "chamber.start",
+        "view.chamber",
+        "event.wall_falls",
+        "view.wall_falls",
+        "stand.reached",
+        "event.laser_on",
+        "view.laser_on",
+        "view.aim_portal_floor",
+        "portal_floor.placed",
+        "view.lift",
+        "lift.reached",
+        "view.aim_portal_ceiling",
+        "portal_ceiling.placed",
+        "catcher.powered",
+        "view.portal_ceiling",
+        "event.catcher_powered",
+        "view.catcher_powered",
+        "event.lift_raised",
+        "exit_door.opens",
+        "catcher.still_powered",
+        "view.exit_door",
+        "departure.reached",
+        "event.departure_elevator",
+        "view.departure_elevator",
+        "elevator_door.reached",
+        "elevator.reached",
+        "event.elevator_doors",
+        "level.ends"
+      ]
+    }
+  ]
+}

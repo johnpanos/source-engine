@@ -448,9 +448,19 @@ class Pipeline:
                          # "enforce" fails the build above the target; "record"
                          # measures and records the noise and the samples that
                          # would meet it.
-                         "noise_gate": lightmap.get("noise_gate", "enforce")}
+                         "noise_gate": lightmap.get("noise_gate", "enforce"),
+                         # Stitched seam gate {"p99", "max"} (relative) in place
+                         # of lightmap_ktx2.py's defaults, or None for those.
+                         "seam_gate": lightmap.get("seam_gate")}
         if self.lightmap["noise_gate"] not in ("enforce", "record"):
             raise SystemExit("lightmap.noise_gate must be \"enforce\" or \"record\"")
+        seam_gate = self.lightmap["seam_gate"]
+        if seam_gate is not None and (
+                not isinstance(seam_gate, dict) or not seam_gate or
+                set(seam_gate) - {"p99", "max"} or
+                not all(isinstance(v, (int, float)) and v > 0 for v in seam_gate.values())):
+            raise SystemExit("lightmap.seam_gate must be {\"p99\": x, \"max\": y} with "
+                             "positive limits (either may be left out)")
         # The lightmap bake's participating medium (opt-in; see the docstring).
         self.medium = load_medium(manifest)
         if self.lightmap["layout"] not in ("blender", "planar"):
@@ -1105,12 +1115,21 @@ class Pipeline:
         # The raw total marks buried texels, which stitching may move freely.
         seam_args = ["--seams", p["seams"], "--buried-exr", p["atlas"], "--coverage-exr",
                      p["coverage"]]
+        ktx2_settings = {"preview_gain": self.lightmap["preview_gain"], "scope": scope}
+        # A map's own seam gate (the receipt records the limits it passed).
+        seam_gate = self.lightmap["seam_gate"]
+        if seam_gate:
+            ktx2_settings["seam_gate"] = dict(seam_gate)
+            if "p99" in seam_gate:
+                seam_args += ["--max-seam-p99", str(seam_gate["p99"])]
+            if "max" in seam_gate:
+                seam_args += ["--max-seam", str(seam_gate["max"])]
         self.step("ktx2", [atlas, atlas_receipt, p["lighting_stage"], p["seams"],
                            p["coverage"], p["atlas"]] +
                   list(denoised_layers.values()) +
                   ([p["directional_indirect"]] if directional and "indirect" in denoised_layers
                    else [p["directional"]] if directional else []) + sun_inputs,
-                  {"preview_gain": self.lightmap["preview_gain"], "scope": scope},
+                  ktx2_settings,
                   ["lightmap_ktx2.py"], [p["ktx2"]],
                   lambda: self.run("ktx2", [sys.executable, HERE / "lightmap_ktx2.py",
                                             "--exr", atlas, "--bake-evidence", atlas_receipt,

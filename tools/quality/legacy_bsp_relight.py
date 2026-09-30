@@ -54,13 +54,20 @@ load_toolchain = map_lighting.load_toolchain
 
 def relight(bsp, name, out, toolchain, quality=pbrt_map_build.LEGACY_QUALITY, game=None,
             force_from=None, boot=False, keep_going=False, publish=True, device=None,
-            runtime=None):
+            runtime=None, max_seam_p99=None):
     """Relight the compiled map `bsp` as map `name`, built in `out`: the
     lighting back end (`map_lighting.light`) with the scene derived from the
-    BSP. See `map_lighting.light` for the arguments; returns the gameplay
-    identity."""
+    BSP. See `map_lighting.light` for the arguments; `max_seam_p99` waives the
+    stitched seam gate's default 99th percentile for this map (the manifest's
+    lightmap.seam_gate). Returns the gameplay identity."""
+    extra = None
+    if max_seam_p99 is not None:
+        lightmap = {"seam_gate": {"p99": max_seam_p99}}
+        if device:
+            lightmap["device"] = device
+        extra = {"lightmap": lightmap}
     return map_lighting.light(bsp, name, out, toolchain, None, quality, game, runtime, device,
-                              force_from, boot, keep_going, publish)
+                              force_from, boot, keep_going, publish, extra)
 
 
 def default_out(name):
@@ -91,6 +98,9 @@ def main():
                         help="boot the relit map headless on native Vulkan")
     parser.add_argument("--keep-going", action="store_true")
     parser.add_argument("--no-publish", action="store_true")
+    parser.add_argument("--max-seam-p99", type=float,
+                        help="this map's stitched seam gate, 99th percentile (relative), in "
+                             "place of lightmap_ktx2.py's default; recorded in the manifest")
     args = parser.parse_args()
     toolchain = load_toolchain(args.toolchain)
     if bool(args.map) == bool(args.bsp):
@@ -108,7 +118,7 @@ def main():
     name = args.map_name or (stem.lower() + "_relit")
     relight(bsp, name, args.out or default_out(name), toolchain, args.quality, args.game,
             args.force_from, args.boot, args.keep_going, not args.no_publish, args.device,
-            args.runtime)
+            args.runtime, args.max_seam_p99)
 
 
 if __name__ == "__main__":

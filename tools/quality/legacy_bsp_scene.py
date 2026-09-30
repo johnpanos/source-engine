@@ -639,8 +639,13 @@ def build_model(bsp, resolver, texture_dir):
         try:
             size, source = mapping_size(materials, record["name"])
         except (OSError, ValueError) as error:
-            size, source = {"width": record["width"], "height": record["height"]}, \
-                "material unreadable (%s): texdata size" % error
+            if record["width"] > 0 and record["height"] > 0:
+                size, source = {"width": record["width"], "height": record["height"]}, \
+                    "material unreadable (%s): texdata size" % error
+            else:
+                # vbsp had no size either: the engine maps the error material.
+                size, source = {"width": ERROR_TEXTURE_SIZE, "height": ERROR_TEXTURE_SIZE}, \
+                    "material unreadable (%s), texdata 0 x 0: error texture" % error
         mappings[index] = size
         if (size["width"], size["height"]) != (record["width"], record["height"]):
             mapping_differs.append({"material": record["name"], "source": source,

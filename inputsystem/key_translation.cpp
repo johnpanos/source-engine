@@ -724,6 +724,18 @@ ButtonCode_t ButtonCode_StringToButtonCode( const char *pString, bool bXControll
 			return (ButtonCode_t)( JOYSTICK_FIRST_BUTTON + i );
 	}
 
+	// Generic joystick button names. The main table spells buttons 1-10 with the
+	// controller names on Linux builds (which include Android), so a config that
+	// binds "JOY1" (Portal 2's joy_configuration.cfg: A is JOY1, jump) would drop
+	// every button bind there. JOYn is always joystick button n - 1.
+	if ( !Q_strnicmp( pString, "joy", 3 ) && pString[3] >= '0' && pString[3] <= '9' )
+	{
+		char *pEnd = NULL;
+		const long nButton = strtol( &pString[3], &pEnd, 10 );
+		if ( pEnd && !*pEnd && nButton >= 1 && nButton <= JOYSTICK_MAX_BUTTON_COUNT )
+			return JOYSTICK_BUTTON( 0, nButton - 1 );
+	}
+
 	return BUTTON_CODE_INVALID;
 }
 

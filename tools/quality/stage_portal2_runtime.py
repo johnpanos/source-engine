@@ -34,6 +34,12 @@ RETAIL_SHARED_UPDATE_DIRS = ("resource", "scripts")
 RETAIL_EMPTY_WRITE_DIRS = ("update/save", "portal2/SAVE", "portal2/screenshots")
 # A retail mirror's write paths, which a retail launch declares to the launch sandbox.
 RETAIL_WRITE_PATHS = ("update", "update/cfg") + RETAIL_EMPTY_WRITE_DIRS + ("portal2/cfg",)
+# A retail launch's first arguments: settings from the mirror's own
+# cfg/config.cfg, never the player's Steam Cloud config. With cloud settings
+# on, retail loads the cloud config at every map start (over the command
+# line) and saves the session's archived cvars back into it on exit
+# (hud_quickinfo 0, joystick 0, ...), which then apply to the player's game.
+RETAIL_ENGINE_ARGS = ("+cl_cloud_settings", "0")
 
 
 def private_retail_write_dir(steam_root, mirror):

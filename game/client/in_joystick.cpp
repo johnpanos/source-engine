@@ -101,6 +101,7 @@ void joy_movement_stick_Callback( IConVar *var, const char *pOldString, float fl
 }
 static ConVar joy_movement_stick("joy_movement_stick", "0", FCVAR_ARCHIVE | FCVAR_ARCHIVE_XBOX, "Which stick controls movement (0 is left stick)", joy_movement_stick_Callback );
 
+static ConVar joy_autoenabled( "joy_autoenabled", "0", FCVAR_ARCHIVE | FCVAR_HIDDEN, "Set once the joystick was switched on automatically for a connected gamepad." );
 static ConVar joy_xcontroller_cfg_loaded( "joy_xcontroller_cfg_loaded", "0", FCVAR_ARCHIVE, "If 0, the 360controller.cfg file will be executed on startup & option changes." );
 
 extern ConVar lookspring;
@@ -671,6 +672,16 @@ void CInput::JoyStickMove( float frametime, CUserCmd *cmd )
 	{
 		Joystick_Advanced();
 		m_fJoystickAdvancedInit = true;
+
+		// A gamepad that was connected before the client's cvars existed could not
+		// switch the joystick on (inputsystem). Do it once, on the first launch that
+		// sees one, so its bindings load on the first map; joystick 0 stays settable
+		// in the options afterwards.
+		if ( !in_joystick.GetInt() && !joy_autoenabled.GetBool() && inputsystem->GetJoystickCount() > 0 )
+		{
+			in_joystick.SetValue( 1 );
+			joy_autoenabled.SetValue( 1 );
+		}
 	}
 
 	// Verify that the user wants to use the joystick

@@ -18,6 +18,9 @@
 #include "SDL.h"
 static void initKeymap(void);
 #endif
+#if defined( ANDROID ) && defined( USE_SDL3 )
+#include <jni.h>
+#endif
 
 ConVar joy_xcontroller_found( "joy_xcontroller_found", "1", FCVAR_HIDDEN, "Automatically set to 1 if an xcontroller has been detected." );
 
@@ -1549,6 +1552,84 @@ ISteamController* CInputSystem::SteamControllerInterface()
 	}
 }
 
+#if defined( ANDROID ) && defined( USE_SDL3 )
+
+// SDL's Android video driver never registers a keyboard, so SDL_HasKeyboard() is
+// always false: SDL raises the on-screen keyboard (an input view that takes the
+// key and captured-pointer focus, with autocorrect) whenever text input starts,
+// even with a hardware keyboard attached, and only hides it when its own
+// "shown" flag was set (Java sets that only if the IME already accepts text at
+// the moment it is asked). These two helpers answer both from the activity.
+namespace
+{
+// Configuration.keyboard: KEYBOARD_NOKEYS is 1; hardKeyboardHidden 2 is "hidden".
+bool AndroidHasHardwareKeyboard()
+{
+	JNIEnv *env = static_cast<JNIEnv *>( SDL_GetAndroidJNIEnv() );
+	jobject activity = static_cast<jobject>( SDL_GetAndroidActivity() );
+	if ( !env || !activity )
+		return false;
+
+	bool bPresent = false;
+	jclass activityClass = env->GetObjectClass( activity );
+	jmethodID getResources =
+	    env->GetMethodID( activityClass, "getResources", "()Landroid/content/res/Resources;" );
+	jobject resources = getResources ? env->CallObjectMethod( activity, getResources ) : NULL;
+	if ( resources )
+	{
+		jclass resourcesClass = env->GetObjectClass( resources );
+		jmethodID getConfiguration = env->GetMethodID(
+		    resourcesClass, "getConfiguration", "()Landroid/content/res/Configuration;" );
+		jobject configuration =
+		    getConfiguration ? env->CallObjectMethod( resources, getConfiguration ) : NULL;
+		if ( configuration )
+		{
+			jclass configurationClass = env->GetObjectClass( configuration );
+			jfieldID keyboard = env->GetFieldID( configurationClass, "keyboard", "I" );
+			jfieldID hidden = env->GetFieldID( configurationClass, "hardKeyboardHidden", "I" );
+			if ( keyboard && hidden )
+			{
+				bPresent = env->GetIntField( configuration, keyboard ) != 1 &&
+				           env->GetIntField( configuration, hidden ) != 2;
+			}
+			env->DeleteLocalRef( configurationClass );
+			env->DeleteLocalRef( configuration );
+		}
+		env->DeleteLocalRef( resourcesClass );
+		env->DeleteLocalRef( resources );
+	}
+	env->DeleteLocalRef( activityClass );
+	env->DeleteLocalRef( activity );
+	if ( env->ExceptionCheck() )
+	{
+		env->ExceptionClear();
+		return false;
+	}
+	return bPresent;
+}
+
+// SDLActivity.sendMessage( COMMAND_TEXTEDIT_HIDE, 0 ): hides the input view and
+// gives the focus back to the game surface. Harmless when nothing is shown.
+void AndroidHideScreenKeyboard()
+{
+	JNIEnv *env = static_cast<JNIEnv *>( SDL_GetAndroidJNIEnv() );
+	jobject activity = static_cast<jobject>( SDL_GetAndroidActivity() );
+	if ( !env || !activity )
+		return;
+
+	const int kCommandTextEditHide = 3; // SDLActivity.COMMAND_TEXTEDIT_HIDE
+	jclass activityClass = env->GetObjectClass( activity );
+	jmethodID sendMessage = env->GetStaticMethodID( activityClass, "sendMessage", "(II)Z" );
+	if ( sendMessage )
+		env->CallStaticBooleanMethod( activityClass, sendMessage, kCommandTextEditHide, 0 );
+	env->DeleteLocalRef( activityClass );
+	env->DeleteLocalRef( activity );
+	if ( env->ExceptionCheck() )
+		env->ExceptionClear();
+}
+} // namespace
+#endif
+
 void CInputSystem::StartTextInput()
 {
 #if defined( USE_SDL3 )
@@ -1556,7 +1637,29 @@ void CInputSystem::StartTextInput()
 	{
 		SDL_Window *window = static_cast<SDL_Window *>( m_pLauncherMgr->GetWindowRef() );
 		if ( window )
-			SDL_StartTextInput( window );
+		{
+#if defined( ANDROID )
+			// A hardware keyboard types straight into the game: SDL turns its key
+			// events into text, so no on-screen keyboard (and no autocorrecting IME
+			// that holds the input focus) is raised for it.
+			SDL_SetHint( SDL_HINT_ENABLE_SCREEN_KEYBOARD, AndroidHasHardwareKeyboard() ? "0" : "auto" );
+#endif
+			// Console commands and chat are not prose: no autocorrect, completion
+			// or suggestions from the on-screen keyboard's IME.
+			const SDL_PropertiesID props = SDL_CreateProperties();
+			SDL_SetBooleanProperty( props, SDL_PROP_TEXTINPUT_AUTOCORRECT_BOOLEAN, false );
+			SDL_SetNumberProperty( props, SDL_PROP_TEXTINPUT_TYPE_NUMBER, SDL_TEXTINPUT_TYPE_TEXT );
+#if defined( ANDROID ) && defined( SDL_PROP_TEXTINPUT_ANDROID_INPUTTYPE_NUMBER )
+			// TYPE_CLASS_TEXT | TYPE_TEXT_VARIATION_VISIBLE_PASSWORD |
+			// TYPE_TEXT_FLAG_NO_SUGGESTIONS: keyboards that ignore the autocorrect
+			// flag still show no suggestion strip and compose nothing.
+			SDL_SetNumberProperty( props, SDL_PROP_TEXTINPUT_ANDROID_INPUTTYPE_NUMBER,
+			    0x00000001 | 0x00000090 | 0x00080000 );
+#endif
+			if ( !SDL_StartTextInputWithProperties( window, props ) )
+				Warning( "Text input start failed: %s\n", SDL_GetError() );
+			SDL_DestroyProperties( props );
+		}
 	}
 #elif defined( USE_SDL )
 	SDL_StartTextInput();
@@ -1572,7 +1675,12 @@ void CInputSystem::StopTextInput()
 	{
 		SDL_Window *window = static_cast<SDL_Window *>( m_pLauncherMgr->GetWindowRef() );
 		if ( window )
+		{
 			SDL_StopTextInput( window );
+#if defined( ANDROID )
+			AndroidHideScreenKeyboard();
+#endif
+		}
 	}
 #endif
 }

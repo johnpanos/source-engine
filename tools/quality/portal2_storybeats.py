@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Portal 2 story-beat walkthroughs on the player's own input, this build vs retail.
 
-quality/workloads/portal2-storybeats-v1 plays a map from start to level
-change: the scenario script names the story beats, and qa_walker.nut walks
-the player between them. The walker plans each walk with A* over a grid it
+quality/workloads/portal2-storybeats-v1 (sp_a1_wakeup) and
+portal2-storybeats-laser-v1 (sp_a2_laser_intro, solved with the portal gun)
+play a map from start to level change: the scenario script names the story
+beats (qa_beats.nut), and qa_walker.nut walks the player between them. The walker plans each walk with A* over a grid it
 measures in the running game (TraceLine), and drives the player only through
 console input: +forward, +left/+right with cl_yawspeed, +lookup/+lookdown
 with cl_pitchspeed, +jump. Nothing sets the player's position or angles. At
@@ -17,6 +18,12 @@ brushes and its solid brush entities' brushes from the BSP in the Portal 2
 installation and installs them as qa/qa_clips.nut next to the scripts; the
 walker places each entity's brushes at its current origin. They are derived
 at run time: nothing from the map is stored in the repository.
+
+A scenario may run on a published derivative of a shipped map (the map
+pipeline's run/maps, mounted as ./play_p2 mounts it): "map" names the
+published map this build plays, "retail_map" the shipped map retail plays
+and whose BSP gives the collision. A relit map keeps every gameplay lump
+byte-identical, so both sides play the same chamber.
 
   capture --side build   runs the scenarios on a Waf tree (SDL offscreen,
                          native Vulkan) in a private staged runtime
@@ -52,7 +59,8 @@ Checks (per scenario):
 
 Both sides render at 1024x768 (the SDL offscreen driver's largest mode) with
 sv_cheats 1 before the map loads, so nothing prints a cheat notice over a
-frame. Retail content and binaries are not in the repository.
+frame, and with keyboard look (+cl_mouselook 0 +joystick 0; cl_mouselook
+cannot change while connected). Retail content and binaries are not in the repository.
 """
 
 import argparse
@@ -71,6 +79,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import conformance  # noqa: E402
 import conformance_result  # noqa: E402
 import legacy_bsp  # noqa: E402
+import playable_maps  # noqa: E402
 import portal2_material_shots as shots  # noqa: E402
 import portal2_scenarios  # noqa: E402
 import private_session  # noqa: E402
@@ -94,6 +103,15 @@ PATH_LINE = re.compile(r"^QA_PATH (\S+) t=(\S+) (\S+) (\S+) (\S+) (\S+) (\S+) (\
 # vertically (a beat in free fall is a tick or two apart in height).
 POSITION_TOLERANCE = 96.0
 HEIGHT_TOLERANCE = 160.0
+# The walker's keyboard look, on both sides before the map loads:
+# cl_mouselook cannot change while connected (FCVAR_NOT_CONNECTED), and
+# keyboard pitch needs it 0; a connected gamepad's absolute look axis would
+# set the pitch every frame.
+WALKER_ENGINE_ARGS = ["+cl_mouselook", "0", "+joystick", "0"]
+# Retail runs its user config (the mirror's own cfg/config.cfg; see
+# stage_portal2_runtime.RETAIL_ENGINE_ARGS) at every map start, after the
+# command line: the walker's settings go into that file too.
+RETAIL_WALKER_CONFIG = {"cl_mouselook": "0", "cl_mouselook2": "0", "joystick": "0"}
 
 
 class BeatError(Exception):
@@ -250,7 +268,9 @@ def map_bsp(steam_root, map_name):
 
 
 def install_clips(steam_root, scenarios, qa_directory, fault=None):
-    maps = sorted({s["map"] for s in scenarios})
+    # A published derivative (a relit map) keeps the shipped map's gameplay
+    # lumps byte-identical, so its collision comes from the shipped BSP.
+    maps = sorted({portal2_scenarios.retail_map(s) for s in scenarios})
     if len(maps) != 1:
         # qa_clips.nut is one file under qa/; a run covers one map.
         raise BeatError("a capture runs one map at a time, not %s" % ", ".join(maps))
@@ -266,13 +286,25 @@ def install_clips(steam_root, scenarios, qa_directory, fault=None):
 
 def capture_build(args, workload, scenarios):
     out = Path(args.out).resolve()
-    extra = shots.CAPTURE_ENGINE_ARGS + shots.PLAY_P2_ENGINE_ARGS + list(args.extra_arg)
+    extra = shots.CAPTURE_ENGINE_ARGS + shots.PLAY_P2_ENGINE_ARGS + WALKER_ENGINE_ARGS + \
+        list(args.extra_arg)
     capture = {"schema": shots.CAPTURE_SCHEMA, "side": "build", "status": "incomplete",
                "started_utc": now_iso(), "source": conformance.source_identity(str(ROOT)),
                "build": str(args.build), "extra_args": extra,
                "selected": [s["name"] for s in scenarios], "scenarios": {}}
     runtime = Path(args.runtime).resolve()
-    stage_portal2_runtime.stage_content(args.steam_root, runtime)
+    published = [s["map"] for s in scenarios if s["map"] != portal2_scenarios.retail_map(s)]
+    stage_portal2_runtime.stage_content(args.steam_root, runtime, mount_custom=bool(published))
+    if published:
+        # The map pipeline's published maps (run/maps), mounted as ./play_p2
+        # mounts them: portal2/custom/pbrt-<map>.
+        mounted, skipped = playable_maps.mount(runtime, game="portal2")
+        missing = [name for name in published if name not in mounted]
+        if missing:
+            raise BeatError("published map not mounted: %s" % "; ".join(
+                "%s (%s)" % (name, skipped.get(name, "not published")) for name in missing))
+        capture["published_maps"] = {name: {key: mounted[name].get(key) for key in (
+            "status", "failed_gates", "bsp2_sha256", "published")} for name in published}
     capture["installed"] = stage_portal2_runtime.portal_boot.install_build(
         args.build, runtime, game="portal2")
     portal2_scenarios.install_scripts(args.workload, workload, runtime)
@@ -309,12 +341,14 @@ def capture_retail(args, workload, scenarios):
     out = Path(args.out).resolve()
     mirror = shots.make_retail_mirror(args.steam_root, args.mirror)
     shots.install_retail_scripts(args.workload, workload, mirror)
+    set_retail_config(mirror)
     count = install_clips(args.steam_root, scenarios,
                           mirror / "portal2/scripts/vscripts" / portal2_scenarios.SCRIPT_DIRECTORY)
     inner = [sys.executable, os.path.abspath(shots.__file__), "_retail-session", "--out",
              str(out), "--mirror", str(mirror), "--workload", str(Path(args.workload).resolve())]
     for scenario in scenarios:
         inner += ["--scenario", scenario["name"]]
+    inner += ["--engine-arg=" + arg for arg in WALKER_ENGINE_ARGS]
     config = out / "compositor-config"
     config.mkdir(parents=True, exist_ok=True)
     environment = dict(os.environ, XDG_CONFIG_HOME=str(config))
@@ -337,6 +371,21 @@ def capture_retail(args, workload, scenarios):
     for record in capture["scenarios"].values():
         print_record(record)
     return capture
+
+
+def set_retail_config(mirror):
+    """Writes the walker's input settings into the mirror's own user configs
+    (update/ is searched first); refuses a config outside the mirror."""
+    mirror = Path(mirror).resolve()
+    for relative in ("update/cfg/config.cfg", "portal2/cfg/config.cfg"):
+        path = mirror / relative
+        if mirror not in path.parent.resolve().parents or path.is_symlink():
+            raise BeatError("%s is not the mirror's own file" % path)
+        lines = path.read_text(errors="replace").splitlines() if path.is_file() else []
+        lines = [line for line in lines if line.split(" ", 1)[0] not in RETAIL_WALKER_CONFIG]
+        lines += ['%s "%s"' % item for item in RETAIL_WALKER_CONFIG.items()]
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("\n".join(lines) + "\n")
 
 
 def print_record(record):
@@ -653,17 +702,21 @@ def main(argv=None):
     p.add_argument("--build-capture", type=Path, required=True)
     p.add_argument("--retail-capture", type=Path,
                    help="judge against this retail capture instead of the reference")
-    p.add_argument("--reference", type=Path, default=WORKLOAD / "reference.json")
+    p.add_argument("--reference", type=Path,
+                   help="default: reference.json next to the workload")
     p.add_argument("--workload", type=Path, default=WORKLOAD / "scenarios.json")
     p.add_argument("--only", help="count only the checks this regular expression matches")
 
     p = sub.add_parser("record", help="write the reference from a retail capture")
     p.add_argument("--retail-capture", type=Path, required=True)
-    p.add_argument("--reference", type=Path, default=WORKLOAD / "reference.json")
+    p.add_argument("--workload", type=Path, default=WORKLOAD / "scenarios.json")
+    p.add_argument("--reference", type=Path,
+                   help="default: reference.json next to the workload")
 
     p = sub.add_parser("suite", help="capture this build, then check (manifest row)")
     p.add_argument("--workload", type=Path, default=WORKLOAD / "scenarios.json")
-    p.add_argument("--reference", type=Path, default=WORKLOAD / "reference.json")
+    p.add_argument("--reference", type=Path,
+                   help="default: reference.json next to the workload")
     p.add_argument("--out", type=Path, help="capture directory (default: $CONFORMANCE_OUT or "
                                             "quality-results/portal2-storybeats-<time>)")
     p.add_argument("--steam-root", type=Path, default=steam)
@@ -683,6 +736,9 @@ def main(argv=None):
     p.add_argument("--steam-root", type=Path, default=steam)
 
     args = parser.parse_args(argv)
+    if getattr(args, "workload", None) is not None and "reference" in args and \
+            args.reference is None:
+        args.reference = Path(args.workload).parent / "reference.json"
     try:
         if args.command == "clips":
             text, _count = clip_script(map_bsp(args.steam_root, args.map), args.map)

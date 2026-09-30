@@ -1021,6 +1021,30 @@ function Walk_Tick()
 	{
 		Walk_Look()
 	}
+	else if ( ::WALK.state == "straight" )
+	{
+		Walk_FollowStraight()
+	}
+}
+
+// Straight at the goal on the keys, for a last step the grid cannot see
+// (a threshold only a dynamic prop covers): turn towards it, hold +forward
+// while facing it, stop within the radius.
+function Walk_FollowStraight()
+{
+	local o = QA_Player().GetOrigin()
+	local dx = ::WALK.goal.x - o.x
+	local dy = ::WALK.goal.y - o.y
+	if ( dx * dx + dy * dy <= ::WALK.goalRadius * ::WALK.goalRadius )
+	{
+		Walk_ReleaseAll()
+		::WALK.state = "arrived"
+		QA_Log( "walk " + ::WALK.label + " arrived straight at " + QA_Vec( o ) )
+		return
+	}
+	local yaw = QA_Deg( atan2( dy, dx ) )
+	Walk_SteerYaw( yaw, 2.0 )
+	Walk_Key( "forward", fabs( Walk_AngleDelta( yaw, ::WALK.view.yaw ) ) < 20.0 )
 }
 
 // --- Scenario interface ------------------------------------------------------
@@ -1030,8 +1054,11 @@ function Walk_Init( ignoreName )
 	::WALK.driver = Entities.FindByClassname( null, "worldspawn" )
 	::WALK.ignore = ignoreName == null ? null : Entities.FindByName( null, ignoreName )
 	Walk_LoadClips()
-	// Keyboard look (+lookup/+lookdown) works only with mouse look off.
-	SendToConsole( "cl_mouselook 0; lookspring 0; cl_yawspeed 210; cl_pitchspeed 225" )
+	// Keyboard look (+lookup/+lookdown) works only with mouse look off, and
+	// with the joystick off: a connected gamepad's absolute look axis sets
+	// the pitch every frame. cl_mouselook cannot change while connected, so
+	// the harness passes +cl_mouselook 0 +joystick 0 before the map loads.
+	SendToConsole( "joystick 0; lookspring 0; cl_yawspeed 210; cl_pitchspeed 225" )
 	::WALK.yawSpeed = 210.0
 	::WALK.pitchSpeed = 225.0
 	// Nothing has turned the view yet: it is the spawn view, level, facing
@@ -1065,6 +1092,18 @@ function Walk_To( label, goal, radius )
 	::WALK.nodes = {}
 	QA_Log( "walk " + label + " to " + QA_Vec( goal ) + format( " floor=%.1f radius=%.0f", z, radius ) )
 	Walk_StartPlan()
+}
+
+// Walks straight to <goal> within <radius> on the keys, without a plan.
+// Poll Walk_Arrived().
+function Walk_Straight( label, goal, radius )
+{
+	Walk_ReleaseAll()
+	::WALK.label = label
+	::WALK.goal = goal
+	::WALK.goalRadius = radius
+	QA_Log( "walk " + label + " straight to " + QA_Vec( goal ) + format( " radius=%.0f", radius ) )
+	::WALK.state = "straight"
 }
 
 function Walk_Arrived()

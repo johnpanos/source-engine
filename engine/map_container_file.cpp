@@ -13,11 +13,13 @@
 
 extern IFileSystem *g_pFileSystem;
 
-void CMapFileByteSource::Attach( FileHandle_t hFile, uint64_t nBase, uint64_t nSize )
+void CMapFileByteSource::Attach(
+    FileHandle_t hFile, uint64_t nBase, uint64_t nSize, IFileSystemLargeFile *pLargeFile )
 {
 	m_hFile = hFile;
 	m_nBase = nBase;
 	m_nSize = nSize;
+	m_pLargeFile = pLargeFile;
 }
 
 void CMapFileByteSource::Detach()
@@ -25,15 +27,17 @@ void CMapFileByteSource::Detach()
 	m_hFile = FILESYSTEM_INVALID_HANDLE;
 	m_nBase = 0;
 	m_nSize = 0;
+	m_pLargeFile = NULL;
 }
 
 bool CMapFileByteSource::ReadAt( uint64_t offset, void *pDest, size_t size )
 {
 	if ( m_hFile == FILESYSTEM_INVALID_HANDLE || offset > m_nSize || size > m_nSize - offset )
 		return false;
-	// IFileSystem positions are 32-bit; legacy-sized maps only until the
-	// filesystem gains 64-bit seeks.
 	const uint64_t position = m_nBase + offset;
+	if ( m_pLargeFile )
+		return m_pLargeFile->ReadAt( m_hFile, position, pDest, size );
+	// IFileSystem's own positions are 32-bit.
 	if ( position > 0x7FFFFFFFu || size > 0x7FFFFFFFu )
 		return false;
 	g_pFileSystem->Seek( m_hFile, (int)position, FILESYSTEM_SEEK_HEAD );
@@ -43,9 +47,14 @@ bool CMapFileByteSource::ReadAt( uint64_t offset, void *pDest, size_t size )
 mapcontainer::IMapContainer *OpenMapContainerForFile(
     CMapFileByteSource &source, FileHandle_t hFile, const char *pMapName, bool bQuiet )
 {
-	const unsigned int nBase = g_pFileSystem->Tell( hFile );
-	const unsigned int nFileSize = g_pFileSystem->Size( hFile );
-	source.Attach( hFile, nBase, nFileSize >= nBase ? nFileSize - nBase : 0 );
+	// Maps past 2 GiB (BSP2 with its lighting lumps) need the file system's
+	// 64-bit reads; IFileSystem's Size and Seek stop at 32 bits.
+	IFileSystemLargeFile *pLargeFile = static_cast<IFileSystemLargeFile *>(
+	    g_pFileSystem->QueryInterface( FILESYSTEM_LARGE_FILE_INTERFACE_VERSION ) );
+	const uint64_t nBase = g_pFileSystem->Tell( hFile );
+	const uint64_t nFileSize =
+	    pLargeFile ? pLargeFile->Size64( hFile ) : uint64_t( g_pFileSystem->Size( hFile ) );
+	source.Attach( hFile, nBase, nFileSize >= nBase ? nFileSize - nBase : 0, pLargeFile );
 
 	mapcontainer::MapContainerOpenOptions options = {};
 	mapcontainer::IMapContainer *pContainer = NULL;

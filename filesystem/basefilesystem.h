@@ -45,6 +45,7 @@
 #include <time.h>
 #include "refcount.h"
 #include "filesystem.h"
+#include "filesystem_large_file.h"
 #include "tier1/utlvector.h"
 #include <stdarg.h>
 #include "tier1/utlhashtable.h"
@@ -843,6 +844,16 @@ protected:
 
 	static CUtlSymbol			m_GamePathID;
 	static CUtlSymbol			m_BSPPathID;
+
+	// FILESYSTEM_LARGE_FILE_INTERFACE_VERSION: 64-bit size and reads beside
+	// IFileSystem's frozen 32-bit Seek/Tell/Size.
+	class CLargeFile : public IFileSystemLargeFile
+	{
+	public:
+		virtual uint64 Size64( FileHandle_t file );
+		virtual bool ReadAt( FileHandle_t file, uint64 offset, void *pDest, size_t size );
+	};
+	CLargeFile m_LargeFile;
 
 	static DVDMode_t			m_DVDMode;
 

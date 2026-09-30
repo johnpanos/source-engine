@@ -3,7 +3,8 @@
   "description": "sp_a1_wakeup walked through with the player's own input (A* over a grid measured in the running game, keys and turn rate through the console) and screenshotted at each story beat, on this build and on retail Portal 2. Run by tools/quality/portal2_storybeats.py.",
   "driver": "../portal2-wheatley-v1/qa_driver.nut",
   "includes": [
-    "qa_walker.nut"
+    "qa_walker.nut",
+    "qa_beats.nut"
   ],
   "scenarios": [
     {

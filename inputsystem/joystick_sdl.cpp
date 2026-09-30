@@ -311,8 +311,10 @@ void CInputSystem::ShutdownJoysticks()
 // Update the joy_xcontroller_found convar to force CInput::JoyStickMove to re-exec 360controller-linux.cfg
 static void SetJoyXControllerFound( bool found )
 {
-	static ConVarRef xcontrollerVar( "joy_xcontroller_found" );
-	static ConVarRef joystickVar( "joystick" );
+	// Looked up per call: the client's "joystick" cvar does not exist yet when a
+	// gamepad is found at startup, and a cached reference would stay invalid.
+	ConVarRef xcontrollerVar( "joy_xcontroller_found" );
+	ConVarRef joystickVar( "joystick" );
 	if ( xcontrollerVar.IsValid() )
 	{
 		xcontrollerVar.SetValue(found);
@@ -662,7 +664,7 @@ void CInputSystem::SetXDeviceRumble( float fLeftMotor, float fRightMotor, int us
 	}
 
 	float strength = (fLeftMotor + fRightMotor) / 2.f;
-	static ConVarRef joystickVar( "joystick" );
+	ConVarRef joystickVar( "joystick" ); // Not cached: see SetJoyXControllerFound.
 
 	// 0f means "stop".
 	bool shouldStop = ( strength < 0.01f );

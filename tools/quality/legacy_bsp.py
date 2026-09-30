@@ -191,7 +191,10 @@ class LegacyBsp:
         for index in range(len(raw) // TEXDATA_BYTES):
             reflectivity = struct.unpack_from("<3f", raw, index * TEXDATA_BYTES)
             name_id, width, height = struct.unpack_from("<3i", raw, index * TEXDATA_BYTES + 12)
-            if not 0 <= name_id < len(names) or width <= 0 or height <= 0:
+            # 0 x 0 is valid: vbsp writes it when the material had no preview
+            # image at compile time (GetMaterialDimensions, utilmatlib.cpp);
+            # retail sp_a2_laser_intro has one.
+            if not 0 <= name_id < len(names) or width < 0 or height < 0:
                 raise ValueError("texdata %d is malformed" % index)
             result.append({"name": names[name_id], "reflectivity": reflectivity,
                            "width": width, "height": height})

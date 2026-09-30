@@ -503,7 +503,8 @@ def retail_session(args):
             directory.mkdir(parents=True, exist_ok=True)
             command = ["./portal2_linux", "-game", "portal2", "-novid", "-windowed",
                        "-w", str(WIDTH), "-h", str(HEIGHT), "-condebug", "+volume", "0",
-                       *CAPTURE_ENGINE_ARGS, "+map", scenario["map"]]
+                       *stage_portal2_runtime.RETAIL_ENGINE_ARGS, *CAPTURE_ENGINE_ARGS, *args.engine_arg, "+map",
+                       portal2_scenarios.retail_map(scenario)]
             started = time.time()
             timed_out = False
             with (directory / "stdout.log").open("wb") as stream:
@@ -807,6 +808,8 @@ def main(argv=None):
     p.add_argument("--out", type=Path, required=True)
     p.add_argument("--mirror", type=Path, required=True)
     p.add_argument("--steam-settle", type=int, default=30)
+    p.add_argument("--engine-arg", action="append", default=[],
+                   help="extra retail engine argument before +map (repeatable)")
 
     p = sub.add_parser("record", help="write the reference from a retail capture")
     p.add_argument("--workload", type=Path, default=WORKLOAD / "scenarios.json")
