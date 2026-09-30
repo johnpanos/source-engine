@@ -313,19 +313,24 @@ def build(sources, patches, transfer, injection, gather, probe_direct, prbv_hash
     records[:, 7:10] = albedo
     blob[offsets[1]:offsets[1] + sizes[1]] = records.tobytes()
 
-    def put_rows(section, lists, link_bytes, fmt):
+    def put_rows(section, lists, link_bytes, width):
+        """Each row's links sorted by patch, packed as <I then `width` <f4 (the
+        same bytes struct.pack_into gave one link at a time, in one array)."""
         blob[offsets[section]:offsets[section] + sizes[section]] = \
             rows_from_lists(lists).tobytes()
-        cursor = offsets[section + 1]
-        for entries in lists:
-            for patch, values in sorted(entries, key=lambda entry: entry[0]):
-                values = [values] if np.isscalar(values) else list(values)
-                struct.pack_into(fmt, blob, cursor, int(patch), *[float(v) for v in values])
-                cursor += link_bytes
+        ordered = [link for entries in lists for link in sorted(entries, key=lambda e: e[0])]
+        if not ordered:
+            return
+        links = np.zeros(len(ordered), dtype=[("patch", "<u4"), ("values", "<f4", (width,))])
+        links["patch"] = [int(patch) for patch, _ in ordered]
+        links["values"] = np.asarray([values for _, values in ordered],
+                                     dtype=np.float64).reshape(len(ordered), width)
+        assert links.itemsize == link_bytes
+        blob[offsets[section + 1]:offsets[section + 1] + links.nbytes] = links.tobytes()
 
-    put_rows(2, transfer, TRANSFER_LINK_BYTES, "<If")
-    put_rows(4, injection, INJECTION_LINK_BYTES, "<I3f")
-    put_rows(6, gather, GATHER_LINK_BYTES, "<I9f")
+    put_rows(2, transfer, TRANSFER_LINK_BYTES, 1)
+    put_rows(4, injection, INJECTION_LINK_BYTES, 3)
+    put_rows(6, gather, GATHER_LINK_BYTES, 9)
     blob[offsets[8]:offsets[8] + sizes[8]] = direct.tobytes()
     return bytes(blob)
 
@@ -443,13 +448,23 @@ class Transfer:
         direct = np.zeros((self.patch_count, 3))
         for s, (index, values) in enumerate(self.injection):
             direct[index] += sigma[s] * values
+        # The transfer as flat links (row, column, factor): each iteration is
+        # one gather and one bincount over every link, not a Python loop over
+        # the patches (200 x 279723 on testchmb_a_15).
+        counts = np.array([len(index) for index, _ in self.transfer], dtype=np.int64)
+        if counts.sum():
+            columns = np.concatenate([index for index, _ in self.transfer])
+            factors = np.concatenate([values[:, 0] for _, values in self.transfer])
+        else:
+            columns, factors = np.zeros(0, np.int64), np.zeros(0)
+        slots = (np.repeat(np.arange(self.patch_count), counts)[:, None] * 3 +
+                 np.arange(3)).ravel()
         light = direct.copy()
         for _ in range(iterations if bounces is None else bounces):
             reflected = self.albedo * light
-            light = direct.copy()
-            for p, (index, values) in enumerate(self.transfer):
-                if len(index):
-                    light[p] += values[:, 0] @ reflected[index]
+            gathered = np.bincount(slots, (factors[:, None] * reflected[columns]).ravel(),
+                                   minlength=self.patch_count * 3)
+            light = direct + gathered.reshape(self.patch_count, 3)
         return light, direct
 
     def probe_light(self, light, scalars=None):

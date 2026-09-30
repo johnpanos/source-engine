@@ -445,6 +445,43 @@ class RadiosityTransferTest(unittest.TestCase):
         # One bounce only: 0.3 + 0.6 * 0.3.
         self.assertAlmostEqual(float(transfer.solve(bounces=1)[0][:, 0].mean()), 0.48, places=5)
 
+    def test_solve_matches_the_per_patch_iteration(self):
+        """The vectorized solve (one bincount per iteration) against the
+        definition, a loop over patches, on a random transfer."""
+        rng = np.random.default_rng(7)
+        count, sources = 40, 3
+        transfer = []
+        for p in range(count):
+            targets = rng.choice(count, 5, replace=False)
+            targets = targets[targets != p]
+            weights = rng.random(len(targets))
+            transfer.append([(int(q), float(w)) for q, w in
+                             zip(targets, 0.9 * weights / weights.sum())])
+        injection = [[(int(p), tuple(rng.random(3))) for p in rng.choice(count, 8, replace=False)]
+                     for _ in range(sources)]
+        normals = rng.normal(size=(count, 3))
+        patches = {"position": rng.random((count, 3)),
+                   "normal": normals / np.linalg.norm(normals, axis=1, keepdims=True),
+                   "area": rng.random(count) + 0.1, "albedo": 0.8 * rng.random((count, 3))}
+        data = radiosity_transfer.build(
+            [{"name": "s%d" % i, "kind": "light", "style": -1} for i in range(sources)],
+            patches, transfer, injection, [[]], np.zeros((sources, 1, 36, 3)), 0)
+        result = radiosity_transfer.Transfer(data)
+        sigma = np.array([0.5, 1.0, 2.0])
+        light, direct = result.solve(scalars=sigma, iterations=30)
+        expected_direct = np.zeros((count, 3))
+        for s, (index, values) in enumerate(result.injection):
+            expected_direct[index] += sigma[s] * values
+        expected = expected_direct.copy()
+        for _ in range(30):
+            reflected = result.albedo * expected
+            expected = expected_direct.copy()
+            for p, (index, values) in enumerate(result.transfer):
+                if len(index):
+                    expected[p] += values[:, 0] @ reflected[index]
+        np.testing.assert_array_equal(direct, expected_direct)
+        np.testing.assert_allclose(light, expected, rtol=1e-12, atol=1e-15)
+
     def test_every_malformation_is_rejected(self):
         for name, variant in radiosity_transfer.malformations(self.rtrn):
             with self.subTest(name=name):
