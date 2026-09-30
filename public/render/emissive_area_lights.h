@@ -30,9 +30,14 @@
 //
 //          Selection. A frame lights at most a budget of emitters, the most
 //          important at the view first: emitted power times how much of the
-//          view its reach covers, reach^2 / ( reach^2 + d^2 ). A lit emitter
-//          keeps its light against a newcomer less than kKeepMargin stronger,
-//          so two close emitters do not trade it every frame.
+//          view its reach covers, reach^2 / ( reach^2 + d^2 ). Emitters the
+//          view can see (the caller's test: the client traces the world from
+//          the view to the rectangle) come first; the rest only take budget
+//          left over, so a large emitter the view cannot see (a lava pit a
+//          floor below) never takes the light from small ones beside the
+//          view. A lit emitter keeps its light against a newcomer less than
+//          kKeepMargin stronger, so two close emitters do not trade it every
+//          frame.
 //
 //          Tier0-free C++ shared by the client and the conformance suite
 //          (unittests/rendertest/test_area_light.cpp).
@@ -401,11 +406,14 @@ struct Candidate
 	return power * reach * reach / ( reach * reach + d * d );
 }
 
-// Marks at most `budget` candidates lit, the most important first; a lit
-// candidate is preferred over an unlit one less than kKeepMargin stronger.
-// Ties go to the lower index.
-inline void SelectLit(
-    const Candidate *candidates, int count, int budget, const float view[3], bool *lit )
+// Marks at most `budget` candidates lit, the most important first: first
+// those `inView( index )` says the view can see, then, with budget left over,
+// the rest. `inView` is asked in rank order and only until the budget is
+// filled, so a caller may make it a trace. A lit candidate is preferred over
+// an unlit one less than kKeepMargin stronger. Ties go to the lower index.
+template <class InView>
+inline void SelectLit( const Candidate *candidates, int count, int budget, const float view[3],
+    bool *lit, InView &&inView )
 {
 	std::vector<std::pair<float, int>> ranked;
 	ranked.reserve( size_t( count ) );
@@ -424,8 +432,34 @@ inline void SelectLit(
 	    {
 		    return a.first > b.first;
 	    } );
-	for ( int i = 0; i < int( ranked.size() ) && i < budget; ++i )
-		lit[ranked[size_t( i )].second] = true;
+	int nLit = 0;
+	std::vector<int> hidden;
+	for ( size_t r = 0; r < ranked.size() && nLit < budget; ++r )
+	{
+		const int index = ranked[r].second;
+		if ( inView( index ) )
+		{
+			lit[index] = true;
+			++nLit;
+		}
+		else
+		{
+			hidden.push_back( index );
+		}
+	}
+	for ( size_t h = 0; h < hidden.size() && nLit < budget; ++h, ++nLit )
+		lit[hidden[h]] = true;
+}
+
+// Every candidate in view.
+inline void SelectLit(
+    const Candidate *candidates, int count, int budget, const float view[3], bool *lit )
+{
+	SelectLit( candidates, count, budget, view, lit,
+	    []( int )
+	    {
+		    return true;
+	    } );
 }
 
 } // namespace emissive

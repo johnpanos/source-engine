@@ -2110,6 +2110,47 @@ The contract is the RFC's "Area lights (light set v2)" amendment.
 - Elevator emitters fit large sparse rectangles.
 - No Fold7 or Apple run, and no per-pixel evaluation (K7).
 
+### Selection by what the view can see (2026-09-29, user request)
+
+The user asked for the cyan strips on the arm panels (sp_a2_intro's exit
+corridor, `arm64x64_interior_rusty`, `$selfillum`) to light their
+surroundings. Emitters were built for them, but none was ever lit.
+
+**Found.** In the corridor all 8 lights went to the incinerator's lava world
+faces 750-900 units away and a floor below, some beyond their own reach
+(importance about 1,400 against 0.1-2 for the strips). Portal 2's PVS counts
+the pit as visible, so a PVS test alone does not separate them.
+
+**Changed.**
+- `emissive::SelectLit` takes the caller's view test, asked in rank order
+  and only until the budget fills. Emitters the view can see are lit first;
+  the rest only take budget left over.
+- The client's test: the rectangle's bounds are in the PVS
+  (`IsBoxVisible`), and a world-only trace from the view reaches its center
+  (within 8 units, since a rectangle lies on its surface).
+- `r_area_lights_debug 3` logs one frame's candidates: position, reach,
+  distance, importance, and whether each is in view, hidden or not asked.
+
+**Evidence.**
+- `render.area-light` has 37 checks: an emitter in view beats a stronger
+  hidden one, a hidden one takes budget left over, and the view test stops
+  once the budget fills. The new seeded build `no-view` is rejected, and all
+  8 builds plus `render.light-set` pass on g++ and clang++ in both
+  configurations.
+- In the corridor (`portal2_map_views.py`, arms set to skin 0), the lava
+  faces are `hidden` and 8 arm emitters are lit.
+
+**Not done: at physical strength the strips barely light anything.** An
+A/B with the arms frozen and the tonemap fixed changes 159 pixels. The
+strips are thin, so their fitted rectangles have radiance 0.04-0.3 over
+10-110 u², and their reach is 17-32 units. The 8 lit are the upright
+strips about 50 units above the floor, because importance is judged at the
+view, not at the surfaces a light reaches. The strips on frames lying on the
+floor, which would light it, rank below them. More emitters need a larger
+budget than 8 dlight slots of 32, or the core's per-pixel area lights (K7,
+64 per frame, `render_lab` only so far). GI emission (probe-volume
+producers) needs a map with a PRBV, which retail maps do not have.
+
 ## Moving objects block light (2026-09-28, user request)
 
 The user asked to fix the static blob shadow under props, with these

@@ -65,9 +65,12 @@ carries each in a black dlight slot flagged `DLIGHT_AREA`
 - **Power.** The fitted radiance keeps the part's power:
   `radiance x area x sides = sum A_i L_i`.
 - **Selection.** At most `r_area_lights` (8 on desktop, RFC 0011 budget) are
-  lit. They are ranked by emitted power times `reach^2 / (reach^2 + d^2)` at
-  the view. A lit light keeps its light against a newcomer less than 1.25x
-  stronger. Ties go to the lower index.
+  lit. Emitters whose surface is in the view's potentially visible set
+  (`IsBoxVisible` on the rectangle's bounds) come before every other; the
+  rest only take budget left over. Within each set they are ranked by
+  emitted power times `reach^2 / (reach^2 + d^2)` at the view. A lit light
+  keeps its light against a newcomer less than 1.25x stronger. Ties go to
+  the lower index.
 
 ## Oracle
 
@@ -96,6 +99,7 @@ Each seeded defect must be rejected by at least one check:
 | `no-power` | the fit takes the mean radiance, not the power |
 | `no-keep` | selection without hysteresis |
 | `no-split` | one rectangle for distant patches |
+| `no-view` | selection that ignores whether an emitter is in view |
 
 ## Known gaps
 

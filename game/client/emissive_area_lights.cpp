@@ -65,7 +65,7 @@ static ConVar r_area_lights_scale( "r_area_lights_scale", "1", FCVAR_ARCHIVE,
     "radiance it draws); more exaggerates it." );
 static ConVar r_area_lights_debug( "r_area_lights_debug", "0", FCVAR_CHEAT,
     "1: draw each emissive area light (green lit, red not); 2: also log each model's emitters "
-    "as they are built." );
+    "as they are built; 3: log the next frame's candidates once, then 1." );
 
 namespace
 {
@@ -401,6 +401,32 @@ struct Candidate_t
 	float m_Tint[3];
 };
 
+// Whether the view can see a placed rectangle: its bounds are in the view's
+// potentially visible set and the world does not block the line from the view
+// to its center. The rectangle lies on its surface, so a line that ends
+// within kSeenTolerance of the center reaches it.
+const float kSeenTolerance = 8.0f;
+bool InView( const area_light::Rect &rect, const Vector &vecView )
+{
+	float corners[4][3];
+	area_light::Corners( rect, corners );
+	Vector mins( corners[0][0], corners[0][1], corners[0][2] ), maxs = mins;
+	for ( int c = 1; c < 4; ++c )
+	{
+		const Vector corner( corners[c][0], corners[c][1], corners[c][2] );
+		VectorMin( mins, corner, mins );
+		VectorMax( maxs, corner, maxs );
+	}
+	const Vector pad( 4.0f, 4.0f, 4.0f );
+	if ( !engine->IsBoxVisible( mins - pad, maxs + pad ) )
+		return false;
+	const Vector center( rect.center[0], rect.center[1], rect.center[2] );
+	CTraceFilterWorldOnly filter;
+	trace_t tr;
+	UTIL_TraceLine( vecView, center, MASK_OPAQUE, &filter, &tr );
+	return tr.fraction >= 1.0f || tr.endpos.DistToSqr( center ) <= Square( kSeenTolerance );
+}
+
 float Linear( unsigned char c )
 {
 	return SrgbGammaToLinear( c / 255.0f );
@@ -605,7 +631,31 @@ void CEmissiveAreaLights::PreRender()
 	for ( size_t i = 0; i < candidates.size(); ++i )
 		ranked[i] = candidates[i].m_Candidate;
 	std::unique_ptr<bool[]> lit( new bool[candidates.size() + 1] );
-	emissive::SelectLit( ranked.data(), int( ranked.size() ), nBudget, view, lit.get() );
+	// -1 not asked, 0 hidden, 1 in view.
+	std::vector<signed char> seen( candidates.size(), -1 );
+	emissive::SelectLit( ranked.data(), int( ranked.size() ), nBudget, view, lit.get(),
+	    [&]( int index )
+	    {
+		    seen[size_t( index )] = InView( ranked[size_t( index )].light.rect, vecView ) ? 1 : 0;
+		    return seen[size_t( index )] == 1;
+	    } );
+	if ( r_area_lights_debug.GetInt() >= 3 )
+	{
+		r_area_lights_debug.SetValue( 1 );
+		for ( size_t i = 0; i < ranked.size(); ++i )
+		{
+			const area_light::AreaLight &light = ranked[i].light;
+			Msg( "arealight candidate key %d at %.0f %.0f %.0f reach %.0f distance %.0f importance "
+			     "%.4g %s %s\n",
+			    candidates[i].m_nKey, light.rect.center[0], light.rect.center[1],
+			    light.rect.center[2], light.reach, area_light::DistanceTo( light.rect, view ),
+			    emissive::Importance( light, view ),
+			    seen[i] < 0 ? "not-asked"
+			    : seen[i]   ? "in-view"
+			                : "hidden",
+			    lit[i] ? "lit" : "unlit" );
+		}
+	}
 
 	area_light::AreaLight lights[area_light::kMaxAreaLights];
 	int keys[area_light::kMaxAreaLights];

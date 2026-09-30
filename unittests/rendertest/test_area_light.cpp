@@ -33,7 +33,8 @@ unsigned long g_checks = 0;
 unsigned long g_failures = 0;
 #if defined( AREA_LIGHT_SEEDED_NO_CLIP ) || defined( AREA_LIGHT_SEEDED_TWO_SIDED ) ||              \
     defined( AREA_LIGHT_SEEDED_POINT ) || defined( AREA_LIGHT_SEEDED_NO_POWER ) ||                 \
-    defined( AREA_LIGHT_SEEDED_NO_KEEP ) || defined( AREA_LIGHT_SEEDED_NO_SPLIT )
+    defined( AREA_LIGHT_SEEDED_NO_KEEP ) || defined( AREA_LIGHT_SEEDED_NO_SPLIT ) ||               \
+    defined( AREA_LIGHT_SEEDED_NO_VIEW )
 constexpr bool kSeeded = true;
 #else
 constexpr bool kSeeded = false;
@@ -138,6 +139,26 @@ void SelectUnderTest(
 #else
 	emissive::SelectLit( candidates, count, budget, view, lit );
 #endif
+}
+
+// Selection with the caller's view test; `asked` counts its calls.
+void SelectInViewUnderTest( const emissive::Candidate *candidates, int count, int budget,
+    const float view[3], bool *lit, const bool *inView, int &asked )
+{
+	asked = 0;
+	auto test = [&]( int index )
+	{
+		++asked;
+#if defined( AREA_LIGHT_SEEDED_NO_VIEW )
+		// Every emitter ranked as if in view.
+		(void)inView;
+		(void)index;
+		return true;
+#else
+		return inView[index];
+#endif
+	};
+	emissive::SelectLit( candidates, count, budget, view, lit, test );
 }
 
 // The independent oracle (area_light_oracle.h).
@@ -544,6 +565,35 @@ int main()
 		bool litClear[2];
 		SelectUnderTest( clear, 2, 1, view, litClear );
 		Check( !litClear[0] && litClear[1], "a clearly stronger light takes it" );
+
+		// A large emitter the view cannot see (a lava pit a floor below)
+		// against a small one beside the view: the visible one is lit, and the
+		// hidden one still takes budget left over.
+		emissive::Candidate hidden;
+		hidden.light.rect = MakeRect( 0, 0, 400, 60, 60 );
+		hidden.light.radiance[0] = hidden.light.radiance[1] = hidden.light.radiance[2] = 0.35f;
+		hidden.light.reach = Reach( hidden.light.rect, hidden.light.radiance );
+		emissive::Candidate strip = make( 20, 0.3f, false );
+		strip.light.rect = MakeRect( 20, 0, 10, 16, 1 );
+		strip.light.reach = Reach( strip.light.rect, strip.light.radiance );
+		const emissive::Candidate unseen[] = { hidden, strip };
+		const bool unseenInView[] = { false, true };
+		bool litUnseen[2];
+		int asked = 0;
+		SelectInViewUnderTest( unseen, 2, 1, view, litUnseen, unseenInView, asked );
+		Check( !litUnseen[0] && litUnseen[1],
+		    "an emitter in view is lit before a stronger one out of view" );
+		SelectInViewUnderTest( unseen, 2, 2, view, litUnseen, unseenInView, asked );
+		Check( litUnseen[0] && litUnseen[1], "an emitter out of view takes budget left over" );
+
+		// The view test is asked in rank order only until the budget fills.
+		const emissive::Candidate four[] = { make( 0, 1.0f, false ), make( 10, 1.0f, false ),
+		    make( 20, 1.0f, false ), make( 30, 1.0f, false ) };
+		const bool allInView[] = { true, true, true, true };
+		bool litFour[4];
+		SelectInViewUnderTest( four, 4, 2, view, litFour, allInView, asked );
+		Check( asked == 2 && litFour[0] && litFour[1] && !litFour[2] && !litFour[3],
+		    "the view test is asked only until the budget is filled" );
 	}
 
 	if ( kSeeded )
