@@ -474,6 +474,10 @@
       "dialect": "cxx20",
       "rfc": "0016"
     },
+    "render_pass_bounce": {
+      "dialect": "cxx20",
+      "rfc": "0016"
+    },
     "render_pass_ao": {
       "dialect": "cxx20",
       "rfc": "0016"

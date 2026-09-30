@@ -1184,6 +1184,13 @@
       "stages": [
        "fragment"
       ]
+     },
+     {
+      "binding": 12,
+      "kind": "sampler",
+      "stages": [
+       "fragment"
+      ]
      }
     ],
     "view": [
@@ -1224,21 +1231,21 @@
      },
      {
       "binding": 5,
-      "kind": "sampled-texture",
+      "kind": "storage-buffer",
       "stages": [
        "fragment"
       ]
      },
      {
       "binding": 6,
-      "kind": "sampler",
+      "kind": "sampled-texture",
       "stages": [
        "fragment"
       ]
      },
      {
       "binding": 7,
-      "kind": "storage-buffer",
+      "kind": "sampler",
       "stages": [
        "fragment"
       ]
@@ -1260,6 +1267,13 @@
      {
       "binding": 10,
       "kind": "sampled-texture",
+      "stages": [
+       "fragment"
+      ]
+     },
+     {
+      "binding": 11,
+      "kind": "sampler",
       "stages": [
        "fragment"
       ]

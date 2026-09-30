@@ -328,6 +328,9 @@ inline constexpr std::uint32_t kSurfaceProbeBounce = 4194304;
 // probe volume's indirect layer (when it has one) and takes every light's
 // diffuse lobe at runtime, shadowed, baked lights included.
 inline constexpr std::uint32_t kSurfaceMeshDirect = 8388608;
+// A reflective shadow map's pass (render.pass.bounce): attachment 0 holds
+// the surface's diffuse reflectance (RGBA16F).
+inline constexpr std::uint32_t kSurfaceRsm = 16777216;
 // The terms that read the normal (not on the flat vertex), and those the
 // model vertex alone evaluates.
 inline constexpr std::uint32_t kSurfaceNormalTerms =

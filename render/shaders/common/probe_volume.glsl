@@ -51,10 +51,16 @@ vec4 ProbeAtlasSample( vec2 texel )
 }
 
 #ifdef PROBE_VOLUME_SECOND
+// The second atlas's sampler: the includer's PROBE_VOLUME_SECOND_SAMPLER, else
+// the first atlas's.
+#ifndef PROBE_VOLUME_SECOND_SAMPLER
+#define PROBE_VOLUME_SECOND_SAMPLER probeAtlasSampler
+#endif
 vec4 ProbeSecondAtlasSample( vec2 texel )
 {
-	return textureLod( sampler2D( probeSecondAtlas, probeAtlasSampler ),
-	    texel / vec2( textureSize( sampler2D( probeSecondAtlas, probeAtlasSampler ), 0 ) ), 0.0 );
+	return textureLod( sampler2D( probeSecondAtlas, PROBE_VOLUME_SECOND_SAMPLER ),
+	    texel / vec2( textureSize( sampler2D( probeSecondAtlas, PROBE_VOLUME_SECOND_SAMPLER ), 0 ) ),
+	    0.0 );
 }
 #endif
 

@@ -86,6 +86,9 @@ const int kSsrTargets = 1048576;
 const int kDepthNormal = 2097152;
 const int kProbeBounce = 4194304;
 const int kMeshDirect = 8388608;
+// A reflective shadow map's albedo (render.pass.bounce): attachment 0 holds
+// the surface's diffuse reflectance only.
+const int kRsm = 16777216;
 
 // An area light (render.area-light.v1, area_light::AreaLight): its
 // rectangle, its radiance and its reach.
@@ -167,18 +170,19 @@ layout( set = 1, binding = 4, std430, row_major ) readonly buffer ShadowTiles
 {
 	ShadowTile shadowTiles[];
 };
-layout( set = 1, binding = 5 ) uniform texture2D shadowAtlas;
-layout( set = 1, binding = 6 ) uniform sampler shadowSampler;
-#include "../../shaders/common/shadow_faces.glsl"
-// The view's projected lights (render.projected-light.v1) and their cookies,
+// The view's projected lights (render.projected-light.v1), their cookies,
 // and the view's ambient occlusion (fetched per pixel).
-layout( set = 1, binding = 7, std430 ) readonly buffer ProjectedLights
+layout( set = 1, binding = 5, std430 ) readonly buffer ProjectedLights
 {
 	ProjectedLight projectors[];
 };
+layout( set = 1, binding = 6 ) uniform texture2D shadowAtlas;
+layout( set = 1, binding = 7 ) uniform sampler shadowSampler;
+#include "../../shaders/common/shadow_faces.glsl"
 layout( set = 1, binding = 8 ) uniform texture2DArray cookieTexture;
 layout( set = 1, binding = 9 ) uniform sampler cookieSampler;
 layout( set = 1, binding = 10 ) uniform texture2D occlusionTexture;
+layout( set = 1, binding = 11 ) uniform sampler occlusionSampler;
 
 // The GGX LTC table (public/render/pbr_ltc_table.h), read by the pbr point.
 layout( set = 0, binding = 3 ) uniform texture2D ltcTexture;
@@ -192,9 +196,12 @@ layout( set = 0, binding = 7 ) uniform texture2D probeGrids;
 layout( set = 0, binding = 8 ) uniform sampler probeGridsSampler;
 layout( set = 0, binding = 9 ) uniform texture2D reflectionProbes;
 layout( set = 0, binding = 10 ) uniform sampler reflectionProbesSampler;
-// The projected lights' bounce: an atlas of the probe atlas's layout.
+// The projected lights' bounce: an atlas of the probe atlas's layout, with
+// its sampler (linear, clamped, as the probe atlas's).
 layout( set = 0, binding = 11 ) uniform texture2D probeSecondAtlas;
+layout( set = 0, binding = 12 ) uniform sampler probeSecondSampler;
 #define PROBE_VOLUME_SECOND
+#define PROBE_VOLUME_SECOND_SAMPLER probeSecondSampler
 #include "../../shaders/common/probe_volume.glsl"
 
 vec4 ReflectionProbesFetch( ivec2 texel )
@@ -456,10 +463,15 @@ void PbrSurface()
 	const float roughness =
 	    max( kDebugForceRoughness >= 0.0 ? kDebugForceRoughness : mrao.g, 0.02 );
 	const float occlusion = DebugTermOn( kDebugTermAo ) ? clamp( mrao.b, 0.0, 1.0 ) : 1.0;
+	if ( Term( kRsm ) )
+	{
+		outColor = vec4( base * ( 1.0 - metalness ), 1.0 );
+		return;
+	}
 	// The view's occlusion of the indirect light (render.pass.ao).
 	const float screenOcclusion =
 	    Term( kAmbientOcclusion ) && DebugTermOn( kDebugTermAo )
-	        ? clamp( texelFetch( sampler2D( occlusionTexture, shadowSampler ),
+	        ? clamp( texelFetch( sampler2D( occlusionTexture, occlusionSampler ),
 	                     ivec2( gl_FragCoord.xy ), 0 )
 	                     .r,
 	              0.0, 1.0 )
@@ -953,6 +965,13 @@ void main()
 	if ( Term( kPbr ) )
 	{
 		PbrSurface();
+		return;
+	}
+	if ( Term( kRsm ) )
+	{
+		// A legacy point's reflectance: its base texture times its tint.
+		outColor = vec4(
+		    texture( sampler2D( baseTexture, baseSampler ), baseUv ).rgb * material.tint.rgb, 1.0 );
 		return;
 	}
 	if ( Term( kDepthNormal ) )

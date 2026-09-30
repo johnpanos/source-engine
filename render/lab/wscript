@@ -25,7 +25,7 @@ def build(bld):
 		              'probe_volume_suite.cpp', 'reflection_probes_suite.cpp',
 		              'lab_media.cpp', 'volumetric_suite.cpp', 'clustered_lights_suite.cpp',
 		              'map_terms_suite.cpp', 'ssr_reference.cpp', 'ssr_scene.cpp', 'ssr_suite.cpp',
-		              'shadowed_lights_suite.cpp' ],
+		              'shadowed_lights_suite.cpp', 'bounce_suite.cpp' ],
 		target    = 'render_lab',
 		name      = 'render_lab',
 		arch_module = 'render.lab',
@@ -33,7 +33,7 @@ def build(bld):
 		includes  = [ '../../public' ],
 		use       = [ 'render_device_vulkan', 'render_pass_lines', 'render_pass_lights', 'render_pass_ssr', 'render_material', 'render_frame',
 		              'render_graph', 'jobsystem', 'render_resources', 'render_shaderlib',
-		              'render_pass_shadows', 'render_pass_volumetric', 'render_pass_ao',
+		              'render_pass_shadows', 'render_pass_volumetric', 'render_pass_ao', 'render_pass_bounce',
 		              'render_device', 'render_math', 'render_spv', 'mapcontainer', 'mdl',
 		              'vtf_texture_reader',
 		              # The VTF reader's legacy dependencies (a tier-free reader is

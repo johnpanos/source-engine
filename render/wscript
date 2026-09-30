@@ -32,6 +32,7 @@ PORTABLE = [
 	'pass/volumetric',
 	'pass/ssr',
 	'pass/ao',
+	'pass/bounce',
 	'legacy',
 	'composition',
 ]

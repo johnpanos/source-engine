@@ -488,6 +488,7 @@ CaseGroup NeutralViewGroup( device::BindGroupLayoutId layout )
 	static const std::uint32_t kIndices[4] = {};
 	static const render::material::SurfaceLightGpu kLight;
 	static const render::ShadowTileGpu kTile;
+	static const projected_light::LightGpu kProjector;
 	// No atlas: a texture no tile indexes.
 	static const CaseTexture kAtlas = []
 	{
@@ -503,8 +504,17 @@ CaseGroup NeutralViewGroup( device::BindGroupLayoutId layout )
 	group.layout = layout;
 	group.constants = std::as_bytes( std::span( &kView, 1 ) );
 	group.storage = { std::as_bytes( std::span( kFroxel ) ), std::as_bytes( std::span( kIndices ) ),
-	    std::as_bytes( std::span( &kLight, 1 ) ), std::as_bytes( std::span( &kTile, 1 ) ) };
-	group.textures = { &kAtlas };
+	    std::as_bytes( std::span( &kLight, 1 ) ), std::as_bytes( std::span( &kTile, 1 ) ),
+	    std::as_bytes( std::span( &kProjector, 1 ) ) };
+	// No projectors: a two-layer cookie array; no occlusion pass: white.
+	static const CaseTexture kCookies = []
+	{
+		CaseTexture cookies = kAtlas;
+		cookies.array = true;
+		cookies.texels = { 255, 255, 255, 255, 255, 255, 255, 255 };
+		return cookies;
+	}();
+	group.textures = { &kAtlas, &kCookies, &kAtlas };
 	return group;
 }
 
@@ -615,6 +625,8 @@ Drawn DrawCase( device::IRenderDevice2 &device, const CaseDraw &draw )
 				desc.dimension = device::TextureDimension::kCube;
 				desc.depthOrLayers = 6;
 			}
+			if ( texture->array )
+				desc.depthOrLayers = 2;
 			desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kSampled };
 			device::BufferDesc stagingDesc;
 			stagingDesc.size = texture->texels.size();
@@ -733,7 +745,7 @@ Drawn DrawCase( device::IRenderDevice2 &device, const CaseDraw &draw )
 					    {
 						    const CaseTexture &texture = *draw.groups[g].textures[t];
 						    // A cube's faces follow one another in its texels.
-						    const std::uint32_t layers = texture.cube ? 6 : 1;
+						    const std::uint32_t layers = texture.cube ? 6 : texture.array ? 2 : 1;
 						    const std::uint64_t faceBytes =
 						        texture.texels.size() / std::max<std::uint32_t>( layers, 1 );
 						    for ( std::uint32_t layer = 0; layer < layers; ++layer )

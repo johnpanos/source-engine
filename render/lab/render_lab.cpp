@@ -73,6 +73,8 @@
 #include "render/material/vmt_import.h"
 #include "render/math/matrix.h"
 #include "render/pass/ao/ao.h"
+#include "render/pass/bounce/bounce.h"
+#include "render/pass/shadows/shadow_views.h"
 #include "render/pass/lights/clusters.h"
 #include "render/pass/shadows/shadow_passes.h"
 #include "render/pass/ssr/ssr.h"
@@ -136,6 +138,8 @@ struct Options
 	bool noShadows = false;
 	bool noAo = false;
 	bool noSsr = false;
+	bool noBounce = false;
+	std::uint32_t rsmSize = 128; // a projector's reflective shadow map, texels across
 	std::uint32_t timeRepeats = 0;
 	// The inject stage's stratified samples per froxel (across, along).
 	pass::volumetric::VolumetricSampling fogSampling;
@@ -190,6 +194,8 @@ std::optional<Options> ParseOptions( int argc, char **argv )
 			options.noAo = true;
 		else if ( arg == "--no-ssr" )
 			options.noSsr = true;
+		else if ( arg == "--no-bounce" )
+			options.noBounce = true;
 		else if ( !value )
 			return std::nullopt;
 		else if ( arg == "--game" )
@@ -208,6 +214,8 @@ std::optional<Options> ParseOptions( int argc, char **argv )
 			take();
 		else if ( arg == "--model-origin" && ParseVector( value, options.modelOrigin ) )
 			take();
+		else if ( arg == "--rsm-size" )
+			options.rsmSize = std::uint32_t( std::max( 16, std::atoi( take() ) ) );
 		else if ( arg == "--hfov" )
 			options.horizontalFov = float( std::atof( take() ) );
 		else if ( arg == "--fog-scale" )
@@ -516,9 +524,9 @@ int Run( const Options &options )
 		// The map's probe volume (PRBV) for probe_volume.glsl, when it has
 		// one: lab:probe-volume-atlas and lab:probe-volume-grids.
 		material::SurfaceMapTextures map;
+		mapcontainer::ProbeVolumeLayout probeLayout{};
 		if ( const std::optional<std::string> prbv = lump( mapcontainer::kLumpProbeVolume ) )
 		{
-			mapcontainer::ProbeVolumeLayout probeLayout{};
 			if ( std::optional<std::string> why = StageProbeVolume( cache, "lab:probe-volume",
 			         std::as_bytes( std::span( prbv->data(), prbv->size() ) ), probeLayout ) )
 				return Fail( *why );
@@ -561,6 +569,31 @@ int Run( const Options &options )
 			sceneTerms |= material::kSurfaceReflectionProbes;
 		if ( aoOn )
 			sceneTerms |= material::kSurfaceAmbientOcclusion;
+		// The projected lights' bounce (render.pass.bounce), into the probe
+		// volume's layout.
+		const bool bounceOn = !options.noBounce && !map.probeAtlas.empty() &&
+		                      !lights.projectors.empty() &&
+		                      passOn( shaderlib::kDebugTermProjected );
+		TextureDesc bounceDesc;
+		TextureId bounceAtlas;
+		if ( bounceOn )
+		{
+			const resources::TextureEntry *atlasEntry = cache.Find( map.probeAtlas );
+			if ( !atlasEntry )
+				return Fail( "the probe atlas is not staged" );
+			bounceDesc.format = Format::kRGBA16Float;
+			bounceDesc.width = atlasEntry->desc.width;
+			bounceDesc.height = atlasEntry->desc.height;
+			bounceDesc.usages = { ResourceUsage::kStorageWrite, ResourceUsage::kSampled,
+			    ResourceUsage::kCopyDestination };
+			auto made = device->CreateTexture( bounceDesc );
+			if ( !made )
+				return Fail( "the bounce atlas was refused" );
+			bounceAtlas = made.Value();
+			map.probeBounce = bounceAtlas;
+			map.probeBounceDesc = bounceDesc;
+			sceneTerms |= material::kSurfaceProbeBounce;
+		}
 		resolver.Value()->SetWorldPbr( true, sceneTerms );
 
 		// The world's materials.
@@ -1074,8 +1107,15 @@ int Run( const Options &options )
 		encoder.TransitionTexture(
 		    occlusion.Value(), ResourceUsage::kCopyDestination, ResourceUsage::kSampled );
 
-		auto drawAll = [&]( bool prepass ) -> bool
+		enum class Pass
 		{
+			kPrepass,
+			kLit,
+			kReflective
+		};
+		auto drawAll = [&]( Pass which, const material::FamilyDrawConstants *override ) -> bool
+		{
+			const bool prepass = which != Pass::kLit;
 			for ( const Draw &draw : draws )
 			{
 				const SceneMaterial &m = materials[draw.material];
@@ -1092,8 +1132,10 @@ int Run( const Options &options )
 				PipelineId pipelineId;
 				if ( prepass )
 				{
-					auto variant = resolver.Value()->VariantPipeline(
-					    m.program, material::kSurfaceDepthNormal, material::kSurfaceSsrTargets );
+					auto variant = resolver.Value()->VariantPipeline( m.program,
+					    which == Pass::kReflective ? material::kSurfaceRsm
+					                               : material::kSurfaceDepthNormal,
+					    material::kSurfaceSsrTargets );
 					if ( !variant )
 					{
 						status = Fail( variant.Error() );
@@ -1141,12 +1183,106 @@ int Run( const Options &options )
 				}
 				encoder.SetVertexBuffer( 0, vertexBuffer, 0 );
 				encoder.SetIndexBuffer( indexBuffer, 0, IndexFormat::kUint32 );
-				encoder.SetDrawConstants( 0, std::as_bytes( std::span( &constants, 1 ) )
-				                                 .first( m.program.request.drawConstantBytes ) );
+				encoder.SetDrawConstants(
+				    0, std::as_bytes( std::span( override ? override : &constants, 1 ) )
+				           .first( m.program.request.drawConstantBytes ) );
 				encoder.DrawIndexed( draw.indexCount, 1, draw.firstIndex, 0, 0 );
 			}
 			return true;
 		};
+
+		// The projected lights' bounce: each projector's reflective shadow map
+		// (the surfaces' albedo and depth through its frustum), then the
+		// gather into the bounce atlas the lit pass samples.
+		std::unique_ptr<pass::bounce::ProjectorBounce> bouncer;
+		std::vector<TextureId> rsmTargets;
+		if ( bounceOn )
+		{
+			encoder.TransitionTexture(
+			    bounceAtlas, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+			encoder.ClearTexture( bounceAtlas, { 0, 0, 0, 0 } );
+			encoder.TransitionTexture(
+			    bounceAtlas, ResourceUsage::kCopyDestination, ResourceUsage::kSampled );
+			auto created = pass::bounce::ProjectorBounce::Create( *device );
+			if ( !created )
+				return Fail( "the bounce pass was refused" );
+			bouncer = std::move( created ).Value();
+			const std::uint32_t rsmSize = options.rsmSize;
+			std::vector<pass::bounce::ReflectiveShadowMap> maps;
+			for ( std::size_t i = 0; i < lights.projectors.size(); ++i )
+			{
+				const projected_light::Light &light = lights.projectors[i];
+				pass::shadows::FlashlightShadowDesc desc;
+				desc.position = { light.origin[0], light.origin[1], light.origin[2] };
+				desc.forward = { light.forward[0], light.forward[1], light.forward[2] };
+				desc.up = { light.up[0], light.up[1], light.up[2] };
+				desc.horizontalFovRadians = light.horizontalFovDegrees * 3.14159265f / 180.0f;
+				desc.verticalFovRadians = light.verticalFovDegrees * 3.14159265f / 180.0f;
+				desc.nearZ = std::max( light.nearZ, 1.0f );
+				desc.farZ = light.farZ;
+				auto shadowView = pass::shadows::BuildFlashlightShadowView( desc );
+				if ( !shadowView )
+					continue;
+				TextureDesc rsmDesc;
+				rsmDesc.format = Format::kRGBA16Float;
+				rsmDesc.width = rsmDesc.height = rsmSize;
+				rsmDesc.usages = { ResourceUsage::kColorAttachment, ResourceUsage::kSampled };
+				auto albedo = device->CreateTexture( rsmDesc );
+				rsmDesc.format = depthFormat;
+				rsmDesc.usages = { ResourceUsage::kDepthWrite, ResourceUsage::kSampled };
+				auto rsmDepth = device->CreateTexture( rsmDesc );
+				if ( !albedo || !rsmDepth )
+					return Fail( "a reflective shadow map was refused" );
+				rsmTargets.push_back( albedo.Value() );
+				rsmTargets.push_back( rsmDepth.Value() );
+				encoder.TransitionTexture(
+				    albedo.Value(), ResourceUsage::kUndefined, ResourceUsage::kColorAttachment );
+				encoder.TransitionTexture(
+				    rsmDepth.Value(), ResourceUsage::kUndefined, ResourceUsage::kDepthWrite );
+				const ColorAttachment attachments[] = {
+				    { albedo.Value(), LoadOp::kClear, StoreOp::kStore, { 0, 0, 0, 0 }, {} } };
+				RenderingDesc rendering;
+				rendering.colors = attachments;
+				rendering.depth =
+				    DepthAttachment{ rsmDepth.Value(), LoadOp::kClear, StoreOp::kStore, 1.0f };
+				rendering.width = rendering.height = rsmSize;
+				encoder.BeginRendering( rendering );
+				encoder.SetViewport( { 0, 0, float( rsmSize ), float( rsmSize ), 0, 1 } );
+				material::FamilyDrawConstants rsmConstants;
+				std::memcpy( rsmConstants.toClip, &shadowView.Value().viewProjection,
+				    sizeof( rsmConstants.toClip ) );
+				const bool drawn = drawAll( Pass::kReflective, &rsmConstants );
+				encoder.EndRendering();
+				if ( !drawn )
+					return status;
+				encoder.TransitionTexture(
+				    albedo.Value(), ResourceUsage::kColorAttachment, ResourceUsage::kSampled );
+				encoder.TransitionTexture(
+				    rsmDepth.Value(), ResourceUsage::kDepthWrite, ResourceUsage::kSampled );
+				pass::bounce::ReflectiveShadowMap rsm;
+				rsm.albedo = albedo.Value();
+				rsm.depth = rsmDepth.Value();
+				rsm.size = rsmSize;
+				rsm.viewProjection = shadowView.Value().viewProjection;
+				rsm.light = projectorRecords[i];
+				maps.push_back( rsm );
+			}
+			pass::bounce::BounceInputs inputs;
+			inputs.probeAtlas = cache.Find( map.probeAtlas )->texture;
+			inputs.probeAtlasDesc = cache.Find( map.probeAtlas )->desc;
+			inputs.probeGrids = cache.Find( map.probeGrids )->texture;
+			inputs.gridCount = probeLayout.gridCount;
+			for ( std::uint32_t g = 0; g < probeLayout.gridCount; ++g )
+				inputs.maxProbesPerGrid = std::max( inputs.maxProbesPerGrid,
+				    probeLayout.grids[g].dims[0] * probeLayout.grids[g].dims[1] *
+				        probeLayout.grids[g].dims[2] );
+			inputs.cookies = cookies.Texture();
+			inputs.maps = maps;
+			inputs.output = bounceAtlas;
+			inputs.outputUsage = ResourceUsage::kSampled;
+			if ( !maps.empty() && !bouncer->Record( encoder, inputs ) )
+				return Fail( "the bounce pass did not record" );
+		}
 
 		// The prepass: depth, and the normal and roughness the occlusion reads.
 		encoder.TransitionTexture(
@@ -1163,7 +1299,7 @@ int Run( const Options &options )
 			rendering.height = options.height;
 			encoder.BeginRendering( rendering );
 			encoder.SetViewport( { 0, 0, float( options.width ), float( options.height ), 0, 1 } );
-			const bool drawn = drawAll( true );
+			const bool drawn = drawAll( Pass::kPrepass, nullptr );
 			encoder.EndRendering();
 			if ( !drawn )
 				return status;
@@ -1211,7 +1347,7 @@ int Run( const Options &options )
 			rendering.height = options.height;
 			encoder.BeginRendering( rendering );
 			encoder.SetViewport( { 0, 0, float( options.width ), float( options.height ), 0, 1 } );
-			const bool ok = drawAll( false );
+			const bool ok = drawAll( Pass::kLit, nullptr );
 			encoder.EndRendering();
 			if ( !ok )
 				return status;
@@ -1272,6 +1408,8 @@ int Run( const Options &options )
 			ambient->Collect( token.Value() );
 		if ( reflections )
 			reflections->Collect( token.Value() );
+		if ( bouncer )
+			bouncer->Collect( token.Value() );
 		if ( status == 0 )
 		{
 			std::vector<std::byte> pixels( pixelBytes );
@@ -1327,6 +1465,10 @@ int Run( const Options &options )
 		          specularWeight, reflected, occlusion.Value() } )
 			(void)device->Release( id, token.Value() );
 		ReleaseShadows( *device, shadowing, token.Value() );
+		for ( TextureId id : rsmTargets )
+			(void)device->Release( id, token.Value() );
+		if ( bounceAtlas.IsValid() )
+			(void)device->Release( bounceAtlas, token.Value() );
 		(void)device->WaitIdle();
 	}
 	device.reset();

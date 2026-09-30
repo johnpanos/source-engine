@@ -156,7 +156,8 @@ foundation::Expected<std::unique_ptr<SurfaceProgram>, SurfaceStatus> SurfaceProg
 	    { 8, BindingKind::kSampler, 1, { ShaderStage::kFragment } },
 	    { 9, BindingKind::kSampledTexture, 1, { ShaderStage::kFragment } },
 	    { 10, BindingKind::kSampler, 1, { ShaderStage::kFragment } },
-	    { 11, BindingKind::kSampledTexture, 1, { ShaderStage::kFragment } } };
+	    { 11, BindingKind::kSampledTexture, 1, { ShaderStage::kFragment } },
+	    { 12, BindingKind::kSampler, 1, { ShaderStage::kFragment } } };
 	std::vector<BindingDesc> material = {
 	    { 0, BindingKind::kUniformBuffer, 1, { ShaderStage::kVertex, ShaderStage::kFragment } } };
 	for ( std::uint32_t texture = 0; texture < kMaterialTextures; ++texture )
@@ -178,12 +179,13 @@ foundation::Expected<std::unique_ptr<SurfaceProgram>, SurfaceStatus> SurfaceProg
 	    { 2, BindingKind::kStorageBuffer, 1, { ShaderStage::kFragment } },
 	    { 3, BindingKind::kStorageBuffer, 1, { ShaderStage::kFragment } },
 	    { 4, BindingKind::kStorageBuffer, 1, { ShaderStage::kFragment } },
-	    { 5, BindingKind::kSampledTexture, 1, { ShaderStage::kFragment } },
-	    { 6, BindingKind::kSampler, 1, { ShaderStage::kFragment } },
-	    { 7, BindingKind::kStorageBuffer, 1, { ShaderStage::kFragment } },
+	    { 5, BindingKind::kStorageBuffer, 1, { ShaderStage::kFragment } },
+	    { 6, BindingKind::kSampledTexture, 1, { ShaderStage::kFragment } },
+	    { 7, BindingKind::kSampler, 1, { ShaderStage::kFragment } },
 	    { 8, BindingKind::kSampledTexture, 1, { ShaderStage::kFragment } },
 	    { 9, BindingKind::kSampler, 1, { ShaderStage::kFragment } },
-	    { 10, BindingKind::kSampledTexture, 1, { ShaderStage::kFragment } } };
+	    { 10, BindingKind::kSampledTexture, 1, { ShaderStage::kFragment } },
+	    { 11, BindingKind::kSampler, 1, { ShaderStage::kFragment } } };
 	auto frameLayout = device.CreateBindGroupLayout( { BindGroupRole::kFrame, frame } );
 	auto viewLayout = device.CreateBindGroupLayout( { BindGroupRole::kView, view } );
 	auto materialLayout = device.CreateBindGroupLayout( { BindGroupRole::kMaterial, material } );
@@ -280,7 +282,7 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::Pipeline(
 	    m_FrameLayout, m_ViewLayout, m_MaterialLayout, m_DrawLayout };
 	// The prepass writes the normal and roughness alone; the SSR targets are
 	// three more attachments (RGBA16F) after the lit color.
-	const bool prepass = ( variant.terms & kSurfaceDepthNormal ) != 0;
+	const bool prepass = ( variant.terms & ( kSurfaceDepthNormal | kSurfaceRsm ) ) != 0;
 	const bool ssrTargets = ( variant.terms & kSurfaceSsrTargets ) != 0 && !prepass;
 	const std::uint8_t firstWrite =
 	    variant.alphaWrite ? kColorWriteAll : std::uint8_t( kColorWriteAll & ~kColorWriteAlpha );
@@ -392,7 +394,8 @@ GroupRequest SurfaceProgram::FrameGroup( const SurfaceFrame &frame, std::string 
 	// sampler (binding 6).
 	ProgramTexture bounce;
 	bounce.binding = 11;
-	bounce.samplerBinding = kNoSamplerBinding;
+	bounce.samplerBinding = 12;
+	bounce.sampler = clamped;
 	bounce.external = map.probeBounce;
 	bounce.externalDesc = map.probeBounceDesc;
 	request.textures.push_back( std::move( bounce ) );
@@ -422,18 +425,18 @@ GroupRequest SurfaceProgram::ViewGroup( const SurfaceViewGpu &view,
 	storage( 2, indices );
 	storage( 3, std::as_bytes( lights ) );
 	storage( 4, std::as_bytes( shadows.tiles ) );
+	storage( 5, std::as_bytes( projectors.lights ) );
 	// The atlas is read with a point sampler: shadow_sample.glsl filters the
 	// compare itself (the device port has no comparison samplers).
 	ProgramTexture atlas;
-	atlas.binding = 5;
-	atlas.samplerBinding = 6;
+	atlas.binding = 6;
+	atlas.samplerBinding = 7;
 	atlas.sampler.minFilter = atlas.sampler.magFilter = atlas.sampler.mipFilter =
 	    Filter::kNearest;
 	atlas.sampler.address = AddressMode::kClampToEdge;
 	atlas.external = shadows.atlas;
 	atlas.externalDesc = shadows.atlasDesc;
 	request.textures.push_back( std::move( atlas ) );
-	storage( 7, std::as_bytes( projectors.lights ) );
 	// The cookies: a 2D array, filtered and clamped (the legacy flashlight
 	// samples its cookie so).
 	ProgramTexture cookies;
@@ -447,7 +450,10 @@ GroupRequest SurfaceProgram::ViewGroup( const SurfaceViewGpu &view,
 	// The occlusion is fetched per pixel (texelFetch).
 	ProgramTexture occlusion;
 	occlusion.binding = 10;
-	occlusion.samplerBinding = kNoSamplerBinding;
+	occlusion.samplerBinding = 11;
+	occlusion.sampler.minFilter = occlusion.sampler.magFilter = occlusion.sampler.mipFilter =
+	    Filter::kNearest;
+	occlusion.sampler.address = AddressMode::kClampToEdge;
 	occlusion.external = screen.ambientOcclusion;
 	occlusion.externalDesc = screen.ambientOcclusionDesc;
 	request.textures.push_back( std::move( occlusion ) );

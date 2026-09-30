@@ -44,6 +44,7 @@ struct CaseTexture
 	bool clamp = false;
 	bool point = false;
 	bool cube = false; // six faces (+x -x +y -y +z -z), one after the other
+	bool array = false; // two layers of the one image (a texture2DArray binding)
 	render::device::Format format = render::device::Format::kRGBA8Srgb;
 	std::vector<std::uint8_t> texels; // bytes in `format`, row 0 at the top
 };
