@@ -423,6 +423,10 @@ DeviceResult<PipelineId> VulkanDevice::CreatePipeline( const PipelineDesc &desc 
 	}
 	if ( desc.kind == PipelineKind::kGraphics )
 	{
+		// Graphics pipelines are built for dynamic rendering; a host device
+		// without it (Vulkan 1.1) builds compute pipelines only.
+		if ( !m_Adapter.dynamicRendering )
+			return Fail( DeviceStatus::kUnsupported, op );
 		if ( !PowerOfTwo( desc.sampleCount ) )
 			return Fail( DeviceStatus::kInvalidDescription, op );
 		if ( !( m_Facts.limits.sampleCounts & desc.sampleCount ) )

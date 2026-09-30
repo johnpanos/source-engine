@@ -81,6 +81,37 @@ class VulkanFeaturesTest(unittest.TestCase):
         self.assertEqual(entry["device"]["name"], "gpu")
         self.assertEqual([d["selected"] for d in entry["all_devices"]], [False, True])
 
+    def test_host_only_needs_timeline_and_synchronization2(self):
+        for feature in vulkan_features.HOST_FEATURES:
+            record = copy.deepcopy(self.record)
+            record["profiles"]["android-tab-s8-ultra"]["features"][feature]["supported"] = False
+            self.assertEqual(failures(record), ["android-tab-s8-ultra.%s" % feature])
+
+    def test_host_only_required_profile_fails(self):
+        record = copy.deepcopy(self.record)
+        record["profiles"]["android-fold7"]["adapter_path"] = "host-only"
+        self.assertEqual(failures(record), ["android-fold7.host-only"])
+
+    def test_port_path_without_dynamic_rendering_fails(self):
+        record = copy.deepcopy(self.record)
+        record["profiles"]["android-tab-s8-ultra"]["adapter_path"] = "vulkan12+extensions"
+        self.assertEqual(failures(record), ["android-tab-s8-ultra.dynamic_rendering"])
+
+    def test_probe_falls_back_to_the_host_selection(self):
+        device = {"index": 0, "name": "gpu", "type": "integrated", "vendor_id": "0x3",
+                  "device_id": "0x4", "api_version": "1.1.128", "driver_name": "d",
+                  "driver_info": "i", "portability_subset": False, "features": {},
+                  "adapter": {"eligible": False, "path": "vulkan12+extensions",
+                              "reason": "API below 1.2"}}
+        output = json.dumps({"probe": "p/v2", "loader_api": "1.4.0", "adapter_selects": -1,
+                             "host_selects": 0, "devices": [device]})
+        entry = vulkan_features.entry_from_probe(output, {}, "cmd", False)
+        self.assertEqual(entry["adapter_path"], "host-only")
+        output = json.dumps({"probe": "p/v2", "loader_api": "1.4.0", "adapter_selects": -1,
+                             "host_selects": -1, "devices": [device]})
+        with self.assertRaises(vulkan_features.FeatureError):
+            vulkan_features.entry_from_probe(output, {}, "cmd", False)
+
     def test_probe_selecting_nothing_is_an_error(self):
         output = json.dumps({"probe": "p/v1", "loader_api": "1.4.0", "adapter_selects": -1,
                              "devices": []})

@@ -116,6 +116,62 @@
         "loader_api": "1.4.0"
       }
     },
+    "android-tab-s8-ultra": {
+      "required": false,
+      "status": "measured",
+      "device": {
+        "name": "Adreno (TM) 730",
+        "vendor_id": "0x5143",
+        "device_id": "0x7030001",
+        "api_version": "1.1.128",
+        "driver_name": "Qualcomm Technologies Inc. Adreno Vulkan Driver",
+        "driver_info": "Driver Build: 0c393b63cf, I94e2bd5684, 1746191168\nDate: 05/02/25\nCompiler Version: EV031.36.08.33\nDriver Branch: \n"
+      },
+      "adapter_path": "host-only",
+      "portability_subset": false,
+      "features": {
+        "timeline_semaphore": {
+          "core": false,
+          "extension": true,
+          "supported": true
+        },
+        "synchronization2": {
+          "core": false,
+          "extension": true,
+          "supported": true
+        },
+        "dynamic_rendering": {
+          "core": false,
+          "extension": false,
+          "supported": false
+        }
+      },
+      "all_devices": [
+        {
+          "index": 0,
+          "name": "Adreno (TM) 730",
+          "type": "integrated",
+          "eligible": false,
+          "selected": true
+        }
+      ],
+      "evidence": {
+        "date": "2026-09-29",
+        "command": "python3 tools/render/vulkan_features.py probe --platform android --device R52T7075Q6H --profile android-tab-s8-ultra --entry",
+        "host": {
+          "platform": "android",
+          "model": "SM-X900",
+          "device": "gts8uwifi",
+          "fingerprint": "samsung/gts8uwifixx/gts8uwifi:16/BP2A.250605.031.A3/X900XXSBEZH3:user/release-keys",
+          "soc": "SM8450",
+          "serial": "R52T7075Q6H"
+        },
+        "probe": "render-device-vulkan-features-probe/v2",
+        "probe_sha256": "ab543c0235729d825d51da44f5c73e542a615851ecae528b177f626d44c60d33",
+        "loader_api": "1.4.0"
+      },
+      "note": "Samsung's Adreno 730 driver is Vulkan 1.1 without VK_KHR_dynamic_rendering. Host mode serves it (user decision 2026-09-29): the legacy backend draws in its own render passes; the port refuses rendering passes and graphics pipelines. Serving it on the core is a cutover requirement (RFC 0016 K9 'Devices without dynamic rendering')."
+    },
     "ios-iphone": {
       "required": false,
       "status": "unavailable",

@@ -7,7 +7,10 @@
 //			each is core for the device's API version or offered as an
 //			extension, and whether the feature bit is supported. It also
 //			reports what render/device/vulkan/instance.cpp's SelectAdapter
-//			would decide (Evaluate's rules and TypeRank's order), as fields.
+//			would decide (Evaluate's rules and TypeRank's order), as fields,
+//			and what host mode (SelectHostAdapter) would: Vulkan 1.1 with the
+//			timeline and synchronization2 extensions, dynamic rendering
+//			optional (user decision, 2026-09-29).
 //
 //			Links only the Vulkan loader. Creates no window, surface or
 //			logical device. Built and run by tools/render/vulkan_features.py.
@@ -20,7 +23,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define PROBE_VERSION "render-device-vulkan-features-probe/v1"
+#define PROBE_VERSION "render-device-vulkan-features-probe/v2"
 
 static void PrintString( const char *value )
 {
@@ -146,6 +149,8 @@ int main( void )
 	/* SelectAdapter's choice: the first eligible device of the lowest rank. */
 	int selected = -1;
 	int selectedRank = 0;
+	int hostSelected = -1;
+	int hostSelectedRank = 0;
 	int *eligible = calloc( count ? count : 1, sizeof( int ) );
 
 	printf( "{\"probe\": \"%s\", \"loader_api\": ", PROBE_VERSION );
@@ -264,6 +269,26 @@ int main( void )
 			selected = (int)d;
 			selectedRank = rank;
 		}
+		/* Evaluate( physical, host = true ): API 1.1, the timeline extension
+		   below 1.2, synchronization2 below 1.3; dynamic rendering optional. */
+		const char *hostReason = NULL;
+		if ( properties.apiVersion < VK_API_VERSION_1_1 )
+			hostReason = "API below 1.1";
+		else if ( properties.limits.maxBoundDescriptorSets < 4 )
+			hostReason = "fewer than four bound descriptor sets";
+		else if ( !graphicsCompute )
+			hostReason = "no graphics and compute queue family";
+		else if ( !api12 && !extTimeline )
+			hostReason = "below 1.2 without VK_KHR_timeline_semaphore";
+		else if ( !api13 && !extSync2 )
+			hostReason = "below 1.3 without VK_KHR_synchronization2";
+		else if ( !timelineSupported || !sync2Supported )
+			hostReason = "a required feature bit is not supported";
+		if ( !hostReason && ( hostSelected < 0 || rank < hostSelectedRank ) )
+		{
+			hostSelected = (int)d;
+			hostSelectedRank = rank;
+		}
 
 		printf( "%s{\"index\": %u, \"name\": ", d ? ", " : "", d );
 		PrintString( properties.deviceName );
@@ -285,10 +310,13 @@ int main( void )
 		printf( "}, \"adapter\": {\"eligible\": %s, \"path\": \"%s\", \"reason\": ",
 		    eligible[d] ? "true" : "false", api13 ? "core13" : "vulkan12+extensions" );
 		PrintString( reason ? reason : "" );
+		printf( "}, \"host\": {\"eligible\": %s, \"dynamic_rendering\": %s, \"reason\": ",
+		    hostReason ? "false" : "true", renderingSupported ? "true" : "false" );
+		PrintString( hostReason ? hostReason : "" );
 		printf( "}}" );
 		free( extensions );
 	}
-	printf( "], \"adapter_selects\": %d}\n", selected );
+	printf( "], \"adapter_selects\": %d, \"host_selects\": %d}\n", selected, hostSelected );
 
 	free( eligible );
 	free( devices );

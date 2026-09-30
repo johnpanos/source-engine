@@ -17,7 +17,13 @@ record.
                              and reports checks-v1. Every required profile must
                              be measured with all three features supported and
                              complete evidence; an optional profile is either
-                             measured or `unavailable` with a reason.
+                             measured or `unavailable` with a reason. An
+                             optional profile may be `host-only`: only host
+                             mode serves it (Vulkan 1.1 with the timeline and
+                             synchronization2 extensions, without dynamic
+                             rendering; user decision 2026-09-29). The core
+                             must serve those devices before cutover (RFC 0016
+                             K9 "Devices without dynamic rendering").
 
 The probe prints one JSON document; `probe --out` stores it with its sha256,
 and `probe --entry` prints the profile entry to paste into the record.
@@ -43,6 +49,7 @@ RECORD = ROOT / "quality" / "fixtures" / "render-device" / "vulkan-features-v1.j
 PROBE_SOURCE = ROOT / "tools" / "render" / "vulkan_features_probe.c"
 ANDROID_PROFILE = ROOT / "quality" / "product_profiles" / "portal-android-native-vulkan.json"
 FEATURES = ("timeline_semaphore", "synchronization2", "dynamic_rendering")
+HOST_FEATURES = ("timeline_semaphore", "synchronization2")
 REQUIRED_PROFILES = ("linux-desktop", "android-fold7")
 EVIDENCE_FIELDS = ("date", "command", "host", "probe_sha256", "loader_api")
 DEVICE_FIELDS = ("name", "vendor_id", "device_id", "api_version", "driver_name", "driver_info")
@@ -106,14 +113,19 @@ def entry_from_probe(output, host, command, required):
     if "error" in document:
         raise FeatureError("probe failed: %s" % document["error"])
     selected = document["adapter_selects"]
+    path = None
     if selected < 0:
-        raise FeatureError("the adapter would select no device")
+        # Host mode alone may serve it (a Vulkan 1.1 device, 2026-09-29).
+        selected = document.get("host_selects", -1)
+        if selected < 0:
+            raise FeatureError("the adapter would select no device, in host mode either")
+        path = "host-only"
     chosen = document["devices"][selected]
     return {
         "required": required,
         "status": "measured",
         "device": {key: chosen[key] for key in DEVICE_FIELDS},
-        "adapter_path": chosen["adapter"]["path"],
+        "adapter_path": path or chosen["adapter"]["path"],
         "portability_subset": chosen["portability_subset"],
         "features": chosen["features"],
         "all_devices": [{"index": d["index"], "name": d["name"], "type": d["type"],
@@ -163,12 +175,17 @@ def validate(record):
         check(all(evidence.get(field) for field in EVIDENCE_FIELDS), "%s.evidence" % name,
               "evidence fields %s" % ", ".join(EVIDENCE_FIELDS))
         features = profile.get("features", {})
-        for feature in FEATURES:
+        path = profile.get("adapter_path")
+        host_only = path == "host-only"
+        if host_only:
+            check(not required, "%s.host-only" % name,
+                  "a required profile must serve the port, not host mode alone")
+        for feature in HOST_FEATURES if host_only else FEATURES:
             value = features.get(feature, {})
             available = value.get("core") is True or value.get("extension") is True
             check(available and value.get("supported") is True, "%s.%s" % (name, feature),
                   "not supported: %s" % json.dumps(value))
-        check(profile.get("adapter_path") in ("core13", "vulkan12+extensions"),
+        check(path in ("core13", "vulkan12+extensions", "host-only"),
               "%s.adapter-path" % name, "the adapter's creation path")
     return results
 

@@ -1273,6 +1273,14 @@ DeviceResult<CompletionToken> VulkanDevice::Submit(
 			return Fail( DeviceStatus::kInvalidHandle, op );
 		if ( !encoder->Complete() || !Validate( encoder->Commands(), states ) )
 			return Fail( DeviceStatus::kInvalidState, op );
+		// A host device without dynamic rendering records no rendering pass.
+		if ( !m_Adapter.dynamicRendering &&
+		     std::any_of( encoder->Commands().begin(), encoder->Commands().end(),
+		         []( const Command &command )
+		         {
+			         return command.op == Op::kBeginRendering;
+		         } ) )
+			return Fail( DeviceStatus::kUnsupported, op );
 		recorded.push_back( encoder );
 	}
 	// The host resumes after the submission, too.

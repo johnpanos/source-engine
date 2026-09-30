@@ -787,6 +787,21 @@ missing capability. Nothing falls back silently or after partial setup.
   rendering (each core in Vulkan 1.3 and available as an extension
   earlier). K1 records each declared profile's support. A profile without
   one fails composition with a structured error, not a silent fallback.
+- **Host devices without dynamic rendering (amended 2026-09-29, user
+  decision):** host mode (`SelectHostAdapter`, the device the legacy
+  backend borrows) also accepts a Vulkan 1.1 device with the timeline
+  semaphore and synchronization2 extensions and without dynamic rendering.
+  The legacy backend draws in render passes of its own, so the product
+  runs; the port on such a device refuses rendering passes and graphics
+  pipelines with `kUnsupported`, and keeps copies, compute and host
+  sections. First device: the Galaxy Tab S8 Ultra (Adreno 730, Samsung's
+  Vulkan 1.1 driver), recorded `host-only` in
+  `render.device.vulkan-features`. This is a stopgap: the core must serve
+  these devices before cutover (K9 "Devices without dynamic rendering"),
+  through a render-pass path private to the Vulkan adapter or a declared
+  capability with a fallback, decided when that work starts. Until then no
+  core drawing becomes the default on a profile that includes such a
+  device.
 - **Memory:** Vulkan Memory Allocator, pinned, private to the adapter.
 - **Source:** extracted from `CVulkanContext` and the test-only
   `vulkan_render_backend.cpp`, so the shipping path and the contract become
@@ -1651,6 +1666,7 @@ mirrors and monitors as view generators):
 | Frozen ABI holds | `legacy.render-abi` | all vtable fixtures pass |
 | Mods still render | `render.legacy.mod-fixture` | a mod-style client DLL that draws through `IMatRenderContext` renders its reference image on the native profile |
 | Dead code removed | static scan | the D3D9 translation code left in `materialsystem/shaderapivulkan/` has no caller, and `materialsystem/shaderapivulkan/shaders/` is empty and deleted |
+| Devices without dynamic rendering (added 2026-09-29, user decision: a cutover requirement) | `render.device.vulkan-features` and a Portal 2 boot on each `host-only` profile (first: the Galaxy Tab S8 Ultra) | no profile in the record is `host-only`: the core draws on every recorded device, and on each formerly `host-only` device `render.device.v2.vulkan` passes for every capability it claims and Portal 2 renders its K0 views through the core with zero first-party legacy-stream draws |
 | Recording scales (perf) | `frame_pacing.py` `render_submission` on `portal-frame-pacing-v1`, compute pool at 1, 2 and 4 workers (RFC 0003 J5's control) | desktop: 4 workers at most 0.6x of 1 worker (target set 2026-09-28, before measuring); the Fold7 and the iPhone 16 Pro: 2 workers no slower than 1; 1 worker within the frame allowance of serial recording |
 | Render off the main thread | launcher census and `frame_pacing.py` per shipped native profile (Linux, Android, iOS, tvOS) | every shipped native profile runs the render sequence off the main thread (`mat_queue_mode 2` or its successor) (its frame budget is recorded as a performance check, rule 7); the main thread records no draws (zero `mesh_draw` and `record` cost on it) |
 

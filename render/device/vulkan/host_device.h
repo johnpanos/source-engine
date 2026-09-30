@@ -137,6 +137,10 @@ struct HostDeviceInfo
 	bool validation = false; // the Khronos layer is enabled
 	bool debugUtils = false; // VK_EXT_debug_utils is enabled
 	bool core13 = false;     // synchronization2 and dynamic rendering are core
+	// The port records rendering passes and builds graphics pipelines only
+	// with it; a Vulkan 1.1 host device without it serves the host's own
+	// render passes and the port's copies, compute and sections.
+	bool dynamicRendering = false;
 };
 
 class IHostDevice

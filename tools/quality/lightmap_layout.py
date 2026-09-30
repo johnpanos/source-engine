@@ -87,6 +87,10 @@ SMOOTH_COS = math.cos(math.radians(1.0))
 # Largest texel scale along any direction of a curved triangle, relative to
 # the atlas density (and smallest: 1 / MAX_STRETCH).
 MAX_STRETCH = 1.5
+# A curved triangle's two principal scales each lie within [1 / MAX_STRETCH,
+# MAX_STRETCH], so its texel area density can differ from another's by up to
+# this factor (flat triangles take the atlas density exactly).
+CURVED_DENSITY_SPREAD = MAX_STRETCH ** 4
 # xatlas chart options: maxCost, normalDeviationWeight, roundnessWeight,
 # straightnessWeight, normalSeamWeight, textureSeamWeight, maxChartArea,
 # maxBoundaryLength, then maxIterations. Normal seams above 1000 are always
@@ -221,6 +225,17 @@ def curved_triangles(positions, corner_normals, live):
     _, surface = connected_components(graph, directed=False)
     curved[np.isin(surface, np.unique(surface[bends]))] = True
     return curved & np.asarray(live, bool)
+
+
+def curved_mask(positions, corner_normals, charted, planes=None):
+    """Bool per triangle: charted by xatlas as part of a curved surface. The
+    one classification the layout and the seam gate (lightmap_seams.py) share:
+    zero-area triangles are never curved, nor is a triangle with a plane
+    number (a BSP face, even one vbsp snapped off its plane)."""
+    area = triangle_areas(positions)
+    flat_faces = np.zeros(len(positions), bool) if planes is None else np.asarray(planes) >= 0
+    return curved_triangles(positions, corner_normals,
+                            np.asarray(charted, bool) & (area > DEGENERATE_AREA) & ~flat_faces)
 
 
 def least_corner(corners):
@@ -462,13 +477,8 @@ def planar_layout(positions, size, charted=None, margin=MARGIN, reserved_rows=0,
     positions = np.asarray(positions, dtype=np.float64)
     count = len(positions)
     charted = np.ones(count, bool) if charted is None else np.asarray(charted, bool)
-    area = 0.5 * np.linalg.norm(np.cross(positions[:, 1] - positions[:, 0],
-                                         positions[:, 2] - positions[:, 0]), axis=1)
-    # A triangle with a plane number is a flat face by declaration (a BSP
-    # face, even one vbsp snapped off its plane), never part of a curve.
-    flat_faces = np.zeros(count, bool) if planes is None else np.asarray(planes) >= 0
-    curved = np.zeros(count, bool) if corner_normals is None else curved_triangles(
-        positions, corner_normals, charted & (area > DEGENERATE_AREA) & ~flat_faces)
+    curved = np.zeros(count, bool) if corner_normals is None else curved_mask(
+        positions, corner_normals, charted, planes)
     if curved.any() and xatlas is None:
         raise ValueError("%d triangles lie on curved surfaces: charting them needs xatlas"
                          % int(curved.sum()))
@@ -613,6 +623,27 @@ def mesh_corner_normals(mesh, indices, world, corners):
     return normals / np.maximum(np.linalg.norm(normals, axis=2, keepdims=True), 1e-30)
 
 
+def mesh_planes(mesh, world, count):
+    """A mesh's BSP plane per triangle ((count,), -1: none) and each plane's
+    world normal ((count, 3)), from `primvars:sourceEngine:plane`."""
+    from pxr import UsdGeom
+    prim = mesh.GetPrim()
+    plane = UsdGeom.PrimvarsAPI(prim).GetPrimvar(PLANE_PRIMVAR)
+    if not (plane and plane.HasValue()):
+        return np.full(count, -1), np.zeros((count, 3))
+    values = np.asarray(plane.Get(), dtype=np.int64)
+    if plane.GetInterpolation() != UsdGeom.Tokens.uniform or len(values) != count:
+        raise ValueError("%s: %s must be uniform, one per triangle" %
+                         (prim.GetPath(), PLANE_PRIMVAR))
+    # The plane's normal, authored on every corner (legacy_bsp_scene).
+    normals = np.asarray(mesh.GetNormalsAttr().Get(), dtype=np.float64)
+    if mesh.GetNormalsInterpolation() != UsdGeom.Tokens.faceVarying or \
+            len(normals) != 3 * count:
+        raise ValueError("%s: plane meshes need faceVarying normals" % prim.GetPath())
+    normals = normals.reshape(-1, 3, 3)[:, 0] @ world[:3, :3]
+    return values, normals / np.linalg.norm(normals, axis=1)[:, None]
+
+
 def author(stage_path, out_path, size, margin, reserved_rows, excluded, xatlas=None):
     """Copy a stage with `primvars:lightmap_st` (faceVarying) on every mesh."""
     from pxr import Sdf, Usd, UsdGeom
@@ -636,23 +667,9 @@ def author(stage_path, out_path, size, margin, reserved_rows, excluded, xatlas=N
         corners = (points @ world[:3, :3] + world[3, :3])[indices].reshape(-1, 3, 3) \
             if len(indices) else np.zeros((0, 3, 3))
         name = prim.GetName()
-        plane = UsdGeom.PrimvarsAPI(prim).GetPrimvar(PLANE_PRIMVAR)
-        if plane and plane.HasValue():
-            values = np.asarray(plane.Get(), dtype=np.int64)
-            if plane.GetInterpolation() != UsdGeom.Tokens.uniform or len(values) != len(corners):
-                raise ValueError("%s: %s must be uniform, one per triangle" %
-                                 (prim.GetPath(), PLANE_PRIMVAR))
-            planes.append(values)
-            # The plane's normal, authored on every corner (legacy_bsp_scene).
-            normals = np.asarray(mesh.GetNormalsAttr().Get(), dtype=np.float64)
-            if mesh.GetNormalsInterpolation() != UsdGeom.Tokens.faceVarying or \
-                    len(normals) != 3 * len(corners):
-                raise ValueError("%s: plane meshes need faceVarying normals" % prim.GetPath())
-            normals = normals.reshape(-1, 3, 3)[:, 0] @ world[:3, :3]
-            plane_normals.append(normals / np.linalg.norm(normals, axis=1)[:, None])
-        else:
-            planes.append(np.full(len(corners), -1))
-            plane_normals.append(np.zeros((len(corners), 3)))
+        mesh_plane_ids, mesh_plane_normals = mesh_planes(mesh, world, len(corners))
+        planes.append(mesh_plane_ids)
+        plane_normals.append(mesh_plane_normals)
         shading.append(mesh_corner_normals(mesh, indices, world, corners))
         meshes.append((prim, len(corners)))
         positions.append(corners)
@@ -703,11 +720,8 @@ def main():
     # every chart invariant and split no flat region, flat triangles must
     # take the atlas density exactly (float32 storage of positions and UVs
     # moves it by ~1e-4 at most) and curved ones stay within MAX_STRETCH.
-    # A curved triangle's two principal scales each lie within
-    # [1 / MAX_STRETCH, MAX_STRETCH], so its texel area density can differ
-    # from another's by up to MAX_STRETCH ** 4.
     invariants = lightmap_seams.chart_invariants(
-        positions, uvs, args.size, MAX_STRETCH ** 4 if curved.any() else 1.001)
+        positions, uvs, args.size, CURVED_DENSITY_SPREAD if curved.any() else 1.001)
     violations = []
     # Parked and zero-area triangles draw nothing and have no texel scale.
     measured = ~np.all(uvs == parking_uv(args.size), axis=(1, 2)) & \

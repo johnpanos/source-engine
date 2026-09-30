@@ -366,6 +366,32 @@ class CurvedLayoutTest(unittest.TestCase):
                 self.assertLess(np.abs(low[~curved] - 1).max(), 1e-6)
                 self.assertLess(np.abs(high[~curved] - 1).max(), 1e-6)
 
+    def test_seam_gate_judges_by_the_layouts_classification(self):
+        """The seams gate classifies curved triangles from the laid-out UVs
+        with curved_mask; it must find the layout's own mask, pass its
+        layout, and still catch an off-density flat or over-stretched curved
+        triangle."""
+        positions, normals, curved = self.scene(1)
+        uvs, record = layout.planar_layout(positions, SIZE, corner_normals=normals,
+                                           xatlas=xatlas_tool())
+        charted = seams.uv_area(uvs) > seams.MIN_UV_AREA
+        np.testing.assert_array_equal(layout.curved_mask(positions, normals, charted), curved)
+
+        def violation(candidate):
+            return seams.chart_invariants(positions, candidate, SIZE, curved=curved,
+                                          max_curved_spread=layout.CURVED_DENSITY_SPREAD)[
+                                              "density_violation"]
+
+        self.assertEqual(violation(uvs), 0)
+        # Negative controls: one triangle's UVs grown 1.6x about its centroid.
+        for name, mask in (("flat", ~curved), ("curved", curved)):
+            with self.subTest(name):
+                t = int(np.flatnonzero(mask)[0])
+                bad = uvs.copy()
+                centre = bad[t].mean(axis=0)
+                bad[t] = centre + (bad[t] - centre) * (1.6 if name == "flat" else 4.0)
+                self.assertEqual(violation(bad), 1)
+
     def test_curved_chart_area_matches_surface_area(self):
         positions, normals, curved = self.scene(3)
         uvs, record = layout.planar_layout(positions, SIZE, corner_normals=normals,

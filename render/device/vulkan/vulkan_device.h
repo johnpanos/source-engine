@@ -154,7 +154,13 @@ struct AdapterChoice
 	VkPhysicalDevice physical = VK_NULL_HANDLE;
 	std::uint32_t queueFamily = 0;
 	std::uint32_t presentFamily = 0; // host mode: the family that presents
-	bool core13 = false;             // else Vulkan 1.2 with the KHR extensions
+	bool core12 = false;             // else Vulkan 1.1 with VK_KHR_timeline_semaphore
+	bool core13 = false;             // else the synchronization2 extension
+	// Dynamic rendering: always for the port's own device; a host device may
+	// lack it (a Vulkan 1.1 driver), and then the port refuses rendering
+	// passes and graphics pipelines. RFC 0016 "Devices without dynamic
+	// rendering" makes the core serve them before cutover.
+	bool dynamicRendering = false;
 	bool anisotropy = false;
 	bool textureCompressionBC = false; // the kBC* formats (D19)
 	// dmabuf export of LINEAR images (external memory fd, dma_buf, DRM

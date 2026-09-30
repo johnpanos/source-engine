@@ -166,6 +166,7 @@ DeviceResult<void> VulkanDevice::SelectHost()
 	m_HostInfo.graphicsFamily = m_Adapter.queueFamily;
 	m_HostInfo.presentFamily = m_Adapter.presentFamily;
 	m_HostInfo.core13 = m_Adapter.core13;
+	m_HostInfo.dynamicRendering = m_Adapter.dynamicRendering;
 	return {};
 }
 
@@ -197,15 +198,16 @@ void Append( VkPhysicalDeviceFeatures2 &head, void *node )
 struct RequiredFeatures
 {
 	VkPhysicalDeviceVulkan12Features features12{};
+	VkPhysicalDeviceTimelineSemaphoreFeatures timeline12{}; // Vulkan 1.1's extension
 	VkPhysicalDeviceVulkan13Features features13{};
 	VkPhysicalDeviceSynchronization2FeaturesKHR sync2{};
 	VkPhysicalDeviceDynamicRenderingFeaturesKHR rendering{};
 
-	void Merge( VkPhysicalDeviceFeatures2 &head, bool core13, bool anisotropy, bool compressionBC )
+	void Merge( VkPhysicalDeviceFeatures2 &head, const AdapterChoice &adapter )
 	{
-		if ( anisotropy )
+		if ( adapter.anisotropy )
 			head.features.samplerAnisotropy = VK_TRUE;
-		if ( compressionBC )
+		if ( adapter.textureCompressionBC )
 			head.features.textureCompressionBC = VK_TRUE;
 		if ( auto *have =
 		         FindInChain( &head, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES ) )
@@ -215,14 +217,22 @@ struct RequiredFeatures
 		              &head, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES ) )
 			reinterpret_cast<VkPhysicalDeviceTimelineSemaphoreFeatures *>( timeline )
 			    ->timelineSemaphore = VK_TRUE;
-		else
+		else if ( adapter.core12 )
 		{
 			features12 = {};
 			features12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
 			features12.timelineSemaphore = VK_TRUE;
 			Append( head, &features12 );
 		}
-		if ( core13 )
+		else
+		{
+			// Vulkan 1.1: the 1.2 structure is not defined; the extension's is.
+			timeline12 = {};
+			timeline12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES;
+			timeline12.timelineSemaphore = VK_TRUE;
+			Append( head, &timeline12 );
+		}
+		if ( adapter.core13 )
 		{
 			if ( auto *have =
 			         FindInChain( &head, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES ) )
@@ -250,6 +260,8 @@ struct RequiredFeatures
 			sync2.synchronization2 = VK_TRUE;
 			Append( head, &sync2 );
 		}
+		if ( !adapter.dynamicRendering )
+			return;
 		if ( auto *have = FindInChain(
 		         &head, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR ) )
 			reinterpret_cast<VkPhysicalDeviceDynamicRenderingFeaturesKHR *>( have )
@@ -317,8 +329,7 @@ DeviceResult<void> VulkanDevice::CreateLogical()
 		}
 	}
 	RequiredFeatures required;
-	required.Merge(
-	    *features, m_Adapter.core13, m_Adapter.anisotropy, m_Adapter.textureCompressionBC );
+	required.Merge( *features, m_Adapter );
 
 	VkDeviceCreateInfo info{};
 	info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
@@ -349,21 +360,26 @@ DeviceResult<void> VulkanDevice::CreateLogical()
 	    m_Device, "vkCmdPipelineBarrier2", "vkCmdPipelineBarrier2KHR" );
 	m_Vk.queueSubmit2 =
 	    LoadDevice<PFN_vkQueueSubmit2>( m_Device, "vkQueueSubmit2", "vkQueueSubmit2KHR" );
-	m_Vk.cmdBeginRendering = LoadDevice<PFN_vkCmdBeginRendering>(
-	    m_Device, "vkCmdBeginRendering", "vkCmdBeginRenderingKHR" );
+	if ( m_Adapter.dynamicRendering )
+	{
+		m_Vk.cmdBeginRendering = LoadDevice<PFN_vkCmdBeginRendering>(
+		    m_Device, "vkCmdBeginRendering", "vkCmdBeginRenderingKHR" );
+		m_Vk.cmdEndRendering = LoadDevice<PFN_vkCmdEndRendering>(
+		    m_Device, "vkCmdEndRendering", "vkCmdEndRenderingKHR" );
+	}
 	if ( m_Adapter.externalImages )
 		m_Vk.getMemoryFd =
 		    LoadDevice<PFN_vkGetMemoryFdKHR>( m_Device, "vkGetMemoryFdKHR", nullptr );
-	m_Vk.cmdEndRendering =
-	    LoadDevice<PFN_vkCmdEndRendering>( m_Device, "vkCmdEndRendering", "vkCmdEndRenderingKHR" );
 	m_Vk.getSemaphoreCounterValue = LoadDevice<PFN_vkGetSemaphoreCounterValue>(
 	    m_Device, "vkGetSemaphoreCounterValue", "vkGetSemaphoreCounterValueKHR" );
 	m_Vk.waitSemaphores =
 	    LoadDevice<PFN_vkWaitSemaphores>( m_Device, "vkWaitSemaphores", "vkWaitSemaphoresKHR" );
 	m_Vk.signalSemaphore =
 	    LoadDevice<PFN_vkSignalSemaphore>( m_Device, "vkSignalSemaphore", "vkSignalSemaphoreKHR" );
-	if ( !m_Vk.cmdPipelineBarrier2 || !m_Vk.queueSubmit2 || !m_Vk.cmdBeginRendering ||
-	     !m_Vk.cmdEndRendering || !m_Vk.getSemaphoreCounterValue || !m_Vk.waitSemaphores )
+	const bool rendering =
+	    !m_Adapter.dynamicRendering || ( m_Vk.cmdBeginRendering && m_Vk.cmdEndRendering );
+	if ( !m_Vk.cmdPipelineBarrier2 || !m_Vk.queueSubmit2 || !rendering ||
+	     !m_Vk.getSemaphoreCounterValue || !m_Vk.waitSemaphores )
 	{
 		DestroyLogical();
 		return Fail( DeviceStatus::kUnsupported, op );

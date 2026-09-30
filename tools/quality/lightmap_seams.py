@@ -68,12 +68,13 @@ def sha256(path):
 
 # --- extraction ------------------------------------------------------------
 
-def stage_triangles(stage_path):
-    """World triangles with lightmap UVs: (positions (n,3,3), uvs (n,3,2), meshes)."""
+def stage_meshes(stage_path):
+    """Each mesh with lightmap UVs: (mesh, face-vertex indices, world matrix,
+    world corners (n,3,3), corner UVs (n,3,2))."""
     from pxr import Usd, UsdGeom
     stage = Usd.Stage.Open(str(stage_path))
     cache = UsdGeom.XformCache()
-    positions, uvs, names = [], [], []
+    found = False
     for prim in stage.Traverse():
         if not prim.IsA(UsdGeom.Mesh):
             continue
@@ -101,12 +102,37 @@ def stage_triangles(stage_path):
         else:
             raise ValueError("unsupported %s interpolation %s at %s" %
                              (LIGHTMAP_PRIMVAR, interpolation, prim.GetPath()))
-        positions.append(points[indices].reshape(-1, 3, 3))
-        uvs.append(corner_uv.reshape(-1, 3, 2))
-        names += [str(prim.GetPath())] * len(counts)
-    if not positions:
+        found = True
+        yield mesh, indices, world, points[indices].reshape(-1, 3, 3), corner_uv.reshape(-1, 3, 2)
+    if not found:
         raise ValueError("lighting stage has no meshes with " + LIGHTMAP_PRIMVAR)
+
+
+def stage_triangles(stage_path):
+    """World triangles with lightmap UVs: (positions (n,3,3), uvs (n,3,2), meshes)."""
+    positions, uvs, names = [], [], []
+    for mesh, _, _, corners, corner_uv in stage_meshes(stage_path):
+        positions.append(corners)
+        uvs.append(corner_uv)
+        names += [str(mesh.GetPath())] * len(corners)
     return np.concatenate(positions), np.concatenate(uvs), names
+
+
+def stage_curved(stage_path):
+    """Bool per stage_triangles triangle: on a curved surface, by the layout's
+    own classification (lightmap_layout.curved_mask) of the charted triangles
+    (those with lightmap area; excluded and parked ones have none)."""
+    import lightmap_layout  # imports this module; import it only when needed
+    positions, uvs, shading, planes = [], [], [], []
+    for mesh, indices, world, corners, corner_uv in stage_meshes(stage_path):
+        positions.append(corners)
+        uvs.append(corner_uv)
+        shading.append(lightmap_layout.mesh_corner_normals(mesh, indices, world, corners))
+        planes.append(lightmap_layout.mesh_planes(mesh, world, len(corners))[0])
+    positions = np.concatenate(positions)
+    charted = uv_area(np.concatenate(uvs)) > MIN_UV_AREA
+    return lightmap_layout.curved_mask(positions, np.concatenate(shading), charted,
+                                       np.concatenate(planes))
 
 
 def uv_area(uv):
@@ -381,7 +407,8 @@ def footprint(uvs, labels, chart_id, height, width):
     return reads
 
 
-def chart_invariants(positions, uvs, size, max_density_spread=1.5):
+def chart_invariants(positions, uvs, size, max_density_spread=1.5, curved=None,
+                     max_curved_spread=None):
     """Violations of the lightmap chart invariants as a dict of counts; all
     zero means the atlas is valid:
 
@@ -391,6 +418,11 @@ def chart_invariants(positions, uvs, size, max_density_spread=1.5):
                          charts both read (one chart's light leaks into the other)
       density_spread     max/min texels per square metre, reported, and
                          `density_violation` when above the bound
+
+    With `curved` (bool per triangle, lightmap_layout.curved_mask), whose
+    charts stretch within the layout's limit, `density_spread` covers only the
+    other triangles, and `curved_density_spread` all of them, with its own
+    bound `max_curved_spread` (lightmap_layout.CURVED_DENSITY_SPREAD).
     """
     labels = charts(positions, uvs, size)
     charted = labels >= 0
@@ -424,12 +456,19 @@ def chart_invariants(positions, uvs, size, max_density_spread=1.5):
     area_world = 0.5 * np.linalg.norm(np.cross(positions[:, 1] - positions[:, 0],
                                                positions[:, 2] - positions[:, 0]), axis=1)
     usable = charted & (area_world > 1e-12)
-    if usable.any():
-        density = uv_area(uvs)[usable] * size * size / area_world[usable]
-        result["density_spread"] = float(density.max() / density.min())
-    else:
-        result["density_spread"] = 1.0
-    result["density_violation"] = int(result["density_spread"] > max_density_spread)
+    density = np.zeros(len(positions))
+    density[usable] = uv_area(uvs)[usable] * size * size / np.maximum(area_world[usable], 1e-30)
+
+    def spread(mask):
+        return float(density[mask].max() / density[mask].min()) if mask.any() else 1.0
+
+    curved = np.zeros(len(positions), bool) if curved is None else np.asarray(curved, bool)
+    result["density_spread"] = spread(usable & ~curved)
+    violation = result["density_spread"] > max_density_spread
+    if curved.any():
+        result["curved_density_spread"] = spread(usable)
+        violation |= result["curved_density_spread"] > max_curved_spread
+    result["density_violation"] = int(violation)
     return result
 
 
@@ -596,13 +635,20 @@ def main():
                                 np.zeros((0, 2), np.int64))
         # A coplanar connected region of one mesh must chart as one island:
         # a seam between two triangles of the same mesh is a charting error.
-        # A curved mesh cannot be one chart, so only a flat split counts.
+        # A curved surface cannot be one chart: xatlas cuts it (the layout's
+        # classification, flat parts of the surface included), so only a
+        # split between two flat-charted triangles counts.
+        import lightmap_layout  # imports this module; import it only when needed
+        curved = stage_curved(args.stage)
         normals, _ = triangle_normals(positions)
         same_mesh = mesh_index[triangles[:, 0]] == mesh_index[triangles[:, 1]] \
             if len(triangles) else np.zeros(0, bool)
         flat = (np.einsum("ij,ij->i", normals[triangles[:, 0]], normals[triangles[:, 1]])
-                > FLAT_COS) if len(triangles) else np.zeros(0, bool)
-        invariants = chart_invariants(positions, uvs, args.size)
+                > FLAT_COS) & ~curved[triangles[:, 0]] & ~curved[triangles[:, 1]] \
+            if len(triangles) else np.zeros(0, bool)
+        invariants = chart_invariants(positions, uvs, args.size, curved=curved,
+                                      max_curved_spread=lightmap_layout.CURVED_DENSITY_SPREAD)
+        invariants["curved_triangles"] = int(curved.sum())
         invariants["flat_in_mesh_seam_length_m"] = float(weight[same_mesh & flat].sum())
         invariants["curved_in_mesh_seam_length_m"] = float(weight[same_mesh & ~flat].sum())
         invariants["flat_in_mesh_seam_meshes"] = sorted(
