@@ -1967,3 +1967,44 @@ artifact checks and 18 freeze checks pass, as do the Portal 2 build and native
 captures. Changed-file style passed for this probe work; a later shared-workspace
 run reports three unrelated edits in core_world, area_lights_suite and clusters.
 Archlint still reports the two existing F-Stop `CreateInterfaceFn` expansions.
+
+### Relight pipeline waste removal (2026-10-01)
+
+Reflection-probe placement now fits candidate boxes on the process CPU budget,
+while preserving the serial ray order and result as its oracle. On the checked-in
+`laser-prop-preview` stage, the serial placement took 139 seconds and the
+32-worker placement took 26 seconds (5.35x); both `placement.json` files have
+SHA-256 `a2398eafaab50aa614d1110387d3e045a38e7c04236b6a1d91382f57a61d3135`.
+The glossy sampler also returns its source-triangle identity, removing a
+quadratic nearest-centroid reconstruction and using the authored shading normal
+from the triangle that actually produced each sample.
+
+The map build keeps a validated placement cache outside the replaceable probe
+face directory. Its key includes the stage and scene digests, placement inputs,
+authored volumes, glossy set, seed and placement scripts; face size, render
+samples and denoising do not invalidate geometry placement. A cold run measured
+45.83 seconds under shared-machine load and the cache hit 2.83 seconds. The
+miss and hit wrote byte-identical placement evidence with the digest above.
+
+Cycles persistent scene data is enabled for the immutable stage while the probe
+camera walks its cube faces. One 8-probe, 48-face HIP run at 128 pixels and 64
+samples fell from 24.10 to 8.16 seconds (2.95x), without changing resolution,
+samples, light paths or denoising. Depth was bit-exact. Denoised color differed
+by mean `2.83e-8` and maximum `4.29e-6`; a second persistent run had mean
+`2.94e-8` and maximum `4.95e-6`, establishing that the change is within the
+existing GPU/OIDN rerun variation rather than a quality reduction.
+
+Playable-content staging now hard-links its immutable final BSP2 into the
+private content root when the filesystem permits, and retains an exact `copy2`
+fallback. Staging the 1,007,764,416-byte Source2 laser BSP measured 0.10 seconds
+and no second physical file; its independent directory entry survives removal
+of the source name. The common hard-link path also reuses the source digest
+instead of reading the same gigabyte twice.
+
+Verification: all 37 reflection-probe tests, all 53 lighting-fixture tests and
+all four map-build runner tests pass, as do 57 legacy-relight/remote-Blender
+tests and Python bytecode compilation. The
+lighting-back-end suite has 23 passes and the two pre-existing derived-scene
+fixture errors for missing `legacy-scene/scene-receipt.json`; neither reaches
+the changed probe or content paths. The shared-worktree style run is blocked by
+unrelated concurrent C++ formatting edits.

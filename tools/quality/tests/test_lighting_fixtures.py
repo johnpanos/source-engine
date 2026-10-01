@@ -25,6 +25,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import numpy as np
 from PIL import Image
@@ -316,6 +317,28 @@ class VisibleEmitterMaterials(unittest.TestCase):
                 playable.visible_emitters({"format": "usd", "emitters": [bad]})
         with self.assertRaises(ValueError):
             playable.visible_emitters({"format": "usd", "emitters": [light, light]})
+
+
+class PlayableContentStaging(unittest.TestCase):
+    def test_map_staging_uses_an_exact_hardlink_when_available(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            source = Path(scratch) / "source.bsp"
+            target = Path(scratch) / "target.bsp"
+            source.write_bytes(b"immutable bsp2 package")
+            self.assertEqual(playable.stage_map(source, target), "hardlink")
+            self.assertTrue(os.path.samefile(source, target))
+            source.unlink()
+            self.assertEqual(target.read_bytes(), b"immutable bsp2 package")
+
+    def test_map_staging_falls_back_to_an_exact_copy(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            source = Path(scratch) / "source.bsp"
+            target = Path(scratch) / "target.bsp"
+            source.write_bytes(b"immutable bsp2 package")
+            with mock.patch.object(playable.os, "link", side_effect=OSError("unsupported")):
+                self.assertEqual(playable.stage_map(source, target), "copy")
+            self.assertEqual(target.read_bytes(), source.read_bytes())
+            self.assertFalse(os.path.samefile(source, target))
 
 
 def write_pfm(path, image):

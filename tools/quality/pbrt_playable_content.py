@@ -28,6 +28,7 @@ import argparse
 import hashlib
 import json
 import math
+import os
 import shutil
 import sys
 from pathlib import Path
@@ -46,6 +47,22 @@ GLASS_PREVIEW_ALPHA = 0.13
 
 def sha256(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def stage_map(source, target):
+    """Stage an immutable BSP without paying for a second physical copy.
+
+    The build graph replaces completed BSP outputs instead of modifying them in
+    place, so a hard link gives the content tree its own durable name without
+    coupling a later rebuild to the old bytes.  Filesystems that cannot link
+    the two paths retain the byte-for-byte copy behavior.
+    """
+    try:
+        os.link(source, target)
+        return "hardlink"
+    except OSError:
+        shutil.copy2(source, target)
+        return "copy"
 
 
 def srgb_byte(linear):
@@ -379,7 +396,7 @@ def main():
     fallback_root = args.out / "materials" / (prefix + "_fallback")
     map_path = args.out / "maps" / (args.map_name + ".bsp")
     map_path.parent.mkdir(parents=True)
-    shutil.copy2(args.bsp2, map_path)
+    stage_map(args.bsp2, map_path)
     fallback_root.mkdir(parents=True)
     used = sorted({shape["material"] for shape in scene["shapes"]})
     entries = [(name.lower(), map_scene.material_summary(scene, name)) for name in used]
@@ -494,11 +511,13 @@ def main():
                         "fallback_vmt_sha256": sha256(fallback_root / (name + ".vmt"))}
     emitter_assets = write_visible_emitters(scene, args, prefix, material_root, fallback_root)
     models = write_dynamic_models(scene, args, prefix, assets)
+    bsp2_hash = sha256(args.bsp2)
+    map_hash = bsp2_hash if os.path.samefile(args.bsp2, map_path) else sha256(map_path)
     evidence = {"status": "pass", "scope": "pbrt-playable-content-preview",
                 "dynamic_models": models,
                 "map": args.map_name, "scene_sha256": scene["source_sha256"],
                 "stage_receipt_sha256": sha256(args.stage_receipt),
-                "bsp2_sha256": sha256(args.bsp2), "map_sha256": sha256(map_path),
+                "bsp2_sha256": bsp2_hash, "map_sha256": map_hash,
                 "material_namespace": prefix, "materials": assets,
                 "visible_emitters": emitter_assets,
                 "texture_container": "VTF preview bridge; KTX2 runtime binding pending"}

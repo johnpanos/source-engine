@@ -360,6 +360,9 @@ def main():
     render.render.resolution_x = render.render.resolution_y = args.face_size
     render.render.resolution_percentage = 100
     render.render.film_transparent = False
+    # The stage, materials and lights stay immutable while only the probe
+    # camera changes. Keep Cycles' synchronized scene between cube faces.
+    render.render.use_persistent_data = True
     render.view_settings.view_transform = "Standard"
     layer = render.view_layers[0]
     layer.use_pass_combined = True
