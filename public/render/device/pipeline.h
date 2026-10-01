@@ -119,7 +119,8 @@ enum class CompareOp : std::uint8_t
 	kEqual,
 	kGreaterEqual,
 	kGreater,
-	kAlways
+	kAlways,
+	kNotEqual
 };
 
 enum class BlendMode : std::uint8_t
@@ -149,11 +150,39 @@ struct RasterState
 	bool frontCounterClockwise = true;
 };
 
+enum class StencilOp : std::uint8_t
+{
+	kKeep,
+	kZero,
+	kReplace,
+	kIncrementClamp,
+	kDecrementClamp,
+	kInvert,
+	kIncrementWrap,
+	kDecrementWrap
+};
+
+// Both faces use the same state. The reference is compared against the stored
+// value after readMask; writeMask applies to the selected operation's result.
+struct StencilState
+{
+	bool enabled = false;
+	CompareOp compare = CompareOp::kAlways;
+	StencilOp fail = StencilOp::kKeep;
+	StencilOp depthFail = StencilOp::kKeep;
+	StencilOp pass = StencilOp::kKeep;
+	std::uint8_t reference = 0;
+	std::uint8_t readMask = 255;
+	std::uint8_t writeMask = 255;
+	auto operator<=>( const StencilState & ) const = default;
+};
+
 struct DepthStencilState
 {
 	bool depthTest = false;
 	bool depthWrite = false;
 	CompareOp compare = CompareOp::kLessEqual;
+	StencilState stencil = {};
 };
 
 struct PipelineDesc

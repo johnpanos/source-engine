@@ -28,7 +28,7 @@ struct FlexDelta
 {
 	vec4 positionFlex; // w: the flex index (bits)
 	vec4 normalSide;   // w: the side, 0 for the first weight, 1 for the second
-	vec4 wrinkle;      // x
+	vec4 wrinkle;      // x: wrinkle, y: delayed flex index (bits), z: delay fraction
 };
 
 struct SkinnedVertex
@@ -62,7 +62,12 @@ void main()
 #ifdef SEEDED_FLEX_WEIGHT_ERROR
 		const float weight = w.x;
 #else
-		const float weight = mix( w.x, w.y, delta.normalSide.w );
+		float weight = mix( w.x, w.y, delta.normalSide.w );
+		if ( delta.wrinkle.z != 0.0 )
+		{
+			const vec2 delayed = flexWeights[floatBitsToUint( delta.wrinkle.y )];
+			weight = mix( weight, mix( delayed.x, delayed.y, delta.normalSide.w ), delta.wrinkle.z );
+		}
 #endif
 		position += weight * delta.positionFlex.xyz;
 		normal += weight * delta.normalSide.xyz;

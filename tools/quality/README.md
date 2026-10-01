@@ -275,3 +275,27 @@ python3 -m unittest tools/quality/tests/test_frame_pacing.py
 ```
 
 Evidence and findings: `RFC/0001-native-vulkan-frame-pacing-progress.md`.
+
+The hard desktop High target is `linux-desktop-high-120` in
+[`quality/budgets/render-v1.json`](../../quality/budgets/render-v1.json).
+[`portal2-linux-native-vulkan-high.json`](../../quality/product_profiles/portal2-linux-native-vulkan-high.json)
+owns its settings, and the existing laser route references the row. Run:
+
+```sh
+python3 tools/quality/render_budgets.py check
+python3 tools/quality/frame_floor.py --build build-p2 --runtime /tmp/p2-high-rt --out /tmp/p2-high-run --width 1920 --height 1080
+python3 -m unittest discover -s tools/quality/tests -p test_frame_floor.py -v
+```
+
+Use a fresh output directory and a private runtime. The runner fails on the
+first slow gameplay frame; `--no-stop` measures the whole route and retains
+the failing verdict. It reads the hard floor from the row, refuses a lower
+CLI override, pins/queries High, and rejects capped offscreen, wrong GPU,
+wrong actual back-buffer size, missing timing records and incomplete routes.
+`--preview` produces image evidence with status `preview`, never a timing pass.
+The private compositor's pacing and shared GPU load are recorded costs, not
+waivers. A required native presentation lane and complete images/cohort evidence
+are still needed before claiming the High target. The laser route alone does
+not certify every scene. `render_budgets.py check` only validates declarations;
+old K0 records and a warm-pass report do not certify this High row. See
+[RFC 0016](../../RFC/0016-render-core.md#hard-render-budgets-user-decision-2026-10-01).

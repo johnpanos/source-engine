@@ -272,7 +272,8 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::Pipeline(
 	const bool model = variant.layout == SurfaceVertexLayout::kModel;
 	const std::uint32_t drawConstantBytes = SurfaceDrawConstantBytes( variant.layout );
 	std::vector<SpecializationConstant> constants = { { ShaderStage::kFragment, 0, variant.terms },
-	    { ShaderStage::kFragment, 1, variant.detailMode } };
+	    { ShaderStage::kFragment, 1, variant.detailMode },
+	    { ShaderStage::kFragment, 2, variant.portalMask ? 1u : 0u } };
 	// The model vertex reads the terms too (the vertexlit point's lighting).
 	if ( model )
 		constants.push_back( { ShaderStage::kVertex, 0, variant.terms } );
@@ -302,8 +303,9 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::Pipeline(
 	const BlendMode blends[] = { prepass ? BlendMode::kOpaque : variant.blend, BlendMode::kOpaque,
 	    BlendMode::kOpaque, BlendMode::kOpaque };
 	const std::uint8_t writes[] = { depthOnly ? std::uint8_t( 0 )
-	                                : prepass ? kColorWriteAll
-	                                          : firstWrite,
+	                                : prepass
+	                                    ? kColorWriteAll
+	                                    : std::uint8_t( firstWrite & variant.drawState.colorWrite ),
 	    kColorWriteAll, kColorWriteAll, kColorWriteAll };
 	const std::size_t attachments = ssrTargets ? 4 : 1;
 	PipelineDesc desc = resolved.Value().Desc();
@@ -328,6 +330,16 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::Pipeline(
 	    depth && variant.blend == BlendMode::kOpaque &&
 	        ( variant.terms & kSurfaceTransmission ) == 0,
 	    CompareOp::kLessEqual };
+	desc.depthStencil.stencil = variant.drawState.stencil;
+	if ( variant.drawState.overrideDepth )
+	{
+		// APIs perform depth writes only with testing enabled. An always test
+		// is the explicit write-without-comparison policy.
+		desc.depthStencil.depthTest = variant.drawState.depthTest || variant.drawState.depthWrite;
+		desc.depthStencil.depthWrite = variant.drawState.depthWrite;
+		desc.depthStencil.compare =
+		    variant.drawState.depthTest ? variant.drawState.depthCompare : CompareOp::kAlways;
+	}
 	desc.colorFormats = std::span<const Format>( colors, attachments );
 	desc.blends = std::span<const BlendMode>( blends, attachments );
 	desc.colorWriteMasks = std::span<const std::uint8_t>( writes, attachments );
@@ -342,6 +354,17 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::Pipeline(
 	if ( debug.IsNeutral() )
 		m_Shipped.emplace( pipeline.Value().value, variant );
 	return pipeline.Value();
+}
+
+foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::StatePipeline(
+    PipelineId shipped, const SurfaceDrawState &state, const shaderlib::DebugSpecialization &debug )
+{
+	const auto found = m_Shipped.find( shipped.value );
+	if ( found == m_Shipped.end() )
+		return foundation::MakeUnexpected( SurfaceStatus::kInvalidRequest );
+	SurfaceVariant variant = found->second;
+	variant.drawState = state;
+	return Pipeline( variant, debug );
 }
 
 foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::VariantPipeline(

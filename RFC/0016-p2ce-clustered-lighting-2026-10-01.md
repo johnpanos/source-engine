@@ -24,6 +24,13 @@ RFC 0016 rule 8 applies it to rendering. A proven faster GPU path must be used
 for its supported workload, with preparation, transfers and synchronization
 included in the comparison and the CPU implementation retained as an oracle.
 
+The final direction is "Add render budgets too. And stick to them. We need a
+minimum of 120FPS, high, on this machine." The user confirmed 1920×1080.
+RFC 0016's [hard budget policy](0016-render-core.md#hard-render-budgets-user-decision-2026-10-01)
+and its referenced budget row now govern acceptance. This explicitly supersedes
+the earlier rule that all performance misses were nonblocking. Current source
+inspection and retained measurements do not establish a pass.
+
 ## What P2:CE establishes
 
 P2:CE's [May 2025 clustered announcement](https://store.steampowered.com/news/app/440000/view/541105873081074765)
@@ -60,7 +67,10 @@ for our renderer. Our optimization must preserve accepted shadow behavior.
 [Strata](https://stratasource.org/) provides no public engine source/SDK; its
 [Engine repository](https://github.com/StrataSource/Engine) is an issue tracker.
 The exact assignment kernel, grid, capacities, frame graph and comparative
-costs are not verified. The [DXVK Native project](https://github.com/StrataSource/dxvk-native)
+costs are not established by those publications. The subsequent
+[local RenderDoc investigation](0016-p2ce-renderdoc-investigation-2026-10-01.md)
+verifies GPU BVH assignment, grid/list layouts, and native Canyon captures;
+comparative costs remain unmeasured. The [DXVK Native project](https://github.com/StrataSource/dxvk-native)
 lists P2:CE's Linux use; a graphics API or translation layer alone establishes
 neither a performance winner nor parity with our native Vulkan core.
 

@@ -304,6 +304,94 @@ void LodCases()
 	}
 }
 
+void FlexCases()
+{
+	SyntheticModel model = mdltest::BoxModel( { 1, 1, 1 }, "fixture/", "base" );
+	model.flexDescriptors = { "left", "right" };
+	model.lodSwitches = { 0, 100 };
+	model.bodyParts[0][0][0].lodIndices = { { 0, 2, 1 } };
+	mdl::Flex stereo;
+	stereo.pair = 1;
+	stereo.targets = { 0, 1, 2, 3 };
+	mdl::FlexDelta delta;
+	delta.vertex = 1;
+	delta.position = { 0.625f, -0.5f, 0.25f };
+	delta.normal = { 0.125f, 0.0f, -0.25f };
+	delta.wrinkle = -0.5f;
+	delta.speed = 64;
+	delta.side = 192;
+	stereo.deltas = { delta };
+	mdl::Flex mono = stereo;
+	mono.pair = 0;
+	mono.deltas[0].vertex = 2;
+	mono.deltas[0].wrinkle = 0.0f;
+	model.bodyParts[0][0][0].flexes = { stereo, mono };
+	for ( int version : { 44, 49 } )
+	{
+		model.version = version;
+		for ( std::uint32_t flags : { 0u, 0x4000u, 0x200000u, 0x204000u } )
+		{
+			model.flags = flags;
+			model.flexScale = 1.0f / 2048.0f;
+			model.fixups = true;
+			const SyntheticFiles files = mdltest::WriteModel( model );
+			const auto parsed = mdl::ParseModelGeometryVariants(
+			    { files.mdl, files.vvd, files.vtx, {} } );
+			Check( parsed && parsed.Value().flexDescriptors == model.flexDescriptors &&
+			           parsed.Value().meshes.size() == 2,
+			    "flex descriptors and both LODs import with fixed-up vertices" );
+			if ( !parsed )
+				continue;
+			Check( parsed.Value().meshes[0].flexes == model.bodyParts[0][0][0].flexes &&
+			           parsed.Value().meshes[1].flexes == model.bodyParts[0][0][0].flexes,
+			    "mono/stereo deltas preserve indices, speed, side, normals and signed wrinkle" );
+		}
+	}
+	Check( stereo.Weight( -1 ) == 0 && stereo.Weight( 0 ) == 0 &&
+	           stereo.Weight( 0.25f ) == 0.25f && stereo.Weight( 1 ) == 1 &&
+	           stereo.Weight( 1.5f ) == 1 && stereo.Weight( 2 ) == 1 &&
+	           stereo.Weight( 2.75f ) == 0.25f && stereo.Weight( 3 ) == 0 &&
+	           stereo.Weight( 4 ) == 0,
+	    "Studio flex ramp has zero endpoints, rising/falling ramps and a plateau" );
+	mdl::Flex step = stereo;
+	step.targets = { 0, 0, 1, 1 };
+	Check( step.Weight( 0 ) == 0 && step.Weight( 0.5f ) == 1 && step.Weight( 1 ) == 0,
+	    "coincident flex targets preserve endpoint behavior without division by zero" );
+	model.flags = 0;
+	model.bodyParts[0][0][0].flexes[0].deltas[0].position.x = 0.0003f;
+	SyntheticFiles files = mdltest::WriteModel( model );
+	const auto quantized = Parse( files );
+	Check( quantized && quantized.Value().meshes[0].flexes[0].deltas[0].position.x ==
+	                       1.0f / 4096.0f,
+	    "on-disk half deltas use the engine's signed-fixed-point truncation" );
+	const std::size_t part = Get32( files.mdl, 236 );
+	const std::size_t sub = part + Get32( files.mdl, part + 12 );
+	const std::size_t mesh = sub + Get32( files.mdl, sub + 76 );
+	const std::size_t flex = mesh + Get32( files.mdl, mesh + 20 );
+	const std::size_t vertex = flex + Get32( files.mdl, flex + 24 );
+	const auto bad32 = [&]( std::size_t at, std::int32_t value, mdl::ModelStatus status,
+	                       const char *name )
+	{
+		SyntheticFiles bad = files;
+		mdltest::detail::Put32( bad.mdl, at, value );
+		const auto parsed = mdl::ParseModelGeometryVariants( { bad.mdl, bad.vvd, bad.vtx, {} } );
+		Check( !parsed && parsed.Error().file == mdl::ModelFile::Mdl &&
+		           parsed.Error().status == status, name );
+	};
+	bad32( mesh + 16, -1, mdl::ModelStatus::BadCount, "negative flex count is refused" );
+	bad32( mesh + 20, 0x7fffffff, mdl::ModelStatus::BadOffset, "out-of-file flex table is refused" );
+	bad32( flex, 2, mdl::ModelStatus::BadIndex, "unknown flex descriptor is refused" );
+	bad32( flex + 28, 2, mdl::ModelStatus::BadIndex, "unknown stereo partner is refused" );
+	bad32( flex + 4, 0x7fc00000, mdl::ModelStatus::BadCount, "nonfinite flex ramp is refused" );
+	bad32( flex + 8, 0x40800000, mdl::ModelStatus::BadCount, "unordered flex ramp is refused" );
+	bad32( flex + 32, 2, mdl::ModelStatus::BadCount, "unknown flex delta encoding is refused" );
+	bad32( vertex, 0xffff, mdl::ModelStatus::BadIndex, "flex delta outside its mesh is refused" );
+	bad32( flex + 20, 0x7fffffff, mdl::ModelStatus::Truncated, "truncated flex deltas are refused" );
+	mdltest::detail::Put32( files.mdl, 152, 0x200000 );
+	bad32( 392, 0, mdl::ModelStatus::BadCount, "zero flex fixed-point scale is refused" );
+	bad32( 392, 0x7f800000, mdl::ModelStatus::BadCount, "nonfinite flex fixed-point scale is refused" );
+}
+
 void BodyAndSkinCases()
 {
 	SyntheticModel model;
@@ -721,6 +809,7 @@ int main()
 	BoxCases();
 	BodyAndSkinCases();
 	LodCases();
+	FlexCases();
 	MaterialAndLoadCases();
 	MalformedCases();
 	RobustnessCases();

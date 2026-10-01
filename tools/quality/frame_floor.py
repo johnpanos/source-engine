@@ -14,7 +14,7 @@ runs.
 Every frame between the script's "floor_begin" and "floor_end" frame marks
 is judged. The run fails, and the game is stopped at once, at the first
 frame whose interval (present to present, what the player sees) is longer
-than the floor (33.3 ms for a 30 fps floor). The stop names the frame, its
+than the row's floor. The stop names the frame, its
 phase (the last frame mark) and the backend's costs in it. A run that
 reaches "floor_end" is then judged on its lows:
 
@@ -30,6 +30,10 @@ buffer at 1024x768) and "compositor" (a private headless mutter with a
 virtual monitor at --width x --height, as a player's window). Neither opens
 a window on the desktop. The GPU is shared with anything else running on
 the host; the evidence records the load and the other game processes seen.
+The row-linked High workload rejects capped offscreen runs, lower floors and
+quality overrides, applies and queries the product profile's High settings,
+and checks actual back-buffer size, GPU and complete CPU/GPU timing records.
+Timing success alone does not certify complete image or workload coverage.
 
 Exit status: 0 pass, 1 floor or low failed (or the route did not complete),
 2 usage or staging error.
@@ -40,6 +44,7 @@ import datetime
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import signal
 import subprocess
@@ -49,6 +54,8 @@ import time
 import conformance
 import portal2_scenarios
 import private_session
+import render_budgets
+import product_profile
 
 
 ROOT = Path(conformance.repo_root())
@@ -70,14 +77,85 @@ class FloorError(Exception):
 
 def floor_settings(workload, args):
     settings = dict(workload.get("frame_floor", {}))
+    row = (render_budgets.find(render_budgets.load(), workload["render_budget_row"])
+           if workload.get("render_budget_row") else None)
+    if row:
+        settings = {key: row["minimum_fps"]
+                    for key in ("floor_fps", "low_1pct_fps", "low_01pct_fps")}
     for key, value in (("floor_fps", args.floor_fps), ("low_1pct_fps", args.low_1pct_fps),
                        ("low_01pct_fps", args.low_01pct_fps)):
         if value is not None:
             settings[key] = value
     for key in ("floor_fps", "low_1pct_fps", "low_01pct_fps"):
-        if not isinstance(settings.get(key), (int, float)) or settings[key] <= 0:
+        if not render_budgets.valid_number(settings.get(key)) or settings[key] <= 0:
             raise FloorError("the workload's frame_floor needs a positive %s" % key)
+        if row and settings[key] < row["minimum_fps"]:
+            raise FloorError("%s cannot relax the hard budget %s" % (key, row["id"]))
     return settings
+
+
+def configure_budget(workload, args):
+    """Pin the declared High profile; diagnostic runs cannot lower its settings."""
+    if not workload.get("render_budget_row"):
+        return None
+    row = render_budgets.find(render_budgets.load(), workload["render_budget_row"])
+    conditions = row["conditions"]
+    if (args.width, args.height) != (conditions["width"], conditions["height"]):
+        raise FloorError("%s requires %dx%d" % (row["id"], conditions["width"], conditions["height"]))
+    if args.display == "offscreen":
+        raise FloorError("offscreen's capped drawable cannot certify %s" % row["id"])
+    if args.render_switch or args.extra_arg:
+        raise FloorError("render switches/extra arguments cannot override a hard High workload")
+    profile = product_profile.load_profile(ROOT / row["profile"])
+    quality = profile["intent"]["render_quality"][conditions["quality"]]
+    return {"row": row["id"], "profile": row["profile"], "conditions": conditions,
+            "settings": quality["settings"], "limits": row["modes"]["headroom"]}
+
+
+def quality_receipt(log, header, budget):
+    """Read actual cvar values and back-buffer sizes, rather than launch intent."""
+    sizes = [(int(w), int(h)) for w, h in re.findall(r"back buffer (\d+)x(\d+)", log)]
+    observed = dict(re.findall(r'"([A-Za-z0-9_]+)"\s*=\s*"([^"\n]+)"', log))
+    expected = budget["conditions"]
+    failures = []
+    if not sizes or any(size != (expected["width"], expected["height"]) for size in sizes):
+        failures.append("actual back buffer is not verified at %dx%d" % (expected["width"], expected["height"]))
+    if not header or header.get("device") != expected["device"]:
+        failures.append("the budget's native GPU identity is not verified")
+    for name, value in budget["settings"].items():
+        if observed.get(name) != value:
+            failures.append("High setting %s: expected %s, observed %s" % (name, value, observed.get(name)))
+    return {"back_buffers": sizes, "observed_settings": observed,
+            "failures": failures, "status": "fail" if failures else "pass"}
+
+
+def graphics_context():
+    """Record current driver/API facts, not the profile's earlier observation."""
+    try:
+        probe = subprocess.run(["vulkaninfo", "--summary"], capture_output=True, text=True, timeout=15)
+        if probe.returncode:
+            return {"status": "unavailable", "reason": "vulkaninfo exited %d" % probe.returncode}
+        devices = []
+        for block in re.split(r"(?m)^GPU\d+:\s*$", probe.stdout)[1:]:
+            fields = dict(re.findall(r"(?m)^\s*(deviceName|driverName|driverInfo|apiVersion)\s*=\s*(.+)$", block))
+            if fields:
+                devices.append({key: value.strip() for key, value in fields.items()})
+        return {"status": "pass" if devices else "unavailable", "devices": devices}
+    except (OSError, subprocess.SubprocessError) as error:
+        return {"status": "unavailable", "reason": str(error)}
+
+
+def metric_budget_failures(summary, budget):
+    failures = []
+    for field in ("cpu", "gpu_render", "submission"):
+        for statistic in ("p99", "max"):
+            metric = field + "_" + statistic + "_ms"
+            value = summary.get(metric)
+            if not render_budgets.valid_number(value):
+                failures.append("the complete route has no valid %s" % metric)
+            elif value > budget["limits"]["max_" + field + ("_p99_ms" if statistic == "p99" else "_ms")]:
+                failures.append("%s %.3f ms exceeds the hard budget" % (metric, value))
+    return failures
 
 
 # --- Frame statistics ------------------------------------------------------------
@@ -99,10 +177,11 @@ def summarize(frames):
     intervals = [frame["interval_ms"] for frame in frames]
     if not intervals:
         return {"frames": 0}
-    return {
+    result = {
         "frames": len(intervals),
         "seconds": round(sum(intervals) / 1000.0, 2),
         "median_ms": round(percentile(intervals, 0.5), 3),
+        "p95_ms": round(percentile(intervals, 0.95), 3),
         "p99_ms": round(percentile(intervals, 0.99), 3),
         "p999_ms": round(percentile(intervals, 0.999), 3),
         "max_ms": round(max(intervals), 3),
@@ -110,6 +189,12 @@ def summarize(frames):
         "low_1pct_fps": round(low_fps(intervals, 0.01), 1),
         "low_01pct_fps": round(low_fps(intervals, 0.001), 1),
     }
+    for field in ("cpu", "gpu_render", "submission"):
+        values = [frame[field + "_ms"] for frame in frames if frame.get(field + "_ms") is not None]
+        if len(values) == len(frames):
+            result[field + "_p99_ms"] = round(percentile(values, 0.99), 3)
+            result[field + "_max_ms"] = round(max(values), 3)
+    return result
 
 
 def frame_brief(row, phase):
@@ -147,6 +232,8 @@ class FrameWatcher:
         self.recent = []
         self.below = []
         self.header = None
+        self.invalid = []
+        self.gpu_frames = {}
 
     def poll(self):
         """Reads new lines; returns the first frame below the floor seen in
@@ -163,10 +250,14 @@ class FrameWatcher:
         first = None
         for line in lines:
             if not line.startswith("{"):
+                if line.strip() and self.state == "judging":
+                    self.invalid.append("unreadable frame stats during the route")
                 continue
             try:
                 row = json.loads(line)
             except json.JSONDecodeError:
+                if self.state == "judging":
+                    self.invalid.append("malformed frame stats during the route")
                 continue
             if "f" not in row:
                 self.header = row
@@ -177,6 +268,9 @@ class FrameWatcher:
         return first
 
     def judge(self, row):
+        gpu = row.get("gpu")
+        if isinstance(gpu, list) and len(gpu) >= 3 and render_budgets.valid_number(gpu[2]):
+            self.gpu_frames[gpu[0]] = gpu[2] / 1000.0
         marks = row.get("mark", "").split(",") if row.get("mark") else []
         # The marks are attached to the frame being built when the script
         # sent them; a frame carrying floor_begin is the first one judged.
@@ -187,8 +281,22 @@ class FrameWatcher:
                 self.phase = mark
         if self.state != "judging":
             return None
-        interval_ms = row.get("interval", 0) / 1000.0
+        if not isinstance(row.get("f"), int) or isinstance(row["f"], bool) or row["f"] < 1:
+            self.invalid.append("frame stats have an invalid frame number")
+            return None
+        interval = row.get("interval")
+        if not render_budgets.valid_number(interval) or interval == 0:
+            self.invalid.append("frame %s has no positive finite interval" % row.get("f"))
+            return None
+        if self.frames and row.get("f") != self.frames[-1]["frame"] + 1:
+            self.invalid.append("missing, duplicated or unordered frame after %s" % self.frames[-1]["frame"])
+        interval_ms = interval / 1000.0
         frame = {"frame": row.get("f"), "interval_ms": interval_ms, "phase": self.phase}
+        if render_budgets.valid_number(row.get("cpu")):
+            frame["cpu_ms"] = row["cpu"] / 1000.0
+        emit = row.get("cost", {}).get("emit")
+        if isinstance(emit, list) and len(emit) == 2 and render_budgets.valid_number(emit[1]):
+            frame["submission_ms"] = emit[1] / 1000.0
         self.frames.append(frame)
         self.phases.setdefault(self.phase or "-", []).append(frame)
         self.recent.append(frame_brief(row, self.phase))
@@ -232,12 +340,15 @@ def stage(args, workload):
 
 
 def game_command(args, scenario, stats_path):
+    high = (["+mat_antialias", args.render_budget["settings"]["mat_antialias"],
+             "+fps_max", "1000", "+exec", "render_budget_high"] if args.render_budget else [])
     return [str(ROOT / "play_p2"), *args.render_switch,
             "-multirun", "-novid", "-condebug", "-windowed",
             "-w", str(args.width), "-h", str(args.height),
             "-vkframestats", str(stats_path),
             "+volume", "0", "+mat_vsync", "0", "+engine_no_focus_sleep", "0",
             *args.extra_arg,
+            *high,
             "+map", scenario["map"], "+wait", str(args.start_frames),
             "+exec", "qa_" + scenario["name"]]
 
@@ -256,8 +367,9 @@ def launch(args, runtime, command, output):
     else:
         environment["SDL_VIDEODRIVER"] = "wayland"
         display = "floor-%d" % os.getpid()
+        refresh = args.render_budget["conditions"].get("refresh_hz", 60) if args.render_budget else 60
         command = private_session.dbus_run_session(output / "dbus") + [
-            "mutter", "--headless", "--virtual-monitor", "%dx%d@60" % (args.width, args.height),
+            "mutter", "--headless", "--virtual-monitor", "%dx%d@%g" % (args.width, args.height, refresh),
             "--wayland-display", display, "--"] + command
     stream = (output / "stdout.log").open("wb")
     process = subprocess.Popen(command, cwd=ROOT, env=environment, stdout=stream,
@@ -322,15 +434,31 @@ def run(args, workload, settings, scenario, runtime):
     finally:
         stop(process)
         stream.close()
-    watcher.poll()
+    final_failure = watcher.poll()
+    first_failure = first_failure or final_failure
     seconds = time.monotonic() - started
     log = console.read_text(errors="replace") if console.is_file() else ""
+    stdout = (output / "stdout.log").read_text(errors="replace")
     (output / "console.log").write_text(log)
     qa = portal2_scenarios.evaluate(scenario, log, process.returncode, timed_out)
+    for frame in watcher.frames:
+        frame["gpu_render_ms"] = watcher.gpu_frames.get(frame["frame"])
     summary = summarize(watcher.frames)
     phases = {name: summarize(frames) for name, frames in watcher.phases.items()}
     stopped_early = first_failure is not None and not args.no_stop
-    failures = []
+    failures = list(watcher.invalid)
+    if not watcher.frames:
+        failures.append("the route measured no valid frames")
+    receipt = None
+    if args.render_budget:
+        receipt = quality_receipt(log + "\n" + stdout, watcher.header, args.render_budget)
+        failures.extend(receipt["failures"])
+        device_name = (watcher.header or {}).get("device")
+        drivers = [device for device in args.graphics.get("devices", [])
+                   if device.get("deviceName") == device_name]
+        if not drivers or not all(device.get("driverInfo") and device.get("apiVersion") for device in drivers):
+            failures.append("actual native GPU driver/API evidence is unavailable")
+        failures.extend(metric_budget_failures(summary, args.render_budget))
     if watcher.state == "waiting":
         failures.append("no frame carried the %s mark" % BEGIN_MARK)
     if first_failure is not None:
@@ -360,6 +488,7 @@ def run(args, workload, settings, scenario, runtime):
         "first_below_floor": first_failure,
         "below_floor": watcher.below,
         "device": watcher.header,
+        "quality_receipt": receipt,
         "route_checks": qa["checks"],
         "command": command,
         "host_before": context_before,
@@ -424,7 +553,8 @@ def main(argv=None):
     try:
         workload = portal2_scenarios.load_workload(args.workload)
         settings = floor_settings(workload, args)
-    except (portal2_scenarios.ScenarioError, FloorError) as error:
+        args.render_budget = configure_budget(workload, args)
+    except (portal2_scenarios.ScenarioError, product_profile.ProfileError, FloorError, ValueError) as error:
         parser.exit(2, "frame_floor: %s\n" % error)
     args.out = args.out.resolve()
     if (args.out / "evidence.json").exists():
@@ -436,9 +566,19 @@ def main(argv=None):
                 "workload": str(args.workload), "settings": settings,
                 "display": {"mode": args.display, "width": args.width, "height": args.height},
                 "preview": args.preview, "no_stop": args.no_stop, "results": []}
+    evidence["render_budget"] = args.render_budget
+    args.graphics = graphics_context() if args.render_budget else {}
+    evidence["graphics"] = args.graphics
+    evidence["image_acceptance"] = "unverified: requires separate complete-image K11/K12/R91 evidence"
     evidence_path = args.out / "evidence.json"
     try:
         runtime = args.runtime.resolve() if args.skip_stage else stage(args, workload)
+        if args.render_budget:
+            settings_commands = [name + " " + value for name, value in args.render_budget["settings"].items()]
+            settings_commands.extend(args.render_budget["settings"])
+            cfg = runtime / "portal2/cfg/render_budget_high.cfg"
+            cfg.parent.mkdir(parents=True, exist_ok=True)
+            cfg.write_text("\n".join(settings_commands) + "\n")
     except (OSError, ValueError, FloorError) as error:
         evidence["status"] = "error"
         evidence["error"] = str(error)
@@ -462,7 +602,7 @@ def main(argv=None):
         print_result(result, settings)
         if result["status"] == "fail":
             status = "fail"
-    evidence["status"] = status
+    evidence["status"] = "preview" if args.preview else status
     evidence["finished_utc"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
     evidence_path.write_text(json.dumps(evidence, indent=2) + "\n")
     return 1 if status == "fail" else 0

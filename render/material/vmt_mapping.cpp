@@ -53,6 +53,8 @@ constexpr VmtShaderRow kShaders[] = {
     { "refract_dx90", "refract", "Refract's DirectX 9 implementation" },
     { "writez_dx9", "depth", "depth-only material-system geometry" },
     { "writez", "depth", "depth-only material-system geometry" },
+    { "portalrefract", "portal-mask", "PortalRefract stage 1 aperture mask" },
+    { "portalrefract_dx9", "portal-mask", "PortalRefract stage 1 aperture mask" },
     { "subrect", kLegacyFamily,
         "not a shader: a sub-rectangle ($pos, $size) of another material ($material) that "
         "the material system resolves (CMaterialSubRect) and draws as that material" },
@@ -66,7 +68,7 @@ constexpr std::string_view kLegacyReason =
 // the material flags the draw state depends on); BuildKeyRows() gives each of
 // kLegacyDerivedFamilies a copy.
 constexpr std::string_view kLegacyDerivedFamilies[] = {
-    "lightmapped", "vertexlit", "unlit", "depth" };
+    "lightmapped", "vertexlit", "unlit", "depth", "portal-mask" };
 
 constexpr VmtKeyRow kCommonKeys[] = {
     { {}, "$one", "one", ValueKind::kFloat, "1" },
@@ -108,6 +110,14 @@ constexpr VmtKeyRow kCommonKeys[] = {
 };
 
 constexpr VmtKeyRow kLegacyDerivedKeys[] = {
+    { "portal-mask", "$stage", "stage", ValueKind::kInt, "0" },
+    { "portal-mask", "$portalopenamount", "portalopenamount", ValueKind::kFloat, "0" },
+    { "portal-mask", "$portalstatic", "portalstatic", ValueKind::kFloat, "0" },
+    { "portal-mask", "$portalmasktexture", "portalmasktexture", ValueKind::kTexture, "" },
+    { "portal-mask", "$portalcolortexture", "portalcolortexture", ValueKind::kTexture, "" },
+    { "portal-mask", "$portalcolorscale", "portalcolorscale", ValueKind::kFloat, "0" },
+    { "portal-mask", "$texturetransform", "texturetransform", ValueKind::kTransform, "" },
+    { "portal-mask", "$time", "time", ValueKind::kFloat, "0" },
     { "lightmapped", "$basetexture2", "basetexture2", ValueKind::kTexture, "" },
     { "lightmapped", "$frame2", "frame2", ValueKind::kInt, "0" },
     { "lightmapped", "$bumpmap", "bumpmap", ValueKind::kTexture, "" },

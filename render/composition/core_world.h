@@ -70,10 +70,7 @@ public:
 	    const char *entities ) override;
 	void SetStaticProps( const RenderCoreStaticModel *models, unsigned int modelCount,
 	    const RenderCoreStaticProp *props, unsigned int propCount ) override;
-	bool DrawsStaticProp( unsigned int prop ) const override
-	{
-		return m_StageSet && m_Pass.DrawsStaticInstance( prop );
-	}
+	bool DrawsStaticProp( unsigned int prop, unsigned int lod = 0 ) const override;
 	world_mesh_gpu::IWorldMeshUpload *StageUpload() override { return &m_Capture; }
 	void ClearWorld() override
 	{
@@ -101,7 +98,7 @@ public:
 	}
 	bool DrawView( const unsigned int *surfaces, unsigned int count, const float worldToClip[16],
 	    const float viewport[6], unsigned long long hostFrame, const float worldToView[16],
-	    const float viewToClip[16], float waterZOffset, const unsigned int *staticProps,
+	    const float viewToClip[16], float waterZOffset, const RenderCoreStaticPropDraw *staticProps,
 	    unsigned int staticPropCount, const RenderCorePosedModel *posedModels,
 	    unsigned int posedModelCount ) override;
 	void BeginFrame() override;

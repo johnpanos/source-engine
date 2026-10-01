@@ -54,7 +54,7 @@ WorldData SelectionWorld()
 		mat.mesh = true;
 		mat.variables.emplace_back( "$color", i == 0 ? "[1 0 0]" : "[0 1 0]" );
 		if ( i == 2 )
-			mat.variables.emplace_back( "$unsupported-body-effect", "1" );
+			mat.hasProxy = true;
 		world.materials.push_back( std::move( mat ) );
 		const float left = i == 0 ? -0.8f : 0.2f;
 		const float right = left + 0.6f;
@@ -155,6 +155,9 @@ WorldData ImportedLodWorld( const mdl::Model &model )
 		    { part.lod, 0, firstIndex, std::uint32_t( part.indices.size() ) } );
 	}
 	world.staticMeshes.push_back( std::move( mesh ) );
+	WorldData::StaticInstance instance;
+	instance.world[0] = instance.world[5] = instance.world[10] = instance.world[15] = 1.0f;
+	world.staticInstances.push_back( std::move( instance ) );
 	return world;
 }
 
@@ -364,6 +367,39 @@ std::optional<std::string> RunChecks(
 		return why;
 	results.That( LeftFootprint( replay ) && pass.Stats().viewsFailed == 0,
 	    "model-selection.LOD-capture-replay-keeps-the-earlier-level", pass.Stats().lastFailure );
+	WorldView staticView = ImportedLodView( model, world, 0 );
+	WorldView::StaticInstance staticDraw( 0 );
+	staticDraw.surfaceSelection = staticView.posedModels[0].surfaceSelection;
+	staticView.posedModels.clear();
+	staticView.staticInstances.push_back( std::move( staticDraw ) );
+	const std::uint32_t staticHighTag = pass.QueueView( staticView );
+	staticView.staticInstances[0].surfaceSelection = low.posedModels[0].surfaceSelection;
+	const std::uint32_t staticLowTag = pass.QueueView( staticView );
+	staticView.staticInstances[0].surfaceSelection = noGeometry.posedModels[0].surfaceSelection;
+	const std::uint32_t staticBlankTag = pass.QueueView( staticView );
+	results.That( staticHighTag && staticLowTag && staticBlankTag,
+	    "model-selection.static-LOD-changes-own-their-queued-topology" );
+	if ( auto why = render( staticHighTag, highImage ) )
+		return why;
+	if ( auto why = render( staticLowTag, lowImage ) )
+		return why;
+	if ( auto why = render( staticBlankTag, noGeometryImage ) )
+		return why;
+	results.That( LeftFootprint( highImage ) && RightFootprint( lowImage ),
+	    "model-selection.static-LOD-topology-and-replacement-material-footprints" );
+	results.That( !LeftFootprint( lowImage ) && !RightFootprint( highImage ),
+	    "model-selection.static-wrong-LOD-negative-control-is-detected" );
+	results.That(
+	    noGeometryImage.At( 16, 32 )[0] == 0.0f && noGeometryImage.At( 48, 32 )[1] == 0.0f,
+	    "model-selection.static-blank-LOD-has-no-geometry" );
+	if ( auto why = render( staticHighTag, replay ) )
+		return why;
+	results.That( LeftFootprint( replay ) && pass.Stats().viewsFailed == 0,
+	    "model-selection.static-LOD-capture-replay-keeps-the-earlier-level",
+	    pass.Stats().lastFailure );
+	staticView.staticInstances[0].surfaceSelection = std::vector<std::uint32_t>{ 2 };
+	results.That( pass.QueueView( staticView ) == 0,
+	    "model-selection.static-invalid-surface-selection-is-refused" );
 	(void)device->WaitIdle();
 	pass.ReleaseDevice( *device );
 	messages = counter.load();

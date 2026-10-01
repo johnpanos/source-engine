@@ -9,29 +9,34 @@
 profile, a workload, its hardware and the limits of its presentation modes,
 set before the row is measured (RFC 0005 "Performance and promotion").
 
-`check` passes when every required row exists with numeric limits for p50,
+`check` validates declarations, not achieved frame performance. Every required row needs numeric limits for p50,
 p95, p99, GPU render time and main-thread submission time, the profile and
 workload it names exist, and it carries a k0_record (the measurement later
 render-core gates compare against). A k0_record that misses a limit must say
 so in the row's over_budget (the exact fields, an owning roadmap row and a
 reason); an undeclared miss, or a declared miss the record no longer has,
-fails.
+fails. Hard rows also require an every-frame floor, conditions and bounded
+CPU/GPU metrics. A new hard row may explicitly have no baseline: it remains
+unverified until its route, quality receipt and complete-image evidence pass.
 
 `record` stores a frame_pacing evidence file's warm pass as a row's
 k0_record; it never replaces one without --update.
 
 `report` judges a later run: the row's limits, and RFC 0016's frame
 allowance (warm median and p99 at most the allowance times the k0_record).
+The hard High row uses frame_floor.py; a warm-pass report cannot certify High.
 """
 
 import argparse
 import json
+import math
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 BUDGETS = ROOT / "quality/budgets/render-v1.json"
-REQUIRED_ROWS = ("linux-wayland-portal-frame-pacing", "android-fold7-portal-frame-pacing")
+REQUIRED_ROWS = ("linux-wayland-portal-frame-pacing", "android-fold7-portal-frame-pacing",
+                 "linux-desktop-high-120")
 LIMITS = ("max_p50_ms", "max_p95_ms", "max_p99_ms", "max_gpu_render_p99_ms", "max_submission_p99_ms",
           "max_hitches")
 # k0_record field <- frame_pacing warm-pass summary field
@@ -41,7 +46,12 @@ RECORD_FIELDS = {"p50_ms": "median_ms", "p95_ms": "p95_ms", "p99_ms": "p99_ms",
 # limit -> k0_record field it bounds
 LIMIT_FIELDS = {"max_p50_ms": "p50_ms", "max_p95_ms": "p95_ms", "max_p99_ms": "p99_ms",
                 "max_gpu_render_p99_ms": "gpu_render_p99_ms", "max_submission_p99_ms": "submission_p99_ms",
-                "max_hitches": "hitches"}
+                "max_hitches": "hitches", "max_frame_ms": "max_frame_ms", "max_cpu_p99_ms": "cpu_p99_ms"}
+
+
+def valid_number(value):
+    return (isinstance(value, (int, float)) and not isinstance(value, bool)
+            and math.isfinite(value) and value >= 0)
 
 
 def load(path=BUDGETS):
@@ -80,10 +90,26 @@ def check(budgets, root=ROOT, required=REQUIRED_ROWS):
                 problems.append("%s: needs %s" % (name, key))
         limits = row.get("modes", {}).get("headroom", {})
         for key in LIMITS:
-            if not isinstance(limits.get(key), (int, float)) or limits[key] < 0:
+            if not valid_number(limits.get(key)):
                 problems.append("%s: headroom limit %s must be a number" % (name, key))
+        if row.get("acceptance") == "hard":
+            fps = row.get("minimum_fps")
+            if not valid_number(fps) or fps == 0:
+                problems.append("%s: minimum_fps must be positive" % name)
+            else:
+                floor_ms = 1000.0 / fps
+                for key in ("max_frame_ms", "max_p50_ms", "max_p95_ms", "max_p99_ms",
+                            "max_gpu_render_p99_ms", "max_cpu_p99_ms", "max_submission_p99_ms"):
+                    if not valid_number(limits.get(key)) or limits[key] > floor_ms:
+                        problems.append("%s: %s must meet the hard frame floor" % (name, key))
+            conditions = row.get("conditions", {})
+            if not all(conditions.get(key) for key in ("width", "height", "quality", "device")):
+                problems.append("%s: hard budget needs resolution, quality and device conditions" % name)
         record = row.get("k0_record")
         if not record:
+            if row.get("acceptance") == "hard" and row.get("baseline_required") is False:
+                # This only validates the declaration. No measurement means no acceptance.
+                continue
             problems.append("%s: no k0_record; measure the row and run record" % name)
             continue
         for field in list(RECORD_FIELDS) + ["hitches", "revision", "measured", "evidence_command"]:
@@ -135,6 +161,9 @@ def record_from(evidence):
     record["measured"] = evidence.get("started_utc")
     record["device"] = (evidence.get("device") or {}).get("device")
     record["evidence_command"] = evidence.get("command") or evidence.get("arguments")
+    for field, source in (("max_frame_ms", "max_ms"), ("cpu_p99_ms", "cpu_p99_ms")):
+        if source in summary:
+            record[field] = summary[source]
     return record
 
 
@@ -145,12 +174,20 @@ def report(row, evidence, allowance):
     limits = row["modes"]["headroom"]
     measured = {"p50_ms": summary.get("median_ms"), "p95_ms": summary.get("p95_ms"),
                 "p99_ms": summary.get("p99_ms"), "gpu_render_p99_ms": summary.get("gpu_render_p99_ms"),
-                "submission_p99_ms": summary.get("submission_p99_ms"), "hitches": warm["hitch_count"]}
+                "submission_p99_ms": summary.get("submission_p99_ms"), "hitches": warm["hitch_count"],
+                "max_frame_ms": summary.get("max_ms"), "cpu_p99_ms": summary.get("cpu_p99_ms")}
     for key, field in LIMIT_FIELDS.items():
-        if measured[field] is None:
-            failures.append("the warm pass has no %s" % field)
+        if key not in limits:
+            continue
+        if not valid_number(measured[field]):
+            failures.append("the warm pass has no valid %s" % field)
         elif measured[field] > limits[key]:
             failures.append("%s %.3f is over the limit %.3f" % (field, measured[field], limits[key]))
+    if evidence.get("status") in ("fail", "error", "incomplete"):
+        failures.append("the evidence did not complete successfully")
+    if row.get("acceptance") == "hard":
+        failures.append("High qualification requires the row-linked frame_floor.py route and quality receipt; "
+                        "a warm-pass timing report alone cannot certify it")
     record = row.get("k0_record")
     if record:
         for field, factor in (("p50_ms", allowance["median"]), ("p99_ms", allowance["p99"])):

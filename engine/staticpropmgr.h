@@ -23,6 +23,7 @@
 // foward declarations
 //-----------------------------------------------------------------------------
 class ICollideable;
+class IClientRenderable;
 FORWARD_DECLARE_HANDLE( LightCacheHandle_t );
 class IPooledVBAllocator;
 struct model_t;
@@ -84,5 +85,6 @@ int StaticPropMgr_CoreModelCount();
 const model_t *StaticPropMgr_CoreModel( int nModel );
 void StaticPropMgr_CorePropInfo( int nProp, const model_t **model, float world[12], int *skin,
     unsigned char *alpha, float modulation[3], bool *castsShadow );
+int StaticPropMgr_CorePropIndex( IClientRenderable *pRenderable );
 
 #endif	// STATICPROPMGR_H

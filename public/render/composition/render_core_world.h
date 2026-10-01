@@ -62,6 +62,7 @@ struct RenderCoreWorldMaterial
 	const char *const *defaults;
 	// Studio's material classification for accepting one half of a two-pass model.
 	bool translucent = false;
+	bool hasProxy = false; // selected proxy materials need a live draw-time handoff
 };
 
 // Source static props enter as raw Studio files and the material system's
@@ -92,6 +93,14 @@ struct RenderCoreStaticProp
 	int skin;
 	float world[12]; // model to world, three rows of four
 	bool castsShadow = true; // authored static-prop and Studio shadow flags
+};
+
+// One visible static-prop instance with the LOD selected by the engine for
+// this view. The queued view owns the resulting geometry selection.
+struct RenderCoreStaticPropDraw
+{
+	unsigned int prop;
+	unsigned int lod;
 };
 
 // One Studio draw at the engine's current animation pose. The model index
@@ -198,10 +207,11 @@ public:
 	    const RenderCoreWorldMaterial *materials, unsigned int materialCount,
 	    const char *entities ) = 0;
 	// Main thread, after SetWorldMesh at level load. Unsupported models and
-	// materials remain on studiorender; DrawsStaticProp decides per instance.
+	// materials remain on studiorender; DrawsStaticProp decides per instance
+	// and selected LOD.
 	virtual void SetStaticProps( const RenderCoreStaticModel *models, unsigned int modelCount,
 	    const RenderCoreStaticProp *props, unsigned int propCount ) = 0;
-	virtual bool DrawsStaticProp( unsigned int prop ) const = 0;
+	virtual bool DrawsStaticProp( unsigned int prop, unsigned int lod = 0 ) const = 0;
 	// The world stage's copy of the engine's world mesh uploads: the engine
 	// makes every upload it makes to the renderer here too (its lightmap
 	// layers, recomposed as moving objects block baked light; the probe
@@ -233,7 +243,7 @@ public:
 	virtual bool DrawView( const unsigned int *surfaces, unsigned int count,
 	    const float worldToClip[16], const float viewport[6], unsigned long long hostFrame,
 	    const float worldToView[16], const float viewToClip[16], float waterZOffset,
-	    const unsigned int *staticProps, unsigned int staticPropCount,
+	    const RenderCoreStaticPropDraw *staticProps, unsigned int staticPropCount,
 	    const RenderCorePosedModel *posedModels, unsigned int posedModelCount ) = 0;
 	// Main thread, at the start of each frame, after the renderer began it
 	// (its debug controls are applied). Under a pixel view or

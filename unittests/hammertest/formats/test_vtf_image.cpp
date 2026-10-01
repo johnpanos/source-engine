@@ -14,8 +14,12 @@
 #include "hammer/formats/vtf_image.h"
 #include "testing/conformance_result.h"
 
+#include <algorithm>
+#include <array>
 #include <cstdio>
+#include <span>
 #include <string>
+#include <string_view>
 
 namespace
 {
@@ -34,7 +38,57 @@ int g_failures = 0;
 	} while ( 0 )
 
 using hammer::formats::DecodeVtf;
+using hammer::formats::VtfCompressionMethod;
 using hammer::formats::VtfImage;
+
+static bool DecodeFixtureMip( VtfCompressionMethod method, std::string_view encoded,
+    std::span<std::uint8_t> decoded, std::string &error )
+{
+	if ( method != VtfCompressionMethod::Zstandard || encoded.size() != 1 )
+	{
+		error = "fixture decompressor received the wrong method or payload";
+		return false;
+	}
+	if ( encoded[0] == 'R' )
+	{
+		constexpr std::array<std::uint8_t, 8> redBc1 = { 0x00, 0xf8, 0x00, 0xf8, 0, 0, 0, 0 };
+		if ( decoded.size() % redBc1.size() != 0 )
+			return false;
+		for ( std::size_t offset = 0; offset < decoded.size(); offset += redBc1.size() )
+			std::copy( redBc1.begin(), redBc1.end(), decoded.begin() + offset );
+		return true;
+	}
+	if ( encoded[0] == 'B' )
+	{
+		// BC7 block copied from the independently generated red-8x8-bc7 KTX2
+		// fixture. It decodes to opaque red in every texel.
+		constexpr std::array<std::uint8_t, 16> redBc7 = {
+		    0x20,
+		    0xff,
+		    0x3f,
+		    0x00,
+		    0x00,
+		    0x00,
+		    0xfc,
+		    0xff,
+		    0xaf,
+		    0xaa,
+		    0xaa,
+		    0xaa,
+		    0x00,
+		    0x00,
+		    0x00,
+		    0x00,
+		};
+		if ( decoded.size() % redBc7.size() != 0 )
+			return false;
+		for ( std::size_t offset = 0; offset < decoded.size(); offset += redBc7.size() )
+			std::copy( redBc7.begin(), redBc7.end(), decoded.begin() + offset );
+		return true;
+	}
+	error = "fixture decompressor received an unknown payload";
+	return false;
+}
 
 static void ExpectPixel(
     const VtfImage &img, int x, int y, int r, int g, int b, int a, const char *what )
@@ -156,6 +210,39 @@ int main()
 		}
 	}
 
+	// --- Strata BC7 format 70: independently generated opaque-red block ----------
+	{
+		const unsigned char block[] = {
+		    0x20,
+		    0xff,
+		    0x3f,
+		    0x00,
+		    0x00,
+		    0x00,
+		    0xfc,
+		    0xff,
+		    0xaf,
+		    0xaa,
+		    0xaa,
+		    0xaa,
+		    0x00,
+		    0x00,
+		    0x00,
+		    0x00,
+		};
+		std::string mip0( reinterpret_cast<const char *>( block ), sizeof( block ) );
+		std::string blob =
+		    hammertest::BuildVtf( 4, 4, hammertest::VTF_FMT_STRATA_BC7, 1, { mip0 }, true );
+		std::string err;
+		auto img = DecodeVtf( blob, err );
+		CHECK( img.has_value(), "Strata BC7 decode succeeds" );
+		if ( img )
+		{
+			ExpectPixel( *img, 0, 0, 255, 0, 0, 255, "BC7 red first pixel" );
+			ExpectPixel( *img, 3, 3, 255, 0, 0, 255, "BC7 red last pixel" );
+		}
+	}
+
 	// --- Mip chain: mip 0 must be selected past the smaller-first mips -----------
 	{
 		// 8x8 BGR888, 4 mips (8,4,2,1). Smaller mips filled 0xEE; mip 0 has a known
@@ -177,6 +264,32 @@ int main()
 			CHECK( img->width == 8 && img->height == 8, "mip0 dimensions" );
 			ExpectPixel( *img, 0, 0, 3, 2, 1, 255, "mip0 selected (not a smaller mip)" );
 		}
+	}
+
+	// --- VTF 7.6 AXC: select and decompress only the mip-0 run --------------------
+	{
+		std::string blob = hammertest::BuildCompressedVtf( 8, 8, hammertest::VTF_FMT_DXT1, 4,
+		    { "R", "ignored-one", "ignored-two", "ignored-three" } );
+		std::string err;
+		auto img = DecodeVtf( blob, err, &DecodeFixtureMip );
+		CHECK( img.has_value(), "VTF 7.6 Zstandard mip decode succeeds" );
+		if ( img )
+		{
+			CHECK( img->width == 8 && img->height == 8, "VTF 7.6 dimensions" );
+			ExpectPixel( *img, 0, 0, 255, 0, 0, 255, "VTF 7.6 selected mip 0" );
+			ExpectPixel( *img, 7, 7, 255, 0, 0, 255, "VTF 7.6 decompressed full mip" );
+		}
+	}
+
+	// P2:CE's high-quality packs combine AXC compression with Strata BC7.
+	{
+		std::string blob =
+		    hammertest::BuildCompressedVtf( 4, 4, hammertest::VTF_FMT_STRATA_BC7, 1, { "B" } );
+		std::string err;
+		auto img = DecodeVtf( blob, err, &DecodeFixtureMip );
+		CHECK( img.has_value(), "VTF 7.6 compressed BC7 decode succeeds" );
+		if ( img )
+			ExpectPixel( *img, 2, 2, 255, 0, 0, 255, "VTF 7.6 compressed BC7 pixel" );
 	}
 
 	// --- 7.4 resource-dictionary layout decodes identically ----------------------

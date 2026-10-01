@@ -425,10 +425,61 @@ integration while a budget miss is open does not permit leaving a measured faste
 GPU implementation unused in favor of a slower CPU product path. CPU oracles
 and measured small-workload/capability selections follow the policy's boundary.
 
+### Scope and complexity discipline (user decision, 2026-10-01)
+
+**Rule 9: Limit mechanisms and duplicated work, while delivering the complete
+renderer.** "Too much" means owning unrelated decisions, duplicating work, or
+adding machinery without a demonstrated need. The number of effects or source
+lines alone does not establish excess complexity. The declared complete image,
+compatibility obligations and platform scope remain required.
+
+- **Responsibility.** The core owns rendering: GPU resources, the frame graph,
+  render scene, views, materials, lighting and draw execution. Gameplay,
+  animation simulation, asset-build policy, editor state and platform lifecycle
+  keep their domain owners; the renderer consumes their explicit inputs and
+  integrates through the existing ports and bridges. GPU skinning and drawing
+  particles do not transfer animation or particle simulation ownership.
+- **Complexity.** A boundary needs a concrete consumer or a required portability,
+  correctness or lifetime obligation. An interface, registry, cache or alternate
+  implementation is not justified solely by possible future use. Composition
+  connects owners and manages their lifetimes; domain algorithms belong to their
+  owning modules. Splitting a large file without correcting ownership does not
+  satisfy this rule.
+- **Frame cost.** Avoid recomputing unchanged data, processing inputs that cannot
+  contribute, duplicating conversions and unnecessary synchronization. Caches
+  retain an explicit authority and invalidation contract. One lighting model
+  means shared definitions and coherent results, not unconditional evaluation
+  of every term in every shader. Specialization and conservative culling must
+  preserve the promised output, with oracles and measurements; omitting a
+  contributing effect to meet a budget remains forbidden by rule 7.
+
+Each new render slice must identify at least one concrete outcome:
+
+1. Close a visible gap in the complete Portal 2 scene or another already-declared
+   consumer's acceptance requirement.
+2. Establish required portability, correctness or resource lifetime behavior.
+3. Remove a duplicate owner or measurably reduce complete-frame cost.
+
+If none applies, defer the slice. Prioritize the complete Portal 2 frame already
+ordered in [AGENTS.md](../AGENTS.md#current-render-quality-priority-user-direction-2026-09-30).
+Speculative backends, additional GI techniques and generalized extension
+frameworks wait unless the user selects them or they satisfy a declared
+requirement. This does not retire the required OpenGL adapter, platform profiles,
+shared conformance suites or serial oracles. Numeric limits and acceptance remain
+owned by the [hard render budgets](#hard-render-budgets-user-decision-2026-10-01);
+the frame deadline is not a separate allowance for every subsystem.
+
+The current `render/composition/core_world.cpp` is an ownership review pressure
+point: it handles world ingestion, model preparation, lightmap/probe uploads,
+view lighting and shadow planning. Before adding responsibilities there, identify
+the domain owner and keep composition limited to integration and lifetime work.
+This observation calls for bounded ownership corrections with working consumers,
+not a wholesale rewrite or a claim that every existing operation is misplaced.
+
 ### Enforcement
 
 - **Review.** Every change under `materialsystem/`, `engine/gl_lightmap.cpp`,
-  `engine/lightcache.cpp` or `render/` is checked against rules 1–8 before
+  `engine/lightcache.cpp` or `render/` is checked against rules 1–9 before
   it lands. A missing or false `Frozen-path:` line rejects the change.
 - **Freeze ratchet** (`render.legacy-freeze`, installed 2026-09-29, first
   step of the delivery order, owned by R95). The command is
@@ -1257,7 +1308,7 @@ Each phase closes when:
   is recorded;
 - frame time and permutation count are measured against the K5 Submission
   budget per profile (desktop, Fold7, iPhone, Apple TV) and recorded; a miss
-  is an optimization item, not a blocker (binding rule 7).
+  fails the affected performance acceptance (binding rule 7).
 
 #### What stays outside the model
 
@@ -1708,14 +1759,13 @@ negative controls detected and evidence recorded (revision, profile,
 inputs, counts, first divergence, reproduction commands). Missing required
 hardware leaves the gate unverified, never passed.
 
-**Performance checks do not block (binding rule 7).** Every check in these
-tables that judges time, cost, memory, speedup or a budget (frame time,
-submission cost, recording scales, budgets, the frame allowance) is a
-performance check, marked *(perf)*. Each is run and recorded, with its
-numbers, wherever its hardware is available. A failing or unmeasured
-performance check neither holds its gate open, nor blocks integration or a
-dependent row: it becomes an optimization item on the row. The other checks
-decide whether a gate passes.
+**Performance acceptance is required (binding rule 7, amended 2026-10-01).**
+Checks marked *(perf)* record their actual numbers and obey the
+[hard render budgets](#hard-render-budgets-user-decision-2026-10-01).
+A miss or unavailable required run keeps the affected performance gate and its
+performance-dependent closure/promotion open. Correctness evidence remains
+separately visible; development continues to resolve the miss without cutting
+the image or reclassifying a budget failure as a pass.
 
 **Required profiles** for every gate: Linux desktop native Vulkan on
 Wayland and X11 (`linux-native-vulkan-gpu` runner) and the headless core
@@ -1733,7 +1783,8 @@ optional (AGENTS.md): run and record them when the runner is available.
 - *Frame allowance* (perf): `portal-frame-pacing-v1` warm median at most
   1.05× and p99 at most 1.10× the K0 record for the same profile, unless
   `quality/budgets/render-v1.json` records a tighter row. It is an
-  optimization target, not a blocker.
+  regression condition in addition to the applicable absolute hard limit;
+  it cannot relax the High minimum or substitute a no-MSAA K0 frame for High.
 
 ### K0: Prerequisites and frozen oracles
 
@@ -1962,7 +2013,7 @@ ahead of the product rows.
 | Antialiased edges | `render.lab.edges` (proposed), with RFC 0012's multisampled targets on the core | geometric silhouettes in the lab match the denoised Cycles edge profile within tolerance (an edge metric: error on pixels within 2 px of a depth or normal discontinuity, judged separately from the interior); a one-sample frame fails it. The gallery shows the edge error |
 | Small-light fog halos | `render.lab.volumetric` and the foggy-hall gallery | a bulb's in-scattered halo matches its numerical integral per pixel within tolerance at sub-froxel radii (the analytic per-light term); the froxel-only frame fails the check |
 | Gallery for review | `python3 tools/quality/lighting_fixtures.py gallery` (installed 2026-09-29): renders every Cycles-eligible fixture view in `render_lab`, scores it with the K11 metric, and writes one self-contained page (`quality-results/lighting-gallery/<time>/index.html`) with render_lab and Cycles at the same exposure and the error map; the page is published for the user after every slice that changes the lab's pixels | each Cycles-judged term's views are in the page, beside their references, with the term's negative control; portal transport uses its separate matched-view check; the user's review is recorded in the progress entry. The user judges "looks right", which the tolerances cannot |
-| Lab budgets (perf) | `render_lab --time` (proposed), `render-v1.json` lighting rows | set before measuring: all terms at once at most 8 ms GPU at 1080p on the desktop runner for the heaviest fixture; per term: GTAO 0.5 ms, SSR 1.0 ms, volumetric 1.0 ms, LTC 0.3 ms; Fold7 rows recorded; a miss is an optimization item, and no term is turned off for it |
+| Lab budgets (perf) | `render_lab --time` (proposed), `render-v1.json` lighting rows | the `linux-desktop-high-120.lighting_components` targets in [`render-v1.json`](../quality/budgets/render-v1.json) pass on the heaviest 1080p fixture, with all terms; Fold7 rows recorded. The component verdict runner remains proposed until installed. Missing measurements cannot pass, and no term is turned off for a miss |
 
 ### K12: Lighting model integrated in the product
 
@@ -1973,7 +2024,7 @@ ahead of the product rows.
 | Moving-light GI (out of scope, user decision 2026-09-30) | none | not judged: the bake's indirect light is the product's (`r_indirect_producer auto` is `baked` in every profile); the producers stay opt-in and unjudged by K12 |
 | Game matches lab | the Portal and Portal 2 chambers booted with the lab's cameras | each in-game frame within tolerance of the same scene's `render_lab` frame |
 | Game output | Portal and Portal 2 on the iPhone and the Apple TV | the product presents through `render.presentation.v1` (no backend-owned swapchain), its frames reach it through `render.pass.output` at the presentation's headroom, and each profile records its declared range |
-| Frame budgets (perf) | `portal-frame-pacing-v1` and a Portal 2 workload | within the frame allowance of K0 with every declared term on, per profile; the declared-off terms are listed per profile |
+| Frame budgets (perf) | installed `frame_floor.py` with the row-linked Portal 2 route, existing Portal pacing workloads and complete-scene qualification | the [hard render budget](#hard-render-budgets-user-decision-2026-10-01) passes with complete High images/cohorts and representative-scene coverage; the frame allowance applies only to comparable K0 workloads and never relaxes the hard limit; other profiles meet their declared rows |
 
 **Dependencies.** K0 is ready now (R02, R05, R10 and R16 are done). K1
 needs K0. K2 needs K1. K3 needs K2. K4 needs K3. K10 needs K4, because the

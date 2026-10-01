@@ -2551,6 +2551,23 @@ int	CModelRender::DrawModelEx( ModelRenderInfo_t &pInfo )
 #endif
 }
 
+static int CoreStaticPropForDraw( IClientRenderable *renderable, int lod )
+{
+	if ( !renderable || lod < 0 || renderable->GetFxBlend() != 255 )
+		return -1;
+	const int prop = StaticPropMgr_CorePropIndex( renderable );
+	if ( prop < 0 || !RenderCoreWorldDraw_DrawsStaticProp( unsigned( prop ), unsigned( lod ) ) )
+		return -1;
+	IMaterial *overrideMaterial = NULL;
+	OverrideType_t overrideType = OVERRIDE_NORMAL;
+	g_pStudioRender->GetMaterialOverride( &overrideMaterial, &overrideType );
+	if ( overrideMaterial || overrideType != OVERRIDE_NORMAL )
+		return -1;
+	float color[3];
+	renderable->GetColorModulation( color );
+	return color[0] == 1.0f && color[1] == 1.0f && color[2] == 1.0f ? prop : -1;
+}
+
 int	CModelRender::DrawModelExStaticProp( ModelRenderInfo_t &pInfo )
 {
 #ifndef SWDS
@@ -2589,6 +2606,19 @@ int	CModelRender::DrawModelExStaticProp( ModelRenderInfo_t &pInfo )
 	// Why isn't this always set?!?
 	if ( !(pInfo.flags & STUDIO_RENDER) )
 		return 0;
+
+	const int special = STUDIO_WIREFRAME | STUDIO_ITEM_BLINK | STUDIO_GENERATE_STATS |
+	                    STUDIO_SSAODEPTHTEXTURE | STUDIO_TWOPASS;
+	if ( !bShadowDepth && !( pInfo.flags & special ) )
+	{
+		const int prop = CoreStaticPropForDraw( pInfo.pRenderable, lod );
+		if ( prop >= 0 )
+		{
+			const unsigned int coreProp = unsigned( prop ), coreLod = unsigned( lod );
+			if ( RenderCoreWorldDraw_TakeStaticProps( &coreProp, &coreLod, 1 ) )
+				return 1;
+		}
+	}
 
 	// Convert the instance to a decal handle.
 	StudioDecalHandle_t decalHandle = STUDIORENDER_DECAL_INVALID;
@@ -2945,6 +2975,31 @@ int CModelRender::DrawStaticPropArrayFast( StaticPropRenderInfo_t *pProps, int c
 		{
 			const rmodel_t &model = modelList[objectList[i].modelIndex];
 			objectList[i].lod = clamp(forcedLodSetting, model.pStudioHWData->m_RootLOD, model.lodCount-1);
+		}
+	}
+	// The core captures the same per-view LOD selected above. Claim before
+	// building legacy lighting, and remove objects only after the slot is queued.
+	if ( !bShadowDepth )
+	{
+		CUtlVector<unsigned int> coreProps, coreLods;
+		CUtlVector<int> coreObjects;
+		for ( int i = 0; i < objectList.Count(); ++i )
+		{
+			const robject_t &obj = objectList[i];
+			const int prop = CoreStaticPropForDraw( obj.pRenderable, obj.lod );
+			if ( prop < 0 )
+				continue;
+			coreProps.AddToTail( unsigned( prop ) );
+			coreLods.AddToTail( unsigned( obj.lod ) );
+			coreObjects.AddToTail( i );
+		}
+		if ( coreProps.Count() && RenderCoreWorldDraw_TakeStaticProps(
+		                              coreProps.Base(), coreLods.Base(), coreProps.Count() ) )
+		{
+			for ( int i = coreObjects.Count() - 1; i >= 0; --i )
+				objectList.Remove( coreObjects[i] );
+			if ( objectList.Count() == 0 )
+				return drawnCount;
 		}
 	}
 	// UNDONE: Don't sort if rendering transparent objects - for now this isn't called in the transparent case

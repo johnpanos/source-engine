@@ -13,6 +13,8 @@
 #include "render/pbr_material_schema.h"
 
 #include <png.h>
+#include <zlib.h>
+#include <zstd.h>
 
 #include <algorithm>
 #include <cctype>
@@ -21,12 +23,52 @@
 #include <fstream>
 #include <iostream>
 #include <iterator>
+#include <limits>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
+#include <string_view>
 
 namespace
 {
+
+bool DecompressVtfMip( hammer::formats::VtfCompressionMethod method, std::string_view encoded,
+    std::span<std::uint8_t> decoded, std::string &error )
+{
+	if ( method == hammer::formats::VtfCompressionMethod::Deflate )
+	{
+		if ( encoded.size() > std::numeric_limits<uLong>::max() ||
+		     decoded.size() > std::numeric_limits<uLongf>::max() )
+		{
+			error = "vtf: Deflate mip exceeds zlib size limits";
+			return false;
+		}
+		uLongf decodedBytes = static_cast<uLongf>( decoded.size() );
+		const int result = uncompress( decoded.data(), &decodedBytes,
+		    reinterpret_cast<const Bytef *>( encoded.data() ),
+		    static_cast<uLong>( encoded.size() ) );
+		if ( result != Z_OK || decodedBytes != decoded.size() )
+		{
+			error = "vtf: Deflate mip decompression failed";
+			return false;
+		}
+		return true;
+	}
+	if ( method == hammer::formats::VtfCompressionMethod::Zstandard )
+	{
+		const std::size_t decodedBytes =
+		    ZSTD_decompress( decoded.data(), decoded.size(), encoded.data(), encoded.size() );
+		if ( ZSTD_isError( decodedBytes ) || decodedBytes != decoded.size() )
+		{
+			error = "vtf: Zstandard mip decompression failed";
+			return false;
+		}
+		return true;
+	}
+	error = "vtf: unsupported CPU compression method";
+	return false;
+}
 
 std::string JsonQuote( const std::string &value )
 {
@@ -277,24 +319,14 @@ int Decode( const hammer::formats::VpkArchive &archive, const std::string &path,
 		std::cerr << "animated or environment VTF requires review\n";
 		return 2;
 	}
-	// VTF 7.2+ stores depth as a little-endian u16 at 0x3f. The shared preview
-	// decoder deliberately returns only slice zero, so reject volume textures.
-	if ( info->minorVersion >= 2 )
+	// The shared preview decoder deliberately returns only slice zero, so reject
+	// volume textures instead of importing an incomplete texture.
+	if ( info->depth > 1 )
 	{
-		if ( bytes.size() < 0x41 )
-		{
-			std::cerr << "truncated VTF depth field\n";
-			return 2;
-		}
-		const auto *raw = reinterpret_cast<const unsigned char *>( bytes.data() );
-		const unsigned depth = raw[0x3f] | ( unsigned( raw[0x40] ) << 8 );
-		if ( depth > 1 )
-		{
-			std::cerr << "volume VTF requires review\n";
-			return 2;
-		}
+		std::cerr << "volume VTF requires review\n";
+		return 2;
 	}
-	const auto image = hammer::formats::DecodeVtf( bytes, error );
+	const auto image = hammer::formats::DecodeVtf( bytes, error, &DecompressVtfMip );
 	if ( !image )
 	{
 		std::cerr << error << '\n';

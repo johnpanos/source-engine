@@ -73,6 +73,9 @@ namespace render::device::gl
 	X( DeleteSync, PFNGLDELETESYNCPROC, glDeleteSync )                                             \
 	X( DeleteTextures, PFNGLDELETETEXTURESPROC, glDeleteTextures )                                 \
 	X( DeleteVertexArrays, PFNGLDELETEVERTEXARRAYSPROC, glDeleteVertexArrays )                     \
+	X( StencilFunc, PFNGLSTENCILFUNCPROC, glStencilFunc )                                          \
+	X( StencilMask, PFNGLSTENCILMASKPROC, glStencilMask )                                          \
+	X( StencilOp, PFNGLSTENCILOPPROC, glStencilOp )                                                \
 	X( DepthFunc, PFNGLDEPTHFUNCPROC, glDepthFunc )                                                \
 	X( DepthMask, PFNGLDEPTHMASKPROC, glDepthMask )                                                \
 	X( DepthRangeIndexed, PFNGLDEPTHRANGEINDEXEDPROC, glDepthRangeIndexed )                        \

@@ -74,6 +74,39 @@ int main()
 		b[0x34] = 99; // no such ImageFormat we support
 		ExpectRejected( b, "unsupported image format" );
 	}
+	// Unsupported VTF 7.x minor version.
+	{
+		std::string b = good;
+		b[0x08] = 7;
+		ExpectRejected( b, "unsupported minor version" );
+	}
+	// A valid VTF 7.6 AXC payload cannot be decoded without the selected
+	// decompression capability.
+	{
+		std::string b =
+		    hammertest::BuildCompressedVtf( 4, 4, hammertest::VTF_FMT_DXT1, 1, { "compressed" } );
+		ExpectRejected( b, "compressed VTF without decompressor" );
+	}
+	// Unknown AXC algorithms are rejected before dispatch.
+	{
+		std::string b = hammertest::BuildCompressedVtf(
+		    4, 4, hammertest::VTF_FMT_DXT1, 1, { "compressed" }, 42 );
+		ExpectRejected( b, "unsupported AXC method" );
+	}
+	// AXC must provide one stored length for every mip/frame/face run.
+	{
+		std::string b =
+		    hammertest::BuildCompressedVtf( 4, 4, hammertest::VTF_FMT_DXT1, 1, { "compressed" } );
+		hammertest::detail::PutU32At( b, 0x60, 4 );
+		ExpectRejected( b, "short AXC length table" );
+	}
+	// A stored size that extends past the image resource is malformed.
+	{
+		std::string b =
+		    hammertest::BuildCompressedVtf( 4, 4, hammertest::VTF_FMT_DXT1, 1, { "compressed" } );
+		b.pop_back();
+		ExpectRejected( b, "truncated compressed mip" );
+	}
 	// Zero width.
 	{
 		std::string b = good;

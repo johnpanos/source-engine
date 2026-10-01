@@ -1,0 +1,83 @@
+{
+  "schema": "source-product-profile/v1",
+  "id": "portal2-linux-native-vulkan-high-v1",
+  "description": "Declared Portal 2 Linux x86_64 native Vulkan High qualification profile; complete image and performance acceptance remain unverified.",
+  "target": {
+    "product": "portal2-client",
+    "os": "linux",
+    "architecture": "x86_64"
+  },
+  "intent": {
+    "window_provider": "sdl3",
+    "render_provider": "native-vulkan",
+    "support_scope": "High qualification on the current desktop; not renderer parity or platform support evidence",
+    "packaging": "Waf-installed private Linux runtime with separately supplied licensed Portal 2 content",
+    "render_quality": {
+      "high": {
+        "description": "Native-resolution High, full accepted image, baked indirect default. Experimental handoff is exercised for qualification, not a shipped-default claim.",
+        "settings": {
+          "mat_antialias": "4",
+          "mat_picmip": "-1",
+          "mat_forceaniso": "16",
+          "r_lod": "0",
+          "mat_reducefillrate": "0",
+          "mat_colorcorrection": "1",
+          "r_core_world": "1",
+          "r_core_dynamic_draws": "1",
+          "r_core_ao_quality": "3",
+          "r_core_shadow_quality": "3",
+          "r_core_depth_prepass": "1",
+          "r_core_shadow_movers": "1",
+          "r_core_runtime_direct": "1",
+          "r_indirect_producer": "baked",
+          "r_drawviewmodel": "1",
+          "cl_drawmonitors": "1"
+        },
+        "required_image_coverage": "RFC 0016 K11/K12 and R91: world, static and animated models, full shadows/material coverage, glass/water, decals, particles, beams, sky, post, UI and nested views; rejected or missing cohorts cannot pass."
+      }
+    }
+  },
+  "toolchain": {
+    "cxx": "g++",
+    "family": "gcc",
+    "version": "16.2.1",
+    "standard_library": "libstdc++",
+    "dialect_policy": "quality/toolchain/policy.json",
+    "glibcxx_cxx11_abi": 0,
+    "build_type": "release"
+  },
+  "dependencies": {
+    "pkg_config": {
+      "sdl3": "3.4.16",
+      "vulkan": "1.4.341",
+      "freetype2": "26.6.20",
+      "fontconfig": "2.17.0",
+      "openal": "1.24.2",
+      "libjpeg": "3.1.3",
+      "libpng": "1.6.58",
+      "libcurl": "8.18.0",
+      "zlib": "1.3.1.zlib-ng"
+    }
+  },
+  "runtime_environment": {
+    "SDL_VIDEO_DRIVER": "wayland"
+  },
+  "configure_options": {
+    "platform_provider": "sdl3",
+    "render_backend": "native-vulkan",
+    "build_games": "portal2",
+    "physics_backend": "both",
+    "video_provider": "bink"
+  },
+  "required_checks": [
+    "tools.quality.tests.test_product_profile",
+    "tools.quality.tests.test_frame_floor",
+    "RFC 0016 K11/K12/R91 complete-image evidence",
+    "linux-desktop-high-120 on verified 1920x1080 drawable",
+    "Native lifecycle/presentation and installed-package checks before support claims"
+  ],
+  "evidence": {
+    "status": "unverified",
+    "note": "Dependency/toolchain pins select the existing Linux native profile for this declared product slice. They do not certify the current build. The first laser route is not complete workload/image coverage. No existing 1024x768 or incomplete core capture certifies High."
+  }
+}

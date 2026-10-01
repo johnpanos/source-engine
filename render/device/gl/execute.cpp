@@ -364,10 +364,36 @@ float LinearToSrgb( float value )
 	return c <= 0.0031308f ? c * 12.92f : 1.055f * std::pow( c, 1.0f / 2.4f ) - 0.055f;
 }
 
+GLenum StencilOperation( StencilOp op )
+{
+	switch ( op )
+	{
+	case StencilOp::kKeep:
+		return GL_KEEP;
+	case StencilOp::kZero:
+		return GL_ZERO;
+	case StencilOp::kReplace:
+		return GL_REPLACE;
+	case StencilOp::kIncrementClamp:
+		return GL_INCR;
+	case StencilOp::kDecrementClamp:
+		return GL_DECR;
+	case StencilOp::kInvert:
+		return GL_INVERT;
+	case StencilOp::kIncrementWrap:
+		return GL_INCR_WRAP;
+	case StencilOp::kDecrementWrap:
+		return GL_DECR_WRAP;
+	}
+	return GL_KEEP;
+}
+
 GLenum CompareFunction( CompareOp op )
 {
 	switch ( op )
 	{
+	case CompareOp::kNotEqual:
+		return GL_NOTEQUAL;
 	case CompareOp::kNever:
 		return GL_NEVER;
 	case CompareOp::kLess:
@@ -796,6 +822,15 @@ private:
 			m_Gl.Disable( GL_DEPTH_TEST );
 		m_Gl.DepthMask( p.depthStencil.depthWrite ? GL_TRUE : GL_FALSE );
 		m_Gl.DepthFunc( CompareFunction( p.depthStencil.compare ) );
+		const StencilState &stencil = p.depthStencil.stencil;
+		if ( stencil.enabled )
+			m_Gl.Enable( GL_STENCIL_TEST );
+		else
+			m_Gl.Disable( GL_STENCIL_TEST );
+		m_Gl.StencilFunc( CompareFunction( stencil.compare ), stencil.reference, stencil.readMask );
+		m_Gl.StencilMask( stencil.writeMask );
+		m_Gl.StencilOp( StencilOperation( stencil.fail ), StencilOperation( stencil.depthFail ),
+		    StencilOperation( stencil.pass ) );
 		for ( std::size_t i = 0; i < p.colorFormats.size(); ++i )
 		{
 			const auto index = static_cast<GLuint>( i );

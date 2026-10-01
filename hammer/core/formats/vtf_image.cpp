@@ -30,6 +30,10 @@
 
 #include "hammer/formats/vtf_image.h"
 
+#define BCDEC_STATIC
+#define BCDEC_IMPLEMENTATION
+#include "external/bcdec/bcdec.h"
+
 namespace hammer::formats
 {
 
@@ -52,9 +56,18 @@ enum : int
 	FMT_DXT3 = 14,
 	FMT_DXT5 = 15,
 	FMT_BGRX8888 = 16,
+	FMT_STRATA_BC7 = 70,
 };
 
 constexpr std::uint32_t kFlagEnvmap = 0x00004000u;
+constexpr unsigned char kResourceFlagLocalData = 0x02;
+
+struct Mip0Layout
+{
+	std::size_t offset = 0;
+	std::size_t storedBytes = 0;
+	std::optional<VtfCompressionMethod> compression;
+};
 
 std::uint16_t GetU16( const std::string &b, std::size_t off )
 {
@@ -103,6 +116,7 @@ std::size_t FormatMipBytes( int format, int w, int h )
 		return std::size_t( ( w + 3 ) / 4 ) * ( ( h + 3 ) / 4 ) * 8;
 	case FMT_DXT3:
 	case FMT_DXT5:
+	case FMT_STRATA_BC7:
 		return std::size_t( ( w + 3 ) / 4 ) * ( ( h + 3 ) / 4 ) * 16;
 	default:
 		return 0;
@@ -240,6 +254,31 @@ bool DecodeBlock( int format, const std::string &data, std::size_t dataOff, VtfI
 
 	switch ( format )
 	{
+	case FMT_STRATA_BC7:
+	{
+		const int blocksX = ( img.width + 3 ) / 4;
+		const int blocksY = ( img.height + 3 ) / 4;
+		for ( int byBlock = 0; byBlock < blocksY; ++byBlock )
+		{
+			for ( int bxBlock = 0; bxBlock < blocksX; ++bxBlock )
+			{
+				const unsigned char *block =
+				    src + std::size_t( byBlock * blocksX + bxBlock ) * BCDEC_BC7_BLOCK_SIZE;
+				unsigned char pixels[4 * 4 * 4];
+				bcdec_bc7( block, pixels, 4 * 4 );
+				for ( int y = 0; y < 4; ++y )
+				{
+					for ( int x = 0; x < 4; ++x )
+					{
+						const unsigned char *pixel = pixels + ( y * 4 + x ) * 4;
+						PutPixel( img, bxBlock * 4 + x, byBlock * 4 + y, pixel[0], pixel[1],
+						    pixel[2], pixel[3] );
+					}
+				}
+			}
+		}
+		return true;
+	}
 	case FMT_DXT1:
 	case FMT_DXT3:
 	case FMT_DXT5:

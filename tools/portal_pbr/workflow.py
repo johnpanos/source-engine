@@ -24,6 +24,7 @@ SOURCES = [
     ROOT / "hammer/adapters/platform/disk_byte_store.cpp",
     ROOT / "hammer/core/formats/vpk_archive.cpp",
     ROOT / "hammer/core/formats/vtf_image.cpp",
+    ROOT / "external/bcdec/bcdec.h",
     ROOT / "hammer/core/formats/material.cpp",
     ROOT / "kvtext/keyvalues.cpp",
     ROOT / "public/render/pbr_material_schema.h",
@@ -47,7 +48,9 @@ def build_helper() -> None:
     if HELPER.exists() and HELPER.stat().st_mtime >= max(p.stat().st_mtime for p in SOURCES):
         return
     HELPER.parent.mkdir(parents=True, exist_ok=True)
-    flags = subprocess.check_output(["pkg-config", "--cflags", "--libs", "libpng"], text=True).split()
+    flags = subprocess.check_output(
+        ["pkg-config", "--cflags", "--libs", "libpng", "zlib", "libzstd"], text=True
+    ).split()
     command = [
         "c++", "-std=c++20", "-Wall", "-Wextra", "-Werror",
         "-I" + str(ROOT / "public"), "-I" + str(ROOT),

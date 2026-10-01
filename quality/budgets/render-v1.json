@@ -1,7 +1,58 @@
 {
   "schema": "source-render-budgets/v1",
-  "description": "Per-profile render frame budgets (R32-RENDER-BUDGETS, RFC 0005 'Performance and promotion'). Each row gates one workload on one product profile. Measured by tools/quality/frame_pacing.py (desktop) or tools/quality/frame_pacing_device.py (iOS/tvOS); the budgets apply to the scenario's last (warm) pass. Feature budgets stay with their owners (indirect-light-v1.json, RFC 0012 A0, RFC 0008 F10).",
+  "description": "Per-profile render frame budgets (R32-RENDER-BUDGETS, RFC 0005 'Performance and promotion'). Each row gates one workload on one product profile. Measured by tools/quality/frame_pacing.py (desktop) or tools/quality/frame_pacing_device.py (iOS/tvOS); the budgets apply to the scenario's last (warm) pass. Feature budgets stay with their owners (indirect-light-v1.json, RFC 0012 A0, RFC 0008 F10). The 2026-10-01 High row is a hard minimum and uses frame_floor.py; older K0 rows remain historical comparisons, not High qualification.",
   "rows": [
+    {
+      "id": "linux-desktop-high-120",
+      "profile": "quality/product_profiles/portal2-linux-native-vulkan-high.json",
+      "workload": "quality/workloads/portal2-frame-floor-v1/workload.json",
+      "hardware": "AMD Ryzen AI Max+ PRO 395, Radeon 8060S Graphics (RADV STRIX_HALO), Linux x86_64",
+      "observed_driver": {
+        "date": "2026-10-01",
+        "mesa": "26.2.3",
+        "vulkan": "1.4.354",
+        "meaning": "Host observation; each run records its actual driver, not a fixed compatibility minimum."
+      },
+      "presentation": "Verified 1920x1080 native back buffer, High, 4x MSAA, vsync off; all declared effects and frame cohorts. A 1024x768 offscreen cap cannot certify this row.",
+      "target": "Minimum 120 FPS throughout gameplay, including every frame, 1% low and 0.1% low; not a median target.",
+      "set": "2026-10-01, explicit user direction before High optimization; confirmed 1920x1080",
+      "acceptance": "hard",
+      "baseline_required": false,
+      "minimum_fps": 120,
+      "conditions": {
+        "width": 1920,
+        "height": 1080,
+        "quality": "high",
+        "device": "AMD Radeon 8060S Graphics (RADV STRIX_HALO)",
+        "refresh_hz": 120
+      },
+      "modes": {
+        "headroom": {
+          "meaning": "Every gameplay frame must meet the floor; percentiles and CPU/GPU costs also remain bounded.",
+          "max_p50_ms": 8.333333333333334,
+          "max_p95_ms": 8.333333333333334,
+          "max_p99_ms": 8.333333333333334,
+          "max_frame_ms": 8.333333333333334,
+          "max_gpu_render_p99_ms": 8.333333333333334,
+          "max_cpu_p99_ms": 8.333333333333334,
+          "max_submission_p99_ms": 8.333333333333334,
+          "max_hitches": 0,
+          "max_gpu_render_ms": 8.333333333333334,
+          "max_cpu_ms": 8.333333333333334,
+          "max_submission_ms": 8.333333333333334
+        }
+      },
+      "lighting_components": {
+        "meaning": "Initial 1080p lab GPU targets retained from RFC 0016 K11, now owned here. Full-frame floor still applies. Per-component native verdict runner remains uninstalled; no component pass is claimed.",
+        "all_terms_ms": 8.0,
+        "gtao_ms": 0.5,
+        "ssr_ms": 1.0,
+        "volumetric_ms": 1.0,
+        "ltc_ms": 0.3
+      },
+      "coverage": "Laser tour is the first measured route. Before High/default promotion also qualify complete Portal/Portal 2 scenes, sparse/dense lights and geometry, animated/coverage casters, camera motion, resize, portal/monitor/water views and residency/upload pressure (RFC 0016).",
+      "status": "unverified: no complete 1920x1080 High performance and image evidence; misses fail acceptance and cannot be waived by baseline allowance or over_budget annotation."
+    },
     {
       "id": "tvos-portal-frame-pacing-60",
       "profile": "quality/product_profiles/portal-tvos-native-vulkan.json",
@@ -161,13 +212,14 @@
       }
     }
   ],
-  "pending_rows": "None of R32-RENDER-BUDGETS's first two profiles is pending: the desktop Wayland and Fold7 rows are set (RFC 0016 K0).",
+  "pending_rows": "High performance/image qualification and representative-scene coverage remain unverified; existing K0 records are retained as historical baselines.",
   "metrics": {
     "p50_ms": "warm-pass frame interval median (frame_pacing summary median_ms)",
     "p95_ms": "warm-pass frame interval 95th percentile",
     "p99_ms": "warm-pass frame interval 99th percentile",
     "gpu_render_p99_ms": "GPU time of the frame's rendering, 99th percentile (-vkframestats timestamps)",
-    "submission_p99_ms": "main-thread submission time: the backend's draw emission on the main thread (emit, mat_queue_mode 0), 99th percentile"
+    "submission_p99_ms": "main-thread submission time: the backend's draw emission on the main thread (emit, mat_queue_mode 0), 99th percentile",
+    "max_frame_ms": "Maximum untrimmed interval in the declared gameplay route; one slow frame fails the hard minimum."
   },
   "allowance": {
     "description": "RFC 0016 frame allowance: a later render-core gate passes when the warm median is at most median x and p99 at most p99 x the row's k0_record on the same profile, unless a row records a tighter limit.",

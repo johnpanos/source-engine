@@ -326,6 +326,10 @@ public:
 	// A slot's frame terms, captured when it was marked.
 	struct CorePassTerms
 	{
+		render::material::SurfaceDrawState drawState{};
+		float clipPlanes[6][4] = {};
+		float minDepth = 0.0f;
+		float maxDepth = 1.0f;
 		float lightmapScale = 1.0f;
 		float outputScale = 1.0f;
 		float eye[3] = { 0.0f, 0.0f, 0.0f };

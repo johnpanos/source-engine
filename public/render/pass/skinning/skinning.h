@@ -63,7 +63,11 @@ struct FlexDelta // 48 bytes
 	float normal[3] = {};
 	float side = 0.0f; // 0 takes the flex's first weight, 1 its second
 	float wrinkle = 0.0f;
-	float reserved[3] = {};
+	// Reuses zeroed reserved bytes from the original layout: old captures
+	// have delay 0 and retain their original current-weight behavior.
+	std::uint32_t delayedFlex = 0; // index into the same flex-weight array
+	float delay = 0.0f; // fraction of the delayed stereo weights, 0..1
+	float reserved = 0.0f;
 };
 
 struct FlexWeights // 8 bytes

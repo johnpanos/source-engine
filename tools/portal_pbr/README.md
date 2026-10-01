@@ -46,9 +46,10 @@ existing D3D9 `PBR` shader is a different family and must not be substituted.
 ## Conversion rules
 
 - Use the existing `hammer::formats` VPK reader, VMT parser, and VTF decoder.
-  VTF decoding currently covers mip 0, frame 0, face 0 only. Unsupported
-  pixel formats, animated and cube/volume textures, and unreadable sources
-  must be reported rather than silently replaced.
+  VTF decoding currently covers mip 0, frame 0, face 0 only, including P2:CE
+  VTF 7.6 AXC Deflate/Zstandard payloads and Strata BC7. Unsupported pixel
+  formats, animated and cube/volume textures, and unreadable sources must be
+  reported rather than silently replaced.
 - Export albedo to PNG with its encoded color values preserved. The intended
   runtime slot is sRGB, while MRAO and normal slots are linear. ArmorPaint PNGs
   are editable intermediates; final runtime KTX2 encoding awaits RFC 0008.
@@ -69,11 +70,12 @@ existing D3D9 `PBR` shader is a different family and must not be substituted.
 
 ## Run the workflow
 
-The host needs a C++20 compiler, `pkg-config`, libpng development files, and
-Python Pillow. The script compiles its small host exporter under
+The host needs a C++20 compiler, `pkg-config`, libpng, zlib and Zstandard
+development files, and Python Pillow. The script compiles its small host exporter under
 `build/portal-pbr/`. It uses the repository's VPK, VMT and VTF code; it does
 not need a second VPK or VTF decoder. Supply archives from a legally obtained
-Portal 1 installation. Put output outside the source tree:
+Portal installation or content pack whose license permits the intended use. Put
+output outside the source tree:
 
 ```sh
 python3 tools/portal_pbr/workflow.py \

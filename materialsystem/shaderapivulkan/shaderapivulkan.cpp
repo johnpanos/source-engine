@@ -2991,6 +2991,16 @@ private:
 	};
 	TextureStageState m_TextureStages[8];
 	void ApplyShadowStateOverrides( render_vulkan::CVulkanContext::DynRasterState &raster ) const;
+
+public:
+	render_vulkan::CVulkanContext::DynRasterState CoreRaster() const
+	{
+		auto raster = g_CurrentRaster;
+		ApplyShadowStateOverrides( raster );
+		return raster;
+	}
+
+private:
 	float m_FloatRenderingParameters[MAX_FLOAT_RENDER_PARMS];
 	int m_IntRenderingParameters[MAX_INT_RENDER_PARMS];
 	Vector m_VectorRenderingParameters[MAX_VECTOR_RENDER_PARMS];
@@ -3170,12 +3180,72 @@ private:
 
 static CVulkanGpuCompute g_GpuCompute;
 
+// Neutral per-slot raster state; native enums stop at this provider boundary.
+static render::device::CompareOp CoreCompare( VkCompareOp op )
+{
+	using render::device::CompareOp;
+	switch ( op )
+	{
+	case VK_COMPARE_OP_NEVER:
+		return CompareOp::kNever;
+	case VK_COMPARE_OP_LESS:
+		return CompareOp::kLess;
+	case VK_COMPARE_OP_EQUAL:
+		return CompareOp::kEqual;
+	case VK_COMPARE_OP_LESS_OR_EQUAL:
+		return CompareOp::kLessEqual;
+	case VK_COMPARE_OP_GREATER:
+		return CompareOp::kGreater;
+	case VK_COMPARE_OP_NOT_EQUAL:
+		return CompareOp::kNotEqual;
+	case VK_COMPARE_OP_GREATER_OR_EQUAL:
+		return CompareOp::kGreaterEqual;
+	case VK_COMPARE_OP_ALWAYS:
+		return CompareOp::kAlways;
+	default:
+		return CompareOp::kAlways;
+	}
+}
+namespace
+{
+VkCompareOp NativeStencilCompare( StencilComparisonFunction_t func );
+}
+static render::device::StencilOp CoreStencilOp( StencilOperation_t op )
+{
+	using render::device::StencilOp;
+	switch ( op )
+	{
+	case STENCILOPERATION_KEEP:
+		return StencilOp::kKeep;
+	case STENCILOPERATION_ZERO:
+		return StencilOp::kZero;
+	case STENCILOPERATION_REPLACE:
+		return StencilOp::kReplace;
+	case STENCILOPERATION_INCRSAT:
+		return StencilOp::kIncrementClamp;
+	case STENCILOPERATION_DECRSAT:
+		return StencilOp::kDecrementClamp;
+	case STENCILOPERATION_INVERT:
+		return StencilOp::kInvert;
+	case STENCILOPERATION_INCR:
+		return StencilOp::kIncrementWrap;
+	case STENCILOPERATION_DECR:
+		return StencilOp::kDecrementWrap;
+	default:
+		return StencilOp::kKeep;
+	}
+}
+
 // RFC 0016 K5: core-pass slots in the stream (render/legacy/core_passes.h),
 // marked in frame order by the frontend and recorded by the bound recorder.
 class CVulkanCorePassSlots final : public render::legacy::ICorePassSlots
 {
 public:
-	void MarkSlot( std::uint32_t tag ) override
+	void MarkSlot( std::uint32_t tag ) override { Mark( tag, false ); }
+	void MarkMeshSlot( std::uint32_t tag ) { Mark( tag, true ); }
+
+private:
+	void Mark( std::uint32_t tag, bool mesh )
 	{
 		NoteDeviceUse( "ICorePassSlots::MarkSlot" );
 		// The frame's light terms as the legacy shaders read them here (c30):
@@ -3183,6 +3253,31 @@ public:
 		// scale (GetLightMapScaleFactor, SetToneMappingScaleLinear).
 		const bool integerHdr = CurrentHDRType() == HDR_TYPE_INTEGER;
 		render_vulkan::CVulkanContext::CorePassTerms terms;
+		auto &stencil = terms.drawState.stencil;
+		stencil.enabled = g_Stencil.enable;
+		stencil.compare = CoreCompare( NativeStencilCompare( g_Stencil.compare ) );
+		stencil.fail = CoreStencilOp( g_Stencil.fail );
+		stencil.depthFail = CoreStencilOp( g_Stencil.depthFail );
+		stencil.pass = CoreStencilOp( g_Stencil.pass );
+		stencil.reference = g_Stencil.reference & 255;
+		stencil.readMask = g_Stencil.testMask & 255;
+		stencil.writeMask = g_Stencil.writeMask & 255;
+		terms.minDepth = g_Viewport.m_flMinZ;
+		terms.maxDepth = g_Viewport.m_flMaxZ;
+		if ( !g_ClipPlanesSuppressed )
+			for ( int plane = 0; plane < 6; ++plane )
+				if ( g_ClipPlanesEnabled & ( 1 << plane ) )
+					std::copy_n( g_ClipPlanesWorld[plane], 4, terms.clipPlanes[plane] );
+		if ( mesh )
+		{
+			const auto raster = g_ShaderAPIEmpty.CoreRaster();
+			terms.drawState.overrideDepth = true;
+			terms.drawState.depthTest = raster.depthTest;
+			terms.drawState.depthWrite = raster.depthWrite;
+			terms.drawState.depthCompare = CoreCompare( raster.depthCompare );
+			terms.drawState.colorWrite =
+			    ( raster.colorWrite ? 7 : 0 ) | ( raster.alphaWrite ? 8 : 0 );
+		}
 		terms.lightmapScale = integerHdr ? 16.0f : powf( 2.0f, 2.2f );
 		terms.outputScale = CurrentHDRType() == HDR_TYPE_NONE ? 1.0f : g_ToneMappingScale.x;
 		// The env map's terms: the eye (c10), ENV_MAP_SCALE (c30.z) and
@@ -4892,6 +4987,28 @@ static void ExpandSplineCardVertex( const SpriteCardFrame &f, const float *parms
 	SpriteCardPixelInputs( f, nullptr, nullptr, 0.0f, out );
 }
 
+static render::legacy::CoreMeshKind CoreMeshKindFor( IMaterial *material )
+{
+	using render::legacy::CoreMeshKind;
+	if ( material )
+	{
+		const char *shader = material->GetShaderName();
+		if ( !V_stricmp( shader, "PortalRefract" ) || !V_stricmp( shader, "PortalRefract_dx9" ) )
+		{
+			bool found = false;
+			IMaterialVar *stage = material->FindVar( "$stage", &found, false );
+			if ( found && stage->GetIntValue() == 1 )
+				return CoreMeshKind::kDepthMask;
+		}
+		if ( !V_stricmp( shader, "WriteZ" ) || !V_stricmp( shader, "WriteZ_DX9" ) )
+			return CoreMeshKind::kDepthMask;
+		if ( !V_stricmp( shader, "BufferClearObeyStencil" ) ||
+		     !V_stricmp( shader, "BufferClearObeyStencil_DX9" ) )
+			return CoreMeshKind::kStencilClear;
+	}
+	return CoreMeshKind::kSurface;
+}
+
 bool CEmptyMesh::EmitToCoreQueue()
 {
 	if ( !g_pBoundMaterial || m_worldMeshBatch )
@@ -5026,6 +5143,7 @@ bool CEmptyMesh::EmitToCoreQueue()
 			variables.push_back( { flag.key, "1", "0", 0 } );
 	}
 	render::legacy::CoreMeshDraw draw;
+	draw.kind = CoreMeshKindFor( g_pBoundMaterial );
 	draw.name = g_pBoundMaterial->GetName();
 	draw.shader = g_pBoundMaterial->GetShaderName();
 	draw.variables = variables.data();
@@ -5043,7 +5161,7 @@ bool CEmptyMesh::EmitToCoreQueue()
 	const std::uint32_t tag = g_VulkanContext.QueueCoreMesh( draw );
 	if ( !tag )
 		return false;
-	g_CorePassSlots.MarkSlot( tag );
+	g_CorePassSlots.MarkMeshSlot( tag );
 	return true;
 }
 
@@ -5051,7 +5169,9 @@ void CEmptyMesh::EmitToNativeQueue()
 {
 	if ( g_VulkanContext.CoreOnlyQueue() )
 	{
-		if ( g_VulkanContext.CoreMeshesEnabled() && EmitToCoreQueue() )
+		if ( ( g_VulkanContext.CoreMeshesEnabled() ||
+		         CoreMeshKindFor( g_pBoundMaterial ) != render::legacy::CoreMeshKind::kSurface ) &&
+		     EmitToCoreQueue() )
 			return;
 		DropDraw( "rendercore-only: legacy shader draw rejected before conversion" );
 		NoteDroppedMaterial();

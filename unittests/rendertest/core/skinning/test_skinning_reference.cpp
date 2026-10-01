@@ -51,8 +51,12 @@ std::vector<SkinnedVertex> MatrixBlend( const fixtures::Mesh &mesh )
 			{
 				const FlexDelta &delta = mesh.flexDeltas[d];
 				const FlexWeights &w = mesh.flexWeights[delta.flex];
-				const double weight = double( w.weight[0] ) * ( 1.0 - delta.side ) +
-				                      double( w.weight[1] ) * delta.side;
+				const FlexWeights &delayed = mesh.flexWeights[delta.delayedFlex];
+				const double left = double( w.weight[0] ) * ( 1.0 - delta.delay ) +
+				                    double( delayed.weight[0] ) * delta.delay;
+				const double right = double( w.weight[1] ) * ( 1.0 - delta.delay ) +
+				                     double( delayed.weight[1] ) * delta.delay;
+				const double weight = left * ( 1.0 - delta.side ) + right * delta.side;
 				for ( int k = 0; k < 3; ++k )
 				{
 					p[k] += weight * delta.position[k];
@@ -164,6 +168,19 @@ void Rules( testing::Checks &checks )
 	    "rule.side-1-takes-the-second-weight" );
 	checks.That( Near( flexOut[1].normal, 1, 0, 0 ) && Near( flexOut[1].tangent, 1, 0, 0 ),
 	    "rule.the-normal-delta-moves-normal-and-tangent" );
+	flexed.flexWeights.push_back( { { 1.0f, 0.0f } } );
+	flexed.flexDeltas[0].delayedFlex = flexed.flexDeltas[1].delayedFlex = 1;
+	flexed.flexDeltas[0].delay = 1.0f;
+	flexed.flexDeltas[1].delay = 0.25f;
+	flexOut = Skin( flexed );
+	checks.That( Near( flexOut[0].position, 0, 4, 0 ) && flexOut[0].wrinkle == 2.0f,
+	    "rule.fully-delayed-flex-uses-the-delayed-palette" );
+	checks.That( Near( flexOut[1].position, 0, 3, 0 ) && flexOut[1].wrinkle == 1.5f,
+	    "rule.partial-delay-blends-current-and-delayed-stereo-weights" );
+	flexed.flexDeltas[1].side = 0.5f;
+	flexOut = Skin( flexed );
+	checks.That( Near( flexOut[1].position, 0, 2.375f, 0 ),
+	    "rule.delay-and-stereo-side-compose" );
 }
 
 void Agreement( testing::Checks &checks )

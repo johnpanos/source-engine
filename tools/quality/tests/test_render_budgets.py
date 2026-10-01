@@ -97,6 +97,32 @@ class RenderBudgetsTest(unittest.TestCase):
                                             self.budgets["allowance"])
         self.assertEqual(len(failures), 3)  # p99 limit, hitches, allowance
 
+    def test_maximum_frame_is_enforced_independently_of_p99(self):
+        row = copy.deepcopy(self.budgets["rows"][0])
+        row["modes"]["headroom"]["max_frame_ms"] = 8.0
+        run = evidence()
+        run["analysis"]["passes"][0]["summary"]["max_ms"] = 9.0
+        _, failures = render_budgets.report(row, run, self.budgets["allowance"])
+        self.assertTrue(any("max_frame_ms" in failure for failure in failures))
+
+    def test_missing_and_nonfinite_maximum_cannot_pass(self):
+        row = copy.deepcopy(self.budgets["rows"][0])
+        row["modes"]["headroom"]["max_frame_ms"] = 8.0
+        for value in (None, float("nan"), float("inf"), -1):
+            with self.subTest(value=value):
+                run = evidence()
+                run["analysis"]["passes"][0]["summary"]["max_ms"] = value
+                _, failures = render_budgets.report(row, run, self.budgets["allowance"])
+                self.assertTrue(any("no valid max_frame_ms" in failure for failure in failures))
+
+    def test_hard_floor_cannot_have_looser_maximum_or_missing_conditions(self):
+        row = self.budgets["rows"][0]
+        row.update(acceptance="hard", minimum_fps=120, baseline_required=False)
+        row["modes"]["headroom"]["max_frame_ms"] = 16.0
+        problems = self.check()
+        self.assertTrue(any("max_frame_ms must meet" in problem for problem in problems))
+        self.assertTrue(any("resolution, quality and device" in problem for problem in problems))
+
 
 if __name__ == "__main__":
     unittest.main()

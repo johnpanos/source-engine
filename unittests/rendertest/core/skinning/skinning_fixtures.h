@@ -122,6 +122,8 @@ inline Mesh RandomMesh( std::uint32_t seed, std::uint32_t vertexCount, std::uint
 				delta.flex = random() % flexCount;
 				delta.side = positive( random );
 				delta.wrinkle = unit( random );
+				delta.delayedFlex = random() % flexCount;
+				delta.delay = positive( random );
 				mesh.flexDeltas.push_back( delta );
 			}
 			mesh.flexOffsets.push_back( static_cast<std::uint32_t>( mesh.flexDeltas.size() ) );

@@ -1,7 +1,7 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
 // Purpose: Studio model mesh reader (content.studio-model): the drawable
-//			level of detail 0 of a Source model, read from its three files --
+//			levels of detail of a Source model, read from its three files --
 //			the .mdl header (textures, $cdmaterials, skin families, body
 //			parts, meshes), the .vvd vertices and the .vtx strip groups --
 //			as values. A strict, portable C++20 library over bytes: no tier0,
@@ -15,8 +15,8 @@
 //			25 and 27 otherwise), as datacache/mdlcache.cpp decides it.
 //
 //			Output. For the chosen body (legacy body-group arithmetic: body
-//			part p draws model (body / base_p) % count_p), every mesh of LOD
-//			0 that has triangles, in body part then mesh order: its skin
+//			part p draws model (body / base_p) % count_p) and LOD (default 0),
+//			every mesh with triangles, in body part then mesh order: its skin
 //			reference, its vertices (the mesh's own range of the VVD's LOD 0
 //			vertex list after fixups; model space, the bind pose: position,
 //			normal, uv) and a triangle list whose indices name those
@@ -155,6 +155,37 @@ struct BoneWeights
 	friend bool operator==( const BoneWeights &, const BoneWeights & ) = default;
 };
 
+struct FlexDelta
+{
+	std::uint32_t vertex = 0; // mesh-local logical VVD index, after fixups
+	Float3 position;
+	Float3 normal;
+	float wrinkle = 0.0f;
+	std::uint8_t speed = 255; // current weight fraction; 0 uses the delayed weight
+	std::uint8_t side = 0;    // first/paired descriptor blend, divided by 255
+	friend bool operator==( const FlexDelta &, const FlexDelta & ) = default;
+};
+
+struct Flex
+{
+	std::uint32_t descriptor = 0;
+	std::uint32_t pair = 0; // 0 means mono, otherwise a second descriptor
+	std::array<float, 4> targets = {};
+	std::vector<FlexDelta> deltas;
+	// Studio's four-point ramp; input values come from the host's flex rules.
+	[[nodiscard]] float Weight( float value ) const
+	{
+		if ( value <= targets[0] || value >= targets[3] )
+			return 0.0f;
+		if ( value < targets[1] )
+			return ( value - targets[0] ) / ( targets[1] - targets[0] );
+		if ( value > targets[2] )
+			return ( targets[3] - value ) / ( targets[3] - targets[2] );
+		return 1.0f;
+	}
+	friend bool operator==( const Flex &, const Flex & ) = default;
+};
+
 struct Mesh
 {
 	std::int32_t textureRef = 0; // column of the skin table
@@ -164,6 +195,7 @@ struct Mesh
 	std::vector<Vertex> vertices;
 	std::vector<BoneWeights> weights;   // one per vertex
 	std::vector<std::uint32_t> indices; // triangle list, counter-clockwise from outside
+	std::vector<Flex> flexes;
 
 	friend bool operator==( const Mesh &, const Mesh & ) = default;
 };
@@ -237,6 +269,7 @@ struct Model
 	std::vector<std::string> cdMaterials; // lower case, '/' separated, ending in '/' (or empty)
 	std::vector<std::vector<std::int16_t>> skinFamilies; // [family][textureRef] -> texture
 	std::vector<BodyPart> bodyParts;
+	std::vector<std::string> flexDescriptors;
 	// Per-LOD texture names in Studio texture-slot order, including VTX
 	// replacements. Runtime selection policy remains the host's responsibility.
 	std::vector<std::vector<std::string>> lodTextures;

@@ -1,12 +1,7 @@
 {
   "schema": "portal2-scenarios/v1",
-  "description": "Frame-rate floor workloads, run by tools/quality/frame_floor.py: a scripted route through a map that a player would take, judged frame by frame between the script's floor_begin and floor_end frame marks. The run stops at the first frame below floor_fps; a completed route must also reach the 1% and 0.1% low targets (fps from the mean of the slowest 1% / 0.1% of frame intervals). User direction 2026-09-30: sp_a2_laser_intro_relit is the performance fixture, with a steady 30-60 fps minimum.",
+  "description": "Frame-rate floor workloads, run by tools/quality/frame_floor.py: a scripted route through a map that a player would take, judged frame by frame between the script's floor_begin and floor_end frame marks. The run stops at the first frame below floor_fps; a completed route must also reach the 1% and 0.1% low targets (fps from the mean of the slowest 1% / 0.1% of frame intervals). User direction 2026-09-30: sp_a2_laser_intro_relit is the performance fixture, with a steady 30-60 fps minimum. Superseded 2026-10-01 by the user: 120 FPS minimum, High, 1920x1080 on the current Radeon 8060S desktop. Numeric limits and the product High profile are referenced through render_budget_row; the former 30/60 FPS targets are historical. The route alone does not certify complete image/workload coverage.",
   "driver": "../portal2-wheatley-v1/qa_driver.nut",
-  "frame_floor": {
-    "floor_fps": 30,
-    "low_1pct_fps": 60,
-    "low_01pct_fps": 30
-  },
   "scenarios": [
     {
       "name": "sp_a2_laser_intro_tour",
@@ -29,5 +24,6 @@
         "departure_elevator.arrives"
       ]
     }
-  ]
+  ],
+  "render_budget_row": "linux-desktop-high-120"
 }

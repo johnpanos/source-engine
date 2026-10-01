@@ -85,6 +85,7 @@ struct WorldMaterial
 	// The legacy shader's declared default of each parameter ("$key",
 	// default): a variable the model does not read must hold it.
 	std::vector<std::pair<std::string, std::string>> defaults;
+	bool hasProxy = false;
 };
 
 struct WorldSurface
@@ -219,6 +220,11 @@ public:
 
 struct WorldTarget
 {
+	material::SurfaceDrawState drawState;
+	float clipPlanes[6][4] = {};
+	bool overrideDepthRange = false;
+	float minDepth = 0.0f;
+	float maxDepth = 1.0f;
 	// Replaces the queued view's lights when set: a stage view's clustered
 	// lights, made when its slot records rather than when it was queued.
 	std::shared_ptr<const StageViewLights> lights;
@@ -317,7 +323,16 @@ struct StageViewLights
 struct WorldView
 {
 	std::vector<std::uint32_t> surfaces; // into WorldData::surfaces
-	std::vector<std::uint32_t> staticInstances; // into WorldData::staticInstances
+	struct StaticInstance
+	{
+		std::uint32_t instance = 0; // into WorldData::staticInstances
+		// Captured per-view geometry selection, including the selected LOD.
+		// Absence inherits the world's instance selection when queued.
+		std::optional<std::vector<std::uint32_t>> surfaceSelection;
+		StaticInstance() = default;
+		StaticInstance( std::uint32_t value ) : instance( value ) {}
+	};
+	std::vector<StaticInstance> staticInstances;
 	// One animated model at the pose captured for this view. Geometry and
 	// material skins are shared with WorldData::staticMeshes; these vertices
 	// are already in world space, so the model draw uses an identity transform.

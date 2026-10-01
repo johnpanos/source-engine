@@ -107,6 +107,9 @@ DeviceResult<void> ValidatePipeline(
     const PipelineDesc &desc, const DeviceFacts &facts, const LayoutLookup &lookup )
 {
 	const DeviceOperation op = DeviceOperation::kCreatePipeline;
+	if ( desc.depthStencil.stencil.enabled && desc.depthFormat != Format::kD24UnormS8 &&
+	     desc.depthFormat != Format::kD32FloatS8 )
+		return Fail( DeviceStatus::kInvalidDescription, op );
 	if ( desc.layouts.size() > kMaxBindGroups || desc.layouts.size() > facts.limits.maxBindGroups )
 		return Fail( DeviceStatus::kTooManyBindGroups, op );
 	if ( desc.stages.empty() )

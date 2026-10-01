@@ -56,6 +56,7 @@
 // The terms (the port's static combo bits where they exist).
 layout( constant_id = 0 ) const int kTerms = 0;
 layout( constant_id = 1 ) const int kDetailMode = 0;
+layout( constant_id = 2 ) const bool kPortalMask = false;
 const int kUnlit = 1;
 const int kDetailTexture = 2;
 const int kBumpmap = 4;
@@ -147,6 +148,7 @@ layout( set = 0, binding = 0 ) uniform Frame
 	vec4 water;
 	vec4 viewport; // the view's x, y, 1 / width, 1 / height in the target
 	AreaLight areas[kMaxAreaLights];
+	vec4 clipPlanes[6];
 } frame;
 // The split-sum table (RFC 0007, pbr_split_sum_table.h), read by the pbr point.
 layout( set = 0, binding = 1 ) uniform texture2D splitSumTexture;
@@ -1490,6 +1492,18 @@ void WaterSurface()
 
 void main()
 {
+	if ( kPortalMask )
+	{
+		// PortalRefract stage 1: centered UV ellipse, smooth open squared,
+		// including its authored 7.5 percent outer border and UV rotation.
+		const vec2 uv = vec2( dot( baseUv, material.texture2Transform[0].xy ),
+		    dot( baseUv, material.texture2Transform[1].xy ) );
+		if ( length( ( uv * 2.0 - 1.0 ) * 1.075 ) > material.surfaceControls.z )
+			discard;
+	}
+	for ( int plane = 0; plane < 6; ++plane )
+		if ( dot( vec4( worldPosition, 1.0 ), frame.clipPlanes[plane] ) < 0.0 )
+			discard;
 	// Points without image specular leave the SSR targets empty (weight 0:
 	// render.pass.ssr leaves their pixels unchanged).
 	WriteSsrTargets( vec3( 0.0, 0.0, 1.0 ), 1.0, vec3( 0.0 ), vec3( 0.0 ), false );

@@ -56,6 +56,7 @@ struct FrameTerms
 	float fogColor[3] = { 0.0f, 0.0f, 0.0f };
 	float fogParams[4] = { 0.0f, 0.0f, 1.0f, 0.0f };
 	float fogEyeZ = 0.0f;
+	float clipPlanes[6][4] = {};
 	// The eye's world position (the env map's reflection), ENV_MAP_SCALE (16
 	// in integer HDR, else 1), and whether specular shows (mat_fastspecular):
 	// when not, env map tints are zero.

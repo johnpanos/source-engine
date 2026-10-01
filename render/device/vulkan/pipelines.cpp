@@ -105,10 +105,36 @@ VkPrimitiveTopology Topology( PrimitiveTopology topology )
 	return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 }
 
+VkStencilOp StencilOperation( StencilOp op )
+{
+	switch ( op )
+	{
+	case StencilOp::kKeep:
+		return VK_STENCIL_OP_KEEP;
+	case StencilOp::kZero:
+		return VK_STENCIL_OP_ZERO;
+	case StencilOp::kReplace:
+		return VK_STENCIL_OP_REPLACE;
+	case StencilOp::kIncrementClamp:
+		return VK_STENCIL_OP_INCREMENT_AND_CLAMP;
+	case StencilOp::kDecrementClamp:
+		return VK_STENCIL_OP_DECREMENT_AND_CLAMP;
+	case StencilOp::kInvert:
+		return VK_STENCIL_OP_INVERT;
+	case StencilOp::kIncrementWrap:
+		return VK_STENCIL_OP_INCREMENT_AND_WRAP;
+	case StencilOp::kDecrementWrap:
+		return VK_STENCIL_OP_DECREMENT_AND_WRAP;
+	}
+	return VK_STENCIL_OP_KEEP;
+}
+
 VkCompareOp Compare( CompareOp op )
 {
 	switch ( op )
 	{
+	case CompareOp::kNotEqual:
+		return VK_COMPARE_OP_NOT_EQUAL;
 	case CompareOp::kNever:
 		return VK_COMPARE_OP_NEVER;
 	case CompareOp::kLess:
@@ -618,6 +644,12 @@ DeviceResult<PipelineId> VulkanDevice::CreatePipeline( const PipelineDesc &desc 
 		depth.depthTestEnable = desc.depthStencil.depthTest ? VK_TRUE : VK_FALSE;
 		depth.depthWriteEnable = desc.depthStencil.depthWrite ? VK_TRUE : VK_FALSE;
 		depth.depthCompareOp = Compare( desc.depthStencil.compare );
+		const StencilState &stencil = desc.depthStencil.stencil;
+		depth.stencilTestEnable = stencil.enabled;
+		depth.front = { StencilOperation( stencil.fail ), StencilOperation( stencil.pass ),
+		    StencilOperation( stencil.depthFail ), Compare( stencil.compare ), stencil.readMask,
+		    stencil.writeMask, stencil.reference };
+		depth.back = depth.front;
 		depth.maxDepthBounds = 1.0f;
 
 		std::vector<VkPipelineColorBlendAttachmentState> blends;

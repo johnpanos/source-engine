@@ -190,6 +190,8 @@ std::string Lower( std::string text )
 
 foundation::Expected<Claimed, std::string> MapWorldMaterial( const WorldMaterial &source )
 {
+	if ( source.hasProxy )
+		return foundation::MakeUnexpected( std::string( "selected material needs a live proxy handoff" ) );
 	Claimed claimed;
 	claimed.blended = source.translucent;
 	std::vector<material::VmtPair> variables;
@@ -728,6 +730,24 @@ std::uint32_t WorldPass::QueueView( WorldView view )
 	std::lock_guard<std::mutex> guard( s.lock );
 	if ( !s.world )
 		return 0;
+	for ( WorldView::StaticInstance &draw : view.staticInstances )
+	{
+		if ( draw.instance >= s.world->staticInstances.size() )
+		{
+			s.stats.lastRefusal = "a static model names an instance the world does not have";
+			return 0;
+		}
+		const WorldData::StaticInstance &instance = s.world->staticInstances[draw.instance];
+		if ( !draw.surfaceSelection )
+			draw.surfaceSelection = instance.surfaceSelection;
+		if ( instance.mesh >= s.world->staticMeshes.size() ||
+		     !ValidSurfaceSelection(
+		         draw.surfaceSelection, s.world->staticMeshes[instance.mesh].surfaces.size() ) )
+		{
+			s.stats.lastRefusal = "a static model has an invalid surface selection";
+			return 0;
+		}
+	}
 	for ( const WorldView::PosedModel &pose : view.posedModels )
 	{
 		if ( pose.surfaceSelection && ( pose.mesh >= s.world->staticMeshes.size() ||
@@ -923,6 +943,11 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		std::lock_guard<std::mutex> guard( s.lock );
 		++s.stats.viewsSkipped;
 		return;
+	}
+	if ( target.overrideDepthRange )
+	{
+		view.viewport.minDepth = target.minDepth;
+		view.viewport.maxDepth = target.maxDepth;
 	}
 	// A stage view's lights made when its slot records (WorldTarget::lights).
 	if ( target.lights )
@@ -1737,6 +1762,7 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 
 	// The frame group of a program's layout, its terms written for this slot.
 	material::FrameTerms terms;
+	std::memcpy( terms.clipPlanes, target.clipPlanes, sizeof( terms.clipPlanes ) );
 	terms.lightmapScale = target.lightmapScale;
 	terms.outputScale = target.outputScale;
 	terms.encodeOutput = target.encodeOutput;
@@ -2033,8 +2059,9 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		buffers.uploaded = true;
 		return true;
 	};
-	for ( const std::uint32_t instanceId : view.staticInstances )
+	for ( const WorldView::StaticInstance &draw : view.staticInstances )
 	{
+		const std::uint32_t instanceId = draw.instance;
 		if ( instanceId >= world->staticInstances.size() )
 		{
 			note( "a view named a static model instance the world does not have" );
@@ -2049,13 +2076,13 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 			continue;
 		}
 		const WorldData::StaticMesh &mesh = world->staticMeshes[instance.mesh];
-		if ( !ValidSurfaceSelection( instance.surfaceSelection, mesh.surfaces.size() ) )
+		if ( !ValidSurfaceSelection( draw.surfaceSelection, mesh.surfaces.size() ) )
 		{
 			note( "a static model has an invalid surface selection" );
 			complete = false;
 			continue;
 		}
-		if ( instance.surfaceSelection && instance.surfaceSelection->empty() )
+		if ( draw.surfaceSelection && draw.surfaceSelection->empty() )
 			continue;
 		if ( !uploadMesh( instance.mesh ) )
 		{
@@ -2064,7 +2091,7 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		}
 		for ( std::uint32_t surfaceId = 0; surfaceId < mesh.surfaces.size(); ++surfaceId )
 		{
-			if ( !SurfaceSelected( instance.surfaceSelection, surfaceId ) )
+			if ( !SurfaceSelected( draw.surfaceSelection, surfaceId ) )
 				continue;
 			const std::uint32_t materialId = StaticMaterial( mesh, instance, surfaceId );
 			const Resources::Material *material =
@@ -2198,13 +2225,27 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 	// The frame's debug controls (RFC 0014), as the view was queued: each
 	// program's pipeline under its specialization (the shipped one when the
 	// controls are neutral). A refused debug pipeline fails the view loudly.
-	const bool debugNeutral = frame::DebugControlsNeutral( view.debug );
 
 	// Draws `list`'s surfaces, inside the caller's rendering, with their
 	// materials in `materials` and each material's pipeline from
 	// `pipelineOf` (none: the surfaces are not drawn and the view fails).
 	// Surfaces of one binding whose index ranges touch draw as one range (a
 	// world stage's meshlets, in the mesh's order).
+	auto statePipeline =
+	    [&]( const Resources::Material &m, PipelineId base,
+	        const shaderlib::DebugSpecialization &debug = {} ) -> std::optional<PipelineId>
+	{
+		auto result = m.resolver->Program().StatePipeline( base, target.drawState, debug );
+		if ( !result )
+		{
+			note( "view raster state: pipeline refused for " + m.program.name + " status " +
+			      std::to_string( int( result.Error() ) ) + " depth format " +
+			      std::to_string( int( target.depthFormat ) ) + " stencil " +
+			      std::to_string( target.drawState.stencil.enabled ) );
+			return std::nullopt;
+		}
+		return result.Value();
+	};
 	auto drawSurfaces =
 	    [&]( const std::vector<std::uint32_t> &list,
 	        const std::vector<Resources::Material> &materials,
@@ -2397,7 +2438,7 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 					    note( "the prepass: " + variant.Error() );
 					    return std::nullopt;
 				    }
-				    return variant.Value();
+				    return statePipeline( m, variant.Value() );
 			    } );
 			encoder.EndRendering();
 			encoder.EndLabel();
@@ -2546,7 +2587,7 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 					    note( "the depth prepass: " + variant.Error() );
 					    return std::nullopt;
 				    }
-				    return variant.Value();
+				    return statePipeline( m, variant.Value() );
 			    } );
 			encoder.EndRendering();
 			encoder.EndLabel();
@@ -2558,16 +2599,8 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 	drawSurfaces( order, r.materials,
 	    [&]( const Resources::Material &m ) -> std::optional<PipelineId>
 	    {
-		    if ( debugNeutral )
-			    return m.program.request.pipeline;
-		    auto debug = m.resolver->DebugPipeline(
-		        m.program, frame::DebugSpecializationFor( view.debug, m.program.name ) );
-		    if ( !debug )
-		    {
-			    note( "debug view: " + debug.Error() );
-			    return std::nullopt;
-		    }
-		    return debug.Value();
+		    return statePipeline( m, m.program.request.pipeline,
+		        frame::DebugSpecializationFor( view.debug, m.program.name ) );
 	    } );
 	// The model list is built in caller order. Opaque draws can be grouped by
 	// material, while blended surfaces must stay after them and retain their
@@ -2654,20 +2687,14 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 			complete = false;
 			continue;
 		}
-		PipelineId pipeline = m.program.request.pipeline;
-		if ( !debugNeutral )
+		const auto state = statePipeline( m, m.program.request.pipeline,
+		    frame::DebugSpecializationFor( view.debug, m.program.name ) );
+		if ( !state )
 		{
-			auto debug = m.resolver->DebugPipeline(
-			    m.program, frame::DebugSpecializationFor( view.debug, m.program.name ) );
-			if ( !debug )
-			{
-				note( "static model debug view: " + debug.Error() );
-				complete = false;
-				continue;
-			}
-			pipeline = debug.Value();
+			complete = false;
+			continue;
 		}
-		encoder.SetPipeline( pipeline );
+		encoder.SetPipeline( *state );
 		if ( m.program.request.frameLayout.IsValid() )
 			encoder.SetBindGroup(
 			    BindGroupRole::kFrame, r.frameGroups[m.program.request.frameLayout.value].group );
@@ -2729,7 +2756,13 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 				continue;
 			}
 		}
-		encoder.SetPipeline( m.program.request.pipeline );
+		const auto state = statePipeline( m, m.program.request.pipeline );
+		if ( !state )
+		{
+			complete = false;
+			continue;
+		}
+		encoder.SetPipeline( *state );
 		encoder.SetBindGroup(
 		    BindGroupRole::kFrame, r.frameGroups[m.program.request.frameLayout.value].group );
 		const auto layout = m.program.request.viewLayout.value;

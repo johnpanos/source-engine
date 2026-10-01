@@ -48,8 +48,10 @@ Model geometry selection (R96): static instances and posed models may carry a
 value-owned subset of surface indices. Null selects all surfaces; an explicit
 empty list is a valid blank body. Subsets contain increasing, unique, in-range
 indices. Eligibility and recording examine only selected surfaces, so an inactive
-unsupported material cannot reject an otherwise supported body. Invalid posed
-selections are refused before publishing a slot. Queued selections survive later
-body-group changes. `render.lab.model-selection` proves the posed/static pixel
-footprints, blank bodies and a swapped-body negative control on native Vulkan.
+unsupported material cannot reject an otherwise supported body or LOD. Static
+views may override the instance's selection; absence inherits it at queue time.
+Invalid selections are refused before publishing a slot. Queued selections survive
+later body-group and LOD changes. `render.lab.model-selection` proves the
+posed/static pixel footprints, blank bodies and LODs, LOD replacement materials,
+capture replay and swapped-selection negative controls on native Vulkan.
 Studio body arithmetic remains owned by `mdl::BodyPart::SelectedModel`.

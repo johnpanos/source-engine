@@ -1,5 +1,80 @@
 # RFC 0016 progress: render core
 
+## Scope and complexity discipline (2026-10-01)
+
+The user adopted the [scope and complexity discipline](0016-render-core.md#scope-and-complexity-discipline-user-decision-2026-10-01)
+as binding rule 9. AGENTS.md links to that single definition. It governs render
+slice selection and ownership without reducing declared quality, compatibility,
+platform scope or budgets. R90/R95/R96/R91 remain open; this documentation change
+adds no implementation or runtime evidence and closes no gate. Verification is
+limited to the edited documentation's whitespace and local link targets.
+
+## Clustered-lighting requirement and hard High budgets (2026-10-01)
+
+The user requires high-performance clustered lighting, GPU execution whenever
+it is faster, and a minimum of 120 FPS at High on this machine. They confirmed
+1920×1080. All 18 primary RFCs now link to the single render requirement in
+[RFC 0016](0016-render-core.md#high-performance-clustered-lighting-user-decision-2026-10-01)
+and the engine-wide placement rule in
+[RFC 0003](0003-dependency-aware-job-system.md#cpugpu-execution-placement-user-decision-2026-10-01).
+[The P2:CE research note](0016-p2ce-clustered-lighting-2026-10-01.md) records
+feasibility, implementation/quality differences, current CPU product assignment,
+existing GPU conformance and retained performance. It supplies no matched P2:CE
+FPS benchmark or renderer acceptance.
+
+The new [hard budget policy](0016-render-core.md#hard-render-budgets-user-decision-2026-10-01)
+supersedes the historical nonblocking-performance decisions recorded below.
+`linux-desktop-high-120` in
+[`render-v1.json`](../quality/budgets/render-v1.json) owns numeric frame,
+CPU/GPU/submission and component targets. Its declared
+[High product profile](../quality/product_profiles/portal2-linux-native-vulkan-high.json)
+owns settings, including required MSAA, AO, shadows and baked indirect. Historical
+K0 records are retained; they cannot certify High. AGENTS.md records the new
+required R90/R95/R96/R91 performance work and keeps their gates open.
+
+The installed `frame_floor.py` consumes the existing laser route's budget-row
+reference, forbids relaxed FPS/quality/resolution overrides and capped offscreen
+qualification, applies/queries High, records actual Vulkan driver/API facts and
+checks the actual back buffer and GPU. It judges every gameplay frame, catches
+missing/corrupt/duplicate records and a slow frame flushed at process exit, maps
+delayed GPU timestamps by frame identity, and requires complete CPU/GPU cost
+samples. Maxima and tail costs are bounded; one slow frame cannot hide behind
+p99. Preview evidence is marked separately. Timing success still requires
+complete K11/K12/R91 image and representative-scene evidence for promotion.
+Per-component lab verdict tooling remains proposed; no component pass is claimed.
+No engine or shader optimization is implemented by this policy slice.
+
+Verification in [the retained logs](../quality-results/clustered-policy-2026-10-01/):
+
+- Budget declaration check passes: four rows, zero problems. The native driver
+  probe records Radeon 8060S/RADV, Mesa 26.2.3 and Vulkan 1.4.354 in
+  [graphics.json](../quality-results/clustered-policy-2026-10-01/graphics.json).
+- Quality fixtures pass: 49 frame/floor/pacing, 15 budget, 27 product-profile
+  and 38 gameplay-scenario tests (129 total). The installed `quality.selftest`
+  also discovers the floor controls. Capped offscreen preflight exits 2 as
+  required, before staging or launching a product.
+- Architecture fixtures pass (162); loader inventory verification passes.
+  Full check and baseline verification fail on the outside-slice fstop
+  `CreateInterfaceFn` expansions; full check also reports outside-slice CAP002
+  render/native includes. See the exact architecture logs; no ratchet is reset.
+- Style fixtures pass (38). Shared-checkout `stylelint --changed --diff`
+  reports 11 failures across concurrent C++ edits, outside this policy/tools
+  slice. Scoped documentation/tool whitespace, JSON and policy-link checks pass.
+
+Reproduce with `python3 tools/quality/render_budgets.py check` and the installed
+`unittest discover -s tools/quality/tests` commands using patterns
+`test_frame*.py`, `test_render_budgets.py`, `test_product_profile.py` and
+`test_portal2_scenarios.py`. The High run command is documented in
+[`tools/quality/README.md`](../tools/quality/README.md). A combined namespace
+module invocation had three fixture-import errors; the supported discovery
+commands above pass, and that command's log is retained separately.
+
+**Acceptance remains unverified.** No new complete native 1920×1080 High run,
+complete-image result or parent-row closure is claimed. R90 still needs the
+product CPU/GPU assignment comparison and faster-path handoff; R95/R96/R91
+still need complete images/cohorts and the hard frame target. Only the user may
+relax the target or reduce High; budget misses require optimization.
+
 ## Laser intro local-cubemap reference defect (2026-10-01)
 
 User request: "please fix the missing bitch_cubemap error on the laser intro
@@ -6086,8 +6161,95 @@ selection; no new legacy shading. Eligible body selection now uses the core
 owner; retained legacy cohorts still cover the unimplemented features.
 
 Still open: remaining built-in material families and their variables/proxies,
-flex and LOD deformation/geometry, draw modulation/overrides/static lighting,
+flex deformation, draw modulation/overrides/static lighting,
 nested views, cutout/transmission shadows and the R91 effects/UI/post/sky/glass/
 water/portal/monitor cohorts. The installed boot is an integration regression
 check, not full scene parity, motion/resize acceptance or non-Linux evidence.
 The full automatic-eligibility goal remains active.
+
+### R96 automatic model eligibility: LOD geometry and replacement materials (2026-10-01)
+
+`content.studio-model` now imports every body alternative and VTX LOD, with
+slot-specific material replacements. The default selected reader retains LOD 0
+behavior, and may select another LOD explicitly. Runtime import retains all
+geometry without requiring first-frame animation data. Blank bodies/LODs remain
+valid; malformed variants fail the read.
+
+The shared core owns geometry selection and drawing. Composition resolves the
+host's LOD-major material descriptors and captures the active surfaces per view.
+The world pass snapshots static selections as well as posed selections, so
+subsequent changes and capture replay cannot change an earlier draw. Eligibility
+depends on the selected geometry and materials, including replacements, with no
+model-name exceptions. Only bones used by the selected topology are read from
+the host palette.
+
+The lab supplies controlled model bytes and choices to this core path; the game
+adapter supplies the real bytes, materials and Studio's existing LOD decision.
+There is no second game shader or deformation implementation. Static props have
+two existing Studio callers: the array pipeline and `DrawModelExStaticProp`.
+Both hand off after their LOD calculation and share modulation/override eligibility
+checks. The old pre-LOD static-prop claim is removed. Static shadow casters retain
+the highest-detail geometry, independent of a camera's visible LOD.
+
+Evidence under `quality-results/automatic-model-eligibility/lods/`:
+
+| Check | Result |
+| --- | --- |
+| Release conformance (`release-final.json`) | 4 suites pass without skips: Studio import 151, world/null 37, composition 53, native Vulkan model selection 37 |
+| Import corpus (`corpus.json`) | 87 checks pass; all 199 Portal and 2,033 Portal 2 models import all body/LOD variants and replacement lists; default geometry remains unchanged |
+| Native Vulkan model selection | Posed and static high/low/blank LOD footprints, replacement colors, body/LOD composition, queued snapshots and replay; wrong-LOD and invalid-selection controls detected; synchronization validation silent |
+| Installed product build (`install-product-final.log`) | Existing Portal 2 profile builds/installs launcher, executable, engine and Vulkan backend with their core dependencies; no reconfiguration |
+| Queued Portal 2 with forced LOD 1 (`portal2-static-lod1/evidence.json`) | Native GPU capture of `sp_a1_intro4_relit` passes; 117/117 meshes imported, 7,495 static instances queued / 7,847 static draws, 704 posed instances queued / 1,191 posed draws; zero view failures, protected config unchanged |
+| Queued Portal 2 with automatic LOD (`portal2-static-auto/evidence.json`) | Native GPU capture passes; 7,449 static instances queued / 7,779 static draws, 705 posed instances queued / 1,187 posed draws; zero view failures, protected config unchanged |
+| Static checks | Changed LOD code passes pinned style; 162 archlint and 38 stylelint fixtures pass; inventory current; `git diff --check` passes |
+
+The first static integration boot (`portal2-static-selected`) passed the generic
+boot checks but queued zero static props: this profile uses the individual Studio
+entry point. That is retained as failed LOD integration evidence, and prompted
+the second caller's handoff. A later partial installation
+(`portal2-static-final`) mixed an old launcher with the concurrently expanded
+`CorePassTarget` layout and crashed in shadow creation. Relinking all product
+consumers together fixes that mismatch; the passing LOD-1 run uses that package.
+An all-target install (`install-coherent.log`) also encountered an unrelated
+concurrent Hammer `DecodeVtf` link failure; the named product targets pass.
+Archlint all/baseline retain the two pre-existing ARCH105 findings in
+`game/shared/fstop/blob_networkbypass.cpp/.h`. Earlier style snapshots include
+concurrent Hammer/VTF and view-state edits; the final changed-line check
+(`style-last.log`) passes 35 files. No baselines are weakened.
+
+Reproduce the product slice with the existing product lock:
+
+```sh
+WAFLOCK=.lock-waf-rc-model-p2 ./waf install --targets=launcher,hl2_launcher,engine,shaderapivulkan -j 6
+python3 tools/quality/portal_boot.py --runtime run/runtime-p2 \
+  --build build-rc-model-p2/install --game portal2 --renderer native-vulkan \
+  --headless --require-vulkan --map sp_a1_intro4_relit --timeout 180 \
+  --startup-command 'mat_queue_mode 2' --startup-command 'r_core_world 1' \
+  --startup-command 'r_core_world_strict 1' --startup-command 'r_indirect_producer baked' \
+  --startup-command 'r_core_runtime_direct 1' --startup-command 'r_lod 1' \
+  --startup-command 'r_staticprop_lod 1' --console-command 'r_core_world_stats' \
+  --out <new-LOD-boot-directory>
+```
+
+Frozen-path: core plumbing R96 — carry selected Studio LODs and resolved material
+slots through the existing model handoffs; no new legacy shading.
+
+This closes the body/LOD geometry selection restriction, not R96/R91. Flex and
+eye deformation, remaining material families/variables/proxies, modulation,
+overrides/static lighting, cutout/transmission shadows and the remaining frame
+cohorts still require their own shared-core implementation and evidence. The
+full automatic-eligibility goal remains active.
+
+
+### R91 portals and viewmodels (2026-10-01, active)
+
+User request: “We need to re-enable portals and viewmodels to the rendercore”.
+This slice owns neutral stencil state in render.device, queued per-slot view
+state in render.pass.world/composition, and the existing client portal/viewmodel
+submission handoff. Material and lighting semantics retain their existing core
+owners. Model/LOD work in the shared tree is preserved; ownership coordination
+was sent to the active model session. Lab mask, clipping, depth-range, replay
+and negative controls precede product integration. R91/R96 remain open.
+
+Frozen-path: core plumbing R91 — capture the client’s portal stencil and view
+state and route its depth-mask geometry to the core surface program.

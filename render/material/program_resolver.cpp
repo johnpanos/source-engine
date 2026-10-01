@@ -19,6 +19,8 @@
 #include "render/material/vmt_mapping.h"
 #include "render/material/water_family.h"
 
+#include <algorithm>
+#include <cstring>
 #include <cctype>
 #include <cmath>
 #include <cstdlib>
@@ -265,6 +267,18 @@ ProgramResolver::~ProgramResolver() = default;
 
 namespace
 {
+std::optional<std::string> DepthClaim( const ParameterBlock &block, bool portal )
+{
+	constexpr std::string_view depthKeys[] = { "model", "nocull", "nofog" };
+	constexpr std::string_view portalKeys[] = { "model", "nocull", "nofog", "stage",
+	    "portalopenamount", "portalstatic", "portalmasktexture", "portalcolortexture",
+	    "portalcolorscale", "texturetransform", "time", "alphatest", "alphatestreference" };
+	if ( portal && detail::ReadParameter( block, "stage" ) != 1.0f )
+		return "portal aperture only: refractive and color stages are separate cohorts";
+	return detail::UnclaimedParameter( block, portal ? std::span<const std::string_view>( portalKeys )
+	                                               : std::span<const std::string_view>( depthKeys ) );
+}
+
 constexpr std::string_view kProgramNames[] = {
     "lightmapped", "unlit", "preview", "pbr", "refract", "water", "depth" };
 }
@@ -306,7 +320,7 @@ foundation::Expected<device::BlendMode, std::string> ClaimForDrawing(
 	const std::optional<ParameterBlock> block = BlockFor( material, &why );
 	if ( !block )
 		return foundation::MakeUnexpected( why );
-	if ( material.family == "depth" )
+	if ( material.family == "depth" || material.family == "portal-mask" )
 		return ClaimForMesh( material, false, false );
 	if ( material.family == "lightmapped" )
 	{
@@ -349,10 +363,9 @@ foundation::Expected<device::BlendMode, std::string> ClaimForMesh(
 	const std::optional<ParameterBlock> block = BlockFor( material, &why, nativeReflectionProbes );
 	if ( !block )
 		return foundation::MakeUnexpected( why );
-	if ( material.family == "depth" )
+	if ( material.family == "depth" || material.family == "portal-mask" )
 	{
-		constexpr std::string_view keys[] = { "model", "nocull", "nofog" };
-		if ( auto unread = detail::UnclaimedParameter( *block, keys ) )
+		if ( auto unread = DepthClaim( *block, material.family == "portal-mask" ) )
 			return foundation::MakeUnexpected( "the depth point does not draw " + *unread );
 		return device::BlendMode::kOpaque;
 	}
@@ -403,15 +416,23 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 	if ( !block )
 		return foundation::MakeUnexpected( why );
 	ResolvedProgram out;
-	if ( material.family == "depth" )
+	if ( material.family == "depth" || material.family == "portal-mask" )
 	{
-		constexpr std::string_view keys[] = { "model", "nocull", "nofog" };
-		if ( auto unread = detail::UnclaimedParameter( *block, keys ) )
+		if ( auto unread = DepthClaim( *block, material.family == "portal-mask" ) )
 			return foundation::MakeUnexpected( "the depth point does not draw " + *unread );
 		SurfaceVariant variant;
 		variant.layout = s.layout;
 		variant.terms = kSurfaceUnlit | kSurfaceDepthOnly;
+		variant.portalMask = material.family == "portal-mask";
 		SurfaceConstants constants;
+		if ( variant.portalMask )
+		{
+			const float open = std::clamp( detail::ReadParameter( *block, "portalopenamount" ), 0.0f, 1.0f );
+			const float smooth = open * open * ( 3.0f - 2.0f * open );
+			constants.surfaceControls[2] = smooth * smooth;
+			for ( int i = 0; i < 8; ++i )
+				constants.texture2Transform[i] = detail::ReadParameter( *block, "texturetransform", i );
+		}
 		SurfaceTextures textures;
 		auto request = s.lightmapped->Program().Request( variant, constants, textures );
 		if ( !request )
@@ -803,6 +824,7 @@ std::optional<GroupRequest> ProgramResolver::FrameGroup(
 	if ( program.request.frameLayout == s.lightmapped->FrameLayout() )
 	{
 		SurfaceFrame frame;
+		std::memcpy( frame.clipPlanes, terms.clipPlanes, sizeof( frame.clipPlanes ) );
 		frame.light[0] = terms.lightmapScale;
 		frame.light[1] = terms.outputScale;
 		frame.light[2] = terms.encodeOutput ? 1.0f : 0.0f;

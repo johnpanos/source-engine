@@ -60,8 +60,9 @@ bool RenderCoreWorldDraw_Skips( SurfaceHandle_t surfID );
 bool RenderCoreWorldDraw_ChainsOnly();
 // The legacy client culled these static props for this opaque view. Once
 // the queued core world view accepts the cohort, studiorender omits it.
-bool RenderCoreWorldDraw_TakeStaticProps( const unsigned int *props, int count );
-bool RenderCoreWorldDraw_DrawsStaticProp( unsigned int prop );
+bool RenderCoreWorldDraw_TakeStaticProps(
+    const unsigned int *props, const unsigned int *lods, int count );
+bool RenderCoreWorldDraw_DrawsStaticProp( unsigned int prop, unsigned int lod );
 // Whether this model and current view are candidates for a core Studio draw.
 // Check before inspecting material overrides or renderable modulation.
 bool RenderCoreWorldDraw_CanTakePosedModel( const model_t *model );

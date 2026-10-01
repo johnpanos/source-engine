@@ -26,6 +26,7 @@ enum
 	VTF_FMT_BGRA8888 = 12,
 	VTF_FMT_DXT1 = 13,
 	VTF_FMT_DXT5 = 15,
+	VTF_FMT_STRATA_BC7 = 70,
 };
 
 namespace detail
@@ -46,6 +47,7 @@ inline std::size_t VtfMipBytes( int format, int w, int h )
 	case VTF_FMT_DXT1:
 		return std::size_t( ( w + 3 ) / 4 ) * ( ( h + 3 ) / 4 ) * 8;
 	case VTF_FMT_DXT5:
+	case VTF_FMT_STRATA_BC7:
 		return std::size_t( ( w + 3 ) / 4 ) * ( ( h + 3 ) / 4 ) * 16;
 	default:
 		return 0;
@@ -101,7 +103,7 @@ inline std::string BuildVtf( int width, int height, int format, int mipCount,
 
 	if ( useResourceDict )
 	{
-		PutU32At( blob, 0x48, 1 ); // numResources
+		PutU32At( blob, 0x44, 1 ); // numResources
 		blob[0x50] = char( 0x30 ); // VTF_LEGACY_RSRC_IMAGE tag byte 0
 		blob[0x51] = 0;
 		blob[0x52] = 0;
@@ -124,6 +126,62 @@ inline std::string BuildVtf( int width, int height, int format, int mipCount,
 			data = mipsLargestFirst[mip];
 		data.resize( need, '\0' );
 		blob += data;
+	}
+	return blob;
+}
+
+// Builds a Strata Source VTF 7.6 whose image resource contains independently
+// encoded mip runs. The fake does not implement a compression algorithm: tests
+// provide arbitrary stored runs and an independent decompressor callback. The
+// AXC table and image data both use the real smallest-mip-first ordering.
+inline std::string BuildCompressedVtf( int width, int height, int format, int mipCount,
+    const std::vector<std::string> &storedMipsLargestFirst, std::uint16_t method = 93,
+    std::uint16_t level = 1 )
+{
+	using namespace detail;
+
+	constexpr std::size_t kHeaderRegion = 0x60;
+	const std::size_t auxBytes = std::size_t( mipCount + 2 ) * 4;
+	const std::size_t auxOffset = kHeaderRegion;
+	const std::size_t imageOffset = auxOffset + auxBytes;
+	std::string blob( imageOffset, '\0' );
+
+	blob[0] = 'V';
+	blob[1] = 'T';
+	blob[2] = 'F';
+	blob[3] = '\0';
+	PutU32At( blob, 0x04, 7 );
+	PutU32At( blob, 0x08, 6 );
+	PutU32At( blob, 0x0c, std::uint32_t( kHeaderRegion ) );
+	PutU16At( blob, 0x10, std::uint16_t( width ) );
+	PutU16At( blob, 0x12, std::uint16_t( height ) );
+	PutU16At( blob, 0x18, 1 );
+	PutU32At( blob, 0x34, std::uint32_t( format ) );
+	blob[0x38] = char( mipCount );
+	PutU32At( blob, 0x39, 0xffffffffu );
+	PutU16At( blob, 0x3f, 1 );
+	PutU32At( blob, 0x44, 2 );
+
+	// Image resource.
+	blob[0x50] = char( 0x30 );
+	PutU32At( blob, 0x54, std::uint32_t( imageOffset ) );
+	// AXC resource.
+	blob[0x58] = 'A';
+	blob[0x59] = 'X';
+	blob[0x5a] = 'C';
+	PutU32At( blob, 0x5c, std::uint32_t( auxOffset ) );
+
+	PutU32At( blob, auxOffset, std::uint32_t( auxBytes - 4 ) );
+	PutU16At( blob, auxOffset + 4, level );
+	PutU16At( blob, auxOffset + 6, method );
+	for ( int mip = mipCount - 1; mip >= 0; --mip )
+	{
+		const std::string stored = mip < int( storedMipsLargestFirst.size() )
+		                               ? storedMipsLargestFirst[mip]
+		                               : std::string();
+		const std::size_t tableIndex = std::size_t( mipCount - 1 - mip );
+		PutU32At( blob, auxOffset + 8 + tableIndex * 4, std::uint32_t( stored.size() ) );
+		blob += stored;
 	}
 	return blob;
 }

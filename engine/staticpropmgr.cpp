@@ -2032,33 +2032,6 @@ void CStaticPropMgr::DrawStaticProps( IClientRenderable **pProps, int count, boo
 		RenderCoreWorld_OnStaticPropsDrawn( drawn.Base(), drawn.Count() );
 	}
 
-	CUtlVector<IClientRenderable *> legacyProps;
-	if ( !bShadowDepth && !IsUsingStaticPropDebugModes() && !drawVCollideWireframe )
-	{
-		CUtlVector<unsigned int> coreProps;
-		legacyProps.EnsureCapacity( count );
-		for ( int i = 0; i < count; ++i )
-		{
-			CStaticProp *prop = static_cast<CStaticProp *>( pProps[i] );
-			const int index = CorePropIndex( pProps[i] );
-			if ( index >= 0 && prop->m_pModel && prop->m_Alpha == 255 &&
-			     prop->m_DiffuseModulation.x == 1.0f && prop->m_DiffuseModulation.y == 1.0f &&
-			     prop->m_DiffuseModulation.z == 1.0f &&
-			     RenderCoreWorldDraw_DrawsStaticProp( unsigned( index ) ) )
-				coreProps.AddToTail( unsigned( index ) );
-			else
-				legacyProps.AddToTail( pProps[i] );
-		}
-		if ( coreProps.Count() &&
-		     RenderCoreWorldDraw_TakeStaticProps( coreProps.Base(), coreProps.Count() ) )
-		{
-			pProps = legacyProps.Base();
-			count = legacyProps.Count();
-			if ( count == 0 )
-				return;
-		}
-	}
-
 	if ( IsUsingStaticPropDebugModes() || drawVCollideWireframe )
 	{
 		DrawStaticProps_Slow( pProps, count, bShadowDepth, drawVCollideWireframe );
@@ -2452,4 +2425,9 @@ void StaticPropMgr_CorePropInfo( int nProp, const model_t **model, float world[1
     unsigned char *alpha, float modulation[3], bool *castsShadow )
 {
 	s_StaticPropMgr.CorePropInfo( nProp, model, world, skin, alpha, modulation, castsShadow );
+}
+
+int StaticPropMgr_CorePropIndex( IClientRenderable *pRenderable )
+{
+	return s_StaticPropMgr.CorePropIndex( pRenderable );
 }

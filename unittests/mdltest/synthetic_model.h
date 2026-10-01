@@ -41,6 +41,7 @@ struct SyntheticMesh
 	// Optional lower-LOD topology, into this mesh's original vertices. An
 	// explicit empty list removes its geometry at that level.
 	std::vector<std::vector<std::uint16_t>> lodIndices;
+	std::vector<mdl::Flex> flexes;
 };
 
 using SyntheticSubModel = std::vector<SyntheticMesh>; // one mstudiomodel_t
@@ -96,6 +97,8 @@ struct SyntheticModel
 	std::vector<float> lodSwitches = { 0.0f };
 	// [LOD] replacements as (Studio texture slot, replacement name).
 	std::vector<std::vector<std::pair<std::uint16_t, std::string>>> lodReplacements;
+	std::vector<std::string> flexDescriptors;
+	float flexScale = 1.0f / 4096.0f;
 };
 
 struct SyntheticFiles
@@ -395,6 +398,15 @@ inline SyntheticFiles WriteModel( const SyntheticModel &model )
 	Put32( mdl, 4, model.version );
 	Put32( mdl, 8, model.checksum );
 	std::memcpy( &mdl[12], model.name.data(), std::min<std::size_t>( model.name.size(), 63 ) );
+	PutF( mdl, 392, model.flexScale );
+	const std::size_t flexDescriptors = Grow( mdl, model.flexDescriptors.size() * 4 );
+	Put32( mdl, 260, static_cast<std::int32_t>( model.flexDescriptors.size() ) );
+	Put32( mdl, 264, static_cast<std::int32_t>( flexDescriptors ) );
+	for ( std::size_t i = 0; i < model.flexDescriptors.size(); ++i )
+	{
+		const std::size_t at = flexDescriptors + i * 4;
+		Put32( mdl, at, static_cast<std::int32_t>( AppendString( mdl, model.flexDescriptors[i] ) - at ) );
+	}
 	const std::size_t textures = Grow( mdl, model.textures.size() * 64 );
 	Put32( mdl, 204, static_cast<std::int32_t>( model.textures.size() ) );
 	Put32( mdl, 208, static_cast<std::int32_t>( textures ) );
@@ -448,6 +460,42 @@ inline SyntheticFiles WriteModel( const SyntheticModel &model )
 				Put32( mdl, mesh + 0, subs[s][m].textureRef );
 				Put32( mdl, mesh + 8, static_cast<std::int32_t>( subs[s][m].vertices.size() ) );
 				Put32( mdl, mesh + 12, static_cast<std::int32_t>( offset ) );
+				const auto &flexes = subs[s][m].flexes;
+				const std::size_t flexAt = Grow( mdl, flexes.size() * 60 );
+				Put32( mdl, mesh + 16, static_cast<std::int32_t>( flexes.size() ) );
+				Put32( mdl, mesh + 20, static_cast<std::int32_t>( flexAt - mesh ) );
+				for ( std::size_t f = 0; f < flexes.size(); ++f )
+				{
+					const mdl::Flex &flex = flexes[f];
+					const std::size_t at = flexAt + f * 60;
+					Put32( mdl, at, static_cast<std::int32_t>( flex.descriptor ) );
+					Put32( mdl, at + 28, static_cast<std::int32_t>( flex.pair ) );
+					for ( std::size_t t = 0; t < 4; ++t )
+						PutF( mdl, at + 4 + t * 4, flex.targets[t] );
+					const bool wrinkle = std::any_of( flex.deltas.begin(), flex.deltas.end(),
+					    []( const mdl::FlexDelta &delta ) { return delta.wrinkle != 0.0f; } );
+					const std::size_t stride = wrinkle ? 18 : 16;
+					mdl[at + 32] = wrinkle ? 1 : 0;
+					const std::size_t deltas = Grow( mdl, flex.deltas.size() * stride );
+					Put32( mdl, at + 20, static_cast<std::int32_t>( flex.deltas.size() ) );
+					Put32( mdl, at + 24, static_cast<std::int32_t>( deltas - at ) );
+					const float scale = ( model.flags & 0x00200000 ) ? model.flexScale : 1.0f / 4096.0f;
+					for ( std::size_t d = 0; d < flex.deltas.size(); ++d )
+					{
+						const mdl::FlexDelta &delta = flex.deltas[d];
+						const std::size_t pos = deltas + d * stride;
+						Put16( mdl, pos, std::uint16_t( delta.vertex ) );
+						mdl[pos + 2] = static_cast<char>( delta.speed );
+						mdl[pos + 3] = static_cast<char>( delta.side );
+						const float values[] = { delta.position.x, delta.position.y, delta.position.z,
+						    delta.normal.x, delta.normal.y, delta.normal.z };
+						for ( std::size_t c = 0; c < 6; ++c )
+							Put16( mdl, pos + 4 + c * 2, ( model.flags & 0x00004000 )
+							    ? std::uint16_t( std::int16_t( values[c] / scale ) ) : Half( values[c] ) );
+						if ( wrinkle )
+							Put16( mdl, pos + 16, std::uint16_t( std::int16_t( delta.wrinkle / scale ) ) );
+					}
+				}
 				offset += subs[s][m].vertices.size();
 			}
 			vertexCursor += count;

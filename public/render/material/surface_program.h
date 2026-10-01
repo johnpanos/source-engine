@@ -302,8 +302,9 @@ struct SurfaceFrame
 	// reflection target).
 	float viewport[4] = { 0.0f, 0.0f, 1.0f, 1.0f };
 	SurfaceAreaLight areas[kSurfaceMaxAreaLights];
+	float clipPlanes[6][4] = {};
 };
-static_assert( sizeof( SurfaceFrame ) == 176 + 64 * kSurfaceMaxAreaLights );
+static_assert( sizeof( SurfaceFrame ) == 272 + 64 * kSurfaceMaxAreaLights );
 
 // The flat vertex (surface_flat.vert): position, base and lightmap
 // coordinates, and color as UNORM8x4 (RGBA).
@@ -465,6 +466,19 @@ struct SurfaceMapTextures
 	device::TextureDesc probeBounceDesc;
 };
 
+// Ordered view/portal state, independent of material semantics. Default state
+// preserves the material's depth policy. Portal masks can override it explicitly.
+struct SurfaceDrawState
+{
+	device::StencilState stencil;
+	bool overrideDepth = false;
+	bool depthTest = true;
+	bool depthWrite = true;
+	device::CompareOp depthCompare = device::CompareOp::kLessEqual;
+	std::uint8_t colorWrite = device::kColorWriteAll;
+	auto operator<=>( const SurfaceDrawState & ) const = default;
+};
+
 // One point of the program: its pipeline state and specialization.
 struct SurfaceVariant
 {
@@ -476,6 +490,8 @@ struct SurfaceVariant
 	std::uint32_t detailMode = 0; // $detailblendmode, with kSurfaceDetail
 	SurfaceVertexLayout layout = SurfaceVertexLayout::kFlat;
 	bool ignoreDepth = false;
+	SurfaceDrawState drawState{};
+	bool portalMask = false;
 
 	auto operator<=>( const SurfaceVariant & ) const = default;
 	bool operator==( const SurfaceVariant & ) const = default;
@@ -553,6 +569,9 @@ public:
 	// neutral specialization returns the pipeline itself.
 	foundation::Expected<device::PipelineId, SurfaceStatus> DebugPipeline(
 	    device::PipelineId shipped, const shaderlib::DebugSpecialization &debug );
+	foundation::Expected<device::PipelineId, SurfaceStatus> StatePipeline(
+	    device::PipelineId shipped, const SurfaceDrawState &state,
+	    const shaderlib::DebugSpecialization &debug = {} );
 	// A shipped pipeline's variant with terms added and removed (a pass's
 	// variant: the prepass, the SSR targets); kInvalidRequest when this
 	// program did not make it.

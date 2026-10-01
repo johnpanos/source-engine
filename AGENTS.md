@@ -199,12 +199,21 @@ platform acceptance.
   - The old copy is deleted in the change that replaces it.
   - One owner per concept is settled before code, and each concept has one
     definition that other documents link to.
-  - Look first, then optimize: performance gates (frame time, GPU time,
-    cost, memory, budgets, speedups) never block render work, integration
-    or a dependent row. They are measured and recorded, and a miss is an
-    optimization item. An effect is never cut or turned off for being
-    over budget; only a missing capability or the user's decision on a
-    profile's shipped default turns one off.
+  - Preserve the complete image and meet RFC 0016's
+    [hard render budgets](RFC/0016-render-core.md#hard-render-budgets-user-decision-2026-10-01)
+    (user decision, 2026-10-01, superseding the earlier nonblocking rule).
+    A miss or missing required evidence blocks the affected performance
+    acceptance and promotion; development and optimization continue to fix it.
+    No effect, cohort, resolution or sample count is cut to pass the budget.
+    Only the user may relax the target or change the profile's shipped quality.
+  - If it is faster on the GPU, do it on the GPU: RFC 0003's
+    [binding placement policy](RFC/0003-dependency-aware-job-system.md#cpugpu-execution-placement-user-decision-2026-10-01)
+    owns the equivalent-output, full-cost comparison and crossover rules.
+    A measured faster GPU implementation must become the supported product
+    path; keeping a slower CPU default for convenience is not permitted.
+  - Apply RFC 0016's [scope and complexity discipline](RFC/0016-render-core.md#scope-and-complexity-discipline-user-decision-2026-10-01)
+    (user decision, 2026-10-01) when selecting render slices and assigning
+    responsibilities; it owns the rule for avoiding excess mechanisms and work.
 
 ## DRY and Liskov Substitution Principle
 
@@ -411,8 +420,18 @@ the roadmap's hard prerequisites:
 5. Supply the modern model, texture, bake and dense-scene/LOD paths that let the
    core show representative new content (RFCs 0007, 0008 and 0015).
 6. Profile and optimize the complete result on target hardware with every
-   declared effect enabled. A budget miss is an optimization item under RFC
-   0016's binding rules, never a reason to silently disable an effect.
+   declared effect enabled. Meet the hard render target under RFC 0016's
+   amended binding rule 7; a miss keeps performance acceptance open and is
+   never a reason to silently disable an effect.
+
+The user requires high-performance clustered lighting and rejects the current
+performance (2026-10-01): [P2:CE feasibility and implementation comparison](RFC/0016-p2ce-clustered-lighting-2026-10-01.md).
+The binding desktop target is owned by `linux-desktop-high-120` in
+[`quality/budgets/render-v1.json`](quality/budgets/render-v1.json), with the
+confirmed native resolution and High settings from its profile. Its numeric
+limits have one owner. Historical K0 and 1024×768/incomplete core captures do
+not certify it. R90/R95/R96/R91 retain required optimization work alongside
+quality completion; their affected performance acceptance remains unverified.
 
 The user's 2026-10-01 profiling slice implements spatial area-light masks,
 same-view lighting reuse, shorter LTC live ranges and core-only Forward+
@@ -1723,13 +1742,27 @@ Keep the table concise and link details below or from the domain progress file.
   - D6–D7 also support R53, R54 and R56.
   - Nothing is implemented yet, and this closes no other row's criterion.
 
+- R90-CLUSTER-PERF / R95 / R96 / R91: `partial` (user direction, 2026-10-01).
+  [RFC 0016](RFC/0016-render-core.md#high-performance-clustered-lighting-user-decision-2026-10-01)
+  owns mandatory product GPU assignment when faster, shared-view reuse, correct
+  shadow invalidation, removal of replaced CPU/native work and full-model
+  optimization. `linux-desktop-high-120` owns the hard desktop minimum and
+  [`portal2-linux-native-vulkan-high.json`](quality/product_profiles/portal2-linux-native-vulkan-high.json)
+  owns High. The installed `frame_floor.py` reads the row through the laser
+  route, rejects relaxed floors and capped offscreen qualification, pins/queries
+  High and checks the actual drawable/GPU and complete timing stream. Its timing
+  verdict does not close complete-image or representative-scene coverage.
+  Missing evidence and misses block performance acceptance/promotion. No render
+  gate is closed by these documentation and budget changes.
+
 - R32-RENDER-BUDGETS: `partial` (2026-09-25, user direction). This sets
   per-profile render budgets, which close the `presentation.frame-budgets`
   entry in [`quality/baseline.json`](quality/baseline.json). R32 owns it.
-  - Recorded (2026-09-26): `quality/budgets/render-v1.json` exists with one
-    passing row, `tvos-portal-frame-pacing-60` (Apple TV 4K). The desktop
-    Wayland and Fold7 rows are pending, and no budget script checks the file
-    yet. The baseline entry is `partial`. Device measurements come
+  - Current (2026-10-01): `quality/budgets/render-v1.json` contains the
+    hard desktop High row and retained desktop/Fold7 K0 records; the installed
+    `render_budgets.py check` validates declarations, not performance acceptance.
+    Apple TV retains its historical one-scenario result. High measurements and
+    complete-scene qualification remain unverified. Device measurements come
     from `frame_pacing_device.py` and `ios_frame_pacing.py`.
   - Method: RFC 0005's "Performance and promotion". Set absolute budgets
     and regression allowances per profile before measuring or optimizing.

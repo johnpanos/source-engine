@@ -2415,9 +2415,11 @@ stack, with no new document, global, or second selection owner:
   - `hammer::formats::VpkArchive` (`vpk_archive.{h,cpp}`): dependency-free VPK v1/v2
     directory reader over `IByteStore`, resolving inline/preload/external chunks —
     the clean-core replacement for the tier2-coupled `vpklib` `CPackedStore`.
-  - `hammer::formats::VtfImage` / `DecodeVtf` (`vtf_image.{h,cpp}`): VTF 7.1–7.5
-    decoder to mip-0 RGBA8 (RGBA/BGR/BGRA/… + DXT1/3/5), header read by byte offset
-    (packing/endian independent). Unsupported formats fail with a diagnostic.
+  - `hammer::formats::VtfImage` / `DecodeVtf` (`vtf_image.{h,cpp}`): VTF 7.1–7.6
+    decoder to mip-0 RGBA8 (RGBA/BGR/BGRA/… + DXT1/3/5 + Strata BC7), header read
+    by byte offset (packing/endian independent). VTF 7.6 AXC Deflate/Zstandard
+    runs use an explicit decompression callback. Unsupported formats fail with a
+    diagnostic.
   - `hammer::formats::MaterialCatalog` (`material_catalog.{h,cpp}`): enumerates
     `materials/**.vmt`, canonicalizes authored names, resolves `$basetexture`
     (following one level of `patch` `include`), and decodes it to RGBA, caching
@@ -2439,6 +2441,16 @@ stack, with no new document, global, or second selection owner:
   CI).** Mounting HL2 `hl2_misc_dir.vpk` + `hl2_textures_dir.vpk` (18 796 + 5 232
   entries) enumerated 5 292 materials and decoded DXT1/DXT5 512×512 base textures
   end-to-end through the search path.
+- **P2:CE VTF 7.6 follow-up (2026-10-01; no gate closure).** The strict decoder
+  now parses `AXC` per-run compression metadata and Strata image format 70, using
+  pinned MIT `bcdec` for BC7 while the Portal PBR composition supplies zlib and
+  Zstandard. Positive/sensitivity conformance passes 32/32 and 11/11 with
+  independently serialized AXC and BC7 fixtures. A local integration smoke read
+  real Workshop VPK v2 archives and decoded an EverythingPBR 2048×2048 DXT1 VTF
+  plus an ApertureVR 4096×4096 BC7 VTF; the BC7 RGBA output matched P2:CE's
+  bundled MareTF decoder byte-for-byte. Workshop texture bytes are not fixtures
+  and were not copied into the repository; their authors' reuse terms still
+  apply.
 - **GTK frontend (`hammer/gtk/`, additive).** The renderer textures the 3D view:
   a location-3 `aTexCoord` + `sampler2D`, per-face texture bind keyed by
   `BrushFace.material` via a borrowed `MaterialCatalog`, world-planar UVs at

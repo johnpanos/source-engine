@@ -152,6 +152,7 @@ std::vector<pass::world::WorldMaterial> CoreWorld::WorldMaterials(
 		pass::world::WorldMaterial material;
 		material.name = source.name ? source.name : "";
 		material.shader = source.shader ? source.shader : "";
+		material.hasProxy = source.hasProxy;
 		material.translucent = source.translucent;
 		for ( int v = 0; v < source.variableCount; ++v )
 		{
@@ -1239,28 +1240,54 @@ bool CoreWorld::PoseModel(
 	return true;
 }
 
+bool CoreWorld::DrawsStaticProp( unsigned int prop, unsigned int lod ) const
+{
+	if ( !m_StageSet || prop >= m_StaticInstances.size() )
+		return false;
+	const pass::world::WorldData::StaticInstance &instance = m_StaticInstances[prop];
+	if ( instance.mesh >= m_ModelPoseSources.size() )
+		return false;
+	const ModelPoseSource &model = m_ModelPoseSources[instance.mesh];
+	if ( !model.parsed || lod >= model.lodCount )
+		return false;
+	const auto selected = model.SelectedSurfaces( 0, lod );
+	return m_Pass.DrawsPosedModel(
+	    instance.mesh, instance.skin, RenderCoreDrawPhase::kAll, selected );
+}
+
 bool CoreWorld::DrawView( const unsigned int *surfaces, unsigned int count,
     const float worldToClip[16], const float viewport[6], unsigned long long hostFrame,
     const float worldToView[16], const float viewToClip[16], float waterZOffset,
-    const unsigned int *staticProps, unsigned int staticPropCount,
+    const RenderCoreStaticPropDraw *staticProps, unsigned int staticPropCount,
     const RenderCorePosedModel *posedModels, unsigned int posedModelCount )
 {
 	legacy::ICorePassSlots *slots = m_Frontend.CorePassSlots();
 	if ( !slots || ( count == 0 && staticPropCount == 0 && posedModelCount == 0 ) ||
 	     ( count && !surfaces ) || ( posedModelCount && !posedModels ) ||
-	     ( ( staticPropCount || posedModelCount ) && ( !m_StageSet || m_ViewDepth > 1 ) ) ||
+	     ( ( staticPropCount || posedModelCount ) && !m_StageSet ) ||
 	     ( staticPropCount && !staticProps ) )
 		return false;
 	for ( unsigned int i = 0; i < staticPropCount; ++i )
 	{
-		if ( !m_Pass.DrawsStaticInstance( staticProps[i] ) )
+		if ( !DrawsStaticProp( staticProps[i].prop, staticProps[i].lod ) )
 			return false;
 	}
 	pass::world::WorldView view;
 	if ( count )
 		view.surfaces.assign( surfaces, surfaces + count );
 	if ( staticPropCount )
-		view.staticInstances.assign( staticProps, staticProps + staticPropCount );
+	{
+		view.staticInstances.reserve( staticPropCount );
+		for ( unsigned int i = 0; i < staticPropCount; ++i )
+		{
+			const pass::world::WorldData::StaticInstance &instance =
+			    m_StaticInstances[staticProps[i].prop];
+			pass::world::WorldView::StaticInstance captured( staticProps[i].prop );
+			captured.surfaceSelection =
+			    m_ModelPoseSources[instance.mesh].SelectedSurfaces( 0, staticProps[i].lod );
+			view.staticInstances.push_back( std::move( captured ) );
+		}
+	}
 	for ( unsigned int i = 0; i < posedModelCount; ++i )
 	{
 		pass::world::WorldView::PosedModel pose;
@@ -1551,7 +1578,7 @@ std::optional<pass::world::WorldSceneColor> CoreWorld::Capture( device::IRenderD
 
 std::uint32_t CoreWorld::QueueMesh( const legacy::CoreMeshDraw &draw )
 {
-	if ( !AcceptsMeshes() )
+	if ( !AcceptsMeshes() && draw.kind == legacy::CoreMeshKind::kSurface )
 		return 0;
 	if ( !draw.name || !draw.shader || !draw.vertices || !draw.indices || !draw.vertexCount ||
 	     !draw.indexCount || ( draw.variableCount && !draw.variables ) )
@@ -1561,10 +1588,18 @@ std::uint32_t CoreWorld::QueueMesh( const legacy::CoreMeshDraw &draw )
 	view.viewport = draw.viewport;
 	pass::world::WorldView::DynamicDraw geometry;
 	geometry.material.name = draw.name;
-	geometry.material.shader = draw.shader;
+	geometry.material.shader =
+	    draw.kind == legacy::CoreMeshKind::kStencilClear ? "UnlitGeneric" : draw.shader;
+	if ( draw.kind == legacy::CoreMeshKind::kStencilClear )
+	{
+		geometry.material.variables.emplace_back( "$vertexcolor", "1" );
+		geometry.material.variables.emplace_back( "$vertexalpha", "1" );
+		geometry.material.variables.emplace_back( "$nofog", "1" );
+	}
 	geometry.material.mesh = draw.mesh;
 
-	for ( std::uint32_t i = 0; i < draw.variableCount; ++i )
+	for ( std::uint32_t i = 0;
+	    draw.kind != legacy::CoreMeshKind::kStencilClear && i < draw.variableCount; ++i )
 	{
 		const legacy::CoreMeshVariable &variable = draw.variables[i];
 		if ( !variable.key || !variable.value )
@@ -1665,6 +1700,11 @@ void CoreWorld::RecordSlot(
 	if ( target.textures )
 		textures.emplace( *target.textures );
 	pass::world::WorldTarget world;
+	world.drawState = target.drawState;
+	std::memcpy( world.clipPlanes, target.clipPlanes, sizeof( world.clipPlanes ) );
+	world.overrideDepthRange = true;
+	world.minDepth = target.minDepth;
+	world.maxDepth = target.maxDepth;
 	world.device = target.device;
 	// The sRGB view when the target has one; else the unorm view, and the
 	// shader encodes (the same curve, the output encoding frame term).

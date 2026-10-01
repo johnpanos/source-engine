@@ -367,7 +367,7 @@ static void LevelInitModels( IRenderCoreWorld *pWorld )
 			continue;
 		studiohdr_t *header = modelinfo->GetStudiomodel( model );
 		if ( !header || header->numbones <= 0 || header->numbones > 255 ||
-		     header->numflexdesc != 0 || modelinfo->ModelHasMaterialProxy( model ) )
+		     header->numflexdesc != 0 )
 			continue;
 		state.registeredModels.push_back( model );
 	}
@@ -459,6 +459,7 @@ static void LevelInitModels( IRenderCoreWorld *pWorld )
 				desc.values = vars.valuePtrs.Base();
 				desc.textures = vars.textures.Base();
 				desc.defaults = vars.defaults.Base();
+				desc.hasProxy = material->HasProxy();
 				desc.translucent = material->IsTranslucent();
 				source.materials.push_back( desc );
 			}
@@ -838,7 +839,7 @@ void RenderCoreWorldDraw_LevelShutdown()
 bool RenderCoreWorldDraw_ViewEligible( unsigned long flags, bool bWorldMeshWorld )
 {
 	CoreWorldState &state = State();
-	if ( !state.loaded || !r_core_world.GetBool() || RenderCoreWorld_ViewDepth() != 1 )
+	if ( !state.loaded || !r_core_world.GetBool() || RenderCoreWorld_ViewDepth() < 1 )
 		return false;
 	if ( flags & ( DRAWWORLDLISTS_DRAW_SHADOWDEPTH | DRAWWORLDLISTS_DRAW_SSAO |
 	                 DRAWWORLDLISTS_DRAW_REFRACTION | DRAWWORLDLISTS_DRAW_REFLECTION ) )
@@ -883,14 +884,15 @@ bool RenderCoreWorldDraw_OwnsLighting( SurfaceHandle_t surfID )
 // Queues the core's surfaces (its entries) for the current view, with the
 // view's transform and viewport, and marks its slot here in the stream.
 static bool QueueCoreView( IRenderCoreWorld *pWorld, const unsigned int *pEntries, int nCount,
-    float waterZOffset, const unsigned int *pStaticProps = NULL, int nStaticProps = 0,
+    float waterZOffset, const RenderCoreStaticPropDraw *pStaticProps = NULL, int nStaticProps = 0,
     const RenderCorePosedModel *pPosedModels = NULL, int nPosedModels = 0 )
 {
 	// The engine's view as pushed: the legacy context holds the same
 	// matrices and viewport, and the core reads no legacy stream.
 	VMatrix view, projection;
 	int rect[4];
-	R_CurrentSceneView( view, projection, rect );
+	if ( !R_CurrentSceneView( view, projection, rect ) )
+		return false;
 	const VMatrix worldToClip = projection * view;
 	float toClip[16];
 	for ( int r = 0; r < 4; ++r )
@@ -919,7 +921,7 @@ bool RenderCoreWorldDraw_CanTakePosedModel( const model_t *model )
 {
 	const CoreWorldState &state = State();
 	return model && state.stageWorld && r_core_world.GetInt() == 1 &&
-	       RenderCoreWorld_ViewDepth() == 1 && RenderCoreHost_World() &&
+	       RenderCoreWorld_ViewDepth() >= 1 && RenderCoreHost_World() &&
 	       std::find( state.registeredModels.begin(), state.registeredModels.end(), model ) !=
 	           state.registeredModels.end();
 }
@@ -1036,24 +1038,29 @@ bool RenderCoreWorldDraw_ChainsOnly()
 	       ( state.viewActive || ( state.loaded && r_core_world_isolate.GetBool() ) );
 }
 
-bool RenderCoreWorldDraw_TakeStaticProps( const unsigned int *props, int count )
+bool RenderCoreWorldDraw_TakeStaticProps(
+    const unsigned int *props, const unsigned int *lods, int count )
 {
 	IRenderCoreWorld *pWorld = RenderCoreHost_World();
-	if ( !pWorld || !State().stageWorld || r_core_world.GetInt() != 1 || count <= 0 )
+	if ( !pWorld || !State().stageWorld || r_core_world.GetInt() != 1 || !props || !lods ||
+	     count <= 0 )
 		return false;
+	std::vector<RenderCoreStaticPropDraw> draws;
+	draws.reserve( count );
 	for ( int i = 0; i < count; ++i )
 	{
-		if ( !pWorld->DrawsStaticProp( props[i] ) )
+		if ( !pWorld->DrawsStaticProp( props[i], lods[i] ) )
 			return false;
+		draws.push_back( { props[i], lods[i] } );
 	}
-	return QueueCoreView( pWorld, NULL, 0, 0.0f, props, count );
+	return QueueCoreView( pWorld, NULL, 0, 0.0f, draws.data(), count );
 }
 
-bool RenderCoreWorldDraw_DrawsStaticProp( unsigned int prop )
+bool RenderCoreWorldDraw_DrawsStaticProp( unsigned int prop, unsigned int lod )
 {
 	IRenderCoreWorld *pWorld = RenderCoreHost_World();
 	return pWorld && State().stageWorld && r_core_world.GetInt() == 1 &&
-	       pWorld->DrawsStaticProp( prop );
+	       pWorld->DrawsStaticProp( prop, lod );
 }
 
 CON_COMMAND( r_core_world_stats, "RFC 0016 K5: the core world's surfaces, views and gaps" )

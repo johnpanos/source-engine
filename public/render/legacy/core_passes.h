@@ -57,6 +57,10 @@ struct CorePassFog
 // target (a render-target texture).
 struct CorePassTarget
 {
+	material::SurfaceDrawState drawState{};
+	float clipPlanes[6][4] = {};
+	float minDepth = 0.0f;
+	float maxDepth = 1.0f;
 	// The device the slot records on: the backend's.
 	device::IRenderDevice2 *device = nullptr;
 	device::TextureId color;
@@ -214,8 +218,15 @@ struct CoreMeshVariable
 	const char *defaultValue = nullptr;
 	int textureHandle = 0;
 };
+enum class CoreMeshKind : std::uint8_t
+{
+	kSurface,
+	kDepthMask,
+	kStencilClear
+};
 struct CoreMeshDraw
 {
+	CoreMeshKind kind = CoreMeshKind::kSurface;
 	const char *name = nullptr;
 	const char *shader = nullptr;
 	const CoreMeshVariable *variables = nullptr;

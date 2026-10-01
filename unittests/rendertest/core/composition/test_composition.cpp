@@ -213,6 +213,14 @@ void LodComposition( testing::Checks &checks, const RenderCoreBinding &binding )
 		0, 0, 1, 0 };
 	const float transform[] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
 	const float viewport[] = { 0, 0, 64, 64, 0, 1 };
+	const auto drawsStatic = [&]( unsigned int lod )
+	{
+		const RenderCoreStaticPropDraw draw{ 0, lod };
+		g_Slots.tags.clear();
+		return world.DrawView( nullptr, 0, transform, viewport, 1, nullptr, nullptr, 0, &draw, 1,
+		           nullptr, 0 ) &&
+		       g_Slots.tags.size() == 1;
+	};
 	RenderCorePosedModel pose{ 0, 0, bones, 2 };
 	const auto draws = [&]( unsigned int lod, int body = 0 )
 	{
@@ -229,16 +237,27 @@ void LodComposition( testing::Checks &checks, const RenderCoreBinding &binding )
 	checks.That( draws( 2 ), "P10.explicit-blank-shadow-LOD-is-valid" );
 	checks.That( !draws( 3 ) && g_Slots.tags.empty(),
 	    "P10.out-of-range-LOD-is-refused-before-slot-publication" );
+	checks.That( !world.DrawsStaticProp( 0, 1 ) && !drawsStatic( 1 ) && g_Slots.tags.empty(),
+	    "P10.static-unsupported-replacement-is-refused-before-slot-publication" );
+	checks.That(
+	    world.DrawsStaticProp( 0, 2 ) && drawsStatic( 2 ), "P10.static-blank-LOD-is-valid" );
+	checks.That( !world.DrawsStaticProp( 0, 3 ) && !drawsStatic( 3 ) && g_Slots.tags.empty(),
+	    "P10.static-out-of-range-LOD-is-refused-before-slot-publication" );
 
 	materials[1].shader = "UnlitGeneric";
 	world.SetStaticProps( &model, 1, &prop, 1 );
 	checks.That( draws( 1 ), "P10.supported-replacement-LOD-is-eligible" );
 	checks.That( draws( 1, 1 ), "P10.body-and-LOD-selection-compose" );
+	checks.That( world.DrawsStaticProp( 0, 1 ) && drawsStatic( 1 ),
+	    "P10.static-supported-replacement-LOD-is-eligible" );
 
 	model.materialLodCount = 1;
 	world.SetStaticProps( &model, 1, &prop, 1 );
 	checks.That( draws( 0 ) && !draws( 1 ) && g_Slots.tags.empty(),
 	    "P10.missing-replacement-descriptor-refuses-only-that-LOD" );
+	checks.That( world.DrawsStaticProp( 0, 0 ) && !world.DrawsStaticProp( 0, 1 ) &&
+	                 !drawsStatic( 1 ) && g_Slots.tags.empty(),
+	    "P10.static-missing-replacement-descriptor-refuses-only-that-LOD" );
 	world.ClearWorld();
 	g_Slots.tags.clear();
 }

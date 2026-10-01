@@ -6833,6 +6833,10 @@ void CVulkanContext::RecordCorePassSections( render::device::CommandEncoder &enc
 		if ( d.corePassTerms < m_corePassTerms.size() )
 		{
 			const CorePassTerms &terms = m_corePassTerms[d.corePassTerms];
+			target.drawState = terms.drawState;
+			std::memcpy( target.clipPlanes, terms.clipPlanes, sizeof( target.clipPlanes ) );
+			target.minDepth = terms.minDepth;
+			target.maxDepth = terms.maxDepth;
 			target.lightmapScale = terms.lightmapScale;
 			target.outputScale = terms.outputScale;
 			std::copy( terms.eye, terms.eye + 3, target.eye );

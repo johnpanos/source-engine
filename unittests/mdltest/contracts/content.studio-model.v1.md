@@ -10,7 +10,7 @@ Depends on: `foundation` (`Expected`) only.
 
 ## Purpose
 
-Read the drawable level of detail 0 of a Source studio model (MDL + VVD + VTX)
+Read the drawable levels of detail of a Source studio model (MDL + VVD + VTX)
 as values, so the editor's viewports, the compile tools and the engine can share
 one reader that needs no tier0, tier1, mathlib or `studio.h`. First consumer: the
 GTK Hammer viewports (RFC 0002 R17 follow-up, props and instances).
@@ -21,20 +21,29 @@ GTK Hammer viewports (RFC 0002 R17 follow-up, props and instances).
   with equal checksums in the three files. The MDL version selects the VTX
   strip-group and strip layouts (33/35 bytes for version 49, 25/27 otherwise),
   as `datacache/mdlcache.cpp` does.
-- Returns, for the chosen body (part `p` draws model `(body / base_p) % count_p`),
-  every LOD 0 mesh with triangles: its skin reference, its vertices (the mesh's
+- `ParseModel` returns, for the chosen body (part `p` draws model
+  `(body / base_p) % count_p`) and LOD (both default to zero), every selected
+  mesh with triangles: its skin reference, its vertices (the mesh's
   range of the VVD's LOD 0 list after fixups; bind pose, model space) and a
   triangle list over them, wound counter-clockwise seen from outside (the files'
   clockwise order with the second and third index swapped). Tristrip strips
   become lists. Bounds cover the vertices the triangles use.
-- `ParseModelGeometryVariants` reads every submodel once, without enumerating body-group
-  combinations. `Mesh::bodyPart`/`bodyModel` identify each mesh; `Model::bodyParts`
+  Lower LOD topology addresses this same logical vertex order; it does not
+  require a second consumer-specific VVD reader.
+- `ParseModelGeometryVariants` reads every submodel and VTX LOD once, without
+  enumerating body-group combinations. `Mesh::bodyPart`/`bodyModel`/`lod` identify
+  each mesh; `Model::bodyParts`
   records selection metadata, including blank alternatives. `BodyPart::SelectedModel`
   owns the same arithmetic used by the selected-body reader. Bounds cover all
-  alternatives, and malformed inactive alternatives fail the entire read. Bones
+  alternatives, and malformed inactive alternatives or LODs fail the entire read. Bones
   and weights are read, but sequences are left empty: a runtime consumer supplies
   its live bone palette, so absent first-frame animation data cannot prevent
   geometry import.
+- `Model::lodTextures` retains each LOD's material slots after its VTX material
+  replacement list. Replacements affect only their named slots at that LOD.
+  Invalid slot indices, duplicate replacements and truncated lists fail the read;
+  an explicit blank LOD remains valid. Runtime material descriptors are resolved
+  by the consumer at the selected LOD.
 - `TextureIndex` maps a mesh and skin through the skin table; a skin out of
   range uses family 0 (engine behavior).
 - `ResolveMaterials` names each texture as a VMF names a material: the first
@@ -92,7 +101,8 @@ borrowed for the call. No globals; callable from any thread.
 
 - `content.studio-model` (linux-headless-core): synthetic models written by an
   independent writer parse to what they describe (versions 44, 45, 48, 49;
-  fixups; tristrips; body groups; skin families; material resolution order;
+  fixups at every LOD; tristrips; body groups; blank LODs; per-LOD material
+  replacements; skin families; material resolution order;
   VTX file preference); 23 malformed cases fail with their exact status and
   file; every strict prefix of each file fails; 3000 random byte-damage trials
   never yield an out-of-range index. Also passes under clang++ ASan/UBSan
@@ -120,8 +130,7 @@ borrowed for the call. No globals; callable from any thread.
   sequences they change. Named models of `sp_a2_trust_fling` (cube dropper,
   panel arms from their included animation model, turbine elevator), the faith
   plate and the turret match root rotations from an independent Python walk.
-- Not covered: LOD above 0, flexes, eyeballs, bone controllers, procedural
+- Not covered: flexes, eyeballs, bone controllers, procedural
   bones, IK, pose parameters (blend grids draw their first animation),
   animations merged across included models by name, the zero-frame
-  Quaternion32 rotation (`BONE_HAS_SAVEFRAME_ROT32`), material replacement
-  lists, big-endian (console) files.
+  Quaternion32 rotation (`BONE_HAS_SAVEFRAME_ROT32`), big-endian (console) files.

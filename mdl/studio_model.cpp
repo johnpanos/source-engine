@@ -50,6 +50,11 @@ constexpr std::uint32_t kBodyPartStride = 16;  // mstudiobodyparts_t
 constexpr std::uint32_t kModelStride = 148;    // mstudiomodel_t
 constexpr std::uint32_t kModelNumMeshes = 72;  // then meshindex, numvertices, vertexindex
 constexpr std::uint32_t kMeshStride = 116;     // mstudiomesh_t
+constexpr std::uint32_t kFlexStride = 60;     // mstudioflex_t
+constexpr std::uint32_t kMdlNumFlexDesc = 260; // then flexdescindex
+constexpr std::uint32_t kMdlFlexScale = 392;
+constexpr std::uint32_t kFlexesConverted = 0x00004000;
+constexpr std::uint32_t kFlexScaleFlag = 0x00200000;
 
 // studiohdr_t: skeleton, animations, sequences, animation blocks
 constexpr std::uint32_t kMdlFlags = 152;
@@ -606,6 +611,95 @@ float Half( std::uint16_t bits )
 Float3 Vector48( Reader &r, std::uint64_t at )
 {
 	return { Half( r.U16( at ) ), Half( r.U16( at + 2 ) ), Half( r.U16( at + 4 ) ) };
+}
+
+bool ReadFlexes( Reader &mdl, const Model &model, std::uint64_t mesh,
+    std::uint32_t vertexCount, std::vector<Flex> &out )
+{
+	const std::uint32_t count = mdl.Count( mesh + 16 );
+	const std::uint64_t flexes = mdl.Relative( mesh, mesh + 20 );
+	if ( mdl.Failed() || !mdl.Array( flexes, count, kFlexStride ) )
+		return false;
+	if ( !count )
+		return true;
+	const float scale =
+	    ( model.flags & kFlexScaleFlag ) ? mdl.F32( kMdlFlexScale ) : 1.0f / 4096.0f;
+	if ( !std::isfinite( scale ) || scale <= 0.0f ||
+	     scale > std::numeric_limits<float>::max() / 32768.0f )
+	{
+		mdl.Fail( ModelStatus::BadCount, kMdlFlexScale );
+		return false;
+	}
+	const auto component = [&]( std::uint64_t at )
+	{
+		if ( model.flags & kFlexesConverted )
+			return float( mdl.I16( at ) ) * scale;
+		// CMDLCache converts the on-disk half to signed fixed point once.
+		// Match that truncation so the same bytes give the same live shape.
+		const float quantized = std::trunc( Half( mdl.U16( at ) ) / scale );
+		if ( !std::isfinite( quantized ) || quantized < -32768.0f || quantized > 32767.0f )
+		{
+			mdl.Fail( ModelStatus::BadCount, at );
+			return 0.0f;
+		}
+		return quantized * scale;
+	};
+	for ( std::uint32_t i = 0; i < count; ++i )
+	{
+		const std::uint64_t at = flexes + std::uint64_t( i ) * kFlexStride;
+		Flex flex;
+		flex.descriptor = mdl.Count( at );
+		flex.pair = mdl.Count( at + 28 );
+		if ( flex.descriptor >= model.flexDescriptors.size() ||
+		     ( flex.pair && flex.pair >= model.flexDescriptors.size() ) )
+		{
+			mdl.Fail( ModelStatus::BadIndex, at );
+			return false;
+		}
+		for ( std::uint32_t j = 0; j < 4; ++j )
+		{
+			flex.targets[j] = mdl.F32( at + 4 + j * 4 );
+			if ( !std::isfinite( flex.targets[j] ) ||
+			     ( j && flex.targets[j] < flex.targets[j - 1] ) )
+			{
+				mdl.Fail( ModelStatus::BadCount, at + 4 + j * 4 );
+				return false;
+			}
+		}
+		const std::uint32_t vertices = mdl.Count( at + 20 );
+		const std::uint64_t deltas = mdl.Relative( at, at + 24 );
+		const std::uint8_t type = mdl.U8( at + 32 );
+		if ( type > 1 )
+		{
+			mdl.Fail( ModelStatus::BadCount, at + 32 );
+			return false;
+		}
+		const std::uint32_t stride = type == 1 ? 18u : 16u;
+		if ( !mdl.Array( deltas, vertices, stride ) )
+			return false;
+		for ( std::uint32_t j = 0; j < vertices; ++j )
+		{
+			const std::uint64_t deltaAt = deltas + std::uint64_t( j ) * stride;
+			FlexDelta delta;
+			delta.vertex = mdl.U16( deltaAt );
+			if ( delta.vertex >= vertexCount )
+			{
+				mdl.Fail( ModelStatus::BadIndex, deltaAt );
+				return false;
+			}
+			delta.speed = mdl.U8( deltaAt + 2 );
+			delta.side = mdl.U8( deltaAt + 3 );
+			delta.position =
+			    { component( deltaAt + 4 ), component( deltaAt + 6 ), component( deltaAt + 8 ) };
+			delta.normal =
+			    { component( deltaAt + 10 ), component( deltaAt + 12 ), component( deltaAt + 14 ) };
+			if ( type == 1 )
+				delta.wrinkle = float( mdl.I16( deltaAt + 16 ) ) * scale;
+			flex.deltas.push_back( delta );
+		}
+		out.push_back( std::move( flex ) );
+	}
+	return !mdl.Failed();
 }
 
 float RebuildW( float x, float y, float z, bool negative )
@@ -1496,6 +1590,15 @@ static foundation::Expected<Model, ModelError> ParseModelImpl( const ModelBytes 
 		model.name = std::string( raw.substr( 0, raw.find( '\0' ) ) );
 	}
 	model.flags = mdl.U32( kMdlFlags );
+	const std::uint32_t flexCount = mdl.Count( kMdlNumFlexDesc );
+	const std::uint64_t flexDescriptors = mdl.Count( kMdlNumFlexDesc + 4 );
+	if ( !mdl.Array( flexDescriptors, flexCount, 4 ) )
+		return MakeUnexpected( mdl.Error() );
+	for ( std::uint32_t i = 0; i < flexCount; ++i )
+	{
+		const std::uint64_t at = flexDescriptors + std::uint64_t( i ) * 4;
+		model.flexDescriptors.push_back( mdl.String( mdl.Relative( at, at ) ) );
+	}
 	model.hullMins = mdl.Vec( kMdlHullMin );
 	model.hullMaxs = mdl.Vec( kMdlHullMax );
 	model.viewMins = mdl.Vec( kMdlViewMin );
@@ -1753,6 +1856,8 @@ static foundation::Expected<Model, ModelError> ParseModelImpl( const ModelBytes 
 					out.textureRef = mdl.I32( mesh );
 					const std::uint32_t meshVertices = mdl.Count( mesh + 8 );
 					const std::int32_t vertexOffset = mdl.I32( mesh + 12 );
+					if ( !ReadFlexes( mdl, model, mesh, meshVertices, out.flexes ) )
+						return MakeUnexpected( mdl.Error() );
 					if ( mdl.Failed() )
 					{
 						return MakeUnexpected( mdl.Error() );
