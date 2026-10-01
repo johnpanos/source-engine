@@ -63,7 +63,7 @@ vec4 ReflectionProbesSample( vec2 texel )
 // fixture_light and FIXTURE_OCCLUDER; the C++ suite's FixtureLight), so a
 // texture with relight bands exercises the relit and occluded paths.
 #define REFLECTION_PROBE_RELIGHT
-#include "reflection_probes.glsl"
+#include "../../../render/shaders/common/reflection_probes.glsl"
 
 void ReflectionProbeDiffuseLight( vec3 position, vec3 normal, out vec3 now, out vec3 baked )
 {

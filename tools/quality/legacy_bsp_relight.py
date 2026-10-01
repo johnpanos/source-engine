@@ -56,7 +56,7 @@ load_toolchain = map_lighting.load_toolchain
 
 def relight(bsp, name, out, toolchain, quality=pbrt_map_build.LEGACY_QUALITY, game=None,
             force_from=None, boot=False, keep_going=False, publish=True, device=None,
-            runtime=None, max_seam_p99=None, probe_positions=None):
+            runtime=None, max_seam_p99=None, probe_positions=None, probe_volumes=None):
     """Relight the compiled map `bsp` as map `name`, built in `out`: the
     lighting back end (`map_lighting.light`) with the scene derived from the
     BSP. See `map_lighting.light` for the arguments; `max_seam_p99` waives the
@@ -65,6 +65,8 @@ def relight(bsp, name, out, toolchain, quality=pbrt_map_build.LEGACY_QUALITY, ga
     extra = {}
     if probe_positions is not None:
         extra["reflection_probe"] = {"positions": probe_positions}
+    if probe_volumes is not None:
+        extra.setdefault("reflection_probe", {})["volumes"] = probe_volumes
     if max_seam_p99 is not None:
         lightmap = {"seam_gate": {"p99": max_seam_p99}}
         if device:
@@ -97,6 +99,20 @@ def default_out(name):
     return ROOT / "quality-results" / "relight" / name
 
 
+def load_probe_volumes(path, map_name):
+    """Read room proxies/influences in stage meters; placement owns validation."""
+    import reflection_probe_set
+    data = json.loads(Path(path).read_text())
+    if data.get("schema") != "map-probe-volumes/v1" or data.get("map") != map_name:
+        raise ValueError("probe volumes must name the shipped map " + map_name)
+    volumes = data.get("volumes")
+    if not isinstance(volumes, list) or not volumes:
+        raise ValueError("probe volumes need one or more volumes")
+    for volume in volumes:
+        reflection_probe_set.authored_volume(volume, reflection_probe_set.PLACEMENT_DEFAULTS)
+    return volumes
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -126,6 +142,8 @@ def main():
                              "place of lightmap_ktx2.py's default; recorded in the manifest")
     parser.add_argument("--probe-positions", type=Path,
                         help="authored reflection-probe anchors for this shipped map")
+    parser.add_argument("--probe-volumes", type=Path,
+                        help="authored proxy/influence boxes and priorities in stage meters")
     args = parser.parse_args()
     toolchain = load_toolchain(args.toolchain)
     if bool(args.map) == bool(args.bsp):
@@ -142,9 +160,10 @@ def main():
         stem = bsp.stem
     name = args.map_name or (stem.lower() + "_relit")
     positions = load_probe_positions(args.probe_positions, stem) if args.probe_positions else None
+    volumes = load_probe_volumes(args.probe_volumes, stem) if args.probe_volumes else None
     relight(bsp, name, args.out or default_out(name), toolchain, args.quality, args.game,
             args.force_from, args.boot, args.keep_going, not args.no_publish, args.device,
-            args.runtime, args.max_seam_p99, positions)
+            args.runtime, args.max_seam_p99, positions, volumes)
 
 
 if __name__ == "__main__":

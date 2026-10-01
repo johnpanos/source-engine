@@ -18,9 +18,9 @@
   explicit, backend-neutral GPU device port with Vulkan, OpenGL and null
   adapters; a per-frame render graph; a persistent GPU scene with views and
   draw lists; material families; engine-owned frame and view orchestration;
-  clustered lights and a shadow atlas; and one legacy frontend that runs
-  today's `IMatRenderContext`, `IShaderAPI` and shader-DLL stream as passes
-  inside that graph
+  clustered Forward+ lighting and a shadow atlas; and one legacy frontend
+  that runs today's `IMatRenderContext`, `IShaderAPI` and shader-DLL stream
+  as passes inside that graph
 - Platform: [RFC 0001](0001-capability-based-platform-architecture.md) owns
   render providers, presentation bridges, capabilities, profiles and quirks
   (R15, R16), and composition. Its render migration step 9 keeps "the
@@ -66,6 +66,17 @@ running on four device families, but it cannot express passes, transient
 targets, GPU skinning, shadow maps, parallel recording, a second scene or a
 second graphics API, and every feature added to it makes the translation
 layer larger.
+
+### Rendering architecture: clustered Forward+
+
+The render core is a **clustered Forward+ renderer**. A compute pass builds a
+three-dimensional froxel light list for each view. Opaque, alpha-tested and
+translucent material families then evaluate the applicable lights while shading
+forward into the graph's multisampled scene-color target. The frame architecture
+has no screen-space material G-buffer or deferred-lighting pass. G-buffers used
+by relightable reflection probes are probe-local capture data, not the frame's
+shading architecture. Bounded special light classes such as projectors may use
+their own per-view lists without changing this architecture.
 
 This RFC inverts the relationship and builds the renderer as ports and
 adapters:
@@ -1168,7 +1179,7 @@ Each phase closes when:
 
 ## Lights and shadows (`render.lights.v1`, `render.shadows.v1`)
 
-- **One light authority.** Clustered lighting consumes RFC 0011's
+- **One light authority.** The clustered Forward+ path consumes RFC 0011's
   `render.light-set.v1` (and spark lights) as the only runtime light list.
   A froxel grid per view is filled by compute, and families read it through
   the view bind group.
@@ -2389,9 +2400,9 @@ is missing a capability, and the port changes first.
 
 ## Proposed decision
 
-Adopt the render core as ports and adapters beneath the frozen material
-API, with the layers enforced by CAP011. Deliver it through K0–K10 with the
-inversion at K3 held to byte-identical pixels and the OpenGL adapter at K10
-proving the port. Keep the legacy frontend permanently for mods, and ToGL on
-the legacy profiles. Add rows R86–R92 as `planned`, ranked after R47, with
-R92 after R88.
+Adopt the clustered Forward+ render core as ports and adapters beneath the
+frozen material API, with the layers enforced by CAP011. Deliver it through
+K0–K10 with the inversion at K3 held to byte-identical pixels and the OpenGL
+adapter at K10 proving the port. Keep the legacy frontend permanently for
+mods, and ToGL on the legacy profiles. Add rows R86–R92 as `planned`, ranked
+after R47, with R92 after R88.

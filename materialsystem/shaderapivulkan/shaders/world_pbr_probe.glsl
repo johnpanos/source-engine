@@ -23,7 +23,7 @@ vec4 ReflectionProbesSample( vec2 texel )
 	return textureLod( reflectionProbes, texel / vec2( textureSize( reflectionProbes, 0 ) ), 0.0 );
 }
 
-#include "reflection_probes.glsl"
+#include "../../../render/shaders/common/reflection_probes.glsl"
 
 // Reflection probe packed into the LMAP atlas's top rows by the map pipeline
 // (tools/quality/reflection_probe.py): equirect mips side by side from x = 0,

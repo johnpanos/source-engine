@@ -38,6 +38,7 @@
 #include "render/math/vector.h"
 
 #include <cstdint>
+#include <array>
 #include <span>
 #include <vector>
 
@@ -175,6 +176,19 @@ struct ClusterLists
 	// Indices into the light span AssignLights took, ascending per froxel.
 	std::vector<std::uint32_t> lightIndices;
 };
+
+// Two words per froxel, one bit per area light in light-set order. Unlike
+// point-light lists this cannot overflow at the supported 64-light limit.
+// Rectangle support planes expanded by reach conservatively bound its window.
+// More than 64 lights fails without changing out. Edge slices extend to infinity
+// because the shader clamps depth; adjacent screen tiles cover pixel-center shifts.
+using AreaFroxelMask = std::array<std::uint32_t, 2>;
+[[nodiscard]] bool AssignAreaLights( const ClusterGrid &grid,
+    std::span<const area_light::AreaLight> lights, std::vector<AreaFroxelMask> &out );
+
+// Append masks to a CPU-built ClusterIndexHeader + indices buffer. Header.w
+// stores the mask offset in uints plus one (zero means no spatial assignment).
+void AppendAreaMasks( std::span<const AreaFroxelMask> masks, std::vector<std::byte> &indices );
 
 struct ClusterStats
 {

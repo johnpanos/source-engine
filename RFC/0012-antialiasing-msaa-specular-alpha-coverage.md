@@ -34,12 +34,13 @@ never a blocker and never a reason to cut an effect.
 
 ## Decision and boundary
 
-The engine's native Vulkan renderer is a forward renderer. Every material
-family, including the PBR world and model shaders, draws straight into the
-back buffer's pass at its sample count. MSAA therefore antialiases geometry
-edges without a G-buffer. It can't fix the aliasing that comes from shading
-inside a triangle or from discarded fragments. This RFC completes
-antialiasing around MSAA rather than replacing it:
+The render core is the
+[clustered Forward+ renderer](0016-render-core.md#rendering-architecture-clustered-forward).
+Every material family, including the PBR world and model shaders, shades
+forward into the graph's multisampled scene-color target. MSAA therefore
+antialiases geometry edges without a material G-buffer. It can't fix the
+aliasing that comes from shading inside a triangle or from discarded fragments.
+This RFC completes antialiasing around MSAA rather than replacing it:
 
 1. **4x MSAA is the quality target** where a profile's budgets allow it. The
    target and memory policy is explicit per profile and measured on the device,
@@ -435,7 +436,8 @@ run leaves that profile's A5 unverified.
   built for them, but need motion vectors, jitter, history, an HDR target and
   portal-aware reprojection. Deferred to R63-era work.
 - **FXAA/SMAA only.** Cheap, but blurs texture detail and misses sub-pixel
-  geometry. MSAA is already implemented and correct for a forward renderer.
+  geometry. MSAA is already implemented and correct for the clustered Forward+
+  renderer.
 - **Supersampling or sample-rate shading.** Fixes every source of aliasing
   at 2–4× fragment cost. That's too expensive as a default on mobile, and it
   stays an open decision for desktop.

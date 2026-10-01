@@ -4583,12 +4583,12 @@ static void UploadWorldReflectionProbes( world_mesh_gpu::IWorldMeshUpload *uploa
 		remove();
 		return;
 	}
-	// The lump version repeats the payload's: v1, or v2 with relight bands.
+	// V3 extends the count; v1/v2 keep their original limits.
 	if ( ( lump.version != mapcontainer::kReflectionProbesVersion &&
-	         lump.version != mapcontainer::kReflectionProbesRelightVersion ) ||
-	     lump.flags != 0 ||
-	     lump.storedSize < mapcontainer::kReflectionProbesHeaderBytes ||
-	     lump.storedSize > mapcontainer::kReflectionProbesMaxBytes )
+	         lump.version != mapcontainer::kReflectionProbesRelightVersion &&
+	         lump.version != mapcontainer::kReflectionProbesTiledVersion ) ||
+	     lump.flags != 0 || lump.storedSize < mapcontainer::kReflectionProbesHeaderBytes ||
+	     lump.storedSize > mapcontainer::kReflectionProbesMaxBytes || lump.storedSize > INT_MAX )
 	{
 		Warning( "Map %s: RPRB version, flags or size unsupported\n", s_szMapName );
 		remove();
@@ -4614,11 +4614,18 @@ static void UploadWorldReflectionProbes( world_mesh_gpu::IWorldMeshUpload *uploa
 		return;
 	}
 	world_mesh_gpu::ReflectionProbesUploadRequest request;
-	request.width = layout.atlasWidth;
+	request.width = mapcontainer::ReflectionProbeTextureWidth( layout );
 	request.height = mapcontainer::ReflectionProbeTextureRows( layout );
 	request.probeCount = layout.count;
+	const uint64 texelValues = uint64( request.width ) * request.height * 4;
+	if ( texelValues > INT_MAX )
+	{
+		Warning( "Map %s: RPRB GPU texture exceeds upload allocation range\n", s_szMapName );
+		remove();
+		return;
+	}
 	CUtlVector<uint16> texels;
-	texels.SetCount( int( request.width * request.height * 4 ) );
+	texels.SetCount( int( texelValues ) );
 	mapcontainer::WriteReflectionProbeTexture(
 	    bytes.Base(), layout, mapcontainer::ReflectionProbeMode::Blend, texels.Base() );
 	request.texels = texels.Base();

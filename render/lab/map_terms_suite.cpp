@@ -559,7 +559,7 @@ std::optional<std::string> ReflectionProbeChecks( Lab &lab, Results &results )
 	    high, 0.0f, 2e-3f,
 	    [&]( const float3 &, float out[3] )
 	    {
-		    out[0] = float( layout.count ) / 16.0f;
+		    out[0] = float( layout.count ) / 64.0f;
 		    out[1] = 1.0f / 7.0f;
 		    out[2] = 1.0f;
 	    } );

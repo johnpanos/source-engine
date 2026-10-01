@@ -411,7 +411,6 @@
       "materialsystem/shaderapivulkan/shaders/present_gamma.frag": 34,
       "materialsystem/shaderapivulkan/shaders/present_gamma.vert": 11,
       "materialsystem/shaderapivulkan/shaders/probe_volume.glsl": 191,
-      "materialsystem/shaderapivulkan/shaders/reflection_probes.glsl": 321,
       "materialsystem/shaderapivulkan/shaders/reflection_probes_check.comp": 99,
       "materialsystem/shaderapivulkan/shaders/regen_legacy_spv.py": 191,
       "materialsystem/shaderapivulkan/shaders/regen_material_spv.py": 397,

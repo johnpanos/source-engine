@@ -56,6 +56,7 @@
 #include "render/material/pbr_family.h"
 #include "render/math/matrix.h"
 #include "render/pbr_brdf.h"
+#include "render/pass/lights/clusters.h"
 #include "render/pbr_ltc_table.h"
 #include "render/shaderlib/debug_view.h"
 #include "spv/area_light_defects_spv.h"
@@ -486,11 +487,52 @@ struct Frame
 	const Material *material = &kMaterials[0];
 	const View *view = nullptr;
 	shaderlib::DebugSpecialization debug;
+	bool spatial = true;
 };
 
 // Renders the receiver under a frame's lights.
 std::optional<std::string> Render( Lab &lab, const Frame &frame, CanvasImage &image )
 {
+	const std::uint64_t viewGroup = lab.nextGroup++;
+	material::GroupRequest viewRequest = lab.family->Program().NeutralViewGroup();
+	if ( frame.spatial )
+	{
+		pass::lights::ClusterViewDesc desc;
+		desc.view = frame.view->view;
+		desc.projection = frame.view->projection;
+		desc.widthPixels = desc.heightPixels = kSize;
+		desc.nearZ = frame.view->nearZ;
+		desc.farZ = frame.view->farZ;
+		auto limits = pass::lights::DesktopClusterLimits();
+		limits.tileSizePixels = 16;
+		auto grid = pass::lights::CreateClusterGrid( desc, limits );
+		if ( !grid )
+			return "area grid refused";
+		std::vector<pass::lights::AreaFroxelMask> masks;
+		if ( !pass::lights::AssignAreaLights( grid.Value(), frame.lights, masks ) )
+			return "area assignment refused";
+		material::SurfaceViewGpu view;
+		view.grid[0] = grid.Value().tilesX;
+		view.grid[1] = grid.Value().tilesY;
+		view.grid[2] = grid.Value().slices;
+		view.grid[3] = limits.tileSizePixels;
+		view.slices[0] = grid.Value().sliceScale;
+		view.slices[1] = grid.Value().sliceBias;
+		view.slices[2] = grid.Value().nearZ;
+		const auto &z = desc.view.rows[2];
+		view.viewDistance[0] = -z.x;
+		view.viewDistance[1] = -z.y;
+		view.viewDistance[2] = -z.z;
+		view.viewDistance[3] = -z.w;
+		std::vector<std::byte> indices( 16 );
+		pass::lights::AppendAreaMasks( masks, indices );
+		std::vector<pass::lights::FroxelRange> ranges( grid.Value().FroxelCount() );
+		const material::SurfaceLightGpu light;
+		viewRequest = lab.family->Program().ViewGroup( view,
+		    std::as_bytes( std::span( ranges ) ), indices, std::span( &light, 1 ) );
+	}
+	if ( !lab.groups.Set( viewGroup, viewRequest ) )
+		return "area view refused";
 	material::SurfaceFrame terms;
 	terms.eye[0] = frame.view->eye.x;
 	terms.eye[1] = frame.view->eye.y;
@@ -518,7 +560,7 @@ std::optional<std::string> Render( Lab &lab, const Frame &frame, CanvasImage &im
 	CanvasDraw draw;
 	draw.pipeline = pipeline.Value();
 	draw.groups[std::size_t( BindGroupRole::kFrame )] = group( frameGroup );
-	draw.groups[std::size_t( BindGroupRole::kView )] = group( lab.viewGroup );
+	draw.groups[std::size_t( BindGroupRole::kView )] = group( viewGroup );
 	draw.groups[std::size_t( BindGroupRole::kMaterial )] =
 	    group( lab.materialGroups.at( frame.material->name ) );
 	draw.groups[std::size_t( BindGroupRole::kDraw )] = group( lab.drawGroup );
@@ -614,6 +656,14 @@ std::optional<std::string> AreaChecks( Lab &lab, Results &results )
 			CanvasImage image;
 			if ( std::optional<std::string> why = Render( lab, frame, image ) )
 				return why;
+			Frame full = frame;
+			full.spatial = false;
+			CanvasImage reference;
+			if ( auto why = Render( lab, full, reference ) )
+				return why;
+			results.That( image.rgba == reference.rgba,
+			    std::string( "spatial-parity." ) + name + "." + viewName,
+			    "spatial masks preserve every pixel of the full area loop" );
 			const std::string check = std::string( "diffuse." ) + name + "." + viewName;
 			SaveImage( image, check );
 			SaveExact( *view, check,

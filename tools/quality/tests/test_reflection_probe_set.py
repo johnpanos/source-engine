@@ -531,7 +531,84 @@ class RelightFormatTest(unittest.TestCase):
         self.assertEqual(float(rps.gpu_texture(layout)[0, 1, 1]), 0.0)
 
 
+class CapacityTest(unittest.TestCase):
+    def test_priority_is_serialized_as_rank_and_global_remains_last(self):
+        probes = [{"influence_min": np.zeros(3), "influence_max": np.ones(3) * size,
+                   "priority": priority, "global": global_probe}
+                  for size, priority, global_probe in [(1, 0, False), (2, 1, False),
+                                                       (3, 99, True)]]
+        self.assertEqual(rps.ranks(probes), [1, 0, 2])
+
+    def test_extended_version_keeps_old_reader_limits(self):
+        data = rps.capacity_fixture()
+        self.assertEqual(struct.unpack_from("<I", data, 4)[0], rps.TILED_VERSION)
+        self.assertEqual(rps.read(data)["count"], 64)
+        for version in (rps.VERSION, rps.RELIGHT_VERSION):
+            legacy = bytearray(data)
+            struct.pack_into("<I", legacy, 4, version)
+            struct.pack_into("<I", legacy, 52, 1 if version == rps.RELIGHT_VERSION else 0)
+            with self.assertRaises(rps.RprbError) as error:
+                rps.read(legacy)
+            self.assertEqual(error.exception.code, "InvalidCounts")
+
+    def test_tiled_gpu_contains_every_band_without_loss(self):
+        for relight in (False, True):
+            data = rps.capacity_fixture(relight)
+            layout = rps.read(data)
+            texture = rps.gpu_texture(layout)
+            columns = rps.gpu_columns(layout)
+            self.assertGreater(columns, 1)
+            # Independently reconstruct the serialized atlas one band at a time.
+            band, width = layout["width"] // 2, layout["atlas_width"]
+            restored = np.concatenate([
+                texture[65 + (i // columns) * band:65 + (i // columns + 1) * band,
+                        (i % columns) * width:(i % columns + 1) * width]
+                for i in range(layout["atlas_height"] // band)])
+            self.assertEqual(restored.tobytes(), data[layout["atlas_offset"]:])
+            weights = rps.blend_weights(np.array([[1, 2, 0]]) * rps.SOURCE_UNITS_PER_METER,
+                                       np.array([[0, 0, 1]]), layout["probes"])
+            self.assertEqual(int(np.argmax(weights)), 62)
+            self.assertEqual(float(weights[0, 62]), 1.0)
+            self.assertEqual(layout["probes"][62]["rank"], 62)
+            self.assertEqual(layout["probes"][63]["rank"], 63)
+            table = rps.texture_table(texture)
+            self.assertEqual(table[62, 1, 3], 62)  # band index, not a half-float row offset
+            if relight:
+                self.assertEqual(table[63, 3, 3], 190)
+
+
 class PlacementTest(unittest.TestCase):
+    def authored(self):
+        return {"capture": [3, 2, 1.6], "box_min": list(ROOM[0]), "box_max": list(ROOM[1]),
+                "influence_min": list(ROOM[0]), "influence_max": list(ROOM[1]),
+                "fade": 0.5, "priority": 2, "name": "room"}
+
+    def test_authored_proxy_and_influence_survive_placement(self):
+        volume = self.authored()
+        probes, report = rps.place(rps.BoxScene(rooms=[ROOM]), (0, 0, -0.5), (6, 4, 2.9),
+                                   params={"spacing_m": 1, "fit_rays": 64}, volumes=[volume])
+        self.assertEqual(report["uncovered_walkable"], 0)
+        self.assertEqual(len(probes), 1)
+        self.assertEqual(probes[0]["priority"], 2)
+        self.assertEqual(probes[0]["role"], "authored")
+        for key in ("capture", "box_min", "box_max", "influence_min", "influence_max"):
+            np.testing.assert_array_equal(probes[0][key], volume[key])
+
+    def test_bad_authoring_fails_before_raycast(self):
+        def no_rays(*args):
+            self.fail("invalid authoring reached placement raycasts")
+        for change in ({"capture": [99, 0, 0]}, {"box_min": [6, 4, 3]},
+                       {"influence_max": [0, 0, 0]}, {"fade": float("nan")},
+                       {"priority": 0.5}, {"global": "false"}):
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                rps.place(no_rays, ROOM[0], ROOM[1], volumes=[dict(self.authored(), **change)])
+        for cap in (0, 65):
+            with self.assertRaises(ValueError):
+                rps.place(no_rays, ROOM[0], ROOM[1], params={"max_probes": cap})
+        with self.assertRaises(ValueError):
+            rps.place(no_rays, ROOM[0], ROOM[1],
+                      volumes=[dict(self.authored(), **{"global": True})] * 2)
+
     def two_rooms(self):
         # Room A 6 x 4, room B 5 x 4 beyond a wall at x = 6 with a doorway.
         return rps.BoxScene(rooms=[ROOM, ((6.2, 0.0, 0.0), (11.2, 4.0, 3.0))],

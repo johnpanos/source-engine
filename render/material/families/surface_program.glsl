@@ -982,6 +982,15 @@ void PbrSurface()
 	                          : 0;
 	if ( areaCount > 0 )
 	{
+		uvec2 areaMask = uvec2( 0xffffffffu );
+		if ( clusterHeader.w != 0u )
+		{
+			const float distance =
+			    dot( clusterView.viewDistance.xyz, worldPosition ) + clusterView.viewDistance.w;
+			const uint offset = clusterHeader.w - 1u +
+			                    2u * ClusterFroxel( gl_FragCoord.xy, distance );
+			areaMask = uvec2( clusterIndices[offset], clusterIndices[offset + 1u] );
+		}
 		const mat3 ltc =
 		    LtcInverse( LtcLookup( ltcTexture, ltcSampler, roughness, normalDotView ) );
 #ifdef SEEDED_LTC_NO_MAGNITUDE
@@ -989,8 +998,12 @@ void PbrSurface()
 #else
 		const vec3 areaSpecular = ( f0 * splitSum.x + vec3( splitSum.y ) ) * compensation;
 #endif
-		for ( int i = 0; i < kMaxAreaLights; ++i )
+		while ( any( notEqual( areaMask, uvec2( 0u ) ) ) )
 		{
+			const int word = areaMask.x != 0u ? 0 : 1;
+			const int bit = findLSB( areaMask[word] );
+			areaMask[word] &= areaMask[word] - 1u;
+			const int i = word * 32 + bit;
 			if ( i >= areaCount )
 				break;
 			const AreaLight light = frame.areas[i];
@@ -1150,15 +1163,17 @@ void PbrSurface()
 	vec3 probeRadiance = vec3( 0.0 );
 	vec4 probeSelection = vec4( -1.0, -1.0, 0.0, 0.0 );
 	vec3 probeHeader = vec3( 0.0 );
+	float probeRankDivisor = 32.0;
 	if ( specularLobe && DebugTermOn( kDebugTermIbl ) )
 	{
 		const vec3 reflected = reflect( -view, normal );
 		vec3 radiance;
-		if ( kDebugView == 27 && !furnace && Term( kReflectionProbes ) )
+		if ( ( kDebugView == 24 || kDebugView == 27 ) && !furnace && Term( kReflectionProbes ) )
 		{
 			const vec4 header = ReflectionProbesFetch( ivec2( 0, 0 ) );
 			const vec4 mode = ReflectionProbesFetch( ivec2( 1, 0 ) );
-			probeHeader = vec3( clamp( header.x / 16.0, 0.0, 1.0 ),
+			probeRankDivisor = header.x > 16.0 ? 128.0 : 32.0;
+			probeHeader = vec3( clamp( header.x / 64.0, 0.0, 1.0 ),
 			    clamp( mode.x / 7.0, 0.0, 1.0 ),
 			    header.w == kReflectionProbesMarker ? 1.0 : 0.0 );
 		}
@@ -1273,6 +1288,7 @@ void PbrSurface()
 		if ( specularLobe )
 		{
 			inputs.mask |= kDebugHasReflectionProbe;
+			inputs.probeRankDivisor = probeRankDivisor;
 			inputs.probeSelection = probeSelection;
 			inputs.probeRadiance = probeRadiance;
 			inputs.probeWeight = iblWeight;

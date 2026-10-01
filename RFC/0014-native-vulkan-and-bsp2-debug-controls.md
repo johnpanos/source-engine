@@ -228,10 +228,10 @@ program and the families); **all** is every core program.
 | 21 | Shadow visibility | Per-light visibility of the brightest light at the pixel, as grey | S lit |
 | 22 | Cluster load | Light count of the pixel's froxel as a heat ramp over 0..`cl_render_debug_view_range` | S lit |
 | 23 | Volumetric transmittance | The camera-to-pixel transmittance of the volumetric fog, as grey | all |
-| 24 | Reflection probe selection | R = `(first rank + 1) / 32`, G = `(second rank + 1) / 32` (zero when absent), B = first rank's blend weight; fallback colors: cyan term absent, magenta invalid header, yellow empty set, blue mode off | S with image specular |
+| 24 | Reflection probe selection | R = `(first rank + 1) / divisor`, G = `(second rank + 1) / divisor`; divisor 32 for up to 16 probes, 128 for larger sets (zero when absent), B = first rank's blend weight; fallback colors: cyan term absent, magenta invalid header, yellow empty set, blue mode off | S with image specular |
 | 25 | Reflection probe radiance | Raw sampled RGB radiance before material color transforms and BRDF, times `cl_render_debug_view_scale`; ambient-cube radiance on fallback | S with image specular |
 | 26 | Reflection probe weight | RGB BRDF, occlusion and mask weight applied after the material's probe color transforms | S with image specular |
-| 27 | Reflection probe header | R = probe count / 16, G = mode / 7, B = 1 if the bound texture has the RPRB marker; zero when the term is absent | S with image specular |
+| 27 | Reflection probe header | R = probe count / 64, G = mode / 7, B = 1 if the bound texture has the RPRB marker; zero when the term is absent | S with image specular |
 | 32 | World batch | A hashed color per world draw batch | world |
 | 33 | World material | A hashed color per world material index | world |
 | 34 | Lightmap chart | A hashed color per lightmap chart | lightmapped world |
@@ -241,6 +241,23 @@ program and the families); **all** is every core program.
 Numbers 28–31 and 37 and above are reserved. Views 18–20 keep the RFC 0011
 formulas and oracles of `mat_indirect_view`; they arrive with the indirect
 terms on the core (RFC 0016 K11, then K12).
+
+The installed `tools/render/map_relight_diagnostics.py` can gate view 24 with
+`--max-global-weight <region>:<fraction>` alongside a named `--roi` and
+`--modes probe-selection`. It decodes both selected ranks and their weights,
+rejects fallback/invalid pixels and empty samples, and exits nonzero if the
+region's mean global weight exceeds the explicit limit. This is a check on a
+native runtime capture, not an always-on assertion that all global IBL is wrong.
+Selection captures disable MSAA: averaging different rank IDs at a geometry
+edge corrupts the encoding. Final-color captures retain their normal sample count.
+For an existing gallery, no boot or rebake is needed:
+
+```sh
+python3 tools/render/map_relight_diagnostics.py check \
+  quality-results/map-diagnostics/laser-entry-core-probes-20261001 \
+  --max-global-weight stairs:0.1 --max-global-weight floor:0.1 \
+  --out quality-results/map-diagnostics/laser-entry-checks-20261001/runtime-checks.json
+```
 
 ### Modifiers
 

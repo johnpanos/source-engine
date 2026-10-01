@@ -322,6 +322,7 @@ void CoreWorld::SetWorldMesh( const void *wmsh, unsigned long long wmshBytes,
 
 void CoreWorld::SetStage()
 {
+	m_QueuedLighting.clear();
 	if ( !m_StageWorld )
 		return;
 	pass::world::WorldData data = *m_StageWorld;
@@ -975,6 +976,10 @@ std::shared_ptr<const pass::world::StageViewLights> CoreWorld::StageViewLightsFo
 	out->indices.assign( 16, std::byte( 0 ) ); // ClusterIndexHeader
 	const auto listed = std::as_bytes( std::span( lists.lightIndices ) );
 	out->indices.insert( out->indices.end(), listed.begin(), listed.end() );
+	std::vector<pass::lights::AreaFroxelMask> areaMasks;
+	if ( !pass::lights::AssignAreaLights( grid.Value(), in.areas, areaMasks ) )
+		return nullptr;
+	pass::lights::AppendAreaMasks( areaMasks, out->indices );
 	// The shadows of the view's point and spot lights (render.shadows.v1:
 	// one tile per spot, six per point light), planned for this view.
 	// Only the lights the view's clusters list reach what it draws; the
@@ -1216,8 +1221,29 @@ bool CoreWorld::DrawView( const unsigned int *surfaces, unsigned int count,
 	std::shared_ptr<PendingView> pending;
 	if ( m_StageSet && worldToView && viewToClip )
 	{
-		pending = std::make_shared<PendingView>();
-		pending->inputs = TakeViewLightInputs( worldToView, viewToClip, viewport );
+		const bool movers = m_ShadowMovers.load( std::memory_order_relaxed );
+		const int quality = m_ShadowQuality.load( std::memory_order_relaxed );
+		std::erase_if( m_QueuedLighting, [&]( const QueuedLighting &entry )
+		    { return entry.frame != hostFrame || entry.revision != m_Lights.revision; } );
+		for ( const QueuedLighting &entry : m_QueuedLighting )
+		{
+			const ViewLightInputs &in = entry.pending->inputs;
+			if ( entry.movers == movers && in.shadowQuality == quality &&
+			     std::equal( worldToView, worldToView + 16, in.worldToView ) &&
+			     std::equal( viewToClip, viewToClip + 16, in.viewToClip ) &&
+			     std::equal( viewport, viewport + 6, in.viewport ) )
+			{
+				pending = entry.pending;
+				break;
+			}
+		}
+		if ( !pending )
+		{
+			pending = std::make_shared<PendingView>();
+			pending->inputs = TakeViewLightInputs( worldToView, viewToClip, viewport );
+			if ( m_QueuedLighting.size() < 64 )
+				m_QueuedLighting.push_back( { hostFrame, m_Lights.revision, movers, pending } );
+		}
 		++m_StageLitViews;
 	}
 	else if ( !m_StageSet )

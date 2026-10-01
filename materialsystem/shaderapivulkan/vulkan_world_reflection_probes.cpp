@@ -37,8 +37,12 @@ bool UploadWorldReflectionProbes( CVulkanContext &context,
 	const float count = mapcontainer::HalfToFloat( request.texels[0] );
 	const float width0 = mapcontainer::HalfToFloat( request.texels[2] );
 	const float marker = mapcontainer::HalfToFloat( request.texels[3] );
+	const float storedColumns = mapcontainer::HalfToFloat( request.texels[8] );
+	const float columns = storedColumns == 0.0f ? 1.0f : storedColumns;
 	if ( marker != mapcontainer::kReflectionProbeTextureMarker ||
-	     count != float( request.probeCount ) || 2.0f * width0 != float( request.width ) )
+	     count != float( request.probeCount ) ||
+	     ( columns != 1.0f && columns != 2.0f && columns != 4.0f && columns != 8.0f ) ||
+	     2.0f * width0 * columns != float( request.width ) )
 		return fail( "reflection probe texture header does not match the request" );
 	return context.SetReflectionProbes(
 	    request.texels, request.width, request.height, request.probeCount, error );

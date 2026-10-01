@@ -39,12 +39,14 @@ namespace mapcontainer
 static const uint32_t kLumpReflectionProbes = 0x42525052u; // "RPRB"
 static const uint32_t kReflectionProbesVersion = 1;
 static const uint32_t kReflectionProbesRelightVersion = 2;
-static const uint32_t kReflectionProbesFlagRelight = 1; // header flags, v2 only
+static const uint32_t kReflectionProbesTiledVersion = 3;
+static const uint32_t kReflectionProbesLegacyMaxProbes = 16;
+static const uint32_t kReflectionProbesFlagRelight = 1; // header flags, v2/v3
 static const float kReflectionProbesMaxDistance = 60000.0f;
 static const float kReflectionProbesNormalLimit = 1.001f;
 static const uint32_t kReflectionProbesHeaderBytes = 64;
 static const uint32_t kReflectionProbeRecordBytes = 80;
-static const uint32_t kReflectionProbesMaxProbes = 16;
+static const uint32_t kReflectionProbesMaxProbes = 64;
 static const uint32_t kReflectionProbesMaxMips = 12;
 static const uint32_t kReflectionProbesMinWidth = 8;
 static const uint32_t kReflectionProbesMaxWidth = 2048;
@@ -143,8 +145,10 @@ const char *ReflectionProbesErrorName( ReflectionProbesError error ) noexcept;
 // when `relight` asks for them to be applied.
 static const float kReflectionProbeTextureMarker = -3.0f;
 static const uint32_t kReflectionProbeTableVec4 = 5;
+uint32_t ReflectionProbeTextureColumns( const ReflectionProbesLayout &layout ) noexcept;
+uint32_t ReflectionProbeTextureWidth( const ReflectionProbesLayout &layout ) noexcept;
 uint32_t ReflectionProbeTextureRows( const ReflectionProbesLayout &layout ) noexcept;
-// Writes the texture (atlasWidth * ReflectionProbeTextureRows() * 4 halves)
+// Writes the texture (ReflectionProbeTextureWidth() * ReflectionProbeTextureRows() * 4 halves)
 // from validated bytes.
 void WriteReflectionProbeTexture( const void *pData, const ReflectionProbesLayout &layout,
     ReflectionProbeMode mode, uint16_t *pOut, bool relight = true ) noexcept;

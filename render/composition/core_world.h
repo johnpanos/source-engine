@@ -76,6 +76,7 @@ public:
 	world_mesh_gpu::IWorldMeshUpload *StageUpload() override { return &m_Capture; }
 	void ClearWorld() override
 	{
+		m_QueuedLighting.clear();
 		m_StageSet = false;
 		m_StageWorld.reset();
 		m_WorldCasters.reset();
@@ -205,10 +206,12 @@ private:
 	public:
 		void PublishLightSet( const light_set::Snapshot &snapshot ) override
 		{
+			++revision;
 			lights = snapshot.lights;
 			areas = snapshot.areas;
 			occluders = snapshot.occluders;
 		}
+		std::uint64_t revision = 0; // each publication invalidates queued-view reuse
 		std::vector<light_set::RuntimeLight> lights;
 		std::vector<light_set::RuntimeAreaLight> areas;
 		std::vector<light_set::RuntimeOccluder> occluders; // the moving objects
@@ -291,6 +294,17 @@ private:
 		mutable std::shared_ptr<const pass::world::StageViewLights> lights;
 		mutable std::shared_ptr<const ShadowWork> shadows;
 	};
+	// Main-thread cache; shared PendingViews own immutable input snapshots and
+	// call_once publishes their result to render workers. Cohorts keep their own
+	// draw/caster work. Never reuse across host frames or light publications.
+	struct QueuedLighting
+	{
+		std::uint64_t frame = 0;
+		std::uint64_t revision = 0;
+		bool movers = false;
+		std::shared_ptr<PendingView> pending;
+	};
+	std::vector<QueuedLighting> m_QueuedLighting;
 	// A queued view's inputs, taken on the main thread.
 	ViewLightInputs TakeViewLightInputs(
 	    const float worldToView[16], const float viewToClip[16], const float viewport[6] ) const;

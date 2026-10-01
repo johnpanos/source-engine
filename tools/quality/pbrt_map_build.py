@@ -1022,6 +1022,7 @@ class Pipeline:
                          "--device", self.lightmap["device"], "--seed", str(self.lightmap["seed"]),
                          "--placement", json.dumps(probe.get("placement", {}), sort_keys=True),
                          "--coverage-rules", json.dumps(coverage_rules, sort_keys=True),
+                         "--volumes", json.dumps(probe.get("volumes", []), sort_keys=True),
                          "--light-paths", probe.get("light_paths", "blender-default"),
                          "--denoise" if probe.get("denoise", True) else "--no-denoise"] + env_args
             if self.keep_going:

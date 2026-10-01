@@ -628,8 +628,9 @@ The model tracks the Cycles Principled BSDF as inspected (see
   at the normal-mapped normal. On legacy maps, reconstruct irradiance from the
   RNM basis exactly as `LightmappedGeneric` does.
 - Dynamic objects: the RFC 0011 probe volume on BSP2 maps, ambient cube on legacy
-  maps, plus dynamic lights through the clustered path (RFC 0008), evaluated
-  with the same BRDF.
+  maps, plus dynamic lights through the render core's
+  [clustered Forward+ path](0016-render-core.md#rendering-architecture-clustered-forward),
+  evaluated with the same BRDF.
 - Specular environment: split-sum IBL from the blended, parallax-corrected
   reflection probes (BSP2) or runtime-prefiltered `env_cubemap` (legacy),
   attenuated by specular occlusion derived from AO.
@@ -666,6 +667,33 @@ positions. Cycles renders them through Blender (`pbrt_reflection_probe.py`),
 not the baker, and `RPRB` v1/v2 carries raw RGBA16F rather than KTX2. The
 legacy runtime prefilter is not built. See
 [progress](0007-progress.md#r50-parallax-parallax-corrected-blended-reflection-probes-bounded-r50-slice-2026-09-25).
+
+As built for placement validation (2026-10-01), the export profile's existing
+probe coverage and count rules are evaluated immediately after placement,
+before Cycles renders the reflection faces. `map_export_audit.probe_placement_checks`
+owns these checks for both the baker preflight and the final export audit.
+The probe step records `placement-checks.json` and its log; `--keep-going`
+allows failed coverage for inspection, with the final audit still failing.
+Changing the rules or continuation mode invalidates that step's cache.
+Regional runtime checks use RFC 0014's
+[probe selection view](0014-native-vulkan-and-bsp2-debug-controls.md#catalog).
+
+The 2026-10-01 capacity extension uses RPRB v3 for sets above 16, up to 64
+captures, with tiled GPU bands; v1/v2 content retains its encoding and limits.
+`reflection_probe_set.py` owns the disk/GPU encoding and authored volume validation.
+`legacy_bsp_relight.py --probe-volumes <file>` accepts `map-probe-volumes/v1`:
+the map name and a `volumes` list with `capture`, `box_min`, `box_max`,
+`influence_min`, `influence_max` in stage meters, positive `fade`, integer
+`priority`, optional `name` and optional `global` (at most one). Captures must
+be inside nonempty proxy boxes. Authored bounds survive the depth fit; its
+residual remains measured. Rank order is descending priority, then ascending
+influence volume, with the global probe last. GPU selection still scans all
+probes and samples the largest two shares; this is not clustered probe culling.
+Source2 and Portal 2 chamber export profiles allow 64 captures. Source2-max
+allows 60 at width 2048: its 16384 by 15421 upload fits the current 16384
+texture extent bound, whereas 64 at that width would exceed the height bound.
+The baker's `--placement-only` writes geometry/coverage evidence before any
+Cycles rendering. Map-wide coverage and fit gates still apply.
 
 As built for analytic USD emitters (2026-10-01, K11),
 `tools/quality/map_scene.py` owns which emitter meshes are replaced by a

@@ -1,6 +1,6 @@
 # offset format value error (reflection_probe_set.MALFORMATIONS)
 0 I 305419896 BadMagic
-4 I 3 UnsupportedVersion
+4 I 4 UnsupportedVersion
 4 I 2 UnsupportedVersion
 8 I 0 InvalidCounts
 8 I 17 InvalidCounts

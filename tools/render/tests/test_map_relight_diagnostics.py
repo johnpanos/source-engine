@@ -54,6 +54,13 @@ class RelightDiagnosticsTest(unittest.TestCase):
         self.assertAlmostEqual(sample["mean_global_weight"], 0.5, delta=0.01)
         self.assertEqual(sample["invalid_pixels"], 0)
 
+    def test_extended_selection_decodes_rank_63(self):
+        image = Image.new("RGB", (1, 1), (188, 0, 255))
+        sample = diagnostics.probe_selection_metrics(image, (0, 0, 1, 1), 63)
+        self.assertEqual(sample["rank_fraction"], {"63": 1.0})
+        self.assertEqual(sample["mean_global_weight"], 1.0)
+        self.assertEqual(sample["invalid_pixels"], 0)
+
     def test_runtime_checks_reject_bad_selection_and_missing_evidence(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

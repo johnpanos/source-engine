@@ -20,7 +20,10 @@
   "reflection_probe": {
     "width": 512,
     "face_size": 256,
-    "samples": 1024
+    "samples": 1024,
+    "placement": {
+      "max_probes": 64
+    }
   },
   "reference": {
     "render": {

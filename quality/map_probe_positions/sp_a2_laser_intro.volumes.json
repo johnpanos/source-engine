@@ -1,0 +1,37 @@
+{
+  "schema": "map-probe-volumes/v1",
+  "map": "sp_a2_laser_intro",
+  "description": "Entrance stairwell local capture; stage meters. Box follows the stairwell walls, influence is scoped to the entrance. Validate fit and locked-camera coverage before publishing.",
+  "volumes": [
+    {
+      "name": "entrance-stairwell",
+      "capture": [
+        -30,
+        0,
+        -5
+      ],
+      "box_min": [
+        -34.5468,
+        -5.8485,
+        -8.7553
+      ],
+      "box_max": [
+        -20.32,
+        5.8485,
+        3.70168
+      ],
+      "influence_min": [
+        -34.5468,
+        -5.8485,
+        -8.7553
+      ],
+      "influence_max": [
+        -20.32,
+        5.8485,
+        3.70168
+      ],
+      "fade": 0.5,
+      "priority": 2
+    }
+  ]
+}

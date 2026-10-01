@@ -108,7 +108,7 @@ def audit(build, profile, booted):
               bool(fits) and rprb.get("max_mean_relative_residual", 1e9) <=
               rules["max_reflection_probe_residual"],
               {"limit": rules["max_reflection_probe_residual"], "fits": fits})
-    placement = dict(rprb.get("placement") or {}, probes=rprb.get("probes"))
+    placement = dict(rprb.get("placement") or {}, probes=rprb.get("probes")) if rprb else {}
     checks.extend(probe_placement_checks(placement, rules))
     if rules.get("require_authored_channels"):
         missing = {}

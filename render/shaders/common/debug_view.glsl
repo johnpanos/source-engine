@@ -82,10 +82,11 @@ struct DebugInputs
 	vec3 emission;
 	vec2 uv0;
 	vec4 vertexColor;
+	float probeRankDivisor; // 32 for <=16 probes, 128 for extended sets
 	vec4 probeSelection;  // first rank, second rank or -1, first and second weights
 	vec3 probeRadiance;   // raw radiance before material tint and BRDF
 	vec3 probeWeight;     // BRDF, occlusion and mask weight applied to that radiance
-	vec3 probeHeader;     // count / 16, mode / 7, valid marker
+	vec3 probeHeader;     // count / 64, mode / 7, valid marker
 	vec3 final;            // the color before tone mapping and output encoding
 };
 
@@ -107,6 +108,7 @@ DebugInputs DebugInputsNone()
 	inputs.emission = vec3( 0.0 );
 	inputs.uv0 = vec2( 0.0 );
 	inputs.vertexColor = vec4( 1.0 );
+	inputs.probeRankDivisor = 32.0;
 	inputs.probeSelection = vec4( -1.0, -1.0, 0.0, 0.0 );
 	inputs.probeRadiance = vec3( 0.0 );
 	inputs.probeWeight = vec3( 0.0 );
@@ -228,15 +230,15 @@ vec4 DebugViewOutput( DebugInputs inputs )
 	else if ( kDebugView == 24 && ( inputs.mask & kDebugHasReflectionProbe ) != 0 )
 	{
 		// Channel encoding is exact in a linear target: first and second
-		// ranks are 32 * R/G - 1; B is the first weight. Fallback colors
+		// ranks are probeRankDivisor * R/G - 1; B is the first weight. Fallback colors
 		// distinguish term absent (cyan), header invalid (magenta), empty
 		// set (yellow) and mode off (blue).
 		result = inputs.probeSelection.x < -3.5 ? vec3( 0.0, 0.0, 1.0 )
 		         : inputs.probeSelection.x < -2.5 ? vec3( 1.0, 1.0, 0.0 )
 		         : inputs.probeSelection.x < -1.5 ? vec3( 0.0, 1.0, 1.0 )
 		         : inputs.probeSelection.x < 0.0  ? vec3( 1.0, 0.0, 1.0 )
-		                                          : vec3( ( inputs.probeSelection.x + 1.0 ) / 32.0,
-		                                                ( inputs.probeSelection.y + 1.0 ) / 32.0,
+		                                          : vec3( ( inputs.probeSelection.x + 1.0 ) / inputs.probeRankDivisor,
+		                                                ( inputs.probeSelection.y + 1.0 ) / inputs.probeRankDivisor,
 		                                                inputs.probeSelection.z );
 	}
 	else if ( kDebugView == 25 )

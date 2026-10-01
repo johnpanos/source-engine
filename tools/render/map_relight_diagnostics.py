@@ -48,7 +48,10 @@ MODES = {
     "probes-off": ("Relit without diffuse probes", ("cl_render_debug_term probes",),
                    "relit"),
     "ibl-off": ("Relit without image specular", ("cl_render_debug_term ibl",), "relit"),
-    "probe-selection": ("Reflection probe selection", ("cl_render_debug_view 24",
+    # Rank channels are IDs: MSAA resolve would blend different IDs at edges.
+    # Keep final-color captures at the normal sample count; this readback is point sampled.
+    "probe-selection": ("Reflection probe selection", ("mat_antialias 0",
+                                                        "cl_render_debug_view 24",
                                                         "cl_render_debug_legacy 2"), "relit"),
     "probe-radiance": ("Raw reflection probe radiance", ("cl_render_debug_view 25",
                                                          "cl_render_debug_legacy 2"), "relit"),
@@ -92,6 +95,8 @@ def roi_metrics(image, box, exclude_hatch=False):
 
 
 def probe_selection_metrics(image, box, global_rank=None):
+    maximum = 64 if global_rank is not None and global_rank >= 16 else 16
+    divisor = 2.0 * maximum
     width, height = image.size
     pixels = np.asarray(image.convert("RGB"))[int(box[1] * height):int(box[3] * height),
                                                int(box[0] * width):int(box[2] * width)]
@@ -104,16 +109,16 @@ def probe_selection_metrics(image, box, global_rank=None):
         ((pixels[:, :, 0] == 255) & (pixels[:, :, 1] == 255)) | \
         ((pixels[:, :, 0] == 0) & (pixels[:, :, 1] == 0) &
          (pixels[:, :, 2] == 255))
-    first = np.rint(linear[:, :, 0] * 32.0 - 1.0).astype(int)
-    second = np.rint(linear[:, :, 1] * 32.0 - 1.0).astype(int)
+    first = np.rint(linear[:, :, 0] * divisor - 1.0).astype(int)
+    second = np.rint(linear[:, :, 1] * divisor - 1.0).astype(int)
     weight = linear[:, :, 2]
-    rank_values = np.arange(17) / 32.0
+    rank_values = np.arange(maximum + 1) / divisor
     rank_bytes = np.rint(np.where(rank_values <= 0.0031308, rank_values * 12.92,
                                   1.055 * rank_values ** (1 / 2.4) - 0.055) * 255)
-    valid = (~hatch & ~fallback & (first >= 0) & (first < 16) &
-             (second >= -1) & (second < 16) & (first != second))
+    valid = (~hatch & ~fallback & (first >= 0) & (first < maximum) &
+             (second >= -1) & (second < maximum) & (first != second))
     for channel, ranks in ((0, first), (1, second)):
-        expected = rank_bytes[np.clip(ranks + 1, 0, 16)]
+        expected = rank_bytes[np.clip(ranks + 1, 0, maximum)]
         valid &= np.abs(pixels[:, :, channel].astype(float) - expected) <= 1
     # No second probe requires full first weight (one byte of display tolerance).
     valid &= (second >= 0) | (pixels[:, :, 2] >= 254)
@@ -149,12 +154,15 @@ def check_probe_regions(receipt, directory, limits):
     record = receipt.get("modes", {}).get("probe-selection")
     layout = receipt.get("probe_layout") or {}
     rank = layout.get("global_rank")
-    image = Image.open(directory / record["image"]) if record else None
+    image = None
+    if record:
+        with Image.open(directory / record["image"]) as source:
+            image = source.convert("RGB")
     for name, limit in limits.items():
         box = receipt.get("regions", {}).get(name)
         sample = probe_selection_metrics(image, box, rank) if image and box else {}
         measured = sample.get("mean_global_weight")
-        passed = (isinstance(rank, int) and 0 <= rank < 16 and
+        passed = (isinstance(rank, int) and 0 <= rank < 64 and
                   sample.get("sampled_pixels", 0) > 0 and
                   sample.get("invalid_pixels") == 0 and sample.get("fallback_fraction") == 0 and
                   measured is not None and measured <= limit)
@@ -178,6 +186,10 @@ def check_existing(argv):
         result = check_probe_regions(receipt, args.gallery, dict(args.max_global_weight))
         result["source_receipt"] = str(path.resolve())
         result["source_receipt_sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+        selection = receipt.get("modes", {}).get("probe-selection")
+        if selection:
+            result["selection_image_sha256"] = hashlib.sha256(
+                (args.gallery / selection["image"]).read_bytes()).hexdigest()
         args.out.parent.mkdir(parents=True, exist_ok=True)
         args.out.write_text(json.dumps(result, indent=2) + "\n")
         print(json.dumps(result, indent=2))
@@ -214,7 +226,7 @@ def probe_layout(content):
     index = data.get("global_index")
     fits = data.get("fits")
     if not isinstance(count, int) or not isinstance(index, int) or \
-            not isinstance(fits, list) or not 1 <= count <= 16 or \
+            not isinstance(fits, list) or not 1 <= count <= 64 or \
             not 0 <= index < len(fits):
         return None
     return {"receipt": str(receipt), "count": count, "global_rank": count - 1,
@@ -254,7 +266,7 @@ def bake_layer_previews(content, out):
     return result
 
 
-def make_html(out, records, regions, sources, bake_layers=None, probes=None):
+def make_html(out, records, regions, sources, bake_layers=None, probes=None, probe_checks=None):
     cards = []
     exposures = []
     for mode, record in records.items():
@@ -321,6 +333,14 @@ def make_html(out, records, regions, sources, bake_layers=None, probes=None):
             bake += '<figure><a href="%s"><img src="%s" alt="%s"></a><figcaption>%s' \
                     '</figcaption></figure>' % (layer["preview"], layer["preview"], label, label)
         bake += "</section>"
+    check_summary = ""
+    if probe_checks:
+        check_summary = "<h2>Native probe checks: %s</h2><ul>" % probe_checks["status"]
+        for check in probe_checks["checks"]:
+            check_summary += "<li>%s: %s; mean global weight %s, limit %.3f</li>" % (
+                html.escape(check["region"]), check["status"],
+                str(check.get("mean_global_weight")), check["max_mean_global_weight"])
+        check_summary += "</ul>"
     page = """<!doctype html><html lang="en"><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>Map relight diagnostics</title>
 <style>body{font:16px system-ui,sans-serif;max-width:1500px;margin:auto;padding:24px;
@@ -333,11 +353,11 @@ verified camera and fixed final-frame exposure. Grey hatching in debug views mar
 The baked view is the total lightmap; runtime direct excludes its baked direct layer.
 Final frames include exposure and tone mapping. ROI RGB is decoded from display PNGs,
 so its ratios are diagnostic, not measured scene radiance.</p><p>Recorded final-frame
-tone-map scales: EXPOSURES</p><section>CARDS</section>
+tone-map scales: EXPOSURES</p>PROBECHECKS<section>CARDS</section>
 <h2>Selected regions</h2><table><tr><th>Region</th><th>View</th><th>Mean R/B</th>
 <th>Clipped pixels</th><th>Hatched pixels</th></tr>ROWS</table>SELECTIONSBAKELIGHTLIGHTS</html>"""
     (out / "index.html").write_text(page.replace("EXPOSURES", ", ".join(exposures) or "not recorded")
-                                     .replace("CARDS", "".join(cards))
+                                     .replace("PROBECHECKS", check_summary).replace("CARDS", "".join(cards))
                                      .replace("ROWS", "".join(rows)).replace("BAKELIGHT", bake)
                                      .replace("SELECTIONS", selections)
                                      .replace("LIGHTS", lights))
@@ -390,7 +410,7 @@ def run(args, out):
     if args.max_global_weight:
         receipt["probe_checks"] = check_probe_regions(receipt, out, dict(args.max_global_weight))
     (out / "diagnostics.json").write_text(json.dumps(receipt, indent=2) + "\n")
-    make_html(out, records, regions, sources, bake_layers, probes)
+    make_html(out, records, regions, sources, bake_layers, probes, receipt.get("probe_checks"))
     if receipt.get("probe_checks", {}).get("status") == "fail":
         raise ValueError("native probe-selection checks failed; see diagnostics.json")
 

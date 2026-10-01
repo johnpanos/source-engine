@@ -2,12 +2,9 @@
 // render.lighting.v1, "Image-based specular"), blended, parallax-corrected
 // and relit, with distance-based roughness: the specular image light the
 // includer weights by the split-sum directional albedo (pbr_brdf.glsl). The
-// core's one copy, a line-for-line mirror of mapcontainer::
-// ReflectionProbesView, its oracle (render.lab.reflection-probes); the
-// native backend's materialsystem/shaderapivulkan/shaders/
-// reflection_probes.glsl is frozen and goes at K12. The includer includes
-// pbr_brdf.glsl first (kPi) and defines how the probe texture
-// (mapcontainer::WriteReflectionProbeTexture's GPU form) is read:
+// core's one copy, also consumed by the legacy frontend's PBR wrappers.
+// Its oracle is mapcontainer::ReflectionProbesView. The includer defines
+// the texture fetch/sampling adapter:
 //
 //   vec4 ReflectionProbesFetch( ivec2 texel )   the exact texel
 //   vec4 ReflectionProbesSample( vec2 texel )   bilinear, texel coordinates
@@ -56,7 +53,8 @@
 //     point (McAuley, "Rendering the World of Far Cry 4", GDC 2015, relights
 //     a G-buffer cubemap; Lazarov, SIGGRAPH 2013, and Unreal Engine instead
 //     scale a capture by the diffuse light at the shaded point).
-//   * Blending: by rank (influence volume ascending, the global probe last),
+//   * Blending: by serialized rank (authored priority, then influence volume,
+//     the global probe last),
 //     each probe takes its weight times what is still unassigned; a weight is
 //     1 inside the influence box, smoothstep to 0 at `fade` outside, times a
 //     facing term that drops a capture behind the surface. The two largest
@@ -70,7 +68,9 @@
 // row: mip l of W_l x W_l / 2 at x = 2 W0 (1 - 2^-l). With relight bands,
 // influence min's w is the probe's albedo band row (rgb albedo, a distance;
 // the normal band follows at + W0 / 2), and texel 1's y is the relight
-// switch.
+// switch. Extended sets use texel (2, 0).x for the tile column count,
+// metadata band indices instead of row offsets, and complete bands tiled
+// below the table. Zero columns retains the old single-column form.
 
 #ifdef REFLECTION_PROBE_RELIGHT
 void ReflectionProbeDiffuseLight( vec3 position, vec3 normal, out vec3 now, out vec3 baked );
@@ -80,7 +80,7 @@ void ReflectionProbeOccluder( int k, out vec3 lo, out vec3 hi, out float reflect
 
 const float kReflectionProbesMarker = -3.0;
 const float kReflectionProbeFacingEdge = 0.1;
-const int kReflectionProbesMaxProbes = 16;
+const int kReflectionProbesMaxProbes = 64;
 // mapcontainer::kReflectionProbeRelightFloor and kReflectionProbeMaxOccluders.
 const float kReflectionProbeRelightFloor = 1e-4;
 const int kReflectionProbeMaxOccluders = 16;
@@ -97,11 +97,18 @@ vec4 ReflectionProbeRecord( int rank, int field )
 
 vec4 ReflectionProbeLevel( vec2 uv, float level, float width0, float top )
 {
+	// The GPU writer tiles whole bands for extended sets. Header/table
+	// addresses stay unchanged; old textures leave columns at zero.
+	float columns = max( ReflectionProbesFetch( ivec2( 2, 0 ) ).x, 1.0 );
+	float base = 1.0 + ReflectionProbesFetch( ivec2( 0, 0 ) ).x;
+	float band = floor( ( top - base ) / ( width0 * 0.5 ) + 0.5 );
+	vec2 tile = vec2( mod( band, columns ) * 2.0 * width0,
+	    base + floor( band / columns ) * width0 * 0.5 );
 	float width = width0 * exp2( -level );
 	vec2 extent = vec2( width, width * 0.5 );
 	float left = 2.0 * width0 * ( 1.0 - exp2( -level ) );
 	return ReflectionProbesSample(
-	    vec2( left, top ) + clamp( uv * extent, vec2( 0.5 ), extent - vec2( 0.5 ) ) );
+	    tile + vec2( left, 0.0 ) + clamp( uv * extent, vec2( 0.5 ), extent - vec2( 0.5 ) ) );
 }
 
 // One probe's split-sum fetch along the reflected ray from `position`,
@@ -200,11 +207,14 @@ vec3 ReflectionProbeSample( int rank, int count, vec3 header, vec3 position, vec
 	float lod = clamp( lookupRoughness, 0.0, 1.0 ) * ( mips - 1.0 );
 	float lower = floor( lod );
 	float upper = min( lower + 1.0, mips - 1.0 );
-	float top = float( 1 + count ) + boxMinBand.w;
+	// Extended tables store band indices, keeping large atlases' addresses
+	// exactly representable in half floats. Old tables store row offsets.
+	float rowUnit = ReflectionProbesFetch( ivec2( 2, 0 ) ).x > 1.0 ? header.z * 0.5 : 1.0;
+	float top = float( 1 + count ) + boxMinBand.w * rowUnit;
 	vec3 radiance = mix( ReflectionProbeLevel( uv, lower, header.z, top ),
 	    ReflectionProbeLevel( uv, upper, header.z, top ), lod - lower ).rgb;
 #ifdef REFLECTION_PROBE_RELIGHT
-	float relightRow = ReflectionProbeRecord( rank, 3 ).w;
+	float relightRow = ReflectionProbeRecord( rank, 3 ).w * rowUnit;
 	if ( relight && relightRow > 0.5 )
 	{
 		float albedoTop = float( 1 + count ) + relightRow;

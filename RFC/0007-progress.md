@@ -1874,3 +1874,46 @@ dirty workspace. Archlint reports the existing F-Stop `CreateInterfaceFn`
 expansion. Probe coverage/visibility and the map's warm
 global capture remain open, so this diagnostic does not close the Source 2
 quality gate.
+
+### Laser probe coverage checks and capacity follow-up (2026-10-01)
+
+The cheap receipt audit confirms that entrance coverage was absent at placement,
+before packing: at camera (-1312, 0, -208) Source units, the closest local
+influence is 5.98 m away before packing and 6.04 m afterward, with 0.5 m fade.
+Both select source probe 3 (global) with weight 1. The final export audit had
+already rejected this map: build.json says `gate-failed`, with probe fit,
+count, walkable coverage (41.96% missing) and glossy coverage (83.32% missing)
+failures. A passing faces receipt certified capture completion only.
+
+The existing profile rules now run before reflection faces are rendered, using
+one shared function in `map_export_audit.py`; `--keep-going` retains inspection
+builds and their failed final audit. The native diagnostic tool can gate mean
+global weight in named regions, including its second blend slot, and refuses
+fallback/invalid pixels or zero samples. Rechecking the existing gallery costs
+no bake or boot and fails stairs/floor at 1.0 against the explicit 0.1 test limit.
+Evidence: `quality-results/map-diagnostics/laser-entry-checks-20261001/` contains
+`placement-comparison.json` and `runtime-checks.json`. Nine diagnostic tests and
+21 map-export tests pass. The broader lighting-back-end suite has 23 passes
+and two fixture errors for absent `legacy-scene/scene-receipt.json` before the
+probe step. Style has no eligible C++ changes at this checkpoint; architecture
+still reports two F-Stop `CreateInterfaceFn` expansions. No new bake is claimed.
+
+The user requested Source 2 probe behavior and more capacity. Sources checked:
+Valve's [2015 VR rendering talk, slide 50](https://media.steampowered.com/apps/valve/2015/Alex_Vlachos_Advanced_VR_Rendering_GDC2015.pdf)
+explains local sphere/box environment projection; Facepunch's
+[Forward+ rendering report](https://sbox.game/news/august2022/last-outpost)
+describes tiled scaling of lights and reflection probes in its Source 2-derived
+renderer, and its [probe API](https://sbox.game/api/Sandbox.EnvmapProbe)
+exposes bounds, feathering, priority and projection. These do not establish a
+current CS2/Alyx map-wide numerical limit. The user's downloaded 3kliksphilip
+video/transcript (`/home/john/Downloads/kliksphilip-cubemaps/`, video
+`uX5krqI51hQ`, 2019-12-01) demonstrates room-shaped proxies and blended local
+captures at 05:44–06:17; its 2019 prediction is not a present-day limit spec.
+
+Implementation direction: retain RFC 0007's ownership and top-two sampling,
+raise map capacity to 64 through an explicit RPRB v3 extension (v1/v2 still
+accept at most 16), tile GPU bands instead of growing one tall strip, and add
+explicit authored proxy/influence bounds and priority. Stored ranks carry the
+priority ordering, so there is no separate mutable runtime priority table.
+The core oracle must pass before product plumbing. This paragraph records the
+selected work, not completed gates or full Source 2 parity.

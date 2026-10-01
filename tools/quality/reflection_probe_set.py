@@ -55,6 +55,15 @@ box-filtered (normals renormalized). The atlas is then 3 P W0/2 rows tall and
 the record's last u32 is the albedo band's row (0 in v1). A v1 payload never
 has the flag.
 
+RPRB v3 retains those disk records and atlas bands, accepts 1..64 probes,
+and uses flag bit 0 to select whether relight bands are present. V1/v2 keep
+their 16-probe limit. Sets above 16 are tiled on GPU upload: texel (2, 0).x
+holds the power-of-two column count (zero in the old form), metadata rows
+stay at 1 + rank, and complete bands are tiled below row 1 + P. Extended
+GPU metadata stores band indices rather than row offsets, avoiding half-float
+overflow for large relight atlases. The serialized atlas remains unchanged.
+Only the GPU adapter performs this translation; the CPU oracle reads disk bands.
+
 Relighting (McAuley, "Rendering the World of Far Cry 4", GDC 2015: a G-buffer
 cubemap relit at runtime; here with the distance too): at the lookup
 direction and lod, the capture saw the point capture + direction * distance
@@ -112,14 +121,16 @@ import reflection_probe  # noqa: E402
 MAGIC = 0x42525052  # "RPRB"
 VERSION = 1
 RELIGHT_VERSION = 2
-FLAG_RELIGHT = 1  # header flags (v2 only): relight bands present
+TILED_VERSION = 3  # up to 64 probes; optional relight flag, unchanged disk record shape
+LEGACY_MAX_PROBES = 16
+FLAG_RELIGHT = 1  # header flags (v2/v3): relight bands present
 # Relight bands: ray distances (Source units) stay within half range; sky
 # texels (Cycles' 1e10) are clamped here, where their albedo is 0.
 MAX_DISTANCE = 60000.0
 NORMAL_LIMIT = 1.001
 HEADER_BYTES = 64
 RECORD_BYTES = 80
-MAX_PROBES = 16
+MAX_PROBES = 64
 MAX_MIPS = 12
 MIN_WIDTH, MAX_WIDTH = 8, 2048
 PREFILTER_VERSION = 1
@@ -132,7 +143,7 @@ FACING_EDGE = 0.1
 RELIGHT_FLOOR = 1e-4
 MAX_OCCLUDERS = 16
 # The GPU form (`gpu_texture`, mapcontainer::WriteReflectionProbeTexture):
-# one RGBA16F texture, 2 W0 wide. Row 0: texel 0 = (count, mips, W0,
+# one RGBA16F texture, 2 W0 wide times the tile columns. Row 0: texel 0 = (count, mips, W0,
 # GPU_MARKER), texel 1 = (mode, 0, 0, 0). Row 1 + rank: the probe of that
 # rank as five vec4 - capture.xyz, fade | box min.xyz, band row | box
 # max.xyz, global | influence min.xyz, 0 | influence max.xyz, 0 - each
@@ -190,13 +201,14 @@ def relight_chain(albedo, normal, distance, minimum_width=4):
 
 
 def ranks(probes):
-    """Rank order: influence volume ascending (a small volume inside a
-    larger one is consulted first), the global probe last."""
+    """Authored priority descending, then influence volume ascending;
+    the global probe is always last. Serialized ranks own runtime ordering."""
     def volume(probe):
         return float(np.prod(np.asarray(probe["influence_max"]) -
                              np.asarray(probe["influence_min"])))
     order = sorted(range(len(probes)),
-                   key=lambda i: (bool(probes[i].get("global")), volume(probes[i]), i))
+                   key=lambda i: (bool(probes[i].get("global")),
+                                  -probes[i].get("priority", 0), volume(probes[i]), i))
     rank = [0] * len(probes)
     for position, index in enumerate(order):
         rank[index] = position
@@ -266,7 +278,8 @@ def build(probes, chains, scale=SOURCE_UNITS_PER_METER, relight=None):
     texels = atlas.astype("<f2")
     global_index = next(i for i, probe in enumerate(probes) if probe.get("global"))
     header = struct.pack("<IIIIIIIIQQIIII", MAGIC,
-                         VERSION if relight is None else RELIGHT_VERSION, count, mips, width,
+                         (TILED_VERSION if count > LEGACY_MAX_PROBES else
+                          VERSION if relight is None else RELIGHT_VERSION), count, mips, width,
                          atlas_width, atlas_height, RECORD_BYTES, atlas_offset, texels.nbytes,
                          PREFILTER_VERSION, 0 if relight is None else FLAG_RELIGHT,
                          global_index, 0)
@@ -282,7 +295,7 @@ def build(probes, chains, scale=SOURCE_UNITS_PER_METER, relight=None):
 # same error for each.
 MALFORMATIONS = (
     (0, "<I", 0x12345678, "BadMagic"),
-    (4, "<I", 3, "UnsupportedVersion"),
+    (4, "<I", 4, "UnsupportedVersion"),
     (4, "<I", 2, "UnsupportedVersion"),        # v2 without the relight flag
     (8, "<I", 0, "InvalidCounts"),
     (8, "<I", 17, "InvalidCounts"),
@@ -333,12 +346,15 @@ def read(data):
         "<IIIIIIIIQQIIII", data)
     if magic != MAGIC:
         raise RprbError("BadMagic")
-    # v1 has no flags; v2 is exactly the relight flag.
-    if (version not in (VERSION, RELIGHT_VERSION) or prefilter != PREFILTER_VERSION or
-            flags != (FLAG_RELIGHT if version == RELIGHT_VERSION else 0) or reserved):
+    # v3 extends capacity and allows either kind of band payload.
+    if (version not in (VERSION, RELIGHT_VERSION, TILED_VERSION) or
+            prefilter != PREFILTER_VERSION or flags not in (0, FLAG_RELIGHT) or
+            (version != TILED_VERSION and
+             flags != (FLAG_RELIGHT if version == RELIGHT_VERSION else 0)) or reserved):
         raise RprbError("UnsupportedVersion")
-    relight = version == RELIGHT_VERSION
-    if not 1 <= count <= MAX_PROBES or not 1 <= mips <= MAX_MIPS:
+    relight = bool(flags & FLAG_RELIGHT)
+    maximum = MAX_PROBES if version == TILED_VERSION else LEGACY_MAX_PROBES
+    if not 1 <= count <= maximum or not 1 <= mips <= MAX_MIPS:
         raise RprbError("InvalidCounts")
     if (width & (width - 1) or not MIN_WIDTH <= width <= MAX_WIDTH or (width >> (mips - 1)) < 4
             or (atlas_width, atlas_height) != atlas_layout(count, width, relight)
@@ -425,6 +441,18 @@ def read(data):
             "chains": chains, "relight": relight_chains, "global_index": global_index}
 
 
+def gpu_columns(layout):
+    # Keep the old GPU form byte-identical for v1/v2-sized sets. Extended
+    # sets tile complete bands (including relight bands), never split a mip.
+    if layout["count"] <= LEGACY_MAX_PROBES:
+        return 1
+    bands = layout["count"] * (3 if layout.get("relight") else 1)
+    columns = 1
+    while columns * columns * 4 < bands:
+        columns *= 2
+    return columns
+
+
 def gpu_texture(layout, mode=MODE_BLEND, relight=True):
     """The RGBA16F texture the shaders read (see GPU_MARKER), as float16.
     Texel (1, 0).y is 1 when the probes are relit (`mat_reflection_relight`
@@ -432,16 +460,22 @@ def gpu_texture(layout, mode=MODE_BLEND, relight=True):
     (0 without bands)."""
     count, width = layout["count"], layout["width"]
     bands = layout.get("relight")
-    rows = 1 + count + layout["atlas_height"]
-    texture = np.zeros((rows, 2 * width, 4), dtype=np.float16)
+    columns = gpu_columns(layout)
+    band = width // 2
+    band_count = layout["atlas_height"] // band
+    rows = 1 + count + ((band_count + columns - 1) // columns) * band
+    texture = np.zeros((rows, 2 * width * columns, 4), dtype=np.float16)
     texture[0, 0] = (count, layout["mips"], width, GPU_MARKER)
     texture[0, 1] = (mode, 1.0 if relight and bands else 0.0, 0, 0)
+    if columns > 1:
+        texture[0, 2] = (columns, 0, 0, 0)
+    row_unit = band if columns > 1 else 1
     for index, probe in enumerate(layout["probes"]):
         values = np.array([(*probe["capture"], probe["fade"]),
-                           (*probe["box_min"], index * (width // 2)),
+                           (*probe["box_min"], index * band // row_unit),
                            (*probe["box_max"], 1.0 if probe["global"] else 0.0),
                            (*probe["influence_min"],
-                            relight_rows(count, width, index)[0] if bands else 0.0),
+                            relight_rows(count, width, index)[0] // row_unit if bands else 0.0),
                            (*probe["influence_max"], 0.0)], dtype=np.float32)
         hi = values.astype(np.float16)
         lo = (values - hi.astype(np.float32)).astype(np.float16)
@@ -449,13 +483,15 @@ def gpu_texture(layout, mode=MODE_BLEND, relight=True):
         row[0:2 * TABLE_VEC4:2] = hi
         row[1:2 * TABLE_VEC4:2] = lo
     def place(top, chain, alpha):
-        x = 0
+        index = (top - 1 - count) // band
+        x = (index % columns) * 2 * width
+        top = 1 + count + (index // columns) * band
         for mip in chain:
-            height, columns = mip.shape[:2]
-            texture[top:top + height, x:x + columns, :mip.shape[2]] = mip
+            height, mip_width = mip.shape[:2]
+            texture[top:top + height, x:x + mip_width, :mip.shape[2]] = mip
             if alpha is not None:
-                texture[top:top + height, x:x + columns, 3] = alpha
-            x += columns
+                texture[top:top + height, x:x + mip_width, 3] = alpha
+            x += mip_width
 
     for index, chain in enumerate(layout["chains"]):
         place(1 + count + index * (width // 2), chain, 1.0)
@@ -739,7 +775,39 @@ def inside(points, box_min, box_max, margin=0.05):
     return np.all((points >= box_min - margin) & (points <= box_max + margin), axis=1)
 
 
-def place(raycast, bounds_min, bounds_max, glossy=None, params=None, seeds=()):
+def authored_volume(record, params):
+    """Validate one authored room in stage meters before any placement/bake work."""
+    if not isinstance(record, dict):
+        raise ValueError("authored probe must be an object")
+    keys = ("capture", "box_min", "box_max", "influence_min", "influence_max")
+    result = dict(record)
+    for key in keys:
+        value = np.asarray(record.get(key), dtype=np.float64)
+        if value.shape != (3,) or not np.isfinite(value).all() or \
+                np.any(np.abs(value) * SOURCE_UNITS_PER_METER > MAX_COORDINATE):
+            raise ValueError("authored probe needs finite in-range " + key)
+        result[key] = value
+    for lower, upper in (("box_min", "box_max"), ("influence_min", "influence_max")):
+        if np.any(result[lower] >= result[upper]):
+            raise ValueError("authored probe has an empty " + lower)
+    if np.any(result["capture"] < result["box_min"]) or \
+            np.any(result["capture"] > result["box_max"]):
+        raise ValueError("authored probe capture must be inside its proxy box")
+    result["fade"] = float(record.get("fade", params["fade_m"]))
+    if not math.isfinite(result["fade"]) or not 0 < result["fade"] <= \
+            MAX_COORDINATE / SOURCE_UNITS_PER_METER:
+        raise ValueError("authored probe fade must be finite and positive")
+    priority = record.get("priority", 0)
+    if type(priority) is not int or not -32768 <= priority <= 32767:
+        raise ValueError("authored probe priority must be a signed 16-bit integer")
+    if type(record.get("global", False)) is not bool:
+        raise ValueError("authored probe global must be boolean")
+    result.update(priority=priority, role="authored", seeded=True,
+                  global_probe=bool(record.get("global", False)))
+    return result
+
+
+def place(raycast, bounds_min, bounds_max, glossy=None, params=None, seeds=(), volumes=()):
     """Probe captures, proxy boxes and influence volumes (meters).
 
     Room probes: greedily cover every walkable sample (eye height above each
@@ -758,6 +826,13 @@ def place(raycast, bounds_min, bounds_max, glossy=None, params=None, seeds=()):
     capture's depth faces replace.
     """
     params = dict(PLACEMENT_DEFAULTS, **(params or {}))
+    authored = [authored_volume(record, params) for record in volumes]
+    if type(params["max_probes"]) is not int or not 1 <= params["max_probes"] <= MAX_PROBES:
+        raise ValueError("max_probes must be between 1 and %d" % MAX_PROBES)
+    if len(authored) + len(seeds) > params["max_probes"]:
+        raise ValueError("authored probes exceed the requested probe capacity")
+    if sum(probe["global_probe"] for probe in authored) > 1:
+        raise ValueError("at most one authored global probe is allowed")
     bounds_min = np.asarray(bounds_min, dtype=np.float64)
     bounds_max = np.asarray(bounds_max, dtype=np.float64)
     walkable = walkable_samples(raycast, bounds_min, bounds_max, params)
@@ -786,6 +861,14 @@ def place(raycast, bounds_min, bounds_max, glossy=None, params=None, seeds=()):
     probes = []
     uncovered = np.ones(len(walkable), dtype=bool)
     margin = params["influence_margin_m"]
+    for probe in authored:
+        within = np.nonzero(influence_weight(walkable, probe) > 0)[0]
+        seen = np.zeros(len(walkable), dtype=bool)
+        seen[within] = visible(raycast, np.tile(probe["capture"], (len(within), 1)),
+                               walkable[within])
+        probe["covers"] = int((seen & uncovered).sum())
+        probes.append(probe)
+        uncovered &= ~seen
     for seed in seeds:
         seed = np.asarray(seed, dtype=np.float64)
         box_min, box_max = estimate_box(raycast, seed, directions)[:2]
@@ -874,8 +957,11 @@ def place(raycast, bounds_min, bounds_max, glossy=None, params=None, seeds=()):
             served |= candidate_views[best]
         report.update(glossy_samples=int(len(points)), glossy_servable=int(servable.sum()),
                       unserved_glossy=int((servable & ~served).sum()), glossy_stop=glossy_stop)
-    rooms = [probe for probe in probes if probe["role"] == "room"]
-    max(rooms, key=lambda probe: probe["covers"])["global"] = True
+    rooms = [probe for probe in probes if probe["role"] in ("room", "authored")]
+    chosen_global = next((probe for probe in authored if probe["global_probe"]), None)
+    if chosen_global is None:
+        chosen_global = max(rooms, key=lambda probe: probe["covers"])
+    chosen_global["global"] = True
     report["probes"] = len(probes)
     return probes, report
 
@@ -1014,6 +1100,11 @@ def pack(probes_dir, width, gain, prefilter_samples=256):
         directions, values, weights = reflection_probe.face_samples(distances)
         box_min, box_max, report = reflection_probe.fit_parallax_box(capture, directions,
                                                                      values, weights)
+        if record["role"] == "authored":
+            box_min = np.asarray(record["estimated_box_min"], dtype=np.float64)
+            box_max = np.asarray(record["estimated_box_max"], dtype=np.float64)
+            report = reflection_probe.fit_residual(capture, box_min, box_max,
+                                                    directions, values, weights)
         if record["role"] == "room":
             influence_min, influence_max = box_min - margin, box_max + margin
         else:
@@ -1021,7 +1112,8 @@ def pack(probes_dir, width, gain, prefilter_samples=256):
             influence_max = np.asarray(record["influence_max"], dtype=np.float64)
         probes.append({"capture": capture, "box_min": box_min, "box_max": box_max,
                        "influence_min": influence_min, "influence_max": influence_max,
-                       "fade": record["fade"], "role": record["role"]})
+                       "fade": record["fade"], "role": record["role"],
+                       "priority": record.get("priority", 0), "name": record.get("name")})
         chains.append([mip * gain for mip in reflection_probe.mip_chain(
             reflection_probe.cube_to_equirect(colors, width), samples=prefilter_samples)])
         if gbuffer:
@@ -1032,7 +1124,8 @@ def pack(probes_dir, width, gain, prefilter_samples=256):
                                          reflection_probe.cube_to_equirect(normals, width),
                                          distance))
         reports.append(dict(report, index=record["index"], role=record["role"],
-                            capture=list(capture), box_min=list(box_min),
+                            capture=list(capture), priority=record.get("priority", 0),
+                            name=record.get("name"), box_min=list(box_min),
                             box_max=list(box_max), depth_convention=convention,
                             depth_check_median_error=medians[convention]))
     # Placement's global probe: the room probe covering the most walkable
@@ -1142,6 +1235,26 @@ def fixture_occluders(scale=SOURCE_UNITS_PER_METER):
     return [(np.asarray(lo) * scale, np.asarray(hi) * scale, reflectance)]
 
 
+def capacity_fixture(relight=False):
+    """Only records 62/63 influence the original room: catches a 16-probe clamp.
+
+    All earlier records have equally sized influences in distant rooms, so
+    the active local rank is also 62. Distinct bands exercise tiled addressing.
+    """
+    original, chains = fixture_layout()
+    probes = []
+    for index in range(MAX_PROBES - 2):
+        offset = np.array((100.0 + index * 10.0, 0.0, 0.0))
+        probes.append(dict(original[0], priority=1, **{key: original[0][key] + offset for key in
+            ("capture", "box_min", "box_max", "influence_min", "influence_max")}))
+    probes += original
+    colors = [[mip * (0.1 + index / MAX_PROBES) for mip in chains[0]]
+              for index in range(MAX_PROBES - 2)] + chains
+    bands = fixture_relight(original) if relight else None
+    return build(probes, colors, relight=([bands[0]] * (MAX_PROBES - 2) + bands)
+                 if bands else None)
+
+
 def write_fixture(out):
     """The C++ reader's inputs: valid.rprb, its GPU texture (mode 1),
     the malformation corpus and shading samples of the reference blend."""
@@ -1149,6 +1262,8 @@ def write_fixture(out):
     data = build(probes, chains)
     out.mkdir(parents=True, exist_ok=True)
     (out / "valid.rprb").write_bytes(data)
+    (out / "capacity64.rprb").write_bytes(capacity_fixture())
+    (out / "capacity64-relight.rprb").write_bytes(capacity_fixture(relight=True))
     layout = read(data)
     (out / "gpu-mode1.rgba16f").write_bytes(gpu_texture(layout, MODE_BLEND).tobytes())
     lines = ["# offset format value error (reflection_probe_set.MALFORMATIONS)"]

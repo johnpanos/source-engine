@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <cstring>
 #include <limits>
 
 namespace render::pass::lights
@@ -647,6 +648,65 @@ foundation::Expected<ClusterStats, ClusterFailure> AssignLights(
 	out.froxels = std::move( ranges );
 	out.lightIndices = std::move( indices );
 	return stats;
+}
+
+bool AssignAreaLights( const ClusterGrid &grid, std::span<const area_light::AreaLight> lights,
+    std::vector<AreaFroxelMask> &out )
+{
+	if ( lights.size() > 64 )
+		return false;
+	std::vector<AreaFroxelMask> masks( grid.FroxelCount() );
+	for ( std::size_t i = 0; i < lights.size(); ++i )
+	{
+		const auto &light = lights[i];
+		if ( !( light.reach > 0.0f ) )
+			continue;
+		const float3 center = TransformPoint3( grid.view, light.rect.center, 1.0f );
+		const float3 u = TransformPoint3( grid.view, light.rect.halfU, 0.0f );
+		const float3 v = TransformPoint3( grid.view, light.rect.halfV, 0.0f );
+		const float slack = kRelativeSlack *
+		                    ( math::Length( center ) + math::Length( u ) + math::Length( v ) +
+		                        light.reach );
+		const auto radius = [&]( const float3 &normal )
+		{
+			return std::abs( math::Dot( normal, u ) ) + std::abs( math::Dot( normal, v ) ) +
+			       light.reach + slack;
+		};
+		const auto touches = [&]( const math::Plane &a, const math::Plane &b )
+		{
+			return a.Distance( center ) >= -radius( a.normal ) &&
+			       b.Distance( center ) <= radius( b.normal );
+		};
+		const float depthRadius = radius( { 0, 0, 1 } );
+		for ( std::uint32_t z = 0; z < grid.slices; ++z )
+		{
+			if ( ( z > 0 && -center.z + depthRadius < grid.sliceDepths[z] ) ||
+			     ( z + 1 < grid.slices && -center.z - depthRadius > grid.sliceDepths[z + 1] ) )
+				continue;
+			for ( std::uint32_t y = 0; y < grid.tilesY; ++y )
+			{
+				if ( !touches( grid.rowPlanes[y > 0 ? y - 1 : 0],
+				         grid.rowPlanes[std::min( y + 2, grid.tilesY )] ) )
+					continue;
+				for ( std::uint32_t x = 0; x < grid.tilesX; ++x )
+				{
+					if ( touches( grid.columnPlanes[x > 0 ? x - 1 : 0],
+					         grid.columnPlanes[std::min( x + 2, grid.tilesX )] ) )
+						masks[grid.FroxelIndex( x, y, z )][i / 32] |= 1u << ( i % 32 );
+				}
+			}
+		}
+	}
+	out = std::move( masks );
+	return true;
+}
+
+void AppendAreaMasks( std::span<const AreaFroxelMask> masks, std::vector<std::byte> &indices )
+{
+	const std::uint32_t offset = std::uint32_t( ( indices.size() - 16 ) / 4 ) + 1;
+	std::memcpy( indices.data() + 12, &offset, sizeof( offset ) );
+	const auto bytes = std::as_bytes( masks );
+	indices.insert( indices.end(), bytes.begin(), bytes.end() );
 }
 
 ClusterLightTable PackClusterLights(

@@ -466,9 +466,70 @@ void CheckSmallCases( testing::Checks &checks )
 
 } // namespace
 
+// Independently sample receivers in world space, then project them into the
+// grid. Every receiver inside the rounded rectangle's reach must keep its bit.
+void CheckAreaMasks( testing::Checks &checks )
+{
+	std::mt19937 random( 1001 );
+	std::uniform_real_distribution<float> unit( -1.0f, 1.0f );
+	std::uint64_t reached = 0, missed = 0, culled = 0, seededMissed = 0;
+	for ( int scene = 0; scene < 100; ++scene )
+	{
+		auto desc = SimpleView();
+		desc.view.rows[0].w = 1000.0f * unit( random );
+		desc.view.rows[1].w = 1000.0f * unit( random );
+		auto grid = lights::CreateClusterGrid( desc, lights::DesktopClusterLimits() );
+		std::vector<area_light::AreaLight> areas( 64 );
+		for ( auto &area : areas )
+		{
+			area.rect.center[0] = 600.0f * unit( random ) - desc.view.rows[0].w;
+			area.rect.center[1] = 400.0f * unit( random ) - desc.view.rows[1].w;
+			area.rect.center[2] = -500.0f + 400.0f * unit( random );
+			const float angle = 3.14f * unit( random );
+			area.rect.halfU[0] = 150.0f * std::cos( angle );
+			area.rect.halfU[2] = 150.0f * std::sin( angle );
+			area.rect.halfV[1] = 50.0f;
+			area.reach = 160.0f;
+		}
+		std::vector<lights::AreaFroxelMask> masks;
+		checks.That( lights::AssignAreaLights( grid.Value(), areas, masks ), "area masks build" );
+		for ( int sample = 0; sample < 2000; ++sample )
+		{
+			const float z = 4.0f + 1000.0f * std::abs( unit( random ) );
+			const float nx = unit( random ), ny = unit( random );
+			const float point[3] = { nx * z / desc.projection.rows[0].x - desc.view.rows[0].w,
+			    ny * z / desc.projection.rows[1].y - desc.view.rows[1].w, -z };
+			const auto f = lights::FroxelAt( grid.Value(), ( nx + 1 ) * desc.widthPixels * 0.5f,
+			    ( 1 - ny ) * desc.heightPixels * 0.5f, z );
+			for ( std::size_t i = 0; i < areas.size(); ++i )
+			{
+				const bool listed = ( masks[f][i / 32] & ( 1u << ( i % 32 ) ) ) != 0;
+				culled += !listed;
+				if ( area_light::DistanceTo( areas[i].rect, point ) < areas[i].reach )
+				{
+					++reached;
+					missed += !listed;
+					// Negative control: losing the high word must be detected.
+					seededMissed += i >= 32;
+				}
+			}
+		}
+		const auto before = masks;
+		areas.emplace_back();
+		checks.That( !lights::AssignAreaLights( grid.Value(), areas, masks ) && masks == before,
+		    "65th area light fails atomically" );
+	}
+	checks.That( reached > 10000 && missed == 0, "area masks lose no reaching receiver" );
+	checks.That( culled > 1000000, "area masks cull spatially separated lights" );
+	checks.That( seededMissed > 1000, "area oracle detects missing high word" );
+	std::printf( "INFO area masks reached %llu missed %llu culled %llu\n",
+	    (unsigned long long)reached, (unsigned long long)missed, (unsigned long long)culled );
+}
+
 int main()
 {
 	testing::Checks checks;
+	CheckAreaMasks( checks );
 	const std::uint32_t seed = Seed();
 	std::printf( "INFO seed %u\n", seed );
 	std::mt19937 random( seed );

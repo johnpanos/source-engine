@@ -286,7 +286,7 @@ std::optional<std::string> BlendChecks( Lab &lab, Results &results )
 		resources::TextureCache cache( lab.device );
 		TextureDesc desc;
 		desc.format = Format::kRGBA16Float;
-		desc.width = layout.atlasWidth;
+		desc.width = mapcontainer::ReflectionProbeTextureWidth( layout );
 		desc.height = mapcontainer::ReflectionProbeTextureRows( layout );
 		desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kSampled };
 		const std::vector<std::uint16_t> page(
@@ -353,6 +353,35 @@ std::optional<std::string> RelightChecks( Lab &lab, Results &results )
 	return std::nullopt;
 }
 
+std::optional<std::string> CapacityChecks( Lab &lab, Results &results )
+{
+	const ReflectionProbeRelight relight = { FixtureLight, nullptr, &kFixtureOccluder, 1 };
+	for ( bool bands : { false, true } )
+	{
+		const auto bytes = Load( bands ? "capacity64-relight.rprb" : "capacity64.rprb" );
+		ReflectionProbesLayout layout{};
+		const bool valid = mapcontainer::ValidateReflectionProbes( bytes.data(), bytes.size(),
+		                       &layout ) == mapcontainer::ReflectionProbesError::Ok &&
+		                   layout.count == 64;
+		const std::string prefix = bands ? "rprb.capacity64-relight." : "rprb.capacity64.";
+		results.That( valid, prefix + "valid" );
+		if ( !valid )
+			return std::nullopt;
+		const ReflectionProbesView view( bytes.data(), layout );
+		for ( auto mode : { ReflectionProbeMode::Blend, ReflectionProbeMode::Nearest,
+		          ReflectionProbeMode::DirectionOnly, ReflectionProbeMode::BlendWeights } )
+		{
+			std::vector<float> gpu;
+			if ( auto why = Evaluate( lab, bytes, mode, bands, gpu ) )
+				return why;
+			std::string first;
+			const auto count = Agreeing( lab, view, mode, gpu, &first, bands ? &relight : nullptr );
+			results.That( count == lab.cases.size(), prefix + ModeName( mode ), first );
+		}
+	}
+	return std::nullopt;
+}
+
 std::optional<std::string> RunOnce( bool validate, std::span<const std::uint32_t> module,
     Results &results, std::uint64_t &messages )
 {
@@ -371,6 +400,8 @@ std::optional<std::string> RunOnce( bool validate, std::span<const std::uint32_t
 		if ( std::optional<std::string> why = BlendChecks( lab, results ) )
 			return why;
 		if ( std::optional<std::string> why = RelightChecks( lab, results ) )
+			return why;
+		if ( auto why = CapacityChecks( lab, results ) )
 			return why;
 		(void)device->WaitIdle();
 	}

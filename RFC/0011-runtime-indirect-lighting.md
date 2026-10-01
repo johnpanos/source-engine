@@ -292,7 +292,8 @@ native types. RFC 0008 F5's clustered direct lighting consumes the same
 snapshot. That gives one owner for "which lights exist" and removes the need
 for the engine light cache and a renderer light list to be kept in sync.
 
-Render-core consumers (amendment 2026-09-28): RFC 0016's lighting model
+Render-core consumers (amendment 2026-09-28): RFC 0016's
+[clustered Forward+ lighting model](0016-render-core.md#rendering-architecture-clustered-forward)
 (`render.lighting.v1`) reads this snapshot for its clustered lights, its
 per-pixel LTC area lights, its per-view projector list and the in-scattering
 of its volumetric fog. The snapshot and its producers keep their owner here.

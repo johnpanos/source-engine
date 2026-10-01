@@ -243,7 +243,7 @@ std::optional<std::string> StageReflectionProbes( resources::TextureCache &cache
 		return std::string( "RPRB: " ) + mapcontainer::ReflectionProbesErrorName( error );
 	TextureDesc desc;
 	desc.format = Format::kRGBA16Float;
-	desc.width = layout.atlasWidth;
+	desc.width = mapcontainer::ReflectionProbeTextureWidth( layout );
 	desc.height = mapcontainer::ReflectionProbeTextureRows( layout );
 	desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kSampled };
 	std::vector<std::uint16_t> texels( std::size_t( desc.width ) * desc.height * 4 );

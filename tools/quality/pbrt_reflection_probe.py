@@ -142,10 +142,14 @@ def main():
                         help="a seeded capture (USD stage units); repeatable")
     parser.add_argument("--placement", default="{}",
                         help="JSON overrides of reflection_probe_set.PLACEMENT_DEFAULTS")
+    parser.add_argument("--volumes", default="[]",
+                        help="authored reflection volumes in stage meters (JSON list)")
     parser.add_argument("--coverage-rules", default="{}",
                         help="export profile audit rules, checked before rendering faces")
     parser.add_argument("--record-coverage-failure", action="store_true",
                         help="record failed placement checks and continue for inspection")
+    parser.add_argument("--placement-only", action="store_true",
+                        help="write placement evidence without configuring Cycles or baking")
     parser.add_argument("--bounds", type=float, nargs=6,
                         help="placement bounds, min xyz then max xyz (default: the meshes')")
     parser.add_argument("--light-paths", default="blender-default",
@@ -215,19 +219,27 @@ def main():
         glossy = (points, normals)
     seeds = [np.asarray(position, dtype=np.float64) for position in args.position]
     probes, report = reflection_probe_set.place(caster, bounds_min, bounds_max, glossy, params,
-                                                seeds=seeds)
+                                                seeds=seeds, volumes=json.loads(args.volumes))
 
     checks = map_export_audit.probe_placement_checks(dict(params, **report),
                                                       json.loads(args.coverage_rules))
     failed = [check["check"] for check in checks if check["status"] == "fail"]
     args.out_dir.mkdir(parents=True, exist_ok=True)
     coverage = {"schema": "reflection-probe-placement-checks/v1",
-                "status": "fail" if failed else "pass", "checks": checks, "failed": failed}
+                "status": ("fail" if failed else "pass") if checks else "not-applicable",
+                "checks": checks, "failed": failed}
     (args.out_dir / "placement-checks.json").write_text(json.dumps(coverage, indent=2) + "\n")
+    placement = {"schema": "reflection-probe-placement/v1", "parameters": params,
+                 "report": report, "stage_sha256": sha256(args.stage),
+                 "probes": [{key: value.tolist() if isinstance(value, np.ndarray) else value
+                             for key, value in probe.items()} for probe in probes]}
+    (args.out_dir / "placement.json").write_text(json.dumps(placement, indent=2) + "\n")
     print("PROBE_PLACEMENT_CHECKS " + json.dumps(coverage), flush=True)
     if failed and not args.record_coverage_failure:
         raise ValueError("reflection probe placement failed before face rendering: " +
                          ", ".join(failed))
+    if args.placement_only:
+        return
 
     device = pbrt_blender.configure_cycles(args.samples, args.device)
     light_paths = pbrt_blender.configure_light_paths(args.light_paths)
@@ -287,6 +299,7 @@ def main():
                                   for r, c, d in zip(rows, columns, distance)]
         records.append({
             "index": index, "role": probe["role"], "global": bool(probe.get("global")),
+            "priority": probe.get("priority", 0), "name": probe.get("name"),
             "capture": [float(v) for v in probe["capture"]],
             "estimated_box_min": [float(v) for v in probe["box_min"]],
             "estimated_box_max": [float(v) for v in probe["box_max"]],

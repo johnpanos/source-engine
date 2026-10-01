@@ -123,19 +123,26 @@ ReflectionProbesError ValidateReflectionProbes(
 		return ReflectionProbesError::Truncated;
 	if ( U32( p ) != kLumpReflectionProbes )
 		return ReflectionProbesError::BadMagic;
-	// v1 has no flags; v2 is exactly the relight flag.
+	// v3 extends capacity; its optional relight flag preserves the band schema.
 	const uint32_t version = U32( p + 4 );
-	if ( ( version != kReflectionProbesVersion && version != kReflectionProbesRelightVersion ) ||
+	const uint32_t flags = U32( p + 52 );
+	if ( ( version != kReflectionProbesVersion && version != kReflectionProbesRelightVersion &&
+	         version != kReflectionProbesTiledVersion ) ||
 	     U32( p + 48 ) != kReflectionProbesPrefilterVersion ||
-	     U32( p + 52 ) !=
-	         ( version == kReflectionProbesRelightVersion ? kReflectionProbesFlagRelight : 0 ) ||
+	     flags > kReflectionProbesFlagRelight ||
+	     ( version != kReflectionProbesTiledVersion &&
+	         flags != ( version == kReflectionProbesRelightVersion ? kReflectionProbesFlagRelight
+	                                                               : 0 ) ) ||
 	     U32( p + 60 ) != 0 )
 		return ReflectionProbesError::UnsupportedVersion;
 	ReflectionProbesLayout layout = {};
-	layout.relight = version == kReflectionProbesRelightVersion;
+	layout.relight = ( flags & kReflectionProbesFlagRelight ) != 0;
 	layout.count = U32( p + 8 );
+	const uint32_t maximum = version == kReflectionProbesTiledVersion
+	                             ? kReflectionProbesMaxProbes
+	                             : kReflectionProbesLegacyMaxProbes;
 	layout.mipCount = U32( p + 12 );
-	if ( layout.count < 1 || layout.count > kReflectionProbesMaxProbes || layout.mipCount < 1 ||
+	if ( layout.count < 1 || layout.count > maximum || layout.mipCount < 1 ||
 	     layout.mipCount > kReflectionProbesMaxMips )
 		return ReflectionProbesError::InvalidCounts;
 	layout.width = U32( p + 16 );
@@ -270,31 +277,53 @@ bool ReflectionProbeModeValid( uint32_t mode ) noexcept
 	return mode <= 7 && mode != kReflectionProbeModeWeights;
 }
 
+uint32_t ReflectionProbeTextureColumns( const ReflectionProbesLayout &layout ) noexcept
+{
+	if ( layout.count <= kReflectionProbesLegacyMaxProbes )
+		return 1;
+	const uint32_t bands = layout.count * ( layout.relight ? 3 : 1 );
+	uint32_t columns = 1;
+	while ( columns * columns * 4 < bands )
+		columns *= 2;
+	return columns;
+}
+
+uint32_t ReflectionProbeTextureWidth( const ReflectionProbesLayout &layout ) noexcept
+{
+	return layout.atlasWidth * ReflectionProbeTextureColumns( layout );
+}
+
 uint32_t ReflectionProbeTextureRows( const ReflectionProbesLayout &layout ) noexcept
 {
-	return 1 + layout.count + layout.atlasHeight;
+	const uint32_t columns = ReflectionProbeTextureColumns( layout );
+	const uint32_t bands = layout.count * ( layout.relight ? 3 : 1 );
+	return 1 + layout.count + ( ( bands + columns - 1 ) / columns ) * ( layout.width / 2 );
 }
 
 void WriteReflectionProbeTexture( const void *pData, const ReflectionProbesLayout &layout,
     ReflectionProbeMode mode, uint16_t *pOut, bool relight ) noexcept
 {
-	const uint32_t width = layout.atlasWidth;
+	const uint32_t width = ReflectionProbeTextureWidth( layout );
 	std::memset( pOut, 0, size_t( width ) * ReflectionProbeTextureRows( layout ) * 8 );
 	const float header[8] = { float( layout.count ), float( layout.mipCount ),
 	    float( layout.width ), kReflectionProbeTextureMarker, float( uint32_t( mode ) ),
 	    relight && layout.relight ? 1.0f : 0.0f, 0.0f, 0.0f };
 	for ( int k = 0; k < 8; ++k )
 		pOut[k] = FloatToHalf( header[k] );
+	const uint32_t columns = ReflectionProbeTextureColumns( layout );
+	if ( columns > 1 )
+		pOut[8] = FloatToHalf( float( columns ) );
 	for ( uint32_t index = 0; index < layout.count; ++index )
 	{
 		const ReflectionProbeRecord &probe = layout.probes[index];
 		const float global = ( probe.flags & kReflectionProbeGlobal ) ? 1.0f : 0.0f;
+		const uint32_t rowUnit = columns > 1 ? layout.width / 2 : 1;
 		const float values[kReflectionProbeTableVec4][4] = {
 		    { probe.capture[0], probe.capture[1], probe.capture[2], probe.fade },
-		    { probe.boxMin[0], probe.boxMin[1], probe.boxMin[2], float( probe.bandRow ) },
+		    { probe.boxMin[0], probe.boxMin[1], probe.boxMin[2], float( probe.bandRow / rowUnit ) },
 		    { probe.boxMax[0], probe.boxMax[1], probe.boxMax[2], global },
 		    { probe.influenceMin[0], probe.influenceMin[1], probe.influenceMin[2],
-		        float( probe.relightRow ) },
+		        float( probe.relightRow / rowUnit ) },
 		    { probe.influenceMax[0], probe.influenceMax[1], probe.influenceMax[2], 0.0f } };
 		uint16_t *row = pOut + size_t( 1 + probe.rank ) * width * 4;
 		for ( uint32_t v = 0; v < kReflectionProbeTableVec4; ++v )
@@ -305,8 +334,16 @@ void WriteReflectionProbeTexture( const void *pData, const ReflectionProbesLayou
 				row[( 2 * v + 1 ) * 4 + c] = FloatToHalf( values[v][c] - HalfToFloat( hi ) );
 			}
 	}
-	std::memcpy( pOut + size_t( 1 + layout.count ) * width * 4,
-	    static_cast<const unsigned char *>( pData ) + layout.atlasOffset, layout.atlasBytes );
+	const uint32_t band = layout.width / 2;
+	const unsigned char *atlas = static_cast<const unsigned char *>( pData ) + layout.atlasOffset;
+	for ( uint32_t row = 0; row < layout.atlasHeight; ++row )
+	{
+		const uint32_t index = row / band;
+		const uint32_t x = ( index % columns ) * layout.atlasWidth;
+		const uint32_t y = 1 + layout.count + ( index / columns ) * band + row % band;
+		std::memcpy( pOut + ( size_t( y ) * width + x ) * 4,
+		    atlas + size_t( row ) * layout.atlasWidth * 8, size_t( layout.atlasWidth ) * 8 );
+	}
 }
 
 ReflectionProbesView::ReflectionProbesView(

@@ -28,7 +28,10 @@
     "face_size": 512,
     "samples": 1024,
     "light_paths": "gi-reference",
-    "relight": false
+    "relight": false,
+    "placement": {
+      "max_probes": 60
+    }
   },
   "reference": {
     "render": {
