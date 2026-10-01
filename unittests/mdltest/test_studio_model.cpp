@@ -18,6 +18,9 @@
 
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <map>
 #include <random>
 #include <string>
@@ -246,6 +249,61 @@ void BoxCases()
 	    "tristrip -> two counter-clockwise triangles" );
 }
 
+void LodCases()
+{
+	SyntheticModel model = mdltest::BoxModel( { 1, 1, 1 }, "fixture/", "base" );
+	model.lodSwitches = { 0, 100, -1 };
+	model.lodReplacements = { {}, { { 0, "low_detail" } }, {} };
+	model.bodyParts[0][0][0].lodIndices = { { 0, 2, 1 }, {} };
+	for ( int version : { 44, 49 } )
+	{
+		model.version = version;
+		for ( bool fixups : { false, true } )
+		{
+			model.fixups = fixups;
+			const SyntheticFiles files = mdltest::WriteModel( model );
+			const mdl::ModelBytes bytes{ files.mdl, files.vvd, files.vtx, {} };
+			const auto all = mdl::ParseModelGeometryVariants( bytes );
+			Check( all && all.Value().lodTextures.size() == 3 && all.Value().meshes.size() == 2,
+			    "all geometry levels include an explicitly blank shadow LOD" );
+			if ( !all )
+				continue;
+			Check( all.Value().lodTextures[0][0] == "base" &&
+			           all.Value().lodTextures[1][0] == "low_detail" &&
+			           all.Value().lodTextures[2][0] == "base",
+			    "LOD replacements preserve slot identity" );
+			Check( all.Value().meshes[0].lod == 0 && all.Value().meshes[0].indices.size() == 36 &&
+			           all.Value().meshes[1].lod == 1 &&
+			           all.Value().meshes[1].indices == std::vector<std::uint32_t>{ 0, 1, 2 } &&
+			           all.Value().meshes[1].vertices == model.bodyParts[0][0][0].vertices,
+			    "lower LOD topology indexes the fixed-up mesh vertices" );
+			for ( std::uint32_t lod = 0; lod < 3; ++lod )
+			{
+				const auto selected = mdl::ParseModel( bytes, 0, lod );
+				std::vector<mdl::Mesh> expected;
+				for ( const mdl::Mesh &mesh : all.Value().meshes )
+					if ( mesh.lod == lod )
+						expected.push_back( mesh );
+				Check( selected && selected.Value().meshes == expected,
+				    "selected LOD agrees with the complete geometry import" );
+			}
+			const auto invalid = mdl::ParseModel( bytes, 0, 3 );
+			Check( !invalid && invalid.Error().status == mdl::ModelStatus::BadIndex &&
+			           invalid.Error().file == mdl::ModelFile::Vtx,
+			    "out-of-range LOD is refused" );
+			SyntheticFiles damaged = files;
+			const std::size_t part = Get32( damaged.vtx, 32 );
+			const std::size_t sub = part + Get32( damaged.vtx, part + 4 );
+			const std::size_t lowLod = sub + Get32( damaged.vtx, sub + 4 ) + 12;
+			mdltest::detail::Put32( damaged.vtx, lowLod, -1 );
+			const auto corrupted =
+			    mdl::ParseModelGeometryVariants( { damaged.mdl, damaged.vvd, damaged.vtx, {} } );
+			Check( Parse( damaged ) && !corrupted && corrupted.Error().file == mdl::ModelFile::Vtx,
+			    "malformed inactive geometry level fails the full import without partial output" );
+		}
+	}
+}
+
 void BodyAndSkinCases()
 {
 	SyntheticModel model;
@@ -272,6 +330,67 @@ void BodyAndSkinCases()
 	    "body 1 (base 1): part 1's second model" );
 	Check( body2.Value().meshes.size() == 1 && body2.Value().maxs.x == 1.0f,
 	    "body 2: part 1's blank model draws nothing" );
+	auto variants =
+	    mdl::ParseModelGeometryVariants( { files.mdl, files.vvd, files.vtx, files.ani } );
+	Check( variants && variants.Value().meshes.size() == 3 &&
+	           variants.Value().bodyParts.size() == 2 && variants.Value().maxs.x == 22.0f,
+	    "all body variants are read once, including a blank submodel's selection" );
+	if ( variants )
+	{
+		const mdl::Model &all = variants.Value();
+		for ( int body : { -1, 0, 1, 2, 3, 4, 5, 1000000 } )
+		{
+			std::vector<mdl::Mesh> selected;
+			for ( const mdl::Mesh &mesh : all.meshes )
+			{
+				if ( all.bodyParts[mesh.bodyPart].SelectedModel( body ) == mesh.bodyModel )
+					selected.push_back( mesh );
+			}
+			const auto single = Parse( files, body );
+			Check( single && single.Value().meshes == selected,
+			    "body variants select the same geometry as the single-body reader: " +
+			        std::to_string( body ) );
+		}
+		Check( all.meshes[2].bodyPart == 1 && all.meshes[2].bodyModel == 1 &&
+		           all.bodyParts[1].SelectedModel( 2 ) == 2,
+		    "body variant identity preserves the second and blank models" );
+	}
+	SyntheticFiles damaged = files;
+	const std::size_t secondPart = Get32( damaged.mdl, 236 ) + 16;
+	const std::size_t secondModel = secondPart + Get32( damaged.mdl, secondPart + 12 ) + 148;
+	const std::size_t secondMesh = secondModel + Get32( damaged.mdl, secondModel + 76 );
+	mdltest::detail::Put32( damaged.mdl, secondMesh + 8, -1 );
+	const auto damagedVariants =
+	    mdl::ParseModelGeometryVariants( { damaged.mdl, damaged.vvd, damaged.vtx, damaged.ani } );
+	Check( Parse( damaged, 0 ) && !damagedVariants &&
+	           damagedVariants.Error().status == mdl::ModelStatus::BadCount &&
+	           damagedVariants.Error().file == mdl::ModelFile::Mdl,
+	    "all-body read refuses damage in an inactive alternative, without a partial result" );
+	SyntheticModel combinations = model;
+	combinations.bodyParts[0].push_back( { mdltest::BoxMesh( { -10, 0, 0 }, { 1, 1, 1 }, 0 ) } );
+	const SyntheticFiles combinedFiles = mdltest::WriteModel( combinations );
+	const auto combined = mdl::ParseModelGeometryVariants(
+	    { combinedFiles.mdl, combinedFiles.vvd, combinedFiles.vtx, combinedFiles.ani } );
+	Check(
+	    combined && combined.Value().meshes.size() == 4 && combined.Value().bodyParts[1].base == 2,
+	    "multiple body groups store submodels without expanding their combinations" );
+	if ( combined )
+	{
+		for ( int body = 0; body < 6; ++body )
+		{
+			std::vector<mdl::Mesh> selected;
+			for ( const mdl::Mesh &mesh : combined.Value().meshes )
+			{
+				if ( combined.Value().bodyParts[mesh.bodyPart].SelectedModel( body ) ==
+				     mesh.bodyModel )
+					selected.push_back( mesh );
+			}
+			const auto single = Parse( combinedFiles, body );
+			Check( single && selected == single.Value().meshes,
+			    "multiple body-group selection preserves Source base arithmetic: " +
+			        std::to_string( body ) );
+		}
+	}
 	const mdl::Model &m = body0.Value();
 	Check( m.meshes[1].bodyPart == 1, "mesh records its body part" );
 	Check(
@@ -601,9 +720,23 @@ int main()
 {
 	BoxCases();
 	BodyAndSkinCases();
+	LodCases();
 	MaterialAndLoadCases();
 	MalformedCases();
 	RobustnessCases();
+	if ( const char *directory = std::getenv( "STUDIO_MODEL_LOD_FIXTURE_DIR" ) )
+	{
+		const SyntheticFiles fixture = mdltest::WriteModel( mdltest::LodPixelModel() );
+		std::filesystem::create_directories( directory );
+		for ( const auto &[name, data] :
+		    { std::pair{ "selection.mdl", fixture.mdl }, std::pair{ "selection.vvd", fixture.vvd },
+		        std::pair{ "selection.vtx", fixture.vtx } } )
+		{
+			std::ofstream out( std::filesystem::path( directory ) / name, std::ios::binary );
+			out.write( data.data(), static_cast<std::streamsize>( data.size() ) );
+			Check( out.good(), "LOD pixel fixture writes complete bytes" );
+		}
+	}
 	std::printf( "content.studio-model: %d checks, %d failures\n", g_checks, g_failures );
 	return testing::ReportConformance( g_checks, g_failures );
 }

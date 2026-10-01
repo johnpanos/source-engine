@@ -52,10 +52,26 @@ in the change that replaces it. Where this RFC names
 `materialsystem/shaderapivulkan/` or the engine's CPU lighting path as the
 place for new work, read the render core instead. These rules are not
 negotiable, and only the user can change them.
-Performance gates never block work (rule 7): the effect is made to look
-right first, then optimized. Every time, cost or budget check in this RFC's
-gates is measured and recorded, and a miss becomes an optimization item,
-never a blocker and never a reason to cut an effect.
+Performance acceptance follows RFC 0016's
+[hard render budgets](0016-render-core.md#hard-render-budgets-user-decision-2026-10-01)
+(user decision, 2026-10-01, superseding the earlier nonblocking rule 7).
+A miss requires optimization and prevents the affected performance acceptance;
+it never permits cutting an effect or weakening quality.
+
+## Render performance obligations (user decision, 2026-10-01)
+
+This RFC follows RFC 0016's
+[high-performance clustered lighting requirement](0016-render-core.md#high-performance-clustered-lighting-user-decision-2026-10-01)
+and [hard render budgets](0016-render-core.md#hard-render-budgets-user-decision-2026-10-01).
+Computation placement follows RFC 0003's binding
+[CPU/GPU policy](0003-dependency-aware-job-system.md#cpugpu-execution-placement-user-decision-2026-10-01).
+Those owners define the policies and numbers; this RFC defines its domain's
+obligations and does not certify implementation by this amendment.
+
+Compiled world/model resources provide the GPU scene, material and light
+inputs without repeated legacy conversion for accepted cohorts. Revisions
+invalidate derived culling, assignment and shadow caches. Dense geometry,
+texture residency and LOD workloads must retain image fidelity at the target.
 
 ## Summary
 

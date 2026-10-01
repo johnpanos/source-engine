@@ -10199,6 +10199,32 @@
       "expect": "pass"
     },
     {
+      "id": "render.lab.model-selection",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "migration": "R96",
+      "contract": "unittests/rendertest/contracts/render.opaque.v1.md",
+      "profile": "linux-native-vulkan-gpu",
+      "kind": "positive",
+      "description": "Body-group surface selection through render.pass.world: inactive unsupported alternatives do not reject supported bodies, active unsupported materials are refused, blank bodies are valid empty draws, invalid/duplicate/unordered selections are refused before a slot is published, and queued selection changes preserve independent snapshots. Native Vulkan pixels independently locate each posed and static alternative; swapping bodies fails the footprint oracle. Validation is silent.",
+      "command": ["{python}", "tools/render/lab.py", "suite", "model-selection", "--tree", "build-model-eligibility-lab", "--validate"],
+      "result_protocol": "checks-v1",
+      "min_checks": 22,
+      "timeout_seconds": 300,
+      "requires": ["path:build-model-eligibility-lab/render/lab/render_lab", "vulkan-device:gpu"],
+      "sources": [
+        "render/lab/model_selection_suite.cpp",
+        "render/lab/suites.cpp",
+        "render/lab/wscript",
+        "public/mdl/studio_model.h",
+        "mdl/studio_model.cpp",
+        "public/render/pass/world/world_pass.h",
+        "render/pass/world/world_pass.cpp",
+        "tools/render/lab.py"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "render.material.model-claim-inventory",
       "domain": "Q-CONTENT",
       "rfc": "0016",
@@ -11779,7 +11805,7 @@
       "contract": "unittests/rendertest/contracts/render.frame.v1.md",
       "kind": "positive",
       "profile": "linux-headless-core",
-      "description": "render.composition and render.legacy-frontend (RFC 0016 A.7) through the launcher's C entry points: RenderCore_Create composes or fails naming the unknown device or feature; the frontend's provider keeps the backend identity and forwards creation; RenderStageMarkers001 marks stages of engine frames; a frame runs legacy-stream then present. P6 (RFC 0016 K5): -render-core-passes selects the frontend's core-pass probe and refuses an unknown one by name; with a probe the frontend queues one slot on the backend at each view's opaque stage, tagged with the stage and view depth, and none without one.",
+      "description": "render.composition and render.legacy-frontend (RFC 0016 A.7) through the launcher's C entry points: RenderCore_Create composes or fails naming the unknown device or feature; the frontend's provider keeps the backend identity and forwards creation; RenderStageMarkers001 marks stages of engine frames; a frame runs legacy-stream then present. P6 (RFC 0016 K5): -render-core-passes selects the frontend's core-pass probe and refuses an unknown one by name; with a probe the frontend queues one slot on the backend at each view's opaque stage, tagged with the stage and view depth, and none without one. P9 (R96): Studio bytes and a host palette pass through the public composition API with arbitrary model names and multiple body groups; inactive unsupported materials do not reject a supported body, blanks are accepted, and active unsupported materials or failed imports refuse before slot publication.",
       "result_protocol": "checks-v1",
       "sources": [
         "render/graph/scene_color.cpp",
@@ -11851,7 +11877,7 @@
         "mdl/studio_model.cpp",
         "unittests/rendertest/core/composition/test_composition.cpp"
       ],
-      "min_checks": 22,
+      "min_checks": 40,
       "extra_flags": [
         "-pthread",
         "-DPOSIX",

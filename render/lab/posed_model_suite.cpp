@@ -437,7 +437,9 @@ std::optional<std::string> RunChecks(
 	auto render = [&]( WorldPass &active, float offset, bool lit, std::uint64_t frame,
 	                  const ClearColor &clear, CanvasImage &image, bool twoLayers = false,
 	                  RenderCoreDrawPhase phase = RenderCoreDrawPhase::kAll, bool copySource = true,
-	                  WorldPass *under = nullptr ) -> std::optional<std::string>
+	                  WorldPass *under = nullptr, const WorldMaterial *dynamicMaterial = nullptr,
+	                  bool invalidDynamicIndex = false,
+	                  float underOffset = 0.1f ) -> std::optional<std::string>
 	{
 		WorldView view;
 		for ( int i = 0; i < 4; ++i )
@@ -449,7 +451,26 @@ std::optional<std::string> RunChecks(
 		pose.vertices = bindPose;
 		for ( auto &vertex : pose.vertices )
 			vertex.position[0] += offset;
-		view.posedModels.push_back( std::move( pose ) );
+		if ( dynamicMaterial )
+		{
+			WorldView::DynamicDraw draw;
+			draw.material = *dynamicMaterial;
+			for ( const auto &vertex : pose.vertices )
+			{
+				WorldVertex out;
+				std::copy_n( vertex.position, 3, out.position );
+				std::copy_n( vertex.normal, 3, out.normal );
+				std::copy_n( vertex.tangent, 3, out.tangentS );
+				std::copy_n( vertex.uv, 2, out.uv );
+				draw.vertices.push_back( out );
+			}
+			draw.indices = { 0, 1, 2, 0, 2, 3 };
+			if ( invalidDynamicIndex )
+				draw.indices.back() = 999;
+			view.dynamicDraws.push_back( std::move( draw ) );
+		}
+		else
+			view.posedModels.push_back( std::move( pose ) );
 		if ( twoLayers )
 		{
 			WorldView::PosedModel behind = view.posedModels.front();
@@ -479,7 +500,7 @@ std::optional<std::string> RunChecks(
 			WorldView underView = view;
 			for ( auto &pose : underView.posedModels )
 				for ( auto &vertex : pose.vertices )
-					vertex.position[2] += 0.1f;
+					vertex.position[2] += underOffset;
 			underTag = under->QueueView( std::move( underView ) );
 			if ( !underTag )
 				return "the background model view queued nothing";
@@ -746,6 +767,30 @@ std::optional<std::string> RunChecks(
 		                                unlitBright.At( 32, 32 )[channel] ) < 0.005f;
 	results.That( independentOfLight && unlitDark.At( 32, 32 )[0] > 0.05f,
 	    "posed-model.emissive-mesh-ignores-direct-light" );
+	WorldData depthWorld = MeshWorld();
+	depthWorld.materials[0].shader = "WriteZ_DX9";
+	WorldPass depthOnly;
+	depthOnly.SetWorld( std::move( depthWorld ) );
+	CanvasImage occluded, depthBehind;
+	if ( auto why = render( unlit, 0.0f, false, 30, background, occluded, false,
+	         RenderCoreDrawPhase::kAll, true, &depthOnly, nullptr, false, -0.1f ) )
+		return why;
+	if ( auto why = render( unlit, 0.0f, false, 31, background, depthBehind, false,
+	         RenderCoreDrawPhase::kAll, true, &depthOnly ) )
+		return why;
+	bool untouchedColor = true;
+	for ( int channel = 0; channel < 3; ++channel )
+		untouchedColor &=
+		    std::abs( occluded.At( 32, 32 )[channel] - backgroundRgb[channel] ) < 0.005f;
+	results.That( depthOnly.Failures() == 0 && depthOnly.Stats().posedDrawsDrawn == 2 &&
+	                  untouchedColor && depthBehind.At( 32, 32 )[0] > background.r + 0.1f,
+	    "posed-model.writez-occludes-only-behind-it-without-writing-color",
+	    depthOnly.Stats().lastFailure );
+	// The legacy WriteZ point has no texture sampling or alpha-test shader.
+	const auto cutoutDepth = material::MapVariables( "WriteZ_DX9", { { "$alphatest", "1" } }, {} );
+	results.That( cutoutDepth && !material::ClaimForMesh( cutoutDepth.Value(), false ),
+	    "posed-model.writez-does-not-claim-an-unimplemented-alpha-mask" );
+	depthOnly.ReleaseDevice( *device );
 	WorldData twoTextureWorld = MeshWorld();
 	twoTextureWorld.materials[0].shader = "UnlitTwoTexture_DX9";
 	twoTextureWorld.materials[0].variables = {
@@ -780,6 +825,69 @@ std::optional<std::string> RunChecks(
 	    "posed-model.two-texture-independent-transform-negative-control",
 	    std::to_string( shiftedOverlay.At( 32, 32 )[0] ) + " " +
 	        std::to_string( shiftedOverlay.At( 32, 32 )[1] ) );
+	WorldPass dynamic;
+	dynamic.SetWorld( MeshWorld() );
+	WorldMaterial dynamicMaterial;
+	dynamicMaterial.name = "dynamic-two-texture-fixture";
+	dynamicMaterial.shader = "UnlitTwoTexture_DX9";
+	dynamicMaterial.variables = {
+	    { "$basetexture", "two-texture-base" }, { "$texture2", "two-texture-overlay" } };
+	dynamicMaterial.textures = { { "$basetexture", 5 }, { "$texture2", 6 } };
+	CanvasImage dynamicImage, proxyImage, invalidImage;
+	if ( auto why = render( dynamic, 0.0f, false, 25, black, dynamicImage, false,
+	         RenderCoreDrawPhase::kAll, true, nullptr, &dynamicMaterial ) )
+		return why;
+	dynamicMaterial.variables.push_back(
+	    { "$texture2transform", "center .5 .5 scale 1 1 rotate 0 translate .75 0" } );
+	if ( auto why = render( dynamic, 0.0f, false, 26, black, proxyImage, false,
+	         RenderCoreDrawPhase::kAll, true, nullptr, &dynamicMaterial ) )
+		return why;
+	results.That(
+	    dynamic.Stats().dynamicDrawsDrawn == 2 && dynamic.Failures() == 0 &&
+	        std::abs( dynamicImage.At( 32, 32 )[0] - multiplied.At( 32, 32 )[0] ) < .003f &&
+	        std::abs( proxyImage.At( 32, 32 )[0] - shiftedOverlay.At( 32, 32 )[0] ) < .003f,
+	    "posed-model.dynamic-material-proxy-uses-current-snapshot", dynamic.Stats().lastFailure );
+	if ( auto why = render( dynamic, 0.0f, false, 27, black, invalidImage, false,
+	         RenderCoreDrawPhase::kAll, true, nullptr, &dynamicMaterial, true ) )
+		return why;
+	results.That( dynamic.Failures() == 1 && dynamic.Stats().dynamicDrawsDrawn == 2 &&
+	                  invalidImage.At( 32, 32 )[0] == 0,
+	    "posed-model.dynamic-invalid-index-fails-before-draw", dynamic.Stats().lastFailure );
+	dynamic.ReleaseDevice( *device );
+	WorldPass refused;
+	refused.SetWorld( MeshWorld() );
+	WorldView unsupported;
+	WorldView::DynamicDraw unsupportedDraw;
+	unsupportedDraw.material.name = "post-material-negative-control";
+	unsupportedDraw.material.shader = "MotionBlur_dx9";
+	unsupported.dynamicDraws.push_back( std::move( unsupportedDraw ) );
+	results.That( refused.QueueView( std::move( unsupported ) ) == 0 && refused.Failures() == 0 &&
+	                  refused.Stats().viewsQueued == 0 &&
+	                  refused.Stats().dynamicDrawsRefused == 1 &&
+	                  refused.Stats().lastRefusal.find( "post-material-negative-control" ) !=
+	                      std::string::npos,
+	    "posed-model.unsupported-dynamic-material-is-refused-before-claiming-a-slot",
+	    refused.Stats().lastRefusal );
+	WorldData forcedWorld = MeshWorld();
+	forcedWorld.materials[0].variables = { { "$phong", "0" }, { "$forcephong", "1" } };
+	WorldData phongWorld = MeshWorld();
+	phongWorld.materials[0].variables = { { "$phong", "1" } };
+	WorldPass forced, phong;
+	forced.SetWorld( std::move( forcedWorld ) );
+	phong.SetWorld( std::move( phongWorld ) );
+	CanvasImage forcedImage, phongImage;
+	if ( auto why = render( forced, 0.0f, true, 28, black, forcedImage ) )
+		return why;
+	if ( auto why = render( phong, 0.0f, true, 29, black, phongImage ) )
+		return why;
+	results.That( forced.Failures() == 0 && forced.Stats().posedDrawsDrawn == 1 &&
+	                  forcedImage.rgba == phongImage.rgba,
+	    "posed-model.forcephong-selects-the-authored-phong-point" );
+	results.That( forcedImage.rgba != center.rgba,
+	    "posed-model.forcephong-response-differs-from-the-neutral-mesh-point" );
+	forced.ReleaseDevice( *device );
+	phong.ReleaseDevice( *device );
+
 	twoTexture.ReleaseDevice( *device );
 	transformed.ReleaseDevice( *device );
 	(void)device->WaitIdle();

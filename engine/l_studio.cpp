@@ -2118,13 +2118,14 @@ void CModelRender::DrawModelExecute( const DrawModelState_t &state, const ModelR
 	if ( g_bTextMode )
 		return;
 	// The stage can shade the current pose when the draw is the model's
-	// ordinary, unmodulated LOD 0. Other modes still need studiorender's
-	// material override, flex, bodygroup, static-lighting or two-pass state.
+	// ordinary, unmodulated selected LOD. Other modes still need studiorender's
+	// material override, flex or static-lighting state. Body groups and the
+	// opaque/blended phases are captured by the core alongside the bone palette.
 	const int special =
 	    STUDIO_WIREFRAME | STUDIO_ITEM_BLINK | STUDIO_STATIC_LIGHTING | STUDIO_GENERATE_STATS;
 	if ( !bShadowDepth && !bSSAODepth && pInfo.pRenderable && ( pInfo.flags & STUDIO_RENDER ) &&
-	     !( pInfo.flags & special ) && state.m_lod == 0 && state.m_pStudioHdr->numflexdesc == 0 &&
-	     pInfo.body == 0 && RenderCoreWorldDraw_CanTakePosedModel( pInfo.pModel ) )
+	     !( pInfo.flags & special ) && state.m_pStudioHdr->numflexdesc == 0 &&
+	     RenderCoreWorldDraw_CanTakePosedModel( pInfo.pModel ) )
 	{
 		IMaterial *overrideMaterial = NULL;
 		OverrideType_t overrideType = OVERRIDE_NORMAL;
@@ -2137,7 +2138,8 @@ void CModelRender::DrawModelExecute( const DrawModelState_t &state, const ModelR
 		         state.m_pStudioHdr->numbones,
 		         !( pInfo.flags & STUDIO_TWOPASS )       ? RenderCoreDrawPhase::kAll
 		         : ( pInfo.flags & STUDIO_TRANSPARENCY ) ? RenderCoreDrawPhase::kBlended
-		                                                 : RenderCoreDrawPhase::kOpaque ) )
+		                                                 : RenderCoreDrawPhase::kOpaque,
+		         pInfo.body, state.m_lod ) )
 			return;
 	}
 

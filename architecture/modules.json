@@ -1037,7 +1037,8 @@
         ],
         "kind": "legacy-interop",
         "legacyIncludes": [
-          "appframework/IAppSystem.h"
+          "appframework/IAppSystem.h",
+          "materialsystem/imaterial.h"
         ]
       },
       {

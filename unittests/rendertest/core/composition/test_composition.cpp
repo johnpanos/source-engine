@@ -28,6 +28,7 @@
 #include "render/legacy/material_blocks.h"
 #include "render/legacy/stage_markers.h"
 #include "testing/checks.h"
+#include "../../../mdltest/synthetic_model.h"
 
 #include <cstring>
 #include <vector>
@@ -54,23 +55,193 @@ bool FakeCreate( render::LegacyShaderServices *services )
 }
 
 // The slots one frame with one view queues.
-std::vector<std::uint32_t> SlotsOfAFrame( const RenderCoreBinding &binding )
+std::vector<std::uint32_t> SlotsOfAFrame(
+    const RenderCoreBinding &binding, render::frame::DebugControls debug = {} )
 {
 	g_Slots.tags.clear();
 	render::frame::FrameDesc frame;
 	frame.width = 320;
 	frame.height = 200;
+	frame.debug = debug;
 	(void)binding.renderer->BeginFrame( frame );
 	(void)binding.stageMarkers->MarkStage( RENDER_STAGE_VIEW_BEGIN );
 	(void)binding.stageMarkers->MarkStage( RENDER_STAGE_SKYBOX );
 	(void)binding.stageMarkers->MarkStage( RENDER_STAGE_OPAQUE );
 	(void)binding.stageMarkers->MarkStage( RENDER_STAGE_TRANSLUCENT );
 	(void)binding.stageMarkers->MarkStage( RENDER_STAGE_VIEW_END );
+	(void)binding.stageMarkers->MarkStage( RENDER_STAGE_HUD );
 	(void)binding.renderer->EndFrame();
 	return g_Slots.tags;
 }
 
 const render::LegacyShaderProvider g_Backend = { "fixture", "fixture_module", &FakeCreate, true };
+
+std::string SelectionStage()
+{
+	// One triangle written directly from the WMSH v1 byte contract. The
+	// model importer and the composition under test do not write this stage.
+	std::string bytes( 412, '\0' );
+	bytes.replace( 0, 4, "WMSH" );
+	const auto put = [&]( std::size_t at, std::int32_t value )
+	{
+		mdltest::detail::Put32( bytes, at, value );
+	};
+	put( 4, 1 );
+	put( 8, 128 );
+	for ( std::size_t at : { 16u, 20u } )
+		put( at, 3 );
+	for ( std::size_t at : { 24u, 28u, 32u, 36u, 40u, 44u } )
+		put( at, 1 );
+	put( 48, 12 );
+	const std::int32_t offsets[] = { 128, 256, 272, 288, 320, 368, 384, 400, 412 };
+	for ( std::size_t i = 0; i < std::size( offsets ); ++i )
+		put( 56 + i * 8, offsets[i] );
+	for ( int vertex = 0; vertex < 3; ++vertex )
+	{
+		const std::size_t at = 128 + vertex * 40;
+		mdltest::detail::PutF( bytes, at, vertex == 1 ? 1.0f : 0.0f );
+		mdltest::detail::PutF( bytes, at + 4, vertex == 2 ? 1.0f : 0.0f );
+		put( at + 16, 32767 ); // tangent +X; normal +Z is octahedral (0, 0)
+		bytes[at + 20] = 1;
+		put( 256 + vertex * 4, vertex );
+	}
+	put( 296, 3 );
+	put( 304, 1 );
+	put( 324, 3 );
+	put( 332, 3 );
+	mdltest::detail::PutF( bytes, 348, 2.0f );
+	mdltest::detail::PutF( bytes, 360, 1.0f );
+	mdltest::detail::PutF( bytes, 364, 1.0f );
+	put( 372, 1 );
+	put( 400, 7 );
+	bytes.replace( 404, 7, "fixture" );
+	return bytes;
+}
+
+void BodyGroupComposition( testing::Checks &checks, const RenderCoreBinding &binding )
+{
+	IRenderCoreWorld &world = *binding.world;
+	const std::uint16_t texel[] = { 0x3c00, 0x3c00, 0x3c00, 0x3c00 };
+	world_mesh_gpu::WorldLightmapUploadRequest lightmap;
+	lightmap.width = lightmap.height = lightmap.layerCount = 1;
+	lightmap.layers[0] = texel;
+	checks.That( world.StageUpload()->UploadLightmap( lightmap ), "P9.selection-stage-lightmap" );
+	const std::string stage = SelectionStage();
+	const RenderCoreWorldMeshlet meshlet{ 0, 0, 3 };
+	RenderCoreWorldMaterial materials[2]{};
+	materials[0].name = "supported";
+	materials[0].shader = "UnlitGeneric";
+	materials[1].name = "unsupported";
+	materials[1].shader = "NoSuchShader";
+	world.SetWorldMesh( stage.data(), stage.size(), &meshlet, 1, materials, 1, nullptr );
+
+	mdltest::SyntheticModel source;
+	source.textures = { "supported", "unsupported" };
+	source.skins = { { 0, 1 } };
+	source.bodyParts = { { { mdltest::BoxMesh( { -2, 0, 0 }, { 1, 1, 1 }, 0 ) },
+	                         { mdltest::BoxMesh( { 2, 0, 0 }, { 1, 1, 1 }, 0 ) } },
+	    { { mdltest::BoxMesh( { 0, 0, 0 }, { 1, 1, 1 }, 0 ) },
+	        { mdltest::BoxMesh( { 0, 2, 0 }, { 1, 1, 1 }, 1 ) }, {} } };
+	mdltest::SyntheticFiles files = mdltest::WriteModel( source );
+	RenderCoreStaticModel model{ "arbitrary/bodygroups.mdl", files.mdl.data(), files.mdl.size(),
+	    files.vvd.data(), files.vvd.size(), files.vtx.data(), files.vtx.size(), materials, 2 };
+	RenderCoreStaticProp prop{};
+	prop.world[0] = prop.world[5] = prop.world[10] = 1.0f;
+	world.SetStaticProps( &model, 1, &prop, 1 );
+	checks.That(
+	    world.DrawsStaticProp( 0 ), "P9.static-default-ignores-inactive-unsupported-body" );
+	const float identity[] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
+	const float viewport[] = { 0, 0, 64, 64, 0, 1 };
+	const float bones[] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0 };
+	RenderCorePosedModel pose{ 0, 0, bones, 1 };
+	for ( int body : { -1, 0, 1, 2, 3, 4, 5, 6 } )
+	{
+		pose.body = body;
+		g_Slots.tags.clear();
+		const bool accepted = world.DrawView(
+		    nullptr, 0, identity, viewport, 1, nullptr, nullptr, 0, nullptr, 0, &pose, 1 );
+		const bool expected = body != 2 && body != 3;
+		checks.That( accepted == expected && g_Slots.tags.size() == ( expected ? 1u : 0u ),
+		    "P9.body-base-count-reaches-eligibility-before-slot-publication" );
+	}
+	// A successful import with no selected surfaces differs from a failed
+	// import. Neither needs animation data: the host supplies the palette.
+	source.bodyParts = { { {}, { mdltest::BoxMesh( { 0, 0, 0 }, { 1, 1, 1 }, 0 ) } } };
+	files = mdltest::WriteModel( source );
+	model.mdl = files.mdl.data();
+	model.mdlBytes = files.mdl.size();
+	model.vvd = files.vvd.data();
+	model.vvdBytes = files.vvd.size();
+	model.vtx = files.vtx.data();
+	model.vtxBytes = files.vtx.size();
+	world.SetStaticProps( &model, 1, &prop, 1 );
+	pose.body = 0;
+	checks.That( world.DrawsStaticProp( 0 ) && world.DrawView( nullptr, 0, identity, viewport, 2,
+	                                               nullptr, nullptr, 0, nullptr, 0, &pose, 1 ),
+	    "P9.explicit-blank-body-is-valid" );
+	model.mdlBytes = 1;
+	world.SetStaticProps( &model, 1, &prop, 1 );
+	checks.That( !world.DrawsStaticProp( 0 ) && !world.DrawView( nullptr, 0, identity, viewport, 3,
+	                                                nullptr, nullptr, 0, nullptr, 0, &pose, 1 ),
+	    "P9.failed-import-is-not-a-blank-body" );
+	world.ClearWorld();
+	g_Slots.tags.clear();
+}
+
+void LodComposition( testing::Checks &checks, const RenderCoreBinding &binding )
+{
+	IRenderCoreWorld &world = *binding.world;
+	const std::string stage = SelectionStage();
+	const RenderCoreWorldMeshlet meshlet{ 0, 0, 3 };
+	RenderCoreWorldMaterial materials[3]{};
+	materials[0].name = "base";
+	materials[0].shader = "UnlitGeneric";
+	materials[1].name = "lower";
+	materials[1].shader = "NoSuchShader";
+	materials[2] = materials[0];
+	world.SetWorldMesh( stage.data(), stage.size(), &meshlet, 1, materials, 1, nullptr );
+
+	mdltest::SyntheticFiles files = mdltest::WriteModel( mdltest::LodPixelModel() );
+	RenderCoreStaticModel model{ "arbitrary/lods.mdl", files.mdl.data(), files.mdl.size(),
+		files.vvd.data(), files.vvd.size(), files.vtx.data(), files.vtx.size(), materials, 1, 3 };
+	RenderCoreStaticProp prop{};
+	prop.world[0] = prop.world[5] = prop.world[10] = 1.0f;
+	world.SetStaticProps( &model, 1, &prop, 1 );
+	checks.That( world.DrawsStaticProp( 0 ), "P10.static-default-selects-LOD-zero" );
+
+	const float bones[] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 0,
+		0, 0, 1, 0 };
+	const float transform[] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
+	const float viewport[] = { 0, 0, 64, 64, 0, 1 };
+	RenderCorePosedModel pose{ 0, 0, bones, 2 };
+	const auto draws = [&]( unsigned int lod, int body = 0 )
+	{
+		pose.lod = lod;
+		pose.body = body;
+		g_Slots.tags.clear();
+		return world.DrawView(
+		           nullptr, 0, transform, viewport, 1, nullptr, nullptr, 0, nullptr, 0, &pose, 1 ) &&
+		       g_Slots.tags.size() == 1;
+	};
+	checks.That( draws( 0 ), "P10.LOD-zero-is-eligible" );
+	checks.That( !draws( 1 ) && g_Slots.tags.empty(),
+	    "P10.unsupported-replacement-is-refused-before-slot-publication" );
+	checks.That( draws( 2 ), "P10.explicit-blank-shadow-LOD-is-valid" );
+	checks.That( !draws( 3 ) && g_Slots.tags.empty(),
+	    "P10.out-of-range-LOD-is-refused-before-slot-publication" );
+
+	materials[1].shader = "UnlitGeneric";
+	world.SetStaticProps( &model, 1, &prop, 1 );
+	checks.That( draws( 1 ), "P10.supported-replacement-LOD-is-eligible" );
+	checks.That( draws( 1, 1 ), "P10.body-and-LOD-selection-compose" );
+
+	model.materialLodCount = 1;
+	world.SetStaticProps( &model, 1, &prop, 1 );
+	checks.That( draws( 0 ) && !draws( 1 ) && g_Slots.tags.empty(),
+	    "P10.missing-replacement-descriptor-refuses-only-that-LOD" );
+	world.ClearWorld();
+	g_Slots.tags.clear();
+}
 
 } // namespace
 
@@ -208,8 +379,18 @@ int main()
 	                      probedProvider->createFor( probedProvider->context, &probedServices ),
 	         "P6.a-probed-core-composes" ) )
 	{
+		BodyGroupComposition( checks, *probedBinding );
+		LodComposition( checks, *probedBinding );
 		RenderCoreWorldQuality quality{};
 		quality.coreOnly = true;
+		probedBinding->world->SetQuality( quality );
+		checks.That( !probedBinding->corePasses->AcceptsMeshes(),
+		    "P8.playable-composition-does-not-enable-the-unfinished-dynamic-handoff" );
+		quality.dynamicDraws = true;
+		probedBinding->world->SetQuality( quality );
+		checks.That( probedBinding->corePasses->AcceptsMeshes(),
+		    "P8.dynamic-handoff-requires-explicit-opt-in" );
+		quality.dynamicDraws = false;
 		probedBinding->world->SetQuality( quality );
 		g_Slots.tags.clear();
 		probedBinding->world->BeginFrame();
@@ -217,8 +398,20 @@ int main()
 		    g_Slots.tags == std::vector<std::uint32_t>{ render::legacy::kCorePassForwarded |
 		                                                render::legacy::kCorePassLegacyOff },
 		    "P7.core-only-publishes-the-rejection-before-any-cohort" );
+		const std::vector<std::uint32_t> coreTags = SlotsOfAFrame( *probedBinding );
+		checks.That( coreTags == std::vector<std::uint32_t>{ render::legacy::CorePassTag(
+		                                                         RENDER_STAGE_OPAQUE, 1 ),
+		                             render::legacy::kCorePassLegacyHud },
+		    "P7.core-scene-permits-legacy-ui-only-at-the-top-level-hud-stage" );
+		render::frame::DebugControls debug;
+		debug.legacy = render::frame::DebugLegacy::kSkip;
+		checks.That(
+		    SlotsOfAFrame( *probedBinding, debug ) ==
+		        std::vector<std::uint32_t>{ render::legacy::CorePassTag( RENDER_STAGE_OPAQUE, 1 ) },
+		    "P7.core-diagnostics-never-enable-the-legacy-hud-exception" );
 		quality.coreOnly = false;
 		probedBinding->world->SetQuality( quality );
+		(void)SlotsOfAFrame( *probedBinding ); // publish the normal frame's debug policy
 		g_Slots.tags.clear();
 		probedBinding->world->BeginFrame();
 		checks.That( g_Slots.tags.empty(), "P7.compatibility-frame-does-not-inherit-core-only" );

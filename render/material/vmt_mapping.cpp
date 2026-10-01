@@ -51,6 +51,8 @@ constexpr VmtShaderRow kShaders[] = {
     { "water_dx90", "water", "Water's DirectX 9 shader, which Water_DX9_HDR inherits" },
     { "refract", "refract", "Refract's scene-color transmission on model surfaces" },
     { "refract_dx90", "refract", "Refract's DirectX 9 implementation" },
+    { "writez_dx9", "depth", "depth-only material-system geometry" },
+    { "writez", "depth", "depth-only material-system geometry" },
     { "subrect", kLegacyFamily,
         "not a shader: a sub-rectangle ($pos, $size) of another material ($material) that "
         "the material system resolves (CMaterialSubRect) and draws as that material" },
@@ -63,9 +65,12 @@ constexpr std::string_view kLegacyReason =
 // Keys every legacy-derived family reads (BaseShader's standard parameters and
 // the material flags the draw state depends on); BuildKeyRows() gives each of
 // kLegacyDerivedFamilies a copy.
-constexpr std::string_view kLegacyDerivedFamilies[] = { "lightmapped", "vertexlit", "unlit" };
+constexpr std::string_view kLegacyDerivedFamilies[] = {
+    "lightmapped", "vertexlit", "unlit", "depth" };
 
 constexpr VmtKeyRow kCommonKeys[] = {
+    { {}, "$one", "one", ValueKind::kFloat, "1" },
+    { {}, "$zero", "zero", ValueKind::kFloat, "0" },
     { {}, "$basetexture", "basetexture", ValueKind::kTexture, "" },
     { {}, "$frame", "frame", ValueKind::kInt, "0" },
     { {}, "$color", "color", ValueKind::kFloat3, "[1 1 1]" },
@@ -139,6 +144,7 @@ constexpr VmtKeyRow kLegacyDerivedKeys[] = {
     { "vertexlit", "$color2", "color2", ValueKind::kFloat3, "[1 1 1]" },
     { "vertexlit", "$halflambert", "halflambert", ValueKind::kBool, "0" },
     { "vertexlit", "$phong", "phong", ValueKind::kBool, "0" },
+    { "vertexlit", "$forcephong", "forcephong", ValueKind::kBool, "0" },
     { "vertexlit", "$ignore_alpha_modulation", "ignore_alpha_modulation", ValueKind::kBool, "0" },
     { "vertexlit", "$phongexponent", "phongexponent", ValueKind::kFloat, "5" },
     { "vertexlit", "$phongboost", "phongboost", ValueKind::kFloat, "1" },
@@ -165,6 +171,7 @@ constexpr VmtKeyRow kLegacyDerivedKeys[] = {
     { "vertexlit", "$ambientonly", "ambientonly", ValueKind::kBool, "0" },
     { "vertexlit", "$bumptransform", "bumptransform", ValueKind::kTransform, "" },
 
+    { "unlit", "$hdrbasetexture", "hdrbasetexture", ValueKind::kTexture, "" },
     { "unlit", "$vertexalphatest", "vertexalphatest", ValueKind::kBool, "0" },
     { "unlit", "$texture2", "texture2", ValueKind::kTexture, "" },
     { "unlit", "$frame2", "frame2", ValueKind::kInt, "0" },
@@ -262,6 +269,7 @@ constexpr VmtMetadataRow kMetadata[] = {
     { "$phongdisablehalflambert", "not declared by VertexLitGeneric; no shipped shader reads it" },
     { "$bumpscale", "not declared by VertexLitGeneric; its normal map uses authored texels",
         "vertexlit" },
+    { "$envmapconstrast", "misspelled; VertexLitGeneric declares $envmapcontrast", "vertexlit" },
     { "$envampsaturation", "misspelled; VertexLitGeneric declares $envmapsaturation", "vertexlit" },
     { "$dudvmap", "Refract_DX90 samples $normalmap, not $dudvmap", "refract" },
     { "$scale", "Refract_DX90 has no $scale shader parameter", "refract" },
@@ -281,6 +289,9 @@ constexpr VmtMetadataRow kMetadata[] = {
     { "$nodecal", "decals are not applied (the decal system)" },
     { "$nofullbright", "mat_fullbright ignores the material" },
     { "$no_fullbright", "mat_fullbright ignores the material" },
+    { "$nobasetexture", "procedural video supplies its texture after material initialization",
+        "unlit" },
+    { "$temp", "material-proxy scratch value, not a shader parameter", "unlit" },
     { "$surfaceprop_override", "physics surface properties" },
     { "$detailtype", "the detail-sprite set vbsp places on the surface" },
     { "$minsize", "particle size limits read by the particle system" },

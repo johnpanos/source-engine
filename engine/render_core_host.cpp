@@ -96,6 +96,9 @@ ConVar cl_render_debug_gpu_timers( "cl_render_debug_gpu_timers", "0", 0,
 ConVar cl_render_debug_stats( "cl_render_debug_stats", "0", 0,
     "Print the render core's per-pass GPU times (cl_render_debug_gpu_timers) every second." );
 // The render core's quality settings (RFC 0016 K12; the video options).
+ConVar r_core_dynamic_draws( "r_core_dynamic_draws", "0", FCVAR_CHEAT,
+    "Experimental rendercore dynamic-material handoff. Explicit opt-in only; "
+    "whole-cohort queued rendering and image acceptance are incomplete." );
 ConVar r_core_ao_quality( "r_core_ao_quality", "3", FCVAR_ARCHIVE,
     "Render core ambient occlusion (GTAO): 0 off, 1 low, 2 medium, 3 high, 4 ultra.", true, 0, true,
     4 );
@@ -349,7 +352,7 @@ void RenderCoreHost_BeginFrame()
 			const RenderCoreWorldQuality quality{ r_core_ao_quality.GetInt(),
 			    r_core_shadow_quality.GetInt(), r_core_depth_prepass.GetInt(),
 			    r_core_shadow_movers.GetInt(), r_core_runtime_direct.GetInt(),
-			    RenderCoreWorldDraw_OnlyCore() };
+			    RenderCoreWorldDraw_OnlyCore(), r_core_dynamic_draws.GetBool() };
 			host.world->SetQuality( quality );
 			host.world->BeginFrame();
 		}

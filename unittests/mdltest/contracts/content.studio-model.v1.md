@@ -27,6 +27,14 @@ GTK Hammer viewports (RFC 0002 R17 follow-up, props and instances).
   triangle list over them, wound counter-clockwise seen from outside (the files'
   clockwise order with the second and third index swapped). Tristrip strips
   become lists. Bounds cover the vertices the triangles use.
+- `ParseModelGeometryVariants` reads every submodel once, without enumerating body-group
+  combinations. `Mesh::bodyPart`/`bodyModel` identify each mesh; `Model::bodyParts`
+  records selection metadata, including blank alternatives. `BodyPart::SelectedModel`
+  owns the same arithmetic used by the selected-body reader. Bounds cover all
+  alternatives, and malformed inactive alternatives fail the entire read. Bones
+  and weights are read, but sequences are left empty: a runtime consumer supplies
+  its live bone palette, so absent first-frame animation data cannot prevent
+  geometry import.
 - `TextureIndex` maps a mesh and skin through the skin table; a skin out of
   range uses family 0 (engine behavior).
 - `ResolveMaterials` names each texture as a VMF names a material: the first

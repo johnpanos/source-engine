@@ -53,6 +53,7 @@ struct UnlitClaim
 	bool alphaWrite = true;
 	bool nativeProbe = false; // mesh-only authored $envmap resolved through RPRB
 	bool twoTexture = false;
+	bool ignoreDepth = false;
 	// tint: $color and $alpha; flags.x $vertexcolor, .y $alphatest, .z its
 	// reference; state.y 1 (gamma vertex colors); state.w $vertexalpha.
 	SurfaceConstants constants;
@@ -60,7 +61,7 @@ struct UnlitClaim
 	// The program's point for this claim on a vertex layout.
 	SurfaceVariant Variant( SurfaceVertexLayout layout = SurfaceVertexLayout::kFlat ) const
 	{
-		return { blend, alphaWrite, kSurfaceUnlit, 0, layout };
+		return { blend, alphaWrite, kSurfaceUnlit, 0, layout, ignoreDepth };
 	}
 };
 

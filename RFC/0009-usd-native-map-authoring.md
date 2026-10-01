@@ -15,6 +15,21 @@
   are RFC 0015 compilers
 - Verification: [RFC 0005](0005-quality-and-correctness-harnesses.md)
 
+## Render performance obligations (user decision, 2026-10-01)
+
+This RFC follows RFC 0016's
+[high-performance clustered lighting requirement](0016-render-core.md#high-performance-clustered-lighting-user-decision-2026-10-01)
+and [hard render budgets](0016-render-core.md#hard-render-budgets-user-decision-2026-10-01).
+Computation placement follows RFC 0003's binding
+[CPU/GPU policy](0003-dependency-aware-job-system.md#cpugpu-execution-placement-user-decision-2026-10-01).
+Those owners define the policies and numbers; this RFC defines its domain's
+obligations and does not certify implementation by this amendment.
+
+Native USD authoring publishes light and caster data through the existing
+world/compiler contracts for clustered rendering. VMF or BSP face identity is
+not a prerequisite. Preview and compiled runtime images use the same core
+lighting semantics and carry their own complete-frame measurements.
+
 ## Decision and boundary
 
 New maps are **authored in OpenUSD, without a VMF source document or a VMF

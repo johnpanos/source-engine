@@ -11,6 +11,7 @@
 #include "utlvector.h"
 #include "materialsystem/imaterialsystem.h"
 #include "imaterialinternal.h"
+#include "itextureinternal.h"
 #include "IHardwareConfigInternal.h"
 #include "shadersystem.h"
 #include "shaderapi/ishaderutil.h"
@@ -31,6 +32,7 @@
 #include "tier1/KeyValues.h"
 #include "vulkan_device.h"
 #include "render/legacy/frame_source.h"
+#include "render/legacy/material_flag_keys.h"
 #include "vulkan_emit_convert.h"
 #include "vulkan_mesh_layout.h"
 #include "shaderapivulkan_legacy.h"
@@ -1010,6 +1012,7 @@ namespace
 {
 void CommitModelViewProj();
 void CommitViewProj();
+void CaptureCoreMatrices( render::legacy::CoreMeshDraw &draw );
 // Loads identity into the fixed-function texture matrices (MATERIAL_TEXTURE0..).
 void ResetTextureMatrices( int count );
 // The MODEL matrix of the matrix stack (stored transposed, for row vectors).
@@ -1265,6 +1268,7 @@ public:
 	// selected. Called from CShaderAPIVulkan::RenderPass, i.e. AFTER the material's
 	// shader has run BeginPass and set its constants/textures.
 	void EmitToNativeQueue();
+	bool EmitToCoreQueue();
 	// EmitToNativeQueue for each range of the draw in progress: the one range
 	// of Draw( first, count ), or every list of Draw( CPrimList * ), as
 	// CMeshDX8::RenderPass draws each list with the pass's state.
@@ -4888,10 +4892,167 @@ static void ExpandSplineCardVertex( const SpriteCardFrame &f, const float *parms
 	SpriteCardPixelInputs( f, nullptr, nullptr, 0.0f, out );
 }
 
+bool CEmptyMesh::EmitToCoreQueue()
+{
+	if ( !g_pBoundMaterial || m_worldMeshBatch )
+		return false;
+	const CEmptyMesh &source = m_pVertexSource ? *m_pVertexSource : *this;
+	const CEmptyMesh &elements = m_pIndexSource ? *m_pIndexSource : *this;
+	const int count = m_drawCount > 0 ? m_drawCount : source.m_numVerts;
+	if ( source.m_numVerts <= 0 || count <= 0 || m_drawFirst < 0 ||
+	     ( m_drawCount > 0 && m_drawFirst + count > elements.m_numIndices ) )
+		return false;
+	std::vector<std::uint32_t> triangles;
+	auto element = [&]( int i )
+	{
+		return m_drawCount > 0 ? int( elements.m_indexData[m_drawFirst + i] ) : i;
+	};
+	bool valid = true;
+	auto triangle = [&]( int a, int b, int c )
+	{
+		if ( a < 0 || b < 0 || c < 0 || a >= source.m_numVerts || b >= source.m_numVerts ||
+		     c >= source.m_numVerts )
+		{
+			valid = false;
+			return;
+		}
+		if ( a != b && b != c && a != c )
+			triangles.insert(
+			    triangles.end(), { std::uint32_t( a ), std::uint32_t( b ), std::uint32_t( c ) } );
+	};
+	switch ( m_primitiveType )
+	{
+	case MATERIAL_TRIANGLES:
+		if ( count % 3 )
+			return false;
+		for ( int i = 0; i < count; i += 3 )
+			triangle( element( i ), element( i + 1 ), element( i + 2 ) );
+		break;
+	case MATERIAL_TRIANGLE_STRIP:
+		for ( int i = 0; i + 2 < count; ++i )
+			triangle( element( i + ( i & 1 ) ), element( i + 1 - ( i & 1 ) ), element( i + 2 ) );
+		break;
+	case MATERIAL_POLYGON:
+		for ( int i = 1; i + 1 < count; ++i )
+			triangle( element( 0 ), element( i ), element( i + 1 ) );
+		break;
+	case MATERIAL_QUADS:
+	case MATERIAL_INSTANCED_QUADS:
+		if ( count % 4 )
+			return false;
+		for ( int i = 0; i < count; i += 4 )
+		{
+			triangle( element( i ), element( i + 1 ), element( i + 2 ) );
+			triangle( element( i ), element( i + 2 ), element( i + 3 ) );
+		}
+		break;
+	default:
+		return false;
+	}
+	if ( !valid || triangles.empty() )
+		return false;
+	std::vector<render::material::SurfaceWorldVertex> vertices( source.m_numVerts );
+	const bool brushTangents = ( source.m_format & VERTEX_TANGENT_S ) != 0;
+	for ( int i = 0; i < source.m_numVerts; ++i )
+	{
+		const unsigned char *raw =
+		    source.m_vertexData.data() + std::size_t( i ) * source.RecordStride();
+		auto &out = vertices[i];
+		memcpy( out.position, raw, sizeof( out.position ) );
+		if ( g_NumBoneWeights > 0 )
+			SkinPosition( raw, out.position );
+		ModelToWorld( out.position );
+		memcpy( out.uv, raw + 16, sizeof( out.uv ) );
+		memcpy( out.lightmapUv, raw + 24, sizeof( out.lightmapUv ) );
+		out.color[0] = raw[14];
+		out.color[1] = raw[13];
+		out.color[2] = raw[12];
+		out.color[3] = raw[15];
+		float normal[3], tangent[4];
+		memcpy( normal, raw + kMeshNormalOffset, sizeof( normal ) );
+		memcpy( tangent, raw + ( brushTangents ? kMeshTangentSOffset : kMeshUserDataOffset ),
+		    sizeof( tangent ) );
+		WorldNormal( raw, normal, out.normal );
+		WorldNormal( raw, tangent, out.tangentS );
+		if ( brushTangents )
+		{
+			float tangentT[3];
+			memcpy( tangentT, raw + kMeshTangentTOffset, sizeof( tangentT ) );
+			WorldNormal( raw, tangentT, out.tangentT );
+			memcpy( &out.lightmapOffset, raw + kMeshTexCoord2Offset, sizeof( float ) );
+		}
+		else
+		{
+			CrossProduct3( out.normal, out.tangentS, out.tangentT );
+			for ( float &value : out.tangentT )
+				value *= tangent[3];
+		}
+	}
+	std::vector<render::legacy::CoreMeshVariable> variables;
+	// GetStringValue formats numeric values into temporary storage. Copy each
+	// one now; retaining its pointer until the final QueueMesh corrupts values.
+	std::vector<std::string> values;
+	values.reserve( g_pBoundMaterial->ShaderParamCount() );
+	IMaterialVar **params = g_pBoundMaterial->GetShaderParams();
+	IShader *shader = g_pBoundMaterial->GetShader();
+	for ( int i = 0; i < g_pBoundMaterial->ShaderParamCount(); ++i )
+	{
+		IMaterialVar *var = params[i];
+		if ( !var || !var->IsDefined() || !V_strnicmp( var->GetName(), "$flags", 6 ) )
+			continue;
+		render::legacy::CoreMeshVariable value;
+		value.key = var->GetName();
+		values.emplace_back( var->GetStringValue() );
+		value.value = values.back().c_str();
+		if ( shader && i < shader->GetNumParams() &&
+		     !V_stricmp( shader->GetParamName( i ), value.key ) )
+			value.defaultValue = shader->GetParamDefault( i );
+		if ( var->GetType() == MATERIAL_VAR_TYPE_TEXTURE && var->GetTextureValue() )
+		{
+			ITextureInternal *texture = static_cast<ITextureInternal *>( var->GetTextureValue() );
+			const char *frameKey = !V_stricmp( value.key, "$texture2" )  ? "$frame2"
+			                       : !V_stricmp( value.key, "$bumpmap" ) ? "$bumpframe"
+			                                                             : "$frame";
+			bool found = false;
+			IMaterialVar *frame = g_pBoundMaterial->FindVar( frameKey, &found, false );
+			value.textureHandle = texture->GetTextureHandle( found ? frame->GetIntValue() : 0 );
+		}
+		variables.push_back( value );
+	}
+
+	for ( const auto &flag : RenderLegacyMaterialFlags::Keys )
+	{
+		if ( g_pBoundMaterial->GetMaterialVarFlag( flag.flag ) )
+			variables.push_back( { flag.key, "1", "0", 0 } );
+	}
+	render::legacy::CoreMeshDraw draw;
+	draw.name = g_pBoundMaterial->GetName();
+	draw.shader = g_pBoundMaterial->GetShaderName();
+	draw.variables = variables.data();
+	draw.variableCount = variables.size();
+	draw.vertices = vertices.data();
+	draw.vertexCount = vertices.size();
+	draw.indices = triangles.data();
+	draw.indexCount = triangles.size();
+	draw.viewport = { float( g_Viewport.m_nTopLeftX ), float( g_Viewport.m_nTopLeftY ),
+	    float( g_Viewport.m_nWidth ), float( g_Viewport.m_nHeight ), g_Viewport.m_flMinZ,
+	    g_Viewport.m_flMaxZ };
+	draw.mesh = !V_stricmp( draw.shader, "VertexLitGeneric" ) ||
+	            !V_stricmp( draw.shader, "Refract" ) || !V_stricmp( draw.shader, "Refract_DX90" );
+	CaptureCoreMatrices( draw );
+	const std::uint32_t tag = g_VulkanContext.QueueCoreMesh( draw );
+	if ( !tag )
+		return false;
+	g_CorePassSlots.MarkSlot( tag );
+	return true;
+}
+
 void CEmptyMesh::EmitToNativeQueue()
 {
 	if ( g_VulkanContext.CoreOnlyQueue() )
 	{
+		if ( g_VulkanContext.CoreMeshesEnabled() && EmitToCoreQueue() )
+			return;
 		DropDraw( "rendercore-only: legacy shader draw rejected before conversion" );
 		NoteDroppedMaterial();
 		return;
@@ -7381,6 +7542,21 @@ void CommitViewProj()
 	float vp[16];
 	MatMul( g_matrices.mat[MATERIAL_VIEW], DrawProjection(), vp );
 	g_VulkanContext.SetDynamicTransform( vp );
+}
+
+void CaptureCoreMatrices( render::legacy::CoreMeshDraw &draw )
+{
+	float vp[16];
+	MatMul( ViewMatrix(), DrawProjection(), vp );
+	for ( int row = 0; row < 4; ++row )
+	{
+		for ( int col = 0; col < 4; ++col )
+		{
+			draw.toClip[row * 4 + col] = vp[col * 4 + row];
+			draw.worldToView[row * 4 + col] = ViewMatrix()[col * 4 + row];
+			draw.viewToClip[row * 4 + col] = DrawProjection()[col * 4 + row];
+		}
+	}
 }
 
 // Inverse of a row-major 4x4 matrix by Gauss-Jordan elimination with partial

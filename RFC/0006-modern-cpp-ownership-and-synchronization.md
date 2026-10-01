@@ -6,6 +6,21 @@
 - Related: [Platform](0001-capability-based-platform-architecture.md), [Hammer](0002-hammer-responsibility-factorization.md), [jobs](0003-dependency-aware-job-system.md), [physics](0004-box3d-primary-physics-backend.md), [harnesses](0005-quality-and-correctness-harnesses.md)
 - Implementation status: Specification with an installed mechanical-style checker and per-target dialect policy (see below). M0 (R03) is active; see [progress](0006-progress.md). This document upgrades no target by itself.
 
+## Render performance obligations (user decision, 2026-10-01)
+
+This RFC follows RFC 0016's
+[high-performance clustered lighting requirement](0016-render-core.md#high-performance-clustered-lighting-user-decision-2026-10-01)
+and [hard render budgets](0016-render-core.md#hard-render-budgets-user-decision-2026-10-01).
+Computation placement follows RFC 0003's binding
+[CPU/GPU policy](0003-dependency-aware-job-system.md#cpugpu-execution-placement-user-decision-2026-10-01).
+Those owners define the policies and numbers; this RFC defines its domain's
+obligations and does not certify implementation by this amendment.
+
+Cluster ranges, indices, scene uploads and cached shadow resources retain
+their storage until the consuming GPU completion token permits reuse. CPU job
+completion is not GPU completion. Measure placement with transfers and waits;
+a timing win does not excuse publication, cancellation or lifetime defects.
+
 ## Summary
 
 Use C++20 in new and deliberately migrated first-party targets, with explicit

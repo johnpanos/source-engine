@@ -182,6 +182,17 @@ class ResizeAcceptanceTests(unittest.TestCase):
             self.assertEqual(result["commands"], replayed)
             self.assertEqual("quit", replayed[-1])
 
+    def test_portal2_resize_scripts_are_executable_by_the_selected_game(self):
+        with tempfile.TemporaryDirectory() as root:
+            stage = Path(root)
+            result = boot.install_resize_script(stage, game="portal2")
+            files = [result["path"]] + [item["path"] for item in result["chained"]]
+            self.assertGreater(len(files), 1)
+            for path in files:
+                self.assertEqual(Path("portal2/cfg"), Path(path).parent)
+                self.assertTrue((stage / path).is_file())
+            self.assertFalse((stage / "portal").exists())
+
     def test_every_resize_needs_consumption_and_nonblank_matching_image(self):
         expected = ((641, 479), (1024, 768))
         log = "".join(

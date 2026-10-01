@@ -1,5 +1,44 @@
 # RFC 0016 progress: render core
 
+## Laser intro local-cubemap reference defect (2026-10-01)
+
+User request: "please fix the missing bitch_cubemap error on the laser intro
+bake". That name was the material system's internal `env_cubemap` placeholder,
+not an authored VTF. Shader initialization now preserves `env_cubemap` as the
+placeholder's name; `GetTextureValue` still resolves it through the current
+local cube. The core handoff preserves symbolic envmaps for RPRB rather than
+downloading their legacy per-view texture. Named texture paths remain unchanged.
+No replacement VTF, reflection fallback or new bake was added.
+
+Frozen-path: defect env_cubemap material-load/serialization — this restores the
+symbolic reference across the material-system/core handoff, without a new
+lighting term or public ABI change.
+
+The native material harness's `-check-local-cubemap-reference` validates actual
+shader initialization and `IMaterialVar` serialization. Its
+[reference run](../quality-results/laser-cubemap-fix/reference-final/evidence.json)
+passes the symbolic reference and ordinary texture-name checks, followed by
+the lightmap pixel oracle. Preloading the retained pre-fix material system makes
+the symbolic check fail while the ordinary texture check still passes
+([negative control](../quality-results/laser-cubemap-fix/negative.json)). Product
+and harness builds pass; material binding passes 259 checks. Reproduce with:
+
+```sh
+WAFLOCK=.lock-waf-p2 ./waf build --targets=materialsystem,engine,launcher,material_pixel_conformance -j8
+python3 tools/quality/material_pixel_conformance.py run --runtime run/runtime --build build-p2 --renderer native-vulkan --hdr none --family lightmap --extra-arg=-check-local-cubemap-reference --out quality-results/laser-cubemap-fix/repro --timeout 120
+```
+
+Earlier source2 laser captures with updated binaries pass. The final strict
+product attempt is **not certified**: concurrent primitive-handoff work reports
+an unrelated `__fontpage` failure on `$phongexponent 0.000000`
+([receipt](../quality-results/laser-cubemap-fix/final/evidence.json)). The isolated
+reference regression avoids that cohort and rejects the actual old serialization
+defect. Full archlint still reports unrelated fstop CreateInterfaceFn expansions.
+Changed-file style and whitespace checks report concurrent edits outside this
+fix; its edited source regions have no formatting findings in
+`quality-results/laser-cubemap-fix/style-complete.log`. No clean full-tree gate or
+parent-row closure is claimed.
+
 ## R86-LAYOUT: layout, layer contract and runtime wiring (2026-09-26)
 
 State: `partial`, on branch `render-core` (worktree
@@ -5858,3 +5897,197 @@ also includes world glass, decals, sky, particles, viewmodel, video and HUD
 submissions, plus postprocessing. Completing static claims alone will not
 certify this request. New points require lab pixel/failure controls before
 product handoff. R96/R91 remain open during this work.
+
+#### Intro4 regression recovery (2026-10-01)
+
+The user reprioritized this slice to restore playability after the dynamic
+handoff reported unsupported HUD materials, lost a promised view slot, and
+produced a white scene. The original all-material objective remains incomplete.
+The dynamic handoff is now behind `r_core_dynamic_draws`, a non-archived cheat
+variable whose default is **0**. The composition default is also off, and the
+native producer checks that policy before copying mesh data. It must stay
+explicitly opt-in until complete cohort, queued rendering, capture replay,
+exposure, motion, resize and matched-image acceptance pass. The restored default
+keeps the existing core world/model path; it does not certify the omitted cohorts.
+
+The user explicitly permitted legacy HUD/crosshair rendering. Composition now
+requests a top-level HUD stage slot for the normal core-only game view. The
+native stream permits legacy UI after that boundary; diagnostic pixel views and
+legacy-skip views do not request it. This is stage policy, with no material-name
+exception. `sprites/hud/portal_crosshairs` therefore never enters the dynamic
+world-material claimant in the normal HUD stage.
+
+Two ordering/lifetime defects were reproduced with independent controls:
+
+- World tickets are issued on the main thread, while dynamic tickets are issued
+  later on the render sequence. Serial ticket order does not order their frames.
+  Recording a dynamic ticket could discard an already queued future world view.
+  The recorder now finds that exact ticket without dropping future world views.
+- A captured stream can contain more than the old 64 retained view records.
+  Replaying it then lost early slots. A CPU stream epoch now owns replay records,
+  independently of GPU submission serials. Every accepted slot of the bounded
+  stream stays replayable until the backend discards that stream. Composition
+  keeps the corresponding view/light snapshot lookup for the same lifetime.
+
+Unsupported dynamic material semantics are checked before publishing a slot;
+refused draws enter a bounded reason census. A published draw that later fails
+still increments claimed-view failures and remains fatal in strict mode. No
+legacy draw takes over a published core claim.
+
+The material-system owner now supplies shader-initialized neutral defaults to
+both world and dynamic imports. The engine's duplicate neutral cache was removed.
+The lab proves UnlitTwoTexture multiplication and independent texture transforms,
+WriteZ depth behavior, inactive cloak controls, and forced Phong behavior, with
+texture/unsupported-feature failure controls. These points do not close foliage
+sway, postprocessing, full particles, viewmodel lighting or nested-view fidelity.
+The additional WriteZ oracle reproduced an empty draw-input access in
+`ProgramResolver::DrawGroup`. Its depth point now binds the shared neutral draw
+group, and the lightmap branch checks that exactly one input exists before
+indexing it. The Vulkan image test puts WriteZ both in front of and behind an
+emissive surface: only the former occludes it, and neither writes scene color.
+An authored alpha mask is refused rather than claiming a mask shader that this
+depth point does not implement. The failed lab run/backtrace are retained in
+`recovery-posed-depth.log` and `recovery-depth-debug.log`.
+
+Evidence is under `quality-results/intro4-forward-materials/`:
+
+| Check | Evidence | Result |
+| --- | --- | --- |
+| Product build | `recovery-product-final-build.log`, existing Portal 2 Waf profile | pass |
+| Lab | `recovery-posed-depth-final.log`, posed-model suite, 65 checks | pass |
+| Contracts | `recovery-contracts-final`, world 37, frame 28, composition 28 checks | pass, zero skips |
+| Queue negative controls | `recovery-mutants-current/evidence.json`: restoring serial-order pruning fails W14; restoring the 64-record limit fails W15 | both detected |
+| Stable queued and synchronous products | `recovery-stable-final-queued/evidence.json`, `recovery-stable-final-sync/evidence.json`, strict core, normal exposure, legacy HUD | both pass, no claimed-view failures |
+| Experimental queued product | `recovery-experimental-final-queued/evidence.json`, explicit dynamic opt-in | pass, no claimed-view failures; whole-cohort acceptance remains open |
+| Native resize and capture | `recovery-resize-final-wayland/boot/evidence.json`, private Wayland compositor, queued mode, 12 settled sizes plus 25 capture offsets | pass, 37 screenshots, no claimed-view failures |
+| Runtime install | `recovery-runtime-final-install/manifest.json`, all 30 product hashes equal the tested private runtime; replaced libraries backed up and atomically renamed | coherent tested set installed |
+| Installed runtime boot | `recovery-final-installed-queued/evidence.json`, no build overlay, strict queued mode | pass |
+| Harness fixtures | `recovery-boot-fixtures.log`, 71 tests | pass |
+| Architecture/style fixtures | `recovery-arch-fixtures.log`, 162 tests; `recovery-style-fixtures.log`, 38 tests | pass |
+| Changed-line style | `recovery-style-final.log`, pinned clang-format 22.1.8 | pass |
+| Architecture/inventory | `recovery-arch-final.log`, `recovery-baseline-final.log`, `recovery-inventory-final.log` | inventory passes; all/baseline retain the pre-existing two ARCH105 occurrences in `game/shared/fstop/blob_networkbypass.*` |
+
+The initial resize attempt is retained as failed evidence: the harness wrote its
+script under `portal/cfg` for a Portal 2 run, so the workload did not execute.
+`portal_boot.py` now writes every chained script under the selected game's cfg
+directory, with a Portal 2 regression fixture. The corrected native test above
+executed and verified all 37 sizes. The boot runner leaves auto-exposure enabled;
+its usual synchronous mode alone was insufficient evidence for the queued path.
+The recovery captures are normally lit. They do not identify the precise cause
+of the user's white screenshot or establish full scene fidelity.
+
+Reproduce the restored queued path from the repository root (a new output
+directory is required). The synchronous control changes only `mat_queue_mode`
+to 0. The experimental check adds `--startup-command 'r_core_dynamic_draws 1'`;
+it is additional evidence, not the playable default.
+
+```sh
+LD_LIBRARY_PATH=build-rc-lab/tier0 build-rc-lab/render/lab/render_lab suite posed-model --validate
+python3 tools/quality/conformance.py check --suite render.world.null \
+  --suite render.frame.v1 --suite render.composition --out <contracts-evidence>
+python3 tools/quality/portal_boot.py --runtime run/runtime-p2 --game portal2 \
+  --renderer native-vulkan --headless --require-vulkan --map sp_a1_intro4_relit \
+  --startup-command 'mat_queue_mode 2' --startup-command 'r_core_world 1' \
+  --startup-command 'r_core_world_strict 1' --startup-command 'r_indirect_producer baked' \
+  --startup-command 'r_core_runtime_direct 1' --console-command 'r_core_world_stats' \
+  --capture-wait 180 --timeout 120 --out <new-boot-directory>
+```
+
+The native resize reproduction argv is in
+`recovery-resize-final-wayland/command.json`; it uses the installed
+`private_session.dbus_run_session` helper and a private headless mutter display.
+Offscreen rendering alone cannot certify native window resize.
+
+Frozen-path: defect fixes and core plumbing for the user's explicit playability
+recovery and legacy HUD exception; no new shading is added to the frozen backend.
+R95/R96/R91 remain active/partial. Full intro4 material completion, motion/nested
+view image acceptance and non-Linux runtime evidence remain unverified.
+
+### R96/R91 automatic model eligibility (2026-10-01, active)
+
+User request: complete family and feature coverage so any model whose materials,
+deformation and draw state are supported renders without a model-specific
+exception. This chat (`Explain rendercore model allowlist`) owns Studio geometry
+selection and deformation, with ownership coordination sent to `Complete
+Forward+ material support`; its material/dynamic submission/HUD work is preserved.
+That chat confirmed `SetStaticProps`/`PoseModel` and `engine/l_studio.cpp` were free
+for this chat after its playability recovery completed.
+The full objective includes the remaining built-in families and frame cohorts,
+not just this first geometry slice. R96/R91 remain open until their full evidence
+passes.
+
+First slice: `content.studio-model` owns body-group arithmetic and imports each
+submodel once; composition captures the selected surface indices beside the pose;
+`render.pass.world` draws that immutable selection with its existing materials.
+The importer, blank groups, inactive unsupported materials, selection changes
+between queued draws and pixel coverage are proven before the product bridge
+accepts nonzero bodies. No filename selection or new lighting owner is added.
+
+Implemented body-group slice:
+
+- `ParseModelBodyVariants` validates every alternative and retains body/base/count
+  identity, including blanks. The existing selected-body reader uses the same
+  selection owner. Runtime geometry import needs bones/weights, not first-frame
+  animation or ANI files; live animation remains supplied by the engine's palette.
+- Static and posed world draws capture an optional increasing set of surface
+  indices. An empty set is an authored blank; a failed import stays invalid.
+  Eligibility, drawing and static shadow casters use only active surfaces.
+- The Studio bridge passes `pInfo.body` and removes the `body == 0` gate after
+  lab proof. Remaining deformation, LOD, proxy, draw-state and view restrictions
+  retain their existing feature checks. This is a geometry cohort, not R96/R91
+  closure or complete shader-family coverage.
+
+Evidence is retained under
+`quality-results/automatic-model-eligibility/bodygroups/`:
+
+| Check | Result |
+| --- | --- |
+| Release conformance (`release-final.json`) | 5 suites, no skips/failures: Studio import 119, first-frame pose 86, world/null 37, native Vulkan model selection 22, composition 40 |
+| Real corpus (`corpus-final.json`) | 87 checks; all 199 Portal and 2,033 Portal 2 models import all alternatives without ANI; default geometry preserved bit-for-bit; all 13 nondefault alternatives on 5 Portal 2 models match the selected-body reader. Comparator negative controls cover nonfinite payloads, tangents, UVs, weights, indices and body identity |
+| Native Vulkan lab | Independent left/right static and posed pixel footprints, blank bodies, invalid selections, inactive/active unsupported material cases, queued snapshots and capture replay; swapped-body control rejected; sync validation silent |
+| Product build/install | Existing Portal 2 SDL3/native-Vulkan release profile: `engine`, `render_composition`, `launcher`, `hl2_launcher` and linked products build/install successfully; no profile reconfiguration |
+| Installed queued Portal 2 boot (`portal2-queued-audit/evidence.json`) | Native GPU offscreen capture of `sp_a1_intro4_relit`; all 117 Studio meshes imported, 743 posed models queued and 1,260 posed draws recorded at the stats snapshot; zero core view failures; private sandbox audit unchanged |
+| Static checks | Local changed-line style: 41 files, no failures; archlint inventory current; 162 archlint and 38 stylelint fixtures pass; `git diff --check` passes |
+| Existing gate failures | Archlint all/baseline still report the two pre-existing ARCH105 `CreateInterfaceFn` occurrences in `game/shared/fstop/blob_networkbypass.cpp/.h`; branch style against `origin/master` encounters existing legacy formatting and invalid UTF-8 in `common/matchmaking/mm_helpers.h`. No baseline/legacy formatting updates made |
+
+The first installed boot (`portal2-queued-installed`) passed render checks but
+reported a shared player-config change. Its staged config had an independent
+inode and a separate game was running in `run/runtime-p2`; the cause is not proved
+by the audit. That attempt is retained, and the repeated boot has no protected
+config changes. The initial `--build build-rc-model-p2` boot refused staging
+because that tree contains both build and installed launcher copies; the passing
+boots select the installed package. An initial product build also selected the
+lab's Waf lock and did not build the engine; only the explicit product-lock build
+counts as product evidence.
+
+Reproduce the product and contract checks from the repository root:
+
+```sh
+WAFLOCK=.lock-waf-rc-model-p2 ./waf build --targets=engine,render_composition,launcher,hl2_launcher -j 6
+WAFLOCK=.lock-waf-rc-model-p2 ./waf install --targets=launcher,hl2_launcher -j 6
+python3 tools/quality/conformance.py check --suite content.studio-model \
+  --suite content.studio-model.pose --suite render.world.null \
+  --suite render.composition --suite render.lab.model-selection --config release \
+  --build-dir build-model-eligibility-release --out <contracts-evidence>
+STUDIO_MODEL_CORPUS_VPKS=/home/john/src/source-engine/run/runtime/portal/portal_pak_dir.vpk,/home/john/src/source-engine/run/runtime-p2/portal2/pak01_dir.vpk \
+  python3 tools/quality/conformance.py check --suite content.studio-model.corpus \
+  --build-dir build-model-eligibility-conformance --out <corpus-evidence>
+python3 tools/quality/portal_boot.py --runtime run/runtime-p2 \
+  --build build-rc-model-p2/install --game portal2 --renderer native-vulkan \
+  --headless --require-vulkan --map sp_a1_intro4_relit \
+  --startup-command 'mat_queue_mode 2' --startup-command 'r_core_world 1' \
+  --startup-command 'r_core_world_strict 1' --startup-command 'r_indirect_producer baked' \
+  --startup-command 'r_core_runtime_direct 1' --console-command 'r_core_world_stats' \
+  --capture-wait 180 --timeout 120 --out <new-boot-directory>
+```
+
+Frozen-path: core plumbing in the engine's Studio handoff for body-group
+selection; no new legacy shading. Eligible body selection now uses the core
+owner; retained legacy cohorts still cover the unimplemented features.
+
+Still open: remaining built-in material families and their variables/proxies,
+flex and LOD deformation/geometry, draw modulation/overrides/static lighting,
+nested views, cutout/transmission shadows and the R91 effects/UI/post/sky/glass/
+water/portal/monitor cohorts. The installed boot is an integration regression
+check, not full scene parity, motion/resize acceptance or non-Linux evidence.
+The full automatic-eligibility goal remains active.

@@ -131,6 +131,136 @@ legacy stream reaches zero.
 This RFC defines contracts, owners, layout and gates. Nothing here is
 installed.
 
+## High-performance clustered lighting (user decision, 2026-10-01)
+
+**High-performance clustered Forward+ lighting is a required engine outcome.**
+Drawing many lights correctly is necessary, but does not by itself satisfy this
+requirement. The user rejected the current performance as the product target.
+The [P2:CE research note](0016-p2ce-clustered-lighting-2026-10-01.md) records
+external evidence that efficient clustered lighting is practical in a Source
+engine, our current implementation differences, and the limits of that evidence.
+It is not a same-hardware performance comparison or an acceptance receipt.
+
+This section owns the requirement for all RFCs. `render.pass.lights` owns light
+assignment, `render.pass.shadows` owns shadow planning and drawing,
+`render.material` owns surface evaluation, and `render.composition` owns their
+per-view composition and reuse. RFC 0011 remains the light-publication authority.
+Profiles and the existing [render budget file](../quality/budgets/render-v1.json)
+own capabilities, workloads and numeric targets; this section creates no second
+profile matrix or budget registry.
+
+The required implementation and measurement work is:
+
+1. **Make light assignment scale.** Connect the installed compute assignment
+   pass to the product core and compare it with the serial CPU oracle on the
+   same immutable inputs. Select the execution path per profile from measured
+   CPU, GPU, upload and synchronization costs, including empty/small light sets
+   and low-capacity devices, under RFC 0003's binding
+   [CPU/GPU placement rule](0003-dependency-aware-job-system.md#cpugpu-execution-placement-user-decision-2026-10-01):
+   if the GPU path is faster, use it in the product. The CPU path remains an
+   oracle and an explicitly
+   selected supported path; its present use is not evidence that the GPU path
+   is integrated. Assignment must keep the contract's conservative coverage,
+   deterministic ordering and explicit capacity reporting.
+2. **Compute shared view lighting once.** World, static-prop and posed-model
+   cohorts of an identical view consume the same immutable assignment and
+   shadow plan. Reuse follows the frame, view, light-publication and resource
+   revisions; distinct portal, mirror, water and monitor views keep their own
+   view-dependent work. Record actual builds, reused results and draw counts.
+3. **Reuse valid shadow data.** Retain unchanged static depth and redraw the
+   affected tiles when lights or caster geometry change. Invalidation includes
+   skeletal animation, flex, material coverage, removal and map replacement,
+   not just entity translation. Record atlas occupancy, faces redrawn, cache
+   hits, capacity refusals and any declared update latency. Stale shadows or
+   missing casters cannot count as a speedup.
+4. **Keep runtime direct lighting on its surface owner.** Migrated native
+   surfaces evaluate direct lights per pixel without CPU dynamic-lightmap
+   reintegration, duplicate shading, native vertex conversion or a second
+   light authority. Delete replaced code for the accepted cohort under rule 4;
+   unclaimed compatibility cohorts remain tracked under K8, K9 and K12.
+5. **Reduce the cost of the complete lighting model.** Measure point/spot,
+   projected, area and sun lighting, shadows, material evaluation and
+   volumetrics separately, including register pressure, spills, occupancy,
+   bandwidth, uploads and CPU submission where the device exposes them.
+   Specialize neutral material terms and cull lights conservatively. Preserve
+   the accepted BRDF, LTC, shadow, probe and reflection results while optimizing.
+6. **Measure representative complete frames.** Pair correctness captures with
+   CPU/GPU and end-to-end p50/p95/p99 timings, memory and native mobile
+   power/thermal evidence where supported. Include sparse and dense lights,
+   dense geometry, animated casters, cutouts, transparency and nested views,
+   camera motion and resize, with every declared effect and the profile's
+   antialiasing policy enabled. Use baked indirect for the default product;
+   optional GI producers have separate measurements. Record the actual drawable,
+   hardware, driver, source/settings, workload and warm-up, and state unavailable
+   coverage. An incomplete core-only frame cannot establish whole-frame gains.
+7. **Resolve the recorded performance debt.** Each miss has a named owning
+   module, reproducible evidence, a target from its profile/workload and a
+   concrete optimization follow-up on R90, R95, R96 or R91. Retain matched image
+   controls and before/after timings. A feature implementation or a documentation
+   update does not discharge that follow-up or certify high performance.
+
+The [current profiling record](0016-perf-forward-plus-2026-10-01.md) is descriptive
+evidence, not accepted full-scene performance. The
+[hard render budgets](#hard-render-budgets-user-decision-2026-10-01) below govern
+performance acceptance; development and optimization continue while a miss is
+open. No effect, shadow, light, cohort, sample count or
+resolution is silently removed or reduced to claim the lighting target. Only a
+missing declared capability or the user's shipped-default decision permits an
+effect to be off. P2:CE is a feasibility reference, not a reason to copy its
+shadow-update limits or assume its private implementation is our solution.
+
+## Hard render budgets (user decision, 2026-10-01)
+
+The user requires: "Add render budgets too. And stick to them. We need a minimum
+of 120FPS, high, on this machine." The confirmed resolution is **1920×1080**.
+This supersedes the earlier rule that a budget miss never blocks any gate.
+
+[`quality/budgets/render-v1.json`](../quality/budgets/render-v1.json) owns the
+numeric limits, workload and hardware of `linux-desktop-high-120`.
+The product profile it references owns the High settings. The measured host is
+AMD Ryzen AI Max+ PRO 395 with Radeon 8060S (RADV STRIX_HALO); the observation on
+2026-10-01 was Mesa 26.2.3 and Vulkan 1.4.354. Every run records its actual
+driver/build; this observation is not a driver requirement or a portable speed
+claim. Other hardware and mobile profiles retain their own declared budgets.
+
+- **Minimum means every frame.** During the declared gameplay route, every
+  presented-frame interval must be at most `1000 / 120` ms. A median, average,
+  p99 or isolated GPU pass cannot establish this floor. Both 1% and 0.1% lows
+  must also meet it. Loading and explicit warm-up are outside the bracket;
+  shader compilation, uploads, shadow updates and nested views encountered
+  inside it count. No slow frames are trimmed or reclassified after measuring.
+- **High means the complete image.** Use the profile's High settings, native
+  drawable and render size, required 4× MSAA, full material and lighting model,
+  baked indirect default, shadows including moving/animated casters, AO,
+  reflections, transparency, effects, post, UI and nested views. An unsupported,
+  rejected or missing cohort leaves quality acceptance unverified even if its
+  incomplete frame is fast. Optional GI producers are separately qualified.
+- **Budget the full critical path.** The row also bounds GPU rendering, CPU
+  frame work and submission. Measure per-pass lighting, assignment, shadows,
+  skinning/culling, post and views to attribute the cost; overlapping CPU/GPU
+  times are not added as though they were serial. Component budgets are owned
+  by their existing domain/profile rows, and do not replace the frame floor.
+- **Misses fail performance acceptance.** A miss or missing required evidence
+  blocks the affected High performance gate, its performance-dependent closure
+  and default/release promotion. Correctness work and optimization fixes may
+  land and integrate to reach the target; they do not close that gate. Baseline
+  allowances, an `over_budget` annotation or a faster incomplete frame cannot
+  waive the hard limit. Only the user may relax this target or reduce High.
+
+Run the installed `tools/quality/frame_floor.py` against the row-linked workload;
+it fails at the first slow frame and requires the route to complete. Its receipt
+must distinguish timing success from complete image acceptance. An offscreen
+1024×768 run cannot certify this budget. Capture the actual back-buffer extent,
+quality settings, GPU identity and source revision, repeat the route on the
+controlled host, and pair it with K11/K12/R91 images and cohort evidence. The
+retained laser route is the first fixture, not sufficient coverage for every
+map, dense light set, animated caster or portal/monitor/water view. Those
+representative cohorts remain required on R90/R95/R96/R91 before promotion.
+
+No existing result is certified for this new High target. In particular the
+old K0 Portal baseline used no MSAA, and the current Forward+ profiling used
+1024×768 and incomplete core cohorts. Keep them as historical evidence.
+
 ## Binding rules for all render work (user decision, 2026-09-28)
 
 These rules are mandatory. They bind every session and every agent
@@ -266,42 +396,39 @@ replaced by a link in the same change. This section's lighting model table
 follows the rule: it names each term's owner and defines only the terms this
 RFC owns.
 
-**Rule 7: Look first, then optimize. Performance gates never block work.**
-Everywhere, on every profile and in every gate, the order is fixed:
-1. get the effect looking right, against its oracle and Cycles reference;
-2. integrate it;
-3. optimize it.
+**Rule 7: Preserve quality and meet the hard render budgets.** Get the effect
+right against its oracle and Cycles reference, integrate it, and optimize the
+complete frame. The user's 2026-10-01 decision supersedes the earlier universal
+nonblocking performance policy. The
+[hard render budgets](#hard-render-budgets-user-decision-2026-10-01) define what
+fails performance acceptance and promotion. Development may proceed to fix a
+miss; the affected performance gate remains failed or unverified until it meets
+the target with complete quality and coverage.
 
-A performance check (frame time, GPU time, submission cost, memory, a
-budget row, a speedup rule, the frame allowance) never blocks:
-- landing a change;
-- closing a quality check;
-- integrating a proven term;
-- starting a dependent row;
-- turning an effect on.
+A miss is never permission to cut, simplify or turn off an accepted effect,
+reduce resolution or samples, omit a draw cohort, or raise a limit. An effect
+is off only for a missing declared capability or the user's decision on the
+profile's shipped default. Record the miss, its owning row and reproducible
+optimization follow-up. No baseline update or debt annotation converts it
+into a pass.
 
-Performance is still measured and recorded wherever a gate lists it, on the
-hardware available. A miss is recorded on the row as an optimization item
-with its numbers. It is not a failure of the work, and it is never a reason
-to cut, simplify or turn off an effect that looks right. An effect is
-turned off on a profile only when the profile lacks a required capability
-(declared by name), or when the user decides it for that profile's shipped
-default. Correctness checks that happen to involve time still block: a
-hang, a timeout, a frame that never presents, or a race.
+Measuring is not optional (user decision, 2026-09-29). Every slice that changes
+what is drawn records desktop and Fold7 frame timings, the commands and settings,
+or explicitly records unavailable hardware and the reason. The existing budget
+rows own their numbers. Missing required measurements cannot certify a gate.
 
-Measuring is not optional (user decision, 2026-09-29). Every slice that
-changes what is drawn records, in its progress entry:
-- frame time on the desktop profile and on the Fold7, with the command and
-  the numbers;
-- or, for a device that was unavailable, "unavailable" and the reason.
-
-The numbers go into the rows of `quality/budgets/render-v1.json` as they
-exist, so the performance debt stays visible while it is not blocking.
+**Rule 8: If it is faster on the GPU, do it on the GPU.** Render work follows
+the engine-wide [CPU/GPU execution placement policy](0003-dependency-aware-job-system.md#cpugpu-execution-placement-user-decision-2026-10-01)
+(user decision, 2026-10-01). The operation's owner records the equivalent-output
+comparison and composes the faster GPU path where supported. Development
+integration while a budget miss is open does not permit leaving a measured faster
+GPU implementation unused in favor of a slower CPU product path. CPU oracles
+and measured small-workload/capability selections follow the policy's boundary.
 
 ### Enforcement
 
 - **Review.** Every change under `materialsystem/`, `engine/gl_lightmap.cpp`,
-  `engine/lightcache.cpp` or `render/` is checked against rules 1–6 before
+  `engine/lightcache.cpp` or `render/` is checked against rules 1–8 before
   it lands. A missing or false `Frozen-path:` line rejects the change.
 - **Freeze ratchet** (`render.legacy-freeze`, installed 2026-09-29, first
   step of the delivery order, owned by R95). The command is
@@ -514,8 +641,9 @@ measured for this RFC; measured numbers are quoted from their records.
   rejected.
 - Submission cost (`render_submission`: draws, recording and submission on
   the submitting sequence) reduced against its recorded budget (K5), and no
-  regression of the Apple TV 60 fps budget. These are optimization goals:
-  they never block a change or a gate (binding rule 7).
+  regression of the Apple TV 60 fps budget. Performance acceptance follows
+  [the hard render budgets](#hard-render-budgets-user-decision-2026-10-01)
+  and binding rule 7; a measured miss cannot be reported as a passed gate.
 - The legacy API, content and mod shader DLLs keep working on the profiles
   that support them today.
 
@@ -1740,6 +1868,7 @@ tolerance. Normals and tangents keep the flat 1e-3.
 | Area lights | `render.lights.area-ltc` (proposed) | diffuse within tolerance of `area_light::IrradianceAt` over seeded rectangles and receivers (horizon-crossing included); GGX specular within tolerance of a Monte Carlo integral over roughness 0.05 to 1; the LUTs regenerate byte-identically from their generator; seeded defects detected (no horizon clip, a transposed LUT, a one-sided light lit from behind); at most 0.3 ms at 1080p on desktop for 8 lights (RFC 0011's target) |
 | Behavior decision | the dlight switch | the per-pixel and legacy dlight modes each match their own reference, and the decision is recorded. The per-pixel mode evaluates both lobes (diffuse and the surface's specular) for world surfaces, as for models |
 | Budgets (perf) | `render-v1.json` atlas rows | pass on desktop and the Fold7 |
+| Clustered performance work | installed assignment conformance and frame-pacing commands, plus retained native CPU/GPU captures; additional lanes are recorded when installed | [Required work and evidence](#high-performance-clustered-lighting-user-decision-2026-10-01) cover assignment, same-view reuse, shadow invalidation and the complete lighting model on representative frames; misses retain concrete optimization follow-ups under rule 7, and missing cohorts or changed quality settings certify no speedup |
 
 ### K8: Remaining cohorts
 

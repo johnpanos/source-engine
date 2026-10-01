@@ -403,6 +403,7 @@ public:
 
 	// Create new materials	(currently only used by the editor!)
 	IMaterial *								CreateMaterial( const char *pMaterialName, KeyValues *pVMTKeyValues );
+	IMaterial *CoreNeutralMaterial( const char *shader );
 	IMaterial *								FindMaterial( const char *materialName, const char *pTextureGroupName, bool complain = true, const char *pComplainPrefix = NULL );
 	virtual IMaterial *						FindMaterialEx( char const* pMaterialName, const char *pTextureGroupName, int nContext, bool complain = true, const char *pComplainPrefix = NULL );
 	bool									IsMaterialLoaded( const char *materialName );
@@ -618,6 +619,7 @@ private:
 	// -----------------------------------------------------------
 
 	CMaterialDict							m_MaterialDict;
+	CUtlDict<IMaterialInternal *, int> m_CoreNeutralMaterials;
 	CMatLightmaps							m_Lightmaps;
 	CTHREADLOCAL(IMatRenderContextInternal *) m_pRenderContext;
 	CMatRenderContext						m_HardwareRenderContext;

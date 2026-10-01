@@ -15,6 +15,7 @@
 #define RENDER_COMPOSITION_CORE_WORLD_H
 
 #include "core_output.h"
+#include "mdl/studio_model.h"
 #include "render/composition/render_core.h"
 #include "render/legacy/core_backend.h"
 #include "render/frame/renderer.h"
@@ -116,7 +117,15 @@ public:
 	unsigned int TakeGpuTimes( char *out, unsigned int size ) override;
 
 	// legacy::ICorePassRecorder (the backend, render sequence).
-	std::uint32_t SlotStages() const override { return 0; }
+	std::uint32_t SlotStages() const override;
+	bool AcceptsMeshes() const override { return m_DynamicDraws.load( std::memory_order_relaxed ); }
+	IMaterial *NeutralMaterial( const char *shader ) override
+	{
+		return m_Host && m_Host->neutralMaterial ? m_Host->neutralMaterial( shader ) : nullptr;
+	}
+
+	std::uint32_t QueueMesh( const legacy::CoreMeshDraw &draw ) override;
+
 	void RecordSlot( std::uint32_t tag, device::CommandEncoder &encoder,
 	    const legacy::CorePassTarget &target ) override;
 	std::optional<pass::world::WorldSceneColor> Capture( device::IRenderDevice2 &device,
@@ -154,8 +163,28 @@ private:
 	std::vector<pass::world::WorldMaterial> m_StaticMaterials;
 	struct ModelPoseSource
 	{
+		bool parsed = false;
 		std::vector<pass::skinning::SkinVertex> vertices;
 		std::vector<pass::skinning::BoneMatrix> poseToBone;
+		std::vector<mdl::BodyPart> bodyParts;
+		std::uint32_t lodCount = 0;
+		struct SurfaceVariant
+		{
+			std::uint32_t part, model, lod;
+		};
+		std::vector<SurfaceVariant> surfaceBodies;
+		std::vector<std::uint32_t> SelectedSurfaces( int body, std::uint32_t lod = 0 ) const
+		{
+			std::vector<std::uint32_t> selected;
+			for ( std::uint32_t i = 0; i < surfaceBodies.size(); ++i )
+			{
+				const auto &variant = surfaceBodies[i];
+				if ( variant.lod == lod &&
+				     bodyParts[variant.part].SelectedModel( body ) == variant.model )
+					selected.push_back( i );
+			}
+			return selected;
+		}
 	};
 	std::vector<ModelPoseSource> m_ModelPoseSources;
 	bool PoseModel(
@@ -375,6 +404,18 @@ private:
 	// stage's casters.
 	std::mutex m_ShadowLock;
 	std::deque<std::pair<std::uint32_t, std::shared_ptr<const PendingView>>> m_ShadowWork;
+	struct StreamView
+	{
+		std::array<float, 16> view;
+		std::array<float, 16> projection;
+		std::uint64_t recordedStream = 0;
+	};
+	std::map<std::uint32_t, StreamView> m_StreamViews; // under m_ShadowLock
+	// Render sequence only: lighting from the most recent recorded scene view.
+	StreamView m_StreamLightingView;
+	std::uint64_t m_StreamLightingFrame = 0;
+	pass::world::WorldTarget m_StreamLighting;
+
 	std::shared_ptr<const Casters> m_Casters;
 	std::uint64_t m_CasterGeneration = 0;
 	// Render sequence: the depth renderer, the casters' mesh and the atlases
@@ -418,6 +459,7 @@ private:
 	bool m_OcclusionNeutral = true; // m_Occlusion holds one (made so, or cleared since)
 	// RFC 0014 D4: made and replaced on the render sequence; m_TimersLock
 	// guards the pointer against the main thread's TakeGpuTimes.
+	std::atomic<bool> m_DynamicDraws{ false };
 	std::atomic<bool> m_GpuTimersOn{ false };
 	std::mutex m_TimersLock;
 	std::unique_ptr<graph::GpuPassTimers> m_Timers;

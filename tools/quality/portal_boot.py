@@ -632,12 +632,12 @@ def resize_commands(workload=RESIZE_WORKLOAD, mode="queued"):
 RESIZE_SCRIPT_LINE_LIMIT = 900
 
 
-def install_resize_script(stage, workload=RESIZE_WORKLOAD, mode="queued"):
+def install_resize_script(stage, workload=RESIZE_WORKLOAD, mode="queued", game="portal"):
     """Install one parsed script line, preserving delayed commands after `exec`.
 
     A workload longer than one line continues in chained scripts, each line
     ending in `exec` of the next, which runs only when its turn comes."""
-    directory = Path(stage) / "portal/cfg"
+    directory = Path(stage) / game / "cfg"
     directory.mkdir(parents=True, exist_ok=True)
     commands = resize_commands(workload, mode)
     chunks, current = [], []
@@ -945,7 +945,7 @@ def main(argv=None):
             # semicolon-delimited line is parsed as one delayed command sequence,
             # so later sizes remain queued behind each `wait`.
             tail = command.index("+wait", command.index("+developer"))
-            resize_script = install_resize_script(stage, mode=args.resize_mode)
+            resize_script = install_resize_script(stage, mode=args.resize_mode, game=game)
             command = command[:tail] + ["-resizetelemetry", "+exec", "rfc0001_resize_e2e"]
             evidence["resize_workload"] = {"version": RESIZE_WORKLOAD_VERSION,
                                            "sizes": RESIZE_WORKLOAD, **resize_script}

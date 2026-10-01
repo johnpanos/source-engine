@@ -274,6 +274,7 @@ layout( set = 2, binding = 0 ) uniform Material
 	vec4 transmission; // thin: fraction/IOR; Refract: amount/blur/mode/fade
 	vec4 emissionCone; // inner/outer cosine, exponent, enabled
 	vec4 texture2Transform[2];
+	vec4 surfaceControls;
 } material;
 layout( set = 2, binding = 1 ) uniform texture2D baseTexture;
 layout( set = 2, binding = 2 ) uniform sampler baseSampler;
@@ -477,7 +478,7 @@ vec4 Output( vec3 lit, float alpha )
 {
 	lit *= frame.light.y;
 	const float fogType = frame.fogColor.w;
-	if ( fogType > -0.5 )
+	if ( fogType > -0.5 && material.surfaceControls.x == 0.0 )
 	{
 		const float factor = FogFactor();
 		if ( fogType > 0.5 && material.state.x != 0.0 )
@@ -1602,7 +1603,7 @@ void main()
 	vec3 diffuse;
 	if ( lightingOne )
 	{
-		diffuse = c12;
+		diffuse = c12 * material.surfaceControls.y;
 	}
 	else if ( diffuseBumpmap )
 	{

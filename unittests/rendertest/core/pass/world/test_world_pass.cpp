@@ -223,6 +223,54 @@ int main()
 	stats = pass.Stats();
 	checks.That( stats.viewsDrawn == 2 && stats.surfacesDrawn == 4 && stats.viewsFailed == 0,
 	    "W3.a-re-recorded-slot-draws-the-same-view" );
+	{
+		WorldPass interleaved;
+		interleaved.SetWorld( TestWorld() );
+		const std::uint32_t current = interleaved.QueueView( View( { 0 }, 200 ) );
+		const std::uint32_t future = interleaved.QueueView( View( { 0 }, 201 ) );
+		WorldView streamed = View( {}, 200 );
+		WorldView::DynamicDraw geometry;
+		const WorldData fixture = TestWorld();
+		geometry.material = fixture.materials[1];
+		geometry.vertices = fixture.vertices;
+		geometry.indices = { 0, 1, 2 };
+		streamed.dynamicDraws.push_back( std::move( geometry ) );
+		const std::uint32_t dynamic = interleaved.QueueView( std::move( streamed ) );
+		WorldTarget streamTarget = target;
+		streamTarget.streamEpoch = 1000;
+		checks.That( current && future && dynamic &&
+		                 RecordSlot( device, interleaved, current, streamTarget ) &&
+		                 RecordSlot( device, interleaved, dynamic, streamTarget ) &&
+		                 interleaved.Failures() == 0,
+		    "W14.render-thread-dynamic-ticket-does-not-discard-main-thread-future-view" );
+		streamTarget.streamEpoch = 1001;
+		checks.That( RecordSlot( device, interleaved, future, streamTarget ) &&
+		                 interleaved.Failures() == 0 && interleaved.Stats().viewsDrawn == 3,
+		    "W14.future-frame-still-records-its-promised-view" );
+		interleaved.ReleaseDevice( device );
+	}
+	{
+		WorldPass captured;
+		captured.SetWorld( TestWorld() );
+		std::vector<std::uint32_t> tags;
+		for ( unsigned int i = 0; i < 97; ++i )
+			tags.push_back( captured.QueueView( View( { 0 }, 300 ) ) );
+		WorldTarget captureTarget = target;
+		captureTarget.streamEpoch = 2000;
+		bool accepted = true;
+		for ( std::uint32_t slot : tags )
+			accepted = RecordSlot( device, captured, slot, captureTarget ) && accepted;
+		++captureTarget.frame; // readback may use a new GPU submission
+		for ( std::uint32_t slot : tags )
+			accepted = RecordSlot( device, captured, slot, captureTarget ) && accepted;
+		checks.That( accepted && captured.Failures() == 0 && captured.Stats().viewsDrawn == 194,
+		    "W15.capture-replays-every-slot-of-a-stream-larger-than-64-views" );
+		++captureTarget.streamEpoch;
+		(void)RecordSlot( device, captured, tags.front(), captureTarget );
+		checks.That( captured.Failures() == 1,
+		    "W15.discarded-stream-cannot-be-replayed-under-a-new-stream-identity" );
+		captured.ReleaseDevice( device );
+	}
 
 	// One object-space mesh is shared by its static instances. The same
 	// queued world view accepts only instances whose complete mesh is claimed.

@@ -32,6 +32,9 @@ namespace render::composition
 
 static_assert( pass::world::kWorldTag == legacy::kCorePassForwarded,
     "world tags are the frontend's forwarded tags" );
+static_assert( legacy::kCorePassLegacyHud ==
+                   legacy::CorePassTag( static_cast<std::uint32_t>( frame::Stage::kHud ), 0 ),
+    "the legacy UI exception is the frame catalog's top-level HUD stage" );
 static_assert(
     sizeof( RenderCoreWorldVertex ) == sizeof( pass::world::WorldVertex ) &&
         offsetof( RenderCoreWorldVertex, lightmapUv ) ==
@@ -417,6 +420,10 @@ void CoreWorld::SetStaticCasters()
 		std::vector<const pass::world::WorldSurface *> surfaces;
 		for ( std::size_t s = 0; s < mesh.surfaces.size(); ++s )
 		{
+			if ( instance.surfaceSelection &&
+			     !std::binary_search( instance.surfaceSelection->begin(),
+			         instance.surfaceSelection->end(), std::uint32_t( s ) ) )
+				continue;
 			std::uint32_t material = mesh.surfaces[s].material;
 			if ( !mesh.skinMaterials.empty() )
 				material = mesh.skinMaterials[instance.skin][s];
@@ -515,7 +522,7 @@ void CoreWorld::SetStaticProps( const RenderCoreStaticModel *models, unsigned in
 		bytes.mdl = { static_cast<const char *>( source.mdl ), std::size_t( source.mdlBytes ) };
 		bytes.vvd = { static_cast<const char *>( source.vvd ), std::size_t( source.vvdBytes ) };
 		bytes.vtx = { static_cast<const char *>( source.vtx ), std::size_t( source.vtxBytes ) };
-		auto parsed = mdl::ParseModel( bytes );
+		auto parsed = mdl::ParseModelGeometryVariants( bytes );
 		if ( !parsed )
 		{
 			std::fprintf( stderr, "Render core: static model %s: %s\n",
@@ -524,6 +531,8 @@ void CoreWorld::SetStaticProps( const RenderCoreStaticModel *models, unsigned in
 		}
 		const mdl::Model &model = parsed.Value();
 		ModelPoseSource &poseSource = m_ModelPoseSources[i];
+		poseSource.bodyParts = model.bodyParts;
+		poseSource.lodCount = std::uint32_t( model.lodTextures.size() );
 		if ( model.bones.size() <= 255 )
 		{
 			for ( const mdl::Bone &bone : model.bones )
@@ -536,8 +545,13 @@ void CoreWorld::SetStaticProps( const RenderCoreStaticModel *models, unsigned in
 			}
 		}
 		const std::uint32_t materialBase = std::uint32_t( m_StaticMaterials.size() );
+		const std::uint64_t allMaterialCount =
+		    std::uint64_t( source.materialCount ) * source.materialLodCount;
+		if ( !source.materialLodCount ||
+		     allMaterialCount > std::numeric_limits<unsigned int>::max() )
+			continue;
 		std::vector<pass::world::WorldMaterial> materials =
-		    WorldMaterials( source.materials, source.materialCount );
+		    WorldMaterials( source.materials, unsigned( allMaterialCount ) );
 		for ( pass::world::WorldMaterial &material : materials )
 		{
 			material.mesh = true;
@@ -545,8 +559,13 @@ void CoreWorld::SetStaticProps( const RenderCoreStaticModel *models, unsigned in
 		}
 		pass::world::WorldData::StaticMesh &mesh = m_StaticMeshes[i];
 		mesh.skinMaterials.resize( model.skinFamilies.size() );
+		bool complete = true;
 		for ( const mdl::Mesh &part : model.meshes )
 		{
+			const bool resolvedLod = part.lod < source.materialLodCount;
+			const bool unchangedLod = model.lodTextures[part.lod] == model.lodTextures[0];
+			const std::uint32_t lodMaterialBase =
+			    materialBase + ( resolvedLod ? part.lod * source.materialCount : 0u );
 			const std::int32_t texture =
 			    model.skinFamilies.empty()
 			        ? part.textureRef
@@ -557,6 +576,7 @@ void CoreWorld::SetStaticProps( const RenderCoreStaticModel *models, unsigned in
 			if ( texture < 0 || std::uint32_t( texture ) >= source.materialCount )
 			{
 				mesh.surfaces.clear();
+				complete = false;
 				break;
 			}
 			const std::uint32_t base = std::uint32_t( mesh.vertices.size() );
@@ -615,12 +635,15 @@ void CoreWorld::SetStaticProps( const RenderCoreStaticModel *models, unsigned in
 				}
 			}
 			pass::world::WorldSurface surface;
-			surface.material = materialBase + std::uint32_t( texture );
+			surface.material =
+			    resolvedLod || unchangedLod ? lodMaterialBase + std::uint32_t( texture ) : ~0u;
 			surface.firstIndex = std::uint32_t( mesh.indices.size() );
 			for ( std::uint32_t index : part.indices )
 				mesh.indices.push_back( base + index );
 			surface.indexCount = std::uint32_t( mesh.indices.size() ) - surface.firstIndex;
 			mesh.surfaces.push_back( surface );
+			poseSource.surfaceBodies.push_back(
+			    { std::uint32_t( part.bodyPart ), part.bodyModel, part.lod } );
 			for ( std::size_t skin = 0; skin < model.skinFamilies.size(); ++skin )
 			{
 				const std::vector<std::int16_t> &family = model.skinFamilies[skin];
@@ -629,17 +652,23 @@ void CoreWorld::SetStaticProps( const RenderCoreStaticModel *models, unsigned in
 				        ? family[std::size_t( part.textureRef )]
 				        : -1;
 				mesh.skinMaterials[skin].push_back(
-				    selected >= 0 && std::uint32_t( selected ) < source.materialCount
-				        ? materialBase + std::uint32_t( selected )
+				    ( resolvedLod || unchangedLod ) && selected >= 0 &&
+				            std::uint32_t( selected ) < source.materialCount
+				        ? lodMaterialBase + std::uint32_t( selected )
 				        : ~0u );
 			}
 		}
+		poseSource.parsed = complete;
 	}
 	for ( unsigned int i = 0; i < propCount; ++i )
 	{
 		pass::world::WorldData::StaticInstance instance;
 		instance.mesh = props[i].skin >= 0 ? props[i].model : ~0u;
 		instance.skin = props[i].skin >= 0 ? std::uint32_t( props[i].skin ) : ~0u;
+		if ( instance.mesh < m_ModelPoseSources.size() && m_ModelPoseSources[instance.mesh].parsed )
+			instance.surfaceSelection = m_ModelPoseSources[instance.mesh].SelectedSurfaces( 0 );
+		else
+			instance.mesh = ~0u;
 		for ( int row = 0; row < 3; ++row )
 			std::copy(
 			    props[i].world + row * 4, props[i].world + row * 4 + 4, instance.world + row * 4 );
@@ -1134,17 +1163,53 @@ bool CoreWorld::PoseModel(
     const RenderCorePosedModel &source, pass::world::WorldView::PosedModel &out ) const
 {
 	if ( !source.boneToWorld || source.model >= m_ModelPoseSources.size() ||
-	     source.model >= m_StaticMeshes.size() ||
-	     !m_Pass.DrawsPosedModel( source.model, source.skin, source.phase ) )
+	     source.model >= m_StaticMeshes.size() )
 		return false;
 	const ModelPoseSource &pose = m_ModelPoseSources[source.model];
 	const pass::world::WorldData::StaticMesh &mesh = m_StaticMeshes[source.model];
-	if ( pose.poseToBone.empty() || source.boneCount < pose.poseToBone.size() ||
-	     pose.vertices.size() != mesh.vertices.size() )
+	if ( !pose.parsed || source.lod >= pose.lodCount || pose.poseToBone.empty() ||
+	     source.boneCount < pose.poseToBone.size() || pose.vertices.size() != mesh.vertices.size() )
 		return false;
+	out.surfaceSelection = pose.SelectedSurfaces( source.body, source.lod );
+	if ( !m_Pass.DrawsPosedModel( source.model, source.skin, source.phase, out.surfaceSelection ) )
+		return false;
+	// Only the selected topology borrows the live palette. The host may have
+	// prepared no matrices for bones used exclusively by other body groups/LODs.
+	std::vector<bool> usedVertices( pose.vertices.size() );
+	for ( std::uint32_t surfaceId : *out.surfaceSelection )
+	{
+		const pass::world::WorldSurface &surface = mesh.surfaces[surfaceId];
+		for ( std::uint32_t i = surface.firstIndex; i < surface.firstIndex + surface.indexCount;
+		    ++i )
+			usedVertices[mesh.indices[i]] = true;
+	}
+	std::vector<pass::skinning::SkinVertex> active;
+	std::vector<std::uint32_t> activeIndices;
+	std::vector<bool> usedBones( pose.poseToBone.size() );
+	for ( std::uint32_t i = 0; i < pose.vertices.size(); ++i )
+	{
+		if ( !usedVertices[i] )
+			continue;
+		const pass::skinning::SkinVertex &vertex = pose.vertices[i];
+		const auto weights = vertex.Weights();
+		for ( unsigned int influence = 0; influence < 3; ++influence )
+		{
+			if ( weights[influence] != 0.0f )
+			{
+				const std::uint32_t bone = ( vertex.bones >> ( influence * 8 ) ) & 0xffu;
+				if ( bone >= usedBones.size() )
+					return false;
+				usedBones[bone] = true;
+			}
+		}
+		active.push_back( vertex );
+		activeIndices.push_back( i );
+	}
 	std::vector<pass::skinning::BoneMatrix> palette( pose.poseToBone.size() );
 	for ( std::size_t bone = 0; bone < palette.size(); ++bone )
 	{
+		if ( !usedBones[bone] )
+			continue;
 		const float *world = source.boneToWorld + bone * 12;
 		const pass::skinning::BoneMatrix &bind = pose.poseToBone[bone];
 		for ( int row = 0; row < 3; ++row )
@@ -1158,17 +1223,18 @@ bool CoreWorld::PoseModel(
 			}
 		}
 	}
-	std::vector<pass::skinning::SkinnedVertex> skinned( pose.vertices.size() );
-	pass::skinning::SkinReference( { pose.vertices, palette, {}, {}, {} }, skinned );
+	std::vector<pass::skinning::SkinnedVertex> skinned( active.size() );
+	pass::skinning::SkinReference( { active, palette, {}, {}, {} }, skinned );
 	out.mesh = source.model;
 	out.skin = source.skin;
 	out.phase = source.phase;
 	out.vertices = mesh.vertices;
 	for ( std::size_t i = 0; i < skinned.size(); ++i )
 	{
-		std::copy( skinned[i].position, skinned[i].position + 3, out.vertices[i].position );
-		std::copy( skinned[i].normal, skinned[i].normal + 3, out.vertices[i].normal );
-		std::copy( skinned[i].tangent, skinned[i].tangent + 4, out.vertices[i].tangent );
+		auto &vertex = out.vertices[activeIndices[i]];
+		std::copy( skinned[i].position, skinned[i].position + 3, vertex.position );
+		std::copy( skinned[i].normal, skinned[i].normal + 3, vertex.normal );
+		std::copy( skinned[i].tangent, skinned[i].tangent + 4, vertex.tangent );
 	}
 	return true;
 }
@@ -1283,6 +1349,15 @@ void CoreWorld::OnStage( frame::Stage, std::uint32_t depth )
 	m_ViewDepth = depth;
 }
 
+std::uint32_t CoreWorld::SlotStages() const
+{
+	const frame::DebugControls &debug = m_Renderer.AppliedDebug();
+	return m_CoreOnly && !frame::PixelViewActive( debug ) &&
+	               debug.legacy != frame::DebugLegacy::kSkip
+	           ? 1u << static_cast<std::uint32_t>( frame::Stage::kHud )
+	           : 0u;
+}
+
 void CoreWorld::EndFrame()
 {
 	if ( m_Renderer.AppliedDebug().legacy != frame::DebugLegacy::kTint )
@@ -1325,6 +1400,9 @@ void CoreWorld::GetStats( RenderCoreWorldStats *out ) const
 	out->staticDrawsDrawn = stats.staticDrawsDrawn;
 	out->posedModelsQueued = stats.posedModelsQueued;
 	out->posedDrawsDrawn = stats.posedDrawsDrawn;
+	out->dynamicDrawsDrawn = stats.dynamicDrawsDrawn;
+	out->dynamicDrawsRefused = stats.dynamicDrawsRefused;
+	std::snprintf( out->lastRefusal, sizeof( out->lastRefusal ), "%s", stats.lastRefusal.c_str() );
 	out->debugHatches = m_Hatches.load( std::memory_order_relaxed );
 	out->debugTints = m_Tints.load( std::memory_order_relaxed );
 	out->debugViewsRedrawn = m_Redrawn.load( std::memory_order_relaxed );
@@ -1360,6 +1438,7 @@ void CoreWorld::GetStats( RenderCoreWorldStats *out ) const
 
 void CoreWorld::SetQuality( const RenderCoreWorldQuality &quality )
 {
+	m_DynamicDraws.store( quality.dynamicDraws, std::memory_order_relaxed );
 	m_CoreOnly = quality.coreOnly;
 	m_AoQuality.store( std::clamp( quality.ambientOcclusion, 0, 4 ), std::memory_order_relaxed );
 	m_ShadowQuality.store( std::clamp( quality.shadows, 0, 3 ), std::memory_order_relaxed );
@@ -1470,9 +1549,58 @@ std::optional<pass::world::WorldSceneColor> CoreWorld::Capture( device::IRenderD
 	return result;
 }
 
+std::uint32_t CoreWorld::QueueMesh( const legacy::CoreMeshDraw &draw )
+{
+	if ( !AcceptsMeshes() )
+		return 0;
+	if ( !draw.name || !draw.shader || !draw.vertices || !draw.indices || !draw.vertexCount ||
+	     !draw.indexCount || ( draw.variableCount && !draw.variables ) )
+		return 0;
+	pass::world::WorldView view;
+	std::copy_n( draw.toClip, 16, view.toClip );
+	view.viewport = draw.viewport;
+	pass::world::WorldView::DynamicDraw geometry;
+	geometry.material.name = draw.name;
+	geometry.material.shader = draw.shader;
+	geometry.material.mesh = draw.mesh;
+
+	for ( std::uint32_t i = 0; i < draw.variableCount; ++i )
+	{
+		const legacy::CoreMeshVariable &variable = draw.variables[i];
+		if ( !variable.key || !variable.value )
+			return 0;
+		geometry.material.variables.emplace_back( variable.key, variable.value );
+		const char *declared = m_Host && m_Host->materialDefault
+		                           ? m_Host->materialDefault( draw.shader, variable.key )
+		                           : nullptr;
+		if ( !declared )
+			declared = variable.defaultValue;
+		if ( declared )
+			geometry.material.defaults.emplace_back( variable.key, declared );
+		if ( variable.textureHandle )
+			geometry.material.textures.emplace_back( variable.key, variable.textureHandle );
+	}
+	geometry.vertices.assign( draw.vertices, draw.vertices + draw.vertexCount );
+	geometry.indices.assign( draw.indices, draw.indices + draw.indexCount );
+	geometry.lightmapPage = draw.lightmapPage;
+	view.dynamicDraws.push_back( std::move( geometry ) );
+	const std::uint32_t tag = m_Pass.QueueView( std::move( view ) );
+	if ( tag )
+	{
+		StreamView stream;
+		std::copy_n( draw.worldToView, 16, stream.view.begin() );
+		std::copy_n( draw.viewToClip, 16, stream.projection.begin() );
+		std::lock_guard<std::mutex> guard( m_ShadowLock );
+		m_StreamViews.emplace( tag, stream );
+	}
+	return tag;
+}
+
 void CoreWorld::RecordSlot(
     std::uint32_t tag, device::CommandEncoder &encoder, const legacy::CorePassTarget &target )
 {
+	if ( tag == legacy::kCorePassLegacyHud )
+		return;
 	if ( target.device )
 		std::erase_if( m_SceneCaptures,
 		    [&]( std::pair<std::uint64_t, graph::InlineGraphResources> &old )
@@ -1553,6 +1681,7 @@ void CoreWorld::RecordSlot(
 	world.textures = textures ? &*textures : nullptr;
 	world.submitted = target.submitted;
 	world.frame = target.frame;
+	world.streamEpoch = target.streamEpoch;
 	world.lightmapScale = target.lightmapScale;
 	world.depthPrepass = m_DepthPrepass.load( std::memory_order_relaxed );
 	world.outputScale = target.outputScale;
@@ -1575,6 +1704,36 @@ void CoreWorld::RecordSlot(
 				pending = view;
 		}
 	}
+	std::optional<StreamView> streamView;
+	{
+		std::lock_guard<std::mutex> guard( m_ShadowLock );
+		if ( target.streamEpoch != 0 )
+			std::erase_if( m_StreamViews,
+			    [&]( const auto &entry )
+			    {
+				    return entry.second.recordedStream != 0 &&
+				           entry.second.recordedStream != target.streamEpoch;
+			    } );
+		const auto stream = m_StreamViews.find( tag );
+		if ( stream != m_StreamViews.end() )
+		{
+			stream->second.recordedStream = target.streamEpoch;
+			streamView = stream->second;
+		}
+	}
+	if ( streamView && m_StreamLightingFrame == target.frame &&
+	     world.color == m_StreamLighting.color && world.depth == m_StreamLighting.depth &&
+	     world.width == m_StreamLighting.width && world.height == m_StreamLighting.height &&
+	     streamView->view == m_StreamLightingView.view &&
+	     streamView->projection == m_StreamLightingView.projection )
+	{
+		world.lights = m_StreamLighting.lights;
+		world.shadowAtlas = m_StreamLighting.shadowAtlas;
+		world.shadowAtlasDesc = m_StreamLighting.shadowAtlasDesc;
+		world.ambientOcclusion = m_StreamLighting.ambientOcclusion;
+		world.ambientOcclusionDesc = m_StreamLighting.ambientOcclusionDesc;
+	}
+
 	std::shared_ptr<const ShadowWork> shadows;
 	if ( pending )
 	{
@@ -1658,6 +1817,18 @@ void CoreWorld::RecordSlot(
 			return recorded;
 		};
 	}
+	if ( pending )
+	{
+		std::copy_n( pending->inputs.worldToView, 16, m_StreamLightingView.view.begin() );
+		std::copy_n( pending->inputs.viewToClip, 16, m_StreamLightingView.projection.begin() );
+		m_StreamLightingFrame = target.frame;
+		m_StreamLighting = world;
+		m_StreamLighting.device = nullptr;
+		m_StreamLighting.textures = nullptr;
+		m_StreamLighting.sceneColorCapture = nullptr;
+		m_StreamLighting.screenPasses = {};
+	}
+
 	m_Pass.Record( tag, encoder, world );
 	if ( timers )
 	{

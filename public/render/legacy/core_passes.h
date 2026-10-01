@@ -27,6 +27,7 @@
 #include "render/device/device.h"
 #include "render/device/encoder.h"
 #include "render/device/resources.h"
+#include "render/material/surface_program.h"
 
 #include <cstdint>
 
@@ -78,6 +79,9 @@ struct CorePassTarget
 	// submission (a frame recorded again for a capture keeps or raises it).
 	// 0 when the backend does not count frames.
 	std::uint64_t frame = 0;
+	// CPU stream identity, unchanged when a capture replays the same stream
+	// in another GPU submission. Changes only when that stream is discarded.
+	std::uint64_t streamEpoch = 0;
 	// The frame's light terms at the slot: the lightmap scale for how the
 	// pages encode light, and the output's linear (tone-mapping) scale.
 	float lightmapScale = 1.0f;
@@ -129,7 +133,7 @@ protected:
 
 // A slot's tag: the stage it was marked at (frame::Stage) and the number of
 // views open then.
-inline std::uint32_t CorePassTag( std::uint32_t stage, std::uint32_t depth )
+inline constexpr std::uint32_t CorePassTag( std::uint32_t stage, std::uint32_t depth )
 {
 	return ( stage & 0xffu ) | ( depth << 8 );
 }
@@ -156,6 +160,11 @@ inline constexpr std::uint32_t kCorePassLegacyOff = 0x40000000u;
 // composition root tints what the core did not draw there). The backend runs
 // it as any slot.
 inline constexpr std::uint32_t kCorePassFrameEnd = 0x20000000u;
+
+// An ordinary stage slot at the top-level HUD boundary permits legacy UI
+// after a core-only scene. The composition requests this slot only for the
+// normal game view; pixel diagnostics and legacy-skip views never request it.
+inline constexpr std::uint32_t kCorePassLegacyHud = CorePassTag( 8u, 0u );
 
 // A backend's slots (LegacyShaderServices::corePassSlots). Called in frame
 // order on the thread that replays the material system's calls.
@@ -194,10 +203,43 @@ struct CoreOutputTargets
 	device::CompletionToken submitted;
 };
 
+// Value views of one material-system mesh draw. QueueMesh copies every byte
+// synchronously; neither proxies nor the legacy mesh may be borrowed afterward.
+// Positions and tangent frames are world space; matrices are row-major with
+// column vectors, matching FamilyDrawConstants. No native shading crosses here.
+struct CoreMeshVariable
+{
+	const char *key = nullptr;
+	const char *value = nullptr;
+	const char *defaultValue = nullptr;
+	int textureHandle = 0;
+};
+struct CoreMeshDraw
+{
+	const char *name = nullptr;
+	const char *shader = nullptr;
+	const CoreMeshVariable *variables = nullptr;
+	std::uint32_t variableCount = 0;
+	const material::SurfaceWorldVertex *vertices = nullptr;
+	std::uint32_t vertexCount = 0;
+	const std::uint32_t *indices = nullptr;
+	std::uint32_t indexCount = 0;
+	float toClip[16] = {};
+	float worldToView[16] = {};
+	float viewToClip[16] = {};
+	device::Viewport viewport;
+	int lightmapPage = 0;
+	bool mesh = false; // model/refraction point, rather than a lightmapped surface
+};
+
 // What records a slot's pass (the frontend's, bound by the composition root).
 class ICorePassRecorder
 {
 public:
+	virtual bool AcceptsMeshes() const { return false; }
+	// The render sequence, before marking its stream slot. 0 refuses the whole
+	// draw; a returned tag promises to draw it or record an explicit failure.
+	virtual std::uint32_t QueueMesh( const CoreMeshDraw & ) { return 0; }
 	// The stages (bit 1 << frame::Stage) at which the frontend queues a slot;
 	// none, no slot.
 	virtual std::uint32_t SlotStages() const = 0;

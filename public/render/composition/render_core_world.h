@@ -16,6 +16,7 @@
 #include "render/world_mesh_upload.h"
 
 class ITexture;
+class IMaterial;
 
 struct RenderCoreWorldVertex
 {
@@ -79,6 +80,10 @@ struct RenderCoreStaticModel
 	unsigned long long vtxBytes;
 	const RenderCoreWorldMaterial *materials; // by Studio texture index, skin 0
 	unsigned int materialCount;
+	// Texture-slot descriptors for each resolved LOD, packed LOD-major. A
+	// single level may serve unchanged slots at other levels; a replacement
+	// without its resolved descriptor cannot be claimed.
+	unsigned int materialLodCount = 1;
 };
 
 struct RenderCoreStaticProp
@@ -99,6 +104,8 @@ struct RenderCorePosedModel
 	const float *boneToWorld;
 	unsigned int boneCount;
 	RenderCoreDrawPhase phase = RenderCoreDrawPhase::kAll;
+	int body = 0;         // engine-selected Studio body groups, captured with the pose
+	unsigned int lod = 0; // the host's selected level, including root-LOD policy
 };
 
 // The world stage's quality settings (RFC 0016 K12); each field has an
@@ -127,6 +134,9 @@ struct RenderCoreWorldQuality
 	int runtimeDirect;
 	// Enabled product rendercore owns shading exclusively; legacy draws are rejected.
 	bool coreOnly = false;
+	// Unfinished ordered dynamic handoff. Disabled in the playable composition
+	// until queued/capture/resize and image acceptance pass for the whole cohort.
+	bool dynamicDraws = false;
 };
 
 struct RenderCoreWorldStats
@@ -144,6 +154,8 @@ struct RenderCoreWorldStats
 	unsigned long long staticDrawsDrawn;
 	unsigned long long posedModelsQueued;
 	unsigned long long posedDrawsDrawn;
+	unsigned long long dynamicDrawsDrawn;
+	unsigned long long dynamicDrawsRefused;
 	// RFC 0014 debug slots: frames hatched (a pixel view or legacy 2),
 	// frames tinted (legacy 1) and the top-level views drawn again over the
 	// tint.
@@ -159,7 +171,8 @@ struct RenderCoreWorldStats
 	// over the lightmap's indirect layer (RenderCoreWorldQuality::runtimeDirect).
 	unsigned int stageRuntimeDirect;
 	char lastFailure[256];
-	char gaps[1024];    // "count reason" lines, most frequent first
+	char lastRefusal[256];
+	char gaps[16384];   // bounded scene census: "count reason" lines, most frequent first
 	char claimed[1024]; // "surfaces material" lines the core draws
 };
 
@@ -236,6 +249,8 @@ public:
 	// drawn by legacy instead: the caller's policy decides what a failure
 	// costs).
 	virtual unsigned long long Failures() const = 0;
+	virtual IMaterial *NeutralMaterial( const char * ) { return nullptr; }
+
 	virtual void GetStats( RenderCoreWorldStats *out ) const = 0;
 	// RFC 0014 D4 (cl_render_debug_gpu_timers): whether the stage times its
 	// labeled GPU sections (shadows, prepass, lit world, GTAO), from its next

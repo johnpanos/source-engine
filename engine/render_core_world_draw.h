@@ -68,6 +68,6 @@ bool RenderCoreWorldDraw_CanTakePosedModel( const model_t *model );
 // Claims an eligible Studio draw with its engine-generated bone palette.
 // Returns false when the model, view or material must stay with studiorender.
 bool RenderCoreWorldDraw_TakePosedModel( const model_t *model, int skin,
-    const matrix3x4_t *boneToWorld, int boneCount, RenderCoreDrawPhase phase );
+    const matrix3x4_t *boneToWorld, int boneCount, RenderCoreDrawPhase phase, int body, int lod );
 
 #endif // RENDER_CORE_WORLD_DRAW_H

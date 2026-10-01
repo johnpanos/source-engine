@@ -27,6 +27,21 @@
   suite), R17 (viewports), R23 (application authority), R24 (tools and
   presenters), R25 (GTK workflow) and R60 (USD editor workflow).
 
+## Render performance obligations (user decision, 2026-10-01)
+
+This RFC follows RFC 0016's
+[high-performance clustered lighting requirement](0016-render-core.md#high-performance-clustered-lighting-user-decision-2026-10-01)
+and [hard render budgets](0016-render-core.md#hard-render-budgets-user-decision-2026-10-01).
+Computation placement follows RFC 0003's binding
+[CPU/GPU policy](0003-dependency-aware-job-system.md#cpugpu-execution-placement-user-decision-2026-10-01).
+Those owners define the policies and numbers; this RFC defines its domain's
+obligations and does not certify implementation by this amendment.
+
+Interaction flows keep lighting, material previews and scene revisions live
+through edit, undo, selection and camera motion. Qualify responsive viewports
+with the shared core and accepted image quality; suppressing updates or
+features to hide frame cost does not satisfy an interaction flow.
+
 ## Decision and boundary
 
 1. **A companion RFC, not more sections in RFC 0002.** Agent decision under

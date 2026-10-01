@@ -35,6 +35,25 @@ namespace
 
 using namespace render::device;
 
+bool SurfaceSelected(
+    const std::optional<std::vector<std::uint32_t>> &selection, std::uint32_t surface )
+{
+	return !selection || std::binary_search( selection->begin(), selection->end(), surface );
+}
+
+bool ValidSurfaceSelection(
+    const std::optional<std::vector<std::uint32_t>> &selection, std::size_t count )
+{
+	if ( !selection )
+		return true;
+	for ( std::size_t i = 0; i < selection->size(); ++i )
+	{
+		if ( ( *selection )[i] >= count || ( i && ( *selection )[i - 1] >= ( *selection )[i] ) )
+			return false;
+	}
+	return true;
+}
+
 // What the main thread decided about a material.
 struct Claimed
 {
@@ -86,6 +105,10 @@ struct Resources
 	};
 	std::vector<Material> materials;
 	std::vector<Material> modelMaterials;
+	// Only snapshots used in the current recorded frame are retained. Replaced
+	// groups retire behind the same submitted token as transient geometry.
+	std::map<std::string, Material> dynamicMaterials;
+	std::uint64_t dynamicFrame = 0;
 	// A world stage's depth-and-normal prepass (the screen passes' input): a
 	// single-sample resolver of its own (its layouts, so its groups, differ
 	// from the lit one's; the group maps below are keyed by layout), its
@@ -165,6 +188,59 @@ std::string Lower( std::string text )
 	return text;
 }
 
+foundation::Expected<Claimed, std::string> MapWorldMaterial( const WorldMaterial &source )
+{
+	Claimed claimed;
+	claimed.blended = source.translucent;
+	std::vector<material::VmtPair> variables;
+	for ( const auto &[key, value] : source.variables )
+		variables.push_back( { key, value } );
+	auto mapped = material::MapVariables( source.shader, std::move( variables ), {} );
+	if ( !mapped )
+		return foundation::MakeUnexpected( "shader " + source.shader + " does not map" );
+	claimed.desc = std::move( mapped ).Value();
+	for ( const auto &[key, value] : source.defaults )
+		claimed.desc.declaredDefaults.push_back( { key, value } );
+	for ( const material::MaterialValue &value : claimed.desc.values )
+	{
+		if ( value.kind != material::ValueKind::kTexture )
+			continue;
+		for ( const auto &[key, handle] : source.textures )
+		{
+			if ( Lower( key ) == Lower( value.key ) && handle != 0 )
+				claimed.handles[value.text] = handle;
+		}
+	}
+	return claimed;
+}
+
+std::string MaterialSnapshotKey( const WorldMaterial &source )
+{
+	std::string key;
+	auto append = [&]( const std::string &value )
+	{
+		key += std::to_string( value.size() ) + ":" + value;
+	};
+	append( source.name );
+	append( source.shader );
+	key += source.mesh ? "M" : "W";
+	for ( const auto *values : { &source.variables, &source.defaults } )
+	{
+		key += std::to_string( values->size() ) + ":";
+		for ( const auto &[name, value] : *values )
+		{
+			append( name );
+			append( value );
+		}
+	}
+	for ( const auto &[name, handle] : source.textures )
+	{
+		append( name );
+		append( std::to_string( handle ) );
+	}
+	return key;
+}
+
 // Whether serial a was issued before serial b (serials wrap within the
 // tag's serial bits).
 bool IssuedBefore( std::uint32_t a, std::uint32_t b )
@@ -235,6 +311,7 @@ struct WorldPass::State
 	{
 		std::uint32_t serial = 0;
 		std::uint64_t generation = 0; // the world the view was queued against
+		std::uint64_t recordedStream = 0;
 		WorldView view;
 	};
 	std::deque<Queued> views;
@@ -343,6 +420,8 @@ struct WorldPass::State
 				ReleaseGroup( m.group, after );
 			for ( Resources::Material &m : old.modelMaterials )
 				ReleaseGroup( m.group, after );
+			for ( auto &[key, m] : old.dynamicMaterials )
+				ReleaseGroup( m.group, after );
 			for ( Resources::Material &m : old.prepassMaterials )
 				ReleaseGroup( m.group, after );
 			for ( TextureId texture : { old.prepassDepth, old.prepassNormal } )
@@ -399,32 +478,13 @@ void WorldPass::SetWorld( WorldData data )
 	for ( const WorldMaterial &source : data.materials )
 	{
 		Claimed claimed;
-		claimed.blended = source.translucent;
-		std::vector<material::VmtPair> variables;
-		for ( const auto &[key, value] : source.variables )
-			variables.push_back( { key, value } );
-		auto mapped = material::MapVariables( source.shader, std::move( variables ), {} );
 		std::string gap;
+		auto mapped = MapWorldMaterial( source );
 		if ( !mapped )
-		{
-			gap = "shader " + source.shader + " does not map";
-		}
+			gap = mapped.Error();
 		else
 		{
-			claimed.desc = std::move( mapped ).Value();
-			for ( const auto &[key, value] : source.defaults )
-				claimed.desc.declaredDefaults.push_back( { key, value } );
-			// Texture handles by the importer's names, matched by variable key.
-			for ( const material::MaterialValue &value : claimed.desc.values )
-			{
-				if ( value.kind != material::ValueKind::kTexture )
-					continue;
-				for ( const auto &[key, handle] : source.textures )
-				{
-					if ( Lower( key ) == Lower( value.key ) && handle != 0 )
-						claimed.handles[value.text] = handle;
-				}
-			}
+			claimed = std::move( mapped ).Value();
 			// Static meshes use the same surface program with model vertices,
 			// probes and clustered direct light instead of a lightmap page.
 			auto blend = source.mesh
@@ -599,10 +659,16 @@ bool WorldPass::DrawsStaticInstance( std::uint32_t instance ) const
 	if ( mesh >= s.world->staticMeshes.size() )
 		return false;
 	const WorldData::StaticMesh &data = s.world->staticMeshes[mesh];
+	if ( !ValidSurfaceSelection( placement.surfaceSelection, data.surfaces.size() ) )
+		return false;
+	if ( placement.surfaceSelection && placement.surfaceSelection->empty() )
+		return true;
 	if ( data.vertices.empty() || data.indices.empty() || data.surfaces.empty() )
 		return false;
 	for ( std::uint32_t i = 0; i < data.surfaces.size(); ++i )
 	{
+		if ( !SurfaceSelected( placement.surfaceSelection, i ) )
+			continue;
 		const WorldSurface &surface = data.surfaces[i];
 		const std::uint32_t material = StaticMaterial( data, placement, i );
 		if ( material >= s.claims->size() || !( *s.claims )[material].draws ||
@@ -613,14 +679,19 @@ bool WorldPass::DrawsStaticInstance( std::uint32_t instance ) const
 	return true;
 }
 
-bool WorldPass::DrawsPosedModel(
-    std::uint32_t meshId, std::uint32_t skin, RenderCoreDrawPhase phase ) const
+bool WorldPass::DrawsPosedModel( std::uint32_t meshId, std::uint32_t skin,
+    RenderCoreDrawPhase phase,
+    const std::optional<std::vector<std::uint32_t>> &surfaceSelection ) const
 {
 	const State &s = *m_State;
 	std::lock_guard<std::mutex> guard( s.lock );
 	if ( !s.world || !s.claims || meshId >= s.world->staticMeshes.size() )
 		return false;
 	const WorldData::StaticMesh &mesh = s.world->staticMeshes[meshId];
+	if ( !ValidSurfaceSelection( surfaceSelection, mesh.surfaces.size() ) )
+		return false;
+	if ( surfaceSelection && surfaceSelection->empty() )
+		return true;
 	if ( mesh.vertices.empty() || mesh.indices.empty() || mesh.surfaces.empty() )
 		return false;
 	WorldData::StaticInstance instance;
@@ -629,6 +700,8 @@ bool WorldPass::DrawsPosedModel(
 	bool hasSurface = false;
 	for ( std::uint32_t i = 0; i < mesh.surfaces.size(); ++i )
 	{
+		if ( !SurfaceSelected( surfaceSelection, i ) )
+			continue;
 		const WorldSurface &surface = mesh.surfaces[i];
 		const std::uint32_t material = StaticMaterial( mesh, instance, i );
 		if ( material >= s.claims->size() )
@@ -643,32 +716,79 @@ bool WorldPass::DrawsPosedModel(
 		     surface.indexCount > mesh.indices.size() - surface.firstIndex )
 			return false;
 	}
-	return hasSurface;
+	return hasSurface || ( surfaceSelection && surfaceSelection->empty() );
 }
 
 std::uint32_t WorldPass::QueueView( WorldView view )
 {
 	State &s = *m_State;
-	if ( view.surfaces.empty() && view.staticInstances.empty() && view.posedModels.empty() )
+	if ( view.surfaces.empty() && view.staticInstances.empty() && view.posedModels.empty() &&
+	     view.dynamicDraws.empty() )
 		return 0;
 	std::lock_guard<std::mutex> guard( s.lock );
 	if ( !s.world )
 		return 0;
+	for ( const WorldView::PosedModel &pose : view.posedModels )
+	{
+		if ( pose.surfaceSelection && ( pose.mesh >= s.world->staticMeshes.size() ||
+		                                  !ValidSurfaceSelection( pose.surfaceSelection,
+		                                      s.world->staticMeshes[pose.mesh].surfaces.size() ) ) )
+		{
+			s.stats.lastRefusal = "a posed model has an invalid surface selection";
+			return 0;
+		}
+	}
+	// A successful tag promises that the core draws this snapshot. Refuse
+	// unsupported inputs before publishing a slot or allocating GPU resources;
+	// claimed inputs that later lose a texture still fail on the render sequence.
+	for ( const WorldView::DynamicDraw &draw : view.dynamicDraws )
+	{
+		auto mapped = MapWorldMaterial( draw.material );
+		std::string why;
+		if ( !mapped )
+			why = mapped.Error();
+		else
+		{
+			auto claim =
+			    draw.material.mesh
+			        ? material::ClaimForMesh( mapped.Value().desc,
+			              s.world->stage && !s.world->stage->reflectionProbes.empty(),
+			              s.world->stage != nullptr )
+			        : material::ClaimForDrawing( mapped.Value().desc, s.world->stage != nullptr );
+			if ( !claim )
+				why = claim.Error();
+		}
+		if ( !why.empty() )
+		{
+			++s.stats.dynamicDrawsRefused;
+			s.stats.lastRefusal = "material " + draw.material.name + ": " + why;
+			auto gap = std::find_if( s.stats.gaps.begin(), s.stats.gaps.end(),
+			    [&]( const auto &entry )
+			    {
+				    return entry.first == s.stats.lastRefusal;
+			    } );
+			if ( gap != s.stats.gaps.end() )
+				++gap->second;
+			else if ( s.stats.gaps.size() < 256 )
+				s.stats.gaps.emplace_back( s.stats.lastRefusal, 1 );
+			return 0;
+		}
+	}
+	constexpr std::size_t kMaxQueued = 8192;
+	if ( s.views.size() >= kMaxQueued )
+	{
+		++s.stats.viewsFailed;
+		s.stats.lastFailure =
+		    "the core view queue is full; no previously accepted work was discarded";
+		return 0;
+	}
 	s.stats.staticInstancesQueued += view.staticInstances.size();
 	s.stats.posedModelsQueued += view.posedModels.size();
 	const std::uint32_t serial = s.nextSerial;
 	s.nextSerial = ( s.nextSerial + 1 ) & kWorldSerialMask;
 	if ( s.nextSerial == 0 )
 		s.nextSerial = 1;
-	// A view whose slot never records (a skipped frame) is dropped when a
-	// later one records; the queue stays bounded meanwhile.
-	constexpr std::size_t kMaxQueued = 256;
-	if ( s.views.size() >= kMaxQueued )
-	{
-		s.Drop( s.views.front(), 0 );
-		s.views.pop_front();
-	}
-	s.views.push_back( { serial, s.generation, std::move( view ) } );
+	s.views.push_back( { serial, s.generation, 0, std::move( view ) } );
 	++s.stats.viewsQueued;
 	return kWorldTag | serial;
 }
@@ -727,6 +847,12 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		// view it drew the first time; one of an earlier world draws nothing
 		// and leaves the queue (the next frame's views) alone.
 		bool again = false;
+		if ( target.streamEpoch != 0 )
+			std::erase_if( s.recorded,
+			    [&]( const State::Queued &kept )
+			    {
+				    return kept.recordedStream != target.streamEpoch;
+			    } );
 		for ( auto kept = s.recorded.rbegin(); kept != s.recorded.rend() && !again; ++kept )
 		{
 			if ( kept->serial == serial )
@@ -737,26 +863,38 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 				view = kept->view;
 			}
 		}
-		// Views are queued in stream order: earlier ones whose slots did not
-		// record are dropped; a slot older than every queued view takes none.
+		// World views are issued in main-thread stream order. Dynamic tickets
+		// are issued during render-call replay, possibly after the main thread
+		// has queued another frame: their serials do not establish stream order.
 		std::uint64_t recordingFrame = 0;
+		bool dynamic = false;
 		for ( const State::Queued &queued : s.views )
 		{
 			if ( queued.serial == serial )
+			{
 				recordingFrame = queued.view.hostFrame;
+				dynamic = !queued.view.dynamicDraws.empty();
+			}
 		}
-		while ( !again && !s.views.empty() && IssuedBefore( s.views.front().serial, serial ) )
+		while ( !again && !dynamic && !s.views.empty() &&
+		        s.views.front().view.dynamicDraws.empty() &&
+		        IssuedBefore( s.views.front().serial, serial ) )
 		{
 			s.Drop( s.views.front(), recordingFrame );
 			s.views.pop_front();
 		}
-		if ( !again && !s.views.empty() && s.views.front().serial == serial )
+		auto queued = std::find_if( s.views.begin(), s.views.end(),
+		    [&]( const State::Queued &entry )
+		    {
+			    return entry.serial == serial;
+		    } );
+		if ( !again && queued != s.views.end() )
 		{
 			// Only against the world it was queued for (SetWorld also clears
 			// the queue; this holds if a slot records across the change).
-			found = s.views.front().generation == s.generation;
+			found = queued->generation == s.generation;
 			earlierWorld = !found;
-			view = s.views.front().view;
+			view = queued->view;
 			if ( view.hostFrame != 0 &&
 			     ( s.recordedFrames.empty() || s.recordedFrames.back() != view.hostFrame ) )
 			{
@@ -765,9 +903,12 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 				while ( s.recordedFrames.size() > kFramesKept )
 					s.recordedFrames.pop_front();
 			}
-			s.recorded.push_back( std::move( s.views.front() ) );
-			s.views.pop_front();
-			constexpr std::size_t kRecordedKept = 64; // a frame's views, with room
+			queued->recordedStream = target.streamEpoch;
+			s.recorded.push_back( std::move( *queued ) );
+			s.views.erase( queued );
+			// The complete stream is replayable, including every dynamic slot.
+			// The queue accepts at most this many slots before recording starts.
+			constexpr std::size_t kRecordedKept = 8192;
 			while ( s.recorded.size() > kRecordedKept )
 				s.recorded.pop_front();
 		}
@@ -850,6 +991,14 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		std::rotate( variant, variant + 1, s.variants.end() );
 	}
 	Resources &r = s.variants.back();
+	if ( r.dynamicFrame != target.frame )
+	{
+		for ( auto &[key, m] : r.dynamicMaterials )
+			s.retiredGroups.emplace_back( r.dynamicFrame, std::move( m.group ) );
+		r.dynamicMaterials.clear();
+		r.dynamicFrame = target.frame;
+	}
+
 	std::erase_if( s.retired,
 	    [&]( std::pair<std::uint64_t, Resources> &old )
 	    {
@@ -896,6 +1045,7 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		// vertex) and the scene terms its data supports.
 		if ( world->stage )
 			r.resolver->SetWorldPbr( true, StageTerms( *world->stage ) );
+		r.resolver->SetSceneColorAvailable( world->stage != nullptr );
 		r.materials.resize( world->materials.size() );
 	}
 	if ( ( !view.staticInstances.empty() || !view.posedModels.empty() ) && !r.modelResolver )
@@ -1458,20 +1608,18 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		if ( failure.empty() )
 			failure = std::move( why );
 	};
-	auto materialReadyIn = [&]( material::ProgramResolver &resolver,
-	                           std::vector<Resources::Material> &materials,
-	                           std::uint32_t index ) -> Resources::Material *
+	auto prepareMaterial = [&]( material::ProgramResolver &resolver, Resources::Material &m,
+	                           const Claimed &claimed,
+	                           const WorldMaterial &source ) -> Resources::Material *
 	{
-		Resources::Material &m = materials[index];
 		if ( m.failed )
 			note( m.failure );
 		if ( m.ready || m.failed )
 			return m.ready ? &m : nullptr;
-		const Claimed &claimed = ( *claims )[index];
-		const std::string &name = world->materials[index].name;
+		const std::string &name = source.name;
 		const bool model = &resolver == r.modelResolver.get();
 		auto program =
-		    model ? resolver.ResolveMesh( claimed.desc ) : resolver.Resolve( claimed.desc );
+		    source.mesh ? resolver.ResolveMesh( claimed.desc ) : resolver.Resolve( claimed.desc );
 		std::string why;
 		if ( !program )
 			why = program.Error();
@@ -1485,6 +1633,18 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 			m.failed = true;
 			m.failure = "material " + name + ": " + why;
 			note( m.failure );
+			{
+				std::lock_guard<std::mutex> guard( s.lock );
+				auto gap = std::find_if( s.stats.gaps.begin(), s.stats.gaps.end(),
+				    [&]( const auto &entry )
+				    {
+					    return entry.first == m.failure;
+				    } );
+				if ( gap == s.stats.gaps.end() )
+					s.stats.gaps.emplace_back( m.failure, 1 );
+				else
+					++gap->second;
+			}
 			return nullptr;
 		}
 		m.program = std::move( program ).Value();
@@ -1507,6 +1667,13 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		}
 		return &m;
 	};
+	auto materialReadyIn = [&]( material::ProgramResolver &resolver,
+	                           std::vector<Resources::Material> &materials, std::uint32_t index )
+	{
+		return prepareMaterial(
+		    resolver, materials[index], ( *claims )[index], world->materials[index] );
+	};
+
 	auto materialReady = [&]( std::uint32_t index )
 	{
 		return materialReadyIn( *r.resolver, r.materials, index );
@@ -1882,6 +2049,14 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 			continue;
 		}
 		const WorldData::StaticMesh &mesh = world->staticMeshes[instance.mesh];
+		if ( !ValidSurfaceSelection( instance.surfaceSelection, mesh.surfaces.size() ) )
+		{
+			note( "a static model has an invalid surface selection" );
+			complete = false;
+			continue;
+		}
+		if ( instance.surfaceSelection && instance.surfaceSelection->empty() )
+			continue;
 		if ( !uploadMesh( instance.mesh ) )
 		{
 			complete = false;
@@ -1889,6 +2064,8 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		}
 		for ( std::uint32_t surfaceId = 0; surfaceId < mesh.surfaces.size(); ++surfaceId )
 		{
+			if ( !SurfaceSelected( instance.surfaceSelection, surfaceId ) )
+				continue;
 			const std::uint32_t materialId = StaticMaterial( mesh, instance, surfaceId );
 			const Resources::Material *material =
 			    materialId < claims->size() && ( *claims )[materialId].draws
@@ -1916,6 +2093,8 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 			continue;
 		}
 		const WorldData::StaticMesh &mesh = world->staticMeshes[pose.mesh];
+		if ( pose.surfaceSelection && pose.surfaceSelection->empty() )
+			continue;
 		if ( pose.vertices.size() != mesh.vertices.size() || !uploadMesh( pose.mesh ) )
 		{
 			note( "a posed model has the wrong vertex count or no mesh buffers" );
@@ -1946,6 +2125,8 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		instance.skin = pose.skin;
 		for ( std::uint32_t surfaceId = 0; surfaceId < mesh.surfaces.size(); ++surfaceId )
 		{
+			if ( !SurfaceSelected( pose.surfaceSelection, surfaceId ) )
+				continue;
 			const std::uint32_t materialId = StaticMaterial( mesh, instance, surfaceId );
 			if ( materialId >= claims->size() )
 			{
@@ -2259,6 +2440,76 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		    return false;
 	    } );
 
+	struct DynamicDraw
+	{
+		Resources::Material *material;
+		BufferId vertices;
+		BufferId indices;
+		std::uint32_t count;
+		int page;
+	};
+	std::vector<DynamicDraw> dynamicDraws;
+	for ( const WorldView::DynamicDraw &draw : view.dynamicDraws )
+	{
+		auto mapped = MapWorldMaterial( draw.material );
+		if ( !mapped || draw.vertices.empty() || draw.indices.empty() ||
+		     draw.indices.size() % 3 != 0 ||
+		     std::any_of( draw.indices.begin(), draw.indices.end(),
+		         [&]( std::uint32_t index )
+		         {
+			         return index >= draw.vertices.size();
+		         } ) )
+		{
+			note( "dynamic material " + draw.material.name + ": " +
+			      ( mapped ? "invalid triangle geometry" : mapped.Error() ) );
+			complete = false;
+			continue;
+		}
+		Resources::Material &cached = r.dynamicMaterials[MaterialSnapshotKey( draw.material )];
+		Resources::Material *m =
+		    prepareMaterial( *r.resolver, cached, mapped.Value(), draw.material );
+		if ( !m || !drawGroupReady( *m, draw.lightmapPage ) || !frameGroupReady( *m ) ||
+		     ( !m->program.sceneColor && !viewGroupReady( *m ) ) )
+		{
+			complete = false;
+			continue;
+		}
+		BufferDesc desc;
+		desc.size = draw.vertices.size() * sizeof( WorldVertex );
+		desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kVertex };
+		desc.debugName = "core dynamic vertices";
+		auto vertices = device.CreateBuffer( desc );
+		desc.size = draw.indices.size() * sizeof( std::uint32_t );
+		desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kIndex };
+		desc.debugName = "core dynamic indices";
+		auto indices = device.CreateBuffer( desc );
+		if ( !vertices || !indices )
+		{
+			for ( auto *buffer : { &vertices, &indices } )
+			{
+				if ( *buffer )
+					(void)device.Release( buffer->Value(), CompletionToken() );
+			}
+			note( "dynamic geometry buffers were refused" );
+			complete = false;
+			continue;
+		}
+		for ( const auto &[buffer, bytes, usage] :
+		    { std::tuple{ vertices.Value(), std::as_bytes( std::span( draw.vertices ) ),
+		          ResourceUsage::kVertex },
+		        std::tuple{ indices.Value(), std::as_bytes( std::span( draw.indices ) ),
+		            ResourceUsage::kIndex } } )
+		{
+			encoder.TransitionBuffer(
+			    buffer, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+			encoder.WriteBuffer( buffer, 0, bytes );
+			encoder.TransitionBuffer( buffer, ResourceUsage::kCopyDestination, usage );
+			s.retiredBuffers.emplace_back( target.frame, buffer );
+		}
+		dynamicDraws.push_back( { m, vertices.Value(), indices.Value(),
+		    std::uint32_t( draw.indices.size() ), draw.lightmapPage } );
+	}
+
 	const ColorAttachment colors[] = { { target.color, LoadOp::kLoad, StoreOp::kStore, {}, {} } };
 	RenderingDesc rendering;
 	rendering.colors = colors;
@@ -2461,6 +2712,40 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		else
 			++drawnStatic;
 	}
+	std::uint64_t drawnDynamic = 0;
+	for ( const DynamicDraw &draw : dynamicDraws )
+	{
+		const Resources::Material &m = *draw.material;
+		if ( m.program.sceneColor )
+		{
+			encoder.EndRendering();
+			const bool captured = captureSceneColor();
+			const Group *scene = captured ? viewGroupReady( m ) : nullptr;
+			encoder.BeginRendering( rendering );
+			encoder.SetViewport( view.viewport );
+			if ( !scene )
+			{
+				complete = false;
+				continue;
+			}
+		}
+		encoder.SetPipeline( m.program.request.pipeline );
+		encoder.SetBindGroup(
+		    BindGroupRole::kFrame, r.frameGroups[m.program.request.frameLayout.value].group );
+		const auto layout = m.program.request.viewLayout.value;
+		const Group *group = m.program.sceneColor       ? &sceneViews[layout]
+		                     : litViews.count( layout ) ? &litViews[layout]
+		                                                : &r.viewGroups[layout];
+		encoder.SetBindGroup( BindGroupRole::kView, group->group );
+		encoder.SetBindGroup( BindGroupRole::kMaterial, m.group.group );
+		encoder.SetBindGroup( BindGroupRole::kDraw, r.drawGroups[drawKey( m, draw.page )].group );
+		encoder.SetDrawConstants( 0, constantBytes.first( m.program.request.drawConstantBytes ) );
+		encoder.SetVertexBuffer( 0, draw.vertices );
+		encoder.SetIndexBuffer( draw.indices, 0, IndexFormat::kUint32 );
+		encoder.DrawIndexed( draw.count, 1, 0, 0, 0 );
+		++drawnDynamic;
+	}
+
 	encoder.EndRendering();
 	encoder.EndLabel();
 	for ( auto &[layout, group] : litViews )
@@ -2477,6 +2762,7 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 	s.stats.surfacesDrawn += order.size();
 	s.stats.staticDrawsDrawn += drawnStatic;
 	s.stats.posedDrawsDrawn += drawnPosed;
+	s.stats.dynamicDrawsDrawn += drawnDynamic;
 	if ( !complete )
 	{
 		++s.stats.viewsFailed;

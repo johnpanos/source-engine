@@ -1464,7 +1464,8 @@ std::string Describe( const ModelError &error )
 	       " at byte " + std::to_string( error.offset );
 }
 
-foundation::Expected<Model, ModelError> ParseModel( const ModelBytes &bytes, std::int32_t body )
+static foundation::Expected<Model, ModelError> ParseModelImpl( const ModelBytes &bytes,
+    std::int32_t body, bool allBodies, std::optional<std::uint32_t> selectedLod )
 {
 	using foundation::MakeUnexpected;
 	Reader mdl( bytes.mdl, ModelFile::Mdl );
@@ -1584,6 +1585,48 @@ foundation::Expected<Model, ModelError> ParseModel( const ModelBytes &bytes, std
 		vtx.Fail( ModelStatus::ChecksumMismatch, 16 );
 		return MakeUnexpected( vtx.Error() );
 	}
+	const std::uint32_t lodCount = vtx.Count( 20 );
+	if ( lodCount < 1 || lodCount > kVvdMaxLods )
+	{
+		vtx.Fail( ModelStatus::BadCount, 20 );
+		return MakeUnexpected( vtx.Error() );
+	}
+	if ( selectedLod && *selectedLod >= lodCount )
+	{
+		vtx.Fail( ModelStatus::BadIndex, 20 );
+		return MakeUnexpected( vtx.Error() );
+	}
+	model.lodTextures.assign( lodCount, model.textures );
+	const std::uint64_t replacementLists = vtx.Relative( 0, 24 );
+	if ( replacementLists )
+	{
+		if ( !vtx.Array( replacementLists, lodCount, 8 ) )
+			return MakeUnexpected( vtx.Error() );
+		for ( std::uint32_t lod = 0; lod < lodCount; ++lod )
+		{
+			const std::uint64_t list = replacementLists + std::uint64_t( lod ) * 8;
+			const std::uint32_t count = vtx.Count( list );
+			const std::uint64_t replacements = vtx.Relative( list, list + 4 );
+			if ( vtx.Failed() || !vtx.Array( replacements, count, 6 ) )
+				return MakeUnexpected( vtx.Error() );
+			std::vector<bool> replaced( model.textures.size() );
+			for ( std::uint32_t i = 0; i < count; ++i )
+			{
+				const std::uint64_t at = replacements + std::uint64_t( i ) * 6;
+				const std::uint16_t material = vtx.U16( at );
+				if ( material >= model.textures.size() || replaced[material] )
+				{
+					vtx.Fail( ModelStatus::BadIndex, at );
+					return MakeUnexpected( vtx.Error() );
+				}
+				const std::uint64_t name = vtx.Relative( at, at + 2 );
+				model.lodTextures[lod][material] = Slashes( vtx.String( name ) );
+				replaced[material] = true;
+			}
+		}
+	}
+	if ( vtx.Failed() )
+		return MakeUnexpected( vtx.Error() );
 	const std::uint32_t vtxBodyParts = vtx.Count( 28 );
 	const std::uint64_t vtxBodyPartIndex = vtx.Relative( 0, 32 );
 	if ( vtx.Failed() )
@@ -1601,8 +1644,7 @@ foundation::Expected<Model, ModelError> ParseModel( const ModelBytes &bytes, std
 		return MakeUnexpected( mdl.Failed() ? mdl.Error() : vtx.Error() );
 	}
 
-	// --- Body parts: the chosen model of each, its LOD 0 meshes ---
-	const std::uint32_t chosenBody = body < 0 ? 0u : static_cast<std::uint32_t>( body );
+	// --- Body parts: selected submodels/LODs, or every geometry variant ---
 	bool anyVertex = false;
 	for ( std::uint32_t p = 0; p < h.numBodyParts; ++p )
 	{
@@ -1622,6 +1664,8 @@ foundation::Expected<Model, ModelError> ParseModel( const ModelBytes &bytes, std
 			vtx.Fail( ModelStatus::BadCount, vtxPart );
 			return MakeUnexpected( vtx.Error() );
 		}
+		model.bodyParts.push_back(
+		    { base > 0 ? static_cast<std::uint32_t>( base ) : 1u, numModels } );
 		if ( numModels == 0 )
 		{
 			continue;
@@ -1631,132 +1675,166 @@ foundation::Expected<Model, ModelError> ParseModel( const ModelBytes &bytes, std
 			mdl.Fail( ModelStatus::BadCount, part + 8 );
 			return MakeUnexpected( mdl.Error() );
 		}
-		const std::uint32_t index = ( chosenBody / static_cast<std::uint32_t>( base ) ) % numModels;
-		const std::uint64_t mdlModel = models + std::uint64_t( index ) * kModelStride;
-		const std::uint64_t vtxModel = vtxModelIndex + std::uint64_t( index ) * kVtxModelStride;
-		if ( !mdl.Has( mdlModel, kModelStride ) || !vtx.Has( vtxModel, kVtxModelStride ) )
+		const std::uint32_t selected = model.bodyParts.back().SelectedModel( body );
+		const std::uint32_t firstModel = allBodies ? 0u : selected;
+		const std::uint32_t endModel = allBodies ? numModels : selected + 1u;
+		for ( std::uint32_t index = firstModel; index < endModel; ++index )
 		{
-			return MakeUnexpected( mdl.Failed() ? mdl.Error() : vtx.Error() );
-		}
-		const std::uint32_t numMeshes = mdl.Count( mdlModel + kModelNumMeshes );
-		const std::uint64_t meshes = mdl.Relative( mdlModel, mdlModel + kModelNumMeshes + 4 );
-		const std::int32_t vertexIndex = mdl.I32( mdlModel + kModelNumMeshes + 12 );
-		const std::uint32_t numLods = vtx.Count( vtxModel );
-		const std::uint64_t lods = vtx.Relative( vtxModel, vtxModel + 4 );
-		if ( mdl.Failed() || vtx.Failed() )
-		{
-			return MakeUnexpected( mdl.Failed() ? mdl.Error() : vtx.Error() );
-		}
-		if ( vertexIndex < 0 || vertexIndex % static_cast<std::int32_t>( kVvdVertexStride ) != 0 )
-		{
-			mdl.Fail( ModelStatus::BadOffset, mdlModel + kModelNumMeshes + 12 );
-			return MakeUnexpected( mdl.Error() );
-		}
-		if ( numMeshes == 0 )
-		{
-			continue;
-		}
-		if ( numLods < 1 )
-		{
-			vtx.Fail( ModelStatus::BadCount, vtxModel );
-			return MakeUnexpected( vtx.Error() );
-		}
-		if ( !vtx.Has( lods, kVtxLodStride ) )
-		{
-			return MakeUnexpected( vtx.Error() );
-		}
-		const std::uint32_t vtxMeshCount = vtx.Count( lods );
-		const std::uint64_t vtxMeshes = vtx.Relative( lods, lods + 4 );
-		if ( vtx.Failed() )
-		{
-			return MakeUnexpected( vtx.Error() );
-		}
-		if ( vtxMeshCount != numMeshes )
-		{
-			vtx.Fail( ModelStatus::BadCount, lods );
-			return MakeUnexpected( vtx.Error() );
-		}
-		if ( !mdl.Array( meshes, numMeshes, kMeshStride ) ||
-		     !vtx.Array( vtxMeshes, numMeshes, kVtxMeshStride ) )
-		{
-			return MakeUnexpected( mdl.Failed() ? mdl.Error() : vtx.Error() );
-		}
-		const std::uint64_t modelFirst =
-		    static_cast<std::uint64_t>( vertexIndex ) / kVvdVertexStride;
-		for ( std::uint32_t m = 0; m < numMeshes; ++m )
-		{
-			const std::uint64_t mesh = meshes + std::uint64_t( m ) * kMeshStride;
-			Mesh out;
-			out.bodyPart = static_cast<std::int32_t>( p );
-			out.textureRef = mdl.I32( mesh );
-			const std::uint32_t meshVertices = mdl.Count( mesh + 8 );
-			const std::int32_t vertexOffset = mdl.I32( mesh + 12 );
-			if ( mdl.Failed() )
+			const std::uint64_t mdlModel = models + std::uint64_t( index ) * kModelStride;
+			const std::uint64_t vtxModel = vtxModelIndex + std::uint64_t( index ) * kVtxModelStride;
+			if ( !mdl.Has( mdlModel, kModelStride ) || !vtx.Has( vtxModel, kVtxModelStride ) )
 			{
+				return MakeUnexpected( mdl.Failed() ? mdl.Error() : vtx.Error() );
+			}
+			const std::uint32_t numMeshes = mdl.Count( mdlModel + kModelNumMeshes );
+			const std::uint64_t meshes = mdl.Relative( mdlModel, mdlModel + kModelNumMeshes + 4 );
+			const std::int32_t vertexIndex = mdl.I32( mdlModel + kModelNumMeshes + 12 );
+			const std::uint32_t numLods = vtx.Count( vtxModel );
+			const std::uint64_t lods = vtx.Relative( vtxModel, vtxModel + 4 );
+			if ( mdl.Failed() || vtx.Failed() )
+			{
+				return MakeUnexpected( mdl.Failed() ? mdl.Error() : vtx.Error() );
+			}
+			if ( vertexIndex < 0 ||
+			     vertexIndex % static_cast<std::int32_t>( kVvdVertexStride ) != 0 )
+			{
+				mdl.Fail( ModelStatus::BadOffset, mdlModel + kModelNumMeshes + 12 );
 				return MakeUnexpected( mdl.Error() );
 			}
-			if ( out.textureRef < 0 ||
-			     static_cast<std::uint32_t>( out.textureRef ) >= h.numSkinRef )
-			{
-				mdl.Fail( ModelStatus::BadIndex, mesh );
-				return MakeUnexpected( mdl.Error() );
-			}
-			if ( vertexOffset < 0 ||
-			     modelFirst + static_cast<std::uint64_t>( vertexOffset ) + meshVertices >
-			         vertices.records.size() )
-			{
-				mdl.Fail( ModelStatus::BadIndex, mesh + 12 );
-				return MakeUnexpected( mdl.Error() );
-			}
-			const std::uint64_t first = modelFirst + static_cast<std::uint64_t>( vertexOffset );
-
-			const std::uint64_t vtxMesh = vtxMeshes + std::uint64_t( m ) * kVtxMeshStride;
-			const std::uint32_t numGroups = vtx.Count( vtxMesh );
-			const std::uint64_t groups = vtx.Relative( vtxMesh, vtxMesh + 4 );
-			const std::uint64_t groupStride = v49 ? kVtxStripGroupStride49 : kVtxStripGroupStride;
-			if ( vtx.Failed() || !vtx.Array( groups, numGroups, groupStride ) )
-			{
-				return MakeUnexpected( vtx.Error() );
-			}
-			for ( std::uint32_t g = 0; g < numGroups; ++g )
-			{
-				if ( !ReadStripGroup( vtx, groups + std::uint64_t( g ) * groupStride, v49,
-				         meshVertices, out.indices ) )
-				{
-					return MakeUnexpected( vtx.Error() );
-				}
-			}
-			if ( out.indices.empty() )
+			if ( numMeshes == 0 )
 			{
 				continue;
 			}
-			out.vertices.reserve( meshVertices );
-			out.weights.reserve( meshVertices );
-			for ( std::uint64_t v = 0; v < meshVertices; ++v )
+			if ( numLods < 1 )
 			{
-				const std::uint64_t record = vertices.records[first + v];
-				out.vertices.push_back( ReadVertex( vvd, record, vertices ) );
-				out.weights.push_back( ReadWeights( vvd, record, model.bones.size() ) );
+				vtx.Fail( ModelStatus::BadCount, vtxModel );
+				return MakeUnexpected( vtx.Error() );
 			}
-			if ( vvd.Failed() )
+			if ( !vtx.Array( lods, numLods, kVtxLodStride ) )
 			{
-				return MakeUnexpected( vvd.Error() );
+				return MakeUnexpected( vtx.Error() );
 			}
-			for ( std::uint32_t index : out.indices )
+			if ( numLods != model.lodTextures.size() )
 			{
-				Extend( model.mins, model.maxs, out.vertices[index].position, !anyVertex );
-				anyVertex = true;
+				vtx.Fail( ModelStatus::BadCount, vtxModel );
+				return MakeUnexpected( vtx.Error() );
 			}
-			model.meshes.push_back( std::move( out ) );
+			const std::uint32_t firstLod = selectedLod.value_or( 0u );
+			const std::uint32_t endLod = selectedLod ? firstLod + 1u : numLods;
+			for ( std::uint32_t lod = firstLod; lod < endLod; ++lod )
+			{
+				const std::uint64_t lodAt = lods + std::uint64_t( lod ) * kVtxLodStride;
+
+				const std::uint32_t vtxMeshCount = vtx.Count( lodAt );
+				const std::uint64_t vtxMeshes = vtx.Relative( lodAt, lodAt + 4 );
+				if ( vtx.Failed() )
+				{
+					return MakeUnexpected( vtx.Error() );
+				}
+				if ( vtxMeshCount != numMeshes )
+				{
+					vtx.Fail( ModelStatus::BadCount, lodAt );
+					return MakeUnexpected( vtx.Error() );
+				}
+				if ( !mdl.Array( meshes, numMeshes, kMeshStride ) ||
+				     !vtx.Array( vtxMeshes, numMeshes, kVtxMeshStride ) )
+				{
+					return MakeUnexpected( mdl.Failed() ? mdl.Error() : vtx.Error() );
+				}
+				const std::uint64_t modelFirst =
+				    static_cast<std::uint64_t>( vertexIndex ) / kVvdVertexStride;
+				for ( std::uint32_t m = 0; m < numMeshes; ++m )
+				{
+					const std::uint64_t mesh = meshes + std::uint64_t( m ) * kMeshStride;
+					Mesh out;
+					out.bodyPart = static_cast<std::int32_t>( p );
+					out.bodyModel = index;
+					out.lod = lod;
+					out.textureRef = mdl.I32( mesh );
+					const std::uint32_t meshVertices = mdl.Count( mesh + 8 );
+					const std::int32_t vertexOffset = mdl.I32( mesh + 12 );
+					if ( mdl.Failed() )
+					{
+						return MakeUnexpected( mdl.Error() );
+					}
+					if ( out.textureRef < 0 ||
+					     static_cast<std::uint32_t>( out.textureRef ) >= h.numSkinRef )
+					{
+						mdl.Fail( ModelStatus::BadIndex, mesh );
+						return MakeUnexpected( mdl.Error() );
+					}
+					if ( vertexOffset < 0 ||
+					     modelFirst + static_cast<std::uint64_t>( vertexOffset ) + meshVertices >
+					         vertices.records.size() )
+					{
+						mdl.Fail( ModelStatus::BadIndex, mesh + 12 );
+						return MakeUnexpected( mdl.Error() );
+					}
+					const std::uint64_t first =
+					    modelFirst + static_cast<std::uint64_t>( vertexOffset );
+
+					const std::uint64_t vtxMesh = vtxMeshes + std::uint64_t( m ) * kVtxMeshStride;
+					const std::uint32_t numGroups = vtx.Count( vtxMesh );
+					const std::uint64_t groups = vtx.Relative( vtxMesh, vtxMesh + 4 );
+					const std::uint64_t groupStride =
+					    v49 ? kVtxStripGroupStride49 : kVtxStripGroupStride;
+					if ( vtx.Failed() || !vtx.Array( groups, numGroups, groupStride ) )
+					{
+						return MakeUnexpected( vtx.Error() );
+					}
+					for ( std::uint32_t g = 0; g < numGroups; ++g )
+					{
+						if ( !ReadStripGroup( vtx, groups + std::uint64_t( g ) * groupStride, v49,
+						         meshVertices, out.indices ) )
+						{
+							return MakeUnexpected( vtx.Error() );
+						}
+					}
+					if ( out.indices.empty() )
+					{
+						continue;
+					}
+					out.vertices.reserve( meshVertices );
+					out.weights.reserve( meshVertices );
+					for ( std::uint64_t v = 0; v < meshVertices; ++v )
+					{
+						const std::uint64_t record = vertices.records[first + v];
+						out.vertices.push_back( ReadVertex( vvd, record, vertices ) );
+						out.weights.push_back( ReadWeights( vvd, record, model.bones.size() ) );
+					}
+					if ( vvd.Failed() )
+					{
+						return MakeUnexpected( vvd.Error() );
+					}
+					for ( std::uint32_t index : out.indices )
+					{
+						Extend( model.mins, model.maxs, out.vertices[index].position, !anyVertex );
+						anyVertex = true;
+					}
+					model.meshes.push_back( std::move( out ) );
+				}
+			}
 		}
 	}
 
 	// --- Sequences and their first frames ---
-	if ( std::optional<ModelError> error = ReadSequences( mdl, bytes, model ) )
+	if ( !allBodies )
 	{
-		return MakeUnexpected( *error );
+		if ( std::optional<ModelError> error = ReadSequences( mdl, bytes, model ) )
+			return MakeUnexpected( *error );
 	}
 	return model;
+}
+
+foundation::Expected<Model, ModelError> ParseModel(
+    const ModelBytes &bytes, std::int32_t body, std::uint32_t lod )
+{
+	return ParseModelImpl( bytes, body, false, lod );
+}
+
+foundation::Expected<Model, ModelError> ParseModelGeometryVariants( const ModelBytes &bytes )
+{
+	return ParseModelImpl( bytes, 0, true, std::nullopt );
 }
 
 std::string CanonicalModelPath( std::string_view path )

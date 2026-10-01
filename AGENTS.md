@@ -789,6 +789,11 @@ Keep the table concise and link details below or from the domain progress file.
     invalidation; a KTX2 payload; mobile and Apple runs. R47 and R56 remain
     open. See the
     [record](RFC/0007-progress.md#r50-parallax-parallax-corrected-blended-reflection-probes-bounded-r50-slice-2026-09-25).
+  - The user's 2026-10-01 `sp_a1_intro4` artistic pass has 38 authored and
+    26 automatic captures, baked on the remote RTX 4090 and published as
+    `sp_a1_intro4_probe64`. Core-world image and container checks pass;
+    coverage and proxy-fit export checks still fail. R50 remains partial
+    ([evidence](RFC/0007-progress.md#r50-intro4-artistic-probes-2026-10-01)).
 - R50-RELIGHT: `partial` (2026-09-25, user goal; RFC 0011 decision 5), a
   bounded R50 slice. Baked probes are relit, so runtime light reaches
   specular:

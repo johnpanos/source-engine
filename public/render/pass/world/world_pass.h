@@ -71,17 +71,7 @@ namespace render::pass::world
 
 // The surface vertex (material::SurfaceWorldVertex): the programs'
 // bump and env map terms read its normal, tangents and bumped pages' offset.
-struct WorldVertex
-{
-	float position[3] = {};
-	float uv[2] = {};
-	float lightmapUv[2] = {};
-	std::uint8_t color[4] = { 255, 255, 255, 255 };
-	float normal[3] = { 0.0f, 0.0f, 1.0f };
-	float tangentS[3] = { 1.0f, 0.0f, 0.0f };
-	float tangentT[3] = { 0.0f, 1.0f, 0.0f };
-	float lightmapOffset = 0.0f;
-};
+using WorldVertex = material::SurfaceWorldVertex;
 
 struct WorldMaterial
 {
@@ -187,6 +177,9 @@ struct WorldData
 		std::uint32_t mesh = 0;
 		std::uint32_t skin = 0;
 		float world[16] = {}; // object to world, row-major
+		// Null selects every surface; an explicit empty list is a blank model.
+		// A subset contains unique, increasing indices into StaticMesh::surfaces.
+		std::optional<std::vector<std::uint32_t>> surfaceSelection;
 	};
 	std::vector<StaticMesh> staticMeshes;
 	std::vector<StaticInstance> staticInstances;
@@ -256,6 +249,7 @@ struct WorldTarget
 	// submission; a frame recorded again keeps or raises it). 0 when the
 	// target does not know: retired objects then wait for ReleaseDevice.
 	std::uint64_t frame = 0;
+	std::uint64_t streamEpoch = 0; // CPU replay lifetime, separate from GPU completion
 	// The frame's light terms at the slot (material::FrameTerms).
 	float lightmapScale = 1.0f;
 	float outputScale = 1.0f;
@@ -334,8 +328,21 @@ struct WorldView
 		std::uint32_t skin = 0;
 		RenderCoreDrawPhase phase = RenderCoreDrawPhase::kAll;
 		std::vector<material::SurfaceModelVertex> vertices;
+		// Captured geometry selection; later body-group changes cannot mutate it.
+		std::optional<std::vector<std::uint32_t>> surfaceSelection;
 	};
 	std::vector<PosedModel> posedModels;
+	// Dynamic geometry captured at its ordered stream slot. The material and
+	// vertices are values: proxy changes and mesh reuse cannot change a queued draw.
+	struct DynamicDraw
+	{
+		WorldMaterial material;
+		std::vector<WorldVertex> vertices;
+		std::vector<std::uint32_t> indices;
+		int lightmapPage = 0;
+	};
+	std::vector<DynamicDraw> dynamicDraws;
+
 	float toClip[16] = {};               // world to clip, row-major, D3D9 conventions
 	device::Viewport viewport;
 	// The host frame that queued the view (views of one frame share it; 0
@@ -375,6 +382,9 @@ struct WorldStats
 	std::uint64_t staticDrawsDrawn = 0;
 	std::uint64_t posedModelsQueued = 0;
 	std::uint64_t posedDrawsDrawn = 0;
+	std::uint64_t dynamicDrawsDrawn = 0;
+	std::uint64_t dynamicDrawsRefused = 0; // unsupported input, never claimed or queued
+	std::string lastRefusal;
 	std::string lastFailure;
 	// Why materials stay legacy: reason and count, most frequent first.
 	std::vector<std::pair<std::string, std::uint32_t>> gaps;
@@ -440,7 +450,8 @@ public:
 	bool Draws( std::uint32_t material ) const;
 	bool DrawsStaticInstance( std::uint32_t instance ) const;
 	bool DrawsPosedModel( std::uint32_t mesh, std::uint32_t skin,
-	    RenderCoreDrawPhase phase = RenderCoreDrawPhase::kAll ) const;
+	    RenderCoreDrawPhase phase = RenderCoreDrawPhase::kAll,
+	    const std::optional<std::vector<std::uint32_t>> &surfaceSelection = std::nullopt ) const;
 	// The tag of the slot to mark for the view; 0 when there is nothing to draw.
 	std::uint32_t QueueView( WorldView view );
 	// Add the legacy culler's accepted static props before the queued view's

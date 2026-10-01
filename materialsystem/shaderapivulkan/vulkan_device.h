@@ -337,7 +337,19 @@ public:
 		float waterReflectTintScale = 1.0f;
 	};
 	void QueueCorePass( uint32_t tag, const CorePassTerms &terms );
-	bool CoreOnlyQueue() const { return m_queueCoreOnly && !m_dynFramePresented; }
+	std::uint32_t QueueCoreMesh( const render::legacy::CoreMeshDraw &draw )
+	{
+		return m_corePassRecorder ? m_corePassRecorder->QueueMesh( draw ) : 0;
+	}
+	bool CoreMeshesEnabled() const
+	{
+		return m_corePassRecorder && m_corePassRecorder->AcceptsMeshes();
+	}
+
+	bool CoreOnlyQueue() const
+	{
+		return m_queueCoreOnly && !m_queueLegacyHud && !m_dynFramePresented;
+	}
 	// Slots whose sections this context ran, and the frames that had one.
 	uint64_t CorePassesRun() const { return m_corePassesRun; }
 
@@ -472,6 +484,7 @@ public:
 		m_dynDrawRecords.clear();
 		m_corePassTerms.clear();
 		m_queueCoreOnly = false;
+		m_queueLegacyHud = false;
 		m_frameLabels.clear();
 		m_dynSkinConstants.clear();
 		m_dynLegacyConstants.clear();
@@ -1680,6 +1693,7 @@ private:
 	// render::legacy::kCorePassLegacyOff): it presents without the ramp.
 	bool m_frameLegacyOff = false;
 	bool m_queueCoreOnly = false;    // frame-ordered slot, before vertex conversion
+	bool m_queueLegacyHud = false;   // top-level HUD stage, scoped to this frame
 	bool m_gammaUnavailable = false; // the pass failed to build; presents blit
 	uint64_t m_gammaPresentCount = 0;
 	VkFormat m_gammaFormat = VK_FORMAT_UNDEFINED; // what the pass was built for

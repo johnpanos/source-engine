@@ -29,6 +29,21 @@
   modules, enforcement increments 2–3, and the remaining contracts and CI
   gates are future work.
 
+## Render performance obligations (user decision, 2026-10-01)
+
+This RFC follows RFC 0016's
+[high-performance clustered lighting requirement](0016-render-core.md#high-performance-clustered-lighting-user-decision-2026-10-01)
+and [hard render budgets](0016-render-core.md#hard-render-budgets-user-decision-2026-10-01).
+Computation placement follows RFC 0003's binding
+[CPU/GPU policy](0003-dependency-aware-job-system.md#cpugpu-execution-placement-user-decision-2026-10-01).
+Those owners define the policies and numbers; this RFC defines its domain's
+obligations and does not certify implementation by this amendment.
+
+Hammer viewports, previews and thumbnails consume the same render core and
+immutable scene/light publications. Measure their frame and input response with
+the accepted lighting enabled; do not create a second editor lighting owner or
+freeze scene updates to hide cost.
+
 ## Summary
 
 Extract a toolkit-independent editor from Hammer, retain its Source content

@@ -482,6 +482,42 @@ int CMaterialPixelApp::Main()
 	pQueueMode->SetValue( 0 );
 	g_pMaterialSystemHardwareConfig->SetHDREnabled( integerHdr );
 
+	if ( CommandLine()->FindParm( "-check-local-cubemap-reference" ) )
+	{
+		// Exercise shader initialization and the real IMaterialVar serialization:
+		// a local cube stays symbolic, while an ordinary texture keeps its name.
+		ITexture *texture = g_pMaterialSystem->CreateProceduralTexture(
+		    "conformance/local_cubemap_base", TEXTURE_GROUP_OTHER, 4, 4, IMAGE_FORMAT_RGBA8888,
+		    TEXTUREFLAGS_NOMIP | TEXTUREFLAGS_NOLOD | TEXTUREFLAGS_PROCEDURAL );
+		if ( !texture )
+			return 1;
+		static CSolidColorRegenerator regenerator;
+		texture->SetTextureRegenerator( &regenerator );
+		texture->Download();
+		KeyValues *keys = new KeyValues( "UnlitGeneric" );
+		keys->SetString( "$basetexture", "conformance/local_cubemap_base" );
+		keys->SetString( "$envmap", "env_cubemap" );
+		IMaterial *material =
+		    g_pMaterialSystem->CreateMaterial( "conformance/local_cubemap_reference", keys );
+		if ( !material || material->IsErrorMaterial() )
+			return 1;
+		material->IncrementReferenceCount();
+		g_pMaterialSystem->CacheUsedMaterials();
+		bool found = false;
+		IMaterialVar *envmap = material->FindVar( "$envmap", &found, false );
+		const bool local = found && envmap && envmap->IsTexture() &&
+		                   !Q_strcmp( envmap->GetStringValue(), "env_cubemap" );
+		IMaterialVar *base = material->FindVar( "$basetexture", &found, false );
+		const bool named = found && base && base->IsTexture() &&
+		                   !Q_strcmp( base->GetStringValue(), "conformance/local_cubemap_base" );
+		Msg( "local cubemap reference: symbolic %s, named texture %s\n", local ? "pass" : "FAIL",
+		    named ? "pass" : "FAIL" );
+		material->DecrementReferenceCount();
+		material->DeleteIfUnreferenced();
+		if ( !local || !named )
+			return 1;
+	}
+
 	FILE *out = fopen( outPath, "w" );
 	if ( !out )
 	{

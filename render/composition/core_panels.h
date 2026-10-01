@@ -66,6 +66,12 @@ public:
 	}
 
 	std::uint32_t SlotStages() const override { return m_World.SlotStages(); }
+	bool AcceptsMeshes() const override { return m_World.AcceptsMeshes(); }
+	std::uint32_t QueueMesh( const legacy::CoreMeshDraw &draw ) override
+	{
+		return m_World.QueueMesh( draw );
+	}
+
 	void RecordSlot( std::uint32_t tag, device::CommandEncoder &encoder,
 	    const legacy::CorePassTarget &target ) override
 	{

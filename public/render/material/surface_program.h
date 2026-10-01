@@ -146,8 +146,9 @@ struct SurfaceConstants
 	float emissionCone[4] = { 1.0f, 1.0f, 1.0f, 0.0f };
 	// UnlitTwoTexture: the second texture's independent UV transform.
 	float texture2Transform[8] = { 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f };
+	float surfaceControls[4] = { 0.0f, 1.0f, 0.0f, 0.0f }; // nofog, HDR color scale
 };
-static_assert( sizeof( SurfaceConstants ) == 432 );
+static_assert( sizeof( SurfaceConstants ) == 448 );
 
 // An area light as the frame block holds it (render.area-light.v1: the
 // rectangle, its radiance and its reach).
@@ -474,6 +475,7 @@ struct SurfaceVariant
 	std::uint32_t terms = 0;      // kSurface* bits
 	std::uint32_t detailMode = 0; // $detailblendmode, with kSurfaceDetail
 	SurfaceVertexLayout layout = SurfaceVertexLayout::kFlat;
+	bool ignoreDepth = false;
 
 	auto operator<=>( const SurfaceVariant & ) const = default;
 	bool operator==( const SurfaceVariant & ) const = default;

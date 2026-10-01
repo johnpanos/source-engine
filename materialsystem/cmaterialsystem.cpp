@@ -733,6 +733,19 @@ int RenderCallQueueLightmapPageHandle( int page )
 	    g_MaterialSystem.GetLightmaps()->GetLightmapPageTextureHandle( page ) );
 }
 
+IMaterial *RenderCallQueueNeutralMaterial( const char *shader )
+{
+	return g_MaterialSystem.CoreNeutralMaterial( shader );
+}
+
+const char *RenderCallQueueMaterialDefault( const char *shader, const char *key )
+{
+	IMaterial *neutral = RenderCallQueueNeutralMaterial( shader );
+	bool found = false;
+	IMaterialVar *variable = neutral ? neutral->FindVar( key, &found, false ) : NULL;
+	return found && variable && variable->IsDefined() ? variable->GetStringValue() : NULL;
+}
+
 } // namespace
 
 DLL_EXPORT const render::legacy::RenderCallQueueHost *MaterialSystem_RenderCallQueueHost()
@@ -743,6 +756,8 @@ DLL_EXPORT const render::legacy::RenderCallQueueHost *MaterialSystem_RenderCallQ
 	s_host.boundMaterial = &RenderCallQueueBoundMaterial;
 	s_host.textureHandle = &RenderCallQueueTextureHandle;
 	s_host.lightmapPageHandle = &RenderCallQueueLightmapPageHandle;
+	s_host.neutralMaterial = &RenderCallQueueNeutralMaterial;
+	s_host.materialDefault = &RenderCallQueueMaterialDefault;
 	return &s_host;
 }
 
@@ -1233,6 +1248,16 @@ CreateInterfaceFn CMaterialSystem::Init( char const* pShaderAPIDLL,
 void CMaterialSystem::Shutdown( )
 {
 	DestroyMatQueueThreadPool();
+
+	// Queued consumers are drained by the host's shutdown before shader teardown.
+	for ( int i = m_CoreNeutralMaterials.First(); i != m_CoreNeutralMaterials.InvalidIndex();
+	    i = m_CoreNeutralMaterials.Next( i ) )
+	{
+		IMaterialInternal *material = m_CoreNeutralMaterials[i];
+		material->DecrementReferenceCount();
+		material->DeleteIfUnreferenced();
+	}
+	m_CoreNeutralMaterials.RemoveAll();
 
 	m_HardwareRenderContext.Shutdown();
 
@@ -3023,6 +3048,38 @@ ITexture *CMaterialSystem::CreateProceduralTexture(
 //-----------------------------------------------------------------------------
 // Create new materials	(currently only used by the editor!)
 //-----------------------------------------------------------------------------
+IMaterial *CMaterialSystem::CoreNeutralMaterial( const char *shader )
+{
+	if ( !shader || !*shader )
+		return NULL;
+	// Use the material system's existing lock order: it drains a queued
+	// worker before acquiring the shader lock. Neutral variables are immutable
+	// after publication and remain owned until that queue has drained at shutdown.
+	MaterialLock_t lock = Lock();
+	const int found = m_CoreNeutralMaterials.Find( shader );
+	if ( found != m_CoreNeutralMaterials.InvalidIndex() )
+	{
+		IMaterial *material = m_CoreNeutralMaterials[found];
+		Unlock( lock );
+		return material;
+	}
+	char name[256];
+	V_snprintf( name, sizeof( name ), "__render_core_neutral/%s", shader );
+	IMaterialInternal *material =
+	    IMaterialInternal::CreateMaterial( name, TEXTURE_GROUP_OTHER, new KeyValues( shader ) );
+	material->IncrementReferenceCount();
+	if ( !material->PrecacheVars() )
+	{
+		material->DecrementReferenceCount();
+		material->DeleteIfUnreferenced();
+		Unlock( lock );
+		return NULL;
+	}
+	m_CoreNeutralMaterials.Insert( shader, material );
+	Unlock( lock );
+	return material;
+}
+
 IMaterial *CMaterialSystem::CreateMaterial( const char *pMaterialName, KeyValues *pVMTKeyValues )
 {
 	// For not, just create a material with no default settings

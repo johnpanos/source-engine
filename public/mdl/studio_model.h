@@ -159,11 +159,29 @@ struct Mesh
 {
 	std::int32_t textureRef = 0; // column of the skin table
 	std::int32_t bodyPart = 0;
+	std::uint32_t bodyModel = 0; // submodel within the body part
+	std::uint32_t lod = 0;       // VTX geometry level, before runtime root-LOD truncation
 	std::vector<Vertex> vertices;
 	std::vector<BoneWeights> weights;   // one per vertex
 	std::vector<std::uint32_t> indices; // triangle list, counter-clockwise from outside
 
 	friend bool operator==( const Mesh &, const Mesh & ) = default;
+};
+
+// Studio's body-group selection policy. Geometry readers and runtime consumers
+// use this owner instead of carrying their own body/base/count arithmetic.
+struct BodyPart
+{
+	std::uint32_t base = 1;
+	std::uint32_t modelCount = 0;
+
+	[[nodiscard]] std::uint32_t SelectedModel( std::int32_t body ) const
+	{
+		const std::uint32_t value = body < 0 ? 0u : static_cast<std::uint32_t>( body );
+		return base && modelCount ? ( value / base ) % modelCount : 0u;
+	}
+
+	friend bool operator==( const BodyPart &, const BodyPart & ) = default;
 };
 
 struct Bone
@@ -218,6 +236,10 @@ struct Model
 	std::vector<std::string> textures;    // as stored ("metal_box"), lower case
 	std::vector<std::string> cdMaterials; // lower case, '/' separated, ending in '/' (or empty)
 	std::vector<std::vector<std::int16_t>> skinFamilies; // [family][textureRef] -> texture
+	std::vector<BodyPart> bodyParts;
+	// Per-LOD texture names in Studio texture-slot order, including VTX
+	// replacements. Runtime selection policy remains the host's responsibility.
+	std::vector<std::vector<std::string>> lodTextures;
 	std::vector<Mesh> meshes;
 	std::vector<Bone> bones; // at least one
 	std::vector<Sequence> sequences;
@@ -286,7 +308,16 @@ struct ModelBytes
 };
 
 foundation::Expected<Model, ModelError> ParseModel(
-    const ModelBytes &bytes, std::int32_t body = 0 );
+    const ModelBytes &bytes, std::int32_t body = 0, std::uint32_t lod = 0 );
+
+// Reads each submodel and LOD once, without enumerating combinations of body
+// groups. Mesh::bodyPart/bodyModel/lod and BodyPart::SelectedModel identify the
+// active surfaces. Blank submodels/LODs deliberately have no meshes. lodTextures
+// includes each level's VTX material replacements. All geometry variants are
+// validated; any malformed variant fails the entire read.
+// Reads bones and vertex weights, but leaves sequences empty: runtime consumers
+// supply their live bone palette and need no first-frame animation or ANI file.
+foundation::Expected<Model, ModelError> ParseModelGeometryVariants( const ModelBytes &bytes );
 
 // Where a model's files come from: a VPK, a search path, loose files, a fake.
 // Paths are canonical asset paths ("models/props/metal_box.mdl": lower case,

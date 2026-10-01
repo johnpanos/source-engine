@@ -13,6 +13,21 @@
 - Evaluated dependency: Box3D `9e5a4cde862fba95ff19f096b79567f3ea6c01fd`
   (`v0.1.0-24-g9e5a4cd`, branch `main`)
 
+## Render performance obligations (user decision, 2026-10-01)
+
+This RFC follows RFC 0016's
+[high-performance clustered lighting requirement](0016-render-core.md#high-performance-clustered-lighting-user-decision-2026-10-01)
+and [hard render budgets](0016-render-core.md#hard-render-budgets-user-decision-2026-10-01).
+Computation placement follows RFC 0003's binding
+[CPU/GPU policy](0003-dependency-aware-job-system.md#cpugpu-execution-placement-user-decision-2026-10-01).
+Those owners define the policies and numbers; this RFC defines its domain's
+obligations and does not certify implementation by this amendment.
+
+Publish committed physics transforms and geometry revisions for render and
+shadow invalidation. Placement changes must preserve the VPhysics contract and
+callback order, and measurements must include contention with the full render
+frame. A render target does not authorize altered physics behavior.
+
 ## Summary
 
 This RFC proposes replacing IVP/Havana as Source's primary rigid-body physics

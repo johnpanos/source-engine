@@ -38,6 +38,9 @@ struct SyntheticMesh
 	std::vector<mdl::BoneWeights> weights; // empty: every vertex bone 0, weight 1
 	std::vector<std::uint16_t> stored; // as the file stores them: clockwise from outside
 	bool tristrip = false;             // 'stored' is one triangle strip
+	// Optional lower-LOD topology, into this mesh's original vertices. An
+	// explicit empty list removes its geometry at that level.
+	std::vector<std::vector<std::uint16_t>> lodIndices;
 };
 
 using SyntheticSubModel = std::vector<SyntheticMesh>; // one mstudiomodel_t
@@ -90,6 +93,9 @@ struct SyntheticModel
 	std::vector<SyntheticSequence> sequences;
 	std::string aniName = "synthetic/box.ani";
 	std::vector<std::string> includes; // $includemodel paths
+	std::vector<float> lodSwitches = { 0.0f };
+	// [LOD] replacements as (Studio texture slot, replacement name).
+	std::vector<std::vector<std::pair<std::uint16_t, std::string>>> lodReplacements;
 };
 
 struct SyntheticFiles
@@ -333,8 +339,9 @@ inline SyntheticFiles WriteModel( const SyntheticModel &model )
 	Put32( vvd, 0, 0x56534449 );
 	Put32( vvd, 4, 4 );
 	Put32( vvd, 8, model.checksum );
-	Put32( vvd, 12, 1 );
-	Put32( vvd, 16, static_cast<std::int32_t>( all.size() ) );
+	Put32( vvd, 12, static_cast<std::int32_t>( model.lodSwitches.size() ) );
+	for ( std::size_t lod = 0; lod < model.lodSwitches.size(); ++lod )
+		Put32( vvd, 16 + lod * 4, static_cast<std::int32_t>( all.size() ) );
 	const std::size_t half = all.size() / 2;
 	std::vector<mdl::Vertex> stored = all;
 	std::vector<mdl::BoneWeights> storedWeights = allWeights;
@@ -611,7 +618,24 @@ inline SyntheticFiles WriteModel( const SyntheticModel &model )
 	Grow( vtx, 36 );
 	Put32( vtx, 0, 7 );
 	Put32( vtx, 16, model.checksum );
-	Put32( vtx, 20, 1 );
+	Put32( vtx, 20, static_cast<std::int32_t>( model.lodSwitches.size() ) );
+	const std::size_t replacementLists = Grow( vtx, model.lodSwitches.size() * 8 );
+	Put32( vtx, 24, static_cast<std::int32_t>( replacementLists ) );
+	for ( std::size_t lod = 0; lod < model.lodReplacements.size(); ++lod )
+	{
+		const std::size_t list = replacementLists + lod * 8;
+		const auto &source = model.lodReplacements[lod];
+		const std::size_t entries = Grow( vtx, source.size() * 6 );
+		Put32( vtx, list, static_cast<std::int32_t>( source.size() ) );
+		Put32( vtx, list + 4, static_cast<std::int32_t>( entries - list ) );
+		for ( std::size_t i = 0; i < source.size(); ++i )
+		{
+			const std::size_t entry = entries + i * 6;
+			Put16( vtx, entry, source[i].first );
+			const std::size_t name = AppendString( vtx, source[i].second );
+			Put32( vtx, entry + 2, static_cast<std::int32_t>( name - entry ) );
+		}
+	}
 	const std::size_t vparts = Grow( vtx, model.bodyParts.size() * 8 );
 	Put32( vtx, 28, static_cast<std::int32_t>( model.bodyParts.size() ) );
 	Put32( vtx, 32, static_cast<std::int32_t>( vparts ) );
@@ -625,42 +649,50 @@ inline SyntheticFiles WriteModel( const SyntheticModel &model )
 		for ( std::size_t s = 0; s < subs.size(); ++s )
 		{
 			const std::size_t sub = vsubs + s * 8;
-			const std::size_t lod = Grow( vtx, 12 );
-			Put32( vtx, sub, 1 );
-			Put32( vtx, sub + 4, static_cast<std::int32_t>( lod - sub ) );
-			const std::size_t vmeshes = Grow( vtx, subs[s].size() * 9 );
-			Put32( vtx, lod, static_cast<std::int32_t>( subs[s].size() ) );
-			Put32( vtx, lod + 4, static_cast<std::int32_t>( vmeshes - lod ) );
-			for ( std::size_t m = 0; m < subs[s].size(); ++m )
+			const std::size_t lods = Grow( vtx, model.lodSwitches.size() * 12 );
+			Put32( vtx, sub, static_cast<std::int32_t>( model.lodSwitches.size() ) );
+			Put32( vtx, sub + 4, static_cast<std::int32_t>( lods - sub ) );
+			for ( std::size_t level = 0; level < model.lodSwitches.size(); ++level )
 			{
-				const SyntheticMesh &mesh = subs[s][m];
-				const std::size_t vmesh = vmeshes + m * 9;
-				const std::size_t group = Grow( vtx, groupStride );
-				Put32( vtx, vmesh, 1 );
-				Put32( vtx, vmesh + 4, static_cast<std::int32_t>( group - vmesh ) );
-				const std::size_t verts = Grow( vtx, mesh.vertices.size() * 9 );
-				for ( std::size_t v = 0; v < mesh.vertices.size(); ++v )
+				const std::size_t lod = lods + level * 12;
+				PutF( vtx, lod + 8, model.lodSwitches[level] );
+				const std::size_t vmeshes = Grow( vtx, subs[s].size() * 9 );
+				Put32( vtx, lod, static_cast<std::int32_t>( subs[s].size() ) );
+				Put32( vtx, lod + 4, static_cast<std::int32_t>( vmeshes - lod ) );
+				for ( std::size_t m = 0; m < subs[s].size(); ++m )
 				{
-					vtx[verts + v * 9 + 3] = 1;
-					Put16( vtx, verts + v * 9 + 4, static_cast<std::uint16_t>( v ) );
+					const SyntheticMesh &mesh = subs[s][m];
+					const auto &topology = level > 0 && level <= mesh.lodIndices.size()
+					                           ? mesh.lodIndices[level - 1]
+					                           : mesh.stored;
+					const std::size_t vmesh = vmeshes + m * 9;
+					const std::size_t group = Grow( vtx, groupStride );
+					Put32( vtx, vmesh, 1 );
+					Put32( vtx, vmesh + 4, static_cast<std::int32_t>( group - vmesh ) );
+					const std::size_t verts = Grow( vtx, mesh.vertices.size() * 9 );
+					for ( std::size_t v = 0; v < mesh.vertices.size(); ++v )
+					{
+						vtx[verts + v * 9 + 3] = 1;
+						Put16( vtx, verts + v * 9 + 4, static_cast<std::uint16_t>( v ) );
+					}
+					const std::size_t indices = Grow( vtx, topology.size() * 2 );
+					for ( std::size_t i = 0; i < topology.size(); ++i )
+					{
+						Put16( vtx, indices + i * 2, topology[i] );
+					}
+					const std::size_t strip = Grow( vtx, stripStride );
+					Put32( vtx, group + 0, static_cast<std::int32_t>( mesh.vertices.size() ) );
+					Put32( vtx, group + 4, static_cast<std::int32_t>( verts - group ) );
+					Put32( vtx, group + 8, static_cast<std::int32_t>( topology.size() ) );
+					Put32( vtx, group + 12, static_cast<std::int32_t>( indices - group ) );
+					Put32( vtx, group + 16, 1 );
+					Put32( vtx, group + 20, static_cast<std::int32_t>( strip - group ) );
+					Put32( vtx, strip + 0, static_cast<std::int32_t>( topology.size() ) );
+					Put32( vtx, strip + 4, 0 );
+					Put32( vtx, strip + 8, static_cast<std::int32_t>( mesh.vertices.size() ) );
+					Put32( vtx, strip + 12, 0 );
+					vtx[strip + 18] = static_cast<char>( mesh.tristrip ? 0x02 : 0x01 );
 				}
-				const std::size_t indices = Grow( vtx, mesh.stored.size() * 2 );
-				for ( std::size_t i = 0; i < mesh.stored.size(); ++i )
-				{
-					Put16( vtx, indices + i * 2, mesh.stored[i] );
-				}
-				const std::size_t strip = Grow( vtx, stripStride );
-				Put32( vtx, group + 0, static_cast<std::int32_t>( mesh.vertices.size() ) );
-				Put32( vtx, group + 4, static_cast<std::int32_t>( verts - group ) );
-				Put32( vtx, group + 8, static_cast<std::int32_t>( mesh.stored.size() ) );
-				Put32( vtx, group + 12, static_cast<std::int32_t>( indices - group ) );
-				Put32( vtx, group + 16, 1 );
-				Put32( vtx, group + 20, static_cast<std::int32_t>( strip - group ) );
-				Put32( vtx, strip + 0, static_cast<std::int32_t>( mesh.stored.size() ) );
-				Put32( vtx, strip + 4, 0 );
-				Put32( vtx, strip + 8, static_cast<std::int32_t>( mesh.vertices.size() ) );
-				Put32( vtx, strip + 12, 0 );
-				vtx[strip + 18] = static_cast<char>( mesh.tristrip ? 0x02 : 0x01 );
 			}
 		}
 	}
@@ -711,6 +743,41 @@ inline SyntheticMesh BoxMesh( mdl::Float3 center, mdl::Float3 half, std::int32_t
 }
 
 // A one-texture box model (see BoxMesh), material "<cd><texture>".
+inline SyntheticModel LodPixelModel()
+{
+	SyntheticModel model;
+	model.name = "synthetic/lod-pixels.mdl";
+	model.textures = { "base" };
+	model.skins = { { 0 } };
+	model.lodSwitches = { 0.0f, 100.0f, -1.0f };
+	model.lodReplacements = { {}, { { 0, "lower" } }, {} };
+	SyntheticMesh mesh;
+	for ( unsigned int side = 0; side < 2; ++side )
+	{
+		const float left = side == 0 ? -0.8f : 0.2f;
+		for ( const auto &xy : { std::pair{ left, -0.5f }, std::pair{ left + 0.6f, -0.5f },
+		          std::pair{ left + 0.6f, 0.5f }, std::pair{ left, 0.5f } } )
+		{
+			mdl::Vertex vertex;
+			vertex.position = { xy.first, xy.second, 0.5f };
+			vertex.normal = { 0, 0, 1 };
+			mesh.vertices.push_back( vertex );
+			mdl::BoneWeights weight;
+			weight.bones[0] = static_cast<std::uint8_t>( side );
+			mesh.weights.push_back( weight );
+		}
+	}
+	mesh.stored = { 0, 2, 1, 0, 3, 2 };
+	mesh.lodIndices = { { 4, 6, 5, 4, 7, 6 }, {} };
+	model.bodyParts = { { { mesh }, {} } };
+	SyntheticBone first, second;
+	first.flags = 0x400; // BONE_USED_BY_VERTEX_AT_LOD(0)
+	second.name = "lower_lod";
+	second.flags = 0x800; // BONE_USED_BY_VERTEX_AT_LOD(1)
+	model.bones = { first, second };
+	return model;
+}
+
 inline SyntheticModel BoxModel( mdl::Float3 half, const std::string &cdMaterials,
     const std::string &texture, std::int32_t version = 49 )
 {

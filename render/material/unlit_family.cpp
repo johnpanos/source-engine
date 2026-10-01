@@ -26,9 +26,10 @@ using detail::ReadParameter;
 using detail::SourceGammaToLinear;
 
 // The parameters the family draws, and the ones the caller owns.
-constexpr std::array<std::string_view, 15> kClaimed = { "basetexture", "color", "alpha",
+constexpr std::array<std::string_view, 18> kClaimed = { "basetexture", "color", "alpha",
     "vertexcolor", "vertexalpha", "alphatest", "alphatestreference", "translucent", "additive",
-    "model", "nofog", "nocull", "texture2", "frame2", "texture2transform" };
+    "model", "nofog", "nocull", "texture2", "frame2", "texture2transform", "ignorez",
+    "hdrcolorscale", "hdrbasetexture" };
 
 } // namespace
 
@@ -57,7 +58,10 @@ UnlitClaim ClaimUnlit( const ParameterBlock &block )
 	claim.blend =
 	    additive ? BlendMode::kAdditive : ( alphaBlended ? BlendMode::kAlpha : BlendMode::kOpaque );
 	claim.alphaWrite = !alphaBlended && !ReadFlag( block, "alphatest" );
+	claim.ignoreDepth = ReadFlag( block, "ignorez" );
 	SurfaceConstants &constants = claim.constants;
+	constants.surfaceControls[0] = ReadFlag( block, "nofog" ) ? 1.0f : 0.0f;
+	constants.surfaceControls[1] = ReadParameter( block, "hdrcolorscale" );
 	for ( int c = 0; c < 3; ++c )
 		constants.tint[c] = SourceGammaToLinear( ReadParameter( block, "color", c ) );
 	constants.tint[3] = ReadParameter( block, "alpha" );

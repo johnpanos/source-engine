@@ -2008,3 +2008,49 @@ lighting-back-end suite has 23 passes and the two pre-existing derived-scene
 fixture errors for missing `legacy-scene/scene-receipt.json`; neither reaches
 the changed probe or content paths. The shared-worktree style run is blocked by
 unrelated concurrent C++ formatting edits.
+
+### R50 intro4 artistic probes (2026-10-01)
+
+The user's `sp_a1_intro4` probe pass retains the requested ceiling of 64.
+The [authored layout](../quality/map_probe_positions/sp_a1_intro4.volumes.json)
+places 38 captures through the arrival, north chamber, puzzle floor, observation
+alcoves and exit spaces, with one puzzle-room fallback. Automatic placement
+fills the remaining 26 slots. Every authored capture passed the shipped BSP's
+solid-leaf check and the scene's 0.5 m clearance check. The influence regions
+and priorities are authored data; RPRB's existing codec and blend remain their
+single mechanism owner.
+
+The local bake was stopped at the user's request. A rented RTX 4090 rendered
+384 cube faces with pinned Blender 5.2.2, OptiX, 256-pixel faces, 1024 samples,
+OIDN and the `gi-reference` light paths. The Blender process finished in 308
+seconds. GGX prefiltering produced eight mips from width 512 on the same host.
+The canonical depth fit improved 22 authored proxies after capture; codec
+round-trip checks prove the capture points, influence regions, ranks and baked
+atlas texels stayed exact. Residuals were then recomputed from the encoded
+boxes. The host was released after downloading the final atlas and receipts.
+Raw EXRs are partially retained; the complete face hashes, pinned inputs and
+remote commands are in the
+[evidence directory](../quality-results/map-diagnostics/intro4-artistic-probes-20261001/).
+
+The published inspection map is `sp_a1_intro4_probe64`; the existing
+`sp_a1_intro4_relit` remains available. Only the RPRB lump changes from that
+Source2 build. All other payloads and its legacy export are byte-identical,
+preserving its passing gameplay-identity record and existing ambient-light
+injection. Independent Python and C++ container checks pass, as do all 37
+reflection-probe tests and authored-volume validation. The
+[core-world chamber comparison](../quality-results/map-diagnostics/intro4-artistic-probes-20261001/compare-core-main/compare.html)
+uses matching binary digests, verified cameras, 4x MSAA and fixed tone-map
+scale 4. Compatibility-world comparisons are retained separately.
+The [core-world exit comparison](../quality-results/map-diagnostics/intro4-artistic-probes-20261001/compare-core-exit-corridor/compare.html)
+passes the same camera, exposure and binary-digest checks.
+
+A CPU blend diagnostic over final encoded probes gives zero global-fallback
+weight on 56 north-floor and 85 puzzle-floor samples. On 16 exit-floor samples,
+mean global weight falls from 1.0 to 0.05547; this is a diagnostic, not an image
+gate. The export checks still fail: 31.65% of whole-map walkable samples remain
+uncovered, 80.32% of servable glossy samples remain unserved, placement reaches
+the 64-probe limit, and maximum mean proxy residual is 0.904619 against 0.25.
+The inherited Source2 audit also remains failed. R50, R95 and R96 stay open;
+these captures do not certify the full material/cohort or Cycles parity gates.
+Architecture inventory verification passes; full/baseline checks retain the
+two unrelated `blob_networkbypass` CreateInterfaceFn boundary failures.

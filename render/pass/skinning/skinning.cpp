@@ -70,8 +70,7 @@ void SkinReference( const SkinInputs &inputs, std::span<SkinnedVertex> out )
 				wrinkle += weight * delta.wrinkle;
 			}
 		}
-		const float weights[3] = {
-		    vertex.weight0, vertex.weight1, 1.0f - ( vertex.weight0 + vertex.weight1 ) };
+		const auto weights = vertex.Weights();
 		SkinnedVertex &result = out[v];
 		result = SkinnedVertex();
 		for ( int b = 0; b < 3; ++b )

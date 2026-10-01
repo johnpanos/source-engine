@@ -22,6 +22,21 @@
 - Verification: [RFC 0005](0005-quality-and-correctness-harnesses.md) (Q-PHYSICS)
 - Progress: [RFC 0013 progress](0013-progress.md)
 
+## Render performance obligations (user decision, 2026-10-01)
+
+This RFC follows RFC 0016's
+[high-performance clustered lighting requirement](0016-render-core.md#high-performance-clustered-lighting-user-decision-2026-10-01)
+and [hard render budgets](0016-render-core.md#hard-render-budgets-user-decision-2026-10-01).
+Computation placement follows RFC 0003's binding
+[CPU/GPU policy](0003-dependency-aware-job-system.md#cpugpu-execution-placement-user-decision-2026-10-01).
+Those owners define the policies and numbers; this RFC defines its domain's
+obligations and does not certify implementation by this amendment.
+
+Opt-in physics computation follows the shared CPU/GPU placement rule while
+preserving each versioned capability contract. Include worker/GPU contention
+with the render frame and publish one committed snapshot; a faster physics
+kernel alone cannot establish faster complete gameplay frames.
+
 ## Decision and boundary
 
 RFC 0004 makes Box3D behave like IVP behind the VPhysics interfaces. That is

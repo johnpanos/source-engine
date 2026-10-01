@@ -1,0 +1,388 @@
+{
+  "schema": "map-probe-volumes/v1",
+  "map": "sp_a1_intro4",
+  "description": "Art-directed reflection captures in stage meters: cool arrival, north room, portal turn, puzzle floor and warm exit. Room proxies track structure; local influence cells fade over 0.7–1.8 m. One puzzle-room global fallback. Thirty-eight authored captures are seeded before automatic coverage fill, with a map-wide ceiling of 64 in the source2 profile. Parallax proxies were refined against each capture’s actual depth where the canonical fit reduced error; influence regions and capture points remain artist-authored.",
+  "volumes": [
+    {
+      "name": "arrival-elevator",
+      "capture": [-39, 4, -1.3],
+      "box_min": [-52.425598, -1.62239, -5.504114],
+      "box_max": [-32.96244, 14.224, 6.95288],
+      "influence_min": [-45.9, -2.0, -3.65],
+      "influence_max": [-32.9, 10.97, 6.5],
+      "fade": 0.8,
+      "priority": 10
+    },
+    {
+      "name": "arrival-ramp",
+      "capture": [-29, 4, 1.7],
+      "box_min": [-31.245077, 2.8448, -3.2512],
+      "box_max": [-24.7904, 6.096, 3.2512],
+      "influence_min": [-32.5, 2.44, -3.25],
+      "influence_max": [-26.42, 6.5, 6.5],
+      "fade": 0.8,
+      "priority": 10
+    },
+    {
+      "name": "cool-entry-panel",
+      "capture": [-25.5, 4.6, 1.8],
+      "box_min": [-27.076401, 2.8448, 0.0],
+      "box_max": [-23.9776, 6.096, 5.0546],
+      "influence_min": [-26.42, 1.22, 0],
+      "influence_max": [-21.94, 7.31, 6.5],
+      "fade": 0.8,
+      "priority": 10
+    },
+    {
+      "name": "entry-hall",
+      "capture": [-19, 4, 2.1],
+      "box_min": [-22.7584, -0.127174, -0.789509],
+      "box_max": [-16.256001, 5.919096, 10.812782],
+      "influence_min": [-21.94, 2.44, 0],
+      "influence_max": [-13.0, 6.5, 6.5],
+      "fade": 1.0,
+      "priority": 10
+    },
+    {
+      "name": "north-chamber-1-1",
+      "capture": [-9.75, 2.44, 2.0],
+      "box_min": [-13.0, 0.0, 0.0],
+      "box_max": [6.5, 9.75, 6.5],
+      "influence_min": [-13, 0, -0.4],
+      "influence_max": [-6.5, 4.88, 6.7],
+      "fade": 1.5,
+      "priority": 10
+    },
+    {
+      "name": "north-chamber-1-2",
+      "capture": [-8.85, 6.415, 2.0],
+      "box_min": [-13.0, 0.0, 0.0],
+      "box_max": [6.5, 9.75, 6.5],
+      "influence_min": [-13, 4.88, -0.4],
+      "influence_max": [-6.5, 9.75, 6.7],
+      "fade": 1.5,
+      "priority": 10
+    },
+    {
+      "name": "north-chamber-2-1",
+      "capture": [-3.25, 2.44, 2.0],
+      "box_min": [-13.0048, -3.2512, -6.502399],
+      "box_max": [3.2512, 9.7536, 6.5024],
+      "influence_min": [-6.5, 0, -0.4],
+      "influence_max": [0, 4.88, 6.7],
+      "fade": 1.5,
+      "priority": 10
+    },
+    {
+      "name": "north-chamber-2-2",
+      "capture": [-3.25, 7.315, 2.0],
+      "box_min": [-13.0, 0.0, 0.0],
+      "box_max": [6.5, 9.75, 6.5],
+      "influence_min": [-6.5, 4.88, -0.4],
+      "influence_max": [0, 9.75, 6.7],
+      "fade": 1.5,
+      "priority": 10
+    },
+    {
+      "name": "north-chamber-3-1",
+      "capture": [3.25, 2.44, 2.0],
+      "box_min": [-3.2512, -3.2512, -6.502399],
+      "box_max": [6.5024, 9.7536, 6.5024],
+      "influence_min": [0, 0, -0.4],
+      "influence_max": [6.5, 4.88, 6.7],
+      "fade": 1.5,
+      "priority": 10
+    },
+    {
+      "name": "north-chamber-3-2",
+      "capture": [3.25, 7.315, 2.0],
+      "box_min": [-13.0, 0.0, 0.0],
+      "box_max": [6.5, 9.75, 6.5],
+      "influence_min": [0, 4.88, -0.4],
+      "influence_max": [6.5, 9.75, 6.7],
+      "fade": 1.5,
+      "priority": 10
+    },
+    {
+      "name": "north-observation",
+      "capture": [-2.6, 11.0, 4.9],
+      "box_min": [-6.5, 9.75, 3.25],
+      "box_max": [3.25, 13.41, 6.5],
+      "influence_min": [-6.5, 9.75, 3.25],
+      "influence_max": [3.25, 13.41, 6.5],
+      "fade": 0.7,
+      "priority": 10
+    },
+    {
+      "name": "west-observation",
+      "capture": [-7, -4, 4.9],
+      "box_min": [-9.753601, -6.5024, 3.2512],
+      "box_max": [-4.8768, -1.6256, 8.128],
+      "influence_min": [-9.75, -6.5, 3.25],
+      "influence_max": [-4.88, 0, 6.5],
+      "fade": 0.7,
+      "priority": 10
+    },
+    {
+      "name": "portal-turn-1",
+      "capture": [9, 3.7, 2],
+      "box_min": [6.5, -5.28, -0.4064],
+      "box_max": [16.66, 6.5, 6.5],
+      "influence_min": [6.7, 1.5, -0.8],
+      "influence_max": [11.3, 5.9, 6.6],
+      "fade": 1.5,
+      "priority": 10
+    },
+    {
+      "name": "portal-turn-2",
+      "capture": [14, 3.7, 2],
+      "box_min": [10.16, -4.4704, -0.339008],
+      "box_max": [16.662399, 6.096, 6.5024],
+      "influence_min": [11.7, 1.5, -0.8],
+      "influence_max": [16.3, 5.9, 6.6],
+      "fade": 1.5,
+      "priority": 10
+    },
+    {
+      "name": "portal-turn-3",
+      "capture": [10.9, -1.4, 1.7],
+      "box_min": [10.211404, -4.4704, -0.407893],
+      "box_max": [16.6624, 6.096, 13.0048],
+      "influence_min": [7.7, -4.2, -0.8],
+      "influence_max": [12.3, 0.2, 6.6],
+      "fade": 1.5,
+      "priority": 10
+    },
+    {
+      "name": "portal-turn-4",
+      "capture": [14, -2, 2],
+      "box_min": [10.266411, -4.4704, -0.018788],
+      "box_max": [16.662399, 6.096001, 13.0048],
+      "influence_min": [11.7, -4.2, -0.8],
+      "influence_max": [16.3, 0.2, 6.6],
+      "fade": 1.5,
+      "priority": 10
+    },
+    {
+      "name": "puzzle-floor-1-1",
+      "capture": [4.655, -18.83, 2.2],
+      "box_min": [1.93, -21.54, 0],
+      "box_max": [18.29, -5.28, 6.5],
+      "influence_min": [1.93, -21.54, -0.4],
+      "influence_max": [7.38, -16.12, 6.7],
+      "fade": 1.8,
+      "priority": 10
+    },
+    {
+      "name": "puzzle-floor-1-2",
+      "capture": [4.655, -13.41, 2.2],
+      "box_min": [-2.8448, -21.5392, -3.2512],
+      "box_max": [18.287999, -5.283199, 16.256001],
+      "influence_min": [1.93, -16.12, -0.4],
+      "influence_max": [7.38, -10.7, 6.7],
+      "fade": 1.8,
+      "priority": 10
+    },
+    {
+      "name": "puzzle-floor-1-3",
+      "capture": [4.655, -7.99, 2.2],
+      "box_min": [1.93, -21.54, 0],
+      "box_max": [18.29, -5.28, 6.5],
+      "influence_min": [1.93, -10.7, -0.4],
+      "influence_max": [7.38, -5.28, 6.7],
+      "fade": 1.8,
+      "priority": 10
+    },
+    {
+      "name": "puzzle-floor-2-1",
+      "capture": [10.105, -18.83, 2.2],
+      "box_min": [1.93, -21.54, 0],
+      "box_max": [18.29, -5.28, 6.5],
+      "influence_min": [7.38, -21.54, -0.4],
+      "influence_max": [12.83, -16.12, 6.7],
+      "fade": 1.8,
+      "priority": 10
+    },
+    {
+      "name": "puzzle-floor-2-2",
+      "capture": [10.105, -13.41, 2.2],
+      "box_min": [1.93, -21.54, 0],
+      "box_max": [18.29, -5.28, 6.5],
+      "influence_min": [7.38, -16.12, -0.4],
+      "influence_max": [12.83, -10.7, 6.7],
+      "fade": 1.8,
+      "priority": 10
+    },
+    {
+      "name": "puzzle-floor-2-3",
+      "capture": [10.105, -7.99, 2.2],
+      "box_min": [1.93, -21.54, 0],
+      "box_max": [18.29, -5.28, 6.5],
+      "influence_min": [7.38, -10.7, -0.4],
+      "influence_max": [12.83, -5.28, 6.7],
+      "fade": 1.8,
+      "priority": 10
+    },
+    {
+      "name": "puzzle-floor-3-1",
+      "capture": [15.56, -18.83, 2.2],
+      "box_min": [2.032, -21.5392, -0.0],
+      "box_max": [18.287999, -5.283199, 6.5024],
+      "influence_min": [12.83, -21.54, -0.4],
+      "influence_max": [18.29, -16.12, 6.7],
+      "fade": 1.8,
+      "priority": 10
+    },
+    {
+      "name": "puzzle-floor-3-2",
+      "capture": [15.56, -13.41, 2.2],
+      "box_min": [-2.8448, -21.539201, -6.7e-05],
+      "box_max": [18.287999, -5.283199, 16.4592],
+      "influence_min": [12.83, -16.12, -0.4],
+      "influence_max": [18.29, -10.7, 6.7],
+      "fade": 1.8,
+      "priority": 10
+    },
+    {
+      "name": "puzzle-floor-3-3",
+      "capture": [15.56, -7.99, 2.2],
+      "box_min": [1.93, -21.54, 0],
+      "box_max": [18.29, -5.28, 6.5],
+      "influence_min": [12.83, -10.7, -0.4],
+      "influence_max": [18.29, -5.28, 6.7],
+      "fade": 1.8,
+      "priority": 10
+    },
+    {
+      "name": "puzzle-global",
+      "capture": [10, -13.4, 2.4],
+      "box_min": [1.93, -21.54, 0],
+      "box_max": [18.29, -5.28, 6.5],
+      "influence_min": [1.93, -21.54, 0],
+      "influence_max": [18.29, -5.28, 6.5],
+      "fade": 1.0,
+      "priority": -10,
+      "global": true
+    },
+    {
+      "name": "south-button-alcove",
+      "capture": [11, -23, 4.9],
+      "box_min": [9.75, -24.79, 3.25],
+      "box_max": [13.41, -21.54, 6.5],
+      "influence_min": [9.75, -24.79, 3.25],
+      "influence_max": [13.41, -21.54, 6.5],
+      "fade": 0.8,
+      "priority": 10
+    },
+    {
+      "name": "west-puzzle-alcove",
+      "capture": [0, -13, 2],
+      "box_min": [-2.8448, -16.662399, -3.2512],
+      "box_max": [18.288, -10.16, 6.502399],
+      "influence_min": [-3.25, -16.66, -3.25],
+      "influence_max": [1.93, -10.16, 6.5],
+      "fade": 0.7,
+      "priority": 10
+    },
+    {
+      "name": "exit-threshold-1",
+      "capture": [21, -13.4, 2.0],
+      "box_min": [19.1008, -16.6624, -1.8e-05],
+      "box_max": [25.603201, -10.16, 9.7536],
+      "influence_min": [19, -15.85, -0.4],
+      "influence_max": [23, -10.97, 6.6],
+      "fade": 1.0,
+      "priority": 10
+    },
+    {
+      "name": "exit-threshold-2",
+      "capture": [25, -13.4, 2.0],
+      "box_min": [19.1008, -16.6624, 0.0],
+      "box_max": [25.603201, -10.16, 9.7536],
+      "influence_min": [23, -15.85, -0.4],
+      "influence_max": [27, -10.97, 6.6],
+      "fade": 1.0,
+      "priority": 10
+    },
+    {
+      "name": "warm-exit-gallery-1",
+      "capture": [30, -13.4, 5.0],
+      "box_min": [19.1008, -15.036801, 1.9304],
+      "box_max": [36.169603, -11.933331, 6.5024],
+      "influence_min": [27.7, -15.8, 2.95],
+      "influence_max": [32.3, -11.0, 9.9],
+      "fade": 1.3,
+      "priority": 10
+    },
+    {
+      "name": "warm-exit-gallery-2",
+      "capture": [34, -13.4, 5.0],
+      "box_min": [27.64, -22.76, 3.25],
+      "box_max": [44.7, -10.97, 9.75],
+      "influence_min": [31.7, -15.8, 2.95],
+      "influence_max": [36.3, -11.0, 9.9],
+      "fade": 1.3,
+      "priority": 10
+    },
+    {
+      "name": "warm-exit-gallery-3",
+      "capture": [39, -13.4, 5.0],
+      "box_min": [27.64, -22.76, 3.25],
+      "box_max": [44.7, -10.97, 9.75],
+      "influence_min": [36.7, -15.8, 2.95],
+      "influence_max": [41.3, -11.0, 9.9],
+      "fade": 1.3,
+      "priority": 10
+    },
+    {
+      "name": "warm-exit-gallery-4",
+      "capture": [30, -20, 5.0],
+      "box_min": [26.0096, -23.571199, 3.836909],
+      "box_max": [35.915602, -11.7856, 9.3472],
+      "influence_min": [27.7, -22.4, 2.95],
+      "influence_max": [32.3, -17.6, 9.9],
+      "fade": 1.3,
+      "priority": 10
+    },
+    {
+      "name": "warm-exit-gallery-5",
+      "capture": [35.1, -20.0, 5.0],
+      "box_min": [30.886404, -21.945601, 2.54],
+      "box_max": [35.915601, -18.694401, 6.096],
+      "influence_min": [33.7, -22.4, 2.95],
+      "influence_max": [38.3, -17.6, 9.9],
+      "fade": 1.3,
+      "priority": 10
+    },
+    {
+      "name": "warm-exit-gallery-6",
+      "capture": [42, -20, 5.0],
+      "box_min": [36.169601, -21.945601, 2.54],
+      "box_max": [44.703999, -18.694401, 6.635891],
+      "influence_min": [39.7, -22.4, 2.95],
+      "influence_max": [44.3, -17.6, 9.9],
+      "fade": 1.3,
+      "priority": 10
+    },
+    {
+      "name": "exit-elevator-approach",
+      "capture": [47, -13.4, 5.1],
+      "box_min": [39.0144, -26.416001, -0.4064],
+      "box_max": [67.462402, -6.908801, 6.5024],
+      "influence_min": [44.7, -15.85, 3.25],
+      "influence_max": [48.77, -10.97, 9.75],
+      "fade": 0.8,
+      "priority": 10
+    },
+    {
+      "name": "departure-elevator",
+      "capture": [54.4, -13.4, 2],
+      "box_min": [48.549246, -26.416001, -2.252914],
+      "box_max": [67.462401, -7.318437, 10.204079],
+      "influence_min": [47.5, -20.3, -0.41],
+      "influence_max": [61, -6.5, 9.75],
+      "fade": 0.8,
+      "priority": 10
+    }
+  ]
+}

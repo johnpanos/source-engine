@@ -6,9 +6,51 @@
 - Depends on: [RFC 0001: Capability-Based Platform Architecture](0001-capability-based-platform-architecture.md), especially its task-runner, ownership, and render-threading contracts
 - Verification: [RFC 0005: Quality and Correctness Harnesses](0005-quality-and-correctness-harnesses.md)
 - Language and synchronization: [RFC 0006: C++20, Ownership, and Synchronization](0006-modern-cpp-ownership-and-synchronization.md)
-- Evidence: Static inspection of this repository at proposal time. Later scheduler microbenchmarks, pool budgets and in-game frame measurements are in the progress records; no frame, latency or mobile budget is set
+- Evidence: Static inspection of this repository at proposal time. Later scheduler microbenchmarks, pool budgets and in-game frame measurements are in the progress records; render budgets are owned by RFC 0016 and `quality/budgets/render-v1.json`; other unset domain budgets remain unverified
 - Amended: 2026-09-28, [frame-wide scheduling goals](#frame-wide-scheduling-goals-amended-2026-09-28) and phase I (user direction: "update the RFCs to encode the goals we need", after a comparison with id Tech 6/7)
 - Implementation status: Partial; no phase gate is complete. The graph runtime, executors, engine-pool bridge, serial host frame graph, declared frame-graph regions and several cohort migrations are installed. State and evidence: [0003-progress.md](0003-progress.md) and the records it links
+
+## CPU/GPU execution placement (user decision, 2026-10-01)
+
+**If an operation is faster on the GPU, execute it on the GPU.** This is a
+binding engine-wide placement rule, including render preparation, light
+assignment, skinning, culling and other eligible computation. This section owns
+the selection policy; the operation's domain owner owns its implementation and
+the appropriate CPU/GPU executor or graph. It does not move ownership of the
+GPU render graph from RFC 0016 or of physics behavior from RFCs 0004/0013.
+
+- Compare correct implementations of the same operation on the declared
+  hardware/profile, with equivalent inputs, outputs, quality and observable
+  behavior. Count preparation, transfers, synchronization, submission and
+  consumption on the frame or job's critical path, as well as kernel time.
+  Record repeated native measurements, tail latency and contention with other
+  GPU work; an isolated kernel win is not a complete placement comparison.
+- When that comparison establishes the GPU path is faster, its use is required
+  in the product composition for that workload. A slower CPU path is not kept
+  as the product default for convenience, because it is already wired, or
+  because a GPU implementation was proven only in a standalone suite. Completing
+  that handoff is required work. No silent CPU substitution is allowed.
+- A measured crossover may select CPU for small workloads and GPU for larger
+  ones. Record the crossover and selected path in the existing profile/domain
+  policy and evidence; do not create a second selection authority. A profile
+  without the required GPU capability may explicitly compose the CPU path.
+  Unmeasured placement remains unverified, not presumed faster on either side.
+- Keep the serial CPU implementation as a correctness oracle and a declared
+  supported path where appropriate. GPU execution must preserve the domain's
+  determinism, ordering, lifetime, cancellation and failure requirements, with
+  resources retained until GPU completion (RFC 0006). Changing those obligations
+  requires its own explicit contract decision; timing does not waive them.
+
+Render work applies this rule under RFC 0016's
+[high-performance clustered lighting requirement](0016-render-core.md#high-performance-clustered-lighting-user-decision-2026-10-01).
+CPU light publication and immutable snapshot lifetime stay with their owners;
+GPU assignment and shading consume those snapshots without adding a second
+light authority, an executor-specific scheduler pool or hidden blocking waits.
+Measure placement together with the process-wide worker budget and the complete
+frame's contention. Render performance acceptance follows RFC 0016's
+[hard render budgets](0016-render-core.md#hard-render-budgets-user-decision-2026-10-01);
+a placement win cannot waive the complete-frame target. This amendment itself
+implements no GPU handoff.
 
 ## Summary
 

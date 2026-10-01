@@ -32,7 +32,9 @@
 
 //#define DEBUG_DEPTH 1
 
-CDummyTextureInternal g_BitchCubemapTexture("bitch_cubemap");
+// Preserve the authored per-view reference when a texture variable is
+// serialized for the render core. This placeholder is never a file-backed VTF.
+CDummyTextureInternal g_LocalCubemapTexture( "env_cubemap" );
 
 //-----------------------------------------------------------------------------
 // Lovely convars
@@ -1847,7 +1849,7 @@ void CShaderSystem::LoadTexture( IMaterialVar *pTextureVar, const char *pTexture
 	// Force local cubemaps when using the editor
 	if ( MaterialSystem()->CanUseEditorMaterials() && ( stricmp( pName, "env_cubemap" ) == 0 ) )
 	{
-		pTexture = &g_BitchCubemapTexture;
+		pTexture = &g_LocalCubemapTexture;
 	}
 	else
 	{
@@ -1920,7 +1922,7 @@ void CShaderSystem::LoadCubeMap( IMaterialVar **ppParams, IMaterialVar *pTexture
 	{
 		// don't have to load anything here. . just set the texture value to DummyTexture
 		// special that says to use the cubemap entity.
-		pTextureVar->SetTextureValue( &g_BitchCubemapTexture );
+		pTextureVar->SetTextureValue( &g_LocalCubemapTexture );
 		SetFlags2( ppParams, MATERIAL_VAR2_USES_ENV_CUBEMAP );
 	}
 	else
@@ -1945,5 +1947,3 @@ void CShaderSystem::LoadCubeMap( IMaterialVar **ppParams, IMaterialVar *pTexture
 		pTextureVar->SetTextureValue( pTexture );
 	}
 }
-
-

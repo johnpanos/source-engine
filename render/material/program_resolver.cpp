@@ -118,7 +118,8 @@ std::optional<std::string> UnreadVariable( const MaterialDesc &material )
 		// VertexLitGeneric only reads these controls inside its enabled cloak
 		// pass. A dormant factor of 1 on the cube does not request transmission.
 		if ( !cloakEnabled && material.family == "vertexlit" &&
-		     ( SameKey( key, "$cloakpassenabled" ) || SameKey( key, "$cloakfactor" ) || SameKey( key, "$cloakcolortint" ) ||
+		     ( SameKey( key, "$cloakpassenabled" ) || SameKey( key, "$cloakfactor" ) ||
+		         SameKey( key, "$cloakcolortint" ) || SameKey( key, "$cloaktint" ) ||
 		         SameKey( key, "$refractamount" ) ) )
 			continue;
 		const VmtPair *set = nullptr;
@@ -265,7 +266,7 @@ ProgramResolver::~ProgramResolver() = default;
 namespace
 {
 constexpr std::string_view kProgramNames[] = {
-    "lightmapped", "unlit", "preview", "pbr", "refract", "water" };
+    "lightmapped", "unlit", "preview", "pbr", "refract", "water", "depth" };
 }
 
 std::span<const std::string_view> ProgramResolver::ProgramNames()
@@ -305,6 +306,8 @@ foundation::Expected<device::BlendMode, std::string> ClaimForDrawing(
 	const std::optional<ParameterBlock> block = BlockFor( material, &why );
 	if ( !block )
 		return foundation::MakeUnexpected( why );
+	if ( material.family == "depth" )
+		return ClaimForMesh( material, false, false );
 	if ( material.family == "lightmapped" )
 	{
 		const LightmappedClaim claim = ClaimLightmapped( *block );
@@ -346,6 +349,14 @@ foundation::Expected<device::BlendMode, std::string> ClaimForMesh(
 	const std::optional<ParameterBlock> block = BlockFor( material, &why, nativeReflectionProbes );
 	if ( !block )
 		return foundation::MakeUnexpected( why );
+	if ( material.family == "depth" )
+	{
+		constexpr std::string_view keys[] = { "model", "nocull", "nofog" };
+		if ( auto unread = detail::UnclaimedParameter( *block, keys ) )
+			return foundation::MakeUnexpected( "the depth point does not draw " + *unread );
+		return device::BlendMode::kOpaque;
+	}
+
 	if ( material.family == "vertexlit" )
 	{
 		const VertexLitMeshClaim claim = ClaimVertexLitMesh( *block );
@@ -392,6 +403,24 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 	if ( !block )
 		return foundation::MakeUnexpected( why );
 	ResolvedProgram out;
+	if ( material.family == "depth" )
+	{
+		constexpr std::string_view keys[] = { "model", "nocull", "nofog" };
+		if ( auto unread = detail::UnclaimedParameter( *block, keys ) )
+			return foundation::MakeUnexpected( "the depth point does not draw " + *unread );
+		SurfaceVariant variant;
+		variant.layout = s.layout;
+		variant.terms = kSurfaceUnlit | kSurfaceDepthOnly;
+		SurfaceConstants constants;
+		SurfaceTextures textures;
+		auto request = s.lightmapped->Program().Request( variant, constants, textures );
+		if ( !request )
+			return foundation::MakeUnexpected( std::string( "a depth pipeline was refused" ) );
+		out.name = "depth";
+		out.request = std::move( request ).Value();
+		return out;
+	}
+
 	if ( material.family == "lightmapped" )
 	{
 		const LightmappedClaim claim = ClaimLightmapped( *block );
@@ -422,7 +451,9 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 		if ( !claim.claimed )
 			return foundation::MakeUnexpected( claim.reason );
 		SurfaceTextures textures;
-		textures.base = TextureOf( material, "basetexture" );
+		textures.base = TextureOf( material, "hdrbasetexture" );
+		if ( textures.base.empty() )
+			textures.base = TextureOf( material, "basetexture" );
 		if ( claim.twoTexture )
 			textures.emission = TextureOf( material, "texture2" );
 		if ( s.mesh && s.worldPbr && !claim.twoTexture )
@@ -547,7 +578,7 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 	}
 	if ( material.family == "refract" )
 	{
-		if ( !s.mesh || !s.worldPbr || s.layout != SurfaceVertexLayout::kModel )
+		if ( !s.mesh || !s.worldPbr || s.layout == SurfaceVertexLayout::kFlat )
 			return foundation::MakeUnexpected(
 			    std::string( "the Refract point needs a model vertex in a scene" ) );
 		const bool nativeProbes = ( s.sceneTerms & kSurfaceReflectionProbes ) != 0;
@@ -557,6 +588,7 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 		if ( !claim.claimed )
 			return foundation::MakeUnexpected( claim.reason );
 		SurfaceVariant variant = claim.Variant();
+		variant.layout = s.layout;
 		if ( claim.nativeProbe )
 			variant.terms |= kSurfaceReflectionProbes;
 		SurfaceTextures textures;
@@ -754,9 +786,10 @@ std::optional<GroupRequest> ProgramResolver::DrawGroup(
 	if ( program.name == "pbr" && inputTextures.size() == 3 )
 		return s.lightmapped->Program().DrawGroup(
 		    inputTextures[0], {}, {}, inputTextures[1], inputTextures[2] );
-	if ( ( program.name == "pbr" || program.name == "refract" ) && inputTextures.empty() )
+	if ( ( program.name == "pbr" || program.name == "refract" || program.name == "depth" ) &&
+	     inputTextures.empty() )
 		return s.lightmapped->Program().DrawGroup( "", {}, {}, {}, {} );
-	if ( program.request.drawLayout == s.lightmapped->DrawLayout() )
+	if ( program.request.drawLayout == s.lightmapped->DrawLayout() && inputTextures.size() == 1 )
 		return s.lightmapped->LightmapGroup( inputTextures[0] );
 	return std::nullopt;
 }

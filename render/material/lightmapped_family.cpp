@@ -28,13 +28,13 @@ using detail::ReadParameter;
 using detail::TextureBound;
 
 // The parameters the family draws, and the ones the caller owns.
-constexpr std::array<std::string_view, 32> kClaimed = { "basetexture", "color", "alpha",
+constexpr std::array<std::string_view, 33> kClaimed = { "basetexture", "color", "alpha",
     "vertexcolor", "vertexalpha", "alphatest", "alphatestreference", "translucent", "model",
     "nofog", "nocull", "bumpmap", "ssbump", "nodiffusebumplighting", "envmap", "envmapmask",
     "basealphaenvmapmask", "normalmapalphaenvmapmask", "envmaptint", "envmapcontrast",
     "envmapsaturation", "fresnelreflection", "detail", "detailscale", "detailblendmode",
     "detailblendfactor", "detailtint", "selfillum", "selfillumtint", "ssbumpmathfix",
-    "envmaplightscale", "envmaplightscaleminmax" };
+    "envmaplightscale", "envmaplightscaleminmax", "decal" };
 
 // The detail modes the port's combos draw: every TextureCombine mode but the
 // self-illuminating ones (5, 6) without a bump map, and 0 and 1 with one

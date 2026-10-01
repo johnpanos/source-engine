@@ -32,6 +32,7 @@
 #include "render/device/device.h"
 #include "render/graph/graph_builder.h"
 
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <span>
@@ -49,6 +50,10 @@ struct SkinVertex // 64 bytes
 	float tangent[4] = {};   // xyz tangent S, w the bitangent sign
 	std::uint32_t bones = 0; // bone indices in bytes 0, 1 and 2
 	std::uint32_t reserved[3] = {};
+	[[nodiscard]] std::array<float, 3> Weights() const
+	{
+		return { weight0, weight1, 1.0f - ( weight0 + weight1 ) };
+	}
 };
 
 struct FlexDelta // 48 bytes

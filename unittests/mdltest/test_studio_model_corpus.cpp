@@ -20,6 +20,7 @@
 #include "testing/conformance_result.h"
 
 #include <algorithm>
+#include <bit>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -81,6 +82,11 @@ struct Tally
 {
 	int models = 0;
 	int parsed = 0;
+	int bodyVariantsParsed = 0;
+	int defaultBodyMatches = 0;
+	int modelsWithAlternatives = 0;
+	int alternativesChecked = 0;
+	int alternativesMatched = 0;
 	int withTriangles = 0;
 	int emptyBoxes = 0;
 	std::size_t triangles = 0;
@@ -93,6 +99,81 @@ struct Tally
 mdl::Float3 Extent( const mdl::Model &m )
 {
 	return { m.maxs.x - m.mins.x, m.maxs.y - m.mins.y, m.maxs.z - m.mins.z };
+}
+
+// Raw geometry import promises the stored attributes, including unused VVD
+// vertices with nonfinite fields. Numeric equality would reject even identical
+// NaN payloads. Compare every field's bits without omitting those vertices.
+bool SameImportedMesh( const mdl::Mesh &a, const mdl::Mesh &b )
+{
+	if ( a.textureRef != b.textureRef || a.bodyPart != b.bodyPart || a.bodyModel != b.bodyModel ||
+	     a.indices != b.indices || a.weights.size() != b.weights.size() ||
+	     a.vertices.size() != b.vertices.size() )
+		return false;
+	const auto same = []( float x, float y )
+	{
+		return std::bit_cast<std::uint32_t>( x ) == std::bit_cast<std::uint32_t>( y );
+	};
+	const auto same3 = [&]( mdl::Float3 x, mdl::Float3 y )
+	{
+		return same( x.x, y.x ) && same( x.y, y.y ) && same( x.z, y.z );
+	};
+	for ( std::size_t i = 0; i < a.vertices.size(); ++i )
+	{
+		const mdl::Vertex &x = a.vertices[i];
+		const mdl::Vertex &y = b.vertices[i];
+		if ( !same3( x.position, y.position ) || !same3( x.normal, y.normal ) ||
+		     !same3( x.tangent, y.tangent ) || !same( x.tangentSign, y.tangentSign ) ||
+		     !same( x.u, y.u ) || !same( x.v, y.v ) )
+			return false;
+	}
+	for ( std::size_t i = 0; i < a.weights.size(); ++i )
+	{
+		if ( a.weights[i].count != b.weights[i].count || a.weights[i].bones != b.weights[i].bones )
+			return false;
+		for ( int w = 0; w < 3; ++w )
+		{
+			if ( !same( a.weights[i].weights[w], b.weights[i].weights[w] ) )
+				return false;
+		}
+	}
+	return true;
+}
+
+void ImportedMeshComparatorControls()
+{
+	mdl::Mesh original;
+	original.vertices.resize( 1 );
+	original.vertices[0].normal.x = std::bit_cast<float>( 0x7fc00001u );
+	original.weights.resize( 1 );
+	original.indices = { 0 };
+	Check( SameImportedMesh( original, original ),
+	    "geometry comparator preserves identical NaN bits" );
+	mdl::Mesh changed = original;
+	changed.vertices[0].normal.x = std::bit_cast<float>( 0x7fc00002u );
+	Check(
+	    !SameImportedMesh( original, changed ), "geometry comparator catches changed NaN payload" );
+	changed = original;
+	changed.vertices[0].tangentSign = -1.0f;
+	Check(
+	    !SameImportedMesh( original, changed ), "geometry comparator catches tangent handedness" );
+	changed = original;
+	changed.vertices[0].u = 0.5f;
+	Check(
+	    !SameImportedMesh( original, changed ), "geometry comparator catches texture coordinates" );
+	changed = original;
+	changed.weights[0].bones[1] = 3;
+	Check( !SameImportedMesh( original, changed ), "geometry comparator catches bone identity" );
+	changed = original;
+	changed.weights[0].weights[2] = 0.5f;
+	Check(
+	    !SameImportedMesh( original, changed ), "geometry comparator catches every bone weight" );
+	changed = original;
+	changed.indices[0] = 1;
+	Check( !SameImportedMesh( original, changed ), "geometry comparator catches triangle indices" );
+	changed = original;
+	changed.bodyModel = 1;
+	Check( !SameImportedMesh( original, changed ), "geometry comparator catches body identity" );
 }
 
 // 'm''s bounds inside the compiler's box [lo, hi] (over all of the
@@ -408,6 +489,54 @@ void RunVpk( const std::string &path )
 			continue; // an animation-only or $includemodel file
 		}
 		++tally.models;
+		std::string mdlBytes, vvdBytes, vtxBytes;
+		(void)files.Read( model, mdlBytes );
+		(void)files.Read( stem + ".vvd", vvdBytes );
+		for ( const char *suffix : { ".dx90.vtx", ".vtx", ".dx80.vtx", ".sw.vtx" } )
+		{
+			if ( files.Read( stem + suffix, vtxBytes ) )
+				break;
+		}
+		const auto variants =
+		    mdl::ParseModelGeometryVariants( { mdlBytes, vvdBytes, vtxBytes, {} } );
+		if ( variants )
+		{
+			++tally.bodyVariantsParsed;
+			if ( std::any_of( variants.Value().bodyParts.begin(), variants.Value().bodyParts.end(),
+			         []( const mdl::BodyPart &part )
+			         {
+				         return part.modelCount > 1;
+			         } ) )
+				++tally.modelsWithAlternatives;
+			for ( const mdl::BodyPart &part : variants.Value().bodyParts )
+			{
+				for ( std::uint32_t alternative = 1; alternative < part.modelCount; ++alternative )
+				{
+					const std::int32_t body = std::int32_t( part.base * alternative );
+					++tally.alternativesChecked;
+					const auto selected = mdl::LoadModel( files, model, body );
+					std::vector<mdl::Mesh> meshes;
+					for ( const mdl::Mesh &mesh : variants.Value().meshes )
+					{
+						if ( mesh.lod == 0 &&
+						     variants.Value().bodyParts[mesh.bodyPart].SelectedModel( body ) ==
+						         mesh.bodyModel )
+							meshes.push_back( mesh );
+					}
+					if ( selected && meshes.size() == selected.Value().meshes.size() &&
+					     std::equal( meshes.begin(), meshes.end(), selected.Value().meshes.begin(),
+					         SameImportedMesh ) )
+						++tally.alternativesMatched;
+					else
+						std::printf( "  alternative mismatch %s body %d\n", model.c_str(), body );
+				}
+			}
+		}
+		else if ( firstFailures++ < 10 )
+		{
+			std::printf( "  body variants %s: %s\n", model.c_str(),
+			    mdl::Describe( variants.Error() ).c_str() );
+		}
 		auto result = mdl::LoadModel( files, model );
 		if ( !result.HasValue() )
 		{
@@ -419,6 +548,37 @@ void RunVpk( const std::string &path )
 		}
 		++tally.parsed;
 		const mdl::Model &m = result.Value();
+		if ( variants )
+		{
+			std::vector<mdl::Mesh> bodyZero;
+			for ( const mdl::Mesh &mesh : variants.Value().meshes )
+			{
+				if ( mesh.lod == 0 && variants.Value().bodyParts[mesh.bodyPart].SelectedModel(
+				                          0 ) == mesh.bodyModel )
+					bodyZero.push_back( mesh );
+			}
+			if ( bodyZero.size() == m.meshes.size() && std::equal( bodyZero.begin(), bodyZero.end(),
+			                                               m.meshes.begin(), SameImportedMesh ) )
+				++tally.defaultBodyMatches;
+			else
+			{
+				std::printf( "  body-zero mismatch %s: %zu selected meshes, %zu original meshes\n",
+				    model.c_str(), bodyZero.size(), m.meshes.size() );
+				for ( std::size_t i = 0; i < std::min( bodyZero.size(), m.meshes.size() ); ++i )
+				{
+					if ( bodyZero[i] != m.meshes[i] )
+						std::printf(
+						    "    mesh %zu: vertices %zu/%zu, weights %zu/%zu, "
+						    "indices %zu/%zu, vertex equality %d, weights %d, indices %d\n",
+						    i, bodyZero[i].vertices.size(), m.meshes[i].vertices.size(),
+						    bodyZero[i].weights.size(), m.meshes[i].weights.size(),
+						    bodyZero[i].indices.size(), m.meshes[i].indices.size(),
+						    bodyZero[i].vertices == m.meshes[i].vertices,
+						    bodyZero[i].weights == m.meshes[i].weights,
+						    bodyZero[i].indices == m.meshes[i].indices );
+				}
+			}
+		}
 		PoseChecks( model, m, tally.pose );
 		if ( m.TriangleCount() > 0 )
 		{
@@ -451,6 +611,19 @@ void RunVpk( const std::string &path )
 	Check( tally.parsed == tally.models, "every model with a .vvd parses (" +
 	                                         std::to_string( tally.parsed ) + " of " +
 	                                         std::to_string( tally.models ) + ")" );
+	Check( tally.bodyVariantsParsed == tally.models,
+	    "every runtime model imports all body variants without ANI data (" +
+	        std::to_string( tally.bodyVariantsParsed ) + " of " + std::to_string( tally.models ) +
+	        ")" );
+	Check( tally.defaultBodyMatches == tally.models,
+	    "body-zero selection matches the existing consumer's geometry for every model" );
+	std::printf(
+	    "  %d real models have nondefault body alternatives\n", tally.modelsWithAlternatives );
+	Check( tally.alternativesChecked == tally.alternativesMatched &&
+	           tally.alternativesChecked >= tally.modelsWithAlternatives,
+	    "nondefault body selections preserve every imported attribute (" +
+	        std::to_string( tally.alternativesMatched ) + " of " +
+	        std::to_string( tally.alternativesChecked ) + ")" );
 	Check( tally.emptyBoxes == 0, "every model with triangles has a box" );
 	Check( tally.triangles > 0 && double( tally.facingNormals ) >= 0.97 * double( tally.triangles ),
 	    "at least 97% of triangles wind counter-clockwise about their normals" );
@@ -593,6 +766,7 @@ void RunVpk( const std::string &path )
 
 int main()
 {
+	ImportedMeshComparatorControls();
 	const char *list = std::getenv( "STUDIO_MODEL_CORPUS_VPKS" );
 	Check( list && *list, "STUDIO_MODEL_CORPUS_VPKS names the corpus" );
 	if ( list )

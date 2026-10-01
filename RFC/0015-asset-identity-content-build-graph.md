@@ -28,6 +28,21 @@
 - Verification: [RFC 0005](0005-quality-and-correctness-harnesses.md)
   (Q-CONTENT, Q-PRODUCT)
 
+## Render performance obligations (user decision, 2026-10-01)
+
+This RFC follows RFC 0016's
+[high-performance clustered lighting requirement](0016-render-core.md#high-performance-clustered-lighting-user-decision-2026-10-01)
+and [hard render budgets](0016-render-core.md#hard-render-budgets-user-decision-2026-10-01).
+Computation placement follows RFC 0003's binding
+[CPU/GPU policy](0003-dependency-aware-job-system.md#cpugpu-execution-placement-user-decision-2026-10-01).
+Those owners define the policies and numbers; this RFC defines its domain's
+obligations and does not certify implementation by this amendment.
+
+Asset publication and live reload invalidate derived scene/light/shadow
+resources by their owning revisions. Package GPU-ready resources through the
+existing build graph and profile, and measure residency, upload and reload
+costs without reintroducing per-frame legacy conversion or a second cache owner.
+
 ## Decision and boundary
 
 Source 2 compiles every source asset in `content/` into a compiled resource

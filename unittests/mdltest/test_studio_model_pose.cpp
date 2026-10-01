@@ -510,6 +510,10 @@ void BlockCases()
 	noAni.ani.clear();
 	Check( Fails( noAni, mdl::ModelStatus::MissingFile, mdl::ModelFile::Ani ),
 	    "without the .ani and without zero-frame data: MissingFile in ani" );
+	const auto geometry = mdl::ParseModelGeometryVariants( { noAni.mdl, noAni.vvd, noAni.vtx, {} } );
+	Check( geometry && !geometry.Value().bones.empty() && !geometry.Value().meshes.empty() &&
+	           geometry.Value().sequences.empty(),
+	    "runtime geometry reads bones and weights without requiring first-frame ANI data" );
 	blocked.animations[0].zeroFrame = RawRotation64( rx90 );
 	SyntheticFiles zero = mdltest::WriteModel( blocked );
 	zero.ani.clear();

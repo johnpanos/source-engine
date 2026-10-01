@@ -870,7 +870,7 @@ ITexture *CMaterialVar::GetTextureValue( void )
 	
 	if( m_Type == MATERIAL_VAR_TYPE_TEXTURE )
 	{
-		if ( strcmp(m_pTexture->GetName(), "bitch_cubemap") == 0 )
+		if ( strcmp( m_pTexture->GetName(), "env_cubemap" ) == 0 )
 			retVal = MaterialSystem()->GetLocalCubemap();
 		else
 			retVal = static_cast<ITexture *>( m_pTexture );

@@ -6,6 +6,21 @@
 - Related: [Platform](0001-capability-based-platform-architecture.md), [Hammer](0002-hammer-responsibility-factorization.md), [jobs](0003-dependency-aware-job-system.md), [physics](0004-box3d-primary-physics-backend.md), [C++20](0006-modern-cpp-ownership-and-synchronization.md)
 - Implementation status: Specification, partly installed. Q0 (baseline audit) and Q1 (shared runner) are done; domain suites are registered but no domain gate is complete. State and commands: [0005-progress.md](0005-progress.md). This document implements nothing by itself.
 
+## Render performance obligations (user decision, 2026-10-01)
+
+This RFC follows RFC 0016's
+[high-performance clustered lighting requirement](0016-render-core.md#high-performance-clustered-lighting-user-decision-2026-10-01)
+and [hard render budgets](0016-render-core.md#hard-render-budgets-user-decision-2026-10-01).
+Computation placement follows RFC 0003's binding
+[CPU/GPU policy](0003-dependency-aware-job-system.md#cpugpu-execution-placement-user-decision-2026-10-01).
+Those owners define the policies and numbers; this RFC defines its domain's
+obligations and does not certify implementation by this amendment.
+
+Pair complete-frame image/cohort evidence with native CPU/GPU timings and
+frame intervals. Missing draws, disabled effects, incomplete routes, unavailable
+measurements and a fast median cannot certify the High performance target.
+Performance misses fail the affected acceptance and promotion gate.
+
 ## Summary
 
 Build eight complementary harnesses over shared test execution, fixtures,

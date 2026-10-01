@@ -43,3 +43,13 @@ instance storage, and the submission-cost target.
 | W10 | A view whose slot never recorded is skipped (counted, not a failure) only when no slot of its host frame recorded; a view lost from a host frame that recorded is a failure |
 | W9 | A variable the model does not read keeps its material out unless it holds its shader's neutral value (`MaterialDesc::declaredDefaults`); one with no neutral value keeps it out too; the gap names the variable |
 | W13 | A sparse update to the current probe atlas records on the next world view; a rectangle outside the atlas fails that view by name instead of silently sampling stale light |
+
+Model geometry selection (R96): static instances and posed models may carry a
+value-owned subset of surface indices. Null selects all surfaces; an explicit
+empty list is a valid blank body. Subsets contain increasing, unique, in-range
+indices. Eligibility and recording examine only selected surfaces, so an inactive
+unsupported material cannot reject an otherwise supported body. Invalid posed
+selections are refused before publishing a slot. Queued selections survive later
+body-group changes. `render.lab.model-selection` proves the posed/static pixel
+footprints, blank bodies and a swapped-body negative control on native Vulkan.
+Studio body arithmetic remains owned by `mdl::BodyPart::SelectedModel`.

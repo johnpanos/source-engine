@@ -35,7 +35,7 @@ constexpr std::array<std::string_view, 12> kClaimed = { "basetexture", "color", 
 
 // One modernized dielectric point. Other variables wait for their surface
 // terms instead of being dropped during import.
-constexpr std::array<std::string_view, 52> kMeshClaimed = { "basetexture", "color", "color2",
+constexpr std::array<std::string_view, 53> kMeshClaimed = { "basetexture", "color", "color2",
     "alpha", "translucent", "bumpmap", "phong", "phongexponent", "phongboost", "phongtint",
     "phongfresnelranges", "model", "ignore_alpha_modulation", "selfillum", "selfillummask",
     "selfillumtint", "rimlightexponent", "rimlightboost", "selfillumfresnelminmaxexp",
@@ -45,7 +45,7 @@ constexpr std::array<std::string_view, 52> kMeshClaimed = { "basetexture", "colo
     "basealphaenvmapmask", "normalmapalphaenvmapmask", "detail", "detailscale", "detailblendmode",
     "detailblendfactor", "detailtint", "blendtintbybasealpha", "blendtintcoloroverbase",
     "envmapfresnelminmaxexp", "envmaplightscale", "envmaplightscaleminmax", "additive",
-    "lightwarptexture", "phongwarptexture", "envmapmask", "ssbump", "ssbumpmathfix" };
+    "lightwarptexture", "phongwarptexture", "envmapmask", "ssbump", "ssbumpmathfix", "forcephong" };
 
 } // namespace
 
@@ -99,7 +99,7 @@ VertexLitMeshClaim ClaimVertexLitMesh( const ParameterBlock &block )
 		claim.reason = "the modern mesh point does not draw " + *unclaimed;
 		return claim;
 	}
-	const bool phong = ReadFlag( block, "phong" );
+	const bool phong = ReadFlag( block, "phong" ) || ReadFlag( block, "forcephong" );
 	const float exponent = ReadParameter( block, "phongexponent" );
 	const float boost = ReadParameter( block, "phongboost" );
 	if ( !std::isfinite( exponent ) ||

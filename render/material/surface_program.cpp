@@ -323,7 +323,7 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::Pipeline(
 	}
 	desc.topology = PrimitiveTopology::kTriangleList;
 	desc.raster.cull = CullMode::kNone;
-	const bool depth = m_DepthFormat != Format::kUnknown;
+	const bool depth = m_DepthFormat != Format::kUnknown && !variant.ignoreDepth;
 	desc.depthStencil = { depth,
 	    depth && variant.blend == BlendMode::kOpaque &&
 	        ( variant.terms & kSurfaceTransmission ) == 0,

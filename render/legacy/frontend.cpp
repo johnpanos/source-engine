@@ -67,18 +67,25 @@ public:
 
 	std::uint32_t SlotStages() const override
 	{
-		return m_Probe == CorePassProbe::kNone
-		           ? 0u
-		           : 1u << static_cast<std::uint32_t>( frame::Stage::kOpaque );
+		const std::uint32_t probe = m_Probe == CorePassProbe::kNone
+		                                ? 0u
+		                                : 1u << static_cast<std::uint32_t>( frame::Stage::kOpaque );
+		return probe | ( m_Forwarded ? m_Forwarded->SlotStages() : 0u );
 	}
 
 	void SetForwarded( ICorePassRecorder *recorder ) { m_Forwarded = recorder; }
+	bool AcceptsMeshes() const override { return m_Forwarded && m_Forwarded->AcceptsMeshes(); }
+
+	std::uint32_t QueueMesh( const legacy::CoreMeshDraw &draw ) override
+	{
+		return m_Forwarded ? m_Forwarded->QueueMesh( draw ) : 0;
+	}
 
 	void RecordSlot(
 	    std::uint32_t tag, device::CommandEncoder &encoder, const CorePassTarget &target ) override
 	{
 		m_Recorded.fetch_add( 1, std::memory_order_relaxed );
-		if ( tag & kCorePassForwarded )
+		if ( ( tag & kCorePassForwarded ) || tag == kCorePassLegacyHud )
 		{
 			if ( m_Forwarded )
 				m_Forwarded->RecordSlot( tag, encoder, target );

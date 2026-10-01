@@ -6807,6 +6807,8 @@ void CVulkanContext::QueueCorePass( uint32_t tag, const CorePassTerms &terms )
 	// AppendRecord starts a new queue after present; publish the policy after
 	// that reset so the following draws see it before vertex conversion.
 	DynDraw &record = AppendRecord( kRecordCorePass );
+	if ( tag == render::legacy::kCorePassLegacyHud )
+		m_queueLegacyHud = true;
 	if ( ( tag & render::legacy::kCorePassForwarded ) &&
 	     ( tag & render::legacy::kCorePassLegacyOff ) )
 		m_queueCoreOnly = true;
@@ -7593,17 +7595,21 @@ void CVulkanContext::RecordFrameScene( VkCommandBuffer cmd )
 		// RFC 0014 core plumbing (render/legacy/core_passes.h kCorePassLegacyOff):
 		// from a slot so tagged, the core alone draws the frame.
 		bool legacyOff = false;
+		bool legacyHud = false;
 		m_frameLegacyOff = false;
 		for ( size_t recordIndex = 0; recordIndex < m_dynDrawRecords.size(); ++recordIndex )
 		{
 			ReplayFrameLabels( &labelCursor, recordIndex );
 			const DynDraw &d = m_dynDrawRecords[recordIndex];
+			if ( d.kind == kRecordCorePass && d.corePass == render::legacy::kCorePassLegacyHud )
+				legacyHud = true;
 			if ( d.kind == kRecordCorePass && ( d.corePass & render::legacy::kCorePassForwarded ) &&
 			     ( d.corePass & render::legacy::kCorePassLegacyOff ) )
 				legacyOff = m_frameLegacyOff = true;
-			if ( legacyOff && ( d.kind == kRecordDraw || d.kind == kRecordCopy ||
-			                      d.kind == kRecordSceneCapture ||
-			                      ( d.kind == kRecordClear && !d.clearDepth && !d.clearStencil ) ) )
+			if ( legacyOff && !legacyHud &&
+			     ( d.kind == kRecordDraw || d.kind == kRecordCopy ||
+			         d.kind == kRecordSceneCapture ||
+			         ( d.kind == kRecordClear && !d.clearDepth && !d.clearStencil ) ) )
 				continue;
 			if ( d.kind == kRecordCorePass )
 			{
@@ -7757,7 +7763,7 @@ void CVulkanContext::RecordFrameScene( VkCommandBuffer cmd )
 					continue;
 				VkClearAttachment clears[2] = {};
 				uint32_t clearCount = 0;
-				if ( d.clearColor && !legacyOff )
+				if ( d.clearColor && ( !legacyOff || legacyHud ) )
 				{
 					clears[clearCount].aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 					clears[clearCount].colorAttachment = 0;

@@ -28,6 +28,7 @@
 #include "materialsystem/itexture.h"
 #include "filesystem.h"
 #include "networkstringtabledefs.h"
+#include "sys_dll.h"
 #include "tier1/KeyValues.h"
 #include "tier1/fmtstr.h"
 #include "tier1/convar.h"
@@ -43,6 +44,7 @@
 #include <vector>
 
 // memdbgon must be the last include file in a .cpp file!!!
+#include "render/legacy/material_flag_keys.h"
 #include "tier0/memdbgon.h"
 
 static void CoreWorldModeChanged( IConVar *variable, const char *, float previous )
@@ -131,66 +133,13 @@ struct MaterialVars
 // The material flags by their VMT keys (CShaderSystem::ShaderStateString's
 // names): the material system folds them into $flags, and the core reads
 // them as keys.
-const struct
-{
-	MaterialVarFlags_t flag;
-	const char *key;
-} s_FlagKeys[] = {
-    { MATERIAL_VAR_NO_DRAW, "$no_draw" },
-    { MATERIAL_VAR_VERTEXCOLOR, "$vertexcolor" },
-    { MATERIAL_VAR_VERTEXALPHA, "$vertexalpha" },
-    { MATERIAL_VAR_SELFILLUM, "$selfillum" },
-    { MATERIAL_VAR_ADDITIVE, "$additive" },
-    { MATERIAL_VAR_ALPHATEST, "$alphatest" },
-    { MATERIAL_VAR_MULTIPASS, "$multipass" },
-    { MATERIAL_VAR_ZNEARER, "$znearer" },
-    { MATERIAL_VAR_MODEL, "$model" },
-    { MATERIAL_VAR_FLAT, "$flat" },
-    { MATERIAL_VAR_NOCULL, "$nocull" },
-    { MATERIAL_VAR_NOFOG, "$nofog" },
-    { MATERIAL_VAR_IGNOREZ, "$ignorez" },
-    { MATERIAL_VAR_DECAL, "$decal" },
-    { MATERIAL_VAR_ENVMAPSPHERE, "$envmapsphere" },
-    { MATERIAL_VAR_NOALPHAMOD, "$noalphamod" },
-    { MATERIAL_VAR_ENVMAPCAMERASPACE, "$envmapcameraspace" },
-    { MATERIAL_VAR_BASEALPHAENVMAPMASK, "$basealphaenvmapmask" },
-    { MATERIAL_VAR_TRANSLUCENT, "$translucent" },
-    { MATERIAL_VAR_NORMALMAPALPHAENVMAPMASK, "$normalmapalphaenvmapmask" },
-    { MATERIAL_VAR_ENVMAPMODE, "$envmapmode" },
-    { MATERIAL_VAR_HALFLAMBERT, "$halflambert" },
-    { MATERIAL_VAR_WIREFRAME, "$wireframe" },
-    { MATERIAL_VAR_ALLOWALPHATOCOVERAGE, "$allowalphatocoverage" },
-    { MATERIAL_VAR_IGNORE_ALPHA_MODULATION, "$ignore_alpha_modulation" },
-};
 
-// Legacy's neutral values for a shader's parameters: a material of that
-// shader with no VMT parameters, initialized by the shader (its InitParams
-// sets what an absent parameter means). One per shader, for one level load.
 struct NeutralMaterials
 {
-	CUtlDict<IMaterial *, int> byShader;
-
-	IMaterial *For( const char *pShader )
+	IMaterial *For( const char *shader )
 	{
-		const int found = byShader.Find( pShader );
-		if ( found != byShader.InvalidIndex() )
-			return byShader[found];
-		char name[256];
-		V_snprintf( name, sizeof( name ), "__render_core_neutral/%s", pShader );
-		IMaterial *pMaterial = materials->CreateMaterial( name, new KeyValues( pShader ) );
-		byShader.Insert( pShader, pMaterial );
-		return pMaterial;
-	}
-	~NeutralMaterials()
-	{
-		for ( int i = byShader.First(); i != byShader.InvalidIndex(); i = byShader.Next( i ) )
-		{
-			if ( IMaterial *pMaterial = byShader[i] )
-			{
-				pMaterial->DecrementReferenceCount();
-				pMaterial->DeleteIfUnreferenced();
-			}
-		}
+		IRenderCoreWorld *world = RenderCoreHost_World();
+		return world ? world->NeutralMaterial( shader ) : NULL;
 	}
 };
 
@@ -235,10 +184,12 @@ void ReadVariables(
 		out.values.AddToTail( CUtlString( pVar->GetStringValue() ) );
 		const bool declaredHere = pShader && i < pShader->GetNumParams() &&
 		                          !V_stricmp( pShader->GetParamName( i ), pVar->GetName() );
-		// A model's $envmap selects the stage's RPRB image light. Importing
-		// its legacy cubemap would bind the wrong authority and can force a
-		// missing map-specific VTF to become an error texture.
-		const bool nativeProbe = nativeMesh && !V_stricmp( pVar->GetName(), "$envmap" );
+		// A model or symbolic $envmap selects the stage's RPRB image light.
+		// Importing its legacy cube can resolve a placeholder through the
+		// current view, or turn a missing map-specific VTF into an error texture.
+		const bool nativeProbe =
+		    !V_stricmp( pVar->GetName(), "$envmap" ) &&
+		    ( nativeMesh || !V_stricmp( out.values.Tail().String(), "env_cubemap" ) );
 		ITexture *pTexture = !nativeProbe && pVar->GetType() == MATERIAL_VAR_TYPE_TEXTURE
 		                         ? pVar->GetTextureValue()
 		                         : NULL;
@@ -316,7 +267,7 @@ void ReadVariables(
 		out.defaultValues.AddToTail( CUtlString( "" ) );
 		out.hasDefault.AddToTail( false );
 	}
-	for ( const auto &flag : s_FlagKeys )
+	for ( const auto &flag : RenderLegacyMaterialFlags::Keys )
 	{
 		if ( !pMaterial->GetMaterialVarFlag( flag.flag ) )
 			continue;
@@ -465,36 +416,59 @@ static void LevelInitModels( IRenderCoreWorld *pWorld )
 			++missingVtx;
 			continue;
 		}
-		// GetModelMaterialCount only handles brush models. A studio model's
-		// header owns its texture slots; request that many resolved materials.
+		// A Studio model's header owns the stable texture slots. Hardware data
+		// resolves those slots independently for each LOD, including VTX
+		// material replacements; the core descriptors use the same LOD-major
+		// order as the imported geometry.
 		studiohdr_t *header = modelinfo->GetStudiomodel( model );
 		const int count = header ? header->numtextures : 0;
-		if ( count <= 0 )
+		studiohwdata_t *hardware = g_pMDLCache->GetHardwareData( model->studio );
+		const int lodCount = hardware ? hardware->m_NumLODs : 0;
+		if ( count <= 0 || lodCount <= 0 || !hardware->m_pLODs )
 		{
 			++missingMaterials;
 			continue;
 		}
-		std::vector<IMaterial *> materialPtrs( count );
-		modelinfo->GetModelMaterials( model, count, materialPtrs.data() );
-		source.variables.reserve( count );
-		source.materials.reserve( count );
-		for ( IMaterial *material : materialPtrs )
+		source.variables.reserve( std::size_t( count ) * lodCount );
+		source.materials.reserve( std::size_t( count ) * lodCount );
+		bool completeMaterials = true;
+		for ( int lod = 0; lod < lodCount && completeMaterials; ++lod )
 		{
-			if ( !material )
+			const studioloddata_t &lodData = hardware->m_pLODs[lod];
+			if ( lodData.numMaterials != count || !lodData.ppMaterials )
+			{
+				completeMaterials = false;
 				break;
-			source.variables.push_back( std::make_unique<MaterialVars>() );
-			MaterialVars &vars = *source.variables.back();
-			ReadVariables( material, neutrals, vars, true );
-			RenderCoreWorldMaterial desc;
-			desc.name = material->GetName();
-			desc.shader = material->GetShaderName();
-			desc.variableCount = vars.keys.Count();
-			desc.keys = vars.keyPtrs.Base();
-			desc.values = vars.valuePtrs.Base();
-			desc.textures = vars.textures.Base();
-			desc.defaults = vars.defaults.Base();
-			desc.translucent = material->IsTranslucent();
-			source.materials.push_back( desc );
+			}
+			for ( int slot = 0; slot < count; ++slot )
+			{
+				IMaterial *material = lodData.ppMaterials[slot];
+				if ( !material )
+				{
+					completeMaterials = false;
+					break;
+				}
+				source.variables.push_back( std::make_unique<MaterialVars>() );
+				MaterialVars &vars = *source.variables.back();
+				ReadVariables( material, neutrals, vars, true );
+				RenderCoreWorldMaterial desc;
+				desc.name = material->GetName();
+				desc.shader = material->GetShaderName();
+				desc.variableCount = vars.keys.Count();
+				desc.keys = vars.keyPtrs.Base();
+				desc.values = vars.valuePtrs.Base();
+				desc.textures = vars.textures.Base();
+				desc.defaults = vars.defaults.Base();
+				desc.translucent = material->IsTranslucent();
+				source.materials.push_back( desc );
+			}
+		}
+		if ( !completeMaterials || source.materials.size() != std::size_t( count ) * lodCount )
+		{
+			source.variables.clear();
+			source.materials.clear();
+			++missingMaterials;
+			continue;
 		}
 		RenderCoreStaticModel &out = models[i];
 		out.name = source.name.c_str();
@@ -505,7 +479,8 @@ static void LevelInitModels( IRenderCoreWorld *pWorld )
 		out.vtx = source.vtx.data();
 		out.vtxBytes = source.vtx.size();
 		out.materials = source.materials.data();
-		out.materialCount = unsigned( source.materials.size() );
+		out.materialCount = unsigned( count );
+		out.materialLodCount = unsigned( lodCount );
 	}
 	Msg( "r_core_world: Studio model inputs: %d models, missing model %d, mdl %d, vvd %d, "
 	     "vtx %d, materials %d\n",
@@ -950,12 +925,12 @@ bool RenderCoreWorldDraw_CanTakePosedModel( const model_t *model )
 }
 
 bool RenderCoreWorldDraw_TakePosedModel( const model_t *model, int skin,
-    const matrix3x4_t *boneToWorld, int boneCount, RenderCoreDrawPhase phase )
+    const matrix3x4_t *boneToWorld, int boneCount, RenderCoreDrawPhase phase, int body, int lod )
 {
 	CoreWorldState &state = State();
 	IRenderCoreWorld *pWorld = RenderCoreHost_World();
 	if ( !RenderCoreWorldDraw_CanTakePosedModel( model ) || !pWorld || skin < 0 || !boneToWorld ||
-	     boneCount <= 0 )
+	     boneCount <= 0 || lod < 0 )
 		return false;
 	const auto found =
 	    std::find( state.registeredModels.begin(), state.registeredModels.end(), model );
@@ -966,7 +941,7 @@ bool RenderCoreWorldDraw_TakePosedModel( const model_t *model, int skin,
 			for ( int col = 0; col < 4; ++col )
 				palette.push_back( boneToWorld[bone].m_flMatVal[row][col] );
 	RenderCorePosedModel posed = { unsigned( found - state.registeredModels.begin() ),
-	    unsigned( skin ), palette.data(), unsigned( boneCount ), phase };
+	    unsigned( skin ), palette.data(), unsigned( boneCount ), phase, body, unsigned( lod ) };
 	if ( !QueueCoreView( pWorld, NULL, 0, 0.0f, NULL, 0, &posed, 1 ) )
 		return false;
 	++state.posedClaims[posed.model];
@@ -1100,6 +1075,8 @@ CON_COMMAND( r_core_world_stats, "RFC 0016 K5: the core world's surfaces, views 
 	    stats.lastFailure );
 	Msg( "r_core_world_stats: posed models queued %llu draws %llu\n", stats.posedModelsQueued,
 	    stats.posedDrawsDrawn );
+	Msg( "r_core_world_stats: dynamic draws %llu refused %llu last refusal '%s'\n",
+	    stats.dynamicDrawsDrawn, stats.dynamicDrawsRefused, stats.lastRefusal );
 	for ( std::size_t i = 0; i < State().posedClaims.size(); ++i )
 	{
 		if ( State().posedClaims[i] && State().registeredModels[i] )
