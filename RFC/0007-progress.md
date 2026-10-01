@@ -1786,3 +1786,27 @@ game and is not in these Cycles images. Live transform and bone-palette
 capture, omitted translucent model parts and other screen types remain
 separate reference work; the in-game rendercore door lighting gate remains
 open.
+
+## Source 2 quality map relights and authored laser probes (2026-09-30)
+
+The `sp_a2_laser_intro_source2` and `sp_a1_intro4_relit` map builds use the
+`source2` profile with 4096-pixel, 2048-sample lightmaps, GI-reference light
+paths, fitted diffuse probe volumes and 16 reflection probes. The Cycles
+lightmap and reflection passes ran on rented NVIDIA GPUs; the map build
+receipts under `quality-results/relight/` record their devices and samples.
+Both packaged maps passed gameplay identity and are published under
+`run/maps/`. Their Source 2 audits still report reflection probe budget,
+coverage and glossy failures; laser intro also fails probe fit. These
+publications are marked `gate-failed` and do not close the lighting quality
+gate.
+
+Laser intro now has three map-owned reflection probe anchors in
+`quality/map_probe_positions/sp_a2_laser_intro.json`, seeded before the
+automatic fill to the current 16-probe reader limit. They target the west
+glossy chamber, lower east glossy chamber and east approach. The
+`legacy_bsp_relight.py --probe-positions` input validates the map name and
+finite coordinates and forwards the authored positions to the lighting
+pipeline. In the placement comparison, unserved glossy samples fell from
+2,931 to 2,442 of 2,931 servable samples; uncovered walkable samples rose
+from 722 to 744 of 1,773. The authored GPU probe receipt confirms those
+counts. Further coverage work remains open.

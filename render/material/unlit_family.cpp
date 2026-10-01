@@ -74,4 +74,17 @@ UnlitClaim ClaimUnlit( const ParameterBlock &block )
 	return claim;
 }
 
+UnlitClaim ClaimUnlitMesh( const ParameterBlock &block )
+{
+	// The ordinary unlit claim owns every shared parameter. The authored env
+	// map is a model-only extension; the scene's RPRB supplies its radiance.
+	ParameterBlock withoutProbe = block;
+	const bool nativeProbe = detail::TextureBound( block, "envmap" );
+	if ( nativeProbe )
+		(void)withoutProbe.SetTexture( "envmap", {} );
+	UnlitClaim claim = ClaimUnlit( withoutProbe );
+	claim.nativeProbe = nativeProbe;
+	return claim;
+}
+
 } // namespace render::material

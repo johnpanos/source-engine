@@ -4810,3 +4810,322 @@ samples `st`. The extracted laser scene passed for all 44 lifted screen quads;
 a changed UV and a disconnected UV image node were each rejected. The 41
 legacy relight and 16 USD scene tests passed. This is a reference-render
 tooling check and has not changed the in-game video path or its on/off state.
+
+### K12: static props cast into the core's runtime shadow atlas (2026-09-30)
+
+The world stage's shadow caster mesh previously contained only WMSH triangles.
+The core shaded claimed static props, but those props could not block a runtime
+light on the world or on another model. At `SetStaticProps`, composition now
+builds world-space caster triangles for the opaque props the world pass claims.
+It groups each instance as a frustum-cullable chunk and advances the caster
+generation, so cached shadow tiles redraw when the level's props change.
+The authored `STATIC_PROP_NO_SHADOW` and Studio
+`STUDIOHDR_FLAGS_DO_NOT_CAST_SHADOWS` flags reach this decision. The depth
+caster cannot sample a cutout texture, so alpha-tested surfaces are excluded
+from its mesh until a cutout shadow program exists; a prop with opaque and
+cutout surfaces contributes only its opaque triangles.
+
+On the staged `sp_a2_laser_intro_relit` preview, 236 of 294 static props
+were claimed for drawing. The core shadow mesh contains 226 opaque instances;
+two claimed instances have authored no-shadow flags and eight have only
+cutout surfaces. A native Vulkan Portal 2 boot with `r_core_world 1` drew
+958 core views with zero failed or skipped views. Its build and run evidence
+is in `quality-results/rendercore-model-game/static-casters-v1/` (notably
+`evidence.json`, `stdout.log`, `runtime/engine.log` and the screenshot).
+The earlier staged binary also booted under the same command as a control;
+the capture comparison is limited by animated pixels and does not certify
+shadow shape or the whole K12 image match.
+
+The Portal 2 product build and `render.shadows.pixels` pass. The standalone
+composition manifests were brought up to the model parser, skinning and
+vertexlit source set; `render.composition` and `.capabilities` pass with
+22 and 14 checks. Stylelint passes. `archlint check --changed` reports its
+existing CAP002 occurrences with zero new and zero stale occurrences.
+
+K12 remains active. Cutout shadow casting, unclaimed static props, other
+animated models, nested views, the game/lab image comparison, product output
+on Apple profiles, and deletion of the native backend's duplicate model
+shading remain open. `r_core_world` remains opt-in.
+
+### K12: alpha-tested PBR world surfaces enter the core model (2026-09-30)
+
+`PBRMetalRough` with `$alphatest` and `$alphatestreference` was a named world
+material gap even though the shared PBR surface program already discards
+pixels below the cutoff. The PBR claim now carries the Source byte reference
+and disables target alpha writes for the cutout variant. A GPU pixel check
+holds the scene fixed: a base alpha of 160/255 disappears under the default
+178/255 cutoff and keeps its lit RGB under a 127/255 cutoff. The other eight
+recorded PBR port cases still pass within their existing tolerance.
+
+The world stage's solid depth caster had included every WMSH triangle,
+including alpha-tested faces. Until it can sample a cutout texture, it now
+omits those triangles as the static-prop caster already does. On
+`sp_a2_laser_intro_relit` this omits 14 triangles; cutout-shaped shadows are
+still an open K7/K12 item. The core now claims 39 of 39 WMSH batches and 81
+of 95 world material records (previously 38/39 and 80/95). A native Vulkan
+Portal 2 boot drew 920 of 920 queued views with zero failed or skipped views.
+Evidence: `quality-results/rendercore-model-game/pbr-cutout-v1/`.
+
+`render.family.pbr` passed 89 checks, including the new two-threshold GPU
+case; `render.shadows.pixels` passed 40 and `render.composition` 22. The Portal
+2 product build, stylelint and `git diff --check` passed. `archlint
+check --changed` still reports its existing CAP002 occurrences (zero new,
+zero stale). This is one material cohort: the remaining 14 world material
+records, unclaimed models, nested views, cutout-shaped shadows, game/lab
+image comparison and duplicate native shading keep K12 open. The engine's
+`r_core_world` default remains off.
+
+### K12: precached Studio models use the core mesh point (2026-09-30)
+
+The product pose bridge previously registered and recognized only
+`portal_door_combined.mdl`. For a world stage with `r_core_world 1`, level
+composition now registers the client's precached opaque Studio models beside
+the static-prop meshes. It keeps the static models first so prop indices stay
+stable. The client precache owns the model references; the core copies MDL,
+VVD, VTX and materials at level load. The hard-coded door load and identity
+check are gone. `r_core_world 0` keeps the legacy path's lazy model loading.
+
+At a Studio draw, the core takes a registered model only in a top-level world
+stage view, on LOD 0 and body 0, with no flex, forced material, two-pass,
+translucent, wireframe, blink, static-lighting or stats mode and no per-entity
+color or alpha modulation. A rejected draw remains with studiorender. The
+engine's bone palette still supplies the pose; gameplay animation is not
+reimplemented. `r_core_world_stats` now names every model actually claimed,
+so merely parsing a precached asset cannot be mistaken for a product handover.
+
+On `sp_a2_laser_intro_relit`, 48 candidate posed models came from 139 client
+precache entries; all 89 static and candidate model inputs had MDL, VVD, VTX
+and materials. The native Vulkan boot with the final guarded bridge queued
+390 posed model views and drew 782 posed surfaces: 194 claims for
+`portal_door_combined.mdl` and 196 for `elevator_b.mdl`. All 1,150 queued
+core views drew, with zero failed or skipped. Evidence:
+`quality-results/rendercore-model-game/posed-registry-final/`. The `r_core_world
+0` control in `posed-registry-off-final/` scanned no precache entries, parsed
+only the 41 static models and drew no core views; the Portal BSP control on
+`testchmb_a_01` booted through the core world path with 200/200 views, but
+that map has no world stage or posed-model claims. `render.world.null` passed
+31 checks. Both Portal and Portal 2 product builds and stylelint passed;
+archlint's unchanged CAP002 debt has zero new and zero stale occurrences.
+
+This moves a second animated model cohort into the render model. Other Studio
+models still need material terms, flex, bodygroups, LODs, entity modulation,
+and nested-view support. The candidate registry is level-load only: turning
+`r_core_world` on mid-level leaves posed models with studiorender until a
+new level loads. Model runtime shadow casters and the game/lab image match
+also remain open; K12 and the `r_core_world` opt-in state do not close here.
+
+### K12: native model materials and a checked-in claim inventory (2026-09-30)
+
+The elevator tube exposed a material ownership error: its authored glass was
+entering the core as an opaque Studio surface, and its `$envmap` could draw a
+legacy cubemap. Studio registration and drawing now carry an opaque or blended
+surface phase. The tube glass is in the blended phase, samples the core's RPRB
+image lighting, and does not import a legacy cubemap for a native mesh. The
+small inner elevator platform (`elevator_main_a/b/c`) is opaque and self lit;
+the shared PBR program replaces its masked lighting with emission rather than
+adding emission over direct lighting. An unlit model mesh also uses this same
+surface program in an emissive mode, with native image lighting when its VMT
+authors `$envmap`.
+
+`render.material` now maps more VertexLitGeneric model terms into the shared
+PBR program: authored Phong and half Lambert, rim, Phong exponent and masks,
+self illumination and its separate mask, detail and light warp textures,
+base/normal alpha probe masks, probe Fresnel and color controls, and related
+blend tints. The `render_lab` posed-model suite covers the blended glass,
+platform emission, unlit model and the material terms with native Vulkan
+pixels. Its 29 checks pass; the map-terms suite passes 24 checks.
+
+The checked-in [Portal 2 model-material inventory](../quality/materials/portal2-model-claims.json)
+contains every `materials/models/**/*.vmt` from the ordered content path, its
+resolved input hash, shader, proxies, native-probe claim and gap. The auditor
+(`tools/render/material_claim_inventory.py`) feeds each material into
+`render_lab claim-batch`, which calls the actual `MapVariables` and
+`ClaimForMesh` rules. `--verify` checks the whole report, and the
+`render.material.model-claim-inventory` Q-CONTENT suite requires all 1,165
+entries. Currently 970/1,165 (83.26%) are statically claimed. This is claim
+coverage, not a pixel or reachability result. The largest gaps include 49
+proxy materials, 24 `$treesway`, 20 Refract, 11 `$bumpscale`, and 9 `$ssbump`
+materials; the inventory retains each specific material and reason.
+
+In a native Vulkan Portal 2 boot on `sp_a2_laser_intro_relit`, the product
+claimed 162/177 staged material records (91.5%), including the tube and floor
+cohort, and drew 1,012/1,012 queued views with no failures or skips. The 15
+unclaimed records are 4 Refract_DX90, 2 WriteZ_DX9, 4 malformed `.2` keys,
+2 `/*` keys, and one each of `$envampsaturation`, `$phongwarptexture` and
+`$ssbump`. Evidence:
+`quality-results/rendercore-model-game/material-inventory-v4/`. The malformed
+keys remain explicit gaps because silently accepting them would hide an input
+fidelity problem. This cohort does not close K12: the catalog's remaining
+material families, native image comparison and other render paths remain open;
+`r_core_world` stays opt-in.
+
+### K12: SSBump model normals enter the shared PBR point (2026-09-30)
+
+The PBR mesh point now decodes `$ssbump` as weights in the same three-vector
+basis already owned by the core's world surface program. It keeps the normal
+texture in the data color space and normalizes the resulting tangent-space
+direction before lighting. The model claim selects `kSurfaceSsbump` in place
+of the ordinary normal-map variant, requires a bound bump texture, and reads
+`$ssbumpmathfix` without applying the legacy diffuse-page correction to PBR
+lighting. `render_lab` stages a one-texel normal map and draws both variants;
+its Vulkan pixel check detects the changed light response. The 32-check
+posed-model suite and the 124-check `render.family.vertexlit` conformance
+suite pass.
+
+The VertexLitGeneric shader sources declare no `$bumpscale` control. The
+importer now classifies that key as family-specific metadata: the eleven
+affected VMTs use their normal texture's authored texels in the shared PBR
+point. The checked-in inventory and its 1,165-entry verifier now claim
+989/1,165 model VMTs (84.89%), up from 970/1,165. Eight of the nine
+`$ssbump` catalog gaps close; the ninth exposes a malformed `0.4` key and
+stays explicit. The eleven `$bumpscale` gaps close.
+
+A native Vulkan Portal 2 boot on `sp_a2_laser_intro_relit` claims 163/177
+staged materials (previously 162/177), including that scene's SSBump model,
+and draws 811/811 queued views with no failures or skips. Evidence:
+`quality-results/rendercore-model-game/material-inventory-v5/` and
+`quality-results/rendercore-model-game/ssbump-vertexlit-conformance-v2.json`.
+The product boot predates the importer-only `$bumpscale` classification; the
+subsequent Portal 2 product build passes. The catalog, remaining scene gaps,
+view handover, native-backend shader deletion, and game/lab frame comparison
+remain open under K12. `r_core_world` stays opt-in.
+
+### K12: unquoted VMT numeric keys stay visible in the model inventory (2026-09-30)
+
+Four staged VertexLitGeneric materials carry unquoted values such as
+`$envmaptint .2 .2 .2`. Source KeyValues reads the first scalar for the
+parameter and presents the remaining scalar tokens as numeric keys. No shader
+can name those keys. The VMT importer now recognizes only complete finite
+numeric keys as diagnosed parser metadata; it still refuses an unknown named
+render control. `render_lab` checks both cases. The claim-batch audit exports
+each numeric key into `numeric_keyvalues_residue` on the affected material's
+checked-in record, so the classification is reviewable per VMT. The two
+materials whose block comments mispair shader parameters remain named gaps.
+The 34-check Vulkan posed-model suite and 79-check `render.material.v2`
+conformance suite pass.
+
+The Portal 2 model catalog now claims 1,000/1,165 VMTs (85.84%); the
+1,165-entry inventory verification passes. A native Vulkan product boot on
+`sp_a2_laser_intro_relit` claims 167/177 staged material records, up from
+163/177, and draws 1,336/1,336 queued views without failure or skip.
+Evidence: `quality-results/rendercore-model-game/material-inventory-v6/`.
+The remaining scene gaps are four Refract_DX90, two WriteZ_DX9, two malformed
+block-comment materials, one `$envampsaturation` typo and one authored
+`$phongwarptexture`. K12 still needs these surfaces, the other catalog and
+view cohorts, one copy of the shader math, and game/lab frame comparison;
+`r_core_world` stays opt-in.
+
+### K12: staged material names and Phong warp on the shared PBR point (2026-09-30)
+
+The diagnostic product boot at
+`quality-results/rendercore-model-game/material-gap-names/` names every
+unclaimed material on `sp_a2_laser_intro_relit`. Three
+`glass/glasswindow_refract01*` materials and
+`models/props_destruction/glass_fracture_b_normal` need scene-color
+transmission with authored normal maps, refraction amount, tint and blur.
+The two WriteZ materials are `models/portals/portal_1_anims` and
+`portal_2_anims`; they belong to the portal/depth handover.
+`models/props/ball_catcher_sheet` and `combine_ball_launcher` have block
+comments that KeyValues mispairs, and
+`models/anim_wp/arm_interior_192/arm_glasstop` has an undeclared
+`$envampsaturation` typo. The temporary diagnostic print was removed
+after the capture.
+
+`models/props/reflecto_cube_glass` authored `$phongwarptexture`. The
+shared PBR mesh point now colors each direct specular contribution by the
+legacy Phong highlight and Fresnel-range lookup while preserving native
+IBL. It uses the model's existing data-texture slot, and a material that
+authors both Phong warp and light warp is refused because they require
+distinct slots. `render_lab` stages a colored warp texture: its 37-check
+posed-model suite detects the direct specular color change and the
+conflicting-slot rejection. `render.family.vertexlit` passes 124 checks.
+
+A native Vulkan product boot at
+`quality-results/rendercore-model-game/phong-warp-v1/` draws 1,347/1,347
+queued views without failure. The cube gets past Phong warp but still has
+`$cloakfactor 1`; it remains unclaimed until the core owns that
+transmission pass. The staged claim remains 167/177. The static model
+inventory remains 1,000/1,165 because the authored VMT also has
+`$multipass` and other controls that its raw static claim refuses. No
+material was counted as handed over merely because the new term rendered
+in isolation. The inventory now stores every importer `unmapped_keys` entry
+per material, beyond its first claim failure. The cube's record names
+`$multipass`, `$refractamount`, `$cloakfactor`, `$cloaktint`,
+`$envmapconstrast`, and `$forcephong`; the new Phong warp key is absent from
+that list. K12 still needs the transmission cohort, portal depth
+cohort, other materials and views, native shader-copy deletion and the
+game/lab image match; `r_core_world` stays opt-in.
+
+### K12: full Portal 2 material claims and authored mesh probe masks (2026-09-30)
+
+The [full VMT claim inventory](../quality/materials/portal2-all-claims.json)
+now audits all 3,738 resolved Portal 2 materials in content search order. It
+calls `render.material`'s `ClaimForDrawing` with world PBR enabled and
+`ClaimForMesh` with native RPRB, retaining each material's shader, input hash,
+proxies, both claim results, all unmapped keys, and per-shader counts. A model
+path requires the mesh claim; another path can take either surface point.
+The `render.material.all-claim-inventory` conformance row verifies the entire
+checked-in report. At this slice the static union claimed 1,836/3,738 (49.12%).
+Among the most numerous unclaimed cohorts are `$ignorez` (302), `$decal`
+(273), material proxies (173), SpriteCard (143 materials), and Refract
+(37 materials). The report counts non-surface shaders too; its percentage is
+a catalog measure, not evidence that all those shaders should become PBR
+surfaces or that any individual VMT appears in a tested view.
+
+The mesh point now samples an authored RGB `$envmapmask` as a weight on its
+native RPRB image specular. It binds the mask through the shared surface
+program's existing data-texture slot and refuses a material that also needs
+that slot for `$phongexponenttexture`. It also refuses `$envmapmask` with
+`$bumpmap`, where the legacy VertexLitGeneric initialization disables the
+envmap instead of combining the two. The lab's RPRB pixel oracle verifies the
+three RGB weights; its posed-model suite verifies the claim and both refused
+combinations. Both suites pass with Vulkan validation: 25 and 40 checks. The
+model inventory rises from 1,000 to 1,006 of 1,165 (86.35%); the full
+inventory rises from 1,829 to 1,836. This handover uses no legacy cubemap
+texture. The native Vulkan product boot at
+`quality-results/rendercore-model-game/probe-mask-v1/` passes with 1,359/1,359
+views drawn, zero failed or skipped, and 167/177 staged materials claimed;
+this map does not stage one of the six newly claimed model VMTs. The scene's
+Refract and cloak materials, portal depth materials,
+other catalog gaps, duplicate native shading, and game/lab image comparison
+remain open under K12; `r_core_world` stays opt-in.
+
+### K12: authored model `$color2` uses the shared PBR albedo (2026-09-30)
+
+Source's BaseShader multiplies `$color` by `$color2` for the material color.
+The native VertexLit mesh claim now packs that product into the shared PBR
+program's albedo tint, with finite, nonnegative validation. The posed-model
+Vulkan suite compares tinted pixels with the neutral material and passes
+42/42 checks. Five more Portal 2 model VMTs claim the mesh point: the model
+inventory is 1,011/1,165 (86.78%), and the full catalog is 1,843/3,738
+(49.30%). Both checked inventories retain the exact input hashes and gaps.
+The native Vulkan product boot at
+`quality-results/rendercore-model-game/color2-v1/` passes with 1,358/1,358
+views drawn, zero failed or skipped, and 167/177 staged materials claimed;
+this map does not stage the five `$color2` model VMTs.
+The Refract and cloak cohort remains the next appearance dependency for the
+staged Portal 2 scene.
+
+### K12: graph-owned scene-color capture boundary (2026-09-30)
+
+The four staged Refract VMTs require a scene-color transmission input after
+opaque shading. `render.graph` now offers `CaptureSceneColor`: it declares a
+device-local image-to-buffer copy followed by a buffer-to-image copy into a
+sampled transient, with graph transitions and lifetime owned by the frame.
+The G11 oracle clears an opaque scene and checks every captured pixel on the
+null and Vulkan adapters. Invalid sources are rejected without adding passes.
+For 2x, 4x or 8x MSAA, the graph now declares a load-and-resolve render pass
+before the copy. The Vulkan lane proves all 16 pixels of a 4x source survive
+the resolve and capture; it caught and corrected a multisampled snapshot
+allocation. The null lane checks the resolve declaration and single-sample
+pixels. The native backend's core target import now declares copy-source only
+where the host image was created for it (always for the MSAA color, and only
+for a capturable swapchain image). This change is core plumbing in the frozen
+backend; no legacy shading logic changed. A native Portal 2 boot at
+`quality-results/rendercore-model-game/scene-color-import-v1/` passes with
+1,155/1,155 views drawn, zero failed or skipped, and 167/177 staged material
+records claimed. The product slot has not yet called the graph capture, and
+K12 still needs a separate transmission pass, the shared PBR transmission
+term and its authored-parameter oracle before a Refract VMT can claim. No
+material count changes from this infrastructure slice; `r_core_world` remains
+opt-in.

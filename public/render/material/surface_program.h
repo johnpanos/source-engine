@@ -34,7 +34,8 @@
 //			  others bind the neutral view group (NeutralViewGroup), which
 //			  MaterialPrograms keeps. Binding 12 is the view's planar
 //			  reflection (SurfaceScreenInputs), which the water point reads,
-//			  and 13 its sampler;
+	//			  and 13 its sampler; 14 is the pre-output linear scene color
+	//			  behind a transmitting surface and 15 its sampler;
 //			- draw (role kDraw): binding 0 the draw's lightmap page, 1 its
 //			  sampler, 2 its model lighting (model_lighting.h; neutral for a
 //			  world surface).
@@ -77,7 +78,7 @@ inline constexpr float kLightmapScaleLinear = 4.5947938f;
 struct SurfaceConstants
 {
 	float tint[4] = { 1.0f, 1.0f, 1.0f, 1.0f }; // $color, $alpha
-	float flags[4] = {};                        // $vertexcolor, $alphatest, reference, unused
+	float flags[4] = {}; // $vertexcolor, $alphatest, reference, mesh half-Lambert
 	// x: 1 when the material is fully opaque (no blend, no alpha test), where
 	// height fog writes its factor to the output alpha (the port's
 	// WRITEWATERFOGTODESTALPHA); set by Request from the variant. y: 1 when
@@ -88,7 +89,9 @@ struct SurfaceConstants
 	float state[4] = { 0.0f, 0.0f, 1.0f, 0.0f };
 	float envTint[4] = { 1.0f, 1.0f, 1.0f, 1.0f };       // $envmaptint, $fresnelreflection
 	float envContrast[4] = { 0.0f, 0.0f, 0.0f, 0.0f };   // in effect; a: 1 - $fresnelreflection
-	float envSaturation[4] = { 1.0f, 1.0f, 1.0f, 0.0f }; // in effect
+	// RGB: env saturation on legacy points, native mesh probe tint on PBR;
+	// alpha: the native mesh's inverted normal-alpha Phong mask.
+	float envSaturation[4] = { 1.0f, 1.0f, 1.0f, 0.0f };
 	float selfIllumTint[4] = { 1.0f, 1.0f, 1.0f, 0.0f }; // in effect
 	float detailTint[4] = { 1.0f, 1.0f, 1.0f, 1.0f };    // $detailtint, $detailblendfactor
 	float detailScale[4] = { 4.0f, 4.0f, 0.0f, 0.0f };   // $detailscale
@@ -119,8 +122,25 @@ struct SurfaceConstants
 	// Modern mesh point without an MRAO texture: metalness, roughness and AO.
 	// kSurfaceMraoTexture selects the texture instead at pipeline creation.
 	float pbrFactors[4] = { 0.0f, 0.55f, 1.0f, 0.0f };
+	// Native VertexLit mesh point: x base-alpha Phong mask, y albedo-tinted
+	// Phong, z rim boost (0 off), w rim exponent. Neutral for other points.
+	float meshControls[4] = { 0.0f, 0.0f, 0.0f, 4.0f };
+	// Native probe reflectance masks on VertexLit meshes: base alpha and
+	// normal alpha. Other points leave both off.
+	float meshProbeMasks[4] = {};
+	// VertexLit probe response: legacy env Fresnel contribution, followed by
+	// the authored minimum, maximum and exponent of its angular mask.
+	float meshProbeFresnel[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
+	float meshModes[4] = {}; // light warp, authored env map, Phong enable
+	// Native mesh probe contrast, saturation, Phong-warp enable, and authored
+	// RGB $envmapmask enable. The last reads the data texture at material binding 5.
+	float meshProbeColor[4] = { 0.0f, 1.0f, 0.0f, 0.0f };
+	// Thin dielectric transmission on the shared PBR point: x is the
+	// transmitted fraction, y the index of refraction. The scene input is
+	// linear light before output scale, fog and encoding.
+	float transmission[4] = { 0.0f, 1.5f, 0.0f, 0.0f };
 };
-static_assert( sizeof( SurfaceConstants ) == 288 );
+static_assert( sizeof( SurfaceConstants ) == 384 );
 
 // An area light as the frame block holds it (render.area-light.v1: the
 // rectangle, its radiance and its reach).
@@ -218,6 +238,10 @@ struct SurfaceScreenInputs
 	// (kSurfaceWater, binding 12, filtered and clamped).
 	device::TextureId planarReflection;
 	device::TextureDesc planarReflectionDesc;
+	// The opaque scene in linear light, before output scale, fog and encoding.
+	// A transmitting PBR point samples it at its fragment position.
+	device::TextureId sceneColor;
+	device::TextureDesc sceneColorDesc;
 };
 
 // The frame's terms (std140, the Frame block of surface.frag): one lightmap
@@ -397,6 +421,15 @@ inline constexpr std::uint32_t kSurfaceRuntimeDirect = 134217728;
 // The PBR point reads its MRAO texture; absent for an imported dielectric
 // whose constant metalness, roughness and AO are in SurfaceConstants.
 inline constexpr std::uint32_t kSurfaceMraoTexture = 268435456;
+// A VertexLit mesh uses its separate RGB self-illumination mask in the
+// material emission slot, instead of base alpha.
+inline constexpr std::uint32_t kSurfaceSelfIllumMask = 536870912;
+// VertexLit's Phong exponent texture uses the material mask slot. Its red
+// channel supplies the exponent when the constant is zero; green controls
+// albedo tint and alpha may mask the rim.
+inline constexpr std::uint32_t kSurfacePhongExponentTexture = 1073741824;
+// Thin dielectric transmission from the view's scene color (binding 14).
+inline constexpr std::uint32_t kSurfaceTransmission = 0x80000000u;
 // The terms that read the normal (not on the flat vertex), and those the
 // model vertex alone evaluates.
 inline constexpr std::uint32_t kSurfaceNormalTerms =
@@ -449,11 +482,11 @@ struct SurfaceTextures
 {
 	std::string base;
 	std::string envmap; // a cube map
-	std::string envmapMask;
+	std::string envmapMask; // or VertexLit's Phong exponent texture
 	std::string bump;
 	std::string detail;
-	std::string mrao;
-	std::string emission;
+	std::string mrao;     // or VertexLit's light-warp lookup (no MRAO term on that point)
+	std::string emission; // or VertexLit's self-illumination mask
 	// The water point's flow map and flow noise (data), bound in the env map
 	// mask's and MRAO's places (the water point reads neither).
 	std::string flowmap;

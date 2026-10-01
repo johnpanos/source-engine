@@ -83,6 +83,6 @@ void StaticPropMgr_CorePropBounds( int nProp, Vector &mins, Vector &maxs );
 int StaticPropMgr_CoreModelCount();
 const model_t *StaticPropMgr_CoreModel( int nModel );
 void StaticPropMgr_CorePropInfo( int nProp, const model_t **model, float world[12], int *skin,
-    unsigned char *alpha, float modulation[3] );
+    unsigned char *alpha, float modulation[3], bool *castsShadow );
 
 #endif	// STATICPROPMGR_H

@@ -199,7 +199,8 @@ private:
 foundation::Expected<device::BlendMode, std::string> ClaimForDrawing(
     const MaterialDesc &material, bool worldPbr = false );
 // The mesh point's exact-variable claim without making a pipeline.
-foundation::Expected<device::BlendMode, std::string> ClaimForMesh( const MaterialDesc &material );
+foundation::Expected<device::BlendMode, std::string> ClaimForMesh(
+    const MaterialDesc &material, bool nativeReflectionProbes = false );
 
 } // namespace render::material
 

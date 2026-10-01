@@ -21,12 +21,14 @@
 #include "render/graph/compiled_graph.h"
 #include "render/graph/executor.h"
 #include "render/graph/pass_timers.h"
+#include "render/graph/scene_color.h"
 #include "render/graph/validate.h"
 #include "graph_fixtures.h"
 #include "jobsystem/parallel_executor.h"
 #include "testing/checks.h"
 
 #include <algorithm>
+#include <array>
 #include <cstdio>
 #include <random>
 #include <tuple>
@@ -233,6 +235,105 @@ void Execution( testing::Checks &checks )
 		transitions += command.op == device::null::RecordedOp::kTransitionTexture;
 	checks.Equal( transitions, std::size_t( result.Value().transitions ),
 	    "G6.every-compiled-transition-is-recorded" );
+}
+
+void SceneColorCapture( testing::Checks &checks )
+{
+	GraphBuilder invalid;
+	const std::size_t before = invalid.Passes().size();
+	checks.That( !CaptureSceneColor( invalid, {} ) && invalid.Passes().size() == before,
+	    "G11.invalid-scene-color-does-not-mutate-graph" );
+	device::TextureDesc multi = Color( 4 );
+	multi.sampleCount = 3;
+	const ResourceRef invalidSamples = invalid.CreateTexture( "bad samples", multi );
+	checks.That( !CaptureSceneColor( invalid, invalidSamples ) && invalid.Passes().size() == before,
+	    "G11.invalid-sample-count-does-not-mutate-graph" );
+	GraphBuilder multisampled;
+	multi.sampleCount = 4;
+	const ResourceRef msaa = multisampled.CreateTexture( "msaa", multi );
+	multisampled.AddPass( "opaque", PassKind::kRender )
+	    .Write( msaa, ResourceUsage::kColorAttachment )
+	    .Execute( Noop );
+	const auto resolved = CaptureSceneColor( multisampled, msaa );
+	if ( !checks.That(
+	         resolved && multisampled.Passes().size() == 4 &&
+	             multisampled.Passes()[1].accesses[1].usage == ResourceUsage::kResolveDestination,
+	         "G11.multisampled-scene-declares-resolve" ) )
+		return;
+	multisampled.AddPass( "sample", PassKind::kRender )
+	    .Read( *resolved, ResourceUsage::kSampled )
+	    .SideEffect()
+	    .Execute( Noop );
+	checks.That(
+	    CompileGraph( std::move( multisampled ) ).HasValue(), "G11.multisampled-capture-compiles" );
+
+	auto device = ManualDevice();
+	auto *control = device::null::Control( *device );
+	device::BufferDesc readbackDesc;
+	readbackDesc.size = 4 * 4 * 4;
+	readbackDesc.memory = device::MemoryKind::kReadback;
+	readbackDesc.usages = { ResourceUsage::kCopyDestination };
+	const auto readbackResult = device->CreateBuffer( readbackDesc );
+	if ( !checks.That( readbackResult.HasValue(), "G11.readback-created" ) )
+		return;
+	const device::BufferId readbackId = readbackResult.Value();
+	GraphBuilder builder;
+	const ResourceRef scene = builder.CreateTexture( "scene", Color( 4 ) );
+	const ResourceRef readback = builder.ImportBuffer( "readback", readbackId, readbackDesc,
+	    ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+	builder.AddPass( "opaque", PassKind::kRender )
+	    .Write( scene, ResourceUsage::kColorAttachment )
+	    .Execute(
+	        [scene]( RecordContext &context )
+	        {
+		        device::ColorAttachment color;
+		        color.texture = context.Texture( scene );
+		        color.load = device::LoadOp::kClear;
+		        color.clear = { 0.2f, 0.4f, 0.6f, 1.0f };
+		        device::RenderingDesc rendering;
+		        rendering.colors = std::span( &color, 1 );
+		        rendering.width = 4;
+		        rendering.height = 4;
+		        context.Encoder().BeginRendering( rendering );
+		        context.Encoder().EndRendering();
+	        } );
+	const auto snapshot = CaptureSceneColor( builder, scene );
+	if ( !checks.That( snapshot.has_value(), "G11.scene-color-captured" ) )
+		return;
+	builder.AddPass( "transmission-consumer", PassKind::kRender )
+	    .Read( *snapshot, ResourceUsage::kSampled )
+	    .SideEffect()
+	    .Execute( Noop );
+	builder.AddPass( "read-snapshot", PassKind::kCopy )
+	    .Read( *snapshot, ResourceUsage::kCopySource )
+	    .Write( readback, ResourceUsage::kCopyDestination )
+	    .Execute(
+	        [snapshot, readback]( RecordContext &context )
+	        {
+		        context.Encoder().CopyTextureToBuffer(
+		            context.Texture( *snapshot ), context.Buffer( readback ), { 0, 0, 0, 4, 4 } );
+	        } );
+	auto graph = CompileGraph( std::move( builder ) );
+	if ( !checks.That( graph.HasValue(), "G11.capture-compiles" ) )
+		return;
+	checks.Equal( graph.Value().trace.kept.size(), std::size_t( 5 ),
+	    "G11.graph-keeps-opaque-capture-stage-consumer" );
+	SerialGraphExecutor executor;
+	auto result = executor.Execute( graph.Value(), *device );
+	if ( !checks.That( result.HasValue(), "G11.capture-executes" ) )
+		return;
+	control->CompleteThrough( device::QueueKind::kGraphics, result.Value().token.value );
+	(void)device->Poll();
+	std::array<std::byte, 64> pixels{};
+	checks.That( device->ReadBuffer( readbackId, 0, pixels ).HasValue(), "G11.capture-readback" );
+	for ( std::size_t pixel = 0; pixel < 16; ++pixel )
+	{
+		const std::array<std::byte, 4> expected = {
+		    std::byte{ 51 }, std::byte{ 102 }, std::byte{ 153 }, std::byte{ 255 } };
+		checks.That( std::equal( expected.begin(), expected.end(), pixels.begin() + pixel * 4 ),
+		    "G11.snapshot-preserves-scene-pixels" );
+	}
+	(void)device->Release( readbackId, result.Value().token );
 }
 
 // --- RFC 0014 D4: GPU pass timers --------------------------------------------
@@ -491,6 +592,7 @@ int main()
 	Transitions( checks );
 	BadGraphs( checks );
 	Execution( checks );
+	SceneColorCapture( checks );
 	RandomGraphs( checks, 1000 );
 	Pooling( checks );
 	PassTimers( checks );

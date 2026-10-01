@@ -400,7 +400,7 @@ public:
 	int CoreModelCount() const { return m_StaticPropDict.Count(); }
 	const model_t *CoreModel( int nModel ) const { return m_StaticPropDict[nModel].m_pModel; }
 	void CorePropInfo( int nProp, const model_t **model, float world[12], int *skin,
-	    unsigned char *alpha, float modulation[3] ) const
+	    unsigned char *alpha, float modulation[3], bool *castsShadow ) const
 	{
 		const CStaticProp &prop = m_StaticProps[nProp];
 		*model = prop.m_pModel;
@@ -412,6 +412,7 @@ public:
 		modulation[0] = prop.m_DiffuseModulation.x;
 		modulation[1] = prop.m_DiffuseModulation.y;
 		modulation[2] = prop.m_DiffuseModulation.z;
+		*castsShadow = ( prop.m_Flags & STATIC_PROP_NO_SHADOW ) == 0;
 	}
 	void CorePropBounds( int nProp, Vector &mins, Vector &maxs ) const
 	{
@@ -573,7 +574,8 @@ bool CStaticProp::Init( int index, StaticPropLump_t &lump, model_t *pModel )
 		lump.m_DiffuseModulation.g * ( 1.0f / 255.0f ),
 		lump.m_DiffuseModulation.b * ( 1.0f / 255.0f ) );
 	m_Skin = (unsigned char)lump.m_Skin;
-	m_Flags = ( lump.m_Flags & (STATIC_PROP_SCREEN_SPACE_FADE | STATIC_PROP_FLAG_FADES | STATIC_PROP_NO_PER_VERTEX_LIGHTING) );
+	m_Flags = ( lump.m_Flags & ( STATIC_PROP_SCREEN_SPACE_FADE | STATIC_PROP_FLAG_FADES |
+	                               STATIC_PROP_NO_PER_VERTEX_LIGHTING | STATIC_PROP_NO_SHADOW ) );
 
 	int nCurrentDXLevel = g_pMaterialSystemHardwareConfig->GetDXSupportLevel();
 	bool bNoDraw = ( lump.m_nMinDXLevel && lump.m_nMinDXLevel >	nCurrentDXLevel );
@@ -2447,7 +2449,7 @@ const model_t *StaticPropMgr_CoreModel( int nModel )
 }
 
 void StaticPropMgr_CorePropInfo( int nProp, const model_t **model, float world[12], int *skin,
-    unsigned char *alpha, float modulation[3] )
+    unsigned char *alpha, float modulation[3], bool *castsShadow )
 {
-	s_StaticPropMgr.CorePropInfo( nProp, model, world, skin, alpha, modulation );
+	s_StaticPropMgr.CorePropInfo( nProp, model, world, skin, alpha, modulation, castsShadow );
 }

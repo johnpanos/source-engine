@@ -137,6 +137,9 @@ int main()
 		auto basic = modernClaimOf( "VertexLitGeneric { $basetexture a }" );
 		auto normal = modernClaimOf(
 		    "VertexLitGeneric { $basetexture a $bumpmap n $phong 1 $phongexponent 30 }" );
+		auto ssbump = modernClaimOf( "VertexLitGeneric { $basetexture a $bumpmap n "
+		                             "$ssbump 1 $ssbumpmathfix 1 }" );
+		auto missingSsbumpMap = modernClaimOf( "VertexLitGeneric { $basetexture a $ssbump 1 }" );
 		auto opaqueNoAlphaMod =
 		    modernClaimOf( "VertexLitGeneric { $basetexture a $ignore_alpha_modulation 1 }" );
 		auto selfIllum = modernClaimOf( "VertexLitGeneric { $basetexture a $selfillum 1 }" );
@@ -153,7 +156,8 @@ int main()
 		                   "\"$phongfresnelranges\" \"[1 1.5 2]\" }" );
 		auto cutout = modernClaimOf( "VertexLitGeneric { $basetexture a $alphatest 1 "
 		                             "$alphatestreference 0.65 }" );
-		auto unsupported = modernClaimOf( "VertexLitGeneric { $basetexture a $rimlight 1 }" );
+		auto rimLit = modernClaimOf( "VertexLitGeneric { $basetexture a $rimlight 1 "
+		                             "$rimlightboost 2 $rimlightexponent 4 }" );
 		checks.That( basic && basic->claimed && basic->constants.pbrFactors[0] == 0.0f &&
 		                 basic->constants.pbrFactors[3] == 0.0f &&
 		                 ( basic->Variant().terms & kSurfacePbr ) != 0,
@@ -161,6 +165,11 @@ int main()
 		checks.That( basic && normal && normal->claimed && normal->normalMap &&
 		                 normal->constants.pbrFactors[1] < basic->constants.pbrFactors[1],
 		    "modern.bump-and-phong-map-to-normal-and-roughness" );
+		checks.That( ssbump && ssbump->claimed && ssbump->ssbump &&
+		                 ( ssbump->Variant().terms & kSurfaceSsbump ) != 0 &&
+		                 ( ssbump->Variant().terms & kSurfaceBump ) == 0 && missingSsbumpMap &&
+		                 !missingSsbumpMap->claimed,
+		    "modern.ssbump-basis-requires-a-bound-map" );
 		checks.That( opaqueNoAlphaMod && opaqueNoAlphaMod->claimed,
 		    "modern.opaque-mesh-needs-no-alpha-modulation" );
 		checks.That( selfIllum && selfIllum->claimed && selfIllum->selfIllum &&
@@ -180,9 +189,9 @@ int main()
 		                 cutout->constants.flags[1] == 1.0f && cutout->constants.flags[2] > 0.64f &&
 		                 cutout->constants.flags[2] < 0.66f && !cutout->Variant().alphaWrite,
 		    "modern.catwalk-cutout-keeps-its-authored-threshold" );
-		checks.That( unsupported && !unsupported->claimed &&
-		                 unsupported->reason.find( "rimlight" ) != std::string::npos,
-		    "modern.unmapped-rimlight-is-a-named-gap" );
+		checks.That( rimLit && rimLit->claimed && rimLit->constants.meshControls[2] == 2.0f &&
+		                 rimLit->constants.meshControls[3] == 4.0f,
+		    "modern.rimlight-maps-to-shared-pbr-controls" );
 	}
 
 	// The family refuses what it does not draw, naming it.

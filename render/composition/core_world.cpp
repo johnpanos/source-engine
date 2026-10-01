@@ -18,6 +18,7 @@
 #include <array>
 #include <chrono>
 #include <cmath>
+#include <cctype>
 #include <cstdlib>
 #include <cstddef>
 #include <cstdio>
@@ -59,6 +60,33 @@ private:
 	legacy::ICoreTextures &m_Textures;
 };
 
+// The depth caster has no material texture or blend binding. Until its
+// cutout/transmission program exists, neither kind casts a solid silhouette.
+bool OpaqueShadowMaterial( const pass::world::WorldMaterial &material )
+{
+	for ( const auto &[key, value] : material.variables )
+	{
+		auto is = [&]( const char *name )
+		{
+			const std::size_t length = std::strlen( name );
+			if ( key.size() != length )
+				return false;
+			for ( std::size_t i = 0; i < length; ++i )
+				if ( std::tolower( static_cast<unsigned char>( key[i] ) ) != name[i] )
+					return false;
+			return true;
+		};
+		if ( !is( "$alphatest" ) && !is( "$translucent" ) && !is( "$alpha" ) )
+			continue;
+		char *end = nullptr;
+		const float number = std::strtof( value.c_str(), &end );
+		if ( end == value.c_str() || !std::isfinite( number ) ||
+		     ( is( "$alpha" ) ? number < 1.0f : number != 0.0f ) )
+			return false;
+	}
+	return true;
+}
+
 } // namespace
 
 void CoreWorld::SetWorld( const RenderCoreWorldVertex *vertices, unsigned int vertexCount,
@@ -95,6 +123,13 @@ void CoreWorld::SetWorld( const RenderCoreWorldVertex *vertices, unsigned int ve
 	}
 	data.materials = WorldMaterials( materials, materialCount );
 	m_StageSet = false;
+	m_WorldCasters.reset();
+	m_StaticCastsShadow.clear();
+	{
+		std::lock_guard<std::mutex> guard( m_ShadowLock );
+		m_Casters.reset();
+		m_ShadowWork.clear();
+	}
 	m_StaticMeshes.clear();
 	m_StaticInstances.clear();
 	m_StaticMaterials.clear();
@@ -113,6 +148,7 @@ std::vector<pass::world::WorldMaterial> CoreWorld::WorldMaterials(
 		pass::world::WorldMaterial material;
 		material.name = source.name ? source.name : "";
 		material.shader = source.shader ? source.shader : "";
+		material.translucent = source.translucent;
 		for ( int v = 0; v < source.variableCount; ++v )
 		{
 			const char *key = source.keys[v] ? source.keys[v] : "";
@@ -133,6 +169,13 @@ void CoreWorld::SetWorldMesh( const void *wmsh, unsigned long long wmshBytes,
     const RenderCoreWorldMaterial *materials, unsigned int materialCount, const char *entities )
 {
 	m_StageSet = false;
+	m_WorldCasters.reset();
+	m_StaticCastsShadow.clear();
+	{
+		std::lock_guard<std::mutex> guard( m_ShadowLock );
+		m_Casters.reset();
+		m_ShadowWork.clear();
+	}
 	m_StaticMeshes.clear();
 	m_StaticInstances.clear();
 	m_StaticMaterials.clear();
@@ -184,6 +227,29 @@ void CoreWorld::SetWorldMesh( const void *wmsh, unsigned long long wmshBytes,
 		to.tangentT[2] = ( n[0] * t[1] - n[1] * t[0] ) * from.tangentSign;
 	}
 	data.indices = std::move( mesh.indices );
+	data.materials = WorldMaterials( materials, materialCount );
+	std::vector<unsigned char> opaqueTriangles( data.indices.size() / 3, 1 );
+	for ( unsigned int i = 0; i < meshletCount; ++i )
+	{
+		const RenderCoreWorldMeshlet &meshlet = meshlets[i];
+		if ( meshlet.material >= data.materials.size() ||
+		     OpaqueShadowMaterial( data.materials[meshlet.material] ) )
+			continue;
+		const std::size_t first =
+		    std::min<std::size_t>( meshlet.firstIndex / 3, opaqueTriangles.size() );
+		const std::size_t end = std::min<std::size_t>(
+		    ( std::uint64_t( meshlet.firstIndex ) + meshlet.indexCount + 2 ) / 3,
+		    opaqueTriangles.size() );
+		std::fill(
+		    opaqueTriangles.begin() + first, opaqueTriangles.begin() + std::max( first, end ), 0 );
+	}
+	const std::size_t cutoutTriangles =
+	    std::count( opaqueTriangles.begin(), opaqueTriangles.end(), 0 );
+	if ( cutoutTriangles )
+		std::fprintf( stderr,
+		    "Render core: %zu alpha-tested world triangles need cutout "
+		    "shadows; omitted from the solid caster\n",
+		    cutoutTriangles );
 	// The stage's shadow casters: its positions and triangles, grouped into
 	// chunks of kCasterCell units by their centroids.
 	auto casters = std::make_shared<Casters>();
@@ -196,6 +262,8 @@ void CoreWorld::SetWorldMesh( const void *wmsh, unsigned long long wmshBytes,
 		const std::vector<float> &p = casters->positions;
 		for ( std::size_t t = 0; t + 2 < data.indices.size(); t += 3 )
 		{
+			if ( !opaqueTriangles[t / 3] )
+				continue;
 			std::array<int, 3> cell{};
 			for ( int a = 0; a < 3; ++a )
 			{
@@ -235,6 +303,7 @@ void CoreWorld::SetWorldMesh( const void *wmsh, unsigned long long wmshBytes,
 	{
 		std::lock_guard<std::mutex> guard( m_ShadowLock );
 		casters->generation = ++m_CasterGeneration;
+		m_WorldCasters = casters;
 		m_Casters = std::move( casters );
 		m_ShadowWork.clear();
 	}
@@ -247,7 +316,6 @@ void CoreWorld::SetWorldMesh( const void *wmsh, unsigned long long wmshBytes,
 		surface.indexCount = meshlets[i].indexCount;
 		data.surfaces.push_back( surface );
 	}
-	data.materials = WorldMaterials( materials, materialCount );
 	m_StageWorld = std::make_shared<const pass::world::WorldData>( std::move( data ) );
 	SetStage();
 }
@@ -322,6 +390,103 @@ void CoreWorld::SetStage()
 		m_Pass.SetStageChange( m_Capture.change, *m_Capture.table );
 }
 
+void CoreWorld::SetStaticCasters()
+{
+	if ( !m_WorldCasters )
+		return;
+	auto casters = std::make_shared<Casters>( *m_WorldCasters );
+	unsigned int instances = 0;
+	unsigned int noShadow = 0;
+	unsigned int cutout = 0;
+	for ( std::uint32_t i = 0; i < m_StaticInstances.size(); ++i )
+	{
+		if ( !m_Pass.DrawsStaticInstance( i ) )
+			continue;
+		if ( !m_StaticCastsShadow[i] )
+		{
+			++noShadow;
+			continue;
+		}
+		const pass::world::WorldData::StaticInstance &instance = m_StaticInstances[i];
+		if ( instance.mesh >= m_StaticMeshes.size() )
+			continue;
+		const pass::world::WorldData::StaticMesh &mesh = m_StaticMeshes[instance.mesh];
+		std::vector<const pass::world::WorldSurface *> surfaces;
+		for ( std::size_t s = 0; s < mesh.surfaces.size(); ++s )
+		{
+			std::uint32_t material = mesh.surfaces[s].material;
+			if ( !mesh.skinMaterials.empty() )
+				material = mesh.skinMaterials[instance.skin][s];
+			if ( material < m_StaticMaterials.size() &&
+			     OpaqueShadowMaterial( m_StaticMaterials[material] ) )
+				surfaces.push_back( &mesh.surfaces[s] );
+		}
+		if ( surfaces.empty() )
+		{
+			++cutout;
+			continue;
+		}
+		bool valid = true;
+		for ( const pass::world::WorldSurface *surface : surfaces )
+		{
+			for ( std::uint32_t index = surface->firstIndex;
+			    index < surface->firstIndex + surface->indexCount; ++index )
+				valid = valid && mesh.indices[index] < mesh.vertices.size();
+		}
+		if ( !valid )
+			continue;
+		const std::uint32_t firstVertex = std::uint32_t( casters->positions.size() / 3 );
+		for ( const material::SurfaceModelVertex &vertex : mesh.vertices )
+		{
+			for ( int axis = 0; axis < 3; ++axis )
+			{
+				const float *row = instance.world + axis * 4;
+				casters->positions.push_back( row[0] * vertex.position[0] +
+				                              row[1] * vertex.position[1] +
+				                              row[2] * vertex.position[2] + row[3] );
+			}
+		}
+		Casters::Chunk chunk;
+		chunk.firstIndex = std::uint32_t( casters->indices.size() );
+		for ( int axis = 0; axis < 3; ++axis )
+		{
+			chunk.min[axis] = std::numeric_limits<float>::max();
+			chunk.max[axis] = -std::numeric_limits<float>::max();
+		}
+		for ( const pass::world::WorldSurface *surface : surfaces )
+		{
+			for ( std::uint32_t index = surface->firstIndex;
+			    index < surface->firstIndex + surface->indexCount; ++index )
+			{
+				const std::uint32_t vertex = firstVertex + mesh.indices[index];
+				casters->indices.push_back( vertex );
+				for ( int axis = 0; axis < 3; ++axis )
+				{
+					const float position = casters->positions[vertex * 3 + axis];
+					chunk.min[axis] = std::min( chunk.min[axis], position );
+					chunk.max[axis] = std::max( chunk.max[axis], position );
+				}
+			}
+		}
+		chunk.indexCount = std::uint32_t( casters->indices.size() ) - chunk.firstIndex;
+		if ( chunk.indexCount )
+		{
+			casters->chunks.push_back( chunk );
+			++instances;
+		}
+	}
+	{
+		std::lock_guard<std::mutex> guard( m_ShadowLock );
+		casters->generation = ++m_CasterGeneration;
+		m_Casters = std::move( casters );
+		m_ShadowWork.clear();
+	}
+	std::fprintf( stderr,
+	    "Render core: %u opaque static props cast core shadows (%u authored no-shadow, %u "
+	    "cutout-only)\n",
+	    instances, noShadow, cutout );
+}
+
 void CoreWorld::SetStaticProps( const RenderCoreStaticModel *models, unsigned int modelCount,
     const RenderCoreStaticProp *props, unsigned int propCount )
 {
@@ -330,6 +495,7 @@ void CoreWorld::SetStaticProps( const RenderCoreStaticModel *models, unsigned in
 	m_StaticMeshes.clear();
 	m_StaticMaterials.clear();
 	m_StaticInstances.clear();
+	m_StaticCastsShadow.clear();
 	m_ModelPoseSources.clear();
 	m_StaticMeshes.resize( modelCount );
 	m_ModelPoseSources.resize( modelCount );
@@ -476,6 +642,7 @@ void CoreWorld::SetStaticProps( const RenderCoreStaticModel *models, unsigned in
 			    props[i].world + row * 4, props[i].world + row * 4 + 4, instance.world + row * 4 );
 		instance.world[15] = 1.0f;
 		m_StaticInstances.push_back( instance );
+		m_StaticCastsShadow.push_back( props[i].castsShadow );
 	}
 	unsigned int parsed = 0;
 	for ( const pass::world::WorldData::StaticMesh &mesh : m_StaticMeshes )
@@ -483,7 +650,10 @@ void CoreWorld::SetStaticProps( const RenderCoreStaticModel *models, unsigned in
 	std::fprintf( stderr, "Render core: static meshes: %u of %u parsed, %zu instances\n", parsed,
 	    modelCount, m_StaticInstances.size() );
 	if ( m_StageSet )
+	{
 		SetStage();
+		SetStaticCasters();
+	}
 }
 
 bool CoreWorld::StageCapture::UploadLightmap(
@@ -923,7 +1093,7 @@ bool CoreWorld::PoseModel(
 {
 	if ( !source.boneToWorld || source.model >= m_ModelPoseSources.size() ||
 	     source.model >= m_StaticMeshes.size() ||
-	     !m_Pass.DrawsPosedModel( source.model, source.skin ) )
+	     !m_Pass.DrawsPosedModel( source.model, source.skin, source.phase ) )
 		return false;
 	const ModelPoseSource &pose = m_ModelPoseSources[source.model];
 	const pass::world::WorldData::StaticMesh &mesh = m_StaticMeshes[source.model];
@@ -950,6 +1120,7 @@ bool CoreWorld::PoseModel(
 	pass::skinning::SkinReference( { pose.vertices, palette, {}, {}, {} }, skinned );
 	out.mesh = source.model;
 	out.skin = source.skin;
+	out.phase = source.phase;
 	out.vertices = mesh.vertices;
 	for ( std::size_t i = 0; i < skinned.size(); ++i )
 	{

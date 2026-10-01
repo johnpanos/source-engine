@@ -70,6 +70,9 @@ const int kDiffuseBumpmap = 1024;
 // normal map (two channels), and kEmissionTexture its emission texture.
 const int kPbr = 2048;
 const int kEmissionTexture = 4096;
+const int kSelfIllumMask = 536870912;
+const int kPhongExponentTexture = 1073741824;
+const int kTransmission = int( 0x80000000u );
 // The vertexlit point (its vertex stage reads kHalfLambert, 16).
 const int kVertexLit = 8192;
 // The view's clustered runtime lights (the view group).
@@ -203,6 +206,9 @@ layout( set = 1, binding = 11 ) uniform sampler occlusionSampler;
 // The view's planar reflection (the water point's reflection target).
 layout( set = 1, binding = 12 ) uniform texture2D reflectionTexture;
 layout( set = 1, binding = 13 ) uniform sampler reflectionSampler;
+// Linear scene color behind thin transmission, before output transforms.
+layout( set = 1, binding = 14 ) uniform texture2D sceneColorTexture;
+layout( set = 1, binding = 15 ) uniform sampler sceneColorSampler;
 
 // The GGX LTC table (public/render/pbr_ltc_table.h), read by the pbr point.
 layout( set = 0, binding = 3 ) uniform texture2D ltcTexture;
@@ -246,7 +252,7 @@ layout( set = 2, binding = 0 ) uniform Material
 	vec4 state;
 	vec4 envTint;       // rgb: $envmaptint, a: $fresnelreflection
 	vec4 envContrast;   // rgb: the contrast in effect, a: 1 - $fresnelreflection
-	vec4 envSaturation; // rgb: the saturation in effect
+	vec4 envSaturation; // legacy saturation; PBR rgb: probe tint, a: inverted Phong mask
 	vec4 selfIllumTint; // rgb: $selfillumtint
 	vec4 detailTint;    // rgb: $detailtint, a: $detailblendfactor
 	vec4 detailScale;   // xy: $detailscale
@@ -260,6 +266,12 @@ layout( set = 2, binding = 0 ) uniform Material
 	vec4 waterFog;       // rgb: $fogcolor (linear); a: $reflectamount
 	vec4 waterMode;      // x: reflection target, y: sludge, z: $lightmapwaterfog, w: $forcefresnel
 	vec4 pbrFactors;     // rgb: metalness, roughness, AO without MRAO texture
+	vec4 meshControls;   // VertexLit mesh: base-alpha Phong mask, albedo tint, rim boost/exponent
+	vec4 meshProbeMasks; // VertexLit mesh: base-alpha and normal-alpha probe masks
+	vec4 meshProbeFresnel; // VertexLit mesh: env Fresnel weight and min/max/exp
+	vec4 meshModes; // light warp, authored env map, Phong enable
+	vec4 meshProbeColor; // contrast, saturation, Phong warp, RGB probe mask
+	vec4 transmission; // x: fraction, y: IOR (thin dielectric point)
 } material;
 layout( set = 2, binding = 1 ) uniform texture2D baseTexture;
 layout( set = 2, binding = 2 ) uniform sampler baseSampler;
@@ -413,6 +425,38 @@ vec4 TextureCombine( vec4 baseColor, vec4 detailColor, float blendFactor )
 	return baseColor;
 }
 
+vec3 MeshDiffuseFactor( float normalDotLight )
+{
+	const float halfLambert = clamp( 0.5 * normalDotLight + 0.5, 0.0, 1.0 );
+	const float scalar = material.flags.w > 0.5 ? halfLambert : max( normalDotLight, 0.0 );
+	if ( material.meshModes.x > 0.5 )
+		return 2.0 * texture( sampler2D( mraoTexture, mraoSampler ),
+		           vec2( scalar, 0.5 ) )
+		                 .rgb;
+	return vec3( material.flags.w > 0.5 ? scalar * scalar : scalar );
+}
+
+// VertexLitGeneric's specular warp is a 2D data lookup: horizontal is the
+// authored Phong highlight, vertical is its three-range Fresnel response.
+// The result colors the PBR direct specular lobe, leaving native IBL alone.
+vec3 MeshSpecularWarp( vec3 normal, vec3 view, vec3 light, float exponent )
+{
+	if ( material.meshProbeColor.z <= 0.5 )
+		return vec3( 1.0 );
+	const vec3 ranges = material.envContrast.rgb;
+	float fresnel = clamp( 1.0 - dot( normal, view ), 0.0, 1.0 );
+	fresnel = fresnel * fresnel - 0.5;
+	fresnel = ranges.y +
+	          ( fresnel >= 0.0 ? 2.0 * ( ranges.z - ranges.y )
+	                           : 2.0 * ( ranges.y - ranges.x ) ) *
+	              fresnel;
+	const float highlight =
+	    pow( max( dot( reflect( -view, normal ), light ), 0.0 ), max( exponent, 0.0 ) );
+	return texture( sampler2D( mraoTexture, mraoSampler ),
+	    vec2( highlight, clamp( fresnel, 0.0, 1.0 ) ) )
+	    .rgb;
+}
+
 // The debug view's pixel, encoded as the output is.
 vec4 DebugOutput( DebugInputs inputs )
 {
@@ -523,20 +567,43 @@ vec3 AmbientCube( vec3 n )
 void PbrSurface()
 {
 	const bool furnace = DebugFurnace();
-	const bool normalMap = Term( kBumpmap );
+	const bool normalMap = Term( kBumpmap | kSsbump );
+	const bool ssbump = Term( kSsbump );
 	const bool emissive = Term( kEmissionTexture );
 	const vec2 uv = baseUv;
-	const vec4 baseSample = texture( sampler2D( baseTexture, baseSampler ), uv );
+	vec4 baseSample = texture( sampler2D( baseTexture, baseSampler ), uv );
+	if ( Term( kDetailTexture ) )
+	{
+		const vec4 detail = vec4( material.detailTint.rgb, 1.0 ) *
+		                    texture( sampler2D( detailTexture, detailSampler ),
+		                        uv * material.detailScale.xy );
+		baseSample = TextureCombine( baseSample, detail, material.detailTint.a );
+	}
 	if ( material.flags.y != 0.0 && baseSample.a * material.tint.a < material.flags.z )
 		discard;
-	const vec3 base = furnace ? vec3( 1.0 ) : baseSample.rgb * material.tint.rgb;
+	vec3 base = furnace ? vec3( 1.0 ) : baseSample.rgb * material.tint.rgb;
+	if ( material.meshProbeMasks.z > 0.5 && !furnace )
+	{
+		const vec3 tinted = mix( base, material.tint.rgb, material.meshProbeMasks.w );
+		base = mix( baseSample.rgb, tinted, baseSample.a );
+	}
+	const bool unlitMesh = material.meshModes.w > 0.5;
 	const vec3 mrao = Term( kMraoTexture )
 	                      ? texture( sampler2D( mraoTexture, mraoSampler ), uv ).rgb
 	                      : material.pbrFactors.rgb;
 	const float metalness =
 	    kDebugForceMetalness >= 0.0 ? kDebugForceMetalness : clamp( mrao.r, 0.0, 1.0 );
+	const vec4 exponentSample = Term( kPhongExponentTexture )
+	                                ? texture( sampler2D( envmapMaskTexture, envmapMaskSampler ), uv )
+	                                : vec4( 1.0 );
+	const float exponent = material.pbrFactors.w > 0.0
+	                           ? material.pbrFactors.w
+	                           : 1.0 + 149.0 * exponentSample.r;
+	const float meshRoughness = Term( kPhongExponentTexture ) && material.pbrFactors.w <= 0.0
+	                                ? sqrt( 2.0 / ( exponent + 2.0 ) )
+	                                : mrao.g;
 	const float roughness =
-	    max( kDebugForceRoughness >= 0.0 ? kDebugForceRoughness : mrao.g, 0.02 );
+	    max( kDebugForceRoughness >= 0.0 ? kDebugForceRoughness : meshRoughness, 0.02 );
 	const float occlusion = DebugTermOn( kDebugTermAo ) ? clamp( mrao.b, 0.0, 1.0 ) : 1.0;
 	if ( Term( kRsm ) )
 	{
@@ -556,13 +623,35 @@ void PbrSurface()
 	vec3 normal = dot( worldNormal, worldNormal ) > 1e-12 ? normalize( worldNormal ) : view;
 	const vec3 smoothNormal = normal;
 	vec3 mapped = vec3( 0.0, 0.0, 1.0 );
+	float directSpecularMask =
+	    material.meshModes.z > 0.5 && material.meshControls.x > 0.5 ? baseSample.a : 1.0;
+	vec3 probeSpecularMask = vec3(
+	    material.meshModes.y > 0.5 || material.meshProbeMasks.x > 0.5 ? baseSample.a : 1.0 );
+	if ( material.meshProbeColor.w > 0.5 )
+		probeSpecularMask *=
+		    texture( sampler2D( envmapMaskTexture, envmapMaskSampler ), uv ).rgb;
 	if ( normalMap )
 	{
-		const vec2 xy = texture( sampler2D( bumpTexture, bumpSampler ), uv ).rg * 2.0 - 1.0;
-		mapped = vec3( xy, sqrt( max( 0.0, 1.0 - dot( xy, xy ) ) ) );
+		const vec4 normalSample = texture( sampler2D( bumpTexture, bumpSampler ), uv );
+		if ( ssbump )
+			mapped = normalize( bumpBasis[0] * normalSample.r +
+			                    bumpBasis[1] * normalSample.g + bumpBasis[2] * normalSample.b );
+		else
+		{
+			const vec2 xy = normalSample.rg * 2.0 - 1.0;
+			mapped = vec3( xy, sqrt( max( 0.0, 1.0 - dot( xy, xy ) ) ) );
+		}
 		normal = normalize( normalize( tangentS ) * mapped.x + normalize( tangentT ) * mapped.y +
 		                    normal * mapped.z );
+		if ( material.meshModes.z > 0.5 && material.meshControls.x <= 0.5 )
+			directSpecularMask = normalSample.a;
+		if ( material.meshProbeMasks.y > 0.5 )
+			probeSpecularMask = vec3( normalSample.a );
 	}
+	if ( material.meshModes.z > 0.5 && material.envSaturation.a > 0.5 )
+		directSpecularMask = 1.0 - directSpecularMask;
+	if ( material.meshModes.y > 0.5 && material.envSaturation.a > 0.5 )
+		probeSpecularMask = 1.0 - probeSpecularMask;
 	const float normalDotView = max( dot( normal, view ), 0.0 );
 	if ( Term( kDepthNormal ) )
 	{
@@ -593,8 +682,16 @@ void PbrSurface()
 	const float rangeGain = material.envContrast.a > 0.5
 	                            ? clamp( 1.0 + authoredOffset, 0.0, 25.0 )
 	                            : 1.0;
-	const vec3 f0 = mix(
-	    clamp( vec3( 0.04 * rangeGain ) * material.envTint.rgb, 0.0, 0.9 ), base, metalness );
+	const float ior = max( material.transmission.y, 1.0 );
+	const float dielectricF0 = Term( kTransmission )
+	                               ? pow( ( ior - 1.0 ) / ( ior + 1.0 ), 2.0 )
+	                               : 0.04;
+	vec3 f0 = mix( clamp( vec3( dielectricF0 * rangeGain ) * material.envTint.rgb, 0.0,
+	                   0.9 ),
+	    base, metalness );
+	if ( material.meshControls.y > 0.5 )
+		f0 *= mix( vec3( 1.0 ), base,
+		    Term( kPhongExponentTexture ) ? exponentSample.g : 1.0 );
 	const vec2 splitSum = texture( sampler2D( splitSumTexture, splitSumSampler ),
 	    PbrSplitSumCoordinate( vec2( textureSize( sampler2D( splitSumTexture, splitSumSampler ), 0 ) ),
 	        normalDotView, roughness ) )
@@ -605,10 +702,14 @@ void PbrSurface()
 	const vec3 directionalAlbedo = compensate
 	                                   ? PbrDirectionalAlbedo( f0, splitSum )
 	                                   : min( vec3( 1.0 ), f0 * splitSum.x + vec3( splitSum.y ) );
-	const vec3 diffuseColor = base * ( 1.0 - metalness ) * ( vec3( 1.0 ) - directionalAlbedo );
+	const vec3 baseDiffuse = base * ( 1.0 - metalness ) * ( vec3( 1.0 ) - directionalAlbedo );
+	const float transmitted =
+	    Term( kTransmission ) ? clamp( material.transmission.x, 0.0, 1.0 ) : 0.0;
+	const vec3 diffuseColor = baseDiffuse * ( 1.0 - transmitted );
 	// cl_render_debug_brdf 1 and 2: one lobe.
-	const bool diffuseLobe = kDebugBrdf != kDebugBrdfSpecularOnly;
-	const bool specularLobe = kDebugBrdf != kDebugBrdfDiffuseOnly;
+	const bool diffuseLobe = kDebugBrdf != kDebugBrdfSpecularOnly && !unlitMesh;
+	const bool specularLobe = kDebugBrdf != kDebugBrdfDiffuseOnly &&
+	                          ( !unlitMesh || material.meshModes.y > 0.5 );
 
 	// Indirect diffuse: the lightmap basis on a world surface (the `baked`
 	// term), else the ambient cube (`probes`).
@@ -639,6 +740,7 @@ void PbrSurface()
 	const vec3 indirectOcclusion =
 	    occlusion * MultiBounceOcclusion( screenOcclusion, diffuseColor + directionalAlbedo );
 	vec3 color = vec3( 0.0 );
+	vec3 diffuseIrradiance = vec3( 1.0 );
 	if ( diffuseLobe && lightmapped && DebugTermOn( kDebugTermBaked ) )
 	{
 		// The view's occlusion darkens the bake's indirect layer only: the
@@ -659,6 +761,7 @@ void PbrSurface()
 			    vec3( 0.0 ) );
 		}
 		color = diffuseColor * light * occlusion;
+		diffuseIrradiance = light;
 	}
 	else if ( diffuseLobe && !lightmapped && DebugTermOn( kDebugTermProbes ) )
 	{
@@ -670,6 +773,7 @@ void PbrSurface()
 		     !ProbeIrradiance( worldPosition, normal, meshDirect ? 1 : 0, true, irradiance ) )
 			irradiance = AmbientCube( normal );
 		color = diffuseColor * irradiance * indirectOcclusion;
+		diffuseIrradiance = irradiance;
 	}
 	// The projected lights' bounce, on every surface the volume covers.
 	if ( diffuseLobe && Term( kProbeBounce ) && Term( kProbeVolume ) && !furnace &&
@@ -707,14 +811,15 @@ void PbrSurface()
 		const vec3 incident = lighting.lights[i].color.rgb * lightAtten[i];
 		if ( diffuseLobe )
 		{
-			const vec3 diffuse = diffuseColor * incident * normalDotLight;
+			const vec3 diffuse = diffuseColor * incident * MeshDiffuseFactor( normalDotLight );
 			color += diffuse;
 			direct += diffuse;
 		}
-		if ( specularLobe )
+		if ( specularLobe && !unlitMesh )
 		{
 			const vec3 specular = kPi * incident * PbrSpecular( normal, view, light, f0, roughness ) *
-			                      compensation * normalDotLight;
+			                      compensation * normalDotLight * directSpecularMask *
+			                      MeshSpecularWarp( normal, view, light, exponent );
 			color += specular;
 			direct += specular;
 		}
@@ -784,15 +889,17 @@ void PbrSurface()
 			// the bake is the indirect layer (runtime direct light).
 			if ( diffuseLobe && ( runtime.spot.y < 0.5 || meshDirect || runtimeDirect ) )
 			{
-				const vec3 diffuse = diffuseColor * incident * normalDotLight;
+				const vec3 diffuse =
+				    diffuseColor * incident * MeshDiffuseFactor( normalDotLight );
 				color += diffuse;
 				direct += diffuse;
 			}
-			if ( specularLobe )
+			if ( specularLobe && !unlitMesh )
 			{
 				const vec3 specular = kPi * incident *
 				                      PbrSpecular( normal, view, light, f0, roughness ) * compensation *
-				                      normalDotLight;
+				                      normalDotLight * directSpecularMask *
+				                      MeshSpecularWarp( normal, view, light, exponent );
 				color += specular;
 				direct += specular;
 			}
@@ -856,11 +963,13 @@ void PbrSurface()
 				color += diffuse;
 				direct += diffuse;
 			}
-			if ( specularLobe )
+			if ( specularLobe && !unlitMesh )
 			{
 				const vec3 specular =
-				    areaSpecular * radiance *
-				    LtcRectangle( normal, view, worldPosition, ltc, corners, twoSided );
+				    areaSpecular * radiance * directSpecularMask *
+				    LtcRectangle( normal, view, worldPosition, ltc, corners, twoSided ) *
+				    MeshSpecularWarp( normal, view,
+				        normalize( light.center.xyz - worldPosition ), exponent );
 				color += specular;
 				direct += specular;
 			}
@@ -903,18 +1012,20 @@ void PbrSurface()
 			const vec3 incident = frame.sunColor.rgb * visibility;
 			if ( diffuseLobe && ( frame.sunColor.w < 0.5 || meshDirect || runtimeDirect ) )
 			{
-				const vec3 diffuse = diffuseColor * incident * normalDotLight;
+				const vec3 diffuse =
+				    diffuseColor * incident * MeshDiffuseFactor( normalDotLight );
 				color += diffuse;
 				direct += diffuse;
 			}
-			if ( specularLobe && visibility > 0.0 )
+			if ( specularLobe && !unlitMesh && visibility > 0.0 )
 			{
 				const float alpha = roughness * roughness;
 				const float widened = min( alpha + 0.5 * frame.sunDirection.w, 1.0 );
 				const vec3 specular = kPi * incident *
 				                      PbrSpecular( normal, view, light, f0, sqrt( widened ) ) *
-				                      compensation * normalDotLight * ( alpha * alpha ) /
-				                      ( widened * widened );
+				                      compensation * normalDotLight * directSpecularMask * ( alpha * alpha ) /
+				                      ( widened * widened ) *
+				                      MeshSpecularWarp( normal, view, light, exponent );
 				color += specular;
 				direct += specular;
 			}
@@ -950,15 +1061,16 @@ void PbrSurface()
 		const vec3 incident = projector.color.rgb * cookie * scale;
 		if ( diffuseLobe )
 		{
-			const vec3 diffuse = diffuseColor * incident * normalDotLight;
+			const vec3 diffuse = diffuseColor * incident * MeshDiffuseFactor( normalDotLight );
 			color += diffuse;
 			direct += diffuse;
 		}
-		if ( specularLobe )
+		if ( specularLobe && !unlitMesh )
 		{
 			const vec3 specular = kPi * incident *
 			                      PbrSpecular( normal, view, light, f0, roughness ) * compensation *
-			                      normalDotLight;
+			                      normalDotLight * directSpecularMask *
+			                      MeshSpecularWarp( normal, view, light, exponent );
 			color += specular;
 			direct += specular;
 		}
@@ -978,10 +1090,33 @@ void PbrSurface()
 		    Term( kAmbientOcclusion ) && DebugTermOn( kDebugTermSpecularOcclusion ) && !furnace
 		        ? SpecularOcclusion( normalDotView, screenOcclusion, roughness )
 		        : 1.0;
-		iblRadiance = radiance;
-		iblWeight = directionalAlbedo * occlusion * specularOcclusion;
-		imageSpecular = radiance * iblWeight;
+		iblRadiance = radiance * material.envSaturation.rgb;
+		iblRadiance = mix( iblRadiance, iblRadiance * iblRadiance,
+		    material.meshProbeColor.x );
+		const vec3 grey = vec3( dot( iblRadiance, vec3( 0.299, 0.587, 0.114 ) ) );
+		iblRadiance = mix( grey, iblRadiance, material.meshProbeColor.y );
+		if ( material.envLightScale.z > 0.0 )
+		{
+			const vec3 lightMask = clamp( ( diffuseIrradiance - material.envLightScale.x ) *
+			                                  material.envLightScale.y, 0.0, 1.0 );
+			iblRadiance *= mix( vec3( 1.0 ), lightMask, material.envLightScale.z );
+		}
+		const float angularMask = mix( material.meshProbeFresnel.y,
+		    material.meshProbeFresnel.z,
+		    pow( 1.0 - normalDotView, material.meshProbeFresnel.w ) );
+		iblWeight = mix( f0, directionalAlbedo, material.meshProbeFresnel.x ) *
+		            occlusion * specularOcclusion * probeSpecularMask * angularMask;
+		imageSpecular = iblRadiance * iblWeight;
 		color += imageSpecular;
+		if ( material.meshControls.z > 0.0 )
+		{
+			// VertexLitGeneric's authored rim is a grazing image-light
+			// lobe in the shared model; it reads the same RPRB radiance.
+			const vec3 rim = iblRadiance * base * material.meshControls.z *
+			                 pow( 1.0 - normalDotView, material.meshControls.w ) * occlusion;
+			imageSpecular += rim;
+			color += rim;
+		}
 	}
 	WriteSsrTargets( normal, roughness, iblRadiance, iblWeight );
 	vec3 emission = vec3( 0.0 );
@@ -993,10 +1128,27 @@ void PbrSurface()
 	}
 	if ( Term( kSelfIllum ) && DebugTermOn( kDebugTermEmission ) && !furnace )
 	{
-		// Source model base alpha is the authored emission mask. The
-		// modern point keeps the surface lit and adds its masked radiance.
-		emission += base * baseSample.a;
-		color += base * baseSample.a;
+		// Source model base alpha selects the self-lit surface instead of
+		// adding a second copy of its albedo on top of direct lighting.
+		const vec3 selfLit = base * material.selfIllumTint.rgb;
+		const vec3 mask = Term( kSelfIllumMask )
+		                      ? texture( sampler2D( emissionTexture, emissionSampler ), uv ).rgb
+		                      : vec3( baseSample.a );
+		emission += selfLit * mask;
+		color = mix( color, selfLit, mask );
+	}
+	if ( unlitMesh && DebugTermOn( kDebugTermEmission ) && !furnace )
+	{
+		emission += base;
+		color += base;
+	}
+	if ( Term( kTransmission ) && !furnace )
+	{
+		const ivec2 texel = clamp( ivec2( gl_FragCoord.xy ), ivec2( 0 ),
+		    textureSize( sampler2D( sceneColorTexture, sceneColorSampler ), 0 ) - 1 );
+		const vec3 behind = texelFetch(
+		    sampler2D( sceneColorTexture, sceneColorSampler ), texel, 0 ).rgb;
+		color += behind * baseDiffuse * transmitted;
 	}
 
 	if ( DebugViewActive() )
@@ -1021,7 +1173,7 @@ void PbrSurface()
 			inputs.mask |= kDebugHasBaked;
 			inputs.baked = baked;
 		}
-		if ( emissive || Term( kSelfIllum ) )
+		if ( emissive || Term( kSelfIllum ) || unlitMesh )
 		{
 			inputs.mask |= kDebugHasEmission;
 			inputs.emission = emission;
@@ -1037,7 +1189,11 @@ void PbrSurface()
 		outColor = vec4( splitSum, 0.0, 1.0 );
 		return;
 	}
-	outColor = Output( color, baseSample.a * material.tint.a );
+	outColor = Output( color,
+	    Term( kTransmission ) ? 1.0
+	    : ( Term( kSelfIllum ) || material.meshControls.x > 0.5 ) && material.state.x > 0.5
+	        ? 1.0
+	        : baseSample.a * material.tint.a );
 }
 
 // The vertexlit point: the vertexlit_and_unlit_generic port's DIFFUSELIGHTING

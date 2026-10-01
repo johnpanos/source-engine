@@ -16,6 +16,7 @@
 #define RENDER_CORE_WORLD_DRAW_H
 
 #include "gl_model_private.h"
+#include "render/draw_phase.h"
 
 void RenderCoreWorldDraw_LevelInit();
 void RenderCoreWorldDraw_LevelShutdown();
@@ -61,9 +62,12 @@ bool RenderCoreWorldDraw_ChainsOnly();
 // the queued core world view accepts the cohort, studiorender omits it.
 bool RenderCoreWorldDraw_TakeStaticProps( const unsigned int *props, int count );
 bool RenderCoreWorldDraw_DrawsStaticProp( unsigned int prop );
-// Claims the current animated door draw with its engine-generated bone palette.
+// Whether this model and current view are candidates for a core Studio draw.
+// Check before inspecting material overrides or renderable modulation.
+bool RenderCoreWorldDraw_CanTakePosedModel( const model_t *model );
+// Claims an eligible Studio draw with its engine-generated bone palette.
 // Returns false when the model, view or material must stay with studiorender.
-bool RenderCoreWorldDraw_TakePosedModel(
-    const model_t *model, int skin, const matrix3x4_t *boneToWorld, int boneCount );
+bool RenderCoreWorldDraw_TakePosedModel( const model_t *model, int skin,
+    const matrix3x4_t *boneToWorld, int boneCount, RenderCoreDrawPhase phase );
 
 #endif // RENDER_CORE_WORLD_DRAW_H

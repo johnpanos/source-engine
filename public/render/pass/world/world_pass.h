@@ -49,6 +49,8 @@
 #ifndef RENDER_PASS_WORLD_WORLD_PASS_H
 #define RENDER_PASS_WORLD_WORLD_PASS_H
 
+#include "render/draw_phase.h"
+
 #include "render/device/device.h"
 #include "render/frame/debug_controls.h"
 #include "render/material/surface_program.h"
@@ -86,6 +88,7 @@ struct WorldMaterial
 	std::string name;
 	std::string shader;
 	bool mesh = false; // object-space static model; resolves through the PBR mesh point
+	bool translucent = false; // Studio's two-pass material classification
 	std::vector<std::pair<std::string, std::string>> variables; // "$key", value
 	// The material system handle of each texture variable ("$key", handle).
 	std::vector<std::pair<std::string, int>> textures;
@@ -310,6 +313,7 @@ struct WorldView
 	{
 		std::uint32_t mesh = 0;
 		std::uint32_t skin = 0;
+		RenderCoreDrawPhase phase = RenderCoreDrawPhase::kAll;
 		std::vector<material::SurfaceModelVertex> vertices;
 	};
 	std::vector<PosedModel> posedModels;
@@ -411,7 +415,8 @@ public:
 	// Whether the pass draws the material's surfaces (valid after SetWorld).
 	bool Draws( std::uint32_t material ) const;
 	bool DrawsStaticInstance( std::uint32_t instance ) const;
-	bool DrawsPosedModel( std::uint32_t mesh, std::uint32_t skin ) const;
+	bool DrawsPosedModel( std::uint32_t mesh, std::uint32_t skin,
+	    RenderCoreDrawPhase phase = RenderCoreDrawPhase::kAll ) const;
 	// The tag of the slot to mark for the view; 0 when there is nothing to draw.
 	std::uint32_t QueueView( WorldView view );
 	// Add the legacy culler's accepted static props before the queued view's

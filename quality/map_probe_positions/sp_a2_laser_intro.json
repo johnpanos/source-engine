@@ -1,0 +1,28 @@
+{
+  "schema": "map-probe-positions/v1",
+  "map": "sp_a2_laser_intro",
+  "description": "Walkable reflection captures for the west glossy chamber, the lower east chamber, and the east approach in the shipped laser intro. Automatic placement fills the remaining RPRB slots. Positions are in the derived USD stage's meters, not BSP Source units.",
+  "anchors": [
+    {
+      "name": "west glossy chamber",
+      "position_m": [-39.53512098872305, 8.597837374101854, -5.015032230377197]
+    },
+    {
+      "name": "lower east glossy chamber",
+      "position_m": [34.073865083800655, 0.5968606270884003, -33.859364334106445]
+    },
+    {
+      "name": "east approach glossy surfaces",
+      "position_m": [22.872497637981823, 0.5968606270884003, -1.927661357879637]
+    }
+  ],
+  "placement_preview": {
+    "walkable_samples": 1773,
+    "auto_uncovered_walkable": 722,
+    "authored_uncovered_walkable": 744,
+    "glossy_servable": 2931,
+    "auto_unserved_glossy": 2931,
+    "authored_unserved_glossy": 2442,
+    "max_probes": 16
+  }
+}

@@ -95,12 +95,14 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <map>
 #include <memory>
 #include <optional>
 #include <span>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace
@@ -1601,10 +1603,77 @@ int Run( const Options &options )
 
 } // namespace
 
+// The inventory uses the renderer's actual static claim rule. Each record is
+// shader\0(key\0value\0)*\0; an empty key ends it. No GPU is involved.
+int ClaimBatch()
+{
+	std::string shader;
+	while ( std::getline( std::cin, shader, '\0' ) )
+	{
+		if ( shader.empty() )
+			return 2;
+		std::vector<render::material::VmtPair> variables;
+		std::string key;
+		while ( std::getline( std::cin, key, '\0' ) && !key.empty() )
+		{
+			std::string value;
+			if ( !std::getline( std::cin, value, '\0' ) )
+				return 2;
+			variables.push_back( { std::move( key ), std::move( value ) } );
+		}
+		if ( !std::cin )
+			return 2;
+		const auto mapped = render::material::MapVariables( shader, std::move( variables ), {} );
+		if ( !mapped )
+		{
+			std::printf( "G\timport: %s\tG\timport: %s\tG\timport: %s\t\t\n",
+			    mapped.Error().detail.c_str(), mapped.Error().detail.c_str(),
+			    mapped.Error().detail.c_str() );
+			continue;
+		}
+		for ( bool probes : { true, false } )
+		{
+			if ( !probes )
+				std::printf( "\t" );
+			const auto claim = render::material::ClaimForMesh( mapped.Value(), probes );
+			if ( claim )
+				std::printf( "C\t%u", unsigned( claim.Value() ) );
+			else
+				std::printf( "G\t%s", claim.Error().c_str() );
+		}
+		const auto worldClaim = render::material::ClaimForDrawing( mapped.Value(), true );
+		if ( worldClaim )
+			std::printf( "\tC\t%u", unsigned( worldClaim.Value() ) );
+		else
+			std::printf( "\tG\t%s", worldClaim.Error().c_str() );
+		std::printf( "\t" );
+		bool firstNumeric = true;
+		constexpr std::string_view prefix = "numeric KeyValues residue ";
+		for ( const std::string &diagnostic : mapped.Value().diagnostics )
+		{
+			if ( !diagnostic.starts_with( prefix ) )
+				continue;
+			std::printf( "%s%s", firstNumeric ? "" : ",", diagnostic.c_str() + prefix.size() );
+			firstNumeric = false;
+		}
+		std::printf( "\t" );
+		bool firstUnmapped = true;
+		for ( const std::string &key : mapped.Value().unmapped )
+		{
+			std::printf( "%s%s", firstUnmapped ? "" : ",", key.c_str() );
+			firstUnmapped = false;
+		}
+		std::printf( "\n" );
+	}
+	return std::cin.bad() ? 2 : 0;
+}
+
 int main( int argc, char **argv )
 {
 	if ( argc >= 3 && std::string( argv[1] ) == "suite" )
 		return RunSuite( argc - 2, argv + 2 );
+	if ( argc == 2 && std::string( argv[1] ) == "claim-batch" )
+		return ClaimBatch();
 	const std::optional<Options> options = ParseOptions( argc, argv );
 	if ( !options )
 	{
@@ -1614,7 +1683,8 @@ int main( int argc, char **argv )
 		    "--model-origin x,y,z] [--model-no-shadow] [--mover x0,y0,z0,x1,y1,z1,material] "
 		    "[--validate] [--dump-mesh] [--core-direct] [--debug-* ...]\n"
 		    "           [--fog-scale s] [--no-volumetric] [--time n]\n"
-		    "       render_lab suite <name> [--validate] [--seeded <defect>]\n" );
+		    "       render_lab suite <name> [--validate] [--seeded <defect>]\n"
+		    "       render_lab claim-batch < NUL-delimited-materials\n" );
 		return 2;
 	}
 	return Run( *options );

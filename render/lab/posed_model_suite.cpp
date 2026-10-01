@@ -13,9 +13,14 @@
 #include "suites.h"
 
 #include "render/pass/world/world_pass.h"
+#include "render/material/program_resolver.h"
+#include "render/material/vmt_import.h"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
+#include <cmath>
+#include <cstddef>
 #include <cstdlib>
 #include <filesystem>
 #include <memory>
@@ -36,11 +41,16 @@ constexpr std::uint32_t kSize = 64;
 class EmptyTextures final : public IWorldTextures
 {
 public:
-	TextureId Import( int, bool ) override { return {}; }
+	TextureId normalFixture;
+	TextureId phongWarpFixture;
+	TextureId Import( int handle, bool ) override
+	{
+		return handle == 1 ? normalFixture : handle == 2 ? phongWarpFixture : TextureId{};
+	}
 	SamplerDesc Sampler( int ) override { return {}; }
 };
 
-WorldData MeshWorld()
+WorldData MeshWorld( bool blended = false )
 {
 	WorldData world;
 	auto stage = std::make_shared<WorldStage>();
@@ -51,6 +61,11 @@ WorldData MeshWorld()
 	material.name = "posed-door-fixture";
 	material.shader = "VertexLitGeneric";
 	material.mesh = true;
+	if ( blended )
+	{
+		material.variables.push_back( { "$translucent", "1" } );
+		material.variables.push_back( { "$alpha", "0.5" } );
+	}
 	world.materials.push_back( std::move( material ) );
 	WorldData::StaticMesh mesh;
 	for ( const auto &xy : { std::pair{ -0.5f, -0.5f }, std::pair{ 0.5f, -0.5f },
@@ -67,6 +82,19 @@ WorldData MeshWorld()
 	mesh.indices = { 0, 1, 2, 0, 2, 3 };
 	mesh.surfaces.push_back( { 0, 0, 0, 6 } );
 	world.staticMeshes.push_back( std::move( mesh ) );
+	return world;
+}
+
+WorldData MixedWorld()
+{
+	WorldData world = MeshWorld();
+	WorldMaterial glass = world.materials.front();
+	glass.name = "posed-glass-fixture";
+	glass.translucent = true;
+	glass.variables.push_back( { "$translucent", "1" } );
+	glass.variables.push_back( { "$alpha", "0.5" } );
+	world.materials.push_back( std::move( glass ) );
+	world.staticMeshes[0].surfaces.push_back( { 1, 0, 0, 6 } );
 	return world;
 }
 
@@ -92,13 +120,193 @@ std::optional<std::string> RunChecks(
 	if ( std::optional<std::string> why = Canvas::Create( *device, kSize, kSize, canvas ) )
 		return why;
 	WorldData world = MeshWorld();
+	const auto tubeGlass = material::MapVariables( "VertexLitGeneric",
+	    { { "$basetexture", "models/props_backstage/vacum_pipe_glass" },
+	        { "$bumpmap", "models/props_backstage/vacum_pipe_glass_normal" },
+	        { "$translucent", "1" }, { "$envmap", "env_cubemap" },
+	        { "$envmaptint", "[.85 .85 .85]" }, { "$basemapalphaenvmapmask", "1" },
+	        { "$envmapfresnel", "1" }, { "$invertphongmask", "1" }, { "$halflambert", "1" },
+	        { "$phong", "1" }, { "$phongexponent", "50" }, { "$phongboost", "1" },
+	        { "$phongfresnelranges", "[.3 .6 4]" } },
+	    {} );
+	results.That(
+	    tubeGlass && material::ClaimForMesh( tubeGlass.Value(), true ) &&
+	        material::ClaimForMesh( tubeGlass.Value(), true ).Value() == BlendMode::kAlpha,
+	    "posed-model.tube-glass-claims-native-probes" );
+	results.That( tubeGlass && !material::ClaimForMesh( tubeGlass.Value(), false ),
+	    "posed-model.tube-glass-requires-native-probes" );
+	const auto tubeBlades = material::MapVariables( "VertexLitGeneric",
+	    { { "$basetexture", "models/elevator/elevator_blades" }, { "$phong", "1" },
+	        { "$phongboost", "2" }, { "$phongdisablehalflambert", "1" }, { "$phongexponent", "12" },
+	        { "$phongfresnelranges", "[.6 1 2]" }, { "$basemapalphaphongmask", "1" },
+	        { "$rimlight", "1" }, { "$rimlightexponent", "0.2" }, { "$rimlightboost", "3" },
+	        { "$phongalbedotint", "1" } },
+	    {} );
+	results.That(
+	    tubeBlades && material::ClaimForMesh( tubeBlades.Value(), true ) &&
+	        material::ClaimForMesh( tubeBlades.Value(), true ).Value() == BlendMode::kOpaque,
+	    "posed-model.tube-blades-claim-shared-pbr-point" );
+	const auto mappedExponent = material::MapVariables( "VertexLitGeneric",
+	    { { "$basetexture", "models/props/door_02" }, { "$phong", "1" }, { "$phongexponent", "0" },
+	        { "$phongexponenttexture", "models/props/door_02_exponent" },
+	        { "$phongalbedotint", "1" } },
+	    {} );
+	results.That( mappedExponent && material::ClaimForMesh( mappedExponent.Value(), true ),
+	    "posed-model.phong-exponent-map-claims-shared-pbr-point" );
+	const auto doubleSidedProbeMask = material::MapVariables( "VertexLitGeneric",
+	    { { "$basetexture", "models/props/saucepan/saucepan" }, { "$envmap", "env_cubemap" },
+	        { "$basealphaenvmapmask", "1" }, { "$normalmapalphaenvmapmask", "1" },
+	        { "$nocull", "1" }, { "$bumpmap", "models/props/saucepan/saucepan_normal" } },
+	    {} );
+	results.That(
+	    doubleSidedProbeMask && material::ClaimForMesh( doubleSidedProbeMask.Value(), true ),
+	    "posed-model.double-sided-probe-mask-claims-native-probes" );
+	const auto textureProbeMask = material::MapVariables( "VertexLitGeneric",
+	    { { "$basetexture", "models/props_office/door_glass" }, { "$envmap", "env_cubemap" },
+	        { "$envmapmask", "models/props_office/door_glass_mask" } },
+	    {} );
+	results.That( textureProbeMask && material::ClaimForMesh( textureProbeMask.Value(), true ) &&
+	                  !material::ClaimForMesh( textureProbeMask.Value(), false ),
+	    "posed-model.authored-rgb-mask-claims-native-rprb" );
+	const auto conflictingProbeMask = material::MapVariables( "VertexLitGeneric",
+	    { { "$basetexture", "models/props_office/door_glass" },
+	        { "$envmapmask", "models/props_office/door_glass_mask" }, { "$phong", "1" },
+	        { "$phongexponenttexture", "models/props/door_02_exponent" } },
+	    {} );
+	results.That(
+	    conflictingProbeMask && !material::ClaimForMesh( conflictingProbeMask.Value(), true ),
+	    "posed-model.probe-mask-and-phong-exponent-need-distinct-slots" );
+	const auto bumpedProbeMask = material::MapVariables( "VertexLitGeneric",
+	    { { "$basetexture", "models/props_office/door_glass" },
+	        { "$envmapmask", "models/props_office/door_glass_mask" },
+	        { "$bumpmap", "models/props_office/door_glass_normal" } },
+	    {} );
+	results.That( bumpedProbeMask && !material::ClaimForMesh( bumpedProbeMask.Value(), true ),
+	    "posed-model.bumped-envmap-mask-requires-legacy-precedence" );
+	const auto paintedTurret = material::MapVariables( "VertexLitGeneric",
+	    { { "$basetexture", "models/npcs/turret/turret_01" },
+	        { "$detail", "models/npcs/turret/turret_paint_blue" }, { "$detailscale", "1" },
+	        { "$detailblendmode", "2" }, { "$detailblendfactor", "0.5" } },
+	    {} );
+	results.That( paintedTurret && material::ClaimForMesh( paintedTurret.Value(), true ),
+	    "posed-model.detail-paint-uses-shared-surface-combine" );
+	const auto alphaTint = material::MapVariables( "VertexLitGeneric",
+	    { { "$basetexture", "models/props_bts/aluminium_extrusion" }, { "$color", "[.5 .7 1]" },
+	        { "$blendtintbybasealpha", "1" } },
+	    {} );
+	results.That( alphaTint && material::ClaimForMesh( alphaTint.Value(), true ),
+	    "posed-model.base-alpha-tint-claims-shared-pbr-point" );
+	const auto color2Tint = material::MapVariables( "VertexLitGeneric",
+	    { { "$basetexture", "models/player/chell/chell_head_diffuse" },
+	        { "$color2", "[.25 .5 1]" } },
+	    {} );
+	results.That( color2Tint && material::ClaimForMesh( color2Tint.Value(), true ),
+	    "posed-model.color2-factor-claims-shared-pbr-point" );
+	const auto editorArm = material::MapVariables( "VertexLitGeneric",
+	    { { "$basetexture", "models/props_map_editor/arm_64x64" }, { "$glowcolor", "1" } }, {} );
+	results.That( editorArm && material::ClaimForMesh( editorArm.Value(), true ),
+	    "posed-model.vertexlit-ignores-unlit-only-glow-key" );
+	const auto authoredProbeFresnel = material::MapVariables( "VertexLitGeneric",
+	    { { "$basetexture", "models/player/coop_bots/assembly_machine_glass" },
+	        { "$envmap", "env_cubemap" }, { "$envmapfresnel", "1" },
+	        { "$envmapfresnelminmaxexp", "[.1 1 .7]" } },
+	    {} );
+	results.That(
+	    authoredProbeFresnel && material::ClaimForMesh( authoredProbeFresnel.Value(), true ),
+	    "posed-model.authored-probe-fresnel-uses-native-rprb" );
+	const auto lightScaledProbe = material::MapVariables( "VertexLitGeneric",
+	    { { "$basetexture", "models/a4_destruction/backpanels_color01b_vtx" },
+	        { "$envmap", "env_cubemap" }, { "$envmaplightscale", ".6" } },
+	    {} );
+	results.That( lightScaledProbe && material::ClaimForMesh( lightScaledProbe.Value(), true ),
+	    "posed-model.probe-light-scale-uses-native-irradiance" );
+	const auto additiveGlass = material::MapVariables( "VertexLitGeneric",
+	    { { "$basetexture", "models/props/reflecto_cube_glow" }, { "$additive", "1" } }, {} );
+	results.That(
+	    additiveGlass && material::ClaimForMesh( additiveGlass.Value(), true ) &&
+	        material::ClaimForMesh( additiveGlass.Value(), true ).Value() == BlendMode::kAdditive,
+	    "posed-model.additive-mesh-uses-shared-surface-blend" );
+	const auto warpedLight = material::MapVariables( "VertexLitGeneric",
+	    { { "$basetexture", "models/npcs/turret/turret_01" }, { "$phong", "1" },
+	        { "$lightwarptexture", "models/npcs/turret/turret_lightwarp" } },
+	    {} );
+	results.That( warpedLight && material::ClaimForMesh( warpedLight.Value(), true ),
+	    "posed-model.light-warp-uses-shared-direct-diffuse" );
+	const auto warpedSpecular = material::MapVariables( "VertexLitGeneric",
+	    { { "$basetexture", "models/props/reflecto_cube_glass" }, { "$phong", "1" },
+	        { "$phongexponent", "2" },
+	        { "$phongwarptexture", "models/props/reflecto_cube_iridescence" } },
+	    {} );
+	results.That( warpedSpecular && material::ClaimForMesh( warpedSpecular.Value(), true ),
+	    "posed-model.phong-warp-claims-shared-pbr-specular" );
+	const auto conflictingWarps = material::MapVariables( "VertexLitGeneric",
+	    { { "$basetexture", "models/props/reflecto_cube_glass" }, { "$phong", "1" },
+	        { "$phongwarptexture", "models/props/reflecto_cube_iridescence" },
+	        { "$lightwarptexture", "models/npcs/turret/turret_lightwarp" } },
+	    {} );
+	results.That( conflictingWarps && !material::ClaimForMesh( conflictingWarps.Value(), true ),
+	    "posed-model.two-warp-textures-require-distinct-slots" );
+	const auto ssbump = material::MapVariables( "VertexLitGeneric",
+	    { { "$basetexture", "anim_wp/framework/backpanels_color01" },
+	        { "$bumpmap", "anim_wp/framework/backpanels_color01_height-ssbump" },
+	        { "$ssbump", "1" }, { "$ssbumpmathfix", "1" } },
+	    {} );
+	results.That( ssbump && material::ClaimForMesh( ssbump.Value(), true ),
+	    "posed-model.ssbump-basis-claims-shared-pbr-point" );
+	const auto toxinNormal = material::MapVariables( "VertexLitGeneric",
+	    { { "$basetexture", "models/props_destruction/toxintank" },
+	        { "$bumpmap", "models/props_destruction/toxintank_normal" }, { "$bumpscale", "30" },
+	        { "$phong", "1" } },
+	    {} );
+	results.That( toxinNormal && material::ClaimForMesh( toxinNormal.Value(), true ),
+	    "posed-model.vertexlit-bumpscale-is-undeclared-metadata" );
+	const auto unquotedTint = material::MapVariables( "VertexLitGeneric",
+	    { { "$basetexture", "metal/black_wall_metal_002a" },
+	        { "$envmap", "metal/black_wall_envmap_002a_hdr" }, { "$envmaptint", ".2" },
+	        { ".2", ".2" } },
+	    {} );
+	results.That( unquotedTint && unquotedTint.Value().metadata.size() == 1 &&
+	                  unquotedTint.Value().metadata[0].key == ".2" &&
+	                  material::ClaimForMesh( unquotedTint.Value(), true ),
+	    "posed-model.numeric-keyvalues-residue-is-audited-metadata" );
+	const auto unknownControl = material::MapVariables( "VertexLitGeneric",
+	    { { "$basetexture", "metal/black_wall_metal_002a" },
+	        { "$unrecognized_render_control", "1" } },
+	    {} );
+	results.That( unknownControl && !material::ClaimForMesh( unknownControl.Value(), true ),
+	    "posed-model.unknown-render-control-remains-a-gap" );
+	const auto emissiveProbe = material::MapVariables( "UnlitGeneric",
+	    { { "$basetexture", "models/props_map_editor/black_white_unlit" },
+	        { "$envmap", "env_cubemap" } },
+	    {} );
+	results.That( emissiveProbe && material::ClaimForMesh( emissiveProbe.Value(), true ) &&
+	                  !material::ClaimForMesh( emissiveProbe.Value(), false ),
+	    "posed-model.unlit-reflection-requires-native-rprb" );
 	const auto bindPose = world.staticMeshes[0].vertices;
 	WorldPass pass;
 	pass.SetWorld( std::move( world ) );
 	results.That( pass.DrawsPosedModel( 0, 0 ), "posed-model.claims-mesh-program" );
 	EmptyTextures empty;
-	auto render = [&]( float offset, bool lit, std::uint64_t frame,
-	                  CanvasImage &image ) -> std::optional<std::string>
+	TextureDesc normalDesc;
+	normalDesc.format = Format::kRGBA8Unorm;
+	normalDesc.width = normalDesc.height = 1;
+	normalDesc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kSampled };
+	const std::array<std::byte, 4> normalPixel = {
+	    std::byte{ 180 }, std::byte{ 80 }, std::byte{ 170 }, std::byte{ 255 } };
+	auto normalTexture = textures.Stage( "ssbump-fixture", normalDesc, normalPixel );
+	if ( !normalTexture )
+		return "the model normal fixture could not be staged";
+	empty.normalFixture = normalTexture.Value().texture;
+	const std::array<std::byte, 4> warpPixel = {
+	    std::byte{ 255 }, std::byte{ 10 }, std::byte{ 10 }, std::byte{ 255 } };
+	auto warpTexture = textures.Stage( "phong-warp-fixture", normalDesc, warpPixel );
+	if ( !warpTexture )
+		return "the model specular warp fixture could not be staged";
+	empty.phongWarpFixture = warpTexture.Value().texture;
+	auto render = [&]( WorldPass &active, float offset, bool lit, std::uint64_t frame,
+	                  const ClearColor &clear, CanvasImage &image, bool twoLayers = false,
+	                  RenderCoreDrawPhase phase =
+	                      RenderCoreDrawPhase::kAll ) -> std::optional<std::string>
 	{
 		WorldView view;
 		for ( int i = 0; i < 4; ++i )
@@ -106,10 +314,18 @@ std::optional<std::string> RunChecks(
 		view.viewport = { 0, 0, float( kSize ), float( kSize ), 0, 1 };
 		view.hostFrame = frame;
 		WorldView::PosedModel pose;
+		pose.phase = phase;
 		pose.vertices = bindPose;
 		for ( auto &vertex : pose.vertices )
 			vertex.position[0] += offset;
 		view.posedModels.push_back( std::move( pose ) );
+		if ( twoLayers )
+		{
+			WorldView::PosedModel behind = view.posedModels.front();
+			for ( auto &vertex : behind.vertices )
+				vertex.position[2] += 0.1f;
+			view.posedModels.push_back( std::move( behind ) );
+		}
 		if ( lit )
 		{
 			auto lights = std::make_shared<StageViewLights>();
@@ -126,7 +342,7 @@ std::optional<std::string> RunChecks(
 			lights->areas.push_back( area );
 			view.lights = std::move( lights );
 		}
-		const std::uint32_t tag = pass.QueueView( std::move( view ) );
+		const std::uint32_t tag = active.QueueView( std::move( view ) );
 		if ( !tag )
 			return "the posed view queued nothing";
 		CanvasPost post = [&]( CommandEncoder &encoder, TextureId color,
@@ -142,17 +358,18 @@ std::optional<std::string> RunChecks(
 			target.textures = &empty;
 			target.frame = frame;
 			target.eye[2] = 2.0f;
-			pass.Record( tag, encoder, target );
+			active.Record( tag, encoder, target );
 			return std::nullopt;
 		};
-		return canvas->Render( textures, groups, {}, { 0, 0, 0, 1 }, &image, post );
+		return canvas->Render( textures, groups, {}, clear, &image, post );
 	};
 	CanvasImage center, shifted, dark;
-	if ( std::optional<std::string> why = render( 0.0f, true, 1, center ) )
+	const ClearColor black{ 0, 0, 0, 1 };
+	if ( std::optional<std::string> why = render( pass, 0.0f, true, 1, black, center ) )
 		return why;
-	if ( std::optional<std::string> why = render( 0.5f, true, 2, shifted ) )
+	if ( std::optional<std::string> why = render( pass, 0.5f, true, 2, black, shifted ) )
 		return why;
-	if ( std::optional<std::string> why = render( 0.0f, false, 3, dark ) )
+	if ( std::optional<std::string> why = render( pass, 0.0f, false, 3, black, dark ) )
 		return why;
 	if ( const char *directory = std::getenv( "RENDER_LAB_IMAGES" ) )
 	{
@@ -179,8 +396,163 @@ std::optional<std::string> RunChecks(
 	        std::to_string( Sum( shifted, 48, 64 ) ) + ", left " +
 	        std::to_string( Sum( center, 16, 32 ) ) + " -> " +
 	        std::to_string( Sum( shifted, 16, 32 ) ) );
+	WorldData color2World = MeshWorld();
+	color2World.materials[0].variables.push_back( { "$color2", "[.25 .5 1]" } );
+	WorldPass color2Pass;
+	color2Pass.SetWorld( std::move( color2World ) );
+	CanvasImage color2Image;
+	if ( std::optional<std::string> why = render( color2Pass, 0.0f, true, 18, black, color2Image ) )
+		return why;
+	const float *basePixel = center.At( 32, 32 );
+	const float *tintPixel = color2Image.At( 32, 32 );
+	results.That( color2Pass.Stats().viewsFailed == 0 && color2Pass.Stats().posedDrawsDrawn == 1 &&
+	                  tintPixel[0] < basePixel[0] * 0.55f && tintPixel[1] < basePixel[1] * 0.75f &&
+	                  std::abs( tintPixel[2] - basePixel[2] ) < 0.005f,
+	    "posed-model.color2-weights-pbr-albedo-before-lighting", color2Pass.Stats().lastFailure );
+	WorldPass glass;
+	glass.SetWorld( MeshWorld( true ) );
+	results.That( glass.DrawsPosedModel( 0, 0 ), "posed-model.claims-alpha-blended-mesh" );
+	const ClearColor background{ 0.12f, 0.24f, 0.36f, 1.0f };
+	const float backgroundRgb[3] = { background.r, background.g, background.b };
+	CanvasImage opaqueOverBackground, blended;
+	if ( std::optional<std::string> why =
+	         render( pass, 0.0f, true, 4, background, opaqueOverBackground ) )
+		return why;
+	if ( std::optional<std::string> why = render( glass, 0.0f, true, 5, background, blended ) )
+		return why;
+	bool halfOverBackground = true;
+	for ( int channel = 0; channel < 3; ++channel )
+	{
+		const float expected =
+		    0.5f * opaqueOverBackground.At( 32, 32 )[channel] + 0.5f * backgroundRgb[channel];
+		halfOverBackground &= std::abs( blended.At( 32, 32 )[channel] - expected ) < 0.01f;
+	}
+	results.That( halfOverBackground && std::abs( blended.At( 32, 32 )[3] - 1.0f ) < 0.001f,
+	    "posed-model.alpha-blends-without-alpha-write" );
+	results.That( glass.Stats().viewsFailed == 0 && glass.Stats().posedDrawsDrawn == 1,
+	    "posed-model.blended-view-recorded", glass.Stats().lastFailure );
+	CanvasImage singlePane, twoPanes;
+	if ( std::optional<std::string> why = render( glass, 0.0f, true, 6, black, singlePane ) )
+		return why;
+	if ( std::optional<std::string> why = render( glass, 0.0f, true, 7, black, twoPanes, true ) )
+		return why;
+	results.That( twoPanes.At( 32, 32 )[0] > singlePane.At( 32, 32 )[0] * 1.1f,
+	    "posed-model.blended-front-pane-does-not-write-depth" );
+	WorldPass mixed;
+	mixed.SetWorld( MixedWorld() );
+	results.That( mixed.DrawsPosedModel( 0, 0, RenderCoreDrawPhase::kOpaque ) &&
+	                  mixed.DrawsPosedModel( 0, 0, RenderCoreDrawPhase::kBlended ),
+	    "posed-model.claims-both-studio-phases" );
+	CanvasImage opaquePhase, blendedPhase;
+	if ( std::optional<std::string> why = render(
+	         mixed, 0.0f, true, 8, background, opaquePhase, false, RenderCoreDrawPhase::kOpaque ) )
+		return why;
+	if ( std::optional<std::string> why = render( mixed, 0.0f, true, 9, background, blendedPhase,
+	         false, RenderCoreDrawPhase::kBlended ) )
+		return why;
+	bool phasesMatch = true;
+	for ( int channel = 0; channel < 3; ++channel )
+	{
+		phasesMatch &= std::abs( opaquePhase.At( 32, 32 )[channel] -
+		                         opaqueOverBackground.At( 32, 32 )[channel] ) < 0.01f;
+		phasesMatch &=
+		    std::abs( blendedPhase.At( 32, 32 )[channel] - blended.At( 32, 32 )[channel] ) < 0.01f;
+	}
+	results.That( phasesMatch && mixed.Stats().viewsFailed == 0,
+	    "posed-model.two-pass-surfaces-stay-in-their-phases", mixed.Stats().lastFailure );
+	WorldData floorWorld = MeshWorld();
+	floorWorld.materials[0].variables.push_back( { "$selfillum", "1" } );
+	floorWorld.materials[0].variables.push_back( { "$color", "[.5 .5 .5]" } );
+	floorWorld.materials[0].variables.push_back( { "$selfillumtint", "[.7 .85 1]" } );
+	WorldPass floor;
+	floor.SetWorld( std::move( floorWorld ) );
+	results.That( floor.DrawsPosedModel( 0, 0 ), "posed-model.claims-self-lit-elevator-floor" );
+	CanvasImage selfLit, selfLitWithLights;
+	if ( std::optional<std::string> why = render( floor, 0.0f, false, 10, black, selfLit ) )
+		return why;
+	if ( std::optional<std::string> why =
+	         render( floor, 0.0f, true, 11, black, selfLitWithLights ) )
+		return why;
+	bool maskedReplacement = true;
+	for ( int channel = 0; channel < 3; ++channel )
+		maskedReplacement &= std::abs( selfLit.At( 32, 32 )[channel] -
+		                               selfLitWithLights.At( 32, 32 )[channel] ) < 0.005f;
+	results.That( maskedReplacement && selfLit.At( 32, 32 )[0] > 0.05f &&
+	                  std::abs( selfLit.At( 32, 32 )[3] - 1.0f ) < 0.001f,
+	    "posed-model.self-lit-mask-replaces-lighting-without-alpha-cutout" );
+	results.That( selfLit.At( 32, 32 )[0] < selfLit.At( 32, 32 )[1] &&
+	                  selfLit.At( 32, 32 )[1] < selfLit.At( 32, 32 )[2],
+	    "posed-model.self-illumination-tint-is-authored" );
+	WorldData bumpWorld = MeshWorld();
+	bumpWorld.materials[0].variables.push_back( { "$bumpmap", "ssbump-fixture" } );
+	bumpWorld.materials[0].textures.push_back( { "$bumpmap", 1 } );
+	WorldData ssbumpWorld = bumpWorld;
+	ssbumpWorld.materials[0].variables.push_back( { "$ssbump", "1" } );
+	WorldPass bump;
+	WorldPass ssbumpPass;
+	bump.SetWorld( std::move( bumpWorld ) );
+	ssbumpPass.SetWorld( std::move( ssbumpWorld ) );
+	CanvasImage regularNormal, ssbumpNormal;
+	if ( std::optional<std::string> why = render( bump, 0.0f, true, 12, black, regularNormal ) )
+		return why;
+	if ( std::optional<std::string> why =
+	         render( ssbumpPass, 0.0f, true, 13, black, ssbumpNormal ) )
+		return why;
+	results.That(
+	    bump.Stats().viewsFailed == 0 && ssbumpPass.Stats().viewsFailed == 0 &&
+	        bump.Stats().posedDrawsDrawn == 1 && ssbumpPass.Stats().posedDrawsDrawn == 1 &&
+	        std::abs( regularNormal.At( 32, 32 )[0] - ssbumpNormal.At( 32, 32 )[0] ) > 0.005f,
+	    "posed-model.ssbump-basis-changes-pbr-lighting", ssbumpPass.Stats().lastFailure );
+	WorldData plainSpecWorld = MeshWorld();
+	plainSpecWorld.materials[0].variables.push_back( { "$phong", "1" } );
+	plainSpecWorld.materials[0].variables.push_back( { "$phongexponent", "2" } );
+	plainSpecWorld.materials[0].variables.push_back( { "$phongboost", "6" } );
+	WorldData warpedSpecWorld = plainSpecWorld;
+	warpedSpecWorld.materials[0].variables.push_back(
+	    { "$phongwarptexture", "phong-warp-fixture" } );
+	warpedSpecWorld.materials[0].textures.push_back( { "$phongwarptexture", 2 } );
+	WorldPass plainSpec;
+	WorldPass warpedSpec;
+	plainSpec.SetWorld( std::move( plainSpecWorld ) );
+	warpedSpec.SetWorld( std::move( warpedSpecWorld ) );
+	CanvasImage plainSpecImage, warpedSpecImage;
+	if ( std::optional<std::string> why =
+	         render( plainSpec, 0.0f, true, 14, black, plainSpecImage ) )
+		return why;
+	if ( std::optional<std::string> why =
+	         render( warpedSpec, 0.0f, true, 15, black, warpedSpecImage ) )
+		return why;
+	results.That( plainSpec.Stats().viewsFailed == 0 && warpedSpec.Stats().viewsFailed == 0 &&
+	                  warpedSpec.Stats().posedDrawsDrawn == 1 &&
+	                  warpedSpecImage.At( 32, 32 )[1] < plainSpecImage.At( 32, 32 )[1] * 0.9f,
+	    "posed-model.phong-warp-colors-direct-pbr-specular", warpedSpec.Stats().lastFailure );
+	WorldData unlitWorld = MeshWorld();
+	unlitWorld.materials[0].shader = "UnlitGeneric";
+	WorldPass unlit;
+	unlit.SetWorld( std::move( unlitWorld ) );
+	results.That( unlit.DrawsPosedModel( 0, 0 ), "posed-model.claims-emissive-unlit-mesh" );
+	CanvasImage unlitDark, unlitBright;
+	if ( std::optional<std::string> why = render( unlit, 0.0f, false, 16, black, unlitDark ) )
+		return why;
+	if ( std::optional<std::string> why = render( unlit, 0.0f, true, 17, black, unlitBright ) )
+		return why;
+	bool independentOfLight = true;
+	for ( int channel = 0; channel < 3; ++channel )
+		independentOfLight &= std::abs( unlitDark.At( 32, 32 )[channel] -
+		                                unlitBright.At( 32, 32 )[channel] ) < 0.005f;
+	results.That( independentOfLight && unlitDark.At( 32, 32 )[0] > 0.05f,
+	    "posed-model.emissive-mesh-ignores-direct-light" );
 	(void)device->WaitIdle();
 	pass.ReleaseDevice( *device );
+	glass.ReleaseDevice( *device );
+	mixed.ReleaseDevice( *device );
+	floor.ReleaseDevice( *device );
+	bump.ReleaseDevice( *device );
+	ssbumpPass.ReleaseDevice( *device );
+	plainSpec.ReleaseDevice( *device );
+	warpedSpec.ReleaseDevice( *device );
+	unlit.ReleaseDevice( *device );
+	color2Pass.ReleaseDevice( *device );
 	messages = counter.load();
 	return std::nullopt;
 }

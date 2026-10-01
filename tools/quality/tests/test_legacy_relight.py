@@ -2,11 +2,14 @@
 filtering and the gameplay-identity oracle, on synthetic inputs (no game
 content, no pxr, no Blender)."""
 
+import json
 import math
 import struct
 import sys
+import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import numpy as np
 
@@ -20,6 +23,31 @@ import legacy_bsp_relight  # noqa: E402
 import legacy_bsp_scene as scene  # noqa: E402
 import map_scene  # noqa: E402
 import vtf_decode  # noqa: E402
+
+
+class ProbePositionsTests(unittest.TestCase):
+    def test_laser_intro_anchors_load_for_the_shipped_map(self):
+        path = ROOT / "quality/map_probe_positions/sp_a2_laser_intro.json"
+        positions = legacy_bsp_relight.load_probe_positions(path, "sp_a2_laser_intro")
+        self.assertEqual(len(positions), 3)
+        with self.assertRaisesRegex(ValueError, "shipped map"):
+            legacy_bsp_relight.load_probe_positions(path, "sp_a1_intro4")
+
+    def test_invalid_anchor_is_rejected_before_the_bake(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "anchors.json"
+            path.write_text(json.dumps({"schema": "map-probe-positions/v1",
+                                        "map": "sp_a2_laser_intro",
+                                        "anchors": [{"position_m": [0, 1, float("inf")]}]}))
+            with self.assertRaisesRegex(ValueError, "finite 3D"):
+                legacy_bsp_relight.load_probe_positions(path, "sp_a2_laser_intro")
+
+    def test_relight_passes_anchors_to_the_lighting_manifest(self):
+        with mock.patch.object(legacy_bsp_relight.map_lighting, "light") as light:
+            legacy_bsp_relight.relight("input.bsp", "relit", "out", {},
+                                      probe_positions=[[1.0, 2.0, 3.0]])
+            self.assertEqual(light.call_args.args[-1],
+                             {"reflection_probe": {"positions": [[1.0, 2.0, 3.0]]}})
 
 
 def vtf(fmt, width, height, payload, minor=2, mips=1):

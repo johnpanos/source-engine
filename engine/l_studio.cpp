@@ -2117,12 +2117,29 @@ void CModelRender::DrawModelExecute( const DrawModelState_t &state, const ModelR
 
 	if ( g_bTextMode )
 		return;
-	// The stage owns the lighting for this animated door. Its pose is still
-	// produced by the engine, so gameplay and animation stay unchanged.
-	if ( !bShadowDepth && !bSSAODepth && state.m_pStudioHdr->numflexdesc == 0 && pInfo.body == 0 &&
-	     RenderCoreWorldDraw_TakePosedModel(
-	         pInfo.pModel, pInfo.skin, pBoneToWorld, state.m_pStudioHdr->numbones ) )
-		return;
+	// The stage can shade the current pose when the draw is the model's
+	// ordinary, unmodulated LOD 0. Other modes still need studiorender's
+	// material override, flex, bodygroup, static-lighting or two-pass state.
+	const int special =
+	    STUDIO_WIREFRAME | STUDIO_ITEM_BLINK | STUDIO_STATIC_LIGHTING | STUDIO_GENERATE_STATS;
+	if ( !bShadowDepth && !bSSAODepth && pInfo.pRenderable && ( pInfo.flags & STUDIO_RENDER ) &&
+	     !( pInfo.flags & special ) && state.m_lod == 0 && state.m_pStudioHdr->numflexdesc == 0 &&
+	     pInfo.body == 0 && RenderCoreWorldDraw_CanTakePosedModel( pInfo.pModel ) )
+	{
+		IMaterial *overrideMaterial = NULL;
+		OverrideType_t overrideType = OVERRIDE_NORMAL;
+		g_pStudioRender->GetMaterialOverride( &overrideMaterial, &overrideType );
+		float color[3] = { 1.0f, 1.0f, 1.0f };
+		pInfo.pRenderable->GetColorModulation( color );
+		if ( !overrideMaterial && pInfo.pRenderable->GetFxBlend() == 255 && color[0] == 1.0f &&
+		     color[1] == 1.0f && color[2] == 1.0f &&
+		     RenderCoreWorldDraw_TakePosedModel( pInfo.pModel, pInfo.skin, pBoneToWorld,
+		         state.m_pStudioHdr->numbones,
+		         !( pInfo.flags & STUDIO_TWOPASS )       ? RenderCoreDrawPhase::kAll
+		         : ( pInfo.flags & STUDIO_TRANSPARENCY ) ? RenderCoreDrawPhase::kBlended
+		                                                 : RenderCoreDrawPhase::kOpaque ) )
+			return;
+	}
 
 	// Sets up flexes
 	float *pFlexWeights = NULL;

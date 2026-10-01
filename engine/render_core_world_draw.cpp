@@ -10,6 +10,7 @@
 #include "render_core_host.h"
 #include "cmodel_engine.h"
 #include "render_core_world.h"
+#include "client.h"
 #include "staticpropmgr.h"
 #include "modelloader.h"
 #include "ModelInfo.h"
@@ -25,6 +26,7 @@
 #include "materialsystem/imaterialsystemhardwareconfig.h"
 #include "materialsystem/itexture.h"
 #include "filesystem.h"
+#include "networkstringtabledefs.h"
 #include "tier1/KeyValues.h"
 #include "tier1/fmtstr.h"
 #include "tier1/convar.h"
@@ -33,6 +35,8 @@
 #include "vtf/vtf.h"
 #include "tier1/utlvector.h"
 
+#include <algorithm>
+#include <cstring>
 #include <memory>
 #include <string>
 #include <vector>
@@ -85,8 +89,10 @@ struct CoreWorldState
 	// Per surface index: its entry in the core's world (only eligible
 	// surfaces have one), or -1. Views name the core's entries.
 	CUtlVector<int> entryOf;
-	const model_t *doorModel = NULL;
-	unsigned int doorModelIndex = ~0u;
+	// Static meshes first (their prop indices are stable), then the Studio
+	// models the client precache table supplies for posed draws.
+	std::vector<const model_t *> registeredModels;
+	std::vector<unsigned long long> posedClaims; // per registered model, this level
 };
 
 CoreWorldState &State()
@@ -194,7 +200,8 @@ IShader *FindShader( const char *pName )
 	return NULL;
 }
 
-void ReadVariables( IMaterial *pMaterial, NeutralMaterials &neutrals, MaterialVars &out )
+void ReadVariables(
+    IMaterial *pMaterial, NeutralMaterials &neutrals, MaterialVars &out, bool nativeMesh = false )
 {
 	out.material = pMaterial;
 	IMaterialVar **ppParams = pMaterial->GetShaderParams();
@@ -217,13 +224,19 @@ void ReadVariables( IMaterial *pMaterial, NeutralMaterials &neutrals, MaterialVa
 		out.values.AddToTail( CUtlString( pVar->GetStringValue() ) );
 		const bool declaredHere = pShader && i < pShader->GetNumParams() &&
 		                          !V_stricmp( pShader->GetParamName( i ), pVar->GetName() );
-		ITexture *pTexture =
-		    pVar->GetType() == MATERIAL_VAR_TYPE_TEXTURE ? pVar->GetTextureValue() : NULL;
+		// A model's $envmap selects the stage's RPRB image light. Importing
+		// its legacy cubemap would bind the wrong authority and can force a
+		// missing map-specific VTF to become an error texture.
+		const bool nativeProbe = nativeMesh && !V_stricmp( pVar->GetName(), "$envmap" );
+		ITexture *pTexture = !nativeProbe && pVar->GetType() == MATERIAL_VAR_TYPE_TEXTURE
+		                         ? pVar->GetTextureValue()
+		                         : NULL;
 		// A texture parameter its shader did not load (a cubemap-patched
 		// brush material's bump map, sp_a3_crazy_box): the texture it names,
 		// held for the level, so the core samples what the material names.
-		if ( !pTexture && declaredHere && pShader->GetParamType( i ) == SHADER_PARAM_TYPE_TEXTURE &&
-		     pVar->GetStringValue() && pVar->GetStringValue()[0] )
+		if ( !nativeProbe && !pTexture && declaredHere &&
+		     pShader->GetParamType( i ) == SHADER_PARAM_TYPE_TEXTURE && pVar->GetStringValue() &&
+		     pVar->GetStringValue()[0] )
 		{
 			ITexture *pFound =
 			    materials->FindTexture( pVar->GetStringValue(), TEXTURE_GROUP_WORLD, false );
@@ -360,7 +373,7 @@ static bool ReadStaticModelFile( const std::string &path, std::string &bytes )
 	return true;
 }
 
-static void LevelInitStaticProps( IRenderCoreWorld *pWorld )
+static void LevelInitModels( IRenderCoreWorld *pWorld )
 {
 	struct ModelSource
 	{
@@ -370,10 +383,37 @@ static void LevelInitStaticProps( IRenderCoreWorld *pWorld )
 	};
 	const int staticModelCount = StaticPropMgr_CoreModelCount();
 	CoreWorldState &state = State();
-	state.doorModel = modelloader->GetModelForName(
-	    "models/props/portal_door_combined.mdl", IModelLoader::FMODELLOADER_CLIENT );
-	state.doorModelIndex = state.doorModel ? unsigned( staticModelCount ) : ~0u;
-	const int modelCount = staticModelCount + ( state.doorModel ? 1 : 0 );
+	state.registeredModels.clear();
+	state.registeredModels.reserve( staticModelCount );
+	for ( int i = 0; i < staticModelCount; ++i )
+		state.registeredModels.push_back( StaticPropMgr_CoreModel( i ) );
+	// Loading every precached Studio model is a core-world composition step.
+	// The default legacy path keeps its lazy model loading behavior.
+	const int precached = r_core_world.GetInt() == 1 && cl.m_pModelPrecacheTable
+	                          ? std::min( cl.m_pModelPrecacheTable->GetNumStrings(), MAX_MODELS )
+	                          : 0;
+	for ( int i = 2; i < precached; ++i )
+	{
+		const char *name = cl.m_pModelPrecacheTable->GetString( i );
+		const std::size_t length = name ? std::strlen( name ) : 0;
+		if ( length < 4 || V_stricmp( name + length - 4, ".mdl" ) )
+			continue;
+		const model_t *model = cl.GetModel( i );
+		if ( !model || model->type != mod_studio ||
+		     std::find( state.registeredModels.begin(), state.registeredModels.end(), model ) !=
+		         state.registeredModels.end() )
+			continue;
+		studiohdr_t *header = modelinfo->GetStudiomodel( model );
+		if ( !header || header->numbones <= 0 || header->numbones > 255 ||
+		     header->numflexdesc != 0 || modelinfo->ModelHasMaterialProxy( model ) )
+			continue;
+		state.registeredModels.push_back( model );
+	}
+	const int modelCount = int( state.registeredModels.size() );
+	state.posedClaims.assign( modelCount, 0 );
+	Msg( "r_core_world: %d static models, %d candidate posed models from %d scanned precache "
+	     "entries\n",
+	    staticModelCount, modelCount - staticModelCount, precached );
 	const int propCount = StaticPropMgr_CorePropCount();
 	std::vector<ModelSource> sources( modelCount );
 	std::vector<RenderCoreStaticModel> models( modelCount );
@@ -382,8 +422,7 @@ static void LevelInitStaticProps( IRenderCoreWorld *pWorld )
 	int missingMaterials = 0;
 	for ( int i = 0; i < modelCount; ++i )
 	{
-		const model_t *model =
-		    i < staticModelCount ? StaticPropMgr_CoreModel( i ) : state.doorModel;
+		const model_t *model = state.registeredModels[i];
 		if ( !model )
 		{
 			++missingModel;
@@ -434,7 +473,7 @@ static void LevelInitStaticProps( IRenderCoreWorld *pWorld )
 				break;
 			source.variables.push_back( std::make_unique<MaterialVars>() );
 			MaterialVars &vars = *source.variables.back();
-			ReadVariables( material, neutrals, vars );
+			ReadVariables( material, neutrals, vars, true );
 			RenderCoreWorldMaterial desc;
 			desc.name = material->GetName();
 			desc.shader = material->GetShaderName();
@@ -443,6 +482,7 @@ static void LevelInitStaticProps( IRenderCoreWorld *pWorld )
 			desc.values = vars.valuePtrs.Base();
 			desc.textures = vars.textures.Base();
 			desc.defaults = vars.defaults.Base();
+			desc.translucent = material->IsTranslucent();
 			source.materials.push_back( desc );
 		}
 		RenderCoreStaticModel &out = models[i];
@@ -456,7 +496,7 @@ static void LevelInitStaticProps( IRenderCoreWorld *pWorld )
 		out.materials = source.materials.data();
 		out.materialCount = unsigned( source.materials.size() );
 	}
-	Msg( "r_core_world: static model inputs: %d models, missing model %d, mdl %d, vvd %d, "
+	Msg( "r_core_world: Studio model inputs: %d models, missing model %d, mdl %d, vvd %d, "
 	     "vtx %d, materials %d\n",
 	    modelCount, missingModel, missingMdl, missingVvd, missingVtx, missingMaterials );
 	std::vector<RenderCoreStaticProp> props( propCount );
@@ -465,7 +505,11 @@ static void LevelInitStaticProps( IRenderCoreWorld *pWorld )
 		const model_t *model = NULL;
 		unsigned char alpha = 0;
 		float modulation[3] = {};
-		StaticPropMgr_CorePropInfo( i, &model, props[i].world, &props[i].skin, &alpha, modulation );
+		StaticPropMgr_CorePropInfo(
+		    i, &model, props[i].world, &props[i].skin, &alpha, modulation, &props[i].castsShadow );
+		studiohdr_t *header = model ? modelinfo->GetStudiomodel( model ) : NULL;
+		if ( header && ( header->flags & STUDIOHDR_FLAGS_DO_NOT_CAST_SHADOWS ) )
+			props[i].castsShadow = false;
 		props[i].model = ~0u;
 		for ( int m = 0; m < staticModelCount; ++m )
 		{
@@ -553,7 +597,7 @@ static void LevelInitStage( IRenderCoreWorld *pWorld, worldbrushdata_t *pBrush )
 	}
 	pWorld->SetWorldMesh( pBrush->pWorldMeshData, pBrush->worldMeshSize, meshlets.Base(),
 	    meshlets.Count(), materialDescs.Base(), materialDescs.Count(), CM_EntityString() );
-	LevelInitStaticProps( pWorld );
+	LevelInitModels( pWorld );
 	state.stageTakes.SetCount( pBrush->worldMeshBatchCount );
 	int taken = 0;
 	for ( unsigned int b = 0; b < pBrush->worldMeshBatchCount; ++b )
@@ -638,11 +682,8 @@ static void LevelInitWorld()
 	state.worldMeshViews = 0;
 	state.takes.RemoveAll();
 	state.entryOf.RemoveAll();
-	if ( state.doorModel )
-		modelloader->UnreferenceModel(
-		    const_cast<model_t *>( state.doorModel ), IModelLoader::FMODELLOADER_CLIENT );
-	state.doorModel = NULL;
-	state.doorModelIndex = ~0u;
+	state.registeredModels.clear();
+	state.posedClaims.clear();
 	IRenderCoreWorld *pWorld = RenderCoreHost_World();
 	if ( pWorld )
 		state.failuresSeen = pWorld->Failures();
@@ -789,11 +830,8 @@ static void LevelInitWorld()
 void RenderCoreWorldDraw_LevelShutdown()
 {
 	CoreWorldState &state = State();
-	if ( state.doorModel )
-		modelloader->UnreferenceModel(
-		    const_cast<model_t *>( state.doorModel ), IModelLoader::FMODELLOADER_CLIENT );
-	state.doorModel = NULL;
-	state.doorModelIndex = ~0u;
+	state.registeredModels.clear();
+	state.posedClaims.clear();
 	for ( int i = 0; i < state.heldTextures.Count(); ++i )
 		state.heldTextures[i]->DecrementReferenceCount();
 	state.heldTextures.RemoveAll();
@@ -881,24 +919,37 @@ static bool QueueCoreView( IRenderCoreWorld *pWorld, const unsigned int *pEntrie
 	    unsigned( nPosedModels ) );
 }
 
-bool RenderCoreWorldDraw_TakePosedModel(
-    const model_t *model, int skin, const matrix3x4_t *boneToWorld, int boneCount )
+bool RenderCoreWorldDraw_CanTakePosedModel( const model_t *model )
 {
 	const CoreWorldState &state = State();
+	return model && state.stageWorld && r_core_world.GetInt() == 1 &&
+	       RenderCoreWorld_ViewDepth() == 1 && RenderCoreHost_World() &&
+	       std::find( state.registeredModels.begin(), state.registeredModels.end(), model ) !=
+	           state.registeredModels.end();
+}
+
+bool RenderCoreWorldDraw_TakePosedModel( const model_t *model, int skin,
+    const matrix3x4_t *boneToWorld, int boneCount, RenderCoreDrawPhase phase )
+{
+	CoreWorldState &state = State();
 	IRenderCoreWorld *pWorld = RenderCoreHost_World();
-	if ( !pWorld || !state.stageWorld || r_core_world.GetInt() != 1 ||
-	     RenderCoreWorld_ViewDepth() != 1 || model != state.doorModel ||
-	     state.doorModelIndex == ~0u || skin < 0 || !boneToWorld || boneCount <= 0 )
+	if ( !RenderCoreWorldDraw_CanTakePosedModel( model ) || !pWorld || skin < 0 || !boneToWorld ||
+	     boneCount <= 0 )
 		return false;
+	const auto found =
+	    std::find( state.registeredModels.begin(), state.registeredModels.end(), model );
 	std::vector<float> palette;
 	palette.reserve( std::size_t( boneCount ) * 12 );
 	for ( int bone = 0; bone < boneCount; ++bone )
 		for ( int row = 0; row < 3; ++row )
 			for ( int col = 0; col < 4; ++col )
 				palette.push_back( boneToWorld[bone].m_flMatVal[row][col] );
-	RenderCorePosedModel posed = {
-	    state.doorModelIndex, unsigned( skin ), palette.data(), unsigned( boneCount ) };
-	return QueueCoreView( pWorld, NULL, 0, 0.0f, NULL, 0, &posed, 1 );
+	RenderCorePosedModel posed = { unsigned( found - state.registeredModels.begin() ),
+	    unsigned( skin ), palette.data(), unsigned( boneCount ), phase };
+	if ( !QueueCoreView( pWorld, NULL, 0, 0.0f, NULL, 0, &posed, 1 ) )
+		return false;
+	++state.posedClaims[posed.model];
+	return true;
 }
 
 void RenderCoreWorldDraw_BeginView( const unsigned int *pSurfaces, int nCount, float waterZOffset )
@@ -1028,6 +1079,12 @@ CON_COMMAND( r_core_world_stats, "RFC 0016 K5: the core world's surfaces, views 
 	    stats.lastFailure );
 	Msg( "r_core_world_stats: posed models queued %llu draws %llu\n", stats.posedModelsQueued,
 	    stats.posedDrawsDrawn );
+	for ( std::size_t i = 0; i < State().posedClaims.size(); ++i )
+	{
+		if ( State().posedClaims[i] && State().registeredModels[i] )
+			Msg( "r_core_world_stats: posed %llu %s\n", State().posedClaims[i],
+			    modelloader->GetName( const_cast<model_t *>( State().registeredModels[i] ) ) );
+	}
 	if ( stats.gaps[0] )
 		Msg( "r_core_world_stats: gaps:\n%s", stats.gaps );
 	if ( stats.claimed[0] )

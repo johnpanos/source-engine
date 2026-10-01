@@ -6919,7 +6919,7 @@ render::legacy::CorePassTarget CVulkanContext::CorePassTargetFor( int target )
 	if ( target != -1 || !m_hostDevice || m_acquiredImage >= m_swapImages.size() )
 		return out;
 	const auto import = [&]( VkImage image, render::device::Format format, ResourceUsage home,
-	                        const char *name, TextureId *id )
+	                        bool copySource, const char *name, TextureId *id )
 	{
 		if ( id->IsValid() || image == VK_NULL_HANDLE ||
 		     format == render::device::Format::kUnknown )
@@ -6930,19 +6930,21 @@ render::legacy::CorePassTarget CVulkanContext::CorePassTargetFor( int target )
 		desc.height = extent.height;
 		desc.sampleCount = out.samples;
 		desc.usages = { home };
+		if ( copySource )
+			desc.usages.Add( ResourceUsage::kCopySource );
 		desc.debugName = name;
 		if ( !m_hostDevice->ImportImage( image, desc, home, id ) )
 			*id = TextureId();
 	};
 	if ( multisampled )
 	{
-		import( m_msColor, out.colorFormat, ResourceUsage::kColorAttachment,
+		import( m_msColor, out.colorFormat, ResourceUsage::kColorAttachment, true,
 		    "multisampled back buffer", &m_coreMsColor );
 		if ( m_srgbAttachments && m_msColorViewSrgb != VK_NULL_HANDLE )
 			import( m_msColor, SrgbPortFormat( out.colorFormat ), ResourceUsage::kColorAttachment,
-			    "multisampled back buffer (sRGB)", &m_coreMsColorSrgb );
+			    true, "multisampled back buffer (sRGB)", &m_coreMsColorSrgb );
 		out.colorSrgb = m_coreMsColorSrgb;
-		import( m_msDepth, out.depthFormat, ResourceUsage::kDepthWrite, "multisampled depth",
+		import( m_msDepth, out.depthFormat, ResourceUsage::kDepthWrite, false, "multisampled depth",
 		    &m_coreMsDepth );
 		out.color = m_coreMsColor;
 		out.depth = m_coreMsDepth;
@@ -6952,14 +6954,14 @@ render::legacy::CorePassTarget CVulkanContext::CorePassTargetFor( int target )
 	m_coreColorSrgb.resize( m_swapImages.size() );
 	m_coreDepth.resize( m_swapImages.size() );
 	const uint32_t i = m_acquiredImage;
-	import( m_swapImages[i], out.colorFormat, ResourceUsage::kColorAttachment, "back buffer",
-	    &m_coreColor[i] );
+	import( m_swapImages[i], out.colorFormat, ResourceUsage::kColorAttachment, m_presentCapturable,
+	    "back buffer", &m_coreColor[i] );
 	if ( m_srgbAttachments )
 		import( m_swapImages[i], SrgbPortFormat( out.colorFormat ), ResourceUsage::kColorAttachment,
-		    "back buffer (sRGB)", &m_coreColorSrgb[i] );
+		    m_presentCapturable, "back buffer (sRGB)", &m_coreColorSrgb[i] );
 	out.colorSrgb = m_coreColorSrgb[i];
 	if ( i < m_depthImages.size() )
-		import( m_depthImages[i], out.depthFormat, ResourceUsage::kDepthWrite, "depth",
+		import( m_depthImages[i], out.depthFormat, ResourceUsage::kDepthWrite, false, "depth",
 		    &m_coreDepth[i] );
 	out.color = m_coreColor[i];
 	out.depth = m_coreDepth[i];

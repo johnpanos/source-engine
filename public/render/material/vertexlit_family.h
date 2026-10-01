@@ -90,15 +90,31 @@ struct VertexLitMeshClaim
 	bool claimed = false;
 	std::string reason;
 	bool normalMap = false;
+	bool ssbump = false;
 	bool selfIllum = false;
+	bool selfIllumMask = false;
+	bool phongExponentTexture = false;
+	bool envmapMask = false;
+	bool detail = false;
+	bool lightwarp = false;
+	bool phongWarp = false;
+	std::uint32_t detailMode = 0;
 	bool alphaTest = false;
+	bool halfLambert = false;
+	device::BlendMode blend = device::BlendMode::kOpaque;
 	SurfaceConstants constants;
 	SurfaceVariant Variant() const
 	{
 		SurfaceVariant variant;
-		variant.terms = kSurfacePbr | ( normalMap ? kSurfaceBump : 0u ) |
-		                ( selfIllum ? kSurfaceSelfIllum : 0u );
-		variant.alphaWrite = !alphaTest;
+		variant.terms = kSurfacePbr |
+		                ( normalMap ? ( ssbump ? kSurfaceSsbump : kSurfaceBump ) : 0u ) |
+		                ( selfIllum ? kSurfaceSelfIllum : 0u ) |
+		                ( selfIllumMask ? kSurfaceSelfIllumMask : 0u ) |
+		                ( phongExponentTexture ? kSurfacePhongExponentTexture : 0u ) |
+		                ( detail ? kSurfaceDetail : 0u );
+		variant.detailMode = detailMode;
+		variant.blend = blend;
+		variant.alphaWrite = blend == device::BlendMode::kOpaque && !alphaTest;
 		variant.layout = SurfaceVertexLayout::kWorld;
 		return variant;
 	}

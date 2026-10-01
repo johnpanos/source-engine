@@ -191,7 +191,9 @@ foundation::Expected<std::unique_ptr<SurfaceProgram>, SurfaceStatus> SurfaceProg
 	    { 10, BindingKind::kSampledTexture, 1, { ShaderStage::kFragment } },
 	    { 11, BindingKind::kSampler, 1, { ShaderStage::kFragment } },
 	    { 12, BindingKind::kSampledTexture, 1, { ShaderStage::kFragment } },
-	    { 13, BindingKind::kSampler, 1, { ShaderStage::kFragment } } };
+	    { 13, BindingKind::kSampler, 1, { ShaderStage::kFragment } },
+	    { 14, BindingKind::kSampledTexture, 1, { ShaderStage::kFragment } },
+	    { 15, BindingKind::kSampler, 1, { ShaderStage::kFragment } } };
 	auto frameLayout = device.CreateBindGroupLayout( { BindGroupRole::kFrame, frame } );
 	auto viewLayout = device.CreateBindGroupLayout( { BindGroupRole::kView, view } );
 	auto materialLayout = device.CreateBindGroupLayout( { BindGroupRole::kMaterial, material } );
@@ -239,6 +241,8 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::Pipeline(
 		return foundation::MakeUnexpected( SurfaceStatus::kInvalidRequest );
 	// The map's probes are the pbr point's.
 	if ( ( variant.terms & kSurfaceMapProbeTerms ) && !( variant.terms & kSurfacePbr ) )
+		return foundation::MakeUnexpected( SurfaceStatus::kInvalidRequest );
+	if ( ( variant.terms & kSurfaceTransmission ) && !( variant.terms & kSurfacePbr ) )
 		return foundation::MakeUnexpected( SurfaceStatus::kInvalidRequest );
 	// The lightmap basis is the pbr point's, on a world surface.
 	if ( ( variant.terms & kSurfaceLightmapTerms ) &&
@@ -320,8 +324,10 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::Pipeline(
 	desc.topology = PrimitiveTopology::kTriangleList;
 	desc.raster.cull = CullMode::kNone;
 	const bool depth = m_DepthFormat != Format::kUnknown;
-	desc.depthStencil = {
-	    depth, depth && variant.blend == BlendMode::kOpaque, CompareOp::kLessEqual };
+	desc.depthStencil = { depth,
+	    depth && variant.blend == BlendMode::kOpaque &&
+	        ( variant.terms & kSurfaceTransmission ) == 0,
+	    CompareOp::kLessEqual };
 	desc.colorFormats = std::span<const Format>( colors, attachments );
 	desc.blends = std::span<const BlendMode>( blends, attachments );
 	desc.colorWriteMasks = std::span<const std::uint8_t>( writes, attachments );
@@ -367,7 +373,10 @@ foundation::Expected<ProgramRequest, SurfaceStatus> SurfaceProgram::Request(
 	request.material.layout = m_MaterialLayout;
 	request.material.constantsBinding = 0;
 	SurfaceConstants packed = constants;
-	packed.state[0] = variant.blend == BlendMode::kOpaque && variant.alphaWrite ? 1.0f : 0.0f;
+	packed.state[0] = variant.blend == BlendMode::kOpaque && variant.alphaWrite &&
+	                          ( variant.terms & kSurfaceTransmission ) == 0
+	                      ? 1.0f
+	                      : 0.0f;
 	const auto bytes = std::as_bytes( std::span( &packed, 1 ) );
 	request.material.constants.assign( bytes.begin(), bytes.end() );
 	request.material.textures.push_back( { 1, textures.base, 2, sampler, true } );
@@ -381,11 +390,12 @@ foundation::Expected<ProgramRequest, SurfaceStatus> SurfaceProgram::Request(
 	request.material.textures.push_back(
 	    { 5, water ? textures.flowmap : textures.envmapMask, 6, sampler, false } );
 	request.material.textures.push_back( { 7, textures.bump, 8, sampler, false } );
-	request.material.textures.push_back(
-	    { 9, textures.detail, 10, sampler, variant.detailMode == 1 } );
+	request.material.textures.push_back( { 9, textures.detail, 10, sampler,
+	    ( variant.terms & kSurfacePbr ) != 0 || variant.detailMode == 1 } );
 	request.material.textures.push_back(
 	    { 11, water ? textures.flowNoise : textures.mrao, 12, sampler, false } );
-	request.material.textures.push_back( { 13, textures.emission, 14, sampler, true } );
+	request.material.textures.push_back(
+	    { 13, textures.emission, 14, sampler, ( variant.terms & kSurfaceSelfIllumMask ) == 0 } );
 	return request;
 }
 
@@ -482,6 +492,15 @@ GroupRequest SurfaceProgram::ViewGroup( const SurfaceViewGpu &view,
 	reflection.external = screen.planarReflection;
 	reflection.externalDesc = screen.planarReflectionDesc;
 	request.textures.push_back( std::move( reflection ) );
+	ProgramTexture sceneColor;
+	sceneColor.binding = 14;
+	sceneColor.samplerBinding = 15;
+	sceneColor.sampler.minFilter = sceneColor.sampler.magFilter =
+	    sceneColor.sampler.mipFilter = Filter::kNearest;
+	sceneColor.sampler.address = AddressMode::kClampToEdge;
+	sceneColor.external = screen.sceneColor;
+	sceneColor.externalDesc = screen.sceneColorDesc;
+	request.textures.push_back( std::move( sceneColor ) );
 	return request;
 }
 

@@ -38,6 +38,7 @@ using namespace render::device;
 struct Claimed
 {
 	bool draws = false;
+	bool blended = false;
 	material::MaterialDesc desc;
 	std::map<std::string, int> handles; // the importer's texture name -> handle
 };
@@ -398,6 +399,7 @@ void WorldPass::SetWorld( WorldData data )
 	for ( const WorldMaterial &source : data.materials )
 	{
 		Claimed claimed;
+		claimed.blended = source.translucent;
 		std::vector<material::VmtPair> variables;
 		for ( const auto &[key, value] : source.variables )
 			variables.push_back( { key, value } );
@@ -426,14 +428,18 @@ void WorldPass::SetWorld( WorldData data )
 			// Static meshes use the same surface program with model vertices,
 			// probes and clustered direct light instead of a lightmap page.
 			auto blend = source.mesh
-			                 ? material::ClaimForMesh( claimed.desc )
+			                 ? material::ClaimForMesh( claimed.desc,
+			                       data.stage && !data.stage->reflectionProbes.empty() )
 			                 : material::ClaimForDrawing( claimed.desc, data.stage != nullptr );
 			if ( !blend )
 				gap = claimed.desc.family + ": " + blend.Error();
-			else if ( blend.Value() != BlendMode::kOpaque )
+			else if ( !source.mesh && blend.Value() != BlendMode::kOpaque )
 				gap = claimed.desc.family + ": blended (drawn in the translucent stage)";
 			else
+			{
+				claimed.blended |= blend.Value() != BlendMode::kOpaque;
 				claimed.draws = true;
+			}
 		}
 		if ( !gap.empty() )
 		{
@@ -580,7 +586,8 @@ bool WorldPass::DrawsStaticInstance( std::uint32_t instance ) const
 	return true;
 }
 
-bool WorldPass::DrawsPosedModel( std::uint32_t meshId, std::uint32_t skin ) const
+bool WorldPass::DrawsPosedModel(
+    std::uint32_t meshId, std::uint32_t skin, RenderCoreDrawPhase phase ) const
 {
 	const State &s = *m_State;
 	std::lock_guard<std::mutex> guard( s.lock );
@@ -592,16 +599,24 @@ bool WorldPass::DrawsPosedModel( std::uint32_t meshId, std::uint32_t skin ) cons
 	WorldData::StaticInstance instance;
 	instance.mesh = meshId;
 	instance.skin = skin;
+	bool hasSurface = false;
 	for ( std::uint32_t i = 0; i < mesh.surfaces.size(); ++i )
 	{
 		const WorldSurface &surface = mesh.surfaces[i];
 		const std::uint32_t material = StaticMaterial( mesh, instance, i );
+		if ( material >= s.claims->size() )
+			return false;
+		const bool blended = ( *s.claims )[material].blended;
+		if ( ( phase == RenderCoreDrawPhase::kOpaque && blended ) ||
+		     ( phase == RenderCoreDrawPhase::kBlended && !blended ) )
+			continue;
+		hasSurface = true;
 		if ( material >= s.claims->size() || !( *s.claims )[material].draws ||
 		     !s.world->materials[material].mesh || surface.firstIndex > mesh.indices.size() ||
 		     surface.indexCount > mesh.indices.size() - surface.firstIndex )
 			return false;
 	}
-	return true;
+	return hasSurface;
 }
 
 std::uint32_t WorldPass::QueueView( WorldView view )
@@ -1825,6 +1840,15 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		for ( std::uint32_t surfaceId = 0; surfaceId < mesh.surfaces.size(); ++surfaceId )
 		{
 			const std::uint32_t materialId = StaticMaterial( mesh, instance, surfaceId );
+			if ( materialId >= claims->size() )
+			{
+				complete = false;
+				continue;
+			}
+			const bool blended = ( *claims )[materialId].blended;
+			if ( ( pose.phase == RenderCoreDrawPhase::kOpaque && blended ) ||
+			     ( pose.phase == RenderCoreDrawPhase::kBlended && !blended ) )
+				continue;
 			const Resources::Material *material =
 			    materialId < claims->size() && ( *claims )[materialId].draws
 			        ? materialReadyIn( *r.modelResolver, r.modelMaterials, materialId )
@@ -2185,7 +2209,15 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		    }
 		    return debug.Value();
 	    } );
-	std::sort( staticDraws.begin(), staticDraws.end(),
+	// The model list is built in caller order. Opaque draws can be grouped by
+	// material, while blended surfaces must stay after them and retain their
+	// submitted order; their pipeline has depth writes disabled.
+	const auto firstBlended = std::stable_partition( staticDraws.begin(), staticDraws.end(),
+	    [&]( const StaticDraw &draw )
+	    {
+		    return r.modelMaterials[draw.material].program.blend == BlendMode::kOpaque;
+	    } );
+	std::sort( staticDraws.begin(), firstBlended,
 	    [&]( const StaticDraw &a, const StaticDraw &b )
 	    {
 		    return std::tie( a.material, a.mesh, a.posed, a.instance, a.surface ) <

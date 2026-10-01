@@ -6539,7 +6539,7 @@
         "hammer/core/app/instance_preview.cpp",
         "unittests/hammertest/app/test_instance_preview.cpp"
       ],
-      "min_checks": 30,
+      "min_checks": 37,
       "expect": "pass"
     },
     {
@@ -8607,7 +8607,7 @@
       "contract": "unittests/rendertest/contracts/render.graph.v1.md",
       "kind": "positive",
       "profile": "linux-headless-core",
-      "description": "render.graph.v1 (RFC 0016 K2) on render.device.null: culling, transitions, transient usages, lifetimes and physical aliasing, bad graphs rejected with their status, agreement with the independent reference model on 1,000 seeded random graphs, the sync validator silent on every compiled graph, the pooled executor (one encoder per pass on a 4-worker jobs.graph ParallelExecutor) recording the serial executor's stream, and transient pooling across executions.",
+      "description": "render.graph.v1 (RFC 0016 K2) on render.device.null: culling, transitions, transient usages, lifetimes and physical aliasing, bad graphs rejected with their status, agreement with the independent reference model on 1,000 seeded random graphs, the sync validator silent on every compiled graph, the pooled executor (one encoder per pass on a 4-worker jobs.graph ParallelExecutor) recording the serial executor's stream, transient pooling across executions, pixel-exact single-sample scene-color capture and 4x MSAA resolve declaration.",
       "result_protocol": "checks-v1",
       "sources": [
         "render/device/port.cpp",
@@ -8621,6 +8621,7 @@
         "render/graph/executor_pooled.cpp",
         "render/graph/validate.cpp",
         "render/graph/pass_timers.cpp",
+        "render/graph/scene_color.cpp",
         "jobsystem/job_graph.cpp",
         "jobsystem/parallel_executor.cpp",
         "unittests/rendertest/core/graph/test_graph.cpp"
@@ -8639,7 +8640,7 @@
       "contract": "unittests/rendertest/contracts/render.graph.v1.md",
       "kind": "positive",
       "profile": "linux-native-vulkan-gpu",
-      "description": "render.graph.v1 on render.device.vulkan (RFC 0016 K2 'Graph suite' Vulkan lane and 'Synchronization validated' for the graph): the 1,000 seeded random graphs, with real work for their writes (render passes clearing color attachments, texture clears, buffer writes), pass ValidateCompiledGraph and run to completion through the serial executor and through the pooled executor (one encoder per pass on a 4-worker jobs.graph ParallelExecutor, transients pooled across graphs), with no message from the Khronos validation layer (synchronization validation) when it is installed.",
+      "description": "render.graph.v1 on render.device.vulkan (RFC 0016 K2 'Graph suite' Vulkan lane and 'Synchronization validated' for the graph): the 1,000 seeded random graphs, with real work for their writes (render passes clearing color attachments, texture clears, buffer writes), pass ValidateCompiledGraph and run to completion through the serial executor and through the pooled executor (one encoder per pass on a 4-worker jobs.graph ParallelExecutor, transients pooled across graphs), plus pixel-exact scene-color capture from single-sample and 4x MSAA sources, with no message from the Khronos validation layer (synchronization validation) when it is installed.",
       "result_protocol": "checks-v1",
       "sources": [
         "render/device/port.cpp",
@@ -8661,6 +8662,7 @@
         "render/graph/executor_pooled.cpp",
         "render/graph/validate.cpp",
         "render/graph/pass_timers.cpp",
+        "render/graph/scene_color.cpp",
         "jobsystem/job_graph.cpp",
         "jobsystem/parallel_executor.cpp",
         "unittests/rendertest/core/graph/test_graph_vulkan.cpp"
@@ -8725,6 +8727,7 @@
         "render/graph/executor_pooled.cpp",
         "render/graph/validate.cpp",
         "render/graph/pass_timers.cpp",
+        "render/graph/scene_color.cpp",
         "jobsystem/job_graph.cpp",
         "jobsystem/parallel_executor.cpp",
         "unittests/rendertest/core/graph/test_graph.cpp"
@@ -10134,7 +10137,7 @@
       "contract": "RFC/0016-render-core.md",
       "profile": "linux-native-vulkan-gpu",
       "kind": "positive",
-      "description": "RFC 0016 K11 'Model assembly', the map's indirect terms end to end (render/lab/map_terms_suite.cpp, render_lab suite map-terms --validate): the surface program's pbr point drawn through the Vulkan adapter. Lightmap basis on a world surface (kSurfaceBakedLightmap, kSurfaceDirectionalLightmap): the baked view is the flat page times the lightmap scale, the directional page E0 * clamp(1 + beta . (n - N), 0, 4) at the normal-map normal, the flat light bitwise without one; the lit pixel is pbr_brdf.h's diffuse color times it within 0.5 percent; the baked term off removes it. Reflection probes on a world floor (kSurfaceReflectionProbes) in the RPRB fixture room: a white metal's image-specular view is ReflectionProbesView::Radiance at each pixel's point and reflected ray within 2 percent + 2e-3, the direction-only reference is rejected, and without the term or with a texture carrying no probes the frame is the ambient cube's, bitwise. Probe volume on a model surface (kSurfaceProbeVolume) over the PRBV gpu fixture: the diffuse lobe is the diffuse color times ProbeVolumeView::Sample with visibility where covered and the ambient cube elsewhere, within 1 percent + 2e-3; the ambient cube alone is rejected; without the term the frame is zero. Ill-conditioned pixels (the oracle moves by more than half the bound within 0.01 units) at most 5 percent per view. 0 validation messages.",
+      "description": "RFC 0016 K11 'Model assembly', the map's indirect terms end to end (render/lab/map_terms_suite.cpp, render_lab suite map-terms --validate): the surface program's pbr point drawn through the Vulkan adapter. Lightmap basis on a world surface (kSurfaceBakedLightmap, kSurfaceDirectionalLightmap): the baked view is the flat page times the lightmap scale, the directional page E0 * clamp(1 + beta . (n - N), 0, 4) at the normal-map normal, the flat light bitwise without one; the lit pixel is pbr_brdf.h's diffuse color times it within 0.5 percent; the baked term off removes it. Reflection probes on a world floor (kSurfaceReflectionProbes) in the RPRB fixture room: a white metal's image-specular view is ReflectionProbesView::Radiance at each pixel's point and reflected ray within 2 percent + 2e-3, the direction-only reference is rejected, and without the term or with a texture carrying no probes the frame is the ambient cube's, bitwise. The same model-vertex point reads identical RPRB pixels, its term-off frame loses that radiance, and its alpha-blended glass point composites half of the shipped RPRB-lit color over black with destination alpha unchanged. Probe volume on a model surface (kSurfaceProbeVolume) over the PRBV gpu fixture: the diffuse lobe is the diffuse color times ProbeVolumeView::Sample with visibility where covered and the ambient cube elsewhere, within 1 percent + 2e-3; the ambient cube alone is rejected; without the term the frame is zero. Ill-conditioned pixels (the oracle moves by more than half the bound within 0.01 units) at most 5 percent per view. 0 validation messages.",
       "command": [
         "{python}",
         "tools/render/lab.py",
@@ -10143,7 +10146,7 @@
         "--validate"
       ],
       "result_protocol": "checks-v1",
-      "min_checks": 21,
+      "min_checks": 25,
       "timeout_seconds": 300,
       "requires": [
         "path:build-rc-lab/render/lab/render_lab",
@@ -10158,6 +10161,114 @@
         "render/shaders/common/reflection_probes.glsl",
         "public/render/pbr_brdf.h",
         "tools/render/lab.py"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.lab.posed-model",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "migration": "R96",
+      "contract": "RFC/0016-render-core.md",
+      "profile": "linux-native-vulkan-gpu",
+      "kind": "positive",
+      "description": "RFC 0016 K12's posed mesh through render.pass.world on the native adapter: two captured poses move the pixels, a live area light changes them, VertexLitGeneric glass blends over a colored background without depth or destination-alpha writes, and a mixed Studio model claims opaque and blended phases separately. Tube glass requires native RPRB; the blades, Phong exponent map, detail paint, probe masks and light warp claim the shared PBR point. The small elevator floor's self-illumination replaces lighting without alpha cutout or added white; an emissive UnlitGeneric mesh stays unchanged when direct light changes and its authored env map requires native RPRB. No validation messages.",
+      "command": [
+        "{python}",
+        "tools/render/lab.py",
+        "suite",
+        "posed-model",
+        "--validate"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 42,
+      "timeout_seconds": 300,
+      "requires": [
+        "path:build-rc-lab/render/lab/render_lab",
+        "vulkan-device:gpu"
+      ],
+      "sources": [
+        "render/lab/posed_model_suite.cpp",
+        "render/material/vertexlit_family.cpp",
+        "render/material/program_resolver.cpp",
+        "render/pass/world/world_pass.cpp",
+        "render/material/families/surface_program.glsl",
+        "tools/render/lab.py"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.material.model-claim-inventory",
+      "domain": "Q-CONTENT",
+      "rfc": "0016",
+      "migration": "R96",
+      "contract": "RFC/0016-render-core.md",
+      "profile": "linux-host-corpus",
+      "kind": "positive",
+      "description": "Every resolved Portal 2 materials/models VMT is mapped by render.material's actual ClaimForMesh rule with and without native RPRB, and ClaimForDrawing for visibility. The checked inventory records every input digest, shader, proxy, blend claim or exact gap; any missing material, changed interpretation or unsupported cohort changes the report and fails verification. The report is a static material claim, while the native product boot proves reachability and texture residency.",
+      "command": [
+        "{python}",
+        "tools/render/material_claim_inventory.py",
+        "--game",
+        "portal2",
+        "--render-lab",
+        "build-rc-lab/render/lab/render_lab",
+        "--out",
+        "quality/materials/portal2-model-claims.json",
+        "--verify"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 1165,
+      "timeout_seconds": 300,
+      "requires": [
+        "path:build-rc-lab/render/lab/render_lab"
+      ],
+      "sources": [
+        "tools/render/material_claim_inventory.py",
+        "tools/render/material_inventory.py",
+        "tools/render/vmt_corpus.py",
+        "render/lab/render_lab.cpp",
+        "render/material/program_resolver.cpp",
+        "render/material/vertexlit_family.cpp",
+        "quality/materials/portal2-model-claims.json"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.material.all-claim-inventory",
+      "domain": "Q-CONTENT",
+      "rfc": "0016",
+      "migration": "R96",
+      "contract": "RFC/0016-render-core.md",
+      "profile": "linux-host-corpus",
+      "kind": "positive",
+      "description": "Every resolved Portal 2 VMT in the ordered search path is mapped by render.material's actual ClaimForDrawing(world PBR) and ClaimForMesh(native RPRB) rules. Model-path VMTs require the mesh claim; other VMTs may claim either point. The checked inventory records input digests, shader, proxy, both blend claims or exact gaps, all unmapped keys and per-shader totals. It is a static claim, not proof of scene reachability or correct pixels.",
+      "command": [
+        "{python}",
+        "tools/render/material_claim_inventory.py",
+        "--game",
+        "portal2",
+        "--scope",
+        "all",
+        "--render-lab",
+        "build-rc-lab/render/lab/render_lab",
+        "--out",
+        "quality/materials/portal2-all-claims.json",
+        "--verify"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 3738,
+      "timeout_seconds": 300,
+      "requires": [
+        "path:build-rc-lab/render/lab/render_lab"
+      ],
+      "sources": [
+        "tools/render/material_claim_inventory.py",
+        "tools/render/material_inventory.py",
+        "tools/render/vmt_corpus.py",
+        "render/lab/render_lab.cpp",
+        "render/material/program_resolver.cpp",
+        "quality/materials/portal2-all-claims.json"
       ],
       "expect": "pass"
     },
@@ -11721,6 +11832,7 @@
         "render/legacy/frame_executor.cpp",
         "render/material/program_resolver.cpp",
         "render/material/pbr_family.cpp",
+        "render/material/vertexlit_family.cpp",
         "render/material/family_program.cpp",
         "render/material/unlit_family.cpp",
         "render/material/water_family.cpp",
@@ -11732,6 +11844,8 @@
         "render/composition/feature_catalog.cpp",
         "render/composition/negotiation.cpp",
         "render/pass/skinning/feature.cpp",
+        "render/pass/skinning/skinning.cpp",
+        "mdl/studio_model.cpp",
         "unittests/rendertest/core/composition/test_composition.cpp"
       ],
       "min_checks": 22,
@@ -11808,6 +11922,7 @@
         "render/legacy/frame_executor.cpp",
         "render/material/program_resolver.cpp",
         "render/material/pbr_family.cpp",
+        "render/material/vertexlit_family.cpp",
         "render/material/family_program.cpp",
         "render/material/unlit_family.cpp",
         "render/material/water_family.cpp",
@@ -11819,6 +11934,8 @@
         "render/composition/feature_catalog.cpp",
         "render/composition/negotiation.cpp",
         "render/pass/skinning/feature.cpp",
+        "render/pass/skinning/skinning.cpp",
+        "mdl/studio_model.cpp",
         "unittests/rendertest/core/composition/test_capabilities.cpp"
       ],
       "min_checks": 13,
@@ -11895,6 +12012,7 @@
         "render/legacy/frame_executor.cpp",
         "render/material/program_resolver.cpp",
         "render/material/pbr_family.cpp",
+        "render/material/vertexlit_family.cpp",
         "render/material/family_program.cpp",
         "render/material/unlit_family.cpp",
         "render/material/water_family.cpp",
@@ -11906,6 +12024,8 @@
         "render/composition/feature_catalog.cpp",
         "render/composition/negotiation.cpp",
         "render/pass/skinning/feature.cpp",
+        "render/pass/skinning/skinning.cpp",
+        "mdl/studio_model.cpp",
         "render/device/gl/context.cpp",
         "render/device/gl/device.cpp",
         "render/device/gl/encoder.cpp",

@@ -139,7 +139,8 @@ bool ViewRenderTarget( const MaterialDesc &material, const MaterialValue &value 
 
 // The material's block, with a stand-in for every texture it binds (a claim
 // asks only whether one is bound).
-std::optional<ParameterBlock> BlockFor( const MaterialDesc &material, std::string *why )
+std::optional<ParameterBlock> BlockFor(
+    const MaterialDesc &material, std::string *why, bool nativeReflectionProbes = false )
 {
 	const FamilySchema *family = Registry().Find( material.family );
 	if ( !family )
@@ -163,6 +164,17 @@ std::optional<ParameterBlock> BlockFor( const MaterialDesc &material, std::strin
 	{
 		if ( value.kind != ValueKind::kTexture )
 			continue;
+		if ( ( material.family == "vertexlit" || material.family == "unlit" ) &&
+		     value.parameter == "envmap" )
+		{
+			if ( !nativeReflectionProbes )
+			{
+				*why = "$envmap needs the stage's native reflection probes";
+				return std::nullopt;
+			}
+			(void)block.SetTexture( value.parameter, device::TextureId( 1 ) );
+			continue; // the program binds RPRB, never the legacy cubemap handle
+		}
 		// A per-view texture (the view's local env_cubemap, a render target)
 		// has no one image for the material.
 		if ( ( value.text == "env_cubemap" || value.text.starts_with( "_rt_" ) ||
@@ -285,10 +297,11 @@ foundation::Expected<device::BlendMode, std::string> ClaimForDrawing(
 	return foundation::MakeUnexpected( "family " + material.family + " has no program yet" );
 }
 
-foundation::Expected<device::BlendMode, std::string> ClaimForMesh( const MaterialDesc &material )
+foundation::Expected<device::BlendMode, std::string> ClaimForMesh(
+    const MaterialDesc &material, bool nativeReflectionProbes )
 {
 	std::string why;
-	const std::optional<ParameterBlock> block = BlockFor( material, &why );
+	const std::optional<ParameterBlock> block = BlockFor( material, &why, nativeReflectionProbes );
 	if ( !block )
 		return foundation::MakeUnexpected( why );
 	if ( material.family == "vertexlit" )
@@ -296,7 +309,7 @@ foundation::Expected<device::BlendMode, std::string> ClaimForMesh( const Materia
 		const VertexLitMeshClaim claim = ClaimVertexLitMesh( *block );
 		if ( !claim.claimed )
 			return foundation::MakeUnexpected( claim.reason );
-		return device::BlendMode::kOpaque;
+		return claim.blend;
 	}
 	if ( material.family == "pbr" )
 	{
@@ -304,6 +317,16 @@ foundation::Expected<device::BlendMode, std::string> ClaimForMesh( const Materia
 		if ( !claim.claimed )
 			return foundation::MakeUnexpected( claim.reason );
 		return device::BlendMode::kOpaque;
+	}
+	if ( material.family == "unlit" )
+	{
+		const UnlitClaim claim = ClaimUnlitMesh( *block );
+		if ( !claim.claimed )
+			return foundation::MakeUnexpected( claim.reason );
+		if ( detail::ReadFlag( *block, "vertexcolor" ) ||
+		     detail::ReadFlag( *block, "vertexalpha" ) )
+			return foundation::MakeUnexpected( "model vertices have no color or alpha channel" );
+		return claim.blend;
 	}
 	return foundation::MakeUnexpected( "family " + material.family + " has no mesh point yet" );
 }
@@ -313,7 +336,8 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 {
 	State &s = *m_State;
 	std::string why;
-	const std::optional<ParameterBlock> block = BlockFor( material, &why );
+	const std::optional<ParameterBlock> block =
+	    BlockFor( material, &why, s.mesh && ( s.sceneTerms & kSurfaceReflectionProbes ) != 0 );
 	if ( !block )
 		return foundation::MakeUnexpected( why );
 	ResolvedProgram out;
@@ -343,12 +367,37 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 	}
 	if ( material.family == "unlit" )
 	{
-		// Unlit is the surface program's unlit point, on the resolver's vertex.
-		const UnlitClaim claim = ClaimUnlit( *block );
+		const UnlitClaim claim = s.mesh ? ClaimUnlitMesh( *block ) : ClaimUnlit( *block );
 		if ( !claim.claimed )
 			return foundation::MakeUnexpected( claim.reason );
 		SurfaceTextures textures;
 		textures.base = TextureOf( material, "basetexture" );
+		if ( s.mesh && s.worldPbr )
+		{
+			if ( detail::ReadFlag( *block, "vertexcolor" ) ||
+			     detail::ReadFlag( *block, "vertexalpha" ) ||
+			     s.layout == SurfaceVertexLayout::kFlat )
+				return foundation::MakeUnexpected(
+				    std::string( "the emissive mesh point needs a model vertex without color" ) );
+			SurfaceVariant variant;
+			variant.blend = claim.blend;
+			variant.alphaWrite = claim.alphaWrite;
+			variant.terms =
+			    kSurfacePbr | ( s.sceneTerms & ~kSurfaceLightmapTerms ) | kSurfaceMeshDirect;
+			variant.layout = s.layout;
+			SurfaceConstants constants = claim.constants;
+			constants.meshModes[3] = 1.0f;
+			constants.meshModes[1] = claim.nativeProbe ? 1.0f : 0.0f;
+			auto request = s.lightmapped->Program().Request( variant, constants, textures );
+			if ( !request )
+				return foundation::MakeUnexpected(
+				    std::string( "the emissive mesh pipeline was refused" ) );
+			out.name = "pbr";
+			out.request = std::move( request ).Value();
+			out.blend = claim.blend;
+			return out;
+		}
+		// Unlit world surfaces keep the surface program's unlit point.
 		auto request = s.lightmapped->Program().Request(
 		    claim.Variant( s.layout ), claim.constants, textures );
 		if ( !request )
@@ -419,13 +468,25 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 		textures.base = TextureOf( material, "basetexture" );
 		if ( claim.normalMap )
 			textures.bump = TextureOf( material, "bumpmap" );
+		if ( claim.selfIllumMask )
+			textures.emission = TextureOf( material, "selfillummask" );
+		if ( claim.phongExponentTexture )
+			textures.envmapMask = TextureOf( material, "phongexponenttexture" );
+		else if ( claim.envmapMask )
+			textures.envmapMask = TextureOf( material, "envmapmask" );
+		if ( claim.detail )
+			textures.detail = TextureOf( material, "detail" );
+		if ( claim.lightwarp )
+			textures.mrao = TextureOf( material, "lightwarptexture" );
+		else if ( claim.phongWarp )
+			textures.mrao = TextureOf( material, "phongwarptexture" );
 		auto request = s.lightmapped->Program().Request( variant, claim.constants, textures );
 		if ( !request )
 			return foundation::MakeUnexpected(
 			    std::string( "the modern mesh pipeline was refused" ) );
 		out.name = "pbr";
 		out.request = std::move( request ).Value();
-		out.blend = device::BlendMode::kOpaque;
+		out.blend = claim.blend;
 		// Model draws bind the neutral lighting block; probes and view lights
 		// are the modern mesh point's sources, not a world lightmap page.
 		return out;

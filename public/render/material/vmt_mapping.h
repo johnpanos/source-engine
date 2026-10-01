@@ -69,6 +69,7 @@ struct VmtMetadataRow
 {
 	std::string_view key; // lower case
 	std::string_view consumer;
+	std::string_view family = {}; // empty when every family treats the key as metadata
 };
 
 // A legacy shader name the product's shader library registers, and the name

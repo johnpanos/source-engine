@@ -21,9 +21,12 @@
 #include "graph_fixtures.h"
 #include "jobsystem/parallel_executor.h"
 #include "render/device/vulkan/provider.h"
+#include "render/graph/scene_color.h"
 #include "render/graph/validate.h"
 #include "testing/checks.h"
 
+#include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cstdio>
@@ -91,6 +94,86 @@ ExecuteFn RealWork(
 			}
 		}
 	};
+}
+
+void SceneColorCapture(
+    testing::Checks &checks, device::IRenderDevice2 &device, std::uint32_t samples )
+{
+	device::BufferDesc readbackDesc;
+	readbackDesc.size = 4 * 4 * 4;
+	readbackDesc.memory = device::MemoryKind::kReadback;
+	readbackDesc.usages = { ResourceUsage::kCopyDestination };
+	const auto readbackResult = device.CreateBuffer( readbackDesc );
+	if ( !checks.That( readbackResult.HasValue(), "G11.vulkan-readback-created" ) )
+		return;
+	const device::BufferId readbackId = readbackResult.Value();
+	GraphBuilder builder;
+	device::TextureDesc sceneDesc = fixtures::Color( 4 );
+	sceneDesc.sampleCount = samples;
+	const ResourceRef scene = builder.CreateTexture( "scene", sceneDesc );
+	const ResourceRef readback = builder.ImportBuffer( "readback", readbackId, readbackDesc,
+	    ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+	builder.AddPass( "opaque", PassKind::kRender )
+	    .Write( scene, ResourceUsage::kColorAttachment )
+	    .Execute(
+	        [scene]( RecordContext &context )
+	        {
+		        device::ColorAttachment color;
+		        color.texture = context.Texture( scene );
+		        color.load = device::LoadOp::kClear;
+		        color.clear = { 0.2f, 0.4f, 0.6f, 1.0f };
+		        device::RenderingDesc rendering;
+		        rendering.colors = std::span( &color, 1 );
+		        rendering.width = 4;
+		        rendering.height = 4;
+		        context.Encoder().BeginRendering( rendering );
+		        context.Encoder().EndRendering();
+	        } );
+	const auto snapshot = CaptureSceneColor( builder, scene );
+	if ( !checks.That( snapshot.has_value(), "G11.vulkan-scene-color-captured" ) )
+		return;
+	builder.AddPass( "transmission-consumer", PassKind::kRender )
+	    .Read( *snapshot, ResourceUsage::kSampled )
+	    .SideEffect()
+	    .Execute( fixtures::Noop );
+	builder.AddPass( "read-snapshot", PassKind::kCopy )
+	    .Read( *snapshot, ResourceUsage::kCopySource )
+	    .Write( readback, ResourceUsage::kCopyDestination )
+	    .Execute(
+	        [snapshot, readback]( RecordContext &context )
+	        {
+		        context.Encoder().CopyTextureToBuffer(
+		            context.Texture( *snapshot ), context.Buffer( readback ), { 0, 0, 0, 4, 4 } );
+	        } );
+	auto graph = CompileGraph( std::move( builder ) );
+	if ( !checks.That( graph.HasValue(), "G11.vulkan-capture-compiles" ) )
+		return;
+	SerialGraphExecutor executor;
+	auto result = executor.Execute( graph.Value(), device );
+	if ( !result )
+	{
+		std::printf( "G11 %ux MSAA: %s at %s (native %d)\n", samples,
+		    device::DescribeStatus( result.Error().status ),
+		    device::DescribeOperation( result.Error().operation ), result.Error().nativeCode );
+		std::printf( "%s", graph.Value().trace.ToString().c_str() );
+	}
+	if ( !checks.That(
+	         result && Wait( device, result.Value().token ), "G11.vulkan-capture-completes" ) )
+		return;
+	std::array<std::byte, 64> pixels{};
+	if ( checks.That( device.ReadBuffer( readbackId, 0, pixels ).HasValue(),
+	         "G11.vulkan-capture-readback" ) )
+	{
+		bool matches = true;
+		for ( std::size_t pixel = 0; pixel < 16; ++pixel )
+		{
+			const std::array<std::byte, 4> expected = {
+			    std::byte{ 51 }, std::byte{ 102 }, std::byte{ 153 }, std::byte{ 255 } };
+			matches &= std::equal( expected.begin(), expected.end(), pixels.begin() + pixel * 4 );
+		}
+		checks.That( matches, "G11.vulkan-snapshot-preserves-scene-pixels" );
+	}
+	(void)device.Release( readbackId, result.Value().token );
 }
 
 } // namespace
@@ -161,6 +244,8 @@ int main()
 		checks.Equal( serialRan, compiled, "G6.the-serial-executor-runs-every-graph-on-vulkan" );
 		checks.Equal( pooledRan, compiled, "G9.the-pooled-executor-runs-every-graph-on-vulkan" );
 		checks.That( reused > 0, "G10.the-pool-reuses-transients-on-vulkan" );
+		SceneColorCapture( checks, *device, 1 );
+		SceneColorCapture( checks, *device, 4 );
 		(void)device->WaitIdle();
 	}
 	if ( layer )

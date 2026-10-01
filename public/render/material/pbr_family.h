@@ -8,11 +8,14 @@
 //			on the model vertex), which owns the bind groups and pipelines.
 //
 //			The family claims this subset of the RFC 0007 schema:
-//			$basetexture, $mraotexture, $bumpmap, $emissiontexture with
-//			$emissionscale ($fallbackmaterial names another profile's
+	//			$basetexture, $mraotexture, $bumpmap, $emissiontexture with
+	//			$emissionscale, $alphatest and $alphatestreference;
+	//			thin $transmission with $ior when the caller supplies
+	//			linear scene color
+//			($fallbackmaterial names another profile's
 //			material and is accepted). ClaimPbr names the first parameter
 //			outside the subset that a material sets away from its default
-//			($envmap, $alphatest, $translucent, glass, clear coat); such a
+	//			($envmap, $translucent, thick glass, clear coat); such a
 //			material stays on the native stages until the family claims it.
 //
 //			The arithmetic is the model port's (model_pbr.frag) without map
@@ -48,6 +51,8 @@ struct PbrClaim
 	std::string reason; // why not, when !claimed
 	bool normalMap = false;
 	bool emission = false;
+	bool alphaTest = false;
+	bool transmission = false;
 	SurfaceConstants constants; // emission.x: $emissionscale
 
 	// The program's point for this claim: kSurfacePbr on the model vertex.
@@ -55,8 +60,10 @@ struct PbrClaim
 	{
 		SurfaceVariant variant;
 		variant.terms = kSurfacePbr | kSurfaceMraoTexture | ( normalMap ? kSurfaceBump : 0u ) |
-		                ( emission ? kSurfaceEmissionTexture : 0u );
+		                ( emission ? kSurfaceEmissionTexture : 0u ) |
+		                ( transmission ? kSurfaceTransmission : 0u );
 		variant.layout = SurfaceVertexLayout::kModel;
+		variant.alphaWrite = !alphaTest;
 		return variant;
 	}
 };
@@ -65,7 +72,10 @@ struct PbrClaim
 // of the `pbr` family's schema (FamiliesFromMapping). An unused texture slot
 // (no normal map or emission) still needs a texture bound; its contents are
 // not read.
-PbrClaim ClaimPbr( const ParameterBlock &block );
+// A transmission claim needs the frame's linear scene-color input. The
+// product's current resolver passes false until its translucent stage binds
+// that input; render_lab can prove the point with true.
+PbrClaim ClaimPbr( const ParameterBlock &block, bool sceneColorAvailable = false );
 
 using PbrStatus = SurfaceStatus;
 

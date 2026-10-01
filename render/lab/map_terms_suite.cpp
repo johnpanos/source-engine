@@ -145,6 +145,7 @@ std::optional<float3> Hit( const View &view, std::uint32_t px, std::uint32_t py,
 struct Scene
 {
 	material::SurfaceVariant variant;
+	material::SurfaceConstants constants;
 	material::SurfaceTextures textures;
 	material::SurfaceFrame frame;
 	material::SurfaceMapTextures map;
@@ -153,6 +154,7 @@ struct Scene
 	std::vector<std::byte> vertices;
 	const View *view = nullptr;
 	shaderlib::DebugSpecialization debug;
+	std::string sceneColor;
 };
 
 struct Lab
@@ -189,6 +191,8 @@ std::optional<std::string> Prepare( Lab &lab )
 	                       ByteTexel( 255, 77, 255, 255 ) );
 	staged = staged && StageConstant( lab.textures, "mt/normal", Format::kRGBA8Unorm,
 	                       ByteTexel( kNormalTexel[0], kNormalTexel[1], 255, 255 ) );
+	staged = staged && StageConstant( lab.textures, "mt/probe-mask", Format::kRGBA8Unorm,
+	                       ByteTexel( 64, 128, 192, 255 ) );
 	const material::PbrSplitSumTable table = material::SplitSumTable();
 	TextureDesc tableDesc;
 	tableDesc.format = table.format;
@@ -205,7 +209,7 @@ std::optional<std::string> Prepare( Lab &lab )
 
 std::optional<std::string> Render( Lab &lab, const Scene &scene, CanvasImage &image )
 {
-	auto request = lab.program->Request( scene.variant, {}, scene.textures );
+	auto request = lab.program->Request( scene.variant, scene.constants, scene.textures );
 	if ( !request )
 		return std::string( "the pbr point was refused" );
 	const bool model = scene.variant.layout == material::SurfaceVertexLayout::kModel;
@@ -217,8 +221,17 @@ std::optional<std::string> Render( Lab &lab, const Scene &scene, CanvasImage &im
 	frame.eye[0] = scene.view->eye.x;
 	frame.eye[1] = scene.view->eye.y;
 	frame.eye[2] = scene.view->eye.z;
+	material::SurfaceScreenInputs screen;
+	if ( !scene.sceneColor.empty() )
+	{
+		const resources::TextureEntry *entry = lab.textures.Find( scene.sceneColor );
+		if ( !entry )
+			return std::string( "the scene color is not staged" );
+		screen.sceneColor = entry->texture;
+		screen.sceneColorDesc = entry->desc;
+	}
 	if ( !lab.groups.Set( materialGroup, request.Value().material ) ||
-	     !lab.groups.Set( viewGroup, lab.program->NeutralViewGroup() ) ||
+	     !lab.groups.Set( viewGroup, lab.program->NeutralViewGroup( screen ) ) ||
 	     !lab.groups.Set(
 	         frameGroup, lab.program->FrameGroup( frame, "mt/splitsum", {}, scene.map ) ) ||
 	     !lab.groups.Set(
@@ -505,27 +518,64 @@ std::optional<std::string> ReflectionProbeChecks( Lab &lab, Results &results )
 	const View view = MakeView( { 118, 78, 100 }, { 150, 78, 0 }, { 0, 0, 1 }, 1.0f );
 	shaderlib::DebugSpecialization specular;
 	specular.view = std::uint32_t( shaderlib::DebugView::kImageSpecular );
-	auto scene = [&]( bool term, std::string texture )
+	auto scene = [&]( bool term, std::string texture, bool model = false )
 	{
 		Scene s;
-		s.variant.layout = material::SurfaceVertexLayout::kWorld;
+		s.variant.layout =
+		    model ? material::SurfaceVertexLayout::kModel : material::SurfaceVertexLayout::kWorld;
 		s.variant.terms = material::kSurfacePbr | material::kSurfaceMraoTexture |
 		                  ( term ? material::kSurfaceReflectionProbes : 0u );
 		s.textures.base = "mt/base";
 		s.textures.mrao = "mt/metal";
 		s.map.reflectionProbes = std::move( texture );
-		s.vertices = WorldQuad( 0.0f, low, high );
+		s.vertices = model ? ModelQuad( 0.0f, low, high ) : WorldQuad( 0.0f, low, high );
 		s.view = &view;
 		s.debug = specular;
 		return s;
 	};
-	CanvasImage lit, off, unmarked;
+	CanvasImage lit, off, unmarked, modelLit, modelOff, modelShipped, modelGlass, modelMasked;
 	if ( std::optional<std::string> why = Render( lab, scene( true, "mt/probes" ), lit ) )
 		return why;
 	if ( std::optional<std::string> why = Render( lab, scene( false, "mt/probes" ), off ) )
 		return why;
 	if ( std::optional<std::string> why = Render( lab, scene( true, "" ), unmarked ) )
 		return why;
+	if ( std::optional<std::string> why =
+	         Render( lab, scene( true, "mt/probes", true ), modelLit ) )
+		return why;
+	if ( std::optional<std::string> why =
+	         Render( lab, scene( false, "mt/probes", true ), modelOff ) )
+		return why;
+	Scene shipped = scene( true, "mt/probes", true );
+	shipped.debug = {};
+	if ( std::optional<std::string> why = Render( lab, shipped, modelShipped ) )
+		return why;
+	Scene glass = shipped;
+	glass.variant.blend = BlendMode::kAlpha;
+	glass.variant.alphaWrite = false;
+	glass.constants.tint[3] = 0.5f;
+	if ( std::optional<std::string> why = Render( lab, glass, modelGlass ) )
+		return why;
+	Scene masked = scene( true, "mt/probes", true );
+	masked.constants.meshProbeColor[3] = 1.0f;
+	masked.textures.envmapMask = "mt/probe-mask";
+	if ( std::optional<std::string> why = Render( lab, masked, modelMasked ) )
+		return why;
+	float maskError = 0.0f;
+	float baselinePeak = 0.0f;
+	const float mask[3] = { 64.0f / 255.0f, 128.0f / 255.0f, 192.0f / 255.0f };
+	for ( std::uint32_t y = 0; y < modelLit.height; ++y )
+		for ( std::uint32_t x = 0; x < modelLit.width; ++x )
+			for ( int channel = 0; channel < 3; ++channel )
+			{
+				baselinePeak = std::max( baselinePeak, modelLit.At( x, y )[channel] );
+				maskError =
+				    std::max( maskError, std::abs( modelMasked.At( x, y )[channel] -
+				                                   modelLit.At( x, y )[channel] * mask[channel] ) );
+			}
+	results.That( baselinePeak > 0.05f && maskError < 0.003f,
+	    "probes.model-authored-rgb-mask-weights-native-rprb",
+	    "peak " + std::to_string( baselinePeak ) + ", error " + std::to_string( maskError ) );
 	const float roughness = std::max( 77.0f / 255.0f, 0.02f );
 	JudgePixels( results, "probes.image-specular", lit, view, 0.0f, low, high, 0.02f, 2e-3f,
 	    [&]( const float3 &p, float out[3] )
@@ -542,6 +592,26 @@ std::optional<std::string> ReflectionProbeChecks( Lab &lab, Results &results )
 		    probes.Radiance( position, normal, reflected, roughness,
 		        mapcontainer::ReflectionProbeMode::Blend, out );
 	    } );
+	results.That( modelLit.rgba == lit.rgba, "probes.model-uses-the-same-rprb-as-world" );
+	results.That( modelOff.rgba == off.rgba && modelLit.rgba != modelOff.rgba,
+	    "probes.model-term-off-removes-rprb" );
+	bool glassHalf = true;
+	float largestGlassDifference = 0.0f;
+	float smallestGlassAlpha = 1.0f;
+	for ( std::uint32_t y = 0; y < modelShipped.height; ++y )
+		for ( std::uint32_t x = 0; x < modelShipped.width; ++x )
+		{
+			const float *litPixel = modelShipped.At( x, y );
+			const float *glassPixel = modelGlass.At( x, y );
+			for ( int channel = 0; channel < 3; ++channel )
+				largestGlassDifference = std::max( largestGlassDifference,
+				    std::abs( glassPixel[channel] - 0.5f * litPixel[channel] ) );
+			smallestGlassAlpha = std::min( smallestGlassAlpha, glassPixel[3] );
+		}
+	glassHalf = largestGlassDifference < 0.003f && smallestGlassAlpha == 1.0f;
+	results.That( glassHalf, "probes.model-glass-blends-rprb-without-legacy-cubemap",
+	    "max rgb " + std::to_string( largestGlassDifference ) + ", min alpha " +
+	        std::to_string( smallestGlassAlpha ) );
 	Rejects( results, "probes.rejects-direction-only", lit, view, 0.0f, low, high, 0.02f, 2e-3f,
 	    [&]( const float3 &p, float out[3] )
 	    {
@@ -622,6 +692,102 @@ std::optional<std::string> ProbeVolumeChecks( Lab &lab, Results &results )
 	return std::nullopt;
 }
 
+std::optional<std::string> TransmissionChecks( Lab &lab, Results &results )
+{
+	TextureDesc desc;
+	desc.format = Format::kRGBA16Float;
+	desc.width = desc.height = kSize;
+	desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kSampled };
+	std::vector<std::uint16_t> gradient( std::size_t( kSize ) * kSize * 4 );
+	for ( std::uint32_t y = 0; y < kSize; ++y )
+		for ( std::uint32_t x = 0; x < kSize; ++x )
+		{
+			const std::size_t i = ( std::size_t( y ) * kSize + x ) * 4;
+			gradient[i + 0] = FloatToHalf( float( x ) / float( kSize - 1 ) );
+			gradient[i + 1] = FloatToHalf( float( y ) / float( kSize - 1 ) );
+			gradient[i + 2] = FloatToHalf( 0.25f );
+			gradient[i + 3] = FloatToHalf( 1.0f );
+		}
+	if ( !lab.textures.Stage( "mt/scene", desc, std::as_bytes( std::span( gradient ) ) ) )
+		return std::string( "the scene-color gradient was refused" );
+	const float low[2] = { -1.0f, -1.0f }, high[2] = { 1.0f, 1.0f };
+	const View view = MakeView( { 0, 0, 3.0f }, { 0, 0, 0.5f }, { 0, 1, 0 }, 0.05f );
+	auto scene = [&]( float amount, bool term, float ior )
+	{
+		Scene s;
+		s.variant.layout = material::SurfaceVertexLayout::kWorld;
+		s.variant.terms = material::kSurfacePbr |
+		                  ( term ? material::kSurfaceTransmission : 0u );
+		s.constants.transmission[0] = amount;
+		s.constants.transmission[1] = ior;
+		s.constants.tint[0] = 0.8f;
+		s.constants.tint[1] = 0.6f;
+		s.constants.tint[2] = 0.4f;
+		s.textures.base = "mt/base";
+		s.sceneColor = "mt/scene";
+		s.vertices = WorldQuad( 0.5f, low, high );
+		s.view = &view;
+		return s;
+	};
+	CanvasImage full, half, off, disabled, air;
+	for ( auto [s, image] : { std::pair{ scene( 1.0f, true, 1.5f ), &full },
+	          std::pair{ scene( 0.5f, true, 1.5f ), &half },
+	          std::pair{ scene( 0.0f, true, 1.5f ), &off },
+	          std::pair{ scene( 1.0f, false, 1.5f ), &disabled },
+	          std::pair{ scene( 1.0f, true, 1.0f ), &air } } )
+	{
+		if ( std::optional<std::string> why = Render( lab, s, *image ) )
+			return why;
+	}
+	std::size_t judged = 0, failed = 0, halfFailed = 0, iorChanged = 0;
+	std::string first;
+	for ( std::uint32_t y = 0; y < kSize; ++y )
+		for ( std::uint32_t x = 0; x < kSize; ++x )
+		{
+			const auto position = Hit( view, x, y, 0.5f, low, high );
+			if ( !position )
+				continue;
+			++judged;
+			const float3 toEye = view.eye - *position;
+			const float normalDotView = toEye.z / math::Length( toEye );
+			const float dielectric = 1.0f - pbr::SpecularDirectionalAlbedo(
+			                                   0.04f, pbr::SampleSplitSum( normalDotView, 0.55f ) );
+			const float background[3] = { float( x ) / float( kSize - 1 ),
+			    float( y ) / float( kSize - 1 ), 0.25f };
+			const float tint[3] = { 0.8f, 0.6f, 0.4f };
+			for ( int k = 0; k < 3; ++k )
+			{
+				const float expected = background[k] * tint[k] * dielectric;
+				const float got = full.At( x, y )[k];
+				if ( std::abs( got - expected ) > 0.015f )
+				{
+					++failed;
+					if ( first.empty() )
+					{
+						char detail[128];
+						std::snprintf( detail, sizeof( detail ), "pixel %u,%u channel %d: %.5g vs %.5g",
+						    x, y, k, got, expected );
+						first = detail;
+					}
+				}
+				if ( std::abs( half.At( x, y )[k] - 0.5f * got ) > 0.003f )
+					++halfFailed;
+				if ( air.At( x, y )[k] > got + 0.002f )
+					++iorChanged;
+			}
+		}
+	results.That( judged > kSize * kSize / 8 && failed == 0,
+	    "transmission.thin-glass-samples-linear-scene-with-pbr-fresnel",
+	    std::to_string( judged ) + " pixels, " + std::to_string( failed ) + " mismatches; " + first );
+	results.That( halfFailed == 0, "transmission.amount-halves-passed-radiance",
+	    std::to_string( halfFailed ) + " channel mismatches" );
+	results.That( iorChanged > judged, "transmission.ior-changes-fresnel-energy",
+	    std::to_string( iorChanged ) + " channels increased" );
+	results.That( off.rgba == disabled.rgba && off.rgba != full.rgba,
+	    "transmission.zero-and-term-off-are-neutral" );
+	return std::nullopt;
+}
+
 std::optional<std::string> RunOnce(
     bool validate, std::span<const std::uint32_t>, Results &results, std::uint64_t &messages )
 {
@@ -633,7 +799,8 @@ std::optional<std::string> RunOnce(
 		Lab lab( *device );
 		if ( std::optional<std::string> why = Prepare( lab ) )
 			return why;
-		for ( auto checks : { LightmapChecks, ReflectionProbeChecks, ProbeVolumeChecks } )
+		for ( auto checks :
+		    { LightmapChecks, ReflectionProbeChecks, ProbeVolumeChecks, TransmissionChecks } )
 		{
 			if ( std::optional<std::string> why = checks( lab, results ) )
 				return why;

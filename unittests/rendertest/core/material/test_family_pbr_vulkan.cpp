@@ -85,7 +85,7 @@ int main()
 
 	// The family refuses what it does not draw, naming it.
 	{
-		auto refused = [&]( const char *vmt, const char *named )
+		auto refused = [&]( const char *vmt, const char *named, bool sceneColor = false )
 		{
 			VmtImportContext context;
 			context.resolve = []( std::string_view ) -> std::optional<std::string>
@@ -103,7 +103,7 @@ int main()
 				if ( value.kind == ValueKind::kTexture )
 					(void)block.SetTexture( value.parameter, device::TextureId( 1 ) );
 			}
-			const PbrClaim claim = ClaimPbr( block );
+			const PbrClaim claim = ClaimPbr( block, sceneColor );
 			return !claim.claimed && claim.reason.find( named ) != std::string::npos;
 		};
 		const char *const base =
@@ -111,15 +111,64 @@ int main()
 		    "\"$fallbackmaterial\" \"f\" ";
 		checks.That( refused( ( std::string( base ) + "\"$envmap\" \"c\" }" ).c_str(), "envmap" ),
 		    "claim.refuses-an-environment-map-by-name" );
-		checks.That(
-		    refused( ( std::string( base ) + "\"$alphatest\" \"1\" }" ).c_str(), "alphatest" ),
-		    "claim.refuses-alpha-test-by-name" );
+		{
+			VmtImportContext context;
+			context.resolve = []( std::string_view ) -> std::optional<std::string>
+			{
+				return std::string();
+			};
+			auto imported = ImportVmt(
+			    ( std::string( base ) + "\"$alphatest\" \"1\" \"$alphatestreference\" \"0.5\" }" )
+			        .c_str(),
+			    context );
+			ParameterBlock block( *pbr );
+			bool claimed = imported && ApplyValues( imported.Value(), block );
+			if ( claimed )
+			{
+				(void)block.SetTexture( "basetexture", device::TextureId( 1 ) );
+				(void)block.SetTexture( "mraotexture", device::TextureId( 1 ) );
+				const PbrClaim claim = ClaimPbr( block );
+				claimed = claim.claimed && claim.alphaTest && claim.constants.flags[1] == 1.0f &&
+				          claim.constants.flags[2] == 127.0f / 255.0f &&
+				          !claim.Variant().alphaWrite;
+			}
+			checks.That( claimed, "claim.alpha-test-with-byte-reference" );
+		}
 		checks.That(
 		    refused( ( std::string( base ) + "\"$clearcoat\" \"0.5\" }" ).c_str(), "clearcoat" ),
 		    "claim.refuses-clear-coat-by-name" );
 		checks.That( refused( ( std::string( base ) + "\"$transmission\" \"1\" }" ).c_str(),
 		                 "transmission" ),
-		    "claim.refuses-glass-by-name" );
+		    "claim.refuses-glass-without-scene-color" );
+		{
+			VmtImportContext context;
+			context.resolve = []( std::string_view ) -> std::optional<std::string>
+			{
+				return std::string();
+			};
+			auto imported = ImportVmt( ( std::string( base ) +
+			                             "\"$transmission\" \"0.75\" \"$ior\" \"1.25\" }" )
+			                                .c_str(),
+			    context );
+			ParameterBlock block( *pbr );
+			bool claimed = imported && ApplyValues( imported.Value(), block );
+			if ( claimed )
+			{
+				(void)block.SetTexture( "basetexture", device::TextureId( 1 ) );
+				(void)block.SetTexture( "mraotexture", device::TextureId( 1 ) );
+				const PbrClaim glass = ClaimPbr( block, true );
+				claimed = glass.claimed && glass.transmission &&
+				          ( glass.Variant().terms & kSurfaceTransmission ) != 0 &&
+				          glass.constants.transmission[0] == 0.75f &&
+				          glass.constants.transmission[1] == 1.25f;
+			}
+			checks.That( claimed, "claim.thin-glass-uses-the-shared-pbr-point" );
+		}
+		checks.That( refused( ( std::string( base ) +
+		                       "\"$transmission\" \"1\" \"$thickness\" \"4\" }" )
+		                          .c_str(),
+		                 "thickness", true ),
+		    "claim.thick-glass-requires-depth-aware-refraction" );
 		// The importer already requires $mraotexture; a block without one bound
 		// (a texture that failed to load) is refused too.
 		{
@@ -310,6 +359,50 @@ int main()
 				continue;
 			++drawnCases;
 			JudgeCase( checks, testCase, drawn );
+			if ( name == "pbr_ambient" )
+			{
+				// Keep the lighting and camera fixed while only the base
+				// texture's alpha crosses the material's cutoff.
+				CaseTexture masked = *base;
+				for ( std::size_t texel = 3; texel < masked.texels.size(); texel += 4 )
+					masked.texels[texel] = 160;
+				PbrClaim cutout = claim;
+				cutout.alphaTest = true;
+				auto cutoutPipeline = family.Value()->Pipeline( cutout );
+				if ( !checks.That( cutoutPipeline.HasValue(), "cutout.pipeline" ) )
+					continue;
+				draw.pipeline = cutoutPipeline.Value();
+				draw.groups.back().textures[0] = &masked;
+				constants.flags[1] = 1.0f;
+				const auto clearPixel = [&]( std::size_t pixel, const Drawn &frame )
+				{
+					for ( int channel = 0; channel < 3; ++channel )
+						if ( frame.rgba[pixel + channel] != testCase.clear[channel] )
+							return false;
+					return true;
+				};
+				std::size_t sample = drawn.rgba.size();
+				for ( std::size_t pixel = 0; pixel + 3 < drawn.rgba.size(); pixel += 4 )
+				{
+					if ( !clearPixel( pixel, drawn ) )
+					{
+						sample = pixel;
+						break;
+					}
+				}
+				if ( !checks.That( sample < drawn.rgba.size(), "cutout.sample-is-covered" ) )
+					continue;
+				constants.flags[2] = 178.0f / 255.0f; // Source's default 0.7 byte reference
+				const Drawn discarded = DrawCase( *device, draw );
+				checks.That( discarded.ok && clearPixel( sample, discarded ),
+				    "cutout.alpha-below-reference-discards" );
+				constants.flags[2] = 127.0f / 255.0f;
+				const Drawn kept = DrawCase( *device, draw );
+				bool sameRgb = kept.ok;
+				for ( int channel = 0; channel < 3 && sameRgb; ++channel )
+					sameRgb = kept.rgba[sample + channel] == drawn.rgba[sample + channel];
+				checks.That( sameRgb, "cutout.alpha-above-reference-keeps-lit-pixel" );
+			}
 		}
 		checks.That( drawnCases == 8, "cases.every-case-drew" );
 		(void)device->WaitIdle();

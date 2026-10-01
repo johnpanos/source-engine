@@ -19,11 +19,13 @@ Rows: R87 (RFC 0016 K2)
 | G8 | `ValidateCompiledGraph` reports nothing for every compiled graph, and the null device, which validates every transition against its own state, accepts every execution. Bad graphs, each seeded into every applicable random graph, are reported with their kind every time: a missing transition (write after write included), overlapping live aliases, a culled side-effect pass, two dependent passes reordered, and a read whose only writer was removed |
 | G9 | The pooled executor records each kept pass into its own encoder as a `jobs.graph` job (an injected `jobsystem::IGraphExecutor`), submits them with a final encoder in pass order, and the device's recorded stream equals the serial executor's |
 | G10 | A `TransientPool` keeps physical transients between executions: a later execution of the same graph creates none, a pooled resource continues from the usage its last execution left it in, an entry unused for the pool's idle count of executions is released behind its token, and destroying the pool releases the rest |
+| G11 | `CaptureSceneColor` resolves a multisampled color source with a load and store render pass, then copies the single-sample image through device-local staging into a transient sampled image. A later sampled consumer keeps the capture alive and readback receives the original pixels. Invalid sources leave the graph unchanged. The null suite checks the resolve declaration; the Vulkan suite compares every output pixel for both single-sample and 4x MSAA sources. |
 
 The Vulkan lane (`test_graph_vulkan.cpp`, `render.graph.v1.vulkan`) runs the
 random graphs with real work for their writes on render.device.vulkan,
 serially and pooled, under the validation layer.
 
-Open for K2: pass merging (an
-adapter-private render-pass merge), and the product passes (present, gamma,
-MSAA resolve, scene capture, compute) on the graph with sync validation.
+Open for K2: pass merging (an adapter-private render-pass merge), and the
+product passes (present, gamma, MSAA resolve, scene capture, compute) on the
+graph with sync validation. G11 is a reusable capture declaration; product
+integration and a multisampled resolve remain open.

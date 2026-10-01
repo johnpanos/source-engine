@@ -12,6 +12,7 @@
 #define RENDER_COMPOSITION_RENDER_CORE_WORLD_H
 
 #include "render/light_set.h"
+#include "render/draw_phase.h"
 #include "render/world_mesh_upload.h"
 
 class ITexture;
@@ -58,6 +59,8 @@ struct RenderCoreWorldMaterial
 	// The shader's declared default of each variable, parallel to keys (null
 	// where the variable is not a shader parameter).
 	const char *const *defaults;
+	// Studio's material classification for accepting one half of a two-pass model.
+	bool translucent = false;
 };
 
 // Source static props enter as raw Studio files and the material system's
@@ -83,6 +86,7 @@ struct RenderCoreStaticProp
 	unsigned int model; // into the models array
 	int skin;
 	float world[12]; // model to world, three rows of four
+	bool castsShadow = true; // authored static-prop and Studio shadow flags
 };
 
 // One Studio draw at the engine's current animation pose. The model index
@@ -94,6 +98,7 @@ struct RenderCorePosedModel
 	unsigned int skin;
 	const float *boneToWorld;
 	unsigned int boneCount;
+	RenderCoreDrawPhase phase = RenderCoreDrawPhase::kAll;
 };
 
 // The world stage's quality settings (RFC 0016 K12; the engine's

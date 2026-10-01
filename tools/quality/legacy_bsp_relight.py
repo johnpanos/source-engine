@@ -33,6 +33,8 @@ cached in `<out>/steps.json` like any pipeline map; `--from STEP` forces one.
 """
 
 import argparse
+import json
+import math
 import sys
 from pathlib import Path
 
@@ -54,20 +56,41 @@ load_toolchain = map_lighting.load_toolchain
 
 def relight(bsp, name, out, toolchain, quality=pbrt_map_build.LEGACY_QUALITY, game=None,
             force_from=None, boot=False, keep_going=False, publish=True, device=None,
-            runtime=None, max_seam_p99=None):
+            runtime=None, max_seam_p99=None, probe_positions=None):
     """Relight the compiled map `bsp` as map `name`, built in `out`: the
     lighting back end (`map_lighting.light`) with the scene derived from the
     BSP. See `map_lighting.light` for the arguments; `max_seam_p99` waives the
     stitched seam gate's default 99th percentile for this map (the manifest's
     lightmap.seam_gate). Returns the gameplay identity."""
-    extra = None
+    extra = {}
+    if probe_positions is not None:
+        extra["reflection_probe"] = {"positions": probe_positions}
     if max_seam_p99 is not None:
         lightmap = {"seam_gate": {"p99": max_seam_p99}}
         if device:
             lightmap["device"] = device
-        extra = {"lightmap": lightmap}
+        extra["lightmap"] = lightmap
     return map_lighting.light(bsp, name, out, toolchain, None, quality, game, runtime, device,
-                              force_from, boot, keep_going, publish, extra)
+                              force_from, boot, keep_going, publish, extra or None)
+
+
+def load_probe_positions(path, map_name):
+    """Read the authored capture anchors for one shipped map, in meters."""
+    data = json.loads(Path(path).read_text())
+    if data.get("schema") != "map-probe-positions/v1" or data.get("map") != map_name:
+        raise ValueError("probe positions must name the shipped map " + map_name)
+    anchors = data.get("anchors")
+    if not isinstance(anchors, list) or not anchors:
+        raise ValueError("probe positions need one or more anchors")
+    positions = []
+    for anchor in anchors:
+        position = anchor.get("position_m") if isinstance(anchor, dict) else None
+        if (not isinstance(position, list) or len(position) != 3 or
+                any(not isinstance(value, (int, float)) or not math.isfinite(value)
+                    for value in position)):
+            raise ValueError("each probe anchor needs a finite 3D position_m")
+        positions.append(position)
+    return positions
 
 
 def default_out(name):
@@ -101,6 +124,8 @@ def main():
     parser.add_argument("--max-seam-p99", type=float,
                         help="this map's stitched seam gate, 99th percentile (relative), in "
                              "place of lightmap_ktx2.py's default; recorded in the manifest")
+    parser.add_argument("--probe-positions", type=Path,
+                        help="authored reflection-probe anchors for this shipped map")
     args = parser.parse_args()
     toolchain = load_toolchain(args.toolchain)
     if bool(args.map) == bool(args.bsp):
@@ -116,9 +141,10 @@ def main():
         bsp = args.bsp
         stem = bsp.stem
     name = args.map_name or (stem.lower() + "_relit")
+    positions = load_probe_positions(args.probe_positions, stem) if args.probe_positions else None
     relight(bsp, name, args.out or default_out(name), toolchain, args.quality, args.game,
             args.force_from, args.boot, args.keep_going, not args.no_publish, args.device,
-            args.runtime, args.max_seam_p99)
+            args.runtime, args.max_seam_p99, positions)
 
 
 if __name__ == "__main__":

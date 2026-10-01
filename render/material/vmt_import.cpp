@@ -723,6 +723,19 @@ foundation::Expected<const VmtShaderRow *, ImportError> ResolveShader(
 	return row;
 }
 
+// KeyValues treats the extra tokens of an unquoted vector such as
+// `$envmaptint .2 .2 .2` as numeric keys. A shader cannot name one; retain
+// each as diagnosed metadata while the first scalar is read as Source does.
+bool NumericKey( const std::string &key )
+{
+	if ( key.empty() || !( key[0] == '.' || key[0] == '+' || key[0] == '-' ||
+	                        ( key[0] >= '0' && key[0] <= '9' ) ) )
+		return false;
+	char *end = nullptr;
+	const float value = std::strtof( key.c_str(), &end );
+	return end == key.c_str() + key.size() && std::isfinite( value );
+}
+
 // desc.variables into the family's values, metadata and unmapped keys: a
 // family's own rows first, then metadata, then the rest is unmapped.
 void MapValues( const VmtMappingTable &mapping, const VmtShaderRow *row, MaterialDesc &desc )
@@ -740,7 +753,14 @@ void MapValues( const VmtMappingTable &mapping, const VmtShaderRow *row, Materia
 		{
 			bool metadata = false;
 			for ( const VmtMetadataRow &item : mapping.metadata )
-				metadata = metadata || item.key == key;
+				metadata = metadata ||
+				           ( item.key == key &&
+				               ( item.family.empty() || ( row && item.family == row->family ) ) );
+			if ( NumericKey( key ) )
+			{
+				metadata = true;
+				desc.diagnostics.push_back( "numeric KeyValues residue " + key );
+			}
 			if ( metadata )
 				desc.metadata.push_back( variable );
 			else if ( row )

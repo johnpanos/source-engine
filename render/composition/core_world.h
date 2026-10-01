@@ -76,8 +76,15 @@ public:
 	{
 		m_StageSet = false;
 		m_StageWorld.reset();
+		m_WorldCasters.reset();
+		{
+			std::lock_guard<std::mutex> guard( m_ShadowLock );
+			m_Casters.reset();
+			m_ShadowWork.clear();
+		}
 		m_StaticMeshes.clear();
 		m_StaticInstances.clear();
+		m_StaticCastsShadow.clear();
 		m_StaticMaterials.clear();
 		m_ModelPoseSources.clear();
 		m_Pass.ClearWorld();
@@ -130,8 +137,11 @@ public:
 private:
 	// Sets the pass's world stage from m_StageWorld and the captured lighting.
 	void SetStage();
+	// Rebuilds the static shadow mesh from the stage and the core-claimed props.
+	void SetStaticCasters();
 	std::vector<pass::world::WorldData::StaticMesh> m_StaticMeshes;
 	std::vector<pass::world::WorldData::StaticInstance> m_StaticInstances;
+	std::vector<bool> m_StaticCastsShadow;
 	std::vector<pass::world::WorldMaterial> m_StaticMaterials;
 	struct ModelPoseSource
 	{
@@ -246,6 +256,7 @@ private:
 		std::vector<Chunk> chunks;
 		std::uint64_t generation = 0;
 	};
+	std::shared_ptr<const Casters> m_WorldCasters;
 	// What a world stage view's lights are made from, taken when the main
 	// thread queues it (the frame's lights change there), so the render
 	// sequence clusters them and plans their shadows when it records the view.

@@ -51,6 +51,7 @@ struct UnlitClaim
 	// Whether the draw writes destination alpha: the port leaves it for
 	// translucent and alpha-tested draws (write mask, clause D17).
 	bool alphaWrite = true;
+	bool nativeProbe = false; // mesh-only authored $envmap resolved through RPRB
 	// tint: $color and $alpha; flags.x $vertexcolor, .y $alphatest, .z its
 	// reference; state.y 1 (gamma vertex colors); state.w $vertexalpha.
 	SurfaceConstants constants;
@@ -65,6 +66,9 @@ struct UnlitClaim
 // Whether the family draws this block's material, and how. The block must be
 // of the `unlit` family's schema (FamiliesFromMapping).
 UnlitClaim ClaimUnlit( const ParameterBlock &block );
+// Model extension: an authored env map is resolved from the stage's native
+// reflection probes and shaded beside the emissive base in the PBR point.
+UnlitClaim ClaimUnlitMesh( const ParameterBlock &block );
 
 using UnlitStatus = SurfaceStatus;
 
