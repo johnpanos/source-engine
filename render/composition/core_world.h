@@ -254,7 +254,7 @@ private:
 	// queued and recorded.
 	bool m_CoreOnly = false; // main thread, published by the frame slot
 	std::atomic<int> m_AoQuality{ 3 };
-	std::atomic<int> m_ShadowQuality{ 2 };
+	std::atomic<int> m_ShadowQuality{ 3 };
 	std::atomic<bool> m_DepthPrepass{ true };
 	std::atomic<bool> m_ShadowMovers{ true };
 	// Runtime direct light on the next stage (RenderCoreWorldQuality), and

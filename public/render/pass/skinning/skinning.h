@@ -12,7 +12,9 @@
 //			  tangent S, and weight * wrinkle to the wrinkle, with
 //			  weight = mix( w[0], w[1], side ) of the delta's flex (a stereo
 //			  flex's two weights, split by the vertex's side as studiorender
-//			  does; a mono flex has w[0] == w[1]);
+//			  does; a mono flex has w[0] == w[1]), mixed with the delayed
+//			  flex's stereo weight by delta.delay (zero preserves captures
+//			  made before delayed weights were represented);
 //			- then three bones: weights w0, w1 and 1 - w0 - w1, indices in
 //			  the low three bytes of `bones`, each bone a pose-to-world 3x4
 //			  matrix (matrix3x4_t, row-major). An index past the palette

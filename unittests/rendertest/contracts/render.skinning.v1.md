@@ -17,7 +17,7 @@ The oracle is today's emit skinning in the native Vulkan backend
 
 | Clause | Obligation |
 | --- | --- |
-| S1 | Flex runs first: each delta adds weight × delta to the position, weight × normal delta to the normal and to the tangent S, and weight × wrinkle to the wrinkle, with weight = mix(w[0], w[1], side) of the delta's flex |
+| S1 | Flex runs first: each delta adds weight × delta to the position, weight × normal delta to the normal and to the tangent S, and weight × wrinkle to the wrinkle. Its current and delayed stereo weights are each mix(w[0], w[1], side); the final weight is mix(current, delayed, delay). A zero delay does not read the delayed entry and preserves the original zero-reserved-byte capture layout |
 | S2 | Three bones with weights w0, w1 and 1 − w0 − w1; indices in the low three bytes; an index past the palette reads bone 0; normal and tangent go through the rotation part, unnormalized; the tangent keeps its w sign |
 | S3 | The oracle agrees with an independent double-precision matrix-blend reference (studiorender's `ComputeSkinMatrix` form) within 1e-3 on seeded meshes |
 | S4 | The GPU kernel, dispatched as a graph compute pass, equals the oracle within 1e-3 in position (units), normal, tangent and wrinkle on synthetic meshes; on the real-content corpus it equals studiorender's software skinning with normal and tangent within 1e-3 and position within max(1e-3 units, 4 ulp of the coordinate) (tolerance version 2, RFC 0016 K6) |

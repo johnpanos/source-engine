@@ -181,6 +181,12 @@ void Rules( testing::Checks &checks )
 	flexOut = Skin( flexed );
 	checks.That( Near( flexOut[1].position, 0, 2.375f, 0 ),
 	    "rule.delay-and-stereo-side-compose" );
+	flexed.flexDeltas[0].delay = flexed.flexDeltas[1].delay = 0.0f;
+	flexed.flexDeltas[0].delayedFlex = flexed.flexDeltas[1].delayedFlex = ~0u;
+	flexOut = Skin( flexed );
+	checks.That( Near( flexOut[0].position, 0, 1, 0 ) &&
+	                 Near( flexOut[1].position, 0, 2.5f, 0 ),
+	    "rule.zero-delay-never-reads-the-delayed-palette" );
 }
 
 void Agreement( testing::Checks &checks )

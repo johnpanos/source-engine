@@ -108,6 +108,13 @@ class FrameFloorTest(unittest.TestCase):
                 self.assertTrue(watcher.invalid)
                 self.assertEqual(watcher.frames, [])
 
+    def test_wrapped_cpu_duration_is_invalid_instead_of_a_real_cost(self):
+        watcher = self.watcher()
+        watcher.judge({"f": 1, "interval": 8000, "cpu": (1 << 64) - 32000000,
+                       "mark": "floor_begin,floor_end"})
+        self.assertTrue(any("invalid CPU duration" in failure for failure in watcher.invalid))
+        self.assertNotIn("cpu_ms", watcher.frames[0])
+
     def test_corrupt_line_inside_route_is_not_silently_discarded(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "frames.jsonl"

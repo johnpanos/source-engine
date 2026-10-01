@@ -424,6 +424,47 @@ the roadmap's hard prerequisites:
    amended binding rule 7; a miss keeps performance acceptance open and is
    never a reason to silently disable an effect.
 
+### P2:CE high-quality PBR content mounts (user direction, 2026-10-01)
+
+The goal of the P2:CE texture work is to **mount the user's installed P2:CE and
+Workshop VPKs as read-only external content**, not to copy their textures into
+this repository or silently redistribute them. Use the existing VPK/asset-source
+boundary now and converge it on RFC 0015's asset index and runtime resolver; do
+not create a second mount registry or a pack-specific texture loader.
+
+The currently selected sources are:
+
+- Workshop `3594428478`, **EverythingPBR**, as the broad replacement set;
+- Workshop `3506356222`, **Portal 2 PBR Asset Pack (ApertureVR)**, for its
+  chamber-focused 4K/BC7 materials;
+- Workshop `3592898497`, **Retextured PBR Portal Gun**, for the scratch-made 2K
+  portal-gun set;
+- the installed P2:CE base VPKs for required Strata/PBR dependencies and
+  fallbacks, not as a claim that its small loose PBR set is a full remaster.
+
+Mount policy has one explicit owner shared by `play_p2`, `render_lab`, Hammer and
+content tools. It records source provenance (Workshop ID, archive and logical
+asset path), resolves segmented VPK v2 archives, and gives a named specialized
+pack priority over the broad pack, then the original Portal 2 content. Namespaced
+materials remain namespaced unless an authored mapping selects them; mounting a
+pack must not silently replace an unrelated material with a same-looking name.
+The configuration is opt-in and reproducible. With the external packs absent,
+the product falls back to original content and reports that the PBR-content
+profile is unavailable rather than packaging substitute bytes.
+
+The strict VTF decoder already accepts the required VTF 7.6 `AXC`
+Deflate/Zstandard mip runs and Strata BC7 format 70 through its explicit
+decompression capability; see the
+[HAM-ASSET-001 P2:CE follow-up](RFC/0002-progress.md#vpk--texture-vtfvmt-loading-asset-catalog-and-textured-viewport-ham-asset-001).
+That decoder support is the mounting seam, not the finish line. Acceptance is a
+configured mount manifest whose highest-resolution selected base-color, normal,
+roughness/metal/AO and emission textures resolve through the ordinary asset
+path, followed by one fully core-rendered Portal 2 scene using those mounted
+materials in both game and `render_lab`. Record the selected pack versions,
+mount order, material mappings, missing assets and image comparisons. No support
+or distribution claim follows from local Workshop availability; retain author
+credits and obtain permission for any shipped package.
+
 The user requires high-performance clustered lighting and rejects the current
 performance (2026-10-01): [P2:CE feasibility and implementation comparison](RFC/0016-p2ce-clustered-lighting-2026-10-01.md).
 The binding desktop target is owned by `linux-desktop-high-120` in

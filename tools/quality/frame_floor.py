@@ -158,6 +158,11 @@ def metric_budget_failures(summary, budget):
     return failures
 
 
+def valid_duration_us(value):
+    # Negative int64 deltas wrapped into uint64 are not elapsed durations.
+    return render_budgets.valid_number(value) and value < (1 << 63)
+
+
 # --- Frame statistics ------------------------------------------------------------
 
 def low_fps(intervals_ms, fraction):
@@ -269,7 +274,7 @@ class FrameWatcher:
 
     def judge(self, row):
         gpu = row.get("gpu")
-        if isinstance(gpu, list) and len(gpu) >= 3 and render_budgets.valid_number(gpu[2]):
+        if isinstance(gpu, list) and len(gpu) >= 3 and valid_duration_us(gpu[2]):
             self.gpu_frames[gpu[0]] = gpu[2] / 1000.0
         marks = row.get("mark", "").split(",") if row.get("mark") else []
         # The marks are attached to the frame being built when the script
@@ -285,17 +290,19 @@ class FrameWatcher:
             self.invalid.append("frame stats have an invalid frame number")
             return None
         interval = row.get("interval")
-        if not render_budgets.valid_number(interval) or interval == 0:
+        if not valid_duration_us(interval) or interval == 0:
             self.invalid.append("frame %s has no positive finite interval" % row.get("f"))
             return None
         if self.frames and row.get("f") != self.frames[-1]["frame"] + 1:
             self.invalid.append("missing, duplicated or unordered frame after %s" % self.frames[-1]["frame"])
         interval_ms = interval / 1000.0
         frame = {"frame": row.get("f"), "interval_ms": interval_ms, "phase": self.phase}
-        if render_budgets.valid_number(row.get("cpu")):
+        if valid_duration_us(row.get("cpu")):
             frame["cpu_ms"] = row["cpu"] / 1000.0
+        elif "cpu" in row:
+            self.invalid.append("frame %s has an invalid CPU duration (possible counter wrap)" % row["f"])
         emit = row.get("cost", {}).get("emit")
-        if isinstance(emit, list) and len(emit) == 2 and render_budgets.valid_number(emit[1]):
+        if isinstance(emit, list) and len(emit) == 2 and valid_duration_us(emit[1]):
             frame["submission_ms"] = emit[1] / 1000.0
         self.frames.append(frame)
         self.phases.setdefault(self.phase or "-", []).append(frame)

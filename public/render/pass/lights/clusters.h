@@ -214,14 +214,6 @@ struct ClusterFailure
 	ClusterStats stats;
 };
 
-// Assigns the point and spot lights of a light set to the grid. A light's
-// radius 0 means unbounded (render.light-set.v1); a spot reaches the part of
-// its sphere inside its outer cone (direction, outerCos). Under
-// OverflowPolicy::kFail an overflow returns kOverflow with the counts and
-// leaves `out` unchanged.
-[[nodiscard]] foundation::Expected<ClusterStats, ClusterFailure> AssignLights(
-    const ClusterGrid &grid, std::span<const light_set::RuntimeLight> lights, ClusterLists &out );
-
 // The light record the compute pass reads (std430), in the grid's view
 // space (transformed in double on the CPU): position and radius (a large
 // finite value for unbounded), the cone's unit axis and its outer cosine

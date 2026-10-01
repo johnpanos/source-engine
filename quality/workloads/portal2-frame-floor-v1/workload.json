@@ -1,27 +1,18 @@
 {
   "schema": "portal2-scenarios/v1",
-  "description": "Frame-rate floor workloads, run by tools/quality/frame_floor.py: a scripted route through a map that a player would take, judged frame by frame between the script's floor_begin and floor_end frame marks. The run stops at the first frame below floor_fps; a completed route must also reach the 1% and 0.1% low targets (fps from the mean of the slowest 1% / 0.1% of frame intervals). User direction 2026-09-30: sp_a2_laser_intro_relit is the performance fixture, with a steady 30-60 fps minimum. Superseded 2026-10-01 by the user: 120 FPS minimum, High, 1920x1080 on the current Radeon 8060S desktop. Numeric limits and the product High profile are referenced through render_budget_row; the former 30/60 FPS targets are historical. The route alone does not certify complete image/workload coverage.",
+  "description": "User-selected High qualification fixture, 2026-10-01: sp_a1_intro4_probe64 (the published relit Intro4 map with 64-resolution probes). The camera samples arrival and reverse at the retained profiling position, warms both orientations for 10 seconds before the bracket, measures every frame including turns and returns, and drains delayed GPU timestamps afterward. This is camera/frame performance evidence, not complete story or image parity. The previous laser tour remains available as a script but is not the selected workload. Numeric targets and High settings are owned by render_budget_row and its referenced product profile.",
   "driver": "../portal2-wheatley-v1/qa_driver.nut",
   "scenarios": [
     {
-      "name": "sp_a2_laser_intro_tour",
-      "map": "sp_a2_laser_intro_relit",
-      "script": "sp_a2_laser_intro_tour.nut",
-      "timeout_seconds": 400,
+      "name": "sp_a1_intro4_probe64",
+      "map": "sp_a1_intro4_probe64",
+      "script": "sp_a1_intro4_probe64.nut",
+      "timeout_seconds": 180,
       "required_checks": [
-        "arrival.settled",
-        "corridor.reached",
-        "entry_door.opens",
-        "chamber.reached",
-        "wall.falls",
-        "stand.reached",
-        "laser.on",
-        "catcher.powered",
-        "floor_portal.viewed",
-        "lift.reached",
-        "exit_door.opens",
-        "departure.reached",
-        "departure_elevator.arrives"
+        "map.loaded",
+        "view.arrival",
+        "view.reverse",
+        "view.return"
       ]
     }
   ],

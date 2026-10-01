@@ -60,7 +60,14 @@ void SkinReference( const SkinInputs &inputs, std::span<SkinnedVertex> out )
 			{
 				const FlexDelta &delta = inputs.flexDeltas[d];
 				const FlexWeights &w = inputs.flexWeights[delta.flex];
-				const float weight = w.weight[0] + ( w.weight[1] - w.weight[0] ) * delta.side;
+				float weight = w.weight[0] + ( w.weight[1] - w.weight[0] ) * delta.side;
+				if ( delta.delay != 0.0f )
+				{
+					const FlexWeights &delayed = inputs.flexWeights[delta.delayedFlex];
+					const float delayedWeight = delayed.weight[0] +
+					                            ( delayed.weight[1] - delayed.weight[0] ) * delta.side;
+					weight += ( delayedWeight - weight ) * delta.delay;
+				}
 				for ( int k = 0; k < 3; ++k )
 				{
 					position[k] += weight * delta.position[k];

@@ -111,7 +111,7 @@ ConVar r_core_runtime_direct( "r_core_runtime_direct", "1", FCVAR_ARCHIVE,
     "Render core: the world's lightmap is its indirect layer and every light's direct light is "
     "drawn at runtime, shadowed, so moving objects block it (0: the bake's total layer). "
     "Applies at the next map load." );
-ConVar r_core_shadow_quality( "r_core_shadow_quality", "2", FCVAR_ARCHIVE,
+ConVar r_core_shadow_quality( "r_core_shadow_quality", "3", FCVAR_ARCHIVE,
     "Render core shadows: 0 off, 1 low (2048 atlas), 2 medium (4096), 3 high (8192).", true, 0,
     true, 3 );
 
