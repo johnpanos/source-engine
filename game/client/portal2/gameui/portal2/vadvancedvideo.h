@@ -53,7 +53,8 @@ public:
 	// For the developer check (ui_show_video_advanced): the shown render core
 	// quality, and selecting its rows and applying as the A button does.
 	bool DescribeRenderCoreQuality( char *pOut, int nOutSize );
-	void ApplyRenderCoreQualityChoice( int nAO, int nShadows );
+	void ApplyRenderCoreQualityChoice(
+	    int nAO, int nShadows, int nDepth = -1, int nMovers = -1, int nDirect = -1 );
 
 protected:
 	virtual void	Activate();
@@ -96,6 +97,9 @@ private:
 	BaseModHybridButton		*m_drpCPUDetail;
 	BaseModHybridButton *m_drpCoreAO;
 	BaseModHybridButton *m_drpCoreShadows;
+	BaseModHybridButton *m_drpCoreDepth;
+	BaseModHybridButton *m_drpCoreMovers;
+	BaseModHybridButton *m_drpCoreDirect;
 
 	bool	m_bDirtyValues;
 	bool	m_bEnableApply;
@@ -112,6 +116,9 @@ private:
 	int		m_iCPUDetail;
 	int m_iCoreAO;
 	int m_iCoreShadows;
+	int m_iCoreDepth;
+	int m_iCoreMovers;
+	int m_iCoreDirect;
 
 	VideoWarning_e	m_VideoWarning;
 	bool			m_bAcceptWarning[VW_MAXWARNINGS];

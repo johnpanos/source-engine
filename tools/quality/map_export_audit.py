@@ -32,6 +32,39 @@ def load(path):
     return json.loads(path.read_text()) if path.is_file() else None
 
 
+def probe_placement_checks(placement, rules):
+    """Shared pre-capture and final-export coverage rules; profile owns limits."""
+    checks = []
+
+    def check(name, passed, detail):
+        checks.append({"check": name, "status": "pass" if passed else "fail", "detail": detail})
+
+    if rules.get("require_reflection_probe_budget"):
+        # Placement stops when coverage is done or no longer worth a probe;
+        # stopping at max_probes means the scene needs a larger budget.
+        stops = {"room": placement.get("room_stop"), "glossy": placement.get("glossy_stop")}
+        check("reflection-probe-budget", bool(placement) and "max_probes" not in stops.values(),
+              {"stops": stops, "probes": placement.get("probes"),
+               "max_probes": placement.get("max_probes")})
+    if "max_uncovered_walkable_fraction" in rules:
+        samples = placement.get("walkable_samples", 0)
+        fraction = placement.get("uncovered_walkable", 0) / samples if samples else 1.0
+        check("reflection-probe-coverage",
+              bool(samples) and fraction <= rules["max_uncovered_walkable_fraction"],
+              {"walkable_samples": samples, "uncovered_fraction": fraction})
+    if "max_unserved_glossy_fraction" in rules:
+        # Of the glossy samples some eye-height point sees: placement cannot
+        # serve the rest (under furniture, behind objects).
+        samples = placement.get("glossy_servable", placement.get("glossy_samples", 0))
+        fraction = placement.get("unserved_glossy", 0) / samples if samples else 0.0
+        check("reflection-probe-glossy", bool(placement) and
+              fraction <= rules["max_unserved_glossy_fraction"],
+              {"glossy_samples": placement.get("glossy_samples", 0), "glossy_servable": samples,
+               "unserved_fraction": fraction,
+               "glossy_shapes": placement.get("glossy_shapes", [])})
+    return checks
+
+
 def audit(build, profile, booted):
     rules = profile.get("audit") or {}
     checks = []
@@ -75,30 +108,8 @@ def audit(build, profile, booted):
               bool(fits) and rprb.get("max_mean_relative_residual", 1e9) <=
               rules["max_reflection_probe_residual"],
               {"limit": rules["max_reflection_probe_residual"], "fits": fits})
-    placement = rprb.get("placement") or {}
-    if rules.get("require_reflection_probe_budget"):
-        # Placement stops when coverage is done or no longer worth a probe;
-        # stopping at max_probes means the scene needs a larger budget.
-        stops = {"room": placement.get("room_stop"), "glossy": placement.get("glossy_stop")}
-        check("reflection-probe-budget", bool(rprb) and "max_probes" not in stops.values(),
-              {"stops": stops, "probes": rprb.get("probes"),
-               "max_probes": placement.get("max_probes")})
-    if "max_uncovered_walkable_fraction" in rules:
-        samples = placement.get("walkable_samples", 0)
-        fraction = placement.get("uncovered_walkable", 0) / samples if samples else 1.0
-        check("reflection-probe-coverage",
-              bool(samples) and fraction <= rules["max_uncovered_walkable_fraction"],
-              {"walkable_samples": samples, "uncovered_fraction": fraction})
-    if "max_unserved_glossy_fraction" in rules:
-        # Of the glossy samples some eye-height point sees: placement cannot
-        # serve the rest (under furniture, behind objects).
-        samples = placement.get("glossy_servable", placement.get("glossy_samples", 0))
-        fraction = placement.get("unserved_glossy", 0) / samples if samples else 0.0
-        check("reflection-probe-glossy", bool(rprb) and
-              fraction <= rules["max_unserved_glossy_fraction"],
-              {"glossy_samples": placement.get("glossy_samples", 0), "glossy_servable": samples,
-               "unserved_fraction": fraction,
-               "glossy_shapes": placement.get("glossy_shapes", [])})
+    placement = dict(rprb.get("placement") or {}, probes=rprb.get("probes"))
+    checks.extend(probe_placement_checks(placement, rules))
     if rules.get("require_authored_channels"):
         missing = {}
         for name, material in content.get("materials", {}).items():

@@ -27,7 +27,8 @@ below; the back end's steps and cache keys name operations, not scripts.
 OPERATIONS = {
     "bake": ("pbrt_lightmap_bake.py", ["pbrt_blender.py"]),
     "probe": ("pbrt_reflection_probe.py",
-              ["reflection_probe_set.py", "reflection_probe.py", "pbrt_blender.py"]),
+              ["reflection_probe_set.py", "reflection_probe.py", "pbrt_blender.py",
+               "map_export_audit.py"]),
     "probe-volume": ("probe_volume_bake.py", ["probe_volume.py", "pbrt_blender.py"]),
     "radiosity": ("radiosity_transfer_bake.py",
                   ["radiosity_transfer.py", "probe_volume.py", "pbrt_blender.py"]),

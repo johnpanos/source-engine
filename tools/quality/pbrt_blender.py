@@ -484,12 +484,7 @@ def lamp_kind(shape):
     them facing away, which on the sphere fixture is some 300 times the
     noise at equal samples. Two-sided flat emitters and PBRT meshes keep
     their mesh."""
-    kind = (shape.get("shape") or {}).get("kind")
-    if kind == "sphere":
-        return kind
-    if kind in ("disk", "rect") and shape["emission"].get("one_sided"):
-        return kind
-    return None
+    return map_scene.analytic_emitter_kind(shape)
 
 
 def emitter_objects(index, shape):

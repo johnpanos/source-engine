@@ -5,6 +5,7 @@
 import argparse
 import ast
 import datetime
+import errno
 import hashlib
 import json
 import os
@@ -55,6 +56,24 @@ def sha256(path):
     return digest.hexdigest()
 
 
+def copy_private_file(source, target):
+    """Clone a writable runtime file when possible; never share its inode."""
+    if sys.platform.startswith("linux"):
+        import fcntl
+
+        try:
+            with open(source, "rb") as original, open(target, "wb") as private:
+                # FICLONE creates independent copy-on-write extents on Btrfs.
+                fcntl.ioctl(private.fileno(), 0x40049409, original.fileno())
+            shutil.copystat(source, target, follow_symlinks=True)
+            return
+        except OSError as error:
+            if error.errno not in (errno.EINVAL, errno.ENOTTY, errno.EOPNOTSUPP,
+                                   errno.EXDEV):
+                raise
+    shutil.copy2(source, target, follow_symlinks=True)
+
+
 def stage_runtime(runtime, stage, game="portal", content_only=False):
     """Only immutable asset files are shared; every writable directory is private."""
     runtime, stage = Path(runtime).resolve(), Path(stage).resolve()
@@ -92,7 +111,7 @@ def stage_runtime(runtime, stage, game="portal", content_only=False):
                 target.symlink_to(source.resolve())
                 count["shared_assets"] += 1
             else:
-                shutil.copy2(source, target, follow_symlinks=True)
+                copy_private_file(source, target)
                 count["copied"] += 1
     return count
 
@@ -122,12 +141,13 @@ def content_files(content_root, require_map=True):
     return files
 
 
-def install_content(content_root, stage, game="portal", require_map=True):
+def install_content(content_root, stage, game="portal", require_map=True, mount=None):
     """Overlay a private compiled map and its materials (or, require_map False,
     private materials alone) into a staged game."""
     plan = []
+    destination_root = stage / game / mount if mount else stage / game
     for source, relative in content_files(content_root, require_map):
-        target = stage / game / relative
+        target = destination_root / relative
         if target.exists() or target.is_symlink():
             raise ValueError("private content would replace installed content: " + str(relative))
         plan.append((source, relative, target))
@@ -244,8 +264,8 @@ def install_build(build, stage, game="portal", launcher_name="hl2_launcher", too
     return installed
 
 
-def shader_search_path(gameinfo):
-    """Put the named shader overlay before packaged content in staged GameInfo."""
+def prepend_game_search_path(gameinfo, path):
+    """Put a private overlay before packaged and published content in staged GameInfo."""
     tokens = [match for match in re.finditer(r'"(?:\\.|[^"\\])*"|//[^\r\n]*|[{}]|[^\s{}"]+', gameinfo)
               if not match.group().startswith("//")]
     sections, positions = [], []
@@ -265,8 +285,12 @@ def shader_search_path(gameinfo):
     if sections or len(positions) != 1:
         raise ValueError("staged GameInfo must contain exactly one FileSystem/SearchPaths section")
     position = positions[0]
-    entry = "\n\t\t\tgame+mod\t\tportal/custom/source-engine-shaders\n"
+    entry = "\n\t\t\tgame+mod\t\t" + path + "\n"
     return gameinfo[:position] + entry + gameinfo[position:]
+
+
+def shader_search_path(gameinfo):
+    return prepend_game_search_path(gameinfo, "portal/custom/source-engine-shaders")
 
 
 def install_shader_artifacts(artifacts, stage, source_root=None):
@@ -832,11 +856,20 @@ def main(argv=None):
         game = args.game
         evidence["staging"] = stage_runtime(args.runtime, stage, game=game)
         evidence["build_overrides"] = install_build(args.build, stage, game=game) if args.build else {}
-        if args.content_root:
-            evidence["content_overrides"] = install_content(args.content_root, stage, game=game)
-        if args.material_root:
-            evidence["material_overrides"] = install_content(args.material_root, stage, game=game,
-                                                             require_map=False)
+        private_content = "custom/portal-boot-content"
+        if args.content_root or args.material_root:
+            gameinfo = stage / game / "gameinfo.txt"
+            content_gameinfo = prepend_game_search_path(
+                gameinfo.read_text(), game + "/" + private_content)
+            if args.content_root:
+                evidence["content_overrides"] = install_content(
+                    args.content_root, stage, game=game, mount=private_content)
+            if args.material_root:
+                evidence["material_overrides"] = install_content(
+                    args.material_root, stage, game=game, require_map=False,
+                    mount=private_content)
+            gameinfo.write_text(content_gameinfo)
+            evidence["content_mount"] = game + "/" + private_content
         if args.shader_artifacts:
             evidence["shader_overrides"] = install_shader_artifacts(args.shader_artifacts, stage)
         executable = stage / "hl2_launcher"

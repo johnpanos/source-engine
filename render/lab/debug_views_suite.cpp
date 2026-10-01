@@ -1309,8 +1309,11 @@ void ControlChecks( Results &results )
 	for ( std::uint32_t view = 1; view <= 17; ++view )
 		installed = installed && status( View( view ) ) == 0;
 	results.That( installed, "controls.views-1-17-valid" );
-	results.That( status( View( 24 ) ) == int( DebugControlsStatus::kUnknownView ),
-	    "controls.reserved-number-24-rejected" );
+	results.That( status( View( 24 ) ) == 0 && status( View( 25 ) ) == 0 &&
+	                  status( View( 26 ) ) == 0 && status( View( 27 ) ) == 0,
+	    "controls.probe-views-24-27-valid" );
+	results.That( status( View( 28 ) ) == int( DebugControlsStatus::kUnknownView ),
+	    "controls.reserved-number-28-rejected" );
 	results.That( status( View( 37 ) ) == int( DebugControlsStatus::kUnknownView ),
 	    "controls.number-37-rejected" );
 	results.That( status( View( 18 ) ) == int( DebugControlsStatus::kReservedView ),

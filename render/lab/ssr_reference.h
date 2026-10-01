@@ -31,7 +31,7 @@ struct SsrReferenceInputs
 	math::float4x4 toClip;              // world to clip
 	float eye[3] = { 0, 0, 0 };         // world position
 	std::vector<float> depth;           // 0 near .. 1 far
-	std::vector<float> normalRoughness; // octahedral normal xy, roughness
+	std::vector<float> normalRoughness; // octahedral normal xy, roughness, camera-only marker w=2
 	std::vector<float> iblRadiance;
 	std::vector<float> specularWeight;
 	std::vector<float> lit;
@@ -65,6 +65,7 @@ struct SsrReferencePixel
 	{
 		kNotWalked,
 		kHit,
+		kCameraOnlyEmitter,
 		kScreenEdge, // the segment left the screen
 		kRayEnd,     // the ray reached the near or far plane
 		kMaxSteps,

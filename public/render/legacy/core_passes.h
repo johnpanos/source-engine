@@ -64,6 +64,7 @@ struct CorePassTarget
 	device::Format colorFormat = device::Format::kUnknown;
 	device::Format colorSrgbFormat = device::Format::kUnknown;
 	device::Format depthFormat = device::Format::kUnknown;
+	bool colorCopySource = false; // the imported color supports a scene-color capture
 	std::uint32_t width = 0;
 	std::uint32_t height = 0;
 	std::uint32_t samples = 1;

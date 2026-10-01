@@ -22,6 +22,7 @@
         "floor",
         "front"
       ],
+      "cycles_receiver_oracle": true,
       "directory": "cornell-floors",
       "entities": "entities.json",
       "lights": {
@@ -60,6 +61,7 @@
         "overview",
         "wall"
       ],
+      "cycles_receiver_oracle": true,
       "directory": "area-room",
       "entities": "entities.json",
       "lights": {
@@ -93,6 +95,7 @@
         "room",
         "wall"
       ],
+      "cycles_receiver_oracle": true,
       "directory": "projector-cookie",
       "entities": "entities.json",
       "lights": {
@@ -125,6 +128,7 @@
         "along",
         "yard"
       ],
+      "cycles_receiver_oracle": true,
       "directory": "sun-colonnade",
       "entities": "entities.json",
       "lights": {
@@ -158,6 +162,7 @@
         "nave",
         "side"
       ],
+      "cycles_receiver_oracle": true,
       "directory": "foggy-hall",
       "entities": "entities.json",
       "lights": {
@@ -197,6 +202,7 @@
         "down",
         "low"
       ],
+      "cycles_receiver_oracle": true,
       "directory": "mirror-corridor",
       "entities": "entities.json",
       "lights": {
@@ -231,6 +237,7 @@
         "front",
         "grazing"
       ],
+      "cycles_receiver_oracle": true,
       "directory": "material-sweep",
       "entities": "entities.json",
       "lights": {
@@ -266,6 +273,7 @@
         "b-floor",
         "b-portal"
       ],
+      "cycles_receiver_oracle": false,
       "directory": "portal-pair",
       "entities": "entities.json",
       "lights": {
@@ -304,6 +312,7 @@
         "a-door",
         "b-door"
       ],
+      "cycles_receiver_oracle": true,
       "directory": "door-room",
       "entities": "entities.json",
       "lights": {
@@ -338,6 +347,7 @@
         "room2",
         "vault"
       ],
+      "cycles_receiver_oracle": true,
       "directory": "portal-chamber",
       "entities": null,
       "lights": null,
@@ -365,6 +375,7 @@
         "chamber",
         "spawn"
       ],
+      "cycles_receiver_oracle": true,
       "directory": "portal2-chamber",
       "entities": null,
       "lights": null,

@@ -18,11 +18,12 @@ Rows: R95 (proven in `render_lab`), R96 (product integration)
 | S3 | A reflection whose true point is off the screen does not hit; hits within `edgeFade` of the screen's edge have confidence below 1, and within 1 percent of it below 0.1 | reference: pass |
 | S4 | Roughness at or above the cutoff, the background and every pixel of confidence 0 are the lit input, bitwise; between the fade start and the cutoff the confidence is at most the fade | reference: pass |
 | S5 | The GPU pass (hierarchical depth walk) agrees with the reference on the analytic scenes (see "GPU against the reference" below) | pass |
-| S6 | Seeded defects are caught: the thickness ignored, no edge fade, the wrong mip | pass |
+| S6 | Seeded defects are caught: the thickness ignored, no edge fade, the wrong mip, and an analytic camera-only emitter treated as an ordinary hit | pass |
 | S7 | "No SSR" (the pass not run, or every confidence 0) is the image-specular frame, bitwise | planned |
 | S8 | On the mirror-corridor fixture, on-screen hits are within the fixture's tolerance of the Cycles reference (`lighting_fixtures.py gallery`) | planned |
 | S9 | The fallback seam: along a camera walk where rays leave the screen or are occluded, the frame-to-frame step between SSR and the probes is at most the R50 walk gate's 0.047; a control that switches without the confidence fade fails | planned (gate on mirror-corridor; thin-bar stress recorded) |
 | S10 | The Khronos validation layer (synchronization validation) reports no message | pass (analytic scenes) |
+| S11 | A hit on a camera-only analytic emitter (`normalRoughness.w = 2`) keeps the lit/probe result bitwise; the reference and Vulkan trace agree, and a seed that ignores the marker changes those pixels | pass (2026-10-01: 25 validated checks; ignored-marker seed fails on 13,564 hit decisions and 13,354 unchanged pixels) |
 
 ## The ambiguity set (S1), fixed before its first run
 

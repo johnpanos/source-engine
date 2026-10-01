@@ -39,6 +39,7 @@ const int kDebugHasSsr = 1 << 10;
 const int kDebugHasEmission = 1 << 11;
 const int kDebugHasUv0 = 1 << 12;
 const int kDebugHasVertexColor = 1 << 13;
+const int kDebugHasReflectionProbe = 1 << 16;
 
 // shaderlib::DebugTerm
 const int kDebugTermClustered = 1 << 0;
@@ -81,6 +82,10 @@ struct DebugInputs
 	vec3 emission;
 	vec2 uv0;
 	vec4 vertexColor;
+	vec4 probeSelection;  // first rank, second rank or -1, first and second weights
+	vec3 probeRadiance;   // raw radiance before material tint and BRDF
+	vec3 probeWeight;     // BRDF, occlusion and mask weight applied to that radiance
+	vec3 probeHeader;     // count / 16, mode / 7, valid marker
 	vec3 final;            // the color before tone mapping and output encoding
 };
 
@@ -102,6 +107,10 @@ DebugInputs DebugInputsNone()
 	inputs.emission = vec3( 0.0 );
 	inputs.uv0 = vec2( 0.0 );
 	inputs.vertexColor = vec4( 1.0 );
+	inputs.probeSelection = vec4( -1.0, -1.0, 0.0, 0.0 );
+	inputs.probeRadiance = vec3( 0.0 );
+	inputs.probeWeight = vec3( 0.0 );
+	inputs.probeHeader = vec3( 0.0 );
 	inputs.final = vec3( 0.0 );
 	return inputs;
 }
@@ -216,6 +225,28 @@ vec4 DebugViewOutput( DebugInputs inputs )
 		const float luminance = DebugLuminance( inputs.final );
 		result = luminance > kDebugThreshold ? vec3( 1.0, 0.0, 0.0 ) : vec3( luminance * 0.5 );
 	}
+	else if ( kDebugView == 24 && ( inputs.mask & kDebugHasReflectionProbe ) != 0 )
+	{
+		// Channel encoding is exact in a linear target: first and second
+		// ranks are 32 * R/G - 1; B is the first weight. Fallback colors
+		// distinguish term absent (cyan), header invalid (magenta), empty
+		// set (yellow) and mode off (blue).
+		result = inputs.probeSelection.x < -3.5 ? vec3( 0.0, 0.0, 1.0 )
+		         : inputs.probeSelection.x < -2.5 ? vec3( 1.0, 1.0, 0.0 )
+		         : inputs.probeSelection.x < -1.5 ? vec3( 0.0, 1.0, 1.0 )
+		         : inputs.probeSelection.x < 0.0  ? vec3( 1.0, 0.0, 1.0 )
+		                                          : vec3( ( inputs.probeSelection.x + 1.0 ) / 32.0,
+		                                                ( inputs.probeSelection.y + 1.0 ) / 32.0,
+		                                                inputs.probeSelection.z );
+	}
+	else if ( kDebugView == 25 )
+		result = ( inputs.mask & kDebugHasReflectionProbe ) != 0
+		             ? inputs.probeRadiance * kDebugScale
+		             : hatch;
+	else if ( kDebugView == 26 )
+		result = ( inputs.mask & kDebugHasReflectionProbe ) != 0 ? inputs.probeWeight : hatch;
+	else if ( kDebugView == 27 )
+		result = ( inputs.mask & kDebugHasReflectionProbe ) != 0 ? inputs.probeHeader : hatch;
 #ifdef SEEDED_DEBUG_TONE_MAPS
 	result = result / ( 1.0 + result );
 #endif

@@ -40,6 +40,7 @@ import argparse
 import hashlib
 import json
 import math
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -134,7 +135,14 @@ def auto_scale(fixture):
     return 2.0 ** min(4, max(-6, math.floor(math.log2(AUTO_PEAK / peak))))
 
 
+def require_native_indirect_commands(commands):
+    if any(re.search(r"\br_core_world\s+[1-9][0-9]*\b", command, re.IGNORECASE)
+           for command in commands):
+        raise ValueError("mat_indirect_view is a native-backend oracle; r_core_world must be 0")
+
+
 def capture(args):
+    require_native_indirect_commands(args.console_command)
     fixture = gi_reference.load_fixture(args.fixture)
     if args.scale == "auto":
         args.scale = auto_scale(fixture)
@@ -175,7 +183,7 @@ def capture(args):
         else:
             prelude, _ = reference_compare.camera_commands(camera_scene(fixture, proof))
             commands = [c for c in commands if c != "cmd noclip"]
-        view = ["mat_indirect_view %d" % args.view,
+        view = ["r_core_world 0", "mat_indirect_view %d" % args.view,
                 "mat_indirect_view_scale %g" % args.scale] + list(args.console_command)
         steps = prelude + ["screenshot", "wait 5"] + (commands if proof != camera else []) + view
         # A boot map is played first; the fixture's map follows it by `map`.
@@ -189,6 +197,7 @@ def capture(args):
         result = subprocess.run(
             [sys.executable, HERE / "portal_boot.py", "--runtime", runtime, "--build", build,
              "--content-root", content, "--renderer", "native-vulkan", "--headless",
+             "--game", getattr(args, "game", "portal"),
              "--map", boot_map or manifest["map"], "--width", str(CAPTURE_WIDTH),
              "--height", str(CAPTURE_HEIGHT),
              "--capture-wait", str(wait),
@@ -479,6 +488,8 @@ def main():
         p.add_argument("--map-build", required=True, help="pbrt_map_build.py output directory")
         p.add_argument("--build", help="client build tree (default: the pipeline toolchain's)")
         p.add_argument("--runtime")
+        p.add_argument("--game", choices=("portal", "portal2"), default="portal",
+                       help="game composition in the staged runtime")
         p.add_argument("--toolchain", type=Path)
         p.add_argument("--console-command", action="append", default=[])
         p.add_argument("--out", required=True)

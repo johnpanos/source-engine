@@ -582,6 +582,7 @@ A new shader family named `PBRMetalRough` (distinct from the existing D3D9
 | `$mraotexture` | R: metalness, G: roughness, B: ambient occlusion | Linear |
 | `$bumpmap` | Tangent-space normal map | Linear; KTX2 transcoded per profile (BC5 / ASTC / EAC RG11, RFC 0008) |
 | `$emissiontexture`, `$emissionscale` | Emission | sRGB texture, linear scale |
+| `$emissiononesided`; `$emissioncone` with `$emissionconeinner`, `$emissionconeouter`, `$emissionconeexponent` | Visible area-light meshes emit toward their authored normal; an optional Source spot cone multiplies camera-visible radiance by the same inner/outer cosine ramp and exponent as the reference light | Booleans and linear floats; the cone requires one-sided emission |
 | `$alphatest`, `$alphatestreference`, `$translucent` | As legacy | Unchanged semantics |
 | `$envmap` | `env_cubemap` or explicit cubemap | Consumed through IBL prefilter |
 | `$fallbackmaterial` | Path to a legacy VMT used when a provider lacks the capability | Required material reference |
@@ -665,6 +666,15 @@ positions. Cycles renders them through Blender (`pbrt_reflection_probe.py`),
 not the baker, and `RPRB` v1/v2 carries raw RGBA16F rather than KTX2. The
 legacy runtime prefilter is not built. See
 [progress](0007-progress.md#r50-parallax-parallax-corrected-blended-reflection-probes-bounded-r50-slice-2026-09-25).
+
+As built for analytic USD emitters (2026-10-01, K11),
+`tools/quality/map_scene.py` owns which emitter meshes are replaced by a
+Cycles lamp. Those meshes are camera-visible in the reference but absent
+from glossy rays; the reflection-probe face camera hides them too. A
+mesh-only emitter remains visible in probes. The corresponding
+`$emissioncameraonly` material marker lets the core SSR pass retain its
+probe fallback instead of reflecting a camera-only emitter pixel. See the
+[K11 image evidence](0016-progress.md#k11-analytic-emitter-reflection-visibility-2026-10-01).
 
 **Amendment (2026-09-25, R50-RELIGHT; RFC 0011 open decision 5): relightable
 baked probes.** Without this, runtime light never reaches specular. The

@@ -209,6 +209,27 @@ void CVGUI_SP_ProgressSignScreen::UpdateLevelInfo( void )
 		return;
 
 	KeyValues *pMap = pMaps->FindKey( pszMapName );
+	// Published relights preserve the original map's gameplay and lightboard
+	// content, but use distinct names so both maps can be installed.
+	// Prefer an explicit entry for the published name when one exists.
+	if ( !pMap )
+	{
+		static const char *const pszPublishedSuffixes[] = { "_relit", "_source2" };
+		const size_t nNameLength = V_strlen( pszMapName );
+		for ( const char *pszSuffix : pszPublishedSuffixes )
+		{
+			const size_t nSuffixLength = V_strlen( pszSuffix );
+			if ( nNameLength <= nSuffixLength || nNameLength >= sizeof( m_szMapName ) ||
+			     V_stricmp( pszMapName + nNameLength - nSuffixLength, pszSuffix ) )
+				continue;
+			char szSourceMapName[sizeof( m_szMapName )];
+			V_memcpy( szSourceMapName, pszMapName, nNameLength - nSuffixLength );
+			szSourceMapName[nNameLength - nSuffixLength] = '\0';
+			pMap = pMaps->FindKey( szSourceMapName );
+			if ( pMap )
+				break;
+		}
+	}
 	if ( !pMap )
 		return;
 

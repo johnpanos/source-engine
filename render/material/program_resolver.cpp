@@ -12,6 +12,7 @@
 
 #include "render/material/lightmapped_family.h"
 #include "render/material/pbr_family.h"
+#include "render/material/refract_family.h"
 #include "render/material/registry.h"
 #include "render/material/unlit_family.h"
 #include "render/material/vertexlit_family.h"
@@ -160,11 +161,35 @@ std::optional<ParameterBlock> BlockFor(
 		*why = "its values do not fit the " + material.family + " schema";
 		return std::nullopt;
 	}
+	// VertexLitGeneric::SHADER_INIT_PARAMS clears an authored envmap mask
+	// when a bump map is defined. Without the normal-alpha mask flag it also
+	// clears the envmap (likewise for base-alpha masking with a bump map).
+	// Apply the same precedence before probe availability and mesh claims.
+	bool bumpedVertexLit = false;
+	bool authoredEnvmapMask = false;
+	if ( material.family == "vertexlit" )
+	{
+		for ( const MaterialValue &value : material.values )
+		{
+			bumpedVertexLit |= value.kind == ValueKind::kTexture && value.parameter == "bumpmap" &&
+			                   !value.text.empty();
+			authoredEnvmapMask |= value.kind == ValueKind::kTexture &&
+			                      value.parameter == "envmapmask" && !value.text.empty();
+		}
+	}
+	const bool suppressEnvmap =
+	    bumpedVertexLit && !detail::ReadFlag( block, "normalmapalphaenvmapmask" ) &&
+	    ( authoredEnvmapMask || detail::ReadFlag( block, "basealphaenvmapmask" ) );
 	for ( const MaterialValue &value : material.values )
 	{
 		if ( value.kind != ValueKind::kTexture )
 			continue;
-		if ( ( material.family == "vertexlit" || material.family == "unlit" ) &&
+		if ( bumpedVertexLit && value.parameter == "envmapmask" )
+			continue;
+		if ( suppressEnvmap && value.parameter == "envmap" )
+			continue;
+		if ( ( material.family == "vertexlit" || material.family == "unlit" ||
+		         ( material.family == "refract" && value.text == "env_cubemap" ) ) &&
 		     value.parameter == "envmap" )
 		{
 			if ( !nativeReflectionProbes )
@@ -214,6 +239,7 @@ struct ProgramResolver::State
 	bool worldPbr = false;
 	std::uint32_t sceneTerms = 0;
 	bool mesh = false; // ResolveMesh's call of Resolve
+	bool sceneColorAvailable = false;
 };
 
 ProgramResolver::ProgramResolver( std::unique_ptr<State> state ) : m_State( std::move( state ) )
@@ -223,7 +249,8 @@ ProgramResolver::~ProgramResolver() = default;
 
 namespace
 {
-constexpr std::string_view kProgramNames[] = { "lightmapped", "unlit", "preview", "pbr", "water" };
+constexpr std::string_view kProgramNames[] = {
+    "lightmapped", "unlit", "preview", "pbr", "refract", "water" };
 }
 
 std::span<const std::string_view> ProgramResolver::ProgramNames()
@@ -298,7 +325,7 @@ foundation::Expected<device::BlendMode, std::string> ClaimForDrawing(
 }
 
 foundation::Expected<device::BlendMode, std::string> ClaimForMesh(
-    const MaterialDesc &material, bool nativeReflectionProbes )
+    const MaterialDesc &material, bool nativeReflectionProbes, bool sceneColorAvailable )
 {
 	std::string why;
 	const std::optional<ParameterBlock> block = BlockFor( material, &why, nativeReflectionProbes );
@@ -313,10 +340,19 @@ foundation::Expected<device::BlendMode, std::string> ClaimForMesh(
 	}
 	if ( material.family == "pbr" )
 	{
-		const PbrClaim claim = ClaimPbr( *block );
+		const PbrClaim claim = ClaimPbr( *block, sceneColorAvailable );
 		if ( !claim.claimed )
 			return foundation::MakeUnexpected( claim.reason );
 		return device::BlendMode::kOpaque;
+	}
+	if ( material.family == "refract" )
+	{
+		const bool nativeEnvMap = TextureOf( material, "envmap" ) == "env_cubemap";
+		const RefractClaim claim =
+		    ClaimRefract( *block, sceneColorAvailable, nativeEnvMap, nativeReflectionProbes );
+		if ( !claim.claimed )
+			return foundation::MakeUnexpected( claim.reason );
+		return claim.envmap ? device::BlendMode::kOpaque : device::BlendMode::kAlpha;
 	}
 	if ( material.family == "unlit" )
 	{
@@ -416,7 +452,7 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 			return foundation::MakeUnexpected( std::string(
 			    "world pbr is not enabled: the pbr point draws world surfaces only in "
 			    "render_lab (RFC 0016 K11) until K12" ) );
-		const PbrClaim claim = ClaimPbr( *block );
+		const PbrClaim claim = ClaimPbr( *block, s.sceneColorAvailable );
 		if ( !claim.claimed )
 			return foundation::MakeUnexpected( claim.reason );
 		if ( s.layout == SurfaceVertexLayout::kFlat )
@@ -442,6 +478,7 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 		out.name = "pbr";
 		out.request = std::move( request ).Value();
 		out.blend = device::BlendMode::kOpaque;
+		out.sceneColor = claim.transmission;
 		// Runtime direct light: the gradient page is the indirect layer's own.
 		if ( !s.mesh )
 			out.drawInputs = { "lightmap",
@@ -491,6 +528,35 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 		// are the modern mesh point's sources, not a world lightmap page.
 		return out;
 	}
+	if ( material.family == "refract" )
+	{
+		if ( !s.mesh || !s.worldPbr || s.layout != SurfaceVertexLayout::kModel )
+			return foundation::MakeUnexpected(
+			    std::string( "the Refract point needs a model vertex in a scene" ) );
+		const bool nativeProbes = ( s.sceneTerms & kSurfaceReflectionProbes ) != 0;
+		const bool nativeEnvMap = TextureOf( material, "envmap" ) == "env_cubemap";
+		const RefractClaim claim =
+		    ClaimRefract( *block, s.sceneColorAvailable, nativeEnvMap, nativeProbes );
+		if ( !claim.claimed )
+			return foundation::MakeUnexpected( claim.reason );
+		SurfaceVariant variant = claim.Variant();
+		if ( claim.nativeProbe )
+			variant.terms |= kSurfaceReflectionProbes;
+		SurfaceTextures textures;
+		if ( claim.baseTexture )
+			textures.base = TextureOf( material, "basetexture" );
+		textures.bump = TextureOf( material, "normalmap" );
+		if ( claim.envmap && !claim.nativeProbe )
+			textures.envmap = TextureOf( material, "envmap" );
+		auto request = s.lightmapped->Program().Request( variant, claim.constants, textures );
+		if ( !request )
+			return foundation::MakeUnexpected( std::string( "a Refract pipeline was refused" ) );
+		out.name = "refract";
+		out.request = std::move( request ).Value();
+		out.blend = claim.envmap ? device::BlendMode::kOpaque : device::BlendMode::kAlpha;
+		out.sceneColor = claim.sceneColor;
+		return out;
+	}
 	if ( material.family == "water" )
 	{
 		// The water point on the world vertex (its lightmap page is the
@@ -531,6 +597,11 @@ void ProgramResolver::SetWorldPbr( bool enabled, std::uint32_t sceneTerms )
 {
 	m_State->worldPbr = enabled;
 	m_State->sceneTerms = sceneTerms;
+}
+
+void ProgramResolver::SetSceneColorAvailable( bool available )
+{
+	m_State->sceneColorAvailable = available;
 }
 
 foundation::Expected<ResolvedProgram, std::string> ProgramResolver::ResolveMesh(
@@ -666,7 +737,7 @@ std::optional<GroupRequest> ProgramResolver::DrawGroup(
 	if ( program.name == "pbr" && inputTextures.size() == 3 )
 		return s.lightmapped->Program().DrawGroup(
 		    inputTextures[0], {}, {}, inputTextures[1], inputTextures[2] );
-	if ( program.name == "pbr" && inputTextures.empty() )
+	if ( ( program.name == "pbr" || program.name == "refract" ) && inputTextures.empty() )
 		return s.lightmapped->Program().DrawGroup( "", {}, {}, {}, {} );
 	if ( program.request.drawLayout == s.lightmapped->DrawLayout() )
 		return s.lightmapped->LightmapGroup( inputTextures[0] );

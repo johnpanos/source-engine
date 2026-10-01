@@ -262,6 +262,8 @@ GENERATED = {
          DEVICE_OPTIONS + ("-DSSR_DIAGNOSTICS", "-DSEEDED_SSR_NO_EDGE_FADE")),
         ("kSsrTraceWrongMip", SSR + "/ssr_trace.comp",
          DEVICE_OPTIONS + ("-DSSR_DIAGNOSTICS", "-DSEEDED_SSR_WRONG_MIP")),
+        ("kSsrTraceCameraOnlyIgnored", SSR + "/ssr_trace.comp",
+         DEVICE_OPTIONS + ("-DSSR_DIAGNOSTICS", "-DSEEDED_SSR_IGNORES_CAMERA_ONLY")),
         ("kSsrTraceHardSwitch", SSR + "/ssr_trace.comp",
          DEVICE_OPTIONS + ("-DSSR_DIAGNOSTICS", "-DSEEDED_SSR_HARD_SWITCH")))),
     "output_defects_spv.h": ("rendertest::output::spirv",

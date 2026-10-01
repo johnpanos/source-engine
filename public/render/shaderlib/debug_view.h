@@ -59,6 +59,10 @@ enum class DebugView : std::uint32_t
 	kShadowVisibility = 21,
 	kClusterLoad = 22,
 	kVolumetricTransmittance = 23,
+	kReflectionProbeSelection = 24,
+	kReflectionProbeRadiance = 25,
+	kReflectionProbeWeight = 26,
+	kReflectionProbeHeader = 27,
 	kWorldBatch = 32,
 	kWorldMaterial = 33,
 	kLightmapChart = 34,
@@ -85,7 +89,8 @@ enum DebugInput : std::uint32_t
 	kDebugInputUv0 = 1u << 12,
 	kDebugInputVertexColor = 1u << 13,
 	kDebugInputFinal = 1u << 14, // the color before tone mapping; every program has it
-	kDebugInputDepth = 1u << 15  // the fragment's view depth; every program has it
+	kDebugInputDepth = 1u << 15, // the fragment's view depth; every program has it
+	kDebugInputReflectionProbe = 1u << 16
 };
 
 struct DebugViewInfo

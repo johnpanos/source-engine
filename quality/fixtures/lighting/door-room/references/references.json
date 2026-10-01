@@ -7,8 +7,8 @@
   "renders": {
     "closed": {
       "blender": "5.2.2 LTS",
-      "composed_stage_sha256": "9283db0bfd7fd4505facd050004d8eb318c1af99438e699416509cc26bd01677",
-      "cycles_device": "CPU",
+      "composed_stage_sha256": "1e47113345f9b361e462deb2aa008bdd4ac41dfba16e000be56a2a42823e1bc1",
+      "cycles_device": "HIP: AMD Radeon 8060S Graphics",
       "denoising": {
         "denoiser": "OPENIMAGEDENOISE",
         "guides": "albedo+normal",
@@ -16,6 +16,7 @@
       },
       "extras_applied": {
         "medium": null,
+        "normal_mapped_materials": [],
         "projectors": []
       },
       "light_paths": {
@@ -27,10 +28,10 @@
         "sample_clamp_indirect": 0.0,
         "transmission_bounces": 16
       },
-      "lighting_renderer_sha256": "9927c57ae004d8873c1445d10dd039928f694d6568bd2e27aa82a87a3caa6d2a",
-      "normal_maps": false,
+      "lighting_renderer_sha256": "e980af2157ed69d7c2cf8aed3c3a5c06bbd9e31493e3c5501a861326a737301a",
+      "normal_maps": true,
       "ocio_configuration_sha256": "7812ed39935cb1f7ab5392293c914c0c0f595720af22fc1b289bf19cc0af7ef6",
-      "renderer_sha256": "be4345ca1b53205f3ca822e8ae1bf541f67b83ca19324555cfccf91f6a3496f9",
+      "renderer_sha256": "cfeb9a9d876d09cd84c0b5809dbc7c10c1266e71d8229579954b7149c3c11f04",
       "samples": 512,
       "seed": 20260929,
       "stage_layers": {
@@ -40,8 +41,8 @@
     },
     "open": {
       "blender": "5.2.2 LTS",
-      "composed_stage_sha256": "2b10d1ce76894677eddb083fbdf975860e2f89002600039ab3554e7e6b777000",
-      "cycles_device": "CPU",
+      "composed_stage_sha256": "d29491adaa274b6ef8ba022e17a79e468431d17ad7490f7e4dacb7783b32e43c",
+      "cycles_device": "HIP: AMD Radeon 8060S Graphics",
       "denoising": {
         "denoiser": "OPENIMAGEDENOISE",
         "guides": "albedo+normal",
@@ -49,6 +50,7 @@
       },
       "extras_applied": {
         "medium": null,
+        "normal_mapped_materials": [],
         "projectors": []
       },
       "light_paths": {
@@ -60,10 +62,10 @@
         "sample_clamp_indirect": 0.0,
         "transmission_bounces": 16
       },
-      "lighting_renderer_sha256": "9927c57ae004d8873c1445d10dd039928f694d6568bd2e27aa82a87a3caa6d2a",
-      "normal_maps": false,
+      "lighting_renderer_sha256": "e980af2157ed69d7c2cf8aed3c3a5c06bbd9e31493e3c5501a861326a737301a",
+      "normal_maps": true,
       "ocio_configuration_sha256": "7812ed39935cb1f7ab5392293c914c0c0f595720af22fc1b289bf19cc0af7ef6",
-      "renderer_sha256": "be4345ca1b53205f3ca822e8ae1bf541f67b83ca19324555cfccf91f6a3496f9",
+      "renderer_sha256": "cfeb9a9d876d09cd84c0b5809dbc7c10c1266e71d8229579954b7149c3c11f04",
       "samples": 512,
       "seed": 20260929,
       "stage_layers": {
@@ -86,7 +88,7 @@
       "files": {
         "direct": {
           "file": "closed.a-door.direct.exr",
-          "sha256": "f5b0c343edbfdbd595ebe4e9d7b98a6a71be9ecd44096a623fcbbe7e6e70644e"
+          "sha256": "4afdfb26f507c9321a1d7b9af818d8c63c3a0e72e40011c5f93bdaadd4bd9175"
         },
         "index": {
           "file": "closed.a-door.index.png",
@@ -94,13 +96,13 @@
         },
         "total": {
           "file": "closed.a-door.total.exr",
-          "sha256": "debf15888b003bdf7183b4d6539519b43d2a1c2874387093439898da936f594a"
+          "sha256": "c0179c79ab933f9113d4d8538bba5936da589f9f50434ef8d2629ea34557dc57"
         }
       },
       "finite": true,
       "index_from_state": "closed",
       "judged_pixels": 196608,
-      "mean_luminance": 0.0868162753021051,
+      "mean_luminance": 0.08681627022636884,
       "object_index": {
         "A_Xn": 1,
         "A_Xp": 2,
@@ -132,7 +134,7 @@
       "files": {
         "direct": {
           "file": "closed.b-door.direct.exr",
-          "sha256": "7ebff3aeb0f7ff99db258dde68fd7f6538cadcd75d042c39e31c6c96460caa52"
+          "sha256": "ef2ea884b21477b92687ee5b39aa2b7ec22ece76302fef8d9ce5a7895df375d8"
         },
         "index": {
           "file": "closed.b-door.index.png",
@@ -140,13 +142,13 @@
         },
         "total": {
           "file": "closed.b-door.total.exr",
-          "sha256": "369964acf461f7c22ee4466557796f2697508d1bdb02b39ccc79adc329ea9642"
+          "sha256": "1dcf1655e18180a737afb336d20d0621b5380853afb182ee987ab9f2337a1086"
         }
       },
       "finite": true,
       "index_from_state": "closed",
       "judged_pixels": 196608,
-      "mean_luminance": 0.17286945428343656,
+      "mean_luminance": 0.17286941354387939,
       "object_index": {
         "A_Xn": 1,
         "A_Xp": 2,
@@ -178,7 +180,7 @@
       "files": {
         "direct": {
           "file": "open.a-door.direct.exr",
-          "sha256": "acb117d9d830ce8dc86cd58f842e33c2a08d25a5f68d8fa228ef22b531ccec25"
+          "sha256": "93da65c97cee3a1541659267d1c29e352671a74eb7b32420a4e520af9371f374"
         },
         "index": {
           "file": "open.a-door.index.png",
@@ -186,13 +188,13 @@
         },
         "total": {
           "file": "open.a-door.total.exr",
-          "sha256": "d8612f4919bfd23dd5fbe4e0a0c40f79cb8709b5de4d111a26ff5b4c15038493"
+          "sha256": "a08f8d29860e494c3641fdee193f7186a5077e1246bd2199a39e59944dbf8dd0"
         }
       },
       "finite": true,
       "index_from_state": "open",
       "judged_pixels": 196608,
-      "mean_luminance": 0.10400536909219542,
+      "mean_luminance": 0.10400541086026671,
       "object_index": {
         "A_Xn": 1,
         "A_Xp": 2,
@@ -223,7 +225,7 @@
       "files": {
         "direct": {
           "file": "open.b-door.direct.exr",
-          "sha256": "93a9689d7812e1629e51edf1412337887a98f8ce7c2ec74306c60e7b2ed57ed8"
+          "sha256": "a77df98fe68c07428bfb78cdda2cc3fb44d762cdc898ab633ec6938e03823d0b"
         },
         "index": {
           "file": "open.b-door.index.png",
@@ -231,13 +233,13 @@
         },
         "total": {
           "file": "open.b-door.total.exr",
-          "sha256": "7b043fd94ac03ff57dceac85657c1264edde53f421bce778283625d323d9f64b"
+          "sha256": "6cd639598884f9dbad137403c826563afb08ee5659ac046b35af648dd91a9349"
         }
       },
       "finite": true,
       "index_from_state": "open",
       "judged_pixels": 196608,
-      "mean_luminance": 0.34923447313640993,
+      "mean_luminance": 0.34923441734472815,
       "object_index": {
         "A_Xn": 1,
         "A_Xp": 2,

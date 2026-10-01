@@ -8,10 +8,11 @@
     "default": {
       "blender": "5.2.2 LTS",
       "composed_stage_sha256": "4594dbb4855738cc12e25ec2aa3bda25ed8ba6e589331a6f6402a4c468b26d18",
-      "cycles_device": "OPTIX: NVIDIA GeForce RTX 4090",
+      "cycles_device": "HIP: AMD Radeon 8060S Graphics",
       "denoising": false,
       "extras_applied": {
         "medium": null,
+        "normal_mapped_materials": [],
         "projectors": []
       },
       "light_paths": {
@@ -23,10 +24,10 @@
         "sample_clamp_indirect": 0.0,
         "transmission_bounces": 16
       },
-      "lighting_renderer_sha256": "9927c57ae004d8873c1445d10dd039928f694d6568bd2e27aa82a87a3caa6d2a",
-      "normal_maps": false,
+      "lighting_renderer_sha256": "e980af2157ed69d7c2cf8aed3c3a5c06bbd9e31493e3c5501a861326a737301a",
+      "normal_maps": true,
       "ocio_configuration_sha256": "7812ed39935cb1f7ab5392293c914c0c0f595720af22fc1b289bf19cc0af7ef6",
-      "renderer_sha256": "be4345ca1b53205f3ca822e8ae1bf541f67b83ca19324555cfccf91f6a3496f9",
+      "renderer_sha256": "cfeb9a9d876d09cd84c0b5809dbc7c10c1266e71d8229579954b7149c3c11f04",
       "samples": 2048,
       "seed": 20260929,
       "stage_layers": {
@@ -46,19 +47,23 @@
         26
       ],
       "files": {
+        "direct": {
+          "file": "default.front.direct.exr",
+          "sha256": "dbae3d8bfba92449cf42deafd0c7d044a76e555bbab88f5c9fe58d3db48735fa"
+        },
         "index": {
           "file": "default.front.index.png",
           "sha256": "a16510f5d777466486adea6cdb27c41a5ec60cc38e267fa028d5c26b04e1d40e"
         },
         "total": {
           "file": "default.front.total.exr",
-          "sha256": "ed724a2066f3b1b1444858d890193a72224a6c5d9e0a6cbc350a2a356a1fdce8"
+          "sha256": "3d9b2131a3f9bb27661b88ce840edd394380a331555b7b80b55728fb58736dec"
         }
       },
       "finite": true,
       "index_from_state": "default",
       "judged_pixels": 196594,
-      "mean_luminance": 0.5240897660905417,
+      "mean_luminance": 0.5240894602860472,
       "object_index": {
         "CoatSphere0": 1,
         "CoatSphere1": 2,
@@ -102,19 +107,23 @@
         26
       ],
       "files": {
+        "direct": {
+          "file": "default.grazing.direct.exr",
+          "sha256": "247c406509f3a2ab9787f31cf0ca5f1e6771fe752c37d2b10e8cf7b62d79d170"
+        },
         "index": {
           "file": "default.grazing.index.png",
           "sha256": "c3f538e84c45a23e2fc78e65d105872bccc4724b14f807c5296cfd9ca7073524"
         },
         "total": {
           "file": "default.grazing.total.exr",
-          "sha256": "0c7ce3b5c20fd55d9455d043df428c05db9d07b88b7ebecf0bd0385321d8334e"
+          "sha256": "e56a71e5467d5cac2310776f2153953ff138a636927f33325deca192b6af12d9"
         }
       },
       "finite": true,
       "index_from_state": "default",
       "judged_pixels": 196602,
-      "mean_luminance": 0.24726019187129328,
+      "mean_luminance": 0.24725948639059578,
       "object_index": {
         "CoatSphere0": 1,
         "CoatSphere1": 2,

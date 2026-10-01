@@ -36,6 +36,7 @@
       ]
     }
   },
+  "cycles_receiver_oracle": true,
   "dynamic_models": [],
   "external_stage": {
     "path": "quality-results/portal2-maps/sp_gi_chamber_01-preview/relight/legacy-scene/scene.usda",

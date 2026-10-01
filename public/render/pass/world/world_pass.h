@@ -207,6 +207,23 @@ protected:
 
 struct StageViewLights;
 
+struct WorldSceneColor
+{
+	device::TextureId texture;
+	device::TextureDesc desc;
+};
+
+// The composition owns capture storage until the encoder's submission is
+// complete. The pass only borrows the sampled snapshot for this view.
+class IWorldSceneColorCapture
+{
+public:
+	virtual ~IWorldSceneColorCapture() = default;
+	virtual std::optional<WorldSceneColor> Capture( device::IRenderDevice2 &device,
+	    device::CommandEncoder &encoder, device::TextureId source,
+	    const device::TextureDesc &sourceDesc, std::uint64_t frame ) = 0;
+};
+
 struct WorldTarget
 {
 	// Replaces the queued view's lights when set: a stage view's clustered
@@ -222,6 +239,8 @@ struct WorldTarget
 	// none, its unorm view with the shader encoding sRGB (encodeOutput).
 	device::TextureId color;
 	device::Format colorFormat = device::Format::kUnknown;
+	bool colorCopySource = false; // the imported target supports kCopySource
+	IWorldSceneColorCapture *sceneColorCapture = nullptr;
 	bool encodeOutput = false;
 	device::TextureId depth; // home kDepthWrite
 	device::Format depthFormat = device::Format::kUnknown;
@@ -394,9 +413,14 @@ public:
 	// stage's is a failure.
 	void SetStageLightmap( LightmapPages pages );
 	void SetStageChange( std::vector<std::byte> change, StageProbeVolume table );
-	// A part of the probe change: `regions` of the atlas changed, their
-	// texels (RGBA16F) packed region after region, rows top first; the grid
-	// table whole. Applied over the change in place at the next slot.
+	// Publish both current probe atlases and the grid table together, so a
+	// render sequence never sees a new atlas with the previous table.
+	void SetStageProbeVolume(
+	    std::vector<std::byte> atlas, std::vector<std::byte> change, StageProbeVolume table );
+	// A sparse probe publication: the current atlas and optional change
+	// atlas use the same rectangles, with RGBA16F texels packed region after
+	// region, rows top first. The grid table is whole. Applied at the next
+	// slot as one committed update.
 	struct StageRegion
 	{
 		std::uint32_t x = 0;
@@ -404,8 +428,8 @@ public:
 		std::uint32_t width = 0;
 		std::uint32_t height = 0;
 	};
-	void SetStageChangeRegions(
-	    std::vector<StageRegion> regions, std::vector<std::byte> texels, StageProbeVolume table );
+	void SetStageProbeRegions( std::vector<StageRegion> regions, std::vector<std::byte> atlasTexels,
+	    std::vector<std::byte> changeTexels, StageProbeVolume table );
 	// Rectangles of the total page's flat light recomposed (moving objects
 	// blocking baked direct light, RFC 0011), their texels packed rectangle
 	// after rectangle, rows top first: updated in place at the next slot of

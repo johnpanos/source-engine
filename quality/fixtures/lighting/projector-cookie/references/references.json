@@ -2,7 +2,7 @@
   "analytic": [
     {
       "check": "projector direct light = render.projected-light.v1 IrradianceAt",
-      "median_ratio": 1.0000114792932702,
+      "median_ratio": 1.0000114084487088,
       "ok": true,
       "pixels": 20168,
       "view": "projector.room",
@@ -10,7 +10,7 @@
     },
     {
       "check": "projector direct light = render.projected-light.v1 IrradianceAt",
-      "median_ratio": 1.0000165859809598,
+      "median_ratio": 1.0000165484076153,
       "ok": true,
       "pixels": 54392,
       "view": "projector.wall",
@@ -25,10 +25,11 @@
     "default": {
       "blender": "5.2.2 LTS",
       "composed_stage_sha256": "e6da9b063c1beb3c41feb1cfb3f55e6b4e12c5425f1910bed17bad71362a142e",
-      "cycles_device": "OPTIX: NVIDIA GeForce RTX 4090",
+      "cycles_device": "HIP: AMD Radeon 8060S Graphics",
       "denoising": false,
       "extras_applied": {
         "medium": null,
+        "normal_mapped_materials": [],
         "projectors": [
           "Projector00"
         ]
@@ -42,10 +43,10 @@
         "sample_clamp_indirect": 0.0,
         "transmission_bounces": 16
       },
-      "lighting_renderer_sha256": "9927c57ae004d8873c1445d10dd039928f694d6568bd2e27aa82a87a3caa6d2a",
-      "normal_maps": false,
+      "lighting_renderer_sha256": "e980af2157ed69d7c2cf8aed3c3a5c06bbd9e31493e3c5501a861326a737301a",
+      "normal_maps": true,
       "ocio_configuration_sha256": "7812ed39935cb1f7ab5392293c914c0c0f595720af22fc1b289bf19cc0af7ef6",
-      "renderer_sha256": "be4345ca1b53205f3ca822e8ae1bf541f67b83ca19324555cfccf91f6a3496f9",
+      "renderer_sha256": "cfeb9a9d876d09cd84c0b5809dbc7c10c1266e71d8229579954b7149c3c11f04",
       "samples": 2048,
       "seed": 20260929,
       "stage_layers": {
@@ -55,10 +56,11 @@
     "projector": {
       "blender": "5.2.2 LTS",
       "composed_stage_sha256": "5b05e971bfca694813597e80dcf65f85f68d61085e2757b4a6e81fc4ce04c28f",
-      "cycles_device": "OPTIX: NVIDIA GeForce RTX 4090",
+      "cycles_device": "HIP: AMD Radeon 8060S Graphics",
       "denoising": false,
       "extras_applied": {
         "medium": null,
+        "normal_mapped_materials": [],
         "projectors": [
           "Projector00"
         ]
@@ -72,10 +74,10 @@
         "sample_clamp_indirect": 0.0,
         "transmission_bounces": 16
       },
-      "lighting_renderer_sha256": "9927c57ae004d8873c1445d10dd039928f694d6568bd2e27aa82a87a3caa6d2a",
-      "normal_maps": false,
+      "lighting_renderer_sha256": "e980af2157ed69d7c2cf8aed3c3a5c06bbd9e31493e3c5501a861326a737301a",
+      "normal_maps": true,
       "ocio_configuration_sha256": "7812ed39935cb1f7ab5392293c914c0c0f595720af22fc1b289bf19cc0af7ef6",
-      "renderer_sha256": "be4345ca1b53205f3ca822e8ae1bf541f67b83ca19324555cfccf91f6a3496f9",
+      "renderer_sha256": "cfeb9a9d876d09cd84c0b5809dbc7c10c1266e71d8229579954b7149c3c11f04",
       "samples": 2048,
       "seed": 20260929,
       "stage_layers": {
@@ -95,19 +97,23 @@
         4
       ],
       "files": {
+        "direct": {
+          "file": "default.room.direct.exr",
+          "sha256": "1367e3cc1db82fd0da45722334a353ef19802946ffb0d3f77b7fc25ab3a33dff"
+        },
         "index": {
           "file": "default.room.index.png",
           "sha256": "380c54bf1fe5e6c62212ca25e61dd54003e48507b3776e9d1aeb1c7463712951"
         },
         "total": {
           "file": "default.room.total.exr",
-          "sha256": "ae33d40fd59203d9948178aefdf2f40ae746c5804effb578bdd2285943466684"
+          "sha256": "f8970251ec238294a0b69c011db68d2ecf4ededf741ed9fc3e1dc160ea40fd00"
         }
       },
       "finite": true,
       "index_from_state": "default",
       "judged_pixels": 196608,
-      "mean_luminance": 0.05416010438453051,
+      "mean_luminance": 0.054160064075510474,
       "object_index": {
         "BackWall": 1,
         "Floor": 2,
@@ -131,19 +137,23 @@
         4
       ],
       "files": {
+        "direct": {
+          "file": "default.wall.direct.exr",
+          "sha256": "07c355abc7d9210a37c19b51ad69142ad1a65fc0d62d4a270e9dff863cc90c26"
+        },
         "index": {
           "file": "default.wall.index.png",
           "sha256": "07c4f01da2e88f098438561372d04c0552ca5c11f5c77f06a6235fc894c88cc0"
         },
         "total": {
           "file": "default.wall.total.exr",
-          "sha256": "367f1d20ed652195227a161f48ce2b11fd3e9275d00b477b46c6987efdcce99a"
+          "sha256": "af8daad63d109595e251b4ab10d06d327b7e2a06c4d34fabdc033bf41312e210"
         }
       },
       "finite": true,
       "index_from_state": "default",
       "judged_pixels": 196608,
-      "mean_luminance": 0.18272531301170739,
+      "mean_luminance": 0.18272508230915316,
       "object_index": {
         "BackWall": 1,
         "Floor": 2,
@@ -167,19 +177,23 @@
         4
       ],
       "files": {
+        "direct": {
+          "file": "projector.room.direct.exr",
+          "sha256": "4afd800b5346022de5b396306b92478a7a52821e3c406535b6dce6a67fd8e1bb"
+        },
         "index": {
           "file": "projector.room.index.png",
           "sha256": "380c54bf1fe5e6c62212ca25e61dd54003e48507b3776e9d1aeb1c7463712951"
         },
         "total": {
           "file": "projector.room.total.exr",
-          "sha256": "b449dd40c77f50396ab6a73103c9a8fbd7cd2148dbc254b7fb1e65d8cec55af4"
+          "sha256": "164a6c403ade64def051e1d6a3f553b280ad500e069402e31780e16bb78f4559"
         }
       },
       "finite": true,
       "index_from_state": "projector",
       "judged_pixels": 196608,
-      "mean_luminance": 0.048389032477709336,
+      "mean_luminance": 0.0483889936115618,
       "object_index": {
         "BackWall": 1,
         "Floor": 2,
@@ -203,19 +217,23 @@
         4
       ],
       "files": {
+        "direct": {
+          "file": "projector.wall.direct.exr",
+          "sha256": "972e6564781c52cce372c302e6ca2fd6834397ce2474693202c929fa7a6ec31d"
+        },
         "index": {
           "file": "projector.wall.index.png",
           "sha256": "07c4f01da2e88f098438561372d04c0552ca5c11f5c77f06a6235fc894c88cc0"
         },
         "total": {
           "file": "projector.wall.total.exr",
-          "sha256": "10044e4d27ee1a0961103d970c506071757a1e9f36b8f3af95829a1f32f83b07"
+          "sha256": "50eefb525f485ac7b900d8818fc3f6bff0fa9acea2095e1b2708b8a5919e2691"
         }
       },
       "finite": true,
       "index_from_state": "projector",
       "judged_pixels": 196608,
-      "mean_luminance": 0.17772285819306965,
+      "mean_luminance": 0.17772260396245962,
       "object_index": {
         "BackWall": 1,
         "Floor": 2,

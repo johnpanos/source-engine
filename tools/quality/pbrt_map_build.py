@@ -1015,13 +1015,17 @@ class Pipeline:
             # Reflection probes (R50-PARALLAX): placed per room and per glossy
             # surface, each rendered with its depth pass, then fitted to a
             # parallax box, prefiltered and encoded as the RPRB lump.
+            coverage_rules = self.profile.get("audit") or {}
             face_args = ["--scene", scene, "--stage", p["lighting_stage"], "--out-dir", p["probe"],
                          "--face-size", str(probe.get("face_size", 256)),
                          "--samples", str(probe.get("samples", 512)),
                          "--device", self.lightmap["device"], "--seed", str(self.lightmap["seed"]),
                          "--placement", json.dumps(probe.get("placement", {}), sort_keys=True),
+                         "--coverage-rules", json.dumps(coverage_rules, sort_keys=True),
                          "--light-paths", probe.get("light_paths", "blender-default"),
                          "--denoise" if probe.get("denoise", True) else "--no-denoise"] + env_args
+            if self.keep_going:
+                face_args.append("--record-coverage-failure")
             if probe.get("relight"):
                 # R50-RELIGHT: the Diffuse Color and Normal passes, the
                 # G-buffer that RPRB v2's relight bands carry.
@@ -1036,7 +1040,8 @@ class Pipeline:
             self.step("probe", [p["lighting_stage"]] + self.scene_sources() +
                       ([environment] if environment else []),
                       dict(probe, device=self.lightmap["device"], seed=self.lightmap["seed"],
-                           denoise=probe.get("denoise", True), bounds_m=bounds),
+                           denoise=probe.get("denoise", True), bounds_m=bounds,
+                           coverage_rules=coverage_rules, record_coverage_failure=self.keep_going),
                       SCENE_SCRIPTS + self.baker.scripts("probe"),
                       [p["probe"]],
                       lambda: self.baker.bake("probe", face_args))

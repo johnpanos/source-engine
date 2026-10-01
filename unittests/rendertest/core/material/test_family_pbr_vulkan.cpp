@@ -169,6 +169,44 @@ int main()
 		                          .c_str(),
 		                 "thickness", true ),
 		    "claim.thick-glass-requires-depth-aware-refraction" );
+		{
+			VmtImportContext context;
+			context.resolve = []( std::string_view ) -> std::optional<std::string>
+			{
+				return std::string();
+			};
+			auto imported = ImportVmt(
+			    ( std::string( base ) + "\"$emissiontexture\" \"e\" "
+			                            "\"$emissiononesided\" \"1\" "
+			                            "\"$emissioncameraonly\" \"1\" \"$emissioncone\" \"1\" "
+			                            "\"$emissionconeinner\" \"0.95\" "
+			                            "\"$emissionconeouter\" \"0.85\" "
+			                            "\"$emissionconeexponent\" \"2\" }" )
+			        .c_str(),
+			    context );
+			ParameterBlock block( *pbr );
+			bool claimed = imported && ApplyValues( imported.Value(), block );
+			if ( claimed )
+			{
+				(void)block.SetTexture( "basetexture", device::TextureId( 1 ) );
+				(void)block.SetTexture( "mraotexture", device::TextureId( 1 ) );
+				(void)block.SetTexture( "emissiontexture", device::TextureId( 1 ) );
+				const PbrClaim cone = ClaimPbr( block );
+				claimed = cone.claimed && cone.emission && cone.constants.emission[1] == 1.0f &&
+				          cone.constants.emission[2] == 1.0f &&
+				          cone.constants.emissionCone[0] == 0.95f &&
+				          cone.constants.emissionCone[1] == 0.85f &&
+				          cone.constants.emissionCone[2] == 2.0f &&
+				          cone.constants.emissionCone[3] == 1.0f;
+			}
+			checks.That( claimed, "claim.one-sided-emitter-cone" );
+		}
+		checks.That( refused( ( std::string( base ) + "\"$emissioncone\" \"1\" }" ).c_str(),
+		                 "emissioncone" ),
+		    "claim.refuses-cone-without-emission" );
+		checks.That( refused( ( std::string( base ) + "\"$emissioncameraonly\" \"1\" }" ).c_str(),
+		                 "emissioncameraonly" ),
+		    "claim.refuses-camera-only-without-emission" );
 		// The importer already requires $mraotexture; a block without one bound
 		// (a texture that failed to load) is refused too.
 		{

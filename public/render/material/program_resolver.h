@@ -105,6 +105,7 @@ struct ResolvedProgram
 	std::string name;
 	ProgramRequest request;
 	device::BlendMode blend = device::BlendMode::kOpaque;
+	bool sceneColor = false; // the view group needs a snapshot before this draw
 	// The per-draw inputs the draw group takes, in binding order.
 	std::vector<std::string> drawInputs;
 	// The view's render targets the program reads through its view group's
@@ -149,6 +150,9 @@ public:
 	// (the default, and the product until K12) a pbr material is refused by
 	// name. Call before resolving; programs already resolved keep theirs.
 	void SetWorldPbr( bool enabled, std::uint32_t sceneTerms = 0 );
+	// The caller has a linear scene-color snapshot for a later transmission draw.
+	// The default refuses every such material until the view owns that input.
+	void SetSceneColorAvailable( bool available );
 	// A PBRMetalRough or supported VertexLitGeneric mesh on the world or model vertex:
 	// probe-volume indirect light and clustered, shadowed direct light.
 	foundation::Expected<ResolvedProgram, std::string> ResolveMesh( const MaterialDesc &material );
@@ -199,8 +203,8 @@ private:
 foundation::Expected<device::BlendMode, std::string> ClaimForDrawing(
     const MaterialDesc &material, bool worldPbr = false );
 // The mesh point's exact-variable claim without making a pipeline.
-foundation::Expected<device::BlendMode, std::string> ClaimForMesh(
-    const MaterialDesc &material, bool nativeReflectionProbes = false );
+foundation::Expected<device::BlendMode, std::string> ClaimForMesh( const MaterialDesc &material,
+    bool nativeReflectionProbes = false, bool sceneColorAvailable = false );
 
 } // namespace render::material
 

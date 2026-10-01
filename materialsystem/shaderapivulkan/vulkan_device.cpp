@@ -6938,6 +6938,7 @@ render::legacy::CorePassTarget CVulkanContext::CorePassTargetFor( int target )
 	};
 	if ( multisampled )
 	{
+		out.colorCopySource = true;
 		import( m_msColor, out.colorFormat, ResourceUsage::kColorAttachment, true,
 		    "multisampled back buffer", &m_coreMsColor );
 		if ( m_srgbAttachments && m_msColorViewSrgb != VK_NULL_HANDLE )
@@ -6954,6 +6955,7 @@ render::legacy::CorePassTarget CVulkanContext::CorePassTargetFor( int target )
 	m_coreColorSrgb.resize( m_swapImages.size() );
 	m_coreDepth.resize( m_swapImages.size() );
 	const uint32_t i = m_acquiredImage;
+	out.colorCopySource = m_presentCapturable;
 	import( m_swapImages[i], out.colorFormat, ResourceUsage::kColorAttachment, m_presentCapturable,
 	    "back buffer", &m_coreColor[i] );
 	if ( m_srgbAttachments )
@@ -7436,6 +7438,8 @@ void CVulkanContext::RecordFrameScene( VkCommandBuffer cmd )
 	}
 
 	// Dynamic geometry queued by the material system's mesh interface this frame.
+	m_statsLegacyStreamDraws = 0;
+	m_statsLegacyProgramDraws = 0;
 	if ( m_dynPipeline != VK_NULL_HANDLE && !m_dynDrawRecords.empty() )
 	{
 		const VkDeviceSize needed = m_dynQueued.size() * sizeof( float );
@@ -8534,6 +8538,8 @@ void CVulkanContext::RecordFrameScene( VkCommandBuffer cmd )
 					worldBuffersBound = true;
 				}
 				vkCmdDrawIndexed( cmd, d.indexCount, 1, d.firstIndex, 0, fogIndex[recordIndex] );
+				++m_statsLegacyStreamDraws;
+				m_statsLegacyProgramDraws += legacy ? 1 : 0;
 			}
 			else if ( d.indexCount > 0 )
 			{
@@ -8546,8 +8552,12 @@ void CVulkanContext::RecordFrameScene( VkCommandBuffer cmd )
 					worldBuffersBound = false;
 				}
 				if ( indicesOk )
+				{
 					vkCmdDrawIndexed( cmd, d.indexCount, 1, d.firstIndex,
 					    static_cast<int32_t>( d.firstVertex ), fogIndex[recordIndex] );
+					++m_statsLegacyStreamDraws;
+					m_statsLegacyProgramDraws += legacy ? 1 : 0;
+				}
 			}
 			else
 			{
@@ -8558,6 +8568,8 @@ void CVulkanContext::RecordFrameScene( VkCommandBuffer cmd )
 					worldBuffersBound = false;
 				}
 				vkCmdDraw( cmd, d.vertexCount, 1, d.firstVertex, fogIndex[recordIndex] );
+				++m_statsLegacyStreamDraws;
+				m_statsLegacyProgramDraws += legacy ? 1 : 0;
 			}
 		}
 		ReplayFrameLabels( &labelCursor, m_dynDrawRecords.size() );
@@ -9900,7 +9912,8 @@ void CVulkanContext::WriteFrameStats( uint64_t endUs )
 		// the same interval.
 		std::fprintf( m_frameStatsFile,
 		    "{\"f\":%llu,\"t\":%llu,\"interval\":%llu,\"cpu\":%llu,\"engine\":%llu,"
-		    "\"backend\":%llu,\"records\":%zu,\"vertex_bytes\":%zu,\"index_bytes\":%zu,"
+		    "\"backend\":%llu,\"records\":%zu,\"legacy_stream_draws\":%zu,"
+		    "\"legacy_program_draws\":%zu,\"vertex_bytes\":%zu,\"index_bytes\":%zu,"
 		    "\"upload_bytes\":%llu",
 		    static_cast<unsigned long long>( m_statsFrame ),
 		    static_cast<unsigned long long>( m_frameBeginUs ),
@@ -9911,6 +9924,7 @@ void CVulkanContext::WriteFrameStats( uint64_t endUs )
 		    static_cast<unsigned long long>(
 		        m_prevFrameEndUs ? m_frameBeginUs - m_prevFrameEndUs : 0 ),
 		    static_cast<unsigned long long>( endUs - m_frameBeginUs ), m_dynDrawRecords.size(),
+		    m_statsLegacyStreamDraws, m_statsLegacyProgramDraws,
 		    m_dynQueued.size() * sizeof( float ), m_dynIndices.size() * sizeof( uint32_t ),
 		    static_cast<unsigned long long>( m_frameCost.uploadBytes ) );
 		std::fputs( ",\"cost\":{", m_frameStatsFile );

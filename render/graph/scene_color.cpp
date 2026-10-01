@@ -87,4 +87,35 @@ std::optional<ResourceRef> CaptureSceneColor( GraphBuilder &builder, ResourceRef
 	return snapshot;
 }
 
+foundation::Expected<RecordedSceneColor, device::DeviceError> RecordSceneColor(
+    device::IRenderDevice2 &device, device::CommandEncoder &encoder, device::TextureId source,
+    const device::TextureDesc &sourceDesc )
+{
+	GraphBuilder builder;
+	const ResourceRef imported = builder.ImportTexture( "product scene color", source, sourceDesc,
+	    device::ResourceUsage::kColorAttachment, device::ResourceUsage::kColorAttachment );
+	const std::optional<ResourceRef> snapshot = CaptureSceneColor( builder, imported );
+	if ( !snapshot )
+		return foundation::MakeUnexpected( device::DeviceError{
+		    device::DeviceStatus::kInvalidDescription, device::DeviceOperation::kCreateTexture } );
+	builder.AddPass( "retain scene color for transmission", PassKind::kCopy )
+	    .Read( *snapshot, device::ResourceUsage::kSampled )
+	    .SideEffect()
+	    .Execute( []( RecordContext & ) {} );
+	auto compiled = CompileGraph( std::move( builder ) );
+	if ( !compiled )
+		return foundation::MakeUnexpected( device::DeviceError{
+		    device::DeviceStatus::kInvalidDescription, device::DeviceOperation::kCreateTexture } );
+	auto recorded = RecordInline( compiled.Value(), device, encoder );
+	if ( !recorded )
+		return foundation::MakeUnexpected( recorded.Error() );
+	RecordedSceneColor result;
+	result.texture = recorded.Value().Texture( *snapshot );
+	result.desc = sourceDesc;
+	result.desc.sampleCount = 1;
+	result.desc.usages = { device::ResourceUsage::kSampled };
+	result.resources = std::move( recorded ).Value();
+	return result;
+}
+
 } // namespace render::graph

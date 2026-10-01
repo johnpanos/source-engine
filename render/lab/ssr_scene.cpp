@@ -118,6 +118,7 @@ SsrSceneImages RayCastScene( const SsrScene &scene )
 			in.normalRoughness[i * 4 + 0] = n.x;
 			in.normalRoughness[i * 4 + 1] = n.y;
 			in.normalRoughness[i * 4 + 2] = quad.roughness;
+			in.normalRoughness[i * 4 + 3] = quad.cameraOnlyEmitter ? 2.0f : 1.0f;
 			const std::array<float, 3> radiance = quad.radiance( p );
 			for ( int c = 0; c < 3; ++c )
 			{

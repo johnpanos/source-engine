@@ -42,3 +42,4 @@ instance storage, and the submission-cost target.
 | W8 | Objects a frame's slots used outlive that frame: a level change or a second target format between two slots of one submission leaves the first slot's objects alive; they are released at a later frame's slot, behind its submitted token (`WorldTarget::frame`) |
 | W10 | A view whose slot never recorded is skipped (counted, not a failure) only when no slot of its host frame recorded; a view lost from a host frame that recorded is a failure |
 | W9 | A variable the model does not read keeps its material out unless it holds its shader's neutral value (`MaterialDesc::declaredDefaults`); one with no neutral value keeps it out too; the gap names the variable |
+| W13 | A sparse update to the current probe atlas records on the next world view; a rectangle outside the atlas fails that view by name instead of silently sampling stale light |

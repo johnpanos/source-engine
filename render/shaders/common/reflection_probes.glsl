@@ -232,10 +232,11 @@ vec3 ReflectionProbeSample( int rank, int count, vec3 header, vec3 position, vec
 // Specular image light at `position` (geometric normal `normal`) along the
 // unit reflected ray; false when the texture carries no reflection probes
 // (the fallback texture) or the mode is off.
-bool ReflectionProbesRadiance( vec3 position, vec3 normal, vec3 reflected, float roughness,
-    out vec3 radiance )
+bool ReflectionProbesRadianceDebug( vec3 position, vec3 normal, vec3 reflected, float roughness,
+    out vec3 radiance, out vec4 selectionInfo )
 {
 	radiance = vec3( 0.0 );
+	selectionInfo = vec4( -1.0, -1.0, 0.0, 0.0 );
 	vec4 header = ReflectionProbesFetch( ivec2( 0, 0 ) );
 	if ( header.w != kReflectionProbesMarker || header.x < 1.0 )
 		return false;
@@ -326,6 +327,8 @@ bool ReflectionProbesRadiance( vec3 position, vec3 normal, vec3 reflected, float
 		weights[0] /= total;
 		weights[1] /= total;
 	}
+	selectionInfo = vec4( float( ranks[0] ), weights[1] > 0.0 ? float( ranks[1] ) : -1.0,
+	    weights[0], weights[1] );
 	for ( int i = 0; i < 2; ++i )
 		if ( weights[i] > 0.0 )
 			radiance += weights[i] * ( ( mode & 4 ) != 0
@@ -334,4 +337,12 @@ bool ReflectionProbesRadiance( vec3 position, vec3 normal, vec3 reflected, float
 			                                     position, reflected, roughness,
 			                                     selection != 3, relight ) );
 	return true;
+}
+
+bool ReflectionProbesRadiance( vec3 position, vec3 normal, vec3 reflected, float roughness,
+    out vec3 radiance )
+{
+	vec4 unusedSelection;
+	return ReflectionProbesRadianceDebug(
+	    position, normal, reflected, roughness, radiance, unusedSelection );
 }

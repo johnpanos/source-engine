@@ -55,6 +55,34 @@ struct ExecuteResult
 	std::uint32_t encoders = 0;
 };
 
+// A graph recorded into an encoder owned by a host frame. The owner keeps
+// these transients through every later draw that reads them and releases them
+// behind a completion token for the host submission. Move only to keep one
+// release authority. Imported resources are never released here.
+struct InlineGraphResources
+{
+	InlineGraphResources() = default;
+	InlineGraphResources( const InlineGraphResources & ) = delete;
+	InlineGraphResources &operator=( const InlineGraphResources & ) = delete;
+	InlineGraphResources( InlineGraphResources && ) = default;
+	InlineGraphResources &operator=( InlineGraphResources && ) = default;
+
+	device::TextureId Texture( ResourceRef ref ) const;
+	void Release( device::IRenderDevice2 &device, device::CompletionToken after );
+
+	std::vector<device::TextureId> textures;
+	std::vector<device::BufferId> buffers;
+	std::vector<device::TextureId> ownedTextures;
+	std::vector<device::BufferId> ownedBuffers;
+};
+
+// Records a compiled graph into the caller's graphics encoder, without a
+// submission. The graph's imports must enter in their declared usages. A
+// returned transient is valid until InlineGraphResources::Release. The caller
+// must not discard the result before the host submission completes.
+foundation::Expected<InlineGraphResources, device::DeviceError> RecordInline(
+    const CompiledGraph &graph, device::IRenderDevice2 &device, device::CommandEncoder &encoder );
+
 // Physical transients kept between executions, keyed by shape and usages.
 // A resource returns with the usage its execution left it in and the token
 // of that submission. A later execution may take it at once: submissions on

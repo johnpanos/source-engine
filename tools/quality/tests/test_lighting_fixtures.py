@@ -32,6 +32,7 @@ from PIL import Image
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 import lighting_fixtures as lf  # noqa: E402
+import pbrt_playable_content as playable  # noqa: E402
 
 ROOT = HERE.parents[2]
 
@@ -219,7 +220,8 @@ class BakeOverrides(unittest.TestCase):
         self.assertNotIn("lightmap", final)
         self.assertNotIn("probe_volume", final)
         self.assertEqual(final["reflection_probe"], lf.FINAL_PROBES)
-        self.assertIsNone(final["radiosity"])
+        self.assertNotIn("radiosity", final)
+        self.assertNotIn("sdf_volume", final)
         self.assertEqual(lf.final_overrides({"lightmap": {"samples": 64, "layout": "planar"}}),
                          {"lightmap": {"layout": "planar"}})
 
@@ -268,6 +270,53 @@ class ErrorMetric(unittest.TestCase):
         self.assertEqual(lf.error_stats(bad, self.reference, self.index, [7])["mean"],
                          float("inf"))
 
+    def test_visible_emitter_has_separate_black_negative_control(self):
+        exact = lf.emitter_error_stats(self.reference, self.reference, self.index, [7])
+        self.assertGreater(exact["pixels"], 0)
+        self.assertEqual(exact["mean"], 0.0)
+        dark = self.reference.copy()
+        dark[self.index == 7] = 0.0
+        missing = lf.emitter_error_stats(dark, self.reference, self.index, [7])
+        self.assertAlmostEqual(missing["mean"], missing["black_control_mean"])
+        self.assertGreater(missing["mean"], 1.0)
+        self.assertIsNone(lf.emitter_error_stats(dark, self.reference, self.index, []))
+
+
+class VisibleEmitterMaterials(unittest.TestCase):
+    def test_each_usd_light_keeps_its_authored_rgb_radiance(self):
+        scene = {"format": "usd", "emitters": [
+            {"name": "LightQuad00", "emission": {"radiance": [5.0, 2.75, 2.75],
+                                                  "one_sided": True},
+             "shape": {"kind": "rect"}},
+            {"name": "LightDisk01", "emission": {"radiance": [40.0, 50.0, 60.0],
+                                                  "one_sided": True},
+             "shape": {"kind": "disk"},
+             "cone": {"inner": 0.95, "outer": 0.85, "exponent": 1.0}},
+            {"name": "LightQuad02", "emission": {"radiance": [2.0, 2.0, 2.0],
+                                                  "one_sided": False},
+             "shape": {"kind": "rect"}}]}
+        self.assertEqual(playable.visible_emitters(scene), [
+            ("emitter_lightquad00", (5.0, 2.75, 2.75), True, None, True),
+            ("emitter_lightdisk01", (40.0, 50.0, 60.0), True,
+             {"inner": 0.95, "outer": 0.85, "exponent": 1.0}, True),
+            ("emitter_lightquad02", (2.0, 2.0, 2.0), False, None, False)])
+        self.assertEqual(playable.visible_emitters(dict(scene, format="pbrt")), [])
+
+    def test_bad_or_duplicate_light_identity_and_radiance_fail(self):
+        light = {"name": "LightQuad00", "emission": {"radiance": [5.0, 2.75, 2.75],
+                                                   "one_sided": True}}
+        for bad in [dict(light, name="Panel"),
+                    dict(light, emission={"radiance": [float("nan"), 1.0, 1.0],
+                                          "one_sided": True}),
+                    dict(light, emission={"radiance": [-1.0, 1.0, 1.0],
+                                          "one_sided": True}),
+                    dict(light, emission={"radiance": [1.0, 1.0, 1.0]}),
+                    dict(light, cone={"inner": 0.7, "outer": 0.9, "exponent": 1.0})]:
+            with self.assertRaises(ValueError):
+                playable.visible_emitters({"format": "usd", "emitters": [bad]})
+        with self.assertRaises(ValueError):
+            playable.visible_emitters({"format": "usd", "emitters": [light, light]})
+
 
 def write_pfm(path, image):
     image = np.asarray(image, "<f4")
@@ -313,7 +362,8 @@ class FixtureRoot:
         record = {"schema": lf.REFERENCES_SCHEMA, "fixture": "tiny",
                   "fixture_reference_digest": lf.reference_digest(self.fixture),
                   "samples": 16, "seed": 1, "status": "preview",
-                  "renders": {"default": {"stage_layers": {}}}, "views": views,
+                  "renders": {"default": {"stage_layers": {}, "normal_maps": True}},
+                  "views": views,
                   "analytic": []}
         lf.write_json(refs / "references.json", record)
         entry = {"fixture": "tiny", "version": 1, "mean": 0.05, "p99": 0.5,
@@ -375,6 +425,11 @@ class Check(unittest.TestCase):
     def test_preview_labelled_final(self):
         self.tree.edit("tiny/references/references.json", lambda r: r.update(status="final"))
         self.assertRejected("does not match 16 samples")
+
+    def test_smooth_normal_reference_is_rejected(self):
+        self.tree.edit("tiny/references/references.json",
+                       lambda r: r["renders"]["default"].update(normal_maps=False))
+        self.assertRejected("omitted authored normal maps")
 
     def test_tolerance_edited_in_place(self):
         self.tree.edit("tolerances.json", lambda t: t["entries"][0].update(mean=0.5))

@@ -1810,3 +1810,67 @@ pipeline. In the placement comparison, unserved glossy samples fell from
 2,931 to 2,442 of 2,931 servable samples; uncovered walkable samples rose
 from 722 to 744 of 1,773. The authored GPU probe receipt confirms those
 counts. Further coverage work remains open.
+
+## Laser intro relight term diagnostics (2026-10-01)
+
+`tools/render/map_relight_diagnostics.py` now captures one verified camera in
+fresh native Vulkan boots for the original and relit maps, the core's albedo,
+baked, runtime-direct and image-specular debug views, and final frames with
+baked, diffuse probes or IBL individually disabled. It records the startup
+commands, view-oracle camera, boot receipts, region RGB and clipping, and the
+exported source-light inventory in a browsable sheet. Grey not-applicable
+hatching is excluded from region color measurements. The direct and indirect
+lightmap EXRs are shown as separate same-exposure UV-atlas previews; the runtime
+direct view is not the lightmap's direct layer. Screenshot RGB is decoded from
+display PNGs and is useful for relative inspection, not as absolute scene
+radiance. `mat_force_tonemap_scale` fixes the final-frame exposure, and the
+tool checks the value recorded by every final-frame boot. The first exploratory
+run exposed an uncontrolled original/relit difference (3.972 versus 5.000);
+the decisive run below fixes both at 4.000.
+
+At the laser arrival-stair camera `-1312,0,-208:0,0,0`, the staged relit map
+is visibly too warm. The captured stair region's decoded display R/B mean is
+0.60 in the original and 1.86 in the relit final at fixed exposure. Disabling
+the baked term leaves it at 1.86; disabling diffuse probes also leaves it at
+1.86. Disabling IBL drops it to 0.83 and removes most of the overbright warm
+stair reflection. The floor shifts from 1.45 to 1.08 with IBL disabled.
+The two earlier independent relit-final captures were pixel identical. The
+exported sky-ambient radiance is (0.674, 0.501, 0.297) linear RGB, but these
+controls do not yet identify which probe capture or BRDF weighting supplies
+the excess IBL response.
+
+Evidence: `quality-results/map-diagnostics/laser-entry-locked-20261001/index.html`
+with `diagnostics.json` and nine passing per-view native boot receipts. The
+seven diagnostic helper tests pass. This diagnostic does not close the Source 2
+quality map gate.
+
+The follow-up probe audit found a coverage leak: the map's global capture
+(source index 3, rank 15) has a mean linear R/B of 2.27 across its sky-lit faces,
+matching the exported warm sky ambient. Local west-chamber captures (ranks
+at source indices 0, 7 and 11) are nearly black; their brightest individual face pixels are
+0.011, 0.00029 and 0.042 respectively. The placement audit still reports
+2,442 of 2,931 servable glossy samples unserved. A three-mode attempt at the same fixed camera
+showed `mat_reflection_probes` modes 0, 2 and 5 made no RGB change in the
+core-rendered image; that legacy control is not a valid core probe-selection
+diagnostic.
+
+Core debug views 24–27 now expose the first two selected RPRB ranks and first
+weight, raw sampled radiance, BRDF/mask weight, and bound texture header.
+The map diagnostic sheet decodes the rank encoding to a regional histogram
+and links the RPRB receipt's global rank and source capture. The native
+Vulkan laser-entry capture at
+`quality-results/map-diagnostics/laser-entry-core-probes-20261001/index.html`
+selects rank 15, the global sky probe, at weight 1.0 for every one of 41,402
+stair and 46,357 floor ROI pixels. There is no ambient-cube fallback in these
+regions. The separate header view shows 16 probes, mode 1 and a valid marker;
+its spatially uniform screenshot is rejected by `portal_boot`'s scene-detail
+check, so it is exploratory evidence only. The rank decoder test specifically
+distinguishes encoded rank 15 purple from magenta fallback. `render_lab`
+map-terms passes 35 checks including selection, radiance, weight and header
+oracles; the Portal 2 product build, shader-artifact check (1,400 checks),
+changed-file style check and native map capture pass. The broader debug-views
+suite currently stops on the independent modern-model claim failure in the
+dirty workspace. Archlint reports the existing F-Stop `CreateInterfaceFn`
+expansion. Probe coverage/visibility and the map's warm
+global capture remain open, so this diagnostic does not close the Source 2
+quality gate.

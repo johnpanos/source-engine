@@ -8,10 +8,11 @@
     "default": {
       "blender": "5.2.2 LTS",
       "composed_stage_sha256": "5abf9b5c343d3bc020dc99922b505c779659cbb9900ff43f65e2fe9c7649743b",
-      "cycles_device": "OPTIX: NVIDIA GeForce RTX 4090",
+      "cycles_device": "CPU",
       "denoising": false,
       "extras_applied": {
         "medium": null,
+        "normal_mapped_materials": [],
         "projectors": []
       },
       "light_paths": {
@@ -23,10 +24,10 @@
         "sample_clamp_indirect": 0.0,
         "transmission_bounces": 16
       },
-      "lighting_renderer_sha256": "9927c57ae004d8873c1445d10dd039928f694d6568bd2e27aa82a87a3caa6d2a",
-      "normal_maps": false,
+      "lighting_renderer_sha256": "e980af2157ed69d7c2cf8aed3c3a5c06bbd9e31493e3c5501a861326a737301a",
+      "normal_maps": true,
       "ocio_configuration_sha256": "7812ed39935cb1f7ab5392293c914c0c0f595720af22fc1b289bf19cc0af7ef6",
-      "renderer_sha256": "be4345ca1b53205f3ca822e8ae1bf541f67b83ca19324555cfccf91f6a3496f9",
+      "renderer_sha256": "cfeb9a9d876d09cd84c0b5809dbc7c10c1266e71d8229579954b7149c3c11f04",
       "samples": 2048,
       "seed": 20260929,
       "stage_layers": {
@@ -45,19 +46,23 @@
         8
       ],
       "files": {
+        "direct": {
+          "file": "default.floor.direct.exr",
+          "sha256": "4b4f94234c2aa37765767db2a34595169c2d6f3b7b52566e2904aa1c1ff0371d"
+        },
         "index": {
           "file": "default.floor.index.png",
           "sha256": "24c89ef8ef349c8df0a3faafd1b1a91456630e342ac481a148d0d497b696d4e6"
         },
         "total": {
           "file": "default.floor.total.exr",
-          "sha256": "765b5644128a9815de1df85d69d02e039f15a2cbef1ade3bea1c6f6b58fc5255"
+          "sha256": "9403157703af2c39ee63cac39202dce1d0fb7eb289ffa3b1516ccb3f18856282"
         }
       },
       "finite": true,
       "index_from_state": "default",
       "judged_pixels": 196608,
-      "mean_luminance": 0.11052010766867242,
+      "mean_luminance": 0.1105200813741573,
       "object_index": {
         "C_Xn": 1,
         "C_Xp": 2,
@@ -87,19 +92,23 @@
         8
       ],
       "files": {
+        "direct": {
+          "file": "default.front.direct.exr",
+          "sha256": "ee7d316eac27eb0977d22e3c8380318f3dec2c07aaeefdf9a61bf2b58e75434b"
+        },
         "index": {
           "file": "default.front.index.png",
           "sha256": "4ccd05536561bcc1e6ceb71c66f5503f97960b613a30806e484e6ff0c938ac01"
         },
         "total": {
           "file": "default.front.total.exr",
-          "sha256": "f85f3e884df2b6e12227a9a385edc7600128dc3eebf2c358d355a9cce42a6741"
+          "sha256": "21d257d558c796ad12fd862c7b5f35d2854b8d0df5dc5141cb8d674f968af41c"
         }
       },
       "finite": true,
       "index_from_state": "default",
       "judged_pixels": 196608,
-      "mean_luminance": 0.1750890693070126,
+      "mean_luminance": 0.1750889890122681,
       "object_index": {
         "C_Xn": 1,
         "C_Xp": 2,

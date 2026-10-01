@@ -4189,20 +4189,22 @@ fixes for the frame-time failure.
 `r_core_ao_quality` (0 off to 4 ultra) and `r_core_shadow_quality` (0 off
 to 3 high, the shadow atlas size) are rows of the advanced video options.
 Each row's index is the ConVar's value; both take effect from the next
-frame.
+frame. The remaining `RenderCoreWorldQuality` settings now have rows too:
+`r_core_depth_prepass`, `r_core_shadow_movers`, and `r_core_runtime_direct`
+each use Off/On. The first two take effect from the next frame; runtime
+direct light takes effect at the next map load. All five are archived.
 
-- Portal: `gameui/OptionsSubVideo.cpp` makes an "Ambient occlusion" and a
-  "Dynamic shadows" combo below High Dynamic Range and Indirect lighting.
-  The retail `.res` predates them. The dialog grows only when a visible
-  control lies too close below the row; on the retail layout it does not.
-- Portal 2: `CAdvancedVideo::PreApplyControlSettings` adds two dialog-list
+- Portal: `gameui/OptionsSubVideo.cpp` makes five combos in three rows below
+  High Dynamic Range and Indirect lighting. The retail `.res` predates them;
+  the dialog moves later controls and grows when those rows need space.
+- Portal 2: `CAdvancedVideo::PreApplyControlSettings` adds five dialog-list
   rows to the retail `advancedvideo.res` data, copied from Model / Texture
-  Detail, and grows the frame by a tile. Use Defaults restores the
-  ConVars' defaults.
+  Detail, updates keyboard navigation, and grows the frame to fit. Use
+  Defaults restores the ConVars' defaults.
 - The retail localization has no such tokens, and its `GameUI_Ultra` reads
   "Very High". Each dialog registers English text for
-  `GameUI_AmbientOcclusion`, `GameUI_DynamicShadows`, `GameUI_QualityOff`
-  and `GameUI_QualityUltra` unless a loaded file defines them.
+  the five row labels, `GameUI_QualityOff`, `GameUI_QualityOn` and
+  `GameUI_QualityUltra` unless a loaded file defines them.
 - A product without the ConVars shows neither row.
 
 Evidence (headless, native Vulkan, private runtimes): the developer
@@ -4216,6 +4218,11 @@ dialog opened on `Low`/`High` after the ConVars were set to 1 and 3, and
 applying `4 0` set them to 4 and 0. Neither log has a localization or
 resource warning from the new rows. Not covered: mouse or keyboard input
 on the new rows.
+
+The three additional rows compile in the Portal GameUI and Portal 2 advanced
+video translation units, along with the engine ConVar owner. The changed-line
+style check passes. A native dialog interaction and reopen check for these
+three rows is still needed; this UI extension does not close K12.
 
 ## RFC 0014 D4, first part: per-pass GPU timers on the core (2026-09-30, source-engine-5a)
 
@@ -5129,3 +5136,683 @@ K12 still needs a separate transmission pass, the shared PBR transmission
 term and its authored-parameter oracle before a Refract VMT can claim. No
 material count changes from this infrastructure slice; `r_core_world` remains
 opt-in.
+
+### K11: visible-emitter gallery diagnostic (2026-09-30)
+
+The receiver metric excluded `LightQuad*` and `LightDisk*` pixels, so a view
+could pass while its visible light meshes were dark. The gallery now places a
+separate emitter error map beside each receiver error map. It reports mean and
+p99 error scaled by the reference emitter luminance, plus the mean error of a
+black-emitter negative control. The comparison gate and its fixed receiver
+tolerances have not changed; emitter figures are diagnostic until their own
+tolerances are fixed. The fixture tests show an exact emitter scores zero and
+a black one matches the negative control. The checked-in Cycles references
+have visible emitter pixels in 27 views; none has a black emitter reference.
+
+`python3 tools/quality/lighting_fixtures.py gallery --fixture area-room --out
+quality-results/lighting-gallery/emitter-diagnostic-20260930` ran against the
+local `build-rc-lab` and wrote `index.html` and `summary.json`. Its three
+camera results are:
+
+| Camera | Receiver mean / p99 | Receiver gate | Emitter mean / p99 | Black-emitter mean |
+| --- | ---: | --- | ---: | ---: |
+| grazing | 0.071 / 0.857 | fail | 0.983 / 1.916 | 1.196 |
+| overview | 0.056 / 0.798 | fail | 1.018 / 2.112 | 1.253 |
+| wall | 0.027 / 0.156 | pass | 0.947 / 1.056 | 1.064 |
+
+The wall camera is a negative example for relying on receiver scores alone.
+This run does not raise the prior 9/35 gallery result or complete K11's visible
+emitter term. The emitter material/radiance path and its fixed acceptance
+tolerances still need work. The fixture and gallery tests pass. A stale
+`BakeOverrides.test_final_drops_preview_samples` assertion was updated to
+match `final_overrides`' documented omission of disabled preview settings in
+favor of the profile defaults. `git diff --check` passes.
+
+A full 2x gallery first rendered 19 of the current 39 fixture views. Eighteen
+stopped with `no pbr draw group`, and two Portal views stopped at an alpha-test
+material. The PBR failure was a lab call mismatch: model meshes supplied three
+empty placeholder texture names, while the resolver's mesh draw layout has
+zero texture inputs. The lab now requests the empty draw group for model meshes.
+`WAFLOCK=.lock-waf-rc-lab-main ./waf build --target=render_lab` passed in the
+existing configured tree. The rerun at
+`quality-results/lighting-gallery/emitter-full-fixed-20260930/` renders all
+39 views, with 10 receiver passes. This is a changed fixture set, including
+the portal pair, so 10/39 is not a like-for-like improvement over the earlier
+9/35 record. The new portal-pair views have large receiver and emitter errors,
+and the emitter figures still need fixture-specific acceptance tolerances.
+The edited C++ line passes stylelint. `archlint check --changed` reports its
+existing CAP002 occurrences with zero new and zero stale occurrences.
+
+### K11: authored visible-emitter radiance and cone (2026-09-30)
+
+USD WMSH now gives each `LightQuad*` or `LightDisk*` mesh its own material
+identity. The content compiler writes a PBR emitter material from that light's
+linear radiance, a black base and the existing white unlit fallback. It rejects
+missing sidedness, invalid radiance or cone data, and duplicate names. The
+core PBR program now applies authored one-sided emission and the same
+inner/outer-cosine ramp and exponent used by the Cycles fixture. An emitter
+without radiance omits the emission and cone parameters. The material contract
+records these parameters; the legacy shader backend was not changed.
+
+The 2x area-room gallery at
+`quality-results/lighting-gallery/emitter-area-cone-final-20261001/` renders
+all three views. Emitter mean errors for grazing, overview and wall are
+0.032, 0.061 and 0.033, versus 0.983, 1.018 and 0.947 before this slice.
+Their p99 errors are 0.379, 0.387 and 0.244. The actual
+`--debug-term emission` wall capture has emitter mean error 1.060, near the
+black-emitter analytic control's 1.064, compared with 0.033 with emission on.
+This control verifies that the new term, rather than another light term,
+draws the visible panels. Receiver results remain one of three passes; the
+grazing and overview p99 errors are 1.552 and 0.771.
+
+The HDR disk in material-sweep has a narrow authored cone. A no-cone render
+at `quality-results/lighting-gallery/emitter-material-hdr-20261001/` makes
+the grazing emitter mean error 884,026; the cone-enabled 2x gallery at
+`quality-results/lighting-gallery/emitter-material-cone-final-20261001/`
+reduces it to 0.377 and the front emitter mean error from 2.115 to 0.091.
+Receiver mean errors fall from 0.548 to 0.275 front and 0.798 to 0.083
+grazing, but neither view passes its full receiver tolerance. The no-cone
+render is a negative control, not a baseline to certify. Emitter metrics
+remain diagnostic while fixture-specific acceptance tolerances are unsettled.
+
+The `render.family.pbr` conformance suite passes 93 checks. Its first run
+found that the shared pixel-test neutral view lacked the fifth scene-color
+binding added for K12; the fixture was corrected, then PBR, lightmapped
+(198 checks) and vertexlit (124 checks) pass. The 53 Python fixture/gallery
+tests pass, both rebuilt fixture checks report zero problems, and stylelint
+and `git diff --check` pass. `archlint check --changed` still exits with its
+existing CAP002 occurrences but reports zero new and zero stale. K11 stays
+open for the remaining material, probe, shadow and reflection image errors;
+these captures do not establish the complete lighting model.
+
+### K11: Cycles normal-map oracle correction and full receiver review (2026-10-01)
+
+The user spotted that the Cycles gallery did not show authored bump/normal
+detail. Its K11 wrapper inherited RFC 0011's `normal_maps=False` policy,
+which is correct for the smooth-normal indirect oracle but wrong for a
+full-appearance comparison. The lighting wrapper now rebinds materials with
+authored normal maps, verifies each normal-textured material has a connected
+Cycles Principled Normal input, and records both `normal_maps: true` and the
+material names. The shared GI renderer is unchanged, preserving the
+smooth-normal policy used by its existing references.
+
+Extracted scene receipts show normal textures in only the two Portal chamber
+fixtures: 13 of 22 materials in `portal2-chamber`, and 3 of 44 in
+`portal-chamber`. `material-sweep` has none, so its rough-gold discrepancy is
+unrelated to this omission. All four affected views were rerendered locally
+in Blender 5.2.2 at their original 2,048 samples and seed 20260929. Both
+`lighting_fixtures.py check --fixture` runs pass with zero problems. The
+normal-map-on receipts include the 13 and 3 validated material names. The
+K11 full 2x gallery at
+`quality-results/lighting-gallery/normals-on-full-20261001/` renders 39/39
+views, with 10 receiver passes. `portal2-chamber/chamber` is 0.226 mean,
+1.996 p99 (previously 0.224, 1.992); `spawn` is 0.376, 1.550 (previously
+0.375, 1.555). `portal-chamber/room2` is 0.243, 1.441 and `vault` is 0.433,
+2.062. The wall/floor grid and ceiling differences remain visible. This
+corrects the reference material policy, but does not explain the dominant
+receiver error in those chambers.
+
+The visual review of every receiver image, including the 39 per-view error
+descriptions and the gross Portal-pair/door-room/Portal-2 failures, is in
+[the K11 gallery review](0016-gallery-review-2026-10-01.md). The fixed
+receiver tolerances were not changed. The 53 fixture/gallery Python tests
+and `git diff --check` pass; `lighting_fixtures.py check` passes the full
+K11 fixture set. `gi_reference.py check` still fails on pre-existing renderer
+digest mismatches and a `room-states` fixture digest mismatch: the shared GI
+renderer is byte-for-byte identical to HEAD, while its recorded digest is
+already different. This K11 correction did not rerender the separate GI
+oracles. K11 remains open.
+
+The follow-up [receiver term isolation](0016-gallery-review-2026-10-01.md#closed-door-term-isolation)
+distinguishes the conspicuous `door-room/closed/b-door` failure from its
+direct-shadow component. The default full gallery scores 1.007 / 4.839
+mean / p99 and shows a bright wedge. Selecting the core direct path removes
+that wedge but its total still fails at 0.555 / 0.889. All four door-room
+direct-only views pass; the closed B-side scores 0.024 / 0.240, and regional
+linear values closely match Cycles direct diffuse. Its excess total is mostly
+the static baked indirect layer from the open-room bake, with additional
+probe/IBL response on the moving door. A full-gallery `--core-direct`
+diagnostic worsened several other fixtures, so it is not a general K11
+remedy or a new gate default. On `material-sweep`, the rough gold's red
+channel is low by about 30% at roughness 1.0 while glossy gold is too
+bright. Turning off multiple-scattering compensation makes the rough gold
+darker and worsens p99. Those diagnostics narrow the next lighting work;
+neither failure has been marked resolved.
+The focused lighting fixture and gallery suites still pass (50 and 3 tests),
+as do the full K11 fixture check and `git diff --check`. A wider
+`test_lighting_*.py` discovery runs 78 tests and exposes two existing
+`test_lighting_back_end` errors: its recording fake does not write the
+`legacy-scene/scene-receipt.json` now read by the unchanged
+`pbrt_map_build.py` code. Both files match HEAD; this is recorded separately
+from the K11 oracle rerender.
+
+### K11: analytic emitter reflection visibility (2026-10-01)
+
+The corrected Cycles full-appearance oracle has a specific emitter-ray policy:
+the visible mesh of an analytically replaced USD light is camera-visible,
+but `pbrt_blender.add_lamp` hides that mesh from glossy rays and supplies the
+light with a Cycles lamp. The RPRB producer rendered each face with a camera,
+so its old faces captured the light mesh as reflected radiance. The core then
+added the analytic light's direct specular term as well. `map_scene` now owns
+the analytic replacement classification; the probe-face renderer hides only
+those meshes and records their names. Mesh-only emitters remain visible to
+probe cameras. Per-emitter WMSH materials carry `$emissioncameraonly` through
+the PBR schema and surface constant, so SSR can leave the probe result in
+place when its ray hits a camera-only light pixel. This applies the same
+visibility rule to the probe and screen-space reflection paths without
+turning off the light or reflection effects.
+
+A probe-only diagnostic improved `material-sweep/front` from 0.275 / 1.285
+to 0.261 / 1.020 mean / p99, but regressed `mirror-corridor/low` from
+0.076 to 0.209 mean: SSR replaced the corrected probe with a reflection
+of the camera-only ceiling strip. The precise SSR hit marker restores the
+mirror and improves the final 2x gallery to **16/39 receiver passes** at
+`quality-results/lighting-gallery/analytic-emitter-reflections-full-20261001/`.
+All three area-room views and both mirror-corridor views now pass; the
+Cornell floor, Portal-pair closed A view and sun-colonnade yard also newly
+pass. No earlier pass regressed. The mirror's low view is 0.063 / 0.198;
+`area-room/grazing` is 0.049 / 0.607. Both material-sweep views still fail
+(front 0.261 / 1.020, grazing 0.067 / 0.501), as do the dominant Portal
+pair and chamber views. The [39-view receiver review](0016-gallery-review-2026-10-01.md)
+records each error and the per-lobe gold and closed-door controls.
+
+The lab's SSR reference now rejects camera-only hits; its Vulkan suite
+passes **25 checks** under validation. The seeded shader that ignores the
+marker fails on 13,564 hit decisions and 13,354 unchanged-pixel checks.
+`render.family.pbr` passes 94 checks, and its ignored-normal-map seed is
+rejected (94 checks). `lighting_fixtures.py check` passes with zero
+problems; the focused fixture Python suite passes 50 tests;
+`shader_toolchain.py check` passes 164, `shader_artifacts.py check` passes
+1,400, and stylelint reports 20 files with zero failures. `archlint
+check --changed` reports zero new and zero stale occurrences but exits on
+the existing CAP002 findings. The independent K12 session's changes in
+the same checkout cause `git diff --check` to report CRLF lines in Portal 2
+game UI files; the K11 paths have no whitespace errors. The fixture maps
+were rebuilt with the new probe/material policy; the reused Portal chamber
+maps were not republished by the lighting fixture builder. K11 stays open
+for rough metal and the remaining indirect, material, shadow, Portal and
+reflection mismatches. The current SSR rule rejects the first hit on a
+camera-only emitter and falls back to the probe; a future reflection source
+that separates visible overlays can trace behind it.
+
+### K11: full Cycles oracle rerender (2026-10-01)
+
+On the user's request, all **39 K11 Cycles reference views** were rerendered
+under the lighting wrapper's authored-normal policy. The recorded seed
+20260929 and each fixture's prior quality setting were retained: 35 views
+at 2,048 samples without denoising (`final`) and four `door-room` views at
+512 samples with OpenImageDenoise (`denoised`). Blender 5.2.2 ran locally on
+the CPU for Cornell and area-room and on the Radeon 8060S HIP device for the
+remaining fixtures. Every state receipt now has `normal_maps: true`; only
+`portal-chamber` and `portal2-chamber` contain normal-textured materials,
+with 3 and 13 validated bindings respectively. A new fixture check rejects
+a smooth-normal K11 receipt, and its negative test catches that regression.
+
+`lighting_fixtures.py check` passes with zero problems; the focused fixture
+and gallery suites pass 51 and 3 tests. To isolate the oracle change, the
+[39-view gallery](../quality-results/lighting-gallery/oracles-rerendered-frozen-lab-20261001/index.html)
+reuses the full-resolution lab frames from the preceding analytic-emitter
+gallery and recomputes every comparison against the new reference hashes.
+It remains **16/39 receiver passes**, with no pass/fail changes. The largest
+mean-score change is `portal-chamber/room2`, 0.243445 to 0.243520; its p99
+changes from 1.441005 to 1.445276. The other differences are smaller.
+[The receiver review](0016-gallery-review-2026-10-01.md) now cites this
+gallery and records the six rows whose three-decimal display changed.
+The visible chamber grid/content mismatches, rough gold, indirect-door and
+Portal-pair state errors remain open.
+
+A rough-gold probe-placement control sampled the checked-in material-sweep
+RPRB at Gold7's Cycles position and normal pass. Its five captures are all at
+x <= 4.875 m while Gold7 averages x = 8.368 m. At roughness 1, the CPU
+RPRB oracle reads mean radiance (0.246, 0.239, 0.256). Two single-probe
+captures in free space near Gold7 raise that to (0.394, 0.357, 0.360) and
+(0.403, 0.349, 0.344), respectively; the reference's estimated indirect
+red contribution remains about 0.686. A 512-sample-per-face rerender at the
+second position, with the 512-wide prefilter held fixed, gives
+(0.404, 0.351, 0.345); the red change from 16 samples is only 0.0008.
+Capture sample noise does not explain this remaining gap. Probe placement is part of the
+material-sweep error, but changing placement alone does not explain the
+remaining rough-metal response. This diagnostic did not alter the map,
+shader, receiver tolerances or 16/39 gallery result; the exact regions and
+reproduction artifacts are in the [receiver review](0016-gallery-review-2026-10-01.md#rough-metal-and-lobe-controls).
+
+The user removed Portal-pair from the active Cycles receiver set on
+2026-10-01: the joined-copy Blender scene cannot certify a runtime portal
+view. The fixture remains diagnostic, with `cycles_receiver_oracle: false`,
+and default render/gallery selection now excludes it. The [new 27-view
+gallery](../quality-results/lighting-gallery/cycles-oracles-no-portal-pair-20261001/index.html)
+passes 15/27 receiver views (the previous 16/39 included one Portal-pair
+pass); no sweep view changed score. At Gold7, increasing the nearby probe's
+GGX prefilter from 256 to 1024 samples lowers red radiance from 0.404 to
+0.390, and another 512-sample capture 0.53 m in front of its surface reads
+0.362. These controls exclude simple capture-sample noise or an ever-closer
+single probe as the missing 0.695 `GlossInd` red response. They do not yet
+distinguish the high-roughness material lobe from surface-local transport.
+
+The Portal-pair gallery's 12 saved frames expose a separate state coverage
+gap: each camera has one identical lab image hash across `closed`, `open`,
+`open-glow` and `glow-only`, while its four Cycles hashes differ. The fixture
+points every state at the same closed-state BSP and has no lab mover or state
+map; `render_lab` has no portal-state or portal-view input. The 11 failing
+Portal-pair rows cannot be reduced to a color or BRDF fix. The lab must
+compose the portal view and transport/light state before those views are
+like-for-like. The [receiver review](0016-gallery-review-2026-10-01.md#portal-pair)
+records this hash evidence and the misleading closed A receiver pass.
+
+### K12: lab and game select the same core scene terms (2026-10-01)
+
+`render.material` now owns the surface program's scene-term selection in
+`public/render/material/scene_terms.h`. `render_lab` and the product world pass
+adapt their available lightmap layers, probe textures, reflections and view
+occlusion to that one policy. Runtime direct light is selected only with the
+indirect bake layer; its directional basis comes from that layer, while the
+total layer supplies the basis when runtime direct light is off. A probe
+bounce requires a probe volume. The game continues to supply a neutral change
+atlas when no producer changes the probes; its previous term set is preserved.
+No shader math or intended pixels changed in this selection-only slice, so it
+adds no new frame-time measurement.
+
+`render.material.v2` passes 82 checks, including the missing-indirect and
+probe-bounce negative cases; `render.world.null` passes 31 checks. The native
+Portal 2 product build and the standalone `render_lab` build pass. The lab
+draws the area-room overview with 70 draws from the same program. A headless
+native Vulkan product boot of `sp_a2_laser_intro_relit` passes: 39/39 world
+batches, 167/177 staged materials, and 1,054/1,054 queued views drawn with zero
+failures or skips. Evidence is in
+`quality-results/rendercore-model-game/shared-scene-terms-v2-20261001/`.
+The same native Vulkan product also draws `lt_area_room` from the lab fixture:
+70/70 WMSH batches, 114/116 materials claimed, 205/205 queued views drawn,
+and the stage reads all 64 authored area lights. A private negative control
+sets the 64 emitter materials' `$emissionscale` from 5 to 0; both game boots
+pass and their captures differ across the visible panels (mean absolute RGB
+difference 13.3/255). Evidence is in
+`quality-results/rendercore-model-game/area-room-on-clean-20261001/` and
+`area-room-off-clean-v2-20261001/`; the same pixel result passes again after
+removing diagnostic logging in `area-room-on-final-20261001/` and
+`area-room-off-final-20261001/`. The fixture runtime mounts published
+`custom/pbrt-lt_area_room` ahead of `--content-root`, which initially hid the
+control VMT; these two runs use a private runtime with that custom mount
+removed, and the parsed values were checked as 5 and 0 respectively.
+Stylelint and `git diff --check` pass. `archlint inventory --verify` passes;
+`check --all` and `baseline --verify` report two existing ARCH105 occurrences
+in `game/shared/fstop/blob_networkbypass.*`, outside this slice. K12 remains
+active: transmission, nested views, unclaimed materials and game/lab frame
+comparison are still open. The engine's `r_core_world` default remains opt-in.
+
+### K12: the first same-camera game/lab image check (2026-10-01)
+
+`portal_boot.py --content-root` now stages its private map and materials in
+`custom/portal-boot-content` and inserts that path first in the staged game's
+`SearchPaths`. The published `custom/pbrt-lt_area_room` previously won over the
+test overlay, so the emitter-off control still read the published value 5.
+The original runtime and its content are unchanged. The 69 Portal boot tests
+pass, including a mount-order fixture; the ordinary mounted Portal 2 runtime
+now captures the private on and off materials correctly.
+
+`tools/quality/game_lab_compare.py` checks one declared K12 profile:
+`area-room/overview` at 512x384. It renders the lab from the same frozen
+content snapshot staged into the game, verifies every staged asset hash, the
+successful native Vulkan boot, capture hashes, unit tone-map scale and
+top-level view-oracle camera, then converts the lab's linear PFM to display
+RGB. This replaced an earlier comparison that read a newer fixture BSP than
+the game's hardlink snapshot. The fixed limits are mean absolute error at
+most 3/255, p99 at most 25/255 and at most 3% of pixels changing by more
+than 8/255. The matching snapshot passes at 1.39/255 mean, 14/255 p99 and
+1.75% changed. The negative control with all 64 emitter scales set to zero
+fails at 8.79/255 mean, 225/255 p99 and 5.06% changed; its receipt names
+exactly the 64 intentionally different VMTs. The game's captured camera
+agrees with the fixture within 0.05 Source units and 0.05 degrees. Product,
+lab frame and comparison receipt are in
+`quality-results/rendercore-model-game/area-room-snapshot-v2-game-on/`;
+the control is in `area-room-snapshot-v2-game-off/`. The Portal 2 product
+and `render_lab` builds pass; the 73 focused comparator and boot tests pass.
+This certifies one same-camera scene, not the other Portal 2 materials,
+effects or nested views required to close K12.
+
+The same procedure exposed a wider scene-composition gap on
+`portal2-chamber/spawn`. The product camera exactly matches the fixture at
+(-1104, 0, 64) Source units, pitch 2.2 degrees and FOV 90; the core takes
+21/21 world batches, 94/101 staged materials and draws 2,283/2,283 queued
+views with no failure. The normal product frame differs from `render_lab` by
+9.89/255 mean display RGB, especially the ceiling panels and central portal
+area. With `cl_render_debug_legacy 2`, the ceiling panels match the lab's
+dark surfaces, but the portal area and player view still differ and the mean
+error is 5.18/255. These are exploratory captures in
+`quality-results/rendercore-model-game/portal2-chamber-game-spawn-20261001/`
+and `portal2-chamber-core-only-spawn-20261001/`; neither is a K12 parity
+pass. The next scene-composition work must identify and hand over those
+legacy and nested-view draws without counting the world-batch claim as full
+frame ownership.
+
+### K12: GI door and matched game/lab map sweep (2026-10-01)
+
+`tools/quality/game_lab_matrix.py` runs the lighting fixtures from a private
+copy of each published map, its materials and models. Portal boot mounts that
+copy first; `render_lab` reads the same files. The comparator requires the
+staged asset hashes, native Vulkan boot, screenshot and view-oracle hashes,
+unit tone-map scale, map, film size and fixture camera before scoring display
+RGB. Only `area-room/overview` has declared pixel limits; other scores are
+diagnostics. The matching build's Portal 2 client has sha256 `f502e168c9ef`
+and its `render_lab` has sha256 `974c632f40cb` (full hashes in receipts).
+The 20 captures below booted and had matching content and camera; the largest
+camera difference was under 0.25 Source units and 0.25 degrees. The source
+and binary hashes are recorded per boot. Matrix evidence is in
+`quality-results/rendercore-model-game/lighting-matrix-current-20261001/`;
+the corrected portal state and republished door materials are in
+`portal-pair-no-live-portals-20261001/` and
+`door-room-published-current-20261001/` alongside it. The effective
+20-camera selection is `quality-results/rendercore-model-game/matched-matrix-20261001.json`:
+20/20 boots, content sets and cameras match; its single declared image gate
+passes. Other images retain diagnostic scores. A 22-view, three-column visual
+review (game, lab, difference at 4x) is
+`quality-results/rendercore-model-game/matched-gallery-20261001/index.html`.
+The emitter-off negative control rechecked with the current lab executable
+still fails: 64 intentionally changed VMT hashes, mean 8.79/255, p99 225
+and 5.06% of pixels over 8; the unchanged on snapshot passes at 1.39/255.
+
+| Baked-state map | Game/lab mean absolute RGB error, /255 by camera | Finding |
+| --- | --- | --- |
+| `lt_area_room` | grazing 1.80, overview 1.42, wall 0.74 | overview passes its declared 3/25/3% gate |
+| `lt_cornell_floors` | floor 0.82, front 2.18 | front's p99 is 72: image edges and model need review |
+| `lt_door_room` open | a-door 0.49, b-door 0.52 | both use the republished emitter VMTs |
+| `lt_foggy_hall_fog` | nave 18.49, side 24.49 | game has no lab-equivalent fog scatter; Portal 2 logs both `env_volumetric_fog_*` types as unknown and the core does not compose `render.pass.volumetric` |
+| `lt_material_sweep` | front 1.94, grazing 1.51 | p99 37 and 33, respectively |
+| `lt_mirror_corridor` | down 1.19, low 2.47 | low has 10.35% of pixels differing by over 8; review reflection edges |
+| `lt_portal_pair` closed | a-portal 0.81, b-floor 1.24, b-portal 0.63 | the game spawns active portals despite the closed bake; removing `PortalA` and `PortalB` for the capture aligned the scene and removed the false 2.8–8.0 mean differences |
+| `lt_projector_cookie` | room 23.29, wall 68.37 | `MapLights` parses its projector, but the product world stage does not feed the projector/cookie to the core lighting pass; the game image is dark |
+| `lt_sun_colonnade` | along 1.03, yard 1.49 | yard's p99 is 65; review silhouettes |
+
+The separate GI fixture `gi_door` was captured in both open and closed
+states with the same 30-file content snapshot, camera and builds
+(`quality-results/rendercore-model-game/gi-door-full-current-20261001/`).
+The game core claims all 16 world surfaces and draws 142/142 queued views
+without failure. Its open frame matches the lab at mean 0.206/255, p99 1
+and 0.19% of pixels over 8. `ent_fire Door Toggle` changes 7,511 game pixels.
+The closed frame, with the lab's matching mover bounds, differs at mean
+1.397/255, p99 38 and 3.92% over 8: the legacy `func_brush` door's fallback
+shading is visibly darker than the lab's PBR mover. Core ownership of moving
+brush surfaces remains an R96 caller cohort. Both product boots passed, all
+content hashes matched and the camera was within 0.031 units and 0.034
+degrees. The earlier GI oracle run forced `r_core_world 1` while requesting
+the native backend's `mat_indirect_view`; it was an invalid comparison, not a
+core GI failure. `gi_runtime.py` now forces the native path for that oracle
+and rejects the incompatible override. Its native Portal 2 run passes the
+Cycles door/open world and model regions: walls 0.0199 against 0.0194,
+model 0.0163 against 0.0158
+(`quality-results/rendercore-model-game/gi-door-indirect-native-control-20261001/`).
+
+The other two gallery maps were booted as exploratory controls at
+`quality-results/rendercore-model-game/portal-scenes-exploratory-20261001/`.
+`testchmb_a_00_relit` forces tone-map scale 1.5 after the command requests
+1, so the exact-image comparator refuses both views. `sp_gi_chamber_01`
+has matched map/camera/content and means 20.51 and 10.16/255, but live
+portals, player and legacy draws are absent from the lab scene. Neither is
+an apples-to-apples image gate. The 122 focused Python tests, stylelint and
+both product/lab builds pass. `archlint check --all` still reports two
+unrelated `ARCH105` occurrences in `game/shared/fstop/blob_networkbypass.*`;
+it is not a green architecture gate. R96 remains active: fog, projected
+textures, moving brush surfaces, nested views and the remaining material
+and edge differences need core ownership and a new matched capture.
+
+## K9 runtime legacy-stream census on matched maps (2026-10-01)
+
+The native Vulkan frame stats now record `legacy_stream_draws`: actual
+`vkCmdDraw`/`vkCmdDrawIndexed` commands issued from its recorded stream after
+the core's slots and suppression have been applied. `legacy_program_draws`
+counts the subset that used a port in `shaders/legacy/`. This is core plumbing
+in the frozen backend, with no shading change. `game_lab_matrix.py` records
+both counts for the last 30 presented frames of each matched capture;
+`--require-zero-legacy` fails a view unless all 30 stream counts are zero.
+The seeded parser check rejects missing counters, and the product control
+`cl_render_debug_legacy 2` recorded 0/30 legacy draws on `area-room/overview`
+(`quality-results/rendercore-zero-stream-control-20261001/`). Its screenshot
+was byte-identical to the normal stationary view: the remaining motion-blur
+draw there had neutral motion, not a needed visual contribution in that
+particular frame. The control is not a shipped way to remove the stream.
+
+The first census (`quality-results/rendercore-zero-stream-allmaps-20261001/`)
+completed 24 cameras on all 11 published lighting maps with exact staged
+content and camera checks. Every camera failed the zero-draw condition.
+Per-map maximum legacy-stream draws in the settled sample were: area-room 1,
+cornell-floors 2, door-room 1, foggy-hall 1, material-sweep 1,
+mirror-corridor 1, portal-chamber 48, portal-pair 2, portal2-chamber 34,
+projector-cookie 1 and sun-colonnade 2. The Vulkan route log identifies the
+common legacy program as `dev/motion_blur`; counts above one also include
+native-backend draws. Portal 1's two chamber views still cannot be exact
+image comparisons because the product forces tone-map scale 1.5. They do
+have valid runtime draw counts. The Portal 2 chamber views are exploratory
+because live portal/player composition is absent from the lab camera.
+
+This run exposed a composition timing mistake in the comparator: it enabled
+`r_core_world 1` after `+map`, so `LevelInitModels` could not register
+precached models. The runner now writes `r_core_world 1` to the startup cfg,
+executed before `+map`, and leaves the later camera setup alone. The
+early-start sweep at
+`quality-results/rendercore-zero-stream-preload-allmaps-20261001/` completed
+18 cameras across eight maps. On cornell-floors, the persistent stream count
+fell from 2 to 1 and `r_core_world_stats` reports 319 posed sphere draws by
+the core, 0 failed. Its floor/front game-lab mean differences increased from
+0.82/2.18 to 1.12/2.94 8-bit levels: the core model's lighting still needs
+K12 image work. The floor's last-30-frame desktop intervals were median
+16.645 ms before and 16.654 ms with early registration (maximum 17.656 and
+17.399 ms). Fold7 measurement was unavailable in this session. The
+early-start Portal 2 chamber boot did not yield a complete receipt before
+the runner's 240-second process bound; projector-cookie and sun-colonnade
+were not started in that sweep. A separate retry of those four views at
+`quality-results/rendercore-zero-stream-preload-tail-fixed-20261001/`
+produced no usable product image: three timed out during private runtime
+staging after 600 seconds, and the fourth reported `ENOSPC` while copying
+the retail runtime. The retry's matrix records all four failed cameras;
+none is counted as a core or image result. `portal_boot.py` now clones writable
+runtime files with Btrfs copy-on-write when available, retaining distinct
+inodes and a normal-copy fallback; its isolation and fallback tests pass.
+With that staging path, the corrected early-start rerun at
+`quality-results/rendercore-zero-stream-preload-tail-clone-20261001/`
+completed all four missing views: two projector-cookie and two
+sun-colonnade cameras, each with matching content/camera and one persistent
+legacy motion-blur draw. The former's mean differences remain 23.29 and
+68.37/255, locating its projected-light mismatch in K12; the latter's are
+1.17 and 1.49/255. The runner now accepts explicit boot/process bounds
+and retains a named failed camera instead of aborting the whole matrix.
+The Portal 2 chamber completed separately with the cloned runtime at
+`quality-results/rendercore-zero-stream-preload-portal2-clone-20261001/`:
+its chamber/spawn views have 26 maximum settled legacy-stream draws and
+diagnostic game/lab means 21.44/10.71. Together the three early-start
+matrices contain runtime censuses for all 11 maps and 24 cameras. The first
+two Portal 1 chamber attempts lacked an image comparison: the product's
+tone-map scale rose above 1, and a scripted camera controller held the view
+away from the authored camera. The other 22 produced comparisons. Every one
+of the 24 runtime censuses is nonzero.
+
+The separate `gi_door` open/closed run at
+`quality-results/rendercore-zero-stream-gi-door-20261001/` used the same
+snapshot and reproduced the earlier screenshots byte for byte. Open has
+2 legacy-stream draws per settled frame; closed has 3. The route log names
+the common motion-blur port and `gi_door/wall` on the native PBR model path;
+closing adds `gi_door_fallback/wall` on the legacy lightmapped brush path.
+Thus the door adds one draw without being drawn by both owners. An attempted
+early-start GI-door rerun stopped during runtime staging before a product
+receipt (`quality-results/rendercore-zero-stream-gi-door-preload-20261001/`).
+With private clone staging and core activation before `+map`, the corrected
+open/closed run at
+`quality-results/rendercore-zero-stream-gi-door-ao-fixed-20261001/report.json`
+registers the probe sphere as a posed core model. The settled legacy-stream
+census is 1 draw/frame open (motion blur) and 2 closed (motion blur and the
+lightmapped brush door). Both states used the same 30 staged map, material
+and model files and the fixture camera as the lab. The model first appeared
+black: the model view group had omitted screen AO and supplied a 1x1 neutral
+texture to a screen-coordinate fetch. Turning AO off restored the sphere,
+isolating the occlusion input. The core now
+binds the same full-size AO view input to models and world, and clamps a
+neutral input fetch to its texture bounds. The open game/lab mean difference
+fell from 1.53 to 0.20/255 (p99 1); closed fell from 2.73 to 1.39/255
+(p99 38), matching the prior late-opt-in images within capture variance.
+The product build and `render.world.null` (33 checks) pass. Independently,
+the core's sparse GI upload now forwards the current probe atlas's rectangles
+and full replacements, along with the existing change atlas and grid table;
+W13 checks an accepted rectangle and rejects an out-of-volume update.
+
+The full rerun at
+`quality-results/rendercore-zero-stream-ao-fixed-allmaps-20261001/matrix.json`
+used one early-core startup, staged content and camera oracle for all 11 maps
+and 24 views. Its 22 non-Portal-1 views scored, while all 24 had valid settled
+legacy-draw counts and failed the zero-stream condition. The recorded Portal 1
+map has a `point_viewcontrol` that overrides `setpos`/`setang` during its intro.
+The comparator now applies the game's recorded linear tone-map scale to the
+lab image before display encoding (the shared surface program multiplies by
+that same scale); it still refuses a camera mismatch. The fixture runner
+disables that controller before placing the camera. A bounded rerun at
+`quality-results/rendercore-zero-stream-portal1-controlled-20261001/matrix.json`
+verified both cameras exactly and scored them against their lab views. The
+room2/vault mean differences are 29.39/52.18 8-bit levels; their settled
+legacy-stream counts are 42/34 draws per frame. These are diagnostic images:
+the game's live portal and player composition is outside the lab camera.
+Together the two matrices compare all 24 authored views to the corresponding
+game capture with equal per-view content, camera and recorded output scale.
+They do not pass the image-parity or zero-stream gates. The current product
+and lab builds, 82 focused Python checks, `render.world.null` (33 checks),
+shader artifact conformance (1400 checks) and changed-file stylelint pass.
+An open GI-door boot after the final product rebuild at
+`quality-results/rendercore-gi-door-final-open-20261001/evidence.json`
+passed and reproduced the prior screenshot SHA-256 byte for byte; its last
+30 frames still contain exactly one legacy motion-blur draw each.
+
+`render.material.v2`'s `surface` program remains the one core surface model.
+The zero-stream gate is open: K8 needs core post motion blur and nested
+portal/view cohorts; K12 needs the remaining model lighting and brush mover
+ownership, followed by the other K8 cohorts. No legacy effect was disabled
+to obtain a zero count. The focused game/lab tests, product build, style
+check and legacy-freeze scan passed. The current shared checkout's K9 static
+ratchet fails independently: 495 first-party acquisition sites in 147 files
+against its recorded 490, with growth in four files. The runtime census does
+not certify K9 or a shipped zero-legacy profile.
+
+## Relit Portal 2 lightboard map identity (2026-10-01)
+
+The `sp_a2_laser_intro_relit` lightboard showed `00 / None` with no mapped
+icons or dirt. Its `vgui_screen` still uses `sp_progress_sign`, but that panel
+looked up the runtime map name literally in `sp_lightboard_icons.txt`; the
+script has `sp_a2_laser_intro`, not the published `_relit` name. The relit BSP
+preserves the original gameplay entities. The panel now tries the exact map
+entry first, then the original map name only for an unmatched `_relit` suffix.
+
+The client build and changed-file style check passed. Native Vulkan product
+boots passed for the original map and relit BSP at the same front-facing camera
+(`cmd setpos -500 30 -80; cmd setang 0 270 0`), with screenshots and boot
+receipts in `quality-results/relit-panel-sp-a2-laser-intro-original-20261001/`
+and `quality-results/relit-panel-sp-a2-laser-intro-front-20261001/`. Both
+panels show chamber `01`, progress `01/22`, the dirt coating, and the same ten
+icon slots. The original capture also contains its transient chapter title;
+the map surroundings differ under the relight. This fixes the lightboard's
+content lookup, without claiming R96 image parity or closing its render gate.
+
+### K12: Refract model point and product scene-color capture (2026-10-01)
+
+The shared surface program now draws a bounded `Refract_DX90` model point.
+Its authored normal alpha scales the screen displacement and cube reflection;
+`$refracttint`, `$refractamount`, the integer blur choice, silhouette fade and
+named or native cube maps remain distinct from PBR thin transmission. A
+`$basetexture` replaces the framebuffer source, as the shipped Refract shader
+does for the Portal 2 window variants. Without a cube map, normal alpha also
+drives the material's blend. A scene-color source is required for Refract
+without `$basetexture`; an `env_cubemap` reference requires the stage's native
+RPRB input. Unsupported shader controls remain explicit claim gaps.
+
+The composition now supplies the world pass with a narrow scene-color capture
+capability. `render.graph` resolves MSAA if needed, copies the current color
+target and keeps the sampled snapshot through the host submission. The world
+pass prepares the transmitting view groups between render sections. A Vulkan
+posed-model oracle covers the captured background, authored tint and half-alpha
+blend, an authored displacement across a scene-color edge, and refusal of a
+target without a copy source; the suite passes 52/52.
+The checked-in inventories verify at 1,011/1,165 model VMTs and 1,849/3,738
+all Portal 2 VMTs. The full-catalog increase from 1,843 is six authored
+`$basetexture` Refract window materials. These figures are static claims, not
+pixel acceptance.
+
+The native Vulkan `sp_a2_laser_intro_relit` product boot at
+`quality-results/rendercore-model-game/refract-product-final/evidence.json`
+passes with strict core-world recording: 39/39 WMSH batches, 171/177 staged
+materials, 1,343/1,343 views drawn and no failed or skipped views. The three
+staged window Refract materials account for the rise from 168 to 171. A
+same-camera legacy boot is at
+`quality-results/rendercore-model-game/refract-legacy-camera-v3/evidence.json`
+(`setpos -1120 0 -170`, `setang 0 180 0`). The elevator assembly is visibly
+brighter in the core capture; this does not establish the tube or small inner
+platform's appearance parity. Core debug captures at
+`quality-results/rendercore-model-game/refract-emission-debug/evidence.json`
+and `quality-results/rendercore-model-game/refract-direct-debug/evidence.json`
+show the upper tube cover dark in emission and bright in the direct-light
+view, locating that mismatch in its direct-light/shadow path. The staged
+`glass_fracture_B_normal` material
+needs a product camera and draw that actually samples scene color. The six
+remaining staged material gaps are two WriteZ, two VMT comment tokens, a cloak
+control and an authored env-map saturation spelling. Other material families,
+moving and nested views, product refraction across image edges, output-scale
+and fog comparisons, and deletion of replaced native shading remain open.
+The product and lab builds, inventory verification, and changed-file style
+check pass. `archlint check --all` still reports the pre-existing
+`CreateInterfaceFn` expansion in `game/shared/fstop/blob_networkbypass.*`;
+the world pass no longer includes the graph directly. R96 remains active and
+`r_core_world` stays opt-in.
+
+### K12: VertexLitGeneric mask precedence and the arm glass top (2026-10-01)
+
+`VertexLitGeneric::SHADER_INIT_PARAMS` clears `$envmapmask` when `$bumpmap`
+is defined, and also clears `$envmap` unless `$normalmapalphaenvmapmask` is set.
+The core's VMT block now applies this same precedence before asking for a
+native reflection probe. The misspelled `$envampsaturation` on
+`models/anim_wp/arm_interior_192/arm_glasstop.vmt` is recorded as inert
+metadata: the legacy shader declares `$envmapsaturation`, not that spelling.
+The original VMT variables remain in the import record.
+
+The checked-in inventories now verify at 1,012/1,165 model VMTs and
+1,850/3,738 complete Portal 2 VMTs. The newly claimed arm glass top is an
+alpha model; three already claimed models also no longer ask for a probe that
+the legacy shader disables. The `render_lab` posed-model suite passes 54/54,
+including controls where `$normalmapalphaenvmapmask` preserves the probe and
+`$basealphaenvmapmask` with a bump map removes it. The installed native Vulkan
+product boot passes at
+`quality-results/rendercore-model-game/envmask-product/evidence.json`: 39/39
+WMSH batches, 172/177 staged materials and 1,351/1,351 views drawn, with no
+failed or skipped views. The five remaining staged gaps are two WriteZ, two
+literal VMT `/*` tokens and a cloak control. The static claim and boot do not
+prove the elevator tube or small inner platform's appearance parity.
+
+For the matched elevator camera, disabling only the projected-light term
+leaves both regions unchanged. Disabling only the clustered-light term changes
+the upper cover's mean RGB from about `(44, 42, 36)` to `(6, 5, 3)` in the
+8-bit screenshot; the legacy cover is about `(1, 1, 1)`. The inner platform
+changes from about `(86, 87, 81)` to `(68, 67, 62)`; legacy is about
+`(71, 75, 73)`. The diagnostic boots are in
+`quality-results/rendercore-model-game/elevator-projector-off/` and
+`quality-results/rendercore-model-game/elevator-clustered-off/`. These
+controls locate most of the difference in the clustered direct-light path;
+they do not establish whether its light intensity, model shadowing or material
+response is wrong. The next correction needs a light and shadow oracle for
+the posed elevator assembly, followed by another matched product capture.
+
+### Published Portal 2 map elevator movies (2026-10-01)
+
+Portal 2's shipped `videos/video_splitter.nut` chooses an elevator clip by
+`GetMapName()`. The four published `_relit` maps with movie-table entries had
+no matching name, so their original clips were not selected. Portal 2 VScript
+now exposes the original name for `_relit` and `_source2` maps; the actual BSP
+name remains distinct. The relight reference-scene reader uses the original
+entry too, while respecting an explicit published-map entry.
+
+The Portal 2 server build and 44 legacy-relight tests pass. Native Vulkan
+product boots pass for `sp_a1_intro4_relit`, `sp_a1_intro5_relit`,
+`sp_a2_laser_intro_relit`, `sp_a2_triple_laser_relit`, and
+`sp_a2_laser_intro_source2`. Their console logs select, respectively,
+`exercises_horiz.bik`, `exercises_vert.bik`, `laser_portal.bik`,
+`aperture_appear_vert.bik`, and `laser_portal.bik`; the video provider is
+registered and no clip-open failure appears. Evidence is under
+`quality-results/elevator-movies/<map>/evidence.json` (the relit laser
+confirmation is `sp_a2_laser_intro_relit-confirmed`, and the source2
+confirmation is `sp_a2_laser_intro_source2-confirmed`). A separate native
+Vulkan boot at `quality-results/elevator-movies/sp_a1_intro4_relit-screen/`
+places the camera in front of an arrival panel; its screenshot shows the
+`exercises_horiz.bik` image on that panel. The other maps' boot screenshots
+face the elevator interior and do not certify their screen pixels. Other
+published relights have no authored entry in the shipped movie table.

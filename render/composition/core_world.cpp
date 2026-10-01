@@ -760,12 +760,44 @@ bool CoreWorld::StageCapture::UploadProbeVolume(
 	const std::size_t atlasBytes = std::size_t( request.atlasWidth ) * request.atlasHeight * 8;
 	if ( request.regions )
 	{
-		// A part of the change: applied to the kept change, and passed on as
-		// regions. Before any whole volume there is nothing to apply it to.
-		if ( !probes || probes->atlas.size() != atlasBytes )
+		// A part of the current atlas and optional change: applied to their
+		// kept copies, then passed on as regions. Before the first whole
+		// volume there is nothing to apply it to.
+		if ( !probes )
 			return true;
+		if ( probes->atlas.size() != atlasBytes || probes->atlasWidth != request.atlasWidth ||
+		     probes->atlasHeight != request.atlasHeight ||
+		     ( request.regionCount && ( !request.regions || !request.regionAtlas ) ) )
+			return false;
 		std::vector<pass::world::WorldPass::StageRegion> regions;
+		std::vector<std::byte> atlasTexels;
 		std::vector<std::byte> texels;
+		std::size_t packedBytes = 0;
+		for ( std::uint32_t i = 0; i < request.regionCount; ++i )
+		{
+			const world_mesh_gpu::ProbeAtlasRegion &region = request.regions[i];
+			if ( region.x > request.atlasWidth || region.width > request.atlasWidth - region.x ||
+			     region.y > request.atlasHeight || region.height > request.atlasHeight - region.y )
+				return false;
+			regions.push_back( { region.x, region.y, region.width, region.height } );
+			packedBytes += std::size_t( region.width ) * region.height * 8;
+		}
+		const std::byte *atlas = static_cast<const std::byte *>( request.regionAtlas );
+		std::size_t atlasOffset = 0;
+		for ( const auto &region : regions )
+		{
+			const std::size_t row = std::size_t( region.width ) * 8;
+			for ( std::uint32_t y = 0; y < region.height; ++y )
+			{
+				std::memcpy(
+				    probes->atlas.data() +
+				        ( std::size_t( region.y + y ) * request.atlasWidth + region.x ) * 8,
+				    atlas + atlasOffset, row );
+				atlasOffset += row;
+			}
+		}
+		if ( packedBytes )
+			atlasTexels.assign( atlas, atlas + packedBytes );
 		if ( request.regionDelta )
 		{
 			const std::byte *packed = static_cast<const std::byte *>( request.regionDelta );
@@ -775,10 +807,6 @@ bool CoreWorld::StageCapture::UploadProbeVolume(
 			for ( std::uint32_t i = 0; i < request.regionCount; ++i )
 			{
 				const world_mesh_gpu::ProbeAtlasRegion &region = request.regions[i];
-				if ( region.x + region.width > request.atlasWidth ||
-				     region.y + region.height > request.atlasHeight )
-					return false;
-				regions.push_back( { region.x, region.y, region.width, region.height } );
 				const std::size_t row = std::size_t( region.width ) * 8;
 				for ( std::uint32_t y = 0; y < region.height; ++y )
 				{
@@ -793,8 +821,8 @@ bool CoreWorld::StageCapture::UploadProbeVolume(
 		}
 		table = volume;
 		if ( m_Owner.m_StageSet )
-			m_Owner.m_Pass.SetStageChangeRegions(
-			    std::move( regions ), std::move( texels ), std::move( volume ) );
+			m_Owner.m_Pass.SetStageProbeRegions( std::move( regions ), std::move( atlasTexels ),
+			    std::move( texels ), std::move( volume ) );
 		return true;
 	}
 	if ( !request.atlas )
@@ -811,7 +839,8 @@ bool CoreWorld::StageCapture::UploadProbeVolume(
 		change.assign( delta, delta + atlasBytes );
 	}
 	table = volume;
-	if ( !probes || probes->atlas.size() != atlasBytes )
+	if ( !probes || probes->atlas.size() != atlasBytes ||
+	     probes->atlasWidth != request.atlasWidth || probes->atlasHeight != request.atlasHeight )
 	{
 		const bool late = m_Owner.m_StageSet;
 		const std::byte *atlas = static_cast<const std::byte *>( request.atlas );
@@ -829,8 +858,12 @@ bool CoreWorld::StageCapture::UploadProbeVolume(
 			return true;
 		}
 	}
+	const std::byte *atlas = static_cast<const std::byte *>( request.atlas );
+	probes->atlas.assign( atlas, atlas + atlasBytes );
 	if ( m_Owner.m_StageSet )
-		m_Owner.m_Pass.SetStageChange( change, std::move( volume ) );
+	{
+		m_Owner.m_Pass.SetStageProbeVolume( probes->atlas, change, std::move( volume ) );
+	}
 	return true;
 }
 
@@ -1388,9 +1421,31 @@ graph::GpuPassTimers *CoreWorld::SlotTimers( const legacy::CorePassTarget &targe
 	return m_Timers.get();
 }
 
+std::optional<pass::world::WorldSceneColor> CoreWorld::Capture( device::IRenderDevice2 &device,
+    device::CommandEncoder &encoder, device::TextureId source,
+    const device::TextureDesc &sourceDesc, std::uint64_t frame )
+{
+	auto captured = graph::RecordSceneColor( device, encoder, source, sourceDesc );
+	if ( !captured )
+		return std::nullopt;
+	graph::RecordedSceneColor value = std::move( captured ).Value();
+	pass::world::WorldSceneColor result{ value.texture, value.desc };
+	m_SceneCaptures.emplace_back( frame, std::move( value.resources ) );
+	return result;
+}
+
 void CoreWorld::RecordSlot(
     std::uint32_t tag, device::CommandEncoder &encoder, const legacy::CorePassTarget &target )
 {
+	if ( target.device )
+		std::erase_if( m_SceneCaptures,
+		    [&]( std::pair<std::uint64_t, graph::InlineGraphResources> &old )
+		    {
+			    if ( target.frame == 0 || old.first >= target.frame )
+				    return false;
+			    old.second.Release( *target.device, target.submitted );
+			    return true;
+		    } );
 	if ( tag & legacy::kCorePassFrameEnd )
 	{
 		// cl_render_debug_legacy 1: magenta over the frame, then the frame's
@@ -1452,6 +1507,8 @@ void CoreWorld::RecordSlot(
 	world.encodeOutput = !target.colorSrgb.IsValid();
 	world.color = world.encodeOutput ? target.color : target.colorSrgb;
 	world.colorFormat = world.encodeOutput ? target.colorFormat : target.colorSrgbFormat;
+	world.colorCopySource = target.colorCopySource;
+	world.sceneColorCapture = this;
 	world.depth = target.depth;
 	world.depthFormat = target.depthFormat;
 	world.width = target.width;

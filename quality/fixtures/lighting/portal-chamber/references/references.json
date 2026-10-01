@@ -8,10 +8,15 @@
     "default": {
       "blender": "5.2.2 LTS",
       "composed_stage_sha256": "916315a23bd545c818bfde523ef23ce3f7b8347743d042be05718a03d720b417",
-      "cycles_device": "OPTIX: NVIDIA GeForce RTX 4090",
+      "cycles_device": "HIP: AMD Radeon 8060S Graphics",
       "denoising": false,
       "extras_applied": {
         "medium": null,
+        "normal_mapped_materials": [
+          "metal_metalwall_bts_006a",
+          "plastic_plasticwall003a",
+          "plastic_plasticwall004a"
+        ],
         "projectors": []
       },
       "light_paths": {
@@ -23,10 +28,10 @@
         "sample_clamp_indirect": 0.0,
         "transmission_bounces": 16
       },
-      "lighting_renderer_sha256": "9927c57ae004d8873c1445d10dd039928f694d6568bd2e27aa82a87a3caa6d2a",
-      "normal_maps": false,
+      "lighting_renderer_sha256": "e980af2157ed69d7c2cf8aed3c3a5c06bbd9e31493e3c5501a861326a737301a",
+      "normal_maps": true,
       "ocio_configuration_sha256": "7812ed39935cb1f7ab5392293c914c0c0f595720af22fc1b289bf19cc0af7ef6",
-      "renderer_sha256": "be4345ca1b53205f3ca822e8ae1bf541f67b83ca19324555cfccf91f6a3496f9",
+      "renderer_sha256": "cfeb9a9d876d09cd84c0b5809dbc7c10c1266e71d8229579954b7149c3c11f04",
       "samples": 2048,
       "seed": 20260929,
       "stage_layers": {
@@ -58,19 +63,23 @@
         14
       ],
       "files": {
+        "direct": {
+          "file": "default.room2.direct.exr",
+          "sha256": "9009446608eda18e92948bbfcc363f15d902479cfdfce371c7f99eb19cd3ef8b"
+        },
         "index": {
           "file": "default.room2.index.png",
           "sha256": "ade53946bc87f9c8bca2c53a99c1b01bbc026674258695665d432f2dfa2231e4"
         },
         "total": {
           "file": "default.room2.total.exr",
-          "sha256": "ab9c224d1d0ac812d4bf7a2037f2d4df3b9f5014fb98a8794ce4d61395efeaff"
+          "sha256": "e068377c22cb62e90a72dd764da0f3ae3c2fb6c13679ac35460131afaa1b6b94"
         }
       },
       "finite": true,
       "index_from_state": "default",
       "judged_pixels": 196595,
-      "mean_luminance": 0.03416663226035799,
+      "mean_luminance": 0.03415501553897562,
       "object_index": {
         "LightDisk06": 1,
         "LightDisk09": 2,
@@ -152,19 +161,23 @@
         14
       ],
       "files": {
+        "direct": {
+          "file": "default.vault.direct.exr",
+          "sha256": "82fda10534d37e0f0c4f43b8d85e8a9d6484f868ce3f44d52e28368cd1f61c68"
+        },
         "index": {
           "file": "default.vault.index.png",
           "sha256": "b6d6f1bf7fa6a5a3f4c6fe0e5e1e5fd70c19408e6f57613f4321506d52166098"
         },
         "total": {
           "file": "default.vault.total.exr",
-          "sha256": "e75ff70883c85bc6b9b8b5f3d48b5e3ca7dc574840fb2f3c83f8f913c736b43b"
+          "sha256": "9f3bf1de367664eb8aacc51d82fa727a388573de29dd9a9313d6b9b9b18d84dc"
         }
       },
       "finite": true,
       "index_from_state": "default",
       "judged_pixels": 196597,
-      "mean_luminance": 0.04486519285814356,
+      "mean_luminance": 0.04496400646795723,
       "object_index": {
         "LightDisk06": 1,
         "LightDisk09": 2,

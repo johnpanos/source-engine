@@ -495,8 +495,8 @@ GroupRequest SurfaceProgram::ViewGroup( const SurfaceViewGpu &view,
 	ProgramTexture sceneColor;
 	sceneColor.binding = 14;
 	sceneColor.samplerBinding = 15;
-	sceneColor.sampler.minFilter = sceneColor.sampler.magFilter =
-	    sceneColor.sampler.mipFilter = Filter::kNearest;
+	sceneColor.sampler.minFilter = sceneColor.sampler.magFilter = Filter::kLinear;
+	sceneColor.sampler.mipFilter = Filter::kNearest;
 	sceneColor.sampler.address = AddressMode::kClampToEdge;
 	sceneColor.external = screen.sceneColor;
 	sceneColor.externalDesc = screen.sceneColorDesc;

@@ -101,7 +101,7 @@
       "total": 3
     },
     "refract": {
-      "statically_claimed": 0,
+      "statically_claimed": 6,
       "total": 37
     },
     "screenspace_general": {
@@ -165,7 +165,7 @@
       "total": 23
     },
     "vertexlitgeneric": {
-      "statically_claimed": 1040,
+      "statically_claimed": 1041,
       "total": 1211
     },
     "water": {
@@ -195,8 +195,9 @@
   },
   "game": "portal2",
   "gaps": {
-    "$envmap needs the stage's native reflection probes": 1,
+    "$envmap needs the stage's native reflection probes": 2,
     "$translucent with $additive blends src-alpha/one, which the port lacks": 19,
+    "Refract needs the view's linear scene color": 7,
     "family vertexlit has no program yet": 25,
     "import: Black": 1,
     "import: DebugLuxels": 3,
@@ -218,7 +219,6 @@
     "shader Occlusion maps to no family the model draws (legacy)": 1,
     "shader Portal maps to no family the model draws (legacy)": 7,
     "shader PortalStaticOverlay maps to no family the model draws (legacy)": 3,
-    "shader Refract maps to no family the model draws (legacy)": 35,
     "shader Shadow maps to no family the model draws (legacy)": 1,
     "shader ShadowBuild maps to no family the model draws (legacy)": 1,
     "shader SplineRope maps to no family the model draws (legacy)": 5,
@@ -231,7 +231,6 @@
     "shader floatcombine maps to no family the model draws (legacy)": 1,
     "shader floattoscreen maps to no family the model draws (legacy)": 2,
     "shader paintblob maps to no family the model draws (legacy)": 4,
-    "shader refract maps to no family the model draws (legacy)": 1,
     "shader screenspace_general maps to no family the model draws (legacy)": 12,
     "shader showz maps to no family the model draws (legacy)": 1,
     "shader sky maps to no family the model draws (legacy)": 6,
@@ -263,17 +262,18 @@
     "the model does not bind the per-view texture _rt_waterrefraction ($basetexture)": 2,
     "the model does not bind the per-view texture _rt_waterrefraction ($refracttexture)": 3,
     "the model does not bind the per-view texture env_cubemap ($envmap)": 63,
+    "the model does not read $additive": 4,
     "the model does not read $alphaenvmapmask": 4,
     "the model does not read $alphatesttocoverage": 1,
     "the model does not read $ambientocclusion": 45,
     "the model does not read $blendframes": 1,
     "the model does not read $brightness": 1,
     "the model does not read $bump_force_on": 2,
+    "the model does not read $bumpframe": 1,
     "the model does not read $bumpscale": 1,
     "the model does not read $color2": 2,
     "the model does not read $comparez": 1,
     "the model does not read $decalfadeduration": 15,
-    "the model does not read $envampsaturation": 1,
     "the model does not read $flashlightnolambert": 2,
     "the model does not read $flat": 7,
     "the model does not read $fresnelreflection": 1,
@@ -292,6 +292,7 @@
     "the model does not read $phong": 1,
     "the model does not read $pseudotranslucent": 5,
     "the model does not read $reflect2dskybox": 1,
+    "the model does not read $refracttinttexture": 12,
     "the model does not read $rimboost": 1,
     "the model does not read $selfillum_envmapmask_alpha": 1,
     "the model does not read $selfillumfresnel": 17,
@@ -302,6 +303,7 @@
     "the model does not read $translucency": 8,
     "the model does not read $treesway": 24,
     "the model does not read $use_in_fillrate_mode": 4,
+    "the model does not read $vertexalpha": 5,
     "the model does not read $vertexcolors": 1,
     "the model does not read $vertextcolor": 4,
     "the model does not read $worldimposter": 5,
@@ -12932,31 +12934,29 @@
     "materials/glass/container_window_cool.vmt": {
       "input_sha256": "115bfb12d6e7328c3625796968d7e6ba5ef56828354140ba0b66ca33910f7b05",
       "native_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "claim": "opaque"
       },
       "proxies": [],
       "shader": "refract",
-      "static_gap": "shader Refract maps to no family the model draws (legacy)",
       "without_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "$envmap needs the stage's native reflection probes"
       },
       "world": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "$envmap needs the stage's native reflection probes"
       }
     },
     "materials/glass/container_window_warm.vmt": {
       "input_sha256": "c52bb119930da9e44dfccb73967c3b2bf00dd138a96c32ecc799fdc79e8566fd",
       "native_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "claim": "opaque"
       },
       "proxies": [],
       "shader": "refract",
-      "static_gap": "shader Refract maps to no family the model draws (legacy)",
       "without_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "$envmap needs the stage's native reflection probes"
       },
       "world": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "$envmap needs the stage's native reflection probes"
       }
     },
     "materials/glass/glados_chamber_lightpanels.vmt": {
@@ -12990,16 +12990,16 @@
     "materials/glass/glassbreak001.vmt": {
       "input_sha256": "d457e3ab9e07ec22c9b64b72b1abec4bd3ad5299d841c334ac4841d567ac5102",
       "native_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "Refract needs the view's linear scene color"
       },
       "proxies": [],
       "shader": "refract",
-      "static_gap": "shader Refract maps to no family the model draws (legacy)",
+      "static_gap": "$envmap needs the stage's native reflection probes",
       "without_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "$envmap needs the stage's native reflection probes"
       },
       "world": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "$envmap needs the stage's native reflection probes"
       }
     },
     "materials/glass/glasswindow002a.vmt": {
@@ -13078,16 +13078,15 @@
     "materials/glass/glasswindow_container_warm.vmt": {
       "input_sha256": "d236428abe3ec212f522c2d14ef38bc3720a3e6fb939803b940c1bd1295f974c",
       "native_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "claim": "opaque"
       },
       "proxies": [],
       "shader": "refract",
-      "static_gap": "shader Refract maps to no family the model draws (legacy)",
       "without_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "$envmap needs the stage's native reflection probes"
       },
       "world": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "$envmap needs the stage's native reflection probes"
       }
     },
     "materials/glass/glasswindow_frosted.vmt": {
@@ -13228,46 +13227,43 @@
     "materials/glass/glasswindow_refract01.vmt": {
       "input_sha256": "9b4fed157c3a3a09b8193aefbbbee7fe587d4dc3ef00d5168014522e2d0f0db9",
       "native_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "claim": "opaque"
       },
       "proxies": [],
       "shader": "refract",
-      "static_gap": "shader Refract maps to no family the model draws (legacy)",
       "without_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "claim": "opaque"
       },
       "world": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "family refract has no program yet"
       }
     },
     "materials/glass/glasswindow_refract01_neutral.vmt": {
       "input_sha256": "287887e0fb40c72ddae879fca95803f6d903831678038cbcd8390d0d0f781212",
       "native_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "claim": "opaque"
       },
       "proxies": [],
       "shader": "refract",
-      "static_gap": "shader Refract maps to no family the model draws (legacy)",
       "without_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "claim": "opaque"
       },
       "world": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "family refract has no program yet"
       }
     },
     "materials/glass/glasswindow_refract01_warm.vmt": {
       "input_sha256": "6350f88aa4d8407df7195ddb37a16c31453711ac3318603ad654f1c1ffca3d96",
       "native_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "claim": "opaque"
       },
       "proxies": [],
       "shader": "refract",
-      "static_gap": "shader Refract maps to no family the model draws (legacy)",
       "without_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "claim": "opaque"
       },
       "world": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "family refract has no program yet"
       }
     },
     "materials/hud/camera_viewfinder_halfcircle.vmt": {
@@ -13301,16 +13297,24 @@
     "materials/hud/camera_viewfinder_ul.vmt": {
       "input_sha256": "6e283c9b31fe29123a17ac7a6ca5d7d0cfc7ad6df268b9ad46542905558cc9eb",
       "native_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $bumpframe"
       },
       "proxies": [],
       "shader": "refract",
-      "static_gap": "shader Refract maps to no family the model draws (legacy)",
+      "static_gap": "the model does not read $bumpframe",
+      "unmapped_keys": [
+        "$bumpframe",
+        "$ignorez",
+        "$nofog",
+        "$refracttinttexture",
+        "$forcerefract",
+        "$scaleamount"
+      ],
       "without_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $bumpframe"
       },
       "world": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $bumpframe"
       }
     },
     "materials/hud/hud_icon_arrow.vmt": {
@@ -16505,19 +16509,15 @@
     "materials/models/anim_wp/arm_interior_192/arm_glasstop.vmt": {
       "input_sha256": "158bd3dbe671cb7145d1304099af6818f3d5daa909c47ef45417fdb070608a6b",
       "native_probes": {
-        "gap": "the model does not read $envampsaturation"
+        "claim": "alpha"
       },
       "proxies": [],
       "shader": "vertexlitgeneric",
-      "static_gap": "the model does not read $envampsaturation",
-      "unmapped_keys": [
-        "$envampsaturation"
-      ],
       "without_probes": {
-        "gap": "the model does not read $envampsaturation"
+        "claim": "alpha"
       },
       "world": {
-        "gap": "the model does not read $envampsaturation"
+        "gap": "family vertexlit has no program yet"
       }
     },
     "materials/models/anim_wp/arm_interior_192/arm_interior_192.vmt": {
@@ -25014,7 +25014,7 @@
     "materials/models/props_bts/tube_neurotoxin_glass.vmt": {
       "input_sha256": "40e49b63f6a1a19c580888441489771ab0a9ba0d95ba3a84ebf9557deeda0355",
       "native_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $dudvframe"
       },
       "proxies": [
         "animatedtexture",
@@ -25023,11 +25023,16 @@
       ],
       "shader": "refract",
       "static_gap": "material proxy",
+      "unmapped_keys": [
+        "$dudvframe",
+        "$bumpframe",
+        "$refracttinttexture"
+      ],
       "without_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $dudvframe"
       },
       "world": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $dudvframe"
       }
     },
     "materials/models/props_bts/turret_scanner_screen2.vmt": {
@@ -25470,16 +25475,16 @@
     "materials/models/props_destruction/glass_192x192_c_normal.vmt": {
       "input_sha256": "a387f5f617a19b6122c9981803c0bd8d5d4aeda3a8a247552a26e65b4c78882b",
       "native_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "Refract needs the view's linear scene color"
       },
       "proxies": [],
       "shader": "refract",
-      "static_gap": "shader Refract maps to no family the model draws (legacy)",
+      "static_gap": "Refract needs the view's linear scene color",
       "without_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "$envmap needs the stage's native reflection probes"
       },
       "world": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "$envmap needs the stage's native reflection probes"
       }
     },
     "materials/models/props_destruction/glass_192x224_d_frosted_002b.vmt": {
@@ -25541,16 +25546,19 @@
     "materials/models/props_destruction/glass_193x193_d_normal.vmt": {
       "input_sha256": "ec222ddc9cea8eeeb95d1b1bb29e6e749e4270b026b7b137a3ac56279bc1b9cf",
       "native_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $refracttinttexture"
       },
       "proxies": [],
       "shader": "refract",
-      "static_gap": "shader Refract maps to no family the model draws (legacy)",
+      "static_gap": "the model does not read $refracttinttexture",
+      "unmapped_keys": [
+        "$refracttinttexture"
+      ],
       "without_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $refracttinttexture"
       },
       "world": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $refracttinttexture"
       }
     },
     "materials/models/props_destruction/glass_42x55_d_glasswindow007a.vmt": {
@@ -25598,31 +25606,34 @@
     "materials/models/props_destruction/glass_a_normal.vmt": {
       "input_sha256": "a387f5f617a19b6122c9981803c0bd8d5d4aeda3a8a247552a26e65b4c78882b",
       "native_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "Refract needs the view's linear scene color"
       },
       "proxies": [],
       "shader": "refract",
-      "static_gap": "shader Refract maps to no family the model draws (legacy)",
+      "static_gap": "Refract needs the view's linear scene color",
       "without_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "$envmap needs the stage's native reflection probes"
       },
       "world": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "$envmap needs the stage's native reflection probes"
       }
     },
     "materials/models/props_destruction/glass_b1_normal.vmt": {
       "input_sha256": "67e8619b8447a7475a5ff512e42915d132d70a9e904869d3727bed79c93a646a",
       "native_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $refracttinttexture"
       },
       "proxies": [],
       "shader": "refract",
-      "static_gap": "shader Refract maps to no family the model draws (legacy)",
+      "static_gap": "the model does not read $refracttinttexture",
+      "unmapped_keys": [
+        "$refracttinttexture"
+      ],
       "without_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $refracttinttexture"
       },
       "world": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $refracttinttexture"
       }
     },
     "materials/models/props_destruction/glass_break_a_inner.vmt": {
@@ -25642,16 +25653,19 @@
     "materials/models/props_destruction/glass_break_b_normal.vmt": {
       "input_sha256": "380334a6853f09d597e7d0329c83385d9e631de3186e6cd09ba2bb6790b0e728",
       "native_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $refracttinttexture"
       },
       "proxies": [],
       "shader": "refract",
-      "static_gap": "shader Refract maps to no family the model draws (legacy)",
+      "static_gap": "the model does not read $refracttinttexture",
+      "unmapped_keys": [
+        "$refracttinttexture"
+      ],
       "without_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $refracttinttexture"
       },
       "world": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $refracttinttexture"
       }
     },
     "materials/models/props_destruction/glass_broken_a_inner.vmt": {
@@ -25671,76 +25685,95 @@
     "materials/models/props_destruction/glass_broken_a_normal.vmt": {
       "input_sha256": "1171de04badd43cb0130b4a4358f519914ef913560d6115c1cc7483bd15f2343",
       "native_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $refracttinttexture"
       },
       "proxies": [],
       "shader": "refract",
-      "static_gap": "shader Refract maps to no family the model draws (legacy)",
+      "static_gap": "the model does not read $refracttinttexture",
+      "unmapped_keys": [
+        "$refracttinttexture"
+      ],
       "without_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $refracttinttexture"
       },
       "world": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $refracttinttexture"
       }
     },
     "materials/models/props_destruction/glass_fracture_192x128_b_normal.vmt": {
       "input_sha256": "7c7fbd68246896740b652b214a542dba76b035903a447a04370088134b7f3a4f",
       "native_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $refracttinttexture"
       },
       "proxies": [],
       "shader": "refract",
-      "static_gap": "shader Refract maps to no family the model draws (legacy)",
+      "static_gap": "the model does not read $refracttinttexture",
+      "unmapped_keys": [
+        "$refracttinttexture",
+        "$nocull"
+      ],
       "without_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $refracttinttexture"
       },
       "world": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $refracttinttexture"
       }
     },
     "materials/models/props_destruction/glass_fracture_192x224_d_normal.vmt": {
       "input_sha256": "8622fe16e0c8bd6d1e763a82022cd44503e1d28221bdaafc0ff05296ea3667da",
       "native_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $refracttinttexture"
       },
       "proxies": [],
       "shader": "refract",
-      "static_gap": "shader Refract maps to no family the model draws (legacy)",
+      "static_gap": "the model does not read $refracttinttexture",
+      "unmapped_keys": [
+        "$refracttinttexture",
+        "$nocull"
+      ],
       "without_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $refracttinttexture"
       },
       "world": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $refracttinttexture"
       }
     },
     "materials/models/props_destruction/glass_fracture_192x96_d_normal.vmt": {
       "input_sha256": "6170011df67dccbba98c833859a04eab375dfb4f311273d4fee45d2cdbbf4092",
       "native_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $refracttinttexture"
       },
       "proxies": [],
       "shader": "refract",
-      "static_gap": "shader Refract maps to no family the model draws (legacy)",
+      "static_gap": "the model does not read $refracttinttexture",
+      "unmapped_keys": [
+        "$refracttinttexture",
+        "$nocull"
+      ],
       "without_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $refracttinttexture"
       },
       "world": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $refracttinttexture"
       }
     },
     "materials/models/props_destruction/glass_fracture_42x55_d_normal.vmt": {
       "input_sha256": "73c7345a191aef9e37e3afb430a31a7d6ec36658506b227f462263657506d1d7",
       "native_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $refracttinttexture"
       },
       "proxies": [],
       "shader": "refract",
-      "static_gap": "shader Refract maps to no family the model draws (legacy)",
+      "static_gap": "the model does not read $refracttinttexture",
+      "unmapped_keys": [
+        "$refracttinttexture",
+        "$nocull"
+      ],
       "without_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $refracttinttexture"
       },
       "world": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $refracttinttexture"
       }
     },
     "materials/models/props_destruction/glass_fracture_a_inner.vmt": {
@@ -25760,106 +25793,118 @@
     "materials/models/props_destruction/glass_fracture_a_normal.vmt": {
       "input_sha256": "78c1dd05003902746754107003330d1a7004e260a53252334f7669fe5baca212",
       "native_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "Refract needs the view's linear scene color"
       },
       "proxies": [],
       "shader": "refract",
-      "static_gap": "shader Refract maps to no family the model draws (legacy)",
+      "static_gap": "Refract needs the view's linear scene color",
       "without_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "$envmap needs the stage's native reflection probes"
       },
       "world": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "$envmap needs the stage's native reflection probes"
       }
     },
     "materials/models/props_destruction/glass_fracture_b_normal.vmt": {
       "input_sha256": "01e8c76d9d01ca49ac3bcff3b23a237788dede8b23ea453c2e497cd4aa691fd3",
       "native_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "Refract needs the view's linear scene color"
       },
       "proxies": [],
       "shader": "refract",
-      "static_gap": "shader Refract maps to no family the model draws (legacy)",
+      "static_gap": "Refract needs the view's linear scene color",
       "without_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "$envmap needs the stage's native reflection probes"
       },
       "world": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "$envmap needs the stage's native reflection probes"
       }
     },
     "materials/models/props_destruction/glass_fracture_c_normal.vmt": {
       "input_sha256": "f13c1f41b070fea307e00491ccac773250f75518a2eb0f2c5bb2b0bc7d330708",
       "native_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "Refract needs the view's linear scene color"
       },
       "proxies": [],
       "shader": "refract",
-      "static_gap": "shader Refract maps to no family the model draws (legacy)",
+      "static_gap": "Refract needs the view's linear scene color",
       "without_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "$envmap needs the stage's native reflection probes"
       },
       "world": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "$envmap needs the stage's native reflection probes"
       }
     },
     "materials/models/props_destruction/glass_fracture_d_normal.vmt": {
       "input_sha256": "ff8195de8454becb153e073cf2fbeeced504592128641824df13260ae12af085",
       "native_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "Refract needs the view's linear scene color"
       },
       "proxies": [],
       "shader": "refract",
-      "static_gap": "shader Refract maps to no family the model draws (legacy)",
+      "static_gap": "Refract needs the view's linear scene color",
       "without_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "$envmap needs the stage's native reflection probes"
       },
       "world": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "$envmap needs the stage's native reflection probes"
       }
     },
     "materials/models/props_destruction/glass_fracture_e_normal.vmt": {
       "input_sha256": "0f5a66c0ab4e3825ecefca4f9768bc0241dad5f83482202b59b9f640490b1bff",
       "native_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $refracttinttexture"
       },
       "proxies": [],
       "shader": "refract",
-      "static_gap": "shader Refract maps to no family the model draws (legacy)",
+      "static_gap": "the model does not read $refracttinttexture",
+      "unmapped_keys": [
+        "$refracttinttexture",
+        "$nocull"
+      ],
       "without_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $refracttinttexture"
       },
       "world": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $refracttinttexture"
       }
     },
     "materials/models/props_destruction/glass_fracture_f_normal.vmt": {
       "input_sha256": "562fe46a2a6fce4dc440515cc1c875b5ed296fb2812f0f44fcbac7b7864f6c8f",
       "native_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $refracttinttexture"
       },
       "proxies": [],
       "shader": "refract",
-      "static_gap": "shader Refract maps to no family the model draws (legacy)",
+      "static_gap": "the model does not read $refracttinttexture",
+      "unmapped_keys": [
+        "$refracttinttexture",
+        "$nocull"
+      ],
       "without_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $refracttinttexture"
       },
       "world": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $refracttinttexture"
       }
     },
     "materials/models/props_destruction/glass_fracture_g_normal.vmt": {
       "input_sha256": "8ca4936def2e73f605ec57259f8b7c5d15f26a56536ade2d2b661d132f50d1c3",
       "native_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $refracttinttexture"
       },
       "proxies": [],
       "shader": "refract",
-      "static_gap": "shader Refract maps to no family the model draws (legacy)",
+      "static_gap": "the model does not read $refracttinttexture",
+      "unmapped_keys": [
+        "$refracttinttexture",
+        "$nocull"
+      ],
       "without_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $refracttinttexture"
       },
       "world": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $refracttinttexture"
       }
     },
     "materials/models/props_destruction/ibeam_destroyed01.vmt": {
@@ -26019,16 +26064,19 @@
     "materials/models/props_destruction/vacum_pipe_glass_broken.vmt": {
       "input_sha256": "6c9546b3f5b589b30972c0771056b6dd9ab73ff0f2eb89a673ed72d8b9f7aa17",
       "native_probes": {
-        "gap": "shader refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $refracttinttexture"
       },
       "proxies": [],
       "shader": "refract",
-      "static_gap": "shader refract maps to no family the model draws (legacy)",
+      "static_gap": "the model does not read $refracttinttexture",
+      "unmapped_keys": [
+        "$refracttinttexture"
+      ],
       "without_probes": {
-        "gap": "shader refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $refracttinttexture"
       },
       "world": {
-        "gap": "shader refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $refracttinttexture"
       }
     },
     "materials/models/props_destruction/wall_dest_001.vmt": {
@@ -27368,10 +27416,10 @@
       "proxies": [],
       "shader": "vertexlitgeneric",
       "without_probes": {
-        "gap": "$envmap needs the stage's native reflection probes"
+        "claim": "opaque"
       },
       "world": {
-        "gap": "$envmap needs the stage's native reflection probes"
+        "gap": "family vertexlit has no program yet"
       }
     },
     "materials/models/props_gameplay/laser_disc.vmt": {
@@ -27396,10 +27444,10 @@
       "proxies": [],
       "shader": "vertexlitgeneric",
       "without_probes": {
-        "gap": "$envmap needs the stage's native reflection probes"
+        "claim": "opaque"
       },
       "world": {
-        "gap": "$envmap needs the stage's native reflection probes"
+        "gap": "family vertexlit has no program yet"
       }
     },
     "materials/models/props_gameplay/mp_ball.vmt": {
@@ -27578,10 +27626,10 @@
       "proxies": [],
       "shader": "vertexlitgeneric",
       "without_probes": {
-        "gap": "$envmap needs the stage's native reflection probes"
+        "claim": "opaque"
       },
       "world": {
-        "gap": "$envmap needs the stage's native reflection probes"
+        "gap": "family vertexlit has no program yet"
       }
     },
     "materials/models/props_highway/metalhull002a.vmt": {
@@ -27840,16 +27888,16 @@
     "materials/models/props_lab/glasswindow_observation.vmt": {
       "input_sha256": "740c755b85a019250b43a7d3cccd3e7c114d2eefefe8f6564a6352fc2791d090",
       "native_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "Refract needs the view's linear scene color"
       },
       "proxies": [],
       "shader": "refract",
-      "static_gap": "shader Refract maps to no family the model draws (legacy)",
+      "static_gap": "Refract needs the view's linear scene color",
       "without_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "$envmap needs the stage's native reflection probes"
       },
       "world": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "$envmap needs the stage's native reflection probes"
       }
     },
     "materials/models/props_lab/observation_frame.vmt": {
@@ -31961,16 +32009,19 @@
     "materials/models/props_underground/stasis_chamber_glass_02.vmt": {
       "input_sha256": "34cd651fe49b8805cacef774ff2a9ff52c9a75ff49b51bdb7a0ea34d304dc87b",
       "native_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $additive"
       },
       "proxies": [],
       "shader": "refract",
-      "static_gap": "shader Refract maps to no family the model draws (legacy)",
+      "static_gap": "the model does not read $additive",
+      "unmapped_keys": [
+        "$additive"
+      ],
       "without_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $additive"
       },
       "world": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $additive"
       }
     },
     "materials/models/props_underground/stasis_chamber_light_spot.vmt": {
@@ -37113,16 +37164,25 @@
     "materials/particle/coop/trail_fling_warp.vmt": {
       "input_sha256": "b043db86216e29cac2702e1ce36eabdae93f0c4b6078960ee8052cf7d3cfb9a8",
       "native_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $additive"
       },
       "proxies": [],
       "shader": "refract",
-      "static_gap": "shader Refract maps to no family the model draws (legacy)",
+      "static_gap": "the model does not read $additive",
+      "unmapped_keys": [
+        "$additive",
+        "$vertexalpha",
+        "$vertexcolor",
+        "$forcerefract",
+        "$nofog",
+        "$vertexcolormodulate",
+        "$nocull"
+      ],
       "without_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $additive"
       },
       "world": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $additive"
       }
     },
     "materials/particle/coop/trail_rainbow.vmt": {
@@ -38566,16 +38626,24 @@
     "materials/particle/toxic_slime/toxic_slime_warp.vmt": {
       "input_sha256": "7959bb66d257b9ae8644ed96ebcdf6e60afce6a9074b36e7a7d9e5b7ccecd7bf",
       "native_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $vertexalpha"
       },
       "proxies": [],
       "shader": "refract",
-      "static_gap": "shader Refract maps to no family the model draws (legacy)",
+      "static_gap": "the model does not read $vertexalpha",
+      "unmapped_keys": [
+        "$vertexalpha",
+        "$vertexcolor",
+        "$forcerefract",
+        "$nofog",
+        "$vertexcolormodulate",
+        "$nocull"
+      ],
       "without_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $vertexalpha"
       },
       "world": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $vertexalpha"
       }
     },
     "materials/particle/toxic_slime/toxicslime_01.vmt": {
@@ -38731,91 +38799,137 @@
     "materials/particle/warp2_warp.vmt": {
       "input_sha256": "084e605f84ba24866fd1ba65dd6518a2d792d68b296cd2d2618d3c44888b8ef4",
       "native_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $vertexalpha"
       },
       "proxies": [],
       "shader": "refract",
-      "static_gap": "shader Refract maps to no family the model draws (legacy)",
+      "static_gap": "the model does not read $vertexalpha",
+      "unmapped_keys": [
+        "$vertexalpha",
+        "$vertexcolor",
+        "$forcerefract",
+        "$nofog",
+        "$vertexcolormodulate",
+        "$nocull"
+      ],
       "without_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $vertexalpha"
       },
       "world": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $vertexalpha"
       }
     },
     "materials/particle/warp_rain.vmt": {
       "input_sha256": "59aac8904edc260b231ea4766314632f7b10bbac9deabc6b2aa4ab91115f53de",
       "native_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $additive"
       },
       "proxies": [],
       "shader": "refract",
-      "static_gap": "shader Refract maps to no family the model draws (legacy)",
+      "static_gap": "the model does not read $additive",
+      "unmapped_keys": [
+        "$additive",
+        "$vertexalpha",
+        "$vertexcolor",
+        "$forcerefract",
+        "$nofog",
+        "$vertexcolormodulate",
+        "$nocull"
+      ],
       "without_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $additive"
       },
       "world": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $additive"
       }
     },
     "materials/particle/warp_ripple.vmt": {
       "input_sha256": "d3967e0640595b7dd8f3c884026de852450e5e203ec6fa4df66b73ec7afdbcb4",
       "native_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $vertexalpha"
       },
       "proxies": [],
       "shader": "refract",
-      "static_gap": "shader Refract maps to no family the model draws (legacy)",
+      "static_gap": "the model does not read $vertexalpha",
+      "unmapped_keys": [
+        "$vertexalpha",
+        "$vertexcolor",
+        "$forcerefract",
+        "$nofog",
+        "$vertexcolormodulate",
+        "$nocull"
+      ],
       "without_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $vertexalpha"
       },
       "world": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $vertexalpha"
       }
     },
     "materials/particle/warp_ripple2.vmt": {
       "input_sha256": "a506435a9d66d941970b71ca87153f14612737c6c6e1597c9b7e934b0cd3db8d",
       "native_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $vertexalpha"
       },
       "proxies": [],
       "shader": "refract",
-      "static_gap": "shader Refract maps to no family the model draws (legacy)",
+      "static_gap": "the model does not read $vertexalpha",
+      "unmapped_keys": [
+        "$vertexalpha",
+        "$vertexcolor",
+        "$forcerefract",
+        "$nofog",
+        "$vertexcolormodulate",
+        "$nocull"
+      ],
       "without_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $vertexalpha"
       },
       "world": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $vertexalpha"
       }
     },
     "materials/particle/water/water_beam_01_warp.vmt": {
       "input_sha256": "c060a428bb27a7ea005026ba0d17c457f1e03c963b12c4dfb4c1e74ee0451dc5",
       "native_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $additive"
       },
       "proxies": [],
       "shader": "refract",
-      "static_gap": "shader Refract maps to no family the model draws (legacy)",
+      "static_gap": "the model does not read $additive",
+      "unmapped_keys": [
+        "$additive",
+        "$vertexalpha",
+        "$vertexcolor",
+        "$nofog",
+        "$vertexcolormodulate"
+      ],
       "without_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $additive"
       },
       "world": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $additive"
       }
     },
     "materials/particle/water/water_beam_01_warp_alpha.vmt": {
       "input_sha256": "13f085cf8191b139420b0ad89a373b43cc31343e06899e69661bcb680e7854b5",
       "native_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $vertexalpha"
       },
       "proxies": [],
       "shader": "refract",
-      "static_gap": "shader Refract maps to no family the model draws (legacy)",
+      "static_gap": "the model does not read $vertexalpha",
+      "unmapped_keys": [
+        "$vertexalpha",
+        "$vertexcolor",
+        "$nofog",
+        "$vertexcolormodulate"
+      ],
       "without_probes": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $vertexalpha"
       },
       "world": {
-        "gap": "shader Refract maps to no family the model draws (legacy)"
+        "gap": "the model does not read $vertexalpha"
       }
     },
     "materials/particle/water/waterdrop_001a.vmt": {
@@ -57030,7 +57144,7 @@
   "rule": "render.material MapVariables + ClaimForDrawing(world PBR) or ClaimForMesh(native RPRB)",
   "schema": "rendercore-material-claims/v2",
   "scope": "all materials/**/*.vmt in the game's ordered search path",
-  "statically_claimed": 1843,
-  "statically_claimed_percent": 49.3,
+  "statically_claimed": 1850,
+  "statically_claimed_percent": 49.49,
   "total": 3738
 }

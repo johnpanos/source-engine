@@ -13,6 +13,7 @@
 #include "suites.h"
 
 #include "render/pass/world/world_pass.h"
+#include "render/graph/scene_color.h"
 #include "render/material/program_resolver.h"
 #include "render/material/vmt_import.h"
 
@@ -43,11 +44,46 @@ class EmptyTextures final : public IWorldTextures
 public:
 	TextureId normalFixture;
 	TextureId phongWarpFixture;
+	TextureId refractNormalFixture;
+	TextureId refractWarpFixture;
 	TextureId Import( int handle, bool ) override
 	{
-		return handle == 1 ? normalFixture : handle == 2 ? phongWarpFixture : TextureId{};
+		return handle == 1   ? normalFixture
+		       : handle == 2 ? phongWarpFixture
+		       : handle == 3 ? refractNormalFixture
+		       : handle == 4 ? refractWarpFixture
+		                     : TextureId{};
 	}
 	SamplerDesc Sampler( int ) override { return {}; }
+};
+
+class LabSceneColorCapture final : public IWorldSceneColorCapture
+{
+public:
+	explicit LabSceneColorCapture( IRenderDevice2 &device ) : m_Device( device ) {}
+	~LabSceneColorCapture() override
+	{
+		(void)m_Device.WaitIdle();
+		for ( graph::InlineGraphResources &capture : m_Captures )
+			capture.Release( m_Device, CompletionToken() );
+	}
+	std::optional<WorldSceneColor> Capture( IRenderDevice2 &device, CommandEncoder &encoder,
+	    TextureId source, const TextureDesc &sourceDesc, std::uint64_t ) override
+	{
+		if ( &device != &m_Device )
+			return std::nullopt;
+		auto captured = graph::RecordSceneColor( device, encoder, source, sourceDesc );
+		if ( !captured )
+			return std::nullopt;
+		graph::RecordedSceneColor value = std::move( captured ).Value();
+		WorldSceneColor result{ value.texture, value.desc };
+		m_Captures.push_back( std::move( value.resources ) );
+		return result;
+	}
+
+private:
+	IRenderDevice2 &m_Device;
+	std::vector<graph::InlineGraphResources> m_Captures;
 };
 
 WorldData MeshWorld( bool blended = false )
@@ -119,6 +155,7 @@ std::optional<std::string> RunChecks(
 	std::unique_ptr<Canvas> canvas;
 	if ( std::optional<std::string> why = Canvas::Create( *device, kSize, kSize, canvas ) )
 		return why;
+	LabSceneColorCapture sceneColorCapture( *device );
 	WorldData world = MeshWorld();
 	const auto tubeGlass = material::MapVariables( "VertexLitGeneric",
 	    { { "$basetexture", "models/props_backstage/vacum_pipe_glass" },
@@ -135,6 +172,35 @@ std::optional<std::string> RunChecks(
 	    "posed-model.tube-glass-claims-native-probes" );
 	results.That( tubeGlass && !material::ClaimForMesh( tubeGlass.Value(), false ),
 	    "posed-model.tube-glass-requires-native-probes" );
+	const auto fracturedGlass = material::MapVariables( "Refract_DX90",
+	    { { "$model", "1" }, { "$normalmap", "models/props_destruction/glass_fracture_B_normal" },
+	        { "$dudvmap", "models/props_destruction/glass_fracture_B_normal" },
+	        { "$scale", "[1 1]" }, { "$refractamount", ".07" }, { "$bluramount", ".3" },
+	        { "$refracttint", "{235 247 247}" }, { "$translucent", "1" },
+	        { "$envmap", "env_cubemap" }, { "$envmapcontrast", "1" },
+	        { "$envmapsaturation", "[1 1 1]" }, { "$envmaptint", "[.71 .79 .85]" } },
+	    {} );
+	results.That( fracturedGlass && !material::ClaimForMesh( fracturedGlass.Value(), true ),
+	    "posed-model.refract-refuses-missing-scene-color" );
+	results.That( fracturedGlass && !material::ClaimForMesh( fracturedGlass.Value(), false, true ),
+	    "posed-model.refract-refuses-missing-native-probes" );
+	results.That( fracturedGlass && material::ClaimForMesh( fracturedGlass.Value(), true, true ),
+	    "posed-model.refract-authored-model-claims-with-scene-color" );
+	auto refractResolver = material::ProgramResolver::Create(
+	    *device, kCanvasColor, kCanvasDepth, 1, material::VertexLayout::kModel );
+	bool refractPipeline = bool( refractResolver ) && bool( fracturedGlass );
+	if ( refractPipeline )
+	{
+		refractResolver.Value()->SetWorldPbr( true, material::kSurfaceReflectionProbes );
+		refractResolver.Value()->SetSceneColorAvailable( true );
+		refractPipeline = bool( refractResolver.Value()->ResolveMesh( fracturedGlass.Value() ) );
+	}
+	results.That( refractPipeline, "posed-model.refract-builds-shared-surface-pipeline" );
+	const auto unsupportedRefract = material::MapVariables( "Refract_DX90",
+	    { { "$normalmap", "glass/normal" }, { "$normalmap2", "glass/other_normal" } }, {} );
+	results.That(
+	    unsupportedRefract && !material::ClaimForMesh( unsupportedRefract.Value(), true, true ),
+	    "posed-model.refract-secondary-normal-stays-legacy" );
 	const auto tubeBlades = material::MapVariables( "VertexLitGeneric",
 	    { { "$basetexture", "models/elevator/elevator_blades" }, { "$phong", "1" },
 	        { "$phongboost", "2" }, { "$phongdisablehalflambert", "1" }, { "$phongexponent", "12" },
@@ -177,12 +243,30 @@ std::optional<std::string> RunChecks(
 	    conflictingProbeMask && !material::ClaimForMesh( conflictingProbeMask.Value(), true ),
 	    "posed-model.probe-mask-and-phong-exponent-need-distinct-slots" );
 	const auto bumpedProbeMask = material::MapVariables( "VertexLitGeneric",
-	    { { "$basetexture", "models/props_office/door_glass" },
+	    { { "$basetexture", "models/props_office/door_glass" }, { "$envmap", "env_cubemap" },
 	        { "$envmapmask", "models/props_office/door_glass_mask" },
 	        { "$bumpmap", "models/props_office/door_glass_normal" } },
 	    {} );
-	results.That( bumpedProbeMask && !material::ClaimForMesh( bumpedProbeMask.Value(), true ),
-	    "posed-model.bumped-envmap-mask-requires-legacy-precedence" );
+	results.That( bumpedProbeMask && material::ClaimForMesh( bumpedProbeMask.Value(), false ),
+	    "posed-model.bumped-envmap-mask-clears-legacy-probe" );
+	const auto normalAlphaProbeMask = material::MapVariables( "VertexLitGeneric",
+	    { { "$basetexture", "models/props_office/door_glass" }, { "$envmap", "env_cubemap" },
+	        { "$envmapmask", "models/props_office/door_glass_mask" },
+	        { "$bumpmap", "models/props_office/door_glass_normal" },
+	        { "$normalmapalphaenvmapmask", "1" } },
+	    {} );
+	results.That( normalAlphaProbeMask &&
+	                  !material::ClaimForMesh( normalAlphaProbeMask.Value(), false ) &&
+	                  material::ClaimForMesh( normalAlphaProbeMask.Value(), true ),
+	    "posed-model.normal-alpha-mask-preserves-legacy-probe" );
+	const auto bumpedBaseAlphaProbe = material::MapVariables( "VertexLitGeneric",
+	    { { "$basetexture", "models/props_office/door_glass" }, { "$envmap", "env_cubemap" },
+	        { "$bumpmap", "models/props_office/door_glass_normal" },
+	        { "$basealphaenvmapmask", "1" } },
+	    {} );
+	results.That(
+	    bumpedBaseAlphaProbe && material::ClaimForMesh( bumpedBaseAlphaProbe.Value(), false ),
+	    "posed-model.bumped-base-alpha-mask-clears-legacy-probe" );
 	const auto paintedTurret = material::MapVariables( "VertexLitGeneric",
 	    { { "$basetexture", "models/npcs/turret/turret_01" },
 	        { "$detail", "models/npcs/turret/turret_paint_blue" }, { "$detailscale", "1" },
@@ -303,10 +387,22 @@ std::optional<std::string> RunChecks(
 	if ( !warpTexture )
 		return "the model specular warp fixture could not be staged";
 	empty.phongWarpFixture = warpTexture.Value().texture;
+	const std::array<std::byte, 4> refractNormalPixel = {
+	    std::byte{ 128 }, std::byte{ 128 }, std::byte{ 255 }, std::byte{ 128 } };
+	auto refractNormal = textures.Stage( "refract-normal-fixture", normalDesc, refractNormalPixel );
+	if ( !refractNormal )
+		return "the model Refract normal fixture could not be staged";
+	empty.refractNormalFixture = refractNormal.Value().texture;
+	const std::array<std::byte, 4> refractWarpPixel = {
+	    std::byte{ 255 }, std::byte{ 128 }, std::byte{ 255 }, std::byte{ 255 } };
+	auto refractWarp = textures.Stage( "refract-warp-fixture", normalDesc, refractWarpPixel );
+	if ( !refractWarp )
+		return "the model Refract warp fixture could not be staged";
+	empty.refractWarpFixture = refractWarp.Value().texture;
 	auto render = [&]( WorldPass &active, float offset, bool lit, std::uint64_t frame,
 	                  const ClearColor &clear, CanvasImage &image, bool twoLayers = false,
-	                  RenderCoreDrawPhase phase =
-	                      RenderCoreDrawPhase::kAll ) -> std::optional<std::string>
+	                  RenderCoreDrawPhase phase = RenderCoreDrawPhase::kAll, bool copySource = true,
+	                  WorldPass *under = nullptr ) -> std::optional<std::string>
 	{
 		WorldView view;
 		for ( int i = 0; i < 4; ++i )
@@ -342,6 +438,17 @@ std::optional<std::string> RunChecks(
 			lights->areas.push_back( area );
 			view.lights = std::move( lights );
 		}
+		std::uint32_t underTag = 0;
+		if ( under )
+		{
+			WorldView underView = view;
+			for ( auto &pose : underView.posedModels )
+				for ( auto &vertex : pose.vertices )
+					vertex.position[2] += 0.1f;
+			underTag = under->QueueView( std::move( underView ) );
+			if ( !underTag )
+				return "the background model view queued nothing";
+		}
 		const std::uint32_t tag = active.QueueView( std::move( view ) );
 		if ( !tag )
 			return "the posed view queued nothing";
@@ -352,12 +459,16 @@ std::optional<std::string> RunChecks(
 			target.device = device.get();
 			target.color = color;
 			target.colorFormat = kCanvasColor;
+			target.colorCopySource = copySource;
+			target.sceneColorCapture = &sceneColorCapture;
 			target.depth = depth;
 			target.depthFormat = kCanvasDepth;
 			target.width = target.height = kSize;
 			target.textures = &empty;
 			target.frame = frame;
 			target.eye[2] = 2.0f;
+			if ( under )
+				under->Record( underTag, encoder, target );
 			active.Record( tag, encoder, target );
 			return std::nullopt;
 		};
@@ -431,6 +542,64 @@ std::optional<std::string> RunChecks(
 	    "posed-model.alpha-blends-without-alpha-write" );
 	results.That( glass.Stats().viewsFailed == 0 && glass.Stats().posedDrawsDrawn == 1,
 	    "posed-model.blended-view-recorded", glass.Stats().lastFailure );
+	WorldData refractWorld = MeshWorld();
+	refractWorld.materials[0].shader = "Refract_DX90";
+	refractWorld.materials[0].variables = { { "$model", "1" },
+	    { "$normalmap", "refract-normal-fixture" }, { "$refractamount", "0.07" },
+	    { "$refracttint", "[1 .25 .5]" } };
+	refractWorld.materials[0].textures.push_back( { "$normalmap", 3 } );
+	WorldPass refract;
+	refract.SetWorld( std::move( refractWorld ) );
+	results.That( refract.DrawsPosedModel( 0, 0 ), "posed-model.refract-claims-scene-color-model" );
+	CanvasImage refracted;
+	if ( std::optional<std::string> why =
+	         render( refract, 0.0f, false, 19, background, refracted ) )
+		return why;
+	results.That( refract.Stats().viewsFailed == 0 && refract.Stats().posedDrawsDrawn == 1,
+	    "posed-model.refract-captures-scene-color", refract.Stats().lastFailure );
+	results.That( std::abs( refracted.At( 32, 32 )[0] - background.r ) < 0.01f &&
+	                  refracted.At( 32, 32 )[1] > background.g * 0.48f &&
+	                  refracted.At( 32, 32 )[1] < background.g * 0.6f &&
+	                  refracted.At( 32, 32 )[2] > background.b * 0.56f &&
+	                  refracted.At( 32, 32 )[2] < background.b * 0.68f,
+	    "posed-model.refract-tints-and-alpha-blends-captured-background",
+	    "pixel " + std::to_string( refracted.At( 32, 32 )[0] ) + ", " +
+	        std::to_string( refracted.At( 32, 32 )[1] ) + ", " +
+	        std::to_string( refracted.At( 32, 32 )[2] ) );
+	CanvasImage missingCapture;
+	if ( std::optional<std::string> why = render( refract, 0.0f, false, 20, background,
+	         missingCapture, false, RenderCoreDrawPhase::kAll, false ) )
+		return why;
+	results.That( refract.Stats().viewsFailed == 1 &&
+	                  std::abs( missingCapture.At( 32, 32 )[0] - background.r ) < 0.01f,
+	    "posed-model.refract-refuses-view-without-capture-source" );
+	WorldData underWorld = MeshWorld();
+	underWorld.materials[0].shader = "UnlitGeneric";
+	WorldPass under;
+	under.SetWorld( std::move( underWorld ) );
+	WorldData warpWorld = MeshWorld();
+	warpWorld.materials[0].shader = "Refract_DX90";
+	warpWorld.materials[0].variables = {
+	    { "$model", "1" }, { "$normalmap", "refract-warp-fixture" }, { "$refractamount", "0.3" } };
+	warpWorld.materials[0].textures.push_back( { "$normalmap", 4 } );
+	WorldData zeroWorld = warpWorld;
+	zeroWorld.materials[0].variables.back().second = "0";
+	WorldPass zeroWarp;
+	WorldPass displaced;
+	zeroWarp.SetWorld( std::move( zeroWorld ) );
+	displaced.SetWorld( std::move( warpWorld ) );
+	CanvasImage noWarp, withWarp;
+	if ( std::optional<std::string> why = render( zeroWarp, 0.0f, false, 21, black, noWarp, false,
+	         RenderCoreDrawPhase::kAll, true, &under ) )
+		return why;
+	if ( std::optional<std::string> why = render( displaced, 0.0f, false, 22, black, withWarp,
+	         false, RenderCoreDrawPhase::kAll, true, &under ) )
+		return why;
+	results.That( zeroWarp.Stats().viewsFailed == 0 && displaced.Stats().viewsFailed == 0 &&
+	                  noWarp.At( 40, 32 )[0] > withWarp.At( 40, 32 )[0] + 0.15f,
+	    "posed-model.refract-displaces-authored-scene-edge",
+	    "no warp " + std::to_string( noWarp.At( 40, 32 )[0] ) + ", warp " +
+	        std::to_string( withWarp.At( 40, 32 )[0] ) );
 	CanvasImage singlePane, twoPanes;
 	if ( std::optional<std::string> why = render( glass, 0.0f, true, 6, black, singlePane ) )
 		return why;

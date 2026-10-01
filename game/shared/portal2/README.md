@@ -96,6 +96,11 @@ Fixed on the way:
   is the frame's size and BGR, and it reinstalls its regenerator before each
   upload: the VGUI surface replaces the regenerator of a procedural material's
   base texture.
+- Published `_relit` and `_source2` maps expose their original map name to
+  Portal 2 VScript so the shipped elevator movie, choreography and transition
+  tables select the original authored entries. The actual BSP name remains
+  distinct for loading and installation. The relight reference scene also uses
+  the original movie entry unless the published name has an explicit override.
 - `dev/bloomadd` (Portal 2's bloom composite) and SpriteCard's `ANIMBLEND` and
   `ADDSELF` now run on native Vulkan (`kTexturedModeSpriteCard`).
 

@@ -8,10 +8,11 @@
     "clear": {
       "blender": "5.2.2 LTS",
       "composed_stage_sha256": "c2d3392b8d90a71c0985bfd1f01d531691ddb715c9e83c3fefdea0e7c4aa9a9d",
-      "cycles_device": "OPTIX: NVIDIA GeForce RTX 4090",
+      "cycles_device": "HIP: AMD Radeon 8060S Graphics",
       "denoising": false,
       "extras_applied": {
         "medium": null,
+        "normal_mapped_materials": [],
         "projectors": [
           "Projector00"
         ]
@@ -25,10 +26,10 @@
         "sample_clamp_indirect": 0.0,
         "transmission_bounces": 16
       },
-      "lighting_renderer_sha256": "9927c57ae004d8873c1445d10dd039928f694d6568bd2e27aa82a87a3caa6d2a",
-      "normal_maps": false,
+      "lighting_renderer_sha256": "e980af2157ed69d7c2cf8aed3c3a5c06bbd9e31493e3c5501a861326a737301a",
+      "normal_maps": true,
       "ocio_configuration_sha256": "7812ed39935cb1f7ab5392293c914c0c0f595720af22fc1b289bf19cc0af7ef6",
-      "renderer_sha256": "be4345ca1b53205f3ca822e8ae1bf541f67b83ca19324555cfccf91f6a3496f9",
+      "renderer_sha256": "cfeb9a9d876d09cd84c0b5809dbc7c10c1266e71d8229579954b7149c3c11f04",
       "samples": 2048,
       "seed": 20260929,
       "stage_layers": {
@@ -39,7 +40,7 @@
     "fog": {
       "blender": "5.2.2 LTS",
       "composed_stage_sha256": "a4ac23e27e94a9df1ecbf1bb401e6fa6ca95ce1b0c0307802434cda58b2077eb",
-      "cycles_device": "OPTIX: NVIDIA GeForce RTX 4090",
+      "cycles_device": "HIP: AMD Radeon 8060S Graphics",
       "denoising": false,
       "extras_applied": {
         "medium": {
@@ -60,6 +61,7 @@
           "name": "Fog",
           "scattering_per_m": 0.06
         },
+        "normal_mapped_materials": [],
         "projectors": [
           "Projector00"
         ]
@@ -73,10 +75,10 @@
         "sample_clamp_indirect": 0.0,
         "transmission_bounces": 16
       },
-      "lighting_renderer_sha256": "9927c57ae004d8873c1445d10dd039928f694d6568bd2e27aa82a87a3caa6d2a",
-      "normal_maps": false,
+      "lighting_renderer_sha256": "e980af2157ed69d7c2cf8aed3c3a5c06bbd9e31493e3c5501a861326a737301a",
+      "normal_maps": true,
       "ocio_configuration_sha256": "7812ed39935cb1f7ab5392293c914c0c0f595720af22fc1b289bf19cc0af7ef6",
-      "renderer_sha256": "be4345ca1b53205f3ca822e8ae1bf541f67b83ca19324555cfccf91f6a3496f9",
+      "renderer_sha256": "cfeb9a9d876d09cd84c0b5809dbc7c10c1266e71d8229579954b7149c3c11f04",
       "samples": 2048,
       "seed": 20260929,
       "stage_layers": {
@@ -350,19 +352,23 @@
         262
       ],
       "files": {
+        "direct": {
+          "file": "clear.nave.direct.exr",
+          "sha256": "2058152586d9c6b36c9bd20c7186ddcf5a6fdd29348f799cc0545c991250e5b2"
+        },
         "index": {
           "file": "clear.nave.index.png",
           "sha256": "113b7c531ea806d880e50f381f9bd175f39826ef72c595207d69cf27689e5d9e"
         },
         "total": {
           "file": "clear.nave.total.exr",
-          "sha256": "e4ad2f5620a52238b650c7388a8841e733e655cb54ee2bb4d19839cc0b8ffe58"
+          "sha256": "dbb8107f11633f05e0d67b88b3599c8ea8e1c75f204b7c5949f6740e1ac1a590"
         }
       },
       "finite": true,
       "index_from_state": "clear",
       "judged_pixels": 195916,
-      "mean_luminance": 0.7364234342566919,
+      "mean_luminance": 0.7364235208435274,
       "object_index": {
         "Floor": 1,
         "H_Xn": 2,
@@ -891,19 +897,23 @@
         262
       ],
       "files": {
+        "direct": {
+          "file": "clear.side.direct.exr",
+          "sha256": "b3f9d763f875b372e705dc85d7ca882dc5741c9556f78aa83fa7fbbd5541af79"
+        },
         "index": {
           "file": "clear.side.index.png",
           "sha256": "8d6c4e98d5b1cbdf53804ec5977658d58aaac4b1eff5250dc612783dc5aac254"
         },
         "total": {
           "file": "clear.side.total.exr",
-          "sha256": "6f80ed6be8c296adefcb40ef48b34375a00bde58d14ff7dc196812c9daeb85a8"
+          "sha256": "139740811dc44251cc1ed5d072436288f2e69f433864baf6815f629c5812664c"
         }
       },
       "finite": true,
       "index_from_state": "clear",
       "judged_pixels": 195899,
-      "mean_luminance": 0.6955314309086853,
+      "mean_luminance": 0.6955308799989165,
       "object_index": {
         "Floor": 1,
         "H_Xn": 2,
@@ -1432,19 +1442,23 @@
         262
       ],
       "files": {
+        "direct": {
+          "file": "fog.nave.direct.exr",
+          "sha256": "ed60d7cd14f4e5b1a86489701901d4f1fad8ef23ec66dfd6a1d162d85118c098"
+        },
         "index": {
           "file": "fog.nave.index.png",
           "sha256": "113b7c531ea806d880e50f381f9bd175f39826ef72c595207d69cf27689e5d9e"
         },
         "total": {
           "file": "fog.nave.total.exr",
-          "sha256": "b2b33422a759b7ca3420e6afa2d2abc9609d44af396fc6bc82e990d9cc17b092"
+          "sha256": "bcb8ee852bc8e0810ab3aadb6e87ff447910c286547f28a3a22aac68c9c0de0b"
         }
       },
       "finite": true,
       "index_from_state": "clear",
       "judged_pixels": 195916,
-      "mean_luminance": 0.5475588032793154,
+      "mean_luminance": 0.5475597714785545,
       "object_index": {
         "Floor": 1,
         "H_Xn": 2,
@@ -1973,19 +1987,23 @@
         262
       ],
       "files": {
+        "direct": {
+          "file": "fog.side.direct.exr",
+          "sha256": "e5dc082404c4f7b0063dfe42fc0975ffa0659581a03e5ef5809b3f87c3ea9577"
+        },
         "index": {
           "file": "fog.side.index.png",
           "sha256": "8d6c4e98d5b1cbdf53804ec5977658d58aaac4b1eff5250dc612783dc5aac254"
         },
         "total": {
           "file": "fog.side.total.exr",
-          "sha256": "16c54715af053ffcefeb929a972b905c32a914936594487ce6d84b2d58ea1235"
+          "sha256": "aedf9a6aae8c0fd9e101843b6eee6e25919def7a530c8151952d43853d4ccbc8"
         }
       },
       "finite": true,
       "index_from_state": "clear",
       "judged_pixels": 195899,
-      "mean_luminance": 0.5180242127346242,
+      "mean_luminance": 0.5180233772580137,
       "object_index": {
         "Floor": 1,
         "H_Xn": 2,

@@ -540,6 +540,54 @@ std::optional<std::string> ReflectionProbeChecks( Lab &lab, Results &results )
 		return why;
 	if ( std::optional<std::string> why = Render( lab, scene( true, "" ), unmarked ) )
 		return why;
+	CanvasImage selection, rawRadiance, probeWeight, probeHeader;
+	auto probeView = [&]( shaderlib::DebugView debug, CanvasImage &image )
+	{
+		Scene s = scene( true, "mt/probes" );
+		s.debug.view = std::uint32_t( debug );
+		return Render( lab, s, image );
+	};
+	if ( auto why = probeView( shaderlib::DebugView::kReflectionProbeSelection, selection ) )
+		return why;
+	if ( auto why = probeView( shaderlib::DebugView::kReflectionProbeRadiance, rawRadiance ) )
+		return why;
+	if ( auto why = probeView( shaderlib::DebugView::kReflectionProbeWeight, probeWeight ) )
+		return why;
+	if ( auto why = probeView( shaderlib::DebugView::kReflectionProbeHeader, probeHeader ) )
+		return why;
+	JudgePixels( results, "probes.debug-header-confirms-bound-rprb", probeHeader, view, 0.0f, low,
+	    high, 0.0f, 2e-3f,
+	    [&]( const float3 &, float out[3] )
+	    {
+		    out[0] = float( layout.count ) / 16.0f;
+		    out[1] = 1.0f / 7.0f;
+		    out[2] = 1.0f;
+	    } );
+	JudgePixels( results, "probes.debug-selection-uses-actual-blend", selection, view, 0.0f, low,
+	    high, 0.02f, 2e-3f,
+	    [&]( const float3 &p, float out[3] )
+	    {
+		    const float position[3] = { p.x, p.y, p.z };
+		    const float normal[3] = { 0, 0, 1 };
+		    float weights[mapcontainer::kReflectionProbesMaxProbes] = {};
+		    probes.Weights( position, normal, mapcontainer::ReflectionProbeMode::Blend, weights );
+		    int first = -1, second = -1;
+		    for ( std::uint32_t i = 0; i < layout.count; ++i )
+		    {
+			    if ( weights[i] > 0.0f && ( first < 0 || weights[i] > weights[first] ) )
+			    {
+				    second = first;
+				    first = int( i );
+			    }
+			    else if ( weights[i] > 0.0f && ( second < 0 || weights[i] > weights[second] ) )
+				    second = int( i );
+		    }
+		    out[0] = first < 0 ? 1.0f : float( layout.probes[first].rank + 1 ) / 32.0f;
+		    out[1] = first < 0    ? 0.0f
+		             : second < 0 ? 0.0f
+		                          : float( layout.probes[second].rank + 1 ) / 32.0f;
+		    out[2] = first < 0 ? 1.0f : weights[first];
+	    } );
 	if ( std::optional<std::string> why =
 	         Render( lab, scene( true, "mt/probes", true ), modelLit ) )
 		return why;
@@ -592,6 +640,35 @@ std::optional<std::string> ReflectionProbeChecks( Lab &lab, Results &results )
 		    probes.Radiance( position, normal, reflected, roughness,
 		        mapcontainer::ReflectionProbeMode::Blend, out );
 	    } );
+	JudgePixels( results, "probes.debug-raw-radiance", rawRadiance, view, 0.0f, low, high, 0.02f,
+	    2e-3f,
+	    [&]( const float3 &p, float out[3] )
+	    {
+		    const float position[3] = { p.x, p.y, p.z };
+		    const float normal[3] = { 0, 0, 1 };
+		    float toEye[3] = { view.eye.x - p.x, view.eye.y - p.y, view.eye.z - p.z };
+		    const float length =
+		        std::sqrt( toEye[0] * toEye[0] + toEye[1] * toEye[1] + toEye[2] * toEye[2] );
+		    for ( float &v : toEye )
+			    v /= length;
+		    const float reflected[3] = { -toEye[0], -toEye[1], toEye[2] };
+		    probes.Radiance( position, normal, reflected, roughness,
+		        mapcontainer::ReflectionProbeMode::Blend, out );
+	    } );
+	float productError = 0.0f;
+	float weightRange = 0.0f;
+	for ( std::uint32_t y = 0; y < lit.height; ++y )
+		for ( std::uint32_t x = 0; x < lit.width; ++x )
+			for ( int channel = 0; channel < 3; ++channel )
+			{
+				const float weight = probeWeight.At( x, y )[channel];
+				weightRange = std::max( weightRange, weight );
+				productError =
+				    std::max( productError, std::abs( lit.At( x, y )[channel] -
+				                                      rawRadiance.At( x, y )[channel] * weight ) );
+			}
+	results.That( weightRange > 0.01f && productError < 0.003f,
+	    "probes.debug-weight-explains-specular", "max error " + std::to_string( productError ) );
 	results.That( modelLit.rgba == lit.rgba, "probes.model-uses-the-same-rprb-as-world" );
 	results.That( modelOff.rgba == off.rgba && modelLit.rgba != modelOff.rgba,
 	    "probes.model-term-off-removes-rprb" );

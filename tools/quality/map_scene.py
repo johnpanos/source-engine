@@ -36,6 +36,7 @@ defaults; PBRT coateddiffuse keeps its `coat_roughness` model.
 """
 
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -48,8 +49,30 @@ SCHEMA = "map-scene/v1"
 USD_SUFFIXES = (".usd", ".usda", ".usdc", ".usdz")
 CHANNEL_DEFAULTS = {"textures": {}, "emission_color": None, "opacity": 1.0,
                     "opacity_threshold": 0.0, "clearcoat": 0.0, "clearcoat_roughness": 0.01}
+EMITTER_MESH_NAME = re.compile(r"Light(?:Quad|Disk)\d{2,}")
 sky_display = pbrt_scene.sky_display
 coated_albedo = pbrt_scene.coated_albedo
+
+
+def emitter_material_name(mesh_name):
+    """One WMSH material identity per visible USD light mesh."""
+    if not isinstance(mesh_name, str) or not EMITTER_MESH_NAME.fullmatch(mesh_name):
+        raise ValueError("invalid visible emitter mesh name: " + str(mesh_name))
+    return "emitter_" + mesh_name.lower()
+
+
+def analytic_emitter_kind(shape):
+    """The analytic Cycles light replacing a USD emitter mesh's light transport.
+
+    Its mesh stays camera-visible in a reference, but is absent from glossy
+    rays and from reflection probes that stand in for those rays.
+    """
+    kind = (shape.get("shape") or {}).get("kind")
+    if kind == "sphere":
+        return kind
+    if kind in ("disk", "rect") and shape["emission"].get("one_sided"):
+        return kind
+    return None
 
 
 def is_usd(path):

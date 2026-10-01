@@ -31,6 +31,7 @@ struct SsrQuad
 	math::float3 v;
 	math::float3 normal; // unit, facing the camera side
 	float roughness = 1.0f;
+	bool cameraOnlyEmitter = false; // lit-camera mesh excluded from glossy rays
 	std::array<float, 3> weight = { 1.0f, 1.0f, 1.0f };      // specular weight w
 	std::array<float, 3> iblRadiance = { 0.0f, 0.0f, 0.0f }; // lit holds w times it
 	// The light leaving the rectangle towards the eye (rgb), before the image

@@ -740,6 +740,9 @@ def lighting_scene_class():
                 **({"state_maps": state_maps} if state_maps else {})}
             extra = {"family": "lighting", "oracles": self.oracles, "film": FILM,
                      "horizontal_fov_degrees": HORIZONTAL_FOV, "lambertian": False,
+                     # The joined-copy USD scene is a transport diagnostic,
+                     # not a Cycles oracle for a runtime portal view.
+                     "cycles_receiver_oracle": "portal-transport" not in self.terms,
                      "lighting": lighting}
             record = gf.fixture_record(self.name, self.purpose, stage.name, states,
                                        self.cameras, self.regions, baked, extra)
@@ -1449,6 +1452,7 @@ def chamber_fixture(out, chamber):
         cameras[name] = gf.camera_pose([c * meters for c in eye], [c * meters for c in target])
     record = {"schema": "gi-fixture/v1", "name": chamber["name"], "family": "lighting",
               "purpose": chamber["purpose"], "stage": None,
+              "cycles_receiver_oracle": True,
               "external_stage": {"path": chamber["stage"], "rebuild": chamber["rebuild"],
                                  "units": "Source units (metersPerUnit 0.0254)"},
               "states": {"default": {"layer": None, "note": "the map's lights as compiled"}},
@@ -1474,6 +1478,7 @@ def manifest_record(records):
         lighting = record["lighting"]
         fixtures.append({
             "name": record["name"], "directory": record["name"], "purpose": record["purpose"],
+            "cycles_receiver_oracle": record["cycles_receiver_oracle"],
             "terms": lighting["terms"], "states": sorted(record["states"]),
             "cameras": sorted(record["cameras"]), "map": lighting["map"]["name"],
             "bsp": lighting["map"]["bsp"], "reused_map": bool(lighting["map"].get("reused")),
@@ -1584,6 +1589,18 @@ def load_manifest(root=None):
     return manifest
 
 
+def cycles_oracle_names(requested=None, root=None):
+    """Names with meaningful Cycles receiver references for the K11 gallery."""
+    eligible = {entry["name"] for entry in load_manifest(root)["fixtures"]
+                if entry.get("cycles_receiver_oracle", True)}
+    if requested:
+        excluded = sorted(set(requested) - eligible)
+        if excluded:
+            raise ValueError("not Cycles receiver oracles: %s" % ", ".join(excluded))
+        return requested
+    return sorted(eligible)
+
+
 def reference_status(samples, denoised):
     """preview, denoised (OpenImageDenoise at DENOISED_SAMPLES or more) or final
     (unbiased at FINAL_SAMPLES or more)."""
@@ -1640,6 +1657,11 @@ def emitter_indices(object_index):
 def judged_mask(index_image, emitters):
     import numpy as np
     return (index_image > 0) & ~np.isin(index_image, emitters)
+
+
+def emitter_mask(index_image, emitters):
+    import numpy as np
+    return (index_image > 0) & np.isin(index_image, emitters)
 
 
 def luminance(rgb):
@@ -1715,7 +1737,7 @@ def cmd_render(args):
     import map_scene
     tools = gi_reference.Tools(args.toolchain)
     status = 0
-    names = args.fixture or [f["name"] for f in load_manifest()["fixtures"]]
+    names = cycles_oracle_names(args.fixture)
     for name in names:
         fixture = load_fixture(name)
         results = {}
@@ -2245,6 +2267,9 @@ def check_references(fixture, root):
         if not render:
             problems.append("%s: state %s has no reference" % (name, state))
             continue
+        if render.get("normal_maps") is not True:
+            problems.append("%s/%s: lighting reference omitted authored normal maps" %
+                            (name, state))
         for layer, digest in render.get("stage_layers", {}).items():
             if not (ROOT / layer).is_file() or sha256(ROOT / layer) != digest:
                 problems.append("%s/%s: stage layer %s changed or missing" % (name, state,
@@ -2360,6 +2385,28 @@ def error_stats(test, reference, index_image, emitters):
         return {"pixels": int(mask.sum()), "mean": float("inf"), "p99": float("inf")}
     return {"pixels": int(mask.sum()), "mean": float(error.mean()),
             "p99": float(np.percentile(error, 99))}
+
+
+def emitter_error_stats(test, reference, index_image, emitters):
+    """Visible-emitter diagnostic. Its own reference luminance is the scale;
+    the fixture's receiver tolerance does not certify emitter pixels yet."""
+    import numpy as np
+    if test.shape[:2] != reference.shape[:2] or index_image.shape != reference.shape[:2]:
+        raise ValueError("emitter images and object indices have different sizes")
+    mask = emitter_mask(index_image, emitters)
+    if not mask.any():
+        return None
+    scale = float(luminance(reference[mask]).mean())
+    if not np.isfinite(scale) or scale <= 0:
+        raise ValueError("the emitter reference is black or non-finite")
+    error = np.max(np.abs(test[mask] - reference[mask]), axis=-1) / scale
+    black = np.max(np.abs(reference[mask]), axis=-1) / scale
+    if not np.isfinite(error).all():
+        return {"pixels": int(mask.sum()), "mean": float("inf"), "p99": float("inf"),
+                "black_control_mean": float(black.mean())}
+    return {"pixels": int(mask.sum()), "mean": float(error.mean()),
+            "p99": float(np.percentile(error, 99)),
+            "black_control_mean": float(black.mean())}
 
 
 def compare(fixture_name, state, camera, image_path, root=None, now=None, kind="total"):

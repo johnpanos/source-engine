@@ -1391,6 +1391,10 @@ private:
 	// With the timers: where the frame's back-buffer depth and stencil reads
 	// end, of how many records ("depth_end" in the stats).
 	size_t m_statsDepthEnd[3] = {};
+	// Actual indexed/non-indexed draws issued from the legacy record stream
+	// in the most recently submitted frame (RFC 0016 K9 runtime census).
+	size_t m_statsLegacyStreamDraws = 0;
+	size_t m_statsLegacyProgramDraws = 0;
 	void GpuTimerMark( VkCommandBuffer cmd, std::string label );
 	std::string GpuTimerTargetLabel( const char *kind, int target, bool srgb ) const;
 	void CreateTimestampPool();

@@ -11,7 +11,8 @@
 //			  the far plane, math::Perspective's convention);
 //			- normalRoughness: the shading normal, octahedrally encoded
 //			  (xy in [-1, 1]; OctEncode below), and the perceptual roughness
-//			  the image-based specular used (z);
+//			  the image-based specular used (z); w is 2 for a camera-only
+//			  analytic emitter mesh and 1 for an ordinary surface;
 //			- iblRadiance: the image-based specular radiance the surface
 //			  read (rgb, before its weight);
 //			- specularWeight: the weight w it multiplied that radiance by
@@ -47,8 +48,11 @@
 //			   hit, and the walk continues. The hit position is where the
 //			   ray's depth meets d inside the texel (its entry when already
 //			   behind).
-//			4. Confidence c = edge * thicknessFade * roughnessFade, or 0 with
-//			   no hit. The fades are continuous in the ray's own parameters
+//			4. A hit on a camera-only analytic emitter mesh has confidence 0:
+//			   its visible pixel is absent from glossy rays and must leave the
+//			   probe result in place. Otherwise confidence c = edge *
+//			   thicknessFade * roughnessFade, or 0 with no hit. The fades are
+//			   continuous in the ray's own parameters
 //			   (render-core owner's decision, 2026-09-29, after the first
 //			   fallback-seam measurement):
 //			   - the hit's footprint J: how far the hit moves on the screen

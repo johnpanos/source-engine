@@ -99,12 +99,12 @@ ConVar cl_render_debug_stats( "cl_render_debug_stats", "0", 0,
 ConVar r_core_ao_quality( "r_core_ao_quality", "3", FCVAR_ARCHIVE,
     "Render core ambient occlusion (GTAO): 0 off, 1 low, 2 medium, 3 high, 4 ultra.", true, 0, true,
     4 );
-ConVar r_core_depth_prepass( "r_core_depth_prepass", "1", 0,
+ConVar r_core_depth_prepass( "r_core_depth_prepass", "1", FCVAR_ARCHIVE,
     "Render core: draw the world's opaque depth before lighting it, so each pixel is shaded "
     "once (0 lights every fragment the depth test passes)." );
-ConVar r_core_shadow_movers( "r_core_shadow_movers", "1", 0,
+ConVar r_core_shadow_movers( "r_core_shadow_movers", "1", FCVAR_ARCHIVE,
     "Render core: moving objects cast shadows over the cached static shadow tiles." );
-ConVar r_core_runtime_direct( "r_core_runtime_direct", "1", 0,
+ConVar r_core_runtime_direct( "r_core_runtime_direct", "1", FCVAR_ARCHIVE,
     "Render core: the world's lightmap is its indirect layer and every light's direct light is "
     "drawn at runtime, shadowed, so moving objects block it (0: the bake's total layer). "
     "Applies at the next map load." );

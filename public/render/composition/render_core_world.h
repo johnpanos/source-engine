@@ -101,8 +101,8 @@ struct RenderCorePosedModel
 	RenderCoreDrawPhase phase = RenderCoreDrawPhase::kAll;
 };
 
-// The world stage's quality settings (RFC 0016 K12; the engine's
-// r_core_ao_quality and r_core_shadow_quality, the video options' entries).
+// The world stage's quality settings (RFC 0016 K12); each field has an
+// engine r_core_* ConVar and a video option.
 struct RenderCoreWorldQuality
 {
 	// 0 off (no prepass, no GTAO: the term is neutral), then slices x steps

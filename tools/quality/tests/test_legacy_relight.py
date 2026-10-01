@@ -138,6 +138,17 @@ class StaticPropSceneTests(unittest.TestCase):
         self.assertEqual(override["arrival_signs"], "media/laser_portal.bik")
         self.assertEqual(override["departure_signs"], "media/laser_portal.bik")
         self.assertEqual(override["scale_type"], 12)
+        relit, _ = scene.elevator_video_override(Resolver(), "sp_a2_laser_intro_relit")
+        self.assertEqual(relit, override)
+        class ExplicitResolver:
+            def read(self, path):
+                return (b'[{ map = "sp_a2_laser_intro", arrival = "laser_portal.bik", '
+                        b'departure = "laser_portal.bik" }, '
+                        b'{ map = "sp_a2_laser_intro_relit", arrival = "relit.bik", '
+                        b'departure = "relit.bik" }]', "override")
+        explicit, _ = scene.elevator_video_override(ExplicitResolver(),
+                                                    "sp_a2_laser_intro_relit")
+        self.assertEqual(explicit["arrival_signs"], "media/relit.bik")
         entities = [
             {"classname": "vgui_movie_display", "groupname": "arrival_signs",
              "moviefilename": "media/entry_emergency.bik"},

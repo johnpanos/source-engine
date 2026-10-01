@@ -23,6 +23,7 @@ from pathlib import Path
 
 from pxr import Gf, Usd, UsdGeom, UsdShade
 
+import map_scene
 from worldstage_mesh_pack import cross, leaf_volumes, sha256, tangent_frame, unit, write_payload
 import worldmesh_leaf_visibility
 from worldmesh_seam_weld import weld_material
@@ -30,9 +31,6 @@ from worldmesh_seam_weld import weld_material
 
 SOURCE_UNITS_PER_METER = 39.37007874015748
 IMPORTED_FACE_BASE = 0x80000000
-EMITTER_NAME = r"Light(?:Quad|Disk)\d{2,}"
-
-
 def normal_bucket(normal):
     axis = max(range(3), key=lambda index: abs(normal[index]))
     return 2 * axis + int(normal[axis] < 0)
@@ -52,7 +50,7 @@ def source_triangles(stage, material_prefix, require_lightmap_uv, include_emitte
     excluded = set(exclude_meshes)
     source_meshes = sorted((prim for prim in stage.Traverse()
                             if prim.IsA(UsdGeom.Mesh) and
-                            not re.fullmatch(EMITTER_NAME, prim.GetName()) and
+                            not map_scene.EMITTER_MESH_NAME.fullmatch(prim.GetName()) and
                             prim.GetName() not in excluded),
                            key=lambda prim: prim.GetName())
     found = {prim.GetName() for prim in stage.Traverse() if prim.IsA(UsdGeom.Mesh)}
@@ -61,7 +59,7 @@ def source_triangles(stage, material_prefix, require_lightmap_uv, include_emitte
                          ", ".join(sorted(excluded - found)))
     emitters = sorted((prim for prim in stage.Traverse()
                        if include_emitters and prim.IsA(UsdGeom.Mesh) and
-                       re.fullmatch(EMITTER_NAME, prim.GetName())),
+                       map_scene.EMITTER_MESH_NAME.fullmatch(prim.GetName())),
                       key=lambda prim: prim.GetName())
     meshes = source_meshes + emitters
     if not source_meshes:
@@ -73,7 +71,8 @@ def source_triangles(stage, material_prefix, require_lightmap_uv, include_emitte
                     UsdShade.MaterialBindingAPI(prim).ComputeBoundMaterial()[0])
         if not is_emitter and not material:
             raise ValueError("USD mesh has no bound material: " + str(prim.GetPath()))
-        material_name = "emitter" if is_emitter else material.GetPrim().GetName().lower()
+        material_name = (map_scene.emitter_material_name(prim.GetName()) if is_emitter else
+                         material.GetPrim().GetName().lower())
         if not re.fullmatch(r"[a-z0-9_]+", material_name):
             raise ValueError("USD material name cannot become a VMT path")
         material_path = material_prefix + "/" + material_name

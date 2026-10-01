@@ -19,6 +19,7 @@
 #include "render/legacy/core_backend.h"
 #include "render/frame/renderer.h"
 #include "render/graph/pass_timers.h"
+#include "render/graph/scene_color.h"
 #include "render/legacy/core_passes.h"
 #include "render/pass/debug/debug_overlays.h"
 #include "render/pass/ao/ao.h"
@@ -46,7 +47,8 @@ namespace render::composition
 
 class CoreWorld final : public IRenderCoreWorld,
                         public legacy::ICorePassRecorder,
-                        public frame::IRenderStageHooks
+                        public frame::IRenderStageHooks,
+                        public pass::world::IWorldSceneColorCapture
 {
 public:
 	CoreWorld( legacy::ILegacyFrontend &frontend, const frame::IRenderer &renderer )
@@ -116,6 +118,9 @@ public:
 	std::uint32_t SlotStages() const override { return 0; }
 	void RecordSlot( std::uint32_t tag, device::CommandEncoder &encoder,
 	    const legacy::CorePassTarget &target ) override;
+	std::optional<pass::world::WorldSceneColor> Capture( device::IRenderDevice2 &device,
+	    device::CommandEncoder &encoder, device::TextureId source,
+	    const device::TextureDesc &sourceDesc, std::uint64_t frame ) override;
 	bool RecordOutput( device::CommandEncoder &encoder,
 	    const legacy::CoreOutputTargets &targets ) override
 	{
@@ -129,6 +134,9 @@ public:
 		if ( m_Compute )
 			m_Compute->ReleaseDevice( device );
 		m_Pass.ReleaseDevice( device );
+		for ( auto &[frame, capture] : m_SceneCaptures )
+			capture.Release( device, device::CompletionToken() );
+		m_SceneCaptures.clear();
 		m_Overlays.ReleaseDevice( device );
 		m_Output.ReleaseDevice( device );
 		ReleaseShadows( device );
@@ -324,6 +332,7 @@ private:
 	const frame::IRenderer &m_Renderer;
 	const legacy::RenderCallQueueHost *m_Host = nullptr;
 	pass::world::WorldPass m_Pass;
+	std::vector<std::pair<std::uint64_t, graph::InlineGraphResources>> m_SceneCaptures;
 	pass::debug::DebugOverlays m_Overlays;
 	// cl_render_debug_legacy 1: the tags of top-level views (main thread
 	// writes, render sequence reads), and per recorded frame serial the

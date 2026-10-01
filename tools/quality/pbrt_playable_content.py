@@ -20,13 +20,14 @@ linear. The receipt lists, per material, which channels were exported and
 which were approximated. Transmissive (glass) materials are
 `PBRMetalRough` with `$transmission`, `$ior` and `$thickness` from the same
 policy, drawn two-sided; their fallback is an alpha-blended unlit preview.
-Emitters use an unlit white preview, because emissive WMSH batches are not
-implemented.
+USD light meshes have one PBR emission material per authored radiance. Their
+legacy fallback remains an unlit white preview.
 """
 
 import argparse
 import hashlib
 import json
+import math
 import shutil
 import sys
 from pathlib import Path
@@ -230,6 +231,82 @@ def vmt(shader, lines):
     return '"%s"\n{\n%s}\n' % (shader, "".join('\t"%s" "%s"\n' % pair for pair in lines))
 
 
+def visible_emitters(scene):
+    """Named USD light meshes and their authored linear radiance."""
+    if not map_scene.is_usd_scene(scene):
+        return []
+    result = []
+    names = set()
+    for emitter in scene["emitters"]:
+        name = map_scene.emitter_material_name(emitter.get("name"))
+        radiance = emitter["emission"]["radiance"]
+        one_sided = emitter["emission"].get("one_sided")
+        cone = emitter.get("cone")
+        if (len(radiance) != 3 or any(not math.isfinite(value) or value < 0
+                                     for value in radiance)):
+            raise ValueError(name + ": invalid visible emitter radiance")
+        if not isinstance(one_sided, bool):
+            raise ValueError(name + ": visible emitter sidedness is missing")
+        if cone is not None:
+            if not one_sided or not isinstance(cone, dict) or \
+                    set(cone) != {"inner", "outer", "exponent"}:
+                raise ValueError(name + ": invalid visible emitter cone")
+            inner, outer, exponent = (cone[key] for key in ("inner", "outer", "exponent"))
+            if (any(not math.isfinite(value) for value in (inner, outer, exponent)) or
+                    not -1.0 <= outer <= inner <= 1.0 or exponent < 0.0):
+                raise ValueError(name + ": invalid visible emitter cone")
+        if name in names:
+            raise ValueError(name + ": duplicate visible emitter")
+        names.add(name)
+        result.append((name, tuple(float(value) for value in radiance), one_sided, cone,
+                       bool(map_scene.analytic_emitter_kind(emitter))))
+    return result
+
+
+def write_visible_emitters(scene, args, prefix, material_root, fallback_root):
+    """Keep each light mesh's radiance out of the white legacy fallback."""
+    emitters = visible_emitters(scene)
+    if not emitters:
+        return {}
+    import numpy as np
+    black = Image.new("RGB", (4, 4), (0, 0, 0))
+    black_hash = compile_texture(black, material_root / "emitter" / "black",
+                                 args.vtex.resolve())
+    records = {}
+    for name, radiance, one_sided, cone, camera_only in emitters:
+        emission = np.broadcast_to(np.asarray(radiance, np.float64), (4, 4, 3))
+        scale, image = emission_texture(emission)
+        image_hash = None
+        glow = []
+        if image is not None:
+            image_hash = compile_texture(image, material_root / name / "emission",
+                                         args.vtex.resolve())
+            glow = [("$emissiontexture", "%s/%s/emission" % (prefix, name)),
+                    ("$emissionscale", "%g" % scale)]
+        fallback = vmt("UnlitGeneric", [("$basetexture", "%s/emitter/basecolor" % prefix),
+                                        ("$nocull", "1")])
+        cone_keys = [("$emissioncone", "1"),
+                     ("$emissionconeinner", "%.9g" % cone["inner"]),
+                     ("$emissionconeouter", "%.9g" % cone["outer"]),
+                     ("$emissionconeexponent", "%.9g" % cone["exponent"])] if cone and glow else []
+        world = vmt("PBRMetalRough", [
+            ("$basetexture", "%s/emitter/black" % prefix),
+            ("$mraotexture", "%s/emitter/mrao" % prefix)] + glow +
+            ([("$emissioncameraonly", "1")] if camera_only and glow else []) +
+            ([("$emissiononesided", "1")] if one_sided and glow else []) + cone_keys + [
+            ("$fallbackmaterial", "%s_fallback/%s" % (prefix, name))])
+        (fallback_root / (name + ".vmt")).write_text(fallback)
+        (material_root / (name + ".vmt")).write_text(world)
+        records[name] = {"radiance": radiance, "one_sided": one_sided, "cone": cone,
+                         "camera_only": camera_only,
+                         "emission_scale": scale,
+                         "emission_vtf_sha256": image_hash,
+                         "black_base_vtf_sha256": black_hash,
+                         "vmt_sha256": sha256(material_root / (name + ".vmt")),
+                         "fallback_vmt_sha256": sha256(fallback_root / (name + ".vmt"))}
+    return records
+
+
 def write_dynamic_models(scene, args, prefix, assets):
     """Map-scoped copies of each dynamic model, drawing its stand-in's material.
 
@@ -415,6 +492,7 @@ def main():
                         "emission_scale": emission_scale if emission_image else None,
                         "vmt_sha256": sha256(material_root / (name + ".vmt")),
                         "fallback_vmt_sha256": sha256(fallback_root / (name + ".vmt"))}
+    emitter_assets = write_visible_emitters(scene, args, prefix, material_root, fallback_root)
     models = write_dynamic_models(scene, args, prefix, assets)
     evidence = {"status": "pass", "scope": "pbrt-playable-content-preview",
                 "dynamic_models": models,
@@ -422,6 +500,7 @@ def main():
                 "stage_receipt_sha256": sha256(args.stage_receipt),
                 "bsp2_sha256": sha256(args.bsp2), "map_sha256": sha256(map_path),
                 "material_namespace": prefix, "materials": assets,
+                "visible_emitters": emitter_assets,
                 "texture_container": "VTF preview bridge; KTX2 runtime binding pending"}
     args.out.with_suffix(".json").write_text(json.dumps(evidence, indent=2,
                                                               sort_keys=True) + "\n")

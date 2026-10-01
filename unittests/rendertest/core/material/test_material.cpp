@@ -13,6 +13,7 @@
 #include "render/device/bind_group.h"
 #include "render/material/material.h"
 #include "render/material/registry.h"
+#include "render/material/scene_terms.h"
 #include "render/pbr_material_schema.h"
 #include "testing/checks.h"
 
@@ -51,6 +52,28 @@ const VmtPair *VariableOf( const MaterialDesc &material, std::string_view key )
 			return &variable;
 	}
 	return nullptr;
+}
+
+void TestSceneTerms( testing::Checks &checks )
+{
+	SceneTermInputs inputs;
+	inputs.runtimeDirect = true;
+	inputs.totalDirectionalLightmap = true;
+	inputs.probeBounce = true;
+	checks.That( SceneTerms( inputs ) == ( kSurfaceClustered | kSurfaceDirectionalLightmap ),
+	    "S1.runtime-direct-needs-indirect-and-bounce-needs-probes" );
+	inputs.indirectLightmap = true;
+	checks.That( SceneTerms( inputs ) == ( kSurfaceClustered | kSurfaceRuntimeDirect ),
+	    "S1.runtime-direct-does-not-use-the-total-gradient" );
+	inputs.indirectDirectionalLightmap = true;
+	inputs.probeVolume = true;
+	inputs.reflectionProbes = true;
+	inputs.ambientOcclusion = true;
+	checks.That( SceneTerms( inputs ) ==
+	                 ( kSurfaceClustered | kSurfaceRuntimeDirect | kSurfaceDirectionalLightmap |
+	                     kSurfaceProbeVolume | kSurfaceProbeBounce | kSurfaceReflectionProbes |
+	                     kSurfaceAmbientOcclusion ),
+	    "S1.lab-and-game-select-the-same-complete-scene-variant" );
 }
 
 // A resolver over a fixed set of files.
@@ -489,6 +512,7 @@ int main()
 	using namespace render;
 	testing::Checks checks;
 	TestFamiliesFromMapping( checks );
+	TestSceneTerms( checks );
 	TestKeyMapping( checks );
 	TestDerivedCopy( checks );
 	TestImportReading( checks );

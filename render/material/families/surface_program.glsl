@@ -257,7 +257,7 @@ layout( set = 2, binding = 0 ) uniform Material
 	vec4 detailTint;    // rgb: $detailtint, a: $detailblendfactor
 	vec4 detailScale;   // xy: $detailscale
 	vec4 envLightScale; // x: min, y: min + max, z: $envmaplightscale (Portal 2)
-	vec4 emission;      // x: $emissionscale (the pbr point)
+	vec4 emission;      // x: $emissionscale, y: $emissiononesided (the pbr point)
 	// The water point (SurfaceConstants::water*, water_family.h).
 	vec4 waterFlow;      // 1/$flow_worlduvscale, 1/$flow_normaluvscale, bump strength, displacement
 	vec4 waterFlowTime;  // interval, scroll distance, noise scale, 1 with a flow map
@@ -271,7 +271,8 @@ layout( set = 2, binding = 0 ) uniform Material
 	vec4 meshProbeFresnel; // VertexLit mesh: env Fresnel weight and min/max/exp
 	vec4 meshModes; // light warp, authored env map, Phong enable
 	vec4 meshProbeColor; // contrast, saturation, Phong warp, RGB probe mask
-	vec4 transmission; // x: fraction, y: IOR (thin dielectric point)
+	vec4 transmission; // thin: fraction/IOR; Refract: amount/blur/mode/fade
+	vec4 emissionCone; // inner/outer cosine, exponent, enabled
 } material;
 layout( set = 2, binding = 1 ) uniform texture2D baseTexture;
 layout( set = 2, binding = 2 ) uniform sampler baseSampler;
@@ -334,10 +335,12 @@ vec2 SurfaceOctEncode( vec3 n )
 	return p;
 }
 
-void WriteSsrTargets( vec3 normal, float roughness, vec3 iblRadiance, vec3 weight )
+void WriteSsrTargets( vec3 normal, float roughness, vec3 iblRadiance, vec3 weight,
+    bool cameraOnlyEmitter )
 {
 #ifdef SURFACE_SSR_TARGETS
-	outNormalRoughness = vec4( SurfaceOctEncode( normal ), roughness, 1.0 );
+	outNormalRoughness = vec4( SurfaceOctEncode( normal ), roughness,
+	    cameraOnlyEmitter ? 2.0 : 1.0 );
 	outIblRadiance = vec4( iblRadiance, 1.0 );
 	outSpecularWeight = vec4( weight, 1.0 );
 #endif
@@ -562,6 +565,70 @@ vec3 AmbientCube( vec3 n )
 	return ModelAmbientCube( n );
 }
 
+// Refract_DX90's model point. The color input is a linear snapshot behind the
+// surface; its authored normal alpha controls both the warp and reflection.
+vec3 RefractSceneColor( vec2 uv )
+{
+	if ( material.meshModes.x > 0.5 )
+		return texture( sampler2D( baseTexture, baseSampler ), uv ).rgb;
+	return texture( sampler2D( sceneColorTexture, sceneColorSampler ), uv ).rgb;
+}
+
+void RefractSurface()
+{
+	const vec4 bump = texture( sampler2D( bumpTexture, bumpSampler ), baseUv );
+	const vec3 mapped = bump.rgb * 2.0 - 1.0;
+	const vec2 unwarped = ( gl_FragCoord.xy - frame.viewport.xy ) * frame.viewport.zw;
+	const vec2 warped = unwarped + mapped.xy * bump.a * material.transmission.x;
+	vec3 behind = RefractSceneColor( warped );
+	if ( material.transmission.y > 0.5 )
+	{
+		const vec2 halfBlur = vec2( 0.5 / 512.0 );
+		const vec2 fullBlur = vec2( 1.0 / 512.0 );
+		behind = RefractSceneColor( warped - halfBlur ) * 0.4444444;
+		behind += RefractSceneColor( warped + vec2( fullBlur.x, -halfBlur.y ) ) * 0.2222222;
+		behind += RefractSceneColor( warped + vec2( -halfBlur.x, fullBlur.y ) ) * 0.2222222;
+		behind += RefractSceneColor( warped + fullBlur ) * 0.1111111;
+	}
+	const vec3 eye = normalize( frame.eye.xyz - worldPosition );
+	const vec3 smoothNormal = normalize( worldNormal );
+	float fade = 1.0;
+	if ( material.transmission.w > 0.5 )
+		fade = pow( clamp( dot( eye, smoothNormal ), 0.0, 1.0 ), 3.0 );
+	vec3 result = mix( RefractSceneColor( unwarped ),
+	    behind * material.tint.rgb, fade );
+	if ( material.meshModes.y > 0.5 && DebugTermOn( kDebugTermIbl ) )
+	{
+		const vec3 normal = normalize( normalize( tangentS ) * mapped.x +
+		    normalize( tangentT ) * mapped.y + smoothNormal * mapped.z );
+		const vec3 reflected = reflect( -eye, normal );
+		vec3 radiance = vec3( 0.0 );
+		if ( Term( kReflectionProbes ) )
+		{
+			if ( !ReflectionProbesRadiance(
+			         worldPosition, smoothNormal, reflected, 0.02, radiance ) )
+				radiance = AmbientCube( reflected );
+		}
+		else
+			radiance = texture( samplerCube( envmapTexture, envmapSampler ), reflected ).rgb;
+		vec3 specular = radiance * bump.a * material.envTint.rgb;
+		specular = mix( specular, specular * specular, material.meshProbeColor.x );
+		const vec3 grey = vec3( dot( specular, vec3( 0.299, 0.587, 0.114 ) ) );
+		result += mix( grey, specular, material.envSaturation.rgb );
+	}
+	if ( DebugViewActive() )
+	{
+		DebugInputs inputs = DebugInputsNone();
+		inputs.mask = kDebugHasAlbedo | kDebugHasUv0;
+		inputs.albedo = material.tint.rgb;
+		inputs.uv0 = baseUv;
+		inputs.final = result;
+		outColor = DebugOutput( inputs );
+		return;
+	}
+	outColor = Output( result, material.meshModes.y > 0.5 ? 1.0 : bump.a );
+}
+
 // The pbr point. Base and emission are sampled as sRGB, MRAO and the normal
 // map as linear data.
 void PbrSurface()
@@ -614,7 +681,9 @@ void PbrSurface()
 	const float screenOcclusion =
 	    Term( kAmbientOcclusion ) && DebugTermOn( kDebugTermAo )
 	        ? clamp( texelFetch( sampler2D( occlusionTexture, occlusionSampler ),
-	                     ivec2( gl_FragCoord.xy ), 0 )
+	                     clamp( ivec2( gl_FragCoord.xy ), ivec2( 0 ),
+	                         textureSize( sampler2D( occlusionTexture, occlusionSampler ), 0 ) - 1 ),
+	                     0 )
 	                     .r,
 	              0.0, 1.0 )
 	        : 1.0;
@@ -1078,13 +1147,35 @@ void PbrSurface()
 	vec3 imageSpecular = vec3( 0.0 );
 	vec3 iblRadiance = vec3( 0.0 );
 	vec3 iblWeight = vec3( 0.0 );
+	vec3 probeRadiance = vec3( 0.0 );
+	vec4 probeSelection = vec4( -1.0, -1.0, 0.0, 0.0 );
+	vec3 probeHeader = vec3( 0.0 );
 	if ( specularLobe && DebugTermOn( kDebugTermIbl ) )
 	{
 		const vec3 reflected = reflect( -view, normal );
 		vec3 radiance;
-		if ( furnace || !Term( kReflectionProbes ) ||
-		     !ReflectionProbesRadiance( worldPosition, smoothNormal, reflected, roughness, radiance ) )
+		if ( kDebugView == 27 && !furnace && Term( kReflectionProbes ) )
+		{
+			const vec4 header = ReflectionProbesFetch( ivec2( 0, 0 ) );
+			const vec4 mode = ReflectionProbesFetch( ivec2( 1, 0 ) );
+			probeHeader = vec3( clamp( header.x / 16.0, 0.0, 1.0 ),
+			    clamp( mode.x / 7.0, 0.0, 1.0 ),
+			    header.w == kReflectionProbesMarker ? 1.0 : 0.0 );
+		}
+		if ( furnace || !Term( kReflectionProbes ) )
+		{
+			probeSelection.x = -2.0;
 			radiance = AmbientCube( reflected );
+		}
+		else if ( !ReflectionProbesRadianceDebug( worldPosition, smoothNormal, reflected,
+		              roughness, radiance, probeSelection ) )
+		{
+			const vec4 header = ReflectionProbesFetch( ivec2( 0, 0 ) );
+			if ( header.w == kReflectionProbesMarker )
+				probeSelection.x = header.x < 1.0 ? -3.0 : -4.0;
+			radiance = AmbientCube( reflected );
+		}
+		probeRadiance = radiance;
 		// The specular occlusion from the view's occlusion (one without it).
 		const float specularOcclusion =
 		    Term( kAmbientOcclusion ) && DebugTermOn( kDebugTermSpecularOcclusion ) && !furnace
@@ -1118,12 +1209,23 @@ void PbrSurface()
 			color += rim;
 		}
 	}
-	WriteSsrTargets( normal, roughness, iblRadiance, iblWeight );
+	WriteSsrTargets( normal, roughness, iblRadiance, iblWeight,
+	    emissive && material.emission.z > 0.5 );
 	vec3 emission = vec3( 0.0 );
-	if ( emissive && DebugTermOn( kDebugTermEmission ) && !furnace )
+	if ( emissive && DebugTermOn( kDebugTermEmission ) && !furnace &&
+	     ( material.emission.y <= 0.5 || dot( smoothNormal, view ) > 0.0 ) )
 	{
 		emission =
 		    texture( sampler2D( emissionTexture, emissionSampler ), uv ).rgb * material.emission.x;
+		if ( material.emissionCone.w > 0.5 )
+		{
+			const float cosine = dot( smoothNormal, view );
+			const float cone = clamp( ( cosine - material.emissionCone.y ) /
+			    max( material.emissionCone.x - material.emissionCone.y, 1e-6 ), 0.0, 1.0 );
+			emission *= material.emissionCone.z == 0.0 || material.emissionCone.z == 1.0
+			                ? cone
+			                : pow( cone, material.emissionCone.z );
+		}
 		color += emission;
 	}
 	if ( Term( kSelfIllum ) && DebugTermOn( kDebugTermEmission ) && !furnace )
@@ -1168,6 +1270,14 @@ void PbrSurface()
 		inputs.ao = occlusion;
 		inputs.direct = direct;
 		inputs.imageSpecular = imageSpecular;
+		if ( specularLobe )
+		{
+			inputs.mask |= kDebugHasReflectionProbe;
+			inputs.probeSelection = probeSelection;
+			inputs.probeRadiance = probeRadiance;
+			inputs.probeWeight = iblWeight;
+			inputs.probeHeader = probeHeader;
+		}
 		if ( lightmapped )
 		{
 			inputs.mask |= kDebugHasBaked;
@@ -1363,9 +1473,14 @@ void main()
 {
 	// Points without image specular leave the SSR targets empty (weight 0:
 	// render.pass.ssr leaves their pixels unchanged).
-	WriteSsrTargets( vec3( 0.0, 0.0, 1.0 ), 1.0, vec3( 0.0 ), vec3( 0.0 ) );
+	WriteSsrTargets( vec3( 0.0, 0.0, 1.0 ), 1.0, vec3( 0.0 ), vec3( 0.0 ), false );
 	if ( Term( kPbr ) )
 	{
+		if ( Term( kTransmission ) && material.transmission.z > 0.5 )
+		{
+			RefractSurface();
+			return;
+		}
 		PbrSurface();
 		return;
 	}

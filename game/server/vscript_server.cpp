@@ -287,7 +287,26 @@ static void SendToConsoleServer( const char *pszCommand )
 
 static const char *GetMapName()
 {
-	return STRING( gpGlobals->mapname );
+	const char *pszMapName = STRING( gpGlobals->mapname );
+#ifdef PORTAL2
+	// Portal 2's shipped VScript tables select elevator movies, choreography,
+	// and transitions by the original map name. Published relights retain that
+	// authored behavior while their BSPs use distinct installed names.
+	static const char *const pszPublishedSuffixes[] = { "_relit", "_source2" };
+	static char szSourceMapName[MAX_PATH];
+	const size_t nNameLength = V_strlen( pszMapName );
+	for ( const char *pszSuffix : pszPublishedSuffixes )
+	{
+		const size_t nSuffixLength = V_strlen( pszSuffix );
+		if ( nNameLength <= nSuffixLength || nNameLength >= sizeof( szSourceMapName ) ||
+		     V_stricmp( pszMapName + nNameLength - nSuffixLength, pszSuffix ) )
+			continue;
+		V_memcpy( szSourceMapName, pszMapName, nNameLength - nSuffixLength );
+		szSourceMapName[nNameLength - nSuffixLength] = '\0';
+		return szSourceMapName;
+	}
+#endif
+	return pszMapName;
 }
 
 extern ConVar	loopsingleplayermaps;

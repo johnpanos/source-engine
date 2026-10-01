@@ -8,7 +8,7 @@
 //
 // SSR_DIAGNOSTICS writes each pixel's hit, confidence and mip to binding 10
 // (a suite's variant). SEEDED_SSR_THICKNESS_IGNORED, SEEDED_SSR_NO_EDGE_FADE
-// and SEEDED_SSR_WRONG_MIP build the defective variants the lab's suite must
+// SEEDED_SSR_WRONG_MIP and SEEDED_SSR_IGNORES_CAMERA_ONLY build defects the lab must
 // reject, and SEEDED_SSR_HARD_SWITCH its fallback-seam control (no edge and
 // no thickness fade); no product uses them.
 #version 450
@@ -265,6 +265,13 @@ void main()
 	               ( invW0 + hitU * ( invW1 - invW0 ) );
 	const vec3 Nh = OctDecode(
 	    texelFetch( sampler2D( normalRoughnessTexture, pointSampler ), hitTexel, 0 ).xy );
+#ifndef SEEDED_SSR_IGNORES_CAMERA_ONLY
+	if ( texelFetch( sampler2D( normalRoughnessTexture, pointSampler ), hitTexel, 0 ).w > 1.5 )
+	{
+		Finish( p, lit, vec4( hitPosition, 0.0, 0.0 ), vec4( vec2( hitTexel ), 0.0, behind ) );
+		return;
+	}
+#endif
 	float J = 1.0;
 	for ( int axis = 0; axis < 2; ++axis )
 	{

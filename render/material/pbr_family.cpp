@@ -27,9 +27,10 @@ using detail::ReadParameter;
 
 // The parameters the family draws, and $fallbackmaterial, which only other
 // profiles read.
-constexpr std::array<std::string_view, 11> kClaimed = { "basetexture", "mraotexture", "bumpmap",
-    "emissiontexture", "emissionscale", "alphatest", "alphatestreference", "fallbackmaterial",
-    "transmission", "ior", "thickness" };
+constexpr std::array<std::string_view, 17> kClaimed = { "basetexture", "mraotexture", "bumpmap",
+    "emissiontexture", "emissionscale", "emissiononesided", "emissioncameraonly", "emissioncone",
+    "emissionconeinner", "emissionconeouter", "emissionconeexponent", "alphatest",
+    "alphatestreference", "fallbackmaterial", "transmission", "ior", "thickness" };
 
 bool TextureBound( const ParameterBlock &block, std::string_view name )
 {
@@ -63,6 +64,31 @@ PbrClaim ClaimPbr( const ParameterBlock &block, bool sceneColorAvailable )
 	}
 	claim.normalMap = TextureBound( block, "bumpmap" );
 	claim.emission = TextureBound( block, "emissiontexture" );
+	const bool oneSidedEmission = detail::ReadFlag( block, "emissiononesided" );
+	const bool cameraOnlyEmission = detail::ReadFlag( block, "emissioncameraonly" );
+	if ( oneSidedEmission && !claim.emission )
+	{
+		claim.reason = "$emissiononesided needs $emissiontexture";
+		return claim;
+	}
+	if ( cameraOnlyEmission && !claim.emission )
+	{
+		claim.reason = "$emissioncameraonly needs $emissiontexture";
+		return claim;
+	}
+	const bool emissionCone = detail::ReadFlag( block, "emissioncone" );
+	const float coneInner = ReadParameter( block, "emissionconeinner" );
+	const float coneOuter = ReadParameter( block, "emissionconeouter" );
+	const float coneExponent = ReadParameter( block, "emissionconeexponent" );
+	if ( ( emissionCone && ( !oneSidedEmission || !claim.emission ) ) ||
+	     !std::isfinite( coneInner ) || !std::isfinite( coneOuter ) ||
+	     !std::isfinite( coneExponent ) || coneOuter < -1.0f || coneInner > 1.0f ||
+	     coneInner < coneOuter || coneExponent < 0.0f ||
+	     ( !emissionCone && ( coneInner != 1.0f || coneOuter != 1.0f || coneExponent != 1.0f ) ) )
+	{
+		claim.reason = "invalid $emissioncone and its inner, outer or exponent";
+		return claim;
+	}
 	claim.alphaTest = detail::ReadFlag( block, "alphatest" );
 	const float transmission = ReadParameter( block, "transmission" );
 	const float ior = ReadParameter( block, "ior" );
@@ -98,6 +124,12 @@ PbrClaim ClaimPbr( const ParameterBlock &block, bool sceneColorAvailable )
 	claim.normalMap = false;
 #endif
 	claim.constants.emission[0] = ReadParameter( block, "emissionscale" );
+	claim.constants.emission[1] = oneSidedEmission ? 1.0f : 0.0f;
+	claim.constants.emission[2] = cameraOnlyEmission ? 1.0f : 0.0f;
+	claim.constants.emissionCone[0] = coneInner;
+	claim.constants.emissionCone[1] = coneOuter;
+	claim.constants.emissionCone[2] = coneExponent;
+	claim.constants.emissionCone[3] = emissionCone ? 1.0f : 0.0f;
 	claim.constants.flags[1] = claim.alphaTest ? 1.0f : 0.0f;
 	claim.constants.flags[2] = detail::AlphaTestReference( block );
 	claim.claimed = true;

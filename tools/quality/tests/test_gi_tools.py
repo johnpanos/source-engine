@@ -372,6 +372,11 @@ class OracleTest(unittest.TestCase):
 
 
 class CaptureDecodeTest(unittest.TestCase):
+    def test_native_indirect_oracle_rejects_core_world(self):
+        gi_runtime.require_native_indirect_commands(["r_core_world 0", "r_indirect_producer sdf"])
+        with self.assertRaisesRegex(ValueError, "native-backend oracle"):
+            gi_runtime.require_native_indirect_commands(["wait 30; r_core_world 1"])
+
     def test_srgb_decode_and_downsample(self):
         film = {"width": 4, "height": 3}
         encoded = np.full((12, 16, 3), 188, np.uint8)

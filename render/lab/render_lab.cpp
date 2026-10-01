@@ -71,6 +71,7 @@
 #include "render/material/lightmapped_family.h"
 #include "render/material/material_programs.h"
 #include "render/material/program_resolver.h"
+#include "render/material/scene_terms.h"
 #include "render/material/vmt_import.h"
 #include "render/math/matrix.h"
 #include "render/pass/ao/ao.h"
@@ -604,19 +605,6 @@ int Run( const Options &options )
 		     !StageTable( cache, kLtcTable, material::LtcTable() ) )
 			return Fail( "the pbr point's tables were refused" );
 
-		// The pbr point's scene terms: the view's lights and shadows, the
-		// lightmap basis, the map's probes, the view's occlusion.
-		std::uint32_t sceneTerms = material::kSurfaceClustered;
-		if ( directional )
-			sceneTerms |= material::kSurfaceDirectionalLightmap;
-		if ( options.coreDirect )
-			sceneTerms |= material::kSurfaceRuntimeDirect;
-		if ( !map.probeAtlas.empty() )
-			sceneTerms |= material::kSurfaceProbeVolume;
-		if ( !map.reflectionProbes.empty() )
-			sceneTerms |= material::kSurfaceReflectionProbes;
-		if ( aoOn )
-			sceneTerms |= material::kSurfaceAmbientOcclusion;
 		// The projected lights' bounce (render.pass.bounce), into the probe
 		// volume's layout.
 		const bool bounceOn = !options.noBounce && !map.probeAtlas.empty() &&
@@ -640,8 +628,18 @@ int Run( const Options &options )
 			bounceAtlas = made.Value();
 			map.probeBounce = bounceAtlas;
 			map.probeBounceDesc = bounceDesc;
-			sceneTerms |= material::kSurfaceProbeBounce;
 		}
+		// The same term policy selects the game's world-stage variants.
+		material::SceneTermInputs termInputs;
+		termInputs.runtimeDirect = options.coreDirect;
+		termInputs.indirectLightmap = indirectPage;
+		termInputs.totalDirectionalLightmap = directional && !options.coreDirect;
+		termInputs.indirectDirectionalLightmap = directional && options.coreDirect;
+		termInputs.probeVolume = !map.probeAtlas.empty();
+		termInputs.probeBounce = bounceOn;
+		termInputs.reflectionProbes = !map.reflectionProbes.empty();
+		termInputs.ambientOcclusion = aoOn;
+		const std::uint32_t sceneTerms = material::SceneTerms( termInputs );
 		resolver.Value()->SetWorldPbr( true, sceneTerms );
 
 		// The world's materials.
@@ -1028,12 +1026,11 @@ int Run( const Options &options )
 			const std::uint64_t drawLayout = m.program.request.drawLayout.value;
 			if ( pbr && !pbrDrawGroup.count( m.mesh ? 1 : 0 ) )
 			{
-				// A mesh reads no lightmap: the neutral page.
-				const std::vector<std::string> inputs = m.mesh
-				                                            ? std::vector<std::string>{ "", "", "" }
-				                                            : std::vector<std::string>{ kLightmapPage,
-				                                                  kLightmapGradient,
-				                                                  indirectPage ? kLightmapIndirect : "" };
+				// A mesh draw has no lightmap texture inputs.
+				const std::vector<std::string> inputs =
+				    m.mesh ? std::vector<std::string>{}
+				           : std::vector<std::string>{ kLightmapPage, kLightmapGradient,
+				                 indirectPage ? kLightmapIndirect : "" };
 				auto request = resolver.Value()->DrawGroup( m.program, inputs );
 				if ( !request )
 					return Fail( "no pbr draw group" );

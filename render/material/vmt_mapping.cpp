@@ -47,6 +47,8 @@ constexpr VmtShaderRow kShaders[] = {
     { "water_dx9_hdr", "water",
         "Water's fallback on an HDR DirectX 9 profile (DEFINE_FALLBACK_SHADER), the same shader" },
     { "water_dx90", "water", "Water's DirectX 9 shader, which Water_DX9_HDR inherits" },
+    { "refract", "refract", "Refract's scene-color transmission on model surfaces" },
+    { "refract_dx90", "refract", "Refract's DirectX 9 implementation" },
     { "subrect", kLegacyFamily,
         "not a shader: a sub-rectangle ($pos, $size) of another material ($material) that "
         "the material system resolves (CMaterialSubRect) and draws as that material" },
@@ -227,6 +229,23 @@ constexpr VmtKeyRow kWaterKeys[] = {
     { "water", "$nofog", "nofog", ValueKind::kBool, "0" },
 };
 
+// Refract is a separate family: its tint, screen displacement and optional
+// cube reflection do not have PBRMetalRough's material semantics.
+constexpr VmtKeyRow kRefractKeys[] = {
+    { "refract", "$model", "model", ValueKind::kBool, "0" },
+    { "refract", "$translucent", "translucent", ValueKind::kBool, "0" },
+    { "refract", "$basetexture", "basetexture", ValueKind::kTexture, "" },
+    { "refract", "$normalmap", "normalmap", ValueKind::kTexture, "" },
+    { "refract", "$refractamount", "refractamount", ValueKind::kFloat, "2" },
+    { "refract", "$refracttint", "refracttint", ValueKind::kFloat3, "[1 1 1]" },
+    { "refract", "$bluramount", "bluramount", ValueKind::kFloat, "0" },
+    { "refract", "$fadeoutonsilhouette", "fadeoutonsilhouette", ValueKind::kBool, "0" },
+    { "refract", "$envmap", "envmap", ValueKind::kTexture, "" },
+    { "refract", "$envmaptint", "envmaptint", ValueKind::kFloat3, "[1 1 1]" },
+    { "refract", "$envmapcontrast", "envmapcontrast", ValueKind::kFloat, "0" },
+    { "refract", "$envmapsaturation", "envmapsaturation", ValueKind::kFloat3, "[1 1 1]" },
+};
+
 constexpr VmtMetadataRow kMetadata[] = {
     { "$surfaceprop", "physics surface properties (the physics and sound systems)" },
     { "$surfaceprop2", "physics surface properties of a blend's second layer" },
@@ -238,6 +257,17 @@ constexpr VmtMetadataRow kMetadata[] = {
     { "$phongdisablehalflambert", "not declared by VertexLitGeneric; no shipped shader reads it" },
     { "$bumpscale", "not declared by VertexLitGeneric; its normal map uses authored texels",
         "vertexlit" },
+    { "$envampsaturation", "misspelled; VertexLitGeneric declares $envmapsaturation", "vertexlit" },
+    { "$dudvmap", "Refract_DX90 samples $normalmap, not $dudvmap", "refract" },
+    { "$scale", "Refract_DX90 has no $scale shader parameter", "refract" },
+    { "$localrefract", "Refract_DX90 has no $localrefract shader parameter", "refract" },
+    { "$localrefractdepth", "Refract_DX90 has no $localrefractdepth shader parameter", "refract" },
+    { "$normalmapalphaenvmapmask", "Refract_DX90 always uses normal alpha for reflection",
+        "refract" },
+    { "$envmaplightscale", "Refract_DX90 has no $envmaplightscale shader parameter", "refract" },
+    { "$ignore_alpha_modulation",
+        "Refract is already translucent; this material-system flag only affects classification",
+        "refract" },
     { "$glowcolor", "VertexLitGeneric does not declare this UnlitGeneric control", "vertexlit" },
     { "$vertexfog", "no shipped stdshader declares this VMT key; view fog is frame state" },
     { "$modelmaterial", "the material a model draws when the world material is used on a model" },
@@ -299,6 +329,8 @@ std::vector<VmtKeyRow> BuildKeyRows()
 		}
 	}
 	for ( const VmtKeyRow &row : kWaterKeys )
+		rows.push_back( row );
+	for ( const VmtKeyRow &row : kRefractKeys )
 		rows.push_back( row );
 	for ( const pbr::MaterialParameterSpec &spec : pbr::kMaterialParameters )
 	{

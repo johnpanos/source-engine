@@ -43,6 +43,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import cycles_device  # noqa: E402
 import pbrt_blender  # noqa: E402
 import map_scene  # noqa: E402
+import map_export_audit  # noqa: E402
 import reflection_probe  # noqa: E402
 import reflection_probe_set  # noqa: E402
 
@@ -141,6 +142,10 @@ def main():
                         help="a seeded capture (USD stage units); repeatable")
     parser.add_argument("--placement", default="{}",
                         help="JSON overrides of reflection_probe_set.PLACEMENT_DEFAULTS")
+    parser.add_argument("--coverage-rules", default="{}",
+                        help="export profile audit rules, checked before rendering faces")
+    parser.add_argument("--record-coverage-failure", action="store_true",
+                        help="record failed placement checks and continue for inspection")
     parser.add_argument("--bounds", type=float, nargs=6,
                         help="placement bounds, min xyz then max xyz (default: the meshes')")
     parser.add_argument("--light-paths", default="blender-default",
@@ -163,6 +168,20 @@ def main():
     pbrt_blender.rebind_materials(scene)
     pbrt_blender.restore_emitters(scene)
     pbrt_blender.apply_environment(scene, args.environment)
+    # A reference camera sees the visible mesh of an analytic light, but a
+    # glossy ray does not (pbrt_blender.add_lamp). A probe face is rendered by
+    # a camera: hide that mesh here or its radiance enters the prefiltered
+    # reflection in addition to the analytic light's direct specular term.
+    excluded_emitter_meshes = []
+    for index, shape in enumerate(scene["emitters"]):
+        if not pbrt_blender.lamp_kind(shape):
+            continue
+        name = pbrt_blender.emitter_name(index, shape)
+        mesh = bpy.data.objects.get(name)
+        if not mesh or mesh.type != "MESH":
+            raise ValueError("missing analytic emitter mesh: " + name)
+        mesh.hide_render = True
+        excluded_emitter_meshes.append(name)
     # Dynamic models' Cycles stand-ins can move: like the lightmap bake, the
     # probes neither reflect them nor place captures around them.
     props = map_scene.nonstatic_shape_names(scene)
@@ -197,6 +216,18 @@ def main():
     seeds = [np.asarray(position, dtype=np.float64) for position in args.position]
     probes, report = reflection_probe_set.place(caster, bounds_min, bounds_max, glossy, params,
                                                 seeds=seeds)
+
+    checks = map_export_audit.probe_placement_checks(dict(params, **report),
+                                                      json.loads(args.coverage_rules))
+    failed = [check["check"] for check in checks if check["status"] == "fail"]
+    args.out_dir.mkdir(parents=True, exist_ok=True)
+    coverage = {"schema": "reflection-probe-placement-checks/v1",
+                "status": "fail" if failed else "pass", "checks": checks, "failed": failed}
+    (args.out_dir / "placement-checks.json").write_text(json.dumps(coverage, indent=2) + "\n")
+    print("PROBE_PLACEMENT_CHECKS " + json.dumps(coverage), flush=True)
+    if failed and not args.record_coverage_failure:
+        raise ValueError("reflection probe placement failed before face rendering: " +
+                         ", ".join(failed))
 
     device = pbrt_blender.configure_cycles(args.samples, args.device)
     light_paths = pbrt_blender.configure_light_paths(args.light_paths)
@@ -275,6 +306,7 @@ def main():
                                  seeds=[[float(v) for v in s] for s in seeds],
                                  glossy_shapes=glossy_names,
                                  excluded_dynamic_models=sorted(props), **report),
+               "excluded_analytic_emitter_meshes": excluded_emitter_meshes,
                "probes": records, "blender": bpy.app.version_string}
     (args.out_dir / "probes.json").write_text(json.dumps(receipt, indent=2, sort_keys=True) +
                                               "\n")

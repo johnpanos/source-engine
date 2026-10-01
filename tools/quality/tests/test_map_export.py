@@ -305,6 +305,20 @@ class AuditTest(unittest.TestCase):
                       "reflection-probe-glossy", "reflection-probe-budget"):
             self.assertIn(check, result["failed"])
 
+    def test_pre_capture_checks_match_final_audit(self):
+        placement = {"probes": 16, "max_probes": 16, "walkable_samples": 1773,
+                     "uncovered_walkable": 744, "glossy_samples": 14723,
+                     "glossy_servable": 2931, "unserved_glossy": 2442,
+                     "room_stop": "max_probes", "glossy_stop": "max_probes"}
+        before = map_export_audit.probe_placement_checks(placement, self.PROFILE["audit"])
+        result = self.audit(**{"lighting/reflection_probes.rprb.json": {
+            "status": "pass", "probes": 16, "placement": placement}})
+        names = {check["check"] for check in before}
+        after = [check for check in result["checks"] if check["check"] in names]
+        self.assertEqual(before, after)
+        self.assertEqual(len(before), 3)
+        self.assertTrue(all(check["status"] == "fail" for check in before))
+
     def test_failed_runtime_gate_fails(self):
         result = self.audit(**{"camera-boot/gate.json": {"status": "fail"}})
         self.assertIn("runtime-gate", result["failed"])

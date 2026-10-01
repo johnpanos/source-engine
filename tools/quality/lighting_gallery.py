@@ -13,10 +13,11 @@ per view:
 
 - render_lab and Cycles with the same exposure (the reference's log-average
   luminance, then one tone curve), so brightness differences are real;
-- the error map: per pixel |lab - Cycles| (largest channel) over the
-  reference's mean luminance, the K11 metric, colored from 0 to twice the
-  fixture's p99 tolerance, with pixels the metric skips (background, visible
-  emitters) in grey;
+- the receiver error map: per pixel |lab - Cycles| (largest channel) over the
+  reference's mean receiver luminance, the K11 metric, colored from 0 to twice
+  the fixture's p99 tolerance, with skipped pixels in grey;
+- a visible-emitter error map and diagnostic, separately scaled by the
+  reference emitter luminance, with a black-emitter negative control;
 - mean and p99 against the tolerance, and pass or fail.
 
 The page embeds every image, so it can be opened directly or published. A
@@ -108,7 +109,7 @@ DIRECT_ARGS = ["--core-direct", "--debug-brdf", "1", "--debug-term",
 
 
 def render_camera(lab, fixture, camera_name, out, scale=None, state=None, resolution=1,
-                  core_direct=False, direct=False):
+                  core_direct=False, direct=False, terms_off=None):
     """render_lab's frame of a camera from the state's map (lf.map_for: a
     state that owns a map, such as a medium state baked with its medium,
     renders from it). With `core_direct` the lab draws the indirect layer and
@@ -141,6 +142,8 @@ def render_camera(lab, fixture, camera_name, out, scale=None, state=None, resolu
         command += DIRECT_ARGS
     elif core_direct:
         command.append("--core-direct")
+    if terms_off:
+        command += ["--debug-term", terms_off]
     result = subprocess.run(command, env=lab_environment(lab), capture_output=True, text=True,
                             timeout=600)
     message = (result.stdout + result.stderr).strip().splitlines()
@@ -208,7 +211,7 @@ def downsampled(lab_image, factor):
 
 
 def view_images(fixture, state, camera, lab_image, resolution=1, kind="total"):
-    """(lab, reference, error) as display pixels, and the comparison result
+    """(lab, reference, receiver error, emitter error) as display pixels, and the result
     against the view's `kind` reference (total, or direct). With a
     resolution factor the lab frame shows at its own size and the reference
     and error map at theirs, enlarged to it (nearest)."""
@@ -227,9 +230,13 @@ def view_images(fixture, state, camera, lab_image, resolution=1, kind="total"):
     test = np.asarray(lf.read_image(lab_image), np.float64)[..., :3]
     key = log_average(reference)
     mask = lf.judged_mask(index_image, view["emitter_indices"])
+    emitters = lf.emitter_mask(index_image, view["emitter_indices"])
+    result["emitters"] = lf.emitter_error_stats(test, reference, index_image,
+                                                view["emitter_indices"])
     limit = 2.0 * result["tolerance"]["p99"]
     images = [tone_map(test, key), tone_map(reference, key),
-              error_map(test, reference, mask, limit)]
+              error_map(test, reference, mask, limit),
+              error_map(test, reference, emitters, 2.0)]
     if resolution > 1:
         full = np.asarray(lf.read_image(full_image), np.float64)[..., :3]
         images = [tone_map(full, key)] + [
@@ -249,8 +256,8 @@ def lab_revision(lab):
 
 PAGE_STYLE = """
 <style>
-/* Layout: a summary strip, then one row per view: three images side by side
-   (lab, Cycles, error), stacking to one column on phones. */
+/* Layout: a summary strip, then one row per view: four images side by side
+   (lab, Cycles, receiver error, emitter error), stacking on phones. */
 :root {
   --bg: #f4f5f7; --panel: #ffffff; --fg: #1c2028; --muted: #5b6372;
   --line: #d9dde4; --pass: #1f7a4d; --fail: #b3261e; --warn: #8a5a00;
@@ -282,7 +289,7 @@ h2 { font-size: 1.05rem; margin: 0 }
 .view header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 14px }
 .numbers { font-family: var(--font-data); font-size: 0.8rem; color: var(--muted);
   font-variant-numeric: tabular-nums }
-.images { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px }
+.images { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px }
 figure { margin: 0; display: grid; gap: 4px; min-width: 0 }
 figure img { width: 100%; height: auto; display: block; border-radius: 3px }
 figcaption { font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase;
@@ -311,10 +318,12 @@ def page(entries, lab, revision, generated):
                 if failed_render else "",
                 '<span class="pill warn">preview references</span>' if preview else ""),
              '<p class="note">Each row: render_lab, the Cycles reference at the same exposure, '
-             'and the error map of the K11 metric (|lab - Cycles| over the reference\'s mean '
-             'luminance; red at twice the fixture\'s p99 tolerance; grey where the metric skips '
-             'background and visible emitters). Preview references are noisy and certify '
-             'nothing.</p>', "</section>"]
+             'the receiver error map (red at twice the fixture\'s p99 tolerance), and a '
+             'separate visible-emitter error map (red at twice the reference emitter\'s mean '
+             'luminance). Grey pixels are outside each mask. Emitter values are diagnostic '
+             'until their own tolerances are fixed; black control is the error if the emitter '
+             'renders black. '
+             'Preview references certify nothing.</p>', "</section>"]
     for e in entries:
         title = "%s / %s / %s" % (e["fixture"], e["state"], e["camera"])
         parts.append('<article class="view"><header><h2>%s</h2>' % html.escape(title))
@@ -329,8 +338,15 @@ def page(entries, lab, revision, generated):
                         r["mean"], r["tolerance"]["mean"], r["p99"], r["tolerance"]["p99"],
                         (" &middot; model %s" % html.escape(e["model"])) if e.get("model")
                         else ""))
+        if r.get("emitters"):
+            emitter = r["emitters"]
+            parts.append('<span class="numbers">emitter pixels %d &middot; mean %.3f '
+                         '&middot; p99 %.3f &middot; black control %.3f</span>'
+                         % (emitter["pixels"], emitter["mean"], emitter["p99"],
+                            emitter["black_control_mean"]))
         parts.append('<div class="images">')
-        for caption, uri in zip(("render_lab", "Cycles (%s)" % e["status"], "error"),
+        for caption, uri in zip(("render_lab", "Cycles (%s)" % e["status"],
+                                 "receiver error", "emitter error"),
                                 e["images"]):
             parts.append('<figure><img alt="%s, %s" src="%s"><figcaption>%s</figcaption>'
                          '</figure>' % (html.escape(title), caption, uri, html.escape(caption)))
@@ -344,7 +360,7 @@ def cmd_gallery(args):
     stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     out = Path(args.out or (lf.ROOT / "quality-results" / "lighting-gallery" / stamp))
     (out / "lab").mkdir(parents=True, exist_ok=True)
-    names = args.fixture or sorted(p.parent.name for p in lf.FIXTURES.glob("*/fixture.json"))
+    names = lf.cycles_oracle_names(args.fixture)
     entries = []
     for name in names:
         fixture = lf.load_fixture(name)

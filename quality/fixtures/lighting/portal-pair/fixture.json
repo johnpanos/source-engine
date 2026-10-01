@@ -53,6 +53,7 @@
       ]
     }
   },
+  "cycles_receiver_oracle": false,
   "dynamic_models": [
     {
       "name": "ProbeSphere",

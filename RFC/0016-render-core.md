@@ -1767,8 +1767,11 @@ does.
 
 ### K11: Lighting model proven in `render_lab`
 
-Every check runs in `render_lab` against its fixtures'
-Cycles references, with no engine in the process. K11 needs only K1, K2
+Lighting checks run in `render_lab` against their Cycles-eligible fixtures'
+references, with no engine in the process. The Portal-pair joined-copy Blender
+scene is a transport diagnostic, not a runtime portal-view oracle (user
+decision, 2026-10-01); portal view transport needs a separate matched
+game/lab image check. K11 needs only K1, K2
 and K4 (all done) plus the K7 passes it drives, so it starts now and runs
 ahead of the product rows.
 
@@ -1776,7 +1779,7 @@ ahead of the product rows.
 | --- | --- | --- |
 | Lab composes the core alone | `render.lab.composition` (proposed); link map | `render_lab` links no engine, material system, legacy frontend or SDL; it renders a BSP2 fixture and a studio model through the Vulkan adapter with sync validation silent |
 | Model assembly | `render.lighting.terms` (proposed) | one surface program evaluates every term of the model's table; each term's neutral value is bitwise the term absent (a seeded mutant per term detected); each term matches its C++ oracle on its synthetic cases |
-| Ground truth | `render.lab.cycles` (proposed) over the lighting set and the RFC 0011 gallery; the references are denoised Cycles (OpenImageDenoise with albedo and normal guides, 256 samples or more, status `denoised`; user goal 2026-09-29), cross-checked against unbiased renders | each fixture within its recorded per-fixture tolerance of Cycles (mean and 99th-percentile error in linear light, tolerances fixed before the run); every relational oracle of the gallery holds; each term's negative control (the term removed or seeded wrong) fails its fixture |
+| Ground truth | `render.lab.cycles` (proposed) over the Cycles-eligible lighting set and the RFC 0011 gallery; the references are denoised Cycles (OpenImageDenoise with albedo and normal guides, 256 samples or more, status `denoised`; user goal 2026-09-29), cross-checked against unbiased renders | each eligible fixture within its recorded per-fixture tolerance of Cycles (mean and 99th-percentile error in linear light, tolerances fixed before the run); every relational oracle of the gallery holds; each judged term's negative control (the term removed or seeded wrong) fails its fixture |
 | Area, clustered and shadowed light together | the area-lit room, the spot-lit hall and the colonnade | 64 area lights and 256 clustered lights in one view within tolerance of Cycles; shadow edges of every light class in the right place (judged pixels as in `render.shadows.pixels`) |
 | Ambient occlusion | `render.lab.gtao` (proposed) | a flat open plane gives AO one bitwise; crease and corner cases within tolerance of a ray-traced visibility reference; a direct-light-only scene is unchanged bitwise (AO touches indirect only); a fully baked static fixture is not darker than Cycles beyond its tolerance, and the double-occlusion control (AO over the bake with no rule) fails |
 | Screen-space reflections | `render.lab.ssr` (proposed) on the mirror corridor | on-screen hits within tolerance of Cycles; off-screen and occluded rays fall back to the probes with no seam larger than the R50 walk gate's step; surfaces rougher than the cutoff are unchanged bitwise; seeded defects detected (thickness ignored, no edge fade, the wrong mip) |
@@ -1787,7 +1790,7 @@ ahead of the product rows.
 | Visible emitters drawn | `render.lab.emitters` (proposed) over the fixtures' emissive light meshes | each fixture light's emissive mesh is in the map and drawn with its authored radiance, per emitter pixel within the fixture tolerance of Cycles; the gallery judges emitter pixels separately (today its metric skips them), so a missing or dark emitter fails; a fixture light without a mesh fails the fixture check |
 | Antialiased edges | `render.lab.edges` (proposed), with RFC 0012's multisampled targets on the core | geometric silhouettes in the lab match the denoised Cycles edge profile within tolerance (an edge metric: error on pixels within 2 px of a depth or normal discontinuity, judged separately from the interior); a one-sample frame fails it. The gallery shows the edge error |
 | Small-light fog halos | `render.lab.volumetric` and the foggy-hall gallery | a bulb's in-scattered halo matches its numerical integral per pixel within tolerance at sub-froxel radii (the analytic per-light term); the froxel-only frame fails the check |
-| Gallery for review | `python3 tools/quality/lighting_fixtures.py gallery` (installed 2026-09-29): renders every fixture view in `render_lab`, scores it with the K11 metric, and writes one self-contained page (`quality-results/lighting-gallery/<time>/index.html`) with render_lab and Cycles at the same exposure and the error map; the page is published for the user after every slice that changes the lab's pixels | each term's views are in the page, beside their Cycles references, with the term's negative control; the user's review is recorded in the progress entry. The user judges "looks right", which the tolerances cannot |
+| Gallery for review | `python3 tools/quality/lighting_fixtures.py gallery` (installed 2026-09-29): renders every Cycles-eligible fixture view in `render_lab`, scores it with the K11 metric, and writes one self-contained page (`quality-results/lighting-gallery/<time>/index.html`) with render_lab and Cycles at the same exposure and the error map; the page is published for the user after every slice that changes the lab's pixels | each Cycles-judged term's views are in the page, beside their references, with the term's negative control; portal transport uses its separate matched-view check; the user's review is recorded in the progress entry. The user judges "looks right", which the tolerances cannot |
 | Lab budgets (perf) | `render_lab --time` (proposed), `render-v1.json` lighting rows | set before measuring: all terms at once at most 8 ms GPU at 1080p on the desktop runner for the heaviest fixture; per term: GTAO 0.5 ms, SSR 1.0 ms, volumetric 1.0 ms, LTC 0.3 ms; Fold7 rows recorded; a miss is an optimization item, and no term is turned off for it |
 
 ### K12: Lighting model integrated in the product

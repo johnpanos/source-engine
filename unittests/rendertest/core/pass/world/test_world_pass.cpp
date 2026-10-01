@@ -33,6 +33,8 @@
 //			   target format, between two slots of one submission leaves the
 //			   first slot's objects alive, and they are released at a later
 //			   frame's slot.
+//			W13 Sparse probe-atlas updates reach a staged world; malformed
+//			    rectangles fail the view by name.
 //
 //=============================================================================//
 
@@ -41,6 +43,8 @@
 #include "render/pass/world/world_pass.h"
 #include "testing/checks.h"
 
+#include <cstddef>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -465,6 +469,46 @@ int main()
 		    pass.Failures() == failures + 1 &&
 		        pass.Stats().lastFailure.find( "frame that recorded" ) != std::string::npos,
 		    "W10.a-lost-slot-of-a-recorded-frame-fails" );
+	}
+
+	// W13: sparse GI publication updates the probe atlas the mesh program
+	// samples. A rectangle outside the volume fails the view by name.
+	{
+		WorldData world = TestWorld();
+		WorldStage stage;
+		stage.lightmap.width = stage.lightmap.height = 4;
+		stage.lightmap.flat.resize( 4 * 4 * 8 );
+		StageProbeVolume probes;
+		probes.atlasWidth = probes.atlasHeight = 4;
+		probes.atlas.resize( 4 * 4 * 8 );
+		probes.tableTexels = 6;
+		probes.rows = 1;
+		probes.table.resize( 6 * 4 );
+		stage.probes = std::move( probes );
+		world.stage = std::make_shared<const WorldStage>( std::move( stage ) );
+		WorldPass staged;
+		staged.SetWorld( std::move( world ) );
+		StageProbeVolume update;
+		update.tableTexels = 6;
+		update.rows = 1;
+		update.table.resize( 6 * 4 );
+		target.frame = 16;
+		const std::uint32_t initial = staged.QueueView( View( { 0 } ) );
+		const bool ready = RecordSlot( device, staged, initial, target ) && staged.Failures() == 0;
+		staged.SetStageProbeRegions( { { 1, 1, 1, 1 } }, std::vector<std::byte>( 8 ), {}, update );
+		target.frame = 17;
+		const std::uint32_t changed = staged.QueueView( View( { 0 } ) );
+		checks.That(
+		    ready && RecordSlot( device, staged, changed, target ) && staged.Failures() == 0,
+		    "W13.sparse-probe-atlas-update-records-with-the-world" );
+		staged.SetStageProbeRegions( { { 4, 1, 1, 1 } }, std::vector<std::byte>( 8 ), {}, update );
+		target.frame = 18;
+		const std::uint32_t malformed = staged.QueueView( View( { 0 } ) );
+		(void)RecordSlot( device, staged, malformed, target );
+		checks.That( staged.Failures() == 1 && staged.Stats().lastFailure.find(
+		                                           "probe atlas update" ) != std::string::npos,
+		    "W13.out-of-volume-probe-patch-fails-by-name" );
+		staged.ReleaseDevice( device );
 	}
 
 	pass.ReleaseDevice( device );

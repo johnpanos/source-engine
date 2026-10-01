@@ -36,6 +36,7 @@
       ]
     }
   },
+  "cycles_receiver_oracle": true,
   "dynamic_models": [],
   "external_stage": {
     "path": "quality-results/relight/testchmb_a_00_relit-preview/legacy-scene/scene.usda",

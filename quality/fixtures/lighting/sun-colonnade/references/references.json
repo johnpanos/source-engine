@@ -8,10 +8,11 @@
     "default": {
       "blender": "5.2.2 LTS",
       "composed_stage_sha256": "b32a167909d7d6a1a3bece9874ae6d8ca0374a5ef79d765d8abaf458c7696536",
-      "cycles_device": "OPTIX: NVIDIA GeForce RTX 4090",
+      "cycles_device": "HIP: AMD Radeon 8060S Graphics",
       "denoising": false,
       "extras_applied": {
         "medium": null,
+        "normal_mapped_materials": [],
         "projectors": []
       },
       "light_paths": {
@@ -23,10 +24,10 @@
         "sample_clamp_indirect": 0.0,
         "transmission_bounces": 16
       },
-      "lighting_renderer_sha256": "9927c57ae004d8873c1445d10dd039928f694d6568bd2e27aa82a87a3caa6d2a",
-      "normal_maps": false,
+      "lighting_renderer_sha256": "e980af2157ed69d7c2cf8aed3c3a5c06bbd9e31493e3c5501a861326a737301a",
+      "normal_maps": true,
       "ocio_configuration_sha256": "7812ed39935cb1f7ab5392293c914c0c0f595720af22fc1b289bf19cc0af7ef6",
-      "renderer_sha256": "be4345ca1b53205f3ca822e8ae1bf541f67b83ca19324555cfccf91f6a3496f9",
+      "renderer_sha256": "cfeb9a9d876d09cd84c0b5809dbc7c10c1266e71d8229579954b7149c3c11f04",
       "samples": 2048,
       "seed": 20260929,
       "stage_layers": {
@@ -43,19 +44,23 @@
       "camera": "along",
       "emitter_indices": [],
       "files": {
+        "direct": {
+          "file": "default.along.direct.exr",
+          "sha256": "41880c5eed05770fa618a8621c4661ba37f8b3c6dbc85c78451f3993169d1742"
+        },
         "index": {
           "file": "default.along.index.png",
           "sha256": "6aea868deb6b97b81c78deae851ead14211ab42def957dd85967b0b0fa22cfa2"
         },
         "total": {
           "file": "default.along.total.exr",
-          "sha256": "ad80816122737b540f0861124cc1b3fb6f45a072a89edca2b389d32d9db7c295"
+          "sha256": "1c5e861742d7949b031b81ece1c81ac83e2377de1b5fd16b558227f14343e14e"
         }
       },
       "finite": true,
       "index_from_state": "default",
       "judged_pixels": 163392,
-      "mean_luminance": 0.34108034573568596,
+      "mean_luminance": 0.34108021262205646,
       "object_index": {
         "BackWall_Xn": 1,
         "BackWall_Xp": 2,
@@ -78,19 +83,23 @@
       "camera": "yard",
       "emitter_indices": [],
       "files": {
+        "direct": {
+          "file": "default.yard.direct.exr",
+          "sha256": "3a6ecda2a456606084a7728639b2ca28ede9f086b7aeff6cf4e746d1eaa8888a"
+        },
         "index": {
           "file": "default.yard.index.png",
           "sha256": "ef4eb6c1814c0d2b2a2206dc74d655c2cada717b810812f97c23aef85cd30749"
         },
         "total": {
           "file": "default.yard.total.exr",
-          "sha256": "94b6411a4937e8ddc3af906963621e0ace637db1da1ccd87799e3bbfbe754018"
+          "sha256": "3c8b878da4081675798d4ae1635f368ad533f71fc803de40199a0d00ad686a10"
         }
       },
       "finite": true,
       "index_from_state": "default",
       "judged_pixels": 100794,
-      "mean_luminance": 0.41738978188487924,
+      "mean_luminance": 0.4173896747928789,
       "object_index": {
         "BackWall_Xn": 1,
         "BackWall_Xp": 2,

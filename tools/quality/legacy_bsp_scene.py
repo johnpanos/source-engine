@@ -457,8 +457,17 @@ def elevator_video_override(resolver, map_name):
     if not data:
         return {}, None
     script = data.decode("utf-8", "replace")
-    row = re.search(r'\{\s*map\s*=\s*"' + re.escape(map_name) +
-                    r'"\s*,(?P<values>[^}]+)\}', script)
+    names = [map_name]
+    for suffix in ("_relit", "_source2"):
+        if map_name.endswith(suffix) and len(map_name) > len(suffix):
+            names.append(map_name[:-len(suffix)])
+            break
+    row = None
+    for name in names:
+        row = re.search(r'\{\s*map\s*=\s*"' + re.escape(name) +
+                        r'"\s*,(?P<values>[^}]+)\}', script)
+        if row:
+            break
     if not row:
         return {}, source
     values = row.group("values")

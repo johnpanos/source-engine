@@ -99,7 +99,9 @@ struct SurfaceConstants
 	// light is dark. x: the min of $envmaplightscaleminmax, y: min + max (as
 	// the Portal 2 helper packs them), z: $envmaplightscale (0 off).
 	float envLightScale[4] = { 0.0f, 1.0f, 0.0f, 0.0f };
-	float emission[4] = { 1.0f, 0.0f, 0.0f, 0.0f }; // x: $emissionscale (the pbr point)
+	// x: scale, y: one-sided emission, z: camera-only analytic emitter mesh
+	// (the analytic light supplies its glossy rays; SSR cannot sample its pixel).
+	float emission[4] = { 1.0f, 0.0f, 0.0f, 0.0f };
 	// The water point (kSurfaceWater, water_family.h): water_ps2x's
 	// constants. Flow: 1 / $flow_worlduvscale, 1 / $flow_normaluvscale,
 	// $flow_bumpstrength, $color_flow_displacebynormalstrength.
@@ -139,8 +141,11 @@ struct SurfaceConstants
 	// transmitted fraction, y the index of refraction. The scene input is
 	// linear light before output scale, fog and encoding.
 	float transmission[4] = { 0.0f, 1.5f, 0.0f, 0.0f };
+	// Visible one-sided emitter shape: inner/outer cosine, falloff exponent,
+	// and 1 when the authored cone is present. Neutral for other PBR surfaces.
+	float emissionCone[4] = { 1.0f, 1.0f, 1.0f, 0.0f };
 };
-static_assert( sizeof( SurfaceConstants ) == 384 );
+static_assert( sizeof( SurfaceConstants ) == 400 );
 
 // An area light as the frame block holds it (render.area-light.v1: the
 // rectangle, its radiance and its reach).

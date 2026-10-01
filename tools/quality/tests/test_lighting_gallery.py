@@ -9,6 +9,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import lighting_gallery as lg  # noqa: E402
+import lighting_fixtures as lf  # noqa: E402
 
 
 class DisplayMath(unittest.TestCase):
@@ -31,12 +32,21 @@ class DisplayMath(unittest.TestCase):
 
 
 class Page(unittest.TestCase):
+    def test_portal_transport_is_not_a_cycles_receiver_oracle(self):
+        names = lf.cycles_oracle_names()
+        self.assertIn("material-sweep", names)
+        self.assertNotIn("portal-pair", names)
+        with self.assertRaisesRegex(ValueError, "not Cycles receiver oracles: portal-pair"):
+            lf.cycles_oracle_names(["portal-pair"])
+
     def test_page_counts_and_marks_every_view(self):
         uri = lg.jpeg_uri(np.zeros((2, 2, 3), np.uint8))
         result = {"pass": False, "mean": 0.3, "p99": 2.0,
-                  "tolerance": {"mean": 0.06, "p99": 0.6}}
+                  "tolerance": {"mean": 0.06, "p99": 0.6},
+                  "emitters": {"pixels": 4, "mean": 1.2, "p99": 1.4,
+                               "black_control_mean": 1.3}}
         entries = [{"fixture": "a", "state": "default", "camera": "c", "result": result,
-                    "status": "preview", "images": [uri, uri, uri]},
+                    "status": "preview", "images": [uri, uri, uri, uri]},
                    {"fixture": "b", "state": "default", "camera": "c",
                     "error": "render_lab: model x does not load"}]
         text = lg.page(entries, Path("/x/render_lab"), "abc123 test", "now")
@@ -46,7 +56,8 @@ class Page(unittest.TestCase):
         self.assertIn("1 not rendered", text)
         self.assertIn("preview references", text)
         self.assertIn("model x does not load", text)
-        self.assertEqual(text.count("<img "), 3)
+        self.assertIn("black control 1.300", text)
+        self.assertEqual(text.count("<img "), 4)
 
 
 if __name__ == "__main__":

@@ -8,10 +8,11 @@
     "closed": {
       "blender": "5.2.2 LTS",
       "composed_stage_sha256": "afddfa96bb522d6edd700d933612c216e3817750abf99556e404ee6700cb2905",
-      "cycles_device": "OPTIX: NVIDIA GeForce RTX 4090",
+      "cycles_device": "HIP: AMD Radeon 8060S Graphics",
       "denoising": false,
       "extras_applied": {
         "medium": null,
+        "normal_mapped_materials": [],
         "projectors": []
       },
       "light_paths": {
@@ -23,10 +24,10 @@
         "sample_clamp_indirect": 0.0,
         "transmission_bounces": 16
       },
-      "lighting_renderer_sha256": "9927c57ae004d8873c1445d10dd039928f694d6568bd2e27aa82a87a3caa6d2a",
-      "normal_maps": false,
+      "lighting_renderer_sha256": "e980af2157ed69d7c2cf8aed3c3a5c06bbd9e31493e3c5501a861326a737301a",
+      "normal_maps": true,
       "ocio_configuration_sha256": "7812ed39935cb1f7ab5392293c914c0c0f595720af22fc1b289bf19cc0af7ef6",
-      "renderer_sha256": "be4345ca1b53205f3ca822e8ae1bf541f67b83ca19324555cfccf91f6a3496f9",
+      "renderer_sha256": "cfeb9a9d876d09cd84c0b5809dbc7c10c1266e71d8229579954b7149c3c11f04",
       "samples": 2048,
       "seed": 20260929,
       "stage_layers": {
@@ -36,10 +37,11 @@
     "glow-only": {
       "blender": "5.2.2 LTS",
       "composed_stage_sha256": "6776470c244912b8ef043f21038a31c46f733426e2c21628c72e46a070f86fae",
-      "cycles_device": "OPTIX: NVIDIA GeForce RTX 4090",
+      "cycles_device": "HIP: AMD Radeon 8060S Graphics",
       "denoising": false,
       "extras_applied": {
         "medium": null,
+        "normal_mapped_materials": [],
         "projectors": []
       },
       "light_paths": {
@@ -51,10 +53,10 @@
         "sample_clamp_indirect": 0.0,
         "transmission_bounces": 16
       },
-      "lighting_renderer_sha256": "9927c57ae004d8873c1445d10dd039928f694d6568bd2e27aa82a87a3caa6d2a",
-      "normal_maps": false,
+      "lighting_renderer_sha256": "e980af2157ed69d7c2cf8aed3c3a5c06bbd9e31493e3c5501a861326a737301a",
+      "normal_maps": true,
       "ocio_configuration_sha256": "7812ed39935cb1f7ab5392293c914c0c0f595720af22fc1b289bf19cc0af7ef6",
-      "renderer_sha256": "be4345ca1b53205f3ca822e8ae1bf541f67b83ca19324555cfccf91f6a3496f9",
+      "renderer_sha256": "cfeb9a9d876d09cd84c0b5809dbc7c10c1266e71d8229579954b7149c3c11f04",
       "samples": 2048,
       "seed": 20260929,
       "stage_layers": {
@@ -65,10 +67,11 @@
     "open": {
       "blender": "5.2.2 LTS",
       "composed_stage_sha256": "2fe87e0ca617baef077edea23446c12ffc604c96ac7b758daeb1e0415dcef6f8",
-      "cycles_device": "OPTIX: NVIDIA GeForce RTX 4090",
+      "cycles_device": "HIP: AMD Radeon 8060S Graphics",
       "denoising": false,
       "extras_applied": {
         "medium": null,
+        "normal_mapped_materials": [],
         "projectors": []
       },
       "light_paths": {
@@ -80,10 +83,10 @@
         "sample_clamp_indirect": 0.0,
         "transmission_bounces": 16
       },
-      "lighting_renderer_sha256": "9927c57ae004d8873c1445d10dd039928f694d6568bd2e27aa82a87a3caa6d2a",
-      "normal_maps": false,
+      "lighting_renderer_sha256": "e980af2157ed69d7c2cf8aed3c3a5c06bbd9e31493e3c5501a861326a737301a",
+      "normal_maps": true,
       "ocio_configuration_sha256": "7812ed39935cb1f7ab5392293c914c0c0f595720af22fc1b289bf19cc0af7ef6",
-      "renderer_sha256": "be4345ca1b53205f3ca822e8ae1bf541f67b83ca19324555cfccf91f6a3496f9",
+      "renderer_sha256": "cfeb9a9d876d09cd84c0b5809dbc7c10c1266e71d8229579954b7149c3c11f04",
       "samples": 2048,
       "seed": 20260929,
       "stage_layers": {
@@ -94,10 +97,11 @@
     "open-glow": {
       "blender": "5.2.2 LTS",
       "composed_stage_sha256": "8006f3f3df213d034d0d0bbb93048e2dd435dcde2b7a32f9a83e29f6161f64b2",
-      "cycles_device": "OPTIX: NVIDIA GeForce RTX 4090",
+      "cycles_device": "HIP: AMD Radeon 8060S Graphics",
       "denoising": false,
       "extras_applied": {
         "medium": null,
+        "normal_mapped_materials": [],
         "projectors": []
       },
       "light_paths": {
@@ -109,10 +113,10 @@
         "sample_clamp_indirect": 0.0,
         "transmission_bounces": 16
       },
-      "lighting_renderer_sha256": "9927c57ae004d8873c1445d10dd039928f694d6568bd2e27aa82a87a3caa6d2a",
-      "normal_maps": false,
+      "lighting_renderer_sha256": "e980af2157ed69d7c2cf8aed3c3a5c06bbd9e31493e3c5501a861326a737301a",
+      "normal_maps": true,
       "ocio_configuration_sha256": "7812ed39935cb1f7ab5392293c914c0c0f595720af22fc1b289bf19cc0af7ef6",
-      "renderer_sha256": "be4345ca1b53205f3ca822e8ae1bf541f67b83ca19324555cfccf91f6a3496f9",
+      "renderer_sha256": "cfeb9a9d876d09cd84c0b5809dbc7c10c1266e71d8229579954b7149c3c11f04",
       "samples": 2048,
       "seed": 20260929,
       "stage_layers": {
@@ -136,19 +140,23 @@
         17
       ],
       "files": {
+        "direct": {
+          "file": "closed.a-portal.direct.exr",
+          "sha256": "7c1051e33f9f39892a8946eada2852313a794843e896c76d85bc986032aa3433"
+        },
         "index": {
           "file": "closed.a-portal.index.png",
           "sha256": "52ea14f09c609e857b7ab5928ce60302c02795a22fac1524c8e3838a29d36840"
         },
         "total": {
           "file": "closed.a-portal.total.exr",
-          "sha256": "fc3c6335e5ed3edcc0aed3c5cdfe6138ffe7a7a4b1f7aa311fbac66df6efc0bb"
+          "sha256": "ae958611c8f007b926a90adc6c17031383efe913f4c9e481e167089c83f9875e"
         }
       },
       "finite": true,
       "index_from_state": "closed",
       "judged_pixels": 180411,
-      "mean_luminance": 0.2986204825075341,
+      "mean_luminance": 0.29862038710949973,
       "object_index": {
         "A_Xn": 1,
         "A_Yn": 2,
@@ -186,19 +194,23 @@
         17
       ],
       "files": {
+        "direct": {
+          "file": "closed.b-floor.direct.exr",
+          "sha256": "1eeda57cbcc7773dee9fcea4d5d8c049bc3d07c7a29c9b06bc48317c30b28c88"
+        },
         "index": {
           "file": "closed.b-floor.index.png",
           "sha256": "3bcb7a7a4e85d7d8ba74c607db481bb9e2a4d32407c9923425830b11c600b389"
         },
         "total": {
           "file": "closed.b-floor.total.exr",
-          "sha256": "f24d2cb8c15faf8c1c924145b966a7fbd893a66ee0a4c1d9d363f90115cec22b"
+          "sha256": "12e692f470aade36bfa6c547e0238b7a0440a61b657ccd5a99f42bad469a9482"
         }
       },
       "finite": true,
       "index_from_state": "closed",
       "judged_pixels": 187832,
-      "mean_luminance": 0.006333887713953208,
+      "mean_luminance": 0.006333884649914733,
       "object_index": {
         "A_Xn": 1,
         "A_Yn": 2,
@@ -236,19 +248,23 @@
         17
       ],
       "files": {
+        "direct": {
+          "file": "closed.b-portal.direct.exr",
+          "sha256": "60b05c1486e18d97f58cff3b6f574dac3ef2db76e10bd0d6fa1c437213b97465"
+        },
         "index": {
           "file": "closed.b-portal.index.png",
           "sha256": "2c45233693d888845830fd08160febf9e472f97fc2eff6a7d6f2d981a61b5e60"
         },
         "total": {
           "file": "closed.b-portal.total.exr",
-          "sha256": "b842a79e7fd77364871bcd45010277e3c2a62f8bd810817397be78cbf6cb99f0"
+          "sha256": "a6321949b0ef0cdace5f224a941c1eb02df7484c0c796117f2974a9f6b629b35"
         }
       },
       "finite": true,
       "index_from_state": "closed",
       "judged_pixels": 184499,
-      "mean_luminance": 0.005897063689306766,
+      "mean_luminance": 0.005897058870475539,
       "object_index": {
         "A_Xn": 1,
         "A_Yn": 2,
@@ -291,19 +307,23 @@
         36
       ],
       "files": {
+        "direct": {
+          "file": "glow-only.a-portal.direct.exr",
+          "sha256": "4693367d41ed4797be560d01dba4773b52c4bc2a3ba9f2d92a7be6781c310ffa"
+        },
         "index": {
           "file": "glow-only.a-portal.index.png",
           "sha256": "df97c0c695231a3f1544ed393e86764fcc816658acb77c23cf7c225ca4057aa6"
         },
         "total": {
           "file": "glow-only.a-portal.total.exr",
-          "sha256": "1f8ac93a44feac381bce6945bb5a5aa4a148e4e339634c89a43b7aee00f3f444"
+          "sha256": "b23b66bcdc9f3f1d70c52667734113df25504fc711826051db4d2f9c00172b72"
         }
       },
       "finite": true,
       "index_from_state": "glow-only",
       "judged_pixels": 180411,
-      "mean_luminance": 0.050973931522567406,
+      "mean_luminance": 0.05097389694735632,
       "object_index": {
         "A_Xn": 1,
         "A_Yn": 2,
@@ -363,19 +383,23 @@
         36
       ],
       "files": {
+        "direct": {
+          "file": "glow-only.b-floor.direct.exr",
+          "sha256": "67904ba1d44088ddb52151ccd722ebd5be0be5651e0618b4a7689b73bbf86297"
+        },
         "index": {
           "file": "glow-only.b-floor.index.png",
           "sha256": "1cdd14f88f4a2f39833cd9215b2451e37dd4bfd0820cd9ca1e3c9ea473493648"
         },
         "total": {
           "file": "glow-only.b-floor.total.exr",
-          "sha256": "c9d8c825aec1c1159aad724f5a230c9cfa12a216de00fe53b00e3df0621e61ac"
+          "sha256": "d3ab44a9591651a719ee7affbdcd1019aa1ee06f0b9ca199dd954053bf7e670d"
         }
       },
       "finite": true,
       "index_from_state": "glow-only",
       "judged_pixels": 187832,
-      "mean_luminance": 0.07262191949241364,
+      "mean_luminance": 0.07262187255471088,
       "object_index": {
         "A_Xn": 1,
         "A_Yn": 2,
@@ -435,19 +459,23 @@
         36
       ],
       "files": {
+        "direct": {
+          "file": "glow-only.b-portal.direct.exr",
+          "sha256": "a5defd7563c3956f4820e1524c0fa7da5f29623a31cd99f95442a09a8c57aed7"
+        },
         "index": {
           "file": "glow-only.b-portal.index.png",
           "sha256": "6f4e042ddfe7da125a8e46202fa0af8617c443618371d95d5aa47397986f1da8"
         },
         "total": {
           "file": "glow-only.b-portal.total.exr",
-          "sha256": "e818f93b265df5a929788d50fc86b8d6c09457d6f0125c928f5c640eb2e2d95f"
+          "sha256": "10e040ef0f3e0bcea738c4a73c81498b745d23f377e3ac2fd8b0aab8fac4ffe3"
         }
       },
       "finite": true,
       "index_from_state": "glow-only",
       "judged_pixels": 184499,
-      "mean_luminance": 0.062290763317689415,
+      "mean_luminance": 0.06229072926190345,
       "object_index": {
         "A_Xn": 1,
         "A_Yn": 2,
@@ -507,19 +535,23 @@
         36
       ],
       "files": {
+        "direct": {
+          "file": "open-glow.a-portal.direct.exr",
+          "sha256": "6f682920f674312be0acc71e34e64e06b4891652d9ac071181647fe9e466dd8f"
+        },
         "index": {
           "file": "open-glow.a-portal.index.png",
           "sha256": "df97c0c695231a3f1544ed393e86764fcc816658acb77c23cf7c225ca4057aa6"
         },
         "total": {
           "file": "open-glow.a-portal.total.exr",
-          "sha256": "b603fd7bca0d3962825cd3bab079a0191fe0d7cc3fb39a70acf431dffc5e2bb5"
+          "sha256": "2261ce0fe444f99f90ceccd39cfbd49ce1e1a093cc27b0e58aa5a886f8066ebc"
         }
       },
       "finite": true,
       "index_from_state": "open-glow",
       "judged_pixels": 180411,
-      "mean_luminance": 0.29424759316325416,
+      "mean_luminance": 0.2942469660917758,
       "object_index": {
         "A_Xn": 1,
         "A_Yn": 2,
@@ -579,19 +611,23 @@
         36
       ],
       "files": {
+        "direct": {
+          "file": "open-glow.b-floor.direct.exr",
+          "sha256": "d89fa14561598945390b7cbe751f5562a6187bddba3a92e48239e07a0c3c7d07"
+        },
         "index": {
           "file": "open-glow.b-floor.index.png",
           "sha256": "1cdd14f88f4a2f39833cd9215b2451e37dd4bfd0820cd9ca1e3c9ea473493648"
         },
         "total": {
           "file": "open-glow.b-floor.total.exr",
-          "sha256": "0330cbc1e6a5635e92a6e4544e36daef8ea4fe8f2220315a6d3860d47ea4809c"
+          "sha256": "45350805998a6b678f164fecf2b61f6568c9f4225cdc1f767494252ce18eba5c"
         }
       },
       "finite": true,
       "index_from_state": "open-glow",
       "judged_pixels": 187832,
-      "mean_luminance": 0.17153855422181166,
+      "mean_luminance": 0.1715325793101487,
       "object_index": {
         "A_Xn": 1,
         "A_Yn": 2,
@@ -651,19 +687,23 @@
         36
       ],
       "files": {
+        "direct": {
+          "file": "open-glow.b-portal.direct.exr",
+          "sha256": "b1f959629b2742675d0640a919779d1b9c6ce3997256682f2000569b79f1571b"
+        },
         "index": {
           "file": "open-glow.b-portal.index.png",
           "sha256": "6f4e042ddfe7da125a8e46202fa0af8617c443618371d95d5aa47397986f1da8"
         },
         "total": {
           "file": "open-glow.b-portal.total.exr",
-          "sha256": "9b70035daee621dbc9c1ab95bb706ad4fda47342dafcbb2775bc9192e9b39bfc"
+          "sha256": "434d93fc878e08ddcc4a02644b33ada0ca8681712f505df65d403e8fc3a48aac"
         }
       },
       "finite": true,
       "index_from_state": "open-glow",
       "judged_pixels": 184499,
-      "mean_luminance": 0.13900954124806275,
+      "mean_luminance": 0.1390044102406253,
       "object_index": {
         "A_Xn": 1,
         "A_Yn": 2,
@@ -721,19 +761,23 @@
         34
       ],
       "files": {
+        "direct": {
+          "file": "open.a-portal.direct.exr",
+          "sha256": "468f965c83871ec1be52771aec93ce09e10378b6f272c095523a9c6ec0121d61"
+        },
         "index": {
           "file": "open.a-portal.index.png",
           "sha256": "d993ea5e6356d387b0ce05441f5921542032d285306a945e8c34de16e834d92f"
         },
         "total": {
           "file": "open.a-portal.total.exr",
-          "sha256": "9921a710d657be5ae060d3dc50ea2aaf695d3a283222cc3a46c54b944e97d4fd"
+          "sha256": "837adf3d5b10ed4fac349e3e3061f8197149066afb3d155950e9986050e8d2e9"
         }
       },
       "finite": true,
       "index_from_state": "open",
       "judged_pixels": 180411,
-      "mean_luminance": 0.24329000424999286,
+      "mean_luminance": 0.24328939708068642,
       "object_index": {
         "A_Xn": 1,
         "A_Yn": 2,
@@ -789,19 +833,23 @@
         34
       ],
       "files": {
+        "direct": {
+          "file": "open.b-floor.direct.exr",
+          "sha256": "aac1234e9b960da05d9559724047b18040b777d53e90350265e6b7d078fb728a"
+        },
         "index": {
           "file": "open.b-floor.index.png",
           "sha256": "356db6965bc1bcee6d52455db78ea094a699c1cab25743a724b3727590a3d1a8"
         },
         "total": {
           "file": "open.b-floor.total.exr",
-          "sha256": "6f5eb2084daf4e364c9e34687ba0364c366878201890e60e0b136280c3e53739"
+          "sha256": "6a3126842708beaae42a4ae01637e9318be734e0db031cf52e220149a183b97b"
         }
       },
       "finite": true,
       "index_from_state": "open",
       "judged_pixels": 187832,
-      "mean_luminance": 0.09891815776353802,
+      "mean_luminance": 0.09891178127435418,
       "object_index": {
         "A_Xn": 1,
         "A_Yn": 2,
@@ -857,19 +905,23 @@
         34
       ],
       "files": {
+        "direct": {
+          "file": "open.b-portal.direct.exr",
+          "sha256": "e7e8d06477b61fa526ccb5bbcea01bd73ab6e892546dc6a12c9fadb4142d05a5"
+        },
         "index": {
           "file": "open.b-portal.index.png",
           "sha256": "a22a79d78827f437518953e70de4328f0e4dd45c2605bae973bde4aabfe632e1"
         },
         "total": {
           "file": "open.b-portal.total.exr",
-          "sha256": "a4f3e4557160a07ae8770019071c3a9556e2ae2a16a9dddef82f755786546583"
+          "sha256": "6c703e686077602308b4a9846a4ed00baa72a3d7fd738e22da0cd3384131534f"
         }
       },
       "finite": true,
       "index_from_state": "open",
       "judged_pixels": 184499,
-      "mean_luminance": 0.07668881340531031,
+      "mean_luminance": 0.07668364872075863,
       "object_index": {
         "A_Xn": 1,
         "A_Yn": 2,

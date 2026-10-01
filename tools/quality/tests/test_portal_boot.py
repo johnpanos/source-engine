@@ -627,6 +627,20 @@ class StagingTests(unittest.TestCase):
             self.assertFalse((stage / "engine.log").exists())
             self.assertFalse((stage / "portal/screenshots").exists())
 
+    def test_private_clone_falls_back_without_sharing_writable_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source, target = Path(directory) / "source.cfg", Path(directory) / "target.cfg"
+            source.write_text("original configuration")
+            if sys.platform.startswith("linux"):
+                with mock.patch("fcntl.ioctl", side_effect=OSError(boot.errno.EOPNOTSUPP,
+                                                                   "no clone support")):
+                    boot.copy_private_file(source, target)
+            else:
+                boot.copy_private_file(source, target)
+            target.write_text("changed")
+            self.assertEqual(source.read_text(), "original configuration")
+            self.assertEqual(target.read_text(), "changed")
+
     def test_portal2_content_only_stages_vpks_without_retail_binaries(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -691,6 +705,32 @@ class StagingTests(unittest.TestCase):
             installed = boot.install_content(content, stage)
             self.assertEqual({"maps/sample.bsp", "materials/sample.vmt"}, set(installed))
             self.assertEqual(b"bsp2", (stage / "portal/maps/sample.bsp").read_bytes())
+
+    def test_private_content_mount_precedes_published_custom_content(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            content, stage = root / "content", root / "stage"
+            (content / "maps").mkdir(parents=True)
+            (content / "materials").mkdir()
+            (stage / "portal2/materials").mkdir(parents=True)
+            (content / "maps/sample.bsp").write_bytes(b"private map")
+            (content / "materials/sample.vmt").write_bytes(b"private material")
+            (stage / "portal2/materials/sample.vmt").write_bytes(b"published material")
+            gameinfo = '"GameInfo" { FileSystem { SearchPaths { ' \
+                       'game+mod |gameinfo_path|custom/* ' \
+                       'game+mod |gameinfo_path|. } } }'
+            (stage / "portal2/gameinfo.txt").write_text(gameinfo)
+
+            mount = "custom/portal-boot-content"
+            boot.install_content(content, stage, game="portal2", mount=mount)
+            search = boot.prepend_game_search_path(gameinfo, "portal2/" + mount)
+            (stage / "portal2/gameinfo.txt").write_text(search)
+
+            self.assertEqual(b"private material",
+                             (stage / "portal2" / mount / "materials/sample.vmt").read_bytes())
+            self.assertEqual(b"published material",
+                             (stage / "portal2/materials/sample.vmt").read_bytes())
+            self.assertLess(search.index("portal2/" + mount), search.index("custom/*"))
 
     def test_build_override_does_not_install_other_games(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -388,6 +388,12 @@ std::vector<SsrReferencePixel> ReferenceSsr( const SsrReferenceInputs &inputs,
 			const Vec3 X = view.World( pixel.hitX, pixel.hitY, pixel.hitDepth );
 			const std::size_t hitIndex = std::size_t( pixel.hitTexelY ) * W + pixel.hitTexelX;
 			const float *hitNr = &inputs.normalRoughness[hitIndex * 4];
+			if ( hitNr[3] > 1.5f )
+			{
+				pixel.hit = false;
+				pixel.end = SsrReferencePixel::End::kCameraOnlyEmitter;
+				continue;
+			}
 			float hitDecoded[3];
 			pass::ssr::OctDecode( { hitNr[0], hitNr[1] }, hitDecoded );
 			const Vec3 Nh{ hitDecoded[0], hitDecoded[1], hitDecoded[2] };

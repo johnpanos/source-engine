@@ -515,7 +515,7 @@ CaseGroup NeutralViewGroup( device::BindGroupLayoutId layout )
 		cookies.texels = { 255, 255, 255, 255, 255, 255, 255, 255 };
 		return cookies;
 	}();
-	group.textures = { &kAtlas, &kCookies, &kAtlas, &kAtlas };
+	group.textures = { &kAtlas, &kCookies, &kAtlas, &kAtlas, &kAtlas };
 	return group;
 }
 

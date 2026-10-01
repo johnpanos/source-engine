@@ -8,6 +8,7 @@
 #define RENDER_GRAPH_SCENE_COLOR_H
 
 #include "render/graph/graph_builder.h"
+#include "render/graph/executor.h"
 
 #include <optional>
 
@@ -19,6 +20,19 @@ namespace render::graph
 // kColorAttachment for an MSAA resolve or kCopySource for a single-sample copy.
 // A later pass must read the returned image to keep the capture alive.
 std::optional<ResourceRef> CaptureSceneColor( GraphBuilder &builder, ResourceRef source );
+
+struct RecordedSceneColor
+{
+	device::TextureId texture;
+	device::TextureDesc desc;
+	InlineGraphResources resources;
+};
+
+// Record a one-view capture into an already active encoder. The caller must
+// retain and release resources after that encoder's submission completes.
+foundation::Expected<RecordedSceneColor, device::DeviceError> RecordSceneColor(
+    device::IRenderDevice2 &device, device::CommandEncoder &encoder, device::TextureId source,
+    const device::TextureDesc &sourceDesc );
 
 } // namespace render::graph
 

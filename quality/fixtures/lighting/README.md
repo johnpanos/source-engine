@@ -26,6 +26,15 @@ Do not edit generated files by hand.
 | `portal-chamber` | Portal's `testchmb_a_00` as relit by `legacy_bsp_relight.py` (map `testchmb_a_00_relit`) | brdf, runtime-lights, direct-visibility, indirect-diffuse-static, image-based-specular, emission | `vault`, `room2` (the K0 view-oracle poses) | `default` |
 | `portal2-chamber` | `sp_gi_chamber_01` as built by `portal2_gi_chamber.py` | brdf, runtime-lights, direct-visibility, indirect-diffuse-static, image-based-specular, emission, ambient-occlusion | `spawn`, `chamber` | `default` |
 
+`portal-pair` remains a transport diagnostic and is **not a Cycles receiver
+oracle**. Its joined-copy Blender scene does not represent the runtime portal
+view to be certified. The generated fixture and manifest mark it
+`cycles_receiver_oracle: false`; default `render` and `gallery` select the
+other ten fixtures (27 views), and an explicit Portal-pair receiver run is
+refused. Historical captures are kept for comparison, but their receiver
+scores do not count toward K11. This scope follows the user's 2026-10-01
+review. Portal transport still requires a separate game/lab image check.
+
 Terms and their negative controls are in `manifest.json` (`terms`), each
 naming its owning definition (binding rule 6). `output` is listed for
 completeness and judged by `render.output`, not here: every comparison is of

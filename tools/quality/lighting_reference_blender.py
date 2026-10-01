@@ -24,10 +24,11 @@ named by the LIGHTING_EXTRAS environment variable:
               attenuates everything.
 
 It also turns on the Position and Normal passes (for the projector's analytic
-check) and writes `lighting-extras.json` beside the render receipt with this
-script's digest. Everything else is gi_reference_blender.main unchanged: the
-extras are applied right after the scene's emitters are restored, before
-object indices are assigned.
+check), applies authored normal textures for this full-appearance reference,
+and writes `lighting-extras.json` beside the render receipt with this script's
+digest. The RFC 0011 GI renderer retains its smooth-normal policy. The extras
+are applied right after the scene's emitters are restored, before object
+indices are assigned.
 """
 
 import hashlib
@@ -165,8 +166,24 @@ def main():
     extras_path = Path(os.environ["LIGHTING_EXTRAS"])
     extras = json.loads(extras_path.read_text())
     directory = Path(extras["fixture_directory"])
-    applied = {"projectors": [], "medium": None}
+    applied = {"projectors": [], "medium": None, "normal_mapped_materials": []}
     restore = pbrt_blender.restore_emitters
+    rebind = pbrt_blender.rebind_materials
+
+    def rebind_with_normals(scene, normal_maps=False):
+        rebind(scene, normal_maps=True)
+        names = set()
+        for shape in scene["shapes"]:
+            name = shape["material"]
+            if "normal" not in scene["materials"][name]["textures"]:
+                continue
+            obj = bpy.data.objects.get(shape["name"])
+            material = obj.data.materials[0] if obj and obj.data.materials else None
+            shader = material.node_tree.nodes.get("Principled BSDF") if material else None
+            if shader is None or not shader.inputs["Normal"].is_linked:
+                raise RuntimeError("normal texture not bound in Cycles: " + name)
+            names.add(name)
+        applied["normal_mapped_materials"] = sorted(names)
 
     def restore_with_extras(scene):
         restore(scene)
@@ -181,8 +198,13 @@ def main():
         layer.cycles.use_pass_volume_direct = True
         layer.cycles.use_pass_volume_indirect = True
     pbrt_blender.restore_emitters = restore_with_extras
+    pbrt_blender.rebind_materials = rebind_with_normals
     gi_reference_blender.main()
     out_dir = Path(sys.argv[sys.argv.index("--out-dir") + 1])
+    receipt_path = out_dir / "render.json"
+    receipt = json.loads(receipt_path.read_text())
+    receipt["normal_maps"] = True
+    receipt_path.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n")
     (out_dir / "lighting-extras.json").write_text(json.dumps({
         "schema": "lighting-extras-receipt/v1", "extras_sha256": sha256(extras_path),
         "renderer_sha256": sha256(__file__), "base_renderer_sha256":

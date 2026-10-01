@@ -259,6 +259,7 @@ static const char *const s_RenderCoreQualityNames[] = {
 };
 static const int kRenderCoreAOChoices = 5;
 static const int kRenderCoreShadowChoices = 4;
+static const int kRenderCoreToggleChoices = 2;
 
 // The shipped gameui_english.txt has none of these tokens (and its
 // GameUI_Ultra reads "Very High"), so the English text is added unless a
@@ -272,7 +273,11 @@ static void AddRenderCoreQualityStrings()
 	} kStrings[] = {
 	    { "GameUI_AmbientOcclusion", L"Ambient occlusion" },
 	    { "GameUI_DynamicShadows", L"Dynamic shadows" },
+	    { "GameUI_CoreDepthPrepass", L"Depth prepass" },
+	    { "GameUI_CoreShadowMovers", L"Moving object shadows" },
+	    { "GameUI_CoreRuntimeDirect", L"Runtime direct light (next map)" },
 	    { "GameUI_QualityOff", L"Off" },
+	    { "GameUI_QualityOn", L"On" },
 	    { "GameUI_QualityUltra", L"Ultra" },
 	};
 	for ( const auto &entry : kStrings )
@@ -795,18 +800,17 @@ public:
 		}
 	}
 
-	// The render core's quality settings (RFC 0016 K12): Ambient occlusion
-	// (r_core_ao_quality) and Dynamic shadows (r_core_shadow_quality), which
-	// take effect from the next frame. The shipped .res predates them, so
-	// their row is made here, one row below the row under Motion Blur. When a
-	// visible control lies too close below it, everything below the row moves
-	// down and the dialog grows by that much. A product without the render
-	// core has neither ConVar and shows no row.
+	// The five RenderCoreWorldQuality settings. The shipped .res predates
+	// them; place three rows below Motion Blur and move any controls below.
 	void CreateRenderCoreQualityControls()
 	{
 		ConVarRef ao( "r_core_ao_quality" );
 		ConVarRef shadows( "r_core_shadow_quality" );
-		if ( !ao.IsValid() || !shadows.IsValid() )
+		ConVarRef depth( "r_core_depth_prepass" );
+		ConVarRef movers( "r_core_shadow_movers" );
+		ConVarRef direct( "r_core_runtime_direct" );
+		if ( !ao.IsValid() || !shadows.IsValid() || !depth.IsValid() || !movers.IsValid() ||
+		     !direct.IsValid() )
 			return;
 		AddRenderCoreQualityStrings();
 
@@ -816,10 +820,9 @@ public:
 		// The layout's rows are 58 units apart: Motion Blur's combo at 258,
 		// the next row's label at 292 and combo at 316, in its 24-unit height.
 		const float scale = tall / 24.0f;
+		const int rowPitch = int( 58 * scale );
 		const int labelY = y + int( 34 * scale ) + int( 58 * scale );
-		// The row's combo ends 48 units below its label; the layout keeps 12
-		// units under a row's combo before the next control.
-		const int rowBottom = labelY + int( 60 * scale );
+		const int rowBottom = labelY + 2 * rowPitch + int( 60 * scale );
 		int nextY = INT_MAX;
 		for ( int i = 0; i < GetChildCount(); ++i )
 		{
@@ -854,10 +857,19 @@ public:
 		    kRenderCoreAOChoices, x, labelY, wide, tall, scale );
 		m_pCoreShadows = AddRenderCoreQualityRow( "CoreDynamicShadows", "#GameUI_DynamicShadows",
 		    kRenderCoreShadowChoices, column, labelY, wide, tall, scale );
+		m_pCoreDepth = AddRenderCoreQualityRow( "CoreDepthPrepass", "#GameUI_CoreDepthPrepass",
+		    kRenderCoreToggleChoices, x, labelY + rowPitch, wide, tall, scale );
+		m_pCoreMovers = AddRenderCoreQualityRow( "CoreShadowMovers", "#GameUI_CoreShadowMovers",
+		    kRenderCoreToggleChoices, column, labelY + rowPitch, wide, tall, scale );
+		m_pCoreDirect = AddRenderCoreQualityRow( "CoreRuntimeDirect", "#GameUI_CoreRuntimeDirect",
+		    kRenderCoreToggleChoices, x, labelY + 2 * rowPitch, wide, tall, scale );
 		SetComboItemAsRecommended(
 		    m_pCoreAO, clamp( atoi( ao.GetDefault() ), 0, kRenderCoreAOChoices - 1 ) );
 		SetComboItemAsRecommended( m_pCoreShadows,
 		    clamp( atoi( shadows.GetDefault() ), 0, kRenderCoreShadowChoices - 1 ) );
+		SetComboItemAsRecommended( m_pCoreDepth, clamp( atoi( depth.GetDefault() ), 0, 1 ) );
+		SetComboItemAsRecommended( m_pCoreMovers, clamp( atoi( movers.GetDefault() ), 0, 1 ) );
+		SetComboItemAsRecommended( m_pCoreDirect, clamp( atoi( direct.GetDefault() ), 0, 1 ) );
 	}
 
 	static bool IsPinnedToBottom( Panel *child )
@@ -877,7 +889,10 @@ public:
 		label->SetPinCorner( PIN_TOPLEFT, x, labelY );
 		ComboBox *combo = new ComboBox( this, name, choices, false );
 		for ( int i = 0; i < choices; ++i )
-			combo->AddItem( s_RenderCoreQualityNames[i], NULL );
+			combo->AddItem( choices == kRenderCoreToggleChoices
+			                    ? ( i ? "#GameUI_QualityOn" : "#GameUI_QualityOff" )
+			                    : s_RenderCoreQualityNames[i],
+			    NULL );
 		combo->SetBounds( x, comboY, wide, tall );
 		combo->SetPinCorner( PIN_TOPLEFT, x, comboY );
 		return combo;
@@ -889,8 +904,14 @@ public:
 			return;
 		ConVarRef ao( "r_core_ao_quality" );
 		ConVarRef shadows( "r_core_shadow_quality" );
+		ConVarRef depth( "r_core_depth_prepass" );
+		ConVarRef movers( "r_core_shadow_movers" );
+		ConVarRef direct( "r_core_runtime_direct" );
 		m_pCoreAO->ActivateItem( clamp( ao.GetInt(), 0, kRenderCoreAOChoices - 1 ) );
 		m_pCoreShadows->ActivateItem( clamp( shadows.GetInt(), 0, kRenderCoreShadowChoices - 1 ) );
+		m_pCoreDepth->ActivateItem( clamp( depth.GetInt(), 0, 1 ) );
+		m_pCoreMovers->ActivateItem( clamp( movers.GetInt(), 0, 1 ) );
+		m_pCoreDirect->ActivateItem( clamp( direct.GetInt(), 0, 1 ) );
 	}
 
 	void ApplyRenderCoreQuality()
@@ -899,6 +920,9 @@ public:
 			return;
 		ApplyChangesToConVar( "r_core_ao_quality", m_pCoreAO->GetActiveItem() );
 		ApplyChangesToConVar( "r_core_shadow_quality", m_pCoreShadows->GetActiveItem() );
+		ApplyChangesToConVar( "r_core_depth_prepass", m_pCoreDepth->GetActiveItem() );
+		ApplyChangesToConVar( "r_core_shadow_movers", m_pCoreMovers->GetActiveItem() );
+		ApplyChangesToConVar( "r_core_runtime_direct", m_pCoreDirect->GetActiveItem() );
 	}
 
 	// The shown quality choices, for the developer check below.
@@ -910,19 +934,32 @@ public:
 			return;
 		}
 		// The active items' text: the combo's own text follows a message later.
-		char ao[64], shadows[64];
+		char ao[64], shadows[64], depth[64], movers[64], direct[64];
 		m_pCoreAO->GetItemText( m_pCoreAO->GetActiveItem(), ao, sizeof( ao ) );
 		m_pCoreShadows->GetItemText( m_pCoreShadows->GetActiveItem(), shadows, sizeof( shadows ) );
-		Q_snprintf( out, size, "ambient occlusion \"%s\", dynamic shadows \"%s\"", ao, shadows );
+		m_pCoreDepth->GetItemText( m_pCoreDepth->GetActiveItem(), depth, sizeof( depth ) );
+		m_pCoreMovers->GetItemText( m_pCoreMovers->GetActiveItem(), movers, sizeof( movers ) );
+		m_pCoreDirect->GetItemText( m_pCoreDirect->GetActiveItem(), direct, sizeof( direct ) );
+		Q_snprintf( out, size,
+		    "ambient occlusion \"%s\", dynamic shadows \"%s\", "
+		    "depth prepass \"%s\", moving shadows \"%s\", runtime direct \"%s\"",
+		    ao, shadows, depth, movers, direct );
 	}
 
 	// Selects the quality rows and confirms the dialog as OK and Apply do.
-	void ApplyRenderCoreQualityChoice( int ao, int shadows )
+	void ApplyRenderCoreQualityChoice(
+	    int ao, int shadows, int depth = -1, int movers = -1, int direct = -1 )
 	{
 		if ( !m_pCoreAO )
 			return;
 		m_pCoreAO->ActivateItem( clamp( ao, 0, kRenderCoreAOChoices - 1 ) );
 		m_pCoreShadows->ActivateItem( clamp( shadows, 0, kRenderCoreShadowChoices - 1 ) );
+		if ( depth >= 0 )
+			m_pCoreDepth->ActivateItem( clamp( depth, 0, 1 ) );
+		if ( movers >= 0 )
+			m_pCoreMovers->ActivateItem( clamp( movers, 0, 1 ) );
+		if ( direct >= 0 )
+			m_pCoreDirect->ActivateItem( clamp( direct, 0, 1 ) );
 		m_bUseChanges = true;
 		ApplyChanges();
 		m_bUseChanges = false;
@@ -1253,6 +1290,9 @@ private:
 	vgui::ComboBox *m_pIndirectLighting = nullptr;
 	vgui::ComboBox *m_pCoreAO = nullptr;
 	vgui::ComboBox *m_pCoreShadows = nullptr;
+	vgui::ComboBox *m_pCoreDepth = nullptr;
+	vgui::ComboBox *m_pCoreMovers = nullptr;
+	vgui::ComboBox *m_pCoreDirect = nullptr;
 
 	int m_nNumAAModes;
 	AAMode_t m_nAAModes[16];
@@ -2140,19 +2180,21 @@ bool COptionsSubVideo::RequiresRestart()
 // Purpose: Opens advanced video mode options dialog
 //-----------------------------------------------------------------------------
 // Developer check (RFC 0011 G3.2): opens the advanced video dialog and prints
-// the Indirect lighting options it lists and the render core quality it shows
-// (RFC 0016 K12). With two arguments it selects those Ambient occlusion and
-// Dynamic shadows rows and confirms the dialog as OK and Apply do.
+// the Indirect lighting options it lists and the render core quality it shows.
+// Optional values select all five rows and confirm as OK and Apply do.
 CON_COMMAND_F( gameui_show_video_advanced,
     "Opens the advanced video options dialog and lists its indirect-lighting options; "
-    "[ao shadows] also selects and applies those render core quality rows",
+    "[ao shadows [depth movers direct]] selects and applies render core quality",
     FCVAR_CHEAT )
 {
 	static vgui::DHANDLE<COptionsSubVideoAdvancedDlg> s_dialog;
 	if ( !s_dialog.Get() )
 		s_dialog = new COptionsSubVideoAdvancedDlg( BasePanel() );
 	s_dialog->Activate();
-	if ( args.ArgC() >= 3 )
+	if ( args.ArgC() >= 6 )
+		s_dialog->ApplyRenderCoreQualityChoice(
+		    atoi( args[1] ), atoi( args[2] ), atoi( args[3] ), atoi( args[4] ), atoi( args[5] ) );
+	else if ( args.ArgC() >= 3 )
 		s_dialog->ApplyRenderCoreQualityChoice( atoi( args[1] ), atoi( args[2] ) );
 	char options[256];
 	s_dialog->DescribeIndirectLighting( options, sizeof( options ) );

@@ -794,6 +794,8 @@ const char *EndName( SsrReferencePixel::End end )
 	{
 	case SsrReferencePixel::End::kHit:
 		return "hit";
+	case SsrReferencePixel::End::kCameraOnlyEmitter:
+		return "camera-only emitter";
 	case SsrReferencePixel::End::kScreenEdge:
 		return "left the screen";
 	case SsrReferencePixel::End::kRayEnd:
@@ -1006,6 +1008,24 @@ std::optional<std::string> GpuChecks( bool validate, std::span<const std::uint32
 			         MirrorScene( scene.roughness ), scene.minimumJudged, results ) )
 				return why;
 		}
+		SsrScene cameraOnly = MirrorScene( 0.05f );
+		cameraOnly.quads[kWall].cameraOnlyEmitter = true;
+		if ( std::optional<std::string> why = GpuScene(
+		         *device, *pass.Value(), "camera-only-emitter", cameraOnly, 1000, results ) )
+			return why;
+		if ( module.empty() )
+		{
+			const SsrReferenceInputs inputs = RayCastScene( cameraOnly ).inputs;
+			const std::vector<SsrReferencePixel> blocked =
+			    ReferenceSsr( inputs, pass::ssr::SsrParams() );
+			std::size_t rejected = 0;
+			for ( std::size_t i = 0; i < blocked.size(); ++i )
+				if ( blocked[i].end == SsrReferencePixel::End::kCameraOnlyEmitter &&
+				     std::memcmp( blocked[i].out, &inputs.lit[i * 4], 4 * sizeof( float ) ) == 0 )
+					++rejected;
+			results.That( rejected >= 100, "reference.camera-only-emitter-keeps-probe",
+			    Text( "%g rejected hits kept their lit value", double( rejected ) ) );
+		}
 		// The seam walk judges the product trace: once, in the unseeded run.
 		if ( module.empty() )
 		{
@@ -1038,7 +1058,8 @@ std::optional<std::string> RunOnce( bool validate, std::span<const std::uint32_t
 
 const Seeded kSsrSeeded[] = { { "thickness-ignored", spirv::kSsrTraceThicknessIgnored, "gpu." },
     { "no-edge-fade", spirv::kSsrTraceNoEdgeFade, "gpu." },
-    { "wrong-mip", spirv::kSsrTraceWrongMip, "gpu." } };
+    { "wrong-mip", spirv::kSsrTraceWrongMip, "gpu." },
+    { "camera-only-ignored", spirv::kSsrTraceCameraOnlyIgnored, "gpu." } };
 
 } // namespace
 

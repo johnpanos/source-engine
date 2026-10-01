@@ -11,6 +11,7 @@
 #include "render/material/draw_program.h"
 #include "render/material/material_programs.h"
 #include "render/material/program_resolver.h"
+#include "render/material/scene_terms.h"
 #include "render/material/surface_program.h"
 #include "render/material/vmt_import.h"
 
@@ -122,6 +123,7 @@ struct Resources
 	std::map<std::string, TextureDesc> stageDescs;
 	bool stageMade = false;
 	std::uint64_t stageLightmapRevision = 0;
+	std::uint64_t stageProbeRevision = 0;
 	std::uint64_t stageChangeRevision = 0;
 };
 
@@ -140,26 +142,20 @@ constexpr const char *kStageLtc = "stage:ltc";
 // (world_mesh_gpu::kProbeVolumeMaxOccluders).
 constexpr std::uint32_t kStageOccluderRows = 16;
 
-// The pbr point's scene terms a stage's data supports (as render_lab sets
-// them for the same map, less the screen-space reflections, which the stage
-// does not draw yet). The view's occlusion is one where no screen pass
-// recorded it.
+// Adapt the product's stage to the surface program's shared scene policy.
+// The view's occlusion is one where no screen pass recorded it.
 std::uint32_t StageTerms( const WorldStage &stage )
 {
-	// The view's runtime lights (a view without them binds the neutral view).
-	std::uint32_t terms = material::kSurfaceClustered | material::kSurfaceAmbientOcclusion;
-	// Runtime direct light reads the indirect layer, directional when the
-	// bake wrote its own gradient page; else the total layer's pages.
-	const bool runtimeDirect = stage.runtimeDirect && !stage.indirect.empty();
-	if ( runtimeDirect )
-		terms |= material::kSurfaceRuntimeDirect;
-	if ( runtimeDirect ? !stage.indirectGradient.empty() : stage.lightmap.Directional() )
-		terms |= material::kSurfaceDirectionalLightmap;
-	if ( stage.probes )
-		terms |= material::kSurfaceProbeVolume | material::kSurfaceProbeBounce;
-	if ( !stage.reflectionProbes.empty() )
-		terms |= material::kSurfaceReflectionProbes;
-	return terms;
+	material::SceneTermInputs inputs;
+	inputs.runtimeDirect = stage.runtimeDirect;
+	inputs.indirectLightmap = !stage.indirect.empty();
+	inputs.totalDirectionalLightmap = stage.lightmap.Directional();
+	inputs.indirectDirectionalLightmap = !stage.indirectGradient.empty();
+	inputs.probeVolume = stage.probes.has_value();
+	inputs.probeBounce = stage.probes.has_value(); // the change atlas is always supplied
+	inputs.reflectionProbes = !stage.reflectionProbes.empty();
+	inputs.ambientOcclusion = true; // the neutral view binds one when AO is off
+	return material::SceneTerms( inputs );
 }
 
 std::string Lower( std::string text )
@@ -250,7 +246,7 @@ struct WorldPass::State
 	std::deque<std::uint64_t> recordedFrames;
 	WorldStats stats;
 	// A world stage's lighting as it changes (SetStageLightmap,
-	// SetStageChange), with revisions that rise with each.
+	// SetStageProbeVolume, SetStageChange), with revisions that rise with each.
 	// The total page: `stageLightmap` as of `stageLightmapBaseRevision`
 	// (null: the stage's own pages), then the parts set since
 	// (SetStageLightmapRegions), in revision order; a part every resource
@@ -258,6 +254,9 @@ struct WorldPass::State
 	std::shared_ptr<LightmapPages> stageLightmap;
 	std::uint64_t stageLightmapRevision = 0;
 	std::uint64_t stageLightmapBaseRevision = 0;
+	std::shared_ptr<std::vector<std::byte>> stageProbeAtlas;
+	std::uint64_t stageProbeRevision = 0;
+	std::uint64_t stageProbeBaseRevision = 0;
 	std::shared_ptr<const StageProbeVolume> stageTable;
 	std::uint64_t stageChangeRevision = 0;
 	// The probe change: `stageChangeBase` as of `stageBaseRevision` (empty:
@@ -273,6 +272,7 @@ struct WorldPass::State
 	std::uint64_t stageBaseRevision = 0;
 	std::deque<StagePatch> stagePatches;
 	std::deque<StagePatch> stageLightmapPatches;
+	std::deque<StagePatch> stageProbePatches;
 
 	// A queued view dropped because its slot never recorded (lock held): a
 	// failure when a slot of its host frame recorded (or its frame is
@@ -429,7 +429,8 @@ void WorldPass::SetWorld( WorldData data )
 			// probes and clustered direct light instead of a lightmap page.
 			auto blend = source.mesh
 			                 ? material::ClaimForMesh( claimed.desc,
-			                       data.stage && !data.stage->reflectionProbes.empty() )
+			                       data.stage && !data.stage->reflectionProbes.empty(),
+			                       data.stage != nullptr )
 			                 : material::ClaimForDrawing( claimed.desc, data.stage != nullptr );
 			if ( !blend )
 				gap = claimed.desc.family + ": " + blend.Error();
@@ -487,6 +488,9 @@ void WorldPass::SetWorld( WorldData data )
 	s.stageLightmap.reset();
 	s.stageLightmapPatches.clear();
 	s.stageLightmapBaseRevision = s.stageLightmapRevision;
+	s.stageProbeAtlas.reset();
+	s.stageProbePatches.clear();
+	s.stageProbeBaseRevision = s.stageProbeRevision;
 	s.stageChangeBase.clear();
 	s.stagePatches.clear();
 	s.stageTable.reset();
@@ -524,6 +528,39 @@ void WorldPass::SetStageLightmap( LightmapPages pages )
 	s.stageLightmapBaseRevision = ++s.stageLightmapRevision;
 }
 
+void WorldPass::SetStageProbeVolume(
+    std::vector<std::byte> atlas, std::vector<std::byte> change, StageProbeVolume table )
+{
+	State &s = *m_State;
+	auto sharedAtlas = std::make_shared<std::vector<std::byte>>( std::move( atlas ) );
+	auto sharedTable = std::make_shared<const StageProbeVolume>( std::move( table ) );
+	std::lock_guard<std::mutex> guard( s.lock );
+	s.stageProbeAtlas = std::move( sharedAtlas );
+	s.stageProbePatches.clear();
+	s.stageProbeBaseRevision = ++s.stageProbeRevision;
+	s.stageChangeBase = std::move( change );
+	s.stagePatches.clear();
+	s.stageTable = std::move( sharedTable );
+	s.stageBaseRevision = ++s.stageChangeRevision;
+}
+
+void WorldPass::SetStageProbeRegions( std::vector<StageRegion> regions,
+    std::vector<std::byte> atlasTexels, std::vector<std::byte> changeTexels,
+    StageProbeVolume table )
+{
+	State &s = *m_State;
+	auto sharedTable = std::make_shared<const StageProbeVolume>( std::move( table ) );
+	std::lock_guard<std::mutex> guard( s.lock );
+	if ( !atlasTexels.empty() )
+		s.stageProbePatches.push_back(
+		    { ++s.stageProbeRevision, regions, std::move( atlasTexels ) } );
+	s.stageTable = std::move( sharedTable );
+	if ( changeTexels.empty() )
+		regions.clear();
+	s.stagePatches.push_back(
+	    { ++s.stageChangeRevision, std::move( regions ), std::move( changeTexels ) } );
+}
+
 void WorldPass::SetStageLightmapRegions(
     std::vector<StageRegion> regions, std::vector<std::byte> texels )
 {
@@ -542,16 +579,6 @@ void WorldPass::SetStageChange( std::vector<std::byte> change, StageProbeVolume 
 	s.stagePatches.clear();
 	s.stageTable = std::move( sharedTable );
 	s.stageBaseRevision = ++s.stageChangeRevision;
-}
-
-void WorldPass::SetStageChangeRegions(
-    std::vector<StageRegion> regions, std::vector<std::byte> texels, StageProbeVolume table )
-{
-	State &s = *m_State;
-	auto sharedTable = std::make_shared<const StageProbeVolume>( std::move( table ) );
-	std::lock_guard<std::mutex> guard( s.lock );
-	s.stageTable = std::move( sharedTable );
-	s.stagePatches.push_back( { ++s.stageChangeRevision, std::move( regions ), std::move( texels ) } );
 }
 
 bool WorldPass::Draws( std::uint32_t material ) const
@@ -882,6 +909,7 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		}
 		r.modelResolver = std::move( resolver ).Value();
 		r.modelResolver->SetWorldPbr( true, world->stage ? StageTerms( *world->stage ) : 0 );
+		r.modelResolver->SetSceneColorAvailable( world->stage != nullptr );
 		r.modelMaterials.resize( world->materials.size() );
 		r.staticMeshes.resize( world->staticMeshes.size() );
 	}
@@ -1136,6 +1164,63 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 				}
 				s.stageLightmapBaseRevision = patch.revision;
 				s.stageLightmapPatches.pop_front();
+			}
+		}
+	}
+	if ( world->stage && world->stage->probes )
+	{
+		std::unique_lock<std::mutex> guard( s.lock );
+		if ( r.stageProbeRevision != s.stageProbeRevision )
+		{
+			const StageProbeVolume &probes = *world->stage->probes;
+			const TextureDesc &desc = r.stageDescs[kStageProbeAtlas];
+			const bool whole = r.stageProbeRevision < s.stageProbeBaseRevision;
+			const std::vector<std::byte> &base =
+			    s.stageProbeAtlas ? *s.stageProbeAtlas : probes.atlas;
+			bool fits = true;
+			if ( whole )
+				fits = base.size() == probes.atlas.size() &&
+				       stageUpload(
+				           r.stageTextures[kStageProbeAtlas], desc, base, ResourceUsage::kSampled );
+			for ( const State::StagePatch &patch : s.stageProbePatches )
+			{
+				if ( !fits || ( !whole && patch.revision <= r.stageProbeRevision ) )
+					continue;
+				fits = stageRegions(
+				    r.stageTextures[kStageProbeAtlas], desc, patch.regions, patch.texels );
+			}
+			if ( !fits )
+			{
+				guard.unlock();
+				s.Fail( "the world stage's probe atlas update does not fit its volume" );
+				return;
+			}
+			r.stageProbeRevision = s.stageProbeRevision;
+			std::uint64_t applied = r.stageProbeRevision;
+			for ( const Resources &set : s.variants )
+				if ( set.stageMade )
+					applied = std::min( applied, set.stageProbeRevision );
+			while (
+			    !s.stageProbePatches.empty() && s.stageProbePatches.front().revision <= applied )
+			{
+				const State::StagePatch &patch = s.stageProbePatches.front();
+				if ( !s.stageProbeAtlas )
+					s.stageProbeAtlas = std::make_shared<std::vector<std::byte>>( probes.atlas );
+				std::size_t offset = 0;
+				for ( const StageRegion &region : patch.regions )
+				{
+					const std::size_t row = std::size_t( region.width ) * 8;
+					for ( std::uint32_t y = 0; y < region.height; ++y )
+					{
+						const std::size_t at =
+						    ( std::size_t( region.y + y ) * probes.atlasWidth + region.x ) * 8;
+						std::memcpy(
+						    s.stageProbeAtlas->data() + at, patch.texels.data() + offset, row );
+						offset += row;
+					}
+				}
+				s.stageProbeBaseRevision = patch.revision;
+				s.stageProbePatches.pop_front();
 			}
 		}
 	}
@@ -1577,16 +1662,24 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 	// the view's clustered lights, retired behind this frame after drawing.
 	std::map<std::uint64_t, Group> litViews;
 	std::map<std::uint64_t, Group> modelLitViews;
+	std::map<std::uint64_t, Group> sceneViews;
 	// The view's ambient occlusion once the screen passes recorded it.
 	TextureId viewOcclusion;
 	// The view's planar reflection (a program's view input, imported below
 	// once the view's materials resolved), and the view groups that bind it
 	// for programs without the view's lights, retired behind this frame.
 	TextureId viewReflection;
+	TextureId viewSceneColor;
+	TextureDesc viewSceneColorDesc;
 	std::map<std::uint64_t, Group> reflectViews;
 	auto viewGroupReady = [&]( const Resources::Material &m ) -> const Group *
 	{
 		const std::uint64_t layout = m.program.request.viewLayout.value;
+		if ( m.program.sceneColor && !viewSceneColor.IsValid() )
+		{
+			note( "a transmitting program has no scene-color snapshot" );
+			return nullptr;
+		}
 		if ( m.viewInput != 0 && !viewReflection.IsValid() )
 		{
 			note( "a program reads the view's planar reflection, which did not import" );
@@ -1595,7 +1688,9 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		if ( world->stage && view.lights )
 		{
 			const bool model = m.resolver == r.modelResolver.get();
-			Group &lit = model ? modelLitViews[layout] : litViews[layout];
+			Group &lit = m.program.sceneColor ? sceneViews[layout]
+			             : model              ? modelLitViews[layout]
+			                                  : litViews[layout];
 			if ( lit.group.IsValid() )
 				return &lit;
 			const StageViewLights &lights = *view.lights;
@@ -1614,12 +1709,19 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 				shadows.tiles = lights.shadowTiles;
 			}
 			material::SurfaceScreenInputs screen;
-			if ( !model && viewOcclusion.IsValid() )
+			// The surface program fetches AO at the screen pixel. Models need
+			// the same full-size view input as world surfaces.
+			if ( viewOcclusion.IsValid() )
 			{
 				screen.ambientOcclusion = viewOcclusion;
 				screen.ambientOcclusionDesc = target.ambientOcclusionDesc;
 			}
 			screen.planarReflection = viewReflection;
+			if ( m.program.sceneColor )
+			{
+				screen.sceneColor = viewSceneColor;
+				screen.sceneColorDesc = viewSceneColorDesc;
+			}
 			const material::GroupRequest request = m.resolver->Program().ViewGroup(
 			    lights.view, lights.froxels, lights.indices, lights.lights, shadows, {}, screen );
 			std::string why;
@@ -1633,13 +1735,18 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 			}
 			return &lit;
 		}
-		if ( m.viewInput != 0 )
+		if ( m.viewInput != 0 || m.program.sceneColor )
 		{
-			Group &reflect = reflectViews[layout];
+			Group &reflect = m.program.sceneColor ? sceneViews[layout] : reflectViews[layout];
 			if ( reflect.group.IsValid() )
 				return &reflect;
 			material::SurfaceScreenInputs screen;
 			screen.planarReflection = viewReflection;
+			if ( m.program.sceneColor )
+			{
+				screen.sceneColor = viewSceneColor;
+				screen.sceneColorDesc = viewSceneColorDesc;
+			}
 			const material::GroupRequest request = m.resolver->Program().NeutralViewGroup( screen );
 			std::string why;
 			if ( request.layout != m.program.request.viewLayout ||
@@ -2142,6 +2249,8 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 	    [&]( const StaticDraw &draw )
 	    {
 		    const Resources::Material &m = r.modelMaterials[draw.material];
+		    if ( m.program.sceneColor )
+			    return false; // the snapshot is recorded after opaque draws
 		    if ( m.program.request.viewLayout.IsValid() && !viewGroupReady( m ) )
 		    {
 			    complete = false;
@@ -2215,7 +2324,8 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 	const auto firstBlended = std::stable_partition( staticDraws.begin(), staticDraws.end(),
 	    [&]( const StaticDraw &draw )
 	    {
-		    return r.modelMaterials[draw.material].program.blend == BlendMode::kOpaque;
+		    const material::ResolvedProgram &program = r.modelMaterials[draw.material].program;
+		    return program.blend == BlendMode::kOpaque && !program.sceneColor;
 	    } );
 	std::sort( staticDraws.begin(), firstBlended,
 	    [&]( const StaticDraw &a, const StaticDraw &b )
@@ -2225,6 +2335,39 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 	    } );
 	std::uint64_t drawnStatic = 0;
 	std::uint64_t drawnPosed = 0;
+	bool captureAttempted = false;
+	bool sceneViewsPrepared = true;
+	auto captureSceneColor = [&]() -> bool
+	{
+		if ( target.samples == 1 && !target.colorCopySource )
+		{
+			note( "the slot's color image does not support scene-color capture" );
+			return false;
+		}
+		if ( !target.sceneColorCapture )
+		{
+			note( "the composition has no scene-color capture provider" );
+			return false;
+		}
+		TextureDesc sourceDesc;
+		sourceDesc.format = target.colorFormat;
+		sourceDesc.width = target.width;
+		sourceDesc.height = target.height;
+		sourceDesc.sampleCount = target.samples;
+		sourceDesc.usages = { ResourceUsage::kColorAttachment };
+		if ( target.colorCopySource )
+			sourceDesc.usages.Add( ResourceUsage::kCopySource );
+		const std::optional<WorldSceneColor> captured = target.sceneColorCapture->Capture(
+		    device, encoder, target.color, sourceDesc, target.frame );
+		if ( !captured || !captured->texture.IsValid() )
+		{
+			note( "the scene-color capture resources were refused" );
+			return false;
+		}
+		viewSceneColor = captured->texture;
+		viewSceneColorDesc = captured->desc;
+		return true;
+	};
 	for ( const StaticDraw &draw : staticDraws )
 	{
 		const WorldData::StaticInstance *instance =
@@ -2232,6 +2375,34 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		const WorldData::StaticMesh &mesh = world->staticMeshes[draw.mesh];
 		const WorldSurface &surface = mesh.surfaces[draw.surface];
 		const Resources::Material &m = r.modelMaterials[draw.material];
+		if ( m.program.sceneColor && !captureAttempted )
+		{
+			encoder.EndRendering();
+			captureAttempted = true;
+			if ( !captureSceneColor() )
+				complete = false;
+			else
+			{
+				// View groups stage their constants and image bindings. Prepare
+				// every transmitting layout while the host encoder is outside
+				// rendering; uploads inside a render section are invalid.
+				for ( const StaticDraw &candidate : staticDraws )
+				{
+					const Resources::Material &material = r.modelMaterials[candidate.material];
+					if ( material.program.sceneColor &&
+					     material.program.request.viewLayout.IsValid() &&
+					     !viewGroupReady( material ) )
+						sceneViewsPrepared = false;
+				}
+			}
+			encoder.BeginRendering( rendering );
+			encoder.SetViewport( view.viewport );
+		}
+		if ( m.program.sceneColor && ( !viewSceneColor.IsValid() || !sceneViewsPrepared ) )
+		{
+			complete = false;
+			continue;
+		}
 		PipelineId pipeline = m.program.request.pipeline;
 		if ( !debugNeutral )
 		{
@@ -2252,9 +2423,11 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		if ( m.program.request.viewLayout.IsValid() )
 		{
 			const std::uint64_t layout = m.program.request.viewLayout.value;
-			const auto lit = modelLitViews.find( layout );
-			encoder.SetBindGroup( BindGroupRole::kView,
-			    lit != modelLitViews.end() ? lit->second.group : r.viewGroups[layout].group );
+			const auto lit =
+			    m.program.sceneColor ? sceneViews.find( layout ) : modelLitViews.find( layout );
+			const auto end = m.program.sceneColor ? sceneViews.end() : modelLitViews.end();
+			encoder.SetBindGroup(
+			    BindGroupRole::kView, lit != end ? lit->second.group : r.viewGroups[layout].group );
 		}
 		encoder.SetBindGroup( BindGroupRole::kMaterial, m.group.group );
 		if ( m.program.request.drawLayout.IsValid() )
@@ -2293,6 +2466,8 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 	for ( auto &[layout, group] : litViews )
 		s.retiredGroups.emplace_back( target.frame, group );
 	for ( auto &[layout, group] : modelLitViews )
+		s.retiredGroups.emplace_back( target.frame, group );
+	for ( auto &[layout, group] : sceneViews )
 		s.retiredGroups.emplace_back( target.frame, group );
 	for ( auto &[layout, group] : reflectViews )
 		s.retiredGroups.emplace_back( target.frame, group );
