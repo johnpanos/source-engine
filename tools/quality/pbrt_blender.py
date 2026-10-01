@@ -257,6 +257,55 @@ def rebind_materials(scene, normal_maps=True):
         obj.data.materials.append(built[name])
 
 
+def validate_video_screen_uvs(scene):
+    """Check a lifted movie frame's mapping after Blender's USD import."""
+    root = map_scene.material_root(scene)
+    for shape in scene["shapes"]:
+        if shape.get("role") != "video_screen":
+            continue
+        name = shape["name"]
+        obj = bpy.data.objects.get(name)
+        if obj is None or obj.type != "MESH":
+            raise ValueError("movie screen missing from Blender: " + name)
+        layer = obj.data.uv_layers.get("st")
+        if layer is None:
+            raise ValueError("movie screen has no st UV layer: " + name)
+        if "video_st_corners" not in shape:
+            raise ValueError("movie screen needs a freshly extracted scene model: " + name)
+        expected = [tuple(corner) for corner in shape["video_st_corners"]]
+        actual = []
+        for loop in obj.data.loops:
+            point = obj.matrix_world @ obj.data.vertices[loop.vertex_index].co
+            uv = layer.data[loop.index].uv
+            actual.append((point.x, point.y, point.z, uv.x, uv.y))
+        if len(actual) != len(expected):
+            raise ValueError("movie screen corner count changed in Blender: " + name)
+        for corner in expected:
+            match = next((i for i, found in enumerate(actual)
+                          if max(abs(a - b) for a, b in zip(corner, found)) < 1e-5), None)
+            if match is None:
+                raise ValueError("movie screen st UV or corner position changed: " + name)
+            actual.pop(match)
+        summary = map_scene.material_summary(scene, shape["material"])
+        emission = summary["textures"].get("emission")
+        if not emission:
+            continue
+        image_path = (root / emission["file"]).resolve()
+        material = obj.data.materials[0]
+        linked = False
+        for node in material.node_tree.nodes:
+            if node.type != "TEX_IMAGE" or not node.image or \
+                    Path(node.image.filepath).resolve() != image_path:
+                continue
+            linked = any(link.to_node == node and link.to_socket == node.inputs["Vector"] and
+                         link.from_node.type == "UVMAP" and link.from_node.uv_map == "st"
+                         for link in material.node_tree.links)
+            if linked:
+                break
+        if not linked:
+            raise ValueError("movie frame is not sampled from st in Blender: " + name)
+
+
 emitter_name = map_scene.emitter_name
 
 

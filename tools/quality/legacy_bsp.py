@@ -45,6 +45,7 @@ LUMP_LEAFBRUSHES = 17
 LUMP_BRUSHES = 18
 LUMP_BRUSHSIDES = 19
 LUMP_PAKFILE = 40
+LUMP_GAME_LUMP = 35
 LUMP_TEXDATA_STRING_DATA = 43
 LUMP_TEXDATA_STRING_TABLE = 44
 LUMP_WORLDLIGHTS_HDR = 54
@@ -81,6 +82,8 @@ LEAF_BYTES = 32
 BRUSH_BYTES = 12
 BRUSHSIDE_BYTES = 8
 MODEL_BYTES = 48
+STATIC_PROP_LUMP = struct.unpack(">i", b"sprp")[0]
+STATIC_PROP_RECORD_BYTES = {(21, 9): 72, (21, 10): 76, (20, 10): 72, (19, 10): 72}
 HUGE = 65536.0
 
 
@@ -262,6 +265,55 @@ class LegacyBsp:
                            "plane_normal": normal, "texinfo": texinfo,
                            "dispinfo": dispinfo, "styles": (s0, s1, s2, s3), "area": area})
         return result
+
+    def static_props(self):
+        """(lump version, model dictionary, placements) from the sprp game lump.
+
+        The version/record sizes are the ones CStaticPropMgr::UnserializeModels
+        reads for the supported BSP versions. Geometry remains in the MDL.
+        """
+        raw = self.lump(LUMP_GAME_LUMP)
+        if not raw:
+            return None, [], []
+        if len(raw) < 4:
+            raise ValueError("game lump has no directory count")
+        count = struct.unpack_from("<i", raw, 0)[0]
+        if count < 0 or 4 + 16 * count > len(raw):
+            raise ValueError("game lump directory is out of bounds")
+        for i in range(count):
+            lump_id, _flags, version, offset, length = struct.unpack_from(
+                "<iHHii", raw, 4 + 16 * i)
+            if lump_id != STATIC_PROP_LUMP:
+                continue
+            if offset < 0 or length < 4 or offset + length > len(self.data):
+                raise ValueError("static prop game lump is out of bounds")
+            data = self.data[offset:offset + length]
+            names = struct.unpack_from("<i", data, 0)[0]
+            if names < 0 or 4 + 128 * names + 4 > len(data):
+                raise ValueError("static prop dictionary is out of bounds")
+            dictionary = [data[4 + 128 * n:4 + 128 * (n + 1)].split(b"\0")[0]
+                          .decode("latin-1") for n in range(names)]
+            cursor = 4 + 128 * names
+            leaves = struct.unpack_from("<i", data, cursor)[0]
+            cursor += 4 + 2 * leaves
+            if leaves < 0 or cursor + 4 > len(data):
+                raise ValueError("static prop leaves are out of bounds")
+            props = struct.unpack_from("<i", data, cursor)[0]
+            cursor += 4
+            size = STATIC_PROP_RECORD_BYTES.get((self.version, version))
+            if size is None or props < 0 or cursor + size * props != len(data):
+                raise ValueError("static prop lump v%d in a v%d map has invalid records" %
+                                 (version, self.version))
+            result = []
+            for p in range(props):
+                values = struct.unpack_from("<3f3fHHHBBi", data, cursor + p * size)
+                if values[6] >= names:
+                    raise ValueError("static prop model index is out of bounds")
+                result.append({"origin": values[0:3], "angles": values[3:6],
+                               "model": dictionary[values[6]], "leaf_count": values[8],
+                               "solid": values[9], "flags": values[10], "skin": values[11]})
+            return version, dictionary, result
+        return None, [], []
 
     def world_brushes(self):
         """The brushes reachable from model 0's head node, as [{contents, sides:

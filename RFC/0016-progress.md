@@ -4654,3 +4654,159 @@ moving casters):
   was replaced.
 - No in-game image of a moving shadow yet: the test views have no mover
   under a shadowed light.
+## Modern model and decal rendering slice (2026-09-30, active)
+
+The user chose Source 2 quality as the primary path and DXVK for exact legacy
+appearance. This slice is owned by `render.material` and `render.lab`: map the
+supported `VertexLitGeneric` mesh subset onto the surface program's PBR mesh
+point, with probe-volume indirect light, clustered direct light and reflection
+probes. Each non-neutral VMT setting must be mapped or refused by name. The
+legacy `vertexlit` point remains a pixel oracle, not the new mesh default.
+`render.pass.decals` is the next K8 boundary; no product handover is claimed
+before a lab pixel oracle and a native pass exist.
+
+The user chose static props as the first in-game model cohort (2026-09-30).
+The resolver accepts `SurfaceModelVertex` for object-space meshes: one mesh
+shares GPU geometry across instances and studio skins, while each draw has
+its own transform and skin material selection. The modern mesh specialization
+skips the legacy per-draw light loop; its direct light comes from the view's
+clustered set. The supported `VertexLitGeneric` subset includes the
+alpha-tested Portal 2 catwalk railing (`railing_bts`, reference 0.65). The
+`render_lab` debug-view suite draws an imported `VertexLitGeneric` material
+through this layout with a translated instance; `render.family.vertexlit`
+passes 122 checks, `render.debug-views` 88, and `render.world.null` 29.
+
+The product now loads static MDL/VVD/VTX meshes into `render.pass.world`,
+queues the engine's visible static-prop list in its draw slot, and suppresses
+each claimed prop's legacy draw only after the core accepts that slot. On
+`sp_a2_laser_intro_relit`, the native Vulkan Portal 2 boot passes with 224
+of 294 static placements claimed (245 eligible), 73 of 93 material records
+claimed, and 3,344 static instances queued / 3,512 surface draws completed
+at the `r_core_world_stats` sample with zero reported failures. The map has
+four `hanging_walkway_32b`, two `hanging_stair_128`, and two
+`hanging_walkway_end_cap` placements; all eight are in the claimed cohort.
+Reproduce with `tools/quality/portal_boot.py --game portal2 --renderer
+native-vulkan --headless --require-vulkan --map sp_a2_laser_intro_relit`
+using the staged Portal 2 build and
+`quality-results/relight/sp_a2_laser_intro_relit/content`. Evidence:
+`quality-results/rendercore-model-game/laser-boot05/evidence.json`,
+`quality-results/rendercore-model-game/laser-boot05/runtime/engine.log`,
+and `quality-results/rendercore-model-game/laser-boot05.png`.
+
+This is an in-game static-prop handoff, not K5 closure. The screenshot still
+shows mixed model lighting: 70 static placements and all dynamic/skinned
+models remain on the legacy path. The mesh point uses a neutral dielectric
+MRAO constant for imported legacy model materials, and at this handoff the
+map relight scene did not author model PBR textures or static-prop shadow
+casters. Material authoring, model shadow integration, and the remaining
+static-prop cohort are follow-up work. No performance comparison is claimed.
+
+### Laser intro static-prop light transport and map-light merge (2026-09-30)
+
+The relight scene now reads the BSP's `sprp` placements and studio skins,
+exports LOD 0 through `mdl_mesh_export` (the same `content.studio-model`
+parser as rendercore), and uses each opaque mesh's resolved VMT and Source
+transform in the Cycles scene. Static props cast into the world lightmap,
+probe volume and reflection-probe renders while receiving no world atlas
+space and staying out of WMSH. The modern `VertexLitGeneric` default and
+Phong roughness used by the baker agree with the runtime mesh point. The
+laser intro scene contains 294 placements from 41 models: 296 opaque mesh
+draws and 25 materials entered the bake, while 6 translucent/special mesh
+draws were omitted. The 2048 preview atlas charted the 5,126 world
+triangles and parked 213,728 prop/occluder triangles. Cycles completed its
+direct, indirect and directional passes, and the preview package retained
+gameplay identity. The preview uses 64 samples and no denoising; its seam
+p99 was 0.1627, so its relaxed preview seam limit does not claim the
+release-quality lightmap gate.
+
+A same-seed, same-layout 64-sample local control removed only the static-prop
+meshes and repeated the separated direct and indirect passes. The world
+coverage mask was identical (2,905,659 texels); 41.2% of covered RGB texels
+changed, and mean covered luminance fell from 0.01079 without props to
+0.00793 with props. This is evidence that the props affect world light
+transport, not just scene inventory. The paired EXRs, logs and hashes are
+in `quality-results/rendercore-model-game/laser-no-prop-control/`.
+
+The map's relit BSP retains one switchable world light. The previous
+all-or-nothing map-light fallback therefore hid its authored baked lamps
+from the model point. `render.pass.lights` now merges individual always-on
+lamps by shape and position, keeps style-controlled lamps with the engine's
+live set, and applies vrad's reference-distance scaling to explicit
+constant/linear/quadratic attenuation. Nonzero
+`_fifty_percent_distance` remains an explicit unsupported case. The
+`render_lab` clustered-light suite passed 25 checks and its seeded run
+passed 5 before product integration. On the preview map, native Vulkan
+boot passed with 16 runtime lights in the stage view (previously 1), 224
+of 294 static props claimed, 740 lit views and zero reported draw failures.
+Evidence: `quality-results/rendercore-model-game/laser-prop-preview/`,
+`quality-results/rendercore-model-game/laser-prop-preview-game2/evidence.json`,
+and `quality-results/rendercore-model-game/laser-prop-preview-game2.png`.
+
+The preview was then rebaked through `content` on a remote RTX 4080 SUPER
+with the pinned Blender 5.2.2 profile. The bake receipt records OptiX on
+that GPU, 39 charted world meshes and a 70.3-second bake; 48 reflection
+probe faces and the probe volume also rendered remotely. The packaged map
+passed gameplay identity, and a fresh native Vulkan boot passed with 744
+lit views, 224 of 294 static props claimed, 16 runtime lights and no
+reported draw failure. The remote host was released after the successful
+pipeline. Evidence: `quality-results/rendercore-model-game/laser-prop-remote-run4.log`,
+`quality-results/rendercore-model-game/laser-prop-preview/lighting/atlas.exr.json`,
+`quality-results/rendercore-model-game/laser-prop-remote-game/evidence.json`,
+and `quality-results/rendercore-model-game/laser-prop-remote-game.png`.
+
+This is a quality preview, not K5 or K11 closure. The 70 unclaimed static
+placements, model PBR authoring, static-mesh runtime shadow casters,
+nonzero `_fifty_percent_distance`, and a denoised high-sample map remain.
+The new host tool builds in the configured Portal 2 product; a relight
+toolchain's `client_build` must contain it. No performance comparison is
+claimed.
+
+### Animated door and movie reference work (2026-09-30, active)
+
+The WorldPass now accepts a queued model pose as owned world-space vertices,
+draws it through the shared mesh materials and skin table, and retires its
+transient vertex buffer behind the frame token. A model-only view no longer
+requires BSP vertex/index buffers or a static instance to initialize the mesh
+resolver. `render.world.null` passed 31 checks. The new `render_lab suite
+posed-model --validate` passed 5 checks on Vulkan: the current pose moves lit
+pixels and turning its area light off removes them. The fixture's lit, moved,
+and unlit frames are under
+`quality-results/rendercore-model-game/posed-model-lab/`.
+
+The engine now registers `portal_door_combined.mdl` beside the static model
+inventory and hands its live Studio bone palette to the core for eligible
+top-level views. The core composes each bone-to-world matrix with the model's
+pose-to-bone matrix, skins the owned vertices, and draws them at the Studio
+slot through the same stage lighting as the static meshes. Other models and
+unsupported door draws stay with studiorender. A material claim defect kept
+the door out at first: the imported VertexLitGeneric has ordinary
+self-illumination and the shader's inactive zero-valued Fresnel parameters.
+The mesh claim now ignores those parameters while the Fresnel enable switch
+remains unsupported and names a gap.
+
+The native Vulkan Portal 2 close-door and open-door boots both passed on
+`sp_a2_laser_intro_relit` with rendercore enabled. The open-door capture
+recorded 110 posed models queued and 110 draws, 2,300 static props queued,
+548 views drawn, and zero failed views. The door panels visibly move clear of
+the doorway while the frame and panels receive stage shading. Evidence:
+`quality-results/rendercore-model-game/laser-door-boot11.png`,
+`quality-results/rendercore-model-game/laser-door-open-final.png`, and the
+open boot's `evidence.json` and `runtime/engine.log`. The material suite passed
+123 checks; `render.world.null` passed 31. This is the test chamber door model
+cohort, not all animated Studio models or a completed K5 handoff. CPU skinning
+cost and quality across other door poses/maps remain to measure.
+
+The map's second instance, the exit door at `(576, 0, -40)`, also appears in a
+native Vulkan capture (`laser-exit-door-final.png`); the boot reports 195
+posed draws and zero failures. Its surrounding corridor is very dark in this
+preview, and the door follows that environment. This check establishes the
+handoff for both placed doors, not a final lighting grade for every map.
+
+For the Blender lighting reference, the laser intro's `laser_portal.bik` frame
+uses retail `video_splitter.nut` UV mode 12. The extracted USD scene records
+each movie screen's world corner and `st` coordinate; the Blender reference
+renderer checks those pairs after import and checks that the emission frame
+samples `st`. The extracted laser scene passed for all 44 lifted screen quads;
+a changed UV and a disconnected UV image node were each rejected. The 41
+legacy relight and 16 USD scene tests passed. This is a reference-render
+tooling check and has not changed the in-game video path or its on/off state.

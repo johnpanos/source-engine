@@ -11,6 +11,7 @@
 
 
 #include "staticpropmgr.h"
+#include "render_core_world_draw.h"
 #include "convar.h"
 #include "vcollide_parse.h"
 #include "engine/ICollideable.h"
@@ -396,6 +397,22 @@ public:
 	// RFC 0016 K5 (render_core_world.cpp): each prop's world render box, and
 	// the index of a drawn prop's renderable (-1 for another renderable).
 	int CorePropCount() const { return m_StaticProps.Count(); }
+	int CoreModelCount() const { return m_StaticPropDict.Count(); }
+	const model_t *CoreModel( int nModel ) const { return m_StaticPropDict[nModel].m_pModel; }
+	void CorePropInfo( int nProp, const model_t **model, float world[12], int *skin,
+	    unsigned char *alpha, float modulation[3] ) const
+	{
+		const CStaticProp &prop = m_StaticProps[nProp];
+		*model = prop.m_pModel;
+		for ( int row = 0; row < 3; ++row )
+			for ( int col = 0; col < 4; ++col )
+				world[row * 4 + col] = prop.m_ModelToWorld[row][col];
+		*skin = prop.m_Skin;
+		*alpha = prop.m_Alpha;
+		modulation[0] = prop.m_DiffuseModulation.x;
+		modulation[1] = prop.m_DiffuseModulation.y;
+		modulation[2] = prop.m_DiffuseModulation.z;
+	}
 	void CorePropBounds( int nProp, Vector &mins, Vector &maxs ) const
 	{
 		mins = m_StaticProps[nProp].m_WorldRenderBBoxMin;
@@ -2000,7 +2017,7 @@ void CStaticPropMgr::DrawStaticProps( IClientRenderable **pProps, int count, boo
 	if ( !r_drawstaticprops.GetBool() )
 		return;
 
-	// RFC 0016 K5: the props this view draws, for r_core_cull_capture.
+	// Capture the client's visible list before either renderer takes it.
 	if ( !bShadowDepth && RenderCoreWorld_Capturing() )
 	{
 		CUtlVector<int> drawn;
@@ -2011,6 +2028,33 @@ void CStaticPropMgr::DrawStaticProps( IClientRenderable **pProps, int count, boo
 				drawn.AddToTail( nIndex );
 		}
 		RenderCoreWorld_OnStaticPropsDrawn( drawn.Base(), drawn.Count() );
+	}
+
+	CUtlVector<IClientRenderable *> legacyProps;
+	if ( !bShadowDepth && !IsUsingStaticPropDebugModes() && !drawVCollideWireframe )
+	{
+		CUtlVector<unsigned int> coreProps;
+		legacyProps.EnsureCapacity( count );
+		for ( int i = 0; i < count; ++i )
+		{
+			CStaticProp *prop = static_cast<CStaticProp *>( pProps[i] );
+			const int index = CorePropIndex( pProps[i] );
+			if ( index >= 0 && prop->m_pModel && prop->m_Alpha == 255 &&
+			     prop->m_DiffuseModulation.x == 1.0f && prop->m_DiffuseModulation.y == 1.0f &&
+			     prop->m_DiffuseModulation.z == 1.0f &&
+			     RenderCoreWorldDraw_DrawsStaticProp( unsigned( index ) ) )
+				coreProps.AddToTail( unsigned( index ) );
+			else
+				legacyProps.AddToTail( pProps[i] );
+		}
+		if ( coreProps.Count() &&
+		     RenderCoreWorldDraw_TakeStaticProps( coreProps.Base(), coreProps.Count() ) )
+		{
+			pProps = legacyProps.Base();
+			count = legacyProps.Count();
+			if ( count == 0 )
+				return;
+		}
 	}
 
 	if ( IsUsingStaticPropDebugModes() || drawVCollideWireframe )
@@ -2390,4 +2434,20 @@ int StaticPropMgr_CorePropCount()
 void StaticPropMgr_CorePropBounds( int nProp, Vector &mins, Vector &maxs )
 {
 	s_StaticPropMgr.CorePropBounds( nProp, mins, maxs );
+}
+
+int StaticPropMgr_CoreModelCount()
+{
+	return s_StaticPropMgr.CoreModelCount();
+}
+
+const model_t *StaticPropMgr_CoreModel( int nModel )
+{
+	return s_StaticPropMgr.CoreModel( nModel );
+}
+
+void StaticPropMgr_CorePropInfo( int nProp, const model_t **model, float world[12], int *skin,
+    unsigned char *alpha, float modulation[3] )
+{
+	s_StaticPropMgr.CorePropInfo( nProp, model, world, skin, alpha, modulation );
 }

@@ -10,6 +10,10 @@
 #include "render_core_host.h"
 #include "cmodel_engine.h"
 #include "render_core_world.h"
+#include "staticpropmgr.h"
+#include "modelloader.h"
+#include "ModelInfo.h"
+#include "studio.h"
 #include "indirect_light_host.h"
 #include "render/composition/render_core_world.h"
 #include "gl_matsysiface.h"
@@ -28,6 +32,10 @@
 #include "tier2/tier2.h"
 #include "vtf/vtf.h"
 #include "tier1/utlvector.h"
+
+#include <memory>
+#include <string>
+#include <vector>
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -77,6 +85,8 @@ struct CoreWorldState
 	// Per surface index: its entry in the core's world (only eligible
 	// surfaces have one), or -1. Views name the core's entries.
 	CUtlVector<int> entryOf;
+	const model_t *doorModel = NULL;
+	unsigned int doorModelIndex = ~0u;
 };
 
 CoreWorldState &State()
@@ -341,6 +351,149 @@ void CheckFailures( IRenderCoreWorld *pWorld )
 
 } // namespace
 
+static bool ReadStaticModelFile( const std::string &path, std::string &bytes )
+{
+	CUtlBuffer buffer;
+	if ( !g_pFileSystem->ReadFile( path.c_str(), "GAME", buffer ) )
+		return false;
+	bytes.assign( static_cast<const char *>( buffer.Base() ), buffer.TellPut() );
+	return true;
+}
+
+static void LevelInitStaticProps( IRenderCoreWorld *pWorld )
+{
+	struct ModelSource
+	{
+		std::string name, mdl, vvd, vtx;
+		std::vector<std::unique_ptr<MaterialVars>> variables;
+		std::vector<RenderCoreWorldMaterial> materials;
+	};
+	const int staticModelCount = StaticPropMgr_CoreModelCount();
+	CoreWorldState &state = State();
+	state.doorModel = modelloader->GetModelForName(
+	    "models/props/portal_door_combined.mdl", IModelLoader::FMODELLOADER_CLIENT );
+	state.doorModelIndex = state.doorModel ? unsigned( staticModelCount ) : ~0u;
+	const int modelCount = staticModelCount + ( state.doorModel ? 1 : 0 );
+	const int propCount = StaticPropMgr_CorePropCount();
+	std::vector<ModelSource> sources( modelCount );
+	std::vector<RenderCoreStaticModel> models( modelCount );
+	NeutralMaterials neutrals;
+	int missingModel = 0, missingMdl = 0, missingVvd = 0, missingVtx = 0;
+	int missingMaterials = 0;
+	for ( int i = 0; i < modelCount; ++i )
+	{
+		const model_t *model =
+		    i < staticModelCount ? StaticPropMgr_CoreModel( i ) : state.doorModel;
+		if ( !model )
+		{
+			++missingModel;
+			continue;
+		}
+		ModelSource &source = sources[i];
+		source.name = modelloader->GetName( const_cast<model_t *>( model ) );
+		if ( source.name.size() < 4 ||
+		     V_stricmp( source.name.c_str() + source.name.size() - 4, ".mdl" ) )
+			continue;
+		const std::string stem = source.name.substr( 0, source.name.size() - 4 );
+		if ( !ReadStaticModelFile( source.name, source.mdl ) )
+		{
+			++missingMdl;
+			continue;
+		}
+		if ( !ReadStaticModelFile( stem + ".vvd", source.vvd ) )
+		{
+			++missingVvd;
+			continue;
+		}
+		for ( const char *suffix : { ".dx90.vtx", ".vtx", ".dx80.vtx", ".sw.vtx" } )
+		{
+			if ( ReadStaticModelFile( stem + suffix, source.vtx ) )
+				break;
+		}
+		if ( source.vtx.empty() )
+		{
+			++missingVtx;
+			continue;
+		}
+		// GetModelMaterialCount only handles brush models. A studio model's
+		// header owns its texture slots; request that many resolved materials.
+		studiohdr_t *header = modelinfo->GetStudiomodel( model );
+		const int count = header ? header->numtextures : 0;
+		if ( count <= 0 )
+		{
+			++missingMaterials;
+			continue;
+		}
+		std::vector<IMaterial *> materialPtrs( count );
+		modelinfo->GetModelMaterials( model, count, materialPtrs.data() );
+		source.variables.reserve( count );
+		source.materials.reserve( count );
+		for ( IMaterial *material : materialPtrs )
+		{
+			if ( !material )
+				break;
+			source.variables.push_back( std::make_unique<MaterialVars>() );
+			MaterialVars &vars = *source.variables.back();
+			ReadVariables( material, neutrals, vars );
+			RenderCoreWorldMaterial desc;
+			desc.name = material->GetName();
+			desc.shader = material->GetShaderName();
+			desc.variableCount = vars.keys.Count();
+			desc.keys = vars.keyPtrs.Base();
+			desc.values = vars.valuePtrs.Base();
+			desc.textures = vars.textures.Base();
+			desc.defaults = vars.defaults.Base();
+			source.materials.push_back( desc );
+		}
+		RenderCoreStaticModel &out = models[i];
+		out.name = source.name.c_str();
+		out.mdl = source.mdl.data();
+		out.mdlBytes = source.mdl.size();
+		out.vvd = source.vvd.data();
+		out.vvdBytes = source.vvd.size();
+		out.vtx = source.vtx.data();
+		out.vtxBytes = source.vtx.size();
+		out.materials = source.materials.data();
+		out.materialCount = unsigned( source.materials.size() );
+	}
+	Msg( "r_core_world: static model inputs: %d models, missing model %d, mdl %d, vvd %d, "
+	     "vtx %d, materials %d\n",
+	    modelCount, missingModel, missingMdl, missingVvd, missingVtx, missingMaterials );
+	std::vector<RenderCoreStaticProp> props( propCount );
+	for ( int i = 0; i < propCount; ++i )
+	{
+		const model_t *model = NULL;
+		unsigned char alpha = 0;
+		float modulation[3] = {};
+		StaticPropMgr_CorePropInfo( i, &model, props[i].world, &props[i].skin, &alpha, modulation );
+		props[i].model = ~0u;
+		for ( int m = 0; m < staticModelCount; ++m )
+		{
+			if ( StaticPropMgr_CoreModel( m ) == model )
+			{
+				props[i].model = unsigned( m );
+				break;
+			}
+		}
+		if ( alpha != 255 || modulation[0] != 1.0f || modulation[1] != 1.0f ||
+		     modulation[2] != 1.0f || !model || modelinfo->IsTranslucent( model ) ||
+		     modelinfo->ModelHasMaterialProxy( model ) )
+			props[i].skin = -1;
+	}
+	pWorld->SetStaticProps(
+	    models.data(), unsigned( models.size() ), props.data(), unsigned( props.size() ) );
+	int claimed = 0;
+	int eligible = 0;
+	for ( int i = 0; i < propCount; ++i )
+	{
+		eligible += props[i].skin >= 0 ? 1 : 0;
+		if ( pWorld->DrawsStaticProp( unsigned( i ) ) )
+			++claimed;
+	}
+	Msg( "r_core_world: static props: %d of %d instances in rendercore, %d eligible\n", claimed,
+	    propCount, eligible );
+}
+
 // A BSP2 map's world is its WMSH (RFC 0016 K12): the core holds it as a
 // world stage, its meshlets the surfaces and its batches' materials read as
 // the BSP faces' are; the stage's lighting reached the core with the world
@@ -400,6 +553,7 @@ static void LevelInitStage( IRenderCoreWorld *pWorld, worldbrushdata_t *pBrush )
 	}
 	pWorld->SetWorldMesh( pBrush->pWorldMeshData, pBrush->worldMeshSize, meshlets.Base(),
 	    meshlets.Count(), materialDescs.Base(), materialDescs.Count(), CM_EntityString() );
+	LevelInitStaticProps( pWorld );
 	state.stageTakes.SetCount( pBrush->worldMeshBatchCount );
 	int taken = 0;
 	for ( unsigned int b = 0; b < pBrush->worldMeshBatchCount; ++b )
@@ -484,6 +638,11 @@ static void LevelInitWorld()
 	state.worldMeshViews = 0;
 	state.takes.RemoveAll();
 	state.entryOf.RemoveAll();
+	if ( state.doorModel )
+		modelloader->UnreferenceModel(
+		    const_cast<model_t *>( state.doorModel ), IModelLoader::FMODELLOADER_CLIENT );
+	state.doorModel = NULL;
+	state.doorModelIndex = ~0u;
 	IRenderCoreWorld *pWorld = RenderCoreHost_World();
 	if ( pWorld )
 		state.failuresSeen = pWorld->Failures();
@@ -630,6 +789,11 @@ static void LevelInitWorld()
 void RenderCoreWorldDraw_LevelShutdown()
 {
 	CoreWorldState &state = State();
+	if ( state.doorModel )
+		modelloader->UnreferenceModel(
+		    const_cast<model_t *>( state.doorModel ), IModelLoader::FMODELLOADER_CLIENT );
+	state.doorModel = NULL;
+	state.doorModelIndex = ~0u;
 	for ( int i = 0; i < state.heldTextures.Count(); ++i )
 		state.heldTextures[i]->DecrementReferenceCount();
 	state.heldTextures.RemoveAll();
@@ -684,8 +848,9 @@ bool RenderCoreWorldDraw_OwnsLighting( SurfaceHandle_t surfID )
 
 // Queues the core's surfaces (its entries) for the current view, with the
 // view's transform and viewport, and marks its slot here in the stream.
-static bool QueueCoreView(
-    IRenderCoreWorld *pWorld, const unsigned int *pEntries, int nCount, float waterZOffset )
+static bool QueueCoreView( IRenderCoreWorld *pWorld, const unsigned int *pEntries, int nCount,
+    float waterZOffset, const unsigned int *pStaticProps = NULL, int nStaticProps = 0,
+    const RenderCorePosedModel *pPosedModels = NULL, int nPosedModels = 0 )
 {
 	// The engine's view as pushed: the legacy context holds the same
 	// matrices and viewport, and the core reads no legacy stream.
@@ -712,7 +877,28 @@ static bool QueueCoreView(
 	}
 	return pWorld->DrawView( pEntries, unsigned( nCount ), toClip, viewport,
 	    static_cast<unsigned long long>( host_framecount ) + 1, toView, projectionRows,
-	    waterZOffset );
+	    waterZOffset, pStaticProps, unsigned( nStaticProps ), pPosedModels,
+	    unsigned( nPosedModels ) );
+}
+
+bool RenderCoreWorldDraw_TakePosedModel(
+    const model_t *model, int skin, const matrix3x4_t *boneToWorld, int boneCount )
+{
+	const CoreWorldState &state = State();
+	IRenderCoreWorld *pWorld = RenderCoreHost_World();
+	if ( !pWorld || !state.stageWorld || r_core_world.GetInt() != 1 ||
+	     RenderCoreWorld_ViewDepth() != 1 || model != state.doorModel ||
+	     state.doorModelIndex == ~0u || skin < 0 || !boneToWorld || boneCount <= 0 )
+		return false;
+	std::vector<float> palette;
+	palette.reserve( std::size_t( boneCount ) * 12 );
+	for ( int bone = 0; bone < boneCount; ++bone )
+		for ( int row = 0; row < 3; ++row )
+			for ( int col = 0; col < 4; ++col )
+				palette.push_back( boneToWorld[bone].m_flMatVal[row][col] );
+	RenderCorePosedModel posed = {
+	    state.doorModelIndex, unsigned( skin ), palette.data(), unsigned( boneCount ) };
+	return QueueCoreView( pWorld, NULL, 0, 0.0f, NULL, 0, &posed, 1 );
 }
 
 void RenderCoreWorldDraw_BeginView( const unsigned int *pSurfaces, int nCount, float waterZOffset )
@@ -803,6 +989,26 @@ bool RenderCoreWorldDraw_ChainsOnly()
 	       ( state.viewActive || ( state.loaded && r_core_world_isolate.GetBool() ) );
 }
 
+bool RenderCoreWorldDraw_TakeStaticProps( const unsigned int *props, int count )
+{
+	IRenderCoreWorld *pWorld = RenderCoreHost_World();
+	if ( !pWorld || !State().stageWorld || r_core_world.GetInt() != 1 || count <= 0 )
+		return false;
+	for ( int i = 0; i < count; ++i )
+	{
+		if ( !pWorld->DrawsStaticProp( props[i] ) )
+			return false;
+	}
+	return QueueCoreView( pWorld, NULL, 0, 0.0f, props, count );
+}
+
+bool RenderCoreWorldDraw_DrawsStaticProp( unsigned int prop )
+{
+	IRenderCoreWorld *pWorld = RenderCoreHost_World();
+	return pWorld && State().stageWorld && r_core_world.GetInt() == 1 &&
+	       pWorld->DrawsStaticProp( prop );
+}
+
 CON_COMMAND( r_core_world_stats, "RFC 0016 K5: the core world's surfaces, views and gaps" )
 {
 	IRenderCoreWorld *pWorld = RenderCoreHost_World();
@@ -814,10 +1020,14 @@ CON_COMMAND( r_core_world_stats, "RFC 0016 K5: the core world's surfaces, views 
 	RenderCoreWorldStats stats;
 	pWorld->GetStats( &stats );
 	Msg( "r_core_world_stats: materials %u claimed %u surfaces %u claimed %u views queued %llu "
-	     "drawn %llu failed %llu skipped %llu surfaces drawn %llu last failure '%s'\n",
+	     "drawn %llu failed %llu skipped %llu surfaces drawn %llu static queued %llu drawn %llu "
+	     "last failure '%s'\n",
 	    stats.materials, stats.claimedMaterials, stats.surfaces, stats.claimedSurfaces,
 	    stats.viewsQueued, stats.viewsDrawn, stats.viewsFailed, stats.viewsSkipped,
-	    stats.surfacesDrawn, stats.lastFailure );
+	    stats.surfacesDrawn, stats.staticInstancesQueued, stats.staticDrawsDrawn,
+	    stats.lastFailure );
+	Msg( "r_core_world_stats: posed models queued %llu draws %llu\n", stats.posedModelsQueued,
+	    stats.posedDrawsDrawn );
 	if ( stats.gaps[0] )
 		Msg( "r_core_world_stats: gaps:\n%s", stats.gaps );
 	if ( stats.claimed[0] )

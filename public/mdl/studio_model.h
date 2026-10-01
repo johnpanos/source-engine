@@ -118,6 +118,8 @@ struct Vertex
 	Float3 normal;
 	float u = 0.0f;
 	float v = 0.0f;
+	Float3 tangent;           // VVD tangent, model space; zero when the file has none
+	float tangentSign = 0.0f; // VVD tangent.w; zero when absent
 
 	friend bool operator==( const Vertex &, const Vertex & ) = default;
 };

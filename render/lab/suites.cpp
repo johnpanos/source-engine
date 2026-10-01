@@ -48,6 +48,8 @@ int RunSuite( int argc, char **argv )
 		return RunGtaoSuite( argc - 1, argv + 1 );
 	if ( name == "panel" )
 		return RunPanelSuite( argc - 1, argv + 1 );
+	if ( name == "posed-model" )
+		return RunPosedModelSuite( argc - 1, argv + 1 );
 	std::fprintf( stderr, "render_lab suite: no suite %s\n", name.c_str() );
 	return 2;
 }

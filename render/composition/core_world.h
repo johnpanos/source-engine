@@ -26,6 +26,7 @@
 #include "render/pass/lights/map_lights.h"
 #include "render/pass/shadows/shadow_passes.h"
 #include "render/pass/shadows/shadow_plan.h"
+#include "render/pass/skinning/skinning.h"
 #include "render/pass/world/world_pass.h"
 #include "render/resources/mesh_cache.h"
 
@@ -64,11 +65,21 @@ public:
 	    const RenderCoreWorldMeshlet *meshlets, unsigned int meshletCount,
 	    const RenderCoreWorldMaterial *materials, unsigned int materialCount,
 	    const char *entities ) override;
+	void SetStaticProps( const RenderCoreStaticModel *models, unsigned int modelCount,
+	    const RenderCoreStaticProp *props, unsigned int propCount ) override;
+	bool DrawsStaticProp( unsigned int prop ) const override
+	{
+		return m_StageSet && m_Pass.DrawsStaticInstance( prop );
+	}
 	world_mesh_gpu::IWorldMeshUpload *StageUpload() override { return &m_Capture; }
 	void ClearWorld() override
 	{
 		m_StageSet = false;
 		m_StageWorld.reset();
+		m_StaticMeshes.clear();
+		m_StaticInstances.clear();
+		m_StaticMaterials.clear();
+		m_ModelPoseSources.clear();
 		m_Pass.ClearWorld();
 	}
 	bool Draws( unsigned int material ) const override { return m_Pass.Draws( material ); }
@@ -79,7 +90,9 @@ public:
 	}
 	bool DrawView( const unsigned int *surfaces, unsigned int count, const float worldToClip[16],
 	    const float viewport[6], unsigned long long hostFrame, const float worldToView[16],
-	    const float viewToClip[16], float waterZOffset ) override;
+	    const float viewToClip[16], float waterZOffset, const unsigned int *staticProps,
+	    unsigned int staticPropCount, const RenderCorePosedModel *posedModels,
+	    unsigned int posedModelCount ) override;
 	void BeginFrame() override;
 	void EndFrame() override;
 	// frame::IRenderStageHooks (the main thread): the open views' depth, so a
@@ -117,6 +130,17 @@ public:
 private:
 	// Sets the pass's world stage from m_StageWorld and the captured lighting.
 	void SetStage();
+	std::vector<pass::world::WorldData::StaticMesh> m_StaticMeshes;
+	std::vector<pass::world::WorldData::StaticInstance> m_StaticInstances;
+	std::vector<pass::world::WorldMaterial> m_StaticMaterials;
+	struct ModelPoseSource
+	{
+		std::vector<pass::skinning::SkinVertex> vertices;
+		std::vector<pass::skinning::BoneMatrix> poseToBone;
+	};
+	std::vector<ModelPoseSource> m_ModelPoseSources;
+	bool PoseModel(
+	    const RenderCorePosedModel &source, pass::world::WorldView::PosedModel &out ) const;
 	std::vector<pass::world::WorldMaterial> WorldMaterials(
 	    const RenderCoreWorldMaterial *materials, unsigned int materialCount ) const;
 

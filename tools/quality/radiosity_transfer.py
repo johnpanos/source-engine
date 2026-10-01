@@ -116,7 +116,7 @@ def emissive_materials(scene):
     """The world (non-prop) materials that emit, by scene material name, sorted:
     an emission texture or a nonzero emission colour (as pbrt_blender builds
     them into a Principled BSDF's emission)."""
-    props = map_scene.prop_shape_names(scene)
+    props = map_scene.nonstatic_shape_names(scene)
     names = sorted({shape["material"] for shape in scene["shapes"]
                     if shape["name"] not in props and shape.get("material")})
     emissive = []

@@ -59,8 +59,16 @@ struct Resources
 	Format depthFormat = Format::kUnknown;
 	std::uint32_t samples = 1;
 	std::unique_ptr<material::ProgramResolver> resolver;
+	std::unique_ptr<material::ProgramResolver> modelResolver;
 	BufferId vertices;
 	BufferId indices;
+	struct StaticMeshBuffers
+	{
+		BufferId vertices;
+		BufferId indices;
+		bool uploaded = false;
+	};
+	std::vector<StaticMeshBuffers> staticMeshes;
 	struct Material
 	{
 		material::ResolvedProgram program;
@@ -75,6 +83,7 @@ struct Resources
 		int viewInput = 0;
 	};
 	std::vector<Material> materials;
+	std::vector<Material> modelMaterials;
 	// A world stage's depth-and-normal prepass (the screen passes' input): a
 	// single-sample resolver of its own (its layouts, so its groups, differ
 	// from the lit one's; the group maps below are keyed by layout), its
@@ -170,6 +179,19 @@ bool IssuedBefore( std::uint32_t a, std::uint32_t b )
 std::string PageName( int handle )
 {
 	return "lightmap-page:" + std::to_string( handle );
+}
+
+std::uint32_t StaticMaterial( const WorldData::StaticMesh &mesh,
+    const WorldData::StaticInstance &instance, std::uint32_t surface )
+{
+	if ( surface >= mesh.surfaces.size() )
+		return ~0u;
+	if ( mesh.skinMaterials.empty() )
+		return instance.skin == 0 ? mesh.surfaces[surface].material : ~0u;
+	if ( instance.skin >= mesh.skinMaterials.size() ||
+	     surface >= mesh.skinMaterials[instance.skin].size() )
+		return ~0u;
+	return mesh.skinMaterials[instance.skin][surface];
 }
 
 } // namespace
@@ -318,6 +340,8 @@ struct WorldPass::State
 		{
 			for ( Resources::Material &m : old.materials )
 				ReleaseGroup( m.group, after );
+			for ( Resources::Material &m : old.modelMaterials )
+				ReleaseGroup( m.group, after );
 			for ( Resources::Material &m : old.prepassMaterials )
 				ReleaseGroup( m.group, after );
 			for ( TextureId texture : { old.prepassDepth, old.prepassNormal } )
@@ -345,6 +369,13 @@ struct WorldPass::State
 				(void)device->Release( old.vertices, after );
 			if ( old.indices.IsValid() )
 				(void)device->Release( old.indices, after );
+			for ( const Resources::StaticMeshBuffers &mesh : old.staticMeshes )
+			{
+				if ( mesh.vertices.IsValid() )
+					(void)device->Release( mesh.vertices, after );
+				if ( mesh.indices.IsValid() )
+					(void)device->Release( mesh.indices, after );
+			}
 		}
 		old = Resources();
 	}
@@ -392,8 +423,11 @@ void WorldPass::SetWorld( WorldData data )
 						claimed.handles[value.text] = handle;
 				}
 			}
-			// A world stage's materials resolve with world pbr.
-			auto blend = material::ClaimForDrawing( claimed.desc, data.stage != nullptr );
+			// Static meshes use the same surface program with model vertices,
+			// probes and clustered direct light instead of a lightmap page.
+			auto blend = source.mesh
+			                 ? material::ClaimForMesh( claimed.desc )
+			                 : material::ClaimForDrawing( claimed.desc, data.stage != nullptr );
 			if ( !blend )
 				gap = claimed.desc.family + ": " + blend.Error();
 			else if ( blend.Value() != BlendMode::kOpaque )
@@ -402,7 +436,9 @@ void WorldPass::SetWorld( WorldData data )
 				claimed.draws = true;
 		}
 		if ( !gap.empty() )
+		{
 			++gaps[gap];
+		}
 		counts.claimedMaterials += claimed.draws ? 1u : 0u;
 		claims->push_back( std::move( claimed ) );
 	}
@@ -519,14 +555,65 @@ bool WorldPass::Draws( std::uint32_t material ) const
 	return s.claims && material < s.claims->size() && ( *s.claims )[material].draws;
 }
 
+bool WorldPass::DrawsStaticInstance( std::uint32_t instance ) const
+{
+	const State &s = *m_State;
+	std::lock_guard<std::mutex> guard( s.lock );
+	if ( !s.world || !s.claims || instance >= s.world->staticInstances.size() )
+		return false;
+	const WorldData::StaticInstance &placement = s.world->staticInstances[instance];
+	const std::uint32_t mesh = placement.mesh;
+	if ( mesh >= s.world->staticMeshes.size() )
+		return false;
+	const WorldData::StaticMesh &data = s.world->staticMeshes[mesh];
+	if ( data.vertices.empty() || data.indices.empty() || data.surfaces.empty() )
+		return false;
+	for ( std::uint32_t i = 0; i < data.surfaces.size(); ++i )
+	{
+		const WorldSurface &surface = data.surfaces[i];
+		const std::uint32_t material = StaticMaterial( data, placement, i );
+		if ( material >= s.claims->size() || !( *s.claims )[material].draws ||
+		     !s.world->materials[material].mesh || surface.firstIndex > data.indices.size() ||
+		     surface.indexCount > data.indices.size() - surface.firstIndex )
+			return false;
+	}
+	return true;
+}
+
+bool WorldPass::DrawsPosedModel( std::uint32_t meshId, std::uint32_t skin ) const
+{
+	const State &s = *m_State;
+	std::lock_guard<std::mutex> guard( s.lock );
+	if ( !s.world || !s.claims || meshId >= s.world->staticMeshes.size() )
+		return false;
+	const WorldData::StaticMesh &mesh = s.world->staticMeshes[meshId];
+	if ( mesh.vertices.empty() || mesh.indices.empty() || mesh.surfaces.empty() )
+		return false;
+	WorldData::StaticInstance instance;
+	instance.mesh = meshId;
+	instance.skin = skin;
+	for ( std::uint32_t i = 0; i < mesh.surfaces.size(); ++i )
+	{
+		const WorldSurface &surface = mesh.surfaces[i];
+		const std::uint32_t material = StaticMaterial( mesh, instance, i );
+		if ( material >= s.claims->size() || !( *s.claims )[material].draws ||
+		     !s.world->materials[material].mesh || surface.firstIndex > mesh.indices.size() ||
+		     surface.indexCount > mesh.indices.size() - surface.firstIndex )
+			return false;
+	}
+	return true;
+}
+
 std::uint32_t WorldPass::QueueView( WorldView view )
 {
 	State &s = *m_State;
-	if ( view.surfaces.empty() )
+	if ( view.surfaces.empty() && view.staticInstances.empty() && view.posedModels.empty() )
 		return 0;
 	std::lock_guard<std::mutex> guard( s.lock );
 	if ( !s.world )
 		return 0;
+	s.stats.staticInstancesQueued += view.staticInstances.size();
+	s.stats.posedModelsQueued += view.posedModels.size();
 	const std::uint32_t serial = s.nextSerial;
 	s.nextSerial = ( s.nextSerial + 1 ) & kWorldSerialMask;
 	if ( s.nextSerial == 0 )
@@ -769,41 +856,62 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 			r.resolver->SetWorldPbr( true, StageTerms( *world->stage ) );
 		r.materials.resize( world->materials.size() );
 	}
+	if ( ( !view.staticInstances.empty() || !view.posedModels.empty() ) && !r.modelResolver )
+	{
+		auto resolver = material::ProgramResolver::Create( device, target.colorFormat,
+		    target.depthFormat, target.samples, material::VertexLayout::kModel );
+		if ( !resolver )
+		{
+			s.Fail( "the static model resolver: " + resolver.Error() );
+			return;
+		}
+		r.modelResolver = std::move( resolver ).Value();
+		r.modelResolver->SetWorldPbr( true, world->stage ? StageTerms( *world->stage ) : 0 );
+		r.modelMaterials.resize( world->materials.size() );
+		r.staticMeshes.resize( world->staticMeshes.size() );
+	}
 	if ( !r.uploaded )
 	{
 		const auto vertexBytes = std::as_bytes( std::span( world->vertices ) );
 		const auto indexBytes = std::as_bytes( std::span( world->indices ) );
-		BufferDesc desc;
-		desc.size = vertexBytes.size();
-		desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kVertex };
-		desc.debugName = "world vertices";
-		auto vertices = device.CreateBuffer( desc );
-		desc.size = indexBytes.size();
-		desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kIndex };
-		desc.debugName = "world indices";
-		auto indices = device.CreateBuffer( desc );
-		if ( !vertices || !indices || vertexBytes.empty() || indexBytes.empty() )
+		if ( vertexBytes.empty() && indexBytes.empty() )
 		{
-			if ( vertices )
-				(void)device.Release( vertices.Value(), CompletionToken() );
-			if ( indices )
-				(void)device.Release( indices.Value(), CompletionToken() );
-			s.Fail( "the world's buffers were refused" );
-			return;
+			r.uploaded = true; // a model-only world has no BSP vertex/index buffers
 		}
-		r.vertices = vertices.Value();
-		r.indices = indices.Value();
-		encoder.TransitionBuffer(
-		    r.vertices, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
-		encoder.WriteBuffer( r.vertices, 0, vertexBytes );
-		encoder.TransitionBuffer(
-		    r.vertices, ResourceUsage::kCopyDestination, ResourceUsage::kVertex );
-		encoder.TransitionBuffer(
-		    r.indices, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
-		encoder.WriteBuffer( r.indices, 0, indexBytes );
-		encoder.TransitionBuffer(
-		    r.indices, ResourceUsage::kCopyDestination, ResourceUsage::kIndex );
-		r.uploaded = true;
+		else
+		{
+			BufferDesc desc;
+			desc.size = vertexBytes.size();
+			desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kVertex };
+			desc.debugName = "world vertices";
+			auto vertices = device.CreateBuffer( desc );
+			desc.size = indexBytes.size();
+			desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kIndex };
+			desc.debugName = "world indices";
+			auto indices = device.CreateBuffer( desc );
+			if ( !vertices || !indices || vertexBytes.empty() || indexBytes.empty() )
+			{
+				if ( vertices )
+					(void)device.Release( vertices.Value(), CompletionToken() );
+				if ( indices )
+					(void)device.Release( indices.Value(), CompletionToken() );
+				s.Fail( "the world's buffers were refused" );
+				return;
+			}
+			r.vertices = vertices.Value();
+			r.indices = indices.Value();
+			encoder.TransitionBuffer(
+			    r.vertices, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+			encoder.WriteBuffer( r.vertices, 0, vertexBytes );
+			encoder.TransitionBuffer(
+			    r.vertices, ResourceUsage::kCopyDestination, ResourceUsage::kVertex );
+			encoder.TransitionBuffer(
+			    r.indices, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+			encoder.WriteBuffer( r.indices, 0, indexBytes );
+			encoder.TransitionBuffer(
+			    r.indices, ResourceUsage::kCopyDestination, ResourceUsage::kIndex );
+			r.uploaded = true;
+		}
 	}
 
 	// A world stage's textures: made at the first slot from the stage, then
@@ -1261,12 +1369,15 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 			return m.ready ? &m : nullptr;
 		const Claimed &claimed = ( *claims )[index];
 		const std::string &name = world->materials[index].name;
-		auto program = resolver.Resolve( claimed.desc );
+		const bool model = &resolver == r.modelResolver.get();
+		auto program =
+		    model ? resolver.ResolveMesh( claimed.desc ) : resolver.Resolve( claimed.desc );
 		std::string why;
 		if ( !program )
 			why = program.Error();
-		else if ( program.Value().request.vertexStride != sizeof( WorldVertex ) )
-			why = "its program reads another vertex than the world's";
+		else if ( program.Value().request.vertexStride !=
+		          ( model ? sizeof( material::SurfaceModelVertex ) : sizeof( WorldVertex ) ) )
+			why = "its program reads another vertex than its mesh";
 		else if ( !buildGroup( program.Value().request.material, claimed.handles, m.group, &why ) )
 			s.ReleaseGroup( m.group, CompletionToken() );
 		if ( !why.empty() )
@@ -1450,6 +1561,7 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 	// A world stage's lit view: one group per view layout for this view, with
 	// the view's clustered lights, retired behind this frame after drawing.
 	std::map<std::uint64_t, Group> litViews;
+	std::map<std::uint64_t, Group> modelLitViews;
 	// The view's ambient occlusion once the screen passes recorded it.
 	TextureId viewOcclusion;
 	// The view's planar reflection (a program's view input, imported below
@@ -1467,7 +1579,8 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		}
 		if ( world->stage && view.lights )
 		{
-			Group &lit = litViews[layout];
+			const bool model = m.resolver == r.modelResolver.get();
+			Group &lit = model ? modelLitViews[layout] : litViews[layout];
 			if ( lit.group.IsValid() )
 				return &lit;
 			const StageViewLights &lights = *view.lights;
@@ -1486,7 +1599,7 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 				shadows.tiles = lights.shadowTiles;
 			}
 			material::SurfaceScreenInputs screen;
-			if ( viewOcclusion.IsValid() )
+			if ( !model && viewOcclusion.IsValid() )
 			{
 				screen.ambientOcclusion = viewOcclusion;
 				screen.ambientOcclusionDesc = target.ambientOcclusionDesc;
@@ -1580,6 +1693,154 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		    return x.lightmapPage != y.lightmapPage ? x.lightmapPage < y.lightmapPage
 		                                            : x.firstIndex < y.firstIndex;
 	    } );
+	struct StaticDraw
+	{
+		bool posed;
+		std::uint32_t instance;
+		std::uint32_t mesh;
+		std::uint32_t surface;
+		std::uint32_t material;
+	};
+	std::vector<StaticDraw> staticDraws;
+	std::vector<BufferId> posedBuffers( view.posedModels.size() );
+	auto uploadMesh = [&]( std::uint32_t meshId ) -> bool
+	{
+		Resources::StaticMeshBuffers &buffers = r.staticMeshes[meshId];
+		if ( buffers.uploaded )
+			return true;
+		const WorldData::StaticMesh &mesh = world->staticMeshes[meshId];
+		const auto vertexBytes = std::as_bytes( std::span( mesh.vertices ) );
+		const auto indexBytes = std::as_bytes( std::span( mesh.indices ) );
+		BufferDesc desc;
+		desc.size = vertexBytes.size();
+		desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kVertex };
+		desc.debugName = "model vertices";
+		auto vertices = device.CreateBuffer( desc );
+		desc.size = indexBytes.size();
+		desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kIndex };
+		desc.debugName = "model indices";
+		auto indices = device.CreateBuffer( desc );
+		if ( !vertices || !indices || vertexBytes.empty() || indexBytes.empty() )
+		{
+			if ( vertices )
+				(void)device.Release( vertices.Value(), CompletionToken() );
+			if ( indices )
+				(void)device.Release( indices.Value(), CompletionToken() );
+			note( "a model mesh's buffers were refused" );
+			return false;
+		}
+		buffers.vertices = vertices.Value();
+		buffers.indices = indices.Value();
+		encoder.TransitionBuffer(
+		    buffers.vertices, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+		encoder.WriteBuffer( buffers.vertices, 0, vertexBytes );
+		encoder.TransitionBuffer(
+		    buffers.vertices, ResourceUsage::kCopyDestination, ResourceUsage::kVertex );
+		encoder.TransitionBuffer(
+		    buffers.indices, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+		encoder.WriteBuffer( buffers.indices, 0, indexBytes );
+		encoder.TransitionBuffer(
+		    buffers.indices, ResourceUsage::kCopyDestination, ResourceUsage::kIndex );
+		buffers.uploaded = true;
+		return true;
+	};
+	for ( const std::uint32_t instanceId : view.staticInstances )
+	{
+		if ( instanceId >= world->staticInstances.size() )
+		{
+			note( "a view named a static model instance the world does not have" );
+			complete = false;
+			continue;
+		}
+		const WorldData::StaticInstance &instance = world->staticInstances[instanceId];
+		if ( instance.mesh >= world->staticMeshes.size() )
+		{
+			note( "a static model instance names no mesh" );
+			complete = false;
+			continue;
+		}
+		const WorldData::StaticMesh &mesh = world->staticMeshes[instance.mesh];
+		if ( !uploadMesh( instance.mesh ) )
+		{
+			complete = false;
+			continue;
+		}
+		for ( std::uint32_t surfaceId = 0; surfaceId < mesh.surfaces.size(); ++surfaceId )
+		{
+			const std::uint32_t materialId = StaticMaterial( mesh, instance, surfaceId );
+			const Resources::Material *material =
+			    materialId < claims->size() && ( *claims )[materialId].draws
+			        ? materialReadyIn( *r.modelResolver, r.modelMaterials, materialId )
+			        : nullptr;
+			if ( !material ||
+			     ( material->program.request.drawLayout.IsValid() &&
+			         !drawGroupReady( *material, 0 ) ) ||
+			     ( material->program.request.frameLayout.IsValid() &&
+			         !frameGroupReady( *material ) ) )
+			{
+				complete = false;
+				continue;
+			}
+			staticDraws.push_back( { false, instanceId, instance.mesh, surfaceId, materialId } );
+		}
+	}
+	for ( std::uint32_t poseId = 0; poseId < view.posedModels.size(); ++poseId )
+	{
+		const WorldView::PosedModel &pose = view.posedModels[poseId];
+		if ( pose.mesh >= world->staticMeshes.size() )
+		{
+			note( "a posed model names no mesh" );
+			complete = false;
+			continue;
+		}
+		const WorldData::StaticMesh &mesh = world->staticMeshes[pose.mesh];
+		if ( pose.vertices.size() != mesh.vertices.size() || !uploadMesh( pose.mesh ) )
+		{
+			note( "a posed model has the wrong vertex count or no mesh buffers" );
+			complete = false;
+			continue;
+		}
+		const auto bytes = std::as_bytes( std::span( pose.vertices ) );
+		BufferDesc desc;
+		desc.size = bytes.size();
+		desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kVertex };
+		desc.debugName = "posed model vertices";
+		auto buffer = device.CreateBuffer( desc );
+		if ( !buffer )
+		{
+			note( "a posed model's vertex buffer was refused" );
+			complete = false;
+			continue;
+		}
+		posedBuffers[poseId] = buffer.Value();
+		encoder.TransitionBuffer(
+		    buffer.Value(), ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+		encoder.WriteBuffer( buffer.Value(), 0, bytes );
+		encoder.TransitionBuffer(
+		    buffer.Value(), ResourceUsage::kCopyDestination, ResourceUsage::kVertex );
+		s.retiredBuffers.emplace_back( target.frame, buffer.Value() );
+		WorldData::StaticInstance instance;
+		instance.mesh = pose.mesh;
+		instance.skin = pose.skin;
+		for ( std::uint32_t surfaceId = 0; surfaceId < mesh.surfaces.size(); ++surfaceId )
+		{
+			const std::uint32_t materialId = StaticMaterial( mesh, instance, surfaceId );
+			const Resources::Material *material =
+			    materialId < claims->size() && ( *claims )[materialId].draws
+			        ? materialReadyIn( *r.modelResolver, r.modelMaterials, materialId )
+			        : nullptr;
+			if ( !material ||
+			     ( material->program.request.drawLayout.IsValid() &&
+			         !drawGroupReady( *material, 0 ) ) ||
+			     ( material->program.request.frameLayout.IsValid() &&
+			         !frameGroupReady( *material ) ) )
+			{
+				complete = false;
+				continue;
+			}
+			staticDraws.push_back( { true, poseId, pose.mesh, surfaceId, materialId } );
+		}
+	}
 
 	// The view's planar reflection: the render target the view's programs
 	// name (one per view: the client draws one reflection view), imported
@@ -1853,6 +2114,17 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		    }
 		    return false;
 	    } );
+	std::erase_if( staticDraws,
+	    [&]( const StaticDraw &draw )
+	    {
+		    const Resources::Material &m = r.modelMaterials[draw.material];
+		    if ( m.program.request.viewLayout.IsValid() && !viewGroupReady( m ) )
+		    {
+			    complete = false;
+			    return true;
+		    }
+		    return false;
+	    } );
 
 	const ColorAttachment colors[] = { { target.color, LoadOp::kLoad, StoreOp::kStore, {}, {} } };
 	RenderingDesc rendering;
@@ -1913,9 +2185,82 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		    }
 		    return debug.Value();
 	    } );
+	std::sort( staticDraws.begin(), staticDraws.end(),
+	    [&]( const StaticDraw &a, const StaticDraw &b )
+	    {
+		    return std::tie( a.material, a.mesh, a.posed, a.instance, a.surface ) <
+		           std::tie( b.material, b.mesh, b.posed, b.instance, b.surface );
+	    } );
+	std::uint64_t drawnStatic = 0;
+	std::uint64_t drawnPosed = 0;
+	for ( const StaticDraw &draw : staticDraws )
+	{
+		const WorldData::StaticInstance *instance =
+		    draw.posed ? nullptr : &world->staticInstances[draw.instance];
+		const WorldData::StaticMesh &mesh = world->staticMeshes[draw.mesh];
+		const WorldSurface &surface = mesh.surfaces[draw.surface];
+		const Resources::Material &m = r.modelMaterials[draw.material];
+		PipelineId pipeline = m.program.request.pipeline;
+		if ( !debugNeutral )
+		{
+			auto debug = m.resolver->DebugPipeline(
+			    m.program, frame::DebugSpecializationFor( view.debug, m.program.name ) );
+			if ( !debug )
+			{
+				note( "static model debug view: " + debug.Error() );
+				complete = false;
+				continue;
+			}
+			pipeline = debug.Value();
+		}
+		encoder.SetPipeline( pipeline );
+		if ( m.program.request.frameLayout.IsValid() )
+			encoder.SetBindGroup(
+			    BindGroupRole::kFrame, r.frameGroups[m.program.request.frameLayout.value].group );
+		if ( m.program.request.viewLayout.IsValid() )
+		{
+			const std::uint64_t layout = m.program.request.viewLayout.value;
+			const auto lit = modelLitViews.find( layout );
+			encoder.SetBindGroup( BindGroupRole::kView,
+			    lit != modelLitViews.end() ? lit->second.group : r.viewGroups[layout].group );
+		}
+		encoder.SetBindGroup( BindGroupRole::kMaterial, m.group.group );
+		if ( m.program.request.drawLayout.IsValid() )
+			encoder.SetBindGroup( BindGroupRole::kDraw, r.drawGroups[drawKey( m, 0 )].group );
+		material::FamilyDrawConstants modelConstants;
+		if ( instance )
+			std::copy( instance->world, instance->world + 16, modelConstants.world );
+		else
+		{
+			for ( int i = 0; i < 4; ++i )
+				modelConstants.world[i * 5] = 1.0f;
+		}
+		for ( int row = 0; row < 4; ++row )
+		{
+			for ( int col = 0; col < 4; ++col )
+			{
+				float value = 0.0f;
+				for ( int k = 0; k < 4; ++k )
+					value += constants.toClip[row * 4 + k] * modelConstants.world[k * 4 + col];
+				modelConstants.toClip[row * 4 + col] = value;
+			}
+		}
+		encoder.SetDrawConstants( 0, std::as_bytes( std::span( &modelConstants, 1 ) )
+		                                 .first( m.program.request.drawConstantBytes ) );
+		const Resources::StaticMeshBuffers &buffers = r.staticMeshes[draw.mesh];
+		encoder.SetVertexBuffer( 0, draw.posed ? posedBuffers[draw.instance] : buffers.vertices );
+		encoder.SetIndexBuffer( buffers.indices, 0, IndexFormat::kUint32 );
+		encoder.DrawIndexed( surface.indexCount, 1, surface.firstIndex, 0, 0 );
+		if ( draw.posed )
+			++drawnPosed;
+		else
+			++drawnStatic;
+	}
 	encoder.EndRendering();
 	encoder.EndLabel();
 	for ( auto &[layout, group] : litViews )
+		s.retiredGroups.emplace_back( target.frame, group );
+	for ( auto &[layout, group] : modelLitViews )
 		s.retiredGroups.emplace_back( target.frame, group );
 	for ( auto &[layout, group] : reflectViews )
 		s.retiredGroups.emplace_back( target.frame, group );
@@ -1923,6 +2268,8 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 	std::lock_guard<std::mutex> guard( s.lock );
 	++s.stats.viewsDrawn;
 	s.stats.surfacesDrawn += order.size();
+	s.stats.staticDrawsDrawn += drawnStatic;
+	s.stats.posedDrawsDrawn += drawnPosed;
 	if ( !complete )
 	{
 		++s.stats.viewsFailed;

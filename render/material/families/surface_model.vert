@@ -22,6 +22,7 @@ layout( location = 3 ) in vec2 uv0;
 layout( constant_id = 0 ) const int kTerms = 0;
 const int kHalfLambert = 16;
 const int kVertexLit = 8192;
+const int kMeshDirect = 8388608;
 
 layout( push_constant ) uniform Draw
 {
@@ -89,7 +90,9 @@ void main()
 	tangentS = basis * tangent.xyz;
 	tangentT = cross( worldNormal, tangentS ) * tangent.w;
 	lightmapOffset = 0.0;
-	const int count = int( lighting.eye.w );
+	// Modern meshes take their direct light from the view's clustered set.
+	// The old per-draw lights belong only to the legacy model points.
+	const int count = ( kTerms & kMeshDirect ) != 0 ? 0 : int( lighting.eye.w );
 	vec4 atten = vec4( 0.0 );
 	for ( int i = 0; i < 4; ++i )
 	{

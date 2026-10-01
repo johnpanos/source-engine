@@ -32,3 +32,15 @@ def build(bld):
 		subsystem = bld.env.MSVC_SUBSYSTEM,
 		idx       = bld.get_taskgen_count()
 	)
+	bld.program(
+		env       = bld.strict_cpp20_env(),
+		source    = [ 'mesh_export.cpp' ],
+		target    = 'mdl_mesh_export',
+		name      = 'mdl_mesh_export',
+		arch_module = 'content.studio-model',
+		features  = 'cxx cxxprogram capability_strict',
+		includes  = [ '../public' ],
+		use       = [ PROJECT_NAME ],
+		subsystem = bld.env.MSVC_SUBSYSTEM,
+		idx       = bld.get_taskgen_count()
+	)

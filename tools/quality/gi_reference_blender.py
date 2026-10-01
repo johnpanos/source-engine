@@ -92,6 +92,10 @@ def main():
     parser.add_argument("--light-paths", default="gi-reference")
     parser.add_argument("--denoise", action="store_true",
                         help="OpenImageDenoise on Combined, with albedo and normal guides")
+    parser.add_argument("--receiver-prefix", action="append", default=[],
+                        help="additional camera-only mesh prefix in a reference stage")
+    parser.add_argument("--video-screen-state", choices=("on", "off"), default="on",
+                        help="runtime state represented by lifted movie screen quads")
     args = parser.parse_args(arguments)
     if not os.environ.get("OCIO") or not Path(os.environ["OCIO"]).is_file():
         parser.error("a readable OCIO configuration is required for color fidelity")
@@ -105,13 +109,22 @@ def main():
     if sorted(obj.name for obj in meshes) != sorted(s["name"] for s in scene["shapes"]):
         raise ValueError("normalized stage meshes differ from the scene model")
     pbrt_blender.rebind_materials(scene, normal_maps=False)
+    pbrt_blender.validate_video_screen_uvs(scene)
     pbrt_blender.restore_emitters(scene)
     pbrt_blender.apply_environment(scene, args.environment)
-    receivers = sorted(map_scene.prop_shape_names(scene))
+    receivers = sorted(map_scene.prop_shape_names(scene) |
+                       {shape["name"] for shape in scene["shapes"]
+                        if shape.get("role") == "dynamic_model"} |
+                       {obj.name for obj in meshes
+                        if any(obj.name.startswith(prefix) for prefix in args.receiver_prefix)})
     for name in receivers:
         obj = bpy.data.objects[name]
         obj.visible_diffuse = obj.visible_glossy = obj.visible_transmission = False
         obj.visible_shadow = obj.visible_volume_scatter = False
+    if args.video_screen_state == "off":
+        for shape in scene["shapes"]:
+            if shape.get("role") == "video_screen":
+                bpy.data.objects[shape["name"]].hide_render = True
     # Object indices for region masks: 1..N over sorted mesh names, emitters after.
     objects = sorted((obj for obj in bpy.data.objects if obj.type == "MESH"),
                      key=lambda obj: obj.name)
@@ -172,6 +185,7 @@ def main():
                "environment_sha256": sha256(args.environment) if args.environment else None,
                "object_index": index, "renders": outputs,
                "receiver_only_dynamic_models": receivers,
+               "video_screen_state": args.video_screen_state,
                "renderer_sha256": sha256(__file__),
                "ocio_configuration_sha256": sha256(os.environ["OCIO"])}
     (args.out_dir / "render.json").write_text(json.dumps(receipt, indent=2, sort_keys=True) +

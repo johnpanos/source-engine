@@ -12,6 +12,7 @@
 #include "render/graph/executor.h"
 #include "render/graph/graph_builder.h"
 #include "render/pass/lights/clusters.h"
+#include "mdl/studio_model.h"
 
 #include <algorithm>
 #include <array>
@@ -94,6 +95,9 @@ void CoreWorld::SetWorld( const RenderCoreWorldVertex *vertices, unsigned int ve
 	}
 	data.materials = WorldMaterials( materials, materialCount );
 	m_StageSet = false;
+	m_StaticMeshes.clear();
+	m_StaticInstances.clear();
+	m_StaticMaterials.clear();
 	m_StageRuntimeDirect.store( false, std::memory_order_relaxed );
 	m_Pass.SetWorld( std::move( data ) );
 }
@@ -129,6 +133,9 @@ void CoreWorld::SetWorldMesh( const void *wmsh, unsigned long long wmshBytes,
     const RenderCoreWorldMaterial *materials, unsigned int materialCount, const char *entities )
 {
 	m_StageSet = false;
+	m_StaticMeshes.clear();
+	m_StaticInstances.clear();
+	m_StaticMaterials.clear();
 	m_StageRuntimeDirect.store( false, std::memory_order_relaxed );
 	m_StageWorld.reset();
 	m_MapLights = pass::lights::MapLights();
@@ -290,11 +297,193 @@ void CoreWorld::SetStage()
 	    stage->runtimeDirect ? ", runtime direct light" : ", baked direct light",
 	    stage->probes ? "yes" : "no", stage->reflectionProbes.empty() ? "no" : "yes" );
 	data.stage = std::move( stage );
+	const std::uint32_t materialBase = std::uint32_t( data.materials.size() );
+	for ( pass::world::WorldMaterial &material : m_StaticMaterials )
+		data.materials.push_back( material );
+	data.staticMeshes = m_StaticMeshes;
+	for ( pass::world::WorldData::StaticMesh &mesh : data.staticMeshes )
+	{
+		for ( pass::world::WorldSurface &surface : mesh.surfaces )
+			surface.material += materialBase;
+		for ( std::vector<std::uint32_t> &family : mesh.skinMaterials )
+		{
+			for ( std::uint32_t &material : family )
+			{
+				if ( material != ~0u )
+					material += materialBase;
+			}
+		}
+	}
+	data.staticInstances = m_StaticInstances;
 	m_Pass.SetWorld( std::move( data ) );
 	m_StageSet = true;
 	// The change the capture holds (parts arrive relative to it).
 	if ( m_Capture.table )
 		m_Pass.SetStageChange( m_Capture.change, *m_Capture.table );
+}
+
+void CoreWorld::SetStaticProps( const RenderCoreStaticModel *models, unsigned int modelCount,
+    const RenderCoreStaticProp *props, unsigned int propCount )
+{
+	if ( ( modelCount && !models ) || ( propCount && !props ) )
+		return;
+	m_StaticMeshes.clear();
+	m_StaticMaterials.clear();
+	m_StaticInstances.clear();
+	m_ModelPoseSources.clear();
+	m_StaticMeshes.resize( modelCount );
+	m_ModelPoseSources.resize( modelCount );
+	m_StaticInstances.reserve( propCount );
+	for ( unsigned int i = 0; i < modelCount; ++i )
+	{
+		const RenderCoreStaticModel &source = models[i];
+		if ( !source.mdl || !source.vvd || !source.vtx || !source.materials ||
+		     source.mdlBytes > std::numeric_limits<std::size_t>::max() ||
+		     source.vvdBytes > std::numeric_limits<std::size_t>::max() ||
+		     source.vtxBytes > std::numeric_limits<std::size_t>::max() )
+			continue;
+		mdl::ModelBytes bytes;
+		bytes.mdl = { static_cast<const char *>( source.mdl ), std::size_t( source.mdlBytes ) };
+		bytes.vvd = { static_cast<const char *>( source.vvd ), std::size_t( source.vvdBytes ) };
+		bytes.vtx = { static_cast<const char *>( source.vtx ), std::size_t( source.vtxBytes ) };
+		auto parsed = mdl::ParseModel( bytes );
+		if ( !parsed )
+		{
+			std::fprintf( stderr, "Render core: static model %s: %s\n",
+			    source.name ? source.name : "(unnamed)", mdl::Describe( parsed.Error() ).c_str() );
+			continue;
+		}
+		const mdl::Model &model = parsed.Value();
+		ModelPoseSource &poseSource = m_ModelPoseSources[i];
+		if ( model.bones.size() <= 255 )
+		{
+			for ( const mdl::Bone &bone : model.bones )
+			{
+				pass::skinning::BoneMatrix matrix;
+				for ( int row = 0; row < 3; ++row )
+					std::copy( bone.poseToBone.m[row].begin(), bone.poseToBone.m[row].end(),
+					    matrix.rows[row] );
+				poseSource.poseToBone.push_back( matrix );
+			}
+		}
+		const std::uint32_t materialBase = std::uint32_t( m_StaticMaterials.size() );
+		std::vector<pass::world::WorldMaterial> materials =
+		    WorldMaterials( source.materials, source.materialCount );
+		for ( pass::world::WorldMaterial &material : materials )
+		{
+			material.mesh = true;
+			m_StaticMaterials.push_back( std::move( material ) );
+		}
+		pass::world::WorldData::StaticMesh &mesh = m_StaticMeshes[i];
+		mesh.skinMaterials.resize( model.skinFamilies.size() );
+		for ( const mdl::Mesh &part : model.meshes )
+		{
+			const std::int32_t texture =
+			    model.skinFamilies.empty()
+			        ? part.textureRef
+			        : ( part.textureRef >= 0 &&
+			                      std::size_t( part.textureRef ) < model.skinFamilies[0].size()
+			                  ? model.skinFamilies[0][std::size_t( part.textureRef )]
+			                  : -1 );
+			if ( texture < 0 || std::uint32_t( texture ) >= source.materialCount )
+			{
+				mesh.surfaces.clear();
+				break;
+			}
+			const std::uint32_t base = std::uint32_t( mesh.vertices.size() );
+			for ( std::size_t vertexIndex = 0; vertexIndex < part.vertices.size(); ++vertexIndex )
+			{
+				const mdl::Vertex &from = part.vertices[vertexIndex];
+				material::SurfaceModelVertex to;
+				to.position[0] = from.position.x;
+				to.position[1] = from.position.y;
+				to.position[2] = from.position.z;
+				to.normal[0] = from.normal.x;
+				to.normal[1] = from.normal.y;
+				to.normal[2] = from.normal.z;
+				to.uv[0] = from.u;
+				to.uv[1] = from.v;
+				if ( from.tangentSign != 0.0f )
+				{
+					to.tangent[0] = from.tangent.x;
+					to.tangent[1] = from.tangent.y;
+					to.tangent[2] = from.tangent.z;
+					to.tangent[3] = from.tangentSign;
+				}
+				else
+				{
+					// A model without a tangent block may still draw its
+					// unbumped material. Keep a stable perpendicular frame.
+					const bool useZ = std::fabs( from.normal.z ) < 0.9f;
+					float x = useZ ? from.normal.y : 0.0f;
+					float y = useZ ? -from.normal.x : from.normal.z;
+					float z = useZ ? 0.0f : -from.normal.y;
+					const float length = std::sqrt( x * x + y * y + z * z );
+					if ( length > 0.0f )
+					{
+						x /= length;
+						y /= length;
+						z /= length;
+					}
+					to.tangent[0] = x;
+					to.tangent[1] = y;
+					to.tangent[2] = z;
+					to.tangent[3] = 1.0f;
+				}
+				mesh.vertices.push_back( to );
+				if ( !poseSource.poseToBone.empty() && vertexIndex < part.weights.size() )
+				{
+					const mdl::BoneWeights &weights = part.weights[vertexIndex];
+					pass::skinning::SkinVertex skin;
+					std::copy( to.position, to.position + 3, skin.position );
+					std::copy( to.normal, to.normal + 3, skin.normal );
+					std::copy( to.tangent, to.tangent + 4, skin.tangent );
+					skin.weight0 = weights.weights[0];
+					skin.weight1 = weights.count > 1 ? weights.weights[1] : 0.0f;
+					for ( int bone = 0; bone < 3; ++bone )
+						skin.bones |= std::uint32_t( weights.bones[bone] ) << ( bone * 8 );
+					poseSource.vertices.push_back( skin );
+				}
+			}
+			pass::world::WorldSurface surface;
+			surface.material = materialBase + std::uint32_t( texture );
+			surface.firstIndex = std::uint32_t( mesh.indices.size() );
+			for ( std::uint32_t index : part.indices )
+				mesh.indices.push_back( base + index );
+			surface.indexCount = std::uint32_t( mesh.indices.size() ) - surface.firstIndex;
+			mesh.surfaces.push_back( surface );
+			for ( std::size_t skin = 0; skin < model.skinFamilies.size(); ++skin )
+			{
+				const std::vector<std::int16_t> &family = model.skinFamilies[skin];
+				const std::int32_t selected =
+				    part.textureRef >= 0 && std::size_t( part.textureRef ) < family.size()
+				        ? family[std::size_t( part.textureRef )]
+				        : -1;
+				mesh.skinMaterials[skin].push_back(
+				    selected >= 0 && std::uint32_t( selected ) < source.materialCount
+				        ? materialBase + std::uint32_t( selected )
+				        : ~0u );
+			}
+		}
+	}
+	for ( unsigned int i = 0; i < propCount; ++i )
+	{
+		pass::world::WorldData::StaticInstance instance;
+		instance.mesh = props[i].skin >= 0 ? props[i].model : ~0u;
+		instance.skin = props[i].skin >= 0 ? std::uint32_t( props[i].skin ) : ~0u;
+		for ( int row = 0; row < 3; ++row )
+			std::copy(
+			    props[i].world + row * 4, props[i].world + row * 4 + 4, instance.world + row * 4 );
+		instance.world[15] = 1.0f;
+		m_StaticInstances.push_back( instance );
+	}
+	unsigned int parsed = 0;
+	for ( const pass::world::WorldData::StaticMesh &mesh : m_StaticMeshes )
+		parsed += !mesh.surfaces.empty() ? 1u : 0u;
+	std::fprintf( stderr, "Render core: static meshes: %u of %u parsed, %zu instances\n", parsed,
+	    modelCount, m_StaticInstances.size() );
+	if ( m_StageSet )
+		SetStage();
 }
 
 bool CoreWorld::StageCapture::UploadLightmap(
@@ -510,23 +699,10 @@ CoreWorld::ViewLightInputs CoreWorld::TakeViewLightInputs(
 		std::copy( viewToClip, viewToClip + 16, in.viewToClip );
 	if ( viewport )
 		std::copy( viewport, viewport + 6, in.viewport );
-	// The frame's runtime lights, and the map's authored ones when the frame
-	// has no world lights (a map compiled without vrad): each light once.
-	in.lights = m_Lights.lights;
-	const bool worldLights = std::any_of( in.lights.begin(), in.lights.end(),
-	    []( const light_set::RuntimeLight &light )
-	    {
-		    return light.kind == light_set::LightKind::World;
-	    } );
-	if ( !worldLights )
-	{
-		std::uint32_t nextId = 0x40000000u; // the map's own ids, apart from the engine's
-		for ( light_set::RuntimeLight light : m_MapLights.lights )
-		{
-			light.id = nextId++;
-			in.lights.push_back( light );
-		}
-	}
+	// A relit BSP retains switchable world lights but strips its baked ones.
+	// Merge by individual lamp so that one live light does not hide the map's
+	// always-on direct lights from the model point.
+	in.lights = pass::lights::MergeMapLights( m_Lights.lights, m_MapLights );
 	// The area lights: the map's (baked light fixtures) and the frame's
 	// emitting surfaces; the sun: the map's.
 	in.areas = ViewAreaLights( true );
@@ -742,15 +918,77 @@ std::shared_ptr<const pass::world::StageViewLights> CoreWorld::AreaViewLights() 
 	return out;
 }
 
+bool CoreWorld::PoseModel(
+    const RenderCorePosedModel &source, pass::world::WorldView::PosedModel &out ) const
+{
+	if ( !source.boneToWorld || source.model >= m_ModelPoseSources.size() ||
+	     source.model >= m_StaticMeshes.size() ||
+	     !m_Pass.DrawsPosedModel( source.model, source.skin ) )
+		return false;
+	const ModelPoseSource &pose = m_ModelPoseSources[source.model];
+	const pass::world::WorldData::StaticMesh &mesh = m_StaticMeshes[source.model];
+	if ( pose.poseToBone.empty() || source.boneCount < pose.poseToBone.size() ||
+	     pose.vertices.size() != mesh.vertices.size() )
+		return false;
+	std::vector<pass::skinning::BoneMatrix> palette( pose.poseToBone.size() );
+	for ( std::size_t bone = 0; bone < palette.size(); ++bone )
+	{
+		const float *world = source.boneToWorld + bone * 12;
+		const pass::skinning::BoneMatrix &bind = pose.poseToBone[bone];
+		for ( int row = 0; row < 3; ++row )
+		{
+			for ( int col = 0; col < 4; ++col )
+			{
+				float value = col == 3 ? world[row * 4 + 3] : 0.0f;
+				for ( int k = 0; k < 3; ++k )
+					value += world[row * 4 + k] * bind.rows[k][col];
+				palette[bone].rows[row][col] = value;
+			}
+		}
+	}
+	std::vector<pass::skinning::SkinnedVertex> skinned( pose.vertices.size() );
+	pass::skinning::SkinReference( { pose.vertices, palette, {}, {}, {} }, skinned );
+	out.mesh = source.model;
+	out.skin = source.skin;
+	out.vertices = mesh.vertices;
+	for ( std::size_t i = 0; i < skinned.size(); ++i )
+	{
+		std::copy( skinned[i].position, skinned[i].position + 3, out.vertices[i].position );
+		std::copy( skinned[i].normal, skinned[i].normal + 3, out.vertices[i].normal );
+		std::copy( skinned[i].tangent, skinned[i].tangent + 4, out.vertices[i].tangent );
+	}
+	return true;
+}
+
 bool CoreWorld::DrawView( const unsigned int *surfaces, unsigned int count,
     const float worldToClip[16], const float viewport[6], unsigned long long hostFrame,
-    const float worldToView[16], const float viewToClip[16], float waterZOffset )
+    const float worldToView[16], const float viewToClip[16], float waterZOffset,
+    const unsigned int *staticProps, unsigned int staticPropCount,
+    const RenderCorePosedModel *posedModels, unsigned int posedModelCount )
 {
 	legacy::ICorePassSlots *slots = m_Frontend.CorePassSlots();
-	if ( !slots || count == 0 )
+	if ( !slots || ( count == 0 && staticPropCount == 0 && posedModelCount == 0 ) ||
+	     ( count && !surfaces ) || ( posedModelCount && !posedModels ) ||
+	     ( ( staticPropCount || posedModelCount ) && ( !m_StageSet || m_ViewDepth > 1 ) ) ||
+	     ( staticPropCount && !staticProps ) )
 		return false;
+	for ( unsigned int i = 0; i < staticPropCount; ++i )
+	{
+		if ( !m_Pass.DrawsStaticInstance( staticProps[i] ) )
+			return false;
+	}
 	pass::world::WorldView view;
-	view.surfaces.assign( surfaces, surfaces + count );
+	if ( count )
+		view.surfaces.assign( surfaces, surfaces + count );
+	if ( staticPropCount )
+		view.staticInstances.assign( staticProps, staticProps + staticPropCount );
+	for ( unsigned int i = 0; i < posedModelCount; ++i )
+	{
+		pass::world::WorldView::PosedModel pose;
+		if ( !PoseModel( posedModels[i], pose ) )
+			return false;
+		view.posedModels.push_back( std::move( pose ) );
+	}
 	std::memcpy( view.toClip, worldToClip, sizeof( view.toClip ) );
 	view.viewport = {
 	    viewport[0], viewport[1], viewport[2], viewport[3], viewport[4], viewport[5] };
@@ -845,10 +1083,15 @@ void CoreWorld::GetStats( RenderCoreWorldStats *out ) const
 	out->viewsFailed = stats.viewsFailed;
 	out->viewsSkipped = stats.viewsSkipped;
 	out->surfacesDrawn = stats.surfacesDrawn;
+	out->staticInstancesQueued = stats.staticInstancesQueued;
+	out->staticDrawsDrawn = stats.staticDrawsDrawn;
+	out->posedModelsQueued = stats.posedModelsQueued;
+	out->posedDrawsDrawn = stats.posedDrawsDrawn;
 	out->debugHatches = m_Hatches.load( std::memory_order_relaxed );
 	out->debugTints = m_Tints.load( std::memory_order_relaxed );
 	out->debugViewsRedrawn = m_Redrawn.load( std::memory_order_relaxed );
-	out->stageLights = unsigned( m_Lights.lights.size() );
+	out->stageLights =
+	    unsigned( pass::lights::MergeMapLights( m_Lights.lights, m_MapLights ).size() );
 	out->stageLitViews = m_StageLitViews;
 	out->stageRuntimeDirect = m_StageRuntimeDirect.load( std::memory_order_relaxed ) ? 1u : 0u;
 	std::snprintf( out->lastFailure, sizeof( out->lastFailure ), "%s", stats.lastFailure.c_str() );

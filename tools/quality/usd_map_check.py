@@ -75,19 +75,14 @@ CHECK_SCHEMA = "source-usd-map-check/v1"
 COMPILE_PROFILE = ROOT / "quality" / "usd_authoring" / "source_compile_v1.json"
 LUMP_FACEIDS = 11
 LUMP_PHYSCOLLIDE = 29
-LUMP_GAME_LUMP = 35
 LUMP_LIGHTING = 8
 CONTENTS_SOLID = 0x1
 MASK_SOLID = 0x1 | 0x2 | 0x8 | 0x4000 | 0x2000000 | 0x10000
-SPRP = struct.unpack(">i", b"sprp")[0]
 STATIC_PROP_NO_SHADOW = 0x10
 SURF_BUMPLIGHT = 0x800
 # The floor in a prop's baked shadow keeps at most this fraction of the light
 # at its unoccluded mirror point (direct light is gone; bounce light remains).
 SHADOW_RATIO = 0.6
-# Static prop record sizes CStaticPropMgr::UnserializeModels reads, by (BSP
-# version, lump version): StaticPropLumpV10_21_t and StaticPropLumpV10_t.
-ENGINE_STATIC_PROP_RECORD = {(21, 10): 76, (20, 10): 72, (19, 10): 72}
 PLAYER_HULL = ((-16.0, -16.0, 0.0), (16.0, 16.0, 72.0))
 TOLERANCE = 0.01          # Source units for placements
 PLANE_TOLERANCE = 0.02    # Source units for planes and polygon containment
@@ -202,36 +197,7 @@ class CompiledMap:
         return np.frombuffer(self.lump(LUMP_FACEIDS, 2), dtype="<u2")
 
     def static_props(self):
-        raw = self.lump(LUMP_GAME_LUMP)
-        count = struct.unpack_from("<i", raw, 0)[0]
-        for i in range(count):
-            lump_id, _flags, version, offset, length = struct.unpack_from("<iHHii", raw,
-                                                                         4 + 16 * i)
-            if lump_id != SPRP:
-                continue
-            data = self.legacy[offset:offset + length]
-            names = struct.unpack_from("<i", data, 0)[0]
-            dictionary = [data[4 + 128 * n:4 + 128 * (n + 1)].split(b"\0")[0].decode("latin-1")
-                          for n in range(names)]
-            cursor = 4 + 128 * names
-            leaves = struct.unpack_from("<i", data, cursor)[0]
-            cursor += 4 + 2 * leaves
-            props = struct.unpack_from("<i", data, cursor)[0]
-            cursor += 4
-            # The engine reads records of a fixed size per (BSP, lump) version.
-            size = ENGINE_STATIC_PROP_RECORD.get((self.bsp.version, version))
-            if size is None or cursor + size * props != len(data):
-                raise ValueError("static prop lump v%d in a v%d map is not the engine's "
-                                 "%r-byte records" % (version, self.bsp.version, size))
-            result = []
-            for p in range(props):
-                values = struct.unpack_from("<3f3fHHHBBi", data, cursor + p * size)
-                result.append({"origin": values[0:3], "angles": values[3:6],
-                               "model": dictionary[values[6]] if values[6] < names else None,
-                               "leaf_count": values[8], "solid": values[9],
-                               "flags": values[10], "skin": values[11]})
-            return version, dictionary, result
-        return None, [], []
+        return self.bsp.static_props()
 
     def physics_models(self):
         """{model index: solid count} from the vphysics collision lump."""

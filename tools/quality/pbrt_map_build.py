@@ -51,7 +51,8 @@ derived scene's named lights that start dark, and none for an authored scene
 whose light the radiosity transfer owns). Steps:
 
     legacy-scene (a bsp with no scene) legacy_bsp_scene.py: the BSP's world faces,
-                 materials, occluders and lights as an authored USD scene
+                 static-prop meshes, materials, occluders and lights as an authored
+                 USD scene; mdl_mesh_export comes from the configured client build
     scene        (USD scenes) usd_scene.py extract: map-scene/v1 model + normalized stage
     environment  sky (PBRT equal-area map or USD DomeLight) -> Z-up equirect EXR +
                  display texture (if any sky)
@@ -763,19 +764,28 @@ class Pipeline:
         # The game content the materials come from (VPK directories), after
         # the compile's own game directory (vrad's -game) when it has one.
         content = sorted(runtime.resolve().glob("*/*_dir.vpk"))
-        settings = {"runtime": str(runtime)}
+        model_tool = Path(self.tools["client_build"]) / "mdl" / (
+            "mdl_mesh_export.exe" if os.name == "nt" else "mdl_mesh_export")
+        settings = {"runtime": str(runtime), "model_tool": str(model_tool)}
         game_args = []
         game = self.manifest.get("legacy_game")
         if game:
-            content += sorted(f for f in (Path(game) / "materials").rglob("*") if f.is_file())
+            content += sorted(f for directory in ("materials", "models")
+                              for f in (Path(game) / directory).rglob("*") if f.is_file())
             settings["game"] = game
             game_args = ["--game-dir", game]
-        self.step("legacy-scene", [self.bsp_input] + content, settings,
+        self.step("legacy-scene", [self.bsp_input, model_tool] + content, settings,
                   ["legacy_bsp_scene.py", "legacy_bsp.py", "vtf_decode.py", "source_content.py",
                    "bsp2_reader.py"], [p["legacy_scene"]],
                   lambda: self.usd_python("legacy-scene", "legacy_bsp_scene.py", [
                       "--bsp", self.bsp_input, "--runtime", runtime, "--map-name", self.map,
-                      "--out", p["legacy_scene"]] + game_args))
+                      "--out", p["legacy_scene"], "--model-tool", model_tool] + game_args))
+        # Static models take part in transport and probes but have no world
+        # atlas or WMSH surface: the game already draws them as instances.
+        receipt = json.loads((p["legacy_scene"] / "scene-receipt.json").read_text())
+        prop_materials = receipt["static_props"]["materials"]
+        self.lightmap["exclude_materials"] += prop_materials
+        self.hidden_materials += prop_materials
 
     def build(self):
         self.out.mkdir(parents=True, exist_ok=True)
@@ -1203,7 +1213,7 @@ class Pipeline:
                       [item for material in self.world_mesh["weld_materials"]
                        for item in ("--weld-material", material)] +
                       # Dynamic models are placed as entities, not world mesh.
-                      [item for name in sorted(map_scene.prop_shape_names(self.scene) | hidden)
+                      [item for name in sorted(map_scene.nonstatic_shape_names(self.scene) | hidden)
                        for item in ("--exclude-mesh", name)] +
                       (["--probe-volume", p["prbv"]] if volume else []) +
                       (["--radiosity-transfer", p["rtrn"]] if radiosity else []) +

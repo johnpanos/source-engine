@@ -1,23 +1,16 @@
 """Cycles device policy for the map, bake and GI tools (no Blender import).
 
-Bakes, previews and correctness checks run on the CPU (user decision,
-2026-09-25). On 2026-09-25 this host's HIP compute wedged (amdgpu MES failed to
-respond to REMOVE_QUEUE): every Cycles GPU job then hung in hipStreamCreate
-until a reboot, while CPU bakes kept working. The CPU is also the only device
-with bit-identical results, and the one where Cycles offers path guiding.
-`gpu` (HIP, failing when Cycles finds none) remains an explicit opt-in per
-manifest or profile. On this host a CPU bake is bit-identical
-across runs at the same seed, while two HIP bakes of the same scene differ, so
-only the CPU satisfies the RFC 0007 `Exact` determinism class. CPU+GPU hybrid
-rendering was measured about 24% slower than the GPU alone on the shared
-CPU/GPU power budget of this host, so it is not offered.
-
-`auto` (GPU when Cycles finds one, else CPU) is an explicit opt-in for
-GPU-less hosts; its results are not reproducible across hosts.
+Map bakes default to `gpu` (user decision, 2026-09-30); this requires a usable
+Cycles GPU and fails if one is unavailable. CPU remains an explicit choice for
+the bake-determinism profile: at the same seed it is bit-identical across runs
+and is the only device that satisfies RFC 0007's `Exact` determinism class.
+`auto` (GPU when Cycles finds one, else CPU) is an explicit opt-in for GPU-less
+hosts; its results are not reproducible across hosts. Correctness/reference
+checks remain on the CPU by default.
 """
 
 DEVICES = ("gpu", "auto", "cpu")
-BAKE_DEVICE = "cpu"
+BAKE_DEVICE = "gpu"
 CHECK_DEVICE = "cpu"
 
 

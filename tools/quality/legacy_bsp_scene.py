@@ -11,14 +11,17 @@ unchanged gameplay data. Stage units are Source units (metersPerUnit 0.0254,
 Z-up), so every point keeps its BSP coordinates.
 
 Geometry. Model 0's faces, one mesh per material, with `st` from each face's
-texinfo (v flipped to USD's bottom-left origin). Left out, and still drawn by
-the legacy renderer from the unchanged lumps: sky faces (they stay openings,
-so the sun and sky light enter), displacements, water and translucent faces,
-and every brush entity. The engine replaces only the opaque world with the
-relit world mesh, so these keep their vrad lightmaps. vrad's shadow rays test
-the solid brushes, not the faces, so the nodraw sides of the solid world
-brushes are added as black occluders (`relight_occluder`), which the bake
-gives no atlas space and the pack step leaves out.
+texinfo (v flipped to USD's bottom-left origin). Static props use the same
+LOD 0 MDL/VVD/VTX reader as rendercore, their compiled placements and skins,
+and their VMT materials. Their meshes cast into the bake and appear in probes
+but receive no world atlas and are left out of the packed WMSH. Left out, and
+still drawn by the legacy renderer from the unchanged lumps: sky faces (they
+stay openings, so the sun and sky light enter), displacements, water and
+translucent faces, and every brush entity. The engine replaces only the opaque
+world with the relit world mesh, so these keep their vrad lightmaps. vrad's
+shadow rays test the solid brushes, not the faces, so the nodraw sides of the
+solid world brushes are added as black occluders (`relight_occluder`), which
+the bake gives no atlas space and the pack step leaves out.
 
 Materials. Each face's VMT is read from the map's pak lump or the game
 content (a cubemap patch resolves to its included material). The base texture
@@ -64,7 +67,9 @@ import hashlib
 import json
 import math
 import re
+import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -78,6 +83,7 @@ import vtf_decode  # noqa: E402
 SCHEMA = "legacy-relight-scene/v1"
 METERS_PER_UNIT = 0.0254
 LIGHT_RADIUS_UNITS = 2.0
+MOVIE_SCREEN_COMPOSITE_OFFSET_UNITS = 9.0
 OCCLUDER = "relight_occluder"
 DEFAULT_ROUGHNESS = 0.8
 # Source's bump basis (tangent space, DirectX +Y down), the directions an
@@ -110,6 +116,54 @@ def envmap_strength(params):
     except ValueError:
         values = [1.0]
     return float(np.clip(2.5 * max(values or [1.0]), 0.0, 1.0))
+
+
+def material_roughness(shader, params):
+    """The baker's roughness for the rendercore mesh point or a world VMT."""
+    exponent = params.get("$phongexponent")
+    try:
+        if shader == "vertexlitgeneric":
+            return (math.sqrt(2.0 / (float(exponent or 5) + 2.0))
+                    if truthy(params.get("$phong")) else 0.55)
+        return math.sqrt(2.0 / (float(exponent) + 2.0)) if exponent else DEFAULT_ROUGHNESS
+    except ValueError:
+        return DEFAULT_ROUGHNESS
+
+
+def static_prop_matrix(angles):
+    """Source mathlib's AngleMatrix(QAngle): pitch, yaw, roll in degrees."""
+    p, y, r = np.radians(angles)
+    sp, sy, sr = math.sin(p), math.sin(y), math.sin(r)
+    cp, cy, cr = math.cos(p), math.cos(y), math.cos(r)
+    return np.array(((cp * cy, sp * sr * cy - cr * sy, sp * cr * cy + sr * sy),
+                     (cp * sy, sp * sr * sy + cr * cy, sp * cr * sy - sr * cy),
+                     (-sp, sr * cp, cr * cp)), dtype=np.float64)
+
+
+def studio_mesh(materials, model_tool, name):
+    """Load the model's LOD 0 through mdl_mesh_export, the runtime's parser."""
+    stem = name[:-4] if name.lower().endswith(".mdl") else name
+    inputs = []
+    for suffixes in ((".mdl",), (".vvd",),
+                     (".dx90.vtx", ".vtx", ".dx80.vtx", ".sw.vtx")):
+        found = None
+        for suffix in suffixes:
+            found, _source = materials.read(stem + suffix)
+            if found is not None:
+                break
+        if found is None:
+            raise ValueError("static model %s lacks %s" % (name, suffixes[0]))
+        inputs.append(found)
+    with tempfile.TemporaryDirectory(prefix="relight-mdl-") as temporary:
+        paths = []
+        for i, data in enumerate(inputs):
+            path = Path(temporary) / ("input%d" % i)
+            path.write_bytes(data)
+            paths.append(str(path))
+        run = subprocess.run([str(model_tool), *paths], capture_output=True, text=True)
+        if run.returncode:
+            raise ValueError("static model %s: %s" % (name, run.stderr.strip()))
+        return json.loads(run.stdout)
 MAX_TEXTURE = 2048
 # Faces of these shaders are drawn by the legacy translucent/water passes.
 LEGACY_ONLY_SHADERS = {"water", "refract", "unlittwotexture", "monitorscreen",
@@ -375,7 +429,170 @@ def starting_dark_styles(lights, owners):
             int(owners[light["index"]].get("spawnflags", "0") or 0) & 1}
 
 
-def build_model(bsp, resolver, texture_dir):
+def entity_studio_placements(entities):
+    """Authored MDL poses for a camera reference, never for light transport."""
+    classes = {"prop_dynamic", "prop_dynamic_override", "prop_physics",
+               "prop_physics_override", "prop_testchamber_door"}
+    for index, entity in enumerate(entities):
+        if entity.get("classname") not in classes:
+            continue
+        name = entity.get("model") or ("models/props/portal_door_combined.mdl"
+                                       if entity["classname"] == "prop_testchamber_door" else "")
+        if not name.lower().endswith(".mdl"):
+            continue
+        try:
+            origin = tuple(float(v) for v in entity["origin"].split())
+            angles = tuple(float(v) for v in entity.get("angles", "0 0 0").split())
+            skin = int(entity.get("skin", "0"))
+        except (KeyError, ValueError):
+            continue
+        if len(origin) == len(angles) == 3:
+            yield {"index": index, "model": name, "origin": origin,
+                   "angles": angles, "skin": skin}
+
+
+def elevator_video_override(resolver, map_name):
+    """The elevator script changes a BSP master's default movie at startup."""
+    data, source = resolver.read("scripts/vscripts/videos/video_splitter.nut")
+    if not data:
+        return {}, None
+    script = data.decode("utf-8", "replace")
+    row = re.search(r'\{\s*map\s*=\s*"' + re.escape(map_name) +
+                    r'"\s*,(?P<values>[^}]+)\}', script)
+    if not row:
+        return {}, source
+    values = row.group("values")
+    result = {}
+    for group, field in (("arrival_signs", "arrival"), ("departure_signs", "departure")):
+        match = re.search(r'\b' + field + r'\s*=\s*"([^"]*)"', values)
+        if match:
+            result[group] = "media/" + match.group(1) if match.group(1) else ""
+    scale = re.search(r'\btypeOverride\s*=\s*(\d+)', values)
+    result["scale_type"] = int(scale.group(1)) if scale else None
+    return result, source
+
+
+def movie_screen_uv(name, scale_type):
+    """Map a 23x2 elevator panel to the frame; Source video UVs are top-down."""
+    number = re.search(r'_(\d+)$', name or "")
+    if not number:
+        return None
+    index = int(number.group(1)) - 1
+    if not 0 <= index < 46:
+        return None
+    i, j = index % 23, index // 23
+    u0, u1 = (i + 0.0001) / 23, (i + 1.0001) / 23
+    v0, v1 = (j + 0.0001) / 2, (j + 1.0001) / 2
+    # The numbered branches mirror video_splitter.nut's StartVideo. Maps
+    # without a typeOverride choose a random mode at runtime; the full-grid
+    # mapping is their authored-pose reference until that state is captured.
+    if scale_type == 1:
+        u0, u1 = 1.0 - (1.0 - u0) ** 3, 1.0 - (1.0 - u1) ** 3
+    elif scale_type == 2:
+        u0, u1 = 4.0 * (1.0 - u0) * u0, 4.0 * (1.0 - u1) * u1
+    elif scale_type in (3, 7):
+        u0, u1 = ((i % 12) + 0.0001) / 12, ((i % 12) + 1.0001) / 12
+        if scale_type == 3 and i % 2:
+            u0, u1 = u1, u0
+    elif scale_type in (4, 5, 11):
+        column = (i + 1) % 3 if scale_type == 11 else i % 3
+        u0, u1 = (column + 0.0001) / 3, (column + 1.0001) / 3
+        v0, v1 = (0.99999, 0.00001) if scale_type == 4 else (0.00001, 0.99999)
+    elif scale_type in (6, 14):
+        column = i % 8
+        if scale_type == 14:
+            column = column - 1 if 1 <= column < 7 else None
+        if column is None:
+            u0 = u1 = 0.97
+        else:
+            divisor = 6 if scale_type == 14 else 8
+            u0, u1 = (column + 0.0001) / divisor, (column + 1.0001) / divisor
+    elif scale_type == 8:
+        u0, u1, v0, v1 = 0.0001, 0.9999, 0.0001, 0.9999
+    elif scale_type in (9, 10, 13):
+        column = i % 2
+        u0, u1 = (column + 0.0001) / 2, (column + 1.0001) / 2
+        if scale_type == 13 and i % 4 >= 2:
+            u0 = u1 = 0.97
+        if scale_type == 10:
+            v0, v1 = 0.00001, 0.99999
+    elif scale_type == 12:
+        u0, u1 = ((i % 6) + 0.0001) / 6, ((i % 6) + 1.0001) / 6
+    elif scale_type not in (None, 0):
+        raise ValueError("unsupported elevator video UV mode %s" % scale_type)
+    # Polygon order starts at C_VGuiScreen::ComputeEdges' lowerLeft,
+    # then follows its up and right vectors. VGUI v increases downward;
+    # USD/Blender v increases upward.
+    return ((u0, 1.0 - v1), (u0, 1.0 - v0),
+            (u1, 1.0 - v0), (u1, 1.0 - v1))
+
+
+def movie_screen_placements(entities, override=None):
+    """World quads of authored movie slaves; master panels live off-map."""
+    override = override or {}
+    masters = {entity.get("groupname"): entity.get("moviefilename")
+               for entity in entities if entity.get("classname") == "vgui_movie_display" and
+               entity.get("groupname") and not entity.get("forcedslave")}
+    for index, entity in enumerate(entities):
+        if entity.get("classname") != "vgui_movie_display" or \
+                entity.get("forcedslave") != "1":
+            continue
+        try:
+            origin = np.asarray([float(v) for v in entity["origin"].split()])
+            yaw = math.radians(float(entity.get("angles", "0 0 0").split()[1]))
+            width, height = float(entity["width"]), float(entity["height"])
+        except (KeyError, ValueError, IndexError):
+            continue
+        if len(origin) != 3 or width <= 0 or height <= 0:
+            continue
+        # CMovieDisplay::KeyValue rotates the authored angle by Y(90), Z(90).
+        # C_VGuiScreen::ComputeEdges then uses local X as screen right and
+        # local Y as screen up. For a horizontal authored yaw, X is the
+        # tangent below and Y is world +Z; the authored origin is lowerLeft.
+        across = width * np.asarray((-math.sin(yaw), math.cos(yaw), 0.0))
+        up = height * np.asarray((0.0, 0.0, 1.0))
+        inward = np.asarray((math.cos(yaw), math.sin(yaw), 0.0))
+        yield {"name": "movie_screen_%04d" % index, "origin": origin,
+               "display_origin": origin + inward * MOVIE_SCREEN_COMPOSITE_OFFSET_UNITS,
+               "across": across, "up": up, "normal": inward,
+               "group": entity.get("groupname"),
+               "movie": override.get(entity.get("groupname"),
+                                     masters.get(entity.get("groupname"))),
+               "uv": movie_screen_uv(entity.get("targetname"),
+                                     override.get("scale_type"))}
+
+
+def movie_preview(materials, movie, texture_dir, seconds=2.0):
+    """Bring a retail movie and a deterministic still into the lifted scene."""
+    data, source = materials.read(movie)
+    if data is None:
+        return None
+    texture_dir.mkdir(parents=True, exist_ok=True)
+    stem = sanitize(Path(movie).stem)
+    path = texture_dir / (stem + "_frame_%04dms.png" % round(seconds * 1000))
+    clip = texture_dir / (stem + ".mp4")
+    with tempfile.TemporaryDirectory() as temporary:
+        encoded = Path(temporary) / "movie.bik"
+        encoded.write_bytes(data)
+        result = subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+                                 "-ss", str(seconds), "-i", str(encoded), "-frames:v", "1",
+                                 "-update", "1", str(path)], capture_output=True, text=True)
+        if result.returncode:
+            raise ValueError("could not decode %s: %s" % (movie, result.stderr.strip()))
+        result = subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+                                 "-i", str(encoded), "-an", "-c:v", "libx264",
+                                 "-crf", "15", "-pix_fmt", "yuv420p", str(clip)],
+                                capture_output=True, text=True)
+        if result.returncode:
+            raise ValueError("could not convert %s: %s" % (movie, result.stderr.strip()))
+    from PIL import Image
+    with Image.open(path) as image:
+        size = list(image.size)
+    return {"file": str(path), "clip": str(clip), "source": source, "size": size,
+            "alpha": False, "frame_seconds": seconds}
+
+
+def build_model(bsp, resolver, texture_dir, model_tool=None, map_name=None):
     """Everything the USD writer needs, as plain data, plus the receipt."""
     texinfo = bsp.texinfo()
     texdata = bsp.texdata()
@@ -466,6 +683,81 @@ def build_model(bsp, resolver, texture_dir):
                                 [float(v) for v in radiance]}
             meshes.setdefault(key, []).append(face)
 
+    # Static props are part of the light transport, even though the game's
+    # renderer draws their MDLs and the world atlas must not allocate for them.
+    # Use the same portable studio parser that supplies rendercore's meshes.
+    _version, prop_names, placements = bsp.static_props()
+    if placements and (not model_tool or not Path(model_tool).is_file()):
+        raise ValueError("static props need the built mdl_mesh_export host tool")
+    entity_props = list(entity_studio_placements(entities))
+    if entity_props and (not model_tool or not Path(model_tool).is_file()):
+        raise ValueError("entity model reference needs the built mdl_mesh_export host tool")
+    studio = {name: studio_mesh(materials, model_tool, name) for name in
+              sorted(set(prop_names) | {prop["model"] for prop in entity_props})}
+    prop_meshes = []
+    omitted_props = {}
+
+    def append_prop(prop, label, omitted):
+        model = studio[prop["model"]]
+        skins = model["skinFamilies"]
+        family = skins[prop["skin"]] if 0 <= prop["skin"] < len(skins) else skins[0]
+        rotation = static_prop_matrix(prop["angles"])
+        origin = np.asarray(prop["origin"], dtype=np.float64)
+        for part_index, part in enumerate(model["meshes"]):
+            if not part["indices"]:
+                continue
+            material_index = family[part["textureRef"]]
+            texture_name = model["textures"][material_index]
+            candidates = [directory + texture_name for directory in model["cdMaterials"]]
+            if not candidates:
+                candidates = [texture_name]
+            material_name = candidates[0]
+            shader, params, source = None, {}, None
+            for candidate in candidates:
+                shader, params, source = materials.vmt(candidate)
+                if shader is not None:
+                    material_name = candidate
+                    break
+            if shader is None or shader in LEGACY_ONLY_SHADERS or \
+                    truthy(params.get("$translucent")) or truthy(params.get("$additive")):
+                reason = "missing VMT" if shader is None else "translucent or special shader"
+                omitted[reason] = omitted.get(reason, 0) + 1
+                continue
+            key = "relight_prop_" + hashlib.sha1(material_name.encode()).hexdigest()[:12]
+            if key not in records:
+                records[key] = {"source_material": material_name, "shader": shader,
+                                "vmt": source, "params": params, "emission": None}
+            prop_meshes.append({"name": "%s_%02d" % (label, part_index),
+                                "part": part, "rotation": rotation, "origin": origin,
+                                "material": key})
+
+    for index, prop in enumerate(placements):
+        append_prop(prop, "static_prop_%04d" % index, omitted_props)
+    static_mesh_count = len(prop_meshes)
+    omitted_entities = {}
+    for prop in entity_props:
+        append_prop(prop, "entity_model_%04d" % prop["index"], omitted_entities)
+    video_override, video_script = elevator_video_override(resolver, map_name or "")
+    movie_screens = list(movie_screen_placements(entities, video_override))
+    missing_movies = sorted({screen["movie"] for screen in movie_screens
+                             if screen["movie"] and materials.read(screen["movie"])[0] is None})
+    movie_frames = {movie: movie_preview(materials, movie, texture_dir)
+                    for movie in sorted({screen["movie"] for screen in movie_screens
+                                         if screen["movie"] and screen["movie"] not in
+                                         missing_movies})}
+    if movie_screens:
+        for movie in sorted({screen["movie"] or "" for screen in movie_screens}):
+            key = "relight_movie_screen_" + hashlib.sha1((movie or "").encode()).hexdigest()[:12]
+            frame = movie_frames.get(movie)
+            records[key] = {"source_material": "", "shader": "reference_screen",
+                            "vmt": None, "params": {},
+                            "emission": None if frame else [0.20, 0.24, 0.28],
+                            "emission_texture": frame,
+                            "reference_screen": True}
+            for screen in movie_screens:
+                if (screen["movie"] or "") == movie:
+                    screen["material"] = key
+
     # Textures.
     texture_dir.mkdir(parents=True, exist_ok=True)
     decoded = {}
@@ -519,16 +811,13 @@ def build_model(bsp, resolver, texture_dir):
         record["alphatest"] = truthy(params.get("$alphatest")) and bool(
             record["base"] and record["base"]["alpha"])
         record["alphatest_reference"] = float(params.get("$alphatestreference", 0.5) or 0.5)
-        exponent = params.get("$phongexponent")
-        try:
-            record["roughness"] = math.sqrt(2.0 / (float(exponent) + 2.0)) if exponent \
-                else DEFAULT_ROUGHNESS
-        except ValueError:
-            record["roughness"] = DEFAULT_ROUGHNESS
+        record["roughness"] = material_roughness(record["shader"], params)
         if not record["base"]:
-            record["base_color"] = [float(v) for v in texdata_reflectivity(texdata, record)]
-            approximations.setdefault(key, []).append(
-                "no base texture: the compiled reflectivity is the colour")
+            record["base_color"] = ([0.0, 0.0, 0.0] if record.get("reference_screen")
+                                    else [float(v) for v in texdata_reflectivity(texdata, record)])
+            if not record.get("reference_screen"):
+                approximations.setdefault(key, []).append(
+                    "no base texture: the compiled reflectivity is the colour")
         if record["shader"] not in ("lightmappedgeneric", "worldvertextransition",
                                     "lightmapped_4wayblend"):
             approximations.setdefault(key, []).append(
@@ -652,6 +941,7 @@ def build_model(bsp, resolver, texture_dir):
                                     "texdata": [record["width"], record["height"]],
                                     "mapping": [size["width"], size["height"]]})
     model = {"materials": records, "meshes": meshes, "occluders": occluders,
+             "prop_meshes": prop_meshes, "movie_screens": movie_screens,
              "lights": light_records, "texinfo": texinfo, "texdata": texdata,
              "mappings": mappings}
     receipt = {"schema": SCHEMA, "world_light_lump": light_lump,
@@ -659,6 +949,24 @@ def build_model(bsp, resolver, texture_dir):
                "excluded_faces": excluded, "materials": len(records),
                "emissive_materials": sorted(k for k, r in records.items() if r["emission"]),
                "occluder_polygons": len(occluders),
+               "static_props": {"placements": len(placements), "models": len(prop_names),
+                                "meshes": static_mesh_count, "omitted_meshes": omitted_props,
+                                "materials": sorted({p["material"] for p in
+                                                     prop_meshes[:static_mesh_count]})},
+               "reference_entity_models": {"placements": len(entity_props),
+                                           "meshes": len(prop_meshes) - static_mesh_count,
+                                           "omitted_meshes": omitted_entities,
+                                           "models": sorted({p["model"] for p in entity_props})},
+               "reference_movie_screens": {"quads": len(movie_screens),
+                                           "groups": sorted({p["group"] for p in movie_screens}),
+                                           "missing_movies": missing_movies,
+                                           "resolved_movies": sorted(movie_frames),
+                                           "frames": movie_frames,
+                                           "script": video_script,
+                                           "scale_type": video_override.get("scale_type"),
+                                           "composite_offset_units":
+                                           MOVIE_SCREEN_COMPOSITE_OFFSET_UNITS,
+                                           "presentation": "retail movie frame at 2 seconds"},
                "surface_lights": {"total": len(surface_lights),
                                   "matched": len(surface_lights) - len(unmatched),
                                   "emitting_faces": len(radiance_of)},
@@ -890,7 +1198,10 @@ def write_usd(model, path, map_name):
             surface.CreateInput("normal", Sdf.ValueTypeNames.Normal3f).ConnectToSource(
                 texture(path, "normal", record["normal"], "rgb", "raw",
                         (2.0, 2.0, 2.0, 1.0), (-1.0, -1.0, -1.0, 0.0)))
-        if record.get("emission"):
+        if record.get("emission_texture"):
+            surface.CreateInput("emissiveColor", Sdf.ValueTypeNames.Color3f).ConnectToSource(
+                texture(path, "emission", record["emission_texture"], "rgb", "sRGB"))
+        elif record.get("emission"):
             surface.CreateInput("emissiveColor", Sdf.ValueTypeNames.Color3f).Set(
                 Gf.Vec3f(*record["emission"]))
         mat.CreateSurfaceOutput().ConnectToSource(surface.ConnectableAPI(), "surface")
@@ -931,6 +1242,54 @@ def write_usd(model, path, map_name):
                        model["mappings"][texinfo[face["texinfo"]]["texdata"]]) for face in faces]
         mesh(name, polygons, uvs, [face["plane_normal"] for face in faces], mat,
              [face["vertices"] for face in faces], [face["plane"] for face in faces])
+    for item in model["prop_meshes"]:
+        part = item["part"]
+        rotation, origin = item["rotation"], item["origin"]
+        vertices = part["vertices"]
+        points = [np.asarray(v["p"]) @ rotation.T + origin for v in vertices]
+        normals = [np.asarray(v["n"]) @ rotation.T for v in vertices]
+        indices = part["indices"]
+        prim = UsdGeom.Mesh.Define(stage, world.AppendChild(item["name"]))
+        prim.CreatePointsAttr(Vt.Vec3fArray([Gf.Vec3f(*map(float, p)) for p in points]))
+        prim.CreateFaceVertexCountsAttr(Vt.IntArray([3] * (len(indices) // 3)))
+        prim.CreateFaceVertexIndicesAttr(Vt.IntArray(indices))
+        prim.CreateNormalsAttr(Vt.Vec3fArray(
+            [Gf.Vec3f(*map(float, normals[i])) for i in indices]))
+        prim.SetNormalsInterpolation(UsdGeom.Tokens.faceVarying)
+        prim.CreateSubdivisionSchemeAttr(UsdGeom.Tokens.none)
+        prim.CreateExtentAttr(UsdGeom.PointBased.ComputeExtent(prim.GetPointsAttr().Get()))
+        UsdGeom.PrimvarsAPI(prim).CreatePrimvar(
+            "st", Sdf.ValueTypeNames.TexCoord2fArray, UsdGeom.Tokens.faceVarying).Set(
+            Vt.Vec2fArray([Gf.Vec2f(vertices[i]["uv"][0], 1.0 - vertices[i]["uv"][1])
+                           for i in indices]))
+        UsdShade.MaterialBindingAPI.Apply(prim.GetPrim()).Bind(
+            bound[item["material"]] if item["material"] in bound else
+            material(item["material"], model["materials"][item["material"]]))
+        if item["name"].startswith("entity_model_"):
+            prim.GetPrim().CreateAttribute("sourceEngine:visualRole", Sdf.ValueTypeNames.String,
+                                           custom=True).Set("dynamic_model")
+    if model["movie_screens"]:
+        for item in model["movie_screens"]:
+            origin, across, up = item["display_origin"], item["across"], item["up"]
+            polygon = np.asarray((origin, origin + up, origin + up + across,
+                                  origin + across))
+            uv = np.asarray(item["uv"] or ((0.0, 0.0), (0.0, 1.0),
+                                           (1.0, 1.0), (1.0, 0.0)))
+            screen_mat = bound.get(item["material"]) or material(
+                item["material"], model["materials"][item["material"]])
+            prim = mesh(item["name"], [polygon], [uv], [item["normal"]], screen_mat)
+            prim.GetPrim().CreateAttribute("sourceEngine:visualRole", Sdf.ValueTypeNames.String,
+                                           custom=True).Set("video_screen")
+            prim.GetPrim().CreateAttribute("sourceEngine:movie", Sdf.ValueTypeNames.String,
+                                           custom=True).Set(item["movie"] or "")
+            frame = model["materials"][item["material"]].get("emission_texture")
+            if frame:
+                prim.GetPrim().CreateAttribute("sourceEngine:movieClip",
+                                               Sdf.ValueTypeNames.String, custom=True).Set(
+                                                   str(Path(frame["clip"]).resolve()))
+            prim.GetPrim().CreateAttribute("sourceEngine:authoredOrigin",
+                                           Sdf.ValueTypeNames.Float3, custom=True).Set(
+                                               Gf.Vec3f(*map(float, item["origin"])))
     if model["occluders"]:
         mat = material(OCCLUDER, {"base_color": (0.0, 0.0, 0.0), "roughness": 1.0})
         polygons = [polygon for polygon, _normal in model["occluders"]]
@@ -1006,6 +1365,8 @@ def main():
                         help="installed game runtime (portal/ and hl2/ content)")
     parser.add_argument("--game-dir", type=Path,
                         help="the compile's game directory (vrad -game), searched first")
+    parser.add_argument("--model-tool", type=Path,
+                        help="built mdl/mdl_mesh_export host tool for static-prop geometry")
     parser.add_argument("--map-name", required=True)
     parser.add_argument("--out", type=Path, required=True,
                         help="output directory: scene.usda, textures/, scene-receipt.json")
@@ -1015,7 +1376,8 @@ def main():
     if args.game_dir:
         resolver = GameDirectory(args.game_dir, resolver)
     args.out.mkdir(parents=True, exist_ok=True)
-    model, receipt = build_model(bsp, resolver, args.out / "textures")
+    model, receipt = build_model(bsp, resolver, args.out / "textures", args.model_tool,
+                                 args.map_name.replace("_relit", ""))
     write_usd(model, args.out / "scene.usda", args.map_name)
     receipt.update(status="pass", bsp=str(args.bsp.resolve()),
                    bsp_sha256=sha256_bytes(bsp.data), map=args.map_name,

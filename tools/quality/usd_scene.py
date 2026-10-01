@@ -728,9 +728,14 @@ class Extractor:
                                                      len(corner_triangles)))
                     break
             prop = self.prop_for(prim)
-            self.shapes.append({
+            role_attr = prim.GetAttribute("sourceEngine:visualRole")
+            role = str(role_attr.Get()) if role_attr and role_attr.HasAuthoredValue() else \
+                "prop" if prop else "world"
+            if role not in ("world", "prop", "dynamic_model", "video_screen"):
+                raise ValueError("unknown visual role %s on %s" % (role, prim.GetPath()))
+            shape = {
                 "name": self.shape_names.take(name_stem), "material": material_name,
-                "role": "prop" if prop else "world", "prop": prop,
+                "role": role, "prop": prop,
                 "prim": str(prim.GetPath()), "subset": subset_name,
                 "double_sided": double_sided, "subdivision": str(subdivision),
                 "st_primvar": primvar_name,
@@ -739,7 +744,14 @@ class Extractor:
                 "face_data": {name: values[triangle_faces[selected]][:len(corner_triangles)]
                               for name, values in face_data.items()}
                 if corner_vertex is not None else {},
-                "normals": world_normals, "uv": uv})
+                "normals": world_normals, "uv": uv}
+            if role == "video_screen":
+                movie_attr = prim.GetAttribute("sourceEngine:movie")
+                shape["movie"] = str(movie_attr.Get()) if movie_attr else ""
+                clip_attr = prim.GetAttribute("sourceEngine:movieClip")
+                if clip_attr and clip_attr.HasAuthoredValue():
+                    shape["movie_clip"] = str(clip_attr.Get())
+            self.shapes.append(shape)
 
     def prop_for(self, prim):
         """Name of the dynamic model (`sourceEngine:model` Xform) a mesh
@@ -1191,10 +1203,22 @@ def shape_points(shape):
     return shape["points"][shape["corner_triangles"].reshape(-1)]
 
 
+def video_st_corners(shape):
+    """Expected world-space corners and movie UVs for Blender import checks."""
+    corners = shape["corner_triangles"].reshape(-1)
+    points = shape["points"][corners]
+    uv = shape["uv"][corners]
+    return np.concatenate((points, uv), axis=1).tolist()
+
+
 def scene_model(extractor, camera, bounds, digest, inputs, usd_path):
     shapes = [{key: shape[key] for key in ("name", "material", "prim", "subset",
                                            "double_sided", "subdivision", "st_primvar",
                                            "role", "prop")}
+              | ({"movie": shape["movie"]} if "movie" in shape else {})
+              | ({"movie_clip": shape["movie_clip"]} if "movie_clip" in shape else {})
+              | ({"video_st_corners": video_st_corners(shape)}
+                 if shape["role"] == "video_screen" else {})
               | {"triangles": int(len(shape["corner_triangles"])),
                  "bounds": [shape_points(shape).min(axis=0).tolist(),
                             shape_points(shape).max(axis=0).tolist()]}

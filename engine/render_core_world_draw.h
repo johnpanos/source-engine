@@ -57,5 +57,13 @@ bool RenderCoreWorldDraw_Skips( SurfaceHandle_t surfID );
 // or r_core_world_isolate is on. The core's world and the legacy world never
 // both draw a surface.
 bool RenderCoreWorldDraw_ChainsOnly();
+// The legacy client culled these static props for this opaque view. Once
+// the queued core world view accepts the cohort, studiorender omits it.
+bool RenderCoreWorldDraw_TakeStaticProps( const unsigned int *props, int count );
+bool RenderCoreWorldDraw_DrawsStaticProp( unsigned int prop );
+// Claims the current animated door draw with its engine-generated bone palette.
+// Returns false when the model, view or material must stay with studiorender.
+bool RenderCoreWorldDraw_TakePosedModel(
+    const model_t *model, int skin, const matrix3x4_t *boneToWorld, int boneCount );
 
 #endif // RENDER_CORE_WORLD_DRAW_H

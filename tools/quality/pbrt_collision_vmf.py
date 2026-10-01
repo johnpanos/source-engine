@@ -447,7 +447,7 @@ def main():
     scale = SOURCE_UNITS_PER_METER * stage_scale
     meshes = mesh_bounds(stage, scale)
     # Dynamic-model stand-ins are entities, not world: no shell, no solid.
-    prop_shapes = map_scene.prop_shape_names(scene)
+    prop_shapes = map_scene.nonstatic_shape_names(scene)
     meshes = {name: mesh for name, mesh in meshes.items() if name not in prop_shapes}
     missing = [name for name in args.envelope_mesh + args.solid_mesh if name not in meshes]
     materials = {mesh["material"] for mesh in meshes.values()}

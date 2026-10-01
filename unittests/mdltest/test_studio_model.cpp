@@ -183,6 +183,31 @@ void BoxCases()
 		Check( mdl::TextureIndex( m, m.meshes[0], 0 ) == 0, tag + "skin 0 texture" );
 	}
 
+	// The VVD's separate tangent block follows the raw vertex records.
+	SyntheticFiles tangentFiles =
+	    mdltest::WriteModel( mdltest::BoxModel( { 4, 4, 4 }, "a/", "t" ) );
+	const std::size_t tangentStart = tangentFiles.vvd.size();
+	const std::size_t tangentCount = Get32( tangentFiles.vvd, 16 );
+	Put32( tangentFiles.vvd, 60, static_cast<std::int32_t>( tangentStart ) );
+	tangentFiles.vvd.resize( tangentStart + tangentCount * 16 );
+	for ( std::size_t i = 0; i < tangentCount; ++i )
+	{
+		mdltest::detail::PutF( tangentFiles.vvd, tangentStart + i * 16, 1.0f );
+		mdltest::detail::PutF( tangentFiles.vvd, tangentStart + i * 16 + 4, 0.0f );
+		mdltest::detail::PutF( tangentFiles.vvd, tangentStart + i * 16 + 8, 0.0f );
+		mdltest::detail::PutF(
+		    tangentFiles.vvd, tangentStart + i * 16 + 12, i == 0 ? -1.0f : 1.0f );
+	}
+	auto tangentModel = Parse( tangentFiles );
+	Check( tangentModel.HasValue() &&
+	           tangentModel.Value().meshes[0].vertices[0].tangent == mdl::Float3{ 1, 0, 0 } &&
+	           tangentModel.Value().meshes[0].vertices[0].tangentSign == -1.0f &&
+	           tangentModel.Value().meshes[0].vertices[1].tangentSign == 1.0f,
+	    "VVD tangent frame and handedness reach the model vertices" );
+	tangentFiles.vvd.pop_back();
+	Check( Fails( tangentFiles, mdl::ModelStatus::Truncated, mdl::ModelFile::Vvd ),
+	    "a truncated VVD tangent block fails" );
+
 	// Fixups restore the logical vertex order.
 	SyntheticModel two = mdltest::BoxModel( { 8, 8, 8 }, "a/", "t" );
 	two.bodyParts[0][0].push_back( mdltest::BoxMesh( { 40, 0, 0 }, { 4, 4, 4 } ) );

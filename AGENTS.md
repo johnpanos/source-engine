@@ -659,8 +659,10 @@ Keep the table concise and link details below or from the domain progress file.
     regular vbsp/vvis/vrad compile feeds the Blender pipeline. It is not the
     seam and closes no R48 criterion
     ([record](RFC/0007-progress.md#regular-compile-hook-vrad_cyclespy-installed-2026-09-25)).
-  - Cycles bakes default to the CPU (user decision 2026-09-25, `d57305aa`);
-    `gpu` and `auto` are opt-ins.
+  - Cycles map bakes default to `gpu` (user decision, 2026-09-30); production
+    map profiles select it explicitly. `cpu` remains for exact-determinism
+    fixtures and correctness/reference checks, and `auto` is an opt-in for
+    hosts without a GPU.
 
 - R65–R66 (RFC 0012): added 2026-09-24 as `planned` at the user's direction.
   R65 was ranked directly after R47: it is bounded, it closes the native

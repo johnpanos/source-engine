@@ -158,6 +158,10 @@
       "dialect": "cxx20",
       "rfc": "0002"
     },
+    "mdl_mesh_export": {
+      "dialect": "cxx20",
+      "rfc": "0007"
+    },
     "debugapi_core": {
       "dialect": "cxx20",
       "rfc": "0005"

@@ -245,6 +245,8 @@ enum class Program
 	kSelfIllumZero, // + $selfillum with $selfillumtint 0 (the emission term's neutral value)
 	kUnlit,         // UnlitGeneric with $vertexcolor
 	kPbr,
+	kModernMesh,    // VertexLitGeneric mapped to the PBR mesh point
+	kInstancedMesh, // the same material on object-space vertices and a draw transform
 	kVertexLit,
 	kLines
 };
@@ -256,6 +258,8 @@ std::string_view ProgramName( Program program )
 	case Program::kUnlit:
 		return "unlit";
 	case Program::kPbr:
+	case Program::kModernMesh:
+	case Program::kInstancedMesh:
 		return "pbr";
 	case Program::kVertexLit:
 		return "vertexlit";
@@ -295,6 +299,7 @@ struct Lab
 {
 	IRenderDevice2 &device;
 	std::unique_ptr<material::ProgramResolver> resolver;
+	std::unique_ptr<material::ProgramResolver> modelResolver;
 	std::unique_ptr<material::PbrFamily> pbr;
 	std::unique_ptr<material::VertexLitFamily> vertexLit;
 	std::unique_ptr<pass::lines::LinesRenderer> lines;
@@ -304,6 +309,14 @@ struct Lab
 	Camera camera;
 	Inputs inputs;
 	std::map<Program, material::ResolvedProgram> programs;
+	material::ResolvedProgram modernMesh;
+	material::ResolvedProgram instancedMesh;
+	std::uint64_t modernMaterial = 0;
+	std::uint64_t modernDraw = 0;
+	std::uint64_t modernFrame = 0;
+	std::uint64_t instancedMaterial = 0;
+	std::uint64_t instancedDraw = 0;
+	std::uint64_t instancedFrame = 0;
 	std::map<std::string, std::uint64_t> drawGroups; // lightmap page -> group id
 	std::uint64_t frameGroup = 0;
 	std::uint64_t pbrFrameGroup = 0;
@@ -338,6 +351,45 @@ std::optional<std::string> Prepare( Lab &lab, std::span<const std::uint32_t> lig
 	if ( !resolver )
 		return "no programs: " + resolver.Error();
 	lab.resolver = std::move( resolver ).Value();
+	lab.resolver->SetWorldPbr( true, material::kSurfaceClustered );
+	// An imported model takes the same PBR mesh point as native PBR materials.
+	auto modelMaterial =
+	    material::MapVariables( "VertexLitGeneric", { { "$basetexture", "lab/vl/base" } }, {} );
+	if ( !modelMaterial || material::ClaimForDrawing( modelMaterial.Value() ) ||
+	     !material::ClaimForMesh( modelMaterial.Value() ) )
+		return std::string( "the modern model claim is not mesh-only" );
+	auto modelProgram = lab.resolver->ResolveMesh( modelMaterial.Value() );
+	if ( !modelProgram || modelProgram.Value().name != "pbr" ||
+	     modelProgram.Value().request.vertexStride != sizeof( material::SurfaceWorldVertex ) ||
+	     !modelProgram.Value().drawInputs.empty() )
+		return std::string( "VertexLitGeneric did not resolve to the PBR mesh point" );
+	lab.modernMesh = std::move( modelProgram ).Value();
+	// The game uploads one object-space mesh per model and varies the draw
+	// transform per instance. The same claim must produce that vertex layout.
+	auto modelResolver = material::ProgramResolver::Create(
+	    lab.device, kCanvasColor, kCanvasDepth, 1, material::VertexLayout::kModel );
+	if ( !modelResolver )
+		return std::string( "the object-space model resolver was refused" );
+	modelResolver.Value()->SetWorldPbr( true, material::kSurfaceClustered );
+	auto instanced = modelResolver.Value()->ResolveMesh( modelMaterial.Value() );
+	if ( !instanced || !instanced.Value().request.pipeline.IsValid() ||
+	     instanced.Value().request.vertexStride != sizeof( material::SurfaceModelVertex ) ||
+	     instanced.Value().request.drawConstantBytes != sizeof( material::FamilyDrawConstants ) )
+		return std::string( "the object-space mesh point is not drawable" );
+	lab.modelResolver = std::move( modelResolver ).Value();
+	lab.instancedMesh = std::move( instanced ).Value();
+	material::SurfaceConstants modelConstants;
+	if ( lab.modernMesh.request.material.constants.size() != sizeof( modelConstants ) )
+		return std::string( "the modern model constants have the wrong size" );
+	std::memcpy( &modelConstants, lab.modernMesh.request.material.constants.data(),
+	    sizeof( modelConstants ) );
+	if ( modelConstants.pbrFactors[0] != 0.0f || modelConstants.pbrFactors[3] != 0.0f ||
+	     !lab.resolver->DrawGroup( lab.modernMesh, {} ) )
+		return std::string( "the modern model reads the wrong material or draw inputs" );
+	auto rim = material::MapVariables(
+	    "VertexLitGeneric", { { "$basetexture", "lab/vl/base" }, { "$rimlight", "1" } }, {} );
+	if ( !rim || material::ClaimForMesh( rim.Value() ) || lab.resolver->ResolveMesh( rim.Value() ) )
+		return std::string( "the modern model silently accepted an unmapped term" );
 	auto pbr = material::PbrFamily::Create( lab.device, kCanvasColor, kCanvasDepth );
 	auto vertexLit = material::VertexLitFamily::Create( lab.device, kCanvasColor, kCanvasDepth );
 	auto lines = pass::lines::LinesRenderer::Create( lab.device, kCanvasColor, kCanvasDepth );
@@ -382,6 +434,8 @@ std::optional<std::string> Prepare( Lab &lab, std::span<const std::uint32_t> lig
 	        cache, "lab/pbr/emission", Format::kRGBA8Srgb, ByteTexel( 60, 120, 180, 255 ) ) &&
 	    StageConstant( cache, "lab:page:zero", Format::kRGBA16Float, HalfTexel( 0, 0, 0 ) ) &&
 	    StageConstant( cache, "lab/vl/base", Format::kRGBA8Srgb, ByteTexel( 100, 200, 50, 255 ) );
+	staged = staged && StageConstant( cache, "materials/lab/vl/base", Format::kRGBA8Srgb,
+	                       ByteTexel( 100, 200, 50, 255 ) );
 	{
 		const material::PbrSplitSumTable table = material::SplitSumTable();
 		TextureDesc desc;
@@ -511,6 +565,28 @@ std::optional<std::string> Prepare( Lab &lab, std::span<const std::uint32_t> lig
 			return std::string( "a pbr lighting group was refused" );
 		lab.pbrLightings[name] = id;
 	}
+	lab.modernMaterial = lab.nextGroup++;
+	lab.modernDraw = lab.nextGroup++;
+	lab.modernFrame = lab.nextGroup++;
+	material::FrameTerms modernTerms;
+	modernTerms.splitSumTable = "lab/pbr/splitsum";
+	auto modernDraw = lab.resolver->DrawGroup( lab.modernMesh, {} );
+	auto modernFrame = lab.resolver->FrameGroup( lab.modernMesh, modernTerms );
+	if ( !modernDraw || !modernFrame ||
+	     !lab.groups.Set( lab.modernMaterial, lab.modernMesh.request.material ) ||
+	     !lab.groups.Set( lab.modernDraw, *modernDraw ) ||
+	     !lab.groups.Set( lab.modernFrame, *modernFrame ) )
+		return std::string( "the modern model's groups were refused" );
+	lab.instancedMaterial = lab.nextGroup++;
+	lab.instancedDraw = lab.nextGroup++;
+	lab.instancedFrame = lab.nextGroup++;
+	auto instancedDraw = lab.modelResolver->DrawGroup( lab.instancedMesh, {} );
+	auto instancedFrame = lab.modelResolver->FrameGroup( lab.instancedMesh, modernTerms );
+	if ( !instancedDraw || !instancedFrame ||
+	     !lab.groups.Set( lab.instancedMaterial, lab.instancedMesh.request.material ) ||
+	     !lab.groups.Set( lab.instancedDraw, *instancedDraw ) ||
+	     !lab.groups.Set( lab.instancedFrame, *instancedFrame ) )
+		return std::string( "the object-space mesh groups were refused" );
 	const material::ModelLighting &lighting = lab.pbrLightingValues["default"];
 
 	// vertexlit: the same lighting.
@@ -531,8 +607,8 @@ std::optional<std::string> Prepare( Lab &lab, std::span<const std::uint32_t> lig
 		return std::string( "a vertexlit group was refused" );
 
 	// Each program's neutral view group (no clustered lights), by layout.
-	std::vector<const material::ProgramRequest *> requests = {
-	    &lab.pbrRequest, &lab.vertexLitRequest };
+	std::vector<const material::ProgramRequest *> requests = { &lab.pbrRequest,
+	    &lab.vertexLitRequest, &lab.modernMesh.request, &lab.instancedMesh.request };
 	for ( const auto &[program, resolved] : lab.programs )
 		requests.push_back( &resolved.request );
 	for ( const material::ProgramRequest *request : requests )
@@ -555,10 +631,13 @@ std::vector<std::byte> QuadVertices( const Lab &lab, Program program, int cell )
 	std::vector<std::byte> bytes;
 	for ( const Corner &corner : QuadCorners( cell ) )
 	{
-		if ( program == Program::kPbr )
+		if ( program == Program::kPbr || program == Program::kInstancedMesh )
 		{
 			material::SurfaceModelVertex v;
-			std::memcpy( v.position, &corner.position, sizeof( v.position ) );
+			const float3 position = program == Program::kInstancedMesh
+			                            ? corner.position - Camera::Centre( cell )
+			                            : corner.position;
+			std::memcpy( v.position, &position, sizeof( v.position ) );
 			std::memcpy( v.normal, &in.normal, sizeof( v.normal ) );
 			std::memcpy( v.tangent, &in.tangentS, sizeof( float ) * 3 );
 			v.tangent[3] = 1.0f;
@@ -644,6 +723,37 @@ std::optional<std::string> DrawFrame(
 				draw.vertexCount =
 				    std::uint32_t( c.mesh.size() / sizeof( material::SurfaceModelVertex ) );
 			}
+		}
+		else if ( c.program == Program::kModernMesh )
+		{
+			auto pipeline = lab.resolver->DebugPipeline( lab.modernMesh, debug );
+			if ( !pipeline )
+				return pipeline.Error();
+			draw.pipeline = pipeline.Value();
+			draw.groups[std::size_t( BindGroupRole::kFrame )] = group( lab.modernFrame );
+			draw.groups[std::size_t( BindGroupRole::kView )] =
+			    group( lab.viewGroups.at( lab.modernMesh.request.viewLayout.value ) );
+			draw.groups[std::size_t( BindGroupRole::kMaterial )] = group( lab.modernMaterial );
+			draw.groups[std::size_t( BindGroupRole::kDraw )] = group( lab.modernDraw );
+			draw.constants = Bytes( constants.toClip );
+		}
+		else if ( c.program == Program::kInstancedMesh )
+		{
+			auto pipeline = lab.modelResolver->DebugPipeline( lab.instancedMesh, debug );
+			if ( !pipeline )
+				return pipeline.Error();
+			draw.pipeline = pipeline.Value();
+			draw.groups[std::size_t( BindGroupRole::kFrame )] = group( lab.instancedFrame );
+			draw.groups[std::size_t( BindGroupRole::kView )] =
+			    group( lab.viewGroups.at( lab.instancedMesh.request.viewLayout.value ) );
+			draw.groups[std::size_t( BindGroupRole::kMaterial )] = group( lab.instancedMaterial );
+			draw.groups[std::size_t( BindGroupRole::kDraw )] = group( lab.instancedDraw );
+			material::FamilyDrawConstants placed;
+			const math::float4x4 world = math::Translation( Camera::Centre( cells[i] ) );
+			const math::float4x4 toClip = math::Multiply( lab.camera.ToClip(), world );
+			std::memcpy( placed.toClip, &toClip, sizeof( placed.toClip ) );
+			std::memcpy( placed.world, &world, sizeof( placed.world ) );
+			draw.constants = Bytes( placed );
 		}
 		else if ( c.program == Program::kVertexLit )
 		{
@@ -1040,6 +1150,20 @@ std::vector<Case> PixelCases( const Lab &lab )
 	add( "view.13.uv-checker.pbr", Program::kPbr, view( V::kUvChecker ), checker );
 	add( "view.14.hatch.pbr-no-color-stream", Program::kPbr, view( V::kVertexColor ),
 	    HatchExpected() );
+	// The imported model has no MRAO image; its dielectric factors must reach
+	// the same pixel program, even though the neutral material texture is white.
+	add( "view.1.albedo.modern-mesh", Program::kModernMesh, view( V::kAlbedo ),
+	    Constant( in.vertexLitBase ) );
+	add( "view.4.roughness.modern-mesh", Program::kModernMesh, view( V::kRoughness ),
+	    Constant( { 0.55f, 0.55f, 0.55f } ) );
+	add( "view.6.metalness.modern-mesh", Program::kModernMesh, view( V::kMetalness ),
+	    Constant( { 0.0f, 0.0f, 0.0f } ) );
+	add( "view.7.ao.modern-mesh", Program::kModernMesh, view( V::kAmbientOcclusion ),
+	    Constant( { 1.0f, 1.0f, 1.0f } ) );
+	add( "view.1.albedo.instanced-mesh", Program::kInstancedMesh, view( V::kAlbedo ),
+	    Constant( in.vertexLitBase ) );
+	add( "view.4.roughness.instanced-mesh", Program::kInstancedMesh, view( V::kRoughness ),
+	    Constant( { 0.55f, 0.55f, 0.55f } ) );
 
 	// vertexlit: albedo, and no separable light term.
 	add( "view.1.albedo.vertexlit", Program::kVertexLit, view( V::kAlbedo ),

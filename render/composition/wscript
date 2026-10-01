@@ -4,7 +4,7 @@
 # roots. The only render module that names device adapters.
 
 def build(bld):
-	use = ['render_renderer', 'render_pass_present', 'render_pass_world', 'render_pass_debug',
+	use = ['mdl', 'render_renderer', 'render_pass_present', 'render_pass_world', 'render_pass_debug',
 		'render_pass_output',
 		'render_legacy', 'render_scene',
 		'render_frame', 'render_graph', 'render_resources', 'render_material',

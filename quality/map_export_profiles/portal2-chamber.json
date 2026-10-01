@@ -5,7 +5,7 @@
   "lightmap": {
     "size": 4096,
     "samples": 4096,
-    "device": "cpu",
+    "device": "gpu",
     "denoise": true,
     "noise_target": 0.15,
     "noise_gate": "record",

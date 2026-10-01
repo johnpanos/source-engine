@@ -148,10 +148,23 @@ MapLights MapLightsFromEntities( const std::vector<Entity> &entities )
 		const math::float3 origin = Vector3( Numbers( entity, "origin", 3 ) );
 		if ( classname == "light" || classname == "light_spot" )
 		{
-			const std::vector<float> attn = { Numbers( entity, "_constant_attn", 1 )[0],
+			// vrad's nonzero _fifty_percent_distance solves a separate
+			// inverse-quadratic curve. Until that solver is in this owner, do
+			// not claim a light with a different compiled falloff.
+			if ( Numbers( entity, "_fifty_percent_distance", 1 )[0] > 0.0f )
+			{
+				++out.unsupported;
+				continue;
+			}
+			float attn[3] = { Numbers( entity, "_constant_attn", 1 )[0],
 			    Numbers( entity, "_linear_attn", 1 )[0],
 			    Numbers( entity, "_quadratic_attn", 1 )[0] };
-			if ( !( attn[0] == 0.0f && attn[1] == 0.0f && attn[2] == 1.0f ) )
+			for ( float &term : attn )
+				term = term >= 1e-6f && std::isfinite( term ) ? term : 0.0f;
+			if ( attn[0] == 0.0f && attn[1] == 0.0f && attn[2] == 0.0f )
+				attn[0] = 1.0f;
+			const float reference = attn[0] + 100.0f * attn[1] + 10000.0f * attn[2];
+			if ( !std::isfinite( reference ) || reference <= 0.0f )
 			{
 				++out.unsupported;
 				continue;
@@ -161,7 +174,10 @@ MapLights MapLightsFromEntities( const std::vector<Entity> &entities )
 			light.kind = light_set::LightKind::World;
 			light.baked = true;
 			light.matchesBaked = true;
-			light.falloff = light_set::LightFalloff::InverseSquare;
+			light.style = int( Numbers( entity, "style", 1 )[0] );
+			const bool inverseSquare = attn[0] == 0.0f && attn[1] == 0.0f && attn[2] == 1.0f;
+			light.falloff = inverseSquare ? light_set::LightFalloff::InverseSquare
+			                              : light_set::LightFalloff::Attenuated;
 			light.sourceRadius = light_set::kInverseSquareSourceRadius;
 			light.position[0] = origin.x;
 			light.position[1] = origin.y;
@@ -170,12 +186,20 @@ MapLights MapLightsFromEntities( const std::vector<Entity> &entities )
 			light.color[0] = color.x;
 			light.color[1] = color.y;
 			light.color[2] = color.z;
+			if ( !inverseSquare )
+			{
+				for ( int c = 0; c < 3; ++c )
+					light.color[c] *= reference;
+				std::copy( attn, attn + 3, light.attenuation );
+			}
 			// The bake has no window: the radius where the light's diffuse
 			// light falls to 1e-4 of the lightmap unit, so the window's error
 			// is below that.
 			const float peak = std::max( { color.x, color.y, color.z } );
-			light.radius = float( light_set::kInverseSquareReferenceDistance *
-			                      std::sqrt( std::max( peak, 1e-6f ) / 1e-4f ) );
+			light.radius = Numbers( entity, "_distance", 1 )[0];
+			if ( inverseSquare && light.radius <= 0.0f )
+				light.radius = float( light_set::kInverseSquareReferenceDistance *
+				                      std::sqrt( std::max( peak, 1e-6f ) / 1e-4f ) );
 			if ( classname == "light_spot" )
 			{
 				const std::vector<float> angles = Numbers( entity, "angles", 3 );
@@ -274,6 +298,36 @@ MapLights MapLightsFromEntities( const std::vector<Entity> &entities )
 		}
 	}
 	return out;
+}
+
+std::vector<light_set::RuntimeLight> MergeMapLights(
+    const std::vector<light_set::RuntimeLight> &frame, const MapLights &map )
+{
+	std::vector<light_set::RuntimeLight> result = frame;
+	std::uint32_t nextId = 0x40000000u;
+	for ( light_set::RuntimeLight light : map.lights )
+	{
+		// A style-controlled lamp belongs to the engine's live light set.
+		// A fallback copy would keep it on after the game switches it off.
+		if ( light.style != 0 )
+			continue;
+		const bool present = std::any_of( frame.begin(), frame.end(),
+		    [&]( const light_set::RuntimeLight &other )
+		    {
+			    if ( other.kind != light_set::LightKind::World || other.shape != light.shape )
+				    return false;
+			    for ( int axis = 0; axis < 3; ++axis )
+				    if ( std::fabs( other.position[axis] - light.position[axis] ) > 0.1f )
+					    return false;
+			    return true;
+		    } );
+		if ( !present )
+		{
+			light.id = nextId++;
+			result.push_back( light );
+		}
+	}
+	return result;
 }
 
 } // namespace render::pass::lights

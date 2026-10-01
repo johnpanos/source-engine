@@ -25,7 +25,7 @@
 class ICollideable;
 FORWARD_DECLARE_HANDLE( LightCacheHandle_t );
 class IPooledVBAllocator;
-
+struct model_t;
 
 //-----------------------------------------------------------------------------
 // The engine's static prop manager
@@ -80,5 +80,9 @@ IStaticPropMgrEngine* StaticPropMgr();
 // RFC 0016 K5 (render_core_world.cpp): the static props' world render boxes.
 int StaticPropMgr_CorePropCount();
 void StaticPropMgr_CorePropBounds( int nProp, Vector &mins, Vector &maxs );
+int StaticPropMgr_CoreModelCount();
+const model_t *StaticPropMgr_CoreModel( int nModel );
+void StaticPropMgr_CorePropInfo( int nProp, const model_t **model, float world[12], int *skin,
+    unsigned char *alpha, float modulation[3] );
 
 #endif	// STATICPROPMGR_H

@@ -117,6 +117,73 @@ int main()
 		}
 		return ClaimVertexLit( block );
 	};
+	auto modernClaimOf = [&]( const char *vmt ) -> std::optional<VertexLitMeshClaim>
+	{
+		VmtImportContext context;
+		auto imported = ImportVmt( vmt, context );
+		if ( !imported )
+			return std::nullopt;
+		ParameterBlock block( *vertexlit );
+		if ( !ApplyValues( imported.Value(), block ) )
+			return std::nullopt;
+		for ( const MaterialValue &value : imported.Value().values )
+		{
+			if ( value.kind == ValueKind::kTexture && !value.text.empty() )
+				(void)block.SetTexture( value.parameter, device::TextureId( 1 ) );
+		}
+		return ClaimVertexLitMesh( block );
+	};
+	{
+		auto basic = modernClaimOf( "VertexLitGeneric { $basetexture a }" );
+		auto normal = modernClaimOf(
+		    "VertexLitGeneric { $basetexture a $bumpmap n $phong 1 $phongexponent 30 }" );
+		auto opaqueNoAlphaMod =
+		    modernClaimOf( "VertexLitGeneric { $basetexture a $ignore_alpha_modulation 1 }" );
+		auto selfIllum = modernClaimOf( "VertexLitGeneric { $basetexture a $selfillum 1 }" );
+		auto doorSelfIllum = modernClaimOf( "VertexLitGeneric { $basetexture a $selfillum 1 "
+		                                    "$selfillumfresnelminmaxexp \"[0 0 0]\" }" );
+		auto inactiveRim =
+		    modernClaimOf( "VertexLitGeneric { $basetexture a $rimlightexponent 2 $rimlightboost 3 "
+		                   "$phongexponent 30 }" );
+		auto boosted =
+		    modernClaimOf( "\"VertexLitGeneric\" { \"$basetexture\" \"a\" \"$phong\" \"1\" "
+		                   "\"$phongboost\" \"2\" \"$phongtint\" \"[1 0.5 0.5]\" }" );
+		auto fresnel =
+		    modernClaimOf( "\"VertexLitGeneric\" { \"$basetexture\" \"a\" \"$phong\" \"1\" "
+		                   "\"$phongfresnelranges\" \"[1 1.5 2]\" }" );
+		auto cutout = modernClaimOf( "VertexLitGeneric { $basetexture a $alphatest 1 "
+		                             "$alphatestreference 0.65 }" );
+		auto unsupported = modernClaimOf( "VertexLitGeneric { $basetexture a $rimlight 1 }" );
+		checks.That( basic && basic->claimed && basic->constants.pbrFactors[0] == 0.0f &&
+		                 basic->constants.pbrFactors[3] == 0.0f &&
+		                 ( basic->Variant().terms & kSurfacePbr ) != 0,
+		    "modern.basic-is-a-dielectric-pbr-point" );
+		checks.That( basic && normal && normal->claimed && normal->normalMap &&
+		                 normal->constants.pbrFactors[1] < basic->constants.pbrFactors[1],
+		    "modern.bump-and-phong-map-to-normal-and-roughness" );
+		checks.That( opaqueNoAlphaMod && opaqueNoAlphaMod->claimed,
+		    "modern.opaque-mesh-needs-no-alpha-modulation" );
+		checks.That( selfIllum && selfIllum->claimed && selfIllum->selfIllum &&
+		                 ( selfIllum->Variant().terms & kSurfaceSelfIllum ) != 0,
+		    "modern.model-alpha-masks-emission" );
+		checks.That( doorSelfIllum && doorSelfIllum->claimed && doorSelfIllum->selfIllum,
+		    "modern.inactive-fresnel-values-do-not-reject-door-emission" );
+		checks.That( inactiveRim && inactiveRim->claimed,
+		    "modern.inactive-rim-controls-do-not-change-the-mesh-point" );
+		checks.That( boosted && boosted->claimed && boosted->constants.envTint[0] > 1.0f &&
+		                 boosted->constants.envTint[1] < boosted->constants.envTint[0],
+		    "modern.phong-boost-and-tint-become-dielectric-f0" );
+		checks.That( fresnel && fresnel->claimed && fresnel->constants.envContrast[0] == 1.0f &&
+		                 fresnel->constants.envContrast[2] == 2.0f,
+		    "modern.phong-fresnel-ranges-shape-the-dielectric-lobe" );
+		checks.That( cutout && cutout->claimed && cutout->alphaTest &&
+		                 cutout->constants.flags[1] == 1.0f && cutout->constants.flags[2] > 0.64f &&
+		                 cutout->constants.flags[2] < 0.66f && !cutout->Variant().alphaWrite,
+		    "modern.catwalk-cutout-keeps-its-authored-threshold" );
+		checks.That( unsupported && !unsupported->claimed &&
+		                 unsupported->reason.find( "rimlight" ) != std::string::npos,
+		    "modern.unmapped-rimlight-is-a-named-gap" );
+	}
 
 	// The family refuses what it does not draw, naming it.
 	{

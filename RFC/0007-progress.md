@@ -31,6 +31,15 @@ evidence; this list only summarizes them.
 - **R51 (planned).** Nothing is installed. Reference renders use Blender
   (`gi_reference_blender.py`), not the pinned Cycles standalone.
 
+## Cycles map-bake device default (2026-09-30, user decision)
+
+GPU is now the default for map bakes and relights. `cycles_device.BAKE_DEVICE`
+and production map-export profiles select `gpu`; a profile with no device
+inherits that default. The `bake-determinism` fixture retains its explicit CPU
+device because RFC 0007's `Exact` class requires CPU output. Correctness and
+reference checks also remain CPU by default. Hosts without a usable GPU must
+select `auto` explicitly.
+
 ## R47: PBR material family core
 
 The first headless BRDF slice is installed in
@@ -1714,3 +1723,66 @@ A runtime is staged once per output directory, and a rerun into the same
   - Hypothesis: the sphere trace's penumbra estimate bands near the
     surface it leaves. Not investigated.
   - Evidence: `quality-results/reflection-gates/relight/relit/`.
+
+## Static-prop participation in a legacy-map relight (2026-09-30)
+
+`legacy_bsp_scene.py` now includes opaque static-prop MDL meshes in the
+Cycles transport scene, resolved by the shared `content.studio-model`
+reader and placed from the BSP game lump. The meshes are lit materials and
+shadow casters in the world bake and probe renders; the pipeline excludes
+them from the world lightmap atlas and WMSH because the game draws them as
+models. On `sp_a2_laser_intro`, the 64-sample preview scene imported 296
+prop meshes from 41 models, parked 213,728 prop/occluder triangles outside
+the atlas, completed the Cycles passes and packed a gameplay-identical
+preview map. A paired no-prop control with the same seed, UV layout and
+separated light passes changed 41.2% of covered world RGB texels when props
+were restored; its coverage mask stayed identical. Six translucent/special
+mesh draws were omitted. The preview
+is undenoised and used a relaxed seam limit; no production lightmap quality
+claim follows from it. The preview was then rebaked on a remote RTX 4080
+SUPER through the packaged-content step; its receipt records OptiX, and
+gameplay identity and the native Vulkan boot passed. The rendercore handoff,
+frame evidence and remaining gaps are in [RFC 0016's progress](0016-progress.md#laser-intro-static-prop-light-transport-and-map-light-merge-2026-09-30).
+
+### Entity-model camera reference for laser intro
+
+`legacy_bsp_scene.py` now lifts authored MDL poses for dynamic props, physics
+props and both `prop_testchamber_door` instances into its ordinary stage,
+with `dynamic_model` visual roles. The laser-intro export has 63 placements
+from 22 model paths and 71 opaque mesh parts. Five translucent or special
+shader mesh parts remain omitted. The normalized stage and Cycles references
+are in `quality-results/rendercore-model-game/laser-entity-reference/`.
+Dynamic model meshes appear to camera rays but are excluded from lightmap,
+probe, radiosity, SDF, collision and packed world work by visual role.
+
+The same lift includes 44 authored `vgui_movie_display` slave quads with
+`video_screen` roles. The BSP master filenames `entry_emergency.bik` and
+`exit_emergency.bik` are startup defaults: retail
+`scripts/vscripts/videos/video_splitter.nut` selects `media/laser_portal.bik`
+for both groups on `sp_a2_laser_intro`, with a 23 by 2 panel layout and UV
+mode 12. The installed retail movie decodes as a 640 by 400 frame at two
+seconds; the lift also writes its complete clip to MP4 beside that frame for
+Blender use, and records the clip path on each screen. The elevator Cycles
+image shows that real frame on the visible quads; the preview screen layer
+is offset nine Source units toward the
+camera because the authored BSP screen wall otherwise occludes it. The
+authored position remains in USD metadata. Video screens are excluded from
+static lighting and packing. `gi_reference_blender.py --video-screen-state`
+renders both the on and off states; the off reference is almost black in the
+arrival elevator because these screens provide its local light. The 41
+`test_legacy_relight` cases pass; no new remote bake has run for this lift.
+The screen quad basis follows `CMovieDisplay::KeyValue` and
+`C_VGuiScreen::ComputeEdges`: at yaw 90 the panel's width runs toward world
+-X, while its height runs +Z. The script's top-down UV v is inverted for
+USD/Blender. A Blender import check verified the two adjacent sign rows,
+their UV ranges and the decoded frame's emission texture path; the final
+Cycles image shows the retail frame upright.
+
+This is an authored-pose and single-frame reference, not runtime animation
+or video playback. The arrival elevator body is authored high above the
+catwalk camera, so it remains absent in that catwalk image after import.
+The map's `sp_progress_sign` is another `vgui_screen` panel drawn by the
+game and is not in these Cycles images. Live transform and bone-palette
+capture, omitted translucent model parts and other screen types remain
+separate reference work; the in-game rendercore door lighting gate remains
+open.

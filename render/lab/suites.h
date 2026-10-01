@@ -65,6 +65,7 @@ namespace render::lab
 {
 
 int RunSuite( int argc, char **argv );
+int RunPosedModelSuite( int argc, char **argv );
 
 int RunDebugViewsSuite( int argc, char **argv );
 int RunLightingControlsSuite( int argc, char **argv );

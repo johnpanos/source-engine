@@ -85,6 +85,7 @@ struct WorldMaterial
 {
 	std::string name;
 	std::string shader;
+	bool mesh = false; // object-space static model; resolves through the PBR mesh point
 	std::vector<std::pair<std::string, std::string>> variables; // "$key", value
 	// The material system handle of each texture variable ("$key", handle).
 	std::vector<std::pair<std::string, int>> textures;
@@ -169,6 +170,23 @@ struct WorldData
 	std::vector<std::uint32_t> indices; // triangle lists, into vertices
 	std::vector<WorldSurface> surfaces;
 	std::vector<WorldMaterial> materials;
+	struct StaticMesh
+	{
+		std::vector<material::SurfaceModelVertex> vertices;
+		std::vector<std::uint32_t> indices;
+		std::vector<WorldSurface> surfaces; // material indexes into WorldData::materials
+		// One material per surface for each studio skin; geometry and GPU buffers
+		// remain shared across instances and skins. Empty means skin zero only.
+		std::vector<std::vector<std::uint32_t>> skinMaterials;
+	};
+	struct StaticInstance
+	{
+		std::uint32_t mesh = 0;
+		std::uint32_t skin = 0;
+		float world[16] = {}; // object to world, row-major
+	};
+	std::vector<StaticMesh> staticMeshes;
+	std::vector<StaticInstance> staticInstances;
 	// Set for a world stage (a BSP2 map's WMSH); null for the BSP surfaces.
 	std::shared_ptr<const WorldStage> stage;
 };
@@ -283,6 +301,18 @@ struct StageViewLights
 struct WorldView
 {
 	std::vector<std::uint32_t> surfaces; // into WorldData::surfaces
+	std::vector<std::uint32_t> staticInstances; // into WorldData::staticInstances
+	// One animated model at the pose captured for this view. Geometry and
+	// material skins are shared with WorldData::staticMeshes; these vertices
+	// are already in world space, so the model draw uses an identity transform.
+	// The value copy survives queued rendering and a later animation update.
+	struct PosedModel
+	{
+		std::uint32_t mesh = 0;
+		std::uint32_t skin = 0;
+		std::vector<material::SurfaceModelVertex> vertices;
+	};
+	std::vector<PosedModel> posedModels;
 	float toClip[16] = {};               // world to clip, row-major, D3D9 conventions
 	device::Viewport viewport;
 	// The host frame that queued the view (views of one frame share it; 0
@@ -318,6 +348,10 @@ struct WorldStats
 	std::uint64_t viewsFailed = 0;  // claimed work not drawn: never legacy's
 	std::uint64_t viewsSkipped = 0; // views of a host frame the backend never recorded
 	std::uint64_t surfacesDrawn = 0;
+	std::uint64_t staticInstancesQueued = 0;
+	std::uint64_t staticDrawsDrawn = 0;
+	std::uint64_t posedModelsQueued = 0;
+	std::uint64_t posedDrawsDrawn = 0;
 	std::string lastFailure;
 	// Why materials stay legacy: reason and count, most frequent first.
 	std::vector<std::pair<std::string, std::uint32_t>> gaps;
@@ -376,8 +410,12 @@ public:
 	void SetStageLightmapRegions( std::vector<StageRegion> regions, std::vector<std::byte> texels );
 	// Whether the pass draws the material's surfaces (valid after SetWorld).
 	bool Draws( std::uint32_t material ) const;
+	bool DrawsStaticInstance( std::uint32_t instance ) const;
+	bool DrawsPosedModel( std::uint32_t mesh, std::uint32_t skin ) const;
 	// The tag of the slot to mark for the view; 0 when there is nothing to draw.
 	std::uint32_t QueueView( WorldView view );
+	// Add the legacy culler's accepted static props before the queued view's
+	// slot records. The array is either accepted whole or refused whole.
 	WorldStats Stats() const;
 	// WorldStats::viewsFailed alone (cheap, for a per-view policy check).
 	std::uint64_t Failures() const;

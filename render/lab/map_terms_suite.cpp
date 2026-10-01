@@ -417,7 +417,8 @@ std::optional<std::string> LightmapChecks( Lab &lab, Results &results )
 	{
 		Scene s;
 		s.variant.layout = material::SurfaceVertexLayout::kWorld;
-		s.variant.terms = material::kSurfacePbr | material::kSurfaceBakedLightmap |
+		s.variant.terms = material::kSurfacePbr | material::kSurfaceMraoTexture |
+		                  material::kSurfaceBakedLightmap |
 		                  ( directional ? material::kSurfaceDirectionalLightmap : 0u ) |
 		                  ( normalMap ? material::kSurfaceBump : 0u );
 		s.textures.base = "mt/base";
@@ -508,8 +509,8 @@ std::optional<std::string> ReflectionProbeChecks( Lab &lab, Results &results )
 	{
 		Scene s;
 		s.variant.layout = material::SurfaceVertexLayout::kWorld;
-		s.variant.terms =
-		    material::kSurfacePbr | ( term ? material::kSurfaceReflectionProbes : 0u );
+		s.variant.terms = material::kSurfacePbr | material::kSurfaceMraoTexture |
+		                  ( term ? material::kSurfaceReflectionProbes : 0u );
 		s.textures.base = "mt/base";
 		s.textures.mrao = "mt/metal";
 		s.map.reflectionProbes = std::move( texture );
@@ -577,7 +578,8 @@ std::optional<std::string> ProbeVolumeChecks( Lab &lab, Results &results )
 	{
 		Scene s;
 		s.variant.layout = material::SurfaceVertexLayout::kModel;
-		s.variant.terms = material::kSurfacePbr | ( term ? material::kSurfaceProbeVolume : 0u );
+		s.variant.terms = material::kSurfacePbr | material::kSurfaceMraoTexture |
+		                  ( term ? material::kSurfaceProbeVolume : 0u );
 		s.textures.base = "mt/base";
 		s.textures.mrao = "mt/dielectric";
 		s.map.probeAtlas = "mt/volume-atlas";

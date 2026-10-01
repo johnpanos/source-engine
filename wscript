@@ -58,6 +58,7 @@ projects={
 		# The keyvalues codec render.material reads VMTs with (R08-LIBS).
 		'kvtext',
 		'mapcontainer',
+		'mdl',
 		'appframework',
 		'bitmap',
 		'choreoobjects',

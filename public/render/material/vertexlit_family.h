@@ -82,6 +82,29 @@ struct VertexLitClaim
 // of the `vertexlit` family's schema (FamiliesFromMapping).
 VertexLitClaim ClaimVertexLit( const ParameterBlock &block );
 
+// The modern mesh point for the supported VertexLitGeneric subset. It uses
+// the surface PBR program with a dielectric MRAO constant until a material
+// supplies modern values. Unsupported non-neutral VMT terms are refused.
+struct VertexLitMeshClaim
+{
+	bool claimed = false;
+	std::string reason;
+	bool normalMap = false;
+	bool selfIllum = false;
+	bool alphaTest = false;
+	SurfaceConstants constants;
+	SurfaceVariant Variant() const
+	{
+		SurfaceVariant variant;
+		variant.terms = kSurfacePbr | ( normalMap ? kSurfaceBump : 0u ) |
+		                ( selfIllum ? kSurfaceSelfIllum : 0u );
+		variant.alphaWrite = !alphaTest;
+		variant.layout = SurfaceVertexLayout::kWorld;
+		return variant;
+	}
+};
+VertexLitMeshClaim ClaimVertexLitMesh( const ParameterBlock &block );
+
 using VertexLitStatus = SurfaceStatus;
 
 class VertexLitFamily : public SurfaceFamily

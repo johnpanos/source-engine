@@ -337,6 +337,8 @@ struct MdlHeader
 struct VvdVertices
 {
 	std::vector<std::uint64_t> records;
+	std::uint64_t dataStart = 0;
+	std::uint64_t tangentStart = 0;
 };
 
 std::optional<ModelError> ReadVvd( Reader &vvd, std::int32_t checksum, VvdVertices &out )
@@ -382,6 +384,14 @@ std::optional<ModelError> ReadVvd( Reader &vvd, std::int32_t checksum, VvdVertic
 		return vvd.Error();
 	}
 	const std::uint64_t available = ( dataEnd - dataStart ) / kVvdVertexStride;
+	if ( tangentStart != 0 &&
+	     ( tangentStart > vvd.Size() || available > ( vvd.Size() - tangentStart ) / 16 ) )
+	{
+		vvd.Fail( ModelStatus::Truncated, tangentStart );
+		return vvd.Error();
+	}
+	out.dataStart = dataStart;
+	out.tangentStart = tangentStart;
 	const auto record = [&]( std::uint64_t index )
 	{
 		return dataStart + index * kVvdVertexStride;
@@ -432,11 +442,18 @@ std::optional<ModelError> ReadVvd( Reader &vvd, std::int32_t checksum, VvdVertic
 	return std::nullopt;
 }
 
-Vertex ReadVertex( Reader &vvd, std::uint64_t record )
+Vertex ReadVertex( Reader &vvd, std::uint64_t record, const VvdVertices &vertices )
 {
 	Vertex v;
 	v.position = vvd.Vec( record + kVvdPosition );
 	v.normal = vvd.Vec( record + kVvdNormal );
+	if ( vertices.tangentStart != 0 )
+	{
+		const std::uint64_t tangent =
+		    vertices.tangentStart + ( record - vertices.dataStart ) / kVvdVertexStride * 16;
+		v.tangent = vvd.Vec( tangent );
+		v.tangentSign = vvd.F32( tangent + 12 );
+	}
 	v.u = vvd.F32( record + kVvdUv );
 	v.v = vvd.F32( record + kVvdUv + 4 );
 	return v;
@@ -1718,7 +1735,7 @@ foundation::Expected<Model, ModelError> ParseModel( const ModelBytes &bytes, std
 			for ( std::uint64_t v = 0; v < meshVertices; ++v )
 			{
 				const std::uint64_t record = vertices.records[first + v];
-				out.vertices.push_back( ReadVertex( vvd, record ) );
+				out.vertices.push_back( ReadVertex( vvd, record, vertices ) );
 				out.weights.push_back( ReadWeights( vvd, record, model.bones.size() ) );
 			}
 			if ( vvd.Failed() )

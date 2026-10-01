@@ -94,7 +94,8 @@ struct FrameTerms
 enum class VertexLayout : std::uint8_t
 {
 	kFlat,
-	kSurface
+	kSurface,
+	kModel // object-space mesh; the draw constants hold its transform
 };
 
 struct ResolvedProgram
@@ -148,10 +149,8 @@ public:
 	// (the default, and the product until K12) a pbr material is refused by
 	// name. Call before resolving; programs already resolved keep theirs.
 	void SetWorldPbr( bool enabled, std::uint32_t sceneTerms = 0 );
-	// A PBRMetalRough mesh drawn on the world vertex in world space (a
-	// dynamic model: the probe volume's indirect light, not a lightmap's),
-	// with the scene terms less the lightmap's; other materials resolve as
-	// Resolve does.
+	// A PBRMetalRough or supported VertexLitGeneric mesh on the world or model vertex:
+	// probe-volume indirect light and clustered, shadowed direct light.
 	foundation::Expected<ResolvedProgram, std::string> ResolveMesh( const MaterialDesc &material );
 	// A resolved program's pipeline with terms added and removed (a pass's
 	// variant of it: the prepass's kSurfaceDepthNormal, the SSR targets).
@@ -199,6 +198,8 @@ private:
 // is claimed only with it).
 foundation::Expected<device::BlendMode, std::string> ClaimForDrawing(
     const MaterialDesc &material, bool worldPbr = false );
+// The mesh point's exact-variable claim without making a pipeline.
+foundation::Expected<device::BlendMode, std::string> ClaimForMesh( const MaterialDesc &material );
 
 } // namespace render::material
 

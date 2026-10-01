@@ -5,7 +5,7 @@
   "lightmap": {
     "size": 4096,
     "samples": 256,
-    "device": "cpu",
+    "device": "gpu",
     "denoise": true,
     "directional": false,
     "light_paths": "gi-reference",

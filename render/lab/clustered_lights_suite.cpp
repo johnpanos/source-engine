@@ -37,6 +37,7 @@
 #include "render/light_set.h"
 #include "render/material/pbr_family.h"
 #include "render/pass/lights/clusters.h"
+#include "render/pass/lights/map_lights.h"
 #include "render/shaderlib/debug_view.h"
 #include "spv/clustered_light_defects_spv.h"
 
@@ -337,6 +338,35 @@ std::string Format3( const char *format, double a, double b = 0, double c = 0 )
 	return text;
 }
 
+void MapLightChecks( Results &results )
+{
+	const std::vector<pass::lights::Entity> entities = {
+	    { { "classname", "light" }, { "origin", "0 0 0" }, { "_light", "255 255 255 255" },
+	        { "_constant_attn", "1500" }, { "_quadratic_attn", "1" } },
+	    { { "classname", "light" }, { "origin", "20 0 0" }, { "_light", "255 255 255 255" },
+	        { "_quadratic_attn", "1" }, { "style", "32" } },
+	    { { "classname", "light" }, { "origin", "40 0 0" }, { "_light", "255 255 255 255" },
+	        { "_fifty_percent_distance", "100" } } };
+	const pass::lights::MapLights map = pass::lights::MapLightsFromEntities( entities );
+	results.That(
+	    map.lights.size() == 2 && map.unsupported == 1, "map-lights.unsupported-falloff-refused" );
+	if ( map.lights.size() != 2 )
+		return;
+	const light_set::RuntimeLight &lamp = map.lights[0];
+	results.That( lamp.falloff == light_set::LightFalloff::Attenuated &&
+	                  std::fabs( lamp.color[0] * light_set::AttenuatedFalloff(
+	                                                 10000.0f, lamp.radius, lamp.attenuation ) -
+	                             1.0f ) < 1e-5f,
+	    "map-lights.vrad-attenuation-at-reference-distance" );
+	light_set::RuntimeLight switched = map.lights[1];
+	switched.id = 100;
+	const auto merged = pass::lights::MergeMapLights( { switched }, map );
+	results.That( merged.size() == 2 && merged[1].style == 0 && merged[1].id != switched.id,
+	    "map-lights.one-switchable-light-does-not-hide-baked-lamps" );
+	const auto present = pass::lights::MergeMapLights( { lamp, switched }, map );
+	results.That( present.size() == 2, "map-lights.compiled-world-light-is-not-doubled" );
+}
+
 std::optional<std::string> ClusteredChecks( Lab &lab, Results &results )
 {
 	const ReceiverView overhead = MakeReceiverView( { 0, -60, 300 }, { 0, 0, 0 }, kSize );
@@ -427,6 +457,7 @@ std::optional<std::string> RunOnce( bool validate, std::span<const std::uint32_t
 		return why;
 	{
 		Lab lab( *device );
+		MapLightChecks( results );
 		if ( std::optional<std::string> why = Prepare( lab, module ) )
 			return why;
 		if ( std::optional<std::string> why = ClusteredChecks( lab, results ) )

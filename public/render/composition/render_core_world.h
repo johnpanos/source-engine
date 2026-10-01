@@ -60,6 +60,42 @@ struct RenderCoreWorldMaterial
 	const char *const *defaults;
 };
 
+// Source static props enter as raw Studio files and the material system's
+// resolved material descriptors. The core parses the bytes, owns one mesh
+// per model and draws accepted instances at the queued world view's slot.
+// Pointers are borrowed only for SetStaticProps; no C++ library type crosses
+// the engine/core ABI boundary.
+struct RenderCoreStaticModel
+{
+	const char *name;
+	const void *mdl;
+	unsigned long long mdlBytes;
+	const void *vvd;
+	unsigned long long vvdBytes;
+	const void *vtx;
+	unsigned long long vtxBytes;
+	const RenderCoreWorldMaterial *materials; // by Studio texture index, skin 0
+	unsigned int materialCount;
+};
+
+struct RenderCoreStaticProp
+{
+	unsigned int model; // into the models array
+	int skin;
+	float world[12]; // model to world, three rows of four
+};
+
+// One Studio draw at the engine's current animation pose. The model index
+// names a mesh registered by SetStaticProps; boneToWorld holds boneCount
+// contiguous 3x4 row-major matrices. Borrowed only for DrawView.
+struct RenderCorePosedModel
+{
+	unsigned int model;
+	unsigned int skin;
+	const float *boneToWorld;
+	unsigned int boneCount;
+};
+
 // The world stage's quality settings (RFC 0016 K12; the engine's
 // r_core_ao_quality and r_core_shadow_quality, the video options' entries).
 struct RenderCoreWorldQuality
@@ -97,6 +133,10 @@ struct RenderCoreWorldStats
 	unsigned long long viewsFailed;
 	unsigned long long viewsSkipped; // views of host frames the backend never recorded
 	unsigned long long surfacesDrawn;
+	unsigned long long staticInstancesQueued;
+	unsigned long long staticDrawsDrawn;
+	unsigned long long posedModelsQueued;
+	unsigned long long posedDrawsDrawn;
 	// RFC 0014 debug slots: frames hatched (a pixel view or legacy 2),
 	// frames tinted (legacy 1) and the top-level views drawn again over the
 	// tint.
@@ -136,6 +176,11 @@ public:
 	    const RenderCoreWorldMeshlet *meshlets, unsigned int meshletCount,
 	    const RenderCoreWorldMaterial *materials, unsigned int materialCount,
 	    const char *entities ) = 0;
+	// Main thread, after SetWorldMesh at level load. Unsupported models and
+	// materials remain on studiorender; DrawsStaticProp decides per instance.
+	virtual void SetStaticProps( const RenderCoreStaticModel *models, unsigned int modelCount,
+	    const RenderCoreStaticProp *props, unsigned int propCount ) = 0;
+	virtual bool DrawsStaticProp( unsigned int prop ) const = 0;
 	// The world stage's copy of the engine's world mesh uploads: the engine
 	// makes every upload it makes to the renderer here too (its lightmap
 	// layers, recomposed as moving objects block baked light; the probe
@@ -166,7 +211,9 @@ public:
 	// an eye within r_eyewaterepsilon of a water plane).
 	virtual bool DrawView( const unsigned int *surfaces, unsigned int count,
 	    const float worldToClip[16], const float viewport[6], unsigned long long hostFrame,
-	    const float worldToView[16], const float viewToClip[16], float waterZOffset ) = 0;
+	    const float worldToView[16], const float viewToClip[16], float waterZOffset,
+	    const unsigned int *staticProps, unsigned int staticPropCount,
+	    const RenderCorePosedModel *posedModels, unsigned int posedModelCount ) = 0;
 	// Main thread, at the start of each frame, after the renderer began it
 	// (its debug controls are applied). Under a pixel view or
 	// cl_render_debug_legacy 2 (RFC 0014) it marks the frame's first slot:

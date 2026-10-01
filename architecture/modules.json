@@ -1046,6 +1046,7 @@
           "render/composition/"
         ],
         "allowedEdges": [
+          "content.studio-model",
           "jobs.graph",
           "foundation",
           "render.math",
@@ -1510,6 +1511,9 @@
       "mdl": {
         "allowedUse": []
       },
+      "mdl_mesh_export": {
+        "allowedUse": ["mdl"]
+      },
       "render_math": {
         "allowedUse": []
       },
@@ -1717,6 +1721,7 @@
       },
       "render_composition": {
         "allowedUse": [
+          "mdl",
           "render_renderer",
           "render_pass_present",
           "render_pass_world",

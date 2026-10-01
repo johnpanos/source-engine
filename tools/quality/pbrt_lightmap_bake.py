@@ -918,7 +918,7 @@ def main():
     baked = []
     # Dynamic models are not static lighting: their stand-ins neither get
     # atlas space nor take part in the bake's light transport.
-    props = map_scene.prop_shape_names(scene)
+    props = map_scene.nonstatic_shape_names(scene)
     authored = args.layout == "authored"
     for obj in meshes:
         if not obj.data.uv_layers.get("st"):

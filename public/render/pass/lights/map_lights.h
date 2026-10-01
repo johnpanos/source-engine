@@ -14,7 +14,10 @@
 //			  color is ( rgb / 255 )^2.2 x brightness / 255 (the diffuse
 //			  light at 100 units), a spot's normal is ( cos yaw cos pitch,
 //			  sin yaw cos pitch, sin pitch ) with its "pitch" key, and its
-//			  cones are degrees ( at most 90 );
+//			  cones are degrees ( at most 90 ); explicit constant/linear/
+//			  quadratic attenuation uses vrad's intensity scaling at 100 units.
+//			  Nonzero _fifty_percent_distance is refused until its solver is
+//			  represented here;
 //			- light_rect: an area light (render/area_light.h);
 //			- light_environment: the sun;
 //			- env_projectedtexture as render.projected-light.v1: angles by
@@ -82,10 +85,16 @@ struct MapLights
 	std::optional<MapSun> sun;                      // light_environment
 	std::vector<projected_light::Light> projectors; // env_projectedtexture
 	std::vector<std::string> cookieNames;           // per projector
-	std::uint32_t unsupported = 0;                  // attenuations other than inverse square
+	std::uint32_t unsupported = 0;                  // unsupported authored falloff controls
 };
 
 MapLights MapLightsFromEntities( const std::vector<Entity> &entities );
+
+// Add the always-on authored lights missing from a frame's compiled world
+// lights. A relit BSP can retain one switchable world light while its baked
+// world lights were removed; that one must not hide all of the map's lamps.
+std::vector<light_set::RuntimeLight> MergeMapLights(
+    const std::vector<light_set::RuntimeLight> &frame, const MapLights &map );
 
 } // namespace render::pass::lights
 

@@ -90,6 +90,7 @@ const int kSsrTargets = 1048576;
 const int kDepthNormal = 2097152;
 const int kProbeBounce = 4194304;
 const int kMeshDirect = 8388608;
+const int kMraoTexture = 268435456;
 // A reflective shadow map's albedo (render.pass.bounce): attachment 0 holds
 // the surface's diffuse reflectance only.
 const int kRsm = 16777216;
@@ -258,6 +259,7 @@ layout( set = 2, binding = 0 ) uniform Material
 	vec4 waterReflect;   // rgb: $reflecttint (linear); a: $waterblendfactor
 	vec4 waterFog;       // rgb: $fogcolor (linear); a: $reflectamount
 	vec4 waterMode;      // x: reflection target, y: sludge, z: $lightmapwaterfog, w: $forcefresnel
+	vec4 pbrFactors;     // rgb: metalness, roughness, AO without MRAO texture
 } material;
 layout( set = 2, binding = 1 ) uniform texture2D baseTexture;
 layout( set = 2, binding = 2 ) uniform sampler baseSampler;
@@ -525,8 +527,12 @@ void PbrSurface()
 	const bool emissive = Term( kEmissionTexture );
 	const vec2 uv = baseUv;
 	const vec4 baseSample = texture( sampler2D( baseTexture, baseSampler ), uv );
-	const vec3 base = furnace ? vec3( 1.0 ) : baseSample.rgb;
-	const vec3 mrao = texture( sampler2D( mraoTexture, mraoSampler ), uv ).rgb;
+	if ( material.flags.y != 0.0 && baseSample.a * material.tint.a < material.flags.z )
+		discard;
+	const vec3 base = furnace ? vec3( 1.0 ) : baseSample.rgb * material.tint.rgb;
+	const vec3 mrao = Term( kMraoTexture )
+	                      ? texture( sampler2D( mraoTexture, mraoSampler ), uv ).rgb
+	                      : material.pbrFactors.rgb;
 	const float metalness =
 	    kDebugForceMetalness >= 0.0 ? kDebugForceMetalness : clamp( mrao.r, 0.0, 1.0 );
 	const float roughness =
@@ -576,7 +582,19 @@ void PbrSurface()
 		outColor = vec4( SurfaceOctEncode( normal ), roughness, radius );
 		return;
 	}
-	const vec3 f0 = mix( vec3( 0.04 ), base, metalness );
+	// VertexLitGeneric's authored Fresnel triplet offsets the physical
+	// dielectric baseline at front, middle and grazing angles. Native PBR
+	// materials leave the control disabled.
+	const vec3 rangeOffset = material.envContrast.rgb - vec3( 0.0, 0.5, 1.0 );
+	const float angle = clamp( ( 1.0 - normalDotView ) * 2.0, 0.0, 2.0 );
+	const float authoredOffset = angle < 1.0
+	                                 ? mix( rangeOffset.x, rangeOffset.y, angle )
+	                                 : mix( rangeOffset.y, rangeOffset.z, angle - 1.0 );
+	const float rangeGain = material.envContrast.a > 0.5
+	                            ? clamp( 1.0 + authoredOffset, 0.0, 25.0 )
+	                            : 1.0;
+	const vec3 f0 = mix(
+	    clamp( vec3( 0.04 * rangeGain ) * material.envTint.rgb, 0.0, 0.9 ), base, metalness );
 	const vec2 splitSum = texture( sampler2D( splitSumTexture, splitSumSampler ),
 	    PbrSplitSumCoordinate( vec2( textureSize( sampler2D( splitSumTexture, splitSumSampler ), 0 ) ),
 	        normalDotView, roughness ) )
@@ -669,7 +687,9 @@ void PbrSurface()
 	if ( dot( geometricNormal, smoothNormal ) < 0.0 )
 		geometricNormal = -geometricNormal;
 	vec3 direct = vec3( 0.0 );
-	const int count = DebugTermOn( kDebugTermClustered ) && !furnace ? int( lighting.eye.w ) : 0;
+	const int count = DebugTermOn( kDebugTermClustered ) && !furnace && !Term( kMeshDirect )
+	                      ? int( lighting.eye.w )
+	                      : 0;
 	for ( int i = 0; i < 4; ++i )
 	{
 		if ( i >= count )
@@ -971,6 +991,13 @@ void PbrSurface()
 		    texture( sampler2D( emissionTexture, emissionSampler ), uv ).rgb * material.emission.x;
 		color += emission;
 	}
+	if ( Term( kSelfIllum ) && DebugTermOn( kDebugTermEmission ) && !furnace )
+	{
+		// Source model base alpha is the authored emission mask. The
+		// modern point keeps the surface lit and adds its masked radiance.
+		emission += base * baseSample.a;
+		color += base * baseSample.a;
+	}
 
 	if ( DebugViewActive() )
 	{
@@ -994,7 +1021,7 @@ void PbrSurface()
 			inputs.mask |= kDebugHasBaked;
 			inputs.baked = baked;
 		}
-		if ( emissive )
+		if ( emissive || Term( kSelfIllum ) )
 		{
 			inputs.mask |= kDebugHasEmission;
 			inputs.emission = emission;
@@ -1010,7 +1037,7 @@ void PbrSurface()
 		outColor = vec4( splitSum, 0.0, 1.0 );
 		return;
 	}
-	outColor = Output( color, baseSample.a );
+	outColor = Output( color, baseSample.a * material.tint.a );
 }
 
 // The vertexlit point: the vertexlit_and_unlit_generic port's DIFFUSELIGHTING

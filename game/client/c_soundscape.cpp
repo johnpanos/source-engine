@@ -718,6 +718,19 @@ void C_SoundscapeSystem::ProcessDSPVolume( KeyValues *pKey, subsoundscapeparams_
 	params.wroteDSPVolume = true;
 }
 
+static char const *NormalizeSoundscapeWaveName( char const *wavefile )
+{
+	// Portal 2 ships a few playlooping entries with a stray opening
+	// parenthesis before the filename (for example, "(ambient/...wav").
+	// Parentheses are not part of a sound path; keep the asset loadable.
+	if ( wavefile && wavefile[0] == '(' )
+	{
+		return wavefile + 1;
+	}
+
+	return wavefile;
+}
+
 // start a new looping sound
 void C_SoundscapeSystem::ProcessPlayLooping( KeyValues *pAmbient, const subsoundscapeparams_t &params )
 {
@@ -740,7 +753,7 @@ void C_SoundscapeSystem::ProcessPlayLooping( KeyValues *pAmbient, const subsound
 		}
 		else if ( !Q_strcasecmp( pKey->GetName(), "wave" ) )
 		{
-			pSoundName = pKey->GetString();
+			pSoundName = NormalizeSoundscapeWaveName( pKey->GetString() );
 		}
 		else if ( !Q_strcasecmp( pKey->GetName(), "position" ) )
 		{
@@ -808,6 +821,7 @@ void C_SoundscapeSystem::ProcessPlayLooping( KeyValues *pAmbient, const subsound
 
 void C_SoundscapeSystem::TouchSoundFile( char const *wavefile )
 {
+	wavefile = NormalizeSoundscapeWaveName( wavefile );
 	filesystem->GetFileTime( VarArgs( "sound/%s", PSkipSoundChars( wavefile ) ), "GAME" );
 }
 
@@ -1257,7 +1271,7 @@ void C_SoundscapeSystem::PlayRandomSound( randomsound_t &sound )
 	if ( !pWaves )
 		return;
 	
-	const char *pWaveName = pWaves->GetString();
+	const char *pWaveName = NormalizeSoundscapeWaveName( pWaves->GetString() );
 	
 	if ( !pWaveName )
 		return;

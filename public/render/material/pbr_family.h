@@ -54,7 +54,7 @@ struct PbrClaim
 	SurfaceVariant Variant() const
 	{
 		SurfaceVariant variant;
-		variant.terms = kSurfacePbr | ( normalMap ? kSurfaceBump : 0u ) |
+		variant.terms = kSurfacePbr | kSurfaceMraoTexture | ( normalMap ? kSurfaceBump : 0u ) |
 		                ( emission ? kSurfaceEmissionTexture : 0u );
 		variant.layout = SurfaceVertexLayout::kModel;
 		return variant;

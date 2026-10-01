@@ -59,6 +59,115 @@ def world_light(style, intensity=(1.0, 1.0, 1.0), kind=legacy_bsp.EMIT_POINT):
                                          0, 0, 0, 0, 0, 0, 1, 0, 0, 0)
 
 
+class StaticPropSceneTests(unittest.TestCase):
+    def test_reference_entities_select_models_and_implicit_doors(self):
+        entities = [
+            {"classname": "prop_dynamic", "model": "models/elevator/elevator_b.mdl",
+             "origin": "1 2 3", "angles": "0 90 0", "skin": "2"},
+            {"classname": "prop_testchamber_door", "origin": "4 5 6",
+             "angles": "0 180 0"},
+            {"classname": "vgui_screen", "origin": "7 8 9"},
+            {"classname": "prop_dynamic", "model": "models/invalid.mdl",
+             "origin": "invalid"},
+        ]
+        placements = list(scene.entity_studio_placements(entities))
+        self.assertEqual(len(placements), 2)
+        self.assertEqual((placements[0]["model"], placements[0]["skin"],
+                          placements[0]["angles"]),
+                         ("models/elevator/elevator_b.mdl", 2, (0.0, 90.0, 0.0)))
+        self.assertEqual(placements[1]["model"], "models/props/portal_door_combined.mdl")
+
+    def test_movie_screen_uses_authored_quad_and_group_master(self):
+        entities = [
+            {"classname": "vgui_movie_display", "groupname": "arrival",
+             "moviefilename": "media/arrival.bik", "origin": "0 0 0",
+             "width": "2", "height": "2"},
+            {"classname": "vgui_movie_display", "groupname": "arrival",
+             "forcedslave": "1", "origin": "10 -20 -30", "angles": "0 90 0",
+             "width": "64", "height": "128"},
+        ]
+        screens = list(scene.movie_screen_placements(entities))
+        self.assertEqual(len(screens), 1)
+        self.assertEqual(screens[0]["movie"], "media/arrival.bik")
+        np.testing.assert_allclose(screens[0]["origin"], (10, -20, -30))
+        np.testing.assert_allclose(screens[0]["across"], (-64, 0, 0), atol=1e-5)
+        np.testing.assert_allclose(screens[0]["up"], (0, 0, 128))
+        np.testing.assert_allclose(screens[0]["normal"], (0, 1, 0), atol=1e-5)
+        np.testing.assert_allclose(screens[0]["display_origin"],
+                                   (10, -20 + scene.MOVIE_SCREEN_COMPOSITE_OFFSET_UNITS,
+                                   -30), atol=1e-5)
+
+    def test_elevator_script_overrides_bsp_movie_and_tiles_panels(self):
+        class Resolver:
+            def read(self, path):
+                self_path = "scripts/vscripts/videos/video_splitter.nut"
+                assert path == self_path
+                return (b'[{ map = "sp_a2_laser_intro", arrival = "laser_portal.bik", '
+                        b'departure = "laser_portal.bik", typeOverride = 12 }]', "retail")
+
+        override, source = scene.elevator_video_override(Resolver(), "sp_a2_laser_intro")
+        self.assertEqual(source, "retail")
+        self.assertEqual(override["arrival_signs"], "media/laser_portal.bik")
+        self.assertEqual(override["departure_signs"], "media/laser_portal.bik")
+        self.assertEqual(override["scale_type"], 12)
+        entities = [
+            {"classname": "vgui_movie_display", "groupname": "arrival_signs",
+             "moviefilename": "media/entry_emergency.bik"},
+            {"classname": "vgui_movie_display", "groupname": "arrival_signs",
+             "targetname": "@arrival_sign_29", "forcedslave": "1",
+             "origin": "0 0 0", "angles": "0 90 0", "width": "64", "height": "128"},
+        ]
+        screen = next(scene.movie_screen_placements(entities, override))
+        self.assertEqual(screen["movie"], "media/laser_portal.bik")
+        self.assertAlmostEqual(screen["uv"][0][0], (5.0001) / 6)
+        self.assertAlmostEqual(screen["uv"][0][1], 0.0, places=4)
+        self.assertAlmostEqual(screen["uv"][1][1], 0.5, places=4)
+        upside_down = scene.movie_screen_uv("@arrival_sign_29", 4)
+        self.assertGreater(upside_down[0][1], upside_down[1][1])
+        blank = scene.movie_screen_uv("@arrival_sign_30", 13)
+        self.assertEqual(blank[0][0], 0.97)
+        self.assertEqual(blank[2][0], 0.97)
+
+    def test_reference_visuals_are_not_static_bake_shapes(self):
+        sample = {"props": [], "shapes": [
+            {"name": "world", "role": "world"},
+            {"name": "door", "role": "dynamic_model"},
+            {"name": "video", "role": "video_screen"}]}
+        self.assertEqual(map_scene.nonstatic_shape_names(sample), {"door", "video"})
+
+    def test_portal2_v9_placement_and_skin(self):
+        name = b"models/props/test.mdl"
+        record = struct.pack("<3f3fHHHBBi", 10, 20, 30, 0, 90, 0,
+                             0, 0, 0, 0, 0, 2).ljust(72, b"\0")
+        prop_data = (struct.pack("<i", 1) + name.ljust(128, b"\0") +
+                     struct.pack("<ii", 0, 1) + record)
+        offset = br.LEGACY_HEADER_SIZE + 20
+        directory = struct.pack("<i", 1) + struct.pack(
+            "<iHHii", legacy_bsp.STATIC_PROP_LUMP, 0, 9, offset, len(prop_data))
+        bsp = legacy_bsp.LegacyBsp(legacy_map(
+            {legacy_bsp.LUMP_GAME_LUMP: (0, directory + prop_data)}, version=21))
+        version, names, props = bsp.static_props()
+        self.assertEqual((version, names), (9, [name.decode()]))
+        self.assertEqual((props[0]["origin"], props[0]["angles"], props[0]["skin"]),
+                         ((10, 20, 30), (0, 90, 0), 2))
+        self.assertEqual(bsp.static_props(), (version, names, props))
+        np.testing.assert_allclose(scene.static_prop_matrix((0, 90, 0)) @ (1, 0, 0),
+                                   (0, 1, 0), atol=1e-6)
+
+    def test_bad_model_index_rejected(self):
+        name = b"models/props/test.mdl".ljust(128, b"\0")
+        record = struct.pack("<3f3fHHHBBi", 0, 0, 0, 0, 0, 0,
+                             1, 0, 0, 0, 0, 0).ljust(72, b"\0")
+        prop_data = struct.pack("<i", 1) + name + struct.pack("<ii", 0, 1) + record
+        directory = struct.pack("<i", 1) + struct.pack(
+            "<iHHii", legacy_bsp.STATIC_PROP_LUMP, 0, 9,
+            br.LEGACY_HEADER_SIZE + 20, len(prop_data))
+        bsp = legacy_bsp.LegacyBsp(legacy_map(
+            {legacy_bsp.LUMP_GAME_LUMP: (0, directory + prop_data)}, version=21))
+        with self.assertRaisesRegex(ValueError, "model index"):
+            bsp.static_props()
+
+
 class VtfDecodeTests(unittest.TestCase):
     def test_bgr888_channels_and_orientation(self):
         pixels = bytes([0, 0, 255, 0, 255, 0, 255, 0, 0, 10, 20, 30])  # BGR, 2x2

@@ -257,7 +257,7 @@ def main():
     pbrt_blender.rebind_materials(scene, normal_maps=False)
     pbrt_blender.restore_emitters(scene)
     pbrt_blender.apply_environment(scene, args.environment)
-    props = map_scene.prop_shape_names(scene)
+    props = map_scene.nonstatic_shape_names(scene)
     for obj in meshes:
         if obj.name in props:
             obj.hide_render = True

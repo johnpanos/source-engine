@@ -220,6 +220,86 @@ int main()
 	checks.That( stats.viewsDrawn == 2 && stats.surfacesDrawn == 4 && stats.viewsFailed == 0,
 	    "W3.a-re-recorded-slot-draws-the-same-view" );
 
+	// One object-space mesh is shared by its static instances. The same
+	// queued world view accepts only instances whose complete mesh is claimed.
+	{
+		WorldData props = TestWorld();
+		WorldMaterial model;
+		model.name = "crate";
+		model.shader = "VertexLitGeneric";
+		model.mesh = true;
+		model.variables = { { "$basetexture", "models/crate" } };
+		model.textures = { { "$basetexture", 3 } };
+		props.materials.push_back( std::move( model ) );
+		WorldMaterial alternate = props.materials.back();
+		alternate.name = "crate-alternate-skin";
+		props.materials.push_back( std::move( alternate ) );
+		WorldData::StaticMesh mesh;
+		for ( const auto &xy :
+		    { std::pair{ 0.0f, 0.0f }, std::pair{ 1.0f, 0.0f }, std::pair{ 0.0f, 1.0f } } )
+		{
+			material::SurfaceModelVertex vertex;
+			vertex.position[0] = xy.first;
+			vertex.position[1] = xy.second;
+			vertex.normal[2] = 1.0f;
+			vertex.tangent[0] = 1.0f;
+			vertex.tangent[3] = 1.0f;
+			mesh.vertices.push_back( vertex );
+		}
+		mesh.indices = { 0, 1, 2 };
+		mesh.surfaces.push_back( { 4, 0, 0, 3 } );
+		mesh.skinMaterials = { { 4 }, { 5 } };
+		props.staticMeshes.push_back( std::move( mesh ) );
+		WorldData::StaticInstance instance;
+		instance.world[0] = instance.world[5] = instance.world[10] = instance.world[15] = 1.0f;
+		instance.world[3] = 2.0f;
+		props.staticInstances.push_back( instance );
+		instance.world[3] = 4.0f;
+		instance.skin = 1;
+		props.staticInstances.push_back( instance );
+		instance.skin = 2;
+		props.staticInstances.push_back( instance );
+		WorldPass modelPass;
+		modelPass.SetWorld( std::move( props ) );
+		checks.That( modelPass.DrawsStaticInstance( 0 ) && modelPass.DrawsStaticInstance( 1 ) &&
+		                 !modelPass.DrawsStaticInstance( 2 ) && !modelPass.DrawsStaticInstance( 3 ),
+		    "W11.claims-shared-geometry-with-valid-skins" );
+		WorldView modelView = View( {} );
+		modelView.staticInstances = { 0, 1 };
+		const std::uint32_t modelTag = modelPass.QueueView( std::move( modelView ) );
+		checks.That( modelTag != 0 && modelPass.Stats().staticInstancesQueued == 2,
+		    "W11.static-only-view-has-its-own-slot" );
+		checks.That( RecordSlot( device, modelPass, modelTag, target ) &&
+		                 modelPass.Stats().viewsFailed == 0 &&
+		                 modelPass.Stats().staticInstancesQueued == 2 &&
+		                 modelPass.Stats().staticDrawsDrawn == 2,
+		    "W11.shared-static-mesh-records-through-the-model-program" );
+		checks.That( modelPass.DrawsPosedModel( 0, 0 ) && modelPass.DrawsPosedModel( 0, 1 ) &&
+		                 !modelPass.DrawsPosedModel( 0, 2 ),
+		    "W12.posed-model-claims-only-complete-skins" );
+		WorldView poseView = View( {} );
+		WorldView::PosedModel pose;
+		pose.mesh = 0;
+		pose.skin = 1;
+		pose.vertices.resize( 3 );
+		pose.vertices[0].position[0] = 0.25f;
+		pose.vertices[1].position[0] = 1.25f;
+		pose.vertices[2].position[1] = 1.0f;
+		for ( auto &vertex : pose.vertices )
+		{
+			vertex.normal[2] = 1.0f;
+			vertex.tangent[0] = vertex.tangent[3] = 1.0f;
+		}
+		poseView.posedModels.push_back( std::move( pose ) );
+		const std::uint32_t poseTag = modelPass.QueueView( std::move( poseView ) );
+		checks.That( poseTag != 0 && RecordSlot( device, modelPass, poseTag, target ) &&
+		                 modelPass.Stats().viewsFailed == 0 &&
+		                 modelPass.Stats().posedModelsQueued == 1 &&
+		                 modelPass.Stats().posedDrawsDrawn == 1,
+		    "W12.posed-model-uses-the-shared-material-and-current-pose" );
+		modelPass.ReleaseDevice( device );
+	}
+
 	// A frame that straddles a level change (queued mode records its slots
 	// after the change): its view was the earlier world's, which is gone. It
 	// draws nothing and is skipped, not failed.

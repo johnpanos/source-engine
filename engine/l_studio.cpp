@@ -54,6 +54,7 @@
 #include "ipooledvballocator.h"
 #include "shaderapi/ishaderapi.h"
 #include "dynamic_occlusion.h"
+#include "render_core_world_draw.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -2115,6 +2116,12 @@ void CModelRender::DrawModelExecute( const DrawModelState_t &state, const ModelR
 	g_pShadowMgr->SetModelShadowState( pInfo.instance );
 
 	if ( g_bTextMode )
+		return;
+	// The stage owns the lighting for this animated door. Its pose is still
+	// produced by the engine, so gameplay and animation stay unchanged.
+	if ( !bShadowDepth && !bSSAODepth && state.m_pStudioHdr->numflexdesc == 0 && pInfo.body == 0 &&
+	     RenderCoreWorldDraw_TakePosedModel(
+	         pInfo.pModel, pInfo.skin, pBoneToWorld, state.m_pStudioHdr->numbones ) )
 		return;
 
 	// Sets up flexes

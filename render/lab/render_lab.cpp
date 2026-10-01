@@ -686,9 +686,8 @@ int Run( const Options &options )
 		std::uint32_t modelIndexCount = 0;
 
 		// The studio model: its first body at the origin, in world space on
-		// the world vertex. A PBRMetalRough material draws as the pbr point
-		// lit by the probe volume, the view's lights and probes; any other
-		// material draws unlit with its base texture (named).
+		// the world vertex. PBRMetalRough and the supported VertexLitGeneric
+		// subset use the same PBR mesh point with probes and clustered lights.
 		if ( !options.model.empty() )
 		{
 			auto model = mdl::LoadModel( files, options.model.string(), 0 );
@@ -714,30 +713,9 @@ int Run( const Options &options )
 					return Fail(
 					    "model material " + m.textures[std::size_t( texture )] + " has no VMT" );
 				SceneMaterial resolved;
-				if ( ResolveMaterial( files, *resolver.Value(), cache, path, true, resolved ) )
-				{
-					material::MaterialDesc desc;
-					if ( std::optional<std::string> why = ImportMaterial( files, path, desc ) )
-						return Fail( *why );
-					std::vector<material::VmtPair> variables;
-					for ( const material::VmtPair &variable : desc.variables )
-					{
-						if ( variable.key == "$basetexture" )
-							variables.push_back( variable );
-					}
-					auto mapped = material::MapVariables( "UnlitGeneric", std::move( variables ), {} );
-					if ( !mapped )
-						return Fail( "model material " + path + " does not map" );
-					auto program = resolver.Value()->Resolve( mapped.Value() );
-					if ( !program )
-						return Fail( "model material " + path + ": " + program.Error() );
-					resolved.program = std::move( program ).Value();
-					resolved.mesh = true;
-					if ( std::optional<std::string> why =
-					         StageProgramTextures( files, cache, resolved.program ) )
-						return Fail( *why );
-					std::printf( "render_lab: model material %s draws unlit\n", path.c_str() );
-				}
+				if ( std::optional<std::string> why =
+				         ResolveMaterial( files, *resolver.Value(), cache, path, true, resolved ) )
+					return Fail( *why );
 				materials.push_back( std::move( resolved ) );
 				const std::uint32_t base = std::uint32_t( vertices.size() );
 				for ( const mdl::Vertex &v : part.vertices )
@@ -751,12 +729,15 @@ int Run( const Options &options )
 					to.normal[0] = v.normal.x;
 					to.normal[1] = v.normal.y;
 					to.normal[2] = v.normal.z;
-					// The model carries no tangents: a frame about the normal
-					// (its materials read no normal map here).
 					const math::float3 n{ v.normal.x, v.normal.y, v.normal.z };
-					const math::float3 t = math::Normalize( math::Cross(
-					    n, std::fabs( n.z ) < 0.9f ? math::float3{ 0, 0, 1 } : math::float3{ 1, 0, 0 } ) );
-					const math::float3 b = math::Cross( n, t );
+					const math::float3 t =
+					    v.tangentSign != 0.0f
+					        ? math::float3{ v.tangent.x, v.tangent.y, v.tangent.z }
+					        : math::Normalize( math::Cross( n, std::fabs( n.z ) < 0.9f
+					                                               ? math::float3{ 0, 0, 1 }
+					                                               : math::float3{ 1, 0, 0 } ) );
+					const math::float3 b =
+					    math::Cross( n, t ) * ( v.tangentSign == 0.0f ? 1.0f : v.tangentSign );
 					to.tangentS[0] = t.x;
 					to.tangentS[1] = t.y;
 					to.tangentS[2] = t.z;

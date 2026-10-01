@@ -50,6 +50,13 @@ class EnvmapStrengthTest(unittest.TestCase):
         self.assertEqual(scene.envmap_strength({"$envmaptint": "[1 1 1]"}), 1.0)
         self.assertEqual(scene.envmap_strength({}), 1.0)
 
+    def test_vertexlit_mesh_roughness_matches_its_modern_point(self):
+        self.assertEqual(scene.material_roughness("vertexlitgeneric", {}), 0.55)
+        self.assertEqual(scene.material_roughness("vertexlitgeneric", {"$phongexponent": "30"}),
+                         0.55)
+        self.assertAlmostEqual(scene.material_roughness(
+            "vertexlitgeneric", {"$phong": "1", "$phongexponent": "30"}), 0.25)
+
 
 if __name__ == "__main__":
     unittest.main()

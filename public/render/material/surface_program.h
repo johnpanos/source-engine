@@ -116,8 +116,11 @@ struct SurfaceConstants
 	// map (binding 3); y: 1 with the sludge ($basetexture and a flow map); z:
 	// $lightmapwaterfog; w: $forcefresnel (-1: the fresnel term).
 	float waterMode[4] = { 1.0f, 0.0f, 0.0f, -1.0f };
+	// Modern mesh point without an MRAO texture: metalness, roughness and AO.
+	// kSurfaceMraoTexture selects the texture instead at pipeline creation.
+	float pbrFactors[4] = { 0.0f, 0.55f, 1.0f, 0.0f };
 };
-static_assert( sizeof( SurfaceConstants ) == 272 );
+static_assert( sizeof( SurfaceConstants ) == 288 );
 
 // An area light as the frame block holds it (render.area-light.v1: the
 // rectangle, its radiance and its reach).
@@ -391,6 +394,9 @@ inline constexpr std::uint32_t kSurfaceDepthOnly = 67108864;
 // light's direct light is drawn at runtime, shadowed, baked lights included.
 // The draw's page stays the bake's total layer (the sun's baked mask).
 inline constexpr std::uint32_t kSurfaceRuntimeDirect = 134217728;
+// The PBR point reads its MRAO texture; absent for an imported dielectric
+// whose constant metalness, roughness and AO are in SurfaceConstants.
+inline constexpr std::uint32_t kSurfaceMraoTexture = 268435456;
 // The terms that read the normal (not on the flat vertex), and those the
 // model vertex alone evaluates.
 inline constexpr std::uint32_t kSurfaceNormalTerms =

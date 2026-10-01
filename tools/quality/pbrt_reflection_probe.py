@@ -165,7 +165,7 @@ def main():
     pbrt_blender.apply_environment(scene, args.environment)
     # Dynamic models' Cycles stand-ins can move: like the lightmap bake, the
     # probes neither reflect them nor place captures around them.
-    props = map_scene.prop_shape_names(scene)
+    props = map_scene.nonstatic_shape_names(scene)
     for obj in bpy.data.objects:
         if obj.name in props:
             obj.hide_render = True

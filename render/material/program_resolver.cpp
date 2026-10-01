@@ -14,6 +14,7 @@
 #include "render/material/pbr_family.h"
 #include "render/material/registry.h"
 #include "render/material/unlit_family.h"
+#include "render/material/vertexlit_family.h"
 #include "render/material/vmt_mapping.h"
 #include "render/material/water_family.h"
 
@@ -223,8 +224,18 @@ foundation::Expected<std::unique_ptr<ProgramResolver>, std::string> ProgramResol
     std::uint32_t sampleCount, VertexLayout layout, const ProgramModules &modules )
 {
 	auto state = std::make_unique<State>( device );
-	state->layout =
-	    layout == VertexLayout::kSurface ? SurfaceVertexLayout::kWorld : SurfaceVertexLayout::kFlat;
+	switch ( layout )
+	{
+	case VertexLayout::kFlat:
+		state->layout = SurfaceVertexLayout::kFlat;
+		break;
+	case VertexLayout::kSurface:
+		state->layout = SurfaceVertexLayout::kWorld;
+		break;
+	case VertexLayout::kModel:
+		state->layout = SurfaceVertexLayout::kModel;
+		break;
+	}
 	auto lightmapped = LightmappedFamily::Create(
 	    device, colorFormat, depthFormat, sampleCount, modules.lightmappedFragment );
 	if ( !lightmapped )
@@ -272,6 +283,29 @@ foundation::Expected<device::BlendMode, std::string> ClaimForDrawing(
 		return claim.blend;
 	}
 	return foundation::MakeUnexpected( "family " + material.family + " has no program yet" );
+}
+
+foundation::Expected<device::BlendMode, std::string> ClaimForMesh( const MaterialDesc &material )
+{
+	std::string why;
+	const std::optional<ParameterBlock> block = BlockFor( material, &why );
+	if ( !block )
+		return foundation::MakeUnexpected( why );
+	if ( material.family == "vertexlit" )
+	{
+		const VertexLitMeshClaim claim = ClaimVertexLitMesh( *block );
+		if ( !claim.claimed )
+			return foundation::MakeUnexpected( claim.reason );
+		return device::BlendMode::kOpaque;
+	}
+	if ( material.family == "pbr" )
+	{
+		const PbrClaim claim = ClaimPbr( *block );
+		if ( !claim.claimed )
+			return foundation::MakeUnexpected( claim.reason );
+		return device::BlendMode::kOpaque;
+	}
+	return foundation::MakeUnexpected( "family " + material.family + " has no mesh point yet" );
 }
 
 foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
@@ -336,11 +370,14 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 		const PbrClaim claim = ClaimPbr( *block );
 		if ( !claim.claimed )
 			return foundation::MakeUnexpected( claim.reason );
-		if ( s.layout != SurfaceVertexLayout::kWorld )
+		if ( s.layout == SurfaceVertexLayout::kFlat )
 			return foundation::MakeUnexpected( std::string(
 			    "the pbr point reads the surface vertex, and the resolver's is flat" ) );
 		SurfaceVariant variant = claim.Variant();
-		variant.layout = SurfaceVertexLayout::kWorld;
+		variant.layout = s.layout;
+		if ( !s.mesh && s.layout == SurfaceVertexLayout::kModel )
+			return foundation::MakeUnexpected(
+			    std::string( "the pbr world point needs the world vertex" ) );
 		variant.terms |= s.mesh ? ( ( s.sceneTerms & ~kSurfaceLightmapTerms ) | kSurfaceMeshDirect )
 		                        : ( kSurfaceBakedLightmap | s.sceneTerms );
 		SurfaceTextures textures;
@@ -357,10 +394,40 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 		out.request = std::move( request ).Value();
 		out.blend = device::BlendMode::kOpaque;
 		// Runtime direct light: the gradient page is the indirect layer's own.
-		out.drawInputs = { "lightmap",
-		    ( variant.terms & kSurfaceRuntimeDirect ) ? "lightmap-indirect-gradient"
-		                                              : "lightmap-gradient",
-		    "lightmap-indirect" };
+		if ( !s.mesh )
+			out.drawInputs = { "lightmap",
+			    ( variant.terms & kSurfaceRuntimeDirect ) ? "lightmap-indirect-gradient"
+			                                              : "lightmap-gradient",
+			    "lightmap-indirect" };
+		return out;
+	}
+	if ( material.family == "vertexlit" )
+	{
+		if ( !s.mesh || !s.worldPbr )
+			return foundation::MakeUnexpected(
+			    std::string( "the modern VertexLitGeneric point needs a mesh scene" ) );
+		const VertexLitMeshClaim claim = ClaimVertexLitMesh( *block );
+		if ( !claim.claimed )
+			return foundation::MakeUnexpected( claim.reason );
+		if ( s.layout == SurfaceVertexLayout::kFlat )
+			return foundation::MakeUnexpected(
+			    std::string( "the modern mesh point needs the surface vertex" ) );
+		SurfaceVariant variant = claim.Variant();
+		variant.layout = s.layout;
+		variant.terms |= ( s.sceneTerms & ~kSurfaceLightmapTerms ) | kSurfaceMeshDirect;
+		SurfaceTextures textures;
+		textures.base = TextureOf( material, "basetexture" );
+		if ( claim.normalMap )
+			textures.bump = TextureOf( material, "bumpmap" );
+		auto request = s.lightmapped->Program().Request( variant, claim.constants, textures );
+		if ( !request )
+			return foundation::MakeUnexpected(
+			    std::string( "the modern mesh pipeline was refused" ) );
+		out.name = "pbr";
+		out.request = std::move( request ).Value();
+		out.blend = device::BlendMode::kOpaque;
+		// Model draws bind the neutral lighting block; probes and view lights
+		// are the modern mesh point's sources, not a world lightmap page.
 		return out;
 	}
 	if ( material.family == "water" )
@@ -538,6 +605,8 @@ std::optional<GroupRequest> ProgramResolver::DrawGroup(
 	if ( program.name == "pbr" && inputTextures.size() == 3 )
 		return s.lightmapped->Program().DrawGroup(
 		    inputTextures[0], {}, {}, inputTextures[1], inputTextures[2] );
+	if ( program.name == "pbr" && inputTextures.empty() )
+		return s.lightmapped->Program().DrawGroup( "", {}, {}, {}, {} );
 	if ( program.request.drawLayout == s.lightmapped->DrawLayout() )
 		return s.lightmapped->LightmapGroup( inputTextures[0] );
 	return std::nullopt;

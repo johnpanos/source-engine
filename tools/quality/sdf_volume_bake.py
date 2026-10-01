@@ -211,7 +211,7 @@ def main():
     pbrt_blender.rebind_materials(scene, normal_maps=False)
     pbrt_blender.restore_emitters(scene)
     pbrt_blender.apply_environment(scene, args.environment)
-    props = map_scene.prop_shape_names(scene)
+    props = map_scene.nonstatic_shape_names(scene)
     world = [obj for obj in meshes if obj.name not in props]
     assignments = {shape["name"]: shape["material"] for shape in scene["shapes"]}
     materials = {assignments[obj.name]: obj.data.materials[0] for obj in world

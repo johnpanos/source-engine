@@ -135,6 +135,17 @@ def prop_shape_names(scene):
     return {name for prop in props(scene) for name in prop["shapes"]}
 
 
+def reference_shape_names(scene):
+    """Legacy entity visuals kept in the scene but excluded from static work."""
+    return {shape["name"] for shape in scene["shapes"]
+            if shape.get("role") in ("dynamic_model", "video_screen")}
+
+
+def nonstatic_shape_names(scene):
+    """All scene shapes whose current pose or image belongs to runtime state."""
+    return prop_shape_names(scene) | reference_shape_names(scene)
+
+
 def lightmap_exclusions(scene, extra_materials=()):
     """(materials, shapes) that get no lightmap space: transmissive or fully
     metallic materials (the WMSH shader leaves them unlit or weights baked
@@ -144,8 +155,8 @@ def lightmap_exclusions(scene, extra_materials=()):
         name for name in scene["materials"]
         if material_summary(scene, name)["transmission"] > 0 or
         material_summary(scene, name)["metallic"] >= 1.0}
-    shapes = prop_shape_names(scene) | {shape["name"] for shape in scene["shapes"]
-                                        if shape["material"] in materials}
+    shapes = nonstatic_shape_names(scene) | {shape["name"] for shape in scene["shapes"]
+                                             if shape["material"] in materials}
     return materials, shapes
 
 
