@@ -1177,6 +1177,25 @@ Each phase closes when:
   fidelity (AGENTS.md: a wireframe renderer cannot claim material
   fidelity) and passes the frame port's shared suite for what it claims.
 
+## Core-only product shading (user decision, 2026-10-01)
+
+When `r_core_world 1` enables product core shading, only rendercore shaders
+render the frame. The user's scope is "When rendercore is enabled, only
+rendercore shaders for now", using Forward+. The compatibility renderers
+remain available with core shading disabled. An unsupported cohort is
+reported and left unrendered; it does not select a native-backend shader.
+This is an explicit interim product policy, not acceptance of the missing
+cohorts or evidence of whole-frame fidelity. K8–K12 keep their full gates.
+
+The frame-ordered core-only marker prevents native vertex conversion and
+legacy shader draws. CPU runtime-light integration is bypassed for world-stage
+frames; retail BSP core surfaces keep their existing lightmap lighting until
+their runtime-light consumer migrates. The lightmap rebuild captures that policy
+in the material queue.
+Changing mode rebuilds lightmaps once so retained contributions cannot cross
+the policy boundary. Missing pixels use the existing core diagnostic background.
+See the [implementation and evidence](0016-perf-forward-plus-2026-10-01.md).
+
 ## Lights and shadows (`render.lights.v1`, `render.shadows.v1`)
 
 - **One light authority.** The clustered Forward+ path consumes RFC 0011's
@@ -1187,6 +1206,18 @@ Each phase closes when:
   today. On native world families they are evaluated per pixel. That is a
   visible change, so it ships as a versioned behavior decision with an image
   oracle and a switch until accepted.
+- **Area assignment.** The same view's Forward+ grid carries two 32-bit
+  area masks per froxel, covering the surface program's full 64-light capacity.
+  `render.pass.lights::AssignAreaLights` owns conservative rectangle/reach
+  assignment; the surface program iterates set bits in light order. The CPU
+  index buffer's header word 3 carries its mask offset plus one (zero is the
+  unassigned full-loop oracle). Viewport lookup is local to the view. Standalone
+  unassigned core views retain the same modern shader, never a legacy shader.
+- **Cohort reuse.** World, static-prop and posed-model slots with identical
+  matrices, viewport, host frame, light publication and shadow settings share
+  one immutable lighting result. Queued views own it until recording ends;
+  `call_once` publishes the result. Map changes invalidate the main-thread
+  cache, and each cohort still records its own caster/draw work.
 - **Shadow atlas.** Spot lights and flashlights (closing the
   `SetFlashlightState` stubs and R32-VIDEO-OPTIONS P7), a directional
   cascade set for the map's sun, and optional point-light cube shadows.

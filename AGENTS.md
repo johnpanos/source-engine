@@ -414,6 +414,13 @@ the roadmap's hard prerequisites:
    declared effect enabled. A budget miss is an optimization item under RFC
    0016's binding rules, never a reason to silently disable an effect.
 
+The user's 2026-10-01 profiling slice implements spatial area-light masks,
+same-view lighting reuse, shorter LTC live ranges and core-only Forward+
+shading under `r_core_world 1`; [evidence and remaining cohort gaps](RFC/0016-perf-forward-plus-2026-10-01.md).
+CPU legacy area integration is bypassed for world stages, and native vertex
+conversion is bypassed in that mode. R95, R96 and R91 remain open; rejected
+legacy cohorts are not parity.
+
 The next decisive image milestone is one fully core-rendered Portal 2 scene:
 world, animated models, glass, decals, effects and nested views, visually
 compared with its lab/reference captures through motion and resize. Then dense

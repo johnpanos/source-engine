@@ -6804,7 +6804,12 @@ void CVulkanContext::QueueCorePass( uint32_t tag, const CorePassTerms &terms )
 {
 	if ( !m_corePassRecorder )
 		return;
+	// AppendRecord starts a new queue after present; publish the policy after
+	// that reset so the following draws see it before vertex conversion.
 	DynDraw &record = AppendRecord( kRecordCorePass );
+	if ( ( tag & render::legacy::kCorePassForwarded ) &&
+	     ( tag & render::legacy::kCorePassLegacyOff ) )
+		m_queueCoreOnly = true;
 	record.corePass = tag;
 	record.corePassTerms = static_cast<uint32_t>( m_corePassTerms.size() );
 	m_corePassTerms.push_back( terms );

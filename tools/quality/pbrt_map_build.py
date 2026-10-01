@@ -514,6 +514,7 @@ class Pipeline:
             "ktx2": self.out / "lighting" / "atlas.ktx2",
             "seams": self.out / "lighting" / "seams.npz",
             "probe": self.out / "lighting" / "probe",
+            "probe_placement": self.out / "lighting" / "probe-placement.json",
             "rprb": self.out / "lighting" / "reflection_probes.rprb",
             "prbv": self.out / "lighting" / "probe_volume.prbv",
             "prbv_work": self.out / "lighting" / "probe_volume",
@@ -1017,6 +1018,7 @@ class Pipeline:
             # parallax box, prefiltered and encoded as the RPRB lump.
             coverage_rules = self.profile.get("audit") or {}
             face_args = ["--scene", scene, "--stage", p["lighting_stage"], "--out-dir", p["probe"],
+                         "--placement-cache", p["probe_placement"],
                          "--face-size", str(probe.get("face_size", 256)),
                          "--samples", str(probe.get("samples", 512)),
                          "--device", self.lightmap["device"], "--seed", str(self.lightmap["seed"]),

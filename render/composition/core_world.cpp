@@ -122,6 +122,7 @@ void CoreWorld::SetWorld( const RenderCoreWorldVertex *vertices, unsigned int ve
 		data.surfaces.push_back( surface );
 	}
 	data.materials = WorldMaterials( materials, materialCount );
+	m_QueuedLighting.clear();
 	m_StageSet = false;
 	m_WorldCasters.reset();
 	m_StaticCastsShadow.clear();
@@ -168,6 +169,7 @@ void CoreWorld::SetWorldMesh( const void *wmsh, unsigned long long wmshBytes,
     const RenderCoreWorldMeshlet *meshlets, unsigned int meshletCount,
     const RenderCoreWorldMaterial *materials, unsigned int materialCount, const char *entities )
 {
+	m_QueuedLighting.clear();
 	m_StageSet = false;
 	m_WorldCasters.reset();
 	m_StaticCastsShadow.clear();
@@ -966,6 +968,8 @@ std::shared_ptr<const pass::world::StageViewLights> CoreWorld::StageViewLightsFo
 	out->view.slices[0] = grid.Value().sliceScale;
 	out->view.slices[1] = grid.Value().sliceBias;
 	out->view.slices[2] = grid.Value().nearZ;
+	out->view.counts[2] = viewport[0];
+	out->view.counts[3] = viewport[1];
 	const math::float4 &z = desc.view.rows[2];
 	out->view.viewDistance[0] = -z.x;
 	out->view.viewDistance[1] = -z.y;
@@ -1223,8 +1227,11 @@ bool CoreWorld::DrawView( const unsigned int *surfaces, unsigned int count,
 	{
 		const bool movers = m_ShadowMovers.load( std::memory_order_relaxed );
 		const int quality = m_ShadowQuality.load( std::memory_order_relaxed );
-		std::erase_if( m_QueuedLighting, [&]( const QueuedLighting &entry )
-		    { return entry.frame != hostFrame || entry.revision != m_Lights.revision; } );
+		std::erase_if( m_QueuedLighting,
+		    [&]( const QueuedLighting &entry )
+		    {
+			    return entry.frame != hostFrame || entry.revision != m_Lights.revision;
+		    } );
 		for ( const QueuedLighting &entry : m_QueuedLighting )
 		{
 			const ViewLightInputs &in = entry.pending->inputs;
@@ -1287,7 +1294,8 @@ void CoreWorld::EndFrame()
 void CoreWorld::BeginFrame()
 {
 	const frame::DebugControls &debug = m_Renderer.AppliedDebug();
-	if ( !frame::PixelViewActive( debug ) && debug.legacy != frame::DebugLegacy::kSkip )
+	if ( !m_CoreOnly && !frame::PixelViewActive( debug ) &&
+	     debug.legacy != frame::DebugLegacy::kSkip )
 		return;
 	if ( legacy::ICorePassSlots *slots = m_Frontend.CorePassSlots() )
 		slots->MarkSlot( legacy::kCorePassForwarded | legacy::kCorePassLegacyOff );
@@ -1323,6 +1331,7 @@ void CoreWorld::GetStats( RenderCoreWorldStats *out ) const
 	out->stageLights =
 	    unsigned( pass::lights::MergeMapLights( m_Lights.lights, m_MapLights ).size() );
 	out->stageLitViews = m_StageLitViews;
+	out->stageLightingBuilds = m_StageLightingBuilds.load( std::memory_order_relaxed );
 	out->stageRuntimeDirect = m_StageRuntimeDirect.load( std::memory_order_relaxed ) ? 1u : 0u;
 	std::snprintf( out->lastFailure, sizeof( out->lastFailure ), "%s", stats.lastFailure.c_str() );
 	std::size_t used = 0;
@@ -1351,6 +1360,7 @@ void CoreWorld::GetStats( RenderCoreWorldStats *out ) const
 
 void CoreWorld::SetQuality( const RenderCoreWorldQuality &quality )
 {
+	m_CoreOnly = quality.coreOnly;
 	m_AoQuality.store( std::clamp( quality.ambientOcclusion, 0, 4 ), std::memory_order_relaxed );
 	m_ShadowQuality.store( std::clamp( quality.shadows, 0, 3 ), std::memory_order_relaxed );
 	m_DepthPrepass.store( quality.depthPrepass != 0, std::memory_order_relaxed );
@@ -1572,6 +1582,7 @@ void CoreWorld::RecordSlot(
 		    [&]
 		    {
 			    pending->lights = StageViewLightsFor( pending->inputs, &pending->shadows );
+			    m_StageLightingBuilds.fetch_add( 1, std::memory_order_relaxed );
 		    } );
 		world.lights = pending->lights;
 		shadows = pending->shadows;

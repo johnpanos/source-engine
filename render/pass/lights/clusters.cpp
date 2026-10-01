@@ -664,9 +664,8 @@ bool AssignAreaLights( const ClusterGrid &grid, std::span<const area_light::Area
 		const float3 center = TransformPoint3( grid.view, light.rect.center, 1.0f );
 		const float3 u = TransformPoint3( grid.view, light.rect.halfU, 0.0f );
 		const float3 v = TransformPoint3( grid.view, light.rect.halfV, 0.0f );
-		const float slack = kRelativeSlack *
-		                    ( math::Length( center ) + math::Length( u ) + math::Length( v ) +
-		                        light.reach );
+		const float slack = kRelativeSlack * ( math::Length( center ) + math::Length( u ) +
+		                                         math::Length( v ) + light.reach );
 		const auto radius = [&]( const float3 &normal )
 		{
 			return std::abs( math::Dot( normal, u ) ) + std::abs( math::Dot( normal, v ) ) +

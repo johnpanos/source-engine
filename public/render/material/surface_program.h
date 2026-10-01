@@ -144,8 +144,10 @@ struct SurfaceConstants
 	// Visible one-sided emitter shape: inner/outer cosine, falloff exponent,
 	// and 1 when the authored cone is present. Neutral for other PBR surfaces.
 	float emissionCone[4] = { 1.0f, 1.0f, 1.0f, 0.0f };
+	// UnlitTwoTexture: the second texture's independent UV transform.
+	float texture2Transform[8] = { 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f };
 };
-static_assert( sizeof( SurfaceConstants ) == 400 );
+static_assert( sizeof( SurfaceConstants ) == 432 );
 
 // An area light as the frame block holds it (render.area-light.v1: the
 // rectangle, its radiance and its reach).
@@ -179,7 +181,7 @@ struct SurfaceViewGpu
 	// row of world-to-view).
 	float viewDistance[4] = {};
 	// x: the view's projected lights (binding 7), y: the pixel-to-texel
-	// scale of the view's screen inputs (1), z, w: 0
+	// scale of the view's screen inputs (1), z, w: viewport origin in pixels
 	float counts[4] = { 0.0f, 1.0f, 0.0f, 0.0f };
 };
 static_assert( sizeof( SurfaceViewGpu ) == 64 );

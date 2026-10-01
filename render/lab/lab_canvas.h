@@ -38,6 +38,7 @@ struct CanvasDraw
 	device::BufferId vertices;
 	std::uint32_t vertexCount = 0;
 	std::vector<std::byte> constants; // the draw constants the pipeline reads
+	std::optional<device::Viewport> viewport; // absent: the whole canvas
 };
 
 // Work recorded after the draws, before the read back: the color target is

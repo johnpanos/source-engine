@@ -5816,3 +5816,45 @@ places the camera in front of an arrival panel; its screenshot shows the
 `exercises_horiz.bik` image on that panel. The other maps' boot screenshots
 face the elevator interior and do not certify their screen pixels. Other
 published relights have no authored entry in the shipped movie table.
+
+
+## Profiling-led Forward+ and core-only shading (2026-10-01)
+
+The user requested the four targets in `quality-results/perf1001/summary.md`,
+then narrowed legacy retirement to "When rendercore is enabled, only rendercore
+shaders for now" and specified "Forward+". The bounded implementation and its
+measurements are in the [Forward+ evidence record](0016-perf-forward-plus-2026-10-01.md).
+The legacy lightmap-cache target is superseded for these world-stage fixtures by
+bypassing CPU runtime-light integration; retail BSP core surfaces and
+compatibility-mode lighting retain their existing lightmaps.
+No new retained lightmap cache or second light authority was added.
+
+Frozen-path: core plumbing R96/R91 — the native queue rejects legacy shader
+draws before conversion under the core's frame marker, and the engine's queued
+world-stage lightmaps omit CPU runtime light in that mode. These are the user's
+explicitly requested boundaries, not new shading behavior on the frozen backend.
+
+R95/R96/R91 stay active/partial: the core-only product census names rejected
+HUD, particle, glass, sky and model materials. This slice does not close their
+migration or claim the old whole-frame appearance.
+
+
+### R96/R91 intro4 material completion (2026-10-01, active)
+
+User request: “Complete them until the relit sp a1 intro 4 map renders every
+material through our Forward+ renderer.” This session owns this map's material
+claims and remaining primitive submissions. `render.material` owns parameter
+semantics and the shared surface program; `render.pass.world` owns their
+geometry and draws; composition supplies the current stage lighting. The
+concurrent area-light optimization session owns lighting assignment/LTC and
+finishes its evidence; no second lighting implementation is introduced.
+
+The early-core baseline in
+`quality-results/intro4-forward-materials/before/evidence.json` passes the boot,
+with no claimed-view failures. Its material gaps are seven foliage sway
+materials, five UnlitTwoTexture materials, two WriteZ materials, one inactive
+cloak control and one flashlight-shadow control. The rejected-draw census
+also includes world glass, decals, sky, particles, viewmodel, video and HUD
+submissions, plus postprocessing. Completing static claims alone will not
+certify this request. New points require lab pixel/failure controls before
+product handoff. R96/R91 remain open during this work.

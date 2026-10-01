@@ -49,26 +49,19 @@ vec3 LtcEdge( vec3 a, vec3 b )
 	return c * ( atan( s, dot( a, b ) ) / s );
 }
 
-// Clips a polygon (at most six corners) to z >= 0; returns the new count.
-int LtcClip( inout vec3 corners[6], int count )
+// Append one normalized vertex to an edge integral. Streaming the final
+// horizon clip avoids a second dynamically indexed six-vertex array and keeps
+// the clip's live range separate from the shadow evaluator in the caller.
+void LtcAppend( vec3 p, inout vec3 first, inout vec3 previous, inout int count,
+    inout float sum )
 {
-	vec3 clipped[6];
-	int n = 0;
-	for ( int i = 0; i < 6; ++i )
-	{
-		if ( i >= count )
-			break;
-		const vec3 a = corners[i];
-		const vec3 b = corners[( i + 1 ) % count];
-		const bool aAbove = a.z >= 0.0;
-		const bool bAbove = b.z >= 0.0;
-		if ( aAbove && n < 6 )
-			clipped[n++] = a;
-		if ( aAbove != bAbove && n < 6 )
-			clipped[n++] = mix( a, b, a.z / ( a.z - b.z ) );
-	}
-	corners = clipped;
-	return n;
+	const vec3 point = normalize( p );
+	if ( count == 0 )
+		first = point;
+	else
+		sum += LtcEdge( previous, point ).z;
+	previous = point;
+	++count;
 }
 
 // The integral over a rectangle (its four corners, counterclockwise seen
@@ -85,34 +78,51 @@ float LtcRectangle( vec3 n, vec3 v, vec3 p, mat3 inverse, vec3 corners[4], bool 
 	t1 = normalize( t1 - n * dot( t1, n ) );
 	const vec3 t2 = cross( n, t1 );
 	const mat3 toTangent = transpose( mat3( t1, t2, n ) );
-	vec3 polygon[6];
-	for ( int i = 0; i < 4; ++i )
-		polygon[i] = toTangent * ( corners[i] - p );
-	int count = 4;
-#ifndef SEEDED_LTC_NO_HORIZON_CLIP
-	count = LtcClip( polygon, count );
-#endif
 #ifdef SEEDED_LTC_TRANSPOSED
 	const mat3 toCosine = transpose( inverse );
 #else
 	const mat3 toCosine = inverse;
 #endif
-	for ( int i = 0; i < 6; ++i )
-		polygon[i] = toCosine * polygon[i];
-#ifndef SEEDED_LTC_NO_HORIZON_CLIP
-	count = LtcClip( polygon, count );
+	vec3 polygon[6];
+	int count = 0;
+	// Clip the original four edges to the surface horizon, transforming
+	// each survivor directly. No intermediate tangent-space polygon survives.
+	for ( int i = 0; i < 4; ++i )
+	{
+		const vec3 a = toTangent * ( corners[i] - p );
+		const vec3 b = toTangent * ( corners[( i + 1 ) % 4] - p );
+#ifdef SEEDED_LTC_NO_HORIZON_CLIP
+		polygon[count++] = toCosine * a;
+#else
+		if ( a.z >= 0.0 )
+			polygon[count++] = toCosine * a;
+		if ( ( a.z >= 0.0 ) != ( b.z >= 0.0 ) )
+			polygon[count++] = toCosine * mix( a, b, a.z / ( a.z - b.z ) );
 #endif
+	}
 	if ( count < 3 )
 		return 0.0;
-	vec3 sum = vec3( 0.0 );
-	for ( int i = 0; i < 6; ++i )
+	vec3 first = vec3( 0.0 ), previous = vec3( 0.0 );
+	float sum = 0.0;
+	int emitted = 0;
+	for ( int i = 0; i < count; ++i )
 	{
-		if ( i >= count )
-			break;
-		sum += LtcEdge( normalize( polygon[i] ), normalize( polygon[( i + 1 ) % count] ) );
+		const vec3 a = polygon[i];
+		const vec3 b = polygon[( i + 1 ) % count];
+#ifdef SEEDED_LTC_NO_HORIZON_CLIP
+		LtcAppend( a, first, previous, emitted, sum );
+#else
+		if ( a.z >= 0.0 )
+			LtcAppend( a, first, previous, emitted, sum );
+		if ( ( a.z >= 0.0 ) != ( b.z >= 0.0 ) )
+			LtcAppend( mix( a, b, a.z / ( a.z - b.z ) ), first, previous, emitted, sum );
+#endif
 	}
+	if ( emitted < 3 )
+		return 0.0;
+	sum += LtcEdge( previous, first ).z;
 	// Counterclockwise from the front gives a negative z.
-	const float integral = -sum.z * kLtcInverseTwoPi;
+	const float integral = -sum * kLtcInverseTwoPi;
 #ifdef SEEDED_LTC_NO_HORIZON_CLIP
 	return abs( integral );
 #else

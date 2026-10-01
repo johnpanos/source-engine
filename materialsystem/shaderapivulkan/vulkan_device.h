@@ -337,6 +337,7 @@ public:
 		float waterReflectTintScale = 1.0f;
 	};
 	void QueueCorePass( uint32_t tag, const CorePassTerms &terms );
+	bool CoreOnlyQueue() const { return m_queueCoreOnly && !m_dynFramePresented; }
 	// Slots whose sections this context ran, and the frames that had one.
 	uint64_t CorePassesRun() const { return m_corePassesRun; }
 
@@ -470,6 +471,7 @@ public:
 		m_dynIndices.clear();
 		m_dynDrawRecords.clear();
 		m_corePassTerms.clear();
+		m_queueCoreOnly = false;
 		m_frameLabels.clear();
 		m_dynSkinConstants.clear();
 		m_dynLegacyConstants.clear();
@@ -1677,6 +1679,7 @@ private:
 	// The frame being recorded turned the legacy stream off (RFC 0014,
 	// render::legacy::kCorePassLegacyOff): it presents without the ramp.
 	bool m_frameLegacyOff = false;
+	bool m_queueCoreOnly = false;    // frame-ordered slot, before vertex conversion
 	bool m_gammaUnavailable = false; // the pass failed to build; presents blit
 	uint64_t m_gammaPresentCount = 0;
 	VkFormat m_gammaFormat = VK_FORMAT_UNDEFINED; // what the pass was built for

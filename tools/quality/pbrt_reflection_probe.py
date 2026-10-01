@@ -30,6 +30,7 @@ import argparse
 import hashlib
 import json
 import math
+import multiprocessing
 import os
 import sys
 from pathlib import Path
@@ -41,6 +42,7 @@ from mathutils.bvhtree import BVHTree
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import cycles_device  # noqa: E402
+import cpu_budget  # noqa: E402
 import pbrt_blender  # noqa: E402
 import map_scene  # noqa: E402
 import map_export_audit  # noqa: E402
@@ -48,10 +50,74 @@ import reflection_probe  # noqa: E402
 import reflection_probe_set  # noqa: E402
 
 DEPTH_SAMPLES_PER_FACE = 64
+PLACEMENT_CACHE_SCHEMA = "reflection-probe-placement-cache/v1"
+PLACEMENT_ARRAYS = ("capture", "box_min", "box_max", "influence_min", "influence_max")
+
+# The Blender BVH is immutable during placement.  Forked workers inherit it
+# without serializing Blender objects and fit disjoint, contiguous candidate
+# ranges.  Every candidate still casts the same rays in the same order.
+_PLACEMENT = {}
+
+
+def _placement_cast(origins, directions, max_distance):
+    tree = _PLACEMENT["tree"]
+    distance = np.full(len(origins), np.inf)
+    normal = np.zeros((len(origins), 3))
+    for i, (origin, direction) in enumerate(zip(origins, directions)):
+        location, n, _, d = tree.ray_cast(Vector(origin), Vector(direction),
+                                          float(max_distance))
+        if location is not None:
+            distance[i] = d
+            normal[i] = tuple(n)
+    return distance, normal
+
+
+def _estimate_run(bounds):
+    first, last = bounds
+    captures, directions = _PLACEMENT["captures"], _PLACEMENT["directions"]
+    return first, [reflection_probe_set.estimate_box(_placement_cast, capture, directions)
+                   for capture in captures[first:last]]
 
 
 def sha256(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def serialized_probes(probes):
+    return [{key: value.tolist() if isinstance(value, np.ndarray) else value
+             for key, value in probe.items()} for probe in probes]
+
+
+def restored_probes(records):
+    return [{key: np.asarray(value, dtype=np.float64) if key in PLACEMENT_ARRAYS else value
+             for key, value in probe.items()} for probe in records]
+
+
+def read_placement_cache(path, inputs):
+    """Return cached (probes, report), or None when any placement input changed."""
+    if path is None or not path.is_file():
+        return None
+    try:
+        record = json.loads(path.read_text())
+        if record.get("schema") != PLACEMENT_CACHE_SCHEMA or record.get("inputs") != inputs:
+            return None
+        return restored_probes(record["probes"]), record["report"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+
+def write_placement_cache(path, inputs, probes, report):
+    """Atomically publish a completed placement for later render-quality runs."""
+    if path is None:
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(path.name + ".%d.tmp" % os.getpid())
+    record = {"schema": PLACEMENT_CACHE_SCHEMA, "inputs": inputs,
+              "probes": serialized_probes(probes), "report": report}
+    # Keep insertion order so a cache hit reproduces placement.json byte for
+    # byte, not merely as an equivalent JSON object.
+    temporary.write_text(json.dumps(record, indent=2) + "\n")
+    os.replace(temporary, path)
 
 
 def scene_triangles(objects):
@@ -84,12 +150,13 @@ class BvhCaster:
     Both sides of a surface block (closed PBRT meshes need not wind
     consistently); a miss is infinite."""
 
-    def __init__(self, triangles):
+    def __init__(self, triangles, workers=1):
         stacked = np.concatenate([t for t, _ in triangles.values()]) if triangles else \
             np.zeros((0, 3, 3))
         vertices = [tuple(p) for p in stacked.reshape(-1, 3)]
         polygons = [(3 * i, 3 * i + 1, 3 * i + 2) for i in range(len(stacked))]
         self.tree = BVHTree.FromPolygons(vertices, polygons, all_triangles=True)
+        self.workers = max(1, workers)
 
     def __call__(self, origins, directions, max_distance):
         distance = np.full(len(origins), np.inf)
@@ -101,6 +168,27 @@ class BvhCaster:
                 distance[i] = d
                 normal[i] = tuple(n)
         return distance, normal
+
+    def estimate_boxes(self, captures, directions):
+        """Fit every candidate on forked workers, preserving serial results."""
+        count = len(captures)
+        workers = min(self.workers, count)
+        if workers <= 1:
+            return [reflection_probe_set.estimate_box(self, capture, directions)
+                    for capture in captures]
+        _PLACEMENT.update(tree=self.tree, captures=np.asarray(captures),
+                          directions=np.asarray(directions))
+        run = max(1, min(64, count // max(1, 4 * workers)))
+        ranges = [(first, min(first + run, count)) for first in range(0, count, run)]
+        try:
+            with multiprocessing.get_context("fork").Pool(workers) as pool:
+                chunks = pool.map(_estimate_run, ranges, chunksize=1)
+        finally:
+            _PLACEMENT.clear()
+        estimates = [None] * count
+        for first, values in chunks:
+            estimates[first:first + len(values)] = values
+        return estimates
 
 
 def glossy_shapes(scene, threshold):
@@ -142,6 +230,8 @@ def main():
                         help="a seeded capture (USD stage units); repeatable")
     parser.add_argument("--placement", default="{}",
                         help="JSON overrides of reflection_probe_set.PLACEMENT_DEFAULTS")
+    parser.add_argument("--placement-cache", type=Path,
+                        help="validated placement reused across face render settings")
     parser.add_argument("--volumes", default="[]",
                         help="authored reflection volumes in stage meters (JSON list)")
     parser.add_argument("--coverage-rules", default="{}",
@@ -160,6 +250,8 @@ def main():
                         help="Cycles' OIDN denoiser on the faces (off for an exact probe)")
     parser.add_argument("--gbuffer", action="store_true",
                         help="also write the Diffuse Color and Normal passes (relight bands)")
+    parser.add_argument("--trace-workers", type=int, default=cpu_budget.available_cpus(),
+                        help="CPU workers for deterministic reflection-probe placement")
     args = parser.parse_args(arguments)
     if not os.environ.get("OCIO"):
         parser.error("OCIO is required")
@@ -195,31 +287,52 @@ def main():
 
     meshes = [obj for obj in pbrt_blender.source_meshes() if obj.name not in props]
     triangles = scene_triangles(meshes)
-    caster = BvhCaster(triangles)
+    caster = BvhCaster(triangles, args.trace_workers)
     if args.bounds:
         bounds_min, bounds_max = np.array(args.bounds[:3]), np.array(args.bounds[3:])
     else:
         corners = np.array([tuple(obj.matrix_world @ Vector(corner)) for obj in meshes
                             for corner in obj.bound_box])
         bounds_min, bounds_max = corners.min(axis=0), corners.max(axis=0)
-    glossy_names = glossy_shapes(scene, params["glossy_roughness"])
-    glossy_triangles = [triangles[name] for name in glossy_names if name in triangles]
-    glossy = None
-    if glossy_triangles:
-        tris = np.concatenate([t for t, _ in glossy_triangles])
-        shading = np.concatenate([n for _, n in glossy_triangles])
-        points, winding = reflection_probe_set.glossy_samples(
-            tris, params["glossy_samples_per_m2"], seed=args.seed)
-        # Orient each sample by its triangle's shading normal (PBRT meshes
-        # need not wind consistently): nearest triangle centroid.
-        centroids = tris.mean(axis=1)
-        nearest = np.array([int(np.argmin(np.sum((centroids - p) ** 2, axis=1)))
-                            for p in points])
-        normals = shading[nearest]
-        glossy = (points, normals)
     seeds = [np.asarray(position, dtype=np.float64) for position in args.position]
-    probes, report = reflection_probe_set.place(caster, bounds_min, bounds_max, glossy, params,
-                                                seeds=seeds, volumes=json.loads(args.volumes))
+    volumes = json.loads(args.volumes)
+    glossy_names = glossy_shapes(scene, params["glossy_roughness"])
+    cache_inputs = {
+        "stage_sha256": sha256(args.stage),
+        "scene_sha256": scene["source_sha256"],
+        "parameters": params,
+        "bounds_min": [float(value) for value in bounds_min],
+        "bounds_max": [float(value) for value in bounds_max],
+        "seeds": [[float(value) for value in seed] for seed in seeds],
+        "volumes": volumes,
+        "seed": args.seed,
+        "glossy_shapes": glossy_names,
+        # A placement-code change invalidates the private cache even when the
+        # pipeline reruns this operation for an unrelated render-code change.
+        "scripts": {Path(__file__).name: sha256(Path(__file__)),
+                    Path(reflection_probe_set.__file__).name:
+                        sha256(Path(reflection_probe_set.__file__))},
+    }
+    cached = read_placement_cache(args.placement_cache, cache_inputs)
+    if cached is not None:
+        probes, report = cached
+        print("PROBE_PLACEMENT_CACHE hit", flush=True)
+    else:
+        glossy_triangles = [triangles[name] for name in glossy_names if name in triangles]
+        glossy = None
+        if glossy_triangles:
+            tris = np.concatenate([t for t, _ in glossy_triangles])
+            shading = np.concatenate([n for _, n in glossy_triangles])
+            points, _, sampled_triangles = reflection_probe_set.glossy_samples(
+                tris, params["glossy_samples_per_m2"], seed=args.seed, return_indices=True)
+            # Orient each sample by the exact triangle that generated it.  PBRT
+            # meshes need not wind consistently, so use its authored shading
+            # normal rather than the sampler's geometric winding.
+            normals = shading[sampled_triangles]
+            glossy = (points, normals)
+        probes, report = reflection_probe_set.place(caster, bounds_min, bounds_max, glossy,
+                                                    params, seeds=seeds, volumes=volumes)
+        write_placement_cache(args.placement_cache, cache_inputs, probes, report)
 
     checks = map_export_audit.probe_placement_checks(dict(params, **report),
                                                       json.loads(args.coverage_rules))
@@ -231,8 +344,7 @@ def main():
     (args.out_dir / "placement-checks.json").write_text(json.dumps(coverage, indent=2) + "\n")
     placement = {"schema": "reflection-probe-placement/v1", "parameters": params,
                  "report": report, "stage_sha256": sha256(args.stage),
-                 "probes": [{key: value.tolist() if isinstance(value, np.ndarray) else value
-                             for key, value in probe.items()} for probe in probes]}
+                 "probes": serialized_probes(probes)}
     (args.out_dir / "placement.json").write_text(json.dumps(placement, indent=2) + "\n")
     print("PROBE_PLACEMENT_CHECKS " + json.dumps(coverage), flush=True)
     if failed and not args.record_coverage_failure:

@@ -844,7 +844,12 @@ def place(raycast, bounds_min, bounds_max, glossy=None, params=None, seeds=(), v
     if not len(walkable):
         raise ValueError("no walkable sample under the bounds: nowhere to place a probe")
     directions = fibonacci_directions(params["fit_rays"])
-    estimates = [estimate_box(raycast, candidate, directions) for candidate in walkable]
+    # A native-scene caster may fan the independent candidate fits out over
+    # workers.  Each fit still casts the same directions in the same order;
+    # the generic/oracle path remains the serial definition.
+    estimates = raycast.estimate_boxes(walkable, directions) \
+        if hasattr(raycast, "estimate_boxes") else \
+        [estimate_box(raycast, candidate, directions) for candidate in walkable]
     boxes = [estimate[:2] for estimate in estimates]
     eligible = np.array([estimate[2]["clearance"] >= params["min_clearance_m"] and
                          estimate[2]["p90_relative_residual"] <=
@@ -966,15 +971,22 @@ def place(raycast, bounds_min, bounds_max, glossy=None, params=None, seeds=(), v
     return probes, report
 
 
-def glossy_samples(triangles, density, seed=0):
-    """Area-uniform points and normals on triangles ((N, 3, 3) arrays)."""
+def glossy_samples(triangles, density, seed=0, return_indices=False):
+    """Area-uniform points and normals on triangles ((N, 3, 3) arrays).
+
+    With ``return_indices``, also return each point's source-triangle index.
+    A renderer that owns authored shading normals can then select the exact
+    triangle's normal without a quadratic nearest-centroid reconstruction.
+    """
     triangles = np.asarray(triangles, dtype=np.float64).reshape(-1, 3, 3)
     edges = np.cross(triangles[:, 1] - triangles[:, 0], triangles[:, 2] - triangles[:, 0])
     area = np.linalg.norm(edges, axis=1) / 2
     keep = area > 1e-9
+    source_indices = np.flatnonzero(keep)
     triangles, edges, area = triangles[keep], edges[keep], area[keep]
     if not len(area):
-        return np.zeros((0, 3)), np.zeros((0, 3))
+        empty = np.zeros((0, 3))
+        return (empty, empty, np.zeros(0, dtype=np.int64)) if return_indices else (empty, empty)
     count = max(1, int(round(area.sum() * density)))
     rng = np.random.default_rng(seed)
     chosen = rng.choice(len(area), size=count, p=area / area.sum())
@@ -984,7 +996,7 @@ def glossy_samples(triangles, density, seed=0):
     t = triangles[chosen]
     points = t[:, 0] + u[:, None] * (t[:, 1] - t[:, 0]) + v[:, None] * (t[:, 2] - t[:, 0])
     normals = edges[chosen] / (2 * area[chosen, None])
-    return points, normals
+    return (points, normals, source_indices[chosen]) if return_indices else (points, normals)
 
 
 # ------------------------------------------------------------- test scenes

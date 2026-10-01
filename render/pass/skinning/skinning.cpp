@@ -76,6 +76,9 @@ void SkinReference( const SkinInputs &inputs, std::span<SkinnedVertex> out )
 		result = SkinnedVertex();
 		for ( int b = 0; b < 3; ++b )
 		{
+			// Studio rigid vertices carry two unused influences.
+			if ( weights[b] == 0.0f )
+				continue;
 			std::size_t bone = ( vertex.bones >> ( 8 * b ) ) & 0xffu;
 			if ( bone >= boneCount )
 				bone = 0;

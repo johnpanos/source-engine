@@ -18,6 +18,7 @@
 #include "indirect_light_host.h"
 #include "render/composition/render_core_world.h"
 #include "gl_matsysiface.h"
+#include "gl_lightmap.h"
 #include "gl_rmain.h"
 #include "host.h"
 #include "materialsystem/imaterial.h"
@@ -44,10 +45,20 @@
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
+static void CoreWorldModeChanged( IConVar *variable, const char *, float previous )
+{
+	// Rebuild once on either transition: an unchanged light must not leave
+	// a legacy contribution in core pages, or be missing when legacy resumes.
+	ConVarRef mode( variable );
+	if ( ( int( previous ) == 1 ) != ( mode.GetInt() == 1 ) )
+		GL_RebuildLightmaps();
+}
+
 static ConVar r_core_world( "r_core_world", "0", FCVAR_CHEAT,
-    "RFC 0016 K5: the render core draws the BSP world surfaces its material model draws, at a "
-    "core pass slot of the legacy stream (1); the legacy world chains skip them. 3 is the "
-    "negative control: legacy skips them and the core does not draw them" );
+    "RFC 0016: core-only Forward+ shading (1). Legacy shader draws are rejected, and "
+    "unsupported cohorts are reported rather than rendered by a fallback. 3 is the "
+    "negative control: legacy skips them and the core does not draw them",
+    CoreWorldModeChanged );
 
 static ConVar r_core_world_isolate( "r_core_world_isolate", "0", FCVAR_CHEAT,
     "RFC 0016 K5 pixel oracle: the legacy world chains draw only the surfaces the core's model "
@@ -879,6 +890,16 @@ bool RenderCoreWorldDraw_Takes( SurfaceHandle_t surfID )
 	return state.loaded && index >= 0 && index < state.takes.Count() && state.takes[index];
 }
 
+bool RenderCoreWorldDraw_OnlyCore()
+{
+	return r_core_world.GetInt() == 1 && State().loaded && RenderCoreHost_World();
+}
+
+bool RenderCoreWorldDraw_StageOwnsRuntimeLighting()
+{
+	return RenderCoreWorldDraw_OnlyCore() && State().stageWorld;
+}
+
 bool RenderCoreWorldDraw_OwnsLighting( SurfaceHandle_t surfID )
 {
 	return r_core_world.GetBool() && RenderCoreWorldDraw_Takes( surfID );
@@ -1090,8 +1111,9 @@ CON_COMMAND( r_core_world_stats, "RFC 0016 K5: the core world's surfaces, views 
 	if ( stats.claimed[0] )
 		Msg( "r_core_world_stats: drawn by the core:\n%s", stats.claimed );
 	if ( State().stageWorld )
-		Msg( "r_core_world_stats: world stage: %u runtime lights, %llu lit views\n",
-		    stats.stageLights, stats.stageLitViews );
+		Msg( "r_core_world_stats: world stage: %u runtime lights, %llu lit views, %llu lighting "
+		     "builds\n",
+		    stats.stageLights, stats.stageLitViews, stats.stageLightingBuilds );
 	if ( State().worldMeshViews )
 		Msg( "r_core_world_stats: declined %llu view(s): the map's world is its WMSH\n",
 		    State().worldMeshViews );

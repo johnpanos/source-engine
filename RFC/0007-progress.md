@@ -1917,3 +1917,53 @@ explicit authored proxy/influence bounds and priority. Stored ranks carry the
 priority ordering, so there is no separate mutable runtime priority table.
 The core oracle must pass before product plumbing. This paragraph records the
 selected work, not completed gates or full Source 2 parity.
+
+Implemented and verified: RPRB v3 up to 64 probes, tiled GPU bands, authored
+proxy/influence boxes and priorities, and an allocation-range check in the
+map loader. GPU metadata uses band indices for extended sets so relight row
+offsets cannot overflow half precision. The legacy wrapper now includes the
+core shader; its duplicate was deleted and the freeze inventory reduced by
+one file. **Frozen-path: core plumbing**, after the core reflection suite's
+39 checks passed; no second probe selection implementation was added.
+Source2 and Portal 2 chamber profiles allow 64; Source2-max allows 60 at its
+2048 width to fit the existing 16384 texture extent bound. The core uses
+clustered forward lighting (3D froxels); probes still scan the set and sample
+the top two, rather than sharing the clustered light lists.
+
+The laser's geometry-only 64-probe run, including the authored entrance volume,
+reduced missing walkable coverage from 744/1773 to 531/1773 (29.95%) and missing
+servable glossy coverage from 2442/2931 to 868/2931 (29.61%). Budget and walkable
+coverage still fail. This establishes that raising capacity alone is insufficient.
+`quality/map_probe_positions/sp_a2_laser_intro.volumes.json` records the entrance
+authoring; use it with `legacy_bsp_relight.py --probe-volumes` for a full rebuild.
+
+A cheap native preview reused the sixteen existing captures and every lightmap,
+baking only the six entrance faces at 64 samples on the local HIP GPU (about
+ten seconds). The resulting 17-probe v3 map preserves the legacy BSP bytes
+exactly and loads all 39 WMSH material batches. At the locked camera, the
+41,402 stair pixels have mean global weight **0.0245173**, and the 46,357 floor
+pixels **0.00005581**, down from 1.0 for both. Both regional checks pass their
+0.1 limit, with zero invalid or fallback pixels. Probe-selection capture uses
+one sample: MSAA averaging different rank IDs caused 1,127 invalid stair
+pixels, correctly rejected by the first check. Final renders retain 4x MSAA.
+An earlier preview with symlinked materials was rejected because the content
+stager excludes symlinks; it is not image evidence.
+
+The current-build final-color control and preview share camera and exposure
+(4). Stairs red/blue ratio falls from 1.974 to 1.233 and clipped pixels from
+9.96% to 1.23%; floor ratio falls from 1.090 to 0.893. These are relative
+tonemapped-image measurements, not a Cycles-reference fidelity claim.
+The [before/after gallery](../quality-results/map-diagnostics/laser-entry-probe64-20261001/compare.html)
+links the passing native selection evidence; that directory also retains
+placement/bake commands, hashes, reports and verification logs. The map is
+registered as `sp_a2_laser_intro_probe64` for inspection. The original published
+relight remains unchanged. The authored entrance proxy's fit residual is
+0.422, above the 0.25 profile gate; the full map still needs better proxies
+and coverage. No full Source 2 quality or R50/R95 closure is claimed.
+
+Verification: 66 Python checks (probe math/placement/codec, diagnostics and
+map export), 39 core reflection checks, 35 core map-term checks, 1,400 shader
+artifact checks and 18 freeze checks pass, as do the Portal 2 build and native
+captures. Changed-file style passed for this probe work; a later shared-workspace
+run reports three unrelated edits in core_world, area_lights_suite and clusters.
+Archlint still reports the two existing F-Stop `CreateInterfaceFn` expansions.

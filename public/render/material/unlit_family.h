@@ -52,6 +52,7 @@ struct UnlitClaim
 	// translucent and alpha-tested draws (write mask, clause D17).
 	bool alphaWrite = true;
 	bool nativeProbe = false; // mesh-only authored $envmap resolved through RPRB
+	bool twoTexture = false;
 	// tint: $color and $alpha; flags.x $vertexcolor, .y $alphatest, .z its
 	// reference; state.y 1 (gamma vertex colors); state.w $vertexalpha.
 	SurfaceConstants constants;

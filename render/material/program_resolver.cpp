@@ -104,8 +104,23 @@ bool AtDefault( const std::string &value, const std::string &declared )
 // out unless it holds its legacy shader's declared default.
 std::optional<std::string> UnreadVariable( const MaterialDesc &material )
 {
+	bool cloakEnabled = false;
+	for ( const VmtPair &variable : material.variables )
+	{
+		if ( SameKey( variable.key, "$cloakpassenabled" ) )
+		{
+			const auto value = Numbers( variable.value );
+			cloakEnabled = !value || value->size() != 1 || value->front() != 0.0;
+		}
+	}
 	for ( const std::string &key : material.unmapped )
 	{
+		// VertexLitGeneric only reads these controls inside its enabled cloak
+		// pass. A dormant factor of 1 on the cube does not request transmission.
+		if ( !cloakEnabled && material.family == "vertexlit" &&
+		     ( SameKey( key, "$cloakpassenabled" ) || SameKey( key, "$cloakfactor" ) || SameKey( key, "$cloakcolortint" ) ||
+		         SameKey( key, "$refractamount" ) ) )
+			continue;
 		const VmtPair *set = nullptr;
 		for ( const VmtPair &variable : material.variables )
 		{
@@ -408,7 +423,9 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 			return foundation::MakeUnexpected( claim.reason );
 		SurfaceTextures textures;
 		textures.base = TextureOf( material, "basetexture" );
-		if ( s.mesh && s.worldPbr )
+		if ( claim.twoTexture )
+			textures.emission = TextureOf( material, "texture2" );
+		if ( s.mesh && s.worldPbr && !claim.twoTexture )
 		{
 			if ( detail::ReadFlag( *block, "vertexcolor" ) ||
 			     detail::ReadFlag( *block, "vertexalpha" ) ||

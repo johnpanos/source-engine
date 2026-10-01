@@ -58,6 +58,8 @@ struct ClusterIndexHeader
 	std::uint32_t requested = 0;
 	std::uint32_t froxelsOverflowed = 0;
 	std::uint32_t assignmentsDropped = 0;
+	// CPU surface lists may append area masks: uint offset after this header + 1.
+	// The compute point/spot assignment leaves this zero.
 	std::uint32_t reserved = 0;
 };
 

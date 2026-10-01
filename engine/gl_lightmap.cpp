@@ -9,6 +9,7 @@
 
 #include "render_pch.h"
 #include "gl_lightmap.h"
+#include "render_core_world.h"
 #include "view.h"
 #include "gl_cvars.h"
 #include "zone.h"
@@ -1706,7 +1707,8 @@ static std::unordered_map<SurfaceHandle_t, std::vector<Vector4D>> g_ProbeLitSurf
 
 void R_BuildLightMapGuts( dlight_t *pLights, SurfaceHandle_t surfID,
     const matrix3x4_t &entityToWorld, unsigned int dlightMask, bool needsBumpmap,
-    bool needsLightmap, int areaGeneration, int occlusionGeneration, int projectedGeneration );
+    bool needsLightmap, int areaGeneration, int occlusionGeneration, int projectedGeneration,
+    bool coreOnly );
 
 static bool R_ProbeLitSamples( SurfaceHandle_t surfID, Vector4D *samples, int size )
 {
@@ -1865,13 +1867,15 @@ static void SampleProbeLitSurface( void *context, unsigned index )
 // queues R_BuildLightMapGuts), which then owns g_ProbeLitSurfaces and the
 // blocklights scratch, and CMaterialSystem::UpdateLightmap ignores a main-
 // thread update; so there the relight is queued too.
-static void ApplyProbeLitSurface( SurfaceHandle_t surfID, std::vector<Vector4D> luxels )
+static void ApplyProbeLitSurface(
+    SurfaceHandle_t surfID, std::vector<Vector4D> luxels, bool coreOnly )
 {
 	g_ProbeLitSurfaces[surfID] = std::move( luxels );
 	matrix3x4_t identity;
 	SetIdentityMatrix( identity );
 	R_BuildLightMapGuts( NULL, surfID, identity, 0, SurfNeedsBumpedLightmaps( surfID ), true,
-	    AreaLights_Generation(), DynamicOcclusion_Generation(), ProjectedLights_Generation() );
+	    AreaLights_Generation(), DynamicOcclusion_Generation(), ProjectedLights_Generation(),
+	    coreOnly );
 }
 
 static void ClearProbeLitSurfaces()
@@ -1883,14 +1887,19 @@ class CQueuedProbeLitSurface : public CFunctorBase
 {
 public:
 	CQueuedProbeLitSurface( SurfaceHandle_t surfID, const std::vector<Vector4D> &luxels )
-	    : m_surfID( surfID ), m_luxels( luxels )
+	    : m_surfID( surfID ), m_luxels( luxels ),
+	      m_coreOnly( RenderCoreWorldDraw_StageOwnsRuntimeLighting() )
 	{
 	}
-	void operator()() override { ApplyProbeLitSurface( m_surfID, std::move( m_luxels ) ); }
+	void operator()() override
+	{
+		ApplyProbeLitSurface( m_surfID, std::move( m_luxels ), m_coreOnly );
+	}
 
 private:
 	SurfaceHandle_t m_surfID;
 	std::vector<Vector4D> m_luxels;
+	bool m_coreOnly;
 };
 
 bool R_RelightBrushEntitiesFromProbes(
@@ -2024,7 +2033,8 @@ bool R_RelightBrushEntitiesFromProbes(
 		}
 		else
 		{
-			ApplyProbeLitSurface( job.surfID, std::move( job.luxels ) );
+			ApplyProbeLitSurface( job.surfID, std::move( job.luxels ),
+			    RenderCoreWorldDraw_StageOwnsRuntimeLighting() );
 		}
 	}
 	if ( report.IsValid() && report.GetBool() )
@@ -2041,7 +2051,8 @@ bool R_RelightBrushEntitiesFromProbes(
 
 void R_BuildLightMapGuts( dlight_t *pLights, SurfaceHandle_t surfID,
     const matrix3x4_t &entityToWorld, unsigned int dlightMask, bool needsBumpmap,
-    bool needsLightmap, int areaGeneration, int occlusionGeneration, int projectedGeneration )
+    bool needsLightmap, int areaGeneration, int occlusionGeneration, int projectedGeneration,
+    bool coreOnly )
 {
 	VPROF_("R_BuildLightMapGuts", 1, VPROF_BUDGETGROUP_DLIGHT_RENDERING, false, 0);
 	int bumpID;
@@ -2126,18 +2137,26 @@ void R_BuildLightMapGuts( dlight_t *pLights, SurfaceHandle_t surfID,
 	}
 
 	// add all the dynamic lights
-	if ( dlightMask && (needsLightmap || needsBumpmap) )
+	if ( !coreOnly && dlightMask && ( needsLightmap || needsBumpmap ) )
 	{
 		R_AddDynamicLights( pLights, surfID, entityToWorld, needsBumpmap, dlightMask );
 	}
 
 	// and the area lights that reach it (displacements take none yet), less
 	// the light moving objects block (render.dynamic-occlusion.v1)
-	if ( ( needsLightmap || needsBumpmap ) && !SurfaceHasDispInfo( surfID ) )
+	if ( !coreOnly && ( needsLightmap || needsBumpmap ) && !SurfaceHasDispInfo( surfID ) )
 	{
 		R_AddAreaLights( surfID, entityToWorld, needsBumpmap, areaGeneration );
 		R_ApplyDynamicOcclusion( surfID, entityToWorld, needsBumpmap, occlusionGeneration );
 		R_AddProjectedLights( surfID, needsBumpmap, projectedGeneration, occlusionGeneration );
+	}
+
+	if ( coreOnly )
+	{
+		// The rebuilt page contains no CPU runtime light. Keep the retained
+		// contribution/dirty bookkeeping truthful when mode changes later.
+		AreaLights_Applied( surfID, AreaLights_IsWorldSurface( surfID ), nullptr, 0 );
+		DynamicOcclusion_Rebuilt( surfID );
 	}
 
 	// Update the texture state
@@ -2175,16 +2194,17 @@ void R_BuildLightMap( dlight_t *pLights, ICallQueue *pCallQueue, SurfaceHandle_t
 	const int areaGeneration = AreaLights_Generation();
 	const int occlusionGeneration = DynamicOcclusion_Generation();
 	const int projectedGeneration = ProjectedLights_Generation();
+	const bool coreOnly = RenderCoreWorldDraw_StageOwnsRuntimeLighting();
 	if ( !pCallQueue )
 	{
 		R_BuildLightMapGuts( pLights, surfID, entityToWorld, dlightMask, needsBumpmap,
-		    needsLightmap, areaGeneration, occlusionGeneration, projectedGeneration );
+		    needsLightmap, areaGeneration, occlusionGeneration, projectedGeneration, coreOnly );
 	}
 	else
 	{
 		pCallQueue->QueueCall( R_BuildLightMapGuts, pLights, surfID, RefToVal( entityToWorld ),
 		    dlightMask, needsBumpmap, needsLightmap, areaGeneration, occlusionGeneration,
-		    projectedGeneration );
+		    projectedGeneration, coreOnly );
 	}
 }
 

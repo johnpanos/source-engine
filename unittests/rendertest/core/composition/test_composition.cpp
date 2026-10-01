@@ -118,8 +118,9 @@ int main()
 		                 std::strstr( line, "\"texture\":\"materials/vgui/white\"" ),
 		    "P5.a-family-material-becomes-its-block" );
 		checks.That( blocks->FormatBlock( "a/c", "none", "Refract", 1, keys + 2, values + 2, line,
-		                 sizeof( line ) ) == 0,
-		    "P5.a-legacy-family-material-has-no-block" );
+		                 sizeof( line ) ) > 0 &&
+		                 std::strstr( line, "\"family\":\"refract\"" ),
+		    "P5.refract-now-has-a-core-material-block" );
 		checks.That( blocks->FormatBlock( "a/d", "none", "NoSuchShader", 0, nullptr, nullptr, line,
 		                 sizeof( line ) ) == -1,
 		    "P5.an-unknown-shader-is-refused" );
@@ -207,6 +208,20 @@ int main()
 	                      probedProvider->createFor( probedProvider->context, &probedServices ),
 	         "P6.a-probed-core-composes" ) )
 	{
+		RenderCoreWorldQuality quality{};
+		quality.coreOnly = true;
+		probedBinding->world->SetQuality( quality );
+		g_Slots.tags.clear();
+		probedBinding->world->BeginFrame();
+		checks.That(
+		    g_Slots.tags == std::vector<std::uint32_t>{ render::legacy::kCorePassForwarded |
+		                                                render::legacy::kCorePassLegacyOff },
+		    "P7.core-only-publishes-the-rejection-before-any-cohort" );
+		quality.coreOnly = false;
+		probedBinding->world->SetQuality( quality );
+		g_Slots.tags.clear();
+		probedBinding->world->BeginFrame();
+		checks.That( g_Slots.tags.empty(), "P7.compatibility-frame-does-not-inherit-core-only" );
 		const std::vector<std::uint32_t> tags = SlotsOfAFrame( *probedBinding );
 		checks.That( tags.size() == 1 &&
 		                 render::legacy::CorePassTagStage( tags[0] ) == RENDER_STAGE_OPAQUE &&

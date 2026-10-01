@@ -345,7 +345,14 @@ void RenderCoreHost_BeginFrame()
 		// Under a pixel view the core draws the frame alone from its first
 		// slot (RFC 0014).
 		if ( host.world )
+		{
+			const RenderCoreWorldQuality quality{ r_core_ao_quality.GetInt(),
+			    r_core_shadow_quality.GetInt(), r_core_depth_prepass.GetInt(),
+			    r_core_shadow_movers.GetInt(), r_core_runtime_direct.GetInt(),
+			    RenderCoreWorldDraw_OnlyCore() };
+			host.world->SetQuality( quality );
 			host.world->BeginFrame();
+		}
 	}
 	RenderCoreWorld_BeginFrame();
 }
@@ -367,10 +374,7 @@ void RenderCoreHost_EndFrame()
 	if ( host.world )
 	{
 		host.world->SetGpuTimers( cl_render_debug_gpu_timers.GetBool() );
-		const RenderCoreWorldQuality quality{ r_core_ao_quality.GetInt(),
-		    r_core_shadow_quality.GetInt(), r_core_depth_prepass.GetInt(),
-		    r_core_shadow_movers.GetInt(), r_core_runtime_direct.GetInt() };
-		host.world->SetQuality( quality );
+
 		static double s_LastStats = 0.0;
 		const double now = Plat_FloatTime();
 		if ( cl_render_debug_stats.GetBool() && cl_render_debug_gpu_timers.GetBool() &&

@@ -45,6 +45,12 @@ void RenderCoreWorld_OnWorldList( const unsigned short *pLeaves, int nLeafCount,
 
 // Frame boundaries: a capture requested by r_core_cull_capture covers the
 // next whole frame and is written at its end.
+// True only for an enabled, bound core in a loaded world. No legacy shaders
+// are used in this mode.
+bool RenderCoreWorldDraw_OnlyCore();
+// A world stage supplies runtime light per pixel. Retail BSP core surfaces
+// still read CPU dynamic light from their pages until that cohort migrates.
+bool RenderCoreWorldDraw_StageOwnsRuntimeLighting();
 void RenderCoreWorld_BeginFrame();
 void RenderCoreWorld_EndFrame();
 

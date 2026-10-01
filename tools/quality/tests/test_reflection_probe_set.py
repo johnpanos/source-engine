@@ -629,6 +629,34 @@ class PlacementTest(unittest.TestCase):
         for probe in rooms:
             self.assertAlmostEqual(probe["capture"][2], 1.63, places=6)
 
+    def test_candidate_fit_batch_is_the_serial_oracle(self):
+        class BatchedScene(rps.BoxScene):
+            def __init__(self, **kwargs):
+                super().__init__(**kwargs)
+                self.batch_called = False
+
+            def estimate_boxes(self, captures, directions):
+                self.batch_called = True
+                return [rps.estimate_box(self, capture, directions) for capture in captures]
+
+        serial = self.two_rooms()
+        batched = BatchedScene(rooms=serial.rooms, solids=serial.solids,
+                               openings=serial.openings)
+        bounds = (0.0, 0.0, -0.5), (11.2, 4.0, 2.9)
+        settings = {"spacing_m": 1.0, "fit_rays": 128}
+        expected, expected_report = rps.place(serial, *bounds, params=settings)
+        actual, actual_report = rps.place(batched, *bounds, params=settings)
+        self.assertTrue(batched.batch_called)
+        self.assertEqual(actual_report, expected_report)
+        self.assertEqual(len(actual), len(expected))
+        for got, want in zip(actual, expected):
+            self.assertEqual(set(got), set(want))
+            for key in got:
+                if isinstance(got[key], np.ndarray):
+                    np.testing.assert_array_equal(got[key], want[key])
+                else:
+                    self.assertEqual(got[key], want[key])
+
     def test_no_probe_straddles_a_doorway(self):
         # The two-rooms fixture's geometry: 5 m rooms, a 0.2 m wall and a
         # 1.2 m doorway. A capture in front of the doorway fits a box through
@@ -664,6 +692,23 @@ class PlacementTest(unittest.TestCase):
         self.assertEqual(len(glossy), 1)
         self.assertLess(glossy[0]["capture"][0], 2.5)
         self.assertLess(glossy[0]["influence_max"][0], 0.5)
+
+    def test_glossy_sampler_reports_its_source_triangle(self):
+        triangles = np.array([
+            [(0, 0, 0), (2, 0, 0), (0, 2, 0)],
+            [(0, 0, 1), (0, 2, 1), (2, 0, 1)],
+            [(0, 0, 2), (0, 0, 2), (0, 0, 2)],  # filtered zero area
+        ], dtype=float)
+        points, normals, indices = rps.glossy_samples(
+            triangles, 8.0, seed=7, return_indices=True)
+        self.assertEqual(len(points), len(normals))
+        self.assertEqual(len(points), len(indices))
+        self.assertTrue(set(indices) <= {0, 1})
+        for normal, index in zip(normals, indices):
+            expected = np.cross(triangles[index, 1] - triangles[index, 0],
+                                triangles[index, 2] - triangles[index, 0])
+            expected /= np.linalg.norm(expected)
+            np.testing.assert_array_equal(normal, expected)
 
     def test_a_walkable_cap_widens_the_grid_and_still_covers_each_room(self):
         # sp_a2_core_relit (2026-09-29): a whole retail map at 0.75 m has tens

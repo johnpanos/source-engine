@@ -8779,6 +8779,7 @@
       "description": "render.pass.world (RFC 0016 K5, the BSP world drawn by the core) on render.device.null: materials are claimed through the one program resolver (LightmappedGeneric, and UnlitGeneric as the lightmapped term with lighting one) and the others stay legacy with named gaps ($envmap, blended); a queued view records at its slot with its lightmap pages and a neutral white for a surface without one; a slot recorded again (a capture) draws the same view; a view queued against an earlier world, or naming a surface the pass does not draw, is counted; a claimed material the render sequence fails is a named failure and stays claimed (no escape hatch); a capture re-recording an earlier world's slot leaves the next world's views queued; objects a submission's earlier slots used outlive a level change or format change and are released at a later frame; a variable the model does not read keeps its material out unless at its shader's neutral value; views of a host frame the backend never recorded are skipped, and a view lost from a recorded frame fails.",
       "result_protocol": "checks-v1",
       "sources": [
+        "render/material/refract_family.cpp",
         "render/shaderlib/shaderlib.cpp",
         "render/shaderlib/core_artifacts.cpp",
         "render/frame/debug_controls.cpp",
@@ -11781,6 +11782,8 @@
       "description": "render.composition and render.legacy-frontend (RFC 0016 A.7) through the launcher's C entry points: RenderCore_Create composes or fails naming the unknown device or feature; the frontend's provider keeps the backend identity and forwards creation; RenderStageMarkers001 marks stages of engine frames; a frame runs legacy-stream then present. P6 (RFC 0016 K5): -render-core-passes selects the frontend's core-pass probe and refuses an unknown one by name; with a probe the frontend queues one slot on the backend at each view's opaque stage, tagged with the stage and view depth, and none without one.",
       "result_protocol": "checks-v1",
       "sources": [
+        "render/graph/scene_color.cpp",
+        "render/material/refract_family.cpp",
         "render/shaderlib/shaderlib.cpp",
         "render/shaderlib/core_artifacts.cpp",
         "render/pass/debug/debug_overlays.cpp",

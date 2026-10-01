@@ -4890,6 +4890,12 @@ static void ExpandSplineCardVertex( const SpriteCardFrame &f, const float *parms
 
 void CEmptyMesh::EmitToNativeQueue()
 {
+	if ( g_VulkanContext.CoreOnlyQueue() )
+	{
+		DropDraw( "rendercore-only: legacy shader draw rejected before conversion" );
+		NoteDroppedMaterial();
+		return;
+	}
 	render_vulkan::CFrameCostScope cost( g_VulkanContext.CurrentFrameCost(), render_vulkan::kCostEmit );
 	// A WMSH batch of a PBR material takes the WMSH pipeline, which the legacy
 	// PBR shader's port (pbr_ps30) does not replace; other legacy ports cannot

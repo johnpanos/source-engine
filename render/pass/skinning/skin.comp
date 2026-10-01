@@ -78,6 +78,8 @@ void main()
 	vec3 outTangent = vec3( 0.0 );
 	for ( uint b = 0u; b < 3u; ++b )
 	{
+		if ( weights[b] == 0.0 )
+			continue;
 #ifdef SEEDED_BONE_INDEX_ERROR
 		uint bone = ( vertex.bones.x >> ( 8u * ( ( b + 1u ) % 3u ) ) ) & 0xffu;
 #else

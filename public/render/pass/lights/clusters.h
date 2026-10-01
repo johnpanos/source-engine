@@ -37,6 +37,7 @@
 #include "render/math/matrix.h"
 #include "render/math/vector.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <array>
 #include <span>
@@ -188,6 +189,7 @@ using AreaFroxelMask = std::array<std::uint32_t, 2>;
 
 // Append masks to a CPU-built ClusterIndexHeader + indices buffer. Header.w
 // stores the mask offset in uints plus one (zero means no spatial assignment).
+// indices contains at least the 16-byte header and is a whole number of uints.
 void AppendAreaMasks( std::span<const AreaFroxelMask> masks, std::vector<std::byte> &indices );
 
 struct ClusterStats

@@ -125,6 +125,8 @@ struct RenderCoreWorldQuality
 	// total layer. A map without an indirect layer draws its total layer.
 	// Read when a stage is set (a map load).
 	int runtimeDirect;
+	// Enabled product rendercore owns shading exclusively; legacy draws are rejected.
+	bool coreOnly = false;
 };
 
 struct RenderCoreWorldStats
@@ -152,6 +154,7 @@ struct RenderCoreWorldStats
 	// as last published, and the views queued with their lights clustered.
 	unsigned int stageLights;
 	unsigned long long stageLitViews;
+	unsigned long long stageLightingBuilds;
 	// Nonzero: the world stage draws its lights' direct light at runtime
 	// over the lightmap's indirect layer (RenderCoreWorldQuality::runtimeDirect).
 	unsigned int stageRuntimeDirect;

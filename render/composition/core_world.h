@@ -226,6 +226,7 @@ private:
 	}
 	// RenderCoreWorldQuality, set on the main thread, read where views are
 	// queued and recorded.
+	bool m_CoreOnly = false; // main thread, published by the frame slot
 	std::atomic<int> m_AoQuality{ 3 };
 	std::atomic<int> m_ShadowQuality{ 2 };
 	std::atomic<bool> m_DepthPrepass{ true };
@@ -368,6 +369,7 @@ private:
 	// lightmap packs the sun's baked visibility (the total page's alpha).
 	pass::lights::MapLights m_MapLights;
 	bool m_StageSunMask = false;
+	std::atomic<unsigned long long> m_StageLightingBuilds{ 0 };
 	unsigned long long m_StageLitViews = 0; // main thread
 	// Shadow work by world tag (DrawView writes, RecordSlot reads), and the
 	// stage's casters.

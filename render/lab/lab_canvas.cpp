@@ -108,9 +108,10 @@ std::optional<std::string> Canvas::Render( resources::TextureCache &textures,
 	rendering.width = m_Width;
 	rendering.height = m_Height;
 	encoder.BeginRendering( rendering );
-	encoder.SetViewport( { 0, 0, float( m_Width ), float( m_Height ), 0, 1 } );
 	for ( const CanvasDraw &draw : draws )
 	{
+		encoder.SetViewport(
+		    draw.viewport.value_or( Viewport{ 0, 0, float( m_Width ), float( m_Height ), 0, 1 } ) );
 		encoder.SetPipeline( draw.pipeline );
 		for ( std::size_t role = 0; role < draw.groups.size(); ++role )
 		{

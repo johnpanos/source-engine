@@ -34,6 +34,8 @@ constexpr VmtShaderRow kShaders[] = {
     { "unlitgeneric", "unlit",
         "unlit surfaces: base texture times color, with detail and envmap; the "
         "vertexlit_and_unlit_generic port without lighting" },
+    { "unlittwotexture", "unlit", "two independently transformed color textures multiplied" },
+    { "unlittwotexture_dx9", "unlit", "UnlitTwoTexture's DirectX 9 implementation" },
     { "sprite_dx9", "unlit",
         "sprites: an unlit textured quad whose orientation and render mode are parameters "
         "(sprite_vs20/sprite_ps20b)" },
@@ -164,6 +166,9 @@ constexpr VmtKeyRow kLegacyDerivedKeys[] = {
     { "vertexlit", "$bumptransform", "bumptransform", ValueKind::kTransform, "" },
 
     { "unlit", "$vertexalphatest", "vertexalphatest", ValueKind::kBool, "0" },
+    { "unlit", "$texture2", "texture2", ValueKind::kTexture, "" },
+    { "unlit", "$frame2", "frame2", ValueKind::kInt, "0" },
+    { "unlit", "$texture2transform", "texture2transform", ValueKind::kTransform, "" },
     { "unlit", "$hdrcolorscale", "hdrcolorscale", ValueKind::kFloat, "1" },
     { "unlit", "$depthblend", "depthblend", ValueKind::kBool, "0" },
     { "unlit", "$depthblendscale", "depthblendscale", ValueKind::kFloat, "50" },

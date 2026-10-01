@@ -46,15 +46,28 @@ public:
 	TextureId phongWarpFixture;
 	TextureId refractNormalFixture;
 	TextureId refractWarpFixture;
+	TextureId twoTextureBase;
+	TextureId twoTextureOverlay;
 	TextureId Import( int handle, bool ) override
 	{
 		return handle == 1   ? normalFixture
 		       : handle == 2 ? phongWarpFixture
 		       : handle == 3 ? refractNormalFixture
 		       : handle == 4 ? refractWarpFixture
+		       : handle == 5 ? twoTextureBase
+		       : handle == 6 ? twoTextureOverlay
 		                     : TextureId{};
 	}
-	SamplerDesc Sampler( int ) override { return {}; }
+	SamplerDesc Sampler( int handle ) override
+	{
+		SamplerDesc sampler;
+		if ( handle == 6 )
+		{
+			sampler.address = AddressMode::kClampToEdge;
+			sampler.minFilter = sampler.magFilter = Filter::kNearest;
+		}
+		return sampler;
+	}
 };
 
 class LabSceneColorCapture final : public IWorldSceneColorCapture
@@ -359,6 +372,14 @@ std::optional<std::string> RunChecks(
 	    {} );
 	results.That( unknownControl && !material::ClaimForMesh( unknownControl.Value(), true ),
 	    "posed-model.unknown-render-control-remains-a-gap" );
+	const auto inactiveCloak = material::MapVariables( "VertexLitGeneric",
+	    { { "$cloakfactor", "1" }, { "$cloakpassenabled", "0" } }, {} );
+	const auto activeCloak = material::MapVariables( "VertexLitGeneric",
+	    { { "$cloakfactor", "1" }, { "$cloakpassenabled", "1" } }, {} );
+	results.That( inactiveCloak && material::ClaimForMesh( inactiveCloak.Value(), true ),
+	    "posed-model.disabled-cloak-factor-is-inert" );
+	results.That( activeCloak && !material::ClaimForMesh( activeCloak.Value(), true ),
+	    "posed-model.enabled-cloak-still-requires-its-point" );
 	const auto emissiveProbe = material::MapVariables( "UnlitGeneric",
 	    { { "$basetexture", "models/props_map_editor/black_white_unlit" },
 	        { "$envmap", "env_cubemap" } },
@@ -399,6 +420,20 @@ std::optional<std::string> RunChecks(
 	if ( !refractWarp )
 		return "the model Refract warp fixture could not be staged";
 	empty.refractWarpFixture = refractWarp.Value().texture;
+	TextureDesc colorDesc = normalDesc;
+	colorDesc.format = Format::kRGBA8Srgb;
+	const std::array<std::byte, 4> basePixelFixture = {
+	    std::byte{ 128 }, std::byte{ 192 }, std::byte{ 255 }, std::byte{ 64 } };
+	const std::array<std::byte, 8> overlayPixels = { std::byte{ 255 }, std::byte{ 128 },
+	    std::byte{ 64 }, std::byte{ 128 }, std::byte{ 64 }, std::byte{ 255 }, std::byte{ 128 },
+	    std::byte{ 64 } };
+	auto baseTexture = textures.Stage( "two-texture-base", colorDesc, basePixelFixture );
+	colorDesc.width = 2;
+	auto overlayTexture = textures.Stage( "two-texture-overlay", colorDesc, overlayPixels );
+	if ( !baseTexture || !overlayTexture )
+		return "the two-texture color fixtures could not be staged";
+	empty.twoTextureBase = baseTexture.Value().texture;
+	empty.twoTextureOverlay = overlayTexture.Value().texture;
 	auto render = [&]( WorldPass &active, float offset, bool lit, std::uint64_t frame,
 	                  const ClearColor &clear, CanvasImage &image, bool twoLayers = false,
 	                  RenderCoreDrawPhase phase = RenderCoreDrawPhase::kAll, bool copySource = true,
@@ -711,6 +746,42 @@ std::optional<std::string> RunChecks(
 		                                unlitBright.At( 32, 32 )[channel] ) < 0.005f;
 	results.That( independentOfLight && unlitDark.At( 32, 32 )[0] > 0.05f,
 	    "posed-model.emissive-mesh-ignores-direct-light" );
+	WorldData twoTextureWorld = MeshWorld();
+	twoTextureWorld.materials[0].shader = "UnlitTwoTexture_DX9";
+	twoTextureWorld.materials[0].variables = {
+	    { "$basetexture", "two-texture-base" }, { "$texture2", "two-texture-overlay" } };
+	twoTextureWorld.materials[0].textures = { { "$basetexture", 5 }, { "$texture2", 6 } };
+	WorldData transformedWorld = twoTextureWorld;
+	transformedWorld.materials[0].variables.push_back( { "$texture2transform",
+	    "center .5 .5 scale 1 1 rotate 0 translate .75 0" } );
+	WorldPass twoTexture, transformed;
+	twoTexture.SetWorld( std::move( twoTextureWorld ) );
+	transformed.SetWorld( std::move( transformedWorld ) );
+	CanvasImage multiplied, shiftedOverlay;
+	if ( auto why = render( twoTexture, 0.0f, false, 23, black, multiplied ) )
+		return why;
+	if ( auto why = render( transformed, 0.0f, false, 24, black, shiftedOverlay ) )
+		return why;
+	// IEC sRGB decode of the two authored byte images, multiplied in linear
+	// light. Their alpha values must not change UnlitTwoTexture's alpha of 1.
+	results.That( twoTexture.Stats().viewsFailed == 0 &&
+	                  std::abs( multiplied.At( 32, 32 )[0] - 0.21586f ) < 0.003f &&
+	                  std::abs( multiplied.At( 32, 32 )[1] - 0.11378f ) < 0.003f &&
+	                  std::abs( multiplied.At( 32, 32 )[2] - 0.05127f ) < 0.003f &&
+	                  std::abs( multiplied.At( 32, 32 )[3] - 1.0f ) < 0.003f,
+	    "posed-model.two-texture-linear-product-and-opaque-alpha",
+	    twoTexture.Stats().lastFailure + " claims " + std::to_string( twoTexture.Stats().claimedMaterials ) +
+	        " rgb " + std::to_string( multiplied.At( 32, 32 )[0] ) + " " +
+	        std::to_string( multiplied.At( 32, 32 )[1] ) + " " +
+	        std::to_string( multiplied.At( 32, 32 )[2] ) );
+	results.That( transformed.Stats().viewsFailed == 0 &&
+	                  shiftedOverlay.At( 32, 32 )[0] < multiplied.At( 32, 32 )[0] * 0.1f &&
+	                  shiftedOverlay.At( 32, 32 )[1] > multiplied.At( 32, 32 )[1] * 3.0f,
+	    "posed-model.two-texture-independent-transform-negative-control",
+	    std::to_string( shiftedOverlay.At( 32, 32 )[0] ) + " " +
+	        std::to_string( shiftedOverlay.At( 32, 32 )[1] ) );
+	twoTexture.ReleaseDevice( *device );
+	transformed.ReleaseDevice( *device );
 	(void)device->WaitIdle();
 	pass.ReleaseDevice( *device );
 	glass.ReleaseDevice( *device );

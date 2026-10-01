@@ -169,7 +169,7 @@ layout( set = 1, binding = 0 ) uniform ClusterView
 	uvec4 grid;         // tilesX, tilesY, slices, tile size in pixels
 	vec4 slices;        // sliceScale, sliceBias, nearZ
 	vec4 viewDistance;  // a world point's view distance: dot( xyz, p ) + w
-	vec4 counts;        // x: the projected lights (binding 7)
+	vec4 counts;        // x: projectors; y: screen scale; zw: viewport origin
 } clusterView;
 layout( set = 1, binding = 1, std430 ) readonly buffer ClusterFroxels
 {
@@ -273,6 +273,7 @@ layout( set = 2, binding = 0 ) uniform Material
 	vec4 meshProbeColor; // contrast, saturation, Phong warp, RGB probe mask
 	vec4 transmission; // thin: fraction/IOR; Refract: amount/blur/mode/fade
 	vec4 emissionCone; // inner/outer cosine, exponent, enabled
+	vec4 texture2Transform[2];
 } material;
 layout( set = 2, binding = 1 ) uniform texture2D baseTexture;
 layout( set = 2, binding = 2 ) uniform sampler baseSampler;
@@ -500,6 +501,7 @@ uint ClusterAxis( float pixel, uint count )
 
 uint ClusterFroxel( vec2 pixel, float distance )
 {
+	pixel -= clusterView.counts.zw;
 	const uint slices = clusterView.grid.z;
 	uint slice = 0u;
 	if ( distance > clusterView.slices.z )
@@ -1011,8 +1013,6 @@ void PbrSurface()
 			    light.center.xyz, light.halfU.xyz, light.halfV.xyz, light.halfU.w, worldPosition );
 			if ( window <= 0.0 )
 				continue;
-			vec3 corners[4];
-			AreaLightCorners( light, corners );
 			const bool twoSided = light.center.w > 0.5;
 			float visibility = 1.0;
 			const int firstTile = int( light.radiance.w );
@@ -1034,6 +1034,8 @@ void PbrSurface()
 				if ( visibility <= 0.0 )
 					continue;
 			}
+			vec3 corners[4];
+			AreaLightCorners( light, corners );
 			const vec3 radiance = light.radiance.rgb * window * visibility;
 			// A baked light's diffuse light is already in the bake, unless
 			// the bake is the indirect layer (runtime direct light).
@@ -1556,6 +1558,14 @@ void main()
 	}
 	if ( lightingOne )
 	{
+		if ( material.meshModes.x > 0.5 )
+		{
+			const vec4 uv = vec4( baseUv, 0.0, 1.0 );
+			const vec2 secondUv = vec2( dot( uv, material.texture2Transform[0] ),
+			    dot( uv, material.texture2Transform[1] ) );
+			albedo *= texture( sampler2D( emissionTexture, emissionSampler ), secondUv ).rgb;
+			alpha = 1.0; // UnlitTwoTexture's output alpha, independent of texture alpha
+		}
 		// UnlitGeneric: $alpha once, the vertex color and the vertex alpha
 		// each by its own flag.
 		if ( material.flags.x != 0.0 )

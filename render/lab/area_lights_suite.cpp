@@ -488,6 +488,7 @@ struct Frame
 	const View *view = nullptr;
 	shaderlib::DebugSpecialization debug;
 	bool spatial = true;
+	std::uint32_t originX = 0, originY = 0;
 };
 
 // Renders the receiver under a frame's lights.
@@ -500,7 +501,8 @@ std::optional<std::string> Render( Lab &lab, const Frame &frame, CanvasImage &im
 		pass::lights::ClusterViewDesc desc;
 		desc.view = frame.view->view;
 		desc.projection = frame.view->projection;
-		desc.widthPixels = desc.heightPixels = kSize;
+		desc.widthPixels = kSize - frame.originX;
+		desc.heightPixels = kSize - frame.originY;
 		desc.nearZ = frame.view->nearZ;
 		desc.farZ = frame.view->farZ;
 		auto limits = pass::lights::DesktopClusterLimits();
@@ -519,6 +521,8 @@ std::optional<std::string> Render( Lab &lab, const Frame &frame, CanvasImage &im
 		view.slices[0] = grid.Value().sliceScale;
 		view.slices[1] = grid.Value().sliceBias;
 		view.slices[2] = grid.Value().nearZ;
+		view.counts[2] = float( frame.originX );
+		view.counts[3] = float( frame.originY );
 		const auto &z = desc.view.rows[2];
 		view.viewDistance[0] = -z.x;
 		view.viewDistance[1] = -z.y;
@@ -528,8 +532,8 @@ std::optional<std::string> Render( Lab &lab, const Frame &frame, CanvasImage &im
 		pass::lights::AppendAreaMasks( masks, indices );
 		std::vector<pass::lights::FroxelRange> ranges( grid.Value().FroxelCount() );
 		const material::SurfaceLightGpu light;
-		viewRequest = lab.family->Program().ViewGroup( view,
-		    std::as_bytes( std::span( ranges ) ), indices, std::span( &light, 1 ) );
+		viewRequest = lab.family->Program().ViewGroup(
+		    view, std::as_bytes( std::span( ranges ) ), indices, std::span( &light, 1 ) );
 	}
 	if ( !lab.groups.Set( viewGroup, viewRequest ) )
 		return "area view refused";
@@ -558,6 +562,8 @@ std::optional<std::string> Render( Lab &lab, const Frame &frame, CanvasImage &im
 		return resident ? resident->group : BindGroupId();
 	};
 	CanvasDraw draw;
+	draw.viewport = Viewport{ float( frame.originX ), float( frame.originY ),
+	    float( kSize - frame.originX ), float( kSize - frame.originY ), 0, 1 };
 	draw.pipeline = pipeline.Value();
 	draw.groups[std::size_t( BindGroupRole::kFrame )] = group( frameGroup );
 	draw.groups[std::size_t( BindGroupRole::kView )] = group( viewGroup );
@@ -698,6 +704,23 @@ std::optional<std::string> AreaChecks( Lab &lab, Results &results )
 			    Format3( "%.0f of %.0f sampled pixels outside the tolerance, worst relative %.3g",
 			        bad, pixels, worst ) );
 		}
+	}
+
+	// Offset and resized viewports use local pixel coordinates for both lists.
+	for ( const char *name : { "short-reach", "grid64" } )
+	{
+		Frame frame{ lights.at( name ), &kMaterials[0], &overhead,
+		    Lobe( shaderlib::DebugBrdf::kDiffuseOnly ) };
+		frame.originX = 48;
+		frame.originY = 24;
+		CanvasImage clustered, full;
+		if ( auto why = Render( lab, frame, clustered ) )
+			return why;
+		frame.spatial = false;
+		if ( auto why = Render( lab, frame, full ) )
+			return why;
+		results.That( clustered.rgba == full.rgba, std::string( "offset-viewport." ) + name,
+		    "spatial area lights match the full loop in an offset, resized viewport" );
 	}
 
 	// GGX: against the term's definition, and its accuracy against the exact
