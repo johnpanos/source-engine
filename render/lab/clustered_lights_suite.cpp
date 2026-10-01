@@ -158,6 +158,7 @@ float Oracle( const std::vector<light_set::RuntimeLight> &lights, const Receiver
 
 struct Lab
 {
+	std::unique_ptr<LabClusterLists> clusters;
 	IRenderDevice2 &device;
 	resources::TextureCache textures;
 	material::GroupResidency groups;
@@ -244,8 +245,8 @@ std::optional<material::GroupRequest> ViewGroup( Lab &lab, const Frame &frame )
 	auto grid = pass::lights::CreateClusterGrid( desc, limits );
 	if ( !grid )
 		return std::nullopt;
-	pass::lights::ClusterLists lists;
-	if ( !pass::lights::AssignLights( grid.Value(), lights, lists ) )
+	lab.clusters = LabClusterLists::Create( lab.device, grid.Value(), lights );
+	if ( !lab.clusters )
 		return std::nullopt;
 	material::SurfaceViewGpu view;
 	view.grid[0] = grid.Value().tilesX;
@@ -260,16 +261,14 @@ std::optional<material::GroupRequest> ViewGroup( Lab &lab, const Frame &frame )
 	view.viewDistance[1] = -z.y;
 	view.viewDistance[2] = -z.z;
 	view.viewDistance[3] = -z.w;
-	std::vector<std::byte> indices( 16, std::byte( 0 ) ); // ClusterIndexHeader
-	const auto listed = std::as_bytes( std::span( lists.lightIndices ) );
-	indices.insert( indices.end(), listed.begin(), listed.end() );
 	std::vector<material::SurfaceLightGpu> records;
 	for ( const light_set::RuntimeLight &light : lights )
 		records.push_back( material::PackSurfaceLight( light ) );
 	if ( records.empty() )
 		records.emplace_back();
-	return lab.family->Program().ViewGroup(
-	    view, std::as_bytes( std::span( lists.froxels ) ), indices, records );
+	auto request = lab.family->Program().ViewGroup( view, {}, {}, records );
+	lab.clusters->Bind( request );
+	return request;
 }
 
 std::optional<std::string> Render( Lab &lab, const Frame &frame, CanvasImage &image )

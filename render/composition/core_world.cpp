@@ -954,7 +954,8 @@ CoreWorld::ViewLightInputs CoreWorld::TakeViewLightInputs(
 }
 
 std::shared_ptr<const pass::world::StageViewLights> CoreWorld::StageViewLightsFor(
-    const ViewLightInputs &in, std::shared_ptr<const ShadowWork> *shadows )
+    const ViewLightInputs &in, std::shared_ptr<const ShadowWork> *shadows,
+    device::CommandEncoder &encoder )
 {
 	*shadows = nullptr;
 	const float *worldToView = in.worldToView;
@@ -987,8 +988,10 @@ std::shared_ptr<const pass::world::StageViewLights> CoreWorld::StageViewLightsFo
 	if ( !grid )
 		return nullptr;
 	const std::vector<light_set::RuntimeLight> &frameLights = in.lights;
-	pass::lights::ClusterLists lists;
-	if ( !pass::lights::AssignLights( grid.Value(), frameLights, lists ) )
+	auto dispatch =
+	    pass::lights::PrepareSurfaceClusterDispatch( grid.Value(), frameLights, in.areas );
+	auto assigned = m_ClusterKernel->RecordView( encoder, dispatch );
+	if ( !assigned )
 		return nullptr;
 	auto out = std::make_shared<pass::world::StageViewLights>();
 	out->view.grid[0] = grid.Value().tilesX;
@@ -1005,24 +1008,23 @@ std::shared_ptr<const pass::world::StageViewLights> CoreWorld::StageViewLightsFo
 	out->view.viewDistance[1] = -z.y;
 	out->view.viewDistance[2] = -z.z;
 	out->view.viewDistance[3] = -z.w;
-	out->froxels.resize( lists.froxels.size() * sizeof( pass::lights::FroxelRange ) );
-	std::memcpy( out->froxels.data(), lists.froxels.data(), out->froxels.size() );
-	out->indices.assign( 16, std::byte( 0 ) ); // ClusterIndexHeader
-	const auto listed = std::as_bytes( std::span( lists.lightIndices ) );
-	out->indices.insert( out->indices.end(), listed.begin(), listed.end() );
-	std::vector<pass::lights::AreaFroxelMask> areaMasks;
-	if ( !pass::lights::AssignAreaLights( grid.Value(), in.areas, areaMasks ) )
-		return nullptr;
-	pass::lights::AppendAreaMasks( areaMasks, out->indices );
-	// The shadows of the view's point and spot lights (render.shadows.v1:
-	// one tile per spot, six per point light), planned for this view.
-	// Only the lights the view's clusters list reach what it draws; the
-	// others need no shadow for this view.
+	out->gpuFroxels = assigned.Value().froxels;
+	out->gpuIndices = assigned.Value().indices;
+	// Shadow planning uses conservative whole-view visibility, never a GPU-list
+	// readback. Fine per-froxel membership belongs exclusively to the GPU.
 	std::vector<char> reaches( frameLights.size(), 0 );
-	for ( std::uint32_t index : lists.lightIndices )
+	for ( std::size_t i = 0; i < dispatch.lightCount; ++i )
 	{
-		if ( index < reaches.size() )
-			reaches[index] = 1;
+		const auto &light = dispatch.lights[i];
+		const math::float3 p{
+		    light.positionRadius[0], light.positionRadius[1], light.positionRadius[2] };
+		const float r =
+		    light.positionRadius[3] + 4e-6f * ( math::Length( p ) + light.positionRadius[3] );
+		const auto &g = grid.Value();
+		if ( g.columnPlanes.front().Distance( p ) >= -r &&
+		     g.columnPlanes.back().Distance( p ) <= r && g.rowPlanes.front().Distance( p ) >= -r &&
+		     g.rowPlanes.back().Distance( p ) <= r && -p.z + r >= g.nearZ && -p.z - r <= g.farZ )
+			reaches[dispatch.lightSetIndex[i]] = 1;
 	}
 	std::vector<light_set::RuntimeLight> shadowed;
 	std::vector<int> shadowedOf( frameLights.size(), -1 );
@@ -1405,7 +1407,7 @@ void CoreWorld::BeginFrame()
 
 unsigned long long CoreWorld::Failures() const
 {
-	return m_Pass.Failures();
+	return m_Pass.Failures() + m_LightingFailures.load();
 }
 
 void CoreWorld::GetStats( RenderCoreWorldStats *out ) const
@@ -1774,17 +1776,29 @@ void CoreWorld::RecordSlot(
 		world.ambientOcclusionDesc = m_StreamLighting.ambientOcclusionDesc;
 	}
 
-	std::shared_ptr<const ShadowWork> shadows;
-	if ( pending )
+	if ( pending && !target.device )
 	{
-		std::call_once( pending->made,
-		    [&]
-		    {
-			    pending->lights = StageViewLightsFor( pending->inputs, &pending->shadows );
-			    m_StageLightingBuilds.fetch_add( 1, std::memory_order_relaxed );
-		    } );
-		world.lights = pending->lights;
-		shadows = pending->shadows;
+		++m_LightingFailures;
+		return;
+	}
+	if ( pending && target.device )
+	{
+		BindStageDevice( *target.device );
+		if ( !m_ClusterKernel )
+		{
+			auto kernel = pass::lights::ClusterKernel::Create( *target.device );
+			if ( !kernel )
+			{
+				++m_LightingFailures;
+				return;
+			}
+			m_ClusterKernel = std::move( kernel ).Value();
+		}
+		if ( target.frame != m_ClusterFrame )
+		{
+			m_ClusterKernel->Collect( target.submitted );
+			m_ClusterFrame = target.frame;
+		}
 	}
 	// RFC 0014 D4: the view's sections are timed while the timers are on.
 	graph::GpuPassTimers *timers = target.device ? SlotTimers( target ) : nullptr;
@@ -1794,6 +1808,28 @@ void CoreWorld::RecordSlot(
 	{
 		timers->Attach( encoder );
 		encoder.BeginLabel( "core world view" );
+	}
+	std::shared_ptr<const ShadowWork> shadows;
+	if ( pending )
+	{
+		std::call_once( pending->made,
+		    [&]
+		    {
+			    pending->lights = StageViewLightsFor( pending->inputs, &pending->shadows, encoder );
+			    m_StageLightingBuilds.fetch_add( 1, std::memory_order_relaxed );
+		    } );
+		if ( !pending->lights )
+		{
+			if ( timers )
+			{
+				encoder.EndLabel();
+				timers->Detach( encoder );
+			}
+			++m_LightingFailures;
+			return;
+		}
+		world.lights = pending->lights;
+		shadows = pending->shadows;
 	}
 	if ( shadows && target.device && !shadows->views.empty() )
 		world.shadowAtlas = DrawStageShadows(
@@ -2244,6 +2280,8 @@ void CoreWorld::BindStageDevice( device::IRenderDevice2 &device )
 	if ( m_ShadowDevice == &device )
 		return;
 	// A new backend device: the old one's objects went with it.
+	m_ClusterKernel.reset();
+	m_ClusterFrame = 0;
 	m_ShadowRenderer.reset();
 	m_CasterMeshes.reset();
 	m_Atlases.clear();
@@ -2314,6 +2352,8 @@ void CoreWorld::ReleaseShadows( device::IRenderDevice2 &device )
 	}
 	m_Atlases.clear();
 	m_CasterMeshes.reset();
+	m_ClusterKernel.reset();
+	m_ClusterFrame = 0;
 	m_ShadowRenderer.reset();
 	m_CastersStaged = 0;
 	m_ShadowDevice = nullptr;

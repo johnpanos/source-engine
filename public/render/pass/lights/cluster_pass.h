@@ -3,27 +3,11 @@
 // Purpose: render.pass.lights on the device (RFC 0016 K7, render.lights.v1):
 //			cluster_assign.comp as a render.graph compute pass.
 //
-//			PrepareClusterDispatch lays out what one view's dispatch reads:
-//			the parameters, the packed light records (PackClusterLights) with
-//			the light-set index of each, and the packed grid
-//			(PackClusterGrid). AddClusterUploadPass writes them and zeroes the
-//			index list's counters in a copy pass; AddClusterAssignPass runs
-//			the kernel, one invocation per froxel. Its outputs are the
-//			froxels' ranges and the index list, the lists the serial path
-//			(AssignLights) builds, with the offsets in scheduling order:
-//
-//			- with no index-capacity overflow each froxel's list equals the
-//			  serial path's, ascending light-set indices;
-//			- the counters equal ClusterStats' froxelsOverflowed and
-//			  assignmentsDropped, and min( requested, capacity ) equals its
-//			  assignments;
-//			- under index-capacity overflow a froxel's list is a prefix of
-//			  its per-froxel-limited serial list, and only the totals are
-//			  defined (which froxels lose room depends on scheduling).
-//
-//			Lights beyond maxLights never reach the device (PackClusterLights
-//			cuts them); ClusterStats::lightsOverCapacity counts them on the
-//			CPU.
+// GPU Morton sort, 32-way BVH and one 32-thread group per froxel.
+// Lists retain ascending light-set order. Capacity overflow is counted; which
+// froxels exhaust the global index budget depends on scheduling.
+// RecordView owns its buffers until Collect receives the LAST CONSUMER token,
+// not merely the assignment submission token. No CPU assignment or readback.
 //
 //=============================================================================//
 
@@ -68,12 +52,21 @@ static_assert( sizeof( ClusterParamsGpu ) == 32 && sizeof( ClusterIndexHeader ) 
 
 // One view's dispatch inputs. Each list holds at least one record, so every
 // binding has a size; lightCount says how many are real.
+struct ClusterAreaGpu
+{
+	math::float4 centerReach;
+	math::float4 halfU;
+	math::float4 halfV;
+};
+
 struct ClusterDispatchData
 {
 	ClusterParamsGpu params;
+	ClusterStats admission;
 	std::vector<ClusterLightGpu> lights;
 	std::vector<std::uint32_t> lightSetIndex;
 	std::vector<math::float4> grid;
+	std::vector<ClusterAreaGpu> areas;
 	std::uint32_t froxelCount = 0;
 	std::uint32_t lightCount = 0;
 	std::uint32_t indexCapacity = 0;
@@ -85,12 +78,20 @@ struct ClusterDispatchData
 	std::uint64_t IndexBytes() const
 	{
 		return sizeof( ClusterIndexHeader ) +
-		       std::uint64_t( indexCapacity ) * sizeof( std::uint32_t );
+		       std::uint64_t( indexCapacity ) * sizeof( std::uint32_t ) +
+		       ( params.limits[2] ? std::uint64_t( froxelCount ) * 8 : 0 );
 	}
 };
 
-ClusterDispatchData PrepareClusterDispatch(
-    const ClusterGrid &grid, std::span<const light_set::RuntimeLight> lights );
+ClusterDispatchData PrepareClusterDispatch( const ClusterGrid &grid,
+    std::span<const light_set::RuntimeLight> lights,
+    std::span<const area_light::AreaLight> areas = {} );
+
+// Surface consumers reserve for every admitted light in every froxel, so neither
+// per-froxel nor global index capacity can silently reduce the rendered image.
+ClusterDispatchData PrepareSurfaceClusterDispatch( const ClusterGrid &grid,
+    std::span<const light_set::RuntimeLight> lights,
+    std::span<const area_light::AreaLight> areas = {} );
 
 // The dispatch's buffers: params as a uniform buffer (kUniform); lights,
 // light-set indices and grid as read-only storage (kStorageRead); froxels and
@@ -103,6 +104,9 @@ struct ClusterBuffers
 	device::BufferId grid;
 	device::BufferId froxels;
 	device::BufferId indices;
+	device::BufferId tree;
+	device::BufferId areas;
+	std::uint32_t areaCount = 0;
 	std::uint32_t froxelCount = 0;
 	std::uint32_t lightRecords = 1; // records bound (at least 1)
 	std::uint32_t gridRecords = 0;
@@ -112,7 +116,8 @@ struct ClusterBuffers
 enum class ClusterKernelStatus : std::uint8_t
 {
 	kNoCompute = 1, // the device lacks Capability::kCompute
-	kDevice         // the device refused the layout, pipeline or bind group
+	kCapacity,
+	kDevice // the device refused the layout, pipeline or bind group
 };
 
 class ClusterKernel
@@ -130,6 +135,10 @@ public:
 	// index header must be zero. The bind group stays live until Collect.
 	foundation::Expected<void, ClusterKernelStatus> Record(
 	    device::CommandEncoder &encoder, const ClusterBuffers &buffers );
+	// Allocates/uploads inputs and records assignment on the consumer encoder.
+	// Returned outputs are in kStorageRead. Collect retires the owned buffers.
+	foundation::Expected<ClusterBuffers, ClusterKernelStatus> RecordView(
+	    device::CommandEncoder &encoder, const ClusterDispatchData &data );
 	// Releases the bind groups of recorded dispatches behind `token`.
 	void Collect( device::CompletionToken token );
 	// Dispatches a graph pass could not record; the owner checks this after
@@ -141,6 +150,8 @@ private:
 	device::IRenderDevice2 &m_Device;
 	device::BindGroupLayoutId m_Layout;
 	device::PipelineId m_Pipeline;
+	device::PipelineId m_BuildPipeline;
+	std::vector<device::BufferId> m_Buffers;
 	std::vector<device::BindGroupId> m_Pending;
 	device::CompletionToken m_LastToken;
 	std::uint32_t m_RecordFailures = 0;
@@ -155,6 +166,8 @@ struct ClusterPassResources
 	graph::ResourceRef grid;
 	graph::ResourceRef froxels;
 	graph::ResourceRef indices;
+	graph::ResourceRef tree;
+	graph::ResourceRef areas;
 };
 
 // Transient buffers sized for `data`, declared on `builder`.

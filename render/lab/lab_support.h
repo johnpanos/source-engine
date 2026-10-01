@@ -13,6 +13,7 @@
 #include "mapcontainer/world_lightmap.h"
 #include "mdl/studio_model.h"
 #include "render/device/device.h"
+#include "render/pass/lights/cluster_pass.h"
 #include "render/frame/debug_controls.h"
 #include "render/pass/world/world_pass.h"
 #include "render/resources/texture_cache.h"
@@ -29,6 +30,24 @@
 
 namespace render::lab
 {
+
+// Lab ownership for GPU lists shared by subsequent surface draws. Canvas renders
+// wait for completion; destruction also drains error paths before retiring buffers.
+class LabClusterLists
+{
+public:
+	static std::unique_ptr<LabClusterLists> Create( device::IRenderDevice2 &device,
+	    const pass::lights::ClusterGrid &grid, std::span<const light_set::RuntimeLight> lights,
+	    std::span<const area_light::AreaLight> areas = {} );
+	~LabClusterLists();
+	void Bind( material::GroupRequest &request ) const;
+
+private:
+	explicit LabClusterLists( device::IRenderDevice2 &device ) : m_Device( device ) {}
+	device::IRenderDevice2 &m_Device;
+	std::unique_ptr<pass::lights::ClusterKernel> m_Kernel;
+	pass::lights::ClusterBuffers m_Buffers;
+};
 
 std::optional<std::string> ReadFile( const std::filesystem::path &path );
 

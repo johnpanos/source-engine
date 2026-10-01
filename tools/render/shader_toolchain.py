@@ -189,7 +189,8 @@ GENERATED = {
         ("kTintFragment", DEBUG + "/tint.frag", DEVICE_OPTIONS))),
     "cluster_assign_spv.h": ("render::pass::lights::spirv",
         "the clustered light assignment pass (RFC 0016 K7)", (
-        ("kClusterAssignCompute", LIGHTS + "/cluster_assign.comp", DEVICE_OPTIONS),)),
+        ("kClusterAssignCompute", LIGHTS + "/cluster_assign.comp", DEVICE_OPTIONS),
+        ("kClusterBuildCompute", LIGHTS + "/cluster_build.comp", DEVICE_OPTIONS),)),
     "shadow_spv.h": ("render::pass::shadows::spirv", "the shadow passes (RFC 0016 K7)", (
         ("kShadowDepthVertex", SHADOWS + "/shadow_depth.vert", DEVICE_OPTIONS),
         ("kShadowReceiverVertex", SHADOWS + "/shadow_receiver.vert", DEVICE_OPTIONS),

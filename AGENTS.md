@@ -1795,6 +1795,10 @@ Keep the table concise and link details below or from the domain progress file.
   verdict does not close complete-image or representative-scene coverage.
   Missing evidence and misses block performance acceptance/promotion. No render
   gate is closed by these documentation and budget changes.
+  GPU Morton sorting, a 32-way BVH and 32-thread assignment now replace runtime
+  CPU light and area-mask assignment; the native suite passes 28 checks.
+  [Implementation and evidence](RFC/0016-gpu-light-assignment-2026-10-01.md)
+  retain full-frame quality/performance acceptance as unverified.
 
 - R32-RENDER-BUDGETS: `partial` (2026-09-25, user direction). This sets
   per-profile render budgets, which close the `presentation.frame-budgets`

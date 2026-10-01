@@ -78,8 +78,9 @@ void GroupResidency::Retiring( Entry &entry )
 		m_Replaced.push_back( entry.resident.group );
 	if ( entry.constants.IsValid() )
 		m_Replaced.push_back( entry.constants );
-	for ( BufferId buffer : entry.storage )
-		m_Replaced.push_back( buffer );
+	for ( std::size_t i = 0; i < entry.storage.size(); ++i )
+		if ( !entry.request.storage[i].external.IsValid() )
+			m_Replaced.push_back( entry.storage[i] );
 	entry.resident = ResidentGroup();
 	entry.constants = BufferId();
 	entry.storage.clear();
@@ -109,6 +110,11 @@ foundation::Expected<void, ProgramStatus> GroupResidency::Set(
 	}
 	for ( const GroupBuffer &storage : request.storage )
 	{
+		if ( storage.external.IsValid() )
+		{
+			entry.storage.push_back( storage.external );
+			continue;
+		}
 		BufferDesc desc;
 		desc.size = std::max<std::uint64_t>( storage.bytes.size(), 4 );
 		desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kStorageRead };
@@ -319,6 +325,8 @@ std::size_t GroupResidency::RecordUploads( CommandEncoder &encoder )
 			}
 			for ( std::size_t i = 0; i < entry.storage.size(); ++i )
 			{
+				if ( entry.request.storage[i].external.IsValid() )
+					continue;
 				const std::vector<std::byte> &bytes = entry.request.storage[i].bytes;
 				encoder.TransitionBuffer(
 				    entry.storage[i], ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );

@@ -412,6 +412,7 @@ bool NearALight( const std::vector<area_light::AreaLight> &lights, float3 p )
 
 struct Lab
 {
+	std::unique_ptr<LabClusterLists> clusters;
 	IRenderDevice2 &device;
 	resources::TextureCache textures;
 	material::GroupResidency groups;
@@ -510,9 +511,9 @@ std::optional<std::string> Render( Lab &lab, const Frame &frame, CanvasImage &im
 		auto grid = pass::lights::CreateClusterGrid( desc, limits );
 		if ( !grid )
 			return "area grid refused";
-		std::vector<pass::lights::AreaFroxelMask> masks;
-		if ( !pass::lights::AssignAreaLights( grid.Value(), frame.lights, masks ) )
-			return "area assignment refused";
+		lab.clusters = LabClusterLists::Create( lab.device, grid.Value(), {}, frame.lights );
+		if ( !lab.clusters )
+			return "GPU area assignment refused";
 		material::SurfaceViewGpu view;
 		view.grid[0] = grid.Value().tilesX;
 		view.grid[1] = grid.Value().tilesY;
@@ -528,12 +529,9 @@ std::optional<std::string> Render( Lab &lab, const Frame &frame, CanvasImage &im
 		view.viewDistance[1] = -z.y;
 		view.viewDistance[2] = -z.z;
 		view.viewDistance[3] = -z.w;
-		std::vector<std::byte> indices( 16 );
-		pass::lights::AppendAreaMasks( masks, indices );
-		std::vector<pass::lights::FroxelRange> ranges( grid.Value().FroxelCount() );
 		const material::SurfaceLightGpu light;
-		viewRequest = lab.family->Program().ViewGroup(
-		    view, std::as_bytes( std::span( ranges ) ), indices, std::span( &light, 1 ) );
+		viewRequest = lab.family->Program().ViewGroup( view, {}, {}, std::span( &light, 1 ) );
+		lab.clusters->Bind( viewRequest );
 	}
 	if ( !lab.groups.Set( viewGroup, viewRequest ) )
 		return "area view refused";

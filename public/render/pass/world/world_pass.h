@@ -306,7 +306,9 @@ struct WorldTarget
 struct StageViewLights
 {
 	material::SurfaceViewGpu view;
-	std::vector<std::byte> froxels; // FroxelRange records
+	device::BufferId gpuFroxels;
+	device::BufferId gpuIndices;
+	std::vector<std::byte> froxels; // unassigned neutral fixtures only
 	std::vector<std::byte> indices; // ClusterIndexHeader, then indices
 	std::vector<material::SurfaceLightGpu> lights;
 	// The view's shadow tiles (render.shadows.v1), which the lights index;

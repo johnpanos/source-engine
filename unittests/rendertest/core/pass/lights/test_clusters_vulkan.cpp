@@ -46,6 +46,7 @@
 #include "render/graph/compiled_graph.h"
 #include "render/graph/executor.h"
 #include "render/pass/lights/cluster_pass.h"
+#include "render/graph/pass_timers.h"
 #include "testing/checks.h"
 
 #include <algorithm>
@@ -107,11 +108,12 @@ struct DeviceLists
 
 // Runs the upload, assign and readback passes for one view.
 DeviceLists AssignOnDevice( IRenderDevice2 &device, lights::ClusterKernel &kernel,
-    const lights::ClusterGrid &grid, std::span<const RuntimeLight> sceneLights )
+    const lights::ClusterGrid &grid, std::span<const RuntimeLight> sceneLights,
+    std::span<const area_light::AreaLight> areas = {}, bool direct = false )
 {
 	DeviceLists result;
 	auto data = std::make_shared<const lights::ClusterDispatchData>(
-	    lights::PrepareClusterDispatch( grid, sceneLights ) );
+	    lights::PrepareClusterDispatch( grid, sceneLights, areas ) );
 	BufferDesc froxelDesc;
 	froxelDesc.size = std::max<std::uint64_t>( data->FroxelBytes(), 8 );
 	froxelDesc.usages = { ResourceUsage::kCopyDestination };
@@ -120,7 +122,35 @@ DeviceLists AssignOnDevice( IRenderDevice2 &device, lights::ClusterKernel &kerne
 	indexDesc.size = data->IndexBytes();
 	auto froxelReadback = device.CreateBuffer( froxelDesc );
 	auto indexReadback = device.CreateBuffer( indexDesc );
-	if ( froxelReadback && indexReadback )
+	if ( froxelReadback && indexReadback && direct )
+	{
+		auto encoded = device.BeginEncoder( QueueKind::kGraphics );
+		if ( encoded )
+		{
+			auto assigned = kernel.RecordView( encoded.Value(), *data );
+			if ( assigned )
+			{
+				auto &encoder = encoded.Value();
+				encoder.TransitionBuffer( assigned.Value().froxels, ResourceUsage::kStorageRead,
+				    ResourceUsage::kCopySource );
+				encoder.TransitionBuffer( assigned.Value().indices, ResourceUsage::kStorageRead,
+				    ResourceUsage::kCopySource );
+				encoder.TransitionBuffer( froxelReadback.Value(), ResourceUsage::kUndefined,
+				    ResourceUsage::kCopyDestination );
+				encoder.TransitionBuffer( indexReadback.Value(), ResourceUsage::kUndefined,
+				    ResourceUsage::kCopyDestination );
+				encoder.CopyBuffer( assigned.Value().froxels, froxelReadback.Value(),
+				    { 0, 0, data->FroxelBytes() } );
+				encoder.CopyBuffer(
+				    assigned.Value().indices, indexReadback.Value(), { 0, 0, data->IndexBytes() } );
+				auto token = device.Submit( QueueKind::kGraphics, { &encoder, 1 }, {} );
+				result.ok = token && Wait( device, token.Value() );
+				if ( token )
+					kernel.Collect( token.Value() );
+			}
+		}
+	}
+	else if ( froxelReadback && indexReadback )
 	{
 		graph::GraphBuilder builder;
 		const lights::ClusterPassResources resources =
@@ -682,6 +712,129 @@ int main()
 				detected = seeded.counterErrors > 0;
 			}
 			checks.That( detected, std::string( "G5.detects-" ) + defect.name );
+		}
+
+		// The actual inline consumer path, all 32 BVH children, equal Morton keys,
+		// and both words of the area mask. Compare every output, not just counters.
+		Scene dense = scenes[1];
+		dense.limits.maxLights = 1024;
+		dense.limits.maxLightsPerFroxel = 1024;
+		dense.limits.maxLightIndices = 1u << 22;
+		while ( dense.lights.size() < 1024 )
+			dense.lights.push_back( dense.lights[dense.lights.size() % 256] );
+		const Built denseReference = Serial( dense );
+		std::vector<area_light::AreaLight> areas( 64 );
+		for ( std::size_t i = 0; i < areas.size(); ++i )
+		{
+			auto &area = areas[i];
+			area.rect.center[0] = float( i ) * 13.0f - 300.0f;
+			area.rect.center[2] = -100.0f;
+			area.rect.halfU[0] = 20.0f;
+			area.rect.halfV[1] = 30.0f;
+			area.reach = 200.0f + float( i ) * 10.0f;
+		}
+		const DeviceLists gpu = AssignOnDevice(
+		    *device, *kernel.Value(), denseReference.grid, dense.lights, areas, true );
+		checks.That( gpu.ok, "G6.inline-consumer-dispatch" );
+		bool identical = gpu.ok;
+		if ( gpu.ok )
+			for ( std::uint32_t f = 0; f < denseReference.grid.FroxelCount(); ++f )
+			{
+				const auto a = ListOf( denseReference.lists, f ), b = ListOf( gpu, f );
+				identical = identical && std::equal( a.begin(), a.end(), b.begin(), b.end() );
+			}
+		checks.That( identical, "G6.all-1024-light-lists-match" );
+		std::vector<lights::AreaFroxelMask> expectedMasks;
+		bool masks =
+		    gpu.ok && lights::AssignAreaLights( denseReference.grid, areas, expectedMasks );
+		if ( masks )
+		{
+			masks = gpu.header.reserved == denseReference.grid.limits.maxLightIndices + 1;
+			for ( std::size_t f = 0; f < expectedMasks.size(); ++f )
+				for ( std::size_t word = 0; word < 2; ++word )
+					masks =
+					    masks &&
+					    expectedMasks[f][word] ==
+					        gpu.indices[denseReference.grid.limits.maxLightIndices + 2 * f + word];
+		}
+		checks.That( masks, "G6.gpu-area-masks-match" );
+
+		// Diagnostic full-cost assignment measurements. These are NOT complete-frame
+		// performance acceptance: submit/wait is included and no surfaces are drawn.
+		if ( std::getenv( "CONFORMANCE_CLUSTER_BENCH" ) )
+		{
+			bool measured = true;
+			for ( const unsigned count : { 0u, 43u, 256u, 1024u } )
+			{
+				Scene scene = dense;
+				scene.lights.resize( count );
+				scene.desc.widthPixels = 1920;
+				scene.desc.heightPixels = 1080;
+				auto grid = lights::CreateClusterGrid( scene.desc, scene.limits );
+				if ( !grid )
+				{
+					measured = false;
+					continue;
+				}
+				std::vector<double> hostTimes, gpuTimes, cpuTimes;
+				graph::GpuPassTimers timers( *device );
+				for ( unsigned repeat = 0; repeat < 9; ++repeat )
+				{
+					auto start = std::chrono::steady_clock::now();
+					lights::ClusterLists oracle;
+					auto cpu = lights::AssignLights( grid.Value(), scene.lights, oracle );
+					const double cpuMs = std::chrono::duration<double, std::milli>(
+					    std::chrono::steady_clock::now() - start )
+					                         .count();
+					start = std::chrono::steady_clock::now();
+					auto data = lights::PrepareSurfaceClusterDispatch( grid.Value(), scene.lights );
+					auto encoded = device->BeginEncoder( QueueKind::kGraphics );
+					if ( !cpu || !encoded )
+					{
+						measured = false;
+						break;
+					}
+					timers.BeginFrame( repeat + 1, {} );
+					timers.Attach( encoded.Value() );
+					encoded.Value().BeginLabel( "assignment including uploads" );
+					auto output = kernel.Value()->RecordView( encoded.Value(), data );
+					encoded.Value().EndLabel();
+					timers.Detach( encoded.Value() );
+					auto token =
+					    device->Submit( QueueKind::kGraphics, { &encoded.Value(), 1 }, {} );
+					if ( !output || !token || !Wait( *device, token.Value() ) )
+					{
+						measured = false;
+						break;
+					}
+					const double hostMs = std::chrono::duration<double, std::milli>(
+					    std::chrono::steady_clock::now() - start )
+					                          .count();
+					timers.EndFrame( token.Value() );
+					timers.Collect();
+					auto report = timers.Take();
+					kernel.Value()->Collect( token.Value() );
+					if ( repeat == 0 )
+						continue;
+					hostTimes.push_back( hostMs );
+					cpuTimes.push_back( cpuMs );
+					for ( const auto &pass : report.passes )
+						if ( pass.name == "assignment including uploads" )
+							gpuTimes.push_back( pass.milliseconds );
+				}
+				const auto median = []( std::vector<double> v )
+				{
+					std::sort( v.begin(), v.end() );
+					return v.empty() ? -1.0 : v[v.size() / 2];
+				};
+				std::printf(
+				    "BENCH %u lights %u froxels: CPU oracle %.3f ms; GPU upload+build+assign %.3f "
+				    "ms; prepare+submit+wait %.3f ms (%zu samples)\n",
+				    count, grid.Value().FroxelCount(), median( cpuTimes ), median( gpuTimes ),
+				    median( hostTimes ), hostTimes.size() );
+				measured = measured && hostTimes.size() == 8;
+			}
+			checks.That( measured, "G7.assignment-measurements-complete" );
 		}
 		kernel.Value().reset();
 		(void)device->WaitIdle();

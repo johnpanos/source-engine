@@ -217,6 +217,7 @@ std::optional<float> Visibility( const SceneLight &scene, float3 p, std::uint32_
 
 struct Lab
 {
+	std::unique_ptr<LabClusterLists> clusters;
 	IRenderDevice2 &device;
 	resources::TextureCache textures;
 	resources::MeshCache meshes;
@@ -421,8 +422,8 @@ std::optional<material::GroupRequest> ViewGroup( Lab &lab, const Frame &frame )
 	std::vector<light_set::RuntimeLight> lights;
 	for ( const SceneLight &scene : lab.lights )
 		lights.push_back( scene.light );
-	pass::lights::ClusterLists lists;
-	if ( !pass::lights::AssignLights( grid.Value(), lights, lists ) )
+	lab.clusters = LabClusterLists::Create( lab.device, grid.Value(), lights );
+	if ( !lab.clusters )
 		return std::nullopt;
 	material::SurfaceViewGpu view;
 	view.grid[0] = grid.Value().tilesX;
@@ -437,9 +438,6 @@ std::optional<material::GroupRequest> ViewGroup( Lab &lab, const Frame &frame )
 	view.viewDistance[1] = -z.y;
 	view.viewDistance[2] = -z.z;
 	view.viewDistance[3] = -z.w;
-	std::vector<std::byte> indices( 16, std::byte( 0 ) ); // ClusterIndexHeader
-	const auto listed = std::as_bytes( std::span( lists.lightIndices ) );
-	indices.insert( indices.end(), listed.begin(), listed.end() );
 	std::vector<material::SurfaceLightGpu> records;
 	for ( const SceneLight &scene : lab.lights )
 		records.push_back(
@@ -447,8 +445,9 @@ std::optional<material::GroupRequest> ViewGroup( Lab &lab, const Frame &frame )
 	material::SurfaceShadows shadowing;
 	if ( frame.atlas )
 		shadowing = { lab.atlas, lab.atlasDesc, lab.tiles };
-	return lab.family->Program().ViewGroup(
-	    view, std::as_bytes( std::span( lists.froxels ) ), indices, records, shadowing );
+	auto request = lab.family->Program().ViewGroup( view, {}, {}, records, shadowing );
+	lab.clusters->Bind( request );
+	return request;
 }
 
 std::optional<std::string> Render( Lab &lab, const Frame &frame, CanvasImage &image )

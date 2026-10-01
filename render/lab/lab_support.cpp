@@ -24,6 +24,51 @@ namespace render::lab
 using namespace render::device;
 namespace fs = std::filesystem;
 
+std::unique_ptr<LabClusterLists> LabClusterLists::Create( IRenderDevice2 &device,
+    const pass::lights::ClusterGrid &grid, std::span<const light_set::RuntimeLight> lights,
+    std::span<const area_light::AreaLight> areas )
+{
+	auto out = std::unique_ptr<LabClusterLists>( new LabClusterLists( device ) );
+	auto kernel = pass::lights::ClusterKernel::Create( device );
+	if ( !kernel )
+		return {};
+	out->m_Kernel = std::move( kernel ).Value();
+	auto encoded = device.BeginEncoder( QueueKind::kGraphics );
+	if ( !encoded )
+		return {};
+	auto buffers = out->m_Kernel->RecordView(
+	    encoded.Value(), pass::lights::PrepareSurfaceClusterDispatch( grid, lights, areas ) );
+	if ( !buffers )
+		return {};
+	out->m_Buffers = buffers.Value();
+	auto token = device.Submit( QueueKind::kGraphics, { &encoded.Value(), 1 }, {} );
+	if ( !token )
+		return {};
+	return out;
+}
+LabClusterLists::~LabClusterLists()
+{
+	(void)m_Device.WaitIdle();
+	if ( m_Kernel )
+		m_Kernel->Collect( {} );
+}
+void LabClusterLists::Bind( material::GroupRequest &request ) const
+{
+	for ( auto &buffer : request.storage )
+	{
+		if ( buffer.binding == 1 )
+		{
+			buffer.external = m_Buffers.froxels;
+			buffer.bytes.clear();
+		}
+		if ( buffer.binding == 2 )
+		{
+			buffer.external = m_Buffers.indices;
+			buffer.bytes.clear();
+		}
+	}
+}
+
 std::optional<std::string> ReadFile( const fs::path &path )
 {
 	std::ifstream file( path, std::ios::binary );

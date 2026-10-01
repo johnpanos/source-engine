@@ -69,6 +69,7 @@ struct Group
 	BindGroupId group;
 	BufferId constants;
 	std::vector<BufferId> storage;
+	std::vector<bool> borrowed;
 	std::vector<SamplerId> samplers;
 };
 
@@ -406,8 +407,9 @@ struct WorldPass::State
 				(void)device->Release( group.group, after );
 			if ( group.constants.IsValid() )
 				(void)device->Release( group.constants, after );
-			for ( BufferId buffer : group.storage )
-				(void)device->Release( buffer, after );
+			for ( std::size_t i = 0; i < group.storage.size(); ++i )
+				if ( !group.borrowed[i] )
+					(void)device->Release( group.storage[i], after );
 			for ( SamplerId sampler : group.samplers )
 				(void)device->Release( sampler, after );
 		}
@@ -1544,6 +1546,13 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		}
 		for ( const material::GroupBuffer &storage : request.storage )
 		{
+			out.borrowed.push_back( storage.external.IsValid() );
+			if ( storage.external.IsValid() )
+			{
+				out.storage.push_back( storage.external );
+				entries.push_back( { storage.binding, storage.external, 0, 0, {}, {} } );
+				continue;
+			}
 			BufferDesc desc;
 			desc.size = std::max<std::uint64_t>( storage.bytes.size(), 4 );
 			desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kStorageRead };
@@ -1616,6 +1625,8 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		}
 		for ( std::size_t i = 0; i < out.storage.size(); ++i )
 		{
+			if ( out.borrowed[i] )
+				continue;
 			encoder.TransitionBuffer(
 			    out.storage[i], ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
 			if ( !request.storage[i].bytes.empty() )
@@ -1915,8 +1926,21 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 				screen.sceneColor = viewSceneColor;
 				screen.sceneColorDesc = viewSceneColorDesc;
 			}
-			const material::GroupRequest request = m.resolver->Program().ViewGroup(
+			material::GroupRequest request = m.resolver->Program().ViewGroup(
 			    lights.view, lights.froxels, lights.indices, lights.lights, shadows, {}, screen );
+			for ( auto &buffer : request.storage )
+			{
+				if ( buffer.binding == 1 && lights.gpuFroxels.IsValid() )
+				{
+					buffer.external = lights.gpuFroxels;
+					buffer.bytes.clear();
+				}
+				if ( buffer.binding == 2 && lights.gpuIndices.IsValid() )
+				{
+					buffer.external = lights.gpuIndices;
+					buffer.bytes.clear();
+				}
+			}
 			std::string why;
 			if ( request.layout != m.program.request.viewLayout ||
 			     !buildGroup( request, {}, lit, &why ) )

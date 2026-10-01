@@ -950,6 +950,7 @@ int Run( const Options &options )
 		for ( std::size_t i = 0; i < lights.projectors.size(); ++i )
 			projectorRecords.push_back( projected_light::PackLightGpu( lights.projectors[i],
 			    int( i ), shadowing.projectorTiles.empty() ? -1 : shadowing.projectorTiles[i] ) );
+		std::unique_ptr<LabClusterLists> clusterLists;
 		std::optional<material::GroupRequest> viewGroupRequest;
 		{
 			pass::lights::ClusterViewDesc desc;
@@ -963,9 +964,10 @@ int Run( const Options &options )
 			auto grid = pass::lights::CreateClusterGrid( desc, limits );
 			if ( !grid )
 				return Fail( "the light grid does not build" );
-			pass::lights::ClusterLists lists;
-			if ( !pass::lights::AssignLights( grid.Value(), lights.lights, lists ) )
-				return Fail( "the lights were not assigned to the grid" );
+			clusterLists =
+			    LabClusterLists::Create( *device, grid.Value(), lights.lights, lights.areas );
+			if ( !clusterLists )
+				return Fail( "GPU light assignment failed" );
 			material::SurfaceViewGpu viewGpu;
 			viewGpu.grid[0] = grid.Value().tilesX;
 			viewGpu.grid[1] = grid.Value().tilesY;
@@ -980,9 +982,6 @@ int Run( const Options &options )
 			viewGpu.viewDistance[2] = -z.z;
 			viewGpu.viewDistance[3] = -z.w;
 			viewGpu.counts[0] = float( projectorRecords.size() );
-			std::vector<std::byte> clusterIndices( 16, std::byte( 0 ) ); // ClusterIndexHeader
-			const auto listed = std::as_bytes( std::span( lists.lightIndices ) );
-			clusterIndices.insert( clusterIndices.end(), listed.begin(), listed.end() );
 			std::vector<material::SurfaceLightGpu> records;
 			for ( std::size_t i = 0; i < lights.lights.size(); ++i )
 				records.push_back( material::PackSurfaceLight( lights.lights[i],
@@ -1005,9 +1004,9 @@ int Run( const Options &options )
 			material::SurfaceScreenInputs screen;
 			screen.ambientOcclusion = occlusion.Value();
 			screen.ambientOcclusionDesc = screenDesc;
-			viewGroupRequest = resolver.Value()->Program().ViewGroup( viewGpu,
-			    std::as_bytes( std::span( lists.froxels ) ), clusterIndices, records, shadowInputs,
-			    projectorInputs, screen );
+			viewGroupRequest = resolver.Value()->Program().ViewGroup(
+			    viewGpu, {}, {}, records, shadowInputs, projectorInputs, screen );
+			clusterLists->Bind( *viewGroupRequest );
 		}
 
 		// The groups of every material.

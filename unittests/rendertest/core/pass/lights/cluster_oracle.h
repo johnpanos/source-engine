@@ -28,6 +28,7 @@
 #define RENDER_LIGHTS_CLUSTER_ORACLE_H
 
 #include "render/pass/lights/clusters.h"
+#include "cluster_cpu_reference.h"
 
 #include <algorithm>
 #include <cmath>

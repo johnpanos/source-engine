@@ -26,6 +26,7 @@
 #include "render/pass/ao/ao.h"
 #include "render/pass/indirect/port_compute.h"
 #include "render/pass/lights/map_lights.h"
+#include "render/pass/lights/cluster_pass.h"
 #include "render/pass/shadows/shadow_passes.h"
 #include "render/pass/shadows/shadow_plan.h"
 #include "render/pass/skinning/skinning.h"
@@ -336,10 +337,14 @@ private:
 	ViewLightInputs TakeViewLightInputs(
 	    const float worldToView[16], const float viewToClip[16], const float viewport[6] ) const;
 	// A world stage view's lights, clustered for it and planned into shadow
-	// tiles; null without lights or matrices. Any thread: it reads its inputs
-	// alone.
-	static std::shared_ptr<const pass::world::StageViewLights> StageViewLightsFor(
-	    const ViewLightInputs &inputs, std::shared_ptr<const ShadowWork> *shadows );
+	// tiles; null without lights or matrices. Recorded on the render sequence
+	// with the view consumer encoder.
+	std::unique_ptr<pass::lights::ClusterKernel> m_ClusterKernel;
+	std::uint64_t m_ClusterFrame = 0;
+	std::atomic<std::uint64_t> m_LightingFailures{ 0 };
+	std::shared_ptr<const pass::world::StageViewLights> StageViewLightsFor(
+	    const ViewLightInputs &inputs, std::shared_ptr<const ShadowWork> *shadows,
+	    device::CommandEncoder &encoder );
 	// The view's area lights: the map's (baked light fixtures, a stage's
 	// alone) then the frame's emitting surfaces, at most the surface
 	// program's count. Each is packed with its tile from `areaTiles` (-1

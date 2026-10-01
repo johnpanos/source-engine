@@ -157,10 +157,10 @@ The required implementation and measurement work is:
    CPU, GPU, upload and synchronization costs, including empty/small light sets
    and low-capacity devices, under RFC 0003's binding
    [CPU/GPU placement rule](0003-dependency-aware-job-system.md#cpugpu-execution-placement-user-decision-2026-10-01):
-   if the GPU path is faster, use it in the product. The CPU path remains an
-   oracle and an explicitly
-   selected supported path; its present use is not evidence that the GPU path
-   is integrated. Assignment must keep the contract's conservative coverage,
+   if the GPU path is faster, use it in the product. The user explicitly selected
+   GPU-only product assignment on 2026-10-01: CPU assignment remains a private
+   test oracle, with no runtime fallback. The [GPU BVH implementation and evidence](0016-gpu-light-assignment-2026-10-01.md)
+   record the bounded implementation and remaining performance obligations. Assignment must keep the contract's conservative coverage,
    deterministic ordering and explicit capacity reporting.
 2. **Compute shared view lighting once.** World, static-prop and posed-model
    cohorts of an identical view consume the same immutable assignment and

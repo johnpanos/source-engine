@@ -80,6 +80,8 @@ struct GroupBuffer
 {
 	std::uint32_t binding = 0;
 	std::vector<std::byte> bytes;
+	// Borrowed GPU output, already kStorageRead; owner retires after all consumers.
+	device::BufferId external = {};
 };
 
 struct GroupRequest

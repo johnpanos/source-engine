@@ -1,32 +1,8 @@
 #version 450
-// render.pass.lights light assignment (RFC 0016 K7, render.lights.v1).
-//
-// One invocation per froxel runs the tests of the serial path
-// (render/pass/lights/clusters.cpp AssignLights) against every packed light
-// (PackClusterLights: view-space records, in light-set order after the
-// maxLights cut) and writes the froxel's list: first a count, then an offset
-// from one atomic counter, then the light-set indices of its lights,
-// ascending.
-//
-// Contract with the serial path (render.lights.clusters.gpu): with no
-// index-capacity overflow, each froxel's list equals the serial path's list;
-// only the offsets differ (they depend on scheduling). The per-froxel limit
-// keeps the same lowest light indices, and the counters equal ClusterStats'
-// assignments, froxelsOverflowed and assignmentsDropped. Under index-capacity
-// overflow the lists that lose room depend on scheduling: each list is a
-// prefix of the serial path's per-froxel-limited list, and the kept and
-// dropped totals are defined.
-//
-// The arithmetic follows the serial path's order of operations, and every
-// result is `precise`, so no stage fuses a multiply and an add the CPU
-// rounds separately. Square roots are the only operations the device may
-// round differently (Vulkan allows a few ULP).
-//
-// SEEDED_SLICE_OFF_BY_ONE, SEEDED_CONE_IGNORED and SEEDED_UNCOUNTED_OVERFLOW
-// build the defective variants the render.lights.clusters.gpu suite must
-// reject; no product uses them.
+// One 32-thread workgroup cooperatively traverses a Morton-sorted 32-way light BVH.
+// Accepted lights are compacted in original light-set order, independent of traversal.
 
-layout( local_size_x = 64 ) in;
+layout( local_size_x = 32 ) in;
 
 // Every binding is in the dispatch's own group (the draw role, as for
 // render.pass.skinning's kernel).
@@ -137,6 +113,10 @@ bool SphereMayTouchCone( ClusterLight light, vec3 center, float radius )
 	return true;
 }
 
+shared vec3 clusterLo;
+shared vec3 clusterHi;
+shared float clusterBound;
+
 bool Reaches( ClusterLight light, uint x, uint y, uint k )
 {
 	vec3 c = light.positionRadius.xyz;
@@ -162,21 +142,7 @@ bool Reaches( ClusterLight light, uint x, uint y, uint k )
 	if ( slabNear < sliceNear || slabFar > sliceFar )
 		return false;
 
-	vec3 rays[4] = vec3[4]( CornerRay( x, y ), CornerRay( x + 1u, y ), CornerRay( x, y + 1u ),
-	    CornerRay( x + 1u, y + 1u ) );
-	precise vec3 corners[8];
-	for ( int i = 0; i < 4; ++i )
-	{
-		corners[i] = rays[i] * sliceNear;
-		corners[i + 4] = rays[i] * sliceFar;
-	}
-	vec3 lo = corners[0];
-	vec3 hi = lo;
-	for ( int i = 0; i < 8; ++i )
-	{
-		lo = min( lo, corners[i] );
-		hi = max( hi, corners[i] );
-	}
+	vec3 lo = clusterLo, hi = clusterHi;
 	if ( !unbounded )
 	{
 		precise float boxRadius = planeRadius + kRelativeSlack * sliceFar;
@@ -190,12 +156,7 @@ bool Reaches( ClusterLight light, uint x, uint y, uint k )
 	if ( light.directionOuterCos.w > -1.0 )
 	{
 		precise vec3 middle = ( lo + hi ) * 0.5;
-		float bound = 0.0;
-		for ( int i = 0; i < 8; ++i )
-		{
-			precise vec3 offset = corners[i] - middle;
-			bound = max( bound, sqrt( Dot3( offset, offset ) ) );
-		}
+		float bound = clusterBound;
 		precise float slack =
 		    kRelativeSlack * ( sqrt( Dot3( middle, middle ) ) + bound + centerLength );
 		precise float sphereRadius = bound + slack;
@@ -206,42 +167,136 @@ bool Reaches( ClusterLight light, uint x, uint y, uint k )
 	return true;
 }
 
+layout( std430, set = 3, binding = 6 ) readonly buffer Tree
+{
+	vec4 bounds[64];
+	uint order[1024];
+};
+struct Area
+{
+	vec4 centerReach;
+	vec4 halfU;
+	vec4 halfV;
+};
+layout( std430, set = 3, binding = 7 ) readonly buffer Areas
+{
+	Area areas[];
+};
+bool AreaTouches( Area area, vec4 a, vec4 b )
+{
+	vec3 p = area.centerReach.xyz;
+	float slack = kRelativeSlack * ( length( p ) + length( area.halfU.xyz ) +
+	                                   length( area.halfV.xyz ) + area.centerReach.w );
+	float ra = abs( dot( a.xyz, area.halfU.xyz ) ) + abs( dot( a.xyz, area.halfV.xyz ) ) +
+	           area.centerReach.w + slack;
+	float rb = abs( dot( b.xyz, area.halfU.xyz ) ) + abs( dot( b.xyz, area.halfV.xyz ) ) +
+	           area.centerReach.w + slack;
+	return dot( a.xyz, p ) + a.w >= -ra && dot( b.xyz, p ) + b.w <= rb;
+}
+shared uint nodes[32];
+shared uint accepted[32];
+shared uint bases[32];
+shared uint outputOffset;
+shared uint outputCount;
 void main()
 {
-	uint tilesX = params.grid.x;
-	uint tilesY = params.grid.y;
-	uint froxel = gl_GlobalInvocationID.x;
-	if ( froxel >= tilesX * tilesY * params.grid.z )
-		return;
-	uint x = froxel % tilesX;
-	uint y = ( froxel / tilesX ) % tilesY;
-	uint k = froxel / ( tilesX * tilesY );
-
-	uint candidates = 0u;
-	for ( uint i = 0u; i < params.grid.w; ++i )
-	{
-		if ( Reaches( lights[i], x, y, k ) )
-			++candidates;
-	}
-	uint keep = min( candidates, params.limits.x );
-	uint offset = atomicAdd( indexCount, keep );
-	uint room = offset < params.limits.y ? params.limits.y - offset : 0u;
-	keep = min( keep, room );
-#ifndef SEEDED_UNCOUNTED_OVERFLOW
-	if ( keep < candidates )
-	{
-		atomicAdd( froxelsOverflowed, 1u );
-		atomicAdd( assignmentsDropped, candidates - keep );
-	}
-#endif
-	uint written = 0u;
-	for ( uint i = 0u; i < params.grid.w && written < keep; ++i )
-	{
-		if ( Reaches( lights[i], x, y, k ) )
+	uint lane = gl_LocalInvocationID.x;
+	uint froxel = gl_WorkGroupID.x;
+	uint x = froxel % params.grid.x;
+	uint y = ( froxel / params.grid.x ) % params.grid.y;
+	uint k = froxel / ( params.grid.x * params.grid.y );
+	vec3 lo = vec3( 3e38 ), hi = vec3( -3e38 );
+	for ( uint dy = 0u; dy < 2u; ++dy )
+		for ( uint dx = 0u; dx < 2u; ++dx )
 		{
-			lightIndices[offset + written] = lightSetIndex[i];
-			++written;
+			vec3 ray = CornerRay( x + dx, y + dy );
+			vec3 a = ray * SliceDepth( k ), b = ray * SliceDepth( k + 1u );
+			lo = min( lo, min( a, b ) );
+			hi = max( hi, max( a, b ) );
 		}
+	if ( lane == 0u )
+	{
+		clusterLo = lo;
+		clusterHi = hi;
+		precise vec3 middle = ( lo + hi ) * 0.5;
+		float bound = 0.0;
+		for ( uint dy = 0u; dy < 2u; ++dy )
+			for ( uint dx = 0u; dx < 2u; ++dx )
+				for ( uint dz = 0u; dz < 2u; ++dz )
+				{
+					precise vec3 corner = CornerRay( x + dx, y + dy ) * SliceDepth( k + dz );
+					precise vec3 offset = corner - middle;
+					bound = max( bound, sqrt( Dot3( offset, offset ) ) );
+				}
+		clusterBound = bound;
 	}
-	froxelRanges[froxel] = uvec2( offset, keep );
+	if ( lane < 2u && params.limits.z > 0u )
+	{
+		uint mask = 0u;
+		for ( uint bit = 0u; bit < 32u; ++bit )
+		{
+			uint i = lane * 32u + bit;
+			if ( i >= params.limits.z )
+				break;
+			Area area = areas[i];
+			vec3 p = area.centerReach.xyz;
+			float slack = kRelativeSlack * ( length( p ) + length( area.halfU.xyz ) +
+			                                   length( area.halfV.xyz ) + area.centerReach.w );
+			float radius = abs( area.halfU.z ) + abs( area.halfV.z ) + area.centerReach.w + slack;
+			if ( area.centerReach.w > 0.0 && ( k == 0u || -p.z + radius >= SliceDepth( k ) ) &&
+			     ( k + 1u == params.grid.z || -p.z - radius <= SliceDepth( k + 1u ) ) &&
+			     AreaTouches( area, RowPlane( y > 0u ? y - 1u : 0u ),
+			         RowPlane( min( y + 2u, params.grid.y ) ) ) &&
+			     AreaTouches( area, ColumnPlane( x > 0u ? x - 1u : 0u ),
+			         ColumnPlane( min( x + 2u, params.grid.x ) ) ) )
+				mask |= 1u << bit;
+		}
+		lightIndices[params.limits.y + 2u * froxel + lane] = mask;
+	}
+	nodes[lane] = lane * 32u < params.grid.w && all( lessThanEqual( bounds[2u * lane].xyz, hi ) ) &&
+	                      all( greaterThanEqual( bounds[2u * lane + 1u].xyz, lo ) )
+	                  ? 1u
+	                  : 0u;
+	accepted[lane] = 0u;
+	barrier();
+	for ( uint node = 0u; node < 32u; ++node )
+	{
+		if ( nodes[node] == 0u )
+			continue;
+		uint i = order[node * 32u + lane];
+		if ( i < params.grid.w && Reaches( lights[i], x, y, k ) )
+			atomicOr( accepted[i / 32u], 1u << ( i % 32u ) );
+	}
+	barrier();
+	if ( lane == 0u )
+	{
+		uint candidates = 0u;
+		for ( uint word = 0u; word < 32u; ++word )
+		{
+			bases[word] = candidates;
+			candidates += bitCount( accepted[word] );
+		}
+		uint keep = min( candidates, params.limits.x );
+		outputOffset = atomicAdd( indexCount, keep );
+		uint room = outputOffset < params.limits.y ? params.limits.y - outputOffset : 0u;
+		outputCount = min( keep, room );
+#ifndef SEEDED_UNCOUNTED_OVERFLOW
+		if ( outputCount < candidates )
+		{
+			atomicAdd( froxelsOverflowed, 1u );
+			atomicAdd( assignmentsDropped, candidates - outputCount );
+		}
+#endif
+		froxelRanges[froxel] = uvec2( outputOffset, outputCount );
+	}
+	barrier();
+	uint mask = accepted[lane];
+	uint rank = bases[lane];
+	while ( mask != 0u && rank < outputCount )
+	{
+		uint bit = findLSB( mask );
+		lightIndices[outputOffset + rank] = lightSetIndex[lane * 32u + bit];
+		mask &= mask - 1u;
+		++rank;
+	}
 }

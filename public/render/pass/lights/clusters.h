@@ -9,8 +9,7 @@
 //			may reach it, as a compact list: one offset and count per froxel
 //			into one index list.
 //
-//			AssignLights is the serial CPU path and the oracle the compute
-//			pass (cluster_assign.comp beside the sources) must match. Culling
+//			The GPU assignment is checked against a test-only serial oracle. Culling
 //			is conservative: a light that reaches a froxel is never missing
 //			from it; a light near a froxel's edge may be listed although it
 //			does not reach it.
@@ -174,7 +173,7 @@ struct FroxelRange
 struct ClusterLists
 {
 	std::vector<FroxelRange> froxels; // FroxelCount() entries
-	// Indices into the light span AssignLights took, ascending per froxel.
+	// Light-set indices, ascending per froxel.
 	std::vector<std::uint32_t> lightIndices;
 };
 
@@ -184,14 +183,6 @@ struct ClusterLists
 // More than 64 lights fails without changing out. Edge slices extend to infinity
 // because the shader clamps depth; adjacent screen tiles cover pixel-center shifts.
 using AreaFroxelMask = std::array<std::uint32_t, 2>;
-[[nodiscard]] bool AssignAreaLights( const ClusterGrid &grid,
-    std::span<const area_light::AreaLight> lights, std::vector<AreaFroxelMask> &out );
-
-// Append masks to a CPU-built ClusterIndexHeader + indices buffer. Header.w
-// stores the mask offset in uints plus one (zero means no spatial assignment).
-// indices contains at least the 16-byte header and is a whole number of uints.
-void AppendAreaMasks( std::span<const AreaFroxelMask> masks, std::vector<std::byte> &indices );
-
 struct ClusterStats
 {
 	std::uint32_t lightsClustered = 0;    // point and spot lights taken into the grid
@@ -224,10 +215,11 @@ struct ClusterLightGpu
 	float directionOuterCos[4] = {};
 };
 
-// The records of the lights AssignLights clusters, in its order, with the
+// The admitted records in light-set order, with the
 // light-set index of each (the index list refers to light-set indices).
 struct ClusterLightTable
 {
+	ClusterStats stats;
 	std::vector<ClusterLightGpu> lights;
 	std::vector<std::uint32_t> lightSetIndex;
 };
