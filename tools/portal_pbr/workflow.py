@@ -24,6 +24,7 @@ SOURCES = [
     ROOT / "hammer/adapters/platform/disk_byte_store.cpp",
     ROOT / "hammer/core/formats/vpk_archive.cpp",
     ROOT / "hammer/core/formats/vtf_image.cpp",
+    ROOT / "texturecontainer/vtf/container.cpp",
     ROOT / "external/bcdec/bcdec.h",
     ROOT / "hammer/core/formats/material.cpp",
     ROOT / "kvtext/keyvalues.cpp",

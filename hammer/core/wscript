@@ -92,9 +92,9 @@ def build(bld):
 		name      = 'hammer_formats',
 		arch_module = 'hammer.formats',
 		features  = 'cxx',
-		includes  = [ '../../public' ],
+		includes  = [ '../../public', '../..' ],
 		defines   = [],
-		use       = [ 'hammer_ports', 'hammer_scene', 'vmf', 'kvtext', 'mapgeometry' ],
+		use       = [ 'hammer_ports', 'hammer_scene', 'vmf', 'kvtext', 'mapgeometry', 'vtf_container' ],
 		subsystem = bld.env.MSVC_SUBSYSTEM,
 		idx       = bld.get_taskgen_count()
 	)

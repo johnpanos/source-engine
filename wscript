@@ -217,6 +217,10 @@ projects={
 	]
 }
 
+# The VTF container reader is shared by the game, headless tools and Hammer.
+for product_projects in projects.values():
+	product_projects.append('texturecontainer')
+
 LINUX_COMPILER_TOOL_PROJECTS = [
 	'filesystem',
 	'ivp/havana',
@@ -1089,7 +1093,7 @@ def configure(conf):
 		conf.add_subproject(projects['tests'])
 	elif conf.options.TOOLS:
 		tool_projects = projects['tools'] + (LINUX_COMPILER_TOOL_PROJECTS if conf.env.DEST_OS == 'linux' else [])
-		tool_projects += ( ['texturecontainer'] if conf.env.KTX_READ_ENABLED else [] ) + \
+		tool_projects += ( ['unittests/texturecontainertest'] if conf.env.KTX_READ_ENABLED else [] ) + \
 			hammer_gtk_projects(conf)
 		# RFC 0016 K11: render_lab needs the core's Vulkan adapter and the texture readers.
 		tool_projects += ['render/lab'] if conf.env.RENDER_CORE_VULKAN and conf.env.KTX_READ_ENABLED else []
@@ -1116,7 +1120,6 @@ def configure(conf):
 			if not conf.env.ANDROID_SDL3:
 				projects['game'] += ['unittests/shaderapivulkantest']
 			if conf.env.KTX_READ_ENABLED:
-				projects['game'] += ['texturecontainer']
 				if not conf.env.ANDROID_SDL3:
 					projects['game'] += ['unittests/texturecontainertest']
 		if not conf.env.ANDROID_SDL3:
@@ -1213,7 +1216,7 @@ def build(bld):
 		bld.add_subproject(projects['tests'])
 	elif bld.env.TOOLS:
 		tool_projects = projects['tools'] + (LINUX_COMPILER_TOOL_PROJECTS if bld.env.DEST_OS == 'linux' else [])
-		tool_projects += ['texturecontainer'] if bld.env.KTX_READ_ENABLED else []
+		tool_projects += ['unittests/texturecontainertest'] if bld.env.KTX_READ_ENABLED else []
 		tool_projects += ['hammer/gtk'] if bld.env.HAMMER_GTK else []
 		# RFC 0016 K11: render_lab needs the core's Vulkan adapter and the texture readers.
 		tool_projects += ['render/lab'] if bld.env.RENDER_CORE_VULKAN and bld.env.KTX_READ_ENABLED else []
@@ -1241,7 +1244,6 @@ def build(bld):
 			if not bld.env.ANDROID_SDL3:
 				projects['game'] += ['unittests/shaderapivulkantest']
 			if bld.env.KTX_READ_ENABLED:
-				projects['game'] += ['texturecontainer']
 				if not bld.env.ANDROID_SDL3:
 					projects['game'] += ['unittests/texturecontainertest']
 		if not bld.env.ANDROID_SDL3:

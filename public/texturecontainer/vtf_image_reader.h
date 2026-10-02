@@ -8,6 +8,7 @@
 #define TEXTURECONTAINER_VTF_IMAGE_READER_H
 
 #include "texturecontainer/texture_image.h"
+#include "texturecontainer/vtf_container.h"
 
 namespace texturecontainer
 {
@@ -17,6 +18,10 @@ namespace texturecontainer
 // legacy VTF path until the shared image contract represents those topologies.
 [[nodiscard]] foundation::Expected<TextureImage, ReadError> ReadVtfImage(
     std::span<const std::byte> encoded );
+
+// The same container reader with an explicitly supplied CPU decompressor.
+[[nodiscard]] foundation::Expected<TextureImage, ReadError> ReadVtfImage(
+    std::span<const std::byte> encoded, vtf::Decompressor decompressor );
 
 } // namespace texturecontainer
 

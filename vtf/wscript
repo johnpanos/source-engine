@@ -36,7 +36,7 @@ def build(bld):
 
 	defines = []
 
-	libs = []
+	libs = ['vtf_container']
 
 	bld.stlib(
 		source   = source,
@@ -49,4 +49,3 @@ def build(bld):
 		subsystem = bld.env.MSVC_SUBSYSTEM,
 		idx      = bld.get_taskgen_count()
 	)
-

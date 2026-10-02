@@ -36,10 +36,7 @@ def build(bld):
 		              'render_graph', 'jobsystem', 'render_resources', 'render_shaderlib',
 		              'render_pass_shadows', 'render_pass_volumetric', 'render_pass_ao', 'render_pass_bounce', 'render_pass_world', 'render_pass_panels',
 		              'render_device', 'render_math', 'render_spv', 'mapcontainer', 'mdl',
-		              'vtf_texture_reader',
-		              # The VTF reader's legacy dependencies (a tier-free reader is
-		              # owned by the split of hammer.formats into content libraries).
-		              'vtf', 'bitmap', 'mathlib', 'tier0', 'tier1', 'tier2' ],
+		              'vtf_texture_reader' ],
 		install_path = None,
 		subsystem = 'CONSOLE',
 		idx       = bld.get_taskgen_count()

@@ -16,6 +16,9 @@
 #include "s3tc_decode.h"
 #include "utlvector.h"
 #include "vprof_telemetry.h"
+#include "texturecontainer/vtf_container.h"
+#include <algorithm>
+#include <span>
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -675,106 +678,42 @@ bool CVTFTexture::LoadLowResData( CUtlBuffer &buf )
 //-----------------------------------------------------------------------------
 // Unserialization of image data
 //-----------------------------------------------------------------------------
-bool CVTFTexture::LoadImageData( CUtlBuffer &buf, const VTFFileHeader_t &header, int nSkipMipLevels )
+bool CVTFTexture::LoadImageData(
+    CUtlBuffer &buf, const texturecontainer::vtf::Header &header, int nSkipMipLevels )
 {
-	// Fix up the mip count + size based on how many mip levels we skip...
-	if (nSkipMipLevels > 0)
+	const auto encoded =
+	    std::span( static_cast<const std::byte *>( buf.Base() ), std::size_t( buf.TellMaxPut() ) );
+	auto layout = texturecontainer::vtf::ReadLayout( encoded, header, nSkipMipLevels );
+	if ( !layout || layout.Value().compression )
 	{
-		Assert( m_nMipCount > nSkipMipLevels );
-		if (header.numMipLevels < nSkipMipLevels)
-		{
-			// NOTE: This can only happen with older format .vtf files
-			Warning("Warning! Encountered old format VTF file; please rebuild it!\n");
-			return false;
-		}
-
+		Warning( "VTF image layout: %s\n",
+		    !layout ? layout.Error() : "legacy texture storage has no CPU decompressor" );
+		return false;
+	}
+	if ( nSkipMipLevels > 0 )
+	{
 		ComputeMipLevelDimensions( nSkipMipLevels, &m_nWidth, &m_nHeight, &m_nDepth );
 		m_nMipCount -= nSkipMipLevels;
 	}
-
-	// read the texture image (including mipmaps if they are there and needed.)
-	int iImageSize = ComputeFaceSize();
-	iImageSize *= m_nFaceCount * m_nFrameCount;
-
-	if ( !AllocateImageData( iImageSize ) )
+	const int imageSize = ComputeFaceSize() * m_nFaceCount * m_nFrameCount;
+	if ( imageSize <= 0 || !AllocateImageData( imageSize ) )
 		return false;
-
-	// NOTE: The mip levels are stored ascending from smallest (1x1) to largest (NxN)
-	// in order to allow for truncated reads of the minimal required data
-
-	// NOTE: I checked in a bad version 4 where it stripped out the spheremap.
-	// To make it all work, need to check for that bad case.
-	bool bNoSkip = false;
-	if ( IsCubeMap() && ( header.version[0] == 7 ) && ( header.version[1] == 4 ) )
+	// Missing legacy fallback mips/spheremap stay initialized rather than
+	// exposing reusable allocation bytes. Authored images retain their layout.
+	memset( ImageData(), 0, imageSize );
+	for ( const auto &run : layout.Value().images )
 	{
-		int nBytesRemaining = buf.TellMaxPut() - buf.TellGet();
-		int nFileSize = ComputeFaceSize( nSkipMipLevels ) * m_nFaceCount * m_nFrameCount;
-		if ( nBytesRemaining == nFileSize )
-		{
-			bNoSkip = true;
-		}
+		if ( run.face >= unsigned( m_nFaceCount ) )
+			continue; // obsolete extra sphere face in old SDK files
+		const int mip = int( run.mip ) - nSkipMipLevels;
+		if ( run.decodedBytes != std::size_t( ComputeMipSize( mip ) ) )
+			return false;
+		memcpy( ImageData( run.frame, run.face, mip ), encoded.data() + run.stored.offset,
+		    run.decodedBytes );
 	}
-
-	// Portal 2 and later write 7.5 cubemaps with six faces and no spheremap;
-	// SDK 2013 tools wrote 7.5 with the spheremap. Only the data size tells
-	// them apart. The spheremap slice is then left black (it is a fallback
-	// for hardware without cubemaps).
-	int nFacesInFile = m_nFaceCount;
-	if ( IsCubeMap() && ( header.version[0] == 7 ) && ( header.version[1] >= 5 ) )
-	{
-		int nStoredFaceSize = 0;
-		for ( int iMip = 0; iMip < m_nMipCount && iMip < header.numMipLevels - nSkipMipLevels; ++iMip )
-		{
-			nStoredFaceSize += ComputeMipSize( iMip );
-		}
-		int nBytesRemaining = buf.TellMaxPut() - buf.TellGet();
-		if ( nBytesRemaining < nStoredFaceSize * m_nFaceCount * m_nFrameCount )
-		{
-			nFacesInFile = CUBEMAP_FACE_SPHEREMAP;
-			memset( ImageData(), 0, iImageSize );
-		}
-	}
-
-	int nGet = buf.TellGet();
-
-retryCubemapLoad:
-	for (int iMip = m_nMipCount; --iMip >= 0; )
-	{
-		// NOTE: This is for older versions...
-		if ( header.numMipLevels - nSkipMipLevels <= iMip )
-			continue;
-
-		int iMipSize = ComputeMipSize( iMip );
-
-		for (int iFrame = 0; iFrame < m_nFrameCount; ++iFrame)
-		{
-			for (int iFace = 0; iFace < nFacesInFile; ++iFace)
-			{
-				// printf("\n tex %p mip %i frame %i face %i  size %i  buf offset %i", this, iMip, iFrame, iFace, iMipSize, buf.TellGet() );
-				unsigned char *pMipBits = ImageData( iFrame, iFace, iMip );
-				buf.Get( pMipBits, iMipSize );
-			}
-
-			// Strip out the spheremap in older versions
-			if ( IsCubeMap() && !bNoSkip && ( header.version[0] == 7 ) && ( header.version[1] >= 1 ) && ( header.version[1] < 5 ) )
-			{
-				buf.SeekGet( CUtlBuffer::SEEK_CURRENT, iMipSize );
-			}
-		}
-	}
-
-	bool bOk = buf.IsValid();
-	if ( !bOk && IsCubeMap() && ( header.version[0] == 7 ) && ( header.version[1] <= 4 ) )
-	{
-		if ( !bNoSkip )
-		{
-			bNoSkip = true;
-			buf.SeekGet( CUtlBuffer::SEEK_HEAD, nGet );
-			goto retryCubemapLoad;
-		}
-		Warning( "** Encountered stale cubemap! Please rebuild the following vtf:\n" );
-	}
-	return bOk;
+	const auto &last = layout.Value().images.back();
+	buf.SeekGet( CUtlBuffer::SEEK_HEAD, int( last.stored.offset + last.stored.size ) );
+	return true;
 }
 
 void *CVTFTexture::SetResourceData( uint32 eType, void const *pData, size_t nNumBytes )
@@ -876,25 +815,6 @@ unsigned int CVTFTexture::GetResourceTypes( unsigned int *arrTypesBuffer, int nu
 //-----------------------------------------------------------------------------
 // Serialization/Unserialization of resource data
 //-----------------------------------------------------------------------------
-bool CVTFTexture::ResourceMemorySection::LoadData( CUtlBuffer &buf, CByteswap &byteSwap )
-{
-	// Read the size
-	int iDataSize = 0;
-	buf.Get( &iDataSize, sizeof( iDataSize ) );
-	byteSwap.SwapBufferToTargetEndian( &iDataSize );
-
-	// Read the actual data
-	if ( !AllocateData( iDataSize ) )
-		return false;
-
-	buf.Get( m_pData, iDataSize );
-
-	// Test valid
-	bool bValid = buf.IsValid();
-
-	return bValid;
-}
-
 bool CVTFTexture::ResourceMemorySection::WriteData( CUtlBuffer &buf ) const
 {
 	Assert( m_nDataLength && m_pData );
@@ -910,102 +830,9 @@ bool CVTFTexture::ResourceMemorySection::WriteData( CUtlBuffer &buf ) const
 //-----------------------------------------------------------------------------
 // Checks if the file data needs to be swapped
 //-----------------------------------------------------------------------------
-bool CVTFTexture::SetupByteSwap( CUtlBuffer &buf )
-{
-	VTFFileBaseHeader_t *header = (VTFFileBaseHeader_t*)buf.PeekGet();
-
-	if ( header->version[0] == SwapLong( VTF_MAJOR_VERSION ) )
-	{
-		m_Swap.ActivateByteSwapping( true );
-		return true;
-	}
-	return false;
-}
-
 //-----------------------------------------------------------------------------
 // Unserialization
 //-----------------------------------------------------------------------------
-static bool ReadHeaderFromBufferPastBaseHeader( CUtlBuffer &buf, VTFFileHeader_t &header )
-{
-	unsigned char *pBuf = (unsigned char*)(&header) + sizeof(VTFFileBaseHeader_t);
-	if ( header.version[1] <= VTF_MINOR_VERSION && header.version[1] >= 4 )
-	{
-		buf.Get( pBuf, sizeof(VTFFileHeader_t) - sizeof(VTFFileBaseHeader_t) );
-	}
-	else if ( header.version[1] == 3 )
-	{
-		buf.Get( pBuf, sizeof(VTFFileHeaderV7_3_t) - sizeof(VTFFileBaseHeader_t) );
-	}
-	else if ( header.version[1] == 2 )
-	{
-		buf.Get( pBuf, sizeof(VTFFileHeaderV7_2_t) - sizeof(VTFFileBaseHeader_t) );
-	}
-	else if ( header.version[1] == 1 || header.version[1] == 0 )
-	{
-		// previous version 7.0 or 7.1
-		buf.Get( pBuf, sizeof(VTFFileHeaderV7_1_t) - sizeof(VTFFileBaseHeader_t) );
-	}
-	else
-	{
-		Warning( "*** Encountered VTF file with an invalid minor version!\n" );
-		return false;
-	}
-
-	return buf.IsValid();
-}
-
-bool CVTFTexture::ReadHeader( CUtlBuffer &buf, VTFFileHeader_t &header )
-{
-	
-
-	memset( &header, 0, sizeof(VTFFileHeader_t) );
-	buf.Get( &header, sizeof(VTFFileBaseHeader_t) );
-	if ( !buf.IsValid() )
-	{
-		Warning( "*** Error unserializing VTF file... is the file empty?\n" );
-		return false;
-	}
-
-	// Validity check
-	if ( Q_strncmp( header.fileTypeString, "VTF", 4 ) )
-	{
-		Warning( "*** Tried to load a non-VTF file as a VTF file!\n" );
-		return false;
-	}
-
-	if ( header.version[0] != VTF_MAJOR_VERSION )
-	{
-		Warning( "*** Encountered VTF file with an invalid version!\n" );
-		return false;
-	}
-
-	if ( !ReadHeaderFromBufferPastBaseHeader( buf, header ) )
-	{
-		Warning( "*** Encountered VTF file with an invalid full header!\n" );
-		return false;
-	}
-
-	// version fixups 
-	switch ( header.version[1] )
-	{
-	case 0:
-	case 1:
-		header.depth = 1;
-		// fall-through
-	case 2:
-		header.numResources = 0;
-		// fall-through
-	case 3:
-		header.flags &= VERSIONED_VTF_FLAGS_MASK_7_3;
-		// fall-through
-	case 4:
-	case VTF_MINOR_VERSION:
-		break;
-	}
-
-	return true;
-}
-
 //-----------------------------------------------------------------------------
 // Unserialization
 //-----------------------------------------------------------------------------
@@ -1020,10 +847,36 @@ bool CVTFTexture::UnserializeEx( CUtlBuffer &buf, bool bHeaderOnly, int nForceFl
 
 	// When unserializing, we can skip a certain number of mip levels,
 	// and we also can just load everything but the image data
-	VTFFileHeader_t header;
-
-	if ( !ReadHeader( buf, header ) )
+	const auto encoded =
+	    std::span( static_cast<const std::byte *>( buf.Base() ), std::size_t( buf.TellMaxPut() ) );
+	auto parsed = texturecontainer::vtf::ReadHeader( encoded );
+	if ( !parsed || nSkipMipLevels < 0 || nSkipMipLevels >= parsed.Value().mips )
+	{
+		Warning( "VTF header: %s\n", !parsed ? parsed.Error() : "invalid mip skip" );
 		return false;
+	}
+	const auto &container = parsed.Value();
+	// Preserve the legacy object's ABI and storage. The shared reader alone
+	// interprets wire offsets, versions and the resource dictionary.
+	VTFFileHeader_t header{};
+	header.version[0] = 7;
+	header.version[1] = container.minor;
+	header.headerSize = container.headerBytes;
+	header.width = container.width;
+	header.height = container.height;
+	header.depth = container.depth;
+	header.flags = container.flags;
+	header.numFrames = container.frames;
+	header.startFrame = container.startFrame;
+	header.numMipLevels = container.mips;
+	header.imageFormat = ImageFormat( container.format );
+	header.lowResImageFormat = ImageFormat( container.thumbnailFormat );
+	header.lowResImageWidth = container.thumbnailWidth;
+	header.lowResImageHeight = container.thumbnailHeight;
+	header.bumpScale = container.bumpScale;
+	header.reflectivity.Init(
+	    container.reflectivity[0], container.reflectivity[1], container.reflectivity[2] );
+	header.numResources = container.resources.size();
 
 	// Pretend these flags are also set.
 	header.flags |= nForceFlags;
@@ -1116,69 +969,53 @@ bool CVTFTexture::UnserializeEx( CUtlBuffer &buf, bool bHeaderOnly, int nForceFl
 	}
 	m_arrResourcesData.SetCount( header.numResources );
 
-	// Read the dictionary of resources info
-	if ( header.numResources > 0 )
+	// The legacy lookup expects the dictionary sorted by the unflagged tag.
+	m_arrResourcesInfo.RemoveAll();
+	for ( const auto &resource : container.resources )
 	{
-		m_arrResourcesInfo.RemoveAll();
-		m_arrResourcesInfo.SetCount( header.numResources );
-		
-		buf.Get( m_arrResourcesInfo.Base(), m_arrResourcesInfo.Count() * sizeof( ResourceEntryInfo ) );
-		if ( !buf.IsValid() )
-			return false;
-
-		
+		ResourceEntryInfo entry;
+		entry.eType = resource.type;
+		entry.resData = resource.value;
+		m_arrResourcesInfo.AddToTail( entry );
 	}
-	else
-	{
-		// Older version (7.0 - 7.2):
-		//	- low-res image data first (optional)
-		//	- then image data
-		m_arrResourcesInfo.RemoveAll();
-
-		// Low-res image data
-		int nLowResImageSize = ImageLoader::GetMemRequired( m_nLowResImageWidth, 
-			m_nLowResImageHeight, 1, m_LowResImageFormat, false );
-		if ( nLowResImageSize )
-		{
-			ResourceEntryInfo &rei = *FindOrCreateResourceEntryInfo( VTF_LEGACY_RSRC_LOW_RES_IMAGE );
-			rei.resData = buf.TellGet();
-		}
-		
-		// Image data
-		ResourceEntryInfo &rei = *FindOrCreateResourceEntryInfo( VTF_LEGACY_RSRC_IMAGE );
-		rei.resData = buf.TellGet() + nLowResImageSize;
-	}
+	std::sort( m_arrResourcesInfo.Base(), m_arrResourcesInfo.Base() + m_arrResourcesInfo.Count(),
+	    []( const ResourceEntryInfo &a, const ResourceEntryInfo &b )
+	    {
+		    return ( a.eType & ~RSRCF_MASK ) < ( b.eType & ~RSRCF_MASK );
+	    } );
+	buf.SeekGet( CUtlBuffer::SEEK_HEAD, container.headerBytes );
 
 	// Caller wants the header component only, avoids reading large image data sets
 	if ( bHeaderOnly )
 		return true;
 
-	// Load the low res image
-	if ( ResourceEntryInfo const *pLowResDataInfo = FindResourceEntryInfo( VTF_LEGACY_RSRC_LOW_RES_IMAGE ) )
+	for ( const auto &resource : container.resources )
 	{
-		buf.SeekGet( CUtlBuffer::SEEK_HEAD, pLowResDataInfo->resData );
-		if ( !LoadLowResData( buf ) )
+		if ( ( resource.type & texturecontainer::vtf::kInline ) ||
+		     resource.type == texturecontainer::vtf::kImage )
+			continue;
+		auto range = texturecontainer::vtf::ResourceData( encoded, container, resource );
+		if ( !range )
 			return false;
+		if ( resource.type == texturecontainer::vtf::kThumbnail )
+		{
+			buf.SeekGet( CUtlBuffer::SEEK_HEAD, int( range.Value().offset ) );
+			if ( !LoadLowResData( buf ) )
+				return false;
+		}
+		else
+		{
+			const auto *entry = FindResourceEntryInfo( resource.type );
+			auto &storage = m_arrResourcesData[entry - m_arrResourcesInfo.Base()];
+			if ( !storage.AllocateData( int( range.Value().size ) ) )
+				return false;
+			if ( range.Value().size )
+				memcpy(
+				    storage.m_pData, encoded.data() + range.Value().offset, range.Value().size );
+		}
 	}
-
-	// Load any new resources
-	if ( !LoadNewResources( buf ) )
-	{
+	if ( !LoadImageData( buf, container, nSkipMipLevels ) )
 		return false;
-	}
-
-	// Load the image data
-	if ( ResourceEntryInfo const *pImageDataInfo = FindResourceEntryInfo( VTF_LEGACY_RSRC_IMAGE ) )
-	{
-		buf.SeekGet( CUtlBuffer::SEEK_HEAD, pImageDataInfo->resData );
-		if ( !LoadImageData( buf, header, nSkipMipLevels ) )
-			return false;
-	}
-	else
-	{
-		// No image data
-		return false;
-	}
 
 	return true;
 }
@@ -1190,34 +1027,6 @@ void CVTFTexture::GetMipmapRange( int* pOutFinest, int* pOutCoarsest )
 
 	if ( pOutCoarsest )
 		*pOutCoarsest = m_nCoarsestMipmapLevel;
-}
-
-bool CVTFTexture::LoadNewResources( CUtlBuffer &buf )
-{
-	// Load the new resources
-	for ( int idxRsrc = 0; idxRsrc < m_arrResourcesInfo.Count(); ++idxRsrc )
-	{
-		ResourceEntryInfo &rei = m_arrResourcesInfo[ idxRsrc ];
-		ResourceMemorySection &rms = m_arrResourcesData[ idxRsrc ];
-
-		if ( ( rei.eType & RSRCF_HAS_NO_DATA_CHUNK ) == 0 )
-		{
-			switch( rei.eType )
-			{
-			case VTF_LEGACY_RSRC_LOW_RES_IMAGE:
-			case VTF_LEGACY_RSRC_IMAGE:
-				// these legacy resources are loaded differently
-				continue;
-
-			default:
-				buf.SeekGet( CUtlBuffer::SEEK_HEAD, rei.resData );
-				if ( !rms.LoadData( buf, m_Swap ) )
-					return false;
-			}
-		}
-	}
-
-	return true;
 }
 
 ResourceEntryInfo const *CVTFTexture::FindResourceEntryInfo( uint32 eType ) const

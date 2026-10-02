@@ -8,11 +8,8 @@
 //			(cubemaps, volume slices, animation frames beyond the first, sphere
 //			maps, HDR float formats); those are out of scope for a 2D preview.
 //
-//			It is a strict-core codec: C++ standard library only, no tier0, no
-//			bitmap/ImageLoader, no CVTFTexture. The on-disk header layout and the
-//			DXT/uncompressed pixel unpacking are implemented here directly, reading
-//			little-endian fields by byte offset so the decode does not depend on
-//			struct packing or host endianness.
+//			Container parsing is owned by texturecontainer::vtf. This adapter
+//			only converts the selected image's pixels into the editor preview.
 //
 //			Supported pixel formats (the ones shipped content uses for base
 //			textures): RGBA8888, ABGR8888, RGB888, BGR888, BGRA8888, BGRX8888,
@@ -27,6 +24,8 @@
 
 #ifndef HAMMER_FORMATS_VTF_IMAGE_H
 #define HAMMER_FORMATS_VTF_IMAGE_H
+
+#include "texturecontainer/vtf_container.h"
 
 #include <cstdint>
 #include <optional>
@@ -65,14 +64,8 @@ struct VtfInfo
 // compression frame. The strict codec owns the container parsing while the
 // composition root supplies the selected decompressor. 'decoded' is exactly the
 // expected output size and must be filled completely on success.
-enum class VtfCompressionMethod : std::uint16_t
-{
-	Deflate = 8,
-	Zstandard = 93,
-};
-
-using VtfMipDecompressor = bool ( * )( VtfCompressionMethod method, std::string_view encoded,
-    std::span<std::uint8_t> decoded, std::string &error );
+using VtfCompressionMethod = texturecontainer::vtf::CompressionMethod;
+using VtfMipDecompressor = texturecontainer::vtf::Decompressor;
 
 // Parses just the VTF header of 'bytes'. Returns nullopt with 'error' set when the
 // signature/version is bad or the header is truncated.

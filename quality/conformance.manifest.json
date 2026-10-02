@@ -1964,6 +1964,7 @@
         "hammer/core/formats/material_catalog.cpp",
         "hammer/core/formats/material.cpp",
         "hammer/core/formats/vtf_image.cpp",
+        "texturecontainer/vtf/container.cpp",
         "kvtext/keyvalues.cpp",
         "unittests/hammertest/formats/test_pbr_material_schema.cpp"
       ],
@@ -4154,6 +4155,23 @@
       "expect": "pass"
     },
     {
+      "id": "content.vtf.shared",
+      "domain": "Q-CONTENT",
+      "rfc": "0008",
+      "migration": "VTF shared container",
+      "contract": "public/texturecontainer/vtf_container.h",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "texturecontainer/vtf/container.cpp",
+        "texturecontainer/vtf_reader.cpp",
+        "hammer/core/formats/vtf_image.cpp",
+        "unittests/hammertest/formats/test_vtf_shared.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "hammer.formats.vtf_image",
       "domain": "Q-EDITOR",
       "rfc": "0002",
@@ -4164,6 +4182,7 @@
       "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/formats/vtf_image.cpp",
+        "texturecontainer/vtf/container.cpp",
         "unittests/hammertest/formats/test_vtf_image.cpp"
       ],
       "expect": "pass"
@@ -4179,6 +4198,7 @@
       "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/formats/vtf_image.cpp",
+        "texturecontainer/vtf/container.cpp",
         "unittests/hammertest/formats/test_vtf_image_negative.cpp"
       ],
       "expect": "pass"
@@ -4339,6 +4359,7 @@
         "hammer/core/formats/material_catalog.cpp",
         "hammer/core/formats/material.cpp",
         "hammer/core/formats/vtf_image.cpp",
+        "texturecontainer/vtf/container.cpp",
         "kvtext/keyvalues.cpp",
         "unittests/hammertest/formats/test_material_catalog.cpp"
       ],
@@ -4357,6 +4378,7 @@
         "hammer/core/formats/material_catalog.cpp",
         "hammer/core/formats/material.cpp",
         "hammer/core/formats/vtf_image.cpp",
+        "texturecontainer/vtf/container.cpp",
         "kvtext/keyvalues.cpp",
         "unittests/hammertest/formats/test_material_catalog_negative.cpp"
       ],
@@ -5004,6 +5026,7 @@
         "hammer/core/formats/material_catalog.cpp",
         "hammer/core/formats/material.cpp",
         "hammer/core/formats/vtf_image.cpp",
+        "texturecontainer/vtf/container.cpp",
         "kvtext/keyvalues.cpp",
         "unittests/hammertest/formats/test_material_info.cpp"
       ],

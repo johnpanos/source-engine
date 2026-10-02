@@ -6253,3 +6253,34 @@ and negative controls precede product integration. R91/R96 remain open.
 
 Frozen-path: core plumbing R91 — capture the client’s portal stencil and view
 state and route its depth-mask geometry to the core surface program.
+
+### K12: one probe-volume shader implementation (2026-10-01)
+
+The user requested, “consolidate the PBR and probe lighting shaders”
+(2026-10-01). The PBR BRDF and reflection-probe GLSL already have core-owned
+shared definitions
+(`render/shaders/common/pbr_brdf.glsl` and `reflection_probes.glsl`) consumed
+by the native frontend. The remaining duplicated PRBV sampling algorithm is
+now owned only by `render/shaders/common/probe_volume.glsl`. The frozen native
+`probe_volume.glsl` is a combined-sampler adapter plus its backend-specific
+moving-occluder readers; the core keeps separate image and sampler bindings.
+No new lighting term or native appearance is introduced. The shared algorithm's
+zero result outside the grid also makes the native out parameter defined.
+
+Evidence: the pinned `glslc` compiled world PBR with `DELTA_VOLUME`, model PBR
+with `PROBE_VOLUME`, glass PBR, and the core check kernel. `render_lab suite
+probe-volume --validate` passed 38/38 and its sensitivity run passed 5/5.
+Native world and model PBR pixel suites passed 94/94 and 67/67. The pinned
+`shader_toolchain.py check` passed 165/165. Local logs and conformance evidence
+are in `quality-results/k12-probe-shader-20261001/`; the exact commands are
+the installed conformance and shader-toolchain commands. K11 and K12 remain
+open for the Cycles gallery, product image match and deletion of the remaining
+native shading once every surface cohort has a core owner.
+
+`archlint check --all` does not pass in the concurrent checkout: it reports
+CAP004 for `hammer.formats`, unrelated CAP002 includes, and the two recorded
+`game/shared/fstop/blob_networkbypass` ARCH105 findings. None names either
+edited GLSL file. The log is retained beside the shader evidence.
+
+Frozen-path: core plumbing K12 — the native probe sampler delegates its math
+to the core's shared shader until its remaining surfaces migrate.

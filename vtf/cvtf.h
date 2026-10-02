@@ -117,6 +117,11 @@ public:
 //-----------------------------------------------------------------------------
 // Implementation of the VTF Texture
 //-----------------------------------------------------------------------------
+namespace texturecontainer::vtf
+{
+struct Header;
+}
+
 class CVTFTexture : public IVTFTexture
 {
 public:
@@ -257,7 +262,6 @@ public:
 
 private:
 	// Unserialization
-	bool ReadHeader( CUtlBuffer &buf, VTFFileHeader_t &header );
 
 	void BlendCubeMapEdgePalettes(
 		int iFrame,
@@ -307,10 +311,10 @@ private:
 	bool LoadLowResData( CUtlBuffer &buf );
 
 	// Unserialization of new resource data
-	bool LoadNewResources( CUtlBuffer &buf );
 
 	// Unserialization of image data
-	bool LoadImageData( CUtlBuffer &buf, const VTFFileHeader_t &header, int nSkipMipLevels );
+	bool LoadImageData(
+	    CUtlBuffer &buf, const texturecontainer::vtf::Header &header, int nSkipMipLevels );
 
 	// Shutdown
 	void Shutdown();
@@ -339,7 +343,6 @@ private:
 	int GetImageOffset( int iFrame, int iFace, int iMipLevel, ImageFormat fmt ) const;
 
 	// Determines if the vtf or vtfx file needs to be swapped to the current platform
-	bool SetupByteSwap( CUtlBuffer &buf );
 
 	// Locates the resource entry info if it's present
 	ResourceEntryInfo *FindResourceEntryInfo( unsigned int eType );
@@ -406,7 +409,6 @@ private:
 		unsigned char	*m_pData;
 
 		bool AllocateData( int nMemorySize );
-		bool LoadData( CUtlBuffer &buf, CByteswap &byteSwap );
 		bool WriteData( CUtlBuffer &buf ) const;
 	};
 	CUtlVector< ResourceMemorySection > m_arrResourcesData;

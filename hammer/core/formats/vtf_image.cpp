@@ -3,34 +3,12 @@
 // Purpose: Implementation of the strict-core VTF decoder. See
 //			public/hammer/formats/vtf_image.h for the contract and scope.
 //
-//			Header field offsets are the well-known VTF 7.x layout (matching
-//			public/vtf/vtf.h's VTFFileHeaderV7_x_t), read by absolute byte offset
-//			and little-endian so the decode is packing- and endian-independent:
-//
-//			  0x00 char  signature[4]   "VTF\0"
-//			  0x04 u32   version[0]      (major)
-//			  0x08 u32   version[1]      (minor)
-//			  0x0C u32   headerSize
-//			  0x10 u16   width
-//			  0x12 u16   height
-//			  0x14 u32   flags
-//			  0x18 u16   frameCount
-//			  0x1A u16   startFrame
-//			  0x20 f32   reflectivity[3]
-//			  0x30 f32   bumpScale
-//			  0x34 s32   imageFormat
-//			  0x38 u8    mipCount
-//			  0x39 s32   lowResImageFormat
-//			  0x3D u8    lowResImageWidth
-//			  0x3E u8    lowResImageHeight
-//			  0x3F u16   depth              (>= 7.2)
-//			  0x48 u32   numResources       (>= 7.3; resource dict at 0x50, 8 bytes each)
-//
 //=============================================================================//
 
 #include "hammer/formats/vtf_image.h"
+#include "texturecontainer/vtf_container.h"
 
-#define BCDEC_STATIC
+#define BCDECDEF static inline
 #define BCDEC_IMPLEMENTATION
 #include "external/bcdec/bcdec.h"
 
@@ -59,73 +37,9 @@ enum : int
 	FMT_STRATA_BC7 = 70,
 };
 
-constexpr std::uint32_t kFlagEnvmap = 0x00004000u;
-constexpr unsigned char kResourceFlagLocalData = 0x02;
-
-struct Mip0Layout
+std::size_t FormatMipBytes( int format, int width, int height )
 {
-	std::size_t offset = 0;
-	std::size_t storedBytes = 0;
-	std::optional<VtfCompressionMethod> compression;
-};
-
-std::uint16_t GetU16( const std::string &b, std::size_t off )
-{
-	const unsigned char *p = reinterpret_cast<const unsigned char *>( b.data() ) + off;
-	return std::uint16_t( std::uint16_t( p[0] ) | ( std::uint16_t( p[1] ) << 8 ) );
-}
-
-std::uint32_t GetU32( const std::string &b, std::size_t off )
-{
-	const unsigned char *p = reinterpret_cast<const unsigned char *>( b.data() ) + off;
-	return std::uint32_t( p[0] ) | ( std::uint32_t( p[1] ) << 8 ) |
-	       ( std::uint32_t( p[2] ) << 16 ) | ( std::uint32_t( p[3] ) << 24 );
-}
-
-std::int32_t GetS32( const std::string &b, std::size_t off )
-{
-	return static_cast<std::int32_t>( GetU32( b, off ) );
-}
-
-// The number of bytes one mip level occupies for a given format and dimensions.
-// Block-compressed formats round up to whole 4x4 blocks. Returns 0 for an
-// unsupported format (callers reject the file before relying on this).
-std::size_t FormatMipBytes( int format, int w, int h )
-{
-	if ( w < 1 )
-		w = 1;
-	if ( h < 1 )
-		h = 1;
-	switch ( format )
-	{
-	case FMT_RGBA8888:
-	case FMT_ABGR8888:
-	case FMT_ARGB8888:
-	case FMT_BGRA8888:
-	case FMT_BGRX8888:
-		return std::size_t( w ) * h * 4;
-	case FMT_RGB888:
-	case FMT_BGR888:
-		return std::size_t( w ) * h * 3;
-	case FMT_IA88:
-		return std::size_t( w ) * h * 2;
-	case FMT_I8:
-	case FMT_A8:
-		return std::size_t( w ) * h;
-	case FMT_DXT1:
-		return std::size_t( ( w + 3 ) / 4 ) * ( ( h + 3 ) / 4 ) * 8;
-	case FMT_DXT3:
-	case FMT_DXT5:
-	case FMT_STRATA_BC7:
-		return std::size_t( ( w + 3 ) / 4 ) * ( ( h + 3 ) / 4 ) * 16;
-	default:
-		return 0;
-	}
-}
-
-bool FormatSupported( int format )
-{
-	return FormatMipBytes( format, 1, 1 ) != 0;
+	return texturecontainer::vtf::ImageBytes( format, width, height );
 }
 
 void PutPixel(
@@ -391,132 +305,75 @@ bool DecodeBlock( int format, const std::string &data, std::size_t dataOff, VtfI
 	return true;
 }
 
-// Parses the header common to 7.1-7.5 and derives the byte offset of the mip-0
-// high-res image and the image format. Returns false with 'error' set on failure.
-bool ParseHeader( const std::string &b, std::string &error, VtfInfo &info, std::size_t &mip0Offset )
-{
-	if ( b.size() < 0x40 )
-	{
-		error = "vtf: file smaller than a v7.1 header";
-		return false;
-	}
-	if ( b[0] != 'V' || b[1] != 'T' || b[2] != 'F' || b[3] != '\0' )
-	{
-		error = "vtf: bad signature";
-		return false;
-	}
-	info.majorVersion = int( GetU32( b, 0x04 ) );
-	info.minorVersion = int( GetU32( b, 0x08 ) );
-	if ( info.majorVersion != 7 )
-	{
-		error = "vtf: unsupported major version " + std::to_string( info.majorVersion );
-		return false;
-	}
-	const std::uint32_t headerSize = GetU32( b, 0x0c );
-	info.width = GetU16( b, 0x10 );
-	info.height = GetU16( b, 0x12 );
-	info.flags = GetU32( b, 0x14 );
-	info.frameCount = GetU16( b, 0x18 );
-	info.imageFormat = GetS32( b, 0x34 );
-	info.mipCount = b[0x38] & 0xff;
-	const int lowResFormat = GetS32( b, 0x39 );
-	const int lowResW = b[0x3d] & 0xff;
-	const int lowResH = b[0x3e] & 0xff;
-
-	if ( info.width <= 0 || info.height <= 0 )
-	{
-		error = "vtf: zero dimension";
-		return false;
-	}
-	if ( info.mipCount < 1 )
-		info.mipCount = 1;
-	if ( info.frameCount < 1 )
-		info.frameCount = 1;
-	if ( !FormatSupported( info.imageFormat ) )
-	{
-		error = "vtf: unsupported image format " + std::to_string( info.imageFormat );
-		return false;
-	}
-
-	const int faces = ( info.flags & kFlagEnvmap ) ? 6 : 1;
-
-	// Locate the high-res image data. On 7.3+ the resource dictionary carries an
-	// explicit offset; earlier versions place it right after the header + low-res
-	// thumbnail.
-	std::size_t imageDataStart = 0;
-	bool located = false;
-	if ( info.minorVersion >= 3 && b.size() >= 0x4c )
-	{
-		const std::uint32_t numResources = GetU32( b, 0x48 );
-		std::size_t rp = 0x50;
-		for ( std::uint32_t i = 0; i < numResources && i < 32; ++i, rp += 8 )
-		{
-			if ( rp + 8 > b.size() )
-				break;
-			const unsigned char t0 = b[rp], t1 = b[rp + 1], t2 = b[rp + 2];
-			// VTF_LEGACY_RSRC_IMAGE = 0x30,0,0.
-			if ( t0 == 0x30 && t1 == 0 && t2 == 0 )
-			{
-				imageDataStart = GetU32( b, rp + 4 );
-				located = true;
-				break;
-			}
-		}
-	}
-	if ( !located )
-	{
-		std::size_t lowResBytes = 0;
-		if ( lowResFormat >= 0 && lowResW > 0 && lowResH > 0 )
-			lowResBytes = FormatMipBytes( lowResFormat, lowResW, lowResH );
-		imageDataStart = std::size_t( headerSize ) + lowResBytes;
-	}
-
-	// Mips are stored smallest-first. Skip every mip below level 0, across all
-	// frames/faces, to reach mip 0 (frame 0, face 0 is then the first block).
-	std::size_t skip = 0;
-	for ( int mip = info.mipCount - 1; mip >= 1; --mip )
-	{
-		int mw = info.width >> mip;
-		int mh = info.height >> mip;
-		if ( mw < 1 )
-			mw = 1;
-		if ( mh < 1 )
-			mh = 1;
-		skip += FormatMipBytes( info.imageFormat, mw, mh ) * std::size_t( info.frameCount ) * faces;
-	}
-	mip0Offset = imageDataStart + skip;
-	return true;
-}
-
 } // namespace
 
 std::optional<VtfInfo> ReadVtfInfo( const std::string &bytes, std::string &error )
 {
-	VtfInfo info;
-	std::size_t mip0 = 0;
-	if ( !ParseHeader( bytes, error, info, mip0 ) )
+	auto header = texturecontainer::vtf::ReadHeader(
+	    std::as_bytes( std::span( bytes.data(), bytes.size() ) ) );
+	if ( !header )
+	{
+		error = header.Error();
 		return std::nullopt;
-	return info;
+	}
+	const auto &h = header.Value();
+	return VtfInfo{
+	    h.width, h.height, 7, int( h.minor ), h.format, h.mips, h.frames, h.depth, h.flags };
 }
 
 std::optional<VtfImage> DecodeVtf( const std::string &bytes, std::string &error )
 {
-	VtfInfo info;
-	std::size_t mip0 = 0;
-	if ( !ParseHeader( bytes, error, info, mip0 ) )
-		return std::nullopt;
+	return DecodeVtf( bytes, error, nullptr );
+}
 
-	VtfImage img;
-	img.width = info.width;
-	img.height = info.height;
-	img.rgba.assign( std::size_t( img.width ) * img.height * 4, 0 );
-
-	if ( !DecodeBlock( info.imageFormat, bytes, mip0, img ) )
+std::optional<VtfImage> DecodeVtf(
+    const std::string &bytes, std::string &error, VtfMipDecompressor decompressor )
+{
+	const auto encoded = std::as_bytes( std::span( bytes.data(), bytes.size() ) );
+	auto header = texturecontainer::vtf::ReadHeader( encoded );
+	if ( !header )
 	{
-		error = "vtf: image data truncated or unsupported for mip 0";
+		error = header.Error();
 		return std::nullopt;
 	}
-	return img;
+	auto layout = texturecontainer::vtf::ReadLayout( encoded, header.Value() );
+	if ( !layout )
+	{
+		error = layout.Error();
+		return std::nullopt;
+	}
+	// This adapter is a preview: first frame, first cube face, first volume
+	// slice. The container reader still validates every authored image run.
+	const auto &h = header.Value();
+	for ( const auto &run : layout.Value().images )
+	{
+		if ( run.mip || run.frame || run.face )
+			continue;
+		auto data = texturecontainer::vtf::ReadImage( encoded, layout.Value(), run, decompressor );
+		if ( !data )
+		{
+			error = data.Error();
+			return std::nullopt;
+		}
+		VtfImage img{ h.width, h.height, {} };
+		const auto rgbaBytes = texturecontainer::vtf::ImageBytes( 0, h.width, h.height );
+		if ( !rgbaBytes )
+		{
+			error = "vtf: preview exceeds image size limit";
+			return std::nullopt;
+		}
+		img.rgba.resize( rgbaBytes );
+		const std::string pixels(
+		    reinterpret_cast<const char *>( data.Value().data() ), data.Value().size() );
+		if ( !DecodeBlock( h.format, pixels, 0, img ) )
+		{
+			error = "vtf: unsupported preview pixel format";
+			return std::nullopt;
+		}
+		return img;
+	}
+	error = "vtf: missing preview image";
+	return std::nullopt;
 }
 
 } // namespace hammer::formats

@@ -330,6 +330,14 @@
       "dialect": "cxx20",
       "rfc": "0002"
     },
+    "vtf_shared_conformance": {
+      "dialect": "cxx20",
+      "rfc": "0008"
+    },
+    "vtf_container": {
+      "dialect": "cxx20",
+      "rfc": "0008"
+    },
     "hammer_formats": {
       "dialect": "cxx20",
       "rfc": "0002"
@@ -549,7 +557,7 @@
   "abi": {
     "libstdcxx_dual_abi_define": "_GLIBCXX_USE_CXX11_ABI",
     "libstdcxx_dual_abi_default": "1",
-    "rule": "Every C++ target linked into one binary resolves the same libstdc++ dual-ABI value. Engine products define _GLIBCXX_USE_CXX11_ABI=0 globally; strict-hygiene compositions (strict_cpp20_env) use the toolchain default and link only each other.",
+    "rule": "C++ standard-library types crossing a target boundary require the same libstdc++ dual-ABI value. Engine products define _GLIBCXX_USE_CXX11_ABI=0 globally; strict-hygiene targets use the toolchain default and may meet legacy targets only through ABI-neutral interfaces.",
     "supported_combinations": [
       {
         "id": "same-toolchain-mixed-dialect",

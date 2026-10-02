@@ -1,6 +1,7 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
-// Purpose: render.pass.lights view grids and GPU input packing (RFC 0016 K7).
+// Purpose: render.pass.lights clustered light assignment (RFC 0016 K7). The
+//			serial path; cluster_assign.comp runs the same tests per froxel.
 //
 //=============================================================================//
 
@@ -150,6 +151,29 @@ ViewLight ToView(
 		result.sinOuter = std::sqrt( std::max( 0.0f, 1.0f - result.cosOuter * result.cosOuter ) );
 	}
 	return result;
+}
+
+// Whether a sphere around `center` inflated to `radius` can touch the cone
+// (apex, unit axis, half-angle given by cos and sin). |V| sin(phi - theta),
+// with phi the angle between V and the axis, never exceeds the distance from
+// the point to the solid cone, so rejecting on it is conservative for any
+// half-angle up to pi.
+bool SphereMayTouchCone( const ViewLight &light, const float3 &center, float radius )
+{
+	const float3 v = center - light.center;
+	const float lengthSquared = math::Dot( v, v );
+	const float along = math::Dot( v, light.axis );
+	const float across = std::sqrt( std::max( 0.0f, lengthSquared - along * along ) );
+	const float coneDistance = light.cosOuter * across - along * light.sinOuter;
+	if ( coneDistance > radius )
+		return false;
+	// Beyond the light's sphere along the axis.
+	if ( along > radius + light.radius )
+		return false;
+	// Behind the apex plane, where a cone no wider than a hemisphere has nothing.
+	if ( light.cosOuter >= 0.0f && along < -radius )
+		return false;
+	return true;
 }
 
 } // namespace
@@ -468,11 +492,70 @@ std::uint32_t FroxelAt( const ClusterGrid &grid, float pixelX, float pixelY, flo
 	    SliceOfDepth( grid, viewDistance ) );
 }
 
+bool AssignAreaLights( const ClusterGrid &grid, std::span<const area_light::AreaLight> lights,
+    std::vector<AreaFroxelMask> &out )
+{
+	if ( lights.size() > 64 )
+		return false;
+	std::vector<AreaFroxelMask> masks( grid.FroxelCount() );
+	for ( std::size_t i = 0; i < lights.size(); ++i )
+	{
+		const auto &light = lights[i];
+		if ( !( light.reach > 0.0f ) )
+			continue;
+		const float3 center = TransformPoint3( grid.view, light.rect.center, 1.0f );
+		const float3 u = TransformPoint3( grid.view, light.rect.halfU, 0.0f );
+		const float3 v = TransformPoint3( grid.view, light.rect.halfV, 0.0f );
+		const float slack = kRelativeSlack * ( math::Length( center ) + math::Length( u ) +
+		                                         math::Length( v ) + light.reach );
+		const auto radius = [&]( const float3 &normal )
+		{
+			return std::abs( math::Dot( normal, u ) ) + std::abs( math::Dot( normal, v ) ) +
+			       light.reach + slack;
+		};
+		const auto touches = [&]( const math::Plane &a, const math::Plane &b )
+		{
+			return a.Distance( center ) >= -radius( a.normal ) &&
+			       b.Distance( center ) <= radius( b.normal );
+		};
+		const float depthRadius = radius( { 0, 0, 1 } );
+		for ( std::uint32_t z = 0; z < grid.slices; ++z )
+		{
+			if ( ( z > 0 && -center.z + depthRadius < grid.sliceDepths[z] ) ||
+			     ( z + 1 < grid.slices && -center.z - depthRadius > grid.sliceDepths[z + 1] ) )
+				continue;
+			for ( std::uint32_t y = 0; y < grid.tilesY; ++y )
+			{
+				if ( !touches( grid.rowPlanes[y > 0 ? y - 1 : 0],
+				         grid.rowPlanes[std::min( y + 2, grid.tilesY )] ) )
+					continue;
+				for ( std::uint32_t x = 0; x < grid.tilesX; ++x )
+				{
+					if ( touches( grid.columnPlanes[x > 0 ? x - 1 : 0],
+					         grid.columnPlanes[std::min( x + 2, grid.tilesX )] ) )
+						masks[grid.FroxelIndex( x, y, z )][i / 32] |= 1u << ( i % 32 );
+				}
+			}
+		}
+	}
+	out = std::move( masks );
+	return true;
+}
+
+void AppendAreaMasks( std::span<const AreaFroxelMask> masks, std::vector<std::byte> &indices )
+{
+	const std::uint32_t offset = std::uint32_t( ( indices.size() - 16 ) / 4 ) + 1;
+	std::memcpy( indices.data() + 12, &offset, sizeof( offset ) );
+	const auto bytes = std::as_bytes( masks );
+	indices.insert( indices.end(), bytes.begin(), bytes.end() );
+}
+
 ClusterLightTable PackClusterLights(
     const ClusterGrid &grid, std::span<const light_set::RuntimeLight> lights )
 {
+	ClusterStats ignored;
 	ClusterLightTable table;
-	for ( const std::uint32_t index : AdmittedLights( grid, lights, table.stats ) )
+	for ( const std::uint32_t index : AdmittedLights( grid, lights, ignored ) )
 	{
 		const ViewLight light = ToView( grid, lights[index], index );
 		ClusterLightGpu record;

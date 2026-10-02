@@ -6,8 +6,7 @@
 
 #include "texturecontainer/vtf_image_reader.h"
 
-#include "tier1/utlbuffer.h"
-#include "vtf/vtf.h"
+#include "texturecontainer/vtf_container.h"
 
 #include <algorithm>
 #include <cstring>
@@ -20,30 +19,32 @@ namespace texturecontainer
 namespace
 {
 
-constexpr std::size_t kMaxContainerBytes = 512U * 1024U * 1024U;
+constexpr std::size_t kMaxContainerBytes = vtf::kMaxImageBytes;
 
-std::optional<PixelFormat> FormatForVtf( ImageFormat format, bool srgb )
+std::optional<PixelFormat> FormatForVtf( int format, bool srgb )
 {
 	switch ( format )
 	{
-	case IMAGE_FORMAT_RGBA8888:
-	case IMAGE_FORMAT_RGB888:
-	case IMAGE_FORMAT_BGR888: // 24-bit texels expand to RGBA8 with opaque alpha
+	case 0:
+	case 2:
+	case 3: // 24-bit texels expand to RGBA8 with opaque alpha
 		return srgb ? PixelFormat::Rgba8Srgb : PixelFormat::Rgba8Unorm;
-	case IMAGE_FORMAT_BGRA8888:
+	case 12:
 		return srgb ? PixelFormat::Bgra8Srgb : PixelFormat::Bgra8Unorm;
-	case IMAGE_FORMAT_DXT1:
-	case IMAGE_FORMAT_DXT1_ONEBITALPHA:
+	case 13:
+	case 20:
 		return srgb ? PixelFormat::Bc1Srgb : PixelFormat::Bc1Unorm;
-	case IMAGE_FORMAT_DXT3:
+	case 14:
 		return srgb ? PixelFormat::Bc2Srgb : PixelFormat::Bc2Unorm;
-	case IMAGE_FORMAT_DXT5:
+	case 15:
 		return srgb ? PixelFormat::Bc3Srgb : PixelFormat::Bc3Unorm;
-	case IMAGE_FORMAT_ATI1N:
+	case 38:
 		return PixelFormat::Bc4Unorm;
-	case IMAGE_FORMAT_ATI2N:
+	case 37:
 		return PixelFormat::Bc5Unorm;
-	case IMAGE_FORMAT_RGBA16161616F:
+	case 70:
+		return srgb ? PixelFormat::Bc7Srgb : PixelFormat::Bc7Unorm;
+	case 24:
 		return PixelFormat::Rgba16Float;
 	default:
 		return std::nullopt;
@@ -54,72 +55,59 @@ std::optional<PixelFormat> FormatForVtf( ImageFormat format, bool srgb )
 
 foundation::Expected<TextureImage, ReadError> ReadVtfImage( std::span<const std::byte> encoded )
 {
-	constexpr char magic[] = { 'V', 'T', 'F', '\0' };
-	if ( encoded.size() < 64 || std::memcmp( encoded.data(), magic, sizeof( magic ) ) )
-		return foundation::MakeUnexpected( ReadError::InvalidContainer );
+	return ReadVtfImage( encoded, nullptr );
+}
+
+foundation::Expected<TextureImage, ReadError> ReadVtfImage(
+    std::span<const std::byte> encoded, vtf::Decompressor decompressor )
+{
 	if ( encoded.size() > kMaxContainerBytes )
 		return foundation::MakeUnexpected( ReadError::TooLarge );
-	// The legacy decoder allocates a full mip chain for compatibility even when
-	// older VTFs store fewer levels. Only the header's authored levels contain
-	// file data; copying the extra allocation would expose unused bytes.
-	const unsigned int authoredMips = std::to_integer<unsigned int>( encoded[0x38] );
-
-	CUtlBuffer buffer( encoded.data(), static_cast<int>( encoded.size() ), CUtlBuffer::READ_ONLY );
-	std::unique_ptr<IVTFTexture, decltype( &DestroyVTFTexture )> texture(
-	    CreateVTFTexture(), &DestroyVTFTexture );
-	if ( !texture || !texture->Unserialize( buffer, false ) )
+	auto parsed = vtf::ReadHeader( encoded );
+	if ( !parsed )
 		return foundation::MakeUnexpected( ReadError::InvalidContainer );
-	if ( texture->Depth() != 1 || texture->FaceCount() != 1 || texture->FrameCount() != 1 ||
-	     texture->Width() <= 0 || texture->Height() <= 0 || texture->MipCount() <= 0 ||
-	     authoredMips == 0 || authoredMips > static_cast<unsigned int>( texture->MipCount() ) )
+	const auto &header = parsed.Value();
+	if ( header.depth != 1 || ( header.flags & vtf::kEnvmap ) || header.frames != 1 )
 		return foundation::MakeUnexpected( ReadError::UnsupportedTopology );
-
-	const std::optional<PixelFormat> format =
-	    FormatForVtf( texture->Format(), ( texture->Flags() & TEXTUREFLAGS_SRGB ) != 0 );
+	const auto format = FormatForVtf( header.format, ( header.flags & 0x40 ) != 0 );
 	if ( !format )
 		return foundation::MakeUnexpected( ReadError::UnsupportedFormat );
-
+	auto layout = vtf::ReadLayout( encoded, header );
+	if ( !layout )
+		return foundation::MakeUnexpected( ReadError::InvalidContainer );
 	TextureImage result{ *format, {} };
-	result.levels.reserve( authoredMips );
+	result.levels.resize( header.mips );
 	std::size_t totalBytes = 0;
-	for ( unsigned int mip = 0; mip < authoredMips; ++mip )
+	for ( const auto &run : layout.Value().images )
 	{
-		int width = 0, height = 0, depth = 0;
-		texture->ComputeMipLevelDimensions( mip, &width, &height, &depth );
-		const int bytes = texture->ComputeMipSize( mip );
-		if ( width <= 0 || height <= 0 || depth != 1 || bytes <= 0 ||
-		     static_cast<std::size_t>( bytes ) > kMaxContainerBytes - totalBytes )
-			return foundation::MakeUnexpected( ReadError::InvalidImageSize );
-		const unsigned char *source = texture->ImageData( 0, 0, mip );
-		if ( !source )
-			return foundation::MakeUnexpected( ReadError::InvalidImageSize );
-		ImageLevel level;
-		level.width = static_cast<std::uint32_t>( width );
-		level.height = static_cast<std::uint32_t>( height );
-		const bool rgb = texture->Format() == IMAGE_FORMAT_RGB888;
-		const bool bgr = texture->Format() == IMAGE_FORMAT_BGR888;
-		if ( rgb || bgr )
+		const auto outputBytes = header.format == 2 || header.format == 3
+		                             ? vtf::ImageBytes( 0, run.width, run.height )
+		                             : run.decodedBytes;
+		if ( !outputBytes || outputBytes > kMaxContainerBytes - totalBytes )
+			return foundation::MakeUnexpected( ReadError::TooLarge );
+		totalBytes += outputBytes;
+		auto bytes = vtf::ReadImage( encoded, layout.Value(), run, decompressor );
+		if ( !bytes )
+			return foundation::MakeUnexpected( ReadError::InvalidContainer );
+		ImageLevel &level = result.levels[run.mip];
+		level.width = run.width;
+		level.height = run.height;
+		if ( header.format == 2 || header.format == 3 )
 		{
-			const std::size_t texels = std::size_t( width ) * std::size_t( height );
-			if ( static_cast<std::size_t>( bytes ) != texels * 3 )
-				return foundation::MakeUnexpected( ReadError::InvalidImageSize );
+			const bool bgr = header.format == 3;
+			const auto texels = std::size_t( run.width ) * run.height;
 			level.bytes.resize( texels * 4 );
 			for ( std::size_t i = 0; i < texels; ++i )
 			{
-				const unsigned char *in = source + i * 3;
-				level.bytes[i * 4 + 0] = std::byte( bgr ? in[2] : in[0] );
-				level.bytes[i * 4 + 1] = std::byte( in[1] );
-				level.bytes[i * 4 + 2] = std::byte( bgr ? in[0] : in[2] );
-				level.bytes[i * 4 + 3] = std::byte( 255 );
+				const auto *in = bytes.Value().data() + i * 3;
+				level.bytes[i * 4] = in[bgr ? 2 : 0];
+				level.bytes[i * 4 + 1] = in[1];
+				level.bytes[i * 4 + 2] = in[bgr ? 0 : 2];
+				level.bytes[i * 4 + 3] = std::byte{ 255 };
 			}
 		}
 		else
-		{
-			level.bytes.resize( bytes );
-			std::memcpy( level.bytes.data(), source, bytes );
-		}
-		result.levels.push_back( std::move( level ) );
-		totalBytes += bytes;
+			level.bytes = std::move( bytes ).Value();
 	}
 	return result;
 }

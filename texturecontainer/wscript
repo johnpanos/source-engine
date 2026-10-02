@@ -8,9 +8,11 @@ def options(opt):
 	pass
 
 def configure(conf):
-	pass
+	conf.load('strict_cpp20', tooldir='scripts/waifulib')
+	conf.add_subproject('vtf')
 
 def build(bld):
+	bld.add_subproject('vtf')
 	if not bld.env.KTX_READ_ENABLED:
 		return
 	bld.stlib(
@@ -24,10 +26,11 @@ def build(bld):
 		install_path=None)
 	bld.stlib(
 		features='c cxx',
+		env=bld.strict_cpp20_env(),
 		source=['vtf_reader.cpp'],
 		target='vtf_texture_reader',
 		name='vtf_texture_reader',
 		arch_module='content.vtf-reader',
-		includes=['../public', '../public/tier0', '../public/tier1'],
-		use=['vtf', 'bitmap', 'tier0', 'tier1'],
+		includes=['../public'],
+		use=['vtf_container'],
 		install_path=None)
