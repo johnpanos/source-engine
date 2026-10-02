@@ -63,9 +63,10 @@ hashes and logs are retained under `quality-results/vtf-consolidation*`.
   Portal 2 `materialsystem` target also builds/links with the shared reader.
 - Architecture fixtures **162 passed**, style fixtures **38 passed**. Full
   change style check against `45ae4289b` passed. Loader inventory verified.
-  Whole-tree architecture/baseline checks still report unrelated existing
-  render include violations and two F-Stop `CreateInterfaceFn` occurrences;
-  no ratchet was rewritten to hide those failures.
+  Whole-tree architecture/baseline checks initially reported render include
+  violations and two F-Stop `CreateInterfaceFn` occurrences. The subsequent
+  [architecture repair](0001-phase-a-progress.md#architecture-repair-after-vtf-consolidation-2026-10-01)
+  fixes those failures without adding loader-ratchet exceptions.
 
 Earlier shader-artifact failures prevented a full lab build; after concurrent
 render work resolved them, the full isolated build passed. Waf `step` was used

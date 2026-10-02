@@ -67,6 +67,15 @@
         ]
       },
       {
+        "id": "content.studio-model-fixtures",
+        "paths": [
+          "unittests/mdltest/synthetic_model.h"
+        ],
+        "allowedEdges": [
+          "content.studio-model"
+        ]
+      },
+      {
         "id": "content.texture-contract",
         "paths": [
           "public/texturecontainer/"
@@ -387,7 +396,8 @@
           "render.contracts",
           "render.device",
           "render.device.vulkan",
-          "render.shader-library"
+          "render.shader-library",
+          "render.legacy-pass-contract"
         ],
         "externalHeaders": [
           "vulkan/vulkan.h"
@@ -467,7 +477,8 @@
           "SDL3/SDL.h",
           "SDL3/SDL_vulkan.h",
           "UIKit/UIKit.h",
-          "vulkan/vulkan.h"
+          "vulkan/vulkan.h",
+          "TargetConditionals.h"
         ],
         "uselib": [
           "SDL3",
@@ -1023,6 +1034,16 @@
         ]
       },
       {
+        "id": "render.legacy-pass-contract",
+        "paths": [
+          "public/render/legacy/core_passes.h"
+        ],
+        "allowedEdges": [
+          "render.device",
+          "render.material"
+        ]
+      },
+      {
         "id": "render.legacy-frontend",
         "paths": [
           "public/render/legacy/",
@@ -1035,7 +1056,8 @@
           "render.frame",
           "render.contracts",
           "render.legacy-provider-contract",
-          "render.material"
+          "render.material",
+          "render.legacy-pass-contract"
         ],
         "kind": "legacy-interop",
         "legacyIncludes": [
@@ -1078,7 +1100,8 @@
           "render.pass.indirect",
           "render.contracts",
           "world.map-container",
-          "render.pass.panels"
+          "render.pass.panels",
+          "render.legacy-pass-contract"
         ]
       },
       {
@@ -1114,11 +1137,11 @@
           "render.pass.output",
           "render.legacy-frontend",
           "render.legacy-provider-contract",
-          "render.composition"
+          "render.composition",
+          "content.studio-model-fixtures"
         ],
         "kind": "native-test",
         "externalHeaders": [
-          "random",
           "vulkan/vulkan.h",
           "EGL/egl.h",
           "EGL/eglext.h",
@@ -1433,6 +1456,7 @@
       "fstream",
       "functional",
       "initializer_list",
+      "iostream",
       "iterator",
       "limits",
       "map",
@@ -1440,6 +1464,7 @@
       "mutex",
       "new",
       "optional",
+      "random",
       "set",
       "source_location",
       "span",
@@ -2095,7 +2120,8 @@
             "render.material"
           ],
           [
-            "render.scene"
+            "render.scene",
+            "render.legacy-pass-contract"
           ],
           [
             "render.frame"
@@ -2121,7 +2147,8 @@
           "content.ktx2-reader",
           "content.vtf-reader",
           "world.map-container",
-          "content.studio-model"
+          "content.studio-model",
+          "content.studio-model-fixtures"
         ],
         "independent": [
           [

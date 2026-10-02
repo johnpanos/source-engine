@@ -19,11 +19,26 @@
 // atlas of the same layout (the runtime volume beside a change volume, or
 // the reverse), sampled with the first atlas's weights and visibility by
 // ProbeIrradiancePair.
+// PROBE_VOLUME_COMBINED_SAMPLERS selects the frozen native frontend's sampler2D
+// declarations at the same bindings.
 //
 // Units: irradiance / pi (the lightmap's diffuse light), Source units.
 
 const float kProbeNormalBias = 0.1;
 const float kProbeCrushThreshold = 0.2;
+
+#ifdef PROBE_VOLUME_COMBINED_SAMPLERS
+#define PROBE_ATLAS_SOURCE probeAtlas
+#define PROBE_GRIDS_SOURCE probeGrids
+#define PROBE_SECOND_ATLAS_SOURCE probeSecondAtlas
+#else
+#define PROBE_ATLAS_SOURCE sampler2D( probeAtlas, probeAtlasSampler )
+#define PROBE_GRIDS_SOURCE sampler2D( probeGrids, probeGridsSampler )
+#ifndef PROBE_VOLUME_SECOND_SAMPLER
+#define PROBE_VOLUME_SECOND_SAMPLER probeAtlasSampler
+#endif
+#define PROBE_SECOND_ATLAS_SOURCE sampler2D( probeSecondAtlas, PROBE_VOLUME_SECOND_SAMPLER )
+#endif
 
 vec2 ProbeOctEncode( vec3 d )
 {
@@ -46,20 +61,17 @@ vec2 ProbeTileTexel( vec2 origin, float tile, uint probe, uint tilesPerRow, vec3
 
 vec4 ProbeAtlasSample( vec2 texel )
 {
-	return textureLod( sampler2D( probeAtlas, probeAtlasSampler ),
-	    texel / vec2( textureSize( sampler2D( probeAtlas, probeAtlasSampler ), 0 ) ), 0.0 );
+	return textureLod( PROBE_ATLAS_SOURCE,
+	    texel / vec2( textureSize( PROBE_ATLAS_SOURCE, 0 ) ), 0.0 );
 }
 
 #ifdef PROBE_VOLUME_SECOND
 // The second atlas's sampler: the includer's PROBE_VOLUME_SECOND_SAMPLER, else
 // the first atlas's.
-#ifndef PROBE_VOLUME_SECOND_SAMPLER
-#define PROBE_VOLUME_SECOND_SAMPLER probeAtlasSampler
-#endif
 vec4 ProbeSecondAtlasSample( vec2 texel )
 {
-	return textureLod( sampler2D( probeSecondAtlas, PROBE_VOLUME_SECOND_SAMPLER ),
-	    texel / vec2( textureSize( sampler2D( probeSecondAtlas, PROBE_VOLUME_SECOND_SAMPLER ), 0 ) ),
+	return textureLod( PROBE_SECOND_ATLAS_SOURCE,
+	    texel / vec2( textureSize( PROBE_SECOND_ATLAS_SOURCE, 0 ) ),
 	    0.0 );
 }
 #endif
@@ -71,7 +83,7 @@ vec4 ProbeTile( vec2 origin, float tile, uint probe, uint tilesPerRow, vec3 dire
 
 vec4 ProbeGridRow( int texel, int grid )
 {
-	return texelFetch( sampler2D( probeGrids, probeGridsSampler ), ivec2( texel, grid ), 0 );
+	return texelFetch( PROBE_GRIDS_SOURCE, ivec2( texel, grid ), 0 );
 }
 
 // Irradiance / pi from `layer` at a surface point with unit normal `normal`;
@@ -121,12 +133,13 @@ bool ProbeSampleGridPair( int g, vec3 position, vec3 normal, int layer, bool use
 		const float trilinear = t.x * t.y * t.z;
 		const uint probe =
 		    uint( index3.x ) + dims.x * ( uint( index3.y ) + dims.y * uint( index3.z ) );
-		const vec4 state = texelFetch( sampler2D( probeAtlas, probeAtlasSampler ),
+		const vec4 state = texelFetch( PROBE_ATLAS_SOURCE,
 		    ivec2( stateOrigin.x + probe % stateRow, stateOrigin.y + probe / stateRow ), 0 );
 #ifndef SEEDED_PROBE_STATE_IGNORED
 		if ( state.w < 0.5 )
 			continue;
 #endif
+
 		const vec3 probePosition = origin + vec3( index3 ) * spacing + state.xyz;
 		const vec3 toProbe = probePosition - position;
 		const float toProbeLength = sqrt( dot( toProbe, toProbe ) );
@@ -156,6 +169,7 @@ bool ProbeSampleGridPair( int g, vec3 position, vec3 normal, int layer, bool use
 			}
 		}
 #endif
+
 		weight = max( weight, 1.0e-6 );
 #ifndef SEEDED_PROBE_NO_CRUSH
 		if ( weight < kProbeCrushThreshold )
@@ -217,3 +231,7 @@ bool ProbeIrradiancePair( vec3 position, vec3 normal, int layer, bool useVisibil
 	return false;
 }
 #endif
+
+#undef PROBE_ATLAS_SOURCE
+#undef PROBE_GRIDS_SOURCE
+#undef PROBE_SECOND_ATLAS_SOURCE

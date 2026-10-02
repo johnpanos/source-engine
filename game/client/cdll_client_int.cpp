@@ -204,6 +204,7 @@ void SimulateEntities();
 
 #ifdef FSTOP
 #include "blob_networkbypass.h"
+#include "ispsharedmemory.h"
 #endif
 
 // memdbgon must be the last include file in a .cpp file!!!
@@ -942,7 +943,8 @@ int CHLClient::Init( CreateInterfaceFn appSystemFactory, CreateInterfaceFn physi
 #ifdef FSTOP
 	// The blob NPCs' particle channel shares engine single-player memory with
 	// the server module (blob_networkbypass.h).
-	if ( !BlobNetworkBypass_Connect( appSystemFactory ) )
+	if ( !BlobNetworkBypass_Connect( static_cast<ISPSharedMemoryManager *>(
+	         appSystemFactory( VENGINE_SPSHAREDMEMORY_INTERFACE_VERSION, nullptr ) ) ) )
 		return false;
 #endif
 	if ( (modelrender = (IVModelRender *)appSystemFactory( VENGINE_HUDMODEL_INTERFACE_VERSION, NULL )) == NULL )

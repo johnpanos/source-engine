@@ -18,7 +18,8 @@
 #endif
 
 #include "bitvec.h"
-#include "interface.h"
+
+class ISPSharedMemoryManager;
 
 #define BLOB_MAX_LEVEL_PARTICLES 4000 // maximum number of blob particles in a given level at any one time
 #define BLOB_MAX_LEVEL_PARTICLES_BITS 12 // the number of bits needed to represent the number of particles above (should be ceil(lg(BLOB_MAX_LEVEL_PARTICLES)))
@@ -60,10 +61,9 @@ extern BlobParticleInterpolation_t g_BlobParticleInterpolation;
 
 extern BlobNetworkBypass_t *g_pBlobNetworkBypass;
 
-// Connects the engine's shared memory registry; called from the module's init
-// with the engine factory, which fails without it.
-bool BlobNetworkBypass_Connect( CreateInterfaceFn engineFactory );
-
+// Borrows the engine's shared memory registry, resolved by the module's init.
+// The registry must outlive the game systems. Missing service fails startup.
+bool BlobNetworkBypass_Connect( ISPSharedMemoryManager *sharedMemoryManager );
 
 #ifndef CLIENT_DLL
 int AllocateBlobNetworkBypassIndex( void );

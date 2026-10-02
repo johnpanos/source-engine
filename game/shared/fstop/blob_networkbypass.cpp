@@ -26,11 +26,9 @@ BlobNetworkBypass_t *g_pBlobNetworkBypass;
 
 static ISPSharedMemoryManager *s_pSPSharedMemoryManager = NULL;
 
-bool BlobNetworkBypass_Connect( CreateInterfaceFn engineFactory )
+bool BlobNetworkBypass_Connect( ISPSharedMemoryManager *sharedMemoryManager )
 {
-	s_pSPSharedMemoryManager = engineFactory
-		? (ISPSharedMemoryManager *)engineFactory( VENGINE_SPSHAREDMEMORY_INTERFACE_VERSION, NULL )
-		: NULL;
+	s_pSPSharedMemoryManager = sharedMemoryManager;
 	return s_pSPSharedMemoryManager != NULL;
 }
 

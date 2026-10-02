@@ -1,4 +1,5 @@
 import copy
+import json
 import sys
 import tempfile
 import unittest
@@ -132,6 +133,54 @@ class CapabilityBoundaryTest(unittest.TestCase):
         self.assertEqual(self.check(), [])
         self.write('public/base/api.h', '#include "tier0/platform.h"\n')
         self.assertTrue(any('CAP002 public/base/api.h' in e for e in self.check()))
+
+
+class RepositoryBoundaryRegressionTest(unittest.TestCase):
+    """Exercise real manifest permissions with small positive/negative sources."""
+
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.root = Path(self.directory.name)
+        manifest = Path(__file__).resolve().parents[3] / 'architecture/modules.json'
+        self.block = json.loads(manifest.read_text())['capabilityModules']
+
+    write = CapabilityBoundaryTest.write
+    check = CapabilityBoundaryTest.check
+
+    def test_portable_standard_headers_and_unknown_header(self):
+        path = 'render/lab/gtao_suite.cpp'
+        self.write(path, '#include <random>\n#include <iostream>\n')
+        self.assertEqual(self.check(), [])
+        self.write(path, '#include <undeclared_sdk.h>\n')
+        self.assertTrue(any('CAP002' in error for error in self.check()))
+
+    def test_apple_sdk_is_private_to_the_bridge(self):
+        self.write('render/bridge/sdl3-vulkan/sdl3_dynamic_range.cpp',
+                   '#include <TargetConditionals.h>\n')
+        self.assertEqual(self.check(), [])
+        self.write('render/math/test_leak.cpp', '#include <TargetConditionals.h>\n')
+        self.assertTrue(any('CAP002 render/math/test_leak.cpp' in error
+                            for error in self.check()))
+
+    def test_legacy_backend_can_use_port_but_not_frontend_implementation(self):
+        self.write('public/render/legacy/core_passes.h', '')
+        self.write('render/legacy/queued_capabilities.h', '')
+        path = 'materialsystem/shaderapivulkan/vulkan_device.h'
+        self.write(path, '#include "render/legacy/core_passes.h"\n')
+        self.assertEqual(self.check(), [])
+        self.write(path, '#include "render/legacy/queued_capabilities.h"\n')
+        self.assertTrue(any('CAP002' in error for error in self.check()))
+
+    def test_model_fixture_is_shared_by_tests_not_product_composition(self):
+        self.write('unittests/mdltest/synthetic_model.h', '')
+        self.write('unittests/rendertest/core/composition/test_composition.cpp',
+                   '#include "../../../mdltest/synthetic_model.h"\n')
+        self.assertEqual(self.check(), [])
+        self.write('render/composition/test_leak.cpp',
+                   '#include "unittests/mdltest/synthetic_model.h"\n')
+        self.assertTrue(any('CAP002 render/composition/test_leak.cpp' in error
+                            for error in self.check()))
 
 
 class CompileDependencyTest(unittest.TestCase):

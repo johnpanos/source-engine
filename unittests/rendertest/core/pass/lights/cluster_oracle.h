@@ -1,7 +1,7 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
-// Purpose: The independent reference for render.lights.v1 (RFC 0016 K7),
-//			shared by render.lights.clusters and its sensitivity suite.
+// Purpose: Independent geometry checks for render.lights.v1 (RFC 0016 K7).
+//			This verifies GPU output; it does not assign light lists.
 //
 //			It shares no code with render.pass.lights. It rebuilds each
 //			froxel in double precision from the view's own matrices (tile
@@ -28,13 +28,11 @@
 #define RENDER_LIGHTS_CLUSTER_ORACLE_H
 
 #include "render/pass/lights/clusters.h"
-#include "cluster_cpu_reference.h"
 
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
-#include <functional>
 #include <limits>
 #include <random>
 #include <span>
@@ -687,23 +685,6 @@ struct BuildOutput
 	ClusterStats stats;
 };
 
-using Builder = std::function<BuildOutput( const Scene & )>;
-
-inline BuildOutput RealBuild( const Scene &scene )
-{
-	BuildOutput out;
-	auto grid = render::pass::lights::CreateClusterGrid( scene.desc, scene.limits );
-	if ( !grid )
-		return out;
-	out.grid = std::move( grid ).Value();
-	auto stats = render::pass::lights::AssignLights( out.grid, scene.lights, out.lists );
-	if ( !stats )
-		return out;
-	out.stats = stats.Value();
-	out.ok = true;
-	return out;
-}
-
 struct Tally
 {
 	std::uint64_t scenes = 0;
@@ -906,125 +887,6 @@ inline void CheckScene(
 				tally.Note( "lookup miss", id );
 			}
 		}
-	}
-}
-
-// The overflow contract: with tight limits each froxel keeps the prefix of
-// its unlimited list that fits (per-froxel limit, then the index capacity in
-// froxel order), the counts in the result equal what was lost, and kFail
-// fails with the same counts and leaves the output alone.
-inline void CheckOverflow(
-    const Scene &scene, const Builder &build, std::mt19937 &random, Tally &tally )
-{
-	const std::uint64_t id = tally.scenes++;
-	const BuildOutput full = build( scene );
-	if ( !full.ok )
-	{
-		++tally.buildFailures;
-		tally.Note( "unlimited build failed", id );
-		return;
-	}
-	Scene tight = scene;
-	tight.limits.maxLightsPerFroxel = 1 + random() % 8;
-	const std::uint32_t total = std::uint32_t( full.lists.lightIndices.size() );
-	tight.limits.maxLightIndices = std::max<std::uint32_t>( 1, total / ( 2 + random() % 4 ) );
-	// Expected: the lights beyond maxLights leave every list, then each list
-	// keeps its prefix under the per-froxel limit and the remaining room.
-	const RefGrid g = MakeRefGrid( scene.desc, scene.limits );
-	std::vector<std::uint32_t> admittedOrder;
-	for ( std::uint32_t i = 0; i < scene.lights.size(); ++i )
-	{
-		if ( MakeRefLight( g, scene.lights[i] ).clustered )
-			admittedOrder.push_back( i );
-	}
-	const std::uint32_t clustered = std::uint32_t( admittedOrder.size() );
-	tight.limits.maxLights = std::max<std::uint32_t>( 1, clustered - clustered / 4 );
-	std::vector<std::uint8_t> kept( scene.lights.size(), 0 );
-	for ( std::size_t i = 0; i < admittedOrder.size() && i < tight.limits.maxLights; ++i )
-		kept[admittedOrder[i]] = 1;
-	const std::uint32_t overCapacity =
-	    std::uint32_t( admittedOrder.size() > tight.limits.maxLights
-	                       ? admittedOrder.size() - tight.limits.maxLights
-	                       : 0 );
-
-	std::vector<std::vector<std::uint32_t>> expected( full.lists.froxels.size() );
-	std::uint64_t room = tight.limits.maxLightIndices;
-	std::uint32_t overflowed = 0;
-	std::uint32_t dropped = 0;
-	for ( std::size_t f = 0; f < full.lists.froxels.size(); ++f )
-	{
-		std::vector<std::uint32_t> candidates;
-		const auto &range = full.lists.froxels[f];
-		for ( std::uint32_t i = 0; i < range.count; ++i )
-		{
-			const std::uint32_t light = full.lists.lightIndices[range.offset + i];
-			if ( kept[light] )
-				candidates.push_back( light );
-		}
-		std::size_t keep =
-		    std::min<std::size_t>( candidates.size(), tight.limits.maxLightsPerFroxel );
-		keep = std::min<std::size_t>( keep, room );
-		room -= keep;
-		if ( keep < candidates.size() )
-		{
-			++overflowed;
-			dropped += std::uint32_t( candidates.size() - keep );
-		}
-		expected[f].assign( candidates.begin(), candidates.begin() + keep );
-	}
-
-	const BuildOutput limited = build( tight );
-	bool ok = limited.ok && limited.lists.froxels.size() == expected.size();
-	for ( std::size_t f = 0; ok && f < expected.size(); ++f )
-	{
-		const auto &range = limited.lists.froxels[f];
-		ok = range.count == expected[f].size() &&
-		     std::equal( expected[f].begin(), expected[f].end(),
-		         limited.lists.lightIndices.begin() + range.offset );
-	}
-	ok = ok && limited.stats.lightsOverCapacity == overCapacity &&
-	     limited.stats.froxelsOverflowed == overflowed &&
-	     limited.stats.assignmentsDropped == dropped &&
-	     limited.stats.Overflowed() == ( overCapacity != 0 || dropped != 0 );
-	if ( !ok )
-	{
-		++tally.accountingErrors;
-		tally.Note( "overflow accounting (report)", id );
-		return;
-	}
-
-	// kFail: the same counts, and the output untouched.
-	Scene failing = tight;
-	failing.limits.overflow = render::pass::lights::OverflowPolicy::kFail;
-	auto grid = render::pass::lights::CreateClusterGrid( failing.desc, failing.limits );
-	if ( !grid )
-	{
-		++tally.accountingErrors;
-		tally.Note( "grid (fail policy)", id );
-		return;
-	}
-	ClusterLists sentinel;
-	sentinel.froxels.assign( 3, { 7, 9 } );
-	sentinel.lightIndices.assign( 5, 42 );
-	ClusterLists out = sentinel;
-	auto result = render::pass::lights::AssignLights( grid.Value(), failing.lights, out );
-	const bool overflowExpected = overCapacity != 0 || dropped != 0;
-	bool failOk;
-	if ( overflowExpected )
-	{
-		failOk = !result && result.Error().error == render::pass::lights::ClusterError::kOverflow &&
-		         result.Error().stats.assignmentsDropped == dropped &&
-		         result.Error().stats.lightsOverCapacity == overCapacity &&
-		         out.froxels == sentinel.froxels && out.lightIndices == sentinel.lightIndices;
-	}
-	else
-	{
-		failOk = static_cast<bool>( result );
-	}
-	if ( !failOk )
-	{
-		++tally.accountingErrors;
-		tally.Note( "overflow accounting (fail)", id );
 	}
 }
 

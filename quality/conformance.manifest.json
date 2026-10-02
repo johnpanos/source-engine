@@ -10816,6 +10816,7 @@
         "render/pass/shadows/atlas.cpp",
         "render/pass/shadows/shadow_views.cpp",
         "render/pass/lights/clusters.cpp",
+        "render/pass/lights/cluster_pass.cpp",
         "mapcontainer/world_mesh.cpp",
         "render/composition/core_output.cpp",
         "render/pass/output/output.cpp",
@@ -10865,6 +10866,7 @@
         "render/pass/shadows/atlas.cpp",
         "render/pass/shadows/shadow_views.cpp",
         "render/pass/lights/clusters.cpp",
+        "render/pass/lights/cluster_pass.cpp",
         "mapcontainer/world_mesh.cpp",
         "render/composition/core_output.cpp",
         "render/pass/output/output.cpp",
@@ -11600,50 +11602,6 @@
       "expect": "pass"
     },
     {
-      "id": "render.lights.clusters",
-      "domain": "Q-PRESENTATION",
-      "rfc": "0016",
-      "migration": "R90",
-      "contract": "unittests/rendertest/contracts/render.lights.v1.md",
-      "kind": "positive",
-      "profile": "linux-headless-core",
-      "description": "render.lights.v1 (RFC 0016 K7, headless slice): froxel grid geometry against the projection; zero false negatives over 1,000 seeded scenes against an independent double-precision reference (exact distance for points, exact rejection plus witness search for spots), false-positive rates recorded under their ceilings; the FroxelAt lookup at random points; list invariants; exact overflow accounting under both policies; directional, invalid and unbounded lights; packed records; determinism; SubdivideClusterGrid (L9, the volumetric fog's froxels): over 100 seeded subdivisions the shared slice depths and corner rays are the parent's bitwise, every fine froxel lies in the parent froxel ParentFroxelIndex names (its corners by the parent's planes and depths, its centre by FroxelAt), the fine geometry matches the reference at the fine limits, and a parent map off by one and a grid whose slices do not subdivide the parent's are caught in every seeded scene. Honors CONFORMANCE_SEED.",
-      "result_protocol": "checks-v1",
-      "sources": [
-        "render/math/matrix.cpp",
-        "render/pass/lights/clusters.cpp",
-        "unittests/rendertest/core/pass/lights/test_clusters.cpp"
-      ],
-      "min_checks": 46,
-      "extra_flags": [
-        "-O2"
-      ],
-      "timeout_seconds": 300,
-      "expect": "pass"
-    },
-    {
-      "id": "render.lights.clusters.sensitivity",
-      "domain": "Q-PRESENTATION",
-      "rfc": "0016",
-      "migration": "R90",
-      "contract": "unittests/rendertest/contracts/render.lights.v1.md",
-      "kind": "sensitivity",
-      "profile": "linux-headless-core",
-      "description": "render.lights.v1 bad builders (RFC 0016 K7): slice boundaries off by one, a range-squared sphere test, rows mirrored, columns off by one, spot half-angles halved and doubled, near-plane culling, unbounded lights dropped and uncounted capacity losses are each detected by the render.lights.clusters oracles; the real builder is clean on the same scenes.",
-      "result_protocol": "checks-v1",
-      "sources": [
-        "render/math/matrix.cpp",
-        "render/pass/lights/clusters.cpp",
-        "unittests/rendertest/core/pass/lights/test_clusters_negative.cpp"
-      ],
-      "min_checks": 10,
-      "extra_flags": [
-        "-O2"
-      ],
-      "timeout_seconds": 300,
-      "expect": "pass"
-    },
-    {
       "id": "render.lights.clusters.gpu",
       "domain": "Q-PRESENTATION",
       "rfc": "0016",
@@ -11651,7 +11609,7 @@
       "contract": "unittests/rendertest/contracts/render.lights.v1.md",
       "kind": "positive",
       "profile": "linux-native-vulkan-gpu",
-      "description": "render.lights.v1 on render.device.vulkan (RFC 0016 K7): cluster_assign.comp as a render.graph compute pass (upload, assign and readback through the serial executor). G1: over 300 seeded scenes (0 to 256 points and spots, an empty and a full scene) each froxel's list equals AssignLights' list, light-set indices ascending; a pair listed by one side only fails unless the serial path flips on it within 1e-4 of the light's radius and half-angle, and such boundary pairs stay under 1e-5 of the assignments. G2: the device's lists have zero false negatives against the independent reference on 100 scenes. G3/G4: per-froxel limits keep the same prefixes and counters; index capacity keeps serial prefixes, fills exactly and totals match. G5: seeded kernels (slice boundaries off by one, the spot cone ignored, uncounted overflow) are each rejected. The Khronos validation layer (synchronization validation) reports no message. Honors CONFORMANCE_SEED.",
+      "description": "render.lights.v1 on render.device.vulkan (RFC 0016 K7): cluster_assign.comp as a render.graph compute pass (upload, assign and readback through the serial executor). G1: over 300 seeded scenes, two GPU dispatches on the same immutable inputs agree exactly and write ordered, disjoint, capacity-bounded lists. G2: the device's lists have zero false negatives against independent double-precision geometry checks on 100 scenes. G3/G4: limited GPU lists keep the prefixes of unlimited GPU lists; counters equal the actual discarded pairs, and index capacity fills exactly. G5: seeded kernels (slice boundaries off by one, the spot cone ignored, uncounted overflow) are rejected against the production GPU kernel or independent counters. The Khronos validation layer (synchronization validation) reports no message. Honors CONFORMANCE_SEED.",
       "result_protocol": "checks-v1",
       "sources": [
         "render/shaderlib/shaderlib.cpp",
@@ -11879,6 +11837,7 @@
         "render/pass/shadows/atlas.cpp",
         "render/pass/shadows/shadow_views.cpp",
         "render/pass/lights/clusters.cpp",
+        "render/pass/lights/cluster_pass.cpp",
         "mapcontainer/world_mesh.cpp",
         "render/composition/core_output.cpp",
         "render/pass/output/output.cpp",
@@ -11969,6 +11928,7 @@
         "render/pass/shadows/atlas.cpp",
         "render/pass/shadows/shadow_views.cpp",
         "render/pass/lights/clusters.cpp",
+        "render/pass/lights/cluster_pass.cpp",
         "mapcontainer/world_mesh.cpp",
         "render/composition/core_output.cpp",
         "render/pass/output/output.cpp",
@@ -12059,6 +12019,7 @@
         "render/pass/shadows/atlas.cpp",
         "render/pass/shadows/shadow_views.cpp",
         "render/pass/lights/clusters.cpp",
+        "render/pass/lights/cluster_pass.cpp",
         "mapcontainer/world_mesh.cpp",
         "render/composition/core_output.cpp",
         "render/pass/output/output.cpp",

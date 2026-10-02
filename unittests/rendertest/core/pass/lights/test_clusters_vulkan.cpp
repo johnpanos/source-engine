@@ -1,42 +1,9 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
-// Purpose: render.lights.clusters.gpu (RFC 0016 K7, render.lights.v1) on
-//			render.device.vulkan: cluster_assign.comp as a render.graph
-//			compute pass (upload, assign and readback passes through the
-//			serial executor) against the serial path, AssignLights.
-//
-//			G1 over 300 seeded scenes (cluster_oracle.h's MakeScene: cameras
-//			   anywhere within 16,000 units, 0 to 256 points and spots, plus
-//			   an empty and a full scene), each froxel's list equals the
-//			   serial path's list, light-set indices in the same ascending
-//			   order. A pair listed by one side only is a mismatch. It is
-//			   excused only when it lies on the boundary: the serial path
-//			   lists the froxel for the light grown by 1e-4 (radius and
-//			   half-angle) and not for it shrunk by 1e-4. Every other
-//			   mismatch fails, and boundary mismatches stay under a recorded
-//			   ceiling. The ranges are disjoint and cover exactly the indices
-//			   written, and the requested count equals the serial
-//			   assignments;
-//			G2 zero false negatives: the device's lists, compacted to froxel
-//			   order, pass the independent reference (CheckScene) on the
-//			   first 100 scenes;
-//			G3 the per-froxel limit (1 to 8 lights) on 60 scenes: the same
-//			   prefixes, and froxelsOverflowed and assignmentsDropped equal
-//			   the serial path's;
-//			G4 index capacity (a half to a fifth of the assignments) on 40
-//			   scenes: each list is a prefix of its per-froxel-limited serial
-//			   list, the lists fill the capacity exactly, and the requested
-//			   and dropped totals equal the serial path's;
-//			G5 the seeded defective kernels (cluster_defects_spv.h) are each
-//			   rejected: slice boundaries off by one and the spot cone
-//			   ignored (G1 mismatches off the boundary), and capacity losses
-//			   not counted (G3 counters);
-//			validation: with the Khronos validation layer (synchronization
-//			   validation included) the run reports no message; without the
-//			   layer the clause prints SKIP and certifies nothing.
-//
-//			RENDER_VK_ADAPTER=<n> picks the physical device; CONFORMANCE_SEED
-//			changes the scenes. A missing Vulkan device fails the run.
+// Purpose: render.lights.clusters.gpu (RFC 0016 K7, render.lights.v1):
+//          GPU assignment, independent geometric coverage checks, capacity
+//          accounting, direct consumer buffers and seeded defective kernels.
+//          No CPU light-assignment implementation or timing path is retained.
 //
 //=============================================================================//
 
@@ -72,12 +39,6 @@ constexpr int kReferenceScenes = 100;
 constexpr int kLimitScenes = 60;
 constexpr int kCapacityScenes = 40;
 constexpr int kDefectScenes = 40;
-// A boundary mismatch is a pair within kBoundary (relative) of the serial
-// path's decision. Measured at introduction (2026-09-28): see the progress
-// record; the ceiling fails a kernel that disagrees broadly.
-constexpr float kBoundary = 1.0e-4f;
-constexpr double kBoundaryCeiling = 1.0e-5; // per assignment
-
 std::uint32_t Seed()
 {
 	const char *text = std::getenv( "CONFORMANCE_SEED" );
@@ -253,36 +214,14 @@ bool RangesWellFormed( const DeviceLists &lists, std::uint32_t capacity )
 	return total == kept;
 }
 
-// Whether the serial path lists `froxel` for light `index` grown or shrunk by
-// kBoundary: the pair is on the decision's boundary when the grown light is
-// listed and the shrunk one is not.
-bool OnBoundary( const lights::ClusterGrid &grid, const RuntimeLight &light, std::uint32_t froxel )
-{
-	const auto listed = [&]( float scale )
-	{
-		RuntimeLight changed = light;
-		changed.radius *= scale;
-		if ( light.shape == LightShape::Spot )
-		{
-			const double half = std::acos( std::clamp( double( light.outerCos ), -1.0, 1.0 ) );
-			changed.outerCos = float( std::cos( std::min( half * scale, kPi ) ) );
-		}
-		lights::ClusterLists lists;
-		auto stats = lights::AssignLights( grid, std::span( &changed, 1 ), lists );
-		return stats && lists.froxels[froxel].count != 0;
-	};
-	return listed( 1.0f + kBoundary ) && !listed( 1.0f - kBoundary );
-}
-
 struct Comparison
 {
 	std::uint64_t scenes = 0;
 	std::uint64_t deviceFailures = 0;
 	std::uint64_t shapeErrors = 0;
-	std::uint64_t countErrors = 0; // requested count differs from the serial assignments
-	std::uint64_t pairs = 0;       // serial assignments compared
-	std::uint64_t boundary = 0;
-	std::uint64_t mismatches = 0; // off the boundary
+	std::uint64_t countErrors = 0; // repeated GPU dispatches disagree
+	std::uint64_t pairs = 0;
+	std::uint64_t mismatches = 0;
 	std::string first;
 
 	void Note( const std::string &what )
@@ -292,26 +231,24 @@ struct Comparison
 	}
 };
 
-// G1 for one scene: the device's lists equal the serial path's, up to
-// boundary pairs. Returns the number of boundary pairs (they make the
-// scene unusable for exact prefix checks).
-std::uint64_t CompareLists( const Scene &scene, const lights::ClusterGrid &grid,
-    const lights::ClusterLists &serial, const lights::ClusterStats &stats,
-    const DeviceLists &device, Comparison &out )
+// Compare two GPU dispatches on identical inputs. Mutant kernels use the
+// production kernel as the baseline; this is not a CPU assignment path.
+void CompareLists( const lights::ClusterGrid &grid, const lights::ClusterLists &baseline,
+    const lights::ClusterStats &stats, const DeviceLists &device, Comparison &out )
 {
 	const std::uint64_t id = out.scenes++;
 	if ( !device.ok )
 	{
 		++out.deviceFailures;
 		out.Note( "device run failed (scene " + std::to_string( id ) + ")" );
-		return 0;
+		return;
 	}
-	if ( device.ranges.size() != serial.froxels.size() ||
+	if ( device.ranges.size() != baseline.froxels.size() ||
 	     !RangesWellFormed( device, grid.limits.maxLightIndices ) )
 	{
 		++out.shapeErrors;
 		out.Note( "ranges (scene " + std::to_string( id ) + ")" );
-		return 0;
+		return;
 	}
 	if ( device.header.requested != stats.assignments )
 	{
@@ -319,13 +256,10 @@ std::uint64_t CompareLists( const Scene &scene, const lights::ClusterGrid &grid,
 		out.Note( "requested count (scene " + std::to_string( id ) + ")" );
 	}
 	out.pairs += stats.assignments;
-	std::uint64_t boundary = 0;
-	for ( std::uint32_t f = 0; f < serial.froxels.size(); ++f )
+	for ( std::uint32_t f = 0; f < baseline.froxels.size(); ++f )
 	{
-		const auto a = ListOf( serial, f );
+		const auto a = ListOf( baseline, f );
 		const auto b = ListOf( device, f );
-		if ( std::equal( a.begin(), a.end(), b.begin(), b.end() ) )
-			continue;
 		if ( !std::is_sorted( b.begin(), b.end() ) ||
 		     std::adjacent_find( b.begin(), b.end() ) != b.end() )
 		{
@@ -336,27 +270,14 @@ std::uint64_t CompareLists( const Scene &scene, const lights::ClusterGrid &grid,
 		std::vector<std::uint32_t> onlyOne;
 		std::set_symmetric_difference(
 		    a.begin(), a.end(), b.begin(), b.end(), std::back_inserter( onlyOne ) );
-		for ( const std::uint32_t light : onlyOne )
-		{
-			if ( light < scene.lights.size() && OnBoundary( grid, scene.lights[light], f ) )
-			{
-				++boundary;
-				continue;
-			}
-			++out.mismatches;
-			char text[160];
-			std::snprintf( text, sizeof( text ),
-			    "scene %llu froxel %u light %u listed by the %s path only",
-			    static_cast<unsigned long long>( id ), f, light,
-			    std::binary_search( a.begin(), a.end(), light ) ? "serial" : "device" );
-			out.Note( text );
-		}
+		out.mismatches += onlyOne.size();
+		if ( !onlyOne.empty() )
+			out.Note( "different GPU lists (scene " + std::to_string( id ) + ")" );
 	}
-	out.boundary += boundary;
-	return boundary;
+	return;
 }
 
-// The device's lists in froxel order, as the serial path lays them out.
+// The device's lists compacted in froxel order for geometric checks.
 BuildOutput Compacted( const lights::ClusterGrid &grid, const DeviceLists &device )
 {
 	BuildOutput out;
@@ -373,32 +294,26 @@ BuildOutput Compacted( const lights::ClusterGrid &grid, const DeviceLists &devic
 	return out;
 }
 
-struct Built
-{
-	bool ok = false;
-	lights::ClusterGrid grid;
-	lights::ClusterLists lists;
-	lights::ClusterStats stats;
-};
+using Built = BuildOutput;
 
-Built Serial( const Scene &scene )
+Built GpuBaseline( IRenderDevice2 &device, lights::ClusterKernel &kernel, const Scene &scene )
 {
 	Built built;
 	auto grid = lights::CreateClusterGrid( scene.desc, scene.limits );
 	if ( !grid )
 		return built;
 	built.grid = std::move( grid ).Value();
-	auto stats = lights::AssignLights( built.grid, scene.lights, built.lists );
-	if ( !stats )
+	const DeviceLists gpu = AssignOnDevice( device, kernel, built.grid, scene.lights );
+	if ( !gpu.ok || !RangesWellFormed( gpu, scene.limits.maxLightIndices ) )
 		return built;
-	built.stats = stats.Value();
-	built.ok = true;
+	built = Compacted( built.grid, gpu );
+	built.stats.froxelsOverflowed = gpu.header.froxelsOverflowed;
+	built.stats.assignmentsDropped = gpu.header.assignmentsDropped;
 	return built;
 }
 
-// The scenes of G1: MakeScene's, with index capacity sized to the serial
-// assignments (so the device's list stays small), plus an empty and a full
-// scene.
+// The scenes of G1: MakeScene's, with room for every possible pair,
+// plus an empty and a full scene.
 std::vector<Scene> MakeScenes( std::mt19937 &random, int count )
 {
 	std::vector<Scene> scenes;
@@ -417,8 +332,9 @@ std::vector<Scene> MakeScenes( std::mt19937 &random, int count )
 					scene.lights.push_back( light );
 			}
 		}
-		const Built built = Serial( scene );
-		scene.limits.maxLightIndices = std::max<std::uint32_t>( built.stats.assignments + 64, 64 );
+		const auto grid = lights::CreateClusterGrid( scene.desc, scene.limits );
+		scene.limits.maxLightIndices = std::max<std::uint32_t>(
+		    grid.Value().FroxelCount() * std::uint32_t( scene.lights.size() ) + 64, 64 );
 		scenes.push_back( std::move( scene ) );
 	}
 	return scenes;
@@ -427,7 +343,7 @@ std::vector<Scene> MakeScenes( std::mt19937 &random, int count )
 struct LimitResult
 {
 	std::uint64_t scenes = 0;
-	std::uint64_t skipped = 0; // scenes with boundary pairs
+	std::uint64_t skipped = 0; // scenes without relevant lights
 	std::uint64_t listErrors = 0;
 	std::uint64_t counterErrors = 0;
 	std::uint64_t overflowed = 0; // froxels that lost a light, over the scenes
@@ -439,38 +355,44 @@ struct LimitResult
 void CheckPerFroxelLimit( IRenderDevice2 &device, lights::ClusterKernel &kernel, const Scene &base,
     std::mt19937 &random, LimitResult &out )
 {
+	const Built full = GpuBaseline( device, kernel, base );
 	Scene scene = base;
 	scene.limits.maxLightsPerFroxel = 1 + random() % 8;
-	const Built serial = Serial( scene );
-	const DeviceLists lists = AssignOnDevice( device, kernel, serial.grid, scene.lights );
+	auto grid = lights::CreateClusterGrid( scene.desc, scene.limits );
+	const DeviceLists lists =
+	    grid ? AssignOnDevice( device, kernel, grid.Value(), scene.lights ) : DeviceLists{};
 	++out.scenes;
-	if ( !serial.ok || !lists.ok || lists.ranges.size() != serial.lists.froxels.size() )
+	if ( !full.ok || !lists.ok || lists.ranges.size() != full.lists.froxels.size() )
 	{
 		++out.listErrors;
 		if ( out.first.empty() )
 			out.first = "run failed";
 		return;
 	}
-	out.overflowed += serial.stats.froxelsOverflowed;
-	if ( lists.header.froxelsOverflowed != serial.stats.froxelsOverflowed ||
-	     lists.header.assignmentsDropped != serial.stats.assignmentsDropped ||
-	     lists.header.requested != serial.stats.assignments )
-	{
-		++out.counterErrors;
-		if ( out.first.empty() )
-			out.first = "counters differ";
-	}
+	std::uint32_t dropped = 0, overflowed = 0;
 	for ( std::uint32_t f = 0; f < lists.ranges.size(); ++f )
 	{
-		const auto a = ListOf( serial.lists, f );
+		const auto a = ListOf( full.lists, f );
 		const auto b = ListOf( lists, f );
-		if ( !std::equal( a.begin(), a.end(), b.begin(), b.end() ) )
+		const std::size_t kept = std::min<std::size_t>( a.size(), scene.limits.maxLightsPerFroxel );
+		dropped += std::uint32_t( a.size() - kept );
+		overflowed += kept < a.size();
+		if ( b.size() != kept || !std::equal( b.begin(), b.end(), a.begin() ) )
 		{
 			++out.listErrors;
 			if ( out.first.empty() )
 				out.first = "per-froxel prefix differs";
 			return;
 		}
+	}
+	out.overflowed += overflowed;
+	if ( lists.header.requested != full.stats.assignments - dropped ||
+	     lists.header.assignmentsDropped != dropped ||
+	     lists.header.froxelsOverflowed != overflowed )
+	{
+		++out.counterErrors;
+		if ( out.first.empty() )
+			out.first = "limit counters differ";
 	}
 }
 
@@ -480,40 +402,31 @@ void CheckIndexCapacity( IRenderDevice2 &device, lights::ClusterKernel &kernel, 
 {
 	Scene unlimited = base;
 	unlimited.limits.maxLightsPerFroxel = 1 + random() % 16;
-	const Built full = Serial( unlimited );
+	const Built full = GpuBaseline( device, kernel, unlimited );
 	Scene scene = unlimited;
 	scene.limits.maxLightIndices =
 	    std::max<std::uint32_t>( 1, full.stats.assignments / ( 2 + random() % 4 ) );
-	const Built serial = Serial( scene );
-	const DeviceLists lists = AssignOnDevice( device, kernel, serial.grid, scene.lights );
+	auto grid = lights::CreateClusterGrid( scene.desc, scene.limits );
+	const DeviceLists lists =
+	    grid ? AssignOnDevice( device, kernel, grid.Value(), scene.lights ) : DeviceLists{};
 	++out.scenes;
-	if ( !full.ok || !serial.ok || !lists.ok || lists.ranges.size() != serial.lists.froxels.size() )
+	if ( !full.ok || !lists.ok || lists.ranges.size() != full.lists.froxels.size() )
 	{
 		++out.listErrors;
 		if ( out.first.empty() )
 			out.first = "run failed";
 		return;
 	}
-	out.overflowed += serial.stats.froxelsOverflowed;
+	out.overflowed += lists.header.froxelsOverflowed;
 	if ( !RangesWellFormed( lists, scene.limits.maxLightIndices ) ||
 	     lists.header.requested != full.stats.assignments ||
-	     lists.header.assignmentsDropped != serial.stats.assignmentsDropped ||
-	     std::min( lists.header.requested, scene.limits.maxLightIndices ) !=
-	         serial.stats.assignments )
+	     lists.header.assignmentsDropped !=
+	         full.stats.assignmentsDropped + full.stats.assignments -
+	             std::min( full.stats.assignments, scene.limits.maxLightIndices ) )
 	{
 		++out.counterErrors;
 		if ( out.first.empty() )
-		{
-			char text[200];
-			std::snprintf( text, sizeof( text ),
-			    "capacity totals differ: requested %u (serial %u), dropped %u (serial %u), "
-			    "capacity %u, kept %u, ranges %s",
-			    lists.header.requested, full.stats.assignments, lists.header.assignmentsDropped,
-			    serial.stats.assignmentsDropped, scene.limits.maxLightIndices,
-			    serial.stats.assignments,
-			    RangesWellFormed( lists, scene.limits.maxLightIndices ) ? "ok" : "malformed" );
-			out.first = text;
-		}
+			out.first = "capacity totals differ";
 	}
 	for ( std::uint32_t f = 0; f < lists.ranges.size(); ++f )
 	{
@@ -523,34 +436,33 @@ void CheckIndexCapacity( IRenderDevice2 &device, lights::ClusterKernel &kernel, 
 		{
 			++out.listErrors;
 			if ( out.first.empty() )
-				out.first = "a list is not a prefix of its per-froxel list";
+				out.first = "a list is not a prefix of its unlimited list";
 			return;
 		}
 	}
 }
 
-// Runs G1 for a kernel over `scenes`; the defects reuse it.
+// Repeated GPU dispatches must be deterministic; mutants are compared with
+// the production GPU kernel on the same immutable scene.
 Comparison CompareScenes( IRenderDevice2 &device, lights::ClusterKernel &kernel,
-    const std::vector<Scene> &scenes, std::size_t count, std::vector<std::uint64_t> *boundary,
-    std::mt19937 *reference, Tally *tally )
+    const std::vector<Scene> &scenes, std::size_t count, std::mt19937 *reference, Tally *tally,
+    lights::ClusterKernel *baselineKernel = nullptr )
 {
 	Comparison comparison;
 	for ( std::size_t s = 0; s < count && s < scenes.size(); ++s )
 	{
-		const Built serial = Serial( scenes[s] );
-		if ( !serial.ok )
+		const Built baseline =
+		    GpuBaseline( device, baselineKernel ? *baselineKernel : kernel, scenes[s] );
+		if ( !baseline.ok )
 		{
 			++comparison.deviceFailures;
-			comparison.Note( "serial build failed" );
+			comparison.Note( "GPU baseline failed" );
 			continue;
 		}
-		const DeviceLists lists = AssignOnDevice( device, kernel, serial.grid, scenes[s].lights );
-		const std::uint64_t pairs =
-		    CompareLists( scenes[s], serial.grid, serial.lists, serial.stats, lists, comparison );
-		if ( boundary )
-			boundary->push_back( pairs );
+		const DeviceLists lists = AssignOnDevice( device, kernel, baseline.grid, scenes[s].lights );
+		CompareLists( baseline.grid, baseline.lists, baseline.stats, lists, comparison );
 		if ( tally && reference && s < std::size_t( kReferenceScenes ) && lists.ok )
-			CheckScene( scenes[s], Compacted( serial.grid, lists ), *reference, *tally );
+			CheckScene( scenes[s], Compacted( baseline.grid, lists ), *reference, *tally );
 	}
 	return comparison;
 }
@@ -585,9 +497,8 @@ int main()
 		const std::vector<Scene> scenes = MakeScenes( random, kScenes );
 		std::mt19937 reference( seed + 1 );
 		Tally tally;
-		std::vector<std::uint64_t> boundary;
-		const Comparison g1 = CompareScenes(
-		    *device, *kernel.Value(), scenes, scenes.size(), &boundary, &reference, &tally );
+		const Comparison g1 =
+		    CompareScenes( *device, *kernel.Value(), scenes, scenes.size(), &reference, &tally );
 		std::uint64_t froxels = 0;
 		std::uint64_t sceneLights = 0;
 		for ( const Scene &scene : scenes )
@@ -596,24 +507,20 @@ int main()
 			auto grid = lights::CreateClusterGrid( scene.desc, scene.limits );
 			froxels += grid ? grid.Value().FroxelCount() : 0;
 		}
-		std::printf( "INFO G1 %llu scenes, %llu froxels, %llu lights, %llu serial assignments; "
-		             "%llu boundary pairs, %llu mismatches%s%s\n",
+		std::printf( "INFO G1 %llu scenes, %llu froxels, %llu lights, %llu GPU assignments; "
+		             "%llu mismatches%s%s\n",
 		    static_cast<unsigned long long>( g1.scenes ),
 		    static_cast<unsigned long long>( froxels ),
 		    static_cast<unsigned long long>( sceneLights ),
 		    static_cast<unsigned long long>( g1.pairs ),
-		    static_cast<unsigned long long>( g1.boundary ),
 		    static_cast<unsigned long long>( g1.mismatches ), g1.first.empty() ? "" : ": ",
 		    g1.first.c_str() );
 		checks.Equal( g1.deviceFailures, std::uint64_t( 0 ), "G1.every-dispatch-runs" );
 		checks.Equal( g1.shapeErrors, std::uint64_t( 0 ), "G1.ranges-disjoint-and-covering" );
-		checks.Equal(
-		    g1.countErrors, std::uint64_t( 0 ), "G1.requested-equals-serial-assignments" );
+		checks.Equal( g1.countErrors, std::uint64_t( 0 ), "G1.repeated-request-count-matches" );
 		checks.That( g1.scenes == std::uint64_t( kScenes ) && g1.pairs > 1000000,
 		    "G1.the-scenes-exercise-the-kernel" );
-		checks.Equal( g1.mismatches, std::uint64_t( 0 ), "G1.lists-equal-the-serial-path" );
-		checks.That( double( g1.boundary ) <= kBoundaryCeiling * double( g1.pairs ),
-		    "G1.boundary-pairs-under-their-ceiling" );
+		checks.Equal( g1.mismatches, std::uint64_t( 0 ), "G1.repeated-gpu-lists-match" );
 		checks.Equal( scenes[0].lights.size(), std::size_t( 0 ), "G1.an-empty-scene-is-included" );
 		checks.Equal( scenes[1].lights.size(), std::size_t( 256 ), "G1.a-full-scene-is-included" );
 
@@ -633,14 +540,9 @@ int main()
 		LimitResult g3;
 		for ( int s = 0; s < kLimitScenes; ++s )
 		{
-			if ( boundary[s] != 0 )
-			{
-				++g3.skipped;
-				continue;
-			}
 			CheckPerFroxelLimit( *device, *kernel.Value(), scenes[s], random, g3 );
 		}
-		std::printf( "INFO G3 %llu scenes (%llu skipped for boundary pairs), %llu froxels "
+		std::printf( "INFO G3 %llu scenes (%llu skipped), %llu froxels "
 		             "overflowed%s%s\n",
 		    static_cast<unsigned long long>( g3.scenes ),
 		    static_cast<unsigned long long>( g3.skipped ),
@@ -654,7 +556,7 @@ int main()
 		LimitResult g4;
 		for ( int s = kLimitScenes; s < kLimitScenes + kCapacityScenes; ++s )
 		{
-			if ( boundary[s] != 0 || scenes[s].lights.empty() )
+			if ( scenes[s].lights.empty() )
 			{
 				++g4.skipped;
 				continue;
@@ -668,8 +570,8 @@ int main()
 		    g4.first.c_str() );
 		checks.That( g4.scenes >= std::uint64_t( kCapacityScenes / 2 ) && g4.overflowed > 0,
 		    "G4.the-capacity-is-exercised" );
-		checks.Equal( g4.listErrors, std::uint64_t( 0 ), "G4.lists-are-serial-prefixes" );
-		checks.Equal( g4.counterErrors, std::uint64_t( 0 ), "G4.totals-equal-the-serial-path" );
+		checks.Equal( g4.listErrors, std::uint64_t( 0 ), "G4.lists-are-gpu-prefixes" );
+		checks.Equal( g4.counterErrors, std::uint64_t( 0 ), "G4.capacity-totals-match" );
 		checks.Equal( kernel.Value()->RecordFailures(), 0u, "G1.records-without-failure" );
 
 		struct Defect
@@ -689,13 +591,11 @@ int main()
 			bool detected = false;
 			if ( broken && !defect.counters )
 			{
-				const Comparison seeded = CompareScenes(
-				    *device, *broken.Value(), scenes, kDefectScenes, nullptr, nullptr, nullptr );
-				std::printf(
-				    "INFO seeded %s: %llu mismatches, %llu boundary pairs, %llu scenes with "
-				    "another count%s%s\n",
+				const Comparison seeded = CompareScenes( *device, *broken.Value(), scenes,
+				    kDefectScenes, nullptr, nullptr, kernel.Value().get() );
+				std::printf( "INFO seeded %s: %llu mismatches, %llu scenes with "
+				             "another count%s%s\n",
 				    defect.name, static_cast<unsigned long long>( seeded.mismatches ),
-				    static_cast<unsigned long long>( seeded.boundary ),
 				    static_cast<unsigned long long>( seeded.countErrors ),
 				    seeded.first.empty() ? "" : ": ", seeded.first.c_str() );
 				detected = seeded.deviceFailures == 0 && seeded.mismatches > 0;
@@ -722,7 +622,7 @@ int main()
 		dense.limits.maxLightIndices = 1u << 22;
 		while ( dense.lights.size() < 1024 )
 			dense.lights.push_back( dense.lights[dense.lights.size() % 256] );
-		const Built denseReference = Serial( dense );
+		const Built denseReference = GpuBaseline( *device, *kernel.Value(), dense );
 		std::vector<area_light::AreaLight> areas( 64 );
 		for ( std::size_t i = 0; i < areas.size(); ++i )
 		{
@@ -744,20 +644,22 @@ int main()
 				identical = identical && std::equal( a.begin(), a.end(), b.begin(), b.end() );
 			}
 		checks.That( identical, "G6.all-1024-light-lists-match" );
-		std::vector<lights::AreaFroxelMask> expectedMasks;
-		bool masks =
-		    gpu.ok && lights::AssignAreaLights( denseReference.grid, areas, expectedMasks );
+		const DeviceLists graphGpu =
+		    AssignOnDevice( *device, *kernel.Value(), denseReference.grid, dense.lights, areas );
+		bool masks = gpu.ok && graphGpu.ok;
 		if ( masks )
 		{
-			masks = gpu.header.reserved == denseReference.grid.limits.maxLightIndices + 1;
-			for ( std::size_t f = 0; f < expectedMasks.size(); ++f )
+			masks = gpu.header.reserved == denseReference.grid.limits.maxLightIndices + 1 &&
+			        graphGpu.header.reserved == gpu.header.reserved;
+			for ( std::size_t f = 0; f < denseReference.grid.FroxelCount(); ++f )
 				for ( std::size_t word = 0; word < 2; ++word )
 					masks =
 					    masks &&
-					    expectedMasks[f][word] ==
+					    graphGpu.indices[denseReference.grid.limits.maxLightIndices + 2 * f +
+					                     word] ==
 					        gpu.indices[denseReference.grid.limits.maxLightIndices + 2 * f + word];
 		}
-		checks.That( masks, "G6.gpu-area-masks-match" );
+		checks.That( masks, "G6.graph-and-direct-area-masks-match" );
 
 		// Diagnostic full-cost assignment measurements. These are NOT complete-frame
 		// performance acceptance: submit/wait is included and no surfaces are drawn.
@@ -776,20 +678,14 @@ int main()
 					measured = false;
 					continue;
 				}
-				std::vector<double> hostTimes, gpuTimes, cpuTimes;
+				std::vector<double> hostTimes, gpuTimes;
 				graph::GpuPassTimers timers( *device );
 				for ( unsigned repeat = 0; repeat < 9; ++repeat )
 				{
 					auto start = std::chrono::steady_clock::now();
-					lights::ClusterLists oracle;
-					auto cpu = lights::AssignLights( grid.Value(), scene.lights, oracle );
-					const double cpuMs = std::chrono::duration<double, std::milli>(
-					    std::chrono::steady_clock::now() - start )
-					                         .count();
-					start = std::chrono::steady_clock::now();
 					auto data = lights::PrepareSurfaceClusterDispatch( grid.Value(), scene.lights );
 					auto encoded = device->BeginEncoder( QueueKind::kGraphics );
-					if ( !cpu || !encoded )
+					if ( !encoded )
 					{
 						measured = false;
 						break;
@@ -817,7 +713,6 @@ int main()
 					if ( repeat == 0 )
 						continue;
 					hostTimes.push_back( hostMs );
-					cpuTimes.push_back( cpuMs );
 					for ( const auto &pass : report.passes )
 						if ( pass.name == "assignment including uploads" )
 							gpuTimes.push_back( pass.milliseconds );
@@ -827,11 +722,10 @@ int main()
 					std::sort( v.begin(), v.end() );
 					return v.empty() ? -1.0 : v[v.size() / 2];
 				};
-				std::printf(
-				    "BENCH %u lights %u froxels: CPU oracle %.3f ms; GPU upload+build+assign %.3f "
-				    "ms; prepare+submit+wait %.3f ms (%zu samples)\n",
-				    count, grid.Value().FroxelCount(), median( cpuTimes ), median( gpuTimes ),
-				    median( hostTimes ), hostTimes.size() );
+				std::printf( "BENCH %u lights %u froxels: GPU upload+build+assign %.3f "
+				             "ms; prepare+submit+wait %.3f ms (%zu samples)\n",
+				    count, grid.Value().FroxelCount(), median( gpuTimes ), median( hostTimes ),
+				    hostTimes.size() );
 				measured = measured && hostTimes.size() == 8;
 			}
 			checks.That( measured, "G7.assignment-measurements-complete" );

@@ -152,14 +152,15 @@ profile matrix or budget registry.
 The required implementation and measurement work is:
 
 1. **Make light assignment scale.** Connect the installed compute assignment
-   pass to the product core and compare it with the serial CPU oracle on the
-   same immutable inputs. Select the execution path per profile from measured
-   CPU, GPU, upload and synchronization costs, including empty/small light sets
-   and low-capacity devices, under RFC 0003's binding
+   pass to the product core and verify its conservative coverage against
+   independent geometry checks. Measure GPU upload, build, assignment and
+   synchronization costs, including empty/small light sets and low-capacity
+   devices, under RFC 0003's binding
    [CPU/GPU placement rule](0003-dependency-aware-job-system.md#cpugpu-execution-placement-user-decision-2026-10-01):
    if the GPU path is faster, use it in the product. The user explicitly selected
-   GPU-only product assignment on 2026-10-01: CPU assignment remains a private
-   test oracle, with no runtime fallback. The [GPU BVH implementation and evidence](0016-gpu-light-assignment-2026-10-01.md)
+   GPU-only product assignment on 2026-10-01. The user then directed deletion
+   of the test-only CPU assignment reference on 2026-10-01; there is no runtime
+   or test CPU assignment path. The [GPU BVH implementation and evidence](0016-gpu-light-assignment-2026-10-01.md)
    record the bounded implementation and remaining performance obligations. Assignment must keep the contract's conservative coverage,
    deterministic ordering and explicit capacity reporting.
 2. **Compute shared view lighting once.** World, static-prop and posed-model
@@ -766,6 +767,7 @@ public/render/frame/              render.frame                  port: IRenderer,
 public/render/renderer/           render.renderer               adapter of render.frame
 public/render/pass/<feature>/     render.pass.<feature>         adapter of IRenderFeature
 public/render/legacy/             render.legacy-frontend        adapter of IRenderFeature; legacy-interop
+public/render/legacy/core_passes.h render.legacy-pass-contract   portable recording port shared with the legacy backend
 public/render/composition/        render.composition            assembles a core for application roots
 
 render/<module>/                  sources and private headers of each module above
@@ -828,7 +830,7 @@ edges (CAP002 direct, CAP005 transitive), and the links must too (CAP006).
 | 7 Applications | `render.composition`; engine and client roots, Hammer, tools | anything below, including adapters |
 | 6 Features and renderers | `render.renderer`, `render.pass.*`, `render.legacy-frontend` | layers 0–5; legacy headers only for the frontend |
 | 5 Frame port | `render.frame` | layers 0–4 |
-| 4 Scene | `render.scene` | layers 0–3 |
+| 4 Scene and legacy pass port | `render.scene`, `render.legacy-pass-contract` | layers 0–3 |
 | 3 Materials | `render.material` | layers 0–2, `content.keyvalues-text` |
 | 2 Core services | `render.graph`, `render.shader-library`, `render.resources` | layers 0–1; `render.resources` also `content.texture-contract` and the texture readers |
 | 1 Ports | `render.device`, `render.legacy-provider-contract` | layer 0 |
@@ -1912,7 +1914,7 @@ tolerance. Normals and tangents keep the flat 1e-3.
 
 | Check | Runs as | Passes when |
 | --- | --- | --- |
-| Light assignment | `render.lights.clusters` | over 1,000 seeded scenes, no light that reaches a froxel is missing from it (zero false negatives), and the false-positive rate is recorded |
+| Light assignment | `render.lights.clusters.gpu` | over 1,000 seeded GPU scenes, no light that reaches a froxel is missing from it (zero false negatives), and the false-positive rate is recorded; the current 100-scene independent geometry check is partial evidence |
 | Shadow oracles | `render.shadows` | a caster darkens its receiver, a non-caster does not, and cascade transitions stay within tolerance of a single-cascade reference render |
 | Flashlight | Portal flashlight scene on native | shadowed pixels match the reference within tolerance; the `SetFlashlightState` census is zero |
 | Projected lights | `render.lights.projected` (proposed) on native; `sp_a2_core` with `texturelight_wheatly_chamber` | judged pixels match `projected_light::IrradianceAt` times the shadow oracle; each surface's light is the same, within the cross-path tolerance, with `kProjectedLights` set (core) and unset (CPU lightmap); forcing both paths fails as doubled light; seeded defects are detected: a mirrored cookie axis, an ignored `cookieFrame`, the end falloff dropped, a shadow tile off by one |

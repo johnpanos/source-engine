@@ -9,7 +9,7 @@
 //			may reach it, as a compact list: one offset and count per froxel
 //			into one index list.
 //
-//			The GPU assignment is checked against a test-only serial oracle. Culling
+//			The GPU assignment is checked against independent geometry tests. Culling
 //			is conservative: a light that reaches a froxel is never missing
 //			from it; a light near a froxel's edge may be listed although it
 //			does not reach it.

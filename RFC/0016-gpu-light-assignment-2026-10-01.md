@@ -20,8 +20,8 @@ these GPU lists directly. Surface lists reserve enough space for every admitted
 light, avoiding the previous per-cluster truncation. Unsupported capacity fails
 explicitly. Same-view cohorts share the resulting buffers; their lifetime ends
 behind the last consumer's completion token. Runtime CPU assignment and area-mask
-construction are removed. The independent serial oracle lives only in
-`unittests/rendertest/core/pass/lights/cluster_cpu_reference.h`.
+construction are removed. The test-only CPU assignment reference was later
+deleted by user direction; independent geometry checks still verify GPU output.
 
 Shadow planning uses conservative whole-view light visibility without a GPU
 readback. This can admit more shadow candidates than fine cluster coverage, so

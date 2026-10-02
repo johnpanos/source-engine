@@ -775,3 +775,60 @@ Phase B has since renamed the pseudo-module overload and added explicit
 `IAppSystem` instances; see the [Phase B record](0001-phase-b-progress.md). The
 typed-factory and provider-catalog work is tracked under R39, and tool
 cleanup under R40 ([Phase E](0001-phase-e-progress.md)).
+
+## Architecture repair after VTF consolidation (2026-10-01)
+
+The user requested fixing the repository-wide failures reported alongside the
+VTF consolidation. All eleven diagnostics from that scan are resolved:
+
+- `random` and `iostream` are standard headers, now classified as such.
+- `TargetConditionals.h` belongs to the SDL3/Vulkan bridge's private Apple SDK
+  grant. Portable modules still cannot include it.
+- `public/render/legacy/core_passes.h` has the portable owner
+  `render.legacy-pass-contract`, below the frontend and composition. The old
+  Vulkan backend consumes that port without permission to include frontend
+  implementation headers. The layer contract remains enforced.
+- The existing synthetic studio-model writer has the test-only owner
+  `content.studio-model-fixtures`; render composition tests can use it, product
+  composition cannot. No fixture was copied.
+- F-Stop client/server initialization resolves `ISPSharedMemoryManager` at the
+  existing legacy module boundary and passes the typed borrowed service to the
+  blob subsystem. Missing service still fails initialization. The subsystem no
+  longer accepts `CreateInterfaceFn`; no loader baseline was relaxed.
+
+Four manifest regression tests exercise the allowed imports and reject the
+corresponding SDK, frontend-implementation, unknown-header and product-fixture
+leaks. The architecture suite passes 166 tests; style-checker self-tests pass
+38 tests. `archlint check --all`, `baseline --verify`, and `inventory --verify`
+pass. The inventory reports only 15 line relocations; its classification is
+unchanged. F-Stop's actual `client,server` Waf targets build successfully in the
+existing `build-fstop` profile.
+
+The render composition validation also exposed omitted `cluster_pass.cpp`
+link inputs after the GPU lighting migration. The five affected composition
+suite source lists now include the existing implementation, matching Waf's
+`render_pass_lights` target. The release `render.composition` suite passes
+all 53 checks.
+
+The changed-line style scan has no finding in this repair; its remaining
+finding is in the concurrently edited
+`unittests/rendertest/core/pass/lights/test_clusters_vulkan.cpp`. That session's
+changes are preserved. `git diff --check` passes.
+
+Reproduction and local evidence:
+
+```sh
+python3 tools/archlint/archlint.py check --all
+python3 tools/archlint/archlint.py baseline --verify
+python3 tools/archlint/archlint.py inventory --verify
+python3 -m unittest discover -s tools/archlint/tests -v
+python3 -m unittest discover -s tools/stylelint/tests -v
+WAFLOCK=.lock-waf-fstop python3 tools/quality/ensure_configured.py --build build-fstop
+(cd build-fstop && WAFLOCK=.lock-waf-fstop python3 ../waf build --targets=client,server -j8)
+python3 tools/quality/conformance.py check --suite render.composition --config release \
+  --out quality-results/arch-repair/composition.json
+```
+
+Logs and the source snapshot are retained under `quality-results/arch-repair/`.
+This repair does not establish GPU image/performance or native Apple acceptance,
+and does not resume the paused P2:CE mount/render goal.
