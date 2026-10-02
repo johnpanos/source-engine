@@ -253,23 +253,50 @@ int main()
 		WorldPass captured;
 		captured.SetWorld( TestWorld() );
 		std::vector<std::uint32_t> tags;
+		auto inputs = std::make_shared<StageLightingInputs>();
+		std::weak_ptr<const StageLightingInputs> lifetime = inputs;
 		for ( unsigned int i = 0; i < 97; ++i )
-			tags.push_back( captured.QueueView( View( { 0 }, 300 ) ) );
+		{
+			WorldView view = View( { 0 }, 300 );
+			view.stageLighting = inputs;
+			tags.push_back( captured.QueueView( std::move( view ) ) );
+		}
 		WorldTarget captureTarget = target;
 		captureTarget.streamEpoch = 2000;
+		captureTarget.lights = std::make_shared<StageViewLights>();
 		bool accepted = true;
 		for ( std::uint32_t slot : tags )
-			accepted = RecordSlot( device, captured, slot, captureTarget ) && accepted;
+			accepted = captured.LightingInputs( slot, captureTarget.streamEpoch ) == inputs &&
+			           RecordSlot( device, captured, slot, captureTarget ) && accepted;
 		++captureTarget.frame; // readback may use a new GPU submission
 		for ( std::uint32_t slot : tags )
-			accepted = RecordSlot( device, captured, slot, captureTarget ) && accepted;
+			accepted = captured.LightingInputs( slot, captureTarget.streamEpoch ) == inputs &&
+			           RecordSlot( device, captured, slot, captureTarget ) && accepted;
 		checks.That( accepted && captured.Failures() == 0 && captured.Stats().viewsDrawn == 194,
-		    "W15.capture-replays-every-slot-of-a-stream-larger-than-64-views" );
+		    "W15.capture-replays-all-97-slots-with-their-owned-lighting-snapshot" );
+		inputs.reset();
+		checks.That( !lifetime.expired(), "W15.replay-stream-owns-the-lighting-lifetime" );
 		++captureTarget.streamEpoch;
+		checks.That( !captured.LightingInputs( tags.front(), captureTarget.streamEpoch ),
+		    "W15.another-stream-cannot-borrow-the-retired-lighting-inputs" );
 		(void)RecordSlot( device, captured, tags.front(), captureTarget );
-		checks.That( captured.Failures() == 1,
+		checks.That( captured.Failures() == 1 && lifetime.expired(),
 		    "W15.discarded-stream-cannot-be-replayed-under-a-new-stream-identity" );
 		captured.ReleaseDevice( device );
+	}
+	{
+		WorldPass lighting;
+		lighting.SetWorld( TestWorld() );
+		WorldView required = View( { 0 }, 301 );
+		required.stageLighting = std::make_shared<StageLightingInputs>();
+		const std::uint32_t missing = lighting.QueueView( std::move( required ) );
+		const bool attached = lighting.LightingInputs( missing, target.streamEpoch ) != nullptr;
+		(void)RecordSlot( device, lighting, missing, target );
+		checks.That(
+		    attached && lighting.Failures() == 1 &&
+		        lighting.Stats().lastFailure.find( "queued lighting inputs" ) != std::string::npos,
+		    "W16.a-claimed-stage-view-missing-lighting-fails-by-name" );
+		lighting.ReleaseDevice( device );
 	}
 
 	// One object-space mesh is shared by its static instances. The same
@@ -557,6 +584,54 @@ int main()
 		                                           "probe atlas update" ) != std::string::npos,
 		    "W13.out-of-volume-probe-patch-fails-by-name" );
 		staged.ReleaseDevice( device );
+	}
+
+	// W17: a portal's target has stencil, while its private AO prepass is
+	// single-sample D32 without stencil. The two passes have distinct states.
+	{
+		WorldData world = TestWorld();
+		WorldStage stage;
+		stage.lightmap.width = stage.lightmap.height = 4;
+		stage.lightmap.flat.resize( 4 * 4 * 8 );
+		world.stage = std::make_shared<const WorldStage>( std::move( stage ) );
+		WorldPass staged;
+		staged.SetWorld( std::move( world ) );
+		TextureDesc portalDepthDesc = depthDesc;
+		portalDepthDesc.format = Format::kD32FloatS8;
+		auto portalDepth = device.CreateTexture( portalDepthDesc );
+		TextureDesc aoDesc = colorDesc;
+		aoDesc.format = Format::kRGBA16Float;
+		aoDesc.usages = { ResourceUsage::kSampled };
+		auto occlusion = device.CreateTexture( aoDesc );
+		bool screened = false;
+		if ( portalDepth && occlusion )
+		{
+			WorldTarget portal = target;
+			portal.depth = portalDepth.Value();
+			portal.depthFormat = Format::kD32FloatS8;
+			portal.ambientOcclusion = occlusion.Value();
+			portal.ambientOcclusionDesc = aoDesc;
+			portal.drawState.stencil.enabled = true;
+			portal.drawState.stencil.compare = CompareOp::kEqual;
+			portal.drawState.stencil.reference = 1;
+			portal.overrideDepthRange = true;
+			portal.minDepth = 0.2f;
+			portal.maxDepth = 0.8f;
+			portal.screenPasses = [&]( CommandEncoder &, const WorldTarget::Prepass &prepass )
+			{
+				screened = prepass.depth.IsValid() && prepass.normalRoughness.IsValid();
+				return screened;
+			};
+			const auto queued = staged.QueueView( View( { 0 } ) );
+			(void)RecordSlot( device, staged, queued, portal );
+		}
+		checks.That( screened && staged.Stats().viewsDrawn == 1 && staged.Failures() == 0,
+		    "W17.portal-stencil-state-does-not-enter-the-private-AO-prepass" );
+		staged.ReleaseDevice( device );
+		if ( portalDepth )
+			(void)device.Release( portalDepth.Value(), CompletionToken() );
+		if ( occlusion )
+			(void)device.Release( occlusion.Value(), CompletionToken() );
 	}
 
 	pass.ReleaseDevice( device );

@@ -346,13 +346,15 @@ def stage(args, workload):
     return runtime
 
 
-def game_command(args, scenario, stats_path):
+def game_command(args, scenario, stats_path, runtime):
     high = (["+mat_antialias", args.render_budget["settings"]["mat_antialias"],
              "+fps_max", "1000", "+exec", "render_budget_high"] if args.render_budget else [])
     return [str(ROOT / "play_p2"), *args.render_switch,
             "-multirun", "-novid", "-condebug", "-windowed",
             "-w", str(args.width), "-h", str(args.height),
-            "-vkframestats", str(stats_path),
+            # The game starts in runtime; keep evidence paths beneath its
+            # 512-character command-line limit even for a long output path.
+            "-vkframestats", os.path.relpath(stats_path, runtime),
             "+volume", "0", "+mat_vsync", "0", "+engine_no_focus_sleep", "0",
             *args.extra_arg,
             *high,
@@ -385,16 +387,22 @@ def launch(args, runtime, command, output):
 
 
 def stop(process):
-    if process.poll() is not None:
-        return
     try:
-        os.killpg(process.pid, signal.SIGTERM)
-        process.wait(timeout=10)
+        if process.poll() is None:
+            os.killpg(process.pid, signal.SIGTERM)
+            process.wait(timeout=10)
     except subprocess.TimeoutExpired:
         os.killpg(process.pid, signal.SIGKILL)
         process.wait()
     except ProcessLookupError:
         pass
+    finally:
+        # A compositor/session wrapper can exit before its game. That is not
+        # acknowledgment that the private process group drained.
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
 
 
 def host_context():
@@ -416,7 +424,7 @@ def run(args, workload, settings, scenario, runtime):
     console.unlink(missing_ok=True)
     floor_ms = 1000.0 / settings["floor_fps"]
     watcher = FrameWatcher(stats_path, floor_ms)
-    command = game_command(args, scenario, stats_path)
+    command = game_command(args, scenario, stats_path, runtime)
     context_before = host_context()
     started = time.monotonic()
     process, stream = launch(args, runtime, command, output)

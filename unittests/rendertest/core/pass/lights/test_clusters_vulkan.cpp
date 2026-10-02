@@ -39,6 +39,7 @@ constexpr int kReferenceScenes = 100;
 constexpr int kLimitScenes = 60;
 constexpr int kCapacityScenes = 40;
 constexpr int kDefectScenes = 40;
+
 std::uint32_t Seed()
 {
 	const char *text = std::getenv( "CONFORMANCE_SEED" );
@@ -231,8 +232,8 @@ struct Comparison
 	}
 };
 
-// Compare two GPU dispatches on identical inputs. Mutant kernels use the
-// production kernel as the baseline; this is not a CPU assignment path.
+// Two GPU dispatches on identical inputs must agree. Mutant kernels use the
+// production GPU kernel as the baseline.
 void CompareLists( const lights::ClusterGrid &grid, const lights::ClusterLists &baseline,
     const lights::ClusterStats &stats, const DeviceLists &device, Comparison &out )
 {
@@ -274,7 +275,6 @@ void CompareLists( const lights::ClusterGrid &grid, const lights::ClusterLists &
 		if ( !onlyOne.empty() )
 			out.Note( "different GPU lists (scene " + std::to_string( id ) + ")" );
 	}
-	return;
 }
 
 // The device's lists compacted in froxel order for geometric checks.
@@ -355,8 +355,10 @@ struct LimitResult
 void CheckPerFroxelLimit( IRenderDevice2 &device, lights::ClusterKernel &kernel, const Scene &base,
     std::mt19937 &random, LimitResult &out )
 {
-	const Built full = GpuBaseline( device, kernel, base );
-	Scene scene = base;
+	Scene fullScene = base;
+	fullScene.limits.maxLightsPerFroxel = fullScene.limits.maxLights;
+	const Built full = GpuBaseline( device, kernel, fullScene );
+	Scene scene = fullScene;
 	scene.limits.maxLightsPerFroxel = 1 + random() % 8;
 	auto grid = lights::CreateClusterGrid( scene.desc, scene.limits );
 	const DeviceLists lists =
@@ -400,7 +402,10 @@ void CheckPerFroxelLimit( IRenderDevice2 &device, lights::ClusterKernel &kernel,
 void CheckIndexCapacity( IRenderDevice2 &device, lights::ClusterKernel &kernel, const Scene &base,
     std::mt19937 &random, LimitResult &out )
 {
-	Scene unlimited = base;
+	Scene rawScene = base;
+	rawScene.limits.maxLightsPerFroxel = rawScene.limits.maxLights;
+	const Built raw = GpuBaseline( device, kernel, rawScene );
+	Scene unlimited = rawScene;
 	unlimited.limits.maxLightsPerFroxel = 1 + random() % 16;
 	const Built full = GpuBaseline( device, kernel, unlimited );
 	Scene scene = unlimited;
@@ -410,40 +415,42 @@ void CheckIndexCapacity( IRenderDevice2 &device, lights::ClusterKernel &kernel, 
 	const DeviceLists lists =
 	    grid ? AssignOnDevice( device, kernel, grid.Value(), scene.lights ) : DeviceLists{};
 	++out.scenes;
-	if ( !full.ok || !lists.ok || lists.ranges.size() != full.lists.froxels.size() )
+	if ( !raw.ok || !full.ok || !lists.ok || lists.ranges.size() != full.lists.froxels.size() )
 	{
 		++out.listErrors;
 		if ( out.first.empty() )
 			out.first = "run failed";
 		return;
 	}
-	out.overflowed += lists.header.froxelsOverflowed;
-	if ( !RangesWellFormed( lists, scene.limits.maxLightIndices ) ||
-	     lists.header.requested != full.stats.assignments ||
-	     lists.header.assignmentsDropped !=
-	         full.stats.assignmentsDropped + full.stats.assignments -
-	             std::min( full.stats.assignments, scene.limits.maxLightIndices ) )
-	{
-		++out.counterErrors;
-		if ( out.first.empty() )
-			out.first = "capacity totals differ";
-	}
+	std::uint32_t overflowed = 0;
 	for ( std::uint32_t f = 0; f < lists.ranges.size(); ++f )
 	{
 		const auto a = ListOf( full.lists, f );
 		const auto b = ListOf( lists, f );
+		overflowed += b.size() < ListOf( raw.lists, f ).size();
 		if ( b.size() > a.size() || !std::equal( b.begin(), b.end(), a.begin() ) )
 		{
 			++out.listErrors;
 			if ( out.first.empty() )
-				out.first = "a list is not a prefix of its unlimited list";
+				out.first = "a list is not a prefix of its per-froxel list";
 			return;
 		}
 	}
+	out.overflowed += overflowed;
+	const std::uint32_t kept = std::min( full.stats.assignments, scene.limits.maxLightIndices );
+	if ( !RangesWellFormed( lists, scene.limits.maxLightIndices ) ||
+	     lists.header.requested != full.stats.assignments ||
+	     lists.header.assignmentsDropped != raw.stats.assignments - kept ||
+	     lists.header.froxelsOverflowed != overflowed )
+	{
+		++out.counterErrors;
+		if ( out.first.empty() )
+			out.first = "capacity counters differ";
+	}
 }
 
-// Repeated GPU dispatches must be deterministic; mutants are compared with
-// the production GPU kernel on the same immutable scene.
+// Repeated GPU dispatches and independent geometry checks. Seeded defects
+// compare with the production GPU kernel on the same immutable inputs.
 Comparison CompareScenes( IRenderDevice2 &device, lights::ClusterKernel &kernel,
     const std::vector<Scene> &scenes, std::size_t count, std::mt19937 *reference, Tally *tally,
     lights::ClusterKernel *baselineKernel = nullptr )
@@ -456,7 +463,7 @@ Comparison CompareScenes( IRenderDevice2 &device, lights::ClusterKernel &kernel,
 		if ( !baseline.ok )
 		{
 			++comparison.deviceFailures;
-			comparison.Note( "GPU baseline failed" );
+			comparison.Note( "baseline GPU dispatch failed" );
 			continue;
 		}
 		const DeviceLists lists = AssignOnDevice( device, kernel, baseline.grid, scenes[s].lights );
@@ -539,13 +546,10 @@ int main()
 
 		LimitResult g3;
 		for ( int s = 0; s < kLimitScenes; ++s )
-		{
 			CheckPerFroxelLimit( *device, *kernel.Value(), scenes[s], random, g3 );
-		}
-		std::printf( "INFO G3 %llu scenes (%llu skipped), %llu froxels "
+		std::printf( "INFO G3 %llu scenes, %llu froxels "
 		             "overflowed%s%s\n",
 		    static_cast<unsigned long long>( g3.scenes ),
-		    static_cast<unsigned long long>( g3.skipped ),
 		    static_cast<unsigned long long>( g3.overflowed ), g3.first.empty() ? "" : ": ",
 		    g3.first.c_str() );
 		checks.That( g3.scenes >= std::uint64_t( kLimitScenes / 2 ) && g3.overflowed > 0,
@@ -571,7 +575,7 @@ int main()
 		checks.That( g4.scenes >= std::uint64_t( kCapacityScenes / 2 ) && g4.overflowed > 0,
 		    "G4.the-capacity-is-exercised" );
 		checks.Equal( g4.listErrors, std::uint64_t( 0 ), "G4.lists-are-gpu-prefixes" );
-		checks.Equal( g4.counterErrors, std::uint64_t( 0 ), "G4.capacity-totals-match" );
+		checks.Equal( g4.counterErrors, std::uint64_t( 0 ), "G4.totals-equal-discarded-pairs" );
 		checks.Equal( kernel.Value()->RecordFailures(), 0u, "G1.records-without-failure" );
 
 		struct Defect
@@ -649,9 +653,8 @@ int main()
 		bool masks = gpu.ok && graphGpu.ok;
 		if ( masks )
 		{
-			masks = gpu.header.reserved == denseReference.grid.limits.maxLightIndices + 1 &&
-			        graphGpu.header.reserved == gpu.header.reserved;
-			for ( std::size_t f = 0; f < denseReference.grid.FroxelCount(); ++f )
+			masks = gpu.header.reserved == denseReference.grid.limits.maxLightIndices + 1;
+			for ( std::size_t f = 0; f < gpu.ranges.size(); ++f )
 				for ( std::size_t word = 0; word < 2; ++word )
 					masks =
 					    masks &&

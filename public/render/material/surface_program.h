@@ -572,6 +572,9 @@ public:
 	foundation::Expected<device::PipelineId, SurfaceStatus> StatePipeline(
 	    device::PipelineId shipped, const SurfaceDrawState &state,
 	    const shaderlib::DebugSpecialization &debug = {} );
+	// Render-sequence diagnostic for the most recent refused pipeline. The
+	// device's operation, status and native code survive the material boundary.
+	const std::string &PipelineFailure() const { return m_PipelineFailure; }
 	// A shipped pipeline's variant with terms added and removed (a pass's
 	// variant: the prepass, the SSR targets); kInvalidRequest when this
 	// program did not make it.
@@ -621,6 +624,7 @@ private:
 	device::BindGroupLayoutId m_MaterialLayout;
 	device::BindGroupLayoutId m_DrawLayout;
 	std::span<const std::uint32_t> m_FragmentModule;
+	std::string m_PipelineFailure;
 	std::map<std::pair<SurfaceVariant, shaderlib::DebugSpecialization>, device::PipelineId>
 	    m_Pipelines;
 	// The variant behind each shipped (neutral) pipeline, for DebugPipeline.

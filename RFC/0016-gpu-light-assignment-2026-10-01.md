@@ -85,3 +85,67 @@ Eight measured samples per case followed warm-up at 4590 froxels (milliseconds):
 | 1024 | 1.698 | 0.203 | 0.552 |
 
 These remain assignment diagnostics, not a complete-frame or hard-budget result.
+
+## GPU-only retirement and game profile (2026-10-01)
+
+By user direction, the test-only CPU `AssignLights` reference and its two
+conformance suites were deleted. The dead CPU area-mask builder was also
+removed. The installed `render.lights.clusters.gpu` suite compares repeated GPU
+dispatches, uses independent double-precision geometric reach checks, checks
+capacity against the actual discarded pairs, and rejects three faulty kernels.
+`CONFORMANCE_CLUSTER_BENCH=1` now times only GPU upload/build/assignment and host
+prepare/submit/wait. The CPU timings above are historical observations from
+before this retirement; their implementation and run commands no longer exist.
+The current GPU suite passed 26 checks (27 with timing enabled): 300 repeatability
+scenes had zero mismatches, 100 independent geometry scenes had zero false
+negatives over 1,934,795 reached pairs, and all three seeded defects were
+detected. The four GPU upload/build/assignment medians for 0, 43, 256 and 1024
+lights were 0.041, 0.063, 0.087 and 0.160 ms at 4590 froxels, with eight samples
+per case. The [GPU-only conformance evidence](../quality-results/p2-gpu-only-clusters-bench-final.json)
+and its [sample log](../quality-results/p2-gpu-only-clusters-bench-final.logs/render.lights.clusters.gpu/run.0.log)
+record the run.
+
+The `portal2-frame-floor-v1` route was run through `./play_p2` on the Radeon
+8060S/RADV at the actual 1920 × 1080 back buffer, with the High profile's 16
+settings verified, including 4× MSAA. The uncapped baseline measured 845 frames:
+16.484 ms median, 111.222 ms p99, 40.7 average FPS, 8.5 FPS 1% low. Arrival
+and return medians were 16.19 and 16.56 ms; the reverse view's median was
+55.75 ms. The hard 120 FPS frame floor (8.333 ms) therefore fails. The
+[baseline evidence](../quality-results/p2-gpu-bvh-game-profile/high-baseline-evidence.json)
+and [frame stream](../quality-results/p2-gpu-bvh-game-profile/high-baseline-frames.jsonl)
+retain the exact settings and timings.
+
+`-vkgputimers` labeled 854 route frames. The three back-buffer draw segments
+averaged 15.14 ms per arrival frame, 51.02 ms per reverse frame and 15.37 ms
+per return frame, over 99% of the summed labeled GPU time. Upload/compute start,
+MSAA resolve and present were each below 0.05 ms on average. The named backend
+CPU costs averaged 3.71 ms `mesh_draw`, 1.27 ms command recording and 0.32 ms
+texture upload. The [GPU-segment frame stream](../quality-results/p2-gpu-bvh-game-profile/gpu-segment-frames.jsonl)
+records these measurements.
+
+The render core's debug timers initially dropped labels in the reverse view;
+its diagnostic capacity was raised from 512 to 4096 timestamps per frame and
+the route was rerun with `cl_render_debug_gpu_timers` and
+`cl_render_debug_stats`. In stable one-second windows, weighted by frames:
+
+| Cost per frame | Arrival | Reverse | Return |
+| --- | ---: | ---: | ---: |
+| Core world view GPU (all views) | 15.13 ms, 15 views | 55.38 ms, 47 views | 15.83 ms, 15 views |
+| Core world GPU (within those views) | 11.65 ms | 53.91 ms | 12.21 ms |
+| Cluster BVH assignment GPU | 0.37 ms, 2 uses | 0.40 ms, 2 uses | 0.39 ms, 2 uses |
+| Core world CPU recording | 6.70 ms | 41.92 ms | 7.51 ms |
+| Shadow-depth GPU | 0.08 ms | 1.13 ms | 0.10 ms |
+
+The reverse view also reported about 155 shadow tiles drawn per frame versus
+13 in arrival. The large cost increase tracks repeated core world views and
+their recording, with more shadow work. GPU BVH assignment is a small fraction
+of the frame. The diagnostic timers add overhead, so the untimed baseline owns
+the performance result; the timed run identifies where it is spent. See the
+[complete pass log](../quality-results/p2-gpu-bvh-game-profile/core-pass-stdout.log)
+and [diagnostic evidence](../quality-results/p2-gpu-bvh-game-profile/core-pass-evidence.json).
+
+The scripted view checks and `QA_DONE checks=4 failures=0` appear in the captured
+stdout, while the frame-floor runner's separate `console.log` reader reported
+those route records missing. The performance miss is independently visible in
+the frame stream. The runner's formal route acceptance remains failed pending
+that log-source fix; this profile does not promote the hard budget.

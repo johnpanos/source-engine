@@ -38,7 +38,6 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <array>
 #include <span>
 #include <vector>
 
@@ -177,12 +176,6 @@ struct ClusterLists
 	std::vector<std::uint32_t> lightIndices;
 };
 
-// Two words per froxel, one bit per area light in light-set order. Unlike
-// point-light lists this cannot overflow at the supported 64-light limit.
-// Rectangle support planes expanded by reach conservatively bound its window.
-// More than 64 lights fails without changing out. Edge slices extend to infinity
-// because the shader clamps depth; adjacent screen tiles cover pixel-center shifts.
-using AreaFroxelMask = std::array<std::uint32_t, 2>;
 struct ClusterStats
 {
 	std::uint32_t lightsClustered = 0;    // point and spot lights taken into the grid

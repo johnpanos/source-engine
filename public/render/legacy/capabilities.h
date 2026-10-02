@@ -62,7 +62,10 @@ struct RenderCallQueueHost
 	// only: no neutral material uploads textures or enters the draw list.
 	// Borrowed until the host shuts down after draining its render queue.
 	IMaterial *( *neutralMaterial )( const char *shader ) = nullptr;
-	// The neutral's formatted value; temporary, copy before the next call.
+	// Lookup of an already prepared neutral's formatted value: never creates
+	// a material or enters shader initialization (safe during draw capture).
+	// Null when none was prepared; use CoreMeshVariable's declared default.
+	// Temporary, copy before the next call.
 	const char *( *materialDefault )( const char *shader, const char *key ) = nullptr;
 };
 

@@ -26,6 +26,23 @@ class FrameFloorTest(unittest.TestCase):
     def watcher(self):
         return frame_floor.FrameWatcher("unused", 1000.0 / 120)
 
+    def test_stats_path_is_relative_to_the_products_working_directory(self):
+        root = Path("/tmp") / ("long-evidence-name-" * 20)
+        args = arguments(render_budget=self.budget, start_frames=60)
+        stats = root / "route/frames.jsonl"
+        runtime = root / "runtime"
+        command = frame_floor.game_command(args, {"name": "route", "map": "map"}, stats, runtime)
+        actual = command[command.index("-vkframestats") + 1]
+        self.assertEqual("../route/frames.jsonl", actual)
+        self.assertEqual(stats, (runtime / actual).resolve())
+
+    def test_wrapper_exit_does_not_leave_its_game_running(self):
+        process = mock.Mock(pid=1234)
+        process.poll.return_value = 0
+        with mock.patch.object(frame_floor.os, "killpg") as kill:
+            frame_floor.stop(process)
+        kill.assert_called_once_with(1234, frame_floor.signal.SIGKILL)
+
     def test_one_slow_frame_fails_even_with_fast_p99(self):
         watcher = self.watcher()
         failure = None
@@ -70,11 +87,12 @@ class FrameFloorTest(unittest.TestCase):
                 (output / "stdout.log").write_text("")
                 (output / "frames.jsonl").write_text(
                     '{"f":1,"interval":9000,"mark":"floor_begin,floor_end"}\n')
-                process = mock.Mock(returncode=0)
+                process = mock.Mock(returncode=0, pid=1234)
                 process.poll.return_value = 0
                 return process, mock.Mock()
 
             with mock.patch.object(frame_floor, "launch", side_effect=launch), \
+                    mock.patch.object(frame_floor.os, "killpg"), \
                     mock.patch.object(frame_floor, "host_context", return_value={}), \
                     mock.patch.object(frame_floor.portal2_scenarios, "evaluate",
                                       return_value={"failures": [], "checks": []}):

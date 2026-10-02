@@ -637,12 +637,19 @@ def install_resize_script(stage, workload=RESIZE_WORKLOAD, mode="queued", game="
 
     A workload longer than one line continues in chained scripts, each line
     ending in `exec` of the next, which runs only when its turn comes."""
+    commands = resize_commands(workload, mode)
+    return install_command_script(stage, "rfc0001_resize_e2e", commands, game)
+
+
+def install_command_script(stage, name, commands, game="portal"):
+    """Keep waits ordered even when an exec workload exceeds one parser line."""
     directory = Path(stage) / game / "cfg"
     directory.mkdir(parents=True, exist_ok=True)
-    commands = resize_commands(workload, mode)
     chunks, current = [], []
     for command in commands:
-        candidate = current + [command, "exec rfc0001_resize_e2e_%d" % (len(chunks) + 1)]
+        if "\n" in command or "\r" in command or len(command) > RESIZE_SCRIPT_LINE_LIMIT - 80:
+            raise ValueError("console command exceeds the parser line limit")
+        candidate = current + [command, "exec %s_%d" % (name, len(chunks) + 1)]
         if current and len("; ".join(candidate)) > RESIZE_SCRIPT_LINE_LIMIT:
             chunks.append(current)
             current = []
@@ -650,10 +657,10 @@ def install_resize_script(stage, workload=RESIZE_WORKLOAD, mode="queued", game="
     chunks.append(current)
     paths = []
     for index, chunk in enumerate(chunks):
-        name = "rfc0001_resize_e2e" + ("_%d" % index if index else "")
+        script_name = name + ("_%d" % index if index else "")
         if index + 1 < len(chunks):
-            chunk = chunk + ["exec rfc0001_resize_e2e_%d" % (index + 1)]
-        path = directory / (name + ".cfg")
+            chunk = chunk + ["exec %s_%d" % (name, index + 1)]
+        path = directory / (script_name + ".cfg")
         path.write_text("; ".join(chunk) + "\n")
         paths.append(path)
     return {"path": str(paths[0].relative_to(stage)), "sha256": sha256(paths[0]),
@@ -902,19 +909,23 @@ def main(argv=None):
             # Written to a cfg and exec'd: the command line splits arguments (and
             # reads a negative number as an option), a cfg keeps each line whole.
             # The local player exists only after spawn, hence the wait.
-            (stage / game / "cfg").mkdir(parents=True, exist_ok=True)
-            (stage / game / "cfg/portal_boot_commands.cfg").write_text(
-                "".join(line + "\n" for line in args.console_command))
+            evidence["console_script"] = install_command_script(
+                stage, "portal_boot_commands", args.console_command +
+                ["wait %d" % args.capture_wait] +
+                (["vk_renderdoc_capture"] if args.renderdoc else []) +
+                ["screenshot", "mat_spewvertexandpixelshaders", "mat_hdr_tonemapscale",
+                 "wait 10", "quit"], game)
             command += ["+wait", "300", "+exec", "portal_boot_commands.cfg"]
-        command += ["+wait", str(args.capture_wait),
-                    # vk_renderdoc_capture: RenderDoc records the next presented
-                    # frame, the scene the screenshot shows.
-                    *( ["+vk_renderdoc_capture"] if args.renderdoc else [] ),
-                    "+screenshot", "+mat_spewvertexandpixelshaders",
-                   # The exposure the client's auto-exposure settled on for the
-                   # screenshot frame (it writes its goal here every frame).
-                   "+mat_hdr_tonemapscale",
-                   "+wait", "10", "+quit"]
+        if not args.console_command:
+            command += ["+wait", str(args.capture_wait),
+                       # vk_renderdoc_capture: RenderDoc records the next presented
+                       # frame, the scene the screenshot shows.
+                       *( ["+vk_renderdoc_capture"] if args.renderdoc else [] ),
+                       "+screenshot", "+mat_spewvertexandpixelshaders",
+                       # The exposure the client's auto-exposure settled on for the
+                       # screenshot frame (it writes its goal here every frame).
+                       "+mat_hdr_tonemapscale",
+                       "+wait", "10", "+quit"]
         if args.renderer:
             command[1:1] = ["-renderer", args.renderer]
         if args.shader_debug:

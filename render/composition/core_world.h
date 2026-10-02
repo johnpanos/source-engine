@@ -37,6 +37,7 @@
 #include <deque>
 #include <cstddef>
 #include <map>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <set>
@@ -82,7 +83,6 @@ public:
 		{
 			std::lock_guard<std::mutex> guard( m_ShadowLock );
 			m_Casters.reset();
-			m_ShadowWork.clear();
 		}
 		m_StaticMeshes.clear();
 		m_StaticInstances.clear();
@@ -312,19 +312,39 @@ private:
 		int shadowQuality = 0;
 		std::vector<light_set::RuntimeOccluder> movers; // the frame's moving objects
 	};
-	// A queued stage view: its inputs, and the lights and shadow work made
-	// from them once, on the render sequence (a view recorded again keeps
-	// them).
-	struct PendingView
+	// A queued stage view keeps its CPU input snapshot across record-stream
+	// replays. GPU light lists belong to one device submission frame: the
+	// cluster kernel retires their buffers when the next frame starts.
+	struct PendingView : pass::world::StageLightingInputs
 	{
+		struct FrameLighting
+		{
+			std::once_flag made;
+			std::shared_ptr<const pass::world::StageViewLights> lights;
+			std::shared_ptr<const ShadowWork> shadows;
+			device::TextureId shadowAtlas;
+			device::TextureDesc shadowAtlasDesc;
+		};
+
 		ViewLightInputs inputs;
-		mutable std::once_flag made;
-		mutable std::shared_ptr<const pass::world::StageViewLights> lights;
-		mutable std::shared_ptr<const ShadowWork> shadows;
+		mutable std::mutex frameLock;
+		mutable std::uint64_t recordFrame = 0;
+		mutable std::shared_ptr<FrameLighting> frameLighting;
+
+		std::shared_ptr<FrameLighting> ForFrame( std::uint64_t frame ) const
+		{
+			std::lock_guard<std::mutex> guard( frameLock );
+			if ( !frameLighting || recordFrame != frame )
+			{
+				recordFrame = frame;
+				frameLighting = std::make_shared<FrameLighting>();
+			}
+			return frameLighting;
+		}
 	};
-	// Main-thread cache; shared PendingViews own immutable input snapshots and
-	// call_once publishes their result to render workers. Cohorts keep their own
-	// draw/caster work. Never reuse across host frames or light publications.
+	// Main-thread cache; shared PendingViews own immutable input snapshots.
+	// The per-record-frame call_once publishes one GPU list to every same-view
+	// cohort. Never reuse inputs across host frames or light publications.
 	struct QueuedLighting
 	{
 		std::uint64_t frame = 0;
@@ -402,10 +422,8 @@ private:
 	bool m_StageSunMask = false;
 	std::atomic<unsigned long long> m_StageLightingBuilds{ 0 };
 	unsigned long long m_StageLitViews = 0; // main thread
-	// Shadow work by world tag (DrawView writes, RecordSlot reads), and the
-	// stage's casters.
+	// Stream-view metadata and the stage's casters.
 	std::mutex m_ShadowLock;
-	std::deque<std::pair<std::uint32_t, std::shared_ptr<const PendingView>>> m_ShadowWork;
 	struct StreamView
 	{
 		std::array<float, 16> view;

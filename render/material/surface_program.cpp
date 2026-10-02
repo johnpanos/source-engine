@@ -6,6 +6,7 @@
 
 #include "render/material/surface_program.h"
 
+#include "render/device/errors.h"
 #include "render/pbr_ltc_table.h"
 #include "render/pbr_split_sum_table.h"
 #include "render/shaderlib/core_artifacts.h"
@@ -235,6 +236,7 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::DebugPipeline(
 foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::Pipeline(
     const SurfaceVariant &variant, const shaderlib::DebugSpecialization &debug )
 {
+	m_PipelineFailure.clear();
 	if ( variant.layout == SurfaceVertexLayout::kFlat && ( variant.terms & kSurfaceNormalTerms ) )
 		return foundation::MakeUnexpected( SurfaceStatus::kInvalidRequest );
 	if ( variant.layout != SurfaceVertexLayout::kModel && ( variant.terms & kSurfaceModelTerms ) )
@@ -260,7 +262,10 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::Pipeline(
 	shaderlib::ArtifactOverlay artifacts( shaderlib::CoreArtifacts() );
 	if ( !m_FragmentModule.empty() &&
 	     !artifacts.ReplaceSpirv( kFragmentSource, m_FragmentModule, format ) )
+	{
+		m_PipelineFailure = "the replacement fragment artifact is invalid";
 		return foundation::MakeUnexpected( SurfaceStatus::kDevice );
+	}
 	const bool withSsrTargets =
 	    ( variant.terms & kSurfaceSsrTargets ) != 0 && !( variant.terms & kSurfaceDepthNormal );
 	shaderlib::PipelineRecipe recipe = shaderlib::CoreRecipe(
@@ -268,7 +273,11 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::Pipeline(
 	recipe.debugName = "render.material.surface";
 	auto resolved = shaderlib::Resolve( recipe, artifacts, format );
 	if ( !resolved )
+	{
+		m_PipelineFailure = "the surface shader artifact was refused: status " +
+		                    std::to_string( int( resolved.Error().status ) );
 		return foundation::MakeUnexpected( SurfaceStatus::kDevice );
+	}
 	const bool model = variant.layout == SurfaceVertexLayout::kModel;
 	const std::uint32_t drawConstantBytes = SurfaceDrawConstantBytes( variant.layout );
 	std::vector<SpecializationConstant> constants = { { ShaderStage::kFragment, 0, variant.terms },
@@ -349,7 +358,17 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::Pipeline(
 	desc.constants = constants;
 	auto pipeline = m_Device.CreatePipeline( desc );
 	if ( !pipeline )
+	{
+		const DeviceError &error = pipeline.Error();
+		m_PipelineFailure = std::string( DescribeOperation( error.operation ) ) + ": " +
+		                    DescribeStatus( error.status ) + " (native " +
+		                    std::to_string( error.nativeCode ) + "), terms " +
+		                    std::to_string( variant.terms ) + " layout " +
+		                    std::to_string( int( variant.layout ) ) + " samples " +
+		                    std::to_string( desc.sampleCount ) + " color format " +
+		                    std::to_string( int( m_ColorFormat ) );
 		return foundation::MakeUnexpected( SurfaceStatus::kDevice );
+	}
 	m_Pipelines.emplace( key, pipeline.Value() );
 	if ( debug.IsNeutral() )
 		m_Shipped.emplace( pipeline.Value().value, variant );
@@ -359,6 +378,7 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::Pipeline(
 foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::StatePipeline(
     PipelineId shipped, const SurfaceDrawState &state, const shaderlib::DebugSpecialization &debug )
 {
+	m_PipelineFailure.clear();
 	const auto found = m_Shipped.find( shipped.value );
 	if ( found == m_Shipped.end() )
 		return foundation::MakeUnexpected( SurfaceStatus::kInvalidRequest );

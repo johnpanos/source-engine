@@ -740,10 +740,7 @@ IMaterial *RenderCallQueueNeutralMaterial( const char *shader )
 
 const char *RenderCallQueueMaterialDefault( const char *shader, const char *key )
 {
-	IMaterial *neutral = RenderCallQueueNeutralMaterial( shader );
-	bool found = false;
-	IMaterialVar *variable = neutral ? neutral->FindVar( key, &found, false ) : NULL;
-	return found && variable && variable->IsDefined() ? variable->GetStringValue() : NULL;
+	return g_MaterialSystem.FindCoreMaterialDefault( shader, key );
 }
 
 } // namespace
@@ -3078,6 +3075,27 @@ IMaterial *CMaterialSystem::CoreNeutralMaterial( const char *shader )
 	m_CoreNeutralMaterials.Insert( shader, material );
 	Unlock( lock );
 	return material;
+}
+
+const char *CMaterialSystem::FindCoreMaterialDefault( const char *shader, const char *key )
+{
+	if ( !shader || !key )
+		return NULL;
+	// Draw capture runs inside a legacy shader draw. Only the gather-time
+	// CoreNeutralMaterial call may initialize shaders; this lookup cannot
+	// enter InitParams and replace the active shader's state/spew callback.
+	MaterialLock_t lock = Lock();
+	const int found = m_CoreNeutralMaterials.Find( shader );
+	const char *value = NULL;
+	if ( found != m_CoreNeutralMaterials.InvalidIndex() )
+	{
+		bool hasVariable = false;
+		IMaterialVar *variable = m_CoreNeutralMaterials[found]->FindVar( key, &hasVariable, false );
+		if ( hasVariable && variable && variable->IsDefined() )
+			value = variable->GetStringValue();
+	}
+	Unlock( lock );
+	return value;
 }
 
 IMaterial *CMaterialSystem::CreateMaterial( const char *pMaterialName, KeyValues *pVMTKeyValues )

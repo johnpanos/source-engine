@@ -322,6 +322,13 @@ struct StageViewLights
 	float sunShadow[4] = { -1.0f, 0.0f, 0.0f, 0.0f };
 };
 
+// Opaque composition-owned lighting snapshot. Its lifetime follows the view
+// through queueing, recording and capture replay.
+struct StageLightingInputs
+{
+	virtual ~StageLightingInputs() = default;
+};
+
 struct WorldView
 {
 	std::vector<std::uint32_t> surfaces; // into WorldData::surfaces
@@ -367,6 +374,7 @@ struct WorldView
 	// only when no slot of its frame recorded: the backend never recorded
 	// that frame (a resize, a lost surface, a dropped queued frame).
 	std::uint64_t hostFrame = 0;
+	std::shared_ptr<const StageLightingInputs> stageLighting;
 	// The frame's debug controls (RFC 0014), as the renderer applied them
 	// when the view was queued: the render sequence draws with the main
 	// thread's frame value, in either queued mode.
@@ -474,6 +482,9 @@ public:
 	// Add the legacy culler's accepted static props before the queued view's
 	// slot records. The array is either accepted whole or refused whole.
 	WorldStats Stats() const;
+	// Returns the view-owned snapshot for the slot being recorded or replayed.
+	std::shared_ptr<const StageLightingInputs> LightingInputs(
+	    std::uint32_t tag, std::uint64_t streamEpoch ) const;
 	// WorldStats::viewsFailed alone (cheap, for a per-view policy check).
 	std::uint64_t Failures() const;
 

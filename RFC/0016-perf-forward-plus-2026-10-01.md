@@ -140,7 +140,7 @@ WAFLOCK=.lock-waf-p2 ./waf build --targets=launcher,engine,shaderapivulkan -j8
 WAFLOCK=.lock-waf-rc-lab-main ./waf build --targets=render_lab -j8
 LD_LIBRARY_PATH=build-rc-lab/tier0 build-rc-lab/render/lab/render_lab suite area-lights --validate
 LD_LIBRARY_PATH=build-rc-lab/tier0 build-rc-lab/render/lab/render_lab suite area-lights --sensitivity
-python3 tools/quality/conformance.py check --suite render.lights.clusters --suite render.lights.clusters.sensitivity --config release --out quality-results/perf1001-opt/clusters.json
+python3 tools/quality/conformance.py check --suite render.lights.clusters.gpu --config release --out quality-results/perf1001-opt/clusters-gpu-current.json
 RENDER_SKIN_CORPUS=quality-results/perf1001-opt/k0.skcorpus python3 tools/quality/conformance.py check --suite render.skinning.corpus --config release --out quality-results/perf1001-opt/skinning-retained.json
 python3 tools/quality/frame_pacing.py --runtime run/runtime-p2 --build build-p2 --scenario quality-results/perf1001-opt/intro-core.json --out quality-results/perf1001-opt/repro --passes 1 --mat-queue-mode 2 --width 1024 --height 768 --timeout 240
 python3 quality-results/perf1001-opt/verify.py

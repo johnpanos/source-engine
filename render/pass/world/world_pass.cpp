@@ -7,6 +7,7 @@
 
 #include "render/pass/world/world_pass.h"
 
+#include "render/device/errors.h"
 #include "render/frame/debug_specialization.h"
 #include "render/material/draw_program.h"
 #include "render/material/material_programs.h"
@@ -846,6 +847,25 @@ WorldStats WorldPass::Stats() const
 	return s.stats;
 }
 
+std::shared_ptr<const StageLightingInputs> WorldPass::LightingInputs(
+    std::uint32_t tag, std::uint64_t streamEpoch ) const
+{
+	const State &s = *m_State;
+	std::lock_guard<std::mutex> guard( s.lock );
+	const std::uint32_t serial = tag & kWorldSerialMask;
+	for ( auto kept = s.recorded.rbegin(); kept != s.recorded.rend(); ++kept )
+	{
+		if ( kept->serial == serial && ( streamEpoch == 0 || kept->recordedStream == streamEpoch ) )
+			return kept->view.stageLighting;
+	}
+	for ( const State::Queued &queued : s.views )
+	{
+		if ( queued.serial == serial )
+			return queued.view.stageLighting;
+	}
+	return {};
+}
+
 std::uint64_t WorldPass::Failures() const
 {
 	const State &s = *m_State;
@@ -957,6 +977,11 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 	if ( !found || !world || !claims )
 	{
 		s.Fail( "a slot names no queued view of the current world" );
+		return;
+	}
+	if ( view.stageLighting && !view.lights )
+	{
+		s.Fail( "a claimed stage view lost its queued lighting inputs" );
 		return;
 	}
 	if ( !target.device || !target.color.IsValid() || !target.depth.IsValid() || !target.textures )
@@ -1611,7 +1636,9 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		auto group = device.CreateBindGroup( { request.layout, entries } );
 		if ( !group )
 		{
-			*why = "a bind group was refused";
+			const DeviceError &error = group.Error();
+			*why = "a bind group was refused: " + std::string( DescribeStatus( error.status ) ) +
+			       " (native " + std::to_string( error.nativeCode ) + ")";
 			return false;
 		}
 		out.group = group.Value();
@@ -2256,16 +2283,17 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 	// Surfaces of one binding whose index ranges touch draw as one range (a
 	// world stage's meshlets, in the mesh's order).
 	auto statePipeline =
-	    [&]( const Resources::Material &m, PipelineId base,
+	    [&]( const Resources::Material &m, PipelineId base, const material::SurfaceDrawState &state,
 	        const shaderlib::DebugSpecialization &debug = {} ) -> std::optional<PipelineId>
 	{
-		auto result = m.resolver->Program().StatePipeline( base, target.drawState, debug );
+		auto result = m.resolver->Program().StatePipeline( base, state, debug );
 		if ( !result )
 		{
 			note( "view raster state: pipeline refused for " + m.program.name + " status " +
 			      std::to_string( int( result.Error() ) ) + " depth format " +
 			      std::to_string( int( target.depthFormat ) ) + " stencil " +
-			      std::to_string( target.drawState.stencil.enabled ) );
+			      std::to_string( state.stencil.enabled ) + ": " +
+			      m.resolver->Program().PipelineFailure() );
 			return std::nullopt;
 		}
 		return result.Value();
@@ -2451,7 +2479,13 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 			prepassRendering.height = target.height;
 			encoder.BeginLabel( "core world prepass" );
 			encoder.BeginRendering( prepassRendering );
-			encoder.SetViewport( view.viewport );
+			// This private D32 target has no stencil and encodes projection
+			// depth for reconstruction. Portal masks and depth-range remapping
+			// belong to the final target, not this offscreen view.
+			Viewport prepassViewport = view.viewport;
+			prepassViewport.minDepth = 0.0f;
+			prepassViewport.maxDepth = 1.0f;
+			encoder.SetViewport( prepassViewport );
 			drawSurfaces( prepass, r.prepassMaterials,
 			    [&]( const Resources::Material &m ) -> std::optional<PipelineId>
 			    {
@@ -2462,7 +2496,7 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 					    note( "the prepass: " + variant.Error() );
 					    return std::nullopt;
 				    }
-				    return statePipeline( m, variant.Value() );
+				    return statePipeline( m, variant.Value(), material::SurfaceDrawState() );
 			    } );
 			encoder.EndRendering();
 			encoder.EndLabel();
@@ -2611,7 +2645,7 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 					    note( "the depth prepass: " + variant.Error() );
 					    return std::nullopt;
 				    }
-				    return statePipeline( m, variant.Value() );
+				    return statePipeline( m, variant.Value(), target.drawState );
 			    } );
 			encoder.EndRendering();
 			encoder.EndLabel();
@@ -2623,7 +2657,7 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 	drawSurfaces( order, r.materials,
 	    [&]( const Resources::Material &m ) -> std::optional<PipelineId>
 	    {
-		    return statePipeline( m, m.program.request.pipeline,
+		    return statePipeline( m, m.program.request.pipeline, target.drawState,
 		        frame::DebugSpecializationFor( view.debug, m.program.name ) );
 	    } );
 	// The model list is built in caller order. Opaque draws can be grouped by
@@ -2711,7 +2745,7 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 			complete = false;
 			continue;
 		}
-		const auto state = statePipeline( m, m.program.request.pipeline,
+		const auto state = statePipeline( m, m.program.request.pipeline, target.drawState,
 		    frame::DebugSpecializationFor( view.debug, m.program.name ) );
 		if ( !state )
 		{
@@ -2780,7 +2814,7 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 				continue;
 			}
 		}
-		const auto state = statePipeline( m, m.program.request.pipeline );
+		const auto state = statePipeline( m, m.program.request.pipeline, target.drawState );
 		if ( !state )
 		{
 			complete = false;

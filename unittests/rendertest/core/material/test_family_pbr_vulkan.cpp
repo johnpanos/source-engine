@@ -263,6 +263,56 @@ int main()
 		if ( !checks.That( created.HasValue(), "device.a-vulkan-device-is-created" ) )
 			return checks.Report();
 		std::unique_ptr<device::IRenderDevice2> device = std::move( created ).Value();
+		// Portal views keep stencil on the imported D32S8 target. Building the
+		// same PBR point with that raster state must remain a valid pipeline.
+		{
+			auto portal = SurfaceProgram::Create(
+			    *device, device::Format::kRGBA8Srgb, device::Format::kD32FloatS8 );
+			bool portalState = portal.HasValue();
+			if ( portalState )
+			{
+				SurfaceVariant variant;
+				variant.layout = SurfaceVertexLayout::kWorld;
+				variant.terms = kSurfacePbr | kSurfaceMraoTexture | kSurfaceBakedLightmap |
+				                kSurfaceClustered | kSurfaceRuntimeDirect;
+				auto base = portal.Value()->Pipeline( variant );
+				portalState = base.HasValue();
+				if ( portalState )
+				{
+					SurfaceDrawState state;
+					state.stencil.enabled = true;
+					state.stencil.compare = device::CompareOp::kEqual;
+					state.stencil.pass = device::StencilOp::kReplace;
+					state.stencil.reference = 1;
+					portalState = portal.Value()->StatePipeline( base.Value(), state ).HasValue();
+				}
+			}
+			checks.That( portalState, "pipeline.pbr-world-with-portal-stencil" );
+		}
+		{
+			auto program = SurfaceProgram::Create(
+			    *device, device::Format::kRGBA8Srgb, device::Format::kD32Float );
+			bool named = false;
+			if ( program )
+			{
+				SurfaceVariant variant;
+				variant.layout = SurfaceVertexLayout::kWorld;
+				variant.terms = kSurfacePbr;
+				auto base = program.Value()->Pipeline( variant );
+				if ( base )
+				{
+					SurfaceDrawState state;
+					state.stencil.enabled = true;
+					auto refused = program.Value()->StatePipeline( base.Value(), state );
+					named =
+					    !refused &&
+					    program.Value()->PipelineFailure().find( "invalid description" ) !=
+					        std::string::npos &&
+					    program.Value()->PipelineFailure().find( "native 0" ) != std::string::npos;
+				}
+			}
+			checks.That( named, "pipeline.refused-stencil-keeps-the-device-failure" );
+		}
 		auto family =
 		    PbrFamily::Create( *device, device::Format::kRGBA8Srgb, device::Format::kUnknown );
 		if ( !checks.That( family.HasValue(), "family.creates" ) )

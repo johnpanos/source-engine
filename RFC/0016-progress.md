@@ -601,8 +601,8 @@ counted apart (115,423 at the default seed, inside the false-positive rate).
 Reproduce:
 
 ```sh
-python3 tools/quality/conformance.py check --cxx g++ --suite render.lights.clusters \
-  --suite render.lights.clusters.sensitivity --suite render.shadows.atlas \
+python3 tools/quality/conformance.py check --cxx g++ --suite render.lights.clusters.gpu \
+  --suite render.shadows.atlas \
   --suite render.shadows.atlas.sensitivity
 dependencies/shader-toolchain/bin/glslc --target-env=vulkan1.1 -O \
   render/pass/lights/cluster_assign.comp -o /tmp/cluster_assign.spv
@@ -6321,3 +6321,137 @@ This removes dormant code; it does not claim a new media or filesystem gate.
 
 Frozen-path: user-requested K12 deduplication — the native world shader shares
 the core lightmap formula while its remaining surface cohorts migrate.
+
+### K7: CPU assignment retirement and native game profile (2026-10-01)
+
+The user directed deletion of the test-only CPU light assignment reference as
+well as the product CPU path. The headless CPU assignment and sensitivity suites
+were removed from the manifest; the GPU suite now owns repeatability, independent
+geometry coverage, capacity accounting and seeded defective kernels. The dead
+CPU area-mask builder was removed. The installed GPU suite passes 26 checks, or
+27 with its GPU-only assignment timings. The 1,000-scene independent geometry
+target remains open; the current run covers 100 scenes.
+
+The first complete High `play_p2` route profile on the Radeon 8060S at
+1920 × 1080 and 4× MSAA fails the 120 FPS hard floor: 16.484 ms median and
+111.222 ms p99 over 845 frames. Stable core pass windows show 15 core world
+views per frame on arrival and return, rising to 47 on the reverse view; GPU
+core world time rises from about 12 to 54 ms, while GPU BVH assignment stays
+under 0.4 ms. CPU core view recording rises from 6.7 to 41.9 ms. The
+[GPU BVH record](0016-gpu-light-assignment-2026-10-01.md#gpu-only-retirement-and-game-profile-2026-10-01)
+links the frame streams, pass log, suite receipt and limitations. R90/R95/R96
+remain partial and the hard performance gate is unverified.
+
+### K11: Intro4 queued-lighting replay lifetime (2026-10-01)
+
+On the published `sp_a1_intro4_probe64` map, a strict native Vulkan product
+boot reproduced 192 failed core views. The device refused the world light bind
+group with `invalid handle (native 0)`; reducing the shadow atlas did not
+change the failure. `PendingView` kept the `StageViewLights` GPU froxel and index
+buffers across backend record-stream replays, while `ClusterKernel::Collect`
+released those buffers at the next submission frame. The core now retains the
+CPU input snapshot but makes the GPU light and shadow work once per submission
+frame. The bind-group failure includes the device status for future diagnosis.
+
+The same installed map, renderer, camera, strict mode and screenshot/quit
+sequence now pass, both at default exposure and with the forced tone-map scale
+set to 4. A turn from 8 to 200 degrees and back to 8 degrees passes in strict
+mode without losing the lit bind group. The headless `render.composition`,
+`render.world.null` and `render.lights.clusters.gpu` suites pass 53, 37 and 26
+checks; changed-file stylelint and archlint pass. The failing and passing
+product receipts are under
+`quality-results/lighting-diagnosis-intro4-error-code/` and
+`quality-results/lighting-diagnosis-intro4-fixed-cache/` (with the default
+exposure pass under `lighting-diagnosis-intro4-fixed-normal/` and the turn test
+under `lighting-diagnosis-intro4-turn-return/`). This fixes a
+GPU resource lifetime defect; the map's default-exposure image remains dark
+and its published reflection-probe coverage gates remain failed, so this does
+not close K11/R95 or certify visual parity.
+
+A matched-camera comparison also exposes a separate image gap: the earlier
+`691ffde` gallery build and current `22f3ea0` build use identical published
+map bytes and forced exposure 4, but the 960 × 540 frame's median luminance
+falls from 65.4 to 39.9. Albedo, baked-light and image-specular debug views
+are similar between those builds; disabling AO or the projected-light term
+does not account for the gap. The GPU cluster readback shows 3,240 populated
+froxels and 32,866 valid light indices, but the runtime-direct debug image
+remains dark even with CPU-generated all-light lists and shadows disabled. The
+direct-light image gap's cause and Cycles correctness remain open.
+The local comparison receipts are under `quality-results/lighting-diagnosis-intro4-*`.
+
+### K11/K12: Intro4 lighting ownership and bounded shadow work (2026-10-01)
+
+This session owns the reported Intro4 disappearing-light, stencil-crash and
+allocation defects in `render.composition` / `render.pass.world`. The lighting
+snapshot now belongs to the queued world view, and its GPU lighting and atlas
+are built once per submission frame. The former independently capped lighting
+deque lost accepted views after 64 cohorts; removing that drop exposed an
+atlas allocation per cohort, which exhausted host/GPU memory. A controlled
+negative run creates 12 atlases before an 8 GiB diagnostic ceiling; the corrected
+native run uses two atlases and peaks below 5.7 GiB. The diagnostic ceiling and
+allocation prints are confined to the isolated reproduction build.
+
+The private AO depth/normal prepass has D32 depth and its own raster state;
+portal stencil and final-target depth remapping cannot enter that pass.
+`render.world.null` fails its new portal case before the fix and passes 41
+checks afterward (`quality-results/intro4-private-prepass-{negative,fixed}.json`).
+The reported native D32S8 stencil pipeline itself is valid; the incompatible
+private prepass state was the defect. Pipeline refusal diagnostics now retain
+the device operation, status and native code.
+
+A clean camera reproduction also found reentrant neutral-material creation
+from a captured rope draw, exhausting the warning printer's stack. The draw-time
+default callback now only looks up a previously prepared neutral; declaration
+defaults stay in the captured input when none exists. Native reproduction passes
+at 1920 × 1080, 4× MSAA and strict mode, including parallel vertex conversion
+(`quality-results/intro4-readonly-default-high-parallel-profile/boot/`).
+
+Frozen-path: defect — the material-system default lookup no longer initializes
+a shader inside an active shader draw.
+
+Performance remains failed: the High frame-floor arrival fixture first exceeds
+8.333 ms at 12.963 ms (`quality-results/intro4-floor-owned-view/`). The subsequent
+High puzzle view's labeled world work is about 55 ms, with diagnostic timestamp
+overflow; this is a profiling window, not complete performance acceptance.
+The core shadow receiver now gathers the same four bilinear PCF depth texels
+in one instruction. The old duplicate hard/soft helper is deleted; sample
+counts, filtering and tile bounds are unchanged. Before product integration,
+`render_lab shadowed-lights` passes 10 checks and four sensitivity checks;
+`render.shadows.pixels` passes 40. Matched full High puzzle-camera runs reduce
+arrival median from 66.942 to 64.296 ms and whole-frame GPU p99 from 69.813 to
+64.516 ms (`quality-results/intro4-gather-comparison/comparison.json`). Both
+complete routes still fail the frame floor. This is an optimization result,
+not High image/performance acceptance.
+
+The A* harness now checks swept camera clearance against BSP halfspaces,
+including thin walls, and halts on a lighting-layer change while retaining the
+first pair. Its five negative/route fixtures pass. The final short puzzle route
+halts after 36 layer captures at point 8: specular p95 rises from 0.000953 to
+0.005575 as a nearby metal pillar moves further into view. The retained pair
+establishes the halt, not another dropout. The longer route also halted on a
+material transition. Neither run certifies complete map traversal; static props,
+player locomotion and gameplay gates remain outside this camera oracle.
+See `quality-results/intro4-astar-near-puzzle-final/route.json`.
+
+At 1080p High, term isolation attributes roughly 38 ms of the 62–63 ms GPU
+frame to clustered direct lighting. Disabling terms is diagnostic only
+(`quality-results/intro4-high-term-isolation-2/summary.json`); no term is removed
+from High. A trial zero-visibility BRDF shortcut passed the lab oracle, but its small
+initial timing difference was below observed run-to-run variation. The
+subsequent unchanged baseline was faster, so the shortcut was removed
+(`quality-results/intro4-shadow-zero-comparison/comparison.json`). The restored
+product build and normal `play_p2` runtime include the proven fixes and gather
+helper, with every High setting retained.
+
+A second diagnostic brackets High shadows, then disabled shadows, then restored
+High: GPU medians are 65.328, 25.158 and 65.647 ms. This identifies about 40 ms
+in shadow production/receiver work without counting the disabled phase as
+acceptance (`quality-results/intro4-high-shadow-cost/summary.json`). The complete
+High route also retains driver-memory samples: peak sampled GPU memory is
+4.601 GiB and process RSS is 4.497 GiB, with no diagnostic allocation ceiling
+(`quality-results/intro4-shadow-zero-comparison/after-memory-summary.json`).
+Samples are observations, not an allocation upper-bound proof. Fold7 hardware
+is unavailable; its gate stays unverified. The next performance slice belongs
+to `render.pass.shadows` and its shared receiver: eliminate certified redundant
+visibility work while preserving the complete filter. The 120 FPS gate remains
+failed, not deferred or relaxed.

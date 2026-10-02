@@ -132,7 +132,6 @@ void CoreWorld::SetWorld( const RenderCoreWorldVertex *vertices, unsigned int ve
 	{
 		std::lock_guard<std::mutex> guard( m_ShadowLock );
 		m_Casters.reset();
-		m_ShadowWork.clear();
 	}
 	m_StaticMeshes.clear();
 	m_StaticInstances.clear();
@@ -180,7 +179,6 @@ void CoreWorld::SetWorldMesh( const void *wmsh, unsigned long long wmshBytes,
 	{
 		std::lock_guard<std::mutex> guard( m_ShadowLock );
 		m_Casters.reset();
-		m_ShadowWork.clear();
 	}
 	m_StaticMeshes.clear();
 	m_StaticInstances.clear();
@@ -311,7 +309,6 @@ void CoreWorld::SetWorldMesh( const void *wmsh, unsigned long long wmshBytes,
 		casters->generation = ++m_CasterGeneration;
 		m_WorldCasters = casters;
 		m_Casters = std::move( casters );
-		m_ShadowWork.clear();
 	}
 	data.surfaces.reserve( meshletCount );
 	for ( unsigned int i = 0; i < meshletCount; ++i )
@@ -490,7 +487,6 @@ void CoreWorld::SetStaticCasters()
 		std::lock_guard<std::mutex> guard( m_ShadowLock );
 		casters->generation = ++m_CasterGeneration;
 		m_Casters = std::move( casters );
-		m_ShadowWork.clear();
 	}
 	std::fprintf( stderr,
 	    "Render core: %u opaque static props cast core shadows (%u authored no-shadow, %u "
@@ -1352,16 +1348,10 @@ bool CoreWorld::DrawView( const unsigned int *surfaces, unsigned int count,
 	{
 		view.lights = AreaViewLights();
 	}
+	view.stageLighting = pending;
 	const std::uint32_t tag = m_Pass.QueueView( std::move( view ) );
 	if ( tag == 0 )
 		return false;
-	if ( pending )
-	{
-		std::lock_guard<std::mutex> guard( m_ShadowLock );
-		m_ShadowWork.emplace_back( tag, std::move( pending ) );
-		while ( m_ShadowWork.size() > 64 ) // a frame's views, re-recorded ones included
-			m_ShadowWork.pop_front();
-	}
 	if ( m_Renderer.AppliedDebug().legacy == frame::DebugLegacy::kTint && m_ViewDepth <= 1 )
 	{
 		std::lock_guard<std::mutex> guard( m_TopLevelLock );
@@ -1558,7 +1548,11 @@ graph::GpuPassTimers *CoreWorld::SlotTimers( const legacy::CorePassTarget &targe
 		return nullptr;
 	}
 	if ( !m_Timers || &m_Timers->Device() != target.device )
-		m_Timers = std::make_unique<graph::GpuPassTimers>( *target.device );
+	{
+		// Portal views and their shadow subviews exceed the generic 512-timestamp
+		// debug limit; keep their pass labels instead of silently truncating them.
+		m_Timers = std::make_unique<graph::GpuPassTimers>( *target.device, 4096 );
+	}
 	if ( !m_Timers->Supported() )
 		return nullptr;
 	m_Timers->BeginFrame( target.frame, target.submitted );
@@ -1737,14 +1731,14 @@ void CoreWorld::RecordSlot(
 	world.fogEyeZ = target.fog.eyeZ;
 	world.time = target.time;
 	world.waterReflectTintScale = target.waterReflectTintScale;
-	std::shared_ptr<const PendingView> pending;
+	const std::shared_ptr<const pass::world::StageLightingInputs> inputs =
+	    m_Pass.LightingInputs( tag, target.streamEpoch );
+	const std::shared_ptr<const PendingView> pending =
+	    std::dynamic_pointer_cast<const PendingView>( inputs );
+	if ( inputs && !pending )
 	{
-		std::lock_guard<std::mutex> guard( m_ShadowLock );
-		for ( const auto &[queued, view] : m_ShadowWork )
-		{
-			if ( queued == tag )
-				pending = view;
-		}
+		++m_LightingFailures;
+		return;
 	}
 	std::optional<StreamView> streamView;
 	{
@@ -1812,13 +1806,19 @@ void CoreWorld::RecordSlot(
 	std::shared_ptr<const ShadowWork> shadows;
 	if ( pending )
 	{
-		std::call_once( pending->made,
+		const std::shared_ptr<PendingView::FrameLighting> lighting =
+		    pending->ForFrame( target.frame );
+		std::call_once( lighting->made,
 		    [&]
 		    {
-			    pending->lights = StageViewLightsFor( pending->inputs, &pending->shadows, encoder );
+			    lighting->lights =
+			        StageViewLightsFor( pending->inputs, &lighting->shadows, encoder );
+			    if ( lighting->shadows && !lighting->shadows->views.empty() )
+				    lighting->shadowAtlas = DrawStageShadows( *target.device, *lighting->shadows,
+				        target.submitted, target.frame, &lighting->shadowAtlasDesc );
 			    m_StageLightingBuilds.fetch_add( 1, std::memory_order_relaxed );
 		    } );
-		if ( !pending->lights )
+		if ( !lighting->lights )
 		{
 			if ( timers )
 			{
@@ -1828,12 +1828,11 @@ void CoreWorld::RecordSlot(
 			++m_LightingFailures;
 			return;
 		}
-		world.lights = pending->lights;
-		shadows = pending->shadows;
+		world.lights = lighting->lights;
+		shadows = lighting->shadows;
+		world.shadowAtlas = lighting->shadowAtlas;
+		world.shadowAtlasDesc = lighting->shadowAtlasDesc;
 	}
-	if ( shadows && target.device && !shadows->views.empty() )
-		world.shadowAtlas = DrawStageShadows(
-		    *target.device, *shadows, target.submitted, target.frame, &world.shadowAtlasDesc );
 	// The stage view's screen passes: GTAO over the pass's prepass.
 	const int aoQuality = m_AoQuality.load( std::memory_order_relaxed );
 	if ( shadows && target.device && aoQuality == 0 &&
