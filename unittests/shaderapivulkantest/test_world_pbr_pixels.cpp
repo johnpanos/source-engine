@@ -233,6 +233,44 @@ int main()
 		// base-200 texel below the expected sRGB range.
 		check( diffuse >= 175 && diffuse <= 210,
 		    "Cycles diffuse bake is multiplied by albedo without another 1/pi" );
+		// A 2:1 LMAP stores the flat light on the left and its world-space
+		// gradient on the right. The smooth normal must keep the flat result;
+		// a tangent-space +X normal must receive the brighter fitted light.
+		// Compare mapped normals against each other so their view-angle PBR
+		// energy weighting cancels out of the directional-light check.
+		{
+			const std::vector<char> directional =
+			    lmap_cases::MakeLmap( 2, 1, 0, { { 0x3800, 0, 0, 0x3c00, 0x3c00, 0, 0, 0x3c00 } } );
+			check( UploadLmap( context, directional, 1, &error ), "directional 2:1 LMAP uploads" );
+			std::uint8_t smooth = 0;
+			check( DrawWorld( context, &smooth, &error ) && smooth >= 140 && smooth <= 152,
+			    "smooth normal receives the flat half-light bake" );
+			check( context.UploadManagedTexture(
+			           normal, normalTilt.data(), normalTilt.size(), &error ),
+			    "directional test normal uploads" );
+			scene.material[1] = 1.0f;
+			context.SetDynamicPbrWorldScene( scene );
+			std::uint8_t directionalLit = 0;
+			check( DrawWorld( context, &directionalLit, &error ),
+			    "mapped +X normal renders against the directional gradient" );
+			const std::vector<char> zeroGradient =
+			    lmap_cases::MakeLmap( 2, 1, 0, { { 0x3800, 0, 0, 0x3c00, 0, 0, 0, 0x3c00 } } );
+			check(
+			    UploadLmap( context, zeroGradient, 1, &error ), "zero-gradient control uploads" );
+			std::uint8_t zeroGradientLit = 0;
+			check( DrawWorld( context, &zeroGradientLit, &error ) &&
+			           directionalLit >= zeroGradientLit + 40 &&
+			           directionalLit <= zeroGradientLit + 60,
+			    "mapped +X normal gains directional light over its zero-gradient control" );
+			std::fprintf( stderr, "directional LMAP red: smooth %u, tilted %u, zero gradient %u\n",
+			    smooth, directionalLit, zeroGradientLit );
+			check(
+			    context.UploadManagedTexture( normal, normalUp.data(), normalUp.size(), &error ) &&
+			        UploadLmap( context, packageBytes, 1, &error ),
+			    "flat normal and single-page lightmap are restored" );
+			scene.material[1] = 0.0f;
+			context.SetDynamicPbrWorldScene( scene );
+		}
 		// RFC 0011 indirect-light debug view. A v1 page has no indirect
 		// layer: the view is black rather than showing the total light.
 		{

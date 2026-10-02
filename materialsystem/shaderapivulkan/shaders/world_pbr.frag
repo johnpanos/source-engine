@@ -71,6 +71,7 @@ consts;
 #define REFLECTION_PROBE_RELIGHT
 #endif
 #include "world_pbr_probe.glsl"
+#include "../../../render/shaders/common/lightmap_basis.glsl"
 
 vec3 SurfaceNormal()
 {
@@ -95,8 +96,7 @@ vec3 BakedIrradiance( vec3 normal )
 	float u = clamp( fragLightmapUv.x * 0.5, halfTexel, 0.5 - halfTexel );
 	vec3 irradiance = texture( lightmapTexture, vec2( u, fragLightmapUv.y ) ).rgb;
 	vec3 beta = texture( lightmapTexture, vec2( u + 0.5, fragLightmapUv.y ) ).rgb;
-	float gain = 1.0 + dot( beta, normal - normalize( fragNormal ) );
-	return irradiance * clamp( gain, 0.0, 4.0 );
+	return LightmapDirectional( irradiance, beta, normal, normalize( fragNormal ) );
 }
 
 // Specular image light: the material's $envmap cube, else the map's probes

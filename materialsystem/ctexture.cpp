@@ -4193,8 +4193,6 @@ bool SLoadTextureBitsFromFile( IVTFTexture **ppOutVtfTexture, FileHandle_t hFile
 		int nBytesOptimalRead = GetOptimalReadBuffer( &buf, hFile, nHeaderSize );
 		int nBytesRead = g_pFullFileSystem->ReadEx( buf.Base(), nBytesOptimalRead, Min( nHeaderSize, ( int ) g_pFullFileSystem->Size( hFile ) ), hFile ); // only read as much as the file has
 		buf.SeekPut( CUtlBuffer::SEEK_HEAD, nBytesRead );
-		nBytesRead = nHeaderSize = ( ( VTFFileBaseHeader_t * ) buf.Base() )->headerSize;
-		g_pFullFileSystem->Seek( hFile, nHeaderSize, FILESYSTEM_SEEK_HEAD );
 	}
 
 	// Unserialize the header only
@@ -4204,6 +4202,9 @@ bool SLoadTextureBitsFromFile( IVTFTexture **ppOutVtfTexture, FileHandle_t hFile
 		Warning( "Error reading texture header \"%s\"\n", pCacheFileName );
 		return false;
 	}
+
+	// The shared VTF reader validated the header and positioned the buffer.
+	g_pFullFileSystem->Seek( hFile, buf.TellGet(), FILESYSTEM_SEEK_HEAD );
 
 	// Need to record this now, before we ask for the trimmed down data to potentially be loaded.
 	TexDimensions_t dimsMappingCurrent( ( *ppOutVtfTexture )->Width(), ( *ppOutVtfTexture )->Height(), ( *ppOutVtfTexture )->MipCount(), ( *ppOutVtfTexture )->Depth() );

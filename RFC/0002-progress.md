@@ -2451,6 +2451,10 @@ stack, with no new document, global, or second selection owner:
   bundled MareTF decoder byte-for-byte. Workshop texture bytes are not fixtures
   and were not copied into the repository; their authors' reuse terms still
   apply.
+- **VTF parsing consolidation (2026-10-01).** Hammer now shares its container
+  reader with the game and lab; its separate header/mip parser is removed.
+  [Compatibility and malformed-input evidence](0008-vtf-consolidation-2026-10-01.md)
+  records this slice without closing the mounted-PBR rendering gate.
 - **GTK frontend (`hammer/gtk/`, additive).** The renderer textures the 3D view:
   a location-3 `aTexCoord` + `sampler2D`, per-face texture bind keyed by
   `BrushFace.material` via a borrowed `MaterialCatalog`, world-planar UVs at

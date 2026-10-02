@@ -1,5 +1,22 @@
 # RFC 0016 progress: render core
 
+## Portal 2 launcher build repair (2026-10-01)
+
+`./play_p2` exposed two build blockers after the GPU BVH port: the shared probe
+shader constructed separate texture/sampler objects for the frozen native
+frontend's combined samplers, and `render.pass.lights` still defined an unused
+CPU cone test. The shared probe sampler now accepts both declared binding forms;
+the obsolete CPU helper and its unused packing fields are removed. GPU BVH
+construction and assignment remain the product path.
+
+The Portal 2 Waf build succeeds, and the launcher reaches the native Vulkan menu
+with core passes running ([launch log](../quality-results/play-p2-launch-fix.log)).
+The GPU assignment suite passes 27 checks
+([evidence](../quality-results/play-p2-gpu-bvh-fix.json)); changed-file style
+checking reports zero failures. Full archlint still reports unrelated CAP002
+and fstop ARCH105 findings. This repairs startup compilation; it does not close
+R90/R95/R96/R91 performance or complete-image gates.
+
 ## Scope and complexity discipline (2026-10-01)
 
 The user adopted the [scope and complexity discipline](0016-render-core.md#scope-and-complexity-discipline-user-decision-2026-10-01)
@@ -6284,3 +6301,23 @@ edited GLSL file. The log is retained beside the shader evidence.
 
 Frozen-path: core plumbing K12 — the native probe sampler delegates its math
 to the core's shared shader until its remaining surfaces migrate.
+
+### K12: shared directional lightmap math and unused copies (2026-10-01)
+
+The native world PBR shader now calls the core-owned `LightmapDirectional`
+function in `render/shaders/common/lightmap_basis.glsl`. Its 2:1 LMAP atlas
+sampling remains native because the core represents the two pages separately.
+A native GPU pixel case compares a mapped normal with and without a gradient;
+the full world PBR suite passes 101/101 checks. The core lightmap basis suite
+passes 19/19 and the pinned shader toolchain passes 165/165. Local evidence is
+in `quality-results/k12-directional-shader-20261001/`. Changed-file stylelint
+passes. Full archlint remains blocked by CAP002 includes and the two fstop
+ARCH105 findings already reported above; none points to these edited files.
+
+The unbuilt WebM material files, exact copies of the compiled QuickTime files,
+and the unused nested filesystem refcount header, an exact copy of the root
+header, were removed. Their source references were absent or commented out.
+This removes dormant code; it does not claim a new media or filesystem gate.
+
+Frozen-path: user-requested K12 deduplication — the native world shader shares
+the core lightmap formula while its remaining surface cohorts migrate.

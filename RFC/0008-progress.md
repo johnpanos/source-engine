@@ -2380,3 +2380,10 @@ flag), occlusion culling, and `vbsp2` still fails on zero-area detail faces
 (avoided here with nodraw). Other maps change triangle order on their next
 pack, so their captured frames need re-review.
 
+
+## Shared VTF parsing (2026-10-01)
+
+The game, lab and Hammer now use one strict container reader. The old parsers
+are removed; each consumer retains its required output representation. See the
+[consolidation evidence and reproduction commands](0008-vtf-consolidation-2026-10-01.md).
+R55/F3 remains partial; this does not close the P2:CE mount/render profile.

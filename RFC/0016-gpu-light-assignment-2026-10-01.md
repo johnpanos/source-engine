@@ -67,3 +67,21 @@ The observed loss was in `clusters.cpp`: removed CPU area helpers reappeared and
 packed-light admission statistics were discarded. Those changes were restored
 from the isolated validated copy. Other active chats were notified before commit
 to prevent a broad restore from reinstating the obsolete runtime assignment.
+
+## Current-checkout performance rerun (2026-10-01)
+
+After the Portal 2 launcher build repair, the documented
+`CONFORMANCE_CLUSTER_BENCH=1` run passed all 28 GPU checks on the Radeon 8060S.
+The headless oracle and sensitivity suites passed 249 and 10 checks. The timed
+GPU run had no `hl2_launcher` process active. Its evidence and full sample log
+are in [`play-p2-gpu-bvh-bench-clean.json`](../quality-results/play-p2-gpu-bvh-bench-clean.json).
+Eight measured samples per case followed warm-up at 4590 froxels (milliseconds):
+
+| Lights | CPU oracle | GPU upload + build + assign | Host prepare + submit + wait |
+| --- | ---: | ---: | ---: |
+| 0 | 0.008 | 0.051 | 0.360 |
+| 43 | 0.278 | 0.074 | 0.309 |
+| 256 | 0.571 | 0.094 | 0.352 |
+| 1024 | 1.698 | 0.203 | 0.552 |
+
+These remain assignment diagnostics, not a complete-frame or hard-budget result.

@@ -64,12 +64,12 @@ The native pixel test reads committed sRGB base-color and linear MRAO BC7 KTX2
 fixtures through this reader when configured with the pinned KTX source and
 build. Material-system VTF/KTX2 selection remains pending F3 integration.
 
-The VTF adapter uses the existing VTF library to produce the same owned image
+The VTF adapter uses the [shared container reader](../../public/texturecontainer/vtf_container.h)
+(the same parser used by the game and Hammer) to produce the owned image
 description for a 2D, one-frame, one-face material cohort. Its shared-data
 test serializes a red four-mip VTF and compares all pixels and dimensions with
 the red KTX2 fixture. A second pair checks that a one-mip BC1 VTF and KTX2
-expose identical blocks without leaking the VTF decoder's extra allocated
-levels:
+expose identical authored blocks and mip counts:
 
 ```sh
 WAFLOCK=.lock-waf-rfc0008-ktx-reader ./waf build \

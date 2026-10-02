@@ -75,6 +75,8 @@ foundation::Expected<TextureImage, ReadError> ReadVtfImage(
 	auto layout = vtf::ReadLayout( encoded, header );
 	if ( !layout )
 		return foundation::MakeUnexpected( ReadError::InvalidContainer );
+	if ( layout.Value().compression && !decompressor )
+		return foundation::MakeUnexpected( ReadError::UnsupportedSupercompression );
 	TextureImage result{ *format, {} };
 	result.levels.resize( header.mips );
 	std::size_t totalBytes = 0;

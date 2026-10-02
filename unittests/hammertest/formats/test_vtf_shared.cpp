@@ -118,16 +118,20 @@ int Corpus()
 	{
 		std::uint32_t sizes[2]{};
 		const auto read = std::fread( sizes, 1, sizeof( sizes ), stdin );
-		if ( !read ) break;
-		if ( read != sizeof( sizes ) || sizes[0] > 4096 || sizes[1] > texturecontainer::vtf::kMaxImageBytes )
+		if ( !read )
+			break;
+		if ( read != sizeof( sizes ) || sizes[0] > 4096 ||
+		     sizes[1] > texturecontainer::vtf::kMaxImageBytes )
 		{
-			Check( false, "invalid corpus record" ); break;
+			Check( false, "invalid corpus record" );
+			break;
 		}
 		std::string name( sizes[0], '\0' ), bytes( sizes[1], '\0' );
 		if ( std::fread( name.data(), 1, name.size(), stdin ) != name.size() ||
 		     std::fread( bytes.data(), 1, bytes.size(), stdin ) != bytes.size() )
 		{
-			Check( false, "truncated corpus record" ); break;
+			Check( false, "truncated corpus record" );
+			break;
 		}
 		++files;
 		const auto before = failures;
@@ -135,33 +139,39 @@ int Corpus()
 		Check( bool( header ), "corpus header" );
 		if ( !header )
 		{
-			std::printf( "FILE %s: %s\n", name.c_str(), header.Error() ); continue;
+			std::printf( "FILE %s: %s\n", name.c_str(), header.Error() );
+			continue;
 		}
 		auto layout = texturecontainer::vtf::ReadLayout( Bytes( bytes ), header.Value() );
 		Check( bool( layout ), "corpus layout" );
 		if ( !layout )
 		{
-			std::printf( "FILE %s: %s\n", name.c_str(), layout.Error() ); continue;
+			std::printf( "FILE %s: %s\n", name.c_str(), layout.Error() );
+			continue;
 		}
 #ifdef VTF_SHARED_LEGACY
 		if ( !layout.Value().compression && header.Value().format < NUM_IMAGE_FORMATS )
 		{
 			CUtlBuffer buffer( bytes.data(), int( bytes.size() ), CUtlBuffer::READ_ONLY );
-			std::unique_ptr<IVTFTexture, decltype( &DestroyVTFTexture )> texture( CreateVTFTexture(), &DestroyVTFTexture );
+			std::unique_ptr<IVTFTexture, decltype( &DestroyVTFTexture )> texture(
+			    CreateVTFTexture(), &DestroyVTFTexture );
 			const bool loaded = texture->Unserialize( buffer );
 			Check( loaded, "corpus legacy adapter" );
 			if ( loaded )
 				for ( const auto &run : layout.Value().images )
 				{
-					if ( run.face >= unsigned( texture->FaceCount() ) ) continue;
+					if ( run.face >= unsigned( texture->FaceCount() ) )
+						continue;
 					Check( run.decodedBytes == std::size_t( texture->ComputeMipSize( run.mip ) ) &&
 					           !std::memcmp( bytes.data() + run.stored.offset,
-					               texture->ImageData( run.frame, run.face, run.mip ), run.decodedBytes ),
+					               texture->ImageData( run.frame, run.face, run.mip ),
+					               run.decodedBytes ),
 					    "corpus game bytes match authored subresource" );
 				}
 		}
 #endif
-		if ( before != failures ) std::printf( "FILE %s\n", name.c_str() );
+		if ( before != failures )
+			std::printf( "FILE %s\n", name.c_str() );
 	}
 	Check( files > 0, "corpus must contain files" );
 	std::printf( "VTF_CORPUS %u\n", files );
@@ -171,7 +181,8 @@ int Corpus()
 
 int main( int argc, char **argv )
 {
-	if ( argc == 2 && std::string_view( argv[1] ) == "--corpus" ) return Corpus();
+	if ( argc == 2 && std::string_view( argv[1] ) == "--corpus" )
+		return Corpus();
 	using namespace hammertest::detail;
 	using namespace texturecontainer;
 	for ( bool dictionary : { false, true } )
@@ -233,8 +244,63 @@ int main( int argc, char **argv )
 	           decoded.Value().levels[0].bytes[0] == std::byte{ 'a' } &&
 	           decoded.Value().levels[2].bytes[0] == std::byte{ 'c' },
 	    "lab uses shared AXC run ordering" );
-	Check(
-	    !ReadVtfImage( Bytes( compressed ) ), "missing decompression capability fails explicitly" );
+	const auto missingDecoder = ReadVtfImage( Bytes( compressed ) );
+	Check( !missingDecoder && missingDecoder.Error() == ReadError::UnsupportedSupercompression,
+	    "missing decompression capability fails explicitly" );
+	// Resource dictionary order is not an ABI storage order. Thumbnail and
+	// out-of-line payload ranges cannot overlap the image or each other.
+	{
+		auto resource = Topology( 1, 1, 1 );
+		resource.insert( 88, 24, '\0' );
+		resource.insert( 112, 4, '\x52' );
+		PutU32At( resource, 12, 112 );
+		PutU32At( resource, 68, 4 );
+		PutU32At( resource, 84, 116 );
+		PutU32At( resource, 88, 0x434241 );
+		PutU32At( resource, 92, resource.size() );
+		PutU32At( resource, 96, 1 );
+		PutU32At( resource, 100, 112 );
+		PutU32At( resource, 104, 0x02435243 );
+		PutU32At( resource, 108, 0x11223344 );
+		PutU32At( resource, 57, 0 );
+		resource[61] = resource[62] = 1;
+		const auto payloadOffset = resource.size();
+		resource.append( 4, '\0' );
+		PutU32At( resource, payloadOffset, 5 );
+		resource += "abcde";
+		auto header = vtf::ReadHeader( Bytes( resource ) );
+		Check( header && vtf::ReadLayout( Bytes( resource ), header.Value() ),
+		    "out-of-order resources validate" );
+#ifdef VTF_SHARED_LEGACY
+		CUtlBuffer buffer( resource.data(), int( resource.size() ), CUtlBuffer::READ_ONLY );
+		std::unique_ptr<IVTFTexture, decltype( &DestroyVTFTexture )> texture(
+		    CreateVTFTexture(), &DestroyVTFTexture );
+		const bool loaded = texture->Unserialize( buffer );
+		Check( loaded, "game resource fixture loads" );
+		if ( loaded )
+		{
+			size_t size = 0;
+			const auto *data = texture->GetResourceData( 0x434241, &size );
+			Check( data && size == 5 && !std::memcmp( data, "abcde", 5 ),
+			    "game owns external resource payload" );
+			const auto *inlineData =
+			    static_cast<const std::uint32_t *>( texture->GetResourceData( 0x435243, &size ) );
+			Check( inlineData && size == 4 && *inlineData == 0x11223344,
+			    "game preserves inline resource" );
+			Check( texture->LowResWidth() == 1 && texture->LowResImageData()[0] == 0x52,
+			    "game preserves thumbnail" );
+		}
+#endif
+		auto bad = resource;
+		PutU32At( bad, 92, 114 );
+		Reject( bad ); // custom resource starts inside the thumbnail
+		bad = resource;
+		PutU32At( bad, payloadOffset, 1000 );
+		Reject( bad ); // custom length exceeds input
+		bad = resource;
+		PutU32At( bad, 88, 0x30 );
+		Reject( bad ); // duplicate image tag
+	}
 	const auto good = Topology( 1, 1, 1 );
 	for ( auto [offset, value] :
 	    { std::pair{ 8U, 7U }, { 16U, 0U }, { 24U, 0U }, { 56U, 32U }, { 68U, 33U }, { 84U, 4U } } )
@@ -246,7 +312,8 @@ int main( int argc, char **argv )
 			PutU32At( bad, offset, value );
 		Reject( bad );
 	}
-	Reject( good.substr( 0, 63 ) );
+	for ( std::size_t end = 0; end < good.size(); ++end )
+		Reject( good.substr( 0, end ) );
 	Reject( good.substr( 0, good.size() - 1 ) );
 #ifdef VTF_SHARED_LEGACY
 	// Header-only reads succeed with no payload. A later full read must fail.

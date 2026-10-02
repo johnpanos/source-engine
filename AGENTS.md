@@ -456,6 +456,9 @@ The strict VTF decoder already accepts the required VTF 7.6 `AXC`
 Deflate/Zstandard mip runs and Strata BC7 format 70 through its explicit
 decompression capability; see the
 [HAM-ASSET-001 P2:CE follow-up](RFC/0002-progress.md#vpk--texture-vtfvmt-loading-asset-catalog-and-textured-viewport-ham-asset-001).
+The game, lab and Hammer now share the
+[VTF container reader](RFC/0008-vtf-consolidation-2026-10-01.md); output conversion
+and decompression capability remain explicit consumer concerns.
 That decoder support is the mounting seam, not the finish line. Acceptance is a
 configured mount manifest whose highest-resolution selected base-color, normal,
 roughness/metal/AO and emission textures resolve through the ordinary asset

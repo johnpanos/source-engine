@@ -60,7 +60,6 @@ $Project "video_webm"
 	$Folder	"Source Files"   [$OSXALL||$WIN32||$LINUXALL]
 	{
 		$file	"webm_video.cpp"
-//		$file	"webm_material.cpp"
 		$file	"webm_recorder.cpp"
 	}
 
@@ -86,4 +85,3 @@ $Project "video_webm"
 		$Lib $LIBCOMMON/libogg
 	}
 }
-

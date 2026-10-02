@@ -76,8 +76,6 @@ struct ViewLight
 	float radius = 0.0f; // +infinity: unbounded
 	float3 axis = { 0.0f, 0.0f, -1.0f };
 	float cosOuter = -1.0f;
-	float sinOuter = 0.0f;
-	bool spot = false;
 };
 
 enum class Admission
@@ -145,35 +143,10 @@ ViewLight ToView(
 	result.radius = light.radius > 0.0f ? light.radius : std::numeric_limits<float>::infinity();
 	if ( light.shape == light_set::LightShape::Spot )
 	{
-		result.spot = true;
 		result.axis = math::Normalize( TransformPoint3( grid.view, light.direction, 0.0f ) );
 		result.cosOuter = ClampCos( light.outerCos );
-		result.sinOuter = std::sqrt( std::max( 0.0f, 1.0f - result.cosOuter * result.cosOuter ) );
 	}
 	return result;
-}
-
-// Whether a sphere around `center` inflated to `radius` can touch the cone
-// (apex, unit axis, half-angle given by cos and sin). |V| sin(phi - theta),
-// with phi the angle between V and the axis, never exceeds the distance from
-// the point to the solid cone, so rejecting on it is conservative for any
-// half-angle up to pi.
-bool SphereMayTouchCone( const ViewLight &light, const float3 &center, float radius )
-{
-	const float3 v = center - light.center;
-	const float lengthSquared = math::Dot( v, v );
-	const float along = math::Dot( v, light.axis );
-	const float across = std::sqrt( std::max( 0.0f, lengthSquared - along * along ) );
-	const float coneDistance = light.cosOuter * across - along * light.sinOuter;
-	if ( coneDistance > radius )
-		return false;
-	// Beyond the light's sphere along the axis.
-	if ( along > radius + light.radius )
-		return false;
-	// Behind the apex plane, where a cone no wider than a hemisphere has nothing.
-	if ( light.cosOuter >= 0.0f && along < -radius )
-		return false;
-	return true;
 }
 
 } // namespace

@@ -67,7 +67,8 @@ struct Layout
 // Header-only callers need the header and dictionary, not image/resource payloads.
 // Malformed data is never repaired into a successful parse. The returned values
 // own their metadata. Errors are static diagnostics, independent of the engine
-// and strict libraries' different std::string ABIs. File offsets are absolute within the supplied VTF bytes.
+// and strict libraries' different std::string ABIs. File offsets are absolute
+// within the supplied VTF bytes.
 [[nodiscard]] foundation::Expected<Header, const char *> ReadHeader( std::span<const std::byte> );
 // Pass a Header returned by ReadHeader for these same encoded bytes.
 // finestMip permits the game's truncated smallest-mips-only read. It does not

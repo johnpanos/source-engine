@@ -141,7 +141,8 @@ foundation::Expected<Header, const char *> ReadHeader( Bytes b )
 	return h;
 }
 
-foundation::Expected<Range, const char *> ResourceData( Bytes b, const Header &h, const Resource &r )
+foundation::Expected<Range, const char *> ResourceData(
+    Bytes b, const Header &h, const Resource &r )
 {
 	if ( r.type & kInline )
 		return Error( "vtf: inline resource has no payload" );

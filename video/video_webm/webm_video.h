@@ -18,7 +18,6 @@
 //-----------------------------------------------------------------------------
 class IFileSystem;
 class IMaterialSystem;
-class CQuickTimeMaterial;
 
 //-----------------------------------------------------------------------------
 // Global interfaces - you already did the needed includes, right?
