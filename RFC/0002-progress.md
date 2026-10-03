@@ -1325,6 +1325,63 @@ python3 tools/quality/hammer_ui_test.py --cli build-r03-tools/hammer/cli/hammer_
 - Quick hide (H) is separate editor state; the strict codec still rejects the
   VMF `quickhide` block.
 
+### R08-PARITY: the legacy feature parity matrix (in progress, 2026-10-03)
+
+**Scope** (user goal 2026-10-03, after R08-REPLACE-TEXTURES: "At the end of
+this we need to have replicated all functionality from the MFC one"). "All
+functionality" needs one checkable list. `tools/quality/hammer_feature_parity.py`
+enumerates the MFC editor's features from its own sources at a pinned
+revision (`776a2f3e`, before any retirement), so the list survives deleting
+legacy code:
+
+- 319 commands: every ID reached from a menu, accelerator, toolbar or a
+  frame/document/view message map, with its menu paths, accelerators,
+  toolbars and handlers;
+- 73 dialog templates, with captions and classes;
+- 20 tools (`ToolID_t`).
+
+`architecture/hammer_feature_parity.json` maps each feature to the new stack:
+`replicated` (with the `ActionCatalog` actions, `SessionCommands` commands or
+host entries that reach it, and the suites that test it), `partial`,
+`missing`, or `not-applicable` (with a reason). `verify` checks that every
+feature is mapped and every reference exists; `verify --complete` also fails
+while anything is partial or missing, and is the acceptance check for this
+goal. Suites: `hammer.legacy.feature_parity` and its self-test (16 negative and
+extractor checks).
+
+This matrix is RFC 0002's retirement inventory (R43's "declared product
+parity"). RFC 0018 still owns flows, bindings and layout; slices update both.
+
+**Baseline (2026-10-03):** 412 features. 48 replicated, 160 partial, 195
+missing, 9 not applicable: handler-less toolbar and accelerator stubs, and
+MDI child arrangement, which a one-window-per-document host does not have.
+
+**Slice order** (agent plan under the user's goal; each slice adds headless
+logic, catalog actions, GTK windows, UI cases with controls, and updates the
+matrix):
+
+1. Shell: About and Help, quit and close prompts, Save As, recent files,
+   view cycling and maximize, center on selection, grid toggle, units,
+   screen elements.
+2. Edit and map dialogs: Find Entities, Entity Report, entity Search and
+   Replace, Go to Brush and Coordinates, Map Information, Map Properties,
+   Paste Special, Transform, flip and align, Center Origins, snap
+   individually, split face, select next/previous.
+3. Texturing: face inspector controls, smoothing groups, browser filters,
+   texture lock scale, decal and overlay tools.
+4. Entities: Outputs, Inputs, visgroup and model pages, entity help, and the
+   picker and helper tools.
+5. Primitives: object bar shapes, arch and torus dialogs.
+6. Map tools: problems window, pointfile and portal files, map diff, export,
+   DXF, WAD conversion, entity gallery.
+7. Build: Run Map configurations, Options, Messages.
+8. Displacements: tool, create, sculpt, paint, noise, sew.
+9. Path, camera, magnify and cordon tools; 3D clip and vertex.
+10. Prefabs, instances and manifests.
+11. Views: per-view type and render mode, lighting preview, logical view,
+    filters.
+12. Sound, model, scene and animation browsers.
+
 ### R08-REPLACE-TEXTURES: Replace Textures leaves the MFC shell (slice done 2026-10-03)
 
 **Scope** (user goal 2026-10-03: "Extract the remaining Hammer behavior from

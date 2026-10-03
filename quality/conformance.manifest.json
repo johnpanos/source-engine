@@ -6649,6 +6649,50 @@
       "expect": "pass"
     },
     {
+      "id": "hammer.legacy.feature_parity",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "R08",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "description": "Legacy Hammer feature parity (RFC/0002-progress.md, R08-PARITY): every command, dialog and tool of the MFC editor at the pinned revision is mapped in architecture/hammer_feature_parity.json, and every replicated entry names an existing ActionCatalog action, SessionCommands command or host entry and an existing suite. Reports the counts per status; does not yet require completeness.",
+      "command": [
+        "{python}",
+        "tools/quality/hammer_feature_parity.py",
+        "verify"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 412,
+      "sources": [
+        "tools/quality/hammer_feature_parity.py",
+        "architecture/hammer_feature_parity.json",
+        "hammer/core/presenters/action_catalog.cpp",
+        "hammer/core/app/session_commands.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "hammer.legacy.feature_parity.selftest",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "R08",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "description": "The parity verifier's negative fixtures (unmapped and unknown features, invalid status, unknown action, command or suite, replicated without a target or test, not-applicable without a reason, completeness) and its extractor on the pinned legacy sources.",
+      "command": [
+        "{python}",
+        "tools/quality/hammer_feature_parity.py",
+        "selftest"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 16,
+      "sources": [
+        "tools/quality/hammer_feature_parity.py",
+        "architecture/hammer_feature_parity.json"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "hammer.legacy.replace_textures.freeze",
       "domain": "Q-EDITOR",
       "rfc": "0002",

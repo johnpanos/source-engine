@@ -1,0 +1,3031 @@
+{
+ "schema": "hammer-feature-parity/v1",
+ "description": "Every user-visible feature of the legacy MFC Hammer at the pinned revision, mapped to the new stack (RFC 0002 R08/R43). tools/quality/hammer_feature_parity.py enumerates the features from the legacy sources at that revision and verifies this mapping; verify --complete passes when nothing is partial or missing.",
+ "revision": "776a2f3ec0e16e8b17bea40080be6d6491f296f0",
+ "features": {
+  "cmd:ID_APPLY_NOW": {
+   "status": "replicated",
+   "actions": [
+    "edit.properties"
+   ],
+   "commands": [
+    "set_key",
+    "set_flag",
+    "set_class"
+   ],
+   "host": [
+    "Object Properties window (hammer/gtk/properties_dialog.cpp)"
+   ],
+   "tests": [
+    "hammer.presenters.entity_inspector",
+    "corpus.hammer.ui:properties"
+   ]
+  },
+  "cmd:ID_APP_ABOUT": {
+   "status": "missing",
+   "note": "no About window"
+  },
+  "cmd:ID_APP_EXIT": {
+   "status": "partial",
+   "note": "Quit exists (app.quit) but does not prompt for unsaved changes (RFC 0018 F14); no test",
+   "host": [
+    "app.quit"
+   ]
+  },
+  "cmd:ID_BUTTON33236": {
+   "status": "not-applicable",
+   "note": "manifest toolbar buttons with no handler at the pinned revision: no behavior to replicate"
+  },
+  "cmd:ID_BUTTON33237": {
+   "status": "not-applicable",
+   "note": "manifest toolbar buttons with no handler at the pinned revision: no behavior to replicate"
+  },
+  "cmd:ID_BUTTON33238": {
+   "status": "not-applicable",
+   "note": "manifest toolbar buttons with no handler at the pinned revision: no behavior to replicate"
+  },
+  "cmd:ID_CENTER_ON_ENTITY": {
+   "status": "missing",
+   "note": "no origin/point handle context menu"
+  },
+  "cmd:ID_COLLISION_WIREFRAME": {
+   "status": "missing",
+   "note": "no collision wireframe view"
+  },
+  "cmd:ID_CONTEXT_HELP": {
+   "status": "not-applicable",
+   "note": "accelerator or toolbar entries with no handler at the pinned revision: no behavior to replicate"
+  },
+  "cmd:ID_CREATEOBJECT": {
+   "status": "partial",
+   "note": "Return commits the block tool; Alt+C is not bound and the entity tool creates on click only",
+   "commands": [
+    "create_block",
+    "place_entity"
+   ],
+   "tests": [
+    "hammer.tools.block_tool"
+   ]
+  },
+  "cmd:ID_DISP_BRUSHSIZE_1": {
+   "status": "missing",
+   "note": "displacement ops exist (sculpt, paint) but no displacement tool or its toolbar in the GTK host"
+  },
+  "cmd:ID_DISP_BRUSHSIZE_3": {
+   "status": "missing",
+   "note": "displacement ops exist (sculpt, paint) but no displacement tool or its toolbar in the GTK host"
+  },
+  "cmd:ID_DISP_BRUSHSIZE_5": {
+   "status": "missing",
+   "note": "displacement ops exist (sculpt, paint) but no displacement tool or its toolbar in the GTK host"
+  },
+  "cmd:ID_DISP_BRUSHSIZE_7": {
+   "status": "missing",
+   "note": "displacement ops exist (sculpt, paint) but no displacement tool or its toolbar in the GTK host"
+  },
+  "cmd:ID_DISP_BRUSHSIZE_9": {
+   "status": "missing",
+   "note": "displacement ops exist (sculpt, paint) but no displacement tool or its toolbar in the GTK host"
+  },
+  "cmd:ID_DISP_FLATTEN": {
+   "status": "missing",
+   "note": "displacement ops exist (sculpt, paint) but no displacement tool or its toolbar in the GTK host"
+  },
+  "cmd:ID_DISP_HEIGHT_1": {
+   "status": "missing",
+   "note": "displacement ops exist (sculpt, paint) but no displacement tool or its toolbar in the GTK host"
+  },
+  "cmd:ID_DISP_HEIGHT_16": {
+   "status": "missing",
+   "note": "displacement ops exist (sculpt, paint) but no displacement tool or its toolbar in the GTK host"
+  },
+  "cmd:ID_DISP_HEIGHT_2": {
+   "status": "missing",
+   "note": "displacement ops exist (sculpt, paint) but no displacement tool or its toolbar in the GTK host"
+  },
+  "cmd:ID_DISP_HEIGHT_32": {
+   "status": "missing",
+   "note": "displacement ops exist (sculpt, paint) but no displacement tool or its toolbar in the GTK host"
+  },
+  "cmd:ID_DISP_HEIGHT_4": {
+   "status": "missing",
+   "note": "displacement ops exist (sculpt, paint) but no displacement tool or its toolbar in the GTK host"
+  },
+  "cmd:ID_DISP_HEIGHT_8": {
+   "status": "missing",
+   "note": "displacement ops exist (sculpt, paint) but no displacement tool or its toolbar in the GTK host"
+  },
+  "cmd:ID_DISP_PULLPUSH": {
+   "status": "missing",
+   "note": "displacement ops exist (sculpt, paint) but no displacement tool or its toolbar in the GTK host"
+  },
+  "cmd:ID_DISP_SMOOTH": {
+   "status": "missing",
+   "note": "displacement ops exist (sculpt, paint) but no displacement tool or its toolbar in the GTK host"
+  },
+  "cmd:ID_EDIT_APPLYTEXTURE": {
+   "status": "replicated",
+   "actions": [
+    "tools.apply_material"
+   ],
+   "commands": [
+    "apply_material"
+   ],
+   "tests": [
+    "hammer.presenters.action_catalog",
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_EDIT_CLEARSELECTION": {
+   "status": "replicated",
+   "actions": [
+    "edit.select_none"
+   ],
+   "commands": [
+    "select_none"
+   ],
+   "tests": [
+    "hammer.presenters.action_catalog",
+    "hammer.app.session_commands"
+   ]
+  },
+  "cmd:ID_EDIT_COPY": {
+   "status": "replicated",
+   "actions": [
+    "edit.copy"
+   ],
+   "commands": [
+    "copy"
+   ],
+   "tests": [
+    "hammer.presenters.action_catalog",
+    "hammer.app.clipboard"
+   ]
+  },
+  "cmd:ID_EDIT_COPYWC": {
+   "status": "replicated",
+   "actions": [
+    "edit.copy"
+   ],
+   "commands": [
+    "copy"
+   ],
+   "tests": [
+    "hammer.presenters.action_catalog",
+    "hammer.app.clipboard"
+   ]
+  },
+  "cmd:ID_EDIT_CUT": {
+   "status": "replicated",
+   "actions": [
+    "edit.cut"
+   ],
+   "commands": [
+    "cut"
+   ],
+   "tests": [
+    "hammer.presenters.action_catalog",
+    "hammer.app.clipboard"
+   ]
+  },
+  "cmd:ID_EDIT_CUTWC": {
+   "status": "replicated",
+   "actions": [
+    "edit.cut"
+   ],
+   "commands": [
+    "cut"
+   ],
+   "tests": [
+    "hammer.presenters.action_catalog",
+    "hammer.app.clipboard"
+   ]
+  },
+  "cmd:ID_EDIT_DELETE": {
+   "status": "replicated",
+   "actions": [
+    "edit.delete"
+   ],
+   "commands": [
+    "delete"
+   ],
+   "tests": [
+    "hammer.presenters.action_catalog",
+    "hammer.app.session_commands"
+   ]
+  },
+  "cmd:ID_EDIT_FINDENTITIES": {
+   "status": "partial",
+   "note": "ops::FindEntities exists; no command, catalog action or dialog",
+   "tests": [
+    "hammer.app.find_replace_ops"
+   ]
+  },
+  "cmd:ID_EDIT_MAPPROPERTIES": {
+   "status": "partial",
+   "note": "set_world_key exists and Object Properties shows the world with nothing selected; no Map Properties entry",
+   "commands": [
+    "set_world_key"
+   ]
+  },
+  "cmd:ID_EDIT_PASTE": {
+   "status": "replicated",
+   "actions": [
+    "edit.paste"
+   ],
+   "commands": [
+    "paste"
+   ],
+   "tests": [
+    "hammer.presenters.action_catalog",
+    "hammer.app.clipboard"
+   ]
+  },
+  "cmd:ID_EDIT_PASTESPECIAL": {
+   "status": "missing",
+   "note": "no Paste Special (copies, offset, rotation, grouping, name fixup)"
+  },
+  "cmd:ID_EDIT_PASTEWC": {
+   "status": "replicated",
+   "actions": [
+    "edit.paste"
+   ],
+   "commands": [
+    "paste"
+   ],
+   "tests": [
+    "hammer.presenters.action_catalog",
+    "hammer.app.clipboard"
+   ]
+  },
+  "cmd:ID_EDIT_PROPERTIES": {
+   "status": "replicated",
+   "actions": [
+    "edit.properties"
+   ],
+   "commands": [
+    "set_key",
+    "set_flag",
+    "set_class"
+   ],
+   "host": [
+    "Object Properties window (hammer/gtk/properties_dialog.cpp)"
+   ],
+   "tests": [
+    "hammer.presenters.entity_inspector",
+    "corpus.hammer.ui:properties"
+   ]
+  },
+  "cmd:ID_EDIT_REDO": {
+   "status": "replicated",
+   "actions": [
+    "edit.redo"
+   ],
+   "commands": [
+    "redo"
+   ],
+   "tests": [
+    "hammer.presenters.action_catalog",
+    "hammer.app.session_commands",
+    "corpus.hammer.ui:replace-textures"
+   ]
+  },
+  "cmd:ID_EDIT_REPLACE": {
+   "status": "partial",
+   "note": "ops::ReplaceKeyValues exists; no command, catalog action or dialog",
+   "tests": [
+    "hammer.app.find_replace_ops"
+   ]
+  },
+  "cmd:ID_EDIT_REPLACETEX": {
+   "status": "replicated",
+   "actions": [
+    "tools.replace_textures"
+   ],
+   "commands": [
+    "replace_material",
+    "mark_material"
+   ],
+   "host": [
+    "Replace Textures window (hammer/gtk/replace_textures_dialog.cpp)"
+   ],
+   "tests": [
+    "hammer.presenters.replace_textures",
+    "hammer.app.replace_textures.legacy_parity",
+    "corpus.hammer.ui:replace-textures"
+   ]
+  },
+  "cmd:ID_EDIT_SELECTALL": {
+   "status": "replicated",
+   "actions": [
+    "edit.select_all"
+   ],
+   "commands": [
+    "select_all"
+   ],
+   "tests": [
+    "hammer.presenters.action_catalog",
+    "hammer.app.session_commands",
+    "corpus.hammer.ui:properties"
+   ]
+  },
+  "cmd:ID_EDIT_SELNEXT": {
+   "status": "missing",
+   "note": "no select next/previous (entity I/O cascading)"
+  },
+  "cmd:ID_EDIT_SELNEXT_CASCADING": {
+   "status": "missing",
+   "note": "no select next/previous (entity I/O cascading)"
+  },
+  "cmd:ID_EDIT_SELPREV": {
+   "status": "missing",
+   "note": "no select next/previous (entity I/O cascading)"
+  },
+  "cmd:ID_EDIT_SELPREV_CASCADING": {
+   "status": "missing",
+   "note": "no select next/previous (entity I/O cascading)"
+  },
+  "cmd:ID_EDIT_TOENTITY": {
+   "status": "replicated",
+   "actions": [
+    "tools.tie_to_entity"
+   ],
+   "commands": [
+    "tie_to_entity"
+   ],
+   "tests": [
+    "hammer.presenters.action_catalog",
+    "hammer.app.session_commands"
+   ]
+  },
+  "cmd:ID_EDIT_TOWORLD": {
+   "status": "replicated",
+   "actions": [
+    "tools.move_to_world"
+   ],
+   "commands": [
+    "move_to_world"
+   ],
+   "tests": [
+    "hammer.presenters.action_catalog",
+    "hammer.app.session_commands"
+   ]
+  },
+  "cmd:ID_EDIT_UNDO": {
+   "status": "replicated",
+   "actions": [
+    "edit.undo"
+   ],
+   "commands": [
+    "undo"
+   ],
+   "tests": [
+    "hammer.presenters.action_catalog",
+    "hammer.app.session_commands",
+    "corpus.hammer.ui:properties"
+   ]
+  },
+  "cmd:ID_EDIT_UNDOREDOACTIVE": {
+   "status": "missing",
+   "note": "no switch to disable undo recording"
+  },
+  "cmd:ID_ENABLE_LIGHT_PREVIEW_CUSTOM_FILENAME": {
+   "status": "missing",
+   "note": "no lighting preview in the editor viewports"
+  },
+  "cmd:ID_FACE_ALIGNTEXTURE_TOFACE": {
+   "status": "partial",
+   "note": "align_texture exists; no menu or face inspector control in the GTK host",
+   "commands": [
+    "align_texture"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_FACE_ALIGNTEXTURE_TOWORLD": {
+   "status": "partial",
+   "note": "align_texture exists; no menu or face inspector control in the GTK host",
+   "commands": [
+    "align_texture"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_FACE_JUSTIFYTEXTURE_BOTTOM": {
+   "status": "partial",
+   "note": "justify exists; no menu or face inspector control in the GTK host",
+   "commands": [
+    "justify"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_FACE_JUSTIFYTEXTURE_CENTER": {
+   "status": "partial",
+   "note": "justify exists; no menu or face inspector control in the GTK host",
+   "commands": [
+    "justify"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_FACE_JUSTIFYTEXTURE_FITTOFACE": {
+   "status": "partial",
+   "note": "justify exists; no menu or face inspector control in the GTK host",
+   "commands": [
+    "justify"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_FACE_JUSTIFYTEXTURE_LEFT": {
+   "status": "partial",
+   "note": "justify exists; no menu or face inspector control in the GTK host",
+   "commands": [
+    "justify"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_FACE_JUSTIFYTEXTURE_NONE": {
+   "status": "partial",
+   "note": "justify exists; no menu or face inspector control in the GTK host",
+   "commands": [
+    "justify"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_FACE_JUSTIFYTEXTURE_RIGHT": {
+   "status": "partial",
+   "note": "justify exists; no menu or face inspector control in the GTK host",
+   "commands": [
+    "justify"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_FACE_JUSTIFYTEXTURE_TOP": {
+   "status": "partial",
+   "note": "justify exists; no menu or face inspector control in the GTK host",
+   "commands": [
+    "justify"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_FILE_CLOSE": {
+   "status": "missing",
+   "note": "one document per process; no Close"
+  },
+  "cmd:ID_FILE_CONVERT_WAD": {
+   "status": "missing",
+   "note": "no WAD to VMT conversion"
+  },
+  "cmd:ID_FILE_EXPORT": {
+   "status": "partial",
+   "note": "the export pipeline (formats.map_export) exists; no command or UI",
+   "tests": [
+    "hammer.formats.map_export"
+   ]
+  },
+  "cmd:ID_FILE_EXPORTAGAIN": {
+   "status": "partial",
+   "note": "the export pipeline (formats.map_export) exists; no command or UI",
+   "tests": [
+    "hammer.formats.map_export"
+   ]
+  },
+  "cmd:ID_FILE_EXPORTTODXF": {
+   "status": "missing",
+   "note": "no DXF export"
+  },
+  "cmd:ID_FILE_IMPORT_FUNC_INSTANCES": {
+   "status": "partial",
+   "note": "instance ops exist; no command or UI",
+   "tests": [
+    "hammer.app.instance_ops"
+   ]
+  },
+  "cmd:ID_FILE_MRU_FILE1": {
+   "status": "missing",
+   "note": "no recent files"
+  },
+  "cmd:ID_FILE_NEW": {
+   "status": "replicated",
+   "actions": [
+    "file.new"
+   ],
+   "commands": [
+    "new_map"
+   ],
+   "tests": [
+    "hammer.presenters.action_catalog",
+    "hammer.app.session_commands",
+    "corpus.hammer.loop"
+   ]
+  },
+  "cmd:ID_FILE_OPEN": {
+   "status": "replicated",
+   "actions": [
+    "file.open"
+   ],
+   "commands": [
+    "open"
+   ],
+   "host": [
+    "app.open (file dialog)"
+   ],
+   "tests": [
+    "hammer.presenters.action_catalog",
+    "hammer.app.session_commands",
+    "corpus.hammer.ui"
+   ]
+  },
+  "cmd:ID_FILE_PRINT": {
+   "status": "not-applicable",
+   "note": "accelerator or toolbar entries with no handler at the pinned revision: no behavior to replicate"
+  },
+  "cmd:ID_FILE_RELOAD_SOUNDS": {
+   "status": "missing",
+   "note": "no sound list to reload"
+  },
+  "cmd:ID_FILE_RUNMAP": {
+   "status": "partial",
+   "note": "F9 builds and Shift+F9 builds and runs; the Run Map dialog (normal/expert configurations) is missing",
+   "actions": [
+    "map.build",
+    "map.build_and_run"
+   ],
+   "commands": [
+    "build_map"
+   ],
+   "tests": [
+    "corpus.hammer.loop",
+    "corpus.hammer.ui"
+   ]
+  },
+  "cmd:ID_FILE_SAVE": {
+   "status": "replicated",
+   "actions": [
+    "file.save"
+   ],
+   "commands": [
+    "save"
+   ],
+   "tests": [
+    "hammer.presenters.action_catalog",
+    "hammer.app.session_commands",
+    "corpus.hammer.ui"
+   ]
+  },
+  "cmd:ID_FILE_SAVE_AS": {
+   "status": "partial",
+   "note": "Save As exists in the GTK host (app.saveas) but has no test and no catalog action",
+   "host": [
+    "app.saveas"
+   ]
+  },
+  "cmd:ID_FLIP_HORIZONTAL": {
+   "status": "partial",
+   "note": "mirror exists; no Ctrl+L / Ctrl+I actions relative to the active 2D view",
+   "commands": [
+    "mirror"
+   ],
+   "tests": [
+    "hammer.app.transform_ops"
+   ]
+  },
+  "cmd:ID_FLIP_VERTICAL": {
+   "status": "partial",
+   "note": "mirror exists; no Ctrl+L / Ctrl+I actions relative to the active 2D view",
+   "commands": [
+    "mirror"
+   ],
+   "tests": [
+    "hammer.app.transform_ops"
+   ]
+  },
+  "cmd:ID_GOTO_BRUSH": {
+   "status": "missing",
+   "note": "no Go to Brush Number"
+  },
+  "cmd:ID_GOTO_COORDS": {
+   "status": "missing",
+   "note": "no Go to Coordinates"
+  },
+  "cmd:ID_HDR": {
+   "status": "missing",
+   "note": "no HDR view toggle"
+  },
+  "cmd:ID_HELP_EDITINGSITE": {
+   "status": "missing",
+   "note": "no Help menu"
+  },
+  "cmd:ID_HELP_FINDER": {
+   "status": "missing",
+   "note": "no Help menu"
+  },
+  "cmd:ID_HELP_TOPICS": {
+   "status": "missing",
+   "note": "no Help menu"
+  },
+  "cmd:ID_HELP_WORLDCRAFT_SUPPORT_MAIL": {
+   "status": "missing",
+   "note": "no Help menu"
+  },
+  "cmd:ID_INSERTPREFAB_ORIGINAL": {
+   "status": "missing",
+   "note": "no prefab insertion at the original position"
+  },
+  "cmd:ID_INSERT_EMPTYSUBMAP": {
+   "status": "missing",
+   "note": "no manifest (sub-map) editing"
+  },
+  "cmd:ID_INSERT_EXISTINGSUBMAP": {
+   "status": "missing",
+   "note": "no manifest (sub-map) editing"
+  },
+  "cmd:ID_INSTANCES_COLLAPSEALL": {
+   "status": "partial",
+   "note": "instance ops exist; no command or UI",
+   "tests": [
+    "hammer.app.instance_ops"
+   ]
+  },
+  "cmd:ID_INSTANCES_COLLAPSESELECTION": {
+   "status": "partial",
+   "note": "instance ops exist; no command or UI",
+   "tests": [
+    "hammer.app.instance_ops"
+   ]
+  },
+  "cmd:ID_INSTANCES_HIDEALL": {
+   "status": "missing",
+   "note": "instances always draw normally; no hide or tint"
+  },
+  "cmd:ID_INSTANCES_SHOWALL": {
+   "status": "missing",
+   "note": "instances always draw normally; no hide or tint"
+  },
+  "cmd:ID_INSTANCING_CREATEMANIFEST": {
+   "status": "missing",
+   "note": "no manifest (sub-map) editing"
+  },
+  "cmd:ID_LOADWINDOWSTATE": {
+   "status": "missing",
+   "note": "no saved window layouts"
+  },
+  "cmd:ID_LOGICALOBJECT_LAYOUTDEFAULT": {
+   "status": "missing",
+   "note": "no logical (entity I/O) view"
+  },
+  "cmd:ID_LOGICALOBJECT_LAYOUTGEOMETRIC": {
+   "status": "missing",
+   "note": "no logical (entity I/O) view"
+  },
+  "cmd:ID_LOGICALOBJECT_LAYOUTLOGICAL": {
+   "status": "missing",
+   "note": "no logical (entity I/O) view"
+  },
+  "cmd:ID_LOGICALOBJECT_MOVETOGETHER": {
+   "status": "missing",
+   "note": "no logical (entity I/O) view"
+  },
+  "cmd:ID_LOGICALOBJECT_SELECTALLCASCADING": {
+   "status": "missing",
+   "note": "no logical (entity I/O) view"
+  },
+  "cmd:ID_LOGICALOBJECT_SELECTALLCONNECTED": {
+   "status": "missing",
+   "note": "no logical (entity I/O) view"
+  },
+  "cmd:ID_MANIFEST_FILE_MOVESELECTIONTONEWSUBMAP": {
+   "status": "missing",
+   "note": "no manifest (sub-map) editing"
+  },
+  "cmd:ID_MANIFEST_PROPERTIES": {
+   "status": "missing",
+   "note": "no manifest (sub-map) editing"
+  },
+  "cmd:ID_MANIFEST_REMOVE": {
+   "status": "missing",
+   "note": "no manifest (sub-map) editing"
+  },
+  "cmd:ID_MAP_ABORTLIGHTCALCULATION": {
+   "status": "missing",
+   "note": "no lighting preview in the editor viewports"
+  },
+  "cmd:ID_MAP_CHECK": {
+   "status": "partial",
+   "note": "map.check runs the check, but the GTK host has no Problems panel or dialog (IDD_MAPCHECK)",
+   "actions": [
+    "map.check",
+    "map.fix_all"
+   ],
+   "commands": [
+    "check_map",
+    "fix_problem",
+    "fix_all"
+   ],
+   "tests": [
+    "hammer.app.map_check",
+    "hammer.presenters.problems_panel"
+   ]
+  },
+  "cmd:ID_MAP_DIFFMAPFILE": {
+   "status": "missing",
+   "note": "no map diff"
+  },
+  "cmd:ID_MAP_DISABLELIGHTPREVIEW": {
+   "status": "missing",
+   "note": "no lighting preview in the editor viewports"
+  },
+  "cmd:ID_MAP_ENABLELIGHTPREVIEW": {
+   "status": "missing",
+   "note": "no lighting preview in the editor viewports"
+  },
+  "cmd:ID_MAP_ENTITYREPORT": {
+   "status": "missing",
+   "note": "no Entity Report (ops::FindEntities is its core)"
+  },
+  "cmd:ID_MAP_ENTITY_GALLERY": {
+   "status": "missing",
+   "note": "no entity gallery"
+  },
+  "cmd:ID_MAP_GRIDHIGHER": {
+   "status": "replicated",
+   "actions": [
+    "view.grid_higher"
+   ],
+   "commands": [
+    "set_grid"
+   ],
+   "tests": [
+    "hammer.presenters.action_catalog",
+    "corpus.hammer.ui"
+   ]
+  },
+  "cmd:ID_MAP_GRIDLOWER": {
+   "status": "replicated",
+   "actions": [
+    "view.grid_lower"
+   ],
+   "commands": [
+    "set_grid"
+   ],
+   "tests": [
+    "hammer.presenters.action_catalog",
+    "corpus.hammer.ui"
+   ]
+  },
+  "cmd:ID_MAP_INFORMATION": {
+   "status": "missing",
+   "note": "no Map Information"
+  },
+  "cmd:ID_MAP_LOADPOINTFILE": {
+   "status": "missing",
+   "note": "no pointfile (leak line) display"
+  },
+  "cmd:ID_MAP_LOADPORTALFILE": {
+   "status": "missing",
+   "note": "no portal file display"
+  },
+  "cmd:ID_MAP_SNAPTOGRID": {
+   "status": "replicated",
+   "actions": [
+    "view.snap_to_grid"
+   ],
+   "commands": [
+    "set_snap"
+   ],
+   "tests": [
+    "hammer.presenters.action_catalog"
+   ]
+  },
+  "cmd:ID_MAP_TOGGLELIGHTPREVIEW": {
+   "status": "missing",
+   "note": "no lighting preview in the editor viewports"
+  },
+  "cmd:ID_MAP_UNITS_FEET_INCHES": {
+   "status": "missing",
+   "note": "no unit display setting"
+  },
+  "cmd:ID_MAP_UNITS_INCHES": {
+   "status": "missing",
+   "note": "no unit display setting"
+  },
+  "cmd:ID_MAP_UNITS_NONE": {
+   "status": "missing",
+   "note": "no unit display setting"
+  },
+  "cmd:ID_MAP_UNLOADPOINTFILE": {
+   "status": "missing",
+   "note": "no pointfile (leak line) display"
+  },
+  "cmd:ID_MAP_UNLOADPORTALFILE": {
+   "status": "missing",
+   "note": "no portal file display"
+  },
+  "cmd:ID_MAP_UPDATELIGHTPREVIEW": {
+   "status": "missing",
+   "note": "no lighting preview in the editor viewports"
+  },
+  "cmd:ID_MODE_APPLICATOR": {
+   "status": "replicated",
+   "actions": [
+    "tools.face"
+   ],
+   "host": [
+    "Texture Application window"
+   ],
+   "tests": [
+    "hammer.tools.face_tool",
+    "corpus.hammer.ui:replace-textures"
+   ]
+  },
+  "cmd:ID_MOVESELECTIONTO_NEWSUBMAP": {
+   "status": "missing",
+   "note": "no manifest (sub-map) editing"
+  },
+  "cmd:ID_MOVESELECTIONTO_SUBMAP": {
+   "status": "missing",
+   "note": "no manifest (sub-map) editing"
+  },
+  "cmd:ID_NEXT_PANE": {
+   "status": "missing",
+   "note": "no F7 view cycling"
+  },
+  "cmd:ID_PATHEDIT_ADD": {
+   "status": "missing",
+   "note": "no path tool"
+  },
+  "cmd:ID_PATHEDIT_DELETE": {
+   "status": "missing",
+   "note": "no path tool"
+  },
+  "cmd:ID_PATHEDIT_DELETEPATH": {
+   "status": "missing",
+   "note": "no path tool"
+  },
+  "cmd:ID_PATHEDIT_HIDEPATH": {
+   "status": "missing",
+   "note": "no path tool"
+  },
+  "cmd:ID_PATHEDIT_NODEPROPERTIES": {
+   "status": "missing",
+   "note": "no path tool"
+  },
+  "cmd:ID_PATHEDIT_PATHPROPERTIES": {
+   "status": "missing",
+   "note": "no path tool"
+  },
+  "cmd:ID_PATHEDIT_SELECTPATH": {
+   "status": "missing",
+   "note": "no path tool"
+  },
+  "cmd:ID_PREV_PANE": {
+   "status": "missing",
+   "note": "no F7 view cycling"
+  },
+  "cmd:ID_SAVEWINDOWSTATE": {
+   "status": "missing",
+   "note": "no saved window layouts"
+  },
+  "cmd:ID_SELECTION_ALIGNBOTTOM": {
+   "status": "partial",
+   "note": "align exists; no actions relative to the active 2D view",
+   "commands": [
+    "align"
+   ],
+   "tests": [
+    "hammer.app.transform_ops"
+   ]
+  },
+  "cmd:ID_SELECTION_ALIGNLEFT": {
+   "status": "partial",
+   "note": "align exists; no actions relative to the active 2D view",
+   "commands": [
+    "align"
+   ],
+   "tests": [
+    "hammer.app.transform_ops"
+   ]
+  },
+  "cmd:ID_SELECTION_ALIGNRIGHT": {
+   "status": "partial",
+   "note": "align exists; no actions relative to the active 2D view",
+   "commands": [
+    "align"
+   ],
+   "tests": [
+    "hammer.app.transform_ops"
+   ]
+  },
+  "cmd:ID_SELECTION_ALIGNTOP": {
+   "status": "partial",
+   "note": "align exists; no actions relative to the active 2D view",
+   "commands": [
+    "align"
+   ],
+   "tests": [
+    "hammer.app.transform_ops"
+   ]
+  },
+  "cmd:ID_SELECTION_MOVE": {
+   "status": "partial",
+   "note": "the selection tool moves and resizes; rotate and shear handle modes are missing",
+   "tests": [
+    "hammer.tools.selection_tool"
+   ]
+  },
+  "cmd:ID_SELECTION_ROTATE": {
+   "status": "partial",
+   "note": "the selection tool moves and resizes; rotate and shear handle modes are missing",
+   "tests": [
+    "hammer.tools.selection_tool"
+   ]
+  },
+  "cmd:ID_SELECTION_SHEAR": {
+   "status": "partial",
+   "note": "the selection tool moves and resizes; rotate and shear handle modes are missing",
+   "tests": [
+    "hammer.tools.selection_tool"
+   ]
+  },
+  "cmd:ID_SELECTION_SIZE": {
+   "status": "partial",
+   "note": "the selection tool moves and resizes; rotate and shear handle modes are missing",
+   "tests": [
+    "hammer.tools.selection_tool"
+   ]
+  },
+  "cmd:ID_SG_VISUAL_1": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no Smoothing Groups dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_SG_VISUAL_10": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no Smoothing Groups dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_SG_VISUAL_11": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no Smoothing Groups dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_SG_VISUAL_12": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no Smoothing Groups dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_SG_VISUAL_13": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no Smoothing Groups dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_SG_VISUAL_14": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no Smoothing Groups dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_SG_VISUAL_15": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no Smoothing Groups dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_SG_VISUAL_16": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no Smoothing Groups dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_SG_VISUAL_17": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no Smoothing Groups dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_SG_VISUAL_18": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no Smoothing Groups dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_SG_VISUAL_19": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no Smoothing Groups dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_SG_VISUAL_2": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no Smoothing Groups dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_SG_VISUAL_20": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no Smoothing Groups dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_SG_VISUAL_21": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no Smoothing Groups dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_SG_VISUAL_22": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no Smoothing Groups dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_SG_VISUAL_23": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no Smoothing Groups dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_SG_VISUAL_24": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no Smoothing Groups dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_SG_VISUAL_25": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no Smoothing Groups dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_SG_VISUAL_26": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no Smoothing Groups dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_SG_VISUAL_27": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no Smoothing Groups dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_SG_VISUAL_28": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no Smoothing Groups dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_SG_VISUAL_29": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no Smoothing Groups dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_SG_VISUAL_3": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no Smoothing Groups dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_SG_VISUAL_30": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no Smoothing Groups dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_SG_VISUAL_31": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no Smoothing Groups dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_SG_VISUAL_32": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no Smoothing Groups dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_SG_VISUAL_4": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no Smoothing Groups dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_SG_VISUAL_5": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no Smoothing Groups dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_SG_VISUAL_6": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no Smoothing Groups dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_SG_VISUAL_7": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no Smoothing Groups dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_SG_VISUAL_8": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no Smoothing Groups dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_SG_VISUAL_9": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no Smoothing Groups dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_SHOW_DETAIL_OBJECTS": {
+   "status": "missing",
+   "note": "no view filter toggle"
+  },
+  "cmd:ID_SHOW_NODRAW_BRUSHES": {
+   "status": "missing",
+   "note": "no view filter toggle"
+  },
+  "cmd:ID_SHOW_SELECTED_BRUSH_NUMBER": {
+   "status": "missing",
+   "note": "no selected brush number display"
+  },
+  "cmd:ID_SMOOTHING_GROUP_1": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no Smoothing Groups dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_SMOOTHING_GROUP_10": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no Smoothing Groups dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_SMOOTHING_GROUP_11": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no Smoothing Groups dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_SMOOTHING_GROUP_12": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no Smoothing Groups dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_SMOOTHING_GROUP_13": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no Smoothing Groups dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_SMOOTHING_GROUP_14": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no Smoothing Groups dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_SMOOTHING_GROUP_15": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no Smoothing Groups dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_SMOOTHING_GROUP_16": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no Smoothing Groups dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_SMOOTHING_GROUP_17": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no Smoothing Groups dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_SMOOTHING_GROUP_18": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no Smoothing Groups dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_SMOOTHING_GROUP_19": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no Smoothing Groups dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_SMOOTHING_GROUP_2": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no Smoothing Groups dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_SMOOTHING_GROUP_20": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no Smoothing Groups dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_SMOOTHING_GROUP_21": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no Smoothing Groups dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_SMOOTHING_GROUP_22": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no Smoothing Groups dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_SMOOTHING_GROUP_23": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no Smoothing Groups dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_SMOOTHING_GROUP_24": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no Smoothing Groups dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_SMOOTHING_GROUP_25": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no Smoothing Groups dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_SMOOTHING_GROUP_26": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no Smoothing Groups dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_SMOOTHING_GROUP_27": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no Smoothing Groups dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_SMOOTHING_GROUP_28": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no Smoothing Groups dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_SMOOTHING_GROUP_29": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no Smoothing Groups dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_SMOOTHING_GROUP_3": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no Smoothing Groups dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_SMOOTHING_GROUP_30": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no Smoothing Groups dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_SMOOTHING_GROUP_31": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no Smoothing Groups dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_SMOOTHING_GROUP_32": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no Smoothing Groups dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_SMOOTHING_GROUP_4": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no Smoothing Groups dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_SMOOTHING_GROUP_5": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no Smoothing Groups dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_SMOOTHING_GROUP_6": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no Smoothing Groups dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_SMOOTHING_GROUP_7": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no Smoothing Groups dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_SMOOTHING_GROUP_8": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no Smoothing Groups dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_SMOOTHING_GROUP_9": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no Smoothing Groups dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_TEST": {
+   "status": "not-applicable",
+   "note": "accelerator or toolbar entries with no handler at the pinned revision: no behavior to replicate"
+  },
+  "cmd:ID_TOGGLE_3D_GRID": {
+   "status": "missing",
+   "note": "no 3D grid"
+  },
+  "cmd:ID_TOGGLE_CORDON": {
+   "status": "partial",
+   "note": "cordon commands exist; no cordon tool or toggle in the GTK host",
+   "commands": [
+    "cordon_add",
+    "cordon_box",
+    "cordons_enabled"
+   ],
+   "tests": [
+    "hammer.app.cordon_ops"
+   ]
+  },
+  "cmd:ID_TOGGLE_GROUPIGNORE": {
+   "status": "replicated",
+   "actions": [
+    "tools.ignore_groups"
+   ],
+   "commands": [
+    "set_granularity"
+   ],
+   "tests": [
+    "hammer.presenters.action_catalog"
+   ]
+  },
+  "cmd:ID_TOGGLE_INFINITESELECT": {
+   "status": "missing",
+   "note": "no infinite-selection or select-by-handle modes"
+  },
+  "cmd:ID_TOGGLE_RADIUSCULLING": {
+   "status": "missing",
+   "note": "no view filter toggle"
+  },
+  "cmd:ID_TOGGLE_SELECTBYHANDLE": {
+   "status": "missing",
+   "note": "no infinite-selection or select-by-handle modes"
+  },
+  "cmd:ID_TOOLS_ALIGNBOTTOM": {
+   "status": "partial",
+   "note": "align exists; no actions relative to the active 2D view",
+   "commands": [
+    "align"
+   ],
+   "tests": [
+    "hammer.app.transform_ops"
+   ]
+  },
+  "cmd:ID_TOOLS_ALIGNLEFT": {
+   "status": "partial",
+   "note": "align exists; no actions relative to the active 2D view",
+   "commands": [
+    "align"
+   ],
+   "tests": [
+    "hammer.app.transform_ops"
+   ]
+  },
+  "cmd:ID_TOOLS_ALIGNRIGHT": {
+   "status": "partial",
+   "note": "align exists; no actions relative to the active 2D view",
+   "commands": [
+    "align"
+   ],
+   "tests": [
+    "hammer.app.transform_ops"
+   ]
+  },
+  "cmd:ID_TOOLS_ALIGNTOP": {
+   "status": "partial",
+   "note": "align exists; no actions relative to the active 2D view",
+   "commands": [
+    "align"
+   ],
+   "tests": [
+    "hammer.app.transform_ops"
+   ]
+  },
+  "cmd:ID_TOOLS_APPLYDECALS": {
+   "status": "partial",
+   "note": "decal ops exist; no command or decal tool",
+   "tests": [
+    "hammer.app.decal_ops"
+   ]
+  },
+  "cmd:ID_TOOLS_BLOCK": {
+   "status": "replicated",
+   "actions": [
+    "tools.block"
+   ],
+   "commands": [
+    "create_block"
+   ],
+   "tests": [
+    "hammer.tools.block_tool",
+    "corpus.hammer.ui"
+   ]
+  },
+  "cmd:ID_TOOLS_CAMERA": {
+   "status": "partial",
+   "note": "the 3D camera navigates (camera controller); the Camera tool that places and switches cameras is missing",
+   "tests": [
+    "hammer.tools.camera_controller"
+   ]
+  },
+  "cmd:ID_TOOLS_CENTER_ORIGINS": {
+   "status": "missing",
+   "note": "no Center Origins"
+  },
+  "cmd:ID_TOOLS_CLIPPER": {
+   "status": "replicated",
+   "actions": [
+    "tools.clip"
+   ],
+   "commands": [
+    "clip"
+   ],
+   "tests": [
+    "hammer.tools.clip_tool"
+   ]
+  },
+  "cmd:ID_TOOLS_CREATEPREFAB": {
+   "status": "missing",
+   "note": "prefab ops exist; no prefab library or Create Prefab"
+  },
+  "cmd:ID_TOOLS_DISPLACE": {
+   "status": "missing",
+   "note": "no displacement tool"
+  },
+  "cmd:ID_TOOLS_DISP_DRAW3D": {
+   "status": "missing",
+   "note": "no view filter toggle"
+  },
+  "cmd:ID_TOOLS_DISP_DRAWBUILDABLE": {
+   "status": "missing",
+   "note": "no view filter toggle"
+  },
+  "cmd:ID_TOOLS_DISP_DRAWREMOVEDVERTS": {
+   "status": "missing",
+   "note": "no view filter toggle"
+  },
+  "cmd:ID_TOOLS_DISP_DRAWWALKABLE": {
+   "status": "missing",
+   "note": "no view filter toggle"
+  },
+  "cmd:ID_TOOLS_DISP_SOLIDDRAW": {
+   "status": "missing",
+   "note": "no view filter toggle"
+  },
+  "cmd:ID_TOOLS_EDITCORDON": {
+   "status": "partial",
+   "note": "cordon commands exist; no cordon tool or toggle in the GTK host",
+   "commands": [
+    "cordon_add",
+    "cordon_box",
+    "cordons_enabled"
+   ],
+   "tests": [
+    "hammer.app.cordon_ops"
+   ]
+  },
+  "cmd:ID_TOOLS_ENTITY": {
+   "status": "replicated",
+   "actions": [
+    "tools.entity"
+   ],
+   "commands": [
+    "place_entity"
+   ],
+   "tests": [
+    "hammer.tools.entity_tool",
+    "corpus.hammer.ui"
+   ]
+  },
+  "cmd:ID_TOOLS_GROUP": {
+   "status": "replicated",
+   "actions": [
+    "tools.group"
+   ],
+   "commands": [
+    "group"
+   ],
+   "tests": [
+    "hammer.presenters.action_catalog",
+    "hammer.app.session_commands"
+   ]
+  },
+  "cmd:ID_TOOLS_HIDEITEMS": {
+   "status": "missing",
+   "note": "no view filter toggle"
+  },
+  "cmd:ID_TOOLS_HIDE_ENTITY_NAMES": {
+   "status": "missing",
+   "note": "no view filter toggle"
+  },
+  "cmd:ID_TOOLS_HOLLOW": {
+   "status": "replicated",
+   "actions": [
+    "tools.hollow"
+   ],
+   "commands": [
+    "hollow"
+   ],
+   "tests": [
+    "hammer.presenters.action_catalog",
+    "corpus.hammer.ui"
+   ]
+  },
+  "cmd:ID_TOOLS_INSTANCES_HIDE": {
+   "status": "missing",
+   "note": "instances always draw normally; no hide or tint"
+  },
+  "cmd:ID_TOOLS_INSTANCES_SHOWNORMAL": {
+   "status": "missing",
+   "note": "instances always draw normally; no hide or tint"
+  },
+  "cmd:ID_TOOLS_INSTANCES_SHOWTINTED": {
+   "status": "missing",
+   "note": "instances always draw normally; no hide or tint"
+  },
+  "cmd:ID_TOOLS_MAGNIFY": {
+   "status": "missing",
+   "note": "no Magnify tool"
+  },
+  "cmd:ID_TOOLS_MORPH": {
+   "status": "replicated",
+   "actions": [
+    "tools.vertex"
+   ],
+   "commands": [
+    "move_vertices"
+   ],
+   "tests": [
+    "hammer.tools.vertex_tool"
+   ]
+  },
+  "cmd:ID_TOOLS_OPTIONS": {
+   "status": "missing",
+   "note": "no Options window"
+  },
+  "cmd:ID_TOOLS_OVERLAY": {
+   "status": "partial",
+   "note": "overlay format exists; no overlay tool or command",
+   "tests": [
+    "hammer.formats.overlay"
+   ]
+  },
+  "cmd:ID_TOOLS_PATH": {
+   "status": "missing",
+   "note": "no path tool"
+  },
+  "cmd:ID_TOOLS_POINTER": {
+   "status": "replicated",
+   "actions": [
+    "tools.selection"
+   ],
+   "commands": [
+    "select"
+   ],
+   "tests": [
+    "hammer.tools.selection_tool",
+    "corpus.hammer.ui"
+   ]
+  },
+  "cmd:ID_TOOLS_PREFABFACTORY": {
+   "status": "missing",
+   "note": "prefab ops exist; no prefab library or Create Prefab"
+  },
+  "cmd:ID_TOOLS_SNAPSELECTEDTOGRID": {
+   "status": "replicated",
+   "actions": [
+    "tools.snap_selected"
+   ],
+   "commands": [
+    "snap"
+   ],
+   "tests": [
+    "hammer.presenters.action_catalog",
+    "hammer.app.transform_ops"
+   ]
+  },
+  "cmd:ID_TOOLS_SNAP_SELECTED_TO_GRID_INDIVIDUALLY": {
+   "status": "partial",
+   "note": "snap snaps the selection as one; no per-object mode or Ctrl+Shift+B",
+   "commands": [
+    "snap"
+   ]
+  },
+  "cmd:ID_TOOLS_SOUND_BROWSER": {
+   "status": "missing",
+   "note": "no sound browser"
+  },
+  "cmd:ID_TOOLS_SPLITFACE": {
+   "status": "missing",
+   "note": "no split face (Ctrl+F)"
+  },
+  "cmd:ID_TOOLS_SUBTRACTSELECTION": {
+   "status": "replicated",
+   "actions": [
+    "tools.carve"
+   ],
+   "commands": [
+    "carve"
+   ],
+   "tests": [
+    "hammer.presenters.action_catalog",
+    "hammer.app.csg_ops"
+   ]
+  },
+  "cmd:ID_TOOLS_TEXTUREALIGN": {
+   "status": "missing",
+   "note": "no texture lock scale toggle or face/world alignment default for new faces"
+  },
+  "cmd:ID_TOOLS_TOGGLETEXLOCK": {
+   "status": "replicated",
+   "actions": [
+    "tools.texture_lock"
+   ],
+   "commands": [
+    "set_texture_lock"
+   ],
+   "tests": [
+    "hammer.presenters.action_catalog",
+    "hammer.app.texture_ops"
+   ]
+  },
+  "cmd:ID_TOOLS_TOGGLETEXLOCKSCALE": {
+   "status": "missing",
+   "note": "no texture lock scale toggle or face/world alignment default for new faces"
+  },
+  "cmd:ID_TOOLS_TRANSFORM": {
+   "status": "partial",
+   "note": "move, rotate and scale exist; no Transform dialog (Ctrl+M)",
+   "commands": [
+    "move",
+    "rotate",
+    "scale"
+   ],
+   "tests": [
+    "hammer.app.transform_ops"
+   ]
+  },
+  "cmd:ID_TOOLS_UNGROUP": {
+   "status": "replicated",
+   "actions": [
+    "tools.ungroup"
+   ],
+   "commands": [
+    "ungroup"
+   ],
+   "tests": [
+    "hammer.presenters.action_catalog",
+    "hammer.app.session_commands"
+   ]
+  },
+  "cmd:ID_VERSIONCONTROL_ADD": {
+   "status": "missing",
+   "note": "no version control for manifests (legacy used Perforce through p4lib)"
+  },
+  "cmd:ID_VERSIONCONTROL_ADDMANIFEST": {
+   "status": "missing",
+   "note": "no version control for manifests (legacy used Perforce through p4lib)"
+  },
+  "cmd:ID_VERSIONCONTROL_CHECKIN": {
+   "status": "missing",
+   "note": "no version control for manifests (legacy used Perforce through p4lib)"
+  },
+  "cmd:ID_VERSIONCONTROL_CHECKINALL": {
+   "status": "missing",
+   "note": "no version control for manifests (legacy used Perforce through p4lib)"
+  },
+  "cmd:ID_VERSIONCONTROL_CHECKOUT": {
+   "status": "missing",
+   "note": "no version control for manifests (legacy used Perforce through p4lib)"
+  },
+  "cmd:ID_VERSIONCONTROL_CHECKOUTALL": {
+   "status": "missing",
+   "note": "no version control for manifests (legacy used Perforce through p4lib)"
+  },
+  "cmd:ID_VERSIONCONTROL_CHECKOUTMANIFEST": {
+   "status": "missing",
+   "note": "no version control for manifests (legacy used Perforce through p4lib)"
+  },
+  "cmd:ID_VIEW3D_BRIGHTER": {
+   "status": "missing",
+   "note": "no 3D brightness keys"
+  },
+  "cmd:ID_VIEW3D_DARKER": {
+   "status": "missing",
+   "note": "no 3D brightness keys"
+  },
+  "cmd:ID_VIEWMANIFESTS_HIDEEXCEPTCURRENT": {
+   "status": "missing",
+   "note": "no manifest (sub-map) editing"
+  },
+  "cmd:ID_VIEWMANIFESTS_SHOWNORMAL": {
+   "status": "missing",
+   "note": "no manifest (sub-map) editing"
+  },
+  "cmd:ID_VIEWMANIFESTS_TINTED": {
+   "status": "missing",
+   "note": "no manifest (sub-map) editing"
+  },
+  "cmd:ID_VIEW_2DLOGICAL": {
+   "status": "missing",
+   "note": "no logical (entity I/O) view"
+  },
+  "cmd:ID_VIEW_2DXY": {
+   "status": "partial",
+   "note": "the four views are fixed (top, front, side, camera); no per-view type switching or 3D render modes"
+  },
+  "cmd:ID_VIEW_2DXZ": {
+   "status": "partial",
+   "note": "the four views are fixed (top, front, side, camera); no per-view type switching or 3D render modes"
+  },
+  "cmd:ID_VIEW_2DYZ": {
+   "status": "partial",
+   "note": "the four views are fixed (top, front, side, camera); no per-view type switching or 3D render modes"
+  },
+  "cmd:ID_VIEW_3DENGINE": {
+   "status": "partial",
+   "note": "the four views are fixed (top, front, side, camera); no per-view type switching or 3D render modes"
+  },
+  "cmd:ID_VIEW_3DLIGHTMAP_GRID": {
+   "status": "partial",
+   "note": "the four views are fixed (top, front, side, camera); no per-view type switching or 3D render modes"
+  },
+  "cmd:ID_VIEW_3DPOLYGON": {
+   "status": "partial",
+   "note": "the four views are fixed (top, front, side, camera); no per-view type switching or 3D render modes"
+  },
+  "cmd:ID_VIEW_3DSMOOTH": {
+   "status": "partial",
+   "note": "the four views are fixed (top, front, side, camera); no per-view type switching or 3D render modes"
+  },
+  "cmd:ID_VIEW_3DTEXTURED": {
+   "status": "partial",
+   "note": "the four views are fixed (top, front, side, camera); no per-view type switching or 3D render modes"
+  },
+  "cmd:ID_VIEW_3DTEXTURED_SHADED": {
+   "status": "partial",
+   "note": "the four views are fixed (top, front, side, camera); no per-view type switching or 3D render modes"
+  },
+  "cmd:ID_VIEW_3DWIREFRAME": {
+   "status": "partial",
+   "note": "the four views are fixed (top, front, side, camera); no per-view type switching or 3D render modes"
+  },
+  "cmd:ID_VIEW_AUTOSIZE4": {
+   "status": "partial",
+   "note": "Reset Views restores the layout; Ctrl+A is Select All in the new map",
+   "host": [
+    "app.reset-views"
+   ]
+  },
+  "cmd:ID_VIEW_CENTER3DVIEWSONSELECTION": {
+   "status": "missing",
+   "note": "no center views on selection (Ctrl+E)"
+  },
+  "cmd:ID_VIEW_CENTERONSELECTION": {
+   "status": "missing",
+   "note": "no center views on selection (Ctrl+E)"
+  },
+  "cmd:ID_VIEW_FILTERCONTROL": {
+   "status": "partial",
+   "note": "the Visgroups panel shows and hides visgroups; auto visgroups missing",
+   "host": [
+    "Visgroups panel"
+   ],
+   "tests": [
+    "hammer.presenters.visgroup_panel"
+   ]
+  },
+  "cmd:ID_VIEW_GRID": {
+   "status": "missing",
+   "note": "no grid visibility toggle (Shift+R)"
+  },
+  "cmd:ID_VIEW_HIDENONSELECTEDOBJECTS": {
+   "status": "partial",
+   "note": "Hide Unselected quick-hides; the visgroup form is missing",
+   "actions": [
+    "view.hide_unselected"
+   ],
+   "commands": [
+    "hide_unselected"
+   ]
+  },
+  "cmd:ID_VIEW_HIDESELECTEDOBJECTS": {
+   "status": "replicated",
+   "commands": [
+    "visgroup_create",
+    "visgroup_add"
+   ],
+   "host": [
+    "Visgroups panel: New from selection, Move To"
+   ],
+   "tests": [
+    "hammer.presenters.visgroup_panel",
+    "corpus.hammer.ui:visgroups"
+   ]
+  },
+  "cmd:ID_VIEW_HIDEUNCONNECTED": {
+   "status": "missing",
+   "note": "no view filter toggle"
+  },
+  "cmd:ID_VIEW_LIGHTINGPREVIEW": {
+   "status": "missing",
+   "note": "no lighting preview in the editor viewports"
+  },
+  "cmd:ID_VIEW_LIGHTINGPREVIEW_RAYTRACED": {
+   "status": "missing",
+   "note": "no lighting preview in the editor viewports"
+  },
+  "cmd:ID_VIEW_LOGICAL_GRID": {
+   "status": "missing",
+   "note": "no logical (entity I/O) view"
+  },
+  "cmd:ID_VIEW_MANIFEST_BAR": {
+   "status": "missing",
+   "note": "no manifest (sub-map) editing"
+  },
+  "cmd:ID_VIEW_MAPOPSBAR": {
+   "status": "missing",
+   "note": "no screen element visibility toggles"
+  },
+  "cmd:ID_VIEW_MAPTOOLSBAR": {
+   "status": "missing",
+   "note": "no screen element visibility toggles"
+  },
+  "cmd:ID_VIEW_MAPVIEWBAR": {
+   "status": "missing",
+   "note": "no screen element visibility toggles"
+  },
+  "cmd:ID_VIEW_MAXIMIZEPANE": {
+   "status": "missing",
+   "note": "no maximize/restore view (Shift+Z)"
+  },
+  "cmd:ID_VIEW_MAXIMIZERESTOREACTIVEVIEW": {
+   "status": "missing",
+   "note": "no maximize/restore view (Shift+Z)"
+  },
+  "cmd:ID_VIEW_MESSAGES": {
+   "status": "missing",
+   "note": "no Messages window"
+  },
+  "cmd:ID_VIEW_OBJECTBAR": {
+   "status": "missing",
+   "note": "no screen element visibility toggles"
+  },
+  "cmd:ID_VIEW_OPAQUE_MATERIALS": {
+   "status": "missing",
+   "note": "no view filter toggle"
+  },
+  "cmd:ID_VIEW_PREVIEW_MODEL_FADE": {
+   "status": "missing",
+   "note": "no view filter toggle"
+  },
+  "cmd:ID_VIEW_QUICKHIDE": {
+   "status": "replicated",
+   "actions": [
+    "view.hide"
+   ],
+   "commands": [
+    "hide"
+   ],
+   "tests": [
+    "hammer.presenters.action_catalog",
+    "hammer.app.session_commands"
+   ]
+  },
+  "cmd:ID_VIEW_QUICKHIDEUNSELECTED": {
+   "status": "replicated",
+   "actions": [
+    "view.hide_unselected"
+   ],
+   "commands": [
+    "hide_unselected"
+   ],
+   "tests": [
+    "hammer.presenters.action_catalog",
+    "hammer.app.session_commands"
+   ]
+  },
+  "cmd:ID_VIEW_QUICKHIDEVISGROUP": {
+   "status": "missing",
+   "note": "no conversion of quick-hidden objects to a visgroup"
+  },
+  "cmd:ID_VIEW_QUICKUNHIDE": {
+   "status": "replicated",
+   "actions": [
+    "view.unhide_all"
+   ],
+   "commands": [
+    "unhide_all"
+   ],
+   "tests": [
+    "hammer.presenters.action_catalog",
+    "hammer.app.session_commands"
+   ]
+  },
+  "cmd:ID_VIEW_SELECTION_MODE_BAR": {
+   "status": "missing",
+   "note": "no screen element visibility toggles"
+  },
+  "cmd:ID_VIEW_SHOWCONNECTIONS": {
+   "status": "missing",
+   "note": "no view filter toggle"
+  },
+  "cmd:ID_VIEW_SHOWMODELSIN2D": {
+   "status": "missing",
+   "note": "no view filter toggle"
+  },
+  "cmd:ID_VIEW_SHOW_HELPERS": {
+   "status": "missing",
+   "note": "no view filter toggle"
+  },
+  "cmd:ID_VIEW_STATUS_BAR": {
+   "status": "missing",
+   "note": "no screen element visibility toggles"
+  },
+  "cmd:ID_VIEW_TEXTUREBAR": {
+   "status": "missing",
+   "note": "no screen element visibility toggles"
+  },
+  "cmd:ID_VIEW_TEXTUREBROWSER": {
+   "status": "partial",
+   "note": "the Texture Application window browses materials; no standalone browser or Alt+F8",
+   "host": [
+    "Texture Application window"
+   ]
+  },
+  "cmd:ID_VSCALE_CHANGED": {
+   "status": "missing",
+   "note": "no vertex scale (Alt+E)"
+  },
+  "cmd:ID_VSCALE_TOGGLE": {
+   "status": "missing",
+   "note": "no vertex scale (Alt+E)"
+  },
+  "cmd:ID_WINDOW_ARRANGE": {
+   "status": "not-applicable",
+   "note": "MFC MDI child arrangement; the GTK host has one window per document (RFC 0018 UX8)"
+  },
+  "cmd:ID_WINDOW_CASCADE": {
+   "status": "not-applicable",
+   "note": "MFC MDI child arrangement; the GTK host has one window per document (RFC 0018 UX8)"
+  },
+  "cmd:ID_WINDOW_NEW": {
+   "status": "missing",
+   "note": "no second window on the same document"
+  },
+  "cmd:ID_WINDOW_TILE_HORZ": {
+   "status": "not-applicable",
+   "note": "MFC MDI child arrangement; the GTK host has one window per document (RFC 0018 UX8)"
+  },
+  "cmd:ID_WINDOW_TOGGLE": {
+   "status": "missing",
+   "note": "no maximize/restore view (Shift+Z)"
+  },
+  "dlg:IDD_ABOUTBOX": {
+   "status": "missing",
+   "note": "no About window"
+  },
+  "dlg:IDD_ANIMATIONDLG": {
+   "status": "missing",
+   "note": "no animation preview"
+  },
+  "dlg:IDD_ARCH": {
+   "status": "partial",
+   "note": "create_arch exists; no Arch Properties dialog",
+   "commands": [
+    "create_arch"
+   ],
+   "tests": [
+    "hammer.app.create_ops"
+   ]
+  },
+  "dlg:IDD_DIFFMAP": {
+   "status": "missing",
+   "note": "no map diff"
+  },
+  "dlg:IDD_DISP_CREATE": {
+   "status": "partial",
+   "note": "displacement commands exist; no displacement dialogs",
+   "commands": [
+    "create_displacement",
+    "sculpt",
+    "paint_alpha"
+   ],
+   "tests": [
+    "hammer.app.displacement_ops"
+   ]
+  },
+  "dlg:IDD_DISP_NOISE": {
+   "status": "partial",
+   "note": "displacement commands exist; no displacement dialogs",
+   "commands": [
+    "create_displacement",
+    "sculpt",
+    "paint_alpha"
+   ],
+   "tests": [
+    "hammer.app.displacement_ops"
+   ]
+  },
+  "dlg:IDD_DISP_PAINT_DATA": {
+   "status": "partial",
+   "note": "displacement commands exist; no displacement dialogs",
+   "commands": [
+    "create_displacement",
+    "sculpt",
+    "paint_alpha"
+   ],
+   "tests": [
+    "hammer.app.displacement_ops"
+   ]
+  },
+  "dlg:IDD_DISP_PAINT_DIST": {
+   "status": "partial",
+   "note": "displacement commands exist; no displacement dialogs",
+   "commands": [
+    "create_displacement",
+    "sculpt",
+    "paint_alpha"
+   ],
+   "tests": [
+    "hammer.app.displacement_ops"
+   ]
+  },
+  "dlg:IDD_DISP_PAINT_SCULPT": {
+   "status": "partial",
+   "note": "displacement commands exist; no displacement dialogs",
+   "commands": [
+    "create_displacement",
+    "sculpt",
+    "paint_alpha"
+   ],
+   "tests": [
+    "hammer.app.displacement_ops"
+   ]
+  },
+  "dlg:IDD_DISP_SCULPT_CARVE_OPTIONS": {
+   "status": "partial",
+   "note": "displacement commands exist; no displacement dialogs",
+   "commands": [
+    "create_displacement",
+    "sculpt",
+    "paint_alpha"
+   ],
+   "tests": [
+    "hammer.app.displacement_ops"
+   ]
+  },
+  "dlg:IDD_DISP_SCULPT_PROJECT_OPTIONS": {
+   "status": "partial",
+   "note": "displacement commands exist; no displacement dialogs",
+   "commands": [
+    "create_displacement",
+    "sculpt",
+    "paint_alpha"
+   ],
+   "tests": [
+    "hammer.app.displacement_ops"
+   ]
+  },
+  "dlg:IDD_DISP_SCULPT_PUSH_OPTIONS": {
+   "status": "partial",
+   "note": "displacement commands exist; no displacement dialogs",
+   "commands": [
+    "create_displacement",
+    "sculpt",
+    "paint_alpha"
+   ],
+   "tests": [
+    "hammer.app.displacement_ops"
+   ]
+  },
+  "dlg:IDD_EDITGAMECONFIGS": {
+   "status": "missing",
+   "note": "no game configuration editing"
+  },
+  "dlg:IDD_EDITPATH": {
+   "status": "missing",
+   "note": "no path tool"
+  },
+  "dlg:IDD_EDITPATHNODE": {
+   "status": "missing",
+   "note": "no path tool"
+  },
+  "dlg:IDD_EDITPREFAB": {
+   "status": "missing",
+   "note": "no prefab library"
+  },
+  "dlg:IDD_ENTITYREPORT": {
+   "status": "partial",
+   "note": "ops::FindEntities exists; no dialog",
+   "tests": [
+    "hammer.app.find_replace_ops"
+   ]
+  },
+  "dlg:IDD_ENTITY_HELP": {
+   "status": "missing",
+   "note": "no entity help"
+  },
+  "dlg:IDD_FACEEDIT": {
+   "status": "partial",
+   "note": "the Texture Application window picks and applies materials and opens Replace...; no shift/scale/rotation/justify/align/lightmap scale controls",
+   "commands": [
+    "set_texture",
+    "justify",
+    "align_texture"
+   ],
+   "host": [
+    "Texture Application window"
+   ],
+   "tests": [
+    "hammer.presenters.face_inspector"
+   ]
+  },
+  "dlg:IDD_FACEEDIT_DISP": {
+   "status": "partial",
+   "note": "displacement commands exist; no displacement page",
+   "commands": [
+    "create_displacement",
+    "destroy_displacement",
+    "displacement_power",
+    "sculpt",
+    "paint_alpha",
+    "sew"
+   ],
+   "tests": [
+    "hammer.app.displacement_ops"
+   ]
+  },
+  "dlg:IDD_FILTERCONTROL": {
+   "status": "partial",
+   "note": "the Visgroups panel; no auto visgroups",
+   "host": [
+    "Visgroups panel"
+   ],
+   "tests": [
+    "hammer.presenters.visgroup_panel"
+   ]
+  },
+  "dlg:IDD_GOTO_BRUSH": {
+   "status": "missing",
+   "note": "no Go to Brush"
+  },
+  "dlg:IDD_GROUPS": {
+   "status": "partial",
+   "note": "the Visgroups panel edits the tree (new, rename, delete, move); no separate Edit Visgroups window or colours",
+   "commands": [
+    "visgroup_rename",
+    "visgroup_delete",
+    "visgroup_move"
+   ],
+   "host": [
+    "Visgroups panel"
+   ],
+   "tests": [
+    "hammer.presenters.visgroup_panel"
+   ]
+  },
+  "dlg:IDD_LAYERS": {
+   "status": "missing",
+   "note": "legacy template with no class: confirm behavior"
+  },
+  "dlg:IDD_LOADINGTEXTURES": {
+   "status": "missing",
+   "note": "legacy loading message box: confirm behavior"
+  },
+  "dlg:IDD_MANIFEST": {
+   "status": "missing",
+   "note": "no manifest editing"
+  },
+  "dlg:IDD_MANIFEST_CHECKIN": {
+   "status": "missing",
+   "note": "no manifest editing"
+  },
+  "dlg:IDD_MANIFEST_CONTROL": {
+   "status": "missing",
+   "note": "no manifest editing"
+  },
+  "dlg:IDD_MANIFEST_MAP": {
+   "status": "missing",
+   "note": "no manifest editing"
+  },
+  "dlg:IDD_MANIFEST_MOVE": {
+   "status": "missing",
+   "note": "no manifest editing"
+  },
+  "dlg:IDD_MAPCHECK": {
+   "status": "partial",
+   "note": "map check and fixes exist headless; no window",
+   "actions": [
+    "map.check",
+    "map.fix_all"
+   ],
+   "commands": [
+    "check_map",
+    "fix_problem"
+   ],
+   "tests": [
+    "hammer.app.map_check",
+    "hammer.presenters.problems_panel"
+   ]
+  },
+  "dlg:IDD_MAPERRORS": {
+   "status": "partial",
+   "note": "map check and fixes exist headless; no window",
+   "actions": [
+    "map.check",
+    "map.fix_all"
+   ],
+   "commands": [
+    "check_map",
+    "fix_problem"
+   ],
+   "tests": [
+    "hammer.app.map_check",
+    "hammer.presenters.problems_panel"
+   ]
+  },
+  "dlg:IDD_MAPEXPORT": {
+   "status": "missing",
+   "note": "no export/save dialog extensions"
+  },
+  "dlg:IDD_MAPINFO": {
+   "status": "missing",
+   "note": "no Map Information"
+  },
+  "dlg:IDD_MODEL_BROWSER": {
+   "status": "missing",
+   "note": "no model browser or model page"
+  },
+  "dlg:IDD_NEWDOCTYPE": {
+   "status": "missing",
+   "note": "no new-document type choice"
+  },
+  "dlg:IDD_NEWKEYVALUE": {
+   "status": "replicated",
+   "actions": [
+    "edit.properties"
+   ],
+   "commands": [
+    "set_key",
+    "remove_key",
+    "set_class"
+   ],
+   "host": [
+    "Object Properties window: Class Info"
+   ],
+   "tests": [
+    "hammer.presenters.entity_inspector",
+    "corpus.hammer.ui:properties"
+   ]
+  },
+  "dlg:IDD_NEW_VISGROUP": {
+   "status": "replicated",
+   "commands": [
+    "visgroup_create",
+    "visgroup_add"
+   ],
+   "host": [
+    "Visgroups panel"
+   ],
+   "tests": [
+    "hammer.presenters.visgroup_panel",
+    "corpus.hammer.ui:visgroups"
+   ]
+  },
+  "dlg:IDD_OBJECTBAR": {
+   "status": "partial",
+   "note": "the object bar has Groups/Objects/Solids toggles; no primitive (block, wedge, cylinder, spike, sphere, arch, torus) choice",
+   "commands": [
+    "create_primitive",
+    "create_arch"
+   ],
+   "tests": [
+    "hammer.app.create_ops"
+   ]
+  },
+  "dlg:IDD_OBJPAGE_DUMMY": {
+   "status": "missing",
+   "note": "legacy placeholder page: confirm behavior"
+  },
+  "dlg:IDD_OBJPAGE_ENTITYKV": {
+   "status": "replicated",
+   "actions": [
+    "edit.properties"
+   ],
+   "commands": [
+    "set_key",
+    "remove_key",
+    "set_class"
+   ],
+   "host": [
+    "Object Properties window: Class Info"
+   ],
+   "tests": [
+    "hammer.presenters.entity_inspector",
+    "corpus.hammer.ui:properties"
+   ]
+  },
+  "dlg:IDD_OBJPAGE_FLAGS": {
+   "status": "replicated",
+   "actions": [
+    "edit.properties"
+   ],
+   "commands": [
+    "set_flag"
+   ],
+   "host": [
+    "Object Properties window: Flags"
+   ],
+   "tests": [
+    "hammer.presenters.entity_inspector",
+    "corpus.hammer.ui:properties"
+   ]
+  },
+  "dlg:IDD_OBJPAGE_GROUPS": {
+   "status": "partial",
+   "note": "visgroup membership commands exist; no page in Object Properties",
+   "commands": [
+    "visgroup_add",
+    "visgroup_remove"
+   ],
+   "tests": [
+    "hammer.app.visgroup_ops"
+   ]
+  },
+  "dlg:IDD_OBJPAGE_INPUT": {
+   "status": "partial",
+   "note": "add_output/remove_outputs exist and the inspector has Outputs()/Inputs(); no pages",
+   "commands": [
+    "add_output",
+    "remove_outputs",
+    "remove_output_at"
+   ],
+   "tests": [
+    "hammer.presenters.entity_inspector"
+   ]
+  },
+  "dlg:IDD_OBJPAGE_MODEL": {
+   "status": "missing",
+   "note": "no model browser or model page"
+  },
+  "dlg:IDD_OBJPAGE_OUTPUT": {
+   "status": "partial",
+   "note": "add_output/remove_outputs exist and the inspector has Outputs()/Inputs(); no pages",
+   "commands": [
+    "add_output",
+    "remove_outputs",
+    "remove_output_at"
+   ],
+   "tests": [
+    "hammer.presenters.entity_inspector"
+   ]
+  },
+  "dlg:IDD_OPTIONS_2D": {
+   "status": "missing",
+   "note": "no Options window"
+  },
+  "dlg:IDD_OPTIONS_3D": {
+   "status": "missing",
+   "note": "no Options window"
+  },
+  "dlg:IDD_OPTIONS_BUILD": {
+   "status": "missing",
+   "note": "no Options window"
+  },
+  "dlg:IDD_OPTIONS_CONFIGS": {
+   "status": "missing",
+   "note": "no game configuration editing"
+  },
+  "dlg:IDD_OPTIONS_MAIN": {
+   "status": "missing",
+   "note": "no Options window"
+  },
+  "dlg:IDD_OPTIONS_TEXTURES": {
+   "status": "missing",
+   "note": "no Options window"
+  },
+  "dlg:IDD_PASTESPECIAL1": {
+   "status": "missing",
+   "note": "no Paste Special"
+  },
+  "dlg:IDD_PREFABS": {
+   "status": "missing",
+   "note": "no prefab library"
+  },
+  "dlg:IDD_REPLACETEX": {
+   "status": "replicated",
+   "actions": [
+    "tools.replace_textures"
+   ],
+   "commands": [
+    "replace_material",
+    "mark_material"
+   ],
+   "host": [
+    "Replace Textures window"
+   ],
+   "tests": [
+    "hammer.presenters.replace_textures",
+    "hammer.app.replace_textures.legacy_parity",
+    "corpus.hammer.ui:replace-textures"
+   ]
+  },
+  "dlg:IDD_RUNMAP": {
+   "status": "partial",
+   "note": "build_map compiles and runs; no run configurations",
+   "commands": [
+    "build_map"
+   ],
+   "tests": [
+    "corpus.hammer.loop"
+   ]
+  },
+  "dlg:IDD_RUNMAPCONFIGS": {
+   "status": "partial",
+   "note": "build_map compiles and runs; no run configurations",
+   "commands": [
+    "build_map"
+   ],
+   "tests": [
+    "corpus.hammer.loop"
+   ]
+  },
+  "dlg:IDD_RUNMAPEXPERT": {
+   "status": "partial",
+   "note": "build_map compiles and runs; no run configurations",
+   "commands": [
+    "build_map"
+   ],
+   "tests": [
+    "corpus.hammer.loop"
+   ]
+  },
+  "dlg:IDD_SAVEDIALOG": {
+   "status": "missing",
+   "note": "no export/save dialog extensions"
+  },
+  "dlg:IDD_SCALEVERTICES": {
+   "status": "missing",
+   "note": "no vertex scale"
+  },
+  "dlg:IDD_SCENE_PREVIEW": {
+   "status": "missing",
+   "note": "no scene preview"
+  },
+  "dlg:IDD_SEARCH_REPLACE": {
+   "status": "partial",
+   "note": "ops::ReplaceKeyValues exists; no dialog",
+   "tests": [
+    "hammer.app.find_replace_ops"
+   ]
+  },
+  "dlg:IDD_SELECTENTITY": {
+   "status": "missing",
+   "note": "no entity picker dialog"
+  },
+  "dlg:IDD_SELECT_MODE_BAR": {
+   "status": "partial",
+   "note": "selection granularity actions exist; the toggles are not wired in the host (RFC 0018 UX1)",
+   "actions": [
+    "tools.select_groups",
+    "tools.select_objects",
+    "tools.select_solids"
+   ],
+   "commands": [
+    "set_granularity"
+   ],
+   "tests": [
+    "hammer.presenters.action_catalog"
+   ]
+  },
+  "dlg:IDD_SMOOTHING_GROUPS": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "dlg:IDD_SMOOTHING_GROUP_VISUAL": {
+   "status": "partial",
+   "note": "set_smoothing_group exists; no dialog",
+   "commands": [
+    "set_smoothing_group"
+   ],
+   "tests": [
+    "hammer.app.texture_ops"
+   ]
+  },
+  "dlg:IDD_SOUNDBROWSER": {
+   "status": "missing",
+   "note": "no sound browser"
+  },
+  "dlg:IDD_STRINPUT": {
+   "status": "missing",
+   "note": "generic string input: confirm users"
+  },
+  "dlg:IDD_TEXTUREBAR": {
+   "status": "partial",
+   "note": "the object bar shows the current material swatch; no texture group dropdown",
+   "host": [
+    "object bar swatch"
+   ]
+  },
+  "dlg:IDD_TEXTURES": {
+   "status": "partial",
+   "note": "material picking in the Texture Application window; no keyword search, used-only filter or size filters",
+   "host": [
+    "Texture Application window"
+   ],
+   "tests": [
+    "hammer.presenters.material_browser"
+   ]
+  },
+  "dlg:IDD_TORUS": {
+   "status": "partial",
+   "note": "no torus primitive or dialog; create_primitive covers block, wedge, cylinder, spike and sphere",
+   "commands": [
+    "create_primitive"
+   ],
+   "tests": [
+    "hammer.app.create_ops"
+   ]
+  },
+  "dlg:IDD_TRANSFORM": {
+   "status": "partial",
+   "note": "move, rotate and scale exist; no dialog",
+   "commands": [
+    "move",
+    "rotate",
+    "scale"
+   ],
+   "tests": [
+    "hammer.app.transform_ops"
+   ]
+  },
+  "dlg:IDD_WC_PASTESPECIAL": {
+   "status": "missing",
+   "note": "no Paste Special"
+  },
+  "tool:TOOL_AXIS_HANDLE": {
+   "status": "missing",
+   "note": "no axis helper handles"
+  },
+  "tool:TOOL_BLOCK": {
+   "status": "replicated",
+   "actions": [
+    "tools.block"
+   ],
+   "commands": [
+    "create_block"
+   ],
+   "tests": [
+    "hammer.tools.block_tool",
+    "corpus.hammer.ui"
+   ]
+  },
+  "tool:TOOL_CAMERA": {
+   "status": "partial",
+   "note": "camera navigation exists; placing and switching cameras missing",
+   "tests": [
+    "hammer.tools.camera_controller"
+   ]
+  },
+  "tool:TOOL_CLIPPER": {
+   "status": "partial",
+   "note": "clip tool works in 2D; 3D clip and mode cycling missing (RFC 0018 F2)",
+   "actions": [
+    "tools.clip"
+   ],
+   "commands": [
+    "clip"
+   ],
+   "tests": [
+    "hammer.tools.clip_tool"
+   ]
+  },
+  "tool:TOOL_DECAL": {
+   "status": "partial",
+   "note": "decal ops exist; no tool",
+   "tests": [
+    "hammer.app.decal_ops"
+   ]
+  },
+  "tool:TOOL_EDITCORDON": {
+   "status": "partial",
+   "note": "cordon commands exist; no tool",
+   "commands": [
+    "cordon_box"
+   ],
+   "tests": [
+    "hammer.app.cordon_ops"
+   ]
+  },
+  "tool:TOOL_ENTITY": {
+   "status": "replicated",
+   "actions": [
+    "tools.entity"
+   ],
+   "commands": [
+    "place_entity"
+   ],
+   "tests": [
+    "hammer.tools.entity_tool",
+    "corpus.hammer.ui"
+   ]
+  },
+  "tool:TOOL_FACEEDIT_DISP": {
+   "status": "partial",
+   "note": "displacement commands exist; no tool",
+   "commands": [
+    "sculpt"
+   ],
+   "tests": [
+    "hammer.app.displacement_ops"
+   ]
+  },
+  "tool:TOOL_FACEEDIT_MATERIAL": {
+   "status": "partial",
+   "note": "face tool selects faces and lifts; no texture adjustment controls",
+   "actions": [
+    "tools.face"
+   ],
+   "tests": [
+    "hammer.tools.face_tool"
+   ]
+  },
+  "tool:TOOL_MAGNIFY": {
+   "status": "missing",
+   "note": "no Magnify tool"
+  },
+  "tool:TOOL_MORPH": {
+   "status": "partial",
+   "note": "vertex tool works in 2D; 3D vertex drags, edge splits and scale missing (RFC 0018 F2)",
+   "actions": [
+    "tools.vertex"
+   ],
+   "commands": [
+    "move_vertices"
+   ],
+   "tests": [
+    "hammer.tools.vertex_tool"
+   ]
+  },
+  "tool:TOOL_OVERLAY": {
+   "status": "partial",
+   "note": "overlay format exists; no tool",
+   "tests": [
+    "hammer.formats.overlay"
+   ]
+  },
+  "tool:TOOL_PICK_ANGLES": {
+   "status": "missing",
+   "note": "no angles picker"
+  },
+  "tool:TOOL_PICK_ENTITY": {
+   "status": "missing",
+   "note": "no entity picker"
+  },
+  "tool:TOOL_PICK_FACE": {
+   "status": "missing",
+   "note": "no face picker for face lists"
+  },
+  "tool:TOOL_PLAYERHULL_HANDLE": {
+   "status": "missing",
+   "note": "no player hull handle"
+  },
+  "tool:TOOL_POINTER": {
+   "status": "replicated",
+   "actions": [
+    "tools.selection"
+   ],
+   "commands": [
+    "select",
+    "move_selection"
+   ],
+   "tests": [
+    "hammer.tools.selection_tool",
+    "corpus.hammer.ui"
+   ]
+  },
+  "tool:TOOL_POINT_HANDLE": {
+   "status": "missing",
+   "note": "no point helper handles"
+  },
+  "tool:TOOL_SPHERE": {
+   "status": "missing",
+   "note": "no sphere helper handle"
+  },
+  "tool:TOOL_SWEPT_HULL": {
+   "status": "missing",
+   "note": "no swept player hull helper"
+  }
+ }
+}

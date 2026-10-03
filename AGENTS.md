@@ -1327,6 +1327,13 @@ Keep the table concise and link details below or from the domain progress file.
     judged on frames and the saved `visgroupshown`. Auto visgroups and the
     hidden count remain. See the
     [record](RFC/0002-progress.md#r08-ui-visgroups-the-visgroups-panel-slice-done-2026-09-28).
+  - R08-PARITY (2026-10-03, user goal "replicate all functionality from the
+    MFC one"): `architecture/hammer_feature_parity.json` maps all 412 legacy
+    commands, dialogs and tools, enumerated from the sources at `776a2f3e`.
+    `tools/quality/hammer_feature_parity.py verify --complete` is the
+    acceptance check. The baseline is 48 replicated, 160 partial, 195
+    missing and 9 not applicable. See the
+    [record](RFC/0002-progress.md#r08-parity-the-legacy-feature-parity-matrix-in-progress-2026-10-03).
   - R08-REPLACE-TEXTURES (2026-10-03, user goal "move one complete edit and
     save workflow through the headless core and GTK host, with parity
     evidence, before retiring its old shell code"): Replace Textures.
