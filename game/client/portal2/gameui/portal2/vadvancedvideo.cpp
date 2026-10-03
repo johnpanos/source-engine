@@ -1312,7 +1312,28 @@ static KeyValues *AddRenderCoreQualityRow( KeyValues *pResourceData, KeyValues *
 
 void CAdvancedVideo::PreApplyControlSettings( KeyValues *pResourceData )
 {
-	if ( !pResourceData || pResourceData->FindKey( "DrpCoreAO" ) || !HasRenderCoreQuality() )
+	if ( !pResourceData )
+		return;
+
+#ifdef POSIX
+	// The paged pool is a Windows kernel resource; the shipped res hides its
+	// row with [$OSX] conditionals only. POSIX builds remove the row here and
+	// splice its navigation links, so the list never shows or focuses a
+	// control whose commands are compiled out.
+	if ( KeyValues *pPagedPool = pResourceData->FindKey( "DrpPagedPoolMem" ) )
+	{
+		const char *pNavUp = pPagedPool->GetString( "navUp" );
+		const char *pNavDown = pPagedPool->GetString( "navDown" );
+		if ( KeyValues *pAbove = pResourceData->FindKey( pNavUp ) )
+			pAbove->SetString( "navDown", pNavDown );
+		if ( KeyValues *pBelow = pResourceData->FindKey( pNavDown ) )
+			pBelow->SetString( "navUp", pNavUp );
+		pResourceData->RemoveSubKey( pPagedPool );
+		pPagedPool->deleteThis();
+	}
+#endif
+
+	if ( pResourceData->FindKey( "DrpCoreAO" ) || !HasRenderCoreQuality() )
 		return;
 
 	// The last row is the lowest list row; it navigates down to the first.

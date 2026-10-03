@@ -2632,6 +2632,17 @@ void CVideoMode_MaterialSystem::AdjustForModeChange( void )
     bool bWindowed = g_pMaterialSystemConfig->Windowed();
 
 #if defined( USE_SDL3 )
+	// A synchronous drawable resize can invoke the mode-change callback inside
+	// RequestWindowResize, before UpdateWindowSize commits the new video mode.
+	// That callback must not feed pixel dimensions back to SDL_SetWindowSize,
+	// which takes window units and would start a resize loop on scaled displays.
+	if ( bWindowed == IsWindowedMode() &&
+	     nNewWidth == static_cast<int>( m_nPendingDrawableWidth ) &&
+	     nNewHeight == static_cast<int>( m_nPendingDrawableHeight ) )
+	{
+		return;
+	}
+
 	// A resize that follows the drawable (UpdateWindowSize) has already committed
 	// the mode and UI, and the window already has this size. Without a render
 	// worker the device reset runs on the main thread and still reports a mode

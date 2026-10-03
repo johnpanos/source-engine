@@ -278,3 +278,21 @@ A separate SDL 3.4.16 window API smoke on the active Wayland session returned
 the expected final flags after synchronization for decorated windowed →
 fullscreen fixed → decorated windowed → borderless fixed → decorated windowed.
 It exercises the SDL calls, not the engine's compiled mode path.
+
+## Linux SDL3 startup resize feedback (2026-10-03)
+
+The Portal 2 FSR launcher exposed a continuous window-size cycle on a 1.5×
+Wayland display. A synchronous drawable resize invokes the material mode-change
+callback before `UpdateWindowSize` commits the new mode. The callback treated
+the drawable's pixel dimensions as a requested SDL window size in display units,
+so each render resize could resize the native window again. The engine now
+recognizes the pending drawable dimensions and lets `UpdateWindowSize` finish
+the render/UI mode commit without sending them to the window provider.
+
+The existing `build-p2-fsr` profile built with the change, and a private 1.5×
+Wayland Portal 2 run with FSR enabled loaded `sp_a1_intro1` and passed. Its
+27.5-second trace had one compositor-driven resize, one render resize request
+and completion, and no repeated window-size cycle. Evidence is in
+[`quality-results/window-resize-fsr-fix/valid-map/boot/evidence.json`](../quality-results/window-resize-fsr-fix/valid-map/boot/evidence.json)
+and that run's `engine.log`. The architecture baseline, loader inventory and
+changed-line style checks passed.
