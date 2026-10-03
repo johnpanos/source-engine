@@ -1,6 +1,6 @@
 # RFC 0019: Temporal Upscaling Contract
 
-- Status: Proposed (2026-10-03); contract only, no implementation gate complete
+- Status: Proposed (2026-10-03); initial lab provider installed, no implementation gate complete
 - Date: 2026-10-03
 - Scope: An opt-in temporal reconstruction boundary for the render core, with
   AMD FSR Upscaling 4.1.1 as the first candidate provider. Frame generation is
@@ -27,7 +27,7 @@ and the existing 120 FPS target explicit. Performance is measured and any miss
 is recorded; it does not block implementation, selection or release under
 [RFC 0016's FSR temporal exception](0016-render-core.md#binding-rules-for-all-render-work-user-decision-2026-09-28).
 This records a future target, not a claim that the current 4x MSAA High gate
-has changed or that FSR is installed.
+has changed or that an FSR product path is installed.
 
 ## Decision and ownership
 
@@ -166,10 +166,11 @@ selected sample count.
    A performance miss is reported and does not block this FSR path. Unsupported
    profiles report unavailable and retain their existing qualified path.
 
-These suites, their commands and their thresholds are proposed. They become
-installed gates only when registered in the shared conformance/evidence
-infrastructure with negative controls. No test result or platform support is
-claimed by this RFC.
+The full acceptance slices above remain open. The initial lab provider and
+its positive/sensitivity suites are installed in the shared conformance registry;
+[implementation evidence](0019-fsr-lab-2026-10-03.md) records their commands and
+limited claims. Those synthetic sequences do not certify the full input, image,
+portal, platform or product gates.
 
 ## Observed starting point (2026-10-03)
 

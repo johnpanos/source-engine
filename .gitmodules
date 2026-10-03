@@ -10,3 +10,9 @@
 [submodule "box3d"]
 	path = box3d
 	url = https://github.com/johnpanos/box3d.git
+[submodule "external/fsr411"]
+	path = external/fsr411
+	url = https://github.com/johnpanos/FSR-4.1.1-linux.git
+[submodule "external/fsr-vulkan-headers"]
+	path = external/fsr-vulkan-headers
+	url = https://github.com/KhronosGroup/Vulkan-Headers.git

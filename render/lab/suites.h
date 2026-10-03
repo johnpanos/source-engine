@@ -64,6 +64,8 @@
 namespace render::lab
 {
 
+int RunTemporalSuite( int argc, char **argv );
+
 int RunSuite( int argc, char **argv );
 int RunPosedModelSuite( int argc, char **argv );
 int RunViewStateSuite( int argc, char **argv );

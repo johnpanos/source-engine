@@ -497,6 +497,8 @@ def options(opt):
 			'(render::device::CapabilityName), e.g. compute,storage-buffers [default: none]')
 	grp.add_option('--render-core-gl', action='store_true', default=False, dest='RENDER_CORE_GL',
 		help='build the OpenGL 4.5 device adapter of the render core (RFC 0016 K10; needs EGL) [default: %default]')
+	grp.add_option('--render-fsr411', action='store_true', default=False, dest='RENDER_FSR411',
+		help='Build the experimental pinned FSR 4.1.1 Vulkan provider (lab only)')
 	grp.add_option('--render-core-vulkan', choices=['auto', 'on', 'off'], default='auto',
 		dest='RENDER_CORE_VULKAN',
 		help='RFC 0016 render core: build the Vulkan device adapter for the tools product (the '
@@ -1152,6 +1154,7 @@ def hammer_gtk_projects(conf):
 	return ['hammer/gtk'] if found else []
 
 def configure_render_core(conf):
+	conf.env.RENDER_FSR411 = conf.options.RENDER_FSR411
 	'''RFC 0016: the render family (render/) builds for client, tool and test
 	products only; a dedicated product never adds it, so it cannot link it.
 	Device adapters build only when configured: Vulkan with the native Vulkan

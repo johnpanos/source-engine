@@ -4,6 +4,33 @@
     "description": "Strict RFC 0001 composition boundary. Permissions for includes and Waf links are owned here; no legacy baseline applies.",
     "modules": [
       {
+        "id": "render.pass.temporal",
+        "paths": [
+          "render/pass/temporal/",
+          "public/render/pass/temporal/"
+        ],
+        "allowedEdges": [
+          "foundation",
+          "render.device",
+          "render.graph",
+          "jobs.graph"
+        ]
+      },
+      {
+        "id": "external.fsr411",
+        "paths": [
+          "external/fsr411/src/"
+        ],
+        "allowedEdges": [],
+        "kind": "backend",
+        "externalHeaders": [
+          "vulkan/vulkan.h"
+        ],
+        "uselib": [
+          "VULKAN"
+        ]
+      },
+      {
         "id": "foundation",
         "paths": [
           "public/foundation/"
@@ -697,11 +724,13 @@
         "allowedEdges": [
           "foundation",
           "render.contracts",
-          "render.device"
+          "render.device",
+          "external.fsr411"
         ],
         "kind": "backend",
         "externalHeaders": [
           "vk_mem_alloc.h",
+          "fsr411.h",
           "vulkan/vulkan.h",
           "unistd.h"
         ],
@@ -918,6 +947,7 @@
           "render.pass.shadows",
           "render.pass.volumetric",
           "render.pass.ssr",
+          "render.pass.temporal",
           "render.pass.ao",
           "render.pass.bounce",
           "render.pass.world",
@@ -1651,10 +1681,12 @@
           "render_device"
         ]
       },
+      "render_pass_temporal": {"allowedUse": ["render_graph", "render_device"]},
+      "fsr411_runtime": {"allowedUse": ["VULKAN"]},
       "render_device_vulkan": {
         "allowedUse": [
           "render_device",
-          "VULKAN"
+          "VULKAN", "fsr411_runtime"
         ]
       },
       "render_device_gl": {
@@ -1809,7 +1841,7 @@
           "render_shaderlib"
         ]
       },
-      "render_lab": {"allowedUse": ["render_device", "render_device_vulkan", "render_resources", "render_material", "render_math", "render_spv", "mapcontainer", "mdl", "vtf_texture_reader", "render_shaderlib", "render_frame", "render_graph", "jobsystem", "render_pass_lines", "render_pass_lights", "render_pass_volumetric", "render_pass_ssr", "render_pass_ao", "render_pass_bounce", "render_pass_world", "render_pass_panels", "asset_resolver", "asset_index", "asset_identity", "content_hash"]},
+      "render_lab": {"allowedUse": ["render_device", "render_device_vulkan", "render_resources", "render_material", "render_math", "render_spv", "mapcontainer", "mdl", "vtf_texture_reader", "render_shaderlib", "render_frame", "render_graph", "jobsystem", "render_pass_lines", "render_pass_lights", "render_pass_volumetric", "render_pass_ssr", "render_pass_temporal", "render_pass_ao", "render_pass_bounce", "render_pass_world", "render_pass_panels", "asset_resolver", "asset_index", "asset_identity", "content_hash"]},
       "render_pass_debug": {
         "allowedUse": [
           "render_device",
@@ -2238,6 +2270,7 @@
           ]
         ],
         "externalBases": [
+          "external.fsr411",
           "testing.contracts",
           "content.keyvalues-text",
           "content.texture-contract",
@@ -2622,6 +2655,16 @@
       }
     ],
     "unbuiltVendorPaths": [
+      {
+        "prefix": "external/fsr411/tools/",
+        "reason": "Pinned upstream capture/extraction tools for Windows/D3D12; the engine builds only src/fsr411.cpp, never these reference tools.",
+        "evidence": "Reviewed 2026-10-03: render/device/vulkan/wscript compiles only external/fsr411/src/fsr411.cpp; build-fsr toolchain invocations name no source in tools/."
+      },
+      {
+        "prefix": "external/fsr-vulkan-headers/",
+        "reason": "Header-only pinned dependency. The adapter includes the C declarations in vulkan.h; loader sites are in the unused Vulkan-Hpp C++ wrapper and its macro header. No engine source includes either C++ wrapper.",
+        "evidence": "Reviewed 2026-10-03: adapter and upstream fsr411.cpp include vulkan/vulkan.h only; no Waf source is compiled from this header dependency."
+      },
       {
         "prefix": "box3d/extern/",
         "reason": "Box3D's vendored sokol headers used only by its standalone samples; vphysics_box3d compiles box3d/src only.",

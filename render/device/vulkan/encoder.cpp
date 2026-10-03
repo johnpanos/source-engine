@@ -43,7 +43,25 @@ namespace render::device::vulkan
 VulkanEncoder::~VulkanEncoder()
 {
 	if ( !m_Submitted )
+	{
 		m_Device.AbandonUploads( *this );
+		for ( const auto &command : m_Commands )
+			if ( command.compute )
+				command.compute->Aborted();
+	}
+}
+
+void VulkanEncoder::Compute( std::shared_ptr<ComputeInterop> payload )
+{
+	// Host sections replay through a different translator. Refuse this
+	// unsupported placement instead of silently omitting the dispatch.
+	if ( m_InSection )
+		SetError();
+	NotRendering();
+	Command command;
+	command.op = Op::kComputeInterop;
+	command.compute = std::move( payload );
+	Push( std::move( command ) );
 }
 
 void VulkanEncoder::TransitionTexture(
@@ -614,6 +632,24 @@ bool VulkanDevice::Validate(
 			if ( !v.constants.Write( std::uint32_t( command.offset ), command.bytes.size() ) )
 				return false;
 			break;
+		case Op::kComputeInterop:
+			if ( v.rendering || !command.compute )
+				return false;
+			for ( const auto &image : command.compute->images )
+			{
+				if ( !LiveTexture( image.id.value ) )
+					return false;
+				auto found = states.find( image.id.value );
+				const auto usage = found == states.end()
+				                       ? LiveTexture( image.id.value )->track.usage
+				                       : found->second;
+				if ( usage != image.usage )
+					return false;
+			}
+			v.pipeline = nullptr;
+			v.groups.fill( 0 );
+			v.constants.Bind( 0 );
+			break;
 		case Op::kNative:
 		case Op::kSectionBegin:
 		case Op::kSectionEnd:
@@ -661,18 +697,30 @@ class Translator
 public:
 	Translator( VulkanDevice &device, VkCommandBuffer buffer ) : m_D( device ), m_Cmd( buffer ) {}
 
-	void Encoder( const std::vector<Command> &commands )
+	bool Encoder( const std::vector<Command> &commands )
 	{
 		m_Pipeline = nullptr;
 		m_Groups.fill( 0 );
 		m_Viewport.reset();
 		for ( std::size_t i = 0; i < commands.size(); ++i )
 		{
-			if ( commands[i].op == Op::kNative )
+			if ( commands[i].op == Op::kComputeInterop )
+			{
+				const auto &payload = commands[i].compute;
+				for ( const auto &image : payload->images )
+					Access( image.id.value, IsWrite( image.usage ) );
+				if ( !payload->Record( m_Cmd ) )
+					return false;
+				m_Pipeline = nullptr;
+				m_Groups.fill( 0 );
+				m_Viewport.reset();
+			}
+			else if ( commands[i].op == Op::kNative )
 				i = Native( commands, i );
 			else
 				Translate( commands, i );
 		}
+		return true;
 	}
 
 	// Host work asks for section `index` of the record being translated:
@@ -1151,6 +1199,7 @@ private:
 			vkCmdDrawIndexed( m_Cmd, command.params[0], command.params[1], command.params[2],
 			    command.vertexOffset, command.params[3] );
 			break;
+		case Op::kComputeInterop: // Encoder()
 		case Op::kNative: // Native()
 		case Op::kSectionBegin:
 		case Op::kSectionEnd:
@@ -1424,9 +1473,22 @@ DeviceResult<CompletionToken> VulkanDevice::Submit(
 		translator.SetQueries( context.queries );
 	}
 	m_Translating = &translator;
+	bool translated = true;
 	for ( VulkanEncoder *encoder : recorded )
-		translator.Encoder( encoder->Commands() );
+		if ( !translator.Encoder( encoder->Commands() ) )
+		{
+			translated = false;
+			break;
+		}
 	m_Translating = nullptr;
+	if ( !translated )
+	{
+		for ( VulkanEncoder *encoder : recorded )
+			for ( const auto &command : encoder->Commands() )
+				if ( command.compute )
+					command.compute->Aborted();
+		return giveBack( VK_ERROR_INITIALIZATION_FAILED );
+	}
 	translator.Finish();
 	result = vkEndCommandBuffer( context.buffer );
 	if ( result != VK_SUCCESS )
@@ -1486,6 +1548,13 @@ DeviceResult<CompletionToken> VulkanDevice::Submit(
 	m_Submitted = value;
 	const CompletionToken token{ queue, m_Epoch, value };
 	translator.Commit();
+	for ( VulkanEncoder *encoder : recorded )
+		for ( const auto &command : encoder->Commands() )
+			if ( command.compute )
+			{
+				command.compute->Submitted( token );
+				context.compute.push_back( command.compute );
+			}
 	for ( VulkanEncoder *encoder : recorded )
 	{
 		for ( std::uint64_t allocation : encoder->RingAllocations() )

@@ -19,6 +19,7 @@
 //=============================================================================//
 
 #include "vulkan_device.h"
+#include "fsr_features.h"
 
 #include <algorithm>
 #include <cstring>
@@ -343,6 +344,15 @@ DeviceResult<void> VulkanDevice::CreateLogical()
 				extensions.push_back( name );
 		}
 	}
+	FsrFeatures fsr;
+	if ( m_Options.fsr411 )
+	{
+		if ( !fsr.Enable( m_Adapter.physical, *features, extensions ) )
+		{
+			m_FailureReason = "FSR 4.1.1 shader requirements unavailable";
+			return Fail( DeviceStatus::kUnsupported, op );
+		}
+	}
 	RequiredFeatures required;
 	required.Merge( *features, m_Adapter );
 
@@ -447,6 +457,9 @@ DeviceResult<void> VulkanDevice::CreateLogical()
 
 void VulkanDevice::DestroyLogical()
 {
+	for ( auto &entry : m_ComputeInterop )
+		if ( auto payload = entry.lock() )
+			payload->DeviceDestroyed();
 	// Teardown/recovery also retires every remaining logical handle.
 	for ( std::size_t i = 0; i < ResourceActivity::kKinds; ++i )
 		m_ResourceActivity.destroyed[i].store( m_ResourceActivity.created[i].load() );
@@ -578,6 +591,7 @@ void VulkanDevice::RecycleCompleted()
 		for ( HostBuffer &staging : context.staging )
 			DestroyHostBuffer( staging );
 		context.staging.clear();
+		context.compute.clear();
 		if ( vkResetCommandPool( m_Device, context.pool, 0 ) == VK_SUCCESS )
 		{
 			m_FreeContexts.push_back( std::move( context ) );

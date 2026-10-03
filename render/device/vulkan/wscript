@@ -27,6 +27,28 @@ def vma_include(bld):
 	return str(vma_pin.include_directory(pin))
 
 def build(bld):
+	fsr_flags = []
+	fsr_use = []
+	if bld.env.RENDER_FSR411:
+		root = bld.srcnode.abspath()
+		import subprocess
+		for path in ('external/fsr411', 'external/fsr-vulkan-headers'):
+			pin = subprocess.check_output(['git', 'ls-tree', 'HEAD', path], cwd=root, text=True)
+			# New gitlinks are staged until this implementation is committed.
+			if not pin:
+				pin = subprocess.check_output(['git', 'ls-files', '-s', path], cwd=root, text=True)
+			wanted = pin.split()[2 if pin.startswith('160000 commit') else 1]
+			actual = subprocess.check_output(['git', '-C', os.path.join(root, path), 'rev-parse', 'HEAD'], text=True).strip()
+			dirty = subprocess.check_output(['git', '-C', os.path.join(root, path), 'status', '--porcelain', '--untracked-files=no'], text=True).strip()
+			if actual != wanted or dirty:
+				bld.fatal(path + ': dependency does not match its gitlink')
+		fsr_flags = ['-DRENDER_FSR411', '-isystem', os.path.join(root, 'external/fsr411/src'),
+			'-isystem', os.path.join(root, 'external/fsr-vulkan-headers/include')]
+		bld.stlib(env=bld.strict_cpp20_env(), features='cxx', arch_module='external.fsr411',
+			name='fsr411_runtime', target='fsr411_runtime',
+			source=['../../../external/fsr411/src/fsr411.cpp'], includes=[],
+			cxxflags=fsr_flags + ['-w'], use=['VULKAN'], idx=bld.get_taskgen_count())
+		fsr_use = ['fsr411_runtime']
 	bld.stlib(
 		env         = bld.strict_cpp20_env(),
 		features    = 'cxx capability_strict',
@@ -37,7 +59,7 @@ def build(bld):
 		includes    = ['../../../public'],
 		# The allocator is a pinned third-party header: a system include, so
 		# the strict warnings apply to the adapter and not to it.
-		cxxflags    = ['-isystem', vma_include(bld)],
-		use         = ['render_device', 'VULKAN'],
+		cxxflags    = ['-isystem', vma_include(bld)] + fsr_flags,
+		use         = ['render_device', 'VULKAN'] + fsr_use,
 		idx         = bld.get_taskgen_count()
 	)

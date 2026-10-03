@@ -1,5 +1,23 @@
 # RFC 0016 progress: render core
 
+## FSR temporal reconstruction implementation (2026-10-03, in progress)
+
+User-selected work on `codex/fsr-temporal`, in an isolated worktree, owns
+RFC 0019's temporal input/history pass and the private FSR/Vulkan adapter.
+The contract-authoring session confirmed it has no overlapping implementation.
+The first consumer is `render_lab`; product selection and High remain unchanged
+until the input, image, portal and lifetime gates qualify the cutover. Timing
+is measured and reported under RFC 0016's FSR exception, never used to block
+this path. Desktop and Fold7 evidence will be distinguished explicitly.
+
+The experimental provider pins `johnpanos/FSR-4.1.1-linux` at
+`46a56a66b639d4e3f84033640d1e51a8655ebac4` with its original notices: the Vulkan
+runtime is GPL-2.0-or-later and the AMD shader/model assets carry their separate
+MIT exception. It is an unofficial INT8 adapter, not AMD's signed distribution.
+No platform or complete-image acceptance is claimed by adding the dependency.
+The [lab implementation record](0019-fsr-lab-2026-10-03.md) links measured costs,
+positive and seeded controls, reproduction commands and the open game boundary.
+
 ## Portal 2 launcher build repair (2026-10-01)
 
 `./play_p2` exposed two build blockers after the GPU BVH port: the shared probe

@@ -32,6 +32,7 @@ PORTABLE = [
 	'pass/output',
 	'pass/volumetric',
 	'pass/ssr',
+	'pass/temporal',
 	'pass/ao',
 	'pass/bounce',
 	'pass/indirect',

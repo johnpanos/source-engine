@@ -418,6 +418,8 @@
       "dialect": "cxx20",
       "rfc": "0016"
     },
+    "render_pass_temporal": {"dialect": "cxx20"},
+    "fsr411_runtime": {"dialect": "cxx20"},
     "render_device_vulkan": {
       "dialect": "cxx20",
       "rfc": "0016"

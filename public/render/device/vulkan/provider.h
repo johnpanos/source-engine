@@ -29,6 +29,8 @@ struct VulkanAdapterOptions
 	// Enable the Khronos validation layer (with synchronization validation)
 	// when it is installed. Without the layer the device is created anyway.
 	bool validation = false;
+	// Opt-in experimental FSR 4.1.1 shader requirements; unavailable fails creation.
+	bool fsr411 = false;
 	// Index into the enumerated physical devices; -1 picks the first discrete
 	// adapter, else the first integrated one, else the first that qualifies.
 	int adapterIndex = -1;
@@ -44,6 +46,7 @@ struct VulkanAdapterOptions
 	// Never set by a product.
 	struct Sensitivity
 	{
+		bool fsrRetainResetHistory = false; // RFC 0019: omit full reset retirement
 		bool flipY = false;          // D13: clip Y down (no viewport flip)
 		bool glDepthRange = false;   // D13: clip depth -1 to 1 mapped onto 0 to 1
 		CapabilitySet falseClaims{}; // D15: claimed in the facts, not implemented

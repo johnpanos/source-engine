@@ -20,6 +20,8 @@ int RunSuite( int argc, char **argv )
 		return 2;
 	}
 	const std::string name = argv[0];
+	if ( name == "temporal" )
+		return RunTemporalSuite( argc - 1, argv + 1 );
 	if ( name == "cost-overlay" )
 		return RunCostOverlaySuite( argc - 1, argv + 1 );
 	if ( name == "debug-views" )

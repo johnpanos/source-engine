@@ -8,7 +8,7 @@
     "optional-provider": 17,
     "retained-extension": 31,
     "tool-indirection": 120,
-    "unbuilt-vendor": 11
+    "unbuilt-vendor": 25
   },
   "nativeTelemetryCoverage": {
     "covered": 93,
@@ -775,6 +775,146 @@
       "mechanism": "ARCH102",
       "classification": "first-party-composition",
       "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "762d3c7ba356b926e795",
+      "mechanism": "native-loader",
+      "path": "external/fsr-vulkan-headers/include/vulkan/vulkan.hpp",
+      "line": 26038,
+      "excerpt": "m_library = ::LoadLibraryA( vulkanLibraryName.c_str() );",
+      "classification": "unbuilt-vendor",
+      "reason": "Header-only pinned dependency. The adapter includes the C declarations in vulkan.h; loader sites are in the unused Vulkan-Hpp C++ wrapper and its macro header. No engine source includes either C++ wrapper.",
+      "telemetry": "unbuilt-vendor"
+    },
+    {
+      "fingerprint": "81d807945cc6d491c27e",
+      "mechanism": "native-loader",
+      "path": "external/fsr-vulkan-headers/include/vulkan/vulkan.hpp",
+      "line": 26040,
+      "excerpt": "m_library = dlopen( vulkanLibraryName.c_str(), RTLD_NOW | RTLD_LOCAL );",
+      "classification": "unbuilt-vendor",
+      "reason": "Header-only pinned dependency. The adapter includes the C declarations in vulkan.h; loader sites are in the unused Vulkan-Hpp C++ wrapper and its macro header. No engine source includes either C++ wrapper.",
+      "telemetry": "unbuilt-vendor"
+    },
+    {
+      "fingerprint": "c4ab8c844279368377d6",
+      "mechanism": "native-loader",
+      "path": "external/fsr-vulkan-headers/include/vulkan/vulkan.hpp",
+      "line": 26048,
+      "excerpt": "m_library = ::LoadLibraryA( \"vulkan-1.dll\" );",
+      "classification": "unbuilt-vendor",
+      "reason": "Header-only pinned dependency. The adapter includes the C declarations in vulkan.h; loader sites are in the unused Vulkan-Hpp C++ wrapper and its macro header. No engine source includes either C++ wrapper.",
+      "telemetry": "unbuilt-vendor"
+    },
+    {
+      "fingerprint": "5542e2c1d63899afc6ce",
+      "mechanism": "native-loader",
+      "path": "external/fsr-vulkan-headers/include/vulkan/vulkan.hpp",
+      "line": 26050,
+      "excerpt": "m_library = dlopen( \"libvulkan.dylib\", RTLD_NOW | RTLD_LOCAL );",
+      "classification": "unbuilt-vendor",
+      "reason": "Header-only pinned dependency. The adapter includes the C declarations in vulkan.h; loader sites are in the unused Vulkan-Hpp C++ wrapper and its macro header. No engine source includes either C++ wrapper.",
+      "telemetry": "unbuilt-vendor"
+    },
+    {
+      "fingerprint": "170823273d68c94311c2",
+      "mechanism": "native-loader",
+      "path": "external/fsr-vulkan-headers/include/vulkan/vulkan.hpp",
+      "line": 26053,
+      "excerpt": "m_library = dlopen( \"libvulkan.1.dylib\", RTLD_NOW | RTLD_LOCAL );",
+      "classification": "unbuilt-vendor",
+      "reason": "Header-only pinned dependency. The adapter includes the C declarations in vulkan.h; loader sites are in the unused Vulkan-Hpp C++ wrapper and its macro header. No engine source includes either C++ wrapper.",
+      "telemetry": "unbuilt-vendor"
+    },
+    {
+      "fingerprint": "8f0694c3ef83ebfc22c5",
+      "mechanism": "native-loader",
+      "path": "external/fsr-vulkan-headers/include/vulkan/vulkan.hpp",
+      "line": 26059,
+      "excerpt": "m_library = dlopen( \"/usr/local/lib/libvulkan.dylib\", RTLD_NOW | RTLD_LOCAL );",
+      "classification": "unbuilt-vendor",
+      "reason": "Header-only pinned dependency. The adapter includes the C declarations in vulkan.h; loader sites are in the unused Vulkan-Hpp C++ wrapper and its macro header. No engine source includes either C++ wrapper.",
+      "telemetry": "unbuilt-vendor"
+    },
+    {
+      "fingerprint": "6ca5b1a3248c2919da95",
+      "mechanism": "native-loader",
+      "path": "external/fsr-vulkan-headers/include/vulkan/vulkan.hpp",
+      "line": 26064,
+      "excerpt": "m_library = dlopen( \"/opt/homebrew/lib/libvulkan.dylib\", RTLD_NOW | RTLD_LOCAL );",
+      "classification": "unbuilt-vendor",
+      "reason": "Header-only pinned dependency. The adapter includes the C declarations in vulkan.h; loader sites are in the unused Vulkan-Hpp C++ wrapper and its macro header. No engine source includes either C++ wrapper.",
+      "telemetry": "unbuilt-vendor"
+    },
+    {
+      "fingerprint": "7166dbc1b9118945899f",
+      "mechanism": "native-loader",
+      "path": "external/fsr-vulkan-headers/include/vulkan/vulkan.hpp",
+      "line": 26068,
+      "excerpt": "m_library = dlopen( \"libMoltenVK.dylib\", RTLD_NOW | RTLD_LOCAL );",
+      "classification": "unbuilt-vendor",
+      "reason": "Header-only pinned dependency. The adapter includes the C declarations in vulkan.h; loader sites are in the unused Vulkan-Hpp C++ wrapper and its macro header. No engine source includes either C++ wrapper.",
+      "telemetry": "unbuilt-vendor"
+    },
+    {
+      "fingerprint": "b94253ad5c98a4056199",
+      "mechanism": "native-loader",
+      "path": "external/fsr-vulkan-headers/include/vulkan/vulkan.hpp",
+      "line": 26074,
+      "excerpt": "m_library = dlopen( \"vulkan.framework/vulkan\", RTLD_NOW | RTLD_LOCAL );",
+      "classification": "unbuilt-vendor",
+      "reason": "Header-only pinned dependency. The adapter includes the C declarations in vulkan.h; loader sites are in the unused Vulkan-Hpp C++ wrapper and its macro header. No engine source includes either C++ wrapper.",
+      "telemetry": "unbuilt-vendor"
+    },
+    {
+      "fingerprint": "a5e0b76f7c5990a1ac4e",
+      "mechanism": "native-loader",
+      "path": "external/fsr-vulkan-headers/include/vulkan/vulkan.hpp",
+      "line": 26078,
+      "excerpt": "m_library = dlopen( \"MoltenVK.framework/MoltenVK\", RTLD_NOW | RTLD_LOCAL );",
+      "classification": "unbuilt-vendor",
+      "reason": "Header-only pinned dependency. The adapter includes the C declarations in vulkan.h; loader sites are in the unused Vulkan-Hpp C++ wrapper and its macro header. No engine source includes either C++ wrapper.",
+      "telemetry": "unbuilt-vendor"
+    },
+    {
+      "fingerprint": "1b6df6a49be7fcdedcc3",
+      "mechanism": "native-loader",
+      "path": "external/fsr-vulkan-headers/include/vulkan/vulkan.hpp",
+      "line": 26081,
+      "excerpt": "m_library = dlopen( \"libvulkan.so\", RTLD_NOW | RTLD_LOCAL );",
+      "classification": "unbuilt-vendor",
+      "reason": "Header-only pinned dependency. The adapter includes the C declarations in vulkan.h; loader sites are in the unused Vulkan-Hpp C++ wrapper and its macro header. No engine source includes either C++ wrapper.",
+      "telemetry": "unbuilt-vendor"
+    },
+    {
+      "fingerprint": "7adca70c1ebe3c7f04a4",
+      "mechanism": "native-loader",
+      "path": "external/fsr-vulkan-headers/include/vulkan/vulkan.hpp",
+      "line": 26084,
+      "excerpt": "m_library = dlopen( \"libvulkan.so.1\", RTLD_NOW | RTLD_LOCAL );",
+      "classification": "unbuilt-vendor",
+      "reason": "Header-only pinned dependency. The adapter includes the C declarations in vulkan.h; loader sites are in the unused Vulkan-Hpp C++ wrapper and its macro header. No engine source includes either C++ wrapper.",
+      "telemetry": "unbuilt-vendor"
+    },
+    {
+      "fingerprint": "887fe0c8d36b6bcd6241",
+      "mechanism": "native-loader",
+      "path": "external/fsr-vulkan-headers/include/vulkan/vulkan_hpp_macros.hpp",
+      "line": 100,
+      "excerpt": "extern \"C\" __declspec( dllimport ) HINSTANCE __stdcall LoadLibraryA( char const * lpLibFileName );",
+      "classification": "unbuilt-vendor",
+      "reason": "Header-only pinned dependency. The adapter includes the C declarations in vulkan.h; loader sites are in the unused Vulkan-Hpp C++ wrapper and its macro header. No engine source includes either C++ wrapper.",
+      "telemetry": "unbuilt-vendor"
+    },
+    {
+      "fingerprint": "f35ffbdb5e6405751c33",
+      "mechanism": "native-loader",
+      "path": "external/fsr411/tools/fsr4cap.c",
+      "line": 195,
+      "excerpt": "HMODULE loader = LoadLibraryA(\"amd_fidelityfx_loader_dx12.dll\");",
+      "classification": "unbuilt-vendor",
+      "reason": "Pinned upstream capture/extraction tools for Windows/D3D12; the engine builds only src/fsr411.cpp, never these reference tools.",
+      "telemetry": "unbuilt-vendor"
     },
     {
       "fingerprint": "7889dd5b9215a1e8211a",

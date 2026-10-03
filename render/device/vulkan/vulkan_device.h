@@ -366,14 +366,34 @@ enum class Op : std::uint8_t
 	kEndLabel,
 	kSetDrawConstants,
 	kWriteTimestamp, // D23: buffer a, at offset
+	kComputeInterop, // private compute bridge with declared texture accesses
 	kNative,         // host work (host_device.h RecordNative)
 	kSectionBegin,   // port commands host work runs (host_device.h BeginSection)
 	kSectionEnd
 };
 
+// Private adapter bridge. A submission retains payloads until its completion
+// token retires; providers may release their own reference immediately. All
+// methods execute on the device sequence. Aborted marks CPU history invalid.
+struct ComputeInterop
+{
+	struct Image
+	{
+		TextureId id;
+		ResourceUsage usage;
+	};
+	std::vector<Image> images;
+	virtual ~ComputeInterop() = default;
+	virtual bool Record( VkCommandBuffer cmd ) = 0;
+	virtual void Submitted( CompletionToken token ) = 0;
+	virtual void Aborted() = 0;
+	virtual void DeviceDestroyed() = 0;
+};
+
 struct Command
 {
 	Op op = Op::kDraw;
+	std::shared_ptr<ComputeInterop> compute;
 	std::uint64_t a = 0; // main handle (source for copies)
 	std::uint64_t b = 0; // destination handle for copies
 	ResourceUsage before = ResourceUsage::kUndefined;
@@ -450,6 +470,7 @@ public:
 	void MarkSubmitted() { m_Submitted = true; }
 	void SetError() { m_Error = true; }
 	// Host interop (host_device.h).
+	void Compute( std::shared_ptr<ComputeInterop> payload );
 	void Native( void ( *record )( void *, VkCommandBuffer ), void *user );
 	void BeginSection();
 	void EndSection();
@@ -567,6 +588,7 @@ public:
 
 	// For the host interop (host_device.cpp) ---------------------------------
 
+	bool FsrEnabled() const { return m_Options.fsr411; }
 	const HostDeviceInfo &HostInfo() const { return m_HostInfo; }
 	MemoryAllocator &Memory() { return m_Memory; }
 	VkSemaphore TimelineSemaphore() const { return m_Timeline; }
@@ -599,6 +621,7 @@ public:
 
 private:
 	friend class Translator;
+	friend class FsrProvider;
 
 	struct PendingRelease
 	{
@@ -614,6 +637,7 @@ private:
 		VkCommandBuffer buffer = VK_NULL_HANDLE;
 		std::uint64_t value = 0;
 		std::vector<HostBuffer> staging;
+		std::vector<std::shared_ptr<ComputeInterop>> compute;
 		// D23: the submission's timestamps, reset at its start.
 		VkQueryPool queries = VK_NULL_HANDLE;
 		std::uint32_t queryCapacity = 0;
@@ -681,6 +705,7 @@ private:
 		return found != map.end() && !found->second.released;
 	}
 
+	std::vector<std::weak_ptr<ComputeInterop>> m_ComputeInterop;
 	VulkanAdapterOptions m_Options;
 	const HostDeviceRequest *m_HostRequest = nullptr; // during Initialize only
 	bool m_HostMode = false;
