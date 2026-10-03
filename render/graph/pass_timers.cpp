@@ -178,7 +178,10 @@ void GpuPassTimers::Read( Frame &frame )
 	history.resources = latest.resources;
 	m_Recent.push_back( std::move( history ) );
 	std::sort( m_Recent.begin(), m_Recent.end(),
-	    []( const auto &a, const auto &b ) { return a.lastFrame < b.lastFrame; } );
+	    []( const auto &a, const auto &b )
+	    {
+		    return a.lastFrame < b.lastFrame;
+	    } );
 	if ( m_Recent.size() > 64 )
 		m_Recent.erase( m_Recent.begin() );
 	if ( latest.lastFrame >= m_LatestReport.lastFrame )

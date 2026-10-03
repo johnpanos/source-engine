@@ -43,6 +43,8 @@ instance storage, and the submission-cost target.
 | W10 | A view whose slot never recorded is skipped (counted, not a failure) only when no slot of its host frame recorded; a view lost from a host frame that recorded is a failure |
 | W9 | A variable the model does not read keeps its material out unless it holds its shader's neutral value (`MaterialDesc::declaredDefaults`); one with no neutral value keeps it out too; the gap names the variable |
 | W13 | A sparse update to the current probe atlas records on the next world view; a rectangle outside the atlas fails that view by name instead of silently sampling stale light |
+| W18 | The world pass owns bounded reuse of its group buffers and samplers. Buffers match exact size and usage, retain their last resource state, and are reusable only after the token covering their last consumer completes. Completion never covers a later submission or another queue. Cache overflow preserves rendering and uses fenced destruction; invalid allocations still fail. Identical sampler descriptions share a device object, comparison/filter/address differences remain distinct, and overflow has explicit group ownership. Drained teardown releases every owned object |
+| W19 | Lit views in one frame keep separate storage. Later completed views reuse owned storage while externally supplied assignment buffers remain borrowed: neither uploaded nor released by the world pass. Unknown frame serials wait for teardown. The native posed-model fixture checks every pixel after resource reuse |
 
 Model geometry selection (R96): static instances and posed models may carry a
 value-owned subset of surface indices. Null selects all surfaces; an explicit

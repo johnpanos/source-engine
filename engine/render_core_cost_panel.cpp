@@ -70,8 +70,9 @@ public:
 			return;
 		const int historyHeight = m_Report.resources.supported ? 64 + 3 * line : 0;
 		const unsigned int perPage = std::max( 1, ( GetTall() - historyHeight ) / line - 6 );
-		const unsigned int page = std::min( unsigned( std::max( 0, cl_render_debug_cost_page.GetInt() ) ),
-		    m_Report.count ? ( m_Report.count - 1 ) / perPage : 0 );
+		const unsigned int page =
+		    std::min( unsigned( std::max( 0, cl_render_debug_cost_page.GetInt() ) ),
+		        m_Report.count ? ( m_Report.count - 1 ) / perPage : 0 );
 		const unsigned int first = page * perPage;
 		const unsigned int shown = std::min( m_Report.count - first, perPage );
 		const int height = ( 6 + std::max( 1u, shown ) ) * line + historyHeight;
@@ -100,7 +101,8 @@ public:
 			    double( r.bufferBytes ) / 1024.0 );
 			text( label );
 			V_snprintf( label, sizeof( label ),
-			    "Live %llu | awaiting retirement %llu | logical handles incl. imports; not heap or VRAM",
+			    "Live %llu | awaiting retirement %llu | logical handles incl. imports; not heap or "
+			    "VRAM",
 			    r.live, r.pending );
 			text( label );
 			History( 8, y, width - 16, 64, label, sizeof( label ) );
@@ -121,15 +123,18 @@ public:
 			for ( unsigned int i = 0; i < shown; ++i )
 			{
 				const RenderCoreCostRow &row = m_Report.rows[first + i];
-				V_snprintf( label, sizeof( label ), "D%u %-42.42s CPU %7.3f GPU %7.3f | +%llu -%llu %.1f KiB", row.depth,
-				    row.name, row.cpuMilliseconds, row.gpuMilliseconds, row.created, row.destroyed,
+				V_snprintf( label, sizeof( label ),
+				    "D%u %-42.42s CPU %7.3f GPU %7.3f | +%llu -%llu %.1f KiB", row.depth, row.name,
+				    row.cpuMilliseconds, row.gpuMilliseconds, row.created, row.destroyed,
 				    double( row.bufferBytes ) / 1024.0 );
 				text( label );
 				Bar( 8, y - 8, half, row.cpuMilliseconds );
 				Bar( 16 + half, y - 8, half, row.gpuMilliseconds );
 			}
 		}
-		V_snprintf( label, sizeof( label ), "Page %u (cl_render_debug_cost_page) | %u rows hidden | %u timestamps dropped | refresh 4 Hz",
+		V_snprintf( label, sizeof( label ),
+		    "Page %u (cl_render_debug_cost_page) | %u rows hidden | %u timestamps dropped | "
+		    "refresh 4 Hz",
 		    page, m_Report.omitted + m_Report.count - shown, m_Report.dropped );
 		text( label );
 		text( "Core labels only: excludes game CPU, legacy passes, present and this overlay" );
@@ -159,7 +164,7 @@ private:
 			const int right = int( ( i + 1 ) * half / count );
 			const int middle = ( left + right ) / 2;
 			auto bar = [&]( int a, int b, unsigned long long value, unsigned long long peak,
-			                   int red, int green, int blue )
+			               int red, int green, int blue )
 			{
 				surface->DrawSetColor( red, green, blue, 255 );
 				const int h = int( double( value ) / double( peak ) * ( height - 2 ) );
@@ -167,11 +172,14 @@ private:
 			};
 			bar( x + left, x + middle, sample.created, churnPeak, 40, 210, 100 );
 			bar( x + middle, x + right, sample.destroyed, churnPeak, 255, 160, 40 );
-			bar( x + half + 16 + left, x + half + 16 + middle, sample.live, livePeak, 70, 180, 255 );
-			bar( x + half + 16 + middle, x + half + 16 + right, sample.pending, livePeak, 235, 90, 210 );
+			bar(
+			    x + half + 16 + left, x + half + 16 + middle, sample.live, livePeak, 70, 180, 255 );
+			bar( x + half + 16 + middle, x + half + 16 + right, sample.pending, livePeak, 235, 90,
+			    210 );
 		}
 		V_snprintf( label, labelSize,
-		    "%u recorded frames: create green / destroy orange (0-%llu) | live blue / pending pink (0-%llu)",
+		    "%u recorded frames: create green / destroy orange (0-%llu) | live blue / pending pink "
+		    "(0-%llu)",
 		    count, churnPeak, livePeak );
 	}
 

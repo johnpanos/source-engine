@@ -33,18 +33,24 @@ std::optional<std::string> RunOnce(
 		auto allocated = device->CreateBuffer( bufferDesc );
 		if ( !allocated )
 			return "resource fixture buffer refused";
-		const auto created = device::ResourceActivitySince( initial, device->ReadResourceActivity() );
+		const auto created =
+		    device::ResourceActivitySince( initial, device->ReadResourceActivity() );
 		results.That( created.Created() == 1 && created.bufferBytes == 128 &&
-		                  created.live == initial.live + 1, "resources.creation-and-buffer-bytes" );
+		                  created.live == initial.live + 1,
+		    "resources.creation-and-buffer-bytes" );
 		results.That( !device->CreateBuffer( {} ), "resources.invalid-allocation-refused" );
 		results.That( device->ReadResourceActivity().Created() == initial.Created() + 1,
 		    "resources.failed-allocation-not-counted" );
-		results.That( bool( device->Release( allocated.Value(), {} ) ), "resources.release-accepted" );
-		const auto retired = device::ResourceActivitySince( initial, device->ReadResourceActivity() );
+		results.That(
+		    bool( device->Release( allocated.Value(), {} ) ), "resources.release-accepted" );
+		const auto retired =
+		    device::ResourceActivitySince( initial, device->ReadResourceActivity() );
 		results.That( retired.releaseRequests == 1 && retired.Destroyed() == 0 &&
-		                  retired.pending == initial.pending + 1 && retired.live == initial.live + 1,
+		                  retired.pending == initial.pending + 1 &&
+		                  retired.live == initial.live + 1,
 		    "resources.release-is-not-destruction" );
-		results.That( !device->Release( allocated.Value(), {} ), "resources.double-release-refused" );
+		results.That(
+		    !device->Release( allocated.Value(), {} ), "resources.double-release-refused" );
 		device->Poll();
 		const auto freed = device::ResourceActivitySince( initial, device->ReadResourceActivity() );
 		results.That( freed.Destroyed() == 1 && freed.releaseRequests == 1 &&

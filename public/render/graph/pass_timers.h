@@ -51,7 +51,7 @@ struct PassTimerReport
 	std::uint64_t lastFrame = 0;
 	// In the order each name first recorded, summed over the frames.
 	std::vector<PassTime> passes;
-	std::uint32_t overflowed = 0; // timestamps dropped for want of room
+	std::uint32_t overflowed = 0;         // timestamps dropped for want of room
 	device::ResourceActivity resources{}; // frame recording interval, not summed scopes
 };
 

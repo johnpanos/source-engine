@@ -505,9 +505,29 @@ command-recording time (including scheduling/preemption and instrumentation),
 not game logic or CPU utilization; GPU is elapsed timestamp time, not a hardware
 occupancy counter. CPU and GPU columns overlap and must not be added together.
 No claimed whole-frame total is derived from these rows. The current measured
-coverage is the core world-view recorder and its labeled lighting, shadow,
-depth and AO work, including its nested graph passes. Game CPU, unlabeled core
-preparation/passes, legacy rendering, presentation and VGUI are outside it.
+coverage is the core world-view recorder, preparation (queue/resource/material/
+model/view/upload work), world program families, static/posed/transmitting model
+and dynamic draws, and lighting/shadow/depth/AO work. The draw order and image are
+unchanged. Family rows time complete draws, not individual shader terms. Game CPU,
+other unlabeled core passes, legacy rendering, presentation and VGUI are outside it.
+`cl_render_debug_cost_page N` selects additional pages of the sorted rows (0 is hottest).
+
+Resource metrics use `render.device.v2`'s optional `ResourceActivity` diagnostic
+snapshot (semantics owned by `public/render/device/device.h`). Vulkan supplies
+counters; other adapters report unavailable. Rows show created/destroyed logical
+handles and requested buffer KiB during each inclusive recording scope. The
+summary also separates new buffers, textures (including imported handles), bind
+groups and other handles, and shows release requests versus actual destruction.
+These are device-wide counters: concurrent device work and timer resources can
+contribute; they are not CPU heap calls, physical VRAM usage, driver-internal
+allocations, or internal upload-ring/staging allocations. No scope totals are summed.
+
+Two histories retain up to 64 completed recording intervals independently of
+console statistics: green/orange bars show creations/destructions; blue/pink bars
+show live handles/pending retirement. Each plot labels its own count scale. Repeated
+creation and destruction with a stable live count exposes churn; a rising live or
+pending count instead shows retention/backlog. Samples can have frame gaps; the
+history is not a wall-time or FPS plot. No new synchronization or GPU wait is used.
 
 Readback never waits for the GPU: the panel shows the completed frame ID and
 sample age, with waiting/unsupported states rather than zero cost. The report

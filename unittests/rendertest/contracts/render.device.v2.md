@@ -142,3 +142,14 @@ legacy engine or extension vtables; all in-tree core providers implement it.
 The shared suite checks independent snapshots after caller mutation, use without
 an encoder write, rejection of destination use, and cleanup. The texture cache
 is its first consumer, eliminating the ring-to-staging GPU transfer.
+
+
+### Optional resource activity diagnostics
+
+`IRenderDevice2::ReadResourceActivity` has the semantics documented by
+`public/render/device/device.h`. Unsupported adapters return `supported=false`;
+they do not claim zero allocations. Vulkan implements the diagnostic, with the
+native `render_lab suite cost-overlay --validate` fixture checking successful and
+failed allocation, release versus destruction, duplicate release, buffer bytes,
+and recovery discontinuities. Logical handle metrics do not certify allocator
+or physical VRAM use. Reading diagnostics must not wait for GPU completion.

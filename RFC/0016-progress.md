@@ -6980,3 +6980,63 @@ extends the existing timer/overlay owners; no new lighting implementation.
 World-pass labels separate preparation, world program families, static/posed/
 transmitting models and dynamic draws without reordering or removing draws.
 Validation and resource-counter coverage are recorded below after verification.
+
+
+## K5: completion-safe world group resource reuse (2026-10-02)
+
+User scope: reduce render-core resource churn, copies and repeated allocation,
+including the game's native core. `render.pass.world` remains the sole owner of
+its groups. Its private `GroupResources` retains up to 256 idle/pending group
+buffers within 64 MiB and interns up to 64 sampler descriptions. These are cache
+bounds, not draw limits: overflow uses ordinary allocation and fenced release.
+The cache does not assume the desktop's 128 GiB is available on other profiles.
+
+Retired constants/storage become available only after the actual covering
+completion token. Exact size and usage preserve descriptor ranges and shader
+array lengths; the prior buffer usage is retained for the next upload barrier.
+One completed token certifies earlier submissions only on the same queue and
+in the same epoch. This avoids repeated timeline queries for one retired batch.
+Borrowed GPU assignment buffers never enter the pool. Same-frame views remain
+separate, frame zero waits for teardown, and bind groups still retire behind
+their original tokens. Samplers remain owned until drained device teardown;
+full descriptor equality includes comparison, filters, address and anisotropy.
+Transient group retirement now moves the group's vectors instead of copying them.
+Device replacement also drops all retired handles from the old device.
+
+Evidence: `quality-results/rendercore-reuse-2026-10-02/`. The Vulkan microbenchmark
+alternates fresh creation and reuse, with ten warm-ups and fifty measured trials
+per mode. Each synthetic view requests six buffers (128, 1024, 4096, 65536, 64,
+16 bytes) and five samplers, uploads all buffer contents, submits, waits, then
+retires/polls. It measures this resource workload, not drawing a complete scene.
+`bench-repro.txt`, source, logs and identity are retained for reproduction.
+
+| Workload | Fresh allocation p50/p95 | Reuse acquisition p50/p95 | Fresh total p50/p95 | Reuse total p50/p95 |
+| --- | --- | --- | --- | --- |
+| 1 view | 1.974 / 2.384 us | 0.441 / 0.541 us | 50.315 / 82.014 us | 45.115 / 113.563 us |
+| 32 views | 50.825 / 72.677 us | 1.814 / 3.196 us | 759.417 / 870.877 us | 571.544 / 678.956 us |
+
+The 32-view workload creates zero new buffers after warm-up versus 9,600 across
+fifty fresh-allocation trials. Its acquisition median falls about 96%, and total
+median about 25%. The one-view total p95 is worse in this run; no tail-latency or
+whole-frame improvement is certified. A separate validation-enabled run reports
+zero Vulkan validation messages and zero leaked port resources. Complete High
+120 FPS, game-route timings, mobile pressure/power and non-Linux evidence remain
+open. Descriptor-group recreation and repeated uploads remain follow-up work.
+
+Validation uses W18/W19 in `render.world.null`: delayed completion, exact shape,
+state transitions, later submissions/other queues, bounded count and bytes,
+oversized allocation, sampler overflow, failure and drained teardown, two views
+in one frame, unknown frame serials and borrowed GPU buffers. A seeded helper
+which ignores completion fails three lifetime assertions (`negative.log`). Native
+`render_lab suite posed-model --validate` passes 66 checks, including full pixel
+equality after reusing a view; `view-state --validate` passes 16 portal/stencil
+checks. Native device conformance passes 1,074 checks. Existing lab and game
+`shaderapivulkan` Waf profiles build successfully without reconfiguration.
+Architecture check, baseline and inventory verification pass. The new private
+header passes pinned style; broader changed-line style reports unrelated ongoing
+cost-overlay edits (logs retained). A missing aggregate initializer in that
+concurrent timer work was supplied so the strict Waf build could proceed.
+
+No render quality, shader, effect, resolution, sample count or frozen-path behavior
+was changed. R89/R96 resource efficiency improves; their larger acceptance gates
+and RFC 0016's hard render budgets are not certified by this microbenchmark.

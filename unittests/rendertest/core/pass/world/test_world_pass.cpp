@@ -44,6 +44,7 @@
 #include "../../../../../render/pass/world/group_resources.h"
 #include "testing/checks.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <memory>
 #include <string>
@@ -141,14 +142,38 @@ WorldView View( std::vector<std::uint32_t> surfaces, std::uint64_t hostFrame = 0
 	return view;
 }
 
+class CostLabels final : public ILabelObserver
+{
+public:
+	void OnBeginLabel( CommandEncoder &, std::string_view name ) override
+	{
+		names.emplace_back( name );
+		++depth;
+	}
+	void OnEndLabel( CommandEncoder & ) override
+	{
+		if ( depth == 0 )
+			underflow = true;
+		--depth;
+	}
+	bool Has( std::string_view name ) const
+	{
+		return std::find( names.begin(), names.end(), name ) != names.end();
+	}
+	std::vector<std::string> names;
+	int depth = 0;
+	bool underflow = false;
+};
+
 // Records slot `tag` into one submission, as the scene stage records a
 // section; true when the device accepted it.
-bool RecordSlot(
-    IRenderDevice2 &device, WorldPass &pass, std::uint32_t tag, const WorldTarget &target )
+bool RecordSlot( IRenderDevice2 &device, WorldPass &pass, std::uint32_t tag,
+    const WorldTarget &target, ILabelObserver *observer = nullptr )
 {
 	auto encoder = device.BeginEncoder( QueueKind::kGraphics );
 	if ( !encoder )
 		return false;
+	encoder.Value().SetLabelObserver( observer );
 	pass.Record( tag, encoder.Value(), target );
 	return device.Submit( QueueKind::kGraphics, { &encoder.Value(), 1 }, {} ).HasValue();
 }
@@ -213,6 +238,33 @@ void GroupReuse( testing::Checks &checks )
 	(void)device.Poll();
 	checks.That( device.LiveResourceCount() == 0, "W18.drained-reuse-owner-releases-everything" );
 
+	// Completion of one token must not certify later work or another queue.
+	auto early = resources.Acquire( device, 16, ResourceUsage::kUniform ).Value();
+	auto late = resources.Acquire( device, 16, ResourceUsage::kUniform ).Value();
+	auto otherQueue = resources.Acquire( device, 16, ResourceUsage::kUniform ).Value();
+	auto submitEmpty = [&]( QueueKind queue )
+	{
+		auto empty = device.BeginEncoder( queue ).Value();
+		return device.Submit( queue, { &empty, 1 }, {} ).Value();
+	};
+	const auto earlyToken = submitEmpty( QueueKind::kGraphics );
+	const auto lateToken = submitEmpty( QueueKind::kGraphics );
+	const auto otherToken = submitEmpty( QueueKind::kCompute );
+	resources.Retire( device, early, earlyToken );
+	resources.Retire( device, late, lateToken );
+	resources.Retire( device, otherQueue, otherToken );
+	control->CompleteThrough( QueueKind::kGraphics, earlyToken.value );
+	auto completeOnly = resources.Acquire( device, 16, ResourceUsage::kUniform ).Value();
+	auto pendingStill = resources.Acquire( device, 16, ResourceUsage::kUniform ).Value();
+	checks.That( completeOnly.id == early.id && pendingStill.id != late.id &&
+	                 pendingStill.id != otherQueue.id,
+	    "W18.completion-does-not-cover-later-submissions-or-other-queues" );
+	control->CompleteAll();
+	resources.Retire( device, completeOnly, {} );
+	resources.Retire( device, pendingStill, {} );
+	resources.Release( device );
+	(void)device.Poll();
+
 	// Retained cache bounds never become a rendering limit. Entries beyond
 	// the cap are destroyed through their original completion token.
 	std::vector<GroupResources::Buffer> buffers;
@@ -240,7 +292,8 @@ void GroupReuse( testing::Checks &checks )
 	auto oversized = resources.Acquire( device, 65u << 20, ResourceUsage::kStorageRead ).Value();
 	resources.Retire( device, oversized, {} );
 	(void)device.Poll();
-	checks.That( device.LiveResourceCount() == 1, "W18.oversized-buffer-is-served-but-not-retained" );
+	checks.That(
+	    device.LiveResourceCount() == 1, "W18.oversized-buffer-is-served-but-not-retained" );
 	resources.Release( device );
 	(void)device.Poll();
 	bool samplerOwnership = true;
@@ -329,7 +382,21 @@ int main()
 
 	const std::uint32_t tag = pass.QueueView( View( { 0, 1 } ) );
 	checks.That( IsWorldTag( tag ), "W2.a-view-queues-a-world-tag" );
-	checks.That( RecordSlot( device, pass, tag, target ), "W2.the-slot-records-and-submits" );
+	CostLabels labels;
+	checks.That(
+	    RecordSlot( device, pass, tag, target, &labels ), "W2.the-slot-records-and-submits" );
+	checks.That( labels.depth == 0 && !labels.underflow &&
+	                 labels.Has( "prepare world resources" ) &&
+	                 labels.Has( "prepare world materials" ) &&
+	                 labels.Has( "world / lightmapped" ) && labels.Has( "world / unlit" ),
+	    "cost.world-families-and-preparation-balanced" );
+	{
+		WorldPass empty;
+		CostLabels failed;
+		checks.That( RecordSlot( device, empty, tag, target, &failed ) && failed.depth == 0 &&
+		                 !failed.underflow && empty.Failures() == 1,
+		    "cost.early-failure-closes-preparation" );
+	}
 	WorldStats stats = pass.Stats();
 	checks.That( stats.viewsDrawn == 1 && stats.surfacesDrawn == 2 && stats.viewsFailed == 0,
 	    "W2.both-surfaces-draw" );

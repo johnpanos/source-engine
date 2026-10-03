@@ -2378,7 +2378,8 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 	    [&]( const std::vector<std::uint32_t> &list,
 	        const std::vector<Resources::Material> &materials,
 	        const std::function<std::optional<PipelineId>( const Resources::Material & )>
-	            &pipelineOf, bool breakdown = false )
+	            &pipelineOf,
+	        bool breakdown = false )
 	{
 		RecordSection family( encoder );
 		std::uint32_t boundMaterial = ~0u;
@@ -2741,12 +2742,14 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 	encoder.SetViewport( view.viewport );
 	RecordSection draws( encoder );
 	draws.Select( "world surfaces" );
-	drawSurfaces( order, r.materials,
+	drawSurfaces(
+	    order, r.materials,
 	    [&]( const Resources::Material &m ) -> std::optional<PipelineId>
 	    {
 		    return worldStatePipeline( m, m.program.request.pipeline, target.drawState,
 		        frame::DebugSpecializationFor( view.debug, m.program.name ) );
-	    }, true );
+	    },
+	    true );
 	draws.Select( "prepare model draw order" );
 	// The model list is built in caller order. Opaque draws can be grouped by
 	// material, while blended surfaces must stay after them and retain their
@@ -2807,7 +2810,9 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		const WorldSurface &surface = mesh.surfaces[draw.surface];
 		const Resources::Material &m = r.modelMaterials[draw.material];
 		draws.Select( m.program.sceneColor ? "models transmitting / "
-		              : draw.posed ? "models posed / " : "models static / ", m.program.name );
+		              : draw.posed         ? "models posed / "
+		                                   : "models static / ",
+		    m.program.name );
 		if ( m.program.sceneColor && !captureAttempted )
 		{
 			RecordSection capture( encoder );
