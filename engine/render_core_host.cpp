@@ -41,6 +41,7 @@ struct RenderCoreHostState
 	const char *deviceName = nullptr;
 	render::legacy::ILegacyCapabilities *capabilities = nullptr;
 	IRenderCoreWorld *world = nullptr;
+	RenderCoreBinding::TemporalControl temporal;
 	IRenderCorePanels *panels = nullptr;
 	gpu_compute::IGpuCompute *gpuCompute = nullptr; // the core's (RFC 0016 K12)
 	std::unique_ptr<render::scene::IRenderScene> worldScene;
@@ -49,7 +50,7 @@ struct RenderCoreHostState
 	uint64 frame = 0;
 	uint64 failedFrames = 0;
 	uint64 unmatchedViews = 0;
-	float temporalScale = 2.0f / 3.0f;
+	float temporalScale = 0.0f;
 };
 
 RenderCoreHostState &Host()
@@ -103,10 +104,10 @@ ConVar cl_render_debug_cost( "cl_render_debug_cost", "0", FCVAR_CHEAT,
 ConVar cl_render_debug_stats( "cl_render_debug_stats", "0", 0,
     "Print the render core's per-pass GPU times (cl_render_debug_gpu_timers) every second." );
 // The render core's quality settings (RFC 0016 K12; the video options).
-ConVar r_temporal_scale( "r_temporal_scale", "0.6666666667", FCVAR_ARCHIVE,
-    "FSR render size relative to output: 1 native AA, 0.666667 quality, "
-    "0.588235 balanced, 0.5 performance. Requires the FSR provider at startup.",
-    true, 0.5f, true, 1.0f );
+ConVar r_temporal_scale( "r_temporal_scale", "0", FCVAR_ARCHIVE,
+    "FSR: 0 off, 1 native AA, 0.666667 quality, 0.588235 balanced, 0.5 performance. "
+    "Requires an FSR-capable session.",
+    true, 0.0f, true, 1.0f );
 ConVar r_core_dynamic_draws( "r_core_dynamic_draws", "0", FCVAR_CHEAT,
     "Experimental rendercore dynamic-material handoff. Explicit opt-in only; "
     "whole-cohort queued rendering and image acceptance are incomplete." );
@@ -196,6 +197,7 @@ DLL_EXPORT bool Engine_BindRenderCore( const RenderCoreBinding *pBinding )
 	host.deviceName = pBinding->deviceName;
 	host.capabilities = pBinding->capabilities;
 	host.world = pBinding->world;
+	host.temporal = pBinding->temporal;
 	host.panels = pBinding->panels;
 	host.gpuCompute = pBinding->gpuCompute;
 	host.bound = true;
@@ -338,11 +340,18 @@ void RenderCoreHost_BeginFrame()
 	if ( !host.bound || host.inFrame )
 		return;
 	const float temporalScale = r_temporal_scale.GetFloat();
-	if ( host.world && std::isfinite( temporalScale ) && temporalScale >= 0.5f &&
-	     temporalScale <= 1.0f && temporalScale != host.temporalScale )
+	if ( host.world && std::isfinite( temporalScale ) &&
+	     ( temporalScale == 0.0f || ( temporalScale >= 0.5f && temporalScale <= 1.0f ) ) &&
+	     temporalScale != host.temporalScale )
 	{
-		host.world->ResetTemporalHistory();
-		host.temporalScale = temporalScale;
+		const bool enableChanged = host.world->TemporalEnabled() != ( temporalScale != 0.0f );
+		if ( host.temporal.setEnabled &&
+		     host.temporal.setEnabled( host.temporal.context, temporalScale != 0.0f ) )
+		{
+			if ( !enableChanged )
+				host.world->ResetTemporalHistory();
+			host.temporalScale = temporalScale;
+		}
 	}
 	render::frame::FrameDesc desc;
 	desc.frame = ++host.frame;
@@ -644,7 +653,7 @@ bool RenderCoreHost_TemporalJitter( float *x, float *y )
 // Separate optional interface; does not alter IVEngineClient's preserved ABI.
 namespace
 {
-class TemporalViews final : public IRenderTemporalViews
+class TemporalViews final : public IRenderTemporalViews2
 {
 public:
 	void SelectView( unsigned long long identity ) override
@@ -658,6 +667,11 @@ public:
 			Host().world->ResetTemporalHistory();
 	}
 	bool Enabled() const override { return Host().world && Host().world->TemporalEnabled(); }
+	bool Available() const override
+	{
+		const auto &control = Host().temporal;
+		return control.available && control.available( control.context );
+	}
 	float RenderScale() const override { return Host().temporalScale; }
 	bool Reconstruct( int x, int y, int rw, int rh, int ow, int oh, float dt ) override
 	{
@@ -672,3 +686,5 @@ void *TemporalViewsFactory()
 }
 EXPOSE_INTERFACE_FN(
     TemporalViewsFactory, IRenderTemporalViews, RENDER_TEMPORAL_VIEWS_INTERFACE_VERSION );
+EXPOSE_INTERFACE_FN(
+    TemporalViewsFactory, IRenderTemporalViews2, RENDER_TEMPORAL_VIEWS2_INTERFACE_VERSION );

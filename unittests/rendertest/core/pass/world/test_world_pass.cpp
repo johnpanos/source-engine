@@ -218,6 +218,9 @@ void OpaqueBatching( testing::Checks &checks )
 	const auto wallTag = pass.QueueView( wall ), propTag = pass.QueueView( prop );
 	const std::uint32_t pair[] = { wallTag, propTag };
 	checks.That( pass.OpaqueBatchSize( pair, 1 ) == 2, "W21.world-model-prefix" );
+	checks.That( pass.TemporalView( wallTag, 0 ) && pass.TemporalView( propTag, 0 ) &&
+	                 !pass.TemporalView( 0, 0 ),
+	    "W21.queued-temporal-choice" );
 	for ( int boundary = 0; boundary != 12; ++boundary )
 	{
 		WorldView changed = prop;
@@ -351,6 +354,7 @@ void OpaqueBatching( testing::Checks &checks )
 	checks.That( submission && pass.Failures() == 0 && pass.Stats().viewsDrawn == 2 &&
 	                 pass.Stats().staticDrawsDrawn == 1,
 	    "W21.batch-records-all-tickets" );
+	checks.That( pass.TemporalView( wallTag, target.streamEpoch ), "W21.recorded-temporal-choice" );
 	checks.That( capturedViewports == 1, "W21.batch-viewport-observed" );
 	if ( submission )
 	{

@@ -110,9 +110,19 @@ architecture; auxiliary features do not displace the platform infrastructure.
 
 `./play_p2 --configure-only` creates an isolated `build-p2` Waf configuration
 and stages VPKs from the installed Portal 2 game into `run/runtime-p2` as
-symlinks. `./play_p2` builds and launches this repository's Portal 2 target;
-it currently stops at the [missing source inventory](game/shared/portal2/MISSING.md).
+symlinks. `./play_p2` builds and launches this repository's Portal 2 target.
 `./play_p2 --retail` launches the installed game directly.
+
+`git submodule update --init external/fsr411 external/fsr-vulkan-headers`
+then `./play_p2_fsr` builds and launches the experimental FSR-capable Portal 2
+profile from this checkout. It uses separate `build-p2-fsr` and
+`run/runtime-p2-fsr` directories. In **Video → FSR render scale**, choose Off
+(the saved default), Native AA, Quality, Balanced or Performance. The launcher
+selects the FSR-capable Vulkan device and its asset directory; the menu selects
+whether reconstruction runs. A GPU without the required FSR features refuses
+this experimental profile at startup; `./play_p2` remains the ordinary path.
+The [FSR checkpoint](RFC/0019-fsr-game-wip-2026-10-03.md) records open image and
+runtime qualification gates.
 
 # How to Build
 

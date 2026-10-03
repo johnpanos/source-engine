@@ -36,9 +36,9 @@ using namespace BaseModUI;
 #define VIDEO_UISCALE_COMMAND_PREFIX "_uiscale"
 #define VIDEO_TEMPORALSCALE_COMMAND_PREFIX "_temporalscale"
 
-static const float s_TemporalScales[] = { 1.0f, 2.0f / 3.0f, 1.0f / 1.7f, 0.5f };
+static const float s_TemporalScales[] = { 0.0f, 1.0f, 2.0f / 3.0f, 1.0f / 1.7f, 0.5f };
 static const char *s_TemporalScaleNames[] = {
-    "Native AA (100%)", "Quality (67%)", "Balanced (59%)", "Performance (50%)" };
+    "Off", "Native AA (100%)", "Quality (67%)", "Balanced (59%)", "Performance (50%)" };
 
 // The UI scale row (ui_scale; 0 follows the display's scale). The shipped
 // video.res has no such row, so PreApplyControlSettings adds it.
@@ -91,7 +91,7 @@ m_autodelete_pResourceLoadConditions( (KeyValues*) NULL )
 	m_drpSplitScreenDirection = NULL;
 	m_drpUIScale = NULL;
 	m_drpTemporalScale = NULL;
-	m_flTemporalScale = 1.0f;
+	m_flTemporalScale = 0.0f;
 	m_flUIScale = 0.0f;
 	m_btnAdvanced = NULL;
 
@@ -520,7 +520,7 @@ void Video::OnCommand( const char *command )
 	{
 		const int choice = atoi( command + Q_strlen( VIDEO_TEMPORALSCALE_COMMAND_PREFIX ) );
 		if ( choice >= 0 && choice < ARRAYSIZE( s_TemporalScales ) && g_pRenderTemporalViews &&
-		     g_pRenderTemporalViews->Enabled() )
+		     g_pRenderTemporalViews->Available() )
 		{
 			m_flTemporalScale = s_TemporalScales[choice];
 			m_bDirtyValues = true;
@@ -887,15 +887,20 @@ public:
 		CGameUIConVarRef powerSaving( "mat_powersavingsmode" );
 		CGameUIConVarRef uiScale( "ui_scale" );
 		CGameUIConVarRef temporalScale( "r_temporal_scale" );
+		CGameUIConVarRef antialias( "mat_antialias" );
+		if ( to.temporalScale != 0.0f && !antialias.IsValid() )
+			return false;
 		if ( from.temporalScale != to.temporalScale &&
 		     ( !temporalScale.IsValid() || !g_pRenderTemporalViews ||
-		         !g_pRenderTemporalViews->Enabled() ) )
+		         !g_pRenderTemporalViews->Available() ) )
 			return false;
 		if ( ( from.powerSaving != to.powerSaving && !powerSaving.IsValid() ) ||
 		     ( from.uiScale != to.uiScale && !uiScale.IsValid() ) )
 			return false;
 		if ( to.borderless && !to.windowed )
 			return false;
+		if ( to.temporalScale != 0.0f && antialias.GetInt() != 0 )
+			antialias.SetValue( 0 );
 		if ( from.width != to.width || from.height != to.height || from.windowed != to.windowed ||
 		     from.borderless != to.borderless )
 		{
@@ -932,7 +937,7 @@ bool Video::ApplyChanges()
 		desired.windowed = m_bWindowed;
 		desired.borderless = m_bNoBorder;
 		desired.powerSaving = m_nPowerSavingsMode;
-		if ( g_pRenderTemporalViews && g_pRenderTemporalViews->Enabled() )
+		if ( g_pRenderTemporalViews && g_pRenderTemporalViews->Available() )
 			desired.temporalScale = m_flTemporalScale;
 		// Keep an exact console value when the selected menu choice is its nearest label.
 		if ( GetUIScaleChoice( desired.uiScale ) != GetUIScaleChoice( m_flUIScale ) )
@@ -1024,7 +1029,7 @@ void Video::SetTemporalScaleState()
 {
 	if ( !m_drpTemporalScale )
 		return;
-	const bool available = g_pRenderTemporalViews && g_pRenderTemporalViews->Enabled();
+	const bool available = g_pRenderTemporalViews && g_pRenderTemporalViews->Available();
 	m_drpTemporalScale->SetEnabled( available );
 	if ( !available )
 	{
@@ -1042,8 +1047,11 @@ void Video::SetTemporalScaleState()
 	{
 		char text[96];
 		const float scale = i == selected ? m_flTemporalScale : s_TemporalScales[i];
-		V_snprintf( text, sizeof( text ), "%s: %d x %d", s_TemporalScaleNames[i],
-		    int( m_iResolutionWidth * scale ), int( m_iResolutionHeight * scale ) );
+		if ( scale == 0.0f )
+			V_strncpy( text, s_TemporalScaleNames[i], sizeof( text ) );
+		else
+			V_snprintf( text, sizeof( text ), "%s: %d x %d", s_TemporalScaleNames[i],
+			    int( m_iResolutionWidth * scale ), int( m_iResolutionHeight * scale ) );
 		m_drpTemporalScale->ModifySelectionString(
 		    CFmtStr( "%s%d", VIDEO_TEMPORALSCALE_COMMAND_PREFIX, i ), text );
 		if ( i == selected )
@@ -1200,7 +1208,7 @@ bool Video::CheckTemporalScale( int choice )
 	return true;
 }
 
-CON_COMMAND_F( ui_show_video, "Open video settings; [0..3] selects and applies the FSR scale row",
+CON_COMMAND_F( ui_show_video, "Open video settings; [0..4] selects and applies the FSR scale row",
     FCVAR_CHEAT )
 {
 	CBaseModPanel &panel = CBaseModPanel::GetSingleton();

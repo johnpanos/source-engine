@@ -317,6 +317,16 @@ extern "C" RenderCore *RenderCore_Create( const RenderCoreConfig *config, Render
 	core->forwarded =
 	    std::make_unique<render::composition::ForwardedSlots>( *core->world, *core->panels );
 	core->world->EnableTemporal( config->temporal, config->temporalAssets );
+	core->binding.temporal.context = core->world.get();
+	core->binding.temporal.setEnabled = []( void *context, bool enabled )
+	{
+		return static_cast<render::composition::CoreWorld *>( context )->SetTemporalEnabled(
+		    enabled );
+	};
+	core->binding.temporal.available = []( const void *context )
+	{
+		return static_cast<const render::composition::CoreWorld *>( context )->TemporalAvailable();
+	};
 	core->renderer->AddStageHooks( core->world.get() );
 	core->frontend->SetForwardedRecorder( core->forwarded.get() );
 	core->binding.world = core->world.get();

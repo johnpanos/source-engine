@@ -133,7 +133,13 @@ int main()
 	CHECK( service.Stage( draft ) && service.Apply( backend ) && service.Save( backend ) );
 	CHECK( int( backend.lastApplied.width * backend.lastApplied.temporalScale ) == 1280 );
 	CHECK( int( backend.lastApplied.height * backend.lastApplied.temporalScale ) == 720 );
-	for ( float invalidScale : { 0.0f, 0.49f, 1.01f, std::numeric_limits<float>::infinity(),
+	draft.temporalScale = 0.0f;
+	CHECK( service.Stage( draft ) );
+	service.Cancel();
+	CHECK( service.Draft().temporalScale == 2.0f / 3.0f );
+	CHECK( service.Stage( draft ) && service.Apply( backend ) && service.Save( backend ) );
+	CHECK( backend.lastApplied.temporalScale == 0.0f );
+	for ( float invalidScale : { 0.1f, 0.49f, 1.01f, std::numeric_limits<float>::infinity(),
 	          std::numeric_limits<float>::quiet_NaN() } )
 	{
 		invalid = draft;

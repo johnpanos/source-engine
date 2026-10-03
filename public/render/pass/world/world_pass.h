@@ -509,6 +509,8 @@ public:
 	// Returns the view-owned snapshot for the slot being recorded or replayed.
 	std::shared_ptr<const StageLightingInputs> LightingInputs(
 	    std::uint32_t tag, std::uint64_t streamEpoch ) const;
+	// The view's queued temporal choice, including replay of the same stream.
+	bool TemporalView( std::uint32_t tag, std::uint64_t streamEpoch ) const;
 	// WorldStats::viewsFailed alone (cheap, for a per-view policy check).
 	std::uint64_t Failures() const;
 

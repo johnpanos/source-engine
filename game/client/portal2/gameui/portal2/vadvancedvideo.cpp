@@ -16,6 +16,7 @@
 #include "modes.h"
 #include "videocfg/videocfg.h"
 #include "vgenericconfirmation.h"
+#include "render_stage_marks.h"
 
 #include "materialsystem/materialsystem_config.h"
 #include "tier1/fmtstr.h"
@@ -710,6 +711,9 @@ void CAdvancedVideo::SetupState( bool bRecommendedSettings )
 	}
 
 	ProcessAAList();
+	if ( m_drpAntialias )
+		m_drpAntialias->SetEnabled(
+		    !( g_pRenderTemporalViews && g_pRenderTemporalViews->Enabled() ) );
 
 	SetAntiAliasingState();
 	SetFilteringState();
@@ -885,7 +889,9 @@ void CAdvancedVideo::OnCommand(const char *command)
 #endif
 	else if ( StringHasPrefix( command, VIDEO_ANTIALIAS_COMMAND_PREFIX ) )
 	{
-		if ( !m_bAcceptWarning[VW_ANTIALIASING] )
+		if ( g_pRenderTemporalViews && g_pRenderTemporalViews->Enabled() )
+			SetAntiAliasingState();
+		else if ( !m_bAcceptWarning[VW_ANTIALIASING] )
 		{
 			ShowWarning( VW_ANTIALIASING );
 			SetAntiAliasingState();
@@ -1204,8 +1210,9 @@ void CAdvancedVideo::ApplyChanges()
 
 	CGameUIConVarRef mat_antialias( "mat_antialias" );
 	CGameUIConVarRef mat_aaquality( "mat_aaquality" );
-	mat_antialias.SetValue( m_nAAModes[ m_iAntiAlias ].m_nNumSamples );
-	mat_aaquality.SetValue( m_nAAModes[ m_iAntiAlias ].m_nQualityLevel );
+	const bool temporal = g_pRenderTemporalViews && g_pRenderTemporalViews->Enabled();
+	mat_antialias.SetValue( temporal ? 0 : m_nAAModes[m_iAntiAlias].m_nNumSamples );
+	mat_aaquality.SetValue( temporal ? 0 : m_nAAModes[m_iAntiAlias].m_nQualityLevel );
 
 	CGameUIConVarRef mat_forceaniso( "mat_forceaniso" );
 	mat_forceaniso.SetValue( m_iFiltering );

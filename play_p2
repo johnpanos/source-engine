@@ -13,7 +13,12 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 P2_STEAM_ROOT="${P2_STEAM_ROOT:-$HOME/.local/share/Steam/steamapps/common/Portal 2}"
 P2_RUNTIME="${P2_RUNTIME:-$ROOT/run/runtime-p2}"
 P2_BUILD_DIR="${P2_BUILD_DIR:-$ROOT/build-p2}"
-P2_WAFLOCK=.lock-waf-p2
+P2_WAFLOCK="${P2_WAFLOCK:-.lock-waf-p2}"
+P2_FSR="${P2_FSR:-0}"
+if [[ "$P2_FSR" != 0 && "$P2_FSR" != 1 ]]; then
+    echo "play_p2: P2_FSR must be 0 or 1" >&2
+    exit 1
+fi
 PHYSICS="${PHYSICS:-vphysics_box3d}"
 PHYSICS_ARGS="${PHYSICS_ARGS--physics_shape_inertia}"
 # Job system (RFC 0003), as run.conf's JOB_ARGS for Portal: the pooled
@@ -59,12 +64,24 @@ if [[ -d "$P2_BUILD_DIR/c4che" ]]; then
         echo "play_p2: $P2_BUILD_DIR is configured for a different game" >&2
         exit 1
     fi
+    if [[ "$P2_FSR" == 1 ]] && ! grep -q '^RENDER_FSR411 = True$' "$P2_BUILD_DIR/c4che/_cache.py"; then
+        echo "play_p2: $P2_BUILD_DIR was not configured with FSR 4.1.1" >&2
+        exit 1
+    fi
+    if [[ "$P2_FSR" == 0 ]] && grep -q '^RENDER_FSR411 = True$' "$P2_BUILD_DIR/c4che/_cache.py"; then
+        echo "play_p2: $P2_BUILD_DIR is an FSR build; select its FSR launcher" >&2
+        exit 1
+    fi
 else
     echo "play_p2: configuring Portal 2 build in $P2_BUILD_DIR"
+    fsr_config=()
+    if [[ "$P2_FSR" == 1 ]]; then
+        fsr_config+=(--render-fsr411)
+    fi
     (cd "$ROOT" && WAFLOCK="$P2_WAFLOCK" python3 ./waf configure \
         --platform-provider=sdl3 --render-backend=native-vulkan \
         --build-games=portal2 --physics-backend=both --video-provider=bink --disable-warns \
-        -T release -o "$P2_BUILD_DIR" --prefix="$P2_BUILD_DIR/install")
+        "${fsr_config[@]}" -T release -o "$P2_BUILD_DIR" --prefix="$P2_BUILD_DIR/install")
 fi
 
 if [[ "$mode" == "--prepare" || "$mode" == "--configure-only" ]]; then
@@ -103,6 +120,13 @@ for arg in "$@"; do
 done
 # shellcheck disable=SC2206  # the ConVar lists are intentionally word-split
 config_args=($PHYSICS_ARGS $JOB_ARGS $MAT_ARGS)
+if [[ "$P2_FSR" == 1 ]]; then
+    if [[ ! -d "$ROOT/external/fsr411/assets" ]]; then
+        echo "play_p2: FSR assets are missing; initialize external/fsr411" >&2
+        exit 1
+    fi
+    render_args+=(-fsr -fsr-assets "$ROOT/external/fsr411/assets")
+fi
 if [[ ${#render_args[@]} -gt 0 ]]; then
     echo "play_p2: render switches: ${render_args[*]}"
 fi

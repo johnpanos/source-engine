@@ -63,8 +63,20 @@ public:
 	void BindHost( const legacy::RenderCallQueueHost *host ) { m_Host = host; }
 	void EnableTemporal( bool enabled, const char *assets )
 	{
-		m_TemporalEnabled = enabled;
+		m_TemporalAvailable = enabled;
 		m_TemporalAssets = assets ? assets : "";
+	}
+	bool TemporalAvailable() const { return m_TemporalAvailable; }
+	bool SetTemporalEnabled( bool enabled )
+	{
+		if ( enabled && !m_TemporalAvailable )
+			return false;
+		if ( m_TemporalEnabled != enabled )
+		{
+			ResetTemporalHistory();
+			m_TemporalEnabled = enabled;
+		}
+		return true;
 	}
 
 	// IRenderCoreWorld (the engine, main thread).
@@ -186,7 +198,8 @@ public:
 private:
 	void RecordWorldBatch( std::span<const std::uint32_t> tags, device::CommandEncoder &encoder,
 	    const legacy::CorePassTarget &target );
-	bool m_TemporalEnabled = false;
+	bool m_TemporalAvailable = false;
+	bool m_TemporalEnabled = false; // main-sequence selection; queued views retain their choice
 	std::string m_TemporalAssets;
 	std::uint64_t m_TemporalGeneration = 1;
 	std::uint32_t m_JitterSequence = 0;

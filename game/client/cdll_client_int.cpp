@@ -216,7 +216,7 @@ extern IClientMode *GetClientModeNormal();
 // IF YOU ADD AN INTERFACE, EXTERN IT IN THE HEADER FILE.
 IVEngineClient	*engine = NULL;
 IRenderStageMarkers *g_pRenderStageMarkers = NULL;
-IRenderTemporalViews *g_pRenderTemporalViews = NULL;
+IRenderTemporalViews2 *g_pRenderTemporalViews = NULL;
 IRenderMaterialBlocks *g_pRenderMaterialBlocks = NULL;
 IVModelRender *modelrender = NULL;
 IVEfx *effects = NULL;
@@ -1072,7 +1072,7 @@ int CHLClient::Init( CreateInterfaceFn appSystemFactory, CreateInterfaceFn physi
 	g_pRenderStageMarkers =
 	    (IRenderStageMarkers *)appSystemFactory( RENDER_STAGE_MARKERS_INTERFACE_VERSION, NULL );
 	g_pRenderTemporalViews =
-	    (IRenderTemporalViews *)appSystemFactory( RENDER_TEMPORAL_VIEWS_INTERFACE_VERSION, NULL );
+	    (IRenderTemporalViews2 *)appSystemFactory( RENDER_TEMPORAL_VIEWS2_INTERFACE_VERSION, NULL );
 	// The core's material blocks, for mat_proxy_capture (RFC 0016 K4).
 	g_pRenderMaterialBlocks =
 	    (IRenderMaterialBlocks *)appSystemFactory( RENDER_MATERIAL_BLOCKS_INTERFACE_VERSION, NULL );

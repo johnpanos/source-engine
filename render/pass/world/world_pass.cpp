@@ -1044,6 +1044,20 @@ std::shared_ptr<const StageLightingInputs> WorldPass::LightingInputs(
 	return {};
 }
 
+bool WorldPass::TemporalView( std::uint32_t tag, std::uint64_t streamEpoch ) const
+{
+	const State &s = *m_State;
+	std::lock_guard<std::mutex> guard( s.lock );
+	const std::uint32_t serial = tag & kWorldSerialMask;
+	for ( auto kept = s.recorded.rbegin(); kept != s.recorded.rend(); ++kept )
+		if ( kept->serial == serial && ( streamEpoch == 0 || kept->recordedStream == streamEpoch ) )
+			return kept->view.temporalView != 0;
+	for ( const State::Queued &queued : s.views )
+		if ( queued.serial == serial )
+			return queued.view.temporalView != 0;
+	return false;
+}
+
 std::uint64_t WorldPass::Failures() const
 {
 	const State &s = *m_State;

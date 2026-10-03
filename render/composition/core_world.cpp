@@ -2142,7 +2142,7 @@ void CoreWorld::RecordWorldBatch( std::span<const std::uint32_t> tags,
 	world.width = target.width;
 	world.height = target.height;
 	world.samples = target.samples;
-	if ( m_TemporalEnabled && target.device && target.samples == 1 )
+	if ( m_Pass.TemporalView( tag, target.streamEpoch ) && target.device && target.samples == 1 )
 	{
 		if ( m_TemporalViewportFrame != target.frame ||
 		     m_TemporalViewportStream != target.streamEpoch )

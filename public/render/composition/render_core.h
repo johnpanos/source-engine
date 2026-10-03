@@ -133,6 +133,14 @@ struct RenderCoreBinding
 	gpu_compute::IGpuCompute *gpuCompute = nullptr;
 	// For logs and evidence only (CAP011 rule 5): "null", "vulkan", "gl".
 	const char *deviceName = nullptr;
+	// Main-sequence mode selection through the owning core, without changing
+	// IRenderCoreWorld's advertised vtable. Valid for this binding's lifetime.
+	struct TemporalControl
+	{
+		void *context = nullptr;
+		bool ( *setEnabled )( void *, bool ) = nullptr;
+		bool ( *available )( const void * ) = nullptr;
+	} temporal;
 };
 
 struct RenderCore;

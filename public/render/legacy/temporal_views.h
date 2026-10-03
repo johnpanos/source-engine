@@ -2,6 +2,7 @@
 #ifndef RENDER_LEGACY_TEMPORAL_VIEWS_H
 #define RENDER_LEGACY_TEMPORAL_VIEWS_H
 #define RENDER_TEMPORAL_VIEWS_INTERFACE_VERSION "RenderTemporalViews001"
+#define RENDER_TEMPORAL_VIEWS2_INTERFACE_VERSION "RenderTemporalViews002"
 class IRenderTemporalViews
 {
 public:
@@ -17,5 +18,14 @@ public:
 
 protected:
 	~IRenderTemporalViews() = default;
+};
+// A separate version leaves the original view ABI intact for older clients.
+class IRenderTemporalViews2 : public IRenderTemporalViews
+{
+public:
+	virtual bool Available() const = 0;
+
+protected:
+	~IRenderTemporalViews2() = default;
 };
 #endif
