@@ -171,6 +171,8 @@ DeviceResult<BufferId> VulkanDevice::CreateBuffer( const BufferDesc &desc )
 	undo.Dismiss();
 	const BufferId id{ ++m_NextId };
 	m_Buffers.emplace( id.value, std::move( record ) );
+	++m_ResourceActivity.created[std::size_t( ResourceKind::kBuffer )];
+	m_ResourceActivity.bufferBytes += desc.size;
 	return id;
 }
 
@@ -265,6 +267,7 @@ DeviceResult<TextureId> VulkanDevice::CreateTexture( const TextureDesc &desc )
 	undo.Dismiss();
 	const TextureId id{ ++m_NextId };
 	m_Textures.emplace( id.value, std::move( record ) );
+	++m_ResourceActivity.created[std::size_t( ResourceKind::kTexture )];
 	return id;
 }
 
@@ -366,6 +369,7 @@ DeviceResult<TextureId> VulkanDevice::ImportImage(
 	undo.Dismiss();
 	const TextureId id{ ++m_NextId };
 	m_Textures.emplace( id.value, std::move( record ) );
+	++m_ResourceActivity.created[std::size_t( ResourceKind::kTexture )];
 	m_Imported.insert( id.value );
 	return id;
 }
@@ -421,6 +425,7 @@ DeviceResult<SamplerId> VulkanDevice::CreateSampler( const SamplerDesc &desc )
 		return Fail( StatusOf( result ), op, result );
 	const SamplerId id{ ++m_NextId };
 	m_Samplers.emplace( id.value, record );
+	++m_ResourceActivity.created[std::size_t( ResourceKind::kSampler )];
 	return id;
 }
 
@@ -706,6 +711,7 @@ foundation::Expected<ExternalImage, DeviceError> VulkanDevice::CreateExported(
 	undo.Dismiss();
 	const TextureId id{ ++m_NextId };
 	m_Textures.emplace( id.value, std::move( record ) );
+	++m_ResourceActivity.created[std::size_t( ResourceKind::kTexture )];
 	ExternalImage image;
 	image.texture = id;
 	image.handle = fd;

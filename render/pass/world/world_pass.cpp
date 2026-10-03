@@ -1132,7 +1132,7 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 	std::erase_if( s.retiredGroups,
 	    [&]( std::pair<std::uint64_t, Group> &old )
 	    {
-		    if ( target.frame == 0 || old.first >= target.frame )
+		    if ( target.frame == 0 || old.first == 0 || old.first >= target.frame )
 			    return false;
 		    s.ReleaseGroup( old.second, target.submitted, true );
 		    return true;

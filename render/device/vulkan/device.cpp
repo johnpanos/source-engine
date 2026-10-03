@@ -447,6 +447,10 @@ DeviceResult<void> VulkanDevice::CreateLogical()
 
 void VulkanDevice::DestroyLogical()
 {
+	// Teardown/recovery also retires every remaining logical handle.
+	for ( std::size_t i = 0; i < ResourceActivity::kKinds; ++i )
+		m_ResourceActivity.destroyed[i].store( m_ResourceActivity.created[i].load() );
+	m_ResourceActivity.pending.store( 0 );
 	// Every holder of a descriptor set layout goes before the device.
 	m_Releases.clear();
 	if ( m_Device != VK_NULL_HANDLE )
@@ -642,6 +646,12 @@ bool *VulkanDevice::ReleasedFlag( ResourceId resource )
 
 void VulkanDevice::Erase( ResourceId resource )
 {
+	if ( const bool *released = ReleasedFlag( resource ) )
+	{
+		++m_ResourceActivity.destroyed[std::size_t( resource.kind )];
+		if ( *released )
+			--m_ResourceActivity.pending;
+	}
 	switch ( resource.kind )
 	{
 	case ResourceKind::kBuffer:
@@ -696,7 +706,26 @@ DeviceResult<void> VulkanDevice::Release( ResourceId resource, CompletionToken r
 		return Fail( DeviceStatus::kInvalidHandle, DeviceOperation::kRelease );
 	*released = true;
 	m_Releases.push_back( { resource, releaseAfter } );
+	++m_ResourceActivity.releaseRequests;
+	++m_ResourceActivity.pending;
 	return {};
+}
+
+ResourceActivity VulkanDevice::ReadResourceActivity() const
+{
+	ResourceActivity result;
+	for ( std::size_t i = 0; i < ResourceActivity::kKinds; ++i )
+	{
+		result.created[i] = m_ResourceActivity.created[i].load();
+		result.destroyed[i] = m_ResourceActivity.destroyed[i].load();
+	}
+	result.releaseRequests = m_ResourceActivity.releaseRequests.load();
+	result.bufferBytes = m_ResourceActivity.bufferBytes.load();
+	result.supported = true;
+	result.epoch = Epoch();
+	result.live = result.Created() > result.Destroyed() ? result.Created() - result.Destroyed() : 0;
+	result.pending = m_ResourceActivity.pending.load();
+	return result;
 }
 
 std::size_t VulkanDevice::LiveResourceCount() const

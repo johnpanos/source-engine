@@ -25,6 +25,35 @@ std::optional<std::string> RunOnce(
 	if ( auto why = CreateLabDevice( validate, counted, device ) )
 		return why;
 	{
+		const auto initial = device->ReadResourceActivity();
+		results.That( initial.supported, "resources.native-provider-supported" );
+		device::BufferDesc bufferDesc;
+		bufferDesc.size = 128;
+		bufferDesc.usages = { device::ResourceUsage::kCopyDestination };
+		auto allocated = device->CreateBuffer( bufferDesc );
+		if ( !allocated )
+			return "resource fixture buffer refused";
+		const auto created = device::ResourceActivitySince( initial, device->ReadResourceActivity() );
+		results.That( created.Created() == 1 && created.bufferBytes == 128 &&
+		                  created.live == initial.live + 1, "resources.creation-and-buffer-bytes" );
+		results.That( !device->CreateBuffer( {} ), "resources.invalid-allocation-refused" );
+		results.That( device->ReadResourceActivity().Created() == initial.Created() + 1,
+		    "resources.failed-allocation-not-counted" );
+		results.That( bool( device->Release( allocated.Value(), {} ) ), "resources.release-accepted" );
+		const auto retired = device::ResourceActivitySince( initial, device->ReadResourceActivity() );
+		results.That( retired.releaseRequests == 1 && retired.Destroyed() == 0 &&
+		                  retired.pending == initial.pending + 1 && retired.live == initial.live + 1,
+		    "resources.release-is-not-destruction" );
+		results.That( !device->Release( allocated.Value(), {} ), "resources.double-release-refused" );
+		device->Poll();
+		const auto freed = device::ResourceActivitySince( initial, device->ReadResourceActivity() );
+		results.That( freed.Destroyed() == 1 && freed.releaseRequests == 1 &&
+		                  freed.pending == initial.pending && freed.live == initial.live,
+		    "resources.completed-retirement" );
+		auto otherEpoch = initial;
+		++otherEpoch.epoch;
+		results.That( !device::ResourceActivitySince( initial, otherEpoch ).supported,
+		    "resources.recovery-is-discontinuity" );
 		graph::GpuPassTimers timers( *device );
 		if ( !timers.Supported() )
 			return "native timestamp device required";
@@ -50,6 +79,14 @@ std::optional<std::string> RunOnce(
 			        rendering.colors = colors;
 			        rendering.width = rendering.height = 64;
 			        encoder.BeginRendering( rendering );
+			        // More than one timestamp chunk inside rendering, as the
+			        // detailed world-family scopes do. Validation catches illegal
+			        // query-buffer transitions at a chunk boundary.
+			        for ( int i = 0; i < 12; ++i )
+			        {
+				        encoder.BeginLabel( "cohort" );
+				        encoder.EndLabel();
+			        }
 			        encoder.EndRendering();
 			        encoder.EndLabel();
 		        } );
@@ -69,8 +106,8 @@ std::optional<std::string> RunOnce(
 		const auto latest = timers.Latest();
 		results.That(
 		    latest.frames == 1 && latest.lastFrame == 42, "cost.completed-frame-identity" );
-		results.That( latest.passes.size() == 2, "cost.parent-and-child-recorded" );
-		if ( latest.passes.size() == 2 )
+		results.That( latest.passes.size() == 3, "cost.parent-child-and-cohort-recorded" );
+		if ( latest.passes.size() == 3 )
 		{
 			const auto &parent = latest.passes[0];
 			const auto &child = latest.passes[1];
@@ -81,6 +118,13 @@ std::optional<std::string> RunOnce(
 			    "cost.gpu-nested-timestamps" );
 			results.That( child.depth == 1 && parent.depth == 0, "cost.nesting-depth" );
 		}
+		results.That( latest.resources.supported && latest.resources.Created() > 0,
+		    "cost.frame-resource-interval" );
+		results.That( latest.passes.size() == 3 && latest.passes[2].count == 12 &&
+		                  latest.passes[2].depth == 2 && latest.overflowed == 0,
+		    "cost.repeated-cohort-across-timestamp-chunks" );
+		results.That( timers.Recent().size() == 1 && timers.Recent()[0].lastFrame == 42,
+		    "cost.completed-resource-history" );
 		results.That( timers.Take().passes.size() == latest.passes.size(),
 		    "cost.snapshot-does-not-drain-console" );
 		results.That( timers.Take().frames == 0 && timers.Latest().lastFrame == 42,

@@ -540,6 +540,7 @@ public:
 	DeviceResult<void> WaitIdle() override;
 	DeviceResult<void> Recover() override;
 	std::size_t LiveResourceCount() const override;
+	ResourceActivity ReadResourceActivity() const override;
 	IExternalImages *ExternalImages() override;
 
 	// IExternalImages ----------------------------------------------------------
@@ -719,6 +720,16 @@ private:
 	mutable std::atomic<std::uint64_t> m_Completed{ 0 };
 	std::atomic<std::uint64_t> m_DeferredUploads{ 0 };
 	std::uint64_t m_NextId = 0;
+	// Label observers may sample from recording workers. Counters are diagnostic
+	// only; they never publish resource contents or control retirement.
+	struct ActivityCounters
+	{
+		std::array<std::atomic<std::uint64_t>, ResourceActivity::kKinds> created{};
+		std::array<std::atomic<std::uint64_t>, ResourceActivity::kKinds> destroyed{};
+		std::atomic<std::uint64_t> releaseRequests{ 0 };
+		std::atomic<std::uint64_t> bufferBytes{ 0 };
+		std::atomic<std::uint64_t> pending{ 0 };
+	} m_ResourceActivity;
 	std::unordered_map<std::uint64_t, BufferRecord> m_Buffers;
 	std::unordered_map<std::uint64_t, TextureRecord> m_Textures;
 	std::unordered_set<std::uint64_t> m_Imported; // host images among m_Textures

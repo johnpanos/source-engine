@@ -49,6 +49,8 @@ void GpuPassTimers::Finish( device::CompletionToken done )
 {
 	if ( !m_Recording )
 		return;
+	m_Recording->resources = device::ResourceActivitySince(
+	    m_Recording->resourcesBegin, m_Device.ReadResourceActivity() );
 	m_Recording->waiting = true;
 	m_Recording->hasDone = true;
 	m_Recording->done = done;
@@ -82,6 +84,7 @@ void GpuPassTimers::BeginFrame( std::uint64_t frame, device::CompletionToken sub
 	}
 	if ( !m_Recording )
 		return;
+	m_Recording->resourcesBegin = m_Device.ReadResourceActivity();
 	m_Recording->frame = frame;
 	m_Recording->chunksUsed = 0;
 	m_Recording->hasDone = false;
@@ -131,6 +134,7 @@ void GpuPassTimers::Read( Frame &frame )
 	latest.frames = 1;
 	latest.lastFrame = frame.frame;
 	latest.overflowed = frame.overflowed;
+	latest.resources = frame.resources;
 	const double toMs = m_Device.Facts().timestampPeriodNs * 1e-6;
 	for ( const Section &section : frame.sections )
 	{
@@ -148,14 +152,35 @@ void GpuPassTimers::Read( Frame &frame )
 			    } );
 			if ( found == report->passes.end() )
 			{
-				report->passes.push_back( { section.name, section.depth, 0.0, 0 } );
+				report->passes.push_back( { section.name, section.depth, 0.0, 0, {} } );
 				found = std::prev( report->passes.end() );
 			}
 			found->milliseconds += ms;
 			found->cpuMilliseconds += section.cpuMilliseconds;
+			if ( section.resources.supported )
+			{
+				found->resources.supported = true;
+				for ( std::size_t i = 0; i < device::ResourceActivity::kKinds; ++i )
+				{
+					found->resources.created[i] += section.resources.created[i];
+					found->resources.destroyed[i] += section.resources.destroyed[i];
+				}
+				found->resources.releaseRequests += section.resources.releaseRequests;
+				found->resources.bufferBytes += section.resources.bufferBytes;
+			}
 			++found->count;
 		}
 	}
+	// Keep scalar history only; do not retain every frame's pass strings.
+	PassTimerReport history;
+	history.frames = 1;
+	history.lastFrame = latest.lastFrame;
+	history.resources = latest.resources;
+	m_Recent.push_back( std::move( history ) );
+	std::sort( m_Recent.begin(), m_Recent.end(),
+	    []( const auto &a, const auto &b ) { return a.lastFrame < b.lastFrame; } );
+	if ( m_Recent.size() > 64 )
+		m_Recent.erase( m_Recent.begin() );
 	if ( latest.lastFrame >= m_LatestReport.lastFrame )
 		m_LatestReport = std::move( latest );
 	m_Report.lastFrame = std::max( m_Report.lastFrame, frame.frame );
@@ -176,6 +201,13 @@ PassTimerReport GpuPassTimers::Latest()
 	std::lock_guard<std::mutex> lock( m_Lock );
 	CollectLocked();
 	return m_LatestReport;
+}
+
+std::vector<PassTimerReport> GpuPassTimers::Recent()
+{
+	std::lock_guard<std::mutex> lock( m_Lock );
+	CollectLocked();
+	return m_Recent;
 }
 
 void GpuPassTimers::Attach( device::CommandEncoder &encoder )
@@ -246,6 +278,7 @@ void GpuPassTimers::OnBeginLabel( device::CommandEncoder &encoder, std::string_v
 		return;
 	}
 	Section section;
+	section.resourcesBegin = m_Device.ReadResourceActivity();
 	section.cpuBegin = std::chrono::steady_clock::now();
 	section.name = std::string( label );
 	section.depth = std::uint32_t( attached.open.size() );
@@ -267,6 +300,8 @@ void GpuPassTimers::OnEndLabel( device::CommandEncoder &encoder )
 	if ( open == ~0u || open >= m_Recording->sections.size() ||
 	     !Write( encoder, attached, &index ) )
 		return;
+	m_Recording->sections[open].resources = device::ResourceActivitySince(
+	    m_Recording->sections[open].resourcesBegin, m_Device.ReadResourceActivity() );
 	m_Recording->sections[open].cpuMilliseconds = std::chrono::duration<double, std::milli>(
 	    std::chrono::steady_clock::now() - m_Recording->sections[open].cpuBegin )
 	                                                  .count();

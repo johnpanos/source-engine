@@ -195,12 +195,25 @@ struct RenderCoreCostRow
 	unsigned int depth = 0;
 	double cpuMilliseconds = 0;
 	double gpuMilliseconds = 0;
+	unsigned long long created = 0, destroyed = 0, bufferBytes = 0;
+};
+
+struct RenderCoreResourceSample
+{
+	unsigned long long frame = 0;
+	unsigned long long created = 0, destroyed = 0, released = 0;
+	unsigned long long bufferBytes = 0, live = 0, pending = 0;
+	unsigned long long buffers = 0, textures = 0, groups = 0, other = 0;
+	bool supported = false;
 };
 
 struct RenderCoreCostReport
 {
 	static constexpr unsigned int kCapacity = 64;
 	RenderCoreCostRow rows[kCapacity];
+	RenderCoreResourceSample resources;
+	RenderCoreResourceSample history[kCapacity];
+	unsigned int historyCount = 0;
 	unsigned int count = 0;
 	unsigned int omitted = 0;
 	unsigned int dropped = 0;

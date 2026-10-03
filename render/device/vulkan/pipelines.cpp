@@ -215,6 +215,7 @@ DeviceResult<BindGroupLayoutId> VulkanDevice::CreateBindGroupLayout(
 	record.handle = std::make_shared<SetLayout>( m_Device, layout );
 	const BindGroupLayoutId id{ ++m_NextId };
 	m_Layouts.emplace( id.value, std::move( record ) );
+	++m_ResourceActivity.created[std::size_t( ResourceKind::kBindGroupLayout )];
 	return id;
 }
 
@@ -394,6 +395,7 @@ DeviceResult<BindGroupId> VulkanDevice::CreateBindGroup( const BindGroupDesc &de
 		    m_Device, static_cast<std::uint32_t>( writes.size() ), writes.data(), 0, nullptr );
 	const BindGroupId id{ ++m_NextId };
 	m_BindGroups.emplace( id.value, std::move( record ) );
+	++m_ResourceActivity.created[std::size_t( ResourceKind::kBindGroup )];
 	return id;
 }
 
@@ -701,6 +703,7 @@ DeviceResult<PipelineId> VulkanDevice::CreatePipeline( const PipelineDesc &desc 
 	    desc.debugName );
 	const PipelineId id{ ++m_NextId };
 	m_Pipelines.emplace( id.value, std::move( record ) );
+	++m_ResourceActivity.created[std::size_t( ResourceKind::kPipeline )];
 	return id;
 }
 

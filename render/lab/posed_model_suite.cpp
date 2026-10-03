@@ -563,6 +563,11 @@ std::optional<std::string> RunChecks(
 	        std::to_string( Sum( shifted, 48, 64 ) ) + ", left " +
 	        std::to_string( Sum( center, 16, 32 ) ) + " -> " +
 	        std::to_string( Sum( shifted, 16, 32 ) ) );
+	CanvasImage reused;
+	if ( std::optional<std::string> why = render( pass, 0.0f, true, 4, black, reused ) )
+		return why;
+	results.That( reused.rgba == center.rgba && pass.Stats().viewsFailed == 0,
+	    "posed-model.reused-view-resources-preserve-every-pixel" );
 	WorldData color2World = MeshWorld();
 	color2World.materials[0].variables.push_back( { "$color2", "[.25 .5 1]" } );
 	WorldPass color2Pass;

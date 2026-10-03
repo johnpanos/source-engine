@@ -42,6 +42,7 @@ struct PassTime
 	double milliseconds = 0.0;
 	std::uint32_t count = 0;      // sections of that name and depth
 	double cpuMilliseconds = 0.0; // inclusive CPU command-recording wall time
+	device::ResourceActivity resources{};
 };
 
 struct PassTimerReport
@@ -51,6 +52,7 @@ struct PassTimerReport
 	// In the order each name first recorded, summed over the frames.
 	std::vector<PassTime> passes;
 	std::uint32_t overflowed = 0; // timestamps dropped for want of room
+	device::ResourceActivity resources{}; // frame recording interval, not summed scopes
 };
 
 class GpuPassTimers final : public device::ILabelObserver
@@ -78,6 +80,8 @@ public:
 	PassTimerReport Take();
 	// Non-destructive, latest completed frame; does not consume console statistics.
 	PassTimerReport Latest();
+	// Latest 64 completed recording intervals, oldest first, independent of Take.
+	std::vector<PassTimerReport> Recent();
 
 	// Reports the encoder's labels until Detach (or the encoder's end).
 	void Attach( device::CommandEncoder &encoder );
@@ -102,6 +106,8 @@ private:
 		bool closed = false;
 		std::chrono::steady_clock::time_point cpuBegin;
 		double cpuMilliseconds = 0.0;
+		device::ResourceActivity resourcesBegin;
+		device::ResourceActivity resources{};
 	};
 	struct Frame
 	{
@@ -113,6 +119,8 @@ private:
 		device::CompletionToken done;
 		std::vector<Section> sections;
 		std::uint32_t overflowed = 0;
+		device::ResourceActivity resourcesBegin;
+		device::ResourceActivity resources{};
 	};
 	struct Attached
 	{
@@ -137,6 +145,7 @@ private:
 	device::CompletionToken m_Latest; // the latest token seen, for release
 	PassTimerReport m_Report;
 	PassTimerReport m_LatestReport;
+	std::vector<PassTimerReport> m_Recent;
 };
 
 } // namespace render::graph

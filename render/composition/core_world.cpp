@@ -1553,6 +1553,31 @@ void CoreWorld::ReadCosts( RenderCoreCostReport *out )
 	graph::PassTimerReport report = m_Timers->Latest();
 	out->frame = report.lastFrame;
 	out->dropped = report.overflowed;
+	auto resourceSample = []( const graph::PassTimerReport &source )
+	{
+		RenderCoreResourceSample sample;
+		const auto &activity = source.resources;
+		sample.supported = activity.supported;
+		sample.frame = source.lastFrame;
+		sample.created = activity.Created();
+		sample.destroyed = activity.Destroyed();
+		sample.released = activity.releaseRequests;
+		sample.bufferBytes = activity.bufferBytes;
+		sample.live = activity.live;
+		sample.pending = activity.pending;
+		sample.buffers = activity.created[std::size_t( device::ResourceKind::kBuffer )];
+		sample.textures = activity.created[std::size_t( device::ResourceKind::kTexture )];
+		sample.groups = activity.created[std::size_t( device::ResourceKind::kBindGroup )];
+		sample.other = sample.created - sample.buffers - sample.textures - sample.groups;
+		return sample;
+	};
+	out->resources = resourceSample( report );
+	for ( const auto &sample : m_Timers->Recent() )
+	{
+		if ( out->historyCount == RenderCoreCostReport::kCapacity )
+			break;
+		out->history[out->historyCount++] = resourceSample( sample );
+	}
 	// Hottest inclusive scopes first; retain an explicit omitted count.
 	std::stable_sort( report.passes.begin(), report.passes.end(),
 	    []( const graph::PassTime &a, const graph::PassTime &b )
@@ -1570,6 +1595,9 @@ void CoreWorld::ReadCosts( RenderCoreCostReport *out )
 		row.depth = pass.depth;
 		row.cpuMilliseconds = pass.cpuMilliseconds;
 		row.gpuMilliseconds = pass.milliseconds;
+		row.created = pass.resources.Created();
+		row.destroyed = pass.resources.Destroyed();
+		row.bufferBytes = pass.resources.bufferBytes;
 	}
 }
 

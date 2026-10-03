@@ -38,13 +38,24 @@ public:
 		    [&]( const Retired &entry )
 		    {
 			    return entry.buffer.size == size && entry.buffer.usage == usage &&
-			           device.IsComplete( entry.after );
+			           ( !entry.after.NamesSubmission() || device.IsComplete( entry.after ) );
 		    } );
 		if ( found != m_Buffers.end() )
 		{
+			// One completed queue token covers every earlier submission in its
+			// epoch. A retired view batch therefore needs one provider query,
+			// not a timeline query for each small buffer (device contract D6).
+			const auto completed = found->after;
+			if ( completed.NamesSubmission() )
+				for ( Retired &entry : m_Buffers )
+					if ( entry.after.queue == completed.queue &&
+					     entry.after.epoch == completed.epoch &&
+					     entry.after.value <= completed.value )
+						entry.after = {};
 			Buffer buffer = found->buffer;
 			m_Bytes -= buffer.size;
-			m_Buffers.erase( found );
+			*found = m_Buffers.back();
+			m_Buffers.pop_back();
 			return buffer;
 		}
 		device::BufferDesc desc;

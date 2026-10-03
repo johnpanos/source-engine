@@ -46,6 +46,7 @@
 #include "render/device/pipeline.h"
 #include "render/device/resources.h"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <span>
@@ -63,6 +64,57 @@ enum class DeviceState : std::uint8_t
 	kFatal // recovery failed; the composition root tears the device down
 };
 
+// Optional diagnostics, sampled on the device's resource-owning sequence.
+// Cumulative logical port handles (including imported texture handles), not
+// allocator calls or physical VRAM. Destruction means retirement completed;
+// release requests alone do not free anything. Failed operations do not count.
+// bufferBytes counts requested buffer sizes, excluding internal staging/rings.
+struct ResourceActivity
+{
+	static constexpr std::size_t kKinds = std::size_t( ResourceKind::kBindGroup ) + 1;
+	bool supported = false;
+	std::uint32_t epoch = 0;
+	std::array<std::uint64_t, kKinds> created{};
+	std::array<std::uint64_t, kKinds> destroyed{};
+	std::uint64_t releaseRequests = 0;
+	std::uint64_t bufferBytes = 0;
+	std::uint64_t live = 0;
+	std::uint64_t pending = 0;
+
+	std::uint64_t Created() const
+	{
+		std::uint64_t total = 0;
+		for ( auto count : created )
+			total += count;
+		return total;
+	}
+	std::uint64_t Destroyed() const
+	{
+		std::uint64_t total = 0;
+		for ( auto count : destroyed )
+			total += count;
+		return total;
+	}
+};
+
+// Counter deltas, with end-of-interval gauges. Recovery is a discontinuity,
+// reported unavailable instead of unsigned underflow or a misleading zero.
+inline ResourceActivity ResourceActivitySince(
+    const ResourceActivity &before, const ResourceActivity &after )
+{
+	if ( !before.supported || !after.supported || before.epoch != after.epoch )
+		return {};
+	ResourceActivity delta = after;
+	for ( std::size_t i = 0; i < ResourceActivity::kKinds; ++i )
+	{
+		delta.created[i] -= before.created[i];
+		delta.destroyed[i] -= before.destroyed[i];
+	}
+	delta.releaseRequests -= before.releaseRequests;
+	delta.bufferBytes -= before.bufferBytes;
+	return delta;
+}
+
 class IRenderDevice2
 {
 public:
@@ -70,6 +122,8 @@ public:
 
 	virtual const DeviceFacts &Facts() const = 0;
 	virtual DeviceState State() const = 0;
+	// Unsupported providers explicitly return supported=false. No GPU wait.
+	virtual ResourceActivity ReadResourceActivity() const { return {}; }
 	virtual std::uint32_t Epoch() const = 0;
 
 	virtual DeviceResult<BufferId> CreateBuffer( const BufferDesc &desc ) = 0;
