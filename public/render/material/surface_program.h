@@ -303,8 +303,11 @@ struct SurfaceFrame
 	float viewport[4] = { 0.0f, 0.0f, 1.0f, 1.0f };
 	SurfaceAreaLight areas[kSurfaceMaxAreaLights];
 	float clipPlanes[6][4] = {};
+	float motionCurrentToClip[16] = {};
+	float motionPreviousToClip[16] = {};
+	float motionExtent[4] = {};
 };
-static_assert( sizeof( SurfaceFrame ) == 272 + 64 * kSurfaceMaxAreaLights );
+static_assert( sizeof( SurfaceFrame ) == 416 + 64 * kSurfaceMaxAreaLights );
 
 // The flat vertex (surface_flat.vert): position, base and lightmap
 // coordinates, and color as UNORM8x4 (RGBA).
@@ -512,6 +515,7 @@ struct SurfaceVariant
 	bool ignoreDepth = false;
 	SurfaceDrawState drawState{};
 	bool portalMask = false;
+	bool temporal = false;
 	std::uint32_t materialFeatures = kSurfaceDynamicMaterialFeatures;
 	std::uint32_t viewFeatures = kSurfaceAllViewFeatures;
 
@@ -617,6 +621,10 @@ public:
 	// TextureCache name of a texture holding SplitSumTable()) and the LTC
 	// table ('ltcTable', one holding LtcTable()), each with a linear,
 	// clamped sampler; a table no point of the frame reads is named empty.
+	foundation::Expected<device::PipelineId, SurfaceStatus> TemporalPipeline(
+	    device::PipelineId shipped, const SurfaceDrawState &state, std::uint32_t viewFeatures,
+	    const shaderlib::DebugSpecialization &debug = {} );
+
 	GroupRequest FrameGroup( const SurfaceFrame &frame, std::string splitSumTable = {},
 	    std::string ltcTable = {}, const SurfaceMapTextures &map = {} ) const;
 	// A view group: the view's parameters, its froxels' ranges (FroxelRange

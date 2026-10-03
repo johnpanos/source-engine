@@ -19,7 +19,7 @@ namespace render::device::vulkan
 class IHostDeviceFactory;
 
 // The adapter's factory of host devices; lives as long as the process.
-const IHostDeviceFactory &HostDeviceFactory();
+const IHostDeviceFactory &HostDeviceFactory( bool fsr411 = false );
 
 } // namespace render::device::vulkan
 

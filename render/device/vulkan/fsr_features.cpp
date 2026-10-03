@@ -4,6 +4,26 @@
 #include <cstring>
 namespace render::device::vulkan
 {
+#ifdef RENDER_FSR411
+namespace
+{
+// Feature storage belongs to this request; existing host structures keep
+// their other enabled bits. Never append a duplicate core feature structure.
+template <typename T> T &MergeFeature( VkPhysicalDeviceFeatures2 &head, T &storage )
+{
+	auto *tail = reinterpret_cast<VkBaseOutStructure *>( &head );
+	while ( tail->pNext )
+	{
+		tail = tail->pNext;
+		if ( tail->sType == storage.sType )
+			return *reinterpret_cast<T *>( tail );
+	}
+	storage.pNext = nullptr;
+	tail->pNext = reinterpret_cast<VkBaseOutStructure *>( &storage );
+	return storage;
+}
+}
+#endif
 bool FsrFeatures::Enable( VkPhysicalDevice physical, VkPhysicalDeviceFeatures2 &head,
     std::vector<const char *> &extensions )
 {
@@ -13,10 +33,6 @@ bool FsrFeatures::Enable( VkPhysicalDevice physical, VkPhysicalDeviceFeatures2 &
 	(void)extensions;
 	return false;
 #else
-	// This initial lab composition owns the feature chain. Host composition
-	// must negotiate its own chain before product integration.
-	if ( head.pNext )
-		return false;
 	VkPhysicalDeviceProperties properties{};
 	vkGetPhysicalDeviceProperties( physical, &properties );
 	if ( properties.apiVersion < VK_API_VERSION_1_3 )
@@ -72,12 +88,19 @@ bool FsrFeatures::Enable( VkPhysicalDevice physical, VkPhysicalDeviceFeatures2 &
 	mixed.shaderMixedFloatDotProductFloat8AccFloat32 = VK_FALSE;
 	head.features.shaderInt16 = VK_TRUE;
 	head.features.shaderStorageImageWriteWithoutFormat = VK_TRUE;
-	head.pNext = &f11;
-	f11.pNext = &f12;
-	f12.pNext = &f13;
-	f13.pNext = &derivatives;
-	derivatives.pNext = &mixed;
-	extensions.insert( extensions.end(), std::begin( wanted ), std::end( wanted ) );
+	MergeFeature( head, f11 ).storageBuffer16BitAccess = VK_TRUE;
+	auto &enabled12 = MergeFeature( head, f12 );
+	enabled12.shaderFloat16 = enabled12.shaderInt8 = VK_TRUE;
+	MergeFeature( head, f13 ).shaderIntegerDotProduct = VK_TRUE;
+	MergeFeature( head, derivatives ).computeDerivativeGroupLinear = VK_TRUE;
+	MergeFeature( head, mixed ).shaderMixedFloatDotProductFloat16AccFloat32 = VK_TRUE;
+	for ( const char *name : wanted )
+		if ( std::none_of( extensions.begin(), extensions.end(),
+		         [name]( const char *entry )
+		         {
+			         return std::strcmp( name, entry ) == 0;
+		         } ) )
+			extensions.push_back( name );
 	return true;
 #endif
 }

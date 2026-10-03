@@ -929,7 +929,8 @@ bool RenderCoreWorldDraw_CanTakePosedModel( const model_t *model )
 }
 
 bool RenderCoreWorldDraw_TakePosedModel( const model_t *model, int skin,
-    const matrix3x4_t *boneToWorld, int boneCount, RenderCoreDrawPhase phase, int body, int lod )
+    const matrix3x4_t *boneToWorld, int boneCount, RenderCoreDrawPhase phase, int body, int lod,
+    unsigned long long motionIdentity )
 {
 	CoreWorldState &state = State();
 	IRenderCoreWorld *pWorld = RenderCoreHost_World();
@@ -945,7 +946,8 @@ bool RenderCoreWorldDraw_TakePosedModel( const model_t *model, int skin,
 			for ( int col = 0; col < 4; ++col )
 				palette.push_back( boneToWorld[bone].m_flMatVal[row][col] );
 	RenderCorePosedModel posed = { unsigned( found - state.registeredModels.begin() ),
-	    unsigned( skin ), palette.data(), unsigned( boneCount ), phase, body, unsigned( lod ) };
+	    unsigned( skin ), palette.data(), unsigned( boneCount ), phase, body, unsigned( lod ),
+	    motionIdentity };
 	if ( !QueueCoreView( pWorld, NULL, 0, 0.0f, NULL, 0, &posed, 1 ) )
 		return false;
 	++state.posedClaims[posed.model];

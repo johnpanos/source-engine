@@ -2,4 +2,4 @@ def build(bld):
     bld.stlib(env=bld.strict_cpp20_env(), features='cxx capability_strict',
         arch_module='render.pass.temporal', target='render_pass_temporal', name='render_pass_temporal',
         source=bld.path.ant_glob('*.cpp'), includes=['../../../public'],
-        use=['render_graph', 'render_device'], idx=bld.get_taskgen_count())
+        use=['render_graph', 'render_device', 'render_shaderlib'], idx=bld.get_taskgen_count())

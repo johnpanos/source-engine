@@ -15,6 +15,7 @@
 #define RENDER_COMPOSITION_CORE_WORLD_H
 
 #include "core_output.h"
+#include "core_temporal.h"
 #include "mdl/studio_model.h"
 #include "render/composition/render_core.h"
 #include "render/legacy/core_backend.h"
@@ -60,6 +61,11 @@ public:
 	}
 
 	void BindHost( const legacy::RenderCallQueueHost *host ) { m_Host = host; }
+	void EnableTemporal( bool enabled, const char *assets )
+	{
+		m_TemporalEnabled = enabled;
+		m_TemporalAssets = assets ? assets : "";
+	}
 
 	// IRenderCoreWorld (the engine, main thread).
 	void SetWorld( const RenderCoreWorldVertex *vertices, unsigned int vertexCount,
@@ -76,6 +82,7 @@ public:
 	world_mesh_gpu::IWorldMeshUpload *StageUpload() override { return &m_Capture; }
 	void ClearWorld() override
 	{
+		ResetTemporalHistory();
 		m_QueuedLighting.clear();
 		m_StageSet = false;
 		m_StageWorld.reset();
@@ -104,6 +111,16 @@ public:
 	    unsigned int posedModelCount ) override;
 	void BeginFrame() override;
 	void EndFrame() override;
+	void SelectTemporalView( unsigned long long identity ) override { m_TemporalView = identity; }
+	void ResetTemporalHistory() override;
+	void CommitTemporalFrame( bool submitted ) override;
+	bool TemporalEnabled() const override { return m_TemporalEnabled; }
+	void TemporalJitter( float *x, float *y ) const override
+	{
+		*x = m_JitterX;
+		*y = m_JitterY;
+	}
+	bool ReconstructTemporal( int x, int y, int rw, int rh, int ow, int oh, float dt ) override;
 	// frame::IRenderStageHooks (the main thread): the open views' depth, so a
 	// queued view knows whether it is the frame's top level (not a portal,
 	// mirror or monitor view inside another).
@@ -150,12 +167,48 @@ public:
 		m_SceneCaptures.clear();
 		m_Overlays.ReleaseDevice( device );
 		m_Output.ReleaseDevice( device );
+		m_Temporal.reset();
+		for ( auto &[id, motion] : m_MotionTargets )
+			(void)device.Release( device::ResourceId( motion.image ), device::CompletionToken() );
+		m_MotionTargets.clear();
 		ReleaseShadows( device );
 	}
 
 private:
 	void RecordWorldBatch( std::span<const std::uint32_t> tags, device::CommandEncoder &encoder,
 	    const legacy::CorePassTarget &target );
+	bool m_TemporalEnabled = false;
+	std::string m_TemporalAssets;
+	std::uint64_t m_TemporalGeneration = 1;
+	std::uint32_t m_JitterSequence = 0;
+	float m_JitterX = 0, m_JitterY = 0;
+	std::uint32_t m_TemporalSerial = 0;
+	std::mutex m_TemporalLock;
+	std::map<std::uint32_t, TemporalRequest> m_TemporalRequests;
+	std::unique_ptr<CoreTemporal> m_Temporal;
+	struct MotionTarget
+	{
+		device::TextureId image;
+		std::uint32_t width = 0, height = 0;
+		std::uint64_t frame = 0;
+	};
+	std::map<std::uint64_t, MotionTarget> m_MotionTargets;
+
+	std::uint64_t m_TemporalView = 0;
+	struct MotionCamera
+	{
+		std::array<float, 16> toClip{};
+		device::Viewport viewport;
+	};
+	struct MotionPose
+	{
+		std::uint32_t model, lod;
+		int body;
+		std::vector<material::SurfaceModelVertex> vertices;
+	};
+	std::map<std::uint64_t, MotionCamera> m_PreviousCameras, m_PendingCameras;
+	std::map<std::pair<std::uint64_t, std::uint64_t>, MotionPose> m_PreviousPoses, m_PendingPoses;
+
 	// Sets the pass's world stage from m_StageWorld and the captured lighting.
 	void SetStage();
 	// Rebuilds the static shadow mesh from the stage and the core-claimed props.

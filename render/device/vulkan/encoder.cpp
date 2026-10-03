@@ -53,10 +53,6 @@ VulkanEncoder::~VulkanEncoder()
 
 void VulkanEncoder::Compute( std::shared_ptr<ComputeInterop> payload )
 {
-	// Host sections replay through a different translator. Refuse this
-	// unsupported placement instead of silently omitting the dispatch.
-	if ( m_InSection )
-		SetError();
 	NotRendering();
 	Command command;
 	command.op = Op::kComputeInterop;
@@ -704,23 +700,12 @@ public:
 		m_Viewport.reset();
 		for ( std::size_t i = 0; i < commands.size(); ++i )
 		{
-			if ( commands[i].op == Op::kComputeInterop )
-			{
-				const auto &payload = commands[i].compute;
-				for ( const auto &image : payload->images )
-					Access( image.id.value, IsWrite( image.usage ) );
-				if ( !payload->Record( m_Cmd ) )
-					return false;
-				m_Pipeline = nullptr;
-				m_Groups.fill( 0 );
-				m_Viewport.reset();
-			}
-			else if ( commands[i].op == Op::kNative )
+			if ( commands[i].op == Op::kNative )
 				i = Native( commands, i );
 			else
 				Translate( commands, i );
 		}
-		return true;
+		return !m_Failed;
 	}
 
 	// Host work asks for section `index` of the record being translated:
@@ -730,7 +715,7 @@ public:
 		if ( cmd != m_Cmd || !m_Commands || index >= m_Sections.size() )
 			return false;
 		RunSectionsThrough( index + 1 );
-		return true;
+		return !m_Failed;
 	}
 
 	// D23: the submission's timestamps and the pool they are written to.
@@ -1199,7 +1184,16 @@ private:
 			vkCmdDrawIndexed( m_Cmd, command.params[0], command.params[1], command.params[2],
 			    command.vertexOffset, command.params[3] );
 			break;
-		case Op::kComputeInterop: // Encoder()
+		case Op::kComputeInterop:
+		{
+			const auto &payload = command.compute;
+			for ( const auto &image : payload->images )
+				Access( image.id.value, IsWrite( image.usage ) );
+			if ( !m_Failed && !payload->Record( m_Cmd ) )
+				m_Failed = true;
+			HostRebinds();
+			break;
+		}
 		case Op::kNative: // Native()
 		case Op::kSectionBegin:
 		case Op::kSectionEnd:
@@ -1298,6 +1292,7 @@ private:
 	std::vector<PendingTimestamp> m_Timestamps;
 	// The host work being translated and its sections ([first, end) command
 	// ranges), for RunSection.
+	bool m_Failed = false;
 	const std::vector<Command> *m_Commands = nullptr;
 	std::vector<std::pair<std::size_t, std::size_t>> m_Sections;
 	std::size_t m_SectionsRun = 0;

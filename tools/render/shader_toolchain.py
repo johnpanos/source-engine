@@ -165,7 +165,11 @@ GENERATED = {
         ("kSurfaceWorldVertex", FAMILIES + "/surface_world.vert", DEVICE_OPTIONS),
         ("kSurfaceModelVertex", FAMILIES + "/surface_model.vert", DEVICE_OPTIONS),
         ("kSurfaceFragment", FAMILIES + "/surface.frag", DEVICE_OPTIONS),
-        ("kSurfaceSsrFragment", FAMILIES + "/surface_ssr.frag", DEVICE_OPTIONS))),
+        ("kSurfaceSsrFragment", FAMILIES + "/surface_ssr.frag", DEVICE_OPTIONS),
+        ("kSurfaceFlatTemporalVertex", FAMILIES + "/surface_flat_temporal.vert", DEVICE_OPTIONS),
+        ("kSurfaceWorldTemporalVertex", FAMILIES + "/surface_world_temporal.vert", DEVICE_OPTIONS),
+        ("kSurfaceModelTemporalVertex", FAMILIES + "/surface_model_temporal.vert", DEVICE_OPTIONS),
+        ("kSurfaceTemporalFragment", FAMILIES + "/surface_temporal.frag", DEVICE_OPTIONS))),
     "lines_spv.h": ("render::pass::lines::spirv",
         "the lines pass: wireframe, grid and overlays (RFC 0016, Hammer viewports)", (
         ("kLinesVertex", LINES + "/lines.vert", DEVICE_OPTIONS),
@@ -219,6 +223,9 @@ GENERATED = {
          DEVICE_OPTIONS + ("-DSEEDED_CONE_IGNORED",)),
         ("kClusterUncountedOverflow", LIGHTS + "/cluster_assign.comp",
          DEVICE_OPTIONS + ("-DSEEDED_UNCOUNTED_OVERFLOW",)))),
+    "temporal_spv.h": ("render::pass::temporal::spirv", "temporal input extraction", (
+        ("kTemporalInputVertex", "render/pass/temporal/input_copy.vert", DEVICE_OPTIONS),
+        ("kTemporalInputFragment", "render/pass/temporal/input_copy.frag", DEVICE_OPTIONS))),
     "output_spv.h": ("render::pass::output::spirv",
         "the output pass: exposure, tone map and output encoding (RFC 0016, render.output.v1)", (
         ("kOutputVertex", OUTPUT + "/output.vert", DEVICE_OPTIONS),
@@ -431,7 +438,7 @@ GLSL_GENERATED = {
 # families embed) each have a GLSL 4.50 twin: <stem>_glsl.h in the namespace's
 # ::glsl sibling, with the same array names.
 CORE_PROGRAM_HEADERS = ("cluster_assign_spv.h", "debug_spv.h", "families_spv.h", "lines_spv.h",
-                        "output_spv.h", "shadow_spv.h", "skin_spv.h", "volumetric_spv.h",
+                        "output_spv.h", "temporal_spv.h", "shadow_spv.h", "skin_spv.h", "volumetric_spv.h",
                         "ssr_spv.h", "ao_spv.h", "bounce_spv.h", "indirect_spv.h",
                         "panels_spv.h")
 for _header in CORE_PROGRAM_HEADERS:

@@ -59,6 +59,8 @@ struct RenderCoreConfig
 	// The linked legacy backend the frontend wraps; may be null.
 	const render::LegacyShaderProvider *legacyBackend = nullptr;
 	bool validation = false;
+	const char *temporalAssets = nullptr;
+	bool temporal = false; // explicit experimental product selection; defaults unchanged
 	// What the legacy frontend's core passes record until the world draws
 	// from the scene (RFC 0016 K5 plan, step 3): null or "" marks no slot,
 	// "empty" a label-only pass at each view's opaque stage, "seeded-clear"

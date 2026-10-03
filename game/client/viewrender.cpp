@@ -935,6 +935,8 @@ void SetupCurrentView( const Vector &vecOrigin, const QAngle &angles, view_id_t 
 		&g_vecCurrentVForward, &g_vecCurrentVRight, &g_vecCurrentVUp, &g_matCurrentCamInverse );
 
 	g_CurrentViewID = viewID;
+	if ( g_pRenderTemporalViews )
+		g_pRenderTemporalViews->SelectView( static_cast<unsigned long long>( viewID ) + 1 );
 	s_bCanAccessCurrentView = true;
 
 	// Cache off fade distances
@@ -1095,6 +1097,9 @@ void CViewRender::DrawRenderablesInList( CUtlVector< IClientRenderable * > &list
 void CViewRender::DrawViewModels( const CViewSetup &view, bool drawViewmodel )
 {
 	ClientRender_MarkStage( RENDER_STAGE_VIEW_MODEL );
+	if ( g_pRenderTemporalViews )
+		g_pRenderTemporalViews->SelectView(
+		    0x100000000ull + static_cast<unsigned long long>( CurrentViewID() ) + 1 );
 
 	VPROF( "CViewRender::DrawViewModel" );
 	tmZone( TELEMETRY_LEVEL0, TMZF_NONE, "%s", __FUNCTION__ );
@@ -1256,6 +1261,9 @@ void CViewRender::DrawViewModels( const CViewSetup &view, bool drawViewmodel )
 	// Restore the matrices
 	pRenderContext->MatrixMode( MATERIAL_PROJECTION );
 	pRenderContext->PopMatrix();
+	if ( g_pRenderTemporalViews )
+		g_pRenderTemporalViews->SelectView(
+		    static_cast<unsigned long long>( CurrentViewID() ) + 1 );
 }
 
 
@@ -2205,8 +2213,16 @@ void CViewRender::RenderView( const CViewSetup &view, int nClearFlags, int whatT
 		PerformScreenOverlay( view.x, view.y, view.width, view.height );
 
 		// Prevent sound stutter if going slow
-		engine->Sound_ExtraUpdate();	
-	
+		engine->Sound_ExtraUpdate();
+
+		const bool temporal = g_pRenderTemporalViews && g_pRenderTemporalViews->Enabled();
+		const int postWidth = temporal ? view.m_nUnscaledWidth : view.width;
+		const int postHeight = temporal ? view.m_nUnscaledHeight : view.height;
+		if ( temporal &&
+		     !g_pRenderTemporalViews->Reconstruct( view.x, view.y, view.width, view.height,
+		         postWidth, postHeight, MAX( gpGlobals->frametime * 1000.0f, 0.01f ) ) )
+			Error( "FSR: could not queue game reconstruction" );
+
 		if ( !building_cubemaps.GetBool() && view.m_bDoBloomAndToneMapping )
 		{
 			pRenderContext.GetFrom( materials );
@@ -2220,7 +2236,7 @@ void CViewRender::RenderView( const CViewSetup &view, int nClearFlags, int whatT
 					bFlashlightIsOn = pLocal->IsEffectActive( EF_DIMLIGHT );
 				}
 				ClientRender_MarkStage( RENDER_STAGE_POST_PROCESS );
-				DoEnginePostProcessing( view.x, view.y, view.width, view.height, bFlashlightIsOn );
+				DoEnginePostProcessing( view.x, view.y, postWidth, postHeight, bFlashlightIsOn );
 			}
 			pRenderContext.SafeRelease();
 		}
@@ -2235,7 +2251,7 @@ void CViewRender::RenderView( const CViewSetup &view, int nClearFlags, int whatT
 			engine->GrabPreColorCorrectedFrame( view.x, view.y, view.width, view.height );
 		}
 
-		PerformScreenSpaceEffects( 0, 0, view.width, view.height );
+		PerformScreenSpaceEffects( 0, 0, postWidth, postHeight );
 
 		if ( g_pMaterialSystemHardwareConfig->GetHDRType() == HDR_TYPE_INTEGER )
 		{
@@ -2283,7 +2299,8 @@ void CViewRender::RenderView( const CViewSetup &view, int nClearFlags, int whatT
 
 	}
 
-	if ( mat_viewportupscale.GetBool() && mat_viewportscale.GetFloat() < 1.0f ) 
+	if ( !( g_pRenderTemporalViews && g_pRenderTemporalViews->Enabled() ) &&
+	     mat_viewportupscale.GetBool() && mat_viewportscale.GetFloat() < 1.0f )
 	{
 		CMatRenderContextPtr pRenderContext( materials );
 

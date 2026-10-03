@@ -237,6 +237,7 @@ struct WorldTarget
 	// The color target (home kColorAttachment): its sRGB view, or, when it has
 	// none, its unorm view with the shader encoding sRGB (encodeOutput).
 	device::TextureId color;
+	device::TextureId motion; // optional RG16F MRT, home kColorAttachment
 	device::Format colorFormat = device::Format::kUnknown;
 	bool colorCopySource = false; // the imported target supports kCopySource
 	IWorldSceneColorCapture *sceneColorCapture = nullptr;
@@ -355,6 +356,7 @@ struct WorldView
 		std::uint32_t skin = 0;
 		RenderCoreDrawPhase phase = RenderCoreDrawPhase::kAll;
 		std::vector<material::SurfaceModelVertex> vertices;
+		std::vector<material::SurfaceModelVertex> previousVertices;
 		// Captured geometry selection; later body-group changes cannot mutate it.
 		std::optional<std::vector<std::uint32_t>> surfaceSelection;
 	};
@@ -371,6 +373,9 @@ struct WorldView
 	std::vector<DynamicDraw> dynamicDraws;
 
 	float toClip[16] = {};               // world to clip, row-major, D3D9 conventions
+	float motionToClip[16] = {};         // unjittered camera transform
+	float previousToClip[16] = {};
+	bool previousViewValid = false;
 	device::Viewport viewport;
 	// The host frame that queued the view (views of one frame share it; 0
 	// when unknown). A view whose slot never records is skipped, not failed,

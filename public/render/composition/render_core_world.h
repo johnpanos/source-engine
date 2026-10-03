@@ -115,6 +115,7 @@ struct RenderCorePosedModel
 	RenderCoreDrawPhase phase = RenderCoreDrawPhase::kAll;
 	int body = 0;         // engine-selected Studio body groups, captured with the pose
 	unsigned int lod = 0; // the host's selected level, including root-LOD policy
+	unsigned long long motionIdentity = 0; // non-reused model instance generation
 };
 
 // The world stage's quality settings (RFC 0016 K12); each field has an
@@ -295,6 +296,13 @@ public:
 	// cl_render_debug_legacy 1 (RFC 0014) it marks the frame's last slot, where
 	// the core tints magenta what it did not draw. Otherwise it marks nothing.
 	virtual void EndFrame() = 0;
+	virtual void SelectTemporalView( unsigned long long identity ) = 0;
+	virtual void ResetTemporalHistory() = 0;
+	virtual void CommitTemporalFrame( bool submitted ) = 0;
+	virtual bool TemporalEnabled() const = 0;
+	virtual void TemporalJitter( float *x, float *y ) const = 0;
+	virtual bool ReconstructTemporal( int x, int y, int renderWidth, int renderHeight,
+	    int outputWidth, int outputHeight, float deltaMilliseconds ) = 0;
 	// Views and claimed materials the core failed to draw, so far (never
 	// drawn by legacy instead: the caller's policy decides what a failure
 	// costs).

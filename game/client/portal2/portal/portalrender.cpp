@@ -7,6 +7,7 @@
 
 
 #include "cbase.h"
+#include "render_stage_marks.h"
 #include "portalrender.h"
 #include "precache_register.h"
 #include "view.h"
@@ -455,6 +456,8 @@ ConVar cl_useOldSwapPortalVisibilityCode( "cl_useoldswapportalvisibilitycode", "
 //-----------------------------------------------------------------------------
 void CPortalRender::EnteredPortal( int nPlayerSlot, CPortalRenderable *pEnteredPortal )
 {
+	if ( g_pRenderTemporalViews )
+		g_pRenderTemporalViews->ResetHistory();
 	CPortalRenderable *pExitPortal = pEnteredPortal->GetLinkedPortal();
 	Assert( pExitPortal != NULL );
 

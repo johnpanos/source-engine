@@ -842,6 +842,9 @@ std::optional<GroupRequest> ProgramResolver::FrameGroup(
 	if ( program.request.frameLayout == s.lightmapped->FrameLayout() )
 	{
 		SurfaceFrame frame;
+		std::copy_n( terms.motionCurrentToClip, 16, frame.motionCurrentToClip );
+		std::copy_n( terms.motionPreviousToClip, 16, frame.motionPreviousToClip );
+		std::copy_n( terms.motionExtent, 4, frame.motionExtent );
 		std::memcpy( frame.clipPlanes, terms.clipPlanes, sizeof( frame.clipPlanes ) );
 		frame.light[0] = terms.lightmapScale;
 		frame.light[1] = terms.outputScale;

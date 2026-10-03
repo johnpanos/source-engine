@@ -921,7 +921,8 @@ bool CSourceAppSystemGroup::Create()
 #if defined( LINKED_NATIVE_VULKAN_BACKEND ) && defined( LINKED_RENDER_CORE )
 	// RFC 0016 K1: the native Vulkan backend borrows its device from the
 	// Vulkan adapter (render.device.vulkan), linked once, here.
-	NativeVulkanShaderBackend_BindDeviceFactory( &render::device::vulkan::HostDeviceFactory() );
+	NativeVulkanShaderBackend_BindDeviceFactory(
+	    &render::device::vulkan::HostDeviceFactory( CommandLine()->FindParm( "-fsr" ) != 0 ) );
 	// RFC 0016 K3: its frames run in the render core's frame graph.
 	NativeVulkanShaderBackend_BindFrameExecutor( &render::legacy::LegacyFrameExecutor() );
 #endif
@@ -944,6 +945,8 @@ bool CSourceAppSystemGroup::Create()
 		    CommandLine()->ParmValue( "-render-masked-capabilities", RENDER_CORE_MASKED );
 		config.legacyBackend = selected;
 		config.validation = CommandLine()->FindParm( "-render-validation" ) != 0;
+		config.temporal = CommandLine()->FindParm( "-fsr" ) != 0;
+		config.temporalAssets = CommandLine()->ParmValue( "-fsr-assets", "" );
 		config.corePasses = CommandLine()->ParmValue( "-render-core-passes", "" );
 		// The core's compute work borrows the engine's compute pool, which the
 		// engine starts later; until then it runs inline.

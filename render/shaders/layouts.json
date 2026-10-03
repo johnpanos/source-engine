@@ -1001,6 +1001,48 @@
      ]
     }
    ]
+  },
+  "temporal-input": {
+   "sources": [
+    "render/pass/temporal/input_copy.*"
+   ],
+   "push_constants": [
+    "fragment"
+   ],
+   "bindings": [
+    {
+     "set": 3,
+     "binding": 0,
+     "kind": "sampled-image",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 3,
+     "binding": 1,
+     "kind": "sampled-image",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 3,
+     "binding": 2,
+     "kind": "sampled-image",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 3,
+     "binding": 3,
+     "kind": "sampler",
+     "stages": [
+      "fragment"
+     ]
+    }
+   ]
   }
  },
  "families": {
@@ -1011,7 +1053,11 @@
     "render/material/families/surface_world.vert",
     "render/material/families/surface_model.vert",
     "render/material/families/surface.frag",
-    "render/material/families/surface_ssr.frag"
+    "render/material/families/surface_ssr.frag",
+    "render/material/families/surface_flat_temporal.vert",
+    "render/material/families/surface_world_temporal.vert",
+    "render/material/families/surface_model_temporal.vert",
+    "render/material/families/surface_temporal.frag"
    ],
    "push_constants": [
     "vertex"
@@ -1022,6 +1068,7 @@
       "binding": 0,
       "kind": "uniform-buffer",
       "stages": [
+       "vertex",
        "fragment"
       ]
      },

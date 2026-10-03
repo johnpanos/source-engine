@@ -12,6 +12,7 @@
 #include "engine/render_core_binding.h"
 #include "render/composition/render_core.h"
 #include "render/frame/renderer.h"
+#include "render/legacy/temporal_views.h"
 #include "render/scene/scene.h"
 #include "ivideomode.h"
 #include "tier0/dbg.h"
@@ -431,6 +432,8 @@ void RenderCoreHost_EndFrame()
 		}
 	}
 	auto result = host.renderer->EndFrame();
+	if ( host.world )
+		host.world->CommitTemporalFrame( result.HasValue() );
 	if ( !result && host.failedFrames++ == 0 )
 		Warning( "Render core: frame %llu failed (status %u).\n", (unsigned long long)host.frame,
 		    (unsigned int)result.Error().status );
@@ -604,3 +607,43 @@ CON_COMMAND( r_core_stats, "Prints what the render core ran (RFC 0016)." )
 	    (unsigned long long)totals.transitions, (unsigned long long)totals.transientsCreated,
 	    (unsigned long long)totals.transientsReused, host.worldScene ? "live" : "none" );
 }
+
+bool RenderCoreHost_TemporalJitter( float *x, float *y )
+{
+	*x = *y = 0;
+	if ( !Host().world || !Host().world->TemporalEnabled() )
+		return false;
+	Host().world->TemporalJitter( x, y );
+	return true;
+}
+
+// Separate optional interface; does not alter IVEngineClient's preserved ABI.
+namespace
+{
+class TemporalViews final : public IRenderTemporalViews
+{
+public:
+	void SelectView( unsigned long long identity ) override
+	{
+		if ( Host().world )
+			Host().world->SelectTemporalView( identity );
+	}
+	void ResetHistory() override
+	{
+		if ( Host().world )
+			Host().world->ResetTemporalHistory();
+	}
+	bool Enabled() const override { return Host().world && Host().world->TemporalEnabled(); }
+	bool Reconstruct( int x, int y, int rw, int rh, int ow, int oh, float dt ) override
+	{
+		return Host().world && Host().world->ReconstructTemporal( x, y, rw, rh, ow, oh, dt );
+	}
+};
+void *TemporalViewsFactory()
+{
+	static TemporalViews adapter;
+	return &adapter;
+}
+}
+EXPOSE_INTERFACE_FN(
+    TemporalViewsFactory, IRenderTemporalViews, RENDER_TEMPORAL_VIEWS_INTERFACE_VERSION );

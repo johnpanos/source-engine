@@ -731,6 +731,21 @@ void CRender::Push3DView( const CViewSetup &view, int nFlags, ITexture* pRenderT
 	topView.m_flAspectRatio = ComputeViewMatrices( &viewStack.m_matrixView, 
 		&viewStack.m_matrixProjection, &viewStack.m_matrixWorldToScreen, topView );
 
+	float jitterX = 0, jitterY = 0;
+	if ( !pRenderTarget && !topView.m_bOrtho && topView.width > 0 && topView.height > 0 &&
+	     RenderCoreHost_TemporalJitter( &jitterX, &jitterY ) )
+	{
+		for ( int c = 0; c < 4; ++c )
+		{
+			viewStack.m_matrixProjection[0][c] +=
+			    2 * jitterX / topView.width * viewStack.m_matrixProjection[3][c];
+			viewStack.m_matrixProjection[1][c] -=
+			    2 * jitterY / topView.height * viewStack.m_matrixProjection[3][c];
+		}
+		MatrixMultiply(
+		    viewStack.m_matrixProjection, viewStack.m_matrixView, viewStack.m_matrixWorldToScreen );
+	}
+
 	m_zNear = topView.zNear;
 	m_zFar = topView.zFar;	// cache this for queries
 

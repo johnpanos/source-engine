@@ -10,6 +10,7 @@
           "public/render/pass/temporal/"
         ],
         "allowedEdges": [
+          "render.shader-library",
           "foundation",
           "render.device",
           "render.graph",
@@ -1188,6 +1189,7 @@
           "render/composition/"
         ],
         "allowedEdges": [
+          "render.pass.temporal",
           "content.studio-model",
           "jobs.graph",
           "foundation",
@@ -1681,7 +1683,7 @@
           "render_device"
         ]
       },
-      "render_pass_temporal": {"allowedUse": ["render_graph", "render_device"]},
+      "render_pass_temporal": {"allowedUse": ["render_graph", "render_device", "render_shaderlib"]},
       "fsr411_runtime": {"allowedUse": ["VULKAN"]},
       "render_device_vulkan": {
         "allowedUse": [
@@ -1879,6 +1881,7 @@
       },
       "render_composition": {
         "allowedUse": [
+          "render_pass_temporal",
           "mdl",
           "render_renderer",
           "render_pass_present",

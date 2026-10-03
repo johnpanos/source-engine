@@ -2031,6 +2031,11 @@ void WorldPass::RecordBatch(
 
 	// The frame group of a program's layout, its terms written for this slot.
 	material::FrameTerms terms;
+	std::copy_n( view.motionToClip, 16, terms.motionCurrentToClip );
+	std::copy_n( view.previousToClip, 16, terms.motionPreviousToClip );
+	terms.motionExtent[0] = view.viewport.width;
+	terms.motionExtent[1] = view.viewport.height;
+	terms.motionExtent[2] = view.previousViewValid ? 1.0f : 0.0f;
 	std::memcpy( terms.clipPlanes, target.clipPlanes, sizeof( terms.clipPlanes ) );
 	terms.lightmapScale = target.lightmapScale;
 	terms.outputScale = target.outputScale;
@@ -2341,6 +2346,7 @@ void WorldPass::RecordBatch(
 	};
 	std::vector<StaticDraw> staticDraws;
 	std::vector<BufferId> posedBuffers( view.posedModels.size() );
+	std::vector<BufferId> previousPosedBuffers( view.posedModels.size() );
 	auto uploadMesh = [&]( std::uint32_t meshId ) -> bool
 	{
 		Resources::StaticMeshBuffers &buffers = r.staticMeshes[meshId];
@@ -2466,12 +2472,36 @@ void WorldPass::RecordBatch(
 			continue;
 		}
 		posedBuffers[poseId] = buffer.Value();
+		s.retiredBuffers.emplace_back( target.frame, buffer.Value() );
+		if ( target.motion.IsValid() )
+		{
+			if ( pose.previousVertices.size() != pose.vertices.size() )
+			{
+				note( "temporal model has no previous correspondence buffer" );
+				complete = false;
+				continue;
+			}
+			auto previous = device.CreateBuffer( desc );
+			if ( !previous )
+			{
+				complete = false;
+				continue;
+			}
+			previousPosedBuffers[poseId] = previous.Value();
+			encoder.TransitionBuffer(
+			    previous.Value(), ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+			encoder.WriteBuffer(
+			    previous.Value(), 0, std::as_bytes( std::span( pose.previousVertices ) ) );
+			encoder.TransitionBuffer(
+			    previous.Value(), ResourceUsage::kCopyDestination, ResourceUsage::kVertex );
+			s.retiredBuffers.emplace_back( target.frame, previous.Value() );
+		}
+
 		encoder.TransitionBuffer(
 		    buffer.Value(), ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
 		encoder.WriteBuffer( buffer.Value(), 0, bytes );
 		encoder.TransitionBuffer(
 		    buffer.Value(), ResourceUsage::kCopyDestination, ResourceUsage::kVertex );
-		s.retiredBuffers.emplace_back( target.frame, buffer.Value() );
 		WorldData::StaticInstance instance;
 		instance.mesh = pose.mesh;
 		instance.skin = pose.skin;
@@ -2558,11 +2588,15 @@ void WorldPass::RecordBatch(
 	// `pipelineOf` (none: the surfaces are not drawn and the view fails).
 	// Surfaces of one binding whose index ranges touch draw as one range (a
 	// world stage's meshlets, in the mesh's order).
+	bool recordingTemporal = false;
 	auto statePipeline =
 	    [&]( const Resources::Material &m, PipelineId base, const material::SurfaceDrawState &state,
 	        const shaderlib::DebugSpecialization &debug = {} ) -> std::optional<PipelineId>
 	{
-		auto result = m.resolver->Program().ViewPipeline( base, state, viewFeatures, debug );
+		auto result =
+		    recordingTemporal
+		        ? m.resolver->Program().TemporalPipeline( base, state, viewFeatures, debug )
+		        : m.resolver->Program().ViewPipeline( base, state, viewFeatures, debug );
 		if ( !result )
 		{
 			note( "view raster state: pipeline refused for " + m.program.name + " status " +
@@ -2639,6 +2673,8 @@ void WorldPass::RecordBatch(
 				}
 				encoder.SetBindGroup( BindGroupRole::kMaterial, m.group.group );
 				encoder.SetVertexBuffer( 0, r.vertices, 0 );
+				if ( recordingTemporal )
+					encoder.SetVertexBuffer( 1, r.vertices, 0 );
 				encoder.SetIndexBuffer( r.indices, 0, IndexFormat::kUint32 );
 				encoder.SetDrawConstants(
 				    0, ( m.program.name == "water" && view.waterZOffset != 0.0f ? waterConstantBytes
@@ -2905,7 +2941,8 @@ void WorldPass::RecordBatch(
 	}
 
 	preparation.End();
-	const ColorAttachment colors[] = { { target.color, LoadOp::kLoad, StoreOp::kStore, {}, {} } };
+	std::vector<ColorAttachment> colors = {
+	    { target.color, LoadOp::kLoad, StoreOp::kStore, {}, {} } };
 	RenderingDesc rendering;
 	rendering.colors = colors;
 	rendering.depth = DepthAttachment{ target.depth, LoadOp::kLoad, StoreOp::kStore, 1.0f };
@@ -2957,6 +2994,9 @@ void WorldPass::RecordBatch(
 		                                 .first( m.program.request.drawConstantBytes ) );
 		const Resources::StaticMeshBuffers &buffers = r.staticMeshes[draw.mesh];
 		encoder.SetVertexBuffer( 0, draw.posed ? posedBuffers[draw.instance] : buffers.vertices );
+		if ( recordingTemporal )
+			encoder.SetVertexBuffer(
+			    1, draw.posed ? previousPosedBuffers[draw.instance] : buffers.vertices );
 		encoder.SetIndexBuffer( buffers.indices, 0, IndexFormat::kUint32 );
 		encoder.DrawIndexed( surface.indexCount, 1, surface.firstIndex, 0, 0 );
 	};
@@ -3061,6 +3101,12 @@ void WorldPass::RecordBatch(
 		encoder.EndLabel();
 	}
 	encoder.BeginLabel( "core world" );
+	recordingTemporal = target.motion.IsValid();
+	if ( recordingTemporal )
+	{
+		colors.push_back( { target.motion, LoadOp::kLoad, StoreOp::kStore, {}, {} } );
+		rendering.colors = colors;
+	}
 	encoder.BeginRendering( rendering );
 	encoder.SetViewport( view.viewport );
 	RecordSection draws( encoder );
@@ -3214,6 +3260,8 @@ void WorldPass::RecordBatch(
 		encoder.SetBindGroup( BindGroupRole::kDraw, r.drawGroups[drawKey( m, draw.page )].group );
 		encoder.SetDrawConstants( 0, constantBytes.first( m.program.request.drawConstantBytes ) );
 		encoder.SetVertexBuffer( 0, draw.vertices );
+		if ( recordingTemporal )
+			encoder.SetVertexBuffer( 1, draw.vertices );
 		encoder.SetIndexBuffer( draw.indices, 0, IndexFormat::kUint32 );
 		encoder.DrawIndexed( draw.count, 1, 0, 0, 0 );
 		++drawnDynamic;

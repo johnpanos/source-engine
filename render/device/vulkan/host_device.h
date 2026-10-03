@@ -109,6 +109,7 @@ struct HostDeviceRequest
 	PFN_vkDebugUtilsMessengerCallbackEXT messageCallback = nullptr;
 	void *messageUser = nullptr;
 	bool requireDiscrete = false;
+	bool fsr411 = false; // explicitly requested private temporal adapter features
 	// The physical device, by enumeration index; -1 picks the best one that
 	// qualifies (discrete first).
 	int adapterIndex = -1;

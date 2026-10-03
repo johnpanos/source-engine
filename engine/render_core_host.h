@@ -26,6 +26,8 @@ class IGpuCompute;
 }
 
 bool RenderCoreHost_IsBound();
+// Frame-owned pixel jitter, zero when temporal reconstruction is not selected.
+bool RenderCoreHost_TemporalJitter( float *x, float *y );
 struct RenderCoreCostReport;
 // Null output queries visibility only; otherwise reads the completed core sample.
 bool RenderCoreHost_ReadCosts( RenderCoreCostReport *out );

@@ -935,6 +935,7 @@ private:
 
 	struct ModelInstance_t
 	{
+		uint64 m_nMotionIdentity;
 		IClientRenderable* m_pRenderable;
 
 		// Need to store off the model. When it changes, we lose all instance data..
@@ -1008,6 +1009,7 @@ private:
 	void AddDecalInternal( ModelInstanceHandle_t handle, Ray_t const& ray, const Vector& decalUp, int decalIndex, int body, bool bUseColor, Color cColor, bool noPokeThru, int maxLODToDecal);
 
 	// Model instance data
+	uint64 m_nNextMotionIdentity = 0;
 	CUtlLinkedList< ModelInstance_t, ModelInstanceHandle_t > m_ModelInstances; 
 
 	// current active model
@@ -2139,7 +2141,10 @@ void CModelRender::DrawModelExecute( const DrawModelState_t &state, const ModelR
 		         !( pInfo.flags & STUDIO_TWOPASS )       ? RenderCoreDrawPhase::kAll
 		         : ( pInfo.flags & STUDIO_TRANSPARENCY ) ? RenderCoreDrawPhase::kBlended
 		                                                 : RenderCoreDrawPhase::kOpaque,
-		         pInfo.body, state.m_lod ) )
+		         pInfo.body, state.m_lod,
+		         pInfo.instance != MODEL_INSTANCE_INVALID
+		             ? m_ModelInstances[pInfo.instance].m_nMotionIdentity
+		             : 0 ) )
 			return;
 	}
 
@@ -4377,6 +4382,7 @@ ModelInstanceHandle_t CModelRender::CreateInstance( IClientRenderable *pRenderab
 	ModelInstanceHandle_t handle = m_ModelInstances.AddToTail();
 	ModelInstance_t& instance = m_ModelInstances[handle];
 
+	instance.m_nMotionIdentity = ++m_nNextMotionIdentity;
 	instance.m_pRenderable = pRenderable;
 	instance.m_DecalHandle = STUDIORENDER_DECAL_INVALID;
 	instance.m_pModel = (model_t*)pModel;

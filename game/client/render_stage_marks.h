@@ -12,6 +12,8 @@
 
 #include "render/legacy/material_blocks.h"
 #include "render/legacy/stage_markers.h"
+#include "render/legacy/temporal_views.h"
+extern IRenderTemporalViews *g_pRenderTemporalViews;
 
 // Set in CHLClient::Init from the app system factory; NULL without a core.
 extern IRenderStageMarkers *g_pRenderStageMarkers;

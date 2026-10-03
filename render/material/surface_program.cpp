@@ -29,18 +29,21 @@ constexpr const char *kFragmentSource = "render/material/families/surface.frag";
 // The same program with the SSR targets (kSurfaceSsrTargets).
 constexpr const char *kSsrFragmentSource = "render/material/families/surface_ssr.frag";
 
-const char *VertexSource( SurfaceVertexLayout layout )
+const char *VertexSource( SurfaceVertexLayout layout, bool temporal = false )
 {
 	switch ( layout )
 	{
 	case SurfaceVertexLayout::kWorld:
-		return "render/material/families/surface_world.vert";
+		return temporal ? "render/material/families/surface_world_temporal.vert"
+		                : "render/material/families/surface_world.vert";
 	case SurfaceVertexLayout::kModel:
-		return "render/material/families/surface_model.vert";
+		return temporal ? "render/material/families/surface_model_temporal.vert"
+		                : "render/material/families/surface_model.vert";
 	case SurfaceVertexLayout::kFlat:
 		break;
 	}
-	return "render/material/families/surface_flat.vert";
+	return temporal ? "render/material/families/surface_flat_temporal.vert"
+	                : "render/material/families/surface_flat.vert";
 }
 
 } // namespace
@@ -150,7 +153,8 @@ foundation::Expected<std::unique_ptr<SurfaceProgram>, SurfaceStatus> SurfaceProg
 	program->m_ColorFormat = colorFormat;
 	program->m_DepthFormat = depthFormat;
 	program->m_SampleCount = sampleCount;
-	const BindingDesc frame[] = { { 0, BindingKind::kUniformBuffer, 1, { ShaderStage::kFragment } },
+	const BindingDesc frame[] = {
+	    { 0, BindingKind::kUniformBuffer, 1, { ShaderStage::kVertex, ShaderStage::kFragment } },
 	    { 1, BindingKind::kSampledTexture, 1, { ShaderStage::kFragment } },
 	    { 2, BindingKind::kSampler, 1, { ShaderStage::kFragment } },
 	    { 3, BindingKind::kSampledTexture, 1, { ShaderStage::kFragment } },
@@ -268,8 +272,11 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::Pipeline(
 	}
 	const bool withSsrTargets =
 	    ( variant.terms & kSurfaceSsrTargets ) != 0 && !( variant.terms & kSurfaceDepthNormal );
-	shaderlib::PipelineRecipe recipe = shaderlib::CoreRecipe(
-	    { VertexSource( variant.layout ), withSsrTargets ? kSsrFragmentSource : kFragmentSource } );
+	shaderlib::PipelineRecipe recipe =
+	    shaderlib::CoreRecipe( { VertexSource( variant.layout, variant.temporal ),
+	        variant.temporal ? "render/material/families/surface_temporal.frag"
+	        : withSsrTargets ? kSsrFragmentSource
+	                         : kFragmentSource } );
 	recipe.debugName = "render.material.surface";
 	auto resolved = shaderlib::Resolve( recipe, artifacts, format );
 	if ( !resolved )
@@ -299,7 +306,9 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::Pipeline(
 	const VertexAttribute modelAttributes[] = { { 0, VertexFormat::kFloat3, 0, 0 },
 	    { 1, VertexFormat::kFloat3, 12, 0 }, { 2, VertexFormat::kFloat4, 24, 0 },
 	    { 3, VertexFormat::kFloat2, 40, 0 } };
-	const VertexBufferLayout buffers[] = { { SurfaceVertexStride( variant.layout ), false } };
+	std::vector<VertexBufferLayout> buffers = { { SurfaceVertexStride( variant.layout ), false } };
+	if ( variant.temporal )
+		buffers.push_back( buffers.front() );
 	const BindGroupLayoutId layouts[] = {
 	    m_FrameLayout, m_ViewLayout, m_MaterialLayout, m_DrawLayout };
 	// The prepass writes the normal and roughness alone; the SSR targets are
@@ -310,30 +319,30 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::Pipeline(
 	const std::uint8_t firstWrite =
 	    variant.alphaWrite ? kColorWriteAll : std::uint8_t( kColorWriteAll & ~kColorWriteAlpha );
 	const Format colors[] = { prepass && !depthOnly ? Format::kRGBA16Float : m_ColorFormat,
-	    Format::kRGBA16Float, Format::kRGBA16Float, Format::kRGBA16Float };
+	    variant.temporal ? Format::kRG16Float : Format::kRGBA16Float, Format::kRGBA16Float,
+	    Format::kRGBA16Float };
 	const BlendMode blends[] = { prepass ? BlendMode::kOpaque : variant.blend, BlendMode::kOpaque,
 	    BlendMode::kOpaque, BlendMode::kOpaque };
 	const std::uint8_t writes[] = { depthOnly ? std::uint8_t( 0 )
 	                                : prepass
 	                                    ? kColorWriteAll
 	                                    : std::uint8_t( firstWrite & variant.drawState.colorWrite ),
-	    kColorWriteAll, kColorWriteAll, kColorWriteAll };
-	const std::size_t attachments = ssrTargets ? 4 : 1;
+	    std::uint8_t( variant.temporal && variant.drawState.colorWrite == 0 ? 0 : kColorWriteAll ),
+	    kColorWriteAll, kColorWriteAll };
+	const std::size_t attachments = variant.temporal ? 2 : ssrTargets ? 4 : 1;
 	PipelineDesc desc = resolved.Value().Desc();
 	desc.layouts = layouts;
 	desc.drawConstantBytes = drawConstantBytes;
-	switch ( variant.layout )
-	{
-	case SurfaceVertexLayout::kFlat:
-		desc.vertex = { flatAttributes, buffers };
-		break;
-	case SurfaceVertexLayout::kWorld:
-		desc.vertex = { worldAttributes, buffers };
-		break;
-	case SurfaceVertexLayout::kModel:
-		desc.vertex = { modelAttributes, buffers };
-		break;
-	}
+	std::vector<VertexAttribute> attributes;
+	if ( variant.layout == SurfaceVertexLayout::kFlat )
+		attributes.assign( std::begin( flatAttributes ), std::end( flatAttributes ) );
+	else if ( variant.layout == SurfaceVertexLayout::kWorld )
+		attributes.assign( std::begin( worldAttributes ), std::end( worldAttributes ) );
+	else
+		attributes.assign( std::begin( modelAttributes ), std::end( modelAttributes ) );
+	if ( variant.temporal )
+		attributes.push_back( { 7, VertexFormat::kFloat3, 0, 1 } );
+	desc.vertex = { attributes, buffers };
 	desc.topology = PrimitiveTopology::kTriangleList;
 	desc.raster.cull = variant.drawState.cull;
 	const bool depth = m_DepthFormat != Format::kUnknown && !variant.ignoreDepth;
@@ -403,6 +412,21 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::ViewPipeline( Pi
 	SurfaceVariant variant = found->second;
 	variant.drawState = state;
 	variant.viewFeatures = viewFeatures;
+	return Pipeline( variant, debug );
+}
+
+foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::TemporalPipeline(
+    PipelineId shipped, const SurfaceDrawState &state, std::uint32_t viewFeatures,
+    const shaderlib::DebugSpecialization &debug )
+{
+	const auto found = m_Shipped.find( shipped.value );
+	if ( found == m_Shipped.end() || ( found->second.terms & kSurfaceSsrTargets ) ||
+	     m_SampleCount != 1 )
+		return foundation::MakeUnexpected( SurfaceStatus::kInvalidRequest );
+	SurfaceVariant variant = found->second;
+	variant.drawState = state;
+	variant.viewFeatures = viewFeatures;
+	variant.temporal = true;
 	return Pipeline( variant, debug );
 }
 

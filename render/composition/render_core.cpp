@@ -316,6 +316,7 @@ extern "C" RenderCore *RenderCore_Create( const RenderCoreConfig *config, Render
 	    std::make_unique<render::composition::CorePanels>( *core->frontend, *core->renderer );
 	core->forwarded =
 	    std::make_unique<render::composition::ForwardedSlots>( *core->world, *core->panels );
+	core->world->EnableTemporal( config->temporal, config->temporalAssets );
 	core->renderer->AddStageHooks( core->world.get() );
 	core->frontend->SetForwardedRecorder( core->forwarded.get() );
 	core->binding.world = core->world.get();

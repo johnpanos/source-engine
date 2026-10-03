@@ -45,6 +45,9 @@ namespace render::material
 // lightmap pages encode light and the output's linear (tone-mapping) scale.
 struct FrameTerms
 {
+	float motionCurrentToClip[16] = {};
+	float motionPreviousToClip[16] = {};
+	float motionExtent[4] = {};
 	float lightmapScale = 4.5947938f; // LDR gamma pages at half overbright (2^2.2)
 	float outputScale = 1.0f;
 	// The target has no sRGB view: the shader encodes its output (the

@@ -183,8 +183,9 @@ std::unique_ptr<IHostDevice> MakeDevice( const HostDeviceRequest &request,
     std::shared_ptr<InstanceHandle> instance, char *error, std::size_t errorSize )
 {
 	Copy( error, errorSize, "" );
-	auto device =
-	    std::make_unique<VulkanDevice>( VulkanAdapterOptions(), &request, std::move( instance ) );
+	VulkanAdapterOptions options;
+	options.fsr411 = request.fsr411;
+	auto device = std::make_unique<VulkanDevice>( options, &request, std::move( instance ) );
 	const DeviceResult<void> initialized = device->Initialize();
 	if ( !initialized )
 	{
@@ -207,28 +208,36 @@ std::unique_ptr<IHostDevice> MakeDevice( const HostDeviceRequest &request,
 class HostInstance final : public IHostInstance
 {
 public:
-	explicit HostInstance( std::shared_ptr<InstanceHandle> instance )
-	    : m_Instance( std::move( instance ) )
+	explicit HostInstance( std::shared_ptr<InstanceHandle> instance, bool fsr )
+	    : m_Instance( std::move( instance ) ), m_Fsr( fsr )
 	{
 	}
 	VkInstance Instance() const override { return m_Instance->instance; }
 	std::unique_ptr<IHostDevice> CreateDevice(
 	    const HostDeviceRequest &request, char *error, std::size_t errorSize ) override
 	{
-		return MakeDevice( request, m_Instance, error, errorSize );
+		auto selected = request;
+		selected.fsr411 = m_Fsr;
+		return MakeDevice( selected, m_Instance, error, errorSize );
 	}
 
 private:
 	std::shared_ptr<InstanceHandle> m_Instance;
+	bool m_Fsr;
 };
 
 class Factory final : public IHostDeviceFactory
 {
+	bool m_Fsr;
+
 public:
+	explicit Factory( bool fsr ) : m_Fsr( fsr ) {}
 	std::unique_ptr<IHostDevice> Create(
 	    const HostDeviceRequest &request, char *error, std::size_t errorSize ) const override
 	{
-		return MakeDevice( request, nullptr, error, errorSize );
+		auto selected = request;
+		selected.fsr411 = m_Fsr;
+		return MakeDevice( selected, nullptr, error, errorSize );
 	}
 
 	std::unique_ptr<IHostInstance> CreateInstance(
@@ -244,16 +253,16 @@ public:
 			return nullptr;
 		}
 		return std::make_unique<HostInstance>(
-		    std::shared_ptr<InstanceHandle>( std::move( instance ).Value() ) );
+		    std::shared_ptr<InstanceHandle>( std::move( instance ).Value() ), m_Fsr );
 	}
 };
 
 } // namespace
 
-const IHostDeviceFactory &HostDeviceFactory()
+const IHostDeviceFactory &HostDeviceFactory( bool fsr411 )
 {
-	static const Factory factory;
-	return factory;
+	static const Factory normal( false ), temporal( true );
+	return fsr411 ? temporal : normal;
 }
 
 } // namespace render::device::vulkan

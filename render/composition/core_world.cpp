@@ -5,6 +5,9 @@
 //=============================================================================//
 
 #include "core_world.h"
+#ifdef RENDER_CORE_VULKAN
+#include "render/device/vulkan/fsr.h"
+#endif
 
 #include "mapcontainer/world_lightmap.h"
 #include "mapcontainer/world_mesh_decode.h"
@@ -15,6 +18,7 @@
 #include "mdl/studio_model.h"
 
 #include <algorithm>
+#include <limits>
 #include <array>
 #include <chrono>
 #include <cmath>
@@ -1312,12 +1316,57 @@ bool CoreWorld::DrawView( const unsigned int *surfaces, unsigned int count,
 		pass::world::WorldView::PosedModel pose;
 		if ( !PoseModel( posedModels[i], pose ) )
 			return false;
+		if ( m_TemporalEnabled )
+		{
+			const auto &source = posedModels[i];
+			const auto key =
+			    std::make_pair( m_TemporalView, std::uint64_t( source.motionIdentity ) );
+			const auto old = m_PreviousPoses.find( key );
+			if ( m_TemporalView && source.motionIdentity && old != m_PreviousPoses.end() &&
+			     old->second.model == source.model && old->second.body == source.body &&
+			     old->second.lod == source.lod &&
+			     old->second.vertices.size() == pose.vertices.size() )
+				pose.previousVertices = old->second.vertices;
+			else
+			{
+				pose.previousVertices = pose.vertices;
+				for ( auto &vertex : pose.previousVertices )
+					vertex.position[0] = std::numeric_limits<float>::quiet_NaN();
+			}
+			if ( m_TemporalView && source.motionIdentity )
+				m_PendingPoses.insert_or_assign(
+				    key, MotionPose{ source.model, source.lod, source.body, pose.vertices } );
+		}
+
 		view.posedModels.push_back( std::move( pose ) );
 	}
 	std::memcpy( view.toClip, worldToClip, sizeof( view.toClip ) );
 	view.viewport = {
 	    viewport[0], viewport[1], viewport[2], viewport[3], viewport[4], viewport[5] };
 	view.hostFrame = hostFrame;
+	std::copy_n( worldToClip, 16, view.motionToClip );
+	if ( m_TemporalEnabled && view.viewport.width > 0 && view.viewport.height > 0 )
+		for ( unsigned c = 0; c < 4; ++c )
+		{
+			view.motionToClip[c] -= 2 * m_JitterX / view.viewport.width * worldToClip[12 + c];
+			view.motionToClip[4 + c] += 2 * m_JitterY / view.viewport.height * worldToClip[12 + c];
+		}
+
+	if ( m_TemporalEnabled && m_TemporalView )
+	{
+		const auto old = m_PreviousCameras.find( m_TemporalView );
+		if ( old != m_PreviousCameras.end() && old->second.viewport.width == view.viewport.width &&
+		     old->second.viewport.height == view.viewport.height )
+		{
+			std::copy( old->second.toClip.begin(), old->second.toClip.end(), view.previousToClip );
+			view.previousViewValid = true;
+		}
+		MotionCamera current;
+		std::copy_n( view.motionToClip, 16, current.toClip.begin() );
+		current.viewport = view.viewport;
+		m_PendingCameras.insert_or_assign( m_TemporalView, current );
+	}
+
 	view.debug = m_Renderer.AppliedDebug();
 	// The camera's right in the water plane: the view's x axis (the first
 	// row of world-to-view) with its z dropped, normalized.
@@ -1380,6 +1429,54 @@ bool CoreWorld::DrawView( const unsigned int *surfaces, unsigned int count,
 	return true;
 }
 
+bool CoreWorld::ReconstructTemporal( int x, int y, int rw, int rh, int ow, int oh, float dt )
+{
+	if ( !m_TemporalEnabled || rw <= 0 || rh <= 0 || ow <= 0 || oh <= 0 || dt <= 0 )
+		return false;
+	auto *slots = m_Frontend.CorePassSlots();
+	if ( !slots )
+		return false;
+	TemporalRequest request;
+	request.x = x;
+	request.y = y;
+	request.render = { std::uint32_t( rw ), std::uint32_t( rh ) };
+	request.output = { std::uint32_t( ow ), std::uint32_t( oh ) };
+	request.jitterX = m_JitterX;
+	request.jitterY = m_JitterY;
+	request.deltaMilliseconds = dt;
+	request.generation = m_TemporalGeneration;
+	const std::uint32_t tag = 0x88000000u | ( ++m_TemporalSerial & 0x00ffffffu );
+	{
+		std::lock_guard<std::mutex> lock( m_TemporalLock );
+		if ( m_TemporalRequests.size() >= 8 )
+			return false;
+		m_TemporalRequests.emplace( tag, request );
+	}
+	slots->MarkSlot( tag );
+	return true;
+}
+
+void CoreWorld::ResetTemporalHistory()
+{
+	++m_TemporalGeneration;
+	m_PreviousCameras.clear();
+	m_PendingCameras.clear();
+	m_PreviousPoses.clear();
+	m_PendingPoses.clear();
+}
+void CoreWorld::CommitTemporalFrame( bool submitted )
+{
+	if ( submitted )
+	{
+		m_PreviousCameras = std::move( m_PendingCameras );
+		m_PreviousPoses = std::move( m_PendingPoses );
+		m_PendingCameras.clear();
+		m_PendingPoses.clear();
+	}
+	else
+		ResetTemporalHistory();
+}
+
 void CoreWorld::OnStage( frame::Stage, std::uint32_t depth )
 {
 	m_ViewDepth = depth;
@@ -1404,6 +1501,24 @@ void CoreWorld::EndFrame()
 
 void CoreWorld::BeginFrame()
 {
+	if ( m_TemporalEnabled )
+	{
+		const auto halton = []( unsigned index, unsigned base )
+		{
+			float result = 0, scale = 1;
+			while ( index )
+			{
+				scale /= float( base );
+				result += scale * float( index % base );
+				index /= base;
+			}
+			return result;
+		};
+		const unsigned sample = ( m_JitterSequence++ % 32 ) + 1;
+		m_JitterX = halton( sample, 2 ) - 0.5f;
+		m_JitterY = halton( sample, 3 ) - 0.5f;
+	}
+
 	const frame::DebugControls &debug = m_Renderer.AppliedDebug();
 	if ( debug.costOverlay )
 		if ( legacy::ICorePassSlots *slots = m_Frontend.CorePassSlots() )
@@ -1717,6 +1832,47 @@ std::uint32_t CoreWorld::QueueMesh( const legacy::CoreMeshDraw &draw )
 void CoreWorld::RecordSlot(
     std::uint32_t tag, device::CommandEncoder &encoder, const legacy::CorePassTarget &target )
 {
+	if ( ( tag & 0xff000000u ) == 0x88000000u )
+	{
+		std::optional<TemporalRequest> request;
+		{
+			std::lock_guard<std::mutex> lock( m_TemporalLock );
+			auto found = m_TemporalRequests.find( tag );
+			if ( found != m_TemporalRequests.end() )
+			{
+				request = found->second;
+				m_TemporalRequests.erase( found );
+			}
+		}
+		bool success = false;
+		if ( request && target.device )
+		{
+#ifdef RENDER_CORE_VULKAN
+			if ( !m_Temporal )
+			{
+				auto provider = device::vulkan::CreateFsr411( *target.device, m_TemporalAssets );
+				if ( provider )
+					m_Temporal = std::make_unique<CoreTemporal>(
+					    *target.device, std::move( provider ).Value() );
+			}
+#endif
+			auto motion = m_MotionTargets.find( target.color.value );
+			if ( m_Temporal && motion != m_MotionTargets.end() )
+				success = m_Temporal->Record( encoder, target, motion->second.image, *request );
+		}
+		if ( !success )
+		{
+			++m_LightingFailures;
+			std::fprintf( stderr,
+			    "FSR game: reconstruction failed (request=%d device=%d provider=%d color=%llu "
+			    "motion=%d samples=%u); no silent spatial fallback\n",
+			    int( request.has_value() ), int( target.device != nullptr ),
+			    int( m_Temporal != nullptr ), static_cast<unsigned long long>( target.color.value ),
+			    int( m_MotionTargets.count( target.color.value ) ), target.samples );
+			(void)encoder.TakeBackend();
+		}
+		return;
+	}
 	if ( tag == legacy::kCorePassLegacyHud )
 		return;
 	if ( tag == kCostBegin )
@@ -1833,6 +1989,49 @@ void CoreWorld::RecordWorldBatch( std::span<const std::uint32_t> tags,
 	world.width = target.width;
 	world.height = target.height;
 	world.samples = target.samples;
+	if ( m_TemporalEnabled && target.device && target.samples == 1 )
+	{
+		auto &motion = m_MotionTargets[target.color.value];
+		if ( motion.width != target.width || motion.height != target.height )
+		{
+			if ( motion.image.IsValid() )
+				(void)target.device->Release(
+				    device::ResourceId( motion.image ), target.submitted );
+			motion = {};
+			device::TextureDesc desc;
+			desc.format = device::Format::kRG16Float;
+			desc.width = target.width;
+			desc.height = target.height;
+			desc.usages = { device::ResourceUsage::kColorAttachment,
+			    device::ResourceUsage::kSampled, device::ResourceUsage::kCopySource };
+			desc.debugName = "game temporal motion";
+			auto created = target.device->CreateTexture( desc );
+			if ( !created )
+			{
+				++m_LightingFailures;
+				return;
+			}
+			motion.image = created.Value();
+			motion.width = target.width;
+			motion.height = target.height;
+			encoder.TransitionTexture( motion.image, device::ResourceUsage::kUndefined,
+			    device::ResourceUsage::kColorAttachment );
+		}
+		if ( motion.frame != target.frame )
+		{
+			device::ColorAttachment attachment{ motion.image, device::LoadOp::kClear,
+			    device::StoreOp::kStore, { 65504.0f, 65504.0f, 0.0f, 0.0f }, {} };
+			device::RenderingDesc clear;
+			clear.colors = std::span( &attachment, 1 );
+			clear.width = target.width;
+			clear.height = target.height;
+			encoder.BeginRendering( clear );
+			encoder.EndRendering();
+			motion.frame = target.frame;
+		}
+		world.motion = motion.image;
+	}
+
 	world.textures = textures ? &*textures : nullptr;
 	world.submitted = target.submitted;
 	world.frame = target.frame;

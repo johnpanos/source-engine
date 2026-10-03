@@ -781,7 +781,7 @@ bool CVulkanContext::CreateDepthResources( std::string *outError )
 		img.arrayLayers = 1;
 		img.samples = VK_SAMPLE_COUNT_1_BIT;
 		img.tiling = VK_IMAGE_TILING_OPTIMAL;
-		img.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
+		img.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT |
 		            ( m_sceneDepthUsable ? VK_IMAGE_USAGE_TRANSFER_SRC_BIT : 0 );
 		img.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 		img.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
@@ -7026,6 +7026,8 @@ render::legacy::CorePassTarget CVulkanContext::CorePassTargetFor( int target )
 		desc.height = extent.height;
 		desc.sampleCount = out.samples;
 		desc.usages = { home };
+		if ( !multisampled )
+			desc.usages.Add( ResourceUsage::kSampled );
 		if ( copySource )
 			desc.usages.Add( ResourceUsage::kCopySource );
 		desc.debugName = name;
