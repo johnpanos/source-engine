@@ -10,6 +10,7 @@
 #include "tier1/utllinkedlist.h"
 #include "tier1/KeyValues.h"
 #include "materialsystem/imaterial.h"
+#include "materialsystem/imaterialvar.h"
 #include "materialsystem/imaterialsystem.h"
 #include "materialsystem/MaterialSystemUtil.h"
 #include "materialsystem/itexture.h"
@@ -17,6 +18,9 @@
 #include "pixelwriter.h"
 #include "tier3/tier3.h"
 #include "platform.h"
+
+#include <algorithm>
+#include <cstring>
 #include "bink_material.h"
 #include "tier0/memdbgon.h"
 
@@ -438,7 +442,16 @@ bool CBinkMaterial::Init( const char *pMaterialName, const char *pFileName, Vide
 	// Now we can properly setup our regenerators
 //	m_TextureRegen.SetSourceGWorld( m_MovieGWorld, m_VideoFrameWidth, m_VideoFrameHeight );
 
-	CreateProceduralTexture( pMaterialName );
+	if ( BITFLAGS_SET( flags, VideoPlaybackFlags::PRELOAD_VIDEO ) )
+	{
+		if ( !PreloadFrames( pMaterialName ) )
+			return false;
+		m_Texture.Init( m_CachedFrames.front() );
+		m_TexCordU = float( m_VideoFrameWidth ) / m_Texture->GetActualWidth();
+		m_TexCordV = float( m_VideoFrameHeight ) / m_Texture->GetActualHeight();
+	}
+	else
+		CreateProceduralTexture( pMaterialName );
 	CreateProceduralMaterial( pMaterialName );
 
 	// Start movie playback
@@ -627,6 +640,22 @@ bool CBinkMaterial::Update( void )
 	if ( m_NextInterestingTimeToPlay < flNow )
 		m_NextInterestingTimeToPlay = flNow + m_MovieFrameDuration;
 
+	if ( !m_CachedFrames.empty() )
+	{
+		if ( m_NextCachedFrame == int( m_CachedFrames.size() ) )
+		{
+			if ( !m_bLoopMovie )
+			{
+				StopVideo();
+				return false;
+			}
+			m_NextCachedFrame = 0;
+		}
+		SelectCachedFrame( m_NextCachedFrame++ );
+		SetResult( VideoResult::SUCCESS );
+		return true;
+	}
+
 	if ( !DecodeNextFrame() && !( m_bLoopMovie && Rewind( 0.0 ) && DecodeNextFrame() ) )
 	{
 		StopVideo();
@@ -639,12 +668,6 @@ bool CBinkMaterial::Update( void )
 			m_VideoFrameWidth, (m_VideoFrameWidth+1)/2, m_RGBData, m_VideoFrameWidth*3, YCBCR_601
 		);
 
-	// A VGUI surface that draws this material through a procedural texture id
-	// (vgui_movie_display) installs its own regenerator on the material's base
-	// texture; Valve's Bink material has no $basetexture and is not affected.
-	// Put ours back before each upload. Neither regenerator deletes itself on
-	// Release, so the exchange is safe in either order.
-	m_Texture->SetTextureRegenerator( &m_TextureRegen );
 	m_Texture->Download();
 
 	SetResult( VideoResult::SUCCESS );
@@ -715,8 +738,7 @@ bool CBinkMaterial::SetFrame( int FrameNum )
 		return false;
 	}
 
-	float	theTime = (float) FrameNum * m_QTMovieFrameRate.GetFPS();
-	return SetTime( theTime );
+	return SetTime( float( FrameNum * m_MovieFrameDuration ) );
 }
 
 
@@ -724,9 +746,7 @@ int CBinkMaterial::GetCurrentFrame()
 {
 	AssertExitV( m_bMoviePlaying, -1 );
 
-	float curTime; // = m_bMoviePaused ? m_MoviePauseTime : GetMovieTime( m_QTMovie, nullptr );
-
-	return curTime / m_QTMovieFrameRate.GetUnitsPerFrame();
+	return m_CurrentFrame;
 }
 
 
@@ -734,9 +754,7 @@ float CBinkMaterial::GetCurrentVideoTime()
 {
 	AssertExitV( m_bMoviePlaying, -1.0f );
 
-	float curTime; // = m_bMoviePaused ? m_MoviePauseTime : GetMovieTime( m_QTMovie, nullptr );
-
-	return curTime / m_QTMovieFrameRate.GetUnitsPerSecond();
+	return float( std::max( m_CurrentFrame, 0 ) * m_MovieFrameDuration );
 }
 
 
@@ -745,6 +763,13 @@ bool CBinkMaterial::SetTime( float flTime )
 	AssertExitF( m_bMoviePlaying );
 	AssertExitF( flTime >= 0 );
 
+	if ( !m_CachedFrames.empty() )
+	{
+		m_NextCachedFrame = std::clamp( int( flTime / m_MovieFrameDuration ),
+		    0, int( m_CachedFrames.size() ) - 1 );
+		m_NextInterestingTimeToPlay = Plat_FloatTime();
+		return true;
+	}
 	if ( !Rewind( flTime ) )
 		return false;
 	m_NextInterestingTimeToPlay = Plat_FloatTime();
@@ -764,6 +789,7 @@ bool CBinkMaterial::DecodeNextFrame()
 			av_image_copy( m_AVVideoData, m_AVVideoLinesize, (const uint8_t **)( m_AVFrame->data ),
 				m_AVFrame->linesize, (AVPixelFormat)m_AVPixFormat, m_VideoFrameWidth, m_VideoFrameHeight );
 			av_frame_unref( m_AVFrame );
+			++m_CurrentFrame;
 			return true;
 		}
 		if ( ret != AVERROR( EAGAIN ) || m_bDecoderDraining )
@@ -793,9 +819,62 @@ bool CBinkMaterial::Rewind( double flTime )
 		return false;
 	avcodec_flush_buffers( m_AVVideoDecCtx );
 	m_bDecoderDraining = false;
+	m_CurrentFrame = int( flTime / m_MovieFrameDuration ) - 1;
 	return true;
 }
 
+
+// PRELOAD_VIDEO prepares complete immutable frames through the normal texture
+// owner. It retains their bits for device restoration, uploads once, and shares
+// them through the group's existing material. No frame upload during playback.
+bool CBinkMaterial::PreloadFrames( const char *pTextureName )
+{
+	const double began = Plat_FloatTime();
+	const int width = ALIGN_VALUE( m_VideoFrameWidth, TEXTURE_SIZE_ALIGNMENT );
+	const int height = ALIGN_VALUE( m_VideoFrameHeight, TEXTURE_SIZE_ALIGNMENT );
+	std::vector<byte> padded( std::size_t( width ) * height * 3, 0 );
+	const int flags = TEXTUREFLAGS_CLAMPS | TEXTUREFLAGS_CLAMPT | TEXTUREFLAGS_NOMIP |
+	                  TEXTUREFLAGS_PROCEDURAL | TEXTUREFLAGS_SINGLECOPY | TEXTUREFLAGS_NOLOD;
+	while ( DecodeNextFrame() )
+	{
+		yuv420_rgb24_std( m_VideoFrameWidth, m_VideoFrameHeight, m_AVVideoData[0],
+		    m_AVVideoData[1], m_AVVideoData[2], m_AVVideoLinesize[0], m_AVVideoLinesize[1],
+		    m_RGBData, m_VideoFrameWidth * 3, YCBCR_601 );
+		for ( int y = 0; y < m_VideoFrameHeight; ++y )
+			std::memcpy( padded.data() + std::size_t( y ) * width * 3,
+			    m_RGBData + std::size_t( y ) * m_VideoFrameWidth * 3, m_VideoFrameWidth * 3 );
+		char name[512];
+		V_snprintf( name, sizeof( name ), "%s/cached-frame-%zu", pTextureName, m_CachedFrames.size() );
+		ITexture *texture = materials->CreateNamedTextureFromBitsEx( name, "VideoCacheTextures",
+		    width, height, 1, IMAGE_FORMAT_BGR888, int( padded.size() ), padded.data(), flags );
+		if ( !texture || texture->IsError() )
+		{
+			Warning( "Video preload failed at frame %zu of %s\n", m_CachedFrames.size(), pTextureName );
+			return false;
+		}
+		m_CachedFrames.emplace_back();
+		m_CachedFrames.back().Init( texture );
+	}
+	if ( m_CachedFrames.empty() )
+		return false;
+	m_QTMovieFrameCount = int( m_CachedFrames.size() );
+	m_QTMovieDurationinSec = float( m_QTMovieFrameCount * m_MovieFrameDuration );
+	m_CurrentFrame = -1;
+	m_NextCachedFrame = 0;
+	Msg( "Video preload: %s, %zu frames, %dx%d, %.1f MiB GPU RGBA, %.1f MiB restore BGR, %.1f ms\n",
+	    pTextureName, m_CachedFrames.size(), width, height,
+	    double( width ) * height * 4 * m_CachedFrames.size() / ( 1024 * 1024 ),
+	    double( padded.size() ) * m_CachedFrames.size() / ( 1024 * 1024 ),
+	    ( Plat_FloatTime() - began ) * 1000 );
+	return true;
+}
+
+void CBinkMaterial::SelectCachedFrame( int frame )
+{
+	m_Texture.Init( m_CachedFrames[frame] );
+	m_Material->FindVar( "$basetexture", nullptr )->SetTextureValue( m_Texture );
+	m_CurrentFrame = frame;
+}
 
 //-----------------------------------------------------------------------------
 // Initializes, shuts down the procedural texture
@@ -841,10 +920,16 @@ void CBinkMaterial::DestroyProceduralTexture()
 	{
 		// DO NOT Call release on the Texture Regenerator, as it will destroy this object!  bad bad bad
 		// instead we tell it to assign a NULL regenerator and flag it to not call release
-		m_Texture->SetTextureRegenerator( nullptr /*, false */ );
+		if ( m_CachedFrames.empty() )
+			m_Texture->SetTextureRegenerator( nullptr /*, false */ );
 		// Texture, texture go away...
 		m_Texture.Shutdown( true );
 	}
+	for ( auto &frame : m_CachedFrames )
+		frame.Shutdown( true );
+	m_CachedFrames.clear();
+	m_NextCachedFrame = 0;
+	m_CurrentFrame = -1;
 }
 
 

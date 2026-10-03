@@ -95,7 +95,7 @@ struct SampleTexture_t : vtf_sample::Texture
 };
 
 std::unordered_map<std::string, SampleTexture_t> s_Textures;
-uint64 s_NextSampleRevision = 1;
+uint64 s_NextSampleRevision = 2;
 
 const SampleTexture_t &LoadSampleTexture( const char *pTextureName )
 {
@@ -772,8 +772,12 @@ void EmissiveAreaLights_RemoveSource( IEmissiveAreaLightSource *pSource )
 
 uint64 EmissiveAreaLights_SampleRevision( ITexture *pTexture )
 {
+	// These paths always sample as unavailable, regardless of GPU contents.
+	// Coverage lives in the quad, so that fallback is itself immutable.
 	if ( !pTexture || pTexture->IsError() || pTexture->IsRenderTarget() ||
-	     pTexture->IsProcedural() )
+	     ( pTexture->IsProcedural() && pTexture->IsTranslucent() ) )
+		return 1;
+	if ( pTexture->IsProcedural() )
 		return 0;
 	return LoadSampleTexture( pTexture->GetName() ).m_Revision;
 }

@@ -29,6 +29,8 @@ extern IMaterialSystem	*materials;
 #include "video_macros.h"
 #include "bink_common.h"
 
+#include <vector>
+
 #include "materialsystem/itexture.h"
 #include "materialsystem/imaterialsystem.h"
 #include "materialsystem/MaterialSystemUtil.h"
@@ -143,6 +145,8 @@ class CBinkMaterial : public IVideoMaterial
 		void 						OpenMovie( const char *theMovieFileName );
 		void 						CloseFile();
 		bool						DecodeNextFrame();
+		bool PreloadFrames( const char *pTextureName );
+		void SelectCachedFrame( int frame );
 		bool						Rewind( double flTime );
 
 		// Initializes, shuts down the procedural texture
@@ -158,6 +162,9 @@ class CBinkMaterial : public IVideoMaterial
 		VideoResult_t				m_LastResult;
 		
 		CMaterialReference			m_Material;						// Ref to Material used for rendering the video frame
+		std::vector<CTextureReference> m_CachedFrames;
+		int m_NextCachedFrame = 0;
+		int m_CurrentFrame = -1;
 		CTextureReference			m_Texture;						// Ref to the renderable texture which contains the most recent video frame (in a sub-rect)
 
 		float						m_TexCordU;						// Max U texture coordinate of the texture sub-rect which holds the video frame
