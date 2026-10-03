@@ -57,3 +57,8 @@ class CyclesBaker:
     def bake(self, operation, arguments):
         """Run one operation; returns its seconds."""
         return self.run_blender(operation, OPERATIONS[operation][0], arguments)
+
+    def place(self, arguments):
+        """Geometry-only preflight; never configures Cycles or renders a face."""
+        return self.run_blender("probe-placement", OPERATIONS["probe"][0],
+                                list(arguments) + ["--placement-only"])

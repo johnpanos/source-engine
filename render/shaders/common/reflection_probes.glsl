@@ -80,7 +80,7 @@ void ReflectionProbeOccluder( int k, out vec3 lo, out vec3 hi, out float reflect
 
 const float kReflectionProbesMarker = -3.0;
 const float kReflectionProbeFacingEdge = 0.1;
-const int kReflectionProbesMaxProbes = 64;
+const int kReflectionProbesMaxProbes = 256;
 // mapcontainer::kReflectionProbeRelightFloor and kReflectionProbeMaxOccluders.
 const float kReflectionProbeRelightFloor = 1e-4;
 const int kReflectionProbeMaxOccluders = 16;
@@ -247,11 +247,15 @@ uint ReflectionCandidateBytes( ivec2 texel )
 
 // v4 masks are validated for conservative spatial coverage when loaded.
 // Facing, rank, weights and radiance remain runtime computations.
-uvec2 ReflectionCandidates( vec3 position, int count )
+uvec2 ReflectionCandidates( vec3 position, int count, int group )
 {
-	uvec2 allRanks = uvec2( count >= 32 ? 0xffffffffu : ( 1u << uint( count ) ) - 1u,
-	    count <= 32 ? 0u : count == 64 ? 0xffffffffu : ( 1u << uint( count - 32 ) ) - 1u );
-	if ( ReflectionProbesFetch( ivec2( 3, 0 ) ).w != 1.0 )
+	int remaining = clamp( count - 64 * group, 0, 64 );
+	uvec2 allRanks = uvec2( remaining >= 32 ? 0xffffffffu : ( 1u << uint( remaining ) ) - 1u,
+	    remaining <= 32   ? 0u
+	    : remaining == 64 ? 0xffffffffu
+	                      : ( 1u << uint( remaining - 32 ) ) - 1u );
+	int groups = int( ReflectionProbesFetch( ivec2( 3, 0 ) ).w );
+	if ( groups != 1 && groups != 4 )
 		return allRanks;
 	vec3 origin = vec3( uintBitsToFloat( ReflectionCandidateBytes( ivec2( 4, 0 ) ) ),
 	    uintBitsToFloat( ReflectionCandidateBytes( ivec2( 5, 0 ) ) ),
@@ -261,13 +265,13 @@ uvec2 ReflectionCandidates( vec3 position, int count )
 	if ( any( lessThan( cell, vec3( 0.0 ) ) ) || any( greaterThanEqual( cell, vec3( 16.0 ) ) ) )
 		return allRanks;
 	ivec3 index = ivec3( cell );
-	int offset = 2 * ( index.x + 16 * ( index.y + 16 * index.z ) );
+	int offset = 2 * ( groups * ( index.x + 16 * ( index.y + 16 * index.z ) ) + group );
 	int columns = max( 1, int( ReflectionProbesFetch( ivec2( 2, 0 ) ).x ) );
 	int width = 2 * int( ReflectionProbesFetch( ivec2( 0, 0 ) ).z ) * columns;
 	int start = int( ReflectionCandidateBytes( ivec2( 8, 0 ) ) );
 	ivec2 texel = ivec2( offset % width, start + offset / width );
-	return uvec2( ReflectionCandidateBytes( texel ),
-	    ReflectionCandidateBytes( texel + ivec2( 1, 0 ) ) );
+	return uvec2(
+	    ReflectionCandidateBytes( texel ), ReflectionCandidateBytes( texel + ivec2( 1, 0 ) ) );
 }
 
 // Specular image light at `position` (geometric normal `normal`) along the
@@ -312,51 +316,54 @@ bool ReflectionProbesRadianceDebug( vec3 position, vec3 normal, vec3 reflected, 
 		float remaining = 1.0;
 		float top0 = -1.0, top1 = -1.0, third = 0.0;
 		int rank0 = 0, rank1 = 0;
-		uvec2 candidates = ReflectionCandidates( position, count );
-		while ( any( notEqual( candidates, uvec2( 0u ) ) ) )
+		for ( int group = 0; group < ( count + 63 ) / 64; ++group )
 		{
-			int word = candidates.x != 0u ? 0 : 1;
-			int rank = 32 * word + findLSB( candidates[word] );
-			candidates[word] &= candidates[word] - 1u;
-			vec4 captureFade = ReflectionProbeRecord( rank, 0 );
-			float weight = 1.0;
-			if ( ReflectionProbeRecord( rank, 2 ).w < 0.5 )
+			uvec2 candidates = ReflectionCandidates( position, count, group );
+			while ( any( notEqual( candidates, uvec2( 0u ) ) ) )
 			{
-				vec3 influenceMin = ReflectionProbeRecord( rank, 3 ).xyz;
-				vec3 influenceMax = ReflectionProbeRecord( rank, 4 ).xyz;
-				vec3 outside = max( max( influenceMin - position, position - influenceMax ),
-				    vec3( 0.0 ) );
-				vec3 toward = captureFade.xyz - position;
-				weight = ( 1.0 - smoothstep( 0.0, captureFade.w, length( outside ) ) ) *
+				int word = candidates.x != 0u ? 0 : 1;
+				int rank = 64 * group + 32 * word + findLSB( candidates[word] );
+				candidates[word] &= candidates[word] - 1u;
+				vec4 captureFade = ReflectionProbeRecord( rank, 0 );
+				float weight = 1.0;
+				if ( ReflectionProbeRecord( rank, 2 ).w < 0.5 )
+				{
+					vec3 influenceMin = ReflectionProbeRecord( rank, 3 ).xyz;
+					vec3 influenceMax = ReflectionProbeRecord( rank, 4 ).xyz;
+					vec3 outside =
+					    max( max( influenceMin - position, position - influenceMax ), vec3( 0.0 ) );
+					vec3 toward = captureFade.xyz - position;
+					weight = ( 1.0 - smoothstep( 0.0, captureFade.w, length( outside ) ) ) *
 #ifdef SEEDED_RPRB_NO_FACING
-				         1.0;
+					         1.0;
 #else
-				         smoothstep( -kReflectionProbeFacingEdge, kReflectionProbeFacingEdge,
-				             dot( normal, toward ) / max( length( toward ), 1e-9 ) );
+					         smoothstep( -kReflectionProbeFacingEdge, kReflectionProbeFacingEdge,
+					             dot( normal, toward ) / max( length( toward ), 1e-9 ) );
 #endif
+				}
+				float share = weight * remaining;
+				remaining -= share;
+				// Ties keep the earlier rank (the reference keeps the lower
+				// record index). A tie decides which probe is sampled only
+				// when its weight is zero (it equals the third share), except
+				// for three exactly equal shares, split evenly in both.
+				if ( share > top0 )
+				{
+					third = max( third, top1 );
+					top1 = top0;
+					rank1 = rank0;
+					top0 = share;
+					rank0 = rank;
+				}
+				else if ( share > top1 )
+				{
+					third = max( third, top1 );
+					top1 = share;
+					rank1 = rank;
+				}
+				else
+					third = max( third, share );
 			}
-			float share = weight * remaining;
-			remaining -= share;
-			// Ties keep the earlier rank (the reference keeps the lower
-			// record index). A tie decides which probe is sampled only
-			// when its weight is zero (it equals the third share), except
-			// for three exactly equal shares, split evenly in both.
-			if ( share > top0 )
-			{
-				third = max( third, top1 );
-				top1 = top0;
-				rank1 = rank0;
-				top0 = share;
-				rank0 = rank;
-			}
-			else if ( share > top1 )
-			{
-				third = max( third, top1 );
-				top1 = share;
-				rank1 = rank;
-			}
-			else
-				third = max( third, share );
 		}
 		ranks[0] = rank0;
 		ranks[1] = rank1;
@@ -372,15 +379,15 @@ bool ReflectionProbesRadianceDebug( vec3 position, vec3 normal, vec3 reflected, 
 		weights[0] /= total;
 		weights[1] /= total;
 	}
-	selectionInfo = vec4( float( ranks[0] ), weights[1] > 0.0 ? float( ranks[1] ) : -1.0,
-	    weights[0], weights[1] );
+	selectionInfo = vec4(
+	    float( ranks[0] ), weights[1] > 0.0 ? float( ranks[1] ) : -1.0, weights[0], weights[1] );
 	for ( int i = 0; i < 2; ++i )
 		if ( weights[i] > 0.0 )
-			radiance += weights[i] * ( ( mode & 4 ) != 0
-			                               ? kReflectionProbeWeightPalette[ranks[i] % 6]
-			                               : ReflectionProbeSample( ranks[i], count, header.xyz,
-			                                     position, reflected, roughness,
-			                                     selection != 3, relight ) );
+			radiance +=
+			    weights[i] * ( ( mode & 4 ) != 0
+			                         ? kReflectionProbeWeightPalette[ranks[i] % 6]
+			                         : ReflectionProbeSample( ranks[i], count, header.xyz, position,
+			                               reflected, roughness, selection != 3, relight ) );
 	return true;
 }
 

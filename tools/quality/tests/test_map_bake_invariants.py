@@ -9,6 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import pbrt_map_build as pipeline
 import pbrt_playable_content as content
 import reflection_probe_set as rprb
+import numpy as np
 
 
 class ProductionPolicy(unittest.TestCase):
@@ -83,6 +84,62 @@ class CompiledCandidates(unittest.TestCase):
         start = struct.unpack("<I", bytes(int(x) for x in texture[0, 8]))[0]
         self.assertGreaterEqual(texture[start:].size, rprb.CANDIDATE_CELLS * 8)
         self.assertTrue(bool(rprb.np.isfinite(texture).all()))
+
+
+class WideCandidates(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.data = rprb.capacity_fixture(count=256)
+        cls.layout = rprb.read(cls.data)
+
+    def test_high_ranks_and_gpu_storage(self):
+        self.assertEqual(self.layout["count"], 256)
+        self.assertEqual(self.layout["candidates"]["masks"].shape, (4096, 4))
+        texture = rprb.gpu_texture(self.layout)
+        self.assertEqual(texture[0, 3, 3], 4)
+        self.assertTrue(np.isfinite(texture).all())
+
+    def test_missing_high_word_coverage_rejected(self):
+        data = bytearray(self.data)
+        grid = self.layout["atlas_offset"] - rprb.candidate_bytes(256)
+        struct.pack_into("<Q", data, grid + 32 + 24, 0)
+        with self.assertRaisesRegex(rprb.RprbError, "InvalidCandidates"):
+            rprb.read(data)
+
+    def test_old_version_cannot_claim_extended_count(self):
+        data = bytearray(self.data)
+        struct.pack_into("<I", data, 4, rprb.CANDIDATE_VERSION)
+        with self.assertRaisesRegex(rprb.RprbError, "InvalidCounts"):
+            rprb.read(data)
+
+    def test_unused_high_words_rejected(self):
+        data = bytearray(rprb.capacity_fixture(count=65))
+        layout = rprb.read(data)
+        grid = layout["atlas_offset"] - rprb.candidate_bytes(65)
+        struct.pack_into("<Q", data, grid + 32 + 24, 1 << 63)
+        with self.assertRaisesRegex(rprb.RprbError, "InvalidCandidates"):
+            rprb.read(data)
+
+
+class PlacementProgress(unittest.TestCase):
+    def test_joint_candidate_preserves_space_for_both_obligations(self):
+        room = np.array([[1, 1, 1, 0], [1, 1, 0, 0], [0, 0, 1, 1]], dtype=bool)
+        glossy = np.array([[0, 0], [1, 0], [0, 1]], dtype=bool)
+        uncovered, unserved = np.ones(4, dtype=bool), np.ones(2, dtype=bool)
+        chosen, stop = rprb.select_coverage(room, glossy, uncovered, unserved,
+                                           np.ones(3, dtype=bool), 2, 0, 0)
+        self.assertEqual(stop, "coverage_pass")
+        self.assertEqual(len(chosen), 2)
+        self.assertFalse(uncovered.any() or unserved.any())
+
+    def test_exhaustion_is_failure_not_loop_or_false_success(self):
+        for capacity, expected in ((0, "max_probes"), (3, "no_progress")):
+            uncovered = np.ones(2, dtype=bool)
+            _, stop = rprb.select_coverage(np.array([[1, 0]], dtype=bool),
+                np.zeros((1, 0), dtype=bool), uncovered, np.zeros(0, dtype=bool),
+                np.ones(1, dtype=bool), capacity, 0, 0)
+            self.assertEqual(stop, expected)
+            self.assertTrue(uncovered.any())
 
 
 if __name__ == "__main__":

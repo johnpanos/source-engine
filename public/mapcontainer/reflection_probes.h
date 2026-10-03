@@ -42,6 +42,7 @@ static const uint32_t kReflectionProbesRelightVersion = 2;
 static const uint32_t kReflectionProbesTiledVersion = 3;
 // v4: conservative spatial rank masks; encoding owner is reflection_probe_set.py.
 static const uint32_t kReflectionProbesCandidateVersion = 4;
+static const uint32_t kReflectionProbesWideCandidateVersion = 5;
 static const uint32_t kReflectionProbeCandidateDim = 16;
 static const uint32_t kReflectionProbeCandidateCells =
     kReflectionProbeCandidateDim * kReflectionProbeCandidateDim * kReflectionProbeCandidateDim;
@@ -52,7 +53,7 @@ static const float kReflectionProbesMaxDistance = 60000.0f;
 static const float kReflectionProbesNormalLimit = 1.001f;
 static const uint32_t kReflectionProbesHeaderBytes = 64;
 static const uint32_t kReflectionProbeRecordBytes = 80;
-static const uint32_t kReflectionProbesMaxProbes = 64;
+static const uint32_t kReflectionProbesMaxProbes = 256;
 static const uint32_t kReflectionProbesMaxMips = 12;
 static const uint32_t kReflectionProbesMinWidth = 8;
 static const uint32_t kReflectionProbesMaxWidth = 2048;
@@ -60,7 +61,7 @@ static const uint32_t kReflectionProbesPrefilterVersion = 1;
 static const uint32_t kReflectionProbeGlobal = 1; // record flag
 static const float kReflectionProbesMaxCoordinate = 1.0e6f;
 static const uint64_t kReflectionProbesMaxBytes =
-    kReflectionProbesHeaderBytes + kReflectionProbeCandidateBytes +
+    kReflectionProbesHeaderBytes + 4 * kReflectionProbeCandidateBytes +
     uint64_t( kReflectionProbesMaxProbes ) *
         ( kReflectionProbeRecordBytes + 16 +
             3 * uint64_t( kReflectionProbesMaxWidth ) * kReflectionProbesMaxWidth * 8 );
@@ -129,12 +130,13 @@ struct ReflectionProbesLayout
 	uint32_t atlasWidth;
 	uint32_t atlasHeight;
 	uint32_t globalIndex;
-	bool relight; // v2: relight bands follow the radiance bands
+	bool relight;         // v2: relight bands follow the radiance bands
 	uint64_t atlasOffset; // RGBA16F texels, rows top-left first
 	uint64_t atlasBytes;
 	ReflectionProbeRecord probes[kReflectionProbesMaxProbes];
 	// v4: immutable, validated conservative rank masks in the original payload.
 	uint64_t candidateOffset = 0;
+	uint32_t candidateWords = 0; // uint64 words per spatial cell: v4=1, v5=4
 	float candidateOrigin[3] = {};
 	float candidateStep = 0;
 };

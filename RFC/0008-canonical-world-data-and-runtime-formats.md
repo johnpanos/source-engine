@@ -428,7 +428,7 @@ lump is rejected with a warning and the map stays playable without it.
 | `PRBV` | 1 | `probe_volume.h` / `probe_volume.py` | `render.probe-volume.v1`, with total and indirect layers |
 | `RTRN` | 1 | `radiosity_transfer.h` / `radiosity_transfer.py` | As RFC 0011 G4 defines it |
 | `SDFV` | 1, 2 | `sdf_volume.h` / `sdf_volume.py` | v2 adds sphere and spot lights and light cells |
-| `RPRB` | 1, 2, 3 | `reflection_probes.h` / `reflection_probe_set.py` | Raw RGBA16F GGX-prefiltered equirect mip chains; v1/v2 retain 16 probes, v3 extends to 64 with optional relight bands and a tiled GPU upload |
+| `RPRB` | 1, 2, 3, 4, 5 | `reflection_probes.h` / `reflection_probe_set.py` | Raw RGBA16F GGX-prefiltered equirect mip chains; v1/v2 retain 16 probes, v3/v4 retain 64; v4 adds conservative spatial rank masks; v5 supports 256 with four uint64 words per cell. Extended sets use tiled GPU uploads. |
 
 `LSTY`, `MTBL`, `PKMF` and the asset table lump have no reader or writer.
 

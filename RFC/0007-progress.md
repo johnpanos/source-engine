@@ -147,6 +147,38 @@ private working manifest and import receipt are under
 and final publication are recorded separately once complete; importing the scene
 is not a completed relight.
 
+### Placement preflight and adaptive coverage (2026-10-02)
+
+Intro4's first ApertureVR run completed lightmaps but discovered failed probe
+placement afterwards. `probe-placement` now runs immediately after staging,
+before any lighting bake. Preflight and capture share the unlit stage and a
+validated placement cache. Failed coverage stops the pipeline before Cycles;
+no thresholds are relaxed and no lighting products are omitted.
+
+Automatic placement jointly reduces room and glossy coverage deficits instead
+of exhausting all slots on rooms first. It terminates when the existing limits
+pass, or reports finite candidate/capacity exhaustion without a false success.
+Authored captures are retained. Source2 revision 2 raises the supported ceiling
+to 256 using RPRB v5's four uint64 candidate words per cell, validated by the
+native reader and iterated in rank order by the shared core shader. V1-v4 retain
+their original layouts and count limits.
+
+Intro4's geometry-only preflight passes with 154 captures: 200 of 2000 sampled
+room positions uncovered (10%), and 1612 of 3480 eligible glossy samples
+unserved (46.32%). This is placement evidence, not a completed capture, final
+parallax-fit audit, publication, or 120 FPS acceptance. The prior lightmaps
+remain saved. Evidence is in
+`quality-results/single-map-profile-20261002/placement-preflight.log` and
+`quality-results/relight/sp_a1_intro4_source2_aperturevr/placement/`.
+
+The isolated `build-bake-import` tree builds the native reader/packer and lab.
+The expanded `reflection-candidates` suite passes 29 runtime invariant checks
+at 64 and 256 probes with zero Vulkan validation messages; 56 targeted Python
+policy, preflight-order, selection-progress and malformed-data tests pass.
+No image/reference comparison runs. The global reachability and per-texel
+roughness sampling limitations of the placement heuristic remain separate
+from this ordering/capacity fix.
+
 ## Cycles map-bake device default (2026-09-30, user decision)
 
 GPU is now the default for map bakes and relights. `cycles_device.BAKE_DEVICE`

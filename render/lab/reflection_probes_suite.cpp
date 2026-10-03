@@ -437,61 +437,64 @@ int RunReflectionCandidatesSuite( int argc, char **argv )
 			if ( auto why = kernel.Create( spirv::kReflectionCandidateInvariants, 1, 1,
 			         "render_lab.reflection-candidate-invariants" ) )
 				return why;
-			Lab lab{ *device, kernel, {} };
-			const auto bytes = Load( "candidates64.rprb" );
-			ReflectionProbesLayout layout{};
-			if ( mapcontainer::ValidateReflectionProbes( bytes.data(), bytes.size(), &layout ) !=
-			         mapcontainer::ReflectionProbesError::Ok ||
-			     !layout.candidateOffset )
-				return "candidate fixture missing or invalid";
-			// Reject missing coverage at the load boundary without publishing a
-			// partially validated layout to the caller.
-			auto malformed = bytes;
-			std::fill_n( malformed.begin() + layout.candidateOffset + 32, 8, 0 );
-			auto unchanged = layout;
-			results.That(
-			    mapcontainer::ValidateReflectionProbes( malformed.data(), malformed.size(),
-			        &unchanged ) == mapcontainer::ReflectionProbesError::InvalidCandidates,
-			    "candidates.reject-missing-coverage" );
-			results.That( unchanged.candidateOffset == layout.candidateOffset &&
-			                  unchanged.count == layout.count,
-			    "candidates.failed-load-keeps-layout" );
-			// Every cell center, grid boundaries, and points outside the grid.
-			for ( int z = -1; z <= 16; ++z )
-				for ( int y = -1; y <= 16; ++y )
-					for ( int x = -1; x <= 16; ++x )
-						for ( float fraction : { 0.0f, 0.5f, 0.999999f } )
-						{
-							Case c{};
-							const int coordinates[] = { x, y, z };
-							for ( int axis = 0; axis < 3; ++axis )
-								c.positionRoughness[axis] =
-								    layout.candidateOrigin[axis] +
-								    ( coordinates[axis] + fraction ) * layout.candidateStep;
-							c.positionRoughness[3] = 0.4f;
-							c.normal[2] = c.reflected[2] = 1.0f;
-							lab.cases.push_back( c );
-						}
-			for ( auto mode : { ReflectionProbeMode::Blend, ReflectionProbeMode::Nearest,
-			          ReflectionProbeMode::DirectionOnly, ReflectionProbeMode::BlendWeights } )
+			for ( const char *fixture : { "candidates64.rprb", "candidates256.rprb" } )
 			{
-				std::vector<float> gpu;
-				if ( auto why = Evaluate( lab, bytes, mode, false, gpu ) )
-					return why;
-				bool coverage = true, finite = true, weights = true;
-				for ( std::size_t i = 0; i < lab.cases.size(); ++i )
+				Lab lab{ *device, kernel, {} };
+				const auto bytes = Load( fixture );
+				ReflectionProbesLayout layout{};
+				if ( mapcontainer::ValidateReflectionProbes( bytes.data(), bytes.size(),
+				         &layout ) != mapcontainer::ReflectionProbesError::Ok ||
+				     !layout.candidateOffset )
+					return "candidate fixture missing or invalid";
+				// Reject missing coverage at the load boundary without publishing a
+				// partially validated layout to the caller.
+				auto malformed = bytes;
+				std::fill_n( malformed.begin() + layout.candidateOffset + 32, 8, 0 );
+				auto unchanged = layout;
+				results.That(
+				    mapcontainer::ValidateReflectionProbes( malformed.data(), malformed.size(),
+				        &unchanged ) == mapcontainer::ReflectionProbesError::InvalidCandidates,
+				    "candidates.reject-missing-coverage" );
+				results.That( unchanged.candidateOffset == layout.candidateOffset &&
+				                  unchanged.count == layout.count,
+				    "candidates.failed-load-keeps-layout" );
+				// Every cell center, grid boundaries, and points outside the grid.
+				for ( int z = -1; z <= 16; ++z )
+					for ( int y = -1; y <= 16; ++y )
+						for ( int x = -1; x <= 16; ++x )
+							for ( float fraction : { 0.0f, 0.5f, 0.999999f } )
+							{
+								Case c{};
+								const int coordinates[] = { x, y, z };
+								for ( int axis = 0; axis < 3; ++axis )
+									c.positionRoughness[axis] =
+									    layout.candidateOrigin[axis] +
+									    ( coordinates[axis] + fraction ) * layout.candidateStep;
+								c.positionRoughness[3] = 0.4f;
+								c.normal[2] = c.reflected[2] = 1.0f;
+								lab.cases.push_back( c );
+							}
+				for ( auto mode : { ReflectionProbeMode::Blend, ReflectionProbeMode::Nearest,
+				          ReflectionProbeMode::DirectionOnly, ReflectionProbeMode::BlendWeights } )
 				{
-					coverage = coverage && gpu[i * 4] == 1.0f;
-					finite = finite && gpu[i * 4 + 1] == 1.0f;
-					weights = weights && gpu[i * 4 + 2] == 1.0f;
+					std::vector<float> gpu;
+					if ( auto why = Evaluate( lab, bytes, mode, false, gpu ) )
+						return why;
+					bool coverage = true, finite = true, weights = true;
+					for ( std::size_t i = 0; i < lab.cases.size(); ++i )
+					{
+						coverage = coverage && gpu[i * 4] == 1.0f;
+						finite = finite && gpu[i * 4 + 1] == 1.0f;
+						weights = weights && gpu[i * 4 + 2] == 1.0f;
+					}
+					const std::string prefix = std::string( "candidates." ) + ModeName( mode );
+					results.That( coverage, prefix + ".coverage",
+					    std::to_string( lab.cases.size() ) + " positions" );
+					results.That( finite, prefix + ".finite-radiance" );
+					results.That( weights, prefix + ".weights-and-ranks" );
 				}
-				const std::string prefix = std::string( "candidates." ) + ModeName( mode );
-				results.That( coverage, prefix + ".coverage",
-				    std::to_string( lab.cases.size() ) + " positions" );
-				results.That( finite, prefix + ".finite-radiance" );
-				results.That( weights, prefix + ".weights-and-ranks" );
+				(void)device->WaitIdle();
 			}
-			(void)device->WaitIdle();
 		}
 		device.reset();
 		messages = counter.load();

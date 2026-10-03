@@ -104,7 +104,7 @@ def audit(build, profile, booted):
         import reflection_probe_set as encoding
         grid = rprb.get("candidate_grid") or {}
         check("reflection-candidates", grid.get("dimensions") == [encoding.CANDIDATE_DIM] * 3 and
-              grid.get("bytes") == encoding.CANDIDATE_BYTES and
+              grid.get("bytes") == encoding.candidate_bytes(rprb.get("probes", 0)) and
               1 <= grid.get("max_candidates", 0) <= rprb.get("probes", 0),
               grid)
     if "max_reflection_probe_residual" in rules:

@@ -91,26 +91,38 @@ void main()
 	bool carried = ReflectionProbesRadianceDebug( c.positionRoughness.xyz, c.normal.xyz,
 	    c.reflected.xyz, c.positionRoughness.w, radiance, selection );
 	int count = int( ReflectionProbesFetch( ivec2( 0, 0 ) ).x );
-	uvec2 candidates = ReflectionCandidates( c.positionRoughness.xyz, count );
 	bool covered = true;
+	int candidateCount = 0;
+	for ( int group = 0; group < ( count + 63 ) / 64; ++group )
+	{
+		uvec2 mask = ReflectionCandidates( c.positionRoughness.xyz, count, group );
+		candidateCount += bitCount( mask.x ) + bitCount( mask.y );
+	}
 	for ( int rank = 0; rank < count; ++rank )
 	{
+		uvec2 candidates = ReflectionCandidates( c.positionRoughness.xyz, count, rank / 64 );
 		vec4 capture = ReflectionProbeRecord( rank, 0 );
 		vec3 lo = ReflectionProbeRecord( rank, 3 ).xyz;
 		vec3 hi = ReflectionProbeRecord( rank, 4 ).xyz;
-		vec3 outside = max( max( lo - c.positionRoughness.xyz, c.positionRoughness.xyz - hi ), vec3( 0 ) );
-		bool required = rank < 2 || ReflectionProbeRecord( rank, 2 ).w > 0.5 || length( outside ) < capture.w;
-		covered = covered && ( !required || ( candidates[rank / 32] & ( 1u << uint( rank % 32 ) ) ) != 0u );
+		vec3 outside =
+		    max( max( lo - c.positionRoughness.xyz, c.positionRoughness.xyz - hi ), vec3( 0 ) );
+		bool required =
+		    rank < 2 || ReflectionProbeRecord( rank, 2 ).w > 0.5 || length( outside ) < capture.w;
+		covered =
+		    covered &&
+		    ( !required || ( candidates[( rank % 64 ) / 32] & ( 1u << uint( rank % 32 ) ) ) != 0u );
 	}
-	bool finiteLight = !any( isnan( radiance ) ) && !any( isinf( radiance ) ) && all( greaterThanEqual( radiance, vec3( 0 ) ) );
-	bool weights = abs( selection.z + selection.w - 1.0 ) < 1e-5 && selection.z >= 0.0 && selection.w >= 0.0;
+	bool finiteLight = !any( isnan( radiance ) ) && !any( isinf( radiance ) ) &&
+	                   all( greaterThanEqual( radiance, vec3( 0 ) ) );
+	bool weights =
+	    abs( selection.z + selection.w - 1.0 ) < 1e-5 && selection.z >= 0.0 && selection.w >= 0.0;
 	bool ranks = selection.x >= 0.0 && selection.x < count &&
-	    ( selection.w == 0.0 || ( selection.y >= 0.0 && selection.y < count ) );
+	             ( selection.w == 0.0 || ( selection.y >= 0.0 && selection.y < count ) );
 	results[index] = vec4( carried && covered ? 1.0 : 0.0, finiteLight ? 1.0 : 0.0,
-	    weights && ranks ? 1.0 : 0.0, float( bitCount( candidates.x ) + bitCount( candidates.y ) ) );
+	    weights && ranks ? 1.0 : 0.0, float( candidateCount ) );
 #else
-	const bool carried = ReflectionProbesRadiance( c.positionRoughness.xyz, c.normal.xyz,
-	    c.reflected.xyz, c.positionRoughness.w, radiance );
+	const bool carried = ReflectionProbesRadiance(
+	    c.positionRoughness.xyz, c.normal.xyz, c.reflected.xyz, c.positionRoughness.w, radiance );
 	results[index] = vec4( radiance, carried ? 1.0 : 0.0 );
 #endif
 }

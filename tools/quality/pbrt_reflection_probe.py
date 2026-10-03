@@ -306,6 +306,7 @@ def main():
         "seeds": [[float(value) for value in seed] for seed in seeds],
         "volumes": volumes,
         "seed": args.seed,
+        "coverage_rules": json.loads(args.coverage_rules),
         "glossy_shapes": glossy_names,
         # A placement-code change invalidates the private cache even when the
         # pipeline reruns this operation for an unrelated render-code change.
@@ -331,9 +332,11 @@ def main():
             normals = shading[sampled_triangles]
             glossy = (points, normals)
         probes, report = reflection_probe_set.place(caster, bounds_min, bounds_max, glossy,
-                                                    params, seeds=seeds, volumes=volumes)
+                                                    params, seeds=seeds, volumes=volumes,
+                                                    coverage_rules=json.loads(args.coverage_rules))
         write_placement_cache(args.placement_cache, cache_inputs, probes, report)
 
+    report["glossy_shapes"] = glossy_names
     checks = map_export_audit.probe_placement_checks(dict(params, **report),
                                                       json.loads(args.coverage_rules))
     failed = [check["check"] for check in checks if check["status"] == "fail"]

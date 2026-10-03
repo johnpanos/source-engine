@@ -31,7 +31,7 @@
     "face_size": 256,
     "samples": 1024,
     "placement": {
-      "max_probes": 64,
+      "max_probes": 256,
       "max_walkable": 2000
     },
     "light_paths": "gi-reference",
@@ -53,7 +53,7 @@
     "max_wmsh_normal_fallback_fraction": 0.01,
     "require_runtime_gate_when_booted": false
   },
-  "revision": 1,
+  "revision": 2,
   "world_mesh": {
     "exclude_materials": [
       "relight_occluder"

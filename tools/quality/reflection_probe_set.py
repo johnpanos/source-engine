@@ -76,6 +76,12 @@ bit patterns as four byte-valued half channels; texel 8 stores the candidate
 start row as uint32 bytes. Masks follow the radiance bands: two RGBA16F texels
 per cell, containing eight exact bytes. V1-v3 retain their existing layout.
 
+RPRB v5 extends capacity to 256 captures. Each cell holds four little-endian
+uint64 rank words (ranks 0..63, 64..127, 128..191, 192..255). The grid section
+is 131104 bytes; GPU texel 3.w is 4, and eight byte-valued texels store each
+cell. V1-v4 retain their count limits and layouts. Runtime iterates selected
+ranks in order across words, preserving the two-probe blend.
+
 Relighting (McAuley, "Rendering the World of Far Cry 4", GDC 2015: a G-buffer
 cubemap relit at runtime; here with the distance too): at the lookup
 direction and lod, the capture saw the point capture + direction * distance
@@ -135,6 +141,7 @@ VERSION = 1
 RELIGHT_VERSION = 2
 TILED_VERSION = 3  # up to 64 probes; optional relight flag, unchanged disk record shape
 CANDIDATE_VERSION = 4
+WIDE_CANDIDATE_VERSION = 5  # four uint64 words per cell, up to 256 captures
 CANDIDATE_DIM = 16
 CANDIDATE_CELLS = CANDIDATE_DIM ** 3
 CANDIDATE_BYTES = 32 + CANDIDATE_CELLS * 8
@@ -146,7 +153,7 @@ MAX_DISTANCE = 60000.0
 NORMAL_LIMIT = 1.001
 HEADER_BYTES = 64
 RECORD_BYTES = 80
-MAX_PROBES = 64
+MAX_PROBES = 256
 MAX_MIPS = 12
 MIN_WIDTH, MAX_WIDTH = 8, 2048
 PREFILTER_VERSION = 1
@@ -241,7 +248,8 @@ def candidate_required(probes, origin, step):
     z, y, x = np.indices((CANDIDATE_DIM,) * 3)
     low = np.stack((x.ravel(), y.ravel(), z.ravel()), axis=1) * step + origin
     high = low + step
-    masks = np.zeros(CANDIDATE_CELLS, dtype=np.uint64)
+    words = 1 if len(probes) <= 64 else 4
+    masks = np.zeros((CANDIDATE_CELLS, words), dtype=np.uint64)
     for probe in probes:
         lo = probe["influence_min"] - probe["fade"]
         hi = probe["influence_max"] + probe["fade"]
@@ -251,8 +259,12 @@ def candidate_required(probes, origin, step):
         guard = 0.001 + magnitude * 1e-5
         reaches = np.ones(len(low), dtype=bool) if probe["global"] or probe["rank"] < 2 else np.all(
             (low <= hi + guard[:, None]) & (high >= lo - guard[:, None]), axis=1)
-        masks[reaches] |= np.uint64(1) << np.uint64(probe["rank"])
-    return masks
+        masks[reaches, probe["rank"] // 64] |= np.uint64(1) << np.uint64(probe["rank"] % 64)
+    return masks[:, 0] if words == 1 else masks
+
+
+def candidate_bytes(count):
+    return 32 + CANDIDATE_CELLS * 8 * (1 if count <= 64 else 4)
 
 
 def candidate_grid(probes):
@@ -327,6 +339,7 @@ def build(probes, chains, scale=SOURCE_UNITS_PER_METER, relight=None, candidates
                                else 0)
     base_offset = (HEADER_BYTES + RECORD_BYTES * count + 15) & ~15
     candidate_data = b""
+    candidates = candidates or count > 64
     if candidates:
         # Read back the exact serialized floats used by the runtime validator.
         serialized = []
@@ -342,7 +355,8 @@ def build(probes, chains, scale=SOURCE_UNITS_PER_METER, relight=None, candidates
     texels = atlas.astype("<f2")
     global_index = next(i for i, probe in enumerate(probes) if probe.get("global"))
     header = struct.pack("<IIIIIIIIQQIIII", MAGIC,
-                         (CANDIDATE_VERSION if candidates else
+                         (WIDE_CANDIDATE_VERSION if count > 64 else
+                          CANDIDATE_VERSION if candidates else
                           TILED_VERSION if count > LEGACY_MAX_PROBES else
                           VERSION if relight is None else RELIGHT_VERSION), count, mips, width,
                          atlas_width, atlas_height, RECORD_BYTES, atlas_offset, texels.nbytes,
@@ -412,13 +426,15 @@ def read(data):
     if magic != MAGIC:
         raise RprbError("BadMagic")
     # v3 extends capacity and allows either kind of band payload.
-    if (version not in (VERSION, RELIGHT_VERSION, TILED_VERSION, CANDIDATE_VERSION) or
+    if (version not in (VERSION, RELIGHT_VERSION, TILED_VERSION, CANDIDATE_VERSION,
+                        WIDE_CANDIDATE_VERSION) or
             prefilter != PREFILTER_VERSION or flags not in (0, FLAG_RELIGHT) or
             (version < TILED_VERSION and
              flags != (FLAG_RELIGHT if version == RELIGHT_VERSION else 0)) or reserved):
         raise RprbError("UnsupportedVersion")
     relight = bool(flags & FLAG_RELIGHT)
-    maximum = MAX_PROBES if version >= TILED_VERSION else LEGACY_MAX_PROBES
+    maximum = (MAX_PROBES if version == WIDE_CANDIDATE_VERSION else
+               64 if version >= TILED_VERSION else LEGACY_MAX_PROBES)
     if not 1 <= count <= maximum or not 1 <= mips <= MAX_MIPS:
         raise RprbError("InvalidCounts")
     if (width & (width - 1) or not MIN_WIDTH <= width <= MAX_WIDTH or (width >> (mips - 1)) < 4
@@ -426,7 +442,9 @@ def read(data):
             or record_bytes != RECORD_BYTES):
         raise RprbError("InvalidAtlas")
     base_offset = (HEADER_BYTES + RECORD_BYTES * count + 15) & ~15
-    expected_offset = base_offset + (CANDIDATE_BYTES if version == CANDIDATE_VERSION else 0)
+    words = 4 if version == WIDE_CANDIDATE_VERSION else 1
+    expected_offset = base_offset + (32 + CANDIDATE_CELLS * 8 * words
+                                     if version >= CANDIDATE_VERSION else 0)
     if (atlas_offset != expected_offset or atlas_bytes != atlas_width * atlas_height * 8 or
             len(data) != atlas_offset + atlas_bytes):
         raise RprbError("InvalidSections")
@@ -441,7 +459,7 @@ def read(data):
                  "box_max": floats[7:10], "influence_min": floats[10:13],
                  "influence_max": floats[13:16], "rank": rank,
                  "global": bool(flag & FLAG_GLOBAL)}
-        coordinate_limit = 65504.0 if version == CANDIDATE_VERSION else MAX_COORDINATE
+        coordinate_limit = 65504.0 if version >= CANDIDATE_VERSION else MAX_COORDINATE
         if (not np.all(np.isfinite(floats)) or np.any(np.abs(floats) > coordinate_limit) or
                 probe["fade"] <= 0 or np.any(probe["box_min"] >= probe["box_max"]) or
                 np.any(probe["influence_min"] >= probe["influence_max"]) or
@@ -458,19 +476,24 @@ def read(data):
             not probes[global_index]["global"] or probes[global_index]["rank"] != count - 1):
         raise RprbError("InvalidGlobal")
     candidates = None
-    if version == CANDIDATE_VERSION:
+    if version >= CANDIDATE_VERSION:
         fields = struct.unpack_from("<4f4I", data, base_offset)
         origin, step = np.array(fields[:3]), fields[3]
         if (not np.isfinite(fields[:4]).all() or np.abs(origin).max() > 4e6 or
                 not 1 <= step <= 4e6 or math.frexp(step)[0] != 0.5 or any(fields[4:])):
             raise RprbError("InvalidCandidates", "invalid grid bounds")
-        masks = np.frombuffer(data, dtype="<u8", count=CANDIDATE_CELLS,
-                              offset=base_offset + 32)
-        valid = np.uint64((1 << count) - 1)
+        masks = np.frombuffer(data, dtype="<u8", count=CANDIDATE_CELLS * words,
+                              offset=base_offset + 32).reshape(CANDIDATE_CELLS, words)
+        valid = np.array([(1 << max(0, min(64, count - 64 * word))) - 1
+                          for word in range(words)], dtype=np.uint64)
         required = candidate_required(probes, origin, step)
+        required = required.reshape(CANDIDATE_CELLS, -1)
+        if required.shape[1] < words:
+            required = np.pad(required, ((0, 0), (0, words - required.shape[1])))
         if np.any(masks & ~valid) or np.any((masks & required) != required):
             raise RprbError("InvalidCandidates", "missing required or out-of-range rank")
-        candidates = {"origin": origin, "step": step, "masks": masks}
+        candidates = {"origin": origin, "step": step,
+                      "masks": masks[:, 0] if words == 1 else masks}
     atlas = np.frombuffer(data, dtype="<f2", count=atlas_width * atlas_height * 4,
                           offset=atlas_offset).reshape(atlas_height, atlas_width, 4)
     atlas = atlas.astype(np.float64)
@@ -548,15 +571,16 @@ def gpu_texture(layout, mode=MODE_BLEND, relight=True):
     rows = 1 + count + ((band_count + columns - 1) // columns) * band
     candidate_start = rows
     candidates = layout.get("candidates")
+    words = (candidates["masks"].size // CANDIDATE_CELLS) if candidates else 0
     if candidates:
-        rows += (CANDIDATE_CELLS * 2 + 2 * width * columns - 1) // (2 * width * columns)
+        rows += (CANDIDATE_CELLS * 2 * words + 2 * width * columns - 1) // (2 * width * columns)
     texture = np.zeros((rows, 2 * width * columns, 4), dtype=np.float16)
     texture[0, 0] = (count, layout["mips"], width, GPU_MARKER)
     texture[0, 1] = (mode, 1.0 if relight and bands else 0.0, 0, 0)
     if columns > 1:
         texture[0, 2] = (columns, 0, 0, 0)
     if candidates:
-        texture[0, 3] = (CANDIDATE_DIM, CANDIDATE_DIM, CANDIDATE_DIM, 1)
+        texture[0, 3] = (CANDIDATE_DIM, CANDIDATE_DIM, CANDIDATE_DIM, words)
         for index, value in enumerate((*candidates["origin"], candidates["step"])):
             texture[0, 4 + index] = list(struct.pack("<f", value))
         texture[0, 8] = list(struct.pack("<I", candidate_start))
@@ -776,11 +800,9 @@ PLACEMENT_DEFAULTS = {
     "headroom_m": 0.2,         # clearance above the eye for a walkable sample
     "fit_rays": 2048,          # directions for a candidate's proxy-box estimate
     "max_probes": 8,
-    "min_cover": 2,            # walkable samples a new room probe must cover
     "glossy_roughness": 0.35,  # perceptual roughness at or below which a surface is glossy
     "glossy_radius_m": 2.5,    # a glossy sample needs a capture this near that sees it
     "glossy_samples_per_m2": 16.0,
-    "glossy_min_area_m2": 0.5,  # glossy area a new glossy probe must serve
     "influence_margin_m": 0.15,
     # A capture this close to a surface sees mostly that surface (or, at a
     # doorway, the next room through it): it is not a room's probe.
@@ -900,18 +922,49 @@ def authored_volume(record, params):
     return result
 
 
-def place(raycast, bounds_min, bounds_max, glossy=None, params=None, seeds=(), volumes=()):
+def select_coverage(covers, glossy_views, uncovered, unserved, eligible, capacity,
+                    walkable_limit, glossy_limit):
+    """Choose captures jointly for both coverage obligations, without truncation.
+
+    Each iteration strictly removes uncovered samples. A finite candidate set
+    bounds the search; exhaustion reports failure rather than looping or
+    weakening the limits. Ties are deterministic in candidate order.
+    """
+    selected = []
+    while True:
+        room_need = max(0, int(uncovered.sum()) - walkable_limit)
+        glossy_need = max(0, int(unserved.sum()) - glossy_limit)
+        if not room_need and not glossy_need:
+            return selected, "coverage_pass"
+        room_gain = (covers & uncovered).sum(axis=1)
+        glossy_gain = (glossy_views & unserved).sum(axis=1)
+        score = (np.minimum(room_gain, room_need) / max(1, room_need) +
+                 np.minimum(glossy_gain, glossy_need) / max(1, glossy_need))
+        score[selected] = 0
+        # Prefer well-fitted candidates only among equal-coverage choices:
+        # poor-fit preference must not consume capacity without progress.
+        best_score = score.max()
+        if best_score <= 0:
+            return selected, "no_progress"
+        if len(selected) >= capacity:
+            return selected, "max_probes"
+        choices = np.nonzero(score == best_score)[0]
+        preferred = choices[eligible[choices]]
+        best = int(preferred[0] if len(preferred) else choices[0])
+        selected.append(best)
+        uncovered &= ~covers[best]
+        unserved &= ~glossy_views[best]
+
+
+def place(raycast, bounds_min, bounds_max, glossy=None, params=None, seeds=(), volumes=(),
+          coverage_rules=None):
     """Probe captures, proxy boxes and influence volumes (meters).
 
-    Room probes: greedily cover every walkable sample (eye height above each
-    floor) by a probe whose estimated proxy box, grown by the blend's fade,
-    contains it and which sees it; each new probe is moved to the candidate
-    nearest the middle of what it newly covers. Glossy probes: every glossy
-    surface sample (roughness at or below `glossy_roughness`: mirrors,
-    polished floors, glass) that some walkable point sees needs a capture
-    within `glossy_radius_m` in front of it that sees it; uncovered ones get
-    a probe at the walkable sample covering most of them, whose influence is
-    those samples' bounds, while one serves at least `glossy_min_area_m2`.
+    Authored probes are retained. Automatic captures jointly cover walkable
+    samples (eye height over floors, within the estimated box and visible)
+    and nearby visible glossy surfaces. Each insertion removes uncovered
+    samples until both profile coverage thresholds pass. Capacity exhaustion
+    and an empty useful candidate set remain explicit preflight failures.
     The room probe covering the most walkable samples is global (a box open
     to the sky can be the largest while covering a window bay). `glossy`: (points, normals) arrays or None. `seeds`:
     captures placed first, as room probes (a manifest's chosen positions).
@@ -978,37 +1031,10 @@ def place(raycast, bounds_min, bounds_max, glossy=None, params=None, seeds=(), v
                        "fade": params["fade_m"], "role": "room", "seeded": True,
                        "covers": int((seen & uncovered).sum())})
         uncovered &= ~seen
-    room_stop = "covered"
-    while uncovered.any():
-        gain = (covers & uncovered).sum(axis=1)
-        # Good captures first; any capture only for samples none of them sees.
-        if (gain * eligible).max() > 0:
-            gain = gain * eligible
-        best = int(np.argmax(gain))
-        if gain[best] < min(params["min_cover"], uncovered.sum()):
-            room_stop = "min_cover"
-            break
-        if len(probes) >= params["max_probes"]:
-            room_stop = "max_probes"
-            break
-        newly = covers[best] & uncovered
-        # Recentre: of the candidates covering most of what `best` does, the
-        # one nearest the middle of it.
-        enough = (covers & newly).sum(axis=1) >= 0.9 * newly.sum()
-        if (enough & eligible).any():
-            enough &= eligible
-        middle = walkable[newly].mean(axis=0)
-        choices = np.nonzero(enough)[0]
-        chosen = int(choices[np.argmin(np.linalg.norm(walkable[choices] - middle, axis=1))])
-        newly = covers[chosen] & uncovered
-        box_min, box_max = boxes[chosen]
-        probes.append({"capture": walkable[chosen].copy(), "box_min": box_min,
-                       "box_max": box_max, "influence_min": box_min - margin,
-                       "influence_max": box_max + margin, "fade": params["fade_m"],
-                       "role": "room", "covers": int(newly.sum())})
-        uncovered &= ~covers[chosen]
-    report = {"walkable_samples": int(len(walkable)), "walkable_spacing_m": params["spacing_m"],
-              "uncovered_walkable": int(uncovered.sum()), "room_stop": room_stop}
+    rules = coverage_rules or {}
+    candidate_views = np.zeros((len(walkable), 0), dtype=bool)
+    servable = served = np.zeros(0, dtype=bool)
+    report = {}
     if glossy is not None and len(glossy[0]):
         points, normals = (np.asarray(value, dtype=np.float64) for value in glossy)
         radius = params["glossy_radius_m"]
@@ -1030,32 +1056,33 @@ def place(raycast, bounds_min, bounds_max, glossy=None, params=None, seeds=(), v
         # Samples no eye-height point sees (under furniture, behind objects)
         # cannot be served by placement; they are reported, not chased.
         servable = candidate_views.any(axis=0)
-        minimum = max(1, int(math.ceil(params["glossy_min_area_m2"] *
-                                       params["glossy_samples_per_m2"])))
-        glossy_stop = "served"
-        while not (served | ~servable).all():
-            gain = (candidate_views & ~served).sum(axis=1)
-            if (gain * eligible).max() >= minimum:
-                gain = gain * eligible
-            best = int(np.argmax(gain))
-            if gain[best] < minimum:
-                glossy_stop = "min_area"
-                break
-            if len(probes) >= params["max_probes"]:
-                glossy_stop = "max_probes"
-                break
-            newly = candidate_views[best] & ~served
-            box_min, box_max = boxes[best]
-            probes.append({"capture": walkable[best].copy(), "box_min": box_min,
-                           "box_max": box_max,
-                           "influence_min": points[newly].min(axis=0) - margin,
-                           "influence_max": points[newly].max(axis=0) + margin,
-                           "fade": params["fade_m"], "role": "glossy",
-                           "covers": int(newly.sum())})
-            served |= candidate_views[best]
-        report.update(glossy_samples=int(len(points)), glossy_servable=int(servable.sum()),
-                      unserved_glossy=int((servable & ~served).sum()), glossy_stop=glossy_stop)
-    rooms = [probe for probe in probes if probe["role"] in ("room", "authored")]
+        report.update(glossy_samples=int(len(points)), glossy_servable=int(servable.sum()))
+    unserved = servable & ~served
+    initial_uncovered = uncovered.copy()
+    chosen, stop = select_coverage(
+        covers, candidate_views, uncovered, unserved, eligible,
+        params["max_probes"] - len(probes),
+        math.floor(len(walkable) * rules.get("max_uncovered_walkable_fraction", 0)),
+        math.floor(int(servable.sum()) * rules.get("max_unserved_glossy_fraction", 0)))
+    for index in chosen:
+        box_min, box_max = boxes[index]
+        influence_min, influence_max = box_min - margin, box_max + margin
+        # A joint capture also serves visible glossy points within the same
+        # near-field radius; include those in its authored influence.
+        if candidate_views[index].any():
+            visible_points = points[candidate_views[index]]
+            influence_min = np.minimum(influence_min, visible_points.min(axis=0) - margin)
+            influence_max = np.maximum(influence_max, visible_points.max(axis=0) + margin)
+        probes.append({"capture": walkable[index].copy(), "box_min": box_min,
+                       "box_max": box_max, "influence_min": influence_min,
+                       "influence_max": influence_max, "fade": params["fade_m"],
+                       "role": "joint", "covers": int((covers[index] & initial_uncovered).sum())})
+        initial_uncovered &= ~covers[index]
+    report.update(walkable_samples=int(len(walkable)), walkable_spacing_m=params["spacing_m"],
+                  uncovered_walkable=int(uncovered.sum()), room_stop=stop)
+    if len(servable):
+        report.update(unserved_glossy=int(unserved.sum()), glossy_stop=stop)
+    rooms = [probe for probe in probes if probe["role"] in ("room", "authored", "joint")]
     chosen_global = next((probe for probe in authored if probe["global_probe"]), None)
     if chosen_global is None:
         chosen_global = max(rooms, key=lambda probe: probe["covers"])
@@ -1239,13 +1266,14 @@ def pack(probes_dir, width, gain, prefilter_samples=256):
     probes[global_index]["global"] = True
     data = build(probes, chains, relight=relight if gbuffer else None, candidates=True)
     masks = read(data)["candidates"]["masks"]
-    candidate_counts = [int(mask).bit_count() for mask in masks]
+    candidate_counts = [sum(int(mask).bit_count() for mask in row)
+                        for row in masks.reshape(CANDIDATE_CELLS, -1)]
     residuals = [r["mean_relative_residual"] for r in reports]
     return data, {"status": "pass", "schema": "rprb-pack/v1", "probes": len(probes),
                   "width": width, "mips": len(chains[0]), "preview_gain": gain,
                   "relight": gbuffer,
                   "candidate_grid": {"dimensions": [CANDIDATE_DIM] * 3,
-                                     "bytes": CANDIDATE_BYTES,
+                                     "bytes": candidate_bytes(len(probes)),
                                      "mean_candidates": float(np.mean(candidate_counts)),
                                      "max_candidates": max(candidate_counts)},
                   "prefilter_version": PREFILTER_VERSION, "global_index": global_index,
@@ -1346,7 +1374,7 @@ def fixture_occluders(scale=SOURCE_UNITS_PER_METER):
     return [(np.asarray(lo) * scale, np.asarray(hi) * scale, reflectance)]
 
 
-def capacity_fixture(relight=False):
+def capacity_fixture(relight=False, count=64):
     """Only records 62/63 influence the original room: catches a 16-probe clamp.
 
     All earlier records have equally sized influences in distant rooms, so
@@ -1354,15 +1382,16 @@ def capacity_fixture(relight=False):
     """
     original, chains = fixture_layout()
     probes = []
-    for index in range(MAX_PROBES - 2):
-        offset = np.array((100.0 + index * 10.0, 0.0, 0.0))
+    for index in range(count - 2):
+        offset = (np.array((100.0 + index * 10.0, 0.0, 0.0)) if count <= 64 else
+                  np.array((100.0 + (index % 16) * 10.0, (index // 16) * 10.0, 0.0)))
         probes.append(dict(original[0], priority=1, **{key: original[0][key] + offset for key in
             ("capture", "box_min", "box_max", "influence_min", "influence_max")}))
     probes += original
-    colors = [[mip * (0.1 + index / MAX_PROBES) for mip in chains[0]]
-              for index in range(MAX_PROBES - 2)] + chains
+    colors = [[mip * (0.1 + index / count) for mip in chains[0]]
+              for index in range(count - 2)] + chains
     bands = fixture_relight(original) if relight else None
-    return build(probes, colors, relight=([bands[0]] * (MAX_PROBES - 2) + bands)
+    return build(probes, colors, relight=([bands[0]] * (count - 2) + bands)
                  if bands else None)
 
 
@@ -1445,11 +1474,12 @@ def main():
     command.add_argument("rprb", type=Path)
     command = commands.add_parser("candidate-fixture", help="write a candidate invariant fixture")
     command.add_argument("--out", type=Path, default=FIXTURE_DIR / "candidates64.rprb")
+    command.add_argument("--count", type=int, default=64, choices=(64, 256))
     command = commands.add_parser("fixture", help="write the C++ reader's shared fixtures")
     command.add_argument("--out", type=Path, default=FIXTURE_DIR)
     args = parser.parse_args()
     if args.command == "candidate-fixture":
-        layout = read(capacity_fixture())
+        layout = read(capacity_fixture(count=args.count))
         data = build(layout["probes"], layout["chains"], scale=1, candidates=True)
         read(data)
         args.out.parent.mkdir(parents=True, exist_ok=True)

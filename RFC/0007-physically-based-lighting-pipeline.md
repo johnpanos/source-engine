@@ -688,6 +688,14 @@ As built for placement validation (2026-10-01), the export profile's existing
 probe coverage and count rules are evaluated immediately after placement,
 before Cycles renders the reflection faces. `map_export_audit.probe_placement_checks`
 owns these checks for both the baker preflight and the final export audit.
+The 2026-10-02 follow-up moves `probe-placement` immediately after scene staging,
+before lightmap baking, denoising or capture. It uses the unlit stage for both
+preflight and capture so the validated placement is reused. Placement jointly
+reduces room and glossy coverage deficits until the profile thresholds pass;
+every iteration makes progress. If the finite candidate set or supported
+capacity is exhausted, preflight fails before spending render time. Source2
+revision 2 permits up to 256 captures through RPRB v5's four-word candidate
+masks; old format limits remain unchanged. Intro4 passes at 154 captures.
 The probe step records `placement-checks.json` and its log; `--keep-going`
 allows failed coverage for inspection, with the final audit still failing.
 Changing the rules or continuation mode invalidates that step's cache.
@@ -705,8 +713,8 @@ be inside nonempty proxy boxes. Authored bounds survive the depth fit; its
 residual remains measured. Rank order is descending priority, then ascending
 influence volume, with the global probe last. GPU selection still scans all
 probes and samples the largest two shares; this is not clustered probe culling.
-Source2 and Portal 2 chamber export profiles allow 64 captures. Source2-max
-allows 60 at width 2048: its 16384 by 15421 upload fits the current 16384
+At that revision, Source2 and Portal 2 chamber export profiles allowed 64 captures.
+The retired Source2-max profile allowed 60 at width 2048: its 16384 by 15421 upload fits the current 16384
 texture extent bound, whereas 64 at that width would exceed the height bound.
 The baker's `--placement-only` writes geometry/coverage evidence before any
 Cycles rendering. Map-wide coverage and fit gates still apply.

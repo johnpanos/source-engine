@@ -151,7 +151,8 @@ import radiosity_transfer  # noqa: E402
 import reference_compare  # noqa: E402
 import remote_blender  # noqa: E402
 
-STEPS = ("legacy-scene", "scene", "environment", "stage", "reference-gate", "collision", "compile",
+STEPS = ("legacy-scene", "scene", "environment", "stage", "probe-placement", "reference-gate",
+         "collision", "compile",
          "layout", "bake", "noise", "denoise", "directional", "directional-indirect", "seams",
          "probe", "rprb", "probe-volume", "radiosity", "sdf", "ktx2", "sky", "pack", "identity",
          "content", "boot", "camera-boot", "runtime-gate", "traversal-boot", "traversal", "audit")
@@ -169,6 +170,7 @@ USD_TOOLS = ("openusd", "compile_tools")
 # The tools each step runs (pbrt_map_toolchain.identity names); boot steps
 # name their client build in their settings.
 STEP_TOOLS = {"legacy-scene": USD_TOOLS, "scene": USD_TOOLS, "stage": BLENDER_TOOLS,
+              "probe-placement": BLENDER_TOOLS,
               "layout": USD_TOOLS + ("xatlas",), "bake": BLENDER_TOOLS, "denoise": ("openimagedenoise",),
               "noise": ("openimagedenoise",),
               "directional": ("openimagedenoise",),
@@ -827,6 +829,28 @@ class Pipeline:
         self.lightmap["exclude_materials"] += prop_materials
         self.hidden_materials += prop_materials
 
+    def probe_arguments(self, scene, env_args):
+        p, probe = self.paths, self.probe
+        args = ["--scene", scene, "--stage", p["stage"],
+                "--placement-cache", p["probe_placement"],
+                "--face-size", str(probe.get("face_size", 256)),
+                "--samples", str(probe.get("samples", 512)),
+                "--device", self.lightmap["device"], "--seed", str(self.lightmap["seed"]),
+                "--placement", json.dumps(probe.get("placement", {}), sort_keys=True),
+                "--coverage-rules", json.dumps(self.profile.get("audit") or {}, sort_keys=True),
+                "--volumes", json.dumps(probe.get("volumes", []), sort_keys=True),
+                "--light-paths", probe.get("light_paths", "blender-default"),
+                "--denoise" if probe.get("denoise", True) else "--no-denoise"] + env_args
+        if probe.get("relight"):
+            args.append("--gbuffer")
+        seeds = probe.get("positions", []) + ([probe["position"]] if probe.get("position") else [])
+        for position in seeds:
+            args += ["--position"] + [str(value) for value in position]
+        bounds = probe.get("bounds_m") or (self.probe_volume or {}).get("bounds_m")
+        if bounds:
+            args += ["--bounds"] + [str(value) for value in bounds]
+        return args
+
     def build(self):
         self.out.mkdir(parents=True, exist_ok=True)
         p = self.paths
@@ -867,6 +891,18 @@ class Pipeline:
                   ([] if self.usd else [p["stage"]]) + [p["stage_receipt"]] +
                   ([p["reference"]] if reference else []),
                   lambda: self.blender("stage", "pbrt_usd_stage.py", stage_args))
+        if self.probe:
+            # Placement depends on geometry/materials, not baked irradiance.
+            # Use this same immutable stage for preflight and face capture so
+            # capture consumes the validated placement cache after the bake.
+            probe_args = self.probe_arguments(scene, env_args)
+            placement_dir = self.out / "placement"
+            self.step("probe-placement", [p["stage"]] + self.scene_sources() +
+                      ([environment] if environment else []),
+                      {"probe": self.probe, "rules": self.profile.get("audit") or {}},
+                      SCENE_SCRIPTS + self.baker.scripts("probe"),
+                      [p["probe_placement"], placement_dir],
+                      lambda: self.baker.place(probe_args + ["--out-dir", placement_dir]))
         supplied = self.manifest.get("reference", {})
         if reference and supplied.get("gate"):
             gate_args = ["render", "--reference", ROOT / supplied["png"],
@@ -1056,33 +1092,13 @@ class Pipeline:
             # surface, each rendered with its depth pass, then fitted to a
             # parallax box, prefiltered and encoded as the RPRB lump.
             coverage_rules = self.profile.get("audit") or {}
-            face_args = ["--scene", scene, "--stage", p["lighting_stage"], "--out-dir", p["probe"],
-                         "--placement-cache", p["probe_placement"],
-                         "--face-size", str(probe.get("face_size", 256)),
-                         "--samples", str(probe.get("samples", 512)),
-                         "--device", self.lightmap["device"], "--seed", str(self.lightmap["seed"]),
-                         "--placement", json.dumps(probe.get("placement", {}), sort_keys=True),
-                         "--coverage-rules", json.dumps(coverage_rules, sort_keys=True),
-                         "--volumes", json.dumps(probe.get("volumes", []), sort_keys=True),
-                         "--light-paths", probe.get("light_paths", "blender-default"),
-                         "--denoise" if probe.get("denoise", True) else "--no-denoise"] + env_args
+            face_args = self.probe_arguments(scene, env_args) + ["--out-dir", p["probe"]]
             if self.keep_going:
                 face_args.append("--record-coverage-failure")
-            if probe.get("relight"):
-                # R50-RELIGHT: the Diffuse Color and Normal passes, the
-                # G-buffer that RPRB v2's relight bands carry.
-                face_args.append("--gbuffer")
-            seeds = probe.get("positions", []) + ([probe["position"]] if probe.get("position")
-                                                  else [])
-            for position in seeds:
-                face_args += ["--position"] + [str(value) for value in position]
-            bounds = probe.get("bounds_m") or (self.probe_volume or {}).get("bounds_m")
-            if bounds:
-                face_args += ["--bounds"] + [str(value) for value in bounds]
-            self.step("probe", [p["lighting_stage"]] + self.scene_sources() +
+            self.step("probe", [p["stage"], p["probe_placement"]] + self.scene_sources() +
                       ([environment] if environment else []),
                       dict(probe, device=self.lightmap["device"], seed=self.lightmap["seed"],
-                           denoise=probe.get("denoise", True), bounds_m=bounds,
+                           denoise=probe.get("denoise", True),
                            coverage_rules=coverage_rules, record_coverage_failure=self.keep_going),
                       SCENE_SCRIPTS + self.baker.scripts("probe"),
                       [p["probe"]],

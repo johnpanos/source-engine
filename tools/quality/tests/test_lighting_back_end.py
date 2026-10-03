@@ -130,6 +130,33 @@ class PlanTest(unittest.TestCase):
         self.bsp = write(self.tmp / "room.bsp", "VBSP")
         self.model = write(self.tmp / "room.json", json.dumps(MODEL))
 
+    def test_production_placement_precedes_every_bake(self):
+        pipeline = plan({"schema": "pbrt-map-manifest/v1", "map": "room",
+                         "bsp": str(self.bsp), "scene": str(self.model),
+                         "quality": "source2"}, self.tmp / "production")
+        for operation in light_baker.OPERATIONS:
+            if operation in pipeline.order:
+                self.assertLess(pipeline.order.index("probe-placement"),
+                                pipeline.order.index(operation))
+        args = pipeline.probe_arguments(self.model, [])
+        self.assertEqual(args[args.index("--stage") + 1], pipeline.paths["stage"])
+
+    def test_failed_placement_prevents_bakes(self):
+        visited = []
+        original = Recording.step
+
+        def fail_placement(pipeline, name, *args):
+            visited.append(name)
+            if name == "probe-placement":
+                raise SystemExit("placement failed")
+            return original(pipeline, name, *args)
+
+        with mock.patch.object(Recording, "step", fail_placement), \
+                self.assertRaisesRegex(SystemExit, "placement failed"):
+            plan({"schema": "pbrt-map-manifest/v1", "map": "room", "bsp": str(self.bsp),
+                  "scene": str(self.model), "quality": "source2"}, self.tmp / "failed")
+        self.assertFalse(set(visited) & set(light_baker.OPERATIONS))
+
     def check_back_end(self, pipeline, moving_light_gi=False):
         # Moving-light GI is out of scope (user decision, 2026-09-30): no
         # profile bakes the radiosity transfer or the SDF volume; a manifest

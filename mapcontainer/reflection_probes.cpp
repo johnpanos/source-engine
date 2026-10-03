@@ -130,7 +130,8 @@ ReflectionProbesError ValidateReflectionProbes(
 	const uint32_t flags = U32( p + 52 );
 	if ( ( version != kReflectionProbesVersion && version != kReflectionProbesRelightVersion &&
 	         version != kReflectionProbesTiledVersion &&
-	         version != kReflectionProbesCandidateVersion ) ||
+	         version != kReflectionProbesCandidateVersion &&
+	         version != kReflectionProbesWideCandidateVersion ) ||
 	     U32( p + 48 ) != kReflectionProbesPrefilterVersion ||
 	     flags > kReflectionProbesFlagRelight ||
 	     ( version < kReflectionProbesTiledVersion &&
@@ -141,9 +142,10 @@ ReflectionProbesError ValidateReflectionProbes(
 	ReflectionProbesLayout layout = {};
 	layout.relight = ( flags & kReflectionProbesFlagRelight ) != 0;
 	layout.count = U32( p + 8 );
-	const uint32_t maximum = version >= kReflectionProbesTiledVersion
-	                             ? kReflectionProbesMaxProbes
-	                             : kReflectionProbesLegacyMaxProbes;
+	const uint32_t maximum =
+	    version == kReflectionProbesWideCandidateVersion
+	        ? kReflectionProbesMaxProbes
+	        : ( version >= kReflectionProbesTiledVersion ? 64 : kReflectionProbesLegacyMaxProbes );
 	layout.mipCount = U32( p + 12 );
 	if ( layout.count < 1 || layout.count > maximum || layout.mipCount < 1 ||
 	     layout.mipCount > kReflectionProbesMaxMips )
@@ -161,8 +163,12 @@ ReflectionProbesError ValidateReflectionProbes(
 	layout.atlasOffset = U64( p + 32 );
 	layout.atlasBytes = U64( p + 40 );
 	const uint64_t baseOffset = AtlasOffset( layout.count );
-	const bool candidates = version == kReflectionProbesCandidateVersion;
-	if ( layout.atlasOffset != baseOffset + ( candidates ? kReflectionProbeCandidateBytes : 0 ) ||
+	const bool candidates = version >= kReflectionProbesCandidateVersion;
+	layout.candidateWords =
+	    candidates ? ( version == kReflectionProbesWideCandidateVersion ? 4 : 1 ) : 0;
+	const uint32_t candidateBytes =
+	    candidates ? 32 + 8 * layout.candidateWords * kReflectionProbeCandidateCells : 0;
+	if ( layout.atlasOffset != baseOffset + candidateBytes ||
 	     layout.atlasBytes != uint64_t( layout.atlasWidth ) * layout.atlasHeight * 8 ||
 	     size != layout.atlasOffset + layout.atlasBytes )
 		return ReflectionProbesError::InvalidSections;
@@ -240,13 +246,19 @@ ReflectionProbesError ValidateReflectionProbes(
 		for ( int i = 16; i < 32; ++i )
 			if ( p[baseOffset + i] )
 				return ReflectionProbesError::InvalidCandidates;
-		const uint64_t valid =
-		    layout.count == 64 ? ~uint64_t( 0 ) : ( uint64_t( 1 ) << layout.count ) - 1;
 		for ( uint32_t cell = 0; cell < kReflectionProbeCandidateCells; ++cell )
 		{
-			const uint64_t mask = U64( p + baseOffset + 32 + 8 * cell );
-			if ( mask & ~valid )
-				return ReflectionProbesError::InvalidCandidates;
+			uint64_t masks[4] = {};
+			for ( uint32_t word = 0; word < layout.candidateWords; ++word )
+			{
+				const uint32_t bits =
+				    layout.count > 64 * word ? std::min( 64u, layout.count - 64 * word ) : 0;
+				const uint64_t valid = bits == 64 ? ~uint64_t( 0 ) : ( uint64_t( 1 ) << bits ) - 1;
+				masks[word] =
+				    U64( p + baseOffset + 32 + 8 * ( cell * layout.candidateWords + word ) );
+				if ( masks[word] & ~valid )
+					return ReflectionProbesError::InvalidCandidates;
+			}
 			const uint32_t coordinates[] = { cell % 16, ( cell / 16 ) % 16, cell / 256 };
 			for ( uint32_t i = 0; i < layout.count; ++i )
 			{
@@ -268,7 +280,7 @@ ReflectionProbesError ValidateReflectionProbes(
 					overlaps =
 					    overlaps && low[axis] <= hi[axis] + guard && high[axis] >= lo[axis] - guard;
 				if ( ( overlaps || probe.rank < 2 || ( probe.flags & kReflectionProbeGlobal ) ) &&
-				     !( mask & ( uint64_t( 1 ) << probe.rank ) ) )
+				     !( masks[probe.rank / 64] & ( uint64_t( 1 ) << ( probe.rank % 64 ) ) ) )
 					return ReflectionProbesError::InvalidCandidates;
 			}
 		}
@@ -356,8 +368,10 @@ uint32_t ReflectionProbeTextureRows( const ReflectionProbesLayout &layout ) noex
 	const uint32_t bands = layout.count * ( layout.relight ? 3 : 1 );
 	const uint32_t width = ReflectionProbeTextureWidth( layout );
 	return 1 + layout.count + ( ( bands + columns - 1 ) / columns ) * ( layout.width / 2 ) +
-	       ( layout.candidateOffset ? ( 2 * kReflectionProbeCandidateCells + width - 1 ) / width
-	                                : 0 );
+	       ( layout.candidateOffset
+	               ? ( 2 * layout.candidateWords * kReflectionProbeCandidateCells + width - 1 ) /
+	                     width
+	               : 0 );
 }
 
 void WriteReflectionProbeTexture( const void *pData, const ReflectionProbesLayout &layout,
@@ -375,17 +389,18 @@ void WriteReflectionProbeTexture( const void *pData, const ReflectionProbesLayou
 		pOut[8] = FloatToHalf( float( columns ) );
 	if ( layout.candidateOffset )
 	{
-		const uint32_t rows = ( 2 * kReflectionProbeCandidateCells + width - 1 ) / width;
+		const uint32_t rows =
+		    ( 2 * layout.candidateWords * kReflectionProbeCandidateCells + width - 1 ) / width;
 		const uint32_t start = ReflectionProbeTextureRows( layout ) - rows;
 		for ( int axis = 0; axis < 4; ++axis )
-			pOut[12 + axis] =
-			    FloatToHalf( axis == 3 ? 1.0f : float( kReflectionProbeCandidateDim ) );
+			pOut[12 + axis] = FloatToHalf( axis == 3 ? float( layout.candidateWords )
+			                                         : float( kReflectionProbeCandidateDim ) );
 		const auto *grid = static_cast<const unsigned char *>( pData ) + layout.candidateOffset;
 		for ( int i = 0; i < 16; ++i )
 			pOut[16 + i] = FloatToHalf( float( grid[i] ) );
 		for ( int i = 0; i < 4; ++i )
 			pOut[32 + i] = FloatToHalf( float( ( start >> ( i * 8 ) ) & 255 ) );
-		for ( uint32_t i = 0; i < 8 * kReflectionProbeCandidateCells; ++i )
+		for ( uint32_t i = 0; i < 8 * layout.candidateWords * kReflectionProbeCandidateCells; ++i )
 			pOut[size_t( start ) * width * 4 + i] = FloatToHalf( float( grid[32 + i] ) );
 	}
 	for ( uint32_t index = 0; index < layout.count; ++index )
