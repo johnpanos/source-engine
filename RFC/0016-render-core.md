@@ -1427,6 +1427,11 @@ from camera opacity. Disabled fields follow the retained power-down reveal to ze
 publish no light. Spatially textured
 emission, indirect light and the remaining SolidEnergy surface migration are
 open. See the [R91 evidence](0016-progress.md#r91-fizzler-light-emission-2026-10-03).
+The client-owned `cl_fizzler_core_emission_strength` defaults to 16: it scales
+the light's radiance at ordinary idle intensity 1 and during the portal-hit
+pulse, preserving their ratio and the visible surface shader. The
+[idle-light follow-up](0016-progress.md#r91-visible-fizzler-light-at-idle-2026-10-03)
+proves receiver light without a portal hit.
 
 ### Projected lights: a per-view projector list (amended 2026-09-28)
 

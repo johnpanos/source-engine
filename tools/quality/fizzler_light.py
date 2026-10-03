@@ -111,7 +111,7 @@ def main():
     shutil.copy2(out / "map-build/compile" / (NAME + ".bsp"), content / "maps" / (NAME + ".bsp"))
     commands = ["noclip", "cmd setpos -160 -210 80", "cmd setang 24 54 0", "fov 90",
                 "mat_force_tonemap_scale 1", "cl_portal_cleanser_scanline 0",
-                "cl_portal_cleanser_default_intensity 10",
+                "cl_portal_cleanser_default_intensity 1",
                 "wait 180", "cl_fizzler_core_emission 0", "wait 20", "screenshot",
                 "cl_fizzler_core_emission 1", "cl_fizzler_core_emission_report 1",
                 "r_area_lights_report 1", "wait 20", "screenshot",
@@ -155,6 +155,8 @@ def main():
     text = (out / "capture/runtime/portal2/console.log").read_text(errors="replace")
     checks.check("fizzler core emitter" in text and "powerup 1.000" in text,
                  "source.authored-emitter")
+    checks.check("intensity 1.000 powerup 1.000 strength 16.000 shot 0.000" in text,
+                 "source.idle-without-portal-hit")
     checks.check("0 lit (1 without a slot)" in text, "source.core-only-no-cpu-slot")
     metrics.update(checks=checks.checks, failures=checks.failures,
                    status="pass" if checks.failures == 0 else "fail")

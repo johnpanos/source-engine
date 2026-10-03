@@ -9815,7 +9815,7 @@
       "contract": "RFC/0016-render-core.md",
       "profile": "linux-native-vulkan-gpu",
       "kind": "positive",
-      "description": "Controlled generated Portal 2 flow field: core-only emission off/on/off/on, entity Disable/Enable; blue receiver rise exceeds 2 byte levels in three independent comparisons, off returns within 0.5 levels, authored rectangular source at full power and no CPU stand-in slot. Constant textures keep wall-clock flow mean fixed. This is 640x480 lighting/state evidence, not full-frame performance or the complete SolidEnergy surface migration.",
+      "description": "Controlled generated Portal 2 flow field: core-only emission off/on/off/on, entity Disable/Enable; blue receiver rise exceeds 2 byte levels in three independent comparisons, off returns within 0.5 levels, authored rectangular source at full idle intensity 1 with no portal hit and no CPU stand-in slot. Constant textures keep wall-clock flow mean fixed. This is 640x480 lighting/state evidence, not full-frame performance or the complete SolidEnergy surface migration.",
       "command": [
         "{python}",
         "tools/quality/fizzler_light.py",
@@ -9823,7 +9823,7 @@
         "{out}"
       ],
       "result_protocol": "checks-v1",
-      "min_checks": 9,
+      "min_checks": 10,
       "timeout_seconds": 300,
       "requires": [
         "path:build/toolchains/pbrt-map-toolchain.json",

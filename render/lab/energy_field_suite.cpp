@@ -76,6 +76,16 @@ void SourceChecks( Results &results )
 	area_light::IrradianceAt( light, front, frontNormal, a );
 	area_light::IrradianceAt( light, back, backNormal, b );
 	results.That( a[2] > 0.0f && std::fabs( a[2] - b[2] ) < 1e-6f, "source.two-sides-equal" );
+	flow.intensity = 1;
+	flow.outputIntensity = 16;
+	results.That( energy_field::MeanLight( surface, flow, 16, sample, light ) &&
+	                  std::fabs( light.radiance[2] - 8.0f ) < 1e-5f,
+	    "source.idle-strength" );
+	const float idle = light.radiance[2];
+	flow.intensity = 10;
+	results.That( energy_field::MeanLight( surface, flow, 16, sample, light ) &&
+	                  std::fabs( light.radiance[2] - 10.0f * idle ) < 1e-4f,
+	    "source.portal-hit-ratio-preserved" );
 	flow.powerUp = 0;
 	results.That( energy_field::MeanLight( surface, flow, 16, sample, light ) && light.reach == 0,
 	    "source.off-gives-zero" );
@@ -83,6 +93,7 @@ void SourceChecks( Results &results )
 	flow.intensity = 0;
 	results.That( energy_field::MeanLight( surface, flow, 16, sample, light ) && light.reach == 0,
 	    "source.zero-intensity" );
+	flow.outputIntensity = 1;
 	flow.intensity = 2;
 	flow.vortexEnabled[0] = true;
 	std::memcpy( flow.vortex[0], surface.p[0], sizeof( flow.vortex[0] ) );

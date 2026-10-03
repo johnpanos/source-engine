@@ -7754,3 +7754,48 @@ complete field image, moving-occluder shadows or stock-content pixel parity.
 The lab covers two-sidedness and the existing shadow receiver mechanism. Full
 SolidEnergy surface migration, GI, High complete-frame budgets, CPU/GPU source
 integration crossover measurements and non-Linux native evidence remain open.
+
+
+### R91: visible fizzler light at idle (2026-10-03)
+
+User request: “can we make it emit some light when its on and not being hit with
+the portal gun”. The existing source publishes radiance at idle, but the stock
+flow texture's mean is very dim (about 0.013 blue before the new strength).
+The client-owned `cl_fizzler_core_emission_strength` now defaults to 16 and
+multiplies the core light source's output intensity. It leaves the retained
+surface shader and ordinary gameplay intensity 1 unchanged. The portal-hit
+pulse retains its 10:1 intensity ratio; power-up/down, flow masks, vortex color,
+visibility and core-only receiver policy keep their existing owners. Zero
+strength gives zero emitted light. This is product radiance tuning on the
+existing source, with no new shader, light kind, pass or frozen receiver shading.
+
+Lab proof: `quality-results/fizzler-idle-20261003/lab.json` passes 529/529 and
+sensitivity 3/3, including the added idle-strength and portal-hit-ratio checks.
+The existing lab configuration and complete `build-p2` product build pass
+(`lab-build.log`, `product-build.log`).
+
+The product fixture now uses ordinary idle intensity 1 instead of the preceding
+fixture's pulse-peak intensity 10. The source report must explicitly show
+`intensity 1.000 powerup 1.000 strength 16.000 shot 0.000`. The shared manifest
+raises its minimum to 10 checks; `product.json` passes 10/10. Retained receiver
+metrics/capture data are in `quality-results/fizzler-idle-20261003/fixture/`:
+three on/off and Disable/Enable comparisons each raise mean receiver blue by
+6.1175 byte levels (required >2), and off returns exactly (required mean absolute
+change <0.5). The source still takes no CPU stand-in slot. Reproduce with
+`python3 tools/quality/conformance.py check --suite render.product.fizzler-light
+--build-dir <fresh-output>/commands --out <fresh-output>/product.json`.
+
+The stock `sp_a2_fizzler_intro` field camera also boots successfully
+(`stock-field/evidence.json`). `effects/fizzler_center` reports full power,
+intensity 1, shot time 0 and radiance (0.052516, 0.168050, 0.210063), confirming
+idle emission on original content. The initial spawn-camera boot is retained
+separately under `stock/`; that camera has no fizzler source report, so it is
+not used as field evidence.
+
+Architecture check, baseline and inventory pass, as does `git diff --check`.
+The changed cleanser/lab lines pass pinned style. The complete changed-line
+style invocation still reports the pre-existing formatting-only edit in
+`public/render/area_light.h`, present before this request and left untouched
+(`style.log`). The previously recorded compiler-dependency classification gap
+and full-frame performance/platform gates remain open; no new performance or
+complete-image claim is made.

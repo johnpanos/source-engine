@@ -47,6 +47,9 @@ ConVar cl_portal_cleanser_scanline(
 // Controls only the core light source; the retained field draw stays visible.
 static ConVar cl_fizzler_core_emission( "cl_fizzler_core_emission", "1", FCVAR_CHEAT,
     "Fizzlers emit two-sided area light on core receivers (0: lighting negative control)." );
+static ConVar cl_fizzler_core_emission_strength( "cl_fizzler_core_emission_strength", "16",
+    FCVAR_CHEAT, "Scale of fizzler area-light radiance at idle and during portal hits.", true, 0.0f,
+    false, 0.0f );
 static ConVar cl_fizzler_core_emission_report( "cl_fizzler_core_emission_report", "0", FCVAR_CHEAT,
     "Report the next successfully evaluated core fizzler emitter." );
 
@@ -354,7 +357,10 @@ int C_TriggerPortalCleanser::GetAreaLights( area_light::AreaLight *pLights, int 
 	flow.time = float( Plat_FloatTime() );
 	flow.intensity = intensity;
 	flow.powerUp = powerUp;
-	flow.outputIntensity = scalar( "$outputintensity", 1.0f );
+	// Stock flow masks have a dim area mean even at full power. This light-only
+	// scale makes the idle glow visible while preserving the portal-hit ratio.
+	flow.outputIntensity =
+	    scalar( "$outputintensity", 1.0f ) * cl_fizzler_core_emission_strength.GetFloat();
 	flow.worldUvScale = scalar( "$flow_worlduvscale", 1.0f );
 	flow.normalUvScale = scalar( "$flow_normaluvscale", 1.0f );
 	flow.noiseScale = scalar( "$flow_noise_scale", 1.0f );
@@ -436,11 +442,12 @@ int C_TriggerPortalCleanser::GetAreaLights( area_light::AreaLight *pLights, int 
 		cl_fizzler_core_emission_report.SetValue( 0 );
 		const area_light::AreaLight &light = pLights[0];
 		Msg( "fizzler core emitter ent %d key %d material %s center %.3f %.3f %.3f area %.3f "
-		     "radiance %.6f %.6f %.6f reach %.3f intensity %.3f powerup %.3f\n",
+		     "radiance %.6f %.6f %.6f reach %.3f intensity %.3f powerup %.3f "
+		     "strength %.3f shot %.3f\n",
 		    entindex(), pKeys[0], m_EmissionSurface.material, light.rect.center[0],
 		    light.rect.center[1], light.rect.center[2], area_light::Area( light.rect ),
 		    light.radiance[0], light.radiance[1], light.radiance[2], light.reach, intensity,
-		    powerUp );
+		    powerUp, cl_fizzler_core_emission_strength.GetFloat(), m_flPortalShotTime );
 	}
 	return 1;
 }

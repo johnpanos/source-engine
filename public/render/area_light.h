@@ -393,8 +393,8 @@ static const char *const kAreaLightsFrameVersion = "VEngineAreaLights003";
 class IAreaLights3 : public IAreaLights
 {
 public:
-	virtual void SetFrameAreaLights(
-	    const AreaLight *lights, const int *keys, const bool *coreOnly, int count ) = 0;
+	virtual void SetFrameAreaLights( const AreaLight *lights, const int *keys,
+	    const bool *coreOnly, int count ) = 0;
 
 	// Largest rectangular SolidEnergy face of a brush model, in model space.
 	// No material-name list, collision-bound substitution or inferred emission.
