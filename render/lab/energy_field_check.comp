@@ -1,0 +1,30 @@
+// The shared SolidEnergy intrinsic emission, independent of camera parameters.
+#version 450
+#include "../shaders/common/energy_field.glsl"
+layout( local_size_x = 64 ) in;
+struct Case
+{
+	vec4 base;
+	vec4 reveal; // noise, edge, power-up, intensity
+	vec4 flow; // rgb color, bounds
+	vec4 vortex; // rgb color, strength
+};
+layout( std430, set = 3, binding = 0 ) readonly buffer Cases
+{
+	uvec4 header;
+	Case cases[];
+};
+layout( std430, set = 3, binding = 1 ) writeonly buffer Results
+{
+	vec4 results[];
+};
+void main()
+{
+	uint i = gl_GlobalInvocationID.x;
+	if ( i >= header.x )
+		return;
+	Case c = cases[i];
+	vec4 base = EnergyFieldReveal( c.base, c.reveal.x, c.reveal.y, c.reveal.z );
+	results[i] = vec4( max( EnergyFieldRadiance( base, c.flow.rgb, c.vortex.rgb,
+	    c.vortex.w, c.vortex.w > 0.0, c.flow.w, c.reveal.w ), vec3( 0.0 ) ), base.a );
+}

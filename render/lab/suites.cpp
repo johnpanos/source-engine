@@ -26,6 +26,8 @@ int RunSuite( int argc, char **argv )
 		return RunDebugViewsSuite( argc - 1, argv + 1 );
 	if ( name == "lighting-controls" )
 		return RunLightingControlsSuite( argc - 1, argv + 1 );
+	if ( name == "energy-field" )
+		return RunEnergyFieldSuite( argc - 1, argv + 1 );
 	if ( name == "area-lights" )
 		return RunAreaLightsSuite( argc - 1, argv + 1 );
 	if ( name == "lightmap-basis" )

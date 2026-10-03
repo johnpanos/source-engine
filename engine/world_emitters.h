@@ -21,6 +21,10 @@
 #include <vector>
 
 class IMaterial;
+namespace energy_field
+{
+struct Surface;
+}
 
 struct WorldEmitter
 {
@@ -30,5 +34,8 @@ struct WorldEmitter
 
 // The map's world emitters (built on first use after a map loads).
 const std::vector<WorldEmitter> &WorldEmitters_Get();
+
+// Geometry ingress for the core fizzler source; no lighting is evaluated here.
+bool WorldEmitters_EnergyFieldSurface( int modelIndex, energy_field::Surface &out );
 
 #endif // ENGINE_WORLD_EMITTERS_H

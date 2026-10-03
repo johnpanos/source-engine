@@ -53,6 +53,7 @@
 #include "suites.h"
 
 #include "render/area_light.h"
+#include "render/energy_field.h"
 #include "render/material/pbr_family.h"
 #include "render/math/matrix.h"
 #include "render/pbr_brdf.h"
@@ -155,6 +156,29 @@ std::map<std::string, std::vector<area_light::AreaLight>> Lights()
 			        { 8, 0, 0 }, { 0, -8, 0 }, 4.0f ) );
 	}
 	lights["grid64"] = grid;
+	energy_field::Surface field;
+	const float p[4][3] = {
+	    { -60, -40, 120 }, { 60, -40, 120 }, { 60, 40, 120 }, { -60, 40, 120 } };
+	std::memcpy( field.p, p, sizeof( p ) );
+	field.tangentS[0] = field.tangentT[1] = 1.0f;
+	energy_field::Flow flow;
+	flow.color[0] = flow.color[1] = flow.color[2] = 2.0f;
+	area_light::AreaLight emission;
+	const bool valid = energy_field::MeanLight(
+	    field, flow, 16,
+	    []( int texture, float, float, float rgba[4] )
+	    {
+		    const float samples[6][4] = { { 1, 1, 1, 1 }, { 0.5f, 0.5f, 0, 1 }, { 0, 0, 0, 1 },
+		        { 1, 0, 1, 1 }, { 1, 1, 1, 1 }, { 1, 1, 1, 1 } };
+		    std::memcpy( rgba, samples[texture], sizeof( samples[0] ) );
+		    return true;
+	    },
+	    emission );
+	// A refusal stays an empty input; the nonzero pixel oracle below then fails.
+	if ( valid )
+		lights["fizzler"] = { emission };
+	else
+		lights["fizzler"] = {};
 	return lights;
 }
 
@@ -652,7 +676,8 @@ std::optional<std::string> AreaChecks( Lab &lab, Results &results )
 	const auto lights = Lights();
 
 	// Diffuse: every sampled pixel against the exact irradiance.
-	for ( const char *name : { "ceiling", "tilted", "straddling", "short-reach", "grid64" } )
+	for ( const char *name :
+	    { "ceiling", "tilted", "straddling", "short-reach", "grid64", "fizzler" } )
 	{
 		for ( const auto &[viewName, view] : views )
 		{
@@ -724,7 +749,7 @@ std::optional<std::string> AreaChecks( Lab &lab, Results &results )
 
 	// GGX: against the term's definition, and its accuracy against the exact
 	// light (a measurement).
-	for ( const char *name : { "ceiling", "tilted", "straddling" } )
+	for ( const char *name : { "ceiling", "tilted", "straddling", "fizzler" } )
 	{
 		for ( const Material &material : kMaterials )
 		{

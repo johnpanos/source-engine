@@ -72,6 +72,7 @@ int RunModelSelectionSuite( int argc, char **argv );
 int RunCostOverlaySuite( int argc, char **argv );
 int RunDebugViewsSuite( int argc, char **argv );
 int RunLightingControlsSuite( int argc, char **argv );
+int RunEnergyFieldSuite( int argc, char **argv );
 int RunAreaLightsSuite( int argc, char **argv );
 int RunLightmapBasisSuite( int argc, char **argv );
 int RunProbeVolumeSuite( int argc, char **argv );

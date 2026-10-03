@@ -1,4 +1,5 @@
 #version 450
+#include "../../../render/shaders/common/energy_field.glsl"
 // SolidEnergy's pixel stage: a port of stdshaders/solidenergy_ps20b.fxc, with
 // the vertex-stage terms that depend on the tangent frame (flow UVs, vortex
 // offsets, the view-aligned tangent) evaluated here per pixel.
@@ -223,33 +224,10 @@ void main()
 			}
 			cBase = cBase0 * flWeight1 + cBase1 * flWeight2;
 
-			if ( bPowerUp )
-			{
-				float flNoiseReveal = ( flNoise + ( 1.0 - vBoundsTexel.g ) ) * 0.5;
-				float flPowerStage2 = clamp( g_flPowerUp * 3.0, 0.0, 1.0 );
-				float flPowerUpRange1 = HlslSmoothstep( 0.02, 0.0, abs( flNoiseReveal - g_flPowerUp ) );
-				float flPowerUpRange2 = HlslSmoothstep( 0.02, 0.0, ( flNoiseReveal - g_flPowerUp ) );
-
-				cBase.ag += flPowerUpRange1 * g_flPowerUp * ( 1.0 - g_flPowerUp );
-				cBase.ag *= flPowerStage2 * flPowerUpRange2;
-				cBase.ag += vBoundsTexel.g * flPowerStage2;
-			}
-			else
-			{
-				cBase.ag += vBoundsTexel.g;
-			}
-
-			vec3 cFlowField = cBase.a * g_cFlow;
-			if ( bVortex1 || bVortex2 )
-			{
-				vec3 cVortex = cBase.g * g_cVortex;
-				cBase.rgb = mix( cFlowField, cVortex, flVortexIntensity );
-			}
-			else
-			{
-				cBase.rgb = cFlowField;
-			}
-			cBase.rgb *= vBoundsTexel.b * g_flIntensity;
+			cBase = EnergyFieldReveal( cBase, flNoise, vBoundsTexel.g,
+			    bPowerUp ? g_flPowerUp : 1.0 );
+			cBase.rgb = EnergyFieldRadiance( cBase, g_cFlow, g_cVortex, flVortexIntensity,
+			    bVortex1 || bVortex2, vBoundsTexel.b, g_flIntensity );
 		}
 		else
 		{

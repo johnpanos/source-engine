@@ -59,6 +59,11 @@
 
 #include <cmath>
 
+namespace energy_field
+{
+struct Surface;
+}
+
 namespace area_light
 {
 
@@ -379,6 +384,22 @@ public:
 
 protected:
 	~IAreaLights() {}
+};
+
+// v3 preserves v2's layout/vtable. New sources can explicitly target the core
+// without allocating CPU lightmap/model stand-in slots. One publication still
+// replaces the complete frame; receiver policy is independent of light identity.
+static const char *const kAreaLightsFrameVersion = "VEngineAreaLights003";
+class IAreaLights3 : public IAreaLights
+{
+public:
+	virtual void SetFrameAreaLights(
+	    const AreaLight *lights, const int *keys, const bool *coreOnly, int count ) = 0;
+
+	// Largest rectangular SolidEnergy face of a brush model, in model space.
+	// No material-name list, collision-bound substitution or inferred emission.
+	// False when the model has no supported face. The caller owns the copy.
+	virtual bool GetEnergyFieldSurface( int modelIndex, energy_field::Surface &out ) = 0;
 };
 
 } // namespace area_light

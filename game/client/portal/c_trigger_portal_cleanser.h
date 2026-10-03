@@ -18,11 +18,13 @@
 
 #include "c_triggers.h"
 #include "particles_new.h"
+#include "emissive_area_lights.h"
+#include "render/energy_field.h"
 
 // Reconstruction note: the 2010 builds declare this class inside
 // c_trigger_portal_cleanser.cpp. The retail-era shared placement and portalgun code
 // includes this header and needs the class, so the declaration lives here.
-class C_TriggerPortalCleanser : public C_BaseTrigger
+class C_TriggerPortalCleanser : public C_BaseTrigger, public IEmissiveAreaLightSource
 {
 public:
 	DECLARE_CLASS( C_TriggerPortalCleanser, C_BaseTrigger );
@@ -46,7 +48,17 @@ public:
 	// The vortex object whose position bends the field, or NULL (iObject 0 or 1).
 	C_BaseEntity *GetVortexObject( int iObject );
 
+	int GetAreaLights( area_light::AreaLight *pLights, int *pKeys, int nMax ) override;
+	bool CoreOnly() const override { return true; }
+
 private:
+	int m_nStateFrame;
+	float m_flFrameIntensity;
+	float m_flFramePowerUp;
+	int m_nEmissionModel;
+	energy_field::Surface m_EmissionSurface;
+	IMaterial *m_pEmissionMaterial;
+	bool m_bEmissionWarned;
 	void UpdateScanline( void );
 	void StopScanline( void );
 

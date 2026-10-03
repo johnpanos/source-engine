@@ -367,6 +367,13 @@ GENERATED = {
          DEVICE_OPTIONS + ("-DSEEDED_LIGHTMAP_RNM_UNSQUARED",)),
         ("kLightmapBasisRnmOffsetFromZero", LAB + "/lightmap_basis_check.comp",
          DEVICE_OPTIONS + ("-DSEEDED_LIGHTMAP_RNM_OFFSET_FROM_ZERO",)))),
+    "energy_field_check_spv.h": ("render::lab::spirv",
+        "render_lab's fizzler emission kernel and negative controls", (
+        ("kEnergyFieldCheck", LAB + "/energy_field_check.comp", DEVICE_OPTIONS),
+        ("kEnergyFieldRevealIgnored", LAB + "/energy_field_check.comp",
+         DEVICE_OPTIONS + ("-DSEEDED_FIELD_REVEAL_IGNORED",)),
+        ("kEnergyFieldIntensityIgnored", LAB + "/energy_field_check.comp",
+         DEVICE_OPTIONS + ("-DSEEDED_FIELD_INTENSITY_IGNORED",)))),
     "probe_volume_check_spv.h": ("render::lab::spirv",
         "render_lab's probe-volume suite's check kernel and its seeded variants "
         "(render.lab.probe-volume, RFC 0016 K11)", (

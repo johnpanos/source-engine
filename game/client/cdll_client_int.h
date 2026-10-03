@@ -82,9 +82,9 @@ class IIndirectLightPortals;
 extern indirect_portals::IIndirectLightPortals *indirectlightportals;
 namespace area_light
 {
-class IAreaLights;
+class IAreaLights3;
 }
-extern area_light::IAreaLights *arealights;
+extern area_light::IAreaLights3 *arealights;
 namespace dynamic_occlusion
 {
 class IOccluders;

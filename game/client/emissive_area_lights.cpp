@@ -41,6 +41,8 @@
 #include "vtf/vtf_sample.h"
 #include "materialsystem/selfillum_emission.h"
 
+#include <algorithm>
+#include <cmath>
 #include <map>
 #include <memory>
 #include <string>
@@ -399,6 +401,7 @@ struct Candidate_t
 {
 	emissive::Candidate m_Candidate;
 	int m_nKey;
+	bool m_bCoreOnly = false;
 	C_BaseAnimating *m_pAnim; // null for a source's light
 	const ModelEmitter_t *m_pEmitter;
 	float m_Tint[3];
@@ -464,11 +467,12 @@ public:
 	virtual void PreRender();
 
 private:
-	void Publish( const area_light::AreaLight *pLights, const int *pKeys, int nCount )
+	void Publish( const area_light::AreaLight *pLights, const int *pKeys, int nCount,
+	    const bool *pCoreOnly = NULL )
 	{
 		if ( nCount == 0 && m_nPublished == 0 )
 			return;
-		arealights->SetAreaLights( pLights, pKeys, nCount );
+		arealights->SetFrameAreaLights( pLights, pKeys, pCoreOnly, nCount );
 		m_nPublished = nCount;
 	}
 
@@ -612,6 +616,7 @@ void CEmissiveAreaLights::PreRender()
 			Candidate_t candidate;
 			candidate.m_Candidate.light = lights[i];
 			candidate.m_nKey = keys[i];
+			candidate.m_bCoreOnly = s_Sources[s]->CoreOnly();
 			candidate.m_pAnim = NULL;
 			candidate.m_pEmitter = NULL;
 			candidate.m_Candidate.wasLit = wasLit( keys[i] );
@@ -667,6 +672,7 @@ void CEmissiveAreaLights::PreRender()
 	// kMaxAreaLights its dlight slots).
 	area_light::AreaLight lights[area_light::kMaxFrameAreaLights];
 	int keys[area_light::kMaxFrameAreaLights];
+	bool coreOnly[area_light::kMaxFrameAreaLights];
 	int nLit = 0;
 	m_Lit.clear();
 	for ( int index : order )
@@ -693,6 +699,7 @@ void CEmissiveAreaLights::PreRender()
 		}
 		lights[nLit] = light;
 		keys[nLit] = candidate.m_nKey;
+		coreOnly[nLit] = candidate.m_bCoreOnly;
 		++nLit;
 		m_Lit.push_back( candidate.m_nKey );
 	}
@@ -712,7 +719,7 @@ void CEmissiveAreaLights::PreRender()
 			}
 		}
 	}
-	Publish( lights, keys, nLit );
+	Publish( lights, keys, nLit, coreOnly );
 }
 
 } // namespace
@@ -773,5 +780,48 @@ bool EmissiveAreaLights_SampleTexture( ITexture *pTexture, float s, float t, flo
 	for ( int k = 0; k < 3; ++k )
 		rgba[k] = SrgbLinearToGamma( rgb[k] );
 	rgba[3] = alpha;
+	return true;
+}
+
+bool EmissiveAreaLights_SampleFieldTexture(
+    ITexture *pTexture, float s, float t, bool linearRgb, float rgba[4] )
+{
+	if ( !pTexture || pTexture->IsError() || pTexture->IsRenderTarget() ||
+	     pTexture->IsProcedural() || !std::isfinite( s ) || !std::isfinite( t ) )
+		return false;
+	const vtf_sample::Texture &texture = LoadSampleTexture( pTexture->GetName() );
+	if ( !texture.valid )
+		return false;
+	auto coordinate = []( float uv, int size, bool clamp )
+	{
+		return ( clamp ? std::clamp( uv, 0.0f, 1.0f ) : uv - std::floor( uv ) ) * size - 0.5f;
+	};
+	const unsigned flags = pTexture->GetFlags();
+	const float x = coordinate( s, texture.width, ( flags & TEXTUREFLAGS_CLAMPS ) != 0 );
+	const float y = coordinate( t, texture.height, ( flags & TEXTUREFLAGS_CLAMPT ) != 0 );
+	const int ix = int( std::floor( x ) ), iy = int( std::floor( y ) );
+	const float fx = x - ix, fy = y - iy;
+	auto index = []( int i, int size, bool clamp )
+	{
+		return clamp ? std::clamp( i, 0, size - 1 ) : ( i % size + size ) % size;
+	};
+	for ( int k = 0; k < 4; ++k )
+		rgba[k] = 0.0f;
+	for ( int cy = 0; cy < 2; ++cy )
+	{
+		for ( int cx = 0; cx < 2; ++cx )
+		{
+			const int at = index( iy + cy, texture.height, ( flags & TEXTUREFLAGS_CLAMPT ) != 0 ) *
+			                   texture.width +
+			               index( ix + cx, texture.width, ( flags & TEXTUREFLAGS_CLAMPS ) != 0 );
+			const float weight = ( cx ? fx : 1.0f - fx ) * ( cy ? fy : 1.0f - fy );
+			for ( int k = 0; k < 3; ++k )
+			{
+				const float value = texture.rgb[3 * at + k];
+				rgba[k] += weight * ( linearRgb ? value : SrgbLinearToGamma( value ) );
+			}
+			rgba[3] += weight * texture.alpha[at];
+		}
+	}
 	return true;
 }

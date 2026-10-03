@@ -24,6 +24,11 @@
 #include "proxyentity.h"
 #include "materialsystem/imaterialvar.h"
 #include "imaterialproxydict.h"
+#include "cdll_client_int.h"
+#include "materialsystem/imaterial.h"
+#include "materialsystem/imaterialsystem.h"
+#include "materialsystem/itexture.h"
+#include "mathlib/vmatrix.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -38,6 +43,12 @@ ConVar cl_portal_cleanser_powerup_time( "cl_portal_cleanser_powerup_time", "1.0f
     "The amount of time the power up sequence takes to complete." );
 ConVar cl_portal_cleanser_scanline(
     "cl_portal_cleanser_scanline", "1", FCVAR_CHEAT, "Use particle scanline." );
+
+// Controls only the core light source; the retained field draw stays visible.
+static ConVar cl_fizzler_core_emission( "cl_fizzler_core_emission", "1", FCVAR_CHEAT,
+    "Fizzlers emit two-sided area light on core receivers (0: lighting negative control)." );
+static ConVar cl_fizzler_core_emission_report( "cl_fizzler_core_emission_report", "0", FCVAR_CHEAT,
+    "Report the next successfully evaluated core fizzler emitter." );
 
 IMPLEMENT_CLIENTCLASS_DT(
     C_TriggerPortalCleanser, DT_TriggerPortalCleanser, CTriggerPortalCleanser )
@@ -61,10 +72,20 @@ RecvPropBool( RECVINFO( m_bDisabled ) ), RecvPropBool( RECVINFO( m_bVisible ) ),
 	m_flLastShotTime = 0.0f;
 	m_flShotPulseTimer = 0.0f;
 	m_flLastUpdateTime = 0.0f;
+	m_nStateFrame = -1;
+	m_flFrameIntensity = 0.0f;
+	m_flFramePowerUp = 0.0f;
+	m_nEmissionModel = -1;
+	m_pEmissionMaterial = NULL;
+	m_bEmissionWarned = false;
+	EmissiveAreaLights_AddSource( this );
 }
 
 C_TriggerPortalCleanser::~C_TriggerPortalCleanser()
 {
+	EmissiveAreaLights_RemoveSource( this );
+	if ( m_pEmissionMaterial )
+		m_pEmissionMaterial->DecrementReferenceCount();
 	StopScanline();
 }
 
@@ -158,6 +179,7 @@ void C_TriggerPortalCleanser::UpdatePartitionListEntry( void )
 void C_TriggerPortalCleanser::OnDataChanged( DataUpdateType_t updateType )
 {
 	BaseClass::OnDataChanged( updateType );
+	m_nStateFrame = -1;
 	if ( updateType == DATA_UPDATE_CREATED )
 	{
 		m_flLastUpdateTime = gpGlobals->curtime;
@@ -173,6 +195,13 @@ C_BaseEntity *C_TriggerPortalCleanser::GetVortexObject( int iObject )
 
 void C_TriggerPortalCleanser::GetCurrentState( float &flIntensity, float &flPowerUp )
 {
+	if ( m_nStateFrame == gpGlobals->framecount )
+	{
+		flIntensity = m_flFrameIntensity;
+		flPowerUp = m_flFramePowerUp;
+		return;
+	}
+	m_nStateFrame = gpGlobals->framecount;
 	const float flLastUpdateTime = m_flLastUpdateTime;
 	const float flFrameTime = gpGlobals->curtime - flLastUpdateTime;
 	m_flLastUpdateTime = gpGlobals->curtime;
@@ -211,6 +240,9 @@ void C_TriggerPortalCleanser::GetCurrentState( float &flIntensity, float &flPowe
 	}
 	m_flPowerUpTimer = clamp( m_flPowerUpTimer, 0.0f, flPowerUpTime );
 	flPowerUp = flPowerUpTime > 0.0f ? clamp( m_flPowerUpTimer / flPowerUpTime, 0.0f, 1.0f ) : 1.0f;
+
+	m_flFrameIntensity = flIntensity;
+	m_flFramePowerUp = flPowerUp;
 
 	if ( !m_bDisabled && cl_portal_cleanser_scanline.GetBool() && m_bUseScanline )
 		UpdateScanline();
@@ -263,6 +295,156 @@ void C_TriggerPortalCleanser::StopScanline( void )
 // Purpose: SolidEnergy's inputs from the cleanser it draws: the vortex objects,
 //			the field intensity and the power-up amount
 //-----------------------------------------------------------------------------
+
+int C_TriggerPortalCleanser::GetAreaLights( area_light::AreaLight *pLights, int *pKeys, int nMax )
+{
+	static ConVarRef coreWorld( "r_core_world" );
+	if ( !coreWorld.IsValid() || coreWorld.GetInt() != 1 || !cl_fizzler_core_emission.GetBool() )
+		return 0;
+	float intensity, powerUp;
+	GetCurrentState( intensity, powerUp );
+	if ( nMax < 1 || !pLights || !pKeys || !arealights || !m_bVisible ||
+	     IsEffectActive( EF_NODRAW ) )
+		return 0;
+	if ( m_nEmissionModel != GetModelIndex() )
+	{
+		m_nEmissionModel = GetModelIndex();
+		m_bEmissionWarned = false;
+		if ( m_pEmissionMaterial )
+			m_pEmissionMaterial->DecrementReferenceCount();
+		m_pEmissionMaterial = NULL;
+		if ( !arealights->GetEnergyFieldSurface( m_nEmissionModel, m_EmissionSurface ) )
+		{
+			Warning( "fizzler %d: no rectangular SolidEnergy face; core emission unavailable\n",
+			    entindex() );
+			return 0;
+		}
+		m_pEmissionMaterial =
+		    materials->FindMaterial( m_EmissionSurface.material, TEXTURE_GROUP_OTHER, false );
+		if ( !m_pEmissionMaterial || m_pEmissionMaterial->IsErrorMaterial() )
+		{
+			m_pEmissionMaterial = NULL;
+			return 0;
+		}
+		m_pEmissionMaterial->IncrementReferenceCount();
+	}
+	if ( !m_pEmissionMaterial )
+		return 0;
+	auto refuse = [&]( const char *reason )
+	{
+		if ( !m_bEmissionWarned )
+			Warning( "fizzler %d (%s): %s; core emission unavailable\n", entindex(),
+			    m_EmissionSurface.material, reason );
+		m_bEmissionWarned = true;
+		return 0;
+	};
+	auto variable = [&]( const char *name ) -> IMaterialVar *
+	{
+		bool found = false;
+		IMaterialVar *value = m_pEmissionMaterial->FindVar( name, &found, false );
+		return found && value->IsDefined() ? value : NULL;
+	};
+	auto scalar = [&]( const char *name, float fallback )
+	{
+		IMaterialVar *value = variable( name );
+		return value ? value->GetFloatValue() : fallback;
+	};
+	energy_field::Flow flow;
+	// SolidEnergy uses IShaderAPI::CurrentTime (Plat_FloatTime), not simulation time.
+	flow.time = float( Plat_FloatTime() );
+	flow.intensity = intensity;
+	flow.powerUp = powerUp;
+	flow.outputIntensity = scalar( "$outputintensity", 1.0f );
+	flow.worldUvScale = scalar( "$flow_worlduvscale", 1.0f );
+	flow.normalUvScale = scalar( "$flow_normaluvscale", 1.0f );
+	flow.noiseScale = scalar( "$flow_noise_scale", 1.0f );
+	flow.interval = scalar( "$flow_timeintervalinseconds", 0.4f );
+	flow.scrollDistance = scalar( "$flow_uvscrolldistance", 0.2f );
+	flow.lerpExponent = scalar( "$flow_lerpexp", 1.0f );
+	flow.vortexSize = scalar( "$flow_vortex_size", 1.0f );
+	flow.cheap = scalar( "$flow_cheap", 0.0f ) != 0.0f;
+	const char *colors[] = { "$flow_color", "$flow_vortex_color" };
+	for ( int i = 0; i < 2; ++i )
+	{
+		IMaterialVar *value = variable( colors[i] );
+		if ( !value )
+			return refuse( "missing flow color" );
+		value->GetVecValue( i == 0 ? flow.color : flow.vortexColor, 3 );
+		C_BaseEntity *object = GetVortexObject( i );
+		flow.vortexEnabled[i] = object != NULL;
+		if ( object )
+			for ( int k = 0; k < 3; ++k )
+				flow.vortex[i][k] = object->WorldSpaceCenter()[k];
+	}
+	const char *names[] = {
+	    "$basetexture", "$flowmap", "$flow_noise_texture", "$flowbounds", "$detail1", "$detail2" };
+	ITexture *textures[6] = {};
+	for ( int i = 0; i < 6; ++i )
+	{
+		IMaterialVar *value = variable( names[i] );
+		if ( value && value->GetType() == MATERIAL_VAR_TYPE_TEXTURE )
+			textures[i] = value->GetTextureValue();
+	}
+	flow.detail1 = textures[4] != NULL;
+	flow.detail2 = textures[5] != NULL;
+	flow.detail1Blend = int( scalar( "$detail1blendmode", 0 ) );
+	flow.detail2Blend = int( scalar( "$detail2blendmode", 0 ) );
+	// Model-format flow and vertex modulation require a separate caller cohort.
+	if ( scalar( "$modelformat", 0 ) != 0 || scalar( "$vertexcolor", 0 ) != 0 )
+		return refuse( "model-format flow or vertex modulation is outside this brush cohort" );
+	energy_field::Surface surface = m_EmissionSurface;
+	const matrix3x4_t &transform = EntityToWorldTransform();
+	for ( int c = 0; c < 4; ++c )
+	{
+		Vector placed;
+		VectorTransform(
+		    Vector( surface.p[c][0], surface.p[c][1], surface.p[c][2] ), transform, placed );
+		for ( int k = 0; k < 3; ++k )
+			surface.p[c][k] = placed[k];
+	}
+	for ( float *tangent : { surface.tangentS, surface.tangentT } )
+	{
+		Vector placed;
+		VectorRotate( Vector( tangent[0], tangent[1], tangent[2] ), transform, placed );
+		for ( int k = 0; k < 3; ++k )
+			tangent[k] = placed[k];
+	}
+	if ( IMaterialVar *value = variable( "$basetexturetransform" ) )
+	{
+		const VMatrix &matrix = value->GetMatrixValue();
+		for ( int c = 0; c < 4; ++c )
+		{
+			const float u = surface.uv[c][0], v = surface.uv[c][1];
+			surface.uv[c][0] = matrix[0][0] * u + matrix[0][1] * v + matrix[0][3];
+			surface.uv[c][1] = matrix[1][0] * u + matrix[1][1] * v + matrix[1][3];
+		}
+	}
+	if ( !energy_field::MeanLight(
+	         surface, flow, 16,
+	         [&]( int texture, float u, float v, float rgba[4] )
+	         {
+		         return EmissiveAreaLights_SampleFieldTexture(
+		             textures[texture], u, v, texture == 0 || texture >= 4, rgba );
+	         },
+	         pLights[0] ) )
+		return refuse( "missing texture, invalid flow settings or unsupported geometry" );
+	if ( !( pLights[0].reach > 0.0f ) )
+		return 0;
+	pKeys[0] = EmissiveAreaLights_EntityKey( entindex(), 0 );
+	if ( cl_fizzler_core_emission_report.GetBool() )
+	{
+		cl_fizzler_core_emission_report.SetValue( 0 );
+		const area_light::AreaLight &light = pLights[0];
+		Msg( "fizzler core emitter ent %d key %d material %s center %.3f %.3f %.3f area %.3f "
+		     "radiance %.6f %.6f %.6f reach %.3f intensity %.3f powerup %.3f\n",
+		    entindex(), pKeys[0], m_EmissionSurface.material, light.rect.center[0],
+		    light.rect.center[1], light.rect.center[2], area_light::Area( light.rect ),
+		    light.radiance[0], light.radiance[1], light.radiance[2], light.reach, intensity,
+		    powerUp );
+	}
+	return 1;
+}
+
 class CFizzlerVortexProxy : public CEntityMaterialProxy
 {
 public:

@@ -13,6 +13,9 @@
 #include "materialsystem/selfillum_emission.h"
 #include "render/emissive_area_lights.h"
 #include "sample_textures.h"
+#include "client.h"
+#include "gl_rsurf.h"
+#include "render/energy_field.h"
 
 #include <map>
 #include <set>
@@ -216,4 +219,62 @@ const std::vector<WorldEmitter> &WorldEmitters_Get()
 		Build( s );
 	}
 	return s.emitters;
+}
+
+bool WorldEmitters_EnergyFieldSurface( int modelIndex, energy_field::Surface &out )
+{
+	out = {};
+	const model_t *model = modelIndex > 0 ? cl.GetModel( modelIndex ) : NULL;
+	if ( !model || model->type != mod_brush || !model->brush.pShared )
+		return false;
+	const worldbrushdata_t *brush = model->brush.pShared;
+	float largest = 0.0f;
+	for ( int i = 0; i < model->brush.nummodelsurfaces; ++i )
+	{
+		SurfaceHandle_t surface =
+		    SurfaceHandleFromIndex( model->brush.firstmodelsurface + i, brush );
+		if ( MSurf_Flags( surface ) & ( SURFDRAW_NODRAW | SURFDRAW_SKY ) ||
+		     MSurf_VertCount( surface ) != 4 || SurfaceHasDispInfo( surface ) )
+			continue;
+		const mtexinfo_t *info = MSurf_TexInfo( surface );
+		IMaterial *material = info ? info->material : NULL;
+		if ( !material || ( Q_stricmp( material->GetShaderName(), "SolidEnergy_dx9" ) &&
+		                      Q_stricmp( material->GetShaderName(), "SolidEnergy" ) ) )
+			continue;
+		energy_field::Surface candidate;
+		const float width = float( MAX( material->GetMappingWidth(), 1 ) );
+		const float height = float( MAX( material->GetMappingHeight(), 1 ) );
+		for ( int c = 0; c < 4; ++c )
+		{
+			const Vector &position =
+			    brush->vertexes[brush->vertindices[MSurf_FirstVertIndex( surface ) + c]].position;
+			for ( int k = 0; k < 3; ++k )
+				candidate.p[c][k] = position[k];
+			candidate.uv[c][0] =
+			    ( DotProduct( position, info->textureVecsTexelsPerWorldUnits[0].AsVector3D() ) +
+			        info->textureVecsTexelsPerWorldUnits[0][3] ) /
+			    width;
+			candidate.uv[c][1] =
+			    ( DotProduct( position, info->textureVecsTexelsPerWorldUnits[1].AsVector3D() ) +
+			        info->textureVecsTexelsPerWorldUnits[1][3] ) /
+			    height;
+		}
+		area_light::Rect rect;
+		if ( !energy_field::Rectangle( candidate, rect ) || area_light::Area( rect ) <= largest )
+			continue;
+		Vector tangentS, tangentT, tVector;
+		const bool negate = TangentSpaceSurfaceSetup( surface, tVector );
+		const Vector &normal =
+		    brush->vertnormals[brush->vertnormalindices[MSurf_FirstVertNormal( surface )]];
+		TangentSpaceComputeBasis( tangentS, tangentT, normal, tVector, negate );
+		for ( int k = 0; k < 3; ++k )
+		{
+			candidate.tangentS[k] = tangentS[k];
+			candidate.tangentT[k] = tangentT[k];
+		}
+		Q_strncpy( candidate.material, material->GetName(), sizeof( candidate.material ) );
+		largest = area_light::Area( rect );
+		out = candidate;
+	}
+	return largest > 0.0f;
 }

@@ -21,7 +21,7 @@ def build(bld):
 		env       = bld.strict_cpp20_env(),
 		source    = [ 'render_lab.cpp', 'lab_shadows.cpp', 'lab_support.cpp', 'lab_canvas.cpp', 'lab_compute.cpp',
 		              'lab_suite.cpp', 'lab_receiver.cpp', 'suites.cpp', 'debug_views_suite.cpp', 'cost_overlay_suite.cpp',
-		              'area_lights_suite.cpp', 'lightmap_basis_suite.cpp',
+		              'area_lights_suite.cpp', 'energy_field_suite.cpp', 'lightmap_basis_suite.cpp',
 		              'probe_volume_suite.cpp', 'reflection_probes_suite.cpp',
 		              'lab_media.cpp', 'volumetric_suite.cpp', 'clustered_lights_suite.cpp',
 		              'map_terms_suite.cpp', 'ssr_reference.cpp', 'ssr_scene.cpp', 'ssr_suite.cpp',

@@ -7666,3 +7666,91 @@ follows only across proven ordering boundaries; it must preserve the existing
 per-cohort material order, including equal-depth overlaps. After this CPU
 reduction, the measured arrival is GPU-limited (about 33 ms GPU versus 25 ms CPU).
 The High 120 FPS performance gate and Fold7 evidence remain open.
+
+
+### R91: fizzler light emission (2026-10-03)
+
+User request: reuse the fizzler shader and make it emit light; implement in the
+current checkout with worktrees off. `render.energy-field.v1` in
+[`public/render/energy_field.h`](../public/render/energy_field.h) owns the
+view-independent source. The retained SolidEnergy surface and `render_lab`
+use the core's shared reveal/radiance GLSL. The old inline reveal/color block
+was removed in the same change; opacity, clipping, blending, fade and the
+original stream slot remain with the retained surface.
+
+Frozen-path: core plumbing R91 — route the retained SolidEnergy surface's
+intrinsic reveal/radiance through its core-owned definition; no receiving-light
+algorithm is added to the frozen backend or CPU lighting path.
+
+The engine supplies the largest authored rectangular SolidEnergy brush face,
+its UVs and tangent frame. The cleanser supplies the live entity transform,
+flow textures/settings, intensity, power-up and vortex objects. State advances
+once per frame so emission and multiple proxy/view calls share the same pulse.
+The source uses the shader's `Plat_FloatTime` clock rather than simulation time.
+It integrates a 16x16 sample grid to uniform linear radiance before camera
+opacity, fade, exposure or output clamping, then publishes one two-sided area
+light through the existing client selection and runtime light set. The core's
+LTC, clustering and shadow consumers evaluate it. Missing textures, unsupported
+geometry/model-format/vertex-color flow and invalid inputs refuse emission by
+name; no collision-bound or point-light substitute is inferred.
+
+`VEngineAreaLights003` adds explicit core-only receiver policy and the geometry
+query. `VEngineAreaLights002` remains exposed with its original vtable and
+behavior. Core-only sources allocate no CPU stand-in dlight slots. Disabling
+follows the surface's power-down reveal until the light reaches zero. Hiding or
+destroying the field removes its source immediately; registration and the
+retained material reference are released by the entity's destructor.
+`cl_fizzler_core_emission 0` is a lighting-only diagnostic control;
+`cl_fizzler_core_emission_report 1` prints the authored emitter and live radiance.
+
+Evidence is retained under `quality-results/fizzler-light-20261002/` (the
+work began on October 2; final runs October 3):
+
+- `lab-final.json`: intrinsic GPU/CPU oracle 527/527, seeded reveal/intensity
+  sensitivity 3/3, diffuse/GGX area receiver pixels including the new fizzler
+  source 72/72; shared area/light-set contracts 38/38 and 41/41, existing
+  shadowed-light suite 153/153. Native Vulkan validation is silent in lab.
+- `native-offscreen-final.log`: native retained-stream replay 137/137 with
+  required validation, including ordered effect, clipping, depth and blend
+  controls. Both the complete `build-p2` product and `build-rc-lab` lab builds
+  pass using their existing Waf configurations (`*-build-final.log`).
+- `fixture-final/receivers.json` and `capture/evidence.json`: generated sealed
+  room and constant flow texture, 640x480 native Vulkan/SDL3. Emission off/on,
+  off/on again and entity Disable/Enable each raise the receiver's mean blue
+  by 4.310 byte levels (required >2); source-off returns exactly (required
+  mean absolute difference <0.5). This fixture uses intensity 10, the existing
+  portal-shot peak, and does not lower its receiver threshold. The source's
+  area is 16384 square units, full-power radiance (0.8, 2.5, 8), two-sided;
+  the engine reports `0 lit (1 without a slot)`. The nine-check product fixture
+  is installed as `render.product.fizzler-light` in the shared manifest and
+  passes 9/9 through the shared runner (`product-registered.json`) and after
+  the power-down correction (`product-powerdown.json`); run it with
+  `python3 tools/quality/conformance.py check --suite
+  render.product.fizzler-light --out <fresh-output>/result.json`.
+- `stock-settled/evidence.json`: stock `sp_a2_fizzler_intro` boots on the core;
+  `effects/fizzler_center` publishes area 49152 at full power, radiance
+  (0.003320, 0.010625, 0.013282), reach 230.643, intensity 1. Stock wall-clock
+  flow and existing unclaimed backdrop cohorts prevent using this capture as
+  an isolated receiver comparator. The generated fixture supplies that oracle.
+- Architecture check/baseline/inventory, 166 architecture fixtures, 38 style
+  fixtures, 74 conformance-runner fixtures, pinned changed-line style and
+  `git diff --check` pass.
+
+
+The broader compiler-dependency audit is **not passing**:
+`python3 tools/archlint/archlint.py check --all --compile-deps build-p2
+--compile-deps build-rc-lab` judges 938/438 strict units and reports 58 CAP005
+errors, all on existing generated `render/shaders/generated/spv` headers in
+cluster, line, output, shadow and shader-library consumers. The installed checker
+classifies every `build*` path as external even though the manifest assigns
+`spv/` to `render.shader-library`. None names the new energy-field source or
+shader. Ordinary architecture/baseline/inventory pass; this existing generated-
+header classification gap remains separately open (`compile-deps-final.log`).
+
+This completes the requested retained-shader/direct-light first slice, not R91.
+Uniform mean radiance loses spatial variation across the source. The controlled
+product view proves receiver response/state removal; it does not certify the
+complete field image, moving-occluder shadows or stock-content pixel parity.
+The lab covers two-sidedness and the existing shadow receiver mechanism. Full
+SolidEnergy surface migration, GI, High complete-frame budgets, CPU/GPU source
+integration crossover measurements and non-Linux native evidence remain open.

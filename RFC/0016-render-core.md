@@ -1407,6 +1407,27 @@ See the [implementation and evidence](0016-perf-forward-plus-2026-10-01.md).
 - **Ownership.** RFC 0008 F5's clustered dynamic lights are delivered here
   (K7). RFC 0011 keeps producers and the light set.
 
+### Fizzler emission (installed first slice, 2026-10-03)
+
+[`render.energy-field.v1`](../public/render/energy_field.h) owns the
+view-independent SolidEnergy flow emission. Its shared GLSL definition is
+[`energy_field.glsl`](../render/shaders/common/energy_field.glsl); the retained
+surface shader uses it before camera opacity, fade and framebuffer encoding.
+The client integrates that animated radiance over the largest authored
+rectangular field face and publishes one two-sided `render.area-light.v1`
+emitter through the existing frame light set. Receiver shading, clustering and
+shadows keep their existing owners. The version 3 area-light bridge explicitly
+routes this source to the core without CPU lightmap/model stand-in slots;
+version 2's ABI and behavior remain available to existing clients.
+
+The first slice uses uniform mean radiance, supports flow brush fields, and
+refuses unsupported geometry, model-format/vertex-color flow and missing
+textures by name. It neither substitutes collision bounds nor derives emission
+from camera opacity. Disabled fields follow the retained power-down reveal to zero; hidden fields
+publish no light. Spatially textured
+emission, indirect light and the remaining SolidEnergy surface migration are
+open. See the [R91 evidence](0016-progress.md#r91-fizzler-light-emission-2026-10-03).
+
 ### Projected lights: a per-view projector list (amended 2026-09-28)
 
 `env_projectedtexture` is a light of RFC 0011's model

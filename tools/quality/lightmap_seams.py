@@ -568,7 +568,8 @@ def buried_texels(raw_total, coverage):
     return coverage & (raw_total[..., :3].max(axis=2) <= 0)
 
 
-def stitch_system(seams, coverage, free=None):
+def stitch_system(seams, coverage, free=None, covered_weight=COVERED_WEIGHT,
+                  gutter_weight=GUTTER_WEIGHT):
     """Factorized normal equations shared by every image of one atlas.
 
     Covered texels are held near their values; gutter texels and `free`
@@ -589,7 +590,7 @@ def stitch_system(seams, coverage, free=None):
     vals = (np.concatenate([w_a, -w_b], axis=1) * sample_weight[:, None]).ravel()
     matrix = coo_matrix((vals, (rows, cols)), shape=(len(taps_a), len(used))).tocsr()
     held = coverage if free is None else coverage & ~free
-    prior = np.where(held.reshape(-1)[used], COVERED_WEIGHT, GUTTER_WEIGHT) ** 2
+    prior = np.where(held.reshape(-1)[used], covered_weight, gutter_weight) ** 2
     normal = (matrix.T @ matrix + diags(prior)).tocsc()
     return {"used": used, "prior": prior, "factor": splu(normal)}
 

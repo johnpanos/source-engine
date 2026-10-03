@@ -17,6 +17,7 @@
 #include "r_efxextern.h"
 #include "render_core_world_draw.h"
 #include "world_emitters.h"
+#include "render/energy_field.h"
 
 #include <algorithm>
 #include <cstring>
@@ -185,7 +186,7 @@ int FindSlot( int dlightKey )
 	return -1;
 }
 
-class CAreaLights final : public area_light::IAreaLights
+class CAreaLights final : public area_light::IAreaLights3
 {
 public:
 	int GetWorldEmitters( area_light::WorldEmitterInfo *out, int max ) override
@@ -201,6 +202,17 @@ public:
 	}
 
 	void SetAreaLights( const AreaLight *lights, const int *keys, int count ) override
+	{
+		SetFrameAreaLights( lights, keys, NULL, count );
+	}
+
+	bool GetEnergyFieldSurface( int modelIndex, energy_field::Surface &out ) override
+	{
+		return WorldEmitters_EnergyFieldSurface( modelIndex, out );
+	}
+
+	void SetFrameAreaLights(
+	    const AreaLight *lights, const int *keys, const bool *coreOnly, int count ) override
 	{
 		State &s = S();
 		if ( s.map != g_nMapLoadCount )
@@ -221,7 +233,8 @@ public:
 			}
 			const int key = keys[i] & kAreaKeyMask;
 			const int dlightKey = kAreaKeyBase | key;
-			if ( next.count == kMaxAreaLights || FindSlot( dlightKey ) < 0 )
+			if ( ( coreOnly && coreOnly[i] ) || next.count == kMaxAreaLights ||
+			     FindSlot( dlightKey ) < 0 )
 			{
 				AreaLightSlot entry;
 				entry.key = key;
@@ -367,6 +380,8 @@ const AreaLightSlot *Live( int slot )
 
 EXPOSE_SINGLE_INTERFACE_GLOBALVAR_WITH_NAMESPACE(
     CAreaLights, area_light::, IAreaLights, area_light::kAreaLightsVersion, s_AreaLights );
+EXPOSE_SINGLE_INTERFACE_GLOBALVAR_WITH_NAMESPACE(
+    CAreaLights, area_light::, IAreaLights3, area_light::kAreaLightsFrameVersion, s_AreaLights );
 
 int AreaLights_Generation()
 {

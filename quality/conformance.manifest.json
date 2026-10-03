@@ -9808,6 +9808,110 @@
       "expect": "pass"
     },
     {
+      "id": "render.product.fizzler-light",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "migration": "R91",
+      "contract": "RFC/0016-render-core.md",
+      "profile": "linux-native-vulkan-gpu",
+      "kind": "positive",
+      "description": "Controlled generated Portal 2 flow field: core-only emission off/on/off/on, entity Disable/Enable; blue receiver rise exceeds 2 byte levels in three independent comparisons, off returns within 0.5 levels, authored rectangular source at full power and no CPU stand-in slot. Constant textures keep wall-clock flow mean fixed. This is 640x480 lighting/state evidence, not full-frame performance or the complete SolidEnergy surface migration.",
+      "command": [
+        "{python}",
+        "tools/quality/fizzler_light.py",
+        "--out",
+        "{out}"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 9,
+      "timeout_seconds": 300,
+      "requires": [
+        "path:build/toolchains/pbrt-map-toolchain.json",
+        "path:build-p2/launcher_main/hl2_launcher",
+        "path:run/runtime-p2/portal2",
+        "vulkan-device:gpu"
+      ],
+      "sources": [
+        "tools/quality/fizzler_light.py",
+        "tools/quality/vmf_map_build.py",
+        "tools/quality/portal_boot.py",
+        "tools/quality/gyro_lab_map.py",
+        "tools/quality/hammer_ui_test.py",
+        "public/render/energy_field.h",
+        "render/shaders/common/energy_field.glsl",
+        "game/client/portal/c_trigger_portal_cleanser.cpp",
+        "game/client/emissive_area_lights.cpp",
+        "engine/world_emitters.cpp",
+        "engine/area_lights.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.lab.energy-field",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "migration": "R91",
+      "contract": "RFC/0016-render-core.md",
+      "profile": "linux-native-vulkan-gpu",
+      "kind": "positive",
+      "description": "Fizzler intrinsic emission on the GPU against 512 CPU oracle cases; authored rectangle and two-sidedness, uniform-image integration, vortex response, on/off and missing-texture rollback; zero validation messages. Receiver pixels are judged in render.lab.area-lights.",
+      "command": [
+        "{python}",
+        "tools/render/lab.py",
+        "suite",
+        "energy-field",
+        "--validate"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 520,
+      "timeout_seconds": 120,
+      "requires": [
+        "path:build-rc-lab/render/lab/render_lab",
+        "vulkan-device:gpu"
+      ],
+      "sources": [
+        "render/lab/energy_field_suite.cpp",
+        "render/lab/energy_field_check.comp",
+        "render/shaders/common/energy_field.glsl",
+        "public/render/energy_field.h",
+        "tools/render/shader_toolchain.py"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.lab.energy-field.sensitivity",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "migration": "R91",
+      "contract": "RFC/0016-render-core.md",
+      "profile": "linux-native-vulkan-gpu",
+      "kind": "positive",
+      "description": "Fizzler intrinsic emission on the GPU against 512 CPU oracle cases, authored rectangle area and two-sidedness, uniform-image integration, vortex response, on/off and invalid-input/missing-texture rollback. Camera opacity is excluded. Detects ignored power-up reveal and intensity.",
+      "command": [
+        "{python}",
+        "tools/render/lab.py",
+        "suite",
+        "energy-field",
+        "--validate",
+        "--sensitivity"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 3,
+      "timeout_seconds": 120,
+      "requires": [
+        "path:build-rc-lab/render/lab/render_lab",
+        "vulkan-device:gpu"
+      ],
+      "sources": [
+        "render/lab/energy_field_suite.cpp",
+        "render/lab/energy_field_check.comp",
+        "render/shaders/common/energy_field.glsl",
+        "public/render/energy_field.h",
+        "tools/render/shader_toolchain.py"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "render.lab.area-lights",
       "domain": "Q-PRESENTATION",
       "rfc": "0016",

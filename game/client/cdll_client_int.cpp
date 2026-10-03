@@ -220,7 +220,7 @@ IVModelRender *modelrender = NULL;
 IVEfx *effects = NULL;
 // RFC 0011 G10: optional; the engine's indirect light takes the open portals.
 indirect_portals::IIndirectLightPortals *indirectlightportals = NULL;
-area_light::IAreaLights *arealights = NULL;
+area_light::IAreaLights3 *arealights = NULL;
 dynamic_occlusion::IOccluders *occluders = NULL;
 projected_light::IProjectedLights *projectedlights = NULL;
 IVRenderView *render = NULL;
@@ -998,7 +998,7 @@ int CHLClient::Init( CreateInterfaceFn appSystemFactory, CreateInterfaceFn physi
 	    indirect_portals::kIndirectLightPortalsVersion, NULL );
 	// Optional: an engine without area lights (RFC 0011 light set v2).
 	arealights =
-	    (area_light::IAreaLights *)appSystemFactory( area_light::kAreaLightsVersion, NULL );
+	    (area_light::IAreaLights3 *)appSystemFactory( area_light::kAreaLightsFrameVersion, NULL );
 	occluders = (dynamic_occlusion::IOccluders *)appSystemFactory(
 	    dynamic_occlusion::kOccludersVersion, NULL );
 	projectedlights = (projected_light::IProjectedLights *)appSystemFactory(

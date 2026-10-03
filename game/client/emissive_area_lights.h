@@ -26,6 +26,9 @@ public:
 	// the count.
 	virtual int GetAreaLights( area_light::AreaLight *pLights, int *pKeys, int nMax ) = 0;
 
+	// New core effects must not introduce lighting on frozen CPU receivers.
+	virtual bool CoreOnly() const { return false; }
+
 protected:
 	~IEmissiveAreaLightSource() {}
 };
@@ -58,5 +61,10 @@ inline int EmissiveAreaLights_PanelTileKey( int nEntIndex, int nTile )
 // a texture only the GPU holds (a render target, a font's glyph page).
 class ITexture;
 bool EmissiveAreaLights_SampleTexture( ITexture *pTexture, float s, float t, float rgba[4] );
+
+// Bilinear field sampler: linear base RGB or raw flow/noise/bounds data.
+// Uses the same per-level VTF cache and respects texture clamp flags.
+bool EmissiveAreaLights_SampleFieldTexture(
+    ITexture *pTexture, float s, float t, bool linearRgb, float rgba[4] );
 
 #endif // EMISSIVE_AREA_LIGHTS_H
