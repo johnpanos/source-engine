@@ -166,6 +166,21 @@ struct Resources
 	// The programs' neutral view groups, by view layout (the world pass
 	// supplies no clustered lights yet).
 	std::map<std::uint64_t, Group> viewGroups;
+	// Immutable lighting bindings shared by cohorts of one recording. The
+	// snapshot is kept alive so pointer identity cannot be recycled underneath
+	// the cache. Scene-color captures have ordered contents and stay transient.
+	struct LitView
+	{
+		std::uint64_t layout = 0;
+		std::shared_ptr<const StageViewLights> lights;
+		TextureId shadowAtlas;
+		TextureId occlusion;
+		TextureId reflection;
+		Group group;
+	};
+	std::deque<LitView> litViews; // stable addresses while preparing other layouts
+	std::uint64_t litFrame = 0;
+	std::uint64_t litStream = 0;
 	// A 1x1 white texture for an absent input (a surface with no lightmap
 	// page samples white: the input's neutral value), a 1x1 black cube for an
 	// absent env map (its term is off, so it is never read), and their upload
@@ -484,6 +499,8 @@ struct WorldPass::State
 				ReleaseGroup( group, after );
 			for ( auto &[key, group] : old.viewGroups )
 				ReleaseGroup( group, after );
+			for ( auto &view : old.litViews )
+				ReleaseGroup( view.group, after );
 			if ( old.neutralWhite.IsValid() )
 				(void)device->Release( old.neutralWhite, after );
 			if ( old.neutralCube.IsValid() )
@@ -1097,6 +1114,14 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		std::rotate( variant, variant + 1, s.variants.end() );
 	}
 	Resources &r = s.variants.back();
+	if ( r.litFrame != target.frame || r.litStream != target.streamEpoch )
+	{
+		for ( auto &cached : r.litViews )
+			s.retiredGroups.emplace_back( r.litFrame, std::move( cached.group ) );
+		r.litViews.clear();
+		r.litFrame = target.frame;
+		r.litStream = target.streamEpoch;
+	}
 	if ( r.dynamicFrame != target.frame )
 	{
 		for ( auto &[key, m] : r.dynamicMaterials )
@@ -1954,8 +1979,9 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 	// A program's view group: its neutral one (built once per layout).
 	// A world stage's lit view: one group per view layout for this view, with
 	// the view's clustered lights, retired behind this frame after drawing.
-	std::map<std::uint64_t, Group> litViews;
-	std::map<std::uint64_t, Group> modelLitViews;
+	std::map<std::uint64_t, Group *> litViews;
+	std::map<std::uint64_t, Group *> modelLitViews;
+	std::deque<Group> transientLitViews;
 	std::map<std::uint64_t, Group> sceneViews;
 	// The view's ambient occlusion once the screen passes recorded it.
 	TextureId viewOcclusion;
@@ -1982,11 +2008,41 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		if ( world->stage && view.lights )
 		{
 			const bool model = m.resolver == r.modelResolver.get();
-			Group &lit = m.program.sceneColor ? sceneViews[layout]
-			             : model              ? modelLitViews[layout]
-			                                  : litViews[layout];
-			if ( lit.group.IsValid() )
-				return &lit;
+			Group *&slot = model ? modelLitViews[layout] : litViews[layout];
+			Group *lit = m.program.sceneColor ? &sceneViews[layout] : slot;
+			if ( lit && lit->group.IsValid() )
+				return lit;
+			if ( !m.program.sceneColor )
+			{
+				const auto cached = std::find_if( r.litViews.begin(), r.litViews.end(),
+				    [&]( const Resources::LitView &entry )
+				    {
+					    return entry.layout == layout && entry.lights == view.lights &&
+					           entry.shadowAtlas == target.shadowAtlas &&
+					           entry.occlusion == viewOcclusion &&
+					           entry.reflection == viewReflection && entry.group.group.IsValid();
+				    } );
+				if ( cached != r.litViews.end() )
+				{
+					slot = &cached->group;
+					return slot;
+				}
+				// A bound on retained bindings, never a draw limit. Unknown
+				// frames and overflow keep the existing transient lifetime.
+				constexpr std::size_t kMaxLitViews = 256;
+				if ( target.frame != 0 && r.litViews.size() < kMaxLitViews )
+				{
+					r.litViews.push_back( { layout, view.lights, target.shadowAtlas, viewOcclusion,
+					    viewReflection, {} } );
+					lit = &r.litViews.back().group;
+				}
+				else
+				{
+					transientLitViews.emplace_back();
+					lit = &transientLitViews.back();
+				}
+				slot = lit;
+			}
 			const StageViewLights &lights = *view.lights;
 			// The lights' shadow tiles index the slot's atlas: tiles without
 			// one would index nothing, which fails the view by name.
@@ -2033,14 +2089,14 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 			}
 			std::string why;
 			if ( request.layout != m.program.request.viewLayout ||
-			     !buildGroup( request, {}, lit, &why ) )
+			     !buildGroup( request, {}, *lit, &why ) )
 			{
-				s.ReleaseGroup( lit, CompletionToken() );
+				s.ReleaseGroup( *lit, CompletionToken() );
 				note( "the view's lights: " +
 				      ( why.empty() ? std::string( "another view layout" ) : why ) );
 				return nullptr;
 			}
-			return &lit;
+			return lit;
 		}
 		if ( m.viewInput != 0 || m.program.sceneColor )
 		{
@@ -2422,7 +2478,7 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 					const auto lit = litViews.find( layout );
 					const auto reflect = reflectViews.find( layout );
 					encoder.SetBindGroup(
-					    BindGroupRole::kView, lit != litViews.end() ? lit->second.group
+					    BindGroupRole::kView, lit != litViews.end() ? lit->second->group
 					                          : m.viewInput != 0 && reflect != reflectViews.end()
 					                              ? reflect->second.group
 					                              : r.viewGroups[layout].group );
@@ -2715,11 +2771,12 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		if ( m.program.request.viewLayout.IsValid() )
 		{
 			const std::uint64_t layout = m.program.request.viewLayout.value;
-			const auto lit =
-			    m.program.sceneColor ? sceneViews.find( layout ) : modelLitViews.find( layout );
-			const auto end = m.program.sceneColor ? sceneViews.end() : modelLitViews.end();
-			encoder.SetBindGroup(
-			    BindGroupRole::kView, lit != end ? lit->second.group : r.viewGroups[layout].group );
+			const auto lit = modelLitViews.find( layout );
+			const auto scene = sceneViews.find( layout );
+			encoder.SetBindGroup( BindGroupRole::kView,
+			    m.program.sceneColor && scene != sceneViews.end() ? scene->second.group
+			    : lit != modelLitViews.end()                      ? lit->second->group
+			                                                      : r.viewGroups[layout].group );
 		}
 		encoder.SetBindGroup( BindGroupRole::kMaterial, m.group.group );
 		if ( m.program.request.drawLayout.IsValid() )
@@ -2996,7 +3053,7 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		    BindGroupRole::kFrame, r.frameGroups[m.program.request.frameLayout.value].group );
 		const auto layout = m.program.request.viewLayout.value;
 		const Group *group = m.program.sceneColor       ? &sceneViews[layout]
-		                     : litViews.count( layout ) ? &litViews[layout]
+		                     : litViews.count( layout ) ? litViews[layout]
 		                                                : &r.viewGroups[layout];
 		encoder.SetBindGroup( BindGroupRole::kView, group->group );
 		encoder.SetBindGroup( BindGroupRole::kMaterial, m.group.group );
@@ -3012,9 +3069,7 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 	encoder.EndRendering();
 	encoder.EndLabel();
 	preparation.Select( "retire world view resources" );
-	for ( auto &[layout, group] : litViews )
-		s.retiredGroups.emplace_back( target.frame, std::move( group ) );
-	for ( auto &[layout, group] : modelLitViews )
+	for ( auto &group : transientLitViews )
 		s.retiredGroups.emplace_back( target.frame, std::move( group ) );
 	for ( auto &[layout, group] : sceneViews )
 		s.retiredGroups.emplace_back( target.frame, std::move( group ) );

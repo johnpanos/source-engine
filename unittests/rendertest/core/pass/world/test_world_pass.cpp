@@ -178,6 +178,75 @@ bool RecordSlot( IRenderDevice2 &device, WorldPass &pass, std::uint32_t tag,
 	return device.Submit( QueueKind::kGraphics, { &encoder.Value(), 1 }, {} ).HasValue();
 }
 
+void LitViewLifetime( testing::Checks &checks )
+{
+	null::NullOptions options;
+	options.completion = null::CompletionMode::kManual;
+	auto made = null::Create( options );
+	if ( !checks.That( made.HasValue(), "W20.deferred-view-device" ) )
+		return;
+	auto &device = *made.Value();
+	auto *control = null::Control( device );
+	TextureDesc colorDesc;
+	colorDesc.format = Format::kRGBA8Srgb;
+	colorDesc.width = colorDesc.height = 64;
+	colorDesc.usages = { ResourceUsage::kColorAttachment };
+	auto color = device.CreateTexture( colorDesc ).Value();
+	TextureDesc depthDesc = colorDesc;
+	depthDesc.format = Format::kD32Float;
+	depthDesc.usages = { ResourceUsage::kDepthWrite };
+	auto depth = device.CreateTexture( depthDesc ).Value();
+	auto setup = device.BeginEncoder( QueueKind::kGraphics ).Value();
+	setup.TransitionTexture( color, ResourceUsage::kUndefined, ResourceUsage::kColorAttachment );
+	setup.TransitionTexture( depth, ResourceUsage::kUndefined, ResourceUsage::kDepthWrite );
+	(void)device.Submit( QueueKind::kGraphics, { &setup, 1 }, {} );
+	WorldData world = TestWorld();
+	world.materials[0].variables.clear();
+	world.materials[0].textures.clear();
+	WorldStage stage;
+	stage.lightmap.width = stage.lightmap.height = 4;
+	stage.lightmap.flat.resize( 4 * 4 * 8 );
+	world.stage = std::make_shared<const WorldStage>( std::move( stage ) );
+	WorldPass pass;
+	pass.SetWorld( std::move( world ) );
+	FakeTextures textures( device );
+	WorldTarget target;
+	target.device = &device;
+	target.color = color;
+	target.colorFormat = colorDesc.format;
+	target.depth = depth;
+	target.depthFormat = depthDesc.format;
+	target.width = target.height = 64;
+	target.textures = &textures;
+	target.lights = std::make_shared<const StageViewLights>();
+	target.frame = 1;
+	auto encoder = device.BeginEncoder( QueueKind::kGraphics ).Value();
+	pass.Record( pass.QueueView( View( { 0 } ) ), encoder, target );
+	pass.Record( pass.QueueView( View( { 0 } ) ), encoder, target );
+	auto first = device.Submit( QueueKind::kGraphics, { &encoder, 1 }, {} );
+	checks.That(
+	    first.HasValue() && pass.Failures() == 0, "W20.shared-cohorts-submit-before-completion" );
+	if ( first )
+	{
+		target.submitted = first.Value();
+		target.frame = 2;
+		encoder = device.BeginEncoder( QueueKind::kGraphics ).Value();
+		pass.Record( pass.QueueView( View( { 0 } ) ), encoder, target );
+		auto next = device.Submit( QueueKind::kGraphics, { &encoder, 1 }, {} );
+		checks.That( next.HasValue() && !device.IsComplete( first.Value() ),
+		    "W20.another-frame-retires-bindings-without-waiting-or-overwriting" );
+		control->CompleteAll();
+		checks.That( device.IsComplete( first.Value() ) && pass.Failures() == 0 &&
+		                 !control->Recorded().empty(),
+		    "W20.retired-bindings-survive-delayed-execution" );
+	}
+	pass.ReleaseDevice( device );
+	(void)device.Release( color, {} );
+	(void)device.Release( depth, {} );
+	(void)device.Poll();
+	checks.That( device.LiveResourceCount() == 0, "W20.shared-view-teardown-leaks-nothing" );
+}
+
 // Exercise the private owner against deferred execution. Native lab images
 // independently check the contents consumed by the surface shaders.
 void GroupReuse( testing::Checks &checks )
@@ -325,6 +394,7 @@ int main()
 {
 	testing::Checks checks;
 	GroupReuse( checks );
+	LitViewLifetime( checks );
 	auto created = null::Create( {} );
 	if ( !checks.That( created.HasValue(), "setup.null-device" ) )
 		return checks.Report();
@@ -780,6 +850,9 @@ int main()
 		staged.SetWorld( std::move( world ) );
 		auto lights = std::make_shared<StageViewLights>();
 		auto *control = null::Control( device );
+		int storageUploads = 0;
+		int uploads = 0;
+		std::uint64_t viewGroup = 0;
 		auto record = [&]( std::uint64_t frame )
 		{
 			WorldView view = View( { 0 } );
@@ -794,16 +867,63 @@ int main()
 			target.submitted = submitted.Value();
 			(void)device.Poll();
 			int reused = 0;
+			storageUploads = 0;
+			uploads = 0;
+			std::vector<std::uint64_t> bound;
 			for ( const auto &command : control->Recorded() )
+			{
 				if ( command.op == null::RecordedOp::kTransitionBuffer &&
 				     command.before == ResourceUsage::kStorageRead &&
 				     command.after == ResourceUsage::kCopyDestination )
 					++reused;
+				if ( command.op == null::RecordedOp::kTransitionBuffer &&
+				     command.after == ResourceUsage::kStorageRead )
+					++storageUploads;
+				if ( command.op == null::RecordedOp::kSetBindGroup )
+					bound.push_back( command.resource );
+				if ( command.op == null::RecordedOp::kWriteBuffer )
+					++uploads;
+			}
+			viewGroup = bound.size() >= 2 ? bound[1] : 0;
 			return reused;
 		};
 		checks.That( record( 0 ) == 0 && record( 20 ) == 0,
 		    "W19.unknown-frame-resources-wait-for-teardown" );
-		checks.That( record( 20 ) == 0, "W19.same-frame-views-keep-distinct-storage" );
+		const std::uint64_t firstGroup = viewGroup;
+		checks.That(
+		    record( 20 ) == 0 && storageUploads == 0 && viewGroup == firstGroup && viewGroup != 0,
+		    "W20.same-frame-cohorts-share-bindings-with-zero-storage-uploads" );
+		lights = std::make_shared<StageViewLights>( *lights );
+		lights->view.viewDistance[3] = 4.0f;
+		checks.That( record( 20 ) == 0 && storageUploads == 5 && viewGroup != firstGroup,
+		    "W20.new-lighting-snapshot-in-the-same-frame-gets-new-storage" );
+		const std::uint64_t changedGroup = viewGroup;
+		TextureDesc occlusionDesc;
+		occlusionDesc.format = Format::kRGBA8Unorm;
+		occlusionDesc.width = occlusionDesc.height = 4;
+		occlusionDesc.usages = { ResourceUsage::kSampled };
+		auto occlusion = device.CreateTexture( occlusionDesc ).Value();
+		auto setupOcclusion = device.BeginEncoder( QueueKind::kGraphics ).Value();
+		setupOcclusion.TransitionTexture(
+		    occlusion, ResourceUsage::kUndefined, ResourceUsage::kSampled );
+		(void)device.Submit( QueueKind::kGraphics, { &setupOcclusion, 1 }, {} );
+		target.ambientOcclusion = occlusion;
+		target.ambientOcclusionDesc = occlusionDesc;
+		checks.That( record( 20 ) == 0 && storageUploads == 5 && viewGroup != changedGroup,
+		    "W20.changed-screen-input-does-not-borrow-old-bindings" );
+		target.ambientOcclusion = {};
+		target.ambientOcclusionDesc = {};
+		target.clipPlanes[0][0] = 1.0f;
+		target.fogColor[0] = 0.25f;
+		checks.That(
+		    record( 20 ) == 0 && storageUploads == 0 && uploads == 1 && viewGroup == changedGroup,
+		    "W20.frame-terms-do-not-reupload-unchanged-view-lighting" );
+		target.clipPlanes[0][0] = 0.0f;
+		target.fogColor[0] = 0.0f;
+		target.streamEpoch = 55;
+		checks.That( record( 20 ) == 0 && storageUploads == 5 && viewGroup != changedGroup,
+		    "W20.another-recording-stream-does-not-borrow-cached-bindings" );
+		target.streamEpoch = 0;
 		checks.That( record( 21 ) == 5 && staged.Failures() == 0,
 		    "W19.completed-lit-view-reuses-all-five-storage-buffers" );
 		BufferDesc borrowedDesc;
@@ -814,12 +934,22 @@ int main()
 		encoder.TransitionBuffer(
 		    borrowed, ResourceUsage::kUndefined, ResourceUsage::kStorageRead );
 		(void)device.Submit( QueueKind::kGraphics, { &encoder, 1 }, {} );
+		lights = std::make_shared<StageViewLights>( *lights );
 		lights->gpuFroxels = lights->gpuIndices = borrowed;
 		checks.That( record( 22 ) == 3 && record( 23 ) == 3 && staged.Failures() == 0,
 		    "W19.borrowed-assignment-buffers-are-never-overwritten" );
+		for ( unsigned int i = 0; i < 257; ++i )
+		{
+			lights = std::make_shared<StageViewLights>( *lights );
+			(void)record( 24 );
+		}
+		checks.That( record( 24 ) == 0 && storageUploads == 3 && staged.Failures() == 0 &&
+		                 staged.Stats().viewsDrawn == staged.Stats().viewsQueued,
+		    "W20.binding-cache-overflow-keeps-every-draw-and-uses-transient-storage" );
 		staged.ReleaseDevice( device );
 		checks.That( device.Release( borrowed, {} ).HasValue(),
 		    "W19.borrowed-assignment-buffer-outlives-world-teardown" );
+		(void)device.Release( occlusion, {} );
 		target.submitted = {};
 	}
 

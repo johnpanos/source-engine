@@ -303,6 +303,9 @@ struct WorldTarget
 // clustered for the view (render.pass.lights' layout, as the surface
 // program's view group reads it), each packed with whether its diffuse light
 // is in the bake. The composition root clusters them; the pass binds them.
+// Publish as an immutable snapshot: cohorts in one frame/recording may share
+// its uploaded bindings. Changed inputs publish a different snapshot, never
+// mutate an alias of an already queued or recorded frame's snapshot.
 struct StageViewLights
 {
 	material::SurfaceViewGpu view;

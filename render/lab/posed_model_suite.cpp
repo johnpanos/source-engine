@@ -448,8 +448,8 @@ std::optional<std::string> RunChecks(
 	                  RenderCoreDrawPhase phase = RenderCoreDrawPhase::kAll, bool copySource = true,
 	                  WorldPass *under = nullptr, const WorldMaterial *dynamicMaterial = nullptr,
 	                  bool invalidDynamicIndex = false, float underOffset = 0.1f,
-	                  bool depthPrepass = false, bool staticModels = false,
-	                  bool clipLeft = false ) -> std::optional<std::string>
+	                  bool depthPrepass = false, bool staticModels = false, bool clipLeft = false,
+	                  bool splitLayers = false ) -> std::optional<std::string>
 	{
 		WorldView view;
 		for ( int i = 0; i < 4; ++i )
@@ -517,7 +517,15 @@ std::optional<std::string> RunChecks(
 			if ( !underTag )
 				return "the background model view queued nothing";
 		}
+		std::optional<WorldView> later;
+		if ( splitLayers )
+		{
+			later = view;
+			later->posedModels = { view.posedModels.back() };
+			view.posedModels.resize( 1 );
+		}
 		const std::uint32_t tag = active.QueueView( std::move( view ) );
+		const std::uint32_t laterTag = later ? active.QueueView( std::move( *later ) ) : 0;
 		if ( !tag )
 			return "the posed view queued nothing";
 		CanvasPost post = [&]( CommandEncoder &encoder, TextureId color,
@@ -541,6 +549,8 @@ std::optional<std::string> RunChecks(
 			if ( under )
 				under->Record( underTag, encoder, target );
 			active.Record( tag, encoder, target );
+			if ( laterTag )
+				active.Record( laterTag, encoder, target );
 			return std::nullopt;
 		};
 		return canvas->Render( textures, groups, {}, clear, &image, post );
@@ -581,6 +591,14 @@ std::optional<std::string> RunChecks(
 	results.That( layersDepth.rgba == layersControl.rgba,
 	    "posed-model.overlapping-depth-prepass-exact",
 	    "hidden posed surfaces preserve every lit pixel" );
+	CanvasImage sharedCohorts;
+	if ( auto why =
+	         render( pass, 0.0f, true, 4, black, sharedCohorts, true, RenderCoreDrawPhase::kAll,
+	             true, nullptr, nullptr, false, 0.1f, true, false, false, true ) )
+		return why;
+	results.That( sharedCohorts.rgba == layersDepth.rgba,
+	    "posed-model.shared-lighting-across-cohorts-preserves-every-pixel",
+	    "separately recorded opaque cohorts consume the same immutable lighting bindings" );
 	WorldData staticWorld = MeshWorld();
 	WorldData::StaticInstance frontStatic;
 	for ( int i = 0; i < 4; ++i )

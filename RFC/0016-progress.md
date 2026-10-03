@@ -7595,3 +7595,74 @@ clock records. Report fragment invocations, resource/upload/command reductions
 where available. Checkpoint code and evidence at bounded milestones; revert
 ineffective trials rather than retaining unmeasured mechanisms. Desktop/Fold7
 and the hard render gates remain open until their required evidence passes.
+
+### Shared view bindings: retained result (2026-10-03)
+
+Work is isolated at `/home/john/.codex/worktrees/view-batching/source-engine`,
+branch `codex/view-batching`, with private dependency pins, independent Waf locks
+and separate product/lab outputs. The benchmark runtime and frozen map are copied
+to `/home/john/.rc-view-31885` and this worktree respectively. No shader, light,
+shadow filter, resolution, sample count or accepted effect changed.
+
+The composition already shares immutable lighting snapshots. The world pass now
+shares their uploaded view groups across cohorts within one frame and CPU stream,
+keyed by layout, retained snapshot identity, shadow atlas, AO and reflection input.
+Ordered scene-color groups remain transient. Retention is bounded at 256 groups;
+unknown frames and overflow keep the existing fenced transient path. Replaced
+groups retire behind the actual covering submission token, not a fixed delay.
+The snapshot's immutability contract lives in `StageViewLights`' owner header.
+
+Ordinary High/1920x1080/4x MSAA ABBA comparison, milliseconds:
+
+| Run | Arrival GPU | Arrival CPU | Arrival frame interval | Return interval |
+| --- | ---: | ---: | ---: | ---: |
+| `control-a1` | 37.918 | 41.325 | 48.181 | 47.845 |
+| `shared-b1` | 33.296 | 25.409 | 33.648 | 33.304 |
+| `shared-b2` | 33.395 | 24.946 | 33.778 | 33.770 |
+| `control-a2` | 38.246 | 40.688 | 48.644 | 48.750 |
+
+Mean of arrival phase medians: 30.36% lower interval (43.60% higher frame rate),
+38.60% less CPU time and 12.44% less GPU time. All four complete runs stay on AC
+near 70 W; whole-run median GPU clocks are 2051/2076.5/2043/2010 MHz. These remain
+matched diagnostic comparisons, not acceptance: the pre-existing map-name
+assertion and High 120 FPS floor still fail. Ordinary-run analysis explicitly
+lacks detailed GPU scope timers; its complete-frame metrics are retained.
+
+The freshly rebuilt control launcher exactly matches the earlier retained SHA256
+`e5d71f5a76db6f9ed82ee7711ca3ac9a6b415d626516f3159ba233e0690bcc04`.
+The measured shared variant is
+`ab89419139a678b7662adbfa21af3352d6090d08ac4dcc415b35472f4aa25c8c`.
+All 29 staged libraries are hashed before/after each route and have private
+inodes; source identities and power logs accompany every run under
+`/home/john/.rc-view-31885/evidence`. Private libraries are read-only and staged
+by atomic replacement. No ordinary build can overwrite these outputs.
+
+Native posed-model conformance passes 72 checks, including exact pixels for
+separate same-frame cohorts sharing lighting. Null world conformance passes 76
+checks including zero repeated storage uploads, changed snapshot/screen/stream
+inputs, unknown frames, bounded overflow without dropped draws, delayed GPU completion
+and leak-free teardown; composition
+passes 58. Architecture check/baseline/inventory and changed-line style pass.
+`shared-image/evidence.json` passes native Vulkan/SDL3 screenshot smoke at the full
+1920x1080 High image with 4x MSAA; its image was visually inspected. This is not
+a new image golden or complete-cohort certification. Fold7 remains unavailable.
+
+Negative control: omitting lighting snapshot and AO from the cache key fails three
+world checks (changed snapshot, changed screen input and overflow). Correct source
+is restored and the final positive run is recorded in `conformance-retained.json`.
+Native view-state conformance also passes 16 checks. These reports, build and
+style logs live in the private worktree's `quality-results/view-batching-20261002`.
+
+The byte-identical frame-constant upload experiment remains in checkpoint
+`394ea55c1` and is removed from the retained implementation. Its two ordinary
+arrival medians were 33.617/33.500 ms, versus 33.648/33.778 ms for shared bindings;
+this establishes no meaningful additional complete-frame gain. A later shared
+repeat (`shared-b3`) reached 102 C and 1047 MHz and is excluded as a whole run,
+with the thermal reason and original records retained in `excluded-runs.json`.
+The original four-run AC comparison above remains the measured result.
+
+RCV-11 remains in progress. Complete opaque-view batching is still planned and
+follows only across proven ordering boundaries; it must preserve the existing
+per-cohort material order, including equal-depth overlaps. After this CPU
+reduction, the measured arrival is GPU-limited (about 33 ms GPU versus 25 ms CPU).
+The High 120 FPS performance gate and Fold7 evidence remain open.
