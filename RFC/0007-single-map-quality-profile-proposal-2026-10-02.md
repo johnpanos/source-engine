@@ -186,6 +186,30 @@ specific candidate for the large PBR draw cost, not a measured attribution of
 all 67 ms. Static shadow-depth caching already exists; baking another depth
 image alone does not eliminate receiver-side search and filtering.
 
+The [October 2 engine comparison](0016-rendercore-engine-comparison-2026-10-02.md#shadows-distinguish-producing-depth-from-sampling-it)
+adds stronger evidence than the screenshot alone: a retained diagnostic reduced
+arrival GPU median from about 61 ms to 23.8 ms by disabling receiver visibility
+while leaving shadow production, falloff and BRDF evaluation enabled. This
+implicates receiver execution and shader resource behavior; the difference is
+not an additive shadow pass or a promised bake speedup. The diagnostic changes
+the image, and even its remaining cost misses the 120 FPS target.
+
+Use that comparison to focus the first bake experiment on skipping certified
+constant visibility before the costly filter. Hardware comparison sampling,
+direct world-cube face selection and cached static depth already exist. The
+experiment must add value beyond them. Compare offline classification with
+runtime conservative bounds under the same shadow owner; retain the simpler
+measured winner, rather than require two acceleration mechanisms.
+
+The comparison also identifies runtime work the bake cannot replace: coherent
+light traversal, shader live-range/register control, persistent descriptor
+bindings and depth rejection across cohorts. Ordered candidate data from the
+compiler must preserve per-fragment membership and accumulation order, but it
+does not itself make shader execution coherent. Light/probe candidate refinement
+and compact list storage follow measured list waste; GPU assignment is already
+present and relatively cheap in its retained benchmark. Do not replace it or
+start a GPU-driven geometry/async-compute rewrite to solve an unproven bottleneck.
+
 | Additional compiled output | Runtime work it can remove | Required behavior |
 | --- | --- | --- |
 | Static visibility classification for fixed lights and fixed receivers | Blocker/filter work in provably fully lit or occluded regions | Conservative classification over positions, bias and the complete filter footprint; uncertain regions retain the full filter |
@@ -333,6 +357,9 @@ because it rendered a frame. No hidden second preset is created for candidates.
    candidates and reusable caster inputs as their measured costs justify. Pair
    these with the runtime consumers and preparation/binding fixes. Use shared
    lab oracles and complete-image comparisons, keeping one quality profile.
+   Follow the engine comparison's receiver and coherent-execution priorities;
+   compiled-data improvements and runtime shader improvements are complementary
+   parts of reaching the frame floor, not independent claims of 120 FPS.
 2. **Prove the complete lighting result.** Use that profile in relight, authoring,
    lab and game. Fix material, directional-light and probe errors, and implement
    compact lighting storage. Run negative controls and complete-frame timings
