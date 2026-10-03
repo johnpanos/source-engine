@@ -43,7 +43,6 @@
 #include "PasteSpecialDlg.h"
 #include "Prefabs.h"
 #include "Prefab3D.h"
-#include "ReplaceTexDlg.h"
 #include "RunMap.h"
 #include "RunMapExpertDlg.h"
 #include "SaveInfo.h"
@@ -108,6 +107,8 @@ extern CShell g_Shell;
 
 IMPLEMENT_DYNCREATE(CMapDoc, CDocument)
 
+// clang-format off: an MFC message map is a macro table the formatter would re-indent;
+// its END_MESSAGE_MAP() has no semicolon, so the region ends after the next statement.
 BEGIN_MESSAGE_MAP(CMapDoc, CDocument)
 	//{{AFX_MSG_MAP(CMapDoc)
 	ON_COMMAND(ID_EDIT_DELETE, OnEditDelete)
@@ -181,8 +182,6 @@ BEGIN_MESSAGE_MAP(CMapDoc, CDocument)
 	ON_COMMAND(ID_TOOLS_CREATEPREFAB, OnToolsCreateprefab)
 	ON_UPDATE_COMMAND_UI(ID_TOOLS_CREATEPREFAB, OnUpdateEditSelection)
 	ON_COMMAND(ID_INSERTPREFAB_ORIGINAL, OnInsertprefabOriginal)
-	ON_COMMAND(ID_EDIT_REPLACETEX, OnEditReplacetex)
-	ON_UPDATE_COMMAND_UI(ID_EDIT_REPLACETEX, OnUpdateEditFunction)
 	ON_COMMAND(ID_TOOLS_HOLLOW, OnToolsHollow)
 	ON_UPDATE_COMMAND_UI(ID_TOOLS_HOLLOW, OnUpdateEditSelection)
 	ON_COMMAND(ID_TOOLS_SNAPSELECTEDTOGRID, OnToolsSnapselectedtogrid)
@@ -294,6 +293,7 @@ BEGIN_MESSAGE_MAP(CMapDoc, CDocument)
 
 
 static CUtlVector<CMapDoc*> s_ActiveDocs;
+// clang-format on
 CMapDoc		*CMapDoc::m_pMapDoc = NULL;
 CManifest	*CMapDoc::m_pManifest = NULL;
 int			CMapDoc::m_nInLevelLoad = 0;
@@ -359,22 +359,6 @@ struct AddNonSelectedInfo_t
 	BoundBox *pBox;
 	CMapWorld *pWorld;
 };
-
-
-struct ReplaceTexInfo_t
-{
-	char szFind[128];
-	char szReplace[128];
-	int iAction;
-	int nReplaced;
-	int iFindLen;	// strlen(szFind) - for speed
-	CMapWorld *pWorld;
-	CMapDoc *pDoc;
-	BOOL bMarkOnly;
-	BOOL bHidden;
-	bool m_bRescaleTextureCoordinates;
-};
-
 
 struct FindEntity_t
 {
@@ -7912,255 +7896,6 @@ void CMapDoc::OnInsertprefabOriginal(void)
 	SetModifiedFlag();
 }
 
-
-//-----------------------------------------------------------------------------
-// Purpose: Find a substring within a string:
-// Input  : *pszSub - 
-//			*pszMain - 
-// Output : static char *
-//-----------------------------------------------------------------------------
-static char * FindInString(char *pszSub, char *pszMain)
-{
-	char *p = pszMain;
-	int nSub = strlen(pszSub);
-	
-	char ch1 = toupper(pszSub[0]);
-
-	while(p[0])
-	{
-		if(ch1 == toupper(p[0]))
-		{
-			if(!strnicmp(pszSub, p, nSub))
-				return p;
-		}
-		++p;
-	}
-
-	return NULL;
-}
-
-
-//-----------------------------------------------------------------------------
-// Purpose: 
-// Input  : *pSolid - 
-//			*pInfo - 
-// Output : static BOOL
-//-----------------------------------------------------------------------------
-static BOOL ReplaceTexFunc(CMapSolid *pSolid, ReplaceTexInfo_t *pInfo)
-{
-	// make sure it's visible
-	if (!pInfo->bHidden && !pSolid->IsVisible())
-	{
-		return TRUE;
-	}
-
-	int nFaces = pSolid->GetFaceCount();
-	char *p;
-	BOOL bSaved = FALSE;
-	BOOL bMarkOnly = pInfo->bMarkOnly;
-	for(int i = 0; i < nFaces; i++)
-	{
-		CMapFace *pFace = pSolid->GetFace(i);
-		char *pszFaceTex = pFace->texture.texture;
-
-		BOOL bDoMarkSolid = FALSE;
-
-		switch(pInfo->iAction)
-		{
-			case 0:	// replace exact matches only:
-			{
-				if(!strcmpi(pszFaceTex, pInfo->szFind))
-				{
-					if(bMarkOnly)
-					{
-						bDoMarkSolid = TRUE;
-						break;
-					}
-
-					if(!bSaved)
-					{
-						bSaved = TRUE;
-						GetHistory()->Keep(pSolid);
-					}
-					pFace->SetTexture(pInfo->szReplace, pInfo->m_bRescaleTextureCoordinates);
-					++pInfo->nReplaced;
-				}
-				break;
-			}
-			case 1:	// find partials, replace entire string:
-			{
-				p = FindInString(pInfo->szFind, pszFaceTex);
-				if(p)
-				{
-					if(bMarkOnly)
-					{
-						bDoMarkSolid = TRUE;
-						break;
-					}
-
-					if(!bSaved)
-					{
-						bSaved = TRUE;
-						GetHistory()->Keep(pSolid);
-					}
-					pFace->SetTexture(pInfo->szReplace, pInfo->m_bRescaleTextureCoordinates);
-					++pInfo->nReplaced;
-				}
-				break;
-			}
-			case 2:	// find partials, substitute replacement:
-			{
-				p = FindInString(pInfo->szFind, pszFaceTex);
-				if(p)
-				{
-					if(bMarkOnly)
-					{
-						bDoMarkSolid = TRUE;
-						break;
-					}
-
-					if(!bSaved)
-					{
-						bSaved = TRUE;
-						GetHistory()->Keep(pSolid);
-					}
-					// create a new string
-					char szNewTex[128];
-					strcpy(szNewTex, pszFaceTex);
-					strcpy(szNewTex + int(p - pszFaceTex), pInfo->szReplace);
-					strcat(szNewTex, pszFaceTex + int(p - pszFaceTex) + pInfo->iFindLen);
-					pFace->SetTexture(szNewTex, pInfo->m_bRescaleTextureCoordinates);
-					++pInfo->nReplaced;
-				}
-				break;
-			}
-		}
-
-		if (bDoMarkSolid)
-		{
-			if( pInfo->pDoc->GetTools()->GetActiveToolID() == TOOL_FACEEDIT_MATERIAL )
-			{
-				pInfo->pDoc->SelectFace(pSolid, i, scSelect);
-				pInfo->nReplaced++;
-			}
-			else
-			{
-				if (!pSolid->IsSelected())
-				{
-					pInfo->pDoc->SelectObject(pSolid, scSelect);
-					pInfo->nReplaced++;
-				}
-			}
-		}
-	}
-
-	return(TRUE);
-}
-
-
-//-----------------------------------------------------------------------------
-// Purpose: 
-// Input  : pszFind - 
-//			pszReplace - 
-//			bEverything - 
-//			iAction - 
-//			bHidden - 
-//-----------------------------------------------------------------------------
-void CMapDoc::ReplaceTextures(LPCTSTR pszFind, LPCTSTR pszReplace, BOOL bEverything, int iAction, BOOL bHidden, bool bRescaleTextureCoordinates)
-{
-	CFaceEditSheet *pSheet = GetMainWnd()->m_pFaceEditSheet;
-	HCURSOR hCursorOld = SetCursor(LoadCursor(NULL, IDC_WAIT));
-	pSheet->EnableUpdate(false);
-
-	// set up info struct to pass to callback
-	ReplaceTexInfo_t info;
-	strcpy(info.szFind, pszFind);
-	strcpy(info.szReplace, pszReplace);
-	info.pDoc = this;
-	info.bHidden = bHidden;
-	if (iAction & 0x100)
-	{
-		iAction &= ~0x100;
-		info.bMarkOnly = TRUE;
-		info.bHidden = FALSE;	// do not mark hidden objects
-	}
-	else
-	{
-		info.bMarkOnly = FALSE;
-	}
-
-	info.iAction = iAction;
-	info.nReplaced = 0;
-	info.iFindLen = strlen(pszFind);
-	info.pWorld = m_pWorld;
-	info.m_bRescaleTextureCoordinates = bRescaleTextureCoordinates;
-
-	if (bEverything)
-	{
-		// Mark/Replace textures in entire map.
-
-		if (info.bMarkOnly)
-		{
-			// About to mark solids, set solids mode and clear the selection.
-			m_pSelection->SetMode(selectSolids);
-			SelectObject(NULL, scClear);
-		}
-
-		m_pWorld->EnumChildren((ENUMMAPCHILDRENPROC)ReplaceTexFunc, (DWORD)&info, MAPCLASS_TYPE(CMapSolid));
-	}
-	else
-	{
-		// Mark/Replace textures in the selection only.
-
-		// Copy the selection into another list since we might be changing the selection
-		// during this process.
-		CMapObjectList tempSelection;
-		tempSelection.AddVectorToTail( *m_pSelection->GetList() );
-		
-		if (info.bMarkOnly)
-		{
-			// About to mark solids, set solids mode and clear the selection.
-			m_pSelection->SetMode(selectSolids);
-			SelectObject(NULL, scClear);
-		}
-
-		FOR_EACH_OBJ( tempSelection, pos )
-		{
-			CMapClass *pobj = tempSelection.Element(pos);
-
-			//
-			// Call the texture replacement callback for this object (if it is a solid) and
-			// all of its children (no matter what).
-			//
-			if (pobj->IsMapClass(MAPCLASS_TYPE(CMapSolid)))
-			{
-				ReplaceTexFunc((CMapSolid *)pobj, &info);
-			}
-			pobj->EnumChildren((ENUMMAPCHILDRENPROC)ReplaceTexFunc, (DWORD)&info, MAPCLASS_TYPE(CMapSolid));
-		}
-	}
-
-	CString str;
-	if (!info.bMarkOnly)
-	{
-		str.Format("%d textures replaced.", info.nReplaced);
-		if (info.nReplaced > 0)
-		{
-			SetModifiedFlag();
-		}
-	}
-	else
-	{
-		str.Format("%d %s marked.", info.nReplaced, (m_pToolManager->GetActiveToolID() == TOOL_FACEEDIT_MATERIAL) ? "faces" : "solids");
-	}
-
-	pSheet->EnableUpdate(true);
-	SetCursor(hCursorOld);
-
-	AfxMessageBox(str);
-}
-
-
 //-----------------------------------------------------------------------------
 // Purpose: 
 // Input  : pObject - 
@@ -8266,32 +8001,6 @@ void CMapDoc::BatchReplaceTextures( FileHandle_t fp )
 next_line:;
 	}
 }
-
-
-//-----------------------------------------------------------------------------
-// Purpose: Invokes the replace textures dialog.
-//-----------------------------------------------------------------------------
-void CMapDoc::OnEditReplacetex(void)
-{
-	CReplaceTexDlg dlg( m_pSelection->GetCount());
-
-	dlg.m_strFind = GetDefaultTextureName();
-
-	if (dlg.DoModal() != IDOK)
-	{
-		return;
-	}
-
-	GetHistory()->MarkUndoPosition( m_pSelection->GetList(), "Replace Textures");
-
-	if (dlg.m_bMarkOnly)
-	{
-		SelectObject(NULL, scClear|scSaveChanges);	// clear selection first
-	}
-
-	dlg.DoReplaceTextures();
-}
-
 
 //-----------------------------------------------------------------------------
 // Purpose: Snaps the selected objects to the grid. This uses the selection

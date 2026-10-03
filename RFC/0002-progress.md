@@ -1,6 +1,6 @@
 # RFC 0002 progress: Hammer responsibility factorization
 
-Updated: 2026-09-26
+Updated: 2026-10-03 (R08-REPLACE-TEXTURES)
 Source revision at assessment: `2d7e01d5` (working tree; AGENTS.md portfolio row: R08).
 Current-state review: `d6260d90` (2026-09-25); see
 [Current state](#current-state-2026-09-25).
@@ -38,12 +38,16 @@ map-building-loop slices changed (R08-CMD through R08-ASYNC-BUILD, below).
   `vmf`. `hammer.viewport`, `hammer.tools` and `hammer.presenters` are
   declared but empty; the interactive tools live in `hammer.app`
   (`EditorController`).
-- Ledger: 28 migrations. 11 are `extracted`, 11 `characterized`, 2
-  `substitutable`, 2 `isolated` and 2 `inventoried`; none is `cutover` or
-  `retired`. Legacy Hammer is still the live authority for every legacy caller.
-- Inventory: 46 authored records. `hammer --coverage` reports 38 of 531 files
-  classified (2026-09-26), because 8 records were extracted into capability
-  libraries and no longer count. The authored total is still 452.
+- Ledger: 29 migrations (2026-10-03). 11 are `extracted`, 11
+  `characterized`, 2 `substitutable`, 2 `isolated`, 2 `inventoried` and one
+  `retired`: HAM-REPLACETEX-001, the Replace Textures workflow, whose MFC
+  code is deleted ([R08-REPLACE-TEXTURES](#r08-replace-textures-replace-textures-leaves-the-mfc-shell-slice-done-2026-10-03)).
+  Legacy Hammer is still the live authority for every other legacy caller.
+- Inventory: 68 authored records (2026-10-03). `hammer --coverage` reports
+  60 of 684 files classified, because 8 records were extracted into capability
+  libraries and no longer count. The authored totals are refreshed to the live
+  universe (684). Of the 624 unclassified files, 198 are strict-module files
+  and 426 legacy MFC files.
 - Conformance: 67 Q-EDITOR suites are registered on 2026-09-26 (63 headless,
   four corpus: loop, ui, mcp and glib-runner), all on `checks-v1`. There
   were 60 at `d6260d90`.
@@ -1320,6 +1324,160 @@ python3 tools/quality/hammer_ui_test.py --cli build-r03-tools/hammer/cli/hammer_
   only.
 - Quick hide (H) is separate editor state; the strict codec still rejects the
   VMF `quickhide` block.
+
+### R08-REPLACE-TEXTURES: Replace Textures leaves the MFC shell (slice done 2026-10-03)
+
+**Scope** (user goal 2026-10-03: "Extract the remaining Hammer behavior from
+its MFC shell ... Move one complete edit and save workflow through the
+headless core and GTK host, with parity evidence, before retiring its old
+shell code"). The workflow is legacy Replace Textures (`CReplaceTexDlg`,
+`CMapDoc::ReplaceTextures`, `ReplaceTexFunc`): open a map, replace or mark
+the faces that use a material, undo or redo, save, reopen. It had five legacy
+entry points: Tools ▸ Replace Textures..., Replace... on the Face Edit
+material page, Replace... on the texture bar, and Replace and Mark in the
+texture browser. Migration `HAM-REPLACETEX-001`, contract
+[`app.replace_textures.v1`](../unittests/hammertest/contracts/app.replace_textures.v1.md).
+The rest of `CMapDoc`, and `BatchReplaceTextures` (load-time replacement
+files), stay legacy.
+
+**Observed before the change.** The headless core had a partial
+`ops::ReplaceMaterial` (exact or substring, no hidden-object rule, no
+rescale, no mark only) and a `replace_material` command. The GTK host had no
+dialog. The inventory classified 38 of the 684 files in its universe
+(the authored total still said 452).
+
+**Material names follow RFC 0015** (user direction during the slice: "reread
+the docs to make sure you match the overarching material database plan").
+`content.asset-identity` owns the name rule: ASCII case-insensitive, `\`
+equal to `/`, and the normalized identity is what gets stored. `hammer.app` and
+`hammer.presenters` gain an edge to it (`architecture/modules.json`). The
+identity module gains `FoldAssetName`, its character rule without component
+checks, for pattern fragments; `NormalizeAssetName` now uses it. Hammer
+keeps no second normalizer. Material sizes for rescale come through the
+`IMaterialInfo` port, the asset catalog that RFC 0015 turns into the resolver.
+
+**Delivered.**
+
+- **Core (`hammer.app`):** `ops::ReplaceMaterial` takes a `MaterialReplace`
+  query: Find, Replace, legacy actions 0–2 (`Exact`, `Partial`,
+  `Substitute`), the scope (the ids a selection stands for, or every solid),
+  hidden objects, and rescale. `ops::MarkMaterialUses` marks solids, or faces
+  when the face tool is active. A refusal stages nothing. Commands
+  `replace_material` (`match=`, `ids=`, `hidden=`, `rescale=`; one
+  "Replace Textures" undo step) and `mark_material` (`faces=`; a selection
+  change).
+- **Dialog model (`hammer.presenters`):** `ReplaceTexturesDialog` holds the
+  draft with legacy defaults. Find is the current material, and the scope is
+  the selected objects when any are selected (otherwise everything, with the
+  selection scope unavailable). The model also owns validation messages, a
+  live preview ("Matches N faces in M solids"), the used-material list
+  (legacy's Find browser) and the catalog's names (the Replace browser). It
+  applies through `SessionCommands` and returns legacy's messages ("N textures
+  replaced.", "N solids marked.", "N faces marked."). `EditorWorkspace` owns
+  it. `OpenReplaceTextures()` starts it from the current material and the
+  active tool, and `tools.replace_textures` is a host action in the Tools
+  category.
+- **GTK host:** `hammer/gtk/replace_textures_dialog.{h,cpp}` is a modal
+  window laid out like legacy's (Find and Replace with material lists,
+  Replace In, Action, mark only, rescale, preview, Cancel and OK). It holds
+  widgets only. Tools ▸ Replace Textures... comes from the catalog, and the
+  Texture Application window gains Replace... (legacy's Face Edit button).
+- **Retired from the MFC shell:** `hammer/replacetexdlg.{cpp,h}` and
+  `IDD_REPLACETEX`; `CMapDoc::ReplaceTextures`, `OnEditReplacetex`,
+  `ReplaceTexFunc`, `ReplaceTexInfo_t` and `FindInString`; the menu item
+  `ID_EDIT_REPLACETEX`; the Replace and Mark buttons, their handlers and
+  layout entries in the Face Edit page, texture bar and texture browser; and
+  `hammer_dll.vpc`'s two entries. A reference scan finds no remaining use.
+  The legacy shell builds on no profile (decision D2), so no compile checks
+  the removal. `resource.h` keeps the dialog's now-unused IDs: it is the
+  resource editor's generated table, and reflowing it would be churn. The
+  MFC message maps and two class declarations whose deleted lines bordered
+  ClassWizard tables are wrapped in `clang-format off/on` with an
+  explanation, as the style policy allows for macro tables. The pinned
+  formatter otherwise re-indents legacy lines around each deletion.
+
+**Parity evidence.** Legacy can't build here, so the oracle compiles legacy's
+own code. `tools/quality/hammer_legacy_freeze.py` copies exact line ranges
+from git at revision `776a2f3e` (`OnEditReplacetex`, the `CReplaceTexDlg`
+constructor and `DoReplaceTextures`, `ReplaceTextures`, `ReplaceTexFunc`,
+`FindInString` and both `CMapFace::SetTexture` overloads) into
+`unittests/hammertest/legacy/replace_textures_legacy.inc`. It records a
+sha256 per excerpt, and `verify` re-derives them from history. The suite
+compiles that copy against small stubs: the world, the selection, the
+texture system's name rule (registered spellings, size-0 placeholders), the
+history and the message box. It runs the menu path with the user's dialog
+input, against the GTK host's path (`ReplaceTexturesDialog` over
+`EditSession` and `SessionCommands`), on 1,500 seeded maps and inputs. Each
+case compares the message, every face's material identity, scales and
+shifts (legacy floats, relative 1e-5), the modified flag, the marked solids
+or faces and the undo label. Four deviations are recorded and asserted:
+
+| | Legacy | Now | Why |
+| --- | --- | --- | --- |
+| D1 | The menu and Face Edit paths cleared the selection before marking within it, so they marked nothing (the texture bar path did not clear it) | Marks within the selection; compared with the verbatim `ReplaceTextures` called without that clear | A defect |
+| D2 | Rescale with an unknown size divided by a placeholder's size 0 (non-finite or zero scales) | Refuses, nothing changed | A missing material is an explicit refusal (texture ops contract) |
+| D3 | A substitution giving an empty or invalid name was stored | Refuses, nothing changed | RFC 0015 identity |
+| D4 | A replacement that changed nothing set the modified flag and kept an undo step | Nothing recorded unless a stored spelling changed | EditSession's no-op rule |
+
+The corpus reaches every action, hidden objects, selection and brush-entity
+scopes, rescale, both mark targets and each deviation class. Seven seeded
+defects of the new path are each detected: hidden objects ignored, partial
+matched as exact, substitute as partial, rescale ignored, the wrong mark
+target, the scope ignored, and one replaced face dropped.
+
+**Evidence (2026-10-03, this container: Ubuntu 24.04, g++ 13.3, clang++ 18.1,
+GTK 4.14.5, libadwaita 1.5, mutter 46.2, Mesa lavapipe).**
+
+| Check | Result |
+| --- | --- |
+| `hammer.app.texture_ops` | 76 checks (was 51): legacy matching, identity names, hidden, mark, rescale and every refusal |
+| `hammer.app.session_commands` | 103 checks: the undo label, `mark_material` for solids and faces, `match=` and `rescale=` refusals, substitute within ids |
+| `hammer.presenters.replace_textures` (new) | 30 checks: defaults, validation, preview, used materials, messages, one undo step, undo/redo, rescale, mark only, save and reopen through the real VMF codec |
+| `hammer.app.replace_textures.legacy_parity` (new) | 1,515 checks: 1,500 cases, coverage, 7 of 7 seeded defects, the harness self-check |
+| `hammer.legacy.replace_textures.freeze` (new) | 10 checks: 9 excerpts equal revision `776a2f3e` by sha256, and the include equals the render |
+| `hammer.presenters.editor_workspace`, `.action_catalog` | 60 and 47 checks: the host request, the Tools entry, defaults from the current material and the face tool |
+| `content` (`contenttest`, RFC 0015 repro) | pass, with the `FoldAssetName` checks |
+| Q-EDITOR headless, g++ and clang++ | 122 of 124 each. The two others fail on the clean tree too: `hammer.app.instance_preview` (36 checks against a minimum of 37) and `hammer.adapters.render.models` (its manifest sources lack the render material translation units that define `ClaimVertexLitMesh` and `ClaimRefract`) |
+| `corpus.hammer.ui` `replace-textures` + control, X11 | 12 of 12, 3 of 3 repeats. Find defaults to the current material; the selection scope is off with nothing selected; the preview reads 6 faces in 1 solid; OK reports "6 textures replaced."; the camera frame loses the green material (0.0638 → 0.0); saves after OK, Ctrl+Z and Ctrl+Y hold replaced, original and replaced again, also after `hammer_cli` reopens and saves; the Cancel control is rejected on `replaced` |
+| The same pair, Wayland | 12 of 12 |
+| Regression: `visgroups`, `visgroups-other`, `properties`, `properties-cancel`, `viewport` and the new pair, X11 | 44 of 44 |
+| archlint `check --all`, `baseline --verify`, `inventory --verify`, `hammer --verify`, its 166 unit tests | pass |
+| stylelint (pinned clang-format 22.1.8) on the 27 changed C++ files; its 38 tests | pass |
+
+How the GTK build ran here: the pinned shader compiler, SPIRV-Cross and
+Vulkan Memory Allocator archives could not be downloaded (GitHub archive
+URLs return 403 to this session). They were rebuilt from the pinned commits
+with `git archive | gzip -n`; each sha256 equals its pin, and the tools'
+own verification accepted them. GCC 13.3 stops on a `-Wmaybe-uninitialized`
+false positive in the unchanged `hammer/core/formats/fgd_entity_catalog.cpp`
+at `-O2`, so the tree was configured with clang (the recorded toolchain is
+g++ 16). Driving the UI here needed an AT-SPI role-name allowance (older
+releases call a button "push button"). GTK 4.14's popover menu items are not
+reachable over AT-SPI, so the case opens the dialog from the Texture
+Application window's Replace... (the same catalog action), and the Tools
+entry is checked headlessly against the catalog the menu is built from.
+
+**Inventory.** `architecture/hammer_inventory.json` gains 22 reviewed
+records: every file this slice read or changed. That covers the legacy
+`mapdoc.cpp` split, `faceedit_materialpage`, `texturebar`, `texturebrowser`,
+`mapface` and `texturesystem`; the texture ops, commands, action catalog,
+workspace and new presenter; and the GTK dialog and `app.cpp`. Coverage
+moves from 38 to 60 of 684 files, and the authored totals are refreshed to
+684 (334 sources, 350 headers). Of the 624 files still unclassified, 198
+belong to the strict modules, whose owners `modules.json` already declares;
+426 are legacy MFC files.
+
+**Not done.**
+
+- `BatchReplaceTextures` (load-time replacement files) and the rest of
+  `CMapDoc` remain legacy authority.
+- The material lists are dropdowns of names; legacy showed texture
+  previews.
+- No run on a physical desktop session or GPU; frames reached GTK by
+  read-back under lavapipe.
+- The ledger's other MFC workflows (Transform, Find/Replace entities, Paste
+  Special, Map Info) are next candidates for the same pattern: frozen
+  legacy, parity, then retirement.
 
 ### R17 quality: mipmaps, translucency, per-solid restaging (2026-09-28)
 

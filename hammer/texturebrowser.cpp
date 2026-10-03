@@ -18,7 +18,6 @@
 #include "MainFrm.h"
 #include "MapDoc.h"
 #include "MapWorld.h"
-#include "ReplaceTexDlg.h"
 #include "TextureBrowser.h"
 #include "TextureSystem.h"
 #include "hammer.h"
@@ -34,7 +33,7 @@ CStringArray CTextureBrowser::m_FilterHistory;
 int CTextureBrowser::m_nFilterHistory;
 char CTextureBrowser::m_szLastKeywords[MAX_PATH];
 
-
+// clang-format off: an MFC message map is a macro table the formatter would re-indent.
 BEGIN_MESSAGE_MAP(CTextureBrowser, CDialog)
 	//{{AFX_MSG_MAP(CTextureBrowser)
 	ON_WM_SIZE()
@@ -51,15 +50,13 @@ BEGIN_MESSAGE_MAP(CTextureBrowser, CDialog)
 	ON_BN_CLICKED(IDC_FILTER_ENVMASK, OnFilterEnvmask)
 	ON_BN_CLICKED(IDC_SHOW_ERROR, OnShowErrors)
 	ON_BN_CLICKED(IDC_USED, OnUsed)
-	ON_BN_CLICKED(IDC_MARK, OnMark)
-	ON_BN_CLICKED(IDC_REPLACE, OnReplace)
 	ON_BN_CLICKED(IDC_TEXTURES_OPEN_SOURCE, OnOpenSource)
 	ON_BN_CLICKED(IDC_TEXTURES_RELOAD, OnReload)
 	ON_MESSAGE(TWN_SELCHANGED, OnTexturewindowSelchange)
 	ON_MESSAGE(TWN_LBUTTONDBLCLK, OnTextureWindowDblClk)
 	//}}AFX_MSG_MAP
 END_MESSAGE_MAP()
-
+// clang-format on
 
 //-----------------------------------------------------------------------------
 // Purpose: 
@@ -147,19 +144,8 @@ void CTextureBrowser::OnSize(UINT nType, int cx, int cy)
 	// Move the middle row of controls to the correct vertical position,
 	// leaving their horizontal position as it was set up in the dialog.
 	//
-	int iIDList2[] = 
-	{ 
-		IDC_KEYWORDS_TEXT,
-		IDC_KEYWORDS,
-		IDC_USED,
-		IDC_MARK,
-		IDC_REPLACE,
-		IDC_CURDESCRIPTION,
-		IDC_FILTER_TRANSLUCENT,
-		IDC_FILTER_ENVMASK,
-		IDC_TEXTURES_RELOAD,
-		-1
-	};
+	int iIDList2[] = { IDC_KEYWORDS_TEXT, IDC_KEYWORDS, IDC_USED, IDC_CURDESCRIPTION,
+	    IDC_FILTER_TRANSLUCENT, IDC_FILTER_ENVMASK, IDC_TEXTURES_RELOAD, -1 };
 
 	for (int i = 0; iIDList2[i] != -1; i++)
 	{
@@ -659,56 +645,6 @@ void CTextureBrowser::OnReload()
 		}
 	}
 }
-
-
-//-----------------------------------------------------------------------------
-// Purpose: 
-//-----------------------------------------------------------------------------
-void CTextureBrowser::OnMark(void)
-{
-	CMapDoc *pDoc = CMapDoc::GetActiveMapDoc();
-	if (pDoc != NULL)
-	{
-		pDoc->ReplaceTextures(m_cTextureWindow.szCurTexture, "", TRUE, 0x100, FALSE, FALSE);
-		EndDialog(IDOK);
-	}
-}
-
-
-//-----------------------------------------------------------------------------
-// Purpose: Invokes the replace texture dialog.
-//-----------------------------------------------------------------------------
-void CTextureBrowser::OnReplace(void)
-{
-	CMapDoc *pDoc = CMapDoc::GetActiveMapDoc();
-	if(!pDoc)
-		return;
-
-	CReplaceTexDlg dlg(pDoc->GetSelection()->GetCount());
-
-	dlg.m_strFind = m_cTextureWindow.szCurTexture;
-
-	if(dlg.DoModal() != IDOK)
-		return;
-	
-	// mark undo position
-	GetHistory()->MarkUndoPosition(pDoc->GetSelection()->GetList(), "Replace Textures");
-
-	if(dlg.m_bMarkOnly)
-	{
-		pDoc->SelectObject(NULL, scClear);	// clear selection first
-	}
-
-	dlg.DoReplaceTextures();
-
-	//EndDialog(IDOK);
-
-	if (m_bUsed)
-	{
-		SetUsed(TRUE);
-	}
-}
-
 
 //-----------------------------------------------------------------------------
 // Purpose: Sets the texture format for browsing. Only textures of the given

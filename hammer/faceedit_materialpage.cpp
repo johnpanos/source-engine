@@ -18,7 +18,6 @@
 #include "TextureBrowser.h"
 #include "TextureSystem.h"
 #include "MapView3D.h"
-#include "ReplaceTexDlg.h"
 #include "WADTypes.h"
 #include "FaceEdit_MaterialPage.h"
 #include "Camera.h"
@@ -35,6 +34,7 @@
 
 IMPLEMENT_DYNAMIC( CFaceEditMaterialPage, CPropertyPage )
 
+// clang-format off: an MFC message map is a macro table the formatter would re-indent.
 BEGIN_MESSAGE_MAP( CFaceEditMaterialPage, CPropertyPage )
 	//{{AFX_MSG_MAP( CFaceEditMaterialPage )
 	ON_BN_CLICKED( ID_FACEEDIT_APPLY, OnButtonApply )
@@ -85,13 +85,13 @@ BEGIN_MESSAGE_MAP( CFaceEditMaterialPage, CPropertyPage )
 	ON_BN_CLICKED( IDC_Q2_HINT, OnCheckUnCheck )
 	ON_BN_CLICKED( IDC_Q2_SPLITTER, OnCheckUnCheck )
 	ON_COMMAND( IDC_TREAT_AS_ONE, OnTreatAsOne )
-	ON_BN_CLICKED( IDC_REPLACE, OnReplace )
 	ON_COMMAND_EX_RANGE( CFaceEditSheet::id_SwitchModeStart, CFaceEditSheet::id_SwitchModeEnd, OnSwitchMode )
 	ON_CBN_SELCHANGE( IDC_TEXTUREGROUPS, OnChangeTextureGroup )
 	ON_BN_CLICKED( IDC_BROWSE, OnBrowse )
 	ON_BN_CLICKED( ID_BUTTON_SMOOTHING_GROUPS, OnButtonSmoothingGroups )
 	//}}AFX_MSG_MAP
 END_MESSAGE_MAP()
+// clang-format on
 
 //=============================================================================
 
@@ -1440,46 +1440,6 @@ void CFaceEditMaterialPage::OnTreatAsOne( void )
 	m_bTreatAsOneFace = pCheck->GetCheck();
 }
 
-
-//-----------------------------------------------------------------------------
-// Purpose: Invokes the texture replace dialog.
-//-----------------------------------------------------------------------------
-void CFaceEditMaterialPage::OnReplace( void )
-{
-	// Set the material tool current.
-	SetMaterialPageTool( MATERIALPAGETOOL_MATERIAL );
-
-	//
-	// get active map doc
-	//
-	CMapDoc *pDoc = CMapDoc::GetActiveMapDoc();
-	if( !pDoc )
-		return;
-
-	// ready the replace dialog
-	CReplaceTexDlg dlg( pDoc->GetSelection()->GetCount() );
-
-	// get the texture to replace -- the default texture?!
-	dlg.m_strFind = GetDefaultTextureName();
-
-	//
-	// open replace dialog -- modal
-	//
-	if( dlg.DoModal() != IDOK )
-		return;
-	
-	// mark undo position
-	GetHistory()->MarkUndoPosition( pDoc->GetSelection()->GetList(), "Replace Textures" );
-
-	if( dlg.m_bMarkOnly )
-	{
-		pDoc->SelectObject( NULL, scClear );	// clear selection first
-	}
-
-	dlg.DoReplaceTextures();
-}
-
-
 //-----------------------------------------------------------------------------
 // Purpose: Updates the m_pTexture data member based on the current selection.
 //			Also updates the window text and the texture picture.
@@ -1778,7 +1738,6 @@ void CFaceEditMaterialPage::SetReadOnly( bool bIsReadOnly )
 	::EnableWindow( ::GetDlgItem( m_hWnd, IDC_ALIGN_WORLD ), State );
 	::EnableWindow( ::GetDlgItem( m_hWnd, IDC_ALIGN_FACE ), State );
 	::EnableWindow( ::GetDlgItem( m_hWnd, IDC_BROWSE ), State );
-	::EnableWindow( ::GetDlgItem( m_hWnd, IDC_REPLACE ), State );
 	::EnableWindow( ::GetDlgItem( m_hWnd, ID_FACEEDIT_APPLY ), State );
 	::EnableWindow( ::GetDlgItem( m_hWnd, IDC_MODE ), State );
 	::EnableWindow( ::GetDlgItem( m_hWnd, ID_BUTTON_SMOOTHING_GROUPS ), State );

@@ -20,7 +20,8 @@
 
 class IEditorTexture;
 
-
+// clang-format off: an MFC class with ClassWizard afx_msg tables; the formatter would
+// re-indent its two-level member layout.
 class CTextureBar : public CHammerBar
 {
 	public:
@@ -44,13 +45,12 @@ class CTextureBar : public CHammerBar
 		afx_msg void UpdateControl(CCmdUI *);
 		afx_msg void OnBrowse(void);
 		afx_msg void OnChangeTextureGroup(void);
-		afx_msg void OnReplace(void);
 		afx_msg void OnUpdateTexname(void);
 		afx_msg void OnWindowPosChanged(WINDOWPOS *pPos);
 		virtual afx_msg void OnSelChangeTexture(void);
 
 		DECLARE_MESSAGE_MAP()
 };
-
+// clang-format on
 
 #endif // TEXTUREBAR_H

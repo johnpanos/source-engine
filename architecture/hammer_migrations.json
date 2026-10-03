@@ -1062,6 +1062,61 @@
         "a later increment writes edited values back through the app/history layer and groups smartedit categories",
         "the shell's entity property-sheet widget renders this model"
       ]
+    },
+    {
+      "id": "HAM-REPLACETEX-001",
+      "title": "Move the Replace Textures workflow (legacy CReplaceTexDlg, CMapDoc::ReplaceTextures and its five entry points) to the headless core and the GTK host, with parity evidence, and retire the MFC code",
+      "phase": "H4",
+      "responsibility": "editing",
+      "evidenceKind": "observed",
+      "sources": [
+        {
+          "path": "public/hammer/app/ops/texture_ops.h",
+          "symbol": "ReplaceMaterial, MarkMaterialUses"
+        },
+        {
+          "path": "hammer/core/app/session_commands.cpp",
+          "symbol": "replace_material, mark_material"
+        },
+        {
+          "path": "public/hammer/presenters/replace_textures.h",
+          "symbol": "ReplaceTexturesDialog"
+        },
+        {
+          "path": "hammer/gtk/replace_textures_dialog.cpp"
+        },
+        {
+          "path": "unittests/hammertest/legacy/replace_textures.freeze.json"
+        }
+      ],
+      "destinationModule": "hammer.app",
+      "contractIds": [
+        "app.replace_textures.v1"
+      ],
+      "contractRecord": "unittests/hammertest/contracts/app.replace_textures.v1.md",
+      "dependsOn": [
+        "HAM-CORPUS-001"
+      ],
+      "status": "retired",
+      "authority": "new",
+      "consumerSet": "replace-textures-entry-points",
+      "testSelectors": [
+        "hammer.app.texture_ops",
+        "hammer.app.session_commands",
+        "hammer.presenters.replace_textures",
+        "hammer.app.replace_textures.legacy_parity",
+        "hammer.legacy.replace_textures.freeze",
+        "corpus.hammer.ui:replace-textures",
+        "corpus.hammer.ui:replace-textures-cancel"
+      ],
+      "owner": "R08",
+      "retired": [
+        "hammer/replacetexdlg.cpp and hammer/replacetexdlg.h (CReplaceTexDlg), and IDD_REPLACETEX",
+        "CMapDoc::ReplaceTextures, CMapDoc::OnEditReplacetex, ReplaceTexFunc, ReplaceTexInfo_t, FindInString (hammer/mapdoc.cpp, hammer/mapdoc.h)",
+        "Edit menu entry ID_EDIT_REPLACETEX; Replace... on the Face Edit material page, Replace... on the texture bar, Replace and Mark in the texture browser (handlers, buttons, layout list)",
+        "the dialog's now-unused resource IDs"
+      ],
+      "note": "The workflow's authority is new. The headless core owns matching, naming (RFC 0015 identity through content.asset-identity), scope, hidden objects, rescale and marking; the command layer exposes replace_material and mark_material; presenters::ReplaceTexturesDialog owns the dialog's defaults, validation, preview and legacy messages; the GTK host binds widgets only (Tools > Replace Textures..., and Replace... in the Texture Application window). Parity: the verbatim legacy menu path, frozen from git with sha256 provenance, runs against the dialog model on 1,500 seeded cases; four recorded deviations (D1 marking within the selection, D2 rescale with an unknown size, D3 an invalid result name, D4 a replacement that changes nothing) are asserted, and seven seeded defects are detected. The legacy MFC shell has no build on any profile (RFC 0002 progress decision D2), so its removal is checked by reference scans, not by a compile. BatchReplaceTextures (load-time replacement files) is a separate legacy feature and stays."
     }
   ]
 }

@@ -159,7 +159,6 @@ protected:
 	afx_msg void OnSelChangeTexture( void );
 	afx_msg void OnCheckUnCheck( void );
 	afx_msg void OnTreatAsOne( void );
-	afx_msg void OnReplace( void );
 	afx_msg BOOL OnSwitchMode( UINT id );
 	afx_msg void OnBrowse( void );
 	afx_msg void OnChangeTextureGroup( void );

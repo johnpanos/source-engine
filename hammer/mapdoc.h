@@ -158,7 +158,8 @@ public:
 	virtual void Destroy() = 0;
 };
 
-
+// clang-format off: an MFC class with ClassWizard afx_msg tables; the formatter would
+// re-indent its two-level member layout.
 class CMapDoc : public CDocument
 {
 	friend class CManifest;
@@ -332,13 +333,6 @@ class CMapDoc : public CDocument
 		void CountSolids();
 		void CountSolids2();
 		
-		void ReplaceTextures(
-			LPCTSTR pszFind, 
-			LPCTSTR pszReplace, 
-			BOOL bEverything, 
-			int iAction, 
-			BOOL bHidden, 
-			bool bRescaleTextureCoordinates);
 
         void BatchReplaceTextures( FileHandle_t fp );
 
@@ -757,7 +751,6 @@ class CMapDoc : public CDocument
 		afx_msg void OnUpdateFileSave(CCmdUI* pCmdUI);
 		afx_msg void OnToolsCreateprefab();
 		afx_msg void OnInsertprefabOriginal();
-		afx_msg void OnEditReplacetex();
 		afx_msg void OnToolsSnapselectedtogrid();
 		afx_msg void OnToolsSnapSelectedToGridIndividually();
 		afx_msg void OnUpdateToolsSplitface(CCmdUI* pCmdUI);
@@ -844,7 +837,7 @@ class CMapDoc : public CDocument
 		afx_msg void OnInstancesCollapseAll();
 		afx_msg void OnInstancesCollapseSelection();
 };
-
+// clang-format on
 
 //-----------------------------------------------------------------------------
 // Purpose: 

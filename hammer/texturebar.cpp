@@ -15,7 +15,6 @@
 #include "History.h"
 #include "IEditorTexture.h"
 #include "Options.h"
-#include "ReplaceTexDlg.h"
 #include "TextureBrowser.h"
 #include "TextureSystem.h"
 #include "Selection.h"
@@ -23,7 +22,7 @@
 // memdbgon must be the last include file in a .cpp file!!!
 #include <tier0/memdbgon.h>
 
-
+// clang-format off: an MFC message map is a macro table the formatter would re-indent.
 BEGIN_MESSAGE_MAP(CTextureBar, CHammerBar)
 	ON_CBN_SELCHANGE(IDC_TEXTURES, OnSelChangeTexture)
 	ON_UPDATE_COMMAND_UI(IDC_TEXTURES, UpdateControl)
@@ -31,11 +30,9 @@ BEGIN_MESSAGE_MAP(CTextureBar, CHammerBar)
 	ON_UPDATE_COMMAND_UI(IDC_TEXTUREGROUPS, UpdateControl)
 	ON_BN_CLICKED(IDC_BROWSE, OnBrowse)
 	ON_UPDATE_COMMAND_UI(IDC_BROWSE, UpdateControl)
-	ON_BN_CLICKED(IDC_REPLACE, OnReplace)
-	ON_UPDATE_COMMAND_UI(IDC_REPLACE, UpdateControl)
 	ON_WM_WINDOWPOSCHANGED()
 END_MESSAGE_MAP()
-
+// clang-format on
 
 static char szDefaultTexture[128];
 
@@ -334,30 +331,6 @@ void CTextureBar::OnWindowPosChanged(WINDOWPOS *pPos)
 
 	CHammerBar::OnWindowPosChanged(pPos);
 }
-
-
-//-----------------------------------------------------------------------------
-// Purpose: Invokes the texture replace dialog.
-//-----------------------------------------------------------------------------
-void CTextureBar::OnReplace(void)
-{
-	CMapDoc *pDoc = CMapDoc::GetActiveMapDoc();
-	if (!pDoc)
-	{
-		return;
-	}
-
-	CReplaceTexDlg dlg(pDoc->GetSelection()->GetCount());
-	dlg.m_strFind = GetDefaultTextureName();
-	if (dlg.DoModal() != IDOK)
-	{
-		return;
-	}
-	
-	GetHistory()->MarkUndoPosition(pDoc->GetSelection()->GetList(), "Replace Textures");
-	dlg.DoReplaceTextures();
-}
-
 
 //-----------------------------------------------------------------------------
 // Purpose: Selects a texture by name.

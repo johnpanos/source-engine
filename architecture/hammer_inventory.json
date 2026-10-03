@@ -5,11 +5,11 @@
   "baselineRevision": "2d7e01d5",
   "coverage": {
     "status": "partial",
-    "totalHammerSourceFiles": 452,
-    "totalHammerCppFiles": 221,
-    "totalHammerHeaderFiles": 231,
-    "filesClassified": 46,
-    "note": "Seeded from the RFC 0002 observed-evidence table, the first geometry extraction candidate, and the extracted strict geometry module (now the world.map-geometry library, public/mapgeometry and mapgeometry, R08-LIBS). filesClassified counts authored records, which now include new strict-module files in addition to legacy hammer/ files. Exhaustive per-file/per-symbol classification is the H0 exit condition and is tracked as HAM-INVENTORY-001; validator enforces full coverage only when status is 'complete'."
+    "totalHammerSourceFiles": 684,
+    "totalHammerCppFiles": 334,
+    "totalHammerHeaderFiles": 350,
+    "filesClassified": 68,
+    "note": "Seeded from the RFC 0002 observed-evidence table, the first geometry extraction candidate, and the extracted strict geometry module (now the world.map-geometry library, public/mapgeometry and mapgeometry, R08-LIBS). filesClassified counts authored records, which now include new strict-module files in addition to legacy hammer/ files. Exhaustive per-file/per-symbol classification is the H0 exit condition and is tracked as HAM-INVENTORY-001; validator enforces full coverage only when status is 'complete'. 2026-10-03 (R08-REPLACE-TEXTURES, HAM-REPLACETEX-001): 22 reviewed records for the files that slice read or changed, and the authored totals refreshed to the live universe that 'archlint hammer --coverage' measures (hammer/ plus the strict roots)."
   },
   "files": [
     {
@@ -674,6 +674,341 @@
       "factorization": "keep",
       "evidence": "decision",
       "note": "EntitySelection implementation (sorted-unique insert/remove/toggle/contains). Headless under gcc and clang (-Werror); verified by test_entity_editor.cpp."
+    },
+    {
+      "path": "hammer/mapdoc.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.app",
+      "responsibility": "editing",
+      "effects": [
+        "document-mutation",
+        "native-ui"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "CMapDoc's implementation: MFC message map and command handlers mixed with document edit operations. HAM-REPLACETEX-001 removed Replace Textures (ReplaceTextures, OnEditReplacetex, ReplaceTexFunc, FindInString) after parity; the rest remains legacy authority.",
+      "symbolSplits": [
+        {
+          "symbol": "CMapDoc message map and On* command handlers",
+          "destinationModule": "hammer.adapters.mfc",
+          "responsibility": "interaction",
+          "note": "Menu/keyboard entry points; their behavior moves to ActionCatalog actions."
+        },
+        {
+          "symbol": "CMapDoc edit operations",
+          "destinationModule": "hammer.app",
+          "responsibility": "editing",
+          "note": "Route through EditSession operations as each workflow migrates."
+        },
+        {
+          "symbol": "CMapDoc::BatchReplaceTextures",
+          "destinationModule": "hammer.app",
+          "responsibility": "editing",
+          "note": "Load-time texture replacement file; not part of HAM-REPLACETEX-001; still legacy."
+        }
+      ]
+    },
+    {
+      "path": "hammer/faceedit_materialpage.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui",
+        "document-mutation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "The Face Edit sheet's material page (Texture Application). Its Replace... button was retired by HAM-REPLACETEX-001; the GTK Texture Application window's Replace... runs tools.replace_textures. The face inspector (presenters::FaceInspector) owns the page's rules in the new stack."
+    },
+    {
+      "path": "hammer/faceedit_materialpage.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "Declarations of CFaceEditMaterialPage; OnReplace removed by HAM-REPLACETEX-001."
+    },
+    {
+      "path": "hammer/texturebar.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "The texture toolbar (current material). Its Replace... button was retired by HAM-REPLACETEX-001; the GTK object bar's current-material swatch and the Texture Application window replace it."
+    },
+    {
+      "path": "hammer/texturebar.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "Declarations of CTextureBar; OnReplace removed by HAM-REPLACETEX-001."
+    },
+    {
+      "path": "hammer/texturebrowser.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "The modal texture browser. Its Replace and Mark buttons were retired by HAM-REPLACETEX-001 (Mark is the dialog's mark only option); presenters::MaterialBrowser owns browsing in the new stack."
+    },
+    {
+      "path": "hammer/texturebrowser.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "Declarations of CTextureBrowser; OnReplace and OnMark removed by HAM-REPLACETEX-001."
+    },
+    {
+      "path": "hammer/mapface.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.scene",
+      "responsibility": "scene",
+      "effects": [
+        "document-mutation",
+        "gpu-work"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "CMapFace: face content mixed with texture-coordinate generation and rendering. Its rescale rule in SetTexture is reproduced by ops::ReplaceMaterial (parity in HAM-REPLACETEX-001).",
+      "symbolSplits": [
+        {
+          "symbol": "CMapFace texture fields and SetTexture",
+          "destinationModule": "hammer.scene",
+          "responsibility": "scene",
+          "note": "scene::Side / FaceTexture; texture math in ops/texture_ops."
+        },
+        {
+          "symbol": "CMapFace render and texture coordinates",
+          "destinationModule": "hammer.viewport",
+          "responsibility": "presentation",
+          "note": "Extraction and the render core draw faces in the new stack."
+        }
+      ]
+    },
+    {
+      "path": "hammer/texturesystem.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.source",
+      "responsibility": "asset-service",
+      "effects": [
+        "file-io"
+      ],
+      "state": "derived-cache",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "CTextureSystem: the active texture list and name lookup. FindActiveTexture's name rule ('\\\\' to '/', case-insensitive) is RFC 0015's identity, owned by content.asset-identity in the new stack; material sizes come through IMaterialInfo.",
+      "symbolSplits": [
+        {
+          "symbol": "FindActiveTexture name rule",
+          "destinationModule": "hammer.ports",
+          "responsibility": "asset-service",
+          "note": "content.asset-identity normalization; IMaterialInfo lookups."
+        }
+      ]
+    },
+    {
+      "path": "public/hammer/app/ops/texture_ops.h",
+      "currentOwner": "hammer.app",
+      "destinationModule": "hammer.app",
+      "responsibility": "editing",
+      "effects": [
+        "document-mutation"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Face texture operations, including Replace Textures (ReplaceMaterial, MarkMaterialUses) since HAM-REPLACETEX-001."
+    },
+    {
+      "path": "hammer/core/app/ops/texture_ops.cpp",
+      "currentOwner": "hammer.app",
+      "destinationModule": "hammer.app",
+      "responsibility": "editing",
+      "effects": [
+        "document-mutation"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Implementation of texture_ops.h; names through content.asset-identity."
+    },
+    {
+      "path": "public/hammer/app/session_commands.h",
+      "currentOwner": "hammer.app",
+      "destinationModule": "hammer.app",
+      "responsibility": "editing",
+      "effects": [
+        "document-mutation",
+        "file-io"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "The named command layer over EditSession (catalog, dispatch); replace_material and mark_material since HAM-REPLACETEX-001."
+    },
+    {
+      "path": "hammer/core/app/session_commands.cpp",
+      "currentOwner": "hammer.app",
+      "destinationModule": "hammer.app",
+      "responsibility": "editing",
+      "effects": [
+        "document-mutation",
+        "file-io"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Implementation of the command layer."
+    },
+    {
+      "path": "public/hammer/presenters/replace_textures.h",
+      "currentOwner": "hammer.presenters",
+      "destinationModule": "hammer.presenters",
+      "responsibility": "presentation",
+      "effects": [
+        "document-mutation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "The Replace Textures dialog model (HAM-REPLACETEX-001): draft, defaults, validation, preview and legacy messages; applies through SessionCommands."
+    },
+    {
+      "path": "hammer/core/presenters/replace_textures.cpp",
+      "currentOwner": "hammer.presenters",
+      "destinationModule": "hammer.presenters",
+      "responsibility": "presentation",
+      "effects": [
+        "document-mutation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Implementation of the Replace Textures dialog model."
+    },
+    {
+      "path": "public/hammer/presenters/editor_workspace.h",
+      "currentOwner": "hammer.presenters",
+      "destinationModule": "hammer.presenters",
+      "responsibility": "composition",
+      "effects": [
+        "document-mutation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "The one object a UI shell binds: session, tools, views and presenters, including the Replace Textures model."
+    },
+    {
+      "path": "hammer/core/presenters/editor_workspace.cpp",
+      "currentOwner": "hammer.presenters",
+      "destinationModule": "hammer.presenters",
+      "responsibility": "composition",
+      "effects": [
+        "document-mutation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Implementation of EditorWorkspace."
+    },
+    {
+      "path": "hammer/core/presenters/action_catalog.cpp",
+      "currentOwner": "hammer.presenters",
+      "destinationModule": "hammer.presenters",
+      "responsibility": "interaction",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Action specs and routing; tools.replace_textures is a host action since HAM-REPLACETEX-001."
+    },
+    {
+      "path": "public/hammer/presenters/action_catalog.h",
+      "currentOwner": "hammer.presenters",
+      "destinationModule": "hammer.presenters",
+      "responsibility": "interaction",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "The action catalog's specs, enable and check rules."
+    },
+    {
+      "path": "hammer/gtk/replace_textures_dialog.h",
+      "currentOwner": "hammer.adapters.gtk",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "The GTK Replace Textures window (HAM-REPLACETEX-001): widgets bound to ReplaceTexturesDialog."
+    },
+    {
+      "path": "hammer/gtk/replace_textures_dialog.cpp",
+      "currentOwner": "hammer.adapters.gtk",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Implementation of the GTK Replace Textures window."
+    },
+    {
+      "path": "hammer/gtk/app.cpp",
+      "currentOwner": "hammer.adapters.gtk",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "composition",
+      "effects": [
+        "native-ui",
+        "file-io",
+        "gpu-work"
+      ],
+      "state": "per-view-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "The GTK shell's composition root and windows over EditorWorkspace: menus from the ActionCatalog, host requests (properties, replace_textures), the Texture Application window."
     }
   ]
 }

@@ -542,7 +542,7 @@ marks no implementation gate done.
 | 5 / R05 | Results, IDs, quantities, ownership vocabulary; 0001 rank 2, 0006 M1 | R03, R04 | `Expected`, borrowing/scoped resources and matchers pass value/lifetime/ABI tests; a real consumer uses them | done (2026-09-25: `Expected`, compact errors (`foundation::Error`), `StrongId`, `ScopedResource`, `testing::Checks` and `units`, each with a suite, sensitivity rows and a real consumer; CAP010 keeps them out of preserved ABI headers; hosted CI not run; [closure](RFC/0006-progress.md#r05-closure-done-2026-09-25)) |
 | 6 / R06 | Composition/lifecycle kernel and minimal test providers; 0001 rank 3, Q-FOUNDATION | R02, R05 | Unit runner composes typed providers without ambient factories; required/optional validation, failure-at-each-stage rollback and repeat-instance tests pass | done (2026-09-25: typed-descriptor unit runner, required/optional validation, rollback at every stage, repeat instances, ordering, legacy bridges and negative providers; fresh Q-FOUNDATION run on g++ and clang++; native providers and hosted CI not claimed; [conformance record](RFC/0001-conformance-progress.md)) |
 | 7 / R07 | Loader containment, telemetry and ABI fixtures; 0001 rank 4 / retirement A | R04, R06 | Scoped ownership, structured errors, legacy bridge and fake/native suites pass; telemetry handles failed/duplicate/nested requests; reviewed ratchet/inventory current | done (2026-09-25: POSIX loader provider with a required load-site observer, scoped `LoadedLibrary`, provider events on the Tier 0 stream, fake and native suites, and legacy telemetry and frozen-ABI cases on gcc and clang; `Sys_*` stay the frozen instrumented bridge and retire with R39/R41 (RFC 0001 step-6 decision); Win32 and hosted CI not claimed; [closure](RFC/0001-phase-a-progress.md#r07-closure-done-2026-09-25)) |
-| 8 / R08 | Hammer H0 corpus and migration inventory; 0002, Q-EDITOR/Q-CONTENT | R02, R03, R04 | Exhaustive ownership/callers and migration records; legacy build evidence/gaps; headless target; semantic comparator detects seeded data loss | active (map-building-loop slices done 2026-09-25/26: R08-CMD command layer, R08-LIBS layered format libraries, R08-LOOP Waf-built headless `hammer_cli` with the `corpus.hammer.loop` author → compile → boot suite, R08-UI-P1 Source 2 P1 commands and GTK wiring, R08-UI-TEST the `corpus.hammer.ui` suite that drives the real GTK editor in an isolated compositor, R08-MCP the command catalog as MCP tools (`hammer_cli --mcp`), R08-ASYNC-BUILD F9 compiles off the UI thread through `hammer::app::MapBuildQueue`; open for `done`: exhaustive ownership/caller inventory (38 of 531 files classified), complete migration records, legacy build evidence; [record](RFC/0002-progress.md#map-building-loop-direction-and-r08-cmd-2026-09-25)) |
+| 8 / R08 | Hammer H0 corpus and migration inventory; 0002, Q-EDITOR/Q-CONTENT | R02, R03, R04 | Exhaustive ownership/callers and migration records; legacy build evidence/gaps; headless target; semantic comparator detects seeded data loss | active (map-building-loop slices done 2026-09-25/26: R08-CMD command layer, R08-LIBS layered format libraries, R08-LOOP Waf-built headless `hammer_cli` with the `corpus.hammer.loop` author → compile → boot suite, R08-UI-P1 Source 2 P1 commands and GTK wiring, R08-UI-TEST the `corpus.hammer.ui` suite that drives the real GTK editor in an isolated compositor, R08-MCP the command catalog as MCP tools (`hammer_cli --mcp`), R08-ASYNC-BUILD F9 compiles off the UI thread through `hammer::app::MapBuildQueue`; R08-REPLACE-TEXTURES (2026-10-03) moved Replace Textures to the headless core and GTK host with legacy parity and retired its MFC code; open for `done`: exhaustive ownership/caller inventory (60 of 684 files classified), complete migration records, legacy build evidence; [record](RFC/0002-progress.md#map-building-loop-direction-and-r08-cmd-2026-09-25)) |
 | 9 / R09 | Physics A feasibility and IVP baseline; 0004, Q-PHYSICS | R01, R02, R05 | Method/profile inventory, units/assets and measurements; tested solution or explicit scope decision for impact state, contact mutation, ragdoll limits and hull/decoder blockers | partial ([0004 progress](RFC/0004-progress.md)) |
 | 10 / R10 | Runner/clock/sequence contracts and serial graph; 0001 rank 11, 0003 A–B | R05, R06 | Virtual time and independent graph model; validation/publication/affinity/failure tests; ordered serial host graph matches legacy captures | done (2026-09-26: `platform.task-runner.v1` with virtual time, thread and sequence providers, diagnostic `SequenceChecker`, the engine `CThreadPool` as a runner, `ParallelExecutor` lane bindings, and a versioned legacy host-frame capture rechecked in both modes; budgets and mobile evidence stay with R20/R21/R26/R29; [closure](RFC/0003-progress.md#r10-closure-done-2026-09-26)) |
 | 11 / R11 | Paths and module resolution; 0001 rank 5 | R05, R07 | Native/virtual paths distinct; resolution/verification separate from opening; encoding/search/failure corpus passes | partial (`paths.h` contract passes on the test backend, `platform.paths`; no native provider or corpus) |
@@ -1327,12 +1327,29 @@ Keep the table concise and link details below or from the domain progress file.
     judged on frames and the saved `visgroupshown`. Auto visgroups and the
     hidden count remain. See the
     [record](RFC/0002-progress.md#r08-ui-visgroups-the-visgroups-panel-slice-done-2026-09-28).
-  - The ledger has 28 migrations, 11 of them extracted format cores.
-    The inventory has 46 authored records. `archlint hammer --coverage`
-    reports 38 of 531 files classified, because 8 records were extracted into
-    capability libraries and no longer count. Its authored total (452) is
-    stale. There are 122 Q-EDITOR suites (2026-09-28): 118 headless and four
-    corpus suites (loop, ui, mcp and glib-runner).
+  - R08-REPLACE-TEXTURES (2026-10-03, user goal "move one complete edit and
+    save workflow through the headless core and GTK host, with parity
+    evidence, before retiring its old shell code"): Replace Textures.
+    - `ops::ReplaceMaterial`/`MarkMaterialUses`, the `replace_material` and
+      `mark_material` commands, the `ReplaceTexturesDialog` model and a GTK
+      window. Material names go through RFC 0015's `content.asset-identity`
+      (user direction during the slice).
+    - Parity: the verbatim legacy menu path, frozen from git with sha256
+      provenance (`tools/quality/hammer_legacy_freeze.py`), against the
+      dialog model on 1,500 seeded cases. Four recorded deviations are
+      asserted, and 7 of 7 seeded defects are detected. The UI case and its
+      Cancel control pass on X11 and Wayland.
+    - The MFC dialog, `CMapDoc::ReplaceTextures` and all five legacy entry
+      points are deleted (`HAM-REPLACETEX-001`, `retired`); the legacy
+      shell has no build, so a reference scan checks the removal.
+    - See the
+      [record](RFC/0002-progress.md#r08-replace-textures-replace-textures-leaves-the-mfc-shell-slice-done-2026-10-03).
+  - The ledger has 29 migrations, 11 of them extracted format cores and one
+    retired (HAM-REPLACETEX-001). The inventory has 68 authored records;
+    `archlint hammer --coverage` reports 60 of 684 files classified (198
+    unclassified strict-module files, 426 legacy), because 8 records were
+    extracted into capability libraries and no longer count. There are 137
+    Q-EDITOR suites (2026-10-03): 128 headless and nine corpus suites.
   - `archlint hammer --verify` passes again (2026-09-25, user decision): the
     validator accepts Hammer edges to registered capability modules, such as
     the R47 schema's `hammer.formats` → `render.contracts`.

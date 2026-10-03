@@ -44,8 +44,6 @@ protected:
 	afx_msg void OnClose();
 	afx_msg void OnTimer(UINT nIDEvent);
 	afx_msg void OnUsed();
-	afx_msg void OnReplace();
-	afx_msg void OnMark();
 	afx_msg void OnFilterOpaque();
 	afx_msg void OnFilterTranslucent();
 	afx_msg void OnFilterSelfIllum();
