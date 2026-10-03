@@ -6689,6 +6689,20 @@ resolution, or light cohort was reduced. The High 120 FPS gate remains failed.
 | RCV-07: compiler specialization attribution | Freeze the captured shader's debug-term mask to remove area lighting, shadow receiving, or both; retain every other captured pipeline setting. | Area removal lowers 192 to 144 VGPRs (120 for static models); shadow removal lowers 192 to 144; both lower it to 96 (84 for static models). Diagnostic only: these images intentionally differ and no effect is removed from the product. |
 | RCV-08: compact LTC clipping topology | Store original-edge/intersection identity in 18 bits and reconstruct FP32 vertices, preserving clipping and accumulation order. | Retained: all eight pipelines fall from 192 to 144 VGPRs; four captured MSAA samples match the corrected control exactly. Matched ABBA full-frame trials show 3.25–3.77% lower GPU time. The High floor remains failed. |
 
+RCV-09 is a checkpointed complete-depth experiment. The existing final-target
+world prepass now also records opaque PBR static and posed models before world
+shading, through the same geometry/constants/bindings helper as their lit draws.
+Transmitting/blended models and views with ordered stencil mutations or depth
+overrides retain their existing stream behavior. The posed-model lab passes 68
+checks, including exact single-layer and overlapping-layer depth/control image
+comparisons; view-state passes 16. Architecture and changed-line style checks
+pass. Native product compilation changes only the world-pass object and launcher
+library; backend and engine libraries match the saved control. Full-frame
+measurement is in progress; no performance gain or acceptance is claimed yet.
+Evidence and immutable variants are in
+`quality-results/rendercore-work-amplification-20261002/`. Work continues in a
+private checkout with independent build and runtime outputs at the user's request.
+
 RCV-08's image comparison exposed a pre-existing correctness defect before its
 optimization could be accepted. At captured event 3066, primitive 245, pixel
 (1365, 350), the interpolated receiver has x = 720; the first one-sided emitter

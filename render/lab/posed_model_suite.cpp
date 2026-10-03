@@ -438,8 +438,8 @@ std::optional<std::string> RunChecks(
 	                  const ClearColor &clear, CanvasImage &image, bool twoLayers = false,
 	                  RenderCoreDrawPhase phase = RenderCoreDrawPhase::kAll, bool copySource = true,
 	                  WorldPass *under = nullptr, const WorldMaterial *dynamicMaterial = nullptr,
-	                  bool invalidDynamicIndex = false,
-	                  float underOffset = 0.1f ) -> std::optional<std::string>
+	                  bool invalidDynamicIndex = false, float underOffset = 0.1f,
+	                  bool depthPrepass = false ) -> std::optional<std::string>
 	{
 		WorldView view;
 		for ( int i = 0; i < 4; ++i )
@@ -522,6 +522,7 @@ std::optional<std::string> RunChecks(
 			target.width = target.height = kSize;
 			target.textures = &empty;
 			target.frame = frame;
+			target.depthPrepass = depthPrepass;
 			target.eye[2] = 2.0f;
 			if ( under )
 				under->Record( underTag, encoder, target );
@@ -551,6 +552,21 @@ std::optional<std::string> RunChecks(
 	}
 	results.That( pass.Stats().viewsFailed == 0 && pass.Stats().posedDrawsDrawn == 3,
 	    "posed-model.three-views-recorded", pass.Stats().lastFailure );
+	CanvasImage depthLit;
+	if ( auto why = render( pass, 0.0f, true, 4, black, depthLit, false, RenderCoreDrawPhase::kAll,
+	         true, nullptr, nullptr, false, 0.1f, true ) )
+		return why;
+	results.That( depthLit.rgba == center.rgba, "posed-model.depth-prepass-exact",
+	    "the complete opaque depth prepass preserves the lit posed image" );
+	CanvasImage layersControl, layersDepth;
+	if ( auto why = render( pass, 0.0f, true, 4, black, layersControl, true ) )
+		return why;
+	if ( auto why = render( pass, 0.0f, true, 4, black, layersDepth, true,
+	         RenderCoreDrawPhase::kAll, true, nullptr, nullptr, false, 0.1f, true ) )
+		return why;
+	results.That( layersDepth.rgba == layersControl.rgba,
+	    "posed-model.overlapping-depth-prepass-exact",
+	    "hidden posed surfaces preserve every lit pixel" );
 	const float centralLight = Sum( center, 16, 32 );
 	results.That( centralLight > 0.1f && centralLight > Sum( dark, 16, 32 ) * 1.5f,
 	    "posed-model.lit-by-frame-light",
