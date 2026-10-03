@@ -813,7 +813,7 @@ class Pipeline:
             content += sorted(f for directory in ("materials", "models")
                               for f in (Path(game) / directory).rglob("*") if f.is_file())
             settings["game"] = game
-            game_args = ["--game-dir", game]
+            game_args += ["--game-dir", game]
         self.step("legacy-scene", [self.bsp_input, model_tool] + content, settings,
                   ["legacy_bsp_scene.py", "legacy_bsp.py", "vtf_decode.py", "source_content.py",
                    "bsp2_reader.py"], [p["legacy_scene"]],

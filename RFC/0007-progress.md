@@ -113,6 +113,40 @@ gate remains unverified. Color directional storage, compressed lightmap
 residency, multiple atlas pages and local diffuse-probe grids remain the owning
 RFCs' subsequent work; this slice does not claim those features or close R49/R50.
 
+### Intro4 ApertureVR material import (2026-10-02)
+
+The requested Intro4 relight exposed another 2048 cap in `legacy_bsp_scene.py`.
+It is removed as well: the importer requests mip zero. The new Linux host tool
+`hammer_vtf_decode` composes Hammer's existing pixel decoder and the shared VTF
+container reader with explicit Deflate/Zstandard providers. It decodes the
+installed VTF 7.6/BC7 files without introducing another container parser.
+Its Waf target lives in `hammer/cli`; the toolchain selects it with
+`texture_decoder`.
+
+A map's optional `material_overrides` file carries explicit original-to-namespaced
+material mappings and read-only external VPK inputs. `source_content.py` owns
+archive resolution; the derived USD feeds the same baker and generated runtime
+materials. This is an authored-map import boundary, not completion of the
+separate global P2:CE mount/resolver program. The legacy-scene cache includes the
+override file, every selected VPK segment and the decoder executable. No Workshop
+asset bytes are committed. The generated import receipt retains the Workshop ID,
+archive path and explicit logical mappings.
+
+The importer carries packed MRAO channels and their scale, and converts centered
+VMT UV transforms to USD. Intro4's configured import has 16 ApertureVR material
+replacements and 45 decoded texture products at authored 1024, 2048 and 4096
+sizes. USD extraction passed with 625 meshes and 96 materials. Unmapped materials
+retain their original sources. Two missing original `metalwall_bts_001a_normal`
+references remain recorded in the scene receipt; they are not missing VR assets.
+
+Verification: the isolated `build-bake-import` Waf tree built `hammer_vtf_decode`,
+`bsp2tool` and `mdl_mesh_export`; 48 selected import, pipeline and audit invariant
+tests passed. Architecture and the new C++ file's pinned style check passed. The
+private working manifest and import receipt are under
+`quality-results/relight/sp_a1_intro4_source2_aperturevr/`. The remote lighting bake
+and final publication are recorded separately once complete; importing the scene
+is not a completed relight.
+
 ## Cycles map-bake device default (2026-09-30, user decision)
 
 GPU is now the default for map bakes and relights. `cycles_device.BAKE_DEVICE`
