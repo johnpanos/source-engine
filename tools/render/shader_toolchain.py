@@ -313,6 +313,10 @@ GENERATED = {
     "shadowed_light_defects_spv.h": ("render::lab::spirv",
         "render_lab's shadowed-light suite's seeded programs (render.lab.shadowed-lights "
         "sensitivity, RFC 0016 K11)", (
+        ("kSurfaceCoherentLights", FAMILIES + "/surface.frag",
+         DEVICE_OPTIONS + ("-DLAB_COHERENT_LIGHTS",)),
+        ("kSurfaceCoherentLightsSsr", FAMILIES + "/surface_ssr.frag",
+         DEVICE_OPTIONS + ("-DLAB_COHERENT_LIGHTS",)),
         ("kSurfaceVisibilityWrite", FAMILIES + "/surface.frag",
          DEVICE_OPTIONS + ("-DLAB_VISIBILITY_WRITE",)),
         ("kSurfaceVisibilityRead", FAMILIES + "/surface.frag",

@@ -43,6 +43,11 @@
 // point the local lights answer to the `clustered` term, the ambient cube to
 // `probes` and the cube in the reflected direction to `ibl`.
 
+#ifdef LAB_COHERENT_LIGHTS
+#extension GL_KHR_shader_subgroup_arithmetic : require
+#extension GL_KHR_shader_subgroup_ballot : require
+#endif
+
 #include "../../shaders/common/color_encoding.glsl"
 #include "../../shaders/common/debug_view.glsl"
 #include "../../shaders/common/pbr_brdf.glsl"
@@ -910,6 +915,20 @@ void PbrSurface()
 		const float distance =
 		    dot( clusterView.viewDistance.xyz, worldPosition ) + clusterView.viewDistance.w;
 		const uvec2 range = froxelRanges[ClusterFroxel( gl_FragCoord.xy, distance )];
+#ifdef LAB_COHERENT_LIGHTS
+		// Merge sorted lists without changing any fragment's light order.
+		uint k = 0u;
+		while ( true )
+		{
+			const uint next = k < range.y ? clusterIndices[range.x + k] : 0xffffffffu;
+			const uint runtimeIndex = subgroupBroadcastFirst( subgroupMin( next ) );
+			if ( runtimeIndex == 0xffffffffu )
+				break;
+			const RuntimeLightRecord runtime = runtimeLights[runtimeIndex];
+			if ( next != runtimeIndex )
+				continue;
+			++k;
+#else
 		for ( uint k = 0u; k < range.y; ++k )
 		{
 #ifdef SEEDED_CLUSTER_SKIPS_FIRST
@@ -918,6 +937,7 @@ void PbrSurface()
 #endif
 			const uint runtimeIndex = clusterIndices[range.x + k];
 			const RuntimeLightRecord runtime = runtimeLights[runtimeIndex];
+#endif
 			const vec3 toLight = runtime.position.xyz - worldPosition;
 			const float distanceSquared = dot( toLight, toLight );
 #ifdef SEEDED_RUNTIME_FALLOFF_UNWINDOWED
@@ -1016,6 +1036,12 @@ void PbrSurface()
 			                    2u * ClusterFroxel( gl_FragCoord.xy, distance );
 			areaMask = uvec2( clusterIndices[offset], clusterIndices[offset + 1u] );
 		}
+#ifdef LAB_COHERENT_LIGHTS
+		// Broadcast the union to make the light ID explicitly uniform.
+		// The divergent fallback is in a different compiled program.
+		const uvec2 fragmentAreaMask = areaMask;
+		areaMask = subgroupBroadcastFirst( subgroupOr( areaMask ) );
+#endif
 		const mat3 ltc =
 		    LtcInverse( LtcLookup( ltcTexture, ltcSampler, roughness, normalDotView ) );
 #ifdef SEEDED_LTC_NO_MAGNITUDE
@@ -1032,6 +1058,10 @@ void PbrSurface()
 			if ( i >= areaCount )
 				break;
 			const AreaLight light = frame.areas[i];
+#ifdef LAB_COHERENT_LIGHTS
+			if ( ( fragmentAreaMask[word] & ( 1u << uint( bit ) ) ) == 0u )
+				continue;
+#endif
 			const float window = AreaLightWindow(
 			    light.center.xyz, light.halfU.xyz, light.halfV.xyz, light.halfU.w, worldPosition );
 			if ( window <= 0.0 )

@@ -6685,6 +6685,21 @@ resolution, or light cohort was reduced. The High 120 FPS gate remains failed.
 | RCV-03: oriented area-light face selection | 29 native correctness checks and five sensitivity checks passed. Control/candidate/candidate/control arrival GPU medians were 62.837/60.346/59.499/58.582 ms; the control improved too as clocks rose. | **Rejected and removed**: no attributable frame gain. `rejected-area-face.patch` and `rejected-area-face-sources.tar.gz` retain the experiment. |
 | RCV-04: subgroup-coherent area-light traversal | Form a subgroup union of froxel masks, retaining each fragment's own membership and ascending accumulation order. Authored warp materials retain their original traversal. All 16 scalar/candidate lab images match bitwise (68 total checks). | **Rejected and removed**: candidate arrival/reverse/return GPU medians 57.926/22.651/58.482 ms versus fresh scalar control 58.195/22.318/57.999 ms. No consistent gain. Code, private native injection and logs are archived with the evidence. |
 | RCV-05: visibility raster resolve followed by material shading | Exact image parity in the bounded lab fixture; roughly 3% faster for large area-light cases, about 31–32% slower for large spot-light cases. | Lab benchmark retained; product remains inline. See the detailed feasibility result below. |
+| RCV-06: compiled coherent runtime/area traversal | Separate lab shader merges sorted runtime lists and area masks, then explicitly broadcasts the selected ID. Inspired by id Tech 6 and Godot Forward+. | Experimental checkpoint; production shader remains unchanged. Compiler allocation and whole-frame performance acceptance pending. |
+
+RCV-06 sources are checkpointed at the user's request before further experiments.
+Its owning surface shader uses a lab-only define; there is no new device
+capability or product default. The first trial was invalidated by a shared-file
+restore before compilation and is excluded explicitly in
+`quality-results/rendercore-coherent-20261002/invalid-first-trial.json`.
+The rebuilt candidate SPIR-V contains the subgroup minimum, mask union and
+broadcast operations. The shadowed-light suite currently reports 153 checks
+and zero failures, including 24 new image comparisons. This is a development
+checkpoint, not a complete portability, material-derivative or performance gate.
+The pinned reference is
+[Godot e7cfa294's traversal](https://github.com/godotengine/godot/blob/e7cfa294a0b81bed7986be04a848cc1832a3f083/servers/rendering/renderer_rd/shaders/forward_clustered/scene_forward_clustered.glsl#L2543)
+alongside the retained id Tech 6 speaker notes. Godot is cloned separately under
+`/home/john/Downloads/idtech-rendering-research/godot`; it is not an engine dependency.
 
 The latest scalar control (`g1-control`) records arrival/reverse/return frame
 interval medians of 62.652/23.098/62.445 ms and GPU render medians of

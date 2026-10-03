@@ -1180,6 +1180,42 @@ std::optional<std::string> VisibilitySplitChecks( IRenderDevice2 &device, Result
 	return std::nullopt;
 }
 
+std::optional<std::string> CoherentLightChecks( IRenderDevice2 &device, Results &results )
+{
+	for ( const int area : { 0, 2, 4 } )
+	{
+		Lab scalar( device ), coherent( device );
+		if ( auto why = Prepare( scalar, {} ) )
+			return why;
+		if ( auto why = Prepare( coherent, spirv::kSurfaceCoherentLights ) )
+			return why;
+		if ( area )
+		{
+			if ( auto why = PrepareAreaSplit( scalar, area ) )
+				return why;
+			if ( auto why = PrepareAreaSplit( coherent, area ) )
+				return why;
+		}
+		const ReceiverView views[] = {
+		    MakeReceiverView( { 0, -60, 420 }, { -40, 20, 0 }, kSize ),
+		    MakeReceiverView( { 250, -380, 220 }, { -60, 40, 0 }, kSize ) };
+		for ( int v = 0; v < 2; ++v )
+			for ( const ReceiverMaterial &material : kReceiverMaterials )
+			{
+				const Frame frame{ &material, &views[v], true, true };
+				CanvasImage original, candidate;
+				if ( auto why = Render( scalar, frame, original ) )
+					return why;
+				if ( auto why = Render( coherent, frame, candidate ) )
+					return why;
+				results.That( SameImage( original, candidate ),
+				    "coherent-light.bitwise." + std::to_string( area ) + "." +
+				        std::to_string( v ) + "." + material.name );
+			}
+	}
+	return std::nullopt;
+}
+
 std::optional<std::string> RunOnce( bool validate, std::span<const std::uint32_t> module,
     Results &results, std::uint64_t &messages )
 {
@@ -1198,8 +1234,12 @@ std::optional<std::string> RunOnce( bool validate, std::span<const std::uint32_t
 		if ( std::optional<std::string> why = CubeChecks( lab, results ) )
 			return why;
 		if ( module.empty() )
+		{
+			if ( auto why = CoherentLightChecks( *device, results ) )
+				return why;
 			if ( auto why = VisibilitySplitChecks( *device, results ) )
 				return why;
+		}
 		(void)device->WaitIdle();
 	}
 	device.reset();
