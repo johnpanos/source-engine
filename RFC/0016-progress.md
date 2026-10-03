@@ -8394,8 +8394,8 @@ The user chose to implement legacy VMT definitions more fully in the Forward+
 core, including emissive behavior, rather than requiring improved materials to
 match the old shader's pixels. The [surface-model contract](0016-render-core.md#the-surface-model-legacy-definitions-in-the-modern-core-plan-2026-09-28-amended-2026-10-03)
 now makes reviewed VMT-to-core interpretation the native default. Legacy-port
-pixel oracles remain K4 compatibility controls, while Cycles references and
-matched game/lab scenes judge visual quality. `$selfillum` defines visible
+pixel oracles remain K4 compatibility controls, while matched game/lab scenes
+and visual review judge visual quality. `$selfillum` defines visible
 emission inputs but cannot by itself supply physical radiance for an area light;
 that needs authored values or a reviewed source rule. The VMT and frozen legacy
 renderer continue to serve exact legacy appearance, and unhandled non-neutral
@@ -8403,3 +8403,22 @@ settings remain named claim gaps.
 
 This entry records a documentation decision, not implementation or new image
 evidence. K11/R95, K12/R96 and the affected material cohorts remain open.
+
+### K11/K12: render_lab follows the game (2026-10-03, user direction)
+
+The user found that lab-only work was accumulating without appearing in the
+game, and removed Cycles comparisons from `render_lab`: some Cycles images
+look worse than the product and confuse native visual decisions. RFC 0016 and
+the ranked roadmap now pair each term's K11 proof with its K12 game
+integration and same-content, same-camera image check. A lab-only result is
+work in progress. Cycles remains a map-baking input and historical reference;
+its receiver scores no longer close a render_lab or product lighting gate.
+
+The old `lighting_fixtures.py gallery` and `compare` CLI entries and the
+Cycles lab gallery implementation were removed. The game's comparison runner
+now requires image parity by default (and accepts an explicit
+`--diagnostic` collection mode), which rejects diagnostic cameras instead of
+reporting a passing gate. The existing matrix still has only one declared
+pixel profile (`area-room/overview`); all other camera scores remain
+diagnostic. No full game/lab parity, visual quality, performance or K11/K12
+completion is claimed by this change.

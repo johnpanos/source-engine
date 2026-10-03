@@ -1,9 +1,8 @@
 # RFC 0016 K11 lighting fixtures
 
-The versioned scenes, cameras and Cycles references that `render_lab` judges
-the core's lighting model against ([RFC 0016 K11](../../../RFC/0016-render-core.md#k11-lighting-model-proven-in-render_lab),
-"Hard parts first, proven outside the game"). They extend the RFC 0011 GI
-gallery (`quality/fixtures/gi/`): every synthetic fixture is a
+The versioned scenes, cameras and maps used for matched game/`render_lab`
+lighting checks ([RFC 0016 K11–K12](../../../RFC/0016-render-core.md#k11-lighting-model-proven-in-render_lab)).
+They extend the RFC 0011 GI gallery (`quality/fixtures/gi/`): every synthetic fixture is a
 `gi-fixture/v1` stage and record, so the gallery's tools read it, plus a
 `lighting` block.
 
@@ -26,14 +25,11 @@ Do not edit generated files by hand.
 | `portal-chamber` | Portal's `testchmb_a_00` as relit by `legacy_bsp_relight.py` (map `testchmb_a_00_relit`) | brdf, runtime-lights, direct-visibility, indirect-diffuse-static, image-based-specular, emission | `vault`, `room2` (the K0 view-oracle poses) | `default` |
 | `portal2-chamber` | `sp_gi_chamber_01` as built by `portal2_gi_chamber.py` | brdf, runtime-lights, direct-visibility, indirect-diffuse-static, image-based-specular, emission, ambient-occlusion | `spawn`, `chamber` | `default` |
 
-`portal-pair` remains a transport diagnostic and is **not a Cycles receiver
-oracle**. Its joined-copy Blender scene does not represent the runtime portal
-view to be certified. The generated fixture and manifest mark it
-`cycles_receiver_oracle: false`; default `render` and `gallery` select the
-other ten fixtures (27 views), and an explicit Portal-pair receiver run is
-refused. Historical captures are kept for comparison, but their receiver
-scores do not count toward K11. This scope follows the user's 2026-10-01
-review. Portal transport still requires a separate game/lab image check.
+`portal-pair` remains a transport diagnostic. Its joined-copy Blender scene
+does not represent the runtime portal view. Historical Cycles captures and
+the generated `cycles_receiver_oracle` field remain for the bake/reference
+workflow, but no Cycles receiver score counts toward K11. Portal transport
+requires a matched game/lab image check.
 
 Terms and their negative controls are in `manifest.json` (`terms`), each
 naming its owning definition (binding rule 6). `output` is listed for
@@ -275,18 +271,19 @@ python3 tools/quality/lighting_fixtures.py render [--fixture NAME]...
 # map_lighting with the authored scene (gi-fixture profile, preview bake
 # overrides) -> published to run/maps/lt_<name> (./play lt_<name>)
 OMP_NUM_THREADS=1 python3 tools/quality/lighting_fixtures.py build [--fixture NAME]...
-# manifest, references, tolerances and recorded comparisons
+# fixture data and historical reference integrity
 python3 tools/quality/lighting_fixtures.py check
-# score a lab image (linear PFM or EXR, same film and pose)
-python3 tools/quality/lighting_fixtures.py compare --fixture cornell-floors \
-    --state default --camera front --image lab.pfm [--record]
-# the visual comparison for review: render_lab beside Cycles and the error map for
-# every view, one self-contained HTML page (render_lab from --lab, $RENDER_LAB or a
-# build-rc-lab tree); prints the page's path
-python3 tools/quality/lighting_fixtures.py gallery [--fixture NAME]... [--lab PATH] [--out DIR]
+# native visual gate: same published content and cameras in game and render_lab
+python3 tools/quality/game_lab_matrix.py --runtime RUNTIME --build BUILD \
+    --lab LAB --out FRESH_OUTPUT --require-image-parity
 # self-tests (negative fixtures included)
 python3 -m unittest tools/quality/tests/test_lighting_fixtures.py
 ```
 
 `render_lab` takes a camera as `--eye`, `--forward`, `--up` in Source units
 (meters x 39.3700787) and `--hfov 90 --size 512x384`.
+
+Cycles references remain inputs to the map bake and historical diagnostics.
+They are not compared with `render_lab` for native render acceptance (user
+direction, 2026-10-03). The game/lab parity gate remains open until every
+selected camera has a declared passing limit; diagnostic scores do not pass it.

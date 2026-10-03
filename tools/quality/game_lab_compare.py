@@ -201,6 +201,8 @@ def main():
                         help="frozen map/material snapshot that the game staged")
     parser.add_argument("--boot-evidence", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--diagnostic", action="store_true",
+                        help="allow an ungated score to exit successfully; it does not certify parity")
     args = parser.parse_args()
     try:
         fixture = lf.load_fixture(args.fixture)
@@ -224,7 +226,8 @@ def main():
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
     print("game/lab comparison:", result["status"], result.get("metrics", result.get("reason")))
-    return 0 if result["status"] in ("pass", "diagnostic") else 1
+    return 0 if result["status"] == "pass" or (
+        args.diagnostic and result["status"] == "diagnostic") else 1
 
 
 if __name__ == "__main__":

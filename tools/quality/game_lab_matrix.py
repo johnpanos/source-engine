@@ -3,7 +3,9 @@
 """Capture baked-state lighting fixtures in the game and compare their lab views.
 
 Each map is copied once into a private snapshot. The product stages that exact
-snapshot, and render_lab reads it. Portal scenes are opt-in because their live
+snapshot, and render_lab reads it. Every selected camera needs a declared,
+passing image gate by default; --diagnostic collects exploratory scores.
+Portal scenes are opt-in because their live
 portal/player view composition is not yet represented by the lab camera.
 The product's Vulkan frame stats count actual legacy-stream draws over the
 last 30 presented frames; --require-zero-legacy turns that count into a gate.
@@ -199,7 +201,9 @@ def main():
     parser.add_argument("--require-zero-legacy", action="store_true",
                         help="fail if any settled captured frame issued a legacy-stream draw")
     parser.add_argument("--require-image-parity", action="store_true",
-                        help="fail unless every selected camera has a declared, passing image gate")
+                        help="explicitly select the default image gate: every camera must pass")
+    parser.add_argument("--diagnostic", action="store_true",
+                        help="collect ungated image scores; exit status does not certify parity")
     parser.add_argument("--boot-timeout", type=int, default=180,
                         help="seconds allowed for the game process after staging")
     parser.add_argument("--process-timeout", type=int, default=240,
@@ -209,6 +213,8 @@ def main():
     args.build = args.build.resolve()
     args.lab = args.lab.resolve()
     args.out = args.out.resolve()
+    if args.diagnostic and args.require_image_parity:
+        parser.error("--diagnostic and --require-image-parity are mutually exclusive")
     if args.boot_timeout <= 0 or args.process_timeout <= args.boot_timeout:
         parser.error("process timeout must be greater than positive boot timeout")
     if args.out.exists():
@@ -219,7 +225,8 @@ def main():
     args.out.mkdir(parents=True)
     record = {"schema": "render-game-lab-matrix/v1", "runtime": str(args.runtime),
               "build": str(args.build), "lab": str(args.lab),
-              "lab_sha256": comparison.sha256(args.lab), "fixtures": {}}
+              "lab_sha256": comparison.sha256(args.lab),
+              "image_gate": "diagnostic" if args.diagnostic else "required", "fixtures": {}}
     try:
         for name in names:
             record["fixtures"][name] = capture(args, name)
@@ -232,7 +239,7 @@ def main():
     record["zero_legacy_stream"] = bool(cameras) and all(
         camera.get("legacy_census", {}).get("zero_legacy_stream") for camera in cameras)
     record["failures"] = matrix_failures(record, args.require_zero_legacy,
-                                          args.require_image_parity)
+                                          not args.diagnostic)
     (args.out / "matrix.json").write_text(json.dumps(record, indent=2, sort_keys=True) + "\n")
     return 1 if record.get("error") or record["failures"] else 0
 

@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""The RFC 0016 K11 lighting fixture set: scenes, cameras, Cycles references.
+"""The RFC 0016 lighting fixture set: scenes, cameras and baked map inputs.
 
-`render_lab` (RFC 0016 "Hard parts first, proven outside the game") judges
-the core's lighting model against these fixtures. They extend the RFC 0011
-GI gallery (quality/fixtures/gi/, `gi_gallery.py`) with the lighting set the
+`render_lab` and the game use the same published maps for parity checks.
+They extend the RFC 0011 GI gallery (quality/fixtures/gi/, `gi_gallery.py`) with the lighting set the
 K11 gate names, under quality/fixtures/lighting/:
 
   cornell-floors     a Cornell box with a rough and a polished floor half
@@ -29,8 +28,6 @@ lights against the stage's lights.
     python3 tools/quality/lighting_fixtures.py render [--fixture NAME]... [--samples 16]
     python3 tools/quality/lighting_fixtures.py build [--fixture NAME]...
     python3 tools/quality/lighting_fixtures.py check [--fixture NAME]...
-    python3 tools/quality/lighting_fixtures.py compare --fixture NAME --state S \\
-        --camera C --image lab.pfm [--record]
 
 `generate` writes the stages, records, entities, cookies and manifest.json
 (deterministic; `--check` compares). `render` renders references through
@@ -41,9 +38,8 @@ compiled by `vmf_map_build.py`, then lit with the authored scene by the one
 lighting back end (`map_lighting.py`) and published (./play <map>); a state
 that owns a map (`lighting.state_maps`, a medium state) gets the same BSP lit
 again with its medium in the lightmap bake (`map_lighting.light(medium=...)`).
-`check` validates manifest, references, tolerances and recorded comparisons;
-`compare` scores a lab image against a reference with the fixture's
-tolerance, fixed in tolerances.json before any comparison.
+`check` validates fixture data and historical references. Product parity uses
+`game_lab_matrix.py --require-image-parity`; Cycles is not a render_lab gate.
 """
 
 import argparse
@@ -75,9 +71,7 @@ FILM = {"width": 512, "height": 384}
 HORIZONTAL_FOV = 90.0
 PREVIEW_SAMPLES = 16
 FINAL_SAMPLES = 2048
-# User goal (2026-09-29): render_lab is judged against denoised Cycles. A
-# denoised reference (OpenImageDenoise, albedo and normal guides) at this
-# many samples or more has status "denoised" and certifies like "final".
+# Historical reference status; these images do not certify render_lab.
 DENOISED_SAMPLES = 256
 REFERENCE_STATUSES = ("preview", "denoised", "final")
 SEED = 20260929
@@ -1888,9 +1882,8 @@ def write_references(fixture, results, samples, seed, np, gi_reference):
             if not np.array_equal(read_rgb_exr(total), combined.astype(np.float16)
                                   .astype(np.float64)):
                 raise ValueError("%s does not read back exactly" % total)
-            # The direct diffuse light alone (Cycles' DiffDir x DiffCol): what
-            # the lab's runtime direct light draws under
-            # `gallery --direct` (lighting_gallery.DIRECT_ARGS).
+            # Historical offline direct-diffuse reference (Cycles DiffDir x DiffCol).
+            # It is not a render_lab comparison or gate.
             direct_path = references / ("%s.direct.exr" % stem)
             direct = (passes["DiffDir"][..., :3] * passes["DiffCol"][..., :3]).astype(np.float64)
             if receipt.get("denoising") and "Normal" in passes:
@@ -2492,33 +2485,9 @@ def main():
     c.add_argument("--fixture", action="append")
     c.add_argument("--no-maps", action="store_true",
                    help="skip the published maps (for a tree without builds)")
-    m = commands.add_parser("compare")
-    m.add_argument("--fixture", required=True)
-    m.add_argument("--state", required=True)
-    m.add_argument("--camera", required=True)
-    m.add_argument("--image", type=Path, required=True, help="a linear PFM (or EXR)")
-    m.add_argument("--record", action="store_true")
-    y = commands.add_parser("gallery", help="render_lab beside Cycles for every view, as one "
-                                            "HTML page (lighting_gallery.py)")
-    y.add_argument("--lab", help="the render_lab binary (default: $RENDER_LAB, then build-rc-lab)")
-    y.add_argument("--fixture", action="append")
-    y.add_argument("--out", type=Path)
-    y.add_argument("--resolution", type=int, default=1,
-                   help="render_lab at this multiple of the film size; the page shows it, and the "
-                        "comparison judges its box-filtered copy at the reference's size")
-    y.add_argument("--core-direct", action="store_true",
-                   help="render_lab --core-direct: the indirect layer and every light's direct "
-                        "light at runtime (RFC 0016's runtime direct light)")
-    y.add_argument("--direct", action="store_true",
-                   help="the runtime direct diffuse light alone (--core-direct, diffuse lobe, "
-                        "baked and image terms off) against each view's direct reference "
-                        "(Cycles DiffDir x DiffCol)")
     args = parser.parse_args()
-    if args.command == "gallery":
-        import lighting_gallery
-        return lighting_gallery.cmd_gallery(args)
     return {"generate": cmd_generate, "render": cmd_render, "build": cmd_build,
-            "check": cmd_check, "compare": cmd_compare}[args.command](args)
+            "check": cmd_check}[args.command](args)
 
 
 if __name__ == "__main__":

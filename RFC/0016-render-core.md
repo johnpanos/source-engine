@@ -736,8 +736,8 @@ measured for this RFC; measured numbers are quoted from their records.
   clustered dynamic lights, float and MRT targets.
 - One lighting model at Source 2 quality or better
   ([Lighting model](#lighting-model-renderlightingv1-amended-2026-09-28)):
-  every term with an owner, an oracle and a neutral value, proven against
-  Cycles in `render_lab` before it is integrated (K11, then K12).
+  every term with an owner, an oracle and a neutral value, proven by
+  independent term checks in `render_lab` and matched in the game (K11–K12).
 - Parallel command recording in products: passes record as jobs on the
   root's compute pool into their own encoders, the command stream equals the
   serial executor's, and frame recording time falls as workers are added
@@ -1363,7 +1363,7 @@ behavior, including DXVK for exact legacy appearance. K4's legacy-port pixel
 oracles remain regression diagnostics for the extracted compatibility points;
 they do not gate an intentional native quality improvement. New core material
 translations are judged by parameter/claim tests, independent term oracles,
-Cycles and matched game/lab images with negative controls. Version the
+matched game/lab images and visual review with negative controls. Version the
 translation and record material/image differences when a native point
 changes. New shading logic belongs in `render.material` and core shaders,
 not in the frozen stdshaders or native backend copies.
@@ -1401,7 +1401,7 @@ Cumulative coverage after each phase (`tools/render/material_inventory.py
 | S6 Layers | WorldVertexTransition, `$blendmodulatetexture`, `$seamless_scale` | 81.7% / 97.6% | 73.0% / 98.5% | Portal 2's world area to 97.3% |
 | S7 Model surfaces | VertexLitGeneric through probes, the ambient cube and clustered lights; `$phong` (exponent, exponent texture, boost, fresnel ranges, albedo tint), `$rimlight`, `$halflambert`, `$lightwarptexture`, `$color2` | 85.4% | 84.4% | with K5's props and K6's skinned models |
 | S8 Unlit points | Sprite, UnlitTwoTexture, SubRect, Sky (HDR encodings), distance-field alpha | 92.9% | 88.3% | lighting one; SubRect is a texture rectangle |
-| S9 Native interpretation (cross-cutting) | reviewed translation rules and sidecars, checked against Cycles references | — | — | applies as each S0–S8 term is claimed, not after all terms; compatibility points remain as controls |
+| S9 Native interpretation (cross-cutting) | reviewed translation rules and sidecars, checked against matched game/lab scenes | — | — | applies as each S0–S8 term is claimed, not after all terms; compatibility points remain as controls |
 
 Portal's world needs S2 to S4 together: its largest term sets are bump,
 ssbump and detail mode 0 (28% of area), and bump, ssbump and env map with
@@ -1415,7 +1415,7 @@ Each phase closes when:
 - the term's neutral value is bitwise the term absent (a suite with
   seeded mutants);
 - each new native interpretation has parameter and term oracles, including
-  a negative control, and matches its Cycles and game/lab reference scenes
+  a negative control, and matches its game/lab scene
   within the recorded tolerance; its compatibility point is compared to
   the port as a diagnostic where the legacy profile promises that look;
 - the claim rules take exactly the materials whose variables the term
@@ -1828,8 +1828,9 @@ took 200-960 ms per change on `sp_a2_laser_intro_relit`).
   2026-09-30).
 - **Proof.** `render_lab --core-direct` binds what the product binds, and
   the lighting fixture `door-room` (a door the bake never saw, a
-  `--mover`) judges the direct term against Cycles' direct diffuse pass,
-  with a negative control of the door not casting.
+  `--mover`) checks direct shadow behavior against the independent geometry
+  oracle, then against the matched game camera, with a negative control of
+  the door not casting.
 
 ## Threading
 
