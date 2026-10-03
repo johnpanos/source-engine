@@ -486,6 +486,7 @@ private:
 	graph::GpuPassTimers *m_SlotTimers = nullptr; // during a slot's recording
 	std::uint64_t m_TimersFrame = 0;              // the frame the decision is for
 	bool m_TimersThisFrame = false;
+	std::uint64_t m_CostFrame = ~std::uint64_t( 0 ); // captured by the frame-start slot
 	// The CPU time the timed views took to record (render sequence), in ns,
 	// reported beside the GPU sections.
 	std::atomic<std::uint64_t> m_RecordNs{ 0 };

@@ -93,6 +93,9 @@ ConVar cl_render_debug_legacy( "cl_render_debug_legacy", "0", FCVAR_CHEAT,
 // cl_render_debug_stats once a second (per-frame means over that second).
 ConVar cl_render_debug_gpu_timers( "cl_render_debug_gpu_timers", "0", 0,
     "Time the render core's GPU passes (RFC 0014 D4); cl_render_debug_stats prints them." );
+ConVar cl_render_debug_cost( "cl_render_debug_cost", "0", FCVAR_CHEAT,
+    "Overlay measured render-core CPU recording and GPU pass costs. Inclusive labeled sections; "
+    "excludes game CPU, legacy rendering and present. 0 off, 1 on.", true, 0, true, 1 );
 ConVar cl_render_debug_stats( "cl_render_debug_stats", "0", 0,
     "Print the render core's per-pass GPU times (cl_render_debug_gpu_timers) every second." );
 // The render core's quality settings (RFC 0016 K12; the video options).
@@ -134,6 +137,7 @@ void DebugProgramChanged( IConVar *var, const char *, float )
 render::frame::DebugControls DebugControlsFromConVars( const RenderCoreHostState &host )
 {
 	render::frame::DebugControls debug;
+	debug.costOverlay = cl_render_debug_cost.GetBool();
 	debug.view = (uint32)cl_render_debug_view.GetInt();
 	V_strncpy( debug.program, cl_render_debug_view_program.GetString(), sizeof( debug.program ) );
 	if ( V_strlen( cl_render_debug_view_program.GetString() ) >= (int)sizeof( debug.program ) )

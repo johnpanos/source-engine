@@ -107,6 +107,7 @@ struct ResolvedProgram
 	ProgramRequest request;
 	device::BlendMode blend = device::BlendMode::kOpaque;
 	bool sceneColor = false; // the view group needs a snapshot before this draw
+	bool twoSided = false;   // authored $nocull; mesh winding belongs to its draw owner
 	// The per-draw inputs the draw group takes, in binding order.
 	std::vector<std::string> drawInputs;
 	// The view's render targets the program reads through its view group's

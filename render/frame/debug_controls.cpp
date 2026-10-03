@@ -136,7 +136,7 @@ bool PixelViewActive( const DebugControls &controls )
 bool DebugControlsNeutral( const DebugControls &controls )
 {
 	const DebugControls neutral;
-	return controls.view == neutral.view && ProgramName( controls ).empty() &&
+	return controls.costOverlay == neutral.costOverlay && controls.view == neutral.view && ProgramName( controls ).empty() &&
 	       controls.viewScale == neutral.viewScale && controls.viewRange == neutral.viewRange &&
 	       controls.viewThreshold == neutral.viewThreshold && controls.brdf == neutral.brdf &&
 	       controls.furnace == neutral.furnace && controls.termsOff == neutral.termsOff &&

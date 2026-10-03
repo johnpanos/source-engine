@@ -1075,7 +1075,7 @@ void RingLookupClauses( testing::Checks &checks )
 	ring.Abandon( c->second ); // must not abandon a submitted range
 	ring.Retire( 6 );
 	checks.That( !ring.Allocate( 16, 6 ), "vulkan.ring-lookup keeps incomplete ranges" );
-	ring.Retire( 7 ); // removes a and abandoned b, but not submitted c
+	ring.Retire( 7 );              // removes a and abandoned b, but not submitted c
 	ring.Submit( a->second, 100 ); // retired ID must not update the new front
 	ring.Abandon( b->second );
 	ring.Submit( d->second + 100, 1 ); // unknown future ID is inert
@@ -1104,12 +1104,12 @@ void RingLookupClauses( testing::Checks &checks )
 	ring.Abandon( full->second );
 	ring.Submit( full->second, 12 );
 	ring.Retire( 12 );
-	checks.That( !ring.Allocate( 32, 12 ),
-	    "vulkan.ring-lookup detached IDs cannot release a fresh range" );
+	checks.That(
+	    !ring.Allocate( 32, 12 ), "vulkan.ring-lookup detached IDs cannot release a fresh range" );
 	ring.Abandon( fresh->second );
 	ring.Retire( 12 );
-	checks.That( ring.Allocate( 112, 12 ).has_value(),
-	    "vulkan.ring-lookup fresh ranges still abandon" );
+	checks.That(
+	    ring.Allocate( 112, 12 ).has_value(), "vulkan.ring-lookup fresh ranges still abandon" );
 	(void)ring.Detach();
 }
 

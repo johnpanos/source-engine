@@ -63,3 +63,9 @@ the shader's `$model` and `$translucent` classification flags; the latter
 does not enable color blending on the depth/stencil-only program. Full and
 partially open ellipses preserve the parent outside the opening. Stages 0 and 2
 remain outside this aperture contract.
+
+World surface draws use counter-clockwise front faces and cull back faces unless
+the resolved material authors `$nocull`. The color, depth-only and normal
+prepasses share this policy. Portal exit clipping retains its existing tolerance;
+a back-facing exit wall inside that tolerance must not hide the linked room.
+The view-state suite includes an on-wall case and a two-sided negative control.

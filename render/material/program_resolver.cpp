@@ -418,6 +418,7 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 	if ( !block )
 		return foundation::MakeUnexpected( why );
 	ResolvedProgram out;
+	out.twoSided = detail::ReadFlag( *block, "nocull" );
 	if ( material.family == "depth" || material.family == "portal-mask" )
 	{
 		if ( auto unread = DepthClaim( *block, material.family == "portal-mask" ) )

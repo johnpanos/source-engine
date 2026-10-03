@@ -23,6 +23,7 @@
 
 #include "render/device/device.h"
 
+#include <chrono>
 #include <cstdint>
 #include <memory>
 #include <mutex>
@@ -40,11 +41,13 @@ struct PassTime
 	std::uint32_t depth = 0; // labels open around it
 	double milliseconds = 0.0;
 	std::uint32_t count = 0; // sections of that name and depth
+	double cpuMilliseconds = 0.0; // inclusive CPU command-recording wall time
 };
 
 struct PassTimerReport
 {
 	std::uint32_t frames = 0; // frames read into this report
+	std::uint64_t lastFrame = 0;
 	// In the order each name first recorded, summed over the frames.
 	std::vector<PassTime> passes;
 	std::uint32_t overflowed = 0; // timestamps dropped for want of room
@@ -73,6 +76,8 @@ public:
 
 	// The report since the last Take, and a new one begins.
 	PassTimerReport Take();
+	// Non-destructive, latest completed frame; does not consume console statistics.
+	PassTimerReport Latest();
 
 	// Reports the encoder's labels until Detach (or the encoder's end).
 	void Attach( device::CommandEncoder &encoder );
@@ -95,6 +100,8 @@ private:
 		std::uint32_t begin = 0; // timestamp indices (chunk * kChunk + slot)
 		std::uint32_t end = 0;
 		bool closed = false;
+		std::chrono::steady_clock::time_point cpuBegin;
+		double cpuMilliseconds = 0.0;
 	};
 	struct Frame
 	{
@@ -105,6 +112,7 @@ private:
 		bool hasDone = false;
 		device::CompletionToken done;
 		std::vector<Section> sections;
+		std::uint32_t overflowed = 0;
 	};
 	struct Attached
 	{
@@ -128,6 +136,7 @@ private:
 	std::unordered_map<const device::CommandEncoder *, Attached> m_Attached;
 	device::CompletionToken m_Latest; // the latest token seen, for release
 	PassTimerReport m_Report;
+	PassTimerReport m_LatestReport;
 };
 
 } // namespace render::graph

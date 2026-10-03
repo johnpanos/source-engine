@@ -26,6 +26,7 @@
 #include <map>
 #include <span>
 #include <tuple>
+#include <string_view>
 
 namespace render::pass::debug
 {
@@ -39,6 +40,25 @@ struct HatchTarget
 	std::uint32_t samples = 1;
 	// The target has no sRGB view: the program encodes the hatch itself.
 	bool encodeOutput = false;
+};
+
+// Inclusive labeled sections, measured on the CPU recording sequence and GPU.
+// CPU and GPU overlap; neither columns nor nested rows are additive.
+struct CostRow
+{
+	std::string_view name;
+	std::uint32_t depth = 0;
+	double cpuMilliseconds = 0;
+	double gpuMilliseconds = 0;
+};
+
+struct CostOverlay
+{
+	std::span<const CostRow> rows;
+	std::uint64_t frame = 0;
+	std::uint64_t currentFrame = 0;
+	std::uint32_t dropped = 0;
+	bool supported = true;
 };
 
 class DebugOverlays
@@ -57,6 +77,10 @@ public:
 	// whole target, outside rendering. False when the pipeline is refused.
 	bool RecordTint( device::IRenderDevice2 &device, device::CommandEncoder &encoder,
 	    const HatchTarget &target, const float rgba[4] );
+	// Draw a bounded, labeled CPU/GPU cost panel over the existing image.
+	// No resource uploads/readbacks; the caller supplies a completed sample.
+	bool RecordCosts( device::IRenderDevice2 &device, device::CommandEncoder &encoder,
+	    const HatchTarget &target, const CostOverlay &costs );
 	// The device is about to go: its pipelines are released now.
 	void ReleaseDevice( device::IRenderDevice2 &device );
 
@@ -64,7 +88,7 @@ public:
 
 private:
 	device::IRenderDevice2 *m_Device = nullptr;
-	// By (program: 0 hatch, 1 tint; format, samples, encode).
+	// By (program: 0 hatch, 1 tint, 2 costs; format, samples, encode).
 	std::map<std::tuple<int, device::Format, std::uint32_t, bool>, device::PipelineId> m_Pipelines;
 	std::uint64_t m_Tints = 0;
 

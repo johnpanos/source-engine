@@ -1020,6 +1020,8 @@ Keep the table concise and link details below or from the domain progress file.
   remove the intermediate GPU buffer copy and retain uploads after allocation
   failure; native provider and lab checks pass. Heap-budget telemetry, cache
   retention policy, frame-graph reuse and full-frame performance remain open.
+  [Upload-ring bookkeeping](RFC/0016-progress.md#k1-constant-time-upload-retirement-bookkeeping-2026-10-02)
+  now uses constant-time ID lookup, with native lifetime checks and CPU measurements.
 
 - R86–R92 (RFC 0016): R86–R91 added 2026-09-26 as `planned`. The user asked for "a
   real graphics system" that breaks free of the legacy pipeline while

@@ -69,6 +69,7 @@ int RunPosedModelSuite( int argc, char **argv );
 int RunViewStateSuite( int argc, char **argv );
 int RunModelSelectionSuite( int argc, char **argv );
 
+int RunCostOverlaySuite( int argc, char **argv );
 int RunDebugViewsSuite( int argc, char **argv );
 int RunLightingControlsSuite( int argc, char **argv );
 int RunAreaLightsSuite( int argc, char **argv );

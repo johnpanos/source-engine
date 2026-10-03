@@ -48,6 +48,13 @@ static_assert(
 namespace
 {
 
+// Private forwarded world tags: the backend just preserves their stream order.
+// Start captures the requested control on the render sequence, before any view;
+// the end bits preserve both debug requests even with multiple frames queued.
+constexpr std::uint32_t kCostBegin = 0x08000000u;
+constexpr std::uint32_t kEndCosts = 1u;
+constexpr std::uint32_t kEndTint = 2u;
+
 // The backend's textures, as the world pass asks for them.
 class Textures final : public pass::world::IWorldTextures
 {
@@ -1380,15 +1387,21 @@ std::uint32_t CoreWorld::SlotStages() const
 
 void CoreWorld::EndFrame()
 {
-	if ( m_Renderer.AppliedDebug().legacy != frame::DebugLegacy::kTint )
+	const frame::DebugControls &debug = m_Renderer.AppliedDebug();
+	const std::uint32_t effects = ( debug.costOverlay ? kEndCosts : 0 ) |
+	    ( debug.legacy == frame::DebugLegacy::kTint ? kEndTint : 0 );
+	if ( effects == 0 )
 		return;
 	if ( legacy::ICorePassSlots *slots = m_Frontend.CorePassSlots() )
-		slots->MarkSlot( legacy::kCorePassForwarded | legacy::kCorePassFrameEnd );
+		slots->MarkSlot( legacy::kCorePassForwarded | legacy::kCorePassFrameEnd | effects );
 }
 
 void CoreWorld::BeginFrame()
 {
 	const frame::DebugControls &debug = m_Renderer.AppliedDebug();
+	if ( debug.costOverlay )
+		if ( legacy::ICorePassSlots *slots = m_Frontend.CorePassSlots() )
+			slots->MarkSlot( legacy::kCorePassForwarded | kCostBegin );
 	if ( !m_CoreOnly && !frame::PixelViewActive( debug ) &&
 	     debug.legacy != frame::DebugLegacy::kSkip )
 		return;
@@ -1538,7 +1551,8 @@ graph::GpuPassTimers *CoreWorld::SlotTimers( const legacy::CorePassTarget &targe
 	if ( target.frame != m_TimersFrame )
 	{
 		m_TimersFrame = target.frame;
-		m_TimersThisFrame = m_GpuTimersOn.load( std::memory_order_relaxed );
+		m_TimersThisFrame = m_GpuTimersOn.load( std::memory_order_relaxed ) ||
+		    m_CostFrame == target.frame;
 	}
 	if ( !m_TimersThisFrame )
 	{
@@ -1636,6 +1650,11 @@ void CoreWorld::RecordSlot(
 {
 	if ( tag == legacy::kCorePassLegacyHud )
 		return;
+	if ( tag == kCostBegin )
+	{
+		m_CostFrame = target.frame;
+		return;
+	}
 	if ( target.device )
 		std::erase_if( m_SceneCaptures,
 		    [&]( std::pair<std::uint64_t, graph::InlineGraphResources> &old )
@@ -1658,6 +1677,8 @@ void CoreWorld::RecordSlot(
 		whole.width = target.width;
 		whole.height = target.height;
 		whole.samples = target.samples;
+		if ( tag & kEndTint )
+		{
 		const float magenta[4] = { 1.0f, 0.0f, 1.0f, 0.5f };
 		if ( target.device && m_Overlays.RecordTint( *target.device, encoder, whole, magenta ) )
 			m_Tints.fetch_add( 1, std::memory_order_relaxed );
@@ -1673,6 +1694,20 @@ void CoreWorld::RecordSlot(
 				m_Redrawn.fetch_add( 1, std::memory_order_relaxed );
 			}
 		}
+		}
+		if ( ( tag & kEndCosts ) && target.device )
+		{
+			graph::GpuPassTimers *timers = SlotTimers( target );
+			const graph::PassTimerReport report = timers ? timers->Latest() : graph::PassTimerReport();
+			std::vector<pass::debug::CostRow> rows;
+			rows.reserve( report.passes.size() );
+			for ( const graph::PassTime &pass : report.passes )
+				rows.push_back( { pass.name, pass.depth, pass.cpuMilliseconds, pass.milliseconds } );
+			const pass::debug::CostOverlay costs{
+			    rows, report.lastFrame, target.frame, report.overflowed, timers != nullptr };
+			(void)m_Overlays.RecordCosts( *target.device, encoder, whole, costs );
+		}
+
 		// Frames older than a few are done.
 		std::erase_if( m_FrameViews,
 		    [&]( const auto &entry )

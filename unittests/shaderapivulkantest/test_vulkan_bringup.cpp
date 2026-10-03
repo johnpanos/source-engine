@@ -219,6 +219,83 @@ void CheckPortalCoreReplay( CVulkanContext &ctx, std::string &err )
 		ctx.DestroyManagedTexture( snapshot );
 }
 
+// The existing SolidEnergy shader must blend at its original core stream slot.
+void CheckSolidEnergyCoreReplay( CVulkanContext &ctx, std::string &err )
+{
+	PortalReplayRecorder recorder;
+	ctx.BindCorePassRecorder( &recorder );
+	const int texture = ctx.CreateManagedTexture( 1, 1, VK_FORMAT_R8G8B8A8_UNORM, &err );
+	const uint8_t texel[] = { 255, 0, 0, 128 };
+	const bool ready = texture >= 0 && ctx.SolidEnergyPipelineSupported() &&
+	    ctx.UploadManagedTexture( texture, texel, sizeof( texel ), &err );
+	Check( ready, "SolidEnergy replay resources available" );
+	if ( ready )
+	{
+		const float quad[6][8] = { { -0.8f, -0.8f, 0, 1, 1, 1, 0, 0 },
+		    { 0.8f, -0.8f, 0, 1, 1, 1, 1, 0 }, { 0.8f, 0.8f, 0, 1, 1, 1, 1, 1 },
+		    { -0.8f, -0.8f, 0, 1, 1, 1, 0, 0 }, { 0.8f, 0.8f, 0, 1, 1, 1, 1, 1 },
+		    { -0.8f, 0.8f, 0, 1, 1, 1, 0, 1 } };
+		float tangents[6][7];
+		for ( auto &v : tangents )
+		{
+			const float basis[7] = { 0, 0, 1, 1, 0, 0, 1 };
+			std::copy_n( basis, 7, v );
+		}
+		CVulkanContext::SkinConstants energy{};
+		energy.viewProj[0] = energy.viewProj[5] = energy.viewProj[10] = energy.viewProj[15] = 1;
+		energy.texXform0[0] = energy.texXform1[1] = 1;
+		energy.eyePos[2] = 1;
+		energy.ps[6][3] = energy.ps[10][0] = 1; // output intensity and ACTIVE
+		CVulkanContext::DynRasterState raster;
+		raster.depthTest = raster.depthWrite = false;
+		raster.blend = true;
+		raster.srcFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+		raster.dstFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+		for ( int mode : { 0, 1, 0, 2 } )
+		{
+			ctx.ClearDynamicQueue();
+			ctx.SetRenderTarget( -1 );
+			ctx.SetViewport( 0, 0, 0, 0, 0, 1 );
+			const std::uint32_t policy = render::legacy::kCorePassForwarded |
+			    render::legacy::kCorePassLegacyOff |
+			    ( mode != 1 ? render::legacy::kCorePassPortalEffects : 0 );
+			ctx.QueueCorePass( policy | 2, {} );
+			ctx.SelectDynamicShader( CVulkanContext::kDynShaderSolidEnergy );
+			ctx.SelectDynamicRasterState( raster );
+			ctx.SetDynamicSkinConstants( energy );
+			ctx.SelectDynamicColorSpace( 0 );
+			ctx.SetDynamicOutputScale( 1 );
+			ctx.SetDynamicClipPlanes( 0, nullptr );
+			ctx.BindManagedTexture( texture );
+			ctx.QueueDynamicTriangles( &quad[0][0], 6, nullptr, &tangents[0][0] );
+			// A later core slot is an intentional wrong-order control.
+			if ( mode == 2 )
+				ctx.QueueCorePass( render::legacy::kCorePassForwarded | 2, {} );
+			for ( int replay = 0; replay < 2; ++replay )
+			{
+				ctx.RequestCapture();
+				bool skipped = false;
+				const bool rendered = RenderCoreFrame( ctx, &skipped, &err );
+				int width = 0, height = 0;
+				const auto &pixels = ctx.GetCapturedPixels( &width, &height );
+				bool correct = rendered && !skipped && width > 0 && height > 0 && !pixels.empty();
+				if ( correct )
+				{
+					const auto *center = &pixels[( size_t( height / 2 ) * width + width / 2 ) * 4];
+					correct = PixelClose( pixels.data(), 0, 0, 255, 255, 2 ) &&
+					    ( mode == 0 ? PixelClose( center, 128, 0, 127, 255, 2 )
+					                : PixelClose( center, 0, 0, 255, 255, 2 ) );
+				}
+				Check( correct, "SolidEnergy blends over core at its slot; replay, diagnostics and wrong-order controls" );
+			}
+		}
+	}
+	ctx.ClearDynamicQueue();
+	ctx.BindCorePassRecorder( nullptr );
+	if ( texture >= 0 )
+		ctx.DestroyManagedTexture( texture );
+}
+
 } // namespace
 
 int main( int argc, char **argv )
@@ -979,6 +1056,7 @@ int main( int argc, char **argv )
 	}
 
 	CheckPortalCoreReplay( ctx, err );
+	CheckSolidEnergyCoreReplay( ctx, err );
 
 	if ( ctx.ValidationEnabled() )
 		Check( ctx.ValidationErrorCount() == 0, "no validation errors/warnings during the run" );

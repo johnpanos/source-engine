@@ -188,6 +188,7 @@ GENERATED = {
         "render.pass.debug: the not-applicable hatch (RFC 0014)", (
         ("kFullscreenVertex", DEBUG + "/fullscreen.vert", DEVICE_OPTIONS),
         ("kHatchFragment", DEBUG + "/hatch.frag", DEVICE_OPTIONS),
+        ("kCostFragment", DEBUG + "/cost.frag", DEVICE_OPTIONS),
         ("kTintFragment", DEBUG + "/tint.frag", DEVICE_OPTIONS))),
     "cluster_assign_spv.h": ("render::pass::lights::spirv",
         "the clustered light assignment pass (RFC 0016 K7)", (

@@ -86,6 +86,7 @@ void GpuPassTimers::BeginFrame( std::uint64_t frame, device::CompletionToken sub
 	m_Recording->chunksUsed = 0;
 	m_Recording->hasDone = false;
 	m_Recording->sections.clear();
+	m_Recording->overflowed = 0;
 }
 
 void GpuPassTimers::EndFrame( device::CompletionToken token )
@@ -126,6 +127,10 @@ void GpuPassTimers::Read( Frame &frame )
 		if ( !m_Device.ReadBuffer( frame.chunks[c], 0, out ) )
 			return; // the frame is lost, not reported
 	}
+	PassTimerReport latest;
+	latest.frames = 1;
+	latest.lastFrame = frame.frame;
+	latest.overflowed = frame.overflowed;
 	const double toMs = m_Device.Facts().timestampPeriodNs * 1e-6;
 	for ( const Section &section : frame.sections )
 	{
@@ -134,19 +139,26 @@ void GpuPassTimers::Read( Frame &frame )
 		const std::uint64_t begin = ticks[section.begin];
 		const std::uint64_t end = ticks[section.end];
 		const double ms = end > begin ? double( end - begin ) * toMs : 0.0;
-		auto found = std::find_if( m_Report.passes.begin(), m_Report.passes.end(),
-		    [&]( const PassTime &time )
-		    {
-			    return time.depth == section.depth && time.name == section.name;
-		    } );
-		if ( found == m_Report.passes.end() )
+		for ( PassTimerReport *report : { &m_Report, &latest } )
 		{
-			m_Report.passes.push_back( { section.name, section.depth, 0.0, 0 } );
-			found = std::prev( m_Report.passes.end() );
+			auto found = std::find_if( report->passes.begin(), report->passes.end(),
+			    [&]( const PassTime &time )
+			    {
+				    return time.depth == section.depth && time.name == section.name;
+			    } );
+			if ( found == report->passes.end() )
+			{
+				report->passes.push_back( { section.name, section.depth, 0.0, 0 } );
+				found = std::prev( report->passes.end() );
+			}
+			found->milliseconds += ms;
+			found->cpuMilliseconds += section.cpuMilliseconds;
+			++found->count;
 		}
-		found->milliseconds += ms;
-		++found->count;
 	}
+	if ( latest.lastFrame >= m_LatestReport.lastFrame )
+		m_LatestReport = std::move( latest );
+	m_Report.lastFrame = std::max( m_Report.lastFrame, frame.frame );
 	++m_Report.frames;
 }
 
@@ -157,6 +169,13 @@ PassTimerReport GpuPassTimers::Take()
 	PassTimerReport report = std::move( m_Report );
 	m_Report = PassTimerReport();
 	return report;
+}
+
+PassTimerReport GpuPassTimers::Latest()
+{
+	std::lock_guard<std::mutex> lock( m_Lock );
+	CollectLocked();
+	return m_LatestReport;
 }
 
 void GpuPassTimers::Attach( device::CommandEncoder &encoder )
@@ -183,6 +202,7 @@ bool GpuPassTimers::Write(
 		if ( frame.chunksUsed == m_MaxChunks )
 		{
 			++m_Report.overflowed;
+			++frame.overflowed;
 			return false;
 		}
 		if ( frame.chunksUsed == frame.chunks.size() )
@@ -196,6 +216,7 @@ bool GpuPassTimers::Write(
 			if ( !buffer )
 			{
 				++m_Report.overflowed;
+			++frame.overflowed;
 				return false;
 			}
 			frame.chunks.push_back( buffer.Value() );
@@ -225,6 +246,7 @@ void GpuPassTimers::OnBeginLabel( device::CommandEncoder &encoder, std::string_v
 		return;
 	}
 	Section section;
+	section.cpuBegin = std::chrono::steady_clock::now();
 	section.name = std::string( label );
 	section.depth = std::uint32_t( attached.open.size() );
 	section.begin = index;
@@ -245,6 +267,9 @@ void GpuPassTimers::OnEndLabel( device::CommandEncoder &encoder )
 	if ( open == ~0u || open >= m_Recording->sections.size() ||
 	     !Write( encoder, attached, &index ) )
 		return;
+	m_Recording->sections[open].cpuMilliseconds =
+	    std::chrono::duration<double, std::milli>( std::chrono::steady_clock::now() -
+	        m_Recording->sections[open].cpuBegin ).count();
 	m_Recording->sections[open].end = index;
 	m_Recording->sections[open].closed = true;
 }

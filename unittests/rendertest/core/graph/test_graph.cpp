@@ -390,8 +390,16 @@ void PassTimers( testing::Checks &checks )
 	timers.EndFrame( result.Value().token );
 	checks.Equal(
 	    timers.Take().frames, std::uint32_t( 0 ), "D4.nothing-is-read-before-completion" );
+	checks.Equal( timers.Latest().frames, std::uint32_t( 0 ),
+	    "cost.no-snapshot-before-completion" );
 	control->CompleteThrough( device::QueueKind::kGraphics, result.Value().token.value );
+	const PassTimerReport snapshot = timers.Latest();
+	checks.Equal( snapshot.lastFrame, std::uint64_t( 1 ), "cost.snapshot-frame-identity" );
 	const PassTimerReport report = timers.Take();
+	checks.Equal( snapshot.passes.size(), report.passes.size(),
+	    "cost.overlay-does-not-consume-console-report" );
+	checks.Equal( timers.Latest().lastFrame, std::uint64_t( 1 ),
+	    "cost.console-does-not-consume-overlay-sample" );
 	checks.Equal( report.frames, std::uint32_t( 1 ), "D4.the-frame-is-read-after-completion" );
 	auto time = [&]( const char *name, std::uint32_t depth ) -> const PassTime *
 	{
@@ -411,6 +419,9 @@ void PassTimers( testing::Checks &checks )
 	checks.That( first && second && inner && third && first->milliseconds > 0.0 &&
 	                 inner->milliseconds > 0.0 && inner->milliseconds <= second->milliseconds,
 	    "D4.times-are-positive-and-a-nested-label-within-its-parent" );
+	checks.That( first && second && inner && third && first->cpuMilliseconds >= 0 &&
+	                 second->cpuMilliseconds >= inner->cpuMilliseconds && inner->cpuMilliseconds > 0,
+	    "cost.cpu-recording-has-nested-inclusive-times" );
 	std::vector<std::uint64_t> ticks;
 	for ( const auto &command : control->Recorded() )
 	{

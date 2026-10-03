@@ -471,6 +471,7 @@ struct SurfaceMapTextures
 struct SurfaceDrawState
 {
 	device::StencilState stencil;
+	device::CullMode cull = device::CullMode::kNone;
 	bool overrideDepth = false;
 	bool depthTest = true;
 	bool depthWrite = true;

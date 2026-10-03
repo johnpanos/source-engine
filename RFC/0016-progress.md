@@ -6819,7 +6819,7 @@ core portal pass, with deletion of the native programs when no caller remains.
 Frozen-path: user request 2026-10-02 — reuse the existing custom portal effects
 at their original frame positions beside the core stencil/view draws.
 
-### K1: constant-time upload retirement bookkeeping (2026-10-02, active)
+### K1: constant-time upload retirement bookkeeping (2026-10-02)
 
 User request: continue optimizing the core, most obvious work first. This slice
 owns `render.device.vulkan` upload-ring lookup and its native conformance tests.
@@ -6828,3 +6828,103 @@ allocation IDs are consecutive and retirement only removes a prefix. Replace
 those scans with an index into the existing deque; keep allocation placement,
 fence values, close/abandon behavior and storage unchanged. Material, shadow
 and portal work elsewhere in this shared checkout is outside this slice.
+
+Implemented `FindLocked`: unsigned distance from the first live ID indexes the
+existing deque, with an empty/range check. Both Submit and Abandon use it under
+the existing mutex. No hash table, secondary registry, extra allocation or
+additional retained memory was introduced. Batch bookkeeping is O(N), replacing
+O(N²); allocation placement, overflow behavior and GPU retirement are unchanged.
+
+Nine native-suite checks exercise out-of-order submission, prefix retirement,
+physical wrap, inert old/future IDs, refusal to abandon a submitted range, full
+drain, and detach/reattach without ID reuse. Existing D10 concurrency and
+held-queue readback tests continue to cover GPU range lifetime; the intentionally
+early-reusing Vulkan provider is still detected.
+
+Evidence: `quality-results/rendercore-ring-2026-10-02/`. The CPU benchmark builds
+the saved pre-change implementation and current implementation against the same
+harness. It uses 64-byte ranges, reverse-order Submit/Abandon calls, four warm-up
+iterations and 20 measured iterations per case. It first creates and joins a
+thread, so measurements use the mutex path of a multithreaded process. Allocation
+and retirement are outside the timed bookkeeping region; full drain is verified
+every iteration. These are uncontended CPU microbenchmarks on a shared machine,
+not measured frame gains or a controlled performance gate. A seeded lookup that
+always chooses the first slot fails the benchmark's drain check (exit 2).
+
+| Live uploads | Submit median before → after | Abandon median before → after |
+| --- | --- | --- |
+| 64 | 3.035 → 0.762 µs | 2.605 → 0.732 µs |
+| 1,024 | 467.960 → 11.823 µs | 345.880 → 11.401 µs |
+| 8,192 | 22,319.716 → 94.287 µs | 22,350.885 → 90.971 µs |
+
+Validation:
+
+- `render.device.v2.vulkan`: 1,074 checks pass, including nine new ring checks.
+- `render.device.v2.vulkan.sensitivity`: 21 checks pass, including the premature
+  upload-reuse negative control. Positive validation reports zero messages;
+  the existing intentionally missing host barrier emits its expected hazard.
+- Existing configured Waf `render_lab` builds; `suite lightmap-basis --validate`
+  passes 19 checks.
+- Architecture `check --all` passes. Scoped style checks pass. The committed
+  shared-checkout diff against `20c101df3` also contains five unrelated formatting
+  failures in ongoing material/debug/view work (`style-committed.log` lists the
+  paths). This slice leaves those files alone.
+- Native forced Vulkan device loss remains unavailable (D7, covered by null).
+  Fold7/mobile and complete-frame timings were not measured; this slice does
+  not close R90/R95/R96/R91's full-frame performance acceptance.
+
+The shared checkout was committed as `1177eede9` during validation, including
+this slice's code before its final style/evidence updates. That is why the
+ordinary HEAD style check initially reported no eligible changes; validation
+was repeated on the committed diff and on the slice's source files explicitly.
+
+Reproduce the native checks and lab with:
+
+```sh
+python3 tools/quality/conformance.py check --config release \
+  --suite render.device.v2.vulkan --suite render.device.v2.vulkan.sensitivity \
+  --out quality-results/rendercore-ring-repeat.json
+WAFLOCK=.lock-waf-rc-lab-main ./waf build --target=render_lab -j4
+LD_LIBRARY_PATH=build-rc-lab/tier0 build-rc-lab/render/lab/render_lab suite lightmap-basis --validate
+```
+
+`ring_bench.cpp`, `upload_ring_before.cpp`, both benchmark binaries and their
+output live in the evidence directory. Each binary builds with
+`g++ -std=c++20 -O2 -DNDEBUG -pthread -Ipublic -Irender/device/vulkan`, the harness,
+and either the saved implementation or `render/device/vulkan/upload_ring.cpp`.
+`identity.json` records source/binary hashes and the checkout revision.
+
+Next candidate from the audit: `GroupResidency::Refresh` allocates and fills two
+temporary vectors before it discovers a material's texture bindings are already
+current. Measure allocation-free hit validation there before attempting broader
+graph caching or increasing global memory budgets.
+
+### R91: on-wall portal exit visibility correction (2026-10-02)
+
+The user's follow-up image showed the animated rims but wall pixels inside the
+apertures. The earlier product proof had moved the exit eight units away from
+its wall; it did not cover this case. The core world surface pipeline disabled
+face culling, so the virtual exit camera drew the wall's back face within the
+client's intentional two-unit clipping tolerance. The material resolver now
+exposes authored `$nocull`; the world pass applies back-face culling consistently
+to its color, depth-only and depth/normal passes, preserving two-sided materials.
+Dynamic portal masks keep their existing ordered stencil and raster behavior.
+No portal shader copy or clip-plane tolerance change was added.
+
+The new native-Vulkan lab test failed before the correction (1/16 failures),
+then passed 16/16 with validation silent, including a `$nocull` negative control.
+GTAO passed 13/13 and panels 44/44, exercising the neighboring world passes.
+The complete `build-p2` build passed. The isolated installed game capture at
+`quality-results/portal-core-20261002/on-wall/evidence.json` places the exit at
+its authored wall (`portal_place 0 1 511.811 0 55.118 0 90 0`): the linked room
+and rim are visible together. This replaces the off-wall capture as the proof
+for exit-wall visibility. The capture is 640x480, not High acceptance evidence;
+R91/R96 and the complete-frame performance/platform gates remain open.
+
+Final receipts: `on-wall-conformance.json` records 41/41 world contract checks
+and 16/16 portal lab checks. Native Vulkan bring-up passes 124/124, including
+the retained portal effect/copy ordering controls. The on-wall game reports
+1,785 views drawn, zero failed views, and 1,170 dynamic draws with zero refusals.
+Architecture check, baseline and inventory verification pass. Changed portal
+lines pass style; the shared-tree style run still reports unrelated concurrent
+edits in `debug_controls.cpp`, `pass_timers.cpp` and `debug_overlays.cpp`.

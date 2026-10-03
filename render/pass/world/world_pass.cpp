@@ -2312,6 +2312,16 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		}
 		return result.Value();
 	};
+	// World triangles use the surface vertex's counter-clockwise front face.
+	// Keep authored two-sided materials, but do not draw an exit wall from the
+	// virtual portal camera behind it. Clipping intentionally leaves a tolerance.
+	auto worldStatePipeline = [&]( const Resources::Material &m, PipelineId base,
+	                              material::SurfaceDrawState state,
+	                              const shaderlib::DebugSpecialization &debug = {} )
+	{
+		state.cull = m.program.twoSided ? CullMode::kNone : CullMode::kBack;
+		return statePipeline( m, base, state, debug );
+	};
 	auto drawSurfaces =
 	    [&]( const std::vector<std::uint32_t> &list,
 	        const std::vector<Resources::Material> &materials,
@@ -2510,7 +2520,7 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 					    note( "the prepass: " + variant.Error() );
 					    return std::nullopt;
 				    }
-				    return statePipeline( m, variant.Value(), material::SurfaceDrawState() );
+				    return worldStatePipeline( m, variant.Value(), material::SurfaceDrawState() );
 			    } );
 			encoder.EndRendering();
 			encoder.EndLabel();
@@ -2659,7 +2669,7 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 					    note( "the depth prepass: " + variant.Error() );
 					    return std::nullopt;
 				    }
-				    return statePipeline( m, variant.Value(), target.drawState );
+				    return worldStatePipeline( m, variant.Value(), target.drawState );
 			    } );
 			encoder.EndRendering();
 			encoder.EndLabel();
@@ -2671,7 +2681,7 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 	drawSurfaces( order, r.materials,
 	    [&]( const Resources::Material &m ) -> std::optional<PipelineId>
 	    {
-		    return statePipeline( m, m.program.request.pipeline, target.drawState,
+		    return worldStatePipeline( m, m.program.request.pipeline, target.drawState,
 		        frame::DebugSpecializationFor( view.debug, m.program.name ) );
 	    } );
 	// The model list is built in caller order. Opaque draws can be grouped by

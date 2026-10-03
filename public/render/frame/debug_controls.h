@@ -40,6 +40,7 @@ enum class DebugLegacy : std::uint32_t
 
 struct DebugControls
 {
+	bool costOverlay = false; // cl_render_debug_cost: measured core recording/pass costs
 	std::uint32_t view = 0; // cl_render_debug_view (shaderlib::DebugView)
 	// cl_render_debug_view_program: the one program the view, the BRDF mode
 	// and the overrides apply to (others draw flat 18% grey); empty for all.

@@ -77,6 +77,17 @@ WorldData Fixture()
 	quad( 2, -1, 1, 0.8f );    // grandchild room / foreground weapon
 	quad( 4, -1, 0, 0.2f );
 	quad( 5, -1, 0, 0.2f );
+	// Exit wall faces into the linked room, away from its virtual camera.
+	quad( 0, -1, 1, 0.35f );
+	for ( unsigned i = world.indices.size() - 6; i < world.indices.size(); i += 3 )
+		std::swap( world.indices[i + 1], world.indices[i + 2] );
+	WorldMaterial twoSided = world.materials[0];
+	twoSided.name = "two-sided-exit-wall";
+	twoSided.variables.emplace_back( "$nocull", "1" );
+	world.materials.push_back( std::move( twoSided ) );
+	quad( 6, -1, 1, 0.35f );
+	for ( unsigned i = world.indices.size() - 6; i < world.indices.size(); i += 3 )
+		std::swap( world.indices[i + 1], world.indices[i + 2] );
 	return world;
 }
 WorldView View( unsigned surface )
@@ -117,10 +128,10 @@ std::optional<std::string> RunChecks(
 	const WorldData fixture = Fixture();
 	pass.SetWorld( fixture );
 	std::vector<unsigned> tags;
-	for ( unsigned i = 0; i < 8; ++i )
+	for ( unsigned i = 0; i < 10; ++i )
 	{
 		WorldView view = View( i );
-		if ( i >= 6 )
+		if ( i == 6 || i == 7 )
 		{
 			// Exercise the same dynamic snapshot acceptance as the game frontend.
 			WorldView::DynamicDraw draw;
@@ -194,8 +205,15 @@ std::optional<std::string> RunChecks(
 			pass.Record( tags[2], encoder, target );
 			target.drawState.overrideDepth = false;
 			stencil.enabled = control != 1;
-			if ( control != 2 && control != 5 && control != 6 && control != 7 )
+			if ( control != 2 && control != 5 && control != 6 && control != 7 && control < 8 )
 				target.clipPlanes[0][1] = 1;
+			if ( control >= 8 )
+			{
+				// Preserve the exit plane's tolerance: this back face passes clipping.
+				target.clipPlanes[0][2] = 1;
+				target.clipPlanes[0][3] = -0.34f;
+				pass.Record( tags[control], encoder, target );
+			}
 			pass.Record( tags[3], encoder, target );
 			if ( control == 5 )
 			{
@@ -215,9 +233,11 @@ std::optional<std::string> RunChecks(
 		};
 		return canvas->Render( textures, groups, {}, { 0, 0, 0, 1 }, &image, post );
 	};
-	CanvasImage normal, replay, noMask, noClip, weapon, noRange, nested, aperture, halfOpen;
+	CanvasImage normal, replay, noMask, noClip, weapon, noRange, nested, aperture, halfOpen, onWall,
+	    twoSidedWall;
 	for ( auto sample : { std::pair{ 0, &normal }, { 1, &noMask }, { 2, &noClip }, { 5, &nested },
-	          { 3, &weapon }, { 4, &noRange }, { 0, &replay }, { 6, &aperture }, { 7, &halfOpen } } )
+	          { 3, &weapon }, { 4, &noRange }, { 0, &replay }, { 6, &aperture }, { 7, &halfOpen },
+	          { 8, &onWall }, { 9, &twoSidedWall } } )
 		if ( auto why = render( sample.first, *sample.second ) )
 			return why;
 	results.That( Color( normal, 8, 16, 1 ) && Color( normal, 48, 16, 0 ),
@@ -235,8 +255,12 @@ std::optional<std::string> RunChecks(
 	    "view-state.capture-replay-restores-slot-state" );
 	results.That( Color(aperture, 16, 32, 1) && Color(aperture, 2, 2, 0) && Color(aperture, 48, 32, 0),
 	    "view-state.portal-aperture-is-an-ellipse-not-a-quad" );
-	results.That( Color(halfOpen, 16, 32, 1) && Color(halfOpen, 22, 32, 0) && Color(aperture, 22, 32, 1),
+	results.That( Color( halfOpen, 16, 32, 1 ) && Color( halfOpen, 22, 32, 0 ) &&
+	                  Color( aperture, 22, 32, 1 ),
 	    "view-state.portal-opening-amount-and-negative-control" );
+	results.That( Color( onWall, 8, 32, 1 ) && Color( onWall, 48, 32, 0 ),
+	    "view-state.exit-wall-backface-does-not-cover-linked-room" );
+	results.That( Color( twoSidedWall, 8, 32, 0 ), "view-state.nocull-exit-wall-negative-control" );
 	results.That(
 	    pass.Stats().viewsFailed == 0, "view-state.no-lost-slots", pass.Stats().lastFailure );
 	(void)device->WaitIdle();
