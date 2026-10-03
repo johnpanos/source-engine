@@ -6737,7 +6737,7 @@ pixels match exactly. Product/lab builds, 16 view-state checks, 58 composition
 checks, architecture baseline/inventory and changed-line style checks pass.
 Fold7 measurements remain unavailable: no declared device runner is attached.
 
-RCV-10 is a CPU shadow-preparation experiment after that GPU gain. A separate
+RCV-10 is a rejected CPU shadow-preparation experiment after that GPU gain. A separate
 `perf record -F 499 --call-graph dwarf,8192` arrival-warmup diagnostic recorded
 3150 samples, with zero lost samples. `DrawStageShadows` has 17.56% inclusive
 and 10.58% self cycle weight across the sampled process; its `math::Transform`
@@ -6750,11 +6750,69 @@ full search for changed/reordered plans. It prepares each captured mover's
 unchanged bounds, placement and identity once per operation rather than once
 per shadow view. Culling arithmetic, tile identity, mover accumulation order,
 atlas invalidation and draw commands remain unchanged. No persistent cache or
-new resource mechanism is added. Matched full-frame measurement is in progress.
+new resource mechanism was added. After AC power was restored, matched candidate/
+read-only-control arrival intervals were 51.388/51.310 ms; CPU medians were
+45.314/45.247 ms and GPU medians 37.765/37.847 ms. Reverse intervals were
+20.352/20.424 ms and return intervals 50.580/50.860 ms. Both runs retained AC
+throughout, approximately 70 W GPU power and 2113/2100 MHz whole-run median GPU
+frequencies. There is no worthwhile attributable gain, so the preparation
+experiment is removed from supported source. Its code and result remain in the
+checkpoint history and `rejected-shadow-prep.cpp`/`rejected-shadow-prep.patch`.
 `shadow-prep-1` was interrupted when compilation overlapped startup;
 `shadow-prep-2` lost AC power and GPU frequency fell to 976 MHz from the AC
 control's 2083 MHz median. Neither establishes a performance comparison.
 Battery measurements are tracked separately at the user's direction.
+`shadow-prep-battery-1` crossed the return to AC (53 battery and 49 AC samples)
+and is also excluded from the matched comparison.
+
+The final settled-arrival CPU profile triggers on `floor_begin`, rather than
+warm-up. It records 2960 samples with zero loss and is excluded from performance
+comparison because sampling adds overhead. `WorldPass::Record` has 21.06%
+inclusive process cycle weight, including bind-group preparation/allocation;
+`VulkanDevice::Submit` has 16.96%, legacy mesh emission 14.03%, and
+`DrawStageShadows` 5.82%. Nested shares overlap. `LightingInputs` alone has 4.03%
+self weight and malloc has 5.27% on the material queue. Thus steady CPU cost is
+spread over queued view lookup, per-cohort resource preparation, stream emission
+and command translation; the warm-up shadow sample overstated the steady
+shadow share. This attribution explains why RCV-10 did not move the frame.
+The profiler data and flat/inclusive reports are retained as
+`read-only-cpu-steady*` in the private evidence directory. The supported change
+remains the measured RCV-09 depth coverage/read-only state, with all shader and
+quality settings preserved. The retained product rebuild's launcher SHA256 is
+`e5d71f5a76db6f9ed82ee7711ca3ac9a6b415d626516f3159ba233e0690bcc04`,
+identical to the measured read-only binary.
+
+Ordinary runs without `--profile` also retain the gain. After restoring AC,
+`control-normal-1` versus `retained-normal-1` arrival/reverse/return GPU medians
+are 55.784/21.912/56.099 versus 37.603/19.597/37.663 ms; frame intervals are
+56.129/22.093/56.409 versus 48.327/19.975/47.927 ms. Arrival CPU time falls
+47.395 to 41.281 ms. This pair establishes 32.6% less arrival GPU time and
+13.9% less frame interval (16.1% higher frame rate) with detailed profiling off.
+Both stay on AC, near 70 W GPU power, at whole-run median frequencies
+2081/2054 MHz. Detailed per-pass analysis intentionally reports missing core
+scope timers in these ordinary runs; full-frame metrics are present, while
+the earlier profiled runs supply pass attribution. The workload's existing
+map-name assertion and High-floor failures still prevent acceptance. No trial
+is recast as a gate pass, and no statistical outlier is trimmed.
+
+The final native product image run `final-image-3` passes the existing
+`portal_boot.py` screenshot/provider checks at 1920x1080, explicitly selecting
+`native-vulkan` and retaining 4x MSAA and High. It produces a finite detailed
+image and does not change protected login-session files. Its capture seed
+removes only broken links to unrelated bootstrap map mounts, recording those
+unavailable paths separately; the selected frozen Intro4 mount and its complete
+content remain intact. This is product smoke evidence, not a new Cycles golden
+or complete-map/cohort acceptance. The initial capture setup/attestation failures
+are retained separately rather than hidden.
+
+All writable private runtime files have been detached from shared hard links;
+runtime and saved variant libraries are read-only. Staging replaces a library
+atomically instead of writing through an existing inode. The final normal-run
+receipts hash all 29 staged libraries before and after execution and require
+private inodes. Source and build inputs live in the private worktree, with
+read-only private dependency copies and independent Waf locks/output trees.
+The retained code is committed both there and in the main checkout; unrelated
+reflection-probe edits and submodule state are preserved.
 
 RCV-08's image comparison exposed a pre-existing correctness defect before its
 optimization could be accepted. At captured event 3066, primitive 245, pixel
