@@ -6,6 +6,7 @@
 //=============================================================================//
 
 #include "render/pass/world/world_pass.h"
+#include "group_resources.h"
 
 #include "render/device/errors.h"
 #include "render/frame/debug_specialization.h"
@@ -68,9 +69,8 @@ struct Claimed
 struct Group
 {
 	BindGroupId group;
-	BufferId constants;
-	std::vector<BufferId> storage;
-	std::vector<bool> borrowed;
+	GroupResources::Buffer constants;
+	std::vector<GroupResources::Buffer> storage;
 	std::vector<SamplerId> samplers;
 };
 
@@ -392,6 +392,7 @@ struct WorldPass::State
 	// the frame that recorded them.
 	std::vector<std::pair<std::uint64_t, BufferId>> retiredBuffers;
 	std::vector<std::pair<std::uint64_t, Group>> retiredGroups;
+	GroupResources groupResources;
 	std::vector<std::pair<std::uint64_t, TextureId>> retiredTextures;
 
 	void Fail( const std::string &why )
@@ -401,17 +402,25 @@ struct WorldPass::State
 		stats.lastFailure = why;
 	}
 
-	void ReleaseGroup( Group &group, CompletionToken after )
+	void ReleaseGroup( Group &group, CompletionToken after, bool recycle = false )
 	{
 		if ( device )
 		{
 			if ( group.group.IsValid() )
 				(void)device->Release( group.group, after );
-			if ( group.constants.IsValid() )
-				(void)device->Release( group.constants, after );
-			for ( std::size_t i = 0; i < group.storage.size(); ++i )
-				if ( !group.borrowed[i] )
-					(void)device->Release( group.storage[i], after );
+			auto releaseBuffer = [&]( GroupResources::Buffer buffer )
+			{
+				if ( buffer.id.IsValid() && buffer.size != 0 )
+				{
+					if ( recycle )
+						groupResources.Retire( *device, buffer, after );
+					else
+						(void)device->Release( buffer.id, after );
+				}
+			};
+			releaseBuffer( group.constants );
+			for ( const auto &buffer : group.storage )
+				releaseBuffer( buffer );
 			for ( SamplerId sampler : group.samplers )
 				(void)device->Release( sampler, after );
 		}
@@ -839,6 +848,7 @@ void WorldPass::ReleaseDevice( IRenderDevice2 &device )
 	for ( auto &[frame, texture] : s.retiredTextures )
 		(void)device.Release( texture, CompletionToken() );
 	s.retiredTextures.clear();
+	s.groupResources.Release( device );
 	(void)device.Poll();
 	s.device = nullptr;
 }
@@ -1005,6 +1015,10 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		// A new backend device: the old one's objects went with it.
 		s.variants.clear();
 		s.retired.clear();
+		s.retiredBuffers.clear();
+		s.retiredGroups.clear();
+		s.retiredTextures.clear();
+		s.groupResources = GroupResources();
 		s.device = target.device;
 	}
 	IRenderDevice2 &device = *s.device;
@@ -1083,7 +1097,7 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 	    {
 		    if ( target.frame == 0 || old.first >= target.frame )
 			    return false;
-		    s.ReleaseGroup( old.second, target.submitted );
+		    s.ReleaseGroup( old.second, target.submitted, true );
 		    return true;
 	    } );
 	if ( !r.resolver )
@@ -1559,40 +1573,33 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		std::vector<BindGroupEntry> entries;
 		if ( !request.constants.empty() )
 		{
-			BufferDesc desc;
-			desc.size = request.constants.size();
-			desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kUniform };
-			desc.debugName = "world group constants";
-			auto constants = device.CreateBuffer( desc );
+			auto constants = s.groupResources.Acquire(
+			    device, request.constants.size(), ResourceUsage::kUniform );
 			if ( !constants )
 			{
 				*why = "a constants buffer was refused";
 				return false;
 			}
 			out.constants = constants.Value();
-			entries.push_back( { request.constantsBinding, out.constants, 0, 0, {}, {} } );
+			entries.push_back( { request.constantsBinding, out.constants.id, 0, 0, {}, {} } );
 		}
 		for ( const material::GroupBuffer &storage : request.storage )
 		{
-			out.borrowed.push_back( storage.external.IsValid() );
 			if ( storage.external.IsValid() )
 			{
-				out.storage.push_back( storage.external );
+				out.storage.push_back( { storage.external } );
 				entries.push_back( { storage.binding, storage.external, 0, 0, {}, {} } );
 				continue;
 			}
-			BufferDesc desc;
-			desc.size = std::max<std::uint64_t>( storage.bytes.size(), 4 );
-			desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kStorageRead };
-			desc.debugName = "world group storage";
-			auto buffer = device.CreateBuffer( desc );
+			auto buffer = s.groupResources.Acquire( device,
+			    std::max<std::uint64_t>( storage.bytes.size(), 4 ), ResourceUsage::kStorageRead );
 			if ( !buffer )
 			{
 				*why = "a storage buffer was refused";
 				return false;
 			}
 			out.storage.push_back( buffer.Value() );
-			entries.push_back( { storage.binding, buffer.Value(), 0, 0, {}, {} } );
+			entries.push_back( { storage.binding, buffer.Value().id, 0, 0, {}, {} } );
 		}
 		for ( const material::ProgramTexture &texture : request.textures )
 		{
@@ -1625,7 +1632,7 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 			entries.push_back( { texture.binding, {}, 0, 0, id, {} } );
 			if ( texture.samplerBinding == material::kNoSamplerBinding )
 				continue; // only fetched
-			auto sampler = device.CreateSampler( external || staged ? texture.sampler
+			auto sampler = s.groupResources.AcquireSampler( device, external || staged ? texture.sampler
 			                                     : absent           ? texture.sampler
 			                                              : textures.Sampler( handle->second ) );
 			if ( !sampler )
@@ -1633,19 +1640,21 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 				*why = "a sampler was refused";
 				return false;
 			}
-			out.samplers.push_back( sampler.Value() );
-			entries.push_back( { texture.samplerBinding, {}, 0, 0, {}, sampler.Value() } );
+			if ( sampler.Value().owned )
+			out.samplers.push_back( sampler.Value().id );
+			entries.push_back( { texture.samplerBinding, {}, 0, 0, {}, sampler.Value().id } );
 		}
 		for ( const auto &[binding, desc] : request.samplers )
 		{
-			auto sampler = device.CreateSampler( desc );
+			auto sampler = s.groupResources.AcquireSampler( device, desc );
 			if ( !sampler )
 			{
 				*why = "an additional sampler was refused";
 				return false;
 			}
-			out.samplers.push_back( sampler.Value() );
-			entries.push_back( { binding, {}, 0, 0, {}, sampler.Value() } );
+			if ( sampler.Value().owned )
+			out.samplers.push_back( sampler.Value().id );
+			entries.push_back( { binding, {}, 0, 0, {}, sampler.Value().id } );
 		}
 		auto group = device.CreateBindGroup( { request.layout, entries } );
 		if ( !group )
@@ -1656,24 +1665,26 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 			return false;
 		}
 		out.group = group.Value();
-		if ( out.constants.IsValid() )
+		if ( out.constants.id.IsValid() )
 		{
 			encoder.TransitionBuffer(
-			    out.constants, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
-			encoder.WriteBuffer( out.constants, 0, request.constants );
+			    out.constants.id, out.constants.before, ResourceUsage::kCopyDestination );
+			encoder.WriteBuffer( out.constants.id, 0, request.constants );
 			encoder.TransitionBuffer(
-			    out.constants, ResourceUsage::kCopyDestination, ResourceUsage::kUniform );
+			    out.constants.id, ResourceUsage::kCopyDestination, ResourceUsage::kUniform );
+			out.constants.before = ResourceUsage::kUniform;
 		}
 		for ( std::size_t i = 0; i < out.storage.size(); ++i )
 		{
-			if ( out.borrowed[i] )
+			if ( out.storage[i].size == 0 )
 				continue;
 			encoder.TransitionBuffer(
-			    out.storage[i], ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+			    out.storage[i].id, out.storage[i].before, ResourceUsage::kCopyDestination );
 			if ( !request.storage[i].bytes.empty() )
-				encoder.WriteBuffer( out.storage[i], 0, request.storage[i].bytes );
+				encoder.WriteBuffer( out.storage[i].id, 0, request.storage[i].bytes );
 			encoder.TransitionBuffer(
-			    out.storage[i], ResourceUsage::kCopyDestination, ResourceUsage::kStorageRead );
+			    out.storage[i].id, ResourceUsage::kCopyDestination, ResourceUsage::kStorageRead );
+			out.storage[i].before = ResourceUsage::kStorageRead;
 		}
 		return true;
 	};
@@ -1893,10 +1904,10 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		else if ( !framesWritten[layout] )
 		{
 			encoder.TransitionBuffer(
-			    group.constants, ResourceUsage::kUniform, ResourceUsage::kCopyDestination );
-			encoder.WriteBuffer( group.constants, 0, request->constants );
+			    group.constants.id, ResourceUsage::kUniform, ResourceUsage::kCopyDestination );
+			encoder.WriteBuffer( group.constants.id, 0, request->constants );
 			encoder.TransitionBuffer(
-			    group.constants, ResourceUsage::kCopyDestination, ResourceUsage::kUniform );
+			    group.constants.id, ResourceUsage::kCopyDestination, ResourceUsage::kUniform );
 			framesWritten[layout] = true;
 		}
 		return &group;
@@ -2864,13 +2875,13 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 	encoder.EndRendering();
 	encoder.EndLabel();
 	for ( auto &[layout, group] : litViews )
-		s.retiredGroups.emplace_back( target.frame, group );
+		s.retiredGroups.emplace_back( target.frame, std::move( group ) );
 	for ( auto &[layout, group] : modelLitViews )
-		s.retiredGroups.emplace_back( target.frame, group );
+		s.retiredGroups.emplace_back( target.frame, std::move( group ) );
 	for ( auto &[layout, group] : sceneViews )
-		s.retiredGroups.emplace_back( target.frame, group );
+		s.retiredGroups.emplace_back( target.frame, std::move( group ) );
 	for ( auto &[layout, group] : reflectViews )
-		s.retiredGroups.emplace_back( target.frame, group );
+		s.retiredGroups.emplace_back( target.frame, std::move( group ) );
 
 	std::lock_guard<std::mutex> guard( s.lock );
 	++s.stats.viewsDrawn;
