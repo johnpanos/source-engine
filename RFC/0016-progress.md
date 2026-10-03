@@ -6685,7 +6685,7 @@ resolution, or light cohort was reduced. The High 120 FPS gate remains failed.
 | RCV-03: oriented area-light face selection | 29 native correctness checks and five sensitivity checks passed. Control/candidate/candidate/control arrival GPU medians were 62.837/60.346/59.499/58.582 ms; the control improved too as clocks rose. | **Rejected and removed**: no attributable frame gain. `rejected-area-face.patch` and `rejected-area-face-sources.tar.gz` retain the experiment. |
 | RCV-04: subgroup-coherent area-light traversal | Form a subgroup union of froxel masks, retaining each fragment's own membership and ascending accumulation order. Authored warp materials retain their original traversal. All 16 scalar/candidate lab images match bitwise (68 total checks). | **Rejected and removed**: candidate arrival/reverse/return GPU medians 57.926/22.651/58.482 ms versus fresh scalar control 58.195/22.318/57.999 ms. No consistent gain. Code, private native injection and logs are archived with the evidence. |
 | RCV-05: visibility raster resolve followed by material shading | Exact image parity in the bounded lab fixture; roughly 3% faster for large area-light cases, about 31–32% slower for large spot-light cases. | Lab benchmark retained; product remains inline. See the detailed feasibility result below. |
-| RCV-06: compiled coherent runtime/area traversal | Separate lab shader merges sorted runtime lists and area masks, then explicitly broadcasts the selected ID. Inspired by id Tech 6 and Godot Forward+. | Experimental checkpoint; production shader remains unchanged. Compiler allocation and whole-frame performance acceptance pending. |
+| RCV-06: compiled coherent runtime/area traversal | Separate lab shader merges sorted runtime lists and area masks, then explicitly broadcasts the selected ID. Inspired by id Tech 6 and Godot Forward+. | Lab and one captured frame match exactly when the diffuse light-warp pipeline retains its original compiled shader. All seven replaced pipelines still allocate 192 VGPRs. Production is unchanged; whole-frame speedup is unproven. |
 
 RCV-06 sources are checkpointed at the user's request before further experiments.
 Its owning surface shader uses a lab-only define; there is no new device
@@ -6700,6 +6700,36 @@ The pinned reference is
 [Godot e7cfa294's traversal](https://github.com/godotengine/godot/blob/e7cfa294a0b81bed7986be04a848cc1832a3f083/servers/rendering/renderer_rd/shaders/forward_clustered/scene_forward_clustered.glsl#L2543)
 alongside the retained id Tech 6 speaker notes. Godot is cloned separately under
 `/home/john/Downloads/idtech-rendering-research/godot`; it is not an engine dependency.
+
+The source checkpoint is `1d09ff58e`, followed by the lab formatting correction
+`dec873246`. Native validation (`render_lab suite shadowed-lights --validate`)
+passes 153 checks, including the 24 new comparisons. The candidate SPIR-V SHA-256
+is `09aed49e9116ca4f142aba716d443c74eea1bc187c7c2a3f2913f0d22e96d9be`;
+the no-define control is
+`035a81e12042bc8e4454850adbb429ca65e88aa188cc4f53b7156324b6571fe4` and
+matches the captured world shader byte for byte. The local evidence directory is
+`quality-results/rendercore-coherent-20261002/`; it is ignored by Git, so these
+commits retain the implementation and this result record, not the raw captures.
+
+Replacing all eight PBR pipelines in the High arrival capture initially changed
+roughly 450 bytes per MSAA sample, by at most 6/255. Pixel history isolated the
+affected pixels to the portal gun's diffuse light-warp material. Its per-light
+texture lookup uses implicit gradients; changed lane participation is a plausible
+cause, not an independently isolated derivative measurement. Keeping that one
+pipeline on its original compiled shader and replacing the other seven produces
+**zero changed bytes in every one of the four 1920 x 1080 RGBA8 MSAA samples**
+(`replay-no-warp.json`, 8,294,400 bytes compared per sample). This is one captured
+frame, not complete material or camera coverage. The replay's shader-ID exclusion
+is capture-specific diagnostic code, not an acceptable product selection policy.
+A supported implementation must select from material requirements and declared
+device capabilities, and must cover both diffuse and specular warp materials.
+
+The replacement fragment executables all still report 192 VGPRs, subgroup size
+64 and eight subgroups per SIMD, without spills or scratch allocation. Explicit
+broadcast alone has therefore **not reduced the compiler's register allocation**
+in these variants. These are compiler resource limits, not measured dynamic
+occupancy. No ordinary-game matched frame timings exist yet for RCV-06; neither
+the exact image comparison nor the lab timings establish a full-frame speedup.
 
 The latest scalar control (`g1-control`) records arrival/reverse/return frame
 interval medians of 62.652/23.098/62.445 ms and GPU render medians of
