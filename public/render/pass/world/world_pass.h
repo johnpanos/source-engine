@@ -484,6 +484,14 @@ public:
 	    const std::optional<std::vector<std::uint32_t>> &surfaceSelection = std::nullopt ) const;
 	// The tag of the slot to mark for the view; 0 when there is nothing to draw.
 	std::uint32_t QueueView( WorldView view );
+	// Render sequence: largest compatible opaque prefix (at least one for
+	// nonempty input). The caller supplies only slots with identical target
+	// state and no intervening observable commands. A later world cohort is
+	// a boundary; model cohorts retain their original color-draw ordering.
+	std::size_t OpaqueBatchSize(
+	    std::span<const std::uint32_t> tags, std::uint64_t streamEpoch ) const;
+	void RecordBatch( std::span<const std::uint32_t> tags, device::CommandEncoder &encoder,
+	    const WorldTarget &target );
 	// Add the legacy culler's accepted static props before the queued view's
 	// slot records. The array is either accepted whole or refused whole.
 	WorldStats Stats() const;

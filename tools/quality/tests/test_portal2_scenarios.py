@@ -308,6 +308,18 @@ class WorkloadTests(unittest.TestCase):
                     continue
                 self.assertIn('"%s"' % check, text, "%s does not report %s" % (script.name, check))
 
+    def test_intro4_requires_actual_probe_fixture(self):
+        path = ROOT / "quality/workloads/portal2-intro4-perf-v1/workload.json"
+        workload = scenarios.load_workload(path)
+        scenario = workload["scenarios"][0]
+        check = next(c for c in scenario["console_checks"] if c["name"] == "map.fixture")
+        for map_name, expected in [("sp_a1_intro4_probe64", "PASS"),
+                                   ("sp_a1_intro4", "FAIL")]:
+            outcome, _ = scenarios.evaluate_console_check(
+                check, {"map_identity": ["map     : %s at: 0 x, 0 y, 0 z" % map_name]})
+            self.assertEqual(outcome, expected)
+        self.assertEqual(scenarios.evaluate_console_check(check, {})[0], "FAIL")
+
     def test_installed_transition_workload_is_valid(self):
         path = ROOT / "quality/workloads/portal2-transition-v1/scenarios.json"
         workload = scenarios.load_workload(path)

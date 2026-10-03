@@ -6842,6 +6842,14 @@ void CVulkanContext::QueueCorePass( uint32_t tag, const CorePassTerms &terms )
 	m_corePassTerms.push_back( terms );
 }
 
+bool CVulkanContext::SkipLegacyRecord( const DynDraw &d, bool legacyOff, bool legacyHud )
+{
+	return legacyOff && !legacyHud &&
+	       ( ( d.kind == kRecordDraw && !d.coreCustomEffect ) ||
+	           ( d.kind == kRecordCopy && !d.corePortalCopy ) || d.kind == kRecordSceneCapture ||
+	           ( d.kind == kRecordClear && !d.clearDepth && !d.clearStencil ) );
+}
+
 void CVulkanContext::RecordCorePassSections( render::device::CommandEncoder &encoder )
 {
 	if ( !m_corePassRecorder )
@@ -6849,11 +6857,28 @@ void CVulkanContext::RecordCorePassSections( render::device::CommandEncoder &enc
 	// One section per slot record, whether the replay reaches it or not (an
 	// unreached section runs after the scene record, drawing into the back
 	// buffer as it then stands).
-	for ( const DynDraw &d : m_dynDrawRecords )
+	m_opaqueCandidates = m_opaqueBatches = m_opaqueFollowers = 0;
+	bool legacyOff = false, legacyHud = false;
+	std::size_t followers = 0;
+	std::vector<std::uint32_t> tags;
+	for ( std::size_t index = 0; index < m_dynDrawRecords.size(); ++index )
 	{
+		const DynDraw &d = m_dynDrawRecords[index];
+
 		if ( d.kind != kRecordCorePass )
 			continue;
+		if ( d.corePass == render::legacy::kCorePassLegacyHud )
+			legacyHud = true;
+		if ( ( d.corePass & render::legacy::kCorePassForwarded ) &&
+		     ( d.corePass & render::legacy::kCorePassLegacyOff ) )
+			legacyOff = true;
 		m_hostDevice->BeginSection( encoder );
+		if ( followers )
+		{
+			--followers;
+			m_hostDevice->EndSection( encoder );
+			continue;
+		}
 		render::legacy::CorePassTarget target = CorePassTargetFor( d.target );
 		if ( d.corePassTerms < m_corePassTerms.size() )
 		{
@@ -6872,7 +6897,42 @@ void CVulkanContext::RecordCorePassSections( render::device::CommandEncoder &enc
 			target.time = terms.time;
 			target.waterReflectTintScale = terms.waterReflectTintScale;
 		}
-		m_corePassRecorder->RecordSlot( d.corePass, encoder, target );
+		tags.clear();
+		tags.push_back( d.corePass );
+		if ( m_opaqueBatching && d.corePassTerms < m_corePassTerms.size() )
+		{
+			for ( std::size_t next = index + 1; next < m_dynDrawRecords.size(); ++next )
+			{
+				const DynDraw &candidate = m_dynDrawRecords[next];
+				if ( SkipLegacyRecord( candidate, legacyOff, legacyHud ) )
+					continue;
+				if ( candidate.kind != kRecordCorePass || candidate.target != d.target ||
+				     candidate.corePassTerms >= m_corePassTerms.size() )
+					break;
+				// The opaque-batch contract admits only time-independent draws.
+				// Preserve every other captured term; ordered animated draws are
+				// rejected by the recorder and use their original time below.
+				auto nextTerms = m_corePassTerms[candidate.corePassTerms];
+				nextTerms.time = m_corePassTerms[d.corePassTerms].time;
+				if ( !( nextTerms == m_corePassTerms[d.corePassTerms] ) )
+					break;
+				tags.push_back( candidate.corePass );
+				// Policy markers themselves always remain a boundary.
+				if ( candidate.corePass & render::legacy::kCorePassLegacyOff ||
+				     candidate.corePass == render::legacy::kCorePassLegacyHud )
+					break;
+			}
+		}
+		m_opaqueCandidates += tags.size() > 1;
+		const auto count = m_corePassRecorder->RecordOpaqueBatch( tags, encoder, target );
+		if ( count == 0 || count > tags.size() )
+			Log( "error: opaque recorder returned an invalid consumed-slot count\n" );
+		followers = count > 0 && count <= tags.size() ? count - 1 : 0;
+		if ( followers )
+		{
+			++m_opaqueBatches;
+			m_opaqueFollowers += followers;
+		}
 		m_hostDevice->EndSection( encoder );
 	}
 }
@@ -7635,11 +7695,7 @@ void CVulkanContext::RecordFrameScene( VkCommandBuffer cmd )
 			if ( d.kind == kRecordCorePass && ( d.corePass & render::legacy::kCorePassForwarded ) &&
 			     ( d.corePass & render::legacy::kCorePassLegacyOff ) )
 				legacyOff = m_frameLegacyOff = true;
-			if ( legacyOff && !legacyHud &&
-			     ( ( d.kind == kRecordDraw && !d.coreCustomEffect ) ||
-			         ( d.kind == kRecordCopy && !d.corePortalCopy ) ||
-			         d.kind == kRecordSceneCapture ||
-			         ( d.kind == kRecordClear && !d.clearDepth && !d.clearStencil ) ) )
+			if ( SkipLegacyRecord( d, legacyOff, legacyHud ) )
 				continue;
 			if ( d.kind == kRecordCorePass )
 			{
@@ -9969,6 +10025,10 @@ void CVulkanContext::WriteFrameStats( uint64_t endUs )
 		    m_dynQueued.size() * sizeof( float ), m_dynIndices.size() * sizeof( uint32_t ),
 		    static_cast<unsigned long long>( m_frameCost.uploadBytes ), m_swapExtent.width,
 		    m_swapExtent.height );
+		std::fprintf( m_frameStatsFile, ",\"opaque_batch\":[%llu,%llu,%llu]",
+		    static_cast<unsigned long long>( m_opaqueCandidates ),
+		    static_cast<unsigned long long>( m_opaqueBatches ),
+		    static_cast<unsigned long long>( m_opaqueFollowers ) );
 		std::fputs( ",\"cost\":{", m_frameStatsFile );
 		bool first = true;
 		for ( int kind = 0; kind < kFrameCostKinds; ++kind )
@@ -10223,6 +10283,9 @@ bool CVulkanContext::Resize( int width, int height, std::string *outError )
 
 void CVulkanContext::Shutdown()
 {
+	Log( "opaque batching: %llu batches, %llu follower slots\n",
+	    static_cast<unsigned long long>( m_opaqueBatches ),
+	    static_cast<unsigned long long>( m_opaqueFollowers ) );
 	if ( m_corePassRecorder || m_corePassesRun )
 		Log( "core passes: %llu slot sections ran\n",
 		    static_cast<unsigned long long>( m_corePassesRun ) );

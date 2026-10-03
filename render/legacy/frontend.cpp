@@ -81,6 +81,24 @@ public:
 		return m_Forwarded ? m_Forwarded->QueueMesh( draw ) : 0;
 	}
 
+	std::size_t RecordOpaqueBatch( std::span<const std::uint32_t> tags,
+	    device::CommandEncoder &encoder, const CorePassTarget &target ) override
+	{
+		if ( tags.empty() )
+			return 0;
+		if ( !m_Forwarded || !( tags.front() & kCorePassForwarded ) )
+			return ICorePassRecorder::RecordOpaqueBatch( tags, encoder, target );
+		const auto end = std::find_if( tags.begin(), tags.end(),
+		    []( auto tag )
+		    {
+			    return !( tag & kCorePassForwarded );
+		    } );
+		const auto count = m_Forwarded->RecordOpaqueBatch(
+		    tags.first( std::size_t( end - tags.begin() ) ), encoder, target );
+		m_Recorded.fetch_add( count, std::memory_order_relaxed );
+		return count;
+	}
+
 	void RecordSlot(
 	    std::uint32_t tag, device::CommandEncoder &encoder, const CorePassTarget &target ) override
 	{

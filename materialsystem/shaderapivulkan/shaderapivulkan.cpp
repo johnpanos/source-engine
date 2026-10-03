@@ -306,6 +306,8 @@ static bool InitVulkanContext(
 		Warning( "[NativeVulkan] GPU timers unavailable: %s\n", timerError.c_str() );
 	// -vkpassmerge 0 restores one render pass per view change (A/B, rollback).
 	g_VulkanContext.SetPassMerging( CommandLine()->ParmValue( "-vkpassmerge", 1 ) != 0 );
+	// Core plumbing: same-binary diagnostic control for complete-view batching.
+	g_VulkanContext.SetOpaqueBatching( CommandLine()->ParmValue( "-vkopaquebatch", 1 ) != 0 );
 	// The pipeline store lives in the mod directory (the launcher runs from the
 	// base directory, and the mod directory is where the engine writes its
 	// config on every platform); -vkpipelinecache names another directory, or

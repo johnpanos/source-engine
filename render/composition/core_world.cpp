@@ -1784,6 +1784,33 @@ void CoreWorld::RecordSlot(
 			m_Hatches.fetch_add( 1, std::memory_order_relaxed );
 		return;
 	}
+	RecordWorldBatch( std::span( &tag, 1 ), encoder, target );
+}
+
+std::size_t CoreWorld::RecordOpaqueBatch( std::span<const std::uint32_t> tags,
+    device::CommandEncoder &encoder, const legacy::CorePassTarget &target )
+{
+	if ( tags.empty() )
+		return 0;
+	const auto &state = target.drawState;
+	// Only an ordinary opaque depth-writing view can share early depth.
+	// Keep portal/stencil operations and special depth ranges in stream order.
+	const bool safe = m_DepthPrepass.load( std::memory_order_relaxed ) && !state.overrideDepth &&
+	                  !state.stencil.enabled && state.colorWrite == device::kColorWriteAll &&
+	                  target.minDepth == 0.0f && target.maxDepth == 1.0f;
+	const std::size_t count = safe ? m_Pass.OpaqueBatchSize( tags, target.streamEpoch ) : 1;
+
+	if ( count == 1 )
+		RecordSlot( tags.front(), encoder, target );
+	else
+		RecordWorldBatch( tags.first( count ), encoder, target );
+	return count;
+}
+
+void CoreWorld::RecordWorldBatch( std::span<const std::uint32_t> tags,
+    device::CommandEncoder &encoder, const legacy::CorePassTarget &target )
+{
+	const std::uint32_t tag = tags.front();
 	std::optional<Textures> textures;
 	if ( target.textures )
 		textures.emplace( *target.textures );
@@ -2005,7 +2032,7 @@ void CoreWorld::RecordSlot(
 
 	if ( timers )
 		encoder.EndLabel();
-	m_Pass.Record( tag, encoder, world );
+	m_Pass.RecordBatch( tags, encoder, world );
 	if ( timers )
 	{
 		encoder.EndLabel();
@@ -2017,17 +2044,21 @@ void CoreWorld::RecordSlot(
 		m_RecordViews.fetch_add( 1, std::memory_order_relaxed );
 	}
 	m_SlotTimers = nullptr;
-	bool topLevel = false;
+	for ( const auto recordedTag : tags )
 	{
-		std::lock_guard<std::mutex> guard( m_TopLevelLock );
-		topLevel = m_TopLevel.count( tag ) != 0;
-	}
-	if ( topLevel )
-	{
-		auto &views = m_FrameViews[target.frame];
-		const auto entry = std::make_pair( tag, target.color );
-		if ( std::find( views.begin(), views.end(), entry ) == views.end() && views.size() < 64 )
-			views.push_back( entry );
+		bool topLevel = false;
+		{
+			std::lock_guard<std::mutex> guard( m_TopLevelLock );
+			topLevel = m_TopLevel.count( recordedTag ) != 0;
+		}
+		if ( topLevel )
+		{
+			auto &views = m_FrameViews[target.frame];
+			const auto entry = std::make_pair( recordedTag, target.color );
+			if ( std::find( views.begin(), views.end(), entry ) == views.end() &&
+			     views.size() < 64 )
+				views.push_back( entry );
+		}
 	}
 }
 

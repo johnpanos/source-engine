@@ -125,6 +125,8 @@ public:
 
 	std::uint32_t QueueMesh( const legacy::CoreMeshDraw &draw ) override;
 
+	std::size_t RecordOpaqueBatch( std::span<const std::uint32_t> tags,
+	    device::CommandEncoder &encoder, const legacy::CorePassTarget &target ) override;
 	void RecordSlot( std::uint32_t tag, device::CommandEncoder &encoder,
 	    const legacy::CorePassTarget &target ) override;
 	std::optional<pass::world::WorldSceneColor> Capture( device::IRenderDevice2 &device,
@@ -152,6 +154,8 @@ public:
 	}
 
 private:
+	void RecordWorldBatch( std::span<const std::uint32_t> tags, device::CommandEncoder &encoder,
+	    const legacy::CorePassTarget &target );
 	// Sets the pass's world stage from m_StageWorld and the captured lighting.
 	void SetStage();
 	// Rebuilds the static shadow mesh from the stage and the core-claimed props.

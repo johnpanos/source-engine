@@ -80,6 +80,15 @@ public:
 		else
 			m_World.RecordSlot( tag, encoder, target );
 	}
+	std::size_t RecordOpaqueBatch( std::span<const std::uint32_t> tags,
+	    device::CommandEncoder &encoder, const legacy::CorePassTarget &target ) override
+	{
+		std::size_t count = 0;
+		while ( count < tags.size() && !pass::panels::IsPanelTag( tags[count] ) )
+			++count;
+		return count ? m_World.RecordOpaqueBatch( tags.first( count ), encoder, target )
+		             : ICorePassRecorder::RecordOpaqueBatch( tags, encoder, target );
+	}
 	bool RecordOutput(
 	    device::CommandEncoder &encoder, const legacy::CoreOutputTargets &targets ) override
 	{

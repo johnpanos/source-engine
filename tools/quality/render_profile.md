@@ -146,3 +146,32 @@ records; their number is not a draw count. Pipeline hashes alone do not identify
 a material or correlate a shader with a timed graph pass. A high register count
 can limit residency and latency hiding; it does not independently prove a stall.
 Do not enable driver dumps for accepted production performance measurements.
+
+
+## Quick opaque world/model comparison
+
+Use the installed Intro4 workload for short iterations on the complete game
+frame. With one private, already staged runtime and the same executable/library
+bytes, collect `frame_floor.py` runs with `--opaque-batching off`, then `on`,
+then `on`, then `off`. Set `--workload
+quality/workloads/portal2-intro4-perf-v1/workload.json` and a fresh `--out` for each
+run. `--skip-stage` still installs the selected workload scripts and preview
+options. The ordinary High resolution, effects and 4x MSAA remain mandatory;
+this switch only changes compatible opaque-slot grouping. The native equivalent
+is `-vkopaquebatch 0/1` (default 1).
+
+Compare arrival, reverse and return phases separately using whole-frame interval,
+CPU and GPU render time. Retain settings, binary hashes, frame logs and power
+conditions. A faster isolated pass or laboratory scene cannot accept this change.
+The frame JSON field `opaque_batch` contains candidate prefixes, accepted batches
+and consumed follower slots for the latest stream recording; it is not a count
+of meshes or lifetime totals. A capture can re-record that stream.
+
+Run separate on/off `--preview` captures to inspect the three settled views.
+Screenshots exercise stream replay and add work; their timings are not performance
+evidence. The script checks the authored map name returned by VScript, while the
+bracketed `status` console check independently requires the actual `_probe64`
+fixture. A retail map with the same authored name cannot pass fixture identity.
+Use `--profile` only for separate pass-timing diagnosis. Ordinary runs deliberately
+omit pass timers; the detailed analyzer's missing-pass warnings do not provide a
+pass breakdown and must not be reported as one.

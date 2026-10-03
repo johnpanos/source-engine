@@ -8830,7 +8830,7 @@
         "render/pass/world/world_pass.cpp",
         "unittests/rendertest/core/pass/world/test_world_pass.cpp"
       ],
-      "min_checks": 9,
+      "min_checks": 97,
       "extra_flags": [
         "-pthread"
       ],
@@ -10385,7 +10385,7 @@
         "--validate"
       ],
       "result_protocol": "checks-v1",
-      "min_checks": 42,
+      "min_checks": 77,
       "timeout_seconds": 300,
       "requires": [
         "path:build-rc-lab/render/lab/render_lab",

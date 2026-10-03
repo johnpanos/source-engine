@@ -30,6 +30,7 @@
 #include "render/material/surface_program.h"
 
 #include <cstdint>
+#include <span>
 
 namespace render::legacy
 {
@@ -49,6 +50,7 @@ struct CorePassFog
 	// water z, 1, 1 / range.
 	float params[4] = { 0.0f, 0.0f, 1.0f, 0.0f };
 	float eyeZ = 0.0f; // the camera's world z
+	bool operator==( const CorePassFog & ) const = default;
 };
 
 // The target a slot's pass draws into: the backend's open target at the
@@ -270,6 +272,22 @@ public:
 	// records, once per slot in stream order.
 	virtual void RecordSlot(
 	    std::uint32_t tag, device::CommandEncoder &encoder, const CorePassTarget &target ) = 0;
+	// Record a compatible prefix of adjacent slots with identical target state
+	// except shader time. Only time-independent draws may consume a follower;
+	// a refused follower records later with its original target, including time.
+	// Records the prefix with the first slot's target,
+	// returning its length. The host may omit only commands replay itself skips;
+	// every draw, clear, query and copy that executes is an ordering boundary.
+	// The default consumes one slot; callers keep one section per original slot
+	// (empty sections for consumed followers), including during capture replay.
+	virtual std::size_t RecordOpaqueBatch( std::span<const std::uint32_t> tags,
+	    device::CommandEncoder &encoder, const CorePassTarget &target )
+	{
+		if ( tags.empty() )
+			return 0;
+		RecordSlot( tags.front(), encoder, target );
+		return 1;
+	}
 	// Records the frame's output into `encoder` as a section of the present
 	// stage, outside rendering, leaving both textures in their home usages.
 	// False when it recorded nothing (then the backend presents as before).

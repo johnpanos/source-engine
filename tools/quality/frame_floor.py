@@ -345,11 +345,6 @@ def stage(args, workload):
                               stdout=stream, stderr=subprocess.STDOUT).returncode
     if code != 0:
         raise FloorError("staging failed (%s)" % log)
-    portal2_scenarios.install_scripts(args.workload, workload, runtime)
-    scripts = runtime / "portal2/scripts/vscripts" / portal2_scenarios.SCRIPT_DIRECTORY
-    (scripts / OPTIONS_SCRIPT).write_text(
-        "// Written by tools/quality/frame_floor.py for this run.\n"
-        "::FLOOR_OPTIONS <- { preview = %s }\n" % ("true" if args.preview else "false"))
     for scenario in workload["scenarios"]:
         if not (runtime / "portal2/custom" / ("pbrt-" + scenario["map"])).exists() and \
                 not (runtime / "portal2/maps" / (scenario["map"] + ".bsp")).exists():
@@ -367,6 +362,7 @@ def game_command(args, scenario, stats_path, runtime):
     return [str(ROOT / "play_p2"), *args.render_switch,
             "-multirun", "-novid", "-condebug", "-windowed", "-noborder",
             "-w", str(args.width), "-h", str(args.height),
+            "-vkopaquebatch", "0" if getattr(args, "opaque_batching", "on") == "off" else "1",
             # The game starts in runtime; keep evidence paths beneath its
             # 512-character command-line limit even for a long output path.
             "-vkframestats", os.path.relpath(stats_path, runtime),
@@ -571,6 +567,8 @@ def main(argv=None):
     parser.add_argument("--profile", action="store_true",
                         help="enable existing backend and core GPU pass timers; diagnostic "
                              "timings include instrumentation overhead, with quality unchanged")
+    parser.add_argument("--opaque-batching", choices=("on", "off"), default="on",
+                        help="same-binary opaque batching control; leaves High quality unchanged")
     parser.add_argument("--preview", action="store_true",
                         help="take a screenshot at each view of the route (a screenshot is "
                              "itself a hitch: implies --no-stop, and no verdict on lows)")
@@ -600,6 +598,7 @@ def main(argv=None):
                 "workload": str(args.workload), "settings": settings,
                 "display": {"mode": args.display, "width": args.width, "height": args.height},
                 "preview": args.preview, "no_stop": args.no_stop, "profile": args.profile,
+                "opaque_batching": args.opaque_batching,
                 "results": []}
     evidence["render_budget"] = args.render_budget
     args.graphics = graphics_context() if args.render_budget else {}
@@ -608,6 +607,11 @@ def main(argv=None):
     evidence_path = args.out / "evidence.json"
     try:
         runtime = args.runtime.resolve() if args.skip_stage else stage(args, workload)
+        portal2_scenarios.install_scripts(args.workload, workload, runtime)
+        scripts = runtime / "portal2/scripts/vscripts" / portal2_scenarios.SCRIPT_DIRECTORY
+        (scripts / OPTIONS_SCRIPT).write_text(
+            "// Written by tools/quality/frame_floor.py for this run.\n"
+            "::FLOOR_OPTIONS <- { preview = %s }\n" % ("true" if args.preview else "false"))
         if args.profile:
             (runtime / "portal2/cfg/render_profile.cfg").write_text(
                 "cl_render_debug_gpu_timers 1\ncl_render_debug_stats 1\n")

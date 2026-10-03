@@ -3,6 +3,7 @@
 // before the measured bracket. This is a camera workload, not story parity.
 
 IncludeScript( "qa/qa_driver" )
+IncludeScript( "qa/floor_options" )
 
 ::INTRO4_EYE <- Vector( 145, -440, 90 )
 
@@ -14,6 +15,8 @@ function Intro4_View( yaw )
 
 function Intro4_Position()
 {
+	if ( ::FLOOR_OPTIONS.preview )
+		SendToConsole( "screenshot" )
 	QA_Detail( "eye " + QA_Vec( QA_Player().EyePosition() ) )
 	return QA_Dist( QA_Player().EyePosition(), ::INTRO4_EYE ) < 1.0
 }
@@ -21,8 +24,14 @@ function Intro4_Position()
 QA_Expect( "map.loaded", function()
 {
 	QA_Detail( GetMapName() )
-	return GetMapName() == "sp_a1_intro4_probe64"
+	// VScript intentionally sees the original name for shipped story tables.
+	return GetMapName() == "sp_a1_intro4"
 } )
+
+QA_Do( "verify installed map", function()
+{
+	SendToConsole( "echo QA_WINDOW map_identity BEGIN; status; echo QA_WINDOW map_identity END" )
+}, 0.1 )
 
 QA_Do( "warm arrival", function()
 {

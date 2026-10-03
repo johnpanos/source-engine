@@ -7558,7 +7558,36 @@ No render quality, shader, effect, resolution, sample count or frozen-path behav
 was changed. R89/R96 resource efficiency improves; their larger acceptance gates
 and RFC 0016's hard render budgets are not certified by this microbenchmark.
 
-## RCV-11: complete-view preparation and opaque batching (2026-10-02, planned)
+## RCV-11: complete-view preparation and opaque batching (2026-10-03, bounded implementation)
+
+**2026-10-03 scope clarification:** the user requested completion of opaque-view
+batching in a worktree, then directed: "Do not focus on rendercore too much. The
+main gains are the pipeline as a whole in game. That's what matters. Update docs
+to say that." The owning [in-game pipeline performance rule](0016-render-core.md#in-game-pipeline-performance-user-decision-2026-10-03)
+now makes complete gameplay-frame cost the optimization objective. Continue from
+the retained shared-view work below, trace cohort ordering through the game and
+legacy/native bridges, and judge the result with matched full-frame product
+measurements. Lab checks remain the core correctness prerequisite. This
+clarification adds no performance evidence and closes no gate.
+
+The completion work is isolated in
+`/home/john/.codex/worktrees/opaque-view-batching/source-engine`, branch
+`codex/opaque-view-batching`, based on `d117ea50b`. `render.pass.world` owns opaque
+draw preparation/execution, `render.composition` owns integration and ordering,
+and the native adapter owns command translation. The existing shared-view branch
+and the main checkout's concurrent screen/panel changes are retained separately.
+
+The bounded implementation now batches compatible world/static/posed tickets
+through the actual game stream, shares their preparation and early depth, and
+preserves color order, target/state boundaries and capture replay. Material policy
+stays in the resolver. The [implementation and game evidence](0016-opaque-batching-2026-10-03.md)
+records identical-binary off/on/on/off measurements: arrival median frame interval
+34.623/36.380 ms off versus 30.199/29.549 ms on, with unchanged High/4x MSAA
+settings. Lab pixel oracles and gameplay screenshot pairs cover correctness.
+This improves the in-game pipeline; the hard 120 FPS gate and broader R96
+content/view acceptance remain open. The following planning record describes the
+preceding shared-view work; its pending-batching statements are superseded by
+this implementation record.
 
 User direction: checkpoint current progress and plan, work in a separate worktree,
 and pursue the next substantial complete-frame improvement. RCV-09/10's retained

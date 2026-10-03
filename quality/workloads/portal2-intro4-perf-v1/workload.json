@@ -12,7 +12,16 @@
         "map.loaded",
         "view.arrival",
         "view.reverse",
-        "view.return"
+        "view.return",
+        "map.fixture"
+      ],
+      "console_checks": [
+        {
+          "name": "map.fixture",
+          "window": "map_identity",
+          "select": "^map\\s+:",
+          "expect": "^map\\s+: sp_a1_intro4_probe64 at:"
+        }
       ]
     }
   ],

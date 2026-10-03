@@ -358,6 +358,21 @@ foundation::Expected<device::BlendMode, std::string> ClaimForDrawing(
 	return foundation::MakeUnexpected( "family " + material.family + " has no program yet" );
 }
 
+bool SupportsOpaqueBatch( const MaterialDesc &material, bool mesh )
+{
+	if ( material.family == "pbr" )
+	{
+		std::string why;
+		const auto block = BlockFor( material, &why, true );
+		if ( !block )
+			return false;
+		const PbrClaim claim = ClaimPbr( *block, true );
+		return claim.claimed && !claim.transmission && !claim.translucent;
+	}
+	return mesh ? material.family == "vertexlit"
+	            : material.family == "lightmapped" || material.family == "unlit";
+}
+
 foundation::Expected<device::BlendMode, std::string> ClaimForMesh(
     const MaterialDesc &material, bool nativeReflectionProbes, bool sceneColorAvailable )
 {

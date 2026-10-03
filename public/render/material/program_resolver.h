@@ -204,6 +204,11 @@ private:
 // is claimed only with it).
 foundation::Expected<device::BlendMode, std::string> ClaimForDrawing(
     const MaterialDesc &material, bool worldPbr = false );
+// Additional ordering requirements for an already claimed opaque material:
+// no scene-color dependency, animated frame time or depth/stencil-only effect.
+// Evaluated when the material snapshot is claimed, not during view recording.
+bool SupportsOpaqueBatch( const MaterialDesc &material, bool mesh );
+
 // The mesh point's exact-variable claim without making a pipeline.
 foundation::Expected<device::BlendMode, std::string> ClaimForMesh( const MaterialDesc &material,
     bool nativeReflectionProbes = false, bool sceneColorAvailable = false );

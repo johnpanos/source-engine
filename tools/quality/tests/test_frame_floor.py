@@ -48,6 +48,16 @@ class FrameFloorTest(unittest.TestCase):
         with self.assertRaises(frame_floor.FloorError):
             frame_floor.configure_budget(self.workload, args)
 
+    def test_opaque_batching_control_preserves_high_settings(self):
+        for mode, value in (("off", "0"), ("on", "1")):
+            args = arguments(opaque_batching=mode, start_frames=60)
+            args.render_budget = frame_floor.configure_budget(self.workload, args)
+            command = frame_floor.game_command(args, {"name": "route", "map": "map"},
+                                               Path("/tmp/frames.jsonl"), Path("/tmp/runtime"))
+            self.assertEqual(value, command[command.index("-vkopaquebatch") + 1])
+            self.assertIn("render_budget_high", command)
+            self.assertEqual("4", command[command.index("+mat_antialias") + 1])
+
     def test_wrapper_exit_does_not_leave_its_game_running(self):
         process = mock.Mock(pid=1234)
         process.poll.return_value = 0

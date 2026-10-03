@@ -339,7 +339,9 @@ public:
 		render::legacy::CorePassFog fog;
 		float time = 0.0f;
 		float waterReflectTintScale = 1.0f;
+		bool operator==( const CorePassTerms & ) const = default;
 	};
+	void SetOpaqueBatching( bool enabled ) { m_opaqueBatching = enabled; }
 	void QueueCorePass( uint32_t tag, const CorePassTerms &terms );
 	std::uint32_t QueueCoreMesh( const render::legacy::CoreMeshDraw &draw )
 	{
@@ -2148,6 +2150,10 @@ private:
 	// The frame's clearing pass over the sRGB view (m_passMerging).
 	VkRenderPass m_renderPassClearSrgb = VK_NULL_HANDLE;
 	bool m_passMerging = true;
+	bool m_opaqueBatching = true;
+	std::uint64_t m_opaqueCandidates = 0;
+	std::uint64_t m_opaqueBatches = 0;
+	std::uint64_t m_opaqueFollowers = 0;
 	// PortalRefract's vertex input: the textured one plus normal and tangent.
 	VkVertexInputAttributeDescription m_portalAttrs[6] = {};
 	VkPipelineVertexInputStateCreateInfo m_portalVin = {};
@@ -2571,6 +2577,7 @@ private:
 	bool RecordWantsSrgb( const DynDraw &r ) const;
 	// Which of the back buffer's depth and stencil a record may read
 	// (kKeepDepth | kKeepStencil). Unknown kinds count as reading both.
+	static bool SkipLegacyRecord( const DynDraw &record, bool legacyOff, bool legacyHud );
 	static int RecordBackBufferDepthReads( const DynDraw &r );
 	// The draw's raster state with alphaTest off when its alpha reference is
 	// (textured, skin and lightmapped pipelines).

@@ -493,6 +493,35 @@ the domain owner and keep composition limited to integration and lifetime work.
 This observation calls for bounded ownership corrections with working consumers,
 not a wholesale rewrite or a claim that every existing operation is misplaced.
 
+#### In-game pipeline performance (user decision, 2026-10-03)
+
+Optimize the complete in-game pipeline. The user's direction is: "Do not focus
+on rendercore too much. The main gains are the pipeline as a whole in game.
+That's what matters." Select runtime optimization work from measured gameplay
+frame costs across scene gathering, animation and visibility, geometry
+conversion, queued material calls, core preparation and drawing, native command
+translation, uploads, synchronization, GPU execution and presentation. Each
+operation stays with its existing owner; this performance scope does not move
+gameplay or platform responsibilities into the render core.
+
+`render_lab` remains the required correctness and lifetime proof for core
+changes under rule 3. Lab timings, allocation counts, shader statistics and
+fragment invocation counts diagnose costs; they do not establish an in-game
+performance improvement. Retain an optimization for performance only when
+matched complete-gameplay-frame measurements demonstrate its benefit at the
+declared image quality, resolution and sample count. Record CPU and GPU costs,
+frame intervals and tails, workload and binary identities, and power/thermal
+conditions so a shifted bottleneck or throttled comparison is visible. The
+[hard render budgets](#hard-render-budgets-user-decision-2026-10-01) still own
+acceptance; a useful measured improvement can leave that gate open.
+
+For opaque-view batching, follow a view through the whole game pipeline and
+remove repeated preparation or shading at the boundary that causes it. Gather
+only across proven ordering boundaries, preserving equal-depth material order,
+alpha coverage, portal/stencil effects, transparency and scene-color captures.
+The objective is lower complete in-game frame cost; a faster isolated core pass
+is supporting evidence only.
+
 ### Enforcement
 
 - **Review.** Every change under `materialsystem/`, `engine/gl_lightmap.cpp`,

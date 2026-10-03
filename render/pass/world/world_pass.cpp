@@ -95,6 +95,7 @@ struct Claimed
 {
 	bool draws = false;
 	bool blended = false;
+	bool opaqueBatch = false;
 	material::MaterialDesc desc;
 	std::map<std::string, int> handles; // the importer's texture name -> handle
 };
@@ -368,6 +369,8 @@ struct WorldPass::State
 		std::uint64_t recordedStream = 0;
 		WorldView view;
 	};
+	std::size_t OpaqueBatchSize(
+	    std::span<const std::uint32_t> tags, std::uint64_t streamEpoch ) const;
 	std::deque<Queued> views;
 	// Views already recorded, newest last: the backend records a frame's
 	// stream again for an on-demand capture (a screenshot), with the same
@@ -568,6 +571,8 @@ void WorldPass::SetWorld( WorldData data )
 			{
 				claimed.blended |= blend.Value() != BlendMode::kOpaque;
 				claimed.draws = true;
+				claimed.opaqueBatch =
+				    !claimed.blended && material::SupportsOpaqueBatch( claimed.desc, source.mesh );
 			}
 		}
 		if ( !gap.empty() )
@@ -879,6 +884,109 @@ std::uint32_t WorldPass::QueueView( WorldView view )
 	return kWorldTag | serial;
 }
 
+std::size_t WorldPass::OpaqueBatchSize(
+    std::span<const std::uint32_t> tags, std::uint64_t streamEpoch ) const
+{
+	const State &s = *m_State;
+	std::lock_guard<std::mutex> guard( s.lock );
+	return s.OpaqueBatchSize( tags, streamEpoch );
+}
+
+std::size_t WorldPass::State::OpaqueBatchSize(
+    std::span<const std::uint32_t> tags, std::uint64_t streamEpoch ) const
+{
+	if ( tags.empty() )
+		return 0;
+	const State &s = *this;
+	if ( !s.world || !s.world->stage || !s.claims )
+		return 1;
+	const auto lookup = [&]( std::uint32_t tag ) -> const WorldView *
+	{
+		if ( !IsWorldTag( tag ) || !( tag & kWorldSerialMask ) )
+			return nullptr;
+		const auto serial = tag & kWorldSerialMask;
+		for ( const auto *queue : { &s.recorded, &s.views } )
+		{
+			for ( const auto &entry : *queue )
+			{
+				if ( entry.serial == serial && entry.generation == s.generation &&
+				     ( queue == &s.views || !streamEpoch || entry.recordedStream == streamEpoch ) )
+					return &entry.view;
+			}
+		}
+		return nullptr;
+	};
+	const auto materialEligible = [&]( std::uint32_t id )
+	{
+		return id < s.claims->size() && ( *s.claims )[id].opaqueBatch;
+	};
+	const auto eligible = [&]( const WorldView &view )
+	{
+		// Debug draws retain their individual cohort identity and bisection.
+		if ( !view.hostFrame || !view.dynamicDraws.empty() || view.debug.view ||
+		     view.debug.legacy != frame::DebugLegacy::kOff )
+			return false;
+		for ( auto surface : view.surfaces )
+			if ( surface >= s.world->surfaces.size() ||
+			     !materialEligible( s.world->surfaces[surface].material ) )
+				return false;
+		const auto meshEligible = [&]( const WorldData::StaticInstance &instance,
+		                              const auto &selection, RenderCoreDrawPhase phase )
+		{
+			if ( instance.mesh >= s.world->staticMeshes.size() )
+				return false;
+			const auto &mesh = s.world->staticMeshes[instance.mesh];
+			for ( std::uint32_t surface = 0; surface < mesh.surfaces.size(); ++surface )
+			{
+				if ( !SurfaceSelected( selection, surface ) )
+					continue;
+				const auto material = StaticMaterial( mesh, instance, surface );
+				if ( material >= s.claims->size() )
+					return false;
+				const bool blended = ( *s.claims )[material].blended;
+				if ( phase == RenderCoreDrawPhase::kOpaque && blended )
+					continue;
+				if ( phase == RenderCoreDrawPhase::kBlended || !materialEligible( material ) )
+					return false;
+			}
+			return true;
+		};
+		for ( const auto &draw : view.staticInstances )
+			if ( draw.instance >= s.world->staticInstances.size() ||
+			     !meshEligible( s.world->staticInstances[draw.instance], draw.surfaceSelection,
+			         RenderCoreDrawPhase::kAll ) )
+				return false;
+		for ( const auto &pose : view.posedModels )
+		{
+			WorldData::StaticInstance instance;
+			instance.mesh = pose.mesh;
+			instance.skin = pose.skin;
+			if ( !meshEligible( instance, pose.surfaceSelection, pose.phase ) )
+				return false;
+		}
+		return true;
+	};
+	const WorldView *first = lookup( tags.front() );
+	if ( !first || !eligible( *first ) )
+		return 1;
+	std::size_t count = 1;
+	for ( ; count < tags.size(); ++count )
+	{
+		const WorldView *next = lookup( tags[count] );
+		if ( !next || !next->surfaces.empty() || !eligible( *next ) ||
+		     next->hostFrame != first->hostFrame || next->stageLighting != first->stageLighting ||
+		     next->lights != first->lights || next->debug != first->debug ||
+		     next->waterZOffset != first->waterZOffset ||
+		     !std::equal( std::begin( first->toClip ), std::end( first->toClip ), next->toClip ) ||
+		     !std::equal(
+		         std::begin( first->viewRight ), std::end( first->viewRight ), next->viewRight ) ||
+		     std::memcmp( &first->viewport, &next->viewport, sizeof( first->viewport ) ) != 0 ||
+		     std::find( tags.begin(), tags.begin() + count, tags[count] ) != tags.begin() + count )
+			break;
+	}
+	return count;
+}
+
 void WorldPass::ReleaseDevice( IRenderDevice2 &device )
 {
 	State &s = *m_State;
@@ -939,10 +1047,18 @@ std::uint64_t WorldPass::Failures() const
 
 void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldTarget &target )
 {
+	RecordBatch( std::span( &tag, 1 ), encoder, target );
+}
+
+void WorldPass::RecordBatch(
+    std::span<const std::uint32_t> tags, CommandEncoder &encoder, const WorldTarget &target )
+{
+	if ( tags.empty() )
+		return;
 	RecordSection preparation( encoder );
 	preparation.Select( "prepare world queue" );
 	State &s = *m_State;
-	const std::uint32_t serial = tag & kWorldSerialMask;
+	std::vector<std::size_t> staticCohorts, posedCohorts;
 	std::shared_ptr<const WorldData> world;
 	std::shared_ptr<const std::vector<Claimed>> claims;
 	std::uint64_t generation = 0;
@@ -951,74 +1067,101 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 	bool earlierWorld = false; // the slot's view was queued against an earlier world
 	{
 		std::lock_guard<std::mutex> guard( s.lock );
-		// A slot recorded again (the same stream for a capture) draws the
-		// view it drew the first time; one of an earlier world draws nothing
-		// and leaves the queue (the next frame's views) alone.
-		bool again = false;
-		if ( target.streamEpoch != 0 )
-			std::erase_if( s.recorded,
-			    [&]( const State::Queued &kept )
+		if ( tags.size() > 1 && s.OpaqueBatchSize( tags, target.streamEpoch ) != tags.size() )
+		{
+			++s.stats.viewsFailed;
+			s.stats.lastFailure = "an opaque batch crosses a view or material ordering boundary";
+			return;
+		}
+		for ( std::size_t cohortIndex = 0; cohortIndex < tags.size(); ++cohortIndex )
+		{
+			const std::uint32_t serial = tags[cohortIndex] & kWorldSerialMask;
+			WorldView cohort;
+			found = false;
+			// A slot recorded again (the same stream for a capture) draws the
+			// cohort it drew the first time; one of an earlier world draws nothing
+			// and leaves the queue (the next frame's views) alone.
+			bool again = false;
+			if ( target.streamEpoch != 0 )
+				std::erase_if( s.recorded,
+				    [&]( const State::Queued &kept )
+				    {
+					    return kept.recordedStream != target.streamEpoch;
+				    } );
+			for ( auto kept = s.recorded.rbegin(); kept != s.recorded.rend() && !again; ++kept )
+			{
+				if ( kept->serial == serial )
+				{
+					again = true;
+					found = kept->generation == s.generation;
+					earlierWorld = !found;
+					cohort = kept->view;
+				}
+			}
+			// World views are issued in main-thread stream order. Dynamic tickets
+			// are issued during render-call replay, possibly after the main thread
+			// has queued another frame: their serials do not establish stream order.
+			std::uint64_t recordingFrame = 0;
+			bool dynamic = false;
+			for ( const State::Queued &queued : s.views )
+			{
+				if ( queued.serial == serial )
+				{
+					recordingFrame = queued.view.hostFrame;
+					dynamic = !queued.view.dynamicDraws.empty();
+				}
+			}
+			while ( !again && !dynamic && !s.views.empty() &&
+			        s.views.front().view.dynamicDraws.empty() &&
+			        IssuedBefore( s.views.front().serial, serial ) )
+			{
+				s.Drop( s.views.front(), recordingFrame );
+				s.views.pop_front();
+			}
+			auto queued = std::find_if( s.views.begin(), s.views.end(),
+			    [&]( const State::Queued &entry )
 			    {
-				    return kept.recordedStream != target.streamEpoch;
+				    return entry.serial == serial;
 			    } );
-		for ( auto kept = s.recorded.rbegin(); kept != s.recorded.rend() && !again; ++kept )
-		{
-			if ( kept->serial == serial )
+			if ( !again && queued != s.views.end() )
 			{
-				again = true;
-				found = kept->generation == s.generation;
+				// Only against the world it was queued for (SetWorld also clears
+				// the queue; this holds if a slot records across the change).
+				found = queued->generation == s.generation;
 				earlierWorld = !found;
-				view = kept->view;
+				cohort = queued->view;
+				if ( cohort.hostFrame != 0 &&
+				     ( s.recordedFrames.empty() || s.recordedFrames.back() != cohort.hostFrame ) )
+				{
+					s.recordedFrames.push_back( cohort.hostFrame );
+					constexpr std::size_t kFramesKept = 64;
+					while ( s.recordedFrames.size() > kFramesKept )
+						s.recordedFrames.pop_front();
+				}
+				queued->recordedStream = target.streamEpoch;
+				s.recorded.push_back( std::move( *queued ) );
+				s.views.erase( queued );
+				// The complete stream is replayable, including every dynamic slot.
+				// The queue accepts at most this many slots before recording starts.
+				constexpr std::size_t kRecordedKept = 8192;
+				while ( s.recorded.size() > kRecordedKept )
+					s.recorded.pop_front();
 			}
-		}
-		// World views are issued in main-thread stream order. Dynamic tickets
-		// are issued during render-call replay, possibly after the main thread
-		// has queued another frame: their serials do not establish stream order.
-		std::uint64_t recordingFrame = 0;
-		bool dynamic = false;
-		for ( const State::Queued &queued : s.views )
-		{
-			if ( queued.serial == serial )
+			if ( !found )
+				break;
+			staticCohorts.insert( staticCohorts.end(), cohort.staticInstances.size(), cohortIndex );
+			posedCohorts.insert( posedCohorts.end(), cohort.posedModels.size(), cohortIndex );
+			if ( cohortIndex == 0 )
+				view = std::move( cohort );
+			else
 			{
-				recordingFrame = queued.view.hostFrame;
-				dynamic = !queued.view.dynamicDraws.empty();
+				view.staticInstances.insert( view.staticInstances.end(),
+				    std::make_move_iterator( cohort.staticInstances.begin() ),
+				    std::make_move_iterator( cohort.staticInstances.end() ) );
+				view.posedModels.insert( view.posedModels.end(),
+				    std::make_move_iterator( cohort.posedModels.begin() ),
+				    std::make_move_iterator( cohort.posedModels.end() ) );
 			}
-		}
-		while ( !again && !dynamic && !s.views.empty() &&
-		        s.views.front().view.dynamicDraws.empty() &&
-		        IssuedBefore( s.views.front().serial, serial ) )
-		{
-			s.Drop( s.views.front(), recordingFrame );
-			s.views.pop_front();
-		}
-		auto queued = std::find_if( s.views.begin(), s.views.end(),
-		    [&]( const State::Queued &entry )
-		    {
-			    return entry.serial == serial;
-		    } );
-		if ( !again && queued != s.views.end() )
-		{
-			// Only against the world it was queued for (SetWorld also clears
-			// the queue; this holds if a slot records across the change).
-			found = queued->generation == s.generation;
-			earlierWorld = !found;
-			view = queued->view;
-			if ( view.hostFrame != 0 &&
-			     ( s.recordedFrames.empty() || s.recordedFrames.back() != view.hostFrame ) )
-			{
-				s.recordedFrames.push_back( view.hostFrame );
-				constexpr std::size_t kFramesKept = 64;
-				while ( s.recordedFrames.size() > kFramesKept )
-					s.recordedFrames.pop_front();
-			}
-			queued->recordedStream = target.streamEpoch;
-			s.recorded.push_back( std::move( *queued ) );
-			s.views.erase( queued );
-			// The complete stream is replayable, including every dynamic slot.
-			// The queue accepts at most this many slots before recording starts.
-			constexpr std::size_t kRecordedKept = 8192;
-			while ( s.recorded.size() > kRecordedKept )
-				s.recorded.pop_front();
 		}
 		world = s.world;
 		claims = s.claims;
@@ -2189,6 +2332,7 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 	preparation.Select( "prepare model materials and meshes" );
 	struct StaticDraw
 	{
+		std::size_t cohort;
 		bool posed;
 		std::uint32_t instance;
 		std::uint32_t mesh;
@@ -2238,8 +2382,9 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		buffers.uploaded = true;
 		return true;
 	};
-	for ( const WorldView::StaticInstance &draw : view.staticInstances )
+	for ( std::size_t staticIndex = 0; staticIndex < view.staticInstances.size(); ++staticIndex )
 	{
+		const auto &draw = view.staticInstances[staticIndex];
 		const std::uint32_t instanceId = draw.instance;
 		if ( instanceId >= world->staticInstances.size() )
 		{
@@ -2286,7 +2431,8 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 				complete = false;
 				continue;
 			}
-			staticDraws.push_back( { false, instanceId, instance.mesh, surfaceId, materialId } );
+			staticDraws.push_back( { staticCohorts[staticIndex], false, instanceId, instance.mesh,
+			    surfaceId, materialId } );
 		}
 	}
 	for ( std::uint32_t poseId = 0; poseId < view.posedModels.size(); ++poseId )
@@ -2356,7 +2502,8 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 				complete = false;
 				continue;
 			}
-			staticDraws.push_back( { true, poseId, pose.mesh, surfaceId, materialId } );
+			staticDraws.push_back(
+			    { posedCohorts[poseId], true, poseId, pose.mesh, surfaceId, materialId } );
 		}
 	}
 
@@ -2940,8 +3087,8 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 	std::sort( staticDraws.begin(), firstBlended,
 	    [&]( const StaticDraw &a, const StaticDraw &b )
 	    {
-		    return std::tie( a.material, a.mesh, a.posed, a.instance, a.surface ) <
-		           std::tie( b.material, b.mesh, b.posed, b.instance, b.surface );
+		    return std::tie( a.cohort, a.material, a.mesh, a.posed, a.instance, a.surface ) <
+		           std::tie( b.cohort, b.material, b.mesh, b.posed, b.instance, b.surface );
 	    } );
 	draws.End();
 	std::uint64_t drawnStatic = 0;
@@ -3084,7 +3231,7 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		s.retiredGroups.emplace_back( target.frame, std::move( group ) );
 
 	std::lock_guard<std::mutex> guard( s.lock );
-	++s.stats.viewsDrawn;
+	s.stats.viewsDrawn += tags.size();
 	s.stats.surfacesDrawn += order.size();
 	s.stats.staticDrawsDrawn += drawnStatic;
 	s.stats.posedDrawsDrawn += drawnPosed;

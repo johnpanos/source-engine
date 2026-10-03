@@ -178,6 +178,172 @@ bool RecordSlot( IRenderDevice2 &device, WorldPass &pass, std::uint32_t tag,
 	return device.Submit( QueueKind::kGraphics, { &encoder.Value(), 1 }, {} ).HasValue();
 }
 
+void OpaqueBatching( testing::Checks &checks )
+{
+	auto created = null::Create( { .completion = null::CompletionMode::kManual } );
+	if ( !checks.That( created.HasValue(), "W21.device" ) )
+		return;
+	auto &device = *created.Value();
+	WorldData world = TestWorld();
+	auto stage = std::make_shared<WorldStage>();
+	stage->lightmap.width = stage->lightmap.height = 1;
+	stage->lightmap.flat.resize( 8 );
+	world.stage = stage;
+	WorldMaterial model;
+	model.name = "batch-model";
+	model.shader = "VertexLitGeneric";
+	model.mesh = true;
+	world.materials.push_back( model );
+	WorldData::StaticMesh mesh;
+	for ( const auto &v : world.vertices )
+	{
+		material::SurfaceModelVertex vertex;
+		std::copy_n( v.position, 3, vertex.position );
+		vertex.normal[2] = 1;
+		vertex.tangent[0] = vertex.tangent[3] = 1;
+		mesh.vertices.push_back( vertex );
+	}
+	mesh.indices = { 0, 1, 2, 0, 2, 3 };
+	mesh.surfaces.push_back( { 4, 0, 0, 6 } );
+	world.staticMeshes.push_back( mesh );
+	WorldData::StaticInstance instance;
+	for ( int i = 0; i < 4; ++i )
+		instance.world[i * 5] = 1;
+	world.staticInstances.push_back( instance );
+	WorldPass pass;
+	pass.SetWorld( world );
+	WorldView wall = View( { 0 }, 1 ), prop = View( {}, 1 );
+	prop.staticInstances = { 0 };
+	const auto wallTag = pass.QueueView( wall ), propTag = pass.QueueView( prop );
+	const std::uint32_t pair[] = { wallTag, propTag };
+	checks.That( pass.OpaqueBatchSize( pair, 1 ) == 2, "W21.world-model-prefix" );
+	for ( int boundary = 0; boundary != 8; ++boundary )
+	{
+		WorldView changed = prop;
+		switch ( boundary )
+		{
+		case 0:
+			changed.hostFrame++;
+			break;
+		case 1:
+			changed.toClip[0] = 2;
+			break;
+		case 2:
+			changed.viewport.width = 32;
+			break;
+		case 3:
+			changed.surfaces = { 0 };
+			break;
+		case 4:
+			changed.lights = std::make_shared<StageViewLights>();
+			break;
+		case 5:
+			changed.debug.view = 1;
+			break;
+		case 6:
+			changed.debug.termsOff = 1;
+			break;
+		case 7:
+			changed.stageLighting = std::make_shared<StageLightingInputs>();
+			break;
+		}
+		const std::uint32_t tags[] = { wallTag, pass.QueueView( changed ) };
+		checks.That( pass.OpaqueBatchSize( tags, 1 ) == 1,
+		    "W21.view-boundary-" + std::to_string( boundary ) );
+	}
+	for ( const char *shader : { "Refract", "Water", "DepthWrite" } )
+	{
+		WorldPass other;
+		WorldData blocked = world;
+		blocked.materials.back().shader = shader;
+		other.SetWorld( std::move( blocked ) );
+		const std::uint32_t tags[] = { other.QueueView( wall ), other.QueueView( prop ) };
+		checks.That( other.OpaqueBatchSize( tags, 1 ) == 1,
+		    std::string( "W21.ordered-material-boundary-" ) + shader );
+	}
+	WorldPass transmission;
+	WorldData transmitting = world;
+	auto &pbr = transmitting.materials.back();
+	pbr.shader = "PBRMetalRough";
+	pbr.variables = {
+	    { "$basetexture", "base" }, { "$mraotexture", "mrao" }, { "$transmission", "1" } };
+	transmission.SetWorld( std::move( transmitting ) );
+	const std::uint32_t transmissionTags[] = {
+	    transmission.QueueView( wall ), transmission.QueueView( prop ) };
+	checks.That(
+	    transmission.Draws( 4 ) && transmission.OpaqueBatchSize( transmissionTags, 1 ) == 1,
+	    "W21.opaque-blend-transmission-still-needs-scene-capture" );
+	WorldPass blended;
+	WorldData glass = world;
+	glass.materials.back().variables = { { "$translucent", "1" } };
+	blended.SetWorld( std::move( glass ) );
+	const std::uint32_t glassTags[] = { blended.QueueView( wall ), blended.QueueView( prop ) };
+	checks.That( blended.OpaqueBatchSize( glassTags, 1 ) == 1, "W21.blended-boundary" );
+	const std::uint32_t duplicate[] = { propTag, propTag };
+	checks.That( pass.OpaqueBatchSize( duplicate, 1 ) == 1, "W21.repeated-ticket-boundary" );
+	TextureDesc desc;
+	desc.format = Format::kRGBA8Srgb;
+	desc.width = desc.height = 64;
+	desc.usages = { ResourceUsage::kColorAttachment };
+	const auto color = device.CreateTexture( desc ).Value();
+	desc.format = Format::kD32Float;
+	desc.usages = { ResourceUsage::kDepthWrite };
+	const auto depth = device.CreateTexture( desc ).Value();
+	FakeTextures textures( device );
+	WorldTarget target;
+	target.device = &device;
+	target.color = color;
+	target.depth = depth;
+	target.colorFormat = Format::kRGBA8Srgb;
+	target.depthFormat = Format::kD32Float;
+	target.width = target.height = 64;
+	target.textures = &textures;
+	target.frame = target.streamEpoch = 1;
+	target.depthPrepass = true;
+	auto encoder = device.BeginEncoder( QueueKind::kGraphics ).Value();
+	encoder.TransitionTexture( color, ResourceUsage::kUndefined, ResourceUsage::kColorAttachment );
+	encoder.TransitionTexture( depth, ResourceUsage::kUndefined, ResourceUsage::kDepthWrite );
+	pass.RecordBatch( pair, encoder, target );
+	const auto submission = device.Submit( QueueKind::kGraphics, { &encoder, 1 }, {} );
+	checks.That( submission && pass.Failures() == 0 && pass.Stats().viewsDrawn == 2 &&
+	                 pass.Stats().staticDrawsDrawn == 1,
+	    "W21.batch-records-all-tickets" );
+	if ( submission )
+	{
+		target.submitted = submission.Value();
+		++target.frame;
+		encoder = device.BeginEncoder( QueueKind::kGraphics ).Value();
+		pass.RecordBatch( pair, encoder, target );
+		const auto replay = device.Submit( QueueKind::kGraphics, { &encoder, 1 }, {} );
+		checks.That(
+		    replay && !device.IsComplete( submission.Value() ) && pass.Stats().viewsDrawn == 4,
+		    "W21.capture-replay-before-completion" );
+		null::Control( device )->CompleteAll();
+		checks.That(
+		    device.IsComplete( submission.Value() ), "W21.batch-resources-outlive-submit" );
+	}
+	WorldPass invalid;
+	invalid.SetWorld( world );
+	WorldView laterFrame = prop;
+	++laterFrame.hostFrame;
+	const std::uint32_t invalidTags[] = {
+	    invalid.QueueView( wall ), invalid.QueueView( laterFrame ) };
+	encoder = device.BeginEncoder( QueueKind::kGraphics ).Value();
+	invalid.RecordBatch( invalidTags, encoder, target );
+	checks.That( invalid.Failures() == 1 && invalid.Stats().viewsDrawn == 0,
+	    "W21.invalid-batch-refused-before-drawing" );
+	for ( auto tag : invalidTags )
+		invalid.Record( tag, encoder, target );
+	const auto recovered = device.Submit( QueueKind::kGraphics, { &encoder, 1 }, {} );
+	checks.That( recovered && invalid.Stats().viewsDrawn == 2 && invalid.Failures() == 1,
+	    "W21.refusal-leaves-original-tickets-recordable" );
+	null::Control( device )->CompleteAll();
+	invalid.ReleaseDevice( device );
+	pass.ReleaseDevice( device );
+	(void)device.Release( color, {} );
+	(void)device.Release( depth, {} );
+}
+
 void LitViewLifetime( testing::Checks &checks )
 {
 	null::NullOptions options;
@@ -393,6 +559,7 @@ void GroupReuse( testing::Checks &checks )
 int main()
 {
 	testing::Checks checks;
+	OpaqueBatching( checks );
 	GroupReuse( checks );
 	LitViewLifetime( checks );
 	auto created = null::Create( {} );

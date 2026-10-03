@@ -54,6 +54,7 @@ struct DebugControls
 	float forceRoughness = -1.0f; // cl_render_debug_force_roughness; below 0 off
 	float forceMetalness = -1.0f; // cl_render_debug_force_metalness; below 0 off
 	DebugLegacy legacy = DebugLegacy::kOff;
+	bool operator==( const DebugControls & ) const = default;
 };
 
 enum class DebugControlsStatus : std::uint8_t

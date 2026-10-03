@@ -449,7 +449,8 @@ std::optional<std::string> RunChecks(
 	                  WorldPass *under = nullptr, const WorldMaterial *dynamicMaterial = nullptr,
 	                  bool invalidDynamicIndex = false, float underOffset = 0.1f,
 	                  bool depthPrepass = false, bool staticModels = false, bool clipLeft = false,
-	                  bool splitLayers = false ) -> std::optional<std::string>
+	                  bool splitLayers = false, bool opaqueBatch = false, bool worldSurface = false,
+	                  bool equalDepthSkins = false ) -> std::optional<std::string>
 	{
 		WorldView view;
 		for ( int i = 0; i < 4; ++i )
@@ -487,7 +488,9 @@ std::optional<std::string> RunChecks(
 		{
 			WorldView::PosedModel behind = view.posedModels.front();
 			for ( auto &vertex : behind.vertices )
-				vertex.position[2] += 0.1f;
+				vertex.position[2] += equalDepthSkins ? 0.0f : 0.1f;
+			if ( equalDepthSkins )
+				behind.skin = 1;
 			view.posedModels.push_back( std::move( behind ) );
 		}
 		if ( lit )
@@ -517,12 +520,22 @@ std::optional<std::string> RunChecks(
 			if ( !underTag )
 				return "the background model view queued nothing";
 		}
+		if ( worldSurface )
+			view.surfaces = { 0 };
 		std::optional<WorldView> later;
 		if ( splitLayers )
 		{
 			later = view;
-			later->posedModels = { view.posedModels.back() };
-			view.posedModels.resize( 1 );
+			if ( worldSurface )
+			{
+				later->surfaces.clear();
+				view.posedModels.clear();
+			}
+			else
+			{
+				later->posedModels = { view.posedModels.back() };
+				view.posedModels.resize( 1 );
+			}
 		}
 		const std::uint32_t tag = active.QueueView( std::move( view ) );
 		const std::uint32_t laterTag = later ? active.QueueView( std::move( *later ) ) : 0;
@@ -548,9 +561,19 @@ std::optional<std::string> RunChecks(
 			target.eye[2] = 2.0f;
 			if ( under )
 				under->Record( underTag, encoder, target );
-			active.Record( tag, encoder, target );
-			if ( laterTag )
-				active.Record( laterTag, encoder, target );
+			if ( opaqueBatch )
+			{
+				const std::uint32_t tags[] = { tag, laterTag };
+				if ( active.OpaqueBatchSize( tags, target.streamEpoch ) != 2 )
+					return "the opaque fixture did not batch both cohorts";
+				active.RecordBatch( tags, encoder, target );
+			}
+			else
+			{
+				active.Record( tag, encoder, target );
+				if ( laterTag )
+					active.Record( laterTag, encoder, target );
+			}
 			return std::nullopt;
 		};
 		return canvas->Render( textures, groups, {}, clear, &image, post );
@@ -599,6 +622,84 @@ std::optional<std::string> RunChecks(
 	results.That( sharedCohorts.rgba == layersDepth.rgba,
 	    "posed-model.shared-lighting-across-cohorts-preserves-every-pixel",
 	    "separately recorded opaque cohorts consume the same immutable lighting bindings" );
+	CanvasImage batchedModels;
+	if ( auto why =
+	         render( pass, 0.0f, true, 4, black, batchedModels, true, RenderCoreDrawPhase::kAll,
+	             true, nullptr, nullptr, false, 0.1f, true, false, false, true, true ) )
+		return why;
+	results.That( batchedModels.rgba == sharedCohorts.rgba, "posed-model.batched-cohorts-exact",
+	    "shared depth preserves every lit pixel" );
+	// Reversing material order across tickets would change the equal-depth
+	// winner. Skin zero uses material one, the later skin uses material zero.
+	WorldData tieWorld = MeshWorld();
+	tieWorld.materials[0].variables = { { "$color", "[1 0 0]" } };
+	tieWorld.materials.push_back( tieWorld.materials[0] );
+	tieWorld.materials[1].variables = { { "$color", "[0 0 1]" } };
+	tieWorld.staticMeshes[0].skinMaterials = { { 1 }, { 0 } };
+	WorldPass ties;
+	ties.SetWorld( std::move( tieWorld ) );
+	CanvasImage separateTies, batchedTies;
+	for ( bool batch : { false, true } )
+	{
+		if ( auto why = render( ties, 0.0f, true, 4, black, batch ? batchedTies : separateTies,
+		         true, RenderCoreDrawPhase::kAll, true, nullptr, nullptr, false, 0.1f, true, false,
+		         false, true, batch, false, true ) )
+			return why;
+	}
+	results.That( ties.Failures() == 0 && separateTies.rgba == batchedTies.rgba,
+	    "posed-model.batch-preserves-equal-depth-material-order", ties.Stats().lastFailure );
+	results.That(
+	    batchedTies.At( kSize / 2, kSize / 2 )[0] > batchedTies.At( kSize / 2, kSize / 2 )[2],
+	    "posed-model.later-equal-depth-ticket-wins" );
+	ties.ReleaseDevice( *device );
+	WorldData combinedWorld = MeshWorld();
+	WorldMaterial wall;
+	wall.name = "opaque-batch-wall";
+	wall.shader = "PBRMetalRough";
+	wall.variables = { { "$basetexture", "batch-base" }, { "$mraotexture", "batch-mrao" } };
+	wall.textures = { { "$basetexture", 1 }, { "$mraotexture", 1 } };
+	combinedWorld.materials.push_back( wall );
+	for ( const auto &vertex : bindPose )
+	{
+		WorldVertex out;
+		std::copy_n( vertex.position, 3, out.position );
+		out.position[2] += 0.1f;
+		std::copy_n( vertex.normal, 3, out.normal );
+		std::copy_n( vertex.tangent, 3, out.tangentS );
+		combinedWorld.vertices.push_back( out );
+	}
+	combinedWorld.indices = { 0, 1, 2, 0, 2, 3 };
+	combinedWorld.surfaces.push_back( { 1, 0, 0, 6 } );
+	WorldData cutoutBatchWorld = combinedWorld;
+	cutoutBatchWorld.materials[0].variables = {
+	    { "$basetexture", "batch-cutout" }, { "$alphatest", "1" } };
+	cutoutBatchWorld.materials[0].textures = { { "$basetexture", 7 } };
+	WorldPass combined;
+	combined.SetWorld( std::move( combinedWorld ) );
+	CanvasImage separateWorld, batchedWorld;
+	for ( bool batch : { false, true } )
+	{
+		if ( auto why = render( combined, 0.25f, true, 4, black,
+		         batch ? batchedWorld : separateWorld, true, RenderCoreDrawPhase::kAll, true,
+		         nullptr, nullptr, false, 0.1f, true, false, false, true, batch, true ) )
+			return why;
+	}
+	results.That( combined.Failures() == 0 && batchedWorld.rgba == separateWorld.rgba,
+	    "posed-model.world-and-model-batch-exact", combined.Stats().lastFailure );
+	combined.ReleaseDevice( *device );
+	WorldPass cutoutBatch;
+	cutoutBatch.SetWorld( std::move( cutoutBatchWorld ) );
+	CanvasImage separateCutout, batchedCutout;
+	for ( bool batch : { false, true } )
+	{
+		if ( auto why = render( cutoutBatch, 0.25f, true, 4, black,
+		         batch ? batchedCutout : separateCutout, true, RenderCoreDrawPhase::kAll, true,
+		         nullptr, nullptr, false, 0.1f, true, false, false, true, batch, true ) )
+			return why;
+	}
+	results.That( cutoutBatch.Failures() == 0 && batchedCutout.rgba == separateCutout.rgba,
+	    "posed-model.world-batch-preserves-cutout-coverage", cutoutBatch.Stats().lastFailure );
+	cutoutBatch.ReleaseDevice( *device );
 	WorldData staticWorld = MeshWorld();
 	WorldData::StaticInstance frontStatic;
 	for ( int i = 0; i < 4; ++i )

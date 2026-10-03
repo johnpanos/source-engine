@@ -218,6 +218,10 @@ platform acceptance.
   - Apply RFC 0016's [scope and complexity discipline](RFC/0016-render-core.md#scope-and-complexity-discipline-user-decision-2026-10-01)
     (user decision, 2026-10-01) when selecting render slices and assigning
     responsibilities; it owns the rule for avoiding excess mechanisms and work.
+  - Runtime optimization follows RFC 0016's [in-game pipeline performance
+    priority](RFC/0016-render-core.md#in-game-pipeline-performance-user-decision-2026-10-03)
+    (user decision, 2026-10-03): complete gameplay-frame measurements select
+    and judge work across the pipeline; isolated render-core gains are diagnostic.
 
 ## DRY and Liskov Substitution Principle
 
@@ -430,6 +434,12 @@ the roadmap's hard prerequisites:
    amended binding rule 7; a miss keeps performance acceptance open and is
    never a reason to silently disable an effect. RFC 0019's FSR timing miss is
    advisory under the user-directed exception in rule 7.
+
+The [in-game pipeline performance priority](RFC/0016-render-core.md#in-game-pipeline-performance-user-decision-2026-10-03)
+(user direction, 2026-10-03) applies throughout these slices: profile gameplay
+early and optimize the measured whole-frame bottlenecks. Item 6 is the complete
+result's acceptance gate, not a reason to defer in-game pipeline work until all
+isolated core work is finished.
 
 ### P2:CE high-quality PBR content mounts (user direction, 2026-10-01)
 
