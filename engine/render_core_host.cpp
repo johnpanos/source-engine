@@ -601,6 +601,14 @@ bool RenderCoreHost_CullWorld( const float *pPlanes, int nPlanes, const unsigned
 	return true;
 }
 
+CON_COMMAND_F( r_temporal_capture,
+    "Capture the next game FSR inputs and output to a unique file prefix", FCVAR_CHEAT )
+{
+	if ( args.ArgC() != 2 || !Host().world || !Host().world->CaptureTemporalInputs( args[1] ) )
+		Warning( "r_temporal_capture: needs an FSR session and one file prefix; one request at a "
+		         "time\n" );
+}
+
 CON_COMMAND( r_core_stats, "Prints what the render core ran (RFC 0016)." )
 {
 	RenderCoreHostState &host = Host();

@@ -4,6 +4,9 @@
 #include "render/pass/temporal/input_copy.h"
 #include "render/pass/output/output.h"
 #include "render/legacy/core_passes.h"
+#include <array>
+#include <string>
+#include <optional>
 namespace render::composition
 {
 struct TemporalRequest
@@ -12,6 +15,10 @@ struct TemporalRequest
 	device::TemporalExtent render, output;
 	float jitterX = 0, jitterY = 0, deltaMilliseconds = 0;
 	std::uint64_t generation = 0;
+	std::string capturePrefix;
+	std::array<float, 16> currentToClip{}, previousToClip{};
+	bool cameraValid = false;
+	std::size_t motionTargets = 0;
 };
 // Render-sequence state for the main game view; owns reconstruction images.
 class CoreTemporal
@@ -23,6 +30,8 @@ public:
 	{
 	}
 	~CoreTemporal();
+	// The native host reports its submission, on the render sequence.
+	void CaptureSubmitted( device::CompletionToken token, bool success );
 	bool Record( device::CommandEncoder &encoder, const legacy::CorePassTarget &target,
 	    device::TextureId motion, const TemporalRequest &request );
 
@@ -37,6 +46,19 @@ private:
 	device::CompletionToken m_Last;
 	std::uint64_t m_Generation = 0, m_Frame = 0;
 	void ReleaseImages();
+	struct Capture
+	{
+		TemporalRequest request;
+		std::array<device::BufferId, 4> buffers{};
+		std::array<std::uint64_t, 4> sizes{};
+		device::CompletionToken token;
+		bool submitted = false;
+	};
+	std::optional<Capture> m_Capture;
+	std::string m_LastCapturePrefix;
+	void RecordCapture( device::CommandEncoder &encoder, const TemporalRequest &request );
+	void CollectCapture();
+	void ReleaseCapture( device::CompletionToken token );
 };
 }
 #endif

@@ -89,6 +89,18 @@ bool PresentAndCapture(
 class PortalReplayRecorder final : public render::legacy::ICorePassRecorder
 {
 public:
+	unsigned submittedFrames = 0, refusedFrames = 0;
+	render::device::CompletionToken lastSubmission;
+	void FrameSubmitted( render::device::CompletionToken token, bool submitted ) override
+	{
+		if ( submitted )
+		{
+			++submittedFrames;
+			lastSubmission = token;
+		}
+		else
+			++refusedFrames;
+	}
 	std::uint32_t SlotStages() const override { return 0; }
 	void RecordSlot( std::uint32_t tag, render::device::CommandEncoder &encoder,
 	    const render::legacy::CorePassTarget &target ) override
@@ -1069,6 +1081,29 @@ int main( int argc, char **argv )
 
 	CheckPortalCoreReplay( ctx, err );
 	CheckSolidEnergyCoreReplay( ctx, err );
+
+	// A refused encoder never waits on the acquire semaphore. The following
+	// frame must recover without reusing a signalled semaphore or leaking the
+	// acquired swapchain image. Repeat to exhaust the swapchain if it leaks.
+	PortalReplayRecorder submissionObserver;
+	ctx.BindCorePassRecorder( &submissionObserver );
+	for ( int attempt = 0; attempt < 6; ++attempt )
+	{
+		bool skipped = false;
+		err.clear();
+		Check( ctx.PrepareFrame( &skipped, &err ) && !skipped, "abort acquires a frame" );
+		Check( !ctx.FinishFrame( {}, false, &err ), "aborted frame reports failure" );
+		err.clear();
+		Check( RenderCoreFrame( ctx, &skipped, &err ) && !skipped,
+		    "next frame recovers from aborted acquire" );
+	}
+	Check( submissionObserver.submittedFrames == 6 && submissionObserver.refusedFrames == 6,
+	    "core recorder receives each native submission outcome" );
+	Check( submissionObserver.lastSubmission.NamesSubmission() &&
+	           ctx.Port()->WaitIdle().HasValue() &&
+	           ctx.Port()->IsComplete( submissionObserver.lastSubmission ),
+	    "core recorder token fences the native device" );
+	ctx.BindCorePassRecorder( nullptr );
 
 	if ( ctx.ValidationEnabled() )
 		Check( ctx.ValidationErrorCount() == 0, "no validation errors/warnings during the run" );

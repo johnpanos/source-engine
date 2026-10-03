@@ -94,6 +94,10 @@ public:
 	{
 		return m_World.RecordOutput( encoder, targets );
 	}
+	void FrameSubmitted( device::CompletionToken token, bool submitted ) override
+	{
+		m_World.FrameSubmitted( token, submitted );
+	}
 	void ReleaseDevice( device::IRenderDevice2 &device ) override
 	{
 		m_Panels.ReleaseDevice( device );

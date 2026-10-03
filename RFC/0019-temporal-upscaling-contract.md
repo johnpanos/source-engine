@@ -1,6 +1,6 @@
 # RFC 0019: Temporal Upscaling Contract
 
-- Status: Proposed (2026-10-03); initial lab provider installed, no implementation gate complete
+- Status: Proposed (2026-10-03); initial lab provider and opt-in [game integration](0019-fsr-game-wip-2026-10-03.md) installed, no qualification gate complete
 - Date: 2026-10-03
 - Scope: An opt-in temporal reconstruction boundary for the render core, with
   AMD FSR Upscaling 4.1.1 as the first candidate provider. Frame generation is

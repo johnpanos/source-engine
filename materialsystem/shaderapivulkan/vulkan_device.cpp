@@ -9576,11 +9576,27 @@ bool CVulkanContext::FinishFrame(
 	const uint32_t imageIndex = m_acquiredImage;
 	const bool doCapture = m_frameCapture;
 	m_frameCost.Add( kCostSubmit, FrameClockMicros() - m_recordEndUs );
+	if ( m_corePassRecorder )
+		m_corePassRecorder->FrameSubmitted( token, submitted );
 	if ( !submitted )
 	{
-		// The acquired image is not presented; the next frame acquires again.
+		// No render submission consumed the acquire signal. Drain it before
+		// reusing this binary semaphore, and retire the unpresented swapchain
+		// image. Acquiring again directly would reuse a signalled semaphore.
 		m_frameOpen = false;
 		m_captureRequested = m_capturePresented = false;
+		if ( Port()->State() == render::device::DeviceState::kAvailable )
+		{
+			const VkPipelineStageFlags stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+			VkSubmitInfo drain = {};
+			drain.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+			drain.waitSemaphoreCount = 1;
+			drain.pWaitSemaphores = &m_imageAvailable[m_currentFrame];
+			drain.pWaitDstStageMask = &stage;
+			if ( vkQueueSubmit( m_graphicsQueue, 1, &drain, VK_NULL_HANDLE ) != VK_SUCCESS ||
+			     !RecreateSwapchain( outError ) )
+				return false;
+		}
 		SetError( outError, "the frame's submission failed" );
 		return false;
 	}

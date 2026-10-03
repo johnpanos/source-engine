@@ -1429,6 +1429,17 @@ bool CoreWorld::DrawView( const unsigned int *surfaces, unsigned int count,
 	return true;
 }
 
+bool CoreWorld::CaptureTemporalInputs( const char *prefix )
+{
+	if ( !m_TemporalEnabled || !prefix || !*prefix || std::strlen( prefix ) > 1024 )
+		return false;
+	std::lock_guard<std::mutex> lock( m_TemporalLock );
+	if ( !m_TemporalCapturePrefix.empty() )
+		return false;
+	m_TemporalCapturePrefix = prefix;
+	return true;
+}
+
 bool CoreWorld::ReconstructTemporal( int x, int y, int rw, int rh, int ow, int oh, float dt )
 {
 	if ( !m_TemporalEnabled || rw <= 0 || rh <= 0 || ow <= 0 || oh <= 0 || dt <= 0 )
@@ -1450,6 +1461,20 @@ bool CoreWorld::ReconstructTemporal( int x, int y, int rw, int rh, int ow, int o
 		std::lock_guard<std::mutex> lock( m_TemporalLock );
 		if ( m_TemporalRequests.size() >= 8 )
 			return false;
+		request.capturePrefix = std::move( m_TemporalCapturePrefix );
+		m_TemporalCapturePrefix.clear();
+		if ( !request.capturePrefix.empty() )
+		{
+			auto camera = m_PendingCameras.find( m_TemporalView );
+			auto previous = m_PreviousCameras.find( m_TemporalView );
+			request.cameraValid =
+			    camera != m_PendingCameras.end() && previous != m_PreviousCameras.end();
+			if ( request.cameraValid )
+			{
+				request.currentToClip = camera->second.toClip;
+				request.previousToClip = previous->second.toClip;
+			}
+		}
 		m_TemporalRequests.emplace( tag, request );
 	}
 	slots->MarkSlot( tag );
@@ -1859,6 +1884,7 @@ void CoreWorld::RecordSlot(
 		bool success = false;
 		if ( request && target.device )
 		{
+			request->motionTargets = m_MotionTargets.size();
 #ifdef RENDER_CORE_VULKAN
 			if ( !m_Temporal )
 			{
@@ -2003,6 +2029,30 @@ void CoreWorld::RecordWorldBatch( std::span<const std::uint32_t> tags,
 	world.samples = target.samples;
 	if ( m_TemporalEnabled && target.device && target.samples == 1 )
 	{
+		// Imported swapchain ids change on recreation. Keep a small working set,
+		// not one image per target ever seen. A previous frame's image can retire
+		// behind submitted; an image already recorded in this frame cannot.
+		constexpr std::size_t kMaxMotionTargets = 8;
+		if ( !m_MotionTargets.contains( target.color.value ) &&
+		     m_MotionTargets.size() >= kMaxMotionTargets )
+		{
+			auto oldest = std::min_element( m_MotionTargets.begin(), m_MotionTargets.end(),
+			    []( const auto &a, const auto &b )
+			    {
+				    return a.second.frame < b.second.frame;
+			    } );
+			if ( ( !target.frame || oldest->second.frame >= target.frame ) &&
+			     ( !target.streamEpoch || oldest->second.stream == target.streamEpoch ) )
+			{
+				++m_LightingFailures;
+				std::fprintf( stderr, "FSR game: all motion targets are in use by this frame\n" );
+				(void)encoder.TakeBackend();
+				return;
+			}
+			(void)target.device->Release(
+			    device::ResourceId( oldest->second.image ), target.submitted );
+			m_MotionTargets.erase( oldest );
+		}
 		auto &motion = m_MotionTargets[target.color.value];
 		if ( motion.width != target.width || motion.height != target.height )
 		{
@@ -2029,7 +2079,7 @@ void CoreWorld::RecordWorldBatch( std::span<const std::uint32_t> tags,
 			encoder.TransitionTexture( motion.image, device::ResourceUsage::kUndefined,
 			    device::ResourceUsage::kColorAttachment );
 		}
-		if ( motion.frame != target.frame )
+		if ( motion.frame != target.frame || motion.stream != target.streamEpoch )
 		{
 			device::ColorAttachment attachment{ motion.image, device::LoadOp::kClear,
 			    device::StoreOp::kStore, { 65504.0f, 65504.0f, 0.0f, 0.0f }, {} };
@@ -2040,6 +2090,7 @@ void CoreWorld::RecordWorldBatch( std::span<const std::uint32_t> tags,
 			encoder.BeginRendering( clear );
 			encoder.EndRendering();
 			motion.frame = target.frame;
+			motion.stream = target.streamEpoch;
 		}
 		world.motion = motion.image;
 	}

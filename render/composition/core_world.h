@@ -113,6 +113,7 @@ public:
 	void EndFrame() override;
 	void SelectTemporalView( unsigned long long identity ) override { m_TemporalView = identity; }
 	void ResetTemporalHistory() override;
+	bool CaptureTemporalInputs( const char *prefix ) override;
 	void CommitTemporalFrame( bool submitted ) override;
 	bool TemporalEnabled() const override { return m_TemporalEnabled; }
 	void TemporalJitter( float *x, float *y ) const override
@@ -157,6 +158,11 @@ public:
 	// The indirect-light producers' compute (render.pass.indirect), whose
 	// device objects go with the backend's device.
 	void BindCompute( pass::indirect::PortCompute *compute ) { m_Compute = compute; }
+	void FrameSubmitted( device::CompletionToken token, bool submitted ) override
+	{
+		if ( m_Temporal )
+			m_Temporal->CaptureSubmitted( token, submitted );
+	}
 	void ReleaseDevice( device::IRenderDevice2 &device ) override
 	{
 		if ( m_Compute )
@@ -185,6 +191,7 @@ private:
 	std::uint32_t m_TemporalSerial = 0;
 	std::mutex m_TemporalLock;
 	std::map<std::uint32_t, TemporalRequest> m_TemporalRequests;
+	std::string m_TemporalCapturePrefix;
 	// The host may replay one stream for a capture or swapchain recreation.
 	std::map<std::uint32_t, TemporalRequest> m_RecordedTemporalRequests;
 	std::uint64_t m_TemporalStream = 0;
@@ -193,7 +200,7 @@ private:
 	{
 		device::TextureId image;
 		std::uint32_t width = 0, height = 0;
-		std::uint64_t frame = 0;
+		std::uint64_t frame = 0, stream = 0;
 	};
 	std::map<std::uint64_t, MotionTarget> m_MotionTargets;
 

@@ -294,6 +294,10 @@ public:
 	// Called on the render sequence while the present stage records.
 	virtual bool RecordOutput(
 	    device::CommandEncoder &encoder, const CoreOutputTargets &targets ) = 0;
+	// The native host's submission result, on the same render sequence as
+	// recording. This token fences its GPU work; a composition renderer using
+	// another device cannot substitute its own token. Failure submits no work.
+	virtual void FrameSubmitted( device::CompletionToken, bool ) {}
 	// The backend's device is about to go, after an idle wait: release every
 	// object made on it now (later releases would reach a destroyed device).
 	virtual void ReleaseDevice( device::IRenderDevice2 &device ) = 0;

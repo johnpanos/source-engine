@@ -2056,7 +2056,13 @@ public:
 		g_VulkanContext.RequestVSync( info.m_bWaitForVSync );
 		g_VulkanContext.RequestSampleCount( info.m_nAASamples );
 		if ( !info.m_bResizing )
+		{
 			g_bPendingModeChangeCallbacks = true;
+			// Publish the view extent with the backbuffer change, before the
+			// next game view is gathered. Waiting until Present leaves that
+			// view (and its temporal reconstruction request) at the old size.
+			InvokePendingModeChangeCallbacks();
+		}
 	}
 
 	// Called when the dx support level has changed
@@ -3697,11 +3703,10 @@ void CShaderDeviceMgrVulkan::InvokeModeChangeCallbacks()
 
 static void InvokePendingModeChangeCallbacks()
 {
-	if ( !g_bPendingModeChangeCallbacks )
+	if ( !g_bPendingModeChangeCallbacks || !ThreadInMainThread() )
 		return;
 	g_bPendingModeChangeCallbacks = false;
-	if ( ThreadInMainThread() )
-		s_ShaderDeviceMgrEmpty.InvokeModeChangeCallbacks();
+	s_ShaderDeviceMgrEmpty.InvokeModeChangeCallbacks();
 }
 
 bool CShaderDeviceMgrVulkan::QueryDesktopDisplay( render::DisplayModeFacts *pDesktop ) const

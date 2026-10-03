@@ -133,6 +133,11 @@ public:
 		return m_Forwarded && m_Forwarded->RecordOutput( encoder, targets );
 	}
 
+	void FrameSubmitted( device::CompletionToken token, bool submitted ) override
+	{
+		if ( m_Forwarded )
+			m_Forwarded->FrameSubmitted( token, submitted );
+	}
 	void ReleaseDevice( device::IRenderDevice2 &device ) override
 	{
 		if ( m_Forwarded )
