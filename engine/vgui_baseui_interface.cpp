@@ -6,6 +6,7 @@
 //===========================================================================//
 
 
+#include "render_core_host.h"
 #include "client_pch.h"
 
 #include "tier0/platform.h"
@@ -928,6 +929,7 @@ void CEngineVGui::Connect()
 //-----------------------------------------------------------------------------
 void CEngineVGui::CreateVProfPanels( vgui::Panel *pParent )
 {
+	RenderCoreCostPanel_Create( pParent );
 	
 
 #ifdef VPROF_ENABLED
@@ -940,6 +942,7 @@ void CEngineVGui::CreateVProfPanels( vgui::Panel *pParent )
 
 void CEngineVGui::DestroyVProfPanels( )
 {
+	RenderCoreCostPanel_Destroy();
 	
 
 #ifdef VPROF_ENABLED

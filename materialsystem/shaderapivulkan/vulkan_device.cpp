@@ -5235,9 +5235,10 @@ CVulkanContext::DynDraw &CVulkanContext::AppendDrawRecord()
 	std::memcpy( d.clipPlanes, m_dynClipPlanes, sizeof( d.clipPlanes ) );
 	std::memcpy( d.samplerHandles, m_dynSamplerHandles, sizeof( d.samplerHandles ) );
 	d.portal = m_dynPortal;
-	d.corePortalEffect =
-	    d.shaderIndex == kDynShaderPortalRefract && RetainsPortalEffect( d.portal.stage );
-	if ( d.corePortalEffect && d.portal.stage == 0 )
+	d.coreCustomEffect =
+	    ( d.shaderIndex == kDynShaderPortalRefract && RetainsPortalEffect( d.portal.stage ) ) ||
+	    ( d.shaderIndex == kDynShaderSolidEnergy && RetainsSolidEnergy() );
+	if ( d.coreCustomEffect && d.shaderIndex == kDynShaderPortalRefract && d.portal.stage == 0 )
 	{
 		// Preserve exactly the last framebuffer snapshot this refractive draw
 		// consumes, at the original copy position (before/after the child view).
@@ -6829,7 +6830,7 @@ void CVulkanContext::QueueCorePass( uint32_t tag, const CorePassTerms &terms )
 	     ( tag & render::legacy::kCorePassLegacyOff ) )
 	{
 		m_queueCoreOnly = true;
-		m_queuePortalEffects = ( tag & render::legacy::kCorePassPortalEffects ) != 0;
+		m_queueCustomEffects = ( tag & render::legacy::kCorePassCustomEffects ) != 0;
 	}
 	record.corePass = tag;
 	record.corePassTerms = static_cast<uint32_t>( m_corePassTerms.size() );
@@ -7630,7 +7631,7 @@ void CVulkanContext::RecordFrameScene( VkCommandBuffer cmd )
 			     ( d.corePass & render::legacy::kCorePassLegacyOff ) )
 				legacyOff = m_frameLegacyOff = true;
 			if ( legacyOff && !legacyHud &&
-			     ( ( d.kind == kRecordDraw && !d.corePortalEffect ) ||
+			     ( ( d.kind == kRecordDraw && !d.coreCustomEffect ) ||
 			         ( d.kind == kRecordCopy && !d.corePortalCopy ) ||
 			         d.kind == kRecordSceneCapture ||
 			         ( d.kind == kRecordClear && !d.clearDepth && !d.clearStencil ) ) )

@@ -113,6 +113,7 @@ public:
 	void SetGpuTimers( bool enabled ) override;
 	void SetQuality( const RenderCoreWorldQuality &quality ) override;
 	unsigned int TakeGpuTimes( char *out, unsigned int size ) override;
+	void ReadCosts( RenderCoreCostReport *out ) override;
 
 	// legacy::ICorePassRecorder (the backend, render sequence).
 	std::uint32_t SlotStages() const override;

@@ -6810,7 +6810,7 @@ these references, establish what is installed in this engine.
 The user additionally authorized reuse: “you can re-use the legacy shader”,
 with the requirement to execute at the correct point in the frame. The existing
 PortalRefract stage 0/2 shaders remain one native implementation, retained only
-in the normal product frame by `kCorePassPortalEffects`; stage 1 remains the core
+in the normal product frame by `kCorePassCustomEffects`; stage 1 remains the core
 aperture. The ordered stream owns the interleave and marks only the most recent
 framebuffer copy consumed by each retained refraction draw. Diagnostics keep
 legacy suppression. Retirement is replacement of these two stages by the owning

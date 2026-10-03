@@ -762,9 +762,11 @@ static void LevelInitWorld()
 		surface.firstIndex = indices.Count();
 		for ( int t = 1; t + 1 < nVerts; ++t )
 		{
+			// BSP brush fans use Source's clockwise front face. Normalize to
+			// the core world's counter-clockwise convention (also used by WMSH).
 			indices.AddToTail( firstVertex );
-			indices.AddToTail( firstVertex + t );
 			indices.AddToTail( firstVertex + t + 1 );
+			indices.AddToTail( firstVertex + t );
 		}
 		surface.indexCount = indices.Count() - surface.firstIndex;
 		surfaceOfIndex[i] = surfaces.AddToTail( surface );

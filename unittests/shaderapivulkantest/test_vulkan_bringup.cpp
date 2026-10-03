@@ -103,6 +103,8 @@ public:
 		rendering.width = target.width;
 		rendering.height = target.height;
 		rendering.colors = std::span<const ColorAttachment>( &color, 1 );
+		if ( ( tag & 0xffu ) == 3 )
+			rendering.depth = DepthAttachment{ target.depth, LoadOp::kClear, StoreOp::kStore, 0.25f };
 		encoder.BeginRendering( rendering );
 		encoder.EndRendering();
 	}
@@ -171,7 +173,7 @@ void CheckPortalCoreReplay( CVulkanContext &ctx, std::string &err )
 			ctx.SetViewport( 0, 0, 0, 0, 0, 1 );
 			const std::uint32_t policy = render::legacy::kCorePassForwarded |
 			                             render::legacy::kCorePassLegacyOff |
-			                             ( product ? render::legacy::kCorePassPortalEffects : 0 );
+			                             ( product ? render::legacy::kCorePassCustomEffects : 0 );
 			ctx.QueueCorePass( policy | 1, {} );
 			Check( ctx.QueueCopyToTexture( snapshot, nullptr, nullptr ), "portal snapshot queued" );
 			ctx.QueueCorePass( render::legacy::kCorePassForwarded | 2, {} );
@@ -251,21 +253,24 @@ void CheckSolidEnergyCoreReplay( CVulkanContext &ctx, std::string &err )
 		raster.blend = true;
 		raster.srcFactor = VK_BLEND_FACTOR_SRC_ALPHA;
 		raster.dstFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
-		for ( int mode : { 0, 1, 0, 2 } )
+		for ( int mode : { 0, 1, 0, 2, 3, 4 } )
 		{
 			ctx.ClearDynamicQueue();
 			ctx.SetRenderTarget( -1 );
 			ctx.SetViewport( 0, 0, 0, 0, 0, 1 );
 			const std::uint32_t policy = render::legacy::kCorePassForwarded |
 			    render::legacy::kCorePassLegacyOff |
-			    ( mode != 1 ? render::legacy::kCorePassPortalEffects : 0 );
-			ctx.QueueCorePass( policy | 2, {} );
+			    ( mode != 1 ? render::legacy::kCorePassCustomEffects : 0 );
+			ctx.QueueCorePass( policy | ( mode == 3 ? 3u : 2u ), {} );
+			raster.depthTest = mode == 3;
+			energy.viewProj[14] = 0.5f;
 			ctx.SelectDynamicShader( CVulkanContext::kDynShaderSolidEnergy );
 			ctx.SelectDynamicRasterState( raster );
 			ctx.SetDynamicSkinConstants( energy );
 			ctx.SelectDynamicColorSpace( 0 );
 			ctx.SetDynamicOutputScale( 1 );
-			ctx.SetDynamicClipPlanes( 0, nullptr );
+			const float clip[1][4] = { { 1, 0, 0, 0 } };
+			ctx.SetDynamicClipPlanes( mode == 4 ? 1 : 0, clip );
 			ctx.BindManagedTexture( texture );
 			ctx.QueueDynamicTriangles( &quad[0][0], 6, nullptr, &tangents[0][0] );
 			// A later core slot is an intentional wrong-order control.
@@ -281,16 +286,20 @@ void CheckSolidEnergyCoreReplay( CVulkanContext &ctx, std::string &err )
 				bool correct = rendered && !skipped && width > 0 && height > 0 && !pixels.empty();
 				if ( correct )
 				{
-					const auto *center = &pixels[( size_t( height / 2 ) * width + width / 2 ) * 4];
+					const auto *left = &pixels[( size_t( height / 2 ) * width + width / 4 ) * 4];
+					const auto *right = &pixels[( size_t( height / 2 ) * width + 3 * width / 4 ) * 4];
 					correct = PixelClose( pixels.data(), 0, 0, 255, 255, 2 ) &&
-					    ( mode == 0 ? PixelClose( center, 128, 0, 127, 255, 2 )
-					                : PixelClose( center, 0, 0, 255, 255, 2 ) );
+					    ( mode == 0 ? PixelClose( left, 128, 0, 127, 255, 2 )
+					                : PixelClose( left, 0, 0, 255, 255, 2 ) ) &&
+					    ( mode == 0 || mode == 4 ? PixelClose( right, 128, 0, 127, 255, 2 )
+					                             : PixelClose( right, 0, 0, 255, 255, 2 ) );
 				}
-				Check( correct, "SolidEnergy blends over core at its slot; replay, diagnostics and wrong-order controls" );
+				Check( correct, "SolidEnergy blends over core at its slot; replay, diagnostics, depth, clipping and wrong-order controls" );
 			}
 		}
 	}
 	ctx.ClearDynamicQueue();
+	ctx.SetDynamicClipPlanes( 0, nullptr );
 	ctx.BindCorePassRecorder( nullptr );
 	if ( texture >= 0 )
 		ctx.DestroyManagedTexture( texture );

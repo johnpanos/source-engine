@@ -371,6 +371,16 @@ void RenderCoreHost_MarkFrameEnd()
 		host.world->EndFrame();
 }
 
+bool RenderCoreHost_ReadCosts( RenderCoreCostReport *out )
+{
+	RenderCoreHostState &host = Host();
+	if ( !host.bound || !host.world || !host.renderer || !host.renderer->AppliedDebug().costOverlay )
+		return false;
+	if ( out )
+		host.world->ReadCosts( out );
+	return true;
+}
+
 void RenderCoreHost_EndFrame()
 {
 	RenderCoreHostState &host = Host();

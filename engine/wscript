@@ -407,6 +407,7 @@ def build(bld):
 			'vgui_basepanel.cpp',
 			'vgui_baseui_interface.cpp',
 			'vgui_budgetpanel.cpp',
+			'render_core_cost_panel.cpp',
 			'vgui_DebugSystemPanel.cpp',
 			'vgui_drawtreepanel.cpp',
 			'vgui_helpers.cpp',

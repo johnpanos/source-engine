@@ -416,7 +416,7 @@ int main()
 		checks.That(
 		    g_Slots.tags == std::vector<std::uint32_t>{ render::legacy::kCorePassForwarded |
 		                                                render::legacy::kCorePassLegacyOff |
-		                                                render::legacy::kCorePassPortalEffects },
+		                                                render::legacy::kCorePassCustomEffects },
 		    "P7.core-product-retains-portal-effects-before-any-cohort" );
 		const std::vector<std::uint32_t> coreTags = SlotsOfAFrame( *probedBinding );
 		checks.That( coreTags == std::vector<std::uint32_t>{ render::legacy::CorePassTag(

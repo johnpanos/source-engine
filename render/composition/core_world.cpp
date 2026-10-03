@@ -50,10 +50,8 @@ namespace
 
 // Private forwarded world tags: the backend just preserves their stream order.
 // Start captures the requested control on the render sequence, before any view;
-// the end bits preserve both debug requests even with multiple frames queued.
-constexpr std::uint32_t kCostBegin = 0x08000000u;
-constexpr std::uint32_t kEndCosts = 1u;
-constexpr std::uint32_t kEndTint = 2u;
+// even with multiple frames queued.
+constexpr std::uint32_t kCostBegin = legacy::kCorePassForwarded | 0x08000000u;
 
 // The backend's textures, as the world pass asks for them.
 class Textures final : public pass::world::IWorldTextures
@@ -1401,13 +1399,13 @@ void CoreWorld::BeginFrame()
 	const frame::DebugControls &debug = m_Renderer.AppliedDebug();
 	if ( debug.costOverlay )
 		if ( legacy::ICorePassSlots *slots = m_Frontend.CorePassSlots() )
-			slots->MarkSlot( legacy::kCorePassForwarded | kCostBegin );
+			slots->MarkSlot( kCostBegin );
 	if ( !m_CoreOnly && !frame::PixelViewActive( debug ) &&
 	     debug.legacy != frame::DebugLegacy::kSkip )
 		return;
 	if ( legacy::ICorePassSlots *slots = m_Frontend.CorePassSlots() )
 	{
-		const std::uint32_t effects = SlotStages() ? legacy::kCorePassPortalEffects : 0;
+		const std::uint32_t effects = SlotStages() ? legacy::kCorePassCustomEffects : 0;
 		slots->MarkSlot( legacy::kCorePassForwarded | legacy::kCorePassLegacyOff | effects );
 	}
 }
@@ -1542,6 +1540,40 @@ unsigned int CoreWorld::TakeGpuTimes( char *out, unsigned int size )
 		std::snprintf(
 		    out + used, size - used, "0 0 %u (timestamps dropped)\n", report.overflowed );
 	return report.frames;
+}
+
+void CoreWorld::ReadCosts( RenderCoreCostReport *out )
+{
+	if ( !out )
+		return;
+	*out = {};
+	std::lock_guard<std::mutex> guard( m_TimersLock );
+	if ( !m_Timers )
+		return;
+	out->available = true;
+	out->supported = m_Timers->Supported();
+	out->currentFrame = m_TimersFrame;
+	graph::PassTimerReport report = m_Timers->Latest();
+	out->frame = report.lastFrame;
+	out->dropped = report.overflowed;
+	// Hottest inclusive scopes first; retain an explicit omitted count.
+	std::stable_sort( report.passes.begin(), report.passes.end(),
+	    []( const graph::PassTime &a, const graph::PassTime &b )
+	    {
+		    return std::max( a.cpuMilliseconds, a.milliseconds ) >
+		        std::max( b.cpuMilliseconds, b.milliseconds );
+	    } );
+	out->count = std::min<unsigned int>( RenderCoreCostReport::kCapacity, report.passes.size() );
+	out->omitted = static_cast<unsigned int>( report.passes.size() ) - out->count;
+	for ( unsigned int i = 0; i < out->count; ++i )
+	{
+		const graph::PassTime &pass = report.passes[i];
+		RenderCoreCostRow &row = out->rows[i];
+		std::snprintf( row.name, sizeof( row.name ), "%s", pass.name.c_str() );
+		row.depth = pass.depth;
+		row.cpuMilliseconds = pass.cpuMilliseconds;
+		row.gpuMilliseconds = pass.milliseconds;
+	}
 }
 
 graph::GpuPassTimers *CoreWorld::SlotTimers( const legacy::CorePassTarget &target )

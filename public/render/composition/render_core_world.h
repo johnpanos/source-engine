@@ -185,6 +185,32 @@ struct RenderCoreWorldStats
 	char claimed[1024]; // "surfaces material" lines the core draws
 };
 
+// Debug-only snapshot of the latest completed core frame, ABI-safe across
+// the engine/core bridge. Inclusive rows must not be added together. CPU is
+// command-recording wall time, not game logic or GPU execution; GPU is elapsed
+// timestamp time, not per-pixel attribution. Neither includes legacy/present.
+struct RenderCoreCostRow
+{
+	char name[96] = {};
+	unsigned int depth = 0;
+	double cpuMilliseconds = 0;
+	double gpuMilliseconds = 0;
+};
+
+struct RenderCoreCostReport
+{
+	static constexpr unsigned int kCapacity = 64;
+	RenderCoreCostRow rows[kCapacity];
+	unsigned int count = 0;
+	unsigned int omitted = 0;
+	unsigned int dropped = 0;
+	unsigned long long frame = 0;
+	unsigned long long currentFrame = 0;
+	bool available = false; // a device has attempted to record timers
+	bool supported = false;
+	RenderCoreCostReport() = default;
+};
+
 class IRenderCoreWorld
 {
 public:
@@ -272,6 +298,9 @@ public:
 	// return value; 0 when none was), as "depth ms-per-frame
 	// count-per-frame name" lines in `out`. Main thread.
 	virtual unsigned int TakeGpuTimes( char *out, unsigned int size ) = 0;
+	// Main thread: nonblocking, non-destructive snapshot, independent of the
+	// console report. The core owns measurement; the host owns presentation.
+	virtual void ReadCosts( RenderCoreCostReport *out ) = 0;
 
 protected:
 	~IRenderCoreWorld() = default;

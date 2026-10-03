@@ -26,6 +26,12 @@ class IGpuCompute;
 }
 
 bool RenderCoreHost_IsBound();
+struct RenderCoreCostReport;
+// Null output queries visibility only; otherwise reads the completed core sample.
+bool RenderCoreHost_ReadCosts( RenderCoreCostReport *out );
+namespace vgui { class Panel; }
+void RenderCoreCostPanel_Create( vgui::Panel *parent );
+void RenderCoreCostPanel_Destroy();
 
 // The legacy backend's optional capabilities, through the core's legacy
 // frontend (render/legacy/capabilities.h): world mesh and light set calls
