@@ -451,6 +451,10 @@ def rent(vast, ledger, args):
     """Rent one host under the cap; returns the ledger entry (with its id)."""
     public = ensure_ssh_key(vast)
     offers = vast.offers(offer_query(args))
+    if args.location:
+        needle = args.location.casefold()
+        offers = [offer for offer in offers
+                  if needle in str(offer.get("geolocation") or "").casefold()]
     if not offers:
         raise SystemExit("no vast offer matches (max $%.2f/h, GPUs %s)"
                          % (args.max_dph, ", ".join(args.gpu or GPUS)))
@@ -645,6 +649,8 @@ def main():
                          help="lifetime limit; the reaper destroys the host after it")
     renting.add_argument("--max-dph", type=float, default=0.60, help="max $/hour")
     renting.add_argument("--gpu", action="append", help="allowed GPU names (default: RTX class)")
+    renting.add_argument("--location",
+                         help="case-insensitive substring required in the provider geolocation")
     renting.add_argument("--disk", type=int, default=40, help="GB")
     renting.add_argument("--min-cpus", type=float, default=8,
                          help="effective CPU cores (the radiosity and probe steps' Python "
