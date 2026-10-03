@@ -7557,3 +7557,41 @@ initializer in that timer work was supplied so the strict Waf build could procee
 No render quality, shader, effect, resolution, sample count or frozen-path behavior
 was changed. R89/R96 resource efficiency improves; their larger acceptance gates
 and RFC 0016's hard render budgets are not certified by this microbenchmark.
+
+## RCV-11: complete-view preparation and opaque batching (2026-10-02, planned)
+
+User direction: checkpoint current progress and plan, work in a separate worktree,
+and pursue the next substantial complete-frame improvement. RCV-09/10's retained
+depth change is committed on the main branch at `658180d76`; its ordinary matched
+arrival control/result is 55.784/37.603 ms GPU and 56.129/48.327 ms frame interval,
+with retained CPU time 41.281 ms. These are diagnostic improvements, not High
+120 FPS acceptance. The existing resource pool is already implemented; this slice
+must eliminate repeated preparation rather than add another allocation pool.
+
+Ownership stays with `render.pass.world` for view/group preparation and opaque
+draw execution, `render.composition` for ordered boundaries, and the native
+adapter for translating their commands. No new lighting algorithm or quality
+selection is planned. Source, outputs and runtime binaries remain private to the
+new worktree; the saved RCV-09/10 control and all 29 runtime library identities
+remain available for interleaved measurements.
+
+1. Inspect actual cohort inputs and instrument/count repeated group construction,
+   uploads and command work. Reuse immutable view lighting and compatible groups
+   across cohorts only with explicit input identity and correct submission-token
+   retirement. Prove changed lighting, targets, clipping, AO, scene captures and
+   nested views cannot borrow stale resources, including delayed completion.
+2. Gather compatible opaque world/static/posed cohorts before their depth and
+   color draws, within existing ordering boundaries. Preserve alpha coverage,
+   clipping, stencil, transparency and scene-color capture semantics. Prove the
+   change in `render_lab` before product integration; no later cleanup of a
+   replaced implementation is deferred.
+3. Measure remaining geometry conversion and command emission, then remove
+   repeated copies and bindings where the complete-frame profile justifies it.
+
+Each retained implementation needs relevant null/native correctness and lifetime
+checks, architecture/style checks, complete High/4x MSAA product image evidence,
+and ordinary matched route timings with binary/source identities and AC/power/
+clock records. Report fragment invocations, resource/upload/command reductions
+where available. Checkpoint code and evidence at bounded milestones; revert
+ineffective trials rather than retaining unmeasured mechanisms. Desktop/Fold7
+and the hard render gates remain open until their required evidence passes.
