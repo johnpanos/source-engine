@@ -435,7 +435,6 @@ def main():
                "placement": dict(params, bounds_min=[float(v) for v in bounds_min],
                                  bounds_max=[float(v) for v in bounds_max],
                                  seeds=[[float(v) for v in s] for s in seeds],
-                                 glossy_shapes=glossy_names,
                                  excluded_dynamic_models=sorted(props), **report),
                "excluded_analytic_emitter_meshes": excluded_emitter_meshes,
                "probes": records, "blender": bpy.app.version_string}
