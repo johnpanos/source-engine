@@ -28,6 +28,7 @@ using namespace render::device;
 enum class Defect
 {
 	kAcceptsBadComparison,
+	kDropsInitialUpload, // D25: snapshots zeroes instead of the supplied bytes
 	kNone,
 	kReleasesEarly,       // D5: frees at once, ignoring the token
 	kFactsChange,         // D1: facts differ after the first use
@@ -185,6 +186,12 @@ public:
 	{
 		m_Used = true;
 		return m_Inner->CreateBuffer( desc );
+	}
+	DeviceResult<BufferId> CreateUploadBuffer( std::span<const std::byte> bytes ) override
+	{
+		if ( m_Defect == Defect::kDropsInitialUpload )
+			return m_Inner->CreateUploadBuffer( std::vector<std::byte>( bytes.size() ) );
+		return m_Inner->CreateUploadBuffer( bytes );
 	}
 	DeviceResult<TextureId> CreateTexture( const TextureDesc &desc ) override
 	{
@@ -378,6 +385,7 @@ int main()
 	    { Defect::kDropsRegionOrigin, "under-test.D22 " },
 	    { Defect::kDropsTimestamps, "under-test.D23 " },
 	    { Defect::kAcceptsBadComparison, "under-test.D24 " },
+	    { Defect::kDropsInitialUpload, "under-test.D25 " },
 	};
 	for ( const Case &c : cases )
 	{

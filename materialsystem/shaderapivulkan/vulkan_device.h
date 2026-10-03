@@ -350,6 +350,13 @@ public:
 		return m_corePassRecorder && m_corePassRecorder->AcceptsMeshes();
 	}
 
+	// Retained custom portal effects (R91, user decision 2026-10-02).
+	// Stage 1's aperture is owned by the core depth/stencil program.
+	bool RetainsPortalEffect( int stage ) const
+	{
+		return m_queuePortalEffects && ( stage == 0 || stage == 2 );
+	}
+
 	bool CoreOnlyQueue() const
 	{
 		return m_queueCoreOnly && !m_queueLegacyHud && !m_dynFramePresented;
@@ -488,6 +495,7 @@ public:
 		m_dynDrawRecords.clear();
 		m_corePassTerms.clear();
 		m_queueCoreOnly = false;
+		m_queuePortalEffects = false;
 		m_queueLegacyHud = false;
 		m_frameLabels.clear();
 		m_dynSkinConstants.clear();
@@ -1696,6 +1704,7 @@ private:
 	// The frame being recorded turned the legacy stream off (RFC 0014,
 	// render::legacy::kCorePassLegacyOff): it presents without the ramp.
 	bool m_frameLegacyOff = false;
+	bool m_queuePortalEffects = false; // product portal shader reuse; off in diagnostics
 	bool m_queueCoreOnly = false;    // frame-ordered slot, before vertex conversion
 	bool m_queueLegacyHud = false;   // top-level HUD stage, scoped to this frame
 	bool m_gammaUnavailable = false; // the pass failed to build; presents blit
@@ -2392,6 +2401,8 @@ private:
 		bool clearDepth = false;
 		float clearValue[4] = { 0, 0, 0, 1 };
 		int copyDst = -1;
+		bool corePortalEffect = false; // retained portal shader at its original stream position
+		bool corePortalCopy = false;   // the preceding snapshot consumed by a retained effect
 		uint32_t corePass = 0;      // kRecordCorePass: the slot's tag
 		uint32_t corePassTerms = 0; // and its terms (m_corePassTerms)
 		// Occlusion query slot of a begin/end record, and which issue of that

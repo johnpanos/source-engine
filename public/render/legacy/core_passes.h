@@ -159,6 +159,10 @@ inline constexpr std::uint32_t kCorePassForwarded = 0x80000000u;
 // monitor gamma ramp; its slots still run. The composition root marks it at
 // the frame's first slot, where it records the not-applicable hatch.
 inline constexpr std::uint32_t kCorePassLegacyOff = 0x40000000u;
+// Product-only exception to LegacyOff: retain PortalRefract stages 0/2 and
+// their consumed framebuffer snapshots in stream order. Stage 1 remains core.
+// Pixel diagnostics/legacy-skip never set this bit (R91, 2026-10-02).
+inline constexpr std::uint32_t kCorePassPortalEffects = 0x10000000u;
 // A forwarded tag with this bit marks the end of the frame's stream, after
 // every draw and before the present (RFC 0014 cl_render_debug_legacy 1: the
 // composition root tints what the core did not draw there). The backend runs

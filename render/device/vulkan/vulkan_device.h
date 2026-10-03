@@ -221,6 +221,7 @@ private:
 		bool abandoned = false;
 	};
 
+	Allocation *FindLocked( std::uint64_t id ); // caller holds m_Mutex
 	void RetireLocked( std::uint64_t completedValue );
 
 	mutable std::mutex m_Mutex;
@@ -521,6 +522,7 @@ public:
 	std::uint32_t Epoch() const override { return m_Epoch; }
 
 	DeviceResult<BufferId> CreateBuffer( const BufferDesc &desc ) override;
+	DeviceResult<BufferId> CreateUploadBuffer( std::span<const std::byte> bytes ) override;
 	DeviceResult<TextureId> CreateTexture( const TextureDesc &desc ) override;
 	DeviceResult<SamplerId> CreateSampler( const SamplerDesc &desc ) override;
 	DeviceResult<BindGroupLayoutId> CreateBindGroupLayout(

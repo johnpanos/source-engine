@@ -614,6 +614,21 @@ public:
 		return id;
 	}
 
+	DeviceResult<BufferId> CreateUploadBuffer( std::span<const std::byte> bytes ) override
+	{
+		BufferDesc desc;
+		desc.size = bytes.size();
+		desc.memory = MemoryKind::kUpload;
+		desc.usages = { ResourceUsage::kCopySource };
+		auto buffer = CreateBuffer( desc );
+		if ( !buffer )
+			return buffer;
+		Buffer &record = m_Buffers.at( buffer.Value().value );
+		std::copy( bytes.begin(), bytes.end(), record.data.begin() );
+		record.usage = ResourceUsage::kCopySource;
+		return buffer;
+	}
+
 	DeviceResult<TextureId> CreateTexture( const TextureDesc &desc ) override
 	{
 		if ( m_State != DeviceState::kAvailable )

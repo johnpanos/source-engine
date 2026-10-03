@@ -44,7 +44,9 @@ WorldData Fixture()
 		WorldMaterial material;
 		material.name = std::string( "portal-aperture-" ) + open;
 		material.shader = "PortalRefract";
-		material.variables = { { "$stage", "1" }, { "$portalopenamount", open } };
+		// PortalRefract's InitParams sets both flags even for its stencil stage.
+		material.variables = { { "$stage", "1" }, { "$portalopenamount", open }, { "$model", "1" },
+		    { "$translucent", "1" } };
 		world.materials.push_back( std::move( material ) );
 	}
 	auto quad = [&]( unsigned mat, float left, float right, float z )
@@ -112,10 +114,39 @@ std::optional<std::string> RunChecks(
 	bool initialized = false;
 	NoTextures imports;
 	WorldPass pass;
-	pass.SetWorld( Fixture() );
+	const WorldData fixture = Fixture();
+	pass.SetWorld( fixture );
 	std::vector<unsigned> tags;
 	for ( unsigned i = 0; i < 8; ++i )
-		tags.push_back( pass.QueueView( View( i ) ) );
+	{
+		WorldView view = View( i );
+		if ( i >= 6 )
+		{
+			// Exercise the same dynamic snapshot acceptance as the game frontend.
+			WorldView::DynamicDraw draw;
+			draw.material = fixture.materials[fixture.surfaces[i].material];
+			draw.vertices.assign(
+			    fixture.vertices.begin() + i * 4, fixture.vertices.begin() + ( i + 1 ) * 4 );
+			draw.indices = { 0, 1, 2, 0, 2, 3 };
+			view.surfaces.clear();
+			view.dynamicDraws.push_back( std::move( draw ) );
+		}
+		tags.push_back( pass.QueueView( std::move( view ) ) );
+	}
+	results.That( tags[6] != 0 && tags[7] != 0, "view-state.game-portal-material-flags-accepted" );
+	for ( const char *stage : { "0", "2" } )
+	{
+		WorldView view = View( 6 );
+		WorldView::DynamicDraw draw;
+		draw.material = fixture.materials[4];
+		draw.material.variables.front().second = stage;
+		draw.vertices.assign( fixture.vertices.begin() + 24, fixture.vertices.begin() + 28 );
+		draw.indices = { 0, 1, 2, 0, 2, 3 };
+		view.surfaces.clear();
+		view.dynamicDraws.push_back( std::move( draw ) );
+		results.That( pass.QueueView( std::move( view ) ) == 0,
+		    std::string( "view-state.aperture-does-not-claim-stage-" ) + stage );
+	}
 	std::uint64_t frame = 0;
 	auto render = [&]( int control, CanvasImage &image )
 	{

@@ -1014,6 +1014,13 @@ Keep the table concise and link details below or from the domain progress file.
     stream retires, and no core drawing becomes a default on such a
     profile before then.
   - See the [record](RFC/0016-progress.md#vulkan-11-host-devices-the-galaxy-tab-s8-ultra-2026-09-29).
+
+- R86/R88 memory follow-up (2026-10-02, user request): [audit and direct
+  texture uploads](RFC/0016-progress.md#k1k4-render-core-memory-and-cache-audit-2026-10-02)
+  remove the intermediate GPU buffer copy and retain uploads after allocation
+  failure; native provider and lab checks pass. Heap-budget telemetry, cache
+  retention policy, frame-graph reuse and full-frame performance remain open.
+
 - R86–R92 (RFC 0016): R86–R91 added 2026-09-26 as `planned`. The user asked for "a
   real graphics system" that breaks free of the legacy pipeline while
   keeping compatibility.

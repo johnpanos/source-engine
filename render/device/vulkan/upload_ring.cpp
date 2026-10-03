@@ -72,27 +72,33 @@ std::optional<std::pair<std::uint64_t, std::uint64_t>> UploadRing::Allocate(
 	return std::make_pair( offset, allocation.id );
 }
 
+UploadRing::Allocation *UploadRing::FindLocked( std::uint64_t id )
+{
+	if ( m_Live.empty() )
+		return nullptr;
+	// Successful allocations append consecutive IDs. Retirement removes only
+	// a prefix, so the ID's distance from the front is its deque index, even
+	// when encoders submit or abandon out of allocation order. Attach/Detach
+	// clear the deque but preserve m_NextId, so old IDs cannot name new slots.
+	const std::uint64_t index = id - m_Live.front().id;
+	return index < m_Live.size() ? &m_Live[index] : nullptr;
+}
+
 void UploadRing::Submit( std::uint64_t id, std::uint64_t value )
 {
 	std::lock_guard<std::mutex> lock( m_Mutex );
-	for ( Allocation &allocation : m_Live )
+	if ( Allocation *allocation = FindLocked( id ) )
 	{
-		if ( allocation.id == id )
-		{
-			allocation.value = value;
-			allocation.submitted = true;
-		}
+		allocation->value = value;
+		allocation->submitted = true;
 	}
 }
 
 void UploadRing::Abandon( std::uint64_t id )
 {
 	std::lock_guard<std::mutex> lock( m_Mutex );
-	for ( Allocation &allocation : m_Live )
-	{
-		if ( allocation.id == id && !allocation.submitted )
-			allocation.abandoned = true;
-	}
+	if ( Allocation *allocation = FindLocked( id ); allocation && !allocation->submitted )
+		allocation->abandoned = true;
 }
 
 void UploadRing::Retire( std::uint64_t completedValue )

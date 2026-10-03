@@ -401,6 +401,39 @@ DeviceResult<BufferId> GlDevice::CreateBuffer( const BufferDesc &desc )
 	return id;
 }
 
+DeviceResult<BufferId> GlDevice::CreateUploadBuffer( std::span<const std::byte> bytes )
+{
+	const DeviceOperation op = DeviceOperation::kCreateBuffer;
+	std::lock_guard<std::recursive_mutex> lock( m_Lock );
+	if ( m_State != DeviceState::kAvailable )
+		return Fail( DeviceStatus::kDeviceLost, op );
+	BufferDesc desc;
+	desc.size = bytes.size();
+	desc.memory = MemoryKind::kUpload;
+	desc.usages = { ResourceUsage::kCopySource };
+	// Keep creation and initialization on the same current context. A failed
+	// upload never publishes a partially initialized handle.
+	ContextScope scope( *m_Context );
+	if ( !scope.Ok() )
+		return Fail( DeviceStatus::kUnavailable, op );
+	auto buffer = CreateBuffer( desc );
+	if ( !buffer )
+		return buffer;
+	BufferRecord &record = m_Buffers.at( buffer.Value().value );
+	Gl().NamedBufferSubData(
+	    record.name, 0, static_cast<GLsizeiptr>( bytes.size() ), bytes.data() );
+	if ( const GLenum error = Gl().GetError(); error != GL_NO_ERROR )
+	{
+		Gl().DeleteBuffers( 1, &record.name );
+		m_Buffers.erase( buffer.Value().value );
+		return Fail(
+		    error == GL_OUT_OF_MEMORY ? DeviceStatus::kOutOfMemory : DeviceStatus::kInternal, op,
+		    error );
+	}
+	record.usage = ResourceUsage::kCopySource;
+	return buffer;
+}
+
 DeviceResult<TextureId> GlDevice::CreateTexture( const TextureDesc &desc )
 {
 	const DeviceOperation op = DeviceOperation::kCreateTexture;

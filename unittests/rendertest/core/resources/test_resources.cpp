@@ -22,7 +22,86 @@ namespace
 {
 
 using namespace render;
-using device::ResourceUsage;
+using namespace render::device;
+
+// Inject one allocation failure without changing the null device's execution
+// or completion semantics. Only the cache sees this wrapper.
+class FailBufferOnce final : public IRenderDevice2
+{
+public:
+	explicit FailBufferOnce( IRenderDevice2 &inner ) : m_Inner( inner ) {}
+	const DeviceFacts &Facts() const override { return m_Inner.Facts(); }
+	DeviceState State() const override { return m_Inner.State(); }
+	std::uint32_t Epoch() const override { return m_Inner.Epoch(); }
+	DeviceResult<BufferId> CreateBuffer( const BufferDesc &desc ) override
+	{
+		if ( m_Fail )
+		{
+			m_Fail = false;
+			return foundation::MakeUnexpected(
+			    DeviceError{ DeviceStatus::kOutOfMemory, DeviceOperation::kCreateBuffer, 0 } );
+		}
+		return m_Inner.CreateBuffer( desc );
+	}
+	DeviceResult<BufferId> CreateUploadBuffer( std::span<const std::byte> bytes ) override
+	{
+		if ( m_Fail )
+		{
+			m_Fail = false;
+			return foundation::MakeUnexpected(
+			    DeviceError{ DeviceStatus::kOutOfMemory, DeviceOperation::kCreateBuffer, 0 } );
+		}
+		return m_Inner.CreateUploadBuffer( bytes );
+	}
+	DeviceResult<TextureId> CreateTexture( const TextureDesc &desc ) override
+	{
+		return m_Inner.CreateTexture( desc );
+	}
+	DeviceResult<SamplerId> CreateSampler( const SamplerDesc &desc ) override
+	{
+		return m_Inner.CreateSampler( desc );
+	}
+	DeviceResult<BindGroupLayoutId> CreateBindGroupLayout(
+	    const BindGroupLayoutDesc &desc ) override
+	{
+		return m_Inner.CreateBindGroupLayout( desc );
+	}
+	DeviceResult<BindGroupId> CreateBindGroup( const BindGroupDesc &desc ) override
+	{
+		return m_Inner.CreateBindGroup( desc );
+	}
+	DeviceResult<PipelineId> CreatePipeline( const PipelineDesc &desc ) override
+	{
+		return m_Inner.CreatePipeline( desc );
+	}
+	DeviceResult<void> Release( ResourceId resource, CompletionToken token ) override
+	{
+		return m_Inner.Release( resource, token );
+	}
+	DeviceResult<CommandEncoder> BeginEncoder( QueueKind queue ) override
+	{
+		return m_Inner.BeginEncoder( queue );
+	}
+	DeviceResult<CompletionToken> Submit(
+	    QueueKind queue, std::span<CommandEncoder> encoders, const SubmitWaits &waits ) override
+	{
+		return m_Inner.Submit( queue, encoders, waits );
+	}
+	bool IsComplete( CompletionToken token ) const override { return m_Inner.IsComplete( token ); }
+	std::size_t Poll() override { return m_Inner.Poll(); }
+	DeviceResult<void> ReadBuffer(
+	    BufferId buffer, std::uint64_t offset, std::span<std::byte> out ) override
+	{
+		return m_Inner.ReadBuffer( buffer, offset, out );
+	}
+	DeviceResult<void> WaitIdle() override { return m_Inner.WaitIdle(); }
+	DeviceResult<void> Recover() override { return m_Inner.Recover(); }
+	std::size_t LiveResourceCount() const override { return m_Inner.LiveResourceCount(); }
+
+private:
+	IRenderDevice2 &m_Inner;
+	bool m_Fail = true;
+};
 
 std::vector<std::byte> Bytes( std::size_t size, std::uint8_t seed )
 {
@@ -96,6 +175,14 @@ int main()
 		textures.Retire( first );
 		control->CompleteThrough( first.queue, first.value );
 		(void)device->Poll();
+		const auto commands = control->Recorded();
+		checks.That( std::none_of( commands.begin(), commands.end(),
+		                 []( const device::null::RecordedCommand &command )
+		                 {
+			                 return command.op == device::null::RecordedOp::kWriteBuffer ||
+			                        command.op == device::null::RecordedOp::kCopyBuffer;
+		                 } ),
+		    "R9.texture-upload-has-no-intermediate-buffer-copy" );
 		const std::vector<std::byte> texels = ReadTexture( *device, staged.Value().texture, 4, 2 );
 		checks.That( texels == pixels, "R1.staged-texels-land-and-the-texture-ends-sampled" );
 
@@ -229,6 +316,44 @@ int main()
 		checks.That( vertexWritten, "R4.vertex-bytes-are-written" );
 		checks.That( vertexReady && indexReady, "R4.buffers-end-in-kVertex-and-kIndex" );
 		meshes.Retire( meshToken );
+	}
+	{
+		FailBufferOnce fault( *device );
+		resources::TextureCache textures( fault );
+		TextureDesc desc;
+		desc.format = Format::kRGBA8Unorm;
+		desc.width = 4;
+		desc.height = 2;
+		desc.usages = { ResourceUsage::kCopySource };
+		const auto first = textures.Stage( "retry", desc, Bytes( 32, 71 ) );
+		const auto second = textures.Stage( "ready", desc, Bytes( 32, 72 ) );
+		checks.That( first && second, "R8.two-textures-staged-before-allocation-failure" );
+		auto upload = device->BeginEncoder( QueueKind::kGraphics ).Value();
+		checks.Equal( textures.RecordUploads( upload ), std::size_t( 1 ),
+		    "R8.a-failed-allocation-does-not-block-other-uploads" );
+		checks.Equal(
+		    textures.PendingUploads(), std::size_t( 1 ), "R8.failed-upload-retains-its-pixels" );
+		const auto firstToken = Run( *device, upload );
+		textures.Retire( firstToken );
+		control->CompleteThrough( firstToken.queue, firstToken.value );
+		checks.That(
+		    second && ReadTexture( *device, second.Value().texture, 4, 2 ) == Bytes( 32, 72 ),
+		    "R8.other-upload-lands" );
+
+		auto retry = device->BeginEncoder( QueueKind::kGraphics ).Value();
+		checks.Equal( textures.RecordUploads( retry ), std::size_t( 1 ),
+		    "R8.only-the-failed-upload-is-retried" );
+		checks.Equal(
+		    textures.PendingUploads(), std::size_t( 0 ), "R8.retry-drains-the-pending-queue" );
+		const auto retryToken = Run( *device, retry );
+		textures.Retire( retryToken );
+		control->CompleteThrough( retryToken.queue, retryToken.value );
+		checks.That(
+		    first && ReadTexture( *device, first.Value().texture, 4, 2 ) == Bytes( 32, 71 ),
+		    "R8.retried-upload-lands-byte-exact" );
+		auto empty = device->BeginEncoder( QueueKind::kGraphics ).Value();
+		checks.Equal( textures.RecordUploads( empty ), std::size_t( 0 ),
+		    "R8.successful-uploads-are-not-repeated" );
 	}
 	control->CompleteAll();
 	(void)device->Poll();

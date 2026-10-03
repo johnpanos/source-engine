@@ -5167,7 +5167,8 @@ bool CEmptyMesh::EmitToCoreQueue()
 
 void CEmptyMesh::EmitToNativeQueue()
 {
-	if ( g_VulkanContext.CoreOnlyQueue() )
+	if ( g_VulkanContext.CoreOnlyQueue() &&
+	     !g_VulkanContext.RetainsPortalEffect( g_CurrentPortalStage ) )
 	{
 		if ( ( g_VulkanContext.CoreMeshesEnabled() ||
 		         CoreMeshKindFor( g_pBoundMaterial ) != render::legacy::CoreMeshKind::kSurface ) &&

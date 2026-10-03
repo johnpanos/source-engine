@@ -634,6 +634,44 @@ inline void DataLands( Suite &s )
 	s.That( all, "D9", "a cleared texture copies out as its clear color" );
 }
 
+// Creation publishes an owned snapshot directly in copy-source usage. No
+// encoder write or transfer through the adapter's ring is required.
+inline void InitializedUploads( Suite &s )
+{
+	auto device = s.Create();
+	if ( !device )
+		return;
+	const auto baseline = device->LiveResourceCount();
+	const auto empty = device->CreateUploadBuffer( {} );
+	s.That( !empty && empty.Error().status == DeviceStatus::kInvalidDescription &&
+	            device->LiveResourceCount() == baseline,
+	    "D25", "empty uploads fail without allocating" );
+	std::vector<std::byte> bytes = Pattern( 4096, 51 );
+	const auto first = device->CreateUploadBuffer( bytes );
+	bytes = Pattern( 4096, 52 );
+	const auto second = device->CreateUploadBuffer( bytes );
+	std::fill( bytes.begin(), bytes.end(), std::byte{ 0 } );
+	s.That( first && second, "D25", "initialized uploads are created" );
+	if ( !first || !second )
+		return;
+	s.That( s.ReadBack( *device, first.Value(), 4096 ) == Pattern( 4096, 51 ), "D25",
+	    "source mutation and another creation do not change the first snapshot" );
+	s.That( s.ReadBack( *device, second.Value(), 4096 ) == Pattern( 4096, 52 ), "D25",
+	    "each snapshot can be copied without an encoder write" );
+	auto invalid = device->BeginEncoder( QueueKind::kGraphics );
+	if ( invalid )
+	{
+		invalid.Value().TransitionBuffer(
+		    first.Value(), ResourceUsage::kCopySource, ResourceUsage::kCopyDestination );
+		invalid.Value().WriteBuffer( first.Value(), 0, bytes );
+		s.That( !s.Run( *device, invalid.Value() ), "D25", "upload snapshots reject mutation" );
+	}
+	(void)device->Release( first.Value(), {} );
+	(void)device->Release( second.Value(), {} );
+	(void)device->Poll();
+	s.That( device->LiveResourceCount() == baseline, "D25", "snapshots release without leaks" );
+}
+
 inline void UploadReuse( Suite &s )
 {
 	auto device = s.Create();
@@ -2389,6 +2427,7 @@ inline void RunDeviceConformance( testing::Checks &checks, const DeviceDriver &d
 	detail::Epochs( suite );
 	detail::EncoderOrderAndErrors( suite );
 	detail::DataLands( suite );
+	detail::InitializedUploads( suite );
 	detail::UploadReuse( suite );
 	detail::EncoderThreads( suite );
 	detail::UsageStates( suite );

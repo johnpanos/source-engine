@@ -126,3 +126,19 @@ per resource, not per subresource.
 
 Transient aliasing, parallel native recording, async compute and transfer
 queues, ray query, per-heap budgets (VMA is not pinned yet), pipeline caches.
+
+## D25: initialized upload buffers (2026-10-02)
+
+`IRenderDevice2::CreateUploadBuffer(bytes)` synchronously snapshots nonempty bytes
+into an owned, immutable, copy-source-only buffer in `kCopySource` usage. The
+caller may destroy or mutate its bytes on return. Empty input fails with
+`kInvalidDescription` in `kCreateBuffer`, without leaked resources. The caller
+releases the buffer behind its last consumer's completion token (D5); creation
+is not GPU completion. No encoder write is needed. Vulkan initializes mapped
+coherent storage before queue submission; GL initializes its buffer on its
+context; null owns a byte copy. This additive core-port operation does not alter
+legacy engine or extension vtables; all in-tree core providers implement it.
+
+The shared suite checks independent snapshots after caller mutation, use without
+an encoder write, rejection of destination use, and cleanup. The texture cache
+is its first consumer, eliminating the ring-to-staging GPU transfer.

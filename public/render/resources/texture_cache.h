@@ -9,7 +9,7 @@
 //			before the GPU is done with it.
 //
 //			StageMips stages a mip chain: every level it is given is uploaded
-//			from one staging buffer (each level at a 16-byte aligned offset),
+//			from one initialized upload buffer (16-byte aligned level offsets),
 //			in the same submission. Stage is StageMips with mip 0 alone.
 //
 //			Staging and recording belong to one sequence (the render sequence);
@@ -64,6 +64,8 @@ public:
 	const TextureEntry *Find( std::string_view name ) const;
 	foundation::Expected<void, ResourceError> Evict( std::string_view name );
 
+	// Returns the number recorded. A staging allocation failure leaves that
+	// upload pending for retry; successfully recorded uploads are removed.
 	std::size_t RecordUploads( device::CommandEncoder &encoder );
 	void Retire( device::CompletionToken token );
 

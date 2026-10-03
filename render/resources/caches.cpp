@@ -138,37 +138,28 @@ foundation::Expected<void, ResourceError> TextureCache::Evict( std::string_view 
 std::size_t TextureCache::RecordUploads( device::CommandEncoder &encoder )
 {
 	std::size_t recorded = 0;
-	for ( Upload &upload : m_Uploads )
-	{
-		device::BufferDesc staging;
-		staging.size = upload.pixels.size();
-		staging.usages = {
-		    device::ResourceUsage::kCopyDestination, device::ResourceUsage::kCopySource };
-		staging.memory = device::MemoryKind::kUpload;
-		auto buffer = m_Device.CreateBuffer( staging );
-		if ( !buffer )
-			continue;
-		m_Recorded.push_back( buffer.Value() );
-		encoder.TransitionBuffer( buffer.Value(), device::ResourceUsage::kUndefined,
-		    device::ResourceUsage::kCopyDestination );
-		encoder.WriteBuffer( buffer.Value(), 0, upload.pixels );
-		encoder.TransitionBuffer( buffer.Value(), device::ResourceUsage::kCopyDestination,
-		    device::ResourceUsage::kCopySource );
-		encoder.TransitionTexture( upload.texture, device::ResourceUsage::kUndefined,
-		    device::ResourceUsage::kCopyDestination );
-		for ( std::size_t m = 0; m < upload.levels.size(); ++m )
-		{
-			const Level &level = upload.levels[m];
-			for ( std::uint32_t layer = 0; layer < level.layers; ++layer )
-				encoder.CopyBufferToTexture( buffer.Value(), upload.texture,
-				    { level.offset + std::uint64_t( layer ) * level.layerBytes,
-				        static_cast<std::uint32_t>( m ), layer, level.width, level.height } );
-		}
-		encoder.TransitionTexture( upload.texture, device::ResourceUsage::kCopyDestination,
-		    device::ResourceUsage::kSampled );
-		++recorded;
-	}
-	m_Uploads.clear();
+	std::erase_if( m_Uploads,
+	    [&]( Upload &upload )
+	    {
+		    auto buffer = m_Device.CreateUploadBuffer( upload.pixels );
+		    if ( !buffer )
+			    return false; // retain the bytes for the next recording attempt
+		    m_Recorded.push_back( buffer.Value() );
+		    encoder.TransitionTexture( upload.texture, device::ResourceUsage::kUndefined,
+		        device::ResourceUsage::kCopyDestination );
+		    for ( std::size_t m = 0; m < upload.levels.size(); ++m )
+		    {
+			    const Level &level = upload.levels[m];
+			    for ( std::uint32_t layer = 0; layer < level.layers; ++layer )
+				    encoder.CopyBufferToTexture( buffer.Value(), upload.texture,
+				        { level.offset + std::uint64_t( layer ) * level.layerBytes,
+				            static_cast<std::uint32_t>( m ), layer, level.width, level.height } );
+		    }
+		    encoder.TransitionTexture( upload.texture, device::ResourceUsage::kCopyDestination,
+		        device::ResourceUsage::kSampled );
+		    ++recorded;
+		    return true;
+	    } );
 	return recorded;
 }
 

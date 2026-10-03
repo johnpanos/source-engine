@@ -6673,3 +6673,158 @@ Perspective, orthographic and hard-filter cases cover lit, shadowed and penumbra
 regions. No filter, effect, light set or profile quality is reduced. A candidate
 must pass the lab before product integration and receive matched complete-frame
 measurements; this slice does not promote the still-failed High floor.
+
+### R91: Portal 2 core portal views (2026-10-02, active)
+
+User request: “Let's get portals rendering on rendercore”. The user confirmed
+this session owns portal work. This slice diagnoses and fixes the existing
+portal submission, stencil aperture and nested-view handoff; material programs
+and world passes retain their existing owners. The existing view-state lab
+oracle is extended before product integration as needed. Concurrent shadow and
+performance changes are preserved. R91/R96 and hard performance gates remain
+open until the required image and timing evidence exists.
+
+### K1/K4: render-core memory and cache audit (2026-10-02)
+
+User request: check rendercore caching and memory use on the 128 GB unified-memory
+workstation. This slice owns resource-cache allocation-failure recovery in
+`render.resources` and its existing conformance suite. Existing shader, shadow,
+material and profiling edits in the shared checkout are outside this slice.
+The audit covers VMA placement, uploads, pipeline reuse, transient pooling and
+frame graph reuse; no new cache registry or blanket desktop/mobile budget is
+introduced. R86/R88 performance acceptance remains open pending measurements.
+
+The user additionally requested fewer copies and general core optimization.
+`render.device.v2` D25 now owns initialized, immutable upload-buffer creation;
+Vulkan, GL and null implement the same snapshot and failure semantics. The
+texture cache consumes it, deleting its encoder buffer-write and intermediate
+GPU buffer-copy path in the same change. An allocation failure retains the
+pending pixels rather than silently dropping them. Vulkan fills its coherent
+mapping before the buffer is published; queue submission publishes those host
+writes, and the existing completion-token retirement protects GPU readers.
+There is no new mapped-write API for overwriting buffers already in flight.
+
+Observed on this workstation (Radeon 8060S / RADV STRIX_HALO, Mesa 26.2.3):
+125 GiB physical RAM, about 62 GiB available at inspection, nearly 8 GiB swap
+occupied. Vulkan advertises a separate 83 GiB device-local heap and 41.5 GiB
+non-device-local heap, with host-visible device-local memory types. These are
+observations, not an engine memory allowance or a claim that all physical RAM
+is available to the renderer. The driver budget changes with system activity.
+
+Audit findings and remaining work (R86/R87/R88, no gate closure):
+
+- VMA already suballocates buffers/images; upload ranges retire by completion,
+  readback prefers cached memory, material surface pipelines cache by variant
+  and debug specialization, and graph transients pool by shape/usages.
+- The new texture path removes a full payload-sized GPU buffer transfer and
+  its ring range/dedicated spill allocation. It still snapshots/repackages CPU
+  mip bytes and retains one initialized staging buffer until completion. It
+  does not claim CPU zero-copy or zero-copy optimal-tiled images.
+- The adapter's 4 MiB ring remains appropriate to measure for *remaining*
+  buffer traffic after this removal. Increasing it without measured spill
+  sizes would reserve memory without addressing this redundant transfer.
+- `MemoryAllocator` counts allocation bytes, but does not enable
+  `VK_EXT_memory_budget` or publish heap usage/budget telemetry. Named texture
+  and mesh caches have explicit eviction but no byte-budget/pressure policy.
+  Measure these before selecting a larger workstation retention budget; do
+  not hardcode a fraction of 128 GB into portable or mobile defaults.
+- `Renderer::EndFrame` still builds and compiles the graph each frame. Compiled
+  structure reuse requires separating shape from frame-owned callback captures
+  and imports; retaining last frame's callbacks would be incorrect.
+- Surface pipelines are cached in the material owner. Vulkan pipeline creation
+  passes `VK_NULL_HANDLE` for its optional driver pipeline cache; adding a
+  device-owned cache is a separate measured startup/variant-creation slice,
+  not proof that current draws recompile pipelines each frame.
+
+The direct texture upload is proven in `render_lab` before any new product
+plumbing. All existing cache consumers share it automatically. No frozen render
+path was edited. Full-frame High performance acceptance, device/mobile timings
+and pressure-driven residency remain unverified.
+
+Validation and reproduction:
+
+| Check | Result |
+| --- | --- |
+| `render.resources`, release | 35 checks pass; old implementation fails the new allocation-failure regression |
+| `render.device.v2.null`, `.vulkan`, `.gl`, release | 531 / 1,065 / 1,014 checks pass; positive Vulkan/GL validation reports zero messages (the seeded missing-barrier control intentionally reports a hazard) |
+| `render.device.v2.sensitivity`, release | 17 checks pass, including a new zero-filled-upload defect rejected by D25 |
+| `render.graph.v1`, `render.material.programs`, release | 84 / 31 checks pass |
+| Existing Waf `render_lab` product | Builds in `build-rc-lab`, preserving its configured profile |
+| `render_lab suite lightmap-basis --validate`, `suite posed-model --validate` | 19 / 65 checks pass |
+| Architecture check/baseline/inventory; style diff | Pass; inventory reports line moves only, no baseline rewritten |
+| Architecture/style checker fixtures | 166 / 38 tests pass |
+
+Evidence and benchmark source/binary: `quality-results/rendercore-memory-2026-10-02/`.
+The copied conformance JSON retains its original `/tmp` log paths; matching log
+directories are mirrored beside the reports. `benchmark-identity.json` records
+the revision, dirty-diff digest and binary/source hashes.
+
+The upload microbenchmark alternates old and new paths on the same device, with
+four warm-up iterations and 30 measured iterations per path. Each uploads a
+2048×2048 RGBA8 texture (16 MiB). GPU timestamps bracket the transfer sequence;
+CPU elapsed time includes staging creation, initialization, submission and the
+completion wait. Texture allocation and readback verification are outside the
+timed region. Every iteration changes the payload and verifies all bytes. A
+seeded omitted texture copy fails readback with exit 4.
+
+| Path | Creation-to-completion median | GPU median / p95 | Dedicated ring spills |
+| --- | --- | --- | --- |
+| Previous ring → staging → image | 3.1511 ms | 0.2918 / 0.3231 ms | 30 |
+| Initialized staging → image | 1.4657 ms | 0.1617 / 0.1672 ms | 0 |
+
+This final run saves about 53% of elapsed upload cost and 45% of GPU transfer
+time for this workload. An earlier run was faster in absolute terms on both
+paths; this shared workstation is not an isolated performance runner. The
+structural saving is one 16 MiB GPU transfer and one 16 MiB spill allocation per
+benchmark upload. The CPU mip-packing copy remains. No full-frame FPS claim
+follows, and no quality setting, effect, resolution or sample count changed.
+Native Vulkan device-loss injection remains unavailable (D7); null covers that
+clause. Fold7, Apple and Android native runs were not performed in this session; their
+measurements remain unavailable here.
+
+```sh
+python3 tools/quality/conformance.py check --config release \
+  --suite render.resources --suite render.device.v2.null \
+  --suite render.device.v2.vulkan --suite render.device.v2.gl \
+  --suite render.device.v2.sensitivity --suite render.graph.v1 \
+  --suite render.material.programs --out quality-results/rendercore-memory-repeat.json
+WAFLOCK=.lock-waf-rc-lab-main ./waf build --target=render_lab -j4
+LD_LIBRARY_PATH=build-rc-lab/tier0 build-rc-lab/render/lab/render_lab suite lightmap-basis --validate
+LD_LIBRARY_PATH=build-rc-lab/tier0 build-rc-lab/render/lab/render_lab suite posed-model --validate
+g++ -std=c++20 -O2 -DNDEBUG -Ipublic \
+  quality-results/rendercore-memory-2026-10-02/upload_bench.cpp \
+  build-rc-lab/render/device/vulkan/librender_device_vulkan.a \
+  build-rc-lab/render/device/librender_device.a -lSDL3 -lvulkan -pthread \
+  -o quality-results/rendercore-memory-2026-10-02/upload_bench
+quality-results/rendercore-memory-2026-10-02/upload_bench
+quality-results/rendercore-memory-2026-10-02/upload_bench --skip-copy # expected exit 4
+```
+
+Design references: Khronos's [memory allocation guide](https://docs.vulkan.org/guide/latest/memory_allocation.html)
+explains UMA's host-visible/device-local types; VMA's
+[budget guidance](https://gpuopen-librariesandsdks.github.io/VulkanMemoryAllocator/html/staying_within_budget.html)
+and [statistics](https://gpuopen-librariesandsdks.github.io/VulkanMemoryAllocator/html/statistics.html)
+describe the heap-budget telemetry still needed. The owning code/contracts, not
+these references, establish what is installed in this engine.
+
+The user additionally authorized reuse: “you can re-use the legacy shader”,
+with the requirement to execute at the correct point in the frame. The existing
+PortalRefract stage 0/2 shaders remain one native implementation, retained only
+in the normal product frame by `kCorePassPortalEffects`; stage 1 remains the core
+aperture. The ordered stream owns the interleave and marks only the most recent
+framebuffer copy consumed by each retained refraction draw. Diagnostics keep
+legacy suppression. Retirement is replacement of these two stages by the owning
+core portal pass, with deletion of the native programs when no caller remains.
+
+Frozen-path: user request 2026-10-02 — reuse the existing custom portal effects
+at their original frame positions beside the core stencil/view draws.
+
+### K1: constant-time upload retirement bookkeeping (2026-10-02, active)
+
+User request: continue optimizing the core, most obvious work first. This slice
+owns `render.device.vulkan` upload-ring lookup and its native conformance tests.
+The current Submit/Abandon loops visit all live ranges for each upload, although
+allocation IDs are consecutive and retirement only removes a prefix. Replace
+those scans with an index into the existing deque; keep allocation placement,
+fence values, close/abandon behavior and storage unchanged. Material, shadow
+and portal work elsewhere in this shared checkout is outside this slice.

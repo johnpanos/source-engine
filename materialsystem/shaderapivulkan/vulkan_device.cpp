@@ -5235,6 +5235,22 @@ CVulkanContext::DynDraw &CVulkanContext::AppendDrawRecord()
 	std::memcpy( d.clipPlanes, m_dynClipPlanes, sizeof( d.clipPlanes ) );
 	std::memcpy( d.samplerHandles, m_dynSamplerHandles, sizeof( d.samplerHandles ) );
 	d.portal = m_dynPortal;
+	d.corePortalEffect =
+	    d.shaderIndex == kDynShaderPortalRefract && RetainsPortalEffect( d.portal.stage );
+	if ( d.corePortalEffect && d.portal.stage == 0 )
+	{
+		// Preserve exactly the last framebuffer snapshot this refractive draw
+		// consumes, at the original copy position (before/after the child view).
+		// Later copies of the same texture must not replace that snapshot.
+		for ( auto copy = m_dynDrawRecords.rbegin(); copy != m_dynDrawRecords.rend(); ++copy )
+		{
+			if ( copy->kind == kRecordCopy && copy->copyDst == d.texHandle )
+			{
+				copy->corePortalCopy = true;
+				break;
+			}
+		}
+	}
 	d.fog = m_dynFog;
 	d.texturedMode = m_dynTexturedMode;
 	if ( d.shaderIndex == kDynShaderSkin || d.shaderIndex == kDynShaderSolidEnergy ||
@@ -6811,7 +6827,10 @@ void CVulkanContext::QueueCorePass( uint32_t tag, const CorePassTerms &terms )
 		m_queueLegacyHud = true;
 	if ( ( tag & render::legacy::kCorePassForwarded ) &&
 	     ( tag & render::legacy::kCorePassLegacyOff ) )
+	{
 		m_queueCoreOnly = true;
+		m_queuePortalEffects = ( tag & render::legacy::kCorePassPortalEffects ) != 0;
+	}
 	record.corePass = tag;
 	record.corePassTerms = static_cast<uint32_t>( m_corePassTerms.size() );
 	m_corePassTerms.push_back( terms );
@@ -7611,7 +7630,8 @@ void CVulkanContext::RecordFrameScene( VkCommandBuffer cmd )
 			     ( d.corePass & render::legacy::kCorePassLegacyOff ) )
 				legacyOff = m_frameLegacyOff = true;
 			if ( legacyOff && !legacyHud &&
-			     ( d.kind == kRecordDraw || d.kind == kRecordCopy ||
+			     ( ( d.kind == kRecordDraw && !d.corePortalEffect ) ||
+			         ( d.kind == kRecordCopy && !d.corePortalCopy ) ||
 			         d.kind == kRecordSceneCapture ||
 			         ( d.kind == kRecordClear && !d.clearDepth && !d.clearStencil ) ) )
 				continue;

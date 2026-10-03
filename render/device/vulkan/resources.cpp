@@ -15,6 +15,7 @@
 
 #include "vulkan_device.h"
 
+#include <cstring>
 #include <optional>
 
 #if !defined( _WIN32 )
@@ -171,6 +172,24 @@ DeviceResult<BufferId> VulkanDevice::CreateBuffer( const BufferDesc &desc )
 	const BufferId id{ ++m_NextId };
 	m_Buffers.emplace( id.value, std::move( record ) );
 	return id;
+}
+
+DeviceResult<BufferId> VulkanDevice::CreateUploadBuffer( std::span<const std::byte> bytes )
+{
+	BufferDesc desc;
+	desc.size = bytes.size();
+	desc.memory = MemoryKind::kUpload;
+	desc.usages = { ResourceUsage::kCopySource };
+	auto buffer = CreateBuffer( desc );
+	if ( !buffer )
+		return buffer;
+	BufferRecord &record = m_Buffers.at( buffer.Value().value );
+	// kUpload requires coherent, persistently mapped memory. Queue submission
+	// publishes these completed host writes; no GPU buffer-to-buffer copy is
+	// needed. The bytes are never changed after the handle is returned.
+	std::memcpy( record.mapped, bytes.data(), bytes.size() );
+	record.track.usage = ResourceUsage::kCopySource;
+	return buffer;
 }
 
 DeviceResult<TextureId> VulkanDevice::CreateTexture( const TextureDesc &desc )

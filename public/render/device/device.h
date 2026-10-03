@@ -106,6 +106,12 @@ public:
 	// The exporter of textures to other APIs (clause D18): non-null exactly
 	// when the facts claim kExternalImages. The device owns it.
 	virtual IExternalImages *ExternalImages() { return nullptr; }
+
+	// D25: creates an upload buffer initialized before this call returns, in
+	// kCopySource usage. The source bytes may then be changed or destroyed.
+	// Empty input fails. The buffer is immutable (copy-source usage only),
+	// and Release must name its last GPU consumer's completion token.
+	virtual DeviceResult<BufferId> CreateUploadBuffer( std::span<const std::byte> bytes ) = 0;
 };
 
 } // namespace render::device

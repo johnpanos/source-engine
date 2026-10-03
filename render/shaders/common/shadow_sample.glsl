@@ -32,21 +32,16 @@ float ShadowBilinear( texture2D atlas, sampler pointSampler, sampler comparisonS
     ShadowTile tile, vec2 uv, float depth )
 {
 	const float atlasSize = tile.params.y;
-#if defined( REFERENCE_MANUAL_SHADOW_COMPARE ) || defined( SEEDED_SHADOW_UNSTABLE_GATHER )
 	const vec2 lo = tile.bounds.xy * atlasSize;
 	const vec2 hi = tile.bounds.zw * atlasSize - 1.0;
 	const vec2 position = clamp( uv * atlasSize - 0.5, lo, hi );
 	const vec2 coordinate = ( position + 0.5 ) / atlasSize;
+#if defined( REFERENCE_MANUAL_SHADOW_COMPARE ) || defined( SEEDED_SHADOW_UNSTABLE_GATHER )
 	// Private immutable-input oracle; never selected by a product.
 	const vec2 f = fract( position );
 #ifdef SEEDED_SHADOW_UNSTABLE_GATHER
 	const vec4 stored = textureGather( sampler2D( atlas, pointSampler ), coordinate, 0 );
 #else
-	// Atlas/tile dimensions are powers of two, so the texel-centre bounds
-	// are exact in normalized coordinates. Clamp here without a per-tap
-	// round trip through texel coordinates.
-	const vec2 halfTexel = vec2( 0.5 / atlasSize );
-	const vec2 coordinate = clamp( uv, tile.bounds.xy + halfTexel, tile.bounds.zw - halfTexel );
 	// Integer addressing makes this oracle independent of the texture unit's
 	// subtexel footprint rounding. All four texels remain in the same tile.
 	const ivec2 base = ivec2( floor( position ) );

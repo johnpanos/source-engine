@@ -55,3 +55,11 @@ later body-group and LOD changes. `render.lab.model-selection` proves the
 posed/static pixel footprints, blank bodies and LODs, LOD replacement materials,
 capture replay and swapped-selection negative controls on native Vulkan.
 Studio body arithmetic remains owned by `mdl::BodyPart::SelectedModel`.
+
+Portal/view state (R91): `render.lab.view-state` records nested stencil masks,
+exit clipping, depth reset and viewmodel depth range with independent pixel
+controls and capture replay. The dynamic stage-1 PortalRefract aperture accepts
+the shader's `$model` and `$translucent` classification flags; the latter
+does not enable color blending on the depth/stencil-only program. Full and
+partially open ellipses preserve the parent outside the opening. Stages 0 and 2
+remain outside this aperture contract.

@@ -349,6 +349,7 @@ public:
 	std::uint32_t Epoch() const override { return m_Epoch; }
 
 	DeviceResult<BufferId> CreateBuffer( const BufferDesc &desc ) override;
+	DeviceResult<BufferId> CreateUploadBuffer( std::span<const std::byte> bytes ) override;
 	DeviceResult<TextureId> CreateTexture( const TextureDesc &desc ) override;
 	DeviceResult<SamplerId> CreateSampler( const SamplerDesc &desc ) override;
 	DeviceResult<BindGroupLayoutId> CreateBindGroupLayout(

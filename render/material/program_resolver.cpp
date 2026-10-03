@@ -270,7 +270,9 @@ namespace
 std::optional<std::string> DepthClaim( const ParameterBlock &block, bool portal )
 {
 	constexpr std::string_view depthKeys[] = { "model", "nocull", "nofog" };
-	constexpr std::string_view portalKeys[] = { "model", "nocull", "nofog", "stage",
+	// PortalRefract marks all stages translucent for material-system ordering.
+	// Stage 1 only writes the aperture's depth/stencil; it never blends color.
+	constexpr std::string_view portalKeys[] = { "model", "nocull", "nofog", "translucent", "stage",
 	    "portalopenamount", "portalstatic", "portalmasktexture", "portalcolortexture",
 	    "portalcolorscale", "texturetransform", "time", "alphatest", "alphatestreference" };
 	if ( portal && detail::ReadParameter( block, "stage" ) != 1.0f )

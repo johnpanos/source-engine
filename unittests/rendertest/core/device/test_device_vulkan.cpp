@@ -31,7 +31,7 @@
 
 #include "device_conformance.h"
 #include "render/device/vulkan/provider.h"
-#include "../../../../render/device/vulkan/host_device.h"
+#include "../../../../render/device/vulkan/vulkan_device.h"
 
 #include <atomic>
 #include <chrono>
@@ -1053,6 +1053,66 @@ void HoldClauses( testing::Checks &checks, const rendertest::DeviceDriver &drive
 	}
 }
 
+// Exercise lookup after prefix retirement, physical wrap and reattachment.
+// The ring needs only mapped bytes for these scheduling checks, not a device.
+void RingLookupClauses( testing::Checks &checks )
+{
+	vulkan::UploadRing ring;
+	std::byte storage[128]{};
+	vulkan::HostBuffer buffer;
+	buffer.mapped = storage;
+	ring.Attach( buffer, sizeof( storage ) );
+	const auto a = ring.Allocate( 32, 0 );
+	const auto b = ring.Allocate( 32, 0 );
+	const auto c = ring.Allocate( 32, 0 );
+	const auto d = ring.Allocate( 32, 0 );
+	checks.That( a && b && c && d, "vulkan.ring-lookup fills four ranges" );
+	if ( !a || !b || !c || !d )
+		return;
+	ring.Submit( c->second, 9 ); // reverse recording order is legal
+	ring.Submit( a->second, 7 );
+	ring.Abandon( b->second );
+	ring.Abandon( c->second ); // must not abandon a submitted range
+	ring.Retire( 6 );
+	checks.That( !ring.Allocate( 16, 6 ), "vulkan.ring-lookup keeps incomplete ranges" );
+	ring.Retire( 7 ); // removes a and abandoned b, but not submitted c
+	ring.Submit( a->second, 100 ); // retired ID must not update the new front
+	ring.Abandon( b->second );
+	ring.Submit( d->second + 100, 1 ); // unknown future ID is inert
+	const auto e = ring.Allocate( 48, 7 );
+	checks.That( e && e->first == 0, "vulkan.ring-lookup wraps after prefix retirement" );
+	checks.That( !ring.Allocate( 16, 8 ),
+	    "vulkan.ring-lookup abandoning a submitted range cannot free it early" );
+	// Once c completes, d is the front. Abandon d despite its shifted index.
+	ring.Retire( 9 );
+	ring.Abandon( d->second );
+	ring.Retire( 9 );
+	if ( !e )
+		return;
+	ring.Submit( e->second, 12 );
+	checks.That( !ring.Allocate( 96, 11 ), "vulkan.ring-lookup tracks a wrapped range" );
+	ring.Retire( 12 );
+	const auto full = ring.Allocate( 112, 12 );
+	checks.That( full && full->first == 0, "vulkan.ring-lookup drains back to offset zero" );
+	(void)ring.Detach();
+	ring.Attach( buffer, sizeof( storage ) );
+	const auto fresh = ring.Allocate( 112, 12 );
+	checks.That( full && fresh && fresh->second != full->second,
+	    "vulkan.ring-lookup reattachment does not reuse allocation IDs" );
+	if ( !full || !fresh )
+		return;
+	ring.Abandon( full->second );
+	ring.Submit( full->second, 12 );
+	ring.Retire( 12 );
+	checks.That( !ring.Allocate( 32, 12 ),
+	    "vulkan.ring-lookup detached IDs cannot release a fresh range" );
+	ring.Abandon( fresh->second );
+	ring.Retire( 12 );
+	checks.That( ring.Allocate( 112, 12 ).has_value(),
+	    "vulkan.ring-lookup fresh ranges still abandon" );
+	(void)ring.Detach();
+}
+
 // A 64 KiB ring and 40 KiB uploads: two in one encoder cannot both fit, since
 // the first is not submitted yet, so exactly one takes a staging buffer.
 void RingClauses( testing::Checks &checks, const rendertest::DeviceDriver &driver,
@@ -1254,6 +1314,7 @@ int main()
 	small.uploadRingBytes = 256 * 1024;
 	rendertest::RunDeviceConformance( checks, Driver( "vulkan-small-ring", small ) );
 	DescriptorClauses( checks );
+	RingLookupClauses( checks );
 	RingClauses( checks, Driver( "vulkan", options ), options );
 	HoldClauses( checks, Driver( "vulkan", options ) );
 	rendertest::RunRasterConformance( checks, Driver( "vulkan", options ) );

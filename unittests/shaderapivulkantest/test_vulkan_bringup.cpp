@@ -84,6 +84,141 @@ bool PresentAndCapture(
 	return true;
 }
 
+// A real core section on either side of the retained portal snapshot. The
+// independent pixel oracle detects a snapshot/draw moved across either slot.
+class PortalReplayRecorder final : public render::legacy::ICorePassRecorder
+{
+public:
+	std::uint32_t SlotStages() const override { return 0; }
+	void RecordSlot( std::uint32_t tag, render::device::CommandEncoder &encoder,
+	    const render::legacy::CorePassTarget &target ) override
+	{
+		using namespace render::device;
+		ColorAttachment color;
+		color.texture = target.color;
+		color.load = LoadOp::kClear;
+		color.store = StoreOp::kStore;
+		color.clear = ( tag & 0xffu ) == 1 ? ClearColor{ 1, 0, 0, 1 } : ClearColor{ 0, 0, 1, 1 };
+		RenderingDesc rendering;
+		rendering.width = target.width;
+		rendering.height = target.height;
+		rendering.colors = std::span<const ColorAttachment>( &color, 1 );
+		encoder.BeginRendering( rendering );
+		encoder.EndRendering();
+	}
+	bool RecordOutput(
+	    render::device::CommandEncoder &, const render::legacy::CoreOutputTargets & ) override
+	{
+		return false;
+	}
+	void ReleaseDevice( render::device::IRenderDevice2 & ) override {}
+};
+
+bool RenderCoreFrame( CVulkanContext &ctx, bool *skipped, std::string *error )
+{
+	using namespace render::device;
+	if ( !ctx.PrepareFrame( skipped, error ) )
+		return false;
+	if ( *skipped )
+		return true;
+	auto encoder = ctx.Port()->BeginEncoder( QueueKind::kGraphics );
+	if ( !encoder )
+		return ctx.FinishFrame( {}, false, error );
+	for ( int i = 0; i < CVulkanContext::kFrameStageCount; ++i )
+	{
+		const auto stage = static_cast<CVulkanContext::FrameStage>( i );
+		if ( ctx.HasFrameStage( stage ) )
+			ctx.AttachFrameStage( stage, encoder.Value() );
+	}
+	auto submitted = ctx.Port()->Submit( QueueKind::kGraphics, { &encoder.Value(), 1 }, {} );
+	return ctx.FinishFrame(
+	    submitted ? submitted.Value() : CompletionToken{}, submitted.HasValue(), error );
+}
+
+void CheckPortalCoreReplay( CVulkanContext &ctx, std::string &err )
+{
+	PortalReplayRecorder recorder;
+	ctx.BindCorePassRecorder( &recorder );
+	const int snapshot = ctx.CreateRenderTargetTexture( 64, 64, &err );
+	Check( snapshot >= 0 && ctx.PortalPipelineSupported(), "portal replay resources available" );
+	if ( snapshot >= 0 && ctx.PortalPipelineSupported() )
+	{
+		const float quad[6][8] = { { -0.8f, -0.8f, 0, 1, 1, 1, 0, 0 },
+		    { 0.8f, -0.8f, 0, 1, 1, 1, 1, 0 }, { 0.8f, 0.8f, 0, 1, 1, 1, 1, 1 },
+		    { -0.8f, -0.8f, 0, 1, 1, 1, 0, 0 }, { 0.8f, 0.8f, 0, 1, 1, 1, 1, 1 },
+		    { -0.8f, 0.8f, 0, 1, 1, 1, 0, 1 } };
+		float tangents[6][7];
+		for ( auto &v : tangents )
+		{
+			const float basis[7] = { 0, 0, 1, 1, 0, 0, 1 };
+			std::copy_n( basis, 7, v );
+		}
+		CVulkanContext::PortalConstants portal{};
+		portal.model[0] = portal.model[5] = portal.model[10] = portal.model[15] = 1;
+		std::copy_n( portal.model, 16, portal.viewProj );
+		portal.texXform0[0] = portal.texXform1[1] = 1;
+		portal.openAmount = 1;
+		portal.stage = 0;
+		CVulkanContext::DynRasterState raster;
+		raster.depthTest = raster.depthWrite = false;
+		raster.cullMode = VK_CULL_MODE_NONE;
+		for ( int mode : { 0, 1, 0, 2 } )
+		{
+			const bool product = mode != 1;
+			const bool wrongOrder = mode == 2;
+			ctx.ClearDynamicQueue();
+			ctx.SetRenderTarget( -1 );
+			ctx.SetViewport( 0, 0, 0, 0, 0, 1 );
+			const std::uint32_t policy = render::legacy::kCorePassForwarded |
+			                             render::legacy::kCorePassLegacyOff |
+			                             ( product ? render::legacy::kCorePassPortalEffects : 0 );
+			ctx.QueueCorePass( policy | 1, {} );
+			Check( ctx.QueueCopyToTexture( snapshot, nullptr, nullptr ), "portal snapshot queued" );
+			ctx.QueueCorePass( render::legacy::kCorePassForwarded | 2, {} );
+			ctx.SelectDynamicShader( CVulkanContext::kDynShaderPortalRefract );
+			ctx.SelectDynamicRasterState( raster );
+			ctx.SetDynamicPortalConstants( portal );
+			ctx.SelectDynamicColorSpace( 0 );
+			ctx.BindManagedTexture( snapshot );
+			ctx.QueueDynamicTriangles( &quad[0][0], 6, nullptr, &tangents[0][0] );
+			// Unconsumed copies and ordinary legacy draws must stay suppressed.
+			Check( ctx.QueueCopyToTexture( snapshot, nullptr, nullptr ), "unused snapshot queued" );
+			ctx.SelectDynamicShader( CVulkanContext::kDynShaderConstColor );
+			ctx.SetDynamicConstantColor( 0, 1, 0, 1 );
+			ctx.QueueDynamicTriangles( &quad[0][0], 6 );
+			if ( wrongOrder )
+				ctx.QueueCorePass( render::legacy::kCorePassForwarded | 2, {} );
+			for ( int replay = 0; replay < 2; ++replay )
+			{
+				ctx.RequestCapture();
+				bool skipped = false;
+				const bool rendered = RenderCoreFrame( ctx, &skipped, &err );
+				int width = 0, height = 0;
+				const auto &pixels = ctx.GetCapturedPixels( &width, &height );
+				bool correct = rendered && !skipped && width > 0 && height > 0 && !pixels.empty();
+				if ( correct )
+				{
+					const auto *center = &pixels[( size_t( height / 2 ) * width + width / 2 ) * 4];
+					correct =
+					    PixelClose( pixels.data(), 0, 0, 255, 255, 2 ) &&
+					    ( product && !wrongOrder ? center[0] > 200 && center[1] < 3 && center[2] < 3
+					                             : PixelClose( center, 0, 0, 255, 255, 2 ) );
+				}
+				Check( correct, "portal snapshot stays before child slot and effect after it, "
+				                "including replay" );
+				Check( ctx.LastFrameCost().count[render_vulkan::kCostTargetCopy] ==
+				           ( product ? 1u : 0u ),
+				    "only the consumed portal copy survives product filtering; diagnostics retain "
+				    "none" );
+			}
+		}
+	}
+	ctx.ClearDynamicQueue();
+	ctx.BindCorePassRecorder( nullptr );
+	if ( snapshot >= 0 )
+		ctx.DestroyManagedTexture( snapshot );
+}
+
 } // namespace
 
 int main( int argc, char **argv )
@@ -730,6 +865,8 @@ int main( int argc, char **argv )
 	           worldVertices, sizeof( worldVertices ), worldIndices, sizeof( worldIndices ), &err ),
 	    "world mesh can upload after release" );
 
+	err.clear(); // the preceding invalid-readback negative case intentionally set this
+
 	// Render-pass merging: a tiled GPU stores and reloads the whole target at
 	// every pass break. Draws that write no color and depth/stencil-only clears
 	// keep the open (sRGB) view, a query spanning them stays in one pass, a
@@ -840,6 +977,8 @@ int main( int argc, char **argv )
 			ctx.DestroyOcclusionQuery( query );
 		ctx.ClearDynamicQueue();
 	}
+
+	CheckPortalCoreReplay( ctx, err );
 
 	if ( ctx.ValidationEnabled() )
 		Check( ctx.ValidationErrorCount() == 0, "no validation errors/warnings during the run" );

@@ -415,8 +415,9 @@ int main()
 		probedBinding->world->BeginFrame();
 		checks.That(
 		    g_Slots.tags == std::vector<std::uint32_t>{ render::legacy::kCorePassForwarded |
-		                                                render::legacy::kCorePassLegacyOff },
-		    "P7.core-only-publishes-the-rejection-before-any-cohort" );
+		                                                render::legacy::kCorePassLegacyOff |
+		                                                render::legacy::kCorePassPortalEffects },
+		    "P7.core-product-retains-portal-effects-before-any-cohort" );
 		const std::vector<std::uint32_t> coreTags = SlotsOfAFrame( *probedBinding );
 		checks.That( coreTags == std::vector<std::uint32_t>{ render::legacy::CorePassTag(
 		                                                         RENDER_STAGE_OPAQUE, 1 ),
@@ -428,6 +429,12 @@ int main()
 		    SlotsOfAFrame( *probedBinding, debug ) ==
 		        std::vector<std::uint32_t>{ render::legacy::CorePassTag( RENDER_STAGE_OPAQUE, 1 ) },
 		    "P7.core-diagnostics-never-enable-the-legacy-hud-exception" );
+		g_Slots.tags.clear();
+		probedBinding->world->BeginFrame();
+		checks.That(
+		    g_Slots.tags == std::vector<std::uint32_t>{ render::legacy::kCorePassForwarded |
+		                                                render::legacy::kCorePassLegacyOff },
+		    "P7.core-diagnostics-never-enable-retained-portal-effects" );
 		quality.coreOnly = false;
 		probedBinding->world->SetQuality( quality );
 		(void)SlotsOfAFrame( *probedBinding ); // publish the normal frame's debug policy

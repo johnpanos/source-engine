@@ -18,6 +18,8 @@ Rows: R88 (RFC 0016 K4; this is its first slice)
 | S3 | A recipe resolves only to the requested artifact format, failing by key otherwise, and survives a move |
 | R1–R5 | Resource caches upload staged bytes, end in their use usage, keep a replaced resource live until the replacing submission completes, and release everything at teardown |
 | R6 | `TextureCache::StageMips` (2026-09-28, for the Hammer viewports' mipmaps): a mip chain of 1 to `mipLevels` levels, each `max(1, size >> m)` texels, stages as one upload with one buffer-to-texture copy per level from a single staging buffer (16-byte aligned offsets), and every level lands in its mip. A level of the wrong size, no level, or more levels than the texture has fails and stages nothing. `Stage` is `StageMips` with mip 0 alone |
+| R8 | A failed staging-buffer allocation leaves the texture upload pending with its original bytes. Other queued uploads can record, and a later recording retries only the failed uploads; successful uploads are not repeated. `PendingUploads()` exposes the incomplete work |
+| R9 | Texture staging uses D25 initialized upload buffers directly as copy sources: one buffer-to-texture copy per mip/layer, with no intervening encoder buffer write or GPU buffer-to-buffer transfer. Staging-buffer retirement still follows R1–R5 |
 
 ## K4 clauses (2026-09-28)
 

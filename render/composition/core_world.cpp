@@ -1393,7 +1393,10 @@ void CoreWorld::BeginFrame()
 	     debug.legacy != frame::DebugLegacy::kSkip )
 		return;
 	if ( legacy::ICorePassSlots *slots = m_Frontend.CorePassSlots() )
-		slots->MarkSlot( legacy::kCorePassForwarded | legacy::kCorePassLegacyOff );
+	{
+		const std::uint32_t effects = SlotStages() ? legacy::kCorePassPortalEffects : 0;
+		slots->MarkSlot( legacy::kCorePassForwarded | legacy::kCorePassLegacyOff | effects );
+	}
 }
 
 unsigned long long CoreWorld::Failures() const
