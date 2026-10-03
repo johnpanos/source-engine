@@ -2424,6 +2424,13 @@ bool CoreWorld::EnsureOcclusion( device::IRenderDevice2 &device, device::Command
 
 void CoreWorld::ReleaseShadows( device::IRenderDevice2 &device )
 {
+	// Timers also exist for legacy BSP views that never bind a shadow device.
+	// Release their borrowed device before the backend goes away, even then.
+	{
+		std::lock_guard<std::mutex> guard( m_TimersLock );
+		if ( m_Timers && &m_Timers->Device() == &device )
+			m_Timers.reset();
+	}
 	if ( m_ShadowDevice != &device )
 		return;
 	if ( m_Occlusion.IsValid() )
@@ -2444,10 +2451,6 @@ void CoreWorld::ReleaseShadows( device::IRenderDevice2 &device )
 	m_ShadowRenderer.reset();
 	m_CastersStaged = 0;
 	m_ShadowDevice = nullptr;
-	// After the idle wait: the timers' buffers may go at once.
-	std::lock_guard<std::mutex> guard( m_TimersLock );
-	if ( m_Timers && &m_Timers->Device() == &device )
-		m_Timers.reset();
 }
 
 } // namespace render::composition

@@ -761,6 +761,11 @@ Keep the table concise and link details below or from the domain progress file.
     map profiles select it explicitly. `cpu` remains for exact-determinism
     fixtures and correctness/reference checks, and `auto` is an opt-in for
     hosts without a GPU.
+  - One production map quality profile is requested (user decision, 2026-10-02).
+    The [single-profile proposal](RFC/0007-single-map-quality-profile-proposal-2026-10-02.md)
+    records recommended settings, preset retirement, quality gates and runtime
+    optimization work. It is a proposal; executable settings and roadmap
+    implementation states are unchanged by this documentation.
 
 - R65–R66 (RFC 0012): added 2026-09-24 as `planned` at the user's direction.
   R65 was ranked directly after R47: it is bounded, it closes the native

@@ -7023,7 +7023,8 @@ zero Vulkan validation messages and zero leaked port resources. Complete High
 120 FPS, game-route timings, mobile pressure/power and non-Linux evidence remain
 open. Descriptor-group recreation and repeated uploads remain follow-up work.
 
-Validation uses W18/W19 in `render.world.null`: delayed completion, exact shape,
+Validation uses W18/W19 in `render.world.null` (66 checks pass in
+`world-final.json`): delayed completion, exact shape,
 state transitions, later submissions/other queues, bounded count and bytes,
 oversized allocation, sampler overflow, failure and drained teardown, two views
 in one frame, unknown frame serials and borrowed GPU buffers. A seeded helper
@@ -7033,9 +7034,9 @@ equality after reusing a view; `view-state --validate` passes 16 portal/stencil
 checks. Native device conformance passes 1,074 checks. Existing lab and game
 `shaderapivulkan` Waf profiles build successfully without reconfiguration.
 Architecture check, baseline and inventory verification pass. The new private
-header passes pinned style; broader changed-line style reports unrelated ongoing
-cost-overlay edits (logs retained). A missing aggregate initializer in that
-concurrent timer work was supplied so the strict Waf build could proceed.
+header and final changed-line check pass pinned style. Earlier broad style
+reports include concurrent cost-overlay edits (logs retained). A missing aggregate
+initializer in that timer work was supplied so the strict Waf build could proceed.
 
 No render quality, shader, effect, resolution, sample count or frozen-path behavior
 was changed. R89/R96 resource efficiency improves; their larger acceptance gates

@@ -801,8 +801,9 @@ int main()
 					++reused;
 			return reused;
 		};
-		checks.That(
-		    record( 20 ) == 0 && record( 20 ) == 0, "W19.same-frame-views-keep-distinct-storage" );
+		checks.That( record( 0 ) == 0 && record( 20 ) == 0,
+		    "W19.unknown-frame-resources-wait-for-teardown" );
+		checks.That( record( 20 ) == 0, "W19.same-frame-views-keep-distinct-storage" );
 		checks.That( record( 21 ) == 5 && staged.Failures() == 0,
 		    "W19.completed-lit-view-reuses-all-five-storage-buffers" );
 		BufferDesc borrowedDesc;
