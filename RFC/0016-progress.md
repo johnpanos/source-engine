@@ -2285,14 +2285,18 @@ texture transforms, blending in the translucent stage, the models' surface
 ## The surface-model plan (2026-09-28)
 
 User direction: "have a plan for how to modernize most materials with them
-being degenerate cases in the new expanded system". The plan is RFC 0016's
-section "The surface model: legacy materials as degenerate cases". It gives:
+being degenerate cases in the new expanded system". The plan was recorded
+in RFC 0016's surface-model section, originally titled "legacy materials as
+degenerate cases". At this date it gave:
 - one `surface` program whose terms all have neutral values;
 - legacy shaders as exact points, checked against the native ports;
 - modern points as opt-in data (a rule table and sidecars, checked against
   Cycles);
 - phases S0–S9 ordered from an inventory of 6,000 Portal and 3,738 Portal 2
   VMTs.
+
+The [2026-10-03 material direction](#material-interpretation-direction-2026-10-03-user-decision)
+amends the default and visual oracle while retaining these historical counts.
 
 `tools/render/material_inventory.py --out DIR --phases` reproduces the
 coverage per phase:
@@ -8383,3 +8387,19 @@ Both checked inventories retain their prior status totals. The expanded
 sensitivity suite passes 12 checks, including repeated claim rows, overlapping
 features and family-name case folding. K12/R96 remains open; draw reachability
 and pixels are separate evidence.
+
+### Material interpretation direction (2026-10-03, user decision)
+
+The user chose to implement legacy VMT definitions more fully in the Forward+
+core, including emissive behavior, rather than requiring improved materials to
+match the old shader's pixels. The [surface-model contract](0016-render-core.md#the-surface-model-legacy-definitions-in-the-modern-core-plan-2026-09-28-amended-2026-10-03)
+now makes reviewed VMT-to-core interpretation the native default. Legacy-port
+pixel oracles remain K4 compatibility controls, while Cycles references and
+matched game/lab scenes judge visual quality. `$selfillum` defines visible
+emission inputs but cannot by itself supply physical radiance for an area light;
+that needs authored values or a reviewed source rule. The VMT and frozen legacy
+renderer continue to serve exact legacy appearance, and unhandled non-neutral
+settings remain named claim gaps.
+
+This entry records a documentation decision, not implementation or new image
+evidence. K11/R95, K12/R96 and the affected material cohorts remain open.

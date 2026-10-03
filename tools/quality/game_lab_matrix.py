@@ -164,7 +164,7 @@ def capture(args, fixture_name):
             "cameras": records}
 
 
-def matrix_failures(record, require_zero_legacy=False):
+def matrix_failures(record, require_zero_legacy=False, require_image_parity=False):
     failures = []
     if not record.get("fixtures"):
         failures.append("no fixtures ran")
@@ -179,6 +179,8 @@ def matrix_failures(record, require_zero_legacy=False):
                 failures.append(label + ": comparison did not complete")
             elif result["comparison"]["status"] not in ("pass", "diagnostic"):
                 failures.append(label + ": comparison failed")
+            elif require_image_parity and result["comparison"]["status"] != "pass":
+                failures.append(label + ": image parity is diagnostic, not a pass")
             elif require_zero_legacy and not result.get("legacy_census", {}).get(
                     "zero_legacy_stream"):
                 failures.append(label + ": legacy stream still drew")
@@ -196,6 +198,8 @@ def main():
     parser.add_argument("--include-portal-scenes", action="store_true")
     parser.add_argument("--require-zero-legacy", action="store_true",
                         help="fail if any settled captured frame issued a legacy-stream draw")
+    parser.add_argument("--require-image-parity", action="store_true",
+                        help="fail unless every selected camera has a declared, passing image gate")
     parser.add_argument("--boot-timeout", type=int, default=180,
                         help="seconds allowed for the game process after staging")
     parser.add_argument("--process-timeout", type=int, default=240,
@@ -227,7 +231,8 @@ def main():
                for camera in fixture.get("cameras", {}).values()]
     record["zero_legacy_stream"] = bool(cameras) and all(
         camera.get("legacy_census", {}).get("zero_legacy_stream") for camera in cameras)
-    record["failures"] = matrix_failures(record, args.require_zero_legacy)
+    record["failures"] = matrix_failures(record, args.require_zero_legacy,
+                                          args.require_image_parity)
     (args.out / "matrix.json").write_text(json.dumps(record, indent=2, sort_keys=True) + "\n")
     return 1 if record.get("error") or record["failures"] else 0
 

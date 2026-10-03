@@ -342,6 +342,13 @@ it as version 2.
   - lit screens that register as sources: the Portal 2 chamber signs and
     elevator video screens.
 
+  The current `$selfillum` publisher is an existing source path. Under
+  [RFC 0016's native material interpretation](0016-render-core.md#the-surface-model-legacy-definitions-in-the-modern-core-plan-2026-09-28-amended-2026-10-03),
+  `$selfillum` by itself establishes visible emission, not scene-unit
+  radiance or automatic area-light publication. A migrated source needs
+  authored or reviewed radiance and a source policy with geometry and facing;
+  this section remains the authority for the resulting light-set snapshot.
+
   At most `r_area_lights` are lit (8, the desktop budget), ranked at the
   view.
 - **Consumers (first slice).**

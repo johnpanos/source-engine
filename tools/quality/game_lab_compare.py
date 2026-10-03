@@ -18,7 +18,7 @@ import numpy as np
 from PIL import Image
 
 import lighting_fixtures as lf
-import lighting_gallery as gallery
+import lighting_lab_inputs as lab_inputs
 
 
 PROFILE = ("area-room", "overview", (512, 384))
@@ -111,7 +111,7 @@ def render_lab(lab_binary, content_root, fixture, camera, out, state=None):
                "--hfov", str(fixture["horizontal_fov_degrees"]),
                "--size", "%dx%d" % (film["width"], film["height"]),
                "--core-direct", "--out", str(out)]
-    model = gallery.probe_model(fixture, state)
+    model = lab_inputs.probe_model(fixture, state)
     if model:
         command += ["--model", model[0], "--model-origin",
                     ",".join("%.4f" % value for value in model[1]), "--model-no-shadow"]
@@ -119,10 +119,10 @@ def render_lab(lab_binary, content_root, fixture, camera, out, state=None):
         bounds = list(mover["min"]) + list(mover["max"])
         command += ["--mover", ",".join("%.4f" % value for value in bounds) +
                     "," + mover["material"]]
-    fog_scale = gallery.fog_scale(fixture, state)
+    fog_scale = lab_inputs.fog_scale(fixture, state)
     if fog_scale is not None:
         command += ["--fog-scale", "%g" % fog_scale]
-    result = subprocess.run(command, env=gallery.lab_environment(lab_binary),
+    result = subprocess.run(command, env=lab_inputs.lab_environment(lab_binary),
                             capture_output=True, text=True, timeout=600)
     if result.returncode or not out.is_file():
         raise ValueError("render_lab did not draw the fixture camera: " +

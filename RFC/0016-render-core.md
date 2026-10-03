@@ -362,12 +362,25 @@ sooner.
 
 **Rule 3: Hard parts are proven in `render_lab` before any integration.**
 A term, family or pass is first built and proven in `render_lab`, with no
-engine in the process, against its C++ oracle and its Cycles reference, with
+engine in the process, against its C++ and relational oracles, with
 its negative control failing (K11). Until its K11 check passes, it gets no
 product wiring: no engine hook, no ConVar and no launcher flag. Game boots
 are integration evidence (K12), never the first proof that the math is
 right. Hard problems belong in the lab, where a render takes seconds and
 nothing else varies.
+
+**Lab-to-game delivery (user direction, 2026-10-03).** Lab proof is the first
+step of a paired slice, not its delivery result. After a term passes its K11
+oracle, integrate that same core implementation through the product's real
+scene, material, view and output path, then capture a matched game/lab camera
+from the same content snapshot. Record the term's game reachability, active
+inputs, ownership of the surfaces it shades and a declared image verdict with
+a negative control. A diagnostic image, a shared shader file, or a successful
+game boot alone does not establish that the lab result appears in the game.
+Keep the slice open under K12 until it does. Prioritize closing an open paired
+slice before adding an unrelated lab-only term; record a concrete blocker if
+its product prerequisites are unavailable. K11's proof still precedes the
+corresponding product wiring, and K12's full gate still needs all K11 terms.
 
 **Rule 4: The old copy is deleted in the change that replaces it.** The
 change that makes the core own a term for a set of surfaces must also:
@@ -399,7 +412,7 @@ follows the rule: it names each term's owner and defines only the terms this
 RFC owns.
 
 **Rule 7: Preserve quality and meet the hard render budgets.** Get the effect
-right against its oracle and Cycles reference, integrate it, and optimize the
+right against its oracle, integrate it, and optimize the
 complete frame. The user's 2026-10-01 decision supersedes the earlier universal
 nonblocking performance policy. The
 [hard render budgets](#hard-render-budgets-user-decision-2026-10-01) define what
@@ -1194,7 +1207,8 @@ A graph is built each frame on the render sequence:
   schema, adds `materials/` prefixes, and reports unknown keys. It is also
   the material compiler RFC 0015 C1 calls `material.vmt`, so runtime and
   build share one mapping.
-- **Initial families**, each with a pixel oracle against its legacy port:
+- **Initial families**, with legacy-port pixel oracles for the K4 extraction
+  and compatibility controls:
   `pbr` (RFC 0007), `lightmapped` (LightmappedGeneric,
   WorldVertexTransition), `vertexlit` (VertexLitGeneric, including skin),
   `unlit` (UnlitGeneric, Sprite), `refract` (Refract, PortalRefract, glass),
@@ -1212,18 +1226,19 @@ A graph is built each frame on the render sequence:
   - VertexLitGeneric is the same surface lit by model lighting instead of a
     lightmap.
   Legacy quirks (the 0.7 alpha-test reference, the 2.0 overbright, gamma
-  rules) are parameter defaults with one owner each, not code paths.
+  rules) are explicit compatibility settings with one owner each, not
+  requirements on the native quality point.
   The narrow families above (`unlit`, `lightmapped`, `vertexlit`, `pbr`)
   are stepping stones folded into that model. A claim that refuses a
   material is a gap in the model to close, not a boundary to keep.
   Passes (world, props, models) never name a family: they resolve a
   material to a program through one resolver. The plan and its phases are
   in "The surface model" below.
-- **No escape hatches (user direction, 2026-09-28).** A claim is exact: the
-  model takes a material only when it reads every variable the material
-  sets, or when each variable it does not read holds legacy's neutral value
-  for its shader (the shader's own initialization of a material without
-  that variable). The material flags count as variables. Legacy draws only
+- **No escape hatches (user direction, 2026-09-28).** A claim is exact about
+  declared intent: the model takes a material only when it interprets every
+  non-neutral variable and flag it sets, or proves that an unread variable
+  is neutral for that shader. It need not reproduce the old shader's pixel
+  arithmetic to make a claim. Legacy draws only
   what the model does not claim: a material or a mod the model can't port
   yet, named as a gap. Once the core claims work (a material, a view), a
   failure to draw it is fatal (`r_core_world_strict 1`, the default). With
@@ -1278,21 +1293,26 @@ profiles keep running them: native D3D9 on Windows, DXVK on Linux, and
 ToGL or ToGLES on the SDL2 legacy-renderer profiles. ToGL stays for exactly this reason (user decision,
 2026-09-26). Retiring it would be a separate decision about those profiles.
 
-### The surface model: legacy materials as degenerate cases (plan, 2026-09-28)
+### The surface model: legacy definitions in the modern core (plan, 2026-09-28; amended 2026-10-03)
 
 User direction (2026-09-28): keep the legacy material system's intent and
 exceed it, with its special cases as degenerate cases of one expanded model;
-Source 2 parity or better; no escape hatches. This section is the plan. Its
-progress lives in RFC/0016-progress.md, and K4, K5, K7 and K8 carry the
-gates.
+Source 2 parity or better; no escape hatches. User direction (2026-10-03):
+interpret legacy shader definitions more fully in the Forward+ core, including
+emission, rather than treating old shader pixels as the visual goal. This
+section owns the material translation and surface terms. Its progress lives
+in [RFC 0016 progress](0016-progress.md); K4's recorded compatibility checks
+remain distinct from K11/K12's native visual gates.
 
 #### One surface, terms with neutral values
 
 A material is one program, `surface`, with a parameter block. Every term
 has a neutral value, and a term at its neutral value is exactly the term
-absent: bitwise, checked per term. Each legacy shader and branch is then a
-point in the parameter space. The per-material static permutation is the
-set of non-neutral terms (specialization constants, a bounded axis set per
+absent: bitwise, checked per term. A legacy shader definition supplies
+inputs to these terms; a compatibility point can reproduce its old output,
+while the native quality point may interpret the same authored intent with
+better lighting and material response. The per-material static permutation
+is the set of non-neutral terms (specialization constants, a bounded axis set per
 pass kind), so a neutral term costs nothing at runtime.
 
 | Term | Inputs | Neutral | Legacy points it covers | Modern point |
@@ -1302,36 +1322,51 @@ pass kind), so a neutral term costs nothing at runtime.
 | Detail | texture, scale, blend mode (0–9), factor, tint, alpha mask | no texture (the mode's identity) | `$detail` by `$detailblendmode` | detail as a second layer or micro-normal |
 | Normal | normal map with transform; ssbump basis weights | flat (0,0,1) | `$bumpmap`, `$ssbump`, `$bumpmap2` | tangent-space normal |
 | Diffuse light | a baked basis (1 page flat, 3 pages RNM), probes (ambient cube, SH L1), runtime lights (clustered), lightwarp ramp | lighting one (unlit) | UnlitGeneric (one); flat lightmap = basis 1; bumped lightmap = RNM with the normal; VertexLitGeneric = probes plus model lights; `$lightwarptexture` = transfer ramp (identity neutral); `$halflambert` = a wrap parameter | RFC 0007 SH L1 or RNM from the Cycles baker, RFC 0011 probe volume, RFC 0016 K7 clustered and area lights |
-| Emission | mask (base alpha, `$selfillummask`, detail modes 5/6), tint, fresnel | zero | `$selfillum`, `$selfillumtint`, `$selfillumfresnel`, detail self-illum | emissive radiance in scene units, and an area light (RFC 0011) when it should light its surroundings |
+| Emission | mask (base alpha, `$selfillummask`, detail modes 5/6), tint, fresnel | zero | `$selfillum`, `$selfillumtint`, `$selfillumfresnel`, detail self-illum | visible emission using authored radiance; an RFC 0011 area light only with an explicit source policy and radiance |
 | Specular image | reflection source (`env_cubemap`, named cube, RPRB probe set), mask source (base alpha, normal alpha, `$envmapmask` with transform), tint, legacy fresnel, contrast, saturation, roughness | reflectance zero | `$envmap` and all its masks and knobs: legacy is roughness 0, mip 0, additive (no diffuse energy compensation), `$fresnelreflection` lerp, contrast/saturation as a color transform (identity at 0/1) | GGX split-sum IBL from parallax-corrected, relit probes (R50) with energy compensation |
 | Specular lobe (runtime lights) | exponent or roughness, mask, fresnel ranges, boost, tint, rim | none | `$phong*`, `$rimlight*` (Blinn-Phong points, not energy conserving) | GGX from the same roughness |
 | Coverage | base alpha × `$alpha` × vertex alpha; alpha test and reference; alpha to coverage; blend state (opaque, alpha, additive, mod2x) | opaque, no test | `$alphatest`, `$translucent`, `$additive`, `$vertexalpha`, `$allowalphatocoverage`, DecalModulate | the same, plus MSAA coverage (RFC 0012) |
 | View terms (frame) | fog (range, height), output encoding, tone scale | no fog | legacy fog modes, `$nofog` | exponential height fog, volumetrics later |
 | Projected lights | flashlight and `env_projectedtexture` through the view's projector list (K7, [Projected lights](#projected-lights-a-per-view-projector-list-amended-2026-09-28)) | empty list | the legacy flashlight pass per material | shadowed projected lights for every material |
 
-Quirks are defaults with one owner: the 0.7 alpha-test reference, the
+Compatibility quirks have one owner: the 0.7 alpha-test reference, the
 2.0 overbright, the LDR 2^2.2 and HDR 16 lightmap scales, the sRGB rules,
-the half-Lambert wrap and the D3D9 half-pixel offset.
+the half-Lambert wrap and the D3D9 half-pixel offset. The native quality
+interpretation uses them only where they express authored intent; the
+compatibility point retains them for diagnostics and legacy profiles.
 
-#### Exact legacy points, then modern points
+#### VMT definitions, native interpretation and compatibility points
 
-Each legacy point reproduces its legacy port (the native backend's GLSL
-ports of stdshader_dx9, R32-LEGACY-SHADERS) within the family's pixel
-tolerance. The ports are the oracle, and the oracle compares against the
-port through the same frame, so the core's arithmetic can't drift from
-legacy. A modern point is the same program at other parameter values with
-richer inputs (Cycles SH lightmaps, relit parallax probes, clustered and
-area lights). Modernizing a material is then data, not code:
+The shader name, parameters, flags and proxy results in a VMT are material
+definitions. `render.material` owns their single translation into core surface
+terms for both runtime import and RFC 0015's `material.vmt` compiler. A
+supported legacy VMT uses the reviewed native interpretation by default on
+core profiles: for example, `$phongexponent` informs roughness, env-map tint
+and masks inform reflectance, and `$selfillum` plus its mask, tint and fresnel
+inform visible emission. Cycles SH lightmaps, relit probes and clustered
+lights supply richer scene inputs. Each non-neutral setting is interpreted
+or refused by name; a familiar shader name is not proof that its full
+material is supported.
 
-- a legacy material imports to its exact legacy point by default;
-- an opt-in rule table (per game, per material family, reviewed) maps
-  legacy parameters to modern ones: `$phongexponent` to roughness, env map
-  tint and mask to F0 and roughness, `$selfillum` to emissive radiance and
-  an area light, bump plus RNM to normal plus SH L1. It is checked against
-  Cycles references (RFC 0007 G) with negative controls;
-- per-material overrides are authored beside the VMT (a `.surface` sidecar
-  owned by RFC 0015's asset graph). The VMT itself stays untouched, so the
-  legacy path and mods keep working.
+The translation must not invent physical values absent from the VMT.
+`$selfillum` identifies a visibly glowing region but specifies neither
+absolute radiance nor how strongly it lights a room. Use authored PBR
+emission fields or a reviewed, versioned per-game/material rule to establish
+scene-unit radiance; a `.surface` sidecar in RFC 0015's asset graph may
+provide per-material values without changing the VMT. Publish an RFC 0011
+area light only when the source's radiance, geometry and facing are defined
+and its source policy calls for surrounding illumination. Visible emission
+and area-light publication are separate decisions.
+
+The original VMT and the frozen legacy renderer retain their compatibility
+behavior, including DXVK for exact legacy appearance. K4's legacy-port pixel
+oracles remain regression diagnostics for the extracted compatibility points;
+they do not gate an intentional native quality improvement. New core material
+translations are judged by parameter/claim tests, independent term oracles,
+Cycles and matched game/lab images with negative controls. Version the
+translation and record material/image differences when a native point
+changes. New shading logic belongs in `render.material` and core shaders,
+not in the frozen stdshaders or native backend copies.
 
 #### Order, from the inventory
 
@@ -1362,25 +1397,27 @@ Cumulative coverage after each phase (`tools/render/material_inventory.py
 | S2 Specular image | `$envmap` (env_cubemap patches, named cubes), base-alpha, normal-alpha and `$envmapmask` masks, tint, contrast, saturation, `$fresnelreflection`, Portal 2's `$envmaplightscale` | 53.4% / 7.4% | 57.3% / 42.6% | needs cube textures in the port and in `ICoreTextures` |
 | S3 Normal and basis light | `$bumpmap` with RNM (three bumped lightmap pages), `$ssbump`, texture transforms and proxy-driven parameters | 58.2% / 57.5% | 62.2% / 77.6% | per-frame parameter blocks for the 383 Portal and 173 Portal 2 materials with proxies |
 | S4 Detail | `$detailblendmode` 0 (1,061 Portal materials), then 7, 2, 5, 10, 1, 8 | 75.4% / 89.5% | 64.9% / 97.8% | mode 0 is mod2x in gamma; 7 is its linear twin |
-| S5 Emission | `$selfillum`, `$selfillummask`, tint, fresnel, detail modes 5 and 6 | 80.7% / 97.6% | 72.6% / 98.1% | emissive surfaces can register RFC 0011 area lights (the lit test-chamber sign tests) |
+| S5 Emission | `$selfillum`, `$selfillummask`, tint, fresnel, detail modes 5 and 6 | 80.7% / 97.6% | 72.6% / 98.1% | visible emission; RFC 0011 area lights require an explicit radiance/source policy (the lit test-chamber sign tests) |
 | S6 Layers | WorldVertexTransition, `$blendmodulatetexture`, `$seamless_scale` | 81.7% / 97.6% | 73.0% / 98.5% | Portal 2's world area to 97.3% |
 | S7 Model surfaces | VertexLitGeneric through probes, the ambient cube and clustered lights; `$phong` (exponent, exponent texture, boost, fresnel ranges, albedo tint), `$rimlight`, `$halflambert`, `$lightwarptexture`, `$color2` | 85.4% | 84.4% | with K5's props and K6's skinned models |
 | S8 Unlit points | Sprite, UnlitTwoTexture, SubRect, Sky (HDR encodings), distance-field alpha | 92.9% | 88.3% | lighting one; SubRect is a texture rectangle |
-| S9 Modern points | the rule table and sidecars, checked against Cycles references | — | — | per game, opt-in, reviewed; never changes a legacy point |
+| S9 Native interpretation (cross-cutting) | reviewed translation rules and sidecars, checked against Cycles references | — | — | applies as each S0–S8 term is claimed, not after all terms; compatibility points remain as controls |
 
 Portal's world needs S2 to S4 together: its largest term sets are bump,
 ssbump and detail mode 0 (28% of area), and bump, ssbump and env map with
 tint and contrast (38%).
 
-Legacy draws each phase's materials until that phase's claims take them,
-and only then (no escape hatches).
+These inventory percentages estimate term coverage, not native visual
+acceptance. Legacy draws each phase's materials until that phase's claims
+take them, and only then (no escape hatches).
 
 Each phase closes when:
 - the term's neutral value is bitwise the term absent (a suite with
   seeded mutants);
-- each legacy point it adds matches its port on the material pixel families
-  and in the isolated world oracle (`r_core_world_isolate`), within the
-  recorded tolerance;
+- each new native interpretation has parameter and term oracles, including
+  a negative control, and matches its Cycles and game/lab reference scenes
+  within the recorded tolerance; its compatibility point is compared to
+  the port as a diagnostic where the legacy profile promises that look;
 - the claim rules take exactly the materials whose variables the term
   reads (`UnreadVariable`, no escape hatches), and the coverage row per game
   is recorded;
@@ -1626,7 +1663,7 @@ core implements.
 | Screen-space reflections | this RFC, `render.pass.ssr` (proposed): a hierarchical-depth trace for roughness below a cutoff (0.4 provisional), blended over the image-based specular by hit confidence (screen edge, thickness, roughness fade), spatial filtering only (RFC 0012 keeps TAA out) | the pass | no SSR: image-based specular alone, bitwise |
 | Ambient occlusion | this RFC, `render.pass.ao` (proposed): material AO times GTAO (Jimenez et al. 2016) from depth and normals, with its multi-bounce fit, applied to indirect light only, never occluding twice what the bake already occludes | the pass | one |
 | Specular occlusion | this RFC: from AO and roughness (Lagarde and de Rousiers 2014), applied to indirect specular only | in the surface program | one |
-| Emission | the surface model ([above](#the-surface-model-legacy-materials-as-degenerate-cases-plan-2026-09-28)); RFC 0011 area lights for surfaces that light their surroundings | emissive radiance in scene units | zero |
+| Emission | the [surface model](#the-surface-model-legacy-definitions-in-the-modern-core-plan-2026-09-28-amended-2026-10-03) owns VMT interpretation and visible radiance; RFC 0011 owns area lights for surfaces explicitly published as sources | emissive radiance in scene units; no area light inferred from `$selfillum` alone | zero |
 | Participating media | this RFC, `render.pass.volumetric` (proposed): the legacy range and height fog as the legacy point; volumetric fog on a frustum-aligned froxel volume matching the cluster grid, with density from height fog and fog volumes, in-scattering from the light set, the sun's cascades and the projectors (cookies and shadows included), a Henyey-Greenstein phase and energy-conserving front-to-back integration (Hillaire 2015, after Wronski 2014). The volume may reproject its own history and drops it on a camera cut; that is not screen TAA. A light smaller than a froxel (a bulb) also gets an analytic per-pixel single-scattering term along the view ray (a closed-form line integral), so its halo is not smeared across the froxel (amended 2026-09-29) | the pass and its application to opaque and translucent surfaces | density zero: legacy fog alone, bitwise |
 | Output | this RFC, [`render.output.v1`](#output-renderoutputv1-amended-2026-09-28): exposure, one tone map (`tone_map.glsl`) and one output encoding (`color_encoding.glsl`) for the presentation's range and headroom | `render.pass.output` | the legacy point: scene peak 1 and headroom 1, the clip and the sRGB encoding alone |
 
@@ -1730,18 +1767,17 @@ and no legacy frontend:
   entity lights), studio models through `mdl`, and materials through
   `render.material`'s importers. It builds a `render.scene`, a light set
   and a `FrameDesc`, and renders through the Vulkan adapter to an image.
-- Its fixtures are versioned scenes with cameras and Cycles references
-  rendered by RFC 0007's pinned baker. They extend the RFC 0011 gallery
+- Its fixtures are versioned scenes with cameras and published maps. They extend the RFC 0011 gallery
   (`quality/fixtures/gi/`, `tools/quality/gi_gallery.py`,
   `gi_oracles.py`) with a lighting set: a Cornell box with a rough and a
   polished floor, an area-lit room, a projector with a cookie, a sun
   through a colonnade, a foggy spot-lit hall, a mirror corridor, a clear
   coat and metal material sweep, and a Portal chamber and a Portal 2
   chamber rebuilt from their maps.
-- "Source 2 quality" is judged objectively: against Cycles path-traced
-  references (ground truth, which Source 2 itself does not reach) and by
-  the relational oracles of the gallery, with a negative control for every
-  term. No Valve Source 2 asset is used.
+- Lab correctness uses analytic and relational oracles, with a negative
+  control for every term. Native visual acceptance uses matched game/lab
+  captures of the same published scene and visual review. Cycles renders
+  are not a render_lab comparison or gate (user direction, 2026-10-03).
 - Each hard part is done in the lab before its integration starts, and it
   stays in the lab's required suite after. The lab is also the place to
   tune a term: a lab render takes seconds, a game boot a minute.
@@ -1947,6 +1983,12 @@ move onto the graph in K2.
 
 ### K4: Shader library and materials
 
+K4's port-pixel comparisons established the extracted families' compatibility
+baseline in 2026-09. They remain useful controls, but native VMT interpretation
+and visual quality follow the [surface-model contract](#the-surface-model-legacy-definitions-in-the-modern-core-plan-2026-09-28-amended-2026-10-03)
+and K11/K12 gates; they need not preserve old pixels when an intentional,
+reviewed material improvement changes them.
+
 | Check | Runs as | Passes when |
 | --- | --- | --- |
 | Material suite | `render.material.v2` | schema, parameter-block and revision clauses pass; a seeded wrong key mapping and a stale-revision block are detected |
@@ -2120,30 +2162,30 @@ does.
 
 ### K11: Lighting model proven in `render_lab`
 
-Lighting checks run in `render_lab` against their Cycles-eligible fixtures'
-references, with no engine in the process. The Portal-pair joined-copy Blender
-scene is a transport diagnostic, not a runtime portal-view oracle (user
-decision, 2026-10-01); portal view transport needs a separate matched
-game/lab image check. K11 needs only K1, K2
-and K4 (all done) plus the K7 passes it drives, so it starts now and runs
-ahead of the product rows.
+Lighting checks run in `render_lab` with no engine in the process. Analytic
+and relational oracles prove each term's behavior and negative controls catch
+missing or broken terms. The corresponding K12 slice checks the same scene in
+the game. Cycles reference images and receiver scores are historical
+diagnostics, not K11 or K12 evidence (user direction, 2026-10-03). Portal
+view transport needs a matched game/lab image check. K11 needs K1, K2 and K4
+(all done) plus the K7 passes it drives.
 
 | Check | Runs as | Passes when |
 | --- | --- | --- |
 | Lab composes the core alone | `render.lab.composition` (proposed); link map | `render_lab` links no engine, material system, legacy frontend or SDL; it renders a BSP2 fixture and a studio model through the Vulkan adapter with sync validation silent |
 | Model assembly | `render.lighting.terms` (proposed) | one surface program evaluates every term of the model's table; each term's neutral value is bitwise the term absent (a seeded mutant per term detected); each term matches its C++ oracle on its synthetic cases |
-| Ground truth | `render.lab.cycles` (proposed) over the Cycles-eligible lighting set and the RFC 0011 gallery; the references are denoised Cycles (OpenImageDenoise with albedo and normal guides, 256 samples or more, status `denoised`; user goal 2026-09-29), cross-checked against unbiased renders | each eligible fixture within its recorded per-fixture tolerance of Cycles (mean and 99th-percentile error in linear light, tolerances fixed before the run); every relational oracle of the gallery holds; each judged term's negative control (the term removed or seeded wrong) fails its fixture |
-| Area, clustered and shadowed light together | the area-lit room, the spot-lit hall and the colonnade | 64 area lights and 256 clustered lights in one view within tolerance of Cycles; shadow edges of every light class in the right place (judged pixels as in `render.shadows.pixels`) |
-| Ambient occlusion | `render.lab.gtao` (proposed) | a flat open plane gives AO one bitwise; crease and corner cases within tolerance of a ray-traced visibility reference; a direct-light-only scene is unchanged bitwise (AO touches indirect only); a fully baked static fixture is not darker than Cycles beyond its tolerance, and the double-occlusion control (AO over the bake with no rule) fails |
-| Screen-space reflections | `render.lab.ssr` (proposed) on the mirror corridor | on-screen hits within tolerance of Cycles; off-screen and occluded rays fall back to the probes with no seam larger than the R50 walk gate's step; surfaces rougher than the cutoff are unchanged bitwise; seeded defects detected (thickness ignored, no edge fade, the wrong mip) |
+| Term behavior | synthetic fixtures and independent analytic or relational checks | every term preserves its invariants and a seeded missing or wrong term fails its fixture; the same fixture is then checked in the game under K12 |
+| Area, clustered and shadowed light together | the area-lit room, the spot-lit hall and the colonnade | 64 area lights and 256 clustered lights are present in one view; shadow edges of every light class follow the independent geometry and visibility oracle |
+| Ambient occlusion | `render.lab.gtao` (proposed) | a flat open plane gives AO one bitwise; crease and corner cases pass the visibility oracle; a direct-light-only scene is unchanged bitwise (AO touches indirect only); a fully baked static fixture does not gain double occlusion and the double-occlusion control fails |
+| Screen-space reflections | `render.lab.ssr` (proposed) on the mirror corridor | on-screen hits follow the reflection geometry oracle; off-screen and occluded rays fall back to the probes with no seam larger than the R50 walk gate's step; surfaces rougher than the cutoff are unchanged bitwise; seeded defects detected (thickness ignored, no edge fade, the wrong mip) |
 | Volumetric fog | `render.lab.volumetric` (proposed) on the foggy hall | a homogeneous medium's transmittance is exp(-sigma_t d) within tolerance; single scattering from a point light matches a numerical integral; a shadowed projector's shaft is absent inside its shadow; density zero is bitwise the fog-only frame; after a camera cut no history remains |
-| Portal and Portal 2 chambers | the two rebuilt chambers, legacy points and modern points (the S9 rule table) | legacy points match the product's native ports within the family tolerances; modern points within tolerance of Cycles |
-| Output on a display | `render.output` (Linux GPU); `render.lab.hdr` on the iPhone and the Apple TV through `render_lab`'s presenting host (`render/lab/app`) | `render.output.v1`'s clauses and seeded programs pass; each chart patch presented on the device equals the oracle at the frame's headroom; the extended range is granted and the headroom rises above 1; on tvOS the TV switches into HDR; a debug view presents untouched; a standard presentation shows the legacy point |
+| Portal and Portal 2 chambers | the two rebuilt chambers with claimed VMTs translated to native core points; explicit compatibility controls | the lab renders each selected camera and the product's same-camera image passes K12; material differences receive visual review and negative controls; legacy-port pixels remain compatibility diagnostics |
+| Output on a display | `render.output` (Linux GPU); `render.lab.hdr` on the iPhone and the Apple TV through `render_lab`'s presenting host (`render/lab/app`) | `render.output.v1`'s clauses and seeded programs pass; each chart patch presented on the device equals the oracle at the frame's headroom; the extended range is granted and the headroom rises above 1; on tvOS the TV switches into HDR; a debug view presents untouched; a standard presentation shows the native point |
 | World PBR materials | the gallery's material-sweep and mirror-corridor views | PBRMetalRough world materials draw as the pbr point (baked lightmap basis, probes and image specular), never remapped to the lightmapped point; a world PBR material the resolver cannot claim is a named gap, never a silent remap |
-| Visible emitters drawn | `render.lab.emitters` (proposed) over the fixtures' emissive light meshes | each fixture light's emissive mesh is in the map and drawn with its authored radiance, per emitter pixel within the fixture tolerance of Cycles; the gallery judges emitter pixels separately (today its metric skips them), so a missing or dark emitter fails; a fixture light without a mesh fails the fixture check |
-| Antialiased edges | `render.lab.edges` (proposed), with RFC 0012's multisampled targets on the core | geometric silhouettes in the lab match the denoised Cycles edge profile within tolerance (an edge metric: error on pixels within 2 px of a depth or normal discontinuity, judged separately from the interior); a one-sample frame fails it. The gallery shows the edge error |
+| Visible emitters drawn | `render.lab.emitters` (proposed) over the fixtures' emissive light meshes | each fixture light's emissive mesh is in the map and drawn with its authored radiance; a black-emitter control fails and a fixture light without a mesh fails. The game's same emitter pixels are judged in K12 |
+| Antialiased edges | `render.lab.edges` (proposed), with RFC 0012's multisampled targets on the core | geometric silhouettes satisfy the declared edge and temporal stability checks; a one-sample control fails them. The game's same edges are judged in K12 |
 | Small-light fog halos | `render.lab.volumetric` and the foggy-hall gallery | a bulb's in-scattered halo matches its numerical integral per pixel within tolerance at sub-froxel radii (the analytic per-light term); the froxel-only frame fails the check |
-| Gallery for review | `python3 tools/quality/lighting_fixtures.py gallery` (installed 2026-09-29): renders every Cycles-eligible fixture view in `render_lab`, scores it with the K11 metric, and writes one self-contained page (`quality-results/lighting-gallery/<time>/index.html`) with render_lab and Cycles at the same exposure and the error map; the page is published for the user after every slice that changes the lab's pixels | each Cycles-judged term's views are in the page, beside their references, with the term's negative control; portal transport uses its separate matched-view check; the user's review is recorded in the progress entry. The user judges "looks right", which the tolerances cannot |
+| Visual review | matched game/lab captures and difference images from the same content snapshot | the user reviews the game's actual result and the lab's image together; a term is not delivered from a lab-only image, and K12 retains every unmatched camera as a gap |
 | Lab budgets (perf) | `render_lab --time` (proposed), `render-v1.json` lighting rows | the `linux-desktop-high-120.lighting_components` targets in [`render-v1.json`](../quality/budgets/render-v1.json) pass on the heaviest 1080p fixture, with all terms; Fold7 rows recorded. The component verdict runner remains proposed until installed. Missing measurements cannot pass, and no term is turned off for a miss |
 
 ### K12: Lighting model integrated in the product
@@ -2154,6 +2196,7 @@ ahead of the product rows.
 | One copy of the math | static scan | the model's GLSL exists only under `render/`; `world_pbr.frag`, `model_pbr.frag`, `probe_volume.glsl` and `reflection_probes.glsl` are gone from the native backend |
 | Moving-light GI (out of scope, user decision 2026-09-30) | none | not judged: the bake's indirect light is the product's (`r_indirect_producer auto` is `baked` in every profile); the producers stay opt-in and unjudged by K12 |
 | Game matches lab | the Portal and Portal 2 chambers booted with the lab's cameras | each in-game frame within tolerance of the same scene's `render_lab` frame |
+| Paired slice delivery | `game_lab_matrix.py --require-image-parity` on the slice's declared cameras, plus the term's product reachability and negative controls | every selected camera has a declared passing image limit; a `diagnostic` comparison cannot close the slice. Record unmatched game composition or an unavailable product path as an open K12 gap |
 | Game output | Portal and Portal 2 on the iPhone and the Apple TV | the product presents through `render.presentation.v1` (no backend-owned swapchain), its frames reach it through `render.pass.output` at the presentation's headroom, and each profile records its declared range |
 | Frame budgets (perf) | installed `frame_floor.py` with the row-linked Portal 2 route, existing Portal pacing workloads and complete-scene qualification | the [hard render budget](#hard-render-budgets-user-decision-2026-10-01) passes with complete High images/cohorts and representative-scene coverage; the frame allowance applies only to comparable K0 workloads and never relaxes the hard limit; other profiles meet their declared rows |
 
@@ -2163,7 +2206,9 @@ OpenGL adapter needs per-target artifacts and runs the legacy frontend. K5
 needs K4. K6 and K7 need K5 and are independent of each other. K8 needs
 K5, and its UI cohort needs RFC 0010's draw list. K9 needs K6, K7, K8 and
 K12. K11 needs K1, K2 and K4 and builds the K7 passes it needs; it does not
-wait for K5–K7 in the product. K12 needs K11, K5, K6 and K7.
+wait for K5–K7 in the product. An individual K12 slice may follow that term's
+K11 proof once its K5–K7 product dependencies exist; K12's aggregate gate
+still needs all of K11, K5, K6 and K7.
 
 **The RFC is done** when K0–K12 have passed on their required profiles,
 CAP011 and every suite above are required rows in the conformance manifest

@@ -7,6 +7,13 @@ Suites: `unittests/rendertest/core/material/test_material.cpp`,
 `unittests/rendertest/core/resources/test_resources.cpp`
 Rows: R88 (RFC 0016 K4; this is its first slice)
 
+The port-pixel clauses below record K4's extracted-family compatibility
+baseline. They remain regression controls for those points, not the visual
+target for new core VMT interpretations. [RFC 0016's surface model](../../../RFC/0016-render-core.md#the-surface-model-legacy-definitions-in-the-modern-core-plan-2026-09-28-amended-2026-10-03)
+owns native material semantics and its Cycles/game-lab quality gates; changing
+that interpretation requires its own oracle and evidence, not weakening these
+recorded K4 fixtures.
+
 | Clause | Obligation |
 | --- | --- |
 | M1 | A family's parameters take std140-style offsets; textures take slots |

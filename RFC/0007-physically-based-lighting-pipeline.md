@@ -196,7 +196,8 @@ Observed at the working tree of 2026-09-22 (branch `subsystem-refactor`):
   repository already has a separate `PBR` shader in
   `materialsystem/stdshaders/pbr_dx9.cpp` and its FXC sources; its name and
   existing content semantics must be preserved. The native shader work
-  reproduces legacy families against D3D9 oracles. The material pixel harness
+  reproduces legacy families against D3D9 oracles as a compatibility baseline,
+  not the native visual-quality target. The material pixel harness
   (`tools/quality/material_pixel_conformance.py`) defines families `lightmap`,
   `exposure`, `skinning`, and `portal`, captured on D3D9 and compared on native
   Vulkan. See [native Vulkan progress](0001-native-vulkan-progress.md).
@@ -602,6 +603,15 @@ A new shader family named `PBRMetalRough` (distinct from the existing D3D9
 | `$alphatest`, `$alphatestreference`, `$translucent` | As legacy | Unchanged semantics |
 | `$envmap` | `env_cubemap` or explicit cubemap | Consumed through IBL prefilter |
 | `$fallbackmaterial` | Path to a legacy VMT used when a provider lacks the capability | Required material reference |
+
+`PBRMetalRough`'s authored emission scale can provide scene-unit radiance.
+Legacy `$selfillum` keys instead describe which part of a surface glows and
+how it is tinted; they do not specify an absolute light output. Both kinds
+feed [RFC 0016's core material interpretation](0016-render-core.md#the-surface-model-legacy-definitions-in-the-modern-core-plan-2026-09-28-amended-2026-10-03),
+which owns their VMT-to-surface mapping and the separate decision to publish
+an RFC 0011 area light. Values absent from a legacy VMT require a reviewed
+mapping or authored sidecar; old shader pixels are a compatibility control,
+not the quality target.
 
 The VMT schema, the parameter defaults, and the sRGB/linear classification of
 each slot have one owner: a versioned schema to be consumed by the material

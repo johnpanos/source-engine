@@ -42,6 +42,15 @@ class MatrixFailuresTests(unittest.TestCase):
         self.assertEqual(matrix.matrix_failures(record),
                          ["room/right: comparison failed"])
 
+    def test_image_parity_gate_rejects_diagnostic_cameras(self):
+        record = {"fixtures": {"room": {"cameras": {
+            "left": {"boot_returncode": 0, "comparison": {"status": "pass"}},
+            "right": {"boot_returncode": 0, "comparison": {"status": "diagnostic"}}}}}}
+        self.assertEqual(matrix.matrix_failures(record, require_image_parity=True),
+                         ["room/right: image parity is diagnostic, not a pass"])
+        record["fixtures"]["room"]["cameras"]["right"]["comparison"]["status"] = "pass"
+        self.assertEqual(matrix.matrix_failures(record, require_image_parity=True), [])
+
     def test_zero_legacy_gate_requires_runtime_census(self):
         result = {"boot_returncode": 0, "comparison": {"status": "pass"},
                   "legacy_census": {"zero_legacy_stream": False}}
