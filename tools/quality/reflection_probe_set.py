@@ -803,7 +803,6 @@ PLACEMENT_DEFAULTS = {
     "glossy_roughness": 0.35,  # perceptual roughness at or below which a surface is glossy
     "glossy_radius_m": 2.5,    # a glossy sample needs a capture this near that sees it
     "glossy_samples_per_m2": 16.0,
-    "glossy_candidate_limit": 512,
     "influence_margin_m": 0.15,
     # A capture this close to a surface sees mostly that surface (or, at a
     # doorway, the next room through it): it is not a room's probe.
@@ -993,32 +992,13 @@ def place(raycast, bounds_min, bounds_max, glossy=None, params=None, seeds=(), v
         walkable = walkable_samples(raycast, bounds_min, bounds_max, params)
     if not len(walkable):
         raise ValueError("no walkable sample under the bounds: nowhere to place a probe")
-    points = normals = np.zeros((0, 3), dtype=np.float64)
-    if glossy is not None and len(glossy[0]):
-        points, normals = (np.asarray(value, dtype=np.float64) for value in glossy)
-        # Eye-height floor samples miss mirrors, wall panels and raised props.
-        # Add one deterministic front-side capture per occupied placement cell;
-        # the same proxy-fit and visibility admission checks still decide whether
-        # it can enter the resource.
-        cells = np.floor((points - bounds_min) / params["spacing_m"]).astype(np.int64)
-        _, indices = np.unique(cells, axis=0, return_index=True)
-        indices.sort()
-        limit = params["glossy_candidate_limit"]
-        if len(indices) > limit:
-            indices = indices[np.linspace(0, len(indices) - 1, limit, dtype=np.int64)]
-        offset = min(params["glossy_radius_m"] * 0.5, 1.0)
-        adjacent = points[indices] + normals[indices] * offset
-        inside_bounds = np.all((adjacent >= bounds_min) & (adjacent <= bounds_max), axis=1)
-        candidates = np.concatenate((walkable, adjacent[inside_bounds]))
-    else:
-        candidates = walkable
     directions = fibonacci_directions(params["fit_rays"])
     # A native-scene caster may fan the independent candidate fits out over
     # workers.  Each fit still casts the same directions in the same order;
     # the generic/oracle path remains the serial definition.
-    estimates = raycast.estimate_boxes(candidates, directions) \
+    estimates = raycast.estimate_boxes(walkable, directions) \
         if hasattr(raycast, "estimate_boxes") else \
-        [estimate_box(raycast, candidate, directions) for candidate in candidates]
+        [estimate_box(raycast, candidate, directions) for candidate in walkable]
     boxes = [estimate[:2] for estimate in estimates]
     rules = coverage_rules or {}
     residual_limit = rules.get("max_reflection_probe_residual")
@@ -1039,7 +1019,7 @@ def place(raycast, bounds_min, bounds_max, glossy=None, params=None, seeds=(), v
         within = inside(walkable, box_min, box_max, params["fade_m"])
         seen = np.zeros(len(walkable), dtype=bool)
         indices = np.nonzero(within)[0]
-        seen[indices] = visible(raycast, np.tile(candidates[index], (len(indices), 1)),
+        seen[indices] = visible(raycast, np.tile(walkable[index], (len(indices), 1)),
                                 walkable[indices])
         covers.append(seen)
     covers = np.array(covers)
@@ -1068,7 +1048,8 @@ def place(raycast, bounds_min, bounds_max, glossy=None, params=None, seeds=(), v
     candidate_views = np.zeros((len(walkable), 0), dtype=bool)
     servable = served = np.zeros(0, dtype=bool)
     report = {}
-    if len(points):
+    if glossy is not None and len(glossy[0]):
+        points, normals = (np.asarray(value, dtype=np.float64) for value in glossy)
         radius = params["glossy_radius_m"]
 
         def seen_by(capture):
@@ -1084,7 +1065,7 @@ def place(raycast, bounds_min, bounds_max, glossy=None, params=None, seeds=(), v
         served = np.zeros(len(points), dtype=bool)
         for probe in probes:
             served |= seen_by(probe["capture"])
-        candidate_views = np.array([seen_by(candidate) for candidate in candidates])
+        candidate_views = np.array([seen_by(candidate) for candidate in walkable])
         # Samples no eye-height point sees (under furniture, behind objects)
         # cannot be served by placement; they are reported, not chased.
         servable = candidate_views.any(axis=0)
@@ -1105,13 +1086,12 @@ def place(raycast, bounds_min, bounds_max, glossy=None, params=None, seeds=(), v
             visible_points = points[candidate_views[index]]
             influence_min = np.minimum(influence_min, visible_points.min(axis=0) - margin)
             influence_max = np.maximum(influence_max, visible_points.max(axis=0) + margin)
-        probes.append({"capture": candidates[index].copy(), "box_min": box_min,
+        probes.append({"capture": walkable[index].copy(), "box_min": box_min,
                        "box_max": box_max, "influence_min": influence_min,
                        "influence_max": influence_max, "fade": params["fade_m"],
                        "role": "joint", "covers": int((covers[index] & initial_uncovered).sum())})
         initial_uncovered &= ~covers[index]
-    report.update(walkable_samples=int(len(walkable)), placement_candidates=int(len(candidates)),
-                  walkable_spacing_m=params["spacing_m"],
+    report.update(walkable_samples=int(len(walkable)), walkable_spacing_m=params["spacing_m"],
                   uncovered_walkable=int(uncovered.sum()), room_stop=stop)
     if len(servable):
         report.update(unserved_glossy=int(unserved.sum()), glossy_stop=stop)
