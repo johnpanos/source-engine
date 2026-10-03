@@ -223,3 +223,50 @@ when no frame passed or any counter went backwards.
 2. Set the budget rows from those counts.
 3. Then take the remaining V0 inventories: the `ISurface` callers, the
    direct-render panels, and the blend modes and primitives in use.
+
+## V0: fixture materials (`vgui.fixture-materials`), 2026-10-03
+
+User request: fixture materials to draw VGUI with, so the corpus does not
+depend on licensed game content.
+
+### What is installed
+
+- **`tools/vgui/vgui_fixture_content.py`.** It draws 21 textures from
+  closed-form rules (no image library, font or third-party art) and writes 43
+  files (21 VTFs and 22 VMTs, about 380 KiB). The files are generated and
+  never committed. The set:
+  - nine `vgui/fixture/*` materials: quadrants, alpha ramp, additive, opaque
+    with zero alpha, a point-sampled checker, a sub-rect atlas, a three-frame
+    `$frame` texture, a non-square ramp, and a `$color`-tinted material for
+    the draw list's legacy-material case;
+  - the thirteen `vgui/cursors/*` textures the surface loads at start.
+
+  The [fixture README](../quality/fixtures/vgui-surface/README.md) lists what
+  each one exercises.
+- **`quality/fixtures/vgui-surface/materials.json`.** The recorded manifest:
+  each material's purpose, size, flags and blend, its probe texels, and every
+  file's SHA-256 and size. `record` refuses to replace it without `--update`.
+- **`tools/quality/vtf_write.py`.** The one VTF writer for generated art,
+  moved out of `tools/android/touch_icons.py`. The touch icons it writes are
+  byte-identical before and after the move (19 files), and the Android tests
+  pass.
+- **`unittests/vguitest/vgui_fixture_reader.cpp`.** It reads the probe
+  texels through the engine's VTF container reader (`texturecontainer::vtf`,
+  which `vtf/vtf.cpp` loads every game texture through).
+
+### Evidence
+
+| Check | Result |
+| --- | --- |
+| `vgui.fixture-materials` | 389 checks on g++ and clang++. The files regenerate byte-identically to the manifest. Every VMT, read by `tools/render/material_inventory.py`, names its texture and declares the blend the surface derives from its flags. Every VTF header is as specified, and all 78 probe texels read back through `tools/quality/vtf_decode.py` and through `texturecontainer::vtf` |
+| `test_vgui_fixture_content.py` | 12 tests. With the manifest re-recorded from each defective output, so only the probes and the blend rule can catch it, these each fail: flipped rows, swapped channels, reversed frames, a blend the flags do not give, and wrong header flags. Changed bytes fail the hashes, and a missing file fails its presence check. The engine-reader test (slow tier) passes and reports a flipped texture itself |
+| Determinism | two `write` runs are identical |
+| stylelint `--changed`; archlint `check --all`, `inventory --verify` | pass |
+
+### Not done
+
+- **The materials have not been drawn.** Drawing them needs a host that
+  composes the material system, vgui2 and vguimatsurface against a fixture
+  game directory, with a fixture scheme and packaged fonts. That host is the
+  next V0 step, and it is where `vgui_surface_stats` gets its first numbers.
+- **No D3D9 or native Vulkan pixel captures.**

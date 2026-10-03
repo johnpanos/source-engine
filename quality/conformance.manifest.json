@@ -7696,6 +7696,39 @@
       "expect": "pass"
     },
     {
+      "id": "vgui.fixture-materials",
+      "domain": "Q-CONTENT",
+      "rfc": "0010",
+      "migration": "VG-A",
+      "contract": "quality/fixtures/vgui-surface/materials.json",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "description": "RFC 0010 V0 fixed-screen corpus: the repository-owned VGUI fixture materials (tools/vgui/vgui_fixture_content.py: quadrants, alpha ramp, additive, opaque with zero alpha, point-sampled checker, sub-rect atlas, three-frame $frame texture, a non-square ramp, a $color-tinted material and the thirteen software cursors the surface loads) regenerate byte-identically to the recorded manifest; every VMT, read by tools/render/material_inventory.py, names its texture and declares the blend the surface derives from its flags; every probe texel, literal in the generator, is read back by tools/quality/vtf_decode.py and by the engine's own VTF container reader (texturecontainer::vtf, built from unittests/vguitest/vgui_fixture_reader.cpp with this profile's flags, compiler $CXX, default g++). Sensitivity: tools/quality/tests/test_vgui_fixture_content.py (flipped rows, swapped channels, reversed frames, a blend the flags do not give, wrong header flags, changed bytes and a missing file each fail).",
+      "command": [
+        "{python}",
+        "tools/vgui/vgui_fixture_content.py",
+        "check",
+        "--out",
+        "{out}"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 389,
+      "timeout_seconds": 300,
+      "requires": [
+        "executable:g++"
+      ],
+      "sources": [
+        "tools/vgui/vgui_fixture_content.py",
+        "tools/quality/vtf_write.py",
+        "tools/quality/vtf_decode.py",
+        "tools/render/material_inventory.py",
+        "unittests/vguitest/vgui_fixture_reader.cpp",
+        "texturecontainer/vtf/container.cpp",
+        "quality/fixtures/vgui-surface/materials.json"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "tier1.kv_conditional",
       "domain": "Q-CONTENT",
       "rfc": "0010",

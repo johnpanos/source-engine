@@ -1072,9 +1072,13 @@ Keep the table concise and link details below or from the domain progress file.
   `vgui_surface_stats`) are installed with their suites, and the Waf build
   links them into `vguimatsurface` and `engine` (clang 18). They have not
   been measured in a running game: no game content was available.
+  Repository-owned fixture materials (`vgui.fixture-materials`: 21
+  generated textures, their probes read back through the engine's VTF
+  reader) let the corpus run without game content; no host draws them yet.
   Budget rows and the rest of V0 are open; no row changes state
   ([guard](RFC/0010-progress.md#v0-vgui-abi-guard-legacyvgui-abi-2026-10-03),
-  [counters](RFC/0010-progress.md#v0-ui-counters-vguisurfacestats001-2026-10-03)).
+  [counters](RFC/0010-progress.md#v0-ui-counters-vguisurfacestats001-2026-10-03),
+  [fixtures](RFC/0010-progress.md#v0-fixture-materials-vguifixture-materials-2026-10-03)).
 
 - R86/R88 memory follow-up (2026-10-02, user request): [audit and direct
   texture uploads](RFC/0016-progress.md#k1k4-render-core-memory-and-cache-audit-2026-10-02)
