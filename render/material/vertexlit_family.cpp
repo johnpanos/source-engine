@@ -35,7 +35,7 @@ constexpr std::array<std::string_view, 12> kClaimed = { "basetexture", "color", 
 
 // One modernized dielectric point. Other variables wait for their surface
 // terms instead of being dropped during import.
-constexpr std::array<std::string_view, 53> kMeshClaimed = { "basetexture", "color", "color2",
+constexpr std::array<std::string_view, 54> kMeshClaimed = { "basetexture", "color", "color2",
     "alpha", "translucent", "bumpmap", "phong", "phongexponent", "phongboost", "phongtint",
     "phongfresnelranges", "model", "ignore_alpha_modulation", "selfillum", "selfillummask",
     "selfillumtint", "rimlightexponent", "rimlightboost", "selfillumfresnelminmaxexp",
@@ -45,7 +45,8 @@ constexpr std::array<std::string_view, 53> kMeshClaimed = { "basetexture", "colo
     "basealphaenvmapmask", "normalmapalphaenvmapmask", "detail", "detailscale", "detailblendmode",
     "detailblendfactor", "detailtint", "blendtintbybasealpha", "blendtintcoloroverbase",
     "envmapfresnelminmaxexp", "envmaplightscale", "envmaplightscaleminmax", "additive",
-    "lightwarptexture", "phongwarptexture", "envmapmask", "ssbump", "ssbumpmathfix", "forcephong" };
+    "lightwarptexture", "phongwarptexture", "envmapmask", "ssbump", "ssbumpmathfix", "forcephong",
+    "selfillumfresnel" };
 
 } // namespace
 
@@ -116,10 +117,11 @@ VertexLitMeshClaim ClaimVertexLitMesh( const ParameterBlock &block )
 	// $phongexponent is inert in VertexLitGeneric when $phong is off. The
 	// imported shader can still carry a nondefault value in that case.
 	const bool selfIllum = ReadFlag( block, "selfillum" );
-	// The min/max/exp parameter is inert without $selfillumfresnel. The
-	// legacy material importer includes its zero-valued shader default even
-	// on an ordinary self-illuminated door. A nondefault enable switch stays
-	// outside the mapped mesh subset and is refused by the resolver.
+	// The min/max/exp parameter is inert without $selfillumfresnel, and
+	// $selfillumfresnel without $selfillum (the shaders' SELFILLUMFRESNEL
+	// combo needs SELFILLUM). The legacy material importer includes the
+	// zero-valued shader default even on an ordinary self-illuminated door.
+	const bool selfIllumFresnel = selfIllum && ReadFlag( block, "selfillumfresnel" );
 	claim.normalMap = detail::TextureBound( block, "bumpmap" );
 	claim.ssbump = claim.normalMap && ReadFlag( block, "ssbump" );
 	if ( ReadFlag( block, "ssbump" ) && !claim.normalMap )
@@ -172,6 +174,48 @@ VertexLitMeshClaim ClaimVertexLitMesh( const ParameterBlock &block )
 	}
 	claim.selfIllum = selfIllum;
 	claim.selfIllumMask = selfIllum && detail::TextureBound( block, "selfillummask" );
+	if ( selfIllumFresnel )
+	{
+		// The combinations VertexLitGeneric resolves by dropping one of the
+		// authored settings (vertexlitgeneric_dx9_helper.cpp, the shaders'
+		// SKIP lines) have no single intent to interpret.
+		if ( claim.selfIllumMask )
+		{
+			claim.reason = "$selfillummask with $selfillumfresnel: the fresnel shaders mask by "
+			               "base alpha and ignore the mask texture";
+			return claim;
+		}
+		if ( detail::TextureBound( block, "detail" ) )
+		{
+			claim.reason = "$detail with $selfillumfresnel: VertexLitGeneric drops the fresnel "
+			               "term under a detail texture";
+			return claim;
+		}
+		if ( detail::TextureBound( block, "lightwarptexture" ) )
+		{
+			claim.reason = "$lightwarptexture with $selfillumfresnel: VertexLitGeneric drops the "
+			               "light warp under the fresnel term";
+			return claim;
+		}
+		if ( ReadFlag( block, "normalmapalphaenvmapmask" ) )
+		{
+			claim.reason = "$normalmapalphaenvmapmask with $selfillumfresnel: VertexLitGeneric "
+			               "clears the normal-alpha mask under the fresnel term";
+			return claim;
+		}
+		for ( int c = 0; c < 3; ++c )
+		{
+			const float control = ReadParameter( block, "selfillumfresnelminmaxexp", c );
+			if ( !std::isfinite( control ) || control < 0.0f )
+			{
+				claim.reason = "$selfillumfresnelminmaxexp must be finite and nonnegative";
+				return claim;
+			}
+			claim.constants.selfIllumFresnel[c] = control;
+		}
+		claim.constants.selfIllumFresnel[3] = 1.0f;
+		claim.selfIllumFresnel = true;
+	}
 	claim.phongExponentTexture = phong && detail::TextureBound( block, "phongexponenttexture" );
 	claim.envmapMask = detail::TextureBound( block, "envmapmask" );
 	if ( claim.envmapMask && claim.normalMap )

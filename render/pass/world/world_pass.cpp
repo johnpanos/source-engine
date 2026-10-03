@@ -355,6 +355,7 @@ LightmapPages SplitLightmapLayer(
 struct WorldPass::State
 {
 	IRenderDevice2 *device = nullptr; // the device the resources live on
+	std::span<const std::uint32_t> fragmentModule; // SetSurfaceFragmentModule
 
 	// Guarded by lock: the world the main thread set and the queued views.
 	mutable std::mutex lock;
@@ -538,6 +539,11 @@ WorldPass::WorldPass() : m_State( std::make_unique<State>() )
 
 // Without ReleaseDevice the device may be gone: the handles are dropped.
 WorldPass::~WorldPass() = default;
+
+void WorldPass::SetSurfaceFragmentModule( std::span<const std::uint32_t> module )
+{
+	m_State->fragmentModule = module;
+}
 
 void WorldPass::SetWorld( WorldData data )
 {
@@ -1308,7 +1314,8 @@ void WorldPass::RecordBatch(
 	if ( !r.resolver )
 	{
 		auto resolver = material::ProgramResolver::Create( device, target.colorFormat,
-		    target.depthFormat, target.samples, material::VertexLayout::kSurface );
+		    target.depthFormat, target.samples, material::VertexLayout::kSurface,
+		    material::ProgramModules{ s.fragmentModule } );
 		if ( !resolver )
 		{
 			s.Fail( resolver.Error() );
@@ -1325,7 +1332,8 @@ void WorldPass::RecordBatch(
 	if ( ( !view.staticInstances.empty() || !view.posedModels.empty() ) && !r.modelResolver )
 	{
 		auto resolver = material::ProgramResolver::Create( device, target.colorFormat,
-		    target.depthFormat, target.samples, material::VertexLayout::kModel );
+		    target.depthFormat, target.samples, material::VertexLayout::kModel,
+		    material::ProgramModules{ s.fragmentModule } );
 		if ( !resolver )
 		{
 			s.Fail( "the static model resolver: " + resolver.Error() );

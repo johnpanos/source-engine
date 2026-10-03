@@ -398,6 +398,13 @@ GENERATED = {
          DEVICE_OPTIONS + ("-DSEEDED_RPRB_NO_FACING",)),
         ("kReflectionProbesRelightAddedOnly", LAB + "/reflection_probes_check.comp",
          DEVICE_OPTIONS + ("-DSEEDED_RPRB_RELIGHT_ADDED_ONLY",)))),
+    "selfillum_defects_spv.h": ("render::lab::spirv",
+        "render_lab's self-illumination suite's seeded programs (render.lab.selfillum "
+        "sensitivity, RFC 0016 surface model emission term)", (
+        ("kSurfaceSelfIllumFresnelIgnored", FAMILIES + "/surface.frag",
+         DEVICE_OPTIONS + ("-DSEEDED_SELFILLUM_FRESNEL_IGNORED",)),
+        ("kSurfaceSelfIllumBrightnessIgnored", FAMILIES + "/surface.frag",
+         DEVICE_OPTIONS + ("-DSEEDED_SELFILLUM_BRIGHTNESS_IGNORED",)))),
     "debug_view_defects_spv.h": ("render::lab::spirv",
         "render_lab's debug-view suite's seeded programs (render.debug-views sensitivity, "
         "RFC 0014)", (

@@ -303,6 +303,7 @@ layout( set = 2, binding = 0 ) uniform Material
 	vec4 emissionCone; // inner/outer cosine, exponent, enabled
 	vec4 texture2Transform[2];
 	vec4 surfaceControls;
+	vec4 selfIllumFresnel; // $selfillumfresnelminmaxexp; w: 1 with $selfillumfresnel
 } material;
 layout( set = 2, binding = 1 ) uniform texture2D baseTexture;
 layout( set = 2, binding = 2 ) uniform sampler baseSampler;
@@ -1361,10 +1362,27 @@ void PbrSurface()
 	{
 		// Source model base alpha selects the self-lit surface instead of
 		// adding a second copy of its albedo on top of direct lighting.
-		const vec3 selfLit = base * material.selfIllumTint.rgb;
-		const vec3 mask = Term( kSelfIllumMask )
-		                      ? texture( sampler2D( emissionTexture, emissionSampler ), uv ).rgb
-		                      : vec3( baseSample.a );
+		vec3 selfLit = base * material.selfIllumTint.rgb;
+		vec3 mask = Term( kSelfIllumMask )
+		                ? texture( sampler2D( emissionTexture, emissionSampler ), uv ).rgb
+		                : vec3( baseSample.a );
+		// $selfillumfresnel (vertexlit_family.h): the region's coverage
+		// follows the vertex normal's facing, saturate( b + ( 1 - b ) c ) with
+		// b = min / max and c = ( N.V )^exp, at radiance max x tint x albedo.
+		if ( material.selfIllumFresnel.w > 0.5 )
+		{
+			const float brightness = material.selfIllumFresnel.y;
+			const float bias = brightness != 0.0 ? material.selfIllumFresnel.x / brightness : 0.0;
+			const float exponent = material.selfIllumFresnel.z;
+			const float facing = clamp( dot( smoothNormal, view ), 0.0, 1.0 );
+			const float shaped = exponent > 0.0 ? pow( facing, exponent ) : 1.0;
+#ifndef SEEDED_SELFILLUM_FRESNEL_IGNORED
+			mask *= clamp( bias + ( 1.0 - bias ) * shaped, 0.0, 1.0 );
+#endif
+#ifndef SEEDED_SELFILLUM_BRIGHTNESS_IGNORED
+			selfLit *= brightness;
+#endif
+		}
 		emission += selfLit * mask;
 		color = mix( color, selfLit, mask );
 	}
