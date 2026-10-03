@@ -6,6 +6,7 @@
 
 #include "lab_support.h"
 
+#include "content/hash.h"
 #include "render/device/vulkan/provider.h"
 #include "render/shaderlib/debug_view.h"
 
@@ -15,6 +16,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <iostream>
 #include <span>
 #include <sstream>
 
@@ -79,8 +81,25 @@ std::optional<std::string> ReadFile( const fs::path &path )
 	return bytes.str();
 }
 
+GameFiles::GameFiles( fs::path root, fs::path package )
+    : m_Root( std::move( root ) ), m_Resolver( package.empty() ? m_Root : package )
+{
+	if ( m_Resolver.InvalidIndex() )
+		std::cerr << "render_lab: invalid asset index: " << m_Resolver.Error() << '\n';
+}
+
 std::optional<fs::path> GameFiles::Resolve( const std::string &relative ) const
 {
+	if ( m_Resolver.InvalidIndex() )
+		return std::nullopt;
+	if ( const auto ref = content::AssetRef::FromRuntimePath( relative ) )
+	{
+		const content::AssetLookup found = m_Resolver.Find( *ref );
+		if ( found.status == content::AssetLookupStatus::Indexed )
+			return found.path;
+		if ( found.status != content::AssetLookupStatus::Unindexed )
+			return std::nullopt;
+	}
 	fs::path direct = m_Root / relative;
 	if ( fs::exists( direct ) )
 		return direct;
@@ -109,6 +128,19 @@ bool GameFiles::Read( const std::string &path, std::string &out ) const
 	std::optional<std::string> bytes = ReadFile( *found );
 	if ( !bytes )
 		return false;
+	if ( const auto ref = content::AssetRef::FromRuntimePath( path ) )
+	{
+		const content::AssetEntry *entry = m_Resolver.Find( *ref ).entry;
+		if ( entry )
+		{
+			content::Blake2b hash( entry->hash.size() );
+			hash.Update( bytes->data(), bytes->size() );
+			std::array<std::uint8_t, 16> digest{};
+			hash.Final( digest.data() );
+			if ( bytes->size() != entry->size || digest != entry->hash )
+				return false;
+		}
+	}
 	out = std::move( *bytes );
 	return true;
 }

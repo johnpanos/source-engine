@@ -134,6 +134,14 @@
     }
   },
   "targets": {
+    "content_hash": {"dialect": "cxx20", "rfc": "0015"},
+    "asset_identity": {"dialect": "cxx20", "rfc": "0015"},
+    "asset_index": {"dialect": "cxx20", "rfc": "0015"},
+    "asset_resolver": {"dialect": "cxx20", "rfc": "0015"},
+    "content_graph": {"dialect": "cxx20", "rfc": "0015"},
+    "material_compiler": {"dialect": "cxx20", "rfc": "0015"},
+    "content_build": {"dialect": "cxx20", "rfc": "0015"},
+    "contenttest": {"dialect": "cxx20", "rfc": "0015"},
     "jobsystem": {
       "dialect": "cxx20",
       "rfc": "0003"

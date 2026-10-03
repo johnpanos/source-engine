@@ -1,17 +1,16 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
-// Purpose: BLAKE2b (RFC 7693), unkeyed, variable digest length. Private to
-//          mapcontainer; the BSP2 content hash is BLAKE2b with a 16-byte digest.
+// Purpose: BLAKE2b (RFC 7693), unkeyed, variable digest length. Shared by block containers and asset identities; callers choose the digest length.
 //
 //=============================================================================//
 
-#ifndef MAPCONTAINER_BLAKE2B_H
-#define MAPCONTAINER_BLAKE2B_H
+#ifndef CONTENT_HASH_H
+#define CONTENT_HASH_H
 
 #include <cstddef>
 #include <cstdint>
 
-namespace mapcontainer::detail
+namespace content
 {
 
 class Blake2b
@@ -32,6 +31,6 @@ private:
 	std::size_t m_DigestSize;
 };
 
-} // namespace mapcontainer::detail
+} // namespace content
 
-#endif // MAPCONTAINER_BLAKE2B_H
+#endif // CONTENT_HASH_H

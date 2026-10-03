@@ -9,6 +9,7 @@
 #define RENDER_LAB_LAB_SUPPORT_H
 
 #include "mapcontainer/probe_volume.h"
+#include "content/asset_resolver.h"
 #include "mapcontainer/reflection_probes.h"
 #include "mapcontainer/world_lightmap.h"
 #include "mdl/studio_model.h"
@@ -56,7 +57,11 @@ std::optional<std::string> ReadFile( const std::filesystem::path &path );
 class GameFiles final : public mdl::IModelFiles
 {
 public:
-	explicit GameFiles( std::filesystem::path root ) : m_Root( std::move( root ) ) {}
+	explicit GameFiles( std::filesystem::path root, std::filesystem::path package = {} );
+	bool PackageReady() const noexcept
+	{
+		return m_Resolver.HasIndex() && !m_Resolver.InvalidIndex();
+	}
 
 	std::optional<std::filesystem::path> Resolve( const std::string &relative ) const;
 	bool Exists( const std::string &path ) const override;
@@ -64,6 +69,7 @@ public:
 
 private:
 	std::filesystem::path m_Root;
+	content::AssetResolver m_Resolver;
 };
 
 std::optional<device::Format> PortFormat( texturecontainer::PixelFormat format, bool srgb );

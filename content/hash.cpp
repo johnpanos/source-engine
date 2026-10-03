@@ -4,11 +4,11 @@
 //
 //=============================================================================//
 
-#include "blake2b.h"
+#include "content/hash.h"
 
 #include <cstring>
 
-namespace mapcontainer::detail
+namespace content
 {
 
 namespace
@@ -138,4 +138,4 @@ void Blake2b::Final( uint8_t *pDigest ) noexcept
 		pDigest[i] = static_cast<uint8_t>( m_State[i >> 3] >> ( 8 * ( i & 7 ) ) );
 }
 
-} // namespace mapcontainer::detail
+} // namespace content

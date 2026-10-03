@@ -8,7 +8,7 @@
 #include "mapcontainer/map_container.h"
 #include "mapcontainer/map_container_builder.h"
 
-#include "blake2b.h"
+#include "content/hash.h"
 
 #include <algorithm>
 #include <array>
@@ -74,7 +74,7 @@ bool FitsWithin( uint64_t a, uint64_t b, uint64_t limit ) noexcept
 
 void Hash( const void *pData, uint64_t size, uint8_t *pDigest ) noexcept
 {
-	detail::Blake2b hasher( kBsp2HashSize );
+	content::Blake2b hasher( kBsp2HashSize );
 	const uint8_t *pBytes = static_cast<const uint8_t *>( pData );
 	// Update takes size_t; feed in bounded chunks for 32-bit hosts.
 	while ( size > 0 )
@@ -368,7 +368,7 @@ MapContainerStatus HashLump(
     IMapByteSource &source, const MapLumpInfo &info, uint8_t *pDigest ) noexcept
 {
 	uint8_t bytes[64 * 1024];
-	detail::Blake2b hasher( kBsp2HashSize );
+	content::Blake2b hasher( kBsp2HashSize );
 	uint64_t consumed = 0;
 	while ( consumed < info.storedSize )
 	{
@@ -953,7 +953,7 @@ Expected<std::vector<std::byte>, MapContainerStatus> ConvertLegacyToBsp2(
 
 MapContainerStatus CopyToSink( IMapByteSource &source, IMapByteSink &sink, uint64_t sourceOffset,
     uint64_t outputOffset, uint64_t size, uint32_t fourcc,
-    detail::Blake2b *pHasher = nullptr ) noexcept
+    content::Blake2b *pHasher = nullptr ) noexcept
 {
 	uint8_t bytes[64 * 1024];
 	uint64_t copied = 0;
@@ -1128,7 +1128,7 @@ MapContainerStatus ConvertLegacyToBsp2(
 	if ( gapSize )
 	{
 		LayoutLump &gap = layout[next++];
-		detail::Blake2b hasher( kBsp2HashSize );
+		content::Blake2b hasher( kBsp2HashSize );
 		uint64_t written = 0;
 		status = ScanLegacyGapRuns( source, ranges, legacySize,
 		    [&]( uint64_t origin, uint64_t length )
@@ -1172,7 +1172,7 @@ MapContainerStatus ConvertLegacyToBsp2(
 		if ( lump.filelen == 0 )
 			continue;
 		LayoutLump &out = layout[next++];
-		detail::Blake2b hasher( kBsp2HashSize );
+		content::Blake2b hasher( kBsp2HashSize );
 		status = CopyToSink(
 		    source, sink, uint64_t( lump.fileofs ), out.offset, out.size, out.fourcc, &hasher );
 		if ( !status.Ok() )
