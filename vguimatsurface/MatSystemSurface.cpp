@@ -1153,6 +1153,13 @@ void CMatSystemSurface::InternalSetMaterial( IMaterial *pMaterial )
 	m_pMesh = pRenderContext->GetDynamicMesh( true, NULL, NULL, pMaterial );
 }
 
+void CMatSystemSurface::DrawTextQuads( int nQuads, vgui::Vertex_t *pVerts, bool bClip )
+{
+	m_bSubmittingText = true;
+	DrawQuadArray( nQuads, pVerts, m_DrawTextColor, bClip );
+	m_bSubmittingText = false;
+}
+
 void CMatSystemSurface::SubmitMesh()
 {
 	SurfaceStats().NoteDraw( meshBuilder.VertexCount(), meshBuilder.IndexCount(),
@@ -2584,9 +2591,7 @@ void CMatSystemSurface::DrawFlushText()
 		
 		IMaterial *pMaterial = TextureDictionary()->GetTextureMaterial(m_iBoundTexture);
 		InternalSetMaterial( pMaterial );
-		m_bSubmittingText = true;
-		DrawQuadArray( m_nBatchedCharVertCount / 2, m_BatchedCharVerts, m_DrawTextColor );
-		m_bSubmittingText = false;
+		DrawTextQuads( m_nBatchedCharVertCount / 2, m_BatchedCharVerts, true );
 		m_nBatchedCharVertCount = 0;
 	}
 }
@@ -2919,7 +2924,7 @@ void CMatSystemSurface::DrawPrintText(const wchar_t *text, int iTextLen, FontDra
 					m_nRecordingTextureId = iLastTexId; // a recording's glyph coverage
 					IMaterial *pMaterial = TextureDictionary()->GetTextureMaterial(iLastTexId);
 					InternalSetMaterial( pMaterial );
-					DrawQuadArray( iCount, pQuads, m_DrawTextColor, IsPC() );
+					DrawTextQuads( iCount, pQuads, IsPC() );
 					iCount = 0;
 				}
 
@@ -2971,7 +2976,7 @@ void CMatSystemSurface::DrawPrintText(const wchar_t *text, int iTextLen, FontDra
 		m_nRecordingTextureId = iLastTexId; // a recording's glyph coverage
 		IMaterial *pMaterial = TextureDictionary()->GetTextureMaterial(iLastTexId);
 		InternalSetMaterial( pMaterial );
-		DrawQuadArray( iCount, pQuads, m_DrawTextColor, IsPC() );
+		DrawTextQuads( iCount, pQuads, IsPC() );
 	}
 
 	m_pDrawTextPos[0] += iTotalWidth;

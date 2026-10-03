@@ -267,6 +267,148 @@ depend on licensed game content.
 
 - **The materials have not been drawn.** Drawing them needs a host that
   composes the material system, vgui2 and vguimatsurface against a fixture
-  game directory, with a fixture scheme and packaged fonts. That host is the
-  next V0 step, and it is where `vgui_surface_stats` gets its first numbers.
+  game directory, with a fixture scheme and packaged fonts. (Done in the
+  [fixture host](#v0-fixture-host-vguifixture-host-2026-10-03) slice below,
+  which also added the corner and title-bar textures.)
 - **No D3D9 or native Vulkan pixel captures.**
+
+## V0: fixture host (`vgui.fixture-host`), 2026-10-03
+
+User request: a host that draws the fixture materials through the real VGUI
+surface, so the counters and pixels have a baseline without game content.
+
+### What is installed
+
+- **`unittests/vguihost/vgui_fixture_host.cpp`** (Waf target
+  `vgui_fixture_host`). It composes the systems as the launcher does, through
+  typed linked factories with nothing loaded by name: the file system, the
+  window and input providers, the material system with the render provider
+  this tree links (native Vulkan here), `vgui2` and `vguimatsurface`. It
+  paints four fixed screens at 640×480:
+  - **primitives:** every `ISurface` draw kind over the fixture materials,
+    plus text in three fonts;
+  - **controls:** a `vgui_controls` Frame with a label, button, text entry,
+    check button and image panel;
+  - **text:** twelve lines in three fonts;
+  - **empty.**
+
+  For each screen it records `VGuiSurfaceStats001` over the first frame and
+  over ten steady frames, and reads back the last frame. It measures; it does
+  not judge.
+- **`quality/fixtures/vgui-surface/game/`.** `gameinfo.txt`, the fixture
+  scheme, and DejaVu Sans 2.37 with its Bitstream Vera licence. The scheme
+  registers the font under `VGUIFixtureSans`, so only the packaged file can
+  satisfy it.
+- **Fixture materials.** The set gains `vgui/hud/800corner1`–`4`
+  (`vgui_controls`' rounded corners) and the two title-bar icons. The suite is
+  now 464 checks.
+- **`tools/vgui/vgui_fixture_host.py`.** It stages a runtime holding only
+  repository content, runs the host headless (SDL offscreen) in a throwaway
+  HOME, and judges the capture: 74 checks. The pixel probes use closed forms
+  of UnlitGeneric's PC model. In that model the vertex color and `$color` are
+  decoded as gamma 2.2, and textures and the destination as sRGB; blending
+  happens in linear light and the result is encoded as sRGB. Texture
+  orientation, sub-rectangles, polygons, `$frame` and point sampling are
+  exact. The empty screen must equal the clear color at every pixel. Known
+  renderer gaps must still be present.
+- **`tools/quality/tests/test_vgui_fixture_host.py`.** 15 tests. A synthetic
+  capture passes, and each seeded defect fails its named check:
+  - a flipped texture;
+  - gamma-space blending;
+  - texture alpha read under opaque;
+  - a known gap that closed, and a renderer without the gap that drops lines;
+  - an unread frame;
+  - uploads after warm-up;
+  - uncounted text draws;
+  - unstable draw counts;
+  - a substituted system font;
+  - a missing material;
+  - a missing screen;
+  - a short frame.
+
+  One test pins the colour model to the values native Vulkan drew.
+
+### Baseline (native Vulkan on lavapipe, llvmpipe LLVM 20.1.2, Mesa 25.2.8)
+
+| Screen | Draws (text) | Vertices | Vertex KiB | First frame: uploads (glyphs), CPU copies | Steady uploads, copies | Main-thread paint, ms (first / steady) |
+| --- | --- | --- | --- | --- | --- | --- |
+| primitives | 24 (3) | 376 | 38.2 | 52 (51), 104 | 0, 0 | 2.54 / 0.10 |
+| controls | 24 (5) | 240 | 24.4 | 10 (10), 20 | 0, 0 | 0.20 / 0.09 |
+| text | 14 (14) | 1560 | 158.4 | 223 (222), 446 | 0, 0 | 4.19 / 0.17 |
+| empty | 0 (0) | 0 | 0.0 | 0 (0), 0 | 0, 0 | 0.00 / 0.00 |
+
+Draw, vertex, upload and copy counts are per frame and identical across three
+runs. The four frames are byte-identical across those runs. Paint times are
+from a CPU renderer in a container and are not budget numbers.
+
+### Findings
+
+- **Native Vulkan drops every line primitive.** The outlined circle, the
+  polyline and `DrawLine` are missing from the primitives frame. The oracle
+  carries this as a known gap that must still be present. Under the RFC 0016
+  binding rules it is fixed by the core UI pass (V6), not in the frozen
+  backend.
+- **Each glyph is its own upload, and each upload costs two surface CPU
+  copies.** The text screen's first frame makes 223 uploads and 446 copies
+  for 222 glyphs. This is the V4 dirty-region target.
+- **Steady frames upload no textures, but every draw's vertices are written
+  again every frame:** 158 KiB per frame on the text screen. This is the V3
+  segment-caching target.
+- **The dynamic mesh vertex is 104 bytes** (`CMeshBuilder::VertexSize()`)
+  for VGUI's UnlitGeneric materials. A 2D vertex needs about 20 bytes
+  (position, color, one UV).
+- **Native output fits UnlitGeneric's sRGB-write model.** A gamma-space
+  expectation was wrong, not the renderer. For example, a (200, 40, 40) fill
+  writes (201, 35, 35), and translucent fills blend in linear light. There is
+  still no D3D9 capture to confirm the model against.
+- **Packaged fonts are not enough yet.** Linux's font manager asks fontconfig
+  for a foreign-script fallback (`WenQuanYi Zen Hei`) above U+00FF. If that
+  fallback is missing, it retries the whole font as system "DejaVu Sans",
+  silently replacing the packaged file. The oracle fails on that request. The
+  font source provider (V4) owns the fix.
+- **`vgui_controls` check boxes and frame buttons use the "Marlett" symbol
+  font,** which is not free to package. The fixture's check box draws its
+  label but no box.
+- **`ISurface::DrawSetTextureFrame` requires a non-null frame-cache token.**
+  A null token crashes in `CMaterial::FindVarFast`. Callers in the tree pass
+  one; the host did not at first.
+- **A counter defect, fixed.** `DrawPrintText` submits its own per-page
+  glyph runs, bypassing `DrawFlushText`, so text drawn that way was not
+  counted as text. Every text submission now goes through
+  `CMatSystemSurface::DrawTextQuads`.
+
+### Environment used (2026-10-03)
+
+The container had no GPU, no SDL3 and no Vulkan loader. Set-up:
+
+- Mesa lavapipe and the Vulkan loader 1.3.275 from apt.
+- SDL 3.4.16 (`release-3.4.16`, the profile's pin) built from source through
+  the git proxy with the offscreen driver only (`SDL_UNIX_CONSOLE_BUILD`), into
+  a private prefix.
+- The pinned VMA archive regenerated from its pinned commit with
+  `git archive --format=tar` and `gzip -n -6`. Its SHA-256 matches the pin,
+  and `vma_pin.py` verified it.
+- Waf configured with clang 18 and `--render-backend=native-vulkan`.
+
+```sh
+VGUI_FIXTURE_BUILD=<waf tree> VGUI_FIXTURE_LIB_PATH=<sdl3 lib dir> \
+    python3 tools/quality/conformance.py check --profile linux-host-corpus \
+    --suite vgui.fixture-host --build-dir build/quality/vgui-host --out vgui-host.json
+```
+
+| Check | Result |
+| --- | --- |
+| `vgui.fixture-host` | 74 of 74 through the runner; three direct runs 74 of 74 |
+| `vgui.fixture-materials` | 464 checks |
+| `test_vgui_fixture_host.py`, `test_vgui_fixture_content.py` | 15 and 12 tests |
+| archlint `check --all`, `baseline --verify`, its tests; `targets --verify` for `vgui_fixture_host` | pass (owner: `render-legacy-tests`) |
+| stylelint `--changed` | 0 failures |
+
+### Not done
+
+- **No D3D9 or physical-GPU capture.** Lavapipe is a CPU device.
+- **No budget rows.** The counts above are the inputs; budgets need the target
+  hardware.
+- **Corpus screens not yet covered:** the console, text entry with
+  composition, the HUD crosshair, an intro fade, and scaled layouts at 1.5
+  and 2.0.

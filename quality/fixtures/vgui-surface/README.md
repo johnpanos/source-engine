@@ -24,6 +24,8 @@ python3 tools/vgui/vgui_fixture_content.py check           # suite vgui.fixture-
 | `vgui/fixture/frames` | 16×16, 3 frames | alpha | `DrawSetTextureFrame` (`$frame`) |
 | `vgui/fixture/wide` | 64×16 | alpha | a non-square texture |
 | `vgui/fixture/tinted` | (quadrants) | alpha | `$color`: state only the material holds |
+| `vgui/hud/800corner1`–`4` | 32×32 | alpha | `vgui_controls`' rounded panel corners |
+| `vgui/fixture/titlebar_icon`, `_disabled` | 16×16 | alpha | the Frame system button's icons (named by the fixture scheme) |
 | `vgui/cursors/*` (13) | 32×32 | alpha | the software cursors `vguimatsurface/Cursor.cpp` loads |
 
 Each entry's probe texels in the manifest are literal values, written apart
@@ -32,5 +34,19 @@ from the code that draws the pixels. `check` reads them back with
 (`texturecontainer::vtf`). A material's declared blend must be the one the
 surface derives from its VMT flags.
 
-The fixtures need a game directory to mount them and a scheme and fonts to
-draw text; neither is part of this set yet.
+## The fixture game (`game/`)
+
+`game/` is the rest of a game directory, committed: `gameinfo.txt`, the
+fixture scheme `resource/FixtureScheme.res` and the packaged font
+`resource/DejaVuSans.ttf` (DejaVu Sans 2.37, Bitstream Vera license, recorded
+in `resource/DejaVuSans-LICENSE.txt`). The scheme registers the font under the
+fixture-only name `VGUIFixtureSans`, so no system font can stand in for it,
+and names the fixture title-bar icons. `tools/vgui/vgui_fixture_host.py`
+stages `game/` plus the generated materials as the game `vguifixture` and runs
+the VGUI fixture host in it (suite `vgui.fixture-host`).
+
+Linux's font manager still asks fontconfig for a foreign-script fallback
+(`WenQuanYi Zen Hei`) for code points above U+00FF; the fixture screens draw
+only ASCII. If that fallback is missing, the font manager retries the whole
+font as the system's "DejaVu Sans", and the host's oracle fails on that
+request rather than accept a substitute.

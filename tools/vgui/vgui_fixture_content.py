@@ -49,6 +49,9 @@ The set:
 - wide: a 64 x 16 red ramp: a non-square texture;
 - tinted: the quadrants texture under a material $color: state only the
   material holds (the draw list's legacy-material case);
+- vgui/hud/800corner1..4: vgui_controls' rounded panel corners (quarter discs);
+- titlebar_icon, titlebar_icon_disabled: the Frame system button's icons, named
+  by the fixture scheme;
 - vgui/cursors/*: the thirteen software cursors the surface loads at start
   (vguimatsurface/Cursor.cpp), each a distinct outline glyph.
 """
@@ -126,6 +129,29 @@ def wide(x, y, frame):
     return (x * 4 + 2, 0, 0, 255)
 
 
+def corner(center_x, center_y):
+    """A 32 x 32 quarter disc of radius 32 about (center_x, center_y), white,
+    alpha its 4 x 4 supersampled coverage: vgui_controls' rounded panel
+    corners (Panel.h Texture1..4)."""
+    def rule(x, y, frame):
+        inside = 0
+        for sy in range(4):
+            for sx in range(4):
+                dx = x + (sx + 0.5) / 4 - center_x
+                dy = y + (sy + 0.5) / 4 - center_y
+                inside += dx * dx + dy * dy <= 32 * 32
+        return (255, 255, 255, (inside * 255 + 8) // 16)
+    return rule
+
+
+def titlebar_icon(level):
+    """16 x 16: a filled square inset by 3 texels, gray `level`, opaque."""
+    def rule(x, y, frame):
+        on = 3 <= x < 13 and 3 <= y < 13
+        return (level, level, level, 255) if on else (0, 0, 0, 0)
+    return rule
+
+
 def cursor(index):
     """A 32 x 32 outline square, and a bar of index + 1 two-texel cells on
     row 16 so each cursor is distinct; transparent elsewhere."""
@@ -181,6 +207,21 @@ SPECS = [
     _spec("vgui/fixture/tinted", None, 64, 64, "alpha", [], texture="vgui/fixture/quadrants",
           extra_keys=[("$color", "[0.5 0.5 1]")],
           purpose="material-only state: the quadrants under $color (legacy-material draws)"),
+] + [
+    _spec("vgui/hud/800corner%d" % number, corner(cx, cy), 32, 32, "alpha", probes,
+          purpose="rounded panel corner %d (vgui_controls Panel.h Texture%d)" % (number, number))
+    for number, cx, cy, probes in (
+        (1, 32, 32, [(0, 0, 0, (255, 255, 255, 0)), (0, 31, 31, (255, 255, 255, 255))]),
+        (2, 0, 32, [(0, 31, 0, (255, 255, 255, 0)), (0, 0, 31, (255, 255, 255, 255))]),
+        (3, 0, 0, [(0, 31, 31, (255, 255, 255, 0)), (0, 0, 0, (255, 255, 255, 255))]),
+        (4, 32, 0, [(0, 0, 31, (255, 255, 255, 0)), (0, 31, 0, (255, 255, 255, 255))]))
+] + [
+    _spec("vgui/fixture/titlebar_icon", titlebar_icon(230), 16, 16, "alpha",
+          [(0, 0, 0, (0, 0, 0, 0)), (0, 8, 8, (230, 230, 230, 255))],
+          purpose="Frame system button icon (scheme FrameSystemButton.Icon)"),
+    _spec("vgui/fixture/titlebar_icon_disabled", titlebar_icon(110), 16, 16, "alpha",
+          [(0, 8, 8, (110, 110, 110, 255))],
+          purpose="Frame system button disabled icon (scheme FrameSystemButton.DisabledIcon)"),
 ] + [
     _spec("vgui/cursors/" + name, cursor(index), 32, 32, "alpha",
           [(0, 0, 0, (255, 255, 255, 255)), (0, 16, 8, (0, 0, 0, 0)),

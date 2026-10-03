@@ -1110,7 +1110,7 @@ def configure(conf):
 	else:
 		# Desktop conformance harnesses; the Android product packages only runtime modules.
 		if conf.env.SDL3 and not conf.env.ANDROID_SDL3:
-			projects['game'] += ['unittests/platformtest/sdl3', 'unittests/shaderextensiontest', 'unittests/audioprovidertest']
+			projects['game'] += ['unittests/platformtest/sdl3', 'unittests/shaderextensiontest', 'unittests/audioprovidertest', 'unittests/vguihost']
 			# Loader fixtures are shared libraries by definition.
 			if not conf.env.STATIC_COMPOSITION:
 				projects['game'] += ['unittests/moduleloadfixture', 'unittests/moduleloadshutdownfixture']
@@ -1234,7 +1234,7 @@ def build(bld):
 	else:
 		# Desktop conformance harnesses; the Android product packages only runtime modules.
 		if bld.env.SDL3 and not bld.env.ANDROID_SDL3:
-			projects['game'] += ['unittests/platformtest/sdl3', 'unittests/shaderextensiontest', 'unittests/audioprovidertest']
+			projects['game'] += ['unittests/platformtest/sdl3', 'unittests/shaderextensiontest', 'unittests/audioprovidertest', 'unittests/vguihost']
 			# Loader fixtures are shared libraries by definition.
 			if not bld.env.STATIC_COMPOSITION:
 				projects['game'] += ['unittests/moduleloadfixture', 'unittests/moduleloadshutdownfixture']

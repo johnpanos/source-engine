@@ -3,9 +3,9 @@
 - Status: Proposed (2026-09-23); no implementation gate complete. V0's ABI
   guard `legacy.vgui-abi` is installed
   ([progress](0010-progress.md#v0-vgui-abi-guard-legacyvgui-abi-2026-10-03)),
-  and its UI counters `VGuiSurfaceStats001` are installed but not yet
-  measured in a running game
-  ([progress](0010-progress.md#v0-ui-counters-vguisurfacestats001-2026-10-03));
+  and its UI counters `VGuiSurfaceStats001` have a first baseline from the
+  content-free fixture host
+  ([progress](0010-progress.md#v0-fixture-host-vguifixture-host-2026-10-03));
   the rest of V0 is open. V1's UI scale owner is installed, but its exit gate
   is not met
   ([2026-09-25 update](#update-2026-09-25)). Amended 2026-10-03 with the

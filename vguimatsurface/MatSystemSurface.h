@@ -456,7 +456,11 @@ private:
 	// Ends meshBuilder and draws m_pMesh, counting what it submits
 	// (RFC 0010 V0 counters, VGuiSurfaceStats001).
 	void SubmitMesh();
-	// True while DrawFlushText submits the batched glyphs.
+	// Draws glyph quads in the text color: every text submission (the batched
+	// glyphs and DrawPrintText's per-page runs) goes through it, so the
+	// counters see each one as a text draw.
+	void DrawTextQuads( int nQuads, vgui::Vertex_t *pVerts, bool bClip );
+	// True while DrawTextQuads submits.
 	bool m_bSubmittingText = false;
 
 	// White material used for drawing non-textured things

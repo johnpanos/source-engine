@@ -1,0 +1,17 @@
+// RFC 0010 V0: the VGUI fixture game. Repository-owned content only:
+// resource/ is committed here, and tools/vgui/vgui_fixture_content.py writes
+// materials/ into the staged copy. No licensed game content is mounted.
+"GameInfo"
+{
+	game	"VGUI fixture"
+	type	singleplayer_only
+	FileSystem
+	{
+		SteamAppId	0
+		SearchPaths
+		{
+			Game	|gameinfo_path|.
+			Platform	|gameinfo_path|.
+		}
+	}
+}

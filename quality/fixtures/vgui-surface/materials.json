@@ -397,6 +397,199 @@
       "probes": []
     },
     {
+      "name": "vgui/hud/800corner1",
+      "texture": "vgui/hud/800corner1",
+      "blend": "alpha",
+      "width": 32,
+      "height": 32,
+      "frames": 1,
+      "flags": 8972,
+      "purpose": "rounded panel corner 1 (vgui_controls Panel.h Texture1)",
+      "probes": [
+        {
+          "frame": 0,
+          "x": 0,
+          "y": 0,
+          "rgba": [
+            255,
+            255,
+            255,
+            0
+          ]
+        },
+        {
+          "frame": 0,
+          "x": 31,
+          "y": 31,
+          "rgba": [
+            255,
+            255,
+            255,
+            255
+          ]
+        }
+      ]
+    },
+    {
+      "name": "vgui/hud/800corner2",
+      "texture": "vgui/hud/800corner2",
+      "blend": "alpha",
+      "width": 32,
+      "height": 32,
+      "frames": 1,
+      "flags": 8972,
+      "purpose": "rounded panel corner 2 (vgui_controls Panel.h Texture2)",
+      "probes": [
+        {
+          "frame": 0,
+          "x": 31,
+          "y": 0,
+          "rgba": [
+            255,
+            255,
+            255,
+            0
+          ]
+        },
+        {
+          "frame": 0,
+          "x": 0,
+          "y": 31,
+          "rgba": [
+            255,
+            255,
+            255,
+            255
+          ]
+        }
+      ]
+    },
+    {
+      "name": "vgui/hud/800corner3",
+      "texture": "vgui/hud/800corner3",
+      "blend": "alpha",
+      "width": 32,
+      "height": 32,
+      "frames": 1,
+      "flags": 8972,
+      "purpose": "rounded panel corner 3 (vgui_controls Panel.h Texture3)",
+      "probes": [
+        {
+          "frame": 0,
+          "x": 31,
+          "y": 31,
+          "rgba": [
+            255,
+            255,
+            255,
+            0
+          ]
+        },
+        {
+          "frame": 0,
+          "x": 0,
+          "y": 0,
+          "rgba": [
+            255,
+            255,
+            255,
+            255
+          ]
+        }
+      ]
+    },
+    {
+      "name": "vgui/hud/800corner4",
+      "texture": "vgui/hud/800corner4",
+      "blend": "alpha",
+      "width": 32,
+      "height": 32,
+      "frames": 1,
+      "flags": 8972,
+      "purpose": "rounded panel corner 4 (vgui_controls Panel.h Texture4)",
+      "probes": [
+        {
+          "frame": 0,
+          "x": 0,
+          "y": 31,
+          "rgba": [
+            255,
+            255,
+            255,
+            0
+          ]
+        },
+        {
+          "frame": 0,
+          "x": 31,
+          "y": 0,
+          "rgba": [
+            255,
+            255,
+            255,
+            255
+          ]
+        }
+      ]
+    },
+    {
+      "name": "vgui/fixture/titlebar_icon",
+      "texture": "vgui/fixture/titlebar_icon",
+      "blend": "alpha",
+      "width": 16,
+      "height": 16,
+      "frames": 1,
+      "flags": 8972,
+      "purpose": "Frame system button icon (scheme FrameSystemButton.Icon)",
+      "probes": [
+        {
+          "frame": 0,
+          "x": 0,
+          "y": 0,
+          "rgba": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "frame": 0,
+          "x": 8,
+          "y": 8,
+          "rgba": [
+            230,
+            230,
+            230,
+            255
+          ]
+        }
+      ]
+    },
+    {
+      "name": "vgui/fixture/titlebar_icon_disabled",
+      "texture": "vgui/fixture/titlebar_icon_disabled",
+      "blend": "alpha",
+      "width": 16,
+      "height": 16,
+      "frames": 1,
+      "flags": 8972,
+      "purpose": "Frame system button disabled icon (scheme FrameSystemButton.DisabledIcon)",
+      "probes": [
+        {
+          "frame": 0,
+          "x": 8,
+          "y": 8,
+          "rgba": [
+            110,
+            110,
+            110,
+            255
+          ]
+        }
+      ]
+    },
+    {
       "name": "vgui/cursors/arrow",
       "texture": "vgui/cursors/arrow",
       "blend": "alpha",
@@ -1290,12 +1483,60 @@
       "sha256": "bf25eeaeea8682a5fdbeb67180be2cf91c1612fb58e55174259392cdf949ae48",
       "bytes": 182
     },
+    "materials/vgui/fixture/titlebar_icon.vmt": {
+      "sha256": "799f299770ceab06258c7f38e06d926c11e05512b1b4fdba1111ba015499f4a7",
+      "bytes": 162
+    },
+    "materials/vgui/fixture/titlebar_icon.vtf": {
+      "sha256": "9ff70d1a0a219acc3b6ceed5d4e716939a5bceae5829512272919ab5f21519a3",
+      "bytes": 1104
+    },
+    "materials/vgui/fixture/titlebar_icon_disabled.vmt": {
+      "sha256": "389838448275363cd3cfc2666d569b8591e6f50d8ff1c30fdee4e53f2b7d9cdb",
+      "bytes": 171
+    },
+    "materials/vgui/fixture/titlebar_icon_disabled.vtf": {
+      "sha256": "25bf7df3a75c5bc0917ab45799711d54a458bb6666360791b925c81228a58d40",
+      "bytes": 1104
+    },
     "materials/vgui/fixture/wide.vmt": {
       "sha256": "0bf2cb30dceea120ef18bd1bfe67ec3ec21ffbfcbdc38131c1fe6f200a34f097",
       "bytes": 153
     },
     "materials/vgui/fixture/wide.vtf": {
       "sha256": "e7735c01c2db287494204bb7492cf943ea1452342ba83bcf574ae4dbf241620c",
+      "bytes": 4176
+    },
+    "materials/vgui/hud/800corner1.vmt": {
+      "sha256": "c36c4b31b09a488faf3dd03b17efeab9dd359624d133949b98b4a981f6b5eb5b",
+      "bytes": 155
+    },
+    "materials/vgui/hud/800corner1.vtf": {
+      "sha256": "639adf3c7bbd0e51f100b4f62d81c3b73bd631c6cd3af714054c79767b1b1fc3",
+      "bytes": 4176
+    },
+    "materials/vgui/hud/800corner2.vmt": {
+      "sha256": "3829063028a4e7029c4142e3cdca879a47b83b613edfaea2662ea0e770ebd262",
+      "bytes": 155
+    },
+    "materials/vgui/hud/800corner2.vtf": {
+      "sha256": "b6a562bdb59c36dda764e5bda76644061871237673b6262d1e99853b42541d56",
+      "bytes": 4176
+    },
+    "materials/vgui/hud/800corner3.vmt": {
+      "sha256": "ddd954bc7b64319bd06fc8be4d6201825c379e0a6ae203e4093dc81c526c6f2f",
+      "bytes": 155
+    },
+    "materials/vgui/hud/800corner3.vtf": {
+      "sha256": "183c77e2b4758f703edf702becb052786f058559ac19897191bba5ab6e490223",
+      "bytes": 4176
+    },
+    "materials/vgui/hud/800corner4.vmt": {
+      "sha256": "a2c125226f938185cc3387d36553d40bd737285c52369e4551a137271bf60c69",
+      "bytes": 155
+    },
+    "materials/vgui/hud/800corner4.vtf": {
+      "sha256": "a0eb58696055245458fbc0db8641a08f2eba7b5022cfc814eee443b90dc2ce10",
       "bytes": 4176
     }
   }
