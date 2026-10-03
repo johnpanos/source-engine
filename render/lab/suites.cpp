@@ -60,6 +60,8 @@ int RunSuite( int argc, char **argv )
 		return RunPanelSuite( argc - 1, argv + 1 );
 	if ( name == "posed-model" )
 		return RunPosedModelSuite( argc - 1, argv + 1 );
+	if ( name == "selfillum" )
+		return RunSelfIllumSuite( argc - 1, argv + 1 );
 	if ( name == "view-state" )
 		return RunViewStateSuite( argc - 1, argv + 1 );
 	if ( name == "model-selection" )

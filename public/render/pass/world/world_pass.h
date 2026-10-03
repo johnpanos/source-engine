@@ -456,6 +456,10 @@ public:
 	// Main thread.
 	void SetWorld( WorldData data );
 	void ClearWorld();
+	// render_lab's sensitivity runs: a replacement fragment module for the
+	// surface program (SPIR-V words the caller keeps alive), used by the
+	// color resolvers the pass creates after the call. Products never set it.
+	void SetSurfaceFragmentModule( std::span<const std::uint32_t> module );
 	// A world stage's lighting as it changes (main thread): the total page
 	// recomposed (moving objects blocking baked direct light), and the probe
 	// volume's change from the bake (the atlas's size and layout; empty for

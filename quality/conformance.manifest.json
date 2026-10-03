@@ -10739,6 +10739,72 @@
       "expect": "pass"
     },
     {
+      "id": "render.lab.selfillum",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "migration": "R96",
+      "contract": "RFC/0016-render-core.md",
+      "profile": "linux-native-vulkan-gpu",
+      "kind": "positive",
+      "description": "RFC 0016 surface model, emission term (S5 native interpretation, first slice): VertexLitGeneric's $selfillum region with $selfillumtint and $selfillumfresnel through render.pass.world on the shared PBR mesh point, posed and as a captured dynamic mesh. A distant eye at 0, 60 and 80 degrees gives the analytic emission tint x albedo x (min + (max - min) cos^exp) over a dark scene; under a light the region keeps (1 - w) of the same surface drawn without self-illumination; [1 1 x] is bitwise $selfillum alone and $selfillumfresnel alone is bitwise inert; a mesh without vertex normals faces the eye; the unmasked half receives no light from the emitter. The translation claims the cohort and refuses $selfillummask, $detail, $lightwarptexture and $normalmapalphaenvmapmask under the fresnel term, negative controls and unknown keys, by name. No validation messages.",
+      "command": [
+        "{python}",
+        "tools/render/lab.py",
+        "suite",
+        "selfillum",
+        "--validate"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 23,
+      "timeout_seconds": 300,
+      "requires": [
+        "path:build-rc-lab/render/lab/render_lab",
+        "vulkan-device:gpu"
+      ],
+      "sources": [
+        "render/lab/selfillum_suite.cpp",
+        "render/material/vertexlit_family.cpp",
+        "render/material/vmt_mapping.cpp",
+        "render/material/program_resolver.cpp",
+        "render/pass/world/world_pass.cpp",
+        "render/material/families/surface_program.glsl",
+        "public/render/material/vertexlit_family.h",
+        "tools/render/lab.py"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.lab.selfillum.sensitivity",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "migration": "R96",
+      "contract": "RFC/0016-render-core.md",
+      "profile": "linux-native-vulkan-gpu",
+      "kind": "sensitivity",
+      "description": "RFC 0016 surface model, emission term, seeded programs (selfillum_defects_spv.h, built from surface.frag): the $selfillumfresnel coverage ignored fails the 60 and 80 degree, lit-remainder and dynamic-mesh checks; the authored max ignored as brightness fails the facing, angle, zero-max, tint and dynamic checks; the control passes.",
+      "command": [
+        "{python}",
+        "tools/render/lab.py",
+        "suite",
+        "selfillum",
+        "--sensitivity"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 3,
+      "timeout_seconds": 900,
+      "requires": [
+        "path:build-rc-lab/render/lab/render_lab",
+        "vulkan-device:gpu"
+      ],
+      "sources": [
+        "render/lab/selfillum_suite.cpp",
+        "render/material/families/surface_program.glsl",
+        "render/material/families/surface.frag",
+        "tools/render/shader_toolchain.py"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "render.lab.view-state",
       "domain": "Q-PRESENTATION",
       "rfc": "0016",

@@ -55,6 +55,11 @@
 //			                the view's atlas (render.shadows.v1) against a ray
 //			                test to box casters. Seeded: shadow-ignored,
 //			                tile-next, depth-reversed.
+//			selfillum       RFC 0016 surface model, emission term:
+//			                VertexLitGeneric's $selfillum region, tint and
+//			                $selfillumfresnel through render.pass.world
+//			                against the analytic emission; neutral bitwise.
+//			                Seeded: fresnel-ignored, brightness-ignored.
 //
 //=============================================================================//
 
@@ -68,6 +73,7 @@ int RunTemporalSuite( int argc, char **argv );
 
 int RunSuite( int argc, char **argv );
 int RunPosedModelSuite( int argc, char **argv );
+int RunSelfIllumSuite( int argc, char **argv );
 int RunViewStateSuite( int argc, char **argv );
 int RunModelSelectionSuite( int argc, char **argv );
 

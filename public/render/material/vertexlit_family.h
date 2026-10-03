@@ -85,6 +85,18 @@ VertexLitClaim ClaimVertexLit( const ParameterBlock &block );
 // The modern mesh point for the supported VertexLitGeneric subset. It uses
 // the surface PBR program with a dielectric MRAO constant until a material
 // supplies modern values. Unsupported non-neutral VMT terms are refused.
+//
+// Self-illumination (RFC 0016 surface model, emission term) is visible
+// emission only. $selfillum selects the emitting region by base alpha or
+// $selfillummask; $selfillumtint (linear) colors it. $selfillumfresnel with
+// $selfillumfresnelminmaxexp [min max exp] weights the region by the vertex
+// normal's facing c = ( N.V )^exp: the region covers
+// saturate( b + ( 1 - b ) c ) of the surface, b = min / max, at radiance
+// max x tint x albedo, so a fully covered texel emits
+// tint x albedo x ( min + ( max - min ) c ). VertexLitGeneric and its phong
+// (skin) shader both define it so, with base alpha as the only mask. The
+// translation publishes no area light: $selfillum gives no scene-unit
+// radiance, so lighting the room needs an authored or reviewed source.
 struct VertexLitMeshClaim
 {
 	bool claimed = false;
@@ -93,6 +105,7 @@ struct VertexLitMeshClaim
 	bool ssbump = false;
 	bool selfIllum = false;
 	bool selfIllumMask = false;
+	bool selfIllumFresnel = false;
 	bool phongExponentTexture = false;
 	bool envmapMask = false;
 	bool detail = false;

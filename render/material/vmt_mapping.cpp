@@ -147,6 +147,7 @@ constexpr VmtKeyRow kLegacyDerivedKeys[] = {
     { "vertexlit", "$ssbumpmathfix", "ssbumpmathfix", ValueKind::kBool, "0" },
     { "vertexlit", "$bumpframe", "bumpframe", ValueKind::kInt, "0" },
     { "vertexlit", "$selfillumtint", "selfillumtint", ValueKind::kFloat3, "[1 1 1]" },
+    { "vertexlit", "$selfillumfresnel", "selfillumfresnel", ValueKind::kBool, "0" },
     { "vertexlit", "$selfillumfresnelminmaxexp", "selfillumfresnelminmaxexp", ValueKind::kFloat3,
         "[0 1 1]" },
     { "vertexlit", "$depthblendscale", "depthblendscale", ValueKind::kFloat, "0" },

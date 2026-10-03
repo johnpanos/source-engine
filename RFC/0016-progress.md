@@ -8440,3 +8440,86 @@ reporting a passing gate. The existing matrix still has only one declared
 pixel profile (`area-room/overview`); all other camera scores remain
 diagnostic. No full game/lab parity, visual quality, performance or K11/K12
 completion is claimed by this change.
+
+### S5 native emission, first slice: VertexLitGeneric `$selfillumfresnel` (2026-10-03)
+
+First bounded end-to-end slice of the
+[2026-10-03 material interpretation direction](#material-interpretation-direction-2026-10-03-user-decision)
+for the [surface model's emission term](0016-render-core.md#one-surface-terms-with-neutral-values).
+Cohort: VertexLitGeneric `$selfillum` with its mask, `$selfillumtint` and
+`$selfillumfresnel`/`$selfillumfresnelminmaxexp` on the shared PBR mesh point.
+The checked-in Portal 2 inventory refused 17 materials only for
+`$selfillumfresnel` (`materials/paint/bridge_paint_*.vmt`, the gel on
+hard-light bridges, drawn by `C_ProjectedWallEntity` as dynamic meshes that
+`CoreWorld::QueueMesh` captures).
+
+Translation (`render.material`, the one owner; rule documented once in
+`vertexlit_family.h`):
+
+- `$selfillumfresnel` is mapped for `vertexlit` and read only with
+  `$selfillum`, as the shaders' `SELFILLUMFRESNEL` combo requires; alone it is
+  inert.
+- With it, VertexLitGeneric and its phong (skin) shader agree: the emitting
+  region covers `saturate( b + ( 1 - b ) c )` of the surface, `b = min / max`,
+  `c = ( N.V )^exp` on the vertex normal, at radiance `max x tint x albedo`.
+  A fully covered texel emits `tint x albedo x ( min + ( max - min ) c )`.
+  The tint is linear (Source's gamma 2.2 rule), as on the existing mask path.
+- Combinations the legacy helper resolves by dropping an authored setting
+  are refused by name: `$selfillummask`, `$detail`, `$lightwarptexture` and
+  `$normalmapalphaenvmapmask` under the fresnel term, plus negative or
+  nonfinite controls. Unknown keys remain named gaps.
+- Composition is unchanged from the reviewed mesh point: the covered share
+  replaces the surface's lit color (`mix`), so the uncovered share keeps its
+  PBR direct, probe and image lighting.
+- No area light. `$selfillum` supplies no scene-unit radiance, so the
+  translation publishes none. The cohort's real materials are projected-wall
+  dynamic meshes, which neither existing RFC 0011 publisher reads (the client
+  fits Studio models, `engine/world_emitters.cpp` brush faces and overlays).
+  Open: those publishers still infer radiance from base x mask at tint 1 for
+  every `$selfillum` model and world face (`selfillum_emission.h`, the
+  2026-09-28 user-requested rule), including a model that sets
+  `$selfillumfresnel`, whose view-dependent weight they do not model.
+  Reconciling them with the 2026-10-03 rule is a separate decision.
+
+Shading lives in the core: `surface_program.glsl`'s PBR self-illumination
+block reads a new `SurfaceConstants::selfIllumFresnel` (appended to the
+material block, 448 to 464 bytes; no existing offset moved). It is a uniform
+branch inside the existing `kSelfIllum` term: no new specialization term, so
+the permutation count is unchanged. Nothing in the frozen paths changed.
+`WorldPass::SetSurfaceFragmentModule` lets `render_lab` sensitivity runs pass
+a seeded fragment module to the pass's color resolvers; products never set it.
+
+| Check | Evidence | Result |
+| --- | --- | --- |
+| `render.lab.selfillum` | `tools/render/lab.py suite selfillum --validate`: one quad, left half base alpha 1, right half 0, orthographic view, distant eye at 0, 60 and 80 degrees. Analytic emission over a dark scene: 2.000, 0.6499 and 0.2542 against 2.000, 0.6500 and 0.2543 (`[0.2 2 2]`); `[3 1 1]` saturates to 1; max 0 emits 0. Lit at 80 degrees, the region is `( 1 - w )` x the same quad drawn without self-illumination plus the emission (1.8359 against 1.8355); the unmasked half is bitwise that plain surface. `[1 1 3]` is bitwise `$selfillum` alone and `$selfillumfresnel` alone bitwise inert. A captured dynamic mesh (the game's `QueueMesh` form) gives the same 0.6499; a mesh with no vertex normal faces the eye (2.000). Tint `[1 .5 .25]` gives 2.000, 0.4390, 0.0955 (linear). The unmasked half stays 0: the emitter lights nothing. Nine headless claim checks: the cohort claims, four combinations and negative controls are refused by name, unknown keys stay gaps. 23 checks, 0 validation messages | pass |
+| `render.lab.selfillum.sensitivity` | Seeded `surface.frag` programs (`selfillum_defects_spv.h`): coverage ignored fails 4 checks (60/80 degrees, lit remainder, dynamic); brightness ignored fails 8 (facing, angles, zero max, tint, dynamic, no normal, lit remainder); control passes | pass (3 checks) |
+| Existing lab suites | posed-model 77/77 (the elevator floor's mask path unchanged), lighting-controls 32/32, clustered-lights 26/26, area-lights 72/72, model-selection 37/37, view-state 16/16, panel 77/77, all with validation | pass |
+| `debug-views` | 90/91: `view.16.inf.lightmapped` fails identically at `aa4e5e62` with this change reverted, on llvmpipe; pre-existing, not this slice | known fail |
+| Static checks | `archlint check --all`, `baseline --verify`, `inventory --verify`, archlint and stylelint unit tests, `stylelint --changed`; `shader_toolchain.py check` (189 modules, 0 failures); `tools/quality` conformance and shader-artifact tests; `tools/render` shader-artifact, claim-inventory (and its 12-check self-test), Vulkan-scan and core-link tests | pass |
+| `tools/render/tests/test_shader_toolchain` | 2 failures, 1 error at `aa4e5e62` with this slice's toolchain edit reverted (a stale `check_inventory` keyword, regenerator argument text, the embedded-file count); pre-existing | known fail |
+
+Device and runner: lavapipe (llvmpipe, Mesa 25.2.8, Vulkan 1.4) in a cloud
+container with the pinned shader toolchain. The manifest's
+`linux-native-vulkan-gpu` profile requires an integrated or discrete GPU, so
+`conformance.py plan` reports both new rows unavailable here; the results
+above come from `tools/render/lab.py` directly and are not GPU-runner
+evidence.
+
+Not done, and why:
+
+- Game/lab image match: not run. This container has no Portal 2 content, so
+  no product boot, no claim inventory refresh and no in-game capture were
+  possible. Integration is by construction only: the game's static props,
+  posed models and `QueueMesh` captures resolve through the same
+  `ClaimForMesh`/`ResolveMesh` and `surface.frag` the lab drew. Whether each
+  `bridge_paint_*` material passes the new refusals is unknown until its
+  variables are read. Reproduce on the content host:
+  `python3 tools/render/material_claim_inventory.py --game portal2 --scope all
+  --render-lab build-rc-lab/render/lab/render_lab --out
+  quality/materials/portal2-all-claims.json` (then review and commit the 17
+  changed rows; `render.material.all-claim-inventory` fails its `--verify`
+  until then), then capture a Portal 2 view of a painted light bridge with
+  `r_core_world 1` and the same draw in the lab for visual review.
+- Frame time: desktop and Fold7 unavailable (no GPU, no device). The added
+  cost is one uniform branch and a `pow` per self-illuminated fragment.
+- K12/R96 stays `active`: this slice closes no K11 or K12 gate.
