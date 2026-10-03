@@ -18,6 +18,7 @@
 #include "materialsystem/itexture.h"
 #include "vtf/vtf.h"
 #include "tier1/convar.h"
+#include "SurfaceStats.h"
 #include <array>
 
 // memdbgon must be the last include file in a .cpp file!!!
@@ -222,6 +223,7 @@ public:
 				const unsigned int *pSrc = (const unsigned int *)(&pBits[ offset << 2 ]);
 				ImageLoader::ConvertImageFormat( (const unsigned char *)pSrc, format,(unsigned char *)pDst, m_nFormat, subRect.width, 1 );
 			}
+			NoteRegenerated( subRect.width, subRect.height, 4 );
 		}
 		else
 		{
@@ -232,6 +234,7 @@ public:
 				return;
 			}
 			Q_memcpy( m_pTextureBits, pBits, size );
+			SurfaceStats().NoteCpuCopy( std::uint64_t( size ) );
 		}
 	}
 
@@ -255,6 +258,7 @@ public:
 					int size = ImageLoader::GetMemRequired( pSubRect->width, 1, 1, m_nFormat, false );
 					V_memcpy( pchData, m_pTextureBits + (y * m_nWidth + pSubRect->x) * nFormatBytes, size );
 				}
+				NoteRegenerated( pSubRect->width, pSubRect->height, nFormatBytes );
 			}
 			else
 			{
@@ -281,6 +285,8 @@ public:
 						rgba += nFormatBytes;
 					}
 				}
+				NoteRegenerated( pSubRect->width, pSubRect->height,
+				    ImageLoader::SizeInBytes( pVTFTexture->Format() ) );
 			}
 		}
 		else
@@ -293,7 +299,19 @@ public:
 			}
 			int size = ImageLoader::GetMemRequired( m_nWidth, m_nHeight, 1, m_nFormat, false );
 			Q_memcpy( pVTFTexture->ImageData( 0, 0, 0 ), m_pTextureBits, size );
+			SurfaceStats().NoteCpuCopy( std::uint64_t( size ) );
 		}
+	}
+
+	// One CPU copy of a width x height rectangle at texelBytes per texel:
+	// the caller's pixels into the backing bits, or the backing bits into
+	// the material system's image (RFC 0010 V0 counters).
+	static void NoteRegenerated( int width, int height, int texelBytes )
+	{
+		if ( width <= 0 || height <= 0 || texelBytes <= 0 )
+			return;
+		SurfaceStats().NoteCpuCopy(
+		    std::uint64_t( width ) * std::uint64_t( height ) * std::uint64_t( texelBytes ) );
 	}
 
 	virtual void Release()
@@ -570,6 +588,8 @@ void CMatSystemTexture::SetSubTextureRGBAEx( int drawX, int drawY, unsigned cons
 
 	
 	m_pRegen->UpdateBackingBits( subRect, rgba, textureSize, format );
+	SurfaceStats().NoteTextureUpload(
+	    subRect.width, subRect.height, ImageLoader::SizeInBytes( pTexture->GetImageFormat() ) );
 	pTexture->Download( &subRect );
 
 	
@@ -611,6 +631,8 @@ void CMatSystemTexture::UpdateSubTextureRGBA( int drawX, int drawY, unsigned con
 	textureSize.height = m_iInputTall;
 
 	m_pRegen->UpdateBackingBits( subRect, rgba, textureSize, imageFormat );
+	SurfaceStats().NoteTextureUpload(
+	    subRect.width, subRect.height, ImageLoader::SizeInBytes( pTexture->GetImageFormat() ) );
 	pTexture->Download( &subRect );
 
 	

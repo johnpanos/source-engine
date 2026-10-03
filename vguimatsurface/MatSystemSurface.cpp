@@ -69,6 +69,9 @@ ILauncherMgr *g_pLauncherMgr = NULL;
 #include <vgui/IVguiMatInfo.h>
 #include <vgui/IVguiMatInfoVar.h>
 #include "materialsystem/imaterialvar.h"
+#include "SurfaceStats.h"
+
+#include <optional>
 
 #pragma warning( default : 4706 )
 
@@ -167,6 +170,30 @@ public:
 	}
 };
 static CWorldPanelRecorder s_WorldPanelRecorder;
+
+// RFC 0010 V0: the surface's per-frame means since the previous call (or
+// since start), for measurements without the render-core cost overlay.
+CON_COMMAND( vgui_surface_stats, "Per-frame VGUI surface counters since the previous call." )
+{
+	static VGuiSurfaceStats_t s_Previous = {};
+	VGuiSurfaceStats_t now;
+	SurfaceStats().GetStats( now );
+	VGuiSurfaceStatsPerFrame_t f;
+	const bool bHaveRate = VGuiSurfaceStats_PerFrame( s_Previous, now, f );
+	s_Previous = now;
+	if ( !bHaveRate )
+	{
+		Msg( "vgui_surface_stats: no frames since the previous call\n" );
+		return;
+	}
+	Msg( "vgui_surface_stats: %llu frames; per frame:\n", f.frames );
+	Msg( "  paint passes %.2f, main-thread paint %.3f ms\n", f.paintPasses, f.paintMilliseconds );
+	Msg( "  draws %.1f (text %.1f), vertices %.1f, indices %.1f, vertex data %.2f KiB\n", f.draws,
+	    f.textDraws, f.vertices, f.indices, f.vertexKiB );
+	Msg( "  texture uploads %.2f (%.2f KiB), of which glyphs %.2f (%.2f KiB)\n", f.textureUploads,
+	    f.textureUploadKiB, f.glyphUploads, f.glyphUploadKiB );
+	Msg( "  surface CPU texel copies %.2f (%.2f KiB)\n", f.cpuCopies, f.cpuCopyKiB );
+}
 
 #if defined(LINUX) || defined(OSX) || defined(PLATFORM_BSD)
 CUtlDict< CMatSystemSurface::font_entry, unsigned short > CMatSystemSurface::m_FontData;
@@ -314,6 +341,10 @@ void *CMatSystemSurface::QueryInterface( const char *pInterfaceName )
 	// We also implement the IMatSystemSurface interface
 	if (!Q_strncmp(	pInterfaceName, VGUI_SURFACE_INTERFACE_VERSION, Q_strlen(VGUI_SURFACE_INTERFACE_VERSION) + 1))
 		return (vgui::ISurface*)this;
+
+	// RFC 0010 V0: what the surface submits for the UI.
+	if ( !Q_strcmp( pInterfaceName, VGUI_SURFACE_STATS_INTERFACE_VERSION ) )
+		return static_cast<IVGuiSurfaceStats *>( &SurfaceStats() );
 
 	if ( !Q_strcmp( pInterfaceName, VGUI_WORLD_PANEL_RECORDER_INTERFACE_VERSION ) )
 		return static_cast<IWorldPanelRecorder *>( &s_WorldPanelRecorder );
@@ -972,6 +1003,8 @@ void CMatSystemSurface::FinishDrawing( void )
 //-----------------------------------------------------------------------------
 void CMatSystemSurface::RunFrame()
 {
+	SurfaceStats().NoteFrame();
+
 	// A display scale or ui_scale change relays out like a screen size change.
 	UpdateUIScale();
 	FollowScreenSize();
@@ -1120,6 +1153,20 @@ void CMatSystemSurface::InternalSetMaterial( IMaterial *pMaterial )
 	m_pMesh = pRenderContext->GetDynamicMesh( true, NULL, NULL, pMaterial );
 }
 
+void CMatSystemSurface::DrawTextQuads( int nQuads, vgui::Vertex_t *pVerts, bool bClip )
+{
+	m_bSubmittingText = true;
+	DrawQuadArray( nQuads, pVerts, m_DrawTextColor, bClip );
+	m_bSubmittingText = false;
+}
+
+void CMatSystemSurface::SubmitMesh()
+{
+	SurfaceStats().NoteDraw( meshBuilder.VertexCount(), meshBuilder.IndexCount(),
+	    meshBuilder.VertexSize(), m_bSubmittingText );
+	meshBuilder.End();
+	m_pMesh->Draw();
+}
 
 //-----------------------------------------------------------------------------
 // Helper method to initialize vertices (transforms them into screen space too)
@@ -1172,8 +1219,7 @@ void CMatSystemSurface::DrawTexturedLineInternal( const Vertex_t &a, const Verte
 	meshBuilder.TexCoord2fv( 0, clippedVerts[1].m_TexCoord.Base() );
 	meshBuilder.AdvanceVertexF<VTX_HAVEPOS | VTX_HAVECOLOR, 1>();
 
-	meshBuilder.End();
-	m_pMesh->Draw();
+	SubmitMesh();
 }
 
 void CMatSystemSurface::DrawLine( int x0, int y0, int x1, int y1 )
@@ -1255,8 +1301,7 @@ void CMatSystemSurface::DrawPolyLine( int *px, int *py ,int n )
 		meshBuilder.AdvanceVertexF<VTX_HAVEPOS | VTX_HAVECOLOR, 1>();
 	}
 
-	meshBuilder.End();
-	m_pMesh->Draw();
+	SubmitMesh();
 }
 
 
@@ -1314,8 +1359,7 @@ void CMatSystemSurface::DrawQuad( const vgui::Vertex_t &ul, const vgui::Vertex_t
 	meshBuilder.TexCoord2f( 0, ul.m_TexCoord.x, lr.m_TexCoord.y );
 	meshBuilder.AdvanceVertexF<VTX_HAVEPOS | VTX_HAVECOLOR, 1>();
 
-	meshBuilder.End();
-	m_pMesh->Draw();
+	SubmitMesh();
 }
 
 
@@ -1409,8 +1453,7 @@ void CMatSystemSurface::DrawQuadArray( int quadCount, vgui::Vertex_t *pVerts, un
 		}
 	}
 
-	meshBuilder.End();
-	m_pMesh->Draw();
+	SubmitMesh();
 }
 
 
@@ -1504,8 +1547,7 @@ void CMatSystemSurface::DrawFilledRectArray( IntRect *pRects, int numRects )
 		meshBuilder.AdvanceVertexF<VTX_HAVEPOS | VTX_HAVECOLOR, 0>();
 	}
 
-	meshBuilder.End();
-	m_pMesh->Draw();
+	SubmitMesh();
 }
 
 //-----------------------------------------------------------------------------
@@ -1629,8 +1671,7 @@ void CMatSystemSurface::DrawFilledRectFade( int x0, int y0, int x1, int y1, unsi
 	meshBuilder.TexCoord2f( 0, clippedRect[0].m_TexCoord.x, clippedRect[1].m_TexCoord.y );
 	meshBuilder.AdvanceVertexF<VTX_HAVEPOS | VTX_HAVECOLOR, 1>();
 
-	meshBuilder.End();
-	m_pMesh->Draw();
+	SubmitMesh();
 }
 
 //-----------------------------------------------------------------------------
@@ -1708,8 +1749,7 @@ void CMatSystemSurface::DrawOutlinedCircle(int x, int y, int radius, int segment
 		vertex[0].m_TexCoord = vertex[1].m_TexCoord;
 	}
 
-	meshBuilder.End();
-	m_pMesh->Draw();
+	SubmitMesh();
 }
 
 
@@ -1957,8 +1997,7 @@ void CMatSystemSurface::DrawTexturedPolygon(int n, Vertex_t *pVertices, bool bCl
 			meshBuilder.AdvanceVertexF<VTX_HAVEPOS | VTX_HAVECOLOR, 1>();
 		}
 
-		meshBuilder.End();
-		m_pMesh->Draw();
+		SubmitMesh();
 	}
 	else
 	{
@@ -1975,8 +2014,7 @@ void CMatSystemSurface::DrawTexturedPolygon(int n, Vertex_t *pVertices, bool bCl
 			meshBuilder.AdvanceVertexF<VTX_HAVEPOS | VTX_HAVECOLOR, 1>();
 		}
 
-		meshBuilder.End();
-		m_pMesh->Draw();
+		SubmitMesh();
 	}
 }
 
@@ -2553,7 +2591,7 @@ void CMatSystemSurface::DrawFlushText()
 		
 		IMaterial *pMaterial = TextureDictionary()->GetTextureMaterial(m_iBoundTexture);
 		InternalSetMaterial( pMaterial );
-		DrawQuadArray( m_nBatchedCharVertCount / 2, m_BatchedCharVerts, m_DrawTextColor );
+		DrawTextQuads( m_nBatchedCharVertCount / 2, m_BatchedCharVerts, true );
 		m_nBatchedCharVertCount = 0;
 	}
 }
@@ -2886,7 +2924,7 @@ void CMatSystemSurface::DrawPrintText(const wchar_t *text, int iTextLen, FontDra
 					m_nRecordingTextureId = iLastTexId; // a recording's glyph coverage
 					IMaterial *pMaterial = TextureDictionary()->GetTextureMaterial(iLastTexId);
 					InternalSetMaterial( pMaterial );
-					DrawQuadArray( iCount, pQuads, m_DrawTextColor, IsPC() );
+					DrawTextQuads( iCount, pQuads, IsPC() );
 					iCount = 0;
 				}
 
@@ -2938,7 +2976,7 @@ void CMatSystemSurface::DrawPrintText(const wchar_t *text, int iTextLen, FontDra
 		m_nRecordingTextureId = iLastTexId; // a recording's glyph coverage
 		IMaterial *pMaterial = TextureDictionary()->GetTextureMaterial(iLastTexId);
 		InternalSetMaterial( pMaterial );
-		DrawQuadArray( iCount, pQuads, m_DrawTextColor, IsPC() );
+		DrawTextQuads( iCount, pQuads, IsPC() );
 	}
 
 	m_pDrawTextPos[0] += iTotalWidth;
@@ -3783,11 +3821,14 @@ void CMatSystemSurface::PaintTraverseEx(VPANEL panel, bool paintPopups /*= false
 	VPROF( "CMatSystemSurface::PaintTraverse" );
 	CMatRenderContextPtr pRenderContext( g_pMaterialSystem );
 	bool bTopLevelDraw = false;
+	// Times the whole top-level pass, through FinishDrawing (RFC 0010 V0).
+	std::optional<CSurfaceStats::PaintPass> topLevelPass;
 
 	if ( g_bInDrawing == false )
 	{
 		// only set the 2d ortho mode once
 		bTopLevelDraw = true;
+		topLevelPass.emplace( SurfaceStats() );
 		StartDrawing();
 
 		// clear z + stencil buffer

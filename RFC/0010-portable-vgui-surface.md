@@ -1,8 +1,16 @@
 # RFC 0010: Portable VGUI Surface, Text, and Input
 
-- Status: Proposed (2026-09-23); no implementation gate complete. V1's UI
-  scale owner is installed, but its exit gate is not met
-  ([2026-09-25 update](#update-2026-09-25))
+- Status: Proposed (2026-09-23); no implementation gate complete. V0's ABI
+  guard `legacy.vgui-abi` is installed
+  ([progress](0010-progress.md#v0-vgui-abi-guard-legacyvgui-abi-2026-10-03)),
+  and its UI counters `VGuiSurfaceStats001` have a first baseline from the
+  content-free fixture host
+  ([progress](0010-progress.md#v0-fixture-host-vguifixture-host-2026-10-03));
+  the rest of V0 is open. V1's UI scale owner is installed, but its exit gate
+  is not met
+  ([2026-09-25 update](#update-2026-09-25)). Amended 2026-10-03 with the
+  user's [performance, maintenance and foundation goals](#goals-and-direction-user-direction-2026-10-03)
+  and the [2026-10-03 observations](#update-2026-10-03)
 - Date: 2026-09-23
 - Scope: The machinery beneath VGUI's frozen panel/control API: the 2D draw
   path in `vguimatsurface`, UI scale and coordinate spaces, font discovery and
@@ -29,6 +37,31 @@ obligations and does not certify implementation by this amendment.
 Include UI, text, HUD and in-world panels in complete-frame performance
 evidence. UI draw-list composition shares the render graph and GPU lifetime
 contracts; omitting these cohorts cannot establish the product frame target.
+
+## Goals and direction (user direction, 2026-10-03)
+
+The modernization has three goals, in addition to keeping every caller
+working:
+
+1. **Faster.** Less CPU work per UI frame, fewer draw calls, and fewer and
+   smaller CPU-to-GPU transfers. Use zero-copy where the data already lives on
+   the GPU, keep unchanged UI content resident on the GPU, and copy changed
+   content once ([transfers and GPU caching](#transfers-and-gpu-caching)).
+2. **Easier to maintain.** One recorder, one owner per concept and fewer
+   special cases in `CMatSystemSurface`. Each replaced path is deleted in the
+   change that replaces it. Platform-specific code stays inside its
+   providers.
+3. **A reusable foundation.** The draw list, text, input and scale code
+   becomes toolkit-neutral [foundation UI libraries](#foundation-ui-libraries).
+   VGUI is their first client. A later Panorama-like toolkit (retained,
+   styled, declarative) could be built on the same libraries.
+   That toolkit is **out of scope** for this RFC. The only obligation here is
+   that the foundation libraries name no VGUI type and make no VGUI
+   assumption, so a second client needs no rewrite.
+
+These goals are judged by measurement against the V0 baseline, not by
+structure alone. Moving code into a library, or adding a cache, is not an
+outcome until its counters improve and its oracles pass.
 
 ## Decision and boundary
 
@@ -140,6 +173,81 @@ The list above is the 2026-09-23 starting point. Since then:
   depth-test as on D3D9
   ([record](0001-native-vulkan-progress.md#forced-depth-test-for-vgui-screens-in-the-world-2026-09-24)).
 
+### Update (2026-10-03)
+
+The tree was read at `776a2f3e`. Nothing was built or run, so these are
+code facts, not measurements.
+
+- **No caller protection is installed.** None of the VGUI interface headers
+  is in `legacyAbi.paths` (`architecture/modules.json`), and there is no
+  VGUI vtable fixture like `legacy.render-abi`. A reordered virtual method or
+  a changed version string would not fail a check. `ISurface` has 148 virtual
+  methods, `IPanel` 60, `IInput` 62 and `IMatSystemSurface` 26. About 250
+  first-party `.cpp` files reach the surface through `vgui::surface()`,
+  `g_pVGuiSurface` or `g_pMatSystemSurface`; 149 of them are under `game/`.
+- **A recorder already exists, but only for in-world panels.**
+  `VGuiWorldPanelRecorder001` (`public/vgui/IWorldPanelRecorder.h`) records
+  quads in the `render.world-panel.v1` format (`public/render/world_panel.h`).
+  It works through an `if ( m_pRecording )` branch inside each `Draw*`
+  method of `CMatSystemSurface`. It refuses lines, polygons, fades and
+  circles. Its quad is the first UI draw-list type in the tree.
+- **Each primitive is a separate draw.** `DrawQuad`, `DrawFilledRect`,
+  `DrawLine` and the others each call `InternalSetMaterial`, which fetches a
+  dynamic mesh, then fill 2 to 4 vertices and call `IMesh::Draw`. Only text
+  is batched (`MAX_BATCHED_CHAR_VERTS` 4096). The vertices are re-sent every
+  frame whether or not anything changed.
+- **The panel tree repaints in full every frame.** `Panel::Repaint` sets
+  `NEEDS_REPAINT` and calls `ISurface::Invalidate`. But
+  `CMatSystemSurface::Invalidate` is empty, and many panels draw live game
+  state in `Paint` without calling `Repaint` (157 `Repaint()` calls in
+  `game/client` and `vgui_controls`). So the dirty signal exists but cannot
+  be trusted to skip painting.
+- **A procedural texture update is copied about three times.**
+  `DrawSetTextureRGBA` and `DrawSetSubTextureRGBA`
+  (`TextureDictionary.cpp`) copy the caller's pixels into a full-size CPU
+  copy (`CFontTextureRegen::UpdateBackingBits`). `ITexture::Download` then
+  regenerates them into a VTF image, and the backend copies that into
+  staging memory for the GPU. The CPU copy exists so the texture can be
+  restored after the device is lost.
+- **Glyphs are uploaded one at a time, at 4 bytes per texel.**
+  `CFontTextureCache` rasterizes each new glyph as RGBA8888 and calls
+  `DrawSetSubTextureRGBA` once per glyph, so each glyph is a separate
+  `Download`. The font effects write color as well as alpha: outlines and
+  drop shadows write black, and scanlines write 127 gray
+  (`FontEffects.cpp`). A glyph page therefore needs a gray level and an
+  alpha, two channels in all, not alpha alone.
+- **The render core can already sample backend images in place.**
+  `ICoreTextures::Import` (`public/render/legacy/core_passes.h`) imports a
+  material-system texture's GPU image without a copy, and `ContentRevision`
+  gives it a content version. `render::resources::TextureCache` stages
+  uploads and frees memory only after the GPU is done with it. The core frame
+  has a top-level HUD slot (`kCorePassLegacyHud`) where legacy UI draws after
+  a core-only scene.
+- **18 direct-render panels.** By a coarse grep, 14 files in `game/client`,
+  4 in `matsys_controls` and 1 in `vgui_controls` combine `Paint` with
+  `CMatRenderContextPtr` or `GetRenderContext()`. Examples are
+  `basemodpanel.cpp`, `transitionpanel.cpp`, `touch.cpp`, `vgui_video.cpp`
+  and `basemodelpanel.cpp`. V0 still owns the exact inventory.
+- **Lines are in use, and native Vulkan still drops them.** About 20 files
+  call `DrawLine`, 4 call `DrawOutlinedCircle` and 2 call `DrawPolyLine`.
+  `shaderapivulkan.cpp` still drops every line draw. The core's
+  `render.pass.lines` sorts its items by category rather than drawing them in
+  paint order, so it cannot draw UI as it stands.
+- **IME composition does not work on SDL3.** `sdl3mgr.cpp` handles
+  `SDL_EVENT_TEXT_INPUT` but no text-editing (composition) event.
+  `public/platform/window/window_events.h` has a `TextInput` event and no
+  composition event. Only the Win32 path in `vguimatsurface/Input.cpp` maps
+  IME composition.
+- **Fonts on Android still use fixed paths.** `linuxfont.cpp` still builds
+  font paths from `getenv("APP_DATA_PATH")` and fixed `/system/fonts` names,
+  and `osxfont.cpp` is still commented out of the build.
+- **The binding render rules changed V6.** RFC 0016's binding rules
+  (2026-09-28) freeze `shaderapivulkan`, so the native UI consumer V6
+  proposed cannot be built there. RFC 0016 already makes it a graph pass on
+  the core. It is also required, not optional: K9 needs zero first-party
+  legacy-stream draws on native Portal and Portal 2, and screen UI is still
+  drawn through that stream.
+
 ## Goals
 
 - Keep every existing VGUI consumer, layout and scheme working unchanged on the
@@ -153,6 +261,14 @@ The list above is the 2026-09-23 starting point. Since then:
   Linux, macOS, iOS and Android.
 - Make desktop-only or Steam-only VGUI behavior optional and explicit, so mobile
   products compose without hidden requirements.
+- Upload unchanged UI content zero times per frame, and changed content once,
+  from the caller's memory to the GPU. Sample images that already live on the
+  GPU in place ([transfers and GPU caching](#transfers-and-gpu-caching)).
+- Put the draw list, text, input and scale code in toolkit-neutral
+  [foundation UI libraries](#foundation-ui-libraries), with VGUI as an
+  adapter over them.
+- Guard every frozen VGUI interface mechanically (a vtable fixture under
+  CAP010) before changing what sits beneath it.
 
 ## Non-goals
 
@@ -171,14 +287,55 @@ The list above is the 2026-09-23 starting point. Since then:
 | Layer | Owner | Contract after this RFC |
 | --- | --- | --- |
 | Panel tree, controls, schemes, layouts | `vgui2/src`, `vgui2/vgui_controls` | Unchanged public API and data formats |
-| Surface: paint traversal, state, clipping, recording | `vguimatsurface` (`CMatSystemSurface`) | Implements `ISurface`/`IMatSystemSurface`; records a UI draw list |
-| UI scale and coordinate spaces | `vguimatsurface/UIScale` | Sole px/unit policy; surface and input route through it |
-| UI draw-list execution | A UI draw consumer chosen by the composition root | `ui_draw_list` contract; null, material-system and (optionally) native consumers |
-| UI textures and glyph atlas | Surface texture dictionary | Stable IDs; storage outlives any recorded list that references it |
+| Surface: paint traversal, state, clipping | `vguimatsurface` (`CMatSystemSurface`) | Implements `ISurface`/`IMatSystemSurface` as an adapter over the foundation libraries; owns no draw, text or scale policy of its own |
+| UI draw list and recorder | `ui.drawlist` (foundation) | Command format, recorder, change detection; the one recorder for the screen and for in-world panels |
+| UI scale and coordinate spaces | `ui.scale` (foundation; today `vguimatsurface/UIScale`) | Sole px/unit policy; surface and input route through it |
+| UI draw-list execution | A UI draw consumer chosen by the composition root | Null, material-system and core consumers; the core consumer is `render.pass.ui` |
+| UI textures and glyph atlas | `ui.text` atlas policy; surface texture dictionary for VGUI IDs | Stable IDs and content revisions; storage outlives any recorded list or GPU use that references it |
 | Font discovery | A per-profile font source provider | Face name, style and language to font bytes, or a structured failure |
-| Font rasterization and metrics | `vgui_surfacelib` (FreeType) | Shared across non-Windows profiles; GDI retained for the Windows profile |
-| Input and text entry | R14 normalized events; VGUI input translator | Pointer, key, text, composition and focus events in UI units |
+| Font rasterization and metrics | `ui.text` (foundation; FreeType, today `vgui_surfacelib`) | Shared across non-Windows profiles; GDI retained for the Windows profile |
+| Input and text entry | R14 normalized events; `ui.input` translator | Pointer, key, text, composition and focus events in UI units |
 | Optional capabilities | Named providers (HTML, in-world panels) | Negotiated at composition; absence is explicit |
+
+## Foundation UI libraries
+
+The machinery beneath VGUI becomes small strict C++20 libraries. Each one is
+its own module in `architecture/modules.json` and its own Waf static library.
+Their edges point only down, following the layered-library rule AGENTS.md
+gives for Hammer's format libraries. The module names and directories below
+(`public/ui/<module>/`, `ui/<module>/`) are proposed; none is installed.
+
+| Library | Owns | Depends on | Must not depend on |
+| --- | --- | --- | --- |
+| `ui.scale` | UI units, back buffer pixels and drawable pixels, and the one mapping between them (today's `uiscale::ComputeScale`) | foundation | VGUI, the material system, render, SDL |
+| `ui.drawlist` | Draw-list commands, the recorder, clipping, command batching rules, content hashing and revisions | `ui.scale` | VGUI, the material system, render device types |
+| `ui.text` | Font source provider contract, FreeType rasterizer and metrics, glyph atlas allocation and dirty regions, font effects; later shaping | `ui.scale`, the platform paths provider | VGUI, render device types |
+| `ui.input` | Pointer, key, text, composition and focus events in UI units; capture, release on focus loss | `ui.scale`, `platform.window` events | VGUI, SDL |
+| `render.pass.ui` (render core, layer 6) | Executes a draw list as a graph pass: resident geometry, sampled images, clip and blend | `ui.drawlist`, render core layers below it | VGUI, the material system |
+
+For `render.pass.ui` to depend on `ui.drawlist`, the RFC 0016 layer contract
+(`layerContracts`, archlint CAP011) must allow a render pass to depend on a
+foundation library outside `render/`. That edge is recorded as a layer
+decision before any code lands.
+
+The libraries hold mechanism. A toolkit holds policy: VGUI's panel tree,
+schemes, `.res` layouts, proportional scaling and paint order stay in VGUI,
+and VGUI reaches the libraries through `vguimatsurface`. A future retained
+toolkit would bring its own tree, styling and layout and reuse the same
+draw list, text, input, scale and render pass. Layout engines, styling,
+animation and scripting are not foundation libraries in this RFC.
+
+The libraries' public headers are strict C++20 and are never included from
+the frozen VGUI headers. The legacy-dialect public VGUI headers keep their
+dialect; `vguimatsurface` is where the two meet. (`IWorldPanelRecorder.h`
+already includes the C++20 `render/world_panel.h` from `public/vgui/`;
+moving that type into `ui.drawlist` gives it its owning module.)
+
+`render.world-panel.v1` keeps what is specific to world panels: coatings,
+emission, resolution and tile lights. Its quad list becomes a restricted
+view of a `ui.drawlist` list rather than a second recorded format. There is
+one recorder and one command definition.
+
 
 ## UI draw-list contract
 
@@ -214,7 +371,7 @@ panel the V0 inventory identifies as rendering directly in `Paint`.
 | Recording (null) | Headless tests, call-stream and command capture | All primitives; legacy material recorded but not rendered |
 | Material-system, immediate | Default until V3; reproduces today's behavior one command at a time | All primitives, legacy material |
 | Material-system, batched | Coalesces adjacent commands with identical texture, blend, clip and primitive state | All primitives, legacy material |
-| Native Vulkan UI (optional, V6) | Direct 2D pipeline on the native backend | Declared primitives and blend modes; legacy material only through the material-system path, or an explicit composition failure |
+| Core UI pass (V6, `render.pass.ui`) | Graph pass on the RFC 0016 core at the HUD slot; required for K9 on native profiles (amended 2026-10-03: not a pipeline in the frozen native backend) | Declared primitives and blend modes; lines as lines; legacy-material commands are not executed. They stay on the legacy stream, each counted by name in the K9 census, or composition fails |
 
 ### Obligations (LSP)
 
@@ -241,6 +398,93 @@ a texture early. Each bad consumer must fail a named check.
 batched modes see identical vertices. Replacing it with hardware scissor is a
 later, separately measured change: it can alter rasterization at clip edges,
 so its fixtures use a declared per-edge tolerance rather than exact equality.
+
+## Transfers and GPU caching
+
+The aim is that a UI frame moves only changed data from CPU to GPU, and moves
+it once. The rules below are invisible to callers: `ISurface` calls,
+texture IDs, paint order and paint timing do not change.
+
+### Counters first
+
+V0 adds per-frame UI counters before any optimization: draw calls, recorded
+commands, vertex bytes uploaded, texture bytes uploaded, texture uploads,
+CPU copies per texture update, and recorder and consumer CPU time. The
+surface's counters are installed as `VGuiSurfaceStats001`
+([record](0010-progress.md#v0-ui-counters-vguisurfacestats001-2026-10-03)).
+Recorded commands and recorder and consumer time arrive with the V2
+recorder. They are
+reported through the RFC 0014 cost overlay owner, not a second overlay.
+Their budget rows go in `quality/budgets/render-v1.json`, next to the
+complete-frame rows, and are set before optimizing.
+
+### Geometry: record every frame, upload on change
+
+Panels keep painting every frame, because `Invalidate` cannot be trusted
+(see [Update (2026-10-03)](#update-2026-10-03)). The saving comes after
+painting:
+
+- The recorder keeps the list in segments, one per top-level panel subtree
+  and popup. Each segment has a content hash over its commands, vertices,
+  texture references with their revisions, clip and blend.
+- A consumer keeps each segment's vertex and index data resident in GPU
+  buffers, keyed by that hash. An unchanged segment is drawn from its
+  resident buffers, so no geometry is uploaded for it. A changed segment is
+  written once into the upload ring and replaces the old buffers. The old
+  buffers are freed only after the GPU is done with them (RFC 0006,
+  `device.h` D10).
+- The material-system consumers cannot hold resident buffers through the
+  frozen API, so they upload every frame. This saving belongs to the core
+  pass.
+- The hash covers state as well as vertices, so a texture whose content
+  changes without a geometry change still invalidates the segment.
+  Hashing and comparing must cost less than the upload it saves, which V3
+  measures on the corpus.
+
+Baking each panel's translation into its vertices means a moving or
+scrolling panel invalidates its whole segment. An alternative is to keep
+vertices in panel-local units and give each command a transform that the
+shader applies. That can change floating-point rounding at pixel edges, so
+it is a later step: it needs edge-tolerance fixtures and a recorded
+decision, as hardware scissor does.
+
+### Textures: sample in place, copy once
+
+- **Images already on the GPU are sampled in place.** Material textures,
+  render targets and movie frames are imported through `ICoreTextures`
+  without a copy. Their `ContentRevision` goes into the segment hash.
+- **Procedural updates are copied once.** `DrawSetTextureRGBA`,
+  `DrawSetSubTextureRGBA` and `DrawUpdateRegionTextureRGBA` copy the
+  caller's pixels straight into the upload ring for the changed rectangle,
+  replacing the CPU copy, VTF regeneration and staging copy chain.
+- **A CPU copy is kept only where restoring the texture needs one.** A
+  profile that can lose its device or surface (Android, resize, minimize)
+  keeps a CPU copy only for textures that cannot be rebuilt from their
+  source. Glyph pages are rebuilt by rasterizing again, and named materials
+  are reloaded. Each texture class declares its restore source, and the
+  lifecycle checks restore every class.
+- **Each glyph page is uploaded once per frame.** New glyphs are rasterized
+  into the page's CPU-side dirty region, and the region is uploaded as one
+  copy per page per frame, not one per glyph.
+- **Glyph pages use a smaller format.** Glyph content is a gray level and an
+  alpha, because the font effects write black and gray. A two-channel page
+  (I8A8 or R8G8) halves the bytes uploaded and stored compared with
+  RGBA8888. A page with no effects may use one channel on the core pass.
+  The material-system consumers must sample the same values as today
+  through `UnlitGeneric`, so their page format is a recorded decision.
+- **Scale changes rebuild deliberately.** A UI scale change invalidates the
+  glyph pages at their new raster size, and the next upload is reported
+  in the counters.
+
+### Retained subtree layers (optional, later)
+
+Rendering a panel subtree once into a cached GPU image and re-compositing
+it would also save the CPU cost of `Paint`. It is unsafe by default,
+because panels draw live state without calling `Repaint`. It may be offered
+only per panel, with an explicit opt-in. In diagnostic builds, a shadow
+check paints the subtree anyway and compares the recorded segment with the
+cached one, so a panel that changes without invalidating fails by name.
+It is adopted only where measurement shows the `Paint` CPU time it saves.
 
 ## Scale and coordinate spaces
 
@@ -350,6 +594,18 @@ Preserved without a versioned decision:
   `OnThink` relative to engine rendering;
 - the Windows (GDI) font path and Win32 input translation on the Windows profile.
 
+These are enforced mechanically, not by review alone. The `vgui-abi-v1`
+fixture (`legacy.vgui-abi`, installed 2026-10-03;
+[record](0010-progress.md#v0-vgui-abi-guard-legacyvgui-abi-2026-10-03)) is
+recorded in the same way as `legacy.render-abi`: the compiler's
+vtable layout for each interface above, its version string, and a
+sensitivity suite in which seeded slot reorders and renamed versions fail.
+The VGUI public headers are added to `legacyAbi.paths` (CAP010), so strict
+types (`Expected`, `std::span`, `std::unique_ptr`) cannot leak into them.
+`vgui_controls` is a static library compiled into each consumer; its class
+layouts are an API, not a cross-module ABI, and are preserved at the
+source level.
+
 Changes that alter pixels on an existing backend (hardware scissor, a native UI
 pipeline, different glyph rasterization) need a fixture with a declared
 tolerance and a recorded decision. The native backend's D3DCOLOR vertex-color
@@ -391,6 +647,20 @@ evidence:
    device.
 9. **Composition.** Link-map evidence that mobile and dedicated products omit the
    declared modules; iOS startup with empty module-search locations.
+10. **ABI.** `vgui-abi-v1` passes, and its seeded reorders and version changes
+    fail.
+11. **Transfers.** On the corpus, after warm-up, a static screen (main menu at
+    rest, options dialog) uploads zero geometry and zero texture bytes per
+    frame on the core consumer. A changing screen uploads only its changed
+    segments and rectangles, and the counters show each change. Seeded
+    defects are caught: a stale segment reused after a texture revision
+    change, a texture update reaching the GPU twice, a buffer freed before
+    its completion token, and a glyph page not rebuilt after a scale change.
+    Pixels with caching on equal pixels with caching off on the same backend.
+12. **Foundation boundary.** Archlint checks that the foundation libraries
+    reach no VGUI, material-system or SDL header, and its seeded violations
+    fail. A minimal non-VGUI client (a test program) records, lays out text
+    and receives input through the libraries alone.
 
 Missing D3D9 reference captures, devices or profiles leave the corresponding
 claim unverified under AGENTS.md.
@@ -399,18 +669,21 @@ claim unverified under AGENTS.md.
 
 | Phase | Deliverable | Exit gate |
 | --- | --- | --- |
-| V0 | Baseline: `ISurface` method inventory by caller and category (paint, texture, font, window, input, HTML, 3D); direct-render panel inventory; fixed-screen corpus with D3D9/DXVK and native captures; UI draw-call counts; native `MATERIAL_LINES` support | Captures reproducible from recorded commands; line fixture draws on native; a seeded missing-line or reordered-draw defect is detected |
-| V1 | UI scale owner (the installed `UIScale` work) | Scale suites, hit-test and pixel round trips at three scales; scale change mid-session; no second px/unit conversion outside `uiscale` |
-| V2 | Draw-list contract, recorder, recording and immediate material-system consumers, shared suite | Immediate mode is pixel-identical to the pre-V2 surface on the corpus; bad consumers fail; no `ISurface` change |
-| V3 | Batched consumer and barrier audit | Byte-identical to immediate on each backend; measured draw-call and frame-time change against V0 budgets; default chosen from measurement with rollback |
-| V4 | Font source providers and shared rasterizer; packaged-font manifest | Metric fixtures and negative fixtures pass on Linux (fontconfig and packaged) and Android; Apple profiles when available; GDI unchanged on Windows |
-| V5 | Input and text entry on R14 events | Generated sequences, composition and screen keyboard on Linux and Android; Win32 translation confined to Windows |
-| V6 | Optional native Vulkan UI consumer | Passes the shared suite and corpus tolerances, measured cheaper than the material-system path, or is not adopted |
+| V0 | Baseline: `vgui-abi-v1` fixture and VGUI headers under CAP010; `ISurface` method inventory by caller and category (paint, texture, font, window, input, HTML, 3D); direct-render panel inventory; blend modes and primitives in use; fixed-screen corpus with D3D9/DXVK and native captures; UI transfer and draw counters with budget rows | ABI fixture and its sensitivity pass; captures reproducible from recorded commands; a seeded missing-line or reordered-draw defect is detected; counters recorded for every corpus screen |
+| V1 | UI scale owner, moved into `ui.scale` | Scale suites, hit-test and pixel round trips at three scales; scale change mid-session; no second px/unit conversion outside `ui.scale` |
+| V2 | `ui.drawlist`: contract, the one recorder, recording and immediate material-system consumers, shared suite; the world-panel recorder rebuilt on it and its `m_pRecording` branches deleted | Immediate mode is pixel-identical to the pre-V2 surface on the corpus; `corpus.portal2.sign-panel` and `render.lab.panel` unchanged; bad consumers fail; no `ISurface` change |
+| V3 | Batched consumer, barrier audit, segment hashing | Byte-identical to immediate on each backend; measured draw-call, transfer and frame-time change against V0 budgets; default chosen from measurement with rollback |
+| V4 | `ui.text`: font source providers, shared rasterizer, packaged-font manifest; one dirty-region upload per glyph page per frame; restore by re-rasterizing; glyph page format decision | Metric and negative fixtures on Linux (fontconfig and packaged) and Android; Apple profiles when available; GDI unchanged on Windows; glyph upload counts and bytes improve against V0 with identical pixels on each backend |
+| V5 | `ui.input` on R14 events, with a composition event added to the platform window events | Generated sequences, composition and screen keyboard on Linux and Android; Win32 translation confined to Windows |
+| V6 | `render.pass.ui` on the core at the HUD slot, proven in `render_lab` first, with resident segment buffers and in-place texture import (amended 2026-10-03; was an optional native-backend consumer) | Shared suite and corpus tolerances against the material-system consumer; lines drawn; transfer checks (validation 11) pass; zero first-party UI legacy-stream draws in the K9 census except named legacy-material commands; frame cost measured against V0 |
 | V7 | Composition and product scope: typed VGUI factories, HTML capability, tool-only exclusion, CEF leftovers removed | Link-map and empty-search-path evidence; HTML absent and present behaviors tested; no filename lookup for VGUI in migrated products |
+| V8 | Procedural texture path: one copy from the caller to the upload ring; CPU copies only for textures whose restore needs them | One CPU copy per update on the corpus and the HUD; device and surface loss restore every texture class; no texture freed before its completion token |
+| V9 | Optional retained subtree layers, opt-in per panel, with the diagnostic shadow check | Adopted only for panels whose measured `Paint` saving exceeds the layer cost; a seeded panel that changes without `Repaint` fails the shadow check |
 
-V0 and V1 can proceed now. V2–V3 depend on R15's render seam. V5 depends on
-R14's event contracts. V7 depends on R06 and proceeds with R39's cohorts. V4 can
-proceed independently of the renderer work.
+V0 and V1 can proceed now. V2 needs only V0. V3 and V6 depend on R15's
+render seam and on RFC 0016's core (R89, with the UI cohort under R91's K8).
+V5 depends on R14's event contracts. V7 depends on R06 and proceeds with
+R39's cohorts. V4 and V8 can proceed independently of the core work.
 
 ## Roadmap
 
@@ -421,11 +694,13 @@ rows below use local labels until AGENTS.md assigns IDs:
 
 | Proposed row | Scope | Prerequisites |
 | --- | --- | --- |
-| VG-A | VGUI baseline and UI scale owner (V0–V1) | R02, R15 |
-| VG-B | UI draw list and batched execution (V2–V3; V6 optional) | VG-A |
-| VG-C | Portable fonts (V4) | VG-A |
+| VG-A | VGUI ABI guard, baseline counters and UI scale owner (V0–V1) | R02, R15 |
+| VG-B | UI draw list, batched execution and segment caching (V2–V3) | VG-A |
+| VG-C | Portable fonts and glyph atlas transfers (V4) | VG-A |
 | VG-D | VGUI input and text entry (V5) | R14, VG-A |
 | VG-E | VGUI composition, optional HTML and product scope (V7) | R06, VG-A |
+| VG-F | Core UI pass (V6), a child of R91's K8 UI cohort | VG-B, R89 |
+| VG-G | Procedural texture transfers and optional retained layers (V8–V9) | VG-B |
 
 Mobile evidence from VG-B to VG-E contributes to R29 and R36; none of these
 rows closes a platform gate by itself.
@@ -441,6 +716,10 @@ rows closes a platform gate by itself.
 | Font licensing for bundled faces | License recorded per file in the manifest; no face ships without one |
 | IME behavior differs across SDL3 backends | Composition sequences tested per profile; unsupported composition declared, not assumed |
 | Native UI consumer diverges from D3D9 blending | Optional phase with tolerances; material-system path stays authoritative |
+| A cached segment is drawn stale after an unhashed state change | The hash covers commands, vertices, texture revisions, clip and blend; unknown revisions (`ContentRevision` 0) disable reuse; caching-on equals caching-off pixels on the corpus; seeded stale-reuse defect |
+| Hashing costs more than the upload it saves | Segment counters and CPU time in V3; caching stays off where it does not pay |
+| Dropping CPU texture copies breaks restore after device or surface loss | Each texture class declares its restore source; lifecycle checks per profile; a CPU copy stays where nothing else can restore the texture |
+| Foundation libraries absorb VGUI assumptions | Archlint boundary check with seeded violations; a non-VGUI test client (validation 12) |
 
 ## Alternatives considered
 
@@ -450,6 +729,12 @@ rows closes a platform gate by itself.
 - **Adopt RmlUi (HTML/CSS-like, no browser engine) for game UI now.** Plausible
   as a later second menu provider once the draw-list and input seams exist; it
   would consume the same contracts. Not a replacement for VGUI's game-panel API.
+- **Build a Panorama-like toolkit now.** That is the long-term reason for the
+  [foundation UI libraries](#foundation-ui-libraries), but it is out of scope
+  (user direction, 2026-10-03). This RFC delivers only the foundation, and
+  the foundation boundary check (validation 12), so a later toolkit starts
+  from the same draw list, text, input, scale and render pass that VGUI
+  already uses.
 - **Dear ImGui.** Suitable for developer overlays and debug tools, which may use
   the UI draw list. Not a game UI replacement.
 - **Implement Panorama.** Only headers exist; the runtime would be a new UI
@@ -473,6 +758,16 @@ rows closes a platform gate by itself.
 6. Whether the native UI consumer (V6) is worth adopting, decided by measurement.
 7. Whether hardware scissor replaces CPU clipping, decided by edge-tolerance
    fixtures and measurement.
+8. The glyph page format: two channels (I8A8 or R8G8) for every consumer, or
+   two channels for the core pass and RGBA8888 kept for the material-system
+   consumers, decided by pixel identity through `UnlitGeneric` on each
+   backend.
+9. Whether commands carry panel-local vertices with a per-command transform,
+   so a moving panel keeps its resident geometry, decided by edge-tolerance
+   fixtures and the V3 counters.
+10. Which texture classes keep a CPU copy for restore on each profile.
+11. Whether any panel adopts retained layers (V9), decided by measured
+    `Paint` time.
 
 ## Source references
 
@@ -490,7 +785,10 @@ rows closes a platform gate by itself.
 
 ## Proposed decision
 
-Accept for planning. Start with **V0** (baseline, direct-render inventory, D3D9
-reference captures, native line support) and **V1** (finish the gate of the
-UI scale owner, which has landed with its suites). Neither changes VGUI's API or a renderer default. Commit to
-batching as a default only after V3's measurements.
+Accept for planning. Start with **V0**: the `vgui-abi-v1` fixture first,
+then the counters, the direct-render inventory and the D3D9 reference
+captures. Then **V1**, which finishes the gate of the UI scale owner (landed
+with its suites) and moves it into `ui.scale`. Neither changes VGUI's API or a
+renderer default. Line support on native comes from the core UI pass (V6),
+not from the frozen backend. Commit to batching, segment caching and a glyph
+page format as defaults only after V3's and V4's measurements.

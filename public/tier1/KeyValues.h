@@ -97,6 +97,16 @@ public:
 		inline void Assign( KeyValues *pKeyValues ) { m_pKeyValues = pKeyValues; }
 		KeyValues *operator->()	{ return m_pKeyValues; }
 		operator KeyValues *()	{ return m_pKeyValues; }
+#if __cplusplus >= 201103L
+		// Transfers ownership. AutoDeleteInline returns by value, which before
+		// C++17's guaranteed elision needs an accessible copy or move
+		// constructor; without this a C++11 consumer cannot compile the header
+		// (RFC 0010 legacy.vgui-abi, through tier1/ilocalize.h).
+		inline AutoDelete( AutoDelete &&x ) : m_pKeyValues( x.m_pKeyValues )
+		{
+			x.m_pKeyValues = NULL;
+		}
+#endif
 	private:
 		AutoDelete( AutoDelete const &x ); // forbid
 		AutoDelete & operator= ( AutoDelete const &x ); // forbid

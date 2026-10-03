@@ -15,9 +15,11 @@ Output is deterministic: the same script writes byte-identical files.
 """
 
 import math
-import struct
 import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "quality"))
+import vtf_write  # noqa: E402  (the shared VTF writer)
 
 SIZE = 128
 OUTLINE = 5.0  # dark halo width in pixels, so white glyphs read over bright scenes
@@ -203,17 +205,9 @@ def render(shape):
 
 
 def vtf(rgba):
-    """Uncompressed single-mip VTF 7.2, as public/vtf/vtf.h lays it out."""
-    flags = 0x0004 | 0x0008 | 0x0100 | 0x0200 | 0x2000  # clamp S/T, no mip/lod, 8-bit alpha
-    header = struct.pack(
-        "<4s2iiHHIHH4s3f4sfiBiBBH",
-        b"VTF\0", 7, 2, 80, SIZE, SIZE, flags, 1, 0, b"\0" * 4,
-        0.5, 0.5, 0.5, b"\0" * 4, 1.0,
-        0,           # IMAGE_FORMAT_RGBA8888
-        1,           # mip levels
-        -1, 0, 0,    # no low-resolution image
-        1)           # depth
-    return header.ljust(80, b"\0") + rgba
+    """Uncompressed single-mip VTF 7.2 (tools/quality/vtf_write.py)."""
+    return vtf_write.vtf(rgba, SIZE, SIZE, vtf_write.CLAMPS | vtf_write.CLAMPT | vtf_write.NOMIP |
+                         vtf_write.NOLOD | vtf_write.EIGHTBITALPHA)
 
 
 def main(argv):

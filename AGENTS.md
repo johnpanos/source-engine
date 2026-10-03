@@ -21,7 +21,7 @@ consumer at every new boundary. The active program is defined by these RFCs:
 | [0007](RFC/0007-physically-based-lighting-pipeline.md) | Substitutable light baker (legacy vrad, Cycles), PBR material family, image-based lighting, compile-tool port |
 | [0008](RFC/0008-canonical-world-data-and-runtime-formats.md) | Compiled USD World Stage, BSP2/KTX2, modern map and model resources, visual capabilities, incremental builds and live USD development loading |
 | [0009](RFC/0009-usd-native-map-authoring.md) | Editable USD map source, world/prop role separation, native map compiler and editor workflow without VMF (proposed) |
-| [0010](RFC/0010-portable-vgui-surface.md) | VGUI beneath its frozen API: UI draw list, UI scale, portable fonts, text input, optional HTML, composition (proposed; no roadmap row yet) |
+| [0010](RFC/0010-portable-vgui-surface.md) | VGUI beneath its frozen API: a VGUI ABI fixture, toolkit-neutral foundation UI libraries (draw list, text, input, scale) with VGUI as their first client, uploads only on change with GPU-resident caching, a core UI pass, portable fonts, text input, optional HTML, composition (proposed, amended 2026-10-03; no roadmap row yet) |
 | [0011](RFC/0011-runtime-indirect-lighting.md) | Runtime indirect light: probe volume with visibility, indirect policy, runtime light set, substitutable baked/radiosity/SDF/ray-query producers switchable at runtime (proposed; G0–G10 evidence on native Vulkan desktop, rows R70–R80 unranked) |
 | [0012](RFC/0012-antialiasing-msaa-specular-alpha-coverage.md) | Antialiasing: per-profile 4x MSAA target policy, alpha to coverage, PBR specular AA, offline normal-variance roughness and alpha-coverage mips (proposed) |
 | [0013](RFC/0013-opt-in-physics-capabilities.md) | Opt-in Box3D capabilities beside the IVP-parity contract: one versioned interface per capability, profile selection, per-capability benchmark gates; parallel step first (proposed) |
@@ -1058,6 +1058,31 @@ Keep the table concise and link details below or from the domain progress file.
     stream retires, and no core drawing becomes a default on such a
     profile before then.
   - See the [record](RFC/0016-progress.md#vulkan-11-host-devices-the-galaxy-tab-s8-ultra-2026-09-29).
+
+- RFC 0010 V0 VGUI ABI guard (proposed row VG-A, unranked): `partial`
+  (2026-10-03, user direction: guard VGUI's callers before modernizing
+  beneath them). `legacy.vgui-abi` records the vtables of the 17 VGUI
+  interfaces that cross a module boundary and passes on g++ and clang++;
+  its sensitivity suite catches a seeded reorder and an appended virtual in
+  each one. The machinery is shared with `legacy.render-abi`
+  (`tools/quality/abi_table.py`). A C++11 build break in
+  `tier1/KeyValues.h` was fixed on the way. The UI counters
+  (`VGuiSurfaceStats001`: draws, vertices, uploads, glyphs, CPU copies and
+  paint time per frame, in the RFC 0014 cost overlay and
+  `vgui_surface_stats`) are installed with their suites, and the Waf build
+  links them into `vguimatsurface` and `engine` (clang 18). They have not
+  been measured in a running game: no game content was available.
+  Repository-owned fixture materials and a fixture game
+  (`vgui.fixture-materials`) feed the VGUI fixture host
+  (`vgui.fixture-host`, 74 checks), which draws four screens through the real
+  surface on native Vulkan (lavapipe here) and records the first counter
+  baseline: one upload per glyph, every vertex rewritten each frame, a
+  104-byte dynamic vertex, and native line drops confirmed in real frames.
+  Budget rows and the rest of V0 are open; no row changes state
+  ([guard](RFC/0010-progress.md#v0-vgui-abi-guard-legacyvgui-abi-2026-10-03),
+  [counters](RFC/0010-progress.md#v0-ui-counters-vguisurfacestats001-2026-10-03),
+  [fixtures](RFC/0010-progress.md#v0-fixture-materials-vguifixture-materials-2026-10-03),
+  [host](RFC/0010-progress.md#v0-fixture-host-vguifixture-host-2026-10-03)).
 
 - R86/R88 memory follow-up (2026-10-02, user request): [audit and direct
   texture uploads](RFC/0016-progress.md#k1k4-render-core-memory-and-cache-audit-2026-10-02)

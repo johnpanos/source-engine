@@ -1964,7 +1964,8 @@
             "material_equivalence_vulkan_conformance",
             "material_facing_vulkan_conformance",
             "material_pixel_conformance",
-            "queued_mesh_contract_vulkan_conformance"
+            "queued_mesh_contract_vulkan_conformance",
+            "vgui_fixture_host"
           ]
         },
         {
@@ -2307,7 +2308,7 @@
   },
   "description": "RFC 0001 architectural manifest. Phase A currently freezes legacy dynamic-loader boundaries.",
   "legacyAbi": {
-    "description": "Preserved binary ABI declarations and exact private compatibility adapters/tests. Video provider runtime supplies the existing IVideoSubSystem::Connect factory without exposing it through the typed catalog. The Linux VBSP host tool keeps its material and physics factories in its private legacy compile-tool adapters. Reviewed 2026-09-25 (R04-DRIFT, user decision): the imported matchmaking framework's IAppSystem::Connect, the Portal 2 GameUI's IGameUI::Initialize/Connect, the Box3D provider's IPhysics::QueryInterface and the VPhysics conformance test host, which loads each provider through its CreateInterface export. Reviewed 2026-09-25 (static composition, agent decision under the user's standing instruction): public/engine/linked_game_modules.h binds a statically composed product's client, server and GameUI modules to the engine; the game module contract is the CreateInterface ABI. Reviewed 2026-09-26 (RFC 0016 K0, agent decision under the user's standing instruction): the frozen render surface of RFC 0016 'Compatibility surface' — the material system (IMaterialSystem 081 with IMatRenderContext, IMaterial, IMaterialVar, ITexture, IMesh, IMaterialProxy 003 and its factory, IMaterialSystemHardwareConfig 012), IStudioRender 025, IVRenderView 014, IVModelRender 016, IShadowMgr, and the mod shader ABI (ShaderDLL004, IShader, CBaseShader, CBaseVSShader, IShaderShadow 010, IShaderDynamicAPI, IShaderUtil, IShaderAPI, IShaderDevice, IShaderSystem); legacy.render-abi holds their vtable order.",
+    "description": "Preserved binary ABI declarations and exact private compatibility adapters/tests. Video provider runtime supplies the existing IVideoSubSystem::Connect factory without exposing it through the typed catalog. The Linux VBSP host tool keeps its material and physics factories in its private legacy compile-tool adapters. Reviewed 2026-09-25 (R04-DRIFT, user decision): the imported matchmaking framework's IAppSystem::Connect, the Portal 2 GameUI's IGameUI::Initialize/Connect, the Box3D provider's IPhysics::QueryInterface and the VPhysics conformance test host, which loads each provider through its CreateInterface export. Reviewed 2026-09-25 (static composition, agent decision under the user's standing instruction): public/engine/linked_game_modules.h binds a statically composed product's client, server and GameUI modules to the engine; the game module contract is the CreateInterface ABI. Reviewed 2026-09-26 (RFC 0016 K0, agent decision under the user's standing instruction): the frozen render surface of RFC 0016 'Compatibility surface' — the material system (IMaterialSystem 081 with IMatRenderContext, IMaterial, IMaterialVar, ITexture, IMesh, IMaterialProxy 003 and its factory, IMaterialSystemHardwareConfig 012), IStudioRender 025, IVRenderView 014, IVModelRender 016, IShadowMgr, and the mod shader ABI (ShaderDLL004, IShader, CBaseShader, CBaseVSShader, IShaderShadow 010, IShaderDynamicAPI, IShaderUtil, IShaderAPI, IShaderDevice, IShaderSystem); legacy.render-abi holds their vtable order. Reviewed 2026-10-03 (RFC 0010 V0, user direction to guard VGUI callers before modernizing beneath them): the frozen VGUI interfaces that cross a module boundary — ISurface (VGUI_Surface030), IMatSystemSurface (MatSystemSurface008), IPanel (VGUI_Panel009), IClientPanel, IVGui (VGUI_ivgui008), ISchemeManager (VGUI_Scheme010), IScheme, IBorder, IImage, IInput (VGUI_Input005), IInputInternal (VGUI_InputInternal001), ISystem (VGUI_System010), ILocalize (VGUI_Localize005), IHTML, IHTMLEvents, IVguiMatInfo and IVguiMatInfoVar; legacy.vgui-abi holds their vtable order. Reviewed 2026-10-03 (RFC 0010 V0 fixture host, user direction): unittests/vguihost/vgui_fixture_host.cpp connects the tier libraries and vgui_controls (VGui_InitInterfacesList) through the app system group's CreateInterfaceFn, the frozen API those take, as material_pixel_conformance.cpp does; the systems themselves come from typed linked factories.",
     "paths": [
       "video/provider_catalog_runtime.h",
       "video/provider_catalog_runtime.cpp",
@@ -2325,6 +2326,7 @@
       "unittests/legacymoduleclientfixture/legacymoduleclientfixture.cpp",
       "unittests/shaderextensiontest/test_shaderextension_host.cpp",
       "unittests/shaderextensiontest/material_pixel_conformance.cpp",
+      "unittests/vguihost/vgui_fixture_host.cpp",
       "utils/common/utilmatlib.cpp",
       "utils/vbsp/ivp.cpp",
       "matchmaking/main.cpp",
@@ -2360,7 +2362,24 @@
       "public/shaderlib/BaseShader.h",
       "materialsystem/IShaderSystem.h",
       "materialsystem/stdshaders/BaseVSShader.h",
-      "quality/fixtures/render-abi/render_abi_v1.h"
+      "quality/fixtures/render-abi/render_abi_v1.h",
+      "public/vgui/ISurface.h",
+      "public/VGuiMatSurface/IMatSystemSurface.h",
+      "public/vgui/IPanel.h",
+      "public/vgui/IClientPanel.h",
+      "public/vgui/IVGui.h",
+      "public/vgui/IScheme.h",
+      "public/vgui/IBorder.h",
+      "public/vgui/IImage.h",
+      "public/vgui/IInput.h",
+      "public/vgui/IInputInternal.h",
+      "public/vgui/ISystem.h",
+      "public/vgui/ILocalize.h",
+      "public/tier1/ilocalize.h",
+      "public/vgui/IHTML.h",
+      "public/vgui/IVguiMatInfo.h",
+      "public/vgui/IVguiMatInfoVar.h",
+      "quality/fixtures/vgui-abi/vgui_abi_v1.h"
     ]
   },
   "loaderExceptions": {

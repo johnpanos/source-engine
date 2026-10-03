@@ -1,0 +1,1543 @@
+{
+  "schema": "vgui-fixture-materials/v1",
+  "generator": "tools/vgui/vgui_fixture_content.py",
+  "note": "Generated, never hand-edited: `record --update` after a reviewed generator change.",
+  "materials": [
+    {
+      "name": "vgui/fixture/quadrants",
+      "texture": "vgui/fixture/quadrants",
+      "blend": "alpha",
+      "width": 64,
+      "height": 64,
+      "frames": 1,
+      "flags": 8972,
+      "purpose": "orientation, texture coordinates and vertex color modulation",
+      "probes": [
+        {
+          "frame": 0,
+          "x": 0,
+          "y": 0,
+          "rgba": [
+            255,
+            0,
+            0,
+            255
+          ]
+        },
+        {
+          "frame": 0,
+          "x": 63,
+          "y": 0,
+          "rgba": [
+            0,
+            255,
+            0,
+            255
+          ]
+        },
+        {
+          "frame": 0,
+          "x": 0,
+          "y": 63,
+          "rgba": [
+            0,
+            0,
+            255,
+            255
+          ]
+        },
+        {
+          "frame": 0,
+          "x": 63,
+          "y": 63,
+          "rgba": [
+            255,
+            255,
+            255,
+            255
+          ]
+        },
+        {
+          "frame": 0,
+          "x": 31,
+          "y": 31,
+          "rgba": [
+            255,
+            0,
+            0,
+            255
+          ]
+        },
+        {
+          "frame": 0,
+          "x": 32,
+          "y": 32,
+          "rgba": [
+            255,
+            255,
+            255,
+            255
+          ]
+        }
+      ]
+    },
+    {
+      "name": "vgui/fixture/alpha_ramp",
+      "texture": "vgui/fixture/alpha_ramp",
+      "blend": "alpha",
+      "width": 256,
+      "height": 4,
+      "frames": 1,
+      "flags": 8972,
+      "purpose": "alpha blending: alpha equals the column",
+      "probes": [
+        {
+          "frame": 0,
+          "x": 0,
+          "y": 0,
+          "rgba": [
+            255,
+            255,
+            255,
+            0
+          ]
+        },
+        {
+          "frame": 0,
+          "x": 128,
+          "y": 2,
+          "rgba": [
+            255,
+            255,
+            255,
+            128
+          ]
+        },
+        {
+          "frame": 0,
+          "x": 255,
+          "y": 3,
+          "rgba": [
+            255,
+            255,
+            255,
+            255
+          ]
+        }
+      ]
+    },
+    {
+      "name": "vgui/fixture/additive",
+      "texture": "vgui/fixture/additive",
+      "blend": "additive",
+      "width": 64,
+      "height": 64,
+      "frames": 1,
+      "flags": 8972,
+      "purpose": "additive blending",
+      "probes": [
+        {
+          "frame": 0,
+          "x": 0,
+          "y": 0,
+          "rgba": [
+            128,
+            64,
+            32,
+            255
+          ]
+        },
+        {
+          "frame": 0,
+          "x": 63,
+          "y": 63,
+          "rgba": [
+            128,
+            64,
+            32,
+            255
+          ]
+        }
+      ]
+    },
+    {
+      "name": "vgui/fixture/opaque",
+      "texture": "vgui/fixture/opaque",
+      "blend": "opaque",
+      "width": 64,
+      "height": 64,
+      "frames": 1,
+      "flags": 780,
+      "purpose": "opaque blend ignores the texture's zero alpha",
+      "probes": [
+        {
+          "frame": 0,
+          "x": 10,
+          "y": 10,
+          "rgba": [
+            40,
+            120,
+            200,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "vgui/fixture/checker",
+      "texture": "vgui/fixture/checker",
+      "blend": "alpha",
+      "width": 64,
+      "height": 64,
+      "frames": 1,
+      "flags": 8973,
+      "purpose": "texel alignment under point sampling",
+      "probes": [
+        {
+          "frame": 0,
+          "x": 0,
+          "y": 0,
+          "rgba": [
+            255,
+            255,
+            255,
+            255
+          ]
+        },
+        {
+          "frame": 0,
+          "x": 1,
+          "y": 0,
+          "rgba": [
+            0,
+            0,
+            0,
+            255
+          ]
+        },
+        {
+          "frame": 0,
+          "x": 0,
+          "y": 1,
+          "rgba": [
+            0,
+            0,
+            0,
+            255
+          ]
+        },
+        {
+          "frame": 0,
+          "x": 63,
+          "y": 63,
+          "rgba": [
+            255,
+            255,
+            255,
+            255
+          ]
+        }
+      ]
+    },
+    {
+      "name": "vgui/fixture/atlas",
+      "texture": "vgui/fixture/atlas",
+      "blend": "alpha",
+      "width": 128,
+      "height": 128,
+      "frames": 1,
+      "flags": 8972,
+      "purpose": "DrawTexturedSubRect: cell (column, row) is (64 c + 32, 64 r + 32, 128)",
+      "probes": [
+        {
+          "frame": 0,
+          "x": 0,
+          "y": 0,
+          "rgba": [
+            32,
+            32,
+            128,
+            255
+          ]
+        },
+        {
+          "frame": 0,
+          "x": 127,
+          "y": 0,
+          "rgba": [
+            224,
+            32,
+            128,
+            255
+          ]
+        },
+        {
+          "frame": 0,
+          "x": 0,
+          "y": 127,
+          "rgba": [
+            32,
+            224,
+            128,
+            255
+          ]
+        },
+        {
+          "frame": 0,
+          "x": 70,
+          "y": 40,
+          "rgba": [
+            160,
+            96,
+            128,
+            255
+          ]
+        }
+      ]
+    },
+    {
+      "name": "vgui/fixture/frames",
+      "texture": "vgui/fixture/frames",
+      "blend": "alpha",
+      "width": 16,
+      "height": 16,
+      "frames": 3,
+      "flags": 8972,
+      "purpose": "DrawSetTextureFrame selects $frame 0, 1 and 2",
+      "probes": [
+        {
+          "frame": 0,
+          "x": 8,
+          "y": 8,
+          "rgba": [
+            255,
+            0,
+            0,
+            255
+          ]
+        },
+        {
+          "frame": 1,
+          "x": 8,
+          "y": 8,
+          "rgba": [
+            0,
+            255,
+            0,
+            255
+          ]
+        },
+        {
+          "frame": 2,
+          "x": 8,
+          "y": 8,
+          "rgba": [
+            0,
+            0,
+            255,
+            255
+          ]
+        }
+      ]
+    },
+    {
+      "name": "vgui/fixture/wide",
+      "texture": "vgui/fixture/wide",
+      "blend": "alpha",
+      "width": 64,
+      "height": 16,
+      "frames": 1,
+      "flags": 8972,
+      "purpose": "a non-square texture: red is 4 x + 2",
+      "probes": [
+        {
+          "frame": 0,
+          "x": 0,
+          "y": 0,
+          "rgba": [
+            2,
+            0,
+            0,
+            255
+          ]
+        },
+        {
+          "frame": 0,
+          "x": 63,
+          "y": 15,
+          "rgba": [
+            254,
+            0,
+            0,
+            255
+          ]
+        },
+        {
+          "frame": 0,
+          "x": 32,
+          "y": 8,
+          "rgba": [
+            130,
+            0,
+            0,
+            255
+          ]
+        }
+      ]
+    },
+    {
+      "name": "vgui/fixture/tinted",
+      "texture": "vgui/fixture/quadrants",
+      "blend": "alpha",
+      "width": 64,
+      "height": 64,
+      "frames": 1,
+      "flags": 8972,
+      "purpose": "material-only state: the quadrants under $color (legacy-material draws)",
+      "probes": []
+    },
+    {
+      "name": "vgui/hud/800corner1",
+      "texture": "vgui/hud/800corner1",
+      "blend": "alpha",
+      "width": 32,
+      "height": 32,
+      "frames": 1,
+      "flags": 8972,
+      "purpose": "rounded panel corner 1 (vgui_controls Panel.h Texture1)",
+      "probes": [
+        {
+          "frame": 0,
+          "x": 0,
+          "y": 0,
+          "rgba": [
+            255,
+            255,
+            255,
+            0
+          ]
+        },
+        {
+          "frame": 0,
+          "x": 31,
+          "y": 31,
+          "rgba": [
+            255,
+            255,
+            255,
+            255
+          ]
+        }
+      ]
+    },
+    {
+      "name": "vgui/hud/800corner2",
+      "texture": "vgui/hud/800corner2",
+      "blend": "alpha",
+      "width": 32,
+      "height": 32,
+      "frames": 1,
+      "flags": 8972,
+      "purpose": "rounded panel corner 2 (vgui_controls Panel.h Texture2)",
+      "probes": [
+        {
+          "frame": 0,
+          "x": 31,
+          "y": 0,
+          "rgba": [
+            255,
+            255,
+            255,
+            0
+          ]
+        },
+        {
+          "frame": 0,
+          "x": 0,
+          "y": 31,
+          "rgba": [
+            255,
+            255,
+            255,
+            255
+          ]
+        }
+      ]
+    },
+    {
+      "name": "vgui/hud/800corner3",
+      "texture": "vgui/hud/800corner3",
+      "blend": "alpha",
+      "width": 32,
+      "height": 32,
+      "frames": 1,
+      "flags": 8972,
+      "purpose": "rounded panel corner 3 (vgui_controls Panel.h Texture3)",
+      "probes": [
+        {
+          "frame": 0,
+          "x": 31,
+          "y": 31,
+          "rgba": [
+            255,
+            255,
+            255,
+            0
+          ]
+        },
+        {
+          "frame": 0,
+          "x": 0,
+          "y": 0,
+          "rgba": [
+            255,
+            255,
+            255,
+            255
+          ]
+        }
+      ]
+    },
+    {
+      "name": "vgui/hud/800corner4",
+      "texture": "vgui/hud/800corner4",
+      "blend": "alpha",
+      "width": 32,
+      "height": 32,
+      "frames": 1,
+      "flags": 8972,
+      "purpose": "rounded panel corner 4 (vgui_controls Panel.h Texture4)",
+      "probes": [
+        {
+          "frame": 0,
+          "x": 0,
+          "y": 31,
+          "rgba": [
+            255,
+            255,
+            255,
+            0
+          ]
+        },
+        {
+          "frame": 0,
+          "x": 31,
+          "y": 0,
+          "rgba": [
+            255,
+            255,
+            255,
+            255
+          ]
+        }
+      ]
+    },
+    {
+      "name": "vgui/fixture/titlebar_icon",
+      "texture": "vgui/fixture/titlebar_icon",
+      "blend": "alpha",
+      "width": 16,
+      "height": 16,
+      "frames": 1,
+      "flags": 8972,
+      "purpose": "Frame system button icon (scheme FrameSystemButton.Icon)",
+      "probes": [
+        {
+          "frame": 0,
+          "x": 0,
+          "y": 0,
+          "rgba": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "frame": 0,
+          "x": 8,
+          "y": 8,
+          "rgba": [
+            230,
+            230,
+            230,
+            255
+          ]
+        }
+      ]
+    },
+    {
+      "name": "vgui/fixture/titlebar_icon_disabled",
+      "texture": "vgui/fixture/titlebar_icon_disabled",
+      "blend": "alpha",
+      "width": 16,
+      "height": 16,
+      "frames": 1,
+      "flags": 8972,
+      "purpose": "Frame system button disabled icon (scheme FrameSystemButton.DisabledIcon)",
+      "probes": [
+        {
+          "frame": 0,
+          "x": 8,
+          "y": 8,
+          "rgba": [
+            110,
+            110,
+            110,
+            255
+          ]
+        }
+      ]
+    },
+    {
+      "name": "vgui/cursors/arrow",
+      "texture": "vgui/cursors/arrow",
+      "blend": "alpha",
+      "width": 32,
+      "height": 32,
+      "frames": 1,
+      "flags": 8972,
+      "purpose": "software cursor 0 (vguimatsurface/Cursor.cpp)",
+      "probes": [
+        {
+          "frame": 0,
+          "x": 0,
+          "y": 0,
+          "rgba": [
+            255,
+            255,
+            255,
+            255
+          ]
+        },
+        {
+          "frame": 0,
+          "x": 16,
+          "y": 8,
+          "rgba": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "frame": 0,
+          "x": 2,
+          "y": 16,
+          "rgba": [
+            255,
+            255,
+            255,
+            255
+          ]
+        },
+        {
+          "frame": 0,
+          "x": 5,
+          "y": 16,
+          "rgba": [
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "vgui/cursors/ibeam",
+      "texture": "vgui/cursors/ibeam",
+      "blend": "alpha",
+      "width": 32,
+      "height": 32,
+      "frames": 1,
+      "flags": 8972,
+      "purpose": "software cursor 1 (vguimatsurface/Cursor.cpp)",
+      "probes": [
+        {
+          "frame": 0,
+          "x": 0,
+          "y": 0,
+          "rgba": [
+            255,
+            255,
+            255,
+            255
+          ]
+        },
+        {
+          "frame": 0,
+          "x": 16,
+          "y": 8,
+          "rgba": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "frame": 0,
+          "x": 4,
+          "y": 16,
+          "rgba": [
+            255,
+            255,
+            255,
+            255
+          ]
+        },
+        {
+          "frame": 0,
+          "x": 7,
+          "y": 16,
+          "rgba": [
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "vgui/cursors/hourglass",
+      "texture": "vgui/cursors/hourglass",
+      "blend": "alpha",
+      "width": 32,
+      "height": 32,
+      "frames": 1,
+      "flags": 8972,
+      "purpose": "software cursor 2 (vguimatsurface/Cursor.cpp)",
+      "probes": [
+        {
+          "frame": 0,
+          "x": 0,
+          "y": 0,
+          "rgba": [
+            255,
+            255,
+            255,
+            255
+          ]
+        },
+        {
+          "frame": 0,
+          "x": 16,
+          "y": 8,
+          "rgba": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "frame": 0,
+          "x": 6,
+          "y": 16,
+          "rgba": [
+            255,
+            255,
+            255,
+            255
+          ]
+        },
+        {
+          "frame": 0,
+          "x": 9,
+          "y": 16,
+          "rgba": [
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "vgui/cursors/crosshair",
+      "texture": "vgui/cursors/crosshair",
+      "blend": "alpha",
+      "width": 32,
+      "height": 32,
+      "frames": 1,
+      "flags": 8972,
+      "purpose": "software cursor 3 (vguimatsurface/Cursor.cpp)",
+      "probes": [
+        {
+          "frame": 0,
+          "x": 0,
+          "y": 0,
+          "rgba": [
+            255,
+            255,
+            255,
+            255
+          ]
+        },
+        {
+          "frame": 0,
+          "x": 16,
+          "y": 8,
+          "rgba": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "frame": 0,
+          "x": 8,
+          "y": 16,
+          "rgba": [
+            255,
+            255,
+            255,
+            255
+          ]
+        },
+        {
+          "frame": 0,
+          "x": 11,
+          "y": 16,
+          "rgba": [
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "vgui/cursors/waitarrow",
+      "texture": "vgui/cursors/waitarrow",
+      "blend": "alpha",
+      "width": 32,
+      "height": 32,
+      "frames": 1,
+      "flags": 8972,
+      "purpose": "software cursor 4 (vguimatsurface/Cursor.cpp)",
+      "probes": [
+        {
+          "frame": 0,
+          "x": 0,
+          "y": 0,
+          "rgba": [
+            255,
+            255,
+            255,
+            255
+          ]
+        },
+        {
+          "frame": 0,
+          "x": 16,
+          "y": 8,
+          "rgba": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "frame": 0,
+          "x": 10,
+          "y": 16,
+          "rgba": [
+            255,
+            255,
+            255,
+            255
+          ]
+        },
+        {
+          "frame": 0,
+          "x": 13,
+          "y": 16,
+          "rgba": [
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "vgui/cursors/up",
+      "texture": "vgui/cursors/up",
+      "blend": "alpha",
+      "width": 32,
+      "height": 32,
+      "frames": 1,
+      "flags": 8972,
+      "purpose": "software cursor 5 (vguimatsurface/Cursor.cpp)",
+      "probes": [
+        {
+          "frame": 0,
+          "x": 0,
+          "y": 0,
+          "rgba": [
+            255,
+            255,
+            255,
+            255
+          ]
+        },
+        {
+          "frame": 0,
+          "x": 16,
+          "y": 8,
+          "rgba": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "frame": 0,
+          "x": 12,
+          "y": 16,
+          "rgba": [
+            255,
+            255,
+            255,
+            255
+          ]
+        },
+        {
+          "frame": 0,
+          "x": 15,
+          "y": 16,
+          "rgba": [
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "vgui/cursors/sizenwse",
+      "texture": "vgui/cursors/sizenwse",
+      "blend": "alpha",
+      "width": 32,
+      "height": 32,
+      "frames": 1,
+      "flags": 8972,
+      "purpose": "software cursor 6 (vguimatsurface/Cursor.cpp)",
+      "probes": [
+        {
+          "frame": 0,
+          "x": 0,
+          "y": 0,
+          "rgba": [
+            255,
+            255,
+            255,
+            255
+          ]
+        },
+        {
+          "frame": 0,
+          "x": 16,
+          "y": 8,
+          "rgba": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "frame": 0,
+          "x": 14,
+          "y": 16,
+          "rgba": [
+            255,
+            255,
+            255,
+            255
+          ]
+        },
+        {
+          "frame": 0,
+          "x": 17,
+          "y": 16,
+          "rgba": [
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "vgui/cursors/sizenesw",
+      "texture": "vgui/cursors/sizenesw",
+      "blend": "alpha",
+      "width": 32,
+      "height": 32,
+      "frames": 1,
+      "flags": 8972,
+      "purpose": "software cursor 7 (vguimatsurface/Cursor.cpp)",
+      "probes": [
+        {
+          "frame": 0,
+          "x": 0,
+          "y": 0,
+          "rgba": [
+            255,
+            255,
+            255,
+            255
+          ]
+        },
+        {
+          "frame": 0,
+          "x": 16,
+          "y": 8,
+          "rgba": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "frame": 0,
+          "x": 16,
+          "y": 16,
+          "rgba": [
+            255,
+            255,
+            255,
+            255
+          ]
+        },
+        {
+          "frame": 0,
+          "x": 19,
+          "y": 16,
+          "rgba": [
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "vgui/cursors/sizewe",
+      "texture": "vgui/cursors/sizewe",
+      "blend": "alpha",
+      "width": 32,
+      "height": 32,
+      "frames": 1,
+      "flags": 8972,
+      "purpose": "software cursor 8 (vguimatsurface/Cursor.cpp)",
+      "probes": [
+        {
+          "frame": 0,
+          "x": 0,
+          "y": 0,
+          "rgba": [
+            255,
+            255,
+            255,
+            255
+          ]
+        },
+        {
+          "frame": 0,
+          "x": 16,
+          "y": 8,
+          "rgba": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "frame": 0,
+          "x": 18,
+          "y": 16,
+          "rgba": [
+            255,
+            255,
+            255,
+            255
+          ]
+        },
+        {
+          "frame": 0,
+          "x": 21,
+          "y": 16,
+          "rgba": [
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "vgui/cursors/sizens",
+      "texture": "vgui/cursors/sizens",
+      "blend": "alpha",
+      "width": 32,
+      "height": 32,
+      "frames": 1,
+      "flags": 8972,
+      "purpose": "software cursor 9 (vguimatsurface/Cursor.cpp)",
+      "probes": [
+        {
+          "frame": 0,
+          "x": 0,
+          "y": 0,
+          "rgba": [
+            255,
+            255,
+            255,
+            255
+          ]
+        },
+        {
+          "frame": 0,
+          "x": 16,
+          "y": 8,
+          "rgba": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "frame": 0,
+          "x": 20,
+          "y": 16,
+          "rgba": [
+            255,
+            255,
+            255,
+            255
+          ]
+        },
+        {
+          "frame": 0,
+          "x": 23,
+          "y": 16,
+          "rgba": [
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "vgui/cursors/sizeall",
+      "texture": "vgui/cursors/sizeall",
+      "blend": "alpha",
+      "width": 32,
+      "height": 32,
+      "frames": 1,
+      "flags": 8972,
+      "purpose": "software cursor 10 (vguimatsurface/Cursor.cpp)",
+      "probes": [
+        {
+          "frame": 0,
+          "x": 0,
+          "y": 0,
+          "rgba": [
+            255,
+            255,
+            255,
+            255
+          ]
+        },
+        {
+          "frame": 0,
+          "x": 16,
+          "y": 8,
+          "rgba": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "frame": 0,
+          "x": 22,
+          "y": 16,
+          "rgba": [
+            255,
+            255,
+            255,
+            255
+          ]
+        },
+        {
+          "frame": 0,
+          "x": 25,
+          "y": 16,
+          "rgba": [
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "vgui/cursors/no",
+      "texture": "vgui/cursors/no",
+      "blend": "alpha",
+      "width": 32,
+      "height": 32,
+      "frames": 1,
+      "flags": 8972,
+      "purpose": "software cursor 11 (vguimatsurface/Cursor.cpp)",
+      "probes": [
+        {
+          "frame": 0,
+          "x": 0,
+          "y": 0,
+          "rgba": [
+            255,
+            255,
+            255,
+            255
+          ]
+        },
+        {
+          "frame": 0,
+          "x": 16,
+          "y": 8,
+          "rgba": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "frame": 0,
+          "x": 24,
+          "y": 16,
+          "rgba": [
+            255,
+            255,
+            255,
+            255
+          ]
+        },
+        {
+          "frame": 0,
+          "x": 27,
+          "y": 16,
+          "rgba": [
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "vgui/cursors/hand",
+      "texture": "vgui/cursors/hand",
+      "blend": "alpha",
+      "width": 32,
+      "height": 32,
+      "frames": 1,
+      "flags": 8972,
+      "purpose": "software cursor 12 (vguimatsurface/Cursor.cpp)",
+      "probes": [
+        {
+          "frame": 0,
+          "x": 0,
+          "y": 0,
+          "rgba": [
+            255,
+            255,
+            255,
+            255
+          ]
+        },
+        {
+          "frame": 0,
+          "x": 16,
+          "y": 8,
+          "rgba": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "frame": 0,
+          "x": 26,
+          "y": 16,
+          "rgba": [
+            255,
+            255,
+            255,
+            255
+          ]
+        },
+        {
+          "frame": 0,
+          "x": 29,
+          "y": 16,
+          "rgba": [
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      ]
+    }
+  ],
+  "files": {
+    "materials/vgui/cursors/arrow.vmt": {
+      "sha256": "4af139f5a5e5d0742a9c9b0f247f89ea33d9a7ea329bf971991f89c30d371ae4",
+      "bytes": 154
+    },
+    "materials/vgui/cursors/arrow.vtf": {
+      "sha256": "7f86f5e418df0db01ad5ec06ecd2ecdbf44623356d3f06035b38cae803dca859",
+      "bytes": 4176
+    },
+    "materials/vgui/cursors/crosshair.vmt": {
+      "sha256": "e83c4e33825e00afd61a3764641bd5fffb11a0817e24b753d63acfaae0daedcb",
+      "bytes": 158
+    },
+    "materials/vgui/cursors/crosshair.vtf": {
+      "sha256": "648bc4bdc23818b72eeaeeb5e71529a2e4c201bd867c8b107b889232d19e39d9",
+      "bytes": 4176
+    },
+    "materials/vgui/cursors/hand.vmt": {
+      "sha256": "3cd49edf12d765ab6f9deedc8e8bff852c6eea32c1eb0dd06d5a48254c25ba1a",
+      "bytes": 153
+    },
+    "materials/vgui/cursors/hand.vtf": {
+      "sha256": "02ab7a3ed526d2fda23bcc8e4db06332fc2f5655ee7fe07391599a9a677a360c",
+      "bytes": 4176
+    },
+    "materials/vgui/cursors/hourglass.vmt": {
+      "sha256": "58633905f4e55da42a7b43dd59eb25ca6a66ab27737ec605f8c2c27598a8d451",
+      "bytes": 158
+    },
+    "materials/vgui/cursors/hourglass.vtf": {
+      "sha256": "75aa45a8ecb3e077f1d47fed7194d519126bd1a6146735cc7d5a3ce79e1398f4",
+      "bytes": 4176
+    },
+    "materials/vgui/cursors/ibeam.vmt": {
+      "sha256": "af9099a22b8d5b5e84e22ab5db84e76923f1c22c162ca4752459a5bc93637647",
+      "bytes": 154
+    },
+    "materials/vgui/cursors/ibeam.vtf": {
+      "sha256": "2a1863034f7f2e2555ebd15009dadad69b45960147ceb79bb3d0504002f4eff4",
+      "bytes": 4176
+    },
+    "materials/vgui/cursors/no.vmt": {
+      "sha256": "b2d7c93d0715312098d14b4172417b1758322b9fba4c2a3620afa738ad666f32",
+      "bytes": 151
+    },
+    "materials/vgui/cursors/no.vtf": {
+      "sha256": "5a25558b97ae909300e00864d5191bd7200a0c2372f331cd2b3f64423cb23e93",
+      "bytes": 4176
+    },
+    "materials/vgui/cursors/sizeall.vmt": {
+      "sha256": "ba190c39bf0406c1840159d32a6cf30218fbfd3cd1249ebae8e32e744c97edf2",
+      "bytes": 156
+    },
+    "materials/vgui/cursors/sizeall.vtf": {
+      "sha256": "316322a9e0cbe1ca46bde5cfc74d4558ff1e73610904d2f4c9eef15d503300e6",
+      "bytes": 4176
+    },
+    "materials/vgui/cursors/sizenesw.vmt": {
+      "sha256": "9f372469ca189c0e94d180035d09451cee4c09d375498bbe8c0b466185de9840",
+      "bytes": 157
+    },
+    "materials/vgui/cursors/sizenesw.vtf": {
+      "sha256": "2fcf8babe6ecc933eb167c19bdc97ef48082352bea45886108b9fe187903774b",
+      "bytes": 4176
+    },
+    "materials/vgui/cursors/sizens.vmt": {
+      "sha256": "57e91471314b11aeba3c04c227f8047840a7c6d8d1b5e2439950c11199e0d20d",
+      "bytes": 155
+    },
+    "materials/vgui/cursors/sizens.vtf": {
+      "sha256": "0f9c7fd84ccad61cb7c0793b182a9c3e26c949ed95dc47340d7875166f803fce",
+      "bytes": 4176
+    },
+    "materials/vgui/cursors/sizenwse.vmt": {
+      "sha256": "6bde2b26e7eb888782daac0612762173c9745e78482b8c2bd8c47c8d2404aeab",
+      "bytes": 157
+    },
+    "materials/vgui/cursors/sizenwse.vtf": {
+      "sha256": "62eaca92f424899a8b6832aa52cc078a890ea7786453253541365e401b322628",
+      "bytes": 4176
+    },
+    "materials/vgui/cursors/sizewe.vmt": {
+      "sha256": "15d5c65da2608ed7f7f066f8215e35a45e21f16d2dac26aff561d81ebf0d1154",
+      "bytes": 155
+    },
+    "materials/vgui/cursors/sizewe.vtf": {
+      "sha256": "baa92366b972885c66eada139f390f9de5c1ca5873a51e2be06b1640db471a29",
+      "bytes": 4176
+    },
+    "materials/vgui/cursors/up.vmt": {
+      "sha256": "5c2aa51ac0c13c99146eab500487d925519ab945e57e39f75584b02141a9efe7",
+      "bytes": 151
+    },
+    "materials/vgui/cursors/up.vtf": {
+      "sha256": "f6feecd65fc7ef5fea0f7d6d469898d7cafd61cc48ea591b0e1e0ed895bd6ac9",
+      "bytes": 4176
+    },
+    "materials/vgui/cursors/waitarrow.vmt": {
+      "sha256": "40d08aa41019ff54ca73fd8ac77ecefb3ebcb30c72d70d8d1b6ee7c3f80cf947",
+      "bytes": 158
+    },
+    "materials/vgui/cursors/waitarrow.vtf": {
+      "sha256": "7b488b04009cccaf67b784ae637fefbbe5d9cbf11fe6f52018407ac32514bcf9",
+      "bytes": 4176
+    },
+    "materials/vgui/fixture/additive.vmt": {
+      "sha256": "1d42cd0c3ffe12501cbcf90cb64559e1391bab0cd996c825e7c95f78fd354b0d",
+      "bytes": 154
+    },
+    "materials/vgui/fixture/additive.vtf": {
+      "sha256": "b28d946197c298c2160e349807cf9c82831fee198e14281104201d32f2204c45",
+      "bytes": 16464
+    },
+    "materials/vgui/fixture/alpha_ramp.vmt": {
+      "sha256": "bd793536e02f9aa126f96e8465d2f98309be6a98cec536a64e0544eaf6752f4d",
+      "bytes": 159
+    },
+    "materials/vgui/fixture/alpha_ramp.vtf": {
+      "sha256": "dc2c812aa79b61ecd878ce069d06062e21145a8ccbe1873142e5a546897abe3d",
+      "bytes": 4176
+    },
+    "materials/vgui/fixture/atlas.vmt": {
+      "sha256": "822272773186ee93749bac2739acbec3d27bcd1c65e7c0a05463e4b7af334cc8",
+      "bytes": 154
+    },
+    "materials/vgui/fixture/atlas.vtf": {
+      "sha256": "95f88f73ac4fda1c5024dd6bfaaf262e1799b2f7a691d14b79d96eef62fd89d4",
+      "bytes": 65616
+    },
+    "materials/vgui/fixture/checker.vmt": {
+      "sha256": "4197bed465cdf0c86450bbe79e71bf3c01ffc2f4e69063f67a4a067fd556dd04",
+      "bytes": 156
+    },
+    "materials/vgui/fixture/checker.vtf": {
+      "sha256": "e659f020c498ff9887ec8e30d7f4e10b0c766ca32df1217d700da2c7a92b3f74",
+      "bytes": 16464
+    },
+    "materials/vgui/fixture/frames.vmt": {
+      "sha256": "6d493cc25a96d93be4914ba810afba14c0c41deee2d197d9c15941faa7067f1c",
+      "bytes": 155
+    },
+    "materials/vgui/fixture/frames.vtf": {
+      "sha256": "0e1bd3aa190f759a4093751b77ae61c58e57eb25690620b9d4e95bc42d6a6542",
+      "bytes": 3152
+    },
+    "materials/vgui/fixture/opaque.vmt": {
+      "sha256": "4e9ae1f880dcd8a1560ab0bf4001546d6e08ef0e0f87bf936738d3ba75a676e4",
+      "bytes": 115
+    },
+    "materials/vgui/fixture/opaque.vtf": {
+      "sha256": "09f8523cbf790876017934570ace281360641b659f58661280622ca5021128c1",
+      "bytes": 16464
+    },
+    "materials/vgui/fixture/quadrants.vmt": {
+      "sha256": "1f8224574fc6080ea114c6bb60dbbc23228ec9b7fe3c2046eadb4529fff0fce0",
+      "bytes": 158
+    },
+    "materials/vgui/fixture/quadrants.vtf": {
+      "sha256": "d1b13a545ce10f7a48ad3a498099bad215cf56ceb03c6ca28a3008e2b3ab0148",
+      "bytes": 16464
+    },
+    "materials/vgui/fixture/tinted.vmt": {
+      "sha256": "bf25eeaeea8682a5fdbeb67180be2cf91c1612fb58e55174259392cdf949ae48",
+      "bytes": 182
+    },
+    "materials/vgui/fixture/titlebar_icon.vmt": {
+      "sha256": "799f299770ceab06258c7f38e06d926c11e05512b1b4fdba1111ba015499f4a7",
+      "bytes": 162
+    },
+    "materials/vgui/fixture/titlebar_icon.vtf": {
+      "sha256": "9ff70d1a0a219acc3b6ceed5d4e716939a5bceae5829512272919ab5f21519a3",
+      "bytes": 1104
+    },
+    "materials/vgui/fixture/titlebar_icon_disabled.vmt": {
+      "sha256": "389838448275363cd3cfc2666d569b8591e6f50d8ff1c30fdee4e53f2b7d9cdb",
+      "bytes": 171
+    },
+    "materials/vgui/fixture/titlebar_icon_disabled.vtf": {
+      "sha256": "25bf7df3a75c5bc0917ab45799711d54a458bb6666360791b925c81228a58d40",
+      "bytes": 1104
+    },
+    "materials/vgui/fixture/wide.vmt": {
+      "sha256": "0bf2cb30dceea120ef18bd1bfe67ec3ec21ffbfcbdc38131c1fe6f200a34f097",
+      "bytes": 153
+    },
+    "materials/vgui/fixture/wide.vtf": {
+      "sha256": "e7735c01c2db287494204bb7492cf943ea1452342ba83bcf574ae4dbf241620c",
+      "bytes": 4176
+    },
+    "materials/vgui/hud/800corner1.vmt": {
+      "sha256": "c36c4b31b09a488faf3dd03b17efeab9dd359624d133949b98b4a981f6b5eb5b",
+      "bytes": 155
+    },
+    "materials/vgui/hud/800corner1.vtf": {
+      "sha256": "639adf3c7bbd0e51f100b4f62d81c3b73bd631c6cd3af714054c79767b1b1fc3",
+      "bytes": 4176
+    },
+    "materials/vgui/hud/800corner2.vmt": {
+      "sha256": "3829063028a4e7029c4142e3cdca879a47b83b613edfaea2662ea0e770ebd262",
+      "bytes": 155
+    },
+    "materials/vgui/hud/800corner2.vtf": {
+      "sha256": "b6a562bdb59c36dda764e5bda76644061871237673b6262d1e99853b42541d56",
+      "bytes": 4176
+    },
+    "materials/vgui/hud/800corner3.vmt": {
+      "sha256": "ddd954bc7b64319bd06fc8be4d6201825c379e0a6ae203e4093dc81c526c6f2f",
+      "bytes": 155
+    },
+    "materials/vgui/hud/800corner3.vtf": {
+      "sha256": "183c77e2b4758f703edf702becb052786f058559ac19897191bba5ab6e490223",
+      "bytes": 4176
+    },
+    "materials/vgui/hud/800corner4.vmt": {
+      "sha256": "a2c125226f938185cc3387d36553d40bd737285c52369e4551a137271bf60c69",
+      "bytes": 155
+    },
+    "materials/vgui/hud/800corner4.vtf": {
+      "sha256": "a0eb58696055245458fbc0db8641a08f2eba7b5022cfc814eee443b90dc2ce10",
+      "bytes": 4176
+    }
+  }
+}
