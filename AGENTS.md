@@ -1069,8 +1069,9 @@ Keep the table concise and link details below or from the domain progress file.
   `tier1/KeyValues.h` was fixed on the way. The UI counters
   (`VGuiSurfaceStats001`: draws, vertices, uploads, glyphs, CPU copies and
   paint time per frame, in the RFC 0014 cost overlay and
-  `vgui_surface_stats`) are installed with their suites. They have not been
-  measured in a running game: this session had no product build or content.
+  `vgui_surface_stats`) are installed with their suites, and the Waf build
+  links them into `vguimatsurface` and `engine` (clang 18). They have not
+  been measured in a running game: no game content was available.
   Budget rows and the rest of V0 are open; no row changes state
   ([guard](RFC/0010-progress.md#v0-vgui-abi-guard-legacyvgui-abi-2026-10-03),
   [counters](RFC/0010-progress.md#v0-ui-counters-vguisurfacestats001-2026-10-03)).

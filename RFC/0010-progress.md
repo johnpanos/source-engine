@@ -178,19 +178,40 @@ when no frame passed or any counter went backwards.
 | `vgui.surface_stats` | 47 checks on g++ and clang++: exact means for every counter; no rate (and zeroed output) without frames or when any one of the 14 counters goes backwards; exact counts, no bytes for empty or negative sizes, the paint timer, and four threads of concurrent updates counted exactly |
 | `vgui.surface_stats.sensitivity` | 6 of 6: five wrong helpers are each detected (dividing by passes, a counter missing from the backwards check, a rate without frames, 1000-byte KiB, stale output) and the real helper passes |
 | ThreadSanitizer | the positive suite built with g++ `-fsanitize=thread`: 47 of 47, no reports. clang's TSan runtime is not installed here |
-| Compile | `MatSystemSurface.cpp`, `TextureDictionary.cpp`, `FontTextureCache.cpp`, `SurfaceStats.cpp` and `engine/render_core_cost_panel.cpp` compile with clang++ 18 and the client's Linux defines and cxx20-permissive flags |
+| Compile | `MatSystemSurface.cpp`, `TextureDictionary.cpp`, `FontTextureCache.cpp`, `SurfaceStats.cpp` and `engine/render_core_cost_panel.cpp` compile with clang++ 18 and the client's Linux defines and cxx20-permissive flags; the Waf product build below links them |
 | `vgui.ui_scale`, `vgui.valvefont`, `legacy.vgui-abi` | unchanged, pass |
 | archlint `check --all`, `baseline --verify`; stylelint `--changed` | pass; 0 failures |
 
+### Product build (2026-10-03, after network access was granted)
+
+- **Build.** Waf configure (`-T release --render-backend=legacy`, Linux
+  x86_64, clang 18.1.3) and `waf build --targets=vguimatsurface,engine`
+  succeed: 655 tasks, with `libvguimatsurface.so` and `libengine.so`
+  linked. The libraries carry `VGuiSurfaceStats001`, the
+  `vgui_surface_stats` command and the overlay's VGUI lines.
+- **g++ 13.3 fails in `tier0`, before any changed file.** The cause is
+  `public/tier0/threadtools.h:1173`, a template-id used as a constructor
+  name, which C++20 rejects. That line is untouched here; the declared
+  reference gcc is 16.2.1.
+- **Pinned shader toolchain.** GitHub archive downloads are refused in this
+  session, but the git proxy serves clones of public repositories. Each
+  pinned commit of shaderc, glslang, SPIRV-Tools, SPIRV-Headers and
+  SPIRV-Cross was cloned and its archive regenerated with `git archive
+  --format=tar` and `gzip -n -6`. All five match their pinned SHA-256 and
+  size byte for byte, and `shader_toolchain.py` verified them again before
+  building. `shader.toolchain-pin` passes (186 checks). No pin was changed.
+- **Submodules.** `ivp`, `box3d`, `thirdparty` and `lib` were not checked
+  out in this container. Initializing them at their recorded commits fixed
+  configure, and `archlint inventory --verify` now passes. The inventory
+  failure recorded above for the ABI guard came from the missing `box3d`
+  checkout, not from the tree.
+
 ### Unavailable here
 
-- **No Waf build of the product.** Configure needs the pinned shader
-  toolchain (RFC 0016 K4), and this session's network policy denies its
-  source archives on github.com (HTTP 403 from the egress proxy). The
-  changed sources were compiled directly with the flags the build uses, as
-  recorded above; nothing was linked.
-- **No game content.** Without a product build and content, the counts
-  have not been observed in a running game, so no baseline numbers exist yet.
+- **No game content.** Portal and Portal 2 content is licensed and staged
+  from a local Steam install (`quality/baseline.json` `content`), and none
+  is present in this container. The counts therefore have not been observed
+  in a running game, and no baseline numbers exist yet.
 - **No budget rows.** The rows for `quality/budgets/render-v1.json` are set
   from the first measurement of the corpus screens. They are not invented
   here.
