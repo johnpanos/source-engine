@@ -19,6 +19,7 @@
 #include "tier1/convar.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -48,6 +49,7 @@ struct RenderCoreHostState
 	uint64 frame = 0;
 	uint64 failedFrames = 0;
 	uint64 unmatchedViews = 0;
+	float temporalScale = 2.0f / 3.0f;
 };
 
 RenderCoreHostState &Host()
@@ -101,6 +103,10 @@ ConVar cl_render_debug_cost( "cl_render_debug_cost", "0", FCVAR_CHEAT,
 ConVar cl_render_debug_stats( "cl_render_debug_stats", "0", 0,
     "Print the render core's per-pass GPU times (cl_render_debug_gpu_timers) every second." );
 // The render core's quality settings (RFC 0016 K12; the video options).
+ConVar r_temporal_scale( "r_temporal_scale", "0.6666666667", FCVAR_ARCHIVE,
+    "FSR render size relative to output: 1 native AA, 0.666667 quality, "
+    "0.588235 balanced, 0.5 performance. Requires the FSR provider at startup.",
+    true, 0.5f, true, 1.0f );
 ConVar r_core_dynamic_draws( "r_core_dynamic_draws", "0", FCVAR_CHEAT,
     "Experimental rendercore dynamic-material handoff. Explicit opt-in only; "
     "whole-cohort queued rendering and image acceptance are incomplete." );
@@ -331,6 +337,13 @@ void RenderCoreHost_BeginFrame()
 	RenderCoreHostState &host = Host();
 	if ( !host.bound || host.inFrame )
 		return;
+	const float temporalScale = r_temporal_scale.GetFloat();
+	if ( host.world && std::isfinite( temporalScale ) && temporalScale >= 0.5f &&
+	     temporalScale <= 1.0f && temporalScale != host.temporalScale )
+	{
+		host.world->ResetTemporalHistory();
+		host.temporalScale = temporalScale;
+	}
 	render::frame::FrameDesc desc;
 	desc.frame = ++host.frame;
 	desc.width = videomode ? (uint32)MAX( 1, videomode->GetModeWidth() ) : 1u;
@@ -634,6 +647,7 @@ public:
 			Host().world->ResetTemporalHistory();
 	}
 	bool Enabled() const override { return Host().world && Host().world->TemporalEnabled(); }
+	float RenderScale() const override { return Host().temporalScale; }
 	bool Reconstruct( int x, int y, int rw, int rh, int ow, int oh, float dt ) override
 	{
 		return Host().world && Host().world->ReconstructTemporal( x, y, rw, rh, ow, oh, dt );

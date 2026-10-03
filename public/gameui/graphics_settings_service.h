@@ -21,13 +21,14 @@ struct GraphicsSettings
 	int displayIndex = 0;
 	float uiScale = 0.0f;
 	int powerSaving = 0;
+	float temporalScale = 1.0f;
 
 	bool operator==( const GraphicsSettings &other ) const
 	{
 		return width == other.width && height == other.height && windowed == other.windowed &&
 		       borderless == other.borderless && vrEnabled == other.vrEnabled &&
 		       displayIndex == other.displayIndex && uiScale == other.uiScale &&
-		       powerSaving == other.powerSaving;
+		       powerSaving == other.powerSaving && temporalScale == other.temporalScale;
 	}
 };
 
@@ -64,7 +65,9 @@ public:
 	{
 		if ( m_state == State::Uninitialized || draft.width <= 0 || draft.height <= 0 ||
 		     ( draft.borderless && !draft.windowed ) || !std::isfinite( draft.uiScale ) ||
-		     draft.uiScale < 0.0f || ( draft.powerSaving != 0 && draft.powerSaving != 1 ) )
+		     draft.uiScale < 0.0f || !std::isfinite( draft.temporalScale ) ||
+		     draft.temporalScale < 0.5f || draft.temporalScale > 1.0f ||
+		     ( draft.powerSaving != 0 && draft.powerSaving != 1 ) )
 			return false;
 
 		m_draft = draft;

@@ -16,6 +16,7 @@
 #include "modes.h"
 #include "videocfg/videocfg.h"
 #include "vgenericconfirmation.h"
+#include "render_stage_marks.h"
 
 #include "materialsystem/materialsystem_config.h"
 
@@ -33,6 +34,11 @@ using namespace BaseModUI;
 #define VIDEO_ANTIALIAS_COMMAND_PREFIX "_antialias"
 #define VIDEO_RESOLUTION_COMMAND_PREFIX "_res"
 #define VIDEO_UISCALE_COMMAND_PREFIX "_uiscale"
+#define VIDEO_TEMPORALSCALE_COMMAND_PREFIX "_temporalscale"
+
+static const float s_TemporalScales[] = { 1.0f, 2.0f / 3.0f, 1.0f / 1.7f, 0.5f };
+static const char *s_TemporalScaleNames[] = {
+    "Native AA (100%)", "Quality (67%)", "Balanced (59%)", "Performance (50%)" };
 
 // The UI scale row (ui_scale; 0 follows the display's scale). The shipped
 // video.res has no such row, so PreApplyControlSettings adds it.
@@ -84,6 +90,8 @@ m_autodelete_pResourceLoadConditions( (KeyValues*) NULL )
 	m_drpPowerSavingsMode = NULL;
 	m_drpSplitScreenDirection = NULL;
 	m_drpUIScale = NULL;
+	m_drpTemporalScale = NULL;
+	m_flTemporalScale = 1.0f;
 	m_flUIScale = 0.0f;
 	m_btnAdvanced = NULL;
 
@@ -109,6 +117,8 @@ m_autodelete_pResourceLoadConditions( (KeyValues*) NULL )
 	CGameUIConVarRef powerSaving( "mat_powersavingsmode" );
 	current.uiScale = uiScale.IsValid() ? uiScale.GetFloat() : 0.0f;
 	current.powerSaving = powerSaving.IsValid() ? clamp( powerSaving.GetInt(), 0, 1 ) : 0;
+	CGameUIConVarRef temporalScale( "r_temporal_scale" );
+	current.temporalScale = temporalScale.IsValid() ? temporalScale.GetFloat() : 1.0f;
 	m_GraphicsSettings.Begin( current );
 
 	GetRecommendedSettings();
@@ -141,6 +151,8 @@ void Video::ApplySchemeSettings( vgui::IScheme *pScheme )
 	m_drpPowerSavingsMode = dynamic_cast< BaseModHybridButton* >( FindChildByName( "DrpPowerSavingsMode" ) );
 	m_drpSplitScreenDirection = dynamic_cast< BaseModHybridButton* >( FindChildByName( "DrpSplitScreenDirection" ) );
 	m_drpUIScale = dynamic_cast<BaseModHybridButton *>( FindChildByName( "DrpUIScale" ) );
+	m_drpTemporalScale =
+	    dynamic_cast<BaseModHybridButton *>( FindChildByName( "DrpTemporalScale" ) );
 
 	SetupState( false );
 
@@ -291,6 +303,8 @@ void Video::SetupState( bool bUseRecommendedSettings )
 		m_nPowerSavingsMode = clamp( mat_powersavingsmode.GetInt(), 0, 1 );
 		CGameUIConVarRef ui_scale( "ui_scale" );
 		m_flUIScale = ui_scale.IsValid() ? ui_scale.GetFloat() : 0.0f;
+		CGameUIConVarRef temporalScale( "r_temporal_scale" );
+		m_flTemporalScale = temporalScale.IsValid() ? temporalScale.GetFloat() : 1.0f;
 	}
 	else
 	{
@@ -305,6 +319,7 @@ void Video::SetupState( bool bUseRecommendedSettings )
 #endif
 		m_nPowerSavingsMode = m_nRecommendedPowerSavingsMode;
 		m_flUIScale = 0.0f;
+		m_flTemporalScale = 2.0f / 3.0f;
 
 		m_bDirtyValues = true;
 		m_bPreferRecommendedResolution = true;
@@ -360,6 +375,7 @@ void Video::SetupState( bool bUseRecommendedSettings )
 
 	SetPowerSavingsState();
 	SetUIScaleState();
+	SetTemporalScaleState();
 }
 
 void Video::OnKeyCodePressed(KeyCode code)
@@ -498,6 +514,17 @@ void Video::OnCommand( const char *command )
 		{
 			m_flUIScale = s_UIScaleChoices[nChoice];
 			m_bDirtyValues = true;
+		}
+	}
+	else if ( StringHasPrefix( command, VIDEO_TEMPORALSCALE_COMMAND_PREFIX ) )
+	{
+		const int choice = atoi( command + Q_strlen( VIDEO_TEMPORALSCALE_COMMAND_PREFIX ) );
+		if ( choice >= 0 && choice < ARRAYSIZE( s_TemporalScales ) && g_pRenderTemporalViews &&
+		     g_pRenderTemporalViews->Enabled() )
+		{
+			m_flTemporalScale = s_TemporalScales[choice];
+			m_bDirtyValues = true;
+			SetTemporalScaleState();
 		}
 	}
 	else if ( !V_stricmp( command, "ShowAdvanced" ) )
@@ -848,6 +875,7 @@ void Video::PrepareResolutionList()
 
 	m_iResolutionWidth = m_nResolutionModes[selectedItemID].m_nWidth;
 	m_iResolutionHeight = m_nResolutionModes[selectedItemID].m_nHeight;
+	SetTemporalScaleState();
 }
 
 // Portal's command adapter; the session owns draft/apply/save transitions.
@@ -858,6 +886,11 @@ public:
 	{
 		CGameUIConVarRef powerSaving( "mat_powersavingsmode" );
 		CGameUIConVarRef uiScale( "ui_scale" );
+		CGameUIConVarRef temporalScale( "r_temporal_scale" );
+		if ( from.temporalScale != to.temporalScale &&
+		     ( !temporalScale.IsValid() || !g_pRenderTemporalViews ||
+		         !g_pRenderTemporalViews->Enabled() ) )
+			return false;
 		if ( ( from.powerSaving != to.powerSaving && !powerSaving.IsValid() ) ||
 		     ( from.uiScale != to.uiScale && !uiScale.IsValid() ) )
 			return false;
@@ -875,6 +908,8 @@ public:
 			powerSaving.SetValue( to.powerSaving );
 		if ( from.uiScale != to.uiScale )
 			uiScale.SetValue( to.uiScale );
+		if ( from.temporalScale != to.temporalScale )
+			temporalScale.SetValue( to.temporalScale );
 		return true;
 	}
 
@@ -897,6 +932,8 @@ bool Video::ApplyChanges()
 		desired.windowed = m_bWindowed;
 		desired.borderless = m_bNoBorder;
 		desired.powerSaving = m_nPowerSavingsMode;
+		if ( g_pRenderTemporalViews && g_pRenderTemporalViews->Enabled() )
+			desired.temporalScale = m_flTemporalScale;
 		// Keep an exact console value when the selected menu choice is its nearest label.
 		if ( GetUIScaleChoice( desired.uiScale ) != GetUIScaleChoice( m_flUIScale ) )
 			desired.uiScale = m_flUIScale;
@@ -981,6 +1018,37 @@ void Video::ShowPowerSavingsWarning()
 void Video::AcceptPowerSavingsWarningCallback()
 {
 	m_bAcceptPowerSavingsWarning = true;
+}
+
+void Video::SetTemporalScaleState()
+{
+	if ( !m_drpTemporalScale )
+		return;
+	const bool available = g_pRenderTemporalViews && g_pRenderTemporalViews->Enabled();
+	m_drpTemporalScale->SetEnabled( available );
+	if ( !available )
+	{
+		m_drpTemporalScale->ModifySelectionString(
+		    "_temporalscale0", "Unavailable in this session" );
+		m_drpTemporalScale->SetCurrentSelection( "Unavailable in this session" );
+		return;
+	}
+	int selected = 0;
+	for ( int i = 1; i < ARRAYSIZE( s_TemporalScales ); ++i )
+		if ( fabsf( m_flTemporalScale - s_TemporalScales[i] ) <
+		     fabsf( m_flTemporalScale - s_TemporalScales[selected] ) )
+			selected = i;
+	for ( int i = 0; i < ARRAYSIZE( s_TemporalScales ); ++i )
+	{
+		char text[96];
+		const float scale = i == selected ? m_flTemporalScale : s_TemporalScales[i];
+		V_snprintf( text, sizeof( text ), "%s: %d x %d", s_TemporalScaleNames[i],
+		    int( m_iResolutionWidth * scale ), int( m_iResolutionHeight * scale ) );
+		m_drpTemporalScale->ModifySelectionString(
+		    CFmtStr( "%s%d", VIDEO_TEMPORALSCALE_COMMAND_PREFIX, i ), text );
+		if ( i == selected )
+			m_drpTemporalScale->SetCurrentSelection( text );
+	}
 }
 
 void Video::SetUIScaleState()
@@ -1076,7 +1144,22 @@ void Video::PreApplyControlSettings( KeyValues *pResourceData )
 
 	pAbove->SetString( "navDown", "DrpUIScale" );
 	pAdvanced->SetString( "navUp", "DrpUIScale" );
-	const int nAdvancedY = MoveRowBelow( pAbove, pScale, pAdvanced );
+	MoveRowBelow( pAbove, pScale, pAdvanced );
+
+	KeyValues *pTemporal = pScale->MakeCopy();
+	pTemporal->SetName( "DrpTemporalScale" );
+	pTemporal->SetString( "fieldName", "DrpTemporalScale" );
+	pTemporal->SetString( "labelText", "FSR render scale" );
+	pTemporal->SetString( "navUp", "DrpUIScale" );
+	KeyValues *pTemporalList = pTemporal->FindKey( "list" );
+	pTemporalList->Clear();
+	for ( int i = 0; i < ARRAYSIZE( s_TemporalScales ); ++i )
+		pTemporalList->SetString(
+		    s_TemporalScaleNames[i], CFmtStr( "%s%d", VIDEO_TEMPORALSCALE_COMMAND_PREFIX, i ) );
+	pResourceData->AddSubKey( pTemporal );
+	pScale->SetString( "navDown", "DrpTemporalScale" );
+	pAdvanced->SetString( "navUp", "DrpTemporalScale" );
+	const int nAdvancedY = MoveRowBelow( pScale, pTemporal, pAdvanced );
 
 	// The frame's size is in dialog tiles (Dialog.TileHeight, the same
 	// proportional units as the rows).
@@ -1099,6 +1182,34 @@ void Video::PreApplyControlSettings( KeyValues *pResourceData )
 		if ( nTiles > pFrame->GetInt( "tall" ) )
 			pFrame->SetInt( "tall", nTiles );
 	}
+}
+
+bool Video::CheckTemporalScale( int choice )
+{
+	if ( !m_drpTemporalScale )
+		return false;
+	if ( choice >= 0 )
+	{
+		OnCommand( CFmtStr( "%s%d", VIDEO_TEMPORALSCALE_COMMAND_PREFIX, choice ) );
+		if ( !ApplyChanges() )
+			return false;
+	}
+	Msg( "video temporal scale: enabled=%d, selected=%s, applied=%.8f\n",
+	    int( m_drpTemporalScale->IsEnabled() ), m_drpTemporalScale->GetCurrentSelection(),
+	    m_GraphicsSettings.Applied().temporalScale );
+	return true;
+}
+
+CON_COMMAND_F( ui_show_video, "Open video settings; [0..3] selects and applies the FSR scale row",
+    FCVAR_CHEAT )
+{
+	CBaseModPanel &panel = CBaseModPanel::GetSingleton();
+	Video *dialog = static_cast<Video *>( panel.GetWindow( WT_VIDEO ) );
+	if ( !dialog )
+		dialog = static_cast<Video *>(
+		    panel.OpenWindow( WT_VIDEO, panel.GetWindow( panel.GetActiveWindowType() ) ) );
+	if ( !dialog || !dialog->CheckTemporalScale( args.ArgC() > 1 ? atoi( args[1] ) : -1 ) )
+		Msg( "video temporal scale: not laid out or apply failed; retry after a wait\n" );
 }
 
 void Video::SetPowerSavingsState()

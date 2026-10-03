@@ -10,6 +10,8 @@ public:
 	virtual void SelectView( unsigned long long identity ) = 0;
 	virtual void ResetHistory() = 0;
 	virtual bool Enabled() const = 0;
+	// Scale selected at the frame boundary, relative to the output viewport.
+	virtual float RenderScale() const = 0;
 	virtual bool Reconstruct( int x, int y, int renderWidth, int renderHeight, int outputWidth,
 	    int outputHeight, float deltaMilliseconds ) = 0;
 

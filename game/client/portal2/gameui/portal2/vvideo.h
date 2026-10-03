@@ -34,6 +34,8 @@ public:
 	Video(vgui::Panel *parent, const char *panelName);
 	~Video();
 
+	// Native menu smoke oracle: uses the same selection/apply path as the row.
+	bool CheckTemporalScale( int choice );
 	void SetDefaults();
 	void DiscardChangesAndClose();
 	void AcceptPowerSavingsWarningCallback( void );
@@ -57,6 +59,7 @@ private:
 	void	ShowPowerSavingsWarning();
 	void	SetPowerSavingsState();
 	void SetUIScaleState();
+	void SetTemporalScaleState();
 
 private:
 	int					m_nNumResolutionModes;
@@ -71,6 +74,7 @@ private:
 	BaseModHybridButton		*m_drpPowerSavingsMode;
 	BaseModHybridButton		*m_drpSplitScreenDirection;
 	BaseModHybridButton *m_drpUIScale;
+	BaseModHybridButton *m_drpTemporalScale;
 	BaseModHybridButton		*m_btnAdvanced;
 	
 	bool	m_bDirtyValues;
@@ -83,6 +87,7 @@ private:
 	bool	m_bWindowed;
 	bool	m_bNoBorder;
 	int		m_nPowerSavingsMode;
+	float m_flTemporalScale;
 	float m_flUIScale; // ui_scale; 0 follows the display's scale
 
 	int		m_iCurrentResolutionWidth;

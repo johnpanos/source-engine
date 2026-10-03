@@ -14,6 +14,7 @@
 #include "iclientmode.h"
 #include "prediction.h"
 #include "viewrender.h"
+#include "render_stage_marks.h"
 #include "c_te_legacytempents.h"
 #include "cl_mat_stub.h"
 #include "tier0/vprof.h"
@@ -1150,7 +1151,9 @@ void CViewRender::Render( vrect_t *rect )
 
 	    ToolFramework_AdjustEngineViewport( vr.x, vr.y, vr.width, vr.height );
 
-	    float flViewportScale = mat_viewportscale.GetFloat();
+		float flViewportScale = g_pRenderTemporalViews && g_pRenderTemporalViews->Enabled()
+		                            ? g_pRenderTemporalViews->RenderScale()
+		                            : mat_viewportscale.GetFloat();
 
 		view.m_nUnscaledX = vr.x;
 		view.m_nUnscaledY = vr.y;

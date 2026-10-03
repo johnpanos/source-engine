@@ -5,6 +5,7 @@
 
 #include <cstdio>
 #include <limits>
+#include <initializer_list>
 
 #define CHECK( expression )                                                                        \
 	do                                                                                             \
@@ -120,5 +121,25 @@ int main()
 	draft.borderless = true;
 	CHECK( service.Stage( draft ) && service.Apply( backend ) && service.Save( backend ) );
 	CHECK( backend.previous == decorated && backend.lastApplied == draft );
+	// Temporal quality is staged with the display mode; cancellation never applies it.
+	service.Begin( original );
+	draft = original;
+	draft.width = 1920;
+	draft.height = 1080;
+	draft.temporalScale = 2.0f / 3.0f;
+	CHECK( service.Stage( draft ) );
+	service.Cancel();
+	CHECK( service.Draft() == original );
+	CHECK( service.Stage( draft ) && service.Apply( backend ) && service.Save( backend ) );
+	CHECK( int( backend.lastApplied.width * backend.lastApplied.temporalScale ) == 1280 );
+	CHECK( int( backend.lastApplied.height * backend.lastApplied.temporalScale ) == 720 );
+	for ( float invalidScale : { 0.0f, 0.49f, 1.01f, std::numeric_limits<float>::infinity(),
+	          std::numeric_limits<float>::quiet_NaN() } )
+	{
+		invalid = draft;
+		invalid.temporalScale = invalidScale;
+		CHECK( !service.Stage( invalid ) );
+		CHECK( service.Draft() == draft );
+	}
 	return testing::ReportConformance( checks, failures );
 }
