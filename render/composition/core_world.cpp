@@ -1858,6 +1858,8 @@ void CoreWorld::RecordSlot(
 	std::shared_ptr<const ShadowWork> shadows;
 	if ( pending )
 	{
+		if ( timers )
+			encoder.BeginLabel( "prepare lights and shadows" );
 		const std::shared_ptr<PendingView::FrameLighting> lighting =
 		    pending->ForFrame( target.frame );
 		std::call_once( lighting->made,
@@ -1870,6 +1872,8 @@ void CoreWorld::RecordSlot(
 				        target.submitted, target.frame, &lighting->shadowAtlasDesc );
 			    m_StageLightingBuilds.fetch_add( 1, std::memory_order_relaxed );
 		    } );
+		if ( timers )
+			encoder.EndLabel();
 		if ( !lighting->lights )
 		{
 			if ( timers )
@@ -1885,6 +1889,8 @@ void CoreWorld::RecordSlot(
 		world.shadowAtlas = lighting->shadowAtlas;
 		world.shadowAtlasDesc = lighting->shadowAtlasDesc;
 	}
+	if ( timers )
+		encoder.BeginLabel( "prepare screen passes" );
 	// The stage view's screen passes: GTAO over the pass's prepass.
 	const int aoQuality = m_AoQuality.load( std::memory_order_relaxed );
 	if ( shadows && target.device && aoQuality == 0 &&
@@ -1956,6 +1962,8 @@ void CoreWorld::RecordSlot(
 		m_StreamLighting.screenPasses = {};
 	}
 
+	if ( timers )
+		encoder.EndLabel();
 	m_Pass.Record( tag, encoder, world );
 	if ( timers )
 	{

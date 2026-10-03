@@ -30,8 +30,8 @@ public:
 		bool owned = false; // cache owns ordinary descriptors; caller owns overflow
 	};
 
-	device::DeviceResult<Buffer> Acquire( device::IRenderDevice2 &device,
-	    std::uint64_t size, device::ResourceUsage usage )
+	device::DeviceResult<Buffer> Acquire(
+	    device::IRenderDevice2 &device, std::uint64_t size, device::ResourceUsage usage )
 	{
 		// Exact sizes preserve descriptor ranges and shader array lengths.
 		const auto found = std::find_if( m_Buffers.begin(), m_Buffers.end(),
@@ -53,7 +53,7 @@ public:
 		desc.debugName = "world group buffer";
 		auto made = device.CreateBuffer( desc );
 		if ( !made )
-			return foundation::Unexpected( made.Error() );
+			return foundation::MakeUnexpected( made.Error() );
 		return Buffer{ made.Value(), size, usage };
 	}
 
@@ -89,7 +89,7 @@ public:
 				return Sampler{ entry.second, false };
 		auto made = device.CreateSampler( desc );
 		if ( !made )
-			return foundation::Unexpected( made.Error() );
+			return foundation::MakeUnexpected( made.Error() );
 		constexpr std::size_t kMaxSamplers = 64;
 		if ( m_Samplers.size() >= kMaxSamplers )
 			return Sampler{ made.Value(), true };

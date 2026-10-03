@@ -6970,3 +6970,13 @@ Final fizzler checks: composition 54/54 (`fizzler-core-20261002/composition.json
 portal view-state 16/16, native replay 137/137 (`native-final.log`), architecture
 check/baseline/inventory, changed-line style and `git diff --check` all pass.
 High-resolution complete-frame timing and non-Linux acceptance remain unverified.
+
+
+## RFC 0014 cost scope and resource churn breakdown (2026-10-02)
+
+User scope: split the large world-view cost in the VGUI overlay and add render
+resource allocation metrics with a history that exposes churn. This session
+extends the existing timer/overlay owners; no new lighting implementation.
+World-pass labels separate preparation, world program families, static/posed/
+transmitting models and dynamic draws without reordering or removing draws.
+Validation and resource-counter coverage are recorded below after verification.

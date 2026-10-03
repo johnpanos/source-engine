@@ -41,6 +41,7 @@
 #include "render/device/null/provider.h"
 #include "render/material/program_resolver.h"
 #include "render/pass/world/world_pass.h"
+#include "render/pass/world/group_resources.h"
 #include "testing/checks.h"
 
 #include <cstddef>
@@ -152,11 +153,95 @@ bool RecordSlot(
 	return device.Submit( QueueKind::kGraphics, { &encoder.Value(), 1 }, {} ).HasValue();
 }
 
+// Exercise the private owner against real deferred execution, including byte
+// contents. Resource identity alone would miss an early overwrite.
+void GroupReuse( testing::Checks &checks )
+{
+	null::NullOptions options;
+	options.completion = null::CompletionMode::kManual;
+	auto made = null::Create( options );
+	if ( !checks.That( made.HasValue(), "W18.reuse-device" ) )
+		return;
+	auto &device = *made.Value();
+	auto *control = null::Control( device );
+	GroupResources resources;
+	auto first = resources.Acquire( device, 16, ResourceUsage::kUniform ).Value();
+	std::vector<std::byte> bytes( 16, std::byte{ 0x31 } );
+	auto encoder = device.BeginEncoder( QueueKind::kGraphics ).Value();
+	encoder.TransitionBuffer( first.id, first.before, ResourceUsage::kCopyDestination );
+	encoder.WriteBuffer( first.id, 0, bytes );
+	encoder.TransitionBuffer( first.id, ResourceUsage::kCopyDestination, first.usage );
+	first.before = first.usage;
+	auto submitted = device.Submit( QueueKind::kGraphics, { &encoder, 1 }, {} );
+	if ( !checks.That( submitted.HasValue(), "W18.first-upload-submitted" ) )
+		return;
+	resources.Retire( device, first, submitted.Value() );
+	auto second = resources.Acquire( device, 16, ResourceUsage::kUniform ).Value();
+	checks.That( second.id != first.id, "W18.pending-buffer-is-not-reused" );
+	control->CompleteAll();
+	std::vector<std::byte> read( bytes.size() );
+	checks.That( device.ReadBuffer( first.id, 0, read ).HasValue() && read == bytes,
+	    "W18.pending-upload-keeps-its-bytes" );
+	auto reused = resources.Acquire( device, 16, ResourceUsage::kUniform ).Value();
+	checks.That( reused.id == first.id && reused.before == ResourceUsage::kUniform,
+	    "W18.completed-buffer-reuses-storage-and-preserves-state" );
+	bytes.assign( 16, std::byte{ 0x72 } );
+	encoder = device.BeginEncoder( QueueKind::kGraphics ).Value();
+	encoder.TransitionBuffer( reused.id, reused.before, ResourceUsage::kCopyDestination );
+	encoder.WriteBuffer( reused.id, 0, bytes );
+	encoder.TransitionBuffer( reused.id, ResourceUsage::kCopyDestination, reused.usage );
+	submitted = device.Submit( QueueKind::kGraphics, { &encoder, 1 }, {} );
+	control->CompleteAll();
+	checks.That(
+	    submitted.HasValue() && device.ReadBuffer( reused.id, 0, read ).HasValue() && read == bytes,
+	    "W18.reused-buffer-publishes-the-new-view-bytes" );
+	resources.Retire( device, reused, submitted.Value() );
+	auto storage = resources.Acquire( device, 16, ResourceUsage::kStorageRead ).Value();
+	auto larger = resources.Acquire( device, 32, ResourceUsage::kUniform ).Value();
+	checks.That( storage.id != first.id && larger.id != first.id,
+	    "W18.usage-and-size-are-not-interchangeable" );
+	checks.That( !resources.Acquire( device, 0, ResourceUsage::kUniform ),
+	    "W18.invalid-allocation-still-fails" );
+	resources.Retire( device, second, {} );
+	resources.Retire( device, storage, {} );
+	resources.Retire( device, larger, {} );
+
+	SamplerDesc desc;
+	auto sampler = resources.AcquireSampler( device, desc ).Value();
+	auto same = resources.AcquireSampler( device, desc ).Value();
+	desc.comparison = CompareOp::kLessEqual;
+	auto comparison = resources.AcquireSampler( device, desc ).Value();
+	checks.That( sampler.id == same.id && !sampler.owned && comparison.id != sampler.id,
+	    "W18.identical-samplers-share-but-depth-comparison-stays-distinct" );
+	resources.Release( device );
+	(void)device.Poll();
+	checks.That( device.LiveResourceCount() == 0, "W18.drained-reuse-owner-releases-everything" );
+
+	// Retained cache bounds never become a rendering limit. Entries beyond
+	// the cap are destroyed through their original completion token.
+	std::vector<GroupResources::Buffer> buffers;
+	for ( unsigned i = 0; i < 257; ++i )
+		buffers.push_back( resources.Acquire( device, 16, ResourceUsage::kUniform ).Value() );
+	encoder = device.BeginEncoder( QueueKind::kGraphics ).Value();
+	submitted = device.Submit( QueueKind::kGraphics, { &encoder, 1 }, {} );
+	for ( auto buffer : buffers )
+		resources.Retire( device, buffer, submitted.Value() );
+	(void)device.Poll();
+	checks.That( device.LiveResourceCount() == 257, "W18.eviction-keeps-in-flight-resources" );
+	control->CompleteAll();
+	(void)device.Poll();
+	checks.That( device.LiveResourceCount() == 256, "W18.retained-buffer-count-is-bounded" );
+	resources.Release( device );
+	(void)device.Poll();
+	checks.That( device.LiveResourceCount() == 0, "W18.eviction-and-teardown-do-not-leak" );
+}
+
 } // namespace
 
 int main()
 {
 	testing::Checks checks;
+	GroupReuse( checks );
 	auto created = null::Create( {} );
 	if ( !checks.That( created.HasValue(), "setup.null-device" ) )
 		return checks.Report();

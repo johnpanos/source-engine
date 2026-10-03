@@ -37,6 +37,40 @@ namespace
 
 using namespace render::device;
 
+// Diagnostic-only contiguous scopes. The guard closes failures/early returns;
+// changing a label never changes draw order or splits an indexed draw run.
+class RecordSection
+{
+public:
+	explicit RecordSection( CommandEncoder &encoder ) : m_Encoder( encoder ) {}
+	~RecordSection() { End(); }
+	RecordSection( const RecordSection & ) = delete;
+	RecordSection &operator=( const RecordSection & ) = delete;
+
+	void Select( std::string_view prefix, std::string_view name = {} )
+	{
+		if ( !m_Encoder.LabelObserver() || ( m_Open && prefix == m_Prefix && name == m_Name ) )
+			return;
+		End();
+		m_Prefix = prefix;
+		m_Name = name;
+		m_Encoder.BeginLabel( std::string( prefix ) + std::string( name ) );
+		m_Open = true;
+	}
+	void End()
+	{
+		if ( m_Open )
+			m_Encoder.EndLabel();
+		m_Open = false;
+	}
+
+private:
+	CommandEncoder &m_Encoder;
+	std::string_view m_Prefix;
+	std::string_view m_Name;
+	bool m_Open = false;
+};
+
 bool SurfaceSelected(
     const std::optional<std::vector<std::uint32_t>> &selection, std::uint32_t surface )
 {
@@ -888,6 +922,8 @@ std::uint64_t WorldPass::Failures() const
 
 void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldTarget &target )
 {
+	RecordSection preparation( encoder );
+	preparation.Select( "prepare world queue" );
 	State &s = *m_State;
 	const std::uint32_t serial = tag & kWorldSerialMask;
 	std::shared_ptr<const WorldData> world;
@@ -1010,6 +1046,7 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		s.Fail( "the slot's target has no " + missing + " (a render-target texture)" );
 		return;
 	}
+	preparation.Select( "prepare world resources" );
 	if ( s.device != target.device )
 	{
 		// A new backend device: the old one's objects went with it.
@@ -1632,16 +1669,17 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 			entries.push_back( { texture.binding, {}, 0, 0, id, {} } );
 			if ( texture.samplerBinding == material::kNoSamplerBinding )
 				continue; // only fetched
-			auto sampler = s.groupResources.AcquireSampler( device, external || staged ? texture.sampler
-			                                     : absent           ? texture.sampler
-			                                              : textures.Sampler( handle->second ) );
+			auto sampler = s.groupResources.AcquireSampler(
+			    device, external || staged ? texture.sampler
+			            : absent           ? texture.sampler
+			                               : textures.Sampler( handle->second ) );
 			if ( !sampler )
 			{
 				*why = "a sampler was refused";
 				return false;
 			}
 			if ( sampler.Value().owned )
-			out.samplers.push_back( sampler.Value().id );
+				out.samplers.push_back( sampler.Value().id );
 			entries.push_back( { texture.samplerBinding, {}, 0, 0, {}, sampler.Value().id } );
 		}
 		for ( const auto &[binding, desc] : request.samplers )
@@ -1653,7 +1691,7 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 				return false;
 			}
 			if ( sampler.Value().owned )
-			out.samplers.push_back( sampler.Value().id );
+				out.samplers.push_back( sampler.Value().id );
 			entries.push_back( { binding, {}, 0, 0, {}, sampler.Value().id } );
 		}
 		auto group = device.CreateBindGroup( { request.layout, entries } );
@@ -2046,6 +2084,7 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		return &group;
 	};
 
+	preparation.Select( "prepare world materials" );
 	// Resolve before rendering (uploads run outside it), then draw in
 	// (material, page) order so binds change least.
 	std::vector<std::uint32_t> order;
@@ -2084,6 +2123,7 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		    return x.lightmapPage != y.lightmapPage ? x.lightmapPage < y.lightmapPage
 		                                            : x.firstIndex < y.firstIndex;
 	    } );
+	preparation.Select( "prepare model materials and meshes" );
 	struct StaticDraw
 	{
 		bool posed;
@@ -2257,6 +2297,7 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		}
 	}
 
+	preparation.Select( "prepare world view" );
 	// The view's planar reflection: the render target the view's programs
 	// name (one per view: the client draws one reflection view), imported
 	// now, as the stream drew it before this slot (a resize replaces its
@@ -2337,8 +2378,9 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 	    [&]( const std::vector<std::uint32_t> &list,
 	        const std::vector<Resources::Material> &materials,
 	        const std::function<std::optional<PipelineId>( const Resources::Material & )>
-	            &pipelineOf )
+	            &pipelineOf, bool breakdown = false )
 	{
+		RecordSection family( encoder );
 		std::uint32_t boundMaterial = ~0u;
 		int boundPage = 0;
 		bool pageBound = false;
@@ -2358,6 +2400,8 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 			if ( surface.material != boundMaterial )
 			{
 				flushRun();
+				if ( breakdown )
+					family.Select( "world / ", m.program.name );
 				boundMaterial = surface.material;
 				pageBound = false;
 				const std::optional<PipelineId> pipeline = pipelineOf( m );
@@ -2415,6 +2459,7 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		flushRun();
 	};
 
+	preparation.End();
 	// A world stage's screen passes (render_lab's order): the depth and
 	// normal prepass into the pass's own single-sample targets, with a
 	// resolver of their own, then the composition's ambient occlusion, which
@@ -2422,6 +2467,7 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 	if ( world->stage && target.screenPasses && target.ambientOcclusion.IsValid() &&
 	     !order.empty() )
 	{
+		preparation.Select( "prepare world prepass" );
 		if ( !r.prepassResolver )
 		{
 			auto resolver = material::ProgramResolver::Create( device, Format::kRGBA16Float,
@@ -2512,6 +2558,7 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 			    DepthAttachment{ r.prepassDepth, LoadOp::kClear, StoreOp::kStore, 1.0f };
 			prepassRendering.width = target.width;
 			prepassRendering.height = target.height;
+			preparation.End();
 			encoder.BeginLabel( "core world prepass" );
 			encoder.BeginRendering( prepassRendering );
 			// This private D32 target has no stencil and encodes projection
@@ -2544,6 +2591,7 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 				viewOcclusion = target.ambientOcclusion;
 		}
 	}
+	preparation.Select( "prepare lit view bindings" );
 	// No screen passes (ambient occlusion off): the target holds the
 	// neutral occlusion, one.
 	if ( world->stage && !target.screenPasses && target.ambientOcclusion.IsValid() )
@@ -2574,6 +2622,7 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		    return false;
 	    } );
 
+	preparation.Select( "prepare dynamic materials and uploads" );
 	struct DynamicDraw
 	{
 		Resources::Material *material;
@@ -2644,6 +2693,7 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		    std::uint32_t( draw.indices.size() ), draw.lightmapPage } );
 	}
 
+	preparation.End();
 	const ColorAttachment colors[] = { { target.color, LoadOp::kLoad, StoreOp::kStore, {}, {} } };
 	RenderingDesc rendering;
 	rendering.colors = colors;
@@ -2689,12 +2739,15 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 	encoder.BeginLabel( "core world" );
 	encoder.BeginRendering( rendering );
 	encoder.SetViewport( view.viewport );
+	RecordSection draws( encoder );
+	draws.Select( "world surfaces" );
 	drawSurfaces( order, r.materials,
 	    [&]( const Resources::Material &m ) -> std::optional<PipelineId>
 	    {
 		    return worldStatePipeline( m, m.program.request.pipeline, target.drawState,
 		        frame::DebugSpecializationFor( view.debug, m.program.name ) );
-	    } );
+	    }, true );
+	draws.Select( "prepare model draw order" );
 	// The model list is built in caller order. Opaque draws can be grouped by
 	// material, while blended surfaces must stay after them and retain their
 	// submitted order; their pipeline has depth writes disabled.
@@ -2710,6 +2763,7 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		    return std::tie( a.material, a.mesh, a.posed, a.instance, a.surface ) <
 		           std::tie( b.material, b.mesh, b.posed, b.instance, b.surface );
 	    } );
+	draws.End();
 	std::uint64_t drawnStatic = 0;
 	std::uint64_t drawnPosed = 0;
 	bool captureAttempted = false;
@@ -2752,8 +2806,12 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		const WorldData::StaticMesh &mesh = world->staticMeshes[draw.mesh];
 		const WorldSurface &surface = mesh.surfaces[draw.surface];
 		const Resources::Material &m = r.modelMaterials[draw.material];
+		draws.Select( m.program.sceneColor ? "models transmitting / "
+		              : draw.posed ? "models posed / " : "models static / ", m.program.name );
 		if ( m.program.sceneColor && !captureAttempted )
 		{
+			RecordSection capture( encoder );
+			capture.Select( "model scene color capture and bindings" );
 			encoder.EndRendering();
 			captureAttempted = true;
 			if ( !captureSceneColor() )
@@ -2832,10 +2890,12 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		else
 			++drawnStatic;
 	}
+	draws.End();
 	std::uint64_t drawnDynamic = 0;
 	for ( const DynamicDraw &draw : dynamicDraws )
 	{
 		const Resources::Material &m = *draw.material;
+		draws.Select( "dynamic / ", m.program.name );
 		if ( m.program.sceneColor )
 		{
 			encoder.EndRendering();
@@ -2872,8 +2932,10 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		++drawnDynamic;
 	}
 
+	draws.End();
 	encoder.EndRendering();
 	encoder.EndLabel();
+	preparation.Select( "retire world view resources" );
 	for ( auto &[layout, group] : litViews )
 		s.retiredGroups.emplace_back( target.frame, std::move( group ) );
 	for ( auto &[layout, group] : modelLitViews )
