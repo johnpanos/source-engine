@@ -62,6 +62,27 @@
 layout( constant_id = 0 ) const int kTerms = 0;
 layout( constant_id = 1 ) const int kDetailMode = 0;
 layout( constant_id = 2 ) const bool kPortalMask = false;
+layout( constant_id = 3 ) const uint kMaterialFeatures = 0xffffffffu;
+layout( constant_id = 4 ) const uint kViewFeatures = 7u;
+const uint kMaterialAlphaTest = 1u;
+const uint kMaterialHalfLambert = 2u;
+const uint kMaterialDiffuseWarp = 4u;
+const uint kMaterialSpecularWarp = 8u;
+const uint kMaterialUnlitMesh = 16u;
+const uint kViewSun = 1u;
+const uint kViewProjectors = 2u;
+const uint kViewAreas = 4u;
+
+bool MaterialFeature( uint feature, bool uniformValue )
+{
+	return kMaterialFeatures == 0xffffffffu ? uniformValue : ( kMaterialFeatures & feature ) != 0u;
+}
+
+bool ViewFeature( uint feature )
+{
+	return ( kViewFeatures & feature ) != 0u;
+}
+
 const int kUnlit = 1;
 const int kDetailTexture = 2;
 const int kBumpmap = 4;
@@ -440,12 +461,12 @@ vec4 TextureCombine( vec4 baseColor, vec4 detailColor, float blendFactor )
 vec3 MeshDiffuseFactor( float normalDotLight )
 {
 	const float halfLambert = clamp( 0.5 * normalDotLight + 0.5, 0.0, 1.0 );
-	const float scalar = material.flags.w > 0.5 ? halfLambert : max( normalDotLight, 0.0 );
-	if ( material.meshModes.x > 0.5 )
+	const float scalar = MaterialFeature( kMaterialHalfLambert, material.flags.w > 0.5 ) ? halfLambert : max( normalDotLight, 0.0 );
+	if ( MaterialFeature( kMaterialDiffuseWarp, material.meshModes.x > 0.5 ) )
 		return 2.0 * texture( sampler2D( mraoTexture, mraoSampler ),
 		           vec2( scalar, 0.5 ) )
 		                 .rgb;
-	return vec3( material.flags.w > 0.5 ? scalar * scalar : scalar );
+	return vec3( MaterialFeature( kMaterialHalfLambert, material.flags.w > 0.5 ) ? scalar * scalar : scalar );
 }
 
 // VertexLitGeneric's specular warp is a 2D data lookup: horizontal is the
@@ -453,7 +474,7 @@ vec3 MeshDiffuseFactor( float normalDotLight )
 // The result colors the PBR direct specular lobe, leaving native IBL alone.
 vec3 MeshSpecularWarp( vec3 normal, vec3 view, vec3 light, float exponent )
 {
-	if ( material.meshProbeColor.z <= 0.5 )
+	if ( !MaterialFeature( kMaterialSpecularWarp, material.meshProbeColor.z > 0.5 ) )
 		return vec3( 1.0 );
 	const vec3 ranges = material.envContrast.rgb;
 	float fresnel = clamp( 1.0 - dot( normal, view ), 0.0, 1.0 );
@@ -686,7 +707,7 @@ void PbrSurface()
 		                        uv * material.detailScale.xy );
 		baseSample = TextureCombine( baseSample, detail, material.detailTint.a );
 	}
-	if ( material.flags.y != 0.0 && baseSample.a * material.tint.a < material.flags.z )
+	if ( MaterialFeature( kMaterialAlphaTest, material.flags.y != 0.0 ) && baseSample.a * material.tint.a < material.flags.z )
 		discard;
 	vec3 base = furnace ? vec3( 1.0 ) : baseSample.rgb * material.tint.rgb;
 	if ( material.meshProbeMasks.z > 0.5 && !furnace )
@@ -694,7 +715,7 @@ void PbrSurface()
 		const vec3 tinted = mix( base, material.tint.rgb, material.meshProbeMasks.w );
 		base = mix( baseSample.rgb, tinted, baseSample.a );
 	}
-	const bool unlitMesh = material.meshModes.w > 0.5;
+	const bool unlitMesh = MaterialFeature( kMaterialUnlitMesh, material.meshModes.w > 0.5 );
 	const vec3 mrao = Term( kMraoTexture )
 	                      ? texture( sampler2D( mraoTexture, mraoSampler ), uv ).rgb
 	                      : material.pbrFactors.rgb;
@@ -1052,7 +1073,7 @@ void PbrSurface()
 	// Area lights (render.area-light.v1): both lobes by linearly transformed
 	// cosines, windowed by each light's reach. The GGX lobe's magnitude and
 	// Fresnel split are the split-sum's A and B, as the image light's are.
-	const int areaCount = DebugTermOn( kDebugTermArea ) && !furnace
+	const int areaCount = ViewFeature( kViewAreas ) && DebugTermOn( kDebugTermArea ) && !furnace
 	                          ? min( int( frame.areaCount.x ), kMaxAreaLights )
 	                          : 0;
 	if ( areaCount > 0 )
@@ -1147,7 +1168,7 @@ void PbrSurface()
 	// The sun: both lobes (the specular only when its diffuse light is
 	// baked), its visibility the bake's mask on a world surface, else its
 	// cascades; its disc widens the specular lobe (Karis 2013).
-	if ( dot( frame.sunColor.rgb, vec3( 1.0 ) ) > 0.0 && DebugTermOn( kDebugTermSun ) && !furnace )
+	if ( ViewFeature( kViewSun ) && dot( frame.sunColor.rgb, vec3( 1.0 ) ) > 0.0 && DebugTermOn( kDebugTermSun ) && !furnace )
 	{
 		const vec3 light = frame.sunDirection.xyz;
 		const float normalDotLight = max( dot( normal, light ), 0.0 );
@@ -1202,7 +1223,7 @@ void PbrSurface()
 	}
 	// The view's projected lights: never baked, so both lobes, shadowed by
 	// their tiles (a lens of atten.w).
-	const int projectorCount = Term( kClustered ) && DebugTermOn( kDebugTermProjected ) && !furnace
+	const int projectorCount = ViewFeature( kViewProjectors ) && Term( kClustered ) && DebugTermOn( kDebugTermProjected ) && !furnace
 	                               ? int( clusterView.counts.x )
 	                               : 0;
 	for ( int i = 0; i < projectorCount; ++i )

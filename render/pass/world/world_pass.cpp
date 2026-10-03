@@ -1939,6 +1939,13 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 			std::copy( view.lights->sunShadow, view.lights->sunShadow + 4, terms.sunShadow );
 		}
 	}
+	// Presence comes from this slot's actual frame/view inputs, never a quality
+	// setting. Uniform light data and all shadow filters remain unchanged.
+	std::uint32_t viewFeatures = terms.areas.empty() ? 0u : material::kSurfaceViewAreas;
+	if ( terms.sunColor[0] != 0.0f || terms.sunColor[1] != 0.0f || terms.sunColor[2] != 0.0f )
+		viewFeatures |= material::kSurfaceViewSun;
+	if ( view.lights && view.lights->view.counts[0] > 0.0f )
+		viewFeatures |= material::kSurfaceViewProjectors;
 	std::map<std::uint64_t, bool> framesWritten;
 	auto frameGroupReady = [&]( const Resources::Material &m ) -> const Group *
 	{
@@ -2408,7 +2415,7 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 	    [&]( const Resources::Material &m, PipelineId base, const material::SurfaceDrawState &state,
 	        const shaderlib::DebugSpecialization &debug = {} ) -> std::optional<PipelineId>
 	{
-		auto result = m.resolver->Program().StatePipeline( base, state, debug );
+		auto result = m.resolver->Program().ViewPipeline( base, state, viewFeatures, debug );
 		if ( !result )
 		{
 			note( "view raster state: pipeline refused for " + m.program.name + " status " +

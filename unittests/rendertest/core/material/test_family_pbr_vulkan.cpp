@@ -458,6 +458,119 @@ int main()
 				continue;
 			++drawnCases;
 			JudgeCase( checks, testCase, drawn );
+			// Compare against the raw uniform-driven pipeline above, with exactly
+			// the same bindings and geometry. Empty view lighting is specialized
+			// away; model/ambient lighting remains in the draw group.
+			SurfaceVariant specialized = claim.Variant();
+			specialized.materialFeatures = SurfaceMaterialFeatures( constants );
+			specialized.viewFeatures = 0;
+			auto specializedPipeline = family.Value()->Program().Pipeline( specialized );
+			if ( checks.That( specializedPipeline.HasValue(), "specialized.pipeline." + name ) )
+			{
+				draw.pipeline = specializedPipeline.Value();
+				const Drawn optimized = DrawCase( *device, draw );
+				checks.That( optimized.ok && optimized.rgba == drawn.rgba,
+				    "specialized.identical-pixels." + name );
+			}
+			draw.pipeline = pipeline.Value();
+			if ( name == "pbr_ambient" )
+			{
+				// These predicates must remain present when authored. Restore
+				// constants between cases; cutoff/exponent are still uniforms.
+				const SurfaceConstants original = constants;
+				CaseTexture authoredBase = *base;
+				for ( std::size_t texel = 3; texel < authoredBase.texels.size(); texel += 4 )
+					authoredBase.texels[texel] = 160;
+				draw.groups.back().textures[0] = &authoredBase;
+				frame.sunColor[0] = frame.sunColor[1] = frame.sunColor[2] = 0.2f;
+				frame.sunDirection[2] = 1.0f;
+				specialized.viewFeatures = kSurfaceViewSun;
+				for ( int feature = 0; feature < 5; ++feature )
+				{
+					constants = original;
+					if ( feature == 0 )
+					{
+						constants.flags[1] = 1.0f;
+						constants.flags[2] = 0.75f;
+					}
+					if ( feature == 1 )
+						constants.flags[3] = 1.0f;
+					if ( feature == 2 )
+						constants.meshModes[0] = 1.0f;
+					if ( feature == 3 )
+						constants.meshProbeColor[2] = 1.0f;
+					if ( feature == 4 )
+						constants.meshModes[3] = 1.0f;
+					draw.pipeline = pipeline.Value();
+					const Drawn uniform = DrawCase( *device, draw );
+					specialized.materialFeatures = SurfaceMaterialFeatures( constants );
+					auto selected = family.Value()->Program().Pipeline( specialized );
+					if ( !selected )
+					{
+						checks.That( false, "specialized.authored-pipeline" );
+						continue;
+					}
+					draw.pipeline = selected.Value();
+					const Drawn optimized = DrawCase( *device, draw );
+					checks.That( uniform.ok && optimized.ok && uniform.rgba == optimized.rgba,
+					    "specialized.authored-pixels." + std::to_string( feature ) );
+					SurfaceVariant requested = claim.Variant();
+					requested.viewFeatures = kSurfaceViewSun;
+					auto request =
+					    family.Value()->Program().Request( requested, constants, {}, {} );
+					requested.materialFeatures = feature == 2 || feature == 3
+					                                 ? kSurfaceDynamicMaterialFeatures
+					                                 : SurfaceMaterialFeatures( constants );
+					auto expected = family.Value()->Program().Pipeline( requested );
+					checks.That(
+					    request && expected && request.Value().pipeline == expected.Value(),
+					    "specialized.request-policy." + std::to_string( feature ) );
+					if ( request )
+					{
+						draw.pipeline = request.Value().pipeline;
+						const Drawn requestedImage = DrawCase( *device, draw );
+						checks.That( requestedImage.ok && requestedImage.rgba == uniform.rgba,
+						    "specialized.request-pixels." + std::to_string( feature ) );
+					}
+					SurfaceVariant omitted = specialized;
+					omitted.materialFeatures &= ~( 1u << feature );
+					auto missing = family.Value()->Program().Pipeline( omitted );
+					if ( missing )
+					{
+						draw.pipeline = missing.Value();
+						const Drawn wrong = DrawCase( *device, draw );
+						checks.That( wrong.ok && wrong.rgba != uniform.rgba,
+						    "specialized.omitted-authored-feature-detected." +
+						        std::to_string( feature ) );
+					}
+					else
+						checks.That( false, "specialized.omitted-authored-pipeline" );
+				}
+				draw.groups.back().textures[0] = &*base;
+				constants = original;
+				draw.pipeline = pipeline.Value();
+				frame.sunColor[0] = frame.sunColor[1] = frame.sunColor[2] = 0.2f;
+				frame.sunDirection[2] = 1.0f;
+				const Drawn sunUniform = DrawCase( *device, draw );
+				auto sun =
+				    family.Value()->Program().ViewPipeline( pipeline.Value(), {}, kSurfaceViewSun );
+				auto missingSun = family.Value()->Program().ViewPipeline( pipeline.Value(), {}, 0 );
+				if ( sun && missingSun )
+				{
+					draw.pipeline = sun.Value();
+					const Drawn present = DrawCase( *device, draw );
+					draw.pipeline = missingSun.Value();
+					const Drawn absent = DrawCase( *device, draw );
+					checks.That( sunUniform.ok && present.ok && present.rgba == sunUniform.rgba,
+					    "specialized.sun-reappears-with-identical-pixels" );
+					checks.That( absent.ok && absent.rgba != sunUniform.rgba,
+					    "specialized.missing-required-sun-is-detected" );
+				}
+				else
+					checks.That( false, "specialized.sun-pipelines" );
+				frame.sunColor[0] = frame.sunColor[1] = frame.sunColor[2] = 0.0f;
+				draw.pipeline = pipeline.Value();
+			}
 			if ( name == "pbr_ambient" )
 			{
 				// Keep the lighting and camera fixed while only the base

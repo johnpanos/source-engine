@@ -492,8 +492,8 @@ struct SplitFrame
 	}
 };
 
-std::optional<std::string> Render(
-    Lab &lab, const Frame &frame, CanvasImage &image, SplitFrame *split = nullptr )
+std::optional<std::string> Render( Lab &lab, const Frame &frame, CanvasImage &image,
+    SplitFrame *split = nullptr, bool specialize = false )
 {
 	material::SurfaceFrame terms;
 	terms.eye[0] = frame.view->eye.x;
@@ -558,6 +558,11 @@ std::optional<std::string> Render(
 	claim.claimed = true;
 	material::SurfaceVariant variant = claim.Variant();
 	variant.terms |= material::kSurfaceClustered;
+	if ( specialize )
+	{
+		variant.materialFeatures = material::SurfaceMaterialFeatures( claim.constants );
+		variant.viewFeatures = lab.areas.empty() ? 0u : material::kSurfaceViewAreas;
+	}
 	auto pipeline = lab.family->Program().Pipeline( variant, frame.debug );
 	if ( !pipeline )
 		return std::string( "no pipeline" );
@@ -811,6 +816,13 @@ std::optional<std::string> ShadowedChecks( Lab &lab, Results &results )
 	}
 	results.That( SameImage( untiled, withoutAtlas ), "neutral.untiled-lights-ignore-the-atlas" );
 	results.That( !SameImage( untiled, shadowed ), "neutral.a-shadowed-frame-differs" );
+	CanvasImage specialized;
+	if ( auto why = Render(
+	         lab, { &kReceiverMaterials[0], &overhead, true, true }, specialized, nullptr, true ) )
+		return why;
+	results.That( SameImage( shadowed, specialized ),
+	    "specialized.shadowed-light-pixels-match-uniform-pipeline" );
+
 	Frame visibilityOff{ &kReceiverMaterials[0], &overhead, true, true };
 	visibilityOff.debug.termsOff = shaderlib::kDebugTermShadowVisibility;
 	CanvasImage unshadowed;

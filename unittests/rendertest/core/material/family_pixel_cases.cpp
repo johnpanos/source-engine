@@ -647,6 +647,9 @@ Drawn DrawCase( device::IRenderDevice2 &device, const CaseDraw &draw )
 			if ( texture->point )
 				samplerDesc.minFilter = samplerDesc.magFilter = samplerDesc.mipFilter =
 				    device::Filter::kNearest;
+			// The surface view's binding 11 is its shadow comparison sampler.
+			if ( request.role == device::BindGroupRole::kView && binding == 10 )
+				samplerDesc.comparison = device::CompareOp::kLessEqual;
 			device::TextureId id;
 			device::BufferId staging;
 			device::SamplerId sampler;

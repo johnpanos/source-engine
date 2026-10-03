@@ -282,7 +282,9 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::Pipeline(
 	const std::uint32_t drawConstantBytes = SurfaceDrawConstantBytes( variant.layout );
 	std::vector<SpecializationConstant> constants = { { ShaderStage::kFragment, 0, variant.terms },
 	    { ShaderStage::kFragment, 1, variant.detailMode },
-	    { ShaderStage::kFragment, 2, variant.portalMask ? 1u : 0u } };
+	    { ShaderStage::kFragment, 2, variant.portalMask ? 1u : 0u },
+	    { ShaderStage::kFragment, 3, variant.materialFeatures },
+	    { ShaderStage::kFragment, 4, variant.viewFeatures } };
 	// The model vertex reads the terms too (the vertexlit point's lighting).
 	if ( model )
 		constants.push_back( { ShaderStage::kVertex, 0, variant.terms } );
@@ -375,15 +377,32 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::Pipeline(
 	return pipeline.Value();
 }
 
+std::uint32_t SurfaceMaterialFeatures( const SurfaceConstants &constants )
+{
+	return ( constants.flags[1] != 0.0f ? kSurfaceMaterialAlphaTest : 0u ) |
+	       ( constants.flags[3] > 0.5f ? kSurfaceMaterialHalfLambert : 0u ) |
+	       ( constants.meshModes[0] > 0.5f ? kSurfaceMaterialDiffuseWarp : 0u ) |
+	       ( constants.meshProbeColor[2] > 0.5f ? kSurfaceMaterialSpecularWarp : 0u ) |
+	       ( constants.meshModes[3] > 0.5f ? kSurfaceMaterialUnlitMesh : 0u );
+}
+
 foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::StatePipeline(
     PipelineId shipped, const SurfaceDrawState &state, const shaderlib::DebugSpecialization &debug )
 {
+	return ViewPipeline( shipped, state, kSurfaceAllViewFeatures, debug );
+}
+
+foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::ViewPipeline( PipelineId shipped,
+    const SurfaceDrawState &state, std::uint32_t viewFeatures,
+    const shaderlib::DebugSpecialization &debug )
+{
 	m_PipelineFailure.clear();
 	const auto found = m_Shipped.find( shipped.value );
-	if ( found == m_Shipped.end() )
+	if ( found == m_Shipped.end() || ( viewFeatures & ~kSurfaceAllViewFeatures ) != 0 )
 		return foundation::MakeUnexpected( SurfaceStatus::kInvalidRequest );
 	SurfaceVariant variant = found->second;
 	variant.drawState = state;
+	variant.viewFeatures = viewFeatures;
 	return Pipeline( variant, debug );
 }
 
@@ -402,7 +421,18 @@ foundation::Expected<ProgramRequest, SurfaceStatus> SurfaceProgram::Request(
     const SurfaceVariant &variant, const SurfaceConstants &constants,
     const SurfaceTextures &textures, const SamplerDesc &sampler )
 {
-	auto pipeline = Pipeline( variant );
+	SurfaceVariant point = variant;
+	if ( point.terms & kSurfacePbr )
+	{
+		const std::uint32_t features = SurfaceMaterialFeatures( constants );
+		// Preserve the established control flow for authored warp lookups.
+		// Specializing the portal gun's mipmapped warp changes edge pixels;
+		// ordinary materials and view lighting can specialize independently.
+		const bool warped =
+		    ( features & ( kSurfaceMaterialDiffuseWarp | kSurfaceMaterialSpecularWarp ) ) != 0;
+		point.materialFeatures = warped ? kSurfaceDynamicMaterialFeatures : features;
+	}
+	auto pipeline = Pipeline( point );
 	if ( !pipeline )
 		return foundation::MakeUnexpected( pipeline.Error() );
 	ProgramRequest request;

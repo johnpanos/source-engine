@@ -8005,3 +8005,183 @@ It reports 171 lists/rasters/views/draws, zero refused and failed, and a
 metadata allocation blocked ordinary staging; renderer, content, profile and
 acceptance checks are unchanged. The inactive sign captures certify no screen
 coverage and are not used as the sign oracle. Full product budgets remain open.
+
+
+## RCV-12: material and view specialization (2026-10-03, in progress)
+
+User scope: specialize authored material predicates and absent view lighting,
+inspired by [Filament's material feature guards](https://github.com/google/filament/blob/144ea3160a545aa2a56e4554822f1f426910f045/shaders/src/surface_lighting.fs)
+and [Godot's view specialization](https://github.com/godotengine/godot/blob/e7cfa294a0b81bed7986be04a848cc1832a3f083/servers/rendering/renderer_rd/shaders/forward_clustered/scene_forward_clustered_inc.glsl).
+The baseline is RCV-11's landed `5689e16b9`, including RCV-08's retained
+144-VGPR LTC change; the older 192-VGPR capture is not the current baseline.
+
+`render.material` owns predicate classification, shader evaluation and the
+existing pipeline cache. `SurfaceProgram::Request` derives material predicates
+from the exact immutable constants it uploads; raw `Pipeline` consumers retain
+uniform predicates for explicitly mutable fixtures. Numeric values stay uniform.
+The core world pass derives view lighting presence from its frame/view inputs
+and selects the existing shader through `ViewPipeline`; shadow receiving, filter
+samples, resolution, cohorts and effect settings are unchanged. New inputs select
+new variants; no second material registry or lighting authority is introduced.
+
+Work is isolated in `/home/john/.codex/worktrees/pbr-specialization/source-engine`
+with private dependency/build seeds, separate Waf locks and copied runtime
+`/home/john/.rc-pbr-5689`. Prior worktree test edits are preserved.
+Native material conformance passes 124 checks, including exact raw/specialized
+pixels, each authored predicate under live direct light, sun reappearance and
+negative controls that detect omission of each of the five material features
+and the sun. Alpha uses an actually masked base texture in this comparison.
+The comparison exposed a fixture defect: its neutral shadow image was RGBA and
+its comparison sampler ordinary. The shared fixture now binds far D32 depth and
+the proper comparison sampler; validation is silent. Native posed-model 72 and
+shadowed-light 154 checks pass; null world 76 and composition 58 pass.
+Architecture/style checks, actual compiled shader statistics, complete High
+images and matched full-frame routes remain required before retaining the trial.
+The High 120 FPS gate and mobile evidence remain open.
+
+### RCV-12 compiler attribution and first route comparison
+
+The candidate checkpoint `adaa677e2` launcher is
+`363787c7639da9c9da92d907a1c43c2f00b5484aad1c2259ae2ce9df0b3beb97`;
+the RCV-11 retained control is `ab89419139a678b7662adbfa21af3352d6090d08ac4dcc415b35472f4aa25c8c`.
+The actual 1920x1080 four-sample capture is under
+`/home/john/.rc-pbr-5689/evidence/candidate-capture`. The RenderDoc wrapper's
+process inspection fails to find the child Vulkan/SDL3 mappings; the capture
+itself records the native Radeon renderer and full target. This wrapper receipt
+is not a passing product smoke test.
+
+Fresh replay processes measure eight captured PBR pipelines against the same
+modules with material SpecId 3 frozen to the uniform sentinel and view SpecId 4
+frozen to all lights present. Every pipeline remains 144 VGPRs, 10 subgroups per
+SIMD, no scratch or spills. Code drops from 55,432–58,312 to 40,004–43,256 bytes,
+instructions from 10,298–10,973 to 7,504–8,172, and branches from 223–235 to
+148–165. These are static executable counts, not executed instructions or a
+frame-time gain. Results and driver disassembly are in `shader-specialized`
+and `shader-generic` under the external evidence directory.
+
+The complete attachment comparison reads all four MSAA samples. Freezing only
+view lighting gives byte-identical images. Freezing material predicates changes
+500–514 of 8,294,400 channels per sample, maximum six byte levels, localized to
+a diagonal edge. Native oracles remain exact; this additional capture comparison
+is not exact and is being investigated, with no tolerance change or promotion.
+
+First ordinary High/1920x1080/4x MSAA ABBA comparison, milliseconds:
+
+| Run | Arrival GPU | Arrival CPU | Arrival interval | Reverse interval | Return interval |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `control-a1` | 38.794 | 21.296 | 38.852 | 20.115 | 34.755 |
+| `candidate-b1` | 33.405 | 24.669 | 33.820 | 20.636 | 35.431 |
+| `candidate-b2` | 36.070 | 25.237 | 36.720 | 22.859 | 38.409 |
+| `control-a2` | 33.889 | 25.039 | 34.254 | 20.387 | 34.343 |
+
+Arrival-phase median GPU clocks are 1705/2089.5/1978/2099 MHz. They are derived
+from the engine's monotonic frame timestamps and the recorded wall-clock power
+samples. The apparent first-run improvement is not a matched-clock speedup;
+the second candidate also heats to 100 C and loses clocks in the reverse phase.
+The nearly matched `candidate-b1` and `control-a2` arrival difference is small,
+while reverse and return do not improve. No reliable complete-frame gain is
+established. Every binary stays unchanged during each run. The existing map-name
+assertion, missing ordinary detailed-scope timers and 120 FPS gate still fail.
+
+### RCV-12 warp compatibility correction
+
+Attribution isolated the six-level edge difference to event 24759 alone: the
+portal gun glass material with diffuse warp enabled and its authored nine-mip
+light-warp texture. Making only that pipeline's material features uniform
+reproduces the entire fully uniform reference attachment, byte for byte in all
+four samples. Explicit fine derivatives and blanket no-contraction trials do
+not reproduce the old image; neither is retained. The precise numerical cause
+inside driver compilation is not established, and no texture filtering changes
+are made.
+
+`SurfaceProgram::Request` now keeps authored diffuse/specular-warp materials on
+the established uniform material path. It still specializes ordinary immutable
+materials and all views independently. Classification and this compatibility
+selection remain in the material owner. Native material conformance passes 134
+checks: each of the five feature configurations additionally verifies the real
+Request's pipeline selection and exact pixels. The shader's raw specialization
+fixtures still test both warp features and their omission controls.
+The corrected launcher is `2cc30b32a17a2ee31d88f539ca513eb9a4c35ef37fb854e74a2296a5d355f7cd`.
+
+Before correction, additional ordinary runs were `control-a3` (arrival GPU
+35.968 ms, interval 36.712 ms) and `candidate-b3` (32.554 ms, 32.913 ms).
+Their arrival median clocks were 1887.5 versus 2141 MHz. They do not settle the
+matched-clock question. The ordinary candidate native screenshot receipt passes
+Vulkan/SDL3, 1920x1080, 4x MSAA, and scene-detail checks with no failures; its
+image was inspected. That smoke receipt precedes the compatibility correction.
+New power records also include monotonic time directly so frame/telemetry joins
+remain reproducible across a host reboot.
+
+The corrected capture `corrected-capture/renderdoc/sp_a1_intro4_probe64_frame219.rdc`
+confirms seven ordinary/cutout pipelines use material masks 0/1 and the warp
+pipeline uses the uniform sentinel; every captured view uses the actual area
+presence mask 4. Freezing material predicates and view families back to their
+full uniform reference now yields zero changed bytes in every sample of the
+1920x1080 four-sample attachment. Report: `corrected-generic/results.json` under
+the external evidence directory. This closes the identified image mismatch;
+the RenderDoc-wrapper smoke limitation and full performance gates are separate.
+
+A private paired GPU leaf benchmark reuses the existing lab timestamp runner:
+128 warmup pairs, 64 measured pairs, alternated order, one identical receiver
+pass for either pipeline. Its patch and full samples are retained under
+`quality-results/pbr-specialization-20261003`; the patch is removed from the
+supported lab source after measurement. Native image/seeded controls still pass
+154 checks. Median paired specialized/control ratios are 0.9901 for two spots,
+0.9821 for two areas and 0.9873 for four areas at 1024 square. These are small
+(roughly 1–1.8 percent) receiver improvements, not whole-frame or High acceptance.
+The actual corrected game pipelines all remain 144 VGPRs; seven have
+40,004–43,244 code bytes and 148–165 branches, while the preserved warp pipeline
+has 44,120 code bytes and 177 branches. Uniform references have 55,432–58,312
+bytes and 223–235 branches. No scratch or spills is introduced.
+
+### RCV-12 retained incremental optimization and final route evidence
+
+The user explicitly selected retaining the small measured receiver improvements
+(2026-10-03). Material/view specialization is retained as an incremental core
+optimization with exact-image compatibility; it does not certify the complete
+High performance gate. The paired 1024-square receiver measurements are:
+
+| Receiver | Uniform median ms | Specialized median ms | Paired median reduction |
+| --- | ---: | ---: | ---: |
+| Two spots | 0.293979 | 0.291073 | 0.986% |
+| Two areas | 0.616571 | 0.606011 | 1.786% |
+| Four areas | 1.155235 | 1.138002 | 1.269% |
+
+The reductions use medians of per-pair ratios, rather than the ratio of the two
+reported medians. The historical diagnostic fields `fused_ms` and `split_ms`
+mean uniform and specialized single receiver pass here; no visibility split or
+additional product pass is introduced. The ignored diagnostic patch, sample log,
+and unmodified source backup preserve the measurement. The supported lab source
+was restored and rebuilt after this diagnostic run.
+
+Final ordinary High/1920x1080/4x MSAA ABBA comparison uses the corrected launcher
+against the retained RCV-11 control, with all 29 runtime library hashes verified
+before and after every route. GPU and frame interval phase medians in ms:
+
+| Run | Arrival GPU / interval | Reverse GPU / interval | Return GPU / interval |
+| --- | ---: | ---: | ---: |
+| `corrected-control-a4` | 33.167 / 33.368 | 19.538 / 19.651 | 33.311 / 33.530 |
+| `corrected-f1` | 33.726 / 33.950 | 20.065 / 20.194 | 34.879 / 35.234 |
+| `corrected-f2` | 32.326 / 32.736 | 19.233 / 19.522 | 32.427 / 32.672 |
+| `corrected-control-a5` | 33.387 / 33.625 | 19.473 / 19.647 | 33.304 / 33.527 |
+
+Averaging each pair of phase medians yields GPU changes of -0.75%, +0.74%,
++1.04% and interval changes of -0.46%, +1.06%, +1.27% for arrival, reverse and
+return respectively (negative is faster). Dynamic clock/thermal conditions vary:
+arrival median clocks are 2155.5/2047.5/2176.5/1970.5 MHz, temperatures
+85/90/81/84 C, AC connected throughout. Thus these routes do not establish a
+whole-frame speedup or a reliable regression at this small scale. Reports,
+identity receipts, original frame streams and monotonic power telemetry are in
+`/home/john/.rc-pbr-5689/evidence`. These measurements use source baseline
+`5689e16b9`, not subsequent unrelated renderer work on `subsystem-refactor`.
+
+Validation of the corrected implementation: actual launcher/engine/native adapter
+and restored render_lab builds pass; native PBR conformance passes 134 checks,
+posed-model 72 and shadowed-light 154; null world 76 and composition 58.
+Architecture all/baseline/inventory and changed-line style checks pass.
+The captured complete four-sample attachment is byte-identical to the uniform
+reference. The 120 FPS floor, existing map-name assertion and ordinary report's
+missing detailed scope timers remain failures; no complete performance acceptance
+is claimed. The executable reduction leaves the current 144-VGPR allocation
+unchanged. Further large gains must reduce executed area-light/shadow work and
+its live state, while preserving lighting and sample counts.

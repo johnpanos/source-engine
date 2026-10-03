@@ -480,6 +480,25 @@ struct SurfaceDrawState
 	auto operator<=>( const SurfaceDrawState & ) const = default;
 };
 
+// Material predicates whose values belong to the immutable material request.
+// Raw Pipeline callers may retain uniform evaluation; Request derives these
+// from the same constants it uploads. Authored warp materials retain uniform
+// evaluation for image compatibility. Numeric parameters remain uniforms.
+inline constexpr std::uint32_t kSurfaceDynamicMaterialFeatures = 0xffffffffu;
+inline constexpr std::uint32_t kSurfaceMaterialAlphaTest = 1u;
+inline constexpr std::uint32_t kSurfaceMaterialHalfLambert = 2u;
+inline constexpr std::uint32_t kSurfaceMaterialDiffuseWarp = 4u;
+inline constexpr std::uint32_t kSurfaceMaterialSpecularWarp = 8u;
+inline constexpr std::uint32_t kSurfaceMaterialUnlitMesh = 16u;
+std::uint32_t SurfaceMaterialFeatures( const SurfaceConstants &constants );
+
+// A view may remove only absent lighting families. The default supports every
+// family, including raw lab users whose bindings vary between draws.
+inline constexpr std::uint32_t kSurfaceViewSun = 1u;
+inline constexpr std::uint32_t kSurfaceViewProjectors = 2u;
+inline constexpr std::uint32_t kSurfaceViewAreas = 4u;
+inline constexpr std::uint32_t kSurfaceAllViewFeatures = 7u;
+
 // One point of the program: its pipeline state and specialization.
 struct SurfaceVariant
 {
@@ -493,6 +512,8 @@ struct SurfaceVariant
 	bool ignoreDepth = false;
 	SurfaceDrawState drawState{};
 	bool portalMask = false;
+	std::uint32_t materialFeatures = kSurfaceDynamicMaterialFeatures;
+	std::uint32_t viewFeatures = kSurfaceAllViewFeatures;
 
 	auto operator<=>( const SurfaceVariant & ) const = default;
 	bool operator==( const SurfaceVariant & ) const = default;
@@ -572,6 +593,11 @@ public:
 	    device::PipelineId shipped, const shaderlib::DebugSpecialization &debug );
 	foundation::Expected<device::PipelineId, SurfaceStatus> StatePipeline(
 	    device::PipelineId shipped, const SurfaceDrawState &state,
+	    const shaderlib::DebugSpecialization &debug = {} );
+	// State and lighting presence for one view, retaining the material features
+	// of the shipped pipeline. Reappearing lights select another cached variant.
+	foundation::Expected<device::PipelineId, SurfaceStatus> ViewPipeline(
+	    device::PipelineId shipped, const SurfaceDrawState &state, std::uint32_t viewFeatures,
 	    const shaderlib::DebugSpecialization &debug = {} );
 	// Render-sequence diagnostic for the most recent refused pipeline. The
 	// device's operation, status and native code survive the material boundary.
