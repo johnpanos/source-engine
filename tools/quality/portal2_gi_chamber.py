@@ -652,8 +652,8 @@ def main():
                         help="the Portal 2 SDK's maps directory (holds instances/)")
     parser.add_argument("--quality", choices=("fast", "full"), default="full",
                         help="vbsp/vvis/vrad quality")
-    parser.add_argument("--relight-quality", default="portal2-chamber",
-                        help="map export profile (portal2-chamber-preview builds in minutes)")
+    parser.add_argument("--relight-quality", default="source2",
+                        help="production map profile (source2)")
     parser.add_argument("--device", help="Cycles device override (cpu, gpu, auto)")
     parser.add_argument("--from", dest="force_from", help="force this relight step and later")
     parser.add_argument("--no-publish", action="store_true")

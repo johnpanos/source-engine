@@ -64,6 +64,18 @@ GPU metadata stores band indices rather than row offsets, avoiding half-float
 overflow for large relight atlases. The serialized atlas remains unchanged.
 Only the GPU adapter performs this translation; the CPU oracle reads disk bands.
 
+RPRB v4 adds a conservative 16x16x16 spatial candidate grid before the atlas,
+after the aligned records. Its first 32 bytes are origin xyz and power-of-two
+cell size (four float32), then sixteen zero bytes, followed by 4096 little-endian
+uint64 rank masks (x fastest). Atlas offset includes this section. Readers
+validate candidate coverage as well as bits and bounds. Global and first-two
+ranks are always present (including the blend's zero-share tie behavior).
+Outside the grid and in nearest mode, all ranks remain candidates.
+GPU row-zero texel 3 = (16,16,16,1); texels 4..7 contain the four grid float32
+bit patterns as four byte-valued half channels; texel 8 stores the candidate
+start row as uint32 bytes. Masks follow the radiance bands: two RGBA16F texels
+per cell, containing eight exact bytes. V1-v3 retain their existing layout.
+
 Relighting (McAuley, "Rendering the World of Far Cry 4", GDC 2015: a G-buffer
 cubemap relit at runtime; here with the distance too): at the lookup
 direction and lod, the capture saw the point capture + direction * distance
@@ -122,6 +134,10 @@ MAGIC = 0x42525052  # "RPRB"
 VERSION = 1
 RELIGHT_VERSION = 2
 TILED_VERSION = 3  # up to 64 probes; optional relight flag, unchanged disk record shape
+CANDIDATE_VERSION = 4
+CANDIDATE_DIM = 16
+CANDIDATE_CELLS = CANDIDATE_DIM ** 3
+CANDIDATE_BYTES = 32 + CANDIDATE_CELLS * 8
 LEGACY_MAX_PROBES = 16
 FLAG_RELIGHT = 1  # header flags (v2/v3): relight bands present
 # Relight bands: ray distances (Source units) stay within half range; sky
@@ -215,7 +231,42 @@ def ranks(probes):
     return rank
 
 
-def build(probes, chains, scale=SOURCE_UNITS_PER_METER, relight=None):
+def candidate_required(probes, origin, step):
+    """Conservative rank masks for the serialized records, including GPU rounding.
+
+    Axis overlap deliberately retains corner false positives. Facing and blend
+    weights remain runtime inputs. Global probes are present in every cell.
+    Cell order is x fastest, then y, then z. No light or probe is truncated.
+    """
+    z, y, x = np.indices((CANDIDATE_DIM,) * 3)
+    low = np.stack((x.ravel(), y.ravel(), z.ravel()), axis=1) * step + origin
+    high = low + step
+    masks = np.zeros(CANDIDATE_CELLS, dtype=np.uint64)
+    for probe in probes:
+        lo = probe["influence_min"] - probe["fade"]
+        hi = probe["influence_max"] + probe["fade"]
+        magnitude = np.maximum(np.max(np.abs(low), axis=1),
+                               np.max(np.abs(high), axis=1))
+        magnitude = np.maximum(magnitude, max(np.abs(lo).max(), np.abs(hi).max()))
+        guard = 0.001 + magnitude * 1e-5
+        reaches = np.ones(len(low), dtype=bool) if probe["global"] or probe["rank"] < 2 else np.all(
+            (low <= hi + guard[:, None]) & (high >= lo - guard[:, None]), axis=1)
+        masks[reaches] |= np.uint64(1) << np.uint64(probe["rank"])
+    return masks
+
+
+def candidate_grid(probes):
+    local = [p for p in probes if not p["global"]] or probes
+    low = np.min([p["influence_min"] - p["fade"] for p in local], axis=0)
+    high = np.max([p["influence_max"] + p["fade"] for p in local], axis=0)
+    step = 2.0 ** math.ceil(math.log2(max(1.0, float(np.max(high - low)) /
+                                       (CANDIDATE_DIM - 1))))
+    origin = np.floor(low / step) * step
+    return {"origin": origin.astype(np.float32), "step": step,
+            "masks": candidate_required(probes, origin, step)}
+
+
+def build(probes, chains, scale=SOURCE_UNITS_PER_METER, relight=None, candidates=False):
     """RPRB bytes. `probes`: dicts with capture, box_min, box_max,
     influence_min, influence_max (meters), fade (meters), global; `chains`:
     each probe's `reflection_probe.mip_chain` (linear, already exposure
@@ -274,17 +325,31 @@ def build(probes, chains, scale=SOURCE_UNITS_PER_METER, relight=None):
                                FLAG_GLOBAL if probe.get("global") else 0, index * band,
                                relight_rows(count, width, index)[0] if relight is not None
                                else 0)
-    atlas_offset = (HEADER_BYTES + RECORD_BYTES * count + 15) & ~15
+    base_offset = (HEADER_BYTES + RECORD_BYTES * count + 15) & ~15
+    candidate_data = b""
+    if candidates:
+        # Read back the exact serialized floats used by the runtime validator.
+        serialized = []
+        for index in range(count):
+            f = struct.unpack_from("<16f4I", records, index * RECORD_BYTES)
+            serialized.append({"influence_min": np.array(f[10:13]),
+                               "influence_max": np.array(f[13:16]), "fade": f[3],
+                               "rank": f[16], "global": bool(f[17] & FLAG_GLOBAL)})
+        grid = candidate_grid(serialized)
+        candidate_data = struct.pack("<4f4I", *grid["origin"], grid["step"], 0, 0, 0, 0)
+        candidate_data += grid["masks"].astype("<u8").tobytes()
+    atlas_offset = base_offset + len(candidate_data)
     texels = atlas.astype("<f2")
     global_index = next(i for i, probe in enumerate(probes) if probe.get("global"))
     header = struct.pack("<IIIIIIIIQQIIII", MAGIC,
-                         (TILED_VERSION if count > LEGACY_MAX_PROBES else
+                         (CANDIDATE_VERSION if candidates else
+                          TILED_VERSION if count > LEGACY_MAX_PROBES else
                           VERSION if relight is None else RELIGHT_VERSION), count, mips, width,
                          atlas_width, atlas_height, RECORD_BYTES, atlas_offset, texels.nbytes,
                          PREFILTER_VERSION, 0 if relight is None else FLAG_RELIGHT,
                          global_index, 0)
     data = header + records
-    data += b"\0" * (atlas_offset - len(data)) + texels.tobytes()
+    data += b"\0" * (base_offset - len(data)) + candidate_data + texels.tobytes()
     read(data)  # the writer never emits what the reader rejects
     return data
 
@@ -347,24 +412,25 @@ def read(data):
     if magic != MAGIC:
         raise RprbError("BadMagic")
     # v3 extends capacity and allows either kind of band payload.
-    if (version not in (VERSION, RELIGHT_VERSION, TILED_VERSION) or
+    if (version not in (VERSION, RELIGHT_VERSION, TILED_VERSION, CANDIDATE_VERSION) or
             prefilter != PREFILTER_VERSION or flags not in (0, FLAG_RELIGHT) or
-            (version != TILED_VERSION and
+            (version < TILED_VERSION and
              flags != (FLAG_RELIGHT if version == RELIGHT_VERSION else 0)) or reserved):
         raise RprbError("UnsupportedVersion")
     relight = bool(flags & FLAG_RELIGHT)
-    maximum = MAX_PROBES if version == TILED_VERSION else LEGACY_MAX_PROBES
+    maximum = MAX_PROBES if version >= TILED_VERSION else LEGACY_MAX_PROBES
     if not 1 <= count <= maximum or not 1 <= mips <= MAX_MIPS:
         raise RprbError("InvalidCounts")
     if (width & (width - 1) or not MIN_WIDTH <= width <= MAX_WIDTH or (width >> (mips - 1)) < 4
             or (atlas_width, atlas_height) != atlas_layout(count, width, relight)
             or record_bytes != RECORD_BYTES):
         raise RprbError("InvalidAtlas")
-    expected_offset = (HEADER_BYTES + RECORD_BYTES * count + 15) & ~15
+    base_offset = (HEADER_BYTES + RECORD_BYTES * count + 15) & ~15
+    expected_offset = base_offset + (CANDIDATE_BYTES if version == CANDIDATE_VERSION else 0)
     if (atlas_offset != expected_offset or atlas_bytes != atlas_width * atlas_height * 8 or
             len(data) != atlas_offset + atlas_bytes):
         raise RprbError("InvalidSections")
-    if any(data[HEADER_BYTES + RECORD_BYTES * count:atlas_offset]):
+    if any(data[HEADER_BYTES + RECORD_BYTES * count:base_offset]):
         raise RprbError("InvalidSections", "nonzero padding")
     probes = []
     for index in range(count):
@@ -375,7 +441,8 @@ def read(data):
                  "box_max": floats[7:10], "influence_min": floats[10:13],
                  "influence_max": floats[13:16], "rank": rank,
                  "global": bool(flag & FLAG_GLOBAL)}
-        if (not np.all(np.isfinite(floats)) or np.any(np.abs(floats) > MAX_COORDINATE) or
+        coordinate_limit = 65504.0 if version == CANDIDATE_VERSION else MAX_COORDINATE
+        if (not np.all(np.isfinite(floats)) or np.any(np.abs(floats) > coordinate_limit) or
                 probe["fade"] <= 0 or np.any(probe["box_min"] >= probe["box_max"]) or
                 np.any(probe["influence_min"] >= probe["influence_max"]) or
                 np.any(probe["capture"] < probe["box_min"]) or
@@ -390,6 +457,20 @@ def read(data):
     if (sum(probe["global"] for probe in probes) != 1 or global_index >= count or
             not probes[global_index]["global"] or probes[global_index]["rank"] != count - 1):
         raise RprbError("InvalidGlobal")
+    candidates = None
+    if version == CANDIDATE_VERSION:
+        fields = struct.unpack_from("<4f4I", data, base_offset)
+        origin, step = np.array(fields[:3]), fields[3]
+        if (not np.isfinite(fields[:4]).all() or np.abs(origin).max() > 4e6 or
+                not 1 <= step <= 4e6 or math.frexp(step)[0] != 0.5 or any(fields[4:])):
+            raise RprbError("InvalidCandidates", "invalid grid bounds")
+        masks = np.frombuffer(data, dtype="<u8", count=CANDIDATE_CELLS,
+                              offset=base_offset + 32)
+        valid = np.uint64((1 << count) - 1)
+        required = candidate_required(probes, origin, step)
+        if np.any(masks & ~valid) or np.any((masks & required) != required):
+            raise RprbError("InvalidCandidates", "missing required or out-of-range rank")
+        candidates = {"origin": origin, "step": step, "masks": masks}
     atlas = np.frombuffer(data, dtype="<f2", count=atlas_width * atlas_height * 4,
                           offset=atlas_offset).reshape(atlas_height, atlas_width, 4)
     atlas = atlas.astype(np.float64)
@@ -438,7 +519,8 @@ def read(data):
                           for index in range(count)]
     return {"count": count, "mips": mips, "width": width, "atlas_width": atlas_width,
             "atlas_height": atlas_height, "atlas_offset": atlas_offset, "probes": probes,
-            "chains": chains, "relight": relight_chains, "global_index": global_index}
+            "chains": chains, "relight": relight_chains, "global_index": global_index,
+            "candidates": candidates}
 
 
 def gpu_columns(layout):
@@ -464,11 +546,22 @@ def gpu_texture(layout, mode=MODE_BLEND, relight=True):
     band = width // 2
     band_count = layout["atlas_height"] // band
     rows = 1 + count + ((band_count + columns - 1) // columns) * band
+    candidate_start = rows
+    candidates = layout.get("candidates")
+    if candidates:
+        rows += (CANDIDATE_CELLS * 2 + 2 * width * columns - 1) // (2 * width * columns)
     texture = np.zeros((rows, 2 * width * columns, 4), dtype=np.float16)
     texture[0, 0] = (count, layout["mips"], width, GPU_MARKER)
     texture[0, 1] = (mode, 1.0 if relight and bands else 0.0, 0, 0)
     if columns > 1:
         texture[0, 2] = (columns, 0, 0, 0)
+    if candidates:
+        texture[0, 3] = (CANDIDATE_DIM, CANDIDATE_DIM, CANDIDATE_DIM, 1)
+        for index, value in enumerate((*candidates["origin"], candidates["step"])):
+            texture[0, 4 + index] = list(struct.pack("<f", value))
+        texture[0, 8] = list(struct.pack("<I", candidate_start))
+        packed = np.frombuffer(candidates["masks"].astype("<u8").tobytes(), dtype=np.uint8)
+        texture[candidate_start:].reshape(-1)[:len(packed)] = packed
     row_unit = band if columns > 1 else 1
     for index, probe in enumerate(layout["probes"]):
         values = np.array([(*probe["capture"], probe["fade"]),
@@ -1144,11 +1237,17 @@ def pack(probes_dir, width, gain, prefilter_samples=256):
     # space.
     global_index = next(i for i, record in enumerate(receipt["probes"]) if record["global"])
     probes[global_index]["global"] = True
-    data = build(probes, chains, relight=relight if gbuffer else None)
+    data = build(probes, chains, relight=relight if gbuffer else None, candidates=True)
+    masks = read(data)["candidates"]["masks"]
+    candidate_counts = [int(mask).bit_count() for mask in masks]
     residuals = [r["mean_relative_residual"] for r in reports]
     return data, {"status": "pass", "schema": "rprb-pack/v1", "probes": len(probes),
                   "width": width, "mips": len(chains[0]), "preview_gain": gain,
                   "relight": gbuffer,
+                  "candidate_grid": {"dimensions": [CANDIDATE_DIM] * 3,
+                                     "bytes": CANDIDATE_BYTES,
+                                     "mean_candidates": float(np.mean(candidate_counts)),
+                                     "max_candidates": max(candidate_counts)},
                   "prefilter_version": PREFILTER_VERSION, "global_index": global_index,
                   "faces_receipt_sha256": hashlib.sha256(
                       (probes_dir / "probes.json").read_bytes()).hexdigest(),
@@ -1344,9 +1443,18 @@ def main():
     command.add_argument("--out", type=Path, required=True)
     command = commands.add_parser("info", help="validate RPRB bytes and print their records")
     command.add_argument("rprb", type=Path)
+    command = commands.add_parser("candidate-fixture", help="write a candidate invariant fixture")
+    command.add_argument("--out", type=Path, default=FIXTURE_DIR / "candidates64.rprb")
     command = commands.add_parser("fixture", help="write the C++ reader's shared fixtures")
     command.add_argument("--out", type=Path, default=FIXTURE_DIR)
     args = parser.parse_args()
+    if args.command == "candidate-fixture":
+        layout = read(capacity_fixture())
+        data = build(layout["probes"], layout["chains"], scale=1, candidates=True)
+        read(data)
+        args.out.parent.mkdir(parents=True, exist_ok=True)
+        args.out.write_bytes(data)
+        return
     if args.command == "fixture":
         write_fixture(args.out)
         return

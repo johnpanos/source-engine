@@ -232,7 +232,7 @@ def main():
                         help="widen the spacing just enough for the grid to fit --max-probes, "
                              "instead of failing (recorded in the receipt)")
     parser.add_argument("--max-probes", type=int, default=probe_volume.MAX_PROBES,
-                        help="probe budget --fit-limit fits (at most the PRBV limit): every "
+                        help="hard probe budget (at most the PRBV limit): every "
                              "probe is traced and baked through its own receiver quads, so a "
                              "whole retail map's million probes would take hours")
     parser.add_argument("--samples", type=int, required=True)
@@ -284,8 +284,10 @@ def main():
                   (args.spacing, spacing, args.max_probes), flush=True)
     origin, step, dims = probe_volume.grid_for(low, high, spacing)
     count = int(np.prod(dims))
-    if count > probe_volume.MAX_PROBES:
-        raise ValueError("%d probes exceed the PRBV limit" % count)
+    limit = min(args.max_probes, probe_volume.MAX_PROBES)
+    if limit < 1 or count > limit:
+        raise ValueError("%d probes exceed the declared limit %d; spacing is %.3g m" %
+                         (count, limit, spacing))
     spacing_min = float(step.min())
     max_distance = MAX_DISTANCE * float(step.max())
 
@@ -351,7 +353,7 @@ def main():
                         "dims": grid["dims"], "max_relocation": grid["max_relocation"],
                         "max_distance": grid["max_distance"]},
                "requested_spacing": args.spacing, "fit_limit": args.fit_limit,
-               "max_probes": args.max_probes if args.fit_limit else None,
+               "max_probes": args.max_probes,
                "probes": count, "active_probes": int(active.sum()),
                "relocated_probes": int((np.abs(offsets).max(axis=1) > 1e-9).sum()),
                "max_backface_fraction": float(backfaces.max()),

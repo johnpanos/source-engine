@@ -1,9 +1,9 @@
 {
   "schema": "map-export-profile/v1",
   "name": "source2",
-  "description": "Default export quality for scene-derived maps: path-traced lightmaps (Cycles on the CPU) with OIDN, directional (normal-map-aware) baked light, a map reflection probe, every authored material channel, and a camera-matched Cycles reference for the runtime gate. Since 2026-09-30 the lightmap is baked as direct and indirect layers (the total their sum): the render core draws the indirect layer and every light's direct light at runtime (RFC 0016's runtime direct light, id Tech's split).",
+  "description": "One production map quality policy for authoring and relighting. GPU Cycles, directional indirect light and invariant-validated compiled runtime data. No per-map quality overrides or reference-image comparisons.",
   "lightmap": {
-    "size": 2048,
+    "size": 4096,
     "samples": 2048,
     "device": "gpu",
     "denoise": true,
@@ -11,42 +11,54 @@
     "layers": [
       "direct",
       "indirect"
+    ],
+    "directional_samples": 2048,
+    "direct_samples": 2048,
+    "light_paths": "gi-reference",
+    "layout": "planar",
+    "exclude_materials": [
+      "relight_occluder"
     ]
   },
   "probe_volume": {
-    "spacing_m": 1.0,
-    "samples": 4096
+    "spacing_m": 2.0,
+    "samples": 4096,
+    "fit_limit": false,
+    "max_probes": 50000
   },
   "reflection_probe": {
     "width": 512,
     "face_size": 256,
     "samples": 1024,
     "placement": {
-      "max_probes": 64
-    }
+      "max_probes": 64,
+      "max_walkable": 2000
+    },
+    "light_paths": "gi-reference",
+    "relight": false
   },
-  "reference": {
-    "render": {
-      "samples": 256,
-      "scale": 0.5
-    }
-  },
-  "runtime_gate": {
-    "max_mae": 24,
-    "min_ssim": 0.7
-  },
+  "reference": null,
+  "runtime_gate": null,
   "audit": {
-    "min_lightmap_samples": 1024,
+    "min_lightmap_samples": 2048,
     "require_denoise": true,
     "require_directional": true,
     "require_reflection_probe": true,
+    "require_reflection_candidates": true,
     "max_reflection_probe_residual": 0.25,
     "require_reflection_probe_budget": true,
     "max_uncovered_walkable_fraction": 0.1,
     "max_unserved_glossy_fraction": 0.5,
     "require_authored_channels": true,
-    "max_texture_size": 2048,
     "max_wmsh_normal_fallback_fraction": 0.01,
-    "require_runtime_gate_when_booted": true
-  }
+    "require_runtime_gate_when_booted": false
+  },
+  "revision": 1,
+  "world_mesh": {
+    "exclude_materials": [
+      "relight_occluder"
+    ]
+  },
+  "radiosity": null,
+  "sdf_volume": null
 }

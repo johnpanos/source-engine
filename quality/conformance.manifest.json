@@ -10123,6 +10123,40 @@
       "expect": "pass"
     },
     {
+      "id": "render.lab.reflection-candidates",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "migration": "R95",
+      "contract": "RFC/0016-render-core.md",
+      "profile": "linux-native-vulkan-gpu",
+      "kind": "positive",
+      "description": "Compiled RPRB v4 candidate invariants: load-time rejection of incomplete coverage without partial publication; GPU coverage, finite radiance and normalized nonnegative weights at 17496 positions in four modes. No oracle or image comparison.",
+      "command": [
+        "{python}",
+        "tools/render/lab.py",
+        "suite",
+        "reflection-candidates",
+        "--validate"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 15,
+      "timeout_seconds": 300,
+      "requires": [
+        "path:build-rc-lab/render/lab/render_lab",
+        "vulkan-device:gpu"
+      ],
+      "sources": [
+        "render/lab/reflection_probes_suite.cpp",
+        "render/lab/reflection_probes_check.comp",
+        "render/shaders/common/reflection_probes.glsl",
+        "mapcontainer/reflection_probes.cpp",
+        "public/mapcontainer/reflection_probes.h",
+        "quality/fixtures/reflection/rprb/candidates64.rprb",
+        "tools/quality/reflection_probe_set.py"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "render.lab.reflection-probes.sensitivity",
       "domain": "Q-PRESENTATION",
       "rfc": "0016",

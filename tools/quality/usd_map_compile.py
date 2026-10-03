@@ -688,7 +688,7 @@ def main(argv=None):
     build.add_argument("--json", type=Path, help="write the build outcome here")
     build.add_argument("--lighting", metavar="PROFILE",
                        help="light the map with the lighting back end (map_lighting.py) "
-                            "using this export profile, e.g. legacy-relight-preview")
+                            "using this export profile, source2")
     build.add_argument("--lighting-device", choices=("cpu", "gpu", "auto"))
     build.add_argument("--lighting-out", type=Path,
                        help="the lighting build (default quality-results/lighting/<map>; "

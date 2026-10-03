@@ -159,7 +159,9 @@ BAKE_SCOPE = "pbrt-shared-lightmap-uv-and-cycles-bake"
 GATES = ("reference-gate", "noise", "runtime-gate", "traversal", "audit")
 PROFILES = ROOT / "quality" / "map_export_profiles"
 DEFAULT_QUALITY = "source2"
-LEGACY_QUALITY = "legacy-relight"
+LEGACY_QUALITY = DEFAULT_QUALITY
+QUALITY_FIELDS = ("lightmap", "reflection_probe", "probe_volume", "radiosity", "sdf_volume",
+                  "reference", "runtime_gate", "audit", "world_mesh")
 SCENE_SCRIPTS = ["pbrt_scene.py", "map_scene.py"]
 PREVIOUS = ".previous"
 BLENDER_TOOLS = ("blender", "ocio")
@@ -272,6 +274,8 @@ def load_profile(name):
     profile = json.loads(path.read_text())
     if profile.get("schema") != "map-export-profile/v1" or profile.get("name") != name:
         raise ValueError("invalid map export profile " + str(path))
+    if name != DEFAULT_QUALITY and profile.get("purpose") != "fixture":
+        raise ValueError("the production map profile is source2; unsupported profile: " + name)
     profile["path"] = str(path)
     return profile
 
@@ -316,11 +320,26 @@ def check_light_styles(bsp, controls):
 
 
 def with_defaults(manifest, profile, key):
-    """Manifest value over the profile default; dicts merge, null disables."""
+    """Resolve authored data while keeping production quality owned by the profile."""
     default = profile.get(key)
     if key not in manifest:
         return default
     value = manifest[key]
+    if profile.get("purpose") != "fixture":
+        # Authored capture locations remain content; bake and acceptance policy
+        # has exactly one owner. A matching CLI device is harmless, but cannot
+        # introduce a CPU/auto production variant.
+        authored = {"lightmap": {"exclude_materials"},
+                    "reflection_probe": {"positions", "volumes"},
+                    "world_mesh": {"exclude_materials", "weld_materials",
+                                   "weld_distance_source_units"}}.get(key, set())
+        if not isinstance(value, dict) or not isinstance(default, dict):
+            if value != default:
+                raise ValueError("%s is owned by the source2 profile" % key)
+            return default
+        for field, setting in value.items():
+            if field not in authored and setting != default.get(field):
+                raise ValueError("%s.%s is owned by the source2 profile" % (key, field))
     if isinstance(value, dict) and isinstance(default, dict):
         return dict(default, **value)
     return value or None
@@ -380,6 +399,12 @@ def run_logged(command, handle, env=None, on_line=None, silence=None):
 class Pipeline:
     def __init__(self, manifest, toolchain, out, force_from, boot, keep_going=False,
                  publish=True, until=None):
+        self.profile = load_profile(manifest["quality"])
+        if publish and self.profile.get("purpose") == "fixture":
+            raise ValueError("a fixture profile cannot publish production content")
+        for key in QUALITY_FIELDS:
+            with_defaults(manifest, self.profile, key)
+        self.profile_hash = sha256(self.profile["path"])
         self.manifest = manifest
         self.tools = toolchain
         self.out = out.resolve()
@@ -414,9 +439,7 @@ class Pipeline:
         self.keep_going = keep_going
         self.publish = publish
         self.failed_gates = []
-        # Export quality comes from a declared profile (default `source2`);
-        # the manifest overrides individual settings.
-        self.profile = load_profile(manifest["quality"])
+        # One production policy; private fixtures cannot publish a map.
         lightmap = with_defaults(manifest, self.profile, "lightmap")
         self.lightmap = {"size": lightmap.get("size", 2048),
                          "samples": lightmap.get("samples", 64),
@@ -478,7 +501,7 @@ class Pipeline:
             raise ValueError("a relit map needs a probe_volume: its world lights move there")
         if self.sdf_volume and not self.radiosity:
             raise ValueError("sdf_volume needs the radiosity transfer its light styles follow")
-        reference = dict(self.profile.get("reference") or {}, **manifest.get("reference", {}))
+        reference = with_defaults(manifest, self.profile, "reference") or {}
         self.reference_render = reference.get("render")
         self.runtime_gate = with_defaults(manifest, self.profile, "runtime_gate")
         world_mesh = with_defaults(manifest, self.profile, "world_mesh") or {}
@@ -1069,10 +1092,10 @@ class Pipeline:
                            "--out", p["prbv"], "--work", p["prbv_work"]] + env_args
             if volume.get("bounds_m"):
                 volume_args += ["--bounds"] + [str(value) for value in volume["bounds_m"]]
+            if volume.get("max_probes"):
+                volume_args += ["--max-probes", str(volume["max_probes"])]
             if volume.get("fit_limit"):
                 volume_args += ["--fit-limit"]
-                if volume.get("max_probes"):
-                    volume_args += ["--max-probes", str(volume["max_probes"])]
             self.step("probe-volume", [p["stage"]] + self.scene_sources() +
                       ([environment] if environment else []),
                       dict(volume, light_paths=self.lightmap["light_paths"]),
@@ -1404,7 +1427,8 @@ class Pipeline:
                 p["directional"].with_name(p["directional"].name + ".json"),
                 p["directional_indirect"].with_name(p["directional_indirect"].name + ".json"))
                 if path.is_file()]
-            self.step("audit", receipts, {"profile": self.profile["name"], "boot": self.boot},
+            self.step("audit", receipts, {"profile": self.profile["name"],
+                                         "profile_sha256": self.profile_hash, "boot": self.boot},
                       ["map_export_audit.py"], [p["audit"]],
                       lambda: self.run("audit", [
                           sys.executable, HERE / "map_export_audit.py", "--build", self.out,
@@ -1412,6 +1436,8 @@ class Pipeline:
                           (["--booted"] if self.boot else [])))
         summary = {"status": "gate-failed" if self.failed_gates else "pass",
                    "quality": self.profile["name"],
+                   "profile_revision": self.profile.get("revision"),
+                   "profile_sha256": self.profile_hash,
                    "failed_gates": self.failed_gates, "map": self.map, "manifest_scene": scene,
                    "content_root": str(p["content"]),
                    "bsp2_sha256": sha256(p["bsp2"]),
@@ -1433,7 +1459,7 @@ class Pipeline:
             summary["lightmap_medium"] = baked_medium
         (self.out / "build.json").write_text(json.dumps(summary, indent=2) + "\n")
         print(json.dumps(summary, indent=2))
-        if self.publish:
+        if self.publish and not self.failed_gates:
             playable_maps.publish(summary, sidecars={
                 MEDIUM_SIDECAR: json.dumps(baked_medium, indent=2, sort_keys=True) + "\n"}
                 if baked_medium else None)

@@ -41,7 +41,6 @@ import source_content  # noqa: E402
 import source_model  # noqa: E402
 from vtf_content import compile_texture, power_of_two, verify_solid_vtf  # noqa: E402
 
-MAX_TEXTURE = 2048
 GLASS_PREVIEW_ALPHA = 0.13
 
 
@@ -83,7 +82,7 @@ def srgb_encode(linear):
 
 
 def target_size(size):
-    return tuple(min(power_of_two(value), MAX_TEXTURE) for value in size)
+    return tuple(power_of_two(value) for value in size)
 
 
 def read_texture(root, texture, color):

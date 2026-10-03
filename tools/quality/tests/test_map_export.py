@@ -244,6 +244,8 @@ class AuditTest(unittest.TestCase):
             "lighting/atlas.ktx2.json": {"layout": "directional-2x1"},
             "lighting/reflection_probes.rprb.json": {
                 "status": "pass", "probes": 2, "width": 512, "max_mean_relative_residual": 0.08,
+                "candidate_grid": {"dimensions": [16, 16, 16], "bytes": 32800,
+                                   "max_candidates": 2},
                 "fits": [{"index": 0, "role": "room", "mean_relative_residual": 0.08},
                          {"index": 1, "role": "glossy", "mean_relative_residual": 0.03}],
                 "placement": {"walkable_samples": 120, "uncovered_walkable": 0,
@@ -290,6 +292,7 @@ class AuditTest(unittest.TestCase):
                                "lighting/reflection_probes.rprb.json": None})
         self.assertIn("lightmap-samples", result["failed"])
         self.assertIn("reflection-probe", result["failed"])
+        self.assertIn("reflection-candidates", result["failed"])
         self.assertIn("reflection-probe-fit", result["failed"])
 
     def test_badly_fitted_or_sparse_probes_fail(self):
@@ -319,9 +322,9 @@ class AuditTest(unittest.TestCase):
         self.assertEqual(len(before), 3)
         self.assertTrue(all(check["status"] == "fail" for check in before))
 
-    def test_failed_runtime_gate_fails(self):
+    def test_production_does_not_consult_reference_gate(self):
         result = self.audit(**{"camera-boot/gate.json": {"status": "fail"}})
-        self.assertIn("runtime-gate", result["failed"])
+        self.assertNotIn("runtime-gate", result["failed"])
 
 
 if __name__ == "__main__":

@@ -63,6 +63,9 @@ class Recording(pbrt_map_build.Pipeline):
                 write(output, json.dumps(MODEL))
             else:
                 write(output, "{}")
+        if name == "legacy-scene":
+            write(self.paths["legacy_scene"] / "scene-receipt.json",
+                  json.dumps({"static_props": {"materials": []}}))
         if name == "radiosity":
             write(self.paths["rtrn_work"] / "rtrn-bake.json", json.dumps({"sources": []}))
 
@@ -145,9 +148,9 @@ class PlanTest(unittest.TestCase):
         self.assertEqual({op for op, _ in pipeline.baked},
                          {"bake", "probe-volume"} | (set(gi) if moving_light_gi else set()))
 
-    def test_a_manifest_can_still_ask_for_moving_light_gi(self):
+    def test_a_private_fixture_can_ask_for_moving_light_gi(self):
         pipeline = plan({"schema": "pbrt-map-manifest/v1", "map": "room", "bsp": str(self.bsp),
-                         "quality": "legacy-relight-preview",
+                         "quality": "gi-fixture",
                          "radiosity": {"patch_size_m": 1.0, "transfer_rays": 16,
                                        "gather_rays": 64, "samples": 16},
                          "sdf_volume": {"voxel_m": 0.4}}, self.tmp / "gi")
@@ -155,7 +158,7 @@ class PlanTest(unittest.TestCase):
 
     def test_derived_scene(self):
         pipeline = plan({"schema": "pbrt-map-manifest/v1", "map": "room", "bsp": str(self.bsp),
-                         "quality": "legacy-relight-preview"}, self.tmp / "derived")
+                         "quality": "gi-fixture"}, self.tmp / "derived")
         self.assertTrue(pipeline.derived)
         self.assertEqual(pipeline.order[0], "legacy-scene")
         self.assertNotIn("collision", pipeline.order)
@@ -164,7 +167,7 @@ class PlanTest(unittest.TestCase):
 
     def test_authored_scene_over_a_given_bsp(self):
         pipeline = plan({"schema": "pbrt-map-manifest/v1", "map": "room", "bsp": str(self.bsp),
-                         "scene": str(self.model), "quality": "legacy-relight-preview"},
+                         "scene": str(self.model), "quality": "gi-fixture"},
                         self.tmp / "authored")
         self.assertFalse(pipeline.derived)
         self.assertNotIn("legacy-scene", pipeline.order)
@@ -173,7 +176,7 @@ class PlanTest(unittest.TestCase):
 
     def test_scene_map_compiles_its_bsp_before_any_bake(self):
         pipeline = plan({"schema": "pbrt-map-manifest/v1", "map": "room",
-                         "scene": str(self.model), "quality": "legacy-relight-preview"},
+                         "scene": str(self.model), "quality": "gi-fixture"},
                         self.tmp / "scene")
         order = pipeline.order
         self.assertLess(order.index("collision"), order.index("compile"))

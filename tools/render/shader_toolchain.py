@@ -371,6 +371,8 @@ GENERATED = {
         "render_lab's reflection-probes suite's check kernel and its seeded variants "
         "(render.lab.reflection-probes, RFC 0016 K11)", (
         ("kReflectionProbesCheck", LAB + "/reflection_probes_check.comp", DEVICE_OPTIONS),
+        ("kReflectionCandidateInvariants", LAB + "/reflection_probes_check.comp",
+         DEVICE_OPTIONS + ("-DRPRB_CANDIDATE_INVARIANTS",)),
         ("kReflectionProbesNoDistanceRoughness", LAB + "/reflection_probes_check.comp",
          DEVICE_OPTIONS + ("-DSEEDED_RPRB_NO_DISTANCE_ROUGHNESS",)),
         ("kReflectionProbesNoFacing", LAB + "/reflection_probes_check.comp",

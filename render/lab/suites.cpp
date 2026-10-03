@@ -34,6 +34,8 @@ int RunSuite( int argc, char **argv )
 		return RunProbeVolumeSuite( argc - 1, argv + 1 );
 	if ( name == "reflection-probes" )
 		return RunReflectionProbesSuite( argc - 1, argv + 1 );
+	if ( name == "reflection-candidates" )
+		return RunReflectionCandidatesSuite( argc - 1, argv + 1 );
 	if ( name == "volumetric" )
 		return RunVolumetricSuite( argc - 1, argv + 1 );
 	if ( name == "clustered-lights" )

@@ -9,7 +9,10 @@
     "denoise": true,
     "directional": false,
     "light_paths": "gi-reference",
-    "layers": ["direct", "indirect"]
+    "layers": [
+      "direct",
+      "indirect"
+    ]
   },
   "probe_volume": {
     "spacing_m": 1.0,
@@ -20,5 +23,6 @@
   "reflection_probe": null,
   "reference": null,
   "runtime_gate": null,
-  "audit": null
+  "audit": null,
+  "purpose": "fixture"
 }

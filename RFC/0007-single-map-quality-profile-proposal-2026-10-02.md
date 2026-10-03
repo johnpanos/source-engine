@@ -1,8 +1,11 @@
 # One map quality profile for Source 2 quality and performance
 
-Status: Proposal, 2026-10-02. The user selected one production profile for
-now. The settings and implementation sequence below are recommendations;
-this document does not change executable profiles or certify a build.
+Status: Partially implemented, 2026-10-02. The user selected one production
+profile. The [installed bake/compiler slice](0007-progress.md#single-production-map-profile-and-compiled-reflection-candidates-2026-10-02)
+enforces its settings and adds runtime-consumed reflection candidates. Larger
+representation and authoring changes below remain proposals; 120 FPS is unverified.
+The user's later direction requires invariant checks without oracle comparisons;
+any new bake uses the remote render machine.
 
 Use one `source2` quality profile for new maps, legacy relights, Hammer
 builds and content tools. It should produce consistent materials, directional
@@ -323,26 +326,22 @@ or another execution framework.
 
 ## Acceptance
 
-Use the existing harness families and owning comparators. The single profile
-must require the following evidence rather than allow a map to set a gate null:
+For this user-directed implementation, validate invariants at production
+boundaries and on the native runtime, without oracle or reference-image
+comparisons. The production profile disables the reference and camera-image
+gates. Existing independent suites remain available for unrelated work.
 
-- Bake and runtime agreement on materials, visible emitters, directional indirect
-  light, direct-light ownership, probe visibility, reflections and shadows.
-  Include moving doors and objects, grazing metal, thin walls and glass.
-- Chart seams, coverage, dark gradients and denoise detail, with seeded defects
-  detected. The existing p99 noise statistic remains recorded under the user's
-  prior decision; it is not repurposed into a misleading universal sample gate.
-- Reflection coverage and fit, with the current audit limits as the starting
-  authority. A count limit is not a quality pass. Map-specific threshold
-  overrides disappear; any comparator change is reviewed centrally with fixtures.
-- Matching lab and game cameras, linear-light term comparisons and final images.
-  Supply a reviewed camera set per map; absent required images mean unverified
-  acceptance. Keep reference-render settings in the test harness, outside the
-  production profile selector.
-- Complete gameplay/render cohorts under the existing High frame budget,
-  including turns, nested views, moving casters, reload and memory pressure.
-- Legacy gameplay identity for relights, and authored role, collision, visibility,
-  entity and save/reopen checks for native USD maps.
+- Reject malformed compiled data, nonfinite values, invalid indices, missing
+  candidate coverage and partial publication after failure.
+- Require valid directional pages, declared sample counts, denoising, authored
+  material channels, reflection placement coverage and compiled candidate data.
+- Check finite nonnegative radiance, valid selected ranks and normalized
+  nonnegative blend weights in the actual runtime shader, including boundaries
+  and fallback regions. Do not truncate a contributing light or probe.
+- Preserve relight gameplay identity, authored roles, collision, visibility,
+  entities and save/reopen behavior.
+- Measure complete gameplay/render cohorts under the existing High frame
+  budget, including turns, nested views, moving casters, reload and memory pressure.
 
 Separate build completion from qualification. A successfully built candidate
 may be inspected explicitly, with failed or unavailable gates attached to its
@@ -355,8 +354,8 @@ because it rendered a frame. No hidden second preset is created for candidates.
    scene, including shadow receiver cost. Prove static visibility classification
    on one fixed light and receiver cohort; compile conservative light/probe
    candidates and reusable caster inputs as their measured costs justify. Pair
-   these with the runtime consumers and preparation/binding fixes. Use shared
-   lab oracles and complete-image comparisons, keeping one quality profile.
+   these with the runtime consumers and preparation/binding fixes. Use runtime
+   invariants and complete-frame measurements, keeping one quality profile.
    Follow the engine comparison's receiver and coherent-execution priorities;
    compiled-data improvements and runtime shader improvements are complementary
    parts of reaching the frame floor, not independent claims of 120 FPS.

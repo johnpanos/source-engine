@@ -239,6 +239,37 @@ vec3 ReflectionProbeSample( int rank, int count, vec3 header, vec3 position, vec
 	return radiance;
 }
 
+uint ReflectionCandidateBytes( ivec2 texel )
+{
+	uvec4 bytes = uvec4( ReflectionProbesFetch( texel ) );
+	return bytes.x | ( bytes.y << 8u ) | ( bytes.z << 16u ) | ( bytes.w << 24u );
+}
+
+// v4 masks are validated for conservative spatial coverage when loaded.
+// Facing, rank, weights and radiance remain runtime computations.
+uvec2 ReflectionCandidates( vec3 position, int count )
+{
+	uvec2 allRanks = uvec2( count >= 32 ? 0xffffffffu : ( 1u << uint( count ) ) - 1u,
+	    count <= 32 ? 0u : count == 64 ? 0xffffffffu : ( 1u << uint( count - 32 ) ) - 1u );
+	if ( ReflectionProbesFetch( ivec2( 3, 0 ) ).w != 1.0 )
+		return allRanks;
+	vec3 origin = vec3( uintBitsToFloat( ReflectionCandidateBytes( ivec2( 4, 0 ) ) ),
+	    uintBitsToFloat( ReflectionCandidateBytes( ivec2( 5, 0 ) ) ),
+	    uintBitsToFloat( ReflectionCandidateBytes( ivec2( 6, 0 ) ) ) );
+	float step = uintBitsToFloat( ReflectionCandidateBytes( ivec2( 7, 0 ) ) );
+	vec3 cell = floor( ( position - origin ) / step );
+	if ( any( lessThan( cell, vec3( 0.0 ) ) ) || any( greaterThanEqual( cell, vec3( 16.0 ) ) ) )
+		return allRanks;
+	ivec3 index = ivec3( cell );
+	int offset = 2 * ( index.x + 16 * ( index.y + 16 * index.z ) );
+	int columns = max( 1, int( ReflectionProbesFetch( ivec2( 2, 0 ) ).x ) );
+	int width = 2 * int( ReflectionProbesFetch( ivec2( 0, 0 ) ).z ) * columns;
+	int start = int( ReflectionCandidateBytes( ivec2( 8, 0 ) ) );
+	ivec2 texel = ivec2( offset % width, start + offset / width );
+	return uvec2( ReflectionCandidateBytes( texel ),
+	    ReflectionCandidateBytes( texel + ivec2( 1, 0 ) ) );
+}
+
 // Specular image light at `position` (geometric normal `normal`) along the
 // unit reflected ray; false when the texture carries no reflection probes
 // (the fallback texture) or the mode is off.
@@ -281,8 +312,12 @@ bool ReflectionProbesRadianceDebug( vec3 position, vec3 normal, vec3 reflected, 
 		float remaining = 1.0;
 		float top0 = -1.0, top1 = -1.0, third = 0.0;
 		int rank0 = 0, rank1 = 0;
-		for ( int rank = 0; rank < count; ++rank )
+		uvec2 candidates = ReflectionCandidates( position, count );
+		while ( any( notEqual( candidates, uvec2( 0u ) ) ) )
 		{
+			int word = candidates.x != 0u ? 0 : 1;
+			int rank = 32 * word + findLSB( candidates[word] );
+			candidates[word] &= candidates[word] - 1u;
 			vec4 captureFade = ReflectionProbeRecord( rank, 0 );
 			float weight = 1.0;
 			if ( ReflectionProbeRecord( rank, 2 ).w < 0.5 )

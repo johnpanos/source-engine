@@ -31,6 +31,88 @@ evidence; this list only summarizes them.
 - **R51 (planned).** Nothing is installed. Reference renders use Blender
   (`gi_reference_blender.py`), not the pinned Cycles standalone.
 
+## Single production map profile and compiled reflection candidates (2026-10-02)
+
+Installed the first bake/compiler slice of the
+[single-profile proposal](0007-single-map-quality-profile-proposal-2026-10-02.md),
+assuming the separate [render-core optimizations](0016-rendercore-engine-comparison-2026-10-02.md).
+The user's subsequent instruction selects runtime invariants, without oracle or
+reference-image comparisons, for this work. A fresh bake, when needed, uses the
+remote render machine (user direction, 2026-10-02).
+
+`quality/map_export_profiles/source2.json` is now the sole production map bake
+policy. New-map and legacy-relight defaults converge on it. The profile owns
+2048 lightmap/direct/directional samples, a 4096 atlas, GPU Cycles, the existing
+`gi-reference` transport settings, directional indirect, 2 m / 4096-sample
+visibility probes with a hard 50,000-probe limit, and up to 64 reflection
+captures at 256-face / 512 stored resolution and 1024 samples. That light-path
+name selects transport settings; it does not run a reference-image comparison.
+Moving-light GI remains outside this profile. Profile revision and SHA-256 are
+recorded in build receipts and the audit cache key. Production manifests cannot
+replace quality or audit settings; authored positions and material roles remain
+content. Private fixture profiles cannot publish, and failed gates cannot
+replace a published package even with `--keep-going`.
+
+The diffuse-probe baker now honors `max_probes` without requiring `--fit-limit`:
+overflow fails at the declared spacing. The material VTF bridge no longer
+silently reduces 4K source textures to 2K. Its existing power-of-two sizing is
+retained; this is not the completed native KTX2 texture producer or streaming
+policy.
+
+The RPRB packer emits version 4 with conservative spatial candidate masks. The
+format owner is `tools/quality/reflection_probe_set.py`; the native map reader
+and `render/shaders/common/reflection_probes.glsl` consume the same artifact.
+Each cell retains every potentially contributing rank, the global fallback,
+and the first two ranks needed by blend tie initialization. The shader visits
+retained ranks in their serialized order. Outside the grid, in nearest mode,
+and for older payloads, the complete selection remains available. No capture,
+light, filter sample or contribution is dropped. The grid adds 32,800 serialized
+bytes and 64 KiB of GPU texels plus row padding, inside the existing probe texture;
+it needs no new descriptor or per-frame resource. The 64-probe invariant fixture
+has 3–9 candidates per cell. This is a work-count observation, not a GPU speedup.
+
+At load time, the native reader rejects nonfinite bounds, invalid grid steps,
+reserved data, out-of-range ranks and any mask missing required coverage. It
+publishes the layout only after the complete payload is valid. The lab runs
+GPU invariants at 17,496 positions, covering cell boundaries and outside-grid
+positions, in four modes: coverage, finite nonnegative radiance, valid ranks and
+normalized nonnegative weights. These checks call the actual core shader and
+perform no image or oracle comparison. The separate static shadow-bounds work
+retains ownership of receiver visibility; this slice adds no competing baked
+shadow representation.
+
+Verification from the repository root:
+
+```sh
+WAFLOCK=.lock-waf-rc-lab-main ./waf build --targets=render_lab -j8
+python3 tools/quality/conformance.py check --suite render.lab.reflection-candidates --out quality-results/single-map-profile-20261002/conformance
+PYTHONPATH=tools/quality/tests python3 -m unittest test_lighting_back_end test_map_export.AuditTest test_map_bake_invariants -v
+python3 tools/archlint/archlint.py check --all
+python3 tools/archlint/archlint.py baseline --verify
+python3 tools/archlint/archlint.py inventory --verify
+```
+
+Results: lab product build passed; native Vulkan suite **15 checks, 0 failed,
+0 validation messages**; pipeline/policy/audit invariants **41 tests passed**;
+architecture, baseline and inventory checks passed. The VTF/material audit
+fixture and recording pipeline were updated for the new policy and current
+static-prop extraction receipt. Local evidence is under
+`quality-results/single-map-profile-20261002/`. The shared-worktree style check
+reports only concurrent shadow-bound/shadow-performance edits outside this
+slice; this slice's edited C++ passes the pinned formatter. The loader reports
+an unavailable dzn ICD and continues on its available Vulkan adapter.
+
+Reproduce the candidate fixture without a lighting bake or reference rendering:
+
+```sh
+python3 tools/quality/reflection_probe_set.py candidate-fixture --out quality/fixtures/reflection/rprb/candidates64.rprb
+```
+
+No fresh map bake or full-game frame benchmark was run. The full-image 120 FPS
+gate remains unverified. Color directional storage, compressed lightmap
+residency, multiple atlas pages and local diffuse-probe grids remain the owning
+RFCs' subsequent work; this slice does not claim those features or close R49/R50.
+
 ## Cycles map-bake device default (2026-09-30, user decision)
 
 GPU is now the default for map bakes and relights. `cycles_device.BAKE_DEVICE`
@@ -38,7 +120,8 @@ and production map-export profiles select `gpu`; a profile with no device
 inherits that default. The `bake-determinism` fixture retains its explicit CPU
 device because RFC 0007's `Exact` class requires CPU output. Correctness and
 reference checks also remain CPU by default. Hosts without a usable GPU must
-select `auto` explicitly.
+select `auto` explicitly for fixture/tool work; the single production profile
+now requires GPU and rejects that override.
 
 ## R47: PBR material family core
 

@@ -100,6 +100,13 @@ def audit(build, profile, booted):
     if rules.get("require_reflection_probe"):
         check("reflection-probe", rprb.get("status") == "pass" and rprb.get("probes", 0) >= 1,
               {"probes": rprb.get("probes"), "width": rprb.get("width")})
+    if rules.get("require_reflection_candidates"):
+        import reflection_probe_set as encoding
+        grid = rprb.get("candidate_grid") or {}
+        check("reflection-candidates", grid.get("dimensions") == [encoding.CANDIDATE_DIM] * 3 and
+              grid.get("bytes") == encoding.CANDIDATE_BYTES and
+              1 <= grid.get("max_candidates", 0) <= rprb.get("probes", 0),
+              grid)
     if "max_reflection_probe_residual" in rules:
         fits = [{"index": fit["index"], "role": fit["role"],
                  "mean_relative_residual": fit["mean_relative_residual"]}

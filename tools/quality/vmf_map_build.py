@@ -321,7 +321,7 @@ def main():
     b.add_argument("--publish", action="store_true", help="publish to the playable map store")
     b.add_argument("--lighting", metavar="PROFILE",
                    help="light the compiled map with the lighting back end (map_lighting.py) "
-                        "using this export profile, e.g. legacy-relight-preview; with --publish "
+                        "using this export profile, source2; with --publish "
                         "the lit map is published")
     b.add_argument("--lighting-device", choices=("cpu", "gpu", "auto"),
                    help="Cycles device for the lighting bakes (default: the profile's)")

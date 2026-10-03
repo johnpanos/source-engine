@@ -25,5 +25,6 @@
   "sdf_volume": null,
   "reference": null,
   "runtime_gate": null,
-  "audit": null
+  "audit": null,
+  "purpose": "fixture"
 }

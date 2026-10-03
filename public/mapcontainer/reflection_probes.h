@@ -40,8 +40,14 @@ static const uint32_t kLumpReflectionProbes = 0x42525052u; // "RPRB"
 static const uint32_t kReflectionProbesVersion = 1;
 static const uint32_t kReflectionProbesRelightVersion = 2;
 static const uint32_t kReflectionProbesTiledVersion = 3;
+// v4: conservative spatial rank masks; encoding owner is reflection_probe_set.py.
+static const uint32_t kReflectionProbesCandidateVersion = 4;
+static const uint32_t kReflectionProbeCandidateDim = 16;
+static const uint32_t kReflectionProbeCandidateCells =
+    kReflectionProbeCandidateDim * kReflectionProbeCandidateDim * kReflectionProbeCandidateDim;
+static const uint32_t kReflectionProbeCandidateBytes = 32 + 8 * kReflectionProbeCandidateCells;
 static const uint32_t kReflectionProbesLegacyMaxProbes = 16;
-static const uint32_t kReflectionProbesFlagRelight = 1; // header flags, v2/v3
+static const uint32_t kReflectionProbesFlagRelight = 1; // header flags, v2 and later
 static const float kReflectionProbesMaxDistance = 60000.0f;
 static const float kReflectionProbesNormalLimit = 1.001f;
 static const uint32_t kReflectionProbesHeaderBytes = 64;
@@ -54,7 +60,7 @@ static const uint32_t kReflectionProbesPrefilterVersion = 1;
 static const uint32_t kReflectionProbeGlobal = 1; // record flag
 static const float kReflectionProbesMaxCoordinate = 1.0e6f;
 static const uint64_t kReflectionProbesMaxBytes =
-    kReflectionProbesHeaderBytes +
+    kReflectionProbesHeaderBytes + kReflectionProbeCandidateBytes +
     uint64_t( kReflectionProbesMaxProbes ) *
         ( kReflectionProbeRecordBytes + 16 +
             3 * uint64_t( kReflectionProbesMaxWidth ) * kReflectionProbesMaxWidth * 8 );
@@ -98,6 +104,7 @@ enum class ReflectionProbesError
 	InvalidRanks,
 	InvalidGlobal,
 	InvalidTexels,
+	InvalidCandidates,
 };
 
 struct ReflectionProbeRecord
@@ -126,6 +133,10 @@ struct ReflectionProbesLayout
 	uint64_t atlasOffset; // RGBA16F texels, rows top-left first
 	uint64_t atlasBytes;
 	ReflectionProbeRecord probes[kReflectionProbesMaxProbes];
+	// v4: immutable, validated conservative rank masks in the original payload.
+	uint64_t candidateOffset = 0;
+	float candidateOrigin[3] = {};
+	float candidateStep = 0;
 };
 
 // Validates complete RPRB bytes (header, records, sections, and every atlas

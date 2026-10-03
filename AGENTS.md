@@ -763,9 +763,11 @@ Keep the table concise and link details below or from the domain progress file.
     hosts without a GPU.
   - One production map quality profile is requested (user decision, 2026-10-02).
     The [single-profile proposal](RFC/0007-single-map-quality-profile-proposal-2026-10-02.md)
-    records recommended settings, quality gates and runtime
-    optimization work. It is a proposal; executable settings and roadmap
-    implementation states are unchanged by this documentation.
+    now has an [installed bake/compiler slice](RFC/0007-progress.md#single-production-map-profile-and-compiled-reflection-candidates-2026-10-02):
+    `source2` owns production settings; RPRB v4 carries conservative candidate
+    masks consumed by the core shader. Runtime invariants replace oracle/image
+    comparisons for this user-directed slice. The 120 FPS gate remains open;
+    a fresh bake must use the remote render machine.
 
 - R65–R66 (RFC 0012): added 2026-09-24 as `planned` at the user's direction.
   R65 was ranked directly after R47: it is bounded, it closes the native

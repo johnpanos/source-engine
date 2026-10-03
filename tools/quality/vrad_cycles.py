@@ -3,7 +3,7 @@
 
     tools/quality/vrad_cycles.py [vrad options] <map>
     tools/quality/vrad_cycles.py -game <gamedir> -final maps/mymap --cycles-quality \\
-        legacy-relight-preview
+        source2
 
 Anything that runs vrad (Hammer's `$light_exe`, a compile script doing
 vbsp, vvis, vrad) can run this instead, with the same command line. It runs
@@ -26,7 +26,7 @@ failure stops before the relight with vrad's exit status.
 
 Options for this script (removed before vrad runs):
   --cycles-vrad PATH       the vrad to run (default: the pipeline toolchain's)
-  --cycles-quality NAME    map export profile (default legacy-relight)
+  --cycles-quality NAME    map export profile (default source2)
   --cycles-map-name NAME   published map name (default <map>_relit)
   --cycles-out DIR         build directory (default quality-results/relight/<name>)
   --cycles-toolchain FILE  pipeline toolchain file (default the provisioned one)

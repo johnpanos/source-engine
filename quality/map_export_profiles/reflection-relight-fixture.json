@@ -35,5 +35,6 @@
     "require_reflection_probe_budget": true,
     "max_uncovered_walkable_fraction": 0.0,
     "max_unserved_glossy_fraction": 0.1
-  }
+  },
+  "purpose": "fixture"
 }

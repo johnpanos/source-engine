@@ -13,9 +13,8 @@ from the toolchain's game runtime, or any v20/v21 `--bsp`) goes to
   * its world faces, materials and vrad's lights become a USD scene
     (`legacy_bsp_scene.py`; the receipt lists every conversion and
     approximation) that Cycles bakes into separated direct/indirect lightmap
-    layers, a PRBV probe volume, an RTRN radiosity transfer and an SDFV
-    distance volume (profile `legacy-relight`), so every indirect-light
-    producer, the SDF-traced one included, can run on the map;
+    layers, a directional indirect page, a PRBV probe volume and RPRB
+    reflection captures under the single `source2` production profile;
   * the output BSP2 carries every legacy lump of the input byte for byte
     (entities, brushes, collision, visibility, brush models, props, game
     lumps, the pak file and the vrad lightmaps the legacy renderer still uses
@@ -125,7 +124,7 @@ def main():
     parser.add_argument("--out", type=Path,
                         help="build directory (default quality-results/relight/<map name>)")
     parser.add_argument("--quality", default=pbrt_map_build.LEGACY_QUALITY,
-                        help="map export profile (default legacy-relight)")
+                        help="map export profile (default source2)")
     parser.add_argument("--device", choices=pbrt_map_build.cycles_device.DEVICES,
                         help="Cycles device for every bake (default: the profile's, gpu)")
     parser.add_argument("--toolchain", type=Path)
