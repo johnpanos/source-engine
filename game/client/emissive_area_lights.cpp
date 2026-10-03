@@ -769,9 +769,27 @@ void EmissiveAreaLights_RemoveSource( IEmissiveAreaLightSource *pSource )
 
 bool EmissiveAreaLights_SampleTexture( ITexture *pTexture, float s, float t, float rgba[4] )
 {
-	if ( !pTexture || pTexture->IsError() || pTexture->IsRenderTarget() ||
-	     pTexture->IsProcedural() )
+	if ( !pTexture || pTexture->IsError() || pTexture->IsRenderTarget() || !std::isfinite( s ) ||
+	     !std::isfinite( t ) )
 		return false;
+	if ( pTexture->IsProcedural() )
+	{
+		// Only opaque CPU-generated RGB/BGR textures promise these samples.
+		// Missing sampling data leaves the sentinel intact; never invent white
+		// emission for an unsupported procedural image.
+		if ( pTexture->IsTranslucent() )
+			return false;
+		float color[3] = { -1.0f, -1.0f, -1.0f };
+		pTexture->GetLowResColorSample( s, t, color );
+		for ( int k = 0; k < 3; ++k )
+		{
+			if ( !( color[k] >= 0.0f && color[k] <= 1.0f ) )
+				return false;
+			rgba[k] = color[k];
+		}
+		rgba[3] = 1.0f;
+		return true;
+	}
 	const vtf_sample::Texture &texture = LoadSampleTexture( pTexture->GetName() );
 	if ( !texture.valid )
 		return false;

@@ -14,4 +14,8 @@
 // and an engine that takes them): their blob shadows are then not drawn.
 bool DynamicOccluders_Active();
 
+// After render-start interpolation, animation and bone work, before the engine
+// publishes lighting. Every view then uses the same physical pose as its model.
+void DynamicOccluders_PublishCore();
+
 #endif // DYNAMIC_OCCLUDERS_H

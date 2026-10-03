@@ -1963,7 +1963,8 @@ mirrors and monitors as view generators):
 
 #### In-world panels (UI cohort, amended 2026-09-30, user request)
 
-A UI panel placed in the world (a `vgui_screen`: Portal 2's chamber sign)
+A UI panel placed in the world (a `vgui_screen`: chamber signs, elevator
+movies and other recorded screens)
 is a first-class emissive surface of the core, not a 2D draw in 3D space.
 One definition, `render.world-panel.v1` (`public/render/world_panel.h`,
 header-only, shared by the core, engine, client and UI surface), owns:
@@ -1975,6 +1976,17 @@ header-only, shared by the core, engine, client and UI surface), owns:
   never emits its own, and is the face's albedo;
 - what the panel emits and casts: the same image as its surface emission and
   as a grid of RFC 0011 area lights (`TileRadiance`).
+
+Movie playback and grouped-screen UV crops remain client panel behavior. The
+texture owner publishes bounded CPU samples of a complete opaque RGB/BGR
+procedural upload through the frozen `ITexture::GetLowResColorSample` API;
+the same frame's recorded image supplies the screen's emission and tile lights.
+Unsupported formats and partial uploads have no sampling claim. There is no
+movie-specific shader, light source or receiver path. An opaque full-face
+foundation stays opaque even when the legacy host sorts it as transparent;
+otherwise the same PBR family uses alpha coverage, depth testing without depth
+writes, and coverage-weighted mips. Ordinary scene surfaces, including glass,
+consume these images and area lights through their existing material paths.
 
 `render.pass.panels` (layer 6) rasterizes the frame's list at that
 resolution, builds linear-light mip chains for the emission and albedo, and
@@ -1989,7 +2001,7 @@ does.
 
 | Check | Runs as | Passes when |
 | --- | --- | --- |
-| Lab | `render.lab.panel` and its sensitivity | resolution against a ray-cast oracle; edges sharp at the chosen resolution and blurred at the legacy one (the control); emission value, scale and term; one list and one raster per frame; linear-light mips; tile lights against the GPU image per flicker state; coatings never add light, scatter as defined, and reflect |
+| Lab | `render.lab.panel` and its sensitivity | resolution against a ray-cast oracle; edges sharp at the chosen resolution and blurred at the legacy one (the control); emission value, scale and term; one list and one raster per frame; linear-light mips; tile lights against the GPU image per flicker state and replacement of a live texture with cropped UVs; alpha artwork over a receiver, mixed opaque/alpha surfaces and coverage mips; coatings never add light, scatter as defined, and reflect |
 | Product | `corpus.portal2.sign-panel` | the core draws the sign; its text is sharp where the legacy path's is blurred; through its flicker every frame's pixels follow the light it publishes in that frame; its dirt is in every state and dims its light; it publishes its tile lights |
 
 ### K9: Retirement

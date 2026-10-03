@@ -7799,3 +7799,209 @@ style invocation still reports the pre-existing formatting-only edit in
 (`style.log`). The previously recorded compiler-dependency classification gap
 and full-frame performance/platform gates remain open; no new performance or
 complete-image claim is made.
+
+
+### R91: elevator movies and world screens (2026-10-03)
+
+User request: elevator videos and other screens on the render core, using
+`sp_a1_intro4_probe64`, with ordinary world/glass interactions. The owner is
+K8's [in-world panel contract](0016-render-core.md#in-world-panels-ui-cohort-amended-2026-09-30-user-request),
+not a movie renderer. All recordable `CVGuiScreenPanel` consumers now take its
+PBRMetalRough surface and tile-light source. Playback, grouping and authored UV
+crops stay in the existing movie panel. The fixed movie mean radiance and its
+separate registration are deleted; signs also use the base registration. Existing
+movie/sign compatibility-receiver policy is retained; new screen sources are
+core-only. The core surface owns depth, so its retired legacy WriteZ overlay no
+longer draws a second copy. Custom overlay materials and unrecordable primitives
+still have no core fidelity claim, and nested legacy views retain their existing
+panel path.
+
+Complete opaque CPU procedural RGB/BGR uploads publish a bounded 64x64 sampling
+image from the regenerated pixels, before the matching GPU upload, using the
+frozen `ITexture::GetLowResColorSample` API. Linear-light stratified means,
+channel order, row padding, wrapping/clamping and texture-sheet padding have
+explicit handling. Unsupported formats and partial scratch-image uploads clear
+sampling instead of keeping stale pixels. The Bink FFmpeg regenerator clears its
+unused texture-sheet padding. No GPU readback, movie light registry, receiver
+shader or video-specific material family was added.
+
+The PBR family now claims `$translucent`, with ordinary linear alpha blending,
+depth testing without writes and destination-alpha preservation. Panel raster
+coverage starts clear for transparent surfaces; level zero and mip reduction
+apply coverage once. A proven full-face opaque foundation stays opaque despite
+the legacy sorting flag. Opaque and alpha panels share a view in original draw
+order. The shared family-pixel fixture's neutral shadow slot was corrected to a
+valid D32 image; its previous RGBA stand-in triggered Vulkan depth-comparison
+validation even in inactive shadow branches. The independent pixel references
+are unchanged.
+
+Frozen-path: `materialsystem/ctexture.cpp` only publishes procedural upload samples
+through the existing texture ABI; the client drops the obsolete WriteZ draw only
+when the core has taken ownership. No native-backend or frozen CPU receiver
+shading is introduced.
+
+Evidence is retained under `quality-results/core-screens-20261003/`:
+
+- `render.lab.panel` passes 59 checks with validation, covering live replacements
+  under one texture key, grouped UV crops and CPU tiles against GPU pixels,
+  alpha 0/64/128/255 over a colored receiver, mixed opaque/alpha surfaces,
+  disabled alpha depth writes and coverage mips, alongside the existing
+  resolution, frame, coating and light oracles. Its sensitivity passes 4/4;
+  the three seeded gamma/scatter/coating defects remain detected.
+- `render.procedural-texture-sample` passes 20 release checks: RGB/BGR, padded
+  rows, frame replacement, linear means, image padding, malformed extents and
+  the full-face coverage proof. `render.family.pbr` passes 97 checks and the
+  ignored-normal-map fixture is rejected. The existing `render.lab.posed-model`
+  passes 72 validation checks, including the fractured-glass Refract claim and
+  its required scene color and native probes. This is a regression check, not
+  evidence of an actual shattering event in this map.
+- `movie-final/evidence.json` passes on native Vulkan at the arrival elevator
+  (`cmd setpos -1552 37 -96; cmd setang 0 -90 0`). Its core report records
+  133 lists/rasters/views/panel draws, zero refused and zero failed. The
+  console's `cl_world_panel_report` records `media/exercises_horiz` and the
+  screen's changing, cropped tile radiance. The capture is
+  `movie-final-0.png`.
+- `movie-light-control/evidence.json` holds the game/video paused and tone map
+  at 1, then captures `r_area_lights 64`, 0 and 64. The left elevator receiver
+  region (150,230)-(355,520) rises by mean RGB (2.376,4.361,4.675) byte levels;
+  the right region (650,230)-(860,520) rises by (1.359,2.128,2.161). Restoring
+  the lights returns both regions exactly. The latter includes the weapon,
+  so it is a scene-response control rather than a pure world-light oracle.
+  Metrics and three images are retained beside the evidence.
+
+Reproduction uses the existing configurations, without reconfiguring Waf:
+
+```sh
+WAFLOCK=.lock-waf-rc-lab-main python3 ./waf build --targets=render_lab -j8
+WAFLOCK=.lock-waf-p2 python3 ./waf build --targets=client,engine,materialsystem,vguimatsurface,video_bink -j8
+python3 tools/quality/conformance.py check --suite render.procedural-texture-sample --suite render.lab.panel --suite render.lab.panel.sensitivity --suite render.family.pbr --suite render.family.pbr.seeded-ignore-normal-map --suite render.lab.posed-model --config release --out <fresh-output>/suites.json
+python3 tools/quality/portal_boot.py --runtime run/runtime-p2 --build build-p2 --game portal2 --renderer native-vulkan --headless --require-vulkan --map sp_a1_intro4_probe64 --startup-command 'r_core_world 1' --console-command 'sv_cheats 1; noclip; cmd setpos -1552 37 -96; cmd setang 0 -90 0' --console-command 'cl_world_panel_report 1; wait 80; r_core_panels_stats' --capture-wait 80 --out <fresh-output>/movie
+```
+
+The captures are 1024x768 correctness checks. Complete-frame 1080p High/120 FPS
+performance acceptance, moving-fragment interaction, nested core views and
+non-Linux platform evidence remain open; R91 is still partial. No shipped quality
+or render budget was relaxed.
+
+Architecture check, baseline and loader inventory pass; architecture fixtures
+pass 166 tests and style fixtures 38. The owned changed lines pass pinned style.
+The shared checkout style run separately reports another session's edited
+`render/composition/core_world.cpp:1338`, left untouched (`style-complete.log`).
+Whitespace checking uses `git -c core.whitespace=cr-at-eol diff --check` to
+preserve the movie source's existing CRLF convention. Product/lab build logs
+are retained from the existing profiles; the six-suite release record is
+`accepted.json`. The first separate sign capture copied a client library during
+a concurrent link and failed loading its ELF image (`sign-final/stdout.log`);
+this failed attempt is retained separately and certifies no product coverage.
+
+### R91: fizzler light through animated door apertures (2026-10-03)
+
+User request: light must pass through the portion of a test-chamber door that
+has physically opened, rather than appearing immediately when opening starts.
+The door opens its visibility portal at `OnOpen`, before its panels have moved.
+The old box producer excludes it through `EF_NOSHADOW`. Additionally, imported
+BSP surfaces on the core used an area-light-only group without shadow tiles.
+The initial controlled product run detects the BSP shadow gap: all six poses and
+its removed-blocker control receive the same 4.5216 mean blue rise
+(`quality-results/door-light-20261003/fixture/receivers.json`).
+
+The physical caster extension is defined in
+[`render/dynamic_occlusion.h`](../public/render/dynamic_occlusion.h) and documented
+with its [contract](../unittests/rendertest/contracts/render.dynamic-occlusion.v1.md#core-physical-caster-extension).
+The client supplies the authored collision triangles for opaque animated models
+using custom bone-follower collision. Named followers and the server's existing
+multi-solid fallback retain their authoring semantics; no door-name registry is
+introduced. The actual Portal 2 model uses that fallback: a 576-vertex frame and
+36-vertex left/right panels. Current client bone poses are gathered after both
+legacy and graph render-start animation work, before light-set publication.
+`EF_NOSHADOW` still controls legacy blob/CPU box behavior; physical leaves block
+core lighting. Door animation, gameplay and visibility-portal timing keep their
+existing owners.
+
+The engine copies and versions valid triangle publications, then attaches them
+only to the core's light snapshot. Queued views own their geometry. The core
+reuses its existing shadow-depth renderer, atlas, caster culling, revision-based
+mesh uploads, GPU completion retirement and static/composite tile cache. Meshes
+replace the same entity's coarse boxes, and removal/movement invalidates the
+corresponding composite tiles. Imported BSP and WMSH inputs now share opaque
+world-caster preparation and area-light shadowing. The previous unshadowed BSP
+area-only group is removed. The world pass now binds any view's light/shadow inputs,
+including BSP receivers, instead of restricting them to WMSH. PBR and lightmapped
+receivers use one `AreaLightVisibility` function in the core surface program; the
+previous lightmapped irradiance helper ignored shadows. The atlas-only lab check
+did not catch these receiver/binding gaps, so the final lab test draws a real
+LightmappedGeneric BSP receiver through the production world pass. No second
+shading algorithm is introduced.
+
+Frozen-path: core plumbing R91 — the engine's occluder factory and light-set tee
+carry physical caster inputs to the core. The original `VEngineOccluders001`
+vtable remains exposed, and the client still uses it on engines without v2.
+No shading is added to frozen engine CPU lighting or native backend shaders.
+
+Evidence under `quality-results/door-light-20261003/`:
+
+- `publication.json`: all five positive/seeded publication/occlusion suites pass,
+  26 checks each. New checks cover owned payloads and retained snapshots,
+  unchanged/moving revisions, duplicate keys, nonfinite data, incomplete/oversize
+  meshes, null/oversize frames, whole-frame rollback including revisions, removal
+  and reset without stale revision reuse.
+- `lab-accepted.json`: native Vulkan shadow suite passes 190/190 with zero
+  validation messages. Sixteen atlas checks and twenty actual BSP receiver pixel
+  checks use a separate ray-plane aperture oracle for closed, partial, open,
+  reclosed and removed triangle leaves. Pixel comparisons pair shadowed and
+  unshadowed emission with a black bake. Missing leaves fail the closed-door
+  oracle. The initial samples at x=24 (atlas) and x=16 (world-pass PCSS) touched
+  the filter fringe; the final x=8/12/80/180 points lie inside the promised
+  aperture/shadow interiors. Existing soft-filter edge coverage retains its
+  original oracle and bands (`lab-shadowed.log`, `lab-world.json`).
+- `product-final.json` and `accepted-door/receivers.json`: all 13 native product
+  checks pass. Closed, opening-start, partial, open, reclosed and removed-blocker
+  blue rises are respectively 0, 0, 38.1967, 94.8879, 0 and 99.9978 on the fixed
+  receiver region. The partial physical aperture is 23.861 units versus 105.995
+  fully open. Geometry/revisions match across each paused emission-off/on pair;
+  closing restores the receiver exactly. Screenshots, console/cfg, generated VMF
+  and native boot evidence are under `accepted-door/`. These are receiver/pose
+  checks, not full-scene visual fidelity certification.
+- `shader-regression.json`: area-light BRDF/reference coverage passes 72 checks;
+  the shadow sensitivity suite passes 5 positive/seeded checks. The receiver
+  binding defect is retained under `receiver-binding-failure/`: all six poses
+  incorrectly had the same 110.7353 blue rise before the world-pass binding fix.
+- `idle-regression.json`: the original generated idle fizzler fixture still
+  passes all 10 lighting/state checks after BSP shadowing is enabled.
+- `product-world-binding-build.log`: complete configured Portal 2 build passes.
+  Architecture, baseline/inventory verification and changed-line style checks
+  pass; architecture/style fixture suites pass 166/38 respectively. The known
+  generated-SPIR-V CAP005 include classification failures remain separately
+  open, as recorded in the preceding fizzler evidence.
+
+
+The installed product fixture is `render.product.fizzler-door-light`; reproduce
+through the shared conformance runner with a fresh output directory. It uses
+constant generated flow textures, idle strength 16 without a portal hit, fixed
+exposure, emission-off/on pairs at frozen poses, and a closed-door control with
+moving shadow casters disabled. `setpause`/`unpause` freeze real client poses:
+fixed `host_framerate` bypasses timescale, and zero `host_timescale` is not a
+supported clock stop in this engine. Timing selects poses only; captured
+physical bounds independently require an intermediate aperture and unchanged
+geometry in each pair. Initial attempts that sampled a closed or completed pose
+are not partial-pose evidence. Native temporary staging used
+`/run/user/1000` after host Btrfs metadata exhaustion; only generated content and
+capture records are retained, without retail asset bytes or runtime libraries.
+The ordinary idle fizzler fixture remains a separate receiver/state check.
+
+This is the bounded physical bone-follower/area-light shadow cohort. It does not
+certify full animated visual-mesh shadows, cutout/transmission, the complete
+SolidEnergy image, High complete-frame budgets, CPU/GPU placement crossover or
+non-Linux native behavior. R91/R96 and those performance/platform gates remain
+open.
+
+The ordinary chamber sign is also visually verified on the requested map
+(`sign-active/evidence.json`, `capture.png`, retained `console.log`):
+`cmd setpos -737 160 16; cmd setang 0 -90 0; ent_fire InstanceAuto63-info_panel SetActive`.
+Noclip bypasses its normal activation trigger, so the authored input is required.
+It reports 171 lists/rasters/views/draws, zero refused and failed, and a
+476x961 surface image; text, icons and grime are present. Scratch staging used
+`/dev/shm` and a retained read-only O_NOATIME copy wrapper after the host Btrfs
+metadata allocation blocked ordinary staging; renderer, content, profile and
+acceptance checks are unchanged. The inactive sign captures certify no screen
+coverage and are not used as the sign oracle. Full product budgets remain open.

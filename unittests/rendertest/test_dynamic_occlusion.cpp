@@ -150,6 +150,48 @@ Box MakeBox( float cx, float cy, float cz, float hx, float hy, float hz, float y
 
 int main()
 {
+	// Core triangle publication owns its payload and rolls back invalid frames.
+	{
+		float vertices[] = { 0, 0, 10, 8, 0, 10, 0, 8, 10 };
+		TriangleFrame frame;
+		TriangleInput input{ 101, 2, vertices, 3 };
+		Check( frame.Publish( &input, 1 ), "physical frame accepts a triangle" );
+		const auto first = frame.Entries()[0].version;
+		const auto held = frame.Entries();
+		vertices[0] = 1;
+		Check( frame.Entries()[0].positions[0] == 0, "physical frame owns borrowed input" );
+		Check( frame.Publish( &input, 1 ) && frame.Entries()[0].version > first,
+		    "physical pose movement advances its revision" );
+		const auto moved = frame.Entries()[0].version;
+		Check( frame.Publish( &input, 1 ) && frame.Entries()[0].version == moved,
+		    "unchanged physical pose keeps its revision" );
+		Check( held[0].positions[0] == 0 && held[0].version == first,
+		    "an earlier render snapshot keeps its geometry" );
+		TriangleInput duplicate[] = { input, input };
+		vertices[0] = 2;
+		Check( !frame.Publish( duplicate, 2 ) && frame.Entries()[0].version == moved &&
+		           frame.Entries()[0].positions[0] == 1,
+		    "duplicate keys reject the whole frame" );
+		Check( frame.Publish( &input, 1 ) && frame.Entries()[0].version == moved + 1,
+		    "rejected publication also rolls back the revision counter" );
+		const auto valid = frame.Entries()[0].version;
+		vertices[0] = std::numeric_limits<float>::quiet_NaN();
+		Check( !frame.Publish( &input, 1 ) && frame.Entries()[0].version == valid,
+		    "nonfinite triangle positions preserve the preceding frame" );
+		vertices[0] = 2;
+		input.vertexCount = 4;
+		Check( !frame.Publish( &input, 1 ), "incomplete triangle lists are refused" );
+		input.vertexCount = 65538;
+		Check( !frame.Publish( &input, 1 ), "oversize meshes are refused before reading input" );
+		Check( !frame.Publish( nullptr, 1 ) && !frame.Publish( &input, kMaxOccluders + 1 ),
+		    "null and oversize frames are refused" );
+		Check( frame.Publish( nullptr, 0 ) && frame.Entries().empty(),
+		    "empty publication retires vanished physical parts" );
+		input.vertexCount = 3;
+		Check( frame.Publish( &input, 1 ) && frame.Entries()[0].version > valid,
+		    "map reset cannot reuse a stale geometry revision" );
+	}
+
 	// The segment/box test agrees with marching over random rotated boxes
 	// and segments, apart from segments that only graze a box (within the
 	// march's step, which the march can miss).

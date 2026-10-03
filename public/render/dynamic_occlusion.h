@@ -45,7 +45,11 @@
 #include "render/area_light.h"
 
 #include <cmath>
+#include <algorithm>
 #include <cstdint>
+#include <limits>
+#include <vector>
+#include <utility>
 
 namespace dynamic_occlusion
 {
@@ -311,6 +315,88 @@ public:
 
 protected:
 	~IOccluders() {}
+};
+
+// Core-only physical blockers. Vertices are world-space triangle lists, not
+// collision bounds. A frame publication is copied atomically and versions each
+// (entity, part) by its geometry. Legacy box receivers never see these meshes.
+struct TriangleInput
+{
+	int entity = 0;
+	int part = 0;
+	const float *positions = nullptr;
+	unsigned int vertexCount = 0;
+};
+struct TriangleOccluder
+{
+	int entity = 0;
+	int part = 0;
+	std::uint64_t version = 0;
+	std::vector<float> positions;
+};
+
+// Owned publication on the client/engine main sequence. Borrowed input memory is consumed
+// only during Publish; readers copy Entries into their frame-owned snapshot.
+// A rejected frame changes neither the geometry nor the revision counter.
+class TriangleFrame
+{
+public:
+	[[nodiscard]] bool Publish( const TriangleInput *inputs, unsigned int count )
+	{
+		if ( count > kMaxOccluders || ( count && !inputs ) )
+			return false;
+		std::vector<TriangleOccluder> next;
+		next.reserve( count );
+		auto version = m_NextVersion;
+		for ( unsigned int i = 0; i < count; ++i )
+		{
+			const auto &input = inputs[i];
+			if ( !input.positions || !input.vertexCount || input.vertexCount % 3 ||
+			     input.vertexCount > 65536 )
+				return false;
+			const auto keyMatches = [&]( const auto &held )
+			{
+				return held.entity == input.entity && held.part == input.part;
+			};
+			if ( std::any_of( next.begin(), next.end(), keyMatches ) )
+				return false;
+			TriangleOccluder entry;
+			entry.entity = input.entity;
+			entry.part = input.part;
+			entry.positions.assign( input.positions, input.positions + input.vertexCount * 3 );
+			if ( std::any_of( entry.positions.begin(), entry.positions.end(),
+			         []( float value )
+			         {
+				         return !std::isfinite( value );
+			         } ) )
+				return false;
+			const auto previous = std::find_if( m_Entries.begin(), m_Entries.end(), keyMatches );
+			if ( previous != m_Entries.end() && previous->positions == entry.positions )
+				entry.version = previous->version;
+			else
+			{
+				if ( version == std::numeric_limits<std::uint64_t>::max() )
+					return false;
+				entry.version = version++;
+			}
+			next.push_back( std::move( entry ) );
+		}
+		m_Entries = std::move( next );
+		m_NextVersion = version;
+		return true;
+	}
+	[[nodiscard]] const std::vector<TriangleOccluder> &Entries() const { return m_Entries; }
+
+private:
+	std::vector<TriangleOccluder> m_Entries;
+	std::uint64_t m_NextVersion = 1;
+};
+static const char *const kCoreOccludersVersion = "VEngineOccluders002";
+class IOccluders2 : public IOccluders
+{
+public:
+	// False leaves the preceding publication intact. Empty clears the set.
+	virtual bool SetCoreOccluders( const TriangleInput *triangles, unsigned int count ) = 0;
 };
 
 } // namespace dynamic_occlusion

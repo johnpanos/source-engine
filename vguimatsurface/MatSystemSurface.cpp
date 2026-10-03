@@ -760,7 +760,7 @@ void CMatSystemSurface::RecordQuads(
 		quad.texture = world_panel::kWhite;
 		quad.blend = blend;
 		quad.layer = world_panel::kLayerEmissive; // the panel's owner says what is a coating
-		quad.coverage = -1.0f;
+		quad.coverage = !pTexture || !pTexture->IsTranslucent() ? 1.0f : -1.0f;
 		float flAlpha = 0.0f;
 		if ( pTexture && nTextureId >= 0 &&
 		     TextureDictionary()->MeanAlpha(

@@ -16,7 +16,7 @@
 #include <vgui_controls/EditablePanel.h>
 #include "c_baseentity.h"
 #include "panelmetaclassmgr.h"
-#include "render/area_light.h"
+#include "emissive_area_lights.h"
 #include "render/world_panel.h"
 
 class KeyValues;
@@ -48,13 +48,16 @@ struct VGuiScreenInitData_t
 //-----------------------------------------------------------------------------
 // Base class for vgui screen panels
 //-----------------------------------------------------------------------------
-class CVGuiScreenPanel : public vgui::EditablePanel
+class CVGuiScreenPanel : public vgui::EditablePanel, public IEmissiveAreaLightSource
 {
 	DECLARE_CLASS_GAMEROOT( CVGuiScreenPanel, vgui::EditablePanel );
 
 public:
 	CVGuiScreenPanel( vgui::Panel *parent, const char *panelName );
 	CVGuiScreenPanel( vgui::Panel *parent, const char *panelName, vgui::HScheme hScheme );
+	virtual ~CVGuiScreenPanel();
+	virtual int GetAreaLights( area_light::AreaLight *pLights, int *pKeys, int nMax );
+	bool CoreOnly() const override { return true; }
 	virtual bool Init( KeyValues* pKeyValues, VGuiScreenInitData_t* pInitData );
 	vgui::Panel *CreateControlByName(const char *controlName);
 	virtual void OnCommand( const char *command );
@@ -64,7 +67,7 @@ public:
 	// the core draws, and casts the light of its image
 	// (C_VGuiScreen::EmissiveAreaLights). Its emission scale is the scene
 	// radiance per decoded image value.
-	virtual bool DrawsAsEmissiveSurface() const { return false; }
+	virtual bool DrawsAsEmissiveSurface() const { return true; }
 	virtual float EmissionScale() const { return 1.0f; }
 	// What of the panel's paint is a coating on its face (grime): it blocks
 	// the board's light and reflects the scene's, emitting none

@@ -2491,8 +2491,9 @@
       "contract": "unittests/rendertest/contracts/render.dynamic-occlusion.v1.md",
       "kind": "positive",
       "profile": "linux-headless-core",
-      "description": "RFC 0011 light blocked by moving objects: the segment/box test against a marched oracle over 4,000 rotated boxes, containment, a receiver's own boxes, area and disk penumbrae, distant lights, and how shadows from several lights mix",
+      "description": "RFC 0011 light blocked by moving objects: the segment/box test against a marched oracle over 4,000 rotated boxes, containment, a receiver's own boxes, area and disk penumbrae, distant lights, and how shadows from several lights mix; core physical triangle publication ownership, stable/change revisions, whole-frame rollback, limits, nonfinite input and removal",
       "result_protocol": "checks-v1",
+      "min_checks": 26,
       "sources": [
         "unittests/rendertest/test_dynamic_occlusion.cpp"
       ],
@@ -9464,7 +9465,7 @@
       "contract": "unittests/rendertest/contracts/render.material.v2.md",
       "kind": "positive",
       "profile": "linux-native-vulkan-gpu",
-      "description": "RFC 0016 K4 'Families match ports' for the pbr family (RFC 0007 PBRMetalRough on meshes): quality/fixtures/render-families/pbr-port-v1.vdf is a passing native pbr-model material pixel run (judged per pixel against an independent BRDF model), recorded by tools/render/family_port_pixels.py record-model with the harness's own inputs; each case's material is imported, claimed by ClaimPbr and drawn with the family on render.device.vulkan (the split-sum table in the frame group, Source model lighting packed by PackSourceModelLighting in the draw group, the material group (the pbr point of the one surface program), and world-to-clip plus the case's placement as draw constants) into a 256x256 sRGB target; the port's pixels must be matched within 2 levels per channel. Environment maps, alpha test, clear coat, glass and a missing MRAO texture are refused by name; the light packing sorts spot, point, directional. No validation message.",
+      "description": "RFC 0016 K4 'Families match ports' for the pbr family (RFC 0007 PBRMetalRough on meshes): quality/fixtures/render-families/pbr-port-v1.vdf is a passing native pbr-model material pixel run (judged per pixel against an independent BRDF model), recorded by tools/render/family_port_pixels.py record-model with the harness's own inputs; each case's material is imported, claimed by ClaimPbr and drawn with the family on render.device.vulkan (the split-sum table in the frame group, Source model lighting packed by PackSourceModelLighting in the draw group, the material group (the pbr point of the one surface program), and world-to-clip plus the case's placement as draw constants) into a 256x256 sRGB target; the port's pixels must be matched within 2 levels per channel. Environment maps, clear coat, unavailable glass behavior and a missing MRAO texture are refused by name; alpha-test and translucent claims preserve destination alpha; the light packing sorts spot, point, directional. No validation message.",
       "result_protocol": "checks-v1",
       "sources": [
         "render/shaderlib/shaderlib.cpp",
@@ -9804,6 +9805,46 @@
         "render/material/families/surface.frag",
         "render/material/families/surface_lighting.glsl",
         "tools/render/shader_toolchain.py"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.product.fizzler-door-light",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "migration": "R91",
+      "contract": "RFC/0016-render-core.md",
+      "profile": "linux-native-vulkan-gpu",
+      "kind": "positive",
+      "description": "Physical Portal 2 door leaves block idle fizzler light on ordinary BSP receivers: fixed-pose off/on pairs at closed, opening start, partial, open and reclosed; a closed door with moving blockers removed is rejected. Uses the shared core shadow atlas and the real authored physical bone-follower meshes. Generated textures, read-only retail model content, fixed exposure and source report with no portal hit. Receiver and pose evidence only; complete-frame budgets remain open.",
+      "command": [
+        "{python}",
+        "tools/quality/fizzler_door_light.py",
+        "--out",
+        "{out}"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 13,
+      "timeout_seconds": 600,
+      "requires": [
+        "path:build/toolchains/pbrt-map-toolchain.json",
+        "path:build-p2/launcher_main/hl2_launcher",
+        "path:run/runtime-p2/portal2",
+        "vulkan-device:gpu"
+      ],
+      "sources": [
+        "tools/quality/fizzler_door_light.py",
+        "tools/quality/fizzler_light.py",
+        "tools/quality/portal_boot.py",
+        "game/client/dynamic_occluders.cpp",
+        "public/render/dynamic_occlusion.h",
+        "render/composition/core_world.cpp",
+        "render/pass/world/world_pass.cpp",
+        "render/material/families/surface_program.glsl",
+        "public/render/light_set.h",
+        "engine/dynamic_occlusion.cpp",
+        "engine/render_core_host.cpp",
+        "game/client/cdll_client_int.cpp"
       ],
       "expect": "pass"
     },
@@ -10733,7 +10774,7 @@
       "contract": "RFC/0016-render-core.md",
       "profile": "linux-native-vulkan-gpu",
       "kind": "positive",
-      "description": "RFC 0016 K11 'Model assembly', the direct-visibility term (render.shadows.v1; render/lab/shadowed_lights_suite.cpp, render_lab suite shadowed-lights --validate): the surface program's clustered runtime lights shadowed through the view group's atlas (binding 4 the ShadowTileGpu records, 5 the atlas, 6 a point sampler; SurfaceLightGpu cone.w the light's tile), the atlas planned by render.pass.shadows PlanShadowAtlas and drawn by ShadowDepthRenderer from two box casters; two spots with tiles and a point light without one over the receiver plane. Oracle: each light's RuntimeLightOracle times a ray test from the receiver point to the light against the boxes, sharing no code with the shader or the depth pass. Where visibility is the same over 2.5 atlas texels around the point (seen along the light), each sampled pixel is within 0.5 percent + 3e-4 of the oracle, widened by its change within 0.1 units; on a shadow's edge it lies between the edge lights shadowed and lit; each spot shadows at least 50 judged pixels and the point light none; lights with no tile are the frame without an atlas, bitwise. 0 validation messages. The full soft filter also matches a private integer-addressed four-texel oracle under the existing image band, at two source radii, two views and two materials. World cube lookup matches matrix search on 2,205 directions across all faces, seams, ties and emitter sizes; a face permutation is rejected. The private visibility-split fixture adds 96 bitwise fused/separated image comparisons, six wrong-light-channel rejections and six paired GPU timing checks; its scope and timing interpretation are recorded in RFC/0016-progress.md (RCV-05).",
+      "description": "RFC 0016 K11 'Model assembly', the direct-visibility term (render.shadows.v1; render/lab/shadowed_lights_suite.cpp, render_lab suite shadowed-lights --validate): the surface program's clustered runtime lights shadowed through the view group's atlas (binding 4 the ShadowTileGpu records, 5 the atlas, 6 a point sampler; SurfaceLightGpu cone.w the light's tile), the atlas planned by render.pass.shadows PlanShadowAtlas and drawn by ShadowDepthRenderer from two box casters; two spots with tiles and a point light without one over the receiver plane. Oracle: each light's RuntimeLightOracle times a ray test from the receiver point to the light against the boxes, sharing no code with the shader or the depth pass. Where visibility is the same over 2.5 atlas texels around the point (seen along the light), each sampled pixel is within 0.5 percent + 3e-4 of the oracle, widened by its change within 0.1 units; on a shadow's edge it lies between the edge lights shadowed and lit; each spot shadows at least 50 judged pixels and the point light none; lights with no tile are the frame without an atlas, bitwise. 0 validation messages. The full soft filter also matches a private integer-addressed four-texel oracle under the existing image band, at two source radii, two views and two materials. World cube lookup matches matrix search on 2,205 directions across all faces, seams, ties and emitter sizes; a face permutation is rejected. The private visibility-split fixture adds 96 bitwise fused/separated image comparisons, six wrong-light-channel rejections and six paired GPU timing checks; its scope and timing interpretation are recorded in RFC/0016-progress.md (RCV-05). Two sliding triangle leaves add 16 closed/partial/open/reclosed receiver checks and a removed-leaf negative control against an independent aperture-ray oracle. Twenty additional pixel checks draw real LightmappedGeneric receivers with shadowed/unshadowed emitter pairs, including removed leaves.",
       "command": [
         "{python}",
         "tools/render/lab.py",
@@ -10742,7 +10783,7 @@
         "--validate"
       ],
       "result_protocol": "checks-v1",
-      "min_checks": 129,
+      "min_checks": 190,
       "timeout_seconds": 600,
       "requires": [
         "path:build-rc-lab/render/lab/render_lab",
@@ -10964,6 +11005,22 @@
       "expect": "pass"
     },
     {
+      "id": "render.procedural-texture-sample",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "migration": "R91",
+      "contract": "RFC/0016-render-core.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "description": "Opaque procedural RGB/BGR sampling from the uploaded CPU frame: bounded linear-light thumbnail, channel order, padded rows, frame replacement, sheet UV padding and malformed extents. No renderer, decoder, readback or frozen ABI change.",
+      "result_protocol": "checks-v1",
+      "min_checks": 20,
+      "sources": [
+        "unittests/rendertest/test_procedural_texture_sample.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "render.lab.panel",
       "domain": "Q-PRESENTATION",
       "rfc": "0016",
@@ -10971,7 +11028,7 @@
       "contract": "RFC/0016-render-core.md",
       "profile": "linux-native-vulkan-gpu",
       "kind": "positive",
-      "description": "RFC 0016 render.pass.panels and render.world-panel.v1 (render/lab/panel_suite.cpp, render_lab suite panel --validate): a UI panel in the world drawn by the core as a PBRMetalRough emissive surface, judged by oracles that share no code with the pass or its shaders. Resolution: world_panel::PixelsPerUnit within 7 percent of a per-pixel ray cast of the canvas onto the panel at five cameras, ChooseResolution's ladder, hold, shrink, grow, off-screen and 4096-texel clamp. Sharpness: a hard edge seen at about 3 pixels per unit spans at most 1.6 pixels (10 to 90 percent); at the legacy panel's one texel per unit it spans more than 2 (the control). Emission: an image value shows as its decoded value times the emission scale (1 percent), scale 2 doubles it, the emission term off leaves the panel black, and a panel seen from behind is not drawn and fails nothing. One frame, one image: a second list for a frame is refused, each frame's view shows its own list with the next frame's already submitted, two views of a frame share one raster, a view of a frame with no list fails by name. Mips: a one-texel checker minified 8 times reads its linear mean 0.5 (not the gamma mean 0.214). Light: world_panel::TileRadiance (the area lights' radiance) against the GPU image's tile means per flicker state (35, 70, 140) and coated, 2 percent + 0.003; grime (a coating) dims the lower tiles and the whole, never adds light in the dim state (grime painted into the lit image, the control, does), scatters the board's light over a dark stroke as world_panel::EmissionAt defines it (3 percent), and its albedo reflects a white ambient cube while the clean face shows only its specular. 0 validation messages.",
+      "description": "RFC 0016 render.pass.panels and render.world-panel.v1 (render/lab/panel_suite.cpp, render_lab suite panel --validate): a UI panel in the world drawn by the core as a PBRMetalRough emissive surface, judged by oracles that share no code with the pass or its shaders. Resolution: world_panel::PixelsPerUnit within 7 percent of a per-pixel ray cast of the canvas onto the panel at five cameras, ChooseResolution's ladder, hold, shrink, grow, off-screen and 4096-texel clamp. Sharpness: a hard edge seen at about 3 pixels per unit spans at most 1.6 pixels (10 to 90 percent); at the legacy panel's one texel per unit it spans more than 2 (the control). Emission: an image value shows as its decoded value times the emission scale (1 percent), scale 2 doubles it, the emission term off leaves the panel black, and a panel seen from behind is not drawn and fails nothing. One frame, one image: a second list for a frame is refused, each frame's view shows its own list with the next frame's already submitted, two views of a frame share one raster, a view of a frame with no list fails by name. Mips: a one-texel checker minified 8 times reads its linear mean 0.5 (not the gamma mean 0.214). Light: world_panel::TileRadiance (the area lights' radiance) against the GPU image's tile means per flicker state (35, 70, 140) and coated, 2 percent + 0.003; grime (a coating) dims the lower tiles and the whole, never adds light in the dim state (grime painted into the lit image, the control, does), scatters the board's light over a dark stroke as world_panel::EmissionAt defines it (3 percent), and its albedo reflects a white ambient cube while the clean face shows only its specular. Live images: two replacements under one texture key preserve UV crops, GPU pixels and CPU tile radiance. Alpha: 0/64/128/255 artwork over colored receivers, a mixed opaque/alpha view, alpha depth writes disabled and coverage-weighted mips. 0 validation messages.",
       "command": [
         "{python}",
         "tools/render/lab.py",
@@ -10980,7 +11037,7 @@
         "--validate"
       ],
       "result_protocol": "checks-v1",
-      "min_checks": 44,
+      "min_checks": 59,
       "timeout_seconds": 600,
       "requires": [
         "path:build-rc-lab/render/lab/render_lab",

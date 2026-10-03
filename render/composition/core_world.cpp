@@ -142,7 +142,82 @@ void CoreWorld::SetWorld( const RenderCoreWorldVertex *vertices, unsigned int ve
 	m_StaticInstances.clear();
 	m_StaticMaterials.clear();
 	m_StageRuntimeDirect.store( false, std::memory_order_relaxed );
+	m_MapLights = pass::lights::MapLights();
+	std::vector<unsigned char> opaqueTriangles( data.indices.size() / 3, 0 );
+	for ( const auto &surface : data.surfaces )
+	{
+		if ( surface.material >= data.materials.size() ||
+		     !OpaqueShadowMaterial( data.materials[surface.material] ) )
+			continue;
+		const auto first = std::min<std::size_t>( surface.firstIndex / 3, opaqueTriangles.size() );
+		const auto end = std::min<std::size_t>(
+		    ( surface.firstIndex + surface.indexCount ) / 3, opaqueTriangles.size() );
+		std::fill(
+		    opaqueTriangles.begin() + first, opaqueTriangles.begin() + std::max( first, end ), 1 );
+	}
+	SetWorldCasters( data, opaqueTriangles );
 	m_Pass.SetWorld( std::move( data ) );
+}
+
+void CoreWorld::SetWorldCasters(
+    const pass::world::WorldData &data, std::span<const unsigned char> opaqueTriangles )
+{
+	// The stage's shadow casters: its positions and triangles, grouped into
+	// chunks of kCasterCell units by their centroids.
+	auto casters = std::make_shared<Casters>();
+	casters->positions.reserve( data.vertices.size() * 3 );
+	for ( const pass::world::WorldVertex &vertex : data.vertices )
+		casters->positions.insert( casters->positions.end(), vertex.position, vertex.position + 3 );
+	{
+		constexpr float kCasterCell = 512.0f;
+		std::map<std::array<int, 3>, std::vector<std::uint32_t>> cells;
+		const std::vector<float> &p = casters->positions;
+		for ( std::size_t t = 0; t + 2 < data.indices.size(); t += 3 )
+		{
+			if ( !opaqueTriangles[t / 3] )
+				continue;
+			std::array<int, 3> cell{};
+			for ( int a = 0; a < 3; ++a )
+			{
+				const float centroid =
+				    ( p[data.indices[t] * 3 + a] + p[data.indices[t + 1] * 3 + a] +
+				        p[data.indices[t + 2] * 3 + a] ) /
+				    3.0f;
+				cell[a] = int( std::floor( centroid / kCasterCell ) );
+			}
+			auto &triangles = cells[cell];
+			triangles.insert( triangles.end(), data.indices.begin() + std::ptrdiff_t( t ),
+			    data.indices.begin() + std::ptrdiff_t( t + 3 ) );
+		}
+		casters->indices.reserve( data.indices.size() );
+		for ( const auto &[cell, triangles] : cells )
+		{
+			Casters::Chunk chunk;
+			chunk.firstIndex = std::uint32_t( casters->indices.size() );
+			chunk.indexCount = std::uint32_t( triangles.size() );
+			for ( int a = 0; a < 3; ++a )
+			{
+				chunk.min[a] = std::numeric_limits<float>::max();
+				chunk.max[a] = -std::numeric_limits<float>::max();
+			}
+			for ( std::uint32_t index : triangles )
+			{
+				for ( int a = 0; a < 3; ++a )
+				{
+					chunk.min[a] = std::min( chunk.min[a], p[index * 3 + a] );
+					chunk.max[a] = std::max( chunk.max[a], p[index * 3 + a] );
+				}
+			}
+			casters->indices.insert( casters->indices.end(), triangles.begin(), triangles.end() );
+			casters->chunks.push_back( chunk );
+		}
+	}
+	{
+		std::lock_guard<std::mutex> guard( m_ShadowLock );
+		casters->generation = ++m_CasterGeneration;
+		m_WorldCasters = casters;
+		m_Casters = std::move( casters );
+	}
 }
 
 std::vector<pass::world::WorldMaterial> CoreWorld::WorldMaterials(
@@ -259,62 +334,7 @@ void CoreWorld::SetWorldMesh( const void *wmsh, unsigned long long wmshBytes,
 		    "Render core: %zu alpha-tested world triangles need cutout "
 		    "shadows; omitted from the solid caster\n",
 		    cutoutTriangles );
-	// The stage's shadow casters: its positions and triangles, grouped into
-	// chunks of kCasterCell units by their centroids.
-	auto casters = std::make_shared<Casters>();
-	casters->positions.reserve( data.vertices.size() * 3 );
-	for ( const pass::world::WorldVertex &vertex : data.vertices )
-		casters->positions.insert( casters->positions.end(), vertex.position, vertex.position + 3 );
-	{
-		constexpr float kCasterCell = 512.0f;
-		std::map<std::array<int, 3>, std::vector<std::uint32_t>> cells;
-		const std::vector<float> &p = casters->positions;
-		for ( std::size_t t = 0; t + 2 < data.indices.size(); t += 3 )
-		{
-			if ( !opaqueTriangles[t / 3] )
-				continue;
-			std::array<int, 3> cell{};
-			for ( int a = 0; a < 3; ++a )
-			{
-				const float centroid =
-				    ( p[data.indices[t] * 3 + a] + p[data.indices[t + 1] * 3 + a] +
-				        p[data.indices[t + 2] * 3 + a] ) /
-				    3.0f;
-				cell[a] = int( std::floor( centroid / kCasterCell ) );
-			}
-			auto &triangles = cells[cell];
-			triangles.insert( triangles.end(), data.indices.begin() + std::ptrdiff_t( t ),
-			    data.indices.begin() + std::ptrdiff_t( t + 3 ) );
-		}
-		casters->indices.reserve( data.indices.size() );
-		for ( const auto &[cell, triangles] : cells )
-		{
-			Casters::Chunk chunk;
-			chunk.firstIndex = std::uint32_t( casters->indices.size() );
-			chunk.indexCount = std::uint32_t( triangles.size() );
-			for ( int a = 0; a < 3; ++a )
-			{
-				chunk.min[a] = std::numeric_limits<float>::max();
-				chunk.max[a] = -std::numeric_limits<float>::max();
-			}
-			for ( std::uint32_t index : triangles )
-			{
-				for ( int a = 0; a < 3; ++a )
-				{
-					chunk.min[a] = std::min( chunk.min[a], p[index * 3 + a] );
-					chunk.max[a] = std::max( chunk.max[a], p[index * 3 + a] );
-				}
-			}
-			casters->indices.insert( casters->indices.end(), triangles.begin(), triangles.end() );
-			casters->chunks.push_back( chunk );
-		}
-	}
-	{
-		std::lock_guard<std::mutex> guard( m_ShadowLock );
-		casters->generation = ++m_CasterGeneration;
-		m_WorldCasters = casters;
-		m_Casters = std::move( casters );
-	}
+	SetWorldCasters( data, opaqueTriangles );
 	data.surfaces.reserve( meshletCount );
 	for ( unsigned int i = 0; i < meshletCount; ++i )
 	{
@@ -939,17 +959,21 @@ CoreWorld::ViewLightInputs CoreWorld::TakeViewLightInputs(
 	// A relit BSP retains switchable world lights but strips its baked ones.
 	// Merge by individual lamp so that one live light does not hide the map's
 	// always-on direct lights from the model point.
-	in.lights = pass::lights::MergeMapLights( m_Lights.lights, m_MapLights );
+	in.stageWorld = m_StageSet;
+	if ( in.stageWorld )
+		in.lights = pass::lights::MergeMapLights( m_Lights.lights, m_MapLights );
 	// The area lights: the map's (baked light fixtures) and the frame's
 	// emitting surfaces; the sun: the map's.
-	in.areas = ViewAreaLights( true );
-	in.mapAreas = std::min( m_MapLights.areas.size(), in.areas.size() );
-	in.sun = m_MapLights.sun;
+	in.areas = ViewAreaLights( in.stageWorld );
+	in.mapAreas = in.stageWorld ? std::min( m_MapLights.areas.size(), in.areas.size() ) : 0;
+	if ( in.stageWorld )
+		in.sun = m_MapLights.sun;
 	in.sunMask = m_StageSunMask;
 	in.shadowQuality = m_ShadowQuality.load( std::memory_order_relaxed );
 	if ( in.shadowQuality > 0 && m_ShadowMovers.load( std::memory_order_relaxed ) )
 	{
 		in.movers = m_Lights.occluders;
+		in.triangles = m_Lights.triangles;
 	}
 	return in;
 }
@@ -1123,6 +1147,7 @@ std::shared_ptr<const pass::world::StageViewLights> CoreWorld::StageViewLightsFo
 		out->shadowTiles = std::move( plan.tiles );
 		work->views = std::move( plan.views );
 		work->movers = in.movers;
+		work->triangles = in.triangles;
 		work->atlasSize = plan.atlasSize;
 		work->guardTexels = plan.guardTexels;
 	}
@@ -1152,16 +1177,6 @@ void CoreWorld::PackViewAreaLights( const std::vector<area_light::AreaLight> &ar
 	for ( std::size_t i = 0; i < areas.size(); ++i )
 		out.areas.push_back( material::PackAreaLight(
 		    areas[i], i < mapAreas, i < areaTiles.size() ? areaTiles[i] : -1 ) );
-}
-
-std::shared_ptr<const pass::world::StageViewLights> CoreWorld::AreaViewLights() const
-{
-	const std::vector<area_light::AreaLight> areas = ViewAreaLights( false );
-	if ( areas.empty() )
-		return nullptr;
-	auto out = std::make_shared<pass::world::StageViewLights>();
-	PackViewAreaLights( areas, 0, {}, *out );
-	return out;
 }
 
 bool CoreWorld::PoseModel(
@@ -1320,7 +1335,7 @@ bool CoreWorld::DrawView( const unsigned int *surfaces, unsigned int count,
 	// A stage view's lights are clustered and its shadows planned when its
 	// slot records (the render sequence), from what the frame holds now.
 	std::shared_ptr<PendingView> pending;
-	if ( m_StageSet && worldToView && viewToClip )
+	if ( worldToView && viewToClip && ( m_StageSet || !m_Lights.areas.empty() ) )
 	{
 		const bool movers = m_ShadowMovers.load( std::memory_order_relaxed );
 		const int quality = m_ShadowQuality.load( std::memory_order_relaxed );
@@ -1349,10 +1364,6 @@ bool CoreWorld::DrawView( const unsigned int *surfaces, unsigned int count,
 				m_QueuedLighting.push_back( { hostFrame, m_Lights.revision, movers, pending } );
 		}
 		++m_StageLitViews;
-	}
-	else if ( !m_StageSet )
-	{
-		view.lights = AreaViewLights();
 	}
 	view.stageLighting = pending;
 	const std::uint32_t tag = m_Pass.QueueView( std::move( view ) );
@@ -1921,8 +1932,9 @@ void CoreWorld::RecordSlot(
 	if ( timers )
 		encoder.BeginLabel( "prepare screen passes" );
 	// The stage view's screen passes: GTAO over the pass's prepass.
-	const int aoQuality = m_AoQuality.load( std::memory_order_relaxed );
-	if ( shadows && target.device && aoQuality == 0 &&
+	const int aoQuality =
+	    pending && pending->inputs.stageWorld ? m_AoQuality.load( std::memory_order_relaxed ) : 0;
+	if ( shadows && pending->inputs.stageWorld && target.device && aoQuality == 0 &&
 	     EnsureOcclusion( *target.device, encoder, target.width, target.height, target.submitted ) )
 	{
 		// Off: the pass binds the target, held at one (the neutral term).
@@ -2163,6 +2175,13 @@ device::TextureId CoreWorld::DrawStageShadows( device::IRenderDevice2 &device,
 			for ( const light_set::RuntimeOccluder &occluder : work.movers )
 			{
 				const dynamic_occlusion::Box &mover = occluder.box;
+				// The physical mesh replaces this entity's coarse boxes on the core.
+				if ( std::any_of( work.triangles.begin(), work.triangles.end(),
+				         [&]( const auto &part )
+				         {
+					         return part.entity == mover.entity;
+				         } ) )
+					continue;
 				Casters::Chunk bounds;
 				math::float4x4 place;
 				for ( int r = 0; r < 3; ++r )
@@ -2193,6 +2212,66 @@ device::TextureId CoreWorld::DrawStageShadows( device::IRenderDevice2 &device,
 				}
 			}
 		}
+	}
+	std::vector<std::string> liveTriangleMeshes;
+	for ( const auto &part : work.triangles )
+	{
+		if ( part.positions.empty() || part.positions.size() % 9 || !part.version ||
+		     std::any_of( part.positions.begin(), part.positions.end(),
+		         []( float value )
+		         {
+			         return !std::isfinite( value );
+		         } ) )
+			return {};
+		const std::string name = "stage physical caster " + std::to_string( part.entity ) + ":" +
+		                         std::to_string( part.part );
+		liveTriangleMeshes.push_back( name );
+		auto &revision = m_TriangleRevisions[name];
+		if ( revision != part.version )
+		{
+			resources::MeshData data;
+			data.vertices = std::as_bytes( std::span( part.positions ) );
+			data.vertexStride = 3 * sizeof( float );
+			if ( !m_CasterMeshes->Stage( name, data ) )
+				return {};
+			revision = part.version;
+		}
+		const resources::MeshEntry *geometry = m_CasterMeshes->Find( name );
+		if ( !geometry )
+			return {};
+		Casters::Chunk bounds;
+		for ( int k = 0; k < 3; ++k )
+			bounds.min[k] = bounds.max[k] = part.positions[k];
+		for ( std::size_t i = 0; i < part.positions.size(); ++i )
+		{
+			bounds.min[i % 3] = std::min( bounds.min[i % 3], part.positions[i] );
+			bounds.max[i % 3] = std::max( bounds.max[i % 3], part.positions[i] );
+		}
+		for ( std::size_t v = 0; v < work.views.size(); ++v )
+		{
+			if ( !inside( work.views[v].viewProjection, bounds ) )
+				continue;
+			moverCasters[v].push_back( { *geometry, math::float4x4::Identity() } );
+			std::uint64_t key = part.version ^
+			                    ( std::uint64_t( std::uint32_t( part.entity ) ) << 32 ) ^
+			                    ( std::uint64_t( std::uint32_t( part.part ) ) << 20 );
+			key ^= key >> 33;
+			key *= 0xff51afd7ed558ccdull;
+			key ^= key >> 33;
+			moverSignature[v] += key | 1u;
+			anyMover = true;
+		}
+	}
+	for ( auto it = m_TriangleRevisions.begin(); it != m_TriangleRevisions.end(); )
+	{
+		if ( std::find( liveTriangleMeshes.begin(), liveTriangleMeshes.end(), it->first ) ==
+		     liveTriangleMeshes.end() )
+		{
+			(void)m_CasterMeshes->Evict( it->first );
+			it = m_TriangleRevisions.erase( it );
+		}
+		else
+			++it;
 	}
 	const bool composite = anyMover || !atlas.moverTiles.empty();
 	if ( dirty.empty() && !composite )
@@ -2372,6 +2451,7 @@ void CoreWorld::BindStageDevice( device::IRenderDevice2 &device )
 	m_ClusterFrame = 0;
 	m_ShadowRenderer.reset();
 	m_CasterMeshes.reset();
+	m_TriangleRevisions.clear();
 	m_Atlases.clear();
 	m_CastersStaged = 0;
 	m_Ao.reset();
@@ -2447,6 +2527,7 @@ void CoreWorld::ReleaseShadows( device::IRenderDevice2 &device )
 	}
 	m_Atlases.clear();
 	m_CasterMeshes.reset();
+	m_TriangleRevisions.clear();
 	m_ClusterKernel.reset();
 	m_ClusterFrame = 0;
 	m_ShadowRenderer.reset();

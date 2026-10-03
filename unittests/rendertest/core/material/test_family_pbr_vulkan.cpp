@@ -134,6 +134,17 @@ int main()
 			}
 			checks.That( claimed, "claim.alpha-test-with-byte-reference" );
 		}
+		{
+			ParameterBlock block( *pbr );
+			(void)block.SetTexture( "basetexture", device::TextureId( 1 ) );
+			(void)block.SetTexture( "mraotexture", device::TextureId( 1 ) );
+			(void)block.SetInt( "translucent", 1 );
+			const PbrClaim claim = ClaimPbr( block );
+			checks.That( claim.claimed && claim.translucent &&
+			                 claim.Variant().blend == device::BlendMode::kAlpha &&
+			                 !claim.Variant().alphaWrite,
+			    "claim.translucent-preserves-destination-alpha" );
+		}
 		checks.That(
 		    refused( ( std::string( base ) + "\"$clearcoat\" \"0.5\" }" ).c_str(), "clearcoat" ),
 		    "claim.refuses-clear-coat-by-name" );

@@ -140,6 +140,7 @@ struct Snapshot
 	uint64_t epoch = 0; // advances by one per built frame
 	std::vector<RuntimeLight> lights;
 	std::vector<RuntimeAreaLight> areas;          // v2: emitting surfaces
+	std::vector<dynamic_occlusion::TriangleOccluder> coreTriangles;
 	std::vector<RuntimeOccluder> occluders;       // v2: moving objects that block light
 	std::vector<RuntimeProjectedLight> projected; // v2: projected textures
 	// Every light style's current scalar (1 is its baked value): the lights

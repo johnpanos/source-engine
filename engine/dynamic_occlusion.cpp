@@ -61,6 +61,7 @@ struct State
 	int generation = 0;
 	std::vector<OccluderEntry> ring[kGenerations];
 	uint32_t nextVersion = 1;
+	dynamic_occlusion::TriangleFrame triangles;
 	std::mutex mutex; // the dirty set and the static-visibility cache
 	std::unordered_set<msurface2_t *> dirty;
 	std::unordered_map<uint64_t, bool> staticVisible;
@@ -77,6 +78,7 @@ void ResetForMap()
 	State &s = S();
 	s.map = g_nMapLoadCount;
 	s.generation = 0;
+	(void)s.triangles.Publish( nullptr, 0 );
 	for ( std::vector<OccluderEntry> &g : s.ring )
 		g.clear();
 	std::lock_guard<std::mutex> lock( s.mutex );
@@ -136,9 +138,37 @@ int DirtyAround( const Box &box )
 	return DirtyNode( host_state.worldbrush->nodes, center, radius, s.dirty );
 }
 
-class COccluders final : public dynamic_occlusion::IOccluders
+class COccluders final : public dynamic_occlusion::IOccluders2
 {
 public:
+	bool SetCoreOccluders(
+	    const dynamic_occlusion::TriangleInput *inputs, unsigned int count ) override
+	{
+		State &s = S();
+		if ( s.map != g_nMapLoadCount )
+			ResetForMap();
+		const bool accepted = s.triangles.Publish( inputs, count );
+		if ( accepted && r_dynamic_occlusion_report.GetBool() )
+		{
+			Msg( "core physical occluders: %zu part(s)\n", s.triangles.Entries().size() );
+			for ( const auto &part : s.triangles.Entries() )
+			{
+				float low[3], high[3];
+				for ( int k = 0; k < 3; ++k )
+					low[k] = high[k] = part.positions[k];
+				for ( size_t i = 0; i < part.positions.size(); ++i )
+				{
+					low[i % 3] = std::min( low[i % 3], part.positions[i] );
+					high[i % 3] = std::max( high[i % 3], part.positions[i] );
+				}
+				Msg( "  physical %d:%d revision %llu vertices %zu bounds %.3f %.3f %.3f / %.3f "
+				     "%.3f %.3f\n",
+				    part.entity, part.part, (unsigned long long)part.version,
+				    part.positions.size() / 3, low[0], low[1], low[2], high[0], high[1], high[2] );
+			}
+		}
+		return accepted;
+	}
 	void SetOccluders( const Box *boxes, int count ) override
 	{
 		State &s = S();
@@ -229,6 +259,16 @@ COccluders s_Occluders;
 
 EXPOSE_SINGLE_INTERFACE_GLOBALVAR_WITH_NAMESPACE( COccluders, dynamic_occlusion::, IOccluders,
     dynamic_occlusion::kOccludersVersion, s_Occluders );
+
+EXPOSE_SINGLE_INTERFACE_GLOBALVAR_WITH_NAMESPACE( COccluders, dynamic_occlusion::, IOccluders2,
+    dynamic_occlusion::kCoreOccludersVersion, s_Occluders );
+
+const std::vector<dynamic_occlusion::TriangleOccluder> &DynamicOcclusion_CoreTriangles()
+{
+	if ( S().map != g_nMapLoadCount )
+		ResetForMap();
+	return S().triangles.Entries();
+}
 
 bool DynamicOcclusion_Enabled()
 {

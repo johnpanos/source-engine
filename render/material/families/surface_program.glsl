@@ -535,11 +535,37 @@ void AreaLightCorners( AreaLight light, out vec3 corners[4] )
 	corners[3] = light.center.xyz - light.halfU.xyz + light.halfV.xyz;
 }
 
+// Area-light visibility has one owner for PBR and lightmapped receivers.
+float AreaLightVisibility( AreaLight light, vec3 p, vec3 smoothNormal,
+    vec3 geometricNormal, float rotation )
+{
+	float visibility = 1.0;
+	const bool twoSided = light.center.w > 0.5;
+	const int firstTile = int( light.radiance.w );
+	if ( firstTile >= 0 && DebugTermOn( kDebugTermShadowVisibility ) )
+	{
+		// The rectangle as a disc of its area as the point sees it: its
+		// extent across the ray shrinks with the cosine of the ray's
+		// angle to the rectangle's normal, so the disc of the same
+		// projected area has sqrt( cosine ) of the radius.
+		const vec3 toCenter = normalize( light.center.xyz - p );
+		const vec3 facing = normalize( cross( light.halfU.xyz, light.halfV.xyz ) );
+		const float size =
+		    sqrt( 4.0 * length( light.halfU.xyz ) * length( light.halfV.xyz ) / kPi ) *
+		    sqrt( max( abs( dot( facing, toCenter ) ), 0.05 ) );
+		visibility = ShadowTerminatorFade( smoothNormal, toCenter,
+		    ShadowFacesVisibility( shadowAtlas, shadowSampler, shadowComparisonSampler, firstTile,
+		        twoSided ? 6 : 5, p,
+		        ShadowReceiverOffset( geometricNormal, toCenter ), size, rotation ) );
+	}
+	return visibility;
+}
+
 // The irradiance the frame's area lights whose diffuse light is not in the
 // bake (the emitting surfaces) give a point with normal n, in the lightmap's
 // units: each light's radiance times its form factor (the cosine's integral
-// over the rectangle, clipped to the horizon) and its window. Unshadowed.
-vec3 AreaLightIrradiance( vec3 n, vec3 p )
+// over the rectangle, clipped to the horizon), window and shadow visibility.
+vec3 AreaLightIrradiance( vec3 n, vec3 geometricNormal, vec3 p )
 {
 	vec3 sum = vec3( 0.0 );
 	const int areaCount = DebugTermOn( kDebugTermArea ) ? min( int( frame.areaCount.x ), kMaxAreaLights ) : 0;
@@ -554,9 +580,13 @@ vec3 AreaLightIrradiance( vec3 n, vec3 p )
 		    light.center.xyz, light.halfU.xyz, light.halfV.xyz, light.halfU.w, p );
 		if ( window <= 0.0 )
 			continue;
+		const float visibility = AreaLightVisibility( light, p, geometricNormal,
+		    geometricNormal, PixelRotation() );
+		if ( visibility <= 0.0 )
+			continue;
 		vec3 corners[4];
 		AreaLightCorners( light, corners );
-		sum += light.radiance.rgb * window *
+		sum += light.radiance.rgb * window * visibility *
 		       LtcRectangle( n, normalize( frame.eye.xyz - p ), p, mat3( 1.0 ), corners,
 		           light.center.w > 0.5 );
 	}
@@ -1076,23 +1106,8 @@ void PbrSurface()
 			visibility = texelFetch( sampler2D( detailTexture, detailSampler ),
 			    ivec2( gl_FragCoord.xy ), 0 )[channel];
 #else
-			const int firstTile = int( light.radiance.w );
-			if ( firstTile >= 0 && DebugTermOn( kDebugTermShadowVisibility ) )
-			{
-				// The rectangle as a disc of its area as the point sees it: its
-				// extent across the ray shrinks with the cosine of the ray's
-				// angle to the rectangle's normal, so the disc of the same
-				// projected area has sqrt( cosine ) of the radius.
-				const vec3 toCenter = normalize( light.center.xyz - worldPosition );
-				const vec3 facing = normalize( cross( light.halfU.xyz, light.halfV.xyz ) );
-				const float size =
-				    sqrt( 4.0 * length( light.halfU.xyz ) * length( light.halfV.xyz ) / kPi ) *
-				    sqrt( max( abs( dot( facing, toCenter ) ), 0.05 ) );
-				visibility = ShadowTerminatorFade( smoothNormal, toCenter,
-				    ShadowFacesVisibility( shadowAtlas, shadowSampler, shadowComparisonSampler, firstTile,
-				        twoSided ? 6 : 5, worldPosition,
-				        ShadowReceiverOffset( geometricNormal, toCenter ), size, rotation ) );
-			}
+			visibility = AreaLightVisibility(
+			    light, worldPosition, smoothNormal, geometricNormal, rotation );
 #endif
 #ifdef LAB_VISIBILITY_WRITE
 			receiverVisibility[i] = visibility;
@@ -1744,7 +1759,7 @@ void main()
 		const vec3 n = normalize( bumpmap ? normalSample.x * tangentS + normalSample.y * tangentT +
 		                                        normalSample.z * worldNormal
 		                                  : worldNormal );
-		diffuse += tint * AreaLightIrradiance( n, worldPosition );
+		diffuse += tint * AreaLightIrradiance( n, normalize( worldNormal ), worldPosition );
 	}
 
 	vec3 lit = kDebugBrdf == kDebugBrdfSpecularOnly ? vec3( 0.0 ) : albedo * diffuse;

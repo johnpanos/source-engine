@@ -357,6 +357,24 @@
         ]
       },
       {
+        "id": "material.procedural-sampling",
+        "paths": [
+          "public/materialsystem/procedural_texture_sample.h"
+        ],
+        "allowedEdges": []
+      },
+      {
+        "id": "material.procedural-sampling-tests",
+        "paths": [
+          "unittests/rendertest/test_procedural_texture_sample.cpp"
+        ],
+        "allowedEdges": [
+          "material.procedural-sampling",
+          "render.contracts",
+          "testing.contracts"
+        ]
+      },
+      {
         "id": "render.conformance-tests",
         "paths": [
           "unittests/rendertest/"

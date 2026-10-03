@@ -90,3 +90,30 @@ rule for every prop, physics object, NPC part and door, and for every light
   lights) is not occluded.
 - Static props' baked vertex lighting and displacements take no occlusion.
 - Dynamic lights (dlights) and area lights are not occluded yet.
+
+## Core physical caster extension
+
+The preceding box/CPU contract remains v1. The core additionally consumes
+`VEngineOccluders002`, defined in [dynamic_occlusion.h](../../../../public/render/dynamic_occlusion.h).
+Its client producer selects opaque animated models using custom box and ray
+collision, and follows their authored bone-follower selection (including the
+server's multi-solid fallback). Physical triangles on the current client bones
+block core lights even when the model disables its legacy blob shadow.
+
+Publication follows render-start interpolation, animation and bone work, before
+the engine publishes lighting. The main sequence owns publication; queued views
+own copies. Borrowed client storage is consumed synchronously. Invalid triangle
+lists, duplicate keys, nonfinite positions and capacity violations reject the
+whole frame, preserving geometry and revisions. Unchanged geometry keeps its
+revision; an empty publication removes the parts. Map shutdown clears the set
+and model cache. The v1 interface and CPU receivers retain their original inputs.
+
+The core's existing shadow atlas draws these meshes in place of that entity's
+coarse boxes. Both imported BSP surfaces and WMSH stages use the same area-light
+shadow mechanism. The CPU publication tests exercise ownership and rollback;
+`render_lab shadowed-lights` checks closed/partial/open/reclosed triangle leaves
+against an independent aperture oracle and rejects missing leaves. The installed
+`render.product.fizzler-door-light` fixture supplies the real animated-door and
+receiver check. This cohort uses authored physical geometry; full visual-mesh
+skinning/cutout shadow coverage and complete-frame performance remain separate
+RFC 0016 gates.

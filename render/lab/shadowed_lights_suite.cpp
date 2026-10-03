@@ -46,6 +46,7 @@
 #include "render/pass/shadows/shadow_plan.h"
 #include "render/pass/shadows/shadow_views.h"
 #include "render/resources/mesh_cache.h"
+#include "render/pass/world/world_pass.h"
 #include "spv/shadowed_light_defects_spv.h"
 #include "spv/shadow_cube_probe_spv.h"
 
@@ -1001,6 +1002,242 @@ std::optional<std::string> CubeChecks( Lab &lab, Results &results )
 	return std::nullopt;
 }
 
+// The imported BSP receiver uses the production world pass and its view bindings.
+struct DoorReceiver
+{
+	IRenderDevice2 &device;
+	pass::world::WorldPass pass;
+	~DoorReceiver() { pass.ReleaseDevice( device ); }
+};
+class DoorTextures final : public pass::world::IWorldTextures
+{
+public:
+	explicit DoorTextures( resources::TextureCache &textures ) : m_Textures( textures ) {}
+	TextureId Import( int handle, bool ) override
+	{
+		const auto *entry = m_Textures.Find( handle == 1 ? "door/base" : "door/page" );
+		return entry ? entry->texture : TextureId();
+	}
+	SamplerDesc Sampler( int ) override { return {}; }
+
+private:
+	resources::TextureCache &m_Textures;
+};
+
+// Two physical leaves sliding away from the centre. The independent oracle
+// intersects each light-to-receiver ray with z=100 and tests the real aperture,
+// rather than an animation state or the leaves' combined bounding box.
+std::optional<std::string> PhysicalDoorChecks( Lab &lab, Results &results )
+{
+	Lab fixture( lab.device );
+	auto renderer = shadows::ShadowDepthRenderer::Create( lab.device );
+	if ( !renderer )
+		return std::string( "physical door depth renderer was refused" );
+	fixture.depth = std::move( renderer ).Value();
+	light_set::RuntimeLight light;
+	light.shape = light_set::LightShape::Point;
+	light.radius = 512.0f;
+	shadows::ShadowPlanInput input;
+	input.lights = { &light, 1 };
+	input.atlasSize = 2048;
+	shadows::ShadowPlan plan;
+	if ( auto why = shadows::PlanShadows( input, plan ) )
+		return why;
+	if ( plan.tiles.size() != 6 )
+		return std::string( "physical door oracle needs all six light faces" );
+	fixture.atlasDesc.format = Format::kD32Float;
+	fixture.atlasDesc.width = fixture.atlasDesc.height = input.atlasSize;
+	fixture.atlasDesc.usages = { ResourceUsage::kDepthWrite, ResourceUsage::kSampled };
+	auto atlas = lab.device.CreateTexture( fixture.atlasDesc );
+	if ( !atlas )
+		return std::string( "physical door atlas was refused" );
+	fixture.atlas = atlas.Value();
+	// Exercise the actual lightmapped receiver shader as well as atlas lookup.
+	// A small rectangular emitter uses the same six projections, with no bake.
+	if ( auto why = Canvas::Create( lab.device, 128, 128, fixture.canvas ) )
+		return why;
+	if ( !StageConstant(
+	         fixture.textures, "door/base", Format::kRGBA8Srgb, ByteTexel( 255, 255, 255, 255 ) ) ||
+	     !StageConstant(
+	         fixture.textures, "door/page", Format::kRGBA8Srgb, ByteTexel( 0, 0, 0, 255 ) ) )
+		return std::string( "physical door receiver setup failed" );
+	DoorReceiver receiver{ lab.device, {} };
+	DoorTextures imports( fixture.textures );
+	pass::world::WorldData world;
+	pass::world::WorldMaterial material;
+	material.name = "physical door receiver";
+	material.shader = "LightmappedGeneric";
+	material.variables = { { "$basetexture", "door/base" } };
+	material.textures = { { "$basetexture", 1 } };
+	world.materials.push_back( material );
+	const float corners[4][2] = { { -240, -240 }, { 240, -240 }, { 240, 240 }, { -240, 240 } };
+	for ( const auto &corner : corners )
+	{
+		material::SurfaceWorldVertex vertex;
+		vertex.position[0] = corner[0];
+		vertex.position[1] = corner[1];
+		vertex.position[2] = 200;
+		vertex.normal[2] = -1;
+		world.vertices.push_back( vertex );
+	}
+	world.indices = { 0, 2, 1, 0, 3, 2 };
+	world.surfaces = { { 0, 2, 0, 6 } };
+	receiver.pass.SetWorld( std::move( world ) );
+	std::uint64_t frameNumber = 0;
+	const auto toClip =
+	    math::Multiply( math::Perspective( 70.0f * 3.14159265f / 180.0f, 1.0f, 1.0f, 1000.0f ),
+	        math::LookAt( { 0, 0, -150 }, { 0, 0, 200 }, { 0, 1, 0 } ) );
+	auto renderReceiver = [&]( bool shadowed, CanvasImage &image ) -> std::optional<std::string>
+	{
+		area_light::AreaLight emitter;
+		emitter.rect.halfU[0] = emitter.rect.halfV[1] = 2.0f;
+		emitter.rect.twoSided = true;
+		emitter.reach = 512.0f;
+		emitter.radiance[0] = emitter.radiance[1] = emitter.radiance[2] = 16.0f;
+		auto lights = std::make_shared<pass::world::StageViewLights>();
+		lights->areas = { material::PackAreaLight( emitter, false, shadowed ? 0 : -1 ) };
+		if ( shadowed )
+			lights->shadowTiles = plan.tiles;
+		pass::world::WorldView view;
+		std::memcpy( view.toClip, &toClip, sizeof( view.toClip ) );
+		view.viewport = { 0, 0, 128, 128, 0, 1 };
+		view.surfaces = { 0 };
+		view.lights = lights;
+		const auto tag = receiver.pass.QueueView( std::move( view ) );
+		CanvasPost post = [&]( CommandEncoder &encoder, TextureId color,
+		                      TextureId depth ) -> std::optional<std::string>
+		{
+			pass::world::WorldTarget target;
+			target.device = &lab.device;
+			target.color = color;
+			target.colorFormat = kCanvasColor;
+			target.depth = depth;
+			target.depthFormat = kCanvasDepth;
+			target.width = target.height = 128;
+			target.frame = ++frameNumber;
+			target.eye[2] = -150;
+			target.textures = &imports;
+			if ( shadowed )
+			{
+				target.shadowAtlas = fixture.atlas;
+				target.shadowAtlasDesc = fixture.atlasDesc;
+			}
+			receiver.pass.Record( tag, encoder, target );
+			return receiver.pass.Stats().viewsFailed
+			           ? std::optional( receiver.pass.Stats().lastFailure )
+			           : std::nullopt;
+		};
+		return fixture.canvas->Render(
+		    fixture.textures, fixture.groups, {}, { 0, 0, 0, 1 }, &image, post );
+	};
+	SamplerDesc samplers[2];
+	samplers[0].minFilter = samplers[0].magFilter = samplers[0].mipFilter = Filter::kNearest;
+	samplers[0].address = samplers[1].address = AddressMode::kClampToEdge;
+	samplers[1].mipFilter = Filter::kNearest;
+	samplers[1].comparison = CompareOp::kLessEqual;
+	CheckKernel kernel( lab.device );
+	if ( auto why = kernel.Create( spirv::kShadowCubeProbe, 1, 2, "physical aperture", samplers ) )
+		return why;
+	// Receivers stay inside the aperture or shadow, beyond the PCF fringe.
+	const math::float4 points[] = {
+	    { 8, 0, 200, 0 }, { 12, 0, 200, 0 }, { 80, 0, 200, 0 }, { 180, 0, 200, 0 } };
+	std::vector<std::byte> cases( plan.tiles.size() * sizeof( ShadowTileGpu ) + sizeof( points ) );
+	std::memcpy( cases.data(), plan.tiles.data(), plan.tiles.size() * sizeof( ShadowTileGpu ) );
+	std::memcpy(
+	    cases.data() + plan.tiles.size() * sizeof( ShadowTileGpu ), points, sizeof( points ) );
+	bool initialized = false;
+	unsigned int state = 0;
+	for ( float gap : { 0.0f, 16.0f, 64.0f, 0.0f, -1.0f } )
+	{
+		std::vector<math::float3> vertices;
+		for ( int side : { -1, 1 } )
+		{
+			const float a = side < 0 ? -128 - gap : gap;
+			const float b = side < 0 ? -gap : 128 + gap;
+			vertices.insert(
+			    vertices.end(), { { a, -128, 100 }, { b, -128, 100 }, { b, 128, 100 },
+			                        { a, -128, 100 }, { b, 128, 100 }, { a, 128, 100 } } );
+		}
+		resources::MeshData mesh;
+		mesh.vertices = std::as_bytes( std::span( vertices ) );
+		mesh.vertexStride = sizeof( math::float3 );
+		auto staged = fixture.meshes.Stage( "moving physical leaves", mesh );
+		if ( !staged )
+			return std::string( "physical door geometry was refused" );
+		std::vector<shadows::ShadowCaster> casters;
+		if ( gap >= 0 )
+			casters.push_back( { staged.Value(), math::float4x4::Identity() } );
+		std::vector<shadows::ShadowDepthView> views;
+		for ( const auto &view : plan.views )
+			views.push_back( { view.viewProjection, view.tile, casters } );
+		graph::GraphBuilder builder;
+		builder.AddPass( "physical door upload", graph::PassKind::kCopy )
+		    .SideEffect()
+		    .Execute(
+		        [&]( graph::RecordContext &context )
+		        {
+			        fixture.meshes.RecordUploads( context.Encoder() );
+		        } );
+		const auto ref = builder.ImportTexture( "physical door atlas", fixture.atlas,
+		    fixture.atlasDesc, initialized ? ResourceUsage::kSampled : ResourceUsage::kUndefined,
+		    ResourceUsage::kSampled );
+		if ( !fixture.depth->AddPasses(
+		         builder, { ref, input.atlasSize, input.guardTexels }, views ) )
+			return std::string( "physical door shadow passes were refused" );
+		auto compiled = graph::CompileGraph( std::move( builder ) );
+		if ( !compiled )
+			return std::string( "physical door graph did not compile" );
+		graph::SerialGraphExecutor executor;
+		auto executed = executor.Execute( compiled.Value(), lab.device );
+		if ( !executed )
+			return std::string( "physical door graph did not execute" );
+		(void)lab.device.WaitIdle();
+		fixture.depth->Collect( executed.Value().token );
+		fixture.meshes.Retire( executed.Value().token );
+		initialized = true;
+		std::vector<std::byte> output;
+		const TextureId textures[] = { fixture.atlas };
+		if ( auto why = kernel.Run( fixture.textures, textures, std::size( points ), cases,
+		         std::size( points ) * sizeof( math::float2 ), output ) )
+			return why;
+		CanvasImage receiverImage, unshadowedImage;
+		if ( auto why = renderReceiver( true, receiverImage ) )
+			return why;
+		if ( auto why = renderReceiver( false, unshadowedImage ) )
+			return why;
+		unsigned int bad = 0;
+		for ( std::size_t i = 0; i < std::size( points ); ++i )
+		{
+			const float expected = points[i].x * 0.5f < std::max( gap, 0.0f ) ? 1.0f : 0.0f;
+			math::float2 actual;
+			std::memcpy( &actual, output.data() + i * sizeof( actual ), sizeof( actual ) );
+			bad += actual.x != expected || actual.y != expected;
+			if ( gap >= 0 )
+				results.That( actual.x == expected && actual.y == expected,
+				    "physical-door.state-" + std::to_string( state ) + ".receiver-" +
+				        std::to_string( i ),
+				    Format4(
+				        "visibility %.2f / %.2f, expected %.2f", actual.x, actual.y, expected ) );
+			const auto clip =
+			    math::Transform( toClip, { points[i].x, points[i].y, points[i].z, 1 } );
+			const unsigned px = unsigned( ( clip.x / clip.w * 0.5f + 0.5f ) * 128 );
+			const unsigned py = unsigned( ( 0.5f - clip.y / clip.w * 0.5f ) * 128 );
+			const float control = unshadowedImage.At( px, py )[0];
+			const float ratio = control > 1e-5f ? receiverImage.At( px, py )[0] / control : -1;
+			results.That(
+			    control > 1e-5f && std::fabs( ratio - ( gap < 0 ? 1.0f : expected ) ) < 0.02f,
+			    "physical-door.lightmapped-state-" + std::to_string( state ) + ".receiver-" +
+			        std::to_string( i ),
+			    Format4( "ratio %.3f, expected %.3f, unshadowed %.5f", ratio,
+			        gap < 0 ? 1.0f : expected, control ) );
+		}
+		if ( gap < 0 )
+			results.That( bad == std::size( points ), "physical-door.removed-leaves-rejected" );
+		++state;
+	}
+	return std::nullopt;
+}
+
 std::optional<std::string> PrepareSplit( Lab &lab, SplitFrame &split )
 {
 	if ( lab.lights.size() > 4 || lab.areas.size() > 4 ||
@@ -1234,6 +1471,8 @@ std::optional<std::string> RunOnce( bool validate, std::span<const std::uint32_t
 			return why;
 		if ( module.empty() )
 		{
+			if ( auto why = PhysicalDoorChecks( lab, results ) )
+				return why;
 			if ( auto why = CoherentLightChecks( *device, results ) )
 				return why;
 			if ( auto why = VisibilitySplitChecks( *device, results ) )

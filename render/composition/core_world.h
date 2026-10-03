@@ -238,10 +238,12 @@ private:
 			lights = snapshot.lights;
 			areas = snapshot.areas;
 			occluders = snapshot.occluders;
+			triangles = snapshot.coreTriangles;
 		}
 		std::uint64_t revision = 0; // each publication invalidates queued-view reuse
 		std::vector<light_set::RuntimeLight> lights;
 		std::vector<light_set::RuntimeAreaLight> areas;
+		std::vector<dynamic_occlusion::TriangleOccluder> triangles;
 		std::vector<light_set::RuntimeOccluder> occluders; // the moving objects
 	};
 	// The world stage's shadow atlas (per shadowed view of a frame): 4096
@@ -276,6 +278,7 @@ private:
 		float eye[3] = {}; // the view's origin (the view matrix's inverse)
 		// The frame's moving objects' boxes (with their pose versions):
 		// casters drawn over the cached static tiles.
+		std::vector<dynamic_occlusion::TriangleOccluder> triangles;
 		std::vector<light_set::RuntimeOccluder> movers;
 	};
 	// The world stage's shadow casters (the stage mesh's positions and
@@ -302,6 +305,7 @@ private:
 	// sequence clusters them and plans their shadows when it records the view.
 	struct ViewLightInputs
 	{
+		bool stageWorld = false;
 		float worldToView[16] = {};
 		float viewToClip[16] = {};
 		float viewport[6] = {};
@@ -311,6 +315,7 @@ private:
 		std::optional<pass::lights::MapSun> sun;
 		bool sunMask = false;
 		int shadowQuality = 0;
+		std::vector<dynamic_occlusion::TriangleOccluder> triangles;
 		std::vector<light_set::RuntimeOccluder> movers; // the frame's moving objects
 	};
 	// A queued stage view keeps its CPU input snapshot across record-stream
@@ -377,7 +382,8 @@ private:
 	// A view of a world without a stage (the claimed BSP faces of a retail
 	// map): its frame area lights alone, unshadowed (the core holds no
 	// casters for it); null when the frame has none.
-	std::shared_ptr<const pass::world::StageViewLights> AreaViewLights() const;
+	void SetWorldCasters(
+	    const pass::world::WorldData &data, std::span<const unsigned char> opaqueTriangles );
 	// Render sequence: draws a view's shadow work into an atlas of this
 	// frame's pool, as a submission of its own ahead of the frame's; the atlas
 	// in kSampled, or invalid when it could not be drawn.
@@ -444,6 +450,7 @@ private:
 	device::IRenderDevice2 *m_ShadowDevice = nullptr;
 	std::unique_ptr<pass::shadows::ShadowDepthRenderer> m_ShadowRenderer;
 	std::unique_ptr<resources::MeshCache> m_CasterMeshes;
+	std::map<std::string, std::uint64_t> m_TriangleRevisions;
 	std::uint64_t m_CastersStaged = 0;
 	std::string m_CasterName;
 	// An atlas keeps its tiles across frames (static casters): a frame

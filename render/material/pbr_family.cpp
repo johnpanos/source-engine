@@ -27,10 +27,10 @@ using detail::ReadParameter;
 
 // The parameters the family draws, and $fallbackmaterial, which only other
 // profiles read.
-constexpr std::array<std::string_view, 17> kClaimed = { "basetexture", "mraotexture", "bumpmap",
+constexpr std::array<std::string_view, 18> kClaimed = { "basetexture", "mraotexture", "bumpmap",
     "emissiontexture", "emissionscale", "emissiononesided", "emissioncameraonly", "emissioncone",
     "emissionconeinner", "emissionconeouter", "emissionconeexponent", "alphatest",
-    "alphatestreference", "fallbackmaterial", "transmission", "ior", "thickness" };
+    "alphatestreference", "fallbackmaterial", "transmission", "ior", "thickness", "translucent" };
 
 bool TextureBound( const ParameterBlock &block, std::string_view name )
 {
@@ -90,6 +90,7 @@ PbrClaim ClaimPbr( const ParameterBlock &block, bool sceneColorAvailable )
 		return claim;
 	}
 	claim.alphaTest = detail::ReadFlag( block, "alphatest" );
+	claim.translucent = detail::ReadFlag( block, "translucent" );
 	const float transmission = ReadParameter( block, "transmission" );
 	const float ior = ReadParameter( block, "ior" );
 	const float thickness = ReadParameter( block, "thickness" );

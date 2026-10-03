@@ -2005,7 +2005,7 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 			note( "a program reads the view's planar reflection, which did not import" );
 			return nullptr;
 		}
-		if ( world->stage && view.lights )
+		if ( view.lights )
 		{
 			const bool model = m.resolver == r.modelResolver.get();
 			Group *&slot = model ? modelLitViews[layout] : litViews[layout];

@@ -27,7 +27,7 @@
 extern int host_framecount;
 
 static ConVar r_core_panels( "r_core_panels", "1", 0,
-    "RFC 0016 render.pass.panels: in-world panels that opt in (Portal 2's chamber sign) draw as "
+    "RFC 0016 render.pass.panels: in-world VGUI screens draw as "
     "emissive surfaces on the render core in the views it draws (r_core_world); 0 draws them "
     "through the legacy 2D path" );
 

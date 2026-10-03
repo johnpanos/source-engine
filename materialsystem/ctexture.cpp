@@ -39,6 +39,7 @@
 #include "tier1/strtools.h"
 #include "vtf/vtf.h"
 #include "materialsystem/materialsystem_config.h"
+#include "materialsystem/procedural_texture_sample.h"
 #include "mempool.h"
 #include "texturemanager.h"
 #include "utlbuffer.h"
@@ -478,6 +479,7 @@ protected:
 
 	// Builds the low-res image from the texture 
 	void LoadLowResTexture( IVTFTexture *pTexture );
+	void RefreshProceduralLowRes( IVTFTexture *pTexture );
 	void CopyLowResImageToTexture( IVTFTexture *pTexture );
 	
 	void GetDownloadFaceCount( int &nFirstFace, int &nFaceCount );
@@ -2895,6 +2897,35 @@ void CTexture::LoadLowResTexture( IVTFTexture *pTexture )
 	Assert( retVal );
 }
 
+// Opaque CPU-generated images can publish bounded sampling data through the
+// existing texture API. Unsupported formats clear it instead of retaining a
+// stale frame. This runs with regeneration, before the matching GPU upload.
+void CTexture::RefreshProceduralLowRes( IVTFTexture *pTexture )
+{
+	using namespace procedural_texture_sample;
+	const ImageFormat format = pTexture->Format();
+	if ( pTexture->FrameCount() != 1 || pTexture->FaceCount() != 1 || pTexture->Depth() != 1 ||
+	     ( format != IMAGE_FORMAT_RGB888 && format != IMAGE_FORMAT_BGR888 ) )
+	{
+		delete[] m_pLowResImage;
+		m_pLowResImage = NULL;
+		m_LowResImageWidth = m_LowResImageHeight = 0;
+		return;
+	}
+	if ( m_LowResImageWidth != kDimension || m_LowResImageHeight != kDimension )
+	{
+		delete[] m_pLowResImage;
+		m_pLowResImage = new unsigned char[kBytes];
+	}
+	const int stride = pTexture->RowSizeInBytes( 0 );
+	if ( Build( { pTexture->ImageData(), std::size_t( stride ) * pTexture->Height() },
+	         pTexture->Width(), pTexture->Height(), stride, format == IMAGE_FORMAT_BGR888,
+	         { m_pLowResImage, kBytes } ) )
+		m_LowResImageWidth = m_LowResImageHeight = kDimension;
+	else
+		m_LowResImageWidth = m_LowResImageHeight = 0;
+}
+
 void *CTexture::GetResourceData( uint32 eDataType, size_t *pnumBytes ) const
 {
 	for ( DataChunk const *pDataChunk = m_arrDataChunks.Base(),
@@ -3514,6 +3545,11 @@ IVTFTexture *CTexture::ReconstructPartialProceduralBits( const Rect_t *pRect, Re
 		TextureManager()->GenerateErrorTexture( this, pVTFTexture );
 	}
 
+	// The shared scratch image contains only this update rectangle. It cannot
+	// publish a whole-image sample without the untouched pixels' CPU owner.
+	delete[] m_pLowResImage;
+	m_pLowResImage = NULL;
+	m_LowResImageWidth = m_LowResImageHeight = 0;
 	return pVTFTexture;
 }
 
@@ -3623,6 +3659,7 @@ IVTFTexture *CTexture::ReconstructProceduralBits()
 		TextureManager()->GenerateErrorTexture( this, pVTFTexture );
 	}
 
+	RefreshProceduralLowRes( pVTFTexture );
 	return pVTFTexture;
 }
 
@@ -3939,6 +3976,40 @@ void CTexture::GetLowResColorSample( float s, float t, float *color ) const
 	if ( m_LowResImageWidth <= 0 || m_LowResImageHeight <= 0 )
 	{
 //		Warning( "Programming error: GetLowResColorSample \"%s\": %dx%d\n", m_pName, ( int )m_LowResImageWidth, ( int )m_LowResImageHeight );
+		return;
+	}
+
+	if ( IsProcedural() )
+	{
+		if ( !std::isfinite( s ) || !std::isfinite( t ) )
+			return;
+		auto coordinate = []( float v, int size, bool clamp )
+		{
+			return ( clamp ? std::clamp( v, 0.0f, 1.0f ) : v - std::floor( v ) ) * size - 0.5f;
+		};
+		const bool clampS = ( m_nFlags & TEXTUREFLAGS_CLAMPS ) != 0;
+		const bool clampT = ( m_nFlags & TEXTUREFLAGS_CLAMPT ) != 0;
+		const float x = coordinate( s, m_LowResImageWidth, clampS );
+		const float y = coordinate( t, m_LowResImageHeight, clampT );
+		const int ix = int( std::floor( x ) ), iy = int( std::floor( y ) );
+		const float fx = x - ix, fy = y - iy;
+		auto index = []( int i, int size, bool clamp )
+		{
+			return clamp ? std::clamp( i, 0, size - 1 ) : ( i % size + size ) % size;
+		};
+		for ( int k = 0; k < 3; ++k )
+			color[k] = 0.0f;
+		for ( int cy = 0; cy < 2; ++cy )
+		{
+			for ( int cx = 0; cx < 2; ++cx )
+			{
+				const int at = index( iy + cy, m_LowResImageHeight, clampT ) * m_LowResImageWidth +
+				               index( ix + cx, m_LowResImageWidth, clampS );
+				const float weight = ( cx ? fx : 1.0f - fx ) * ( cy ? fy : 1.0f - fy );
+				for ( int k = 0; k < 3; ++k )
+					color[k] += weight * m_pLowResImage[at * 3 + k] / 255.0f;
+			}
+		}
 		return;
 	}
 

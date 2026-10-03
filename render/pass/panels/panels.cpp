@@ -121,6 +121,7 @@ struct Variant
 	Format depthFormat = Format::kUnknown;
 	std::uint32_t samples = 1;
 	bool encodeOutput = false;
+	bool transparent = false;
 	std::unique_ptr<resources::TextureCache> cache;
 	std::unique_ptr<material::ProgramResolver> resolver;
 	std::unique_ptr<material::MaterialPrograms> programs;
@@ -255,7 +256,7 @@ struct PanelPass::State
 	}
 
 	std::optional<std::string> Make();
-	Variant *VariantFor( const PanelTarget &target );
+	Variant *VariantFor( const PanelTarget &target, bool transparent );
 	std::optional<std::string> EnsureImage(
 	    Image &image, const Resolution &resolution, float unitsWide, float unitsTall );
 	std::optional<std::string> Rasterize(
@@ -386,12 +387,13 @@ std::optional<std::string> PanelPass::State::Make()
 	return std::nullopt;
 }
 
-Variant *PanelPass::State::VariantFor( const PanelTarget &target )
+Variant *PanelPass::State::VariantFor( const PanelTarget &target, bool transparent )
 {
 	for ( Variant &v : variants )
 	{
 		if ( v.colorFormat == target.colorFormat && v.depthFormat == target.depthFormat &&
-		     v.samples == target.samples && v.encodeOutput == target.terms.encodeOutput )
+		     v.samples == target.samples && v.encodeOutput == target.terms.encodeOutput &&
+		     v.transparent == transparent )
 			return &v;
 	}
 	Variant &v = variants.emplace_back();
@@ -399,6 +401,7 @@ Variant *PanelPass::State::VariantFor( const PanelTarget &target )
 	v.depthFormat = target.depthFormat;
 	v.samples = target.samples;
 	v.encodeOutput = target.terms.encodeOutput;
+	v.transparent = transparent;
 	v.cache = std::make_unique<resources::TextureCache>( *device );
 	auto resolver = material::ProgramResolver::Create( *device, target.colorFormat,
 	    target.depthFormat, target.samples, material::VertexLayout::kSurface );
@@ -419,6 +422,8 @@ Variant *PanelPass::State::VariantFor( const PanelTarget &target )
 	std::vector<material::VmtPair> variables = { { "$basetexture", "panel_albedo" },
 	    { "$mraotexture", kMraoName }, { "$emissiontexture", "panel_emission" },
 	    { "$emissionscale", "1" } };
+	if ( transparent )
+		variables.push_back( { "$translucent", "1" } );
 	auto mapped = material::MapVariables( "PBRMetalRough", std::move( variables ), {} );
 	if ( !mapped )
 	{
@@ -715,8 +720,8 @@ std::optional<std::string> PanelPass::State::Rasterize(
 	encoder.BeginLabel( "panel raster" );
 	encoder.TransitionTexture( image.emissive, rest, ResourceUsage::kColorAttachment );
 	{
-		const ColorAttachment colors[] = {
-		    { image.emissive, LoadOp::kClear, StoreOp::kStore, { 0.0f, 0.0f, 0.0f, 1.0f }, {} } };
+		const ColorAttachment colors[] = { { image.emissive, LoadOp::kClear, StoreOp::kStore,
+		    { 0.0f, 0.0f, 0.0f, panel.transparent ? 0.0f : 1.0f }, {} } };
 		RenderingDesc rendering;
 		rendering.colors = colors;
 		rendering.width = image.resolution.width;
@@ -776,6 +781,7 @@ std::optional<std::string> PanelPass::State::Rasterize(
 	step.scatter[0] = std::uint32_t( image.scatterWide );
 	step.scatter[1] = std::uint32_t( image.scatterTall );
 	step.scatter[2] = std::uint32_t( world_panel::kCoatingScatterReach );
+	step.scatter[3] = panel.transparent ? 1u : 0u;
 	// The scatter field first (the emission reads it).
 	step.previous[3] = 3;
 	encoder.SetDrawConstants( 0, std::as_bytes( std::span( &step, 1 ) ) );
@@ -1093,14 +1099,6 @@ void PanelPass::Record( std::uint32_t tag, CommandEncoder &encoder, const PanelT
 		}
 	}
 
-	Variant *variant = s.VariantFor( target );
-	if ( !variant->failure.empty() )
-	{
-		s.Fail( variant->failure );
-		return;
-	}
-	Variant &v = *variant;
-
 	// The panels facing the eye; each one's image for this frame.
 	float eye[3];
 	std::copy( target.terms.eye, target.terms.eye + 3, eye );
@@ -1114,6 +1112,12 @@ void PanelPass::Record( std::uint32_t tag, CommandEncoder &encoder, const PanelT
 			toEye[k] = eye[k] - panel->placement.origin[k];
 		if ( normal[0] * toEye[0] + normal[1] * toEye[1] + normal[2] * toEye[2] <= 0.0f )
 			continue; // seen from behind: the legacy screen is not drawn either
+		Variant &v = *s.VariantFor( target, panel->transparent );
+		if ( !v.failure.empty() )
+		{
+			s.Fail( v.failure );
+			return;
+		}
 		Image &image = s.images[panel->id];
 		if ( std::optional<std::string> why =
 		         s.EnsureImage( image, panel->resolution, panel->unitsWide, panel->unitsTall ) )
@@ -1207,32 +1211,42 @@ void PanelPass::Record( std::uint32_t tag, CommandEncoder &encoder, const PanelT
 		return;
 	}
 
-	// The frame group for the slot's terms (the same terms as the world's
-	// surfaces), set again only when they change.
-	material::FrameTerms terms = target.terms;
-	terms.splitSumTable = kSplitSumName;
-	terms.ltcTable = kLtcName;
-	const std::optional<material::GroupRequest> frameRequest =
-	    v.resolver->FrameGroup( *v.program, terms );
-	const std::uint64_t frameId = v.program->request.frameLayout.value;
-	if ( frameRequest && frameRequest->constants != v.frameConstants )
+	// Resolve both PBR variants before borrowing pointers from their storage.
+	// A view can contain opaque and alpha panels in its original draw order.
+	Variant *active[2] = {};
+	for ( const Panel *panel : drawn )
+		active[panel->transparent ? 1 : 0] = s.VariantFor( target, panel->transparent );
+	const material::ResidentGroup *frameGroups[2] = {};
+	for ( int mode = 0; mode < 2; ++mode )
 	{
-		if ( !v.frames->Set( frameId, *frameRequest ) )
+		if ( !active[mode] )
+			continue;
+		Variant &v = *active[mode];
+		material::FrameTerms terms = target.terms;
+		terms.splitSumTable = kSplitSumName;
+		terms.ltcTable = kLtcName;
+		const std::optional<material::GroupRequest> frameRequest =
+		    v.resolver->FrameGroup( *v.program, terms );
+		const std::uint64_t frameId = v.program->request.frameLayout.value;
+		if ( frameRequest && frameRequest->constants != v.frameConstants )
 		{
-			s.Fail( "the panels' frame group was refused" );
+			if ( !v.frames->Set( frameId, *frameRequest ) )
+			{
+				s.Fail( "the panels' frame group was refused" );
+				return;
+			}
+			v.frameConstants = frameRequest->constants;
+		}
+		v.cache->RecordUploads( encoder );
+		v.programs->RecordUploads( encoder );
+		v.draws->RecordUploads( encoder );
+		v.frames->RecordUploads( encoder );
+		frameGroups[mode] = frameRequest ? v.frames->Group( frameId ) : nullptr;
+		if ( frameRequest && !frameGroups[mode] )
+		{
+			s.Fail( "the panels' frame group is not resident" );
 			return;
 		}
-		v.frameConstants = frameRequest->constants;
-	}
-	v.cache->RecordUploads( encoder );
-	v.programs->RecordUploads( encoder );
-	v.draws->RecordUploads( encoder );
-	v.frames->RecordUploads( encoder );
-	const material::ResidentGroup *frameGroup = frameRequest ? v.frames->Group( frameId ) : nullptr;
-	if ( frameRequest && !frameGroup )
-	{
-		s.Fail( "the panels' frame group is not resident" );
-		return;
 	}
 
 	// The quads, two triangles each, in world space.
@@ -1282,18 +1296,24 @@ void PanelPass::Record( std::uint32_t tag, CommandEncoder &encoder, const PanelT
 	encoder.TransitionBuffer(
 	    vertexBuffer.Value(), ResourceUsage::kCopyDestination, ResourceUsage::kVertex );
 
-	// The program under the frame's debug controls (RFC 0014).
-	PipelineId pipeline = v.program->request.pipeline;
-	if ( !frame::DebugControlsNeutral( view.debug ) )
+	PipelineId pipelines[2];
+	for ( int mode = 0; mode < 2; ++mode )
 	{
-		auto debug = v.resolver->DebugPipeline(
-		    *v.program, frame::DebugSpecializationFor( view.debug, v.program->name ) );
-		if ( !debug )
+		if ( !active[mode] )
+			continue;
+		Variant &v = *active[mode];
+		pipelines[mode] = v.program->request.pipeline;
+		if ( !frame::DebugControlsNeutral( view.debug ) )
 		{
-			s.Fail( "debug view: " + debug.Error() );
-			return;
+			auto debug = v.resolver->DebugPipeline(
+			    *v.program, frame::DebugSpecializationFor( view.debug, v.program->name ) );
+			if ( !debug )
+			{
+				s.Fail( "debug view: " + debug.Error() );
+				return;
+			}
+			pipelines[mode] = debug.Value();
 		}
-		pipeline = debug.Value();
 	}
 	material::FamilyDrawConstants constants;
 	std::memcpy( constants.toClip, view.toClip, sizeof( constants.toClip ) );
@@ -1312,14 +1332,16 @@ void PanelPass::Record( std::uint32_t tag, CommandEncoder &encoder, const PanelT
 	encoder.BeginLabel( "core panels" );
 	encoder.BeginRendering( rendering );
 	encoder.SetViewport( view.viewport );
-	encoder.SetPipeline( pipeline );
 	encoder.SetVertexBuffer( 0, vertexBuffer.Value(), 0 );
-	if ( frameGroup )
-		encoder.SetBindGroup( BindGroupRole::kFrame, frameGroup->group );
 	std::uint32_t first = 0;
 	std::uint32_t drawnCount = 0;
 	for ( const Panel *panel : drawn )
 	{
+		const int mode = panel->transparent ? 1 : 0;
+		Variant &v = *active[mode];
+		encoder.SetPipeline( pipelines[mode] );
+		if ( frameGroups[mode] )
+			encoder.SetBindGroup( BindGroupRole::kFrame, frameGroups[mode]->group );
 		const material::DrawProgram *program = v.programs->Program( panel->id );
 		const material::DrawGroup *draw = v.draws->Group( panel->id );
 		if ( !program || !program->material.group.IsValid() ||

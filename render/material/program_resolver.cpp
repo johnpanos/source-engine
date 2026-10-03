@@ -346,7 +346,7 @@ foundation::Expected<device::BlendMode, std::string> ClaimForDrawing(
 		const PbrClaim claim = ClaimPbr( *block );
 		if ( !claim.claimed )
 			return foundation::MakeUnexpected( claim.reason );
-		return device::BlendMode::kOpaque;
+		return claim.Variant().blend;
 	}
 	if ( material.family == "water" )
 	{
@@ -384,7 +384,7 @@ foundation::Expected<device::BlendMode, std::string> ClaimForMesh(
 		const PbrClaim claim = ClaimPbr( *block, sceneColorAvailable );
 		if ( !claim.claimed )
 			return foundation::MakeUnexpected( claim.reason );
-		return device::BlendMode::kOpaque;
+		return claim.Variant().blend;
 	}
 	if ( material.family == "refract" )
 	{
@@ -549,7 +549,7 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 			return foundation::MakeUnexpected( std::string( "a pbr pipeline was refused" ) );
 		out.name = "pbr";
 		out.request = std::move( request ).Value();
-		out.blend = device::BlendMode::kOpaque;
+		out.blend = variant.blend;
 		out.sceneColor = claim.transmission;
 		// Runtime direct light: the gradient page is the indirect layer's own.
 		if ( !s.mesh )

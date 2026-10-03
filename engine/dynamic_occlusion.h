@@ -53,6 +53,9 @@ struct OccluderEntry
 // Whether moving objects shadow the world and models (r_dynamic_occlusion).
 bool DynamicOcclusion_Enabled();
 
+// Core-only physical geometry; main-thread publication, copied into each frame.
+const std::vector<dynamic_occlusion::TriangleOccluder> &DynamicOcclusion_CoreTriangles();
+
 int DynamicOcclusion_Generation();
 
 // The boxes of a recent generation (an evicted one reads as the current).

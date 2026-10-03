@@ -9,13 +9,13 @@
 //
 //			The family claims this subset of the RFC 0007 schema:
 	//			$basetexture, $mraotexture, $bumpmap, $emissiontexture with
-	//			$emissionscale, $alphatest and $alphatestreference;
-	//			thin $transmission with $ior when the caller supplies
-	//			linear scene color
+//			$emissionscale, $alphatest, $alphatestreference and $translucent;
+//			thin $transmission with $ior when the caller supplies
+//			linear scene color
 //			($fallbackmaterial names another profile's
 //			material and is accepted). ClaimPbr names the first parameter
 //			outside the subset that a material sets away from its default
-	//			($envmap, $translucent, thick glass, clear coat); such a
+//			($envmap, thick glass, clear coat); such a
 //			material stays on the native stages until the family claims it.
 //
 //			The arithmetic is the model port's (model_pbr.frag) without map
@@ -52,6 +52,7 @@ struct PbrClaim
 	bool normalMap = false;
 	bool emission = false;
 	bool alphaTest = false;
+	bool translucent = false;
 	bool transmission = false;
 	SurfaceConstants constants; // emission.x: $emissionscale
 
@@ -63,7 +64,8 @@ struct PbrClaim
 		                ( emission ? kSurfaceEmissionTexture : 0u ) |
 		                ( transmission ? kSurfaceTransmission : 0u );
 		variant.layout = SurfaceVertexLayout::kModel;
-		variant.alphaWrite = !alphaTest;
+		variant.blend = translucent ? device::BlendMode::kAlpha : device::BlendMode::kOpaque;
+		variant.alphaWrite = !alphaTest && !translucent;
 		return variant;
 	}
 };

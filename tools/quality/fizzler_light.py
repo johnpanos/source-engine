@@ -29,7 +29,7 @@ ROOT = Path(__file__).resolve().parents[2]
 NAME = "core_fizzler_light"
 
 
-def generate(out, runtime):
+def generate(out, runtime, door=False):
     content = out / "content"
     materials = content / "materials/quality/fizzler"
     materials.mkdir(parents=True, exist_ok=True)
@@ -65,13 +65,21 @@ def generate(out, runtime):
                          ((-264, 0, 96), (8, 256, 96)), ((264, 0, 96), (8, 256, 96)),
                          ((0, -264, 96), (256, 8, 96)), ((0, 264, 96), (256, 8, 96))]:
         vmf.world.append(vmf.box(center, half, "quality/fizzler/white"))
-    vmf.world.append(vmf.box((-56, 0, 40), (4, 24, 40), "quality/fizzler/white"))
+    if door:
+        for center, half in [((-56, -160, 96), (4, 100, 96)),
+                             ((-56, 160, 96), (4, 100, 96)),
+                             ((-56, 0, 156), (4, 60, 44))]:
+            vmf.world.append(vmf.box(center, half, "quality/fizzler/white"))
+        vmf.entity("prop_testchamber_door", {"targetname": "door", "origin": "-56 0 0",
+                   "angles": "0 0 0", "model": "models/props/portal_door_combined.mdl"})
+    else:
+        vmf.world.append(vmf.box((-56, 0, 40), (4, 24, 40), "quality/fizzler/white"))
     vmf.entity("light", {"origin": "-160 -160 160", "_light": "255 255 255 48"})
     vmf.entity("info_player_start", {"origin": "-160 -160 16", "angles": "0 45 0"})
     vmf.entity("trigger_portal_cleanser", {"targetname": "field", "origin": "0 0 0",
                "Visible": "1", "StartDisabled": "0", "spawnflags": "1", "UseScanline": "0"},
                solids=[vmf.box((0, 0, 80), (1, 64, 64), "quality/fizzler/field")])
-    source = out / (NAME + ".vmf")
+    source = out / (("core_fizzler_door" if door else NAME) + ".vmf")
     source.write_text(vmf.text())
     # Only generated materials enter this private compile overlay. External
     # content remains read-only through the resolver's existing runtime layers.

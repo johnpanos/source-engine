@@ -84,6 +84,26 @@ struct Quad
 	float coverage;
 };
 
+// A rectangular board can use the opaque physical surface even when its
+// legacy host sorted it with translucent UI. Require a full-face opaque
+// foundation; overlays cannot punch holes in the recorded blend operations.
+// Clear displays use the same family's alpha surface and recorded coverage.
+inline bool CoversFace( const Quad *quads, std::uint32_t count, float wide, float tall )
+{
+	if ( !quads || !( wide > 0.0f ) || !( tall > 0.0f ) )
+		return false;
+	for ( std::uint32_t i = 0; i < count; ++i )
+	{
+		const Quad &q = quads[i];
+		if ( q.layer == kLayerEmissive && q.x0 <= 0.0f && q.y0 <= 0.0f && q.x1 >= wide &&
+		     q.y1 >= tall &&
+		     ( q.blend == kBlendOpaque || ( q.blend == kBlendAlpha && q.color[3] == 255 &&
+		                                      ( q.texture == kWhite || q.coverage == 1.0f ) ) ) )
+			return true;
+	}
+	return false;
+}
+
 // A draw list as the owner holds it: `quads` in paint order, `textures`
 // the keys its quads name (the material system's texture handles in the
 // product).

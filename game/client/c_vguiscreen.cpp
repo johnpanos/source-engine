@@ -315,6 +315,23 @@ bool C_VGuiScreen::RecordFrame()
 	char szWhy[128] = {};
 	m_bRecordingValid = g_pWorldPanelRecorder->RecordPanel( pPanel->GetVPanel(), m_nPixelWidth,
 	    m_nPixelHeight, m_RecordedResolution.texelsPerUnit, &recording, szWhy, sizeof( szWhy ) );
+	if ( m_bRecordingValid )
+	{
+		for ( ITexture *pTexture : m_RecordedTextures )
+		{
+			if ( pTexture->IsProcedural() && !pTexture->IsTranslucent() )
+			{
+				float rgba[4];
+				if ( !EmissiveAreaLights_SampleTexture( pTexture, 0.5f, 0.5f, rgba ) )
+				{
+					m_bRecordingValid = false;
+					V_strncpy( szWhy, "an opaque procedural image has no current CPU samples",
+					    sizeof( szWhy ) );
+					break;
+				}
+			}
+		}
+	}
 	if ( !m_bRecordingValid && !m_bRecordingRefusalLogged )
 	{
 		m_bRecordingRefusalLogged = true;
@@ -479,7 +496,9 @@ int C_VGuiScreen::EmissiveAreaLights( area_light::AreaLight *pLights, int *pKeys
 bool C_VGuiScreen::DrawOnRenderCore()
 {
 	CVGuiScreenPanel *pScreenPanel = dynamic_cast<CVGuiScreenPanel *>( m_PanelWrapper.GetPanel() );
-	if ( !pScreenPanel || !pScreenPanel->DrawsAsEmissiveSurface() || IsTransparent() ||
+	if ( !pScreenPanel || !pScreenPanel->DrawsAsEmissiveSurface() ||
+	     static_cast<IMaterial *>( m_OverlayMaterial ) !=
+	         static_cast<IMaterial *>( m_WriteZMaterial ) ||
 	     !g_pEngineWorldPanels || !g_pWorldPanelRecorder ||
 	     !g_pEngineWorldPanels->CoreDrawsPanels() )
 		return false;
@@ -497,6 +516,11 @@ bool C_VGuiScreen::DrawOnRenderCore()
 	panel.textureCount = unsigned( m_RecordedTextures.Count() );
 	panel.resolution = m_RecordedResolution;
 	panel.emissionScale = pScreenPanel->EmissionScale();
+	// The legacy flag selects sorting. Keep opaque physical faces opaque;
+	// otherwise the core uses the same material family's alpha surface.
+	panel.transparent = IsTransparent() && !world_panel::CoversFace( m_RecordedQuads.Base(),
+	                                           unsigned( m_RecordedQuads.Count() ),
+	                                           float( m_nPixelWidth ), float( m_nPixelHeight ) );
 	// The scene's light at the screen's face, which its coatings reflect: the
 	// engine's lighting cube a model there would take.
 	{
@@ -916,15 +940,12 @@ int	C_VGuiScreen::DrawModel( int flags )
 	// FIXME: Can this be cached off?
 	ComputePanelToWorld();
 
-	// RFC 0016 render.pass.panels: a lit board is an emissive surface on the
-	// render core in the views it draws; the overlay pass below still runs.
-	if ( !DrawOnRenderCore() )
-	{
-		g_pMatSystemSurface->DrawPanelIn3DSpace( pPanel->GetVPanel(), m_PanelToWorld, m_nPixelWidth,
-		    m_nPixelHeight, m_flWidth, m_flHeight );
-	}
-
-	// Finally, a pass to set the z buffer...
+	// The core's physical surface owns its depth too. Keep the legacy overlay
+	// only with a view the legacy panel path draws.
+	if ( DrawOnRenderCore() )
+		return 1;
+	g_pMatSystemSurface->DrawPanelIn3DSpace(
+	    pPanel->GetVPanel(), m_PanelToWorld, m_nPixelWidth, m_nPixelHeight, m_flWidth, m_flHeight );
 	DrawScreenOverlay();
 
 	return 1;
@@ -1133,14 +1154,27 @@ CVGuiScreenPanel::CVGuiScreenPanel( vgui::Panel *parent, const char *panelName )
 	: BaseClass( parent, panelName )
 {
 	m_hEntity = NULL;
+	EmissiveAreaLights_AddSource( this );
 }
 
 CVGuiScreenPanel::CVGuiScreenPanel( vgui::Panel *parent, const char *panelName, vgui::HScheme hScheme )
 	: BaseClass( parent, panelName, hScheme )
 {
 	m_hEntity = NULL;
+	EmissiveAreaLights_AddSource( this );
 }
 
+CVGuiScreenPanel::~CVGuiScreenPanel()
+{
+	EmissiveAreaLights_RemoveSource( this );
+}
+
+int CVGuiScreenPanel::GetAreaLights( area_light::AreaLight *pLights, int *pKeys, int nMax )
+{
+	C_VGuiScreen *pScreen = dynamic_cast<C_VGuiScreen *>( GetEntity() );
+	return DrawsAsEmissiveSurface() && pScreen ? pScreen->EmissiveAreaLights( pLights, pKeys, nMax )
+	                                           : 0;
+}
 
 bool CVGuiScreenPanel::Init( KeyValues* pKeyValues, VGuiScreenInitData_t* pInitData )
 {

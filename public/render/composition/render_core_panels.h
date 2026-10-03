@@ -27,6 +27,7 @@ struct RenderCorePanel
 	ITexture *const *textures;
 	unsigned int textureCount;
 	world_panel::Resolution resolution; // the list was painted for it
+	bool transparent;
 	float emissionScale;                // scene radiance per decoded image value
 	// The scene's light at the panel (Source's ambient cube, +x -x +y -y +z
 	// -z, linear), which its coatings' albedo reflects.

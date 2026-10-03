@@ -82,7 +82,7 @@ extern CProgressSignScreenKeys g_ProgressSignScreenKeys;
 // render.pass.panels), and it lights its surroundings with the light of the
 // image it shows (render.world-panel.v1: its grime and icons included, in
 // the frame's one flicker state).
-class CVGUI_Base_ProgressSignScreen : public CVGuiScreenPanel, public IEmissiveAreaLightSource
+class CVGUI_Base_ProgressSignScreen : public CVGuiScreenPanel
 {
 	DECLARE_CLASS( CVGUI_Base_ProgressSignScreen, CVGuiScreenPanel );
 
@@ -93,8 +93,8 @@ public:
 	virtual void OnTick( void );
 	virtual bool Init( KeyValues *pKeyValues, VGuiScreenInitData_t *pInitData );
 
-	// IEmissiveAreaLightSource
-	virtual int GetAreaLights( area_light::AreaLight *pLights, int *pKeys, int nMax );
+	// Preserve the existing sign lighting on compatibility receivers.
+	bool CoreOnly() const override { return false; }
 
 	// CVGuiScreenPanel: a lit board, and its dirt overlays are grime on its
 	// face (a coating: it dims the board's light and reflects the room's).

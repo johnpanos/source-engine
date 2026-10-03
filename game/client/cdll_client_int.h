@@ -88,8 +88,10 @@ extern area_light::IAreaLights3 *arealights;
 namespace dynamic_occlusion
 {
 class IOccluders;
+class IOccluders2;
 }
 extern dynamic_occlusion::IOccluders *occluders;
+extern dynamic_occlusion::IOccluders2 *coreOccluders;
 namespace projected_light
 {
 class IProjectedLights;

@@ -29,11 +29,16 @@
 //          Published after the frame's views are drawn (PostRender), when the
 //          frame's bones are set up, for the next frame's lighting.
 //
+//          Core physical bone followers publish current triangle poses at the
+//          end of render-start animation work through VEngineOccluders002.
+//          The core owns their GPU shadow visibility; legacy boxes stay separate.
+//
 //=============================================================================//
 #include "cbase.h"
 #include "dynamic_occluders.h"
 
 #include "c_baseanimating.h"
+#include "bone_setup.h"
 #include "cdll_client_int.h"
 #include "collisionproperty.h"
 #include "igamesystem.h"
@@ -41,9 +46,12 @@
 #include "render/dynamic_occlusion.h"
 #include "studio.h"
 #include "view.h"
+#include "vcollide_parse.h"
+#include "tier1/KeyValues.h"
 
 #include <algorithm>
 #include <vector>
+#include <map>
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -161,6 +169,90 @@ void AddBoxes( C_BaseEntity *pEnt, std::vector<Box> &out )
 	out.push_back( box );
 }
 
+// Models using custom bone-follower collision supply their actual rigid
+// leaves to core shadows, even when their legacy blob shadow is disabled.
+// The model selects named followers or the server's multi-solid fallback.
+// Local geometry is immutable per model; only the current client pose changes.
+struct PhysicalPart
+{
+	int bone;
+	int part;
+	std::vector<Vector> vertices;
+};
+std::map<int, std::vector<PhysicalPart>> s_PhysicalParts;
+
+const std::vector<PhysicalPart> &PhysicalParts( C_BaseAnimating &entity )
+{
+	const int modelIndex = entity.GetModelIndex();
+	auto [held, inserted] = s_PhysicalParts.try_emplace( modelIndex );
+	if ( !inserted )
+		return held->second;
+	auto &parts = held->second;
+	KeyValues *keys = new KeyValues( "model" );
+	KeyValues::AutoDelete deleteKeys( keys );
+	const char *text = modelinfo->GetModelKeyValueText( entity.GetModel() );
+	if ( text )
+		(void)keys->LoadFromBuffer( "model", text );
+	KeyValues *followers = keys->FindKey( "bone_followers" );
+
+	CStudioHdr *hdr = entity.GetModelPtr();
+	vcollide_t *collide = modelinfo->GetVCollide( modelIndex );
+	if ( !hdr || !hdr->IsValid() || !collide || !collide->pKeyValues )
+	{
+		Warning(
+		    "Core physical shadows: model %d has unavailable bone-follower data\n", modelIndex );
+		return parts;
+	}
+	std::map<int, int> requested;
+	for ( KeyValues *key = followers ? followers->GetFirstSubKey() : NULL; key;
+	    key = key->GetNextKey() )
+	{
+		const int bone = Studio_BoneIndexByName( hdr, key->GetString() );
+		if ( bone >= 0 && bone < MAXSTUDIOBONES )
+			requested[hdr->pBone( bone )->physicsbone] = bone;
+	}
+	IVPhysicsKeyParser *parser = physcollision->VPhysicsKeyParserCreate( collide->pKeyValues );
+	const bool ragdollFallback = requested.empty() && collide->solidCount > 1;
+	bool valid = parser != NULL && ( ragdollFallback || !requested.empty() );
+	while ( valid && !parser->Finished() )
+	{
+		if ( Q_stricmp( parser->GetCurrentBlockName(), "solid" ) )
+		{
+			parser->SkipBlock();
+			continue;
+		}
+		solid_t solid;
+		parser->ParseSolid( &solid, NULL );
+		const auto follower = requested.find( solid.index );
+		if ( !ragdollFallback && follower == requested.end() )
+			continue;
+		int bone = Studio_BoneIndexByName( hdr, solid.name );
+		if ( bone < 0 && follower != requested.end() )
+			bone = follower->second; // the server bone-follower fallback
+		Vector *mesh = NULL;
+		const int count =
+		    solid.index >= 0 && solid.index < collide->solidCount
+		        ? physcollision->CreateDebugMesh( collide->solids[solid.index], &mesh )
+		        : 0;
+		valid = bone >= 0 && bone < MAXSTUDIOBONES && mesh && count > 0 && count % 3 == 0 &&
+		        count <= 65536;
+		if ( valid )
+			parts.push_back( { bone, solid.index, { mesh, mesh + count } } );
+		if ( mesh )
+			physcollision->DestroyDebugMesh( count, mesh );
+	}
+	if ( parser )
+		physcollision->VPhysicsKeyParserDestroy( parser );
+	if ( !valid || parts.size() != ( ragdollFallback ? static_cast<size_t>( collide->solidCount )
+	                                                 : requested.size() ) )
+	{
+		parts.clear();
+		Warning(
+		    "Core physical shadows: model %d has invalid bone-follower geometry\n", modelIndex );
+	}
+	return parts;
+}
+
 class CDynamicOccluders : public CAutoGameSystemPerFrame
 {
 public:
@@ -169,7 +261,63 @@ public:
 	{
 	}
 
-	virtual void LevelShutdownPostEntity() { m_bPublished = false; }
+	virtual void LevelShutdownPostEntity()
+	{
+		m_bPublished = false;
+		s_PhysicalParts.clear();
+		if ( coreOccluders )
+			(void)coreOccluders->SetCoreOccluders( nullptr, 0 );
+	}
+
+	void PublishCore()
+	{
+		if ( !coreOccluders )
+			return;
+		static ConVarRef coreWorld( "r_core_world" );
+		std::vector<std::vector<float>> vertices;
+		std::vector<dynamic_occlusion::TriangleInput> inputs;
+		if ( coreWorld.IsValid() && coreWorld.GetInt() == 1 && engine->IsInGame() )
+		{
+			for ( C_BaseEntity *ent = ClientEntityList().FirstBaseEntity(); ent;
+			    ent = ClientEntityList().NextBaseEntity( ent ) )
+			{
+				C_BaseAnimating *anim = ent->GetBaseAnimating();
+				const model_t *model = ent->GetModel();
+				if ( !anim || !model || ent->IsDormant() || ent->IsEffectActive( EF_NODRAW ) ||
+				     !ent->ShouldDraw() || ent->GetRenderMode() != kRenderNormal ||
+				     !ent->IsSolidFlagSet( FSOLID_CUSTOMBOXTEST ) ||
+				     !ent->IsSolidFlagSet( FSOLID_CUSTOMRAYTEST ) ||
+				     modelinfo->IsTranslucent( model ) )
+					continue;
+				const auto &parts = PhysicalParts( *anim );
+				if ( parts.empty() )
+					continue;
+				matrix3x4_t bones[MAXSTUDIOBONES];
+				if ( !anim->SetupBones(
+				         bones, MAXSTUDIOBONES, BONE_USED_BY_ANYTHING, gpGlobals->curtime ) )
+				{
+					Warning(
+					    "Core physical shadows: entity %d bone setup failed\n", ent->entindex() );
+					return; // keep the preceding complete publication
+				}
+				for ( const PhysicalPart &part : parts )
+				{
+					auto &positions = vertices.emplace_back();
+					positions.reserve( part.vertices.size() * 3 );
+					for ( const Vector &local : part.vertices )
+					{
+						Vector world;
+						VectorTransform( local, bones[part.bone], world );
+						positions.insert( positions.end(), { world.x, world.y, world.z } );
+					}
+					inputs.push_back( { ent->GetRefEHandle().ToInt(), part.part, positions.data(),
+					    static_cast<unsigned int>( part.vertices.size() ) } );
+				}
+			}
+		}
+		if ( !coreOccluders->SetCoreOccluders( inputs.data(), inputs.size() ) )
+			Warning( "Core physical shadows: frame publication refused\n" );
+	}
 
 	virtual void PostRender()
 	{
@@ -224,6 +372,11 @@ private:
 CDynamicOccluders s_DynamicOccluders;
 
 } // namespace
+
+void DynamicOccluders_PublishCore()
+{
+	s_DynamicOccluders.PublishCore();
+}
 
 bool DynamicOccluders_Active()
 {

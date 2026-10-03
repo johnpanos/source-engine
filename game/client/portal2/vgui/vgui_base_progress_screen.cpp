@@ -219,7 +219,6 @@ CVGUI_Base_ProgressSignScreen::CVGUI_Base_ProgressSignScreen( vgui::Panel *pPare
 
 CVGUI_Base_ProgressSignScreen::~CVGUI_Base_ProgressSignScreen()
 {
-	EmissiveAreaLights_RemoveSource( this );
 	if ( vgui::surface() )
 	{
 		int nTextures[] = { m_nBoardTextureID, m_nNumbersTextureID, m_nBarTextureID, m_nIconsTextureID };
@@ -258,8 +257,6 @@ bool CVGUI_Base_ProgressSignScreen::Init( KeyValues *pKeyValues, VGuiScreenInitD
 
 	m_flDisabledIconAlpha = 134.0f;
 	m_nBaseBrightness = 140;
-
-	EmissiveAreaLights_AddSource( this );
 
 	vgui::ivgui()->AddTickSignal( GetVPanel() );
 
@@ -391,17 +388,6 @@ float CVGUI_Base_ProgressSignScreen::UpdateFlickerState( void )
 	}
 
 	return flAlpha;
-}
-
-//-----------------------------------------------------------------------------
-// The lit board's light: the screen's image this frame (C_VGuiScreen::
-// EmissiveAreaLights, render.world-panel.v1), its tiles' mean emission.
-//-----------------------------------------------------------------------------
-int CVGUI_Base_ProgressSignScreen::GetAreaLights(
-    area_light::AreaLight *pLights, int *pKeys, int nMax )
-{
-	C_VGuiScreen *pScreen = dynamic_cast<C_VGuiScreen *>( GetEntity() );
-	return pScreen ? pScreen->EmissiveAreaLights( pLights, pKeys, nMax ) : 0;
 }
 
 bool CVGUI_Base_ProgressSignScreen::PaintsCoating( ITexture *pTexture ) const

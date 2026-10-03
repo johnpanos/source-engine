@@ -78,6 +78,7 @@ bool CorePanels::DrawPanel( const RenderCorePanel &panel, const float worldToCli
 		}
 		list.resolution = panel.resolution;
 		list.emissionScale = panel.emissionScale;
+		list.transparent = panel.transparent;
 		std::copy(
 		    &panel.ambientCube[0][0], &panel.ambientCube[0][0] + 18, &list.ambientCube[0][0] );
 		if ( !m_Pass.Submit( hostFrame, std::move( list ) ) )

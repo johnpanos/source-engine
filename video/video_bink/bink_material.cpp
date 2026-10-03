@@ -153,6 +153,9 @@ void CBinkMaterialRGBTextureRegenerator::RegenerateTextureBits( ITexture *pTextu
 
 	// Copy directly from the Quicktime GWorld
 	BYTE   *pImageData	= pVTFTexture->ImageData();
+	// The allocated texture can be larger than the decoded frame. Its padding
+	// participates in filtering and procedural emission sampling.
+	memset( pImageData, 0, pVTFTexture->ComputeTotalSize() );
 	int dstStride = pVTFTexture->RowSizeInBytes( 0 );
 
 	BYTE *pSrcData = m_SrcImage;

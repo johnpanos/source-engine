@@ -72,6 +72,7 @@ struct Panel
 	std::vector<int> textures;  // keys IPanelTextures resolves
 	Resolution resolution = {}; // the list was painted for it (world_panel::ChooseResolution)
 	float emissionScale = 1.0f; // scene radiance per decoded image value
+	bool transparent = false;   // recorded coverage through ordinary PBR alpha blending
 	// The scene's light at the panel, which its coatings' albedo reflects:
 	// Source's ambient cube (+x, -x, +y, -y, +z, -z, linear), as a model at
 	// the panel is lit (the surface's indirect diffuse where no probe volume

@@ -5,6 +5,7 @@
 //=============================================================================//
 
 #include "render_core_host.h"
+#include "dynamic_occlusion.h"
 
 #include "render_core_world.h"
 
@@ -288,7 +289,9 @@ public:
 	{
 		if ( m_pConsumer )
 			m_pConsumer->PublishLightSet( snapshot );
-		m_pStage->PublishLightSet( snapshot );
+		light_set::Snapshot core = snapshot;
+		core.coreTriangles = DynamicOcclusion_CoreTriangles();
+		m_pStage->PublishLightSet( core );
 	}
 };
 

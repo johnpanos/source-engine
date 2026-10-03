@@ -23,6 +23,7 @@
 #include "iefx.h"
 #include "render/area_light.h"
 #include "render/dynamic_occlusion.h"
+#include "dynamic_occluders.h"
 #include "render/projected_light.h"
 #include "render/indirect_portals.h"
 #include "enginesprite.h"
@@ -222,6 +223,7 @@ IVEfx *effects = NULL;
 indirect_portals::IIndirectLightPortals *indirectlightportals = NULL;
 area_light::IAreaLights3 *arealights = NULL;
 dynamic_occlusion::IOccluders *occluders = NULL;
+dynamic_occlusion::IOccluders2 *coreOccluders = NULL;
 projected_light::IProjectedLights *projectedlights = NULL;
 IVRenderView *render = NULL;
 IVDebugOverlay *debugoverlay = NULL;
@@ -1001,6 +1003,8 @@ int CHLClient::Init( CreateInterfaceFn appSystemFactory, CreateInterfaceFn physi
 	    (area_light::IAreaLights3 *)appSystemFactory( area_light::kAreaLightsFrameVersion, NULL );
 	occluders = (dynamic_occlusion::IOccluders *)appSystemFactory(
 	    dynamic_occlusion::kOccludersVersion, NULL );
+	coreOccluders = (dynamic_occlusion::IOccluders2 *)appSystemFactory(
+	    dynamic_occlusion::kCoreOccludersVersion, NULL );
 	projectedlights = (projected_light::IProjectedLights *)appSystemFactory(
 	    projected_light::kProjectedLightsVersion, NULL );
 #ifdef PORTAL2
@@ -2238,6 +2242,7 @@ void OnRenderStart()
 	{
 		CRenderStartSteps::RunHostNodes(
 		    s_RenderStartLegacyNodes, ARRAYSIZE( s_RenderStartLegacyNodes ) );
+		DynamicOccluders_PublishCore();
 		return;
 	}
 
@@ -2251,6 +2256,7 @@ void OnRenderStart()
 	{
 		Error( "Invalid render-start frame graph\n" );
 	}
+	DynamicOccluders_PublishCore();
 }
 
 

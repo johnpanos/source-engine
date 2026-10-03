@@ -59,6 +59,8 @@ inline int EmissiveAreaLights_PanelTileKey( int nEntIndex, int nTile )
 // mip no larger than 256 texels), decoded on the CPU and cached for the
 // level: the sampler of a panel's light (world_panel::TileRadiance). False for
 // a texture only the GPU holds (a render target, a font's glyph page).
+// Complete opaque procedural RGB/BGR uploads supply a bounded current-frame
+// thumbnail through ITexture; unsupported or partial uploads return false.
 class ITexture;
 bool EmissiveAreaLights_SampleTexture( ITexture *pTexture, float s, float t, float rgba[4] );
 

@@ -113,6 +113,22 @@ public:
 		return int( m_Textures.size() ) - 1;
 	}
 
+	bool Update( int key, std::vector<std::uint8_t> texels )
+	{
+		if ( key < 0 || key >= int( m_Textures.size() ) )
+			return false;
+		LabTexture &texture = m_Textures[key];
+		TextureDesc desc;
+		desc.format = Format::kRGBA8Unorm;
+		desc.width = texture.width;
+		desc.height = texture.height;
+		desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kSampled };
+		if ( !m_Cache.Stage( texture.name, desc, std::as_bytes( std::span( texels ) ) ) )
+			return false;
+		texture.texels = std::move( texels );
+		return true;
+	}
+
 	TextureId Import( int key ) override
 	{
 		if ( key < 0 || key >= int( m_Textures.size() ) )
@@ -388,7 +404,8 @@ struct Lab
 // Renders the views (each a camera, a host frame and the panels it draws)
 // into one canvas frame; `after` runs before the read back.
 std::optional<std::string> Render( Lab &lab, Canvas &canvas,
-    const std::vector<std::pair<Camera, PanelView>> &views, CanvasImage &out )
+    const std::vector<std::pair<Camera, PanelView>> &views, CanvasImage &out,
+    const ClearColor &background = { 0.0f, 0.0f, 0.0f, 0.0f } )
 {
 	const std::uint64_t frame = lab.frame++;
 	CanvasPost post = [&]( CommandEncoder &encoder, TextureId color,
@@ -420,7 +437,7 @@ std::optional<std::string> Render( Lab &lab, Canvas &canvas,
 		}
 		return std::nullopt;
 	};
-	return canvas.Render( *lab.cache, *lab.groups, {}, { 0.0f, 0.0f, 0.0f, 0.0f }, &out, post );
+	return canvas.Render( *lab.cache, *lab.groups, {}, background, &out, post );
 }
 
 Panel MakePanel( std::vector<Quad> quads, float texelsPerUnit, float emissionScale = 1.0f )
@@ -854,6 +871,153 @@ std::optional<std::string> RunChecks( bool validate, std::span<const std::uint32
 		}
 		return ok;
 	};
+	// An external image source changes behind a stable key, as video uploads
+	// do. Two UV crops of the same sheet are different panels, never separate
+	// decoders. Each next frame must rasterize its current image and lights.
+	{
+		LabTexture source{ "lab/live-screen", 64, 64, {}, {} };
+		source.texels.resize( 64 * 64 * 4 );
+		source.sampler.address = AddressMode::kClampToEdge;
+		const int key = lab.textures->Add( std::move( source ) );
+		if ( key < 0 )
+			return "the live image could not be staged";
+		for ( int state = 0; state < 2; ++state )
+		{
+			std::vector<std::uint8_t> texels( 64 * 64 * 4, 255 );
+			for ( int y = 0; y < 64; ++y )
+				for ( int x = 0; x < 64; ++x )
+					for ( int k = 0; k < 3; ++k )
+						texels[( y * 64 + x ) * 4 + k] =
+						    k == ( ( x < 32 ? 0 : 1 ) + state ) % 3 ? 255 : 0;
+			if ( !lab.textures->Update( key, std::move( texels ) ) )
+				return "the live image could not be updated";
+			for ( int crop = 0; crop < 2; ++crop )
+			{
+				Quad q = MakeQuad( 0, 0, kUnitsWide, kUnitsTall, 0, 255, 255, 255, 255,
+				    world_panel::kBlendOpaque );
+				q.s0 = crop * 0.5f;
+				q.s1 = q.s0 + 0.5f;
+				Panel panel = MakePanel( { q }, 1.0f );
+				panel.textures = { key };
+				std::vector<float> cpu, gpu;
+				const std::string name =
+				    "panel.live.state" + std::to_string( state ) + ".crop" + std::to_string( crop );
+				if ( auto why = tiles( panel, cpu, gpu, name ) )
+					return why;
+				std::string detail;
+				results.That(
+				    agree( cpu, gpu, detail ), name + ".lights-match-current-image", detail );
+				const int expected = ( crop + state ) % 3;
+				results.That( gpu[expected] > 0.95f && gpu[( expected + 1 ) % 3] < 0.05f &&
+				                  gpu[( expected + 2 ) % 3] < 0.05f,
+				    name + ".image-is-current-crop", Rgb( gpu.data() ) );
+			}
+		}
+	}
+
+	// Alpha faces use the same PBR material and keep clear pixels clear.
+	// The reference follows the recorded gamma composite over black, then
+	// the physical surface's linear alpha blend over a colored receiver.
+	{
+		const ClearColor background{ 0.1f, 0.2f, 0.3f, 1.0f };
+		for ( int alpha : { 0, 64, 128, 255 } )
+		{
+			Quad q = MakeQuad( 0, 0, kUnitsWide, kUnitsTall, world_panel::kWhite, 255, 255, 255,
+			    std::uint8_t( alpha ) );
+			Panel panel = MakePanel( { q }, 1.0f );
+			panel.transparent = true;
+			const std::uint64_t host = lab.frame;
+			if ( !lab.pass->Submit( host, panel ) )
+				return "the alpha panel was refused";
+			PanelView view;
+			view.hostFrame = host;
+			view.panels = { panel.id };
+			CanvasImage image;
+			if ( auto why =
+			         Render( lab, *lab.canvas, { { fillCamera, view } }, image, background ) )
+				return why;
+			float shown[3];
+			Mean( image, kSize / 2 - 4, kSize / 2 - 4, kSize / 2 + 4, kSize / 2 + 4, shown );
+			const float a = alpha / 255.0f;
+			const float radiance =
+			    a <= 0.04045f ? a / 12.92f : std::pow( ( a + 0.055f ) / 1.055f, 2.4f );
+			bool matches = true;
+			for ( int k = 0; k < 3; ++k )
+				matches =
+				    matches &&
+				    std::fabs( shown[k] - ( radiance + ( k + 1 ) * 0.1f * ( 1 - a ) ) ) < 0.005f;
+			results.That( matches, "panel.alpha." + std::to_string( alpha ), Rgb( shown ) );
+		}
+		// One view mixes an opaque rear surface and an alpha front surface.
+		Panel rear = MakePanel( { MakeQuad( 0, 0, kUnitsWide, kUnitsTall, world_panel::kWhite, 64,
+		                            64, 64, 255, world_panel::kBlendOpaque ) },
+		    1.0f );
+		rear.id = 8;
+		rear.placement.origin[1] += 1.0f;
+		Panel front = MakePanel(
+		    { MakeQuad( 0, 0, kUnitsWide, kUnitsTall, world_panel::kWhite, 255, 255, 255, 128 ) },
+		    1.0f );
+		front.transparent = true;
+		const std::uint64_t mixedHost = lab.frame;
+		if ( !lab.pass->Submit( mixedHost, rear ) || !lab.pass->Submit( mixedHost, front ) )
+			return "the mixed surface list was refused";
+		PanelView mixed;
+		mixed.hostFrame = mixedHost;
+		mixed.panels = { rear.id, front.id };
+		CanvasImage mixedImage;
+		if ( auto why = Render( lab, *lab.canvas, { { fillCamera, mixed } }, mixedImage ) )
+			return why;
+		float mixedShown[3];
+		Mean( mixedImage, kSize / 2 - 4, kSize / 2 - 4, kSize / 2 + 4, kSize / 2 + 4, mixedShown );
+		const float expectedMixed =
+		    std::pow( ( 128.0f / 255.0f + 0.055f ) / 1.055f, 2.4f ) +
+		    std::pow( ( 64.0f / 255.0f + 0.055f ) / 1.055f, 2.4f ) * ( 1.0f - 128.0f / 255.0f );
+		results.That( std::fabs( mixedShown[1] - expectedMixed ) < 0.005f, "panel.alpha.mixed-view",
+		    Rgb( mixedShown ) );
+		// A later opaque draw behind clear artwork still passes depth: alpha
+		// surfaces test existing depth but cannot occlude subsequent geometry.
+		const std::uint64_t depthHost = lab.frame;
+		if ( !lab.pass->Submit( depthHost, front ) || !lab.pass->Submit( depthHost, rear ) )
+			return "the alpha depth lists were refused";
+		PanelView depthView;
+		depthView.hostFrame = depthHost;
+		depthView.panels = { front.id, rear.id };
+		Camera depthCamera = fillCamera;
+		depthCamera.toClip[9] = 0.001f; // y = 1 is behind y = 0
+		CanvasImage depthImage;
+		if ( auto why = Render( lab, *lab.canvas, { { depthCamera, depthView } }, depthImage ) )
+			return why;
+		float depthShown[3];
+		Mean( depthImage, kSize / 2 - 4, kSize / 2 - 4, kSize / 2 + 4, kSize / 2 + 4, depthShown );
+		const float rearRadiance = std::pow( ( 64.0f / 255.0f + 0.055f ) / 1.055f, 2.4f );
+		results.That( std::fabs( depthShown[1] - rearRadiance ) < 0.005f,
+		    "panel.alpha.leaves-depth", Rgb( depthShown ) );
+		LabTexture checker{ "lab/alpha-checker", 2, 1, { 255, 255, 255, 255, 0, 0, 0, 0 }, {} };
+		checker.sampler.magFilter = checker.sampler.minFilter = Filter::kNearest;
+		const int key = lab.textures->Add( std::move( checker ) );
+		if ( key < 0 )
+			return "the coverage checker was refused";
+		Quad q = MakeQuad( 0, 0, kUnitsWide, kUnitsTall, 0, 255, 255, 255, 255 );
+		Panel panel = MakePanel( { q }, 4.0f );
+		panel.transparent = true;
+		panel.textures = { key };
+		panel.quads[0].s1 = float( panel.resolution.width ) / 2.0f;
+		const std::uint64_t host = lab.frame;
+		if ( !lab.pass->Submit( host, panel ) )
+			return "the coverage mip panel was refused";
+		PanelView view;
+		view.hostFrame = host;
+		view.panels = { panel.id };
+		const Camera far = Perspective( { 0.0f, -110.0f, 0.0f }, { 0.0f, 0.0f, 0.0f } );
+		CanvasImage image;
+		if ( auto why = Render( lab, *lab.canvas, { { far, view } }, image ) )
+			return why;
+		float shown[3];
+		Mean( image, kSize / 2 - 4, kSize / 2 - 4, kSize / 2 + 4, kSize / 2 + 4, shown );
+		results.That(
+		    std::fabs( shown[1] - 0.5f ) < 0.05f, "panel.alpha.coverage-mips", Rgb( shown ) );
+	}
+
 	{
 		// The flicker states: brightness 140, 35 and 70 with the overlay alpha
 		// the sign gives each (255, 63, 127), dirty.

@@ -489,14 +489,14 @@ CaseGroup NeutralViewGroup( device::BindGroupLayoutId layout )
 	static const render::material::SurfaceLightGpu kLight;
 	static const render::ShadowTileGpu kTile;
 	static const projected_light::LightGpu kProjector;
-	// No atlas: a texture no tile indexes.
+	// No atlas tiles: a valid far-depth image for the shadow comparison slot.
 	static const CaseTexture kAtlas = []
 	{
 		CaseTexture atlas;
 		atlas.width = atlas.height = 1;
 		atlas.clamp = atlas.point = true;
-		atlas.format = device::Format::kRGBA8Unorm;
-		atlas.texels = { 255, 255, 255, 255 };
+		atlas.format = device::Format::kD32Float;
+		atlas.texels = { 0, 0, 128, 63 }; // IEEE float 1.0
 		return atlas;
 	}();
 	CaseGroup group;
@@ -508,14 +508,23 @@ CaseGroup NeutralViewGroup( device::BindGroupLayoutId layout )
 	    std::as_bytes( std::span( &kProjector, 1 ) ) };
 	// No projectors: a two-layer cookie array; no occlusion pass and no planar
 	// reflection: white.
+	static const CaseTexture kWhite = []
+	{
+		CaseTexture white;
+		white.width = white.height = 1;
+		white.clamp = white.point = true;
+		white.format = device::Format::kRGBA8Unorm;
+		white.texels = { 255, 255, 255, 255 };
+		return white;
+	}();
 	static const CaseTexture kCookies = []
 	{
-		CaseTexture cookies = kAtlas;
+		CaseTexture cookies = kWhite;
 		cookies.array = true;
 		cookies.texels = { 255, 255, 255, 255, 255, 255, 255, 255 };
 		return cookies;
 	}();
-	group.textures = { &kAtlas, &kCookies, &kAtlas, &kAtlas, &kAtlas };
+	group.textures = { &kAtlas, &kCookies, &kWhite, &kWhite, &kWhite };
 	return group;
 }
 
