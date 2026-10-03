@@ -217,7 +217,7 @@ void OpaqueBatching( testing::Checks &checks )
 	const auto wallTag = pass.QueueView( wall ), propTag = pass.QueueView( prop );
 	const std::uint32_t pair[] = { wallTag, propTag };
 	checks.That( pass.OpaqueBatchSize( pair, 1 ) == 2, "W21.world-model-prefix" );
-	for ( int boundary = 0; boundary != 8; ++boundary )
+	for ( int boundary = 0; boundary != 11; ++boundary )
 	{
 		WorldView changed = prop;
 		switch ( boundary )
@@ -245,6 +245,15 @@ void OpaqueBatching( testing::Checks &checks )
 			break;
 		case 7:
 			changed.stageLighting = std::make_shared<StageLightingInputs>();
+			break;
+		case 8:
+			changed.previousViewValid = true;
+			break;
+		case 9:
+			changed.motionToClip[0] = 2;
+			break;
+		case 10:
+			changed.previousToClip[0] = 2;
 			break;
 		}
 		const std::uint32_t tags[] = { wallTag, pass.QueueView( changed ) };

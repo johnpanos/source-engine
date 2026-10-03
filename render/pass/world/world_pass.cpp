@@ -977,6 +977,11 @@ std::size_t WorldPass::State::OpaqueBatchSize(
 		     next->hostFrame != first->hostFrame || next->stageLighting != first->stageLighting ||
 		     next->lights != first->lights || next->debug != first->debug ||
 		     next->waterZOffset != first->waterZOffset ||
+		     next->previousViewValid != first->previousViewValid ||
+		     !std::equal( std::begin( first->motionToClip ), std::end( first->motionToClip ),
+		         next->motionToClip ) ||
+		     !std::equal( std::begin( first->previousToClip ), std::end( first->previousToClip ),
+		         next->previousToClip ) ||
 		     !std::equal( std::begin( first->toClip ), std::end( first->toClip ), next->toClip ) ||
 		     !std::equal(
 		         std::begin( first->viewRight ), std::end( first->viewRight ), next->viewRight ) ||
