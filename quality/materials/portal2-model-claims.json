@@ -1264,6 +1264,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$allowalphatocoverage"
+      ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "world_claims": [
@@ -6575,6 +6578,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "shader_family:wireframe"
+      ],
       "shader": "wireframe",
       "status": "unsupported",
       "world_claims": [
@@ -7513,6 +7519,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$ignorez"
+      ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "world_claims": [
@@ -7629,6 +7638,9 @@
       ],
       "proxies": [
         "sine"
+      ],
+      "refusal_features": [
+        "shader_family:modulate"
       ],
       "shader": "modulate",
       "status": "unsupported",
@@ -7809,6 +7821,9 @@
       "proxies": [
         "sine"
       ],
+      "refusal_features": [
+        "shader_family:modulate"
+      ],
       "shader": "modulate",
       "status": "unsupported",
       "world_claims": [
@@ -7863,6 +7878,9 @@
       ],
       "proxies": [
         "sine"
+      ],
+      "refusal_features": [
+        "shader_family:modulate"
       ],
       "shader": "modulate",
       "status": "unsupported",
@@ -7981,6 +7999,9 @@
       "proxies": [
         "sine"
       ],
+      "refusal_features": [
+        "shader_family:modulate"
+      ],
       "shader": "modulate",
       "status": "unsupported",
       "world_claims": [
@@ -8098,6 +8119,9 @@
       "proxies": [
         "sine"
       ],
+      "refusal_features": [
+        "shader_family:modulate"
+      ],
       "shader": "modulate",
       "status": "unsupported",
       "world_claims": [
@@ -8151,6 +8175,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$fresnelreflection"
+      ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
@@ -11004,6 +11031,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "import:black"
+      ],
       "shader": "black",
       "status": "unsupported",
       "world_claims": [
@@ -13691,6 +13721,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$ambientocclusion"
+      ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
@@ -13748,6 +13781,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$ambientocclusion"
+      ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
@@ -13805,6 +13841,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$ambientocclusion"
+      ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
@@ -13921,6 +13960,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "shader_family:eyerefract"
+      ],
       "shader": "eyerefract",
       "status": "unsupported",
       "world_claims": [
@@ -13974,6 +14016,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "shader_family:eyerefract"
+      ],
       "shader": "eyerefract",
       "status": "unsupported",
       "world_claims": [
@@ -14204,6 +14249,10 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$additive",
+        "parameter:$translucent"
+      ],
       "shader": "unlitgeneric",
       "status": "unsupported",
       "world_claims": [
@@ -19074,6 +19123,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "shader_family:eyerefract"
+      ],
       "shader": "eyerefract",
       "status": "unsupported",
       "world_claims": [
@@ -19127,6 +19179,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "shader_family:eyerefract"
+      ],
       "shader": "eyerefract",
       "status": "unsupported",
       "world_claims": [
@@ -19180,6 +19235,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$alphamasktexture"
+      ],
       "shader": "writez",
       "status": "unsupported",
       "unmapped_keys": [
@@ -19236,6 +19294,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "shader_family:portal"
+      ],
       "shader": "portal",
       "status": "unsupported",
       "world_claims": [
@@ -19289,6 +19350,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "shader_family:portal"
+      ],
       "shader": "portal",
       "status": "unsupported",
       "world_claims": [
@@ -19342,6 +19406,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "shader_family:portal"
+      ],
       "shader": "portal",
       "status": "unsupported",
       "world_claims": [
@@ -19395,6 +19462,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$alphamasktexture"
+      ],
       "shader": "writez",
       "status": "unsupported",
       "unmapped_keys": [
@@ -19451,6 +19521,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "shader_family:portal"
+      ],
       "shader": "portal",
       "status": "unsupported",
       "world_claims": [
@@ -19504,6 +19577,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "shader_family:portal"
+      ],
       "shader": "portal",
       "status": "unsupported",
       "world_claims": [
@@ -19557,6 +19633,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "shader_family:portal"
+      ],
       "shader": "portal",
       "status": "unsupported",
       "world_claims": [
@@ -19610,6 +19689,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "shader_family:portal"
+      ],
       "shader": "portal",
       "status": "unsupported",
       "world_claims": [
@@ -19838,6 +19920,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "shader_family:portalstaticoverlay"
+      ],
       "shader": "portalstaticoverlay",
       "status": "unsupported",
       "world_claims": [
@@ -19947,6 +20032,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "shader_family:portalstaticoverlay"
+      ],
       "shader": "portalstaticoverlay",
       "status": "unsupported",
       "world_claims": [
@@ -20000,6 +20088,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "shader_family:portalstaticoverlay"
+      ],
       "shader": "portalstaticoverlay",
       "status": "unsupported",
       "world_claims": [
@@ -21191,6 +21282,9 @@
         "10"
       ],
       "proxies": [],
+      "refusal_features": [
+        "diagnostic:the model does not read /*"
+      ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
@@ -21310,6 +21404,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$alphaenvmapmask"
+      ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
@@ -21425,6 +21522,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$alphaenvmapmask"
+      ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
@@ -21900,6 +22000,9 @@
         "10"
       ],
       "proxies": [],
+      "refusal_features": [
+        "diagnostic:the model does not read /*"
+      ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
@@ -23092,6 +23195,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$envmap"
+      ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
@@ -23148,6 +23254,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$envmap"
+      ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
@@ -23263,6 +23372,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$envmap"
+      ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
@@ -23319,6 +23431,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$envmap"
+      ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
@@ -26606,6 +26721,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$envmap"
+      ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
@@ -27831,6 +27949,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$multipass"
+      ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
@@ -29208,6 +29329,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$envmap"
+      ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
@@ -32887,6 +33011,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$alphaenvmapmask"
+      ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
@@ -33415,6 +33542,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$envmap"
+      ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
@@ -33530,6 +33660,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$alphaenvmapmask"
+      ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
@@ -34117,6 +34250,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$envmap"
+      ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
@@ -34409,6 +34545,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$envmap"
+      ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
@@ -34465,6 +34604,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$envmap"
+      ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
@@ -35701,6 +35843,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$envmap"
+      ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
@@ -38849,6 +38994,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$refracttinttexture"
+      ],
       "shader": "refract",
       "status": "unsupported",
       "unmapped_keys": [
@@ -39146,6 +39294,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$refracttinttexture"
+      ],
       "shader": "refract",
       "status": "unsupported",
       "unmapped_keys": [
@@ -39263,6 +39414,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$refracttinttexture"
+      ],
       "shader": "refract",
       "status": "unsupported",
       "unmapped_keys": [
@@ -39380,6 +39534,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$refracttinttexture"
+      ],
       "shader": "refract",
       "status": "unsupported",
       "unmapped_keys": [
@@ -39436,6 +39593,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$refracttinttexture"
+      ],
       "shader": "refract",
       "status": "unsupported",
       "unmapped_keys": [
@@ -39493,6 +39653,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$refracttinttexture"
+      ],
       "shader": "refract",
       "status": "unsupported",
       "unmapped_keys": [
@@ -39550,6 +39713,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$refracttinttexture"
+      ],
       "shader": "refract",
       "status": "unsupported",
       "unmapped_keys": [
@@ -39607,6 +39773,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$refracttinttexture"
+      ],
       "shader": "refract",
       "status": "unsupported",
       "unmapped_keys": [
@@ -39973,6 +40142,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$refracttinttexture"
+      ],
       "shader": "refract",
       "status": "unsupported",
       "unmapped_keys": [
@@ -40030,6 +40202,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$refracttinttexture"
+      ],
       "shader": "refract",
       "status": "unsupported",
       "unmapped_keys": [
@@ -40087,6 +40262,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$refracttinttexture"
+      ],
       "shader": "refract",
       "status": "unsupported",
       "unmapped_keys": [
@@ -40805,6 +40983,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$refracttinttexture"
+      ],
       "shader": "refract",
       "status": "unsupported",
       "unmapped_keys": [
@@ -42169,6 +42350,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$treesway"
+      ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
@@ -42240,6 +42424,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$treesway"
+      ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
@@ -42311,6 +42498,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$treesway"
+      ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
@@ -42382,6 +42572,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$lowqualityflashlightshadows"
+      ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
@@ -42438,6 +42631,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$treesway"
+      ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
@@ -42509,6 +42705,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$lowqualityflashlightshadows"
+      ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
@@ -42565,6 +42764,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$lowqualityflashlightshadows"
+      ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
@@ -42621,6 +42823,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$lowqualityflashlightshadows"
+      ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
@@ -42736,6 +42941,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$flashlightnolambert"
+      ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
@@ -42910,6 +43118,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$treesway"
+      ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
@@ -42946,6 +43157,9 @@
     },
     "materials/models/props_foliage/urban_trees_branches02_dry.vmt": {
       "gap": "VMT: missing include materials/models/props_foliage/tree_include_dryleaves.vmt",
+      "refusal_features": [
+        "vmt:missing_include"
+      ],
       "status": "unsupported"
     },
     "materials/models/props_foliage/urban_trees_branches02_small.vmt": {
@@ -42984,6 +43198,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$treesway"
+      ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
@@ -43055,6 +43272,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$flashlightnolambert"
+      ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
@@ -43111,6 +43331,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$treesway"
+      ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
@@ -43182,6 +43405,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$treesway"
+      ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
@@ -43253,6 +43479,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$treesway"
+      ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
@@ -43324,6 +43553,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$treesway"
+      ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
@@ -43395,6 +43627,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$treesway"
+      ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
@@ -43466,6 +43701,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$treesway"
+      ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
@@ -43537,6 +43775,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$treesway"
+      ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
@@ -43608,6 +43849,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$treesway"
+      ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
@@ -43679,6 +43923,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$treesway"
+      ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
@@ -43750,6 +43997,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$treesway"
+      ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
@@ -43821,6 +44071,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$treesway"
+      ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
@@ -43892,6 +44145,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$treesway"
+      ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
@@ -43963,6 +44219,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$treesway"
+      ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
@@ -44034,6 +44293,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$treesway"
+      ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
@@ -44105,6 +44367,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$treesway"
+      ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
@@ -44176,6 +44441,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$treesway"
+      ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
@@ -44247,6 +44515,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$treesway"
+      ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
@@ -44318,6 +44589,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$lowqualityflashlightshadows"
+      ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
@@ -44374,6 +44648,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$treesway"
+      ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
@@ -45868,6 +46145,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "import:black"
+      ],
       "shader": "black",
       "status": "unsupported",
       "world_claims": [
@@ -47048,6 +47328,9 @@
         ".1"
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$selfillum_envmapmask_alpha"
+      ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
@@ -54606,6 +54889,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$phong"
+      ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
@@ -54662,6 +54948,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$phong"
+      ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
@@ -54718,6 +55007,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$phong"
+      ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
@@ -56796,6 +57088,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$phong"
+      ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
@@ -56852,6 +57147,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$phong"
+      ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
@@ -62999,6 +63297,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$alphatesttocoverage"
+      ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
@@ -63889,6 +64190,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$additive"
+      ],
       "shader": "refract",
       "status": "unsupported",
       "unmapped_keys": [
@@ -68123,6 +68427,9 @@
         }
       ],
       "proxies": [],
+      "refusal_features": [
+        "parameter:$rimboost"
+      ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
@@ -69470,6 +69777,358 @@
     }
   },
   "qualification": "VMT path is a possible geometry, not scene reachability; pass is derived from blend or imported special family, not proof of integration. Proxies need per-draw evaluation. Texture residency, device pipeline/capabilities and pixels require product evidence.",
+  "refusal_feature_rule": "Unsupported materials only; each relevant claim gap names a feature. Counts are unique materials per feature, not mutually exclusive. First-refusal and unmapped-key counts are separate observations. Possible geometry does not prove scene reachability.",
+  "refusal_features": {
+    "diagnostic:the model does not read /*": {
+      "examples": [
+        "materials/models/props/ball_catcher_sheet.vmt",
+        "materials/models/props/combine_ball_launcher.vmt"
+      ],
+      "first_refusals": 2,
+      "refused_materials": 2,
+      "unmapped_materials": 0
+    },
+    "import:black": {
+      "examples": [
+        "materials/models/npcs/glados/glados_temp.vmt",
+        "materials/models/props_hub/glados_chamber_dest01.vmt"
+      ],
+      "first_refusals": 2,
+      "refused_materials": 2,
+      "unmapped_materials": 0
+    },
+    "parameter:$additive": {
+      "examples": [
+        "materials/models/player/chell_nodraw.vmt",
+        "materials/models/props_underground/stasis_chamber_glass_02.vmt"
+      ],
+      "first_refusals": 2,
+      "refused_materials": 2,
+      "unmapped_materials": 1
+    },
+    "parameter:$allowalphatocoverage": {
+      "examples": [
+        "materials/models/a4_destruction/metalgrate018c_vtx.vmt"
+      ],
+      "first_refusals": 1,
+      "refused_materials": 1,
+      "unmapped_materials": 0
+    },
+    "parameter:$alphaenvmapmask": {
+      "examples": [
+        "materials/models/props/bed01_glass.vmt",
+        "materials/models/props/box_dropper_tube.vmt",
+        "materials/models/props_bts/booth_glass.vmt"
+      ],
+      "first_refusals": 4,
+      "refused_materials": 4,
+      "unmapped_materials": 4
+    },
+    "parameter:$alphamasktexture": {
+      "examples": [
+        "materials/models/portals/portal_1_anims.vmt",
+        "materials/models/portals/portal_2_anims.vmt"
+      ],
+      "first_refusals": 2,
+      "refused_materials": 2,
+      "unmapped_materials": 2
+    },
+    "parameter:$alphatesttocoverage": {
+      "examples": [
+        "materials/models/props_underground/railing_underground.vmt"
+      ],
+      "first_refusals": 1,
+      "refused_materials": 1,
+      "unmapped_materials": 1
+    },
+    "parameter:$ambientocclusion": {
+      "examples": [
+        "materials/models/player/chell/chell_rev2_head.vmt",
+        "materials/models/player/chell/chell_rev2_legs.vmt",
+        "materials/models/player/chell/chell_rev2_torso.vmt"
+      ],
+      "first_refusals": 3,
+      "refused_materials": 3,
+      "unmapped_materials": 3
+    },
+    "parameter:$cloakfactor": {
+      "examples": [],
+      "first_refusals": 0,
+      "refused_materials": 0,
+      "unmapped_materials": 1
+    },
+    "parameter:$cloaktint": {
+      "examples": [],
+      "first_refusals": 0,
+      "refused_materials": 0,
+      "unmapped_materials": 1
+    },
+    "parameter:$diffuseexp": {
+      "examples": [],
+      "first_refusals": 0,
+      "refused_materials": 0,
+      "unmapped_materials": 3
+    },
+    "parameter:$envmap": {
+      "examples": [
+        "materials/models/props/futbol_dispenser.vmt",
+        "materials/models/props/futbol_effect.vmt",
+        "materials/models/props/futbol_glass.vmt"
+      ],
+      "first_refusals": 11,
+      "refused_materials": 11,
+      "unmapped_materials": 11
+    },
+    "parameter:$flashlightnolambert": {
+      "examples": [
+        "materials/models/props_foliage/mall_trees_branches02.vmt",
+        "materials/models/props_foliage/urban_trees_branches02_still.vmt"
+      ],
+      "first_refusals": 2,
+      "refused_materials": 2,
+      "unmapped_materials": 3
+    },
+    "parameter:$fresnelreflection": {
+      "examples": [
+        "materials/models/effects/urban_puddle01a.vmt"
+      ],
+      "first_refusals": 1,
+      "refused_materials": 1,
+      "unmapped_materials": 1
+    },
+    "parameter:$ignorez": {
+      "examples": [
+        "materials/models/editor/white_model_outline.vmt"
+      ],
+      "first_refusals": 1,
+      "refused_materials": 1,
+      "unmapped_materials": 0
+    },
+    "parameter:$lowqualityflashlightshadows": {
+      "examples": [
+        "materials/models/props_foliage/leaves_dead.vmt",
+        "materials/models/props_foliage/leaves_skin2.vmt",
+        "materials/models/props_foliage/leaves_translucentvmt.vmt"
+      ],
+      "first_refusals": 5,
+      "refused_materials": 5,
+      "unmapped_materials": 27
+    },
+    "parameter:$multipass": {
+      "examples": [
+        "materials/models/props/reflecto_cube_glass.vmt"
+      ],
+      "first_refusals": 1,
+      "refused_materials": 1,
+      "unmapped_materials": 1
+    },
+    "parameter:$nocull": {
+      "examples": [],
+      "first_refusals": 0,
+      "refused_materials": 0,
+      "unmapped_materials": 7
+    },
+    "parameter:$phong": {
+      "examples": [
+        "materials/models/props_office/dod_trophy.vmt",
+        "materials/models/props_office/dod_trophy2.vmt",
+        "materials/models/props_office/dod_trophy3.vmt"
+      ],
+      "first_refusals": 5,
+      "refused_materials": 5,
+      "unmapped_materials": 5
+    },
+    "parameter:$refractamount": {
+      "examples": [],
+      "first_refusals": 0,
+      "refused_materials": 0,
+      "unmapped_materials": 1
+    },
+    "parameter:$refracttinttexture": {
+      "examples": [
+        "materials/models/props_destruction/glass_193x193_d_normal.vmt",
+        "materials/models/props_destruction/glass_b1_normal.vmt",
+        "materials/models/props_destruction/glass_break_b_normal.vmt"
+      ],
+      "first_refusals": 12,
+      "refused_materials": 12,
+      "unmapped_materials": 12
+    },
+    "parameter:$rimboost": {
+      "examples": [
+        "materials/models/sabotage/glass01.vmt"
+      ],
+      "first_refusals": 1,
+      "refused_materials": 1,
+      "unmapped_materials": 1
+    },
+    "parameter:$selfillum_envmapmask_alpha": {
+      "examples": [
+        "materials/models/props_lights/light_panel.vmt"
+      ],
+      "first_refusals": 1,
+      "refused_materials": 1,
+      "unmapped_materials": 1
+    },
+    "parameter:$translucent": {
+      "examples": [
+        "materials/models/player/chell_nodraw.vmt"
+      ],
+      "first_refusals": 1,
+      "refused_materials": 1,
+      "unmapped_materials": 0
+    },
+    "parameter:$treesway": {
+      "examples": [
+        "materials/models/props_foliage/bush_swaying01.vmt",
+        "materials/models/props_foliage/leaves.vmt",
+        "materials/models/props_foliage/leaves_bushes.vmt"
+      ],
+      "first_refusals": 24,
+      "refused_materials": 24,
+      "unmapped_materials": 24
+    },
+    "parameter:$treeswayfalloffexp": {
+      "examples": [],
+      "first_refusals": 0,
+      "refused_materials": 0,
+      "unmapped_materials": 24
+    },
+    "parameter:$treeswayheight": {
+      "examples": [],
+      "first_refusals": 0,
+      "refused_materials": 0,
+      "unmapped_materials": 24
+    },
+    "parameter:$treeswayradius": {
+      "examples": [],
+      "first_refusals": 0,
+      "refused_materials": 0,
+      "unmapped_materials": 24
+    },
+    "parameter:$treeswayscrumblefalloffexp": {
+      "examples": [],
+      "first_refusals": 0,
+      "refused_materials": 0,
+      "unmapped_materials": 24
+    },
+    "parameter:$treeswayscrumblefrequency": {
+      "examples": [],
+      "first_refusals": 0,
+      "refused_materials": 0,
+      "unmapped_materials": 24
+    },
+    "parameter:$treeswayscrumblespeed": {
+      "examples": [],
+      "first_refusals": 0,
+      "refused_materials": 0,
+      "unmapped_materials": 24
+    },
+    "parameter:$treeswayscrumblestrength": {
+      "examples": [],
+      "first_refusals": 0,
+      "refused_materials": 0,
+      "unmapped_materials": 24
+    },
+    "parameter:$treeswayspeed": {
+      "examples": [],
+      "first_refusals": 0,
+      "refused_materials": 0,
+      "unmapped_materials": 24
+    },
+    "parameter:$treeswayspeedhighwindmultiplier": {
+      "examples": [],
+      "first_refusals": 0,
+      "refused_materials": 0,
+      "unmapped_materials": 24
+    },
+    "parameter:$treeswayspeedlerpend": {
+      "examples": [],
+      "first_refusals": 0,
+      "refused_materials": 0,
+      "unmapped_materials": 24
+    },
+    "parameter:$treeswayspeedlerpstart": {
+      "examples": [],
+      "first_refusals": 0,
+      "refused_materials": 0,
+      "unmapped_materials": 24
+    },
+    "parameter:$treeswaystartheight": {
+      "examples": [],
+      "first_refusals": 0,
+      "refused_materials": 0,
+      "unmapped_materials": 24
+    },
+    "parameter:$treeswaystartradius": {
+      "examples": [],
+      "first_refusals": 0,
+      "refused_materials": 0,
+      "unmapped_materials": 24
+    },
+    "parameter:$treeswaystrength": {
+      "examples": [],
+      "first_refusals": 0,
+      "refused_materials": 0,
+      "unmapped_materials": 24
+    },
+    "shader_family:eyerefract": {
+      "examples": [
+        "materials/models/player/chell/gambler_eyeball_l.vmt",
+        "materials/models/player/chell/gambler_eyeball_r.vmt",
+        "materials/models/player/eyeball_l.vmt"
+      ],
+      "first_refusals": 4,
+      "refused_materials": 4,
+      "unmapped_materials": 0
+    },
+    "shader_family:modulate": {
+      "examples": [
+        "materials/models/effects/cappoint_logo_neutral_dark.vmt",
+        "materials/models/effects/nugget_10_dark.vmt",
+        "materials/models/effects/nugget_1_dark.vmt"
+      ],
+      "first_refusals": 5,
+      "refused_materials": 5,
+      "unmapped_materials": 0
+    },
+    "shader_family:portal": {
+      "examples": [
+        "materials/models/portals/portal_1_dynamicmesh.vmt",
+        "materials/models/portals/portal_1_dynamicmesh_fogcompatible.vmt",
+        "materials/models/portals/portal_1_renderfix_dynamicmesh.vmt"
+      ],
+      "first_refusals": 7,
+      "refused_materials": 7,
+      "unmapped_materials": 0
+    },
+    "shader_family:portalstaticoverlay": {
+      "examples": [
+        "materials/models/portals/portalstaticoverlay_1_noz.vmt",
+        "materials/models/portals/portalstaticoverlay_2_noz.vmt",
+        "materials/models/portals/portalstaticoverlay_noz.vmt"
+      ],
+      "first_refusals": 3,
+      "refused_materials": 3,
+      "unmapped_materials": 0
+    },
+    "shader_family:wireframe": {
+      "examples": [
+        "materials/models/container_ride/null.vmt"
+      ],
+      "first_refusals": 1,
+      "refused_materials": 1,
+      "unmapped_materials": 0
+    },
+    "vmt:missing_include": {
+      "examples": [
+        "materials/models/props_foliage/urban_trees_branches02_dry.vmt"
+      ],
+      "first_refusals": 1,
+      "refused_materials": 1,
+      "unmapped_materials": 0
+    }
+  },
   "rule": "render.material MapVariables + the actual world and mesh claim rules under six scene-input combinations",
   "schema": "rendercore-material-claims/v3",
   "scope": "materials/models/**/*.vmt in the game's ordered search path",

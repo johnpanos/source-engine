@@ -119,6 +119,46 @@ class ClaimInventoryTest(unittest.TestCase):
         self.assertEqual(report["status_counts"], {"statically_supported": 1,
                                                     "unsupported": 1})
         self.assertEqual(report["by_shader"]["<parse error>"]["unsupported"], 1)
+        self.assertEqual(report["refusal_features"]["vmt:missing_include"]
+                         ["refused_materials"], 1)
+
+    def test_refusal_features_count_materials_not_repeated_claims(self):
+        shader_gap = "shader SpriteCard maps to no family the model draws (legacy)"
+        parameters = "the family does not draw $spriteorigin and $vertexalpha"
+        materials = {
+            "materials/particle.vmt": {
+                "status": "unsupported", "gap": shader_gap,
+                "mesh_claims": [row(gap=shader_gap)] * 4,
+                "world_claims": [row(gap=parameters)] * 2,
+                "unmapped_keys": ["$spriteorigin", "$spriteorigin"],
+            },
+            "materials/other.vmt": {
+                "status": "unsupported", "gap": parameters,
+                "mesh_claims": [row(gap=shader_gap)], "world_claims": []},
+            "materials/supported.vmt": {
+                "status": "statically_supported", "gap": shader_gap,
+            },
+        }
+        groups = audit.summarize_refusals(materials)
+        self.assertEqual(groups["shader_family:spritecard"]["refused_materials"], 2)
+        self.assertEqual(groups["shader_family:spritecard"]["first_refusals"], 1)
+        self.assertEqual(groups["parameter:$spriteorigin"]["refused_materials"], 2)
+        self.assertEqual(groups["parameter:$spriteorigin"]["unmapped_materials"], 1)
+        self.assertEqual(groups["parameter:$vertexalpha"]["refused_materials"], 2)
+        self.assertEqual(materials["materials/particle.vmt"]["mesh_claims"],
+                         [row(gap=shader_gap)] * 4)
+
+    def test_refusal_feature_names_keep_view_resources_distinct(self):
+        self.assertEqual(audit.refusal_features(
+            "the model does not bind the per-view texture env_cubemap ($envmap)"),
+            ("per_view_texture:env_cubemap",))
+        self.assertEqual(audit.refusal_features("family vertexlit has no program yet"),
+                         ("family_program:vertexlit",))
+        self.assertEqual(audit.refusal_features("family lightmapped has no mesh point yet"),
+                         ("mesh_point:lightmapped",))
+        self.assertEqual(audit.refusal_features(
+            "shader Spritecard maps to no family the model draws (legacy)"),
+            ("shader_family:spritecard",))
 
 
 if __name__ == "__main__":

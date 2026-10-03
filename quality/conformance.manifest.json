@@ -10471,7 +10471,7 @@
       "contract": "RFC/0016-render-core.md",
       "profile": "linux-host-corpus",
       "kind": "positive",
-      "description": "Every Portal 2 models VMT is analyzed with the actual world and mesh claim rules under six scene-input combinations. The checked report records the selected product profile, input digest, geometry/pass candidates, minimal required scene inputs, dynamic proxy uncertainty, and unsupported gaps. A parse failure counts as unsupported. Product and image tests still prove reachability, residency and pixels.",
+      "description": "Every Portal 2 models VMT is analyzed with the actual world and mesh claim rules under six scene-input combinations. The checked report records the selected product profile, input digest, geometry/pass candidates, minimal required scene inputs, dynamic proxy uncertainty, and unsupported gaps grouped by feature. A parse failure counts as unsupported. Product and image tests still prove reachability, residency and pixels.",
       "command": [
         "{python}",
         "tools/render/material_claim_inventory.py",
@@ -10510,7 +10510,7 @@
       "contract": "RFC/0016-render-core.md",
       "profile": "linux-host-corpus",
       "kind": "positive",
-      "description": "Every Portal 2 VMT in search order is analyzed with the actual world and mesh claim rules under six scene-input combinations. Model-path VMTs need a mesh candidate; other VMTs may use either geometry. The checked report records product profile, shader, proxy, geometry/pass candidates, minimal scene-input requirements, unmapped keys and per-shader status counts. A parse failure is unsupported. Native product and image tests still prove draw routing, residency and pixels.",
+      "description": "Every Portal 2 VMT in search order is analyzed with the actual world and mesh claim rules under six scene-input combinations. Model-path VMTs need a mesh candidate; other VMTs may use either geometry. The checked report records product profile, shader, proxy, geometry/pass candidates, minimal scene-input requirements, refusal-feature and unmapped-key counts, and per-shader status counts. A parse failure is unsupported. Native product and image tests still prove draw routing, residency and pixels.",
       "command": [
         "{python}",
         "tools/render/material_claim_inventory.py",
@@ -10550,10 +10550,10 @@
       "contract": "RFC/0016-render-core.md",
       "profile": "linux-host-corpus",
       "kind": "sensitivity",
-      "description": "Negative fixtures reject malformed claim protocol, an unknown blend and false support from a missing VMT include; they check structural shader gaps, bind-time proxy uncertainty, geometry, pass and minimal scene inputs.",
+      "description": "Negative fixtures reject malformed claim protocol, an unknown blend and false support from a missing VMT include; they check structural shader gaps, bind-time proxy uncertainty, geometry, pass, minimal scene inputs and overlapping feature-group counts.",
       "command": ["{python}", "tools/render/material_claim_inventory.py", "self-test"],
       "result_protocol": "checks-v1",
-      "min_checks": 10,
+      "min_checks": 12,
       "timeout_seconds": 60,
       "sources": [
         "tools/render/material_claim_inventory.py",

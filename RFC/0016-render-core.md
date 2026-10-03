@@ -241,7 +241,8 @@ claim. Other hardware and mobile profiles retain their own declared budgets.
   skinning/culling, post and views to attribute the cost; overlapping CPU/GPU
   times are not added as though they were serial. Component budgets are owned
   by their existing domain/profile rows, and do not replace the frame floor.
-- **Misses fail performance acceptance.** A miss or missing required evidence
+- **Misses fail performance acceptance, except the FSR temporal exception in
+  rule 7.** A miss or missing required evidence
   blocks the affected High performance gate, its performance-dependent closure
   and default/release promotion. Correctness work and optimization fixes may
   land and integrate to reach the target; they do not close that gate. Baseline
@@ -417,6 +418,21 @@ Measuring is not optional (user decision, 2026-09-29). Every slice that changes
 what is drawn records desktop and Fold7 frame timings, the commands and settings,
 or explicitly records unavailable hardware and the reason. The existing budget
 rows own their numbers. Missing required measurements cannot certify a gate.
+
+**FSR temporal exception (user decision, 2026-10-03).** For RFC 0019's
+[FSR 4.1.1 replacement of 4x MSAA](0019-temporal-upscaling-contract.md#target-cutover-user-direction-2026-10-03),
+implementation and product selection proceed after the required input,
+image-quality and lifetime checks without waiting for a performance pass.
+Measure the complete selected profile and record any miss, unavailable run,
+settings and reproduction steps. A timing miss or unavailable timing does not
+block this FSR path's integration, default selection or release. The 120 FPS
+number remains a reported target, not a passed claim when missed. At the FSR
+cutover, update the selected product profile and budget row together to mark
+the FSR mode's timing verdict as advisory. The existing 4x MSAA High mode and
+other render paths keep their current hard gates until explicitly changed.
+This exception changes timing gate policy only; it does not waive visual,
+input, compatibility, synchronization or platform correctness, or permit
+silently omitting an effect to improve the timing report.
 
 **Rule 8: If it is faster on the GPU, do it on the GPU.** Render work follows
 the engine-wide [CPU/GPU execution placement policy](0003-dependency-aware-job-system.md#cpugpu-execution-placement-user-decision-2026-10-01)
@@ -709,7 +725,9 @@ measured for this RFC; measured numbers are quoted from their records.
   adapter runs the core, not D3D bytecode.
 - Running D3D bytecode from mod shader DLLs on the core
   ([Mod shader DLLs](#mod-shader-dlls)).
-- Temporal antialiasing or upscalers (RFC 0012 keeps these out of scope).
+- Temporal antialiasing or upscaler implementation; the proposed
+  [temporal upscaling contract](0019-temporal-upscaling-contract.md) defines a
+  later opt-in core feature without changing this RFC's current gates.
 - Screen-space global illumination. RFC 0011 rejects it; the lighting
   model's screen-space reflections are glossy reflections over the probes,
   not diffuse GI.

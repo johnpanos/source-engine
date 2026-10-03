@@ -17,6 +17,7 @@ import collections
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 import unittest
@@ -35,6 +36,7 @@ MESH_INPUTS = ((False, False), (False, True), (True, False), (True, True))
 WORLD_INPUTS = (False, True)
 BLENDS = {"0": "opaque", "1": "alpha", "2": "premultiplied", "3": "additive",
           "4": "transmittance"}
+PARAMETER = re.compile(r"\$[a-zA-Z][a-zA-Z0-9_]*")
 
 
 def claim_input(material):
@@ -156,6 +158,65 @@ def classify(path, material, mesh, world, family=""):
     return status, candidates
 
 
+def refusal_features(reason):
+    """Name work areas from claim diagnostics, without redefining claim support."""
+    lower = reason.lower()
+    if lower.startswith("vmt: "):
+        return ("vmt:missing_include" if lower.startswith("vmt: missing include ")
+                else "vmt:" + lower[5:].replace(" ", "_"),)
+    if lower.startswith("import: "):
+        return ("import:" + lower[8:],)
+    shader = re.match(r"shader (\S+) maps to no family", reason, re.IGNORECASE)
+    if shader:
+        return ("shader_family:" + shader.group(1).lower(),)
+    program = re.match(r"family (\S+) has no program", reason, re.IGNORECASE)
+    if program:
+        return ("family_program:" + program.group(1).lower(),)
+    mesh_point = re.match(r"family (\S+) has no mesh point", reason, re.IGNORECASE)
+    if mesh_point:
+        return ("mesh_point:" + mesh_point.group(1).lower(),)
+    view_texture = re.search(r"per-view texture (\S+)", reason, re.IGNORECASE)
+    if view_texture:
+        return ("per_view_texture:" + view_texture.group(1).lower(),)
+    parameters = sorted(set(parameter.lower() for parameter in PARAMETER.findall(reason)))
+    if parameters:
+        return tuple("parameter:" + parameter for parameter in parameters)
+    unread = re.search(r"does not read ([a-z][a-z0-9_]*)$", lower)
+    if unread:
+        return ("parameter:$" + unread.group(1),)
+    return ("diagnostic:" + lower,)
+
+
+def summarize_refusals(results):
+    groups = collections.defaultdict(lambda: {"refused_materials": 0,
+                                              "first_refusals": 0,
+                                              "unmapped_materials": 0,
+                                              "examples": []})
+    for path, item in results.items():
+        if item["status"] != "unsupported":
+            continue
+        # One material is counted once per feature, even if six claim inputs
+        # repeat the same gap. Distinct features may co-occur on one material.
+        rows = list(item.get("mesh_claims", []))
+        if not path.startswith("materials/models/"):
+            rows += item.get("world_claims", [])
+        reasons = {row["gap"] for row in rows if "gap" in row}
+        reasons.add(item["gap"])  # Includes VMT parse failures.
+        features = sorted({feature for reason in reasons for feature in refusal_features(reason)})
+        item["refusal_features"] = features
+        for feature in features:
+            groups[feature]["refused_materials"] += 1
+            if len(groups[feature]["examples"]) < 3:
+                groups[feature]["examples"].append(path)
+        for feature in refusal_features(item["gap"]):
+            groups[feature]["first_refusals"] += 1
+        for key in set(item.get("unmapped_keys", [])):
+            for feature in refusal_features("the model does not read " + key):
+                if feature.startswith("parameter:"):
+                    groups[feature]["unmapped_materials"] += 1
+    return dict(sorted(groups.items()))
+
+
 def collect(game, render_lab, scope, profile_path=None):
     if profile_path is None:
         profile_path = DEFAULT_PROFILES[game]
@@ -231,6 +292,7 @@ def collect(game, render_lab, scope, profile_path=None):
         shader = item.get("shader", "<parse error>")
         by_shader[shader]["total"] += 1
         by_shader[shader][item["status"]] += 1
+    feature_groups = summarize_refusals(results)
     return {
         "schema": "rendercore-material-claims/v3",
         "game": game,
@@ -242,6 +304,7 @@ def collect(game, render_lab, scope, profile_path=None):
         "total": total,
         "status_counts": dict(sorted(counts.items())),
         "gaps": dict(sorted(gaps.items(), key=lambda item: (-item[1], item[0]))),
+        "refusal_features": feature_groups,
         "by_shader": dict(sorted(by_shader.items())),
         "materials": results,
     }
@@ -276,8 +339,9 @@ def main():
             args.out.write_bytes(data)
         print(f"{args.game}: {report['total']} {args.scope} VMTs; "
               + ", ".join(f"{name}={count}" for name, count in report["status_counts"].items()))
-        for reason, count in list(report["gaps"].items())[:15]:
-            print(f"{count:4}  {reason}")
+        for feature, counts in sorted(report["refusal_features"].items(),
+                                      key=lambda item: (-item[1]["refused_materials"], item[0]))[:15]:
+            print(f"{counts['refused_materials']:4}  {feature}")
         if args.verify:
             print(f"CONFORMANCE {report['total']} 0")
         return 0

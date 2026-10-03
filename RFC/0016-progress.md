@@ -8327,3 +8327,30 @@ The same tool read all 6,000 Portal VMTs using its declared Linux Vulkan
 profile (2,296 static, 1,441 conditional, 366 dynamic, 1,897 unsupported);
 that profile does not declare core-only High qualification, so this exploratory
 run does not add a Portal acceptance claim or a checked-in baseline.
+
+### K12: refusal groups by feature (2026-10-03)
+
+The same claim audit now groups unsupported Portal 2 materials by a feature
+named from the core's actual refusal diagnostics. It records each material's
+feature keys and a report-level count of affected materials, appearances in
+the first refusal, and unmapped-key incidence. The raw claim rows and exact
+reason strings remain in the checked inventories. One material counts once per
+feature even when six input scenarios repeat its refusal; feature groups
+overlap and their counts must not be summed into a number of missing draws.
+This is report indexing, not a second material-support rule or evidence that a
+material is reached by a game scene.
+
+| Feature in the full Portal 2 corpus | Refused materials |
+| --- | ---: |
+| `$shadersrgbread360` parameter | 154 |
+| SpriteCard shader family | 143 |
+| `$spriteorigin` parameter | 102 |
+| DecalModulate shader family | 101 |
+| `env_cubemap` per-view texture | 63 |
+| Lightmapped mesh point | 62 |
+| Subrect shader family | 57 |
+
+Both checked inventories retain their prior status totals. The expanded
+sensitivity suite passes 12 checks, including repeated claim rows, overlapping
+features and family-name case folding. K12/R96 remains open; draw reachability
+and pixels are separate evidence.

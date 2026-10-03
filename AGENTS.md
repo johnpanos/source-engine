@@ -30,6 +30,7 @@ consumer at every new boundary. The active program is defined by these RFCs:
 | [0016](RFC/0016-render-core.md) | Clustered Forward+ render core as ports and adapters beneath the frozen material API: backend-neutral `render.device.v2` with Vulkan, OpenGL and null adapters, render graph, GPU scene and views, forward-shaded material families, froxel light lists and shadow atlas, one legacy frontend running `IMatRenderContext`/`IShaderAPI` as graph passes; layers enforced by archlint CAP011; ToGL kept for mods (proposed; rows R86–R92, R95–R96) |
 | [0017](RFC/0017-lan-discovery-and-coop-pairing.md) | LAN discovery contract (`platform.lan-discovery.v1`) with mDNS providers, and Portal 2 co-op pairing without Steam through the matchmaking framework's `lan` network type and a new lobby session (proposed; row R93) |
 | [0018](RFC/0018-hammer-interaction-design.md) | Hammer interaction and UI/UX: flows with entry points, states, errors and undo; tool state machines, focus and key routing, the shortcut map reconciled with `ActionCatalog`, pointer gestures, layout, HiDPI, theming and AT-SPI names; a UI-driven case per flow; gap table and slice order UX1–UX12 (proposed; children of R08, R17, R23–R25, R60) |
+| [0019](RFC/0019-temporal-upscaling-contract.md) | Temporal upscaling contract: frame inputs, stable view history, portal resets, graph/output placement, provider capabilities and quality gates; FSR 4.1.1 is the first candidate and the intended replacement for 4x MSAA in High after qualification (user direction, 2026-10-03; proposed, no implementation gate or ranked row yet) |
 
 RFC status and implementation status are separate. A proposed interface, tool,
 directory, or command is not installed infrastructure. Read the relevant RFC
@@ -206,6 +207,9 @@ platform acceptance.
     acceptance and promotion; development and optimization continue to fix it.
     No effect, cohort, resolution or sample count is cut to pass the budget.
     Only the user may relax the target or change the profile's shipped quality.
+    The user's 2026-10-03 [FSR temporal exception](RFC/0016-render-core.md#binding-rules-for-all-render-work-user-decision-2026-09-28)
+    makes a timing miss advisory for RFC 0019's FSR replacement; measure and
+    note it without blocking that path's implementation, selection or release.
   - If it is faster on the GPU, do it on the GPU: RFC 0003's
     [binding placement policy](RFC/0003-dependency-aware-job-system.md#cpugpu-execution-placement-user-decision-2026-10-01)
     owns the equivalent-output, full-cost comparison and crossover rules.
@@ -416,13 +420,16 @@ the roadmap's hard prerequisites:
 3. Finish K8–K9/R91's remaining core frame cohorts: decals, particles,
    sprites/beams, post, UI, sky, glass, water and portal/monitor views.
 4. Finish RFC 0012's 4x MSAA policy, alpha to coverage, specular AA and filtered
-   normal/coverage mips; judge fine detail through camera motion.
+   normal/coverage mips; judge fine detail through camera motion. RFC 0019
+   records FSR as the intended replacement in High after its correctness and
+   image gates pass.
 5. Supply the modern model, texture, bake and dense-scene/LOD paths that let the
    core show representative new content (RFCs 0007, 0008 and 0015).
 6. Profile and optimize the complete result on target hardware with every
    declared effect enabled. Meet the hard render target under RFC 0016's
    amended binding rule 7; a miss keeps performance acceptance open and is
-   never a reason to silently disable an effect.
+   never a reason to silently disable an effect. RFC 0019's FSR timing miss is
+   advisory under the user-directed exception in rule 7.
 
 ### P2:CE high-quality PBR content mounts (user direction, 2026-10-01)
 

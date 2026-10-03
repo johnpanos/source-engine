@@ -70,10 +70,10 @@ This RFC completes antialiasing around MSAA rather than replacing it:
 4. **Offline filtering** bakes normal-map variance into the roughness mips
    and keeps alpha-tested coverage stable across mips, for new KTX2 content.
 
-Temporal methods (TAA, DLSS/DLAA, FSR, XeSS) are out of scope. They need
-motion vectors, jitter, history and an HDR scene target, and none exists. They
-also need a reprojection story through portals. RFC 0008 F10 (R63) may
-revisit this. This RFC must leave the MSAA path correct if it does (see
+Temporal implementation remains outside this RFC. The proposed
+[temporal upscaling contract](0019-temporal-upscaling-contract.md) owns the
+motion, jitter, history and portal requirements for a later opt-in mode. This
+RFC must leave the MSAA path correct beside it (see
 [Future temporal work](#future-temporal-work)).
 
 Legacy shader families keep their D3D9-defined appearance. They gain alpha to
@@ -418,9 +418,15 @@ runtime path.
 If R63 or a later RFC adds a floating-point scene target with tone mapping
 after the resolve, the resolve must become tonemap-aware (inverse-luminance
 weighted) to avoid bright-edge aliasing. That change would reopen this
-contract. A temporal method may replace MSAA on a profile only by passing the
-same edge, alpha and shimmer oracles, plus portal-boundary cases. Specular AA
-stays useful under temporal methods and isn't removed by them.
+contract. RFC 0019 owns the proposed [temporal upscaling
+contract](0019-temporal-upscaling-contract.md). A temporal method replaces 4x
+MSAA in the selected High profile once its edge, alpha, shimmer and
+portal-boundary quality gates pass, per the user's
+2026-10-03 [target cutover](0019-temporal-upscaling-contract.md#target-cutover-user-direction-2026-10-03).
+RFC 0016's [FSR temporal exception](0016-render-core.md#binding-rules-for-all-render-work-user-decision-2026-09-28)
+makes a performance miss advisory for this cutover. Until then the current 4x
+MSAA policy remains the High gate. Specular AA remains useful under temporal
+methods.
 
 ## Roadmap
 
