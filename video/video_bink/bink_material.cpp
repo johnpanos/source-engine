@@ -748,6 +748,17 @@ bool CBinkMaterial::SetFrame( int FrameNum )
 		return false;
 	}
 
+	if ( !m_CachedFrames.empty() )
+	{
+		if ( FrameNum < 0 )
+		{
+			SetResult( VideoResult::BAD_INPUT_PARAMETERS );
+			return false;
+		}
+		m_NextCachedFrame = std::min( FrameNum, int( m_CachedFrames.size() ) - 1 );
+		m_NextInterestingTimeToPlay = Plat_FloatTime();
+		return true;
+	}
 	return SetTime( float( FrameNum * m_MovieFrameDuration ) );
 }
 

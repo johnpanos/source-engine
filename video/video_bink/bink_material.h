@@ -31,8 +31,6 @@ extern IMaterialSystem	*materials;
 
 #include <vector>
 
-#include <vector>
-
 #include "materialsystem/itexture.h"
 #include "materialsystem/imaterialsystem.h"
 #include "materialsystem/MaterialSystemUtil.h"
@@ -150,13 +148,11 @@ class CBinkMaterial : public IVideoMaterial
 		void 						CloseFile();
 		bool						DecodeNextFrame();
 		bool PreloadFrames( const char *pTextureName );
-		void SelectCachedFrame( int frame );
-		bool PreloadFrames( const char *pTextureName );
-		void SelectCachedFrame( int frame );
-		bool						Rewind( double flTime );
+	    void SelectCachedFrame( int frame );
+	    bool Rewind( double flTime );
 
-		// Initializes, shuts down the procedural texture
-		void						CreateProceduralTexture( const char *pTextureName );
+	    // Initializes, shuts down the procedural texture
+	    void						CreateProceduralTexture( const char *pTextureName );
 		void						DestroyProceduralTexture();
 
 		// Initializes, shuts down the procedural material
@@ -170,14 +166,13 @@ class CBinkMaterial : public IVideoMaterial
 		CMaterialReference			m_Material;						// Ref to Material used for rendering the video frame
 		std::vector<CTextureReference> m_CachedFrames;
 		int m_NextCachedFrame = 0;
-		int m_CurrentFrame = -1;
-		std::vector<CTextureReference> m_CachedFrames;
-		int m_NextCachedFrame = 0;
-		int m_CurrentFrame = -1;
-		CTextureReference			m_Texture;						// Ref to the renderable texture which contains the most recent video frame (in a sub-rect)
+	    int m_CurrentFrame = -1;
+	    CTextureReference
+	        m_Texture; // Ref to the renderable texture which contains the most recent video frame (in a sub-rect)
 
-		float						m_TexCordU;						// Max U texture coordinate of the texture sub-rect which holds the video frame
-		float						m_TexCordV;						// Max V texture coordinate of the texture sub-rect which holds the video frame
+	    float
+	        m_TexCordU; // Max U texture coordinate of the texture sub-rect which holds the video frame
+	    float						m_TexCordV;						// Max V texture coordinate of the texture sub-rect which holds the video frame
 
 		int							m_VideoFrameWidth;				// Size of the movie frame in pixels
 		int							m_VideoFrameHeight;
