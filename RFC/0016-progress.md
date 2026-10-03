@@ -8289,3 +8289,41 @@ pass); the full 1920x1080 High 4x MSAA 120 FPS floor is unverified and not met b
 these diagnostics. Remaining complete-frame area-light/shadow and submission
 costs need further equivalent-output optimization. No performance promotion or
 CPU/GPU decode-placement acceptance is claimed.
+
+### K12: profiled static material requirements (2026-10-03)
+
+The existing Portal 2 VMT auditor now runs the core's own world and mesh claims
+under six scene-input combinations. Its v3 reports name the declared
+`portal2-linux-native-vulkan-high-v1` profile and its VMT conditional settings,
+possible world/model geometry, the opaque/blended or special-family pass,
+minimal required world stage, native reflection probes and linear scene color,
+and all failed claims. The batch protocol refuses drift between C++ VMT
+condition defaults and the corpus parser. Proxied materials remain dynamically
+unresolved until their bound values are checked. A missing patch include counts as
+unsupported rather than silently inflating the supported total.
+
+| Corpus | Statically supported | Supported with requirements | Dynamic | Unsupported |
+| --- | ---: | ---: | ---: | ---: |
+| All 3,738 Portal 2 VMTs | 1,354 | 1,062 | 146 | 1,176 |
+| 1,165 model-path VMTs | 819 | 200 | 44 | 102 |
+
+The full report identifies SpriteCard 143/143 and DecalModulate 101/101 as
+unsupported, while Refract has 14/37 conditional candidates that require native
+reflection probes, linear scene color or both. This is candidate material
+eligibility under the selected profile, not evidence of scene reachability,
+pass integration, texture residency,
+correct pixels or mobile platform support. K12/R96 and R91 remain open.
+
+Evidence: the isolated Waf `render_lab` target builds; both checked
+inventories verify all 3,738 and 1,165 entries; the ten focused fixtures
+pass, including malformed protocol, missing include, proxy and conditional
+input controls. The native Vulkan `posed-model --validate` suite passes 72
+checks with image readbacks, and `lightmap-basis --validate` passes 19. These
+GPU suites cover accepted examples. `render.family.water` passes 41 checks,
+including its six-case native Vulkan pixel oracle. They cannot certify all accepted
+VMTs. The results in `quality/materials/portal2-{all,model}-claims.json` are
+the exact per-material evidence for this slice.
+The same tool read all 6,000 Portal VMTs using its declared Linux Vulkan
+profile (2,296 static, 1,441 conditional, 366 dynamic, 1,897 unsupported);
+that profile does not declare core-only High qualification, so this exploratory
+run does not add a Portal acceptance claim or a checked-in baseline.

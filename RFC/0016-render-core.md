@@ -1192,6 +1192,35 @@ A graph is built each frame on the render sequence:
   counted in a census. Content validation (RFC 0015) reports it at build
   time.
 
+#### Static material requirements audit
+
+`tools/render/material_claim_inventory.py` uses `render_lab claim-batch` to
+run the resolver's actual world and mesh claims without a GPU. For each VMT it
+records the selected product profile and VMT conditional assumptions, possible
+geometry, required pass, and the minimal scene inputs that make a claim pass.
+It records whether that profile declares core-only rendering; an absent
+declaration never becomes an implied product-support claim.
+The sampled inputs are a world stage, native reflection probes and linear
+scene color. The batch protocol checks the C++ VMT condition defaults against
+the corpus parser before accepting a result. No family-specific parameter
+support table is maintained by the auditor.
+
+The verdict is `unsupported` when no relevant geometry claims the material,
+`supported_with_requirements` when a claim needs a particular geometry, pass or
+scene input, `dynamically_unresolved` when a proxy may change the variables at
+bind time, and `statically_supported` when an opaque baseline claim needs no
+sampled scene input on its likely geometry. A structural missing-family gap remains
+unsupported even with a proxy. Malformed VMTs and missing patch includes are
+unsupported and counted. The report preserves each attempted claim and all
+unmapped keys so a first refusal does not hide later missing terms.
+
+The VMT path identifies possible geometry, not scene reachability. The pass is
+the claim's opaque or blended phase, or its imported depth, portal-mask or
+water family. A static verdict does not prove that the pass is integrated in
+the product, that textures and device capabilities are present, or that the
+resulting pixels match the reference. Product draw census and GPU/image suites
+establish those separately before a cohort is promoted.
+
 ### Mod shader DLLs
 
 Mod shader DLLs (`ShaderDLL004`) ship D3D shader bytecode, which the core

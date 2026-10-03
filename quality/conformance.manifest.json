@@ -10471,7 +10471,7 @@
       "contract": "RFC/0016-render-core.md",
       "profile": "linux-host-corpus",
       "kind": "positive",
-      "description": "Every resolved Portal 2 materials/models VMT is mapped by render.material's actual ClaimForMesh rule with and without native RPRB, and ClaimForDrawing for visibility. The checked inventory records every input digest, shader, proxy, blend claim or exact gap; any missing material, changed interpretation or unsupported cohort changes the report and fails verification. The report is a static material claim, while the native product boot proves reachability and texture residency.",
+      "description": "Every Portal 2 models VMT is analyzed with the actual world and mesh claim rules under six scene-input combinations. The checked report records the selected product profile, input digest, geometry/pass candidates, minimal required scene inputs, dynamic proxy uncertainty, and unsupported gaps. A parse failure counts as unsupported. Product and image tests still prove reachability, residency and pixels.",
       "command": [
         "{python}",
         "tools/render/material_claim_inventory.py",
@@ -10491,6 +10491,8 @@
       ],
       "sources": [
         "tools/render/material_claim_inventory.py",
+        "tools/render/tests/test_material_claim_inventory.py",
+        "quality/product_profiles/portal2-linux-native-vulkan-high.json",
         "tools/render/material_inventory.py",
         "tools/render/vmt_corpus.py",
         "render/lab/render_lab.cpp",
@@ -10508,7 +10510,7 @@
       "contract": "RFC/0016-render-core.md",
       "profile": "linux-host-corpus",
       "kind": "positive",
-      "description": "Every resolved Portal 2 VMT in the ordered search path is mapped by render.material's actual ClaimForDrawing(world PBR) and ClaimForMesh(native RPRB) rules. Model-path VMTs require the mesh claim; other VMTs may claim either point. The checked inventory records input digests, shader, proxy, both blend claims or exact gaps, all unmapped keys and per-shader totals. It is a static claim, not proof of scene reachability or correct pixels.",
+      "description": "Every Portal 2 VMT in search order is analyzed with the actual world and mesh claim rules under six scene-input combinations. Model-path VMTs need a mesh candidate; other VMTs may use either geometry. The checked report records product profile, shader, proxy, geometry/pass candidates, minimal scene-input requirements, unmapped keys and per-shader status counts. A parse failure is unsupported. Native product and image tests still prove draw routing, residency and pixels.",
       "command": [
         "{python}",
         "tools/render/material_claim_inventory.py",
@@ -10530,11 +10532,34 @@
       ],
       "sources": [
         "tools/render/material_claim_inventory.py",
+        "tools/render/tests/test_material_claim_inventory.py",
+        "quality/product_profiles/portal2-linux-native-vulkan-high.json",
         "tools/render/material_inventory.py",
         "tools/render/vmt_corpus.py",
         "render/lab/render_lab.cpp",
         "render/material/program_resolver.cpp",
         "quality/materials/portal2-all-claims.json"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.material.claim-inventory-sensitivity",
+      "domain": "Q-CONTENT",
+      "rfc": "0016",
+      "migration": "R96",
+      "contract": "RFC/0016-render-core.md",
+      "profile": "linux-host-corpus",
+      "kind": "sensitivity",
+      "description": "Negative fixtures reject malformed claim protocol, an unknown blend and false support from a missing VMT include; they check structural shader gaps, bind-time proxy uncertainty, geometry, pass and minimal scene inputs.",
+      "command": ["{python}", "tools/render/material_claim_inventory.py", "self-test"],
+      "result_protocol": "checks-v1",
+      "min_checks": 10,
+      "timeout_seconds": 60,
+      "sources": [
+        "tools/render/material_claim_inventory.py",
+        "tools/render/tests/test_material_claim_inventory.py",
+        "quality/product_profiles/portal-linux-wayland-native-vulkan.json",
+        "quality/product_profiles/portal2-linux-native-vulkan-high.json"
       ],
       "expect": "pass"
     },

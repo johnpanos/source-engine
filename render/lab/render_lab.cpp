@@ -1604,6 +1604,13 @@ int Run( const Options &options )
 // shader\0(key\0value\0)*\0; an empty key ends it. No GPU is involved.
 int ClaimBatch()
 {
+	const render::material::VmtProfile profile;
+	std::printf( "CLAIM-BATCH/3\tdx=%d\tps20b=%d\thdr=%d\tsrgb=%d\tgpu=%d\tlowfill=%d\tsymbols=",
+	    profile.dxLevel, profile.pixelShader20b, profile.hdr, profile.srgbBlending,
+	    profile.gpuLevel, profile.reduceParticles );
+	for ( std::size_t i = 0; i < profile.symbols.size(); ++i )
+		std::printf( "%s%s", i ? "," : "", profile.symbols[i].c_str() );
+	std::printf( "\n" );
 	std::string shader;
 	while ( std::getline( std::cin, shader, '\0' ) )
 	{
@@ -1623,26 +1630,38 @@ int ClaimBatch()
 		const auto mapped = render::material::MapVariables( shader, std::move( variables ), {} );
 		if ( !mapped )
 		{
-			std::printf( "G\timport: %s\tG\timport: %s\tG\timport: %s\t\t\n",
-			    mapped.Error().detail.c_str(), mapped.Error().detail.c_str(),
-			    mapped.Error().detail.c_str() );
+			for ( int i = 0; i < 6; ++i )
+				std::printf( "%sG\timport: %s", i ? "\t" : "", mapped.Error().detail.c_str() );
+			std::printf( "\t\t\t\n" );
 			continue;
 		}
-		for ( bool probes : { true, false } )
+		// Every row is the actual claim under a named scene-input combination.
+		// The auditor turns the successful rows into explicit requirements.
+		bool first = true;
+		for ( bool probes : { false, true } )
 		{
-			if ( !probes )
-				std::printf( "\t" );
-			const auto claim = render::material::ClaimForMesh( mapped.Value(), probes );
+			for ( bool sceneColor : { false, true } )
+			{
+				if ( !first )
+					std::printf( "\t" );
+				first = false;
+				const auto claim =
+				    render::material::ClaimForMesh( mapped.Value(), probes, sceneColor );
+				if ( claim )
+					std::printf( "C\t%u", unsigned( claim.Value() ) );
+				else
+					std::printf( "G\t%s", claim.Error().c_str() );
+			}
+		}
+		for ( bool worldStage : { false, true } )
+		{
+			std::printf( "\t" );
+			const auto claim = render::material::ClaimForDrawing( mapped.Value(), worldStage );
 			if ( claim )
 				std::printf( "C\t%u", unsigned( claim.Value() ) );
 			else
 				std::printf( "G\t%s", claim.Error().c_str() );
 		}
-		const auto worldClaim = render::material::ClaimForDrawing( mapped.Value(), true );
-		if ( worldClaim )
-			std::printf( "\tC\t%u", unsigned( worldClaim.Value() ) );
-		else
-			std::printf( "\tG\t%s", worldClaim.Error().c_str() );
 		std::printf( "\t" );
 		bool firstNumeric = true;
 		constexpr std::string_view prefix = "numeric KeyValues residue ";
@@ -1660,7 +1679,7 @@ int ClaimBatch()
 			std::printf( "%s%s", firstUnmapped ? "" : ",", key.c_str() );
 			firstUnmapped = false;
 		}
-		std::printf( "\n" );
+		std::printf( "\t%s\n", mapped.Value().family.c_str() );
 	}
 	return std::cin.bad() ? 2 : 0;
 }
