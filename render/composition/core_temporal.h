@@ -7,8 +7,17 @@
 #include <array>
 #include <string>
 #include <optional>
+#include <vector>
 namespace render::composition
 {
+struct TemporalObjectSample
+{
+	std::uint64_t identity = 0;
+	std::uint32_t model = 0;
+	std::array<float, 6> bounds{};
+	std::array<float, 3> previousOffset{};
+	float translationError = 0;
+};
 struct TemporalRequest
 {
 	int x = 0, y = 0;
@@ -19,6 +28,8 @@ struct TemporalRequest
 	std::array<float, 16> currentToClip{}, previousToClip{};
 	bool cameraValid = false;
 	std::size_t motionTargets = 0;
+	std::vector<TemporalObjectSample> objects;
+	std::size_t omittedObjects = 0;
 };
 // Render-sequence state for the main game view; owns reconstruction images.
 class CoreTemporal

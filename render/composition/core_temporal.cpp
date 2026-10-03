@@ -247,15 +247,27 @@ void CoreTemporal::CollectCapture()
 		     << ",\"history_reset\":" << ( capture.historyReset ? "true" : "false" )
 		     << ",\"motion_targets\":" << request.motionTargets
 		     << ",\"camera_valid\":" << ( request.cameraValid ? "true" : "false" );
-		const auto matrix = [&]( const char *name, const std::array<float, 16> &values )
+		const auto matrix = [&]( const char *name, std::span<const float> values )
 		{
 			file << ",\"" << name << "\":[";
-			for ( unsigned i = 0; i < 16; ++i )
+			for ( unsigned i = 0; i < values.size(); ++i )
 				file << ( i ? "," : "" ) << values[i];
 			file << ']';
 		};
 		matrix( "current_to_clip", request.currentToClip );
 		matrix( "previous_to_clip", request.previousToClip );
+		file << ",\"omitted_objects\":" << request.omittedObjects << ",\"objects\":[";
+		for ( std::size_t i = 0; i < request.objects.size(); ++i )
+		{
+			const auto &object = request.objects[i];
+			file << ( i ? "," : "" ) << "{\"identity\":" << object.identity
+			     << ",\"model\":" << object.model
+			     << ",\"translation_error\":" << object.translationError;
+			matrix( "bounds", object.bounds );
+			matrix( "previous_offset", object.previousOffset );
+			file << '}';
+		}
+		file << ']';
 		file << "}\n";
 		file.close();
 		success = !file.fail();

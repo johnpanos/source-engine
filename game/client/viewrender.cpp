@@ -2335,9 +2335,18 @@ void CViewRender::RenderView( const CViewSetup &view, int nClearFlags, int whatT
 	}
 
 	// Draw the 2D graphics
-	render->Push2DView( view, 0, saveRenderTarget, GetFrustum() );
+	CViewSetup view2D = view;
+	if ( g_pRenderTemporalViews && g_pRenderTemporalViews->Enabled() )
+	{
+		// Display-space effects and GUI use the reconstructed output's pixel grid.
+		view2D.x = view.m_nUnscaledX;
+		view2D.y = view.m_nUnscaledY;
+		view2D.width = view.m_nUnscaledWidth;
+		view2D.height = view.m_nUnscaledHeight;
+	}
+	render->Push2DView( view2D, 0, saveRenderTarget, GetFrustum() );
 
-	Render2DEffectsPreHUD( view );
+	Render2DEffectsPreHUD( view2D );
 
 	if ( whatToDraw & RENDERVIEW_DRAWHUD )
 	{
@@ -2489,9 +2498,9 @@ void CViewRender::RenderView( const CViewSetup &view, int nClearFlags, int whatT
 		pRenderContext.SafeRelease();
 	}
 
-	CDebugViewRender::Draw2DDebuggingInfo( view );
+	CDebugViewRender::Draw2DDebuggingInfo( view2D );
 
-	Render2DEffectsPostHUD( view );
+	Render2DEffectsPostHUD( view2D );
 
 	g_bRenderingView = false;
 

@@ -54,6 +54,28 @@ class TemporalCaptureTests(unittest.TestCase):
             motion[..., 0] = -2
             motion.tofile(str(prefix) + '.motion.rg16f')
             self.assertTrue(inspect(prefix, 'camera')['pass'])
+            # With a stationary camera, the previous object position alone
+            # must produce the same signed pixel displacement.
+            meta['previous_to_clip'] = np.eye(4).flatten().tolist()
+            meta['objects'] = [{'identity': 7, 'bounds': [-2, -2, .49, 2, 2, .51],
+                                'previous_offset': [-.1, 0, 0], 'translation_error': 0}]
+            Path(str(prefix) + '.json').write_text(json.dumps(meta))
+            self.assertTrue(inspect(prefix, 'object', object_identity=7)['pass'])
+            motion.fill(0)
+            motion.tofile(str(prefix) + '.motion.rg16f')
+            self.assertFalse(inspect(prefix, 'object', object_identity=7)['pass'])
+            # Missing object motion cannot be excluded to make the check pass.
+            motion[..., 0] = -2
+            motion[0, 0] = 65504
+            motion.tofile(str(prefix) + '.motion.rg16f')
+            self.assertFalse(inspect(prefix, 'object', object_identity=7)['pass'])
+            meta['objects'][0]['previous_offset'] = [0, 0, 0]
+            Path(str(prefix) + '.json').write_text(json.dumps(meta))
+            with self.assertRaises(ValueError):
+                inspect(prefix, 'object', object_identity=7)
+            meta['previous_to_clip'] = previous.flatten().tolist()
+            Path(str(prefix) + '.json').write_text(json.dumps(meta))
+            motion.fill(0)
             # Wrong sign, normalized rather than pixel units, and stale zero motion fail.
             for wrong in (2, -.1, 0):
                 motion[..., 0] = wrong

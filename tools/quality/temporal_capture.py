@@ -9,6 +9,8 @@ half-pixel raster offset, while velocity excludes projection jitter.
 Reset mode checks the actual provider-dispatch reset flag and complete finite
 input/output images. Invalid prior motion is expected after a discontinuity;
 this mode does not certify image quality or motion coverage in later frames.
+Object mode uses captured pose bounds and previous displacement for an isolated
+rigidly translating object; it rejects deformation and zero displacement.
 """
 import argparse
 import json
@@ -17,7 +19,7 @@ from pathlib import Path
 import numpy as np
 
 
-def inspect(prefix, mode, tolerance=0.25):
+def inspect(prefix, mode, tolerance=0.25, object_identity=None):
     meta = json.loads(Path(str(prefix) + '.json').read_text())
     width, height = meta['render']
     if width <= 0 or height <= 0:
@@ -42,7 +44,8 @@ def inspect(prefix, mode, tolerance=0.25):
                 'native_frame': meta.get('native_frame'), 'finite_images': bool(finite),
                 'valid_depth': depth_valid, 'valid_motion_fraction': float(valid.mean()),
                 'pass': bool(reset and meta.get('native_frame', 0) > 0 and finite and depth_valid)}
-    if mode == 'camera':
+    object_coverage = None
+    if mode in ('camera', 'object'):
         if not meta['camera_valid']:
             raise ValueError('camera history unavailable')
         current = np.array(meta['current_to_clip']).reshape(4, 4)
@@ -53,7 +56,28 @@ def inspect(prefix, mode, tolerance=0.25):
         jx, jy = meta['jitter']
         clip = np.stack([2 * (x - jx) / width - 1, 1 - 2 * (y - jy) / height,
                          depth, np.ones_like(depth)], axis=-1)
-        old = clip @ np.linalg.inv(current).T @ previous.T
+        world = clip @ np.linalg.inv(current).T
+        if mode == 'object':
+            objects = [obj for obj in meta.get('objects', []) if obj['identity'] == object_identity]
+            if len(objects) != 1:
+                raise ValueError('capture does not contain the selected object')
+            obj = objects[0]
+            offset = np.asarray(obj['previous_offset'], dtype=float)
+            bounds = np.asarray(obj['bounds'], dtype=float)
+            if (not np.isfinite(offset).all() or not np.isfinite(bounds).all() or
+                    not 0 <= obj['translation_error'] <= .001 or np.linalg.norm(offset) < .01):
+                raise ValueError('object must have a finite, nonzero rigid translation')
+            with np.errstate(divide='ignore', invalid='ignore'):
+                world /= world[..., 3:4]
+            # This fixture must isolate its object: depth positions inside the
+            # current AABB select its visible pixels, not a screen-space box.
+            candidates = ((world[..., :3] >= bounds[:3] - .05).all(axis=2) &
+                          (world[..., :3] <= bounds[3:] + .05).all(axis=2) &
+                          np.isfinite(world).all(axis=2) & (depth > .2) & (depth < 1))
+            object_coverage = float(valid[candidates].mean()) if candidates.any() else 0
+            selected &= candidates
+            world[..., :3] += offset
+        old = world @ previous.T
         with np.errstate(divide='ignore', invalid='ignore'):
             expected = (old[..., :2] / old[..., 3:4] - clip[..., :2]) * [width / 2, -height / 2]
         # Portal 2 renders its weapon in a separate compressed depth range.
@@ -62,20 +86,24 @@ def inspect(prefix, mode, tolerance=0.25):
         expected = np.zeros_like(motion)
     errors = np.linalg.norm(motion - expected, axis=2)[selected]
     return {'mode': mode, 'render': [width, height], 'valid_motion_fraction': float(valid.mean()),
+            'object_identity': object_identity, 'object_valid_motion_fraction': object_coverage,
             'selected_pixels': int(selected.sum()), 'selected_fraction': float(selected.mean()),
             'error_pixels_median': float(np.median(errors)) if errors.size else None,
             'error_pixels_max': float(errors.max()) if errors.size else None,
             'within_tolerance_fraction': float((errors <= tolerance).mean()) if errors.size else 0,
             'tolerance_pixels': tolerance,
-            'pass': bool(errors.size and np.isfinite(errors).all() and (errors <= tolerance).all())}
+            'pass': bool(errors.size and np.isfinite(errors).all() and (errors <= tolerance).all()
+                         and (object_coverage is None or object_coverage == 1))}
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('prefix', type=Path)
-    parser.add_argument('--mode', choices=['camera', 'static', 'reset'], required=True)
+    parser.add_argument('--mode', choices=['camera', 'static', 'reset', 'object'], required=True)
+    parser.add_argument('--object', type=int, dest='object_identity',
+                        help='motion identity of an isolated, rigidly translating captured object')
     args = parser.parse_args()
-    result = inspect(args.prefix, args.mode)
+    result = inspect(args.prefix, args.mode, object_identity=args.object_identity)
     print(json.dumps(result, indent=2))
     return 0 if result['pass'] else 1
 

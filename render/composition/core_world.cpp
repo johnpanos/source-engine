@@ -1480,6 +1480,56 @@ bool CoreWorld::ReconstructTemporal( int x, int y, int rw, int rh, int ow, int o
 				request.currentToClip = camera->second.toClip;
 				request.previousToClip = previous->second.toClip;
 			}
+			// Capture only submitted topology, on demand. Unselected body/LOD
+			// vertices retain bind-pose positions and are not motion evidence.
+			for ( const auto &[key, pose] : m_PendingPoses )
+			{
+				const auto old = m_PreviousPoses.find( key );
+				if ( key.first != m_TemporalView || old == m_PreviousPoses.end() ||
+				     old->second.model != pose.model || old->second.body != pose.body ||
+				     old->second.lod != pose.lod ||
+				     old->second.vertices.size() != pose.vertices.size() )
+					continue;
+				if ( request.objects.size() == 128 )
+				{
+					++request.omittedObjects;
+					continue;
+				}
+				TemporalObjectSample sample;
+				sample.identity = key.second;
+				sample.model = pose.model;
+				bool first = true;
+				const auto selected =
+				    m_ModelPoseSources[pose.model].SelectedSurfaces( pose.body, pose.lod );
+				const auto &mesh = m_StaticMeshes[pose.model];
+				for ( auto surfaceId : selected )
+				{
+					const auto &surface = mesh.surfaces[surfaceId];
+					for ( auto index = surface.firstIndex;
+					    index < surface.firstIndex + surface.indexCount; ++index )
+					{
+						const auto vertex = mesh.indices[index];
+						for ( unsigned axis = 0; axis < 3; ++axis )
+						{
+							const float current = pose.vertices[vertex].position[axis];
+							const float offset =
+							    old->second.vertices[vertex].position[axis] - current;
+							if ( first )
+							{
+								sample.bounds[axis] = sample.bounds[axis + 3] = current;
+								sample.previousOffset[axis] = offset;
+							}
+							sample.bounds[axis] = std::min( sample.bounds[axis], current );
+							sample.bounds[axis + 3] = std::max( sample.bounds[axis + 3], current );
+							sample.translationError = std::max( sample.translationError,
+							    std::abs( offset - sample.previousOffset[axis] ) );
+						}
+						first = false;
+					}
+				}
+				if ( !first )
+					request.objects.push_back( sample );
+			}
 		}
 		m_TemporalRequests.emplace( tag, request );
 	}
