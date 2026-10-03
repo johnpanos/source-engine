@@ -12,6 +12,47 @@ from temporal_capture import inspect
 
 
 class TemporalCaptureTests(unittest.TestCase):
+    def test_pose_interpolation_visibility_and_compressed_depth(self):
+        with tempfile.TemporaryDirectory() as directory:
+            prefix = Path(directory) / 'pose'
+            width, height = 40, 20
+            vertices = np.array([[-.8, -.8, .5], [.8, -.8, .5], [0, .8, .5]])
+            previous = vertices.copy()
+            previous[0, 0] -= .1
+            obj = {'identity': 7, 'view': 9, 'translation_error': .1, 'recorded_viewport': True,
+                   'current_to_clip': np.eye(4).flatten().tolist(),
+                   'previous_to_clip': np.eye(4).flatten().tolist(),
+                   'viewport': [0, 0, width, height, 0, .1],
+                   'triangles': [np.r_[vertices.flatten(), previous.flatten()].tolist()]}
+            meta = {'render': [width, height], 'jitter': [0, 0], 'objects': [obj]}
+            Path(str(prefix) + '.json').write_text(json.dumps(meta))
+            depth = np.full((height, width), .05, dtype='<f4')
+            depth.tofile(str(prefix) + '.depth.r32f')
+            # Independent closed-form barycentrics for this triangle's pixel
+            # vertices (4,18), (36,18), (20,2); only corner A moves left.
+            y, x = np.mgrid[:height, :width]
+            c = (18 - y) / 16
+            b = (x - 4 - 16 * c) / 32
+            a = 1 - b - c
+            motion = np.zeros((height, width, 2), dtype='<f2')
+            motion[..., 0] = -2 * a
+            motion.tofile(str(prefix) + '.motion.rg16f')
+            result = inspect(prefix, 'pose', object_identity=7, view_identity=9)
+            self.assertTrue(result['pass'])
+            self.assertEqual(result['visible_triangles'], 1)
+            motion.fill(0)
+            motion.tofile(str(prefix) + '.motion.rg16f')
+            self.assertFalse(inspect(prefix, 'pose', object_identity=7)['pass'])
+            motion[..., 0] = -2 * a
+            motion[13, 20] = 65504
+            motion.tofile(str(prefix) + '.motion.rg16f')
+            self.assertFalse(inspect(prefix, 'pose', object_identity=7)['pass'])
+            depth.fill(.9)
+            depth.tofile(str(prefix) + '.depth.r32f')
+            self.assertFalse(inspect(prefix, 'pose', object_identity=7)['pass'])
+            with self.assertRaises(ValueError):
+                inspect(prefix, 'pose', object_identity=7, view_identity=10)
+
     def test_reset_requires_dispatch_reset_and_complete_finite_images(self):
         with tempfile.TemporaryDirectory() as directory:
             prefix = Path(directory) / 'reset'

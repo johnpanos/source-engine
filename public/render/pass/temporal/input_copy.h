@@ -14,7 +14,8 @@ public:
 	~InputCopy();
 	bool Record( device::CommandEncoder &encoder, const device::TemporalImages &source,
 	    const device::TemporalImages &destination, device::TemporalExtent extent, int x, int y,
-	    bool decodeSrgb, device::CompletionToken submitted );
+	    bool decodeSrgb, device::CompletionToken submitted,
+	    device::ResourceUsage sourceDepthUsage = device::ResourceUsage::kDepthWrite );
 
 private:
 	device::IRenderDevice2 &m_Device;

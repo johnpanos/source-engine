@@ -319,8 +319,8 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::Pipeline(
 	const std::uint8_t firstWrite =
 	    variant.alphaWrite ? kColorWriteAll : std::uint8_t( kColorWriteAll & ~kColorWriteAlpha );
 	const Format colors[] = { prepass && !depthOnly ? Format::kRGBA16Float : m_ColorFormat,
-	    variant.temporal ? Format::kRG16Float : Format::kRGBA16Float, Format::kRGBA16Float,
-	    Format::kRGBA16Float };
+	    variant.temporal ? Format::kRG16Float : Format::kRGBA16Float,
+	    variant.temporal ? Format::kR32Float : Format::kRGBA16Float, Format::kRGBA16Float };
 	const BlendMode blends[] = { prepass ? BlendMode::kOpaque : variant.blend, BlendMode::kOpaque,
 	    BlendMode::kOpaque, BlendMode::kOpaque };
 	const std::uint8_t writes[] = { depthOnly ? std::uint8_t( 0 )
@@ -328,8 +328,9 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::Pipeline(
 	                                    ? kColorWriteAll
 	                                    : std::uint8_t( firstWrite & variant.drawState.colorWrite ),
 	    std::uint8_t( variant.temporal && variant.drawState.colorWrite == 0 ? 0 : kColorWriteAll ),
-	    kColorWriteAll, kColorWriteAll };
-	const std::size_t attachments = variant.temporal ? 2 : ssrTargets ? 4 : 1;
+	    std::uint8_t( variant.temporal && variant.drawState.colorWrite == 0 ? 0 : kColorWriteAll ),
+	    kColorWriteAll };
+	const std::size_t attachments = variant.temporal ? 3 : ssrTargets ? 4 : 1;
 	PipelineDesc desc = resolved.Value().Desc();
 	desc.layouts = layouts;
 	desc.drawConstantBytes = drawConstantBytes;

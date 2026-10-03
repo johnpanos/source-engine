@@ -13,10 +13,20 @@ namespace render::composition
 struct TemporalObjectSample
 {
 	std::uint64_t identity = 0;
+	std::uint64_t view = 0;
 	std::uint32_t model = 0;
 	std::array<float, 6> bounds{};
 	std::array<float, 3> previousOffset{};
 	float translationError = 0;
+	std::array<float, 16> currentToClip{}, previousToClip{};
+	std::array<float, 6> viewport{};
+	bool recordedViewport = false;
+	// At most 1024 sampled triangles per object, only on capture. Small
+	// material surfaces are kept whole when the remaining budget permits it.
+	// Each stores current world-space xyz for three vertices, then previous xyz.
+	std::vector<std::array<float, 18>> triangles;
+	std::vector<std::uint32_t> triangleSurfaces;
+	std::vector<std::string> surfaceMaterials;
 };
 struct TemporalRequest
 {
@@ -44,7 +54,7 @@ public:
 	// The native host reports its submission, on the render sequence.
 	void CaptureSubmitted( device::CompletionToken token, bool success );
 	bool Record( device::CommandEncoder &encoder, const legacy::CorePassTarget &target,
-	    device::TextureId motion, const TemporalRequest &request );
+	    device::TextureId motion, device::TextureId motionDepth, const TemporalRequest &request );
 
 private:
 	device::IRenderDevice2 &m_Device;

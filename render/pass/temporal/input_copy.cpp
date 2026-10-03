@@ -75,7 +75,7 @@ InputCopy::~InputCopy()
 }
 bool InputCopy::Record( CommandEncoder &encoder, const TemporalImages &source,
     const TemporalImages &destination, TemporalExtent extent, int x, int y, bool decodeSrgb,
-    CompletionToken submitted )
+    CompletionToken submitted, ResourceUsage sourceDepthUsage )
 {
 	if ( !extent.width || !extent.height || !Initialize() )
 		return false;
@@ -92,7 +92,7 @@ bool InputCopy::Record( CommandEncoder &encoder, const TemporalImages &source,
 	m_Pending.push_back( group.Value() );
 	encoder.TransitionTexture(
 	    source.color, ResourceUsage::kColorAttachment, ResourceUsage::kSampled );
-	encoder.TransitionTexture( source.depth, ResourceUsage::kDepthWrite, ResourceUsage::kSampled );
+	encoder.TransitionTexture( source.depth, sourceDepthUsage, ResourceUsage::kSampled );
 	encoder.TransitionTexture(
 	    source.motion, ResourceUsage::kColorAttachment, ResourceUsage::kSampled );
 	encoder.TransitionTexture(
@@ -125,7 +125,7 @@ bool InputCopy::Record( CommandEncoder &encoder, const TemporalImages &source,
 	    destination.motion, ResourceUsage::kColorAttachment, ResourceUsage::kSampled );
 	encoder.TransitionTexture(
 	    source.color, ResourceUsage::kSampled, ResourceUsage::kColorAttachment );
-	encoder.TransitionTexture( source.depth, ResourceUsage::kSampled, ResourceUsage::kDepthWrite );
+	encoder.TransitionTexture( source.depth, ResourceUsage::kSampled, sourceDepthUsage );
 	encoder.TransitionTexture(
 	    source.motion, ResourceUsage::kSampled, ResourceUsage::kColorAttachment );
 	return true;

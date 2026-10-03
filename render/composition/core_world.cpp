@@ -1335,7 +1335,8 @@ bool CoreWorld::DrawView( const unsigned int *surfaces, unsigned int count,
 			}
 			if ( m_TemporalView && source.motionIdentity )
 				m_PendingPoses.insert_or_assign(
-				    key, MotionPose{ source.model, source.lod, source.body, pose.vertices } );
+				    key, MotionPose{
+				             source.model, source.lod, source.body, pose.vertices, source.skin } );
 		}
 
 		view.posedModels.push_back( std::move( pose ) );
@@ -1344,6 +1345,7 @@ bool CoreWorld::DrawView( const unsigned int *surfaces, unsigned int count,
 	view.viewport = {
 	    viewport[0], viewport[1], viewport[2], viewport[3], viewport[4], viewport[5] };
 	view.hostFrame = hostFrame;
+	view.temporalView = m_TemporalEnabled ? m_TemporalView : 0;
 	std::copy_n( worldToClip, 16, view.motionToClip );
 	if ( m_TemporalEnabled && view.viewport.width > 0 && view.viewport.height > 0 )
 		for ( unsigned c = 0; c < 4; ++c )
@@ -1485,9 +1487,11 @@ bool CoreWorld::ReconstructTemporal( int x, int y, int rw, int rh, int ow, int o
 			for ( const auto &[key, pose] : m_PendingPoses )
 			{
 				const auto old = m_PreviousPoses.find( key );
-				if ( key.first != m_TemporalView || old == m_PreviousPoses.end() ||
-				     old->second.model != pose.model || old->second.body != pose.body ||
-				     old->second.lod != pose.lod ||
+				const auto currentCamera = m_PendingCameras.find( key.first );
+				const auto previousCamera = m_PreviousCameras.find( key.first );
+				if ( old == m_PreviousPoses.end() || currentCamera == m_PendingCameras.end() ||
+				     previousCamera == m_PreviousCameras.end() || old->second.model != pose.model ||
+				     old->second.body != pose.body || old->second.lod != pose.lod ||
 				     old->second.vertices.size() != pose.vertices.size() )
 					continue;
 				if ( request.objects.size() == 128 )
@@ -1497,14 +1501,57 @@ bool CoreWorld::ReconstructTemporal( int x, int y, int rw, int rh, int ow, int o
 				}
 				TemporalObjectSample sample;
 				sample.identity = key.second;
+				sample.view = key.first;
 				sample.model = pose.model;
+				sample.currentToClip = currentCamera->second.toClip;
+				sample.previousToClip = previousCamera->second.toClip;
+				const auto &viewport = currentCamera->second.viewport;
+				sample.viewport = { viewport.x, viewport.y, viewport.width, viewport.height,
+				    viewport.minDepth, viewport.maxDepth };
 				bool first = true;
 				const auto selected =
 				    m_ModelPoseSources[pose.model].SelectedSurfaces( pose.body, pose.lod );
 				const auto &mesh = m_StaticMeshes[pose.model];
+				for ( std::size_t surface = 0; surface < mesh.surfaces.size(); ++surface )
+				{
+					const auto material = mesh.skinMaterials.empty()
+					                          ? mesh.surfaces[surface].material
+					                      : pose.skin < mesh.skinMaterials.size() &&
+					                              surface < mesh.skinMaterials[pose.skin].size()
+					                          ? mesh.skinMaterials[pose.skin][surface]
+					                          : ~0u;
+					sample.surfaceMaterials.push_back( material < m_StaticMaterials.size()
+					                                       ? m_StaticMaterials[material].name
+					                                       : "" );
+				}
+				std::size_t triangleCount = 0;
+				for ( auto surfaceId : selected )
+					triangleCount += mesh.surfaces[surfaceId].indexCount / 3;
+				const std::size_t stride =
+				    std::max<std::size_t>( 1, ( triangleCount + 1023 ) / 1024 );
+				std::size_t triangle = 0;
 				for ( auto surfaceId : selected )
 				{
 					const auto &surface = mesh.surfaces[surfaceId];
+					for ( auto index = surface.firstIndex;
+					    index + 2 < surface.firstIndex + surface.indexCount;
+					    index += 3, ++triangle )
+					{
+						if ( sample.triangles.size() == 1024 ||
+						     ( triangle % stride && surface.indexCount > 192 ) )
+							continue;
+						std::array<float, 18> probe;
+						for ( unsigned corner = 0; corner < 3; ++corner )
+						{
+							const auto vertex = mesh.indices[index + corner];
+							std::copy_n(
+							    pose.vertices[vertex].position, 3, probe.begin() + corner * 3 );
+							std::copy_n( old->second.vertices[vertex].position, 3,
+							    probe.begin() + 9 + corner * 3 );
+						}
+						sample.triangles.push_back( probe );
+						sample.triangleSurfaces.push_back( surfaceId );
+					}
 					for ( auto index = surface.firstIndex;
 					    index < surface.firstIndex + surface.indexCount; ++index )
 					{
@@ -1528,7 +1575,7 @@ bool CoreWorld::ReconstructTemporal( int x, int y, int rw, int rh, int ow, int o
 					}
 				}
 				if ( !first )
-					request.objects.push_back( sample );
+					request.objects.push_back( std::move( sample ) );
 			}
 		}
 		m_TemporalRequests.emplace( tag, request );
@@ -1941,6 +1988,17 @@ void CoreWorld::RecordSlot(
 		if ( request && target.device )
 		{
 			request->motionTargets = m_MotionTargets.size();
+			for ( auto &object : request->objects )
+			{
+				const auto viewport = m_TemporalRecordedViewports.find( object.view );
+				if ( m_TemporalViewportFrame != target.frame ||
+				     m_TemporalViewportStream != target.streamEpoch ||
+				     viewport == m_TemporalRecordedViewports.end() )
+					continue;
+				const auto &v = viewport->second;
+				object.viewport = { v.x, v.y, v.width, v.height, v.minDepth, v.maxDepth };
+				object.recordedViewport = true;
+			}
 #ifdef RENDER_CORE_VULKAN
 			if ( !m_Temporal )
 			{
@@ -1952,7 +2010,8 @@ void CoreWorld::RecordSlot(
 #endif
 			auto motion = m_MotionTargets.find( target.color.value );
 			if ( m_Temporal && motion != m_MotionTargets.end() )
-				success = m_Temporal->Record( encoder, target, motion->second.image, *request );
+				success = m_Temporal->Record(
+				    encoder, target, motion->second.image, motion->second.depth, *request );
 		}
 		if ( !success )
 		{
@@ -2085,6 +2144,19 @@ void CoreWorld::RecordWorldBatch( std::span<const std::uint32_t> tags,
 	world.samples = target.samples;
 	if ( m_TemporalEnabled && target.device && target.samples == 1 )
 	{
+		if ( m_TemporalViewportFrame != target.frame ||
+		     m_TemporalViewportStream != target.streamEpoch )
+		{
+			m_TemporalRecordedViewports.clear();
+			m_TemporalViewportFrame = target.frame;
+			m_TemporalViewportStream = target.streamEpoch;
+		}
+		world.temporalViewport = [this]( std::uint64_t view, device::Viewport viewport )
+		{
+			if ( m_TemporalRecordedViewports.contains( view ) ||
+			     m_TemporalRecordedViewports.size() < 128 )
+				m_TemporalRecordedViewports.insert_or_assign( view, viewport );
+		};
 		// Imported swapchain ids change on recreation. Keep a small working set,
 		// not one image per target ever seen. A previous frame's image can retire
 		// behind submitted; an image already recorded in this frame cannot.
@@ -2107,14 +2179,20 @@ void CoreWorld::RecordWorldBatch( std::span<const std::uint32_t> tags,
 			}
 			(void)target.device->Release(
 			    device::ResourceId( oldest->second.image ), target.submitted );
+			(void)target.device->Release(
+			    device::ResourceId( oldest->second.depth ), target.submitted );
 			m_MotionTargets.erase( oldest );
 		}
 		auto &motion = m_MotionTargets[target.color.value];
-		if ( motion.width != target.width || motion.height != target.height )
+		if ( motion.width != target.width || motion.height != target.height ||
+		     !motion.depth.IsValid() )
 		{
 			if ( motion.image.IsValid() )
 				(void)target.device->Release(
 				    device::ResourceId( motion.image ), target.submitted );
+			if ( motion.depth.IsValid() )
+				(void)target.device->Release(
+				    device::ResourceId( motion.depth ), target.submitted );
 			motion = {};
 			device::TextureDesc desc;
 			desc.format = device::Format::kRG16Float;
@@ -2130,17 +2208,31 @@ void CoreWorld::RecordWorldBatch( std::span<const std::uint32_t> tags,
 				return;
 			}
 			motion.image = created.Value();
+			desc.format = device::Format::kR32Float;
+			desc.debugName = "game temporal surface depth";
+			auto depth = target.device->CreateTexture( desc );
+			if ( !depth )
+			{
+				++m_LightingFailures;
+				return;
+			}
+			motion.depth = depth.Value();
 			motion.width = target.width;
 			motion.height = target.height;
 			encoder.TransitionTexture( motion.image, device::ResourceUsage::kUndefined,
 			    device::ResourceUsage::kColorAttachment );
+			encoder.TransitionTexture( motion.depth, device::ResourceUsage::kUndefined,
+			    device::ResourceUsage::kColorAttachment );
 		}
 		if ( motion.frame != target.frame || motion.stream != target.streamEpoch )
 		{
-			device::ColorAttachment attachment{ motion.image, device::LoadOp::kClear,
-			    device::StoreOp::kStore, { 65504.0f, 65504.0f, 0.0f, 0.0f }, {} };
+			const device::ColorAttachment attachments[] = {
+			    { motion.image, device::LoadOp::kClear, device::StoreOp::kStore,
+			        { 65504.0f, 65504.0f, 0.0f, 0.0f }, {} },
+			    { motion.depth, device::LoadOp::kClear, device::StoreOp::kStore,
+			        { 1.0f, 0.0f, 0.0f, 0.0f }, {} } };
 			device::RenderingDesc clear;
-			clear.colors = std::span( &attachment, 1 );
+			clear.colors = attachments;
 			clear.width = target.width;
 			clear.height = target.height;
 			encoder.BeginRendering( clear );
@@ -2149,6 +2241,7 @@ void CoreWorld::RecordWorldBatch( std::span<const std::uint32_t> tags,
 			motion.stream = target.streamEpoch;
 		}
 		world.motion = motion.image;
+		world.motionDepth = motion.depth;
 	}
 
 	world.textures = textures ? &*textures : nullptr;

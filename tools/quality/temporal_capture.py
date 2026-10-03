@@ -11,6 +11,9 @@ input/output images. Invalid prior motion is expected after a discontinuity;
 this mode does not certify image quality or motion coverage in later frames.
 Object mode uses captured pose bounds and previous displacement for an isolated
 rigidly translating object; it rejects deformation and zero displacement.
+Pose mode projects sampled triangles, checks their visibility against actual
+depth, and interpolates previous vertex positions independently of the shader.
+It is a sampled GPU diagnostic, not complete surface or animation qualification.
 """
 import argparse
 import json
@@ -19,13 +22,86 @@ from pathlib import Path
 import numpy as np
 
 
-def inspect(prefix, mode, tolerance=0.25, object_identity=None):
+def inspect_pose(meta, motion, depth, object_identity, view_identity, tolerance):
+    objects = [obj for obj in meta.get('objects', []) if obj['identity'] == object_identity
+               and (view_identity is None or obj['view'] == view_identity)]
+    if len(objects) != 1:
+        raise ValueError('select one captured object/view for pose probes')
+    obj = objects[0]
+    if obj.get('recorded_viewport') is not True:
+        raise ValueError('native recorded viewport unavailable')
+    if not np.isfinite(obj['translation_error']) or obj['translation_error'] <= .001:
+        raise ValueError('pose probes require a nonuniform change in vertex positions')
+    current = np.asarray(obj['current_to_clip']).reshape(4, 4)
+    previous = np.asarray(obj['previous_to_clip']).reshape(4, 4)
+    vx, vy, vw, vh, near, far = obj['viewport']
+    if not (vw > 0 and vh > 0 and far > near):
+        raise ValueError('invalid pose viewport')
+    jx, jy = meta['jitter']
+    height, width = depth.shape
+    probes = {}
+    visible_triangles = 0
+    for triangle in obj['triangles']:
+        positions = np.asarray(triangle).reshape(2, 3, 3)
+        clip = np.c_[positions[0], np.ones(3)] @ current.T
+        if not np.isfinite(clip).all() or (clip[:, 3] <= 0).any():
+            continue
+        ndc = clip[:, :3] / clip[:, 3:4]
+        screen = ndc[:, :2] * [vw / 2, -vh / 2] + [vx + vw / 2 + jx, vy + vh / 2 + jy]
+        basis = np.vstack([screen.T, np.ones(3)])
+        if abs(np.linalg.det(basis)) < .1:
+            continue
+        visible = False
+        for seed in ([1/3]*3, [.6, .2, .2], [.2, .6, .2], [.2, .2, .6]):
+            x, y = np.rint(np.asarray(seed) @ screen).astype(int)
+            if not (0 <= x < width and 0 <= y < height):
+                continue
+            bary = np.linalg.solve(basis, [x, y, 1])
+            if bary.min() < .02:
+                continue
+            predicted_depth = (bary @ ndc[:, 2]) * (far - near) + near
+            if not np.isfinite(depth[y, x]) or abs(predicted_depth - depth[y, x]) > 1e-6:
+                continue
+            # Perspective-correct interpolation of world positions; depth is
+            # instead linear in screen barycentrics, as in the native rasterizer.
+            weights = bary / clip[:, 3]
+            weights /= weights.sum()
+            old = np.r_[weights @ positions[1], 1] @ previous.T
+            if not np.isfinite(old).all() or old[3] <= 0:
+                continue
+            now = [(x - vx - jx) * 2 / vw - 1, 1 - (y - vy - jy) * 2 / vh]
+            expected = (old[:2] / old[3] - now) * [vw / 2, -vh / 2]
+            probes[(x, y)] = expected
+            visible = True
+        visible_triangles += visible
+    errors = []
+    valid = 0
+    for (x, y), expected in probes.items():
+        actual = motion[y, x]
+        if np.isfinite(actual).all() and (np.abs(actual) < 60000).all():
+            valid += 1
+            errors.append(np.linalg.norm(actual - expected))
+    errors = np.asarray(errors)
+    return {'mode': 'pose', 'object_identity': object_identity, 'view_identity': obj['view'],
+            'sampled_triangles': len(obj['triangles']), 'visible_triangles': visible_triangles,
+            'selected_pixels': len(probes), 'valid_pixels': valid,
+            'translation_error_world': obj['translation_error'],
+            'error_pixels_max': float(errors.max()) if errors.size else None,
+            'failed_pixels': int((errors > tolerance).sum()) + len(probes) - valid,
+            'tolerance_pixels': tolerance,
+            'pass': bool(probes and valid == len(probes) and np.isfinite(errors).all()
+                         and (errors <= tolerance).all())}
+
+
+def inspect(prefix, mode, tolerance=0.25, object_identity=None, view_identity=None):
     meta = json.loads(Path(str(prefix) + '.json').read_text())
     width, height = meta['render']
     if width <= 0 or height <= 0:
         raise ValueError('invalid capture extent')
     motion = np.fromfile(str(prefix) + '.motion.rg16f', dtype='<f2').reshape(height, width, 2).astype('f8')
     depth = np.fromfile(str(prefix) + '.depth.r32f', dtype='<f4').reshape(height, width)
+    if mode == 'pose':
+        return inspect_pose(meta, motion, depth, object_identity, view_identity, tolerance)
     valid = np.isfinite(motion).all(axis=2) & (np.abs(motion) < 60000).all(axis=2)
     valid &= np.isfinite(depth) & (depth >= 0) & (depth <= 1)
     selected = valid.copy()
@@ -99,11 +175,13 @@ def inspect(prefix, mode, tolerance=0.25, object_identity=None):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('prefix', type=Path)
-    parser.add_argument('--mode', choices=['camera', 'static', 'reset', 'object'], required=True)
+    parser.add_argument('--mode', choices=['camera', 'static', 'reset', 'object', 'pose'], required=True)
     parser.add_argument('--object', type=int, dest='object_identity',
                         help='motion identity of an isolated, rigidly translating captured object')
+    parser.add_argument('--view', type=int, dest='view_identity', help='captured semantic view identity')
     args = parser.parse_args()
-    result = inspect(args.prefix, args.mode, object_identity=args.object_identity)
+    result = inspect(args.prefix, args.mode, object_identity=args.object_identity,
+                     view_identity=args.view_identity)
     print(json.dumps(result, indent=2))
     return 0 if result['pass'] else 1
 

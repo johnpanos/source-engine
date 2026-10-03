@@ -175,7 +175,10 @@ public:
 		m_Output.ReleaseDevice( device );
 		m_Temporal.reset();
 		for ( auto &[id, motion] : m_MotionTargets )
+		{
 			(void)device.Release( device::ResourceId( motion.image ), device::CompletionToken() );
+			(void)device.Release( device::ResourceId( motion.depth ), device::CompletionToken() );
+		}
 		m_MotionTargets.clear();
 		ReleaseShadows( device );
 	}
@@ -200,11 +203,14 @@ private:
 	std::unique_ptr<CoreTemporal> m_Temporal;
 	struct MotionTarget
 	{
-		device::TextureId image;
+		device::TextureId image, depth;
 		std::uint32_t width = 0, height = 0;
 		std::uint64_t frame = 0, stream = 0;
 	};
 	std::map<std::uint64_t, MotionTarget> m_MotionTargets;
+	// Render-sequence diagnostic state, bounded to 128 views of one recording.
+	std::map<std::uint64_t, device::Viewport> m_TemporalRecordedViewports;
+	std::uint64_t m_TemporalViewportFrame = 0, m_TemporalViewportStream = 0;
 
 	std::uint64_t m_TemporalView = 0;
 	struct MotionCamera
@@ -217,6 +223,7 @@ private:
 		std::uint32_t model, lod;
 		int body;
 		std::vector<material::SurfaceModelVertex> vertices;
+		std::uint32_t skin = 0;
 	};
 	std::map<std::uint64_t, MotionCamera> m_PreviousCameras, m_PendingCameras;
 	std::map<std::pair<std::uint64_t, std::uint64_t>, MotionPose> m_PreviousPoses, m_PendingPoses;

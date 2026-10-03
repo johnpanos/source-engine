@@ -978,6 +978,7 @@ std::size_t WorldPass::State::OpaqueBatchSize(
 		     next->lights != first->lights || next->debug != first->debug ||
 		     next->waterZOffset != first->waterZOffset ||
 		     next->previousViewValid != first->previousViewValid ||
+		     next->temporalView != first->temporalView ||
 		     !std::equal( std::begin( first->motionToClip ), std::end( first->motionToClip ),
 		         next->motionToClip ) ||
 		     !std::equal( std::begin( first->previousToClip ), std::end( first->previousToClip ),
@@ -1198,12 +1199,14 @@ void WorldPass::RecordBatch(
 		s.Fail( "a claimed stage view lost its queued lighting inputs" );
 		return;
 	}
-	if ( !target.device || !target.color.IsValid() || !target.depth.IsValid() || !target.textures )
+	if ( !target.device || !target.color.IsValid() || !target.depth.IsValid() || !target.textures ||
+	     ( target.motion.IsValid() && !target.motionDepth.IsValid() ) )
 	{
 		std::string missing;
 		for ( const auto &[absent, what] :
 		    { std::pair{ !target.device, "device" }, { !target.color.IsValid(), "color" },
-		        { !target.depth.IsValid(), "depth" }, { !target.textures, "texture source" } } )
+		        { !target.depth.IsValid(), "depth" }, { !target.textures, "texture source" },
+		        { target.motion.IsValid() && !target.motionDepth.IsValid(), "temporal depth" } } )
 		{
 			if ( absent )
 				missing += missing.empty() ? what : std::string( ", " ) + what;
@@ -1211,6 +1214,8 @@ void WorldPass::RecordBatch(
 		s.Fail( "the slot's target has no " + missing + " (a render-target texture)" );
 		return;
 	}
+	if ( target.temporalViewport && view.temporalView )
+		target.temporalViewport( view.temporalView, view.viewport );
 	preparation.Select( "prepare world resources" );
 	if ( s.device != target.device )
 	{
@@ -3110,6 +3115,7 @@ void WorldPass::RecordBatch(
 	if ( recordingTemporal )
 	{
 		colors.push_back( { target.motion, LoadOp::kLoad, StoreOp::kStore, {}, {} } );
+		colors.push_back( { target.motionDepth, LoadOp::kLoad, StoreOp::kStore, {}, {} } );
 		rendering.colors = colors;
 	}
 	encoder.BeginRendering( rendering );

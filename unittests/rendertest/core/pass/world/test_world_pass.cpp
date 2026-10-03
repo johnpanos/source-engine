@@ -213,11 +213,12 @@ void OpaqueBatching( testing::Checks &checks )
 	WorldPass pass;
 	pass.SetWorld( world );
 	WorldView wall = View( { 0 }, 1 ), prop = View( {}, 1 );
+	wall.temporalView = prop.temporalView = 7;
 	prop.staticInstances = { 0 };
 	const auto wallTag = pass.QueueView( wall ), propTag = pass.QueueView( prop );
 	const std::uint32_t pair[] = { wallTag, propTag };
 	checks.That( pass.OpaqueBatchSize( pair, 1 ) == 2, "W21.world-model-prefix" );
-	for ( int boundary = 0; boundary != 11; ++boundary )
+	for ( int boundary = 0; boundary != 12; ++boundary )
 	{
 		WorldView changed = prop;
 		switch ( boundary )
@@ -254,6 +255,9 @@ void OpaqueBatching( testing::Checks &checks )
 			break;
 		case 10:
 			changed.previousToClip[0] = 2;
+			break;
+		case 11:
+			changed.temporalView = 8;
 			break;
 		}
 		const std::uint32_t tags[] = { wallTag, pass.QueueView( changed ) };
@@ -298,25 +302,56 @@ void OpaqueBatching( testing::Checks &checks )
 	desc.format = Format::kD32Float;
 	desc.usages = { ResourceUsage::kDepthWrite };
 	const auto depth = device.CreateTexture( desc ).Value();
+	desc.format = Format::kRG16Float;
+	desc.usages = { ResourceUsage::kColorAttachment, ResourceUsage::kSampled };
+	const auto motion = device.CreateTexture( desc ).Value();
+	desc.format = Format::kR32Float;
+	const auto motionDepth = device.CreateTexture( desc ).Value();
 	FakeTextures textures( device );
 	WorldTarget target;
 	target.device = &device;
 	target.color = color;
 	target.depth = depth;
+	target.motion = motion;
+	target.motionDepth = motionDepth;
 	target.colorFormat = Format::kRGBA8Srgb;
 	target.depthFormat = Format::kD32Float;
 	target.width = target.height = 64;
 	target.textures = &textures;
 	target.frame = target.streamEpoch = 1;
 	target.depthPrepass = true;
+	target.overrideDepthRange = true;
+	target.maxDepth = 0.1f;
+	unsigned capturedViewports = 0;
+	target.temporalViewport = [&]( std::uint64_t view, Viewport viewport )
+	{
+		++capturedViewports;
+		checks.That( view == 7 && viewport.width == 64 && viewport.height == 64 &&
+		                 viewport.minDepth == 0 && viewport.maxDepth == 0.1f,
+		    "W21.native-temporal-viewport" );
+	};
+	WorldPass missingTemporalDepth;
+	missingTemporalDepth.SetWorld( world );
+	WorldTarget missing = target;
+	missing.motionDepth = {};
+	const auto missingTag = missingTemporalDepth.QueueView( wall );
+	checks.That(
+	    RecordSlot( device, missingTemporalDepth, missingTag, missing ) &&
+	        missingTemporalDepth.Failures() == 1 &&
+	        missingTemporalDepth.Stats().lastFailure.find( "temporal depth" ) != std::string::npos,
+	    "W21.missing-temporal-depth-refused" );
 	auto encoder = device.BeginEncoder( QueueKind::kGraphics ).Value();
 	encoder.TransitionTexture( color, ResourceUsage::kUndefined, ResourceUsage::kColorAttachment );
 	encoder.TransitionTexture( depth, ResourceUsage::kUndefined, ResourceUsage::kDepthWrite );
+	encoder.TransitionTexture( motion, ResourceUsage::kUndefined, ResourceUsage::kColorAttachment );
+	encoder.TransitionTexture(
+	    motionDepth, ResourceUsage::kUndefined, ResourceUsage::kColorAttachment );
 	pass.RecordBatch( pair, encoder, target );
 	const auto submission = device.Submit( QueueKind::kGraphics, { &encoder, 1 }, {} );
 	checks.That( submission && pass.Failures() == 0 && pass.Stats().viewsDrawn == 2 &&
 	                 pass.Stats().staticDrawsDrawn == 1,
 	    "W21.batch-records-all-tickets" );
+	checks.That( capturedViewports == 1, "W21.batch-viewport-observed" );
 	if ( submission )
 	{
 		target.submitted = submission.Value();

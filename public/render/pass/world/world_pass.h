@@ -225,6 +225,9 @@ struct WorldTarget
 	bool overrideDepthRange = false;
 	float minDepth = 0.0f;
 	float maxDepth = 1.0f;
+	// Optional capture observer, called synchronously on the render sequence
+	// with the producer's semantic view and the viewport actually used.
+	std::function<void( std::uint64_t, device::Viewport )> temporalViewport;
 	// Replaces the queued view's lights when set: a stage view's clustered
 	// lights, made when its slot records rather than when it was queued.
 	std::shared_ptr<const StageViewLights> lights;
@@ -237,7 +240,8 @@ struct WorldTarget
 	// The color target (home kColorAttachment): its sRGB view, or, when it has
 	// none, its unorm view with the shader encoding sRGB (encodeOutput).
 	device::TextureId color;
-	device::TextureId motion; // optional RG16F MRT, home kColorAttachment
+	device::TextureId motion;      // optional RG16F MRT, home kColorAttachment
+	device::TextureId motionDepth; // paired R32F depth of the surface writing motion
 	device::Format colorFormat = device::Format::kUnknown;
 	bool colorCopySource = false; // the imported target supports kCopySource
 	IWorldSceneColorCapture *sceneColorCapture = nullptr;
@@ -376,6 +380,7 @@ struct WorldView
 	float motionToClip[16] = {};         // unjittered camera transform
 	float previousToClip[16] = {};
 	bool previousViewValid = false;
+	std::uint64_t temporalView = 0; // producer identity, never inferred from matrices
 	device::Viewport viewport;
 	// The host frame that queued the view (views of one frame share it; 0
 	// when unknown). A view whose slot never records is skipped, not failed,

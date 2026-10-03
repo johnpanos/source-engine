@@ -21,7 +21,7 @@ CoreTemporal::~CoreTemporal()
 	ReleaseImages();
 }
 bool CoreTemporal::Record( CommandEncoder &encoder, const legacy::CorePassTarget &target,
-    TextureId motion, const TemporalRequest &request )
+    TextureId motion, TextureId motionDepth, const TemporalRequest &request )
 {
 	CollectCapture();
 	const auto fail = []( const char *stage )
@@ -29,7 +29,7 @@ bool CoreTemporal::Record( CommandEncoder &encoder, const legacy::CorePassTarget
 		std::fprintf( stderr, "FSR game: %s failed\n", stage );
 		return false;
 	};
-	if ( !target.color.IsValid() || !target.depth.IsValid() || !motion.IsValid() ||
+	if ( !target.color.IsValid() || !motionDepth.IsValid() || !motion.IsValid() ||
 	     target.samples != 1 || !request.render.width || !request.render.height || request.x < 0 ||
 	     request.y < 0 || request.x + request.render.width > target.width ||
 	     request.y + request.render.height > target.height ||
@@ -84,11 +84,11 @@ bool CoreTemporal::Record( CommandEncoder &encoder, const legacy::CorePassTarget
 	}
 	m_Output->Collect( target.submitted );
 	encoder.BeginLabel( "game temporal reconstruction" );
-	TemporalImages sources{ target.color, target.depth, motion, {} };
+	TemporalImages sources{ target.color, motionDepth, motion, {} };
 	const bool decode =
 	    target.colorFormat == Format::kBGRA8Unorm || target.colorFormat == Format::kRGBA8Unorm;
 	if ( !m_Copy.Record( encoder, sources, m_Images, request.render, request.x, request.y, decode,
-	         target.submitted ) )
+	         target.submitted, ResourceUsage::kColorAttachment ) )
 	{
 		encoder.EndLabel();
 		return fail( "input copy" );
@@ -261,10 +261,45 @@ void CoreTemporal::CollectCapture()
 		{
 			const auto &object = request.objects[i];
 			file << ( i ? "," : "" ) << "{\"identity\":" << object.identity
-			     << ",\"model\":" << object.model
+			     << ",\"view\":" << object.view << ",\"model\":" << object.model
 			     << ",\"translation_error\":" << object.translationError;
 			matrix( "bounds", object.bounds );
 			matrix( "previous_offset", object.previousOffset );
+			matrix( "current_to_clip", object.currentToClip );
+			matrix( "previous_to_clip", object.previousToClip );
+			matrix( "viewport", object.viewport );
+			file << ",\"recorded_viewport\":" << ( object.recordedViewport ? "true" : "false" );
+			file << ",\"triangles\":[";
+			for ( std::size_t triangle = 0; triangle < object.triangles.size(); ++triangle )
+			{
+				file << ( triangle ? "," : "" ) << '[';
+				const auto &vertices = object.triangles[triangle];
+				for ( std::size_t v = 0; v < vertices.size(); ++v )
+					file << ( v ? "," : "" ) << vertices[v];
+				file << ']';
+			}
+			file << ']';
+			file << ",\"triangle_surfaces\":[";
+			for ( std::size_t triangle = 0; triangle < object.triangleSurfaces.size(); ++triangle )
+				file << ( triangle ? "," : "" ) << object.triangleSurfaces[triangle];
+			file << "],\"surface_materials\":[";
+			for ( std::size_t surface = 0; surface < object.surfaceMaterials.size(); ++surface )
+			{
+				file << ( surface ? "," : "" ) << '"';
+				for ( unsigned char c : object.surfaceMaterials[surface] )
+				{
+					if ( c < 32 )
+						file << "\\u00" << "0123456789abcdef"[c >> 4] << "0123456789abcdef"[c & 15];
+					else
+					{
+						if ( c == '"' || c == '\\' )
+							file << '\\';
+						file << char( c );
+					}
+				}
+				file << '"';
+			}
+			file << ']';
 			file << '}';
 		}
 		file << ']';
