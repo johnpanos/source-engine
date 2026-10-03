@@ -1059,6 +1059,17 @@ Keep the table concise and link details below or from the domain progress file.
     profile before then.
   - See the [record](RFC/0016-progress.md#vulkan-11-host-devices-the-galaxy-tab-s8-ultra-2026-09-29).
 
+- RFC 0010 V0 VGUI ABI guard (proposed row VG-A, unranked): `partial`
+  (2026-10-03, user direction: guard VGUI's callers before modernizing
+  beneath them). `legacy.vgui-abi` records the vtables of the 17 VGUI
+  interfaces that cross a module boundary and passes on g++ and clang++;
+  its sensitivity suite catches a seeded reorder and an appended virtual in
+  each one. The machinery is shared with `legacy.render-abi`
+  (`tools/quality/abi_table.py`). A C++11 build break in
+  `tier1/KeyValues.h` was fixed on the way. The upload and draw counters and
+  the rest of V0 are open; no row changes state
+  ([record](RFC/0010-progress.md#v0-vgui-abi-guard-legacyvgui-abi-2026-10-03)).
+
 - R86/R88 memory follow-up (2026-10-02, user request): [audit and direct
   texture uploads](RFC/0016-progress.md#k1k4-render-core-memory-and-cache-audit-2026-10-02)
   remove the intermediate GPU buffer copy and retain uploads after allocation

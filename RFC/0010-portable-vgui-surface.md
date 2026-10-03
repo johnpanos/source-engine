@@ -1,7 +1,10 @@
 # RFC 0010: Portable VGUI Surface, Text, and Input
 
-- Status: Proposed (2026-09-23); no implementation gate complete. V1's UI
-  scale owner is installed, but its exit gate is not met
+- Status: Proposed (2026-09-23); no implementation gate complete. V0's ABI
+  guard `legacy.vgui-abi` is installed
+  ([progress](0010-progress.md#v0-vgui-abi-guard-legacyvgui-abi-2026-10-03));
+  the rest of V0 is open. V1's UI scale owner is installed, but its exit gate
+  is not met
   ([2026-09-25 update](#update-2026-09-25)). Amended 2026-10-03 with the
   user's [performance, maintenance and foundation goals](#goals-and-direction-user-direction-2026-10-03)
   and the [2026-10-03 observations](#update-2026-10-03)
@@ -584,8 +587,10 @@ Preserved without a versioned decision:
   `OnThink` relative to engine rendering;
 - the Windows (GDI) font path and Win32 input translation on the Windows profile.
 
-These are enforced mechanically, not by review alone. A `vgui-abi-v1`
-fixture is recorded in the same way as `legacy.render-abi`: the compiler's
+These are enforced mechanically, not by review alone. The `vgui-abi-v1`
+fixture (`legacy.vgui-abi`, installed 2026-10-03;
+[record](0010-progress.md#v0-vgui-abi-guard-legacyvgui-abi-2026-10-03)) is
+recorded in the same way as `legacy.render-abi`: the compiler's
 vtable layout for each interface above, its version string, and a
 sensitivity suite in which seeded slot reorders and renamed versions fail.
 The VGUI public headers are added to `legacyAbi.paths` (CAP010), so strict

@@ -15441,6 +15441,8 @@
       ],
       "sources": [
         "tools/render/render_abi.py",
+        "tools/quality/abi_table.py",
+        "unittests/abitable/abi_table_check.h",
         "unittests/renderabitest/render_abi_conformance.cpp",
         "quality/fixtures/render-abi/render_abi_v1.h"
       ],
@@ -15468,7 +15470,105 @@
       ],
       "sources": [
         "tools/render/render_abi.py",
+        "tools/quality/abi_table.py",
         "quality/fixtures/render-abi/render_abi_v1.h"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "legacy.vgui-abi",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0010",
+      "migration": "VG-A",
+      "contract": "quality/fixtures/vgui-abi/vgui_abi_v1.h",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "description": "RFC 0010 V0 'Compatibility' (VGUI ABI guard): the vtable slots of the frozen VGUI interfaces that cross a module boundary, ISurface (VGUI_Surface030), IMatSystemSurface (MatSystemSurface008), IPanel (VGUI_Panel009), IClientPanel, IVGui (VGUI_ivgui008), ISchemeManager (VGUI_Scheme010), IScheme, IBorder, IImage, IInput (VGUI_Input005), IInputInternal (VGUI_InputInternal001), ISystem (VGUI_System010), ILocalize (VGUI_Localize005), IHTML, IHTMLEvents, IVguiMatInfo and IVguiMatInfoVar, match the recorded table vgui-abi-v1 (quality/fixtures/vgui-abi/vgui_abi_v1.h, recorded by tools/vgui/vgui_abi.py from clang's vtable layout dump). Compiled as exact C++11 in the legacy-cxx11 dialect, as a prebuilt consumer would be; the shared checker (unittests/abitable/abi_table_check.h, also used by legacy.render-abi) takes the compiler's own pointer-to-member-function value of every recorded method through its full recorded signature, probe classes measure each vtable's slot count, and recorded methods plus destructor pairs must partition every vtable exactly; interface version strings are checked. Legacy tier0/tier1 headers are system headers. Sensitivity: legacy.vgui-abi.sensitivity.",
+      "result_protocol": "checks-v1",
+      "extra_flags": [
+        "-DLINUX",
+        "-D_LINUX",
+        "-DPOSIX",
+        "-D_POSIX",
+        "-DPLATFORM_POSIX",
+        "-DGNUC",
+        "-DNO_MALLOC_OVERRIDE",
+        "-DPLATFORM_64BITS",
+        "-isystem",
+        "public",
+        "-isystem",
+        "public/tier0",
+        "-isystem",
+        "public/tier1"
+      ],
+      "units": [
+        {
+          "id": "frozen-consumer",
+          "dialect": "legacy-cxx11",
+          "sources": [
+            "unittests/vguiabitest/vgui_abi_conformance.cpp"
+          ]
+        }
+      ],
+      "min_checks": 832,
+      "expect": "pass"
+    },
+    {
+      "id": "legacy.vgui-abi.sensitivity",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0010",
+      "migration": "VG-A",
+      "contract": "quality/fixtures/vgui-abi/vgui_abi_v1.h",
+      "kind": "sensitivity",
+      "profile": "linux-host-corpus",
+      "description": "RFC 0010 V0 seeded ABI changes for legacy.vgui-abi: for each of the seventeen frozen VGUI interfaces, a slot reorder and an appended virtual (a method the table does not list), through the shared tools/quality/abi_table.py sensitivity run that legacy.render-abi.sensitivity also uses. It copies the headers to a private include root searched first, seeds the first adjacent swap of plain virtual declarations that clang's vtable layout dump confirms reorders that interface only (ABI-neutral swaps of overriders are skipped and counted), rebuilds legacy.vgui-abi against the copy (its manifest flags, through the runner's build function; compiler $CXX, default g++) and requires the run to fail naming that interface and no other; the appended virtual follows the interface's last plain virtual declaration and is likewise confirmed. An unmutated copy must pass (control).",
+      "command": [
+        "{python}",
+        "tools/vgui/vgui_abi.py",
+        "sensitivity",
+        "--out",
+        "{out}"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 103,
+      "timeout_seconds": 900,
+      "requires": [
+        "executable:g++",
+        "executable:clang++"
+      ],
+      "sources": [
+        "tools/vgui/vgui_abi.py",
+        "tools/quality/abi_table.py",
+        "unittests/abitable/abi_table_check.h",
+        "unittests/vguiabitest/vgui_abi_conformance.cpp",
+        "quality/fixtures/vgui-abi/vgui_abi_v1.h"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "legacy.vgui-abi.table",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0010",
+      "migration": "VG-A",
+      "contract": "quality/fixtures/vgui-abi/vgui_abi_v1.h",
+      "kind": "positive",
+      "profile": "linux-host-corpus",
+      "description": "RFC 0010 V0: the recorded VGUI ABI table vgui-abi-v1 equals the table rederived from the current headers by clang's vtable layout dump (tools/vgui/vgui_abi.py check), one check per interface block and one for the preamble; a second oracle beside legacy.vgui-abi, independent of the compiler that builds the suite. The table is never regenerated to pass: `record --update` is a reviewed ABI decision.",
+      "command": [
+        "{python}",
+        "tools/vgui/vgui_abi.py",
+        "check"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 18,
+      "timeout_seconds": 300,
+      "requires": [
+        "executable:clang++"
+      ],
+      "sources": [
+        "tools/vgui/vgui_abi.py",
+        "tools/quality/abi_table.py",
+        "quality/fixtures/vgui-abi/vgui_abi_v1.h"
       ],
       "expect": "pass"
     },

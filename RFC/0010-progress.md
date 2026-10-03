@@ -1,0 +1,126 @@
+# RFC 0010 progress
+
+Progress records for [RFC 0010](0010-portable-vgui-surface.md). The RFC owns
+the semantics and acceptance rules; this file records what is installed, what
+passed and what remains. The proposed rows (VG-A to VG-G) are unranked, and
+AGENTS.md owns ranks and states.
+
+## V0: VGUI ABI guard (`legacy.vgui-abi`), 2026-10-03
+
+User direction (2026-10-03): guard VGUI's callers mechanically before
+modernizing beneath them, then add the upload and draw counters. This slice
+is the guard. It is the first part of V0 and does not close V0.
+
+### Scope
+
+The guard covers the 17 frozen VGUI interfaces that cross a module boundary:
+
+- **Versioned interfaces** that game and tool modules obtain from vgui2 and
+  vguimatsurface: `ISurface` (`VGUI_Surface030`), `IMatSystemSurface`
+  (`MatSystemSurface008`), `IPanel` (`VGUI_Panel009`), `IVGui`
+  (`VGUI_ivgui008`), `ISchemeManager` (`VGUI_Scheme010`), `IInput`
+  (`VGUI_Input005`), `IInputInternal` (`VGUI_InputInternal001`), `ISystem`
+  (`VGUI_System010`) and `ILocalize` (`VGUI_Localize005`).
+- **Interfaces handed across the boundary** for the other side to call:
+  `IClientPanel` (implemented by every `vgui_controls` panel and called by
+  vgui2), `IScheme`, `IBorder`, `IImage`, `IHTML`, `IHTMLEvents`,
+  `IVguiMatInfo` and `IVguiMatInfoVar`.
+
+It does not cover `VGuiWorldPanelRecorder001`, a first-party interface added
+for RFC 0016's in-world panels, or `vgui_controls`. `vgui_controls` is a
+static library compiled into each consumer, so its classes are a source API,
+not a cross-module ABI.
+
+### What is installed
+
+- **`quality/fixtures/vgui-abi/vgui_abi_v1.h`.** The recorded table
+  `vgui-abi-v1`: 790 vtable slots (770 methods and 20 destructor entries) and 9 version strings, recorded from
+  clang's vtable layout dump. It is never regenerated to make a check pass;
+  `record --update` is a reviewed ABI decision.
+- **`tools/vgui/vgui_abi.py`.** `record`, `check` and `sensitivity` for the
+  table. It holds only the table's specification.
+- **`tools/quality/abi_table.py`.** The shared table machinery, extracted from
+  `tools/render/render_abi.py`, which now holds only the render table's
+  specification. The render table is reproduced byte-identically, and its
+  suites and unit tests pass unchanged. The extraction added three things:
+  - namespaced interfaces;
+  - global declaring classes written `::C`, so a suite resolving the table
+    inside `namespace vgui` cannot bind to a namesake (`vgui::ILocalize`
+    derives from `::ILocalize`);
+  - an inheritance-aware sensitivity rule: a seed in a base may change
+    exactly that base and the table interfaces derived from it
+    (`ISurface` → `IMatSystemSurface`, `IInput` → `IInputInternal`).
+- **`unittests/abitable/abi_table_check.h`.** The C++11 checker, shared by
+  `legacy.render-abi` and `legacy.vgui-abi`.
+- **`unittests/vguiabitest/vgui_abi_conformance.cpp`.** The suite, compiled
+  in the exact legacy-cxx11 dialect as a prebuilt consumer would be.
+- **`architecture/modules.json`.** The 16 interface headers and the table are
+  added to `legacyAbi.paths`, so CAP010 keeps strict types out of them.
+- **`tools/quality/tests/test_abi_table.py`.** Unit tests for the shared
+  machinery and the VGUI specification. They run in `quality.selftest`.
+
+### A defect found and fixed
+
+An exact C++11 consumer could not compile `tier1/ilocalize.h`, and therefore
+could not use `VGUI_Localize005`. `KeyValues::AutoDeleteInline` returns the
+non-copyable `KeyValues::AutoDelete` by value. That is legal only under
+C++17's guaranteed copy elision.
+
+`AutoDelete` now has a public move constructor that transfers ownership, for
+C++11 and later. It is inline and header-only, so no layout or vtable
+changes. With the original header, g++ `-std=c++11` reports the private-copy
+error. With the fix, the in-tree call pattern
+(`Command( KeyValues::AutoDeleteInline( new KeyValues( "Start" ) ) )`)
+compiles with g++ and clang++ in C++11, C++17 and C++20. g++ in plain C++20
+still rejects `tier0/threadtools.h:1173`, a template-id used as a
+constructor name. That happens with the original header too and is not
+caused by this change.
+
+### Evidence
+
+Linux x86_64, g++ 13.3.0 and clang++ 18.1.3.
+
+| Suite | Result |
+| --- | --- |
+| `legacy.vgui-abi` | 832 checks pass on g++ and on clang++ |
+| `legacy.vgui-abi.table` | 18 of 18 (17 interface blocks and the preamble) |
+| `legacy.vgui-abi.sensitivity` | 103 of 103: the control passes; for each of the 17 interfaces a slot reorder and an appended virtual are confirmed as real layout changes by clang, detected by the suite, and attributed to that interface (with its derived interfaces) and no other |
+| `legacy.render-abi`, `.table`, `.sensitivity` | 574, 9 and 49 checks, unchanged after the extraction |
+| `test_abi_table.py`, `test_render_abi.py` | 9 and 11 tests pass |
+| archlint `check --all`, `baseline --verify` | pass |
+| stylelint `--changed` (clang-format 22.1.8) | 0 failures |
+
+`legacy.vgui-abi` is in the default `linux-headless-core` plan, so the
+baseline's `conformance.gcc` and `conformance.clang` checks gate it. The
+`.table` and `.sensitivity` rows run on `linux-host-corpus`. They join a
+baseline audit group when VG-A has a roadmap ID: baseline rows must be
+`R<number>`.
+
+Failures that predate this change, run against the same environment:
+
+- `archlint inventory --verify` rejects `box3d/extern/` and
+  `box3d/samples/`, because the `box3d` submodule is not checked out here.
+- `quality.selftest` fails with 32 import errors (`numpy` is missing) and 9
+  failures. A clean checkout of `HEAD` gives the same errors and 10 failures;
+  the extra one is `test_waf_output_lock`, which passes on this branch's run.
+
+### Reproduction
+
+```sh
+python3 tools/quality/conformance.py check --cxx g++ \
+    --suite legacy.vgui-abi --suite legacy.vgui-abi.table \
+    --suite legacy.vgui-abi.sensitivity \
+    --build-dir build/quality/vgui-abi --out vgui-abi.json
+python3 tools/vgui/vgui_abi.py check
+python3 -m unittest tools/quality/tests/test_abi_table.py
+```
+
+### Not done
+
+- The rest of V0: the upload and draw counters, the `ISurface` caller
+  inventory, the direct-render panel inventory, the blend modes and
+  primitives in use, and the fixed-screen corpus with its captures.
+- No Windows or MSVC layout. The table is the Itanium (Linux x86_64) ABI, as
+  `legacy.render-abi` is. The suite's member-pointer decoder also handles
+  the ARM variant of the Itanium ABI, but no ARM run is recorded.
+- No hosted CI run.
