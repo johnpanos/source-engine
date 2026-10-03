@@ -1,0 +1,38 @@
+#version 450
+// GPU microbenchmark of the complete receiver over immutable atlas/case inputs.
+// The control is the receiver captured before this optimization (2026-10-02).
+#ifdef REFERENCE_SHADOW_RECEIVER
+#include "shadow_receiver_control.glsl"
+#else
+#include "../shaders/common/shadow_sample.glsl"
+#endif
+layout( local_size_x = 64 ) in;
+layout( set = 3, binding = 0 ) uniform texture2D atlas;
+layout( set = 3, binding = 1 ) uniform sampler pointSampler;
+layout( set = 3, binding = 2 ) uniform sampler comparisonSampler;
+struct Case
+{
+	vec4 worldSize;
+	vec4 normalRotation;
+	uvec4 mode;
+};
+layout( set = 3, binding = 3, std430, row_major ) readonly buffer Cases
+{
+	uvec4 counts;
+	ShadowTile tiles[3];
+	Case points[];
+};
+layout( set = 3, binding = 4, std430 ) writeonly buffer Results
+{
+	float visibility[];
+};
+void main()
+{
+	const uint i = gl_GlobalInvocationID.x;
+	if ( i >= counts.x )
+		return;
+	const Case p = points[i];
+	visibility[i] = ShadowVisibilitySoft( atlas, pointSampler, comparisonSampler,
+	    tiles[p.mode.x], p.worldSize.xyz, p.normalRotation.xyz, p.worldSize.w,
+	    p.normalRotation.w );
+}

@@ -201,7 +201,7 @@ struct SurfaceLightGpu
 	float cone[4] = {};
 	// x: the cone ramp's exponent (light_set::SpotFactor); y: 1 when its
 	// diffuse light is in the surface's baked light (the specular lobe only);
-	// z: its shadow tiles from cone.w (1 a spot's, 6 a point light's cube)
+	// z: RuntimeShadowLayout (single tile or world-aligned cube from cone.w)
 	float spot[4] = {};
 	// xyz: vrad's constant, linear and quadratic terms (cone.y 2: an
 	// Attenuated world light, light_set::AttenuatedFalloff)
@@ -210,7 +210,7 @@ struct SurfaceLightGpu
 static_assert( sizeof( SurfaceLightGpu ) == 96 );
 
 SurfaceLightGpu PackSurfaceLight( const light_set::RuntimeLight &light, int shadowTile = -1,
-    int shadowTiles = 1, bool diffuseInBake = false );
+    RuntimeShadowLayout shadowLayout = RuntimeShadowLayout::kSingle, bool diffuseInBake = false );
 
 // A view's shadows as the view group binds them: the atlas the view's shadow
 // passes drew (render.pass.shadows; kSampled wherever the group is read, and

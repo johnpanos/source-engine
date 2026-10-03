@@ -2071,7 +2071,10 @@ inline void ComputeClauses( Suite &s, IRenderDevice2 &device )
 // A 4x4 texture of `format` holding `texels`, drawn full screen with a point
 // sampler into an RGBA8 target: the pixels must equal `expected`.
 inline bool SampleTexture( Suite &s, IRenderDevice2 &device, Format format,
-    const std::vector<std::byte> &texels, const std::vector<std::byte> &expected, const char *what )
+    const std::vector<std::byte> &texels, const std::vector<std::byte> &expected, const char *what,
+    std::optional<SamplerDesc> sampling = {},
+    std::span<const std::uint32_t> fragment = shaders::kSampledFragment,
+    const char *clause = "sampled" )
 {
 	constexpr std::uint32_t kSize = 4;
 	static const BindingDesc material[] = {
@@ -2085,8 +2088,8 @@ inline bool SampleTexture( Suite &s, IRenderDevice2 &device, Format format,
 	    { 2, 0, BindingKind::kSampledTexture }, { 2, 1, BindingKind::kSampler } };
 	const ShaderArtifactView stages[] = { { ShaderStage::kVertex, device.Facts().artifactFormat,
 	                                          s.Code( shaders::kFullScreenVertex ), "main", {} },
-	    { ShaderStage::kFragment, device.Facts().artifactFormat,
-	        s.Code( shaders::kSampledFragment ), "main", used } };
+	    { ShaderStage::kFragment, device.Facts().artifactFormat, s.Code( fragment ), "main",
+	        used } };
 	const Format colors[] = { Format::kRGBA8Unorm };
 	PipelineDesc desc;
 	desc.stages = stages;
@@ -2107,8 +2110,8 @@ inline bool SampleTexture( Suite &s, IRenderDevice2 &device, Format format,
 	SamplerDesc point;
 	point.minFilter = point.magFilter = point.mipFilter = Filter::kNearest;
 	point.address = AddressMode::kClampToEdge;
-	auto sampler = device.CreateSampler( point );
-	Raster( s, pipeline && texture && target && sampler, "sampled",
+	auto sampler = device.CreateSampler( sampling.value_or( point ) );
+	Raster( s, pipeline && texture && target && sampler, clause,
 	    "a sampling pipeline, texture and sampler are created" );
 	if ( !pipeline || !texture || !target || !sampler )
 		return false;
@@ -2145,7 +2148,71 @@ inline bool SampleTexture( Suite &s, IRenderDevice2 &device, Format format,
 	e.TransitionTexture(
 	    target.Value(), ResourceUsage::kColorAttachment, ResourceUsage::kCopySource );
 	const std::vector<std::byte> pixels = ReadTexture( s, device, e, target.Value(), kSize );
-	return Raster( s, pixels == expected, "sampled", what );
+	return Raster( s, pixels == expected, clause, what );
+}
+
+inline void ComparisonSampling( Suite &s )
+{
+	auto owned = s.Create();
+	if ( !owned )
+		return;
+	IRenderDevice2 &device = *owned;
+	for ( CompareOp op : { CompareOp::kNever, CompareOp::kLess, CompareOp::kLessEqual,
+	          CompareOp::kEqual, CompareOp::kGreaterEqual, CompareOp::kGreater, CompareOp::kAlways,
+	          CompareOp::kNotEqual } )
+	{
+		SamplerDesc desc;
+		desc.comparison = op;
+		auto sampler = device.CreateSampler( desc );
+		s.That( sampler.HasValue(), "D24", "a comparison sampler is created" );
+		if ( sampler )
+			(void)device.Release( sampler.Value(), {} );
+	}
+	SamplerDesc invalid;
+	invalid.comparison = static_cast<CompareOp>( 255 );
+	auto refused = device.CreateSampler( invalid );
+	s.That( !refused && refused.Error().status == DeviceStatus::kInvalidDescription, "D24",
+	    "an invalid comparison operation fails without a resource" );
+	if ( !s.m_Driver.rasterizes )
+	{
+		std::printf(
+		    "SKIP %s.D24 pixels: the adapter executes no shaders\n", s.m_Driver.name.c_str() );
+		return;
+	}
+	// D24: each result is an analytical depth comparison, then a half-texel
+	// bilinear average. Testing less and less-equal separately catches a
+	// direction/equality error; a coordinate outside the image tests clamping.
+	std::vector<float> depth( 16 );
+	for ( std::size_t i = 0; i < depth.size(); ++i )
+		depth[i] = float( i % 4 + 1 ) * 0.25f;
+	const auto bytes = std::as_bytes( std::span( depth ) );
+	for ( CompareOp compare : { CompareOp::kLessEqual, CompareOp::kLess, CompareOp::kGreater } )
+	{
+		SamplerDesc sampling;
+		sampling.mipFilter = Filter::kNearest;
+		sampling.address = AddressMode::kClampToEdge;
+		sampling.comparison = compare;
+		std::vector<std::byte> expected( 64 );
+		auto lit = [&]( float stored )
+		{
+			return compare == CompareOp::kLessEqual ? 0.5f <= stored
+			       : compare == CompareOp::kLess    ? 0.5f < stored
+			                                        : 0.5f > stored;
+		};
+		for ( std::size_t i = 0; i < depth.size(); ++i )
+		{
+			const float a = float( lit( depth[i] ) );
+			const float b = float( lit( depth[std::min( i + 1, i / 4 * 4 + 3 )] ) );
+			expected[i * 4] = std::byte( std::lround( ( a + b ) * 127.5f ) );
+			expected[i * 4 + 1] = std::byte( lit( depth[i] ) ? 255 : 0 );
+			expected[i * 4 + 2] = std::byte( lit( depth[0] ) ? 255 : 0 );
+			expected[i * 4 + 3] = std::byte( 255 );
+		}
+		(void)SampleTexture( s, device, Format::kD32Float, { bytes.begin(), bytes.end() }, expected,
+		    "D24 comparison before filtering, equality and edge clamp", sampling,
+		    shaders::kComparisonFragment, "D24" );
+	}
+	(void)device.WaitIdle();
 }
 
 // A texture uploaded through a buffer, sampled with a nearest sampler at
@@ -2335,6 +2402,7 @@ inline void RunDeviceConformance( testing::Checks &checks, const DeviceDriver &d
 	detail::BlockCompressedFormats( suite );
 	detail::RegionCopies( suite );
 	detail::Timestamps( suite );
+	detail::ComparisonSampling( suite );
 	detail::CapabilityHonesty( suite );
 }
 

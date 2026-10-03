@@ -6455,3 +6455,221 @@ is unavailable; its gate stays unverified. The next performance slice belongs
 to `render.pass.shadows` and its shared receiver: eliminate certified redundant
 visibility work while preserving the complete filter. The 120 FPS gate remains
 failed, not deferred or relaxed.
+
+### K11/K12: Forward+ source comparison and rejected receiver trials (2026-10-02)
+
+The user requested cloning other Forward+ renderers to identify design differences.
+Three shallow, filtered source checkouts are retained under
+`/tmp/source-forward-plus-references-20261002/`. Exact revisions and checkout
+paths are recorded in `quality-results/forward-plus-comparison-20261002/comparison.json`:
+
+- Godot: `e7cfa294a0b81bed7986be04a848cc1832a3f083`.
+- Filament: `144ea3160a545aa2a56e4554822f1f426910f045`.
+- Wicked Engine: `df44c3db4c4927492bc9c791eac715d98d7ed091`.
+
+This is source inspection; these engines were not built or benchmarked on the
+Intro4 scene. Their default shadow algorithms differ from the complete High
+image required here. No reference-engine timing advantage is claimed.
+
+| Observed difference | Reference source | Current core source and implication |
+| --- | --- | --- |
+| Hardware comparison PCF | [Filament shadow sampling](https://github.com/google/filament/blob/144ea3160a545aa2a56e4554822f1f426910f045/shaders/src/surface_shadowing.fs), [Godot lighting](https://github.com/godotengine/godot/blob/e7cfa294a0b81bed7986be04a848cc1832a3f083/servers/rendering/renderer_rd/shaders/scene_forward_lights_inc.glsl), [Wicked shadow sampling](https://github.com/turanszkij/WickedEngine/blob/df44c3db4c4927492bc9c791eac715d98d7ed091/WickedEngine/shaders/shadowHF.hlsli) | `SamplerDesc` has no comparison mode. `ShadowBilinear` gathers depths, performs four comparisons and interpolates manually. The device contract prevents expressing the hardware operation. |
+| Direct point-shadow face selection | Filament's `getPointLightFace`; Wicked's `cubemap_to_uv` | `ShadowFacesVisibility` scans each face's matrix. The planner's world-aligned point cube has a known axis order, so this generic search is redundant for that layout. Oriented area-light faces need their own preserved behavior. |
+| Coherent light traversal | [Godot clustered surface](https://github.com/godotengine/godot/blob/e7cfa294a0b81bed7986be04a848cc1832a3f083/servers/rendering/renderer_rd/shaders/forward_clustered/scene_forward_clustered.glsl) merges masks with subgroup operations | `surface_program.glsl` walks each fragment's variable index list. A coherent implementation needs equivalent membership and accumulation order, plus a declared subgroup capability; a speedup is still unmeasured. |
+| Clustered reflection probes | The same Godot clustered surface iterates reflection masks | `reflection_probes.glsl` scans all ranks to select its two samples. Conservative candidate lists could reduce selection work while preserving global probes, nearest selection and rank-dependent blending. |
+| Prefiltered blocker estimation | Filament's current `ShadowSample_EVSSM` reads moment LODs for blocker estimation and penumbra filtering | Our receiver performs sixteen blocker fetches and sixteen bilinear compares. Filament's moment approximation is a different output model. Conservative min/max bounds could instead certify constant visibility and retain our complete filter for uncertain footprints. |
+
+Existing useful mechanisms remain: GPU BVH light assignment, sphere/cone froxel
+intersection, cached static shadow tiles with moving-caster composition,
+final-target world depth prepass, and material lighting-term specialization.
+The comparison does not justify replacing those with another engine's machinery.
+Godot gates PCSS by soft-shadow settings and emitter size; Wicked's inspected
+source disables its PCSS blocker-search macro; Filament's default is PCF.
+Removing our accepted softness to match their defaults would not satisfy rule 7.
+
+The retained map audit reads the published BSP2 entity payload. Its 37 point/spot
+lights have no explicit `_distance` and no unsupported fifty-percent curves.
+The current producer derives finite bounds for 22 inverse-square lights, roughly
+689–7,670 Source units; 15 remain unbounded (14 spots, one point).
+`map-light-audit.json` records inputs and the map hash. These broad volumes are
+an additional culling pressure point, not permission to truncate nonzero legacy
+falloff. Actual per-pixel light/probe distributions still need measurement.
+
+Receiver loop trials are retained in
+`quality-results/intro4-shadow-loops-20261002/comparison.json`. Fully rolled and
+four-tap grouped loops preserve the lab images but do not establish a native
+improvement. On AC, baseline arrival median is 66.411 ms and grouped taps are
+72.523 ms. The repeated baseline later rises to 75.876 ms as sampled busy GPU
+clocks fall; branch selection (70.067 ms) and hoisted depth mapping (75.016 ms)
+therefore do not establish a complete-frame gain. Battery runs are separate.
+Each trial passes 18 lab checks with zero validation messages and five
+sensitivity checks, including an omitted filter tap. All trial source changes
+were removed; the restored product builds and is staged for `play_p2`.
+The High frame-floor gate remains failed. Fold7 hardware is unavailable.
+
+The next bounded slices belong to their existing owners: comparison samplers in
+`render.device`, explicit cube-layout selection and conservative visibility
+bounds in `render.pass.shadows`, and coherent candidate traversal in the light
+and probe owners. Each needs its lab oracle and complete-frame measurement
+before a performance claim. No roadmap row or budget was advanced by this study.
+
+### K11/K12: reference shadow operations implementation (2026-10-02)
+
+User scope: implement the reviewed Forward+ reference approaches to improve the
+complete render time. This session owns the bounded slice: comparison sampling
+in `render.device`, receiver operations in `render.pass.shadows`, the existing
+surface/view bindings in `render.material`, and integration through the existing
+world pass. No additional service, atlas, lighting model or product policy is
+introduced. The shadow projection tag now distinguishes a runtime world-axis
+cube from a single projection; oriented area-light groups keep their existing
+search. The sampler's optional comparison operation owns enable and direction
+together. Existing nearest raw-depth sampling remains the blocker-search input.
+
+The first complete soft-image comparison exposed an existing manual-gather
+failure: near an integer texel boundary, the texture unit rounds the gather
+footprint separately from the shader's floating-point bilinear weights. At one
+radius-32 receiver pixel this moved the result from 0.251709 to 0.272949.
+A private integer-addressed four-texel oracle removes that ambiguity; the old
+unstable gather is retained only as a seeded defect. Hardware comparison
+sampling is judged against the existing image band, without removing blocker or
+filter taps. Native device contract checks cover comparison direction, equality,
+filtering and clamping, with reversed-operation and invalid-description controls.
+
+Evidence is retained under `quality-results/forward-plus-implementation-20261002/`.
+Device contracts pass on null, OpenGL (987 checks) and Vulkan (1,038 checks),
+with 19/21 GL/Vulkan sensitivity checks; the shadow planner/pixel/world suites
+pass. The final lab receiver has 21 checks and five sensitivity checks, with
+zero validation messages. Eight complete soft receiver images match the private
+integer-addressed oracle within the unchanged band. The 2,205-direction cube
+fixture matches the original matrix search exactly; a wrong-face seed produces
+1,350 mismatches.
+
+The retained before/after receiver runs on AC show roughly 11–12 percent lower
+arrival/reverse frame medians after hardware comparison and direct cube selection.
+Those windows were actually **1920×1043**, despite startup reporting 1920×1080;
+the relative result is diagnostic evidence only. Their earlier High resolution
+receipts cannot certify the profile. The corrected borderless run (`p2`) records
+1920×1080 in every measured frame: arrival GPU median 60.574 ms, reverse 23.131 ms,
+whole-bracket GPU p99 61.598 ms and max 61.861 ms. The frame-floor gate remains
+failed, and full cohort/image acceptance and Fold7 hardware remain unverified.
+
+### K11/K12: GPU attribution and BRDF trials (2026-10-02)
+
+User scope: make profiling reusable and grepable, identify the expensive GPU work,
+compare P2:CE, and optimize the BRDF without changing its model. The existing
+stats/timer/debug owners remain authoritative. `tools/quality/render_profile.py`
+joins delayed GPU queries to their originating frame before selecting phases,
+reports frame percentiles and sequential backend segments, and preserves core
+nested scopes as inclusive per-window means. It rejects corrupt/incomplete data
+instead of reporting missing timing as zero. `--profile` on the existing frame
+harness enables the existing timers. `tools/quality/render_profile.md` owns the
+working collection/analysis commands and timing limitations.
+
+The existing bounded timer pool used 64-query private chunks for approximately
+104–108 short encoder cohorts, exhausting its storage and dropping timestamps.
+Chunks now contain 16 queries with the same global bound. The eight-encoder
+negative fixture detects the old exhaustion; 84 graph checks pass and native
+captures report zero drops. Counts are encoder cohorts, not 104 cameras.
+
+`Frozen-path: defect fix — per-frame drawable extent in native Vulkan statistics.`
+The native stats owner now records its actual swapchain extent; the High receipt
+requires every measured frame to match the profile. The borderless window fixes
+the compositor decoration loss. Startup dimensions alone no longer qualify a run.
+
+The existing lighting-term catalog gains `shadow_visibility`, proven in the lab:
+turning it off with an atlas bound is the untiled-light image bitwise. It bypasses
+receiver visibility only; producer work, light falloff and BRDF evaluation remain.
+The diagnostic GPU median falls from about 61 ms to 23.8 ms in arrival, implicating
+visibility work and its shader-resource effects as the dominant cost. With
+visibility, IBL and SSR off, full versus diffuse-only BRDF medians are 17.429
+versus 14.114 ms. This estimates about 3.3 ms for the direct specular path in this
+view; specialization changes resource use, so these differences are not additive
+per-pass timers or accepted output-preserving speedups.
+
+Two BRDF trials were removed after measurement:
+
+- A per-fragment GGX/Smith context reused roughness powers, N.V and the view
+  square root, and consumed the light loop's existing N.L. Its 5,040 analytical
+  GPU cases pass a fixed 2e-5 relative + 1e-6 absolute band against the independent
+  CPU definition; a wrong-view seed fails 2,320 cases. The lab passes 28 checks.
+  Matched full-image runs (`a5`, `a6`) have arrival GPU medians 65.222/65.827 ms
+  at sampled clocks 1,920/1,914 MHz, and reverse 25.977/25.997 ms at 1,784/1,774 MHz.
+  That does not establish a useful repeatable improvement.
+- Skipping the BRDF after the complete filter returned exactly zero light gives
+  four bitwise-identical receiver images, 25 lab checks and five sensitivity
+  checks. Full-image runs (`c0`, `c1`, between controls `a6`, `c2`) do not establish
+  a gain after clock changes; the repeated trial's reverse median is 27.107 ms
+  at 1,640 MHz versus the final control's 26.944 ms at 1,645 MHz. No truncated
+  light set, cheaper BRDF approximation or sample reduction was retained.
+
+The production BRDF math is unchanged. `brdf-analysis.json` records diagnostics,
+trial results, frame/power hashes and excluded incomplete runs; immutable private
+runtime hashes, rejected sources and lab logs are retained beside it. `a1`/`a2`
+had missing private QA setup and briefly overlapped; they measured no completed
+route and are explicitly invalid, never part of a gain claim.
+
+A separate `RADV_DEBUG=shaderstats` capture (`ds`) exposes large compiled fragment
+programs: up to 192 VGPRs, 10,472 instructions and about 56 KiB of code, with no
+spills and a compiler residency ceiling of eight subgroups/SIMD. These are static
+compiler observations, not measured dynamic occupancy or a shader-to-pass mapping.
+`tools/quality/radv_shader_stats.py` exports hashes and counts with explicit units
+and rejects malformed/absent/truncated compiler blocks. The evidence supports
+investigating full receiver/program complexity rather than assuming GGX arithmetic
+alone explains the forward cost. The public Source-PBR ancestor cloned at
+`b8c4b76882241ea8cb506e89a61a1f5448d24e71` uses separable Schlick-GGX geometry;
+that differs from the core's height-correlated Smith model and does not establish
+the installed P2:CE kernel or authorize changing the core's BRDF.
+
+### P2:CE contextual baseline with observed PBR shaders (2026-10-02)
+
+Installed P2:CE build 25033687 runs its D3D11/DXVK-native renderer against a private
+`-game` directory. Installed textures/configuration are preserved. Its exported
+VBSP retains the original texture-string names; the modern world's generated
+material names are separate. The initial capture's inspected generated VMTs did
+not prove native PBR usage. A verification run observes `LightmappedGeneric` on
+an original tile, so that capture is not labeled a full PBR comparison.
+
+The corrected private comparison maps 39 named native world materials to the
+same generated base-color/normal/MRAO texture bytes through Strata's `PBR` shader.
+`p2ce-native-material-adapter.json` records each explicit mapping and source/output
+hash. The native post-bracket material dump observes those PBR shaders, and a
+native screenshot proves 1920×1080. Four map/eye-position checks pass; 4x MSAA,
+anisotropy 16, picmip -1 and LOD 0 are queried. The installed content stays read
+only; the temporary known Sentry consent file is restored to its prior absent
+state after the run, and the private process group is drained.
+
+`tools/quality/p2ce_present.py` starts MangoHud's existing local control socket,
+collects localhost netconsole markers and analyzes per-present CSV. It records
+input hashes and GPU clock/temperature telemetry, rejects missing/failed checks
+and corrupt evidence, and keeps a fixed half-second phase-edge guard. This is
+steady-view presentation evidence, not a trimmed hard-floor result. MangoHud
+0.8.3 rc1 is extracted privately from its Fedora 44 package; no overlay is drawn.
+The corrected arrival/reverse/return presentation medians are 2.8867/2.0572/2.7738 ms.
+Native pass/GPU execution timestamps are unavailable through this collector.
+Original native model materials, indirect bake, reflection lookup, shadow filter,
+portal effects and light-update policy differ; this demonstrates feasibility and
+cannot certify equivalent-output gains or core image quality.
+
+The current native Vulkan product and lab build successfully and `play_p2` is
+restaged. The debug fixture's obsolete rim-light rejection was replaced with enabled
+cloak (an actually unmapped term); invalid debug bits now come from the complement
+of the authoritative term mask. The new visibility name has a positive parser/
+validation check. Debug views pass 90 checks, lighting controls 32, shadowed lights
+21 and shadow sensitivity five. Profiling tools have 55 profile-related, 22
+frame-floor, 10 external presentation and four driver-statistics fixture checks;
+architecture/style checks pass. Final logs and hashes are retained in
+`quality-results/forward-plus-implementation-20261002/brdf-final-validation/`.
+The High 120 FPS gate remains failed. No roadmap performance promotion, complete
+quality/cohort claim or Fold7 support claim is made.
+
+### K11/K12: shadow receiver microbenchmark slice (2026-10-02, in progress)
+
+User scope: microbenchmark and optimize the measured receiver cost. The existing
+`render.pass.shadows` receiver helper retains ownership; `render_lab` measures its
+complete operation against a private immutable pre-change control. GPU dispatch
+timestamps exclude uploads/readback, include all sixteen blocker and sixteen PCF
+taps where the algorithm requires them, and accompany output and lifetime checks.
+Perspective, orthographic and hard-filter cases cover lit, shadowed and penumbra
+regions. No filter, effect, light set or profile quality is reduced. A candidate
+must pass the lab before product integration and receive matched complete-frame
+measurements; this slice does not promote the still-failed High floor.

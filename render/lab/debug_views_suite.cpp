@@ -386,9 +386,11 @@ std::optional<std::string> Prepare( Lab &lab, std::span<const std::uint32_t> lig
 	if ( modelConstants.pbrFactors[0] != 0.0f || modelConstants.pbrFactors[3] != 0.0f ||
 	     !lab.resolver->DrawGroup( lab.modernMesh, {} ) )
 		return std::string( "the modern model reads the wrong material or draw inputs" );
-	auto rim = material::MapVariables(
-	    "VertexLitGeneric", { { "$basetexture", "lab/vl/base" }, { "$rimlight", "1" } }, {} );
-	if ( !rim || material::ClaimForMesh( rim.Value() ) || lab.resolver->ResolveMesh( rim.Value() ) )
+	// Rim lighting is mapped by VertexLitFamily; enabled cloak remains unsupported.
+	auto cloak = material::MapVariables( "VertexLitGeneric",
+	    { { "$basetexture", "lab/vl/base" }, { "$cloakpassenabled", "1" } }, {} );
+	if ( !cloak || material::ClaimForMesh( cloak.Value() ) ||
+	     lab.resolver->ResolveMesh( cloak.Value() ) )
 		return std::string( "the modern model silently accepted an unmapped term" );
 	auto pbr = material::PbrFamily::Create( lab.device, kCanvasColor, kCanvasDepth );
 	auto vertexLit = material::VertexLitFamily::Create( lab.device, kCanvasColor, kCanvasDepth );
@@ -1333,7 +1335,7 @@ void ControlChecks( Results &results )
 	results.That( status( controls ) == int( DebugControlsStatus::kInvalidBrdf ),
 	    "controls.brdf-5-rejected" );
 	controls = DebugControls();
-	controls.termsOff = 1u << 12;
+	controls.termsOff = ~shaderlib::kDebugTermAll;
 	results.That( status( controls ) == int( DebugControlsStatus::kInvalidTerms ),
 	    "controls.unknown-term-bit-rejected" );
 	controls = DebugControls();
@@ -1392,6 +1394,11 @@ void ControlChecks( Results &results )
 	results.That( ParseDebugOption( "--debug-term", "ao,ibl", parsed ) &&
 	                  parsed.termsOff == ( shaderlib::kDebugTermAo | shaderlib::kDebugTermIbl ),
 	    "options.term-list" );
+	DebugControls shadowParsed;
+	results.That( ParseDebugOption( "--debug-term", "shadow_visibility", shadowParsed ) &&
+	                  shadowParsed.termsOff == shaderlib::kDebugTermShadowVisibility &&
+	                  status( shadowParsed ) == 0,
+	    "options.shadow-visibility-term-is-valid" );
 	results.That(
 	    !ParseDebugOption( "--debug-term", "ao,sky", parsed ), "options.unknown-term-refused" );
 	results.That( !ParseDebugOption( "--debug-view", "2x", parsed ), "options.bad-number-refused" );

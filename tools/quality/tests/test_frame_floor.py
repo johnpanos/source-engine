@@ -36,6 +36,18 @@ class FrameFloorTest(unittest.TestCase):
         self.assertEqual("../route/frames.jsonl", actual)
         self.assertEqual(stats, (runtime / actual).resolve())
 
+    def test_profiling_enables_timers_without_an_arbitrary_quality_override(self):
+        args = arguments(profile=True, start_frames=60)
+        args.render_budget = frame_floor.configure_budget(self.workload, args)
+        command = frame_floor.game_command(args, {"name": "route", "map": "map"},
+                                           Path("/tmp/frames.jsonl"), Path("/tmp/runtime"))
+        self.assertIn("-vkgputimers", command)
+        self.assertIn("render_budget_high", command)
+        self.assertIn("-noborder", command)
+        args.extra_arg = ["+r_core_shadow_quality", "0"]
+        with self.assertRaises(frame_floor.FloorError):
+            frame_floor.configure_budget(self.workload, args)
+
     def test_wrapper_exit_does_not_leave_its_game_running(self):
         process = mock.Mock(pid=1234)
         process.poll.return_value = 0
@@ -155,6 +167,15 @@ class FrameFloorTest(unittest.TestCase):
     def test_cli_may_tighten_the_floor(self):
         settings = frame_floor.floor_settings(self.workload, arguments(floor_fps=144))
         self.assertEqual(settings["floor_fps"], 144)
+
+    def test_startup_size_cannot_hide_a_shrunken_drawable(self):
+        header = {"device": self.budget["conditions"]["device"]}
+        for frames in ([], [{"extent": [1920, 1043]}], [{"extent": None}]):
+            receipt = frame_floor.quality_receipt(self.quality_log(), header, self.budget, frames)
+            self.assertEqual(receipt["status"], "fail")
+            self.assertTrue(any("per-frame drawable" in failure for failure in receipt["failures"]))
+        self.assertEqual(frame_floor.quality_receipt(
+            self.quality_log(), header, self.budget, [{"extent": [1920, 1080]}])["status"], "pass")
 
     def test_small_drawable_and_quality_overrides_cannot_qualify(self):
         for overrides in ({"width": 1024, "height": 768}, {"display": "offscreen"},

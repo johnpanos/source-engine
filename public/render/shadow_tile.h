@@ -22,8 +22,19 @@
 #ifndef RENDER_SHADOW_TILE_H
 #define RENDER_SHADOW_TILE_H
 
+#include <cstdint>
+
 namespace render
 {
+
+// Runtime point/spot projections produced by render.pass.shadows. A cube
+// is world-aligned in +X, -X, +Y, -Y, +Z, -Z order; it is never an oriented
+// area-light cube. The values are the surface record's packed layout tag.
+enum class RuntimeShadowLayout : std::uint8_t
+{
+	kSingle = 1,
+	kWorldCube = 6
+};
 
 struct ShadowTileGpu
 {

@@ -84,8 +84,9 @@ public:
 private:
 	// Timestamps are written in chunks of this many, one buffer each; an
 	// encoder takes its own chunks, so no encoder's transition can discard
-	// another's timestamps.
-	static constexpr std::uint32_t kChunk = 64;
+	// another's timestamps. Short product draw encoders use few labels; a
+	// 16-slot chunk keeps their reserved storage within the timestamp budget.
+	static constexpr std::uint32_t kChunk = 16;
 
 	struct Section
 	{

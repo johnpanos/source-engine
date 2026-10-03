@@ -13,17 +13,6 @@ namespace render::material
 
 using namespace render::device;
 
-namespace
-{
-
-bool SameSampler( const SamplerDesc &a, const SamplerDesc &b )
-{
-	return a.minFilter == b.minFilter && a.magFilter == b.magFilter && a.mipFilter == b.mipFilter &&
-	       a.address == b.address && a.maxAnisotropy == b.maxAnisotropy;
-}
-
-} // namespace
-
 // --- GroupResidency ---------------------------------------------------------
 
 GroupResidency::GroupResidency( IRenderDevice2 &device, const resources::TextureCache &textures )
@@ -39,7 +28,7 @@ GroupResidency::~GroupResidency()
 		(void)m_Device.Release( resource, m_LastToken );
 	for ( const auto &[desc, sampler] : m_Samplers )
 		(void)m_Device.Release( sampler, m_LastToken );
-	for ( TextureId neutral : { m_Neutral2D, m_NeutralCube, m_Neutral2DArray } )
+	for ( TextureId neutral : { m_Neutral2D, m_NeutralCube, m_Neutral2DArray, m_NeutralDepth } )
 	{
 		if ( neutral.IsValid() )
 			(void)m_Device.Release( neutral, m_LastToken );
@@ -48,16 +37,17 @@ GroupResidency::~GroupResidency()
 		(void)m_Device.Release( m_NeutralStaging, m_LastToken );
 }
 
-TextureId GroupResidency::Neutral( TextureDimension dimension, bool array )
+TextureId GroupResidency::Neutral( TextureDimension dimension, bool array, bool depth )
 {
-	TextureId &slot = dimension == TextureDimension::kCube ? m_NeutralCube
-	                  : array                              ? m_Neutral2DArray
-	                                                       : m_Neutral2D;
+	TextureId &slot = depth                                  ? m_NeutralDepth
+	                  : dimension == TextureDimension::kCube ? m_NeutralCube
+	                  : array                                ? m_Neutral2DArray
+	                                                         : m_Neutral2D;
 	if ( slot.IsValid() )
 		return slot;
 	TextureDesc desc;
 	desc.dimension = dimension;
-	desc.format = Format::kRGBA8Unorm;
+	desc.format = depth ? Format::kD32Float : Format::kRGBA8Unorm;
 	desc.width = desc.height = 1;
 	desc.depthOrLayers = dimension == TextureDimension::kCube ? 6 : array ? 2 : 1;
 	desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kSampled };
@@ -94,6 +84,11 @@ foundation::Expected<void, ProgramStatus> GroupResidency::Set(
 	for ( const ProgramTexture &texture : request.textures )
 	{
 		if ( !SamplerFor( texture.sampler ) )
+			return foundation::MakeUnexpected( ProgramStatus::kDevice );
+	}
+	for ( const auto &[binding, desc] : request.samplers )
+	{
+		if ( !SamplerFor( desc ) )
 			return foundation::MakeUnexpected( ProgramStatus::kDevice );
 	}
 	Entry entry;
@@ -151,7 +146,7 @@ foundation::Expected<SamplerId, ProgramStatus> GroupResidency::SamplerFor( const
 {
 	for ( const auto &[known, sampler] : m_Samplers )
 	{
-		if ( SameSampler( known, desc ) )
+		if ( known == desc )
 			return sampler;
 	}
 	auto sampler = m_Device.CreateSampler( desc );
@@ -181,7 +176,7 @@ void GroupResidency::Refresh( Entry &entry )
 		// dimension, which the program does not read.
 		if ( texture.name.empty() )
 		{
-			const TextureId neutral = Neutral( texture.dimension, texture.array );
+			const TextureId neutral = Neutral( texture.dimension, texture.array, texture.depth );
 			if ( !neutral.IsValid() || !m_NeutralUploaded )
 			{
 				complete = false;
@@ -189,7 +184,7 @@ void GroupResidency::Refresh( Entry &entry )
 			}
 			TextureDesc desc;
 			desc.dimension = texture.dimension;
-			desc.format = Format::kRGBA8Unorm;
+			desc.format = texture.depth ? Format::kD32Float : Format::kRGBA8Unorm;
 			desc.width = desc.height = 1;
 			desc.depthOrLayers = texture.dimension == TextureDimension::kCube ? 6
 			                     : texture.array                             ? 2
@@ -245,6 +240,16 @@ void GroupResidency::Refresh( Entry &entry )
 		if ( texture.samplerBinding != kNoSamplerBinding )
 			bindings.push_back( { texture.samplerBinding, {}, 0, 0, {}, sampler.Value() } );
 	}
+	for ( const auto &[binding, desc] : entry.request.samplers )
+	{
+		auto sampler = SamplerFor( desc );
+		if ( !sampler )
+		{
+			++m_Failures;
+			return;
+		}
+		bindings.push_back( { binding, {}, 0, 0, {}, sampler.Value() } );
+	}
 	auto group = m_Device.CreateBindGroup( { entry.request.layout, bindings } );
 	if ( !group )
 	{
@@ -268,16 +273,16 @@ std::size_t GroupResidency::RecordUploads( CommandEncoder &encoder )
 		for ( const ProgramTexture &texture : entry.request.textures )
 		{
 			if ( texture.name.empty() && !texture.external.IsValid() )
-				(void)Neutral( texture.dimension, texture.array );
+				(void)Neutral( texture.dimension, texture.array, texture.depth );
 		}
 	}
-	if ( !m_NeutralUploaded &&
-	     ( m_Neutral2D.IsValid() || m_NeutralCube.IsValid() || m_Neutral2DArray.IsValid() ) )
+	if ( !m_NeutralUploaded && ( m_Neutral2D.IsValid() || m_NeutralCube.IsValid() ||
+	                               m_Neutral2DArray.IsValid() || m_NeutralDepth.IsValid() ) )
 	{
 		if ( !m_NeutralStaging.IsValid() )
 		{
 			BufferDesc staging;
-			staging.size = 4;
+			staging.size = 8;
 			staging.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kCopySource };
 			auto buffer = m_Device.CreateBuffer( staging );
 			if ( buffer )
@@ -285,14 +290,14 @@ std::size_t GroupResidency::RecordUploads( CommandEncoder &encoder )
 		}
 		if ( m_NeutralStaging.IsValid() )
 		{
-			const std::byte white[4] = {
-			    std::byte( 255 ), std::byte( 255 ), std::byte( 255 ), std::byte( 255 ) };
+			const std::uint32_t whiteAndDepth[] = { 0xFFFFFFFFu, 0x3F800000u };
 			encoder.TransitionBuffer(
 			    m_NeutralStaging, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
-			encoder.WriteBuffer( m_NeutralStaging, 0, white );
+			encoder.WriteBuffer( m_NeutralStaging, 0, std::as_bytes( std::span( whiteAndDepth ) ) );
 			encoder.TransitionBuffer(
 			    m_NeutralStaging, ResourceUsage::kCopyDestination, ResourceUsage::kCopySource );
-			for ( TextureId neutral : { m_Neutral2D, m_NeutralCube, m_Neutral2DArray } )
+			for ( TextureId neutral :
+			    { m_Neutral2D, m_NeutralCube, m_Neutral2DArray, m_NeutralDepth } )
 			{
 				if ( !neutral.IsValid() )
 					continue;
@@ -302,7 +307,8 @@ std::size_t GroupResidency::RecordUploads( CommandEncoder &encoder )
 				encoder.TransitionTexture(
 				    neutral, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
 				for ( std::uint32_t layer = 0; layer < layers; ++layer )
-					encoder.CopyBufferToTexture( m_NeutralStaging, neutral, { 0, 0, layer, 1, 1 } );
+					encoder.CopyBufferToTexture( m_NeutralStaging, neutral,
+					    { neutral == m_NeutralDepth ? 4u : 0u, 0, layer, 1, 1 } );
 				encoder.TransitionTexture(
 				    neutral, ResourceUsage::kCopyDestination, ResourceUsage::kSampled );
 			}

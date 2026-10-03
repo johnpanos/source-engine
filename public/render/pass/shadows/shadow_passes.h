@@ -26,9 +26,9 @@
 //			light at each pixel; it is the pass the pixel oracles run and
 //			the shadow mask a legacy family can read.
 //
-//			The device port has no comparison sampler and no depth bias
-//			state, so the compare runs in the shader with a point sampler and
-//			the bias is the receiver's (ShadowTileGpu::params).
+//			Visibility uses a comparison sampler; blocker search uses raw
+//			depth. The device has no depth bias state, so the receiver applies
+//			the receiver's bias (ShadowTileGpu::params).
 //
 //=============================================================================//
 
@@ -227,6 +227,7 @@ private:
 	device::Format m_ColorFormat = device::Format::kUnknown;
 	std::vector<std::uint32_t> m_Fragment;
 	device::SamplerId m_Sampler;
+	device::SamplerId m_ComparisonSampler;
 	device::BindGroupLayoutId m_FrameLayout;
 	device::BindGroupLayoutId m_ViewLayout;
 	device::BindGroupLayoutId m_DrawLayout;

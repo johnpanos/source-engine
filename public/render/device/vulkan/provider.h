@@ -51,6 +51,7 @@ struct VulkanAdapterOptions
 		bool staleExport = false;           // D18: the export names memory the image does not use
 		bool nullExternalImages = false;    // D18: claims kExternalImages, exports nothing
 		bool transmittanceAsPremultiplied = false; // D21: kTransmittance drawn as kPremultiplied
+		bool reverseSamplerComparison = false;     // D24: compare reference >= stored
 		bool unsafeUploadReuse = false;            // D10: ring ranges retire at submission
 	};
 	Sensitivity sensitivity;

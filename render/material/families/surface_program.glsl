@@ -163,7 +163,7 @@ struct RuntimeLightRecord
 	vec4 direction; // w: outerCos, below -1 for a point light
 	vec4 cone;      // innerCos, 1 for an inverse-square falloff, sourceRadius,
 	                // the shadow tile or -1
-	vec4 spot;      // the cone ramp's exponent, baked diffuse, shadow tiles
+	vec4 spot;      // cone ramp exponent, baked diffuse, RuntimeShadowLayout
 	vec4 attenuation; // vrad's c, l, q (cone.y 2)
 };
 layout( set = 1, binding = 0 ) uniform ClusterView
@@ -204,7 +204,7 @@ layout( set = 1, binding = 7 ) uniform sampler shadowSampler;
 layout( set = 1, binding = 8 ) uniform texture2DArray cookieTexture;
 layout( set = 1, binding = 9 ) uniform sampler cookieSampler;
 layout( set = 1, binding = 10 ) uniform texture2D occlusionTexture;
-layout( set = 1, binding = 11 ) uniform sampler occlusionSampler;
+layout( set = 1, binding = 11 ) uniform sampler shadowComparisonSampler;
 // The view's planar reflection (the water point's reflection target).
 layout( set = 1, binding = 12 ) uniform texture2D reflectionTexture;
 layout( set = 1, binding = 13 ) uniform sampler reflectionSampler;
@@ -685,9 +685,9 @@ void PbrSurface()
 	// The view's occlusion of the indirect light (render.pass.ao).
 	const float screenOcclusion =
 	    Term( kAmbientOcclusion ) && DebugTermOn( kDebugTermAo )
-	        ? clamp( texelFetch( sampler2D( occlusionTexture, occlusionSampler ),
+	        ? clamp( texelFetch( sampler2D( occlusionTexture, shadowSampler ),
 	                     clamp( ivec2( gl_FragCoord.xy ), ivec2( 0 ),
-	                         textureSize( sampler2D( occlusionTexture, occlusionSampler ), 0 ) - 1 ),
+	                         textureSize( sampler2D( occlusionTexture, shadowSampler ), 0 ) - 1 ),
 	                     0 )
 	                     .r,
 	              0.0, 1.0 )
@@ -943,18 +943,19 @@ void PbrSurface()
 			const int tile = int( runtime.cone.w );
 			const int tiles = int( runtime.spot.z );
 #ifdef SEEDED_SHADOW_TILE_NEXT
-			if ( tile >= 0 )
-				falloff *= ShadowVisibility( shadowAtlas, shadowSampler,
+			if ( tile >= 0 && DebugTermOn( kDebugTermShadowVisibility ) )
+				falloff *= ShadowVisibility( shadowAtlas, shadowSampler, shadowComparisonSampler,
 				    shadowTiles[( tile + 1 ) % shadowTiles.length()], worldPosition );
 #elif !defined( SEEDED_SHADOW_IGNORED )
-			if ( tile >= 0 && tiles > 1 )
+			if ( tile >= 0 && tiles == 6 && DebugTermOn( kDebugTermShadowVisibility ) )
 				falloff *= ShadowTerminatorFade( smoothNormal, light,
-				    ShadowFacesVisibility( shadowAtlas, shadowSampler, tile, tiles, worldPosition,
+				    ShadowWorldCubeVisibility( shadowAtlas, shadowSampler, shadowComparisonSampler, tile,
+			        -toLight, worldPosition,
 				        ShadowReceiverOffset( geometricNormal, light ), max( runtime.cone.z, 0.5 ),
 				        rotation ) );
-			else if ( tile >= 0 )
+			else if ( tile >= 0 && DebugTermOn( kDebugTermShadowVisibility ) )
 				falloff *= ShadowTerminatorFade( smoothNormal, light,
-				    ShadowVisibilitySoft( shadowAtlas, shadowSampler, shadowTiles[tile],
+				    ShadowVisibilitySoft( shadowAtlas, shadowSampler, shadowComparisonSampler, shadowTiles[tile],
 				        worldPosition, ShadowReceiverOffset( geometricNormal, light ),
 				        max( runtime.cone.z, 0.5 ), rotation ) );
 #endif
@@ -1019,7 +1020,7 @@ void PbrSurface()
 			const bool twoSided = light.center.w > 0.5;
 			float visibility = 1.0;
 			const int firstTile = int( light.radiance.w );
-			if ( firstTile >= 0 )
+			if ( firstTile >= 0 && DebugTermOn( kDebugTermShadowVisibility ) )
 			{
 				// The rectangle as a disc of its area as the point sees it: its
 				// extent across the ray shrinks with the cosine of the ray's
@@ -1031,7 +1032,7 @@ void PbrSurface()
 				    sqrt( 4.0 * length( light.halfU.xyz ) * length( light.halfV.xyz ) / kPi ) *
 				    sqrt( max( abs( dot( facing, toCenter ) ), 0.05 ) );
 				visibility = ShadowTerminatorFade( smoothNormal, toCenter,
-				    ShadowFacesVisibility( shadowAtlas, shadowSampler, firstTile,
+				    ShadowFacesVisibility( shadowAtlas, shadowSampler, shadowComparisonSampler, firstTile,
 				        twoSided ? 6 : 5, worldPosition,
 				        ShadowReceiverOffset( geometricNormal, toCenter ), size, rotation ) );
 				if ( visibility <= 0.0 )
@@ -1072,11 +1073,11 @@ void PbrSurface()
 		if ( normalDotLight > 0.0 )
 		{
 			float visibility = 1.0;
-			if ( lightmapped && frame.sunShadow.z > 0.5 )
+			if ( DebugTermOn( kDebugTermShadowVisibility ) && lightmapped && frame.sunShadow.z > 0.5 )
 				visibility = clamp(
 				    textureLod( sampler2D( lightmap, lightmapSampler ), lightmapUv, 0.0 ).a, 0.0,
 				    1.0 );
-			else if ( frame.sunShadow.x >= 0.0 )
+			else if ( DebugTermOn( kDebugTermShadowVisibility ) && frame.sunShadow.x >= 0.0 )
 			{
 				// The first cascade holding the point.
 				const int first = int( frame.sunShadow.x );
@@ -1089,7 +1090,7 @@ void PbrSurface()
 					if ( all( lessThan( abs( ndc.xy ), vec2( 0.98 ) ) ) && ndc.z <= 1.0 )
 					{
 						visibility = ShadowTerminatorFade( smoothNormal, light,
-						    ShadowVisibilitySoft( shadowAtlas, shadowSampler, tile,
+						    ShadowVisibilitySoft( shadowAtlas, shadowSampler, shadowComparisonSampler, tile,
 						        worldPosition, ShadowReceiverOffset( geometricNormal, light ),
 						        frame.sunDirection.w, rotation ) );
 						break;
@@ -1136,9 +1137,9 @@ void PbrSurface()
 		if ( normalDotLight <= 0.0 || scale <= 0.0 )
 			continue;
 		const int tile = int( projector.color.w );
-		if ( tile >= 0 )
+		if ( tile >= 0 && DebugTermOn( kDebugTermShadowVisibility ) )
 			scale *= ShadowTerminatorFade( smoothNormal, light,
-			    ShadowVisibilitySoft( shadowAtlas, shadowSampler, shadowTiles[tile],
+			    ShadowVisibilitySoft( shadowAtlas, shadowSampler, shadowComparisonSampler, shadowTiles[tile],
 			        worldPosition, ShadowReceiverOffset( geometricNormal, light ),
 			        projector.atten.w, rotation ) );
 		const vec3 cookie =

@@ -14,6 +14,30 @@
 namespace render::device::gl
 {
 
+GLenum CompareFunction( CompareOp op )
+{
+	switch ( op )
+	{
+	case CompareOp::kNotEqual:
+		return GL_NOTEQUAL;
+	case CompareOp::kNever:
+		return GL_NEVER;
+	case CompareOp::kLess:
+		return GL_LESS;
+	case CompareOp::kLessEqual:
+		return GL_LEQUAL;
+	case CompareOp::kEqual:
+		return GL_EQUAL;
+	case CompareOp::kGreaterEqual:
+		return GL_GEQUAL;
+	case CompareOp::kGreater:
+		return GL_GREATER;
+	case CompareOp::kAlways:
+		return GL_ALWAYS;
+	}
+	return GL_ALWAYS;
+}
+
 namespace
 {
 
@@ -462,8 +486,8 @@ DeviceResult<SamplerId> GlDevice::CreateSampler( const SamplerDesc &desc )
 	std::lock_guard<std::recursive_mutex> lock( m_Lock );
 	if ( m_State != DeviceState::kAvailable )
 		return Fail( DeviceStatus::kDeviceLost, op );
-	if ( desc.maxAnisotropy == 0 || desc.maxAnisotropy > 16 )
-		return Fail( DeviceStatus::kInvalidDescription, op );
+	if ( auto valid = ValidateSampler( desc ); !valid )
+		return foundation::MakeUnexpected( valid.Error() );
 	if ( desc.maxAnisotropy > 1 && !m_Anisotropy )
 		return Fail( DeviceStatus::kUnsupported, op );
 	ContextScope scope( *m_Context );
@@ -488,6 +512,13 @@ DeviceResult<SamplerId> GlDevice::CreateSampler( const SamplerDesc &desc )
 	if ( desc.maxAnisotropy > 1 )
 		gl.SamplerParameterf(
 		    record.name, GL_TEXTURE_MAX_ANISOTROPY, static_cast<GLfloat>( desc.maxAnisotropy ) );
+	gl.SamplerParameteri( record.name, GL_TEXTURE_COMPARE_MODE,
+	    desc.comparison ? GL_COMPARE_REF_TO_TEXTURE : GL_NONE );
+	gl.SamplerParameteri( record.name, GL_TEXTURE_COMPARE_FUNC,
+	    CompareFunction( m_Options.sensitivity.reverseSamplerComparison &&
+	                             desc.comparison == CompareOp::kLessEqual
+	                         ? CompareOp::kGreater
+	                         : desc.comparison.value_or( CompareOp::kAlways ) ) );
 	const SamplerId id{ ++m_NextId };
 	m_Samplers.emplace( id.value, record );
 	return id;

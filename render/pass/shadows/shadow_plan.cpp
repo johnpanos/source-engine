@@ -79,7 +79,7 @@ std::optional<std::string> PlanShadows( const ShadowPlanInput &input, ShadowPlan
 	const std::uint32_t atlasSize = input.atlasSize;
 	const std::uint32_t guard = input.guardTexels;
 	out.lightTiles.assign( input.lights.size(), -1 );
-	out.lightTileCount.assign( input.lights.size(), 1 );
+	out.lightLayouts.assign( input.lights.size(), RuntimeShadowLayout::kSingle );
 	out.areaTiles.assign( input.areas.size(), -1 );
 	out.projectorTiles.assign( input.projectors.size(), -1 );
 	std::vector<Pending> pending;
@@ -173,7 +173,7 @@ std::optional<std::string> PlanShadows( const ShadowPlanInput &input, ShadowPlan
 		}
 		if ( !all )
 			continue;
-		out.lightTileCount[i] = 6;
+		out.lightLayouts[i] = RuntimeShadowLayout::kWorldCube;
 		for ( std::size_t f = 0; f < faces.size(); ++f )
 			add( faces[f], false, 0.0625f, 10.0f, &out.lightTiles[i], f == 0 );
 	}

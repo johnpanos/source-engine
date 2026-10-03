@@ -122,9 +122,10 @@ enum DebugTerm : std::uint32_t
 	kDebugTermAo = 1u << 8,
 	kDebugTermSpecularOcclusion = 1u << 9,
 	kDebugTermEmission = 1u << 10,
-	kDebugTermVolumetric = 1u << 11
+	kDebugTermVolumetric = 1u << 11,
+	kDebugTermShadowVisibility = 1u << 12
 };
-inline constexpr std::uint32_t kDebugTermAll = ( 1u << 12 ) - 1;
+inline constexpr std::uint32_t kDebugTermAll = ( 1u << 13 ) - 1;
 
 // The term bit for a name ("clustered", ...); 0 when unknown.
 std::uint32_t DebugTermBit( std::string_view name );

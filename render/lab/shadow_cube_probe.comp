@@ -1,0 +1,32 @@
+#version 450
+// Private render_lab oracle: the cube lookup against the original matrix
+// search over the same immutable planner records and atlas. A seeded face
+// permutation must fail; no product composes this kernel.
+#include "../shaders/common/shadow_sample.glsl"
+layout( local_size_x = 64 ) in;
+layout( set = 3, binding = 0 ) uniform texture2D atlas;
+layout( set = 3, binding = 1 ) uniform sampler pointSampler;
+layout( set = 3, binding = 2 ) uniform sampler comparisonSampler;
+layout( set = 3, binding = 3, std430, row_major ) readonly buffer Cases
+{
+	uvec4 counts;
+	ShadowTile shadowTiles[6];
+	vec4 points[];
+};
+#include "../shaders/common/shadow_faces.glsl"
+layout( set = 3, binding = 4, std430 ) writeonly buffer Results
+{
+	vec2 visibility[];
+};
+void main()
+{
+	const uint i = gl_GlobalInvocationID.x;
+	if ( i >= counts.x )
+		return;
+	const vec4 p = points[i];
+	visibility[i] = vec2(
+	    ShadowWorldCubeVisibility( atlas, pointSampler, comparisonSampler, 0,
+	        p.xyz, p.xyz, vec3( 0 ), p.w, 0 ),
+	    ShadowFacesVisibility( atlas, pointSampler, comparisonSampler, 0, 6,
+	        p.xyz, vec3( 0 ), p.w, 0 ) );
+}

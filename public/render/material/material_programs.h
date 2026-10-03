@@ -71,6 +71,8 @@ struct ProgramTexture
 	// A 2D binding the program reads as an array (texture2DArray): its
 	// neutral texture has two layers, so an array view is made.
 	bool array = false;
+	// A depth input named empty takes a D32 texture cleared to far depth.
+	bool depth = false;
 };
 inline constexpr std::uint32_t kNoSamplerBinding = 0xFFFFFFFFu;
 
@@ -91,6 +93,9 @@ struct GroupRequest
 	std::vector<std::byte> constants; // empty: the group has no uniform buffer
 	std::vector<ProgramTexture> textures;
 	std::vector<GroupBuffer> storage; // uploaded once, then in kStorageRead
+	// Additional samplers for a texture already bound (shadow depth is both
+	// point-sampled for blocker search and comparison-filtered for visibility).
+	std::vector<std::pair<std::uint32_t, device::SamplerDesc>> samplers;
 };
 
 struct ProgramRequest
@@ -157,14 +162,16 @@ private:
 	std::vector<std::pair<device::SamplerDesc, device::SamplerId>> m_Samplers;
 	std::vector<device::ResourceId> m_Replaced; // released at Retire
 	// The neutral textures an input named empty takes (a term that is off):
-	// a 1x1 white 2D texture and a 1x1 cube, made at the first such input and
+	// white color textures and far depth, made at the first such input and
 	// filled at the next RecordUploads.
 	device::TextureId m_Neutral2D;
 	device::TextureId m_NeutralCube;
 	device::TextureId m_Neutral2DArray;
+	device::TextureId m_NeutralDepth;
 	device::BufferId m_NeutralStaging;
 	bool m_NeutralUploaded = false;
-	device::TextureId Neutral( device::TextureDimension dimension, bool array = false );
+	device::TextureId Neutral(
+	    device::TextureDimension dimension, bool array = false, bool depth = false );
 	std::uint32_t m_Failures = 0;
 	device::CompletionToken m_LastToken;
 };

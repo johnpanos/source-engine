@@ -34,6 +34,16 @@ DeviceResult<void> ValidateBuffer( const BufferDesc &desc )
 	return {};
 }
 
+DeviceResult<void> ValidateSampler( const SamplerDesc &desc )
+{
+	if ( desc.minFilter > Filter::kLinear || desc.magFilter > Filter::kLinear ||
+	     desc.mipFilter > Filter::kLinear || desc.address > AddressMode::kMirroredRepeat ||
+	     desc.maxAnisotropy == 0 || desc.maxAnisotropy > 16 ||
+	     ( desc.comparison && *desc.comparison > CompareOp::kNotEqual ) )
+		return Fail( DeviceStatus::kInvalidDescription, DeviceOperation::kCreateSampler );
+	return {};
+}
+
 DeviceResult<void> ValidateTexture( const TextureDesc &desc, const Limits &limits )
 {
 	const DeviceOperation op = DeviceOperation::kCreateTexture;

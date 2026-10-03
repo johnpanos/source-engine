@@ -214,7 +214,7 @@ void CVGUI_SP_ProgressSignScreen::UpdateLevelInfo( void )
 	// Prefer an explicit entry for the published name when one exists.
 	if ( !pMap )
 	{
-		static const char *const pszPublishedSuffixes[] = { "_relit", "_source2" };
+		static const char *const pszPublishedSuffixes[] = { "_relit", "_source2", "_probe64" };
 		const size_t nNameLength = V_strlen( pszMapName );
 		for ( const char *pszSuffix : pszPublishedSuffixes )
 		{

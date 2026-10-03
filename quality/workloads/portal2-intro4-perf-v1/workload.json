@@ -1,0 +1,20 @@
+{
+  "schema": "portal2-scenarios/v1",
+  "description": "Versioned Intro4 puzzle-room performance camera: eye (145,-440,90), pitch 8, yaw 20/200/20. Both orientations warmed. Same fixture for the render core and an external renderer; not walking, story or complete-image acceptance.",
+  "driver": "../portal2-wheatley-v1/qa_driver.nut",
+  "scenarios": [
+    {
+      "name": "sp_a1_intro4_probe64",
+      "map": "sp_a1_intro4_probe64",
+      "script": "sp_a1_intro4_probe64.nut",
+      "timeout_seconds": 180,
+      "required_checks": [
+        "map.loaded",
+        "view.arrival",
+        "view.reverse",
+        "view.return"
+      ]
+    }
+  ],
+  "render_budget_row": "linux-desktop-high-120"
+}

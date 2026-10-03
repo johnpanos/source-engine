@@ -27,6 +27,7 @@ using namespace render::device;
 
 enum class Defect
 {
+	kAcceptsBadComparison,
 	kNone,
 	kReleasesEarly,       // D5: frees at once, ignoring the token
 	kFactsChange,         // D1: facts differ after the first use
@@ -209,7 +210,10 @@ public:
 	}
 	DeviceResult<SamplerId> CreateSampler( const SamplerDesc &desc ) override
 	{
-		return m_Inner->CreateSampler( desc );
+		SamplerDesc valid = desc;
+		if ( m_Defect == Defect::kAcceptsBadComparison )
+			valid.comparison = CompareOp::kAlways;
+		return m_Inner->CreateSampler( valid );
 	}
 	DeviceResult<BindGroupLayoutId> CreateBindGroupLayout(
 	    const BindGroupLayoutDesc &desc ) override
@@ -373,6 +377,7 @@ int main()
 	    { Defect::kAttachesBlocks, "under-test.D19 " },
 	    { Defect::kDropsRegionOrigin, "under-test.D22 " },
 	    { Defect::kDropsTimestamps, "under-test.D23 " },
+	    { Defect::kAcceptsBadComparison, "under-test.D24 " },
 	};
 	for ( const Case &c : cases )
 	{

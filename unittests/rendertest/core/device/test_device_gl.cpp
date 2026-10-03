@@ -54,6 +54,7 @@ const Fixture kFixtures[] = {
     { rendertest::shaders::kSpecializedFragment, rendertest::glsl::kSpecializedFragment },
     { rendertest::shaders::kDoubleCompute, rendertest::glsl::kDoubleCompute },
     { rendertest::shaders::kSampledFragment, rendertest::glsl::kSampledFragment },
+    { rendertest::shaders::kComparisonFragment, rendertest::glsl::kComparisonFragment },
     { rendertest::shaders::kPositionVertex, rendertest::glsl::kPositionVertex },
 };
 
@@ -184,6 +185,8 @@ int main()
 	uploads.unsafeUploadReuse = true;
 	gl::GlAdapterOptions::Sensitivity transmittance;
 	transmittance.transmittanceAsPremultiplied = true;
+	gl::GlAdapterOptions::Sensitivity comparison;
+	comparison.reverseSamplerComparison = true;
 	const Case cases[] = {
 	    { "lower-left-origin", lowerLeft, "under-test.D13 clip y" },
 	    { "gl-depth-range", glDepth, "under-test.D13 clip z" },
@@ -192,6 +195,7 @@ int main()
 	    { "ignored-write-masks", writeMasks, "under-test.D17 a red-and-alpha mask" },
 	    { "dropped-specialization", specialization, "under-test.D20 the constant's value" },
 	    { "early-upload-reuse", uploads, "under-test.D10 " },
+	    { "reversed-sampler-compare", comparison, "under-test.D24 " },
 	    { "transmittance-as-premultiplied", transmittance, "under-test.D21 src + dst * a" },
 	};
 	// D10 records its uploads with the queue held (Driver's hold), so early

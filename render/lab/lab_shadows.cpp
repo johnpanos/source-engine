@@ -43,7 +43,7 @@ std::optional<std::string> DrawShadows( IRenderDevice2 &device,
 		return why;
 	out.tiles = std::move( plan.tiles );
 	out.lightTiles = std::move( plan.lightTiles );
-	out.lightTileCount = std::move( plan.lightTileCount );
+	out.lightLayouts = std::move( plan.lightLayouts );
 	out.areaTiles = std::move( plan.areaTiles );
 	out.projectorTiles = std::move( plan.projectorTiles );
 	out.sunFirst = plan.sunFirst;

@@ -129,30 +129,6 @@ VkStencilOp StencilOperation( StencilOp op )
 	return VK_STENCIL_OP_KEEP;
 }
 
-VkCompareOp Compare( CompareOp op )
-{
-	switch ( op )
-	{
-	case CompareOp::kNotEqual:
-		return VK_COMPARE_OP_NOT_EQUAL;
-	case CompareOp::kNever:
-		return VK_COMPARE_OP_NEVER;
-	case CompareOp::kLess:
-		return VK_COMPARE_OP_LESS;
-	case CompareOp::kLessEqual:
-		return VK_COMPARE_OP_LESS_OR_EQUAL;
-	case CompareOp::kEqual:
-		return VK_COMPARE_OP_EQUAL;
-	case CompareOp::kGreaterEqual:
-		return VK_COMPARE_OP_GREATER_OR_EQUAL;
-	case CompareOp::kGreater:
-		return VK_COMPARE_OP_GREATER;
-	case CompareOp::kAlways:
-		return VK_COMPARE_OP_ALWAYS;
-	}
-	return VK_COMPARE_OP_ALWAYS;
-}
-
 VkPipelineColorBlendAttachmentState Blend( BlendMode mode )
 {
 	VkPipelineColorBlendAttachmentState state{};

@@ -293,8 +293,15 @@ proves each term on its own.
 |---|---|---|
 | `cl_render_debug_brdf <n>` | 0 full, 1 diffuse lobe only, 2 specular lobe only, 3 energy compensation off, 4 the split-sum table sample as RG | Each mode equals the matching `pbr_brdf.h` CPU term on the `render.pbr-brdf.glsl` cases; mode 3 reproduces the `no-energy-compensation` negative's furnace loss |
 | `cl_render_debug_furnace 1` | Albedo 1 and a uniform environment of radiance 1 replace probes, image-based light and lightmaps; direct lights off | An energy-compensated white metal sphere reads 1 within the R47 furnace tolerance at every roughness; with `cl_render_debug_brdf 3` rough spheres read below it |
-| `cl_render_debug_term <name…>` | Turns off the named lighting-model terms: `clustered`, `sun`, `area`, `projected`, `baked`, `probes`, `ibl`, `ssr`, `ao`, `specular_occlusion`, `emission`, `volumetric` | Turning a term off gives exactly that term's neutral value: the frame equals the frame of the same scene without that input, bitwise |
+| `cl_render_debug_term <name…>` | Turns off the named lighting-model terms: `clustered`, `sun`, `area`, `projected`, `baked`, `probes`, `ibl`, `ssr`, `ao`, `specular_occlusion`, `emission`, `volumetric`, `shadow_visibility` | Turning a term off gives exactly that term's neutral value: the frame equals the frame of the same scene without that input, bitwise |
 | `cl_render_debug_force_roughness`, `cl_render_debug_force_metalness` | −1 off; otherwise the value, clamped to [0, 1], replaces the material's | The pixel equals the same material authored with that value |
+
+`shadow_visibility` replaces receiver visibility by 1 for runtime lights, area
+lights, sun and projectors (including baked sun visibility). It retains light
+falloff, BRDF evaluation and shadow-map producer work. This separates receiver
+sampling cost from light evaluation; it is an image-changing diagnostic.
+`render_lab suite shadowed-lights` proves the atlas-bound disabled term equals
+the untiled-light frame bitwise.
 
 ### What the core does not draw
 

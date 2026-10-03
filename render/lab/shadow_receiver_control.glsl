@@ -1,3 +1,5 @@
+// Immutable pre-optimization receiver, captured 2026-10-02.
+// Private lab control only; the product includes shadow_sample.glsl.
 // The shadow receiver helper (RFC 0016 K7, render.shadows.v1): the
 // visibility of a world point from one shadow view's atlas tile.
 //
@@ -32,21 +34,16 @@ float ShadowBilinear( texture2D atlas, sampler pointSampler, sampler comparisonS
     ShadowTile tile, vec2 uv, float depth )
 {
 	const float atlasSize = tile.params.y;
-#if defined( REFERENCE_MANUAL_SHADOW_COMPARE ) || defined( SEEDED_SHADOW_UNSTABLE_GATHER )
 	const vec2 lo = tile.bounds.xy * atlasSize;
 	const vec2 hi = tile.bounds.zw * atlasSize - 1.0;
 	const vec2 position = clamp( uv * atlasSize - 0.5, lo, hi );
 	const vec2 coordinate = ( position + 0.5 ) / atlasSize;
+#if defined( REFERENCE_MANUAL_SHADOW_COMPARE ) || defined( SEEDED_SHADOW_UNSTABLE_GATHER )
 	// Private immutable-input oracle; never selected by a product.
 	const vec2 f = fract( position );
 #ifdef SEEDED_SHADOW_UNSTABLE_GATHER
 	const vec4 stored = textureGather( sampler2D( atlas, pointSampler ), coordinate, 0 );
 #else
-	// Atlas/tile dimensions are powers of two, so the texel-centre bounds
-	// are exact in normalized coordinates. Clamp here without a per-tap
-	// round trip through texel coordinates.
-	const vec2 halfTexel = vec2( 0.5 / atlasSize );
-	const vec2 coordinate = clamp( uv, tile.bounds.xy + halfTexel, tile.bounds.zw - halfTexel );
 	// Integer addressing makes this oracle independent of the texture unit's
 	// subtexel footprint rounding. All four texels remain in the same tile.
 	const ivec2 base = ivec2( floor( position ) );
@@ -213,8 +210,8 @@ float ShadowVisibilitySoft( texture2D atlas, sampler pointSampler, sampler compa
 		const vec2 offset = turn * kShadowDisc[i] * searchClip;
 		const vec2 tap = clamp(
 		    uv + offset * vec2( tile.transform.x, tile.transform.z ), tile.bounds.xy, tile.bounds.zw );
-		const ivec2 texel = clamp( ivec2( tap * atlasSize ), ivec2( 0 ), ivec2( atlasSize - 1.0 ) );
-		const float stored = texelFetch( sampler2D( atlas, pointSampler ), texel, 0 ).r;
+		const float stored =
+		    textureLod( sampler2D( atlas, pointSampler ), tap, 0.0 ).r;
 		if ( stored < depth )
 		{
 			blockers += 1.0;
@@ -239,10 +236,6 @@ float ShadowVisibilitySoft( texture2D atlas, sampler pointSampler, sampler compa
 	{
 		const vec2 offset = turn * kShadowDisc[i] * penumbraClip;
 		const vec2 tap = uv + offset * vec2( tile.transform.x, tile.transform.z );
-#ifdef SEEDED_SHADOW_FILTER_SKIP_LAST
-		if ( i == 15 )
-			continue;
-#endif
 		lit += ShadowBilinear( atlas, pointSampler, comparisonSampler, tile, tap, depth );
 	}
 	return lit / 16.0;

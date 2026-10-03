@@ -1197,7 +1197,10 @@ int main()
 	transmittance.transmittanceAsPremultiplied = true;
 	vulkan::VulkanAdapterOptions::Sensitivity uploads;
 	uploads.unsafeUploadReuse = true;
+	vulkan::VulkanAdapterOptions::Sensitivity comparison;
+	comparison.reverseSamplerComparison = true;
 	const Case cases[] = {
+	    { "reversed-sampler-compare", comparison, "under-test.D24 " },
 	    { "flipped-y", flipY, "under-test.D13 clip y" },
 	    { "gl-depth-range", glDepth, "under-test.D13 clip z" },
 	    { "false-async-compute", asyncCompute, "under-test.D15 claimed async compute" },

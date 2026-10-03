@@ -244,9 +244,7 @@ struct PanelPass::State
 	{
 		for ( const auto &[known, sampler] : samplers )
 		{
-			if ( known.minFilter == desc.minFilter && known.magFilter == desc.magFilter &&
-			     known.mipFilter == desc.mipFilter && known.address == desc.address &&
-			     known.maxAnisotropy == desc.maxAnisotropy )
+			if ( known == desc )
 				return sampler;
 		}
 		auto sampler = device->CreateSampler( desc );

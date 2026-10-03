@@ -132,6 +132,8 @@ EMBEDDED = (
      DEVICE_OPTIONS),
     (DEVICE + "/test_shaders.h", "kSampledFragment", DEVICE + "/shaders/sampled.frag",
      DEVICE_OPTIONS),
+    (DEVICE + "/test_shaders.h", "kComparisonFragment", DEVICE + "/shaders/comparison.frag",
+     DEVICE_OPTIONS),
     (DEVICE + "/test_shaders.h", "kPositionVertex", DEVICE + "/shaders/position.vert",
      DEVICE_OPTIONS),
 )
@@ -296,6 +298,18 @@ GENERATED = {
          DEVICE_OPTIONS + ("-DSEEDED_RUNTIME_FALLOFF_UNWINDOWED",)),
         ("kSurfaceSpotNoCosine", FAMILIES + "/surface.frag",
          DEVICE_OPTIONS + ("-DSEEDED_SPOT_NO_COSINE",)))),
+    "shadow_receiver_perf_spv.h": ("render::lab::spirv",
+        "render_lab's timed complete shadow receiver and immutable control", (
+        ("kShadowReceiverPerf", "render/lab/shadow_receiver_perf.comp", DEVICE_OPTIONS),
+        ("kShadowReceiverPerfControl", "render/lab/shadow_receiver_perf.comp",
+         DEVICE_OPTIONS + ("-DREFERENCE_SHADOW_RECEIVER",)),
+        ("kShadowReceiverPerfMissingTap", "render/lab/shadow_receiver_perf.comp",
+         DEVICE_OPTIONS + ("-DSEEDED_SHADOW_FILTER_SKIP_LAST",)))),
+    "shadow_cube_probe_spv.h": ("render::lab::spirv",
+        "render_lab's cube face lookup oracle and seeded face permutation", (
+        ("kShadowCubeProbe", "render/lab/shadow_cube_probe.comp", DEVICE_OPTIONS),
+        ("kShadowCubeProbeNext", "render/lab/shadow_cube_probe.comp",
+         DEVICE_OPTIONS + ("-DSEEDED_SHADOW_CUBE_NEXT",)))),
     "shadowed_light_defects_spv.h": ("render::lab::spirv",
         "render_lab's shadowed-light suite's seeded programs (render.lab.shadowed-lights "
         "sensitivity, RFC 0016 K11)", (
@@ -304,7 +318,11 @@ GENERATED = {
         ("kSurfaceShadowTileNext", FAMILIES + "/surface.frag",
          DEVICE_OPTIONS + ("-DSEEDED_SHADOW_TILE_NEXT",)),
         ("kSurfaceShadowDepthReversed", FAMILIES + "/surface.frag",
-         DEVICE_OPTIONS + ("-DSEEDED_DEPTH_REVERSED",)))),
+         DEVICE_OPTIONS + ("-DSEEDED_DEPTH_REVERSED",)),
+        ("kSurfaceShadowReferenceCompare", FAMILIES + "/surface.frag",
+         DEVICE_OPTIONS + ("-DREFERENCE_MANUAL_SHADOW_COMPARE",)),
+        ("kSurfaceShadowUnstableGather", FAMILIES + "/surface.frag",
+         DEVICE_OPTIONS + ("-DSEEDED_SHADOW_UNSTABLE_GATHER",)))),
     "area_light_defects_spv.h": ("render::lab::spirv",
         "render_lab's area-light suite's seeded programs (render.lab.area-lights sensitivity, "
         "RFC 0016 K11)", (

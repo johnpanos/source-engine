@@ -139,6 +139,7 @@ struct Resources
 	TextureId neutralWhite;
 	TextureId neutralCube;
 	TextureId neutralArray; // two layers, for a binding read as an array
+	TextureId neutralDepth; // far depth for an absent shadow atlas
 	BufferId neutralStaging;
 	bool uploaded = false;
 	// A world stage's textures (WorldStage), by the names its groups use,
@@ -444,6 +445,8 @@ struct WorldPass::State
 				(void)device->Release( old.neutralWhite, after );
 			if ( old.neutralCube.IsValid() )
 				(void)device->Release( old.neutralCube, after );
+			if ( old.neutralDepth.IsValid() )
+				(void)device->Release( old.neutralDepth, after );
 			if ( old.neutralArray.IsValid() )
 				(void)device->Release( old.neutralArray, after );
 			for ( auto &[name, texture] : old.stageTextures )
@@ -1496,36 +1499,35 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		}
 	}
 
-	// The neutral textures, made on first use: a white 2D texture and a
-	// black cube, filled from one 4-byte white upload (the cube's term is off
-	// wherever it is bound; filling it keeps it defined).
-	auto neutral = [&]( TextureDimension dimension, bool array ) -> TextureId
+	// Neutral inputs, made on first use: white color and far depth. The cube
+	// term is off wherever its neutral texture is bound; filling it keeps it defined.
+	auto neutral = [&]( TextureDimension dimension, bool array, bool depth ) -> TextureId
 	{
-		TextureId &slot = dimension == TextureDimension::kCube ? r.neutralCube
-		                  : array                              ? r.neutralArray
-		                                                       : r.neutralWhite;
+		TextureId &slot = depth                                  ? r.neutralDepth
+		                  : dimension == TextureDimension::kCube ? r.neutralCube
+		                  : array                                ? r.neutralArray
+		                                                         : r.neutralWhite;
 		if ( slot.IsValid() )
 			return slot;
 		if ( !r.neutralStaging.IsValid() )
 		{
 			BufferDesc staging;
-			staging.size = 4;
+			staging.size = 8;
 			staging.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kCopySource };
 			auto buffer = device.CreateBuffer( staging );
 			if ( !buffer )
 				return {};
 			r.neutralStaging = buffer.Value();
-			const std::byte white[4] = {
-			    std::byte( 255 ), std::byte( 255 ), std::byte( 255 ), std::byte( 255 ) };
+			const std::uint32_t whiteAndDepth[] = { 0xFFFFFFFFu, 0x3F800000u };
 			encoder.TransitionBuffer(
 			    r.neutralStaging, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
-			encoder.WriteBuffer( r.neutralStaging, 0, white );
+			encoder.WriteBuffer( r.neutralStaging, 0, std::as_bytes( std::span( whiteAndDepth ) ) );
 			encoder.TransitionBuffer(
 			    r.neutralStaging, ResourceUsage::kCopyDestination, ResourceUsage::kCopySource );
 		}
 		TextureDesc desc;
 		desc.dimension = dimension;
-		desc.format = Format::kRGBA8Unorm;
+		desc.format = depth ? Format::kD32Float : Format::kRGBA8Unorm;
 		desc.width = desc.height = 1;
 		desc.depthOrLayers = dimension == TextureDimension::kCube ? 6 : array ? 2 : 1;
 		desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kSampled };
@@ -1538,7 +1540,8 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		encoder.TransitionTexture(
 		    texture.Value(), ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
 		for ( std::uint32_t layer = 0; layer < desc.depthOrLayers; ++layer )
-			encoder.CopyBufferToTexture( r.neutralStaging, texture.Value(), { 0, 0, layer, 1, 1 } );
+			encoder.CopyBufferToTexture(
+			    r.neutralStaging, texture.Value(), { depth ? 4u : 0u, 0, layer, 1, 1 } );
 		encoder.TransitionTexture(
 		    texture.Value(), ResourceUsage::kCopyDestination, ResourceUsage::kSampled );
 		slot = texture.Value();
@@ -1605,12 +1608,12 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 			const bool absent =
 			    !external && !staged &&
 			    ( texture.name.empty() || ( handle != handles.end() && handle->second == 0 ) );
-			const TextureId id = external ? texture.external
-			                     : staged ? stageTexture->second
-			                     : absent ? neutral( texture.dimension, texture.array )
-			                     : handle == handles.end()
-			                         ? TextureId()
-			                         : textures.Import( handle->second, texture.srgb );
+			const TextureId id =
+			    external ? texture.external
+			    : staged ? stageTexture->second
+			    : absent ? neutral( texture.dimension, texture.array, texture.depth )
+			    : handle == handles.end() ? TextureId()
+			                              : textures.Import( handle->second, texture.srgb );
 			if ( !id.IsValid() )
 			{
 				*why = handle == handles.end()
@@ -1623,7 +1626,7 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 			if ( texture.samplerBinding == material::kNoSamplerBinding )
 				continue; // only fetched
 			auto sampler = device.CreateSampler( external || staged ? texture.sampler
-			                                     : absent ? SamplerDesc()
+			                                     : absent           ? texture.sampler
 			                                              : textures.Sampler( handle->second ) );
 			if ( !sampler )
 			{
@@ -1632,6 +1635,17 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 			}
 			out.samplers.push_back( sampler.Value() );
 			entries.push_back( { texture.samplerBinding, {}, 0, 0, {}, sampler.Value() } );
+		}
+		for ( const auto &[binding, desc] : request.samplers )
+		{
+			auto sampler = device.CreateSampler( desc );
+			if ( !sampler )
+			{
+				*why = "an additional sampler was refused";
+				return false;
+			}
+			out.samplers.push_back( sampler.Value() );
+			entries.push_back( { binding, {}, 0, 0, {}, sampler.Value() } );
 		}
 		auto group = device.CreateBindGroup( { request.layout, entries } );
 		if ( !group )

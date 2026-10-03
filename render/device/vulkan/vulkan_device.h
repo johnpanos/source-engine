@@ -51,6 +51,8 @@
 namespace render::device::vulkan
 {
 
+VkCompareOp Compare( CompareOp op );
+
 inline foundation::Unexpected<DeviceError> Fail(
     DeviceStatus status, DeviceOperation operation, VkResult result = VK_SUCCESS )
 {

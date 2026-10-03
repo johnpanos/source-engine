@@ -9929,7 +9929,7 @@ void CVulkanContext::WriteFrameStats( uint64_t endUs )
 		    "{\"f\":%llu,\"t\":%llu,\"interval\":%llu,\"cpu\":%llu,\"engine\":%llu,"
 		    "\"backend\":%llu,\"records\":%zu,\"legacy_stream_draws\":%zu,"
 		    "\"legacy_program_draws\":%zu,\"vertex_bytes\":%zu,\"index_bytes\":%zu,"
-		    "\"upload_bytes\":%llu",
+		    "\"upload_bytes\":%llu,\"extent\":[%u,%u]",
 		    static_cast<unsigned long long>( m_statsFrame ),
 		    static_cast<unsigned long long>( m_frameBeginUs ),
 		    static_cast<unsigned long long>(
@@ -9941,7 +9941,8 @@ void CVulkanContext::WriteFrameStats( uint64_t endUs )
 		    static_cast<unsigned long long>( endUs - m_frameBeginUs ), m_dynDrawRecords.size(),
 		    m_statsLegacyStreamDraws, m_statsLegacyProgramDraws,
 		    m_dynQueued.size() * sizeof( float ), m_dynIndices.size() * sizeof( uint32_t ),
-		    static_cast<unsigned long long>( m_frameCost.uploadBytes ) );
+		    static_cast<unsigned long long>( m_frameCost.uploadBytes ), m_swapExtent.width,
+		    m_swapExtent.height );
 		std::fputs( ",\"cost\":{", m_frameStatsFile );
 		bool first = true;
 		for ( int kind = 0; kind < kFrameCostKinds; ++kind )

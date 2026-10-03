@@ -112,12 +112,20 @@ def configure_budget(workload, args):
             "settings": quality["settings"], "limits": row["modes"]["headroom"]}
 
 
-def quality_receipt(log, header, budget):
+def quality_receipt(log, header, budget, frames=None):
     """Read actual cvar values and back-buffer sizes, rather than launch intent."""
     sizes = [(int(w), int(h)) for w, h in re.findall(r"back buffer (\d+)x(\d+)", log)]
     observed = dict(re.findall(r'"([A-Za-z0-9_]+)"\s*=\s*"([^"\n]+)"', log))
     expected = budget["conditions"]
     failures = []
+    extents = [frame.get("extent") for frame in frames] if frames is not None else None
+    valid_extents = [e for e in (extents or []) if isinstance(e, list) and len(e) == 2
+                     and all(isinstance(v, int) and not isinstance(v, bool) and v > 0 for v in e)]
+    if extents is not None and (not extents or any(
+            extent != [expected["width"], expected["height"]] for extent in extents)
+            or len(valid_extents) != len(extents)):
+        failures.append("per-frame drawable extents are missing or differ from %dx%d" %
+                        (expected["width"], expected["height"]))
     if not sizes or any(size != (expected["width"], expected["height"]) for size in sizes):
         failures.append("actual back buffer is not verified at %dx%d" % (expected["width"], expected["height"]))
     if not header or header.get("device") != expected["device"]:
@@ -125,7 +133,9 @@ def quality_receipt(log, header, budget):
     for name, value in budget["settings"].items():
         if observed.get(name) != value:
             failures.append("High setting %s: expected %s, observed %s" % (name, value, observed.get(name)))
-    return {"back_buffers": sizes, "observed_settings": observed,
+    return {"back_buffers": sizes, "measured_extents": sorted({tuple(e) for e in valid_extents})
+            if extents is not None else None,
+            "observed_settings": observed,
             "failures": failures, "status": "fail" if failures else "pass"}
 
 
@@ -296,7 +306,8 @@ class FrameWatcher:
         if self.frames and row.get("f") != self.frames[-1]["frame"] + 1:
             self.invalid.append("missing, duplicated or unordered frame after %s" % self.frames[-1]["frame"])
         interval_ms = interval / 1000.0
-        frame = {"frame": row.get("f"), "interval_ms": interval_ms, "phase": self.phase}
+        frame = {"frame": row.get("f"), "interval_ms": interval_ms, "phase": self.phase,
+                 "extent": row.get("extent")}
         if valid_duration_us(row.get("cpu")):
             frame["cpu_ms"] = row["cpu"] / 1000.0
         elif "cpu" in row:
@@ -348,16 +359,21 @@ def stage(args, workload):
 
 def game_command(args, scenario, stats_path, runtime):
     high = (["+mat_antialias", args.render_budget["settings"]["mat_antialias"],
-             "+fps_max", "1000", "+exec", "render_budget_high"] if args.render_budget else [])
+             "+mat_vsync", "0", "+exec", "render_budget_high"] if args.render_budget else [])
+    startup = [] if args.render_budget else ["+volume", "0", "+mat_vsync", "0",
+                                            "+engine_no_focus_sleep", "0"]
+    profiling = (["-vkgputimers"] + ([] if args.render_budget else ["+exec", "render_profile"])
+                 if getattr(args, "profile", False) else [])
     return [str(ROOT / "play_p2"), *args.render_switch,
-            "-multirun", "-novid", "-condebug", "-windowed",
+            "-multirun", "-novid", "-condebug", "-windowed", "-noborder",
             "-w", str(args.width), "-h", str(args.height),
             # The game starts in runtime; keep evidence paths beneath its
             # 512-character command-line limit even for a long output path.
             "-vkframestats", os.path.relpath(stats_path, runtime),
-            "+volume", "0", "+mat_vsync", "0", "+engine_no_focus_sleep", "0",
+            *startup,
             *args.extra_arg,
             *high,
+            *profiling,
             "+map", scenario["map"], "+wait", str(args.start_frames),
             "+exec", "qa_" + scenario["name"]]
 
@@ -466,7 +482,7 @@ def run(args, workload, settings, scenario, runtime):
         failures.append("the route measured no valid frames")
     receipt = None
     if args.render_budget:
-        receipt = quality_receipt(log + "\n" + stdout, watcher.header, args.render_budget)
+        receipt = quality_receipt(log + "\n" + stdout, watcher.header, args.render_budget, watcher.frames)
         failures.extend(receipt["failures"])
         device_name = (watcher.header or {}).get("device")
         drivers = [device for device in args.graphics.get("devices", [])
@@ -552,6 +568,9 @@ def main(argv=None):
     parser.add_argument("--low-01pct-fps", type=float, help="override the 0.1%% low target")
     parser.add_argument("--no-stop", action="store_true",
                         help="play the whole route and list every frame below the floor")
+    parser.add_argument("--profile", action="store_true",
+                        help="enable existing backend and core GPU pass timers; diagnostic "
+                             "timings include instrumentation overhead, with quality unchanged")
     parser.add_argument("--preview", action="store_true",
                         help="take a screenshot at each view of the route (a screenshot is "
                              "itself a hitch: implies --no-stop, and no verdict on lows)")
@@ -580,7 +599,8 @@ def main(argv=None):
                 "source": conformance.source_identity(str(ROOT)),
                 "workload": str(args.workload), "settings": settings,
                 "display": {"mode": args.display, "width": args.width, "height": args.height},
-                "preview": args.preview, "no_stop": args.no_stop, "results": []}
+                "preview": args.preview, "no_stop": args.no_stop, "profile": args.profile,
+                "results": []}
     evidence["render_budget"] = args.render_budget
     args.graphics = graphics_context() if args.render_budget else {}
     evidence["graphics"] = args.graphics
@@ -588,8 +608,15 @@ def main(argv=None):
     evidence_path = args.out / "evidence.json"
     try:
         runtime = args.runtime.resolve() if args.skip_stage else stage(args, workload)
+        if args.profile:
+            (runtime / "portal2/cfg/render_profile.cfg").write_text(
+                "cl_render_debug_gpu_timers 1\ncl_render_debug_stats 1\n")
         if args.render_budget:
             settings_commands = [name + " " + value for name, value in args.render_budget["settings"].items()]
+            settings_commands.append("fps_max 1000")
+            settings_commands.extend(["volume 0", "engine_no_focus_sleep 0"])
+            if args.profile:
+                settings_commands.extend(["cl_render_debug_gpu_timers 1", "cl_render_debug_stats 1"])
             settings_commands.extend(args.render_budget["settings"])
             cfg = runtime / "portal2/cfg/render_budget_high.cfg"
             cfg.parent.mkdir(parents=True, exist_ok=True)

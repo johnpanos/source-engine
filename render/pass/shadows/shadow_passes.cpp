@@ -424,9 +424,15 @@ ShadowReceiverRenderer::Create(
 	point.minFilter = point.magFilter = point.mipFilter = Filter::kNearest;
 	point.address = AddressMode::kClampToEdge;
 	auto sampler = device.CreateSampler( point );
+	SamplerDesc comparison;
+	comparison.mipFilter = Filter::kNearest;
+	comparison.address = AddressMode::kClampToEdge;
+	comparison.comparison = CompareOp::kLessEqual;
+	auto comparisonSampler = device.CreateSampler( comparison );
 	static const BindingDesc frame[] = {
 	    { 0, BindingKind::kSampledTexture, 1, { ShaderStage::kFragment } },
-	    { 1, BindingKind::kSampler, 1, { ShaderStage::kFragment } } };
+	    { 1, BindingKind::kSampler, 1, { ShaderStage::kFragment } },
+	    { 2, BindingKind::kSampler, 1, { ShaderStage::kFragment } } };
 	static const BindingDesc view[] = {
 	    { 0, BindingKind::kUniformBuffer, 1, { ShaderStage::kVertex, ShaderStage::kFragment } } };
 	static const BindingDesc draw[] = {
@@ -436,13 +442,15 @@ ShadowReceiverRenderer::Create(
 	auto drawLayout = device.CreateBindGroupLayout( { BindGroupRole::kDraw, draw } );
 	if ( sampler )
 		renderer->m_Sampler = sampler.Value();
+	if ( comparisonSampler )
+		renderer->m_ComparisonSampler = comparisonSampler.Value();
 	if ( frameLayout )
 		renderer->m_FrameLayout = frameLayout.Value();
 	if ( viewLayout )
 		renderer->m_ViewLayout = viewLayout.Value();
 	if ( drawLayout )
 		renderer->m_DrawLayout = drawLayout.Value();
-	if ( !sampler || !frameLayout || !viewLayout || !drawLayout )
+	if ( !sampler || !comparisonSampler || !frameLayout || !viewLayout || !drawLayout )
 		return foundation::MakeUnexpected( ShadowPassStatus::kDevice );
 	return renderer;
 }
@@ -458,6 +466,8 @@ ShadowReceiverRenderer::~ShadowReceiverRenderer()
 	}
 	if ( m_Sampler.IsValid() )
 		(void)m_Device.Release( m_Sampler, m_LastToken );
+	if ( m_ComparisonSampler.IsValid() )
+		(void)m_Device.Release( m_ComparisonSampler, m_LastToken );
 }
 
 foundation::Expected<PipelineId, ShadowPassStatus> ShadowReceiverRenderer::PipelineFor(
@@ -572,8 +582,8 @@ foundation::Expected<std::uint32_t, ShadowPassStatus> ShadowReceiverRenderer::Ad
 	pass.Execute(
 	    [this, frame, atlas, viewBuffer, worldBuffer, targets]( graph::RecordContext &context )
 	    {
-		    const BindGroupEntry frameEntries[] = {
-		        { 0, {}, 0, 0, context.Texture( atlas ), {} }, { 1, {}, 0, 0, {}, m_Sampler } };
+		    const BindGroupEntry frameEntries[] = { { 0, {}, 0, 0, context.Texture( atlas ), {} },
+		        { 1, {}, 0, 0, {}, m_Sampler }, { 2, {}, 0, 0, {}, m_ComparisonSampler } };
 		    const BindGroupEntry viewEntry[] = {
 		        { 0, context.Buffer( viewBuffer ), 0, 0, {}, {} } };
 		    const BindGroupEntry drawEntry[] = {

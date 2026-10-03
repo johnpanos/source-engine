@@ -27,6 +27,7 @@
 //=============================================================================//
 
 #include "lab_canvas.h"
+#include "lab_compute.h"
 #include "lab_receiver.h"
 #include "lab_suite.h"
 #include "lab_support.h"
@@ -41,9 +42,11 @@
 #include "render/pass/lights/clusters.h"
 #include "render/pass/shadows/atlas.h"
 #include "render/pass/shadows/shadow_passes.h"
+#include "render/pass/shadows/shadow_plan.h"
 #include "render/pass/shadows/shadow_views.h"
 #include "render/resources/mesh_cache.h"
 #include "spv/shadowed_light_defects_spv.h"
+#include "spv/shadow_cube_probe_spv.h"
 
 #include <algorithm>
 #include <atomic>
@@ -404,6 +407,7 @@ struct Frame
 	const ReceiverView *view = nullptr;
 	bool shadowed = true; // the spots index their tiles
 	bool atlas = true;    // the view group binds the atlas and tiles
+	shaderlib::DebugSpecialization debug = {};
 };
 
 std::optional<material::GroupRequest> ViewGroup( Lab &lab, const Frame &frame )
@@ -471,7 +475,7 @@ std::optional<std::string> Render( Lab &lab, const Frame &frame, CanvasImage &im
 	claim.claimed = true;
 	material::SurfaceVariant variant = claim.Variant();
 	variant.terms |= material::kSurfaceClustered;
-	auto pipeline = lab.family->Program().Pipeline( variant );
+	auto pipeline = lab.family->Program().Pipeline( variant, frame.debug );
 	if ( !pipeline )
 		return std::string( "no pipeline" );
 	auto group = [&]( std::uint64_t id ) -> BindGroupId
@@ -626,6 +630,194 @@ std::optional<std::string> ShadowedChecks( Lab &lab, Results &results )
 	}
 	results.That( SameImage( untiled, withoutAtlas ), "neutral.untiled-lights-ignore-the-atlas" );
 	results.That( !SameImage( untiled, shadowed ), "neutral.a-shadowed-frame-differs" );
+	Frame visibilityOff{ &kReceiverMaterials[0], &overhead, true, true };
+	visibilityOff.debug.termsOff = shaderlib::kDebugTermShadowVisibility;
+	CanvasImage unshadowed;
+	if ( std::optional<std::string> why = Render( lab, visibilityOff, unshadowed ) )
+		return why;
+	results.That(
+	    SameImage( untiled, unshadowed ), "debug.shadow-visibility-off-is-untiled-bitwise" );
+	return std::nullopt;
+}
+
+std::optional<std::string> SoftFilterChecks( Lab &lab, Results &results )
+{
+	// Hardware comparison sampling must preserve the complete soft filter,
+	// with the existing 0.5 percent + 3e-4 image band, including
+	// penumbra pixels the independent hard-shadow ray oracle
+	// above deliberately leaves as a bounded edge. The reference compiles
+	// four integer-addressed depth comparisons on the same immutable inputs;
+	// no product selects this oracle.
+	Lab reference( lab.device );
+	if ( std::optional<std::string> why =
+	         Prepare( reference, spirv::kSurfaceShadowReferenceCompare ) )
+		return why;
+	const ReceiverView overhead = MakeReceiverView( { 0, -60, 420 }, { -40, 20, 0 }, kSize );
+	const ReceiverView oblique = MakeReceiverView( { 250, -380, 220 }, { -60, 40, 0 }, kSize );
+	for ( const float radius : { 4.0f, 32.0f } )
+	{
+		for ( Lab *fixture : { &lab, &reference } )
+		{
+			for ( SceneLight &light : fixture->lights )
+			{
+				light.light.sourceRadius = radius;
+				if ( light.tile >= 0 )
+				{
+					fixture->tiles[light.tile].params[2] = kShadowNear;
+					fixture->tiles[light.tile].params[3] = light.light.radius;
+				}
+			}
+		}
+		for ( const ReceiverMaterial *material :
+		    { &kReceiverMaterials[0], &kReceiverMaterials[2] } )
+		{
+			for ( const ReceiverView *view : { &overhead, &oblique } )
+			{
+				CanvasImage actual, expected;
+				const Frame frame{ material, view, true, true };
+				for ( const auto &[fixture, image] :
+				    { std::pair{ &lab, &actual }, std::pair{ &reference, &expected } } )
+				{
+					if ( std::optional<std::string> why = Render( *fixture, frame, *image ) )
+						return why;
+				}
+				std::size_t bad = 0;
+				float worst = 0;
+				for ( std::size_t i = 0; i < std::min( actual.rgba.size(), expected.rgba.size() );
+				    ++i )
+				{
+					const float error = std::fabs( actual.rgba[i] - expected.rgba[i] );
+					worst = std::max( worst, error );
+					bad += !std::isfinite( actual.rgba[i] ) || !std::isfinite( expected.rgba[i] ) ||
+					       error > kAbsolute + kRelative * std::fabs( expected.rgba[i] );
+				}
+				results.That( actual.rgba.size() == kSize * kSize * 4 &&
+				                  actual.rgba.size() == expected.rgba.size() && bad == 0,
+				    std::string( "soft-filter." ) + material->name + "." +
+				        ( view == &overhead ? "overhead" : "oblique" ) + "." +
+				        std::to_string( int( radius ) ),
+				    Format4( "%.0f channels differ; max error %.9g", bad, worst ) );
+			}
+		}
+	}
+	return std::nullopt;
+}
+
+std::optional<std::string> CubeChecks( Lab &lab, Results &results )
+{
+	Lab fixture( lab.device ); // owns the private atlas until every dispatch completes
+	light_set::RuntimeLight light;
+	light.shape = light_set::LightShape::Point;
+	light.radius = 256.0f;
+	shadows::ShadowPlanInput input;
+	input.lights = { &light, 1 };
+	input.atlasSize = 2048;
+	shadows::ShadowPlan plan;
+	if ( auto why = shadows::PlanShadows( input, plan ) )
+		return why;
+	if ( plan.tiles.size() != 6 || plan.lightTiles[0] != 0 ||
+	     plan.lightLayouts[0] != RuntimeShadowLayout::kWorldCube )
+		return std::string( "the cube planner did not publish all six world-axis faces" );
+
+	// Distinct, constant depths per face make a wrong face observable, without
+	// a seam between two rasterizations obscuring which lookup was chosen.
+	std::vector<float> depth( input.atlasSize * input.atlasSize, 1.0f );
+	for ( std::size_t face = 0; face < plan.views.size(); ++face )
+	{
+		const shadows::ShadowTile &tile = plan.views[face].tile;
+		for ( std::uint32_t y = tile.y; y < tile.y + tile.size; ++y )
+			for ( std::uint32_t x = tile.x; x < tile.x + tile.size; ++x )
+				depth[y * input.atlasSize + x] = face % 2 ? 1.0f : 0.2f;
+	}
+	fixture.atlasDesc.format = Format::kD32Float;
+	fixture.atlasDesc.width = fixture.atlasDesc.height = input.atlasSize;
+	fixture.atlasDesc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kSampled };
+	auto atlas = lab.device.CreateTexture( fixture.atlasDesc );
+	if ( !atlas )
+		return std::string( "the cube oracle atlas was refused" );
+	fixture.atlas = atlas.Value();
+	BufferDesc upload;
+	upload.size = depth.size() * sizeof( float );
+	upload.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kCopySource };
+	auto staging = lab.device.CreateBuffer( upload );
+	auto encoded = lab.device.BeginEncoder( QueueKind::kGraphics );
+	if ( !staging || !encoded )
+	{
+		if ( staging )
+			(void)lab.device.Release( staging.Value(), {} );
+		return std::string( "the cube oracle upload was refused" );
+	}
+	CommandEncoder &e = encoded.Value();
+	e.TransitionBuffer(
+	    staging.Value(), ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+	e.WriteBuffer( staging.Value(), 0, std::as_bytes( std::span( depth ) ) );
+	e.TransitionBuffer(
+	    staging.Value(), ResourceUsage::kCopyDestination, ResourceUsage::kCopySource );
+	e.TransitionTexture(
+	    fixture.atlas, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+	e.CopyBufferToTexture(
+	    staging.Value(), fixture.atlas, { 0, 0, 0, input.atlasSize, input.atlasSize } );
+	e.TransitionTexture( fixture.atlas, ResourceUsage::kCopyDestination, ResourceUsage::kSampled );
+	auto token = lab.device.Submit( QueueKind::kGraphics, { &e, 1 }, {} );
+	(void)lab.device.WaitIdle();
+	(void)lab.device.Release( staging.Value(), token ? token.Value() : CompletionToken() );
+	if ( !token )
+		return std::string( "the cube oracle upload did not submit" );
+
+	std::vector<math::float4> points;
+	for ( float radius : { 0.0f, 4.0f, 32.0f } )
+	{
+		for ( int z = -4; z <= 4; ++z )
+			for ( int y = -4; y <= 4; ++y )
+				for ( int x = -4; x <= 4; ++x )
+					points.push_back(
+					    { float( x * 16 ), float( y * 16 ), float( z * 16 ), radius } );
+	}
+	// Neighbouring directions on either side of every face boundary.
+	for ( int sign : { -1, 1 } )
+		for ( float epsilon : { -0.01f, 0.0f, 0.01f } )
+		{
+			points.push_back( { float( sign ) * 64, 64 + epsilon, 0, 4 } );
+			points.push_back( { 0, float( sign ) * 64, 64 + epsilon, 4 } );
+			points.push_back( { 64 + epsilon, 0, float( sign ) * 64, 4 } );
+		}
+	std::vector<std::byte> cases(
+	    plan.tiles.size() * sizeof( ShadowTileGpu ) + points.size() * sizeof( math::float4 ) );
+	std::memcpy( cases.data(), plan.tiles.data(), plan.tiles.size() * sizeof( ShadowTileGpu ) );
+	std::memcpy( cases.data() + plan.tiles.size() * sizeof( ShadowTileGpu ), points.data(),
+	    points.size() * sizeof( math::float4 ) );
+	SamplerDesc samplers[2];
+	samplers[0].minFilter = samplers[0].magFilter = samplers[0].mipFilter = Filter::kNearest;
+	samplers[0].address = samplers[1].address = AddressMode::kClampToEdge;
+	samplers[1].mipFilter = Filter::kNearest;
+	samplers[1].comparison = CompareOp::kLessEqual;
+	for ( bool seeded : { false, true } )
+	{
+		CheckKernel kernel( lab.device );
+		if ( auto why = kernel.Create(
+		         seeded ? std::span<const std::uint32_t>( spirv::kShadowCubeProbeNext )
+		                : std::span<const std::uint32_t>( spirv::kShadowCubeProbe ),
+		         1, 2, "shadow cube lookup", samplers ) )
+			return why;
+		std::vector<std::byte> output;
+		const TextureId textures[] = { fixture.atlas };
+		if ( auto why = kernel.Run( fixture.textures, textures, std::uint32_t( points.size() ),
+		         cases, points.size() * sizeof( math::float2 ), output ) )
+			return why;
+		std::size_t bad = 0, lit = 0, shadowed = 0;
+		for ( std::size_t i = 0; i < points.size(); ++i )
+		{
+			math::float2 value;
+			std::memcpy( &value, output.data() + i * sizeof( value ), sizeof( value ) );
+			bad += !std::isfinite( value.x ) || !std::isfinite( value.y ) || value.x != value.y;
+			lit += value.y == 1.0f;
+			shadowed += value.y == 0.0f;
+		}
+		results.That( seeded ? bad > 0 : bad == 0 && lit > 100 && shadowed > 100,
+		    seeded ? "cube.next-face-rejected" : "cube.matches-matrix-search",
+		    Format4( "%.0f directions, %.0f mismatches, %.0f lit, %.0f shadowed", points.size(),
+		        bad, lit, shadowed ) );
+	}
 	return std::nullopt;
 }
 
@@ -642,6 +834,10 @@ std::optional<std::string> RunOnce( bool validate, std::span<const std::uint32_t
 			return why;
 		if ( std::optional<std::string> why = ShadowedChecks( lab, results ) )
 			return why;
+		if ( std::optional<std::string> why = SoftFilterChecks( lab, results ) )
+			return why;
+		if ( std::optional<std::string> why = CubeChecks( lab, results ) )
+			return why;
 		(void)device->WaitIdle();
 	}
 	device.reset();
@@ -649,10 +845,10 @@ std::optional<std::string> RunOnce( bool validate, std::span<const std::uint32_t
 	return std::nullopt;
 }
 
-const Seeded kShadowedSeeded[] = {
-    { "shadow-ignored", spirv::kSurfaceShadowIgnored, "shadowed." },
+const Seeded kShadowedSeeded[] = { { "shadow-ignored", spirv::kSurfaceShadowIgnored, "shadowed." },
     { "tile-next", spirv::kSurfaceShadowTileNext, "shadowed." },
-    { "depth-reversed", spirv::kSurfaceShadowDepthReversed, "shadowed." } };
+    { "depth-reversed", spirv::kSurfaceShadowDepthReversed, "shadowed." },
+    { "unstable-gather", spirv::kSurfaceShadowUnstableGather, "soft-filter." } };
 
 } // namespace
 

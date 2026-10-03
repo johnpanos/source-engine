@@ -261,6 +261,12 @@ nor successful GPU submission replaces native visual acceptance.
 
 ## Frame pacing (native Vulkan)
 
+For named CPU costs and backend/core GPU passes, use
+[`render_profile.py`](render_profile.md). `frame_floor.py --profile --no-stop`
+collects timestamps and retains the complete failing route. The analyzer writes
+grepable TSV and JSON, joins delayed GPU results to their originating frame and
+rejects missing timer coverage. Nested CPU and GPU scopes are inclusive.
+
 `frame_pacing.py` measures per-frame cost of a scripted Portal workload
 (`quality/workloads/portal-frame-pacing-v1.json`) on the native Vulkan backend,
 headless, and attributes hitches to named backend operations. Keep `--out`
@@ -299,3 +305,6 @@ are still needed before claiming the High target. The laser route alone does
 not certify every scene. `render_budgets.py check` only validates declarations;
 old K0 records and a warm-pass report do not certify this High row. See
 [RFC 0016](../../RFC/0016-render-core.md#hard-render-budgets-user-decision-2026-10-01).
+
+Renderer diagnostics: [native frame/pass profiling and RADV compiler statistics](render_profile.md),
+[external P2:CE presentation collector](p2ce_present.py).

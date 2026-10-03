@@ -24,6 +24,30 @@
 namespace render::device::vulkan
 {
 
+VkCompareOp Compare( CompareOp op )
+{
+	switch ( op )
+	{
+	case CompareOp::kNotEqual:
+		return VK_COMPARE_OP_NOT_EQUAL;
+	case CompareOp::kNever:
+		return VK_COMPARE_OP_NEVER;
+	case CompareOp::kLess:
+		return VK_COMPARE_OP_LESS;
+	case CompareOp::kLessEqual:
+		return VK_COMPARE_OP_LESS_OR_EQUAL;
+	case CompareOp::kEqual:
+		return VK_COMPARE_OP_EQUAL;
+	case CompareOp::kGreaterEqual:
+		return VK_COMPARE_OP_GREATER_OR_EQUAL;
+	case CompareOp::kGreater:
+		return VK_COMPARE_OP_GREATER;
+	case CompareOp::kAlways:
+		return VK_COMPARE_OP_ALWAYS;
+	}
+	return VK_COMPARE_OP_ALWAYS;
+}
+
 namespace
 {
 
@@ -332,8 +356,8 @@ DeviceResult<SamplerId> VulkanDevice::CreateSampler( const SamplerDesc &desc )
 	const DeviceOperation op = DeviceOperation::kCreateSampler;
 	if ( m_State != DeviceState::kAvailable )
 		return Fail( DeviceStatus::kDeviceLost, op );
-	if ( desc.maxAnisotropy == 0 || desc.maxAnisotropy > 16 )
-		return Fail( DeviceStatus::kInvalidDescription, op );
+	if ( auto valid = ValidateSampler( desc ); !valid )
+		return foundation::MakeUnexpected( valid.Error() );
 	if ( desc.maxAnisotropy > 1 &&
 	     ( !m_Adapter.anisotropy ||
 	         static_cast<float>( desc.maxAnisotropy ) > m_Properties.limits.maxSamplerAnisotropy ) )
@@ -367,6 +391,11 @@ DeviceResult<SamplerId> VulkanDevice::CreateSampler( const SamplerDesc &desc )
 	info.anisotropyEnable = desc.maxAnisotropy > 1 ? VK_TRUE : VK_FALSE;
 	info.maxAnisotropy = static_cast<float>( desc.maxAnisotropy );
 	info.maxLod = VK_LOD_CLAMP_NONE;
+	info.compareEnable = desc.comparison.has_value();
+	info.compareOp = Compare(
+	    m_Options.sensitivity.reverseSamplerComparison && desc.comparison == CompareOp::kLessEqual
+	        ? CompareOp::kGreater
+	        : desc.comparison.value_or( CompareOp::kAlways ) );
 	SamplerRecord record;
 	const VkResult result = vkCreateSampler( m_Device, &info, nullptr, &record.sampler );
 	if ( result != VK_SUCCESS )

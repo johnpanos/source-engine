@@ -74,7 +74,7 @@ struct ShadowPlan
 	// Each light's first tile in `tiles`, or -1 (unshadowed); a point light's
 	// six and an area light's five or six follow their first.
 	std::vector<int> lightTiles;     // per input light
-	std::vector<int> lightTileCount; // 1 or 6
+	std::vector<RuntimeShadowLayout> lightLayouts;
 	std::vector<int> areaTiles;      // per input area light
 	std::vector<int> projectorTiles; // per input projector
 	int sunFirst = -1;

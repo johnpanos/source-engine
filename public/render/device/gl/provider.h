@@ -57,6 +57,7 @@ struct GlAdapterOptions
 		CapabilitySet falseClaims{};        // D15: claimed in the facts, not implemented
 		bool ignoreColorWriteMasks = false; // D17: every channel written
 		bool dropSpecialization = false;    // D20: the constants never reach the program
+		bool reverseSamplerComparison = false; // D24: compare reference >= stored
 		bool unsafeUploadReuse = false;     // D10: ring ranges retire at submission
 		bool transmittanceAsPremultiplied = false; // D21: kTransmittance drawn as kPremultiplied
 	};

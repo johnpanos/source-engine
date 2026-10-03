@@ -13,6 +13,7 @@
 #include "render/device/usage.h"
 
 #include <cstdint>
+#include <optional>
 #include <string_view>
 
 namespace render::device
@@ -160,6 +161,18 @@ enum class AddressMode : std::uint8_t
 	kMirroredRepeat
 };
 
+enum class CompareOp : std::uint8_t
+{
+	kNever,
+	kLess,
+	kLessEqual,
+	kEqual,
+	kGreaterEqual,
+	kGreater,
+	kAlways,
+	kNotEqual
+};
+
 struct SamplerDesc
 {
 	Filter minFilter = Filter::kLinear;
@@ -167,6 +180,11 @@ struct SamplerDesc
 	Filter mipFilter = Filter::kLinear;
 	AddressMode address = AddressMode::kRepeat;
 	std::uint32_t maxAnisotropy = 1;
+	// Absent: ordinary sampling. Present: compare the reference with each
+	// depth texel before filtering (D24). Enable and operation are one value.
+	std::optional<CompareOp> comparison;
+
+	friend bool operator==( const SamplerDesc &, const SamplerDesc & ) = default;
 };
 
 } // namespace render::device

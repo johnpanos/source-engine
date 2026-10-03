@@ -458,7 +458,7 @@ def elevator_video_override(resolver, map_name):
         return {}, None
     script = data.decode("utf-8", "replace")
     names = [map_name]
-    for suffix in ("_relit", "_source2"):
+    for suffix in ("_relit", "_source2", "_probe64"):
         if map_name.endswith(suffix) and len(map_name) > len(suffix):
             names.append(map_name[:-len(suffix)])
             break

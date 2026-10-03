@@ -1088,8 +1088,9 @@ std::shared_ptr<const pass::world::StageViewLights> CoreWorld::StageViewLightsFo
 		const int k = shadowedOf[i];
 		const int tile =
 		    k >= 0 && std::size_t( k ) < plan.lightTiles.size() ? plan.lightTiles[k] : -1;
-		const int tiles = tile >= 0 ? plan.lightTileCount[k] : 1;
-		out->lights.push_back( material::PackSurfaceLight( light, tile, tiles, light.baked ) );
+		const RuntimeShadowLayout layout =
+		    tile >= 0 ? plan.lightLayouts[k] : RuntimeShadowLayout::kSingle;
+		out->lights.push_back( material::PackSurfaceLight( light, tile, layout, light.baked ) );
 	}
 	// The area lights and the sun, with their tiles.
 	PackViewAreaLights( areas, in.mapAreas, plan.areaTiles, *out );

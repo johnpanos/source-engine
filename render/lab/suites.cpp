@@ -42,6 +42,8 @@ int RunSuite( int argc, char **argv )
 		return RunSsrSuite( argc - 1, argv + 1 );
 	if ( name == "shadowed-lights" )
 		return RunShadowedLightsSuite( argc - 1, argv + 1 );
+	if ( name == "shadow-receiver-perf" )
+		return RunShadowReceiverPerfSuite( argc - 1, argv + 1 );
 	if ( name == "bounce" )
 		return RunBounceSuite( argc - 1, argv + 1 );
 	if ( name == "gtao" )

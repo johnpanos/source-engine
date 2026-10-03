@@ -111,18 +111,6 @@ enum class CullMode : std::uint8_t
 	kFront
 };
 
-enum class CompareOp : std::uint8_t
-{
-	kNever,
-	kLess,
-	kLessEqual,
-	kEqual,
-	kGreaterEqual,
-	kGreater,
-	kAlways,
-	kNotEqual
-};
-
 enum class BlendMode : std::uint8_t
 {
 	kOpaque,

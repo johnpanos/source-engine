@@ -986,7 +986,8 @@ int Run( const Options &options )
 			for ( std::size_t i = 0; i < lights.lights.size(); ++i )
 				records.push_back( material::PackSurfaceLight( lights.lights[i],
 				    shadowing.lightTiles.empty() ? -1 : shadowing.lightTiles[i],
-				    shadowing.lightTileCount.empty() ? 1 : shadowing.lightTileCount[i],
+				    shadowing.lightLayouts.empty() ? RuntimeShadowLayout::kSingle
+				                                   : shadowing.lightLayouts[i],
 				    diffuseInBake ) );
 			if ( records.empty() )
 				records.emplace_back();

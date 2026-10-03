@@ -13,6 +13,7 @@
 
 layout( set = 0, binding = 0 ) uniform texture2D shadowAtlas;
 layout( set = 0, binding = 1 ) uniform sampler shadowSampler;
+layout( set = 0, binding = 2 ) uniform sampler shadowComparisonSampler;
 
 layout( std140, set = 1, binding = 0, row_major ) uniform Receiver
 {
@@ -42,14 +43,14 @@ void main()
 		const float distance = length( toPoint );
 		if ( distance <= receiver.lightRange.x &&
 		     dot( toPoint, receiver.lightAxisCos.xyz ) >= receiver.lightAxisCos.w * distance )
-			light = ShadowVisibility( shadowAtlas, shadowSampler, receiver.tiles[0], worldPosition );
+			light = ShadowVisibility( shadowAtlas, shadowSampler, shadowComparisonSampler, receiver.tiles[0], worldPosition );
 	}
 	else
 	{
 		const uint count = uint( receiver.lightRange.y );
 		while ( cascade < count && viewDistance > receiver.cascadeSplits[cascade] )
 			++cascade;
-		light = cascade < count ? ShadowVisibility( shadowAtlas, shadowSampler,
+		light = cascade < count ? ShadowVisibility( shadowAtlas, shadowSampler, shadowComparisonSampler,
 		                              receiver.tiles[cascade], worldPosition )
 		                        : 1.0;
 	}

@@ -638,8 +638,8 @@ public:
 	{
 		if ( m_State != DeviceState::kAvailable )
 			return Fail( DeviceStatus::kDeviceLost, DeviceOperation::kCreateSampler );
-		if ( desc.maxAnisotropy == 0 || desc.maxAnisotropy > 16 )
-			return Fail( DeviceStatus::kInvalidDescription, DeviceOperation::kCreateSampler );
+		if ( auto valid = ValidateSampler( desc ); !valid )
+			return foundation::MakeUnexpected( valid.Error() );
 		const SamplerId id{ ++m_NextId };
 		m_Samplers.emplace( id.value, Simple{} );
 		return id;

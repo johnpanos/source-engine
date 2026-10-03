@@ -426,6 +426,34 @@ void PassTimers( testing::Checks &checks )
 	                   ( third ? third->milliseconds : 0.0 );
 	checks.That( sum > 0.0 && sum <= span, "D4.pass-times-sum-within-the-frame" );
 
+	// Product frames attach many short encoders (one per material/model cohort).
+	// A short encoder must not consume the old 64-timestamp allocation: eight
+	// two-timestamp sections fit in this bounded 128-timestamp storage budget.
+	GpuPassTimers cohorts( *device, 128 );
+	cohorts.BeginFrame( 2, result.Value().token );
+	device::CompletionToken last;
+	for ( int i = 0; i < 8; ++i )
+	{
+		auto encoder = device->BeginEncoder( device::QueueKind::kGraphics );
+		if ( !checks.That( encoder.HasValue(), "D4.short-encoder-begins" ) )
+			return;
+		cohorts.Attach( encoder.Value() );
+		encoder.Value().BeginLabel( "short cohort" );
+		encoder.Value().EndLabel();
+		cohorts.Detach( encoder.Value() );
+		auto submitted = device->Submit( device::QueueKind::kGraphics,
+		    std::span<device::CommandEncoder>( &encoder.Value(), 1 ), {} );
+		if ( !checks.That( submitted.HasValue(), "D4.short-encoder-submits" ) )
+			return;
+		last = submitted.Value();
+	}
+	cohorts.EndFrame( last );
+	control->CompleteAll();
+	const PassTimerReport cohortReport = cohorts.Take();
+	checks.That( cohortReport.frames == 1 && cohortReport.overflowed == 0 &&
+	                 cohortReport.passes.size() == 1 && cohortReport.passes[0].count == 8,
+	    "D4.short-encoders-fit-the-timestamp-storage-budget" );
+
 	device::null::NullOptions without;
 	without.capabilities.Remove( device::Capability::kTimestamps );
 	auto plain = device::null::Create( without ).Value();

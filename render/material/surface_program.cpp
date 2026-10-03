@@ -95,8 +95,8 @@ PbrSplitSumTable LtcTable()
 	return table;
 }
 
-SurfaceLightGpu PackSurfaceLight(
-    const light_set::RuntimeLight &light, int shadowTile, int shadowTiles, bool diffuseInBake )
+SurfaceLightGpu PackSurfaceLight( const light_set::RuntimeLight &light, int shadowTile,
+    RuntimeShadowLayout shadowLayout, bool diffuseInBake )
 {
 	SurfaceLightGpu packed;
 	const bool spot = light.shape == light_set::LightShape::Spot;
@@ -119,7 +119,7 @@ SurfaceLightGpu PackSurfaceLight(
 	packed.cone[3] = float( shadowTile );
 	packed.spot[0] = light.spotExponent;
 	packed.spot[1] = diffuseInBake ? 1.0f : 0.0f;
-	packed.spot[2] = float( shadowTiles );
+	packed.spot[2] = float( shadowLayout );
 	return packed;
 }
 
@@ -495,17 +495,22 @@ GroupRequest SurfaceProgram::ViewGroup( const SurfaceViewGpu &view,
 	storage( 3, std::as_bytes( lights ) );
 	storage( 4, std::as_bytes( shadows.tiles ) );
 	storage( 5, std::as_bytes( projectors.lights ) );
-	// The atlas is read with a point sampler: shadow_sample.glsl filters the
-	// compare itself (the device port has no comparison samplers).
+	// Blocker search reads raw depth; visibility compares before filtering.
 	ProgramTexture atlas;
 	atlas.binding = 6;
 	atlas.samplerBinding = 7;
 	atlas.sampler.minFilter = atlas.sampler.magFilter = atlas.sampler.mipFilter =
 	    Filter::kNearest;
 	atlas.sampler.address = AddressMode::kClampToEdge;
+	atlas.depth = true;
 	atlas.external = shadows.atlas;
 	atlas.externalDesc = shadows.atlasDesc;
 	request.textures.push_back( std::move( atlas ) );
+	SamplerDesc comparison;
+	comparison.mipFilter = Filter::kNearest;
+	comparison.address = AddressMode::kClampToEdge;
+	comparison.comparison = CompareOp::kLessEqual;
+	request.samplers.emplace_back( 11, comparison );
 	// The cookies: a 2D array, filtered and clamped (the legacy flashlight
 	// samples its cookie so).
 	ProgramTexture cookies;
@@ -519,7 +524,7 @@ GroupRequest SurfaceProgram::ViewGroup( const SurfaceViewGpu &view,
 	// The occlusion is fetched per pixel (texelFetch).
 	ProgramTexture occlusion;
 	occlusion.binding = 10;
-	occlusion.samplerBinding = 11;
+	occlusion.samplerBinding = kNoSamplerBinding;
 	occlusion.sampler.minFilter = occlusion.sampler.magFilter = occlusion.sampler.mipFilter =
 	    Filter::kNearest;
 	occlusion.sampler.address = AddressMode::kClampToEdge;

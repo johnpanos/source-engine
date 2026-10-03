@@ -388,30 +388,6 @@ GLenum StencilOperation( StencilOp op )
 	return GL_KEEP;
 }
 
-GLenum CompareFunction( CompareOp op )
-{
-	switch ( op )
-	{
-	case CompareOp::kNotEqual:
-		return GL_NOTEQUAL;
-	case CompareOp::kNever:
-		return GL_NEVER;
-	case CompareOp::kLess:
-		return GL_LESS;
-	case CompareOp::kLessEqual:
-		return GL_LEQUAL;
-	case CompareOp::kEqual:
-		return GL_EQUAL;
-	case CompareOp::kGreaterEqual:
-		return GL_GEQUAL;
-	case CompareOp::kGreater:
-		return GL_GREATER;
-	case CompareOp::kAlways:
-		return GL_ALWAYS;
-	}
-	return GL_ALWAYS;
-}
-
 } // namespace
 
 // Runs one submission's encoders on the context, in order.

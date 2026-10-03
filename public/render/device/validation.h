@@ -22,6 +22,7 @@ namespace render::device
 {
 
 DeviceResult<void> ValidateBuffer( const BufferDesc &desc );
+DeviceResult<void> ValidateSampler( const SamplerDesc &desc );
 DeviceResult<void> ValidateTexture( const TextureDesc &desc, const Limits &limits );
 DeviceResult<void> ValidateBindGroupLayout( const BindGroupLayoutDesc &desc );
 

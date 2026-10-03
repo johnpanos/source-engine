@@ -45,10 +45,10 @@ Pixel oracles (`render.shadows.pixels`, profile `linux-native-vulkan-gpu`):
 per-(view, caster) clip matrices composed in double, one depth-only render
 pass that clears the atlas and sets each view's tile viewport; depth test
 less, no culling), and `ShadowReceiverRenderer` draws receivers through
-`shadow_sample.glsl` (the atlas and a point sampler in the frame group, the
-camera and light in the view group, receiver worlds in the draw group). The
-port has no comparison sampler and no depth bias state, so the helper
-compares in the shader: a 2x2 bilinear percentage-closer filter with taps
+`shadow_sample.glsl` (the atlas and its point and depth-comparison samplers in
+the frame group, the camera and light in the view group, receiver worlds in
+the draw group). The comparison sampler compares before filtering; the point
+sampler supplies raw blocker depths. A 2x2 bilinear percentage-closer filter has taps
 clamped into the tile viewport, a point lit when its depth less the
 receiver bias is at most the stored depth, and points without shadow
 information lit. The oracle is a CPU ray test in double against the caster
@@ -72,3 +72,22 @@ Open for K7: the Portal flashlight scene on native and the
 frames; the passes as an `IRenderFeature` in the frame graph (`feature.h`);
 receiver-side families (K4) including `shadow_sample.glsl`; atlas budget rows
 on desktop and the Fold7; a Fold7 and Apple device run.
+
+## Receiver microbenchmark
+
+`render_lab suite shadow-receiver-perf --validate --verbose` evaluates the complete
+receiver at 786,432 immutable points over a fixed 1024² D32 atlas: perspective,
+orthographic and hard-filter records, three perspective source radii, tile edges,
+varying rotation and normal offset, with lit, dark and penumbra coverage. Every
+result is bitwise identical to `render/lab/shadow_receiver_control.glsl`, the private
+pre-optimization control captured on 2026-10-02. It is never a product path.
+`--sensitivity` must detect an omitted PCF tap.
+
+The existing device timestamp contract brackets dispatches after 256 warmup pairs.
+Control and candidate share immutable input/atlas storage and alternate order for
+each of 128 measured pairs. Uploads, WAW barriers, CPU submission and readback are
+outside the samples. An identical-code calibration precedes comparison; missing,
+unordered or non-finite timings fail, as does more than three percent median bias
+in calibration. All resources retire after GPU completion. `GPU_MICRO` TSV rows
+retain every duration in milliseconds. These are compute receiver measurements,
+not fragment occupancy or complete-frame performance acceptance.

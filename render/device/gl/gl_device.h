@@ -50,6 +50,8 @@
 namespace render::device::gl
 {
 
+GLenum CompareFunction( CompareOp op );
+
 // The artifacts' slot layout (shader_artifacts.py GL_SLOTS_PER_GROUP and
 // GL_DRAW_CONSTANTS_SLOT; the names below are its GL_TEXTURE_PREFIX,
 // GL_SAMPLER_PREFIX, GL_DRAW_CONSTANTS_BLOCK and GL_SPECIALIZATION_LINE).

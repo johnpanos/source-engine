@@ -38,7 +38,7 @@ struct LabShadows
 	// Each light's first tile in `tiles`, or -1 (unshadowed); a point light's
 	// six and an area light's five or six follow their first.
 	std::vector<int> lightTiles;     // per LabLights::lights (spots: one, points: six)
-	std::vector<int> lightTileCount; // 1 or 6
+	std::vector<RuntimeShadowLayout> lightLayouts;
 	std::vector<int> areaTiles;      // per LabLights::areas
 	std::vector<int> projectorTiles; // per LabLights::projectors
 	int sunFirst = -1;
