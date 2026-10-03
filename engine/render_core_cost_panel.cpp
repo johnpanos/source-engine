@@ -123,10 +123,14 @@ public:
 			for ( unsigned int i = 0; i < shown; ++i )
 			{
 				const RenderCoreCostRow &row = m_Report.rows[first + i];
-				V_snprintf( label, sizeof( label ),
-				    "D%u %-42.42s CPU %7.3f GPU %7.3f | +%llu -%llu %.1f KiB", row.depth, row.name,
-				    row.cpuMilliseconds, row.gpuMilliseconds, row.created, row.destroyed,
-				    double( row.bufferBytes ) / 1024.0 );
+				char allocations[80];
+				if ( row.resourcesSupported )
+					V_snprintf( allocations, sizeof( allocations ), "+%llu -%llu %.1f KiB",
+					    row.created, row.destroyed, double( row.bufferBytes ) / 1024.0 );
+				else
+					V_strncpy( allocations, "resources n/a", sizeof( allocations ) );
+				V_snprintf( label, sizeof( label ), "D%u %-42.42s CPU %7.3f GPU %7.3f | %s",
+				    row.depth, row.name, row.cpuMilliseconds, row.gpuMilliseconds, allocations );
 				text( label );
 				Bar( 8, y - 8, half, row.cpuMilliseconds );
 				Bar( 16 + half, y - 8, half, row.gpuMilliseconds );

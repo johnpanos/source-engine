@@ -11,6 +11,10 @@ complete game image meeting the existing desktop High performance gate.
 Faster iteration should come from reusing unchanged work and rebuilding
 dependencies, rather than selecting a lower quality preset.
 
+The bake and compiler should also produce static visibility, light/probe
+candidate data and reusable caster inputs that reduce runtime preparation and
+PBR shading. Reaching the existing 120 FPS gate is the performance objective.
+
 Source 2 is the quality and performance goal. The preset name is not a claim
 of parity or a claim that these are Valve's settings.
 
@@ -74,10 +78,59 @@ color variation of light arriving from different directions. The current
 [layout owner](../tools/quality/lightmap_layout.py) fits a uniform texel density
 into one atlas, so a larger map can receive less detail under the same preset.
 
+## Frame cost evidence and immediate priorities
+
+The user's supplied cost-overlay screenshot on 2026-10-02 shows sample 1156,
+two frames old. Its largest visible scopes are:
+
+| Scope | CPU recording wall time in ms | GPU time in ms |
+| --- | ---: | ---: |
+| Core world view | 48.030 | 75.098 |
+| Core world | 0.296 | 67.141 |
+| Prepare lights and shadows | 35.354 | 0.741 |
+| World surfaces | 0.074 | 28.459 |
+| Posed model PBR | 0.020 | 21.320 |
+| Static model PBR | 0.074 | 17.201 |
+| Prepare lit view bindings | 8.684 | 0.384 |
+| GTAO | 0.009 | 4.802 |
+| World prepass | 0.057 | 1.286 |
+| Shadow tile restore | 0.013 | 1.069 |
+| Shadow depth | 0.838 | 0.537 |
+| Cluster BVH assignment | 0.001 | 0.688 |
+
+These are inclusive scopes, not additive rows or a complete present-to-present
+frame measurement. The CPU timer measures wall time inside recording labels,
+including any waits or driver work. The GPU rows localize expensive draw scopes;
+they do not establish whether shadow sampling, light loops, probe selection,
+material fetches, overdraw or another operation dominates those scopes.
+Posed-model draw time is not a measurement of animation or skinning alone.
+
+The same recording interval reports 270 resource creations (208 buffers,
+62 groups, zero textures), 269 destructions and 90,449.8 KiB of requested buffer
+sizes. Light/shadow preparation accounts for 71,040.1 KiB of that size activity;
+lit view bindings report 222 creations. These counters make transient buffer
+and binding work a specific investigation target. They are logical resource
+activity, not driver heap allocations, copied-byte measurements or live VRAM.
+
+The first performance work therefore targets **CPU light/shadow preparation,
+CPU view binding preparation, and GPU PBR shading across world and models**.
+The visible shadow-depth and cluster-assignment GPU costs are much smaller;
+neither should be blamed for the large CPU preparation interval without deeper
+measurement. Lightmap compression remains valuable, but this capture does not
+establish it as the first frame-time fix.
+
+Use the same map, camera, full-image settings and warmed workload to collect a
+repeatable trace. Break preparation down into planning, caster work, buffer
+creation/fill, binding creation and waits. Within the shared surface shader,
+measure light-list lengths, shadow receiver work, reflection candidates, texture
+traffic and coverage. Term-off captures can isolate costs as diagnostics only;
+they cannot become the accepted product image. Record actual resolution,
+hardware clocks, profiler overhead and complete-frame timing alongside scopes.
+
 ## Proposed production settings
 
 These are one set of initial values to validate, not measured optimal values.
-They replace the production preset choices together. Changes prompted by
+They define the production profile together. Changes prompted by
 validation update the one profile for all maps, rather than creating exceptions.
 
 | Setting | Proposed value or rule |
@@ -120,6 +173,59 @@ ordinary mips and residency management; do not upscale assets. External P2:CE
 and Workshop content remains read-only and opt-in under the existing mount
 policy. Missing packs report the external-content coverage unavailable.
 
+## Bake outputs that reduce runtime frame time
+
+The first bake extension to investigate is **precomputed static direct
+visibility**, accompanied by compiled spatial candidates and caster data.
+Indirect light is already baked. Raising its sample count will not remove
+the per-light work visible in the capture.
+
+The current soft-shadow receiver performs a 16-sample blocker search and,
+when needed, 16 filtered comparison samples per evaluated shadow. This is a
+specific candidate for the large PBR draw cost, not a measured attribution of
+all 67 ms. Static shadow-depth caching already exists; baking another depth
+image alone does not eliminate receiver-side search and filtering.
+
+| Additional compiled output | Runtime work it can remove | Required behavior |
+| --- | --- | --- |
+| Static visibility classification for fixed lights and fixed receivers | Blocker/filter work in provably fully lit or occluded regions | Conservative classification over positions, bias and the complete filter footprint; uncertain regions retain the full filter |
+| Light candidate lists for world clusters and model-receiver cells | Evaluation of lights that cannot contribute, including their shadows and BRDF | Retain every potentially contributing light and account for runtime lights and movable geometry |
+| Reflection candidates per spatial cell or surface cluster | Full probe-rank scans during world and model shading | Preserve influence, priority, nearest selection, blending and boundary transitions |
+| GPU-ready static caster geometry and per-light candidate ranges | Repeated static caster gathering, conversion and payload creation during CPU preparation | Invalidate through existing owners when geometry, lights, coverage materials or transforms change; keep moving casters current |
+
+These are proposed extensions to existing map/render contracts, not new format
+names or implemented switches. Keep the data compact rather than adding one
+full-resolution lightmap per light. Start with one fixed light and world/static
+receivers, then expand after an image-preserving complete-frame improvement.
+Spatial receiver cells also help moving models through conservative candidate
+reduction, although their final shading remains dynamic.
+
+A statically lit region still needs moving-shadow evaluation when a mover can
+affect it. A region certified fully blocked by immutable geometry can skip that
+light only when the proof covers the actual shadow semantics. Uncertain regions
+and penumbrae retain the full filter. Separately averaged static and dynamic
+soft-shadow masks cannot simply be multiplied: joint visibility depends on
+which emitter samples each occluder blocks. A cached filtered result must
+preserve that composition or be invalidated when it cannot.
+
+A few sampled bake rays are not proof that a light never reaches a cell. Doors,
+alpha-tested casters, transmission, destruction and switchable lights must be
+represented as mutable inputs or excluded from static proofs. Do not derive
+candidate lists solely from one camera or a closed-door state. False positives
+cost time; false negatives remove valid lighting and fail acceptance.
+
+Keep direct specular and normal-map response in the shared runtime material
+model. A total-light color atlas cannot replace view-dependent highlights and
+moving-shadow behavior. This proposal accelerates the current runtime-direct
+contract. Changes to visibility representation must be specified and proven
+under RFC 0016's existing shadow owner before product integration.
+
+Measure the reduction in CPU preparation and GPU draws plus complete-frame
+timing at High. Compiled caster inputs may help the 35 ms CPU scope, but waits,
+allocation and binding overhead still require runtime fixes. Static-receiver
+visibility cannot eliminate posed-model lighting costs. Bake work contributes
+to 120 FPS; the screenshot cannot establish that baking alone will reach it.
+
 ## Runtime settings and performance
 
 Use the existing
@@ -138,23 +244,30 @@ work; better runtime performance must come from representation and execution.
 
 Prioritize these changes within their existing owners:
 
-1. Implement the color directional lightmap representation owned by RFC 0008,
+1. Remove measured repeated CPU preparation and resource churn. Reuse immutable
+   light/caster data and compatible view bindings through their existing owners;
+   update only revision-dependent payloads, using completion-safe buffer storage.
+   Preserve per-view transforms, moving casters and nested-view isolation. Do not
+   retain stale resources or add a second cache authority to suppress counters.
+2. Reduce the measured GPU PBR cost shared by world and models. Add conservative
+   reflection candidates and improve light/caster bounds; optimize shadow receiver
+   work only with the complete filter preserved. Keep selection, blend order,
+   valid light falloff and material response. Build on the existing clustered
+   lights, cached static shadows and moving-caster composition. Measure complete
+   draws and frames, since a faster isolated shader need not improve the frame.
+3. Implement the color directional lightmap representation owned by RFC 0008,
    proving normal-map and colored-bounce behavior in `render_lab`. Replace the
    existing approximation for the migrated format while preserving old readers.
-2. Package compressed, GPU-ready lightmaps and reflection data, with profile
+4. Package compressed, GPU-ready lightmaps and reflection data, with profile
    capability checks and measured image error. Separate compatibility/tool
    outputs from the layers the active runtime uploads. Preserve sun visibility
    and other semantic channels when changing formats; HDR compression alone
    does not carry every current RGBA channel.
-3. Add conservative spatial candidates for reflection selection and improve
-   light/caster bounds. Preserve selection, blend order, valid light falloff
-   and the complete shadow filter. Build on the existing clustered lights,
-   cached static shadows and moving-caster composition.
-4. Preserve PVS-aware meshlet bounds, model instances and authored LOD semantics
+5. Preserve PVS-aware meshlet bounds, model instances and authored LOD semantics
    in compiled data. Remove repeated conversion and unchanged resource work
    where measurements show a cost. Keep GPU completion and invalidation owned
    by the existing device, resource and graph contracts.
-5. Complete RFC 0012's normal-variance roughness mips, alpha-coverage mips and
+6. Complete RFC 0012's normal-variance roughness mips, alpha-coverage mips and
    alpha-to-coverage, judged through camera movement as well as still images.
 
 The 768 MiB example motivates storage work; it does not prove that memory
@@ -212,35 +325,31 @@ may be inspected explicitly, with failed or unavailable gates attached to its
 receipt. It cannot replace the qualified package or acquire a passing label
 because it rendered a frame. No hidden second preset is created for candidates.
 
-## Migration and bounded delivery
+## Implementation priorities
 
-1. **Consolidate selection.** Inventory callers and per-map overrides. Update
-   `source2.json`, point every production frontend at it, reject quality overrides,
-   and make runtime qualification reference the existing High owner. Old preset
-   names fail with migration guidance; do not silently reinterpret them.
-2. **Retire competing presets.** Migrate every named caller, then delete production
-   `legacy-relight`, `portal2-chamber`, `preview`, `source2-max` and their fast/preview
-   variants in the same change. Move fixture-only profiles out of the production
-   selector, preserving their test semantics. Keep historical receipts immutable.
-3. **Prove one complete chamber.** Use the same profile in relight, authoring,
-   lab and game. Fix material, directional-light and probe errors before calling
-   it qualified. Run the pre-existing negative controls as well as positive cases.
-4. **Make that image cheaper.** Implement compact lighting storage and measured
-   shadow/light/probe execution improvements. Preserve the full image and compare
-   complete-frame timings on the declared device.
-5. **Scale to representative maps.** Add multiple lightmap pages and local probe
+1. **Precompute static work for the captured bottlenecks.** Trace the screenshot's
+   scene, including shadow receiver cost. Prove static visibility classification
+   on one fixed light and receiver cohort; compile conservative light/probe
+   candidates and reusable caster inputs as their measured costs justify. Pair
+   these with the runtime consumers and preparation/binding fixes. Use shared
+   lab oracles and complete-image comparisons, keeping one quality profile.
+2. **Prove the complete lighting result.** Use that profile in relight, authoring,
+   lab and game. Fix material, directional-light and probe errors, and implement
+   compact lighting storage. Run negative controls and complete-frame timings
+   before calling the result qualified. Performance work does not wait for every
+   quality feature, and performance success does not waive a quality failure.
+3. **Scale to representative maps.** Add multiple lightmap pages and local probe
    grids where the existing fixed layouts fail; complete incremental authoring
    through the shared graph. Requalify the same profile on large maps and all
    required frame cohorts before promotion.
 
 This sequence is bounded by the existing roadmap prerequisites and render
-priority. It does not require waiting for every planned format before removing
-preset ambiguity, and it does not declare the consolidated preset finished
-before its quality and performance evidence passes.
+priority. Profile selection is a single fixed policy throughout. Quality and
+performance evidence determine when its output is qualified.
 
 ## Owners and tracking
 
-This proposal selects policy and migration scope. Domain semantics stay with
+This proposal selects quality policy and implementation priorities. Domain semantics stay with
 [RFC 0007](0007-physically-based-lighting-pipeline.md) for the baker,
 [RFC 0008](0008-canonical-world-data-and-runtime-formats.md) for compiled formats,
 [RFC 0009](0009-usd-native-map-authoring.md) for authoring,

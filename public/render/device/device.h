@@ -64,7 +64,8 @@ enum class DeviceState : std::uint8_t
 	kFatal // recovery failed; the composition root tears the device down
 };
 
-// Optional diagnostics, sampled on the device's resource-owning sequence.
+// Optional diagnostics, safe to sample from recording label observers.
+// Device-wide counters can include concurrent work; snapshots are not transactions.
 // Cumulative logical port handles (including imported texture handles), not
 // allocator calls or physical VRAM. Destruction means retirement completed;
 // release requests alone do not free anything. Failed operations do not count.

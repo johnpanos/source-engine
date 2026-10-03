@@ -763,7 +763,7 @@ Keep the table concise and link details below or from the domain progress file.
     hosts without a GPU.
   - One production map quality profile is requested (user decision, 2026-10-02).
     The [single-profile proposal](RFC/0007-single-map-quality-profile-proposal-2026-10-02.md)
-    records recommended settings, preset retirement, quality gates and runtime
+    records recommended settings, quality gates and runtime
     optimization work. It is a proposal; executable settings and roadmap
     implementation states are unchanged by this documentation.
 

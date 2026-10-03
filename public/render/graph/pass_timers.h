@@ -52,7 +52,7 @@ struct PassTimerReport
 	// In the order each name first recorded, summed over the frames.
 	std::vector<PassTime> passes;
 	std::uint32_t overflowed = 0;         // timestamps dropped for want of room
-	device::ResourceActivity resources{}; // frame recording interval, not summed scopes
+	device::ResourceActivity resources{}; // Latest/Recent recording interval, not summed scopes
 };
 
 class GpuPassTimers final : public device::ILabelObserver

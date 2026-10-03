@@ -6979,7 +6979,54 @@ resource allocation metrics with a history that exposes churn. This session
 extends the existing timer/overlay owners; no new lighting implementation.
 World-pass labels separate preparation, world program families, static/posed/
 transmitting models and dynamic draws without reordering or removing draws.
-Validation and resource-counter coverage are recorded below after verification.
+Vulkan supplies optional logical resource-handle activity through the device port;
+other adapters explicitly report it unavailable. Created handles by kind, release
+requests, completed destruction, requested buffer bytes, live handles and pending
+retirement feed per-scope rows and two 64-interval histories. These exclude CPU
+heap calls, physical VRAM and internal driver/staging allocation. RFC 0014's
+[measured overlay](0014-native-vulkan-and-bsp2-debug-controls.md#measured-cost-overlay-installed-2026-10-02)
+owns presentation and interpretation. `cl_render_debug_cost_page` exposes rows
+that do not fit on one page.
+
+The native rollover fixture first failed with two Vulkan validation messages:
+a new timestamp chunk emitted its initial buffer barrier inside dynamic rendering.
+The adapter now hoists only copy-destination-only readback-buffer transitions
+outside rendering, retaining the previous-use dependency. The fixture now passes
+23/23, including allocation failure, duplicate release, release versus destruction,
+requested bytes, epoch discontinuity, repeated labels across chunks and bounded
+non-destructive churn history. Product capture also exposed timer cleanup being
+conditional on a shadow device: a legacy BSP view with timers could retain a dead
+device until composition teardown. Releasing timers before that condition fixes
+the reproduced shutdown crash; the subsequent isolated product capture exits cleanly.
+
+Verification: `render.graph.v1` 89/89, `render.world.null` 66/66 and
+`render.composition` 58/58, recorded in
+`quality-results/conformance.20261003T014411Z.json`. Existing `build-rc-lab` and
+`build-p2` Waf configurations build without reconfiguration. Native cost suite,
+build/style/architecture logs and the timer regression patch are retained under
+`quality-results/core-cost-split-verification-20261002/`. The product capture is
+`quality-results/core-cost-split-20261002-final/evidence.json`; its PNGs were
+visually inspected. Architecture check/baseline/inventory and changed-line style
+pass. Fold7 and other native platforms were not run; their acceptance is unverified.
+
+User-selected benchmark: `sp_a1_intro4_probe64`, using the installed
+`portal2-intro4-perf-v1` workload at native compositor 1920x1080 and the declared
+High settings. The diagnostic run is
+`quality-results/core-cost-intro4-probe64-profile-20261002/` (including parsed
+`profile.json`/`profile.tsv`). Its final reporting window attributes 23.214 ms to
+static PBR models, 19.046 ms to world PBR surfaces and 10.861 ms to posed PBR models;
+GTAO is 1.971 ms. These are inclusive window means, not phase percentiles.
+The loader confirms the probe64 asset and 64 reflection probes, but the script's
+map-name check reports `sp_a1_intro4`; all three camera checks pass. That mismatch
+is retained as a failure, not hidden by changing the oracle. Hard render budgets
+remain failed; neither the overlay nor this work claims a performance promotion.
+The final run without profiling and with no concurrent session builds/tests is
+`quality-results/core-cost-intro4-probe64-final-20261002/evidence.json`.
+It records 561 measured frames over 20.2 s, 27.8 average FPS, 22.67 ms median,
+60.34 ms p99 and 124.35 ms maximum; arrival/reverse/return medians are
+58.26/22.35/58.74 ms. All 561 frames miss the 120 FPS floor. The profile/camera
+checks are retained separately from the failed map-name assertion. No effects,
+resolution or sample count were reduced to obtain these results.
 
 
 ## K5: completion-safe world group resource reuse (2026-10-02)

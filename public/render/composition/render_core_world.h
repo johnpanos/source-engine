@@ -196,6 +196,7 @@ struct RenderCoreCostRow
 	double cpuMilliseconds = 0;
 	double gpuMilliseconds = 0;
 	unsigned long long created = 0, destroyed = 0, bufferBytes = 0;
+	bool resourcesSupported = false;
 };
 
 struct RenderCoreResourceSample

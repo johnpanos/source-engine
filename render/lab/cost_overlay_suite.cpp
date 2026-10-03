@@ -135,6 +135,24 @@ std::optional<std::string> RunOnce(
 		    "cost.snapshot-does-not-drain-console" );
 		results.That( timers.Take().frames == 0 && timers.Latest().lastFrame == 42,
 		    "cost.console-does-not-drain-snapshot" );
+		for ( std::uint64_t frame = 43; frame <= 112; ++frame )
+		{
+			timers.BeginFrame( frame, executed.Value().token );
+			auto churn = device->CreateBuffer( bufferDesc );
+			if ( !churn || !device->Release( churn.Value(), executed.Value().token ) )
+				return "history churn fixture refused";
+			device->Poll();
+			timers.EndFrame( executed.Value().token );
+			(void)timers.Latest();
+		}
+		const auto history = timers.Recent();
+		results.That( history.size() == 64 && history.front().lastFrame == 49 &&
+		                  history.back().lastFrame == 112 && timers.Recent().size() == 64,
+		    "cost.history-bounded-ordered-and-nondestructive" );
+		results.That( history.back().resources.Created() == 1 &&
+		                  history.back().resources.Destroyed() == 1 &&
+		                  history.back().resources.bufferBytes == bufferDesc.size,
+		    "cost.history-keeps-per-frame-churn-not-net-growth" );
 	}
 	device.reset();
 	messages = counted.load();

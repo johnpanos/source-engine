@@ -1595,6 +1595,7 @@ void CoreWorld::ReadCosts( RenderCoreCostReport *out )
 		row.depth = pass.depth;
 		row.cpuMilliseconds = pass.cpuMilliseconds;
 		row.gpuMilliseconds = pass.milliseconds;
+		row.resourcesSupported = pass.resources.supported;
 		row.created = pass.resources.Created();
 		row.destroyed = pass.resources.Destroyed();
 		row.bufferBytes = pass.resources.bufferBytes;

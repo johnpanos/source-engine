@@ -901,6 +901,16 @@ private:
 		vkCmdSetViewport( m_Cmd, 0, 1, &flipped );
 	}
 
+	bool TimestampBufferTransition( const Command &command )
+	{
+		if ( command.op != Op::kTransitionBuffer || command.before != ResourceUsage::kUndefined ||
+		     command.after != ResourceUsage::kCopyDestination )
+			return false;
+		const BufferRecord *buffer = m_D.LiveBuffer( command.a );
+		return buffer && buffer->desc.memory == MemoryKind::kReadback &&
+		       buffer->desc.usages == UsageSet{ ResourceUsage::kCopyDestination };
+	}
+
 	void BeginRendering( const std::vector<Command> &commands, std::size_t index )
 	{
 		const Command &command = commands[index];
@@ -912,6 +922,11 @@ private:
 		{
 			if ( commands[i].op == Op::kSetBindGroup )
 				groups.push_back( commands[i].a );
+			// Timer chunks opened between draws only receive timestamps;
+			// the actual buffer copies occur in Finish. Hoist the transition
+			// out of rendering while retaining its previous-use dependency.
+			if ( TimestampBufferTransition( commands[i] ) )
+				Transition( commands[i].a, commands[i].before, commands[i].after );
 		}
 		GroupAccesses( groups );
 
@@ -1047,6 +1062,8 @@ private:
 		{
 		case Op::kTransitionTexture:
 		case Op::kTransitionBuffer:
+			if ( m_Rendering && TimestampBufferTransition( command ) )
+				break; // already ordered by BeginRendering
 			Transition( command.a, command.before, command.after );
 			break;
 		case Op::kClearTexture:
