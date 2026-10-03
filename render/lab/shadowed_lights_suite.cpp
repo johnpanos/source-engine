@@ -1196,8 +1196,7 @@ std::optional<std::string> CoherentLightChecks( IRenderDevice2 &device, Results 
 			if ( auto why = PrepareAreaSplit( coherent, area ) )
 				return why;
 		}
-		const ReceiverView views[] = {
-		    MakeReceiverView( { 0, -60, 420 }, { -40, 20, 0 }, kSize ),
+		const ReceiverView views[] = { MakeReceiverView( { 0, -60, 420 }, { -40, 20, 0 }, kSize ),
 		    MakeReceiverView( { 250, -380, 220 }, { -60, 40, 0 }, kSize ) };
 		for ( int v = 0; v < 2; ++v )
 			for ( const ReceiverMaterial &material : kReceiverMaterials )
@@ -1209,8 +1208,8 @@ std::optional<std::string> CoherentLightChecks( IRenderDevice2 &device, Results 
 				if ( auto why = Render( coherent, frame, candidate ) )
 					return why;
 				results.That( SameImage( original, candidate ),
-				    "coherent-light.bitwise." + std::to_string( area ) + "." +
-				        std::to_string( v ) + "." + material.name );
+				    "coherent-light.bitwise." + std::to_string( area ) + "." + std::to_string( v ) +
+				        "." + material.name );
 			}
 	}
 	return std::nullopt;
