@@ -34,6 +34,7 @@ public:
 	explicit Textures( legacy::ICoreTextures &textures ) : m_Textures( textures ) {}
 	device::TextureId Import( int key ) override { return m_Textures.Import( key, false ); }
 	device::SamplerDesc Sampler( int key ) override { return m_Textures.Sampler( key ); }
+	std::uint64_t ContentRevision( int key ) override { return m_Textures.ContentRevision( key ); }
 
 private:
 	legacy::ICoreTextures &m_Textures;

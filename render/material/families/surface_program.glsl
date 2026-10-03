@@ -601,12 +601,14 @@ vec3 AreaLightIrradiance( vec3 n, vec3 geometricNormal, vec3 p )
 		    light.center.xyz, light.halfU.xyz, light.halfV.xyz, light.halfU.w, p );
 		if ( window <= 0.0 )
 			continue;
+		vec3 corners[4];
+		AreaLightCorners( light, corners );
+		if ( !LtcRectanglePotential( n, p, corners, light.center.w > 0.5 ) )
+			continue;
 		const float visibility = AreaLightVisibility( light, p, geometricNormal,
 		    geometricNormal, PixelRotation() );
 		if ( visibility <= 0.0 )
 			continue;
-		vec3 corners[4];
-		AreaLightCorners( light, corners );
 		sum += light.radiance.rgb * window * visibility *
 		       LtcRectangle( n, normalize( frame.eye.xyz - p ), p, mat3( 1.0 ), corners,
 		           light.center.w > 0.5 );
@@ -1118,6 +1120,12 @@ void PbrSurface()
 			if ( window <= 0.0 )
 				continue;
 			const bool twoSided = light.center.w > 0.5;
+			vec3 corners[4];
+			AreaLightCorners( light, corners );
+#ifndef LAB_VISIBILITY_WRITE
+			if ( !LtcRectanglePotential( normal, worldPosition, corners, twoSided ) )
+				continue;
+#endif
 			float visibility = 1.0;
 #ifdef LAB_VISIBILITY_READ
 			int channel = i;
@@ -1135,8 +1143,6 @@ void PbrSurface()
 #endif
 			if ( visibility <= 0.0 )
 				continue;
-			vec3 corners[4];
-			AreaLightCorners( light, corners );
 			const vec3 radiance = light.radiance.rgb * window * visibility;
 			// A baked light's diffuse light is already in the bake, unless
 			// the bake is the indirect layer (runtime direct light).

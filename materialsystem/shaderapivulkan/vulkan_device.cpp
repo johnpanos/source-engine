@@ -4769,6 +4769,7 @@ bool CVulkanContext::UploadManagedTextureRegion( int handle, uint32_t x, uint32_
 		m_pendingUploadData.resize( upload.offset + dataSize );
 		std::memcpy( m_pendingUploadData.data() + upload.offset, data, dataSize );
 		m_pendingUploads.push_back( upload );
+		t.contentRevision = m_nextTextureContentRevision++;
 		if ( level == 0 )
 			t.uploaded = true;
 		return true;
@@ -4806,8 +4807,12 @@ bool CVulkanContext::UploadManagedTextureRegion( int handle, uint32_t x, uint32_
 		vkDestroyBuffer( m_device, staging, nullptr );
 		FreeMemory( stagingMem );
 	}
-	if ( ok && level == 0 )
-		t.uploaded = true;
+	if ( ok )
+	{
+		t.contentRevision = m_nextTextureContentRevision++;
+		if ( level == 0 )
+			t.uploaded = true;
+	}
 	return ok;
 }
 

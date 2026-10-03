@@ -112,6 +112,8 @@ struct Image
 	bool filled = false;               // the textures in kSampled after their first frame
 	std::uint64_t rasterizedFrame = 0; // the host frame the images hold
 	bool rasterized = false;
+	std::shared_ptr<const Panel> rasterList;
+	std::vector<std::tuple<std::uint64_t, TextureId, SamplerDesc>> rasterTextures;
 };
 
 // The surface's device objects for one target format.
@@ -135,6 +137,19 @@ struct Variant
 	std::vector<std::byte> frameConstants; // the frame group as last set
 	std::string failure;                   // why the variant cannot draw
 };
+
+// Compare only authored image inputs. Placement, lighting and emission scale
+// belong to the surface draw and may change without changing its image.
+bool SameImage( const Panel &a, const Panel &b )
+{
+	const auto list = []( const Panel &panel )
+	{
+		return world_panel::DrawListView{ panel.unitsWide, panel.unitsTall, panel.quads.data(),
+		    std::uint32_t( panel.quads.size() ), panel.textures.data(),
+		    std::uint32_t( panel.textures.size() ) };
+	};
+	return a.transparent == b.transparent && world_panel::SameImage( list( a ), list( b ) );
+}
 
 void Cross( const float a[3], const float b[3], float out[3] )
 {
@@ -1127,15 +1142,34 @@ void PanelPass::Record( std::uint32_t tag, CommandEncoder &encoder, const PanelT
 		}
 		if ( !image.rasterized || image.rasterizedFrame != view.hostFrame )
 		{
-			if ( std::optional<std::string> why = s.Rasterize( encoder, target, *panel, image ) )
+			decltype( image.rasterTextures ) textures;
+			bool known = true;
+			for ( int key : panel->textures )
 			{
-				s.Fail( "panel " + std::to_string( panel->id ) + ": " + *why );
-				return;
+				const auto revision = target.textures ? target.textures->ContentRevision( key ) : 0;
+				known = known && revision != 0;
+				textures.emplace_back( revision,
+				    target.textures ? target.textures->Import( key ) : TextureId(),
+				    target.textures ? target.textures->Sampler( key ) : SamplerDesc() );
 			}
+			const bool reuse = image.rasterized && known && image.rasterList &&
+			                   SameImage( *panel, *image.rasterList ) &&
+			                   textures == image.rasterTextures;
+			if ( !reuse )
+			{
+				if ( std::optional<std::string> why =
+				         s.Rasterize( encoder, target, *panel, image ) )
+				{
+					s.Fail( "panel " + std::to_string( panel->id ) + ": " + *why );
+					return;
+				}
+			}
+			image.rasterList = panel;
+			image.rasterTextures = std::move( textures );
 			image.rasterized = true;
 			image.rasterizedFrame = view.hostFrame;
 			std::lock_guard<std::mutex> guard( s.lock );
-			++s.stats.rasterized;
+			s.stats.rasterized += !reuse;
 			s.stats.lastResolution = image.resolution;
 		}
 		const std::tuple<TextureId, TextureId, float> bindings(

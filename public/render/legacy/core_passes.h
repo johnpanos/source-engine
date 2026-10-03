@@ -130,6 +130,10 @@ public:
 	// (wrap, filters, mips) and the anisotropy setting. The port has one
 	// address mode, which clamps only when both axes do.
 	virtual device::SamplerDesc Sampler( int handle ) = 0;
+	// Nonzero content epoch, changed on every accepted pixel update and handle
+	// reuse. Zero means unknown (including render targets): do not reuse composites.
+	// Sampled contents are ordered before the slot, like Import; render sequence only.
+	virtual std::uint64_t ContentRevision( int ) { return 0; }
 
 protected:
 	~ICoreTextures() = default;

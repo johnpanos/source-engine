@@ -370,8 +370,11 @@ int C_VGuiScreen::EmissiveAreaLights( area_light::AreaLight *pLights, int *pKeys
 	const world_panel::DrawListView list = { flUnitsWide, flUnitsTall, m_RecordedQuads.Base(),
 	    unsigned( m_RecordedQuads.Count() ), keys.Base(), unsigned( keys.Count() ) };
 	float radiance[world_panel::kMaxTiles][3];
-	world_panel::TileRadiance(
-	    list, pScreenPanel->EmissionScale(), nAcross, nDown, 16,
+	std::vector<std::uint64_t> revisions;
+	for ( ITexture *texture : m_RecordedTextures )
+		revisions.push_back( EmissiveAreaLights_SampleRevision( texture ) );
+	m_TileRadiance.Evaluate(
+	    list, pScreenPanel->EmissionScale(), nAcross, nDown, 16, revisions,
 	    [&]( int nTexture, float s, float t, float, float rgba[4] )
 	    {
 		    return EmissiveAreaLights_SampleTexture( m_RecordedTextures[nTexture], s, t, rgba );

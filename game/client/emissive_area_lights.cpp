@@ -91,9 +91,11 @@ CUtlVector<IEmissiveAreaLightSource *> s_Sources;
 struct SampleTexture_t : vtf_sample::Texture
 {
 	bool m_bTried = false;
+	uint64 m_Revision = 0;
 };
 
 std::unordered_map<std::string, SampleTexture_t> s_Textures;
+uint64 s_NextSampleRevision = 1;
 
 const SampleTexture_t &LoadSampleTexture( const char *pTextureName )
 {
@@ -101,6 +103,7 @@ const SampleTexture_t &LoadSampleTexture( const char *pTextureName )
 	if ( texture.m_bTried )
 		return texture;
 	texture.m_bTried = true;
+	texture.m_Revision = s_NextSampleRevision++;
 	char path[MAX_PATH];
 	Q_snprintf( path, sizeof( path ), "materials/%s.vtf", pTextureName );
 	CUtlBuffer buf;
@@ -765,6 +768,14 @@ void EmissiveAreaLights_AddSource( IEmissiveAreaLightSource *pSource )
 void EmissiveAreaLights_RemoveSource( IEmissiveAreaLightSource *pSource )
 {
 	s_Sources.FindAndRemove( pSource );
+}
+
+uint64 EmissiveAreaLights_SampleRevision( ITexture *pTexture )
+{
+	if ( !pTexture || pTexture->IsError() || pTexture->IsRenderTarget() ||
+	     pTexture->IsProcedural() )
+		return 0;
+	return LoadSampleTexture( pTexture->GetName() ).m_Revision;
 }
 
 bool EmissiveAreaLights_SampleTexture( ITexture *pTexture, float s, float t, float rgba[4] )

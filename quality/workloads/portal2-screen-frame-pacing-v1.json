@@ -1,0 +1,31 @@
+{
+  "schema": "frame-pacing-scenario/v1",
+  "id": "intro4-screens-v1",
+  "game": "portal2",
+  "map": "sp_a1_intro4_probe64",
+  "host_framerate": 120,
+  "passes": 3,
+  "setup": [
+    "r_core_world 1",
+    "r_drawviewmodel 0",
+    "cl_drawhud 0",
+    "noclip",
+    "cmd setpos -1552 37 -96",
+    "cmd setang 0 -90 0",
+    "ent_fire InstanceAuto63-info_panel SetActive",
+    "wait 120"
+  ],
+  "body": [
+    "cmd setpos -1552 37 -96",
+    "cmd setang 0 -90 0",
+    "wait 60",
+    "vk_frame_mark movie",
+    "wait 180",
+    "cmd setpos -737 160 16",
+    "cmd setang 0 -90 0",
+    "wait 60",
+    "vk_frame_mark sign",
+    "wait 180",
+    "r_core_panels_stats"
+  ]
+}

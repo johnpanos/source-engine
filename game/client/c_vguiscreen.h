@@ -172,6 +172,7 @@ private:
 	unsigned long long PanelId() const;
 	CUtlVector<world_panel::Quad> m_RecordedQuads;
 	CUtlVector<ITexture *> m_RecordedTextures;
+	world_panel::TileRadianceCache m_TileRadiance;
 	world_panel::Resolution m_PanelResolution;    // what the next recording paints at
 	world_panel::Resolution m_RecordedResolution; // what this frame's recording painted at
 	int m_nRecordedFrame;

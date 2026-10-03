@@ -25,7 +25,9 @@
 //			every view of that frame draws the image rasterized from that one
 //			list, at the first slot of the frame that draws the panel. A view
 //			of a frame whose panel was never submitted fails by name; nothing
-//			draws a previous frame's image.
+//			draws a previous frame's image. Identical authored inputs and known
+//			unchanged texture epochs may reuse the composite across frames;
+//			unknown epochs always rasterize. Lighting/placement still draw live.
 //
 //			Textures of a list are keys the slot's IPanelTextures resolves
 //			(the material system's texture handles in the product), sampled
@@ -88,6 +90,8 @@ public:
 	// Invalid when the key names no resident texture.
 	virtual device::TextureId Import( int key ) = 0;
 	virtual device::SamplerDesc Sampler( int key ) = 0;
+	// ICoreTextures::ContentRevision semantics; zero forbids reuse across frames.
+	virtual std::uint64_t ContentRevision( int ) { return 0; }
 
 protected:
 	~IPanelTextures() = default;
@@ -129,7 +133,7 @@ struct PanelStats
 {
 	std::uint64_t submitted = 0;  // lists accepted
 	std::uint64_t refused = 0;    // second lists for a panel's frame, refused
-	std::uint64_t rasterized = 0; // images rasterized (one per panel and frame drawn)
+	std::uint64_t rasterized = 0; // composites rebuilt (unchanged known inputs reuse them)
 	std::uint64_t viewsQueued = 0;
 	std::uint64_t viewsDrawn = 0;
 	std::uint64_t viewsFailed = 0; // claimed panels not drawn: never legacy's

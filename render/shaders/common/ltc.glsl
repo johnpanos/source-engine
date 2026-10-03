@@ -79,6 +79,26 @@ vec3 LtcPolygonVertex( uint descriptor, vec3 p, mat3 toTangent, mat3 toCosine,
 	return toCosine * a;
 }
 
+// A conservative rejection shared by the integral and its callers. Test it
+// before shadow filtering: an emitter behind the receiver horizon, or facing
+// away from the receiver point, contributes neither BRDF lobe.
+bool LtcRectanglePotential( vec3 n, vec3 p, vec3 corners[4], bool twoSided )
+{
+#ifndef SEEDED_LTC_NO_FRONT_TEST
+	// Match area_light::Faces before the tangent-space integral: its sign
+	// is numerically unstable when the receiver is coplanar with the emitter.
+	const vec3 emitterNormal = cross( corners[1] - corners[0], corners[3] - corners[0] );
+	if ( !twoSided && !( dot( emitterNormal, p - corners[0] ) > 0.0 ) )
+		return false;
+#endif
+#ifndef SEEDED_LTC_NO_HORIZON_CLIP
+	if ( dot( n, corners[0] - p ) < 0.0 && dot( n, corners[1] - p ) < 0.0 &&
+	     dot( n, corners[2] - p ) < 0.0 && dot( n, corners[3] - p ) < 0.0 )
+		return false;
+#endif
+	return true;
+}
+
 // The integral over a rectangle (its four corners, counterclockwise seen
 // from its front) of the clamped cosine transformed by `inverse`, in the
 // frame at p whose z is n and whose x is the view projected on the surface.
@@ -87,13 +107,8 @@ vec3 LtcPolygonVertex( uint descriptor, vec3 p, mat3 toTangent, mat3 toCosine,
 // rectangle gives nothing from behind.
 float LtcRectangle( vec3 n, vec3 v, vec3 p, mat3 inverse, vec3 corners[4], bool twoSided )
 {
-#ifndef SEEDED_LTC_NO_FRONT_TEST
-	// Match area_light::Faces before the tangent-space integral: its sign
-	// is numerically unstable when the receiver is coplanar with the emitter.
-	const vec3 emitterNormal = cross( corners[1] - corners[0], corners[3] - corners[0] );
-	if ( !twoSided && !( dot( emitterNormal, p - corners[0] ) > 0.0 ) )
+	if ( !LtcRectanglePotential( n, p, corners, twoSided ) )
 		return 0.0;
-#endif
 	vec3 t1 = v - n * dot( v, n );
 	if ( dot( t1, t1 ) < 1e-12 )
 		t1 = abs( n.x ) < 0.9 ? vec3( 1.0, 0.0, 0.0 ) : vec3( 0.0, 1.0, 0.0 );

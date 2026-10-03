@@ -1503,6 +1503,15 @@ private:
 			return m_context.ManagedTextureSampler( handle - 1 );
 		}
 
+		std::uint64_t ContentRevision( int handle ) override
+		{
+			const int index = handle - 1;
+			if ( index < 0 || index >= int( m_context.m_managedTextures.size() ) )
+				return 0;
+			const auto &texture = m_context.m_managedTextures[index];
+			return texture.uploaded && !texture.renderTarget ? texture.contentRevision : 0;
+		}
+
 	private:
 		CVulkanContext &m_context;
 	};
@@ -2195,6 +2204,7 @@ private:
 		// False until pixel data has actually been uploaded. Sampling an image
 		// that was created but never filled yields undefined contents.
 		bool uploaded = false;
+		uint64_t contentRevision = 0;
 		// Render-target textures own a depth buffer and a framebuffer for
 		// m_renderPassTarget; their color image rests in SHADER_READ_ONLY.
 		bool renderTarget = false;
@@ -2214,6 +2224,7 @@ private:
 		std::string debugName;
 	};
 	std::vector<ManagedTexture> m_managedTextures;
+	uint64_t m_nextTextureContentRevision = 1;
 	int m_worldLightmapHandle = -1;
 	int m_indirectViewMode = 0;
 	float m_indirectViewScale = 1.0f;

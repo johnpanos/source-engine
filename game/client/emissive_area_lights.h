@@ -63,6 +63,9 @@ inline int EmissiveAreaLights_PanelTileKey( int nEntIndex, int nTile )
 // thumbnail through ITexture; unsupported or partial uploads return false.
 class ITexture;
 bool EmissiveAreaLights_SampleTexture( ITexture *pTexture, float s, float t, float rgba[4] );
+// Epoch of the immutable per-level VTF sampling entry; zero for procedural/
+// GPU-only images, which must be integrated afresh. Cleared entries get new epochs.
+uint64 EmissiveAreaLights_SampleRevision( ITexture *pTexture );
 
 // Bilinear field sampler: linear base RGB or raw flow/noise/bounds data.
 // Uses the same per-level VTF cache and respects texture clamp flags.

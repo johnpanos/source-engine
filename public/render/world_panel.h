@@ -49,6 +49,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <span>
 #include <vector>
 
 namespace world_panel
@@ -82,6 +83,8 @@ struct Quad
 	// the mean alpha of the quad's texels, which TileRadiance uses in place
 	// of sampling it; negative when unknown.
 	float coverage;
+
+	friend bool operator==( const Quad &, const Quad & ) = default;
 };
 
 // A rectangular board can use the opaque physical surface even when its
@@ -116,6 +119,16 @@ struct DrawListView
 	const int *textures;
 	std::uint32_t textureCount;
 };
+
+// Compare authored image inputs without object padding or pointer identity.
+inline bool SameImage( const DrawListView &a, const DrawListView &b )
+{
+	return a.unitsWide == b.unitsWide && a.unitsTall == b.unitsTall && a.quadCount == b.quadCount &&
+	       a.textureCount == b.textureCount &&
+	       ( a.quadCount == 0 || std::equal( a.quads, a.quads + a.quadCount, b.quads ) ) &&
+	       ( a.textureCount == 0 ||
+	           std::equal( a.textures, a.textures + a.textureCount, b.textures ) );
+}
 
 // The world position of the panel's top-left corner, and the world vectors
 // across its whole width and down its whole height. Its front faces along
@@ -511,6 +524,59 @@ void TileRadiance( const DrawListView &list, float emissionScale, int across, in
 		}
 	}
 }
+
+// The tile integrator's derived result, retained only while every sampled
+// texture has a nonzero unchanged content epoch. Zero promises no reuse.
+// The sampler owns epochs; geometry/placement and light selection stay outside.
+class TileRadianceCache
+{
+public:
+	template <typename Sample>
+	void Evaluate( const DrawListView &list, float scale, int across, int down, int samples,
+	    std::span<const std::uint64_t> revisions, Sample &&sample, float ( *out )[3] )
+	{
+		const DrawListView previous = { m_Wide, m_Tall, m_Quads.data(),
+		    std::uint32_t( m_Quads.size() ), m_Textures.data(),
+		    std::uint32_t( m_Textures.size() ) };
+		const bool known = revisions.size() == list.textureCount &&
+		                   std::all_of( revisions.begin(), revisions.end(),
+		                       []( auto value )
+		                       {
+			                       return value != 0;
+		                       } );
+		const bool reuse = m_Valid && known && scale == m_Scale && across == m_Across &&
+		                   down == m_Down && samples == m_Samples && SameImage( list, previous ) &&
+		                   std::equal( revisions.begin(), revisions.end(), m_Revisions.begin() );
+		if ( !reuse )
+		{
+			TileRadiance( list, scale, across, down, samples, sample, out );
+			m_Valid = known && across > 0 && down > 0 && across * down <= kMaxTiles;
+			if ( !m_Valid )
+				return;
+			m_Quads.assign( list.quads, list.quads + list.quadCount );
+			m_Textures.assign( list.textures, list.textures + list.textureCount );
+			m_Revisions.assign( revisions.begin(), revisions.end() );
+			m_Wide = list.unitsWide;
+			m_Tall = list.unitsTall;
+			m_Scale = scale;
+			m_Across = across;
+			m_Down = down;
+			m_Samples = samples;
+			std::copy( &out[0][0], &out[0][0] + across * down * 3, m_Radiance );
+		}
+		else
+			std::copy( m_Radiance, m_Radiance + across * down * 3, &out[0][0] );
+	}
+
+private:
+	bool m_Valid = false;
+	float m_Wide = 0, m_Tall = 0, m_Scale = 0;
+	int m_Across = 0, m_Down = 0, m_Samples = 0;
+	std::vector<Quad> m_Quads;
+	std::vector<int> m_Textures;
+	std::vector<std::uint64_t> m_Revisions;
+	float m_Radiance[kMaxTiles * 3] = {};
+};
 
 } // namespace world_panel
 

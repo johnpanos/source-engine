@@ -93,6 +93,7 @@ struct LabTexture
 	std::uint32_t height = 0;
 	std::vector<std::uint8_t> texels;
 	SamplerDesc sampler;
+	std::uint64_t revision = 1;
 };
 
 class LabTextures final : public pass::panels::IPanelTextures
@@ -126,6 +127,7 @@ public:
 		if ( !m_Cache.Stage( texture.name, desc, std::as_bytes( std::span( texels ) ) ) )
 			return false;
 		texture.texels = std::move( texels );
+		++texture.revision;
 		return true;
 	}
 
@@ -139,6 +141,20 @@ public:
 	SamplerDesc Sampler( int key ) override
 	{
 		return key >= 0 && key < int( m_Textures.size() ) ? m_Textures[key].sampler : SamplerDesc();
+	}
+
+	bool knownRevisions = true;
+	std::uint64_t ContentRevision( int key ) override
+	{
+		return knownRevisions && key >= 0 && key < int( m_Textures.size() )
+		           ? m_Textures[key].revision
+		           : 0;
+	}
+	void ChangeSampler( int key )
+	{
+		m_Textures[key].sampler.address = m_Textures[key].sampler.address == AddressMode::kRepeat
+		                                      ? AddressMode::kClampToEdge
+		                                      : AddressMode::kRepeat;
 	}
 
 	// The CPU twin of the GPU's sampling (bilinear or nearest, wrapping or
@@ -777,6 +793,114 @@ std::optional<std::string> RunChecks( bool validate, std::span<const std::uint32
 		results.That( lab.pass->Failures() == failuresBefore + 1 &&
 		                  lab.pass->Stats().lastFailure.find( "no list" ) != std::string::npos,
 		    "panel.frame.missing-fails", "last failure: " + lab.pass->Stats().lastFailure );
+	}
+
+	// Reuse depends on pixel epochs and authored image inputs, never on frame
+	// number, placement or lighting. Inspect GPU pixels as well as raster counts.
+	{
+		LabTexture source{ "lab/reuse-screen", 1, 1, { 160, 160, 160, 255 }, {} };
+		const int key = lab.textures->Add( std::move( source ) );
+		if ( key < 0 )
+			return "the reuse texture could not be staged";
+		Panel panel = MakePanel( { MakeQuad( 0, 0, kUnitsWide, kUnitsTall, 0, 255, 255, 255, 255,
+		                             world_panel::kBlendOpaque ) },
+		    0.5f );
+		panel.id = 901;
+		panel.textures = { key };
+		auto show = [&]( const char *name, bool raster,
+		                float expected ) -> std::optional<std::string>
+		{
+			const auto before = lab.pass->Stats().rasterized;
+			PanelView view;
+			view.hostFrame = lab.frame;
+			view.panels = { panel.id };
+			if ( !lab.pass->Submit( view.hostFrame, panel ) )
+				return "the reuse list was refused";
+			CanvasImage image;
+			if ( auto why = Render( lab, *lab.canvas, { { mid, view } }, image ) )
+				return why;
+			float shown[3];
+			Mean( image, 120, 120, 136, 136, shown );
+			results.That( lab.pass->Stats().rasterized == before + std::uint64_t( raster ) &&
+			                  std::fabs( shown[1] - expected ) < 0.01f,
+			    std::string( "panel.reuse." ) + name, "shown " + Rgb( shown ) );
+			return std::nullopt;
+		};
+		const float initial = world_panel::SrgbToLinear( 160.0f / 255.0f );
+		if ( auto why = show( "first", true, initial ) )
+			return why;
+		if ( auto why = show( "unchanged", false, initial ) )
+			return why;
+		panel.emissionScale = 2.0f;
+		if ( auto why = show( "scale", false, 2.0f * initial ) )
+			return why;
+		panel.placement.origin[0] += 1.0f;
+		if ( auto why = show( "placement", false, 2.0f * initial ) )
+			return why;
+		panel.quads[0].s1 = 0.8f;
+		if ( auto why = show( "uv", true, 2.0f * initial ) )
+			return why;
+		panel.quads[0].color[1] = 128;
+		const float modulated =
+		    2.0f * world_panel::SrgbToLinear( 160.0f / 255.0f * 128.0f / 255.0f );
+		if ( auto why = show( "color", true, modulated ) )
+			return why;
+		if ( !lab.textures->Update( key, { 80, 80, 80, 255 } ) )
+			return "the reuse image could not be updated";
+		const float changed = 2.0f * world_panel::SrgbToLinear( 80.0f / 255.0f * 128.0f / 255.0f );
+		if ( auto why = show( "pixels", true, changed ) )
+			return why;
+		lab.textures->ChangeSampler( key );
+		if ( auto why = show( "sampler", true, changed ) )
+			return why;
+		panel.resolution = world_panel::ChooseResolution( kUnitsWide, kUnitsTall, 1.0f, {} );
+		if ( auto why = show( "resolution", true, changed ) )
+			return why;
+		lab.textures->knownRevisions = false;
+		if ( auto why = show( "unknown-epoch", true, changed ) )
+			return why;
+		if ( auto why = show( "unknown-again", true, changed ) )
+			return why;
+		lab.textures->knownRevisions = true;
+	}
+
+	// CPU tile reuse is checked against fresh integration and sampler calls.
+	// Unknown epochs model a live movie: neither repeated nor changed frames
+	// may borrow an old result.
+	{
+		world_panel::TileRadianceCache cache;
+		std::vector<Quad> quads = BoardList( lab, 140, true );
+		const int keys[] = { lab.board, lab.dirt, lab.checker };
+		world_panel::DrawListView list = {
+		    kUnitsWide, kUnitsTall, quads.data(), std::uint32_t( quads.size() ), keys, 3 };
+		std::uint64_t epochs[] = { 1, 2, 3 };
+		float cached[world_panel::kMaxTiles][3], fresh[world_panel::kMaxTiles][3];
+		int calls = 0;
+		auto sample = [&]( int key, float s, float t, float footprint, float rgba[4] )
+		{
+			++calls;
+			return lab.textures->Sample( key, s, t, footprint, rgba );
+		};
+		auto check = [&]( const char *name, bool reuse, float scale )
+		{
+			world_panel::TileRadiance( list, scale, 2, 4, 16, sample, fresh );
+			calls = 0;
+			cache.Evaluate( list, scale, 2, 4, 16, epochs, sample, cached );
+			results.That( ( calls == 0 ) == reuse &&
+			                  std::equal( &fresh[0][0], &fresh[0][0] + 24, &cached[0][0] ),
+			    std::string( "panel.tiles.reuse." ) + name,
+			    std::to_string( calls ) + " samples; cached tiles must equal fresh tiles" );
+		};
+		check( "first", false, 1.0f );
+		check( "unchanged", true, 1.0f );
+		quads[0].color[1] = 80;
+		check( "authored-change", false, 1.0f );
+		++epochs[0];
+		check( "sample-epoch", false, 1.0f );
+		check( "scale", false, 2.0f );
+		epochs[0] = 0;
+		check( "live", false, 2.0f );
+		check( "live-again", false, 2.0f );
 	}
 
 	// --- Mips: a one-texel checker minified eight times -----------------------
