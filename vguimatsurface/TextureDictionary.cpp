@@ -17,6 +17,8 @@
 #include "materialsystem/imaterialvar.h"
 #include "materialsystem/itexture.h"
 #include "vtf/vtf.h"
+#include "tier1/convar.h"
+#include <array>
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -397,7 +399,8 @@ void CMatSystemTexture::CleanUpMaterial()
 
 	if ( m_pTexture )
 	{
-		m_pTexture->SetTextureRegenerator( NULL );
+		if ( m_pRegen && !IsReference() )
+			m_pTexture->SetTextureRegenerator( NULL );
 		m_pTexture->DecrementReferenceCount();
 		m_pTexture->DeleteIfUnreferenced();
 		m_pTexture = NULL;
@@ -545,7 +548,11 @@ void CMatSystemTexture::SetSubTextureRGBAEx( int drawX, int drawY, unsigned cons
 	Assert( drawX + subTextureWide <= m_iWide );
 	Assert( drawY + subTextureTall <= m_iTall );
 
-	Assert( m_pRegen );
+	if ( !m_pRegen )
+	{
+		CreateRegen( m_iWide, m_iTall, pTexture->GetImageFormat() );
+		pTexture->SetTextureRegenerator( m_pRegen );
+	}
 
 	Assert( rgba );
 
@@ -583,7 +590,11 @@ void CMatSystemTexture::UpdateSubTextureRGBA( int drawX, int drawY, unsigned con
 	Assert( drawX + subTextureWide <= m_iWide );
 	Assert( drawY + subTextureTall <= m_iTall );
 
-	Assert( m_pRegen );
+	if ( !m_pRegen )
+	{
+		CreateRegen( m_iWide, m_iTall, pTexture->GetImageFormat() );
+		pTexture->SetTextureRegenerator( m_pRegen );
+	}
 
 	Assert( rgba );
 
@@ -667,9 +678,8 @@ void CMatSystemTexture::SetMaterial( IMaterial *pMaterial )
 			{
 				m_pTexture->IncrementReferenceCount();
 
-				// Upload new data
-				CreateRegen( m_iWide, m_iTall, m_pTexture->GetImageFormat() );
-				m_pTexture->SetTextureRegenerator( m_pRegen );
+				// Binding borrows the texture. Its pixel owner keeps the restoration
+				// callback until VGUI explicitly writes pixels.
 			}
 		}
 	}
@@ -1019,4 +1029,69 @@ int	CTextureDictionary::FindTextureIdForTextureFile( char const *pFileName )
 	}
 
 	return -1;
+}
+
+// Exercise both a borrowed pixel owner's restoration and VGUI's own pixel writes.
+CON_COMMAND_F( vgui_texture_borrow_probe, "Quality oracle for procedural texture borrowers", FCVAR_CHEAT )
+{
+	int checks = 0, failures = 0;
+	auto check = [&]( bool passed, const char *label )
+	{
+		++checks;
+		if ( !passed )
+		{
+			++failures;
+			Warning( "VGUI texture check failed: %s\n", label );
+		}
+	};
+	std::array<byte, 16 * 16 * 3> bits{};
+	for ( std::size_t i = 0; i < bits.size(); i += 3 )
+		bits[i] = 255;
+	const char *name = "__vgui_borrow_pixels";
+	ITexture *texture = g_pMaterialSystem->CreateNamedTextureFromBitsEx( name, TEXTURE_GROUP_VGUI,
+	    16, 16, 1, IMAGE_FORMAT_RGB888, int( bits.size() ), bits.data(),
+	    TEXTUREFLAGS_PROCEDURAL | TEXTUREFLAGS_NOMIP | TEXTUREFLAGS_NOLOD );
+	check( texture && !texture->IsError(), "create pixels" );
+	if ( texture && !texture->IsError() )
+	{
+		KeyValues *kv = new KeyValues( "UnlitGeneric" );
+		kv->SetString( "$basetexture", name );
+		IMaterial *material = g_pMaterialSystem->CreateMaterial( "__vgui_borrow_material", kv );
+		material->Refresh();
+		auto red = [&]()
+		{
+			float rgb[3] = {};
+			texture->GetLowResColorSample( 0.5f, 0.5f, rgb );
+			return rgb[0] > 0.9f && rgb[1] < 0.1f && rgb[2] < 0.1f;
+		};
+		check( red(), "original pixels" );
+		{
+			CMatSystemTexture borrower;
+			borrower.SetProcedural( true );
+			borrower.SetMaterial( material );
+			texture->Download();
+			check( red(), "bound borrower preserves restoration" );
+		}
+		texture->Download();
+		check( red(), "released borrower preserves restoration" );
+		material->DecrementReferenceCount();
+		material->DeleteIfUnreferenced();
+		texture->DecrementReferenceCount();
+		texture->DeleteIfUnreferenced();
+		check( !g_pMaterialSystem->IsTextureLoaded( name ), "borrowed texture cleanup" );
+	}
+	{
+		CMatSystemTexture writer;
+		writer.SetId( 31000 );
+		writer.SetProcedural( true );
+		std::array<byte, 16 * 16 * 4> rgba{};
+		rgba.fill( 255 );
+		writer.SetTextureRGBA( (const char *)rgba.data(), 16, 16, IMAGE_FORMAT_RGBA8888, false );
+		float alpha = 0;
+		check( writer.MeanAlpha( 0, 0, 1, 1, alpha ) && alpha > 0.99f, "explicit pixels" );
+		rgba.fill( 0 );
+		writer.UpdateSubTextureRGBA( 0, 0, rgba.data(), 16, 16, IMAGE_FORMAT_RGBA8888 );
+		check( writer.MeanAlpha( 0, 0, 1, 1, alpha ) && alpha < 0.01f, "explicit replacement" );
+	}
+	Msg( "VGUI_TEXTURE_BORROW_PROBE checks=%d failures=%d\n", checks, failures );
 }

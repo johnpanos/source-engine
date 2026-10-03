@@ -11030,10 +11030,10 @@
       "description": "Native video_bink PRELOAD_VIDEO with authored three-frame lossless BT.601 RGB clips, installed Portal 2 and Vulkan. Checks complete frame count, duration, decoder release, seeking, looping, pause, nonloop end, retained borrower restoration, final texture cleanup and invalid dimensions rollback. Each native sequence has 25 checks. The deliberately wrong green fixture must fail its color and regeneration checks. Retail elevator images and performance are separate evidence.",
       "command": ["{python}", "tools/quality/video_frame_cache.py", "--out", "{out}"],
       "result_protocol": "checks-v1",
-      "min_checks": 6,
+      "min_checks": 9,
       "timeout_seconds": 240,
-      "requires": ["path:run/runtime-p2", "path:build-p2/launcher/hl2_launcher", "executable:ffmpeg", "vulkan-device:gpu"],
-      "sources": ["tools/quality/video_frame_cache.py", "tools/quality/portal_boot.py", "tools/quality/conformance_result.py", "video/video_bink/bink_material.cpp", "video/video_bink/bink_material.h"],
+      "requires": ["path:run/runtime-p2", "path:build-p2/launcher_main/hl2_launcher", "executable:ffmpeg", "vulkan-device:gpu"],
+      "sources": ["tools/quality/video_frame_cache.py", "tools/quality/portal_boot.py", "tools/quality/conformance_result.py", "video/video_bink/bink_material.cpp", "video/video_bink/bink_material.h", "vguimatsurface/TextureDictionary.cpp"],
       "expect": "pass"
     },
     {

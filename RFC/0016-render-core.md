@@ -1988,6 +1988,21 @@ otherwise the same PBR family uses alpha coverage, depth testing without depth
 writes, and coverage-weighted mips. Ordinary scene surfaces, including glass,
 consume these images and area lights through their existing material paths.
 
+Texture-owner epochs (`ICoreTextures::ContentRevision` in
+`public/render/legacy/core_passes.h`) govern reuse of retained GPU composites;
+`render.world-panel.v1` owns authored-image equality and its derived
+`TileRadianceCache`. Unknown epochs require fresh work. Image, sampled resource,
+sampler and resolution changes invalidate the composite; placement and emission
+scale remain live draw inputs. Opaque procedural sampling retains its existing
+unknown-epoch behavior; immutable unsupported sampling has a stable fallback.
+`video_bink` implements the existing `PRELOAD_VIDEO` request by decoding the
+complete clip once into ordinary immutable textures, shared by the existing
+movie group, with normal texture restoration and teardown. Playback selects a
+resident texture without video decoding or uploads. This is source-image
+caching, independent of panel rendering and receiver shading. See the
+[screen-cache evidence](0016-progress.md#r91-screen-caching-and-video-preload-2026-10-03)
+for startup, memory, correctness and timing limitations.
+
 `render.pass.panels` (layer 6) rasterizes the frame's list at that
 resolution, builds linear-light mip chains for the emission and albedo, and
 draws the panel as a PBRMetalRough material through the one resolver, at a

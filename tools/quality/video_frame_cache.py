@@ -58,6 +58,7 @@ def main(argv=None):
             "--capture-wait", "30", "--startup-command", "r_core_world 1",
             "--console-command", "video_bink_cache_probe %s %s" % (positive, invalid),
             "--console-command", "video_bink_cache_probe %s %s" % (negative, invalid),
+            "--console-command", "vgui_texture_borrow_probe",
             "--console-command", "r_drawviewmodel 0", "--console-command", "cl_drawhud 0",
             "--console-command", "noclip", "--console-command", "cmd setpos -1552 37 -96",
             "--console-command", "cmd setang 0 -90 0"])
@@ -71,6 +72,11 @@ def main(argv=None):
             checks.equal(records[0][1], 0, "positive operation sequence")
             checks.check(records[1][0] >= 25, "negative operation count")
             checks.check(records[1][1] > 0, "wrong green rejected")
+        borrowed = re.findall(r"VGUI_TEXTURE_BORROW_PROBE checks=(\d+) failures=(\d+)", log)
+        evidence["vgui_records"] = borrowed
+        if checks.equal(len(borrowed), 1, "borrowed texture probe executed"):
+            checks.check(int(borrowed[0][0]) >= 7, "borrowed texture operation count")
+            checks.equal(int(borrowed[0][1]), 0, "borrowed texture operation sequence")
         evidence["status"] = "pass" if checks.failures == 0 else "fail"
     except (OSError, ValueError, subprocess.SubprocessError) as error:
         checks.check(False, "video cache run", str(error))

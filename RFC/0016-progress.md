@@ -8185,3 +8185,107 @@ missing detailed scope timers remain failures; no complete performance acceptanc
 is claimed. The executable reduction leaves the current 144-VGPR allocation
 unchanged. Further large gains must reduce executed area-light/shadow work and
 its live state, while preserving lighting and sample counts.
+
+
+### R91: screen caching and video preload (2026-10-03)
+
+User scope: reduce the impact of elevator movies and other world screens on
+`sp_a1_intro4_probe64`, and predecode every clip frame for resident playback.
+The panel remains the same ordinary core emissive PBR surface and light source;
+world and glass receivers, including shattered glass, retain their normal paths.
+No panel resolution, light count, shadow sampling or contributing effect is cut.
+
+Ownership and mechanism:
+
+- `render.world-panel.v1` owns actual-field image equality and the derived CPU
+  tile cache. Static VTF sample epochs invalidate on their owner reload; unknown
+  opaque procedural samples recompute. Unavailable samples, including translucent
+  font textures, have an immutable fallback so they do not invalidate unchanged
+  signs every frame. Coverage remains part of the authored quad.
+- The texture owner publishes content epochs through the internal
+  `ICoreTextures::ContentRevision` port. The panel pass retains its GPU image and
+  mip chains while authored image, sampled texture identity/epoch/sampler and
+  resolution match. Placement, lighting and emission scale remain live. Render
+  targets and unknown epochs always rebuild; handle recreation and uploads change
+  identity/epoch. No frozen public texture vtable changes.
+- `video_bink` honors `PRELOAD_VIDEO` with all original frames decoded once into
+  ordinary immutable BGR textures. The existing movie-group material selects a
+  resident frame; playback performs no decode, YUV conversion or video texture
+  upload. The normal texture owner retains regeneration bits for device
+  restoration. Decoder/scratch storage is released after preparation. Cache
+  ownership ends with the video material/group, including level screen teardown;
+  borrowers can retain the currently selected texture until their own release.
+  This does not move decoding to a GPU video codec or create a movie shader.
+- VGUI binding borrows a procedural texture without replacing its owner's
+  regenerator. VGUI creates its own regenerator only for explicit pixel writes,
+  and only clears one it owns. The old per-update video regenerator override is
+  deleted. Creation references are transferred to the cache, and materials are
+  released before owned textures.
+- The shared LTC rectangle evaluator rejects only provably noncontributing
+  backfaces/below-horizon rectangles before shadow filtering. Visibility debug
+  evaluation retains its independent oracle behavior.
+
+Frozen-path: `shaderapivulkan` changes are core texture-epoch plumbing;
+`vguimatsurface` corrects borrowed texture-regenerator ownership; `video_bink`
+implements the explicit user request for complete frame caching through existing
+material/texture APIs. No new legacy shading or CPU receiver lighting is added.
+
+Evidence: `quality-results/core-screens-perf-20261003/` retains original frame
+streams, native logs, binary/source receipts, authored quality fixtures, captured
+movie images and the no-atime staging wrappers used on the metadata-constrained
+Btrfs host. The installed workload is
+`quality/workloads/portal2-screen-frame-pacing-v1.json`; all three passes, camera
+transitions and their hitches remain in the receipt.
+
+| Native diagnostic, third pass | Before median | After median | Before GPU render median | After GPU render median |
+| --- | ---: | ---: | ---: | ---: |
+| Elevator movie | 19.534 ms | 15.350 ms | 15.620 ms | 12.040 ms |
+| Active chamber sign | 19.817 ms | 17.040 ms | 9.344 ms | 8.379 ms |
+
+These matched drawable captures use actual 1024x768 on Radeon 8060S/RADV, with
+MSAA off and HUD/viewmodel hidden to isolate the screens. They are not High
+qualification. The shared checkout advanced during the work: source and binary
+hashes are retained per run, and other material specialization changes are
+included, so the whole-frame difference is not attributed solely to video
+caching. `panels-off-control` and `area-lights-off-control` are attribution
+controls, not product settings. `core-cache-only` retained the older font-sample
+invalidation and therefore does not establish a sign speedup. `preload-initial`
+rendered at 1024x720; its faster medians are not a matched-resolution comparison.
+The explicit 1080 resize attempt fell back to 640x480 and is retained as
+`resize-rejected`, excluded from the table.
+
+The elevator clip has 235 frames at 640x400: 229.5 MiB GPU RGBA plus 172.1 MiB
+BGR restoration bits, excluding small CPU thumbnails and panel composites.
+Preparation in the final diagnostic was 282.3 ms. Preparation occurs when the
+existing movie group is first created; it is not yet a separate map-loading
+warm-up stage. Other existing `PRELOAD_VIDEO` consumers also cache complete
+clips: the 304-frame 1280x720 menu background used 1068.8 MiB GPU plus 801.6 MiB
+restoration storage and took 1402.4 ms. These costs are reported, not hidden or
+subtracted from a gameplay frame after capture. Other textures still upload;
+resident video playback alone is upload-free until explicit regeneration.
+
+Validation:
+
+- `render.lab.panel`: 77 checks, including actual GPU pixels/raster reuse and
+  invalidation plus CPU cached/fresh integration equality. Panel sensitivity
+  4, area lights 72, area-light sensitivity 5, shadowed lights 190, posed models
+  72 passed with no Vulkan validation messages (see `lab-final.json`).
+- Installed `render.video.frame-cache` runs
+  `tools/quality/video_frame_cache.py`: the native positive sequence passes
+  25 checks for frame count/duration, decoder release, seek, pause, loop,
+  nonloop end, regeneration, borrower lifetime, final cache cleanup and invalid
+  dimensions rollback. An authored wrong-green clip fails its two color checks.
+  The command runner counts six acceptance checks and rejects missing probes.
+  `video-cache/` retains fixtures, logs and the real elevator capture. Manual
+  regeneration proves retained bits, not a complete device-loss lifecycle.
+- The actual `render_lab` and Portal 2 product consumers build with their
+  existing Waf profiles. Architecture all/baseline/inventory, architecture/style
+  fixtures and changed-line style pass; final receipts are retained alongside
+  the captures.
+
+R91/R96, full device-loss and non-Linux acceptance remain open. The diagnostic
+still contains slow frames (movie 61.191 ms and sign 23.492 ms maxima in the last
+pass); the full 1920x1080 High 4x MSAA 120 FPS floor is unverified and not met by
+these diagnostics. Remaining complete-frame area-light/shadow and submission
+costs need further equivalent-output optimization. No performance promotion or
+CPU/GPU decode-placement acceptance is claimed.

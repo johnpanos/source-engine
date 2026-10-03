@@ -139,97 +139,97 @@ class CBinkMaterial : public IVideoMaterial
 	private:
 		friend class CBinkMaterialRGBTextureRegenerator;
 
-		void 						Reset();											// clears internal state
-		void 						SetFileName( const char *theMovieFileName );
-		VideoResult_t				SetResult( VideoResult_t status );
-		
-		// Initializes, shuts down the video stream
-		void 						OpenMovie( const char *theMovieFileName );
-		void 						CloseFile();
-		bool						DecodeNextFrame();
-		bool PreloadFrames( const char *pTextureName );
+	    void Reset(); // clears internal state
+	    void SetFileName( const char *theMovieFileName );
+	    VideoResult_t SetResult( VideoResult_t status );
+
+	    // Initializes, shuts down the video stream
+	    void OpenMovie( const char *theMovieFileName );
+	    void CloseFile();
+	    bool DecodeNextFrame();
+	    bool PreloadFrames( const char *pTextureName );
 	    void SelectCachedFrame( int frame );
 	    bool Rewind( double flTime );
 
 	    // Initializes, shuts down the procedural texture
-	    void						CreateProceduralTexture( const char *pTextureName );
-		void						DestroyProceduralTexture();
+	    void CreateProceduralTexture( const char *pTextureName );
+	    void DestroyProceduralTexture();
 
-		// Initializes, shuts down the procedural material
-		void 						CreateProceduralMaterial( const char *pMaterialName );
-		void 						DestroyProceduralMaterial();
+	    // Initializes, shuts down the procedural material
+	    void CreateProceduralMaterial( const char *pMaterialName );
+	    void DestroyProceduralMaterial();
 
-		CBinkMaterialRGBTextureRegenerator	m_TextureRegen;
+	    CBinkMaterialRGBTextureRegenerator m_TextureRegen;
 
-		VideoResult_t				m_LastResult;
-		
-		CMaterialReference			m_Material;						// Ref to Material used for rendering the video frame
-		std::vector<CTextureReference> m_CachedFrames;
-		int m_NextCachedFrame = 0;
+	    VideoResult_t m_LastResult;
+
+	    CMaterialReference m_Material; // Ref to Material used for rendering the video frame
+	    std::vector<CTextureReference> m_CachedFrames;
+	    int m_NextCachedFrame = 0;
 	    int m_CurrentFrame = -1;
 	    CTextureReference
 	        m_Texture; // Ref to the renderable texture which contains the most recent video frame (in a sub-rect)
 
 	    float
 	        m_TexCordU; // Max U texture coordinate of the texture sub-rect which holds the video frame
-	    float						m_TexCordV;						// Max V texture coordinate of the texture sub-rect which holds the video frame
+	    float
+	        m_TexCordV; // Max V texture coordinate of the texture sub-rect which holds the video frame
 
-		int							m_VideoFrameWidth;				// Size of the movie frame in pixels
-		int							m_VideoFrameHeight;
+	    int m_VideoFrameWidth; // Size of the movie frame in pixels
+	    int m_VideoFrameHeight;
 
-		char					   *m_pFileName;					// resolved filename of the movie being played
-		VideoPlaybackFlags_t		m_PlaybackFlags;				// option flags user supplied
+	    char *m_pFileName;                    // resolved filename of the movie being played
+	    VideoPlaybackFlags_t m_PlaybackFlags; // option flags user supplied
 
-		bool						m_bInitCalled;
-		bool						m_bMovieInitialized;
-		bool						m_bMoviePlaying;
-		bool						m_bMovieFinishedPlaying;
-		bool						m_bMoviePaused;
-		bool						m_bLoopMovie;
-		
-		bool						m_bHasAudio;
-		bool						m_bMuted;
-		
-		float						m_CurrentVolume;
-		
-		// QuickTime Stuff
+	    bool m_bInitCalled;
+	    bool m_bMovieInitialized;
+	    bool m_bMoviePlaying;
+	    bool m_bMovieFinishedPlaying;
+	    bool m_bMoviePaused;
+	    bool m_bLoopMovie;
 
-		float					m_QTMovieTimeScale;
-		float					m_QTMoviefloat;				// Units per second
-		float					m_QTMovieDuration;				// movie duration in float Units Per Second
-		float						m_QTMovieDurationinSec;			// movie duration in seconds
-		VideoFrameRate_t			m_QTMovieFrameRate;				// Frame Rate of movie
-		int							m_QTMovieFrameCount;
+	    bool m_bHasAudio;
+	    bool m_bMuted;
 
-		double			m_MovieFirstFrameTime;
-		double			m_NextInterestingTimeToPlay;
-		float					m_MoviePauseTime; 
+	    float m_CurrentVolume;
 
-		// AV stuff
-		AVFrame *m_AVFrame;
-		AVPacket *m_AVPkt;
-		AVFormatContext *m_AVFmtCtx;
+	    // QuickTime Stuff
 
-		int m_AVVideoStreamID;
-		int m_AVAudioStreamID;
+	    float m_QTMovieTimeScale;
+	    float m_QTMoviefloat;                // Units per second
+	    float m_QTMovieDuration;             // movie duration in float Units Per Second
+	    float m_QTMovieDurationinSec;        // movie duration in seconds
+	    VideoFrameRate_t m_QTMovieFrameRate; // Frame Rate of movie
+	    int m_QTMovieFrameCount;
 
-		AVCodecContext *m_AVVideoDecCtx ;
-		bool m_bDecoderDraining;
-		bool m_bDecodeFailed;
-		AVCodecContext *m_AVAudioDecCtx ;
+	    double m_MovieFirstFrameTime;
+	    double m_NextInterestingTimeToPlay;
+	    float m_MoviePauseTime;
 
-		AVStream *m_AVVideoStream;
-		AVStream *m_AVAudioStream;
+	    // AV stuff
+	    AVFrame *m_AVFrame;
+	    AVPacket *m_AVPkt;
+	    AVFormatContext *m_AVFmtCtx;
 
-		int m_AVPixFormat;
+	    int m_AVVideoStreamID;
+	    int m_AVAudioStreamID;
 
-		double m_MovieFrameDuration;
+	    AVCodecContext *m_AVVideoDecCtx;
+	    bool m_bDecoderDraining;
+	    bool m_bDecodeFailed;
+	    AVCodecContext *m_AVAudioDecCtx;
 
-		uint8_t *m_AVVideoData[4];
-		uint8_t *m_RGBData;
+	    AVStream *m_AVVideoStream;
+	    AVStream *m_AVAudioStream;
 
-		int m_AVVideoLinesize[4];
+	    int m_AVPixFormat;
 
+	    double m_MovieFrameDuration;
+
+	    uint8_t *m_AVVideoData[4];
+	    uint8_t *m_RGBData;
+
+	    int m_AVVideoLinesize[4];
 };
 
 #endif // BINK_MATERIAL_H
