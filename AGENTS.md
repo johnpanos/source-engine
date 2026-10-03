@@ -31,6 +31,7 @@ consumer at every new boundary. The active program is defined by these RFCs:
 | [0017](RFC/0017-lan-discovery-and-coop-pairing.md) | LAN discovery contract (`platform.lan-discovery.v1`) with mDNS providers, and Portal 2 co-op pairing without Steam through the matchmaking framework's `lan` network type and a new lobby session (proposed; row R93) |
 | [0018](RFC/0018-hammer-interaction-design.md) | Hammer interaction and UI/UX: flows with entry points, states, errors and undo; tool state machines, focus and key routing, the shortcut map reconciled with `ActionCatalog`, pointer gestures, layout, HiDPI, theming and AT-SPI names; a UI-driven case per flow; gap table and slice order UX1–UX12 (proposed; children of R08, R17, R23–R25, R60) |
 | [0019](RFC/0019-temporal-upscaling-contract.md) | Temporal upscaling contract: frame inputs, stable view history, portal resets, graph/output placement, provider capabilities and quality gates; FSR 4.1.1 is the first candidate and the intended replacement for 4x MSAA in High after qualification (user direction, 2026-10-03; proposed, no implementation gate or ranked row yet) |
+| [0020](RFC/0020-native-game-ui-qualification.md) | Future native game UI qualification: curved visor HUD and Portal 2 flipping menu panels as required visual, interaction and performance scenes (proposed; no implementation gate or ranked row yet) |
 
 RFC status and implementation status are separate. A proposed interface, tool,
 directory, or command is not installed infrastructure. Read the relevant RFC

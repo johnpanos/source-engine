@@ -48,7 +48,8 @@ each step:
 
 This is not a rewrite and not a UI framework replacement. A different menu
 technology may later become a second provider, as a separate product decision
-after the seams exist (see [Alternatives](#alternatives-considered)).
+after the seams exist ([RFC 0020](0020-native-game-ui-qualification.md) records
+the two qualification scenes; see [Alternatives](#alternatives-considered)).
 
 ## Observed starting point
 
