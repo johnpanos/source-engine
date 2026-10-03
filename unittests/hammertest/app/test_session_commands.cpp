@@ -222,6 +222,39 @@ int main()
 		auto replaced = commands.Execute( "replace_material",
 		    { { "find", "TOOLS/TOOLSNODRAW" }, { "replace", "BRICK/BRICK01" } } );
 		checks.That( replaced && replaced.Value() != "0", "replace material reports a count" );
+		checks.That( session.History().UndoEntry() &&
+		                 session.History().UndoEntry()->label == "Replace Textures",
+		    "replace material is one \"Replace Textures\" undo step" );
+		auto marked =
+		    commands.Execute( "mark_material", { { "find", "brick" }, { "match", "partial" } } );
+		checks.That( marked && marked.Value() != "0" &&
+		                 session.CurrentSelection().objects.size() ==
+		                     static_cast<std::size_t>( std::stoi( marked.Value() ) ) &&
+		                 session.CurrentSelection().faces.empty(),
+		    "mark_material selects each solid using the material once" );
+		auto markedFaces =
+		    commands.Execute( "mark_material", { { "find", "BRICK/BRICK01" }, { "faces", "1" } } );
+		checks.That( markedFaces && markedFaces.Value() == replaced.Value() &&
+		                 session.CurrentSelection().objects.empty() &&
+		                 session.CurrentSelection().faces.size() ==
+		                     static_cast<std::size_t>( std::stoi( replaced.Value() ) ),
+		    "mark_material faces=1 selects every matching face" );
+		checks.That(
+		    !commands.Execute( "replace_material",
+		        { { "find", "BRICK/BRICK01" }, { "replace", "X" }, { "match", "fuzzy" } } ),
+		    "an unknown match mode is refused (negative)" );
+		checks.That( !commands.Execute( "replace_material",
+		                 { { "find", "BRICK/BRICK01" }, { "replace", "UNKNOWN/SIZE" },
+		                     { "rescale", "1" } } ),
+		    "rescale to a material of unknown size is refused (negative)" );
+		auto substituted =
+		    commands.Execute( "replace_material", { { "find", "BRICK01" }, { "replace", "BRICK02" },
+		                                              { "match", "substitute" }, { "ids", b } } );
+		checks.That( substituted && substituted.Value() != "0" &&
+		                 std::stoi( substituted.Value() ) <= std::stoi( replaced.Value() ),
+		    "substitute within ids" );
+		checks.That( commands.Execute( "undo", {} ).HasValue(), "undo the substitution" );
+		checks.That( commands.Execute( "select_none", {} ).HasValue(), "clear the marks" );
 
 		auto door =
 		    commands.Execute( "tie_to_entity", { { "classname", "func_door" }, { "ids", b } } );

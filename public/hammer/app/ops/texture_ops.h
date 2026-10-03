@@ -26,6 +26,7 @@
 
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace hammer::app::ops
@@ -116,12 +117,83 @@ EditResult JustifyTexture( scene::DocumentEdit &edit, const std::vector<scene::F
 EditResult AlignTexture( scene::DocumentEdit &edit, const std::vector<scene::FaceRef> &faces,
     TextureAlignment alignment );
 
-// Replaces 'find' with 'replace' on every face of the given objects (all
-// solids when 'ids' is empty). Matching is case-insensitive; with
-// 'substring' a face matches when its material contains 'find' and only that
-// part is replaced. Writes the number of faces changed; Nothing when zero.
-EditResult ReplaceMaterial( scene::DocumentEdit &edit, const std::vector<scene::ObjectId> &ids,
-    const std::string &find, const std::string &replace, bool substring, int &replacedCount );
+// --- Replace Textures (legacy CReplaceTexDlg / CMapDoc::ReplaceTextures) -----------
+//
+// One query drives the replacement and its "mark only" variant.
+//
+//   * Scope: the solids 'within' stands for (groups and brush entities expand
+//     to their solids, ExpandToLeaves), or every solid when 'within' is
+//     nothing. Faces are visited in solid id order, then side order.
+//   * Visibility: hidden solids (scene::IsVisible) are skipped unless
+//     'includeHidden'. Marking never includes hidden solids (legacy forced it).
+//   * Names follow RFC 0015's material identity (content.asset-identity, the
+//     one owner of the rule): ASCII case-insensitive, '\\' equal to '/'. Exact
+//     compares whole names; Partial and Substitute find 'find' anywhere in the
+//     name (first occurrence). An empty 'find' matches nothing (legacy
+//     FindInString; legacy Exact matched unnamed faces). Legacy compared
+//     'find' with strcmpi and no slash folding.
+//   * Replacement: Exact and Partial set the whole name to 'replace';
+//     Substitute replaces the first occurrence of 'find' with 'replace' and
+//     keeps the rest. The stored name is the normalized identity
+//     (NormalizeAssetName: lowercase, '/'), never a second spelling; a result
+//     that is not a valid name (empty, '.', '..' or absolute components)
+//     refuses the operation. Legacy stored the loaded texture's registered
+//     spelling, or the text as typed for a missing one. A replacement need
+//     not exist in the catalog: a missing material stays named (RFC 0018).
+//   * Rescale (legacy "rescale texture coordinates"): each replaced face keeps
+//     its texel density in world units: per axis, factor = old size / new
+//     size, scale *= factor and shift /= factor. Both mapping sizes must be
+//     known through IMaterialInfo; a missing size refuses the whole
+//     operation, where legacy divided by a placeholder's zero size.
+//   * The count is the number of faces changed (legacy "N textures
+//     replaced"); zero is Nothing. An empty 'find' or 'replace' is refused
+//     (legacy set an unnamed placeholder texture).
+enum class MaterialMatch
+{
+	Exact,      // legacy action 0: "replace exact matches only"
+	Partial,    // legacy action 1: "find partials, replace entire name"
+	Substitute, // legacy action 2: "find partials, substitute the replacement"
+};
+
+struct MaterialReplace
+{
+	std::string find;
+	std::string replace;
+	MaterialMatch match = MaterialMatch::Exact;
+	std::optional<std::vector<scene::ObjectId>> within; // nothing = every solid
+	bool includeHidden = false;
+	bool rescale = false;
+};
+
+// True when 'material' matches 'find' under 'match'.
+bool MaterialMatches( std::string_view material, std::string_view find, MaterialMatch match );
+
+// The normalized name a matching face gets; nothing when the result is not a
+// valid material name (or, for Substitute, 'material' does not match).
+std::optional<std::string> ReplacedMaterialName(
+    std::string_view material, const MaterialReplace &query );
+
+// The faces the query matches, in solid id then side order.
+std::vector<scene::FaceRef> FindMaterialFaces(
+    const scene::DocumentReader &doc, const MaterialReplace &query );
+
+// Replaces the matching faces' materials. 'materials' is needed only with
+// 'rescale' (refused without it).
+EditResult ReplaceMaterial( scene::DocumentEdit &edit, const MaterialReplace &query,
+    const ports::IMaterialInfo *materials, int &replacedCount );
+
+// Mark only: the selection that holds what the query matches, replacing the
+// current one. Solids marks each solid with a matching face once (selected as
+// solids, even inside groups and brush entities: legacy switched to solid
+// selection); Faces (the face-edit tool is active) marks every matching face.
+// 'markedCount' is the number of solids or faces marked.
+enum class MaterialMarkTarget
+{
+	Solids,
+	Faces,
+};
+Selection MarkMaterialUses( const scene::DocumentReader &doc, const MaterialReplace &query,
+    MaterialMarkTarget target, int &markedCount );
 
 enum class ApplyTextureMode
 {

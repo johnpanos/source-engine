@@ -82,7 +82,8 @@ ActionSpec HostAction( std::string id, std::string label, std::string category,
 	spec.id = std::move( id );
 	spec.label = std::move( label );
 	spec.category = std::move( category );
-	spec.shortcuts = { std::move( shortcut ) };
+	if ( !shortcut.empty() )
+		spec.shortcuts = { std::move( shortcut ) };
 	spec.target = ActionTarget::Host;
 	spec.host = std::move( host );
 	spec.checked = checked;
@@ -146,6 +147,10 @@ std::vector<ActionSpec> BuildSpecs()
 	        E::HasObjects ),
 	    Cmd( "tools.apply_material", "Apply Current Material", "Tools", { "Shift+T" },
 	        "apply_material", E::HasSelection ),
+	    // Legacy Tools > Replace Textures... (no shortcut); the host shows the
+	    // ReplaceTexturesDialog model.
+	    HostAction(
+	        "tools.replace_textures", "Replace Textures...", "Tools", "", "replace_textures" ),
 	    Toggle( Cmd( "tools.texture_lock", "Texture Lock", "Tools", { "Shift+L" },
 	                "set_texture_lock", E::Always ),
 	        "on", "1", "0", CheckRule::TextureLock ),

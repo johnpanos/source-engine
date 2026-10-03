@@ -51,6 +51,11 @@ struct AssetRef
 // parent components. newSource also enforces RFC 0015's portable set.
 std::optional<std::string> NormalizeAssetName( std::string_view name, bool newSource = false );
 
+// NormalizeAssetName's character rule alone (ASCII case fold, '\\' to '/'),
+// with no component checks: for comparing name fragments and search patterns
+// under the identity rule. Not an identity on its own.
+std::string FoldAssetName( std::string_view text );
+
 } // namespace content
 
 #endif // CONTENT_ASSET_IDENTITY_H

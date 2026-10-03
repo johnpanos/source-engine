@@ -4,8 +4,9 @@
 //			texture lock is exact under translation, rotation, non-uniform scale
 //			and mirroring (every point keeps its texel); legacy justify and fit
 //			(single face and treated as one); world and face alignment; rotation
-//			about the texture normal; shift normalization; material replacement
-//			and apply modes. Negative checks: unknown faces refuse with nothing
+//			about the texture normal; shift normalization; Replace Textures
+//			(legacy exact, partial and substitute matching, hidden objects,
+//			mark only, rescale) and apply modes. Negative checks: unknown faces refuse with nothing
 //			staged, zero scales, materials without a size, empty find strings.
 //
 //=============================================================================//
@@ -15,6 +16,7 @@
 #include "mapgeometry/vec3.h"
 #include "testing/checks.h"
 
+#include <cctype>
 #include <cmath>
 #include <map>
 
@@ -33,9 +35,14 @@ public:
 	{
 		return m_sizes.count( std::string( m ) ) > 0;
 	}
+	// The port compares names case-insensitively with '\\' equal to '/'.
 	std::optional<ports::MaterialSize> Size( std::string_view m ) const override
 	{
-		const auto it = m_sizes.find( std::string( m ) );
+		std::string key( m );
+		for ( char &c : key )
+			c = c == '\\' ? '/'
+			              : static_cast<char>( std::toupper( static_cast<unsigned char>( c ) ) );
+		const auto it = m_sizes.find( key );
 		if ( it == m_sizes.end() )
 			return std::nullopt;
 		return it->second;
@@ -255,19 +262,108 @@ int main()
 	{
 		scene::DocumentEdit edit( doc );
 		int count = 0;
-		checks.That( ReplaceMaterial(
-		                 edit, {}, "dev/dev_measuregeneric01b", "BRICK/BRICKWALL001", false, count )
-		                     .HasValue() &&
-		                 count == 6,
-		    "replace whole names, case-insensitively" );
-		checks.That(
-		    ReplaceMaterial( edit, { box }, "BRICKWALL", "CONCRETEWALL", true, count ).HasValue() &&
-		        FindFace( edit, top )->texture.material == "BRICK/CONCRETEWALL001",
-		    "replace substrings" );
-		checks.That( !ReplaceMaterial( edit, {}, "NOPE", "X", false, count ) && count == 0,
+		MaterialReplace q;
+		q.find = "dev/dev_measuregeneric01b";
+		q.replace = "BRICK/BRICKWALL001";
+		checks.That( ReplaceMaterial( edit, q, nullptr, count ).HasValue() && count == 6 &&
+		                 FindFace( edit, top )->texture.material == "brick/brickwall001",
+		    "replace exact names, case-insensitively" );
+		q = {};
+		q.find = "BRICKWALL";
+		q.replace = "CONCRETEWALL";
+		q.match = MaterialMatch::Substitute;
+		q.within = std::vector<scene::ObjectId>{ box };
+		checks.That( ReplaceMaterial( edit, q, nullptr, count ).HasValue() &&
+		                 FindFace( edit, top )->texture.material == "brick/concretewall001",
+		    "substitute the first occurrence; the stored name is the normalized identity" );
+		q.match = MaterialMatch::Partial;
+		q.find = "concrete";
+		q.replace = "metal\\metalwall";
+		checks.That( ReplaceMaterial( edit, q, nullptr, count ).HasValue() &&
+		                 FindFace( edit, top )->texture.material == "metal/metalwall",
+		    "partial replaces the whole name, backslashes become '/'" );
+		q.find = "";
+		checks.That( FindMaterialFaces( edit, q ).empty(),
+		    "an empty partial pattern matches nothing (legacy FindInString)" );
+		q.find = "NOPE";
+		checks.That( !ReplaceMaterial( edit, q, nullptr, count ) && count == 0,
 		    "no match is nothing to do (negative)" );
+		q.find = "metal";
+		q.replace = "";
 		checks.That(
-		    !ReplaceMaterial( edit, {}, "", "X", false, count ), "empty find refused (negative)" );
+		    !ReplaceMaterial( edit, q, nullptr, count ), "empty replacement refused (negative)" );
+		q.replace = "../escape";
+		checks.That( !ReplaceMaterial( edit, q, nullptr, count ) &&
+		                 FindFace( edit, top )->texture.material == "metal/metalwall",
+		    "a replacement that is not a material name refuses (negative)" );
+		q.find = "metal/";
+		q.replace = "";
+		q.match = MaterialMatch::Substitute;
+		checks.That( ReplaceMaterial( edit, q, nullptr, count ).HasValue() &&
+		                 FindFace( edit, top )->texture.material == "metalwall",
+		    "substitute may remove a fragment" );
+		q.find = "metalwall";
+		checks.That( !ReplaceMaterial( edit, q, nullptr, count ) &&
+		                 FindFace( edit, top )->texture.material == "metalwall",
+		    "a substitution that empties the name refuses (negative)" );
+		q.find = "METALWALL";
+		q.replace = "Brick\\Wall";
+		q.match = MaterialMatch::Exact;
+		checks.That( ReplaceMaterial( edit, q, nullptr, count ).HasValue() &&
+		                 FindFace( edit, top )->texture.material == "brick/wall",
+		    "exact match folds case; the result is normalized" );
+	}
+	{
+		// Hidden solids, mark only and rescale.
+		scene::DocumentEdit edit( doc );
+		scene::Solid hiddenSolid =
+		    scene::MakeBoxSolid( { Vec3d( 512, 0, 0 ), Vec3d( 576, 64, 64 ) }, tex );
+		hiddenSolid.hidden = true;
+		const scene::ObjectId hiddenId = edit.Add( hiddenSolid );
+		MaterialReplace q;
+		q.find = tex.material;
+		q.replace = "BRICK/BRICKWALL001";
+		checks.Equal( static_cast<int>( FindMaterialFaces( edit, q ).size() ), 6,
+		    "hidden solids are skipped by default" );
+		q.includeHidden = true;
+		checks.Equal(
+		    static_cast<int>( FindMaterialFaces( edit, q ).size() ), 12, "hidden objects too" );
+		int marked = 0;
+		const app::Selection solids =
+		    MarkMaterialUses( edit, q, MaterialMarkTarget::Solids, marked );
+		checks.That( marked == 1 && solids.objects == std::vector<scene::ObjectId>{ box } &&
+		                 solids.faces.empty(),
+		    "mark solids: once per visible solid, never hidden" );
+		const app::Selection faces = MarkMaterialUses( edit, q, MaterialMarkTarget::Faces, marked );
+		checks.That( marked == 6 && faces.faces.size() == 6 && faces.objects.empty(),
+		    "mark faces: every matching visible face" );
+		checks.That( FindFace( edit, top )->texture.material == tex.material,
+		    "marking changes no material" );
+
+		q.includeHidden = false;
+		q.rescale = true;
+		int count = 0;
+		checks.That( !ReplaceMaterial( edit, q, nullptr, count ),
+		    "rescale without material sizes refused (negative)" );
+		q.replace = "MISSING/MATERIAL";
+		checks.That( !ReplaceMaterial( edit, q, &mats, count ) &&
+		                 FindFace( edit, top )->texture.material == tex.material,
+		    "rescale to a material of unknown size refuses with nothing staged (negative)" );
+		q.find = "DEV/DEV_MEASUREGENERIC01B";
+		q.replace = "BRICK/BRICKWALL001";
+		checks.That( ShiftTexture( edit, { top }, 8, 4 ).HasValue(), "shift before rescale" );
+		const scene::FaceTexture before = FindFace( edit, top )->texture;
+		checks.That( ReplaceMaterial( edit, q, &mats, count ).HasValue() && count == 6, "rescale" );
+		const scene::FaceTexture &after = FindFace( edit, top )->texture;
+		// 128x128 -> 256x128: u scale halves, u shift doubles, v unchanged.
+		checks.Near( after.u.scale, before.u.scale * 0.5, 1e-12, "u scale *= old/new width" );
+		checks.Near( after.u.shift, before.u.shift * 2.0, 1e-12, "u shift /= old/new width" );
+		checks.That( after.v.scale == before.v.scale && after.v.shift == before.v.shift,
+		    "v unchanged for equal heights" );
+		checks.That(
+		    FindFace( edit, scene::FaceRef{ hiddenId, edit.FindSolid( hiddenId )->sides[0].vmfId } )
+		            ->texture.material == tex.material,
+		    "the hidden solid keeps its material" );
 	}
 	{
 		scene::DocumentEdit edit( doc );

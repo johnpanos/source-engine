@@ -18,6 +18,7 @@ def configure(conf):
 def build(bld):
 	source = [ 'app.cpp', 'catalog_models.cpp', 'catalog_textures.cpp', 'entity_schema.cpp',
 	           'glib_task_runner.cpp', 'offscreen.cpp', 'properties_dialog.cpp',
+	           'replace_textures_dialog.cpp',
 	           'viewport_widget.cpp', 'visgroups_panel.cpp' ]
 	use = [ 'hammer_render', 'hammer_presenters', 'hammer_tools', 'hammer_viewport',
 	        'hammer_formats', 'hammer_app', 'hammer_ports', 'hammer_scene',

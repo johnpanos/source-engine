@@ -157,12 +157,22 @@ EditorWorkspace::EditorWorkspace( const WorkspaceServices &services )
 	m_visgroups = std::make_unique<VisgroupPanel>( m_session, m_commands );
 	m_problems = std::make_unique<ProblemsPanel>(
 	    m_session, m_commands, services.catalog, services.materials );
+	m_replaceTextures =
+	    std::make_unique<ReplaceTexturesDialog>( m_session, m_commands, services.materials );
 	m_actions = std::make_unique<ActionCatalog>( m_session, m_settings, m_commands, &m_clipboard );
 	m_statusBar->SetTool( std::string( tools::SelectionTool::kName ) );
 	FrameDocument();
 }
 
 EditorWorkspace::~EditorWorkspace() = default;
+
+ReplaceTexturesDialog &EditorWorkspace::OpenReplaceTextures()
+{
+	const tools::ITool *active = m_tools.Active();
+	m_replaceTextures->Open(
+	    m_settings.faceTexture.material, active && active->Name() == tools::FaceTool::kName );
+	return *m_replaceTextures;
+}
 
 viewport::Camera2D &EditorWorkspace::Camera2DFor( ViewKind view )
 {

@@ -307,6 +307,24 @@ int main()
 	checks.That( ws.RunAction( "tools.clip" ).handled && ws.Tools().Active()->Name() == "clip",
 	    "menus run actions through the same path" );
 	checks.That( !ws.RunAction( "no.such" ).handled, "unknown action (negative)" );
+	{
+		const InputOutcome replace = ws.RunAction( "tools.replace_textures" );
+		checks.That( replace.handled && replace.hostRequest == "replace_textures",
+		    "Replace Textures is a host request" );
+		bool inTools = false;
+		for ( const auto *spec : ActionCatalog::InCategory( "Tools" ) )
+			inTools = inTools || ( spec->id == "tools.replace_textures" &&
+			                         spec->label == "Replace Textures..." );
+		checks.That( inTools, "the Tools menu (built from the catalog) lists Replace Textures..." );
+		ws.Settings().faceTexture.material = "tools/toolsnodraw";
+		checks.That( ws.RunAction( "tools.face" ).handled &&
+		                 ws.OpenReplaceTextures().Draft().find == "tools/toolsnodraw" &&
+		                 ws.ReplaceTextures().MarksFaces(),
+		    "OpenReplaceTextures starts from the current material and the face tool" );
+		checks.That(
+		    ws.RunAction( "tools.selection" ).handled && !ws.OpenReplaceTextures().MarksFaces(),
+		    "with another tool, marking selects solids" );
+	}
 
 	{
 		EditorWorkspace bare( WorkspaceServices{} );

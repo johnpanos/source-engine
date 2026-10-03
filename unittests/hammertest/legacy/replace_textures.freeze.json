@@ -1,0 +1,87 @@
+{
+ "revision": "776a2f3ec0e16e8b17bea40080be6d6491f296f0",
+ "output": "unittests/hammertest/legacy/replace_textures_legacy.inc",
+ "excerpts": [
+  {
+   "path": "hammer/mapdoc.cpp",
+   "lines": [
+    364,
+    376
+   ],
+   "symbol": "ReplaceTexInfo_t",
+   "sha256": "5549fb90bb4fd7b65dc93e6ed4cb26576f176fb613ea876975d10ff13cfd7310"
+  },
+  {
+   "path": "hammer/mapdoc.cpp",
+   "lines": [
+    7922,
+    7940
+   ],
+   "symbol": "FindInString",
+   "sha256": "21ded36acdde7cb2d55b22f8bcedf9f4bafa5d8b3f30f7acbd3eb3195c279f8d"
+  },
+  {
+   "path": "hammer/mapdoc.cpp",
+   "lines": [
+    7949,
+    8058
+   ],
+   "symbol": "ReplaceTexFunc",
+   "sha256": "8154ea0d8df65ce8050f9103b389fa7db4f52d94a83738c07b87587041409193"
+  },
+  {
+   "path": "hammer/mapdoc.cpp",
+   "lines": [
+    8069,
+    8161
+   ],
+   "symbol": "CMapDoc::ReplaceTextures",
+   "sha256": "842e3a1c09c5aa3e4f5a34fbe333b64e3891fad5b0880bcbe6653e7fee69a476"
+  },
+  {
+   "path": "hammer/mapface.cpp",
+   "lines": [
+    1313,
+    1356
+   ],
+   "symbol": "CMapFace::SetTexture(IEditorTexture *, bool)",
+   "sha256": "24dad4de1b9ccf844a49c60fa4ed50081187a59f73c6902d1db666197f13ca39"
+  },
+  {
+   "path": "hammer/mapface.cpp",
+   "lines": [
+    1363,
+    1368
+   ],
+   "symbol": "CMapFace::SetTexture(const char *, bool)",
+   "sha256": "a985ce83864d17c5a7caadb243729f7db37d18c2be72a49ae316c83d4d5e0b66"
+  },
+  {
+   "path": "hammer/replacetexdlg.cpp",
+   "lines": [
+    28,
+    42
+   ],
+   "symbol": "CReplaceTexDlg::CReplaceTexDlg",
+   "sha256": "408fe2d389191fc6e5ac167e1e90ad9b28bcefe036171cefc4a1458045e7ab59"
+  },
+  {
+   "path": "hammer/replacetexdlg.cpp",
+   "lines": [
+    154,
+    168
+   ],
+   "symbol": "CReplaceTexDlg::DoReplaceTextures",
+   "sha256": "a03dbd1613344682c4b17b25af5d1a93c3aff985a69e61db27ce389b03275664"
+  },
+  {
+   "path": "hammer/mapdoc.cpp",
+   "lines": [
+    8274,
+    8293
+   ],
+   "symbol": "CMapDoc::OnEditReplacetex",
+   "sha256": "76a5d0498021ca75e27beee8a4e8e79c31a3a414a41d3147f5fcb7362ec07ffc"
+  }
+ ]
+}

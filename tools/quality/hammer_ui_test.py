@@ -97,7 +97,7 @@ import private_session  # noqa: E402
 ROOT = HERE.parents[1]
 SCREEN = (1280, 800)
 CASES = ("room", "no-hollow", "no-light", "viewport", "properties", "properties-cancel",
-         "visgroups", "visgroups-other")
+         "visgroups", "visgroups-other", "replace-textures", "replace-textures-cancel")
 # Cases that place the pointer in a second toplevel from its X11 origin; the
 # Wayland backend runs them only when named.
 X11_ONLY_CASES = ("properties", "properties-cancel")
@@ -408,7 +408,9 @@ class Driver:
         return None
 
     def named(self, name, role=None):
-        node = self.find(lambda n, r: n == name and (role is None or r == role))
+        # Older AT-SPI releases call a button's role "push button".
+        roles = {role, "push button"} if role == "button" else {role}
+        node = self.find(lambda n, r: n == name and (role is None or r in roles))
         if node is None:
             raise RuntimeError("no %s named %r" % (role or "widget", name))
         return node
@@ -794,7 +796,7 @@ def inner(args):
             facts["monitor_scale"] = apply_monitor_scale(args.scale)
         command = [args.gtk, "--maximized", "--open", str(out / "author" / args.vmf_name),
                    "--builds", str(out / "builds"), "--no-publish"]
-        if args.case == "viewport" or args.case.startswith("visgroups"):
+        if args.case == "viewport" or args.case.startswith(("visgroups", "replace-textures")):
             command += ["--mount", str(out / "author" / "viewport_dir.vpk")]
         if args.case.startswith("properties"):
             command += ["--fgd", str(out / "author" / "properties.fgd")]
@@ -814,6 +816,8 @@ def inner(args):
         elif args.case.startswith("visgroups"):
             drive_visgroups(args.case, args.backend, out, out / "author" / args.vmf_name, log,
                             facts)
+        elif args.case.startswith("replace-textures"):
+            drive_replace(args.case, args.backend, out, out / "author" / args.vmf_name, log, facts)
         else:
             drive(args.case, args.backend, log)
     except Exception as error:  # the log records where the UI stopped responding
@@ -852,7 +856,7 @@ PROPERTIES_LIGHTS = (("-64 0 32", "100", "1"), ("64 0 32", "200", "0"))
 PROPERTIES_DISTANCE = "256"
 # evdev codes of the keys this case types (Driver.KEYS is the room case's).
 PROPERTIES_KEYS = {"Shift": 42, "Control": 29, "Alt": 56, "Return": 28, "a": 30, "s": 31,
-                   "z": 44, "2": 3, "5": 6, "6": 7}
+                   "z": 44, "y": 21, "2": 3, "5": 6, "6": 7, "Escape": 1}
 
 
 def properties_script(vmf_name):
@@ -1291,6 +1295,189 @@ def judge_visgroups(case_dir, facts, cli):
     return results
 
 
+# ---- Replace Textures case: the Tools > Replace Textures... window (R08) ---------
+
+# The visgroups case's two textured blocks without its visgroup: red on the
+# left, green on the right. With the generated VPK mounted the editor's
+# current material is green (the first material with an image), so Find
+# defaults to it; the case types the red material as the replacement, applies,
+# then saves, undoes, saves, redoes and saves from the editor window. Its
+# control cancels the dialog instead.
+REPLACE_FIND = VISGROUP_GREEN
+REPLACE_WITH = VISGROUP_RED
+# evdev codes for the characters typed into the dialog.
+TEXT_KEYS = dict({c: code for c, code in zip(
+    "qwertyuiop", (16, 17, 18, 19, 20, 21, 22, 23, 24, 25))},
+    **{c: code for c, code in zip("asdfghjkl", (30, 31, 32, 33, 34, 35, 36, 37, 38))},
+    **{c: code for c, code in zip("zxcvbnm", (44, 45, 46, 47, 48, 49, 50))},
+    **{c: code for c, code in zip("1234567890", range(2, 12))},
+    **{"/": 53, "-": 12, ".": 52})
+
+
+def replace_script(vmf_name):
+    return "\n".join([
+        "new_map",
+        'create_block mins="-192 -64 0" maxs="-64 64 128" material=%s' % VISGROUP_RED,
+        'create_block mins="64 -64 0" maxs="192 64 128" material=%s' % VISGROUP_GREEN,
+        "select_none",
+        "save path=%s" % vmf_name]) + "\n"
+
+
+def type_text(d, text):
+    """Types 'text' (lower case, digits, '/', '-', '.', '_') key by key."""
+    for char in text:
+        if char == "_":
+            d.remote("NotifyKeyboardKeycode", "(ub)", PROPERTIES_KEYS["Shift"], True)
+            d.remote("NotifyKeyboardKeycode", "(ub)", TEXT_KEYS["-"], True)
+            d.remote("NotifyKeyboardKeycode", "(ub)", TEXT_KEYS["-"], False)
+            d.remote("NotifyKeyboardKeycode", "(ub)", PROPERTIES_KEYS["Shift"], False)
+        else:
+            d.remote("NotifyKeyboardKeycode", "(ub)", TEXT_KEYS[char], True)
+            d.remote("NotifyKeyboardKeycode", "(ub)", TEXT_KEYS[char], False)
+        time.sleep(0.03)
+    time.sleep(0.3)
+
+
+def node_text(d, node):
+    """The text an entry shows: its own AT-SPI Text interface, or its first
+    descendant's that has text (a GtkEntry keeps it in a GtkText child)."""
+    stack = [node]
+    while stack:
+        current = stack.pop(0)
+        try:
+            text = d.Atspi.Text.get_text(current, 0, d.Atspi.Text.get_character_count(current))
+        except Exception:
+            text = ""
+        if text:
+            return text
+        stack.extend(current.get_child_at_index(i) for i in range(current.get_child_count()))
+    return ""
+
+
+def solid_materials(path):
+    """The set of side materials of each world solid of a saved VMF, in order."""
+    text = path.read_text() if path.is_file() else ""
+    world = next((body for name, body in vmf_blocks(text) if name == "world"), "")
+    return [sorted({keyvalue(side, "material").lower() for n, side in vmf_blocks(body)
+                    if n == "side"})
+            for name, body in vmf_blocks(world) if name == "solid"]
+
+
+def drive_replace(case, backend, case_dir, map_path, log, facts):
+    """The Replace Textures steps: open the dialog from the Texture
+    Application window's Replace... (the catalog action behind Tools > Replace
+    Textures...), read the defaults, type the replacement, OK (the control:
+    Cancel), then save, undo, save, redo, save from the editor window."""
+    frames = case_dir / "frames"
+    saves = case_dir / "saves"
+    saves.mkdir(exist_ok=True)
+    d = Driver(log)
+    d.start_input()
+    if not d.find_app():
+        raise RuntimeError("hammer_gtk did not appear on the accessibility bus")
+    tx, ty, tw, th = d.extents(d.named("top (x/y)", "frame"))
+    d.click(tx + tw / 2, ty + th / 2)  # empty: between the blocks
+    d.wait_active(required=backend == "x11")
+    tap(d, "Shift")
+    facts["before"] = visgroup_frames(case_dir, frames, 0, "before",
+                                      lambda m: m["red"] >= 0.01 and m["green"] >= 0.01,
+                                      timeout=30)
+    d.note("before: %s" % facts["before"])
+
+    # Legacy's Face Edit page had Replace...: Shift+A opens the face tool with
+    # the Texture Application window, whose Replace... runs the same catalog
+    # action as Tools > Replace Textures... (GTK 4.14's popover menu items are
+    # not reachable over AT-SPI here; the menu's entry comes from the catalog,
+    # which hammer.presenters.editor_workspace checks).
+    tap(d, "Shift", "a")
+    d.press(wait_node(d, lambda n, r: r in ("button", "push button") and n == "Replace...",
+                      "Replace... button in the Texture Application window"))
+    wait_node(d, lambda n, r: r == "dialog" and n == "Replace Textures", "Replace Textures dialog")
+    d.note("dialog open")
+    find = wait_node(d, lambda n, r: n == "Find" and r in ("entry", "text"), "Find field")
+    facts["find_default"] = node_text(d, find)
+    facts["marked_sensitive"] = d.named("Marked objects", "check box").get_state_set().contains(
+        d.Atspi.StateType.SENSITIVE)
+    type_text(d, REPLACE_WITH)
+    replace = wait_node(d, lambda n, r: n == "Replace with" and r in ("entry", "text"),
+                        "Replace with field")
+    facts["replace_typed"] = node_text(d, replace)
+    preview = wait_node(d, lambda n, r: r == "label" and bool(
+        re.match(r"^Matches \d+ faces in \d+ solids$", n or "")), "preview label")
+    facts["preview"] = preview.get_name()
+    d.note("typed %r; %s" % (facts["replace_typed"], facts["preview"]))
+    stamp = time.time_ns()
+    d.press(d.named("Cancel" if case.endswith("cancel") else "OK", "button"))
+    deadline = time.monotonic() + 10
+    while d.find(lambda n, r: r == "dialog" and n == "Replace Textures") is not None and \
+            time.monotonic() < deadline:
+        time.sleep(0.2)
+    facts["dialog_closed"] = d.find(lambda n, r: r == "dialog" and n == "Replace Textures") is None
+    if not case.endswith("cancel"):
+        facts["message"] = d.wait_label(r"^\d+ textures replaced\.$")
+    facts["replaced"] = visgroup_frames(case_dir, frames, stamp, "replaced",
+                                        lambda m: m["green"] < 0.002)
+    d.note("after OK: %s" % facts["replaced"])
+
+    # The editor window is active again once the modal dialog closes (the
+    # Texture Application window lies over its views, so no click).
+    d.wait_active(required=backend == "x11")
+    save_copy(d, map_path, saves, "replaced.vmf")
+    stamp = time.time_ns()
+    tap(d, "Control", "z")
+    facts["undone"] = visgroup_frames(case_dir, frames, stamp, "undone",
+                                      lambda m: m["green"] >= 0.01)
+    save_copy(d, map_path, saves, "undone.vmf")
+    tap(d, "Control", "y")
+    save_copy(d, map_path, saves, "redone.vmf")
+
+
+def judge_replace(case_dir, facts, cli):
+    """Check names -> (ok, detail) for the Replace Textures case and its control."""
+    saves = case_dir / "saves"
+    red, green = REPLACE_WITH.lower(), REPLACE_FIND.lower()
+    original = [[red], [green]]
+    replaced = solid_materials(saves / "replaced.vmf")
+    results = {}
+    results["dialog.defaults"] = (
+        (facts.get("find_default") or "").lower() == green and facts.get("marked_sensitive") is False,
+        "Find %r (want the current material %r); Marked objects sensitive %s with nothing selected"
+        % (facts.get("find_default"), green, facts.get("marked_sensitive")))
+    results["dialog.preview"] = (facts.get("preview") == "Matches 6 faces in 1 solids" and
+                                 facts.get("replace_typed") == REPLACE_WITH,
+                                 "preview %r after typing %r" % (facts.get("preview"),
+                                                                 facts.get("replace_typed")))
+    results["replaced"] = (replaced == [[red], [red]] and
+                           facts.get("message") == "6 textures replaced.",
+                           "saved solids %s (want both %r); message %r"
+                           % (replaced, red, facts.get("message")))
+    before, after, undone = (facts.get(k, {}) for k in ("before", "replaced", "undone"))
+    results["frames.replaced"] = (
+        after.get("green", 1) < 0.002 and after.get("red", 0) > before.get("red", 0),
+        "camera green %s (was %s), red %s (was %s)" % (after.get("green"), before.get("green"),
+                                                       after.get("red"), before.get("red")))
+    results["undo"] = (solid_materials(saves / "undone.vmf") == original and
+                       undone.get("green", 0) >= 0.5 * before.get("green", 1),
+                       "after undo %s, camera green %s" % (solid_materials(saves / "undone.vmf"),
+                                                          undone.get("green")))
+    results["redo"] = (solid_materials(saves / "redone.vmf") == [[red], [red]],
+                       "after redo %s" % solid_materials(saves / "redone.vmf"))
+    # Reopen: the command layer opens the saved map and saves it again.
+    reload_dir = case_dir / "reload"
+    reload_dir.mkdir(exist_ok=True)
+    if (saves / "redone.vmf").is_file():
+        shutil.copyfile(saves / "redone.vmf", reload_dir / "redone.vmf")
+    (reload_dir / "reload.hcmd").write_text("open path=redone.vmf\nsave path=reloaded.vmf\n")
+    subprocess.run([str(cli), "--script", str(reload_dir / "reload.hcmd"), "--root", str(reload_dir)],
+                   capture_output=True, text=True)
+    results["reopened"] = (solid_materials(reload_dir / "reloaded.vmf") == [[red], [red]],
+                           "after open and save %s" % solid_materials(reload_dir / "reloaded.vmf"))
+    results["dialog.closed"] = (facts.get("dialog_closed") is True, "dialog closed %s"
+                                % facts.get("dialog_closed"))
+
+    return results
+
+
 # ---- Outer harness -----------------------------------------------------------
 
 def run_case(case, args, out):
@@ -1308,6 +1495,15 @@ def run_case(case, args, out):
         (author / "viewport_dir.vpk").write_bytes(build_view_vpk())
         script = author / "visgroups.hcmd"
         script.write_text(visgroups_script(vmf_name))
+        created = subprocess.run([str(args.cli), "--script", str(script), "--root", str(author)],
+                                 capture_output=True, text=True)
+        if created.returncode:
+            return {"driver": "hammer_cli failed: " + created.stderr.strip()}, {}
+    elif case.startswith("replace-textures"):
+        # Two textured blocks from the command layer.
+        (author / "viewport_dir.vpk").write_bytes(build_view_vpk())
+        script = author / "blocks.hcmd"
+        script.write_text(replace_script(vmf_name))
         created = subprocess.run([str(args.cli), "--script", str(script), "--root", str(author)],
                                  capture_output=True, text=True)
         if created.returncode:
@@ -1362,6 +1558,8 @@ def run_case(case, args, out):
         verdict = judge_properties(case_dir, driver.get("facts", {}))
     elif case.startswith("visgroups"):
         verdict = judge_visgroups(case_dir, driver.get("facts", {}), args.cli)
+    elif case.startswith("replace-textures"):
+        verdict = judge_replace(case_dir, driver.get("facts", {}), args.cli)
     else:
         verdict = judge(author / vmf_name, case_dir / "builds" / stem / "build.json")
         verdict.update(judge_frames(case_dir / "frames"))
@@ -1411,7 +1609,7 @@ def main():
         summary["cases"][case] = {"driver": driver,
                                   "verdict": {k: {"ok": ok, "detail": detail}
                                               for k, (ok, detail) in verdict.items()}}
-        if case in ("room", "viewport", "properties", "visgroups"):
+        if case in ("room", "viewport", "properties", "visgroups", "replace-textures"):
             checks.equal(driver.get("status"), "pass", case + ".driven")
             for name, (ok, detail) in verdict.items():
                 checks.check(ok, case + "." + name, detail)
@@ -1419,7 +1617,8 @@ def main():
             # The control must still be driven to the end (so its outputs exist),
             # and the oracle must reject exactly the step it leaves out.
             target = {"no-hollow": "walls", "no-light": "light",
-                      "properties-cancel": "distance", "visgroups-other": "hidden.camera"}[case]
+                      "properties-cancel": "distance", "visgroups-other": "hidden.camera",
+                      "replace-textures-cancel": "replaced"}[case]
             checks.equal(driver.get("status"), "pass", case + ".driven")
             ok, detail = verdict.get(target, (True, "not judged"))
             checks.check(not ok, case + ".rejected", "%s: %s" % (target, detail))

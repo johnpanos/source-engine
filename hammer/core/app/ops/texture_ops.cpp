@@ -6,6 +6,8 @@
 
 #include "hammer/app/ops/texture_ops.h"
 
+#include "content/asset_identity.h"
+
 #include "hammer/scene/map_queries.h"
 #include "hammer/scene/solid_geometry.h"
 #include "mapgeometry/texture_axes.h"
@@ -41,15 +43,6 @@ double RoundNear( double v, double epsilon )
 {
 	const double r = std::round( v );
 	return std::fabs( v - r ) < epsilon ? r : v;
-}
-
-std::string Lower( std::string s )
-{
-	for ( char &c : s )
-	{
-		c = static_cast<char>( std::tolower( static_cast<unsigned char>( c ) ) );
-	}
-	return s;
 }
 
 scene::Side *MutableFace( scene::DocumentEdit &edit, const FaceRef &face )
@@ -490,60 +483,151 @@ EditResult AlignTexture(
 	return {};
 }
 
-EditResult ReplaceMaterial( scene::DocumentEdit &edit, const std::vector<scene::ObjectId> &ids,
-    const std::string &find, const std::string &replace, bool substring, int &replacedCount )
+bool MaterialMatches( std::string_view material, std::string_view find, MaterialMatch match )
 {
-	replacedCount = 0;
-	if ( find.empty() || replace.empty() )
+	const std::string needle = content::FoldAssetName( find );
+	if ( needle.empty() )
 	{
-		return Reject( "find and replace must both be named" );
+		return false;
 	}
-	const std::string needle = Lower( find );
-	const std::vector<scene::ObjectId> scope =
-	    ids.empty() ? edit.SolidIds() : scene::ExpandToLeaves( edit, ids );
+	const std::string name = content::FoldAssetName( material );
+	return match == MaterialMatch::Exact ? name == needle
+	                                     : name.find( needle ) != std::string::npos;
+}
+
+std::optional<std::string> ReplacedMaterialName(
+    std::string_view material, const MaterialReplace &query )
+{
+	if ( query.match != MaterialMatch::Substitute )
+	{
+		return content::NormalizeAssetName( query.replace );
+	}
+	const std::size_t at =
+	    content::FoldAssetName( material ).find( content::FoldAssetName( query.find ) );
+	if ( query.find.empty() || at == std::string::npos )
+	{
+		return std::nullopt;
+	}
+	std::string result( material );
+	result.replace( at, query.find.size(), query.replace );
+	return content::NormalizeAssetName( result );
+}
+
+std::vector<FaceRef> FindMaterialFaces(
+    const scene::DocumentReader &doc, const MaterialReplace &query )
+{
+	std::vector<scene::ObjectId> scope =
+	    query.within ? scene::ExpandToLeaves( doc, *query.within ) : doc.SolidIds();
+	std::sort( scope.begin(), scope.end() );
+	std::vector<FaceRef> faces;
 	for ( scene::ObjectId id : scope )
 	{
-		const scene::Solid *current = edit.FindSolid( id );
-		if ( !current )
+		const scene::Solid *solid = doc.FindSolid( id );
+		if ( !solid || ( !query.includeHidden && !scene::IsVisible( doc, id ) ) )
 		{
 			continue;
 		}
-		// Decide before touching, so untouched solids are not copied.
-		bool matches = false;
-		for ( const scene::Side &side : current->sides )
+		for ( const scene::Side &side : solid->sides )
 		{
-			const std::string mat = Lower( side.texture.material );
-			matches =
-			    matches || ( substring ? mat.find( needle ) != std::string::npos : mat == needle );
-		}
-		if ( !matches )
-		{
-			continue;
-		}
-		for ( scene::Side &side : edit.MutableSolid( id )->sides )
-		{
-			const std::string mat = Lower( side.texture.material );
-			if ( substring )
+			if ( MaterialMatches( side.texture.material, query.find, query.match ) )
 			{
-				const std::size_t at = mat.find( needle );
-				if ( at != std::string::npos )
-				{
-					side.texture.material.replace( at, find.size(), replace );
-					++replacedCount;
-				}
-			}
-			else if ( mat == needle )
-			{
-				side.texture.material = replace;
-				++replacedCount;
+				faces.push_back( { id, side.vmfId } );
 			}
 		}
 	}
-	if ( replacedCount == 0 )
+	return faces;
+}
+
+EditResult ReplaceMaterial( scene::DocumentEdit &edit, const MaterialReplace &query,
+    const ports::IMaterialInfo *materials, int &replacedCount )
+{
+	replacedCount = 0;
+	if ( content::FoldAssetName( query.find ).empty() )
 	{
-		return NothingToDo( "no face uses '" + find + "'" );
+		return Reject( "name the material to find" );
 	}
+	if ( query.match != MaterialMatch::Substitute && !ReplacedMaterialName( {}, query ) )
+	{
+		return Reject( "'" + query.replace + "' is not a material name" );
+	}
+	if ( query.rescale && !materials )
+	{
+		return Reject( "rescaling needs material sizes" );
+	}
+	const std::vector<FaceRef> faces = FindMaterialFaces( edit, query );
+	if ( faces.empty() )
+	{
+		return NothingToDo( "no face uses '" + query.find + "'" );
+	}
+	// Decide every new texture before writing, so a refusal stages nothing.
+	std::vector<FaceTexture> textures;
+	textures.reserve( faces.size() );
+	for ( const FaceRef &f : faces )
+	{
+		FaceTexture t = FindFace( edit, f )->texture;
+		const std::optional<std::string> replaced = ReplacedMaterialName( t.material, query );
+		if ( !replaced )
+		{
+			return Reject( "substituting into '" + t.material + "' gives no material name" );
+		}
+		const std::string &name = *replaced;
+		if ( query.rescale )
+		{
+			const std::optional<ports::MaterialSize> from = materials->Size( t.material );
+			const std::optional<ports::MaterialSize> to = materials->Size( name );
+			if ( !from || !to || from->width <= 0 || from->height <= 0 || to->width <= 0 ||
+			     to->height <= 0 )
+			{
+				return Reject(
+				    "rescaling needs the size of '" + ( from ? name : t.material ) + "'" );
+			}
+			const double fu = static_cast<double>( from->width ) / to->width;
+			const double fv = static_cast<double>( from->height ) / to->height;
+			t.u.scale *= fu;
+			t.v.scale *= fv;
+			t.u.shift /= fu;
+			t.v.shift /= fv;
+		}
+		t.material = name;
+		textures.push_back( std::move( t ) );
+	}
+	for ( std::size_t i = 0; i < faces.size(); ++i )
+	{
+		MutableFace( edit, faces[i] )->texture = std::move( textures[i] );
+	}
+	replacedCount = static_cast<int>( faces.size() );
 	return {};
+}
+
+Selection MarkMaterialUses( const scene::DocumentReader &doc, const MaterialReplace &query,
+    MaterialMarkTarget target, int &markedCount )
+{
+	MaterialReplace visibleOnly = query;
+	visibleOnly.includeHidden = false;
+	const std::vector<FaceRef> faces = FindMaterialFaces( doc, visibleOnly );
+	// A Selection value (sorted, unique; the primary is the last solid marked,
+	// as CombineObjects would make it).
+	Selection marked;
+	if ( target == MaterialMarkTarget::Faces )
+	{
+		marked.faces = faces;
+		std::sort( marked.faces.begin(), marked.faces.end() );
+		markedCount = static_cast<int>( marked.faces.size() );
+		return marked;
+	}
+	for ( const FaceRef &f : faces )
+	{
+		if ( marked.objects.empty() || marked.objects.back() != f.solid )
+		{
+			marked.objects.push_back( f.solid );
+		}
+	}
+	if ( !marked.objects.empty() )
+	{
+		marked.primary = marked.objects.back();
+	}
+	markedCount = static_cast<int>( marked.objects.size() );
+	return marked;
 }
 
 EditResult ApplyTextureFrom( scene::DocumentEdit &edit, const FaceTexture &source,

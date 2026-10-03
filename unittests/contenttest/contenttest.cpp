@@ -80,6 +80,10 @@ int main()
 	const auto ref = AssetRef::Create( AssetKind::Texture, "MATERIALS\\Test\\Wall", true );
 	Check( ref && ref->name == "materials/test/wall", "identity normalization" );
 	Check( !AssetRef::Create( AssetKind::Texture, "materials/../wall" ), "parent path rejected" );
+	Check( content::FoldAssetName( "Brick\\Wall/" ) == "brick/wall/",
+	    "fold applies the identity's character rule without component checks" );
+	Check( NormalizeAssetName( "Brick\\Wall" ) == content::FoldAssetName( "Brick\\Wall" ),
+	    "a valid name normalizes to its fold" );
 	Check( !AssetRef::Create( AssetKind::Texture, "materials/con/wall", true ),
 	    "reserved new name rejected" );
 	Check( !AssetRef::Create( AssetKind( 42 ), "materials/test/wall" ), "unknown kind rejected" );

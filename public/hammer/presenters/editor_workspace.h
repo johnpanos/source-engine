@@ -23,8 +23,8 @@
 //			  (Edited/Undone/Redone: Update with the change set and revisions;
 //			  Replaced: Rebuild; SelectionChanged: SetSelection);
 //			  the presenters: entity and face inspector, outliner, history
-//			  panel, status bar, visgroup panel, problems panel, action
-//			  catalog, and the class palette / material browser when the
+//			  panel, status bar, visgroup panel, problems panel, the Replace
+//			  Textures dialog model, action catalog, and the class palette / material browser when the
 //			  catalog / material port exist.
 //
 //			Input routing (ONE policy; every entry returns an InputOutcome):
@@ -108,6 +108,7 @@
 #include "hammer/presenters/material_browser.h"
 #include "hammer/presenters/outliner.h"
 #include "hammer/presenters/problems_panel.h"
+#include "hammer/presenters/replace_textures.h"
 #include "hammer/presenters/status_bar.h"
 #include "hammer/presenters/visgroup_panel.h"
 #include "hammer/tools/camera_controller.h"
@@ -182,6 +183,11 @@ public:
 	VisgroupPanel &Visgroups() { return *m_visgroups; }
 	ProblemsPanel &Problems() { return *m_problems; }
 	ActionCatalog &Actions() { return *m_actions; }
+	// The Replace Textures dialog model; OpenReplaceTextures() starts its draft
+	// from the current material and the active tool (the host request
+	// "replace_textures" of tools.replace_textures).
+	ReplaceTexturesDialog &ReplaceTextures() { return *m_replaceTextures; }
+	ReplaceTexturesDialog &OpenReplaceTextures();
 
 	// --- Input ------------------------------------------------------------------------
 	InputOutcome OnPointer( viewport::ViewKind view, const tools::PointerEvent &event );
@@ -265,6 +271,7 @@ private:
 	std::unique_ptr<StatusBar> m_statusBar;
 	std::unique_ptr<VisgroupPanel> m_visgroups;
 	std::unique_ptr<ProblemsPanel> m_problems;
+	std::unique_ptr<ReplaceTexturesDialog> m_replaceTextures;
 	std::unique_ptr<ActionCatalog> m_actions;
 };
 

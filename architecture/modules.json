@@ -2740,7 +2740,8 @@
           "hammer.scene",
           "hammer.ports",
           "foundation",
-          "platform.contracts"
+          "platform.contracts",
+          "content.asset-identity"
         ]
       },
       {
@@ -2778,7 +2779,8 @@
           "hammer.ports",
           "hammer.scene",
           "foundation",
-          "world.map-geometry"
+          "world.map-geometry",
+          "content.asset-identity"
         ]
       },
       {

@@ -70,7 +70,7 @@ def build(bld):
 		features  = 'cxx',
 		includes  = [ '../../public' ],
 		defines   = [],
-		use       = [ 'hammer_ports', 'hammer_scene', 'kvtext', 'mapgeometry' ],
+		use       = [ 'hammer_ports', 'hammer_scene', 'kvtext', 'mapgeometry', 'asset_identity' ],
 		subsystem = bld.env.MSVC_SUBSYSTEM,
 		idx       = bld.get_taskgen_count()
 	)
@@ -142,6 +142,7 @@ def build(bld):
 		              'presenters/face_inspector.cpp', 'presenters/history_panel.cpp',
 		              'presenters/material_browser.cpp', 'presenters/object_label.cpp',
 		              'presenters/outliner.cpp', 'presenters/problems_panel.cpp',
+		              'presenters/replace_textures.cpp',
 		              'presenters/status_bar.cpp', 'presenters/visgroup_panel.cpp' ],
 		target    = 'hammer_presenters',
 		name      = 'hammer_presenters',
@@ -150,7 +151,7 @@ def build(bld):
 		includes  = [ '../../public' ],
 		defines   = [],
 		use       = [ 'hammer_tools', 'hammer_viewport', 'hammer_app', 'hammer_ports', 'hammer_scene',
-		              'mapgeometry' ],
+		              'mapgeometry', 'asset_identity' ],
 		subsystem = bld.env.MSVC_SUBSYSTEM,
 		idx       = bld.get_taskgen_count()
 	)

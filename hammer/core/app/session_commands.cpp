@@ -192,6 +192,43 @@ struct Context
 		return scene::Box{ mins.Value(), maxs.Value() };
 	}
 
+	// The Replace Textures query shared by replace_material and mark_material.
+	foundation::Expected<ops::MaterialReplace, CommandError> MaterialQuery() const
+	{
+		ops::MaterialReplace q;
+		q.find = Arg( "find" );
+		q.replace = Has( "replace" ) ? Arg( "replace" ) : std::string();
+		if ( Has( "match" ) )
+		{
+			const std::string &m = Arg( "match" );
+			if ( m == "exact" )
+				q.match = ops::MaterialMatch::Exact;
+			else if ( m == "partial" )
+				q.match = ops::MaterialMatch::Partial;
+			else if ( m == "substitute" )
+				q.match = ops::MaterialMatch::Substitute;
+			else
+				return Fail(
+				    CommandStatus::InvalidArgument, "match is exact, partial or substitute" );
+		}
+		if ( Has( "ids" ) )
+		{
+			auto ids = Ids();
+			if ( !ids )
+				return foundation::MakeUnexpected( ids.Error() );
+			q.within = ids.Value();
+		}
+		auto hidden = Flag( "hidden", false );
+		if ( !hidden )
+			return foundation::MakeUnexpected( hidden.Error() );
+		auto rescale = Flag( "rescale", false );
+		if ( !rescale )
+			return foundation::MakeUnexpected( rescale.Error() );
+		q.includeHidden = hidden.Value();
+		q.rescale = rescale.Value();
+		return q;
+	}
+
 	ops::TransformOptions Transform() const
 	{
 		ops::TransformOptions o;
@@ -1057,24 +1094,38 @@ const std::vector<CommandEntry> &Table()
 			            return ops::AlignTexture( e, faces.Value(), a );
 		            } );
 	        } },
-	    { { "replace_material", { "find", "replace" }, { "substring", "ids" },
-	          "Replace a material everywhere (or on ids); outputs the face count." },
+	    { { "replace_material", { "find", "replace" }, { "match", "ids", "hidden", "rescale" },
+	          "Replace Textures: match exact, partial or substitute; everywhere or in ids; hidden "
+	          "and rescale are 0 or 1. Outputs the face count." },
 	        []( const Context &c ) -> CommandResult
 	        {
-		        TRY( substring, c.Flag( "substring", false ) );
-		        std::vector<ObjectId> ids;
-		        if ( c.Has( "ids" ) )
-		        {
-			        TRY( chosen, c.Ids() );
-			        ids = chosen.Value();
-		        }
+		        TRY( query, c.MaterialQuery() );
+		        if ( query.Value().rescale && !c.services.materials )
+			        return c.Fail( CommandStatus::Rejected, "no material sizes to rescale with" );
 		        int count = 0;
-		        auto result = c.Edit( "Replace material",
+		        auto result = c.Edit( "Replace Textures",
 		            [&]( scene::DocumentEdit &e )
 		            {
 			            return ops::ReplaceMaterial(
-			                e, ids, c.Arg( "find" ), c.Arg( "replace" ), substring.Value(), count );
+			                e, query.Value(), c.services.materials, count );
 		            } );
+		        if ( !result )
+			        return result;
+		        return std::to_string( count );
+	        } },
+	    { { "mark_material", { "find" }, { "match", "ids", "faces" },
+	          "Replace Textures, mark only: select the visible solids (faces=1: faces) that use a "
+	          "material, everywhere or in ids. Outputs the count marked." },
+	        []( const Context &c ) -> CommandResult
+	        {
+		        TRY( query, c.MaterialQuery() );
+		        TRY( faces, c.Flag( "faces", false ) );
+		        int count = 0;
+		        const Selection marked = ops::MarkMaterialUses( c.session.Document(), query.Value(),
+		            faces.Value() ? ops::MaterialMarkTarget::Faces
+		                          : ops::MaterialMarkTarget::Solids,
+		            count );
+		        auto result = c.Selected( c.session.SetSelection( marked ) );
 		        if ( !result )
 			        return result;
 		        return std::to_string( count );

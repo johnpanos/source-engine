@@ -105,14 +105,11 @@ std::optional<AssetKind> AssetKindFromName( std::string_view name ) noexcept
 	return std::nullopt;
 }
 
-std::optional<std::string> NormalizeAssetName( std::string_view name, bool newSource )
+std::string FoldAssetName( std::string_view text )
 {
-	if ( name.empty() || name.front() == '/' || !ValidUtf8( name ) ||
-	     ( name.size() >= 2 && name[1] == ':' ) )
-		return std::nullopt;
 	std::string result;
-	result.reserve( name.size() );
-	for ( char c : name )
+	result.reserve( text.size() );
+	for ( char c : text )
 	{
 		if ( c == '\\' )
 			c = '/';
@@ -120,6 +117,15 @@ std::optional<std::string> NormalizeAssetName( std::string_view name, bool newSo
 			c = char( c + ( 'a' - 'A' ) );
 		result += c;
 	}
+	return result;
+}
+
+std::optional<std::string> NormalizeAssetName( std::string_view name, bool newSource )
+{
+	if ( name.empty() || name.front() == '/' || !ValidUtf8( name ) ||
+	     ( name.size() >= 2 && name[1] == ':' ) )
+		return std::nullopt;
+	std::string result = FoldAssetName( name );
 	for ( std::size_t start = 0; start <= result.size(); )
 	{
 		const std::size_t end = result.find( '/', start );

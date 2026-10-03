@@ -19,7 +19,7 @@ Face references (solid id + side VMF id); materials by name; the IMaterialInfo p
 - `LockTexture` keeps every point's texel under any invertible affine map (translation, rotation, non-uniform scale, mirror); a singular map leaves the texture unchanged.
 - Justify/fit follow legacy `JustifyTextureUsingExtents`; 'treat as one' uses the union extent. Shifts are wrapped by the material size.
 - An unknown face, a zero scale, a non-positive lightmap scale, a material without a size or a fit count below 1 refuses the whole operation with nothing staged.
-- `ReplaceMaterial` matches case-insensitively (whole names or substrings) and reports the count; zero matches is Nothing.
+- `ReplaceMaterial` (Replace Textures) is specified by [`app.replace_textures.v1`](app.replace_textures.v1.md): legacy exact, partial and substitute matching under RFC 0015's material identity, hidden objects, rescale through IMaterialInfo, and `MarkMaterialUses` for mark only.
 
 ## 4. Ownership, threading
 
@@ -37,5 +37,5 @@ None beyond the staged edit. Cost is proportional to the objects touched.
 
 ## 7. Conformance suite and providers
 
-`test_texture_ops.cpp` (51 checks): texture lock under five maps, alignment and rotation, shift wrapping, every operation and each refusal. Built with gcc and clang (`-Wall -Wextra -Werror`) on
+`test_texture_ops.cpp` (76 checks): texture lock under five maps, alignment and rotation, shift wrapping, every operation and each refusal. Built with gcc and clang (`-Wall -Wextra -Werror`) on
 `linux-headless-core`.

@@ -54,6 +54,7 @@
 #include "catalog_textures.h"
 #include "entity_schema.h"
 #include "properties_dialog.h"
+#include "replace_textures_dialog.h"
 #include "glib_task_runner.h"
 #include "viewport_widget.h"
 #include "visgroups_panel.h"
@@ -780,6 +781,17 @@ void Apply( AppState *st, const hammer::presenters::InputOutcome &outcome )
 			    {
 				    SetHelp( st, status );
 			    }
+			    RefreshScene( st );
+		    } );
+	}
+	else if ( outcome.hostRequest == "replace_textures" )
+	{
+		// Tools > Replace Textures... (and the Texture Application window's
+		// Replace... button): modal, bound to the workspace's dialog model.
+		hammer::gtk::ShowReplaceTexturesDialog( GTK_WINDOW( st->window ), st->workspace,
+		    [st]( const std::string &message )
+		    {
+			    SetHelp( st, message );
 			    RefreshScene( st );
 		    } );
 	}
@@ -2539,6 +2551,13 @@ void OnApplyToSelection( GtkButton *, gpointer user_data )
 	                 : std::string( "The selection already uses that material" ) );
 }
 
+// Legacy's Face Edit material page had Replace..., the same dialog as Tools >
+// Replace Textures....
+void OnReplaceTexturesButton( GtkButton *, gpointer user_data )
+{
+	RunCatalogAction( static_cast<AppState *>( user_data ), "tools.replace_textures" );
+}
+
 // The window borrows AppState's preview-widget slots while open; release them so
 // SetCurrentMaterial does not touch destroyed widgets after it closes.
 void OnTextureWindowDestroy( GtkWidget *, gpointer user_data )
@@ -2605,6 +2624,10 @@ void OpenTextureWindow( AppState *st )
 	gtk_widget_add_css_class( applyBtn, "suggested-action" );
 	g_signal_connect( applyBtn, "clicked", G_CALLBACK( OnApplyToSelection ), st );
 	gtk_box_append( GTK_BOX( header ), applyBtn );
+	GtkWidget *replaceBtn = gtk_button_new_with_label( "Replace..." );
+	gtk_widget_set_valign( replaceBtn, GTK_ALIGN_CENTER );
+	g_signal_connect( replaceBtn, "clicked", G_CALLBACK( OnReplaceTexturesButton ), st );
+	gtk_box_append( GTK_BOX( header ), replaceBtn );
 	gtk_box_append( GTK_BOX( box ), header );
 
 	// Keep the header preview live: SetCurrentMaterial mirrors here while open.
