@@ -6928,3 +6928,45 @@ the retained portal effect/copy ordering controls. The on-wall game reports
 Architecture check, baseline and inventory verification pass. Changed portal
 lines pass style; the shared-tree style run still reports unrelated concurrent
 edits in `debug_controls.cpp`, `pass_timers.cpp` and `debug_overlays.cpp`.
+
+### R91: retain the fizzler at its ordered core-frame slot (2026-10-02)
+
+User request: “do the same for the fizzler”, following the explicit request to
+reuse custom legacy portal shaders at their original frame positions. The
+existing SolidEnergy shader remains the sole owner of the fizzler's flow,
+opacity and live FizzlerVortex parameters. The composition's product-only
+`kCorePassCustomEffects` marker (renamed from the portal-specific marker) now
+retains SolidEnergy alongside PortalRefract stages 0/2. The frontend bypasses
+core-only rejection for that family, and replay retains the captured draw at
+its original slot with its blend, depth, stencil and clipping state. It does
+not retain framebuffer copies for SolidEnergy. Pixel/legacy-skip diagnostics
+still suppress it; ordinary legacy shaders remain filtered. This also preserves
+SolidEnergy's existing bridge/beam consumers without a material-name registry.
+Retirement remains replacement by a core-owned effect pass and deletion of the
+native shader once its remaining callers migrate. No new shading math was added.
+
+Frozen-path: user request 2026-10-02 — reuse the existing fizzler shader and its
+ordered draw state beside the core scene, as with the portal effects.
+
+The native replay regression failed four product/replay checks before the
+retention fix. Afterward, native Vulkan bring-up passes 137/137 with required
+validation, including independent alpha-blend pixels, a later-slot overwrite
+control, product/diagnostic/product reset, depth occlusion and clip-plane tests.
+The complete `build-p2` build passes. Product evidence is under
+`quality-results/fizzler-core-20261002/{after,suppressed}/evidence.json`: the
+stock `sp_a2_fizzler_intro` view submits all three SolidEnergy field surfaces;
+the diagnostic control submits none. These 640x480 captures expose existing
+unclaimed backdrop materials and models, so they establish the field handoff,
+not full retail-image parity or the High performance gate.
+
+This stock-map check also exposed the preceding portal culling fix's legacy
+BSP adapter gap: Source's brush fan winding was passed unchanged into the
+counter-clockwise core world convention. `RenderCoreWorldDraw_LevelInit` now
+reverses those imported triangles once; WMSH import is unchanged. This restores
+visible front faces without disabling the exit-wall back-face test. Existing
+material-family gaps stay reported rather than hidden by a legacy fallback.
+
+Final fizzler checks: composition 54/54 (`fizzler-core-20261002/composition.json`),
+portal view-state 16/16, native replay 137/137 (`native-final.log`), architecture
+check/baseline/inventory, changed-line style and `git diff --check` all pass.
+High-resolution complete-frame timing and non-Linux acceptance remain unverified.

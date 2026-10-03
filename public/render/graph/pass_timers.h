@@ -40,7 +40,7 @@ struct PassTime
 	std::string name;
 	std::uint32_t depth = 0; // labels open around it
 	double milliseconds = 0.0;
-	std::uint32_t count = 0; // sections of that name and depth
+	std::uint32_t count = 0;      // sections of that name and depth
 	double cpuMilliseconds = 0.0; // inclusive CPU command-recording wall time
 };
 

@@ -69,3 +69,10 @@ the resolved material authors `$nocull`. The color, depth-only and normal
 prepasses share this policy. Portal exit clipping retains its existing tolerance;
 a back-facing exit wall inside that tolerance must not hide the linked room.
 The view-state suite includes an on-wall case and a two-sided negative control.
+
+The legacy BSP world adapter normalizes Source brush fans to that core winding;
+WMSH surfaces already carry the core convention. The product's ordered custom
+effect exception retains the existing SolidEnergy shader (fizzler flow and live
+proxy state) beside the core scene. Native replay checks blending, depth,
+clipping, slot order, capture replay and diagnostic suppression. Only portal
+refraction retains a framebuffer snapshot; SolidEnergy adds no copy exception.

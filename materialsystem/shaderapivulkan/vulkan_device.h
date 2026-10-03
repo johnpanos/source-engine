@@ -1706,7 +1706,7 @@ private:
 	// The frame being recorded turned the legacy stream off (RFC 0014,
 	// render::legacy::kCorePassLegacyOff): it presents without the ramp.
 	bool m_frameLegacyOff = false;
-	bool m_queueCustomEffects = false; // product portal/SolidEnergy shader reuse; off in diagnostics
+	bool m_queueCustomEffects = false; // product custom effects; off in diagnostics
 	bool m_queueCoreOnly = false;    // frame-ordered slot, before vertex conversion
 	bool m_queueLegacyHud = false;   // top-level HUD stage, scoped to this frame
 	bool m_gammaUnavailable = false; // the pass failed to build; presents blit

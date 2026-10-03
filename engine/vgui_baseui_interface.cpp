@@ -5,9 +5,8 @@
 // $NoKeywords: $
 //===========================================================================//
 
-
-#include "render_core_host.h"
 #include "client_pch.h"
+#include "render_core_host.h"
 
 #include "tier0/platform.h"
 
@@ -464,6 +463,7 @@ private:
 	CEnginePanel *staticEngineToolsPanel;
 	CDebugSystemPanel *staticDebugSystemPanel;
 	CFocusOverlayPanel *staticFocusOverlayPanel;
+	vgui::Panel *m_pRenderCoreCosts = nullptr;
 
 #ifdef VPROF_ENABLED
 	CVProfPanel *m_pVProfPanel;
@@ -929,8 +929,7 @@ void CEngineVGui::Connect()
 //-----------------------------------------------------------------------------
 void CEngineVGui::CreateVProfPanels( vgui::Panel *pParent )
 {
-	RenderCoreCostPanel_Create( pParent );
-	
+	m_pRenderCoreCosts = RenderCoreCostPanel_Create( pParent );
 
 #ifdef VPROF_ENABLED
 	m_pVProfPanel = new CVProfPanel( pParent, "VProfPanel" );
@@ -942,8 +941,8 @@ void CEngineVGui::CreateVProfPanels( vgui::Panel *pParent )
 
 void CEngineVGui::DestroyVProfPanels( )
 {
-	RenderCoreCostPanel_Destroy();
-	
+	delete m_pRenderCoreCosts;
+	m_pRenderCoreCosts = nullptr;
 
 #ifdef VPROF_ENABLED
 	if ( m_pVProfPanel )

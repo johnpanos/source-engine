@@ -484,9 +484,41 @@ adapter for a Vulkan message ID) reports it unsupported by name.
 | `cl_render_debug_rt_list` (command) | Lists graph resources and imported textures by debug name, with format, size, mips, layers and memory |
 | `cl_render_debug_rt_view <name>` | Draws that resource in a corner overlay (`cl_render_debug_rt_view_size`, default 25% of the width) as a debug pass after the frame, before present. Depth is shown as linear depth, and float formats are scaled by `cl_render_debug_view_scale`. 3D textures show slice `cl_render_debug_rt_slice`, cubes an unfolded cross, and the shadow atlas its tiles with their light keys. |
 | `cl_render_debug_stats 1` | Prints the core's frame counters (passes, draws, pipelines bound, bind-group writes, pipeline misses, upload bytes, legacy stream draws) on the engine's notify lines |
+| `cl_render_debug_cost 1` | Installed VGUI overlay for render-core labeled scopes: paired CPU recording wall time and GPU timestamp duration from the latest completed frame, hottest scopes first, separate blue/green/yellow/red bars scaled to 16.67 ms, updated at 4 Hz. Cheat-protected; 0 disables it. |
 | `cl_render_debug_gpu_timers 1` | Timestamps around every graph pass, read after the frame's completion token, reported per pass with `cl_render_debug_stats`. It supersedes the frozen backend's `-vkgputimers`, which is deleted with that backend. Unsupported when the adapter has no timestamp support. |
 | `cl_render_debug_pipeline_miss_log 1` | Logs every pipeline created after the map's prewarm finished, with its program, permutation and key. Debug pipelines are excluded. |
 | `cl_render_debug_pass_merge <n>` | −1 the graph's measured default; 0 no merging; 1 merge wherever legal. The graph compiler owns the value. |
+
+### Measured cost overlay (installed 2026-10-02)
+
+`sv_cheats 1; cl_render_debug_cost 1` enables collection without requiring
+`cl_render_debug_gpu_timers`. `render.frame::DebugControls` owns the request;
+a reserved serial-zero world slot captures it before the queued frame's views.
+`render.graph::GpuPassTimers` owns both clocks and the latest completed snapshot.
+The engine's VGUI panel owns presentation. Console statistics and the overlay
+read independently; neither consumes the other's sample. No per-pixel timing
+or spatial attribution is inferred from timestamps.
+
+Rows are **inclusive labeled scopes**, aggregated by name and depth across all
+core views in one completed frame. Parent and child rows overlap. CPU is elapsed
+command-recording time (including scheduling/preemption and instrumentation),
+not game logic or CPU utilization; GPU is elapsed timestamp time, not a hardware
+occupancy counter. CPU and GPU columns overlap and must not be added together.
+No claimed whole-frame total is derived from these rows. The current measured
+coverage is the core world-view recorder and its labeled lighting, shadow,
+depth and AO work, including its nested graph passes. Game CPU, unlabeled core
+preparation/passes, legacy rendering, presentation and VGUI are outside it.
+
+Readback never waits for the GPU: the panel shows the completed frame ID and
+sample age, with waiting/unsupported states rather than zero cost. The report
+bounds rows to 64; viewport clipping and timer-capacity overflow are counted
+visibly. Bar color/length saturates at 16.67 ms; numeric timings remain unbounded.
+The overlay changes no scene quality settings. It measures instrumented work;
+it does not certify the hard frame budgets. Missing native platform tests
+remain unverified. The native measurement oracle is
+`render_lab suite cost-overlay --validate`, registered as `render.debug-costs`.
+Product images and gate evidence are linked in the
+[progress record](0016-progress.md#rfc-0014-measured-cpu-gpu-cost-overlay-2026-10-02).
 
 ## BSP2 container (`world.bsp2-debug.v1`)
 

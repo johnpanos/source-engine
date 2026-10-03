@@ -10739,6 +10739,23 @@
       "expect": "pass"
     },
     {
+      "id": "render.debug-costs",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0014",
+      "migration": "R95",
+      "contract": "RFC/0014-native-vulkan-and-bsp2-debug-controls.md",
+      "profile": "linux-native-vulkan-gpu",
+      "kind": "positive",
+      "description": "Completed core cost snapshots on native Vulkan: paired inclusive CPU recording/GPU timestamps, frame identity, nested labels, token gating and independent overlay/console consumers. VGUI product images are separate integration evidence.",
+      "command": ["{python}", "tools/render/lab.py", "suite", "cost-overlay", "--validate"],
+      "result_protocol": "checks-v1",
+      "min_checks": 9,
+      "timeout_seconds": 120,
+      "requires": ["path:build-rc-lab/render/lab/render_lab", "vulkan-device:gpu"],
+      "sources": ["render/lab/cost_overlay_suite.cpp", "render/lab/lab_suite.cpp", "render/graph/pass_timers.cpp", "public/render/graph/pass_timers.h", "tools/render/lab.py"],
+      "expect": "pass"
+    },
+    {
       "id": "render.lab.gtao",
       "domain": "Q-PRESENTATION",
       "rfc": "0016",

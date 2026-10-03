@@ -373,6 +373,28 @@ int main()
 	                 SlotsOfAFrame( *binding ).empty(),
 	    "P6.without-a-probe-no-slot-is-marked" );
 
+	// Debug capture travels in an ordered frame-start slot, not a live ConVar
+	// read on the render sequence. The default frame adds no diagnostic slot.
+	frame.debug.costOverlay = true;
+	(void)renderer->BeginFrame( frame );
+	g_Slots.tags.clear();
+	binding->world->BeginFrame();
+	checks.That( g_Slots.tags == std::vector<std::uint32_t>{ render::legacy::kCorePassForwarded },
+	    "cost.enabled-frame-captures-request-before-views" );
+	binding->world->EndFrame();
+	checks.Equal( g_Slots.tags.size(), std::size_t( 1 ), "cost.vgui-needs-no-core-draw-slot" );
+	RenderCoreCostReport costs;
+	binding->world->ReadCosts( &costs );
+	checks.That( !costs.available && costs.count == 0, "cost.no-device-is-not-zero-measured-cost" );
+	(void)renderer->EndFrame();
+	frame.debug.costOverlay = false;
+	(void)renderer->BeginFrame( frame );
+	g_Slots.tags.clear();
+	binding->world->BeginFrame();
+	binding->world->EndFrame();
+	checks.That( g_Slots.tags.empty(), "cost.disabled-frame-adds-no-slots" );
+	(void)renderer->EndFrame();
+
 	auto scene = binding->sceneFactory.create();
 	checks.That( scene && scene->Revision() == 0, "P1.the-scene-factory-makes-scenes" );
 	scene.reset();

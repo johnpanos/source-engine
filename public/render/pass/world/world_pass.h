@@ -422,6 +422,8 @@ struct WorldStats
 // (bits 30 and 29 are the core-pass slots' kCorePassLegacyOff and
 // kCorePassFrameEnd; bit 28 marks render.pass.panels' tags, 0x90000000 |
 // serial, so the two never overlap).
+// Serial zero is reserved for a composition frame-start marker; QueueView
+// allocates serials 1..kWorldSerialMask and never emits it.
 inline constexpr std::uint32_t kWorldTag = 0x80000000u;
 inline constexpr std::uint32_t kWorldSerialMask = 0x0fffffffu;
 inline bool IsWorldTag( std::uint32_t tag )

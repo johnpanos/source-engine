@@ -216,7 +216,7 @@ bool GpuPassTimers::Write(
 			if ( !buffer )
 			{
 				++m_Report.overflowed;
-			++frame.overflowed;
+				++frame.overflowed;
 				return false;
 			}
 			frame.chunks.push_back( buffer.Value() );
@@ -267,9 +267,9 @@ void GpuPassTimers::OnEndLabel( device::CommandEncoder &encoder )
 	if ( open == ~0u || open >= m_Recording->sections.size() ||
 	     !Write( encoder, attached, &index ) )
 		return;
-	m_Recording->sections[open].cpuMilliseconds =
-	    std::chrono::duration<double, std::milli>( std::chrono::steady_clock::now() -
-	        m_Recording->sections[open].cpuBegin ).count();
+	m_Recording->sections[open].cpuMilliseconds = std::chrono::duration<double, std::milli>(
+	    std::chrono::steady_clock::now() - m_Recording->sections[open].cpuBegin )
+	                                                  .count();
 	m_Recording->sections[open].end = index;
 	m_Recording->sections[open].closed = true;
 }

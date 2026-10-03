@@ -104,7 +104,8 @@ public:
 		rendering.height = target.height;
 		rendering.colors = std::span<const ColorAttachment>( &color, 1 );
 		if ( ( tag & 0xffu ) == 3 )
-			rendering.depth = DepthAttachment{ target.depth, LoadOp::kClear, StoreOp::kStore, 0.25f };
+			rendering.depth =
+			    DepthAttachment{ target.depth, LoadOp::kClear, StoreOp::kStore, 0.25f };
 		encoder.BeginRendering( rendering );
 		encoder.EndRendering();
 	}
@@ -259,8 +260,8 @@ void CheckSolidEnergyCoreReplay( CVulkanContext &ctx, std::string &err )
 			ctx.SetRenderTarget( -1 );
 			ctx.SetViewport( 0, 0, 0, 0, 0, 1 );
 			const std::uint32_t policy = render::legacy::kCorePassForwarded |
-			    render::legacy::kCorePassLegacyOff |
-			    ( mode != 1 ? render::legacy::kCorePassCustomEffects : 0 );
+			                             render::legacy::kCorePassLegacyOff |
+			                             ( mode != 1 ? render::legacy::kCorePassCustomEffects : 0 );
 			ctx.QueueCorePass( policy | ( mode == 3 ? 3u : 2u ), {} );
 			raster.depthTest = mode == 3;
 			energy.viewProj[14] = 0.5f;
@@ -287,14 +288,16 @@ void CheckSolidEnergyCoreReplay( CVulkanContext &ctx, std::string &err )
 				if ( correct )
 				{
 					const auto *left = &pixels[( size_t( height / 2 ) * width + width / 4 ) * 4];
-					const auto *right = &pixels[( size_t( height / 2 ) * width + 3 * width / 4 ) * 4];
+					const auto *right =
+					    &pixels[( size_t( height / 2 ) * width + 3 * width / 4 ) * 4];
 					correct = PixelClose( pixels.data(), 0, 0, 255, 255, 2 ) &&
-					    ( mode == 0 ? PixelClose( left, 128, 0, 127, 255, 2 )
-					                : PixelClose( left, 0, 0, 255, 255, 2 ) ) &&
-					    ( mode == 0 || mode == 4 ? PixelClose( right, 128, 0, 127, 255, 2 )
-					                             : PixelClose( right, 0, 0, 255, 255, 2 ) );
+					          ( mode == 0 ? PixelClose( left, 128, 0, 127, 255, 2 )
+					                      : PixelClose( left, 0, 0, 255, 255, 2 ) ) &&
+					          ( mode == 0 || mode == 4 ? PixelClose( right, 128, 0, 127, 255, 2 )
+					                                   : PixelClose( right, 0, 0, 255, 255, 2 ) );
 				}
-				Check( correct, "SolidEnergy blends over core at its slot; replay, diagnostics, depth, clipping and wrong-order controls" );
+				Check( correct, "SolidEnergy blends over core at its slot; replay, diagnostics, "
+				                "depth, clipping and wrong-order controls" );
 			}
 		}
 	}
