@@ -792,6 +792,22 @@ class Pipeline:
             "mdl_mesh_export.exe" if os.name == "nt" else "mdl_mesh_export")
         settings = {"runtime": str(runtime), "model_tool": str(model_tool)}
         game_args = []
+        texture_decoder = self.tools.get("texture_decoder")
+        if texture_decoder:
+            content.append(Path(texture_decoder))
+            game_args += ["--texture-decoder", texture_decoder]
+        if self.manifest.get("material_overrides"):
+            import source_content
+            override_path = (ROOT / self.manifest["material_overrides"]).resolve()
+            overrides = source_content.material_overrides(override_path)
+            if not texture_decoder or not Path(texture_decoder).is_file():
+                raise ValueError("material overrides require the built native texture_decoder")
+            content.append(override_path)
+            for archive in overrides["archives"]:
+                archive_path = Path(archive["path"])
+                content.extend(sorted(archive_path.parent.glob(archive_path.name.replace("_dir.vpk", "*.vpk"))))
+            settings["material_overrides"] = overrides
+            game_args += ["--material-overrides", str(override_path)]
         game = self.manifest.get("legacy_game")
         if game:
             content += sorted(f for directory in ("materials", "models")

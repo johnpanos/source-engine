@@ -34,10 +34,10 @@ float ShadowBilinear( texture2D atlas, sampler pointSampler, sampler comparisonS
 	const float atlasSize = tile.params.y;
 	const vec2 lo = tile.bounds.xy * atlasSize;
 	const vec2 hi = tile.bounds.zw * atlasSize - 1.0;
-	const vec2 position = clamp( uv * atlasSize - 0.5, lo, hi );
-	const vec2 coordinate = ( position + 0.5 ) / atlasSize;
 #if defined( REFERENCE_MANUAL_SHADOW_COMPARE ) || defined( SEEDED_SHADOW_UNSTABLE_GATHER )
 	// Private immutable-input oracle; never selected by a product.
+	const vec2 position = clamp( uv * atlasSize - 0.5, lo, hi );
+	const vec2 coordinate = ( position + 0.5 ) / atlasSize;
 	const vec2 f = fract( position );
 #ifdef SEEDED_SHADOW_UNSTABLE_GATHER
 	const vec4 stored = textureGather( sampler2D( atlas, pointSampler ), coordinate, 0 );
@@ -55,6 +55,9 @@ float ShadowBilinear( texture2D atlas, sampler pointSampler, sampler comparisonS
 	const vec4 lit = step( vec4( depth ), stored );
 	return mix( mix( lit.w, lit.z, f.x ), mix( lit.x, lit.y, f.x ), f.y );
 #else
+	// Clamp directly to the tile's texel centres. The atlas planner uses
+	// power-of-two extents, so the half-texel bounds are represented exactly.
+	const vec2 coordinate = clamp( uv, ( lo + 0.5 ) / atlasSize, ( hi + 0.5 ) / atlasSize );
 	const float lit = textureLod( sampler2DShadow( atlas, comparisonSampler ),
 	    vec3( coordinate, depth ), 0.0 );
 #ifdef SEEDED_DEPTH_REVERSED

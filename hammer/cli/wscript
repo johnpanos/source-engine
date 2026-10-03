@@ -29,3 +29,16 @@ def build(bld):
 		subsystem = 'CONSOLE',
 		idx       = bld.get_taskgen_count()
 	)
+	# Host material import: compose the existing VTF pixel decoder with the
+	# configured host compression libraries. No second VTF parser is introduced.
+	if bld.env.KTX_READ_ENABLED and bld.env.DEST_OS == 'linux':
+		bld.program(
+			env=bld.strict_cpp20_env(),
+			source=['vtf_decode.cpp'],
+			target='hammer_vtf_decode',
+			name='hammer_vtf_decode',
+			arch_module='hammer.composition',
+			features='cxx cxxprogram',
+			includes=['../../public'],
+			use=['hammer_formats', 'KTXREAD'],
+			install_path=None)

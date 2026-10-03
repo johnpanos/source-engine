@@ -307,6 +307,10 @@ GENERATED = {
          DEVICE_OPTIONS + ("-DSEEDED_SHADOW_FILTER_SKIP_LAST",)))),
     "shadow_cube_probe_spv.h": ("render::lab::spirv",
         "render_lab's cube face lookup oracle and seeded face permutation", (
+        ("kShadowAreaProbe", "render/lab/shadow_cube_probe.comp",
+         DEVICE_OPTIONS + ("-DAREA_SHADOW_PROBE",)),
+        ("kShadowAreaProbeNext", "render/lab/shadow_cube_probe.comp",
+         DEVICE_OPTIONS + ("-DAREA_SHADOW_PROBE", "-DSEEDED_SHADOW_AREA_NEXT")),
         ("kShadowCubeProbe", "render/lab/shadow_cube_probe.comp", DEVICE_OPTIONS),
         ("kShadowCubeProbeNext", "render/lab/shadow_cube_probe.comp",
          DEVICE_OPTIONS + ("-DSEEDED_SHADOW_CUBE_NEXT",)))),

@@ -9,6 +9,7 @@
 #include "render/shaderlib/permutation.h"
 #include "render/shaderlib/pipeline_recipe.h"
 
+#include <algorithm>
 #include <utility>
 
 namespace render::shaderlib
@@ -90,6 +91,8 @@ device::PipelineDesc ResolvedPipeline::Desc() const
 	device::PipelineDesc desc;
 	desc.kind = r.kind;
 	desc.stages = m_Stages;
+	for ( const auto &stage : m_Stages )
+		desc.drawConstantBytes = std::max( desc.drawConstantBytes, stage.drawConstantBytes );
 	desc.layouts = r.layouts;
 	desc.topology = r.topology;
 	desc.raster = r.raster;

@@ -96,5 +96,24 @@ int main()
 		checks.That( device->CreatePipeline( moved.Desc() ).HasValue(),
 		    "S3.a-resolved-recipe-creates-a-pipeline-after-a-move" );
 	}
+	// Reflected draw constants must survive recipe resolution and a move.
+	// The null provider checks the range against every stage independently.
+	auto constants = Artifact( "constants.vert", device::ShaderStage::kVertex,
+	    device::ArtifactFormat::kSpirv, rendertest::shaders::kFullScreenVertex,
+	    std::size( rendertest::shaders::kFullScreenVertex ) );
+	constants.drawConstantBytes = 32;
+	checks.That( store.Add( std::move( constants ) ).HasValue(), "S3.constant-artifact" );
+	recipe.sources = { "constants.vert" };
+	auto constantRecipe = Resolve( recipe, store, device::ArtifactFormat::kSpirv );
+	checks.That( constantRecipe.HasValue(), "S3.constant-recipe" );
+	if ( constantRecipe )
+	{
+		ResolvedPipeline moved = std::move( constantRecipe ).Value();
+		auto desc = moved.Desc();
+		checks.Equal( desc.drawConstantBytes, 32u, "S3.reflected-constant-range" );
+		checks.That( device->CreatePipeline( desc ).HasValue(), "S3.constant-pipeline" );
+		desc.drawConstantBytes = 0;
+		checks.That( !device->CreatePipeline( desc ), "S3.missing-constant-range-rejected" );
+	}
 	return checks.Report();
 }

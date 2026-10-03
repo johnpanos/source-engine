@@ -30,6 +30,29 @@ TEXTUREFLAGS_ENVMAP = 0x4000
 HIGH_RES_RESOURCE = 0x30
 
 
+def decode_native(data, tool):
+    """Mip zero through the shared native VTF/BC7 reader; no Python container parsing."""
+    import subprocess
+    import tempfile
+    with tempfile.TemporaryDirectory(prefix="vtf-import-") as directory:
+        source = Path(directory) / "input.vtf"
+        output = Path(directory) / "output.pam"
+        source.write_bytes(data)
+        result = subprocess.run([str(tool), str(source), str(output)], capture_output=True,
+                                text=True, timeout=120)
+        if result.returncode:
+            raise ValueError("native VTF decode failed: " + result.stderr.strip())
+        encoded = output.read_bytes()
+    header, pixels = encoded.split(b"ENDHDR\n", 1)
+    fields = dict(line.split(maxsplit=1) for line in header.splitlines()[1:])
+    width, height = int(fields[b"WIDTH"]), int(fields[b"HEIGHT"])
+    if (fields[b"DEPTH"] != b"4" or fields[b"MAXVAL"] != b"255" or
+            width <= 0 or height <= 0 or len(pixels) != width * height * 4):
+        raise ValueError("invalid native VTF image output")
+    return np.frombuffer(pixels, np.uint8).reshape(height, width, 4), {
+        "width": width, "height": height, "mip": 0}
+
+
 def header(data):
     if len(data) < 64 or data[:4] != b"VTF\0":
         raise ValueError("not a VTF file")

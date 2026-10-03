@@ -11,6 +11,8 @@ the VMF compile (tools/quality/vmf_map_build.py).
 """
 
 import os
+import json
+from pathlib import Path
 import struct
 
 # Search order mirrors portal/gameinfo.txt: Portal VPK, Portal loose files,
@@ -104,8 +106,8 @@ FSTOP_SEARCH_PATHS = [("dir", "fstop")] + SEARCH_PATHS + [
 
 
 class ContentResolver:
-    def __init__(self, runtime):
-        self.layers = []
+    def __init__(self, runtime, archives=()):
+        self.layers = [("vpk", str(path), VpkDirectory(str(path))) for path in archives]
         portal2 = os.path.isfile(os.path.join(runtime, "portal2/pak01_dir.vpk"))
         fstop = os.path.isfile(os.path.join(runtime, "fstop/gameinfo.txt"))
         order = PORTAL2_SEARCH_PATHS if portal2 else FSTOP_SEARCH_PATHS if fstop else SEARCH_PATHS
@@ -131,3 +133,32 @@ class ContentResolver:
             if data is not None:
                 return data, "%s:%s" % (os.path.basename(path), relative)
         return None, None
+
+
+def material_overrides(path):
+    """Explicit authored replacements; archives stay read-only external inputs.
+
+    This is map content, not a second global mount or quality policy. The
+    compiled scene supplies both the baker and the generated runtime materials.
+    """
+    path = Path(path).resolve()
+    data = json.loads(path.read_text())
+    if data.get("schema") != "source-material-overrides/v1":
+        raise ValueError("invalid material override schema")
+    archives = []
+    for source in data.get("archives", []):
+        archive = (path.parent / Path(source["path"]).expanduser()).resolve()
+        if not archive.is_file() or not archive.name.endswith("_dir.vpk"):
+            raise ValueError("missing VPK directory: " + str(archive))
+        archives.append(dict(source, path=str(archive)))
+    if not archives:
+        raise ValueError("material overrides require external archives")
+    mapping = data.get("materials", {})
+    def valid(name):
+        return (isinstance(name, str) and name == name.lower() and
+                not name.startswith("/") and "\\" not in name and
+                all(p not in ("", ".", "..") for p in name.split("/")) and
+                not name.endswith((".vmt", ".vtf")))
+    if not mapping or not all(valid(k) and valid(v) for k, v in mapping.items()):
+        raise ValueError("material overrides require normalized explicit logical names")
+    return {"schema": data["schema"], "archives": archives, "materials": mapping}

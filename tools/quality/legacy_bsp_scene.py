@@ -164,7 +164,6 @@ def studio_mesh(materials, model_tool, name):
         if run.returncode:
             raise ValueError("static model %s: %s" % (name, run.stderr.strip()))
         return json.loads(run.stdout)
-MAX_TEXTURE = 2048
 # Faces of these shaders are drawn by the legacy translucent/water passes.
 LEGACY_ONLY_SHADERS = {"water", "refract", "unlittwotexture", "monitorscreen",
                        "spritecard", "sprite", "cable"}
@@ -234,11 +233,14 @@ class GameDirectory:
 class Materials:
     """VMT lookup through the map's pak lump, then the game content."""
 
-    def __init__(self, bsp, resolver):
+    def __init__(self, bsp, resolver, texture_decoder=None, material_overrides=None):
         self.pak = bsp.pakfile()
         self.pak_names = {name.lower(): name for name in self.pak.namelist()} if self.pak else {}
         self.resolver = resolver
         self.cache = {}
+        self.textures = {}
+        self.texture_decoder = texture_decoder
+        self.overrides = material_overrides or {}
 
     def read(self, relative):
         relative = relative.replace("\\", "/").lower()
@@ -249,6 +251,7 @@ class Materials:
     def vmt(self, name, depth=0):
         """(shader, params, source) with patches resolved."""
         key = name.lower()
+        key = self.overrides.get(key, key)
         if key in self.cache:
             return self.cache[key]
         if depth > 8:
@@ -287,13 +290,11 @@ class Materials:
         data, source = self.read("materials/%s.vtf" % name)
         if data is None:
             return None
-        info = vtf_decode.header(data)
-        mip = 0
-        while max(info["width"], info["height"]) >> mip > MAX_TEXTURE and \
-                mip + 1 < info["mips"]:
-            mip += 1
-        image, info = vtf_decode.decode(data, mip)
-        return image, info, source
+        if name not in self.textures:
+            image, info = (vtf_decode.decode_native(data, self.texture_decoder)
+                           if self.texture_decoder else vtf_decode.decode(data, 0))
+            self.textures[name] = (image, info, source)
+        return self.textures[name]
 
 
 def truthy(value):
@@ -312,6 +313,28 @@ def sanitize(name):
     if len(text) > 40:
         text = text[:31] + "_" + hashlib.sha1(name.lower().encode()).hexdigest()[:8]
     return text
+
+
+def usd_texture_transform(text):
+    """Source's centered transform expressed in USD's bottom-left UV space."""
+    tokens = text.lower().split()
+    expected = (("center", 2), ("scale", 2), ("rotate", 1), ("translate", 2))
+    values, pos = {}, 0
+    for name, count in expected:
+        if pos >= len(tokens) or tokens[pos] != name:
+            raise ValueError("unsupported material texture transform: " + text)
+        values[name] = np.array([float(v) for v in tokens[pos + 1:pos + 1 + count]])
+        if len(values[name]) != count or not np.isfinite(values[name]).all():
+            raise ValueError("invalid material texture transform")
+        pos += count + 1
+    if pos != len(tokens):
+        raise ValueError("trailing material texture transform fields")
+    angle = math.radians(values["rotate"][0])
+    c, s = math.cos(angle), math.sin(angle)
+    matrix = np.array(((c, -s), (s, c))) @ np.diag(values["scale"])
+    offset = values["center"] + values["translate"] - matrix @ values["center"]
+    shifted = matrix @ (0, 1) + offset
+    return values["scale"].tolist(), -float(values["rotate"][0]), [float(shifted[0]), float(1 - shifted[1])]
 
 
 def face_st(points, texinfo, mapping):
@@ -343,7 +366,8 @@ def mapping_size(materials, name):
             if data is None:
                 return {"width": ERROR_TEXTURE_SIZE, "height": ERROR_TEXTURE_SIZE}, \
                     "%s %s missing: error texture" % (key, texture)
-            header = vtf_decode.header(data)
+            header = (materials.texture(texture)[1] if getattr(materials, "texture_decoder", None)
+                      else vtf_decode.header(data))
             return {"width": header["width"], "height": header["height"]}, \
                 "%s %s" % (key, texture)
     return {"width": ERROR_TEXTURE_SIZE, "height": ERROR_TEXTURE_SIZE}, \
@@ -601,13 +625,14 @@ def movie_preview(materials, movie, texture_dir, seconds=2.0):
             "alpha": False, "frame_seconds": seconds}
 
 
-def build_model(bsp, resolver, texture_dir, model_tool=None, map_name=None):
+def build_model(bsp, resolver, texture_dir, model_tool=None, map_name=None,
+                texture_decoder=None, material_overrides=None):
     """Everything the USD writer needs, as plain data, plus the receipt."""
     texinfo = bsp.texinfo()
     texdata = bsp.texdata()
     entities = bsp.entities()
     faces = bsp.world_faces()
-    materials = Materials(bsp, resolver)
+    materials = Materials(bsp, resolver, texture_decoder, material_overrides)
     lights, light_lump = bsp.world_lights()
     excluded = {}
     notes = []
@@ -821,6 +846,12 @@ def build_model(bsp, resolver, texture_dir, model_tool=None, map_name=None):
             record["base"] and record["base"]["alpha"])
         record["alphatest_reference"] = float(params.get("$alphatestreference", 0.5) or 0.5)
         record["roughness"] = material_roughness(record["shader"], params)
+        record["mrao"] = texture_file(params["$mraotexture"], "mrao") if params.get("$mraotexture") else None
+        if params.get("$mraotexture") and record["mrao"] is None:
+            raise ValueError("missing authored MRAO texture: " + params["$mraotexture"])
+        record["mrao_scale"] = [float(v) for v in str(params.get("$mraoscale", "1 1 1")).strip("[]").split()]
+        if len(record["mrao_scale"]) != 3 or not np.isfinite(record["mrao_scale"]).all():
+            raise ValueError("invalid authored MRAO scale")
         if not record["base"]:
             record["base_color"] = ([0.0, 0.0, 0.0] if record.get("reference_screen")
                                     else [float(v) for v in texdata_reflectivity(texdata, record)])
@@ -828,13 +859,13 @@ def build_model(bsp, resolver, texture_dir, model_tool=None, map_name=None):
                 approximations.setdefault(key, []).append(
                     "no base texture: the compiled reflectivity is the colour")
         if record["shader"] not in ("lightmappedgeneric", "worldvertextransition",
-                                    "lightmapped_4wayblend"):
+                                    "lightmapped_4wayblend", "pbr", "pbrmetalrough"):
             approximations.setdefault(key, []).append(
                 "%s drawn as a lit PBR surface" % record["shader"])
         if record["shader"] == "worldvertextransition":
             approximations.setdefault(key, []).append("second blend layer dropped")
         record["roughness_mask"] = None
-        if params.get("$envmap"):
+        if params.get("$envmap") and not record["mrao"]:
             # The mask the legacy shader multiplies its reflection by.
             mask = None
             if truthy(params.get("$normalmapalphaenvmapmask")) and bump:
@@ -1168,8 +1199,10 @@ def write_usd(model, path, map_name):
             primvar.CreateIdAttr("UsdPrimvarReader_float2")
             primvar.CreateInput("varname", Sdf.ValueTypeNames.Token).Set("st")
             primvar.CreateOutput("result", Sdf.ValueTypeNames.Float2)
+        transform = shader_path.AppendChild("st_transform")
         node.CreateInput("st", Sdf.ValueTypeNames.Float2).ConnectToSource(
-            UsdShade.Shader(stage.GetPrimAtPath(reader)).ConnectableAPI(), "result")
+            UsdShade.Shader(stage.GetPrimAtPath(transform if stage.GetPrimAtPath(transform)
+                                              else reader)).ConnectableAPI(), "result")
         return node.CreateOutput(output, Sdf.ValueTypeNames.Float3 if output == "rgb"
                                  else Sdf.ValueTypeNames.Float)
 
@@ -1178,6 +1211,19 @@ def write_usd(model, path, map_name):
         mat = UsdShade.Material.Define(stage, path)
         surface = UsdShade.Shader.Define(stage, path.AppendChild("Surface"))
         surface.CreateIdAttr("UsdPreviewSurface")
+        if record.get("params", {}).get("$basetexturetransform"):
+            scale, rotation, translation = usd_texture_transform(record["params"]["$basetexturetransform"])
+            reader = UsdShade.Shader.Define(stage, path.AppendChild("st_reader"))
+            reader.CreateIdAttr("UsdPrimvarReader_float2")
+            reader.CreateInput("varname", Sdf.ValueTypeNames.Token).Set("st")
+            reader.CreateOutput("result", Sdf.ValueTypeNames.Float2)
+            transform = UsdShade.Shader.Define(stage, path.AppendChild("st_transform"))
+            transform.CreateIdAttr("UsdTransform2d")
+            transform.CreateOutput("result", Sdf.ValueTypeNames.Float2)
+            transform.CreateInput("in", Sdf.ValueTypeNames.Float2).ConnectToSource(reader.ConnectableAPI(), "result")
+            transform.CreateInput("scale", Sdf.ValueTypeNames.Float2).Set(Gf.Vec2f(*scale))
+            transform.CreateInput("rotation", Sdf.ValueTypeNames.Float).Set(rotation)
+            transform.CreateInput("translation", Sdf.ValueTypeNames.Float2).Set(Gf.Vec2f(*translation))
         surface.CreateInput("metallic", Sdf.ValueTypeNames.Float).Set(0.0)
         mask = record.get("roughness_mask")
         if mask:
@@ -1192,6 +1238,11 @@ def write_usd(model, path, map_name):
         if record.get("occlusion"):
             surface.CreateInput("occlusion", Sdf.ValueTypeNames.Float).ConnectToSource(
                 texture(path, "occlusion", record["occlusion"], "r", "raw"))
+        if record.get("mrao"):
+            for channel, output in (("metallic", "r"), ("roughness", "g"), ("occlusion", "b")):
+                scale = record["mrao_scale"]
+                surface.CreateInput(channel, Sdf.ValueTypeNames.Float).ConnectToSource(
+                    texture(path, "mrao", record["mrao"], output, "raw", (*scale, 1.0), (0, 0, 0, 0)))
         if record.get("base"):
             surface.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).ConnectToSource(
                 texture(path, "base", record["base"], "rgb", "sRGB"))
@@ -1374,6 +1425,8 @@ def main():
                         help="installed game runtime (portal/ and hl2/ content)")
     parser.add_argument("--game-dir", type=Path,
                         help="the compile's game directory (vrad -game), searched first")
+    parser.add_argument("--material-overrides", type=Path)
+    parser.add_argument("--texture-decoder", type=Path)
     parser.add_argument("--model-tool", type=Path,
                         help="built mdl/mdl_mesh_export host tool for static-prop geometry")
     parser.add_argument("--map-name", required=True)
@@ -1381,12 +1434,23 @@ def main():
                         help="output directory: scene.usda, textures/, scene-receipt.json")
     args = parser.parse_args()
     bsp = legacy_bsp.LegacyBsp.read(args.bsp)
-    resolver = source_content.ContentResolver(str(args.runtime))
+    overrides = source_content.material_overrides(args.material_overrides) if args.material_overrides else None
+    resolver = source_content.ContentResolver(str(args.runtime),
+                [a["path"] for a in overrides["archives"]] if overrides else ())
+    if overrides and not args.texture_decoder:
+        raise ValueError("external material import requires the native texture decoder")
+    if overrides:
+        for target in overrides["materials"].values():
+            if resolver.read("materials/" + target + ".vmt")[0] is None:
+                raise ValueError("authored replacement material is missing: " + target)
     if args.game_dir:
         resolver = GameDirectory(args.game_dir, resolver)
     args.out.mkdir(parents=True, exist_ok=True)
     model, receipt = build_model(bsp, resolver, args.out / "textures", args.model_tool,
-                                 args.map_name.replace("_relit", ""))
+                                 args.map_name.replace("_relit", ""), args.texture_decoder,
+                                 overrides["materials"] if overrides else None)
+    if overrides:
+        receipt["material_overrides"] = overrides
     write_usd(model, args.out / "scene.usda", args.map_name)
     receipt.update(status="pass", bsp=str(args.bsp.resolve()),
                    bsp_sha256=sha256_bytes(bsp.data), map=args.map_name,

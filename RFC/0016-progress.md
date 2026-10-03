@@ -6674,6 +6674,16 @@ regions. No filter, effect, light set or profile quality is reduced. A candidate
 must pass the lab before product integration and receive matched complete-frame
 measurements; this slice does not promote the still-failed High floor.
 
+The comparison follow-up now tracks bounded experiments here, with raw evidence
+under `quality-results/rendercore-opt-20261002/`. `RCV-01` tests clamping hardware
+comparison coordinates directly to tile texel centres, eliminating the per-tap
+normalized-to-texel-to-normalized round trip. The existing atlas planner requires
+power-of-two extents; the independent manual-compare oracle is unchanged. The
+first unchanged native receiver baseline passes 11 checks. Candidate correctness,
+paired GPU timing, and product-frame evaluation are pending; no speedup is claimed.
+Rolled/grouped loops and hoisted depth mapping remain rejected historical trials,
+not new candidates. Owners remain `render.pass.shadows` and `render.lab`.
+
 ### R91: Portal 2 core portal views (2026-10-02, active)
 
 User request: “Let's get portals rendering on rendercore”. The user confirmed

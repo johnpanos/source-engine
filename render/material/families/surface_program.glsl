@@ -1032,8 +1032,8 @@ void PbrSurface()
 				    sqrt( 4.0 * length( light.halfU.xyz ) * length( light.halfV.xyz ) / kPi ) *
 				    sqrt( max( abs( dot( facing, toCenter ) ), 0.05 ) );
 				visibility = ShadowTerminatorFade( smoothNormal, toCenter,
-				    ShadowFacesVisibility( shadowAtlas, shadowSampler, shadowComparisonSampler, firstTile,
-				        twoSided ? 6 : 5, worldPosition,
+				    ShadowAreaVisibility( shadowAtlas, shadowSampler, shadowComparisonSampler, firstTile,
+				        twoSided ? 6 : 5, light.halfU.xyz, light.halfV.xyz, worldPosition,
 				        ShadowReceiverOffset( geometricNormal, toCenter ), size, rotation ) );
 				if ( visibility <= 0.0 )
 					continue;

@@ -390,6 +390,10 @@
       "dialect": "cxx20",
       "rfc": "0001"
     },
+    "hammer_vtf_decode": {
+      "dialect": "cxx20",
+      "reason": "Host material import through the shared VTF decoder"
+    },
     "hammer_cli": {
       "dialect": "cxx20",
       "rfc": "0002"
