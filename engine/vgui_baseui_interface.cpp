@@ -458,6 +458,7 @@ private:
 	CEnginePanel *staticClientDLLToolsPanel;
 	CEnginePanel *staticGameUIPanel;
 	CEnginePanel *staticGameDLLPanel;
+	CEnginePanel *staticTransitionPanel;
 
 	// Want engine tools to be on top of other engine panels
 	CEnginePanel *staticEngineToolsPanel;
@@ -574,6 +575,7 @@ CEngineVGui::CEngineVGui()
 	staticClientDLLPanel = NULL;
 	staticGameDLLPanel = NULL;
 	staticGameUIPanel = NULL;
+	staticTransitionPanel = NULL;
 	staticEngineToolsPanel = NULL;
 	staticDebugSystemPanel = NULL;
 	staticFocusOverlayPanel = NULL;
@@ -798,6 +800,15 @@ void CEngineVGui::Init()
 	staticGameDLLPanel->SetPaintEnabled(false);
 	staticGameDLLPanel->SetCursor( vgui::dc_none );
 	staticGameDLLPanel->SetZPos( 135 );
+
+	staticTransitionPanel = new CEnginePanel( staticPanel, "TransitionEffect" );
+	staticTransitionPanel->SetBounds( 0, 0, nRootWide, nRootTall );
+	staticTransitionPanel->SetPaintBorderEnabled( false );
+	staticTransitionPanel->SetPaintBackgroundEnabled( false );
+	staticTransitionPanel->SetPaintEnabled( false );
+	staticTransitionPanel->SetVisible( true );
+	staticTransitionPanel->SetCursor( vgui::dc_none );
+	staticTransitionPanel->SetZPos( 140 );
 
 	if ( CommandLine()->CheckParm( "-tools" ) != NULL )
 	{
@@ -1029,6 +1040,7 @@ void CEngineVGui::Shutdown()
 	staticGameUIFuncs = NULL;
 	staticGameConsole = NULL;
 	staticGameUIPanel = NULL;
+	staticTransitionPanel = NULL;
 
 	// stop the App running
 	vgui::ivgui()->Stop();
@@ -1066,6 +1078,8 @@ inline vgui::Panel *CEngineVGui::GetRootPanel( VGuiPanel_t type )
 		return staticGameDLLPanel;
 	case PANEL_CLIENTDLL_TOOLS:
 		return staticClientDLLToolsPanel;
+	case PANEL_TRANSITIONEFFECT:
+		return staticTransitionPanel;
 	}
 }
 
@@ -1082,6 +1096,10 @@ void CEngineVGui::SetEngineVisible( bool state )
 	if ( staticClientDLLPanel )
 	{
 		staticClientDLLPanel->SetVisible( state );
+	}
+	if ( staticTransitionPanel )
+	{
+		staticTransitionPanel->SetVisible( state );
 	}
 }
 

@@ -94,15 +94,34 @@ CGroupedDescriptors::Image CVulkanContext::GroupedImage(
 			*usedSrgb = useSrgb;
 		return result;
 	};
+	const bool expectCube = fallback == m_whiteCubeHandle;
+	const bool expectVolume = fallback == m_whiteVolumeHandle;
+	const auto matchesDim = [&]( int h ) -> bool
+	{
+		if ( h < 0 || h >= static_cast<int>( m_managedTextures.size() ) )
+			return false;
+		if ( expectCube )
+			return ManagedTextureIsCube( h );
+		if ( expectVolume )
+			return ManagedTextureIsVolume( h );
+		return !ManagedTextureIsCube( h ) && !ManagedTextureIsVolume( h );
+	};
 	CGroupedDescriptors::Image result;
-	if ( handle != openTarget )
+	if ( handle != openTarget && matchesDim( handle ) )
 		result = image( handle, srgb, outSrgb );
-	if ( result.view == VK_NULL_HANDLE )
+	if ( result.view == VK_NULL_HANDLE && matchesDim( fallback ) )
 		result = image( fallback, false, nullptr );
 	if ( result.view == VK_NULL_HANDLE )
 	{
-		result.view = m_dynTexView;
-		result.sampler = m_dynTexSampler;
+		if ( expectCube && m_whiteCubeHandle >= 0 )
+			result = image( m_whiteCubeHandle, false, nullptr );
+		else if ( expectVolume && m_whiteVolumeHandle >= 0 )
+			result = image( m_whiteVolumeHandle, false, nullptr );
+		else
+		{
+			result.view = m_dynTexView;
+			result.sampler = m_dynTexSampler;
+		}
 	}
 	return result;
 }

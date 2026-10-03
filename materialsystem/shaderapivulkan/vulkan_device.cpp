@@ -8150,20 +8150,36 @@ void CVulkanContext::RecordFrameScene( VkCommandBuffer cmd )
 				// A sampler the material reads as sRGB samples the texture's sRGB
 				// view, which decodes each texel before filtering as D3D9's
 				// SRGBTEXTURE does; the shader then skips its own decode for it.
-				const auto sampledSet = [&]( int handle, int srgbFlag ) -> VkDescriptorSet
+				// A texture of another dimension than the shader declares (e.g. a
+				// cubemap bound to a 2D base sampler slot) falls back to the default
+				// set of the declared dimension to avoid VUID-vkCmdDrawIndexed-viewType-07752.
+				const auto sampledSet = [&]( int handle, int srgbFlag,
+				                            bool expectCube = false ) -> VkDescriptorSet
 				{
 					if ( handle >= 0 && handle < static_cast<int>( m_managedTextures.size() ) &&
-					     handle != openTarget &&
-					     m_managedTextures[static_cast<size_t>( handle )].descSet !=
+					     handle != openTarget )
+					{
+						const bool isCube = ManagedTextureIsCube( handle );
+						const bool isVolume = ManagedTextureIsVolume( handle );
+						if ( expectCube ? isCube : ( !isCube && !isVolume ) )
+						{
+							const ManagedTexture &t =
+							    m_managedTextures[static_cast<size_t>( handle )];
+							if ( ( d.colorFlags & srgbFlag ) && t.descSetSrgb != VK_NULL_HANDLE )
+							{
+								decodedFlags |= srgbFlag;
+								return t.descSetSrgb;
+							}
+							if ( t.descSet != VK_NULL_HANDLE )
+								return t.descSet;
+						}
+					}
+					if ( expectCube && m_whiteCubeHandle >= 0 &&
+					     m_whiteCubeHandle < static_cast<int>( m_managedTextures.size() ) &&
+					     m_managedTextures[static_cast<size_t>( m_whiteCubeHandle )].descSet !=
 					         VK_NULL_HANDLE )
 					{
-						const ManagedTexture &t = m_managedTextures[static_cast<size_t>( handle )];
-						if ( ( d.colorFlags & srgbFlag ) && t.descSetSrgb != VK_NULL_HANDLE )
-						{
-							decodedFlags |= srgbFlag;
-							return t.descSetSrgb;
-						}
-						return t.descSet;
+						return m_managedTextures[static_cast<size_t>( m_whiteCubeHandle )].descSet;
 					}
 					return m_dynTexDescSet;
 				};
@@ -8204,7 +8220,7 @@ void CVulkanContext::RecordFrameScene( VkCommandBuffer cmd )
 					        kPaintBlobOpacityTexture ) != 0;
 					const VkDescriptorSet sets[7] = { sampledSet( d.texHandle, kColorSrgbReadBase ),
 					    sampledSet( d.samplerHandles[1], 0 ), sampledSet( d.samplerHandles[3], 0 ),
-					    sampledSet( envmap, kColorSrgbReadSampler7 ),
+					    sampledSet( envmap, kColorSrgbReadSampler7, true ),
 					    sampledSet( d.samplerHandles[opacity ? 6 : 4], 0 ),
 					    sampledSet( d.samplerHandles[2], 0 ),
 					    m_skinUbos[static_cast<size_t>( m_currentFrame ) % m_skinUbos.size()].set };
@@ -8441,7 +8457,8 @@ void CVulkanContext::RecordFrameScene( VkCommandBuffer cmd )
 					if ( d.worldMesh && m_worldLightmapHandle >= 0 && !secondSampler )
 						decodedFlags |= kColorSrgbReadLightmap; // LMAP is scene-linear HDR.
 					const int cubeTexture =
-					    ( d.colorFlags & ( kFragmentLightmappedEnvmap | kFragmentRefract ) ) != 0
+					    ( d.colorFlags & ( kFragmentLightmappedEnvmap | kFragmentRefract ) ) != 0 &&
+					            ManagedTextureIsCube( d.samplerHandles[2] )
 					        ? d.samplerHandles[2]
 					        : m_whiteCubeHandle;
 					const int normalMaskTexture =
@@ -8450,7 +8467,7 @@ void CVulkanContext::RecordFrameScene( VkCommandBuffer cmd )
 					                                                           : -1;
 					const VkDescriptorSet sets[4] = { sampledSet( d.texHandle, kColorSrgbReadBase ),
 					    sampledSet( secondTexture, kColorSrgbReadLightmap ),
-					    sampledSet( cubeTexture, kColorSrgbReadSampler2 ),
+					    sampledSet( cubeTexture, kColorSrgbReadSampler2, true ),
 					    sampledSet( normalMaskTexture, 0 ) };
 					vkCmdBindDescriptorSets( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
 					    m_dynTexPipelineLayout, 0, 4, sets, 0, nullptr );

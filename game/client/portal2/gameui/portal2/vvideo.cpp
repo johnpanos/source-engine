@@ -533,31 +533,13 @@ void Video::OnCommand( const char *command )
 	}
 	else if ( !V_stricmp( command, "PowerSavingsDisabled" ) )
 	{
-		if ( !m_bAcceptPowerSavingsWarning )
-		{
-			// show the warning first, and restore the current state
-			ShowPowerSavingsWarning();
-			SetPowerSavingsState();
-		}
-		else
-		{
-			m_nPowerSavingsMode = 0;
-			m_bDirtyValues = true;
-		}
+		m_nPowerSavingsMode = 0;
+		m_bDirtyValues = true;
 	}
 	else if ( !V_stricmp( command, "PowerSavingsEnabled" ) )
 	{
-		if ( !m_bAcceptPowerSavingsWarning )
-		{
-			// show the warning first, and restore the current state
-			ShowPowerSavingsWarning();
-			SetPowerSavingsState();
-		}
-		else
-		{
-			m_nPowerSavingsMode = 1;
-			m_bDirtyValues = true;
-		}
+		m_nPowerSavingsMode = 1;
+		m_bDirtyValues = true;
 	}
 	else if ( !Q_stricmp( command, "#L4D360UI_SplitScreenDirection_Default" ) )
 	{

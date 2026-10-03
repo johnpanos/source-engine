@@ -63,6 +63,9 @@ protected:
 	virtual void	OnCommand( const char *pCommand );
 	virtual void	OnThink();
 	virtual void PreApplyControlSettings( KeyValues *pResourceData );
+	virtual void NavigateToChild( vgui::Panel *pNavigateTo );
+
+	MESSAGE_FUNC_HANDLE( OnHybridButtonNavigatedTo, "OnHybridButtonNavigatedTo", button );
 
 private:
 	void	GetCurrentSettings( void );
@@ -82,6 +85,7 @@ private:
 	void	SetCPUDetailState();
 	void	SetModelDetailState();
 	void SetRenderCoreQualityState();
+	void UpdateDescription( vgui::Panel *pControl );
 
 private:
 	int					m_nNumAAModes;
@@ -122,6 +126,10 @@ private:
 
 	VideoWarning_e	m_VideoWarning;
 	bool			m_bAcceptWarning[VW_MAXWARNINGS];
+
+	vgui::Label *m_lblDescriptionTitle;
+	vgui::Label *m_lblDescription;
+	vgui::Panel *m_pLastDescriptionControl;
 };
 
 };

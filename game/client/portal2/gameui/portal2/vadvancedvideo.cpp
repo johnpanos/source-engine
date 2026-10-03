@@ -13,6 +13,7 @@
 #include "IGameUIFuncs.h"
 #include "gameui_util.h"
 #include "vgui/ISurface.h"
+#include "vgui/IInput.h"
 #include "modes.h"
 #include "videocfg/videocfg.h"
 #include "vgenericconfirmation.h"
@@ -74,6 +75,22 @@ static void AddRenderCoreQualityStrings()
 	    { "GameUI_QualityOn", L"On" },
 	    { "GameUI_QualityOff", L"Off" },
 	    { "GameUI_QualityUltra", L"Ultra" },
+	    { "GameUI_AmbientOcclusion_Info",
+	        L"Ambient Occlusion calculates contact shadows in corners and crevices, adding depth "
+	        L"to surfaces. Higher settings improve shadow fidelity at the cost of GPU "
+	        L"performance." },
+	    { "GameUI_DynamicShadows_Info",
+	        L"Dynamic Shadows controls the resolution and quality of real-time shadows cast by "
+	        L"lights and objects. Higher settings produce sharper, more detailed shadows." },
+	    { "GameUI_CoreDepthPrepass_Info",
+	        L"Depth Prepass renders scene geometry into an early depth buffer to eliminate "
+	        L"redundant pixel shading, improving rendering efficiency in complex scenes." },
+	    { "GameUI_CoreShadowMovers_Info",
+	        L"Moving Object Shadows enables real-time dynamic shadows cast by physics objects, "
+	        L"moving panels, and characters." },
+	    { "GameUI_CoreRuntimeDirect_Info",
+	        L"Runtime Direct Light enables dynamic evaluation of direct light sources in real "
+	        L"time. Changes take effect on the next map load." },
 	};
 	for ( const auto &entry : kStrings )
 	{
@@ -143,6 +160,10 @@ BaseClass(parent, panelName)
 	m_iCoreDirect = 0;
 	m_iQueuedMode = -1;
 
+	m_lblDescriptionTitle = NULL;
+	m_lblDescription = NULL;
+	m_pLastDescriptionControl = NULL;
+
 	SetFooterEnabled( true );
 	UpdateFooter();
 }
@@ -170,6 +191,8 @@ void CAdvancedVideo::ApplySchemeSettings( vgui::IScheme *pScheme )
 	m_drpCoreDepth = dynamic_cast<BaseModHybridButton *>( FindChildByName( "DrpCoreDepth" ) );
 	m_drpCoreMovers = dynamic_cast<BaseModHybridButton *>( FindChildByName( "DrpCoreMovers" ) );
 	m_drpCoreDirect = dynamic_cast<BaseModHybridButton *>( FindChildByName( "DrpCoreDirect" ) );
+	m_lblDescriptionTitle = dynamic_cast<vgui::Label *>( FindChildByName( "LblDescriptionTitle" ) );
+	m_lblDescription = dynamic_cast<vgui::Label *>( FindChildByName( "LblDescription" ) );
 
 	SetupState( false );
 
@@ -180,6 +203,8 @@ void CAdvancedVideo::ApplySchemeSettings( vgui::IScheme *pScheme )
 		m_drpModelDetail->NavigateTo();
 		m_ActiveControl = m_drpModelDetail;
 	}
+
+	UpdateDescription( m_ActiveControl );
 
 	UpdateFooter();
 }
@@ -805,97 +830,40 @@ void CAdvancedVideo::OnCommand(const char *command)
 {
 	if ( !V_stricmp( command, "ModelDetailHigh" ) )
 	{
-		if ( !m_bAcceptWarning[VW_MODELDETAIL] )
-		{
-			ShowWarning( VW_MODELDETAIL );
-			SetModelDetailState();
-		}
-		else
-		{
-			m_iModelTextureDetail = 2;
-			m_bDirtyValues = true;
-		}
+		m_iModelTextureDetail = 2;
+		m_bDirtyValues = true;
 	}
 	else if ( !V_stricmp( command, "ModelDetailMedium" ) )
 	{
-		if ( !m_bAcceptWarning[VW_MODELDETAIL] )
-		{
-			ShowWarning( VW_MODELDETAIL );
-			SetModelDetailState();
-		}
-		else
-		{
-			m_iModelTextureDetail = 1;
-			m_bDirtyValues = true;
-		}
+		m_iModelTextureDetail = 1;
+		m_bDirtyValues = true;
 	}
 	else if ( !V_stricmp( command, "ModelDetailLow" ) )
 	{
-		if ( !m_bAcceptWarning[VW_MODELDETAIL] )
-		{
-			ShowWarning( VW_MODELDETAIL );
-			SetModelDetailState();
-		}
-		else
-		{
-			m_iModelTextureDetail = 0;
-			m_bDirtyValues = true;
-		}
+		m_iModelTextureDetail = 0;
+		m_bDirtyValues = true;
 	}
 #ifndef POSIX
 	else if ( !V_stricmp( command, "PagedPoolMemHigh" ) )
 	{
-		if ( !m_bAcceptWarning[VW_PAGEDPOOL] )
-		{
-			// show the warning first, and restore the current state
-			ShowWarning( VW_PAGEDPOOL );
-			SetPagedPoolState();
-		}
-		else
-		{
-			m_iPagedPoolMem = 2;
-			m_bDirtyValues = true;
-		}
-		
+		m_iPagedPoolMem = 2;
+		m_bDirtyValues = true;
 	}
 	else if ( !V_stricmp( command, "PagedPoolMemMedium" ) )
 	{
-		if ( !m_bAcceptWarning[VW_PAGEDPOOL] )
-		{
-			// show the warning first, and restore the current state
-			ShowWarning( VW_PAGEDPOOL );
-			SetPagedPoolState();
-		}
-		else
-		{
-			m_iPagedPoolMem = 1;
-			m_bDirtyValues = true;
-		}
+		m_iPagedPoolMem = 1;
+		m_bDirtyValues = true;
 	}
 	else if ( !V_stricmp( command, "PagedPoolMemLow" ) )
 	{
-		if ( !m_bAcceptWarning[VW_PAGEDPOOL] )
-		{
-			// show the warning first, and restore the current state
-			ShowWarning( VW_PAGEDPOOL );
-			SetPagedPoolState();
-		}
-		else
-		{
-			m_iPagedPoolMem = 0;
-			m_bDirtyValues = true;
-		}
+		m_iPagedPoolMem = 0;
+		m_bDirtyValues = true;
 	}
 #endif
 	else if ( StringHasPrefix( command, VIDEO_ANTIALIAS_COMMAND_PREFIX ) )
 	{
 		if ( g_pRenderTemporalViews && g_pRenderTemporalViews->Enabled() )
 			SetAntiAliasingState();
-		else if ( !m_bAcceptWarning[VW_ANTIALIASING] )
-		{
-			ShowWarning( VW_ANTIALIASING );
-			SetAntiAliasingState();
-		}
 		else
 		{
 			int iCommandNumberPosition = Q_strlen( VIDEO_ANTIALIAS_COMMAND_PREFIX );
@@ -905,240 +873,96 @@ void CAdvancedVideo::OnCommand(const char *command)
 	}
 	else if ( !V_stricmp( command, "#GameUI_Bilinear" ) )
 	{
-		if ( !m_bAcceptWarning[VW_FILTERING] )
-		{
-			ShowWarning( VW_FILTERING );
-			SetFilteringState();
-		}
-		else
-		{
-			m_iFiltering = 0;
-			m_bDirtyValues = true;
-		}
+		m_iFiltering = 0;
+		m_bDirtyValues = true;
 	}
 	else if ( !V_stricmp( command, "#GameUI_Trilinear" ) )
 	{
-		if ( !m_bAcceptWarning[VW_FILTERING] )
-		{
-			ShowWarning( VW_FILTERING );
-			SetFilteringState();
-		}
-		else
-		{
-			m_iFiltering = 1;
-			m_bDirtyValues = true;
-		}
+		m_iFiltering = 1;
+		m_bDirtyValues = true;
 	}
 	else if ( !V_stricmp( command, "#GameUI_Anisotropic2X" ) )
 	{
-		if ( !m_bAcceptWarning[VW_FILTERING] )
-		{
-			ShowWarning( VW_FILTERING );
-			SetFilteringState();
-		}
-		else
-		{
-			m_iFiltering = 2;
-			m_bDirtyValues = true;
-		}
+		m_iFiltering = 2;
+		m_bDirtyValues = true;
 	}
 	else if ( !V_stricmp( command, "#GameUI_Anisotropic4X" ) )
 	{
-		if ( !m_bAcceptWarning[VW_FILTERING] )
-		{
-			ShowWarning( VW_FILTERING );
-			SetFilteringState();
-		}
-		else
-		{
-			m_iFiltering = 4;
-			m_bDirtyValues = true;
-		}
+		m_iFiltering = 4;
+		m_bDirtyValues = true;
 	}
 	else if ( !V_stricmp( command, "#GameUI_Anisotropic8X" ) )
 	{
-		if ( !m_bAcceptWarning[VW_FILTERING] )
-		{
-			ShowWarning( VW_FILTERING );
-			SetFilteringState();
-		}
-		else
-		{
-			m_iFiltering = 8;
-			m_bDirtyValues = true;
-		}
+		m_iFiltering = 8;
+		m_bDirtyValues = true;
 	}
 	else if ( !V_stricmp( command, "#GameUI_Anisotropic16X" ) )
 	{
-		if ( !m_bAcceptWarning[VW_FILTERING] )
-		{
-			ShowWarning( VW_FILTERING );
-			SetFilteringState();
-		}
-		else
-		{
-			m_iFiltering = 16;
-			m_bDirtyValues = true;
-		}
+		m_iFiltering = 16;
+		m_bDirtyValues = true;
 	}
 	else if ( !V_stricmp( command, "VSyncTripleBuffered" ) )
 	{
-		if ( !m_bAcceptWarning[VW_VSYNC] )
-		{
-			ShowWarning( VW_VSYNC );
-			SetVSyncState();
-		}
-		else
-		{
-			m_bVSync = true;
-			m_bTripleBuffered = true;
-			m_bDirtyValues = true;
-		}
+		m_bVSync = true;
+		m_bTripleBuffered = true;
+		m_bDirtyValues = true;
 	}
 	else if ( !V_stricmp( command, "VSyncEnabled" ) )
 	{
-		if ( !m_bAcceptWarning[VW_VSYNC] )
-		{
-			ShowWarning( VW_VSYNC );
-			SetVSyncState();
-		}
-		else
-		{
-			m_bVSync = true;
-			m_bTripleBuffered = false;
-			m_bDirtyValues = true;
-		}
+		m_bVSync = true;
+		m_bTripleBuffered = false;
+		m_bDirtyValues = true;
 	}
 	else if ( !V_stricmp( command, "VSyncDisabled" ) )
 	{
-		if ( !m_bAcceptWarning[VW_VSYNC] )
-		{
-			ShowWarning( VW_VSYNC );
-			SetVSyncState();
-		}
-		else
-		{
-			m_bVSync = false;
-			m_bTripleBuffered = false;
-			m_bDirtyValues = true;
-		}
+		m_bVSync = false;
+		m_bTripleBuffered = false;
+		m_bDirtyValues = true;
 	}
 	else if ( !V_stricmp( command, "QueuedModeEnabled" ) )
 	{
-		if ( !m_bAcceptWarning[VW_MULTICORE] )
-		{
-			ShowWarning( VW_MULTICORE );
-			SetQueuedModeState();
-		}
-		else
-		{
-			m_iQueuedMode = -1;
-			m_bDirtyValues = true;
-		}
+		m_iQueuedMode = -1;
+		m_bDirtyValues = true;
 	}
 	else if ( !V_stricmp( command, "QueuedModeDisabled" ) )
 	{
-		if ( !m_bAcceptWarning[VW_MULTICORE] )
-		{
-			ShowWarning( VW_MULTICORE );
-			SetQueuedModeState();
-		}
-		else
-		{
-			m_iQueuedMode = 0;
-			m_bDirtyValues = true;
-		}
+		m_iQueuedMode = 0;
+		m_bDirtyValues = true;
 	}
 	else if ( !V_stricmp( command, "ShaderDetailVeryHigh" ) )
 	{
-		if ( !m_bAcceptWarning[VW_SHADERDETAIL] )
-		{
-			ShowWarning( VW_SHADERDETAIL );
-			SetShaderDetailState();
-		}
-		else
-		{
-			m_iGPUDetail = 3;
-			m_bDirtyValues = true;
-		}
+		m_iGPUDetail = 3;
+		m_bDirtyValues = true;
 	}
 	else if ( !V_stricmp( command, "ShaderDetailHigh" ) )
 	{
-		if ( !m_bAcceptWarning[VW_SHADERDETAIL] )
-		{
-			ShowWarning( VW_SHADERDETAIL );
-			SetShaderDetailState();
-		}
-		else
-		{
-			m_iGPUDetail = 2;
-			m_bDirtyValues = true;
-		}
+		m_iGPUDetail = 2;
+		m_bDirtyValues = true;
 	}
 	else if ( !V_stricmp( command, "ShaderDetailMedium" ) )
 	{
-		if ( !m_bAcceptWarning[VW_SHADERDETAIL] )
-		{
-			ShowWarning( VW_SHADERDETAIL );
-			SetShaderDetailState();
-		}
-		else
-		{
-			m_iGPUDetail = 1;
-			m_bDirtyValues = true;
-		}
+		m_iGPUDetail = 1;
+		m_bDirtyValues = true;
 	}
 	else if ( !V_stricmp( command, "ShaderDetailLow" ) )
 	{
-		if ( !m_bAcceptWarning[VW_SHADERDETAIL] )
-		{
-			ShowWarning( VW_SHADERDETAIL );
-			SetShaderDetailState();
-		}
-		else
-		{
-			m_iGPUDetail = 0;
-			m_bDirtyValues = true;
-		}
+		m_iGPUDetail = 0;
+		m_bDirtyValues = true;
 	}
 	else if ( !V_stricmp( command, "CPUDetailHigh" ) )
 	{
-		if ( !m_bAcceptWarning[VW_CPUDETAIL] )
-		{
-			ShowWarning( VW_CPUDETAIL );
-			SetCPUDetailState();
-		}
-		else
-		{
-			m_iCPUDetail = 2;
-			m_bDirtyValues = true;
-		}
+		m_iCPUDetail = 2;
+		m_bDirtyValues = true;
 	}
 	else if ( !V_stricmp( command, "CPUDetailMedium" ) )
 	{
-		if ( !m_bAcceptWarning[VW_CPUDETAIL] )
-		{
-			ShowWarning( VW_CPUDETAIL );
-			SetCPUDetailState();
-		}
-		else
-		{
-			m_iCPUDetail = 1;
-			m_bDirtyValues = true;
-		}
+		m_iCPUDetail = 1;
+		m_bDirtyValues = true;
 	}
 	else if ( !V_stricmp( command, "CPUDetailLow" ) )
 	{
-		if ( !m_bAcceptWarning[VW_CPUDETAIL] )
-		{
-			ShowWarning( VW_CPUDETAIL );
-			SetCPUDetailState();
-		}
-		else
-		{
-			m_iCPUDetail = 0;
-			m_bDirtyValues = true;
-		}
+		m_iCPUDetail = 0;
+		m_bDirtyValues = true;
 	}
 	else if ( StringHasPrefix( command, VIDEO_CORE_AO_COMMAND_PREFIX ) )
 	{
@@ -1260,6 +1084,121 @@ void CAdvancedVideo::OnThink()
 		m_bEnableApply = m_bDirtyValues;
 		UpdateFooter();
 	}
+
+	Panel *pFocus = ipanel()->GetPanel( vgui::input()->GetFocus(), GetModuleName() );
+	if ( pFocus && pFocus != m_pLastDescriptionControl && pFocus->GetParent() == this )
+	{
+		UpdateDescription( pFocus );
+	}
+}
+
+void CAdvancedVideo::OnHybridButtonNavigatedTo( VPANEL button )
+{
+	Panel *panel = ipanel()->GetPanel( button, GetModuleName() );
+	if ( panel )
+	{
+		m_ActiveControl = panel;
+		UpdateDescription( panel );
+	}
+}
+
+void CAdvancedVideo::NavigateToChild( Panel *pNavigateTo )
+{
+	BaseClass::NavigateToChild( pNavigateTo );
+	m_ActiveControl = pNavigateTo;
+	UpdateDescription( pNavigateTo );
+}
+
+void CAdvancedVideo::UpdateDescription( Panel *pControl )
+{
+	if ( !pControl )
+		return;
+
+	if ( !m_lblDescriptionTitle )
+		m_lblDescriptionTitle =
+		    dynamic_cast<vgui::Label *>( FindChildByName( "LblDescriptionTitle" ) );
+	if ( !m_lblDescription )
+		m_lblDescription = dynamic_cast<vgui::Label *>( FindChildByName( "LblDescription" ) );
+
+	if ( !m_lblDescriptionTitle || !m_lblDescription )
+		return;
+
+	m_pLastDescriptionControl = pControl;
+
+	const char *pName = pControl->GetName();
+	const char *pTitle = NULL;
+	const char *pDesc = NULL;
+
+	if ( !V_stricmp( pName, "DrpAntialias" ) )
+	{
+		pTitle = "#L4D360UI_VideoOptions_Antialiasing";
+		pDesc = "#PORTAL2_VideoOptions_Antialiasing_Info";
+	}
+	else if ( !V_stricmp( pName, "DrpFiltering" ) )
+	{
+		pTitle = "#GameUI_Filtering_Mode";
+		pDesc = "#PORTAL2_VideoOptions_Filtering_Info";
+	}
+	else if ( !V_stricmp( pName, "DrpVSync" ) )
+	{
+		pTitle = "#GameUI_Wait_For_VSync";
+		pDesc = "#PORTAL2_VideoOptions_WaitForVSync_Info";
+	}
+	else if ( !V_stricmp( pName, "DrpQueuedMode" ) )
+	{
+		pTitle = "#L4D360UI_VideoOptions_Queued_Mode";
+		pDesc = "#PORTAL2_VideoOptions_QueuedMode_Info";
+	}
+	else if ( !V_stricmp( pName, "DrpShaderDetail" ) )
+	{
+		pTitle = "#GameUI_Shader_Detail";
+		pDesc = "#PORTAL2_VideoOptions_ShaderDetail_Info";
+	}
+	else if ( !V_stricmp( pName, "DrpCPUDetail" ) )
+	{
+		pTitle = "#L4D360UI_VideoOptions_CPU_Detail";
+		pDesc = "#PORTAL2_VideoOptions_CPUDetail_Info";
+	}
+	else if ( !V_stricmp( pName, "DrpModelDetail" ) )
+	{
+		pTitle = "#L4D360UI_VideoOptions_Model_Texture_Detail";
+		pDesc = "#PORTAL2_VideoOptions_ModelDetail_Info";
+	}
+	else if ( !V_stricmp( pName, "DrpPagedPoolMem" ) )
+	{
+		pTitle = "#L4D360UI_VideoOptions_Paged_Pool_Mem";
+		pDesc = "#L4D360UI_VideoOptions_Paged_Pool_Mem_Info";
+	}
+	else if ( !V_stricmp( pName, "DrpCoreAO" ) )
+	{
+		pTitle = "#GameUI_AmbientOcclusion";
+		pDesc = "#GameUI_AmbientOcclusion_Info";
+	}
+	else if ( !V_stricmp( pName, "DrpCoreShadows" ) )
+	{
+		pTitle = "#GameUI_DynamicShadows";
+		pDesc = "#GameUI_DynamicShadows_Info";
+	}
+	else if ( !V_stricmp( pName, "DrpCoreDepth" ) )
+	{
+		pTitle = "#GameUI_CoreDepthPrepass";
+		pDesc = "#GameUI_CoreDepthPrepass_Info";
+	}
+	else if ( !V_stricmp( pName, "DrpCoreMovers" ) )
+	{
+		pTitle = "#GameUI_CoreShadowMovers";
+		pDesc = "#GameUI_CoreShadowMovers_Info";
+	}
+	else if ( !V_stricmp( pName, "DrpCoreDirect" ) )
+	{
+		pTitle = "#GameUI_CoreRuntimeDirect";
+		pDesc = "#GameUI_CoreRuntimeDirect_Info";
+	}
+
+	if ( pTitle )
+		m_lblDescriptionTitle->SetText( pTitle );
+	if ( pDesc )
+		m_lblDescription->SetText( pDesc );
 }
 
 void CAdvancedVideo::UpdateFooter()
