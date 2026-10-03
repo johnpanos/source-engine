@@ -6689,19 +6689,35 @@ resolution, or light cohort was reduced. The High 120 FPS gate remains failed.
 | RCV-07: compiler specialization attribution | Freeze the captured shader's debug-term mask to remove area lighting, shadow receiving, or both; retain every other captured pipeline setting. | Area removal lowers 192 to 144 VGPRs (120 for static models); shadow removal lowers 192 to 144; both lower it to 96 (84 for static models). Diagnostic only: these images intentionally differ and no effect is removed from the product. |
 | RCV-08: compact LTC clipping topology | Store original-edge/intersection identity in 18 bits and reconstruct FP32 vertices, preserving clipping and accumulation order. | Retained: all eight pipelines fall from 192 to 144 VGPRs; four captured MSAA samples match the corrected control exactly. Matched ABBA full-frame trials show 3.25–3.77% lower GPU time. The High floor remains failed. |
 
-RCV-09 is a checkpointed complete-depth experiment. The existing final-target
+RCV-09 retains opaque-model prepass coverage and read-only lit depth. The existing final-target
 world prepass now also records opaque PBR static and posed models before world
 shading, through the same geometry/constants/bindings helper as their lit draws.
 Transmitting/blended models and views with ordered stencil mutations or depth
-overrides retain their existing stream behavior. The posed-model lab passes 68
-checks, including exact single-layer and overlapping-layer depth/control image
+overrides retain their existing stream behavior. Eligible opaque PBR lit draws
+then test equal against the prepassed depth, with depth writes disabled. Merely
+adding model depth while retaining lit depth writes gave about 50 ms GPU time;
+read-only lit depth permits earlier rejection around the shader's clipping and
+discard and reduces arrival GPU time to 35.4–36.1 ms against 55.6 ms control.
+The posed-model lab passes 69 checks, including exact single-layer, overlapping
+posed-layer and overlapping static-instance depth/control image
 comparisons; view-state passes 16. Architecture and changed-line style checks
 pass. Native product compilation changes only the world-pass object and launcher
-library; backend and engine libraries match the saved control. Full-frame
-measurement is in progress; no performance gain or acceptance is claimed yet.
+library. The private runtime changes only that library; all other staged
+libraries remain identical between runs. Two candidate runs have arrival frame
+interval medians 50.482/48.069 ms versus control 60.287 ms. This is a substantial
+GPU improvement, not 120 FPS acceptance; CPU cost now limits more of the frame.
+Control repetition and further image/CPU attribution are in progress. The existing
+map-name assertion mismatch and hard-floor failure remain recorded, with no
+effect, resolution, sample count, light set or tolerance reduced.
 Evidence and immutable variants are in
 `quality-results/rendercore-work-amplification-20261002/`. Work continues in a
 private checkout with independent build and runtime outputs at the user's request.
+That checkout is `/home/john/.codex/worktrees/forward-perf/source-engine`, on
+`codex/forward-perf`; Waf uses separate `.lock-waf-forward-perf` and
+`.lock-waf-forward-lab` locks and `build-forward-perf`/`build-forward-lab` outputs.
+The runtime and raw measurements are `/home/john/.rc-perf-4da389/run` and
+`/home/john/.rc-perf-4da389/evidence`. Each run records and verifies its staged
+launcher hash. Other checkouts' ordinary builds cannot replace these outputs.
 
 RCV-08's image comparison exposed a pre-existing correctness defect before its
 optimization could be accepted. At captured event 3066, primitive 245, pixel

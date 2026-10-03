@@ -2749,9 +2749,31 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		encoder.SetIndexBuffer( buffers.indices, 0, IndexFormat::kUint32 );
 		encoder.DrawIndexed( surface.indexCount, 1, surface.firstIndex, 0, 0 );
 	};
+	const auto &stencil = target.drawState.stencil;
+	const bool depthPrepassSafe =
+	    target.depthPrepass && world->stage && !target.drawState.overrideDepth &&
+	    ( !stencil.enabled || stencil.writeMask == 0 ||
+	        ( stencil.fail == StencilOp::kKeep && stencil.depthFail == StencilOp::kKeep &&
+	            stencil.pass == StencilOp::kKeep ) );
+	auto prepassedState = [&]()
+	{
+		material::SurfaceDrawState state = target.drawState;
+		state.overrideDepth = true;
+		state.depthTest = true;
+		state.depthWrite = false;
+		state.depthCompare = CompareOp::kEqual;
+		return state;
+	};
+	auto opaquePbr = []( const Resources::Material &m )
+	{
+		return m.program.blend == BlendMode::kOpaque && !m.program.sceneColor &&
+		       m.program.name == "pbr";
+	};
+	bool worldDepthReady = depthPrepassSafe;
 	// The opaque (and alpha-tested) surfaces' depth first, into the target's
-	// own depth with its color masked: the lit pass's less-equal test then
-	// rejects hidden fragments before shading them (Doom 2016's prepass). A
+	// own depth with its color masked. Eligible PBR lighting reads that depth
+	// with an equal test and no writes, allowing early rejection despite
+	// the material shader's clipping/discard. A
 	// translucent surface's depth would hide what the stream draws behind
 	// it, so it is not drawn here.
 	if ( target.depthPrepass && world->stage )
@@ -2776,10 +2798,14 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 				        material::kSurfaceSsrTargets );
 				    if ( !variant )
 				    {
+					    worldDepthReady = false;
 					    note( "the depth prepass: " + variant.Error() );
 					    return std::nullopt;
 				    }
-				    return worldStatePipeline( m, variant.Value(), target.drawState );
+				    const auto state = worldStatePipeline( m, variant.Value(), target.drawState );
+				    if ( !state )
+					    worldDepthReady = false;
+				    return state;
 			    } );
 			encoder.EndRendering();
 			encoder.EndLabel();
@@ -2789,12 +2815,8 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 	// identical posed/static geometry before any expensive surface shading.
 	// Stencil mutation and depth overrides are ordered effects, so those
 	// views retain their existing stream ordering.
-	const auto &stencil = target.drawState.stencil;
-	const bool modelDepthPrepass =
-	    target.depthPrepass && world->stage && !target.drawState.overrideDepth &&
-	    ( !stencil.enabled || stencil.writeMask == 0 ||
-	        ( stencil.fail == StencilOp::kKeep && stencil.depthFail == StencilOp::kKeep &&
-	            stencil.pass == StencilOp::kKeep ) );
+	const bool modelDepthPrepass = depthPrepassSafe;
+	bool modelDepthReady = modelDepthPrepass;
 	if ( modelDepthPrepass )
 	{
 		encoder.BeginLabel( "core model depth" );
@@ -2803,14 +2825,14 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		for ( const StaticDraw &draw : staticDraws )
 		{
 			const Resources::Material &m = r.modelMaterials[draw.material];
-			if ( m.program.blend != BlendMode::kOpaque || m.program.sceneColor ||
-			     m.program.name != "pbr" )
+			if ( !opaquePbr( m ) )
 				continue;
 			auto variant = m.resolver->VariantPipeline( m.program,
 			    material::kSurfaceDepthNormal | material::kSurfaceDepthOnly,
 			    material::kSurfaceSsrTargets );
 			if ( !variant )
 			{
+				modelDepthReady = false;
 				complete = false;
 				note( "the model depth prepass: " + variant.Error() );
 				continue;
@@ -2818,6 +2840,7 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 			const auto state = statePipeline( m, variant.Value(), target.drawState );
 			if ( !state )
 			{
+				modelDepthReady = false;
 				complete = false;
 				continue;
 			}
@@ -2835,7 +2858,8 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 	    order, r.materials,
 	    [&]( const Resources::Material &m ) -> std::optional<PipelineId>
 	    {
-		    return worldStatePipeline( m, m.program.request.pipeline, target.drawState,
+		    return worldStatePipeline( m, m.program.request.pipeline,
+		        worldDepthReady && opaquePbr( m ) ? prepassedState() : target.drawState,
 		        frame::DebugSpecializationFor( view.debug, m.program.name ) );
 	    },
 	    true );
@@ -2928,7 +2952,8 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 			complete = false;
 			continue;
 		}
-		const auto state = statePipeline( m, m.program.request.pipeline, target.drawState,
+		const auto state = statePipeline( m, m.program.request.pipeline,
+		    modelDepthReady && opaquePbr( m ) ? prepassedState() : target.drawState,
 		    frame::DebugSpecializationFor( view.debug, m.program.name ) );
 		if ( !state )
 		{

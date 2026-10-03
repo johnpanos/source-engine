@@ -439,7 +439,8 @@ std::optional<std::string> RunChecks(
 	                  RenderCoreDrawPhase phase = RenderCoreDrawPhase::kAll, bool copySource = true,
 	                  WorldPass *under = nullptr, const WorldMaterial *dynamicMaterial = nullptr,
 	                  bool invalidDynamicIndex = false, float underOffset = 0.1f,
-	                  bool depthPrepass = false ) -> std::optional<std::string>
+	                  bool depthPrepass = false,
+	                  bool staticModels = false ) -> std::optional<std::string>
 	{
 		WorldView view;
 		for ( int i = 0; i < 4; ++i )
@@ -469,6 +470,8 @@ std::optional<std::string> RunChecks(
 				draw.indices.back() = 999;
 			view.dynamicDraws.push_back( std::move( draw ) );
 		}
+		else if ( staticModels )
+			view.staticInstances = { 0, 1 };
 		else
 			view.posedModels.push_back( std::move( pose ) );
 		if ( twoLayers )
@@ -567,6 +570,26 @@ std::optional<std::string> RunChecks(
 	results.That( layersDepth.rgba == layersControl.rgba,
 	    "posed-model.overlapping-depth-prepass-exact",
 	    "hidden posed surfaces preserve every lit pixel" );
+	WorldData staticWorld = MeshWorld();
+	WorldData::StaticInstance frontStatic;
+	for ( int i = 0; i < 4; ++i )
+		frontStatic.world[i * 5] = 1.0f;
+	staticWorld.staticInstances.push_back( frontStatic );
+	frontStatic.world[11] = 0.1f;
+	staticWorld.staticInstances.push_back( frontStatic );
+	WorldPass staticPass;
+	staticPass.SetWorld( std::move( staticWorld ) );
+	CanvasImage staticControl, staticDepth;
+	if ( auto why = render( staticPass, 0.0f, true, 4, black, staticControl, false,
+	         RenderCoreDrawPhase::kAll, true, nullptr, nullptr, false, 0.1f, false, true ) )
+		return why;
+	if ( auto why = render( staticPass, 0.0f, true, 4, black, staticDepth, false,
+	         RenderCoreDrawPhase::kAll, true, nullptr, nullptr, false, 0.1f, true, true ) )
+		return why;
+	results.That( staticDepth.rgba == staticControl.rgba && Sum( staticDepth, 16, 32 ) > 0.1f,
+	    "posed-model.static-overlapping-depth-prepass-exact",
+	    "shared static geometry and instance transforms preserve every lit pixel" );
+	staticPass.ReleaseDevice( *device );
 	const float centralLight = Sum( center, 16, 32 );
 	results.That( centralLight > 0.1f && centralLight > Sum( dark, 16, 32 ) * 1.5f,
 	    "posed-model.lit-by-frame-light",
