@@ -17,6 +17,7 @@
 #include "EngineInterface.h"
 #include "IGameUIFuncs.h"
 #include "URLButton.h"
+#include "gameui/graphics_settings_service.h"
 
 class CCvarSlider;
 
@@ -36,6 +37,7 @@ public:
 	virtual void PerformLayout();
 
 	virtual bool RequiresRestart();
+	void CancelPendingChanges() { m_GraphicsSettings.Cancel(); }
 
 private:
     void        SetCurrentResolutionComboItem();
@@ -82,11 +84,10 @@ private:
 	vgui::DHANDLE<class CGammaDialog> m_hGammaDialog;
 
 	bool m_bRequireRestart;
-   MESSAGE_FUNC( OpenThirdPartyVideoCreditsDialog, "OpenThirdPartyVideoCreditsDialog" );
-   vgui::URLButton   *m_pThirdPartyCredits;
-   vgui::DHANDLE<class COptionsSubVideoThirdPartyCreditsDlg> m_OptionsSubVideoThirdPartyCreditsDlg;
+	gameui::GraphicsSettingsService m_GraphicsSettings;
+	MESSAGE_FUNC( OpenThirdPartyVideoCreditsDialog, "OpenThirdPartyVideoCreditsDialog" );
+	vgui::URLButton *m_pThirdPartyCredits;
+	vgui::DHANDLE<class COptionsSubVideoThirdPartyCreditsDlg> m_OptionsSubVideoThirdPartyCreditsDlg;
 };
-
-
 
 #endif // OPTIONS_SUB_VIDEO_H

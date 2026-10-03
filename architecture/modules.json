@@ -212,7 +212,9 @@
         "paths": [
           "appframework/sdl3mgr.cpp"
         ],
-        "allowedEdges": [],
+        "allowedEdges": [
+          "platform.window-provider-contract"
+        ],
         "externalHeaders": [
           "SDL3/SDL.h"
         ],
@@ -252,9 +254,28 @@
       {
         "id": "platform.window-provider-contract",
         "paths": [
-          "public/appframework/window_provider.h"
+          "public/appframework/window_provider.h",
+          "public/appframework/ilauncherwindowpresentation.h"
         ],
         "allowedEdges": []
+      },
+      {
+        "id": "gameui.graphics-settings-contract",
+        "paths": [
+          "public/gameui/graphics_settings_service.h"
+        ],
+        "allowedEdges": []
+      },
+      {
+        "id": "gameui.graphics-settings-tests",
+        "kind": "native-test",
+        "paths": [
+          "unittests/vguitest/test_graphics_settings_service.cpp"
+        ],
+        "allowedEdges": [
+          "gameui.graphics-settings-contract",
+          "testing.contracts"
+        ]
       },
       {
         "id": "render.contracts",

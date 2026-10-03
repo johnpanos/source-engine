@@ -27,6 +27,7 @@ public:
 
 	void Run();
 	virtual void Activate();
+	virtual void OnCancel();
 
 	void OnKeyCodePressed( vgui::KeyCode code );
 

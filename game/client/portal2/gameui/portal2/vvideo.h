@@ -10,6 +10,7 @@
 #include "basemodui.h"
 #include "vflyoutmenu.h"
 #include "optionssubvideo.h"
+#include "gameui/graphics_settings_service.h"
 
 // Matched to number of entries in .RES file
 #define MAX_DYNAMIC_VIDEO_MODES 43
@@ -51,7 +52,7 @@ private:
 	void	SetupState( bool bRecommendedSettings );
 	void	UpdateFooter();
 	void	PrepareResolutionList();
-	void	ApplyChanges();
+	bool ApplyChanges();
 	void	GetResolutionName( vmode_t *pMode, char *pOutBuffer, int nOutBufferSize, bool &bIsNative );
 	void	ShowPowerSavingsWarning();
 	void	SetPowerSavingsState();
@@ -73,6 +74,7 @@ private:
 	BaseModHybridButton		*m_btnAdvanced;
 	
 	bool	m_bDirtyValues;
+	gameui::GraphicsSettingsService m_GraphicsSettings;
 	bool	m_bEnableApply;
 	bool	m_bPreferRecommendedResolution;
 	int		m_iAspectRatio;

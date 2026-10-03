@@ -7,6 +7,7 @@
 
 #include <SDL3/SDL.h>
 #include "appframework/ilaunchermgr.h"
+#include "appframework/ilauncherwindowpresentation.h"
 #include "appframework/window_provider.h"
 #include "tier0/icommandline.h"
 #include <cstdio>
@@ -64,6 +65,39 @@ void CheckResizeRequests( ILauncherMgr &manager )
 		CHECK( SDL_GetWindowSize( window, &actualWidth, &actualHeight ) );
 		CHECK( actualWidth == width && actualHeight == height );
 	}
+}
+
+void CheckWindowPresentation( ILauncherMgr &manager )
+{
+	ILauncherWindowPresentation *presentation = static_cast<ILauncherWindowPresentation *>(
+	    manager.QueryInterface( LAUNCHER_WINDOW_PRESENTATION_INTERFACE_VERSION ) );
+	CHECK( presentation != NULL );
+	if ( !presentation )
+		return;
+	SDL_Window *window = static_cast<SDL_Window *>( manager.GetWindowRef() );
+	CHECK( presentation->ApplyWindowPresentation( true, false ) );
+	CHECK( ( SDL_GetWindowFlags( window ) & SDL_WINDOW_RESIZABLE ) != 0 );
+	CHECK( !presentation->ApplyWindowPresentation( false, true ) );
+	CHECK( ( SDL_GetWindowFlags( window ) & SDL_WINDOW_RESIZABLE ) != 0 );
+	manager.SetWindowFullScreen( true, 640, 480 );
+	CHECK( presentation->ApplyWindowPresentation( false, false ) );
+	CHECK( SDL_SyncWindow( window ) );
+	CHECK( ( SDL_GetWindowFlags( window ) & SDL_WINDOW_FULLSCREEN ) != 0 );
+	CHECK( ( SDL_GetWindowFlags( window ) & SDL_WINDOW_RESIZABLE ) == 0 );
+	manager.SetWindowFullScreen( false, 640, 480 );
+	CHECK( presentation->ApplyWindowPresentation( true, false ) );
+	CHECK( SDL_SyncWindow( window ) );
+	CHECK( ( SDL_GetWindowFlags( window ) & SDL_WINDOW_FULLSCREEN ) == 0 );
+	CHECK( ( SDL_GetWindowFlags( window ) & SDL_WINDOW_RESIZABLE ) != 0 );
+	CHECK( ( SDL_GetWindowFlags( window ) & SDL_WINDOW_BORDERLESS ) == 0 );
+	CHECK( presentation->ApplyWindowPresentation( true, true ) );
+	CHECK( SDL_SyncWindow( window ) );
+	CHECK( ( SDL_GetWindowFlags( window ) & SDL_WINDOW_BORDERLESS ) != 0 );
+	CHECK( ( SDL_GetWindowFlags( window ) & SDL_WINDOW_RESIZABLE ) == 0 );
+	CHECK( presentation->ApplyWindowPresentation( true, false ) );
+	CHECK( SDL_SyncWindow( window ) );
+	CHECK( ( SDL_GetWindowFlags( window ) & SDL_WINDOW_RESIZABLE ) != 0 );
+	CHECK( ( SDL_GetWindowFlags( window ) & SDL_WINDOW_BORDERLESS ) == 0 );
 }
 
 bool HasGTKDecorationPlugin()
@@ -226,6 +260,7 @@ int main( int argc, char **argv )
 	CHECK( manager->GetWindowRef() == window );
 	CheckEvents( *manager );
 	CheckResizeRequests( *manager );
+	CheckWindowPresentation( *manager );
 	if ( CommandLine()->FindParm( "-require-gtk-decoration" ) )
 	{
 		const bool gtkDecoration = HasGTKDecorationPlugin();

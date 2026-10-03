@@ -2015,6 +2015,11 @@ Keep the table concise and link details below or from the domain progress file.
     unverified on a real session.
   - Native now honors the saved `mat_vsync 0` (no longer always FIFO), and
     re-autoconfigures once because the saved adapter IDs were 0.
+  - The 2026-10-03 graphics-settings session and SDL3 window-presentation
+    slice adds draft/apply/cancel/save transitions for the two VGUI video menus,
+    borderless windowed selection, and resize-edge policy. Contract checks and
+    syntax checks pass; the native window sequence still needs a runner with
+    the pinned dependencies. See the [settings section](RFC/0001-native-vulkan-video-options-progress.md#graphics-settings-session-and-window-presentation-2026-10-03).
   - See the [video options record](RFC/0001-native-vulkan-video-options-progress.md).
 
 - R32-EMIT-PARALLEL: `partial` (2026-09-25). Emit's per-vertex conversion is

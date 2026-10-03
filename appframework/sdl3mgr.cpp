@@ -9,6 +9,7 @@
 #include <SDL3/SDL.h>
 
 #include "appframework/ilaunchermgr.h"
+#include "appframework/ilauncherwindowpresentation.h"
 #include "inputsystem/ButtonCode.h"
 #include "tier0/icommandline.h"
 #include "tier1/convar.h"
@@ -82,13 +83,17 @@ int ModifierButton( SDL_Keycode key )
 	}
 }
 
-class CSDL3Mgr : public CBaseAppSystem<ILauncherMgr>
+class CSDL3Mgr : public CBaseAppSystem<ILauncherMgr>, public ILauncherWindowPresentation
 {
 public:
 	~CSDL3Mgr() { Shutdown(); }
 	void *QueryInterface( const char *name ) override
 	{
-		return name && !Q_stricmp( name, SDLMGR_INTERFACE_VERSION ) ? this : NULL;
+		if ( name && !Q_stricmp( name, SDLMGR_INTERFACE_VERSION ) )
+			return static_cast<ILauncherMgr *>( this );
+		if ( name && !Q_stricmp( name, LAUNCHER_WINDOW_PRESENTATION_INTERFACE_VERSION ) )
+			return static_cast<ILauncherWindowPresentation *>( this );
+		return NULL;
 	}
 	InitReturnVal_t Init() override;
 	void Shutdown() override;
@@ -116,6 +121,7 @@ public:
 			SDL_SetWindowPosition( m_Window, x, y );
 	}
 	void SizeWindow( int width, int height ) override;
+	bool ApplyWindowPresentation( bool windowed, bool borderless ) override;
 	void PumpWindowsMessageLoop() override;
 	void DestroyGameWindow() override { DecWindowRefCount(); }
 	void SetApplicationIcon( const char *path ) override;
@@ -365,6 +371,22 @@ void CSDL3Mgr::SizeWindow( int width, int height )
 		return;
 	}
 	SDL_ShowWindow( m_Window );
+}
+
+bool CSDL3Mgr::ApplyWindowPresentation( bool windowed, bool borderless )
+{
+	if ( !m_Window || ( borderless && !windowed ) )
+		return false;
+	const bool wasBorderless = ( SDL_GetWindowFlags( m_Window ) & SDL_WINDOW_BORDERLESS ) != 0;
+	if ( windowed && !SDL_SetWindowBordered( m_Window, !borderless ) )
+		return false;
+	if ( !SDL_SetWindowResizable( m_Window, windowed && !borderless ) )
+	{
+		if ( windowed )
+			SDL_SetWindowBordered( m_Window, !wasBorderless );
+		return false;
+	}
+	return true;
 }
 
 void CSDL3Mgr::SetApplicationIcon( const char *path )

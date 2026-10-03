@@ -42,6 +42,9 @@
 
 #if defined( USE_SDL )
 #include "appframework/ilaunchermgr.h"
+#if defined( USE_SDL3 )
+#include "appframework/ilauncherwindowpresentation.h"
+#endif
 #include "SDL.h"
 #endif
 
@@ -913,16 +916,47 @@ CON_COMMAND(
 }
 #endif
 
-CON_COMMAND( mat_setvideomode, "sets the width, height, windowed state of the material system" )
+CON_COMMAND( mat_setvideomode, "sets width, height, windowed and optional borderless state" )
 {
-	if ( args.ArgC() != 4 )
+	if ( args.ArgC() != 4 && args.ArgC() != 5 )
 		return;
 
 	int nWidth = Q_atoi( args[1] );
 	int nHeight = Q_atoi( args[2] );
 	bool bWindowed = Q_atoi( args[3] ) > 0 ? true : false;
+	bool bBorderless = args.ArgC() == 5 && Q_atoi( args[4] ) > 0;
+	if ( bBorderless && !bWindowed )
+		return;
+	ConVarRef mat_borderless( "mat_borderless" );
+	if ( bBorderless && !mat_borderless.IsValid() )
+		return;
+#if defined( USE_SDL3 )
+	const MaterialSystem_Config_t &current = materials->GetCurrentConfigForVideoCard();
+	const bool sameMode = current.m_VideoMode.m_Width == nWidth &&
+	                      current.m_VideoMode.m_Height == nHeight &&
+	                      current.Windowed() == bWindowed;
+#endif
+	const bool oldBorderless = mat_borderless.IsValid() && mat_borderless.GetBool();
+	if ( mat_borderless.IsValid() )
+		mat_borderless.SetValue( bBorderless ? 1 : 0 );
 
-	videomode->SetMode( nWidth, nHeight, bWindowed );
+	if ( !videomode->SetMode( nWidth, nHeight, bWindowed ) )
+	{
+		if ( mat_borderless.IsValid() )
+			mat_borderless.SetValue( oldBorderless ? 1 : 0 );
+		return;
+	}
+#if defined( USE_SDL3 )
+	// An unchanged material mode has no resize callback; update its decorations now.
+	if ( sameMode && g_pLauncherMgr )
+	{
+		ILauncherWindowPresentation *presentation = static_cast<ILauncherWindowPresentation *>(
+		    g_pLauncherMgr->QueryInterface( LAUNCHER_WINDOW_PRESENTATION_INTERFACE_VERSION ) );
+		if ( presentation && !presentation->ApplyWindowPresentation( bWindowed,
+		                         bBorderless || CommandLine()->FindParm( "-noborder" ) ) )
+			Warning( "Window presentation change failed.\n" );
+	}
+#endif
 }
 #endif
 

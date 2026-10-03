@@ -235,3 +235,46 @@ the float overload, which the owner also uses.
   sample counts and gamma are unmeasured.
 - Wayland FIFO stalls under headless mutter (see P2) need a check on a real
   compositor session.
+
+## Graphics settings session and window presentation (2026-10-03)
+
+The GameUI Video page and Portal 2 Video menu now use one menu-independent
+`GraphicsSettingsService` session for display size, window mode, borderless
+selection, UI scale, and power saving. Its states are saved, editing, and
+applied; Cancel discards only the draft, Apply submits a validated draft, and
+Save follows an accepted Apply. The fake backend suite checks failure, retry,
+cancel, save and fullscreen → decorated windowed → borderless windowed.
+Game-specific advanced settings remain in their owning menus. Resetting the
+GameUI advanced page no longer writes the shadow convar.
+
+`mat_setvideomode` accepts an optional fourth borderless argument. The SDL3
+window provider implements a separately queried `LauncherWindowPresentation001`
+interface, without changing `ILauncherMgr`'s ABI. A decorated window has resize
+edges; fullscreen and borderless windowed do not. The Portal menu now sends the
+engine's accepted command shape and exposes borderless windowed on SDL3. The
+native launcher fixture checks those flags through the requested mode sequence.
+`mat_borderless` is archived; both menus save after submitting their mode request.
+
+Evidence in this worktree: [`vgui.graphics_settings`](../unittests/vguitest/test_graphics_settings_service.cpp)
+passes the shared conformance runner in default and release (`-DNDEBUG`)
+configurations with 31 checks each. The local evidence is retained at
+`quality-results/graphics-settings/{default,release}.json`; reproduce with
+`python3 tools/quality/conformance.py check --suite vgui.graphics_settings`
+and repeat with `--config release`. Syntax checks pass
+for GameUI, the SDL3 provider, the native launcher fixture,
+`matsys_interface.cpp`, and `sys_getmodes.cpp` with the SDL3 compatibility
+headers. `archlint check --all`, `archlint baseline --verify`, its 166 unit
+tests, and changed-file stylelint pass. The Portal 2 client and native launcher
+fixture have not run:
+this worktree has no populated `thirdparty/` dependencies or complete Portal 2
+client source. `archlint inventory --verify` is likewise unavailable because
+the Box3D vendor paths are absent. No native behavior or platform release gate
+is certified by these source and syntax checks. The engine command queue accepts
+submissions without an application acknowledgment, so the session's applied
+state means submitted; installed-runtime checks must confirm the resulting mode
+and saved state.
+
+A separate SDL 3.4.16 window API smoke on the active Wayland session returned
+the expected final flags after synchronization for decorated windowed →
+fullscreen fixed → decorated windowed → borderless fixed → decorated windowed.
+It exercises the SDL calls, not the engine's compiled mode path.

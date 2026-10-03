@@ -95,6 +95,21 @@ m_autodelete_pResourceLoadConditions( (KeyValues*) NULL )
 	m_iCurrentResolutionWidth = config.m_VideoMode.m_Width;
 	m_iCurrentResolutionHeight = config.m_VideoMode.m_Height;
 	m_bCurrentWindowed = config.Windowed();
+	gameui::GraphicsSettings current;
+	current.width = config.m_VideoMode.m_Width;
+	current.height = config.m_VideoMode.m_Height;
+	current.windowed = config.Windowed();
+#if defined( USE_SDL3 )
+	CGameUIConVarRef borderless( "mat_borderless" );
+	current.borderless = current.windowed && borderless.IsValid() && borderless.GetBool();
+#elif !defined( POSIX )
+	current.borderless = current.windowed && config.NoWindowBorder();
+#endif
+	CGameUIConVarRef uiScale( "ui_scale" );
+	CGameUIConVarRef powerSaving( "mat_powersavingsmode" );
+	current.uiScale = uiScale.IsValid() ? uiScale.GetFloat() : 0.0f;
+	current.powerSaving = powerSaving.IsValid() ? clamp( powerSaving.GetInt(), 0, 1 ) : 0;
+	m_GraphicsSettings.Begin( current );
 
 	GetRecommendedSettings();
 
@@ -236,6 +251,7 @@ static void DiscardChangesOkCallback()
 
 void Video::DiscardChangesAndClose()
 {
+	m_GraphicsSettings.Cancel();
 	if ( !m_bCurrentWindowed )
 	{
 		// the brightness slider is not part of apply, so need to restore when discarding
@@ -263,8 +279,11 @@ void Video::SetupState( bool bUseRecommendedSettings )
 		m_iResolutionHeight = config.m_VideoMode.m_Height;
 		m_iAspectRatio = GetScreenAspectMode( m_iResolutionWidth, m_iResolutionHeight );
 		m_bWindowed = config.Windowed();
-#if !defined( POSIX )
-		m_bNoBorder = config.NoWindowBorder();
+#if defined( USE_SDL3 )
+		CGameUIConVarRef borderless( "mat_borderless" );
+		m_bNoBorder = config.Windowed() && borderless.IsValid() && borderless.GetBool();
+#elif !defined( POSIX )
+		m_bNoBorder = config.Windowed() && config.NoWindowBorder();
 #else
 		m_bNoBorder = false;
 #endif
@@ -290,7 +309,7 @@ void Video::SetupState( bool bUseRecommendedSettings )
 		m_bDirtyValues = true;
 		m_bPreferRecommendedResolution = true;
 	}
-	
+
 	PrepareResolutionList();
 
 	SetControlEnabled( "SldBrightness", !m_bCurrentWindowed );
@@ -316,7 +335,13 @@ void Video::SetupState( bool bUseRecommendedSettings )
 	{
 		if ( m_bWindowed )
 		{
-#if !defined( POSIX )
+#if defined( USE_SDL3 )
+			if ( m_bNoBorder )
+			{
+				m_drpDisplayMode->SetCurrentSelection( "Borderless windowed" );
+			}
+			else
+#elif !defined( POSIX )
 			if ( m_bNoBorder )
 			{
 				m_drpDisplayMode->SetCurrentSelection( "#L4D360UI_VideoOptions_Windowed_NoBorder" );
@@ -350,8 +375,9 @@ void Video::OnKeyCodePressed(KeyCode code)
 	{
 	case KEY_XBUTTON_A:
 		// apply changes and close
-		ApplyChanges();
-		BaseClass::OnKeyCodePressed( ButtonCodeToJoystickButtonCode( KEY_XBUTTON_B, CBaseModPanel::GetSingleton().GetLastActiveUserId() ) );
+		if ( ApplyChanges() )
+			BaseClass::OnKeyCodePressed( ButtonCodeToJoystickButtonCode(
+			    KEY_XBUTTON_B, CBaseModPanel::GetSingleton().GetLastActiveUserId() ) );
 		break;
 
 	case KEY_XBUTTON_B:
@@ -369,7 +395,7 @@ void Video::OnKeyCodePressed(KeyCode code)
 			data.pfnOkCallback = &DiscardChangesOkCallback;
 			data.pOkButtonText = "#PORTAL2_ButtonAction_Discard";
 			data.bCancelButtonEnabled = true;
-			pConfirmation->SetUsageData( data );	
+			pConfirmation->SetUsageData( data );
 		}
 		else
 		{
@@ -428,8 +454,8 @@ void Video::OnCommand( const char *command )
 		int iCommandNumberPosition = Q_strlen( VIDEO_RESOLUTION_COMMAND_PREFIX );
 		int iResolution = clamp( command[ iCommandNumberPosition ] - '0', 0, m_nNumResolutionModes - 1 );
 
-		m_iResolutionWidth = m_nResolutionModes[ iResolution ].m_nWidth;
-		m_iResolutionHeight = m_nResolutionModes[ iResolution ].m_nHeight;
+		m_iResolutionWidth = m_nResolutionModes[iResolution].m_nWidth;
+		m_iResolutionHeight = m_nResolutionModes[iResolution].m_nHeight;
 
 		m_bDirtyValues = true;
 	}
@@ -442,6 +468,15 @@ void Video::OnCommand( const char *command )
 	}
 #if !defined( POSIX )
 	else if ( !V_stricmp( command, "#L4D360UI_VideoOptions_Windowed_NoBorder" ) )
+	{
+		m_bWindowed = true;
+		m_bNoBorder = true;
+		m_bDirtyValues = true;
+		PrepareResolutionList();
+	}
+#endif
+#if defined( USE_SDL3 )
+	else if ( !V_stricmp( command, "BorderlessWindowed" ) )
 	{
 		m_bWindowed = true;
 		m_bNoBorder = true;
@@ -811,59 +846,81 @@ void Video::PrepareResolutionList()
 		m_drpResolution->SetCurrentSelection( szString );
 	}
 
-	m_iResolutionWidth = m_nResolutionModes[ selectedItemID ].m_nWidth;
-	m_iResolutionHeight = m_nResolutionModes[ selectedItemID ].m_nHeight;
+	m_iResolutionWidth = m_nResolutionModes[selectedItemID].m_nWidth;
+	m_iResolutionHeight = m_nResolutionModes[selectedItemID].m_nHeight;
 }
 
-void Video::ApplyChanges()
+// Portal's command adapter; the session owns draft/apply/save transitions.
+class PortalGraphicsBackend final : public gameui::IGraphicsSettingsBackend
 {
-	if ( m_bDirtyValues || 
-		( m_sldBrightness && m_sldBrightness->IsDirty() ) )
+public:
+	bool Apply( const gameui::GraphicsSettings &from, const gameui::GraphicsSettings &to ) override
 	{
-		// Make sure there is a genuine state change required
-		const MaterialSystem_Config_t &config = materials->GetCurrentConfigForVideoCard();
-		if ( config.m_VideoMode.m_Width != m_iResolutionWidth || 
-			 config.m_VideoMode.m_Height != m_iResolutionHeight || 
-#if !defined( POSIX )
-			 config.NoWindowBorder() != m_bNoBorder ||
-#endif
-			 config.Windowed() != m_bWindowed )
+		CGameUIConVarRef powerSaving( "mat_powersavingsmode" );
+		CGameUIConVarRef uiScale( "ui_scale" );
+		if ( ( from.powerSaving != to.powerSaving && !powerSaving.IsValid() ) ||
+		     ( from.uiScale != to.uiScale && !uiScale.IsValid() ) )
+			return false;
+		if ( to.borderless && !to.windowed )
+			return false;
+		if ( from.width != to.width || from.height != to.height || from.windowed != to.windowed ||
+		     from.borderless != to.borderless )
 		{
-			// set mode
-			char szCmd[ 256 ];
-			V_snprintf( szCmd, sizeof( szCmd ), "mat_setvideomode %i %i %i %i\n", m_iResolutionWidth, m_iResolutionHeight, m_bWindowed ? 1 : 0, m_bNoBorder ? 1 : 0 );
-			engine->ClientCmd_Unrestricted( szCmd );
+			char command[256];
+			V_snprintf( command, sizeof( command ), "mat_setvideomode %d %d %d %d\n", to.width,
+			    to.height, to.windowed ? 1 : 0, to.borderless ? 1 : 0 );
+			engine->ClientCmd_Unrestricted( command );
 		}
-	
-		CGameUIConVarRef mat_powersavingsmode( "mat_powersavingsmode" );
-		mat_powersavingsmode.SetValue( m_nPowerSavingsMode );
+		if ( from.powerSaving != to.powerSaving )
+			powerSaving.SetValue( to.powerSaving );
+		if ( from.uiScale != to.uiScale )
+			uiScale.SetValue( to.uiScale );
+		return true;
+	}
 
-		// A choice that matches the current value keeps it exactly (a console
-		// value such as 1.4 shows as its nearest choice).
-		CGameUIConVarRef ui_scale( "ui_scale" );
-		if ( ui_scale.IsValid() &&
-		     GetUIScaleChoice( ui_scale.GetFloat() ) != GetUIScaleChoice( m_flUIScale ) )
-		{
-			ui_scale.SetValue( m_flUIScale );
-		}
-
-		// save changes
+	bool Save() override
+	{
 		engine->ClientCmd_Unrestricted( "mat_savechanges\n" );
-		engine->ClientCmd_Unrestricted( VarArgs( "host_writeconfig_ss %d", XBX_GetPrimaryUserId() ) );
+		engine->ClientCmd_Unrestricted(
+		    VarArgs( "host_writeconfig_ss %d", XBX_GetPrimaryUserId() ) );
+		return true;
+	}
+};
+
+bool Video::ApplyChanges()
+{
+	if ( m_bDirtyValues || ( m_sldBrightness && m_sldBrightness->IsDirty() ) )
+	{
+		gameui::GraphicsSettings desired = m_GraphicsSettings.Applied();
+		desired.width = m_iResolutionWidth;
+		desired.height = m_iResolutionHeight;
+		desired.windowed = m_bWindowed;
+		desired.borderless = m_bNoBorder;
+		desired.powerSaving = m_nPowerSavingsMode;
+		// Keep an exact console value when the selected menu choice is its nearest label.
+		if ( GetUIScaleChoice( desired.uiScale ) != GetUIScaleChoice( m_flUIScale ) )
+			desired.uiScale = m_flUIScale;
+		PortalGraphicsBackend backend;
+		if ( !m_GraphicsSettings.Stage( desired ) || !m_GraphicsSettings.Apply( backend ) ||
+		     !m_GraphicsSettings.Save( backend ) )
+			return false;
 
 		// Update the current video config file.
 #if !defined( _GAMECONSOLE )
-		int nAspectRatioMode = GetScreenAspectMode( config.m_VideoMode.m_Width, config.m_VideoMode.m_Height );
-#if !defined( POSIX )
-		UpdateCurrentVideoConfig( config.m_VideoMode.m_Width, config.m_VideoMode.m_Height, nAspectRatioMode, !config.Windowed(), config.NoWindowBorder() );
+		int nAspectRatioMode = GetScreenAspectMode( desired.width, desired.height );
+#if defined( USE_SDL3 ) || !defined( POSIX )
+		UpdateCurrentVideoConfig( desired.width, desired.height, nAspectRatioMode,
+		    !desired.windowed, desired.borderless );
 #else
 		// Portal 2 port: POSIX builds have no borderless window mode (as retail).
-		UpdateCurrentVideoConfig( config.m_VideoMode.m_Width, config.m_VideoMode.m_Height, nAspectRatioMode, !config.Windowed(), false );
+		UpdateCurrentVideoConfig(
+		    desired.width, desired.height, nAspectRatioMode, !desired.windowed, false );
 #endif
 #endif
 
 		m_bDirtyValues = false;
 	}
+	return true;
 }
 
 void Video::OnThink()
@@ -979,6 +1036,15 @@ static int MoveRowBelow( KeyValues *pAbove, KeyValues *pScale, KeyValues *pAdvan
 //-----------------------------------------------------------------------------
 void Video::PreApplyControlSettings( KeyValues *pResourceData )
 {
+#if defined( USE_SDL3 )
+	if ( pResourceData )
+	{
+		KeyValues *pDisplay = pResourceData->FindKey( "DrpDisplayMode" );
+		if ( pDisplay )
+			pDisplay->FindKey( "list", true )
+			    ->SetString( "Borderless windowed", "BorderlessWindowed" );
+	}
+#endif
 	if ( !pResourceData || pResourceData->FindKey( "DrpUIScale" ) )
 		return;
 

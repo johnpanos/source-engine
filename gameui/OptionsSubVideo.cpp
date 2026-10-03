@@ -1115,7 +1115,6 @@ public:
 
 		if ( r_flashlightdepthtexture.GetBool() )		// If we're doing flashlight shadow depth texturing...
 		{
-			r_shadowrendertotexture.SetValue( 1 );		// ...be sure render to texture shadows are also on
 			m_pShadowDetail->ActivateItem( 2 );
 		}
 		else if ( r_shadowrendertotexture.GetBool() )	// RTT shadows, but not shadow depth texturing
@@ -1448,6 +1447,9 @@ COptionsSubVideo::COptionsSubVideo(vgui::Panel *parent) : PropertyPage(parent, N
 	if ( numVideoDisplays <= 1 )
 	{
 		m_pWindowed->AddItem( "#GameUI_Fullscreen", NULL );
+#if defined( USE_SDL3 ) && !defined( MOBILE_VIDEO_OPTIONS )
+		m_pWindowed->AddItem( "Borderless windowed", NULL );
+#endif
 		m_pWindowed->AddItem( "#GameUI_Windowed", NULL );
 	}
 	else
@@ -1466,6 +1468,9 @@ COptionsSubVideo::COptionsSubVideo(vgui::Panel *parent) : PropertyPage(parent, N
 			m_pWindowed->AddItem( ItemText, NULL );
 		}
 
+#if defined( USE_SDL3 ) && !defined( MOBILE_VIDEO_OPTIONS )
+		m_pWindowed->AddItem( "Borderless windowed", NULL );
+#endif
 		m_pWindowed->AddItem( "#GameUI_Windowed", NULL );
 	}
 
@@ -1473,6 +1478,9 @@ COptionsSubVideo::COptionsSubVideo(vgui::Panel *parent) : PropertyPage(parent, N
 	m_pWindowed = new vgui::ComboBox( this, "DisplayModeCombo", 6, false );
 
 	m_pWindowed->AddItem( "#GameUI_Fullscreen", NULL );
+#if defined( USE_SDL3 ) && !defined( MOBILE_VIDEO_OPTIONS )
+	m_pWindowed->AddItem( "Borderless windowed", NULL );
+#endif
 	m_pWindowed->AddItem( "#GameUI_Windowed", NULL );
 #endif
 
@@ -1544,7 +1552,11 @@ void COptionsSubVideo::PrepareResolutionList()
 	const MaterialSystem_Config_t &config = materials->GetCurrentConfigForVideoCard();
 
 	// Windowed is the last item in the combobox.
-	bool bWindowed = ( m_pWindowed->GetActiveItem() >= ( m_pWindowed->GetItemCount() - 1 ) );
+#if defined( USE_SDL3 ) && !defined( MOBILE_VIDEO_OPTIONS )
+	bool bWindowed = m_pWindowed->GetActiveItem() >= m_pWindowed->GetItemCount() - 2;
+#else
+	bool bWindowed = m_pWindowed->GetActiveItem() == m_pWindowed->GetItemCount() - 1;
+#endif
 	int desktopWidth, desktopHeight;
 	gameuifuncs->GetDesktopResolution( desktopWidth, desktopHeight );
 
@@ -1733,15 +1745,20 @@ void COptionsSubVideo::OnResetData()
 	m_bRequireRestart = false;
 
 	const MaterialSystem_Config_t &config = materials->GetCurrentConfigForVideoCard();
+	ConVarRef mat_borderless( "mat_borderless" );
 
-    // reset UI elements
+	// reset UI elements
 #if defined( USE_SDL ) && defined( DX_TO_GL_ABSTRACTION )
 	int ItemIndex;
 
 	if ( config.Windowed() )
 	{
 		// Last item in the combobox is Windowed.
-		ItemIndex = ( m_pWindowed->GetItemCount() - 1 );
+		ItemIndex = m_pWindowed->GetItemCount() - 1;
+#if defined( USE_SDL3 ) && !defined( MOBILE_VIDEO_OPTIONS )
+		if ( mat_borderless.IsValid() && mat_borderless.GetBool() )
+			--ItemIndex;
+#endif
 	}
 	else
 	{
@@ -1757,7 +1774,12 @@ void COptionsSubVideo::OnResetData()
 
     m_pWindowed->ActivateItem( ItemIndex );
 #else
-    m_pWindowed->ActivateItem( config.Windowed() ? 1 : 0 );
+	int ItemIndex = config.Windowed() ? m_pWindowed->GetItemCount() - 1 : 0;
+#if defined( USE_SDL3 ) && !defined( MOBILE_VIDEO_OPTIONS )
+	if ( config.Windowed() && mat_borderless.IsValid() && mat_borderless.GetBool() )
+		--ItemIndex;
+#endif
+	m_pWindowed->ActivateItem( ItemIndex );
 #endif
 
 	// reset gamma control
@@ -1782,6 +1804,19 @@ void COptionsSubVideo::OnResetData()
 	if ( m_pFrameRate->GetItemCount() == 2 )
 		m_pFrameRate->SilentActivateItemByRow(
 		    mat_powersavingsmode.IsValid() && mat_powersavingsmode.GetBool() ? 1 : 0 );
+
+	gameui::GraphicsSettings current;
+	current.width = config.m_VideoMode.m_Width;
+	current.height = config.m_VideoMode.m_Height;
+	current.windowed = config.Windowed();
+	current.borderless = current.windowed && mat_borderless.IsValid() && mat_borderless.GetBool();
+	current.vrEnabled = config.m_nVRModeAdapter != -1;
+#if defined( USE_SDL )
+	current.displayIndex = getSDLDisplayIndex();
+#endif
+	current.uiScale = ui_scale.IsValid() ? ui_scale.GetFloat() : 0.0f;
+	current.powerSaving = mat_powersavingsmode.IsValid() && mat_powersavingsmode.GetBool() ? 1 : 0;
+	m_GraphicsSettings.Begin( current );
 }
 
 //-----------------------------------------------------------------------------
@@ -1912,37 +1947,65 @@ void COptionsSubVideo::SetCurrentResolutionComboItem()
 }
 
 //-----------------------------------------------------------------------------
-// Purpose: restarts the game
+// Purpose: Submit the shared graphics transaction through this menu's engine adapter.
+//-----------------------------------------------------------------------------
+class GameUIGraphicsBackend final : public gameui::IGraphicsSettingsBackend
+{
+public:
+	bool Apply( const gameui::GraphicsSettings &from, const gameui::GraphicsSettings &to ) override
+	{
+		ConVarRef uiScale( "ui_scale" );
+		ConVarRef powerSaving( "mat_powersavingsmode" );
+		if ( ( from.uiScale != to.uiScale && !uiScale.IsValid() ) ||
+		     ( from.powerSaving != to.powerSaving && !powerSaving.IsValid() ) )
+			return false;
+
+#if defined( USE_SDL )
+		ConVarRef displayIndex( "sdl_displayindex" );
+		if ( !to.windowed && from.displayIndex != to.displayIndex && !displayIndex.IsValid() )
+			return false;
+#endif
+
+		char command[256];
+		if ( from.vrEnabled != to.vrEnabled )
+		{
+			Q_snprintf(
+			    command, sizeof( command ), "mat_enable_vrmode %d\n", to.vrEnabled ? 1 : 0 );
+			engine->ClientCmd_Unrestricted( command );
+		}
+#if defined( USE_SDL )
+		if ( !to.windowed && from.displayIndex != to.displayIndex )
+			displayIndex.SetValue( to.displayIndex );
+#endif
+		if ( from.width != to.width || from.height != to.height || from.windowed != to.windowed ||
+		     from.borderless != to.borderless ||
+		     ( !to.windowed && from.displayIndex != to.displayIndex ) )
+		{
+			Q_snprintf( command, sizeof( command ), "mat_setvideomode %d %d %d %d\n", to.width,
+			    to.height, to.windowed ? 1 : 0, to.borderless ? 1 : 0 );
+			engine->ClientCmd_Unrestricted( command );
+		}
+		if ( from.uiScale != to.uiScale )
+			uiScale.SetValue( to.uiScale );
+		if ( from.powerSaving != to.powerSaving )
+			powerSaving.SetValue( to.powerSaving );
+		return true;
+	}
+
+	bool Save() override
+	{
+		// Command buffer order keeps the mode request ahead of persistence.
+		engine->ClientCmd_Unrestricted( "mat_savechanges\n" );
+		engine->ClientCmd_Unrestricted( "host_writeconfig\n" );
+		return true;
+	}
+};
+
+//-----------------------------------------------------------------------------
+// Purpose: Apply the edited settings and persist only a submitted transaction.
 //-----------------------------------------------------------------------------
 void COptionsSubVideo::OnApplyChanges()
 {
-	if ( RequiresRestart() )
-	{
-		INetChannelInfo *nci = engine->GetNetChannelInfo();
-		if ( nci )
-		{
-			// Only retry if we're not running the server
-			const char *pAddr = nci->GetAddress();
-			if ( pAddr )
-			{
-				if ( Q_strncmp(pAddr,"127.0.0.1",9) && Q_strncmp(pAddr,"localhost",9) )
-				{
-					engine->ClientCmd_Unrestricted( "retry\n" );
-				}
-				else
-				{
-					engine->ClientCmd_Unrestricted( "disconnect\n" );
-				}
-			}
-		}
-	}
-
-	// apply advanced options
-	if (m_hOptionsSubVideoAdvancedDlg.Get())
-	{
-		m_hOptionsSubVideoAdvancedDlg->ApplyChanges();
-	}
-
 	// resolution
 	char sz[256];
 	if ( m_nSelectedMode == -1 )
@@ -1958,71 +2021,75 @@ void COptionsSubVideo::OnApplyChanges()
 	sscanf( sz, "%i x %i", &width, &height );
 
 	// windowed
-	bool bConfigChanged = false;
-	bool windowed = ( m_pWindowed->GetActiveItem() == ( m_pWindowed->GetItemCount() - 1 ) ) ? true : false;
+#if defined( USE_SDL3 ) && !defined( MOBILE_VIDEO_OPTIONS )
+	bool windowed = m_pWindowed->GetActiveItem() >= m_pWindowed->GetItemCount() - 2;
+#else
+	bool windowed = m_pWindowed->GetActiveItem() == m_pWindowed->GetItemCount() - 1;
+#endif
 	const MaterialSystem_Config_t &config = materials->GetCurrentConfigForVideoCard();
 
 	bool bVRMode = m_pVRMode->GetActiveItem() != 0;
 	if( ( -1 != config.m_nVRModeAdapter ) != bVRMode )
 	{
-		// let engine fill in mat_vrmode_adapter 
-		char szCmd[256];
-		Q_snprintf( szCmd, sizeof(szCmd), "mat_enable_vrmode %d\n", bVRMode ? 1 : 0 );
-		engine->ClientCmd_Unrestricted( szCmd );
-
 		// force windowed. VR mode ignores this flag and desktop mode needs to be in a window always
 		windowed = bVRMode;
 	}
 
-
-	// make sure there is a change
-	if ( config.m_VideoMode.m_Width != width
-		|| config.m_VideoMode.m_Height != height
-		|| config.Windowed() != windowed )
-	{
-		bConfigChanged = true;
-	}
+	gameui::GraphicsSettings desired = m_GraphicsSettings.Applied();
+	desired.width = width;
+	desired.height = height;
+	desired.windowed = windowed;
+#if defined( USE_SDL3 ) && !defined( MOBILE_VIDEO_OPTIONS )
+	desired.borderless =
+	    windowed && m_pWindowed->GetActiveItem() == m_pWindowed->GetItemCount() - 2;
+#endif
+	desired.vrEnabled = bVRMode;
+	desired.uiScale = GetSelectedUIScale();
+	if ( m_pFrameRate->GetItemCount() == 2 )
+		desired.powerSaving = m_pFrameRate->GetActiveItem() == 1 ? 1 : 0;
 
 #if defined( USE_SDL )
 	if ( !windowed )
 	{
 		SDL_Rect rect;
 		int displayIndexTarget = m_pWindowed->GetActiveItem();
-		int displayIndexCurrent = getSDLDisplayIndexFullscreen();
+		desired.displayIndex = displayIndexTarget;
 
-		// Handle going fullscreen from display X to display Y.
-		if ( displayIndexCurrent != displayIndexTarget )
-		{
-			static ConVarRef sdl_displayindex( "sdl_displayindex" );
-
-			if ( sdl_displayindex.IsValid() )
-			{
-				// Set the displayindex we want to go fullscreen on now.
-				sdl_displayindex.SetValue( displayIndexTarget );
-				bConfigChanged = true;
-			}
-		}
-
-		if ( !SDL_GetDisplayBounds( displayIndexTarget, &rect ) )
+		if ( !SDL_GetDisplayBounds( displayIndexTarget, &rect ) && rect.w > 0 )
 		{
 			// If we are going non-native fullscreen, tweak the resolution to have the same aspect ratio as the display.
 			if ( ( width != rect.w ) || ( height != rect.h ) )
 			{
 				// TODO: We may want a convar to allow folks to mess with their aspect ratio?
 				height = ( width * rect.h ) / rect.w;
-				bConfigChanged = true;
 			}
 		}
 	}
 #endif // USE_SDL
+	desired.height = height;
 
-	if ( bConfigChanged )
+	GameUIGraphicsBackend backend;
+	if ( !m_GraphicsSettings.Stage( desired ) )
+		return;
+	if ( !m_GraphicsSettings.Apply( backend ) )
+		return;
+	if ( RequiresRestart() )
 	{
-		// set mode
-		char szCmd[ 256 ];
-		Q_snprintf( szCmd, sizeof( szCmd ), "mat_setvideomode %i %i %i\n", width, height, windowed ? 1 : 0 );
-		engine->ClientCmd_Unrestricted( szCmd );
+		INetChannelInfo *nci = engine->GetNetChannelInfo();
+		if ( nci )
+		{
+			const char *pAddr = nci->GetAddress();
+			if ( pAddr )
+			{
+				if ( Q_strncmp( pAddr, "127.0.0.1", 9 ) && Q_strncmp( pAddr, "localhost", 9 ) )
+					engine->ClientCmd_Unrestricted( "retry\n" );
+				else
+					engine->ClientCmd_Unrestricted( "disconnect\n" );
+			}
+		}
 	}
+	if ( m_hOptionsSubVideoAdvancedDlg.Get() )
+		m_hOptionsSubVideoAdvancedDlg->ApplyChanges();
 
 	if ( ModInfo().HasHDContent() )
 	{
@@ -2037,22 +2104,7 @@ void COptionsSubVideo::OnApplyChanges()
 	}
 
 	// apply changes
-	engine->ClientCmd_Unrestricted( "mat_savechanges\n" );
-
-	// The UI relays out at the new scale on its next frame.
-	static ConVarRef ui_scale( "ui_scale" );
-	const float flUIScale = GetSelectedUIScale();
-	if ( ui_scale.IsValid() && ui_scale.GetFloat() != flUIScale )
-		ui_scale.SetValue( flUIScale );
-
-	// Half the display's rate caps fps_max there (engine/sys_engine.cpp).
-	static ConVarRef mat_powersavingsmode( "mat_powersavingsmode" );
-	if ( m_pFrameRate->GetItemCount() == 2 && mat_powersavingsmode.IsValid() )
-	{
-		const bool bPowerSaving = m_pFrameRate->GetActiveItem() == 1;
-		if ( mat_powersavingsmode.GetBool() != bPowerSaving )
-			mat_powersavingsmode.SetValue( bPowerSaving ? 1 : 0 );
-	}
+	m_GraphicsSettings.Save( backend );
 }
 
 //-----------------------------------------------------------------------------

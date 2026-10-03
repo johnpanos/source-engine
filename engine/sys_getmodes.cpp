@@ -19,6 +19,7 @@ typedef void *HDC;
 #endif
 
 #include "appframework/ilaunchermgr.h"
+#include "appframework/ilauncherwindowpresentation.h"
 
 #include "basetypes.h"
 #include "sysexternal.h"
@@ -1457,6 +1458,16 @@ void CVideoMode_Common::AdjustWindow( int nWidth, int nHeight, int nBPP, bool bW
 
 	g_pLauncherMgr->SizeWindow( windowWidth, windowHeight );
 
+#if defined( USE_SDL3 )
+	ILauncherWindowPresentation *presentation = static_cast<ILauncherWindowPresentation *>(
+	    g_pLauncherMgr->QueryInterface( LAUNCHER_WINDOW_PRESENTATION_INTERFACE_VERSION ) );
+	ConVarRef mat_borderless( "mat_borderless" );
+	const bool borderless =
+	    bWindowed && ( m_bVROverride || CommandLine()->FindParm( "-noborder" ) ||
+	                     ( mat_borderless.IsValid() && mat_borderless.GetBool() ) );
+	if ( presentation && !presentation->ApplyWindowPresentation( bWindowed, borderless ) )
+		Warning( "Window presentation change failed.\n" );
+#else
 	if( bWindowed )
 	{
 		SDL_Window* win = (SDL_Window*)g_pLauncherMgr->GetWindowRef();
@@ -1466,6 +1477,7 @@ void CVideoMode_Common::AdjustWindow( int nWidth, int nHeight, int nBPP, bool bW
 			SDL_SetWindowBordered( win, SDL_TRUE );
 			
 	}
+#endif
 #endif
 
 	game->SetWindowSize( nWidth, nHeight );
@@ -2451,6 +2463,8 @@ bool CVideoMode_MaterialSystem::SetMode( int nWidth, int nHeight, bool bWindowed
 }
 
 #if defined( USE_SDL3 )
+static ConVar mat_borderless(
+    "mat_borderless", "0", FCVAR_ARCHIVE, "Windowed without decorations or resize edges" );
 // Windowed fullscreen: a fullscreen window whose extent the system owns (the
 // desktop size, or the whole display on mobile). Its back buffer follows the
 // drawable at native resolution, so rotation, a foldable's display swap or a

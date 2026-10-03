@@ -132,6 +132,12 @@ void COptionsDialog::Activate()
 	EnableApplyButton(false);
 }
 
+void COptionsDialog::OnCancel()
+{
+	m_pOptionsSubVideo->CancelPendingChanges();
+	BaseClass::OnCancel();
+}
+
 void COptionsDialog::OnKeyCodePressed( KeyCode code )
 {
 	switch ( GetBaseButtonCode( code ) )
