@@ -297,8 +297,8 @@ class AuditTest(unittest.TestCase):
 
     def test_badly_fitted_or_sparse_probes_fail(self):
         receipt = {"status": "pass", "probes": 1, "width": 512,
-                   "max_mean_relative_residual": 0.9,
-                   "fits": [{"index": 0, "role": "room", "mean_relative_residual": 0.9}],
+                   "max_mean_relative_residual": 2.16,
+                   "fits": [{"index": 0, "role": "room", "mean_relative_residual": 2.16}],
                    "placement": {"walkable_samples": 100, "uncovered_walkable": 30,
                                  "glossy_samples": 10, "glossy_servable": 10,
                                  "unserved_glossy": 8, "room_stop": "max_probes",
