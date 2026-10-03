@@ -29,7 +29,13 @@ def build(bld):
 		use=['vtf_texture_reader', 'texturecontainer', 'KTXREAD', 'vtf',
 			'bitmap', 'mathlib', 'tier0', 'tier1', 'tier2'],
 		install_path=None)
+	# Hammer's decoder and the shared VTF reader exchange std::string through
+	# decompression callbacks. Both conformance targets must use the reader's
+	# C++ ABI; IVTFTexture/CUtlBuffer retain their legacy ABI independently.
+	shared_env = bld.env.derive()
+	shared_env.DEFINES = [d for d in bld.env.DEFINES if not d.startswith('_GLIBCXX_USE_CXX11_ABI=')]
 	bld.program(
+		env=shared_env,
 		features='c cxx',
 		source=[
 			'../hammertest/formats/test_ktx2_preview.cpp',
@@ -46,10 +52,6 @@ def build(bld):
 		use=['texturecontainer', 'KTXREAD', 'vtf_container'],
 		install_path=None)
 
-	# IVTFTexture/CUtlBuffer retain their legacy ABI; the test's std::string
-	# callbacks use the strict content libraries' C++ ABI.
-	shared_env = bld.env.derive()
-	shared_env.DEFINES = [d for d in bld.env.DEFINES if not d.startswith('_GLIBCXX_USE_CXX11_ABI=')]
 	bld.program(
 		env=shared_env,
 		features='c cxx',

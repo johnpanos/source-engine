@@ -31,6 +31,8 @@ extern IMaterialSystem	*materials;
 
 #include <vector>
 
+#include <vector>
+
 #include "materialsystem/itexture.h"
 #include "materialsystem/imaterialsystem.h"
 #include "materialsystem/MaterialSystemUtil.h"
@@ -76,6 +78,8 @@ class CBinkMaterial : public IVideoMaterial
 		CBinkMaterial();
 		~CBinkMaterial();
 		
+		static void TestCachedFrames( const char *filename, const char *invalidFilename );
+
 		static const int			MAX_FILENAME_LEN = 255;
 		static const int			MAX_MATERIAL_NAME_LEN = 255;	
 		static const int			TEXTURE_SIZE_ALIGNMENT = 8;
@@ -147,6 +151,8 @@ class CBinkMaterial : public IVideoMaterial
 		bool						DecodeNextFrame();
 		bool PreloadFrames( const char *pTextureName );
 		void SelectCachedFrame( int frame );
+		bool PreloadFrames( const char *pTextureName );
+		void SelectCachedFrame( int frame );
 		bool						Rewind( double flTime );
 
 		// Initializes, shuts down the procedural texture
@@ -162,6 +168,9 @@ class CBinkMaterial : public IVideoMaterial
 		VideoResult_t				m_LastResult;
 		
 		CMaterialReference			m_Material;						// Ref to Material used for rendering the video frame
+		std::vector<CTextureReference> m_CachedFrames;
+		int m_NextCachedFrame = 0;
+		int m_CurrentFrame = -1;
 		std::vector<CTextureReference> m_CachedFrames;
 		int m_NextCachedFrame = 0;
 		int m_CurrentFrame = -1;
@@ -211,6 +220,7 @@ class CBinkMaterial : public IVideoMaterial
 
 		AVCodecContext *m_AVVideoDecCtx ;
 		bool m_bDecoderDraining;
+		bool m_bDecodeFailed;
 		AVCodecContext *m_AVAudioDecCtx ;
 
 		AVStream *m_AVVideoStream;
