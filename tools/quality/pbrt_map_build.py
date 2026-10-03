@@ -851,6 +851,34 @@ class Pipeline:
             args += ["--bounds"] + [str(value) for value in bounds]
         return args
 
+    def probe_volume_bounds(self):
+        """Return the authored playable envelope for the fixed-resolution PRBV.
+
+        Reflection-volume proxy boxes already own the map's playable spatial
+        extent. Reusing their union keeps a two-metre Source2 probe volume out
+        of imported sky/exterior geometry without adding a second bounds list
+        that map authors could let drift. An explicit PRBV bounds_m remains an
+        authored override for maps without reflection volumes.
+        """
+        explicit = self.probe_volume.get("bounds_m")
+        if explicit:
+            return explicit
+        volumes = self.probe.get("volumes", []) if self.probe else []
+        if not volumes:
+            return None
+        try:
+            lows = [[float(value) for value in volume["box_min"]] for volume in volumes]
+            highs = [[float(value) for value in volume["box_max"]] for volume in volumes]
+        except (KeyError, TypeError, ValueError) as error:
+            raise ValueError("reflection probe volumes need box_min and box_max for PRBV bounds") from error
+        if any(len(value) != 3 for value in lows + highs):
+            raise ValueError("reflection probe volume bounds need three coordinates")
+        low = [min(value[axis] for value in lows) for axis in range(3)]
+        high = [max(value[axis] for value in highs) for axis in range(3)]
+        if any(high[axis] <= low[axis] for axis in range(3)):
+            raise ValueError("reflection probe volume bounds are empty")
+        return low + high
+
     def build(self):
         self.out.mkdir(parents=True, exist_ok=True)
         p = self.paths
@@ -1116,21 +1144,22 @@ class Pipeline:
                                                 "--out", p["rprb"]]))
         volume = self.probe_volume
         if volume:
+            volume_bounds = self.probe_volume_bounds()
             volume_args = ["--scene", scene, "--stage", p["stage"],
                            "--spacing", str(volume["spacing_m"]),
                            "--samples", str(volume.get("samples", 4096)),
                            "--device", self.lightmap["device"],
                            "--light-paths", self.lightmap["light_paths"],
                            "--out", p["prbv"], "--work", p["prbv_work"]] + env_args
-            if volume.get("bounds_m"):
-                volume_args += ["--bounds"] + [str(value) for value in volume["bounds_m"]]
+            if volume_bounds:
+                volume_args += ["--bounds"] + [str(value) for value in volume_bounds]
             if volume.get("max_probes"):
                 volume_args += ["--max-probes", str(volume["max_probes"])]
             if volume.get("fit_limit"):
                 volume_args += ["--fit-limit"]
             self.step("probe-volume", [p["stage"]] + self.scene_sources() +
                       ([environment] if environment else []),
-                      dict(volume, light_paths=self.lightmap["light_paths"]),
+                      dict(volume, bounds_m=volume_bounds, light_paths=self.lightmap["light_paths"]),
                       SCENE_SCRIPTS + self.baker.scripts("probe-volume"),
                       [p["prbv"], p["prbv_work"]],
                       lambda: self.baker.bake("probe-volume", volume_args))

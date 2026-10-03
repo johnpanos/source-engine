@@ -36,6 +36,18 @@ class ProductionPolicy(unittest.TestCase):
                                        self.profile, "reflection_probe")
         self.assertEqual(value["volumes"], volumes)
 
+    def test_prbv_uses_the_authored_playable_envelope(self):
+        build = object.__new__(pipeline.Pipeline)
+        build.probe_volume = {}
+        build.probe = {"volumes": [
+            {"box_min": [-4, 2, -1], "box_max": [3, 6, 5]},
+            {"box_min": [8, -2, 0], "box_max": [12, 4, 7]},
+        ]}
+        self.assertEqual(build.probe_volume_bounds(), [-4.0, -2.0, -1.0, 12.0, 6.0, 7.0])
+
+        build.probe_volume = {"bounds_m": [-1, -1, -1, 1, 1, 1]}
+        self.assertEqual(build.probe_volume_bounds(), [-1, -1, -1, 1, 1, 1])
+
     def test_retired_profile_rejected(self):
         with self.assertRaisesRegex(ValueError, "production map profile"):
             pipeline.load_profile("legacy-relight")
