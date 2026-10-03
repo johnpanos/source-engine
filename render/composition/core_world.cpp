@@ -2115,13 +2115,18 @@ device::TextureId CoreWorld::DrawStageShadows( device::IRenderDevice2 &device,
 	                   atlas.generation != casters->generation ||
 	                   atlas.guardTexels != work.guardTexels;
 	std::vector<const pass::shadows::ShadowPlanView *> dirty;
-	for ( const pass::shadows::ShadowPlanView &view : work.views )
+	for ( std::size_t v = 0; v < work.views.size(); ++v )
 	{
-		if ( whole || std::none_of( atlas.drawn.begin(), atlas.drawn.end(),
-		                  [&]( const pass::shadows::ShadowPlanView &held )
-		                  {
-			                  return same( held, view );
-		                  } ) )
+		const pass::shadows::ShadowPlanView &view = work.views[v];
+		// Stable plans keep their tiles in the same order. Check that slot
+		// first; reordered plans still search the complete held plan.
+		const bool kept = !whole && ( ( v < atlas.drawn.size() && same( atlas.drawn[v], view ) ) ||
+		                                std::any_of( atlas.drawn.begin(), atlas.drawn.end(),
+		                                    [&]( const pass::shadows::ShadowPlanView &held )
+		                                    {
+			                                    return same( held, view );
+		                                    } ) );
+		if ( !kept )
 			dirty.push_back( &view );
 	}
 	m_ShadowTilesKept.fetch_add( work.views.size() - dirty.size(), std::memory_order_relaxed );
@@ -2158,37 +2163,50 @@ device::TextureId CoreWorld::DrawStageShadows( device::IRenderDevice2 &device,
 	if ( !work.movers.empty() )
 	{
 		const resources::MeshEntry *box = BoxCasterMesh();
+		struct PreparedMover
+		{
+			Casters::Chunk bounds;
+			math::float4x4 place;
+			std::uint64_t signature;
+		};
+		std::vector<PreparedMover> prepared;
+		prepared.reserve( work.movers.size() );
+		// Bounds, placement and identity depend on the captured mover, not
+		// on a shadow view. Prepare them once without a persistent cache.
+		for ( const light_set::RuntimeOccluder &occluder : work.movers )
+		{
+			PreparedMover entry;
+			const dynamic_occlusion::Box &mover = occluder.box;
+			for ( int r = 0; r < 3; ++r )
+			{
+				const float extent = std::fabs( mover.axes[0][r] ) + std::fabs( mover.axes[1][r] ) +
+				                     std::fabs( mover.axes[2][r] );
+				entry.bounds.min[r] = mover.center[r] - extent;
+				entry.bounds.max[r] = mover.center[r] + extent;
+				( &entry.place.rows[r].x )[0] = mover.axes[0][r];
+				( &entry.place.rows[r].x )[1] = mover.axes[1][r];
+				( &entry.place.rows[r].x )[2] = mover.axes[2][r];
+				( &entry.place.rows[r].x )[3] = mover.center[r];
+			}
+			entry.place.rows[3] = { 0.0f, 0.0f, 0.0f, 1.0f };
+			std::uint64_t key = ( std::uint64_t( std::uint32_t( mover.entity ) ) << 32 ) ^
+			                    ( std::uint64_t( std::uint32_t( mover.part ) ) << 20 ) ^
+			                    occluder.version;
+			key ^= key >> 33;
+			key *= 0xff51afd7ed558ccdull;
+			key ^= key >> 33;
+			entry.signature = key | 1u;
+			prepared.push_back( entry );
+		}
 		for ( std::size_t v = 0; box && v < work.views.size(); ++v )
 		{
-			for ( const light_set::RuntimeOccluder &occluder : work.movers )
+			for ( const PreparedMover &mover : prepared )
 			{
-				const dynamic_occlusion::Box &mover = occluder.box;
-				Casters::Chunk bounds;
-				math::float4x4 place;
-				for ( int r = 0; r < 3; ++r )
+				if ( inside( work.views[v].viewProjection, mover.bounds ) )
 				{
-					const float extent = std::fabs( mover.axes[0][r] ) +
-					                     std::fabs( mover.axes[1][r] ) +
-					                     std::fabs( mover.axes[2][r] );
-					bounds.min[r] = mover.center[r] - extent;
-					bounds.max[r] = mover.center[r] + extent;
-					( &place.rows[r].x )[0] = mover.axes[0][r];
-					( &place.rows[r].x )[1] = mover.axes[1][r];
-					( &place.rows[r].x )[2] = mover.axes[2][r];
-					( &place.rows[r].x )[3] = mover.center[r];
-				}
-				place.rows[3] = { 0.0f, 0.0f, 0.0f, 1.0f };
-				if ( inside( work.views[v].viewProjection, bounds ) )
-				{
-					moverCasters[v].push_back( { *box, place } );
+					moverCasters[v].push_back( { *box, mover.place } );
 					// Order-independent: a sum of each mover's mixed key.
-					std::uint64_t key = ( std::uint64_t( std::uint32_t( mover.entity ) ) << 32 ) ^
-					                    ( std::uint64_t( std::uint32_t( mover.part ) ) << 20 ) ^
-					                    occluder.version;
-					key ^= key >> 33;
-					key *= 0xff51afd7ed558ccdull;
-					key ^= key >> 33;
-					moverSignature[v] += key | 1u; // never 0 with a mover
+					moverSignature[v] += mover.signature;
 					anyMover = true;
 				}
 			}
@@ -2284,17 +2302,19 @@ device::TextureId CoreWorld::DrawStageShadows( device::IRenderDevice2 &device,
 		const pass::shadows::ShadowPlanView &view = work.views[v];
 		// What the frame's atlas holds in this tile: this view's static depth
 		// with the movers of `drawnSignature` over it.
-		const bool held = atlas.compositeUsage != ResourceUsage::kUndefined &&
-		                  std::any_of( atlas.compositeHeld.begin(), atlas.compositeHeld.end(),
-		                      [&]( const pass::shadows::ShadowPlanView &kept )
-		                      {
-			                      return same( kept, view );
-		                      } ) &&
-		                  std::none_of( dirty.begin(), dirty.end(),
-		                      [&]( const pass::shadows::ShadowPlanView *changed )
-		                      {
-			                      return changed->tile == view.tile;
-		                      } );
+		const bool held =
+		    atlas.compositeUsage != ResourceUsage::kUndefined &&
+		    ( ( v < atlas.compositeHeld.size() && same( atlas.compositeHeld[v], view ) ) ||
+		        std::any_of( atlas.compositeHeld.begin(), atlas.compositeHeld.end(),
+		            [&]( const pass::shadows::ShadowPlanView &kept )
+		            {
+			            return same( kept, view );
+		            } ) ) &&
+		    std::none_of( dirty.begin(), dirty.end(),
+		        [&]( const pass::shadows::ShadowPlanView *changed )
+		        {
+			        return changed->tile == view.tile;
+		        } );
 		std::uint64_t drawnSignature = 0;
 		for ( const auto &[tile, signature] : atlas.moverTiles )
 		{

@@ -6698,8 +6698,8 @@ then test equal against the prepassed depth, with depth writes disabled. Merely
 adding model depth while retaining lit depth writes gave about 50 ms GPU time;
 read-only lit depth permits earlier rejection around the shader's clipping and
 discard and reduces arrival GPU time to 35.4–36.1 ms against 55.6 ms control.
-The posed-model lab passes 69 checks, including exact single-layer, overlapping
-posed-layer and overlapping static-instance depth/control image
+The posed-model lab passes 71 checks, including exact single-layer, overlapping
+posed-layer, overlapping static-instance, clipped-layer and alpha-cutout depth/control image
 comparisons; view-state passes 16. Architecture and changed-line style checks
 pass. Native product compilation changes only the world-pass object and launcher
 library. The private runtime changes only that library; all other staged
@@ -6718,6 +6718,43 @@ That checkout is `/home/john/.codex/worktrees/forward-perf/source-engine`, on
 The runtime and raw measurements are `/home/john/.rc-perf-4da389/run` and
 `/home/john/.rc-perf-4da389/evidence`. Each run records and verifies its staged
 launcher hash. Other checkouts' ordinary builds cannot replace these outputs.
+
+The repeat control remains stable. Four AC-powered runs, in order, use identical
+runtime/map/configuration inputs and replace only `bin/liblauncher.so`:
+
+| RCV-09 run | Arrival GPU | Reverse GPU | Return GPU | Arrival frame interval |
+| --- | ---: | ---: | ---: | ---: |
+| `isolated-control-1` | 55.573 | 21.722 | 55.712 | 60.287 |
+| `read-only-2` | 36.125 | 19.701 | 35.906 | 50.482 |
+| `read-only-3` | 35.389 | 19.596 | 35.456 | 48.069 |
+| `isolated-control-2` | 55.692 | 21.798 | 55.734 | 60.263 |
+
+These are milliseconds and untrimmed phase medians, not hard-floor acceptance.
+The arrival GPU reduction is 35.1–36.5%; the frame-interval reduction is
+16.3–20.2%. Alpha cutouts reveal an opaque model behind them in the new oracle;
+clip-plane coverage has independent covered/discarded checks. All compared image
+pixels match exactly. Product/lab builds, 16 view-state checks, 58 composition
+checks, architecture baseline/inventory and changed-line style checks pass.
+Fold7 measurements remain unavailable: no declared device runner is attached.
+
+RCV-10 is a CPU shadow-preparation experiment after that GPU gain. A separate
+`perf record -F 499 --call-graph dwarf,8192` arrival-warmup diagnostic recorded
+3150 samples, with zero lost samples. `DrawStageShadows` has 17.56% inclusive
+and 10.58% self cycle weight across the sampled process; its `math::Transform`
+calls have another 5.97% self weight (included in the first number). These are
+sampled CPU cycle shares, not GPU time or independently additive frame timings.
+The console reports 876 kept shadow tiles and zero redrawn tiles in settled
+arrival windows, yet the CPU still scans held views and tests captured movers.
+The experiment first checks a held view's matching plan index, retaining the
+full search for changed/reordered plans. It prepares each captured mover's
+unchanged bounds, placement and identity once per operation rather than once
+per shadow view. Culling arithmetic, tile identity, mover accumulation order,
+atlas invalidation and draw commands remain unchanged. No persistent cache or
+new resource mechanism is added. Matched full-frame measurement is in progress.
+`shadow-prep-1` was interrupted when compilation overlapped startup;
+`shadow-prep-2` lost AC power and GPU frequency fell to 976 MHz from the AC
+control's 2083 MHz median. Neither establishes a performance comparison.
+Battery measurements are tracked separately at the user's direction.
 
 RCV-08's image comparison exposed a pre-existing correctness defect before its
 optimization could be accepted. At captured event 3066, primitive 245, pixel

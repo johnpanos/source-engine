@@ -48,6 +48,7 @@ public:
 	TextureId refractWarpFixture;
 	TextureId twoTextureBase;
 	TextureId twoTextureOverlay;
+	TextureId cutoutFixture;
 	TextureId Import( int handle, bool ) override
 	{
 		return handle == 1   ? normalFixture
@@ -56,12 +57,13 @@ public:
 		       : handle == 4 ? refractWarpFixture
 		       : handle == 5 ? twoTextureBase
 		       : handle == 6 ? twoTextureOverlay
+		       : handle == 7 ? cutoutFixture
 		                     : TextureId{};
 	}
 	SamplerDesc Sampler( int handle ) override
 	{
 		SamplerDesc sampler;
-		if ( handle == 6 )
+		if ( handle == 6 || handle == 7 )
 		{
 			sampler.address = AddressMode::kClampToEdge;
 			sampler.minFilter = sampler.magFilter = Filter::kNearest;
@@ -434,13 +436,20 @@ std::optional<std::string> RunChecks(
 		return "the two-texture color fixtures could not be staged";
 	empty.twoTextureBase = baseTexture.Value().texture;
 	empty.twoTextureOverlay = overlayTexture.Value().texture;
+	const std::array<std::byte, 8> cutoutPixels = { std::byte{ 255 }, std::byte{ 255 },
+	    std::byte{ 255 }, std::byte{ 0 }, std::byte{ 255 }, std::byte{ 255 }, std::byte{ 255 },
+	    std::byte{ 255 } };
+	auto cutoutTexture = textures.Stage( "model-depth-cutout", colorDesc, cutoutPixels );
+	if ( !cutoutTexture )
+		return "the model depth cutout fixture could not be staged";
+	empty.cutoutFixture = cutoutTexture.Value().texture;
 	auto render = [&]( WorldPass &active, float offset, bool lit, std::uint64_t frame,
 	                  const ClearColor &clear, CanvasImage &image, bool twoLayers = false,
 	                  RenderCoreDrawPhase phase = RenderCoreDrawPhase::kAll, bool copySource = true,
 	                  WorldPass *under = nullptr, const WorldMaterial *dynamicMaterial = nullptr,
 	                  bool invalidDynamicIndex = false, float underOffset = 0.1f,
-	                  bool depthPrepass = false,
-	                  bool staticModels = false ) -> std::optional<std::string>
+	                  bool depthPrepass = false, bool staticModels = false,
+	                  bool clipLeft = false ) -> std::optional<std::string>
 	{
 		WorldView view;
 		for ( int i = 0; i < 4; ++i )
@@ -526,6 +535,8 @@ std::optional<std::string> RunChecks(
 			target.textures = &empty;
 			target.frame = frame;
 			target.depthPrepass = depthPrepass;
+			if ( clipLeft )
+				target.clipPlanes[0][0] = 1.0f;
 			target.eye[2] = 2.0f;
 			if ( under )
 				under->Record( underTag, encoder, target );
@@ -590,6 +601,51 @@ std::optional<std::string> RunChecks(
 	    "posed-model.static-overlapping-depth-prepass-exact",
 	    "shared static geometry and instance transforms preserve every lit pixel" );
 	staticPass.ReleaseDevice( *device );
+	CanvasImage clippedControl, clippedDepth;
+	if ( auto why = render( pass, 0.0f, true, 4, black, clippedControl, true,
+	         RenderCoreDrawPhase::kAll, true, nullptr, nullptr, false, 0.1f, false, false, true ) )
+		return why;
+	if ( auto why = render( pass, 0.0f, true, 4, black, clippedDepth, true,
+	         RenderCoreDrawPhase::kAll, true, nullptr, nullptr, false, 0.1f, true, false, true ) )
+		return why;
+	results.That( clippedDepth.rgba == clippedControl.rgba &&
+	                  clippedDepth.rgba != layersControl.rgba &&
+	                  Sum( clippedDepth, 32, 48 ) > 0.1f && Sum( clippedDepth, 16, 32 ) == 0.0f,
+	    "posed-model.clipped-depth-prepass-exact",
+	    "fragment clip planes preserve covered and discarded samples with overlapping models" );
+	WorldData cutoutWorld = MeshWorld();
+	cutoutWorld.materials.push_back( cutoutWorld.materials[0] );
+	cutoutWorld.materials[0].variables.push_back( { "$alphatest", "1" } );
+	cutoutWorld.materials[0].variables.push_back( { "$basetexture", "model-depth-cutout" } );
+	cutoutWorld.materials[0].textures.push_back( { "$basetexture", 7 } );
+	for ( auto &vertex : cutoutWorld.staticMeshes[0].vertices )
+	{
+		vertex.uv[0] = vertex.position[0] + 0.5f;
+		vertex.uv[1] = vertex.position[1] + 0.5f;
+	}
+	cutoutWorld.staticMeshes.push_back( cutoutWorld.staticMeshes[0] );
+	cutoutWorld.staticMeshes[1].surfaces[0].material = 1;
+	frontStatic.world[11] = 0.0f;
+	cutoutWorld.staticInstances.push_back( frontStatic );
+	frontStatic.world[11] = 0.1f;
+	frontStatic.mesh = 1;
+	cutoutWorld.staticInstances.push_back( frontStatic );
+	WorldPass cutoutPass;
+	cutoutPass.SetWorld( std::move( cutoutWorld ) );
+	CanvasImage cutoutControl, cutoutPrepassed;
+	if ( auto why = render( cutoutPass, 0.0f, true, 4, black, cutoutControl, false,
+	         RenderCoreDrawPhase::kAll, true, nullptr, nullptr, false, 0.1f, false, true ) )
+		return why;
+	if ( auto why = render( cutoutPass, 0.0f, true, 4, black, cutoutPrepassed, false,
+	         RenderCoreDrawPhase::kAll, true, nullptr, nullptr, false, 0.1f, true, true ) )
+		return why;
+	results.That( cutoutPrepassed.rgba == cutoutControl.rgba &&
+	                  cutoutPrepassed.rgba != staticControl.rgba &&
+	                  Sum( cutoutPrepassed, 16, 32 ) > 0.1f,
+	    "posed-model.cutout-depth-prepass-exact",
+	    "alpha-tested front geometry reveals the opaque model behind it without changing any "
+	    "pixel" );
+	cutoutPass.ReleaseDevice( *device );
 	const float centralLight = Sum( center, 16, 32 );
 	results.That( centralLight > 0.1f && centralLight > Sum( dark, 16, 32 ) * 1.5f,
 	    "posed-model.lit-by-frame-light",
