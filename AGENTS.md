@@ -1066,9 +1066,14 @@ Keep the table concise and link details below or from the domain progress file.
   its sensitivity suite catches a seeded reorder and an appended virtual in
   each one. The machinery is shared with `legacy.render-abi`
   (`tools/quality/abi_table.py`). A C++11 build break in
-  `tier1/KeyValues.h` was fixed on the way. The upload and draw counters and
-  the rest of V0 are open; no row changes state
-  ([record](RFC/0010-progress.md#v0-vgui-abi-guard-legacyvgui-abi-2026-10-03)).
+  `tier1/KeyValues.h` was fixed on the way. The UI counters
+  (`VGuiSurfaceStats001`: draws, vertices, uploads, glyphs, CPU copies and
+  paint time per frame, in the RFC 0014 cost overlay and
+  `vgui_surface_stats`) are installed with their suites. They have not been
+  measured in a running game: this session had no product build or content.
+  Budget rows and the rest of V0 are open; no row changes state
+  ([guard](RFC/0010-progress.md#v0-vgui-abi-guard-legacyvgui-abi-2026-10-03),
+  [counters](RFC/0010-progress.md#v0-ui-counters-vguisurfacestats001-2026-10-03)).
 
 - R86/R88 memory follow-up (2026-10-02, user request): [audit and direct
   texture uploads](RFC/0016-progress.md#k1k4-render-core-memory-and-cache-audit-2026-10-02)

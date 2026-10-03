@@ -30,6 +30,7 @@
 #include "tier1/utlbuffer.h"
 #include "pixelwriter.h"
 #include "tier0/icommandline.h"
+#include "SurfaceStats.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -319,6 +320,7 @@ bool CFontTextureCache::GetTextureForChars( vgui::HFont font, vgui::FontDrawType
 					// upload the new sub texture 
 					// NOTE: both textureIDs reference the same ITexture, so we're ok)
 					g_MatSystemSurface.DrawSetTexture( m_PageList[newEntry.page].textureID[typePage] );
+					SurfaceStats().NoteGlyphUpload( newChar.fontWide, newChar.fontTall, 4 );
 					g_MatSystemSurface.DrawSetSubTextureRGBA( m_PageList[newEntry.page].textureID[typePage], newEntry.drawX, newEntry.drawY, pRGBA, newChar.fontWide, newChar.fontTall );
 				}
 			}

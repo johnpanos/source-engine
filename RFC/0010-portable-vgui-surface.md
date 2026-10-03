@@ -2,7 +2,10 @@
 
 - Status: Proposed (2026-09-23); no implementation gate complete. V0's ABI
   guard `legacy.vgui-abi` is installed
-  ([progress](0010-progress.md#v0-vgui-abi-guard-legacyvgui-abi-2026-10-03));
+  ([progress](0010-progress.md#v0-vgui-abi-guard-legacyvgui-abi-2026-10-03)),
+  and its UI counters `VGuiSurfaceStats001` are installed but not yet
+  measured in a running game
+  ([progress](0010-progress.md#v0-ui-counters-vguisurfacestats001-2026-10-03));
   the rest of V0 is open. V1's UI scale owner is installed, but its exit gate
   is not met
   ([2026-09-25 update](#update-2026-09-25)). Amended 2026-10-03 with the
@@ -406,7 +409,11 @@ texture IDs, paint order and paint timing do not change.
 
 V0 adds per-frame UI counters before any optimization: draw calls, recorded
 commands, vertex bytes uploaded, texture bytes uploaded, texture uploads,
-CPU copies per texture update, and recorder and consumer CPU time. They are
+CPU copies per texture update, and recorder and consumer CPU time. The
+surface's counters are installed as `VGuiSurfaceStats001`
+([record](0010-progress.md#v0-ui-counters-vguisurfacestats001-2026-10-03)).
+Recorded commands and recorder and consumer time arrive with the V2
+recorder. They are
 reported through the RFC 0014 cost overlay owner, not a second overlay.
 Their budget rows go in `quality/budgets/render-v1.json`, next to the
 complete-frame rows, and are set before optimizing.

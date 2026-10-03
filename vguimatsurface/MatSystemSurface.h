@@ -453,6 +453,11 @@ private:
 	// Meshbuilder used for drawing
 	IMesh* m_pMesh;
 	CMeshBuilder meshBuilder;
+	// Ends meshBuilder and draws m_pMesh, counting what it submits
+	// (RFC 0010 V0 counters, VGuiSurfaceStats001).
+	void SubmitMesh();
+	// True while DrawFlushText submits the batched glyphs.
+	bool m_bSubmittingText = false;
 
 	// White material used for drawing non-textured things
 	CMaterialReference m_pWhite;

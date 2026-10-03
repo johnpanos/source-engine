@@ -7,6 +7,7 @@
 #include "vgui/IScheme.h"
 #include "vgui/ISurface.h"
 #include "VGuiMatSurface/IMatSystemSurface.h"
+#include "VGuiMatSurface/IVGuiSurfaceStats.h"
 #include "tier2/tier2.h"
 
 #include <algorithm>
@@ -46,12 +47,15 @@ public:
 		{
 			m_Report = {};
 			m_NextSample = 0;
+			m_HaveVgui = false;
+			m_VguiSampled = false;
 			return;
 		}
 		const double now = Plat_FloatTime();
 		if ( now >= m_NextSample )
 		{
 			(void)RenderCoreHost_ReadCosts( &m_Report );
+			SampleVgui();
 			m_NextSample = now + 0.25;
 		}
 		int width, height;
@@ -69,13 +73,13 @@ public:
 		if ( width < 320 || GetTall() < line * 6 )
 			return;
 		const int historyHeight = m_Report.resources.supported ? 64 + 3 * line : 0;
-		const unsigned int perPage = std::max( 1, ( GetTall() - historyHeight ) / line - 6 );
+		const unsigned int perPage = std::max( 1, ( GetTall() - historyHeight ) / line - 8 );
 		const unsigned int page =
 		    std::min( unsigned( std::max( 0, cl_render_debug_cost_page.GetInt() ) ),
 		        m_Report.count ? ( m_Report.count - 1 ) / perPage : 0 );
 		const unsigned int first = page * perPage;
 		const unsigned int shown = std::min( m_Report.count - first, perPage );
-		const int height = ( 6 + std::max( 1u, shown ) ) * line + historyHeight;
+		const int height = ( 8 + std::max( 1u, shown ) ) * line + historyHeight;
 		surface->DrawSetColor( 8, 12, 20, 235 );
 		surface->DrawFilledRect( 0, 0, width, std::min( height, GetTall() ) );
 		int y = 2;
@@ -142,9 +146,49 @@ public:
 		    page, m_Report.omitted + m_Report.count - shown, m_Report.dropped );
 		text( label );
 		text( "Core labels only: excludes game CPU, legacy passes, present and this overlay" );
+		VguiLines( text, label, sizeof( label ) );
 	}
 
 private:
+	// RFC 0010 V0: the VGUI surface's per-frame means between this overlay's
+	// samples (VGuiSurfaceStats001). They include this overlay's own drawing.
+	void SampleVgui()
+	{
+		if ( !m_pVguiStats && g_pMatSystemSurface )
+			m_pVguiStats = static_cast<IVGuiSurfaceStats *>(
+			    g_pMatSystemSurface->QueryInterface( VGUI_SURFACE_STATS_INTERFACE_VERSION ) );
+		if ( !m_pVguiStats )
+			return;
+		VGuiSurfaceStats_t now;
+		m_pVguiStats->GetStats( now );
+		m_HaveVgui = m_VguiSampled && VGuiSurfaceStats_PerFrame( m_VguiBefore, now, m_Vgui );
+		m_VguiBefore = now;
+		m_VguiSampled = true;
+	}
+
+	template <class Text> void VguiLines( Text &text, char *label, std::size_t labelSize )
+	{
+		if ( !m_HaveVgui )
+		{
+			text( m_pVguiStats ? "VGUI surface: waiting for frames"
+			                   : "VGUI surface counters unavailable (no VGuiSurfaceStats001)" );
+			text( "" );
+			return;
+		}
+		const VGuiSurfaceStatsPerFrame_t &v = m_Vgui;
+		V_snprintf( label, labelSize,
+		    "VGUI per frame (incl. this overlay): %.2f passes %.3f ms | %.1f draws (%.1f text) | "
+		    "%.0f verts %.1f KiB",
+		    v.paintPasses, v.paintMilliseconds, v.draws, v.textDraws, v.vertices, v.vertexKiB );
+		text( label );
+		V_snprintf( label, labelSize,
+		    "VGUI uploads %.2f (%.1f KiB), glyphs %.2f (%.1f KiB) | surface CPU texel copies %.2f "
+		    "(%.1f KiB)",
+		    v.textureUploads, v.textureUploadKiB, v.glyphUploads, v.glyphUploadKiB, v.cpuCopies,
+		    v.cpuCopyKiB );
+		text( label );
+	}
+
 	void History( int x, int y, int width, int height, char *label, std::size_t labelSize )
 	{
 		auto *surface = vgui::surface();
@@ -209,6 +253,11 @@ private:
 	vgui::HFont m_Font = 0;
 	RenderCoreCostReport m_Report;
 	double m_NextSample = 0;
+	IVGuiSurfaceStats *m_pVguiStats = nullptr;
+	VGuiSurfaceStats_t m_VguiBefore = {};
+	VGuiSurfaceStatsPerFrame_t m_Vgui = {};
+	bool m_VguiSampled = false;
+	bool m_HaveVgui = false;
 };
 } // namespace
 

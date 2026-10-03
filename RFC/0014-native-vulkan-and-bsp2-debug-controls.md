@@ -510,6 +510,10 @@ model/view/upload work), world program families, static/posed/transmitting model
 and dynamic draws, and lighting/shadow/depth/AO work. The draw order and image are
 unchanged. Family rows time complete draws, not individual shader terms. Game CPU,
 other unlabeled core passes, legacy rendering, presentation and VGUI are outside it.
+Two summary lines (added 2026-10-03) report the VGUI surface's per-frame means
+between the overlay's samples, from RFC 0010's V0 counters (`VGuiSurfaceStats001`,
+whose header owns their meaning). They include the overlay's own drawing and are
+not scope rows; `vgui_surface_stats` prints the same means without the overlay.
 `cl_render_debug_cost_page N` selects additional pages of the sorted rows (0 is hottest).
 
 Resource metrics use `render.device.v2`'s optional `ResourceActivity` diagnostic

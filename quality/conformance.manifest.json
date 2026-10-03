@@ -7664,6 +7664,38 @@
       "expect": "pass"
     },
     {
+      "id": "vgui.surface_stats",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0010",
+      "migration": "VG-A",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "description": "RFC 0010 V0 counters (VGuiSurfaceStats001, public/VGuiMatSurface/IVGuiSurfaceStats.h): the per-frame helper the cost overlay and vgui_surface_stats share gives exact means for every counter, reports no rate (and zeroes its output) when no frame passed or any counter went backwards; the module's counter owner (vguimatsurface/SurfaceStats.cpp) counts draws, text draws, vertices, indices, vertex bytes, uploads, glyphs and CPU copies exactly, adds no bytes for empty or negative sizes, times a paint pass, counts concurrent updates from four threads exactly, and is one owner served through the interface. Sensitivity: vgui.surface_stats.sensitivity.",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "vguimatsurface/SurfaceStats.cpp",
+        "unittests/vguitest/test_surface_stats.cpp"
+      ],
+      "extra_flags": [
+        "-pthread"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "vgui.surface_stats.sensitivity",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0010",
+      "migration": "VG-A",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "description": "RFC 0010 V0: five deliberately wrong per-frame helpers (dividing by paint passes, missing a counter in the backwards check, a rate without frames, 1000-byte KiB, stale output when there is no rate) each fail the vgui.surface_stats rate oracle, and the real helper passes it.",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/vguitest/test_surface_stats_negative.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "tier1.kv_conditional",
       "domain": "Q-CONTENT",
       "rfc": "0010",

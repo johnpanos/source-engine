@@ -124,3 +124,81 @@ python3 -m unittest tools/quality/tests/test_abi_table.py
   `legacy.render-abi` is. The suite's member-pointer decoder also handles
   the ARM variant of the Itanium ABI, but no ARM run is recorded.
 - No hosted CI run.
+
+## V0: UI counters (`VGuiSurfaceStats001`), 2026-10-03
+
+The second part of V0, the counters the
+[transfers and GPU caching](0010-portable-vgui-surface.md#transfers-and-gpu-caching)
+work is judged against. This slice adds counting only. It changes no drawing,
+upload or paint order, and does not close V0.
+
+### What is counted
+
+`public/VGuiMatSurface/IVGuiSurfaceStats.h` owns the definitions. The totals
+are monotonic, and readers divide the difference between two snapshots by the
+frames between them, so no reader resets another's view.
+
+- **Frames.** `ISurface::RunFrame` calls, one per engine frame.
+- **Paint passes and their main-thread time.** Top-level `PaintTraverseEx`
+  calls (the engine makes one to three per frame), timed from
+  `StartDrawing` through `FinishDrawing`. Under the queued material system,
+  the render thread's replay is not included.
+- **Draws.** `IMesh::Draw` calls from the surface's nine draw sites, now
+  routed through one `SubmitMesh`, with text batches counted separately. Also
+  counted: the vertices, indices and vertex bytes written into dynamic meshes,
+  from `CMeshBuilder`'s own counts and vertex size.
+- **Texture uploads.** `Download` calls for procedural textures and the bytes
+  of their rectangles, with glyph uploads from the font cache counted
+  separately.
+- **CPU texel copies by the surface.** The caller's pixels into the backing
+  copy, and the backing copy into the material system's image on
+  regeneration (an upload or a restore). The backend's staging copy is outside
+  the surface and is not counted.
+
+`vguimatsurface/SurfaceStats.{h,cpp}` owns the counters for the module, as
+relaxed atomics, because regeneration can run on the render thread. The
+surface serves them through `QueryInterface`, as it serves
+`VGuiWorldPanelRecorder001`. The interface is first-party and not part of the
+frozen ABI table.
+
+### Readers
+
+- The RFC 0014 cost overlay (`cl_render_debug_cost 1`) shows two VGUI lines
+  between its 4 Hz samples. They include the overlay's own drawing.
+- `vgui_surface_stats` prints the per-frame means since its previous call,
+  for measurements without the overlay.
+
+Both use the one helper, `VGuiSurfaceStats_PerFrame`. It reports no rate
+when no frame passed or any counter went backwards.
+
+### Evidence
+
+| Check | Result |
+| --- | --- |
+| `vgui.surface_stats` | 47 checks on g++ and clang++: exact means for every counter; no rate (and zeroed output) without frames or when any one of the 14 counters goes backwards; exact counts, no bytes for empty or negative sizes, the paint timer, and four threads of concurrent updates counted exactly |
+| `vgui.surface_stats.sensitivity` | 6 of 6: five wrong helpers are each detected (dividing by passes, a counter missing from the backwards check, a rate without frames, 1000-byte KiB, stale output) and the real helper passes |
+| ThreadSanitizer | the positive suite built with g++ `-fsanitize=thread`: 47 of 47, no reports. clang's TSan runtime is not installed here |
+| Compile | `MatSystemSurface.cpp`, `TextureDictionary.cpp`, `FontTextureCache.cpp`, `SurfaceStats.cpp` and `engine/render_core_cost_panel.cpp` compile with clang++ 18 and the client's Linux defines and cxx20-permissive flags |
+| `vgui.ui_scale`, `vgui.valvefont`, `legacy.vgui-abi` | unchanged, pass |
+| archlint `check --all`, `baseline --verify`; stylelint `--changed` | pass; 0 failures |
+
+### Unavailable here
+
+- **No Waf build of the product.** Configure needs the pinned shader
+  toolchain (RFC 0016 K4), and this session's network policy denies its
+  source archives on github.com (HTTP 403 from the egress proxy). The
+  changed sources were compiled directly with the flags the build uses, as
+  recorded above; nothing was linked.
+- **No game content.** Without a product build and content, the counts
+  have not been observed in a running game, so no baseline numbers exist yet.
+- **No budget rows.** The rows for `quality/budgets/render-v1.json` are set
+  from the first measurement of the corpus screens. They are not invented
+  here.
+
+### Next
+
+1. On a machine with the build and content, record the corpus screens' counts
+   with `vgui_surface_stats`, on desktop and the Fold7.
+2. Set the budget rows from those counts.
+3. Then take the remaining V0 inventories: the `ISurface` callers, the
+   direct-render panels, and the blend modes and primitives in use.
