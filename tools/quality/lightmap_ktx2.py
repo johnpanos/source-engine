@@ -90,17 +90,32 @@ def seam_stitcher(args):
               "buried_texels": int(buried.sum()) if buried is not None else None,
               "gate": {"p99": args.max_seam_p99, "max": args.max_seam}, "pages": {}}
     system = lightmap_seams.stitch_system(found, covered, buried) if len(found["uv_a"]) else None
+    refined_system = None
 
     def stitch(name, image, reference=None, absolute=False):
         """Stitch one page; light pages are judged relative to `reference`
         (the stitched total for a separated layer), `absolute` pages by value."""
+        nonlocal refined_system
         if system is None:
             record["pages"][name] = {"stitched": False}
             return image
         before = lightmap_seams.measure(image, found, covered, reference, absolute)
         result = lightmap_seams.stitch(image, system)
         after = lightmap_seams.measure(result, found, covered, reference, absolute)
-        record["pages"][name] = {"before": before, "after": after}
+        recovered = False
+        if after["p99"] > args.max_seam_p99 or after["max"] > args.max_seam:
+            # A seam is an equality constraint across two filter footprints.
+            # Preserve the usual fixed-point behavior first, then let padding
+            # absorb more correction only when the measured runtime invariant
+            # still fails. This repairs the atlas; it never relaxes the gate.
+            if refined_system is None:
+                refined_system = lightmap_seams.stitch_system(
+                    found, covered, buried, covered_weight=0.03, gutter_weight=1e-5)
+            result = lightmap_seams.stitch(image, refined_system)
+            after = lightmap_seams.measure(result, found, covered, reference, absolute)
+            recovered = True
+        record["pages"][name] = {"before": before, "after": after,
+                                 "refined": recovered}
         if after["p99"] > args.max_seam_p99 or after["max"] > args.max_seam:
             raise ValueError("%s page: stitched seam discontinuity p99 %.4g / max %.4g exceeds "
                              "the gate (%g / %g)" % (name, after["p99"], after["max"],
