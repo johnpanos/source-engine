@@ -6689,6 +6689,24 @@ resolution, or light cohort was reduced. The High 120 FPS gate remains failed.
 | RCV-07: compiler specialization attribution | Freeze the captured shader's debug-term mask to remove area lighting, shadow receiving, or both; retain every other captured pipeline setting. | Area removal lowers 192 to 144 VGPRs (120 for static models); shadow removal lowers 192 to 144; both lower it to 96 (84 for static models). Diagnostic only: these images intentionally differ and no effect is removed from the product. |
 | RCV-08: stream LTC clipping temporaries | Following RCV-07, shorten the area evaluator's live ranges without changing its integral, clipping planes, light set or shadows. | In progress: lab oracle, native image parity, compiled registers and matched complete-frame timing required before retention. |
 
+RCV-08's image comparison exposed a pre-existing correctness defect before its
+optimization could be accepted. At captured event 3066, primitive 245, pixel
+(1365, 350), the interpolated receiver has x = 720; the first one-sided emitter
+also has center.x = 720 and both half-axis x components are zero. The point is
+coplanar with the emitter. `area_light::Faces` requires a strictly positive
+front-side distance, but the shader relied only on the final integral's sign,
+which can admit spurious coplanar light. `LtcRectangle` now rejects that case
+before integration, using the rectangle's geometric normal rather than the
+receiver's shading normal. Two-sided behavior is unchanged.
+
+Eight new coplanar image comparisons cover four materials and two camera views;
+the original 52 checks remain. The `no-front-test` seeded shader must fail those
+checks. All five sensitivity verdicts pass with the unoptimized, corrected
+control. This fix is tracked separately from register optimization: both the
+old polygon algorithm and each candidate receive the same front-side test.
+Evidence is in `quality-results/rendercore-ltc-stream-20261002/`, including the
+captured pixel inputs and light constants. No tolerance or golden was relaxed.
+
 RCV-07 uses the Radeon 8060S / RADV STRIX_HALO, Mesa 26.2.3, and the existing
 1920 x 1080, four-sample High arrival capture. All eight PBR pipelines use the
 same original SPIR-V SHA-256

@@ -145,6 +145,7 @@ std::map<std::string, std::vector<area_light::AreaLight>> Lights()
 	// Facing up, away from the receiver; and the same light two-sided.
 	lights["behind"] = { Light( { 0, 0, 120 }, { 60, 0, 0 }, { 0, 40, 0 }, 2.0f ) };
 	lights["two-sided"] = { Light( { 0, 0, 120 }, { 60, 0, 0 }, { 0, 40, 0 }, 2.0f, true ) };
+	lights["coplanar"] = { Light( { 0, 0, 0 }, { 60, 0, 0 }, { 0, -40, 0 }, 2.0f ) };
 	std::vector<area_light::AreaLight> grid;
 	for ( int i = 0; i < 8; ++i )
 	{
@@ -846,6 +847,26 @@ std::optional<std::string> AreaChecks( Lab &lab, Results &results )
 		results.That( !SameImage( none, lit ), "neutral.a-lit-frame-differs" );
 	}
 
+	// area_light::Faces excludes the emitter plane for a one-sided light.
+	// Test both lobes and grazing views: a signed integral alone can produce
+	// spurious light on that plane when its edge vectors are nearly collinear.
+	for ( const auto &[viewName, view] : views )
+	{
+		for ( const Material &material : kMaterials )
+		{
+			Frame empty{ {}, &material, view, {} };
+			Frame coplanar{ lights.at( "coplanar" ), &material, view, {} };
+			coplanar.spatial = false;
+			CanvasImage none, image;
+			if ( auto why = Render( lab, empty, none ) )
+				return why;
+			if ( auto why = Render( lab, coplanar, image ) )
+				return why;
+			results.That( SameImage( none, image ),
+			    std::string( "one-sided.coplanar." ) + material.name + "." + viewName );
+		}
+	}
+
 	// Two-sided: the light facing away gives what it gives facing the
 	// receiver; the full frame is the sum of its lobes.
 	{
@@ -912,6 +933,7 @@ std::optional<std::string> RunOnce( bool validate, std::span<const std::uint32_t
 }
 
 const Seeded kAreaSeeded[] = {
+    { "no-front-test", spirv::kSurfaceLtcNoFrontTest, "one-sided.coplanar." },
     { "no-horizon-clip", spirv::kSurfaceLtcNoHorizonClip, "diffuse.straddling" },
     { "ltc-transposed", spirv::kSurfaceLtcTransposed, "specular." },
     { "no-magnitude", spirv::kSurfaceLtcNoMagnitude, "specular." } };

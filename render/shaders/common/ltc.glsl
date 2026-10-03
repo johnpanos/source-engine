@@ -72,6 +72,13 @@ void LtcAppend( vec3 p, inout vec3 first, inout vec3 previous, inout int count,
 // rectangle gives nothing from behind.
 float LtcRectangle( vec3 n, vec3 v, vec3 p, mat3 inverse, vec3 corners[4], bool twoSided )
 {
+#ifndef SEEDED_LTC_NO_FRONT_TEST
+	// Match area_light::Faces before the tangent-space integral: its sign
+	// is numerically unstable when the receiver is coplanar with the emitter.
+	const vec3 emitterNormal = cross( corners[1] - corners[0], corners[3] - corners[0] );
+	if ( !twoSided && !( dot( emitterNormal, p - corners[0] ) > 0.0 ) )
+		return 0.0;
+#endif
 	vec3 t1 = v - n * dot( v, n );
 	if ( dot( t1, t1 ) < 1e-12 )
 		t1 = abs( n.x ) < 0.9 ? vec3( 1.0, 0.0, 0.0 ) : vec3( 0.0, 1.0, 0.0 );

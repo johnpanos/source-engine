@@ -336,6 +336,8 @@ GENERATED = {
     "area_light_defects_spv.h": ("render::lab::spirv",
         "render_lab's area-light suite's seeded programs (render.lab.area-lights sensitivity, "
         "RFC 0016 K11)", (
+        ("kSurfaceLtcNoFrontTest", FAMILIES + "/surface.frag",
+         DEVICE_OPTIONS + ("-DSEEDED_LTC_NO_FRONT_TEST",)),
         ("kSurfaceLtcNoHorizonClip", FAMILIES + "/surface.frag",
          DEVICE_OPTIONS + ("-DSEEDED_LTC_NO_HORIZON_CLIP",)),
         ("kSurfaceLtcTransposed", FAMILIES + "/surface.frag",
