@@ -121,6 +121,40 @@ available:
 
 The script fills a `result` dict, and that dict is the response.
 
+### Measure register pressure with a specialization diagnostic
+
+`shader_register_probe.py` measures the fragment executables for selected draw
+events, using the captured SPIR-V and pipeline settings. It freezes one 32-bit
+integer specialization constant, leaving all other specializations intact. This
+is an effect-isolation diagnostic, not an equivalent-output optimization or a
+frame-time measurement. The core's `debug_view.glsl` owns the term bit values;
+SpecId 102 is `kDebugTermsOff` (0 keeps all terms, 4 removes area lighting, 4096
+removes shadow receiving, 4100 removes both).
+
+```sh
+python3 tools/renderdoc/rdc.py script --json CAPTURE \
+    tools/renderdoc/shader_register_probe.py OUT/original 102 original E1,E2
+python3 tools/renderdoc/rdc.py script --json CAPTURE \
+    tools/renderdoc/shader_register_probe.py OUT/calibration 102 0 E1,E2
+python3 tools/renderdoc/rdc.py script --json CAPTURE \
+    tools/renderdoc/shader_register_probe.py OUT/no-area 102 4 E1,E2
+```
+
+Replace E1,E2 with real draw events whose first color attachment is shared.
+Use **a fresh replay process for every value**: RenderDoc can cache executable
+disassembly by the original pipeline ID across resource replacements, yielding
+unchanged statistics even when rendered pixels change. The probe deliberately
+accepts only one value per invocation. Put `--json` before the script arguments;
+arguments after the script path are passed through verbatim.
+
+Outputs include `results.json`, original and modified SPIR-V, full fragment
+disassembly and statistics, SPIR-V tool versions, and final color-attachment
+hashes for each MSAA sample. `spirv-dis`, `spirv-as` and `spirv-val` must be on
+PATH. Check the zero-mask calibration against the original, verify that each
+ablation actually changes the image and compiled code, and report allocated
+registers separately from pre-scheduling demand and theoretical wave capacity.
+No working shader, product binary or graphics setting is modified.
+
 ## How it works
 
 `rdc.py` (on the host) writes a request and starts

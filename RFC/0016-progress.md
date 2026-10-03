@@ -6686,6 +6686,48 @@ resolution, or light cohort was reduced. The High 120 FPS gate remains failed.
 | RCV-04: subgroup-coherent area-light traversal | Form a subgroup union of froxel masks, retaining each fragment's own membership and ascending accumulation order. Authored warp materials retain their original traversal. All 16 scalar/candidate lab images match bitwise (68 total checks). | **Rejected and removed**: candidate arrival/reverse/return GPU medians 57.926/22.651/58.482 ms versus fresh scalar control 58.195/22.318/57.999 ms. No consistent gain. Code, private native injection and logs are archived with the evidence. |
 | RCV-05: visibility raster resolve followed by material shading | Exact image parity in the bounded lab fixture; roughly 3% faster for large area-light cases, about 31–32% slower for large spot-light cases. | Lab benchmark retained; product remains inline. See the detailed feasibility result below. |
 | RCV-06: compiled coherent runtime/area traversal | Separate lab shader merges sorted runtime lists and area masks, then explicitly broadcasts the selected ID. Inspired by id Tech 6 and Godot Forward+. | Lab and one captured frame match exactly when the diffuse light-warp pipeline retains its original compiled shader. All seven replaced pipelines still allocate 192 VGPRs. Production is unchanged; whole-frame speedup is unproven. |
+| RCV-07: compiler specialization attribution | Freeze the captured shader's debug-term mask to remove area lighting, shadow receiving, or both; retain every other captured pipeline setting. | Area removal lowers 192 to 144 VGPRs (120 for static models); shadow removal lowers 192 to 144; both lower it to 96 (84 for static models). Diagnostic only: these images intentionally differ and no effect is removed from the product. |
+| RCV-08: stream LTC clipping temporaries | Following RCV-07, shorten the area evaluator's live ranges without changing its integral, clipping planes, light set or shadows. | In progress: lab oracle, native image parity, compiled registers and matched complete-frame timing required before retention. |
+
+RCV-07 uses the Radeon 8060S / RADV STRIX_HALO, Mesa 26.2.3, and the existing
+1920 x 1080, four-sample High arrival capture. All eight PBR pipelines use the
+same original SPIR-V SHA-256
+`035a81e12042bc8e4454850adbb429ca65e88aa188cc4f53b7156324b6571fe4`.
+The new `tools/renderdoc/shader_register_probe.py` freezes only SpecId 102
+(`kDebugTermsOff`, owned by `debug_view.glsl`); masks 0, 4, 4096 and 4100 retain
+everything, remove area lighting, remove shadow receiving, and remove both.
+Other material specializations remain those of the actual captured pipeline.
+This follows [Godot's area-light specialization finding](https://github.com/godotengine/godot/pull/119970),
+but the scene contains area lights, so compiling them out is attribution rather
+than a product optimization.
+
+| Captured fragment pipeline | Full | No area | No shadows | Neither |
+| --- | ---: | ---: | ---: | ---: |
+| World 22509 | 192 | 144 | 144 | 96 |
+| Static models 22523 | 192 | 120 | 144 | 84 |
+| Posed models 22536 | 192 | 144 | 144 | 96 |
+| Other five PBR variants | 192 | 144 | 144 | 96 |
+
+These are allocated VGPRs, not timings or an additive register budget. The
+world executable shrinks from 56,732 to 40,464 bytes with area lighting removed;
+with both effects removed it is 17,044 bytes. Every variant reports zero
+register spills and scratch allocation. The zero-mask calibration matches all
+four final MSAA sample hashes and all executable statistics other than the
+driver pipeline identity hash, including the code hash. Each removal changes
+the final image and compiled executable, as expected. Thirteen RenderDoc tool
+tests pass, including five tests guarding the specialization rewrite.
+
+Raw evidence is in `quality-results/rendercore-register-ablation-20261002/`.
+The capture SHA-256 is
+`c12b4bc89c0660fb4bf4f727d226a0bc0291254ac6b258429a0a7b1f960caa10`.
+Run each value in a **fresh replay process**: the initial combined replay
+returned stale disassembly cached by original pipeline ID despite changed pixels.
+Its root `results.json` is excluded; the `original`, `calibration`, `area-off`,
+`shadows-off` and `area-and-shadows-off` subdirectories are the valid runs.
+The installed command is documented in `tools/renderdoc/README.md`; use events
+`3066,30434,2766,4689,6652,2899,30443,2822` for this capture. No shipped source or
+binary changes in RCV-07. No frame-time improvement or platform acceptance is
+claimed; Fold7 hardware is unavailable for this desktop compiler diagnostic.
 
 RCV-06 sources are checkpointed at the user's request before further experiments.
 Its owning surface shader uses a lab-only define; there is no new device
