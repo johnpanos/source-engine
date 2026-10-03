@@ -64,6 +64,21 @@ void LtcAppend( vec3 p, inout vec3 first, inout vec3 previous, inout int count,
 	++count;
 }
 
+// Reconstruct a clipped vertex from its original edge and intersection bit.
+// Recomputing these short transforms avoids keeping six vec3 temporaries live.
+vec3 LtcPolygonVertex( uint descriptor, vec3 p, mat3 toTangent, mat3 toCosine,
+    vec3 corners[4] )
+{
+	const int i = int( descriptor >> 1u );
+	vec3 a = toTangent * ( corners[i] - p );
+	if ( ( descriptor & 1u ) != 0u )
+	{
+		const vec3 b = toTangent * ( corners[( i + 1 ) % 4] - p );
+		a = mix( a, b, a.z / ( a.z - b.z ) );
+	}
+	return toCosine * a;
+}
+
 // The integral over a rectangle (its four corners, counterclockwise seen
 // from its front) of the clamped cosine transformed by `inverse`, in the
 // frame at p whose z is n and whose x is the view projected on the surface.
@@ -90,21 +105,21 @@ float LtcRectangle( vec3 n, vec3 v, vec3 p, mat3 inverse, vec3 corners[4], bool 
 #else
 	const mat3 toCosine = inverse;
 #endif
-	vec3 polygon[6];
+	uint polygon = 0u;
 	int count = 0;
-	// Clip the original four edges to the surface horizon, transforming
-	// each survivor directly. No intermediate tangent-space polygon survives.
+	// Record only clipping topology: three bits per emitted vertex,
+	// at most six vertices. The second pass reconstructs the same ordered polygon.
 	for ( int i = 0; i < 4; ++i )
 	{
 		const vec3 a = toTangent * ( corners[i] - p );
 		const vec3 b = toTangent * ( corners[( i + 1 ) % 4] - p );
 #ifdef SEEDED_LTC_NO_HORIZON_CLIP
-		polygon[count++] = toCosine * a;
+		polygon |= uint( i * 2 ) << uint( 3 * count++ );
 #else
 		if ( a.z >= 0.0 )
-			polygon[count++] = toCosine * a;
+			polygon |= uint( i * 2 ) << uint( 3 * count++ );
 		if ( ( a.z >= 0.0 ) != ( b.z >= 0.0 ) )
-			polygon[count++] = toCosine * mix( a, b, a.z / ( a.z - b.z ) );
+			polygon |= uint( i * 2 + 1 ) << uint( 3 * count++ );
 #endif
 	}
 	if ( count < 3 )
@@ -114,8 +129,10 @@ float LtcRectangle( vec3 n, vec3 v, vec3 p, mat3 inverse, vec3 corners[4], bool 
 	int emitted = 0;
 	for ( int i = 0; i < count; ++i )
 	{
-		const vec3 a = polygon[i];
-		const vec3 b = polygon[( i + 1 ) % count];
+		const vec3 a = LtcPolygonVertex( ( polygon >> uint( 3 * i ) ) & 7u,
+		    p, toTangent, toCosine, corners );
+		const vec3 b = LtcPolygonVertex( ( polygon >> uint( 3 * ( ( i + 1 ) % count ) ) ) & 7u,
+		    p, toTangent, toCosine, corners );
 #ifdef SEEDED_LTC_NO_HORIZON_CLIP
 		LtcAppend( a, first, previous, emitted, sum );
 #else

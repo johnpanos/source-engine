@@ -6687,7 +6687,7 @@ resolution, or light cohort was reduced. The High 120 FPS gate remains failed.
 | RCV-05: visibility raster resolve followed by material shading | Exact image parity in the bounded lab fixture; roughly 3% faster for large area-light cases, about 31–32% slower for large spot-light cases. | Lab benchmark retained; product remains inline. See the detailed feasibility result below. |
 | RCV-06: compiled coherent runtime/area traversal | Separate lab shader merges sorted runtime lists and area masks, then explicitly broadcasts the selected ID. Inspired by id Tech 6 and Godot Forward+. | Lab and one captured frame match exactly when the diffuse light-warp pipeline retains its original compiled shader. All seven replaced pipelines still allocate 192 VGPRs. Production is unchanged; whole-frame speedup is unproven. |
 | RCV-07: compiler specialization attribution | Freeze the captured shader's debug-term mask to remove area lighting, shadow receiving, or both; retain every other captured pipeline setting. | Area removal lowers 192 to 144 VGPRs (120 for static models); shadow removal lowers 192 to 144; both lower it to 96 (84 for static models). Diagnostic only: these images intentionally differ and no effect is removed from the product. |
-| RCV-08: stream LTC clipping temporaries | Following RCV-07, shorten the area evaluator's live ranges without changing its integral, clipping planes, light set or shadows. | In progress: lab oracle, native image parity, compiled registers and matched complete-frame timing required before retention. |
+| RCV-08: compact LTC clipping topology | Store original-edge/intersection identity in 18 bits and reconstruct FP32 vertices, preserving clipping and accumulation order. | Retained: all eight pipelines fall from 192 to 144 VGPRs; four captured MSAA samples match the corrected control exactly. Matched ABBA full-frame trials show 3.25–3.77% lower GPU time. The High floor remains failed. |
 
 RCV-08's image comparison exposed a pre-existing correctness defect before its
 optimization could be accepted. At captured event 3066, primitive 245, pixel
@@ -6706,6 +6706,42 @@ control. This fix is tracked separately from register optimization: both the
 old polygon algorithm and each candidate receive the same front-side test.
 Evidence is in `quality-results/rendercore-ltc-stream-20261002/`, including the
 captured pixel inputs and light constants. No tolerance or golden was relaxed.
+
+RCV-08 retains the compact topology implementation in `render/shaders/common/ltc.glsl`.
+The old six-vertex mutable polygon is removed. The area-light suite passes 60
+checks and five sensitivity verdicts; shadowed lights pass 153 checks. All four
+1920 x 1080 RGBA8 MSAA samples match the corrected control byte for byte in the
+captured frame (`replay-topology-fixed.json`). Across 37 lab float images versus
+the earlier, uncorrected control, 16 are bit-identical and the maximum absolute
+float difference is 3.0517578125e-05; existing oracles and tolerances are unchanged.
+
+The ordinary-game comparison uses a private runtime, one frozen map directory,
+and saved control/candidate launcher libraries. Both variants include the same
+coplanar correctness fix. Only the launcher library changes; engine/backend
+libraries match. GPU medians in milliseconds are:
+
+| ABBA run | Arrival | Reverse | Return |
+| --- | ---: | ---: | ---: |
+| Control 1 | 58.081 | 22.710 | 58.264 |
+| Candidate 1 | 56.082 | 21.974 | 56.265 |
+| Candidate 2 | 55.872 | 21.874 | 56.224 |
+| Control 2 | 58.234 | 22.610 | 58.630 |
+
+Averaging the run medians gives reductions of 3.75%, 3.25% and 3.77% respectively.
+Busy-GPU sampled median clocks are 2137–2187 MHz for controls and 2135–2137 MHz
+for candidates; power is approximately 70 W and temperatures 85–89 C. The final
+control improves its clock while recovering the slower frame times. Clocks were
+not locked. Raw timings, binary hashes, telemetry and staging clarifications are
+in `paired-summary.json` and `benchmark-notes.json` beside the replay evidence.
+The route still reports the pre-existing map-name assertion mismatch, and every
+run fails the 8.333 ms floor, so these are diagnostic performance comparisons.
+No effect, resolution, sample count or light set was reduced. Fold7 is unavailable.
+
+Native lab/product builds and all 211 pinned shader generation units (417
+artifacts) pass. Architecture check-all, baseline and inventory verification
+pass. Three shader-tool fixture failures (two failures and one error) reproduce
+against the parent tool source; their logs are retained separately. This modest
+gain does not resolve the complete-frame performance deficit.
 
 RCV-07 uses the Radeon 8060S / RADV STRIX_HALO, Mesa 26.2.3, and the existing
 1920 x 1080, four-sample High arrival capture. All eight PBR pipelines use the
