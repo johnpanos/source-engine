@@ -307,16 +307,18 @@ GENERATED = {
          DEVICE_OPTIONS + ("-DSEEDED_SHADOW_FILTER_SKIP_LAST",)))),
     "shadow_cube_probe_spv.h": ("render::lab::spirv",
         "render_lab's cube face lookup oracle and seeded face permutation", (
-        ("kShadowAreaProbe", "render/lab/shadow_cube_probe.comp",
-         DEVICE_OPTIONS + ("-DAREA_SHADOW_PROBE",)),
-        ("kShadowAreaProbeNext", "render/lab/shadow_cube_probe.comp",
-         DEVICE_OPTIONS + ("-DAREA_SHADOW_PROBE", "-DSEEDED_SHADOW_AREA_NEXT")),
         ("kShadowCubeProbe", "render/lab/shadow_cube_probe.comp", DEVICE_OPTIONS),
         ("kShadowCubeProbeNext", "render/lab/shadow_cube_probe.comp",
          DEVICE_OPTIONS + ("-DSEEDED_SHADOW_CUBE_NEXT",)))),
     "shadowed_light_defects_spv.h": ("render::lab::spirv",
         "render_lab's shadowed-light suite's seeded programs (render.lab.shadowed-lights "
         "sensitivity, RFC 0016 K11)", (
+        ("kSurfaceVisibilityWrite", FAMILIES + "/surface.frag",
+         DEVICE_OPTIONS + ("-DLAB_VISIBILITY_WRITE",)),
+        ("kSurfaceVisibilityRead", FAMILIES + "/surface.frag",
+         DEVICE_OPTIONS + ("-DLAB_VISIBILITY_READ",)),
+        ("kSurfaceVisibilityWrongLight", FAMILIES + "/surface.frag",
+         DEVICE_OPTIONS + ("-DLAB_VISIBILITY_READ", "-DLAB_VISIBILITY_WRONG_LIGHT")),
         ("kSurfaceShadowIgnored", FAMILIES + "/surface.frag",
          DEVICE_OPTIONS + ("-DSEEDED_SHADOW_IGNORED",)),
         ("kSurfaceShadowTileNext", FAMILIES + "/surface.frag",

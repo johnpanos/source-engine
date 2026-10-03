@@ -902,6 +902,9 @@ void PbrSurface()
 	// of the fragment's froxel, its falloff and cone (runtime_light.glsl),
 	// both lobes. A light's color is its diffuse light on a surface facing it
 	// (the lightmap unit), so its irradiance is pi times that.
+#ifdef LAB_VISIBILITY_WRITE
+	vec4 receiverVisibility = vec4( 1.0 );
+#endif
 	if ( Term( kClustered ) && DebugTermOn( kDebugTermClustered ) && !furnace )
 	{
 		const float distance =
@@ -913,7 +916,8 @@ void PbrSurface()
 			if ( k == 0u )
 				continue;
 #endif
-			const RuntimeLightRecord runtime = runtimeLights[clusterIndices[range.x + k]];
+			const uint runtimeIndex = clusterIndices[range.x + k];
+			const RuntimeLightRecord runtime = runtimeLights[runtimeIndex];
 			const vec3 toLight = runtime.position.xyz - worldPosition;
 			const float distanceSquared = dot( toLight, toLight );
 #ifdef SEEDED_RUNTIME_FALLOFF_UNWINDOWED
@@ -942,23 +946,38 @@ void PbrSurface()
 				continue;
 			const int tile = int( runtime.cone.w );
 			const int tiles = int( runtime.spot.z );
+			float visibility = 1.0;
+#ifdef LAB_VISIBILITY_READ
+			// Private lab fixture: at most four runtime lights; no detail material.
+			uint channel = runtimeIndex;
+#ifdef LAB_VISIBILITY_WRONG_LIGHT
+			channel = ( channel + 1u ) % 3u;
+#endif
+			visibility = texelFetch( sampler2D( detailTexture, detailSampler ),
+			    ivec2( gl_FragCoord.xy ), 0 )[channel];
+#else
 #ifdef SEEDED_SHADOW_TILE_NEXT
 			if ( tile >= 0 && DebugTermOn( kDebugTermShadowVisibility ) )
-				falloff *= ShadowVisibility( shadowAtlas, shadowSampler, shadowComparisonSampler,
+				visibility = ShadowVisibility( shadowAtlas, shadowSampler, shadowComparisonSampler,
 				    shadowTiles[( tile + 1 ) % shadowTiles.length()], worldPosition );
 #elif !defined( SEEDED_SHADOW_IGNORED )
 			if ( tile >= 0 && tiles == 6 && DebugTermOn( kDebugTermShadowVisibility ) )
-				falloff *= ShadowTerminatorFade( smoothNormal, light,
+				visibility = ShadowTerminatorFade( smoothNormal, light,
 				    ShadowWorldCubeVisibility( shadowAtlas, shadowSampler, shadowComparisonSampler, tile,
 			        -toLight, worldPosition,
 				        ShadowReceiverOffset( geometricNormal, light ), max( runtime.cone.z, 0.5 ),
 				        rotation ) );
 			else if ( tile >= 0 && DebugTermOn( kDebugTermShadowVisibility ) )
-				falloff *= ShadowTerminatorFade( smoothNormal, light,
+				visibility = ShadowTerminatorFade( smoothNormal, light,
 				    ShadowVisibilitySoft( shadowAtlas, shadowSampler, shadowComparisonSampler, shadowTiles[tile],
 				        worldPosition, ShadowReceiverOffset( geometricNormal, light ),
 				        max( runtime.cone.z, 0.5 ), rotation ) );
 #endif
+#endif
+#ifdef LAB_VISIBILITY_WRITE
+			receiverVisibility[runtimeIndex] = visibility;
+#endif
+			falloff *= visibility;
 			const vec3 incident = runtime.color.rgb * falloff;
 			// A baked light's diffuse light is already in the bake, unless
 			// the bake is the indirect layer (runtime direct light).
@@ -1019,6 +1038,14 @@ void PbrSurface()
 				continue;
 			const bool twoSided = light.center.w > 0.5;
 			float visibility = 1.0;
+#ifdef LAB_VISIBILITY_READ
+			int channel = i;
+#ifdef LAB_VISIBILITY_WRONG_LIGHT
+			channel = ( channel + 1 ) % 3;
+#endif
+			visibility = texelFetch( sampler2D( detailTexture, detailSampler ),
+			    ivec2( gl_FragCoord.xy ), 0 )[channel];
+#else
 			const int firstTile = int( light.radiance.w );
 			if ( firstTile >= 0 && DebugTermOn( kDebugTermShadowVisibility ) )
 			{
@@ -1032,12 +1059,16 @@ void PbrSurface()
 				    sqrt( 4.0 * length( light.halfU.xyz ) * length( light.halfV.xyz ) / kPi ) *
 				    sqrt( max( abs( dot( facing, toCenter ) ), 0.05 ) );
 				visibility = ShadowTerminatorFade( smoothNormal, toCenter,
-				    ShadowAreaVisibility( shadowAtlas, shadowSampler, shadowComparisonSampler, firstTile,
-				        twoSided ? 6 : 5, light.halfU.xyz, light.halfV.xyz, worldPosition,
+				    ShadowFacesVisibility( shadowAtlas, shadowSampler, shadowComparisonSampler, firstTile,
+				        twoSided ? 6 : 5, worldPosition,
 				        ShadowReceiverOffset( geometricNormal, toCenter ), size, rotation ) );
-				if ( visibility <= 0.0 )
-					continue;
 			}
+#endif
+#ifdef LAB_VISIBILITY_WRITE
+			receiverVisibility[i] = visibility;
+#endif
+			if ( visibility <= 0.0 )
+				continue;
 			vec3 corners[4];
 			AreaLightCorners( light, corners );
 			const vec3 radiance = light.radiance.rgb * window * visibility;
@@ -1063,6 +1094,11 @@ void PbrSurface()
 			}
 		}
 	}
+#ifdef LAB_VISIBILITY_WRITE
+	// The compiler removes BRDF/material results unused by this resolve.
+	outColor = receiverVisibility;
+	return;
+#endif
 	// The sun: both lobes (the specular only when its diffuse light is
 	// baked), its visibility the bake's mask on a world surface, else its
 	// cascades; its disc widens the specular lobe (Karis 2013).

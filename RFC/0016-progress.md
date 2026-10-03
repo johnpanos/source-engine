@@ -6674,15 +6674,208 @@ regions. No filter, effect, light set or profile quality is reduced. A candidate
 must pass the lab before product integration and receive matched complete-frame
 measurements; this slice does not promote the still-failed High floor.
 
-The comparison follow-up now tracks bounded experiments here, with raw evidence
-under `quality-results/rendercore-opt-20261002/`. `RCV-01` tests clamping hardware
-comparison coordinates directly to tile texel centres, eliminating the per-tap
-normalized-to-texel-to-normalized round trip. The existing atlas planner requires
-power-of-two extents; the independent manual-compare oracle is unchanged. The
-first unchanged native receiver baseline passes 11 checks. Candidate correctness,
-paired GPU timing, and product-frame evaluation are pending; no speedup is claimed.
-Rolled/grouped loops and hoisted depth mapping remain rejected historical trials,
-not new candidates. Owners remain `render.pass.shadows` and `render.lab`.
+The comparison follow-up tracks bounded experiments here, with raw evidence in
+`quality-results/rendercore-opt-20261002/`. No filter, sample count, effect,
+resolution, or light cohort was reduced. The High 120 FPS gate remains failed.
+
+| Trial | Observation | Disposition |
+| --- | --- | --- |
+| RCV-01: clamp comparison coordinates directly to tile texel centres | Paired receiver dispatch ratio 0.9265 against the immutable control; identical-code calibration 0.9999. The earlier full-frame arrival/reverse/return GPU medians were 57.872/22.112/58.110 ms before and 57.324/22.161/57.542 ms after. | Retain the simpler arithmetic, but **no established full-frame gain**; the small differences are insufficient evidence. |
+| RCV-02: GPU min/max hierarchy over changed shadow tiles | The spatial query reached a 0.8054 dispatch ratio, with exact output and exact hierarchy checks. Full-frame trials did not establish a gain. A single-query revision and a cheaper whole-tile-root revision also failed to establish a worthwhile benefit. | **Removed from the product and lab source**, including the atlas buffers, pass, bindings and extra benchmark plumbing. Rejected code is retained as `rejected-bounds.patch` and `rejected-bounds-sources.tar.gz` in the evidence directory. |
+| RCV-03: oriented area-light face selection | 29 native correctness checks and five sensitivity checks passed. Control/candidate/candidate/control arrival GPU medians were 62.837/60.346/59.499/58.582 ms; the control improved too as clocks rose. | **Rejected and removed**: no attributable frame gain. `rejected-area-face.patch` and `rejected-area-face-sources.tar.gz` retain the experiment. |
+| RCV-04: subgroup-coherent area-light traversal | Form a subgroup union of froxel masks, retaining each fragment's own membership and ascending accumulation order. Authored warp materials retain their original traversal. All 16 scalar/candidate lab images match bitwise (68 total checks). | **Rejected and removed**: candidate arrival/reverse/return GPU medians 57.926/22.651/58.482 ms versus fresh scalar control 58.195/22.318/57.999 ms. No consistent gain. Code, private native injection and logs are archived with the evidence. |
+| RCV-05: visibility raster resolve followed by material shading | Exact image parity in the bounded lab fixture; roughly 3% faster for large area-light cases, about 31–32% slower for large spot-light cases. | Lab benchmark retained; product remains inline. See the detailed feasibility result below. |
+
+The latest scalar control (`g1-control`) records arrival/reverse/return frame
+interval medians of 62.652/23.098/62.445 ms and GPU render medians of
+58.195/22.318/57.999 ms. Together with approximately 99–100% GPU busy during
+measured phases and the earlier receiver-visibility diagnostic (about 61 to
+23.8 ms), this supports a primarily GPU-bound workload. CPU wall scopes overlap
+GPU work and may contain waits; they do not establish an independent CPU critical
+path. Engine wall medians remain 18.390/14.160/19.094 ms, so this evidence does
+not certify that the CPU could sustain 120 FPS after GPU optimization.
+
+These trials targeted small receiver operations inside the full surface shader.
+Standalone improvements did not transfer into a consistent complete-frame gain.
+Register pressure, texture latency and lane divergence are still hypotheses;
+no hardware-counter capture here isolates their relative contributions. Future
+receiver work needs full-shader measurements before promoting a microkernel win.
+RCV-04 also fails the pinned OpenGL translator (subgroup operation requires Vulkan
+semantics). Its native-only injection was temporary and is removed; no unsupported
+subgroup requirement or capability claim remains in the product or lab.
+
+RCV-04 does **not** rule out id Tech 6's scalar light traversal. On re-reading the
+downloaded speaker notes, their register reduction depends on removing the
+divergent path from the compiled program. RCV-04 retained a runtime divergent
+fallback for authored warp materials and did not verify scalar light-record
+loads or lower register allocation in the expensive game variants. Its rejection
+applies to that prototype only. The engine comparison already called for mapping
+compiled variants to actual game draws before changing them; the flat receiver
+fixtures below cannot replace that attribution.
+
+RCV-02's exact-depth and partial-update tests passed: removing a blocker rebuilt
+only its tile and preserved cached neighbors; guarded, non-origin tiles matched
+the original receiver. The final hierarchy lab ran 19 checks plus three sensitivity
+checks, and the image suite ran 21 checks. This proved correctness, not a product
+speedup. Whole-frame root/control arrival/reverse/return medians were
+69.822/27.631/71.765 ms versus 73.298/29.246/75.510 ms, but the root trial ran at
+higher clocks and lower temperatures; those numbers do **not** justify promotion.
+The initial 70 W runs and later approximately 55 W runs are not interchangeable.
+Power/temperature/frequency logs are retained for every product trial.
+
+Every complete product route still reports the pre-existing `map.loaded`
+assertion mismatch (`sp_a1_intro4` versus the requested probe64 name), in addition
+to the frame-floor failures. Those captures are diagnostic evidence only. One
+incomplete run (`c1`) has no valid route frames and is explicitly excluded.
+Early binary identity records omitted `liblauncher.so`, which owns linked core
+shaders; subsequent records include it, source hashes and the actual commands.
+Concurrent source changes and thermal differences further limit early A/B claims.
+
+After removing the rejected experiments, `render_lab` builds with 415 shader
+artifacts and zero generation failures; the native shadowed-light suite passes
+21 checks with validation enabled. Architecture and changed-line style checks
+pass. The final product control build succeeds. No High performance gate is closed.
+
+The bounds experiment exposed a pipeline-recipe defect: reflected draw-constant
+ranges were lost by `ResolvedPipeline::Desc()`. The shared recipe owner now takes
+the maximum reflected stage range. The shader-library suite passes 14 checks,
+including the rejected zero-range negative control. No hierarchy remains as an
+unused product mechanism. Rolled/grouped loops and hoisted depth mapping remain
+rejected historical trials. Owners remain `render.pass.shadows`,
+`render.shader-library`, and `render.lab`; no legacy backend shading was changed.
+
+#### RCV-05: separate visibility evaluation (2026-10-02)
+
+User direction: keep receiving enabled and investigate evaluating visibility
+outside the large material shader. The experiment is private to `render_lab`;
+`render.pass.shadows` still owns the existing receiver/filter algorithm, and
+`render.material` still owns its surface program. No new public pass, material
+option, backend requirement or product selection mechanism was added.
+
+Two lab variants compile the same surface source. The first rasterizes the same
+receiver geometry and returns per-light visibility, with unused BRDF results
+removed by compilation. It preserves geometric-normal derivatives, interpolated
+smooth normals, light transforms, source-size calculation, pixel rotation,
+sixteen blocker samples and sixteen comparison-filter samples. The second reads
+those values with an exact texel fetch before applying the original lighting.
+The mask is RGBA32F, with a stable light index per channel. The lab explicitly
+rejects more than four lights or mixed runtime/area index spaces; this is a
+fixture bound, not a new product light limit. It borrows the unused detail-texture
+binding only in its private shader variants; ordinary materials retain that
+binding's original meaning.
+
+The native fixture uses two box casters, two shadowed spots plus an untiled point,
+and separate two/four-area-light scenes planned and drawn through the existing
+shadow owner. Two source sizes, overhead/oblique views, four metal/roughness
+materials and 128-square/1024-square targets give **96 bitwise image comparisons**.
+Six deliberately swapped-light masks fail comparison. The installed shadowed
+suite passes **129 checks with zero validation messages**, and its existing
+sensitivity suite passes **5 checks**. These cover a single opaque receiver layer
+at one sample; they do not certify 4x MSAA edges, transparency, cutouts, skinned
+models, nested views or the complete game frame.
+
+Timing uses one GPU submission per case, 128 warm-up pairs and 64 measured pairs
+with alternating fused/split order. The split interval includes both raster
+passes, clears, mask writes/reads and barriers. The fused interval includes its
+raster pass and corresponding target barriers. Fixture uploads, CPU recording,
+submission, atlas production and image readback are outside both intervals.
+Correctness renders precede timing. Each timed sequence ends with an image
+readback; raw paired samples accompany the summary. This is a GPU draw-scope
+comparison, **not** a complete-frame or CPU/GPU-placement acceptance result.
+
+Radeon 8060S / RADV STRIX_HALO, final installed conformance run:
+
+| Scene | Resolution | Fused median | Split median | Median paired split/fused ratio |
+| --- | --- | --- | --- | --- |
+| Two shadowed spots | 128 x 128 | 0.014628 ms | 0.020719 ms | 1.4198 |
+| Two shadowed spots | 1024 x 1024 | 0.289590 ms | 0.379802 ms | 1.3108 |
+| Two shadowed area lights | 128 x 128 | 0.020779 ms | 0.027152 ms | 1.3068 |
+| Two shadowed area lights | 1024 x 1024 | 0.624386 ms | 0.609518 ms | 0.9741 |
+| Four shadowed area lights | 128 x 128 | 0.040597 ms | 0.047069 ms | 1.1453 |
+| Four shadowed area lights | 1024 x 1024 | 1.193367 ms | 1.156157 ms | 0.9719 |
+
+Repeated paired runs gave approximately 0.969–0.974 for large area cases and
+1.31–1.32 for large spot cases. This is a small area-light benefit and a clear
+spot-light regression, not evidence for separating every receiver. Fixed pass
+and storage costs outweigh the benefit in the small cases. The experiment does
+not isolate dynamic occupancy, texture stalls or register pressure as the cause.
+
+**Disposition:** retain the reproducible lab comparison; keep production shadow
+receiving enabled and inline. No game shader selects either lab variant. A
+product candidate needs complete-frame evidence and correct per-surface/sample
+storage first. A dense float mask costs 16 MiB at 1024-square for four lights;
+at 1920x1080 it would cost 31.64 MiB. Naively extending to 64 light channels is
+506.25 MiB at one sample, before read/write traffic and any extra MSAA storage.
+A many-light design must account for sparse froxel membership and stable light
+identity rather than extending that dense fixture directly. Screen-space depth
+alone also does not supply the current geometric and smooth normals exactly;
+reconstruction, coverage and transparency remain explicit correctness work.
+The 120 FPS gate remains failed, and no platform/performance promotion is made.
+
+Evidence: `quality-results/visibility-split-20261002/`, including conformance
+identity/input digests, raw timing pairs, shader/build logs and the earlier
+CPU-driven timing trial (superseded by sustained paired draws). Reproduction:
+
+```sh
+WAFLOCK=.lock-waf-rc-lab-main ./waf build --targets=render_lab -j8
+python3 tools/quality/conformance.py check \
+  --suite render.lab.shadowed-lights \
+  --suite render.lab.shadowed-lights.sensitivity \
+  --out quality-results/visibility-split-20261002/conformance.json
+```
+
+The existing lab and Portal 2 product configurations build successfully. Full
+architecture, baseline/inventory verification and changed-line style checks pass.
+
+#### Actual arrival-frame attribution follow-up (2026-10-02)
+
+The user challenged the repeated small experiments against the existing id Tech
+research. The missing step was the comparison report's own requirement: connect
+the expensive compiled shaders to actual game draws before choosing another
+receiver optimization. RCV-05's flat one-sample planes do not establish that
+connection or predict the complete game's gain.
+
+A release-shader RenderDoc capture now reproduces the arrival eye
+`(145, -440, 90)`, angles approximately `(8, 20, 0)`, at 1920x1080 on the Radeon
+8060S. The existing High cfg keeps receiving enabled. In the 12-frame engine GPU
+timing window immediately before the capture, `core world view` is 59.563 ms:
+world PBR 20.746 ms, static-model PBR 23.088 ms, posed-model PBR 10.755 ms,
+GTAO 2.086 ms and cluster BVH assignment 0.378 ms. These are diagnostic window
+means under capture instrumentation, not new ordinary-run medians or independent
+CPU timings. The expensive surface cohorts dominate; assignment is not the
+primary target. Existing whole-frame baseline and acceptance failures stand.
+
+Source inspection also establishes that the target-depth prepass in
+`render.pass.world` draws world surfaces before world lighting, while static and
+posed models are shaded later. It does not provide a complete opaque-model
+prepass. The cost attributable to that missing coverage remains unmeasured.
+
+Evidence and replay scripts are in
+`quality-results/rendercore-frame-attribution-20261002/`. `arrival-high` is the
+camera/resolution-matched capture; earlier attempts are explicitly classified in
+`identity-and-limitations.json`. Offscreen SDL clamps to 1024x768; RenderDoc on
+this installation does not expose Wayland Vulkan surfaces. The valid capture
+uses X11 in the existing private compositor with `-noborder`, preventing the
+decoration resize to 1920x1043. No login-session window or display was changed.
+RenderDoc per-draw duration counters repeat expensive preceding durations on
+some zero-invocation draws, so they must not be summed as independent draw costs.
+Invocation counts and shader/binding identities are retained separately from
+the engine's pass timing windows.
+
+Replay of that capture exposes `KHR_pipeline_executable_properties`, connecting
+the compiler statistics to the actual PBR pipelines. The static-model pipeline
+22523 (92 draws, 1,941,530 fragment invocations) allocates 192 VGPRs, has 59,576
+bytes of machine code and 11,087 static instructions. Major world pipeline
+22509 allocates 192 VGPRs, has 56,732 bytes of code and 10,612 static instructions.
+Both use 64-lane subgroups, report a maximum eight subgroups per SIMD and no
+register spills or scratch allocation. These are driver compiler statistics
+from replay, not measured dynamic occupancy or instructions executed per pixel.
+See `pipeline-statistics.json`, `disassembly-high.json`, and the corresponding
+pipeline executable text for the full mapping. This closes the earlier missing
+draw-to-compiler-statistics link; it does not isolate register, instruction-cache,
+texture or divergence stalls. The capture confirms a 4x-MSAA main target and
+64 area-light records in the lit frame bindings; froxel masks are present, so
+64 records must not be presented as 64 evaluated lights at every pixel.
 
 ### R91: Portal 2 core portal views (2026-10-02, active)
 

@@ -39,7 +39,8 @@ struct PipelineRecipe
 };
 
 // Owns the arrays a PipelineDesc views. Desc() is built on each call, so a
-// moved ResolvedPipeline never hands out views of its old storage.
+// moved ResolvedPipeline never hands out views of its old storage. The draw
+// constant range is the maximum reflected requirement of its resolved stages.
 class ResolvedPipeline
 {
 public:

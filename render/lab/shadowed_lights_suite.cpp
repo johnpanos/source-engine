@@ -29,6 +29,7 @@
 #include "lab_canvas.h"
 #include "lab_compute.h"
 #include "lab_receiver.h"
+#include "lab_shadows.h"
 #include "lab_suite.h"
 #include "lab_support.h"
 #include "suites.h"
@@ -49,6 +50,7 @@
 #include "spv/shadow_cube_probe_spv.h"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cmath>
 #include <cstdio>
@@ -236,6 +238,7 @@ struct Lab
 	TextureDesc atlasDesc;
 	resources::MeshEntry cube;
 	std::vector<SceneLight> lights;
+	std::vector<material::SurfaceAreaLight> areas;
 	std::vector<ShadowTileGpu> tiles;
 	std::uint32_t tileTexels = 0; // the spots' viewport size
 
@@ -350,9 +353,10 @@ std::optional<std::string> DrawAtlas( Lab &lab )
 	return std::nullopt;
 }
 
-std::optional<std::string> Prepare( Lab &lab, std::span<const std::uint32_t> module )
+std::optional<std::string> Prepare(
+    Lab &lab, std::span<const std::uint32_t> module, std::uint32_t size = kSize )
 {
-	if ( std::optional<std::string> why = Canvas::Create( lab.device, kSize, kSize, lab.canvas ) )
+	if ( std::optional<std::string> why = Canvas::Create( lab.device, size, size, lab.canvas ) )
 		return why;
 	auto family = material::CreateSurfaceFamily<material::PbrFamily>(
 	    lab.device, kCanvasColor, kCanvasDepth, 1, module );
@@ -376,6 +380,13 @@ std::optional<std::string> Prepare( Lab &lab, std::span<const std::uint32_t> mod
 	staged = staged &&
 	         lab.textures.Stage( "sl/splitsum", desc, std::as_bytes( std::span( table.texels ) ) )
 	             .HasValue();
+	const auto ltc = material::LtcTable();
+	desc.format = ltc.format;
+	desc.width = ltc.width;
+	desc.height = ltc.height;
+	staged =
+	    staged &&
+	    lab.textures.Stage( "sl/ltc", desc, std::as_bytes( std::span( ltc.texels ) ) ).HasValue();
 	if ( !staged )
 		return std::string( "a fixture texture was refused" );
 	for ( const ReceiverMaterial &m : kReceiverMaterials )
@@ -413,11 +424,11 @@ struct Frame
 std::optional<material::GroupRequest> ViewGroup( Lab &lab, const Frame &frame )
 {
 	pass::lights::ClusterLimits limits = pass::lights::DesktopClusterLimits();
-	limits.tileSizePixels = kTileSize;
+	limits.tileSizePixels = std::max( kTileSize, lab.canvas->Width() / 16 );
 	pass::lights::ClusterViewDesc desc;
 	desc.view = frame.view->view;
 	desc.projection = frame.view->projection;
-	desc.widthPixels = desc.heightPixels = kSize;
+	desc.widthPixels = desc.heightPixels = lab.canvas->Width();
 	desc.nearZ = frame.view->nearZ;
 	desc.farZ = frame.view->farZ;
 	auto grid = pass::lights::CreateClusterGrid( desc, limits );
@@ -433,7 +444,7 @@ std::optional<material::GroupRequest> ViewGroup( Lab &lab, const Frame &frame )
 	view.grid[0] = grid.Value().tilesX;
 	view.grid[1] = grid.Value().tilesY;
 	view.grid[2] = grid.Value().slices;
-	view.grid[3] = kTileSize;
+	view.grid[3] = limits.tileSizePixels;
 	view.slices[0] = grid.Value().sliceScale;
 	view.slices[1] = grid.Value().sliceBias;
 	view.slices[2] = grid.Value().nearZ;
@@ -454,20 +465,91 @@ std::optional<material::GroupRequest> ViewGroup( Lab &lab, const Frame &frame )
 	return request;
 }
 
-std::optional<std::string> Render( Lab &lab, const Frame &frame, CanvasImage &image )
+// Private feasibility fixture: one opaque layer, one sample and <=4 lights
+// of one class (runtime or area). It does not compose the two index spaces.
+// Its RGBA32F channels are stable light indices, not a product light limit.
+// The unused detail binding carries the mask only in the lab's seeded program.
+struct SplitFrame
+{
+	IRenderDevice2 &device;
+	std::unique_ptr<material::PbrFamily> writer, reader;
+	TextureId mask;
+	TextureDesc desc;
+	BufferId timestamps;
+	bool used = false;
+	bool enabled = true;
+	bool benchmark = false;
+	std::vector<double> fusedTimes, splitTimes;
+	explicit SplitFrame( IRenderDevice2 &d ) : device( d ) {}
+	~SplitFrame()
+	{
+		(void)device.WaitIdle();
+		if ( mask.IsValid() )
+			(void)device.Release( mask, {} );
+		if ( timestamps.IsValid() )
+			(void)device.Release( timestamps, {} );
+	}
+};
+
+std::optional<std::string> Render(
+    Lab &lab, const Frame &frame, CanvasImage &image, SplitFrame *split = nullptr )
 {
 	material::SurfaceFrame terms;
 	terms.eye[0] = frame.view->eye.x;
 	terms.eye[1] = frame.view->eye.y;
 	terms.eye[2] = frame.view->eye.z;
+	terms.areaCount[0] = float( lab.areas.size() );
+	std::copy( lab.areas.begin(), lab.areas.end(), terms.areas );
 	const std::uint64_t frameGroup = lab.nextGroup++;
 	const std::uint64_t viewGroup = lab.nextGroup++;
+	std::array<std::array<std::uint64_t, 4>, 2> splitGroups{};
 	const std::optional<material::GroupRequest> view = ViewGroup( lab, frame );
 	if ( !view )
 		return std::string( "the cluster lists were not built" );
-	if ( !lab.groups.Set( frameGroup, lab.family->FrameGroup( terms, "sl/splitsum" ) ) ||
+	if ( !lab.groups.Set( frameGroup, lab.family->FrameGroup( terms, "sl/splitsum", "sl/ltc" ) ) ||
 	     !lab.groups.Set( viewGroup, *view ) )
 		return std::string( "a frame or view group was refused" );
+	if ( split )
+	{
+		material::PbrClaim claim;
+		claim.claimed = true;
+		material::SurfaceTextures textures;
+		textures.base = "sl/base";
+		textures.mrao = std::string( "sl/mrao-" ) + frame.material->name;
+		int passIndex = 0;
+		for ( auto *family : { split->writer.get(), split->reader.get() } )
+		{
+			auto request = family->Request( claim, textures );
+			if ( !request )
+				return std::string( "split material request failed" );
+			if ( passIndex == 1 )
+			{
+				bool bound = false;
+				for ( auto &texture : request.Value().material.textures )
+					if ( texture.binding == 9 )
+					{
+						texture.name.clear();
+						texture.external = split->mask;
+						texture.externalDesc = split->desc;
+						bound = true;
+					}
+				if ( !bound )
+					return std::string( "split mask binding absent" );
+			}
+			material::GroupRequest requests[] = {
+			    family->FrameGroup( terms, "sl/splitsum", "sl/ltc" ), *view,
+			    request.Value().material, family->LightingGroup( material::ModelLighting() ) };
+			requests[1].layout = family->ViewLayout();
+			for ( int role = 0; role < 4; ++role )
+			{
+				splitGroups[passIndex][role] = lab.nextGroup++;
+				if ( !lab.groups.Set( splitGroups[passIndex][role], requests[role] ) )
+					return std::string( "split group setup failed" );
+			}
+			++passIndex;
+		}
+	}
+
 	if ( std::optional<std::string> why =
 	         lab.canvas->Render( lab.textures, lab.groups, {}, { 0, 0, 0, 1 }, nullptr ) )
 		return why;
@@ -498,8 +580,106 @@ std::optional<std::string> Render( Lab &lab, const Frame &frame, CanvasImage &im
 	const auto *bytes = reinterpret_cast<const std::byte *>( &constants );
 	draw.constants.assign( bytes, bytes + sizeof( constants ) );
 	const CanvasDraw draws[] = { draw };
-	std::optional<std::string> why =
-	    lab.canvas->Render( lab.textures, lab.groups, draws, { 0, 0, 0, 1 }, &image );
+	CanvasPost post;
+	if ( split )
+	{
+		auto writer = split->writer->Program().Pipeline( variant, frame.debug );
+		auto reader = split->reader->Program().Pipeline( variant, frame.debug );
+		if ( !writer || !reader )
+			return std::string( "split pipeline failed" );
+		post = [&, writer = writer.Value(), reader = reader.Value()]( CommandEncoder &e,
+		           TextureId color, TextureId depth ) -> std::optional<std::string>
+		{
+			e.TransitionBuffer(
+			    split->timestamps, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+			auto pass = [&]( TextureId target, PipelineId selected,
+			                const std::array<BindGroupId, 4> &bindings, ClearColor clear )
+			{
+				const ColorAttachment attachment[] = {
+				    { target, LoadOp::kClear, StoreOp::kStore, clear, {} } };
+				RenderingDesc desc;
+				desc.colors = attachment;
+				desc.depth = DepthAttachment{ depth, LoadOp::kClear, StoreOp::kStore, 1.0f };
+				desc.width = desc.height = lab.canvas->Width();
+				e.BeginRendering( desc );
+				e.SetViewport( { 0, 0, float( desc.width ), float( desc.height ), 0, 1 } );
+				e.SetPipeline( selected );
+				for ( std::size_t role = 0; role < bindings.size(); ++role )
+					e.SetBindGroup( BindGroupRole( role ), bindings[role] );
+				e.SetVertexBuffer( 0, draw.vertices, 0 );
+				e.SetDrawConstants( 0, draw.constants );
+				e.Draw( draw.vertexCount, 1, 0, 0 );
+				e.EndRendering();
+			};
+			std::array<std::array<BindGroupId, 4>, 2> bindings{};
+			for ( int p = 0; p < 2; ++p )
+				for ( int role = 0; role < 4; ++role )
+					bindings[p][role] = group( splitGroups[p][role] );
+			const int warmup = split->benchmark ? 128 : 0;
+			const int samples = split->benchmark ? 64 : 1;
+			for ( int sample = -warmup; sample < samples; ++sample )
+				for ( int order = 0; order < ( split->benchmark ? 2 : 1 ); ++order )
+				{
+					const bool separated =
+					    split->benchmark ? ( sample % 2 == 0 ) == ( order == 0 ) : split->enabled;
+					const std::uint64_t offset =
+					    split->benchmark
+					        ? std::uint64_t( std::max( sample, 0 ) ) * 32 + ( separated ? 16 : 0 )
+					        : 0;
+					if ( sample >= 0 )
+						e.WriteTimestamp( split->timestamps, offset );
+					e.TransitionTexture(
+					    depth, ResourceUsage::kDepthWrite, ResourceUsage::kDepthWrite );
+					e.TransitionTexture(
+					    color, ResourceUsage::kColorAttachment, ResourceUsage::kColorAttachment );
+					if ( separated )
+					{
+						e.TransitionTexture( split->mask,
+						    split->used ? ResourceUsage::kSampled : ResourceUsage::kUndefined,
+						    ResourceUsage::kColorAttachment );
+						pass( split->mask, writer, bindings[0], { 1, 1, 1, 1 } );
+						e.TransitionTexture(
+						    split->mask, ResourceUsage::kColorAttachment, ResourceUsage::kSampled );
+						e.TransitionTexture(
+						    depth, ResourceUsage::kDepthWrite, ResourceUsage::kDepthWrite );
+						pass( color, reader, bindings[1], { 0, 0, 0, 1 } );
+						split->used = true;
+					}
+					else
+						pass( color, draw.pipeline, draw.groups, { 0, 0, 0, 1 } );
+
+					if ( sample >= 0 )
+						e.WriteTimestamp( split->timestamps, offset + 8 );
+				}
+			return std::nullopt;
+		};
+	}
+	std::optional<std::string> why = lab.canvas->Render( lab.textures, lab.groups,
+	    split ? std::span<const CanvasDraw>() : std::span<const CanvasDraw>( draws ),
+	    { 0, 0, 0, 1 }, &image, post );
+	if ( split && split->benchmark && !why )
+	{
+		std::uint64_t ticks[64 * 4] = {};
+		if ( !lab.device.ReadBuffer(
+		         split->timestamps, 0, std::as_writable_bytes( std::span( ticks ) ) ) )
+			return std::string( "split GPU timestamps unavailable" );
+		split->fusedTimes.clear();
+		split->splitTimes.clear();
+		for ( int sample = 0; sample < 64; ++sample )
+			for ( int path = 0; path < 2; ++path )
+			{
+				const int i = sample * 4 + path * 2;
+				if ( ticks[i + 1] <= ticks[i] )
+					return std::string( "split GPU timestamp pair invalid" );
+				( path ? split->splitTimes : split->fusedTimes )
+				    .push_back( double( ticks[i + 1] - ticks[i] ) *
+				                lab.device.Facts().timestampPeriodNs / 1e6 );
+			}
+	}
+	for ( const auto &pass : splitGroups )
+		for ( const auto id : pass )
+			if ( id )
+				lab.groups.Remove( id );
 	lab.groups.Remove( frameGroup );
 	lab.groups.Remove( viewGroup );
 	return why;
@@ -821,6 +1001,185 @@ std::optional<std::string> CubeChecks( Lab &lab, Results &results )
 	return std::nullopt;
 }
 
+std::optional<std::string> PrepareSplit( Lab &lab, SplitFrame &split )
+{
+	if ( lab.lights.size() > 4 || lab.areas.size() > 4 ||
+	     ( !lab.lights.empty() && !lab.areas.empty() ) )
+		return std::string( "visibility split fixture exceeds its channel contract" );
+	if ( !lab.device.Facts().capabilities.Has( Capability::kTimestamps ) )
+		return std::string( "visibility split requires GPU timestamps" );
+	auto writer = material::CreateSurfaceFamily<material::PbrFamily>(
+	    lab.device, Format::kRGBA32Float, kCanvasDepth, 1, spirv::kSurfaceVisibilityWrite );
+	auto reader = material::CreateSurfaceFamily<material::PbrFamily>(
+	    lab.device, kCanvasColor, kCanvasDepth, 1, spirv::kSurfaceVisibilityRead );
+	if ( !writer || !reader )
+		return std::string( "visibility split programs failed" );
+	split.writer = std::move( writer ).Value();
+	split.reader = std::move( reader ).Value();
+	split.desc.format = Format::kRGBA32Float;
+	split.desc.width = split.desc.height = lab.canvas->Width();
+	split.desc.usages = { ResourceUsage::kColorAttachment, ResourceUsage::kSampled };
+	auto mask = lab.device.CreateTexture( split.desc );
+	if ( !mask )
+		return std::string( "visibility mask allocation failed" );
+	split.mask = mask.Value();
+	BufferDesc desc;
+	desc.size = 64 * 32;
+	desc.usages = { ResourceUsage::kCopyDestination };
+	desc.memory = MemoryKind::kReadback;
+	auto times = lab.device.CreateBuffer( desc );
+	if ( !times )
+		return std::string( "visibility timestamps allocation failed" );
+	split.timestamps = times.Value();
+	return std::nullopt;
+}
+
+std::optional<std::string> PrepareAreaSplit( Lab &lab, int count )
+{
+	LabLights lights;
+	const math::float3 positions[] = {
+	    { 40, -30, 320 }, { -320, 250, 260 }, { -40, 30, 280 }, { 180, 180, 300 } };
+	for ( int i = 0; i < count; ++i )
+	{
+		area_light::AreaLight light;
+		std::memcpy( light.rect.center, &positions[i], sizeof( light.rect.center ) );
+		light.rect.halfU[0] = 32.0f;
+		light.rect.halfV[1] = -32.0f;
+		light.radiance[0] = light.radiance[1] = light.radiance[2] = 4.0f;
+		light.reach = 1000.0f;
+		lights.areas.push_back( light );
+	}
+	std::vector<shadows::ShadowCaster> casters;
+	for ( const Box &box : kCasters )
+		casters.push_back(
+		    { lab.cube, math::Multiply( math::Translation( box.center ),
+		                    math::Scale( { 2 * box.half.x, 2 * box.half.y, 2 * box.half.z } ) ) } );
+	LabShadows shadow;
+	if ( auto why = DrawShadows( lab.device, *lab.depth, lights, casters, {}, shadow ) )
+		return why;
+	(void)lab.device.Release( lab.atlas, {} );
+	lab.atlas = shadow.atlas;
+	lab.atlasDesc = shadow.atlasDesc;
+	lab.tiles = std::move( shadow.tiles );
+	lab.lights.clear();
+	for ( std::size_t i = 0; i < lights.areas.size(); ++i )
+	{
+		if ( shadow.areaTiles[i] < 0 )
+			return std::string( "split area light has no shadow tile" );
+		lab.areas.push_back(
+		    material::PackAreaLight( lights.areas[i], false, shadow.areaTiles[i] ) );
+	}
+	return std::nullopt;
+}
+
+std::optional<std::string> VisibilitySplitChecks( IRenderDevice2 &device, Results &results )
+{
+	std::printf( "VISIBILITY_DEVICE %.*s timestamp_ns=%.6f\n",
+	    int( device.Facts().adapterName.size() ), device.Facts().adapterName.data(),
+	    device.Facts().timestampPeriodNs );
+	for ( const int area : { 0, 2, 4 } )
+		for ( const std::uint32_t size : { 128u, 1024u } )
+		{
+			const std::string scene = std::string( area ? "area-" : "spot-" ) +
+			                          std::to_string( area ? area : 2 ) + "." +
+			                          std::to_string( size );
+			Lab lab( device );
+			if ( auto why = Prepare( lab, {}, size ) )
+				return why;
+			if ( area )
+				if ( auto why = PrepareAreaSplit( lab, area ) )
+					return why;
+			SplitFrame split{ device };
+			if ( auto why = PrepareSplit( lab, split ) )
+				return why;
+			const ReceiverView views[] = {
+			    MakeReceiverView( { 0, -60, 420 }, { -40, 20, 0 }, size ),
+			    MakeReceiverView( { 250, -380, 220 }, { -60, 40, 0 }, size ) };
+			for ( const float radius : { 4.0f, 32.0f } )
+			{
+				for ( auto &light : lab.areas )
+				{
+					light.halfU[0] = radius;
+					light.halfV[1] = -radius;
+				}
+				for ( SceneLight &light : lab.lights )
+				{
+					light.light.sourceRadius = radius;
+					if ( light.tile >= 0 )
+					{
+						lab.tiles[light.tile].params[2] = kShadowNear;
+						lab.tiles[light.tile].params[3] = light.light.radius;
+					}
+				}
+				for ( int v = 0; v < 2; ++v )
+					for ( const ReceiverMaterial &material : kReceiverMaterials )
+					{
+						const Frame frame{ &material, &views[v], true, true };
+						CanvasImage fused, separated;
+						split.enabled = false;
+						if ( auto why = Render( lab, frame, fused, &split ) )
+							return why;
+						split.enabled = true;
+						if ( auto why = Render( lab, frame, separated, &split ) )
+							return why;
+						results.That( SameImage( fused, separated ),
+						    std::string( area ? "visibility-split.area.bitwise."
+						                      : "visibility-split.spot.bitwise." ) +
+						        std::to_string( area ) + "." + std::to_string( size ) + "." +
+						        std::to_string( radius ) + "." + std::to_string( v ) + "." +
+						        material.name );
+					}
+			}
+			const Frame frame{ &kReceiverMaterials[2], &views[1], true, true };
+			CanvasImage timed;
+			split.benchmark = true;
+			if ( auto why = Render( lab, frame, timed, &split ) )
+				return why;
+			split.benchmark = false;
+			const auto &fusedTimes = split.fusedTimes;
+			const auto &splitTimes = split.splitTimes;
+			std::vector<double> ratios;
+			for ( std::size_t i = 0; i < fusedTimes.size(); ++i )
+				ratios.push_back( splitTimes[i] / fusedTimes[i] );
+			auto median = []( std::vector<double> values )
+			{
+				std::sort( values.begin(), values.end() );
+				return ( values[values.size() / 2 - 1] + values[values.size() / 2] ) * 0.5;
+			};
+			std::printf( "VISIBILITY_SPLIT kind=%s lights=%u size=%u samples=%zu fused_ms=%.6f "
+			             "split_ms=%.6f ratio=%.6f "
+			             "mask_bytes=%llu\n",
+			    area ? "area" : "spot", area ? area : 2, size, ratios.size(), median( fusedTimes ),
+			    median( splitTimes ), median( ratios ),
+			    static_cast<unsigned long long>( size ) * size * 16 );
+			std::printf( "VISIBILITY_SAMPLES kind=%s lights=%u size=%u fused_ms=",
+			    area ? "area" : "spot", area ? area : 2, size );
+			for ( double value : fusedTimes )
+				std::printf( "%.6f,", value );
+			std::printf( " split_ms=" );
+			for ( double value : splitTimes )
+				std::printf( "%.6f,", value );
+			std::printf( "\n" );
+			results.That( ratios.size() == 64, "visibility-split.timed." + scene );
+			// A swapped light channel must fail the exact-image comparison.
+			auto wrong = material::CreateSurfaceFamily<material::PbrFamily>(
+			    device, kCanvasColor, kCanvasDepth, 1, spirv::kSurfaceVisibilityWrongLight );
+			if ( !wrong )
+				return std::string( "visibility split negative program failed" );
+			split.reader = std::move( wrong ).Value();
+			CanvasImage expected, broken;
+			split.enabled = false;
+			if ( auto why = Render( lab, frame, expected, &split ) )
+				return why;
+			split.enabled = true;
+			if ( auto why = Render( lab, frame, broken, &split ) )
+				return why;
+			results.That(
+			    !SameImage( expected, broken ), "visibility-split.reject-wrong-light." + scene );
+		}
+	return std::nullopt;
+}
+
 std::optional<std::string> RunOnce( bool validate, std::span<const std::uint32_t> module,
     Results &results, std::uint64_t &messages )
 {
@@ -838,6 +1197,9 @@ std::optional<std::string> RunOnce( bool validate, std::span<const std::uint32_t
 			return why;
 		if ( std::optional<std::string> why = CubeChecks( lab, results ) )
 			return why;
+		if ( module.empty() )
+			if ( auto why = VisibilitySplitChecks( *device, results ) )
+				return why;
 		(void)device->WaitIdle();
 	}
 	device.reset();

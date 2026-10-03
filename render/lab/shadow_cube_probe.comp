@@ -11,10 +11,6 @@ layout( set = 3, binding = 3, std430, row_major ) readonly buffer Cases
 {
 	uvec4 counts;
 	ShadowTile shadowTiles[6];
-#ifdef AREA_SHADOW_PROBE
-	vec4 halfU;
-	vec4 halfV;
-#endif
 	vec4 points[];
 };
 #include "../shaders/common/shadow_faces.glsl"
@@ -28,17 +24,9 @@ void main()
 	if ( i >= counts.x )
 		return;
 	const vec4 p = points[i];
-#ifdef AREA_SHADOW_PROBE
-	visibility[i] = vec2(
-	    ShadowAreaVisibility( atlas, pointSampler, comparisonSampler, 0, int( halfU.w ),
-	        halfU.xyz, halfV.xyz, p.xyz, vec3( 0 ), p.w, 0 ),
-	    ShadowFacesVisibility( atlas, pointSampler, comparisonSampler, 0, int( halfU.w ),
-	        p.xyz, vec3( 0 ), p.w, 0 ) );
-#else
 	visibility[i] = vec2(
 	    ShadowWorldCubeVisibility( atlas, pointSampler, comparisonSampler, 0,
 	        p.xyz, p.xyz, vec3( 0 ), p.w, 0 ),
 	    ShadowFacesVisibility( atlas, pointSampler, comparisonSampler, 0, 6,
 	        p.xyz, vec3( 0 ), p.w, 0 ) );
-#endif
 }

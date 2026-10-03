@@ -29,44 +29,6 @@ float ShadowWorldCubeVisibility( texture2D atlas, sampler pointSampler, sampler 
 	    world, normal, size, rotation );
 }
 
-// PlanShadows' area-face order is +N, +U, -U, +V, -V, then -N for
-// two-sided emitters. For perpendicular rectangle axes the first face's
-// matrix gives that common basis, including the planner's actual origin.
-// Keep the generic search for skewed rectangles and floating-point ties.
-float ShadowAreaVisibility( texture2D atlas, sampler pointSampler, sampler comparisonSampler,
-    int first, int count, vec3 halfU, vec3 halfV, vec3 world, vec3 normal, float size, float rotation )
-{
-	const mat4 basis = shadowTiles[first].viewProjection;
-	const vec3 rowX = vec3( basis[0][0], basis[1][0], basis[2][0] );
-	const vec3 rowY = vec3( basis[0][1], basis[1][1], basis[2][1] );
-	const vec4 h = basis * vec4( world, 1.0 );
-	const vec3 local = vec3( -h.x / length( rowX ), h.y / length( rowY ), h.w );
-	const vec3 magnitude = abs( local );
-	const float normalExtent = count == 6 ? magnitude.z : max( local.z, 0.0 );
-	const float extent = max( max( magnitude.x, magnitude.y ), normalExtent );
-	const float second = max( min( magnitude.x, magnitude.y ),
-	    min( max( magnitude.x, magnitude.y ), normalExtent ) );
-	// Cover cancellation at large world coordinates as well as face seams.
-	const vec4 scale = max( abs( vec4( world, 1.0 ) ), abs( basis[3] ) );
-	const float uncertainty = 1e-4 * max( max( scale.x, scale.y ), max( scale.z, scale.w ) );
-	if ( extent - second <= uncertainty ||
-	     abs( dot( halfU, halfV ) ) > 1e-6 * length( halfU ) * length( halfV ) )
-		return ShadowFacesVisibility( atlas, pointSampler, comparisonSampler, first, count,
-		    world, normal, size, rotation );
-	int face = normalExtent > max( magnitude.x, magnitude.y ) ? ( local.z >= 0.0 ? 0 : 5 )
-	    : magnitude.x > magnitude.y ? ( local.x >= 0.0 ? 1 : 2 )
-	                               : ( local.y >= 0.0 ? 3 : 4 );
-#ifdef SEEDED_SHADOW_AREA_NEXT
-	face = ( face + 1 ) % count;
-#endif
-	const ShadowTile tile = shadowTiles[first + face];
-	const vec4 selected = tile.viewProjection * vec4( world, 1.0 );
-	if ( !( selected.w > 0.0 ) || max( abs( selected.x ), abs( selected.y ) ) / selected.w > 1.0 )
-		return 1.0;
-	return ShadowVisibilitySoft( atlas, pointSampler, comparisonSampler, tile,
-	    world, normal, size, rotation );
-}
-
 // A light shadowed by `count` perspective tiles from its position (the faces
 // of a cube or hemicube, each wide enough that its filter stays inside): the
 // tile whose view holds the point nearest its centre.
