@@ -1837,12 +1837,24 @@ void CoreWorld::RecordSlot(
 		std::optional<TemporalRequest> request;
 		{
 			std::lock_guard<std::mutex> lock( m_TemporalLock );
+			if ( m_TemporalStream != target.streamEpoch )
+			{
+				m_RecordedTemporalRequests.clear();
+				m_TemporalStream = target.streamEpoch;
+			}
 			auto found = m_TemporalRequests.find( tag );
 			if ( found != m_TemporalRequests.end() )
 			{
-				request = found->second;
+				if ( m_RecordedTemporalRequests.size() < 8 )
+				{
+					request = found->second;
+					m_RecordedTemporalRequests.emplace( tag, *request );
+				}
 				m_TemporalRequests.erase( found );
 			}
+			else if ( auto kept = m_RecordedTemporalRequests.find( tag );
+			    kept != m_RecordedTemporalRequests.end() )
+				request = kept->second;
 		}
 		bool success = false;
 		if ( request && target.device )

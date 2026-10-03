@@ -185,6 +185,9 @@ private:
 	std::uint32_t m_TemporalSerial = 0;
 	std::mutex m_TemporalLock;
 	std::map<std::uint32_t, TemporalRequest> m_TemporalRequests;
+	// The host may replay one stream for a capture or swapchain recreation.
+	std::map<std::uint32_t, TemporalRequest> m_RecordedTemporalRequests;
+	std::uint64_t m_TemporalStream = 0;
 	std::unique_ptr<CoreTemporal> m_Temporal;
 	struct MotionTarget
 	{

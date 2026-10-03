@@ -69,7 +69,8 @@ bool FsrFeatures::Enable( VkPhysicalDevice physical, VkPhysicalDeviceFeatures2 &
 	vkGetPhysicalDeviceFeatures2( physical, &query );
 	if ( !f11.storageBuffer16BitAccess || !f12.shaderFloat16 || !f12.shaderInt8 ||
 	     !query.features.shaderInt16 || !query.features.shaderStorageImageWriteWithoutFormat ||
-	     !f13.shaderIntegerDotProduct || !derivatives.computeDerivativeGroupLinear ||
+	     !query.features.independentBlend || !f13.shaderIntegerDotProduct ||
+	     !derivatives.computeDerivativeGroupLinear ||
 	     !mixed.shaderMixedFloatDotProductFloat16AccFloat32 )
 		return false;
 	// Enable only the required shader features, plus the core's own merge.
@@ -86,6 +87,8 @@ bool FsrFeatures::Enable( VkPhysicalDevice physical, VkPhysicalDeviceFeatures2 &
 	mixed.shaderMixedFloatDotProductFloat16AccFloat16 = VK_FALSE;
 	mixed.shaderMixedFloatDotProductBFloat16Acc = VK_FALSE;
 	mixed.shaderMixedFloatDotProductFloat8AccFloat32 = VK_FALSE;
+	// The temporal surface MRT writes color and velocity with distinct blend/write masks.
+	head.features.independentBlend = VK_TRUE;
 	head.features.shaderInt16 = VK_TRUE;
 	head.features.shaderStorageImageWriteWithoutFormat = VK_TRUE;
 	MergeFeature( head, f11 ).storageBuffer16BitAccess = VK_TRUE;

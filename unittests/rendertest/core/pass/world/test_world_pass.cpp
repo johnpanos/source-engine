@@ -568,6 +568,8 @@ void GroupReuse( testing::Checks &checks )
 int main()
 {
 	testing::Checks checks;
+	checks.That( !IsWorldTag( 0x88000001u ) && IsWorldTag( kWorldTag | kWorldSerialMask ),
+	    "world-tags-exclude-temporal-slots" );
 	OpaqueBatching( checks );
 	GroupReuse( checks );
 	LitViewLifetime( checks );
