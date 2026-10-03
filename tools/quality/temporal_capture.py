@@ -6,6 +6,9 @@ only an oracle when those surfaces are stationary. Static mode requires a
 frozen scene/camera and includes the viewmodel. Missing motion is reported as
 coverage, never silently counted as stationary. Pixel centers include Source's
 half-pixel raster offset, while velocity excludes projection jitter.
+Reset mode checks the actual provider-dispatch reset flag and complete finite
+input/output images. Invalid prior motion is expected after a discontinuity;
+this mode does not certify image quality or motion coverage in later frames.
 """
 import argparse
 import json
@@ -24,6 +27,21 @@ def inspect(prefix, mode, tolerance=0.25):
     valid = np.isfinite(motion).all(axis=2) & (np.abs(motion) < 60000).all(axis=2)
     valid &= np.isfinite(depth) & (depth >= 0) & (depth <= 1)
     selected = valid.copy()
+    if mode == 'reset':
+        output_width, output_height = meta['output']
+        if output_width <= 0 or output_height <= 0:
+            raise ValueError('invalid output extent')
+        color = np.fromfile(str(prefix) + '.color.rgba16f', dtype='<f2').reshape(height, width, 4)
+        output = np.fromfile(str(prefix) + '.output.rgba16f', dtype='<f2').reshape(
+            output_height, output_width, 4)
+        finite = all(np.isfinite(image).all() for image in (color, depth, motion, output))
+        depth_valid = bool(((depth >= 0) & (depth <= 1)).all())
+        reset = meta.get('history_reset') is True
+        return {'mode': mode, 'render': [width, height],
+                'output': [output_width, output_height], 'history_reset': reset,
+                'native_frame': meta.get('native_frame'), 'finite_images': bool(finite),
+                'valid_depth': depth_valid, 'valid_motion_fraction': float(valid.mean()),
+                'pass': bool(reset and meta.get('native_frame', 0) > 0 and finite and depth_valid)}
     if mode == 'camera':
         if not meta['camera_valid']:
             raise ValueError('camera history unavailable')
@@ -55,7 +73,7 @@ def inspect(prefix, mode, tolerance=0.25):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('prefix', type=Path)
-    parser.add_argument('--mode', choices=['camera', 'static'], required=True)
+    parser.add_argument('--mode', choices=['camera', 'static', 'reset'], required=True)
     args = parser.parse_args()
     result = inspect(args.prefix, args.mode)
     print(json.dumps(result, indent=2))

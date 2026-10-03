@@ -1429,7 +1429,7 @@ bool CoreWorld::DrawView( const unsigned int *surfaces, unsigned int count,
 	return true;
 }
 
-bool CoreWorld::CaptureTemporalInputs( const char *prefix )
+bool CoreWorld::CaptureTemporalInputs( const char *prefix, bool afterReset )
 {
 	if ( !m_TemporalEnabled || !prefix || !*prefix || std::strlen( prefix ) > 1024 )
 		return false;
@@ -1437,6 +1437,8 @@ bool CoreWorld::CaptureTemporalInputs( const char *prefix )
 	if ( !m_TemporalCapturePrefix.empty() )
 		return false;
 	m_TemporalCapturePrefix = prefix;
+	m_TemporalCaptureAfterReset = afterReset;
+	m_TemporalCaptureGeneration = m_TemporalGeneration;
 	return true;
 }
 
@@ -1461,8 +1463,12 @@ bool CoreWorld::ReconstructTemporal( int x, int y, int rw, int rh, int ow, int o
 		std::lock_guard<std::mutex> lock( m_TemporalLock );
 		if ( m_TemporalRequests.size() >= 8 )
 			return false;
-		request.capturePrefix = std::move( m_TemporalCapturePrefix );
-		m_TemporalCapturePrefix.clear();
+		if ( !m_TemporalCaptureAfterReset || m_TemporalCaptureGeneration != m_TemporalGeneration )
+		{
+			request.capturePrefix = std::move( m_TemporalCapturePrefix );
+			m_TemporalCapturePrefix.clear();
+			m_TemporalCaptureAfterReset = false;
+		}
 		if ( !request.capturePrefix.empty() )
 		{
 			auto camera = m_PendingCameras.find( m_TemporalView );

@@ -298,7 +298,7 @@ public:
 	virtual void EndFrame() = 0;
 	virtual void SelectTemporalView( unsigned long long identity ) = 0;
 	virtual void ResetTemporalHistory() = 0;
-	virtual bool CaptureTemporalInputs( const char *prefix ) = 0;
+	virtual bool CaptureTemporalInputs( const char *prefix, bool afterReset ) = 0;
 	virtual void CommitTemporalFrame( bool submitted ) = 0;
 	virtual bool TemporalEnabled() const = 0;
 	virtual void TemporalJitter( float *x, float *y ) const = 0;

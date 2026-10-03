@@ -53,10 +53,13 @@ private:
 		std::array<std::uint64_t, 4> sizes{};
 		device::CompletionToken token;
 		bool submitted = false;
+		bool historyReset = false;
+		std::uint64_t frame = 0;
 	};
 	std::optional<Capture> m_Capture;
 	std::string m_LastCapturePrefix;
-	void RecordCapture( device::CommandEncoder &encoder, const TemporalRequest &request );
+	void RecordCapture( device::CommandEncoder &encoder, const TemporalRequest &request,
+	    bool historyReset, std::uint64_t frame );
 	void CollectCapture();
 	void ReleaseCapture( device::CompletionToken token );
 };

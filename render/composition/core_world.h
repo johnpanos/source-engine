@@ -113,7 +113,7 @@ public:
 	void EndFrame() override;
 	void SelectTemporalView( unsigned long long identity ) override { m_TemporalView = identity; }
 	void ResetTemporalHistory() override;
-	bool CaptureTemporalInputs( const char *prefix ) override;
+	bool CaptureTemporalInputs( const char *prefix, bool afterReset ) override;
 	void CommitTemporalFrame( bool submitted ) override;
 	bool TemporalEnabled() const override { return m_TemporalEnabled; }
 	void TemporalJitter( float *x, float *y ) const override
@@ -192,6 +192,8 @@ private:
 	std::mutex m_TemporalLock;
 	std::map<std::uint32_t, TemporalRequest> m_TemporalRequests;
 	std::string m_TemporalCapturePrefix;
+	bool m_TemporalCaptureAfterReset = false;
+	std::uint64_t m_TemporalCaptureGeneration = 0;
 	// The host may replay one stream for a capture or swapchain recreation.
 	std::map<std::uint32_t, TemporalRequest> m_RecordedTemporalRequests;
 	std::uint64_t m_TemporalStream = 0;

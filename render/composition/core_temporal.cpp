@@ -124,7 +124,7 @@ bool CoreTemporal::Record( CommandEncoder &encoder, const legacy::CorePassTarget
 	encoder.EndLabel();
 	if ( success )
 	{
-		RecordCapture( encoder, request );
+		RecordCapture( encoder, request, dispatch.reset, target.frame );
 		if ( !m_Frame )
 			std::fprintf( stderr, "FSR game: %ux%u -> %ux%u, before post/HUD\n",
 			    request.render.width, request.render.height, request.output.width,
@@ -136,7 +136,8 @@ bool CoreTemporal::Record( CommandEncoder &encoder, const legacy::CorePassTarget
 }
 
 // Diagnostic only: one bounded readback, using the exact images sent to FSR.
-void CoreTemporal::RecordCapture( CommandEncoder &encoder, const TemporalRequest &request )
+void CoreTemporal::RecordCapture( CommandEncoder &encoder, const TemporalRequest &request,
+    bool historyReset, std::uint64_t frame )
 {
 	if ( request.capturePrefix.empty() || request.capturePrefix == m_LastCapturePrefix )
 		return;
@@ -153,6 +154,8 @@ void CoreTemporal::RecordCapture( CommandEncoder &encoder, const TemporalRequest
 	}
 	Capture capture;
 	capture.request = request;
+	capture.historyReset = historyReset;
+	capture.frame = frame;
 	const TextureId images[] = { m_Images.color, m_Images.depth, m_Images.motion, m_Images.output };
 	const unsigned pixelBytes[] = { 8, 4, 4, 8 };
 	for ( unsigned i = 0; i < 4; ++i )
@@ -240,7 +243,8 @@ void CoreTemporal::CollectCapture()
 		file << "{\"render\":[" << request.render.width << ',' << request.render.height
 		     << "],\"output\":[" << request.output.width << ',' << request.output.height
 		     << "],\"jitter\":[" << request.jitterX << ',' << request.jitterY
-		     << "],\"generation\":" << request.generation
+		     << "],\"generation\":" << request.generation << ",\"native_frame\":" << capture.frame
+		     << ",\"history_reset\":" << ( capture.historyReset ? "true" : "false" )
 		     << ",\"motion_targets\":" << request.motionTargets
 		     << ",\"camera_valid\":" << ( request.cameraValid ? "true" : "false" );
 		const auto matrix = [&]( const char *name, const std::array<float, 16> &values )
