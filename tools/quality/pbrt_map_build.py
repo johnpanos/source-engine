@@ -927,10 +927,12 @@ class Pipeline:
             # Use this same immutable stage for preflight and face capture so
             # capture consumes the validated placement cache after the bake.
             probe_args = self.probe_arguments(scene, env_args)
+            probe_bounds = self.probe.get("bounds_m") or self.probe_volume_bounds()
             placement_dir = self.out / "placement"
             self.step("probe-placement", [p["stage"]] + self.scene_sources() +
                       ([environment] if environment else []),
-                      {"probe": self.probe, "rules": self.profile.get("audit") or {}},
+                      {"probe": self.probe, "bounds_m": probe_bounds,
+                       "rules": self.profile.get("audit") or {}},
                       SCENE_SCRIPTS + self.baker.scripts("probe"),
                       [p["probe_placement"], placement_dir],
                       lambda: self.baker.place(probe_args + ["--out-dir", placement_dir]))
