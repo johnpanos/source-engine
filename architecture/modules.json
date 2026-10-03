@@ -11,13 +11,55 @@
         "allowedEdges": []
       },
       {
+        "id": "content.block-container",
+        "paths": ["public/content/hash.h", "content/hash.cpp"],
+        "allowedEdges": []
+      },
+      {
+        "id": "content.asset-identity",
+        "paths": ["public/content/asset_identity.h", "content/asset_identity.cpp"],
+        "allowedEdges": ["content.block-container"]
+      },
+      {
+        "id": "content.asset-index",
+        "paths": ["public/content/asset_index.h", "content/asset_index.cpp"],
+        "allowedEdges": ["content.asset-identity", "content.block-container"]
+      },
+      {
+        "id": "content.asset-resolver",
+        "paths": ["public/content/asset_resolver.h", "content/asset_resolver.cpp"],
+        "allowedEdges": ["content.asset-index", "content.asset-identity"]
+      },
+      {
+        "id": "content.build-graph",
+        "paths": ["public/content/build_graph.h", "content/build_graph.cpp"],
+        "allowedEdges": ["content.asset-identity", "content.asset-index", "content.block-container"]
+      },
+      {
+        "id": "content.compile.material",
+        "paths": ["public/content/material_compiler.h", "content/material_compiler.cpp"],
+        "allowedEdges": ["content.build-graph", "content.asset-identity", "content.keyvalues-text"]
+      },
+      {
+        "id": "content.build-cli",
+        "paths": ["content/content_build_main.cpp"],
+        "allowedEdges": ["content.build-graph", "content.compile.material", "content.asset-identity"]
+      },
+      {
+        "id": "content.asset-tests",
+        "kind": "native-test",
+        "paths": ["unittests/contenttest/"],
+        "allowedEdges": ["content.build-graph", "content.compile.material", "content.asset-index", "content.asset-identity", "content.asset-resolver"]
+      },
+      {
         "id": "world.map-container",
         "paths": [
           "public/mapcontainer/",
           "mapcontainer/"
         ],
         "allowedEdges": [
-          "foundation"
+          "foundation",
+          "content.block-container"
         ]
       },
       {
@@ -855,6 +897,10 @@
         ],
         "allowedEdges": [
           "foundation",
+          "content.asset-index",
+          "content.asset-resolver",
+          "content.asset-identity",
+          "content.block-container",
           "render.math",
           "render.device",
           "render.device.vulkan",
@@ -1475,6 +1521,7 @@
       "algorithm",
       "array",
       "atomic",
+      "barrier",
       "bit",
       "cassert",
       "cctype",
@@ -1493,6 +1540,7 @@
       "ctime",
       "deque",
       "exception",
+      "filesystem",
       "fstream",
       "functional",
       "initializer_list",
@@ -1522,6 +1570,15 @@
       "vector"
     ],
     "targets": {
+      "content_hash": {"allowedUse": []},
+      "asset_identity": {"allowedUse": ["content_hash"]},
+      "asset_index": {"allowedUse": ["asset_identity", "content_hash"]},
+      "asset_resolver": {"allowedUse": ["asset_index"]},
+      "content_graph": {"allowedUse": ["asset_index", "asset_identity", "content_hash"]},
+      "material_compiler": {"allowedUse": ["content_graph", "kvtext"]},
+      "content_build": {"allowedUse": ["content_graph", "material_compiler"]},
+      "contenttest": {"allowedUse": ["content_graph", "material_compiler", "kvtext", "asset_resolver", "asset_index", "asset_identity", "content_hash"]},
+      "mapcontainer": {"allowedUse": ["content_hash"]},
       "platform_composition": {
         "allowedUse": []
       },
@@ -1752,7 +1809,7 @@
           "render_shaderlib"
         ]
       },
-      "render_lab": {"allowedUse": ["render_device", "render_device_vulkan", "render_resources", "render_material", "render_math", "render_spv", "mapcontainer", "mdl", "vtf_texture_reader", "render_shaderlib", "render_frame", "render_graph", "jobsystem", "render_pass_lines", "render_pass_lights", "render_pass_volumetric", "render_pass_ssr", "render_pass_ao", "render_pass_bounce", "render_pass_world", "render_pass_panels"]},
+      "render_lab": {"allowedUse": ["render_device", "render_device_vulkan", "render_resources", "render_material", "render_math", "render_spv", "mapcontainer", "mdl", "vtf_texture_reader", "render_shaderlib", "render_frame", "render_graph", "jobsystem", "render_pass_lines", "render_pass_lights", "render_pass_volumetric", "render_pass_ssr", "render_pass_ao", "render_pass_bounce", "render_pass_world", "render_pass_panels", "asset_resolver", "asset_index", "asset_identity", "content_hash"]},
       "render_pass_debug": {
         "allowedUse": [
           "render_device",

@@ -15,7 +15,7 @@
 
 #include "mapcontainer/map_container.h"
 #include "mapcontainer/map_container_builder.h"
-#include "mapcontainer/blake2b.h"
+#include "content/hash.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -409,7 +409,7 @@ void TestBlake2b()
 	    0x99,
 	    0x23,
 	};
-	detail::Blake2b hasher( 64 );
+	content::Blake2b hasher( 64 );
 	hasher.Update( "abc", 3 );
 	uint8_t digest[64];
 	hasher.Final( digest );
@@ -419,10 +419,10 @@ void TestBlake2b()
 	std::vector<uint8_t> data = Pattern( 1000, 9 );
 	uint8_t oneShot[16];
 	uint8_t split[16];
-	detail::Blake2b a( 16 );
+	content::Blake2b a( 16 );
 	a.Update( data.data(), data.size() );
 	a.Final( oneShot );
-	detail::Blake2b b( 16 );
+	content::Blake2b b( 16 );
 	b.Update( data.data(), 128 );
 	b.Update( data.data() + 128, 1 );
 	b.Update( data.data() + 129, data.size() - 129 );

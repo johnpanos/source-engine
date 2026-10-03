@@ -1,0 +1,36 @@
+#! /usr/bin/env python
+# encoding: utf-8
+
+# RFC 0015 canonical content libraries. Tools link the compiler/graph; runtime
+# products link identity/index only. Python workflows call content_build.
+
+def options(opt):
+	return
+
+def configure(conf):
+	conf.load('strict_cpp20', tooldir='scripts/waifulib')
+
+def build(bld):
+	strict = bld.strict_cpp20_env()
+	for target, source, module, use in (
+		('content_hash', 'hash.cpp', 'content.block-container', []),
+		('asset_identity', 'asset_identity.cpp', 'content.asset-identity', ['content_hash']),
+		('asset_index', 'asset_index.cpp', 'content.asset-index', ['asset_identity', 'content_hash']),
+		('asset_resolver', 'asset_resolver.cpp', 'content.asset-resolver', ['asset_index'])):
+		bld.stlib(env=strict, source=[source], target=target, name=target,
+			arch_module=module, features='cxx', includes=['../public'], use=use,
+			install_path=None)
+	if bld.env.TOOLS or bld.env.TESTS:
+		bld.stlib(env=strict, source=['build_graph.cpp'], target='content_graph',
+			name='content_graph', arch_module='content.build-graph',
+			features='cxx', includes=['../public'],
+			use=['asset_index', 'asset_identity', 'content_hash'], install_path=None)
+		bld.stlib(env=strict, source=['material_compiler.cpp'], target='material_compiler',
+			name='material_compiler', arch_module='content.compile.material',
+			features='cxx', includes=['../public'],
+			use=['content_graph', 'kvtext'], install_path=None)
+		if bld.env.TOOLS:
+			bld.program(env=strict, source=['content_build_main.cpp'], target='content_build',
+				name='content_build', arch_module='content.build-cli',
+				features='cxx cxxprogram', includes=['../public'], use=['content_graph', 'material_compiler'],
+				install_path=None, subsystem='CONSOLE')

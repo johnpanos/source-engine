@@ -86,6 +86,62 @@ formats. It does not copy Source 2's file formats.
 
 This RFC defines contracts, owners and gates. Nothing here is installed.
 
+## Implementation progress (2026-10-03)
+
+The first bounded C++ slice is installed, without claiming C0, C1 or C5's
+full gates. `content/` owns the ten-kind `AssetRef` table, normalization and
+BLAKE2b name hash; the common hash implementation moved out of
+`mapcontainer/` without changing BSP2's hash algorithm. The C++ index
+writer/reader uses the 64-byte block-container directory layout for a loose
+development package, with an independent Python conformance reader at
+`tools/quality/content_index_check.py`. The Python reader is an oracle, not a
+second build or runtime authority.
+
+`content.build-graph` has a serial compiler seam, declared input snapshots,
+one BLAKE2b-128 action-key rule, a per-profile content-addressed store, and
+atomic version-directory and `current`-symlink publication. The first compiler
+is `material.vmt`: it uses the existing C++ KeyValues parser, records its
+texture and patch-include references, and copies VMT bytes unchanged. Its
+`texture.passthrough` dependency validates the legacy VTF header and copies
+the file byte-identically. `content_build` is a C++ CLI over these libraries.
+`content.asset-resolver` mounts the index, distinguishes indexed from
+unindexed files, and reports a missing required reference with its referrer.
+`render_lab`'s `GameFiles` is the first runtime caller: it asks that resolver
+for indexed paths, verifies indexed bytes before decoding, and retains its
+legacy loose-file search for unindexed content.
+
+The direct C++ `contenttest` passes clean/miss/hit/edit change classes, byte preservation,
+corrupt/truncated index, closure, failed-compile preservation, and two simultaneous
+builds of one package. Cache and package staging use exclusive temporary directories
+so concurrent writers do not share a partial file.
+`lab_support.cpp` compiles with the new resolver. The independent Python
+reader decoded the C++-produced test package. `archlint check --all`, baseline
+verification and changed-line style checking passed. Isolated Waf configure
+did not complete because the worktree lacks the pinned shader toolchain; the
+submodule-dependent inventory check could not inspect the uninitialized
+Box3D vendor paths. These are recorded as unavailable evidence, not passes.
+
+Reproduce the direct native controls from the repository root:
+
+```sh
+g++ -std=c++20 -Ipublic content/hash.cpp content/asset_identity.cpp content/asset_index.cpp content/asset_resolver.cpp content/build_graph.cpp content/material_compiler.cpp kvtext/keyvalues.cpp unittests/contenttest/contenttest.cpp -o /tmp/contenttest-rfc0015
+/tmp/contenttest-rfc0015
+g++ -std=c++20 -Ipublic content/hash.cpp mapcontainer/map_container.cpp unittests/mapcontainertest/test_map_container.cpp -o /tmp/mapcontainertest-rfc0015
+/tmp/mapcontainertest-rfc0015
+python3 tools/archlint/archlint.py check --all
+python3 tools/stylelint/stylelint.py --changed
+```
+
+The remaining C0–C1 gates include base VPK scans and closure reports,
+full VMT/MDL/PCF/soundscript extraction, a shared compiler suite with bad
+providers, pooled execution, cancellation/killed-build evidence, and
+incremental-versus-clean corpus comparison. C2 still moves all three map
+scripts onto node sequences and retires their private caches. C4 still needs
+archive packages; C5 still needs `CTexture` variant selection, native Vulkan
+pixel evidence and dedicated-server link evidence. Production Python map
+entry points must become wrappers around the canonical C++ libraries or CLI
+as their caller cohorts migrate.
+
 ## Observed starting point (2026-09-26)
 
 Observed by reading source at `35e07f4b` plus the dirty tree. Nothing
@@ -183,6 +239,12 @@ here was measured for this RFC.
   state compared with a cold start.
 - Each legacy kind either has an adopted compiler that builds under Waf or
   a recorded decision to stay passthrough-only.
+- The canonical asset identity, index, compiler contract, build graph and
+  runtime resolver live in C++ libraries. Python commands used by existing
+  map and quality workflows are thin wrappers around those libraries or their
+  CLI, with independent Python readers reserved for conformance checks. Python
+  must not become a second owner of key, normalization, reference or package
+  policy. Migrate the existing Python map scripts as bounded caller cohorts.
 
 ## Non-goals
 
@@ -896,7 +958,7 @@ dependency of the image.
   `game/client/hud_closecaption.cpp`, `game/server/nav_file.cpp`
 - `engine/precache.h`, `engine/MapReslistGenerator.cpp`,
   `filesystem/basefilesystem.cpp`, `public/filesystem_init.cpp`
-- `public/mapcontainer/map_container_format.h`, `mapcontainer/blake2b.cpp`,
+- `public/mapcontainer/map_container_format.h`, `content/hash.cpp`,
   `public/texturecontainer/texture_image.h`
 - `tools/quality/pbrt_map_build.py`, `tools/quality/usd_map_compile.py`,
   `tools/quality/vmf_map_build.py`, `tools/quality/playable_maps.py`,

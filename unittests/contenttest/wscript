@@ -1,0 +1,15 @@
+#! /usr/bin/env python
+# encoding: utf-8
+
+def options(opt):
+	return
+
+def configure(conf):
+	conf.load('strict_cpp20', tooldir='scripts/waifulib')
+
+def build(bld):
+	bld.program(env=bld.strict_cpp20_env(), source=['contenttest.cpp'],
+		target='contenttest', name='contenttest', arch_module='content.asset-tests',
+		features='cxx cxxprogram', includes=['../../public'],
+		use=['content_graph', 'material_compiler', 'kvtext', 'asset_resolver', 'asset_index', 'asset_identity', 'content_hash'],
+		install_path=bld.env.TESTDIR, subsystem=bld.env.MSVC_SUBSYSTEM)

@@ -53,6 +53,7 @@ Context.Context.line_just = 55 # should fit for everything on 80x26
 projects={
 	'game': [
 		'jobsystem',
+		'content',
 		# RFC 0016 render core; never in 'dedicated'.
 		'render',
 		# The keyvalues codec render.material reads VMTs with (R08-LIBS).
@@ -118,6 +119,8 @@ projects={
 	],
 	'tests': [
 		'platform',
+		'content',
+		'unittests/contenttest',
 		'render',
 		'dedicated/composition',
 		'mapcontainer',
@@ -150,6 +153,7 @@ projects={
 	],
 	'tools': [
 		'fgdlib',
+		'content',
 		'render',
 		'jobsystem',
 		'mapcontainer',
@@ -177,6 +181,7 @@ projects={
 	],
 	'dedicated': [
 		'jobsystem',
+		'content',
 		'mapcontainer',
 		'platform',
 		'dedicated/composition',

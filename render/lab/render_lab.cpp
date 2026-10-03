@@ -117,6 +117,7 @@ namespace fs = std::filesystem;
 struct Options
 {
 	fs::path game;
+	fs::path assetPackage;
 	fs::path map;
 	fs::path out;
 	fs::path model;
@@ -235,6 +236,8 @@ std::optional<Options> ParseOptions( int argc, char **argv )
 			return std::nullopt;
 		else if ( arg == "--game" )
 			options.game = take();
+		else if ( arg == "--asset-package" )
+			options.assetPackage = take();
 		else if ( arg == "--map" )
 			options.map = take();
 		else if ( arg == "--out" )
@@ -372,7 +375,9 @@ bool StageTable(
 
 int Run( const Options &options )
 {
-	const GameFiles files( options.game );
+	const GameFiles files( options.game, options.assetPackage );
+	if ( !options.assetPackage.empty() && !files.PackageReady() )
+		return Fail( "--asset-package has no valid assets.index" );
 
 	// The map: its world mesh and lightmap page.
 	std::optional<std::string> mapBytes = ReadFile( options.map );
