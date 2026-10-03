@@ -1120,6 +1120,43 @@ class Pipeline:
                   lambda: self.usd_python("seams", "lightmap_seams.py", [
                       "extract", "--check", "--stage", p["lighting_stage"],
                       "--size", str(self.lightmap["size"]), "--out", p["seams"]]))
+        # The radiance seam invariant needs the baked pages, but no secondary
+        # lighting product. Run it before probes and volumes so a bad chart
+        # seam cannot consume a remote render lease on unrelated work.
+        sun_args = []
+        sun_inputs = []
+        raw_receipt = p["atlas"].with_name(p["atlas"].name + ".json")
+        if p["sun_visibility"].is_file() and raw_receipt.is_file() and \
+                json.loads(raw_receipt.read_text()).get("sun"):
+            sun_args = ["--sun-visibility", p["sun_visibility"],
+                        "--sun-bake-evidence", raw_receipt]
+            sun_inputs = [p["sun_visibility"], raw_receipt]
+        layer_args = [item for role, out in denoised_layers.items()
+                      for item in ("--layer", "%s=%s" % (role, out))]
+        seam_args = ["--seams", p["seams"], "--buried-exr", p["atlas"], "--coverage-exr",
+                     p["coverage"]]
+        ktx2_settings = {"preview_gain": self.lightmap["preview_gain"], "scope": scope}
+        seam_gate = self.lightmap["seam_gate"]
+        if seam_gate:
+            ktx2_settings["seam_gate"] = dict(seam_gate)
+            if "p99" in seam_gate:
+                seam_args += ["--max-seam-p99", str(seam_gate["p99"])]
+            if "max" in seam_gate:
+                seam_args += ["--max-seam", str(seam_gate["max"])]
+        self.step("ktx2", [atlas, atlas_receipt, p["lighting_stage"], p["seams"],
+                           p["coverage"], p["atlas"]] +
+                  list(denoised_layers.values()) +
+                  ([p["directional_indirect"]] if directional and "indirect" in denoised_layers
+                   else [p["directional"]] if directional else []) + sun_inputs,
+                  ktx2_settings,
+                  ["lightmap_ktx2.py"], [p["ktx2"]],
+                  lambda: self.run("ktx2", [sys.executable, HERE / "lightmap_ktx2.py",
+                                            "--exr", atlas, "--bake-evidence", atlas_receipt,
+                                            "--lighting-stage", p["lighting_stage"],
+                                            "--ktx-tool", self.tools["ktx"],
+                                            "--preview-gain", str(self.lightmap["preview_gain"]),
+                                            "--expected-scope", scope, "--out", p["ktx2"]] +
+                                           directional_args + layer_args + seam_args + sun_args))
         if probe:
             # Reflection probes (R50-PARALLAX): placed per room and per glossy
             # surface, each rendered with its depth pass, then fitted to a
@@ -1138,7 +1175,9 @@ class Pipeline:
                       lambda: self.baker.bake("probe", face_args))
             self.step("rprb", [p["probe"] / "probes.json"],
                       {"width": probe.get("width", 512),
-                       "preview_gain": self.lightmap["preview_gain"]},
+                       "preview_gain": self.lightmap["preview_gain"],
+                       "max_mean_relative_residual": coverage_rules.get(
+                           "max_reflection_probe_residual")},
                       ["reflection_probe_set.py", "reflection_probe.py", "gi_reference.py"],
                       [p["rprb"], p["rprb"].with_name(p["rprb"].name + ".json")],
                       lambda: self.run("rprb", [sys.executable, HERE / "reflection_probe_set.py",
@@ -1146,7 +1185,11 @@ class Pipeline:
                                                 "--width", str(probe.get("width", 512)),
                                                 "--preview-gain",
                                                 str(self.lightmap["preview_gain"]),
-                                                "--out", p["rprb"]]))
+                                                "--out", p["rprb"]] +
+                                               (["--max-mean-relative-residual", str(
+                                                   coverage_rules["max_reflection_probe_residual"])]
+                                                if "max_reflection_probe_residual" in coverage_rules
+                                                else [])))
         volume = self.probe_volume
         if volume:
             volume_bounds = self.probe_volume_bounds()
@@ -1205,47 +1248,6 @@ class Pipeline:
                       SCENE_SCRIPTS + self.baker.scripts("sdf"),
                       [p["sdfv"], p["sdfv_work"]],
                       lambda: self.baker.bake("sdf", field_args))
-        # The sun's baked visibility rides in the total page's alpha (the
-        # render core shadows the sun's runtime light with it on world
-        # surfaces, RFC 0016 K11); the marker texels need the retired probe
-        # band and are not written.
-        sun_args = []
-        sun_inputs = []
-        raw_receipt = p["atlas"].with_name(p["atlas"].name + ".json")
-        if p["sun_visibility"].is_file() and raw_receipt.is_file() and \
-                json.loads(raw_receipt.read_text()).get("sun"):
-            sun_args = ["--sun-visibility", p["sun_visibility"],
-                        "--sun-bake-evidence", raw_receipt]
-            sun_inputs = [p["sun_visibility"], raw_receipt]
-        layer_args = [item for role, out in denoised_layers.items()
-                      for item in ("--layer", "%s=%s" % (role, out))]
-        # The raw total marks buried texels, which stitching may move freely.
-        seam_args = ["--seams", p["seams"], "--buried-exr", p["atlas"], "--coverage-exr",
-                     p["coverage"]]
-        ktx2_settings = {"preview_gain": self.lightmap["preview_gain"], "scope": scope}
-        # A map's own seam gate (the receipt records the limits it passed).
-        seam_gate = self.lightmap["seam_gate"]
-        if seam_gate:
-            ktx2_settings["seam_gate"] = dict(seam_gate)
-            if "p99" in seam_gate:
-                seam_args += ["--max-seam-p99", str(seam_gate["p99"])]
-            if "max" in seam_gate:
-                seam_args += ["--max-seam", str(seam_gate["max"])]
-        self.step("ktx2", [atlas, atlas_receipt, p["lighting_stage"], p["seams"],
-                           p["coverage"], p["atlas"]] +
-                  list(denoised_layers.values()) +
-                  ([p["directional_indirect"]] if directional and "indirect" in denoised_layers
-                   else [p["directional"]] if directional else []) + sun_inputs,
-                  ktx2_settings,
-                  ["lightmap_ktx2.py"], [p["ktx2"]],
-                  lambda: self.run("ktx2", [sys.executable, HERE / "lightmap_ktx2.py",
-                                            "--exr", atlas, "--bake-evidence", atlas_receipt,
-                                            "--lighting-stage", p["lighting_stage"],
-                                            "--ktx-tool", self.tools["ktx"],
-                                            "--preview-gain", str(self.lightmap["preview_gain"]),
-                                            "--expected-scope", scope, "--out", p["ktx2"]] +
-                                           directional_args + layer_args + seam_args +
-                                           sun_args))
         pack_stage = p["lighting_stage"]
         # A relit map keeps its own skybox; no sky dome joins its world mesh.
         if environment and not self.derived:

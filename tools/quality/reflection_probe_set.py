@@ -922,7 +922,7 @@ def authored_volume(record, params):
     return result
 
 
-def select_coverage(covers, glossy_views, uncovered, unserved, eligible, capacity,
+def select_coverage(covers, glossy_views, uncovered, unserved, eligible, preferred, capacity,
                     walkable_limit, glossy_limit):
     """Choose captures jointly for both coverage obligations, without truncation.
 
@@ -941,16 +941,19 @@ def select_coverage(covers, glossy_views, uncovered, unserved, eligible, capacit
         score = (np.minimum(room_gain, room_need) / max(1, room_need) +
                  np.minimum(glossy_gain, glossy_need) / max(1, glossy_need))
         score[selected] = 0
-        # Prefer well-fitted candidates only among equal-coverage choices:
-        # poor-fit preference must not consume capacity without progress.
+        # A capture with a bad proxy fit cannot enter the shipped resource.
+        # Coverage is useful only when the resulting parallax correction is
+        # valid, so an ineligible candidate must never be selected merely to
+        # satisfy a coverage count.
+        score[~eligible] = 0
         best_score = score.max()
         if best_score <= 0:
             return selected, "no_progress"
         if len(selected) >= capacity:
             return selected, "max_probes"
         choices = np.nonzero(score == best_score)[0]
-        preferred = choices[eligible[choices]]
-        best = int(preferred[0] if len(preferred) else choices[0])
+        best_fit = choices[preferred[choices]]
+        best = int(best_fit[0] if len(best_fit) else choices[0])
         selected.append(best)
         uncovered &= ~covers[best]
         unserved &= ~glossy_views[best]
@@ -997,9 +1000,20 @@ def place(raycast, bounds_min, bounds_max, glossy=None, params=None, seeds=(), v
         if hasattr(raycast, "estimate_boxes") else \
         [estimate_box(raycast, candidate, directions) for candidate in walkable]
     boxes = [estimate[:2] for estimate in estimates]
-    eligible = np.array([estimate[2]["clearance"] >= params["min_clearance_m"] and
-                         estimate[2]["p90_relative_residual"] <=
-                         params["max_candidate_residual"] for estimate in estimates])
+    rules = coverage_rules or {}
+    residual_limit = rules.get("max_reflection_probe_residual")
+    # The percentile is a useful quality ranking, but it is deliberately
+    # conservative at doorways and cannot be the admission test. The profile
+    # owns the shipped mean-residual limit; when it is present this is the
+    # hard admission test that coverage may not bypass.
+    eligible = np.array([
+        estimate[2]["clearance"] >= params["min_clearance_m"] and
+        (residual_limit is None or
+         estimate[2]["mean_relative_residual"] <= residual_limit)
+        for estimate in estimates])
+    preferred = np.array([
+        estimate[2]["p90_relative_residual"] <= params["max_candidate_residual"]
+        for estimate in estimates])
     covers = []
     for index, (box_min, box_max) in enumerate(boxes):
         within = inside(walkable, box_min, box_max, params["fade_m"])
@@ -1031,7 +1045,6 @@ def place(raycast, bounds_min, bounds_max, glossy=None, params=None, seeds=(), v
                        "fade": params["fade_m"], "role": "room", "seeded": True,
                        "covers": int((seen & uncovered).sum())})
         uncovered &= ~seen
-    rules = coverage_rules or {}
     candidate_views = np.zeros((len(walkable), 0), dtype=bool)
     servable = served = np.zeros(0, dtype=bool)
     report = {}
@@ -1060,7 +1073,7 @@ def place(raycast, bounds_min, bounds_max, glossy=None, params=None, seeds=(), v
     unserved = servable & ~served
     initial_uncovered = uncovered.copy()
     chosen, stop = select_coverage(
-        covers, candidate_views, uncovered, unserved, eligible,
+        covers, candidate_views, uncovered, unserved, eligible, preferred,
         params["max_probes"] - len(probes),
         math.floor(len(walkable) * rules.get("max_uncovered_walkable_fraction", 0)),
         math.floor(int(servable.sum()) * rules.get("max_unserved_glossy_fraction", 0)))
@@ -1197,7 +1210,7 @@ def depth_convention(depths, checks):
     return best, medians
 
 
-def pack(probes_dir, width, gain, prefilter_samples=256):
+def pack(probes_dir, width, gain, prefilter_samples=256, max_mean_relative_residual=None):
     """(RPRB bytes, receipt) from `pbrt_reflection_probe.py`'s output."""
     import gi_reference
     import hashlib
@@ -1232,11 +1245,6 @@ def pack(probes_dir, width, gain, prefilter_samples=256):
         directions, values, weights = reflection_probe.face_samples(distances)
         box_min, box_max, report = reflection_probe.fit_parallax_box(capture, directions,
                                                                      values, weights)
-        if record["role"] == "authored":
-            box_min = np.asarray(record["estimated_box_min"], dtype=np.float64)
-            box_max = np.asarray(record["estimated_box_max"], dtype=np.float64)
-            report = reflection_probe.fit_residual(capture, box_min, box_max,
-                                                    directions, values, weights)
         if record["role"] == "room":
             influence_min, influence_max = box_min - margin, box_max + margin
         else:
@@ -1260,6 +1268,10 @@ def pack(probes_dir, width, gain, prefilter_samples=256):
                             name=record.get("name"), box_min=list(box_min),
                             box_max=list(box_max), depth_convention=convention,
                             depth_check_median_error=medians[convention]))
+    residuals = [report["mean_relative_residual"] for report in reports]
+    if max_mean_relative_residual is not None and max(residuals) > max_mean_relative_residual:
+        raise ValueError("reflection probe proxy residual %.6g exceeds the runtime limit %g" %
+                         (max(residuals), max_mean_relative_residual))
     # Placement's global probe: the room probe covering the most walkable
     # space.
     global_index = next(i for i, record in enumerate(receipt["probes"]) if record["global"])
@@ -1268,7 +1280,6 @@ def pack(probes_dir, width, gain, prefilter_samples=256):
     masks = read(data)["candidates"]["masks"]
     candidate_counts = [sum(int(mask).bit_count() for mask in row)
                         for row in masks.reshape(CANDIDATE_CELLS, -1)]
-    residuals = [r["mean_relative_residual"] for r in reports]
     return data, {"status": "pass", "schema": "rprb-pack/v1", "probes": len(probes),
                   "width": width, "mips": len(chains[0]), "preview_gain": gain,
                   "relight": gbuffer,
@@ -1468,7 +1479,9 @@ def main():
     command.add_argument("--width", type=int, default=512,
                          help="equirect width of every probe's mip 0")
     command.add_argument("--preview-gain", type=float, default=1.0,
-                         help="the lightmap's exposure gain (the LMAP writer's)")
+                        help="the lightmap's exposure gain (the LMAP writer's)")
+    command.add_argument("--max-mean-relative-residual", type=float,
+                         help="reject depth-fitted proxy boxes above this runtime limit")
     command.add_argument("--out", type=Path, required=True)
     command = commands.add_parser("info", help="validate RPRB bytes and print their records")
     command.add_argument("rprb", type=Path)
@@ -1496,7 +1509,8 @@ def main():
                                             else value) for key, value in probe.items()}
                                      for probe in layout["probes"]]}, indent=2))
         return
-    data, receipt = pack(args.probes_dir, args.width, args.preview_gain)
+    data, receipt = pack(args.probes_dir, args.width, args.preview_gain,
+                         max_mean_relative_residual=args.max_mean_relative_residual)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     temporary = args.out.with_name(args.out.name + ".tmp")
     temporary.write_bytes(data)

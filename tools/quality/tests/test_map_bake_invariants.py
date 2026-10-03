@@ -152,7 +152,8 @@ class PlacementProgress(unittest.TestCase):
         glossy = np.array([[0, 0], [1, 0], [0, 1]], dtype=bool)
         uncovered, unserved = np.ones(4, dtype=bool), np.ones(2, dtype=bool)
         chosen, stop = rprb.select_coverage(room, glossy, uncovered, unserved,
-                                           np.ones(3, dtype=bool), 2, 0, 0)
+                                           np.ones(3, dtype=bool), np.ones(3, dtype=bool),
+                                           2, 0, 0)
         self.assertEqual(stop, "coverage_pass")
         self.assertEqual(len(chosen), 2)
         self.assertFalse(uncovered.any() or unserved.any())
@@ -162,9 +163,19 @@ class PlacementProgress(unittest.TestCase):
             uncovered = np.ones(2, dtype=bool)
             _, stop = rprb.select_coverage(np.array([[1, 0]], dtype=bool),
                 np.zeros((1, 0), dtype=bool), uncovered, np.zeros(0, dtype=bool),
-                np.ones(1, dtype=bool), capacity, 0, 0)
+                np.ones(1, dtype=bool), np.ones(1, dtype=bool), capacity, 0, 0)
             self.assertEqual(stop, expected)
             self.assertTrue(uncovered.any())
+
+    def test_bad_proxy_fit_cannot_be_selected_for_coverage(self):
+        uncovered = np.ones(2, dtype=bool)
+        chosen, stop = rprb.select_coverage(
+            np.array([[1, 1], [1, 0]], dtype=bool), np.zeros((2, 0), dtype=bool),
+            uncovered, np.zeros(0, dtype=bool), np.array([False, True]),
+            np.ones(2, dtype=bool), 2, 0, 0)
+        self.assertEqual(chosen, [1])
+        self.assertEqual(stop, "no_progress")
+        self.assertTrue(uncovered[1])
 
 
 if __name__ == "__main__":
