@@ -48,6 +48,19 @@ class ProductionPolicy(unittest.TestCase):
         build.probe_volume = {"bounds_m": [-1, -1, -1, 1, 1, 1]}
         self.assertEqual(build.probe_volume_bounds(), [-1, -1, -1, 1, 1, 1])
 
+    def test_reflection_and_prbv_share_the_playable_envelope(self):
+        build = object.__new__(pipeline.Pipeline)
+        build.paths = {"stage": "stage.usdc", "probe_placement": "placement.json"}
+        build.profile = {"audit": {}}
+        build.lightmap = {"device": "gpu", "seed": 0}
+        build.probe_volume = {}
+        build.probe = {"face_size": 256, "samples": 1024, "placement": {}, "volumes": [
+            {"box_min": [-2, -3, -4], "box_max": [5, 6, 7]},
+        ]}
+        args = build.probe_arguments("scene.json", [])
+        start = args.index("--bounds") + 1
+        self.assertEqual(args[start:start + 6], ["-2.0", "-3.0", "-4.0", "5.0", "6.0", "7.0"])
+
     def test_retired_profile_rejected(self):
         with self.assertRaisesRegex(ValueError, "production map profile"):
             pipeline.load_profile("legacy-relight")

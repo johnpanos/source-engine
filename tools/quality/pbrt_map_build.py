@@ -846,7 +846,10 @@ class Pipeline:
         seeds = probe.get("positions", []) + ([probe["position"]] if probe.get("position") else [])
         for position in seeds:
             args += ["--position"] + [str(value) for value in position]
-        bounds = probe.get("bounds_m") or (self.probe_volume or {}).get("bounds_m")
+        # Reflection placement and PRBV must see the same authored playable
+        # envelope. Otherwise placement can choose exterior captures whose
+        # fitted boxes can never satisfy the shipped parallax contract.
+        bounds = probe.get("bounds_m") or self.probe_volume_bounds()
         if bounds:
             args += ["--bounds"] + [str(value) for value in bounds]
         return args
@@ -860,7 +863,7 @@ class Pipeline:
         that map authors could let drift. An explicit PRBV bounds_m remains an
         authored override for maps without reflection volumes.
         """
-        explicit = self.probe_volume.get("bounds_m")
+        explicit = (self.probe_volume or {}).get("bounds_m")
         if explicit:
             return explicit
         volumes = self.probe.get("volumes", []) if self.probe else []
