@@ -8869,9 +8869,10 @@ The exposure control trial preserves 99.08% of raw channel values exactly
 between exposure 1 and 3 (the remaining scene animation continues), with an
 unchanged raw peak, while the SDR previews become brighter. See the trial's
 `pixel-verification.json`. Output exposure therefore does not bake into the
-HDR archive. The script now avoids a redundant full-chain idle wait after
-the aliases finish; each camera and fizzler settling wait remains intact.
-The completed run used the earlier longer closing wait.
+HDR archive. The completed run used the longer closing wait. The subsequent
+shortened-wait experiment was disproved by the 2026-10-04 B refresh: exec's
+closing commands can run before future alias waits finish. The script again
+uses the complete frame budget, including each HDR export, before closing.
 
 The 18 view-oracle fixtures also pass. Architecture baseline and loader
 inventory verification are current. Missing physical display measurements
@@ -9945,3 +9946,44 @@ possible/visible pixel counts are zero. The earlier camera source/receiver
 checks do not certify the eye sprite. The replay retains query begin/end but
 suppresses their non-writing geometry under core-only policy; restoring that
 query input and proving visible/occluded eye states is the next bounded fix.
+
+## Intro4 newest-build B refresh (2026-10-04, captured)
+
+The user requested the newest B build in the existing 8K gallery. The configured
+Portal 2 product build completed without changing its profile. `--rerun-b` now
+captures all 19 selected poses on one B host, validates them in a private directory,
+refits the existing original-style SDR conversion against A, and updates the same
+`quality-results/map-comparisons/intro4-8k-native-hdr-20261003/index.html`.
+The prior B previews, receipts and gallery are backed up under the versioned
+`b-reruns/20261004T170729.096874Z/previous-gallery/`; original raw exports remain
+in their original boot directory. New HDR links resolve to the new versioned
+boot rather than overwriting historical exports. Every A PNG and left receipt
+is unchanged.
+
+The captured product snapshot incorporates game changes through `7b6862975`
+(`jp:pbr`); the capture-tool revision is `31bccb376`. All staged build overrides
+match the current build hashes. Engine, launcher, native Vulkan shader API,
+standard shaders, tier0 and Portal 2 client hashes differ from the original B
+snapshot. B uses strict native core rendering, FSR off, 7680×4320, 4× MSAA,
+exposure 3 and a 10000-nit HDR peak. The first fizzler's disabled state is checked
+after 134 frames and before the first export. All 19 linear PFM exports confirm
+active HDR output and a recorded output pass; their raw peak is 7.8671875.
+The updated SDR fit has shared contrast 1.315 and preserves the unexposed HDR
+files. Native lighting/content differences remain visible; fitting SDR tone
+distribution is not a promise of pixel equivalence with the legacy renderer.
+
+The first refresh attempt exposed an incorrect shortened closing wait and was
+rejected for missing named captures without changing the gallery. Restoring the
+installed view-oracle frame budget, with additional HDR-export waits, produces
+20 SDR screenshots and 39 camera records; the successful boot takes 1052.10
+seconds. This is a capture duration, not performance acceptance evidence.
+Four script tests pass, including B-only reuse and failed-refresh preservation.
+The full verification checks all 19 A hashes, left receipts, staged binary
+hashes, HDR metadata, raw/PNG hashes and output dimensions. All 171 gallery file
+links resolve. Six representative before/after views were visually inspected,
+including the disabled-fizzler doorway. Evidence is retained in
+`quality-results/map-swipe-setup/latest-b-verification-20261004.json`, with its
+reproduction script `verify-latest-b.py`, build and refresh logs alongside it.
+`latest-b-rerun.json` identifies the active capture and prior-gallery backup;
+`latest-b-review.png` contains the visual review. This capture refresh adds no
+render implementation or qualification claim.
