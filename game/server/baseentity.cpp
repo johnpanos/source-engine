@@ -5516,6 +5516,9 @@ void CC_Ent_Dump( const CCommand& args )
 						buf[0] = 0;
 						switch( var.FieldType() )
 						{
+						case FIELD_BOOLEAN:
+							Q_snprintf( buf, sizeof( buf ), "%d", int( var.Bool() ) );
+							break;
 						case FIELD_STRING:
 							Q_strncpy( buf, var.String() ,sizeof(buf));
 							break;

@@ -2,9 +2,11 @@
 # ==== Copyright Valve Corporation, All rights reserved. ======================
 """Capture two Portal 2 maps at one Source-unit camera and make a swipe comparison.
 
-Default comparison: sp_a1_intro4 / sp_a1_intro4_relit at 3840x2160.
-The new (right) game selects FSR Native AA with MSAA disabled and requests HDR
-display output with exposure 3. HDR presentation requires a capable compositor/display;
+Default comparison: sp_a1_intro4 / sp_a1_intro4_relit at 7680x4320.
+The new (right) game selects native 8K with FSR off and 4x MSAA, and requests HDR
+display output with exposure 3 and a 10000-nit peak. B also exports the unexposed
+linear scene as a floating-point PFM, with colour-space metadata for offline conversion.
+HDR presentation requires a capable compositor/display;
 the private headless compositor and RGB PNG comparison do not certify HDR output.
 The original (left) game uses native Vulkan with the render core and FSR disabled.
 
@@ -14,7 +16,7 @@ Example (chamber panel view):
 
 All retained Intro4 comparison and survey poses except the panel close-up:
   python3 tools/render/map_swipe_compare.py --all-captures \
-      --out quality-results/map-comparisons/intro4-4k-native-legacy-fsr
+      --out quality-results/map-comparisons/intro4-8k-native-hdr
 
 Published maps in run/maps/<name>/published.json are mounted automatically.
 The original retail map is loaded from the staged Portal 2 runtime. Each map
@@ -24,6 +26,7 @@ camera before the HTML is written.
 """
 
 import argparse
+import array
 from concurrent.futures import ThreadPoolExecutor
 import datetime
 import html
@@ -45,6 +48,7 @@ from view_oracle import console_script, script_frames
 # Retained comparison and survey cameras, deduplicated. Survey player origins
 # include the 64-unit standing eye offset here.
 INTRO4_CAPTURES = (
+    ("fizzler-door", "First fizzler doorway", "400.03,223.97,66.48:0,-45.04,0"),
     ("chamber-overview", "Chamber overview", "-300,100,128:0,0,0"),
     ("chamber", "Damaged chamber", "-420,70,112:-6,5,0"),
     ("lightboard", "Illuminated lightboard", "-900,180,72:0,310,0"),
@@ -64,6 +68,31 @@ INTRO4_CAPTURES = (
     ("warm-side", "Warm panel side", "1450,-700,180:-25,45,0"),
     ("warm-back", "Warm panel back", "1800,-528,180:-20,180,0"),
 )
+
+FIZZLER_SETTLE_FRAMES = 134  # At host_framerate 0.015, allow just over two seconds.
+FIZZLER_CHECK_FRAMES = 10  # ent_dump replies arrive through the server/client channel.
+FIZZLER_BEGIN = "swipe_fizzler_check_begin"
+FIZZLER_END = "swipe_fizzler_check_end"
+
+
+def fizzler_commands():
+    return ["ent_fire fizzler1_disable_rl Trigger", "wait %d" % FIZZLER_SETTLE_FRAMES,
+            "echo " + FIZZLER_BEGIN, "ent_dump fizzler_brush",
+            "wait %d" % FIZZLER_CHECK_FRAMES, "echo " + FIZZLER_END]
+
+
+def verify_fizzler(boot):
+    logs = [boot / "stdout.log", boot / "runtime/portal2/console.log"]
+    for path in logs:
+        if not path.is_file():
+            continue
+        text = path.read_text(errors="replace")
+        for dump in re.findall(FIZZLER_BEGIN + r"\s*\n(.*?)" + FIZZLER_END, text, re.S):
+            states = re.findall(r"^\s*StartDisabled:\s*([01])\s*$", dump, re.M)
+            if states == ["1"]:
+                return {"entity": "fizzler_brush", "disabled": True,
+                        "settle_frames": FIZZLER_SETTLE_FRAMES, "log": str(path)}
+    raise ValueError("first fizzler did not confirm disabled before capture")
 sys.path.insert(0, str(ROOT / "tools/quality"))
 import private_session
 
@@ -128,9 +157,9 @@ def side_settings(side, args):
     if side == "a":
         return (("r_temporal_scale 0", "r_core_world 0", "mat_hdr_output 0"),
                 ("-norendercore",))
-    return (("mat_antialias 0", "r_temporal_scale 1", "mat_hdr_output 1",
-             "mat_hdr_exposure 3"),
-            ("-fsr", "-fsr-assets", str(args.fsr_assets.resolve())))
+    return (("mat_antialias 4", "r_temporal_scale 0", "mat_hdr_output 1",
+             "mat_hdr_exposure 3", "mat_hdr_peak_nits 10000"),
+            ())
 
 
 def capture(map_name, side, content, args, out, poses=None):
@@ -161,19 +190,31 @@ def capture(map_name, side, content, args, out, poses=None):
         command += ["--startup-command", setting]
     for argument in engine_args:
         command += ["--engine-arg=" + argument]
+    intro4 = map_name in ("sp_a1_intro4", "sp_a1_intro4_relit")
+    if intro4:
+        for line in fizzler_commands():
+            command += ["--console-command", line]
     for relay in args.panel_relay:
         command += ["--console-command", "ent_fire " + relay + " Trigger"]
     if poses is None:
         for line in camera_commands(args.pose):
             command += ["--console-command", line]
+        if side == "b":
+            command += ["--console-command", "screenshot_hdr swipe_single_hdr; wait 3"]
     else:
         shots = [{"name": name, "commands": camera_commands(pose), "settle": 120}
                  for name, pose in poses]
         scenario = {"setup": [], "intro_frames": 0}
         for line in console_script(scenario, shots,
-                                   frame=lambda index, shot: "screenshot swipe_" + shot["name"]):
+                                   frame=lambda index, shot:
+                                   ("screenshot_hdr swipe_" + shot["name"] + "_hdr; wait 3; "
+                                    if side == "b" else "") +
+                                   "screenshot swipe_" + shot["name"]):
             command += ["--console-command", line]
-        command[command.index("--capture-wait") + 1] = str(script_frames(scenario, shots))
+        command[command.index("--capture-wait") + 1] = str(
+            script_frames(scenario, shots)
+            + (FIZZLER_SETTLE_FRAMES + FIZZLER_CHECK_FRAMES if intro4 else 0)
+            + (3 * len(shots) if side == "b" else 0))
     if content:
         command += ["--content-root", str(content)]
     result = subprocess.run(command, capture_output=True, text=True)
@@ -185,28 +226,26 @@ def capture(map_name, side, content, args, out, poses=None):
     if result.returncode or evidence.get("status") != "pass":
         raise ValueError("%s capture failed: %s (see %s)" %
                          (map_name, evidence.get("failures"), out / (side + "-boot.log")))
+    fizzler = verify_fizzler(boot) if intro4 else None
     shots = evidence.get("screenshots", [])
     oracles = evidence.get("view_oracle_captures", [])
     expected = len(poses) + 1 if poses is not None else 1
-    if len(shots) != expected or len(oracles) != expected:
-        raise ValueError("%s needs exactly %d screenshots and view oracles; got %d and %d" %
-                         (map_name, expected, len(shots), len(oracles)))
+    expected_oracles = expected + (len(poses) if poses is not None else 1) if side == "b" else expected
+    if len(shots) != expected or len(oracles) != expected_oracles:
+        raise ValueError("%s needs %d SDR screenshots and %d view oracles; got %d and %d" %
+                         (map_name, expected, expected_oracles, len(shots), len(oracles)))
     oracles = sorted(oracles, key=lambda item: int(
         Path(item["path"]).stem.rsplit("-", 1)[-1]))
     render_confirmation = None
-    if "-fsr" in engine_args:
+    if side == "b":
         log = (boot / "stdout.log").read_text()
-        dispatch = "FSR game: %dx%d -> %dx%d, before post/HUD" % (
-            args.width, args.height, args.width, args.height)
-        if dispatch not in log:
-            raise ValueError("FSR Native AA dispatch was not confirmed in " + str(boot))
         hdr = re.findall(r"\[NativeVulkan\] (HDR output: [^\n]+|extended output declined: [^\n]+)", log)
-        render_confirmation = {"fsr_dispatch": dispatch,
-                               "hdr_presentation_log": hdr[-1] if hdr else "unconfirmed"}
+        render_confirmation = {"hdr_presentation_log": hdr[-1] if hdr else "unconfirmed"}
     records = {}
     for index, (name, pose) in enumerate(poses or [("single", args.pose)]):
         position, angles = pose
-        oracle = oracles[index]["path"]
+        oracle_index = index * 2 + 1 if side == "b" else index
+        oracle = oracles[oracle_index]["path"]
         view = oracle_camera(oracle)
         verify_camera(view, position, angles, args.width, args.height)
         if poses is None:
@@ -231,8 +270,52 @@ def capture(map_name, side, content, args, out, poses=None):
             "startup_commands": list(startup_commands),
             "engine_args": list(engine_args),
             "render_confirmation": render_confirmation,
+            "fizzler_confirmation": fizzler,
             "camera": {key: view[key] for key in ("origin", "angles", "fov", "viewport")}}
+        if side == "b":
+            hdr_oracle = oracles[oracle_index - 1]["path"]
+            verify_camera(oracle_camera(hdr_oracle), position, angles, args.width, args.height)
+            hdr = boot / "runtime/portal2/screenshots" / ("swipe_" + name + "_hdr.pfm")
+            records[name]["hdr_export"] = verify_hdr_export(hdr, args)
+            records[name]["hdr_export"]["view_oracle"] = hdr_oracle
     return records if poses is not None else records["single"]
+
+
+def verify_hdr_export(path, args):
+    metadata = json.loads(Path(str(path) + ".json").read_text())
+    if metadata.get("schema") != "source-hdr-capture/v1" or \
+            metadata.get("stage") != "scene-before-output" or \
+            metadata.get("primaries") != "Rec.709" or metadata.get("encoding") != "linear" or \
+            metadata.get("exposure") != 3 or metadata.get("display_peak_nits") != 10000 or \
+            [metadata.get("width"), metadata.get("height")] != [args.width, args.height]:
+        raise ValueError("HDR export metadata differs from requested capture: " + str(path))
+    with path.open("rb") as file:
+        if file.readline().strip() != b"PF" or \
+                file.readline().strip() != ("%d %d" % (args.width, args.height)).encode() or \
+                float(file.readline()) != -1.0:
+            raise ValueError("HDR export has an invalid PFM header: " + str(path))
+        offset = file.tell()
+        count = args.width * args.height * 3
+        if path.stat().st_size != offset + count * 4:
+            raise ValueError("HDR export is incomplete: " + str(path))
+        pixels = array.array("f")
+        pixels.fromfile(file, count)
+    if sys.byteorder != "little":
+        pixels.byteswap()
+    if not all(math.isfinite(value) for value in pixels):
+        raise ValueError("HDR export contains non-finite pixels: " + str(path))
+    peak = max(pixels)
+    if not math.isclose(peak, metadata["rgb_max"], rel_tol=1e-6, abs_tol=1e-8):
+        raise ValueError("HDR pixel range differs from metadata: " + str(path))
+    if metadata.get("reference_white_nits") != 203:
+        raise ValueError("HDR export has an unknown scene luminance scale: " + str(path))
+    if not metadata.get("hdr_output_active"):
+        raise ValueError("HDR display output was not active: " + str(path))
+    if not metadata.get("output_pass_recorded"):
+        raise ValueError("HDR export did not record the required output pass: " + str(path))
+    return {"path": str(path), "metadata": str(path) + ".json", "raw_rgb_peak": peak,
+            "reference_white_nits": metadata["reference_white_nits"],
+            "hdr_output_active": metadata["hdr_output_active"]}
 
 
 def make_html(out, left, right, metrics, position, angles):
@@ -266,8 +349,9 @@ def make_html(out, left, right, metrics, position, angles):
 <h1>MAP_TITLE</h1><p>POSE · WIDTH×HEIGHT · LEFT_RENDERER / RIGHT_RENDERER.
   Drag the divider or use the slider.
   Mean absolute RGB difference: MEAN / 255.</p>
-<p>Right game: FSR Native AA (100%), MSAA off, HDR exposure 3, HDR output requested.
+<p>Right game: native resolution, FSR off, 4× MSAA, HDR exposure 3, 10000-nit output peak.
   These RGB PNGs do not verify HDR display presentation.</p>
+HDR_LINKS
 <div class="comparison" id="comparison" aria-label="Image comparison">
   <img src="b.png" alt="RIGHT_LABEL"><img id="top" src="a.png" alt="LEFT_LABEL"><div id="line"></div>
 </div>
@@ -305,6 +389,12 @@ def make_html(out, left, right, metrics, position, angles):
                           "RIGHT_LABEL": label_b, "POSE": pose,
                           "LEFT_RENDERER": html.escape(left.get("renderer", "native-vulkan")),
                           "RIGHT_RENDERER": html.escape(right.get("renderer", "native-vulkan")),
+                          "HDR_LINKS": ('<p>Download B’s unexposed linear HDR: '
+                                        '<a href="%s">floating-point PFM</a> · '
+                                        '<a href="%s">colour-space metadata</a>.</p>' % (
+                                            html.escape(os.path.relpath(right["hdr_export"]["path"], out)),
+                                            html.escape(os.path.relpath(right["hdr_export"]["metadata"], out)))
+                                        if right.get("hdr_export") else ""),
                           "WIDTH": str(metrics["size"][0]), "HEIGHT": str(metrics["size"][1]),
                           "MEAN": "%.2f" % metrics["mean_absolute_rgb"]}.items():
         page = page.replace(marker, value)
@@ -323,6 +413,7 @@ def write_comparison(args, out, left, right, pose):
     receipt = {"schema": "map-swipe-comparison/v1", "left": left, "right": right,
                "requested_camera": {"origin": position, "angles": angles},
                "activated_panel_relays": args.panel_relay,
+               "disabled_fizzler_relay": "fizzler1_disable_rl",
                "metrics": metrics,
                "captured_utc": datetime.datetime.now(datetime.timezone.utc).isoformat()}
     (out / "comparison.json").write_text(json.dumps(receipt, indent=2) + "\n")
@@ -360,8 +451,9 @@ body { max-width: 1320px; margin: auto; padding: 24px; }
 .grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(300px,1fr)); gap: 20px; }
 a { color: inherit; } img { display: block; width: 100%%; margin-bottom: 8px; }
 </style><h1>Intro4 map comparisons</h1>
-<p>sp_a1_intro4 / sp_a1_intro4_relit · %d×%d · right game: FSR Native AA,
-MSAA off, HDR exposure 3, HDR output requested. RGB PNGs do not verify HDR display presentation.</p>
+<p>sp_a1_intro4 / sp_a1_intro4_relit · %d×%d · right game: native resolution, FSR off,
+4× MSAA, HDR exposure 3, 10000-nit output peak. Each swipe links B’s unexposed
+floating-point HDR export. RGB PNGs do not verify HDR display presentation.</p>
 <p>Original: native Vulkan with render core disabled. Relit: native Vulkan render core.</p>
 <div class="grid">%s</div></html>''' % (width, height, "".join(cards))
     (out / "index.html").write_text(page)
@@ -376,17 +468,16 @@ def main(argv=None):
     capture_selection.add_argument("--pose", type=parse_pose,
                                    help="shared Source-unit camera: x,y,z:pitch,yaw,roll")
     capture_selection.add_argument("--all-captures", action="store_true",
-                                   help="capture all 18 retained Intro4 poses excluding panel")
+                                   help="capture all 19 selected Intro4 poses excluding panel")
     parser.add_argument("--content-root-a", type=Path)
     parser.add_argument("--content-root-b", type=Path)
     parser.add_argument("--panel-relay", action="append", default=[],
                         help="activate a named test chamber panel relay on both maps; repeatable")
     parser.add_argument("--runtime", type=Path, default=ROOT / "run/runtime-p2-fsr")
     parser.add_argument("--build", type=Path, default=ROOT / "build-p2-fsr")
-    parser.add_argument("--fsr-assets", type=Path, default=ROOT / "external/fsr411/assets")
-    parser.add_argument("--width", type=int, default=3840)
-    parser.add_argument("--height", type=int, default=2160)
-    parser.add_argument("--timeout", type=int, default=900)
+    parser.add_argument("--width", type=int, default=7680)
+    parser.add_argument("--height", type=int, default=4320)
+    parser.add_argument("--timeout", type=int, default=1800)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--in-compositor", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
@@ -396,14 +487,9 @@ def main(argv=None):
         parser.error("timeout must be positive")
     if not (64 <= args.width <= 8192 and 64 <= args.height <= 8192):
         parser.error("capture dimensions must be between 64 and 8192")
-    cache = args.build / "c4che/_cache.py"
-    if not cache.is_file() or not re.search(r"^RENDER_FSR411 = True$", cache.read_text(), re.M):
-        parser.error("--build must name an FSR-capable Portal 2 build (./play_p2_fsr)")
     if not any(re.search(r"^GAMES = ['\"]portal2['\"]$", path.read_text(), re.M)
                for path in (args.build / "c4che").glob("*_cache.py")):
         parser.error("--build must be configured for Portal 2")
-    if not args.fsr_assets.is_dir():
-        parser.error("FSR assets are missing: " + str(args.fsr_assets))
     if any(not re.fullmatch(r"[A-Za-z0-9_@-]+", name) for name in args.panel_relay):
         parser.error("panel relay names may contain only letters, digits, _, @, and -")
     if args.all_captures and (args.map_a, args.map_b) != ("sp_a1_intro4", "sp_a1_intro4_relit"):

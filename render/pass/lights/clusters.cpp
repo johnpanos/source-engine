@@ -150,10 +150,11 @@ ClusterLimits DesktopClusterLimits()
 	ClusterLimits limits;
 	limits.tileSizePixels = 64;
 	limits.depthSlices = 24;
-	limits.maxFroxels = 1u << 16;
+	// Native 8K uses 120 x 68 x 24 froxels without reducing spatial/depth quality.
+	limits.maxFroxels = 1u << 18;
 	limits.maxLights = 1024;
 	limits.maxLightsPerFroxel = 128;
-	limits.maxLightIndices = 1u << 20;
+	limits.maxLightIndices = 1u << 22;
 	return limits;
 }
 

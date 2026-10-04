@@ -46,6 +46,8 @@
 #include "drawstatefixture.h"
 #include "vieworaclecapture.h"
 #include "renderparm.h"
+#include "bitmap/imageformat.h"
+#include "mapcontainer/probe_volume.h"
 #if defined( USE_SDL )
 #include "appframework/ilaunchermgr.h"
 #include "vstdlib/jobgraph_parallel.h"
@@ -247,16 +249,22 @@ static ConVar mat_hdr_peak_nits( "mat_hdr_peak_nits", "1000", FCVAR_ARCHIVE,
     "Calibrated HDR display peak brightness in cd/m^2", true, 203.0f, true, 10000.0f );
 static ConVar mat_hdr_output_active(
     "mat_hdr_output_active", "0", FCVAR_NONE, "Current presentation: 0 SDR, 1 HDR" );
+static ConVar mat_hdr_scene_active(
+    "mat_hdr_scene_active", "0", FCVAR_NONE, "Current scene stores linear floating-point HDR" );
+static ConVar mat_hdr_output_recorded(
+    "mat_hdr_output_recorded", "0", FCVAR_NONE, "Last frame recorded the core output pass" );
 
 static bool RunVulkanFrame( std::string *outError )
 {
 	g_VulkanContext.RequestExtendedOutput( mat_hdr_output.GetBool() );
 	g_VulkanContext.SetHdrSettings( mat_hdr_exposure.GetFloat(), mat_hdr_peak_nits.GetFloat() );
 	mat_hdr_output_active.SetValue( g_VulkanContext.ExtendedOutput() ? 1 : 0 );
+	mat_hdr_scene_active.SetValue( g_VulkanContext.HdrScene() ? 1 : 0 );
 	if ( g_FrameExecutor && g_VulkanContext.Port() )
 	{
 		CVulkanFrameSource source;
 		const bool ok = g_FrameExecutor->RunFrame( source );
+		mat_hdr_output_recorded.SetValue( ok && g_VulkanContext.OutputPassRecorded() ? 1 : 0 );
 		static bool s_announced = false;
 		if ( !s_announced && g_FrameExecutor->LastFramePasses() > 0 )
 		{
@@ -271,7 +279,9 @@ static bool RunVulkanFrame( std::string *outError )
 		return ok;
 	}
 	bool skip = false;
-	return g_VulkanContext.RenderFrame( &skip, outError );
+	const bool ok = g_VulkanContext.RenderFrame( &skip, outError );
+	mat_hdr_output_recorded.SetValue( ok && g_VulkanContext.OutputPassRecorded() ? 1 : 0 );
+	return ok;
 }
 
 // Brings the context up against the engine's window. The window reference is
@@ -11586,6 +11596,57 @@ void CShaderAPIVulkan::SetScissorRect( const int nLeft, const int nTop, const in
 	g_VulkanContext.SetScissor( bEnableScissor, nLeft, nTop, nRight - nLeft, nBottom - nTop );
 }
 
+static bool ReadHdrPixels(
+    int x, int y, int width, int height, unsigned char *data, ImageFormat format, int stride )
+{
+	if ( format != IMAGE_FORMAT_RGB323232F && format != IMAGE_FORMAT_RGBA16161616F )
+		return false;
+	if ( width <= 0 || height <= 0 )
+		return true;
+	if ( !g_VulkanContext.HdrScene() )
+	{
+		Warning( "HDR capture refused: the scene is not floating-point HDR.\n" );
+		return true;
+	}
+	std::string error;
+	g_VulkanContext.RequestCapture( true );
+	if ( !RunVulkanFrame( &error ) )
+	{
+		Warning( "HDR capture failed: %s\n", error.c_str() );
+		return true;
+	}
+	int cw = 0, ch = 0;
+	const auto &pixels = g_VulkanContext.GetCapturedHdrPixels( &cw, &ch );
+	if ( pixels.empty() || x < 0 || y < 0 || x > cw || y > ch || width > cw - x || height > ch - y )
+	{
+		Warning( "HDR capture refused: unavailable pixels or rectangle outside the scene.\n" );
+		return true;
+	}
+	const int bytes = ImageLoader::SizeInBytes( format );
+	if ( stride <= 0 )
+		stride = width * bytes;
+	if ( stride < width * bytes )
+		return true;
+	for ( int row = 0; row < height; ++row )
+	{
+		const auto *source = pixels.data() + ( static_cast<size_t>( y + row ) * cw + x ) * 4;
+		unsigned char *destination = data + static_cast<size_t>( row ) * stride;
+		if ( format == IMAGE_FORMAT_RGBA16161616F )
+			std::memcpy( destination, source, static_cast<size_t>( width ) * 8 );
+		else
+		{
+			for ( int column = 0; column < width; ++column )
+			{
+				const float rgb[3] = { mapcontainer::HalfToFloat( source[column * 4] ),
+				    mapcontainer::HalfToFloat( source[column * 4 + 1] ),
+				    mapcontainer::HalfToFloat( source[column * 4 + 2] ) };
+				std::memcpy( destination + static_cast<size_t>( column ) * 12, rgb, sizeof( rgb ) );
+			}
+		}
+	}
+	return true;
+}
+
 void CShaderAPIVulkan::ReadPixels(
     int x, int y, int width, int height, unsigned char *data, ImageFormat dstFormat )
 {
@@ -11596,6 +11657,8 @@ void CShaderAPIVulkan::ReadPixels(
 	// the caller's buffer, converting to the requested format. This is what the
 	// engine's +screenshot path reads; without it every capture is blank.
 	if ( !data || width <= 0 || height <= 0 || !g_VulkanContext.IsValid() )
+		return;
+	if ( ReadHdrPixels( x, y, width, height, data, dstFormat, 0 ) )
 		return;
 	// Render the geometry queued for this frame and capture it on demand (only
 	// here, not every frame -- a full-frame GPU copy per frame stalls the loop).
@@ -11671,6 +11734,15 @@ void CShaderAPIVulkan::ReadPixels(
 	// recently presented frame (captured on demand by CVulkanContext), converting
 	// to the requested format.
 	if ( !data || !pSrcRect || !pDstRect || !g_VulkanContext.IsValid() )
+		return;
+	const int hdrStride =
+	    nDstStride > 0 ? nDstStride : pDstRect->width * ImageLoader::SizeInBytes( dstFormat );
+	if ( pSrcRect->width > 0 && pSrcRect->height > 0 && pDstRect->x >= 0 && pDstRect->y >= 0 &&
+	     ReadHdrPixels( pSrcRect->x, pSrcRect->y, std::min( pSrcRect->width, pDstRect->width ),
+	         std::min( pSrcRect->height, pDstRect->height ),
+	         data + static_cast<size_t>( pDstRect->y ) * hdrStride +
+	             pDstRect->x * ImageLoader::SizeInBytes( dstFormat ),
+	         dstFormat, hdrStride ) )
 		return;
 	{
 		std::string err;

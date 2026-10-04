@@ -63,6 +63,12 @@ typedef void *HDC;
 #endif
 #include "vstdlib/IKeyValuesSystem.h"
 
+#include <algorithm>
+#include <cmath>
+#include <limits>
+#include <string>
+#include <vector>
+
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
@@ -78,18 +84,80 @@ ConVar cl_screenshotlocation( "cl_screenshotlocation", "", FCVAR_HIDDEN, "Locati
 //-----------------------------------------------------------------------------
 // HDRFIXME: move this somewhere else.
 //-----------------------------------------------------------------------------
-static void PFMWrite( float *pFloatImage, const char *pFilename, int width, int height )
+static bool PFMWrite( const float *pFloatImage, const char *pFilename, int width, int height )
 {
-    FileHandle_t fp;
-    fp = g_pFileSystem->Open( pFilename, "wb" );
-    g_pFileSystem->FPrintf( fp, "PF\n%d %d\n-1.000000\n", width, height );
-    int i;
-    for( i = height-1; i >= 0; i-- )
-    {
-        float *pRow = &pFloatImage[3 * width * i];
-        g_pFileSystem->Write( pRow, width * sizeof( float ) * 3, fp );
-    }
-    g_pFileSystem->Close( fp );
+	FileHandle_t fp;
+	fp = g_pFileSystem->Open( pFilename, "wb" );
+	if ( !fp )
+		return false;
+	g_pFileSystem->FPrintf( fp, "PF\n%d %d\n-1.000000\n", width, height );
+	int i;
+	for ( i = height - 1; i >= 0; i-- )
+	{
+		const float *pRow = &pFloatImage[3 * width * i];
+		const int bytes = width * sizeof( float ) * 3;
+		if ( g_pFileSystem->Write( pRow, bytes, fp ) != bytes )
+		{
+			g_pFileSystem->Close( fp );
+			g_pFileSystem->RemoveFile( pFilename );
+			return false;
+		}
+	}
+	g_pFileSystem->Close( fp );
+	return true;
+}
+
+bool VideoMode_TakeSnapshotHdr( const char *filename )
+{
+	ConVarRef scene( "mat_hdr_scene_active" );
+	if ( !scene.IsValid() || !scene.GetBool() )
+	{
+		Warning( "HDR export refused: no linear floating-point scene is active.\n" );
+		return false;
+	}
+	const int width = videomode->GetModeStereoWidth();
+	const int height = videomode->GetModeStereoHeight();
+	if ( width <= 0 || height <= 0 || width > 8192 || height > 8192 )
+		return false;
+	std::vector<float> pixels(
+	    static_cast<size_t>( width ) * height * 3, std::numeric_limits<float>::quiet_NaN() );
+	CMatRenderContextPtr context( materials );
+	context->ReadPixels( 0, 0, width, height, reinterpret_cast<unsigned char *>( pixels.data() ),
+	    IMAGE_FORMAT_RGB323232F );
+	float maximum = 0.0f;
+	for ( float value : pixels )
+	{
+		if ( !std::isfinite( value ) )
+		{
+			Warning( "HDR export refused: incomplete or non-finite scene readback.\n" );
+			return false;
+		}
+		maximum = std::max( maximum, value );
+	}
+	ConVarRef exposure( "mat_hdr_exposure" ), peak( "mat_hdr_peak_nits" );
+	ConVarRef active( "mat_hdr_output_active" );
+	ConVarRef recorded( "mat_hdr_output_recorded" );
+	CUtlBuffer metadata( 0, 0, CUtlBuffer::TEXT_BUFFER );
+	metadata.Printf( "{\n  \"schema\": \"source-hdr-capture/v1\",\n"
+	                 "  \"encoding\": \"linear\", \"primaries\": \"Rec.709\",\n"
+	                 "  \"stage\": \"scene-before-output\", \"reference_white_nits\": 203,\n"
+	                 "  \"width\": %d, \"height\": %d, \"rgb_max\": %.9g,\n"
+	                 "  \"exposure\": %.9g, \"display_peak_nits\": %.9g,\n"
+	                 "  \"hdr_output_active\": %s, \"output_pass_recorded\": %s\n}\n",
+	    width, height, maximum, exposure.GetFloat(), peak.GetFloat(),
+	    active.GetBool() ? "true" : "false", recorded.GetBool() ? "true" : "false" );
+	const std::string sidecar = std::string( filename ) + ".json";
+	if ( !PFMWrite( pixels.data(), filename, width, height ) ||
+	     !g_pFileSystem->WriteFile( sidecar.c_str(), NULL, metadata ) )
+	{
+		g_pFileSystem->RemoveFile( filename );
+		g_pFileSystem->RemoveFile( sidecar.c_str() );
+		Warning( "HDR export failed to write %s and its metadata.\n", filename );
+		return false;
+	}
+	Msg( "HDR export: %s (%dx%d, linear RGB, peak %.9g, before exposure/tone map)\n", filename,
+	    width, height, maximum );
+	return true;
 }
 
 //-----------------------------------------------------------------------------

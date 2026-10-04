@@ -119,6 +119,7 @@ CFastPointLeafNum g_ELightLeafAccessors[MAX_ELIGHTS];
 
 bool cl_takesnapshot = false;
 static bool cl_takejpeg = false;
+static bool cl_takehdr = false;
 static bool cl_takesnapshot_internal = false;
 
 static int cl_jpegquality = DEFAULT_JPEG_QUALITY;
@@ -1242,6 +1243,7 @@ void CL_TakeScreenshot(const char *name)
 {
 	cl_takesnapshot = true;
 	cl_takejpeg = false;
+	cl_takehdr = false;
 	cl_takesnapshot_internal = false;
 
 	if ( name != NULL )
@@ -1279,6 +1281,30 @@ CON_COMMAND_F( screenshot, "Take a screenshot.", FCVAR_CLIENTCMD_CAN_EXECUTE )
 	}
 }
 
+CON_COMMAND_F( screenshot_hdr,
+    "Export the linear HDR scene as a floating-point PFM: screenshot_hdr <name>",
+    FCVAR_CLIENTCMD_CAN_EXECUTE )
+{
+	if ( args.ArgC() != 2 || !args[1][0] )
+	{
+		Warning( "Usage: screenshot_hdr <name> (letters, digits, _ and - only)\n" );
+		return;
+	}
+	for ( const char *p = args[1]; *p; ++p )
+	{
+		if ( !( ( *p >= 'a' && *p <= 'z' ) || ( *p >= 'A' && *p <= 'Z' ) ||
+		         ( *p >= '0' && *p <= '9' ) || *p == '_' || *p == '-' ) )
+		{
+			Warning( "HDR screenshot name must not contain paths or punctuation.\n" );
+			return;
+		}
+	}
+	if ( demoplayer->IsPlayingBack() && !cl_playback_screenshots.GetBool() )
+		return;
+	CL_TakeScreenshot( args[1] );
+	cl_takehdr = true;
+}
+
 CON_COMMAND_F( devshots_screenshot, "Used by the -makedevshots system to take a screenshot. For taking your own screenshots, use the 'screenshot' command instead.", FCVAR_DONTRECORD )
 {
 	CL_TakeScreenshot( NULL );
@@ -1302,6 +1328,7 @@ void CL_TakeJpeg(const char *name, int quality)
 	
 	cl_takesnapshot = true;
 	cl_takejpeg = true;
+	cl_takehdr = false;
 	cl_jpegquality = clamp( quality, 1, 100 );
 	cl_takesnapshot_internal = false;
 
@@ -1346,6 +1373,7 @@ static void screenshot_internal( const CCommand &args )
 	Q_strncpy( cl_snapshotname, args[1], ARRAYSIZE(cl_snapshotname) );
 	cl_takesnapshot = true;
 	cl_takejpeg = true;
+	cl_takehdr = false;
 	cl_jpegquality = 70;
 	cl_takesnapshot_internal = true;
 }
@@ -1410,7 +1438,10 @@ void CL_TakeSnapshotAndSwap()
 			}
 
 			char extension[MAX_OSPATH];
-			Q_snprintf( extension, sizeof( extension ), "%s.%s", GetPlatformExt(), cl_takejpeg ? "jpg" : "tga" );
+			Q_snprintf( extension, sizeof( extension ), "%s.%s", GetPlatformExt(),
+			    cl_takehdr    ? "pfm"
+			    : cl_takejpeg ? "jpg"
+			                  : "tga" );
 
 			// Using a subdir? If so, create it
 			if ( cl_snapshot_subdirname[0] )
@@ -1461,7 +1492,11 @@ void CL_TakeSnapshotAndSwap()
 					}
 				}
 			}
-			if ( cl_takejpeg )
+			if ( cl_takehdr )
+			{
+				VideoMode_TakeSnapshotHdr( filename );
+			}
+			else if ( cl_takejpeg )
 			{
 				videomode->TakeSnapshotJPEG( filename, cl_jpegquality );
 				g_ServerRemoteAccess.UploadScreenshot( filename );
@@ -1472,6 +1507,7 @@ void CL_TakeSnapshotAndSwap()
 			}
 		}
 		cl_takesnapshot = false;
+		cl_takehdr = false;
 		cl_takesnapshot_internal = false;
 		GetTestScriptMgr()->CheckPoint( "screenshot" );
 

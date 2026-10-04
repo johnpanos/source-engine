@@ -385,7 +385,13 @@ public:
 	bool Resize( int width, int height, std::string *outError );
 
 	// Ask EndFrame() to capture the rendered color image (the back buffer) this frame.
-	void RequestCapture() { m_captureRequested = true; }
+	void RequestCapture( bool linearHdr = false )
+	{
+		m_captureRequested = true;
+		m_captureHdrRequested = linearHdr;
+		m_capturedPixels.clear();
+		m_capturedHdrPixels.clear();
+	}
 	// Ask EndFrame() to capture the swapchain image instead: the back buffer as
 	// the window presents it, scaled to the drawable. Nothing is captured when
 	// the surface does not allow reading its images.
@@ -1241,6 +1247,12 @@ public:
 	// first. Empty until a captured EndFrame() completes. *outW/*outH give the
 	// captured extent.
 	const std::vector<uint8_t> &GetCapturedPixels( int *outW, int *outH ) const;
+	const std::vector<uint16_t> &GetCapturedHdrPixels( int *outW, int *outH ) const
+	{
+		*outW = m_capturedWidth;
+		*outH = m_capturedHeight;
+		return m_capturedHdrPixels;
+	}
 
 	// Selected adapter facts, valid after a successful Init().
 	const char *DeviceName() const { return m_deviceName.c_str(); }
@@ -1303,6 +1315,7 @@ public:
 	bool ExtendedOutput() const { return m_extendedOutput; }
 	bool HasCorePassRecorder() const { return m_corePassRecorder != nullptr; }
 	bool HdrScene() const { return m_config.hdrScene; }
+	bool OutputPassRecorded() const { return m_outputSectionRecorded; }
 	void SetHdrSettings( float exposure, float peakNits )
 	{
 		m_hdrExposure = exposure;
@@ -1848,8 +1861,11 @@ private:
 	VulkanMemory m_captureMemory = VK_NULL_HANDLE;
 	VkExtent2D m_captureExtent = { 0, 0 };
 	bool m_captureRequested = false;
+	bool m_captureHdrRequested = false;
+	VkFormat m_captureFormat = VK_FORMAT_UNDEFINED;
 	bool m_capturePending = false;
 	std::vector<uint8_t> m_capturedPixels;
+	std::vector<uint16_t> m_capturedHdrPixels;
 	int m_capturedWidth = 0;
 	int m_capturedHeight = 0;
 
@@ -2615,6 +2631,7 @@ private:
 	// The prepared frame's capture (PrepareFrame decides it), and when its
 	// recording ended (the submit cost runs from there to FinishFrame).
 	bool m_frameCapture = false;
+	bool m_frameCaptureHdr = false;
 	bool m_frameCapturePresented = false;
 	int64_t m_recordEndUs = 0;
 	FrameCost m_lastFrameCost;

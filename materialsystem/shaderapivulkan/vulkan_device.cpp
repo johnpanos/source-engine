@@ -1102,9 +1102,12 @@ bool CVulkanContext::CreateSyncObjects( std::string *outError )
 
 bool CVulkanContext::CreateCaptureImage( VkExtent2D extent, std::string *outError )
 {
+	const VkFormat format = m_frameCaptureHdr   ? VK_FORMAT_R16G16B16A16_SFLOAT
+	                        : m_config.hdrScene ? VK_FORMAT_R8G8B8A8_UNORM
+	                                            : m_swapFormat;
 	// Recreate only when the target extent changed.
 	if ( m_captureImage != VK_NULL_HANDLE && m_captureExtent.width == extent.width &&
-	     m_captureExtent.height == extent.height )
+	     m_captureExtent.height == extent.height && m_captureFormat == format )
 		return true;
 
 	if ( m_captureOutput.IsValid() && Port() )
@@ -1130,7 +1133,7 @@ bool CVulkanContext::CreateCaptureImage( VkExtent2D extent, std::string *outErro
 	VkImageCreateInfo img = {};
 	img.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
 	img.imageType = VK_IMAGE_TYPE_2D;
-	img.format = m_config.hdrScene ? VK_FORMAT_R8G8B8A8_UNORM : m_swapFormat;
+	img.format = format;
 	img.extent = { extent.width, extent.height, 1 };
 	img.mipLevels = 1;
 	img.arrayLayers = 1;
@@ -1154,7 +1157,7 @@ bool CVulkanContext::CreateCaptureImage( VkExtent2D extent, std::string *outErro
 	     !CreateImage( img, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, &m_captureImage, &m_captureMemory,
 	         "capture", outError ) )
 		return false;
-	if ( m_config.hdrScene )
+	if ( m_config.hdrScene && !m_frameCaptureHdr )
 	{
 		img.tiling = VK_IMAGE_TILING_OPTIMAL;
 		img.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
@@ -1172,6 +1175,7 @@ bool CVulkanContext::CreateCaptureImage( VkExtent2D extent, std::string *outErro
 			return false;
 	}
 	m_captureExtent = extent;
+	m_captureFormat = format;
 	return true;
 }
 
@@ -6827,6 +6831,8 @@ bool CVulkanContext::PrepareFrame( bool *outSkip, std::string *outError )
 	// runs inside the adapter's Submit, where nothing may fail halfway.
 	m_frameCapture = m_captureRequested && ( !m_capturePresented || m_presentCapturable );
 	m_frameCapturePresented = m_frameCapture && m_capturePresented;
+	m_frameCaptureHdr =
+	    m_frameCapture && !m_frameCapturePresented && m_captureHdrRequested && m_config.hdrScene;
 	if ( m_frameCapture &&
 	     !CreateCaptureImage( m_frameCapturePresented ? m_presentExtent : m_swapExtent, outError ) )
 		return false;
@@ -6880,7 +6886,7 @@ void CVulkanContext::AttachFrameStage( FrameStage stage, render::device::Command
 	m_hostDevice->RecordNative( encoder, kRecords[stage], this );
 	if ( stage == kFrameStageScene )
 		RecordCorePassSections( encoder );
-	if ( stage == kFrameStageCapture && m_config.hdrScene )
+	if ( stage == kFrameStageCapture && m_config.hdrScene && !m_frameCaptureHdr )
 	{
 		auto targets = CoreOutputTargetsFor();
 		targets.target = m_captureOutput;
@@ -8886,7 +8892,7 @@ void CVulkanContext::RecordFramePresent( VkCommandBuffer cmd )
 	else if ( !m_gammaActive || m_frameLegacyOff ||
 	          !RecordPresentGamma( cmd, imageIndex, backBufferLayout, capturePresented ) )
 		RecordPresentBlit( cmd, imageIndex, backBufferLayout, capturePresented );
-	m_captureRequested = m_capturePresented = false;
+	m_captureRequested = m_capturePresented = m_captureHdrRequested = false;
 
 	if ( m_computeFlush )
 		m_computeFlush( cmd, m_submitSerial + 1 );
@@ -8901,7 +8907,7 @@ void CVulkanContext::RecordFramePresent( VkCommandBuffer cmd )
 
 bool CVulkanContext::RecordCapture( VkCommandBuffer cmd, uint32_t imageIndex )
 {
-	if ( m_config.hdrScene )
+	if ( m_config.hdrScene && !m_frameCaptureHdr )
 	{
 		if ( !m_captureOutputRecorded )
 			return false;
@@ -8918,7 +8924,8 @@ bool CVulkanContext::RecordCapture( VkCommandBuffer cmd, uint32_t imageIndex )
 		    &initialize );
 		m_hostDevice->RunSection( cmd, 0 );
 	}
-	const VkImage source = m_config.hdrScene ? m_captureOutputImage : m_swapImages[imageIndex];
+	const VkImage source =
+	    m_config.hdrScene && !m_frameCaptureHdr ? m_captureOutputImage : m_swapImages[imageIndex];
 	ScopedDebugLabel label( m_debugUtils, "capture back buffer" );
 	// Copy the just-rendered color image (currently COLOR_ATTACHMENT_OPTIMAL)
 	// into the host-visible linear capture image.
@@ -8970,6 +8977,17 @@ bool CVulkanContext::RecordCapture( VkCommandBuffer cmd, uint32_t imageIndex )
 	capGeneral.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
 	vkCmdPipelineBarrier( cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_HOST_BIT, 0, 0,
 	    nullptr, 0, nullptr, 1, &capGeneral );
+	if ( m_frameCaptureHdr )
+	{
+		// The output pass still samples the scene in its home layout this frame.
+		VkImageMemoryBarrier restore = toSrc;
+		restore.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+		restore.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+		restore.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+		restore.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+		vkCmdPipelineBarrier( cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
+		    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, 0, nullptr, 0, nullptr, 1, &restore );
+	}
 	return true;
 }
 
@@ -9774,7 +9792,7 @@ bool CVulkanContext::FinishFrame(
 		// reusing this binary semaphore, and retire the unpresented swapchain
 		// image. Acquiring again directly would reuse a signalled semaphore.
 		m_frameOpen = false;
-		m_captureRequested = m_capturePresented = false;
+		m_captureRequested = m_capturePresented = m_captureHdrRequested = false;
 		if ( Port()->State() == render::device::DeviceState::kAvailable )
 		{
 			const VkPipelineStageFlags stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
@@ -9791,8 +9809,8 @@ bool CVulkanContext::FinishFrame(
 		return false;
 	}
 	if ( m_config.hdrScene &&
-	     ( !m_outputSectionRecorded ||
-	         ( doCapture && !m_frameCapturePresented && !m_captureOutputRecorded ) ) )
+	     ( !m_outputSectionRecorded || ( doCapture && !m_frameCapturePresented &&
+	                                       !m_frameCaptureHdr && !m_captureOutputRecorded ) ) )
 	{
 		vkDeviceWaitIdle( m_device );
 		m_frameOpen = false;
@@ -10335,6 +10353,18 @@ bool CVulkanContext::ResolveCapturedPixels( std::string *outError )
 
 	const int w = static_cast<int>( m_captureExtent.width );
 	const int h = static_cast<int>( m_captureExtent.height );
+	if ( m_frameCaptureHdr )
+	{
+		m_capturedHdrPixels.resize( static_cast<size_t>( w ) * h * 4 );
+		const uint8_t *base = static_cast<const uint8_t *>( mapped ) + layout.offset;
+		for ( int y = 0; y < h; ++y )
+			std::memcpy( m_capturedHdrPixels.data() + static_cast<size_t>( y ) * w * 4,
+			    base + static_cast<size_t>( y ) * layout.rowPitch, static_cast<size_t>( w ) * 8 );
+		UnmapMemory( m_captureMemory );
+		m_capturedWidth = w;
+		m_capturedHeight = h;
+		return true;
+	}
 	m_capturedPixels.assign( static_cast<size_t>( w ) * h * 4, 0 );
 
 	const bool bgra = !m_config.hdrScene && ( m_swapFormat == VK_FORMAT_B8G8R8A8_UNORM ||
@@ -10541,6 +10571,7 @@ void CVulkanContext::Shutdown()
 		m_captureMemory = VK_NULL_HANDLE;
 	}
 	m_captureExtent = { 0, 0 };
+	m_captureFormat = VK_FORMAT_UNDEFINED;
 
 	if ( m_device != VK_NULL_HANDLE )
 	{

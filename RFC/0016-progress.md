@@ -8807,3 +8807,52 @@ recorder. The overview images were visually inspected for camera alignment.
 The complete multi-view gallery is `index.html` in that run directory. HDR presentation remains unverified:
 the private headless compositor and RGB PNG output cannot establish native
 HDR display output. R96/K12 and RFC 0019 qualification gates remain open.
+
+
+## Intro4 native 8K HDR archive (2026-10-03, capture in progress)
+
+The user selected native 7680x4320 with FSR off because the installed experimental
+provider only supports output through 3840x2160. B requests HDR output with
+exposure 3 and a 10000-nit display peak, retaining 4x MSAA. A remains native
+Vulkan with the render core, temporal scaling and HDR output disabled. The two
+private persistent game hosts capture all 19 retained Intro4 poses in parallel.
+The added first-fizzler doorway eye is (400.03, 223.97, 66.48), angles
+(0, -45.04, 0); the panel close-up remains excluded.
+
+Before camera capture, both hosts trigger `fizzler1_disable_rl`, wait 134
+fixed simulation frames (2.01 seconds), query `ent_dump fizzler_brush`, and
+wait another 10 frames for its server/client reply. The gallery requires a
+bracketed `StartDisabled: 1` reply. `ent_dump` now prints boolean keyfields
+instead of silently omitting them. Later fizzlers are left alone.
+
+`screenshot_hdr <name>` exports the existing linear RGBA16F scene through
+the preserved ReadPixels ABI as RGB float32 PFM before exposure, grading or
+SDR conversion. A JSON sidecar records Rec.709 primaries, 203-nit reference
+white, dimensions, finite RGB peak, exposure, requested display peak, active
+HDR presentation and whether the required output pass was recorded. Readback
+waits for GPU submission completion and respects mapped image row pitch. The
+existing PNG comparisons remain SDR previews; each B pose links the raw PFM
+and metadata for offline conversion.
+
+Native 8K initially failed the desktop lighting grid's 65536-froxel bound.
+The owning desktop limits now allow 262144 froxels and 4194304 light indices,
+preserving 64-pixel tiles and 24 depth slices. The GPU cluster suite passes
+28 checks, including native 8K grid shape and refusal above bounded capacity:
+`quality-results/conformance.20261004T035940Z.json`. The output suite passed
+27 checks in `quality-results/conformance.20261004T034556Z.json`.
+
+The initial native 8K trial boots successfully and exports exposure-1 and
+exposure-3 scenes with the same raw peak 1.275390625; each archive contains
+finite values above scene white. It confirmed `StartDisabled: 1`, RGBA16F
+scene storage and accepted Rec.2020/PQ output. That development trial exposed
+metadata defects (a trailing NUL and an absent output-pass telemetry variable),
+which were corrected before the complete gallery run. Trial evidence is in
+`quality-results/map-swipe-setup/hdr-8k-proof-native-capacity/`; it is not the
+final archive receipt. The complete gallery is running under
+`quality-results/map-comparisons/intro4-8k-native-hdr-20261003/`.
+
+The configured product build and swipe fixtures pass (including nine negative
+capture cases). Changed-line style is clean for this slice; an unrelated
+world-pass change has STYLE001. Architecture reports its existing charconv
+include occurrence with zero new/stale occurrences. Physical HDR display
+brightness, R96/K12 and temporal-provider qualification remain unverified.

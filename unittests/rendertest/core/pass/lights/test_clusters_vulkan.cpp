@@ -481,6 +481,18 @@ int main()
 	testing::Checks checks;
 	const std::uint32_t seed = Seed();
 	std::printf( "INFO seed %u\n", seed );
+	std::mt19937 nativeRandom( seed );
+	auto nativeView = MakeScene( nativeRandom ).desc;
+	nativeView.widthPixels = 7680;
+	nativeView.heightPixels = 4320;
+	auto nativeGrid = lights::CreateClusterGrid( nativeView, lights::DesktopClusterLimits() );
+	checks.That( nativeGrid && nativeGrid.Value().tilesX == 120 &&
+	                 nativeGrid.Value().tilesY == 68 && nativeGrid.Value().slices == 24,
+	    "native-8k.preserves-tile-and-depth-quality" );
+	nativeView.widthPixels = nativeView.heightPixels = 16384;
+	auto excessiveGrid = lights::CreateClusterGrid( nativeView, lights::DesktopClusterLimits() );
+	checks.That( !excessiveGrid && excessiveGrid.Error() == lights::ClusterError::kTooManyFroxels,
+	    "native-8k.capacity-remains-bounded" );
 	const bool layer = vulkan::ValidationLayerAvailable();
 	std::atomic<std::uint64_t> messages{ 0 };
 	vulkan::VulkanAdapterOptions options;

@@ -122,4 +122,8 @@ void VideoMode_Destroy();
 // submit material commands.
 bool VideoMode_UpdateWindowSize();
 
+// Raw linear scene readback, before exposure, tone mapping and output encoding.
+// Uses the existing material readback ABI; refuses non-floating-point scenes.
+bool VideoMode_TakeSnapshotHdr( const char *filename );
+
 #endif // IVIDEOMODE_H
