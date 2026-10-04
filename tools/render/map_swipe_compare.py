@@ -45,7 +45,7 @@ from PIL import Image, ImageChops, ImageEnhance, ImageStat
 ROOT = Path(__file__).resolve().parents[2]
 BOOT = ROOT / "tools/quality/portal_boot.py"
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from view_oracle import console_script
+from view_oracle import console_script, script_frames
 # Retained comparison and survey cameras, deduplicated. Survey player origins
 # include the 64-unit standing eye offset here.
 INTRO4_CAPTURES = (
@@ -216,10 +216,10 @@ def capture(map_name, side, content, args, out, poses=None):
                                     if side == "b" else "") +
                                    "screenshot swipe_" + shot["name"]):
             command += ["--console-command", line]
-        # Aliases insert their next steps ahead of the remaining cfg commands.
-        # The runner's closing capture therefore follows the entire chain;
-        # waiting for the chain's duration again would double idle rendering.
-        command[command.index("--capture-wait") + 1] = "10"
+        # Exec schedules the closing commands independently of future alias waits.
+        # Keep the runner alive for the entire chain, including each HDR export.
+        frames = script_frames(scenario, shots) + (3 * len(shots) if side == "b" else 0)
+        command[command.index("--capture-wait") + 1] = str(frames)
     if content:
         command += ["--content-root", str(content)]
     result = subprocess.run(command, capture_output=True, text=True)

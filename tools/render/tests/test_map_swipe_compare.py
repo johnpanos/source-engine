@@ -113,7 +113,10 @@ class MapSwipeTests(unittest.TestCase):
         self.assertEqual(self.run_gallery(), 0)
         self.assertEqual(len(self.calls), 2)
         for command in self.calls:
-            self.assertEqual(command[command.index("--capture-wait") + 1], "10")
+            hdr_wait = (3 * len(swipe.INTRO4_CAPTURES)
+                        if "--engine-arg=-norendercore" not in command else 0)
+            frames = 60 + len(swipe.INTRO4_CAPTURES) * (120 + 3 + 10) + hdr_wait
+            self.assertEqual(int(command[command.index("--capture-wait") + 1]), frames)
             lines = [command[i + 1] for i, token in enumerate(command[:-1])
                      if token == "--console-command"]
             self.assertLess(lines.index("wait 134"), next(
