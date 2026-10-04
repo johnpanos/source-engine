@@ -8789,7 +8789,21 @@ A, native core/FSR B at exposure 3 and all 18 gallery links/receipts. Negative
 fixtures reject missing captures, wrong names, camera/extent mismatches, boot
 failure and missing FSR dispatch. `pose-inventory-native-exposure2.log` checks
 the retained camera inventory (the exposure change does not change poses).
-Python compilation and scoped whitespace checks pass. Actual game capture
-results will be recorded separately. HDR presentation remains unverified:
+Python compilation and scoped whitespace checks pass. The 18 existing
+view-oracle tests also pass. Full architecture checking still reports the
+pre-existing CAP002 `charconv` include in the graphics-settings header.
+
+Actual run: `quality-results/map-comparisons/intro4-4k-parallel-exposure3-20261003/`.
+Both boots pass with identical executable snapshots. A takes 124.94 seconds
+and B 162.84 seconds, concurrently; these are capture workload durations,
+not gameplay performance acceptance measurements. Each writes 18 named
+captures plus the boot runner's closing capture. All 18 requested camera
+pairs, 36 3840x2160 PNGs and 18 gallery links pass the checks in
+`quality-results/map-swipe-setup/parallel-capture-verification.log`. The
+panel pose is absent. B confirms `FSR game: 3840x2160 -> 3840x2160, before
+post/HUD`, `mat_hdr_exposure 3` in its startup cfg, and accepted Rec. 2020/PQ
+10-bit presentation. A confirms standard-range output without a core pass
+recorder. The overview images were visually inspected for camera alignment.
+The complete multi-view gallery is `index.html` in that run directory. HDR presentation remains unverified:
 the private headless compositor and RGB PNG output cannot establish native
 HDR display output. R96/K12 and RFC 0019 qualification gates remain open.
