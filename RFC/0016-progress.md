@@ -9685,3 +9685,14 @@ hashes for all 22 products from both proved builds. A fresh installed-runtime
 full paired run, with no build overlay, is being collected separately in
 `softparticle-installed-strict-game/`; it is not certified until both modes
 complete successfully.
+
+
+Installed verification completed: `softparticle-installed-strict-game/evidence.json`
+passes all 184 checks in each mode with strict enabled and zero claimed-view
+failures, using no build overlay. `installed-product-proof.json` independently
+checks all 22 staged binaries against the installation receipt in both modes.
+Its `review/` retains 130 lossless native PNGs and camera/particle/movie
+comparisons with source screenshot hashes. This confirms the deployed soft-
+particle fix alongside the prior glass, decals, doors, indicator, signage and
+camera checks. It does not close the remaining spark/proxy/material gates.
+The code is committed on `subsystem-refactor` as `0f501d2ba`.
