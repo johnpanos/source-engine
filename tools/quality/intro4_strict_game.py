@@ -17,13 +17,13 @@ from intro4_material_check import commands
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--runtime', type=Path, required=True)
-    parser.add_argument('--build', type=Path, required=True)
+    parser.add_argument('--build', type=Path, help='optional built product overlay; omit to test installed runtime')
     parser.add_argument('--out', type=Path, required=True)
     parser.add_argument('--fsr-assets', type=Path, required=True)
     parser.add_argument('--fsr-scale', choices=('0.5', '0.588235', '0.666667', '1'),
                         default='0.5')
     parser.add_argument('--timeout', type=int, default=300)
-    parser.add_argument('--scene', choices=('all', 'materials', 'doors', 'cables', 'emissives', 'signage'),
+    parser.add_argument('--scene', choices=('all', 'materials', 'doors', 'cables', 'emissives', 'signage', 'cameras'),
                         default='all')
     args = parser.parse_args()
     if args.out.exists():
@@ -34,7 +34,7 @@ def main():
     for mode, scale in (('fsr-on', args.fsr_scale), ('fsr-off', '0')):
         capture = args.out / mode
         boot = [sys.executable, str(root / 'tools/quality/portal_boot.py'),
-                '--runtime', str(args.runtime.resolve()), '--build', str(args.build.resolve()),
+                '--runtime', str(args.runtime.resolve()),
                 '--out', str(capture.resolve()), '--game', 'portal2',
                 '--renderer', 'native-vulkan', '--require-vulkan',
                 '--map', 'sp_a1_intro4_relit', '--timeout', str(args.timeout),
@@ -42,6 +42,8 @@ def main():
                 '--capture-wait', '120', '--allow-user-display', '--no-mouse',
                 '--physics', 'vphysics_box3d', '--engine-arg=-physics_shape_inertia',
                 '--engine-arg=-vkemitparallel', '--engine-arg=1']
+        if args.build is not None:
+            boot.extend(['--build', str(args.build.resolve())])
         if mode == 'fsr-on':
             boot.extend(['--engine-arg=-fsr', '--engine-arg=-fsr-assets',
                          f'--engine-arg={args.fsr_assets.resolve()}'])

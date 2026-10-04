@@ -94,13 +94,16 @@ python3 tools/quality/intro4_strict_game.py \
   --out quality-results/intro4-rendercore-completion/strict-modes-NEW
 ```
 
+Omit `--build` to test the installed runtime without a product overlay. For the
+camera cohort alone, append `--scene cameras` and use a fresh output directory.
+
 The output must be fresh. A failed mode does not stop the other mode's evidence
 collection, and the aggregate fails if either boot or pixel oracle fails.
-`--scene doors`, `materials`, `cables`, `emissives` or `signage` selects a bounded
-reproduction; the default `all` runs all 127 pixel, source-report and seeded-negative
+`--scene doors`, `materials`, `cables`, `emissives`, `signage` or `cameras` selects a bounded
+reproduction; the default `all` runs all 172 pixel, source-report and seeded-negative
 checks per mode. Retain direct-start captures separately when reproducing a launch-time report.
 
-`intro4_material_check.py --scene materials|doors|cables|emissives|signage|all --commands` emits each
+`intro4_material_check.py --scene materials|doors|cables|emissives|signage|cameras|all --commands` emits each
 installed `portal_boot.py` console sequence. Capture both modes at the same
 1024×768 requested viewport (desktop HiDPI is retained), using the corresponding
 `--startup-command "r_temporal_scale SCALE"`. Pass each capture to the oracle:
@@ -122,7 +125,17 @@ checks on/off/on receiver light, one-sided source facing and core-only routing.
 A metal-box receiver is placed in front of the exit/arrow signs; other sources
 use authored debris/wall/border receivers. Its 52 checks include 14 seeded
 missing-light, reversed-facing and legacy-slot defects. The light-only isolation
-filter is restored before the final queries. These are bounded pixel checks,
+filter is restored before the final queries. `--scene cameras` adds 45 checks
+for the three actual Intro4 red-eye sources. A metal-box receiver below the first
+eye is captured on/off/on, hidden/shown, moved/returned, turned/restored and
+removed. Camera AI is frozen for the fixture and resumed afterward. Receiver
+red chroma, coverage, restoration, attachment center/front, radiance, core-only
+routing and retirement are checked, with 15 seeded pixel/report defects.
+Both `r_core_shadow_quality 3` and `r_core_shadow_movers 1` must remain enabled.
+Empty light sets must report empty at the requested frame; a stale report is a
+failure. The camera source policy is owned by
+[RFC 0016](../../RFC/0016-render-core.md#surface-emission-sources-installed-indicator-slice-2026-10-04).
+These are bounded pixel checks,
 with seeded missing-surface controls; they do not certify all materials,
 glass optics, presented HDR output or whole-frame performance. A game boot pass
 without the image oracle and zero queried claimed-view failures is insufficient.

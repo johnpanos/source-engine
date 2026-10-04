@@ -9491,3 +9491,101 @@ and comparison paths: 36 on/off/restored source captures, 1536x1152 pixels each.
 Comparisons preserve captured colors and add only an external label band.
 These images confirm the named source/receiver behaviors; broader material
 and transport completion remains open.
+
+
+#### Security-camera eye sources (2026-10-04)
+
+User request: security-camera lights must illuminate their surroundings through
+rendercore, like the fizzler, with strict FSR/non-FSR game screenshots.
+Intro4's three `npc_security_camera` entities use skin 1, whose
+`models/props/camera_skin02` material has no self-illumination. Their red eye is
+an `env_sprite` using `sprites/glow1.vmt`, attached to `light` on
+`models/props/security_camera.mdl`. Model-material emission alone misses it.
+
+The client now publishes a copied core-only area source for this named cohort.
+The core's `AttachmentEmitter` builds and validates its one-sided aperture;
+client source policy supplies its physical size and linear radiance. Source
+geometry follows the current attachment, independently of the halo billboard.
+Live RGB, interpolated brightness/scale and HDR scale are read from the existing
+sprite owner. Hidden/dormant/removed eyes stop publishing; no sprite pointer is
+retained across frames. Missing required attachment data fails by name. The
+[radiance/aperture policy](0016-render-core.md#surface-emission-sources-installed-indicator-slice-2026-10-04)
+has one authoritative definition, including the `@camera-eyes` isolation control.
+
+The first actual game comparison exposed self-shadowing: head-local attachment
+Z 12.9 lies inside its shadow hitbox's maximum 15.751. The reviewed aperture is
+placed 3 units forward, just outside that existing proxy. Camera pose, visible
+eye and all shadow settings are preserved. This is a bounded accommodation of
+the current hitbox caster, not full studio-mesh shadow fidelity. A separate
+shadow diagnostic retained in `camera-shadow-diagnostic/` established that the
+moving caster blocked the contribution; shipped captures keep quality 3 and
+moving shadows enabled. The final receiver shows small red light beneath the
+eye. This source policy does not turn every optical glow sprite into a lamp.
+
+The deterministic camera fixture adds 45 checks to `all`: receiver red chroma,
+coverage, restoration, hide/show, move/return, turn/restore, removal, the three
+source centers/fronts/radiance, core-only routing and enabled shadow settings.
+Fifteen seeded missing/stale-light, stale-position, reversed-front, missing-
+radiance, legacy-slot, disabled-shadow and missing-report defects must fail.
+The earlier door fixture's active fizzler is explicitly verified and preserved
+in `all`; the isolated camera fixture has no such extra source. The client also
+honors a requested area-light report while the set stays empty; previously its
+request could survive until a later nonempty frame and report stale state.
+
+Evidence under `quality-results/intro4-rendercore-completion/` so far:
+
+- `camera-source-policy.json`: model/sprite hashes and measured attachment/
+  hitbox facts; red radiance 8.031 at authored brightness 128 and policy 16.
+- `camera-contracts-final.json`: 53 checks pass, plus both seeded power-loss/
+  two-sided suites match their expected outcomes; zero skipped suites.
+- `camera-area-gpu-formatted.log`: 82 GPU checks pass, zero validation messages.
+  The new six-state attachment test compares dimmed light against the exact
+  irradiance oracle, including the changing reach window.
+- `camera-final-product-build.log`: final installed product build passes.
+- `camera-intermediate-review.json`: both original full strict captures pass
+  the revised 172-check oracle. The initial report-only failure incorrectly
+  assumed the prior door fixture's active fizzler was absent; images and core
+  drawing passed. A fresh final paired run is retained separately.
+- `camera-style-shipping.log`: four edited C++ files pass. Architecture
+  baseline/inventory verification passes; `camera-arch.log` retains the
+  pre-existing CAP002 `charconv` occurrence with zero new/stale occurrences.
+
+Final evidence:
+
+- `camera-strict-confirmed-game/reviewed-evidence.json`: final-product menu-to-
+  Intro4 boots in strict FSR-on (0.5) and FSR-off (0), 172 checks pass per mode,
+  zero claimed-view failures. All previous 127 glass/decal/door/rope/indicator/
+  signage checks pass alongside the 45 camera checks. Native captures remain
+  unchanged. One non-FSR console line joined a frame marker and its report;
+  the parser's newline assumption was corrected without changing any geometry,
+  radiance, pixel or negative-defect requirement. The original driver/report
+  failure remains retained. `camera-report-layout-selftest.json` proves both
+  whitespace layouts and all six report-defect controls in both modes.
+- `camera-formatted-product-build.log` and `camera-style-final-shipping.log`:
+  final formatting and product build pass. `camera-format-binary-equivalence.json`
+  proves every allocated client ELF section (code/data/symbols/relocations, at
+  the same addresses) matches the full paired capture; only debug/build-id data
+  differ after the final expression wrap.
+- `camera-runtime-install.json`: 22 products installed atomically, with the
+  paired proof and formatting equivalence recorded. Existing process mappings
+  remain untouched until restart.
+- `camera-installed-final-game/evidence.json`: fresh tests of the installed
+  runtime, no build overlay. Both strict FSR-on/off boots pass all 45 camera
+  checks, including an actual empty source report during the light-only control.
+  Both have zero claimed-view failures and retain shipped shadow settings.
+- `camera-installed-final-game/review/index.html` and `review/evidence.json`:
+  20 lossless native PNGs (1536x1152), full and cropped on/off comparisons in
+  both modes, source screenshot hashes and original-pixel crops. Visual review
+  confirms small red light on the cube's upper surface, its disappearance and
+  restoration through the tested lifecycle/pose controls. Colors are unchanged;
+  only the external comparison labels are added.
+
+The installed runner now allows omitting `--build` to test the deployed runtime
+and includes `cameras` in its default `all` sequence (172 checks per mode).
+R91/R96, general glow-sprite source policy, full studio shadow fidelity,
+indirect transport, full-frame performance and broader material completion
+remain open. Changes are on `subsystem-refactor`.
+
+Frozen-path: core plumbing for the user-requested camera source ingress and
+empty-set diagnostic correction. Core receiver shading retains its owner;
+no legacy shading implementation is added.

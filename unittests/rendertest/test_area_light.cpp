@@ -465,6 +465,39 @@ int main()
 		    "mapped cyan and orange frames cast their selected color and equal power" );
 	}
 
+	// Attachment sources use the authored front, independently of the view.
+	{
+		float transform[3][4] = { { 1, 0, 0, 0 }, { 0, 1, 0, 0 }, { 0, 0, 1, 0 } };
+		const float red[3] = { 1, 0, 0 };
+		const auto on = emissive::AttachmentEmitter( transform, 1, red, 8 );
+		Check( on && !on->rect.twoSided && Near( Area( on->rect ), 4, 1e-6 ) &&
+		           on->radiance[0] == 8 && on->radiance[1] == 0 && on->radiance[2] == 0,
+		    "attachment aperture retains reviewed size, radiance and one-sided front" );
+		const float front[3] = { 8, 0, 0 }, back[3] = { -8, 0, 0 };
+		Check( on && Faces( on->rect, front ) && !Faces( on->rect, back ),
+		    "attachment front comes from its local X axis" );
+		const auto dim = emissive::AttachmentEmitter( transform, 1, red, 4 );
+		Check( dim && on && Near( dim->radiance[0], on->radiance[0] / 2, 1e-6 ),
+		    "attachment brightness scales source radiance" );
+		transform[0][3] = 20;
+		transform[0][0] = -1;
+		transform[1][1] = -1;
+		const auto moved = emissive::AttachmentEmitter( transform, 1, red, 8 );
+		const float movedFront[3] = { 12, 0, 0 };
+		Check( moved && moved->rect.center[0] == 20 && Faces( moved->rect, movedFront ),
+		    "moving and rotating an attachment changes its center and front" );
+		Check( !emissive::AttachmentEmitter( transform, 1, red, 0 ),
+		    "a hidden or dark attachment publishes no source" );
+		Check( !emissive::AttachmentEmitter( transform, 0, red, 8 ),
+		    "zero-size attachment apertures are refused" );
+		transform[1][1] = 0;
+		Check( !emissive::AttachmentEmitter( transform, 1, red, 8 ),
+		    "degenerate attachment axes are refused" );
+		transform[1][1] = std::nanf( "" );
+		Check( !emissive::AttachmentEmitter( transform, 1, red, 8 ),
+		    "nonfinite attachment geometry is refused" );
+	}
+
 	// The fit: a flat square keeps its size, facing and power.
 	{
 		std::vector<emissive::Triangle> triangles;

@@ -726,6 +726,57 @@ std::optional<std::string> AreaChecks( Lab &lab, Results &results )
 		    "emissive-source.returning-image-restores-receiver-light" );
 	}
 
+	// An attached indicator aperture: red/on, half brightness, light-only
+	// off, turned away, moved and restored. The halo itself is not a receiver.
+	{
+		float transform[3][4] = { { 0, 1, 0, 0 }, { 0, 0, -1, 0 }, { -1, 0, 0, 12 } };
+		const float red[3] = { 1, 0, 0 };
+		const View close = MakeView( { 0, -20, 45 }, { 0, 0, 0 } );
+		CanvasImage images[6];
+		float expected[6] = {};
+		for ( int state = 0; state < 6; ++state )
+		{
+			transform[0][3] = state == 4 ? 10.0f : 0.0f;
+			transform[1][2] = state == 3 ? 1.0f : -1.0f;
+			transform[2][0] = state == 3 ? 1.0f : -1.0f;
+			const auto source = emissive::AttachmentEmitter( transform, 1, red,
+			    state == 2   ? 0.0f
+			    : state == 1 ? 4.0f
+			                 : 8.0f );
+			Frame frame{ {}, &kMaterials[0], &close, Lobe( shaderlib::DebugBrdf::kDiffuseOnly ) };
+			if ( source )
+				frame.lights.push_back( *source );
+			if ( const auto at = Hit( close, kSize / 2, kSize / 2 ) )
+			{
+				const auto direction = math::Normalize(
+				    { close.eye.x - at->x, close.eye.y - at->y, close.eye.z - at->z } );
+				expected[state] = DiffuseOracle( frame.lights, kMaterials[0], *at, direction ).r;
+			}
+			if ( auto why = Render( lab, frame, images[state] ) )
+				return why;
+			SaveImage( images[state], "attachment-source.state-" + std::to_string( state ) );
+		}
+		const auto *on = images[0].At( kSize / 2, kSize / 2 );
+		const auto *dim = images[1].At( kSize / 2, kSize / 2 );
+		const auto *off = images[2].At( kSize / 2, kSize / 2 );
+		const auto *back = images[3].At( kSize / 2, kSize / 2 );
+		const auto *moved = images[4].At( kSize / 2, kSize / 2 );
+		results.That( on[0] > .001f && on[1] == 0 && on[2] == 0,
+		    "attachment-source.red-light-reaches-receiver" );
+		// Dimmer sources have shorter reach as well as lower radiance.
+		results.That( dim[0] > 0 && dim[0] < on[0] &&
+		                  std::fabs( dim[0] - expected[1] ) <
+		                      kDiffuseRelative * expected[1] + kDiffuseAbsolute,
+		    "attachment-source.brightness-and-reach-match-irradiance" );
+		results.That(
+		    off[0] == 0 && off[1] == 0 && off[2] == 0, "attachment-source.off-publishes-no-light" );
+		results.That( back[0] == 0 && back[1] == 0 && back[2] == 0,
+		    "attachment-source.one-sided-back-emits-nothing" );
+		results.That( moved[0] < on[0] * .8f, "attachment-source.moving-source-changes-receiver" );
+		results.That(
+		    SameImage( images[0], images[5] ), "attachment-source.restoring-pose-restores-light" );
+	}
+
 	// Diffuse: every sampled pixel against the exact irradiance.
 	for ( const char *name :
 	    { "ceiling", "tilted", "straddling", "short-reach", "grid64", "fizzler" } )

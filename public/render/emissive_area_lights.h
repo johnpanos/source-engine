@@ -52,6 +52,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <optional>
 #include <span>
 #include <string_view>
 #include <utility>
@@ -94,6 +95,37 @@ inline void UnlitRadiance( const float rgb[3], float alpha, bool translucent, bo
 	                                                      : 1.0f;
 	for ( int k = 0; k < 3; ++k )
 		out[k] = rgb[k] * coverage;
+}
+
+// A physical aperture follows its authored attachment, never the visible
+// halo's view-facing billboard. Source policy supplies size and linear radiance.
+[[nodiscard]] inline std::optional<area_light::AreaLight> AttachmentEmitter(
+    const float transform[3][4], float halfExtent, const float rgb[3], float intensity )
+{
+	if ( !std::isfinite( halfExtent ) || halfExtent <= 0 || !std::isfinite( intensity ) ||
+	     intensity <= 0 )
+		return std::nullopt;
+	area_light::AreaLight light;
+	for ( int k = 0; k < 3; ++k )
+	{
+		for ( float value : std::span( transform[k], 4 ) )
+			if ( !std::isfinite( value ) )
+				return std::nullopt;
+		if ( !std::isfinite( rgb[k] ) || rgb[k] < 0 )
+			return std::nullopt;
+		light.rect.center[k] = transform[k][3];
+		light.rect.halfU[k] = transform[k][1] * halfExtent;
+		light.rect.halfV[k] = transform[k][2] * halfExtent;
+		light.radiance[k] = rgb[k] * intensity;
+		if ( !std::isfinite( light.radiance[k] ) )
+			return std::nullopt;
+	}
+	light.rect.twoSided = false;
+	const float area = area_light::Area( light.rect );
+	if ( !std::isfinite( area ) || area <= 0 )
+		return std::nullopt;
+	light.reach = area_light::Reach( light.rect, light.radiance );
+	return light.reach > 0 ? std::optional( light ) : std::nullopt;
 }
 
 struct Triangle

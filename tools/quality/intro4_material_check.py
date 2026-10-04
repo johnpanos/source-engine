@@ -11,6 +11,7 @@ Use --scene doors for the closed/open door and independent indicator-box cycle.
 Use --scene cables for the rope visibility cycle under captured scene lighting.
 Use --scene emissives for cyan/orange/off light on neighboring wall receivers.
 Use --scene signage for isolated signs, pictograms, chamber boards and movie screens.
+Use --scene cameras for attached red eyes, hide/show, movement, rotation and removal.
 """
 import argparse
 import copy
@@ -121,14 +122,58 @@ def signage_commands():
     return result
 
 
+def camera_commands():
+    # Resting Intro4 cameras point down. Freeze AI for a reproducible pose and
+    # place a receiver beneath the first eye, keeping shadows at shipped settings.
+    result = ['cmd noclip', 'r_drawviewmodel 0', 'cmd ai_disable',
+              'cl_surface_core_emission_filter @camera-eyes',
+              'cmd setpos 205 100 100', 'cmd setang 20 -128 0',
+              'cmd script rc_camera <- Entities.FindByClassnameNearest('
+              '"npc_security_camera",Vector(160,0,182.152),32)',
+              'cmd script rc_camera.__KeyValueFromString("targetname","rc_camera")',
+              'cmd script rc_eye <- Entities.FindByClassnameNearest('
+              '"env_sprite",rc_camera.GetOrigin(),32)',
+              'cmd script printl(rc_eye.GetModelName())',
+              'cmd script printl(rc_eye.GetMoveParent()==rc_camera)',
+              'cmd script rc_eye.__KeyValueFromString("targetname","rc_camera_eye")',
+              'cmd ent_create prop_dynamic_override targetname rc_camera_receiver '
+              'model models/props/metal_box.mdl',
+              'cmd ent_fire rc_camera_receiver RunScriptCode '
+              '"self.SetOrigin(Vector(143.7,21.7,112))"']
+    states = (
+        ('on', 'cl_surface_core_emission 1'),
+        ('off', 'cl_surface_core_emission 0'),
+        ('restored', 'cl_surface_core_emission 1'),
+        ('hidden', 'cmd ent_fire rc_camera_eye HideSprite'),
+        ('shown', 'cmd ent_fire rc_camera_eye ShowSprite'),
+        ('moved', 'cmd script rc_camera.SetOrigin(Vector(256,0,182.152))'),
+        ('returned', 'cmd script rc_camera.SetOrigin(Vector(160,0,182.152))'),
+        ('turned', 'cmd script rc_camera.SetAngles(180,90,0)'),
+        ('unturned', 'cmd script rc_camera.SetAngles(0,90,0)'),
+        ('removed', 'cmd ent_fire rc_camera_eye Kill'),
+    )
+    for label, control in states:
+        result.extend([control, 'wait 300', f'echo RC_CAMERA_{label}',
+                       'r_area_lights_report 1', 'wait 2', 'screenshot', 'wait 12'])
+    result.extend(['cmd ent_fire rc_camera_receiver Kill', 'cmd ai_disable',
+                   'cl_surface_core_emission_filter ""', 'r_core_world_stats',
+                   'r_core_world_strict', 'r_core_dynamic_draws',
+                   'cl_surface_core_emission', 'cl_surface_core_emission_strength',
+                   'cl_surface_core_emission_filter', 'r_core_shadow_quality',
+                   'r_core_shadow_movers'])
+    return result
+
+
 def commands(scene='materials'):
     if scene == 'all':
         result = ['wait 600', 'r_core_world_stats', 'r_temporal_scale']
-        for name in ('materials', 'doors', 'cables', 'emissives', 'signage'):
+        for name in ('materials', 'doors', 'cables', 'emissives', 'signage', 'cameras'):
             sequence = commands(name)
             result.extend(sequence if name == 'materials' else sequence[1:])
         result.append('r_temporal_scale')
         return result
+    if scene == 'cameras':
+        return camera_commands()
     if scene == 'signage':
         return signage_commands()
     if scene == 'doors':
@@ -255,6 +300,117 @@ SIGN_RECEIVERS = (
     ('chamber-board', (211, 295, 227, 610), .04, .8),
     ('elevator-movie', (180, 240, 330, 500), .04, .8),
 )
+
+
+CAMERA_STATES = ('on', 'off', 'restored', 'hidden', 'shown', 'moved',
+                 'returned', 'turned', 'unturned', 'removed')
+CAMERA_RECEIVER = (413, 357, 453, 373)
+
+
+def inspect_cameras(images):
+    validate_images(images, 10)
+    receivers = [region(image, *CAMERA_RECEIVER) for image in images[:10]]
+    checks = []
+    for index in (0, 2, 4, 6, 8):
+        gain = receivers[index] - receivers[1]
+        rgb = gain.mean(axis=(0, 1))
+        coverage = float((gain[:, :, 0] > .008).mean())
+        name = CAMERA_STATES[index]
+        checks.extend((dict(name=f'camera.{name}.red-receiver',
+                            passed=bool(rgb[0] > .005 and abs(rgb[1]) < .003 and
+                                        abs(rgb[2]) < .003), value=float(rgb[0])),
+                       dict(name=f'camera.{name}.receiver-coverage',
+                            passed=coverage > .25, value=coverage)))
+        if index:
+            delta = float(np.abs(receivers[index] - receivers[0]).mean())
+            checks.append(dict(name=f'camera.{name}.restoration',
+                               passed=delta < .003, value=delta))
+    for index in (3, 5, 7, 9):
+        rgb = (receivers[index] - receivers[1]).mean(axis=(0, 1))
+        # Movement changes the camera's shadow on white light. Red chroma
+        # separates a stale eye contribution from that neutral shadow change.
+        red = float(rgb[0] - .5 * (rgb[1] + rgb[2]))
+        checks.append(dict(name=f'camera.{CAMERA_STATES[index]}.no-stale-light',
+                           passed=abs(red) < .002, value=red))
+    return checks
+
+
+def camera_sensitivity(images):
+    checks = []
+    for index in (0, 2, 4, 6, 8, 3, 5, 7, 9):
+        mutated = list(images)
+        positive = index in (0, 2, 4, 6, 8)
+        mutated[index] = images[1 if positive else 0]
+        name = f'camera.{CAMERA_STATES[index]}.' + (
+            'red-receiver' if positive else 'no-stale-light')
+        checks.append(dict(name=f'oracle.rejects-camera-{CAMERA_STATES[index]}',
+                           passed=any(row['name'] == name and not row['passed']
+                                      for row in inspect_cameras(mutated))))
+    return checks
+
+
+def camera_reports(log, with_fizzler=False):
+    checks = []
+    number = r'(-?\d+(?:\.\d+)?)'
+    light = re.compile(r'slotless area \d+ key \d+ at ' + ' '.join([number] * 3) +
+                       r' facing ' + ' '.join([number] * 3) + r' area ' + number +
+                       r' one-sided radiance ' + ' '.join([number] * 3))
+    # The all-scenes door fixture leaves this authored fizzler active. Keep
+    # and verify it independently; camera isolation must not extinguish it.
+    fizzler = re.compile(r'slotless area \d+ key \d+ at 367\.0 160\.0 64\.0 '
+                         r'facing 1\.00 0\.00 0\.00 area 16384\.0 two-sided radiance ' +
+                         ' '.join([number] * 3))
+    for state in CAMERA_STATES:
+        segments = re.findall(rf'RC_CAMERA_{state}\b\s*(.*?)(?=RC_CAMERA_|r_core_world_stats:)',
+                              log, flags=re.S)
+        passed = len(segments) == 1
+        if passed:
+            segment = segments[0]
+            summary = re.search(r'area lights generation \d+: (\d+) lit '
+                                r'\((\d+) without a slot\), (\d+) dropped', segment)
+            records = [list(map(float, row)) for row in light.findall(segment)]
+            targets = [(-579.7, 234.3, 142.5), (23.7, -634.3, 175.0)]
+            if state == 'off':
+                targets = []
+            elif state not in ('hidden', 'removed'):
+                targets.append((239.7, 21.7, 148.7) if state == 'moved' else
+                               (143.7, -21.7, 215.6) if state == 'turned' else
+                               (143.7, 21.7, 148.7))
+            preserved = [list(map(float, row)) for row in fizzler.findall(segment)]
+            preserved_ok = (len(preserved) == int(with_fizzler) and
+                            all(.05 < row[0] < .15 and .15 < row[1] < .4 and
+                                .2 < row[2] < .5 for row in preserved))
+            passed = bool(summary and summary[1] == '0' and summary[3] == '0' and
+                          int(summary[2]) == len(targets) + int(with_fizzler) and
+                          len(records) == len(targets) and preserved_ok)
+            for center in targets:
+                normal = (0, 0, 1 if center[2] == 215.6 else -1)
+                passed = passed and any(
+                    max(abs(row[k] - center[k]) for k in range(3)) < .2 and
+                    max(abs(row[k + 3] - normal[k]) for k in range(3)) < .02 and
+                    abs(row[6] - 4) < .01 and abs(row[7] - 8.031) < .002 and
+                    row[8] == 0 and row[9] == 0 for row in records)
+        checks.append(dict(name=f'camera.{state}.source-publication', passed=bool(passed)))
+    for setting, expected in (('r_core_shadow_quality', '3'), ('r_core_shadow_movers', '1')):
+        values = re.findall(rf'"{setting}" = "([^\"]+)"', log)
+        checks.append(dict(name=f'camera.{setting}',
+                           passed=bool(values and all(value == expected for value in values))))
+    return checks
+
+
+def camera_report_sensitivity(log, with_fizzler=False):
+    checks = []
+    for name, bad in (
+            ('stale-position', log.replace('at 239.7 21.7 148.7', 'at 143.7 21.7 148.7')),
+            ('reversed-front', log.replace('facing 0.00 0.00 -1.00', 'facing 0.00 0.00 1.00')),
+            ('missing-radiance', log.replace('radiance 8.031', 'radiance 0.000')),
+            ('legacy-slot', re.sub(r': 0 lit \(\d+ without a slot\)', ': 1 lit (0 without a slot)', log)),
+            ('disabled-shadows', log.replace('"r_core_shadow_movers" = "1"',
+                                            '"r_core_shadow_movers" = "0"')),
+            ('missing-report', re.sub(r'RC_CAMERA_hidden', 'RC_MISSING_hidden', log))):
+        checks.append(dict(name=f'oracle.rejects-camera-{name}',
+                           passed=any(not row['passed'] for row in camera_reports(bad, with_fizzler))))
+    return checks
 
 
 def inspect_signage(images):
@@ -496,7 +652,7 @@ def sensitivity(images):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--commands', action='store_true')
-    parser.add_argument('--scene', choices=('materials', 'doors', 'cables', 'emissives', 'signage', 'all'),
+    parser.add_argument('--scene', choices=('materials', 'doors', 'cables', 'emissives', 'signage', 'cameras', 'all'),
                         default='materials')
     parser.add_argument('--temporal-scale', type=float,
                         help='require this FSR scale in startup settings and live game queries')
@@ -539,9 +695,9 @@ def main():
             raise ValueError('the game reported strict mode disabled')
         dynamic = re.findall(r'"r_core_dynamic_draws" = "([^\"]+)"', log)
         if ((dynamic and any(value != '0' for value in dynamic)) or
-                (args.scene in ('doors', 'cables', 'emissives', 'signage', 'all') and (not strict or not dynamic))):
+                (args.scene in ('doors', 'cables', 'emissives', 'signage', 'cameras', 'all') and (not strict or not dynamic))):
             raise ValueError('strict/default-cohort game queries are missing or incorrect')
-        if args.scene in ('emissives', 'signage', 'all'):
+        if args.scene in ('emissives', 'signage', 'cameras', 'all'):
             strength = re.findall(r'"cl_surface_core_emission_strength" = "([^\"]+)"', log)
             emitting = re.findall(r'"cl_surface_core_emission" = "([^\"]+)"', log)
             if (not strength or any(value != '16' for value in strength) or
@@ -565,13 +721,18 @@ def main():
         if not failures or any(int(value) for value in failures):
             raise ValueError('missing core statistics or claimed-view failure')
         if args.scene == 'all':
-            validate_images(images, 48)
+            validate_images(images, 58)
             report['checks'] = (inspect(images[:8]) + sensitivity(images[:8]) +
                                 inspect_doors(images[8:17]) + door_sensitivity(images[8:17]) +
                                 inspect_cables(images[17:20]) + cable_sensitivity(images[17:20]) +
                                 inspect_emissives(images[20:30]) + emissive_sensitivity(images[20:30]) +
                                 inspect_signage(images[30:48]) + signage_sensitivity(images[30:48]) +
-                                signage_reports(log) + signage_report_sensitivity(log))
+                                signage_reports(log) + signage_report_sensitivity(log) +
+                                inspect_cameras(images[48:58]) + camera_sensitivity(images[48:58]) +
+                                camera_reports(log, True) + camera_report_sensitivity(log, True))
+        elif args.scene == 'cameras':
+            report['checks'] = (inspect_cameras(images) + camera_sensitivity(images) +
+                                camera_reports(log) + camera_report_sensitivity(log))
         elif args.scene == 'signage':
             report['checks'] = (inspect_signage(images) + signage_sensitivity(images) +
                                 signage_reports(log) + signage_report_sensitivity(log))

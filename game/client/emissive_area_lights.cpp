@@ -23,6 +23,7 @@
 
 #include "bitmap/imageformat.h"
 #include "c_baseanimating.h"
+#include "c_sprite.h"
 #include "cdll_client_int.h"
 #include "datacache/imdlcache.h"
 #include "debugoverlay_shared.h"
@@ -77,7 +78,8 @@ static ConVar cl_surface_core_emission_strength( "cl_surface_core_emission_stren
     0.0f, false, 0.0f );
 
 static ConVar cl_surface_core_emission_filter( "cl_surface_core_emission_filter", "", FCVAR_CHEAT,
-    "Core source light control: empty includes all; exact material name or @panels isolates a "
+    "Core source light control: empty includes all; exact material name, @panels or @camera-eyes "
+    "isolates a "
     "source cohort." );
 
 bool EmissiveAreaLights_CoreSurfaceMode()
@@ -607,7 +609,10 @@ private:
 	void Publish( const area_light::AreaLight *pLights, const int *pKeys, int nCount,
 	    const bool *pCoreOnly = NULL )
 	{
-		if ( nCount == 0 && m_nPublished == 0 )
+		// A requested report must describe the empty frame too; otherwise its
+		// one-shot request survives until a later nonempty publication.
+		static ConVarRef report( "r_area_lights_report" );
+		if ( nCount == 0 && m_nPublished == 0 && !( report.IsValid() && report.GetBool() ) )
 			return;
 		arealights->SetFrameAreaLights( pLights, pKeys, pCoreOnly, nCount );
 		m_nPublished = nCount;
@@ -620,6 +625,54 @@ private:
 };
 
 CEmissiveAreaLights s_EmissiveAreaLights;
+
+// Reviewed Portal camera source policy: the glow sprite is an optical halo;
+// its physical aperture is a 2-unit square at the authored 0.3 sprite scale.
+// The attachment's +X faces out of the lens. Live brightness and HDR scale
+// modulate the same radiance policy used by fizzlers and other core sources.
+// The light attachment is 2.851 units inside the head's authored shadow box
+// along +X (head-local Z 12.9 vs hitbox max 15.751). Place the aperture 3 units
+// forward, on the proxy's outside, so its own proxy cannot seal the eye shut.
+std::optional<area_light::AreaLight> CameraEye( C_BaseEntity *entity )
+{
+	const model_t *model = entity->GetModel();
+	if ( !model || modelinfo->GetModelType( model ) != mod_sprite ||
+	     Q_stricmp( modelinfo->GetModelName( model ), "sprites/glow1.vmt" ) != 0 )
+		return std::nullopt;
+	C_Sprite *sprite = dynamic_cast<C_Sprite *>( entity );
+	if ( !sprite || sprite->IsDormant() || !sprite->IsOn() ||
+	     sprite->GetRenderMode() != kRenderWorldGlow )
+		return std::nullopt;
+	C_BaseEntity *parent = sprite->m_hAttachedToEntity.Get();
+	C_BaseAnimating *anim = parent ? parent->GetBaseAnimating() : NULL;
+	if ( !anim || anim->IsDormant() || anim->IsEffectActive( EF_NODRAW ) || !anim->GetModel() ||
+	     Q_stricmp( modelinfo->GetModelName( anim->GetModel() ),
+	         "models/props/security_camera.mdl" ) != 0 )
+		return std::nullopt;
+	const int attachmentIndex = anim->LookupAttachment( "light" );
+	if ( attachmentIndex <= 0 || sprite->m_nAttachment != attachmentIndex )
+		Error( "Core camera source models/props/security_camera.mdl requires light attachment" );
+	const float strength = EmissiveAreaLights_SurfaceStrength( "@camera-eyes" );
+	if ( strength <= 0.0f )
+		return std::nullopt;
+	matrix3x4_t attachment;
+	C_BaseAnimating::PushAllowBoneAccess( true, false, "EmissiveCameraEye" );
+	const bool attached = anim->GetAttachment( attachmentIndex, attachment );
+	C_BaseAnimating::PopBoneAccess( "EmissiveCameraEye" );
+	if ( !attached )
+		Error( "Core camera source models/props/security_camera.mdl cannot read light attachment" );
+	float transform[3][4];
+	for ( int row = 0; row < 3; ++row )
+		for ( int column = 0; column < 4; ++column )
+			transform[row][column] = attachment[row][column];
+	for ( int row = 0; row < 3; ++row )
+		transform[row][3] += 3.0f * transform[row][0];
+	const color32 color = sprite->GetRenderColor();
+	const float rgb[3] = { Linear( color.r ), Linear( color.g ), Linear( color.b ) };
+	return emissive::AttachmentEmitter( transform, sprite->GetRenderScale() / 0.3f, rgb,
+	    strength * clamp( sprite->GetRenderBrightness(), 0, 255 ) / 255.0f *
+	        sprite->GetHDRColorScale() );
+}
 
 void CEmissiveAreaLights::PreRender()
 {
@@ -662,6 +715,18 @@ void CEmissiveAreaLights::PreRender()
 	{
 		if ( (int)candidates.size() >= kMaxCandidates )
 			break;
+		if ( core )
+		{
+			if ( const auto eye = CameraEye( pEnt ) )
+			{
+				Candidate_t candidate{};
+				candidate.m_Candidate.light = *eye;
+				candidate.m_nKey = EmissiveAreaLights_PanelKey( pEnt->entindex() );
+				candidate.m_Candidate.wasLit = wasLit( candidate.m_nKey );
+				candidate.m_bCoreOnly = true;
+				candidates.push_back( candidate );
+			}
+		}
 		C_BaseAnimating *pAnim = pEnt->GetBaseAnimating();
 		if ( !pAnim || pAnim->IsDormant() || pAnim->IsEffectActive( EF_NODRAW ) ||
 		     pAnim->GetRenderMode() == kRenderNone )

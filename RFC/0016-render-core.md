@@ -1649,7 +1649,20 @@ content policy, not a claim that `$selfillum` specifies physical radiance.
 `cl_surface_core_emission 0` provides a light-only negative control.
 `cl_surface_core_emission_filter` is an isolation control: empty selects all
 sources, an exact material name selects that material, and `@panels` selects
-world VGUI panels. It changes light publication, preserving the visible image.
+world VGUI panels. `@camera-eyes` selects Portal security-camera eyes.
+The reviewed camera policy recognizes only `sprites/glow1.vmt` attached to
+`models/props/security_camera.mdl`'s `light` attachment in world-glow mode.
+Its physical aperture is a one-sided 2-unit square at the authored 0.3 sprite
+scale, with its front along attachment +X. The source is 3 units forward of
+that attachment: head-local Z 12.9 is inside the authored shadow hitbox's
+maximum 15.751. This places the aperture just outside the existing proxy;
+it does not move the visible eye or disable camera/receiver shadows. Live RGB,
+interpolated brightness/255, HDR scale and interpolated sprite scale control radiance and aperture; radiance uses the same scale
+16. The view-facing optical halo does not define the source geometry. Hidden,
+dormant or removed eyes publish no source, and a moving attachment is queried
+anew each frame. Missing required camera attachment data fails by name. Other
+glow sprites need their own reviewed source policy. Isolation changes light
+publication, preserving the visible image.
 Panel source-image caches retain their unscaled emission; policy scaling occurs
 after sampling, so a light control takes effect without a cache rebuild.
 
