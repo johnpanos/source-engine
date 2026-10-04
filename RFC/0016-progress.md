@@ -9888,3 +9888,60 @@ in both modes with no product overlay. `review/` retains 180 native PNGs,
 portal/emitter and earlier cohort comparisons, and hashed source captures.
 This is a combined installed run, superseding the earlier unrun 230-check
 route; it does not close the remaining cutout-shadow or model audit gates.
+
+
+### Material-owned cutout shadow preparation (2026-10-04, game migration open)
+
+`SurfaceProgram::ShadowPipeline` now prepares a depth-only atlas point from a
+resolved surface. The alpha calculation and authored threshold remain in
+`surface_program.glsl`; world/model/flat shadow vertex entries include the same
+vertex programs, including `tree_sway.glsl`. Color outputs and the lighting-only
+lightmap-offset varying are absent from the depth interfaces. The atlas uses
+single-sample D32 independently of the visible point's target/sample count.
+Blended/transmitting, portal-mask and decal-modulation points refuse this opaque
+shadow contract. No second VMT/coverage evaluator was added to the shadow pass.
+
+`ShadowDepthRenderer` accepts prepared `ShadowMaterial` draws, validates required
+bindings and mesh stride before adding graph work, declares their bound resources,
+and retains the existing position-only caster route. Material/frame/draw resources
+are borrowed until the graph's completion token. The architecture manifest and
+Waf target now declare the pass's dependency on `render.material`. The owning
+[coverage contract](0016-render-core.md#one-surface-terms-with-neutral-values)
+also requires captured animation inputs and cache invalidation for moving foliage.
+
+The installed `render_lab suite cutout-shadows --validate --verbose` passes 50
+checks with silent Vulkan validation. An 8×8 alpha texture and independently
+computed triangle/UV/threshold/depth results cover world vertex alpha, unlit UV
+transforms, native model cutouts, upright/hanging foliage, rotated/translated
+roots, an opaque control and a 0.65 cutoff resolved for a four-sample color target
+but drawn into a single-sample atlas. Missing material/frame/view/draw/image
+bindings and stride/layout mismatches refuse before graph pass mutation. Three
+blended definitions refuse opaque depth. The alpha-ignored shader fails the
+coverage oracle; `--sensitivity` passes both verdicts. The independent double
+foliage oracle is shared with the existing tree suite rather than duplicated.
+Logs are under `quality-results/intro4-rendercore-completion/cutout-shadow-*`.
+Existing tree-sway (85), posed-model (108) and shadowed-lights (191) checks pass.
+Style checking passes. Architecture checking reports its pre-existing CAP002
+`public/gameui/graphics_settings_service.h`/`charconv`, with zero new/stale
+occurrences; baseline and loader inventory verification remain current.
+
+`cutout-shadow-shader-game/evidence.json` passes the full 244 checks in each
+strict FSR/native game mode, with zero failed claims and refused live draws.
+This staged-product capture checks the shared visible shader changes; it does
+not exercise the newly prepared depth point. Native screenshots and comparison
+panels are retained in its `review/`. Final shadow-only guard/matrix-copy cleanup
+is covered by the final GPU fixture, not by this earlier staged binary receipt.
+The installed game runtime remains the matrix-fix product already proved in the
+prior combined installed capture. The game still omits the recorded cutout-only
+casters; the next integration must provide actual material textures, local
+geometry/transforms and current wind/time, invalidate animated atlas tiles, and
+fail claimed views when required shadow preparation fails. It must prove the
+result through strict FSR/native game captures. This is preparation work in
+progress, not delivery of foliage shadows or promotion of R91/R96.
+
+A closer camera-eye diagnostic (`camera-eye-query-game/`) exposes an additional
+visible-glow gap in both strict temporal modes: the lens stays dark and both
+possible/visible pixel counts are zero. The earlier camera source/receiver
+checks do not certify the eye sprite. The replay retains query begin/end but
+suppresses their non-writing geometry under core-only policy; restoring that
+query input and proving visible/occluded eye states is the next bounded fix.

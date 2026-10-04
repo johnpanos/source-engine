@@ -330,8 +330,8 @@ foundation::Expected<std::unique_ptr<ProgramResolver>, std::string> ProgramResol
 		state->layout = SurfaceVertexLayout::kModel;
 		break;
 	}
-	auto lightmapped = LightmappedFamily::Create(
-	    device, colorFormat, depthFormat, sampleCount, modules.lightmappedFragment );
+	auto lightmapped = LightmappedFamily::Create( device, colorFormat, depthFormat, sampleCount,
+	    modules.lightmappedFragment, modules.shadowFragment );
 	if ( !lightmapped )
 		return foundation::MakeUnexpected( std::string( "the surface program was refused" ) );
 	state->lightmapped = std::move( lightmapped ).Value();

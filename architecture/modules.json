@@ -1072,6 +1072,7 @@
           "render.device",
           "render.graph",
           "render.resources",
+          "render.material",
           "render.shader-library",
           "render.contracts"
         ]
@@ -1781,6 +1782,7 @@
           "render_graph",
           "render_device",
           "render_resources",
+          "render_material",
           "render_spv",
           "render_shaderlib"
         ]

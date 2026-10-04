@@ -9,7 +9,8 @@
 //			(view, caster) pair, composed in double on the CPU, then one
 //			depth-only render pass clears the atlas to the far plane and
 //			draws each view with its viewport set to the tile's viewport (the
-//			tile less its guard band), depth test less, no culling.
+//			tile less its guard band), depth test less. Position-only casters
+//			have no culling; prepared material draws retain their point's culling.
 //
 //			A kept atlas (ShadowAtlasTarget::keep) is loaded instead: each
 //			view given first clears its whole tile to the far plane (a
@@ -39,6 +40,7 @@
 #include "render/device/device.h"
 #include "render/graph/graph_builder.h"
 #include "render/math/matrix.h"
+#include "render/material/draw_program.h"
 #include "render/pass/shadows/atlas.h"
 #include "render/resources/mesh_cache.h"
 #include "render/shadow_tile.h"
@@ -48,6 +50,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -65,6 +68,18 @@ enum class ShadowPassStatus : std::uint8_t
 	kDevice = 1,    // a layout, sampler or pipeline was refused
 	kInvalidTarget, // no atlas, a zero size, or a tile outside the atlas
 	kInvalidLight,  // a tile count outside 1 to 4
+	kInvalidCaster, // an incomplete material draw or mismatched mesh layout
+};
+
+// Prepared by the material owner, with a depth-only pipeline that implements
+// the visible point's coverage and deformation. All resources are borrowed;
+// their owners retain them through the graph's GPU completion token. AddPasses
+// copies these records and declares every bound resource to the graph.
+struct ShadowMaterial
+{
+	material::DrawProgram program;
+	material::ResidentGroup frame;
+	material::DrawGroup draw;
 };
 
 struct ShadowCaster
@@ -75,6 +90,7 @@ struct ShadowCaster
 	// apart; indexCount 0 draws the whole mesh.
 	std::uint32_t firstIndex = 0;
 	std::uint32_t indexCount = 0;
+	std::optional<ShadowMaterial> material = {};
 };
 
 struct ShadowDepthView

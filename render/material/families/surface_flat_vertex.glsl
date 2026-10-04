@@ -34,7 +34,11 @@ layout( location = 4 ) out vec3 worldPosition;
 layout( location = 5 ) out vec3 worldNormal;
 layout( location = 6 ) out vec3 tangentS;
 layout( location = 7 ) out vec3 tangentT;
+#ifdef SURFACE_SHADOW_DEPTH
+float lightmapOffset; // Lighting-only varying, absent from the depth interface.
+#else
 layout( location = 8 ) out float lightmapOffset;
+#endif
 layout( location = 9 ) out vec4 lightAtten; // the model lights' attenuations (none here)
 layout( location = 10 ) out vec3 vertexLighting; // the vertexlit point's (none here)
 

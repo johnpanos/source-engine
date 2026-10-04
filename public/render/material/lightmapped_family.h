@@ -98,10 +98,11 @@ public:
 	// debug suites' seeded programs; empty for the program's own.
 	static foundation::Expected<std::unique_ptr<LightmappedFamily>, LightmappedStatus> Create(
 	    device::IRenderDevice2 &device, device::Format colorFormat, device::Format depthFormat,
-	    std::uint32_t sampleCount = 1, std::span<const std::uint32_t> fragmentModule = {} )
+	    std::uint32_t sampleCount = 1, std::span<const std::uint32_t> fragmentModule = {},
+	    std::span<const std::uint32_t> shadowFragmentModule = {} )
 	{
 		return CreateSurfaceFamily<LightmappedFamily>(
-		    device, colorFormat, depthFormat, sampleCount, fragmentModule );
+		    device, colorFormat, depthFormat, sampleCount, fragmentModule, shadowFragmentModule );
 	}
 
 	// The pipeline for a claim on a vertex layout (SurfaceProgram::Pipeline).

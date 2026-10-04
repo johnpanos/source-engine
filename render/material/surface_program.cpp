@@ -29,22 +29,26 @@ constexpr std::uint32_t kMaterialTextures = 7;
 constexpr const char *kFragmentSource = "render/material/families/surface.frag";
 // The same program with the SSR targets (kSurfaceSsrTargets).
 constexpr const char *kSsrFragmentSource = "render/material/families/surface_ssr.frag";
+constexpr const char *kShadowFragmentSource = "render/material/families/surface_shadow.frag";
 
-const char *VertexSource( SurfaceVertexLayout layout, bool temporal = false )
+const char *VertexSource( SurfaceVertexLayout layout, bool temporal = false, bool shadow = false )
 {
 	switch ( layout )
 	{
 	case SurfaceVertexLayout::kWorld:
-		return temporal ? "render/material/families/surface_world_temporal.vert"
-		                : "render/material/families/surface_world.vert";
+		return shadow     ? "render/material/families/surface_world_shadow.vert"
+		       : temporal ? "render/material/families/surface_world_temporal.vert"
+		                  : "render/material/families/surface_world.vert";
 	case SurfaceVertexLayout::kModel:
-		return temporal ? "render/material/families/surface_model_temporal.vert"
-		                : "render/material/families/surface_model.vert";
+		return shadow     ? "render/material/families/surface_model_shadow.vert"
+		       : temporal ? "render/material/families/surface_model_temporal.vert"
+		                  : "render/material/families/surface_model.vert";
 	case SurfaceVertexLayout::kFlat:
 		break;
 	}
-	return temporal ? "render/material/families/surface_flat_temporal.vert"
-	                : "render/material/families/surface_flat.vert";
+	return shadow     ? "render/material/families/surface_flat_shadow.vert"
+	       : temporal ? "render/material/families/surface_flat_temporal.vert"
+	                  : "render/material/families/surface_flat.vert";
 }
 
 } // namespace
@@ -147,10 +151,12 @@ SurfaceAreaLight PackAreaLight(
 
 foundation::Expected<std::unique_ptr<SurfaceProgram>, SurfaceStatus> SurfaceProgram::Create(
     IRenderDevice2 &device, Format colorFormat, Format depthFormat, std::uint32_t sampleCount,
-    std::span<const std::uint32_t> fragmentModule )
+    std::span<const std::uint32_t> fragmentModule,
+    std::span<const std::uint32_t> shadowFragmentModule )
 {
 	std::unique_ptr<SurfaceProgram> program( new SurfaceProgram( device ) );
 	program->m_FragmentModule = fragmentModule;
+	program->m_ShadowFragmentModule = shadowFragmentModule;
 	program->m_ColorFormat = colorFormat;
 	program->m_DepthFormat = depthFormat;
 	program->m_SampleCount = sampleCount;
@@ -242,6 +248,14 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::Pipeline(
     const SurfaceVariant &variant, const shaderlib::DebugSpecialization &debug )
 {
 	m_PipelineFailure.clear();
+	if ( variant.shadowDepth &&
+	     ( variant.temporal || variant.blend != BlendMode::kOpaque || variant.portalMask ||
+	         variant.decalModulate ||
+	         ( variant.terms & ( kSurfaceTransmission | kSurfaceWater | kSurfaceDepthOnly ) ) ) )
+	{
+		m_PipelineFailure = "the point needs blending, transmission or a non-shadow depth effect";
+		return foundation::MakeUnexpected( SurfaceStatus::kInvalidRequest );
+	}
 	if ( variant.layout == SurfaceVertexLayout::kFlat && ( variant.terms & kSurfaceNormalTerms ) )
 		return foundation::MakeUnexpected( SurfaceStatus::kInvalidRequest );
 	if ( variant.layout != SurfaceVertexLayout::kModel && ( variant.terms & kSurfaceModelTerms ) )
@@ -271,19 +285,22 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::Pipeline(
 	// the core one, on a SPIR-V device only.
 	const ArtifactFormat format = m_Device.Facts().artifactFormat;
 	shaderlib::ArtifactOverlay artifacts( shaderlib::CoreArtifacts() );
-	if ( !m_FragmentModule.empty() &&
-	     !artifacts.ReplaceSpirv( kFragmentSource, m_FragmentModule, format ) )
+	const auto fragmentModule = variant.shadowDepth ? m_ShadowFragmentModule : m_FragmentModule;
+	if ( !fragmentModule.empty() &&
+	     !artifacts.ReplaceSpirv( variant.shadowDepth ? kShadowFragmentSource : kFragmentSource,
+	         fragmentModule, format ) )
 	{
 		m_PipelineFailure = "the replacement fragment artifact is invalid";
 		return foundation::MakeUnexpected( SurfaceStatus::kDevice );
 	}
 	const bool withSsrTargets =
 	    ( variant.terms & kSurfaceSsrTargets ) != 0 && !( variant.terms & kSurfaceDepthNormal );
-	shaderlib::PipelineRecipe recipe =
-	    shaderlib::CoreRecipe( { VertexSource( variant.layout, variant.temporal ),
-	        variant.temporal ? "render/material/families/surface_temporal.frag"
-	        : withSsrTargets ? kSsrFragmentSource
-	                         : kFragmentSource } );
+	shaderlib::PipelineRecipe recipe = shaderlib::CoreRecipe(
+	    { VertexSource( variant.layout, variant.temporal, variant.shadowDepth ),
+	        variant.shadowDepth ? kShadowFragmentSource
+	        : variant.temporal  ? "render/material/families/surface_temporal.frag"
+	        : withSsrTargets    ? kSsrFragmentSource
+	                            : kFragmentSource } );
 	recipe.debugName = "render.material.surface";
 	auto resolved = shaderlib::Resolve( recipe, artifacts, format );
 	if ( !resolved )
@@ -293,7 +310,7 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::Pipeline(
 		return foundation::MakeUnexpected( SurfaceStatus::kDevice );
 	}
 	const bool model = variant.layout == SurfaceVertexLayout::kModel;
-	const bool alphaCoverage = variant.alphaToCoverage && m_SampleCount > 1;
+	const bool alphaCoverage = !variant.shadowDepth && variant.alphaToCoverage && m_SampleCount > 1;
 	const std::uint32_t drawConstantBytes = SurfaceDrawConstantBytes( variant.layout );
 	std::vector<SpecializationConstant> constants = { { ShaderStage::kFragment, 0, variant.terms },
 	    { ShaderStage::kFragment, 1, variant.detailMode },
@@ -302,7 +319,8 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::Pipeline(
 	    { ShaderStage::kFragment, 4, variant.viewFeatures },
 	    { ShaderStage::kFragment, 5, alphaCoverage ? 1u : 0u },
 	    { ShaderStage::kFragment, 6, variant.cable ? 1u : 0u },
-	    { ShaderStage::kFragment, 7, variant.decalModulate ? 1u : 0u } };
+	    { ShaderStage::kFragment, 7, variant.decalModulate ? 1u : 0u },
+	    { ShaderStage::kFragment, 8, variant.shadowDepth ? 1u : 0u } };
 	// The model vertex reads the terms too (the vertexlit point's lighting).
 	if ( model )
 	{
@@ -345,7 +363,10 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::Pipeline(
 	    std::uint8_t( variant.temporal && variant.drawState.colorWrite == 0 ? 0 : kColorWriteAll ),
 	    std::uint8_t( variant.temporal && variant.drawState.colorWrite == 0 ? 0 : kColorWriteAll ),
 	    kColorWriteAll };
-	const std::size_t attachments = variant.temporal ? 3 : ssrTargets ? 4 : 1;
+	const std::size_t attachments = variant.shadowDepth ? 0
+	                                : variant.temporal  ? 3
+	                                : ssrTargets        ? 4
+	                                                    : 1;
 	PipelineDesc desc = resolved.Value().Desc();
 	desc.layouts = layouts;
 	desc.drawConstantBytes = drawConstantBytes;
@@ -385,6 +406,14 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::Pipeline(
 	desc.sampleCount = m_SampleCount;
 	desc.raster.alphaToCoverage = alphaCoverage;
 	desc.debugName = "render.material.surface";
+	if ( variant.shadowDepth )
+	{
+		desc.depthFormat = Format::kD32Float;
+		desc.sampleCount = 1;
+		desc.depthStencil = { true, true, CompareOp::kLess };
+		desc.raster.alphaToCoverage = false;
+		desc.debugName = "render.material.surface-shadow";
+	}
 	desc.constants = constants;
 	auto pipeline = m_Device.CreatePipeline( desc );
 	if ( !pipeline )
@@ -457,6 +486,23 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::VariantPipeline(
 		return foundation::MakeUnexpected( SurfaceStatus::kInvalidRequest );
 	SurfaceVariant variant = found->second;
 	variant.terms = ( variant.terms | add ) & ~remove;
+	return Pipeline( variant );
+}
+
+foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::ShadowPipeline( PipelineId shipped )
+{
+	const auto found = m_Shipped.find( shipped.value );
+	if ( found == m_Shipped.end() )
+	{
+		m_PipelineFailure = "the surface program did not create the requested point";
+		return foundation::MakeUnexpected( SurfaceStatus::kInvalidRequest );
+	}
+	SurfaceVariant variant = found->second;
+	variant.shadowDepth = true;
+	variant.temporal = false;
+	variant.alphaToCoverage = false;
+	variant.ignoreDepth = false;
+	variant.terms &= ~( kSurfaceRsm | kSurfaceDepthNormal | kSurfaceSsrTargets );
 	return Pipeline( variant );
 }
 

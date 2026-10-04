@@ -129,10 +129,12 @@ struct ResolvedProgram
 std::optional<std::string> FrameInputError( const ResolvedProgram &program, const FrameTerms &terms );
 
 // Replacement program modules (SPIR-V words): the debug suites' seeded
-// programs. Empty spans keep the families' own.
+// programs, borrowed for the resolver's lifetime. Color and shadow entry
+// points have separate interfaces; empty spans keep the families' own.
 struct ProgramModules
 {
 	std::span<const std::uint32_t> lightmappedFragment;
+	std::span<const std::uint32_t> shadowFragment = {};
 };
 
 class ProgramResolver

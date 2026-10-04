@@ -67,6 +67,7 @@ layout( constant_id = 4 ) const uint kViewFeatures = 7u;
 layout( constant_id = 5 ) const bool kAlphaCoverage = false;
 layout( constant_id = 6 ) const bool kCable = false;
 layout( constant_id = 7 ) const bool kDecalModulate = false;
+layout( constant_id = 8 ) const bool kShadowDepth = false;
 const uint kMaterialAlphaTest = 1u;
 const uint kMaterialHalfLambert = 2u;
 const uint kMaterialDiffuseWarp = 4u;
@@ -276,7 +277,11 @@ layout( location = 7 ) in vec3 tangentT;
 layout( location = 8 ) in float lightmapOffset; // the bumped pages' offset (TEXCOORD2.x)
 layout( location = 9 ) in vec4 lightAtten;      // each model light's vertex attenuation
 layout( location = 10 ) in vec3 vertexLighting; // the vertexlit point's DoLighting
+#ifdef SURFACE_SHADOW_DEPTH
+vec4 outColor;
+#else
 layout( location = 0 ) out vec4 outColor;
+#endif
 #ifdef SURFACE_SSR_TARGETS
 // render.pass.ssr's inputs (ssr.h): the octahedral normal and roughness, the
 // image-specular radiance and its weight.
@@ -674,6 +679,16 @@ float CutoutCoverage( float alpha )
 	return coverage;
 }
 
+void TestCutoutAlpha( float alpha, bool enabled )
+{
+#ifdef SEEDED_SHADOW_ALPHA_IGNORED
+	if ( kShadowDepth )
+		return;
+#endif
+	if ( enabled && alpha < material.flags.z )
+		discard;
+}
+
 void PbrSurface( out float coverage )
 {
 	const bool furnace = DebugFurnace();
@@ -697,8 +712,10 @@ void PbrSurface( out float coverage )
 		// reference, approximately one pixel wide. Transparent texels write no depth.
 		coverage = CutoutCoverage( alpha );
 	}
-	else if ( MaterialFeature( kMaterialAlphaTest, material.flags.y != 0.0 ) && alpha < material.flags.z )
-		discard;
+	else
+		TestCutoutAlpha( alpha, MaterialFeature( kMaterialAlphaTest, material.flags.y != 0.0 ) );
+	if ( kShadowDepth )
+		return;
 	vec3 base = furnace ? vec3( 1.0 ) : baseSample.rgb * material.tint.rgb;
 	if ( material.meshProbeMasks.z > 0.5 && !furnace )
 	{
@@ -1480,8 +1497,10 @@ void VertexLitSurface()
 	const vec3 albedo = furnace ? vec3( 1.0 ) : baseColor.rgb * material.tint.rgb;
 	const float alpha = material.tint.a * baseColor.a;
 	const float coverage = kAlphaCoverage ? CutoutCoverage( alpha ) : 1.0;
-	if ( !kAlphaCoverage && material.flags.y != 0.0 && alpha < material.flags.z )
-		discard;
+	if ( !kAlphaCoverage )
+		TestCutoutAlpha( alpha, material.flags.y != 0.0 );
+	if ( kShadowDepth )
+		return;
 	const vec3 lit = albedo * ( furnace ? vec3( 1.0 ) : vertexLighting );
 	if ( DebugViewActive() )
 	{
@@ -1672,8 +1691,9 @@ void main()
 		const vec4 base = texture( sampler2D( baseTexture, baseSampler ), lightmapUv );
 		const float normalZ = texture( sampler2D( bumpTexture, bumpSampler ), baseUv ).b;
 		const float alpha = base.a * color.a;
-		if ( material.flags.y != 0.0 && alpha < material.flags.z )
-			discard;
+		TestCutoutAlpha( alpha, material.flags.y != 0.0 );
+		if ( kShadowDepth )
+			return;
 		outColor = Output( base.rgb * color.rgb * normalZ * normalZ, alpha );
 		return;
 	}
@@ -1803,8 +1823,10 @@ void main()
 		alpha *= material.tint.a;
 	}
 	const float coverage = kAlphaCoverage ? CutoutCoverage( alpha ) : 1.0;
-	if ( !kAlphaCoverage && material.flags.y != 0.0 && alpha < material.flags.z )
-		discard;
+	if ( !kAlphaCoverage )
+		TestCutoutAlpha( alpha, material.flags.y != 0.0 );
+	if ( kShadowDepth )
+		return;
 
 	// The furnace (RFC 0014): albedo 1 after every modulation, the light a
 	// uniform radiance of 1 in place of the lightmap and the env map.

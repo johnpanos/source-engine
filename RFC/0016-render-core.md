@@ -1414,6 +1414,20 @@ the half-Lambert wrap and the D3D9 half-pixel offset. The native quality
 interpretation uses them only where they express authored intent; the
 compatibility point retains them for diagnostics and legacy profiles.
 
+Shadow depth consumes the surface owner's coverage and vertex deformation.
+`SurfaceProgram::ShadowPipeline` prepares the same point for a single-sample
+D32 atlas independently of the color target's sample count and depth format.
+Its depth entry point shares the visible alpha calculation, authored threshold,
+texture transform and foliage vertex program. It omits color outputs and
+lighting evaluation. Blended or transmitting points cannot claim this opaque
+depth contract. `render.pass.shadows` consumes prepared material draws through
+`ShadowMaterial`; it owns no VMT interpretation or second alpha evaluator.
+Callers retain every borrowed group/image/buffer through GPU completion and
+supply the visible frame's captured foliage time, wind and object transform.
+Animated coverage must invalidate an otherwise cached static shadow tile.
+The world/static-prop migration and its game evidence are recorded in
+[RFC 0016 progress](0016-progress.md).
+
 #### VMT definitions, native interpretation and compatibility points
 
 The shader name, parameters, flags and proxy results in a VMT are material

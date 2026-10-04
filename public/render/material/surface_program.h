@@ -553,6 +553,9 @@ struct SurfaceVariant
 	bool alphaToCoverage = false;   // authored request; effective only with multiple samples
 	bool decalModulate = false;     // dimensionless factors, no exposure or output encoding
 	bool cable = false;             // fragment specialization: expanded Source rope ribbon
+	// A single-sample shadow atlas: the same vertex deformation and alpha
+	// coverage as the visible point, with no color attachments or lighting.
+	bool shadowDepth = false;
 
 	auto operator<=>( const SurfaceVariant & ) const = default;
 	bool operator==( const SurfaceVariant & ) const = default;
@@ -606,11 +609,12 @@ enum class SurfaceStatus : std::uint8_t
 class SurfaceProgram
 {
 public:
-	// fragmentModule: a replacement fragment program (SPIR-V words) for the
-	// debug suites' seeded programs; empty for the program's own.
+	// Replacement color/depth fragments for seeded suites, borrowed until this
+	// program dies. Empty spans use the program's own entry points.
 	static foundation::Expected<std::unique_ptr<SurfaceProgram>, SurfaceStatus> Create(
 	    device::IRenderDevice2 &device, device::Format colorFormat, device::Format depthFormat,
-	    std::uint32_t sampleCount = 1, std::span<const std::uint32_t> fragmentModule = {} );
+	    std::uint32_t sampleCount = 1, std::span<const std::uint32_t> fragmentModule = {},
+	    std::span<const std::uint32_t> shadowFragmentModule = {} );
 	~SurfaceProgram();
 	SurfaceProgram( const SurfaceProgram & ) = delete;
 	SurfaceProgram &operator=( const SurfaceProgram & ) = delete;
@@ -646,6 +650,11 @@ public:
 	// program did not make it.
 	foundation::Expected<device::PipelineId, SurfaceStatus> VariantPipeline(
 	    device::PipelineId shipped, std::uint32_t add, std::uint32_t remove );
+	// A single-sample D32 atlas pipeline, independent of the color target's
+	// sample count and depth format. Refuses blended/transmitting points. The
+	// caller retains the point's material/frame/draw groups and vertex layout.
+	foundation::Expected<device::PipelineId, SurfaceStatus> ShadowPipeline(
+	    device::PipelineId shipped );
 	// A point as a MaterialPrograms request: the pipeline, the frame and draw
 	// layouts, and the material group (the constants, with state.x set from
 	// the variant, and the seven textures, one sampler description for all).
@@ -694,6 +703,7 @@ private:
 	device::BindGroupLayoutId m_MaterialLayout;
 	device::BindGroupLayoutId m_DrawLayout;
 	std::span<const std::uint32_t> m_FragmentModule;
+	std::span<const std::uint32_t> m_ShadowFragmentModule;
 	std::string m_PipelineFailure;
 	std::map<std::pair<SurfaceVariant, shaderlib::DebugSpecialization>, device::PipelineId>
 	    m_Pipelines;
@@ -748,10 +758,11 @@ private:
 template <typename Family>
 foundation::Expected<std::unique_ptr<Family>, SurfaceStatus> CreateSurfaceFamily(
     device::IRenderDevice2 &device, device::Format colorFormat, device::Format depthFormat,
-    std::uint32_t sampleCount = 1, std::span<const std::uint32_t> fragmentModule = {} )
+    std::uint32_t sampleCount = 1, std::span<const std::uint32_t> fragmentModule = {},
+    std::span<const std::uint32_t> shadowFragmentModule = {} )
 {
-	auto program =
-	    SurfaceProgram::Create( device, colorFormat, depthFormat, sampleCount, fragmentModule );
+	auto program = SurfaceProgram::Create(
+	    device, colorFormat, depthFormat, sampleCount, fragmentModule, shadowFragmentModule );
 	if ( !program )
 		return foundation::MakeUnexpected( program.Error() );
 	return std::make_unique<Family>( std::move( program ).Value() );

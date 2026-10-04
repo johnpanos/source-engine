@@ -50,6 +50,8 @@ int RunSuite( int argc, char **argv )
 		return RunMapTermsSuite( argc - 1, argv + 1 );
 	if ( name == "ssr" )
 		return RunSsrSuite( argc - 1, argv + 1 );
+	if ( name == "cutout-shadows" )
+		return RunCutoutShadowsSuite( argc - 1, argv + 1 );
 	if ( name == "shadowed-lights" )
 		return RunShadowedLightsSuite( argc - 1, argv + 1 );
 	if ( name == "shadow-receiver-perf" )

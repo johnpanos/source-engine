@@ -327,3 +327,26 @@ and an unchanged region outside the aperture. Eight physical checks and six
 seeded defects reject an opaque entry wall, a bright placeholder, stale room
 pixels, a missing reopened room and aperture writes outside its boundary. Both
 strict temporal modes must pass this route, alongside the other material cohorts.
+
+
+## Cutout shadow mechanism check
+
+Before wiring additional world/model shadow casters, run the material-owned
+coverage oracle on the configured lab product:
+
+```sh
+env LD_LIBRARY_PATH=build-intro4-support-lab/tier0 \
+  build-intro4-support-lab/render/lab/render_lab suite cutout-shadows --validate --verbose
+env LD_LIBRARY_PATH=build-intro4-support-lab/tier0 \
+  build-intro4-support-lab/render/lab/render_lab suite cutout-shadows --validate --sensitivity
+```
+
+The control has 50 checks, including alpha holes/thresholds, transformed UVs,
+world vertex alpha, current foliage deformation and rotated/translated roots,
+required-binding refusals and a single-sample atlas from a four-sample color
+point. The sensitivity run must detect the alpha-ignored shader. A passing lab
+fixture does not prove a game caster migration: use the strict FSR/native game
+route above, exercise the affected foliage/railing shadows, retain screenshots
+and record the actual caster census. Its owning semantics and current migration
+status are in [RFC 0016](../../RFC/0016-render-core.md#one-surface-terms-with-neutral-values)
+and [its progress record](../../RFC/0016-progress.md).

@@ -25,7 +25,7 @@ def build(bld):
 		              'probe_volume_suite.cpp', 'reflection_probes_suite.cpp', 'tree_sway_suite.cpp',
 		              'lab_media.cpp', 'volumetric_suite.cpp', 'clustered_lights_suite.cpp',
 		              'map_terms_suite.cpp', 'ssr_reference.cpp', 'ssr_scene.cpp', 'ssr_suite.cpp',
-		              'shadowed_lights_suite.cpp', 'shadow_receiver_perf_suite.cpp', 'bounce_suite.cpp', 'gtao_suite.cpp',
+		              'shadowed_lights_suite.cpp', 'cutout_shadows_suite.cpp', 'shadow_receiver_perf_suite.cpp', 'bounce_suite.cpp', 'gtao_suite.cpp',
 		              'panel_suite.cpp', 'posed_model_suite.cpp', 'selfillum_suite.cpp', 'softparticle_suite.cpp', 'model_selection_suite.cpp', 'view_state_suite.cpp', 'temporal_suite.cpp' ],
 		target    = 'render_lab',
 		name      = 'render_lab',

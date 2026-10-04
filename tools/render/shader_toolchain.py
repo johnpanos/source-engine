@@ -165,6 +165,10 @@ GENERATED = {
         ("kSurfaceWorldVertex", FAMILIES + "/surface_world.vert", DEVICE_OPTIONS),
         ("kSurfaceModelVertex", FAMILIES + "/surface_model.vert", DEVICE_OPTIONS),
         ("kSurfaceFragment", FAMILIES + "/surface.frag", DEVICE_OPTIONS),
+        ("kSurfaceShadowFragment", FAMILIES + "/surface_shadow.frag", DEVICE_OPTIONS),
+        ("kSurfaceFlatShadowVertex", FAMILIES + "/surface_flat_shadow.vert", DEVICE_OPTIONS),
+        ("kSurfaceWorldShadowVertex", FAMILIES + "/surface_world_shadow.vert", DEVICE_OPTIONS),
+        ("kSurfaceModelShadowVertex", FAMILIES + "/surface_model_shadow.vert", DEVICE_OPTIONS),
         ("kSurfaceSsrFragment", FAMILIES + "/surface_ssr.frag", DEVICE_OPTIONS),
         ("kSurfaceFlatTemporalVertex", FAMILIES + "/surface_flat_temporal.vert", DEVICE_OPTIONS),
         ("kSurfaceWorldTemporalVertex", FAMILIES + "/surface_world_temporal.vert", DEVICE_OPTIONS),
@@ -317,6 +321,10 @@ GENERATED = {
         ("kShadowCubeProbe", "render/lab/shadow_cube_probe.comp", DEVICE_OPTIONS),
         ("kShadowCubeProbeNext", "render/lab/shadow_cube_probe.comp",
          DEVICE_OPTIONS + ("-DSEEDED_SHADOW_CUBE_NEXT",)))),
+    "cutout_shadow_defects_spv.h": ("render::lab::spirv",
+        "render_lab cutout shadow coverage negative control", (
+        ("kShadowAlphaIgnored", FAMILIES + "/surface_shadow.frag",
+         DEVICE_OPTIONS + ("-DSEEDED_SHADOW_ALPHA_IGNORED",)),)),
     "shadowed_light_defects_spv.h": ("render::lab::spirv",
         "render_lab's shadowed-light suite's seeded programs (render.lab.shadowed-lights "
         "sensitivity, RFC 0016 K11)", (

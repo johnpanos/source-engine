@@ -92,6 +92,7 @@ int RunVolumetricSuite( int argc, char **argv );
 int RunClusteredLightsSuite( int argc, char **argv );
 int RunMapTermsSuite( int argc, char **argv );
 int RunSsrSuite( int argc, char **argv );
+int RunCutoutShadowsSuite( int argc, char **argv );
 int RunShadowedLightsSuite( int argc, char **argv );
 int RunShadowReceiverPerfSuite( int argc, char **argv );
 int RunBounceSuite( int argc, char **argv );

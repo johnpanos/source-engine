@@ -11,6 +11,7 @@
 #include "render/shaderlib/core_artifacts.h"
 
 #include <algorithm>
+#include <cstring>
 #include <utility>
 
 namespace render::pass::shadows
@@ -60,6 +61,90 @@ struct Draw
 	std::uint32_t instance = 0;
 	std::uint32_t firstIndex = 0;
 	std::uint32_t indexCount = 0; // 0: the whole mesh
+	std::optional<ShadowMaterial> material = {};
+	material::FamilyDrawConstants constants = {};
+};
+
+bool Complete( const material::ResidentGroup &group )
+{
+	return group.group.IsValid() &&
+	       std::all_of( group.textures.begin(), group.textures.end(),
+	           []( const material::SampledTexture &texture )
+	           {
+		           return texture.texture.IsValid();
+	           } ) &&
+	       std::all_of( group.uniforms.begin(), group.uniforms.end(),
+	           []( BufferId buffer )
+	           {
+		           return buffer.IsValid();
+	           } ) &&
+	       std::all_of( group.storage.begin(), group.storage.end(),
+	           []( BufferId buffer )
+	           {
+		           return buffer.IsValid();
+	           } );
+}
+
+bool Complete( const ShadowCaster &caster )
+{
+	if ( !caster.mesh.vertices.IsValid() || caster.mesh.vertexStride < 3 * sizeof( float ) ||
+	     ( caster.indexCount &&
+	         ( !caster.mesh.indices.IsValid() || caster.firstIndex > caster.mesh.indexCount ||
+	             caster.indexCount > caster.mesh.indexCount - caster.firstIndex ) ) )
+		return false;
+	if ( !caster.material )
+		return true;
+	const ShadowMaterial &draw = *caster.material;
+	const material::DrawProgram &program = draw.program;
+	return program.pipeline.IsValid() && program.vertexStride == caster.mesh.vertexStride &&
+	       ( program.drawConstantBytes == sizeof( material::FamilyDrawConstants::toClip ) ||
+	           program.drawConstantBytes == sizeof( material::FamilyDrawConstants ) ) &&
+	       Complete( program.material ) &&
+	       ( !program.frameLayout.IsValid() || Complete( draw.frame ) ) &&
+	       ( !program.viewLayout.IsValid() ||
+	           ( program.hasNeutralView && Complete( program.neutralView ) ) ) &&
+	       ( !program.drawLayout.IsValid() ||
+	           ( program.drawLayout == draw.draw.layout && Complete( draw.draw.resident ) ) );
+}
+
+class GroupImports
+{
+public:
+	void Add( graph::GraphBuilder &builder, const material::ResidentGroup &group )
+	{
+		for ( const material::SampledTexture &texture : group.textures )
+		{
+			if ( m_Textures.count( texture.texture.value ) )
+				continue;
+			m_Textures[texture.texture.value] = builder.ImportTexture( "shadow-coverage-image",
+			    texture.texture, texture.desc, ResourceUsage::kSampled, ResourceUsage::kSampled );
+		}
+		for ( BufferId buffer : group.uniforms )
+			AddBuffer( builder, buffer, ResourceUsage::kUniform );
+		for ( BufferId buffer : group.storage )
+			AddBuffer( builder, buffer, ResourceUsage::kStorageRead );
+	}
+	void Declare( graph::PassBuilder &pass ) const
+	{
+		for ( const auto &[id, ref] : m_Textures )
+			pass.Read( ref, ResourceUsage::kSampled );
+		for ( const auto &[id, entry] : m_Buffers )
+			pass.Read( entry.first, entry.second );
+	}
+
+private:
+	void AddBuffer( graph::GraphBuilder &builder, BufferId buffer, ResourceUsage usage )
+	{
+		const auto key = std::make_pair( buffer.value, static_cast<int>( usage ) );
+		if ( m_Buffers.count( key ) )
+			return;
+		BufferDesc desc;
+		desc.usages = { usage };
+		m_Buffers[key] = {
+		    builder.ImportBuffer( "shadow-coverage-buffer", buffer, desc, usage, usage ), usage };
+	}
+	std::map<std::uint64_t, graph::ResourceRef> m_Textures;
+	std::map<std::pair<std::uint64_t, int>, std::pair<graph::ResourceRef, ResourceUsage>> m_Buffers;
 };
 
 // Imports each mesh buffer once, in its residency usage.
@@ -196,6 +281,11 @@ foundation::Expected<ShadowDepthStats, ShadowPassStatus> ShadowDepthRenderer::Ad
 {
 	if ( !target.atlas.IsValid() || target.atlasSize == 0 )
 		return foundation::MakeUnexpected( ShadowPassStatus::kInvalidTarget );
+	// Reject incomplete required coverage before adding any upload or draw.
+	for ( const ShadowDepthView &view : views )
+		for ( const ShadowCaster &caster : view.casters )
+			if ( !Complete( caster ) )
+				return foundation::MakeUnexpected( ShadowPassStatus::kInvalidCaster );
 	struct Frame
 	{
 		std::vector<Matrix> clips;
@@ -211,6 +301,7 @@ foundation::Expected<ShadowDepthStats, ShadowPassStatus> ShadowDepthRenderer::Ad
 	};
 	auto frame = std::make_shared<Frame>();
 	MeshImports imports;
+	GroupImports groups;
 	ShadowDepthStats stats;
 	// A kept atlas: each view's tile is cleared first, by a triangle over the
 	// whole tile at depth 1 (clip matrix 0, the identity).
@@ -235,15 +326,39 @@ foundation::Expected<ShadowDepthStats, ShadowPassStatus> ShadowDepthRenderer::Ad
 		const std::size_t first = frame->draws.size();
 		for ( const ShadowCaster &caster : view.casters )
 		{
-			auto pipeline = PipelineFor( caster.mesh.vertexStride );
-			if ( !pipeline )
-				return foundation::MakeUnexpected( pipeline.Error() );
-			Matrix clip;
-			Compose( view.viewProjection, caster.world, clip.m );
-			frame->draws.push_back(
-			    { caster.mesh, pipeline.Value(), static_cast<std::uint32_t>( frame->clips.size() ),
-			        caster.firstIndex, caster.indexCount } );
-			frame->clips.push_back( clip );
+			Draw draw;
+			draw.mesh = caster.mesh;
+			draw.firstIndex = caster.firstIndex;
+			draw.indexCount = caster.indexCount;
+			if ( caster.material )
+			{
+				draw.material = caster.material;
+				draw.pipeline = caster.material->program.pipeline;
+				Matrix clip, world;
+				Compose( view.viewProjection, caster.world, clip.m );
+				Store( caster.world, world.m );
+				std::memcpy( draw.constants.toClip, clip.m, sizeof( clip.m ) );
+				std::memcpy( draw.constants.world, world.m, sizeof( world.m ) );
+				groups.Add( builder, caster.material->program.material );
+				if ( caster.material->program.frameLayout.IsValid() )
+					groups.Add( builder, caster.material->frame );
+				if ( caster.material->program.drawLayout.IsValid() )
+					groups.Add( builder, caster.material->draw.resident );
+				if ( caster.material->program.viewLayout.IsValid() )
+					groups.Add( builder, caster.material->program.neutralView );
+			}
+			else
+			{
+				auto pipeline = PipelineFor( caster.mesh.vertexStride );
+				if ( !pipeline )
+					return foundation::MakeUnexpected( pipeline.Error() );
+				draw.pipeline = pipeline.Value();
+				draw.instance = static_cast<std::uint32_t>( frame->clips.size() );
+				Matrix clip;
+				Compose( view.viewProjection, caster.world, clip.m );
+				frame->clips.push_back( clip );
+			}
+			frame->draws.push_back( std::move( draw ) );
 			imports.Add( builder, caster.mesh );
 		}
 		frame->views.push_back(
@@ -285,6 +400,7 @@ foundation::Expected<ShadowDepthStats, ShadowPassStatus> ShadowDepthRenderer::Ad
 	if ( target.keep )
 		pass.Read( clearBuffer, ResourceUsage::kVertex );
 	imports.Declare( pass );
+	groups.Declare( pass );
 	pass.Execute(
 	    [this, frame, clipBuffer, clearBuffer, clearPipeline, target](
 	        graph::RecordContext &context )
@@ -332,9 +448,26 @@ foundation::Expected<ShadowDepthStats, ShadowPassStatus> ShadowDepthRenderer::Ad
 				    if ( draw.pipeline != bound )
 				    {
 					    encoder.SetPipeline( draw.pipeline );
-					    encoder.SetBindGroup( BindGroupRole::kDraw, group.Value() );
 					    bound = draw.pipeline;
 				    }
+				    if ( draw.material )
+				    {
+					    const ShadowMaterial &material = *draw.material;
+					    const auto &program = material.program;
+					    encoder.SetBindGroup( BindGroupRole::kMaterial, program.material.group );
+					    if ( program.frameLayout.IsValid() )
+						    encoder.SetBindGroup( BindGroupRole::kFrame, material.frame.group );
+					    if ( program.viewLayout.IsValid() )
+						    encoder.SetBindGroup( BindGroupRole::kView, program.neutralView.group );
+					    if ( program.drawLayout.IsValid() )
+						    encoder.SetBindGroup(
+						        BindGroupRole::kDraw, material.draw.resident.group );
+					    encoder.SetDrawConstants(
+					        0, std::as_bytes( std::span( &draw.constants, 1 ) )
+					               .first( program.drawConstantBytes ) );
+				    }
+				    else
+					    encoder.SetBindGroup( BindGroupRole::kDraw, group.Value() );
 				    RecordDraw( encoder, draw );
 			    }
 		    }
