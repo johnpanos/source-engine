@@ -92,6 +92,8 @@ def sensitivity(images):
     for name, mutation, expected in (
             ('hatch', lambda data: data[0].__setitem__((slice(145, 485), slice(680, 770)), .7),
              'glass.no-unrendered-attachment-hatch'),
+            ('missing-transmission', lambda data: data.__setitem__(0, data[1].copy()),
+             'glass.transmitting-cohort-reaches-game'),
             ('missing-orange', lambda data: data.__setitem__(3, data[5].copy()),
              'indicator.frame1-visible'),
             ('missing-decal', lambda data: data.__setitem__(6, data[7].copy()),

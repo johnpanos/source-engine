@@ -9112,7 +9112,7 @@ python3 tools/quality/intro4_material_check.py \
   --out quality-results/intro4-rendercore-completion/material-pixels.json
 ```
 
-It passes 10 checks, including seeded missing-indicator, missing-decal and hatch
+It passes 11 checks, including seeded missing-transmission, missing-indicator, missing-decal and hatch
 negative controls. Missing captures or core statistics fail. Inputs retain image
 hashes and the boot's build/revision evidence. Style passes 26 files; full archlint
 still reports the pre-existing CAP002 `public/gameui/graphics_settings_service.h`
