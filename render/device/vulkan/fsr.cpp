@@ -148,8 +148,8 @@ public:
 			m_History = std::make_shared<FsrHistory>();
 			m_History->render = frame.render;
 			m_History->output = frame.output;
-			m_History->upscaler = std::make_unique<Fsr411::Upscaler>(
-			    m_Device.m_Adapter.physical, m_Device.m_Device, m_Assets );
+			m_History->upscaler = std::make_unique<Fsr411::Upscaler>( m_Device.m_Adapter.physical,
+			    m_Device.m_Device, m_Assets, m_Device.FsrMixedFloatDot() );
 		}
 		while ( !m_History->slots.empty() && m_Device.IsComplete( m_History->slots.front() ) )
 			m_History->slots.pop_front();

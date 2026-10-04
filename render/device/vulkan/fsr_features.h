@@ -15,6 +15,9 @@ struct FsrFeatures
 	VkPhysicalDeviceComputeShaderDerivativesFeaturesKHR derivatives{};
 	VkPhysicalDeviceShaderMixedFloatDotProductFeaturesVALVE mixed{};
 #endif
+	// VK_VALVE_shader_mixed_float_dot_product was enabled; without it (NVIDIA among
+	// others) the upscaler loads its core SPIR-V prepass (tools/portable_dot.py).
+	bool mixedFloatDot = false;
 	bool Enable( VkPhysicalDevice physical, VkPhysicalDeviceFeatures2 &head,
 	    std::vector<const char *> &extensions );
 };

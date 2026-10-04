@@ -589,6 +589,8 @@ public:
 	// For the host interop (host_device.cpp) ---------------------------------
 
 	bool FsrEnabled() const { return m_Options.fsr411; }
+	// FSR's mixed float dot extension was enabled (otherwise its portable prepass).
+	bool FsrMixedFloatDot() const { return m_FsrMixedFloatDot; }
 	const HostDeviceInfo &HostInfo() const { return m_HostInfo; }
 	MemoryAllocator &Memory() { return m_Memory; }
 	VkSemaphore TimelineSemaphore() const { return m_Timeline; }
@@ -710,6 +712,7 @@ private:
 	const HostDeviceRequest *m_HostRequest = nullptr; // during Initialize only
 	bool m_HostMode = false;
 	const char *m_FailureReason = nullptr;
+	bool m_FsrMixedFloatDot = false;
 	HostDeviceInfo m_HostInfo;
 	std::shared_ptr<InstanceHandle> m_Instance; // destroyed last (and shared by a host instance)
 	AdapterChoice m_Adapter;

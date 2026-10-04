@@ -352,6 +352,7 @@ DeviceResult<void> VulkanDevice::CreateLogical()
 			m_FailureReason = "FSR 4.1.1 shader requirements unavailable";
 			return Fail( DeviceStatus::kUnsupported, op );
 		}
+		m_FsrMixedFloatDot = fsr.mixedFloatDot;
 	}
 	RequiredFeatures required;
 	required.Merge( *features, m_Adapter );

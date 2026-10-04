@@ -44,16 +44,20 @@ bool FsrFeatures::Enable( VkPhysicalDevice physical, VkPhysicalDeviceFeatures2 &
 	if ( vkEnumerateDeviceExtensionProperties( physical, nullptr, &count, available.data() ) !=
 	     VK_SUCCESS )
 		return false;
-	const char *wanted[] = { VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME,
-	    VK_KHR_COMPUTE_SHADER_DERIVATIVES_EXTENSION_NAME,
-	    VK_VALVE_SHADER_MIXED_FLOAT_DOT_PRODUCT_EXTENSION_NAME };
+	const auto has = [&available]( const char *name )
+	{
+		return std::any_of( available.begin(), available.end(),
+		    [name]( const auto &entry )
+		    {
+			    return std::strcmp( name, entry.extensionName ) == 0;
+		    } );
+	};
+	std::vector<const char *> wanted = {
+	    VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME, VK_KHR_COMPUTE_SHADER_DERIVATIVES_EXTENSION_NAME };
 	for ( const char *name : wanted )
-		if ( std::none_of( available.begin(), available.end(),
-		         [name]( const auto &entry )
-		         {
-			         return std::strcmp( name, entry.extensionName ) == 0;
-		         } ) )
+		if ( !has( name ) )
 			return false;
+	const bool mixedAvailable = has( VK_VALVE_SHADER_MIXED_FLOAT_DOT_PRODUCT_EXTENSION_NAME );
 	f11.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES;
 	f12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
 	f13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
@@ -65,14 +69,14 @@ bool FsrFeatures::Enable( VkPhysicalDevice physical, VkPhysicalDeviceFeatures2 &
 	f11.pNext = &f12;
 	f12.pNext = &f13;
 	f13.pNext = &derivatives;
-	derivatives.pNext = &mixed;
+	derivatives.pNext = mixedAvailable ? &mixed : nullptr;
 	vkGetPhysicalDeviceFeatures2( physical, &query );
 	if ( !f11.storageBuffer16BitAccess || !f12.shaderFloat16 || !f12.shaderInt8 ||
 	     !query.features.shaderInt16 || !query.features.shaderStorageImageWriteWithoutFormat ||
 	     !query.features.independentBlend || !f13.shaderIntegerDotProduct ||
-	     !derivatives.computeDerivativeGroupLinear ||
-	     !mixed.shaderMixedFloatDotProductFloat16AccFloat32 )
+	     !derivatives.computeDerivativeGroupLinear )
 		return false;
+	mixedFloatDot = mixedAvailable && mixed.shaderMixedFloatDotProductFloat16AccFloat32;
 	// Enable only the required shader features, plus the core's own merge.
 	f12 = {};
 	f12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
@@ -96,7 +100,11 @@ bool FsrFeatures::Enable( VkPhysicalDevice physical, VkPhysicalDeviceFeatures2 &
 	enabled12.shaderFloat16 = enabled12.shaderInt8 = VK_TRUE;
 	MergeFeature( head, f13 ).shaderIntegerDotProduct = VK_TRUE;
 	MergeFeature( head, derivatives ).computeDerivativeGroupLinear = VK_TRUE;
-	MergeFeature( head, mixed ).shaderMixedFloatDotProductFloat16AccFloat32 = VK_TRUE;
+	if ( mixedFloatDot )
+	{
+		MergeFeature( head, mixed ).shaderMixedFloatDotProductFloat16AccFloat32 = VK_TRUE;
+		wanted.push_back( VK_VALVE_SHADER_MIXED_FLOAT_DOT_PRODUCT_EXTENSION_NAME );
+	}
 	for ( const char *name : wanted )
 		if ( std::none_of( extensions.begin(), extensions.end(),
 		         [name]( const char *entry )
