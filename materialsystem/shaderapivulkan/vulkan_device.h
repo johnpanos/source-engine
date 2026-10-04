@@ -56,6 +56,7 @@
 #include <memory>
 #include <mutex>
 #include <new>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -1555,6 +1556,19 @@ private:
 				return 0;
 			const auto &texture = m_context.m_managedTextures[index];
 			return texture.uploaded && !texture.renderTarget ? texture.contentRevision : 0;
+		}
+
+		std::optional<render::legacy::ICoreTextures::MipInfo> MipDescription( int handle ) override
+		{
+			const int index = handle - 1;
+			if ( index < 0 || index >= int( m_context.m_managedTextures.size() ) )
+				return std::nullopt;
+			const auto &texture = m_context.m_managedTextures[index];
+			if ( !texture.uploaded || texture.renderTarget || texture.layers != 1 || texture.depth != 1 ||
+			     !texture.width || !texture.height || !texture.mipLevels )
+				return std::nullopt;
+			return render::legacy::ICoreTextures::MipInfo{
+			    texture.width, texture.height, texture.mipLevels };
 		}
 
 	private:

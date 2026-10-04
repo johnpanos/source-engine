@@ -28,6 +28,7 @@
 #include "render/pass/indirect/port_compute.h"
 #include "render/pass/lights/map_lights.h"
 #include "render/pass/lights/cluster_pass.h"
+#include "render/resources/mip_feedback.h"
 #include "render/pass/shadows/shadow_passes.h"
 #include "render/pass/shadows/shadow_plan.h"
 #include "render/pass/skinning/skinning.h"
@@ -505,6 +506,9 @@ private:
 	std::mutex m_TopLevelLock;
 	std::set<std::uint32_t> m_TopLevel;
 	std::map<std::uint64_t, std::vector<std::pair<std::uint32_t, device::TextureId>>> m_FrameViews;
+	// CPU mip demand aggregates all world views recorded for one host frame;
+	// bounded replay history lets capture re-records reuse the same collector.
+	std::map<std::uint64_t, std::unique_ptr<resources::MipFeedbackFrame>> m_MipFeedbackFrames;
 	std::atomic<unsigned long long> m_Hatches{ 0 };
 	std::atomic<unsigned long long> m_Tints{ 0 };
 	std::atomic<unsigned long long> m_Redrawn{ 0 };

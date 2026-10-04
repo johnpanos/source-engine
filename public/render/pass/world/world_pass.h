@@ -54,6 +54,7 @@
 #include "render/device/device.h"
 #include "render/frame/debug_controls.h"
 #include "render/material/surface_program.h"
+#include "render/resources/mip_feedback.h"
 #include "render/shadow_tile.h"
 
 #include <cstddef>
@@ -192,8 +193,15 @@ struct WorldData
 class IWorldTextures
 {
 public:
+	struct MipInfo
+	{
+		std::uint32_t width = 0;
+		std::uint32_t height = 0;
+		std::uint32_t levels = 0;
+	};
 	virtual device::TextureId Import( int handle, bool srgb ) = 0;
 	virtual device::SamplerDesc Sampler( int handle ) = 0;
+	virtual std::optional<MipInfo> MipDescription( int ) { return std::nullopt; }
 
 protected:
 	~IWorldTextures() = default;
@@ -237,6 +245,9 @@ struct WorldTarget
 	// The device the slot records on (the legacy backend's); the pass's
 	// device objects live on it.
 	device::IRenderDevice2 *device = nullptr;
+	// Optional frame-owned CPU feedback collector; requests are generated only
+	// for successfully recorded material surfaces.
+	resources::MipFeedbackFrame *mipFeedback = nullptr;
 	// The color target (home kColorAttachment): its sRGB view, or, when it has
 	// none, its unorm view with the shader encoding sRGB (encodeOutput).
 	device::TextureId color;

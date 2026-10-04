@@ -67,6 +67,13 @@ public:
 		return m_Textures.Import( handle, srgb );
 	}
 	device::SamplerDesc Sampler( int handle ) override { return m_Textures.Sampler( handle ); }
+	std::optional<MipInfo> MipDescription( int handle ) override
+	{
+		const auto info = m_Textures.MipDescription( handle );
+		if ( !info )
+			return std::nullopt;
+		return MipInfo{ info->width, info->height, info->levels };
+	}
 
 private:
 	legacy::ICoreTextures &m_Textures;
@@ -2137,6 +2144,17 @@ void CoreWorld::RecordWorldBatch( std::span<const std::uint32_t> tags,
 	world.minDepth = target.minDepth;
 	world.maxDepth = target.maxDepth;
 	world.device = target.device;
+	if ( target.frame )
+	{
+		auto &feedback = m_MipFeedbackFrames[target.frame];
+		if ( !feedback )
+			feedback = std::make_unique<resources::MipFeedbackFrame>( target.frame );
+		world.mipFeedback = feedback.get();
+		std::erase_if( m_MipFeedbackFrames, [&]( const auto &entry )
+		{
+			return entry.first + 4 < target.frame;
+		} );
+	}
 	// The sRGB view when the target has one; else the unorm view, and the
 	// shader encodes (the same curve, the output encoding frame term).
 	world.encodeOutput = !target.colorSrgb.IsValid() &&

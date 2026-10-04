@@ -30,6 +30,7 @@
 #include "render/material/surface_program.h"
 
 #include <cstdint>
+#include <optional>
 #include <span>
 
 namespace render::legacy
@@ -127,6 +128,12 @@ struct CorePassTarget
 class ICoreTextures
 {
 public:
+	struct MipInfo
+	{
+		std::uint32_t width = 0;
+		std::uint32_t height = 0;
+		std::uint32_t levels = 0;
+	};
 	// srgb asks for linear values: an 8-bit or BC image through its sRGB view
 	// (an invalid id when it has none); a 16-bit or float image as it is.
 	virtual device::TextureId Import( int handle, bool srgb ) = 0;
@@ -138,6 +145,9 @@ public:
 	// reuse. Zero means unknown (including render targets): do not reuse composites.
 	// Sampled contents are ordered before the slot, like Import; render sequence only.
 	virtual std::uint64_t ContentRevision( int ) { return 0; }
+	// Optional metadata for CPU mip demand. Unknown dimensions return an empty
+	// result; render targets and non-2D images need not provide it.
+	virtual std::optional<MipInfo> MipDescription( int ) { return std::nullopt; }
 
 protected:
 	~ICoreTextures() = default;

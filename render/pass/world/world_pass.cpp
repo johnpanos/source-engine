@@ -21,9 +21,11 @@
 #include <array>
 #include <cctype>
 #include <cstddef>
+#include <cmath>
 #include <cstring>
 #include <deque>
 #include <functional>
+#include <limits>
 #include <map>
 #include <optional>
 #include <mutex>
@@ -2703,6 +2705,91 @@ void WorldPass::RecordBatch(
 		state.cull = m.program.twoSided ? CullMode::kNone : CullMode::kBack;
 		return statePipeline( m, base, state, debug );
 	};
+	auto submitSurfaceFootprints = [&]( const WorldSurface &surface,
+	                                    const std::vector<Resources::Material> &materials,
+	                                    const auto &vertices, const auto &indices,
+	                                    const float *objectToWorld = nullptr )
+	{
+		if ( !target.mipFeedback || !view.viewport.width || !view.viewport.height ||
+		     surface.firstIndex > indices.size() ||
+		     surface.indexCount > indices.size() - surface.firstIndex )
+			return;
+		float minX = view.viewport.width;
+		float minY = view.viewport.height;
+		float maxX = 0.0f;
+		float maxY = 0.0f;
+		float minU = std::numeric_limits<float>::max();
+		float minV = std::numeric_limits<float>::max();
+		float maxU = std::numeric_limits<float>::lowest();
+		float maxV = std::numeric_limits<float>::lowest();
+		bool valid = true;
+		for ( std::uint32_t i = 0; i < surface.indexCount; ++i )
+		{
+			const std::uint32_t vertexIndex = indices[surface.firstIndex + i];
+			if ( vertexIndex >= vertices.size() )
+				return;
+			const auto &vertex = vertices[vertexIndex];
+			if ( !std::isfinite( vertex.uv[0] ) || !std::isfinite( vertex.uv[1] ) )
+				return;
+			float position[4] = { vertex.position[0], vertex.position[1], vertex.position[2], 1.0f };
+			if ( objectToWorld )
+			{
+				float transformed[4] = {};
+				for ( int row = 0; row < 4; ++row )
+					for ( int col = 0; col < 4; ++col )
+						transformed[row] += objectToWorld[row * 4 + col] * position[col];
+				std::copy_n( transformed, 4, position );
+			}
+			float clip[4] = {};
+			for ( int row = 0; row < 4; ++row )
+				for ( int col = 0; col < 4; ++col )
+					clip[row] += view.toClip[row * 4 + col] * position[col];
+			if ( !std::isfinite( clip[0] ) || !std::isfinite( clip[1] ) ||
+			     !std::isfinite( clip[3] ) || clip[3] <= 1.0e-6f )
+			{
+				valid = false;
+				break;
+			}
+			const float x = std::clamp( ( clip[0] / clip[3] * 0.5f + 0.5f ) *
+			                                view.viewport.width,
+			    0.0f, view.viewport.width );
+			const float y = std::clamp( ( 0.5f - clip[1] / clip[3] * 0.5f ) *
+			                                view.viewport.height,
+			    0.0f, view.viewport.height );
+			minX = std::min( minX, x );
+			minY = std::min( minY, y );
+			maxX = std::max( maxX, x );
+			maxY = std::max( maxY, y );
+			minU = std::min( minU, vertex.uv[0] );
+			minV = std::min( minV, vertex.uv[1] );
+			maxU = std::max( maxU, vertex.uv[0] );
+			maxV = std::max( maxV, vertex.uv[1] );
+		}
+		if ( !valid || maxX <= minX || maxY <= minY || maxU < minU || maxV < minV )
+			return;
+		const auto &handles = ( *claims )[surface.material].handles;
+		const auto &texturesUsed = materials[surface.material].program.request.material.textures;
+		for ( std::uint32_t slot = 0; slot < texturesUsed.size(); ++slot )
+		{
+			const auto handle = handles.find( texturesUsed[slot].name );
+			if ( handle == handles.end() || handle->second <= 0 )
+				continue;
+			const auto info = target.textures->MipDescription( handle->second );
+			if ( !info )
+				continue;
+			resources::VisibleTextureFootprint footprint;
+			footprint.material = surface.material;
+			footprint.textureSlot = slot;
+			footprint.textureWidth = info->width;
+			footprint.textureHeight = info->height;
+			footprint.mipLevels = info->levels;
+			footprint.screenWidth = maxX - minX;
+			footprint.screenHeight = maxY - minY;
+			footprint.uvWidth = maxU - minU;
+			footprint.uvHeight = maxV - minV;
+			target.mipFeedback->AddVisible( footprint );
+		}
+	};
 	auto drawSurfaces =
 	    [&]( const std::vector<std::uint32_t> &list,
 	        const std::vector<Resources::Material> &materials,
@@ -2768,6 +2855,8 @@ void WorldPass::RecordBatch(
 			}
 			if ( skipping )
 				continue;
+			submitSurfaceFootprints(
+			    surface, materials, world->vertices, world->indices );
 			if ( m.program.request.drawLayout.IsValid() &&
 			     ( !pageBound || surface.lightmapPage != boundPage ) )
 			{
@@ -2842,6 +2931,11 @@ void WorldPass::RecordBatch(
 			encoder.SetVertexBuffer(
 			    1, draw.posed ? previousPosedBuffers[draw.instance] : buffers.vertices );
 		encoder.SetIndexBuffer( buffers.indices, 0, IndexFormat::kUint32 );
+		WorldSurface feedbackSurface = surface;
+		feedbackSurface.material = draw.material;
+		submitSurfaceFootprints( feedbackSurface, r.modelMaterials,
+		    draw.posed ? view.posedModels[draw.instance].vertices : mesh.vertices, mesh.indices,
+		    instance ? instance->world : nullptr );
 		encoder.DrawIndexed( surface.indexCount, 1, surface.firstIndex, 0, 0 );
 	};
 	preparation.End();

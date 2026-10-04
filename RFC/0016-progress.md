@@ -11,11 +11,15 @@ eviction policy or alter legacy material residency.
 
 `render.resources::MipFeedbackFrame` accepts visible texture footprints,
 computes a conservative mip from projected pixel extent and UV span, and
-aggregates repeated material/texture requests to the finest mip. Its sorted
-per-frame result is ready for frame producers. Current world/material frame
-paths do not yet publish those footprints; wiring callers and proving full
-scene behavior remain open. This work does not close R95/R96 or any quality
-gate.
+aggregates repeated material/texture requests to the finest mip. The core world
+record path now submits footprints for visible world surfaces and static/posed
+model draws, aggregating views under the host frame. The Vulkan managed-texture
+provider supplies dimensions only for uploaded, single-layer 2D textures;
+unknown, render-target, cube and volume metadata produces no request. Geometry
+crossing the eye plane also produces no request because its projected bounds
+are not reliable. The requests are collected but are not yet connected to a
+residency/streaming consumer, and scene-wide validation remains open. This work
+does not close R95/R96 or any quality gate.
 
 ## FSR temporal reconstruction implementation (2026-10-03, in progress)
 
