@@ -424,7 +424,7 @@ struct WorldStats
 	std::uint64_t dynamicDrawsRefused = 0; // unsupported input, never claimed or queued
 	std::string lastRefusal;
 	std::string lastFailure;
-	// Why materials stay legacy: reason and count, most frequent first.
+	// Unclaimed material names, reasons and counts, most frequent first.
 	std::vector<std::pair<std::string, std::uint32_t>> gaps;
 	// The materials the pass draws ("program material"), and their surface
 	// counts.

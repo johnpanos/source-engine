@@ -48,6 +48,7 @@ static const uint32_t kReflectionProbeCandidateCells =
     kReflectionProbeCandidateDim * kReflectionProbeCandidateDim * kReflectionProbeCandidateDim;
 static const uint32_t kReflectionProbeCandidateBytes = 32 + 8 * kReflectionProbeCandidateCells;
 static const uint32_t kReflectionProbesLegacyMaxProbes = 16;
+static const uint32_t kReflectionProbesTiledMaxProbes = 64;
 static const uint32_t kReflectionProbesFlagRelight = 1; // header flags, v2 and later
 static const float kReflectionProbesMaxDistance = 60000.0f;
 static const float kReflectionProbesNormalLimit = 1.001f;
@@ -91,6 +92,7 @@ static const float kReflectionProbeWeightPalette[6][3] = { { 1.0f, 0.0f, 0.0f },
     { 0.0f, 1.0f, 1.0f } };
 // True for a mode the shaders accept (0..3, 5..7).
 bool ReflectionProbeModeValid( uint32_t mode ) noexcept;
+bool ReflectionProbesVersionSupported( uint32_t version ) noexcept;
 
 enum class ReflectionProbesError
 {

@@ -627,8 +627,10 @@ int main()
 	bool blendedGap = false;
 	for ( const auto &[reason, count] : loaded.gaps )
 	{
-		envmapGap = envmapGap || reason.find( "$envmap" ) != std::string::npos;
-		blendedGap = blendedGap || reason.find( "blended" ) != std::string::npos;
+		envmapGap = envmapGap || ( count == 1 && reason.starts_with( "material shiny: " ) &&
+		                             reason.find( "$envmap" ) != std::string::npos );
+		blendedGap = blendedGap || ( count == 1 && reason.starts_with( "material glass: " ) &&
+		                               reason.find( "blended" ) != std::string::npos );
 	}
 	checks.That( envmapGap && blendedGap, "W1.gaps-are-named" );
 	// "program material": the program that draws it (cl_render_debug_claims).

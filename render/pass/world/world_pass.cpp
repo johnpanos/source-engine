@@ -583,7 +583,7 @@ void WorldPass::SetWorld( WorldData data )
 		}
 		if ( !gap.empty() )
 		{
-			++gaps[gap];
+			++gaps["material " + source.name + ": " + gap];
 		}
 		counts.claimedMaterials += claimed.draws ? 1u : 0u;
 		claims->push_back( std::move( claimed ) );

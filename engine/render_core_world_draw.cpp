@@ -1067,6 +1067,24 @@ bool RenderCoreWorldDraw_DrawsStaticProp( unsigned int prop, unsigned int lod )
 	       pWorld->DrawsStaticProp( prop, lod );
 }
 
+namespace
+{
+
+// Msg has a bounded formatting buffer. Emit each census entry separately so
+// a scene's named refusals survive even when the complete census exceeds it.
+void PrintCoreCensus( const char *census )
+{
+	for ( const char *line = census; *line; )
+	{
+		const char *end = strchr( line, '\n' );
+		const int length = end ? int( end - line ) : V_strlen( line );
+		Msg( "%.*s\n", length, line );
+		line = end ? end + 1 : line + length;
+	}
+}
+
+} // namespace
+
 CON_COMMAND( r_core_world_stats, "RFC 0016 K5: the core world's surfaces, views and gaps" )
 {
 	IRenderCoreWorld *pWorld = RenderCoreHost_World();
@@ -1095,9 +1113,15 @@ CON_COMMAND( r_core_world_stats, "RFC 0016 K5: the core world's surfaces, views 
 			    modelloader->GetName( const_cast<model_t *>( State().registeredModels[i] ) ) );
 	}
 	if ( stats.gaps[0] )
-		Msg( "r_core_world_stats: gaps:\n%s", stats.gaps );
+	{
+		Msg( "r_core_world_stats: gaps:\n" );
+		PrintCoreCensus( stats.gaps );
+	}
 	if ( stats.claimed[0] )
-		Msg( "r_core_world_stats: drawn by the core:\n%s", stats.claimed );
+	{
+		Msg( "r_core_world_stats: drawn by the core:\n" );
+		PrintCoreCensus( stats.claimed );
+	}
 	if ( State().stageWorld )
 		Msg( "r_core_world_stats: world stage: %u runtime lights, %llu lit views, %llu lighting "
 		     "builds\n",
@@ -1164,5 +1188,8 @@ CON_COMMAND( cl_render_debug_claims,
 		}
 	}
 	if ( stats.gaps[0] )
-		Msg( "cl_render_debug_claims: not claimed (count, reason):\n%s", stats.gaps );
+	{
+		Msg( "cl_render_debug_claims: not claimed (count, material, reason):\n" );
+		PrintCoreCensus( stats.gaps );
+	}
 }

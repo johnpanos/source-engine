@@ -4583,11 +4583,8 @@ static void UploadWorldReflectionProbes( world_mesh_gpu::IWorldMeshUpload *uploa
 		remove();
 		return;
 	}
-	// V3 extends the count; v1/v2 keep their original limits.
-	if ( ( lump.version != mapcontainer::kReflectionProbesVersion &&
-	         lump.version != mapcontainer::kReflectionProbesRelightVersion &&
-	         lump.version != mapcontainer::kReflectionProbesTiledVersion ) ||
-	     lump.flags != 0 || lump.storedSize < mapcontainer::kReflectionProbesHeaderBytes ||
+	if ( !mapcontainer::ReflectionProbesVersionSupported( lump.version ) || lump.flags != 0 ||
+	     lump.storedSize < mapcontainer::kReflectionProbesHeaderBytes ||
 	     lump.storedSize > mapcontainer::kReflectionProbesMaxBytes || lump.storedSize > INT_MAX )
 	{
 		Warning( "Map %s: RPRB version, flags or size unsupported\n", s_szMapName );
@@ -4610,6 +4607,12 @@ static void UploadWorldReflectionProbes( world_mesh_gpu::IWorldMeshUpload *uploa
 	{
 		Warning( "Map %s: RPRB rejected (%s)\n", s_szMapName,
 		    mapcontainer::ReflectionProbesErrorName( error ) );
+		remove();
+		return;
+	}
+	if ( WorldMeshU32( bytes.Base() + 4 ) != lump.version )
+	{
+		Warning( "Map %s: RPRB directory and payload versions disagree\n", s_szMapName );
 		remove();
 		return;
 	}

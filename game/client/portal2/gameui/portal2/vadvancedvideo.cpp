@@ -828,6 +828,7 @@ void CAdvancedVideo::OnKeyCodePressed(KeyCode code)
 
 void CAdvancedVideo::OnCommand(const char *command)
 {
+	Msg( "VIDEO COMMAND %s\n", command );
 	if ( !V_stricmp( command, "ModelDetailHigh" ) )
 	{
 		m_iModelTextureDetail = 2;

@@ -374,7 +374,7 @@ def build(probes, chains, scale=SOURCE_UNITS_PER_METER, relight=None, candidates
 # same error for each.
 MALFORMATIONS = (
     (0, "<I", 0x12345678, "BadMagic"),
-    (4, "<I", 4, "UnsupportedVersion"),
+    (4, "<I", 6, "UnsupportedVersion"),
     (4, "<I", 2, "UnsupportedVersion"),        # v2 without the relight flag
     (8, "<I", 0, "InvalidCounts"),
     (8, "<I", 17, "InvalidCounts"),

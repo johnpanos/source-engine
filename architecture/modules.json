@@ -340,7 +340,8 @@
         "id": "gameui.graphics-settings-tests",
         "kind": "native-test",
         "paths": [
-          "unittests/vguitest/test_graphics_settings_service.cpp"
+          "unittests/vguitest/test_graphics_settings_service.cpp",
+          "unittests/vguitest/test_portal2_video_input.cpp"
         ],
         "allowedEdges": [
           "gameui.graphics-settings-contract",
@@ -1542,6 +1543,12 @@
       }
     ],
     "generatedHeaders": [
+      {
+        "prefix": "portal2_dialog_input_methods.inc",
+        "owner": "gameui.graphics-settings-tests",
+        "producer": "tools/quality/portal2_video_input_test.py (exact production method slices)",
+        "rfc": "0016: Portal 2 graphics menu input regression fixture"
+      },
       {
         "prefix": "spv/",
         "owner": "render.shader-library",

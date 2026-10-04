@@ -7953,6 +7953,45 @@
       "expect": "fail"
     },
     {
+      "id": "vgui.portal2_video_input",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
+      "min_checks": 133,
+      "sources": [
+        "tools/quality/portal2_video_input_test.py",
+        "unittests/vguitest/test_portal2_video_input.cpp",
+        "game/client/portal2/gameui/portal2/vhybridbutton.cpp"
+      ],
+      "command": [
+        "{python}",
+        "tools/quality/portal2_video_input_test.py"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "vgui.portal2_video_input.fallthrough",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
+      "min_checks": 133,
+      "sources": [
+        "tools/quality/portal2_video_input_test.py",
+        "unittests/vguitest/test_portal2_video_input.cpp",
+        "game/client/portal2/gameui/portal2/vhybridbutton.cpp"
+      ],
+      "command": [
+        "{python}",
+        "tools/quality/portal2_video_input_test.py",
+        "--seed-fallthrough"
+      ],
+      "expect": "fail"
+    },
+    {
       "id": "vgui.graphics_settings",
       "domain": "Q-PRESENTATION",
       "rfc": "0001",

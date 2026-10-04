@@ -1136,13 +1136,15 @@ void BaseModHybridButton::OnKeyCodePressed( vgui::KeyCode code )
 		}
 	}
 
+	// A handled list key must not reach EditablePanel: it can repost the
+	// same key to the focused default button in the front-end menu.
 	if ( m_nStyle == BUTTON_DIALOGLIST )
 	{
 		switch ( localCode )
 		{
 		case KEY_XBUTTON_A:
 			ChangeDialogListSelection( SELECT_NEXT );
-			break;
+			return;
 
 		case KEY_XSTICK1_LEFT:
 		case KEY_XSTICK2_LEFT:
@@ -1150,7 +1152,7 @@ void BaseModHybridButton::OnKeyCodePressed( vgui::KeyCode code )
 		case KEY_XBUTTON_LEFT_SHOULDER:
 		case KEY_LEFT:
 			ChangeDialogListSelection( SELECT_PREV );
-			break;
+			return;
 
 		case KEY_XSTICK1_RIGHT:
 		case KEY_XSTICK2_RIGHT:
@@ -1158,7 +1160,7 @@ void BaseModHybridButton::OnKeyCodePressed( vgui::KeyCode code )
 		case KEY_XBUTTON_RIGHT_SHOULDER:
 		case KEY_RIGHT:
 			ChangeDialogListSelection( SELECT_NEXT );
-			break;
+			return;
 		}
 	}
 

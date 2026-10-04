@@ -4375,7 +4375,58 @@ on the new rows.
 The three additional rows compile in the Portal GameUI and Portal 2 advanced
 video translation units, along with the engine ConVar owner. The changed-line
 style check passes. A native dialog interaction and reopen check for these
-three rows is still needed; this UI extension does not close K12.
+three rows was still needed at that checkpoint; the front-end keyboard
+regression below supplies a bounded interaction check. This UI extension
+does not close K12.
+
+### Portal 2 front-end graphics option input (2026-10-03)
+
+The reported Runtime Direct Light row changed from On to Off in a loaded
+map, but appeared stuck On in the front-end. One native keyboard Left event
+reproduced two `KeyCodePressed` deliveries: the row emitted `_coredirect0`,
+then `_coredirect1`. `BaseModHybridButton::OnKeyCodePressed` changed the list
+selection and forwarded the handled key to `EditablePanel`, whose default
+button navigation reposted it to the same row. Binary choices therefore
+returned to their original value. This was an input-routing defect, not a
+map-only setting restriction.
+
+The three handled list-key branches now return after changing selection.
+Unhandled navigation, ordinary buttons and the IgnoreButtonA parent route
+used by Apply retain their previous behavior. Runtime direct lighting still
+takes effect at the next map load, as specified above.
+
+`vgui.portal2_video_input` compiles exact method slices from the production
+button source against a parent-routing fake, with release-active assertions.
+Its 133 checks cover all five core option rows with ordinary and reposting
+parents, keyboard/controller aliases, wrapping, disabled choices, command
+counts, unhandled navigation and Apply routing. The sensitivity suite
+`vgui.portal2_video_input.fallthrough` restores the old fallthrough and fails
+64 of those checks. Both suites are installed in the shared conformance
+manifest; the generated include has an explicit owner in the module manifest.
+
+Native Linux Portal 2 evidence uses an isolated runtime, private HOME and
+D-Bus, a headless Mutter Wayland compositor, and compositor keyboard events.
+Left changes Runtime Direct Light to Off once; Apply archives
+`r_core_runtime_direct 0`; reopening Advanced Video displays Off. The
+retained `quality-results/video-options-20261003/` directory contains the
+driver, keyboard events, launch command, console logs, screenshots, build
+logs, compiler command and positive/negative conformance evidence. This
+checks front-end selection and persistence; mouse input and a new native
+in-map interaction run are outside this bounded evidence.
+
+Verification: the Portal 2 client/VGUI build, both release conformance suites,
+full architecture check, baseline/inventory verification, 166 archlint tests,
+38 stylelint tests and the new fixture's style check pass. The whole-workspace
+changed-line style check reports an unrelated reflection-probe fixture change;
+the graphics-input changes have no style failure. Existing CRLF line endings
+are preserved (`git -c core.whitespace=cr-at-eol diff --check` passes).
+
+Reproduction:
+
+```sh
+python3 tools/quality/conformance.py check --suite vgui.portal2_video_input --suite vgui.portal2_video_input.fallthrough --config release --out quality-results/portal2-video-input.json
+WAFLOCK=.lock-waf-p2 python3 ./waf build --targets=client,vgui2,vguimatsurface -j8
+```
 
 ## RFC 0014 D4, first part: per-pass GPU timers on the core (2026-09-30, source-engine-5a)
 
@@ -8632,3 +8683,31 @@ Not done, and why:
   Fold7 is unavailable. The added cost is one uniform branch and one extra
   sampler read per self-illuminated fragment.
 - K12/R96 stays `active`: this slice closes no K11 or K12 gate.
+
+## Map completion scope: sp_a1_intro4_relit (2026-10-03, active)
+
+User request: "Keep going until all materials and models that
+sp_a1_intro4_relit uses are supported by rendercore - correctly." This session
+owns the map-specific material/model completion work in `render.material` and
+`render.pass.world`, proven in `render_lab` before product integration. The
+initial checkout has no render edits; concurrent game UI edits are unrelated.
+
+The published container is `run/maps/sp_a1_intro4_relit/maps/sp_a1_intro4_relit.bsp`
+(BSP2 digest in its existing `published.json`). Exporting its legacy lumps with
+the installed independent reader identifies 498 static props using 65 model
+names, and 83 distinct model names across static props and authored entity
+models. Their material tables resolve to 98 installed material names. This is
+content reachability, not proof of selected submeshes, runtime-created models,
+proxy values, visibility, shadows or correct pixels. The stage uses its existing
+44-material WMSH material list.
+
+Seven referenced model materials fail the current claim: `leaves`,
+`leaves_bushes`, `leaves_dead`, `vine_cluster_loop01_dry`, `vines_suspended01`,
+`vines_thick_384`, and `vines_thick_384_static`, all under
+`materials/models/props_foliage/`. Six request tree sway; all seven specify the
+legacy low-quality flashlight hint. The map authors two `env_wind` entities.
+The runtime census previously grouped 18 refusals by reason, concealing names;
+named per-material diagnostics and linewise console output are the first
+boundary fix. The full gate stays open until material terms, geometry,
+animation, alpha coverage, cutout/transmission shadows and the map's actual
+runtime draw cohorts have evidence. No claim is loosened by this census work.
