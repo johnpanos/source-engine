@@ -289,12 +289,14 @@ def prepend_game_search_path(gameinfo, path):
     return gameinfo[:position] + entry + gameinfo[position:]
 
 
-def shader_search_path(gameinfo):
-    return prepend_game_search_path(gameinfo, "portal/custom/source-engine-shaders")
+def shader_search_path(gameinfo, game="portal"):
+    return prepend_game_search_path(gameinfo, game + "/custom/source-engine-shaders")
 
 
-def install_shader_artifacts(artifacts, stage, source_root=None):
+def install_shader_artifacts(artifacts, stage, source_root=None, game="portal"):
     """Validate source-matched compiler output before replacing staged shaders."""
+    if game not in {"portal", "portal2"}:
+        raise ValueError("unsupported shader artifact game")
     artifacts, stage = Path(artifacts).resolve(), Path(stage).resolve()
     source_root = Path(source_root or conformance.repo_root()).resolve()
     manifest_path = artifacts / "manifest.json"
@@ -322,8 +324,8 @@ def install_shader_artifacts(artifacts, stage, source_root=None):
     if not isinstance(compiler, dict):
         raise ValueError("shader artifact must record its compiler hash")
     verified_file(source_root, compiler.get("path"), compiler.get("sha256"))
-    gameinfo = stage / "portal/gameinfo.txt"
-    staged_gameinfo = shader_search_path(gameinfo.read_text())
+    gameinfo = stage / game / "gameinfo.txt"
+    staged_gameinfo = shader_search_path(gameinfo.read_text(), game)
     planned = {}
     for shader in shaders:
         if not isinstance(shader, dict):
@@ -342,7 +344,7 @@ def install_shader_artifacts(artifacts, stage, source_root=None):
         for source, digest in sources.items():
             verified_file(source_root, source, digest)
         source = verified_file(artifacts, relative, shader.get("sha256"))
-        destination = stage / "portal/custom/source-engine-shaders" / relative
+        destination = stage / game / "custom/source-engine-shaders" / relative
         if stage not in destination.parent.resolve().parents:
             raise ValueError("shader staging directory escapes the private runtime")
         planned[name] = (source, destination)
@@ -356,7 +358,7 @@ def install_shader_artifacts(artifacts, stage, source_root=None):
     return {"manifest": str(manifest_path), "manifest_sha256": sha256(manifest_path),
             "coverage": manifest.get("coverage"), "shaders": installed,
             "gameinfo_sha256": sha256(gameinfo),
-            "search_path": "portal/custom/source-engine-shaders"}
+            "search_path": game + "/custom/source-engine-shaders"}
 
 
 def screenshot_info(path):
@@ -878,7 +880,7 @@ def main(argv=None):
             gameinfo.write_text(content_gameinfo)
             evidence["content_mount"] = game + "/" + private_content
         if args.shader_artifacts:
-            evidence["shader_overrides"] = install_shader_artifacts(args.shader_artifacts, stage)
+            evidence["shader_overrides"] = install_shader_artifacts(args.shader_artifacts, stage, game=game)
         executable = stage / "hl2_launcher"
         if not executable.is_file():
             raise ValueError("runtime is missing hl2_launcher")

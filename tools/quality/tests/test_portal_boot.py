@@ -782,7 +782,7 @@ class ScreenshotTests(unittest.TestCase):
 
 
 class ShaderOverlayTests(unittest.TestCase):
-    def fixture(self, root):
+    def fixture(self, root, game="portal"):
         repo, artifacts, stage = root / "repo", root / "artifacts", root / "stage"
         source = repo / "materialsystem/shaders/Downsample_vs20.fxc"
         source.parent.mkdir(parents=True)
@@ -798,10 +798,33 @@ class ShaderOverlayTests(unittest.TestCase):
                                  "sha256": boot.sha256(binary),
                                  "sources": {str(source.relative_to(repo)): boot.sha256(source)}}]}
         (artifacts / "manifest.json").write_text(json.dumps(manifest))
-        (stage / "portal").mkdir(parents=True)
-        (stage / "portal/gameinfo.txt").write_text(
-            '"GameInfo" { FileSystem { SearchPaths { game+mod portal/portal_pak.vpk } } }')
+        (stage / game).mkdir(parents=True)
+        (stage / game / "gameinfo.txt").write_text(
+            '"GameInfo" { FileSystem { SearchPaths { game+mod %s/%s_pak.vpk } } }' % (game, game))
         return repo, artifacts, stage, manifest
+
+    def test_portal2_shaders_use_selected_game_without_rewriting_portal(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo, artifacts, stage, manifest = self.fixture(Path(directory), game="portal2")
+            (stage / "portal").mkdir()
+            other = stage / "portal/gameinfo.txt"
+            other.write_text("unrelated Portal gameinfo")
+            evidence = boot.install_shader_artifacts(artifacts, stage, repo, game="portal2")
+            destination = stage / "portal2/custom/source-engine-shaders/shaders/fxc/Downsample_vs20.vcs"
+            self.assertEqual(b"compiled shader", destination.read_bytes())
+            self.assertEqual("portal2/custom/source-engine-shaders", evidence["search_path"])
+            self.assertIn("portal2/custom/source-engine-shaders", (stage / "portal2/gameinfo.txt").read_text())
+            self.assertEqual("unrelated Portal gameinfo", other.read_text())
+            self.assertFalse((stage / "portal/custom").exists())
+
+    def test_unsupported_shader_game_fails_before_mutation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo, artifacts, stage, manifest = self.fixture(Path(directory))
+            before = boot.sha256(stage / "portal/gameinfo.txt")
+            with self.assertRaises(ValueError):
+                boot.install_shader_artifacts(artifacts, stage, repo, game="../portal")
+            self.assertEqual(before, boot.sha256(stage / "portal/gameinfo.txt"))
+            self.assertFalse((stage / "portal/custom").exists())
 
     def test_only_manifest_shaders_are_copied_into_private_game_tree(self):
         with tempfile.TemporaryDirectory() as directory:
