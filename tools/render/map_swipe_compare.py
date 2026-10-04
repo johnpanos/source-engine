@@ -4,7 +4,7 @@
 
 Default comparison: sp_a1_intro4 / sp_a1_intro4_relit at 3840x2160.
 The new (right) game selects FSR Native AA with MSAA disabled and requests HDR
-display output with exposure 2. HDR presentation requires a capable compositor/display;
+display output with exposure 3. HDR presentation requires a capable compositor/display;
 the private headless compositor and RGB PNG comparison do not certify HDR output.
 The original (left) game uses native Vulkan with the render core and FSR disabled.
 
@@ -18,11 +18,13 @@ All retained Intro4 comparison and survey poses except the panel close-up:
 
 Published maps in run/maps/<name>/published.json are mounted automatically.
 The original retail map is loaded from the staged Portal 2 runtime. Each map
-gets a separate portal_boot run; the view oracle must confirm the requested
+gets one portal_boot run; all-captures boots A and B in parallel and captures
+every pose without rebooting. The view oracle must confirm the requested
 camera before the HTML is written.
 """
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 import datetime
 import html
 import json
@@ -38,6 +40,8 @@ from PIL import Image, ImageChops, ImageEnhance, ImageStat
 
 ROOT = Path(__file__).resolve().parents[2]
 BOOT = ROOT / "tools/quality/portal_boot.py"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from view_oracle import console_script, script_frames
 # Retained comparison and survey cameras, deduplicated. Survey player origins
 # include the 64-unit standing eye offset here.
 INTRO4_CAPTURES = (
@@ -112,8 +116,25 @@ def verify_camera(view, position, angles, width, height):
         raise ValueError("capture angles differ from request: " + str(view["angles"]))
 
 
-def capture(map_name, side, content, args, out, startup_commands=(), engine_args=()):
-    position, angles = args.pose
+def camera_commands(pose):
+    position, angles = pose
+    # setpos names the player origin; Portal 2's standing eye is 64 units above it.
+    return ["cmd setpos " + " ".join("%.6f" % n for n in
+                                   (position[0], position[1], position[2] - 64)),
+            "cmd setang " + " ".join("%.6f" % n for n in angles)]
+
+
+def side_settings(side, args):
+    if side == "a":
+        return (("r_temporal_scale 0", "r_core_world 0", "mat_hdr_output 0"),
+                ("-norendercore",))
+    return (("mat_antialias 0", "r_temporal_scale 1", "mat_hdr_output 1",
+             "mat_hdr_exposure 3"),
+            ("-fsr", "-fsr-assets", str(args.fsr_assets.resolve())))
+
+
+def capture(map_name, side, content, args, out, poses=None):
+    startup_commands, engine_args = side_settings(side, args)
     boot = out / (side + "-boot")
     command = [sys.executable, str(BOOT), "--runtime", str(args.runtime),
                "--build", str(args.build), "--game", "portal2",
@@ -122,7 +143,7 @@ def capture(map_name, side, content, args, out, startup_commands=(), engine_args
                "--width", str(args.width), "--height", str(args.height),
                "--timeout", str(args.timeout), "--capture-wait", "120",
                "--engine-arg=-deterministicrender", "--engine-arg=-nosound",
-               "--engine-arg=-noborder",
+               "--engine-arg=-noborder", "--no-mouse",
                "--startup-command", "host_framerate 0.015",
                "--startup-command", "mat_picmip -1",
                "--startup-command", "r_lod 0",
@@ -142,11 +163,17 @@ def capture(map_name, side, content, args, out, startup_commands=(), engine_args
         command += ["--engine-arg=" + argument]
     for relay in args.panel_relay:
         command += ["--console-command", "ent_fire " + relay + " Trigger"]
-    command += [
-               # setpos names the player origin. The standing Portal 2 eye is 64 units above it.
-               "--console-command", "cmd setpos " + " ".join(
-                   "%.6f" % n for n in (position[0], position[1], position[2] - 64)),
-               "--console-command", "cmd setang " + " ".join("%.6f" % n for n in angles)]
+    if poses is None:
+        for line in camera_commands(args.pose):
+            command += ["--console-command", line]
+    else:
+        shots = [{"name": name, "commands": camera_commands(pose), "settle": 120}
+                 for name, pose in poses]
+        scenario = {"setup": [], "intro_frames": 0}
+        for line in console_script(scenario, shots,
+                                   frame=lambda index, shot: "screenshot swipe_" + shot["name"]):
+            command += ["--console-command", line]
+        command[command.index("--capture-wait") + 1] = str(script_frames(scenario, shots))
     if content:
         command += ["--content-root", str(content)]
     result = subprocess.run(command, capture_output=True, text=True)
@@ -160,16 +187,12 @@ def capture(map_name, side, content, args, out, startup_commands=(), engine_args
                          (map_name, evidence.get("failures"), out / (side + "-boot.log")))
     shots = evidence.get("screenshots", [])
     oracles = evidence.get("view_oracle_captures", [])
-    if len(shots) != 1 or len(oracles) != 1:
-        raise ValueError("%s needs exactly one screenshot and one view oracle" % map_name)
-    view = oracle_camera(oracles[0]["path"])
-    verify_camera(view, position, angles, args.width, args.height)
-    source = Path(shots[0]["path"])
-    image = Image.open(source).convert("RGB")
-    if image.size != (args.width, args.height):
-        raise ValueError("%s screenshot has wrong dimensions" % map_name)
-    target = out / (side + ".png")
-    image.save(target)
+    expected = len(poses) + 1 if poses is not None else 1
+    if len(shots) != expected or len(oracles) != expected:
+        raise ValueError("%s needs exactly %d screenshots and view oracles; got %d and %d" %
+                         (map_name, expected, len(shots), len(oracles)))
+    oracles = sorted(oracles, key=lambda item: int(
+        Path(item["path"]).stem.rsplit("-", 1)[-1]))
     render_confirmation = None
     if "-fsr" in engine_args:
         log = (boot / "stdout.log").read_text()
@@ -180,13 +203,36 @@ def capture(map_name, side, content, args, out, startup_commands=(), engine_args
         hdr = re.findall(r"\[NativeVulkan\] (HDR output: [^\n]+|extended output declined: [^\n]+)", log)
         render_confirmation = {"fsr_dispatch": dispatch,
                                "hdr_presentation_log": hdr[-1] if hdr else "unconfirmed"}
-    return {"map": map_name, "content_root": str(content) if content else None,
+    records = {}
+    for index, (name, pose) in enumerate(poses or [("single", args.pose)]):
+        position, angles = pose
+        oracle = oracles[index]["path"]
+        view = oracle_camera(oracle)
+        verify_camera(view, position, angles, args.width, args.height)
+        if poses is None:
+            source = Path(shots[0]["path"])
+            target = out / (side + ".png")
+        else:
+            matches = [Path(shot["path"]) for shot in shots
+                       if Path(shot["path"]).stem == "swipe_" + name]
+            if len(matches) != 1:
+                raise ValueError("missing or duplicate named screenshot: " + name)
+            source = matches[0]
+            target = out / name / (side + ".png")
+            target.parent.mkdir(exist_ok=True)
+        with Image.open(source) as image:
+            if image.size != (args.width, args.height):
+                raise ValueError("%s screenshot has wrong dimensions" % name)
+            image.convert("RGB").save(target)
+        records[name] = {"map": map_name, "content_root": str(content) if content else None,
             "renderer": "native-vulkan", "build": str(args.build),
             "image": target.name, "boot_evidence": str(evidence_path),
+            "source_image": str(source), "view_oracle": str(oracle),
             "startup_commands": list(startup_commands),
             "engine_args": list(engine_args),
             "render_confirmation": render_confirmation,
             "camera": {key: view[key] for key in ("origin", "angles", "fov", "viewport")}}
+    return records if poses is not None else records["single"]
 
 
 def make_html(out, left, right, metrics, position, angles):
@@ -220,7 +266,7 @@ def make_html(out, left, right, metrics, position, angles):
 <h1>MAP_TITLE</h1><p>POSE · WIDTH×HEIGHT · LEFT_RENDERER / RIGHT_RENDERER.
   Drag the divider or use the slider.
   Mean absolute RGB difference: MEAN / 255.</p>
-<p>Right game: FSR Native AA (100%), MSAA off, HDR exposure 2, HDR output requested.
+<p>Right game: FSR Native AA (100%), MSAA off, HDR exposure 3, HDR output requested.
   These RGB PNGs do not verify HDR display presentation.</p>
 <div class="comparison" id="comparison" aria-label="Image comparison">
   <img src="b.png" alt="RIGHT_LABEL"><img id="top" src="a.png" alt="LEFT_LABEL"><div id="line"></div>
@@ -265,37 +311,43 @@ def make_html(out, left, right, metrics, position, angles):
     (out / "compare.html").write_text(page)
 
 
-def capture_gallery(argv, args, parser):
-    if (args.map_a, args.map_b) != ("sp_a1_intro4", "sp_a1_intro4_relit"):
-        parser.error("--all-captures uses the Intro4 gallery cameras and map pair")
-    out = args.out.resolve()
-    if out.exists() and any(out.iterdir()):
-        parser.error("output directory is not empty: " + str(out))
-    out.mkdir(parents=True, exist_ok=True)
-    # Preserve the caller's build, assets, resolution and content overrides.
-    shared = []
-    arguments = iter(argv)
-    for argument in arguments:
-        if argument == "--all-captures":
-            continue
-        if argument == "--out":
-            next(arguments)
-            continue
-        if argument.startswith("--out="):
-            continue
-        shared.append(argument)
+def write_comparison(args, out, left, right, pose):
+    if abs(left["camera"]["fov"] - right["camera"]["fov"]) > 0.1:
+        raise ValueError("captured camera FOV differs between maps")
+    with Image.open(out / "a.png") as a, Image.open(out / "b.png") as b:
+        difference = ImageChops.difference(a, b)
+        ImageEnhance.Brightness(difference).enhance(4).save(out / "difference-4x.png")
+        metrics = {"size": list(a.size),
+                   "mean_absolute_rgb": sum(ImageStat.Stat(difference).mean) / 3}
+    position, angles = pose
+    receipt = {"schema": "map-swipe-comparison/v1", "left": left, "right": right,
+               "requested_camera": {"origin": position, "angles": angles},
+               "activated_panel_relays": args.panel_relay,
+               "metrics": metrics,
+               "captured_utc": datetime.datetime.now(datetime.timezone.utc).isoformat()}
+    (out / "comparison.json").write_text(json.dumps(receipt, indent=2) + "\n")
+    make_html(out, left, right, metrics, position, angles)
+    print(out / "compare.html", flush=True)
+
+
+def capture_gallery(args, out, content_a, content_b):
+    # Each worker owns one private game runtime. Both games run once, concurrently.
+    poses = [(name, parse_pose(pose)) for name, _, pose in INTRO4_CAPTURES]
+    for relay in ("info_sign-info_panel_activate_rl", "InstanceAuto63-info_panel_activate_rl"):
+        if relay not in args.panel_relay:
+            args.panel_relay.append(relay)
+    print("Capturing %d Intro4 poses on two parallel game hosts" % len(poses), flush=True)
+    with ThreadPoolExecutor(max_workers=2) as hosts:
+        a = hosts.submit(capture, args.map_a, "a", content_a, args, out, poses)
+        b = hosts.submit(capture, args.map_b, "b", content_b, args, out, poses)
+        left, right = a.result(), b.result()
     cards = []
     for name, label, pose in INTRO4_CAPTURES:
-        print("Capturing Intro4: " + label, flush=True)
-        result = main(shared + ["--pose=" + pose, "--out", str(out / name),
-                                "--panel-relay", "info_sign-info_panel_activate_rl",
-                                "--panel-relay", "InstanceAuto63-info_panel_activate_rl"])
-        if result:
-            return result
+        write_comparison(args, out / name, left[name], right[name], parse_pose(pose))
         cards.append('<a href="%s/compare.html"><img src="%s/b.png" alt="%s">%s</a>' %
                      (name, name, html.escape(label), html.escape(label)))
     write_gallery(out, cards, args.width, args.height)
-    print(out / "index.html")
+    print(out / "index.html", flush=True)
     return 0
 
 
@@ -309,7 +361,7 @@ body { max-width: 1320px; margin: auto; padding: 24px; }
 a { color: inherit; } img { display: block; width: 100%%; margin-bottom: 8px; }
 </style><h1>Intro4 map comparisons</h1>
 <p>sp_a1_intro4 / sp_a1_intro4_relit · %d×%d · right game: FSR Native AA,
-MSAA off, HDR exposure 2, HDR output requested. RGB PNGs do not verify HDR display presentation.</p>
+MSAA off, HDR exposure 3, HDR output requested. RGB PNGs do not verify HDR display presentation.</p>
 <p>Original: native Vulkan with render core disabled. Relit: native Vulkan render core.</p>
 <div class="grid">%s</div></html>''' % (width, height, "".join(cards))
     (out / "index.html").write_text(page)
@@ -354,10 +406,12 @@ def main(argv=None):
         parser.error("FSR assets are missing: " + str(args.fsr_assets))
     if any(not re.fullmatch(r"[A-Za-z0-9_@-]+", name) for name in args.panel_relay):
         parser.error("panel relay names may contain only letters, digits, _, @, and -")
-    if args.all_captures:
-        return capture_gallery(argv, args, parser)
+    if args.all_captures and (args.map_a, args.map_b) != ("sp_a1_intro4", "sp_a1_intro4_relit"):
+        parser.error("--all-captures uses the Intro4 gallery cameras and map pair")
     out = args.out.resolve()
     if not args.in_compositor:
+        if out.exists() and any(out.iterdir()):
+            parser.error("output directory is not empty: " + str(out))
         out.mkdir(parents=True, exist_ok=True)
         environment = dict(os.environ)
         environment["SDL_VIDEODRIVER"] = "wayland"
@@ -376,8 +430,8 @@ def main(argv=None):
         if result.returncode:
             print("map_swipe_compare: compositor run failed; see " + str(out / "compositor.log"),
                   file=sys.stderr)
-        elif (out / "compare.html").is_file():
-            print(out / "compare.html")
+        else:
+            print(out / ("index.html" if args.all_captures else "compare.html"))
         return result.returncode
     if out.exists() and any(out.iterdir()):
         allowed = {"dbus", "compositor.log"}
@@ -387,29 +441,11 @@ def main(argv=None):
     try:
         content_a = args.content_root_a or published_content(args.map_a)
         content_b = args.content_root_b or published_content(args.map_b)
-        left = capture(args.map_a, "a", content_a, args, out,
-                       ("r_temporal_scale 0", "r_core_world 0", "mat_hdr_output 0"),
-                       ("-norendercore",))
-        right = capture(args.map_b, "b", content_b, args, out,
-                        ("mat_antialias 0", "r_temporal_scale 1", "mat_hdr_output 1",
-                         "mat_hdr_exposure 2"),
-                        ("-fsr", "-fsr-assets", str(args.fsr_assets.resolve())))
-        if abs(left["camera"]["fov"] - right["camera"]["fov"]) > 0.1:
-            raise ValueError("captured camera FOV differs between maps")
-        a, b = Image.open(out / "a.png"), Image.open(out / "b.png")
-        difference = ImageChops.difference(a, b)
-        ImageEnhance.Brightness(difference).enhance(4).save(out / "difference-4x.png")
-        metrics = {"size": list(a.size),
-                   "mean_absolute_rgb": sum(ImageStat.Stat(difference).mean) / 3}
-        position, angles = args.pose
-        receipt = {"schema": "map-swipe-comparison/v1", "left": left, "right": right,
-                   "requested_camera": {"origin": position, "angles": angles},
-                   "activated_panel_relays": args.panel_relay,
-                   "metrics": metrics,
-                   "captured_utc": datetime.datetime.now(datetime.timezone.utc).isoformat()}
-        (out / "comparison.json").write_text(json.dumps(receipt, indent=2) + "\n")
-        make_html(out, left, right, metrics, position, angles)
-        print(out / "compare.html")
+        if args.all_captures:
+            return capture_gallery(args, out, content_a, content_b)
+        left = capture(args.map_a, "a", content_a, args, out)
+        right = capture(args.map_b, "b", content_b, args, out)
+        write_comparison(args, out, left, right, args.pose)
         return 0
     except (OSError, ValueError, KeyError, subprocess.SubprocessError) as error:
         print("map_swipe_compare: " + str(error), file=sys.stderr)

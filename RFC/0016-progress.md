@@ -8765,12 +8765,16 @@ pair is `sp_a1_intro4` / `sp_a1_intro4_relit`. Both boots use native Vulkan
 from `build-p2-fsr` / `run/runtime-p2-fsr`. A explicitly disables the render
 core (`-norendercore`, `r_core_world 0`), temporal scaling and HDR display
 output. B enables the core, FSR Native AA (`r_temporal_scale 1`), disables
-MSAA and requests HDR output with `mat_hdr_exposure 2`. This supersedes the intermediate DXVK A
+MSAA and requests HDR output with `mat_hdr_exposure 3`. This supersedes the intermediate DXVK A
 selection. The 18 deduplicated comparison/survey cameras exclude the panel
 close-up by user direction and include the
 64-unit eye offset and activate both chamber panel relays. Each camera,
 viewport, PNG extent and B's native-resolution FSR dispatch is verified
-before publishing its swipe page; the batch produces one gallery.
+before publishing its swipe page. The batch boots A and B concurrently in
+one private compositor, then takes every selected pose in those same two
+game sessions using the installed view-oracle alias-chain helper. Named
+screenshots and numerically ordered view oracles pair each camera. The
+closing boot screenshots are verified in the count but excluded from the gallery.
 
 Reproduction from the repository root:
 
@@ -8780,9 +8784,11 @@ python3 tools/render/map_swipe_compare.py --all-captures \
 ```
 
 Setup evidence lives in `quality-results/map-swipe-setup/`:
-`gallery-check-native.log` verifies 36 ordered mocked boots, native legacy A,
-native core/FSR B, forwarded extents, camera verification and all 18 gallery
-links/receipts. `pose-inventory-native.log` checks the retained camera inventory.
+`parallel-host-tests.log` verifies two overlapping mocked hosts, native legacy
+A, native core/FSR B at exposure 3 and all 18 gallery links/receipts. Negative
+fixtures reject missing captures, wrong names, camera/extent mismatches, boot
+failure and missing FSR dispatch. `pose-inventory-native-exposure2.log` checks
+the retained camera inventory (the exposure change does not change poses).
 Python compilation and scoped whitespace checks pass. Actual game capture
 results will be recorded separately. HDR presentation remains unverified:
 the private headless compositor and RGB PNG output cannot establish native
