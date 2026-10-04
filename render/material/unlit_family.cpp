@@ -101,6 +101,62 @@ UnlitClaim ClaimUnlit( const ParameterBlock &block )
 	return claim;
 }
 
+UnlitClaim ClaimSprite( const ParameterBlock &block )
+{
+	UnlitClaim claim;
+	if ( block.Family().desc.name != "unlit" )
+	{
+		claim.reason = "the sprite block is of family " + block.Family().desc.name;
+		return claim;
+	}
+	// Orientation/origin have already been expanded into the submitted quad.
+	// Material flags classify sprites but the shader's render-mode switch owns
+	// blending, vertex color and depth. Keep that policy here, not in the bridge.
+	constexpr std::string_view keys[] = { "basetexture", "frame", "color", "alpha", "model",
+	    "nocull", "nofog", "vertexcolor", "vertexalpha", "translucent", "additive", "spriteorigin",
+	    "spriteorientation", "spriterendermode", "ignorevertexcolors", "nosrgb", "hdrcolorscale" };
+	if ( const auto unread = detail::UnclaimedParameter( block, keys ) )
+	{
+		claim.reason = "the sprite point does not draw " + *unread;
+		return claim;
+	}
+	const int mode = int( ReadParameter( block, "spriterendermode" ) );
+	const bool glow = mode == 3 || mode == 9;
+	const bool additive = mode == 5 || glow;
+	if ( mode < 0 || ( mode > 5 && mode != 9 ) )
+	{
+		claim.reason =
+		    "$spriterendermode " + std::to_string( mode ) + " needs an unimplemented sprite point";
+		return claim;
+	}
+	claim.blend = additive ? BlendMode::kAlphaAdditive
+	              : mode   ? BlendMode::kAlpha
+	                       : BlendMode::kOpaque;
+	claim.alphaWrite = false;
+	claim.ignoreDepth = glow;
+	claim.fogToBlack = additive;
+	claim.baseSrgb = !ReadFlag( block, "nosrgb" );
+	const bool vertexColor = mode != 0 && ( mode != 5 || !ReadFlag( block, "ignorevertexcolors" ) );
+	SurfaceConstants &constants = claim.constants;
+	constants.flags[0] = vertexColor ? 1.0f : 0.0f;
+	constants.state[1] = claim.baseSrgb ? 1.0f : 0.0f;
+	constants.state[3] = vertexColor ? 1.0f : 0.0f;
+	constants.surfaceControls[0] = ReadFlag( block, "nofog" ) ? 1.0f : 0.0f;
+	const float hdrScale = ReadParameter( block, "hdrcolorscale" );
+	constants.surfaceControls[1] = claim.baseSrgb ? SourceGammaToLinear( hdrScale ) : hdrScale;
+	if ( mode == 5 )
+	{
+		for ( int c = 0; c < 3; ++c )
+		{
+			const float tint = ReadParameter( block, "color", c );
+			constants.tint[c] = claim.baseSrgb ? SourceGammaToLinear( tint ) : tint;
+		}
+		constants.tint[3] = ReadParameter( block, "alpha" );
+	}
+	claim.claimed = true;
+	return claim;
+}
+
 UnlitClaim ClaimDecalModulate( const ParameterBlock &block )
 {
 	UnlitClaim claim;

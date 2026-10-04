@@ -337,6 +337,8 @@ def preview_summary(name, material):
     summary["opacity"] = constant("opacity")
     summary["opacity_threshold"] = constant("opacityThreshold")
     opacity_mode = material.GetPrim().GetAttribute("sourceEngine:opacityMode")
+    if opacity_mode and opacity_mode.HasAuthoredValue() and opacity_mode.Get() != "coverage":
+        raise ValueError("unsupported sourceEngine:opacityMode on " + path)
     coverage = bool(opacity_mode and opacity_mode.Get() == "coverage")
     summary["ior"] = constant("ior")
     emission = constant("emissiveColor")
@@ -385,6 +387,8 @@ def preview_summary(name, material):
         # Authored paint changes the transport albedo. Runtime overlays still
         # draw it, so compiled world content uses the unpainted base exactly once.
         asset = runtime_base.Get()
+        if "base" not in textures or not asset or not asset.path:
+            raise ValueError("runtimeBaseTexture requires a textured base on " + path)
         textures["runtime_base"] = dict(textures["base"], file=asset.resolvedPath or asset.path)
     summary["textures"] = textures
     summary["approximation"] = "; ".join(notes) or None

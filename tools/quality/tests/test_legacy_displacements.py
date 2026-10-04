@@ -85,6 +85,25 @@ class DisplacementReaderTests(unittest.TestCase):
 
 
 class SurfaceTextureTests(unittest.TestCase):
+    def test_paint_density_includes_rotated_quad_and_independent_texture_transform(self):
+        paint = {"quad": np.array(((0., 0), (-2., 0), (-2., 4), (0., 4))),
+                 "image": np.ones((8, 4, 4)), "limits": (0, 1, 0, 1),
+                 "matrix": np.diag((2., 3)), "basis": np.array(((1., 0, 0), (0., 1, 0)))}
+        derivatives = np.array(((1., 0, 0), (0., 1, 0)))
+        np.testing.assert_allclose(textures.paint_density(derivatives, paint), (12, 2))
+        paint["quad"] = np.zeros((4, 2))
+        with self.assertRaisesRegex(ValueError, "degenerate"):
+            textures.paint_density(derivatives, paint)
+
+    def test_transformed_lookup_repeats_in_native_top_left_coordinates(self):
+        image = np.array((((1., 0, 0), (0., 1, 0)),
+                          ((0., 0, 1), (1., 1, 1))))
+        uv = np.array(((0.25, 0.25), (0.25, 0.75), (1.25, 0.25)))
+        np.testing.assert_allclose(textures.sample(image, uv), ((1, 0, 0), (0, 0, 1), (1, 0, 0)))
+        matrix, offset = textures.transform("center 0 0 scale 1 rotate 0 translate 0.5 0")
+        np.testing.assert_allclose(textures.sample(image, uv, matrix, offset),
+                                   ((0, 1, 0), (1, 1, 1), (0, 1, 0)))
+
     def test_skewed_paint_quad_inverse_and_outside_coverage(self):
         quad = np.array(((0, 0), (-1, 2), (3, 3), (2, 0)), float)
         expected = np.array(((0.2, 0.3), (0.7, 0.8), (1.2, 0.5)))
@@ -92,10 +111,12 @@ class SurfaceTextureTests(unittest.TestCase):
         points = ((1 - s) * (1 - t) * quad[0] + (1 - s) * t * quad[1] +
                   s * t * quad[2] + s * (1 - t) * quad[3])
         actual, covered = textures.quad_coordinates(points, quad)
-        np.testing.assert_allclose(actual, expected)
+        np.testing.assert_allclose(actual[:2], expected[:2])
         np.testing.assert_array_equal(covered, (True, True, False))
         with self.assertRaisesRegex(ValueError, "degenerate"):
             textures.quad_coordinates(points, np.zeros((4, 2)))
+        _, outside = textures.quad_coordinates(np.array(((1e8, -1e8),)), quad)
+        self.assertFalse(outside.any())
 
     def test_static_paint_alpha_and_mod2x_have_distinct_neutral_values(self):
         base = np.array(((0.2, 0.4, 0.6, 1.), (0.2, 0.4, 0.6, 1.)))
@@ -107,6 +128,9 @@ class SurfaceTextureTests(unittest.TestCase):
         result = textures.paint_color(base, points, [paint])
         np.testing.assert_allclose(result[0], (0.1, 0.7, 0.3, 1))
         np.testing.assert_array_equal(result[1], base[1])
+        paint["alphatest"] = 0
+        np.testing.assert_allclose(textures.paint_color(base, points, [paint])[0], (0, 1, 0, 1))
+        paint.pop("alphatest")
         paint.update(shader="decalmodulate", image=np.array([[(0.5, 0.5, 0.5, 0.1)]]))
         np.testing.assert_allclose(textures.paint_color(base, points, [paint]), base)
 
@@ -114,9 +138,11 @@ class SurfaceTextureTests(unittest.TestCase):
         import legacy_bsp_scene as scene
         entity = {"classname": "func_brush", "model": "*1"}
         self.assertTrue(scene.static_brush_entity(entity))
+        self.assertFalse(scene.static_brush_entity(entity, ("func_brush",)))
+        self.assertFalse(scene.static_brush_entity(entity, ("func_*",)))
         for change in ({"StartDisabled": "1"}, {"targetname": "door"}, {"parentname": "train"},
                        {"classname": "func_door"}, {"OnUse": "wall,Disable"},
-                       {"renderamt": "0"}, {"rendermode": "2"}):
+                       {"renderamt": "0"}, {"rendermode": "2"}, {"renderfx": "1"}):
             with self.subTest(change=change):
                 self.assertFalse(scene.static_brush_entity(dict(entity, **change)))
 

@@ -29,6 +29,11 @@ class CoreStatisticsTests(unittest.TestCase):
             with self.subTest(log=bad), self.assertRaises(ValueError):
                 validate_core_statistics(bad + CLAIMS + DYNAMIC)
 
+    def test_failed_gameplay_setup_cannot_certify_clean_draw_statistics(self):
+        with self.assertRaisesRegex(ValueError, "gameplay script failed"):
+            validate_core_statistics("AN ERROR HAS OCCURED [a required input is missing]\n" +
+                                     CLAIMS + DYNAMIC)
+
 
 if __name__ == "__main__":
     unittest.main()

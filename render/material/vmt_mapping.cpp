@@ -228,6 +228,7 @@ constexpr VmtKeyRow kLegacyDerivedKeys[] = {
     { "unlit", "$spriteorientation", "spriteorientation", ValueKind::kEnum,
         "parallel_upright|facing_upright|vp_parallel|oriented|vp_parallel_oriented" },
     { "unlit", "$spriterendermode", "spriterendermode", ValueKind::kInt, "0" },
+    { "unlit", "$nosrgb", "nosrgb", ValueKind::kBool, "0" },
     { "unlit", "$ignorevertexcolors", "ignorevertexcolors", ValueKind::kBool, "1" },
 };
 

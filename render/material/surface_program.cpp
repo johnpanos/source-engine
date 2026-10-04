@@ -541,7 +541,8 @@ foundation::Expected<ProgramRequest, SurfaceStatus> SurfaceProgram::Request(
 	                      : 0.0f;
 	const auto bytes = std::as_bytes( std::span( &packed, 1 ) );
 	request.material.constants.assign( bytes.begin(), bytes.end() );
-	request.material.textures.push_back( { 1, textures.base, 2, sampler, !variant.decalModulate } );
+	request.material.textures.push_back(
+	    { 1, textures.base, 2, sampler, textures.baseSrgb && !variant.decalModulate } );
 	// The water point reads its env map without sRGB decoding, as
 	// water_ps2x's sampler does.
 	request.material.textures.push_back( { 3, textures.envmap, 4, sampler,

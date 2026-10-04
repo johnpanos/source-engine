@@ -18,16 +18,24 @@ def power_of_two(value):
     return 1 << (value - 1).bit_length()
 
 
-def compile_texture(image, destination, vtex):
+def compile_texture(image, destination, vtex, clamp=False):
     destination = Path(destination)
     destination.parent.mkdir(parents=True, exist_ok=True)
-    image.save(destination.with_suffix(".png"))
-    subprocess.run([str(vtex), str(destination.with_suffix(".png"))],
+    # VTEX's PNG path ignores sidecar options. Finite surface tiles need its
+    # TGA/config path so the native sampler receives CLAMPS and CLAMPT.
+    source = destination.with_suffix(".tga" if clamp else ".png")
+    image.save(source)
+    config = destination.with_suffix(".txt")
+    if clamp:
+        config.write_text("clamps 1\nclampt 1\n", encoding="utf-8")
+    subprocess.run([str(vtex), str(source)],
                    check=True, capture_output=True, text=True, timeout=120)
     encoded = destination.with_suffix(".vtf")
     if not encoded.is_file():
         raise RuntimeError("VTEX did not produce " + str(encoded))
-    destination.with_suffix(".png").unlink()
+    source.unlink()
+    if clamp:
+        config.unlink()
     return sha256(encoded)
 
 

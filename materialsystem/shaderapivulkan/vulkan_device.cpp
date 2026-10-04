@@ -5222,6 +5222,7 @@ void CVulkanContext::QueueBeginOcclusionQuery( int query )
 	slot.failed = false;
 	d.query = query;
 	d.querySerial = ++slot.issued;
+	m_queuedOcclusionQuery = query;
 }
 
 void CVulkanContext::QueueEndOcclusionQuery( int query )
@@ -5229,6 +5230,8 @@ void CVulkanContext::QueueEndOcclusionQuery( int query )
 	if ( query < 0 || query >= static_cast<int>( m_querySlots.size() ) )
 		return;
 	AppendRecord( kRecordQueryEnd ).query = query;
+	if ( m_queuedOcclusionQuery == query )
+		m_queuedOcclusionQuery = -1;
 }
 
 int64_t CVulkanContext::OcclusionQueryResult( int query, bool wait )
@@ -5276,16 +5279,30 @@ void CVulkanContext::FailUnsubmittedQueries()
 	}
 }
 
+bool CVulkanContext::RetainsQueryInput() const
+{
+	// Luminance queries also need their framebuffer-copy producer. That cohort
+	// is not retained here; counting its stale texture would change exposure.
+	return m_queuedOcclusionQuery >= 0 && !( m_dynColorFlags & kFragmentLuminanceCompare ) &&
+	       !m_dynRaster.colorWrite && !m_dynRaster.alphaWrite && !m_dynRaster.depthWrite &&
+	       ( !m_dynRaster.stencilEnable || m_dynStencilWriteMask == 0 ||
+	           ( m_dynRaster.stencilFail == VK_STENCIL_OP_KEEP &&
+	               m_dynRaster.stencilDepthFail == VK_STENCIL_OP_KEEP &&
+	               m_dynRaster.stencilPass == VK_STENCIL_OP_KEEP ) );
+}
+
 CVulkanContext::DynDraw &CVulkanContext::AppendDrawRecord()
 {
 	// Record this draw with the state current right now (the engine sets the
 	// transform/shader/constant per object before each Draw).
 	DynDraw &d = AppendRecord( kRecordDraw );
 	d.shaderIndex = m_dynShaderIndex;
-	// Anything but glass changes what a scene capture of this target holds.
+	const bool queryInput = RetainsQueryInput();
+	// Non-writing queries preserve the image a scene capture holds. Other
+	// draws besides glass change it.
 	if ( d.shaderIndex == kDynShaderPbrGlass )
 		m_sceneCaptureGlassDrawn = true;
-	else
+	else if ( !queryInput )
 		NoteSceneChanged();
 	std::memcpy( d.transform, m_dynTransform, sizeof( d.transform ) );
 	std::memcpy( d.color, m_dynConstColor, sizeof( d.color ) );
@@ -5309,6 +5326,11 @@ CVulkanContext::DynDraw &CVulkanContext::AppendDrawRecord()
 	d.stencilRef = m_dynStencilRef;
 	d.stencilTestMask = m_dynStencilTestMask;
 	d.stencilWriteMask = m_dynStencilWriteMask;
+	// Pixel visibility queries need their sample-producing geometry even
+	// when the core owns every scene color/depth draw. Retain
+	// only query inputs that cannot modify color, depth or stencil, at their
+	// original begin/draw/end position. This is not another shading route.
+	d.queryInput = queryInput;
 	d.clipPlaneCount = m_clipPlanesSupported ? m_dynClipPlaneCount : 0;
 	std::memcpy( d.clipPlanes, m_dynClipPlanes, sizeof( d.clipPlanes ) );
 	std::memcpy( d.samplerHandles, m_dynSamplerHandles, sizeof( d.samplerHandles ) );
@@ -6937,7 +6959,7 @@ bool CVulkanContext::SkipLegacyRecord( const DynDraw &d, bool legacyOff, bool le
 	// Depth-alpha snapshots are ordered inputs to core soft particles. Their
 	// producer must survive the suppression of replaced legacy draws.
 	return legacyOff && !legacyHud &&
-	       ( ( d.kind == kRecordDraw && !d.coreCustomEffect ) ||
+	       ( ( d.kind == kRecordDraw && !d.coreCustomEffect && !d.queryInput ) ||
 	           ( d.kind == kRecordCopy && !d.corePortalCopy && !d.copyDepthToAlpha ) ||
 	           d.kind == kRecordSceneCapture ||
 	           ( d.kind == kRecordClear && !d.clearDepth && !d.clearStencil ) );

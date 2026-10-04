@@ -14,11 +14,15 @@ Geometry. Model 0's faces, one mesh per material, with `st` from each face's
 texinfo (v flipped to USD's bottom-left origin). Static props use the same
 LOD 0 MDL/VVD/VTX reader as rendercore, their compiled placements and skins,
 and their VMT materials. Their meshes cast into the bake and appear in probes
-but receive no world atlas and are left out of the packed WMSH. Left out, and
-still drawn by the legacy renderer from the unchanged lumps: sky faces (they
-stay openings, so the sun and sky light enter), displacements, water and
-translucent faces, and every brush entity. The engine replaces only the opaque
-world with the relit world mesh, so these keep their vrad lightmaps. vrad's
+but receive no world atlas and are left out of the packed WMSH. Displacements
+carry their full compiled triangle grid, deformation, smooth normals, removed
+triangles and vertex-alpha material layers into the world atlas and WMSH.
+Authored overlays and static infodecals affect transport albedo; runtime base
+textures remain unpainted because the original paint draws remain. Immutable,
+unnamed active brush entities and supported translucent alpha coverage cast
+into the bake and probes, retaining their runtime draws without world atlas or
+WMSH duplication. Moving/triggered entities, proxy-driven paint, water and
+refraction remain named exclusions. Sky faces stay openings. vrad's
 shadow rays test the solid brushes, not the faces, so the nodraw sides of the
 solid world brushes are added as black occluders (`relight_occluder`), which
 the bake gives no atlas space and the pack step leaves out.
@@ -63,6 +67,7 @@ every approximation, exclusion and conversion.
 """
 
 import argparse
+import fnmatch
 import hashlib
 import json
 import math
@@ -474,8 +479,8 @@ def entity_studio_placements(entities):
                    "angles": angles, "skin": skin}
 
 
-def static_brush_entity(entity):
-    """Only unaddressable, enabled, opaque func_brush placements are immutable.
+def static_brush_entity(entity, targets=()):
+    """Enabled, opaque func_brush placements without an authored controller.
 
     Named, parented and movable entities keep their runtime lifetime; baking
     those would freeze a door/train/disabled wall into all future states.
@@ -484,7 +489,9 @@ def static_brush_entity(entity):
     return (entity.get("classname") == "func_brush" and
             entity.get("model", "").startswith("*") and not entity.get("targetname") and
             not entity.get("parentname") and entity.get("startdisabled", "0") == "0" and
+            not any(fnmatch.fnmatchcase(entity["classname"], target.lower()) for target in targets) and
             entity.get("rendermode", "0") == "0" and entity.get("renderamt", "255") == "255" and
+            entity.get("renderfx", "0") == "0" and
             not any(key.lower().startswith("on") for key in entity))
 
 
@@ -645,11 +652,16 @@ def build_model(bsp, resolver, texture_dir, model_tool=None, map_name=None,
     texdata = bsp.texdata()
     entities = bsp.entities()
     faces = bsp.world_faces()
+    # I/O can address a classname or wildcard even without a targetname.
+    targets = [output.replace("\x1b", ",").split(",", 1)[0].strip()
+               for entity in entities for key, value in entity.items()
+               if key.lower().startswith("on")
+               for output in (value if isinstance(value, list) else [value])]
     static_brushes, runtime_brushes = [], []
     for entity in entities:
         if not entity.get("model", "").startswith("*"):
             continue
-        if not static_brush_entity(entity):
+        if not static_brush_entity(entity, targets):
             runtime_brushes.append({"model": entity["model"], "classname": entity.get("classname"),
                                     "reason": "runtime state, movement or non-rendering volume"})
             continue
@@ -706,7 +718,10 @@ def build_model(bsp, resolver, texture_dir, model_tool=None, map_name=None,
             paint = dict(overlay, shader=shader, image=pixels, matrix=matrix, offset=offset,
                          alpha=float(params.get("$alpha", 1)),
                          alphatest=float(params.get("$alphatestreference", 0.5))
-                         if truthy(params.get("$alphatest")) else 0)
+                         if truthy(params.get("$alphatest")) else None)
+            if not all(math.isfinite(paint[k]) and 0 <= paint[k] <= 1
+                       for k in ("alpha", "alphatest") if paint[k] is not None):
+                raise ValueError("paint has invalid alpha settings: " + name)
         return receipt, paint
 
     # Static infodecal uses R_DecalComputeBasis and the material's mapping
@@ -1004,6 +1019,8 @@ def build_model(bsp, resolver, texture_dir, model_tool=None, map_name=None,
             mask = None
             if truthy(params.get("$normalmapalphaenvmapmask")) and bump:
                 mask = texture_file(bump, "mask")
+                if mask:
+                    mask = dict(mask, mapping_key="$bumptransform")
             elif truthy(params.get("$basealphaenvmapmask")) and base:
                 mask = texture_file(base, "mask")
             elif params.get("$envmapmask"):
@@ -1166,10 +1183,14 @@ def build_model(bsp, resolver, texture_dir, model_tool=None, map_name=None,
                   "$bumptransform", normal_kind)
             if transition:
                 layer("normal2", params.get("$bumpmap2"), "$bumptransform2", normal_kind)
+                if "normal2" in layers and "normal" not in layers:
+                    layers["normal"] = np.array([[(0., 0, 1)]]), np.eye(2), np.zeros(2)
             if truthy(params.get("$ssbump")):
                 layer("occlusion", params.get("$bumpmap"), "$bumptransform", "ssbump-occlusion")
                 if transition:
                     layer("occlusion2", params.get("$bumpmap2"), "$bumptransform2", "ssbump-occlusion")
+                    if "occlusion2" in layers and "occlusion" not in layers:
+                        layers["occlusion"] = np.ones((1, 1, 1)), np.eye(2), np.zeros(2)
             for channel in ("roughness_mask", "mrao", "emission_texture"):
                 if record.get(channel):
                     from PIL import Image
@@ -1177,9 +1198,12 @@ def build_model(bsp, resolver, texture_dir, model_tool=None, map_name=None,
                         pixels = np.asarray(image).astype(np.float64) / 255
                     if pixels.ndim == 2:
                         pixels = pixels[..., None]
+                    if channel == "emission_texture":
+                        pixels[..., :3] = legacy_surface_textures.srgb_decode(pixels[..., :3])
                     layers[channel] = pixels, *legacy_surface_textures.transform(
-                        params.get("$basetexturetransform", legacy_surface_textures.IDENTITY))
-            uv = face_st(flat, texinfo[face["texinfo"]],
+                        params.get(record[channel].get("mapping_key", "$basetexturetransform"),
+                                   legacy_surface_textures.IDENTITY))
+            uv = face_st(face.get("material_points", flat), texinfo[face["texinfo"]],
                          mappings[texinfo[face["texinfo"]]["texdata"]])
             uv[:, 1] = 1 - uv[:, 1]  # the compositor samples native top-left UVs
             world_from_uv, _residual, rank, _singular = np.linalg.lstsq(
@@ -1187,20 +1211,7 @@ def build_model(bsp, resolver, texture_dir, model_tool=None, map_name=None,
             if rank != 3:
                 raise ValueError("paint surface has degenerate material UVs")
             for paint in paints:
-                # Density of the overlay's texture in this surface's UV frame.
-                # For skewed quads the shortest opposing edges bound the scale.
-                quad = paint["quad"]
-                lengths = np.asarray((min(np.linalg.norm(quad[3] - quad[0]),
-                                          np.linalg.norm(quad[2] - quad[1])),
-                                      min(np.linalg.norm(quad[1] - quad[0]),
-                                          np.linalg.norm(quad[2] - quad[3]))))
-                if (lengths <= 1e-8).any():
-                    raise ValueError("paint has a degenerate quad")
-                sizes = np.asarray((paint["image"].shape[1], paint["image"].shape[0]))
-                u0, u1, v0, v1 = paint["limits"]
-                density = sizes * np.abs((u1 - u0, v1 - v0)) / lengths
-                paint["density"] = np.linalg.norm(
-                    (world_from_uv[:2] @ paint["basis"].T) * density, axis=1)
+                paint["density"] = legacy_surface_textures.paint_density(world_from_uv[:2], paint)
             mapped, tile = legacy_surface_textures.compose(
                 record, uv, triangles, disp["alpha"] if transition else np.zeros(len(uv)),
                 texture_dir, key, layers, paints, world_from_uv)

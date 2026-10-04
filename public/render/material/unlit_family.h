@@ -62,6 +62,8 @@ struct UnlitClaim
 	bool cable = false; // expanded ribbon: normal UV0, color UV1, linear vertex lighting
 	bool ignoreDepth = false;
 	bool depthBlend = false; // requires the view's copied scene depth in alpha
+	bool baseSrgb = true;
+	bool fogToBlack = false;
 	// tint: $color and $alpha; flags.x $vertexcolor, .y $alphatest, .z its
 	// reference; state.y 1 (gamma vertex colors); state.w $vertexalpha.
 	SurfaceConstants constants;
@@ -79,6 +81,9 @@ struct UnlitClaim
 // Whether the family draws this block's material, and how. The block must be
 // of the `unlit` family's schema (FamiliesFromMapping).
 UnlitClaim ClaimUnlit( const ParameterBlock &block );
+// Already-expanded Sprite_DX9 quads. The frontend owns orientation and glow
+// visibility; this point owns render-mode blending, color and depth behavior.
+UnlitClaim ClaimSprite( const ParameterBlock &block );
 // DecalModulate: undecoded multiplicative texture, alpha > 0, fog to neutral.
 // The caller supplies decal depth bias and captured culling; destination alpha stays intact.
 UnlitClaim ClaimDecalModulate( const ParameterBlock &block );
@@ -115,6 +120,7 @@ public:
 	{
 		SurfaceTextures textures;
 		textures.base = std::move( baseTexture );
+		textures.baseSrgb = claim.baseSrgb;
 		return Program().Request( claim.Variant( layout ), claim.constants, textures, sampler );
 	}
 	// The draw group an unlit draw binds: no page, neutral lighting.

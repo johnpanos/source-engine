@@ -123,7 +123,8 @@ enum class BlendMode : std::uint8_t
 	// precision where 1 - a would lose it to the target's format.
 	kTransmittance,
 	// Dimensionless decal factors: 2 * src.rgb * dst.rgb; destination alpha kept.
-	kModulate2x
+	kModulate2x,
+	kAlphaAdditive // src * a + dst; sprite glows and additive translucent images
 };
 
 // The color components a pipeline writes to an attachment (clause D17): a bit

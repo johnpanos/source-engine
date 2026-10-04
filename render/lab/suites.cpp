@@ -64,6 +64,8 @@ int RunSuite( int argc, char **argv )
 		return RunPanelSuite( argc - 1, argv + 1 );
 	if ( name == "posed-model" )
 		return RunPosedModelSuite( argc - 1, argv + 1 );
+	if ( name == "sprite" )
+		return RunSpriteSuite( argc - 1, argv + 1 );
 	if ( name == "softparticle" )
 		return RunSoftParticleSuite( argc - 1, argv + 1 );
 	if ( name == "selfillum" )

@@ -1696,6 +1696,22 @@ dormant or removed eyes publish no source, and a moving attachment is queried
 anew each frame. Missing required camera attachment data fails by name. Other
 glow sprites need their own reviewed source policy. Isolation changes light
 publication, preserving the visible image.
+
+The visible camera halo is the expanded `Sprite_DX9` point on the core's unlit
+surface program. `ClaimSprite` owns render-mode selection, texture decoding,
+vertex/constant modulation and black fog for additive modes; the frontend owns
+quad orientation and glow visibility. Modes 0–5 and 9 are supported; other modes
+refuse by `$spriterendermode` until their required multi-pass/animation behavior
+is implemented. Glow modes 3/9 use source-alpha/one blending without depth test
+or writes. Their existing pixel-visibility queries enforce opaque occlusion.
+Those queries require their non-writing sample geometry at the original
+begin/draw/end stream position, even under core-only suppression. The bridge
+retains only enclosed visibility query inputs with no color, alpha, depth or
+stencil writes;
+luminance queries are excluded because this bridge does not retain their
+framebuffer-copy producer. It does not retain a second scene shading path. The
+core owns visible sprite shading. The area-source policy above remains independent of the view-facing halo.
+
 Panel source-image caches retain their unscaled emission; policy scaling occurs
 after sampling, so a light control takes effect without a cache rebuild.
 

@@ -364,6 +364,9 @@ public:
 	}
 
 	bool RetainsSolidEnergy() const { return m_queueCustomEffects; }
+	// Non-writing visibility producers survive core-only conversion/replay;
+	// luminance inputs require their separate framebuffer-copy producer.
+	bool RetainsQueryInput() const;
 
 	bool CoreOnlyQueue() const
 	{
@@ -507,6 +510,7 @@ public:
 		m_dynQueued.clear();
 		m_dynIndices.clear();
 		m_dynDrawRecords.clear();
+		m_queuedOcclusionQuery = -1;
 		m_corePassTerms.clear();
 		m_queueCoreOnly = false;
 		m_queueCustomEffects = false;
@@ -2459,6 +2463,7 @@ private:
 		float clearValue[4] = { 0, 0, 0, 1 };
 		int copyDst = -1;
 		bool coreCustomEffect = false; // retained custom shader at its original stream position
+		bool queryInput = false;       // non-writing geometry counted by an enclosing query
 		bool corePortalCopy = false;   // the preceding snapshot consumed by a retained effect
 		uint32_t corePass = 0;      // kRecordCorePass: the slot's tag
 		uint32_t corePassTerms = 0; // and its terms (m_corePassTerms)
@@ -2592,6 +2597,7 @@ private:
 	};
 	VkQueryPool m_queryPool = VK_NULL_HANDLE;
 	std::vector<OcclusionQuerySlot> m_querySlots;
+	int m_queuedOcclusionQuery = -1;
 	bool m_preciseOcclusion = false;
 	bool m_fillModeNonSolid = false;
 	// Issues replayed into the frame being recorded; marked submitted by EndFrame.

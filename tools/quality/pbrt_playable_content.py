@@ -424,18 +424,20 @@ def main():
             solid, source_hashes = None, {"sky": sha256(args.sky_texture)}
         else:
             image, solid, source_hashes = base_image(scene, summary)
-        base_hash = compile_texture(image, directory / "basecolor", args.vtex.resolve())
+        base_record = summary["textures"].get("runtime_base") or summary["textures"].get("base", {})
+        clamp = base_record.get("wrap") == ["clamp", "clamp"]
+        base_hash = compile_texture(image, directory / "basecolor", args.vtex.resolve(), clamp)
         if solid:
             verify_solid_vtf(directory / "basecolor.vtf", solid)
         mrao, mrao_rgb, mrao_hashes = mrao_image(scene, summary)
-        mrao_hash = compile_texture(mrao, directory / "mrao", args.vtex.resolve())
+        mrao_hash = compile_texture(mrao, directory / "mrao", args.vtex.resolve(), clamp)
         if mrao_rgb:
             verify_solid_vtf(directory / "mrao.vtf", mrao_rgb)
         normal, normal_source = normal_image(scene, summary)
-        normal_hash = compile_texture(normal, directory / "normal", args.vtex.resolve()) \
+        normal_hash = compile_texture(normal, directory / "normal", args.vtex.resolve(), clamp) \
             if normal else None
         emission_hash = compile_texture(emission_image, directory / "emission",
-                                        args.vtex.resolve()) if emission_image else None
+                                        args.vtex.resolve(), clamp) if emission_image else None
         texture = "%s/%s/basecolor" % (prefix, name)
         common = [("$surfaceprop", "default")]
         cutout = image.mode == "RGBA"

@@ -853,6 +853,9 @@ private:
 				case BlendMode::kOpaque:
 					m_Gl.BlendFuncSeparatei( index, GL_ONE, GL_ONE, GL_ONE, GL_ONE );
 					break;
+				case BlendMode::kAlphaAdditive:
+					m_Gl.BlendFuncSeparatei( index, GL_SRC_ALPHA, GL_ONE, GL_SRC_ALPHA, GL_ONE );
+					break;
 				}
 			}
 			const std::uint8_t mask =

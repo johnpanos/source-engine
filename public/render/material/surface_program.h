@@ -580,6 +580,7 @@ struct SurfaceTextures
 	// mask's and MRAO's places (the water point reads neither).
 	std::string flowmap;
 	std::string flowNoise;
+	bool baseSrgb = true; // Sprite's $nosrgb selects an undecoded base image
 };
 
 // The split-sum table (RFC 0007, pbr_split_sum_table.h): the texels for a

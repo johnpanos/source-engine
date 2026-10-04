@@ -108,6 +108,19 @@ def quad_coordinates(points, quad):
     quad = np.asarray(quad)
     a, b = quad[3] - quad[0], quad[1] - quad[0]
     c = quad[0] - quad[1] + quad[2] - quad[3]
+    edges = np.roll(quad, -1, axis=0) - quad
+    cross = edges[:, 0] * np.roll(edges[:, 1], -1) - edges[:, 1] * np.roll(edges[:, 0], -1)
+    if not np.isfinite(quad).all() or not ((cross > 1e-12).all() or (cross < -1e-12).all()):
+        raise ValueError("paint has a degenerate or nonconvex projection quad")
+    delta = points[..., None, :] - quad
+    side = edges[:, 0] * delta[..., 1] - edges[:, 1] * delta[..., 0]
+    inside = (side >= -1e-8).all(axis=-1) | (side <= 1e-8).all(axis=-1)
+    if np.linalg.norm(c) < 1e-10:
+        return (points - quad[0]) @ np.linalg.inv(np.column_stack((a, b))).T, inside
+    # Outside a convex quad the bilinear extension can fold. Only solve for
+    # covered paint; distant receiver texels must not make valid paint fail.
+    selected = points[inside]
+    points = selected
     local = np.full(points.shape, 0.5)
     for _ in range(12):
         s, t = local[..., 0, None], local[..., 1, None]
@@ -120,8 +133,11 @@ def quad_coordinates(points, quad):
         local[..., 1] -= (dx[..., 0] * error[..., 1] - dx[..., 1] * error[..., 0]) / determinant
     s, t = local[..., 0, None], local[..., 1, None]
     residual = np.linalg.norm(quad[0] + s * a + t * b + s * t * c - points, axis=-1)
-    inside = (local >= 0).all(axis=-1) & (local <= 1).all(axis=-1) & (residual < 1e-6)
-    return local, inside
+    if (residual > 1e-6).any():
+        raise ValueError("paint projection did not converge")
+    result = np.zeros(inside.shape + (2,))
+    result[inside] = local
+    return result, inside
 
 
 def paint_color(base, world_points, paints):
@@ -134,7 +150,7 @@ def paint_color(base, world_points, paints):
         uv = local * (u1 - u0, v1 - v0) + (u0, v0)
         texel = sample(paint["image"], uv, paint["matrix"], paint["offset"])
         alpha = texel[..., 3] * paint.get("alpha", 1)
-        if paint.get("alphatest"):
+        if paint.get("alphatest") is not None:
             alpha = (alpha >= paint["alphatest"]).astype(float)
         if paint["shader"] == "decalmodulate":
             # Mod2x uses RGB only: neutral paint is encoded sRGB 0.5.
@@ -146,6 +162,28 @@ def paint_color(base, world_points, paints):
         alpha = (alpha * inside)[..., None]
         result[..., :3] = result[..., :3] * (1 - alpha) + color * alpha
     return result
+
+
+def paint_density(world_derivatives, paint):
+    """Conservative authored texels per receiver UV, including paint transforms."""
+    quad = paint["quad"]
+    a, b = quad[3] - quad[0], quad[1] - quad[0]
+    c = quad[0] - quad[1] + quad[2] - quad[3]
+    u0, u1, v0, v1 = paint["limits"]
+    sizes = (paint["image"].shape[1], paint["image"].shape[0])
+    lookup = np.diag(sizes) @ paint["matrix"] @ np.diag((u1 - u0, v1 - v0))
+    projected = world_derivatives @ paint["basis"].T
+    jacobians = np.array([np.column_stack((a + t * c, b + s * c))
+                         for s, t in ((0, 0), (0, 1), (1, 0), (1, 1))])
+    determinants = np.linalg.det(jacobians)
+    if not ((determinants > 1e-12).all() or (determinants < -1e-12).all()):
+        raise ValueError("paint has a degenerate projection quad")
+    if np.linalg.norm(c) < 1e-10:
+        return np.linalg.norm(lookup @ np.linalg.inv(jacobians[0]) @ projected.T, axis=0)
+    # det(J) is affine in s,t; ||J||_F is convex. Their corner extrema
+    # bound the inverse throughout the convex quad, including skewed paint.
+    bound = np.max(np.linalg.norm(jacobians, axis=(1, 2))) / np.min(np.abs(determinants))
+    return np.linalg.norm(lookup, ord=2) * bound * np.linalg.norm(projected, axis=1)
 
 
 def compose(record, uv, triangles, alpha, out, name, layers, paints=(), world_from_uv=None):

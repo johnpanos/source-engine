@@ -5058,7 +5058,8 @@ static render::legacy::CoreMeshKind CoreMeshKindFor( IMaterial *material )
 		     !V_stricmp( shader, "DecalModulate" ) || !V_stricmp( shader, "DecalModulate_dx9" ) )
 			return CoreMeshKind::kDecal;
 		if ( !V_stricmp( shader, "UnlitGeneric" ) || !V_stricmp( shader, "UnlitTwoTexture" ) ||
-		     !V_stricmp( shader, "UnlitTwoTexture_dx9" ) )
+		     !V_stricmp( shader, "UnlitTwoTexture_dx9" ) || !V_stricmp( shader, "Sprite" ) ||
+		     !V_stricmp( shader, "Sprite_DX9" ) )
 			return CoreMeshKind::kUnlit;
 		if ( !V_stricmp( shader, "Refract" ) || !V_stricmp( shader, "Refract_DX90" ) )
 			return CoreMeshKind::kTransmission;
@@ -5262,7 +5263,7 @@ bool CEmptyMesh::EmitToCoreQueue()
 
 void CEmptyMesh::EmitToNativeQueue()
 {
-	if ( g_VulkanContext.CoreOnlyQueue() &&
+	if ( g_VulkanContext.CoreOnlyQueue() && !g_VulkanContext.RetainsQueryInput() &&
 	     !g_VulkanContext.RetainsPortalEffect( g_CurrentPortalStage ) &&
 	     !( g_CurrentSolidEnergy && g_VulkanContext.RetainsSolidEnergy() ) )
 	{

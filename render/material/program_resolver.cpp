@@ -57,6 +57,11 @@ bool SameKey( std::string_view a, std::string_view b )
 	return true;
 }
 
+bool IsSprite( const MaterialDesc &material )
+{
+	return material.legacyShader == "sprite_dx9";
+}
+
 // The numbers of a value ("0.5", "[1 1 1]", "{255 255 255}"), when it is
 // only numbers.
 std::optional<std::vector<double>> Numbers( const std::string &value )
@@ -362,7 +367,8 @@ foundation::Expected<device::BlendMode, std::string> ClaimForDrawing(
 		const UnlitClaim claim = material.family == "cable" ? ClaimCable( *block )
 		                         : material.family == "decal-modulate"
 		                             ? ClaimDecalModulate( *block )
-		                             : ClaimUnlit( *block );
+		                         : IsSprite( material ) ? ClaimSprite( *block )
+		                                                : ClaimUnlit( *block );
 		if ( !claim.claimed )
 			return foundation::MakeUnexpected( claim.reason );
 		if ( requiresDepthAlpha )
@@ -464,7 +470,7 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 	if ( !block )
 		return foundation::MakeUnexpected( why );
 	ResolvedProgram out;
-	out.twoSided = detail::ReadFlag( *block, "nocull" );
+	out.twoSided = IsSprite( material ) || detail::ReadFlag( *block, "nocull" );
 	if ( material.family == "depth" || material.family == "portal-mask" )
 	{
 		if ( auto unread = DepthClaim( *block, material.family == "portal-mask" ) )
@@ -521,11 +527,13 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 		const UnlitClaim claim = material.family == "cable" ? ClaimCable( *block )
 		                         : material.family == "decal-modulate"
 		                             ? ClaimDecalModulate( *block )
-		                         : s.mesh ? ClaimUnlitMesh( *block )
-		                                  : ClaimUnlit( *block );
+		                         : IsSprite( material ) ? ClaimSprite( *block )
+		                         : s.mesh               ? ClaimUnlitMesh( *block )
+		                                                : ClaimUnlit( *block );
 		if ( !claim.claimed )
 			return foundation::MakeUnexpected( claim.reason );
 		SurfaceTextures textures;
+		textures.baseSrgb = claim.baseSrgb;
 		textures.base = TextureOf( material, "hdrbasetexture" );
 		if ( textures.base.empty() )
 			textures.base = TextureOf( material, "basetexture" );
@@ -565,6 +573,7 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 			return foundation::MakeUnexpected( std::string( "an unlit pipeline was refused" ) );
 		out.name = "unlit";
 		out.depthBlend = claim.depthBlend;
+		out.fogToBlack = claim.fogToBlack;
 		out.request = std::move( request ).Value();
 		out.blend = claim.blend;
 		// Unlit points bind the neutral page; no captured lightmap is read.
@@ -907,6 +916,8 @@ std::optional<GroupRequest> ProgramResolver::FrameGroup(
 		frame.light[1] = terms.outputScale;
 		frame.light[2] = terms.encodeOutput ? 1.0f : 0.0f;
 		std::copy( terms.fogColor, terms.fogColor + 3, frame.fogColor );
+		if ( program.fogToBlack )
+			std::fill_n( frame.fogColor, 3, 0.0f );
 		frame.fogColor[3] = terms.fogType;
 		std::copy( terms.fogParams, terms.fogParams + 4, frame.fogParams );
 		frame.fogMisc[0] = terms.fogEyeZ;

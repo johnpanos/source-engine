@@ -18,7 +18,7 @@ from the toolchain's game runtime, or any v20/v21 `--bsp`) goes to
   * the output BSP2 carries every legacy lump of the input byte for byte
     (entities, brushes, collision, visibility, brush models, props, game
     lumps, the pak file and the vrad lightmaps the legacy renderer still uses
-    for brush entities, displacements and translucent faces), except the
+    for retained legacy draws), except the
     lighting-only lumps the relight rewrites: the leaf ambient samples
     (derived from the probe volume) and the world lights (vrad's baked ones
     removed so models are not lit twice). The back end's `identity` step

@@ -2203,3 +2203,36 @@ The inherited Source2 audit also remains failed. R50, R95 and R96 stay open;
 these captures do not certify the full material/cohort or Cycles parity gates.
 Architecture inventory verification passes; full/baseline checks retain the
 two unrelated `blob_networkbypass` CreateInterfaceFn boundary failures.
+
+### Legacy relight displacement and static transport slice (2026-10-04)
+
+The legacy BSP producer now lifts compiled displacements into the world atlas
+and WMSH: powers 2–4, rotated start corners, deformed vertices, alternating
+triangle diagonals, removed-triangle tags, smooth normals and actual
+triangle-interpolated blend weights. WorldVertexTransition's two base/normal
+layers, independent transforms, blend modulation and ssbump occlusion become
+finite material tiles at the input texel density. The content bridge retains
+clamped sampling through VTEX rather than repeating the surface footprint.
+
+Authored overlays and static unnamed infodecals change transport albedo. Their
+unpainted base is a separate scene texture consumed by the runtime content
+bridge, because the original overlay/decal draws remain. Supported translucent
+coverage and unnamed, enabled, opaque func_brush placements participate in
+transport/probes but have neither world atlas allocation nor duplicate WMSH
+draws. Named, parented, disabled, animated and movable entities remain excluded,
+including unnamed brushes addressed by classname/wildcard I/O controllers.
+Proxy-driven paint is excluded by name; selfillum paint still contributes its
+diffuse albedo, with its unauthored emission listed as an unbaked term. Water
+and refraction remain outside this slice. Static props and solid nodraw
+occluders retain their existing transport path.
+
+The [evidence and reproduction commands](0007-relight-static-transport-2026-10-04.md)
+record 14 displacement/material unit tests and six required integration tests.
+The integration lane uses real OpenUSD, xatlas, Cycles, VTEX and independent
+WMSH writing/reading; missing tools fail. Its small CPU fixture proves the data
+path and does not change the GPU source2 production policy. The shipped Intro4
+export contains both Ratman-floor displacements (256 triangles), static paint
+on 202 surfaces, two static brush placements and the omitted metal-grate
+coverage. Its 4096 chart layout passes with 1170 charts. This is producer
+evidence, not a published full-quality Intro4 rebake or game-image acceptance.
+R49's complete baker gate, R50, R95 and R96 remain open.

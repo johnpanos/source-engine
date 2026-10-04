@@ -350,3 +350,33 @@ route above, exercise the affected foliage/railing shadows, retain screenshots
 and record the actual caster census. Its owning semantics and current migration
 status are in [RFC 0016](../../RFC/0016-render-core.md#one-surface-terms-with-neutral-values)
 and [its progress record](../../RFC/0016-progress.md).
+
+
+## Security-camera visible eye and pixel visibility
+
+Use the same strict two-mode runner with `--scene camera-eyes` before the combined
+`--scene all` regression. Seven native captures require the real camera eye to
+appear, remain visible with its area light off, hide/show, disappear behind an
+opaque blocker, match the hidden-eye blocker control, and return after uncovering.
+Possible samples must remain positive while the opaque blocker drives visible
+samples to zero. Missing query geometry, a wrong attachment parent, script errors,
+missing state reports or image defects cannot certify this route. The query parser
+has independent fixtures including the similar `occluded`/`occluded-hidden` labels.
+
+The visible-eye and combined fixtures hold exposure at `mat_force_tonemap_scale 1`
+while comparing states, then restore its default 0. The combined fixture keeps
+this setting across every capture so exposure changes cannot turn a light-only or hide/show
+comparison into an exposure comparison. This bridge retains only visibility
+queries; luminance queries need their framebuffer-copy producer and are excluded. The physical
+camera-light fixture resets the camera to its resting authored pose before its
+first image, including after the preceding eye fixture. The receiver-light camera fixture separately
+sets `r_drawsprites 0` so the newly supported optical halo cannot be mistaken for
+physical receiver light; it restores the default 1 and reports it. The visible-eye
+fixture exercises normal sprite drawing. These are temporary measurement controls,
+not game defaults or changes to the camera's area-source policy.
+
+`render_lab suite sprite --validate --verbose` checks the same resolved point's
+texture decoding, vertex brightness/alpha, source-alpha additive blending, depth,
+fog, required render-mode refusals and three deliberately wrong GPU inputs. Vulkan
+validation must be silent. These checks and a lab-only image do not replace the
+strict game captures or certify the remaining complete material/model audit.

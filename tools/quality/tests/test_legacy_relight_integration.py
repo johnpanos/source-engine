@@ -53,11 +53,13 @@ def integration_bsp():
     struct.pack_into("<6f", overlay, 328, 32, 32, 0, 0, 0, 1)
     leaf = bytearray(32)
     struct.pack_into("<6h", leaf, 8, -128, -128, -128, 128, 128, 128)
+    sun = bytearray(world_light(0, intensity=(0.5, 0.5, 0.5), kind=legacy_bsp.EMIT_SKYLIGHT))
+    struct.pack_into("<3f", sun, 24, 0, 0, -1)  # Incoming light travels toward the floor.
     lumps = {0: (0, b'{"classname" "worldspawn"}\0'), 1: (0, struct.pack("<4fi4fi", 0, 0, 1, 0, 2, 0, 0, 1, 32, 2)),
              2: (0, texdata), 3: (0, points.tobytes()), 6: (0, texinfo), 7: (0, b"".join(faces)),
              10: (1, leaf), 12: (0, edges.tobytes()), 13: (0, struct.pack("<8i", *range(1, 9))),
              14: (0, struct.pack("<9f3i", *([0.] * 9), -1, 0, 2)),
-             15: (0, world_light(0, kind=legacy_bsp.EMIT_SKYLIGHT)),
+             15: (0, sun),
              26: (0, info), 33: (0, displacement.lump(33)), 48: (0, displacement.lump(48)),
              43: (0, names), 44: (0, struct.pack("<3i", 0, 6, 12)), 45: (0, overlay)}
     return legacy_bsp.LegacyBsp(legacy_map(lumps))
@@ -84,7 +86,7 @@ class Content:
 class RelightIntegrationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        from pxr import Usd
+        from pxr import Usd, UsdGeom
         import lightmap_layout
         import usd_scene
         cls.temporary = tempfile.TemporaryDirectory(prefix="relight-displacement-")
@@ -134,6 +136,11 @@ class RelightIntegrationTests(unittest.TestCase):
         self.assertTrue((runtime[..., 1] == 0).all())
         self.assertGreater(int(runtime[..., 0].max()), 200)
         self.assertGreater(int(runtime[..., 2].max()), 200)
+        import vtf_content
+        destination = self.out / "compiled_runtime_base"
+        vtf_content.compile_texture(image, destination, ROOT / "build/toolchains/pbrt-map-tools/vtex", True)
+        payload = destination.with_suffix(".vtf").read_bytes()
+        self.assertEqual(struct.unpack_from("<I", payload, 20)[0] & 12, 12)
 
     def test_charted_displacement_round_trips_through_real_wmsh_writer_reader(self):
         from usd_worldmesh_pack import source_triangles
@@ -155,7 +162,7 @@ class RelightIntegrationTests(unittest.TestCase):
     def test_real_cycles_bake_lights_the_displacement_and_preserves_its_geometry(self):
         # A small CPU fixture qualifies the data path; production retains its
         # source2 GPU profile and full samples/resolution.
-        from pxr import Usd
+        from pxr import Usd, UsdGeom
         exr, result = self.out / "bake.exr", self.out / "baked.usdc"
         log = self.out / "bake.log"
         args = ["blender", "--background", "--factory-startup", "--python-exit-code", "1", "--python",
@@ -186,13 +193,45 @@ class RelightIntegrationTests(unittest.TestCase):
         self.assertGreater(light["peak"], 0.1)
         self.assertGreater(light["lit"], 100)
         baked = Usd.Stage.Open(str(result))
-        before = self.stage.GetPrimAtPath("/root/floor_disp0/floor_disp0")
-        after = baked.GetPrimAtPath(before.GetPath())
+        before = next(p for p in self.stage.Traverse()
+                      if p.IsA(UsdGeom.Mesh) and p.GetName() == "floor_disp0")
+        after = next(p for p in baked.Traverse()
+                     if p.IsA(UsdGeom.Mesh) and p.GetName() == before.GetName())
         self.assertTrue(after)
         np.testing.assert_array_equal(before.GetAttribute("points").Get(),
                                       after.GetAttribute("points").Get())
         np.testing.assert_array_equal(before.GetAttribute("faceVertexIndices").Get(),
                                       after.GetAttribute("faceVertexIndices").Get())
+
+    def test_static_decal_is_lifted_and_triggered_decal_is_excluded(self):
+        source = integration_bsp()
+        lumps = {i: (entry[2], source.lump(i)) for i, entry in enumerate(source.lumps)}
+        lumps[0] = (0, b'{"classname" "worldspawn"}\n'
+                       b'{"classname" "infodecal" "texture" "paint" "origin" "8 8 0"}\n'
+                       b'{"classname" "infodecal" "texture" "paint" "origin" "8 8 0" '
+                       b'"targetname" "triggered"}\0')
+        _model, receipt = legacy_bsp_scene.build_model(
+            legacy_bsp.LegacyBsp(legacy_map(lumps)), Content(), self.out / "decal-textures")
+        decals = [r for r in receipt["authored_paint"]["overlays"] if r["kind"] == "decal"]
+        self.assertTrue(any(r.get("faces") == [0] and "excluded" not in r for r in decals))
+        self.assertTrue(any(r.get("excluded") == "runtime-triggered or parented decal" for r in decals))
+
+    def test_immutable_brush_is_transformed_and_kept_out_of_runtime_world_pack(self):
+        source = integration_bsp()
+        lumps = {i: (entry[2], source.lump(i)) for i, entry in enumerate(source.lumps)}
+        lumps[0] = (0, b'{"classname" "worldspawn"}\n'
+                       b'{"classname" "func_brush" "model" "*1" "origin" "128 0 0"}\0')
+        lumps[14] = (0, source.lump(14) + struct.pack("<9f3i", *([0.] * 9), -1, 1, 1))
+        model, receipt = legacy_bsp_scene.build_model(
+            legacy_bsp.LegacyBsp(legacy_map(lumps)), Content(), self.out / "brush-textures")
+        self.assertEqual(len(receipt["static_transport"]["brush_entities"]), 1)
+        faces = [f for group in model["meshes"].values() for f in group if f.get("transport_only")]
+        self.assertTrue(any(float(f["points"][:, 0].min()) == 128 for f in faces))
+        lumps[0] = (0, lumps[0][1][:-1] +
+                       b'\n{"classname" "logic_relay" "OnTrigger" "func_brush,Disable,,0,-1"}\0')
+        _model, controlled = legacy_bsp_scene.build_model(
+            legacy_bsp.LegacyBsp(legacy_map(lumps)), Content(), self.out / "controlled-brush-textures")
+        self.assertEqual(controlled["static_transport"]["brush_entities"], [])
 
 
 if __name__ == "__main__":

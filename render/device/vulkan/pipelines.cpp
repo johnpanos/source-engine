@@ -162,6 +162,13 @@ VkPipelineColorBlendAttachmentState Blend( BlendMode mode )
 		state.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
 		state.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
 		break;
+	case BlendMode::kAlphaAdditive:
+		state.blendEnable = VK_TRUE;
+		state.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+		state.dstColorBlendFactor = VK_BLEND_FACTOR_ONE;
+		state.srcAlphaBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+		state.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+		break;
 	case BlendMode::kModulate2x:
 		state.blendEnable = VK_TRUE;
 		state.srcColorBlendFactor = VK_BLEND_FACTOR_DST_COLOR;

@@ -11,7 +11,8 @@ Use --scene doors for the closed/open door and independent indicator-box cycle.
 Use --scene cables for the rope visibility cycle under captured scene lighting.
 Use --scene emissives for cyan/orange/off light on neighboring wall receivers.
 Use --scene signage for isolated signs, pictograms, chamber boards and movie screens.
-Use --scene cameras for attached red eyes, hide/show, movement, rotation and removal.
+Use --scene camera-eyes for visible red glow and opaque visibility queries.
+Use --scene cameras for attached red lights, hide/show, movement, rotation and removal.
 Use --scene particles for soft-particle fade, opaque occlusion, return and removal.
 Use --scene sparks for the additive spark image, hide/show, opaque occlusion and removal.
 Use --scene monitors for the two real static monitors and their live scanline proxy.
@@ -132,15 +133,53 @@ def signage_commands():
     return result
 
 
+def camera_eye_commands():
+    result = ['cmd noclip', 'r_drawviewmodel 0', 'cmd ai_disable',
+              'developer 1', 'con_notifytime 0', 'cl_drawhud 0', 'mat_force_tonemap_scale 1',
+              'cmd setpos 107 60 53', 'cmd setang -31 -46 0',
+              'cmd script rc_camera <- Entities.FindByClassnameNearest('
+              '"npc_security_camera",Vector(160,0,182.152),32)',
+              'cmd script rc_eye <- Entities.FindByClassnameNearest('
+              '"env_sprite",rc_camera.GetOrigin(),32)',
+              'cmd script printl("RC_CAMERA_EYE_PARENT "+'
+              '(rc_eye.GetMoveParent()==rc_camera ? "true" : "false"))',
+              'cmd script rc_eye.__KeyValueFromString("targetname","rc_camera_eye")',
+              'r_pixelvisibility_partial 1']
+    states = (
+        ('visible', ['cl_surface_core_emission 1']),
+        ('light-off', ['cl_surface_core_emission 0']),
+        ('hidden', ['cmd ent_fire rc_camera_eye HideSprite']),
+        ('shown', ['cmd ent_fire rc_camera_eye ShowSprite']),
+        ('occluded', ['cmd ent_create prop_dynamic_override targetname rc_eye_blocker '
+                      'model models/props/metal_box.mdl modelscale 0.5',
+                      'cmd ent_fire rc_eye_blocker RunScriptCode '
+                      '\"self.SetOrigin(Vector(125,42,120))\"']),
+        ('occluded-hidden', ['cmd ent_fire rc_camera_eye HideSprite']),
+        ('returned', ['cmd ent_fire rc_eye_blocker Kill',
+                      'cmd ent_fire rc_camera_eye ShowSprite', 'cl_surface_core_emission 1']),
+    )
+    for label, controls in states:
+        result.extend(controls + ['r_pixelvisibility_spew 1', 'wait 180',
+                                  f'echo RC_CAMERA_EYE_{label}', 'wait 12',
+                                  'r_pixelvisibility_spew 0', 'echo RC_CAMERA_EYE_QUERY_END', 'wait 12', 'screenshot', 'wait 12'])
+    result.extend(['mat_force_tonemap_scale 0', 'cl_drawhud 1', 'con_notifytime 6',
+                   'developer 0', 'cmd ai_disable',
+                   'r_core_world_stats', 'r_core_world_strict', 'r_core_dynamic_draws',
+                   'cl_surface_core_emission', 'cl_surface_core_emission_strength',
+                   'r_pixelvisibility_partial', 'mat_force_tonemap_scale'])
+    return result
+
+
 def camera_commands():
     # Resting Intro4 cameras point down. Freeze AI for a reproducible pose and
     # place a receiver beneath the first eye, keeping shadows at shipped settings.
     result = ['cmd noclip', 'r_drawviewmodel 0', 'cmd ai_disable',
-              'cl_surface_core_emission_filter @camera-eyes',
+              'cl_surface_core_emission_filter @camera-eyes', 'r_drawsprites 0',
               'cmd setpos 205 100 100', 'cmd setang 20 -128 0',
               'cmd script rc_camera <- Entities.FindByClassnameNearest('
               '"npc_security_camera",Vector(160,0,182.152),32)',
               'cmd script rc_camera.__KeyValueFromString("targetname","rc_camera")',
+              'cmd script rc_camera.SetAngles(0,90,0)',
               'cmd script rc_eye <- Entities.FindByClassnameNearest('
               '"env_sprite",rc_camera.GetOrigin(),32)',
               'cmd script printl(rc_eye.GetModelName())',
@@ -165,11 +204,11 @@ def camera_commands():
     for label, control in states:
         result.extend([control, 'wait 300', f'echo RC_CAMERA_{label}',
                        'r_area_lights_report 1', 'wait 2', 'screenshot', 'wait 12'])
-    result.extend(['cmd ent_fire rc_camera_receiver Kill', 'cmd ai_disable',
+    result.extend(['cmd ent_fire rc_camera_receiver Kill', 'r_drawsprites 1', 'cmd ai_disable',
                    'cl_surface_core_emission_filter ""', 'r_core_world_stats',
                    'r_core_world_strict', 'r_core_dynamic_draws',
                    'cl_surface_core_emission', 'cl_surface_core_emission_strength',
-                   'cl_surface_core_emission_filter', 'r_core_shadow_quality',
+                   'cl_surface_core_emission_filter', 'r_drawsprites', 'r_core_shadow_quality',
                    'r_core_shadow_movers'])
     return result
 
@@ -504,11 +543,14 @@ def portal_sensitivity(images):
 
 def commands(scene='materials'):
     if scene == 'all':
-        result = ['wait 600', 'r_core_world_stats', 'r_temporal_scale']
-        for name in ('materials', 'doors', 'cables', 'emissives', 'signage', 'cameras', 'particles', 'sparks', 'monitors', 'portal-emitters', 'portals'):
+        # Freeze exposure for image differences. Visibility query geometry stays
+        # live, and the shipped exposure policy is restored after captures.
+        result = ['mat_force_tonemap_scale 1', 'wait 600', 'r_core_world_stats', 'r_temporal_scale']
+        for name in ('materials', 'doors', 'cables', 'emissives', 'signage', 'camera-eyes', 'cameras', 'particles', 'sparks', 'monitors', 'portal-emitters', 'portals'):
             sequence = commands(name)
-            result.extend(sequence if name == 'materials' else sequence[1:])
-        result.append('r_temporal_scale')
+            result.extend(command for command in (sequence if name == 'materials' else sequence[1:])
+                          if command != 'mat_force_tonemap_scale 0')
+        result.extend(['mat_force_tonemap_scale 0', 'mat_force_tonemap_scale', 'r_temporal_scale'])
         return result
     if scene == 'portals':
         return portal_commands()
@@ -520,6 +562,8 @@ def commands(scene='materials'):
         return spark_commands()
     if scene == 'particles':
         return particle_commands()
+    if scene == 'camera-eyes':
+        return camera_eye_commands()
     if scene == 'cameras':
         return camera_commands()
     if scene == 'signage':
@@ -580,6 +624,8 @@ def validate_images(images, required):
 
 
 def validate_core_statistics(log):
+    if 'AN ERROR HAS OCCURED' in log:
+        raise ValueError('a required gameplay script failed')
     failures = re.findall(r'views queued \d+ drawn \d+ failed (\d+)', log)
     if not failures or any(int(value) for value in failures):
         raise ValueError('missing core statistics or claimed-view failure')
@@ -662,6 +708,85 @@ SIGN_RECEIVERS = (
 CAMERA_STATES = ('on', 'off', 'restored', 'hidden', 'shown', 'moved',
                  'returned', 'turned', 'unturned', 'removed')
 CAMERA_RECEIVER = (413, 357, 453, 373)
+
+
+def inspect_camera_eyes(images):
+    validate_images(images, 7)
+    patches = [region(image, 458, 340, 558, 425) for image in images[:7]]
+    checks = []
+    for i, name in ((0, 'visible'), (1, 'light-off'), (3, 'shown'), (6, 'returned')):
+        gain = patches[i] - patches[2]
+        rgb = gain.mean(axis=(0, 1))
+        coverage = float((gain[:, :, 0] > .02).mean())
+        checks.extend((dict(name=f'camera-eye.{name}.red-glow',
+                            passed=bool(rgb[0] > .03 and rgb[0] > 4 * max(abs(rgb[1]), abs(rgb[2]))), value=float(rgb[0])),
+                       dict(name=f'camera-eye.{name}.coverage',
+                            passed=coverage > .3, value=coverage)))
+    for i, j, name in ((3, 1, 'show-restores-glow'), (6, 0, 'uncover-restores-glow')):
+        delta = float(np.abs(patches[i] - patches[j]).mean())
+        checks.append(dict(name=f'camera-eye.{name}', passed=delta < .008, value=delta))
+    # Compare the same opaque receiver with the hidden eye; its authored
+    # warm albedo must not be mistaken for a leaked red glow.
+    gain = patches[4] - patches[5]
+    red = gain[:, :, 0] - .5 * (gain[:, :, 1] + gain[:, :, 2])
+    leak = float(np.quantile(red, .95))
+    checks.append(dict(name='camera-eye.opaque-occlusion', passed=leak < .03, value=leak))
+    return checks
+
+
+def camera_eye_sensitivity(images):
+    checks = []
+    for i, source, suffix in ((0, 2, 'visible.red-glow'), (1, 2, 'light-off.red-glow'),
+                               (3, 2, 'shown.red-glow'), (6, 2, 'returned.red-glow'),
+                               (4, 0, 'opaque-occlusion')):
+        bad = list(images)
+        bad[i] = images[source]
+        target = 'camera-eye.' + suffix
+        checks.append(dict(name='oracle.rejects-' + target,
+                           passed=any(row['name'] == target and not row['passed']
+                                      for row in inspect_camera_eyes(bad))))
+    return checks
+
+
+def camera_eye_queries(log):
+    # The camera's visibility proxy is independent of its red image. Count
+    # the selected camera, requiring samples even for the occluded count pass.
+    markers = ('visible', 'light-off', 'hidden', 'shown', 'occluded', 'occluded-hidden', 'returned')
+    checks = [dict(name='camera-eye.selected-authored-parent',
+                   passed='RC_CAMERA_EYE_PARENT true' in log)]
+    for name in markers:
+        parts = re.findall(rf'RC_CAMERA_EYE_{name}[ \t]*\r?\n(.*?)(?=RC_CAMERA_EYE_QUERY_END)',
+                           log, flags=re.S)
+        segment = parts[0] if len(parts) == 1 else ''
+        handles = set(re.findall(r'Draw Proxy: qh:(-?\d+) org:<143,21,\d+>', segment))
+        samples = re.findall(r'Pixels visible: (-?\d+) \(qh:(-?\d+)\) '
+                             r'Pixels possible: (-?\d+)', segment)
+        selected = [(int(v), int(p)) for v, handle, p in samples if handle in handles]
+        passed = len(parts) == 1
+        if name in ('hidden', 'occluded-hidden'):
+            passed = passed and not handles
+        elif name == 'occluded':
+            passed = passed and len(selected) >= 4 and all(v == 0 and p > 0 for v, p in selected)
+        else:
+            passed = passed and len(selected) >= 4 and all(0 < v <= p for v, p in selected)
+        checks.append(dict(name=f'camera-eye.{name}.visibility-query', passed=passed,
+                           samples=selected))
+    values = re.findall(r'"r_pixelvisibility_partial" = "([^\"]+)"', log)
+    checks.append(dict(name='camera-eye.shipped-partial-visibility',
+                       passed=bool(values and all(v == '1' for v in values))))
+    values = re.findall(r'"mat_force_tonemap_scale" = "([^\"]+)"', log)
+    checks.append(dict(name='camera-eye.default-exposure-restored',
+                       passed=bool(values and values[-1] == '0')))
+    return checks
+
+
+def camera_eye_query_sensitivity(log):
+    samples = re.sub(r'Pixels possible: \d+', 'Pixels possible: 0', log)
+    visible = re.sub(r'Pixels visible: \d+', 'Pixels visible: 0', log)
+    return [dict(name='oracle.rejects-camera-eye-' + name,
+                 passed=any(not row['passed'] for row in camera_eye_queries(bad)))
+            for name, bad in (('missing-query-geometry', samples),
+                              ('missing-visible-samples', visible), ('missing-query-reports', ''))]
 
 
 def inspect_cameras(images):
@@ -748,7 +873,8 @@ def camera_reports(log, with_fizzler=False):
                     abs(row[6] - 4) < .01 and abs(row[7] - 8.031) < .002 and
                     row[8] == 0 and row[9] == 0 for row in records)
         checks.append(dict(name=f'camera.{state}.source-publication', passed=bool(passed)))
-    for setting, expected in (('r_core_shadow_quality', '3'), ('r_core_shadow_movers', '1')):
+    for setting, expected in (('r_core_shadow_quality', '3'), ('r_core_shadow_movers', '1'),
+                              ('r_drawsprites', '1')):
         values = re.findall(rf'"{setting}" = "([^\"]+)"', log)
         checks.append(dict(name=f'camera.{setting}',
                            passed=bool(values and all(value == expected for value in values))))
@@ -764,6 +890,8 @@ def camera_report_sensitivity(log, with_fizzler=False):
             ('legacy-slot', re.sub(r': 0 lit \(\d+ without a slot\)', ': 1 lit (0 without a slot)', log)),
             ('disabled-shadows', log.replace('"r_core_shadow_movers" = "1"',
                                             '"r_core_shadow_movers" = "0"')),
+            ('sprite-control-not-restored', log.replace('"r_drawsprites" = "1"',
+                                                       '"r_drawsprites" = "0"')),
             ('missing-report', re.sub(r'RC_CAMERA_hidden', 'RC_MISSING_hidden', log))):
         checks.append(dict(name=f'oracle.rejects-camera-{name}',
                            passed=any(not row['passed'] for row in camera_reports(bad, with_fizzler))))
@@ -1009,7 +1137,7 @@ def sensitivity(images):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--commands', action='store_true')
-    parser.add_argument('--scene', choices=('materials', 'doors', 'cables', 'emissives', 'signage', 'cameras', 'particles', 'sparks', 'monitors', 'portal-emitters', 'portals', 'all'),
+    parser.add_argument('--scene', choices=('materials', 'doors', 'cables', 'emissives', 'signage', 'camera-eyes', 'cameras', 'particles', 'sparks', 'monitors', 'portal-emitters', 'portals', 'all'),
                         default='materials')
     parser.add_argument('--temporal-scale', type=float,
                         help='require this FSR scale in startup settings and live game queries')
@@ -1052,7 +1180,7 @@ def main():
             raise ValueError('the game reported strict mode disabled')
         dynamic = re.findall(r'"r_core_dynamic_draws" = "([^\"]+)"', log)
         if ((dynamic and any(value != '0' for value in dynamic)) or
-                (args.scene in ('doors', 'cables', 'emissives', 'signage', 'cameras', 'particles', 'sparks', 'monitors', 'portal-emitters', 'portals', 'all') and (not strict or not dynamic))):
+                (args.scene in ('doors', 'cables', 'emissives', 'signage', 'camera-eyes', 'cameras', 'particles', 'sparks', 'monitors', 'portal-emitters', 'portals', 'all') and (not strict or not dynamic))):
             raise ValueError('strict/default-cohort game queries are missing or incorrect')
         if args.scene in ('emissives', 'signage', 'cameras', 'portal-emitters', 'all'):
             strength = re.findall(r'"cl_surface_core_emission_strength" = "([^\"]+)"', log)
@@ -1076,19 +1204,21 @@ def main():
             report['temporal_scale'] = selected
         validate_core_statistics(log)
         if args.scene == 'all':
-            validate_images(images, 90)
+            validate_images(images, 97)
             report['checks'] = (inspect(images[:8]) + sensitivity(images[:8]) +
                                 inspect_doors(images[8:17]) + door_sensitivity(images[8:17]) +
                                 inspect_cables(images[17:20]) + cable_sensitivity(images[17:20]) +
                                 inspect_emissives(images[20:30]) + emissive_sensitivity(images[20:30]) +
                                 inspect_signage(images[30:48]) + signage_sensitivity(images[30:48]) +
                                 signage_reports(log) + signage_report_sensitivity(log) +
-                                inspect_cameras(images[48:58]) + camera_sensitivity(images[48:58]) +
-                                inspect_particles(images[58:65]) + particle_sensitivity(images[58:65]) +
-                                inspect_sparks(images[65:72]) + spark_sensitivity(images[65:72]) +
-                                inspect_monitors(images[72:76]) + monitor_sensitivity(images[72:76]) +
-                                inspect_portal_emitters(images[76:86]) + portal_emitter_sensitivity(images[76:86]) +
-                                inspect_portals(images[86:90]) + portal_sensitivity(images[86:90]) +
+                                inspect_camera_eyes(images[48:55]) + camera_eye_sensitivity(images[48:55]) +
+                                camera_eye_queries(log) + camera_eye_query_sensitivity(log) +
+                                inspect_cameras(images[55:65]) + camera_sensitivity(images[55:65]) +
+                                inspect_particles(images[65:72]) + particle_sensitivity(images[65:72]) +
+                                inspect_sparks(images[72:79]) + spark_sensitivity(images[72:79]) +
+                                inspect_monitors(images[79:83]) + monitor_sensitivity(images[79:83]) +
+                                inspect_portal_emitters(images[83:93]) + portal_emitter_sensitivity(images[83:93]) +
+                                inspect_portals(images[93:97]) + portal_sensitivity(images[93:97]) +
                                 camera_reports(log, True) + camera_report_sensitivity(log, True))
         elif args.scene == 'portals':
             report['checks'] = inspect_portals(images) + portal_sensitivity(images)
@@ -1100,6 +1230,9 @@ def main():
             report['checks'] = inspect_sparks(images) + spark_sensitivity(images)
         elif args.scene == 'particles':
             report['checks'] = inspect_particles(images) + particle_sensitivity(images)
+        elif args.scene == 'camera-eyes':
+            report['checks'] = (inspect_camera_eyes(images) + camera_eye_sensitivity(images) +
+                                camera_eye_queries(log) + camera_eye_query_sensitivity(log))
         elif args.scene == 'cameras':
             report['checks'] = (inspect_cameras(images) + camera_sensitivity(images) +
                                 camera_reports(log) + camera_report_sensitivity(log))
