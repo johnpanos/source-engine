@@ -1097,10 +1097,6 @@ void CEngineVGui::SetEngineVisible( bool state )
 	{
 		staticClientDLLPanel->SetVisible( state );
 	}
-	if ( staticTransitionPanel )
-	{
-		staticTransitionPanel->SetVisible( state );
-	}
 }
 
 
@@ -1146,6 +1142,7 @@ void CEngineVGui::ActivateGameUI()
 	ClearIOStates();
 
 	staticGameUIPanel->SetVisible(true);
+	staticTransitionPanel->SetVisible( true );
 	staticGameUIPanel->MoveToFront();	
 
 	staticClientDLLPanel->SetVisible(false);
@@ -1174,6 +1171,7 @@ bool CEngineVGui::HideGameUI()
 	if ( bInNonBgLevel )
 	{
 		staticGameUIPanel->SetVisible(false);
+		staticTransitionPanel->SetVisible( false );
 		staticGameUIPanel->SetPaintBackgroundEnabled(false);
 	
 		staticClientDLLPanel->SetVisible(true);
@@ -1802,6 +1800,10 @@ void CEngineVGui::Paint( PaintMode_t mode )
 		int w, h;
 		GetRootPanelSize( w, h );
 		panel->SetBounds(0, 0, w, h); // ignore x and y here because the viewport takes care of that
+		if ( staticTransitionPanel )
+		{
+			staticTransitionPanel->SetBounds( 0, 0, w, h );
+		}
 	}
 
 	panel->Repaint();
@@ -1819,10 +1821,25 @@ void CEngineVGui::Paint( PaintMode_t mode )
 		staticClientDLLPanel->SetVisible( false );
 		staticClientDLLToolsPanel->SetVisible( false );
 
+		bool saveTransitionVisible =
+		    staticTransitionPanel ? staticTransitionPanel->IsVisible() : false;
+		if ( staticTransitionPanel )
+			staticTransitionPanel->SetVisible( false );
+
 		vgui::surface()->PaintTraverseEx(pVPanel, true );
 
 		staticClientDLLPanel->SetVisible( saveVisible );
 		staticClientDLLToolsPanel->SetVisible( saveToolsVisible );
+
+		if ( staticTransitionPanel )
+			staticTransitionPanel->SetVisible( saveTransitionVisible );
+
+		if ( staticTransitionPanel && staticTransitionPanel->IsVisible() )
+		{
+			// The screens must include all menu popups before the effect captures
+			// them. Do not traverse the global popup list again over the tiles.
+			vgui::surface()->PaintTraverseEx( staticTransitionPanel->GetVPanel(), false );
+		}
 	}
 	
 	if ( mode & PAINT_INGAMEPANELS )

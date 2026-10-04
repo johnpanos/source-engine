@@ -97,6 +97,7 @@ protected:
 	virtual void OnKeyCodePressed( vgui::KeyCode code );
 
 private:
+	bool EnsureTileGrid();
 	int		GetTileIndex( int x, int y );
 	void	TouchTile( int nTile, WINDOW_TYPE wt, bool bForce );
 	void	SaveCurrentScreen( ITexture *pRenderTarget );

@@ -10591,13 +10591,16 @@ void CShaderAPIVulkan::CopyRenderTargetToTextureEx(
 	static const bool s_depthAlpha = CommandLine()->FindParm( "-novkdepthalpha" ) == 0;
 	render_vulkan::CVulkanContext::DepthToAlpha depthToAlpha = {};
 	const float *projection = DrawProjection();
+	// Orthographic UI captures carry opacity, not perspective scene depth.
+	// Replacing it with cleared depth makes the menu's captured tiles transparent.
+	const bool copySceneDepth = s_depthAlpha && projection[2 * 4 + 3] != 0.0f;
 	depthToAlpha.projection[0] = projection[2 * 4 + 2];
 	depthToAlpha.projection[1] = projection[3 * 4 + 2];
 	depthToAlpha.projection[2] = projection[2 * 4 + 3];
 	depthToAlpha.projection[3] = projection[3 * 4 + 3];
 	depthToAlpha.invRange = 1.0f / g_Fog.destAlphaDepthRange;
 	if ( g_VulkanContext.QueueCopyToTexture(
-	         static_cast<int>( texID ) - 1, src, dst, s_depthAlpha ? &depthToAlpha : nullptr ) )
+	         static_cast<int>( texID ) - 1, src, dst, copySceneDepth ? &depthToAlpha : nullptr ) )
 		++g_TargetCopies;
 	else
 		++g_TargetCopiesDropped;

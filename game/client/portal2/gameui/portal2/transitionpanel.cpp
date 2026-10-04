@@ -12,6 +12,7 @@
 #include "ienginevgui.h"
 #include "tier1/fmtstr.h"
 #include "materialsystem/imesh.h"
+#include "materialsystem/itexture.h"
 #include "shaderapi/ishaderapi.h"
 #include "gameconsole.h"
 
@@ -38,6 +39,16 @@ CBaseModTransitionPanel::CBaseModTransitionPanel( const char *pPanelName ) :
 {
 	SetScheme( GAMEUI_BASEMODPANEL_SCHEME );
 	SetPostChildPaintEnabled( true );
+
+	// Menu paint callers can mark tiles before VGUI applies the scheme.
+	m_nTileWidth = 0;
+	m_nTileHeight = 0;
+	m_nPinFromBottom = 0;
+	m_nPinFromLeft = 0;
+	m_nNumRows = 0;
+	m_nNumColumns = 0;
+	m_nXOffset = 0;
+	m_nYOffset = 0;
 
 	m_pFromScreenRT = NULL;
 	m_pCurrentScreenRT = NULL;
@@ -69,14 +80,27 @@ CBaseModTransitionPanel::CBaseModTransitionPanel( const char *pPanelName ) :
 
 CBaseModTransitionPanel::~CBaseModTransitionPanel()
 {
+	TerminateEffect();
+	m_pFromScreenMaterial->DecrementReferenceCount();
+	m_pCurrentScreenMaterial->DecrementReferenceCount();
 }
 
 void CBaseModTransitionPanel::ApplySchemeSettings( vgui::IScheme *pScheme )
 {
 	BaseClass::ApplySchemeSettings( pScheme );
 
-	m_nTileWidth = vgui::scheme()->GetProportionalScaledValue( atoi( pScheme->GetResourceString( "Dialog.TileWidth" ) ) );
-	m_nTileHeight = vgui::scheme()->GetProportionalScaledValue( atoi( pScheme->GetResourceString( "Dialog.TileHeight" ) ) );
+	int nTileW = atoi( pScheme->GetResourceString( "Dialog.TileWidth" ) );
+	int nTileH = atoi( pScheme->GetResourceString( "Dialog.TileHeight" ) );
+	if ( nTileW <= 0 )
+		nTileW = 50;
+	if ( nTileH <= 0 )
+		nTileH = 50;
+	m_nTileWidth = vgui::scheme()->GetProportionalScaledValue( nTileW );
+	m_nTileHeight = vgui::scheme()->GetProportionalScaledValue( nTileH );
+	if ( m_nTileWidth <= 0 )
+		m_nTileWidth = 50;
+	if ( m_nTileHeight <= 0 )
+		m_nTileHeight = 50;
 
 	m_nPinFromBottom = vgui::scheme()->GetProportionalScaledValue( atoi( pScheme->GetResourceString( "Dialog.PinFromBottom" ) ) );
 	m_nPinFromLeft = vgui::scheme()->GetProportionalScaledValue( atoi( pScheme->GetResourceString( "Dialog.PinFromLeft" ) ) );
@@ -94,10 +118,39 @@ void CBaseModTransitionPanel::OnKeyCodePressed( KeyCode keycode )
 {
 }
 
-void CBaseModTransitionPanel::BuildTiles()
+bool CBaseModTransitionPanel::EnsureTileGrid()
 {
 	int screenWide, screenTall;
 	surface()->GetScreenSize( screenWide, screenTall );
+	if ( screenWide <= 0 || screenTall <= 0 )
+		return false;
+
+	if ( m_Tiles.Count() == 0 || GetWide() != screenWide || GetTall() != screenTall )
+	{
+		vgui::IScheme *pScheme = vgui::scheme()->GetIScheme( GetScheme() );
+		if ( !pScheme )
+			return false;
+
+		ApplySchemeSettings( pScheme );
+	}
+
+	return m_nTileWidth > 0 && m_nTileHeight > 0 && m_Tiles.Count() > 0;
+}
+
+void CBaseModTransitionPanel::BuildTiles()
+{
+	if ( m_nTileWidth <= 0 || m_nTileHeight <= 0 )
+		return;
+
+	int screenWide, screenTall;
+	surface()->GetScreenSize( screenWide, screenTall );
+	if ( screenWide <= 0 || screenTall <= 0 )
+		return;
+
+	// A resized grid cannot keep captures or tile indices from the old extent.
+	TerminateEffect();
+	m_Tiles.Purge();
+	m_nNumTransitions = 0;
 
 	const AspectRatioInfo_t &aspectRatioInfo = Portal2_GetAspectRatioInfo();
 	float flInverseAspect = 1.0f/aspectRatioInfo.m_flFrameBufferAspectRatio;
@@ -199,7 +252,12 @@ void CBaseModTransitionPanel::SetExpectedDirection( bool bForward, WINDOW_TYPE w
 
 int CBaseModTransitionPanel::GetTileIndex( int x, int y )
 {
-	int nTile = ( y - m_nYOffset ) / m_nTileHeight * m_nNumColumns + ( x - m_nXOffset ) / m_nTileWidth;
+	if ( m_nTileWidth <= 0 || m_nTileHeight <= 0 || x < 0 || y < 0 || x >= GetWide() ||
+	     y >= GetTall() )
+		return -1;
+
+	int nTile =
+	    ( y - m_nYOffset ) / m_nTileHeight * m_nNumColumns + ( x - m_nXOffset ) / m_nTileWidth;
 	if ( !m_Tiles.IsValidIndex( nTile ) )
 		return -1;
 
@@ -260,7 +318,7 @@ void CBaseModTransitionPanel::TouchTile( int nTile, WINDOW_TYPE wt, bool bForce 
 
 void CBaseModTransitionPanel::MarkTile( int x, int y, WINDOW_TYPE wt, bool bForce )
 {
-	if ( !IsEffectEnabled() )
+	if ( !IsEffectEnabled() || !EnsureTileGrid() )
 		return;
 
 	TouchTile( GetTileIndex( x, y ), wt, bForce );
@@ -268,7 +326,7 @@ void CBaseModTransitionPanel::MarkTile( int x, int y, WINDOW_TYPE wt, bool bForc
 
 void CBaseModTransitionPanel::MarkTilesInRect( int x, int y, int wide, int tall, WINDOW_TYPE wt, bool bForce )
 {
-	if ( !IsEffectEnabled() )
+	if ( !IsEffectEnabled() || !EnsureTileGrid() )
 		return;
 
 	if ( wide == -1 && tall == -1 )
@@ -281,10 +339,20 @@ void CBaseModTransitionPanel::MarkTilesInRect( int x, int y, int wide, int tall,
 		tall = screenTall;
 	}
 
+	if ( wide <= 0 || tall <= 0 || x >= GetWide() || y >= GetTall() || x + wide <= 0 ||
+	     y + tall <= 0 )
+		return;
+
+	// Clip the inclusive tile coverage to screen pixels before indexing. The
+	// screen's right/bottom edge is outside the grid, not a sentinel tile.
+	int nRight = MIN( x + wide, GetWide() - 1 );
+	int nBottom = MIN( y + tall, GetTall() - 1 );
+	x = MAX( x, 0 );
+	y = MAX( y, 0 );
 	int nRowStartTile = GetTileIndex( x, y );
-	int nRowEndTile = GetTileIndex( x + wide, y );
-	int nEndTile = GetTileIndex( x + wide, y + tall );
-	
+	int nRowEndTile = GetTileIndex( nRight, y );
+	int nEndTile = GetTileIndex( nRight, nBottom );
+
 	int nTile = nRowStartTile;
 	do 
 	{
@@ -293,8 +361,7 @@ void CBaseModTransitionPanel::MarkTilesInRect( int x, int y, int wide, int tall,
 			TouchTile( nTile + i, wt, bForce );
 		}
 		nTile += m_nNumColumns;
-	}
-	while ( nTile < nEndTile );
+	} while ( nTile <= nEndTile );
 }
 
 void CBaseModTransitionPanel::PreventTransitions( bool bPrevent )
@@ -509,6 +576,9 @@ bool CBaseModTransitionPanel::IsEffectActive()
 
 void CBaseModTransitionPanel::SaveCurrentScreen( ITexture *pRenderTarget )
 {
+	if ( !pRenderTarget || pRenderTarget->IsError() )
+		return;
+
 	CMatRenderContextPtr pRenderContext( materials );
 	pRenderContext->CopyRenderTargetToTextureEx( pRenderTarget, 0, NULL, NULL );
 	pRenderContext->SetFrameBufferCopyTexture( pRenderTarget, 0 );
@@ -568,7 +638,8 @@ void CBaseModTransitionPanel::DrawEffect()
 	}
 
 	int screenWide, screenTall;
-	GetSize( screenWide, screenTall );
+	surface()->GetScreenSize( screenWide, screenTall );
+	SetSize( screenWide, screenTall );
 	surface()->DrawSetColor( 0, 0, 0, 255 );
 	surface()->DrawFilledRect( 0, 0, screenWide, screenTall );
 
@@ -594,10 +665,19 @@ void CBaseModTransitionPanel::DrawEffect()
 
 void CBaseModTransitionPanel::Paint()
 {
+	if ( !EnsureTileGrid() )
+		return;
+
 	ScanTilesForTransition();
 
 	if ( m_bTransitionActive )
 	{
+		if ( !m_pCurrentScreenRT || m_pCurrentScreenRT->IsError() )
+		{
+			m_pCurrentScreenRT =
+			    materials->FindTexture( "_rt_DepthDoubler", TEXTURE_GROUP_RENDER_TARGET );
+		}
+
 		SaveCurrentScreen( m_pCurrentScreenRT );
 		DrawEffect();
 	}
@@ -607,6 +687,12 @@ void CBaseModTransitionPanel::PostChildPaint()
 {
 	if ( !m_bTransitionActive )
 	{
+		if ( !m_pFromScreenRT || m_pFromScreenRT->IsError() )
+		{
+			m_pFromScreenRT =
+			    materials->FindTexture( "_rt_FullFrameFB", TEXTURE_GROUP_RENDER_TARGET );
+		}
+
 		// keep saving the current frame buffer to use as the 'from'
 		SaveCurrentScreen( m_pFromScreenRT );
 	}

@@ -11,6 +11,12 @@
   owns MSAA, alpha to coverage and specular AA. Its existing profile defaults
   and oracles remain authoritative.
 - Platform composition: [RFC 0001](0001-capability-based-platform-architecture.md).
+- Provider mechanism: [RFC 0021](0021-external-render-sdk-and-runtime-provider-selection.md)
+  owns external SDK intake, the two execution routes, the provider catalog with
+  runtime selection and refusal by name, and the declared input conventions
+  (depth kind, motion units, exposure ownership, jitter units, masks). This RFC
+  keeps the temporal product policy: which provider a profile names, the 4x MSAA
+  cutover, and the image-quality reference every provider is judged against.
 - Verification: [RFC 0005](0005-quality-and-correctness-harnesses.md),
   Q-PRESENTATION and Q-PRODUCT.
 - Tracking: an unranked proposed render slice. Adding this contract does not
@@ -119,7 +125,10 @@ cannot leave partially updated history visible as a successful output.
 ## Capability and profile policy
 
 The composition root queries required GPU features, shader artifacts, formats,
-memory, extents and provider availability before selecting the mode. The
+memory, extents and provider availability before selecting the mode. The catalog
+that answers those questions, and the declared input conventions each provider
+consumes, belong to [RFC 0021](0021-external-render-sdk-and-runtime-provider-selection.md);
+this section states only what a temporal mode must refuse. The
 portable contract exposes no backend or OS identity. A Vulkan implementation
 is an adapter under the core; a provider that cannot run on OpenGL, MoltenVK or
 a mobile GPU reports unavailable there. A missing required capability fails
