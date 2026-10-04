@@ -35,6 +35,7 @@ import math
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import sys
 
@@ -157,7 +158,7 @@ def side_settings(side, args):
     if side == "a":
         return (("r_temporal_scale 0", "r_core_world 0", "mat_hdr_output 0"),
                 ("-norendercore",))
-    return (("mat_antialias 4", "r_temporal_scale 0", "mat_hdr_output 1",
+    return (("r_core_world_strict 1", "mat_antialias 4", "r_temporal_scale 0", "mat_hdr_output 1",
              "mat_hdr_exposure 3", "mat_hdr_peak_nits 10000"),
             ())
 
@@ -439,6 +440,8 @@ def capture_gallery(args, out, content_a, content_b):
     for relay in ("info_sign-info_panel_activate_rl", "InstanceAuto63-info_panel_activate_rl"):
         if relay not in args.panel_relay:
             args.panel_relay.append(relay)
+    if args.rerun_b:
+        return refresh_b(args, out, content_b, poses)
     print("Capturing %d Intro4 poses on two parallel game hosts" % len(poses), flush=True)
     with ThreadPoolExecutor(max_workers=2) as hosts:
         a = hosts.submit(capture, args.map_a, "a", content_a, args, out, poses)
@@ -450,6 +453,74 @@ def capture_gallery(args, out, content_a, content_b):
         cards.append('<a href="%s/compare.html"><img src="%s/b.png" alt="%s">%s</a>' %
                      (name, name, html.escape(label), html.escape(label)))
     write_gallery(out, cards, args.width, args.height)
+    print(out / "index.html", flush=True)
+    return 0
+
+
+def existing_gallery(args, out):
+    if not (out / "index.html").is_file():
+        raise ValueError("--rerun-b needs an existing complete gallery")
+    receipts = {}
+    for name, _, pose in INTRO4_CAPTURES:
+        directory = out / name
+        receipt = json.loads((directory / "comparison.json").read_text())
+        if receipt["left"]["map"] != args.map_a or receipt["right"]["map"] != args.map_b:
+            raise ValueError("existing gallery map pair differs")
+        position, angles = parse_pose(pose)
+        verify_camera(receipt["left"]["camera"], position, angles, args.width, args.height)
+        with Image.open(directory / "a.png") as image:
+            if image.size != (args.width, args.height):
+                raise ValueError("existing A capture dimensions differ")
+        receipts[name] = receipt
+    return receipts
+
+
+def refresh_b(args, out, content, poses):
+    previous = existing_gallery(args, out)
+    tag = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
+    staged = out / "b-reruns" / tag
+    staged.mkdir(parents=True)
+    print("Refreshing B's %d poses; reusing A from %s" % (len(poses), out), flush=True)
+    right = capture(args.map_b, "b", content, args, staged, poses)
+    # All camera/HDR/boot checks pass before changing the live gallery.
+    for name, pose in poses:
+        directory = staged / name
+        shutil.copy2(out / name / "a.png", directory / "a.png")
+        write_comparison(args, directory, previous[name]["left"], right[name], pose)
+    styled = (out / "tone-map.json").is_file()
+    if styled:
+        import hdr_swipe_tonemap
+        hdr_swipe_tonemap.main(["--gallery", str(staged)])
+    backup = staged / "previous-gallery"
+    backup.mkdir()
+    for filename in ("index.html", "tone-map.json"):
+        if (out / filename).is_file():
+            shutil.copy2(out / filename, backup / filename)
+    cards = []
+    for name, label, _ in INTRO4_CAPTURES:
+        directory, source = out / name, staged / name
+        old = backup / name
+        old.mkdir()
+        for filename in ("b.png", "b-engine.png", "difference-4x.png", "compare.html",
+                         "comparison.json", "comparison-engine.json"):
+            if (directory / filename).is_file():
+                shutil.copy2(directory / filename, old / filename)
+            if (source / filename).is_file():
+                shutil.copy2(source / filename, directory / filename)
+        receipt = json.loads((directory / "comparison.json").read_text())
+        make_html(directory, receipt["left"], receipt["right"], receipt["metrics"],
+                  receipt["requested_camera"]["origin"], receipt["requested_camera"]["angles"])
+        cards.append('<a href="%s/compare.html"><img loading="lazy" src="%s/b.png" alt="%s">%s</a>' %
+                     (name, name, html.escape(label), html.escape(label)))
+    if styled:
+        shutil.copy2(staged / "tone-map.json", out / "tone-map.json")
+    write_gallery(out, cards, args.width, args.height,
+                  processing_note=("PNG previews use offline tone mapping fitted to the original A images."
+                                   if styled else None))
+    (out / "latest-b-rerun.json").write_text(json.dumps({
+        "schema": "map-swipe-b-refresh/v1", "capture": str(staged),
+        "previous_gallery": str(backup), "poses": len(poses), "left_reused": True,
+        "styled_pngs": styled, "boot_evidence": str(staged / "b-boot/evidence.json")}, indent=2) + "\n")
     print(out / "index.html", flush=True)
     return 0
 
@@ -484,6 +555,8 @@ def main(argv=None):
                                    help="shared Source-unit camera: x,y,z:pitch,yaw,roll")
     capture_selection.add_argument("--all-captures", action="store_true",
                                    help="capture all 19 selected Intro4 poses excluding panel")
+    parser.add_argument("--rerun-b", action="store_true",
+                        help="refresh only B in an existing all-captures gallery, reusing A")
     parser.add_argument("--content-root-a", type=Path)
     parser.add_argument("--content-root-b", type=Path)
     parser.add_argument("--panel-relay", action="append", default=[],
@@ -509,9 +582,16 @@ def main(argv=None):
         parser.error("panel relay names may contain only letters, digits, _, @, and -")
     if args.all_captures and (args.map_a, args.map_b) != ("sp_a1_intro4", "sp_a1_intro4_relit"):
         parser.error("--all-captures uses the Intro4 gallery cameras and map pair")
+    if args.rerun_b and not args.all_captures:
+        parser.error("--rerun-b requires --all-captures")
     out = args.out.resolve()
+    if args.rerun_b:
+        try:
+            existing_gallery(args, out)
+        except (OSError, ValueError, KeyError) as error:
+            parser.error(str(error))
     if not args.in_compositor:
-        if out.exists() and any(out.iterdir()):
+        if not args.rerun_b and out.exists() and any(out.iterdir()):
             parser.error("output directory is not empty: " + str(out))
         out.mkdir(parents=True, exist_ok=True)
         environment = dict(os.environ)
@@ -525,7 +605,7 @@ def main(argv=None):
             "--wayland-display", "map-swipe-%d" % os.getpid(), "--",
             sys.executable, str(Path(__file__).resolve()), *(argv if argv is not None else sys.argv[1:]),
             "--in-compositor"]
-        with (out / "compositor.log").open("w") as log:
+        with (out / "compositor.log").open("a" if args.rerun_b else "w") as log:
             result = subprocess.run(command, env=environment, stdout=log,
                                     stderr=subprocess.STDOUT, timeout=args.timeout * 2 + 120)
         if result.returncode:
@@ -534,7 +614,7 @@ def main(argv=None):
         else:
             print(out / ("index.html" if args.all_captures else "compare.html"))
         return result.returncode
-    if out.exists() and any(out.iterdir()):
+    if not args.rerun_b and out.exists() and any(out.iterdir()):
         allowed = {"dbus", "compositor.log"}
         if any(item.name not in allowed for item in out.iterdir()):
             parser.error("output directory is not empty: " + str(out))

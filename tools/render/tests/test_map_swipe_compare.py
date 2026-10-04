@@ -142,6 +142,41 @@ class MapSwipeTests(unittest.TestCase):
                 self.assertEqual(self.run_gallery(), 1)
                 self.assertFalse((self.out / "index.html").exists())
 
+    def rerun_b(self):
+        self.barrier = threading.Barrier(1)
+        with patch.object(swipe.subprocess, "run", self.boot):
+            return swipe.main(["--all-captures", "--rerun-b", "--in-compositor",
+                               "--width", "64", "--height", "64", "--build", str(self.build),
+                               "--content-root-b", str(self.root), "--out", str(self.out)])
+
+    def test_rerun_b_keeps_a_and_archives_previous_b(self):
+        self.assertEqual(self.run_gallery(), 0)
+        originals = {p: p.read_bytes() for p in self.out.glob("*/a.png")}
+        previous = json.loads((self.out / "chamber/comparison.json").read_text())
+        self.assertEqual(self.rerun_b(), 0)
+        self.assertEqual(len(self.calls), 3)
+        self.assertTrue(all(path.read_bytes() == data for path, data in originals.items()))
+        updated = json.loads((self.out / "chamber/comparison.json").read_text())
+        self.assertEqual(updated["left"], previous["left"])
+        self.assertNotEqual(updated["right"]["boot_evidence"], previous["right"]["boot_evidence"])
+        self.assertIn("r_core_world_strict 1", updated["right"]["startup_commands"])
+        self.assertTrue(Path(previous["right"]["hdr_export"]["path"]).is_file())
+        self.assertTrue(Path(updated["right"]["hdr_export"]["path"]).is_file())
+        refresh = json.loads((self.out / "latest-b-rerun.json").read_text())
+        archived = Path(refresh["previous_gallery"]) / "chamber/comparison.json"
+        self.assertEqual(json.loads(archived.read_text()), previous)
+        self.assertEqual((self.out / "index.html").read_text().count('<a href='), 19)
+
+    def test_failed_rerun_leaves_live_gallery_unchanged(self):
+        self.assertEqual(self.run_gallery(), 0)
+        paths = [self.out / "index.html", *self.out.glob("*/a.png"),
+                 *self.out.glob("*/b.png"), *self.out.glob("*/comparison.json")]
+        previous = {p: p.read_bytes() for p in paths}
+        self.defect = "fizzler"
+        self.assertEqual(self.rerun_b(), 1)
+        self.assertTrue(all(path.read_bytes() == data for path, data in previous.items()))
+        self.assertFalse((self.out / "latest-b-rerun.json").exists())
+
 
 if __name__ == "__main__":
     unittest.main()
