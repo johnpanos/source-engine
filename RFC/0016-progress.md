@@ -8760,33 +8760,29 @@ in `rprb-boot/evidence.json`. R96/K12 and this map's completion remain active.
 
 ## Intro4 swipe comparison launch setup (2026-10-03)
 
-User direction: configure `tools/render/map_swipe_compare.py` for
-`sp_a1_intro4_relit`, 1080p FSR Native AA and HDR. The default pair is now
-`sp_a1_intro4` / `sp_a1_intro4_relit`, with 1920x1080 captures from the
-FSR-capable `build-p2-fsr` / `run/runtime-p2-fsr` profile. The right game
-selects the existing FSR provider/assets, `r_temporal_scale 1`,
-`mat_antialias 0` and `mat_hdr_output 1`; the left game explicitly selects
-temporal off and SDR output with the existing 4x MSAA setting. The camera
-remains explicit and verified on both sides. Launch settings are recorded
-in the comparison receipt. No render implementation or frozen path changed.
+User direction: compare all retained Intro4 poses at 3840x2160. The default
+pair is `sp_a1_intro4` / `sp_a1_intro4_relit`. Both boots use native Vulkan
+from `build-p2-fsr` / `run/runtime-p2-fsr`. A explicitly disables the render
+core (`-norendercore`, `r_core_world 0`), temporal scaling and HDR display
+output. B enables the core, FSR Native AA (`r_temporal_scale 1`), disables
+MSAA and requests HDR output. This supersedes the intermediate DXVK A
+selection. The 19 deduplicated comparison/survey cameras include the
+64-unit eye offset and activate both chamber panel relays. Each camera,
+viewport, PNG extent and B's native-resolution FSR dispatch is verified
+before publishing its swipe page; the batch produces one gallery.
 
 Reproduction from the repository root:
 
 ```sh
-python3 tools/render/map_swipe_compare.py --pose=-1552,37,-32:0,-90,0 \
-  --out quality-results/map-comparisons/intro4
+python3 tools/render/map_swipe_compare.py --all-captures \
+  --out quality-results/map-comparisons/intro4-4k-native-legacy-fsr
 ```
 
-Setup evidence lives in `quality-results/map-swipe-setup/`: the mocked boot
-launch check passes the default maps, extents, FSR/AA/HDR arguments, camera
-verification, comparison output and refusal of a non-FSR build. The 10
-existing map-relight diagnostic tests pass, as do Python compilation and
-scoped whitespace checks. Architecture baseline and loader inventory are
-current. Full architecture checking reports the pre-existing CAP002
-`charconv` include in the unrelated dirty graphics-settings header.
-The installed changed-line style check reports STYLE001 in unrelated
-`render/material/vmt_mapping.cpp`; this setup edits only Python and prose.
-No actual game captures or timing measurements were run for this setup.
-HDR presentation remains unverified: the private headless compositor and
-RGB PNG output cannot establish native HDR display output. R96/K12 and
-RFC 0019 qualification gates remain open.
+Setup evidence lives in `quality-results/map-swipe-setup/`:
+`gallery-check-native.log` verifies 38 ordered mocked boots, native legacy A,
+native core/FSR B, forwarded extents, camera verification and all 19 gallery
+links/receipts. `pose-inventory-native.log` checks the retained camera inventory.
+Python compilation and scoped whitespace checks pass. Actual game capture
+results will be recorded separately. HDR presentation remains unverified:
+the private headless compositor and RGB PNG output cannot establish native
+HDR display output. R96/K12 and RFC 0019 qualification gates remain open.

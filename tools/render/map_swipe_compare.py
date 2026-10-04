@@ -6,7 +6,7 @@ Default comparison: sp_a1_intro4 / sp_a1_intro4_relit at 3840x2160.
 The new (right) game selects FSR Native AA with MSAA disabled and requests HDR
 display output. HDR presentation requires a capable compositor/display; the
 private headless compositor and RGB PNG comparison do not certify HDR output.
-The original (left) game uses its separate DXVK Native build and legacy rendering.
+The original (left) game uses native Vulkan with the render core and FSR disabled.
 
 Example (chamber panel view):
   python3 tools/render/map_swipe_compare.py --pose=-1552,37,-32:0,-90,0 \
@@ -14,7 +14,7 @@ Example (chamber panel view):
 
 All retained Intro4 comparison and survey poses:
   python3 tools/render/map_swipe_compare.py --all-captures \
-      --out quality-results/map-comparisons/intro4-4k-dxvk-fsr
+      --out quality-results/map-comparisons/intro4-4k-native-legacy-fsr
 
 Published maps in run/maps/<name>/published.json are mounted automatically.
 The original retail map is loaded from the staged Portal 2 runtime. Each map
@@ -113,13 +113,12 @@ def verify_camera(view, position, angles, width, height):
         raise ValueError("capture angles differ from request: " + str(view["angles"]))
 
 
-def capture(map_name, side, content, args, out, startup_commands=(), engine_args=(),
-            renderer="native-vulkan", build=None, shader_artifacts=None):
+def capture(map_name, side, content, args, out, startup_commands=(), engine_args=()):
     position, angles = args.pose
     boot = out / (side + "-boot")
     command = [sys.executable, str(BOOT), "--runtime", str(args.runtime),
-               "--build", str(build or args.build), "--game", "portal2",
-               "--renderer", renderer, "--require-vulkan", "--require-wayland",
+               "--build", str(args.build), "--game", "portal2",
+               "--renderer", "native-vulkan", "--require-vulkan", "--require-wayland",
                "--view-oracle", "--map", map_name, "--out", str(boot),
                "--width", str(args.width), "--height", str(args.height),
                "--timeout", str(args.timeout), "--capture-wait", "120",
@@ -142,10 +141,6 @@ def capture(map_name, side, content, args, out, startup_commands=(), engine_args
         command += ["--startup-command", setting]
     for argument in engine_args:
         command += ["--engine-arg=" + argument]
-    if shader_artifacts:
-        command += ["--shader-artifacts", str(shader_artifacts)]
-    if renderer == "vulkan-compat":
-        command += ["--render-trace"]
     for relay in args.panel_relay:
         command += ["--console-command", "ent_fire " + relay + " Trigger"]
     command += [
@@ -187,7 +182,7 @@ def capture(map_name, side, content, args, out, startup_commands=(), engine_args
         render_confirmation = {"fsr_dispatch": dispatch,
                                "hdr_presentation_log": hdr[-1] if hdr else "unconfirmed"}
     return {"map": map_name, "content_root": str(content) if content else None,
-            "renderer": renderer, "build": str(build or args.build),
+            "renderer": "native-vulkan", "build": str(args.build),
             "image": target.name, "boot_evidence": str(evidence_path),
             "startup_commands": list(startup_commands),
             "engine_args": list(engine_args),
@@ -316,7 +311,7 @@ a { color: inherit; } img { display: block; width: 100%%; margin-bottom: 8px; }
 </style><h1>Intro4 map comparisons</h1>
 <p>sp_a1_intro4 / sp_a1_intro4_relit · %d×%d · right game: FSR Native AA,
 MSAA off, HDR output requested. RGB PNGs do not verify HDR display presentation.</p>
-<p>Original: DXVK Native legacy renderer. Relit: native Vulkan render core.</p>
+<p>Original: native Vulkan with render core disabled. Relit: native Vulkan render core.</p>
 <div class="grid">%s</div></html>''' % (width, height, "".join(cards))
     (out / "index.html").write_text(page)
 
@@ -337,11 +332,6 @@ def main(argv=None):
                         help="activate a named test chamber panel relay on both maps; repeatable")
     parser.add_argument("--runtime", type=Path, default=ROOT / "run/runtime-p2-fsr")
     parser.add_argument("--build", type=Path, default=ROOT / "build-p2-fsr")
-    parser.add_argument("--build-a", type=Path, default=ROOT / "build-p2-dxvk",
-                        help="original game's separate Portal 2 DXVK Native build")
-    parser.add_argument("--shader-artifacts-a", type=Path,
-                        default=ROOT / "build-p2-dxvk/shaders/intro4",
-                        help="source-matched D3D9 shader pack for the original game")
     parser.add_argument("--fsr-assets", type=Path, default=ROOT / "external/fsr411/assets")
     parser.add_argument("--width", type=int, default=3840)
     parser.add_argument("--height", type=int, default=2160)
@@ -363,13 +353,6 @@ def main(argv=None):
         parser.error("--build must be configured for Portal 2")
     if not args.fsr_assets.is_dir():
         parser.error("FSR assets are missing: " + str(args.fsr_assets))
-    original_caches = list((args.build_a / "c4che").glob("*_cache.py"))
-    if not any(re.search(r"^DXVK = True$", path.read_text(), re.M)
-               for path in original_caches):
-        parser.error("--build-a must name a DXVK Native build")
-    if not any(re.search(r"^GAMES = ['\"]portal2['\"]$", path.read_text(), re.M)
-               for path in original_caches):
-        parser.error("--build-a must be configured for Portal 2")
     if any(not re.fullmatch(r"[A-Za-z0-9_@-]+", name) for name in args.panel_relay):
         parser.error("panel relay names may contain only letters, digits, _, @, and -")
     if args.all_captures:
@@ -406,9 +389,8 @@ def main(argv=None):
         content_a = args.content_root_a or published_content(args.map_a)
         content_b = args.content_root_b or published_content(args.map_b)
         left = capture(args.map_a, "a", content_a, args, out,
-                       ("r_temporal_scale 0", "r_core_world 0"), ("-norendercore",),
-                       renderer="vulkan-compat", build=args.build_a,
-                       shader_artifacts=args.shader_artifacts_a)
+                       ("r_temporal_scale 0", "r_core_world 0", "mat_hdr_output 0"),
+                       ("-norendercore",))
         right = capture(args.map_b, "b", content_b, args, out,
                         ("mat_antialias 0", "r_temporal_scale 1", "mat_hdr_output 1"),
                         ("-fsr", "-fsr-assets", str(args.fsr_assets.resolve())))
