@@ -99,11 +99,11 @@ camera cohort alone, append `--scene cameras` and use a fresh output directory.
 
 The output must be fresh. A failed mode does not stop the other mode's evidence
 collection, and the aggregate fails if either boot or pixel oracle fails.
-`--scene doors`, `materials`, `cables`, `emissives`, `signage`, `cameras`, `particles` or `sparks` selects a bounded
-reproduction; the default `all` runs all 196 pixel, source-report and seeded-negative
+`--scene doors`, `materials`, `cables`, `emissives`, `signage`, `cameras`, `particles`, `sparks` or `monitors` selects a bounded
+reproduction; the default `all` runs all 207 pixel, source-report and seeded-negative
 checks per mode. Retain direct-start captures separately when reproducing a launch-time report.
 
-`intro4_material_check.py --scene materials|doors|cables|emissives|signage|cameras|particles|sparks|all --commands` emits each
+`intro4_material_check.py --scene materials|doors|cables|emissives|signage|cameras|particles|sparks|monitors|all --commands` emits each
 installed `portal_boot.py` console sequence. Capture both modes at the same
 1024×768 requested viewport (desktop HiDPI is retained), using the corresponding
 `--startup-command "r_temporal_scale SCALE"`. Pass each capture to the oracle:
@@ -301,3 +301,12 @@ fixture. A retail map with the same authored name cannot pass fixture identity.
 Use `--profile` only for separate pass-timing diagnosis. Ordinary runs deliberately
 omit pass timers; the detailed analyzer's missing-pass warnings do not provide a
 pass breakdown and must not be reported as one.
+
+`--scene monitors` frames the two real `lab_monitor_pose03` static props, using
+Intro4's selected skins 4 (blank) and 3 (off with a live scanline proxy). Four
+shots compare two times, static props hidden and restored. Seven physical checks
+and four seeded image defects require both screens and current proxy animation.
+VMT matrix serialization is shared by initial and live capture, preserves rows
+and float precision, and is tested against transpose/rounding defects by
+`test_vmt_matrix_capture.py`. A loaded catalogue proxy refusal only describes the
+immutable snapshot; actual support requires the live mesh handoff and its pixels.

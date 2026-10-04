@@ -33,6 +33,7 @@
 #include "vulkan_device.h"
 #include "render/legacy/frame_source.h"
 #include "render/legacy/material_flag_keys.h"
+#include "render/material/vmt_matrix.h"
 #include "vulkan_emit_convert.h"
 #include "vulkan_mesh_layout.h"
 #include "shaderapivulkan_legacy.h"
@@ -5192,7 +5193,11 @@ bool CEmptyMesh::EmitToCoreQueue()
 			continue;
 		render::legacy::CoreMeshVariable value;
 		value.key = var->GetName();
-		values.emplace_back( var->GetStringValue() );
+		// Frozen-path: preserve the live proxy matrix in the core's row-major
+		// VMT representation, rather than GetStringValue's transposed display.
+		values.emplace_back( var->GetType() == MATERIAL_VAR_TYPE_MATRIX
+		                         ? RenderMaterialVmt::MatrixValue( var->GetMatrixValue().Base() )
+		                         : var->GetStringValue() );
 		value.value = values.back().c_str();
 		if ( shader && i < shader->GetNumParams() &&
 		     !V_stricmp( shader->GetParamName( i ), value.key ) )

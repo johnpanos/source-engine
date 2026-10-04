@@ -18,6 +18,7 @@
 #include "render/material/lightmapped_family.h"
 #include "render/material/registry.h"
 #include "render/material/vmt_import.h"
+#include "render/material/vmt_matrix.h"
 
 #include <algorithm>
 #include <array>
@@ -1419,8 +1420,9 @@ std::optional<std::string> RunChecks(
 	if ( auto why = render( dynamic, 0.0f, false, 25, black, dynamicImage, false,
 	         RenderCoreDrawPhase::kAll, true, nullptr, &dynamicMaterial ) )
 		return why;
-	dynamicMaterial.variables.push_back(
-	    { "$texture2transform", "center .5 .5 scale 1 1 rotate 0 translate .75 0" } );
+	dynamicMaterial.variables.push_back( { "$texture2transform",
+	    RenderMaterialVmt::MatrixValue(
+	        std::array<float, 16>{ 1, 0, 0, .75f, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 }.data() ) } );
 	if ( auto why = render( dynamic, 0.0f, false, 26, black, proxyImage, false,
 	         RenderCoreDrawPhase::kAll, true, nullptr, &dynamicMaterial ) )
 		return why;

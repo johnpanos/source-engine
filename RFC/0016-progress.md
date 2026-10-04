@@ -9748,3 +9748,58 @@ The four missing precached MDLs are unused HL2/editor defaults (`w_bullet`,
 `agibs`, `v_hands`, `axis_helper_thick`), rather than geometry-parser failures;
 they remain named missing-content facts, not successful model coverage.
 Broader material/model completion and R91/R96 remain open.
+
+
+### Intro4 live monitor matrix handoff (2026-10-04)
+
+The real map places two `lab_monitor_pose03` props. `monitor-skin-facts.json`
+records the MDL hash, skin table and mesh references: only materials 0 and 1
+are meshed; skins 4 and 3 select `lab_monitor_blank` and `lab_monitor_off`.
+The five monitor proxy materials loaded into the immutable catalogue are not
+five missing active screens. Static/posed snapshots refuse live proxies and
+send those meshes through the existing frontend, which captures current proxy
+results into core draws. Legacy shading remains suppressed on this profile.
+
+A real screenshot oracle found that handoff was incomplete: the scanlines were
+visible but native frames never changed. `monitor-strict-game/evidence.json`
+retains the failing paired test. `CMaterialVar::GetStringValue()` prints
+matrix columns with three decimal places, while VMT input and the core reader
+use rows. Translation was dropped and rotations transposed. The shared
+`public/render/material/vmt_matrix.h` formatter now preserves row order and
+float round-trip precision. Both the initial material/default capture and the
+live mesh capture use it. The legacy material variable implementation remains
+unchanged; the new header avoids the engine's global `render` name conflict.
+
+`proxy-matrix-final-lab-control.log` passes 108 posed-model checks, including
+current dynamic two-texture snapshots serialized by the same formatter, before
+product integration. `proxy-matrix-final-roundtrip.log` compiles the actual
+formatter and rejects seeded column-major and three-decimal defects, including
+rotation, unequal scale, translation and a sub-millipixel offset.
+`monitor-fixed-strict-game/evidence.json` passes seven physical checks and four
+seeded pixel defects in each strict mode. The live image delta is 0.011741 in
+FSR and 0.032257 in native, against the unchanged 0.002 threshold; before the
+fix it was 0.000231 and zero. Both screens must disappear with static props
+hidden and reappear after restoration. The native `review/` retains eight PNGs,
+source hashes and both four-state comparisons. Visual review confirms the
+moving band/scanlines and the map's authored blank screen.
+
+`proxy-matrix-runtime-install.json` verifies atomic installation of all 22
+products against the paired monitor builds. The full installed regression
+`proxy-matrix-installed-full-game/evidence.json` passes all 207 checks in each
+strict mode, with zero claimed-view failures and dynamic refusals. It uses no
+build overlay. `installed-product-proof.json` verifies all 22 staged binary
+hashes in both modes against that installation receipt. Its `review/` retains
+152 lossless native PNGs and camera/particle/spark/movie/monitor comparisons
+with source hashes; the prior glass/decal/door/indicator/signage/camera checks
+remain included. Style passes four
+C++ files (`proxy-matrix-final-style.log`); baseline and inventory verification
+pass, and archlint retains the existing CAP002 `charconv` include with zero
+new/stale occurrences. `intro4-entity-model-usage.json` records all 66 authored
+MDL entity references. Portal emitters do occur in the map; their blue/orange
+proxy states remain the next explicit review target. The potato bodygroup is
+hidden by the game's initial `m_bShowingPotatos = false` state. Broader complete
+material/model and cutout-shadow coverage remains open; R91/R96 is not promoted.
+
+Frozen-path: defect fix in `shaderapivulkan` mesh capture: serialize the actual
+live matrix into the core's existing VMT input convention. No legacy shader or
+material-variable behavior changes.

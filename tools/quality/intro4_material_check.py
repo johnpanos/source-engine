@@ -14,6 +14,7 @@ Use --scene signage for isolated signs, pictograms, chamber boards and movie scr
 Use --scene cameras for attached red eyes, hide/show, movement, rotation and removal.
 Use --scene particles for soft-particle fade, opaque occlusion, return and removal.
 Use --scene sparks for the additive spark image, hide/show, opaque occlusion and removal.
+Use --scene monitors for the two real static monitors and their live scanline proxy.
 """
 import argparse
 import copy
@@ -296,14 +297,60 @@ def particle_sensitivity(images):
     return checks
 
 
+def monitor_commands():
+    # Real static props, skins 4 (blank) and 3 (off + moving scanlines).
+    result = ['cmd noclip', 'r_drawviewmodel 0', 'cmd setpos 956 -860 280',
+              'cmd setang 0 90 0']
+    for command in (None, None, 'r_drawstaticprops 0', 'r_drawstaticprops 1'):
+        if command:
+            result.append(command)
+        result.extend(['wait 300', 'screenshot', 'wait 12'])
+    result.extend(['r_core_world_stats', 'r_core_world_strict', 'r_core_dynamic_draws'])
+    return result
+
+
+def inspect_monitors(images):
+    validate_images(images, 4)
+    checks = []
+    for name, bounds in (('blank', (280, 435, 460, 480)),
+                         ('scanline', (550, 405, 725, 470))):
+        samples = [region(image, *bounds) for image in images[:4]]
+        for index in (0, 1, 3):
+            delta = float(np.abs(samples[index] - samples[2]).mean())
+            checks.append(dict(name=f'monitor.{name}.visible-{index}',
+                               passed=delta > .01, value=delta))
+        if name == 'scanline':
+            delta = float(np.abs(samples[1] - samples[0]).mean())
+            checks.append(dict(name='monitor.scanline.live-proxy',
+                               passed=delta > .002, value=delta))
+    return checks
+
+
+def monitor_sensitivity(images):
+    checks = []
+    for name, target, replacement, expected in (
+            ('missing-blank', 0, 2, 'monitor.blank.visible-0'),
+            ('missing-scanline', 0, 2, 'monitor.scanline.visible-0'),
+            ('stale-proxy', 1, 0, 'monitor.scanline.live-proxy'),
+            ('missing-restored-scanline', 3, 2, 'monitor.scanline.visible-3')):
+        mutated = copy.deepcopy(images)
+        mutated[target] = images[replacement].copy()
+        rejected = any(row['name'] == expected and not row['passed']
+                       for row in inspect_monitors(mutated))
+        checks.append(dict(name=f'monitor.oracle.rejects-{name}', passed=rejected))
+    return checks
+
+
 def commands(scene='materials'):
     if scene == 'all':
         result = ['wait 600', 'r_core_world_stats', 'r_temporal_scale']
-        for name in ('materials', 'doors', 'cables', 'emissives', 'signage', 'cameras', 'particles', 'sparks'):
+        for name in ('materials', 'doors', 'cables', 'emissives', 'signage', 'cameras', 'particles', 'sparks', 'monitors'):
             sequence = commands(name)
             result.extend(sequence if name == 'materials' else sequence[1:])
         result.append('r_temporal_scale')
         return result
+    if scene == 'monitors':
+        return monitor_commands()
     if scene == 'sparks':
         return spark_commands()
     if scene == 'particles':
@@ -788,7 +835,7 @@ def sensitivity(images):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--commands', action='store_true')
-    parser.add_argument('--scene', choices=('materials', 'doors', 'cables', 'emissives', 'signage', 'cameras', 'particles', 'sparks', 'all'),
+    parser.add_argument('--scene', choices=('materials', 'doors', 'cables', 'emissives', 'signage', 'cameras', 'particles', 'sparks', 'monitors', 'all'),
                         default='materials')
     parser.add_argument('--temporal-scale', type=float,
                         help='require this FSR scale in startup settings and live game queries')
@@ -831,7 +878,7 @@ def main():
             raise ValueError('the game reported strict mode disabled')
         dynamic = re.findall(r'"r_core_dynamic_draws" = "([^\"]+)"', log)
         if ((dynamic and any(value != '0' for value in dynamic)) or
-                (args.scene in ('doors', 'cables', 'emissives', 'signage', 'cameras', 'particles', 'sparks', 'all') and (not strict or not dynamic))):
+                (args.scene in ('doors', 'cables', 'emissives', 'signage', 'cameras', 'particles', 'sparks', 'monitors', 'all') and (not strict or not dynamic))):
             raise ValueError('strict/default-cohort game queries are missing or incorrect')
         if args.scene in ('emissives', 'signage', 'cameras', 'all'):
             strength = re.findall(r'"cl_surface_core_emission_strength" = "([^\"]+)"', log)
@@ -857,7 +904,7 @@ def main():
         if not failures or any(int(value) for value in failures):
             raise ValueError('missing core statistics or claimed-view failure')
         if args.scene == 'all':
-            validate_images(images, 72)
+            validate_images(images, 76)
             report['checks'] = (inspect(images[:8]) + sensitivity(images[:8]) +
                                 inspect_doors(images[8:17]) + door_sensitivity(images[8:17]) +
                                 inspect_cables(images[17:20]) + cable_sensitivity(images[17:20]) +
@@ -867,7 +914,10 @@ def main():
                                 inspect_cameras(images[48:58]) + camera_sensitivity(images[48:58]) +
                                 inspect_particles(images[58:65]) + particle_sensitivity(images[58:65]) +
                                 inspect_sparks(images[65:72]) + spark_sensitivity(images[65:72]) +
+                                inspect_monitors(images[72:76]) + monitor_sensitivity(images[72:76]) +
                                 camera_reports(log, True) + camera_report_sensitivity(log, True))
+        elif args.scene == 'monitors':
+            report['checks'] = inspect_monitors(images) + monitor_sensitivity(images)
         elif args.scene == 'sparks':
             report['checks'] = inspect_sparks(images) + spark_sensitivity(images)
         elif args.scene == 'particles':

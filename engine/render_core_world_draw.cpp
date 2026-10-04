@@ -45,6 +45,7 @@
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "render/legacy/material_flag_keys.h"
+#include "render/material/vmt_matrix.h"
 #include "tier0/memdbgon.h"
 
 static void CoreWorldModeChanged( IConVar *variable, const char *, float previous )
@@ -181,7 +182,11 @@ void ReadVariables(
 		     !V_stricmp( pVar->GetName(), "$flags_defined2" ) )
 			continue;
 		out.keys.AddToTail( CUtlString( pVar->GetName() ) );
-		out.values.AddToTail( CUtlString( pVar->GetStringValue() ) );
+		// GetStringValue prints matrix columns; the core VMT reader takes rows.
+		out.values.AddToTail( CUtlString(
+		    pVar->GetType() == MATERIAL_VAR_TYPE_MATRIX
+		        ? RenderMaterialVmt::MatrixValue( pVar->GetMatrixValue().Base() ).c_str()
+		        : pVar->GetStringValue() ) );
 		const bool declaredHere = pShader && i < pShader->GetNumParams() &&
 		                          !V_stricmp( pShader->GetParamName( i ), pVar->GetName() );
 		// A model or symbolic $envmap selects the stage's RPRB image light.
@@ -252,7 +257,10 @@ void ReadVariables(
 		const bool declared = pShader && i < pShader->GetNumParams() &&
 		                      !V_stricmp( pShader->GetParamName( i ), pVar->GetName() );
 		if ( found && pNeutralVar && pNeutralVar->IsDefined() )
-			out.defaultValues.AddToTail( CUtlString( pNeutralVar->GetStringValue() ) );
+			out.defaultValues.AddToTail( CUtlString(
+			    pNeutralVar->GetType() == MATERIAL_VAR_TYPE_MATRIX
+			        ? RenderMaterialVmt::MatrixValue( pNeutralVar->GetMatrixValue().Base() ).c_str()
+			        : pNeutralVar->GetStringValue() ) );
 		else
 			out.defaultValues.AddToTail(
 			    CUtlString( declared ? pShader->GetParamDefault( i ) : "" ) );
