@@ -14,7 +14,7 @@ Example (chamber panel view):
 
 All retained Intro4 comparison and survey poses:
   python3 tools/render/map_swipe_compare.py --all-captures \
-      --out quality-results/map-comparisons/intro4-4k-fsr
+      --out quality-results/map-comparisons/intro4-4k-dxvk-fsr
 
 Published maps in run/maps/<name>/published.json are mounted automatically.
 The original retail map is loaded from the staged Portal 2 runtime. Each map
@@ -38,8 +38,8 @@ from PIL import Image, ImageChops, ImageEnhance, ImageStat
 
 ROOT = Path(__file__).resolve().parents[2]
 BOOT = ROOT / "tools/quality/portal_boot.py"
-# Retained comparison cameras and art/lightboard/panel survey poses, deduplicated.
-# Survey setpos values were player origins; these cameras include the 64-unit eye offset.
+# Retained comparison and survey cameras, deduplicated. Survey player origins
+# include the 64-unit standing eye offset here.
 INTRO4_CAPTURES = (
     ("panel", "Chamber panel", "-1552,37,-32:0,-90,0"),
     ("chamber-overview", "Chamber overview", "-300,100,128:0,0,0"),
@@ -114,7 +114,7 @@ def verify_camera(view, position, angles, width, height):
 
 
 def capture(map_name, side, content, args, out, startup_commands=(), engine_args=(),
-            renderer="native-vulkan", build=None):
+            renderer="native-vulkan", build=None, shader_artifacts=None):
     position, angles = args.pose
     boot = out / (side + "-boot")
     command = [sys.executable, str(BOOT), "--runtime", str(args.runtime),
@@ -142,6 +142,10 @@ def capture(map_name, side, content, args, out, startup_commands=(), engine_args
         command += ["--startup-command", setting]
     for argument in engine_args:
         command += ["--engine-arg=" + argument]
+    if shader_artifacts:
+        command += ["--shader-artifacts", str(shader_artifacts)]
+    if renderer == "vulkan-compat":
+        command += ["--render-trace"]
     for relay in args.panel_relay:
         command += ["--console-command", "ent_fire " + relay + " Trigger"]
     command += [
@@ -296,21 +300,25 @@ def capture_gallery(argv, args, parser):
             return result
         cards.append('<a href="%s/compare.html"><img src="%s/b.png" alt="%s">%s</a>' %
                      (name, name, html.escape(label), html.escape(label)))
+    write_gallery(out, cards, args.width, args.height)
+    print(out / "index.html")
+    return 0
+
+
+def write_gallery(out, cards, width, height):
     page = '''<!doctype html><html lang="en"><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Intro4 map comparisons</title><style>
 :root { color-scheme: dark; font: 16px system-ui; }
 body { max-width: 1320px; margin: auto; padding: 24px; }
 .grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(300px,1fr)); gap: 20px; }
-a { color: inherit; } img { display: block; width: 100%; margin-bottom: 8px; }
+a { color: inherit; } img { display: block; width: 100%%; margin-bottom: 8px; }
 </style><h1>Intro4 map comparisons</h1>
 <p>sp_a1_intro4 / sp_a1_intro4_relit · %d×%d · right game: FSR Native AA,
 MSAA off, HDR output requested. RGB PNGs do not verify HDR display presentation.</p>
 <p>Original: DXVK Native legacy renderer. Relit: native Vulkan render core.</p>
-<div class="grid">%s</div></html>''' % (args.width, args.height, "".join(cards))
+<div class="grid">%s</div></html>''' % (width, height, "".join(cards))
     (out / "index.html").write_text(page)
-    print(out / "index.html")
-    return 0
 
 
 def main(argv=None):
@@ -331,6 +339,9 @@ def main(argv=None):
     parser.add_argument("--build", type=Path, default=ROOT / "build-p2-fsr")
     parser.add_argument("--build-a", type=Path, default=ROOT / "build-p2-dxvk",
                         help="original game's separate Portal 2 DXVK Native build")
+    parser.add_argument("--shader-artifacts-a", type=Path,
+                        default=ROOT / "build-p2-dxvk/shaders/intro4",
+                        help="source-matched D3D9 shader pack for the original game")
     parser.add_argument("--fsr-assets", type=Path, default=ROOT / "external/fsr411/assets")
     parser.add_argument("--width", type=int, default=3840)
     parser.add_argument("--height", type=int, default=2160)
@@ -396,7 +407,8 @@ def main(argv=None):
         content_b = args.content_root_b or published_content(args.map_b)
         left = capture(args.map_a, "a", content_a, args, out,
                        ("r_temporal_scale 0", "r_core_world 0"), ("-norendercore",),
-                       renderer="vulkan-compat", build=args.build_a)
+                       renderer="vulkan-compat", build=args.build_a,
+                       shader_artifacts=args.shader_artifacts_a)
         right = capture(args.map_b, "b", content_b, args, out,
                         ("mat_antialias 0", "r_temporal_scale 1", "mat_hdr_output 1"),
                         ("-fsr", "-fsr-assets", str(args.fsr_assets.resolve())))
