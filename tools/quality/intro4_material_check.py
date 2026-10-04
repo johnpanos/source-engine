@@ -16,6 +16,7 @@ Use --scene particles for soft-particle fade, opaque occlusion, return and remov
 Use --scene sparks for the additive spark image, hide/show, opaque occlusion and removal.
 Use --scene monitors for the two real static monitors and their live scanline proxy.
 Use --scene portal-emitters for live blue/orange pulse and their receiver light.
+Use --scene portals for a paired aperture, exit-room pixels, deactivation and reopening.
 """
 import argparse
 import copy
@@ -434,14 +435,83 @@ def portal_emitter_sensitivity(images):
     return checks
 
 
+def portal_commands():
+    result = ['cmd noclip', 'r_drawviewmodel 0',
+              'cmd ent_fire prop_portal SetActivatedState 0',
+              'cmd setpos -230 80 30', 'cmd setang 0 180 0',
+              'wait 150', 'screenshot', 'wait 12']
+    for enabled in (True, False, True):
+        if enabled:
+            result.extend(['cmd portal_place 0 0 -383 80 100 0 0 0',
+                           'cmd portal_place 0 1 120 383 100 0 -90 0'])
+        else:
+            result.append('cmd ent_fire prop_portal SetActivatedState 0')
+        result.extend(['wait 150', 'screenshot', 'wait 12'])
+    result.extend(['cmd portal_report', 'r_core_world_stats', 'r_core_world_strict',
+                   'r_core_dynamic_draws'])
+    return result
+
+
+def inspect_portals(images):
+    validate_images(images, 4)
+    checks = []
+    # The camera and wall are in the exit room. The entry wall is dark here;
+    # a bright placeholder texture also cannot contain this camera silhouette.
+    exit_camera = [region(image, 462, 291, 494, 338) for image in images[:4]]
+    aperture = [region(image, 455, 280, 570, 445) for image in images[:4]]
+    outside = [region(image, 170, 330, 300, 600) for image in images[:4]]
+    for index in (1, 3):
+        sample = exit_camera[index]
+        dark = float(np.mean(sample.max(axis=2) < .06))
+        checks.append(dict(name=f'portal.exit-camera-visible-{index}',
+                           passed=.1 < dark < .5 and float(sample.mean()) > .08, value=dark))
+        delta = float(np.abs(aperture[index] - aperture[0]).mean())
+        checks.append(dict(name=f'portal.exit-room-replaces-entry-wall-{index}',
+                           passed=delta > .02, value=delta))
+        delta = float(np.abs(outside[index] - outside[0]).mean())
+        checks.append(dict(name=f'portal.aperture-does-not-overwrite-outside-{index}',
+                           passed=delta < .01, value=delta))
+    for name, a, b in (('deactivation-restores-wall', 2, 0),
+                        ('reactivation-restores-exit-camera', 3, 1)):
+        samples = aperture if a == 2 else exit_camera
+        delta = float(np.abs(samples[a] - samples[b]).mean())
+        checks.append(dict(name=f'portal.{name}', passed=delta < .003, value=delta))
+    return checks
+
+
+def portal_sensitivity(images):
+    checks = []
+    for name, target, replacement, expected in (
+            ('opaque-entry-wall', 1, 0, 'exit-camera-visible-1'),
+            ('missing-reopened-room', 3, 2, 'exit-room-replaces-entry-wall-3'),
+            ('stale-room-after-close', 2, 1, 'deactivation-restores-wall'),
+            ('wrong-reopened-camera', 3, 0, 'reactivation-restores-exit-camera')):
+        mutated = copy.deepcopy(images)
+        mutated[target] = images[replacement].copy()
+        checks.append(dict(name=f'portal.oracle.rejects-{name}',
+                           passed=any(row['name'] == f'portal.{expected}' and not row['passed']
+                                      for row in inspect_portals(mutated))))
+    for name, bounds, value, expected in (
+            ('bright-placeholder', (462, 291, 494, 338), .65, 'exit-camera-visible-1'),
+            ('outside-overwrite', (170, 330, 300, 600), .65, 'aperture-does-not-overwrite-outside-1')):
+        mutated = copy.deepcopy(images)
+        region(mutated[1], *bounds)[:] = value
+        checks.append(dict(name=f'portal.oracle.rejects-{name}',
+                           passed=any(row['name'] == f'portal.{expected}' and not row['passed']
+                                      for row in inspect_portals(mutated))))
+    return checks
+
+
 def commands(scene='materials'):
     if scene == 'all':
         result = ['wait 600', 'r_core_world_stats', 'r_temporal_scale']
-        for name in ('materials', 'doors', 'cables', 'emissives', 'signage', 'cameras', 'particles', 'sparks', 'monitors', 'portal-emitters'):
+        for name in ('materials', 'doors', 'cables', 'emissives', 'signage', 'cameras', 'particles', 'sparks', 'monitors', 'portal-emitters', 'portals'):
             sequence = commands(name)
             result.extend(sequence if name == 'materials' else sequence[1:])
         result.append('r_temporal_scale')
         return result
+    if scene == 'portals':
+        return portal_commands()
     if scene == 'portal-emitters':
         return portal_emitter_commands()
     if scene == 'monitors':
@@ -939,7 +1009,7 @@ def sensitivity(images):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--commands', action='store_true')
-    parser.add_argument('--scene', choices=('materials', 'doors', 'cables', 'emissives', 'signage', 'cameras', 'particles', 'sparks', 'monitors', 'portal-emitters', 'all'),
+    parser.add_argument('--scene', choices=('materials', 'doors', 'cables', 'emissives', 'signage', 'cameras', 'particles', 'sparks', 'monitors', 'portal-emitters', 'portals', 'all'),
                         default='materials')
     parser.add_argument('--temporal-scale', type=float,
                         help='require this FSR scale in startup settings and live game queries')
@@ -982,7 +1052,7 @@ def main():
             raise ValueError('the game reported strict mode disabled')
         dynamic = re.findall(r'"r_core_dynamic_draws" = "([^\"]+)"', log)
         if ((dynamic and any(value != '0' for value in dynamic)) or
-                (args.scene in ('doors', 'cables', 'emissives', 'signage', 'cameras', 'particles', 'sparks', 'monitors', 'portal-emitters', 'all') and (not strict or not dynamic))):
+                (args.scene in ('doors', 'cables', 'emissives', 'signage', 'cameras', 'particles', 'sparks', 'monitors', 'portal-emitters', 'portals', 'all') and (not strict or not dynamic))):
             raise ValueError('strict/default-cohort game queries are missing or incorrect')
         if args.scene in ('emissives', 'signage', 'cameras', 'portal-emitters', 'all'):
             strength = re.findall(r'"cl_surface_core_emission_strength" = "([^\"]+)"', log)
@@ -1006,7 +1076,7 @@ def main():
             report['temporal_scale'] = selected
         validate_core_statistics(log)
         if args.scene == 'all':
-            validate_images(images, 86)
+            validate_images(images, 90)
             report['checks'] = (inspect(images[:8]) + sensitivity(images[:8]) +
                                 inspect_doors(images[8:17]) + door_sensitivity(images[8:17]) +
                                 inspect_cables(images[17:20]) + cable_sensitivity(images[17:20]) +
@@ -1018,7 +1088,10 @@ def main():
                                 inspect_sparks(images[65:72]) + spark_sensitivity(images[65:72]) +
                                 inspect_monitors(images[72:76]) + monitor_sensitivity(images[72:76]) +
                                 inspect_portal_emitters(images[76:86]) + portal_emitter_sensitivity(images[76:86]) +
+                                inspect_portals(images[86:90]) + portal_sensitivity(images[86:90]) +
                                 camera_reports(log, True) + camera_report_sensitivity(log, True))
+        elif args.scene == 'portals':
+            report['checks'] = inspect_portals(images) + portal_sensitivity(images)
         elif args.scene == 'portal-emitters':
             report['checks'] = inspect_portal_emitters(images) + portal_emitter_sensitivity(images)
         elif args.scene == 'monitors':

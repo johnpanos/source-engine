@@ -9843,3 +9843,48 @@ props omitted; classification includes translucent surfaces, so these numbers
 must not be mislabeled as exclusively foliage. Alpha-tested foliage requires
 its actual cutout shadow program before the overall goal can close. Portal
 aperture regression and the remaining model audit are also still open.
+
+### Intro4 portal aperture regression (2026-10-04)
+
+The installed portal-winding fix now has a repeatable actual-game aperture
+fixture in `intro4_material_check.py --scene portals`, carried by the paired
+strict-game runner. Four fixed-camera shots cover the entry wall, a linked
+exit room, deactivation and reopening. The oracle checks the exit-room camera
+silhouette and wall replacement inside the aperture, stable pixels outside
+it, restoration of the wall on closing and restoration of the exit camera
+on reopening. It excludes the animated arrow from the restoration metric;
+that source legitimately pulses between captures. Eight physical checks and
+six seeded image defects reject opaque/placeholder interiors, stale room
+pixels, missing reopened content and writes outside the aperture.
+
+`quality-results/intro4-rendercore-completion/portal-aperture-strict-game/`
+passes all 14 checks in each strict FSR-on/off mode. No product overlay is used.
+`installed-product-proof.json` verifies all 22 installed products against the
+matrix-fix installation receipt. The `review/` retains eight lossless native
+PNGs, both four-state comparisons and source hashes. Visual review confirms
+the exit room, closing and reopening in both temporal modes. The common
+statistics suite passes four unit tests in `portal-aperture-core-statistics.log`;
+Python compilation and changed-file style checking pass (no eligible C++ change).
+
+The diagnostic `caster-material-audit.json` reads the installed BSP2's carried
+legacy data, model material references and placement skins, with winning pak/
+custom/content VMT inputs and hashes. It confirms eligible foliage uses texture
+alpha and authored `$treesway`, and perforated railings use alpha test. Some
+foliage and glass have explicit no-shadow flags. This diagnostic is a superset
+of drawn meshes: it does not parse VTX strip ranges or establish the current
+core caster census. Coverage/animation and the material claim belong to the
+material owner; shadow depth must consume that coverage, retain required image
+resources through GPU completion and use the visible foliage deformation.
+Opaque silhouettes or static deformed foliage would not satisfy this boundary.
+The existing shared `tree_sway.glsl` owns that deformation math. These remaining
+shadow and complete model/material gates stay open. R91/R96 is not promoted.
+
+`portal-installed-full-game/evidence.json` subsequently passes the combined
+244 checks in each strict FSR-on/off mode, including the portal-emitter and
+aperture fixtures after every earlier material/state change. Both boots
+report zero failed claims and zero refused live draws under the common census
+gate. `installed-product-proof.json` confirms the same 22 installed binaries
+in both modes with no product overlay. `review/` retains 180 native PNGs,
+portal/emitter and earlier cohort comparisons, and hashed source captures.
+This is a combined installed run, superseding the earlier unrun 230-check
+route; it does not close the remaining cutout-shadow or model audit gates.
