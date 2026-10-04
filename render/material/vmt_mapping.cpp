@@ -39,6 +39,11 @@ constexpr VmtShaderRow kShaders[] = {
     { "sprite_dx9", "unlit",
         "sprites: an unlit textured quad whose orientation and render mode are parameters "
         "(sprite_vs20/sprite_ps20b)" },
+    { "decalmodulate", "decal-modulate", "dimensionless surface factors with modulate-2x blending" },
+    { "decalmodulate_dx9", "decal-modulate", "DecalModulate DirectX 9 implementation" },
+    { "cable", "cable", "CPU-expanded rope ribbons with normal UV0 and color UV1" },
+    { "cable_dx9", "cable", "Cable's expanded ribbon implementation" },
+    { "splinerope", "cable", "this client expands SplineRope ribbons before drawing" },
     { "pbrmetalrough", "pbr",
         "RFC 0007 metalness/roughness materials, drawn natively by world_pbr and model_pbr; "
         "the schema is render/pbr_material_schema.h" },
@@ -68,7 +73,7 @@ constexpr std::string_view kLegacyReason =
 // the material flags the draw state depends on); BuildKeyRows() gives each of
 // kLegacyDerivedFamilies a copy.
 constexpr std::string_view kLegacyDerivedFamilies[] = {
-    "lightmapped", "vertexlit", "unlit", "depth", "portal-mask" };
+    "lightmapped", "vertexlit", "unlit", "depth", "portal-mask", "cable", "decal-modulate" };
 
 constexpr VmtKeyRow kCommonKeys[] = {
     { {}, "$one", "one", ValueKind::kFloat, "1" },
@@ -110,6 +115,7 @@ constexpr VmtKeyRow kCommonKeys[] = {
 };
 
 constexpr VmtKeyRow kLegacyDerivedKeys[] = {
+    { "decal-modulate", "$decalscale", "decalscale", ValueKind::kFloat, "1" },
     { "portal-mask", "$stage", "stage", ValueKind::kInt, "0" },
     { "portal-mask", "$portalopenamount", "portalopenamount", ValueKind::kFloat, "0" },
     { "portal-mask", "$portalstatic", "portalstatic", ValueKind::kFloat, "0" },
@@ -206,6 +212,9 @@ constexpr VmtKeyRow kLegacyDerivedKeys[] = {
     { "vertexlit", "$lowqualityflashlightshadows", "lowqualityflashlightshadows", ValueKind::kBool,
         "0" },
 
+    { "cable", "$bumpmap", "bumpmap", ValueKind::kTexture, "" },
+    { "cable", "$minlight", "minlight", ValueKind::kFloat, "0.1" },
+    { "cable", "$maxlight", "maxlight", ValueKind::kFloat, "0.3" },
     { "unlit", "$hdrbasetexture", "hdrbasetexture", ValueKind::kTexture, "" },
     { "unlit", "$vertexalphatest", "vertexalphatest", ValueKind::kBool, "0" },
     { "unlit", "$texture2", "texture2", ValueKind::kTexture, "" },

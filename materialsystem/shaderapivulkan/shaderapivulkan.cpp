@@ -5083,9 +5083,11 @@ bool CEmptyMesh::EmitToCoreQueue()
 			valid = false;
 			return;
 		}
+		// Legacy dynamic meshes face clockwise. Normalize their triangles to the
+		// core's counterclockwise convention before applying the captured cull mode.
 		if ( a != b && b != c && a != c )
 			triangles.insert(
-			    triangles.end(), { std::uint32_t( a ), std::uint32_t( b ), std::uint32_t( c ) } );
+			    triangles.end(), { std::uint32_t( a ), std::uint32_t( c ), std::uint32_t( b ) } );
 	};
 	switch ( m_primitiveType )
 	{

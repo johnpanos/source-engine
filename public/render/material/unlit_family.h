@@ -53,6 +53,8 @@ struct UnlitClaim
 	bool alphaWrite = true;
 	bool nativeProbe = false; // mesh-only authored $envmap resolved through RPRB
 	bool twoTexture = false;
+	bool decalModulate = false;
+	bool cable = false; // expanded ribbon: normal UV0, color UV1, linear vertex lighting
 	bool ignoreDepth = false;
 	// tint: $color and $alpha; flags.x $vertexcolor, .y $alphatest, .z its
 	// reference; state.y 1 (gamma vertex colors); state.w $vertexalpha.
@@ -61,13 +63,19 @@ struct UnlitClaim
 	// The program's point for this claim on a vertex layout.
 	SurfaceVariant Variant( SurfaceVertexLayout layout = SurfaceVertexLayout::kFlat ) const
 	{
-		return { blend, alphaWrite, kSurfaceUnlit, 0, layout, ignoreDepth };
+		SurfaceVariant variant{ blend, alphaWrite, kSurfaceUnlit, 0, layout, ignoreDepth };
+		variant.cable = cable;
+		variant.decalModulate = decalModulate;
+		return variant;
 	}
 };
 
 // Whether the family draws this block's material, and how. The block must be
 // of the `unlit` family's schema (FamiliesFromMapping).
 UnlitClaim ClaimUnlit( const ParameterBlock &block );
+// DecalModulate: undecoded multiplicative texture, alpha > 0, fog to neutral.
+// The caller supplies decal depth bias and captured culling; destination alpha stays intact.
+UnlitClaim ClaimDecalModulate( const ParameterBlock &block );
 // Model extension: an authored env map is resolved from the stage's native
 // reflection probes and shaded beside the emissive base in the PBR point.
 UnlitClaim ClaimUnlitMesh( const ParameterBlock &block );

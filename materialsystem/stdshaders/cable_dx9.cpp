@@ -29,6 +29,9 @@ DEFINE_FALLBACK_SHADER( Cable, Cable_DX9 )
 // error material and no cable is drawn.
 DEFINE_FALLBACK_SHADER( SplineRope, Cable_DX9 )
 
+// Keep the declarative shader macro intact: clang-format parses BEGIN_VS_SHADER
+// as an unterminated call and cannot determine this generated class's indentation.
+// clang-format off
 BEGIN_VS_SHADER( Cable_DX9, 
 			  "Help for Cable shader" )
 	BEGIN_SHADER_PARAMS
@@ -49,6 +52,10 @@ BEGIN_VS_SHADER( Cable_DX9,
 
 	SHADER_INIT
 	{
+		// Declared texture defaults are descriptive; InitShaderParameters does
+		// not assign them. Populate Cable's normal input before LoadBumpMap.
+		if ( !params[BUMPMAP]->IsDefined() )
+			params[BUMPMAP]->SetStringValue( GetParamDefault( BUMPMAP ) );
 		LoadBumpMap( BUMPMAP );
 		LoadTexture( BASETEXTURE, TEXTUREFLAGS_SRGB );
 	}
@@ -148,3 +155,4 @@ BEGIN_VS_SHADER( Cable_DX9,
 		Draw();
 	}
 END_SHADER
+// clang-format on

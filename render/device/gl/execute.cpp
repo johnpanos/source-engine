@@ -843,6 +843,9 @@ private:
 					m_Gl.BlendFuncSeparatei(
 					    index, GL_ONE, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA );
 					break;
+				case BlendMode::kModulate2x:
+					m_Gl.BlendFuncSeparatei( index, GL_DST_COLOR, GL_SRC_COLOR, GL_ZERO, GL_ONE );
+					break;
 				case BlendMode::kTransmittance:
 					m_Gl.BlendFuncSeparatei( index, GL_ONE, GL_SRC_ALPHA, GL_ZERO, GL_ONE );
 					break;

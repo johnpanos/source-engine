@@ -28,13 +28,13 @@ using detail::ReadParameter;
 using detail::TextureBound;
 
 // The parameters the family draws, and the ones the caller owns.
-constexpr std::array<std::string_view, 34> kClaimed = { "basetexture", "color", "alpha",
+constexpr std::array<std::string_view, 35> kClaimed = { "basetexture", "color", "alpha",
     "vertexcolor", "vertexalpha", "alphatest", "alphatestreference", "translucent", "model",
     "nofog", "nocull", "bumpmap", "ssbump", "nodiffusebumplighting", "envmap", "envmapmask",
     "basealphaenvmapmask", "normalmapalphaenvmapmask", "envmaptint", "envmapcontrast",
     "envmapsaturation", "fresnelreflection", "detail", "detailscale", "detailblendmode",
     "detailblendfactor", "detailtint", "selfillum", "selfillumtint", "ssbumpmathfix",
-    "envmaplightscale", "envmaplightscaleminmax", "decal", "alpha2" };
+    "envmaplightscale", "envmaplightscaleminmax", "decal", "alpha2", "allowalphatocoverage" };
 
 // The detail modes the port's combos draw: every TextureCombine mode but the
 // self-illuminating ones (5, 6) without a bump map, and 0 and 1 with one
@@ -122,6 +122,8 @@ LightmappedClaim ClaimLightmapped( const ParameterBlock &block )
 	constants.flags[0] = ReadFlag( block, "vertexcolor" ) ? 1.0f : 0.0f;
 	constants.flags[1] = ReadFlag( block, "alphatest" ) ? 1.0f : 0.0f;
 	constants.flags[2] = detail::AlphaTestReference( block );
+	claim.alphaToCoverage =
+	    constants.flags[1] != 0.0f && !alphaBlended && ReadFlag( block, "allowalphatocoverage" );
 
 	// The env map's knobs as the port reads them. Its pixel fast path
 	// (contrast 0 or 1, saturation 1, no fresnel, no self-illumination tint)

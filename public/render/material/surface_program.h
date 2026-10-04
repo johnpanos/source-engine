@@ -245,8 +245,10 @@ struct SurfaceProjectors
 };
 
 // A view's screen inputs (made by passes before the surface pass, kSampled
-// while it runs): the ambient occlusion (render.pass.ao, one channel at the
-// view's size), read under kSurfaceAmbientOcclusion.
+// while it runs): the ambient occlusion (render.pass.ao, at the view's size),
+// read under kSurfaceAmbientOcclusion. Its receiver metadata prevents applying
+// another surface's visibility. Inputs without the b = -1 marker retain the
+// scalar visibility contract (including the neutral white texture).
 struct SurfaceScreenInputs
 {
 	device::TextureId ambientOcclusion;
@@ -535,6 +537,8 @@ struct SurfaceVariant
 	std::uint32_t viewFeatures = kSurfaceAllViewFeatures;
 	std::uint32_t treeSwayMode = 0; // vertex specialization; 0 has no deformation cost
 	bool alphaToCoverage = false;   // authored request; effective only with multiple samples
+	bool decalModulate = false; // dimensionless factors, no exposure or output encoding
+	bool cable = false;             // fragment specialization: expanded Source rope ribbon
 
 	auto operator<=>( const SurfaceVariant & ) const = default;
 	bool operator==( const SurfaceVariant & ) const = default;

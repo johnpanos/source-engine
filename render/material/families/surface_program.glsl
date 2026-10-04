@@ -65,6 +65,8 @@ layout( constant_id = 2 ) const bool kPortalMask = false;
 layout( constant_id = 3 ) const uint kMaterialFeatures = 0xffffffffu;
 layout( constant_id = 4 ) const uint kViewFeatures = 7u;
 layout( constant_id = 5 ) const bool kAlphaCoverage = false;
+layout( constant_id = 6 ) const bool kCable = false;
+layout( constant_id = 7 ) const bool kDecalModulate = false;
 const uint kMaterialAlphaTest = 1u;
 const uint kMaterialHalfLambert = 2u;
 const uint kMaterialDiffuseWarp = 4u;
@@ -552,8 +554,9 @@ vec3 AmbientCube( vec3 n )
 	return ModelAmbientCube( n );
 }
 
-// Refract_DX90's model point. The color input is a linear snapshot behind the
-// surface; its authored normal alpha controls both the warp and reflection.
+// Native interpretation of Refract: the authored normal alpha controls warp
+// and the reflective coating. Transmission and reflection share the same
+// dielectric Fresnel split as the PBR surface (glass baseline F0 = 0.04).
 vec3 RefractSceneColor( vec2 uv )
 {
 	if ( material.meshModes.x > 0.5 )
@@ -598,10 +601,15 @@ void RefractSurface()
 		}
 		else
 			radiance = texture( samplerCube( envmapTexture, envmapSampler ), reflected ).rgb;
-		vec3 specular = radiance * bump.a * material.envTint.rgb;
-		specular = mix( specular, specular * specular, material.meshProbeColor.x );
-		const vec3 grey = vec3( dot( specular, vec3( 0.299, 0.587, 0.114 ) ) );
-		result += mix( grey, specular, material.envSaturation.rgb );
+		// Contrast shapes the bounded coating reflectance. Squaring HDR
+		// radiance here would amplify bright probes without an energy bound.
+		vec3 coating = clamp( bump.a * material.envTint.rgb, 0.0, 1.0 );
+		coating = mix( coating, coating * coating, material.meshProbeColor.x );
+		const vec3 grey = vec3( dot( coating, vec3( 0.299, 0.587, 0.114 ) ) );
+		coating = clamp( mix( grey, coating, material.envSaturation.rgb ), 0.0, 1.0 );
+		const vec3 reflectionWeight = coating *
+		    PbrFresnelSchlick( 0.04, clamp( abs( dot( normal, eye ) ), 0.0, 1.0 ) );
+		result = mix( result, radiance, reflectionWeight );
 	}
 	if ( DebugViewActive() )
 	{
@@ -622,6 +630,16 @@ vec2 BaseTextureUv()
 {
 	const vec4 source = vec4( baseUv, 0.0, 1.0 );
 	return vec2( dot( source, material.baseTransform[0] ), dot( source, material.baseTransform[1] ) );
+}
+
+// The coverage function shared by native PBR and legacy surface points.
+float CutoutCoverage( float alpha )
+{
+	const float coverage =
+	    clamp( ( alpha - material.flags.z ) / max( fwidth( alpha ), 1e-5 ) + 0.5, 0.0, 1.0 );
+	if ( coverage < 1e-5 )
+		discard;
+	return coverage;
 }
 
 void PbrSurface( out float coverage )
@@ -645,9 +663,7 @@ void PbrSurface( out float coverage )
 	{
 		// RFC 0012's coverage function: midpoint at the authored alpha-test
 		// reference, approximately one pixel wide. Transparent texels write no depth.
-		coverage = clamp( ( alpha - material.flags.z ) / max( fwidth( alpha ), 1e-5 ) + 0.5, 0.0, 1.0 );
-		if ( coverage < 1e-5 )
-			discard;
+		coverage = CutoutCoverage( alpha );
 	}
 	else if ( MaterialFeature( kMaterialAlphaTest, material.flags.y != 0.0 ) && alpha < material.flags.z )
 		discard;
@@ -680,16 +696,22 @@ void PbrSurface( out float coverage )
 		outColor = vec4( base * ( 1.0 - metalness ), 1.0 );
 		return;
 	}
-	// The view's occlusion of the indirect light (render.pass.ao).
-	const float screenOcclusion =
-	    Term( kAmbientOcclusion ) && DebugTermOn( kDebugTermAo )
-	        ? clamp( texelFetch( sampler2D( occlusionTexture, shadowSampler ),
-	                     clamp( ivec2( gl_FragCoord.xy ), ivec2( 0 ),
-	                         textureSize( sampler2D( occlusionTexture, shadowSampler ), 0 ) - 1 ),
-	                     0 )
-	                     .r,
-	              0.0, 1.0 )
-	        : 1.0;
+	// The view's indirect visibility belongs to the receiver in its depth pass.
+	// Later game cohorts can contain opaque geometry that was not in that pass.
+	float screenOcclusion = 1.0;
+	if ( Term( kAmbientOcclusion ) && DebugTermOn( kDebugTermAo ) )
+	{
+		const vec4 visibilitySample = texelFetch( sampler2D( occlusionTexture, shadowSampler ),
+		    clamp( ivec2( gl_FragCoord.xy ), ivec2( 0 ),
+		        textureSize( sampler2D( occlusionTexture, shadowSampler ), 0 ) - 1 ), 0 );
+		const float receiver = dot( clusterView.viewDistance, vec4( worldPosition, 1.0 ) );
+		// RGBA16F distance rounding, plus the pixel footprint (the legacy
+		// frontend shifts raster centers by half a pixel), on sloped receivers.
+		const float tolerance = max( abs( receiver ) * 0.001, 2.0 * fwidth( receiver ) );
+		if ( visibilitySample.b >= 0.0 ||
+		     ( visibilitySample.g > 0.0 && abs( visibilitySample.g - receiver ) <= tolerance ) )
+			screenOcclusion = clamp( visibilitySample.r, 0.0, 1.0 );
+	}
 
 	const vec3 view = normalize( frame.eye.xyz - worldPosition );
 	vec3 normal = dot( worldNormal, worldNormal ) > 1e-12 ? normalize( worldNormal ) : view;
@@ -1409,7 +1431,8 @@ void VertexLitSurface()
 	const vec4 baseColor = texture( sampler2D( baseTexture, baseSampler ), BaseTextureUv() );
 	const vec3 albedo = furnace ? vec3( 1.0 ) : baseColor.rgb * material.tint.rgb;
 	const float alpha = material.tint.a * baseColor.a;
-	if ( material.flags.y != 0.0 && alpha < material.flags.z )
+	const float coverage = kAlphaCoverage ? CutoutCoverage( alpha ) : 1.0;
+	if ( !kAlphaCoverage && material.flags.y != 0.0 && alpha < material.flags.z )
 		discard;
 	const vec3 lit = albedo * ( furnace ? vec3( 1.0 ) : vertexLighting );
 	if ( DebugViewActive() )
@@ -1422,7 +1445,7 @@ void VertexLitSurface()
 		outColor = DebugOutput( inputs );
 		return;
 	}
-	outColor = Output( lit, alpha );
+	outColor = Output( lit, kAlphaCoverage ? coverage : alpha );
 }
 
 // The water point: water_ps2x's main (Portal 2's; the CS:GO source has its
@@ -1579,6 +1602,33 @@ void main()
 	// Points without image specular leave the SSR targets empty (weight 0:
 	// render.pass.ssr leaves their pixels unchanged).
 	WriteSsrTargets( vec3( 0.0, 0.0, 1.0 ), 1.0, vec3( 0.0 ), vec3( 0.0 ), false );
+	if ( kDecalModulate )
+	{
+		const vec4 factor = texture( sampler2D( baseTexture, baseSampler ), baseUv );
+		if ( factor.a <= 0.0 )
+			discard;
+		vec3 weight = factor.rgb;
+		if ( frame.fogColor.w > -0.5 && material.surfaceControls.x == 0.0 )
+		{
+			const float fog = pow( FogFactor(), frame.fogColor.w < 0.5 ? 0.8 : 0.4 );
+			weight = mix( weight, vec3( 0.5 ), fog );
+		}
+		// Multiplicative factors apply to the already lit destination. Exposure
+		// and output encoding would destroy 0.5 as the blend's neutral input.
+		outColor = vec4( weight, factor.a );
+		return;
+	}
+	if ( kCable )
+	{
+		// Cable's half-Lambert normal term simplifies to the stored blue squared.
+		const vec4 base = texture( sampler2D( baseTexture, baseSampler ), lightmapUv );
+		const float normalZ = texture( sampler2D( bumpTexture, bumpSampler ), baseUv ).b;
+		const float alpha = base.a * color.a;
+		if ( material.flags.y != 0.0 && alpha < material.flags.z )
+			discard;
+		outColor = Output( base.rgb * color.rgb * normalZ * normalZ, alpha );
+		return;
+	}
 	if ( Term( kPbr ) )
 	{
 		if ( Term( kTransmission ) && material.transmission.z > 0.5 )
@@ -1674,7 +1724,8 @@ void main()
 	{
 		alpha *= material.tint.a;
 	}
-	if ( material.flags.y != 0.0 && alpha < material.flags.z )
+	const float coverage = kAlphaCoverage ? CutoutCoverage( alpha ) : 1.0;
+	if ( !kAlphaCoverage && material.flags.y != 0.0 && alpha < material.flags.z )
 		discard;
 
 	// The furnace (RFC 0014): albedo 1 after every modulation, the light a
@@ -1849,5 +1900,5 @@ void main()
 		outColor = DebugOutput( inputs );
 		return;
 	}
-	outColor = Output( lit, alpha );
+	outColor = Output( lit, kAlphaCoverage ? coverage : alpha );
 }

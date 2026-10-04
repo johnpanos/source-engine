@@ -10,6 +10,7 @@
 
 #include "family_program.h"
 
+#include "render/material/cable_family.h"
 #include "render/material/lightmapped_family.h"
 #include "render/material/pbr_family.h"
 #include "render/material/refract_family.h"
@@ -353,9 +354,12 @@ foundation::Expected<device::BlendMode, std::string> ClaimForDrawing(
 			return foundation::MakeUnexpected( claim.reason );
 		return claim.blend;
 	}
-	if ( material.family == "unlit" )
+	if ( material.family == "unlit" || material.family == "cable" || material.family == "decal-modulate" )
 	{
-		const UnlitClaim claim = ClaimUnlit( *block );
+		const UnlitClaim claim =
+		    material.family == "cable" ? ClaimCable( *block )
+            : material.family == "decal-modulate" ? ClaimDecalModulate( *block )
+                                                  : ClaimUnlit( *block );
 		if ( !claim.claimed )
 			return foundation::MakeUnexpected( claim.reason );
 		return claim.blend;
@@ -506,18 +510,23 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 		out.drawInputs = { "lightmap" };
 		return out;
 	}
-	if ( material.family == "unlit" )
+	if ( material.family == "unlit" || material.family == "cable" || material.family == "decal-modulate" )
 	{
-		const UnlitClaim claim = s.mesh ? ClaimUnlitMesh( *block ) : ClaimUnlit( *block );
+		const UnlitClaim claim = material.family == "cable" ? ClaimCable( *block )
+            : material.family == "decal-modulate" ? ClaimDecalModulate( *block )
+		                         : s.mesh                   ? ClaimUnlitMesh( *block )
+		                                                    : ClaimUnlit( *block );
 		if ( !claim.claimed )
 			return foundation::MakeUnexpected( claim.reason );
 		SurfaceTextures textures;
 		textures.base = TextureOf( material, "hdrbasetexture" );
 		if ( textures.base.empty() )
 			textures.base = TextureOf( material, "basetexture" );
+		if ( claim.cable )
+			textures.bump = TextureOf( material, "bumpmap" );
 		if ( claim.twoTexture )
 			textures.emission = TextureOf( material, "texture2" );
-		if ( s.mesh && s.worldPbr && !claim.twoTexture )
+		if ( s.mesh && s.worldPbr && !claim.twoTexture && !claim.cable && !claim.decalModulate )
 		{
 			if ( detail::ReadFlag( *block, "vertexcolor" ) ||
 			     detail::ReadFlag( *block, "vertexalpha" ) ||

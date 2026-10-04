@@ -24,7 +24,10 @@
 //
 //			Inputs in kSampled before and after: depth (D32) and the
 //			octahedral normal (RGBA16F: oct xy, roughness, radius); the output
-//			(RGBA16F, visibility in r) in `outputUsage` before and after.
+//			(RGBA16F: visibility in r, receiver view distance in g, b = -1)
+//			in `outputUsage` before and after. A zero receiver distance marks
+//			background. Consumers reject visibility from another receiver;
+//			this prevents later geometry inheriting background occlusion.
 //
 //=============================================================================//
 

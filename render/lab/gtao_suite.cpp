@@ -339,18 +339,31 @@ std::optional<std::string> RunPass( IRenderDevice2 &device, std::span<const std:
 	if ( !device.ReadBuffer( readback, 0, bytes ) )
 		return std::string( "the output did not read back" );
 	out.assign( std::size_t( kWidth ) * kHeight, 0.0f );
+	std::optional<std::string> receiverFailure;
 	for ( std::size_t i = 0; i < out.size(); ++i )
 	{
-		std::uint16_t half;
-		std::memcpy( &half, bytes.data() + i * 8, 2 );
-		out[i] = HalfToFloat( half );
+		std::uint16_t half[4];
+		std::memcpy( half, bytes.data() + i * 8, sizeof( half ) );
+		out[i] = HalfToFloat( half[0] );
+		// The independently ray-cast fixture owns the receiver position;
+		// visibility alone cannot detect occlusion applied to another surface.
+		const float expectedDistance =
+		    frame.depth[i] < 1.0f ? -math::TransformPoint( camera.view, frame.position[i] ).z
+		                          : 0.0f;
+		// D32 projection rounding grows quadratically with view distance.
+		// Half-float receiver storage adds its own relative rounding bound.
+		const float tolerance = std::max( 0.001f, expectedDistance * 0.001f ) +
+		                        expectedDistance * expectedDistance * 1.2e-7f;
+		if ( HalfToFloat( half[2] ) != -1.0f ||
+		     std::fabs( HalfToFloat( half[1] ) - expectedDistance ) > tolerance )
+			receiverFailure = "the AO image did not preserve its ray-cast receiver distance";
 	}
 	for ( TextureId id : { depth, normal, output } )
 		(void)device.Release( id, token.Value() );
 	for ( BufferId id : buffers )
 		(void)device.Release( id, token.Value() );
 	(void)device.WaitIdle();
-	return std::nullopt;
+	return receiverFailure;
 }
 
 std::optional<std::string> RunOnce( bool validate, std::span<const std::uint32_t> module,

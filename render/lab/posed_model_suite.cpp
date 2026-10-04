@@ -15,6 +15,8 @@
 #include "render/pass/world/world_pass.h"
 #include "render/graph/scene_color.h"
 #include "render/material/program_resolver.h"
+#include "render/material/lightmapped_family.h"
+#include "render/material/registry.h"
 #include "render/material/vmt_import.h"
 
 #include <algorithm>
@@ -49,6 +51,7 @@ public:
 	TextureId twoTextureBase;
 	TextureId twoTextureOverlay;
 	TextureId cutoutFixture;
+	TextureId environmentFixture;
 	TextureId Import( int handle, bool ) override
 	{
 		return handle == 1   ? normalFixture
@@ -58,6 +61,7 @@ public:
 		       : handle == 5 ? twoTextureBase
 		       : handle == 6 ? twoTextureOverlay
 		       : handle == 7 ? cutoutFixture
+		       : handle == 8 ? environmentFixture
 		                     : TextureId{};
 	}
 	SamplerDesc Sampler( int handle ) override
@@ -172,6 +176,24 @@ std::optional<std::string> RunChecks(
 		return why;
 	LabSceneColorCapture sceneColorCapture( *device );
 	WorldData world = MeshWorld();
+	material::FamilyRegistry coverageRegistry;
+	for ( const auto &family : material::FamiliesFromMapping( material::BuiltinVmtMapping() ) )
+		(void)coverageRegistry.Register( family );
+	const auto *coverageSchema = coverageRegistry.Find( "lightmapped" );
+	if ( !coverageSchema )
+		return "lightmapped coverage schema unavailable";
+	for ( int control = 0; control < 3; ++control )
+	{
+		material::ParameterBlock block( *coverageSchema );
+		(void)block.SetInt( "allowalphatocoverage", 1 );
+		(void)block.SetInt( "alphatest", control == 1 ? 0 : 1 );
+		(void)block.SetInt( "translucent", control == 2 ? 1 : 0 );
+		const auto claim = material::ClaimLightmapped( block );
+		results.That( claim.claimed &&
+		                  claim.Variant( material::SurfaceVertexLayout::kWorld ).alphaToCoverage ==
+		                      ( control == 0 ),
+		    "posed-model.world-cutout-coverage-policy-" + std::to_string( control ) );
+	}
 	const auto tubeGlass = material::MapVariables( "VertexLitGeneric",
 	    { { "$basetexture", "models/props_backstage/vacum_pipe_glass" },
 	        { "$bumpmap", "models/props_backstage/vacum_pipe_glass_normal" },
@@ -473,6 +495,14 @@ std::optional<std::string> RunChecks(
 				std::copy_n( vertex.normal, 3, out.normal );
 				std::copy_n( vertex.tangent, 3, out.tangentS );
 				std::copy_n( vertex.uv, 2, out.uv );
+				if ( dynamicMaterial->shader == "Cable_DX9" )
+				{
+					out.uv[0] = out.uv[1] = 0.75f;
+					out.lightmapUv[0] = out.lightmapUv[1] = 0.25f;
+					out.color[0] = out.color[3] = 128;
+					out.color[1] = 64;
+					out.color[2] = 255;
+				}
 				draw.vertices.push_back( out );
 			}
 			draw.indices = { 0, 1, 2, 0, 2, 3 };
@@ -540,7 +570,7 @@ std::optional<std::string> RunChecks(
 		const std::uint32_t tag = active.QueueView( std::move( view ) );
 		const std::uint32_t laterTag = later ? active.QueueView( std::move( *later ) ) : 0;
 		if ( !tag )
-			return "the posed view queued nothing";
+			return "the posed view queued nothing: " + active.Stats().lastRefusal;
 		CanvasPost post = [&]( CommandEncoder &encoder, TextureId color,
 		                      TextureId depth ) -> std::optional<std::string>
 		{
@@ -782,6 +812,26 @@ std::optional<std::string> RunChecks(
 		return why;
 	results.That( reused.rgba == center.rgba && pass.Stats().viewsFailed == 0,
 	    "posed-model.reused-view-resources-preserve-every-pixel" );
+	WorldData backwardsModel = MeshWorld();
+	backwardsModel.materials[0].shader = "UnlitGeneric";
+	for ( unsigned i = 0; i < backwardsModel.staticMeshes[0].indices.size(); i += 3 )
+		std::swap( backwardsModel.staticMeshes[0].indices[i + 1],
+		    backwardsModel.staticMeshes[0].indices[i + 2] );
+	WorldData twoSidedModel = backwardsModel;
+	twoSidedModel.materials[0].variables.emplace_back( "$nocull", "1" );
+	WorldPass backwards, twoSided;
+	backwards.SetWorld( std::move( backwardsModel ) );
+	twoSided.SetWorld( std::move( twoSidedModel ) );
+	CanvasImage backface, authoredBothFaces;
+	if ( auto why = render( backwards, 0.0f, false, 25, black, backface ) )
+		return why;
+	if ( auto why = render( twoSided, 0.0f, false, 26, black, authoredBothFaces ) )
+		return why;
+	results.That( Sum( backface, 16, 48 ) == 0.0f && Sum( authoredBothFaces, 16, 48 ) > 100.0f &&
+	                  backwards.Stats().viewsFailed == 0 && twoSided.Stats().viewsFailed == 0,
+	    "posed-model.backfaces-culled-unless-authored-two-sided" );
+	backwards.ReleaseDevice( *device );
+	twoSided.ReleaseDevice( *device );
 	WorldData color2World = MeshWorld();
 	color2World.materials[0].variables.push_back( { "$color2", "[.25 .5 1]" } );
 	WorldPass color2Pass;
@@ -848,6 +898,47 @@ std::optional<std::string> RunChecks(
 	results.That( refract.Stats().viewsFailed == 1 &&
 	                  std::abs( missingCapture.At( 32, 32 )[0] - background.r ) < 0.01f,
 	    "posed-model.refract-refuses-view-without-capture-source" );
+	// Native glass must preserve a uniform radiance field, and reflected HDR
+	// radiance must remain linear even with the authored contrast control.
+	WorldData coatingWorld = MeshWorld();
+	coatingWorld.materials[0].shader = "Refract_DX90";
+	coatingWorld.materials[0].variables = { { "$model", "1" },
+	    { "$normalmap", "refract-normal-fixture" }, { "$envmap", "glass-environment" },
+	    { "$envmaptint", "[1 1 1]" }, { "$envmapcontrast", "1" } };
+	coatingWorld.materials[0].textures = { { "$normalmap", 3 }, { "$envmap", 8 } };
+	for ( float radiance : { 1.0f, 8.0f } )
+	{
+		TextureDesc cubeDesc = normalDesc;
+		cubeDesc.format = Format::kRGBA16Float;
+		cubeDesc.dimension = TextureDimension::kCube;
+		cubeDesc.depthOrLayers = 6;
+		std::array<std::uint16_t, 24> cubePixels;
+		for ( std::size_t i = 0; i < cubePixels.size(); ++i )
+			cubePixels[i] = FloatToHalf( i % 4 == 3 ? 1.0f : radiance );
+		auto cube = textures.Stage( "glass-environment-" + std::to_string( radiance ), cubeDesc,
+		    std::as_bytes( std::span( cubePixels ) ) );
+		if ( !cube )
+			return "the glass HDR environment could not be staged";
+		empty.environmentFixture = cube.Value().texture;
+		WorldPass coating;
+		coating.SetWorld( coatingWorld );
+		CanvasImage coated;
+		if ( auto why = render( coating, 0, false, 21, { 1, 1, 1, 1 }, coated ) )
+			return why;
+		// The fixture's alpha mask is 128/255; contrast squares its coating.
+		// At normal incidence the shared dielectric Fresnel is 0.04.
+		const float mask = 128.0f / 255.0f;
+		const float expected = 1.0f + ( radiance - 1.0f ) * mask * mask * 0.04f;
+		bool bounded = coating.Failures() == 0;
+		for ( int c = 0; c < 3; ++c )
+			bounded &= std::abs( coated.At( 32, 32 )[c] - expected ) < 0.004f;
+		results.That( bounded,
+		    radiance == 1.0f ? "posed-model.refract-preserves-white-furnace"
+		                     : "posed-model.refract-HDR-reflection-is-linear",
+		    "pixel " + std::to_string( coated.At( 32, 32 )[0] ) + ", expected " +
+		        std::to_string( expected ) );
+		coating.ReleaseDevice( *device );
+	}
 	WorldData underWorld = MeshWorld();
 	underWorld.materials[0].shader = "UnlitGeneric";
 	WorldPass under;
@@ -1010,6 +1101,39 @@ std::optional<std::string> RunChecks(
 	results.That( cutoutDepth && !material::ClaimForMesh( cutoutDepth.Value(), false ),
 	    "posed-model.writez-does-not-claim-an-unimplemented-alpha-mask" );
 	depthOnly.ReleaseDevice( *device );
+	WorldMaterial cableMaterial;
+	cableMaterial.shader = "Cable_DX9";
+	cableMaterial.name = "expanded-rope-fixture";
+	cableMaterial.variables = {
+	    { "$basetexture", "rope-color" }, { "$bumpmap", "rope-normal" }, { "$nofog", "1" } };
+	cableMaterial.textures = { { "$basetexture", 6 }, { "$bumpmap", 1 } };
+	WorldPass cable;
+	cable.SetWorld( MeshWorld() );
+	CanvasImage ribbon;
+	if ( auto why = render( cable, 0.0f, false, 24, black, ribbon, false, RenderCoreDrawPhase::kAll,
+	         true, nullptr, &cableMaterial ) )
+		return why;
+	const float *ropePixel = ribbon.At( 32, 32 );
+	// Independent sRGB decode; normal-map half-Lambert is blue squared.
+	auto linear = []( float byte )
+	{
+		const float value = byte / 255.0f;
+		return value <= 0.04045f ? value / 12.92f : std::pow( ( value + 0.055f ) / 1.055f, 2.4f );
+	};
+	const float normalTerm = std::pow( 170.0f / 255.0f, 2.0f );
+	results.That(
+	    cable.Stats().dynamicDrawsDrawn == 1 && cable.Stats().viewsFailed == 0 &&
+	        std::abs( ropePixel[0] - normalTerm * 128.0f / 255.0f ) < 0.002f &&
+	        std::abs( ropePixel[1] - normalTerm * linear( 128 ) * 64.0f / 255.0f ) < 0.002f &&
+	        std::abs( ropePixel[2] - normalTerm * linear( 64 ) ) < 0.002f &&
+	        std::abs( ropePixel[3] - std::pow( 128.0f / 255.0f, 2.0f ) ) < 0.002f,
+	    "posed-model.cable-uses-both-uv-sets-and-linear-vertex-light", cable.Stats().lastFailure );
+	const auto missingRopeNormal =
+	    material::MapVariables( "SplineRope", { { "$basetexture", "rope-color" } }, {} );
+	results.That(
+	    missingRopeNormal && !material::ClaimForDrawing( missingRopeNormal.Value(), true ),
+	    "posed-model.cable-refuses-missing-required-normal-texture" );
+	cable.ReleaseDevice( *device );
 	WorldData twoTextureWorld = MeshWorld();
 	twoTextureWorld.materials[0].shader = "UnlitTwoTexture_DX9";
 	twoTextureWorld.materials[0].variables = {

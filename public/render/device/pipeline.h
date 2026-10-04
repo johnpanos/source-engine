@@ -121,7 +121,9 @@ enum class BlendMode : std::uint8_t
 	// carries a transmittance in alpha (a participating medium's, RFC 0016).
 	// It is applied as written, so a small transmittance keeps its relative
 	// precision where 1 - a would lose it to the target's format.
-	kTransmittance
+	kTransmittance,
+	// Dimensionless decal factors: 2 * src.rgb * dst.rgb; destination alpha kept.
+	kModulate2x
 };
 
 // The color components a pipeline writes to an attachment (clause D17): a bit

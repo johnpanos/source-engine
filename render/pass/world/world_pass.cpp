@@ -1954,7 +1954,8 @@ void WorldPass::RecordBatch(
 		if ( m.ready || m.failed )
 			return m.ready ? &m : nullptr;
 		const std::string &name = source.name;
-		const bool model = &resolver == r.modelResolver.get();
+		const bool model =
+		    &resolver == r.modelResolver.get() || &resolver == r.prepassModelResolver.get();
 		auto program =
 		    source.mesh ? resolver.ResolveMesh( claimed.desc ) : resolver.Resolve( claimed.desc );
 		std::string why;
@@ -2214,7 +2215,8 @@ void WorldPass::RecordBatch(
 		}
 		if ( view.lights )
 		{
-			const bool model = m.resolver == r.modelResolver.get();
+			const bool model =
+			    m.resolver == r.modelResolver.get() || m.resolver == r.prepassModelResolver.get();
 			Group *&slot = model ? modelLitViews[layout] : litViews[layout];
 			Group *lit = m.program.sceneColor ? &sceneViews[layout] : slot;
 			if ( lit && lit->group.IsValid() )
@@ -2660,12 +2662,12 @@ void WorldPass::RecordBatch(
 		}
 		return result.Value();
 	};
-	// World triangles use the surface vertex's counter-clockwise front face.
-	// Keep authored two-sided materials, but do not draw an exit wall from the
-	// virtual portal camera behind it. Clipping intentionally leaves a tolerance.
-	auto worldStatePipeline = [&]( const Resources::Material &m, PipelineId base,
-	                              material::SurfaceDrawState state,
-	                              const shaderlib::DebugSpecialization &debug = {} )
+	// World and MDL-reader triangles face counterclockwise from outside.
+	// Their owner applies authored culling, including on posed models and
+	// private prepasses. Dynamic snapshots keep their captured raster state.
+	auto surfaceStatePipeline = [&]( const Resources::Material &m, PipelineId base,
+	                                material::SurfaceDrawState state,
+	                                const shaderlib::DebugSpecialization &debug = {} )
 	{
 		state.cull = m.program.twoSided ? CullMode::kNone : CullMode::kBack;
 		return statePipeline( m, base, state, debug );
@@ -2861,6 +2863,7 @@ void WorldPass::RecordBatch(
 			{
 				r.prepassModelResolver = std::move( resolver ).Value();
 				r.prepassModelResolver->SetWorldPbr( true, StageTerms( *world->stage ) );
+				r.prepassModelResolver->SetSceneColorAvailable( true );
 				r.prepassModelMaterials.resize( world->materials.size() );
 				r.staticMeshes.resize( world->staticMeshes.size() );
 			}
@@ -2944,7 +2947,8 @@ void WorldPass::RecordBatch(
 						if ( !SurfaceSelected( instance.surfaceSelection, surface ) )
 							continue;
 						const std::uint32_t material = StaticMaterial( mesh, instance, surface );
-						if ( material >= claims->size() || !( *claims )[material].draws )
+						if ( material >= claims->size() || !( *claims )[material].draws ||
+						     !world->materials[material].mesh )
 							continue;
 						const auto *m = materialReadyIn(
 						    *r.prepassModelResolver, r.prepassModelMaterials, material );
@@ -3001,7 +3005,7 @@ void WorldPass::RecordBatch(
 					    note( "the prepass: " + variant.Error() );
 					    return std::nullopt;
 				    }
-				    return worldStatePipeline( m, variant.Value(), material::SurfaceDrawState() );
+				    return surfaceStatePipeline( m, variant.Value(), material::SurfaceDrawState() );
 			    } );
 			for ( const StaticDraw &draw : prepassModels )
 			{
@@ -3015,7 +3019,7 @@ void WorldPass::RecordBatch(
 					continue;
 				}
 				const auto pipeline =
-				    statePipeline( m, variant.Value(), material::SurfaceDrawState() );
+				    surfaceStatePipeline( m, variant.Value(), material::SurfaceDrawState() );
 				if ( pipeline )
 					recordModel( draw, m, *pipeline );
 				else
@@ -3202,7 +3206,7 @@ void WorldPass::RecordBatch(
 					    note( "the depth prepass: " + variant.Error() );
 					    return std::nullopt;
 				    }
-				    const auto state = worldStatePipeline( m, variant.Value(), target.drawState );
+				    const auto state = surfaceStatePipeline( m, variant.Value(), target.drawState );
 				    if ( !state )
 					    worldDepthReady = false;
 				    return state;
@@ -3237,7 +3241,7 @@ void WorldPass::RecordBatch(
 				note( "the model depth prepass: " + variant.Error() );
 				continue;
 			}
-			const auto state = statePipeline( m, variant.Value(), target.drawState );
+			const auto state = surfaceStatePipeline( m, variant.Value(), target.drawState );
 			if ( !state )
 			{
 				modelDepthReady = false;
@@ -3265,7 +3269,7 @@ void WorldPass::RecordBatch(
 	    order, r.materials,
 	    [&]( const Resources::Material &m ) -> std::optional<PipelineId>
 	    {
-		    return worldStatePipeline( m, m.program.request.pipeline,
+		    return surfaceStatePipeline( m, m.program.request.pipeline,
 		        worldDepthReady && opaquePbr( m ) ? prepassedState() : target.drawState,
 		        frame::DebugSpecializationFor( view.debug, m.program.name ) );
 	    },
@@ -3359,7 +3363,7 @@ void WorldPass::RecordBatch(
 			complete = false;
 			continue;
 		}
-		const auto state = statePipeline( m, m.program.request.pipeline,
+		const auto state = surfaceStatePipeline( m, m.program.request.pipeline,
 		    modelDepthReady && opaquePbr( m ) ? prepassedState() : target.drawState,
 		    frame::DebugSpecializationFor( view.debug, m.program.name ) );
 		if ( !state )

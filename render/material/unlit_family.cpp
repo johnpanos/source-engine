@@ -87,6 +87,35 @@ UnlitClaim ClaimUnlit( const ParameterBlock &block )
 	return claim;
 }
 
+UnlitClaim ClaimDecalModulate( const ParameterBlock &block )
+{
+	UnlitClaim claim;
+	if ( block.Family().desc.name != "decal-modulate" )
+	{
+		claim.reason = "the block is of family " + block.Family().desc.name;
+		return claim;
+	}
+	// The shader ignores modulation and vertex colors. Projection owns decalscale.
+	constexpr std::string_view keys[] = { "basetexture", "decal", "decalscale", "vertexcolor",
+	    "vertexalpha", "model", "nocull", "nofog" };
+	if ( const auto unread = detail::UnclaimedParameter( block, keys ) )
+	{
+		claim.reason = "the decal point does not draw " + *unread;
+		return claim;
+	}
+	if ( !detail::TextureBound( block, "basetexture" ) )
+	{
+		claim.reason = "DecalModulate needs its multiplicative texture";
+		return claim;
+	}
+	claim.blend = device::BlendMode::kModulate2x;
+	claim.alphaWrite = false;
+	claim.decalModulate = true;
+	claim.constants.surfaceControls[0] = detail::ReadFlag( block, "nofog" ) ? 1.0f : 0.0f;
+	claim.claimed = true;
+	return claim;
+}
+
 UnlitClaim ClaimUnlitMesh( const ParameterBlock &block )
 {
 	// The ordinary unlit claim owns every shared parameter. The authored env

@@ -69,6 +69,7 @@ struct LightmappedClaim
 	// Whether the draw writes destination alpha: the port leaves it for
 	// translucent and alpha-tested draws (write mask, clause D17).
 	bool alphaWrite = true;
+	bool alphaToCoverage = false; // only opaque cutouts on multisampled targets
 	std::uint32_t terms = 0;      // kSurface* bits
 	std::uint32_t detailMode = 0; // $detailblendmode, with kSurfaceDetail
 	SurfaceConstants constants;
@@ -76,7 +77,9 @@ struct LightmappedClaim
 	// The program's point for this claim on a vertex layout.
 	SurfaceVariant Variant( SurfaceVertexLayout layout ) const
 	{
-		return { blend, alphaWrite, terms, detailMode, layout };
+		SurfaceVariant variant{ blend, alphaWrite, terms, detailMode, layout };
+		variant.alphaToCoverage = alphaToCoverage;
+		return variant;
 	}
 };
 

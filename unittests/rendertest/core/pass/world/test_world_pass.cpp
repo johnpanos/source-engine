@@ -1180,6 +1180,28 @@ int main()
 		stage.lightmap.width = stage.lightmap.height = 4;
 		stage.lightmap.flat.resize( 4 * 4 * 8 );
 		world.stage = std::make_shared<const WorldStage>( std::move( stage ) );
+		WorldMaterial foliage;
+		foliage.name = "AO-model";
+		foliage.shader = "VertexLitGeneric";
+		foliage.mesh = true;
+		const auto materialId = std::uint32_t( world.materials.size() );
+		world.materials.push_back( foliage );
+		WorldData::StaticMesh mesh;
+		for ( const auto &v : world.vertices )
+		{
+			material::SurfaceModelVertex vertex;
+			std::copy_n( v.position, 3, vertex.position );
+			vertex.normal[2] = 1;
+			vertex.tangent[0] = vertex.tangent[3] = 1;
+			mesh.vertices.push_back( vertex );
+		}
+		mesh.indices = { 0, 1, 2 };
+		mesh.surfaces = { { materialId, 0, 0, 3 }, { 0, 0, 0, 3 } };
+		world.staticMeshes.push_back( std::move( mesh ) );
+		WorldData::StaticInstance instance;
+		for ( int i = 0; i < 4; ++i )
+			instance.world[i * 5] = 1;
+		world.staticInstances.push_back( instance );
 		WorldPass staged;
 		staged.SetWorld( std::move( world ) );
 		TextureDesc portalDepthDesc = depthDesc;

@@ -244,7 +244,7 @@ void main()
 	const float depth = DepthAt( p );
 	if ( depth >= 1.0 )
 	{
-		imageStore( outputImage, p, vec4( 1.0 ) );
+		imageStore( outputImage, p, vec4( 1.0, 0.0, -1.0, 1.0 ) );
 		return;
 	}
 	const vec3 centerPosition = WorldAt( vec2( p ) + 0.5, depth );
@@ -284,5 +284,7 @@ void main()
 		}
 	}
 	const float visibility = clamp( weights > 0.0 ? sum / weights : scratch[index], 0.0, 1.0 );
-	imageStore( outputImage, p, vec4( visibility, visibility, visibility, 1.0 ) );
+	// Keep the receiver with its visibility. A later draw may be absent from
+	// this depth pass (for example a posed model in a later game cohort).
+	imageStore( outputImage, p, vec4( visibility, centerDistance, -1.0, 1.0 ) );
 }

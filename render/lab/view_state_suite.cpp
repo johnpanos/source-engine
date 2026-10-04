@@ -128,17 +128,19 @@ std::optional<std::string> RunChecks(
 	const WorldData fixture = Fixture();
 	pass.SetWorld( fixture );
 	std::vector<unsigned> tags;
-	for ( unsigned i = 0; i < 10; ++i )
+	for ( unsigned i = 0; i < 11; ++i )
 	{
-		WorldView view = View( i );
-		if ( i == 6 || i == 7 )
+		WorldView view = View( i == 10 ? 6 : i );
+		if ( i == 6 || i == 7 || i == 10 )
 		{
 			// Exercise the same dynamic snapshot acceptance as the game frontend.
 			WorldView::DynamicDraw draw;
-			draw.material = fixture.materials[fixture.surfaces[i].material];
-			draw.vertices.assign(
-			    fixture.vertices.begin() + i * 4, fixture.vertices.begin() + ( i + 1 ) * 4 );
-			draw.indices = { 0, 1, 2, 0, 2, 3 };
+			const unsigned surface = i == 10 ? 6 : i;
+			draw.material = fixture.materials[fixture.surfaces[surface].material];
+			draw.vertices.assign( fixture.vertices.begin() + surface * 4,
+			    fixture.vertices.begin() + ( surface + 1 ) * 4 );
+			draw.indices = i == 10 ? std::vector<unsigned>{ 0, 2, 1, 0, 3, 2 }
+			                       : std::vector<unsigned>{ 0, 1, 2, 0, 2, 3 };
 			view.surfaces.clear();
 			view.dynamicDraws.push_back( std::move( draw ) );
 		}
@@ -196,7 +198,14 @@ std::optional<std::string> RunChecks(
 			stencil.enabled = true;
 			stencil.pass = StencilOp::kReplace;
 			stencil.reference = 1;
-			pass.Record( tags[control == 6 ? 6 : control == 7 ? 7 : 1], encoder, target );
+			// Dynamic captures must be normalized before this culling boundary.
+			if ( control == 6 || control == 7 || control == 10 )
+				target.drawState.cull = CullMode::kBack;
+			pass.Record( tags[control == 6    ? 6
+			                  : control == 7  ? 7
+			                  : control == 10 ? 10
+			                                  : 1],
+			    encoder, target );
 			stencil.compare = CompareOp::kEqual;
 			stencil.pass = StencilOp::kKeep;
 			stencil.enabled = control != 1;
@@ -207,7 +216,7 @@ std::optional<std::string> RunChecks(
 			stencil.enabled = control != 1;
 			if ( control != 2 && control != 5 && control != 6 && control != 7 && control < 8 )
 				target.clipPlanes[0][1] = 1;
-			if ( control >= 8 )
+			if ( control == 8 || control == 9 )
 			{
 				// Preserve the exit plane's tolerance: this back face passes clipping.
 				target.clipPlanes[0][2] = 1;
@@ -234,10 +243,10 @@ std::optional<std::string> RunChecks(
 		return canvas->Render( textures, groups, {}, { 0, 0, 0, 1 }, &image, post );
 	};
 	CanvasImage normal, replay, noMask, noClip, weapon, noRange, nested, aperture, halfOpen, onWall,
-	    twoSidedWall;
+	    twoSidedWall, reversedAperture;
 	for ( auto sample : { std::pair{ 0, &normal }, { 1, &noMask }, { 2, &noClip }, { 5, &nested },
 	          { 3, &weapon }, { 4, &noRange }, { 0, &replay }, { 6, &aperture }, { 7, &halfOpen },
-	          { 8, &onWall }, { 9, &twoSidedWall } } )
+	          { 8, &onWall }, { 9, &twoSidedWall }, { 10, &reversedAperture } } )
 		if ( auto why = render( sample.first, *sample.second ) )
 			return why;
 	results.That( Color( normal, 8, 16, 1 ) && Color( normal, 48, 16, 0 ),
@@ -261,6 +270,8 @@ std::optional<std::string> RunChecks(
 	results.That( Color( onWall, 8, 32, 1 ) && Color( onWall, 48, 32, 0 ),
 	    "view-state.exit-wall-backface-does-not-cover-linked-room" );
 	results.That( Color( twoSidedWall, 8, 32, 0 ), "view-state.nocull-exit-wall-negative-control" );
+	results.That( Color( reversedAperture, 16, 32, 0 ) && Color( aperture, 16, 32, 1 ),
+	    "view-state.reversed-dynamic-aperture-is-culled-negative-control" );
 	results.That(
 	    pass.Stats().viewsFailed == 0, "view-state.no-lost-slots", pass.Stats().lastFailure );
 	(void)device->WaitIdle();

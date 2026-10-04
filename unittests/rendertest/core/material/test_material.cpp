@@ -95,9 +95,9 @@ void TestFamiliesFromMapping( testing::Checks &checks )
 	std::vector<std::string> names;
 	for ( const FamilyDesc &family : families )
 		names.push_back( family.name );
-	checks.That(
-	    names == std::vector<std::string>{ "lightmapped", "vertexlit", "unlit", "pbr", "water" },
-	    "F1.the-mapping-defines-the-five-core-families-in-order" );
+	checks.That( names == std::vector<std::string>{ "lightmapped", "vertexlit", "unlit", "cable",
+	                          "pbr", "water", "refract", "depth", "portal-mask" },
+	    "F1.the-mapping-defines-the-core-families-in-order" );
 	FamilyRegistry registry;
 	bool registered = true;
 	bool fourGroups = true;
@@ -275,10 +275,11 @@ void TestImportReading( testing::Checks &checks )
 	checks.That( wvt && wvt.Value().family == "lightmapped" &&
 	                 wvt.Value().legacyShader == "worldvertextransition_dx9",
 	    "V8.fallback-aliases-resolve-before-mapping" );
-	auto refract = ImportVmt( "Refract { $refractamount .2 $surfaceprop glass }", context );
-	checks.That(
-	    refract && refract.Value().family == kLegacyFamily && refract.Value().unmapped.empty() &&
-	        VariableOf( refract.Value(), "$refractamount" ) && refract.Value().metadata.size() == 1,
+	auto legacy = ImportVmt( "MotionBlur { $motionblurinternal .2 $surfaceprop glass }", context );
+	checks.That( legacy && legacy.Value().family == kLegacyFamily &&
+	                 legacy.Value().unmapped.empty() &&
+	                 VariableOf( legacy.Value(), "$motionblurinternal" ) &&
+	                 legacy.Value().metadata.size() == 1,
 	    "V8.a-legacy-shader-keeps-every-variable" );
 	auto subrect = ImportVmt( "Subrect { $material a/b $pos \"0 0\" $size \"8 8\" }", context );
 	checks.That( subrect && subrect.Value().family == kLegacyFamily, "V8.subrect-is-legacy" );

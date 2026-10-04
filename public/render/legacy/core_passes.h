@@ -224,7 +224,8 @@ struct CoreOutputTargets
 // Value views of one material-system mesh draw. QueueMesh copies every byte
 // synchronously; neither proxies nor the legacy mesh may be borrowed afterward.
 // Positions and tangent frames are world space; matrices are row-major with
-// column vectors, matching FamilyDrawConstants. No native shading crosses here.
+// column vectors, matching FamilyDrawConstants. Triangles use the core's
+// counterclockwise front-face convention. No native shading crosses here.
 struct CoreMeshVariable
 {
 	const char *key = nullptr;

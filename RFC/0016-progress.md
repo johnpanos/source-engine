@@ -8923,3 +8923,150 @@ Evidence: `quality-results/map-swipe-setup/original-style-verification.json`.
 The doorway, overview, both lightboards, cool corridor and warm-room views
 were visually inspected. `tone-map-result.png` in the gallery shows A, the
 engine B preview and the recreated B preview side by side.
+
+
+### Intro4 game material defects: model layout, glass and AO receivers (2026-10-03)
+
+The actual `sp_a1_intro4_relit` game capture, including the FSR path, is the
+visual oracle for this slice. The private AO prepass's model resolver now uses
+the model vertex layout and model view bindings. A world-layout material on a
+model surface is excluded from that prepass. This repairs the claimed-view
+failure for `models/props_office/office_wallframe`; the material stays claimed.
+The world null suite's portal/private-depth fixture includes both the eligible
+model surface and the deliberately wrong-layout surface. It passes 110 checks:
+`quality-results/intro4-rendercore-completion/world-prepass-conformance.json`.
+
+The dropper's metal showed foliage-shaped dark patches. Matched in-game
+`dropper-front-isolation/` captures remove those patches with AO disabled, while
+disabling IBL/SSR retains them. The private AO depth includes static geometry
+but does not yet gather later posed-model cohorts. Applying that visibility
+without a receiver check projects foliage behind the door onto its metal.
+`render.pass.ao` now preserves the receiver's view distance alongside visibility,
+and the surface rejects another receiver's visibility. Neutral scalar inputs
+retain their contract. The corrected strict FSR game run passes and its image
+removes the false silhouette: `dropper-ao-receiver-game/evidence.json` under
+`quality-results/intro4-rendercore-completion/`. The GTAO suite independently
+checks those distances against its ray-cast receivers, including projection
+and half-float rounding; 13 checks pass in `ao-receiver-gtao.log`.
+
+Native Refract now combines transmission and dielectric reflection with the
+shared Fresnel term. Authored contrast shapes bounded coating reflectance,
+rather than squaring HDR probe radiance and adding it over the background.
+The posed-model GPU suite checks a uniform white furnace and an eight-unit
+reflection source, with the authored contrast enabled: 79 checks pass in
+`glass-energy-posed-model.log`. The strict game `glass-fresnel-game/evidence.json`
+passes. The launcher containing both this fix and the AO receiver fix was
+installed into `run/runtime-p2-fsr`; running processes need a restart.
+
+Matched `portal-core-legacy-isolation/` and `portal-fsr-matched-game/` captures
+showed the exit room without FSR and the entry wall with FSR. The native legacy
+pipeline treats dynamic triangles as clockwise; the core's surface pipeline
+uses counterclockwise front faces. The frozen frontend now normalizes captured
+triangles before submitting them to the core. Its cull mode remains intact.
+`portal-winding-game/evidence.json` passes with zero claimed-view failures;
+visual inspection confirms the exit room inside the aperture on the strict
+FSR path. The view-state GPU suite passes 17 checks, including a deliberately
+reversed dynamic aperture that back-face culling must reject, in
+`portal-winding-view-state.log`. Clean strict counters alone do not certify
+these pixels. The clean runtime was installed into `run/runtime-p2-fsr`.
+
+Frozen-path: defect fix in `shaderapivulkan`'s legacy-to-core mesh capture:
+normalize Source's dynamic triangle winding to the core convention. The native
+legacy shader programs and their winding policy are unchanged. Posed-model AO gathering, full material/cohort coverage,
+cutout shadows and complete gameplay-frame budgets remain open; this slice
+does not promote K12/R96 or temporal-provider qualification. Architecture
+checking reports the existing CAP002 charconv include in
+`public/gameui/graphics_settings_service.h`, with zero new or stale occurrences.
+
+
+### Intro4 cable and world-cutout material support (2026-10-03)
+
+The `cable` family owns CPU-expanded Cable/SplineRope ribbon shading. UV0
+samples the linear normal texture, UV1 samples the sRGB base texture, and the
+captured linear vertex lighting and alpha modulate it. The normal-map
+half-Lambert term simplifies to blue squared. MINLIGHT/MAXLIGHT are declared
+but unread by Cable_DX9's programs; the family explicitly preserves that
+behavior. Missing required base/normal inputs are refused. The GPU oracle uses
+different coordinates for both UV sets, an independently decoded sRGB texel,
+linear vertex lighting, and alpha; the posed-model suite passes 84 checks,
+including the world-cutout policy controls, in
+`quality-results/intro4-rendercore-completion/world-coverage-posed-model.log`.
+
+The actual game exposed an absent normal input on `cable/cable`: Source's
+shader parameter declaration describes a texture default but does not assign
+it. Cable's initialization now populates its declared default before loading
+the bump texture. This removes the texture warning and makes the game's
+expanded ropes reach the core. `cable-default-game/evidence.json` passes with
+zero claimed-view failures and no cable refusal. The core handoff still uses
+its existing explicit `r_core_dynamic_draws 1` policy; full cohort acceptance
+and default promotion remain incomplete.
+
+Frozen-path: defect in Cable_DX9 initialization: use its existing declared
+normal-texture default before LoadBumpMap. Ribbon geometry and vertex-lighting
+production remain the frozen frontend's existing inputs. The native legacy
+cable shading remains reachable with the handoff disabled; its retirement
+condition is complete cohort/default promotion, not this opt-in slice.
+
+Lightmapped opaque cutouts now carry `$allowalphatocoverage` to the surface
+pipeline. Native PBR and legacy surface points share one coverage function.
+Single-sample/FSR targets retain the authored alpha test; only multisampled
+opaque cutouts request coverage. This accepts the metal-grate setting without
+changing translucency into coverage. Native 4x image/performance qualification
+remains open.
+
+The installed null world/material contracts pass 110 and 82 checks in
+`material-support-contracts.json`. The fixtures' old five-family inventory and
+legacy-Refract negative case were stale before this slice: the reviewed
+inventory now includes the existing Refract/depth/portal families and the new
+cable family, and MotionBlur remains the negative legacy shader. Required
+source lists now include the cable family wherever the resolver is linked.
+
+A combined capture without fixed timing passed boot checks but did not settle
+all camera poses; it cannot certify the requested multi-pose images. The repeat
+uses the harness's existing fixed-time policy (`host_framerate 0.015`) and a
+wait after each capture. `material-support-fixed-game/evidence.json` passes;
+visual inspection confirms the requested dropper and cracked-glass views.
+The portal view is also retained. This is image evidence, not a gameplay-frame
+performance measurement. The current game gaps still include particle cards,
+depth blending, post effects, shadow-build/query geometry and live proxy-only
+materials. No all-material or R96 completion is claimed.
+
+
+### Intro4 authored model culling and installed game verification (2026-10-03)
+
+The MDL reader normalizes triangles to counterclockwise front faces. Static and
+posed model color/depth draws now apply the same authored culling policy as the
+world surfaces: back-face culling unless the material requests `$nocull`.
+The private model AO prepass uses that policy too. Dynamic mesh snapshots
+continue to use their captured raster state. This removes an accidental default
+of drawing both model faces; it does not alter authored two-sided foliage.
+
+The independent posed-model GPU control reverses a model triangle: the ordinary
+material must disappear, while `$nocull` must retain it. All 85 checks pass in
+`quality-results/intro4-rendercore-completion/model-cull-posed-model.log`.
+The final null world/material suites pass 110 and 82 checks, with no skips, in
+`model-cull-contracts.json` under the same directory. Style checking passes
+19 files with zero failures in `material-support-style.log`.
+
+The strict FSR game repeat uses settled dropper, glass and linked-portal poses.
+`model-cull-game/evidence.json` passes with zero claimed-view failures; inspected
+`view-0.png`, `view-1.png` and `view-2.png` show the dropper without the false
+foliage AO, the cracked window and the linked exit room. The final clean product
+installation passes in `material-support-installed-build.log`, and its libraries
+and launcher are installed into `run/runtime-p2-fsr`. Running game processes need
+a restart. Dynamic cable support remains explicitly opt-in with
+`r_core_dynamic_draws 1`; full material/cohort coverage and the outstanding
+performance/qualification gates in the preceding record remain open.
+
+
+### Intro4 decal integration slice in progress (2026-10-03)
+
+User direction selects decals before particle cards. `render.material` owns
+DecalModulate's dimensionless texture factors and fog toward the neutral factor;
+`render.device.v2` owns its multiply blend. Existing material-system projection,
+clipping, lightmap coordinates, polygon offset and ordered geometry capture remain
+inputs. The concrete consumer is the game's missing surface markings and
+`overlays/ratman_diorama01`, plus lightmapped dirt/moss/signage overlays. The
+core-owned decal cohort will be captured without opting in the entire unfinished
+dynamic-draw cohort. Native game images remain the visual oracle; independent
+GPU blend/fog checks precede this wiring. No completion is recorded yet.
