@@ -336,6 +336,8 @@ def preview_summary(name, material):
     summary["roughness"] = constant("roughness")
     summary["opacity"] = constant("opacity")
     summary["opacity_threshold"] = constant("opacityThreshold")
+    opacity_mode = material.GetPrim().GetAttribute("sourceEngine:opacityMode")
+    coverage = bool(opacity_mode and opacity_mode.Get() == "coverage")
     summary["ior"] = constant("ior")
     emission = constant("emissiveColor")
     summary["emission_color"] = emission if max(emission) > 0 or "emission" in textures else None
@@ -350,7 +352,7 @@ def preview_summary(name, material):
     summary["clearcoat_roughness"] = constant("clearcoatRoughness")
     if surface.GetInput("displacement") and surface.GetInput("displacement").HasConnectedSource():
         notes.append("displacement ignored")
-    if summary["opacity"] < 1.0 and summary["opacity_threshold"] <= 0 and \
+    if not coverage and summary["opacity"] < 1.0 and summary["opacity_threshold"] <= 0 and \
             "opacity" not in textures:
         # A uniformly partial opacity is a thin transmissive sheet.
         summary["transmission"] = 1.0 - summary["opacity"]
@@ -365,7 +367,7 @@ def preview_summary(name, material):
             summary["base_color"] = (1.0, 1.0, 1.0)
             summary["base_texture"] = None
             textures.pop("base", None)
-    elif "opacity" in textures and summary["opacity_threshold"] <= 0:
+    elif not coverage and "opacity" in textures and summary["opacity_threshold"] <= 0:
         summary["opacity_threshold"] = 0.5
         notes.append("textured opacity without opacityThreshold alpha-tested at 0.5")
     transforms = {json.dumps(t["transform"], sort_keys=True) for t in textures.values()}
@@ -378,6 +380,12 @@ def preview_summary(name, material):
     if first:
         summary["st_transform"] = first["transform"]
         summary["primvar"] = first["primvar"] or "st"
+    runtime_base = material.GetPrim().GetAttribute("sourceEngine:runtimeBaseTexture")
+    if runtime_base and runtime_base.HasAuthoredValue():
+        # Authored paint changes the transport albedo. Runtime overlays still
+        # draw it, so compiled world content uses the unpainted base exactly once.
+        asset = runtime_base.Get()
+        textures["runtime_base"] = dict(textures["base"], file=asset.resolvedPath or asset.path)
     summary["textures"] = textures
     summary["approximation"] = "; ".join(notes) or None
     return summary

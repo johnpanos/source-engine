@@ -426,6 +426,11 @@ working protocol).
 Within the render program, take the remaining work in this order, subject to
 the roadmap's hard prerequisites:
 
+Game integration fixes follow RFC 0016's
+[strict FSR-on/off game coverage rule](RFC/0016-render-core.md#the-rules)
+(user direction, 2026-10-04); retain actual strict captures and image checks
+in both modes as fixes accumulate.
+
 For these slices, [RFC 0016's surface model](RFC/0016-render-core.md#the-surface-model-legacy-definitions-in-the-modern-core-plan-2026-09-28-amended-2026-10-03)
 interprets legacy VMT definitions into the native Forward+ material by default,
 including visible emission. It refuses unhandled non-neutral settings by name.

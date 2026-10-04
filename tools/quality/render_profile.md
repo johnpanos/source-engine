@@ -69,6 +69,36 @@ passing performance or image quality; 1 means incomplete timing coverage; 2 mean
 malformed evidence or an incomplete measurement bracket. Corrupt/truncated records,
 duplicate JSON keys, missing CPU frames and conflicting GPU results are rejected.
 
+## Strict Intro4 material captures
+
+[RFC 0016](../../RFC/0016-render-core.md#the-rules) owns the strict FSR-on/off
+game integration requirement. Use the actual Portal 2 native Vulkan product,
+`sp_a1_intro4_relit`, `r_core_world 1`, `r_core_world_strict 1` and default
+cohorts (`r_core_dynamic_draws 0`). Run matching captures twice: FSR active at
+the recorded reconstruction scale, and FSR off with `r_temporal_scale 0`.
+Query both `r_core_world_strict` and `r_temporal_scale` in each run. Retain
+initial-spawn coverage as well as the affected gameplay/material states.
+Use the user's launcher physics, job settings and presentation configuration
+when reproducing a reported crash; record deviations explicitly.
+
+`intro4_material_check.py --scene materials|doors|cables --commands` emits each
+installed `portal_boot.py` console sequence. Capture both modes at the same
+1024×768 requested viewport (desktop HiDPI is retained), using the corresponding
+`--startup-command "r_temporal_scale SCALE"`. Pass each capture to the oracle:
+
+```sh
+python3 tools/quality/intro4_material_check.py --scene doors \
+  --capture quality-results/intro4-rendercore-completion/door-box-paired-game \
+  --out quality-results/intro4-rendercore-completion/door-box-pixels.json
+```
+
+Repeat with `--scene materials` for decals, floor indicators and glass, and
+`--scene cables` for the lit rope on/off/on cycle. These are bounded pixel
+checks, with seeded missing-surface controls; they do not certify all materials,
+glass optics, presented HDR output or whole-frame performance. A game boot pass
+without the image oracle and zero queried claimed-view failures is insufficient.
+Do not turn strict mode off to obtain a passing receipt.
+
 ## Timing semantics
 
 - GPU results arrive in a later CPU record. `gpu[0]` is the originating frame ID;

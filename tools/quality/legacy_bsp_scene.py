@@ -77,6 +77,7 @@ import numpy as np
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import legacy_bsp  # noqa: E402
+import legacy_surface_textures  # noqa: E402
 import source_content  # noqa: E402
 import vtf_decode  # noqa: E402
 
@@ -282,7 +283,8 @@ class Materials:
                 # Preserve its normals, blend modulation and transforms too.
                 params.update(params.get("gpu>=1", {}))
                 result = (shader, dict({k: v for k, v in params.items()
-                                        if not isinstance(v, dict)}, **{BASE_KEY: key}), source)
+                                        if not isinstance(v, dict)}, **{BASE_KEY: key,
+                                        "%relight_has_proxies": bool(params.get("proxies"))}), source)
         self.cache[key] = result
         return result
 
@@ -320,24 +322,18 @@ def sanitize(name):
 
 def usd_texture_transform(text):
     """Source's centered transform expressed in USD's bottom-left UV space."""
+    matrix, offset = legacy_surface_textures.transform(text)
+    # The native matrix is R * diag(scale); USD flips V on both sides.
     tokens = text.lower().split()
-    expected = (("center", 2), ("scale", 2), ("rotate", 1), ("translate", 2))
-    values, pos = {}, 0
-    for name, count in expected:
-        if pos >= len(tokens) or tokens[pos] != name:
-            raise ValueError("unsupported material texture transform: " + text)
-        values[name] = np.array([float(v) for v in tokens[pos + 1:pos + 1 + count]])
-        if len(values[name]) != count or not np.isfinite(values[name]).all():
-            raise ValueError("invalid material texture transform")
-        pos += count + 1
-    if pos != len(tokens):
-        raise ValueError("trailing material texture transform fields")
-    angle = math.radians(values["rotate"][0])
-    c, s = math.cos(angle), math.sin(angle)
-    matrix = np.array(((c, -s), (s, c))) @ np.diag(values["scale"])
-    offset = values["center"] + values["translate"] - matrix @ values["center"]
+    at = tokens.index("scale") + 1
+    scale = [float(tokens[at])]
+    if tokens[at + 1] != "rotate":
+        scale.append(float(tokens[at + 1]))
+    else:
+        scale *= 2
+    rotation = float(tokens[tokens.index("rotate") + 1])
     shifted = matrix @ (0, 1) + offset
-    return values["scale"].tolist(), -float(values["rotate"][0]), [float(shifted[0]), float(1 - shifted[1])]
+    return scale, -rotation, [float(shifted[0]), float(1 - shifted[1])]
 
 
 def face_st(points, texinfo, mapping):
@@ -476,6 +472,20 @@ def entity_studio_placements(entities):
         if len(origin) == len(angles) == 3:
             yield {"index": index, "model": name, "origin": origin,
                    "angles": angles, "skin": skin}
+
+
+def static_brush_entity(entity):
+    """Only unaddressable, enabled, opaque func_brush placements are immutable.
+
+    Named, parented and movable entities keep their runtime lifetime; baking
+    those would freeze a door/train/disabled wall into all future states.
+    """
+    entity = {key.lower(): value for key, value in entity.items()}
+    return (entity.get("classname") == "func_brush" and
+            entity.get("model", "").startswith("*") and not entity.get("targetname") and
+            not entity.get("parentname") and entity.get("startdisabled", "0") == "0" and
+            entity.get("rendermode", "0") == "0" and entity.get("renderamt", "255") == "255" and
+            not any(key.lower().startswith("on") for key in entity))
 
 
 def elevator_video_override(resolver, map_name):
@@ -635,6 +645,27 @@ def build_model(bsp, resolver, texture_dir, model_tool=None, map_name=None,
     texdata = bsp.texdata()
     entities = bsp.entities()
     faces = bsp.world_faces()
+    static_brushes, runtime_brushes = [], []
+    for entity in entities:
+        if not entity.get("model", "").startswith("*"):
+            continue
+        if not static_brush_entity(entity):
+            runtime_brushes.append({"model": entity["model"], "classname": entity.get("classname"),
+                                    "reason": "runtime state, movement or non-rendering volume"})
+            continue
+        index = int(entity["model"][1:])
+        origin = np.asarray([float(v) for v in entity.get("origin", "0 0 0").split()])
+        rotation = static_prop_matrix([float(v) for v in entity.get("angles", "0 0 0").split()])
+        if origin.shape != (3,) or not np.isfinite(origin).all():
+            raise ValueError("static brush has an invalid origin")
+        lifted = bsp.model_faces(index)
+        for face in lifted:
+            face["material_points"] = face["points"].copy()
+            face["points"] = face["points"] @ rotation.T + origin
+            face["plane_normal"] = face["plane_normal"] @ rotation.T
+            face["transport_only"] = True
+        faces.extend(lifted)
+        static_brushes.append({"model": entity["model"], "faces": len(lifted)})
     materials = Materials(bsp, resolver, texture_decoder, material_overrides)
     lights, light_lump = bsp.world_lights()
     excluded = {}
@@ -646,6 +677,96 @@ def build_model(bsp, resolver, texture_dir, model_tool=None, map_name=None,
     # Faces -> relit world faces grouped by material.
     groups = {}
     material_info = {}
+    paint_receipts, paints_by_face = [], {}
+    def load_paint(overlay, name):
+        shader, params, source = materials.vmt(name)
+        receipt = {"overlay": overlay["index"], "material": name, "source": source,
+                   "faces": list(overlay["faces"]), "kind": overlay.get("kind", "overlay")}
+        reason = None
+        if shader not in ("decalmodulate", "lightmappedgeneric", "unlitgeneric"):
+            reason = "unsupported paint shader " + str(shader)
+        elif params.get("%relight_has_proxies"):
+            reason = "runtime material proxies"
+        elif truthy(params.get("$additive")):
+            reason = "emission requires an authored radiance policy"
+        texture = materials.texture(params["$basetexture"]) if params.get("$basetexture") else None
+        if not texture and not reason:
+            reason = "missing paint base texture"
+        paint = None
+        if truthy(params.get("$selfillum")):
+            receipt["unbaked_terms"] = ["$selfillum emission requires authored radiance"]
+        if reason:
+            receipt["excluded"] = reason
+        else:
+            pixels = texture[0].astype(np.float64) / 255
+            if shader != "decalmodulate":
+                pixels[..., :3] = legacy_surface_textures.srgb_decode(pixels[..., :3])
+            matrix, offset = legacy_surface_textures.transform(params.get(
+                "$basetexturetransform", legacy_surface_textures.IDENTITY))
+            paint = dict(overlay, shader=shader, image=pixels, matrix=matrix, offset=offset,
+                         alpha=float(params.get("$alpha", 1)),
+                         alphatest=float(params.get("$alphatestreference", 0.5))
+                         if truthy(params.get("$alphatest")) else 0)
+        return receipt, paint
+
+    # Static infodecal uses R_DecalComputeBasis and the material's mapping
+    # size/$decalscale. Named decals are triggered at runtime and stay out.
+    for entity_index, entity in enumerate(entities):
+        if entity.get("classname") != "infodecal":
+            continue
+        name = entity.get("texture", "")
+        if entity.get("targetname") or entity.get("parentname"):
+            paint_receipts.append({"kind": "decal", "entity": entity_index, "material": name,
+                                   "excluded": "runtime-triggered or parented decal"})
+            continue
+        _shader, params, _source = materials.vmt(name)
+        texture = materials.texture(params["$basetexture"]) if params.get("$basetexture") else None
+        if not texture:
+            paint_receipts.append({"kind": "decal", "entity": entity_index, "material": name,
+                                   "excluded": "missing decal base texture"})
+            continue
+        origin = np.asarray([float(v) for v in entity.get("origin", "").split()])
+        if origin.shape != (3,) or not np.isfinite(origin).all():
+            raise ValueError("decal has an invalid origin")
+        width, height = texture[1]["width"], texture[1]["height"]
+        scale = float(params.get("$decalscale", 1))
+        if scale <= 0 or not math.isfinite(scale):
+            raise ValueError("decal has an invalid scale")
+        half = np.asarray((width, height)) * scale * 0.5
+        for face in faces:
+            if face.get("transport_only"):
+                continue  # Entity decals need their runtime entity-space projection.
+            normal = face["plane_normal"]
+            if abs(np.dot(origin - face["points"][0], normal)) >= 4:
+                continue
+            if abs(normal[2]) > math.sqrt(0.5):
+                across = np.array((1., 0, 0))
+                up = np.cross(across, normal)
+                across = np.cross(normal, up)
+            else:
+                across = np.cross(normal, (0., 0, -1))
+                up = np.cross(across, normal)
+            basis = np.stack((across / np.linalg.norm(across), up / np.linalg.norm(up)))
+            projected = (face["points"] - origin) @ basis.T
+            if (projected.min(axis=0) > half).any() or (projected.max(axis=0) < -half).any():
+                continue
+            overlay = {"index": -1 - entity_index, "kind": "decal", "faces": [face["index"]],
+                       "origin": origin, "basis": basis, "limits": (0, 1, 0, 1),
+                       "quad": np.array(((-1., -1), (-1., 1), (1., 1), (1., -1))) * half}
+            receipt, paint = load_paint(overlay, name)
+            paint_receipts.append(receipt)
+            if paint:
+                paints_by_face.setdefault(face["index"], []).append(paint)
+    for overlay in bsp.overlays():
+        info = texinfo[overlay["texinfo"]]
+        if info["texdata"] < 0:
+            raise ValueError("overlay has no material texdata")
+        name = texdata[info["texdata"]]["name"]
+        receipt, paint = load_paint(overlay, name)
+        paint_receipts.append(receipt)
+        if paint:
+            for index in overlay["faces"]:
+                paints_by_face.setdefault(index, []).append(paint)
     for face in faces:
         info = texinfo[face["texinfo"]]
         flags = info["flags"]
@@ -675,9 +796,11 @@ def build_model(bsp, resolver, texture_dir, model_tool=None, map_name=None,
             exclude("missing VMT (legacy-lit)")
             notes.append("material %s has no VMT; its faces stay legacy-lit" % name)
             continue
-        if translucent or shader in LEGACY_ONLY_SHADERS:
+        if shader in LEGACY_ONLY_SHADERS or truthy(params.get("$additive")):
             exclude("translucent or special shader (legacy-lit)")
             continue
+        if translucent:
+            face = dict(face, transport_only=True, coverage=True)
         if face["dispinfo"] != -1:
             face = dict(face, displacement=bsp.displacement(face))
         groups.setdefault(name, []).append(face)
@@ -714,11 +837,17 @@ def build_model(bsp, resolver, texture_dir, model_tool=None, map_name=None,
                 base, hashlib.sha1(steps.astype(np.int64).tobytes()).hexdigest()[:6])
             if "displacement" in face:
                 key += "_disp%d" % face["dispinfo"]
+            elif face["index"] in paints_by_face:
+                key += "_paint%d" % face["index"]
+            if face.get("transport_only"):
+                key = "relight_transport_" + key
             if key not in records:
                 records[key] = {"source_material": name, "shader": material_info[name]["shader"],
                                 "vmt": material_info[name]["source"], "params": params,
                                 "emission": None if radiance is None else
                                 [float(v) for v in radiance]}
+                records[key]["coverage"] = face.get("coverage", False)
+                records[key]["transport_only"] = face.get("transport_only", False)
             meshes.setdefault(key, []).append(face)
 
     # Static props are part of the light transport, even though the game's
@@ -756,15 +885,15 @@ def build_model(bsp, resolver, texture_dir, model_tool=None, map_name=None,
                 if shader is not None:
                     material_name = candidate
                     break
-            if shader is None or shader in LEGACY_ONLY_SHADERS or \
-                    truthy(params.get("$translucent")) or truthy(params.get("$additive")):
+            if shader is None or shader in LEGACY_ONLY_SHADERS or truthy(params.get("$additive")):
                 reason = "missing VMT" if shader is None else "translucent or special shader"
                 omitted[reason] = omitted.get(reason, 0) + 1
                 continue
             key = "relight_prop_" + hashlib.sha1(material_name.encode()).hexdigest()[:12]
             if key not in records:
                 records[key] = {"source_material": material_name, "shader": shader,
-                                "vmt": source, "params": params, "emission": None}
+                                "vmt": source, "params": params, "emission": None,
+                                "coverage": truthy(params.get("$translucent"))}
             prop_meshes.append({"name": "%s_%02d" % (label, part_index),
                                 "part": part, "rotation": rotation, "origin": origin,
                                 "material": key})
@@ -985,11 +1114,120 @@ def build_model(bsp, resolver, texture_dir, model_tool=None, map_name=None,
             mapping_differs.append({"material": record["name"], "source": source,
                                     "texdata": [record["width"], record["height"]],
                                     "mapping": [size["width"], size["height"]]})
+    displacement_receipts = []
+    painted_surfaces = []
+    for key, group in meshes.items():
+        for face in group:
+            paints = paints_by_face.get(face["index"], [])
+            if "displacement" not in face and not paints:
+                continue
+            disp = face.get("displacement")
+            flat = disp["flat_points"] if disp else face["points"]
+            triangles = disp["triangles"] if disp else np.asarray(widest_triangulation(
+                face["points"], face["plane_normal"]), dtype=np.int64)
+            record = records[key]
+            params = record["params"]
+            # Each displacement has its own finite material tile. This carries
+            # vertex-alpha layers through the same PreviewSurface representation
+            # consumed by Cycles and the compiled PBR material, without adding
+            # a second runtime blend interpretation or dropping the second base.
+            layers = {}
+
+            def layer(channel, texture, mapping_key, kind):
+                if not texture:
+                    return
+                decoded_texture = texture_file(texture, kind)
+                if not decoded_texture:
+                    raise ValueError("surface %d lacks %s texture %s" %
+                                     (face["index"], channel, texture))
+                from PIL import Image
+                with Image.open(decoded_texture["file"]) as image:
+                    pixels = np.asarray(image).astype(np.float64) / 255
+                if pixels.ndim == 2:
+                    pixels = pixels[..., None]
+                if channel.startswith("base") or channel == "emission_texture":
+                    pixels[..., :3] = legacy_surface_textures.srgb_decode(pixels[..., :3])
+                elif channel.startswith("normal"):
+                    pixels = pixels[..., :3] * 2 - 1
+                matrix, offset = legacy_surface_textures.transform(params.get(
+                    mapping_key, legacy_surface_textures.IDENTITY))
+                layers[channel] = pixels, matrix, offset
+
+            layer("base", params.get("$basetexture"), "$basetexturetransform", "base")
+            transition = record["shader"] == "worldvertextransition" and disp is not None
+            if transition:
+                layer("base2", params.get("$basetexture2"), "$basetexturetransform2", "base")
+                if "base2" not in layers:
+                    raise ValueError("WorldVertexTransition needs its second base texture")
+                layer("modulation", params.get("$blendmodulatetexture"),
+                      "$blendmasktransform", "base")
+            normal_kind = "ssbump-normal" if truthy(params.get("$ssbump")) else "normal"
+            layer("normal", params.get("$bumpmap") or params.get("$normalmap"),
+                  "$bumptransform", normal_kind)
+            if transition:
+                layer("normal2", params.get("$bumpmap2"), "$bumptransform2", normal_kind)
+            if truthy(params.get("$ssbump")):
+                layer("occlusion", params.get("$bumpmap"), "$bumptransform", "ssbump-occlusion")
+                if transition:
+                    layer("occlusion2", params.get("$bumpmap2"), "$bumptransform2", "ssbump-occlusion")
+            for channel in ("roughness_mask", "mrao", "emission_texture"):
+                if record.get(channel):
+                    from PIL import Image
+                    with Image.open(record[channel]["file"]) as image:
+                        pixels = np.asarray(image).astype(np.float64) / 255
+                    if pixels.ndim == 2:
+                        pixels = pixels[..., None]
+                    layers[channel] = pixels, *legacy_surface_textures.transform(
+                        params.get("$basetexturetransform", legacy_surface_textures.IDENTITY))
+            uv = face_st(flat, texinfo[face["texinfo"]],
+                         mappings[texinfo[face["texinfo"]]["texdata"]])
+            uv[:, 1] = 1 - uv[:, 1]  # the compositor samples native top-left UVs
+            world_from_uv, _residual, rank, _singular = np.linalg.lstsq(
+                np.column_stack((uv, np.ones(len(uv)))), flat, rcond=None)
+            if rank != 3:
+                raise ValueError("paint surface has degenerate material UVs")
+            for paint in paints:
+                # Density of the overlay's texture in this surface's UV frame.
+                # For skewed quads the shortest opposing edges bound the scale.
+                quad = paint["quad"]
+                lengths = np.asarray((min(np.linalg.norm(quad[3] - quad[0]),
+                                          np.linalg.norm(quad[2] - quad[1])),
+                                      min(np.linalg.norm(quad[1] - quad[0]),
+                                          np.linalg.norm(quad[2] - quad[3]))))
+                if (lengths <= 1e-8).any():
+                    raise ValueError("paint has a degenerate quad")
+                sizes = np.asarray((paint["image"].shape[1], paint["image"].shape[0]))
+                u0, u1, v0, v1 = paint["limits"]
+                density = sizes * np.abs((u1 - u0, v1 - v0)) / lengths
+                paint["density"] = np.linalg.norm(
+                    (world_from_uv[:2] @ paint["basis"].T) * density, axis=1)
+            mapped, tile = legacy_surface_textures.compose(
+                record, uv, triangles, disp["alpha"] if transition else np.zeros(len(uv)),
+                texture_dir, key, layers, paints, world_from_uv)
+            mapped[:, 1] = 1 - mapped[:, 1]
+            if disp:
+                disp["material_uv"] = mapped
+                displacement_receipts.append(dict(tile, face=face["index"], displacement=disp["index"],
+                                              vertices=len(disp["points"]),
+                                              triangles=len(disp["triangles"]),
+                                              removed_triangles=disp["removed_triangles"]))
+            else:
+                face["material_uv"] = mapped
+            if paints:
+                painted_surfaces.append({"face": face["index"], "material": key,
+                                         "overlays": [paint["index"] for paint in paints]})
     model = {"materials": records, "meshes": meshes, "occluders": occluders,
              "prop_meshes": prop_meshes, "movie_screens": movie_screens,
              "lights": light_records, "texinfo": texinfo, "texdata": texdata,
              "mappings": mappings}
     receipt = {"schema": SCHEMA, "world_light_lump": light_lump,
+               "static_transport": {"brush_entities": static_brushes,
+                                    "runtime_brush_entities": runtime_brushes,
+                                    "materials": sorted(key for key, record in records.items()
+                                                        if record.get("transport_only"))},
+               "displacements": displacement_receipts,
+               "authored_paint": {"overlays": paint_receipts, "surfaces": painted_surfaces,
+                                  "runtime": "paint stays in the overlay draw; baked albedo affects transport"},
                "relit_faces": sum(len(v) for v in meshes.values()),
                "excluded_faces": excluded, "materials": len(records),
                "emissive_materials": sorted(k for k, r in records.items() if r["emission"]),
@@ -1193,8 +1431,8 @@ def write_usd(model, path, map_name):
         node.CreateInput("file", Sdf.ValueTypeNames.Asset).Set(
             Sdf.AssetPath(Path(record["file"]).resolve().as_posix()))
         node.CreateInput("sourceColorSpace", Sdf.ValueTypeNames.Token).Set(colorspace)
-        node.CreateInput("wrapS", Sdf.ValueTypeNames.Token).Set("repeat")
-        node.CreateInput("wrapT", Sdf.ValueTypeNames.Token).Set("repeat")
+        node.CreateInput("wrapS", Sdf.ValueTypeNames.Token).Set(record.get("wrap", "repeat"))
+        node.CreateInput("wrapT", Sdf.ValueTypeNames.Token).Set(record.get("wrap", "repeat"))
         if scale:
             node.CreateInput("scale", Sdf.ValueTypeNames.Float4).Set(Gf.Vec4f(*scale))
             node.CreateInput("bias", Sdf.ValueTypeNames.Float4).Set(Gf.Vec4f(*bias))
@@ -1256,6 +1494,12 @@ def write_usd(model, path, map_name):
                     texture(path, "base", record["base"], "a", "sRGB"))
                 surface.CreateInput("opacityThreshold", Sdf.ValueTypeNames.Float).Set(
                     float(record["alphatest_reference"]))
+            elif record.get("coverage"):
+                surface.CreateInput("opacity", Sdf.ValueTypeNames.Float).ConnectToSource(
+                    texture(path, "base", record["base"], "a", "raw",
+                            (float(record["params"].get("$alpha", 1)),) * 4, (0,) * 4))
+                mat.GetPrim().CreateAttribute("sourceEngine:opacityMode", Sdf.ValueTypeNames.Token,
+                                              custom=True).Set("coverage")
         else:
             surface.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(
                 Gf.Vec3f(*record.get("base_color", (0.0, 0.0, 0.0))))
@@ -1273,6 +1517,10 @@ def write_usd(model, path, map_name):
         if record.get("source_material"):
             mat.GetPrim().CreateAttribute("sourceEngine:material", Sdf.ValueTypeNames.String,
                                           custom=True).Set(record["source_material"])
+        if record.get("runtime_base"):
+            mat.GetPrim().CreateAttribute("sourceEngine:runtimeBaseTexture",
+                                          Sdf.ValueTypeNames.Asset, custom=True).Set(
+                Sdf.AssetPath(Path(record["runtime_base"]["file"]).resolve().as_posix()))
         bound[name] = mat
         return mat
 
@@ -1302,8 +1550,26 @@ def write_usd(model, path, map_name):
     texinfo = model["texinfo"]
     for name, faces in sorted(model["meshes"].items()):
         mat = material(name, model["materials"][name])
+        if "displacement" in faces[0]:
+            disp = faces[0]["displacement"]
+            prim = UsdGeom.Mesh.Define(stage, world.AppendChild(name))
+            indices = disp["triangles"].ravel()
+            prim.CreatePointsAttr(Vt.Vec3fArray([Gf.Vec3f(*map(float, p)) for p in disp["points"]]))
+            prim.CreateFaceVertexCountsAttr(Vt.IntArray([3] * len(disp["triangles"])))
+            prim.CreateFaceVertexIndicesAttr(Vt.IntArray(indices.tolist()))
+            prim.CreateNormalsAttr(Vt.Vec3fArray([Gf.Vec3f(*map(float, n)) for n in disp["normals"][indices]]))
+            prim.SetNormalsInterpolation(UsdGeom.Tokens.faceVarying)
+            prim.CreateSubdivisionSchemeAttr(UsdGeom.Tokens.none)
+            prim.CreateExtentAttr(UsdGeom.PointBased.ComputeExtent(prim.GetPointsAttr().Get()))
+            UsdGeom.PrimvarsAPI(prim).CreatePrimvar(
+                "st", Sdf.ValueTypeNames.TexCoord2fArray, UsdGeom.Tokens.faceVarying).Set(
+                Vt.Vec2fArray([Gf.Vec2f(*map(float, uv)) for uv in disp["material_uv"][indices]]))
+            # No sourceEngine:plane: the parent plane is not this curved surface.
+            UsdShade.MaterialBindingAPI.Apply(prim.GetPrim()).Bind(mat)
+            continue
         polygons = [face["points"] for face in faces]
-        uvs = [face_st(face["points"], texinfo[face["texinfo"]],
+        uvs = [face["material_uv"] if "material_uv" in face else
+               face_st(face.get("material_points", face["points"]), texinfo[face["texinfo"]],
                        model["mappings"][texinfo[face["texinfo"]]["texdata"]]) for face in faces]
         mesh(name, polygons, uvs, [face["plane_normal"] for face in faces], mat,
              [face["vertices"] for face in faces], [face["plane"] for face in faces])

@@ -46,6 +46,7 @@ LUMP_BRUSHES = 18
 LUMP_BRUSHSIDES = 19
 LUMP_DISPINFO = 26
 LUMP_DISP_VERTS = 33
+LUMP_OVERLAYS = 45
 LUMP_DISP_TRIS = 48
 LUMP_PAKFILE = 40
 LUMP_GAME_LUMP = 35
@@ -251,6 +252,13 @@ class LegacyBsp:
         styles, area}]; windings are
         clockwise seen from the front. Faces share vertices by index, as vbsp
         wrote them."""
+        return self.model_faces(0)
+
+    def model_faces(self, model_index):
+        """A brush model's local-space faces, with the same validated face contract."""
+        models = self.models()
+        if not 0 <= model_index < len(models):
+            raise ValueError("missing brush model")
         faces = self.lump(LUMP_FACES, FACE.size)
         edges = np.frombuffer(self.lump(LUMP_EDGES, 4), dtype="<u2").reshape(-1, 2)
         surfedges = np.frombuffer(self.lump(LUMP_SURFEDGES, 4), dtype="<i4")
@@ -258,7 +266,7 @@ class LegacyBsp:
         canonical = canonical_vertices(vertices)
         normals, _ = self.planes()
         texinfo_count = len(self.lump(LUMP_TEXINFO, TEXINFO_BYTES)) // TEXINFO_BYTES
-        world = self.models()[0]
+        world = models[model_index]
         first, count = world["firstface"], world["numfaces"]
         if first < 0 or count < 0 or first + count > len(faces) // FACE.size:
             raise ValueError("world model face range is out of bounds")
@@ -346,12 +354,41 @@ class LegacyBsp:
         for corner in range(3):
             np.add.at(normals, triangles[:, corner], areas)
         lengths = np.linalg.norm(normals, axis=1, keepdims=True)
-        normals = np.divide(normals, lengths, out=np.tile(face["plane_normal"], (count, 1)),
+        normals = np.divide(normals, lengths, out=np.tile(np.asarray(face["plane_normal"],
+                                                                   dtype=np.float64), (count, 1)),
                             where=lengths > 0)
         return {"index": index, "power": power, "points": points, "flat_points": flat,
                 "triangles": triangles, "normals": normals, "alpha": values[:, 4] / 255,
                 "uv": np.column_stack((s.ravel(), 1 - t.ravel())),
                 "removed_triangles": int(removed.sum())}
+
+    def overlays(self):
+        """Authored projected paint (doverlay_t), with the encoded UV basis decoded."""
+        raw = self.lump(LUMP_OVERLAYS, 352)
+        texinfo_count = len(self.lump(LUMP_TEXINFO, TEXINFO_BYTES)) // TEXINFO_BYTES
+        face_count = len(self.lump(LUMP_FACES, FACE.size)) // FACE.size
+        result = []
+        for offset in range(0, len(raw), 352):
+            identifier, texinfo, packed = struct.unpack_from("<ihH", raw, offset)
+            count, order = packed & 0x3fff, packed >> 14
+            if count > 64 or not 0 <= texinfo < texinfo_count:
+                raise ValueError("overlay has invalid face count or texinfo")
+            faces = struct.unpack_from("<%di" % count, raw, offset + 8)
+            if any(not 0 <= face < face_count for face in faces):
+                raise ValueError("overlay names a missing face")
+            limits = np.asarray(struct.unpack_from("<4f", raw, offset + 264))
+            quad = np.asarray(struct.unpack_from("<12f", raw, offset + 280)).reshape(4, 3)
+            origin = np.asarray(struct.unpack_from("<3f", raw, offset + 328))
+            normal = np.asarray(struct.unpack_from("<3f", raw, offset + 340))
+            across = quad[:3, 2].copy()
+            up = np.cross(normal, across) * (-1 if quad[3, 2] == 1 else 1)
+            if (not np.isfinite(np.concatenate((limits, quad.ravel(), origin, normal))).all() or
+                    np.linalg.norm(across) < 1e-8 or np.linalg.norm(up) < 1e-8):
+                raise ValueError("overlay has an invalid projection basis")
+            result.append({"index": identifier, "order": order, "texinfo": texinfo,
+                           "faces": faces, "quad": quad[:, :2].copy(), "origin": origin,
+                           "basis": np.stack((across, up)), "limits": limits})
+        return sorted(result, key=lambda overlay: (overlay["order"], overlay["index"]))
 
     def static_props(self):
         """(lump version, model dictionary, placements) from the sprp game lump.

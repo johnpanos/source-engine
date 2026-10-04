@@ -138,7 +138,7 @@ def base_image(scene, summary):
     cutout = summary["opacity_threshold"] > 0 and "opacity" in textures
     hashes = {}
     if summary["base_texture"]:
-        record = textures.get("base") or {"file": summary["base_texture"], "channel": "rgb",
+        record = textures.get("runtime_base") or textures.get("base") or {"file": summary["base_texture"], "channel": "rgb",
                                           "colorspace": "sRGB"}
         pixels, hashes["base"] = read_texture(root, record, color=True)
         linear = channel_values(pixels, "rgb") if record.get("channel", "rgb") == "rgb" else \

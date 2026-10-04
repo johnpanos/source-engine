@@ -2369,6 +2369,9 @@ void WorldPass::RecordBatch(
 		    surface.material < claims->size() && ( *claims )[surface.material].draws
 		        ? materialReady( surface.material )
 		        : nullptr;
+		if ( !m && failure.empty() )
+			note( "world surface " + std::to_string( index ) + " names unclaimed material " +
+			      std::to_string( surface.material ) );
 		if ( !m ||
 		     ( m->program.request.drawLayout.IsValid() &&
 		         !drawGroupReady( *m, surface.lightmapPage ) ) ||
@@ -2483,6 +2486,9 @@ void WorldPass::RecordBatch(
 			    materialId < claims->size() && ( *claims )[materialId].draws
 			        ? materialReadyIn( *r.modelResolver, r.modelMaterials, materialId )
 			        : nullptr;
+			if ( !material && failure.empty() )
+				note( "static model " + std::to_string( instance.mesh ) + " surface " + std::to_string( surfaceId ) +
+				      " names unclaimed material " + std::to_string( materialId ) );
 			if ( !material ||
 			     ( material->program.request.drawLayout.IsValid() &&
 			         !drawGroupReady( *material, 0 ) ) ||
@@ -2567,6 +2573,8 @@ void WorldPass::RecordBatch(
 			const std::uint32_t materialId = StaticMaterial( mesh, instance, surfaceId );
 			if ( materialId >= claims->size() )
 			{
+				note( "posed model " + std::to_string( pose.mesh ) + " surface " + std::to_string( surfaceId ) +
+				      " names missing material " + std::to_string( materialId ) );
 				complete = false;
 				continue;
 			}
@@ -2578,6 +2586,9 @@ void WorldPass::RecordBatch(
 			    materialId < claims->size() && ( *claims )[materialId].draws
 			        ? materialReadyIn( *r.modelResolver, r.modelMaterials, materialId )
 			        : nullptr;
+			if ( !material && failure.empty() )
+				note( "posed model " + std::to_string( pose.mesh ) + " surface " + std::to_string( surfaceId ) +
+				      " names unclaimed material " + std::to_string( materialId ) );
 			if ( !material ||
 			     ( material->program.request.drawLayout.IsValid() &&
 			         !drawGroupReady( *material, 0 ) ) ||

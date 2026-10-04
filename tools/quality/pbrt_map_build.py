@@ -828,6 +828,9 @@ class Pipeline:
         prop_materials = receipt["static_props"]["materials"]
         self.lightmap["exclude_materials"] += prop_materials
         self.hidden_materials += prop_materials
+        transport_materials = receipt.get("static_transport", {}).get("materials", [])
+        self.lightmap["exclude_materials"] += transport_materials
+        self.hidden_materials += transport_materials
 
     def probe_arguments(self, scene, env_args):
         p, probe = self.paths, self.probe

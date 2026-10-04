@@ -8,11 +8,13 @@ to --capture. These checks certify these visible behaviors, not all materials,
 glass optics, complete frame performance or platform support. Desktop HiDPI
 captures use regions scaled to the actual pixels; images are never downsampled.
 Use --scene doors for the closed/open door and independent indicator-box cycle.
+Use --scene cables for the rope visibility cycle under captured scene lighting.
 """
 import argparse
 import copy
 import hashlib
 import json
+import math
 from pathlib import Path
 import re
 
@@ -60,8 +62,21 @@ def door_commands():
 
 
 def commands(scene='materials'):
+    if scene == 'all':
+        result = ['wait 600', 'r_core_world_stats', 'r_temporal_scale']
+        for name in ('materials', 'doors', 'cables'):
+            sequence = commands(name)
+            result.extend(sequence if name == 'materials' else sequence[1:])
+        result.append('r_temporal_scale')
+        return result
     if scene == 'doors':
         return door_commands()
+    if scene == 'cables':
+        return ['cmd noclip', 'r_drawviewmodel 0', 'cmd setpos 500 -200 112',
+                'cmd setang -15 90 0', 'wait 150', 'screenshot', 'wait 12',
+                'r_drawropes 0', 'wait 150', 'screenshot', 'wait 12',
+                'r_drawropes 1', 'wait 150', 'screenshot', 'wait 12',
+                'r_core_world_stats', 'r_core_world_strict', 'r_core_dynamic_draws']
     result = ['cmd noclip', 'r_drawviewmodel 0']
 
     def capture(wait=150):
@@ -105,6 +120,38 @@ def validate_images(images, required):
     if (len(shape) != 3 or shape[2] != 3 or shape[0] < 768 or shape[1] < 1024 or
             shape[0] * 4 != shape[1] * 3 or any(image.shape != shape for image in images)):
         raise ValueError('complete captures of the fixed 4:3 viewport are required')
+
+
+def inspect_cables(images):
+    validate_images(images, 3)
+    checks = []
+    # The isolated hanging loop below the ironwork. Excludes the reticle and
+    # upper foliage. Wind may move the rope; its exact trajectory is not promised.
+    regions = [region(image, 350, 500, 675, 745) for image in images[:3]]
+    for index in (0, 2):
+        difference = regions[index] - regions[1]
+        dark = np.mean(difference.mean(axis=2) < -2 / 255)
+        light = np.mean(difference.mean(axis=2) > 2 / 255)
+        energy = -np.minimum(difference, 0).mean()
+        for name, passed, value in (
+                ('coverage', .02 < dark < .08, dark),
+                ('lit-contrast', energy > .0005, energy),
+                ('no-bright-replacement', light < .001, light)):
+            checks.append(dict(name=f'cable.frame-{index}.{name}',
+                               passed=bool(passed), value=float(value)))
+    return checks
+
+
+def cable_sensitivity(images):
+    checks = []
+    for name, index, value in (('missing-cable', 0, images[1]),
+                               ('missing-return', 2, images[1]),
+                               ('opaque-region', 0, np.zeros_like(images[0]))):
+        mutated = list(images)
+        mutated[index] = value
+        rejected = any(not check['passed'] for check in inspect_cables(mutated))
+        checks.append(dict(name=f'oracle.rejects-{name}', passed=rejected))
+    return checks
 
 
 def inspect_doors(images):
@@ -228,7 +275,10 @@ def sensitivity(images):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--commands', action='store_true')
-    parser.add_argument('--scene', choices=('materials', 'doors'), default='materials')
+    parser.add_argument('--scene', choices=('materials', 'doors', 'cables', 'all'),
+                        default='materials')
+    parser.add_argument('--temporal-scale', type=float,
+                        help='require this FSR scale in startup settings and live game queries')
     parser.add_argument('--capture', type=Path)
     parser.add_argument('--out', type=Path)
     args = parser.parse_args()
@@ -268,13 +318,35 @@ def main():
             raise ValueError('the game reported strict mode disabled')
         dynamic = re.findall(r'"r_core_dynamic_draws" = "([^\"]+)"', log)
         if ((dynamic and any(value != '0' for value in dynamic)) or
-                (args.scene == 'doors' and (not strict or not dynamic))):
+                (args.scene in ('doors', 'cables', 'all') and (not strict or not dynamic))):
             raise ValueError('strict/default-cohort game queries are missing or incorrect')
+        if args.temporal_scale is not None:
+            selected = args.temporal_scale
+            queried = re.findall(r'"r_temporal_scale" = "([^\"]+)"', log)
+            if (not math.isfinite(selected) or not 0 <= selected <= 1 or
+                    not math.isclose(float(settings.get('r_temporal_scale', 'nan')), selected,
+                                     abs_tol=1e-6) or not queried or
+                    any(not math.isclose(float(value), selected, abs_tol=1e-6)
+                        for value in queried)):
+                raise ValueError('required temporal mode settings/queries are missing or incorrect')
+            report['temporal_scale'] = selected
         failures = re.findall(r'views queued \d+ drawn \d+ failed (\d+)', log)
         if not failures or any(int(value) for value in failures):
             raise ValueError('missing core statistics or claimed-view failure')
-        report['checks'] = (inspect_doors(images) + door_sensitivity(images)
-                            if args.scene == 'doors' else inspect(images) + sensitivity(images))
+        if args.scene == 'all':
+            validate_images(images, 20)
+            report['checks'] = (inspect(images[:8]) + sensitivity(images[:8]) +
+                                inspect_doors(images[8:17]) + door_sensitivity(images[8:17]) +
+                                inspect_cables(images[17:20]) + cable_sensitivity(images[17:20]))
+        elif args.scene == 'doors':
+            report['checks'] = inspect_doors(images) + door_sensitivity(images)
+        elif args.scene == 'cables':
+            report['checks'] = inspect_cables(images) + cable_sensitivity(images)
+            native_log = (args.capture / 'stdout.log').read_text(errors='replace')
+            if re.search(r'native dropped.*cable/cable', native_log):
+                raise ValueError('the native frontend dropped the required cable material')
+        else:
+            report['checks'] = inspect(images) + sensitivity(images)
         report['status'] = 'pass' if all(check['passed'] for check in report['checks']) else 'fail'
     except (KeyError, OSError, ValueError) as error:
         report['error'] = str(error)

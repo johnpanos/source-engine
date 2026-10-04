@@ -5043,6 +5043,10 @@ static render::legacy::CoreMeshKind CoreMeshKindFor( IMaterial *material )
 	if ( material )
 	{
 		const char *shader = material->GetShaderName();
+		// Frozen-path: hand the already-expanded rope ribbon to its core material point.
+		if ( !V_stricmp( shader, "Cable" ) || !V_stricmp( shader, "Cable_DX9" ) ||
+		     !V_stricmp( shader, "SplineRope" ) )
+			return CoreMeshKind::kCable;
 		// Frozen-path: capture moving brush surfaces after their material proxies run.
 		if ( !V_stricmp( shader, "LightmappedGeneric" ) ||
 		     !V_stricmp( shader, "LightmappedGeneric_DX9" ) )

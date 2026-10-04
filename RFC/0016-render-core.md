@@ -382,6 +382,20 @@ slice before adding an unrelated lab-only term; record a concrete blocker if
 its product prerequisites are unavailable. K11's proof still precedes the
 corresponding product wiring, and K12's full gate still needs all K11 terms.
 
+**Strict game mode coverage (user direction, 2026-10-04).** Every game material,
+model or view integration fix is checked in the actual game with
+`r_core_world_strict 1`, both with FSR reconstruction active and with FSR off
+(`r_temporal_scale 0`). Match the content snapshot, camera, gameplay states and
+launcher settings; retain the selected scale, input/output extents, binaries,
+capture sequence, images and queried core statistics for each mode. Include
+initial spawn, the affected surface's gameplay transitions, and switching
+between the two modes in the same process when the changed boundary owns that
+transition. Zero claimed-view failures and the affected image's deterministic
+checks are both required. A crash, missing capture or missing mode is a failed
+or unverified run, never a pass. One mode's success cannot certify the other.
+Keep running both modes as fixes accumulate; the installed Intro4 pixel oracle
+is documented in [the capture guide](../tools/quality/render_profile.md#strict-intro4-material-captures).
+
 **Rule 4: The old copy is deleted in the change that replaces it.** The
 change that makes the core own a term for a set of surfaces must also:
 - set the `RuntimeLight` flag (or its equivalent) for exactly those

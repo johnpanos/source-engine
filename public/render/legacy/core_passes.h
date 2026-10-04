@@ -242,7 +242,8 @@ enum class CoreMeshKind : std::uint8_t
 	kModelSurface, // VertexLitGeneric model surfaces, including window frames and coated glass
 	kDepthMask,
 	kStencilClear,
-	kLightmappedSurface // moving brushes and proxy-selected indicator panels
+	kLightmappedSurface, // moving brushes and proxy-selected indicator panels
+	kCable               // gameplay-expanded rope ribbons with captured vertex illumination
 };
 struct CoreMeshDraw
 {
