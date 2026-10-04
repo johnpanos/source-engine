@@ -8809,7 +8809,7 @@ the private headless compositor and RGB PNG output cannot establish native
 HDR display output. R96/K12 and RFC 0019 qualification gates remain open.
 
 
-## Intro4 native 8K HDR archive (2026-10-03, capture in progress)
+## Intro4 native 8K HDR archive (2026-10-03, captured)
 
 The user selected native 7680x4320 with FSR off because the installed experimental
 provider only supports output through 3840x2160. B requests HDR output with
@@ -8848,8 +8848,34 @@ scene storage and accepted Rec.2020/PQ output. That development trial exposed
 metadata defects (a trailing NUL and an absent output-pass telemetry variable),
 which were corrected before the complete gallery run. Trial evidence is in
 `quality-results/map-swipe-setup/hdr-8k-proof-native-capacity/`; it is not the
-final archive receipt. The complete gallery is running under
+final archive receipt. The complete gallery is saved under
 `quality-results/map-comparisons/intro4-8k-native-hdr-20261003/`.
+
+The completed run passes: 19 paired poses, 38 7680x4320 SDR PNG previews,
+19 linear HDR PFMs and their JSON sidecars. Both hosts confirm the first
+fizzler disabled before any export. All requested camera origins/angles,
+viewports, finite pixels, byte counts and sidecar settings pass. Every B
+export confirms active HDR output and the required output pass. The highest
+raw RGB channel is 2.734375 scene-white units; the archive preserves values
+above SDR white without applying exposure. A and B use identical executable
+snapshots and complete in 437.61 and 649.12 seconds, concurrently. These are
+capture workload durations, not performance acceptance measurements. The
+receipt is `quality-results/map-swipe-setup/hdr-8k-gallery-verification.json`.
+The new doorway pair was visually inspected for alignment and an absent
+first fizzler. The gallery links each full-resolution comparison, raw PFM
+and sidecar.
+
+The exposure control trial preserves 99.08% of raw channel values exactly
+between exposure 1 and 3 (the remaining scene animation continues), with an
+unchanged raw peak, while the SDR previews become brighter. See the trial's
+`pixel-verification.json`. Output exposure therefore does not bake into the
+HDR archive. The script now avoids a redundant full-chain idle wait after
+the aliases finish; each camera and fizzler settling wait remains intact.
+The completed run used the earlier longer closing wait.
+
+The 18 view-oracle fixtures also pass. Architecture baseline and loader
+inventory verification are current. Missing physical display measurements
+still prevent a physical HDR brightness claim.
 
 The configured product build and swipe fixtures pass (including nine negative
 capture cases). Changed-line style is clean for this slice; an unrelated
