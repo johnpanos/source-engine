@@ -186,6 +186,12 @@ InitReturnVal_t CSDL3Mgr::Init()
 {
 	if ( m_bVideoInitialized && m_Window )
 		return INIT_OK;
+	// On a scaled Wayland desktop, list display modes and size windows in
+	// output pixels, so a 200% 4K desktop offers 3840x2160 rather than its
+	// 1920x1080 in points. The display's content scale is still reported for
+	// the UI scale. Read when video starts; the environment variable
+	// overrides this normal-priority default.
+	SDL_SetHint( SDL_HINT_VIDEO_WAYLAND_SCALE_TO_DISPLAY, "1" );
 	if ( !m_bVideoInitialized && !SDL_InitSubSystem( SDL_INIT_VIDEO ) )
 	{
 		Warning( "SDL3 video initialization failed: %s\n", SDL_GetError() );
