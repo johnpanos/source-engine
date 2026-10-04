@@ -4,15 +4,15 @@
 
 Default comparison: sp_a1_intro4 / sp_a1_intro4_relit at 3840x2160.
 The new (right) game selects FSR Native AA with MSAA disabled and requests HDR
-display output. HDR presentation requires a capable compositor/display; the
-private headless compositor and RGB PNG comparison do not certify HDR output.
+display output with exposure 2. HDR presentation requires a capable compositor/display;
+the private headless compositor and RGB PNG comparison do not certify HDR output.
 The original (left) game uses native Vulkan with the render core and FSR disabled.
 
 Example (chamber panel view):
   python3 tools/render/map_swipe_compare.py --pose=-1552,37,-32:0,-90,0 \
       --out quality-results/map-comparisons/intro4
 
-All retained Intro4 comparison and survey poses:
+All retained Intro4 comparison and survey poses except the panel close-up:
   python3 tools/render/map_swipe_compare.py --all-captures \
       --out quality-results/map-comparisons/intro4-4k-native-legacy-fsr
 
@@ -41,7 +41,6 @@ BOOT = ROOT / "tools/quality/portal_boot.py"
 # Retained comparison and survey cameras, deduplicated. Survey player origins
 # include the 64-unit standing eye offset here.
 INTRO4_CAPTURES = (
-    ("panel", "Chamber panel", "-1552,37,-32:0,-90,0"),
     ("chamber-overview", "Chamber overview", "-300,100,128:0,0,0"),
     ("chamber", "Damaged chamber", "-420,70,112:-6,5,0"),
     ("lightboard", "Illuminated lightboard", "-900,180,72:0,310,0"),
@@ -221,7 +220,7 @@ def make_html(out, left, right, metrics, position, angles):
 <h1>MAP_TITLE</h1><p>POSE · WIDTH×HEIGHT · LEFT_RENDERER / RIGHT_RENDERER.
   Drag the divider or use the slider.
   Mean absolute RGB difference: MEAN / 255.</p>
-<p>Right game: FSR Native AA (100%), MSAA off, HDR output requested.
+<p>Right game: FSR Native AA (100%), MSAA off, HDR exposure 2, HDR output requested.
   These RGB PNGs do not verify HDR display presentation.</p>
 <div class="comparison" id="comparison" aria-label="Image comparison">
   <img src="b.png" alt="RIGHT_LABEL"><img id="top" src="a.png" alt="LEFT_LABEL"><div id="line"></div>
@@ -310,7 +309,7 @@ body { max-width: 1320px; margin: auto; padding: 24px; }
 a { color: inherit; } img { display: block; width: 100%%; margin-bottom: 8px; }
 </style><h1>Intro4 map comparisons</h1>
 <p>sp_a1_intro4 / sp_a1_intro4_relit · %d×%d · right game: FSR Native AA,
-MSAA off, HDR output requested. RGB PNGs do not verify HDR display presentation.</p>
+MSAA off, HDR exposure 2, HDR output requested. RGB PNGs do not verify HDR display presentation.</p>
 <p>Original: native Vulkan with render core disabled. Relit: native Vulkan render core.</p>
 <div class="grid">%s</div></html>''' % (width, height, "".join(cards))
     (out / "index.html").write_text(page)
@@ -325,7 +324,7 @@ def main(argv=None):
     capture_selection.add_argument("--pose", type=parse_pose,
                                    help="shared Source-unit camera: x,y,z:pitch,yaw,roll")
     capture_selection.add_argument("--all-captures", action="store_true",
-                                   help="capture all 19 retained Intro4 comparison/survey poses")
+                                   help="capture all 18 retained Intro4 poses excluding panel")
     parser.add_argument("--content-root-a", type=Path)
     parser.add_argument("--content-root-b", type=Path)
     parser.add_argument("--panel-relay", action="append", default=[],
@@ -392,7 +391,8 @@ def main(argv=None):
                        ("r_temporal_scale 0", "r_core_world 0", "mat_hdr_output 0"),
                        ("-norendercore",))
         right = capture(args.map_b, "b", content_b, args, out,
-                        ("mat_antialias 0", "r_temporal_scale 1", "mat_hdr_output 1"),
+                        ("mat_antialias 0", "r_temporal_scale 1", "mat_hdr_output 1",
+                         "mat_hdr_exposure 2"),
                         ("-fsr", "-fsr-assets", str(args.fsr_assets.resolve())))
         if abs(left["camera"]["fov"] - right["camera"]["fov"]) > 0.1:
             raise ValueError("captured camera FOV differs between maps")

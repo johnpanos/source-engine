@@ -8765,8 +8765,9 @@ pair is `sp_a1_intro4` / `sp_a1_intro4_relit`. Both boots use native Vulkan
 from `build-p2-fsr` / `run/runtime-p2-fsr`. A explicitly disables the render
 core (`-norendercore`, `r_core_world 0`), temporal scaling and HDR display
 output. B enables the core, FSR Native AA (`r_temporal_scale 1`), disables
-MSAA and requests HDR output. This supersedes the intermediate DXVK A
-selection. The 19 deduplicated comparison/survey cameras include the
+MSAA and requests HDR output with `mat_hdr_exposure 2`. This supersedes the intermediate DXVK A
+selection. The 18 deduplicated comparison/survey cameras exclude the panel
+close-up by user direction and include the
 64-unit eye offset and activate both chamber panel relays. Each camera,
 viewport, PNG extent and B's native-resolution FSR dispatch is verified
 before publishing its swipe page; the batch produces one gallery.
@@ -8779,8 +8780,8 @@ python3 tools/render/map_swipe_compare.py --all-captures \
 ```
 
 Setup evidence lives in `quality-results/map-swipe-setup/`:
-`gallery-check-native.log` verifies 38 ordered mocked boots, native legacy A,
-native core/FSR B, forwarded extents, camera verification and all 19 gallery
+`gallery-check-native.log` verifies 36 ordered mocked boots, native legacy A,
+native core/FSR B, forwarded extents, camera verification and all 18 gallery
 links/receipts. `pose-inventory-native.log` checks the retained camera inventory.
 Python compilation and scoped whitespace checks pass. Actual game capture
 results will be recorded separately. HDR presentation remains unverified:
