@@ -72,6 +72,10 @@ Compiled world/model resources provide the GPU scene, material and light
 inputs without repeated legacy conversion for accepted cohorts. Revisions
 invalidate derived culling, assignment and shadow caches. Dense geometry,
 texture residency and LOD workloads must retain image fidelity at the target.
+Runtime resource preparation, culling and drawing optimizations use the
+[baseline/candidate resolution sweep](0016-render-core.md#optimization-resolution-sweep-user-decision-2026-10-03).
+Record resolution-dependent LOD/residency and visible workload so changed content
+does not masquerade as reduced frame cost; compiler throughput remains separate.
 
 ## Summary
 

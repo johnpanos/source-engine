@@ -25,6 +25,14 @@
 
 ## Decision
 
+Performance comparisons between providers and execution routes follow RFC 0016's
+[baseline/candidate resolution sweep](0016-render-core.md#optimization-resolution-sweep-user-decision-2026-10-03).
+Match output extent and scene, record each provider's input extent, quality/mode
+and bridge/transfer/synchronization cost, and attribute CPU/GPU limits per point.
+A provider's low-resolution result cannot decide its 4K benefit; kernel timing
+alone cannot establish a complete-game gain. RFC 0019 still owns temporal quality
+and promotion policy, including the FSR timing exception.
+
 External render SDKs enter through exactly two sanctioned execution routes, are
 declared in one composition-owned provider catalog, and are refused by name
 before the graph mutates. There is no third path, no global service locator and

@@ -37,6 +37,11 @@ Compose the render core with its declared compute and presentation capabilities.
 Native profile evidence must establish the full frame and actual drawable,
 including lifecycle and nested views. Headless server/tool compositions retain
 their separate capability requirements.
+Optimization of rendered providers also requires RFC 0016's
+[baseline/candidate resolution sweep](0016-render-core.md#optimization-resolution-sweep-user-decision-2026-10-03).
+Establish CPU/GPU limits and gains per actual render/output extent on each
+claiming profile; a low-resolution result cannot decide its 4K benefit.
+Unsupported sizes or absent native runners remain unavailable coverage.
 
 ## Summary
 

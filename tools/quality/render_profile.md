@@ -15,6 +15,40 @@ adds timestamps and readback overhead; it is a diagnostic run, not performance
 acceptance. It does not permit arbitrary quality overrides. A failed budget still
 retains the entire run when `--no-stop` is selected.
 
+## Resolution sweep before and after optimization
+
+Follow RFC 0016's authoritative
+[resolution-sweep policy](../../RFC/0016-render-core.md#optimization-resolution-sweep-user-decision-2026-10-03)
+before selecting optimization work and when evaluating the candidate. Collect
+matched complete-game baseline/candidate pairs from 1024×768 through
+3840×2160, including the intermediate and declared profile extents required by
+that policy. Report CPU critical-path, GPU render and frame-interval medians and
+tails, variability and absolute/percentage changes for each resolution. Identify
+the limiting work with timings and diagnostic traces; a flat interval can also
+come from VSync, a frame cap or a wait. No frame gain at a CPU-limited 1024×768
+does not rule out a GPU optimization improving 4K.
+
+Use identical content, route, quality, samples and mode within each pair, repeated
+interleaved runs and a fresh evidence directory per run. Verify actual extents
+and scene coverage; account for the 4:3/16:9 aspect change, LOD, dynamic resolution,
+clocks and thermal drift. Keep pass profiling, shader dumps and screenshots in
+separate diagnostic runs. For upscaling, record input and output sizes and the
+preset; compare modes at the same output size with their explicit quality policies.
+
+**Current collector limitation:** `frame_floor.py` has `--width` and `--height`,
+but a workload naming `render_budget_row` is pinned by `configure_budget` to that
+row's exact dimensions. The High command above therefore cannot perform the
+sweep by changing those arguments, even with `--profile` or `--no-stop`.
+This collector has no sweep command. Its offscreen mode also caps the back
+buffer at 1024×768 and cannot establish the larger points. The sweep needs a
+separately recorded diagnostic workload/collector setup that preserves the same
+complete route, quality receipts and CPU/GPU evidence while permitting the
+diagnostic extents.
+Do not remove or relax the shipping budget row to obtain sweep results. Record
+unavailable points until that setup exists and retain the declared-resolution
+High acceptance run separately. Existing single-resolution receipts establish
+only their recorded point, not a 1024×768-to-4K result.
+
 Analyze any retained scenario's `frames.jsonl`:
 
 ```sh
@@ -163,6 +197,10 @@ is `-vkopaquebatch 0/1` (default 1).
 Compare arrival, reverse and return phases separately using whole-frame interval,
 CPU and GPU render time. Retain settings, binary hashes, frame logs and power
 conditions. A faster isolated pass or laboratory scene cannot accept this change.
+For optimization selection and evaluation, repeat the comparison under the
+[resolution-sweep policy](#resolution-sweep-before-and-after-optimization), subject
+to the collector limitation above. The pinned High comparison alone does not
+establish batching's CPU/GPU crossover or benefit at other resolutions.
 The frame JSON field `opaque_batch` contains candidate prefixes, accepted batches
 and consumed follower slots for the latest stream recording; it is not a count
 of meshes or lifetime totals. A capture can re-record that stream.

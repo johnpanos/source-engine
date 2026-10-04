@@ -19,6 +19,13 @@ the selection policy; the operation's domain owner owns its implementation and
 the appropriate CPU/GPU executor or graph. It does not move ownership of the
 GPU render graph from RFC 0016 or of physics behavior from RFCs 0004/0013.
 
+For rendered workloads, placement measurements use RFC 0016's
+[optimization resolution sweep](0016-render-core.md#optimization-resolution-sweep-user-decision-2026-10-03).
+Capture the baseline before selecting work and repeat it for the candidate;
+identify CPU/GPU limits and crossover at each resolution. A CPU-limited
+1024×768 frame with no interval gain cannot rule out a GPU-placement benefit
+at 4K. The complete handoff cost and contention still govern selection.
+
 - Compare correct implementations of the same operation on the declared
   hardware/profile, with equivalent inputs, outputs, quality and observable
   behavior. Count preparation, transfers, synchronization, submission and
@@ -828,6 +835,11 @@ the same revision/configuration, maps or captures, hardware, warmup policy, and
 sample count. Record median and tail frame/tick time, critical-path duration,
 CPU time, scheduling overhead, retained memory, and any latency metric relevant
 to the subsystem.
+
+Rendered frame migrations also require the baseline/candidate
+[resolution sweep](0016-render-core.md#optimization-resolution-sweep-user-decision-2026-10-03).
+Judge scheduler and GPU-placement gains per resolution on the complete frame;
+headless tick and kernel measurements retain their own workload scaling.
 
 Acceptance requires:
 

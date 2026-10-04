@@ -349,6 +349,11 @@ runtime path.
 - Frame-time and memory budgets set before any default changes:
   `frame_pacing.py` at 1x/2x/4x on the Linux GPU profile and on the Fold7,
   interleaved A/B.
+  Within each sample policy, collect the
+  [baseline/candidate resolution sweep](0016-render-core.md#optimization-resolution-sweep-user-decision-2026-10-03)
+  before optimizing and when judging the result. Record GPU shading/resolve cost,
+  CPU work, complete-frame intervals and memory per point; changing sample count
+  is a separate policy comparison, not an equivalent-quality optimization.
 - Device fact capture on the Fold7:
   - `VK_EXT_multisampled_render_to_single_sampled`;
   - depth/stencil resolve modes;

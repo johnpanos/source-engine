@@ -224,6 +224,10 @@ platform acceptance.
     priority](RFC/0016-render-core.md#in-game-pipeline-performance-user-decision-2026-10-03)
     (user decision, 2026-10-03): complete gameplay-frame measurements select
     and judge work across the pipeline; isolated render-core gains are diagnostic.
+    Its [optimization resolution sweep](RFC/0016-render-core.md#optimization-resolution-sweep-user-decision-2026-10-03)
+    (user decision, 2026-10-03) requires a baseline from 1024×768 through
+    4K (3840×2160) and a matched candidate sweep to identify CPU/GPU limits
+    and gains per resolution. No gain at 1024×768 cannot rule out a gain at 4K.
 
 ## DRY and Liskov Substitution Principle
 
@@ -335,6 +339,12 @@ and stress/fuzz/soak and controlled benchmarks on their declared runners. A
 required release gate remains unverified if its hardware/content is unavailable.
 Use separate supported ASan/UBSan and TSan configurations. Set performance and
 latency/memory budgets before optimization and include low-core/small workloads.
+For rendered workloads, apply RFC 0016's
+[resolution sweep](RFC/0016-render-core.md#optimization-resolution-sweep-user-decision-2026-10-03)
+before choosing work and when evaluating it; report bottlenecks, gains and
+unavailable coverage per resolution. The
+[documentation record](RFC/0016-progress.md#optimization-resolution-sweep-documentation-2026-10-03)
+records this requirement without claiming new timing or completed roadmap gates.
 
 ## Working protocol
 

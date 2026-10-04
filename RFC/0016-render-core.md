@@ -525,6 +525,9 @@ matched complete-gameplay-frame measurements demonstrate its benefit at the
 declared image quality, resolution and sample count. Record CPU and GPU costs,
 frame intervals and tails, workload and binary identities, and power/thermal
 conditions so a shifted bottleneck or throttled comparison is visible. The
+[resolution sweep](#optimization-resolution-sweep-user-decision-2026-10-03)
+below is required before selecting an optimization and when judging its result;
+a benefit at one resolution is not evidence for every resolution. The
 [hard render budgets](#hard-render-budgets-user-decision-2026-10-01) still own
 acceptance; a useful measured improvement can leave that gate open.
 
@@ -534,6 +537,68 @@ only across proven ordering boundaries, preserving equal-depth material order,
 alpha coverage, portal/stencil effects, transparency and scene-color captures.
 The objective is lower complete in-game frame cost; a faster isolated core pass
 is supporting evidence only.
+
+#### Optimization resolution sweep (user decision, 2026-10-03)
+
+**Before optimizing a rendered workload, capture a baseline by sweeping from
+1024×768 through 4K (3840×2160). Repeat the same sweep for the candidate.** Include
+at least 1024×768, 1920×1080, 2560×1440 and 3840×2160, plus the profile's declared
+resolution when different. This section owns the resolution methodology for
+in-game pipeline optimization and rendered CPU/GPU placement comparisons.
+Headless server, compiler and simulation benchmarks keep their domain's workload
+scaling instead of acquiring an artificial screen-resolution requirement.
+
+- **Match the workload.** Use the same map/content, camera or gameplay route,
+  complete effects and cohorts, quality, samples, provider/mode, hardware/driver
+  and warmup policy for each baseline/candidate pair. Record both variants'
+  binary identities and build settings, keeping each variant fixed across its
+  sweep. Record actual render and output extents, viewport, aspect ratio, FOV,
+  LOD and texture settings. The 4:3 starting point and 16:9 points can expose
+  different scene coverage; verify
+  visible work and add matched-aspect controls when that changes the workload.
+  Pin dynamic resolution and record any resolution-dependent LOD changes rather
+  than attributing less geometry or a different image to the optimization.
+- **Measure each point.** Interleave repeated baseline/candidate runs, retain
+  sample counts, median and tail CPU critical-path time, GPU render time and
+  presented-frame intervals, and report per-resolution absolute and percentage
+  changes with run-to-run variability. Retain pass/queue/wait attribution in
+  separate diagnostic captures. Run competing GPU workloads serially; record
+  clocks, power/thermal state, present mode, VSync and frame limits. A presentation
+  cap must be accounted for before using flat frame intervals to infer a limit.
+- **Identify the limiting work.** A frame cost that grows with pixel count is
+  evidence to investigate GPU pixel work or bandwidth; flat scaling is evidence
+  to investigate CPU work, geometry, synchronization or presentation limits.
+  These are hypotheses, not proofs: use CPU/GPU timings and traces to identify
+  the critical path and any crossover. CPU wall time may include GPU waits,
+  GPU time including present may include presentation waits, and CPU/GPU work
+  overlaps; neither utilization alone nor adding their durations proves which
+  processor limits the frame. Report CPU-bound, GPU-bound, mixed, capped or
+  unresolved per point, with the supporting measurements.
+- **Judge gains at the resolution where they occur.** No visible frame-time
+  improvement at 1024×768 must not be used to reject a possible 4K improvement:
+  a CPU-limited low-resolution frame can hide reduced GPU cost that lowers the
+  complete frame time once GPU work becomes limiting. The converse also applies
+  to a CPU optimization hidden by GPU cost at 4K. Use the baseline to select
+  promising work, then measure the candidate; a bottleneck diagnosis predicts
+  an opportunity, not a guaranteed gain. Retain a performance optimization only
+  with a measured complete-game-frame benefit at a named tested resolution,
+  reporting unchanged points and regressions as well as wins. Do not require a
+  speedup at every point or extrapolate a single-point result across the sweep.
+- **Keep acceptance explicit.** The sweep diagnoses scaling; it does not lower
+  shipped resolution/quality, replace the profile's native hardware evidence or
+  alter its budget. Run acceptance separately at the declared settings. Record
+  unsupported extents, missing hardware or collector restrictions as unavailable
+  coverage; do not fabricate samples or claim the unmeasured range. The FSR
+  timing exception keeps its existing scope.
+
+For temporal upscaling, sweep output resolution while retaining the chosen
+mode's declared input/output ratio or extent policy and recording both extents
+at every point. Compare native and upscaled modes at the same output extent,
+with their explicit sample and quality policies and matched-image review;
+reconstruction cost and lower input shading cost both count in the complete
+frame. A 1024×768 input reconstructed to a larger output is not a native
+1024×768 baseline. The installed profiling workflow and its current sweep
+limitations are documented in [the collector guide](../tools/quality/render_profile.md#resolution-sweep-before-and-after-optimization).
 
 ### Enforcement
 

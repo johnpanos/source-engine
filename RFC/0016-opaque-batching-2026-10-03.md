@@ -119,6 +119,14 @@ Other GPUs, mobile/native Apple profiles and full gameplay/content routes remain
 unverified by this slice. The next optimization should be selected from complete
 in-game frame costs with the same full-image requirements.
 
+The timing receipts above cover 1920×1080 only. Under the subsequent
+[resolution-sweep requirement](0016-render-core.md#optimization-resolution-sweep-user-decision-2026-10-03),
+future optimization selection and evaluation needs baseline/candidate points
+from 1024×768 through 4K. This slice has not established that sweep or its
+CPU/GPU crossover; neither its gain nor an unchanged phase is extrapolated to
+other resolutions. The [collector guide](../tools/quality/render_profile.md#resolution-sweep-before-and-after-optimization)
+records the current pinned-extent limitation.
+
 
 ## Landing validation
 

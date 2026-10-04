@@ -4,6 +4,13 @@ Capture a frame of the engine headless and inspect it from the command line,
 without opening a window. Use it to answer "which draw, which binding, which
 value" questions about native Vulkan frames.
 
+For optimization, pair capture findings with ordinary complete-game timings using
+the [baseline/candidate resolution sweep](../../RFC/0016-render-core.md#optimization-resolution-sweep-user-decision-2026-10-03).
+Capture/replay and debug-shader timings cannot establish a product speedup.
+Use [the profiling guide](../quality/render_profile.md#resolution-sweep-before-and-after-optimization)
+for CPU/GPU attribution, per-resolution gains and current collector limitations;
+no gain at a CPU-limited low resolution cannot rule out a 4K gain.
+
 ## Capture
 
 A capture boots a private runtime under `renderdoccmd` (the SDL offscreen

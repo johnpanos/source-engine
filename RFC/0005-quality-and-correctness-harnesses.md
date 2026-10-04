@@ -333,6 +333,15 @@ latency, CPU/GPU time where applicable, memory, startup/load/save, queue delay,
 copying, conversion, and synchronization. Attribute improvements with traces;
 higher CPU utilization alone is not success.
 
+For rendered optimization workloads, require RFC 0016's
+[baseline/candidate resolution sweep](0016-render-core.md#optimization-resolution-sweep-user-decision-2026-10-03).
+Evidence retains actual render/output extents, matched settings, CPU/GPU and
+frame-interval distributions, repeats, bottleneck attribution and gains or
+regressions at each point. Missing points stay unverified; single-resolution
+evidence cannot establish the whole range, and no gain at a CPU-limited low
+resolution cannot disprove a high-resolution gain. Keep profile acceptance at
+its declared settings separate from the diagnostic sweep.
+
 Set absolute budgets and regression allowances per profile before measurement.
 RFC 0004's proposed 10% p95 physics/memory regression threshold triggers review;
 it does not replace absolute budgets or authorize gameplay regressions.

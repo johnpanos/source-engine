@@ -28,13 +28,14 @@ using detail::ReadParameter;
 using detail::TextureBound;
 
 // The parameters the family draws, and the ones the caller owns.
-constexpr std::array<std::string_view, 35> kClaimed = { "basetexture", "color", "alpha",
+constexpr std::array<std::string_view, 36> kClaimed = { "basetexture", "color", "alpha",
     "vertexcolor", "vertexalpha", "alphatest", "alphatestreference", "translucent", "model",
     "nofog", "nocull", "bumpmap", "ssbump", "nodiffusebumplighting", "envmap", "envmapmask",
     "basealphaenvmapmask", "normalmapalphaenvmapmask", "envmaptint", "envmapcontrast",
     "envmapsaturation", "fresnelreflection", "detail", "detailscale", "detailblendmode",
     "detailblendfactor", "detailtint", "selfillum", "selfillumtint", "ssbumpmathfix",
-    "envmaplightscale", "envmaplightscaleminmax", "decal", "alpha2", "allowalphatocoverage" };
+    "envmaplightscale", "envmaplightscaleminmax", "decal", "alpha2", "allowalphatocoverage",
+    "frame" };
 
 // The detail modes the port's combos draw: every TextureCombine mode but the
 // self-illuminating ones (5, 6) without a bump map, and 0 and 1 with one
@@ -97,7 +98,9 @@ LightmappedClaim ClaimLightmapped( const ParameterBlock &block )
 		claim.detailMode = std::uint32_t( mode );
 	}
 
-	const bool alphaBlended = ReadFlag( block, "translucent" ) || ReadFlag( block, "vertexalpha" );
+	const bool alphaBlended = ReadFlag( block, "translucent" ) ||
+	                          ReadFlag( block, "vertexalpha" ) ||
+	                          ReadParameter( block, "alpha" ) < 1.0f;
 	claim.blend = alphaBlended ? BlendMode::kAlpha : BlendMode::kOpaque;
 	claim.alphaWrite = !alphaBlended && !ReadFlag( block, "alphatest" );
 	SurfaceConstants &constants = claim.constants;

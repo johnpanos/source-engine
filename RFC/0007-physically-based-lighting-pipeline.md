@@ -62,6 +62,10 @@ Keep bake output, runtime direct light, probes and reflections distinct under
 the one lighting model. Optimize the complete accepted BRDF/LTC and shadow
 results without duplicate CPU lightmap reintegration or baked/runtime double
 counting. Baker throughput and runtime frame cost have separate evidence.
+Runtime shading, probe and reflection optimization follows the
+[baseline/candidate resolution sweep](0016-render-core.md#optimization-resolution-sweep-user-decision-2026-10-03)
+to distinguish CPU preparation from GPU pixel/bandwidth limits. Baker throughput
+continues to scale by its authored bake workload, not display resolution.
 
 ## Summary
 

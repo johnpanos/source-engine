@@ -44,6 +44,9 @@ LUMP_WORLDLIGHTS = 15
 LUMP_LEAFBRUSHES = 17
 LUMP_BRUSHES = 18
 LUMP_BRUSHSIDES = 19
+LUMP_DISPINFO = 26
+LUMP_DISP_VERTS = 33
+LUMP_DISP_TRIS = 48
 LUMP_PAKFILE = 40
 LUMP_GAME_LUMP = 35
 LUMP_TEXDATA_STRING_DATA = 43
@@ -82,6 +85,9 @@ LEAF_BYTES = 32
 BRUSH_BYTES = 12
 BRUSHSIDE_BYTES = 8
 MODEL_BYTES = 48
+DISPINFO_BYTES = 176
+DISPVERT_BYTES = 20
+DISPTRI_TAG_REMOVE = 1 << 5
 STATIC_PROP_LUMP = struct.unpack(">i", b"sprp")[0]
 STATIC_PROP_RECORD_BYTES = {(21, 9): 72, (21, 10): 76, (20, 10): 72, (19, 10): 72}
 HUGE = 65536.0
@@ -113,6 +119,21 @@ def canonical_vertices(vertices, merge=MERGE_UNITS):
         if first != second:
             parent[max(first, second)] = min(first, second)
     return np.array([root(i) for i in range(count)], dtype=np.int64)
+
+
+def displacement_triangles(power):
+    """Source's full grid triangles, row-major and front-facing."""
+    if power not in (2, 3, 4):
+        raise ValueError("displacement power must be 2, 3 or 4")
+    side = (1 << power) + 1
+    result = []
+    for row in range(side - 1):
+        for column in range(side - 1):
+            i = row * side + column
+            result.extend(((i, i + side, i + 1), (i + 1, i + side, i + side + 1))
+                          if i % 2 else
+                          ((i, i + side, i + side + 1), (i, i + side + 1, i + 1)))
+    return np.asarray(result, dtype=np.int64)
 
 
 class LegacyBsp:
@@ -265,6 +286,72 @@ class LegacyBsp:
                            "plane_normal": normal, "texinfo": texinfo,
                            "dispinfo": dispinfo, "styles": (s0, s1, s2, s3), "area": area})
         return result
+
+    def displacement(self, face):
+        """Full-resolution compiled displacement, in Source's grid order.
+
+        Geometry/UV orientation follows CCoreDispSurface::AdjustSurfPointData
+        and CCoreDispInfo::GenerateDispSurf; triangle order and alternating
+        diagonals follow GenerateCollisionSurface (DISP_TRIS uses that order).
+        The flat points supply material UVs: deformation must not slide them.
+        No gameplay or legacy lighting lump is changed.
+        """
+        index = face["dispinfo"]
+        info = self.lump(LUMP_DISPINFO, DISPINFO_BYTES)
+        if not 0 <= index < len(info) // DISPINFO_BYTES:
+            raise ValueError("face %d names a missing displacement" % face["index"])
+        offset = index * DISPINFO_BYTES
+        start = np.asarray(struct.unpack_from("<3f", info, offset), dtype=np.float64)
+        first_vertex, first_tri, power = struct.unpack_from("<3i", info, offset + 12)
+        parent = struct.unpack_from("<H", info, offset + 36)[0]
+        if power not in (2, 3, 4) or parent != face["index"]:
+            raise ValueError("displacement %d has a bad power or parent face" % index)
+        corners = np.asarray(face["points"], dtype=np.float64)
+        if corners.shape != (4, 3) or not np.isfinite(start).all():
+            raise ValueError("displacement %d needs a finite quad" % index)
+        origin = int(np.argmin(np.linalg.norm(corners - start, axis=1)))
+        if np.linalg.norm(corners[origin] - start) > MERGE_UNITS:
+            raise ValueError("displacement %d start is not a face corner" % index)
+        corners = np.roll(corners, -origin, axis=0)
+        side = (1 << power) + 1
+        count, tri_count = side * side, 2 * (side - 1) ** 2
+        raw = self.lump(LUMP_DISP_VERTS, DISPVERT_BYTES)
+        tags = self.lump(LUMP_DISP_TRIS, 2)
+        if (first_vertex < 0 or first_vertex + count > len(raw) // DISPVERT_BYTES or
+                first_tri < 0 or first_tri + tri_count > len(tags) // 2):
+            raise ValueError("displacement %d vertex or triangle range is out of bounds" % index)
+        values = np.frombuffer(raw, dtype="<f4").reshape(-1, 5)[
+            first_vertex:first_vertex + count].astype(np.float64)
+        if not np.isfinite(values).all() or ((values[:, 4] < 0) | (values[:, 4] > 255)).any():
+            raise ValueError("displacement %d has invalid vertices or blend weights" % index)
+        # Columns run toward corner 3; rows toward corner 1, as builddisp.cpp.
+        s, t = np.meshgrid(np.linspace(0, 1, side), np.linspace(0, 1, side))
+        s, t = s.ravel()[:, None], t.ravel()[:, None]
+        flat = ((1 - s) * (1 - t) * corners[0] + (1 - s) * t * corners[1] +
+                s * t * corners[2] + s * (1 - t) * corners[3])
+        points = flat + values[:, :3] * values[:, 3:4]
+        triangles = displacement_triangles(power)
+        removed = (np.frombuffer(tags, dtype="<u2")[first_tri:first_tri + tri_count] &
+                   DISPTRI_TAG_REMOVE) != 0
+        triangles = triangles[~removed]
+        base_normal = np.cross(corners[1] - corners[0], corners[3] - corners[0])
+        if np.dot(base_normal, face["plane_normal"]) < 0:
+            triangles = triangles[:, ::-1].copy()  # USD uses counter-clockwise fronts.
+        # Smooth geometric normals, never the flat parent plane's normals.
+        normals = np.zeros_like(points)
+        tri = points[triangles]
+        areas = np.cross(tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0])
+        if (np.linalg.norm(areas, axis=1) <= 1e-12).any():
+            raise ValueError("displacement %d has a degenerate triangle" % index)
+        for corner in range(3):
+            np.add.at(normals, triangles[:, corner], areas)
+        lengths = np.linalg.norm(normals, axis=1, keepdims=True)
+        normals = np.divide(normals, lengths, out=np.tile(face["plane_normal"], (count, 1)),
+                            where=lengths > 0)
+        return {"index": index, "power": power, "points": points, "flat_points": flat,
+                "triangles": triangles, "normals": normals, "alpha": values[:, 4] / 255,
+                "uv": np.column_stack((s.ravel(), 1 - t.ravel())),
+                "removed_triangles": int(removed.sum())}
 
     def static_props(self):
         """(lump version, model dictionary, placements) from the sprp game lump.

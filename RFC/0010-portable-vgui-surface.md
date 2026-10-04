@@ -29,6 +29,11 @@ obligations and does not certify implementation by this amendment.
 Include UI, text, HUD and in-world panels in complete-frame performance
 evidence. UI draw-list composition shares the render graph and GPU lifetime
 contracts; omitting these cohorts cannot establish the product frame target.
+UI optimization uses the complete-frame
+[baseline/candidate resolution sweep](0016-render-core.md#optimization-resolution-sweep-user-decision-2026-10-03),
+recording UI scale and logical/drawable extents. Measure CPU layout/draw-list work
+and GPU panel/text cost per point; a low-resolution result cannot rule out a
+high-resolution gain.
 
 ## Decision and boundary
 

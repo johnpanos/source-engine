@@ -9180,3 +9180,34 @@ Full archlint still reports the pre-existing CAP002 `charconv` include in
 
 Frozen-path: shaderapivulkan changes fix the game scene-image import capability
 used by rendercore glass; material math remains owned by render.material.
+
+### Optimization resolution sweep documentation (2026-10-03)
+
+User direction: establish optimization baselines by sweeping 1024×768 through
+4K, identify CPU/GPU limits, and do not infer that no low-resolution gain means
+no high-resolution gain. RFC 0016's
+[resolution-sweep policy](0016-render-core.md#optimization-resolution-sweep-user-decision-2026-10-03)
+owns the methodology. AGENTS.md, the platform/jobs/quality and rendering domain
+RFCs, temporal/provider guidance, profiling and RenderDoc guides now link it.
+The existing opaque-batching receipts retain their 1920×1080 scope.
+
+Baseline and candidate sweeps retain matched complete workloads, CPU/GPU and
+presented-frame distributions, per-point gains/regressions, repeat variability
+and bottleneck/crossover attribution. The policy accounts for aspect/FOV/LOD,
+presentation caps, thermal state and temporal input/output extents. Profile
+budgets and the FSR timing exception keep their existing acceptance semantics.
+
+The [collector guide](../tools/quality/render_profile.md#resolution-sweep-before-and-after-optimization)
+records the installed limitation: `frame_floor.py` rejects dimensions differing
+from a workload's budget row, and offscreen buffers cap at 1024×768. This
+documentation adds no sweep runner, timings, hardware support or gate completion.
+R90/R95/R96/R91 performance acceptance and missing sweep coverage stay unverified.
+
+Validation: added local documentation links and anchors resolve; Markdown diff
+whitespace checks pass. Installed archlint baseline and inventory verification
+pass, and all 166 architecture checker fixtures pass. `check --all` still fails
+on the existing CAP002 `public/gameui/graphics_settings_service.h` `charconv`
+include, with zero new and zero stale occurrences. Full logs are retained in
+`/tmp/source-engine-resolution-docs-vLTydh/`; reproduction uses the four installed
+architecture commands in [AGENTS.md](../AGENTS.md#working-protocol).
+This is documentation-only; no build configuration or runtime was changed.

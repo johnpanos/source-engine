@@ -54,7 +54,10 @@ UnlitClaim ClaimUnlit( const ParameterBlock &block )
 		claim.reason = "$translucent with $additive blends src-alpha/one, which the port lacks";
 		return claim;
 	}
-	const bool alphaBlended = translucent || ReadFlag( block, "vertexalpha" );
+	// Gameplay fades (including area-portal covers) modulate $alpha even
+	// when the authored material has no $translucent flag.
+	const bool alphaBlended =
+	    translucent || ReadFlag( block, "vertexalpha" ) || ReadParameter( block, "alpha" ) < 1.0f;
 	claim.blend =
 	    additive ? BlendMode::kAdditive : ( alphaBlended ? BlendMode::kAlpha : BlendMode::kOpaque );
 	claim.alphaWrite = !alphaBlended && !ReadFlag( block, "alphatest" );

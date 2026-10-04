@@ -47,6 +47,11 @@ Expose timing and census evidence for assignment, light evaluation, shadow
 cache updates, uploads and nested views through the existing debug owner.
 Record actual drawable/settings and missing cohorts. Debug isolation, draw
 bisection or disabled terms are diagnostic measurements, not High acceptance.
+Use these controls to attribute limiting work in RFC 0016's
+[baseline/candidate resolution sweep](0016-render-core.md#optimization-resolution-sweep-user-decision-2026-10-03).
+Pair diagnostic pass/wait findings with complete-frame CPU/GPU and interval
+measurements at each point; counters or a single resolution cannot establish
+the bottleneck or gain across the range.
 
 ## Retargeted to the render core (user decision, 2026-09-28)
 

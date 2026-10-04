@@ -19,7 +19,48 @@ import numpy as np
 from PIL import Image
 
 
-def commands():
+def door_commands():
+    door = 'just_enough_door_for_the_job-testchamber_door'
+    paired = 'door_1-testchamber_door'
+    left = 'section_2_texturetoggle_doorstate_a02b_left'
+    right = 'section_2_texturetoggle_doorstate_a02b_right'
+    result = ['cmd noclip', 'r_drawviewmodel 0', 'cmd setpos 120 160 0',
+              'cmd setang 0 0 0', f'cmd ent_fire {door} Unlock',
+              f'cmd ent_fire {door} Close',
+              'cmd ent_fire texturetoggle_exit_doorstate_a02 SetTextureIndex 0']
+
+    def capture():
+        result.extend(['wait 150', 'screenshot', 'wait 12'])
+
+    capture()
+    result.append(f'cmd ent_fire {door} Open')
+    capture()
+    result.append('cmd ent_fire texturetoggle_exit_doorstate_a02 SetTextureIndex 1')
+    capture()
+    result.append('cmd ent_fire texturetoggle_exit_doorstate_a02 SetTextureIndex 0')
+    capture()
+    result.append(f'cmd ent_fire {door} Close')
+    capture()
+    result.extend(['cmd setpos 520 -528 0', 'cmd setang 0 0 0',
+                   f'cmd ent_fire {paired} Unlock', f'cmd ent_fire {paired} Open',
+                   f'cmd ent_fire {left} SetTextureIndex 0',
+                   f'cmd ent_fire {right} SetTextureIndex 1'])
+    capture()
+    result.extend([f'cmd ent_fire {left} SetTextureIndex 1',
+                   f'cmd ent_fire {right} SetTextureIndex 0'])
+    capture()
+    result.extend([f'cmd ent_fire {left} SetTextureIndex 0',
+                   f'cmd ent_fire {right} SetTextureIndex 0'])
+    capture()
+    result.append(f'cmd ent_fire {paired} Close')
+    capture()
+    result.extend(['r_core_world_stats', 'r_core_world_strict', 'r_core_dynamic_draws'])
+    return result
+
+
+def commands(scene='materials'):
+    if scene == 'doors':
+        return door_commands()
     result = ['cmd noclip', 'r_drawviewmodel 0']
 
     def capture(wait=150):
@@ -120,11 +161,12 @@ def sensitivity(images):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--commands', action='store_true')
+    parser.add_argument('--scene', choices=('materials', 'doors'), default='materials')
     parser.add_argument('--capture', type=Path)
     parser.add_argument('--out', type=Path)
     args = parser.parse_args()
     if args.commands:
-        print(json.dumps(commands(), indent=2))
+        print(json.dumps(commands(args.scene), indent=2))
         return 0
     if not args.capture or not args.out:
         parser.error('--capture and --out are required')
@@ -142,7 +184,8 @@ def main():
                 ('r_core_dynamic_draws', '0'), ('host_framerate', '0.015'))):
             raise ValueError('the capture must run the default core cohorts in strict mode')
         # portal_boot appends its final capture, diagnostics and shutdown.
-        if evidence['console_script']['commands'][:len(commands())] != commands():
+        sequence = commands(args.scene)
+        if evidence['console_script']['commands'][:len(sequence)] != sequence:
             raise ValueError('the capture command sequence does not match this fixture')
         screenshots = sorted((args.capture / 'runtime/portal2/screenshots').glob('*.tga'))
         images = []

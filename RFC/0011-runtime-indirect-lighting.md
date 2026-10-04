@@ -744,6 +744,11 @@ Done when:
    profile before any producer optimization: Linux desktop (Radeon 8060S),
    Android (Fold7), and the Apple profiles once their runners exist. Each
    budget has an owner.
+   Producer optimization uses RFC 0016's
+   [baseline/candidate resolution sweep](0016-render-core.md#optimization-resolution-sweep-user-decision-2026-10-03),
+   retaining the same producer, update policy, scene and complete lighting.
+   Attribute CPU publication, GPU updates and per-pixel consumption separately;
+   fixed producer cost and resolution-dependent shading can limit different points.
 5. The dynamic-model inconsistency is captured: `room-states` with a model
    under the ceiling panel shows today's leaf-ambient error against Cycles.
    This is the "before" measurement.

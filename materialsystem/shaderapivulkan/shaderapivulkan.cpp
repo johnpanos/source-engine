@@ -5043,6 +5043,10 @@ static render::legacy::CoreMeshKind CoreMeshKindFor( IMaterial *material )
 	if ( material )
 	{
 		const char *shader = material->GetShaderName();
+		// Frozen-path: capture moving brush surfaces after their material proxies run.
+		if ( !V_stricmp( shader, "LightmappedGeneric" ) ||
+		     !V_stricmp( shader, "LightmappedGeneric_DX9" ) )
+			return CoreMeshKind::kLightmappedSurface;
 		if ( material->GetMaterialVarFlag( MATERIAL_VAR_DECAL ) ||
 		     !V_stricmp( shader, "DecalModulate" ) || !V_stricmp( shader, "DecalModulate_dx9" ) )
 			return CoreMeshKind::kDecal;

@@ -1282,6 +1282,62 @@ std::optional<std::string> RunChecks(
 	results.That( capturedLighting && decalPass.Failures() == 0,
 	    "posed-model.decal-preserves-captured-lightmap-page-and-coordinates",
 	    decalPass.Stats().lastFailure );
+	// Gameplay fades an authored opaque area-portal cover through $alpha.
+	// Zero preserves the room and its destination alpha without an authored
+	// translucent flag; returning to one must restore the visible cover.
+	for ( const char *shader : { "UnlitGeneric", "LightmappedGeneric" } )
+	{
+		WorldMaterial cover;
+		cover.name = "gameplay-faded-area-portal-cover";
+		cover.shader = shader;
+		cover.variables = { { "$basetexture", "opaque-white-half" }, { "$alpha", "0" } };
+		cover.textures = { { "$basetexture", 7 } };
+		CanvasImage invisible;
+		if ( auto why = renderDecal( 0.75f, -1.0f, 1.0f, invisible, &cover ) )
+			return why;
+		const auto *pixel = invisible.At( kSize / 2, kSize / 2 );
+		bool preserved = std::fabs( pixel[3] - 0.25f ) < 0.001f;
+		for ( int c = 0; c < 3; ++c )
+			preserved &= std::fabs( pixel[c] - destination[c] ) < 0.002f;
+		results.That( preserved && decalPass.Failures() == 0,
+		    std::string( "posed-model.gameplay-alpha-zero-preserves-room-" ) + shader,
+		    decalPass.Stats().lastFailure );
+		cover.variables.back().second = "1";
+		CanvasImage opaque;
+		if ( auto why = renderDecal( 0.75f, -1.0f, 1.0f, opaque, &cover ) )
+			return why;
+		results.That( opaque.rgba != invisible.rgba && decalPass.Failures() == 0,
+		    std::string( "posed-model.gameplay-alpha-one-restores-cover-" ) + shader );
+	}
+	// The frontend already selected the frame image. Verify both selectors
+	// reach the emissive panel, including a return to the original frame.
+	for ( int frame : { 0, 1, 0 } )
+	{
+		WorldMaterial panel;
+		panel.name = "live-door-state-panel";
+		panel.shader = "LightmappedGeneric";
+		panel.variables = { { "$basetexture", "selected-frame" }, { "$selfillum", "1" },
+		    { "$frame", std::to_string( frame ) } };
+		panel.textures = { { "$basetexture", frame ? 5 : 7 } };
+		CanvasImage image;
+		if ( auto why = renderDecal( 0.75f, -1.0f, 1.0f, image, &panel ) )
+			return why;
+		const auto *pixel = image.At( kSize / 2, kSize / 2 );
+		const float encoded[3] = { 128.0f / 255.0f, 192.0f / 255.0f, 1.0f };
+		bool matches = true;
+		for ( int c = 0; c < 3; ++c )
+		{
+			const float base = encoded[c] <= 0.04045f
+			                       ? encoded[c] / 12.92f
+			                       : std::pow( ( encoded[c] + 0.055f ) / 1.055f, 2.4f );
+			const float mask = 64.0f / 255.0f;
+			const float expected = frame ? base * ( factor[c] * ( 1.0f - mask ) + mask ) : 1.0f;
+			matches &= std::fabs( pixel[c] - expected ) < 0.003f;
+		}
+		results.That( decalPass.Failures() == 0 && matches,
+		    "posed-model.lightmapped-selected-door-state-frame-" + std::to_string( frame ),
+		    decalPass.Stats().lastFailure + " red " + std::to_string( pixel[0] ) );
+	}
 	decalPass.ReleaseDevice( *device );
 
 	WorldMaterial cableMaterial;

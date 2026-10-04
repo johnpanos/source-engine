@@ -241,7 +241,8 @@ enum class CoreMeshKind : std::uint8_t
 	kTransmission, // scene-color glass, independent of other dynamic draws
 	kModelSurface, // VertexLitGeneric model surfaces, including window frames and coated glass
 	kDepthMask,
-	kStencilClear
+	kStencilClear,
+	kLightmappedSurface // moving brushes and proxy-selected indicator panels
 };
 struct CoreMeshDraw
 {

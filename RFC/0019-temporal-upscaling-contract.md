@@ -174,6 +174,12 @@ selected sample count.
    against the selected profile's target with the complete image enabled.
    A performance miss is reported and does not block this FSR path. Unsupported
    profiles report unavailable and retain their existing qualified path.
+   Optimization baseline/candidate measurements follow RFC 0016's
+   [resolution sweep](0016-render-core.md#optimization-resolution-sweep-user-decision-2026-10-03):
+   sweep output extents and record input extents, preset, samples and
+   reconstruction cost. Compare native/upscaled modes at matched output sizes
+   with image review. No gain in a CPU-limited 1024×768 case cannot rule out
+   a 4K gain. This evidence requirement preserves the FSR timing exception.
 
 The full acceptance slices above remain open. The initial lab provider and
 its positive/sensitivity suites are installed in the shared conformance registry;

@@ -278,6 +278,9 @@ class Materials:
                     merged[BASE_KEY] = key
                 result = (base_shader, merged, "%s (patch of %s)" % (source, include))
             else:
+                # The production native profile uses the shader's GPU branch.
+                # Preserve its normals, blend modulation and transforms too.
+                params.update(params.get("gpu>=1", {}))
                 result = (shader, dict({k: v for k, v in params.items()
                                         if not isinstance(v, dict)}, **{BASE_KEY: key}), source)
         self.cache[key] = result
@@ -656,9 +659,6 @@ def build_model(bsp, resolver, texture_dir, model_tool=None, map_name=None,
                     legacy_bsp.SURF_TRIGGER):
             exclude("tool face")
             continue
-        if face["dispinfo"] != -1:
-            exclude("displacement (legacy-lit)")
-            continue
         if flags & legacy_bsp.SURF_WARP:
             exclude("water (legacy-lit)")
             continue
@@ -678,6 +678,8 @@ def build_model(bsp, resolver, texture_dir, model_tool=None, map_name=None,
         if translucent or shader in LEGACY_ONLY_SHADERS:
             exclude("translucent or special shader (legacy-lit)")
             continue
+        if face["dispinfo"] != -1:
+            face = dict(face, displacement=bsp.displacement(face))
         groups.setdefault(name, []).append(face)
 
     # Surface lights: per emitting face, the radiance its patches imply.
@@ -710,6 +712,8 @@ def build_model(bsp, resolver, texture_dir, model_tool=None, map_name=None,
                 radiance = np.exp(steps * math.log1p(EMISSION_STEP))
             key = base if radiance is None else "%s_e%s" % (
                 base, hashlib.sha1(steps.astype(np.int64).tobytes()).hexdigest()[:6])
+            if "displacement" in face:
+                key += "_disp%d" % face["dispinfo"]
             if key not in records:
                 records[key] = {"source_material": name, "shader": material_info[name]["shader"],
                                 "vmt": material_info[name]["source"], "params": params,
@@ -862,7 +866,8 @@ def build_model(bsp, resolver, texture_dir, model_tool=None, map_name=None,
                                     "lightmapped_4wayblend", "pbr", "pbrmetalrough"):
             approximations.setdefault(key, []).append(
                 "%s drawn as a lit PBR surface" % record["shader"])
-        if record["shader"] == "worldvertextransition":
+        if record["shader"] == "worldvertextransition" and not any(
+                "displacement" in f for f in meshes.get(key, [])):
             approximations.setdefault(key, []).append("second blend layer dropped")
         record["roughness_mask"] = None
         if params.get("$envmap") and not record["mrao"]:
