@@ -113,6 +113,7 @@ class MapSwipeTests(unittest.TestCase):
         self.assertEqual(self.run_gallery(), 0)
         self.assertEqual(len(self.calls), 2)
         for command in self.calls:
+            self.assertEqual(command[command.index("--capture-wait") + 1], "10")
             lines = [command[i + 1] for i, token in enumerate(command[:-1])
                      if token == "--console-command"]
             self.assertLess(lines.index("wait 134"), next(

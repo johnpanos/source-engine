@@ -44,7 +44,7 @@ from PIL import Image, ImageChops, ImageEnhance, ImageStat
 ROOT = Path(__file__).resolve().parents[2]
 BOOT = ROOT / "tools/quality/portal_boot.py"
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from view_oracle import console_script, script_frames
+from view_oracle import console_script
 # Retained comparison and survey cameras, deduplicated. Survey player origins
 # include the 64-unit standing eye offset here.
 INTRO4_CAPTURES = (
@@ -200,6 +200,10 @@ def capture(map_name, side, content, args, out, poses=None):
         for line in camera_commands(args.pose):
             command += ["--console-command", line]
         if side == "b":
+            command += ["--console-command", "wait 120"]
+            for line in camera_commands(args.pose):
+                command += ["--console-command", line]
+            command += ["--console-command", "wait 3"]
             command += ["--console-command", "screenshot_hdr swipe_single_hdr; wait 3"]
     else:
         shots = [{"name": name, "commands": camera_commands(pose), "settle": 120}
@@ -211,10 +215,10 @@ def capture(map_name, side, content, args, out, poses=None):
                                     if side == "b" else "") +
                                    "screenshot swipe_" + shot["name"]):
             command += ["--console-command", line]
-        command[command.index("--capture-wait") + 1] = str(
-            script_frames(scenario, shots)
-            + (FIZZLER_SETTLE_FRAMES + FIZZLER_CHECK_FRAMES if intro4 else 0)
-            + (3 * len(shots) if side == "b" else 0))
+        # Aliases insert their next steps ahead of the remaining cfg commands.
+        # The runner's closing capture therefore follows the entire chain;
+        # waiting for the chain's duration again would double idle rendering.
+        command[command.index("--capture-wait") + 1] = "10"
     if content:
         command += ["--content-root", str(content)]
     result = subprocess.run(command, capture_output=True, text=True)
