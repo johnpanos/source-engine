@@ -99,11 +99,11 @@ camera cohort alone, append `--scene cameras` and use a fresh output directory.
 
 The output must be fresh. A failed mode does not stop the other mode's evidence
 collection, and the aggregate fails if either boot or pixel oracle fails.
-`--scene doors`, `materials`, `cables`, `emissives`, `signage`, `cameras` or `particles` selects a bounded
-reproduction; the default `all` runs all 184 pixel, source-report and seeded-negative
+`--scene doors`, `materials`, `cables`, `emissives`, `signage`, `cameras`, `particles` or `sparks` selects a bounded
+reproduction; the default `all` runs all 196 pixel, source-report and seeded-negative
 checks per mode. Retain direct-start captures separately when reproducing a launch-time report.
 
-`intro4_material_check.py --scene materials|doors|cables|emissives|signage|cameras|particles|all --commands` emits each
+`intro4_material_check.py --scene materials|doors|cables|emissives|signage|cameras|particles|sparks|all --commands` emits each
 installed `portal_boot.py` console sequence. Capture both modes at the same
 1024×768 requested viewport (desktop HiDPI is retained), using the corresponding
 `--startup-command "r_temporal_scale SCALE"`. Pass each capture to the oracle:
@@ -142,6 +142,12 @@ must pass in each strict mode. The source depth copy may be resampled to a
 power-of-two texture; its screen coordinates use the full source attachment,
 including FSR’s subregion. The core lab suite checks both full and half-sized
 viewports against an independent depth-fade oracle.
+
+`--scene sparks` exercises the actual additive `effects/spark` material through
+visible/hidden/shown, behind-wall/return and removal states. Its 12 checks
+include six seeded missing/stale/occlusion defects. The unused `$brightness`
+authoring key is metadata only for the unlit point: the shipped shader does
+not read it, and arbitrary unhandled keys still refuse by name.
 
 These are bounded pixel checks,
 with seeded missing-surface controls; they do not certify all materials,

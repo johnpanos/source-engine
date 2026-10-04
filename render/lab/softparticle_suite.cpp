@@ -1,7 +1,7 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
-// Purpose: Source soft-particle depth fade, through the ordered core draw
-//          packet, against the independently evaluated depth-copy contract.
+// Purpose: Source particle points through ordered core draws: soft depth
+//          fade and the additive spark’s unused legacy authoring key.
 //
 //=============================================================================//
 
@@ -64,6 +64,18 @@ WorldView View( bool enabled, float scale = 50.0f, float range = 192.0f )
 	}
 	draw.indices = { 0, 1, 2, 0, 2, 3 };
 	view.dynamicDraws.push_back( std::move( draw ) );
+	return view;
+}
+
+WorldView SparkView( bool brightness )
+{
+	WorldView view = View( false );
+	view.depthAlphaHandle = 0;
+	auto &draw = view.dynamicDraws.front();
+	draw.material.name = "effects/spark";
+	draw.material.variables = { { "$additive", "1" }, { "$vertexcolor", "1" } };
+	if ( brightness )
+		draw.material.variables.emplace_back( "$brightness", "effects/spark_brightness" );
 	return view;
 }
 
@@ -168,7 +180,50 @@ std::optional<std::string> RunChecks( bool validate, std::span<const std::uint32
 					        std::to_string( expected ) );
 				}
 			}
-	results.That( pass.Stats().viewsFailed == 0 && pass.Stats().dynamicDrawsDrawn == 12,
+	// effects/spark carries an authoring key UnlitGeneric never reads. The
+	// native point must preserve the additive image without loading that key.
+	for ( bool brightness : { false, true } )
+	{
+		const auto tag = pass.QueueView( SparkView( brightness ) );
+		results.That( tag != 0,
+		    brightness ? "particle.spark.authored-material-claimed"
+		               : "particle.spark.control-material-claimed",
+		    tag ? std::string() : pass.Stats().lastRefusal );
+		if ( !tag )
+			continue;
+		CanvasImage image;
+		CanvasPost post = [&]( CommandEncoder &encoder, TextureId color,
+		                      TextureId depth ) -> std::optional<std::string>
+		{
+			WorldTarget target;
+			target.device = device.get();
+			target.color = color;
+			target.colorFormat = kCanvasColor;
+			target.depth = depth;
+			target.depthFormat = kCanvasDepth;
+			target.width = target.height = kSize;
+			target.textures = &imports;
+			target.frame = ++frame;
+			pass.Record( tag, encoder, target );
+			return std::nullopt;
+		};
+		if ( auto why = canvas->Render( textures, groups, {}, {}, &image, post ) )
+			return why;
+		const float *pixel = image.At( 16, 16 );
+		bool white = true;
+		for ( unsigned channel = 0; channel < 3; ++channel )
+			white &= std::isfinite( pixel[channel] ) && std::abs( pixel[channel] - 1.0f ) < 0.002f;
+		results.That( white, brightness ? "particle.spark.unread-brightness-keeps-image"
+		                                : "particle.spark.additive-control" );
+	}
+	WorldView unknown = SparkView( true );
+	unknown.dynamicDraws.front().material.variables.emplace_back(
+	    "$brightness_mystery", "effects/spark_brightness" );
+	const auto unknownTag = pass.QueueView( std::move( unknown ) );
+	results.That( unknownTag == 0 &&
+	                  pass.Stats().lastRefusal.find( "$brightness_mystery" ) != std::string::npos,
+	    "particle.spark.unknown-key-still-refuses", pass.Stats().lastRefusal );
+	results.That( pass.Stats().viewsFailed == 0 && pass.Stats().dynamicDrawsDrawn == 14,
 	    "softparticle.all-claimed-draws-recorded", pass.Stats().lastFailure );
 	// A valid handle that loses its import is a failed claim, not neutral white.
 	imports.depth = {};

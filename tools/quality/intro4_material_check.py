@@ -13,6 +13,7 @@ Use --scene emissives for cyan/orange/off light on neighboring wall receivers.
 Use --scene signage for isolated signs, pictograms, chamber boards and movie screens.
 Use --scene cameras for attached red eyes, hide/show, movement, rotation and removal.
 Use --scene particles for soft-particle fade, opaque occlusion, return and removal.
+Use --scene sparks for the additive spark image, hide/show, opaque occlusion and removal.
 """
 import argparse
 import copy
@@ -198,6 +199,65 @@ def particle_commands():
     return result
 
 
+def spark_commands():
+    result = ['cmd noclip', 'r_drawviewmodel 0', 'cmd setpos 120 272 0',
+              'cmd setang 0 0 0']
+
+    def capture():
+        result.extend(['wait 150', 'screenshot', 'wait 12'])
+
+    capture()
+    result.extend(['cmd ent_create env_sprite targetname rc_spark '
+                   'model effects/spark.vmt rendercolor "255 255 255" '
+                   'renderamt 255 rendermode 0 scale 0.4 spawnflags 1',
+                   'cmd ent_fire rc_spark RunScriptCode "self.SetOrigin(Vector(200,272,64))"'])
+    capture()
+    for command in ('cmd ent_fire rc_spark HideSprite',
+                    'cmd ent_fire rc_spark ShowSprite',
+                    'cmd ent_fire rc_spark RunScriptCode "self.SetOrigin(Vector(260,272,64))"',
+                    'cmd ent_fire rc_spark RunScriptCode "self.SetOrigin(Vector(200,272,64))"',
+                    'cmd ent_fire rc_spark Kill'):
+        result.append(command)
+        capture()
+    result.extend(['r_core_world_stats', 'r_core_world_strict', 'r_core_dynamic_draws'])
+    return result
+
+
+def inspect_sparks(images):
+    validate_images(images, 7)
+    samples = [region(image, 472, 344, 552, 424) for image in images[:7]]
+    deltas = [float(np.abs(sample - samples[0]).mean()) for sample in samples]
+    checks = []
+    for suffix, passed, value in (
+            ('authored-additive-image', deltas[1] > .03, deltas[1]),
+            ('hidden-restores-background', deltas[2] < .005, deltas[2]),
+            ('shown-restores-spark', float(np.abs(samples[3] - samples[1]).mean()) < .005,
+             float(np.abs(samples[3] - samples[1]).mean())),
+            ('opaque-wall-occludes', deltas[4] < .005, deltas[4]),
+            ('returned-restores-spark', float(np.abs(samples[5] - samples[1]).mean()) < .005,
+             float(np.abs(samples[5] - samples[1]).mean())),
+            ('removed-restores-background', deltas[6] < .005, deltas[6])):
+        checks.append(dict(name=f'spark.{suffix}', passed=bool(passed), value=float(value)))
+    return checks
+
+
+def spark_sensitivity(images):
+    checks = []
+    for defect, target, replacement, expected in (
+            ('missing-material', 1, 0, 'authored-additive-image'),
+            ('stale-hidden-spark', 2, 1, 'hidden-restores-background'),
+            ('missing-shown-spark', 3, 0, 'shown-restores-spark'),
+            ('drawn-through-wall', 4, 1, 'opaque-wall-occludes'),
+            ('missing-return', 5, 0, 'returned-restores-spark'),
+            ('stale-removed-spark', 6, 1, 'removed-restores-background')):
+        mutated = list(images)
+        mutated[target] = images[replacement]
+        rejected = any(check['name'] == f'spark.{expected}' and not check['passed']
+                       for check in inspect_sparks(mutated))
+        checks.append(dict(name=f'spark.oracle.rejects-{defect}', passed=rejected))
+    return checks
+
+
 def inspect_particles(images):
     validate_images(images, 7)
     # Background has the authored indicator line beside the billboard. The
@@ -239,11 +299,13 @@ def particle_sensitivity(images):
 def commands(scene='materials'):
     if scene == 'all':
         result = ['wait 600', 'r_core_world_stats', 'r_temporal_scale']
-        for name in ('materials', 'doors', 'cables', 'emissives', 'signage', 'cameras', 'particles'):
+        for name in ('materials', 'doors', 'cables', 'emissives', 'signage', 'cameras', 'particles', 'sparks'):
             sequence = commands(name)
             result.extend(sequence if name == 'materials' else sequence[1:])
         result.append('r_temporal_scale')
         return result
+    if scene == 'sparks':
+        return spark_commands()
     if scene == 'particles':
         return particle_commands()
     if scene == 'cameras':
@@ -726,7 +788,7 @@ def sensitivity(images):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--commands', action='store_true')
-    parser.add_argument('--scene', choices=('materials', 'doors', 'cables', 'emissives', 'signage', 'cameras', 'particles', 'all'),
+    parser.add_argument('--scene', choices=('materials', 'doors', 'cables', 'emissives', 'signage', 'cameras', 'particles', 'sparks', 'all'),
                         default='materials')
     parser.add_argument('--temporal-scale', type=float,
                         help='require this FSR scale in startup settings and live game queries')
@@ -769,7 +831,7 @@ def main():
             raise ValueError('the game reported strict mode disabled')
         dynamic = re.findall(r'"r_core_dynamic_draws" = "([^\"]+)"', log)
         if ((dynamic and any(value != '0' for value in dynamic)) or
-                (args.scene in ('doors', 'cables', 'emissives', 'signage', 'cameras', 'particles', 'all') and (not strict or not dynamic))):
+                (args.scene in ('doors', 'cables', 'emissives', 'signage', 'cameras', 'particles', 'sparks', 'all') and (not strict or not dynamic))):
             raise ValueError('strict/default-cohort game queries are missing or incorrect')
         if args.scene in ('emissives', 'signage', 'cameras', 'all'):
             strength = re.findall(r'"cl_surface_core_emission_strength" = "([^\"]+)"', log)
@@ -795,7 +857,7 @@ def main():
         if not failures or any(int(value) for value in failures):
             raise ValueError('missing core statistics or claimed-view failure')
         if args.scene == 'all':
-            validate_images(images, 65)
+            validate_images(images, 72)
             report['checks'] = (inspect(images[:8]) + sensitivity(images[:8]) +
                                 inspect_doors(images[8:17]) + door_sensitivity(images[8:17]) +
                                 inspect_cables(images[17:20]) + cable_sensitivity(images[17:20]) +
@@ -804,7 +866,10 @@ def main():
                                 signage_reports(log) + signage_report_sensitivity(log) +
                                 inspect_cameras(images[48:58]) + camera_sensitivity(images[48:58]) +
                                 inspect_particles(images[58:65]) + particle_sensitivity(images[58:65]) +
+                                inspect_sparks(images[65:72]) + spark_sensitivity(images[65:72]) +
                                 camera_reports(log, True) + camera_report_sensitivity(log, True))
+        elif args.scene == 'sparks':
+            report['checks'] = inspect_sparks(images) + spark_sensitivity(images)
         elif args.scene == 'particles':
             report['checks'] = inspect_particles(images) + particle_sensitivity(images)
         elif args.scene == 'cameras':

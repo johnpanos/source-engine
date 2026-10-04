@@ -9696,3 +9696,55 @@ comparisons with source screenshot hashes. This confirms the deployed soft-
 particle fix alongside the prior glass, decals, doors, indicator, signage and
 camera checks. It does not close the remaining spark/proxy/material gates.
 The code is committed on `subsystem-refactor` as `0f501d2ba`.
+
+
+### Intro4 additive spark material (2026-10-04)
+
+The remaining seven actual dynamic refusals were `effects/spark`. Its VMT has
+`$brightness "effects/spark_brightness"`, but UnlitGeneric, UnlitTwoTexture
+and Sprite do not declare or read that key. The importer’s existing family-
+scoped metadata table now records that fact for the unlit point. It preserves
+the authored additive/base-texture/vertex-color image; it does not invent a
+brightness-texture operation or ignore arbitrary unknown settings. No legacy
+shader is changed. Reader/content facts are retained in
+`remaining-proxy-spark-content.json` and `spark-brightness-reader-audit.json`
+under `quality-results/intro4-rendercore-completion/`.
+
+The particle lab now compares the additive point with/without that unused
+key against the independent white-quad oracle, and requires an unknown
+`$brightness_mystery` to refuse by name. `spark-rejected-control.log` proves
+omitting the metadata fix fails three checks (63 total); the initial incomplete
+before-mapping run is retained separately and does not certify a negative.
+`spark-positive-control.log` passes 64 checks with zero validation messages;
+`spark-positive-sensitivity.log` passes the control and four shader defects.
+The pre-existing soft-particle math and input/lifetime checks remain included.
+
+The actual game fixture uses `effects/spark.vmt` in an `env_sprite` at the
+same Intro4 wall. Seven native captures cover background, visible, hidden,
+shown, behind the wall, returned and removed. Six physical checks and six
+seeded image defects must pass. `spark-first-game/evidence.json` passes all
+12 checks in both strict modes, with zero dynamic refusals; native comparisons
+remain in its `review/`. Visual review confirms the authored narrow additive
+spark, opaque wall occlusion and lifecycle restoration.
+`spark-full-strict-game/evidence.json` passes all 196 full-route checks per
+mode, preserving the earlier glass/decal/door/indicator/signage/camera/soft-
+particle checks, with zero claimed-view failures and dynamic refusals.
+`spark-runtime-install.json` records atomic installation of the 22 exact
+proved products. The installed target run `spark-installed-game/evidence.json` passes all
+12 checks per mode with no build overlay. Its `installed-product-proof.json`
+verifies all 22 staged binaries against the installation receipt; `review/`
+retains 14 lossless native PNGs and both seven-state comparisons with source
+hashes. Visual review confirms visible, hidden, occluded, returned and removed
+states in both modes. The full private run retains 144 native PNGs in its
+`review/`. Final lab source passes `spark-final-control.log` (64 checks) and
+`spark-final-sensitivity.log` (five outcomes). The core importer/lab edits pass
+`spark-final-style.log`; archlint retains the pre-existing CAP002 `charconv`
+include with zero new/stale occurrences (`spark-arch.log`).
+
+Loaded catalog materials requiring live proxies are still reported separately.
+Intro4 really places two `lab_monitor_pose03` static props, skins 4 and 3, at
+(928,-756,328) and (980,-756,332); their live handoff is the next review target.
+The four missing precached MDLs are unused HL2/editor defaults (`w_bullet`,
+`agibs`, `v_hands`, `axis_helper_thick`), rather than geometry-parser failures;
+they remain named missing-content facts, not successful model coverage.
+Broader material/model completion and R91/R96 remain open.

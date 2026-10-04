@@ -304,7 +304,10 @@ constexpr VmtKeyRow kRefractKeys[] = {
 };
 
 constexpr VmtMetadataRow kMetadata[] = {
-    { "$ignore_alpha_modulation", "material-system translucent classification; rendering still reads $alpha", "unlit" },
+    { "$brightness", "UnlitGeneric, UnlitTwoTexture and Sprite neither declare nor read this key",
+        "unlit" },
+    { "$ignore_alpha_modulation",
+        "material-system translucent classification; rendering still reads $alpha", "unlit" },
     { "$texoffset",
         "UnlitTwoTexture proxy input; the shader reads the resulting transforms and color",
         "unlit" },
