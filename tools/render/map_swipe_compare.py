@@ -355,6 +355,7 @@ def make_html(out, left, right, metrics, position, angles):
   Mean absolute RGB difference: MEAN / 255.</p>
 <p>Right game: native resolution, FSR off, 4× MSAA, HDR exposure 3, 10000-nit output peak.
   These RGB PNGs do not verify HDR display presentation.</p>
+PROCESSING_NOTE
 HDR_LINKS
 <div class="comparison" id="comparison" aria-label="Image comparison">
   <img src="b.png" alt="RIGHT_LABEL"><img id="top" src="a.png" alt="LEFT_LABEL"><div id="line"></div>
@@ -393,6 +394,13 @@ HDR_LINKS
                           "RIGHT_LABEL": label_b, "POSE": pose,
                           "LEFT_RENDERER": html.escape(left.get("renderer", "native-vulkan")),
                           "RIGHT_RENDERER": html.escape(right.get("renderer", "native-vulkan")),
+                          "PROCESSING_NOTE": (
+                              '<p>B’s PNG uses offline SDR tone mapping fitted to the original: '
+                              'shared contrast %.3f, exposure %.3f×. '
+                              '<a href="b-engine.png">Previous engine PNG</a> · '
+                              '<a href="../tone-map.json">Mapping settings</a>.</p>' % (
+                                  right["offline_sdr"]["contrast"], right["offline_sdr"]["exposure"])
+                              if right.get("offline_sdr") else ""),
                           "HDR_LINKS": ('<p>Download B’s unexposed linear HDR: '
                                         '<a href="%s">floating-point PFM</a> · '
                                         '<a href="%s">colour-space metadata</a>.</p>' % (
@@ -405,7 +413,7 @@ HDR_LINKS
     (out / "compare.html").write_text(page)
 
 
-def write_comparison(args, out, left, right, pose):
+def write_comparison(args, out, left, right, pose, captured_utc=None):
     if abs(left["camera"]["fov"] - right["camera"]["fov"]) > 0.1:
         raise ValueError("captured camera FOV differs between maps")
     with Image.open(out / "a.png") as a, Image.open(out / "b.png") as b:
@@ -419,7 +427,7 @@ def write_comparison(args, out, left, right, pose):
                "activated_panel_relays": args.panel_relay,
                "disabled_fizzler_relay": "fizzler1_disable_rl",
                "metrics": metrics,
-               "captured_utc": datetime.datetime.now(datetime.timezone.utc).isoformat()}
+               "captured_utc": captured_utc or datetime.datetime.now(datetime.timezone.utc).isoformat()}
     (out / "comparison.json").write_text(json.dumps(receipt, indent=2) + "\n")
     make_html(out, left, right, metrics, position, angles)
     print(out / "compare.html", flush=True)
@@ -446,7 +454,7 @@ def capture_gallery(args, out, content_a, content_b):
     return 0
 
 
-def write_gallery(out, cards, width, height):
+def write_gallery(out, cards, width, height, processing_note=None):
     page = '''<!doctype html><html lang="en"><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Intro4 map comparisons</title><style>
@@ -459,7 +467,10 @@ a { color: inherit; } img { display: block; width: 100%%; margin-bottom: 8px; }
 4× MSAA, HDR exposure 3, 10000-nit output peak. Each swipe links B’s unexposed
 floating-point HDR export. RGB PNGs do not verify HDR display presentation.</p>
 <p>Original: native Vulkan with render core disabled. Relit: native Vulkan render core.</p>
-<div class="grid">%s</div></html>''' % (width, height, "".join(cards))
+%s
+<div class="grid">%s</div></html>''' % (
+        width, height, '<p>%s</p>' % html.escape(processing_note) if processing_note else "",
+        "".join(cards))
     (out / "index.html").write_text(page)
 
 
