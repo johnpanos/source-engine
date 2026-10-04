@@ -26,6 +26,29 @@ struct ResolutionMode_t
 	int m_nHeight;
 };
 
+class HdrVideo : public CBaseModFrame
+{
+	DECLARE_CLASS_SIMPLE( HdrVideo, CBaseModFrame );
+
+public:
+	HdrVideo( vgui::Panel *parent, const char *panelName );
+	bool CheckSettings( int mode );
+
+protected:
+	void PreApplyControlSettings( KeyValues *resource ) override;
+	void ApplySchemeSettings( vgui::IScheme *scheme ) override;
+	void OnCommand( const char *command ) override;
+	void OnKeyCodePressed( vgui::KeyCode code ) override;
+	void OnThink() override;
+
+private:
+	void ApplyChanges();
+	void UpdateState();
+	int m_Mode = 1;
+	float m_Exposure = 1.0f;
+	int m_PeakNits = 1000;
+};
+
 class Video : public CBaseModFrame
 {
 	DECLARE_CLASS_SIMPLE( Video, CBaseModFrame );

@@ -911,6 +911,10 @@ CBaseModFrame* CBaseModPanel::OpenWindow( const WINDOW_TYPE & wt, CBaseModFrame 
 			m_Frames[wt] = new CFadeOutStartGame( this, "FadeOutStartGame" );
 			break;
 
+		case WT_HDRVIDEO:
+			m_Frames[wt] = new HdrVideo( this, "HdrVideo" );
+			break;
+
 		case WT_ADVANCEDVIDEO:
 			m_Frames[wt] = new CAdvancedVideo( this, "AdvancedVideo" );
 			break;

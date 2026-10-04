@@ -154,6 +154,8 @@ void LegacyWrite( vec4 color )
 		discard;
 	if ( ( int( pc.params.z ) & 65536 ) != 0 )
 		color.rgb = LinearToSrgb( color.rgb );
+	if ( kDecodeLegacyOutput )
+		color.rgb = OutputLinearFromSrgb( color.rgb );
 	outColor = color;
 }
 

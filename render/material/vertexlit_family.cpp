@@ -78,12 +78,17 @@ std::optional<std::string> PackTreeSway( const ParameterBlock &block, SurfaceCon
 		return "$treeswayheight must be nonzero and $treeswayradius positive";
 	if ( geometry[1] < 0 || geometry[1] >= 1 || geometry[3] < 0 || geometry[3] >= 1 )
 		return "$treeswaystartheight and $treeswaystartradius must be in [0, 1)";
-	for ( float value : constants.treeMotion )
-		if ( value < 0 )
-			return "tree sway speeds, strengths and frequency must be nonnegative";
+	for ( int column = 0; column < 4; ++column )
+		if ( constants.treeMotion[column] < 0 )
+			return std::string( "$" ) + keys[1][column] + " must be nonnegative";
 	const auto &curves = constants.treeCurves;
-	if ( curves[0] < 0 || curves[1] <= 0 || curves[2] <= 0 || curves[3] < 0 )
-		return "tree sway falloff exponents must be positive and speeds nonnegative";
+	for ( int column = 0; column < 4; ++column )
+	{
+		const bool exponent = column == 1 || column == 2;
+		if ( exponent ? curves[column] <= 0 : curves[column] < 0 )
+			return std::string( "$" ) + keys[2][column] +
+			       ( exponent ? " must be positive" : " must be nonnegative" );
+	}
 	if ( constants.treeWind[0] < 0 || constants.treeWind[1] <= constants.treeWind[0] )
 		return "$treeswayspeedlerpend must exceed the nonnegative $treeswayspeedlerpstart";
 	return std::nullopt;

@@ -245,8 +245,8 @@ static ConVar mat_hdr_exposure( "mat_hdr_exposure", "1", FCVAR_ARCHIVE,
     "HDR scene exposure multiplier", true, 0.25f, true, 4.0f );
 static ConVar mat_hdr_peak_nits( "mat_hdr_peak_nits", "1000", FCVAR_ARCHIVE,
     "Calibrated HDR display peak brightness in cd/m^2", true, 203.0f, true, 10000.0f );
-static ConVar mat_hdr_output_active( "mat_hdr_output_active", "0", FCVAR_READ_ONLY,
-    "Current presentation: 0 SDR, 1 HDR" );
+static ConVar mat_hdr_output_active(
+    "mat_hdr_output_active", "0", FCVAR_NONE, "Current presentation: 0 SDR, 1 HDR" );
 
 static bool RunVulkanFrame( std::string *outError )
 {

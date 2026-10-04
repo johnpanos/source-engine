@@ -399,7 +399,8 @@ int CVulkanContext::BindLegacySets(
 				// A texture stored in an sRGB format is decoded through any view.
 				if ( texture.srgbView != VK_NULL_HANDLE )
 					images[i].imageView = texture.srgbView;
-				else if ( !IsSrgbFormat( texture.format ) )
+				else if ( texture.format != VK_FORMAT_R16G16B16A16_SFLOAT &&
+				          !IsSrgbFormat( texture.format ) )
 					manualDecode |= 1 << i;
 			}
 		}
