@@ -147,6 +147,7 @@ struct SurfaceConstants
 	// UnlitTwoTexture: the second texture's independent UV transform.
 	float texture2Transform[8] = { 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f };
 	float surfaceControls[4] = { 0.0f, 1.0f, 0.0f, 1.0f }; // nofog, HDR scale, portal radius, alpha2
+	// The unlit particle point uses z/w as depthblend enabled/scale.
 	// VertexLitGeneric's $selfillumfresnelminmaxexp (min, max, exp) and 1
 	// when $selfillumfresnel weights the self-illuminated region
 	// (vertexlit_family.h). Neutral (w 0) for every other point.
@@ -194,8 +195,10 @@ struct SurfaceViewGpu
 	// x: the view's projected lights (binding 7), y: the pixel-to-texel
 	// scale of the view's screen inputs (1), z, w: viewport origin in pixels
 	float counts[4] = { 0.0f, 1.0f, 0.0f, 0.0f };
+	// Soft particles read the copied scene's alpha = clamp(clip Z / range).
+	float depthAlpha[4] = {}; // range, 1/source width, 1/source height, reserved
 };
-static_assert( sizeof( SurfaceViewGpu ) == 64 );
+static_assert( sizeof( SurfaceViewGpu ) == 80 );
 
 // A runtime point or spot light as the view group holds it (std430,
 // binding 3), light_set::RuntimeLight packed.
@@ -263,6 +266,16 @@ struct SurfaceScreenInputs
 	// by the surface's frame setting. Transmission must not expose/fog it again.
 	device::TextureId sceneColor;
 	device::TextureDesc sceneColorDesc;
+	// Ordered copy of opaque scene depth, encoded in alpha as clip Z / range.
+	// The image is sampled linearly without sRGB conversion. It is distinct
+	// from the currently bound writable depth attachment. The unlit point
+	// shares sceneColor's binding; callers bind separate per-point view groups.
+	device::TextureId depthAlpha;
+	device::TextureDesc depthAlphaDesc;
+	float depthAlphaRange = 0.0f;
+	// The full source attachment's extent before the depth copy resamples it.
+	std::uint32_t depthAlphaSourceWidth = 0;
+	std::uint32_t depthAlphaSourceHeight = 0;
 };
 
 // The frame's terms (std140, the Frame block of surface.frag): one lightmap

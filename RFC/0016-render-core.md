@@ -1599,6 +1599,25 @@ See the [implementation and evidence](0016-perf-forward-plus-2026-10-01.md).
 - **Ownership.** RFC 0008 F5's clustered dynamic lights are delivered here
   (K7). RFC 0011 keeps producers and the light set.
 
+### Soft-particle depth input (installed Intro4 slice, 2026-10-04)
+
+The core unlit point supports Source’s `$depthblend` and finite positive
+`$depthblendscale`. Its material claim owns the ordered depth-alpha input
+requirement; the pass validates the captured handle/range before publishing a
+claim and reports a lost import as a failed claim. The shader and group contract
+live in [`render.material`](../public/render/material/unlit_family.h). The
+legacy adapter supplies the existing ordered framebuffer depth copy and keeps
+its producer during core-only replay. It does not supply particle shading.
+The view’s screen coordinates retain the source attachment extent when that
+copy is resampled or FSR uses a smaller viewport.
+
+The installed `render_lab suite softparticle` proves encoded depth/fade and
+failure behavior, including smaller viewports and seeded broken shaders.
+`intro4_strict_game.py --scene particles` checks that same term against an
+actual Intro4 wall in both FSR modes. The [progress record](0016-progress.md#intro4-soft-particle-depth-fade-2026-10-04)
+retains both the initially failed game integration and corrected captures.
+The complete material and frame-cohort gates remain open.
+
 ### Fizzler emission (installed first slice, 2026-10-03)
 
 [`render.energy-field.v1`](../public/render/energy_field.h) owns the

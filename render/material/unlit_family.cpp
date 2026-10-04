@@ -10,6 +10,7 @@
 #include "family_program.h"
 
 #include <array>
+#include <cmath>
 #include <optional>
 #include <span>
 #include <string_view>
@@ -26,10 +27,11 @@ using detail::ReadParameter;
 using detail::SourceGammaToLinear;
 
 // The parameters the family draws, and the ones the caller owns.
-constexpr std::array<std::string_view, 21> kClaimed = { "basetexture", "color", "alpha",
+constexpr std::array<std::string_view, 23> kClaimed = { "basetexture", "color", "alpha",
     "vertexcolor", "vertexalpha", "alphatest", "alphatestreference", "translucent", "additive",
     "model", "nofog", "nocull", "texture2", "frame2", "texture2transform", "ignorez",
-    "hdrcolorscale", "hdrbasetexture", "basetexturetransform", "decal", "frame" };
+    "hdrcolorscale", "hdrbasetexture", "basetexturetransform", "decal", "frame", "depthblend",
+    "depthblendscale" };
 
 } // namespace
 
@@ -62,9 +64,18 @@ UnlitClaim ClaimUnlit( const ParameterBlock &block )
 	    additive ? BlendMode::kAdditive : ( alphaBlended ? BlendMode::kAlpha : BlendMode::kOpaque );
 	claim.alphaWrite = !alphaBlended && !ReadFlag( block, "alphatest" );
 	claim.ignoreDepth = ReadFlag( block, "ignorez" );
+	claim.depthBlend = ReadFlag( block, "depthblend" );
+	const float depthScale = ReadParameter( block, "depthblendscale" );
+	if ( claim.depthBlend && ( !std::isfinite( depthScale ) || depthScale <= 0.0f ) )
+	{
+		claim.reason = "$depthblend needs a finite positive $depthblendscale";
+		return claim;
+	}
 	SurfaceConstants &constants = claim.constants;
 	constants.surfaceControls[0] = ReadFlag( block, "nofog" ) ? 1.0f : 0.0f;
 	constants.surfaceControls[1] = ReadParameter( block, "hdrcolorscale" );
+	constants.surfaceControls[2] = claim.depthBlend ? 1.0f : 0.0f;
+	constants.surfaceControls[3] = depthScale;
 	for ( int c = 0; c < 3; ++c )
 		constants.tint[c] = SourceGammaToLinear( ReadParameter( block, "color", c ) );
 	constants.tint[3] = ReadParameter( block, "alpha" );
@@ -128,6 +139,11 @@ UnlitClaim ClaimUnlitMesh( const ParameterBlock &block )
 	if ( nativeProbe )
 		(void)withoutProbe.SetTexture( "envmap", {} );
 	UnlitClaim claim = ClaimUnlit( withoutProbe );
+	if ( claim.claimed && claim.depthBlend )
+	{
+		claim.claimed = false;
+		claim.reason = "$depthblend needs the unlit particle point, not the emissive model point";
+	}
 	claim.nativeProbe = nativeProbe;
 	return claim;
 }

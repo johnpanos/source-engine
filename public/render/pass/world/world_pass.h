@@ -381,6 +381,10 @@ struct WorldView
 		bool capturedLightmap = false;
 	};
 	std::vector<DynamicDraw> dynamicDraws;
+	// Captured ordered depth-copy input for soft particles; one-based importer
+	// handle. Required when a draw sets $depthblend, never the live attachment.
+	int depthAlphaHandle = 0;
+	float depthAlphaRange = 0.0f;
 
 	float toClip[16] = {};               // world to clip, row-major, D3D9 conventions
 	float motionToClip[16] = {};         // unjittered camera transform

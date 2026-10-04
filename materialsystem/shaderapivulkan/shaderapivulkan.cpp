@@ -923,6 +923,8 @@ static int g_CurrentLegacyProgram = -1;
 static int g_CurrentLegacyPsStatic = 0;
 static int g_CurrentLegacyVsStatic = 0;
 static unsigned int g_CurrentSrgbSamplers = 0;
+// The samplers the pass being drawn enabled (all when no snapshot is current).
+static unsigned int g_CurrentEnabledSamplers = ~0u;
 static render_vulkan::LegacyConstants g_CurrentLegacyConstants;
 // The census of drawn passes by route: the snapshot's route with its pixel and
 // vertex shader and static combo indices, the draws emitted through it, and a
@@ -5230,6 +5232,16 @@ bool CEmptyMesh::EmitToCoreQueue()
 	// matching ICoreTextures, rather than this backend's zero-based index.
 	draw.lightmapPage = g_boundLightmapHandle + 1;
 	draw.capturedLightmap = true;
+	// Frozen-path: capture the existing ordered soft-particle depth-copy input;
+	// the core owns fading, and never samples the writable depth attachment.
+	bool depthBlendFound = false;
+	IMaterialVar *depthBlend = g_pBoundMaterial->FindVar( "$depthblend", &depthBlendFound, false );
+	if ( depthBlendFound && depthBlend->GetIntValue() != 0 &&
+	     ( g_CurrentEnabledSamplers & ( 1u << SHADER_SAMPLER10 ) ) )
+	{
+		draw.depthAlphaHandle = g_boundSamplerHandles[SHADER_SAMPLER10] + 1;
+		draw.depthAlphaRange = g_Fog.destAlphaDepthRange;
+	}
 	draw.viewport = { float( g_Viewport.m_nTopLeftX ), float( g_Viewport.m_nTopLeftY ),
 	    float( g_Viewport.m_nWidth ), float( g_Viewport.m_nHeight ), g_Viewport.m_flMinZ,
 	    g_Viewport.m_flMaxZ };
@@ -7137,8 +7149,6 @@ struct PixelFogInputs
 };
 static std::vector<PixelFogInputs> g_snapshotPixelFog;
 static PixelFogInputs g_CurrentPixelFog;
-// The samplers the pass being drawn enabled (all when no snapshot is current).
-static unsigned int g_CurrentEnabledSamplers = ~0u;
 
 // vertexlit_and_unlit_generic_vs20's static combos (fxctmp9/
 // vertexlit_and_unlit_generic_vs20.inc): VERTEXCOLOR at stride 192, HALFLAMBERT

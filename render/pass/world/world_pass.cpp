@@ -857,14 +857,19 @@ std::uint32_t WorldPass::QueueView( WorldView view )
 			why = mapped.Error();
 		else
 		{
-			auto claim =
-			    draw.material.mesh
-			        ? material::ClaimForMesh( mapped.Value().desc,
-			              s.world->stage && !s.world->stage->reflectionProbes.empty(),
-			              s.world->stage != nullptr )
-			        : material::ClaimForDrawing( mapped.Value().desc, s.world->stage != nullptr );
+			bool requiresDepthAlpha = false;
+			auto claim = draw.material.mesh
+			                 ? material::ClaimForMesh( mapped.Value().desc,
+			                       s.world->stage && !s.world->stage->reflectionProbes.empty(),
+			                       s.world->stage != nullptr )
+			                 : material::ClaimForDrawing( mapped.Value().desc,
+			                       s.world->stage != nullptr, &requiresDepthAlpha );
 			if ( !claim )
 				why = claim.Error();
+			else if ( requiresDepthAlpha &&
+			          ( view.depthAlphaHandle <= 0 || !std::isfinite( view.depthAlphaRange ) ||
+			              view.depthAlphaRange <= 0.0f ) )
+				why = "$depthblend needs a captured depth-alpha texture and positive range";
 		}
 		if ( !why.empty() )
 		{
@@ -2195,6 +2200,7 @@ void WorldPass::RecordBatch(
 	std::map<std::uint64_t, Group *> modelLitViews;
 	std::deque<Group> transientLitViews;
 	std::map<std::uint64_t, Group> sceneViews;
+	std::map<std::uint64_t, Group> depthViews;
 	// The view's ambient occlusion once the screen passes recorded it.
 	TextureId viewOcclusion;
 	// The view's planar reflection (a program's view input, imported below
@@ -2203,10 +2209,19 @@ void WorldPass::RecordBatch(
 	TextureId viewReflection;
 	TextureId viewSceneColor;
 	TextureDesc viewSceneColorDesc;
+	const TextureId viewDepthAlpha =
+	    view.depthAlphaHandle > 0 ? textures.Import( view.depthAlphaHandle, false ) : TextureId();
 	std::map<std::uint64_t, Group> reflectViews;
 	auto viewGroupReady = [&]( const Resources::Material &m ) -> const Group *
 	{
 		const std::uint64_t layout = m.program.request.viewLayout.value;
+		if ( m.program.depthBlend &&
+		     ( !viewDepthAlpha.IsValid() || !std::isfinite( view.depthAlphaRange ) ||
+		         view.depthAlphaRange <= 0.0f ) )
+		{
+			note( "$depthblend has no imported depth-alpha snapshot with a positive range" );
+			return nullptr;
+		}
 		if ( m.program.sceneColor && !viewSceneColor.IsValid() )
 		{
 			note( "a transmitting program has no scene-color snapshot" );
@@ -2222,10 +2237,12 @@ void WorldPass::RecordBatch(
 			const bool model =
 			    m.resolver == r.modelResolver.get() || m.resolver == r.prepassModelResolver.get();
 			Group *&slot = model ? modelLitViews[layout] : litViews[layout];
-			Group *lit = m.program.sceneColor ? &sceneViews[layout] : slot;
+			Group *lit = m.program.depthBlend   ? &depthViews[layout]
+			             : m.program.sceneColor ? &sceneViews[layout]
+			                                    : slot;
 			if ( lit && lit->group.IsValid() )
 				return lit;
-			if ( !m.program.sceneColor )
+			if ( !m.program.sceneColor && !m.program.depthBlend )
 			{
 				const auto cached = std::find_if( r.litViews.begin(), r.litViews.end(),
 				    [&]( const Resources::LitView &entry )
@@ -2272,6 +2289,10 @@ void WorldPass::RecordBatch(
 				shadows.tiles = lights.shadowTiles;
 			}
 			material::SurfaceScreenInputs screen;
+			screen.depthAlpha = m.program.depthBlend ? viewDepthAlpha : TextureId();
+			screen.depthAlphaRange = m.program.depthBlend ? view.depthAlphaRange : 0.0f;
+			screen.depthAlphaSourceWidth = target.width;
+			screen.depthAlphaSourceHeight = target.height;
 			// The surface program fetches AO at the screen pixel. Models need
 			// the same full-size view input as world surfaces.
 			if ( viewOcclusion.IsValid() )
@@ -2311,12 +2332,18 @@ void WorldPass::RecordBatch(
 			}
 			return lit;
 		}
-		if ( m.viewInput != 0 || m.program.sceneColor )
+		if ( m.viewInput != 0 || m.program.sceneColor || m.program.depthBlend )
 		{
-			Group &reflect = m.program.sceneColor ? sceneViews[layout] : reflectViews[layout];
+			Group &reflect = m.program.depthBlend   ? depthViews[layout]
+			                 : m.program.sceneColor ? sceneViews[layout]
+			                                        : reflectViews[layout];
 			if ( reflect.group.IsValid() )
 				return &reflect;
 			material::SurfaceScreenInputs screen;
+			screen.depthAlpha = m.program.depthBlend ? viewDepthAlpha : TextureId();
+			screen.depthAlphaRange = m.program.depthBlend ? view.depthAlphaRange : 0.0f;
+			screen.depthAlphaSourceWidth = target.width;
+			screen.depthAlphaSourceHeight = target.height;
 			screen.planarReflection = viewReflection;
 			if ( m.program.sceneColor )
 			{
@@ -2795,9 +2822,10 @@ void WorldPass::RecordBatch(
 			const auto lit = modelLitViews.find( layout );
 			const auto scene = sceneViews.find( layout );
 			encoder.SetBindGroup( BindGroupRole::kView,
-			    m.program.sceneColor && scene != sceneViews.end() ? scene->second.group
-			    : lit != modelLitViews.end()                      ? lit->second->group
-			                                                      : r.viewGroups[layout].group );
+			    ( m.program.sceneColor || m.program.depthBlend ) && scene != sceneViews.end()
+			        ? scene->second.group
+			    : lit != modelLitViews.end() ? lit->second->group
+			                                 : r.viewGroups[layout].group );
 		}
 		encoder.SetBindGroup( BindGroupRole::kMaterial, m.group.group );
 		if ( m.program.request.drawLayout.IsValid() )
@@ -3425,7 +3453,8 @@ void WorldPass::RecordBatch(
 		encoder.SetBindGroup(
 		    BindGroupRole::kFrame, r.frameGroups[m.program.request.frameLayout.value].group );
 		const auto layout = m.program.request.viewLayout.value;
-		const Group *group = m.program.sceneColor       ? &sceneViews[layout]
+		const Group *group = m.program.depthBlend       ? &depthViews[layout]
+		                     : m.program.sceneColor     ? &sceneViews[layout]
 		                     : litViews.count( layout ) ? litViews[layout]
 		                                                : &r.viewGroups[layout];
 		encoder.SetBindGroup( BindGroupRole::kView, group->group );
@@ -3451,6 +3480,8 @@ void WorldPass::RecordBatch(
 	for ( auto &group : transientLitViews )
 		s.retiredGroups.emplace_back( target.frame, std::move( group ) );
 	for ( auto &[layout, group] : sceneViews )
+		s.retiredGroups.emplace_back( target.frame, std::move( group ) );
+	for ( auto &[layout, group] : depthViews )
 		s.retiredGroups.emplace_back( target.frame, std::move( group ) );
 	for ( auto &[layout, group] : reflectViews )
 		s.retiredGroups.emplace_back( target.frame, std::move( group ) );

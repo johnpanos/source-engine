@@ -112,6 +112,7 @@ struct ResolvedProgram
 	ProgramRequest request;
 	device::BlendMode blend = device::BlendMode::kOpaque;
 	bool sceneColor = false; // the view group needs a snapshot before this draw
+	bool depthBlend = false; // requires the view's copied depth-alpha input
 	bool foliage = false; // $treesway needs captured animation time and wind
 	bool twoSided = false;   // authored $nocull; mesh winding belongs to its draw owner
 	// The per-draw inputs the draw group takes, in binding order.
@@ -211,9 +212,10 @@ private:
 // Whether a material's variables claim no more than the model draws, without
 // a device (the pass's main-thread decision to take its surfaces). The same
 // rules as Resolve, minus pipelines; worldPbr as SetWorldPbr (a pbr material
-// is claimed only with it).
+// is claimed only with it). Optional requiresDepthAlpha reports the claimed
+// point’s ordered depth input, so callers never interpret a family’s variables.
 foundation::Expected<device::BlendMode, std::string> ClaimForDrawing(
-    const MaterialDesc &material, bool worldPbr = false );
+    const MaterialDesc &material, bool worldPbr = false, bool *requiresDepthAlpha = nullptr );
 // Additional ordering requirements for an already claimed opaque material:
 // no scene-color dependency, animated frame time or depth/stencil-only effect.
 // Evaluated when the material snapshot is claimed, not during view recording.

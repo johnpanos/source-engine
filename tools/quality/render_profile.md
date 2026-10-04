@@ -99,11 +99,11 @@ camera cohort alone, append `--scene cameras` and use a fresh output directory.
 
 The output must be fresh. A failed mode does not stop the other mode's evidence
 collection, and the aggregate fails if either boot or pixel oracle fails.
-`--scene doors`, `materials`, `cables`, `emissives`, `signage` or `cameras` selects a bounded
-reproduction; the default `all` runs all 172 pixel, source-report and seeded-negative
+`--scene doors`, `materials`, `cables`, `emissives`, `signage`, `cameras` or `particles` selects a bounded
+reproduction; the default `all` runs all 184 pixel, source-report and seeded-negative
 checks per mode. Retain direct-start captures separately when reproducing a launch-time report.
 
-`intro4_material_check.py --scene materials|doors|cables|emissives|signage|cameras|all --commands` emits each
+`intro4_material_check.py --scene materials|doors|cables|emissives|signage|cameras|particles|all --commands` emits each
 installed `portal_boot.py` console sequence. Capture both modes at the same
 1024×768 requested viewport (desktop HiDPI is retained), using the corresponding
 `--startup-command "r_temporal_scale SCALE"`. Pass each capture to the oracle:
@@ -135,6 +135,14 @@ Both `r_core_shadow_quality 3` and `r_core_shadow_movers 1` must remain enabled.
 Empty light sets must report empty at the requested frame; a stale report is a
 failure. The camera source policy is owned by
 [RFC 0016](../../RFC/0016-render-core.md#surface-emission-sources-installed-indicator-slice-2026-10-04).
+`--scene particles` uses the actual `particle/particle_noisesphere` material
+at a BSP wall. Seven captures cover background, near/middle/far gaps, opaque
+occlusion, return and removal. Six physical checks and six seeded image defects
+must pass in each strict mode. The source depth copy may be resampled to a
+power-of-two texture; its screen coordinates use the full source attachment,
+including FSR’s subregion. The core lab suite checks both full and half-sized
+viewports against an independent depth-fade oracle.
+
 These are bounded pixel checks,
 with seeded missing-surface controls; they do not certify all materials,
 glass optics, presented HDR output or whole-frame performance. A game boot pass

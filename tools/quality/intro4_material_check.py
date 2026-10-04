@@ -12,6 +12,7 @@ Use --scene cables for the rope visibility cycle under captured scene lighting.
 Use --scene emissives for cyan/orange/off light on neighboring wall receivers.
 Use --scene signage for isolated signs, pictograms, chamber boards and movie screens.
 Use --scene cameras for attached red eyes, hide/show, movement, rotation and removal.
+Use --scene particles for soft-particle fade, opaque occlusion, return and removal.
 """
 import argparse
 import copy
@@ -109,12 +110,17 @@ def signage_commands():
             result.append('cmd ent_fire rc_sign_receiver Kill')
         result.extend([f'cl_surface_core_emission_filter {material}',
                        f'cmd setpos {position}', f'cmd setang {angles}'])
+        if index == 5:
+            # Movie radiance follows decoded frames. Pause the existing game
+            # player so the light-only on/off/on oracle compares one frame.
+            result.extend(['wait 90', 'sv_pausable 1', 'cmd setpause', 'wait 2'])
         for emitting in (1, 0, 1):
             result.extend([f'cl_surface_core_emission {emitting}', 'wait 300',
                            f'echo RC_SIGNAGE_{index}_{emitting}'])
             if emitting:
                 result.extend(['r_area_lights_report 1', 'wait 2'])
             result.extend(['screenshot', 'wait 12'])
+    result.append('cmd unpause')
     result.extend(['cl_surface_core_emission_filter ""', 'r_core_world_stats',
                    'r_core_world_strict', 'r_core_dynamic_draws',
                    'cl_surface_core_emission', 'cl_surface_core_emission_strength',
@@ -164,14 +170,82 @@ def camera_commands():
     return result
 
 
+def particle_commands():
+    # Face 1620 of Intro4's compiled world is the opaque x=256 strip,
+    # y=256..288, z=0..96. Keep the entire billboard inside that strip.
+    # Scale with eye distance so each pose covers the same screen pixels.
+    result = ['cmd noclip', 'r_drawviewmodel 0', 'cmd setpos 120 272 0',
+              'cmd setang 0 0 0']
+
+    def capture():
+        result.extend(['wait 150', 'screenshot', 'wait 12'])
+
+    capture()
+    result.append('cmd ent_create env_sprite targetname rc_soft_particle '
+                  'model particle/particle_noisesphere.vmt origin "254 272 64" '
+                  'rendercolor "0 255 0" renderamt 255 rendermode 0 scale 0.4 '
+                  'spawnflags 1')
+    result.append('cmd ent_fire rc_soft_particle RunScriptCode '
+                  '"self.SetOrigin(Vector(254,272,64))"')
+    capture()
+    for x, scale in ((229, '0.325373'), (200, '0.238806'), (260, '0.417910'), (254, '0.4')):
+        result.extend([f'cmd ent_fire rc_soft_particle RunScriptCode "self.SetOrigin(Vector({x},272,64))"',
+                       f'cmd ent_fire rc_soft_particle SetScale {scale}'])
+        capture()
+    result.append('cmd ent_fire rc_soft_particle Kill')
+    capture()
+    result.extend(['r_core_world_stats', 'r_core_world_strict', 'r_core_dynamic_draws'])
+    return result
+
+
+def inspect_particles(images):
+    validate_images(images, 7)
+    # Background has the authored indicator line beside the billboard. The
+    # center crop contains only the noise sprite and its opaque wall receiver.
+    samples = [region(image, 472, 344, 552, 424) for image in images[:7]]
+    delta = [float((sample[:, :, 1] - samples[0][:, :, 1]).mean()) for sample in samples]
+    near, middle, far, behind, returned = delta[1:6]
+    checks = []
+    for suffix, passed, value in (
+            ('visible-away-from-wall', far > .06, far),
+            ('near-wall-fades', near >= -.005 and near < far * .18, near),
+            ('middle-gap-between-near-and-far', middle > near * 3 and middle < far * .8,
+             middle),
+            ('opaque-wall-occludes', abs(behind) < .005, behind),
+            ('returned-depth-fade', abs(returned - near) < .005, returned - near),
+            ('removed-restores-background', float(np.abs(samples[6] - samples[0]).mean()) < .005,
+             float(np.abs(samples[6] - samples[0]).mean()))):
+        checks.append(dict(name=f'particle.{suffix}', passed=bool(passed), value=float(value)))
+    return checks
+
+
+def particle_sensitivity(images):
+    checks = []
+    for defect, target, replacement, expected in (
+            ('missing-material', 3, 0, 'visible-away-from-wall'),
+            ('unfaded-at-wall', 1, 3, 'near-wall-fades'),
+            ('unfaded-middle-gap', 2, 3, 'middle-gap-between-near-and-far'),
+            ('drawn-through-wall', 4, 3, 'opaque-wall-occludes'),
+            ('stale-depth-on-return', 5, 3, 'returned-depth-fade'),
+            ('stale-particle-after-removal', 6, 3, 'removed-restores-background')):
+        mutated = copy.deepcopy(images)
+        mutated[target] = images[replacement].copy()
+        rejected = any(check['name'] == f'particle.{expected}' and not check['passed']
+                       for check in inspect_particles(mutated))
+        checks.append(dict(name=f'particle.oracle.rejects-{defect}', passed=rejected))
+    return checks
+
+
 def commands(scene='materials'):
     if scene == 'all':
         result = ['wait 600', 'r_core_world_stats', 'r_temporal_scale']
-        for name in ('materials', 'doors', 'cables', 'emissives', 'signage', 'cameras'):
+        for name in ('materials', 'doors', 'cables', 'emissives', 'signage', 'cameras', 'particles'):
             sequence = commands(name)
             result.extend(sequence if name == 'materials' else sequence[1:])
         result.append('r_temporal_scale')
         return result
+    if scene == 'particles':
+        return particle_commands()
     if scene == 'cameras':
         return camera_commands()
     if scene == 'signage':
@@ -427,8 +501,8 @@ def inspect_signage(images):
                                 passed=mean > minimum, value=mean),
                            dict(name=f'signage.{name}.coverage-{frame}',
                                 passed=changed > coverage, value=changed)))
-        # Movie frames may change. Judge restoration on its surrounding wall,
-        # not on the film image. Static source receivers use the same bound.
+        # The movie player is paused for this cycle. Judge the same source
+        # frame on its surrounding wall; static sources use the same bound.
         delta = float(np.abs(restored - on).mean())
         checks.append(dict(name=f'signage.{name}.return', passed=delta < .01, value=delta))
     # White printed source patches remain visible during the light-only control.
@@ -470,7 +544,7 @@ def signage_reports(log):
                ((657, 8.5, 104.2), (-1, 0, 0)),
                ((-1560.1, -63.3, -32), (0, 1, 0)))
     for index, (name, _, _, _) in enumerate(SIGN_RECEIVERS):
-        segments = re.findall(rf'RC_SIGNAGE_{index}_1\s*\n(.*?)(?=RC_SIGNAGE_|"cl_surface|views queued)',
+        segments = re.findall(rf'RC_SIGNAGE_{index}_1\s*(.*?)(?=RC_SIGNAGE_|"cl_surface|views queued)',
                               log, flags=re.S)
         passed = len(segments) == 2
         center, normal = targets[index]
@@ -652,7 +726,7 @@ def sensitivity(images):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--commands', action='store_true')
-    parser.add_argument('--scene', choices=('materials', 'doors', 'cables', 'emissives', 'signage', 'cameras', 'all'),
+    parser.add_argument('--scene', choices=('materials', 'doors', 'cables', 'emissives', 'signage', 'cameras', 'particles', 'all'),
                         default='materials')
     parser.add_argument('--temporal-scale', type=float,
                         help='require this FSR scale in startup settings and live game queries')
@@ -695,7 +769,7 @@ def main():
             raise ValueError('the game reported strict mode disabled')
         dynamic = re.findall(r'"r_core_dynamic_draws" = "([^\"]+)"', log)
         if ((dynamic and any(value != '0' for value in dynamic)) or
-                (args.scene in ('doors', 'cables', 'emissives', 'signage', 'cameras', 'all') and (not strict or not dynamic))):
+                (args.scene in ('doors', 'cables', 'emissives', 'signage', 'cameras', 'particles', 'all') and (not strict or not dynamic))):
             raise ValueError('strict/default-cohort game queries are missing or incorrect')
         if args.scene in ('emissives', 'signage', 'cameras', 'all'):
             strength = re.findall(r'"cl_surface_core_emission_strength" = "([^\"]+)"', log)
@@ -721,7 +795,7 @@ def main():
         if not failures or any(int(value) for value in failures):
             raise ValueError('missing core statistics or claimed-view failure')
         if args.scene == 'all':
-            validate_images(images, 58)
+            validate_images(images, 65)
             report['checks'] = (inspect(images[:8]) + sensitivity(images[:8]) +
                                 inspect_doors(images[8:17]) + door_sensitivity(images[8:17]) +
                                 inspect_cables(images[17:20]) + cable_sensitivity(images[17:20]) +
@@ -729,7 +803,10 @@ def main():
                                 inspect_signage(images[30:48]) + signage_sensitivity(images[30:48]) +
                                 signage_reports(log) + signage_report_sensitivity(log) +
                                 inspect_cameras(images[48:58]) + camera_sensitivity(images[48:58]) +
+                                inspect_particles(images[58:65]) + particle_sensitivity(images[58:65]) +
                                 camera_reports(log, True) + camera_report_sensitivity(log, True))
+        elif args.scene == 'particles':
+            report['checks'] = inspect_particles(images) + particle_sensitivity(images)
         elif args.scene == 'cameras':
             report['checks'] = (inspect_cameras(images) + camera_sensitivity(images) +
                                 camera_reports(log) + camera_report_sensitivity(log))

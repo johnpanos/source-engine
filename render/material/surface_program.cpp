@@ -552,7 +552,13 @@ GroupRequest SurfaceProgram::ViewGroup( const SurfaceViewGpu &view,
 	GroupRequest request;
 	request.layout = m_ViewLayout;
 	request.constantsBinding = 0;
-	const auto bytes = std::as_bytes( std::span( &view, 1 ) );
+	SurfaceViewGpu captured = view;
+	captured.depthAlpha[0] = screen.depthAlphaRange;
+	captured.depthAlpha[1] =
+	    screen.depthAlphaSourceWidth > 0 ? 1.0f / float( screen.depthAlphaSourceWidth ) : 0.0f;
+	captured.depthAlpha[2] =
+	    screen.depthAlphaSourceHeight > 0 ? 1.0f / float( screen.depthAlphaSourceHeight ) : 0.0f;
+	const auto bytes = std::as_bytes( std::span( &captured, 1 ) );
 	request.constants.assign( bytes.begin(), bytes.end() );
 	auto storage = [&]( std::uint32_t binding, std::span<const std::byte> data )
 	{
@@ -619,8 +625,11 @@ GroupRequest SurfaceProgram::ViewGroup( const SurfaceViewGpu &view,
 	sceneColor.sampler.minFilter = sceneColor.sampler.magFilter = Filter::kLinear;
 	sceneColor.sampler.mipFilter = Filter::kNearest;
 	sceneColor.sampler.address = AddressMode::kClampToEdge;
-	sceneColor.external = screen.sceneColor;
-	sceneColor.externalDesc = screen.sceneColorDesc;
+	// Transmission and soft particles are different points of the surface
+	// program. They share the scene snapshot binding, with per-point view groups.
+	sceneColor.external = screen.depthAlpha.IsValid() ? screen.depthAlpha : screen.sceneColor;
+	sceneColor.externalDesc =
+	    screen.depthAlpha.IsValid() ? screen.depthAlphaDesc : screen.sceneColorDesc;
 	request.textures.push_back( std::move( sceneColor ) );
 	return request;
 }

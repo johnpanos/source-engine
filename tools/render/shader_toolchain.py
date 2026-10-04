@@ -416,6 +416,16 @@ GENERATED = {
          DEVICE_OPTIONS + ("-DSEEDED_TREE_HANGING_IGNORED",)),
         ("kTreeSwayRootIgnored", LAB + "/tree_sway_check.comp",
          DEVICE_OPTIONS + ("-DSEEDED_TREE_ROOT_IGNORED",)))),
+    "softparticle_defects_spv.h": ("render::lab::spirv",
+        "render_lab soft-particle depth fade sensitivity", (
+        ("kSoftParticleFadeIgnored", FAMILIES + "/surface.frag",
+         DEVICE_OPTIONS + ("-DSEEDED_DEPTH_BLEND_IGNORED",)),
+        ("kSoftParticleRangeIgnored", FAMILIES + "/surface.frag",
+         DEVICE_OPTIONS + ("-DSEEDED_DEPTH_RANGE_IGNORED",)),
+        ("kSoftParticleTextureExtent", FAMILIES + "/surface.frag",
+         DEVICE_OPTIONS + ("-DSEEDED_DEPTH_TEXTURE_EXTENT",)),
+        ("kSoftParticleViewportExtent", FAMILIES + "/surface.frag",
+         DEVICE_OPTIONS + ("-DSEEDED_DEPTH_VIEWPORT_EXTENT",)))),
     "selfillum_defects_spv.h": ("render::lab::spirv",
         "render_lab's self-illumination suite's seeded programs (render.lab.selfillum "
         "sensitivity, RFC 0016 surface model emission term)", (

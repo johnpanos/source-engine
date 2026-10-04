@@ -157,6 +157,7 @@ layout( set = 1, binding = 0 ) uniform ClusterView
 	vec4 slices;        // sliceScale, sliceBias, nearZ
 	vec4 viewDistance;  // a world point's view distance: dot( xyz, p ) + w
 	vec4 counts;        // x: projectors; y: screen scale; zw: viewport origin
+	vec4 depthAlpha;    // range, inverse source extent
 } clusterView;
 layout( set = 1, binding = 1, std430 ) readonly buffer ClusterFroxels
 {
@@ -195,8 +196,10 @@ layout( set = 1, binding = 12 ) uniform texture2D reflectionTexture;
 layout( set = 1, binding = 13 ) uniform sampler reflectionSampler;
 // Captured scene behind transmission. The attachment already contains the
 // opaque surfaces' exposure and fog; unorm outputs may also be encoded.
+// The unlit soft-particle point binds the linear depth-alpha copy here.
 layout( set = 1, binding = 14 ) uniform texture2D sceneColorTexture;
 layout( set = 1, binding = 15 ) uniform sampler sceneColorSampler;
+
 
 // The GGX LTC table (public/render/pbr_ltc_table.h), read by the pbr point.
 layout( set = 0, binding = 3 ) uniform texture2D ltcTexture;
@@ -1757,6 +1760,36 @@ void main()
 			albedo *= color.rgb;
 		if ( material.state.w != 0.0 )
 			alpha *= color.a;
+		if ( material.surfaceControls.z > 0.5 )
+#ifndef SEEDED_DEPTH_BLEND_IGNORED
+		{
+			#ifdef SEEDED_DEPTH_TEXTURE_EXTENT
+			const vec2 screenUv = gl_FragCoord.xy /
+			    vec2( textureSize( sampler2D( sceneColorTexture, sceneColorSampler ), 0 ) );
+#elif defined( SEEDED_DEPTH_VIEWPORT_EXTENT )
+			const vec2 screenUv = ( gl_FragCoord.xy - frame.viewport.xy ) * frame.viewport.zw;
+#else
+			// The legacy depth copy can resample the view into a different-sized
+			// texture. FSR/nested viewports occupy a subregion of the source attachment.
+			const vec2 screenUv = gl_FragCoord.xy * clusterView.depthAlpha.yz;
+#endif
+			const float sceneDepth = texture(
+			    sampler2D( sceneColorTexture, sceneColorSampler ), screenUv ).a;
+			const float range = clusterView.depthAlpha.x;
+			const float spriteDepth = fogDepth.x / range;
+#ifdef SEEDED_DEPTH_RANGE_IGNORED
+			const float blendRange = 1.0;
+#else
+			const float blendRange = range;
+#endif
+			float fade = abs( sceneDepth - spriteDepth ) * blendRange / material.surfaceControls.w;
+			// Depth saturates beyond the legacy range; preserve visibility there.
+			fade = max( smoothstep( 0.75, 1.0, sceneDepth ), fade );
+			alpha *= clamp( fade, 0.0, 1.0 );
+		}
+#else
+		{}
+#endif
 	}
 	else if ( material.flags.x != 0.0 )
 	{

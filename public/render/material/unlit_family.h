@@ -17,6 +17,11 @@
 //			select vertex formats, view fog and cull state, which the caller
 //			owns.
 //
+//			$depthblend with a positive $depthblendscale fades unlit particles
+//			against the view's ordered depth-alpha copy (SurfaceScreenInputs).
+//			The view range must match the copy's producer. WorldPass refuses a
+//			missing input before claiming a slot; a lost import fails that slot.
+//
 //			The arithmetic is the vertexlit_and_unlit_generic port's without
 //			lighting, in linear light: the base texture times $color (Source's
 //			GammaToLinear), times the vertex color (decoded per vertex) with
@@ -56,6 +61,7 @@ struct UnlitClaim
 	bool decalModulate = false;
 	bool cable = false; // expanded ribbon: normal UV0, color UV1, linear vertex lighting
 	bool ignoreDepth = false;
+	bool depthBlend = false; // requires the view's copied scene depth in alpha
 	// tint: $color and $alpha; flags.x $vertexcolor, .y $alphatest, .z its
 	// reference; state.y 1 (gamma vertex colors); state.w $vertexalpha.
 	SurfaceConstants constants;

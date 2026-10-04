@@ -6,9 +6,11 @@ pixel oracle. Output must be fresh. No successful mode substitutes for a missing
 or failed mode; this is material evidence, not a frame-performance gate.
 """
 import argparse
+import hashlib
 import json
 from pathlib import Path
 import subprocess
+import shutil
 import sys
 
 from intro4_material_check import commands
@@ -23,7 +25,7 @@ def main():
     parser.add_argument('--fsr-scale', choices=('0.5', '0.588235', '0.666667', '1'),
                         default='0.5')
     parser.add_argument('--timeout', type=int, default=300)
-    parser.add_argument('--scene', choices=('all', 'materials', 'doors', 'cables', 'emissives', 'signage', 'cameras'),
+    parser.add_argument('--scene', choices=('all', 'materials', 'doors', 'cables', 'emissives', 'signage', 'cameras', 'particles'),
                         default='all')
     args = parser.parse_args()
     if args.out.exists():
@@ -31,6 +33,11 @@ def main():
     args.out.mkdir(parents=True)
     results = []
     root = Path(__file__).resolve().parents[2]
+    # Freeze the oracle with the command sequence for this run. A source edit
+    # during the second mode must not silently change its acceptance contract.
+    oracle_path = args.out / "intro4_material_check.py"
+    shutil.copyfile(root / "tools/quality/intro4_material_check.py", oracle_path)
+    oracle_sha256 = hashlib.sha256(oracle_path.read_bytes()).hexdigest()
     for mode, scale in (('fsr-on', args.fsr_scale), ('fsr-off', '0')):
         capture = args.out / mode
         boot = [sys.executable, str(root / 'tools/quality/portal_boot.py'),
@@ -65,7 +72,7 @@ def main():
         with (args.out / f'{mode}-boot.log').open('w') as log:
             boot_status = subprocess.run(boot, cwd=root, stdout=log,
                                          stderr=subprocess.STDOUT).returncode
-        oracle = [sys.executable, str(root / 'tools/quality/intro4_material_check.py'),
+        oracle = [sys.executable, str(oracle_path.resolve()),
                   '--scene', args.scene, '--temporal-scale', scale,
                   '--capture', str(capture.resolve()),
                   '--out', str((args.out / f'{mode}-pixels.json').resolve())]
@@ -75,7 +82,8 @@ def main():
         print(f'{mode}: boot={boot_status}, pixels={oracle_status}', flush=True)
     passed = all(row['boot_exit'] == 0 and row['oracle_exit'] == 0 for row in results)
     (args.out / 'evidence.json').write_text(json.dumps(
-        dict(schema='intro4-strict-modes/v1', status='pass' if passed else 'fail', modes=results),
+        dict(schema='intro4-strict-modes/v1', status='pass' if passed else 'fail',
+             oracle_sha256=oracle_sha256, modes=results),
         indent=2) + '\n')
     return 0 if passed else 1
 

@@ -9589,3 +9589,99 @@ remain open. Changes are on `subsystem-refactor`.
 Frozen-path: core plumbing for the user-requested camera source ingress and
 empty-set diagnostic correction. Core receiver shading retains its owner;
 no legacy shading implementation is added.
+
+
+### Intro4 soft-particle depth fade (2026-10-04)
+
+The next actual dynamic refusal was `particle/particle_noisesphere`: 230 draw
+packets in the retained full-game route needed `$depthblend`. The core unlit
+point now implements its positive finite `$depthblendscale`, vertex alpha and
+ordered scene-depth input. The shader compares homogeneous clip Z against the
+copied depth encoded in alpha with the producer’s captured range (192 in this
+product); it retains the encoded far-range fade. Invalid scale/range or a
+missing input refuses the view before claiming it. A lost import fails the
+claimed view by name. The emissive model point still refuses this particle-only
+feature. Depth groups retire behind the frame’s completion token.
+
+Game integration exposed a real failure after the initial lab pass: core-only
+replay discarded the depth-alpha framebuffer copy. The sprite rendered and
+obeyed opaque depth testing, but scene alpha stayed 1 and intersection fading
+never happened. The adapter now retains this ordered core input, treats it as
+a depth read when selecting attachment store operations, and merges copies
+only when their source, destination, rectangles, depth intent, projection and
+range agree. The resampled depth texture uses coordinates normalized by the
+full source attachment; FSR’s viewport covers a subregion of that attachment.
+
+The fixture uses the actual noise material in an `env_sprite` at Intro4 BSP
+face 1620, an opaque x=256 wall. It explicitly commits each sprite position
+through `SetOrigin`; `ent_create` otherwise relocates it to its traced spawn
+position. Seven original captures cover background, near/middle/far gaps,
+behind the wall, return and removal. Six physical checks plus six seeded
+missing/fading/occlusion/stale-state defects run in each strict mode. The full
+`all` route now includes these captures (184 checks per mode).
+
+Evidence under `quality-results/intro4-rendercore-completion/`:
+
+- `softparticle-final-control.log`: 59 GPU checks pass, zero validation
+  messages, with independently evaluated encoded depth and fade at four
+  gaps, three scales, enabled/neutral states and full/half-size viewports.
+- `softparticle-final-sensitivity.log`: control plus four seeded broken
+  shaders pass their expected outcomes. Missing fade, wrong range, texture
+  dimensions and viewport dimensions must each be detected.
+- `softparticle-final-copy-decisions.log`: production replay decision code
+  passes; five seeded copy-loss/retention/merge defects are rejected.
+- `softparticle-transition-regression.log`: all three prior UI capture-alpha
+  regression tests pass, preserving orthographic tile opacity.
+- `softparticle-copy-replay-game/evidence.json`: both strict FSR-on (0.5)
+  and non-FSR (0) targeted game runs pass all 12 checks. Native screenshots
+  and lossless crop comparisons are retained in `review/`; visual review
+  confirms the near/middle/far transition, wall occlusion and restoration.
+- The initial construction, coordinate and discarded-copy failures remain
+  in `softparticle-wall-*`, `softparticle-viewport-game/`,
+  `softparticle-source-extent-game/` and `softparticle-diagnostic-game/`.
+  They are failed evidence, not accepted coverage. Temporary shader colors
+  and logging were removed before the corrected paired run.
+- `softparticle-final-product-build.log` and `softparticle-final-lab-build.log`
+  retain successful final builds. `softparticle-style-final.log` checks 15
+  edited C++ files with zero failures. Baseline/inventory verification passes;
+  `softparticle-final-arch.log` retains the pre-existing CAP002 `charconv`
+  occurrence with zero new/stale occurrences.
+
+This is a bounded material slice. `effects/spark`’s `$brightness` and loaded
+materials requiring live proxies remain reported refusals. General material
+completion, R91/R96 and whole-frame performance acceptance remain open.
+
+Frozen-path: core plumbing and replay defects for the ordered scene-depth
+input; all new particle shading stays in the core surface program.
+
+The final full-route verification also corrected two fixture defects without
+relaxing image thresholds. The elevator movie now uses the game’s existing
+pause/unpause behavior while comparing on/off/on receiver light; advancing
+frames change source radiance, so equal wall lighting was not a valid prior
+restoration expectation. The original full route’s movie-return failures in
+both modes remain in `softparticle-final-strict-game/`. A signage report can
+share a line with its capture marker; its parser now accepts both whitespace
+layouts. `softparticle-signage-layout-selftest.json` checks six real captured
+log/layout combinations and their seeded bad sources; the installed
+`test_signage_report_layout.py` preserves those requirements. New paired runs
+save the exact oracle and its hash before booting either mode.
+The material claim reports its depth dependency to the pass, keeping family
+interpretation under the material owner. `softparticle-owner-*-build.log`,
+`softparticle-owner-control.log`, `softparticle-owner-sensitivity.log` and
+`softparticle-owner-style.log` verify that final ownership change.
+
+
+Final private product proof is `softparticle-paused-strict-game/reviewed-evidence.json`:
+184 checks pass in each strict mode, with zero claimed-view failures. The
+original aggregate failure is retained separately: its frozen older parser
+rejected one joined source-report line in non-FSR. `oracle-parser-review.diff`
+proves the reread changed only that whitespace assumption; source facing,
+counts, radiance, pixel thresholds and seeded defects are identical. Its
+`review/` retains 130 lossless native PNGs, original screenshot hashes and
+camera/particle/movie comparisons. Visual review confirms receiver light,
+wall-intersection fade and movie restoration in both modes.
+`softparticle-runtime-install.json` records atomic installation and verified
+hashes for all 22 products from both proved builds. A fresh installed-runtime
+full paired run, with no build overlay, is being collected separately in
+`softparticle-installed-strict-game/`; it is not certified until both modes
+complete successfully.

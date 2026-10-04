@@ -339,8 +339,10 @@ foundation::Expected<std::unique_ptr<ProgramResolver>, std::string> ProgramResol
 }
 
 foundation::Expected<device::BlendMode, std::string> ClaimForDrawing(
-    const MaterialDesc &material, bool worldPbr )
+    const MaterialDesc &material, bool worldPbr, bool *requiresDepthAlpha )
 {
+	if ( requiresDepthAlpha )
+		*requiresDepthAlpha = false;
 	std::string why;
 	const std::optional<ParameterBlock> block = BlockFor( material, &why );
 	if ( !block )
@@ -363,6 +365,8 @@ foundation::Expected<device::BlendMode, std::string> ClaimForDrawing(
 		                             : ClaimUnlit( *block );
 		if ( !claim.claimed )
 			return foundation::MakeUnexpected( claim.reason );
+		if ( requiresDepthAlpha )
+			*requiresDepthAlpha = claim.depthBlend;
 		return claim.blend;
 	}
 	if ( material.family == "pbr" )
@@ -560,6 +564,7 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 		if ( !request )
 			return foundation::MakeUnexpected( std::string( "an unlit pipeline was refused" ) );
 		out.name = "unlit";
+		out.depthBlend = claim.depthBlend;
 		out.request = std::move( request ).Value();
 		out.blend = claim.blend;
 		// Unlit points bind the neutral page; no captured lightmap is read.

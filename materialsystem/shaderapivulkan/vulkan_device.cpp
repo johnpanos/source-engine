@@ -5717,8 +5717,9 @@ int CVulkanContext::RecordBackBufferDepthReads( const DynDraw &r )
 		return ( depth ? kKeepDepth : 0 ) | ( stencil ? kKeepStencil : 0 );
 	}
 	case kRecordClear:
-	case kRecordCopy: // color only (RecordTargetCopy)
 		return kKeepNone;
+	case kRecordCopy:
+		return r.copyDepthToAlpha ? kKeepDepth : kKeepNone;
 	case kRecordQueryBegin:
 	case kRecordQueryEnd:
 		// A query counts the samples of the draws inside it, which are judged
@@ -6933,9 +6934,12 @@ void CVulkanContext::QueueCorePass( uint32_t tag, const CorePassTerms &terms )
 
 bool CVulkanContext::SkipLegacyRecord( const DynDraw &d, bool legacyOff, bool legacyHud )
 {
+	// Depth-alpha snapshots are ordered inputs to core soft particles. Their
+	// producer must survive the suppression of replaced legacy draws.
 	return legacyOff && !legacyHud &&
 	       ( ( d.kind == kRecordDraw && !d.coreCustomEffect ) ||
-	           ( d.kind == kRecordCopy && !d.corePortalCopy ) || d.kind == kRecordSceneCapture ||
+	           ( d.kind == kRecordCopy && !d.corePortalCopy && !d.copyDepthToAlpha ) ||
+	           d.kind == kRecordSceneCapture ||
 	           ( d.kind == kRecordClear && !d.clearDepth && !d.clearStencil ) );
 }
 
@@ -7886,11 +7890,18 @@ void CVulkanContext::RecordFrameScene( VkCommandBuffer cmd )
 				if ( passOpen )
 					vkCmdEndRenderPass( cmd );
 				passOpen = false;
-				const bool repeat = m_passMerging && lastCopy && lastCopy->copyDst == d.copyDst &&
-				                    std::memcmp( lastCopy->copySrcRect, d.copySrcRect,
-				                        sizeof( d.copySrcRect ) ) == 0 &&
-				                    std::memcmp( lastCopy->copyDstRect, d.copyDstRect,
-				                        sizeof( d.copyDstRect ) ) == 0;
+				const bool repeat =
+				    m_passMerging && lastCopy && lastCopy->copyDst == d.copyDst &&
+				    lastCopy->target == d.target &&
+				    lastCopy->copyDepthToAlpha == d.copyDepthToAlpha &&
+				    ( !d.copyDepthToAlpha ||
+				        ( std::memcmp( lastCopy->copyDepth.projection, d.copyDepth.projection,
+				              sizeof( d.copyDepth.projection ) ) == 0 &&
+				            lastCopy->copyDepth.invRange == d.copyDepth.invRange ) ) &&
+				    std::memcmp( lastCopy->copySrcRect, d.copySrcRect, sizeof( d.copySrcRect ) ) ==
+				        0 &&
+				    std::memcmp( lastCopy->copyDstRect, d.copyDstRect, sizeof( d.copyDstRect ) ) ==
+				        0;
 				if ( !repeat )
 				{
 					if ( openTarget == -1 && m_activeSamples > 1 )

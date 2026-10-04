@@ -264,6 +264,10 @@ struct CoreMeshDraw
 	device::Viewport viewport;
 	int lightmapPage = 0; // ICoreTextures handle for captured lightmap coordinates; 0 is neutral
 	bool capturedLightmap = false;
+	// Frozen frontend's ordered opaque-depth copy (linear alpha = clip Z/range).
+	// One-based ICoreTextures handle; storage and copies stay frontend-owned.
+	int depthAlphaHandle = 0;
+	float depthAlphaRange = 0.0f;
 	bool mesh = false; // model/refraction point, rather than a lightmapped surface
 };
 
