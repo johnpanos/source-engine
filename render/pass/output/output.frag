@@ -42,5 +42,7 @@ void main()
 		color = OutputToneMap( color * constants.params.x, constants.params.y, constants.params.z );
 #endif
 	}
+	if ( constants.modes.x == kOutputEncodingLinear )
+		color *= constants.params.w;
 	outColor = vec4( OutputEncode( color, constants.modes.x ), 1.0 );
 }

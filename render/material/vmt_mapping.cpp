@@ -118,6 +118,7 @@ constexpr VmtKeyRow kLegacyDerivedKeys[] = {
     { "portal-mask", "$portalcolorscale", "portalcolorscale", ValueKind::kFloat, "0" },
     { "portal-mask", "$texturetransform", "texturetransform", ValueKind::kTransform, "" },
     { "portal-mask", "$time", "time", ValueKind::kFloat, "0" },
+    { "lightmapped", "$alpha2", "alpha2", ValueKind::kFloat, "1" },
     { "lightmapped", "$basetexture2", "basetexture2", ValueKind::kTexture, "" },
     { "lightmapped", "$frame2", "frame2", ValueKind::kInt, "0" },
     { "lightmapped", "$bumpmap", "bumpmap", ValueKind::kTexture, "" },
@@ -287,6 +288,11 @@ constexpr VmtKeyRow kRefractKeys[] = {
 };
 
 constexpr VmtMetadataRow kMetadata[] = {
+    { "$alphamasktexture", "WriteZ_DX9 has no texture parameter or alpha-test pixel shader",
+        "depth" },
+    { "$multipass",
+        "VertexLitGeneric declares no multipass parameter; passes use explicit enable flags",
+        "vertexlit" },
     { "$surfaceprop", "physics surface properties (the physics and sound systems)" },
     { "$surfaceprop2", "physics surface properties of a blend's second layer" },
     { "$decalscale", "decal projection size (the decal system)" },

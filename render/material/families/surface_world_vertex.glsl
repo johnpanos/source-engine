@@ -15,14 +15,17 @@ layout( location = 5 ) in vec3 inTangentS;
 layout( location = 6 ) in vec4 inTangentTOffset;
 
 #include "surface_material.glsl"
+#include "surface_frame.glsl"
+#include "../../shaders/common/tree_sway.glsl"
+layout( constant_id = 1 ) const int kTreeSwayMode = 0;
 
 layout( push_constant ) uniform Draw
 {
 	layout( row_major ) mat4 toClip;
+	layout( row_major ) mat4 world;
 } draw;
 
 #ifdef SURFACE_TEMPORAL
-#include "surface_frame.glsl"
 layout( location = 7 ) in vec3 previousPosition;
 layout( location = 11 ) out vec4 motionCurrent;
 layout( location = 12 ) out vec4 motionPrevious;
@@ -41,12 +44,26 @@ layout( location = 8 ) out float lightmapOffset;
 layout( location = 9 ) out vec4 lightAtten; // the model lights' attenuations (none here)
 layout( location = 10 ) out vec3 vertexLighting; // the vertexlit point's (none here)
 
+// Dynamic meshes are captured after the frontend transforms them. Animate in
+// the authored root coordinates, then return to world space for every view.
+vec3 AnimateWorld( vec3 worldPosition, vec4 windTime )
+{
+	if ( kTreeSwayMode == 0 )
+		return worldPosition;
+	const vec3 objectPosition = ( inverse( draw.world ) * vec4( worldPosition, 1.0 ) ).xyz;
+	return ( draw.world * vec4( TreeSway( objectPosition, draw.world, windTime.xy, windTime.z,
+	    kTreeSwayMode, material.treeGeometry, material.treeMotion, material.treeCurves,
+	    material.treeWind ), 1.0 ) ).xyz;
+}
+
 void main()
 {
-	gl_Position = draw.toClip * vec4( position, 1.0 );
+	const vec3 animated = AnimateWorld( position, frame.foliage[0] );
+	gl_Position = draw.toClip * vec4( animated, 1.0 );
 #ifdef SURFACE_TEMPORAL
-    motionCurrent = frame.motionCurrentToClip * vec4( position, 1.0 );
-    motionPrevious = frame.motionPreviousToClip * vec4( previousPosition, 1.0 );
+    motionCurrent = frame.motionCurrentToClip * vec4( animated, 1.0 );
+    motionPrevious = frame.motionPreviousToClip *
+        vec4( AnimateWorld( previousPosition, frame.foliage[1] ), 1.0 );
 #endif
 	baseUv = uv0;
 	lightmapUv = uv1;
@@ -54,8 +71,8 @@ void main()
 	// UnlitGeneric's decodes them per vertex (GammaToLinear, pow 2.2).
 	color = material.state.y != 0.0 ? vec4( pow( vertexColor.rgb, vec3( 2.2 ) ), vertexColor.a )
 	                                 : vertexColor;
-	fogDepth = vec2( gl_Position.z, position.z );
-	worldPosition = position;
+	fogDepth = vec2( gl_Position.z, animated.z );
+	worldPosition = animated;
 	worldNormal = normal;
 	tangentS = inTangentS;
 	tangentT = inTangentTOffset.xyz;

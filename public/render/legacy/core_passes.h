@@ -215,6 +215,7 @@ struct CoreOutputTargets
 	float exposure = 1.0f;
 	float scenePeak = 1.0f;
 	float headroom = 1.0f;
+	float linearScale = 1.0f;
 	bool toneMap = true; // false for a debug view (RFC 0014): the encoding alone
 	// No earlier than every submission made before this frame's.
 	device::CompletionToken submitted;
@@ -248,6 +249,8 @@ struct CoreMeshDraw
 	std::uint32_t vertexCount = 0;
 	const std::uint32_t *indices = nullptr;
 	std::uint32_t indexCount = 0;
+	// The captured foliage root; vertices remain in world space.
+	float modelToWorld[16] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
 	float toClip[16] = {};
 	float worldToView[16] = {};
 	float viewToClip[16] = {};

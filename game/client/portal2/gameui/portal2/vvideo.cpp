@@ -119,6 +119,12 @@ m_autodelete_pResourceLoadConditions( (KeyValues*) NULL )
 	current.powerSaving = powerSaving.IsValid() ? clamp( powerSaving.GetInt(), 0, 1 ) : 0;
 	CGameUIConVarRef temporalScale( "r_temporal_scale" );
 	current.temporalScale = temporalScale.IsValid() ? temporalScale.GetFloat() : 1.0f;
+	CGameUIConVarRef hdrMode( "mat_hdr_output" );
+	CGameUIConVarRef hdrExposure( "mat_hdr_exposure" );
+	CGameUIConVarRef hdrPeak( "mat_hdr_peak_nits" );
+	current.hdr.automatic = hdrMode.IsValid() && hdrMode.GetBool();
+	current.hdr.exposure = hdrExposure.IsValid() ? hdrExposure.GetFloat() : 1.0f;
+	current.hdr.peakNits = hdrPeak.IsValid() ? hdrPeak.GetInt() : 1000;
 	m_GraphicsSettings.Begin( current );
 
 	GetRecommendedSettings();
@@ -397,7 +403,8 @@ void Video::OnKeyCodePressed(KeyCode code)
 		break;
 
 	case KEY_XBUTTON_B:
-		if ( m_bDirtyValues || ( m_sldBrightness && m_sldBrightness->IsDirty() ) )
+		if ( m_bDirtyValues || m_GraphicsSettings.GetState() == gameui::GraphicsSettingsService::State::Editing ||
+	     m_GraphicsSettings.GetState() == gameui::GraphicsSettingsService::State::Applied || ( m_sldBrightness && m_sldBrightness->IsDirty() ) )
 		{
 			CBaseModPanel::GetSingleton().PlayUISound( UISOUND_ACCEPT );
 
@@ -874,6 +881,12 @@ public:
 		CGameUIConVarRef uiScale( "ui_scale" );
 		CGameUIConVarRef temporalScale( "r_temporal_scale" );
 		CGameUIConVarRef antialias( "mat_antialias" );
+		CGameUIConVarRef hdrMode( "mat_hdr_output" );
+		CGameUIConVarRef hdrExposure( "mat_hdr_exposure" );
+		CGameUIConVarRef hdrPeak( "mat_hdr_peak_nits" );
+		if ( from.hdr != to.hdr &&
+		     ( !hdrMode.IsValid() || !hdrExposure.IsValid() || !hdrPeak.IsValid() ) )
+			return false;
 		if ( to.temporalScale != 0.0f && !antialias.IsValid() )
 			return false;
 		if ( from.temporalScale != to.temporalScale &&
@@ -901,6 +914,12 @@ public:
 			uiScale.SetValue( to.uiScale );
 		if ( from.temporalScale != to.temporalScale )
 			temporalScale.SetValue( to.temporalScale );
+		if ( from.hdr != to.hdr )
+		{
+			hdrMode.SetValue( to.hdr.automatic ? 1 : 0 );
+			hdrExposure.SetValue( to.hdr.exposure );
+			hdrPeak.SetValue( to.hdr.peakNits );
+		}
 		return true;
 	}
 
@@ -915,9 +934,10 @@ public:
 
 bool Video::ApplyChanges()
 {
-	if ( m_bDirtyValues || ( m_sldBrightness && m_sldBrightness->IsDirty() ) )
+	if ( m_bDirtyValues || m_GraphicsSettings.GetState() == gameui::GraphicsSettingsService::State::Editing ||
+	     m_GraphicsSettings.GetState() == gameui::GraphicsSettingsService::State::Applied || ( m_sldBrightness && m_sldBrightness->IsDirty() ) )
 	{
-		gameui::GraphicsSettings desired = m_GraphicsSettings.Applied();
+		gameui::GraphicsSettings desired = m_GraphicsSettings.Draft();
 		desired.width = m_iResolutionWidth;
 		desired.height = m_iResolutionHeight;
 		desired.windowed = m_bWindowed;
@@ -955,10 +975,12 @@ void Video::OnThink()
 {
 	BaseClass::OnThink();
 
-	if ( m_bEnableApply != m_bDirtyValues )
+	const bool dirty = m_bDirtyValues || m_GraphicsSettings.GetState() == gameui::GraphicsSettingsService::State::Editing ||
+	    m_GraphicsSettings.GetState() == gameui::GraphicsSettingsService::State::Applied;
+	if ( m_bEnableApply != dirty )
 	{
 		// enable the apply button
-		m_bEnableApply = m_bDirtyValues;
+		m_bEnableApply = dirty;
 		UpdateFooter();
 	}
 }
@@ -1227,22 +1249,21 @@ void Video::SetPowerSavingsState()
 
 // The HDR page uses the shipped Video dialog's row styles and tile layout.
 // Values stay local until Apply; Back discards them. The renderer owns negotiation.
-HdrVideo::HdrVideo( Panel *parent, const char *panelName ) : BaseClass( parent, panelName )
+HdrVideo::HdrVideo( Panel *parent, const char *panelName, Video &video )
+    : BaseClass( parent, panelName ), m_Menu( video.GraphicsSession() )
 {
+	m_Video = &video;
 	SetDeleteSelfOnClose( true );
 	SetProportional( true );
 	V_strncpy( m_ResourceName, "Resource/UI/BaseModUI/Video.res", sizeof( m_ResourceName ) );
 	SetDialogTitle( "HDR" );
 	SetFooterEnabled( true );
-	CGameUIConVarRef mode( "mat_hdr_output" );
-	CGameUIConVarRef exposure( "mat_hdr_exposure" );
-	CGameUIConVarRef peak( "mat_hdr_peak_nits" );
-	if ( mode.IsValid() )
-		m_Mode = mode.GetBool() ? 1 : 0;
-	if ( exposure.IsValid() )
-		m_Exposure = exposure.GetFloat();
-	if ( peak.IsValid() )
-		m_PeakNits = peak.GetInt();
+}
+
+HdrVideo::~HdrVideo()
+{
+	if ( m_Video.Get() )
+		m_Menu.Cancel();
 }
 
 void HdrVideo::PreApplyControlSettings( KeyValues *resource )
@@ -1255,11 +1276,27 @@ void HdrVideo::PreApplyControlSettings( KeyValues *resource )
 		return;
 	KeyValues *row = source->MakeCopy();
 	KeyValues *apply = button->MakeCopy();
+	// Video's conditional positions belong to its original rows. Applying
+	// them to every clone would stack all three HDR rows at the same y.
+	for ( KeyValues *settings : { row, apply } )
+	{
+		for ( KeyValues *key = settings->GetFirstTrueSubKey(); key; )
+		{
+			KeyValues *next = key->GetNextTrueSubKey();
+			if ( key->GetName()[0] == '?' )
+			{
+				settings->RemoveSubKey( key );
+				key->deleteThis();
+			}
+			key = next;
+		}
+	}
 	for ( KeyValues *control = resource->GetFirstTrueSubKey(); control; )
 	{
 		KeyValues *next = control->GetNextTrueSubKey();
 		if ( !V_stricmp( control->GetString( "ControlName" ), "Frame" ) )
 		{
+			control->SetName( GetName() );
 			control->SetString( "fieldName", GetName() );
 			control->SetInt( "tall", 6 );
 		}
@@ -1295,8 +1332,11 @@ void HdrVideo::PreApplyControlSettings( KeyValues *resource )
 		}
 		else
 		{
-			for ( int nits : { 400, 600, 1000, 1600, 2000, 4000 } )
+			for ( int nits : { 203, 400, 600, 1000, 1600, 2000, 4000 } )
 				list->SetString( CFmtStr( "%d nits", nits ), CFmtStr( "HdrPeak%d", nits ) );
+			// Keep the measured calibration selectable even between presets.
+			const int calibrated = m_Menu.Draft().peakNits;
+			list->SetString( CFmtStr( "%d nits", calibrated ), CFmtStr( "HdrPeak%d", calibrated ) );
 		}
 		resource->AddSubKey( control );
 	}
@@ -1330,12 +1370,14 @@ void HdrVideo::ApplySchemeSettings( vgui::IScheme *scheme )
 
 void HdrVideo::UpdateState()
 {
+	if ( !m_Video.Get() )
+		return;
 	CGameUIConVarRef mode( "mat_hdr_output" );
 	const bool available = mode.IsValid();
 	const char *names[] = { "DrpHdrMode", "DrpHdrExposure", "DrpHdrPeak" };
-	const CFmtStr exposureText( "%d%%", int( m_Exposure * 100.0f + 0.5f ) );
-	const CFmtStr peakText( "%d nits", m_PeakNits );
-	const char *values[] = { m_Mode ? "Automatic (HDR when available)" : "SDR",
+	const CFmtStr exposureText( "%d%%", int( m_Menu.Draft().exposure * 100.0f + 0.5f ) );
+	const CFmtStr peakText( "%d nits", m_Menu.Draft().peakNits );
+	const char *values[] = { m_Menu.Draft().automatic ? "Automatic (HDR when available)" : "SDR",
 	    exposureText, peakText };
 	for ( int i = 0; i < 3; ++i )
 	{
@@ -1363,40 +1405,43 @@ void HdrVideo::UpdateState()
 
 void HdrVideo::OnCommand( const char *command )
 {
-	if ( StringHasPrefix( command, "HdrMode" ) )
-		m_Mode = clamp( atoi( command + 7 ), 0, 1 );
-	else if ( StringHasPrefix( command, "HdrExposure" ) )
-		m_Exposure = clamp( atoi( command + 11 ) * 0.01f, 0.25f, 4.0f );
-	else if ( StringHasPrefix( command, "HdrPeak" ) )
-		m_PeakNits = clamp( atoi( command + 7 ), 203, 10000 );
-	else if ( !V_stricmp( command, "ApplyHDR" ) )
+	if ( !m_Video.Get() )
+		return;
+	switch ( m_Menu.Command( command ) )
+	{
+	case gameui::HdrSettingsMenu::Action::Apply:
 		ApplyChanges();
-	else if ( !V_stricmp( command, "Back" ) || !V_stricmp( command, "Cancel" ) )
+		break;
+	case gameui::HdrSettingsMenu::Action::Cancel:
 		NavigateBack();
-	else
+		break;
+	case gameui::HdrSettingsMenu::Action::Invalid:
 		BaseClass::OnCommand( command );
+		break;
+	case gameui::HdrSettingsMenu::Action::Changed:
+		break;
+	}
 	UpdateState();
 }
 
 void HdrVideo::OnKeyCodePressed( KeyCode code )
 {
-	if ( GetBaseButtonCode( code ) == KEY_XBUTTON_A )
+	const KeyCode key = GetBaseButtonCode( code );
+	if ( key == KEY_XBUTTON_A || key == KEY_ENTER )
 		ApplyChanges();
+	else if ( key == KEY_XBUTTON_B || key == KEY_ESCAPE )
+		OnCommand( "Cancel" );
 	else
 		BaseClass::OnKeyCodePressed( code );
 }
 
 void HdrVideo::ApplyChanges()
 {
-	CGameUIConVarRef mode( "mat_hdr_output" );
-	CGameUIConVarRef exposure( "mat_hdr_exposure" );
-	CGameUIConVarRef peak( "mat_hdr_peak_nits" );
-	if ( !mode.IsValid() || !exposure.IsValid() || !peak.IsValid() )
-		return;
-	mode.SetValue( m_Mode );
-	exposure.SetValue( m_Exposure );
-	peak.SetValue( m_PeakNits );
-	engine->ClientCmd_Unrestricted( CFmtStr( "host_writeconfig_ss %d", XBX_GetPrimaryUserId() ) );
+	if ( m_Video.Get() )
+	{
+		(void)m_Video->ApplyHdrChanges();
+		m_Menu.Commit();
+	}
 }
 
 void HdrVideo::OnThink()
@@ -1407,6 +1452,16 @@ void HdrVideo::OnThink()
 
 bool HdrVideo::CheckSettings( int mode )
 {
+	InvalidateLayout( true, true );
+	for ( const char *name : { "DrpHdrMode", "DrpHdrExposure", "DrpHdrPeak", "BtnHdrApply", "LblHdrStatus" } )
+	{
+		auto *row = FindChildByName( name );
+		if ( !row )
+			return false;
+		int x, y, width, height;
+		row->GetBounds( x, y, width, height );
+		Msg( "HDR row %s: %d,%d %dx%d visible=%d\n", name, x, y, width, height, row->IsVisible() );
+	}
 	if ( !FindChildByName( "DrpHdrMode" ) || !FindChildByName( "BtnHdrApply" ) )
 		return false;
 	if ( mode >= 0 )

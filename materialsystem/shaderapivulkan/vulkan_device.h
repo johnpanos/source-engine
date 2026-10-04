@@ -1534,6 +1534,7 @@ private:
 	{
 		VkImage image = VK_NULL_HANDLE;
 		render::device::TextureId id[2]; // unorm, sRGB
+		render::device::TextureId depth; // render target's paired depth/stencil
 	};
 	render::device::TextureId ImportManagedTexture( int handle, bool srgb );
 	render::device::SamplerDesc ManagedTextureSampler( int handle ) const;
@@ -1838,6 +1839,10 @@ private:
 	// Host-visible linear image used to copy the rendered color image out for
 	// verification. Allocated lazily on the first capture request.
 	VkImage m_captureImage = VK_NULL_HANDLE;
+	VkImage m_captureOutputImage = VK_NULL_HANDLE;
+	VulkanMemory m_captureOutputMemory = VK_NULL_HANDLE;
+	render::device::TextureId m_captureOutput;
+	bool m_captureOutputRecorded = false;
 	VulkanMemory m_captureMemory = VK_NULL_HANDLE;
 	VkExtent2D m_captureExtent = { 0, 0 };
 	bool m_captureRequested = false;
@@ -2546,7 +2551,7 @@ private:
 	// shader must decode from sRGB itself (params.z bits 0..15), or -1 when a
 	// cube or volume sampler has neither a texture nor a white fallback.
 	int BindLegacySets(
-	    VkCommandBuffer cmd, const DynDraw &d, int openTarget, uint32_t constantsOffset );
+	    VkCommandBuffer cmd, const DynDraw &d, int openTarget, uint32_t constantsOffset, int *gammaSceneSamplers );
 	// Target/viewport/scissor state captured by each record.
 	int m_dynTarget = -1;
 	int m_dynTag = -1;

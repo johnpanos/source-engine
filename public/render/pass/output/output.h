@@ -81,6 +81,7 @@ struct OutputParams
 	float exposure = 1.0f;  // finite, >= 0
 	float scenePeak = 1.0f; // in (0, kMaxScenePeak]
 	float headroom = 1.0f;  // finite, >= 1; exactly 1 on an 8-bit target
+	float linearScale = 1.0f; // positive; scene white in the linear target's units
 	bool toneMap = true;    // false for a debug view: the encoding alone
 };
 

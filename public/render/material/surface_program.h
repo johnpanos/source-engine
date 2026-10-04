@@ -146,7 +146,7 @@ struct SurfaceConstants
 	float emissionCone[4] = { 1.0f, 1.0f, 1.0f, 0.0f };
 	// UnlitTwoTexture: the second texture's independent UV transform.
 	float texture2Transform[8] = { 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f };
-	float surfaceControls[4] = { 0.0f, 1.0f, 0.0f, 0.0f }; // nofog, HDR color scale
+	float surfaceControls[4] = { 0.0f, 1.0f, 0.0f, 1.0f }; // nofog, HDR scale, portal radius, alpha2
 	// VertexLitGeneric's $selfillumfresnelminmaxexp (min, max, exp) and 1
 	// when $selfillumfresnel weights the self-illuminated region
 	// (vertexlit_family.h). Neutral (w 0) for every other point.
@@ -531,6 +531,7 @@ struct SurfaceVariant
 	std::uint32_t materialFeatures = kSurfaceDynamicMaterialFeatures;
 	std::uint32_t viewFeatures = kSurfaceAllViewFeatures;
 	std::uint32_t treeSwayMode = 0; // vertex specialization; 0 has no deformation cost
+	bool alphaToCoverage = false;   // authored request; effective only with multiple samples
 
 	auto operator<=>( const SurfaceVariant & ) const = default;
 	bool operator==( const SurfaceVariant & ) const = default;

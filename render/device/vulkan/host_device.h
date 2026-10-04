@@ -234,8 +234,11 @@ public:
 	// these rules fails its submission. RunSection is false outside a
 	// record's translation, for another command buffer, or past the record's
 	// last section.
-	virtual void BeginSection( CommandEncoder &encoder ) = 0;
-	virtual void EndSection( CommandEncoder &encoder ) = 0;
+	// A sampled attachment is a host render target whose home is kSampled.
+	// The section moves it to kColorAttachment and returns it to kSampled;
+	// both calls name the same alias. Empty leaves ordinary section behavior.
+	virtual void BeginSection( CommandEncoder &encoder, TextureId sampledAttachment = {} ) = 0;
+	virtual void EndSection( CommandEncoder &encoder, TextureId sampledAttachment = {} ) = 0;
 	virtual bool RunSection( VkCommandBuffer cmd, std::uint32_t index ) = 0;
 	// Binary semaphores the encoder's submission waits on (before `stage`)
 	// and signals: a swapchain image's acquire and present.

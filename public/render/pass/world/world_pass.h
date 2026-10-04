@@ -372,6 +372,7 @@ struct WorldView
 	struct DynamicDraw
 	{
 		WorldMaterial material;
+		float modelToWorld[16] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
 		std::vector<WorldVertex> vertices;
 		std::vector<std::uint32_t> indices;
 		int lightmapPage = 0;

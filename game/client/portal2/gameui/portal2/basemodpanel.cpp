@@ -912,7 +912,9 @@ CBaseModFrame* CBaseModPanel::OpenWindow( const WINDOW_TYPE & wt, CBaseModFrame 
 			break;
 
 		case WT_HDRVIDEO:
-			m_Frames[wt] = new HdrVideo( this, "HdrVideo" );
+			if ( !GetWindow( WT_VIDEO ) )
+				return NULL;
+			m_Frames[wt] = new HdrVideo( this, "HdrVideo", *static_cast<Video *>( GetWindow( WT_VIDEO ) ) );
 			break;
 
 		case WT_ADVANCEDVIDEO:

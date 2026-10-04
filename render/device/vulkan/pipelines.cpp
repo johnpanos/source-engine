@@ -616,6 +616,7 @@ DeviceResult<PipelineId> VulkanDevice::CreatePipeline( const PipelineDesc &desc 
 		VkPipelineMultisampleStateCreateInfo multisample{};
 		multisample.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
 		multisample.rasterizationSamples = static_cast<VkSampleCountFlagBits>( desc.sampleCount );
+		multisample.alphaToCoverageEnable = desc.raster.alphaToCoverage ? VK_TRUE : VK_FALSE;
 
 		VkPipelineDepthStencilStateCreateInfo depth{};
 		depth.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;

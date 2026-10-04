@@ -1107,6 +1107,15 @@ bool CVulkanContext::CreateCaptureImage( VkExtent2D extent, std::string *outErro
 	     m_captureExtent.height == extent.height )
 		return true;
 
+	if ( m_captureOutput.IsValid() && Port() )
+		(void)Port()->Release( m_captureOutput, render::device::CompletionToken() );
+	m_captureOutput = {};
+	if ( m_captureOutputImage != VK_NULL_HANDLE )
+		vkDestroyImage( m_device, m_captureOutputImage, nullptr );
+	m_captureOutputImage = VK_NULL_HANDLE;
+	if ( m_captureOutputMemory != VK_NULL_HANDLE )
+		FreeMemory( m_captureOutputMemory );
+	m_captureOutputMemory = VK_NULL_HANDLE;
 	if ( m_captureImage != VK_NULL_HANDLE )
 	{
 		vkDestroyImage( m_device, m_captureImage, nullptr );
@@ -1121,7 +1130,7 @@ bool CVulkanContext::CreateCaptureImage( VkExtent2D extent, std::string *outErro
 	VkImageCreateInfo img = {};
 	img.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
 	img.imageType = VK_IMAGE_TYPE_2D;
-	img.format = m_swapFormat;
+	img.format = m_config.hdrScene ? VK_FORMAT_R8G8B8A8_UNORM : m_swapFormat;
 	img.extent = { extent.width, extent.height, 1 };
 	img.mipLevels = 1;
 	img.arrayLayers = 1;
@@ -1145,6 +1154,23 @@ bool CVulkanContext::CreateCaptureImage( VkExtent2D extent, std::string *outErro
 	     !CreateImage( img, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, &m_captureImage, &m_captureMemory,
 	         "capture", outError ) )
 		return false;
+	if ( m_config.hdrScene )
+	{
+		img.tiling = VK_IMAGE_TILING_OPTIMAL;
+		img.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+		if ( !CreateImage( img, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &m_captureOutputImage,
+		         &m_captureOutputMemory, "SDR capture output", outError ) )
+			return false;
+		render::device::TextureDesc desc;
+		desc.format = render::device::Format::kRGBA8Unorm;
+		desc.width = extent.width;
+		desc.height = extent.height;
+		desc.usages = { render::device::ResourceUsage::kColorAttachment,
+		    render::device::ResourceUsage::kCopySource };
+		if ( !m_hostDevice->ImportImage( m_captureOutputImage, desc,
+		         render::device::ResourceUsage::kColorAttachment, &m_captureOutput ) )
+			return false;
+	}
 	m_captureExtent = extent;
 	return true;
 }
@@ -5103,7 +5129,13 @@ void CVulkanContext::QueueClear( bool color, bool depth, bool stencil )
 	d.clearDepth = depth;
 	d.clearStencil = stencil;
 	for ( int i = 0; i < 4; ++i )
-		d.clearValue[i] = m_clearColor.float32[i];
+		{
+		const float value = m_clearColor.float32[i];
+		d.clearValue[i] = m_config.hdrScene && i < 3
+		                     ? ( value <= 0.04045f ? value / 12.92f
+		                                              : std::pow( ( value + 0.055f ) / 1.055f, 2.4f ) )
+		                     : value;
+	}
 }
 
 bool CVulkanContext::QueueCopyToTexture(
@@ -5266,6 +5298,9 @@ CVulkanContext::DynDraw &CVulkanContext::AppendDrawRecord()
 	d.texHandle = m_dynBoundTexHandle;
 	d.lightmapHandle = m_dynLightmapHandle;
 	d.colorFlags = m_dynColorFlags;
+	d.raster.decodeOutput = m_config.hdrScene && !( d.colorFlags & kColorSrgbWrite ) &&
+	    d.shaderIndex != kDynShaderPbrWorld && d.shaderIndex != kDynShaderPbrGlass &&
+	    d.shaderIndex != kDynShaderPbrDirect;
 	d.outputScale = m_dynOutputScale;
 	d.stencilRef = m_dynStencilRef;
 	d.stencilTestMask = m_dynStencilTestMask;
@@ -6845,6 +6880,20 @@ void CVulkanContext::AttachFrameStage( FrameStage stage, render::device::Command
 	m_hostDevice->RecordNative( encoder, kRecords[stage], this );
 	if ( stage == kFrameStageScene )
 		RecordCorePassSections( encoder );
+	if ( stage == kFrameStageCapture && m_config.hdrScene )
+	{
+		auto targets = CoreOutputTargetsFor();
+		targets.target = m_captureOutput;
+		targets.targetFormat = render::device::Format::kRGBA8Unorm;
+		targets.width = m_captureExtent.width;
+		targets.height = m_captureExtent.height;
+		targets.headroom = 1.0f;
+		targets.linearScale = 1.0f;
+		m_hostDevice->BeginSection( encoder );
+		m_captureOutputRecorded =
+		    m_corePassRecorder && m_corePassRecorder->RecordOutput( encoder, targets );
+		m_hostDevice->EndSection( encoder );
+	}
 	if ( stage != kFrameStagePresent )
 		return;
 	RecordOutputSection( encoder );
@@ -6906,9 +6955,9 @@ void CVulkanContext::RecordCorePassSections( render::device::CommandEncoder &enc
 		if ( ( d.corePass & render::legacy::kCorePassForwarded ) &&
 		     ( d.corePass & render::legacy::kCorePassLegacyOff ) )
 			legacyOff = true;
-		m_hostDevice->BeginSection( encoder );
 		if ( followers )
 		{
+			m_hostDevice->BeginSection( encoder );
 			--followers;
 			m_hostDevice->EndSection( encoder );
 			continue;
@@ -6960,6 +7009,13 @@ void CVulkanContext::RecordCorePassSections( render::device::CommandEncoder &enc
 			}
 		}
 		m_opaqueCandidates += tags.size() > 1;
+		// Managed render targets rest in sampled layout outside their legacy
+		// render passes. Both color aliases name one image: transition only the
+		// view the core will write, then restore it before the host resumes.
+		const auto attachment = target.colorSrgb.IsValid() ? target.colorSrgb : target.color;
+		const bool offscreen = d.target >= 0 && attachment.IsValid();
+		const auto sampledAttachment = offscreen ? attachment : render::device::TextureId{};
+		m_hostDevice->BeginSection( encoder, sampledAttachment );
 		const auto count = m_corePassRecorder->RecordOpaqueBatch( tags, encoder, target );
 		if ( count == 0 || count > tags.size() )
 			Log( "error: opaque recorder returned an invalid consumed-slot count\n" );
@@ -6969,7 +7025,7 @@ void CVulkanContext::RecordCorePassSections( render::device::CommandEncoder &enc
 			++m_opaqueBatches;
 			m_opaqueFollowers += followers;
 		}
-		m_hostDevice->EndSection( encoder );
+		m_hostDevice->EndSection( encoder, sampledAttachment );
 	}
 }
 
@@ -7050,8 +7106,42 @@ render::legacy::CorePassTarget CVulkanContext::CorePassTargetFor( int target )
 		    m_hostDevice->SubmittedValue() };
 	out.frame = m_submitSerial + 1;
 	out.streamEpoch = m_streamEpoch;
-	// Render-target textures are not imported yet.
-	if ( target != -1 || !m_hostDevice || m_acquiredImage >= m_swapImages.size() )
+	if ( !m_hostDevice )
+		return out;
+	if ( target >= 0 )
+	{
+		if ( !IsRenderTargetTexture( target ) )
+			return out;
+		const ManagedTexture &texture = m_managedTextures[static_cast<std::size_t>( target )];
+		out.width = texture.width;
+		out.height = texture.height;
+		out.samples = 1; // managed targets are single-sample, independently of the back buffer
+		out.colorFormat = PortFormat( texture.format );
+		out.colorSrgbFormat = SrgbPortFormat( out.colorFormat );
+		out.color = ImportManagedTexture( target, false );
+		if ( m_srgbAttachments && texture.srgbView != VK_NULL_HANDLE )
+			out.colorSrgb = ImportManagedTexture( target, true );
+		out.colorCopySource = true;
+		// ImportManagedTexture owns the handle's color aliases and invalidates
+		// them on image replacement; its paired depth shares that retirement.
+		if ( m_coreTextureImports.size() < m_managedTextures.size() )
+			m_coreTextureImports.resize( m_managedTextures.size() );
+		CoreTextureImport &import = m_coreTextureImports[static_cast<std::size_t>( target )];
+		if ( !import.depth.IsValid() && texture.depthImage != VK_NULL_HANDLE )
+		{
+			render::device::TextureDesc desc;
+			desc.format = out.depthFormat;
+			desc.width = out.width;
+			desc.height = out.height;
+			desc.usages = { ResourceUsage::kDepthWrite };
+			desc.debugName = "managed render target depth";
+			(void)m_hostDevice->ImportImage(
+			    texture.depthImage, desc, ResourceUsage::kDepthWrite, &import.depth );
+		}
+		out.depth = import.depth;
+		return out;
+	}
+	if ( target != -1 || m_acquiredImage >= m_swapImages.size() )
 		return out;
 	const auto import = [&]( VkImage image, render::device::Format format, ResourceUsage home,
 	                        bool copySource, const char *name, TextureId *id )
@@ -7148,6 +7238,11 @@ render::device::TextureId CVulkanContext::ImportManagedTexture( int handle, bool
 	desc.depthOrLayers = cube ? 6 : 1;
 	desc.mipLevels = texture.mipLevels;
 	desc.usages = { ResourceUsage::kSampled };
+	if ( texture.renderTarget )
+	{
+		desc.usages.Add( ResourceUsage::kColorAttachment );
+		desc.usages.Add( ResourceUsage::kCopySource );
+	}
 	desc.debugName = texture.debugName.empty() ? "managed texture" : texture.debugName.c_str();
 	render::device::TextureId id;
 	if ( !m_hostDevice->ImportImage( texture.image, desc, ResourceUsage::kSampled, &id ) )
@@ -7186,7 +7281,7 @@ void CVulkanContext::ReleaseManagedImport( int handle )
 		return;
 	CoreTextureImport &import = m_coreTextureImports[static_cast<size_t>( handle )];
 	render::device::IRenderDevice2 *port = Port();
-	for ( render::device::TextureId &id : import.id )
+	for ( render::device::TextureId id : { import.id[0], import.id[1], import.depth } )
 	{
 		if ( id.IsValid() && port )
 		{
@@ -7251,6 +7346,11 @@ render::legacy::CoreOutputTargets CVulkanContext::CoreOutputTargetsFor()
 	{
 		out.exposure = m_hdrExposure;
 		out.scenePeak = 16.0f;
+#if defined( __linux__ )
+		// Linux scRGB uses 80 cd/m^2 per linear unit; scene white is 203.
+		if ( m_presentColorSpace == VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT )
+			out.linearScale = 203.0f / 80.0f;
+#endif
 		if ( m_extendedOutput )
 			out.headroom = m_hdrPeakNits / 203.0f;
 	}
@@ -7271,7 +7371,7 @@ void CVulkanContext::RecordOutputSection( render::device::CommandEncoder &encode
 	{
 		// Visible: the 8-bit back buffer blitted into a linear swapchain
 		// shows too bright.
-		Log( "extended output: the frame's output was not recorded; blitting the back buffer\n" );
+		Log( "required output pass was not recorded; refusing HDR presentation\n" );
 		m_outputFallbackLogged = true;
 	}
 }
@@ -8170,10 +8270,12 @@ void CVulkanContext::RecordFrameScene( VkCommandBuffer cmd )
 			}
 			// The legacy port's samplers the shader decodes from sRGB itself.
 			int legacyManualDecode = 0;
+			int legacyGammaScene = 0;
 			if ( legacy )
 			{
 				legacyManualDecode = BindLegacySets(
-				    cmd, d, openTarget, legacyOffsets[static_cast<size_t>( d.legacy )] );
+				    cmd, d, openTarget, legacyOffsets[static_cast<size_t>( d.legacy )],
+				    &legacyGammaScene );
 				if ( legacyManualDecode < 0 )
 					continue;
 			}
@@ -8211,6 +8313,8 @@ void CVulkanContext::RecordFrameScene( VkCommandBuffer cmd )
 						{
 							const ManagedTexture &t =
 							    m_managedTextures[static_cast<size_t>( handle )];
+							if ( t.format == VK_FORMAT_R16G16B16A16_SFLOAT )
+								decodedFlags |= srgbFlag;
 							if ( ( d.colorFlags & srgbFlag ) && t.descSetSrgb != VK_NULL_HANDLE )
 							{
 								decodedFlags |= srgbFlag;
@@ -8546,6 +8650,7 @@ void CVulkanContext::RecordFrameScene( VkCommandBuffer cmd )
 				pushData[30] =
 				    static_cast<float>( legacyManualDecode | ( encodeOutput ? 65536 : 0 ) );
 				std::fill( pushData + 31, pushData + 36, 0.0f );
+				pushData[31] = static_cast<float>( legacyGammaScene );
 				appendClipPlanes( pushData + 36 );
 				pushFloats = kSkinPushBytes / sizeof( float );
 			}
@@ -8592,6 +8697,8 @@ void CVulkanContext::RecordFrameScene( VkCommandBuffer cmd )
 				pushData[31] = d.outputScale;
 				pushData[32] = static_cast<float>( c.numLights );
 				pushData[33] = pushData[34] = pushData[35] = 0.0f;
+				if ( post && m_config.hdrScene )
+					pushData[33] = 3.0f;
 				if ( pbrModel && m_indirectViewMode != 0 )
 				{
 					// model_pbr.frag -DINDIRECT_VIEW: params2.y view, .z scale.
@@ -8759,7 +8866,7 @@ void CVulkanContext::RecordFramePresent( VkCommandBuffer cmd )
 {
 	const uint32_t imageIndex = m_acquiredImage;
 	const bool capturePresented = m_frameCapturePresented;
-	const bool captureBackBuffer = m_frameCapture && !m_frameCapturePresented;
+	const bool captureBackBuffer = m_frameCapture && !m_frameCapturePresented && !m_config.hdrScene;
 	const VkImageLayout backBufferLayout = captureBackBuffer
 	                                           ? VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
 	                                           : VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
@@ -8773,6 +8880,8 @@ void CVulkanContext::RecordFramePresent( VkCommandBuffer cmd )
 	// (RFC 0016 "Output"), which the monitor gamma ramp does not apply to.
 	if ( m_outputSectionRecorded )
 		RecordPresentOutput( cmd, imageIndex, backBufferLayout );
+	else if ( m_config.hdrScene )
+		return;
 	// RFC 0014: a frame the core alone draws presents without the ramp.
 	else if ( !m_gammaActive || m_frameLegacyOff ||
 	          !RecordPresentGamma( cmd, imageIndex, backBufferLayout, capturePresented ) )
@@ -8792,6 +8901,24 @@ void CVulkanContext::RecordFramePresent( VkCommandBuffer cmd )
 
 bool CVulkanContext::RecordCapture( VkCommandBuffer cmd, uint32_t imageIndex )
 {
+	if ( m_config.hdrScene )
+	{
+		if ( !m_captureOutputRecorded )
+			return false;
+		VkImageMemoryBarrier initialize = {};
+		initialize.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+		initialize.srcQueueFamilyIndex = initialize.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		initialize.image = m_captureOutputImage;
+		initialize.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		initialize.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+		initialize.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+		initialize.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+		vkCmdPipelineBarrier( cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+		    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, 0, nullptr, 0, nullptr, 1,
+		    &initialize );
+		m_hostDevice->RunSection( cmd, 0 );
+	}
+	const VkImage source = m_config.hdrScene ? m_captureOutputImage : m_swapImages[imageIndex];
 	ScopedDebugLabel label( m_debugUtils, "capture back buffer" );
 	// Copy the just-rendered color image (currently COLOR_ATTACHMENT_OPTIMAL)
 	// into the host-visible linear capture image.
@@ -8801,7 +8928,7 @@ bool CVulkanContext::RecordCapture( VkCommandBuffer cmd, uint32_t imageIndex )
 	toSrc.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
 	toSrc.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 	toSrc.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-	toSrc.image = m_swapImages[imageIndex];
+	toSrc.image = source;
 	toSrc.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
 	toSrc.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 	toSrc.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
@@ -8826,8 +8953,8 @@ bool CVulkanContext::RecordCapture( VkCommandBuffer cmd, uint32_t imageIndex )
 	copy.srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
 	copy.dstSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
 	copy.extent = { m_swapExtent.width, m_swapExtent.height, 1 };
-	vkCmdCopyImage( cmd, m_swapImages[imageIndex], VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-	    m_captureImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy );
+	vkCmdCopyImage( cmd, source, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, m_captureImage,
+	    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy );
 
 	// Capture image -> GENERAL for host read. The back buffer stays a transfer
 	// source for the present blit.
@@ -9663,6 +9790,15 @@ bool CVulkanContext::FinishFrame(
 		SetError( outError, "the frame's submission failed" );
 		return false;
 	}
+	if ( m_config.hdrScene &&
+	     ( !m_outputSectionRecorded ||
+	         ( doCapture && !m_frameCapturePresented && !m_captureOutputRecorded ) ) )
+	{
+		vkDeviceWaitIdle( m_device );
+		m_frameOpen = false;
+		SetError( outError, "required HDR scene output or SDR capture pass failed" );
+		return false;
+	}
 	const uint64_t value = token.value;
 	m_slotSerial[m_currentFrame] = ++m_submitSerial;
 	m_slotValue[m_currentFrame] = value;
@@ -10201,8 +10337,8 @@ bool CVulkanContext::ResolveCapturedPixels( std::string *outError )
 	const int h = static_cast<int>( m_captureExtent.height );
 	m_capturedPixels.assign( static_cast<size_t>( w ) * h * 4, 0 );
 
-	const bool bgra =
-	    ( m_swapFormat == VK_FORMAT_B8G8R8A8_UNORM || m_swapFormat == VK_FORMAT_B8G8R8A8_SRGB );
+	const bool bgra = !m_config.hdrScene && ( m_swapFormat == VK_FORMAT_B8G8R8A8_UNORM ||
+	                                            m_swapFormat == VK_FORMAT_B8G8R8A8_SRGB );
 	const uint8_t *base = static_cast<const uint8_t *>( mapped ) + layout.offset;
 	for ( int y = 0; y < h; ++y )
 	{
@@ -10385,6 +10521,15 @@ void CVulkanContext::Shutdown()
 	if ( m_corePassRecorder && m_hostDevice )
 		m_corePassRecorder->ReleaseDevice( m_hostDevice->Port() );
 
+	if ( m_captureOutput.IsValid() && Port() )
+		(void)Port()->Release( m_captureOutput, render::device::CompletionToken() );
+	m_captureOutput = {};
+	if ( m_captureOutputImage != VK_NULL_HANDLE )
+		vkDestroyImage( m_device, m_captureOutputImage, nullptr );
+	m_captureOutputImage = VK_NULL_HANDLE;
+	if ( m_captureOutputMemory != VK_NULL_HANDLE )
+		FreeMemory( m_captureOutputMemory );
+	m_captureOutputMemory = VK_NULL_HANDLE;
 	if ( m_captureImage != VK_NULL_HANDLE )
 	{
 		vkDestroyImage( m_device, m_captureImage, nullptr );

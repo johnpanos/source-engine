@@ -7697,6 +7697,25 @@ void CaptureCoreMatrices( render::legacy::CoreMeshDraw &draw )
 {
 	float vp[16];
 	MatMul( ViewMatrix(), DrawProjection(), vp );
+	// The frontend has already skinned and transformed positions. Keep the
+	// original root so the core can recover the authored foliage coordinates.
+	// Source uses bone zero as cModel[0] for a rigid, bone-weighted prop.
+	const float *model = ModelMatrix();
+	for ( int row = 0; row < 4; ++row )
+	{
+		for ( int col = 0; col < 4; ++col )
+		{
+			float root = model[col * 4 + row];
+			if ( g_NumBoneWeights > 0 )
+			{
+				root = 0.0f;
+				for ( int k = 0; k < 4; ++k )
+					root += model[k * 4 + row] *
+					        ( k < 3 ? g_BoneMatrices[0][k * 4 + col] : ( col == 3 ? 1.0f : 0.0f ) );
+			}
+			draw.modelToWorld[row * 4 + col] = root;
+		}
+	}
 	for ( int row = 0; row < 4; ++row )
 	{
 		for ( int col = 0; col < 4; ++col )

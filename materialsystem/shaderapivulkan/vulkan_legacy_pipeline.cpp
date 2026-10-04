@@ -341,13 +341,14 @@ bool CVulkanContext::UploadLegacyConstants( std::vector<uint32_t> *offsets )
 }
 
 int CVulkanContext::BindLegacySets(
-    VkCommandBuffer cmd, const DynDraw &d, int openTarget, uint32_t constantsOffset )
+    VkCommandBuffer cmd, const DynDraw &d, int openTarget, uint32_t constantsOffset, int *gammaSceneSamplers )
 {
 	const LegacyProgram &port = GetLegacyProgram( d.legacyProgram );
 	const LegacyConstants &constants = m_dynLegacyConstants[static_cast<size_t>( d.legacy )];
 	const int srgbSamplers = constants.bools[2] & 0xFFFF;
 	const int enabledSamplers = ( constants.bools[2] >> 16 ) & 0xFFFF;
 	int manualDecode = 0;
+	*gammaSceneSamplers = 0;
 	// Each slot's image: the texture bound to the D3D9 sampler, through its sRGB
 	// view when the pass reads it as sRGB, or the white image of the port's type.
 	VkDescriptorImageInfo images[kLegacySamplerSlots] = {};
@@ -393,6 +394,11 @@ int CVulkanContext::BindLegacySets(
 		{
 			const ManagedTexture &texture = m_managedTextures[static_cast<size_t>( handle )];
 			images[i].imageView = texture.view;
+			// Retained gamma-domain effects read linear scene copies through
+			// the shared transfer helper; material sRGB reads remain linear.
+			if ( texture.format == VK_FORMAT_R16G16B16A16_SFLOAT &&
+			     IsRenderTargetTexture( handle ) && !( srgbSamplers & ( 1 << slot.sampler ) ) )
+				*gammaSceneSamplers |= 1 << i;
 			images[i].sampler = m_samplers[texture.samplerState];
 			if ( srgbSamplers & ( 1 << slot.sampler ) )
 			{

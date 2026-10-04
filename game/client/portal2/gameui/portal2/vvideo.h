@@ -26,12 +26,15 @@ struct ResolutionMode_t
 	int m_nHeight;
 };
 
+class Video;
+
 class HdrVideo : public CBaseModFrame
 {
 	DECLARE_CLASS_SIMPLE( HdrVideo, CBaseModFrame );
 
 public:
-	HdrVideo( vgui::Panel *parent, const char *panelName );
+	HdrVideo( vgui::Panel *parent, const char *panelName, Video &video );
+	~HdrVideo();
 	bool CheckSettings( int mode );
 
 protected:
@@ -44,9 +47,8 @@ protected:
 private:
 	void ApplyChanges();
 	void UpdateState();
-	int m_Mode = 1;
-	float m_Exposure = 1.0f;
-	int m_PeakNits = 1000;
+	vgui::DHANDLE<Video> m_Video;
+	gameui::HdrSettingsMenu m_Menu;
 };
 
 class Video : public CBaseModFrame
@@ -59,6 +61,8 @@ public:
 
 	// Native menu smoke oracle: uses the same selection/apply path as the row.
 	bool CheckTemporalScale( int choice );
+	gameui::GraphicsSettingsService &GraphicsSession() { return m_GraphicsSettings; }
+	bool ApplyHdrChanges() { return ApplyChanges(); }
 	void SetDefaults();
 	void DiscardChangesAndClose();
 	void AcceptPowerSavingsWarningCallback( void );

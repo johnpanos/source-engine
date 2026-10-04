@@ -28,13 +28,13 @@ using detail::ReadParameter;
 using detail::TextureBound;
 
 // The parameters the family draws, and the ones the caller owns.
-constexpr std::array<std::string_view, 33> kClaimed = { "basetexture", "color", "alpha",
+constexpr std::array<std::string_view, 34> kClaimed = { "basetexture", "color", "alpha",
     "vertexcolor", "vertexalpha", "alphatest", "alphatestreference", "translucent", "model",
     "nofog", "nocull", "bumpmap", "ssbump", "nodiffusebumplighting", "envmap", "envmapmask",
     "basealphaenvmapmask", "normalmapalphaenvmapmask", "envmaptint", "envmapcontrast",
     "envmapsaturation", "fresnelreflection", "detail", "detailscale", "detailblendmode",
     "detailblendfactor", "detailtint", "selfillum", "selfillumtint", "ssbumpmathfix",
-    "envmaplightscale", "envmaplightscaleminmax", "decal" };
+    "envmaplightscale", "envmaplightscaleminmax", "decal", "alpha2" };
 
 // The detail modes the port's combos draw: every TextureCombine mode but the
 // self-illuminating ones (5, 6) without a bump map, and 0 and 1 with one
@@ -110,6 +110,15 @@ LightmappedClaim ClaimLightmapped( const ParameterBlock &block )
 #endif
 	}
 	constants.tint[3] = ReadParameter( block, "alpha" );
+	// LightmappedGeneric's overlay modulation: nonpositive ALPHA2 means
+	// one (lightmappedgeneric_dx9_helper.cpp's pixel constant 12).
+	const float alpha2 = ReadParameter( block, "alpha2" );
+	if ( !std::isfinite( alpha2 ) )
+	{
+		claim.reason = "$alpha2 must be finite";
+		return claim;
+	}
+	constants.surfaceControls[3] = alpha2 > 0.0f ? alpha2 : 1.0f;
 	constants.flags[0] = ReadFlag( block, "vertexcolor" ) ? 1.0f : 0.0f;
 	constants.flags[1] = ReadFlag( block, "alphatest" ) ? 1.0f : 0.0f;
 	constants.flags[2] = detail::AlphaTestReference( block );

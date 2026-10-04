@@ -75,7 +75,7 @@ def build(bld):
 
 	libs = ['tier0','tier1','vstdlib','mathlib','bitmap','VULKAN','SDL3','vulkan_texture_image',
 		'vulkan_debug',
-		'mapcontainer', 'render_spv']
+		'mapcontainer', 'render_spv', 'render_device']
 	# The pair's dynamic range on Apple: the Metal layer's range and the
 	# screen's headroom (UIKit), and tvOS's HDR mode (AVKit, CoreMedia).
 	if bld.env.DEST_OS == 'ios':

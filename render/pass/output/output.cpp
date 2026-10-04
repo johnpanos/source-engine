@@ -35,6 +35,7 @@ Constants MakeConstants( const OutputParams &params, OutputEncoding encoding, st
 	constants.params[0] = params.exposure;
 	constants.params[1] = params.scenePeak;
 	constants.params[2] = params.headroom;
+	constants.params[3] = params.linearScale;
 	constants.modes[0] = static_cast<std::uint32_t>( encoding );
 	constants.modes[1] = params.toneMap ? 1u : 0u;
 	constants.modes[2] = scaled ? 1u : 0u;
@@ -45,6 +46,8 @@ Constants MakeConstants( const OutputParams &params, OutputEncoding encoding, st
 
 bool ValidParams( const OutputParams &params, OutputEncoding encoding )
 {
+	if ( !std::isfinite( params.linearScale ) || params.linearScale <= 0.0f )
+		return false;
 	if ( !std::isfinite( params.exposure ) || params.exposure < 0.0f )
 		return false;
 	if ( !std::isfinite( params.scenePeak ) || params.scenePeak <= 0.0f ||

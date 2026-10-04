@@ -140,8 +140,8 @@ void CorePanels::RecordSlot(
 	// shader encodes (the output encoding frame term), as the world does.
 	panels.terms.encodeOutput = !target.colorSrgb.IsValid() &&
 	                            target.colorFormat != device::Format::kRGBA16Float;
-	panels.color = panels.terms.encodeOutput ? target.color : target.colorSrgb;
-	panels.colorFormat = panels.terms.encodeOutput ? target.colorFormat : target.colorSrgbFormat;
+	panels.color = target.colorSrgb.IsValid() ? target.colorSrgb : target.color;
+	panels.colorFormat = target.colorSrgb.IsValid() ? target.colorSrgbFormat : target.colorFormat;
 	panels.depth = target.depth;
 	panels.depthFormat = target.depthFormat;
 	panels.width = target.width;

@@ -64,6 +64,7 @@ layout( constant_id = 1 ) const int kDetailMode = 0;
 layout( constant_id = 2 ) const bool kPortalMask = false;
 layout( constant_id = 3 ) const uint kMaterialFeatures = 0xffffffffu;
 layout( constant_id = 4 ) const uint kViewFeatures = 7u;
+layout( constant_id = 5 ) const bool kAlphaCoverage = false;
 const uint kMaterialAlphaTest = 1u;
 const uint kMaterialHalfLambert = 2u;
 const uint kMaterialDiffuseWarp = 4u;
@@ -617,7 +618,7 @@ void RefractSurface()
 
 // The pbr point. Base and emission are sampled as sRGB, MRAO and the normal
 // map as linear data.
-void PbrSurface()
+void PbrSurface( out float coverage )
 {
 	const bool furnace = DebugFurnace();
 	const bool normalMap = Term( kBumpmap | kSsbump );
@@ -632,7 +633,18 @@ void PbrSurface()
 		                        uv * material.detailScale.xy );
 		baseSample = TextureCombine( baseSample, detail, material.detailTint.a );
 	}
-	if ( MaterialFeature( kMaterialAlphaTest, material.flags.y != 0.0 ) && baseSample.a * material.tint.a < material.flags.z )
+	coverage = 1.0;
+	const float alpha = baseSample.a * material.tint.a *
+	                    ( material.state.w != 0.0 ? color.a : 1.0 );
+	if ( kAlphaCoverage )
+	{
+		// RFC 0012's coverage function: midpoint at the authored alpha-test
+		// reference, approximately one pixel wide. Transparent texels write no depth.
+		coverage = clamp( ( alpha - material.flags.z ) / max( fwidth( alpha ), 1e-5 ) + 0.5, 0.0, 1.0 );
+		if ( coverage < 1e-5 )
+			discard;
+	}
+	else if ( MaterialFeature( kMaterialAlphaTest, material.flags.y != 0.0 ) && alpha < material.flags.z )
 		discard;
 	vec3 base = furnace ? vec3( 1.0 ) : baseSample.rgb * material.tint.rgb;
 	if ( material.meshProbeMasks.z > 0.5 && !furnace )
@@ -640,6 +652,8 @@ void PbrSurface()
 		const vec3 tinted = mix( base, material.tint.rgb, material.meshProbeMasks.w );
 		base = mix( baseSample.rgb, tinted, baseSample.a );
 	}
+	if ( material.flags.x != 0.0 && !furnace )
+		base *= color.rgb;
 	const bool unlitMesh = MaterialFeature( kMaterialUnlitMesh, material.meshModes.w > 0.5 );
 	const vec3 mrao = Term( kMraoTexture )
 	                      ? texture( sampler2D( mraoTexture, mraoSampler ), uv ).rgb
@@ -1379,7 +1393,7 @@ void PbrSurface()
 	    Term( kTransmission ) ? 1.0
 	    : ( Term( kSelfIllum ) || material.meshControls.x > 0.5 ) && material.state.x > 0.5
 	        ? 1.0
-	        : baseSample.a * material.tint.a );
+	        : alpha );
 }
 
 // The vertexlit point: the vertexlit_and_unlit_generic port's DIFFUSELIGHTING
@@ -1569,7 +1583,10 @@ void main()
 			RefractSurface();
 			return;
 		}
-		PbrSurface();
+		float coverage;
+		PbrSurface( coverage );
+		if ( kAlphaCoverage )
+			outColor.a = coverage;
 		return;
 	}
 	if ( Term( kWater ) )
@@ -1654,6 +1671,8 @@ void main()
 	{
 		alpha *= material.tint.a;
 	}
+	if ( !lightingOne )
+		alpha *= material.surfaceControls.w;
 	if ( material.flags.y != 0.0 && alpha < material.flags.z )
 		discard;
 

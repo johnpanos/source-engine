@@ -1913,6 +1913,7 @@ std::uint32_t CoreWorld::QueueMesh( const legacy::CoreMeshDraw &draw )
 	std::copy_n( draw.toClip, 16, view.toClip );
 	view.viewport = draw.viewport;
 	pass::world::WorldView::DynamicDraw geometry;
+	std::copy_n( draw.modelToWorld, 16, geometry.modelToWorld );
 	geometry.material.name = draw.name;
 	geometry.material.shader =
 	    draw.kind == legacy::CoreMeshKind::kStencilClear ? "UnlitGeneric" : draw.shader;
@@ -2049,9 +2050,10 @@ void CoreWorld::RecordSlot(
 		// the pixels where the core's surface is still the one seen. What
 		// stays tinted is what the core did not draw (or legacy drew over).
 		pass::debug::HatchTarget whole;
-		whole.encodeOutput = !target.colorSrgb.IsValid();
-		whole.color = whole.encodeOutput ? target.color : target.colorSrgb;
-		whole.format = whole.encodeOutput ? target.colorFormat : target.colorSrgbFormat;
+		whole.encodeOutput = !target.colorSrgb.IsValid() &&
+		                     target.colorFormat != render::device::Format::kRGBA16Float;
+		whole.color = target.colorSrgb.IsValid() ? target.colorSrgb : target.color;
+		whole.format = target.colorSrgb.IsValid() ? target.colorSrgbFormat : target.colorFormat;
 		whole.width = target.width;
 		whole.height = target.height;
 		whole.samples = target.samples;
@@ -2083,9 +2085,10 @@ void CoreWorld::RecordSlot(
 		// The frame's first slot under a pixel view: every pixel the core does
 		// not draw shows the not-applicable hatch (RFC 0014).
 		pass::debug::HatchTarget hatch;
-		hatch.encodeOutput = !target.colorSrgb.IsValid();
-		hatch.color = hatch.encodeOutput ? target.color : target.colorSrgb;
-		hatch.format = hatch.encodeOutput ? target.colorFormat : target.colorSrgbFormat;
+		hatch.encodeOutput = !target.colorSrgb.IsValid() &&
+		                     target.colorFormat != render::device::Format::kRGBA16Float;
+		hatch.color = target.colorSrgb.IsValid() ? target.colorSrgb : target.color;
+		hatch.format = target.colorSrgb.IsValid() ? target.colorSrgbFormat : target.colorFormat;
 		hatch.width = target.width;
 		hatch.height = target.height;
 		hatch.samples = target.samples;
@@ -2134,8 +2137,8 @@ void CoreWorld::RecordWorldBatch( std::span<const std::uint32_t> tags,
 	// shader encodes (the same curve, the output encoding frame term).
 	world.encodeOutput = !target.colorSrgb.IsValid() &&
 	                     target.colorFormat != device::Format::kRGBA16Float;
-	world.color = world.encodeOutput ? target.color : target.colorSrgb;
-	world.colorFormat = world.encodeOutput ? target.colorFormat : target.colorSrgbFormat;
+	world.color = target.colorSrgb.IsValid() ? target.colorSrgb : target.color;
+	world.colorFormat = target.colorSrgb.IsValid() ? target.colorSrgbFormat : target.colorFormat;
 	world.colorCopySource = target.colorCopySource;
 	world.sceneColorCapture = this;
 	world.depth = target.depth;

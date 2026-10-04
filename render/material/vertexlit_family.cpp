@@ -35,7 +35,7 @@ constexpr std::array<std::string_view, 12> kClaimed = { "basetexture", "color", 
 
 // One modernized dielectric point. Other variables wait for their surface
 // terms instead of being dropped during import.
-constexpr std::array<std::string_view, 71> kMeshClaimed = { "basetexture", "color", "color2",
+constexpr std::array<std::string_view, 74> kMeshClaimed = { "basetexture", "color", "color2",
     "alpha", "translucent", "bumpmap", "phong", "phongexponent", "phongboost", "phongtint",
     "phongfresnelranges", "model", "ignore_alpha_modulation", "selfillum", "selfillummask",
     "selfillumtint", "rimlightexponent", "rimlightboost", "selfillumfresnelminmaxexp",
@@ -50,7 +50,8 @@ constexpr std::array<std::string_view, 71> kMeshClaimed = { "basetexture", "colo
     "treeswaystartradius", "treeswayspeed", "treeswayspeedhighwindmultiplier", "treeswaystrength",
     "treeswayscrumblespeed", "treeswayscrumblestrength", "treeswayscrumblefrequency",
     "treeswayfalloffexp", "treeswayscrumblefalloffexp", "treeswayspeedlerpstart",
-    "treeswayspeedlerpend", "treeswaystatic", "lowqualityflashlightshadows" };
+    "treeswayspeedlerpend", "treeswaystatic", "lowqualityflashlightshadows", "allowalphatocoverage",
+    "vertexcolor", "vertexalpha" };
 
 std::optional<std::string> PackTreeSway( const ParameterBlock &block, SurfaceConstants &constants )
 {
@@ -62,8 +63,10 @@ std::optional<std::string> PackTreeSway( const ParameterBlock &block, SurfaceCon
 		return std::nullopt;
 	const char *keys[4][4] = {
 	    { "treeswayheight", "treeswaystartheight", "treeswayradius", "treeswaystartradius" },
-	    { "treeswayspeed", "treeswaystrength", "treeswayscrumblefrequency", "treeswayscrumblestrength" },
-	    { "treeswayspeedhighwindmultiplier", "treeswayscrumblefalloffexp", "treeswayfalloffexp", "treeswayscrumblespeed" },
+	    { "treeswayspeed", "treeswaystrength", "treeswayscrumblefrequency",
+	        "treeswayscrumblestrength" },
+	    { "treeswayspeedhighwindmultiplier", "treeswayscrumblefalloffexp", "treeswayfalloffexp",
+	        "treeswayscrumblespeed" },
 	    { "treeswayspeedlerpstart", "treeswayspeedlerpend", "treeswaystatic", "treesway" } };
 	float *rows[] = { constants.treeGeometry, constants.treeMotion, constants.treeCurves, constants.treeWind };
 	for ( int row = 0; row < 4; ++row )
@@ -367,10 +370,17 @@ VertexLitMeshClaim ClaimVertexLitMesh( const ParameterBlock &block )
 		claim.reason = "$alpha must be finite and in [0, 1]";
 		return claim;
 	}
-	claim.blend = ReadFlag( block, "additive" )                      ? BlendMode::kAdditive
-	              : ReadFlag( block, "translucent" ) || alpha < 1.0f ? BlendMode::kAlpha
-	                                                                 : BlendMode::kOpaque;
+	claim.blend =
+	    ReadFlag( block, "additive" ) ? BlendMode::kAdditive
+	    : ReadFlag( block, "translucent" ) || ReadFlag( block, "vertexalpha" ) || alpha < 1.0f
+	        ? BlendMode::kAlpha
+	        : BlendMode::kOpaque;
+	claim.constants.flags[0] = ReadFlag( block, "vertexcolor" ) ? 1.0f : 0.0f;
+	claim.constants.state[1] = 1.0f; // VertexLitGeneric decodes the authored vertex RGB
+	claim.constants.state[3] = ReadFlag( block, "vertexalpha" ) ? 1.0f : 0.0f;
 	claim.constants.flags[1] = claim.alphaTest ? 1.0f : 0.0f;
+	claim.alphaToCoverage = claim.alphaTest && claim.blend == BlendMode::kOpaque &&
+	                        ReadFlag( block, "allowalphatocoverage" );
 	claim.constants.flags[2] = detail::AlphaTestReference( block );
 	claim.constants.tint[3] = alpha;
 	for ( int c = 0; c < 3; ++c )

@@ -791,6 +791,10 @@ private:
 		// Facing is judged in clip space (Y up), where glClipControl's
 		// upper-left origin keeps GL's own winding.
 		m_Gl.FrontFace( p.raster.frontCounterClockwise ? GL_CCW : GL_CW );
+		if ( p.raster.alphaToCoverage )
+			m_Gl.Enable( GL_SAMPLE_ALPHA_TO_COVERAGE );
+		else
+			m_Gl.Disable( GL_SAMPLE_ALPHA_TO_COVERAGE );
 		// GL and the port agree: no depth writes without the depth test.
 		if ( p.depthStencil.depthTest )
 			m_Gl.Enable( GL_DEPTH_TEST );

@@ -2918,6 +2918,7 @@ void WorldPass::RecordBatch(
 		BufferId indices;
 		std::uint32_t count;
 		int page;
+		const WorldView::DynamicDraw *source;
 	};
 	std::vector<DynamicDraw> dynamicDraws;
 	for ( const WorldView::DynamicDraw &draw : view.dynamicDraws )
@@ -2978,7 +2979,7 @@ void WorldPass::RecordBatch(
 			s.retiredBuffers.emplace_back( target.frame, buffer );
 		}
 		dynamicDraws.push_back( { m, vertices.Value(), indices.Value(),
-		    std::uint32_t( draw.indices.size() ), draw.lightmapPage } );
+		    std::uint32_t( draw.indices.size() ), draw.lightmapPage, &draw } );
 	}
 
 	preparation.End();
@@ -3300,7 +3301,10 @@ void WorldPass::RecordBatch(
 		encoder.SetBindGroup( BindGroupRole::kView, group->group );
 		encoder.SetBindGroup( BindGroupRole::kMaterial, m.group.group );
 		encoder.SetBindGroup( BindGroupRole::kDraw, r.drawGroups[drawKey( m, draw.page )].group );
-		encoder.SetDrawConstants( 0, constantBytes.first( m.program.request.drawConstantBytes ) );
+		material::FamilyDrawConstants dynamicConstants = constants;
+		std::copy_n( draw.source->modelToWorld, 16, dynamicConstants.world );
+		encoder.SetDrawConstants( 0, std::as_bytes( std::span( &dynamicConstants, 1 ) )
+		                                 .first( m.program.request.drawConstantBytes ) );
 		encoder.SetVertexBuffer( 0, draw.vertices );
 		if ( recordingTemporal )
 			encoder.SetVertexBuffer( 1, draw.vertices );

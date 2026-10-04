@@ -8004,6 +8004,18 @@
       "expect": "pass"
     },
     {
+      "id": "vgui.hdr_settings_menu",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/vguitest/test_hdr_settings_menu.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "vgui.ui_scale",
       "domain": "Q-PRESENTATION",
       "rfc": "0001",

@@ -398,11 +398,15 @@ static void LevelInitModels( IRenderCoreWorld *pWorld )
 		const std::string stem = source.name.substr( 0, source.name.size() - 4 );
 		if ( !ReadStaticModelFile( source.name, source.mdl ) )
 		{
+			Msg( "r_core_world: model %s missing GAME file %s\n", source.name.c_str(),
+			    source.name.c_str() );
 			++missingMdl;
 			continue;
 		}
 		if ( !ReadStaticModelFile( stem + ".vvd", source.vvd ) )
 		{
+			Msg( "r_core_world: model %s missing GAME file %s.vvd\n", source.name.c_str(),
+			    stem.c_str() );
 			++missingVvd;
 			continue;
 		}
@@ -413,6 +417,7 @@ static void LevelInitModels( IRenderCoreWorld *pWorld )
 		}
 		if ( source.vtx.empty() )
 		{
+			Msg( "r_core_world: model %s has no GAME VTX companion\n", source.name.c_str() );
 			++missingVtx;
 			continue;
 		}

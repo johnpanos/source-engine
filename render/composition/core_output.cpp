@@ -45,6 +45,7 @@ bool CoreOutput::Record( device::CommandEncoder &encoder, const legacy::CoreOutp
 	params.exposure = targets.exposure;
 	params.scenePeak = targets.scenePeak;
 	params.headroom = targets.headroom;
+	params.linearScale = targets.linearScale;
 	params.toneMap = targets.toneMap;
 	encoder.BeginLabel( "output (render.pass.output)" );
 	const bool recorded = renderer->Record( encoder, direct, params ).HasValue();

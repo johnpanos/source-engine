@@ -64,8 +64,8 @@ std::uint32_t SurfaceVertexStride( SurfaceVertexLayout layout )
 
 std::uint32_t SurfaceDrawConstantBytes( SurfaceVertexLayout layout )
 {
-	return layout == SurfaceVertexLayout::kModel ? sizeof( FamilyDrawConstants )
-	                                             : sizeof( FamilyDrawConstants::toClip );
+	return layout != SurfaceVertexLayout::kFlat ? sizeof( FamilyDrawConstants )
+	                                            : sizeof( FamilyDrawConstants::toClip );
 }
 
 PbrSplitSumTable SplitSumTable()
@@ -251,7 +251,7 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::Pipeline(
 	if ( ( variant.terms & kSurfaceTransmission ) && !( variant.terms & kSurfacePbr ) )
 		return foundation::MakeUnexpected( SurfaceStatus::kInvalidRequest );
 	if ( variant.treeSwayMode > 2 ||
-	     ( variant.treeSwayMode && variant.layout != SurfaceVertexLayout::kModel ) )
+	     ( variant.treeSwayMode && variant.layout == SurfaceVertexLayout::kFlat ) )
 		return foundation::MakeUnexpected( SurfaceStatus::kInvalidRequest );
 	// The lightmap basis is the pbr point's, on a world surface.
 	if ( ( variant.terms & kSurfaceLightmapTerms ) &&
@@ -289,18 +289,21 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::Pipeline(
 		return foundation::MakeUnexpected( SurfaceStatus::kDevice );
 	}
 	const bool model = variant.layout == SurfaceVertexLayout::kModel;
+	const bool alphaCoverage = variant.alphaToCoverage && m_SampleCount > 1;
 	const std::uint32_t drawConstantBytes = SurfaceDrawConstantBytes( variant.layout );
 	std::vector<SpecializationConstant> constants = { { ShaderStage::kFragment, 0, variant.terms },
 	    { ShaderStage::kFragment, 1, variant.detailMode },
 	    { ShaderStage::kFragment, 2, variant.portalMask ? 1u : 0u },
 	    { ShaderStage::kFragment, 3, variant.materialFeatures },
-	    { ShaderStage::kFragment, 4, variant.viewFeatures } };
+	    { ShaderStage::kFragment, 4, variant.viewFeatures },
+	    { ShaderStage::kFragment, 5, alphaCoverage ? 1u : 0u } };
 	// The model vertex reads the terms too (the vertexlit point's lighting).
 	if ( model )
 	{
 		constants.push_back( { ShaderStage::kVertex, 0, variant.terms } );
-		constants.push_back( { ShaderStage::kVertex, 1, variant.treeSwayMode } );
 	}
+	if ( variant.layout != SurfaceVertexLayout::kFlat )
+		constants.push_back( { ShaderStage::kVertex, 1, variant.treeSwayMode } );
 	shaderlib::AppendDebugConstants( debug, ShaderStage::kFragment, constants );
 	const VertexAttribute flatAttributes[] = { { 0, VertexFormat::kFloat3, 0, 0 },
 	    { 1, VertexFormat::kFloat2, 12, 0 }, { 2, VertexFormat::kFloat2, 20, 0 },
@@ -372,6 +375,7 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::Pipeline(
 	desc.colorWriteMasks = std::span<const std::uint8_t>( writes, attachments );
 	desc.depthFormat = m_DepthFormat;
 	desc.sampleCount = m_SampleCount;
+	desc.raster.alphaToCoverage = alphaCoverage;
 	desc.debugName = "render.material.surface";
 	desc.constants = constants;
 	auto pipeline = m_Device.CreatePipeline( desc );

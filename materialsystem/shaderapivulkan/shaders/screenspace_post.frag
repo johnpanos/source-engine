@@ -262,15 +262,17 @@ vec4 EnginePost( int dynamicIndex )
 	if ( lookups > 0 )
 	{
 		// A 32-texel volume: (0,0,0) reads at 0.5 / 32 and (1,1,1) at 31.5 / 32.
-		const vec3 offsetOutColor = outColor.rgb * ( 31.0 / 32.0 ) + ( 0.5 / 32.0 );
+		const float magnitude = ( int( consts.params2.y ) != 0 )
+		    ? max( 1.0, max( outColor.r, max( outColor.g, outColor.b ) ) ) : 1.0;
+		const vec3 offsetOutColor = outColor.rgb / magnitude * ( 31.0 / 32.0 ) + ( 0.5 / 32.0 );
 		vec3 corrected = outColor.rgb * ps.c[3].x;
-		corrected += texture( ColorCorrectionVolumeTexture0, offsetOutColor ).rgb * ps.c[4].x;
+		corrected += texture( ColorCorrectionVolumeTexture0, offsetOutColor ).rgb * magnitude * ps.c[4].x;
 		if ( lookups > 1 )
-			corrected += texture( ColorCorrectionVolumeTexture1, offsetOutColor ).rgb * ps.c[4].y;
+			corrected += texture( ColorCorrectionVolumeTexture1, offsetOutColor ).rgb * magnitude * ps.c[4].y;
 		if ( lookups > 2 )
-			corrected += texture( ColorCorrectionVolumeTexture2, offsetOutColor ).rgb * ps.c[4].z;
+			corrected += texture( ColorCorrectionVolumeTexture2, offsetOutColor ).rgb * magnitude * ps.c[4].z;
 		if ( lookups > 3 )
-			corrected += texture( ColorCorrectionVolumeTexture3, offsetOutColor ).rgb * ps.c[4].w;
+			corrected += texture( ColorCorrectionVolumeTexture3, offsetOutColor ).rgb * magnitude * ps.c[4].w;
 		outColor.rgb = corrected;
 	}
 	return outColor;

@@ -113,6 +113,7 @@ struct VertexLitMeshClaim
 	bool phongWarp = false;
 	std::uint32_t detailMode = 0;
 	bool alphaTest = false;
+	bool alphaToCoverage = false;
 	bool halfLambert = false;
 	device::BlendMode blend = device::BlendMode::kOpaque;
 	SurfaceConstants constants;
@@ -127,6 +128,7 @@ struct VertexLitMeshClaim
 		                ( detail ? kSurfaceDetail : 0u );
 		variant.detailMode = detailMode;
 		variant.treeSwayMode = std::uint32_t( constants.treeWind[3] );
+		variant.alphaToCoverage = alphaToCoverage;
 		variant.blend = blend;
 		variant.alphaWrite = blend == device::BlendMode::kOpaque && !alphaTest;
 		variant.layout = SurfaceVertexLayout::kWorld;

@@ -29,13 +29,19 @@ public:
 		if ( VulkanEncoder *backend = Backend( encoder ) )
 			backend->Native( record, user );
 	}
-	void BeginSection( CommandEncoder &encoder ) override
+	void BeginSection( CommandEncoder &encoder, TextureId sampledAttachment ) override
 	{
 		if ( VulkanEncoder *backend = Backend( encoder ) )
 			backend->BeginSection();
+		if ( sampledAttachment.IsValid() )
+			encoder.TransitionTexture(
+			    sampledAttachment, ResourceUsage::kSampled, ResourceUsage::kColorAttachment );
 	}
-	void EndSection( CommandEncoder &encoder ) override
+	void EndSection( CommandEncoder &encoder, TextureId sampledAttachment ) override
 	{
+		if ( sampledAttachment.IsValid() )
+			encoder.TransitionTexture(
+			    sampledAttachment, ResourceUsage::kColorAttachment, ResourceUsage::kSampled );
 		if ( VulkanEncoder *backend = Backend( encoder ) )
 			backend->EndSection();
 	}

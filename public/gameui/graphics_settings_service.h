@@ -7,9 +7,19 @@
 #define GAMEUI_GRAPHICS_SETTINGS_SERVICE_H
 
 #include <cmath>
+#include <charconv>
+#include <string_view>
 
 namespace gameui
 {
+
+struct HdrSettings
+{
+	bool automatic = true;
+	float exposure = 1.0f;
+	int peakNits = 1000;
+	bool operator==( const HdrSettings & ) const = default;
+};
 
 struct GraphicsSettings
 {
@@ -21,6 +31,7 @@ struct GraphicsSettings
 	int displayIndex = 0;
 	float uiScale = 0.0f;
 	int powerSaving = 0;
+	HdrSettings hdr;
 	float temporalScale = 0.0f; // 0 disables the selected temporal provider
 
 	bool operator==( const GraphicsSettings &other ) const
@@ -28,7 +39,7 @@ struct GraphicsSettings
 		return width == other.width && height == other.height && windowed == other.windowed &&
 		       borderless == other.borderless && vrEnabled == other.vrEnabled &&
 		       displayIndex == other.displayIndex && uiScale == other.uiScale &&
-		       powerSaving == other.powerSaving && temporalScale == other.temporalScale;
+		       powerSaving == other.powerSaving && temporalScale == other.temporalScale && hdr == other.hdr;
 	}
 };
 
@@ -63,7 +74,9 @@ public:
 
 	bool Stage( const GraphicsSettings &draft )
 	{
-		if ( m_state == State::Uninitialized || draft.width <= 0 || draft.height <= 0 ||
+		if ( m_state == State::Uninitialized || !std::isfinite( draft.hdr.exposure ) || draft.hdr.exposure < 0.25f ||
+		     draft.hdr.exposure > 4.0f || draft.hdr.peakNits < 203 || draft.hdr.peakNits > 10000 ||
+		     draft.width <= 0 || draft.height <= 0 ||
 		     ( draft.borderless && !draft.windowed ) || !std::isfinite( draft.uiScale ) ||
 		     draft.uiScale < 0.0f || !std::isfinite( draft.temporalScale ) ||
 		     ( draft.temporalScale != 0.0f && draft.temporalScale < 0.5f ) ||
@@ -118,6 +131,60 @@ private:
 	GraphicsSettings m_draft;
 	State m_state = State::Uninitialized;
 	State m_cleanState = State::Saved;
+};
+
+// The HDR submenu borrows the Video transaction. Its snapshot restores only
+// this page's edits on Back, preserving pending resolution/FSR/UI changes.
+class HdrSettingsMenu
+{
+public:
+	enum class Action { Changed, Apply, Cancel, Invalid };
+	explicit HdrSettingsMenu( GraphicsSettingsService &session )
+	    : m_session( session ), m_original( session.Draft().hdr ) {}
+
+	Action Command( std::string_view command )
+	{
+		if ( command == "ApplyHDR" )
+			return Action::Apply;
+		if ( command == "Back" || command == "Cancel" )
+		{
+			Cancel();
+			return Action::Cancel;
+		}
+		auto draft = m_session.Draft();
+		int value = 0;
+		const auto read = [&]( std::string_view prefix )
+		{
+			if ( !command.starts_with( prefix ) )
+				return false;
+			const auto suffix = command.substr( prefix.size() );
+			const auto result = std::from_chars( suffix.data(), suffix.data() + suffix.size(), value );
+			return !suffix.empty() && result.ec == std::errc{} &&
+			       result.ptr == suffix.data() + suffix.size();
+		};
+		if ( read( "HdrMode" ) && ( value == 0 || value == 1 ) )
+			draft.hdr.automatic = value == 1;
+		else if ( read( "HdrExposure" ) )
+			draft.hdr.exposure = value * 0.01f;
+		else if ( read( "HdrPeak" ) )
+			draft.hdr.peakNits = value;
+		else
+			return Action::Invalid;
+		return m_session.Stage( draft ) ? Action::Changed : Action::Invalid;
+	}
+
+	void Cancel()
+	{
+		auto draft = m_session.Draft();
+		draft.hdr = m_original;
+		(void)m_session.Stage( draft );
+	}
+	void Commit() { m_original = m_session.Applied().hdr; }
+	const HdrSettings &Draft() const { return m_session.Draft().hdr; }
+
+private:
+	GraphicsSettingsService &m_session;
+	HdrSettings m_original;
 };
 
 } // namespace gameui

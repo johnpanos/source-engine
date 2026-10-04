@@ -60,6 +60,8 @@ vec3 LinearToSrgb( vec3 c )
 // sRGB when the material reads it as sRGB and the bound view could not.
 vec4 LegacyTexel( int slot, vec4 texel )
 {
+	if ( ( int( pc.params.w ) & ( 1 << slot ) ) != 0 )
+		texel.rgb = OutputSrgbExtended( texel.rgb );
 	if ( ( int( pc.params.z ) & ( 1 << slot ) ) != 0 )
 		texel.rgb = SrgbToLinear( texel.rgb );
 	return texel;

@@ -136,6 +136,7 @@ struct RasterState
 {
 	CullMode cull = CullMode::kBack;
 	bool frontCounterClockwise = true;
+	bool alphaToCoverage = false; // fragment alpha controls multisample coverage
 };
 
 enum class StencilOp : std::uint8_t
