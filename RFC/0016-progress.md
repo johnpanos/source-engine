@@ -8291,6 +8291,17 @@ its live state, while preserving lighting and sample counts.
 
 ### R91: screen caching and video preload (2026-10-03)
 
+> **Superseded in part (2026-10-04, user request: video must use barely any
+> memory).** `PRELOAD_VIDEO` no longer predecodes. `video_bink` streams: only the
+> compressed clip, the decoder and one frame texture are resident, replacing the
+> 235-frame elevator cache (about 400 MiB) and the 304-frame menu cache (about
+> 1.8 GiB). Playback decodes and uploads one frame per tick again, so the
+> upload-free playback and the frame-time gains below attributed to resident
+> frames are not retained; the per-frame cost has not been remeasured. Seeks are
+> exact by decoding forward from the demuxer's seek point. A borrower of the
+> texture no longer keeps the last frame after the movie shuts down.
+> `render.video.frame-cache` now checks streamed playback (9/9 checks).
+
 User scope: reduce the impact of elevator movies and other world screens on
 `sp_a1_intro4_probe64`, and predecode every clip frame for resident playback.
 The panel remains the same ordinary core emissive PBR surface and light source;

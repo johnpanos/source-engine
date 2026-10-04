@@ -11594,7 +11594,7 @@
       "migration": "R91",
       "kind": "positive",
       "profile": "linux-host-corpus",
-      "description": "Native video_bink PRELOAD_VIDEO with authored three-frame lossless BT.601 RGB clips, installed Portal 2 and Vulkan. Checks complete frame count, duration, decoder release, seeking, looping, pause, nonloop end, retained borrower restoration, final texture cleanup and invalid dimensions rollback. Each native sequence has 25 checks. The deliberately wrong green fixture must fail its color and regeneration checks. Retail elevator images and performance are separate evidence.",
+      "description": "Native video_bink PRELOAD_VIDEO with authored three-frame lossless BT.601 RGB clips, installed Portal 2 and Vulkan. Checks streamed frame count, duration, seeking, looping, pause, nonloop end, borrower lifetime, final texture cleanup and invalid dimensions rollback; no clip frame is kept resident. Each native sequence has 22 checks. The deliberately wrong green fixture must fail its color and regeneration checks. Retail elevator images and performance are separate evidence.",
       "command": [
         "{python}",
         "tools/quality/video_frame_cache.py",

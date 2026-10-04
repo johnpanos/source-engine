@@ -448,20 +448,9 @@ bool CBinkMaterial::Init( const char *pMaterialName, const char *pFileName, Vide
 	// Now we can properly setup our regenerators
 //	m_TextureRegen.SetSourceGWorld( m_MovieGWorld, m_VideoFrameWidth, m_VideoFrameHeight );
 
-	if ( BITFLAGS_SET( flags, VideoPlaybackFlags::PRELOAD_VIDEO ) )
-	{
-		if ( !PreloadFrames( pMaterialName ) )
-		{
-			Reset();
-			SetResult( VideoResult::VIDEO_ERROR_OCCURED );
-			return false;
-		}
-		m_Texture.Init( m_CachedFrames.front() );
-		m_TexCordU = float( m_VideoFrameWidth ) / m_Texture->GetActualWidth();
-		m_TexCordV = float( m_VideoFrameHeight ) / m_Texture->GetActualHeight();
-	}
-	else
-		CreateProceduralTexture( pMaterialName );
+	// PRELOAD_VIDEO does not predecode: keeping every frame resident cost hundreds
+	// of MiB per clip. Only the compressed clip and one frame texture stay resident.
+	CreateProceduralTexture( pMaterialName );
 	CreateProceduralMaterial( pMaterialName );
 
 	// Start movie playback
@@ -650,26 +639,21 @@ bool CBinkMaterial::Update( void )
 	if ( m_NextInterestingTimeToPlay < flNow )
 		m_NextInterestingTimeToPlay = flNow + m_MovieFrameDuration;
 
-	if ( !m_CachedFrames.empty() )
-	{
-		if ( m_NextCachedFrame == int( m_CachedFrames.size() ) )
-		{
-			if ( !m_bLoopMovie )
-			{
-				StopVideo();
-				return false;
-			}
-			m_NextCachedFrame = 0;
-		}
-		SelectCachedFrame( m_NextCachedFrame++ );
-		SetResult( VideoResult::SUCCESS );
-		return true;
-	}
-
 	if ( !DecodeNextFrame() && !( m_bLoopMovie && Rewind( 0.0 ) && DecodeNextFrame() ) )
 	{
 		StopVideo();
 		return false;
+	}
+
+	if ( m_SeekTarget >= 0 )
+	{
+		while ( m_DecodedFrameTime >= 0 &&
+		        m_DecodedFrameTime + 0.5 * m_MovieFrameDuration < m_SeekTarget && DecodeNextFrame() )
+		{
+		}
+		if ( m_DecodedFrameTime >= 0 )
+			m_CurrentFrame = int( m_DecodedFrameTime / m_MovieFrameDuration + 0.5 );
+		m_SeekTarget = -1;
 	}
 
 	yuv420_rgb24_std( m_VideoFrameWidth, m_VideoFrameHeight, m_AVVideoData[0],
@@ -748,18 +732,13 @@ bool CBinkMaterial::SetFrame( int FrameNum )
 		return false;
 	}
 
-	if ( !m_CachedFrames.empty() )
+	if ( FrameNum < 0 )
 	{
-		if ( FrameNum < 0 )
-		{
-			SetResult( VideoResult::BAD_INPUT_PARAMETERS );
-			return false;
-		}
-		m_NextCachedFrame = std::min( FrameNum, int( m_CachedFrames.size() ) - 1 );
-		m_NextInterestingTimeToPlay = Plat_FloatTime();
-		return true;
+		SetResult( VideoResult::BAD_INPUT_PARAMETERS );
+		return false;
 	}
-	return SetTime( float( FrameNum * m_MovieFrameDuration ) );
+	// Aim at the middle of the frame so timestamp rounding cannot land on its predecessor.
+	return SetTime( float( ( FrameNum + 0.5 ) * m_MovieFrameDuration ) );
 }
 
 int CBinkMaterial::GetCurrentFrame()
@@ -785,13 +764,8 @@ bool CBinkMaterial::SetTime( float flTime )
 		return false;
 	}
 
-	if ( !m_CachedFrames.empty() )
-	{
-		m_NextCachedFrame = int( std::clamp(
-		    double( flTime ) / m_MovieFrameDuration, 0.0, double( m_CachedFrames.size() - 1 ) ) );
-		m_NextInterestingTimeToPlay = Plat_FloatTime();
-		return true;
-	}
+	if ( m_QTMovieFrameCount > 0 )
+		flTime = std::min( flTime, float( ( m_QTMovieFrameCount - 0.5 ) * m_MovieFrameDuration ) );
 	if ( !Rewind( flTime ) )
 		return false;
 	m_NextInterestingTimeToPlay = Plat_FloatTime();
@@ -808,6 +782,10 @@ bool CBinkMaterial::DecodeNextFrame()
 		int ret = avcodec_receive_frame( m_AVVideoDecCtx, m_AVFrame );
 		if ( ret == 0 )
 		{
+			m_DecodedFrameTime = m_AVFrame->best_effort_timestamp == AV_NOPTS_VALUE
+			                         ? -1
+			                         : m_AVFrame->best_effort_timestamp *
+			                               av_q2d( m_AVVideoStream->time_base );
 			av_image_copy( m_AVVideoData, m_AVVideoLinesize, (const uint8_t **)( m_AVFrame->data ),
 			    m_AVFrame->linesize, (AVPixelFormat)m_AVPixFormat, m_VideoFrameWidth,
 			    m_VideoFrameHeight );
@@ -862,75 +840,10 @@ bool CBinkMaterial::Rewind( double flTime )
 	m_bDecoderDraining = false;
 	m_bDecodeFailed = false;
 	m_CurrentFrame = int( flTime / m_MovieFrameDuration ) - 1;
+	// Demuxers seek only to keyframes or index entries; Update decodes forward from there.
+	m_DecodedFrameTime = -1;
+	m_SeekTarget = flTime > 0 ? flTime : -1;
 	return true;
-}
-
-// PRELOAD_VIDEO prepares complete immutable frames through the normal texture
-// owner. It retains their bits for device restoration, uploads once, and shares
-// them through the group's existing material. No frame upload during playback.
-bool CBinkMaterial::PreloadFrames( const char *pTextureName )
-{
-	if ( m_AVPixFormat != AV_PIX_FMT_YUV420P || !std::isfinite( m_MovieFrameDuration ) ||
-	     m_MovieFrameDuration <= 0 )
-		return false;
-	static unsigned int nextClip = 0;
-	const unsigned int clip = ++nextClip;
-	const double began = Plat_FloatTime();
-	const int width = ALIGN_VALUE( m_VideoFrameWidth, TEXTURE_SIZE_ALIGNMENT );
-	const int height = ALIGN_VALUE( m_VideoFrameHeight, TEXTURE_SIZE_ALIGNMENT );
-	std::vector<byte> padded( std::size_t( width ) * height * 3, 0 );
-	const int flags = TEXTUREFLAGS_CLAMPS | TEXTUREFLAGS_CLAMPT | TEXTUREFLAGS_NOMIP |
-	                  TEXTUREFLAGS_PROCEDURAL | TEXTUREFLAGS_SINGLECOPY | TEXTUREFLAGS_NOLOD;
-	while ( DecodeNextFrame() )
-	{
-		yuv420_rgb24_std( m_VideoFrameWidth, m_VideoFrameHeight, m_AVVideoData[0], m_AVVideoData[1],
-		    m_AVVideoData[2], m_AVVideoLinesize[0], m_AVVideoLinesize[1], m_RGBData,
-		    m_VideoFrameWidth * 3, YCBCR_601 );
-		for ( int y = 0; y < m_VideoFrameHeight; ++y )
-			std::memcpy( padded.data() + std::size_t( y ) * width * 3,
-			    m_RGBData + std::size_t( y ) * m_VideoFrameWidth * 3, m_VideoFrameWidth * 3 );
-		char name[512];
-		V_snprintf( name, sizeof( name ), "%s/clip-%u/frame-%zu", pTextureName, clip,
-		    m_CachedFrames.size() );
-		ITexture *texture = materials->CreateNamedTextureFromBitsEx( name, "VideoCacheTextures",
-		    width, height, 1, IMAGE_FORMAT_BGR888, int( padded.size() ), padded.data(), flags );
-		if ( !texture || texture->IsError() )
-		{
-			Warning(
-			    "Video preload failed at frame %zu of %s\n", m_CachedFrames.size(), pTextureName );
-			return false;
-		}
-		m_CachedFrames.emplace_back();
-		m_CachedFrames.back().Init( texture );
-		// Transfer the creation reference to the cache reference.
-		texture->DecrementReferenceCount();
-	}
-	if ( m_bDecodeFailed || m_CachedFrames.empty() )
-		return false;
-	m_QTMovieFrameCount = int( m_CachedFrames.size() );
-	m_QTMovieDurationinSec = float( m_QTMovieFrameCount * m_MovieFrameDuration );
-	m_CurrentFrame = -1;
-	m_NextCachedFrame = 0;
-	// Playback needs only resident textures; immutable bits belong to their
-	// normal restoration callbacks, so release the decoder and scratch buffers.
-	av_freep( &m_AVVideoData[0] );
-	avcodec_free_context( &m_AVVideoDecCtx );
-	avformat_close_input( &m_AVFmtCtx );
-	free( m_RGBData );
-	m_RGBData = nullptr;
-	Msg( "Video preload: %s, %zu frames, %dx%d, %.1f MiB GPU RGBA, %.1f MiB restore BGR, %.1f ms\n",
-	    pTextureName, m_CachedFrames.size(), width, height,
-	    double( width ) * height * 4 * m_CachedFrames.size() / ( 1024 * 1024 ),
-	    double( padded.size() ) * m_CachedFrames.size() / ( 1024 * 1024 ),
-	    ( Plat_FloatTime() - began ) * 1000 );
-	return true;
-}
-
-void CBinkMaterial::SelectCachedFrame( int frame )
-{
-	m_Texture.Init( m_CachedFrames[frame] );
-	m_Material->FindVar( "$basetexture", nullptr )->SetTextureValue( m_Texture );
-	m_CurrentFrame = frame;
 }
 
 //-----------------------------------------------------------------------------
@@ -978,15 +891,10 @@ void CBinkMaterial::DestroyProceduralTexture()
 	{
 		// DO NOT Call release on the Texture Regenerator, as it will destroy this object!  bad bad bad
 		// instead we tell it to assign a NULL regenerator and flag it to not call release
-		if ( m_CachedFrames.empty() )
-			m_Texture->SetTextureRegenerator( nullptr /*, false */ );
+		m_Texture->SetTextureRegenerator( nullptr /*, false */ );
 		// Texture, texture go away...
 		m_Texture.Shutdown( true );
 	}
-	for ( auto &frame : m_CachedFrames )
-		frame.Shutdown( true );
-	m_CachedFrames.clear();
-	m_NextCachedFrame = 0;
 	m_CurrentFrame = -1;
 }
 
@@ -1114,6 +1022,16 @@ void CBinkMaterial::OpenMovie( const char *theMovieFileName )
 		return;
 	}
 	m_QTMovieFrameRate.SetFPS( float( 1.0 / m_MovieFrameDuration ) );
+	if ( m_AVVideoStream->nb_frames > 0 )
+		m_QTMovieFrameCount = int( m_AVVideoStream->nb_frames );
+	else if ( m_AVVideoStream->duration > 0 )
+		m_QTMovieFrameCount = int( 0.5 + m_AVVideoStream->duration *
+		                                     av_q2d( m_AVVideoStream->time_base ) /
+		                                     m_MovieFrameDuration );
+	else if ( m_AVFmtCtx->duration > 0 )
+		m_QTMovieFrameCount =
+		    int( 0.5 + double( m_AVFmtCtx->duration ) / AV_TIME_BASE / m_MovieFrameDuration );
+	m_QTMovieDurationinSec = float( m_QTMovieFrameCount * m_MovieFrameDuration );
 	m_TextureRegen.SetSourceImage( m_RGBData, m_VideoFrameWidth, m_VideoFrameHeight );
 	printf("Video FPS: %lf\n", (double)m_AVVideoStream->r_frame_rate.num/(double)m_AVVideoStream->r_frame_rate.den);
 
@@ -1237,7 +1155,8 @@ void CBinkMaterial::CloseFile()
 	SetFileName( nullptr );
 }
 
-// Native operation-sequence oracle using an authored three-frame RGB fixture.
+// Native operation-sequence oracle using an authored three-frame RGB fixture,
+// played by streaming decode (PRELOAD_VIDEO keeps no resident frame cache).
 // This creates a private material and never changes a game's movie group.
 void CBinkMaterial::TestCachedFrames( const char *filename, const char *invalidFilename )
 {
@@ -1258,13 +1177,9 @@ void CBinkMaterial::TestCachedFrames( const char *filename, const char *invalidF
 	check( initialized, "preload" );
 	if ( initialized )
 	{
-		check( movie.GetFrameCount() == 3, "complete frame count" );
+		check( movie.GetFrameCount() == 3, "frame count" );
 		check( movie.m_VideoFrameWidth == 16 && movie.m_VideoFrameHeight == 16, "dimensions" );
 		check( std::abs( movie.GetVideoDuration() - 0.125f ) < 0.001f, "duration" );
-		check( movie.m_AVVideoDecCtx == nullptr && movie.m_RGBData == nullptr, "decoder released" );
-		std::vector<std::string> names;
-		for ( auto &frame : movie.m_CachedFrames )
-			names.emplace_back( frame->GetName() );
 		auto color = [&]( int channel )
 		{
 			float rgb[3] = {};
@@ -1277,7 +1192,8 @@ void CBinkMaterial::TestCachedFrames( const char *filename, const char *invalidF
 		for ( int frame = 1; frame < 3; ++frame )
 		{
 			check( movie.SetFrame( frame ) && movie.Update(), "seek" );
-			check( movie.GetCurrentFrame() == frame && color( frame ), "seek color" );
+			check( movie.GetCurrentFrame() == frame, "seek frame index" );
+			check( color( frame ), "seek color" );
 			movie.m_Texture->Download();
 			check( color( frame ), "restoration color" );
 		}
@@ -1297,19 +1213,15 @@ void CBinkMaterial::TestCachedFrames( const char *filename, const char *invalidF
 		CTextureReference borrower;
 		borrower.Init( movie.m_Texture );
 		movie.Shutdown();
-		check( materials->IsTextureLoaded( names.back().c_str() ), "borrower lifetime" );
-		borrower->Download();
-		float rgb[3] = {};
-		borrower->GetLowResColorSample( 0.5f, 0.5f, rgb );
-		check( rgb[2] > 0.8f && rgb[0] < 0.1f, "borrower restoration" );
+		check( materials->IsTextureLoaded( borrower->GetName() ), "borrower lifetime" );
+		const std::string name = borrower->GetName();
 		borrower.Shutdown( true );
-		for ( const auto &name : names )
-			check( !materials->IsTextureLoaded( name.c_str() ), "cache released" );
+		check( !materials->IsTextureLoaded( name.c_str() ), "texture released" );
 	}
 	CBinkMaterial invalid;
 	check(
 	    !invalid.Init( "__video_cache_invalid", invalidFilename, flags ), "reject invalid clip" );
-	check( invalid.m_CachedFrames.empty() && !invalid.IsVideoReadyToPlay(), "failure rollback" );
+	check( !invalid.IsVideoReadyToPlay(), "failure rollback" );
 	Msg( "VIDEO_CACHE_PROBE checks=%d failures=%d\n", checks, failures );
 }
 

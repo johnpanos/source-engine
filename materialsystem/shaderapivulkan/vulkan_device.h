@@ -91,6 +91,9 @@ struct VulkanContextConfig
 	// The Vulkan adapter that creates the device (the composition root binds
 	// it: NativeVulkanShaderBackend_BindDeviceFactory). Init fails without it.
 	const render::device::vulkan::IHostDeviceFactory *deviceFactory = nullptr;
+	// Reports an error the frame cannot continue after (the shader API's
+	// Error). Without one the context logs the message and aborts.
+	void ( *fatalError )( const char *message ) = nullptr;
 	const char *appName = "Source Native Vulkan";
 	// Turn on the Khronos validation layer and a debug messenger. Init() fails
 	// if validation is required but the layer/extension are unavailable.
@@ -1135,7 +1138,15 @@ public:
 	// it is created in the swapchain format with its own depth buffer, so the
 	// pipelines built for the swapchain pass draw into it unchanged. It starts
 	// cleared to opaque black and counts as resident.
-	int CreateRenderTargetTexture( int width, int height, std::string *outError );
+	//
+	// deferStorage allocates its images on first use instead (many of the
+	// material system's full-frame targets are never drawn into: at 4K each
+	// costs ~96 MiB with its depth). Until then it samples a shared opaque
+	// black image, a clear to opaque black leaves it as it is, and anything
+	// else that records against it, copies into it or imports it allocates
+	// the storage first; failing to is fatal (VulkanContextConfig::fatalError).
+	int CreateRenderTargetTexture(
+	    int width, int height, std::string *outError, bool deferStorage = false );
 	bool IsRenderTargetTexture( int handle ) const
 	{
 		return handle >= 0 && handle < static_cast<int>( m_managedTextures.size() ) &&
@@ -2230,6 +2241,9 @@ private:
 	VkDescriptorPool m_dynTexDescPool = VK_NULL_HANDLE;
 	VkDescriptorSet m_dynTexDescSet = VK_NULL_HANDLE;
 	int m_whiteCubeHandle = -1;
+	// 1x1 opaque black: what a deferred render target samples before it has
+	// storage (a new target reads opaque black).
+	int m_unrenderedTargetHandle = -1;
 	// Material-supplied textures (IShaderAPI). The descriptor set points at the
 	// bound one, or the built-in 2-tone texture when none is bound.
 	enum
@@ -2270,6 +2284,10 @@ private:
 		VkDescriptorSet descSetSrgb = VK_NULL_HANDLE;
 		// NameManagedTexture's name, kept only while debug labels are on.
 		std::string debugName;
+		// A deferred render target without storage yet: view and descriptor
+		// sets are borrowed from m_unrenderedTargetHandle (not owned), and
+		// image, depth and framebuffers are null.
+		bool storagePending = false;
 	};
 	std::vector<ManagedTexture> m_managedTextures;
 	uint64_t m_nextTextureContentRevision = 1;
@@ -2336,6 +2354,14 @@ private:
 	void ReleaseManagedTextureObjects( ManagedTexture &t );
 	// Stores a fully built managed texture in a free handle.
 	int StoreManagedTexture( const ManagedTexture &texture );
+	// Deferred render targets (CreateRenderTargetTexture's deferStorage).
+	bool IsStoragePending( int handle ) const
+	{
+		return handle >= 0 && handle < static_cast<int>( m_managedTextures.size() ) &&
+		       m_managedTextures[static_cast<size_t>( handle )].storagePending;
+	}
+	bool MaterializeRenderTarget( int handle, std::string *outError );
+	void EnsureRenderTargetStorage( int handle );
 	void RetireCompletedTextures();
 	// The managed texture currently bound (BindManagedTexture); captured per draw.
 	int m_dynBoundTexHandle = -1;

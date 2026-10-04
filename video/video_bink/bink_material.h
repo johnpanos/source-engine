@@ -76,11 +76,11 @@ class CBinkMaterial : public IVideoMaterial
 		CBinkMaterial();
 		~CBinkMaterial();
 		
-		static void TestCachedFrames( const char *filename, const char *invalidFilename );
 
 		static const int			MAX_FILENAME_LEN = 255;
 		static const int			MAX_MATERIAL_NAME_LEN = 255;	
 		static const int			TEXTURE_SIZE_ALIGNMENT = 8;
+		static void TestCachedFrames( const char *filename, const char *invalidFilename );
 
 		// Initializes, shuts down the material
 		bool						Init( const char *pMaterialName, const char *pFileName, VideoPlaybackFlags_t flags );
@@ -147,8 +147,6 @@ class CBinkMaterial : public IVideoMaterial
 	    void OpenMovie( const char *theMovieFileName );
 	    void CloseFile();
 	    bool DecodeNextFrame();
-	    bool PreloadFrames( const char *pTextureName );
-	    void SelectCachedFrame( int frame );
 	    bool Rewind( double flTime );
 
 	    // Initializes, shuts down the procedural texture
@@ -164,9 +162,9 @@ class CBinkMaterial : public IVideoMaterial
 	    VideoResult_t m_LastResult;
 
 	    CMaterialReference m_Material; // Ref to Material used for rendering the video frame
-	    std::vector<CTextureReference> m_CachedFrames;
-	    int m_NextCachedFrame = 0;
 	    int m_CurrentFrame = -1;
+	    double m_DecodedFrameTime = -1; // presentation time of the last decoded frame, or -1
+	    double m_SeekTarget = -1;       // seconds still to decode forward to after a seek, or -1
 	    CTextureReference
 	        m_Texture; // Ref to the renderable texture which contains the most recent video frame (in a sub-rect)
 

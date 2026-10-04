@@ -68,9 +68,9 @@ def main(argv=None):
                    re.findall(r"VIDEO_CACHE_PROBE checks=(\d+) failures=(\d+)", log)]
         evidence["native_records"] = records
         if checks.equal(len(records), 2, "both native probes executed"):
-            checks.check(records[0][0] >= 25, "positive operation count")
+            checks.check(records[0][0] >= 22, "positive operation count")
             checks.equal(records[0][1], 0, "positive operation sequence")
-            checks.check(records[1][0] >= 25, "negative operation count")
+            checks.check(records[1][0] >= 22, "negative operation count")
             checks.check(records[1][1] > 0, "wrong green rejected")
         borrowed = re.findall(r"VGUI_TEXTURE_BORROW_PROBE checks=(\d+) failures=(\d+)", log)
         evidence["vgui_records"] = borrowed
