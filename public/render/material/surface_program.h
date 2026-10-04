@@ -258,8 +258,9 @@ struct SurfaceScreenInputs
 	// (kSurfaceWater, binding 12, filtered and clamped).
 	device::TextureId planarReflection;
 	device::TextureDesc planarReflectionDesc;
-	// The opaque scene in linear light, before output scale, fog and encoding.
-	// A transmitting PBR point samples it at its fragment position.
+	// Snapshot of the opaque attachment, after its output scale and fog. sRGB
+	// images decode while sampling; manually encoded unorm images are decoded
+	// by the surface's frame setting. Transmission must not expose/fog it again.
 	device::TextureId sceneColor;
 	device::TextureDesc sceneColorDesc;
 };

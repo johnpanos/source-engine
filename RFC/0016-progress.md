@@ -9123,3 +9123,60 @@ open. All implementation is on `subsystem-refactor`.
 Frozen-path: shaderapivulkan changes are material/cohort handoff and texture-frame
 defect plumbing into rendercore, explicitly requested for game material support;
 the material math and blend remain owned by render.material/render.device.
+
+
+### Intro4 strict desktop material verification (2026-10-03)
+
+The requested actual desktop game test exposed a defect that the offscreen game
+run did not: HDR presentation disabled the swapchain screenshot capability, and
+that flag incorrectly disabled scene-color capture on the engine-owned RGBA16F
+back buffers. They are created with transfer-source usage independently of the
+presented swapchain. The frontend now imports their actual copy capability.
+The first strict desktop run failed with three claimed views in
+`quality-results/intro4-rendercore-completion/strict-visible-materials-game/`;
+the repeated run in `strict-visible-materials-fixed-game/` passed with zero
+claimed-view failures. Its console explicitly reports `r_core_world_strict = 1`,
+`r_core_world = 1` and `r_core_dynamic_draws = 0`.
+
+The native Vulkan Wayland game used the AMD Radeon 8060S, HDR Rec.2020/PQ
+presentation and FSR from 1024x768 to the desktop's 1536x1152 pixels. Actual game
+captures cover cracked-glass transmission, blue/orange/blue indicator frames,
+and the Ratman modulate decal, with draw-disable controls. The pixel checker
+now scales its fixed regions to the actual 4:3 capture without resampling the
+image, requires strict/default-cohort startup settings, and rejects any logged
+strict-mode disable. Both the original 1024x768 and desktop 1536x1152 captures
+pass 11 image checks, including four seeded missing-effect controls. A separate
+strict-off negative fixture is rejected in `strict-off-negative.json`.
+SDR game screenshot conversion does not qualify presented PQ appearance.
+
+The core surface owner also now documents and respects the actual captured
+attachment convention: exposure/fog were applied before capture. Refract and
+PBR transmission decode manually encoded UNORM inputs when required, compose
+with the completed background without exposing/fogging it twice, and encode the
+result once. PBR surface fog uses the complementary transmission weight. Native
+GPU regression checks pass 101 posed-model and 39 map-terms cases, with zero
+validation messages, in `strict-desktop-posed-model.log` and
+`strict-desktop-map-terms.log`. They cover quarter/fourfold exposure and active
+fog, including an independent constant-fog energy expectation. The product
+build succeeds in `strict-desktop-final-product-build.log`; the renderer binary
+hashes match those in the successful desktop run.
+
+A separate interactive instance is left at the cracked glass, preserving the
+user's existing game. `live-review/launch.json` records its process/command;
+`live-review/glass.png` is its actual capture. Its live queried strict mode is
+1, with 7,749 views drawn and zero claimed-view failures at capture. The tested
+22 products were installed to `run/runtime-p2-fsr` using atomic file replacement
+so existing process mappings stay intact (`strict-desktop-runtime-install.json`).
+
+This is bounded material evidence. Eight census proxy materials and the runtime
+`particle/particle_noisesphere` depth-blend refusal still remain; cutout shadow
+coverage and complete material/performance acceptance are open. R91/R96 are not
+qualified by this result. All changes are on `subsystem-refactor`. The pinned
+formatter passes the staged edited regions in four eligible files
+(`strict-desktop-owned-style.log`). Concurrent world-transition edits are
+preserved separately and currently fail the whole-working-tree style check.
+Full archlint still reports the pre-existing CAP002 `charconv` include in
+`public/gameui/graphics_settings_service.h`, with zero new/stale occurrences.
+
+Frozen-path: shaderapivulkan changes fix the game scene-image import capability
+used by rendercore glass; material math remains owned by render.material.

@@ -193,7 +193,8 @@ layout( set = 1, binding = 11 ) uniform sampler shadowComparisonSampler;
 // The view's planar reflection (the water point's reflection target).
 layout( set = 1, binding = 12 ) uniform texture2D reflectionTexture;
 layout( set = 1, binding = 13 ) uniform sampler reflectionSampler;
-// Linear scene color behind thin transmission, before output transforms.
+// Captured scene behind transmission. The attachment already contains the
+// opaque surfaces' exposure and fog; unorm outputs may also be encoded.
 layout( set = 1, binding = 14 ) uniform texture2D sceneColorTexture;
 layout( set = 1, binding = 15 ) uniform sampler sceneColorSampler;
 
@@ -428,7 +429,7 @@ vec4 DebugOutput( DebugInputs inputs )
 // Every point's output: the tone-mapping scale, then the view's fog (its
 // color is scaled too): range fog squares its factor; a fully opaque surface
 // under height fog writes the factor to alpha. Then the encoding.
-vec4 Output( vec3 lit, float alpha )
+vec4 LinearOutput( vec3 lit, float alpha )
 {
 	lit *= frame.light.y;
 	const float fogType = frame.fogColor.w;
@@ -439,9 +440,24 @@ vec4 Output( vec3 lit, float alpha )
 			alpha = factor;
 		lit = mix( lit, frame.fogColor.rgb, fogType < 0.5 ? factor * factor : factor );
 	}
-	if ( frame.light.z != 0.0 )
-		lit = LinearToSrgb( lit );
 	return vec4( lit, alpha );
+}
+
+vec4 EncodeOutput( vec4 color )
+{
+	if ( frame.light.z != 0.0 )
+		color.rgb = LinearToSrgb( color.rgb );
+	return color;
+}
+
+vec4 Output( vec3 lit, float alpha )
+{
+	return EncodeOutput( LinearOutput( lit, alpha ) );
+}
+
+vec3 SceneLinearColor( vec3 color )
+{
+	return frame.light.z != 0.0 ? OutputLinearFromSrgb( color ) : color;
 }
 
 // render.pass.lights FroxelAt: the froxel of a pixel position (x right, y
@@ -568,7 +584,8 @@ vec3 RefractSceneColor( vec2 uv )
 	const vec2 viewportSize = 1.0 / frame.viewport.zw;
 	const vec2 pixel = clamp( frame.viewport.xy + uv * viewportSize,
 	    frame.viewport.xy + 0.5, frame.viewport.xy + viewportSize - 0.5 );
-	return texture( sampler2D( sceneColorTexture, sceneColorSampler ), pixel / extent ).rgb;
+	return SceneLinearColor(
+	    texture( sampler2D( sceneColorTexture, sceneColorSampler ), pixel / extent ).rgb );
 }
 
 void RefractSurface()
@@ -594,6 +611,11 @@ void RefractSurface()
 		fade = pow( clamp( dot( eye, smoothNormal ), 0.0, 1.0 ), 3.0 );
 	vec3 result = mix( RefractSceneColor( unwarped ),
 	    behind * material.tint.rgb, fade );
+	const float alpha = material.meshModes.y > 0.5 ? 1.0 : bump.a;
+	// Authored images contain material radiance. A scene snapshot is already
+	// exposed and fogged, so it must not receive those transforms a second time.
+	if ( material.meshModes.x > 0.5 )
+		result = LinearOutput( result, alpha ).rgb;
 	if ( material.meshModes.y > 0.5 && DebugTermOn( kDebugTermIbl ) )
 	{
 		const vec3 normal = normalize( normalize( tangentS ) * mapped.x +
@@ -616,7 +638,7 @@ void RefractSurface()
 		coating = clamp( mix( grey, coating, material.envSaturation.rgb ), 0.0, 1.0 );
 		const vec3 reflectionWeight = coating *
 		    PbrFresnelSchlick( 0.04, clamp( abs( dot( normal, eye ) ), 0.0, 1.0 ) );
-		result = mix( result, radiance, reflectionWeight );
+		result = mix( result, LinearOutput( radiance, alpha ).rgb, reflectionWeight );
 	}
 	if ( DebugViewActive() )
 	{
@@ -628,7 +650,7 @@ void RefractSurface()
 		outColor = DebugOutput( inputs );
 		return;
 	}
-	outColor = Output( result, material.meshModes.y > 0.5 ? 1.0 : bump.a );
+	outColor = EncodeOutput( vec4( result, alpha ) );
 }
 
 // The pbr point. Base and emission are sampled as sRGB, MRAO and the normal
@@ -1365,13 +1387,16 @@ void PbrSurface( out float coverage )
 		emission += base;
 		color += base;
 	}
+	vec3 transmittedScene = vec3( 0.0 );
+	vec3 transmittedWeight = vec3( 0.0 );
 	if ( Term( kTransmission ) && !furnace )
 	{
 		const ivec2 texel = clamp( ivec2( gl_FragCoord.xy ), ivec2( 0 ),
 		    textureSize( sampler2D( sceneColorTexture, sceneColorSampler ), 0 ) - 1 );
-		const vec3 behind = texelFetch(
-		    sampler2D( sceneColorTexture, sceneColorSampler ), texel, 0 ).rgb;
-		color += behind * baseDiffuse * transmitted;
+		const vec3 behind = SceneLinearColor( texelFetch(
+		    sampler2D( sceneColorTexture, sceneColorSampler ), texel, 0 ).rgb );
+		transmittedWeight = baseDiffuse * transmitted;
+		transmittedScene = behind * transmittedWeight;
 	}
 
 	if ( DebugViewActive() )
@@ -1411,7 +1436,7 @@ void PbrSurface( out float coverage )
 			inputs.emission = emission;
 		}
 		inputs.uv0 = uv;
-		inputs.final = color;
+		inputs.final = color + transmittedScene;
 		outColor = DebugOutput( inputs );
 		return;
 	}
@@ -1421,11 +1446,24 @@ void PbrSurface( out float coverage )
 		outColor = vec4( splitSum, 0.0, 1.0 );
 		return;
 	}
-	outColor = Output( color,
+	vec4 composed = LinearOutput( color,
 	    Term( kTransmission ) ? 1.0
 	    : ( Term( kSelfIllum ) || material.meshControls.x > 0.5 ) && material.state.x > 0.5
 	        ? 1.0
 	        : baseSample.a * material.tint.a );
+	// The background was exposed and fogged before capture. Fog on the
+	// surface's remaining energy uses the complementary transmission weight.
+	if ( Term( kTransmission ) && !furnace )
+	{
+		if ( frame.fogColor.w > -0.5 && material.surfaceControls.x == 0.0 )
+		{
+			const float factor = FogFactor();
+			composed.rgb -= frame.fogColor.rgb * transmittedWeight *
+			    ( frame.fogColor.w < 0.5 ? factor * factor : factor );
+		}
+		composed.rgb += transmittedScene;
+	}
+	outColor = EncodeOutput( composed );
 }
 
 // The vertexlit point: the vertexlit_and_unlit_generic port's DIFFUSELIGHTING

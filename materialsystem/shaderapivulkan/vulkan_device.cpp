@@ -7188,12 +7188,14 @@ render::legacy::CorePassTarget CVulkanContext::CorePassTargetFor( int target )
 	m_coreColorSrgb.resize( m_swapImages.size() );
 	m_coreDepth.resize( m_swapImages.size() );
 	const uint32_t i = m_acquiredImage;
-	out.colorCopySource = m_presentCapturable;
-	import( m_swapImages[i], out.colorFormat, ResourceUsage::kColorAttachment, m_presentCapturable,
-	    "back buffer", &m_coreColor[i] );
+	// These are engine-owned scene back buffers, created with TRANSFER_SRC.
+	// HDR swapchain readback support is a separate presentation capability.
+	out.colorCopySource = true;
+	import( m_swapImages[i], out.colorFormat, ResourceUsage::kColorAttachment, true, "back buffer",
+	    &m_coreColor[i] );
 	if ( m_srgbAttachments )
 		import( m_swapImages[i], SrgbPortFormat( out.colorFormat ), ResourceUsage::kColorAttachment,
-		    m_presentCapturable, "back buffer (sRGB)", &m_coreColorSrgb[i] );
+		    true, "back buffer (sRGB)", &m_coreColorSrgb[i] );
 	out.colorSrgb = m_coreColorSrgb[i];
 	if ( i < m_depthImages.size() )
 		import( m_depthImages[i], out.depthFormat, ResourceUsage::kDepthWrite, false, "depth",

@@ -5,7 +5,8 @@ Use --commands to print the portal_boot console-command list. Run it with
 host_framerate 0.015, r_core_world 1, r_core_world_strict 1,
 r_core_dynamic_draws 0 and FSR quality at 1024x768. Then pass its output directory
 to --capture. These checks certify these visible behaviors, not all materials,
-glass optics, complete frame performance or platform support.
+glass optics, complete frame performance or platform support. Desktop HiDPI
+captures use regions scaled to the actual pixels; images are never downsampled.
 """
 import argparse
 import copy
@@ -49,27 +50,37 @@ def commands():
     return result
 
 
+def region(image, x0, y0, x1, y1):
+    height, width = image.shape[:2]
+    return image[round(y0 * height / 768):round(y1 * height / 768),
+                 round(x0 * width / 1024):round(x1 * width / 1024)]
+
+
 def inspect(images):
-    if len(images) < 8 or any(image.shape != (768, 1024, 3) for image in images):
-        raise ValueError('eight complete 1024x768 RGB captures are required')
+    if len(images) < 8:
+        raise ValueError('eight complete RGB captures are required')
+    shape = images[0].shape
+    if (len(shape) != 3 or shape[2] != 3 or shape[0] < 768 or shape[1] < 1024 or
+            shape[0] * 4 != shape[1] * 3 or any(image.shape != shape for image in images)):
+        raise ValueError('complete captures of the fixed 4:3 viewport are required')
     checks = []
 
     def check(name, passed, value):
         checks.append(dict(name=name, passed=bool(passed), value=float(value)))
 
     # The old FSR error transmitted the bright neutral core-only hatch here.
-    glass = images[0][145:485, 680:770]
+    glass = region(images[0], 680, 145, 770, 485)
     hatch = np.mean((glass.min(axis=2) > .4) & (np.ptp(glass, axis=2) < .08))
     check('glass.no-unrendered-attachment-hatch', hatch < .01, hatch)
     # Turning the transmitting renderables off must change the pane. This
     # prevents a missing Refract draw from passing only the no-hatch check.
-    difference = np.max(np.abs(images[0][165:300, 600:730] -
-                               images[1][165:300, 600:730]), axis=2)
+    difference = np.max(np.abs(region(images[0], 600, 165, 730, 300) -
+                               region(images[1], 600, 165, 730, 300)), axis=2)
     changed = np.mean(difference > .04)
     check('glass.transmitting-cohort-reaches-game', changed > .015, changed)
 
     for index in (2, 3, 4, 5):
-        strip = images[index][440:745, 495:530]
+        strip = region(images[index], 495, 440, 530, 745)
         red, green, blue = np.moveaxis(strip, 2, 0)
         cyan = np.mean((green > red + .1) & (blue > red + .15) & (blue > .3))
         orange = np.mean((red > blue + .2) & (green > blue + .1) & (red > .35))
@@ -80,8 +91,8 @@ def inspect(images):
         else:
             check('indicator.overlay-off-control', cyan < .01 and orange < .01,
                   max(cyan, orange))
-    mural_delta = np.max(np.abs(images[6][445:535, 382:640] -
-                                images[7][445:535, 382:640]), axis=2)
+    mural_delta = np.max(np.abs(region(images[6], 382, 445, 640, 535) -
+                                region(images[7], 382, 445, 640, 535)), axis=2)
     changed = np.mean(mural_delta > .04)
     check('decal.modulate-mural-reaches-game', changed > .2, changed)
     return checks
@@ -90,7 +101,7 @@ def inspect(images):
 def sensitivity(images):
     checks = []
     for name, mutation, expected in (
-            ('hatch', lambda data: data[0].__setitem__((slice(145, 485), slice(680, 770)), .7),
+            ('hatch', lambda data: region(data[0], 680, 145, 770, 485).__setitem__(slice(None), .7),
              'glass.no-unrendered-attachment-hatch'),
             ('missing-transmission', lambda data: data.__setitem__(0, data[1].copy()),
              'glass.transmitting-cohort-reaches-game'),
@@ -123,6 +134,13 @@ def main():
         evidence = json.loads((args.capture / 'evidence.json').read_text())
         if evidence['status'] != 'pass' or evidence['map'] != 'sp_a1_intro4_relit':
             raise ValueError('the required Intro4 game boot did not pass')
+        startup = args.capture / 'runtime/portal2/cfg/portal_boot_startup.cfg'
+        settings = dict(line.split(None, 1) for line in startup.read_text().splitlines()
+                        if line.strip() and not line.lstrip().startswith('//'))
+        if any(settings.get(name) != value for name, value in (
+                ('r_core_world', '1'), ('r_core_world_strict', '1'),
+                ('r_core_dynamic_draws', '0'), ('host_framerate', '0.015'))):
+            raise ValueError('the capture must run the default core cohorts in strict mode')
         # portal_boot appends its final capture, diagnostics and shutdown.
         if evidence['console_script']['commands'][:len(commands())] != commands():
             raise ValueError('the capture command sequence does not match this fixture')
@@ -134,6 +152,9 @@ def main():
             report['inputs'].append(dict(path=str(path),
                                          sha256=hashlib.sha256(path.read_bytes()).hexdigest()))
         log = (args.capture / 'runtime/portal2/console.log').read_text(errors='replace')
+        strict = re.findall(r'"r_core_world_strict" = "([^\"]+)"', log)
+        if strict and any(value != '1' for value in strict):
+            raise ValueError('the game reported strict mode disabled')
         failures = re.findall(r'views queued \d+ drawn \d+ failed (\d+)', log)
         if not failures or any(int(value) for value in failures):
             raise ValueError('missing core statistics or claimed-view failure')

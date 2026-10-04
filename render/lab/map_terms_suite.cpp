@@ -862,6 +862,58 @@ std::optional<std::string> TransmissionChecks( Lab &lab, Results &results )
 	    std::to_string( iorChanged ) + " channels increased" );
 	results.That( off.rgba == disabled.rgba && off.rgba != full.rgba,
 	    "transmission.zero-and-term-off-are-neutral" );
+	// A captured attachment already has exposure and fog applied. Changing
+	// the pane's exposure must preserve it; fog adds only the untransmitted
+	// share of the surface's fog color. Use a constant half-depth fog here
+	// so its squared range factor is independently known to be one quarter.
+	for ( float exposure : { 0.25f, 4.0f } )
+	{
+		Scene exposed = scene( 1.0f, true, 1.5f );
+		exposed.frame.light[1] = exposure;
+		CanvasImage image;
+		if ( auto why = Render( lab, exposed, image ) )
+			return why;
+		results.That( image.rgba == full.rgba,
+		    "transmission.captured-scene-exposure-once-" + std::to_string( exposure ) );
+	}
+	Scene fogged = scene( 1.0f, true, 1.5f );
+	fogged.frame.light[1] = 4.0f;
+	fogged.frame.fogColor[0] = 0.2f;
+	fogged.frame.fogColor[1] = 0.3f;
+	fogged.frame.fogColor[2] = 0.1f;
+	fogged.frame.fogColor[3] = 0.0f;
+	fogged.frame.fogParams[0] = -0.5f;
+	fogged.frame.fogParams[2] = 1.0f;
+	fogged.frame.fogParams[3] = 0.0f;
+	CanvasImage fogImage;
+	if ( auto why = Render( lab, fogged, fogImage ) )
+		return why;
+	std::size_t fogFailed = 0;
+	for ( std::uint32_t y = 0; y < kSize; ++y )
+		for ( std::uint32_t x = 0; x < kSize; ++x )
+		{
+			const auto position = Hit( view, x, y, 0.5f, low, high );
+			if ( !position )
+				continue;
+			const float3 toEye = view.eye - *position;
+			const float dielectric =
+			    1.0f - pbr::SpecularDirectionalAlbedo(
+			               0.04f, pbr::SampleSplitSum( toEye.z / math::Length( toEye ), 0.55f ) );
+			const float background[3] = {
+			    float( x ) / float( kSize - 1 ), float( y ) / float( kSize - 1 ), 0.25f };
+			const float tint[3] = { 0.8f, 0.6f, 0.4f };
+			for ( int k = 0; k < 3; ++k )
+			{
+				const float weight = tint[k] * dielectric;
+				const float expected =
+				    background[k] * weight + fogged.frame.fogColor[k] * 0.25f * ( 1.0f - weight );
+				if ( std::abs( fogImage.At( x, y )[k] - expected ) > 0.015f )
+					++fogFailed;
+			}
+		}
+	results.That( judged > kSize * kSize / 8 && fogFailed == 0,
+	    "transmission.captured-scene-fog-once-and-surface-complement",
+	    std::to_string( fogFailed ) + " channel mismatches" );
 	return std::nullopt;
 }
 

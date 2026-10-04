@@ -468,15 +468,15 @@ std::optional<std::string> RunChecks(
 	if ( !cutoutTexture )
 		return "the model depth cutout fixture could not be staged";
 	empty.cutoutFixture = cutoutTexture.Value().texture;
-	auto render =
-	    [&]( WorldPass &active, float offset, bool lit, std::uint64_t frame,
-	        const ClearColor &clear, CanvasImage &image, bool twoLayers = false,
-	        RenderCoreDrawPhase phase = RenderCoreDrawPhase::kAll, bool copySource = true,
-	        WorldPass *under = nullptr, const WorldMaterial *dynamicMaterial = nullptr,
-	        bool invalidDynamicIndex = false, float underOffset = 0.1f, bool depthPrepass = false,
-	        bool staticModels = false, bool clipLeft = false, bool splitLayers = false,
-	        bool opaqueBatch = false, bool worldSurface = false, bool equalDepthSkins = false,
-	        std::optional<Viewport> viewport = std::nullopt ) -> std::optional<std::string>
+	auto render = [&]( WorldPass &active, float offset, bool lit, std::uint64_t frame,
+	                  const ClearColor &clear, CanvasImage &image, bool twoLayers = false,
+	                  RenderCoreDrawPhase phase = RenderCoreDrawPhase::kAll, bool copySource = true,
+	                  WorldPass *under = nullptr, const WorldMaterial *dynamicMaterial = nullptr,
+	                  bool invalidDynamicIndex = false, float underOffset = 0.1f,
+	                  bool depthPrepass = false, bool staticModels = false, bool clipLeft = false,
+	                  bool splitLayers = false, bool opaqueBatch = false, bool worldSurface = false,
+	                  bool equalDepthSkins = false, std::optional<Viewport> viewport = std::nullopt,
+	                  float outputScale = 1.0f, bool fog = false ) -> std::optional<std::string>
 	{
 		WorldView view;
 		for ( int i = 0; i < 4; ++i )
@@ -591,6 +591,16 @@ std::optional<std::string> RunChecks(
 			target.width = target.height = kSize;
 			target.textures = &empty;
 			target.frame = frame;
+			target.outputScale = outputScale;
+			if ( fog )
+			{
+				target.fogType = 0;
+				target.fogColor[0] = 0.1f;
+				target.fogColor[1] = 0.2f;
+				target.fogColor[2] = 0.3f;
+				target.fogParams[1] = 2.0f;
+				target.fogParams[3] = 0.5f;
+			}
 			target.depthPrepass = depthPrepass;
 			if ( clipLeft )
 				target.clipPlanes[0][0] = 1.0f;
@@ -990,6 +1000,24 @@ std::optional<std::string> RunChecks(
 		                    : "posed-model.refract-offset-viewport-samples-attachment-pixels",
 		    "transmitted red " + std::to_string( pixel[0] ) );
 	}
+	// The captured background already includes exposure and fog. A clear
+	// transmitting pane must preserve that attachment through either change.
+	for ( float exposure : { 0.25f, 4.0f } )
+		for ( bool fog : { false, true } )
+		{
+			CanvasImage preserved;
+			if ( auto why = render( zeroWarp, 0, false, 23, background, preserved, false,
+			         RenderCoreDrawPhase::kAll, true, nullptr, nullptr, false, 0.1f, false, false,
+			         false, false, false, false, false, std::nullopt, exposure, fog ) )
+				return why;
+			const auto pixel = preserved.At( 32, 32 );
+			results.That( zeroWarp.Failures() == 0 && std::abs( pixel[0] - background.r ) < .002f &&
+			                  std::abs( pixel[1] - background.g ) < .002f &&
+			                  std::abs( pixel[2] - background.b ) < .002f,
+			    "posed-model.refract-captured-scene-output-once-" + std::to_string( exposure ) +
+			        ( fog ? "-fog" : "-clear" ),
+			    "transmitted red " + std::to_string( pixel[0] ) );
+		}
 	CanvasImage singlePane, twoPanes;
 	if ( std::optional<std::string> why = render( glass, 0.0f, true, 6, black, singlePane ) )
 		return why;
