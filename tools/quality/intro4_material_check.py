@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Pixel checks for the fixed Intro4 glass, indicator and decal game captures.
+"""Pixel checks for fixed Intro4 materials and gameplay doorway captures.
 
 Use --commands to print the portal_boot console-command list. Run it with
 host_framerate 0.015, r_core_world 1, r_core_world_strict 1,
@@ -7,6 +7,7 @@ r_core_dynamic_draws 0 and FSR quality at 1024x768. Then pass its output directo
 to --capture. These checks certify these visible behaviors, not all materials,
 glass optics, complete frame performance or platform support. Desktop HiDPI
 captures use regions scaled to the actual pixels; images are never downsampled.
+Use --scene doors for the closed/open door and independent indicator-box cycle.
 """
 import argparse
 import copy
@@ -97,13 +98,79 @@ def region(image, x0, y0, x1, y1):
                  round(x0 * width / 1024):round(x1 * width / 1024)]
 
 
-def inspect(images):
-    if len(images) < 8:
-        raise ValueError('eight complete RGB captures are required')
+def validate_images(images, required):
+    if len(images) < required:
+        raise ValueError(f'{required} complete RGB captures are required')
     shape = images[0].shape
     if (len(shape) != 3 or shape[2] != 3 or shape[0] < 768 or shape[1] < 1024 or
             shape[0] * 4 != shape[1] * 3 or any(image.shape != shape for image in images)):
         raise ValueError('complete captures of the fixed 4:3 viewport are required')
+
+
+def inspect_doors(images):
+    validate_images(images, 9)
+    checks = []
+
+    def check(name, passed, value):
+        checks.append(dict(name=name, passed=bool(passed), value=float(value)))
+
+    def box(index, bounds, orange, name):
+        panel = region(images[index], *bounds)
+        red, green, blue = np.moveaxis(panel, 2, 0)
+        cyan = np.mean((green > red + .1) & (blue > red + .15) & (blue > .3))
+        amber = np.mean((red > blue + .2) & (green > blue + .1) & (red > .35))
+        glyph = np.mean(panel.max(axis=2) < .06)
+        hatch = np.mean((panel.min(axis=2) > .4) & (np.ptp(panel, axis=2) < .08))
+        selected, other = (amber, cyan) if orange else (cyan, amber)
+        check(name, selected > .4 and other < .01 and glyph > .1 and hatch < .01, selected)
+
+    for i in range(5):
+        box(i, (40, 153, 142, 254), i == 2, f'box.single.frame-{i}')
+    for i, left, right in ((5, False, True), (6, True, False), (7, False, False)):
+        box(i, (192, 230, 259, 294), left, f'box.paired.left-{i}')
+        box(i, (767, 230, 835, 294), right, f'box.paired.right-{i}')
+
+    for i in (1, 2, 3):
+        floor = region(images[i], 445, 515, 575, 565)
+        visible = np.mean(floor.max(axis=2) > .08)
+        check(f'door.single.room-visible-{i}', visible > .8 and floor.std() > .02, visible)
+    closed = np.abs(region(images[4], 445, 515, 575, 565) -
+                    region(images[0], 445, 515, 575, 565))
+    check('door.single.close-restores-door', closed.mean() < .01, closed.mean())
+    for i in (5, 6, 7):
+        floor = region(images[i], 465, 470, 555, 515)
+        visible = np.mean(floor.max(axis=2) > .02)
+        check(f'door.paired.room-visible-{i}', visible > .6 and floor.std() > .004, visible)
+    difference = np.max(np.abs(region(images[7], 465, 470, 555, 515) -
+                               region(images[8], 465, 470, 555, 515)), axis=2)
+    changed = np.mean(difference > .02)
+    check('door.paired.close-changes-opening', changed > .5, changed)
+    return checks
+
+
+def door_sensitivity(images):
+    checks = []
+    for name, index, bounds, value, expected in (
+            ('opaque-cover', 1, (445, 515, 575, 565), 0, 'door.single.room-visible-1'),
+            ('paired-opaque-cover', 5, (465, 470, 555, 515), 0, 'door.paired.room-visible-5'),
+            ('missing-left-box', 5, (192, 230, 259, 294), 0, 'box.paired.left-5'),
+            ('missing-right-box', 5, (767, 230, 835, 294), 0, 'box.paired.right-5'),
+            ('missing-glyph', 0, (40, 153, 142, 254), (.05, .5, .7), 'box.single.frame-0')):
+        mutated = copy.deepcopy(images)
+        region(mutated[index], *bounds)[:] = value
+        rejected = any(check['name'] == expected and not check['passed']
+                       for check in inspect_doors(mutated))
+        checks.append(dict(name=f'oracle.rejects-{name}', passed=rejected))
+    mutated = copy.deepcopy(images)
+    mutated[6] = mutated[5].copy()
+    rejected = any(check['name'] == 'box.paired.left-6' and not check['passed']
+                   for check in inspect_doors(mutated))
+    checks.append(dict(name='oracle.rejects-stale-shared-panel-frame', passed=rejected))
+    return checks
+
+
+def inspect(images):
+    validate_images(images, 8)
     checks = []
 
     def check(name, passed, value):
@@ -170,7 +237,8 @@ def main():
         return 0
     if not args.capture or not args.out:
         parser.error('--capture and --out are required')
-    report = dict(schema='intro4-material-pixels/v1', capture=str(args.capture.resolve()),
+    report = dict(schema='intro4-material-pixels/v1', scene=args.scene,
+                  capture=str(args.capture.resolve()),
                   checks=[], inputs=[], status='fail')
     try:
         evidence = json.loads((args.capture / 'evidence.json').read_text())
@@ -198,10 +266,15 @@ def main():
         strict = re.findall(r'"r_core_world_strict" = "([^\"]+)"', log)
         if strict and any(value != '1' for value in strict):
             raise ValueError('the game reported strict mode disabled')
+        dynamic = re.findall(r'"r_core_dynamic_draws" = "([^\"]+)"', log)
+        if ((dynamic and any(value != '0' for value in dynamic)) or
+                (args.scene == 'doors' and (not strict or not dynamic))):
+            raise ValueError('strict/default-cohort game queries are missing or incorrect')
         failures = re.findall(r'views queued \d+ drawn \d+ failed (\d+)', log)
         if not failures or any(int(value) for value in failures):
             raise ValueError('missing core statistics or claimed-view failure')
-        report['checks'] = inspect(images) + sensitivity(images)
+        report['checks'] = (inspect_doors(images) + door_sensitivity(images)
+                            if args.scene == 'doors' else inspect(images) + sensitivity(images))
         report['status'] = 'pass' if all(check['passed'] for check in report['checks']) else 'fail'
     except (KeyError, OSError, ValueError) as error:
         report['error'] = str(error)

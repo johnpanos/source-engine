@@ -9211,3 +9211,56 @@ include, with zero new and zero stale occurrences. Full logs are retained in
 `/tmp/source-engine-resolution-docs-vLTydh/`; reproduction uses the four installed
 architecture commands in [AGENTS.md](../AGENTS.md#working-protocol).
 This is documentation-only; no build configuration or runtime was changed.
+
+
+### Intro4 open doorways and indicator boxes (2026-10-03)
+
+The user's doorway image exposed two gaps missed by the floor-strip checks.
+`tools/toolsblack_noportal` is an authored opaque UnlitGeneric area-portal cover;
+gameplay changes its `$alpha` to zero when the door opens. The core unlit claim
+ignored that constant alpha when selecting blending, leaving an opaque black
+cover over the room. Unlit and lightmapped claims now include constant alpha
+modulation in blend selection, preserving the material's opaque behavior at one.
+The same cover becomes transparent at zero without writing destination alpha.
+
+The square indicator panels use `signage/signage_doorstate`, a proxy-driven
+LightmappedGeneric material. The game log refused its non-neutral `$frame`, and
+the default frontend cohort omitted moving lightmapped brush surfaces. The family
+now accepts the caller-owned selected frame; the frontend captures that brush
+cohort after proxies run, with its selected texture handle and native lightmap.
+No baked material or gameplay/entity behavior was changed.
+
+The native GPU posed-model suite passes 108 checks with zero validation messages
+in `quality-results/intro4-rendercore-completion/door-box-gpu.log`. Seven new
+checks prove zero/one gameplay fade for both families and the selected emissive
+panel's 0/1/0 images against independent texture/emission/lightmap expectations.
+World/material conformance passes 110/82 checks in `door-box-contracts.json`.
+The product build and edited-source style checks pass. Full archlint retains the
+existing CAP002 `charconv` include, with zero new/stale occurrences.
+
+Actual Wayland/HDR/FSR game captures in `door-box-paired-game/` cover both chamber
+doors closing/opening/closing and the two boxes receiving different frame indices,
+then swapping and returning. Strict mode is queried as 1, dynamic draws as 0;
+42,412 views were queued with zero claimed-view failures. The installed oracle
+passes 25 checks including six seeded opaque-cover, missing-box, missing-glyph
+and stale-shared-frame controls. Its working check is:
+
+```sh
+python3 tools/quality/intro4_material_check.py --scene doors \
+  --capture quality-results/intro4-rendercore-completion/door-box-paired-game \
+  --out quality-results/intro4-rendercore-completion/door-box-pixels.json
+```
+
+`--scene doors --commands` emits the complete capture sequence for `portal_boot`;
+`door-box-paired-command.json` retains the actual launch arguments and the boot
+retains binary hashes. The original material oracle still passes all 11 checks.
+The tested 22 products were installed atomically to `run/runtime-p2-fsr`; a new
+interactive strict instance is open at the paired doorway (`door-box-live-review/`).
+Existing processes were preserved and retain their loaded binaries until restart.
+
+This fixes the observed doorway cover and panel-frame behavior. Remaining effect,
+proxy, cutout-shadow, whole-map material coverage and performance gates remain
+open. No optimization timing or resolution-sweep claim is made.
+
+Frozen-path: shaderapivulkan only hands moving lightmapped brushes to the core;
+constant-alpha blending and selected-frame interpretation stay in render.material.
