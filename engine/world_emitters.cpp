@@ -323,9 +323,9 @@ std::vector<area_light::EmissiveTriangle> WorldEmitters_CoreGeometry( int modelI
 				        info->textureVecsTexelsPerWorldUnits[k][3] ) /
 				    ( k == 0 ? width : height );
 		}
-		Vector normal = MSurf_Plane( surface ).normal;
-		if ( MSurf_Flags( surface ) & SURFDRAW_PLANEBACK )
-			normal = -normal;
+		// VBSP already selects the oriented plane (planenum ^ 1) for a back face.
+		// SURFDRAW_PLANEBACK records that selection; applying it again emits into the wall.
+		const Vector &normal = MSurf_Plane( surface ).normal;
 		builder.Add(
 		    builder.nextGroup++, -1, material, normal, positions.Base(), uvs.Base(), count );
 	}

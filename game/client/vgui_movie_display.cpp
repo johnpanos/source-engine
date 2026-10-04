@@ -60,8 +60,8 @@ public:
 	virtual void OnTick( void );
 	virtual void Paint( void );
 
-	// Keep the existing movie source on compatibility receivers as well.
-	bool CoreOnly() const override { return false; }
+	// Core signage avoids CPU stand-ins; retained mode keeps its routing.
+	bool CoreOnly() const override { return EmissiveAreaLights_CoreSurfaceMode(); }
 
 private:
 	bool	IsActive( void );

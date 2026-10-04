@@ -9395,3 +9395,75 @@ Frozen-path: engine overlay/world code only supplies authored geometry, facing
 and live proxy-owner identity; the versioned area-light bridge and client root
 are core plumbing. VTF frame decoding fixes source image selection. Source math
 and receiver shading retain their render-core owners; no legacy shader is added.
+
+
+### Intro4 signage emission on core receivers (2026-10-04)
+
+User direction extends the indicator slice to other signage. Intro4's compiled
+material audit identifies seven signage VMTs (`signage-materials.json` under
+`quality-results/intro4-rendercore-completion/`): door-state boxes, floor/corner
+indicator lines, exit and arrow signs, and the box-hurt/box-dispenser floor
+pictograms. The first three retain the preceding indicator coverage. The new
+actual-game sequence isolates the other four materials, chamber information
+boards and elevator movie screens. The existing
+[surface-source policy](0016-render-core.md#surface-emission-sources-installed-indicator-slice-2026-10-04)
+owns the shared light-only scale and the new isolation control.
+
+Two defects were observed and corrected:
+
+- World panels published their previous scale-one light and allocated CPU
+  compatibility slots. They now apply the shared core source policy after
+  cached image integration, and progress/movie panels publish core-only light
+  when the core is selected. Their visible image and coatings retain the
+  existing panel owner. Retained rendering keeps its previous routing/scale.
+- Exit and arrow faces published light facing into the wall. Their compiled
+  face plane already points west; `SURFDRAW_PLANEBACK` records the selected
+  flipped plane. The new geometry bridge applied that flip again. World and
+  overlay ingress now use the already oriented plane. Sources remain one-sided.
+  Slotless light diagnostics now report facing, area and sidedness, matching
+  the existing slotted-source report.
+
+The first isolated captures showed virtually no exit/arrow receiver light;
+corrected captures show positive light on a metal-box receiver in front of each
+sign. Floor pictograms are partly covered by authored debris, which provides
+receivers for their emitted light. The chamber board lights its metal border;
+the elevator movies light the surrounding wall and floor. An exact-material
+light filter prevents an indicator or another bright source from masking a
+missing contribution. It is reset before the final live queries.
+
+Evidence in `quality-results/intro4-rendercore-completion/`:
+
+- `signage-contracts.json`: 45 area-source checks pass; both existing seeded
+  two-sided/power-loss suites detect their defects.
+- `signage-area-gpu.log`: 76 checks pass, zero validation messages.
+  `signage-panel-gpu.log`: 77 checks pass, zero validation messages.
+  `signage-panel-oracle-selftest.log`: 18 panel-judge checks pass.
+- `signage-product-build-final.log`: installed product build passes using the
+  existing FSR profile.
+- `signage-facing-fixed-game/` and `signage-facing-fixed-pixels.json`: the
+  isolated strict FSR game passes 52 signage checks after the facing correction.
+- `signage-strict-final-game/`: the final product loads Intro4 from the menu
+  in strict FSR-on (scale 0.5) and FSR-off (scale 0) modes. Both pass all 127
+  checks, with zero claimed-view failures. Its 52 new checks cover isolated
+  on/off/on receiver light, restoration, visible exit/arrow patches, source
+  facing and core-only routing. Fourteen missing-light/reversed-front/legacy-slot
+  seeded defects are rejected. The previous 75 glass/decal/door/rope/indicator
+  checks also pass. Requested viewport is 1024x768; desktop HiDPI captures are
+  retained at their native pixel dimensions.
+- `signage-runtime-install.json`: both mode receipts identify the same 22
+  products, atomically installed into `run/runtime-p2-fsr` after the paired
+  runs pass. Existing games retain their mapped binaries until restart.
+- `signage-style-final.log`: all eight edited C++ files pass. Architecture
+  baseline/inventory verification passes. `signage-arch-final.log` retains the
+  pre-existing CAP002 `charconv` occurrence with zero new/stale occurrences.
+
+The [installed runner guide](../tools/quality/render_profile.md#strict-intro4-material-captures)
+now includes `signage` in `all`, 127 checks per mode. This verifies the named
+Intro4 sources and receivers; R91/R96, advanced source inputs, animated studio
+source images, full occlusion/indirect transport and complete-frame performance
+remain open. These fixes are on `subsystem-refactor`.
+
+Frozen-path: engine changes correct authored geometry facing and expand light
+diagnostics; client changes are core source-policy/routing plumbing explicitly
+requested for signage. Existing panel image integration and render-core receiver
+shading retain their owners; no legacy shading implementation is added.

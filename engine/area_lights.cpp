@@ -356,10 +356,15 @@ public:
 			{
 				const AreaLightSlot &e = slotless[n];
 				const AreaLight &l = e.light;
-				Msg( "  slotless area %zu key %d at %.1f %.1f %.1f radiance %.3f %.3f %.3f reach "
+				float normal[3];
+				area_light::Normal( l.rect, normal );
+				Msg( "  slotless area %zu key %d at %.1f %.1f %.1f facing %.2f %.2f %.2f area "
+				     "%.1f %s radiance %.3f %.3f %.3f reach "
 				     "%.0f\n",
-				    n, e.key, l.rect.center[0], l.rect.center[1], l.rect.center[2], l.radiance[0],
-				    l.radiance[1], l.radiance[2], l.reach );
+				    n, e.key, l.rect.center[0], l.rect.center[1], l.rect.center[2], normal[0],
+				    normal[1], normal[2], area_light::Area( l.rect ),
+				    l.rect.twoSided ? "two-sided" : "one-sided", l.radiance[0], l.radiance[1],
+				    l.radiance[2], l.reach );
 			}
 		}
 	}

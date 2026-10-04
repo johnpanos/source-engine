@@ -10,6 +10,7 @@ captures use regions scaled to the actual pixels; images are never downsampled.
 Use --scene doors for the closed/open door and independent indicator-box cycle.
 Use --scene cables for the rope visibility cycle under captured scene lighting.
 Use --scene emissives for cyan/orange/off light on neighboring wall receivers.
+Use --scene signage for isolated signs, pictograms, chamber boards and movie screens.
 """
 import argparse
 import copy
@@ -85,14 +86,51 @@ def emissive_commands():
     return result
 
 
+def signage_commands():
+    result = ['cmd noclip', 'r_drawviewmodel 0',
+              'cmd ent_fire just_enough_door_for_the_job-testchamber_door Close',
+              'cmd ent_fire info_sign-info_panel SetActive',
+              'cmd ent_fire arrival_elevator-signs_on Trigger',
+              'cmd ent_create prop_dynamic_override targetname rc_sign_receiver '
+              'model models/props/metal_box.mdl',
+              'cmd ent_fire rc_sign_receiver RunScriptCode '
+              '"self.SetOrigin(Vector(208,192,88))"']
+    cases = (
+        ('signage/signage_exit', '120 192 110', '20 0 0'),
+        ('signage/signage_arrow', '120 192 110', '20 0 0'),
+        ('signage/signage_overlay_boxhurt', '-160 100 50', '35 45 0'),
+        ('signage/signage_overlay_boxdispenser', '-160 100 50', '35 45 0'),
+        ('@panels', '500 32 35', '-10 0 0'),
+        ('@panels', '-1560 80 -84', '15 -90 0'),
+    )
+    for index, (material, position, angles) in enumerate(cases):
+        if index == 2:
+            result.append('cmd ent_fire rc_sign_receiver Kill')
+        result.extend([f'cl_surface_core_emission_filter {material}',
+                       f'cmd setpos {position}', f'cmd setang {angles}'])
+        for emitting in (1, 0, 1):
+            result.extend([f'cl_surface_core_emission {emitting}', 'wait 300',
+                           f'echo RC_SIGNAGE_{index}_{emitting}'])
+            if emitting:
+                result.extend(['r_area_lights_report 1', 'wait 2'])
+            result.extend(['screenshot', 'wait 12'])
+    result.extend(['cl_surface_core_emission_filter ""', 'r_core_world_stats',
+                   'r_core_world_strict', 'r_core_dynamic_draws',
+                   'cl_surface_core_emission', 'cl_surface_core_emission_strength',
+                   'cl_surface_core_emission_filter'])
+    return result
+
+
 def commands(scene='materials'):
     if scene == 'all':
         result = ['wait 600', 'r_core_world_stats', 'r_temporal_scale']
-        for name in ('materials', 'doors', 'cables', 'emissives'):
+        for name in ('materials', 'doors', 'cables', 'emissives', 'signage'):
             sequence = commands(name)
             result.extend(sequence if name == 'materials' else sequence[1:])
         result.append('r_temporal_scale')
         return result
+    if scene == 'signage':
+        return signage_commands()
     if scene == 'doors':
         return door_commands()
     if scene == 'emissives':
@@ -203,6 +241,105 @@ def emissive_sensitivity(images):
             rejected = any(row['name'] == f'emissive.{name}.{expected}' and
                            not row['passed'] for row in rows)
             checks.append(dict(name=f'oracle.rejects-{name}-{defect}', passed=rejected))
+    return checks
+
+
+# Fixed receiver regions in the 1024x768 reference viewport. The first two
+# signs use a metal-box receiver placed in front of the authored source; the
+# remaining regions are authored debris, wall and panel-border receivers.
+SIGN_RECEIVERS = (
+    ('exit', (419, 508, 584, 559), .03, .6),
+    ('arrow', (419, 508, 584, 559), .03, .6),
+    ('boxhurt', (440, 465, 603, 529), .008, .1),
+    ('boxdispenser', (70, 30, 210, 130), .01, .7),
+    ('chamber-board', (211, 295, 227, 610), .04, .8),
+    ('elevator-movie', (180, 240, 330, 500), .04, .8),
+)
+
+
+def inspect_signage(images):
+    validate_images(images, 18)
+    checks = []
+    for index, (name, bounds, minimum, coverage) in enumerate(SIGN_RECEIVERS):
+        on, off, restored = [region(image, *bounds)
+                             for image in images[index * 3:index * 3 + 3]]
+        for frame, lit in ((0, on), (2, restored)):
+            gain = lit - off
+            mean = float(gain.mean())
+            changed = float((gain.max(axis=2) > .008).mean())
+            checks.extend((dict(name=f'signage.{name}.receiver-{frame}',
+                                passed=mean > minimum, value=mean),
+                           dict(name=f'signage.{name}.coverage-{frame}',
+                                passed=changed > coverage, value=changed)))
+        # Movie frames may change. Judge restoration on its surrounding wall,
+        # not on the film image. Static source receivers use the same bound.
+        delta = float(np.abs(restored - on).mean())
+        checks.append(dict(name=f'signage.{name}.return', passed=delta < .01, value=delta))
+    # White printed source patches remain visible during the light-only control.
+    for index, bounds in ((0, (560, 280, 590, 312)), (1, (440, 280, 470, 312))):
+        on, off, restored = [region(image, *bounds)
+                             for image in images[index * 3:index * 3 + 3]]
+        delta = max(float(np.abs(on - off).mean()), float(np.abs(restored - off).mean()))
+        checks.append(dict(name=f'signage.{SIGN_RECEIVERS[index][0]}.visible-source',
+                           passed=float(off.mean()) > .07 and delta < .01, value=delta))
+    return checks
+
+
+def signage_sensitivity(images):
+    checks = []
+    for index, (name, bounds, _, _) in enumerate(SIGN_RECEIVERS):
+        for frame in (0, 2):
+            mutated = list(images)
+            mutated[index * 3 + frame] = images[index * 3 + 1]
+            expected = f'signage.{name}.receiver-{frame}'
+            rejected = any(row['name'] == expected and not row['passed']
+                           for row in inspect_signage(mutated))
+            checks.append(dict(name=f'oracle.rejects-{name}-missing-light-{frame}',
+                               passed=rejected))
+    return checks
+
+
+def signage_reports(log):
+    checks = []
+    number = r'(-?\d+(?:\.\d+)?)'
+    light = re.compile(r'slotless area \d+ key \d+ at ' + ' '.join([number] * 3) +
+                       r' facing ' + ' '.join([number] * 3) + r' area ' + number +
+                       r' one-sided radiance ' + ' '.join([number] * 3))
+    # Independent gameplay-space fronts: west-facing wall signs/chamber board,
+    # upward floor glyphs and the north-facing arrival movie.
+    targets = (((256, 175.9, 144.2), (-1, 0, 0)),
+               ((256, 207.9, 144.1), (-1, 0, 0)),
+               ((-80.1, 176.1, .1), (0, 0, 1)),
+               ((-48.1, 176, .1), (0, 0, 1)),
+               ((657, 8.5, 104.2), (-1, 0, 0)),
+               ((-1560.1, -63.3, -32), (0, 1, 0)))
+    for index, (name, _, _, _) in enumerate(SIGN_RECEIVERS):
+        segments = re.findall(rf'RC_SIGNAGE_{index}_1\s*\n(.*?)(?=RC_SIGNAGE_|"cl_surface|views queued)',
+                              log, flags=re.S)
+        passed = len(segments) == 2
+        center, normal = targets[index]
+        for segment in segments:
+            summary = re.search(r'area lights generation \d+: (\d+) lit '
+                                r'\((\d+) without a slot\), (\d+) dropped', segment)
+            records = [list(map(float, row)) for row in light.findall(segment)]
+            facing = any(max(abs(row[k] - center[k]) for k in range(3)) < .25 and
+                         max(abs(row[k + 3] - normal[k]) for k in range(3)) < .02 and
+                         row[6] > 0 and min(row[7:10]) > .3 for row in records)
+            passed = bool(passed and summary and summary[1] == '0' and
+                          int(summary[2]) > 0 and summary[3] == '0' and facing)
+        checks.append(dict(name=f'signage.{name}.core-only-front', passed=passed))
+    return checks
+
+
+def signage_report_sensitivity(log):
+    checks = []
+    for name, bad in (
+            ('reversed-source-front', log.replace('facing -1.00 0.00 0.00',
+                                                  'facing 1.00 0.00 0.00')),
+            ('legacy-light-slots', re.sub(r': 0 lit \(\d+ without a slot\)',
+                                         ': 1 lit (0 without a slot)', log))):
+        checks.append(dict(name=f'oracle.rejects-{name}',
+                           passed=any(not row['passed'] for row in signage_reports(bad))))
     return checks
 
 
@@ -359,7 +496,7 @@ def sensitivity(images):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--commands', action='store_true')
-    parser.add_argument('--scene', choices=('materials', 'doors', 'cables', 'emissives', 'all'),
+    parser.add_argument('--scene', choices=('materials', 'doors', 'cables', 'emissives', 'signage', 'all'),
                         default='materials')
     parser.add_argument('--temporal-scale', type=float,
                         help='require this FSR scale in startup settings and live game queries')
@@ -402,14 +539,18 @@ def main():
             raise ValueError('the game reported strict mode disabled')
         dynamic = re.findall(r'"r_core_dynamic_draws" = "([^\"]+)"', log)
         if ((dynamic and any(value != '0' for value in dynamic)) or
-                (args.scene in ('doors', 'cables', 'emissives', 'all') and (not strict or not dynamic))):
+                (args.scene in ('doors', 'cables', 'emissives', 'signage', 'all') and (not strict or not dynamic))):
             raise ValueError('strict/default-cohort game queries are missing or incorrect')
-        if args.scene in ('emissives', 'all'):
+        if args.scene in ('emissives', 'signage', 'all'):
             strength = re.findall(r'"cl_surface_core_emission_strength" = "([^\"]+)"', log)
             emitting = re.findall(r'"cl_surface_core_emission" = "([^\"]+)"', log)
             if (not strength or any(value != '16' for value in strength) or
                     not emitting or any(value != '1' for value in emitting)):
                 raise ValueError('required emissive source policy queries are missing or incorrect')
+        if args.scene in ('signage', 'all'):
+            filters = re.findall(r'"cl_surface_core_emission_filter" = "([^\"]*)"', log)
+            if not filters or any(filters):
+                raise ValueError('the source isolation filter was not restored')
         if args.temporal_scale is not None:
             selected = args.temporal_scale
             queried = re.findall(r'"r_temporal_scale" = "([^\"]+)"', log)
@@ -424,11 +565,16 @@ def main():
         if not failures or any(int(value) for value in failures):
             raise ValueError('missing core statistics or claimed-view failure')
         if args.scene == 'all':
-            validate_images(images, 30)
+            validate_images(images, 48)
             report['checks'] = (inspect(images[:8]) + sensitivity(images[:8]) +
                                 inspect_doors(images[8:17]) + door_sensitivity(images[8:17]) +
                                 inspect_cables(images[17:20]) + cable_sensitivity(images[17:20]) +
-                                inspect_emissives(images[20:30]) + emissive_sensitivity(images[20:30]))
+                                inspect_emissives(images[20:30]) + emissive_sensitivity(images[20:30]) +
+                                inspect_signage(images[30:48]) + signage_sensitivity(images[30:48]) +
+                                signage_reports(log) + signage_report_sensitivity(log))
+        elif args.scene == 'signage':
+            report['checks'] = (inspect_signage(images) + signage_sensitivity(images) +
+                                signage_reports(log) + signage_report_sensitivity(log))
         elif args.scene == 'emissives':
             report['checks'] = inspect_emissives(images) + emissive_sensitivity(images)
         elif args.scene == 'doors':

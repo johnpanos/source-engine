@@ -76,6 +76,27 @@ static ConVar cl_surface_core_emission_strength( "cl_surface_core_emission_stren
     FCVAR_CHEAT, "Core self-illumination source radiance scale, matching the fizzler policy.", true,
     0.0f, false, 0.0f );
 
+static ConVar cl_surface_core_emission_filter( "cl_surface_core_emission_filter", "", FCVAR_CHEAT,
+    "Core source light control: empty includes all; exact material name or @panels isolates a "
+    "source cohort." );
+
+bool EmissiveAreaLights_CoreSurfaceMode()
+{
+	static ConVarRef coreWorld( "r_core_world" );
+	return coreWorld.IsValid() && coreWorld.GetInt() == 1;
+}
+
+float EmissiveAreaLights_SurfaceStrength( const char *material )
+{
+	if ( !EmissiveAreaLights_CoreSurfaceMode() )
+		return 1.0f;
+	const char *filter = cl_surface_core_emission_filter.GetString();
+	if ( !cl_surface_core_emission.GetBool() ||
+	     ( filter[0] && Q_stricmp( filter, material ? material : "@panels" ) != 0 ) )
+		return 0.0f;
+	return cl_surface_core_emission_strength.GetFloat();
+}
+
 namespace
 {
 
@@ -621,8 +642,7 @@ void CEmissiveAreaLights::PreRender()
 	std::vector<Candidate_t> candidates;
 	candidates.reserve( 64 );
 	int nBuilds = 0;
-	static ConVarRef coreWorld( "r_core_world" );
-	const bool core = coreWorld.IsValid() && coreWorld.GetInt() == 1;
+	const bool core = EmissiveAreaLights_CoreSurfaceMode();
 	const float coreStrength =
 	    cl_surface_core_emission.GetBool() ? cl_surface_core_emission_strength.GetFloat() : 0.0f;
 	if ( core && coreStrength > 0.0f && !m_Geometry )
@@ -690,8 +710,11 @@ void CEmissiveAreaLights::PreRender()
 			for ( int k = 0; k < 3; ++k )
 			{
 				candidate.m_Tint[k] = MAX( tint[k], 0.0f ) * render[k];
-				light.radiance[k] = emitter.m_Radiance[k] * candidate.m_Tint[k] *
-				                    ( core ? coreStrength * color.a / 255.0f : 1.0f );
+				light.radiance[k] =
+				    emitter.m_Radiance[k] * candidate.m_Tint[k] *
+				    ( core ? EmissiveAreaLights_SurfaceStrength( emitter.m_pMaterial->GetName() ) *
+				                 color.a / 255.0f
+				           : 1.0f );
 			}
 			matrix3x4_t poseToWorld;
 			PoseToWorld( pAnim, pHdr, emitter.m_nBone, false, poseToWorld );
@@ -742,6 +765,10 @@ void CEmissiveAreaLights::PreRender()
 		{
 			for ( auto &group : CoreSurfaces( *m_Geometry, modelIndex ) )
 			{
+				const float sourceStrength =
+				    EmissiveAreaLights_SurfaceStrength( group.material->GetName() );
+				if ( sourceStrength <= 0.0f )
+					continue;
 				C_BaseEntity *state = placement ? placement
 				                      : group.entity >= 0
 				                          ? ClientEntityList().GetEnt( group.entity )
@@ -762,7 +789,7 @@ void CEmissiveAreaLights::PreRender()
 				const float alpha = found && alphaVar ? alphaVar->GetFloatValue() : 1.0f;
 				const color32 color =
 				    state ? state->GetRenderColor() : color32{ 255, 255, 255, 255 };
-				const float scale = coreStrength * MAX( alpha, 0.0f ) * color.a / 255.0f;
+				const float scale = sourceStrength * MAX( alpha, 0.0f ) * color.a / 255.0f;
 				int bin = 0;
 				for ( const auto &emitter : CoreSurfaceFrame( group, frame ) )
 				{

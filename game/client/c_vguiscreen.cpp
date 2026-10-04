@@ -355,8 +355,9 @@ static ConVar cl_world_panel_report_exclude( "cl_world_panel_report_exclude",
 int C_VGuiScreen::EmissiveAreaLights( area_light::AreaLight *pLights, int *pKeys, int nMax )
 {
 	CVGuiScreenPanel *pScreenPanel = dynamic_cast<CVGuiScreenPanel *>( m_PanelWrapper.GetPanel() );
-	if ( nMax < 1 || !pScreenPanel || IsDormant() || !IsActive() || IsEffectActive( EF_NODRAW ) ||
-	     !RecordFrame() )
+	const float sourceStrength = EmissiveAreaLights_SurfaceStrength();
+	if ( sourceStrength <= 0.0f || nMax < 1 || !pScreenPanel || IsDormant() || !IsActive() ||
+	     IsEffectActive( EF_NODRAW ) || !RecordFrame() )
 		return 0;
 	const float flUnitsWide = float( m_nPixelWidth ), flUnitsTall = float( m_nPixelHeight );
 	int nAcross = 1, nDown = 1;
@@ -380,6 +381,12 @@ int C_VGuiScreen::EmissiveAreaLights( area_light::AreaLight *pLights, int *pKeys
 		    return EmissiveAreaLights_SampleTexture( m_RecordedTextures[nTexture], s, t, rgba );
 	    },
 	    radiance );
+
+	// The cached image retains its visible emission. Light-only radiance
+	// follows the same core Source policy as material signage and the fizzler.
+	for ( int tile = 0; tile < nAcross * nDown; ++tile )
+		for ( float &channel : radiance[tile] )
+			channel *= sourceStrength;
 
 	const world_panel::Placement placement = PanelPlacement();
 	if ( cl_world_panel_report.GetBool() )
@@ -431,7 +438,7 @@ int C_VGuiScreen::EmissiveAreaLights( area_light::AreaLight *pLights, int *pKeys
 		const world_panel::DrawListView keptList = { flUnitsWide, flUnitsTall, kept.Base(),
 		    unsigned( kept.Count() ), keys.Base(), unsigned( keys.Count() ) };
 		world_panel::TileRadiance(
-		    keptList, pScreenPanel->EmissionScale(), nAcross, nDown, 16,
+		    keptList, pScreenPanel->EmissionScale() * sourceStrength, nAcross, nDown, 16,
 		    [&]( int nTexture, float s, float t, float, float rgba[4] )
 		    {
 			    return EmissiveAreaLights_SampleTexture( m_RecordedTextures[nTexture], s, t, rgba );

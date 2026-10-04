@@ -93,8 +93,8 @@ public:
 	virtual void OnTick( void );
 	virtual bool Init( KeyValues *pKeyValues, VGuiScreenInitData_t *pInitData );
 
-	// Preserve the existing sign lighting on compatibility receivers.
-	bool CoreOnly() const override { return false; }
+	// Core signage avoids CPU lightmap/model stand-ins; retained mode keeps its routing.
+	bool CoreOnly() const override { return EmissiveAreaLights_CoreSurfaceMode(); }
 
 	// CVGuiScreenPanel: a lit board, and its dirt overlays are grime on its
 	// face (a coating: it dims the board's light and reflects the room's).

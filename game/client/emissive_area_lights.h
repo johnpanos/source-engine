@@ -21,6 +21,12 @@
 // Set before frame work starts; clear at client shutdown. Main thread only.
 void EmissiveAreaLights_SetGeometry( area_light::IAreaLights4 *provider );
 
+// Source radiance policy owned by the publisher. A null material identifies
+// world panels; named materials identify model/brush/overlay sources. The
+// diagnostic filter changes light publication only. Main thread only.
+bool EmissiveAreaLights_CoreSurfaceMode();
+float EmissiveAreaLights_SurfaceStrength( const char *material = NULL );
+
 // A source of area lights besides emissive models: a lit screen or panel.
 class IEmissiveAreaLightSource
 {

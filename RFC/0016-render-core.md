@@ -1632,8 +1632,10 @@ The user's direction to light emissive surfaces like the fizzler establishes
 fullbright `UnlitGeneric` scene surfaces publish area light for core receivers.
 This includes the indicator boxes and the transparent indicator-line overlays,
 which have no `$selfillum` flag. Sky, nodraw and world faces already represented
-by baked texture lights are excluded. Fullbright UI is outside this scene
-geometry ingress.
+by baked texture lights are excluded. World VGUI panels use their existing
+`render.world-panel.v1` image/coverage integration and geometry ingress; their
+light-only radiance follows this same source policy. This includes chamber
+information boards and elevator movie screens. Screen-space UI is outside it.
 
 [`render.emissive-area-lights.v1`](../public/render/emissive_area_lights.h)
 owns coverage integration, emitted-power-preserving rectangle fitting, facing
@@ -1645,6 +1647,11 @@ client-owned `cl_surface_core_emission_strength` defaults to **16**, the same
 light-radiance scale as the fizzler's reviewed idle policy; this is a Source
 content policy, not a claim that `$selfillum` specifies physical radiance.
 `cl_surface_core_emission 0` provides a light-only negative control.
+`cl_surface_core_emission_filter` is an isolation control: empty selects all
+sources, an exact material name selects that material, and `@panels` selects
+world VGUI panels. It changes light publication, preserving the visible image.
+Panel source-image caches retain their unscaled emission; policy scaling occurs
+after sampling, so a light control takes effect without a cache rebuild.
 
 The version 4 area-light geometry bridge appends a copy-out triangle operation
 and preserves versions 2 and 3. World/overlay positions are world-space; brush
@@ -1655,11 +1662,15 @@ emission requires it by name. Frame publication uses version 3's core-only
 routing, so these sources do not allocate legacy CPU lightmap/model stand-ins.
 Receiver shading and the shared frame-light budget retain their existing owners.
 
-This slice proves Intro4 boxes and floor lines, live cyan/orange selection,
-light-only off controls and restoration in both strict game modes. Advanced
-animated UV/emission inputs, animated studio-source images, source occlusion
+These slices prove Intro4 boxes and floor lines, live cyan/orange selection,
+exit and arrow signs, the two floor pictograms, chamber boards and elevator
+movies, with light-only off controls and restoration in both strict game modes.
+The geometry ingress uses the face's already oriented BSP plane without applying
+`SURFDRAW_PLANEBACK` a second time. Authored one-sided sources remain one-sided.
+Advanced animated UV/emission inputs, animated studio-source images, source occlusion
 and indirect transport remain open. See the
-[game and GPU evidence](0016-progress.md#intro4-indicator-emission-on-core-receivers-2026-10-04).
+[indicator evidence](0016-progress.md#intro4-indicator-emission-on-core-receivers-2026-10-04)
+and [signage evidence](0016-progress.md#intro4-signage-emission-on-core-receivers-2026-10-04).
 
 ### Projected lights: a per-view projector list (amended 2026-09-28)
 

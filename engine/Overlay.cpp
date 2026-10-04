@@ -792,10 +792,8 @@ void COverlayMgr::EnumerateFragments( FragmentVisitor_t visit, void *pContext )
 				positions[i] = fragment.m_aPrimVerts[i].pos;
 				texCoords[i] = fragment.m_aPrimVerts[i].texCoord[0];
 			}
-			Vector normal = fragment.m_SurfId ? MSurf_Plane( fragment.m_SurfId ).normal
-			                                  : pOverlay->m_vecBasis[2];
-			if ( fragment.m_SurfId && ( MSurf_Flags( fragment.m_SurfId ) & SURFDRAW_PLANEBACK ) )
-				normal = -normal;
+			const Vector &normal = fragment.m_SurfId ? MSurf_Plane( fragment.m_SurfId ).normal
+			                                         : pOverlay->m_vecBasis[2];
 			visit( pContext, iOverlay, pTexInfo->material, normal, positions.Base(),
 			    texCoords.Base(), nCount );
 		}
