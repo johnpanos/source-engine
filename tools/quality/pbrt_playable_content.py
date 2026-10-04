@@ -426,15 +426,18 @@ def main():
             image, solid, source_hashes = base_image(scene, summary)
         base_record = summary["textures"].get("runtime_base") or summary["textures"].get("base", {})
         clamp = base_record.get("wrap") == ["clamp", "clamp"]
-        base_hash = compile_texture(image, directory / "basecolor", args.vtex.resolve(), clamp)
+        base_hash = compile_texture(image, directory / "basecolor", args.vtex.resolve(), clamp,
+                                    kind="color")
         if solid:
             verify_solid_vtf(directory / "basecolor.vtf", solid)
         mrao, mrao_rgb, mrao_hashes = mrao_image(scene, summary)
-        mrao_hash = compile_texture(mrao, directory / "mrao", args.vtex.resolve(), clamp)
+        mrao_hash = compile_texture(mrao, directory / "mrao", args.vtex.resolve(), clamp,
+                                    kind="data")
         if mrao_rgb:
             verify_solid_vtf(directory / "mrao.vtf", mrao_rgb)
         normal, normal_source = normal_image(scene, summary)
-        normal_hash = compile_texture(normal, directory / "normal", args.vtex.resolve(), clamp) \
+        normal_hash = compile_texture(normal, directory / "normal", args.vtex.resolve(), clamp,
+                                      kind="normal") \
             if normal else None
         emission_hash = compile_texture(emission_image, directory / "emission",
                                         args.vtex.resolve(), clamp) if emission_image else None

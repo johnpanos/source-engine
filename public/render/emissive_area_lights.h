@@ -80,9 +80,44 @@ inline bool UnlitSource( std::string_view shader )
 	return shader == "UnlitGeneric" || shader == "UnlitGeneric_DX9";
 }
 
-inline bool SurfaceSource( bool selfIllum, std::string_view shader )
+// Policy v2 (user decision, 2026-10-04): Portal 2's indicator lines
+// (antlines) draw their visible emission but light nothing around them.
+// Matched by content path, ASCII case-insensitive, also as a map-patched copy
+// (maps/<map>/...). Panels, elevator screens and every other source keep v1.
+inline bool IndicatorLineMaterial( std::string_view material )
 {
-	return selfIllum || UnlitSource( shader );
+	auto lower = []( char c )
+	{
+		return c >= 'A' && c <= 'Z' ? char( c - 'A' + 'a' ) : c;
+	};
+	auto startsWith = [&]( std::string_view text, std::string_view prefix )
+	{
+		if ( text.size() < prefix.size() )
+			return false;
+		for ( std::size_t i = 0; i < prefix.size(); ++i )
+		{
+			const char c = text[i] == '\\' ? '/' : lower( text[i] );
+			if ( c != prefix[i] )
+				return false;
+		}
+		return true;
+	};
+	if ( startsWith( material, "materials/" ) )
+		material.remove_prefix( 10 );
+	if ( startsWith( material, "maps/" ) )
+	{
+		const std::size_t slash = material.find_first_of( "/\\", 5 );
+		if ( slash == std::string_view::npos )
+			return false;
+		material.remove_prefix( slash + 1 );
+	}
+	return startsWith( material, "signage/indicator_lights/" ) ||
+	       startsWith( material, "overlays/indicator_lights" );
+}
+
+inline bool SurfaceSource( bool selfIllum, std::string_view shader, std::string_view material )
+{
+	return ( selfIllum || UnlitSource( shader ) ) && !IndicatorLineMaterial( material );
 }
 
 // Fullbright images emit through their authored coverage, not transparent

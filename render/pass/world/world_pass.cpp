@@ -1432,23 +1432,16 @@ void WorldPass::RecordBatch(
 	// A world stage's textures: made at the first slot from the stage, then
 	// updated in place as its lighting changes (SetStageLightmap,
 	// SetStageChange), so the groups that bind them stay valid. Each upload
-	// has a staging buffer of its own, released behind a later frame.
+	// has an initialized upload buffer of its own, released behind a later frame.
 	auto stageUpload = [&]( TextureId texture, const TextureDesc &desc,
 	                       std::span<const std::byte> bytes, ResourceUsage from ) -> bool
 	{
-		BufferDesc staging;
-		staging.size = bytes.size();
-		staging.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kCopySource };
-		staging.debugName = "world stage staging";
-		auto buffer = device.CreateBuffer( staging );
+		// D25: one initialized host-visible copy-source buffer; no device-local
+		// staging buffer and no pass through the upload ring.
+		auto buffer = device.CreateUploadBuffer( bytes );
 		if ( !buffer )
 			return false;
 		s.retiredBuffers.emplace_back( target.frame, buffer.Value() );
-		encoder.TransitionBuffer(
-		    buffer.Value(), ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
-		encoder.WriteBuffer( buffer.Value(), 0, bytes );
-		encoder.TransitionBuffer(
-		    buffer.Value(), ResourceUsage::kCopyDestination, ResourceUsage::kCopySource );
 		encoder.TransitionTexture( texture, from, ResourceUsage::kCopyDestination );
 		TextureBufferCopy copy;
 		copy.width = desc.width;
@@ -1467,19 +1460,10 @@ void WorldPass::RecordBatch(
 			return true;
 		if ( texels.empty() )
 			return false;
-		BufferDesc staging;
-		staging.size = texels.size();
-		staging.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kCopySource };
-		staging.debugName = "world stage region staging";
-		auto buffer = device.CreateBuffer( staging );
+		auto buffer = device.CreateUploadBuffer( texels );
 		if ( !buffer )
 			return false;
 		s.retiredBuffers.emplace_back( target.frame, buffer.Value() );
-		encoder.TransitionBuffer(
-		    buffer.Value(), ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
-		encoder.WriteBuffer( buffer.Value(), 0, texels );
-		encoder.TransitionBuffer(
-		    buffer.Value(), ResourceUsage::kCopyDestination, ResourceUsage::kCopySource );
 		encoder.TransitionTexture(
 		    texture, ResourceUsage::kSampled, ResourceUsage::kCopyDestination );
 		std::uint64_t offset = 0;
@@ -1778,19 +1762,11 @@ void WorldPass::RecordBatch(
 			return slot;
 		if ( !r.neutralStaging.IsValid() )
 		{
-			BufferDesc staging;
-			staging.size = 8;
-			staging.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kCopySource };
-			auto buffer = device.CreateBuffer( staging );
+			const std::uint32_t whiteAndDepth[] = { 0xFFFFFFFFu, 0x3F800000u };
+			auto buffer = device.CreateUploadBuffer( std::as_bytes( std::span( whiteAndDepth ) ) );
 			if ( !buffer )
 				return {};
 			r.neutralStaging = buffer.Value();
-			const std::uint32_t whiteAndDepth[] = { 0xFFFFFFFFu, 0x3F800000u };
-			encoder.TransitionBuffer(
-			    r.neutralStaging, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
-			encoder.WriteBuffer( r.neutralStaging, 0, std::as_bytes( std::span( whiteAndDepth ) ) );
-			encoder.TransitionBuffer(
-			    r.neutralStaging, ResourceUsage::kCopyDestination, ResourceUsage::kCopySource );
 		}
 		TextureDesc desc;
 		desc.dimension = dimension;

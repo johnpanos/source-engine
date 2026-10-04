@@ -415,6 +415,28 @@ int main()
 		Check( Near( rgb[0], 0.75, 0.03 ), "a half-masked texture samples to the covered area" );
 	}
 
+	// Surface-source policy v2: indicator lines are excluded by content path;
+	// panels, signs and other fullbright or self-illuminated surfaces remain.
+	{
+		using emissive::SurfaceSource;
+		Check( !SurfaceSource(
+		           false, "UnlitGeneric", "signage/indicator_lights/indicator_lights_floor" ) &&
+		           !SurfaceSource( true, "UnlitGeneric",
+		               "Signage\\Indicator_Lights\\indicator_neon_straight" ) &&
+		           !SurfaceSource( false, "UnlitGeneric",
+		               "maps/sp_a1_intro4/overlays/indicator_lights_floor02_special" ) &&
+		           !SurfaceSource( false, "UnlitGeneric",
+		               "materials/signage/indicator_lights/lobby_indicator_lights_floor" ),
+		    "indicator lines publish no area light in any path form" );
+		Check( SurfaceSource( false, "UnlitGeneric", "signage/signage_exit" ) &&
+		           SurfaceSource( true, "LightmappedGeneric", "signage/signage_doorstate" ) &&
+		           SurfaceSource( false, "UnlitGeneric_DX9", "maps/a/signage/indicator_checked" ) &&
+		           SurfaceSource( true, "VertexLitGeneric", "models/props/indicator_lights_x" ),
+		    "other self-illuminated and fullbright sources still publish" );
+		Check( !SurfaceSource( false, "LightmappedGeneric", "signage/signage_exit" ),
+		    "a lit surface without self-illumination is not a source" );
+	}
+
 	// Live surface image selection: source color and the unlit state must
 	// affect receiver light, rather than only the visible surface.
 	{

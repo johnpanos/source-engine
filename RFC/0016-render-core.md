@@ -1670,6 +1670,17 @@ by baked texture lights are excluded. World VGUI panels use their existing
 light-only radiance follows this same source policy. This includes chamber
 information boards and elevator movie screens. Screen-space UI is outside it.
 
+**Policy v2** (user decision, 2026-10-04: "remove the dynamic lighting from the
+portal antlines material ... panels and elevator screens should still glow -
+just not indicator lights"): Portal 2's indicator lines, the materials under
+`signage/indicator_lights/` and `overlays/indicator_lights*` (also as
+map-patched `maps/<map>/` copies), draw their visible emission but publish no
+area light. `emissive::IndicatorLineMaterial` owns the match, and
+`SurfaceSource` applies it at both engine ingress points. Door-state indicator
+boxes, signs, world panels, elevator screens and every other v1 source are
+unchanged. The [materials guide](../render/material/README.md) indexes this
+and the other material owners.
+
 [`render.emissive-area-lights.v1`](../public/render/emissive_area_lights.h)
 owns coverage integration, emitted-power-preserving rectangle fitting, facing
 and selection. The client supplies the actual selected base-texture frame and
@@ -1724,7 +1735,7 @@ emission requires it by name. Frame publication uses version 3's core-only
 routing, so these sources do not allocate legacy CPU lightmap/model stand-ins.
 Receiver shading and the shared frame-light budget retain their existing owners.
 
-These slices prove Intro4 boxes and floor lines, live cyan/orange selection,
+These slices prove Intro4 boxes and floor lines (light removed from the lines by v2), live cyan/orange selection,
 exit and arrow signs, the two floor pictograms, chamber boards and elevator
 movies, with light-only off controls and restoration in both strict game modes.
 The geometry ingress uses the face's already oriented BSP plane without applying

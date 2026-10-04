@@ -16,7 +16,11 @@
 
 #include "vulkan_device.h"
 
+#include <algorithm>
+#include <chrono>
 #include <cstdio>
+#include <cstdlib>
+#include <map>
 
 // VMA's internal consistency checks report instead of aborting a product.
 #define VMA_ASSERT( expression ) ( (void)0 )
@@ -66,6 +70,43 @@ HostAllocation Handle( VmaAllocation allocation )
 	return reinterpret_cast<HostAllocation>( allocation );
 }
 
+double Seconds()
+{
+	return std::chrono::duration<double>( std::chrono::steady_clock::now().time_since_epoch() )
+	    .count();
+}
+
+double Mib( std::uint64_t bytes )
+{
+	return double( bytes ) / ( 1024.0 * 1024.0 );
+}
+
+// Unlabelled allocations (the frozen backend's, through the host device)
+// group by shape: same format, extent, mips, layers, samples and role.
+std::string ImageKey( const VkImageCreateInfo &info )
+{
+	const char *role = "texture";
+	if ( info.usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT )
+		role = "depth target";
+	else if ( info.usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT )
+		role = "color target";
+	else if ( info.usage & VK_IMAGE_USAGE_STORAGE_BIT )
+		role = "storage image";
+	char key[160];
+	std::snprintf( key, sizeof( key ), "image %s fmt %d %ux%ux%u mips %u layers %u x%d", role,
+	    int( info.format ), info.extent.width, info.extent.height, info.extent.depth,
+	    info.mipLevels, info.arrayLayers, int( info.samples ) );
+	return key;
+}
+
+std::string BufferKey( const VkBufferCreateInfo &info, const HostMemory &memory )
+{
+	char key[96];
+	std::snprintf( key, sizeof( key ), "buffer usage 0x%x %s", unsigned( info.usage ),
+	    ( memory.required & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT ) ? "host" : "device" );
+	return key;
+}
+
 VmaAllocationCreateInfo CreateInfo( const HostMemory &memory )
 {
 	VmaAllocationCreateInfo info{};
@@ -103,6 +144,8 @@ VkResult MemoryAllocator::Create( VkInstance instance, VkPhysicalDevice physical
 	const VkResult result = vmaCreateAllocator( &info, &allocator );
 	if ( result == VK_SUCCESS )
 		m_Allocator = allocator;
+	if ( const char *report = std::getenv( "SOURCE_VK_MEMORY_REPORT" ) )
+		m_ReportSeconds = std::max( 1.0, std::atof( report ) );
 	return result;
 }
 
@@ -119,8 +162,116 @@ void MemoryAllocator::Destroy()
 		    static_cast<unsigned long long>( m_Bytes.load() ) );
 	vmaDestroyAllocator( Vma( m_Allocator ) );
 	m_Allocator = nullptr;
+	{
+		std::lock_guard<std::mutex> lock( m_TrackMutex );
+		m_Tracked.clear();
+	}
 	m_Live = 0;
 	m_Bytes = 0;
+}
+
+void MemoryAllocator::Track( HostAllocation allocation, std::string key )
+{
+	VmaAllocationInfo info{};
+	vmaGetAllocationInfo( Vma( m_Allocator ), Of( allocation ), &info );
+	std::lock_guard<std::mutex> lock( m_TrackMutex );
+	m_Tracked[allocation] = Tracked{ std::move( key ), info.size };
+}
+
+void MemoryAllocator::Untrack( HostAllocation allocation )
+{
+	if ( m_ReportSeconds <= 0.0 )
+		return;
+	std::lock_guard<std::mutex> lock( m_TrackMutex );
+	m_Tracked.erase( allocation );
+}
+
+void MemoryAllocator::Label( HostAllocation allocation, std::string_view label )
+{
+	if ( m_ReportSeconds <= 0.0 || !allocation || label.empty() )
+		return;
+	std::lock_guard<std::mutex> lock( m_TrackMutex );
+	const auto found = m_Tracked.find( allocation );
+	if ( found != m_Tracked.end() )
+		found->second.key = "core: " + std::string( label );
+}
+
+void MemoryAllocator::ReportFailure( const char *what, VkResult result, std::uint64_t bytes )
+{
+	char size[32] = "";
+	if ( bytes )
+		std::snprintf( size, sizeof( size ), ", %.1f MiB", Mib( bytes ) );
+	std::fprintf( stderr,
+	    "render.device.vulkan: allocation failed (%d): %s%s; %.1f MiB live in %llu allocations\n",
+	    int( result ), what, size, Mib( m_Bytes.load() ),
+	    static_cast<unsigned long long>( m_Live.load() ) );
+	if ( m_ReportSeconds > 0.0 && !m_FailureReported )
+	{
+		m_FailureReported = true;
+		Report( "allocation failure" );
+	}
+}
+
+void MemoryAllocator::MaybeReport()
+{
+	const std::uint64_t bytes = m_Bytes.load();
+	const std::uint64_t moved =
+	    bytes > m_ReportedBytes ? bytes - m_ReportedBytes : m_ReportedBytes - bytes;
+	const double now = Seconds();
+	if ( moved < ( 32ull << 20 ) || now - m_LastReport < m_ReportSeconds )
+		return;
+	Report( "interval" );
+}
+
+void MemoryAllocator::Report( const char *reason )
+{
+	if ( !m_Allocator )
+		return;
+	struct Group
+	{
+		std::uint64_t bytes = 0;
+		std::uint64_t count = 0;
+	};
+	std::map<std::string, Group> groups;
+	{
+		std::lock_guard<std::mutex> lock( m_TrackMutex );
+		m_ReportedBytes = m_Bytes.load();
+		m_LastReport = Seconds();
+		for ( const auto &[allocation, tracked] : m_Tracked )
+		{
+			Group &group = groups[tracked.key];
+			group.bytes += tracked.size;
+			++group.count;
+		}
+	}
+	std::vector<std::pair<std::string, Group>> sorted( groups.begin(), groups.end() );
+	std::sort( sorted.begin(), sorted.end(),
+	    []( const auto &a, const auto &b )
+	    {
+		    return a.second.bytes > b.second.bytes;
+	    } );
+	std::fprintf( stderr,
+	    "render.device.vulkan memory report (%s): %.1f MiB live in %llu allocations, %zu groups\n",
+	    reason, Mib( m_Bytes.load() ), static_cast<unsigned long long>( m_Live.load() ),
+	    sorted.size() );
+	const VkPhysicalDeviceMemoryProperties *properties = nullptr;
+	vmaGetMemoryProperties( Vma( m_Allocator ), &properties );
+	VmaBudget budgets[VK_MAX_MEMORY_HEAPS] = {};
+	vmaGetHeapBudgets( Vma( m_Allocator ), budgets );
+	for ( std::uint32_t heap = 0; properties && heap < properties->memoryHeapCount; ++heap )
+		std::fprintf( stderr,
+		    "  heap %u%s: %.1f MiB size, VMA blocks %.1f MiB, allocations %.1f MiB, process "
+		    "usage %.1f MiB, budget %.1f MiB\n",
+		    heap,
+		    ( properties->memoryHeaps[heap].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT ) ? " device"
+		                                                                              : " host",
+		    Mib( properties->memoryHeaps[heap].size ), Mib( budgets[heap].statistics.blockBytes ),
+		    Mib( budgets[heap].statistics.allocationBytes ), Mib( budgets[heap].usage ),
+		    Mib( budgets[heap].budget ) );
+	const std::size_t shown = std::min<std::size_t>( sorted.size(), 80 );
+	for ( std::size_t i = 0; i < shown; ++i )
+		std::fprintf( stderr, "  %9.1f MiB %6llu  %s\n", Mib( sorted[i].second.bytes ),
+		    static_cast<unsigned long long>( sorted[i].second.count ), sorted[i].first.c_str() );
 }
 
 void MemoryAllocator::Count( HostAllocation allocation, bool add )
@@ -154,12 +305,18 @@ VkResult MemoryAllocator::CreateBuffer( const VkBufferCreateInfo &info, const Ho
 	if ( result != VK_SUCCESS )
 	{
 		*buffer = VK_NULL_HANDLE;
+		ReportFailure( BufferKey( info, memory ).c_str(), result, info.size );
 		return result;
 	}
 	*allocation = Handle( made );
 	if ( mapped )
 		*mapped = madeInfo.pMappedData;
 	Count( *allocation, true );
+	if ( m_ReportSeconds > 0.0 )
+	{
+		Track( *allocation, BufferKey( info, memory ) );
+		MaybeReport();
+	}
 	return VK_SUCCESS;
 }
 
@@ -177,10 +334,16 @@ VkResult MemoryAllocator::CreateImage( const VkImageCreateInfo &info, const Host
 	if ( result != VK_SUCCESS )
 	{
 		*image = VK_NULL_HANDLE;
+		ReportFailure( ImageKey( info ).c_str(), result, 0 );
 		return result;
 	}
 	*allocation = Handle( made );
 	Count( *allocation, true );
+	if ( m_ReportSeconds > 0.0 )
+	{
+		Track( *allocation, ImageKey( info ) );
+		MaybeReport();
+	}
 	return VK_SUCCESS;
 }
 
@@ -189,7 +352,10 @@ void MemoryAllocator::DestroyBuffer( VkBuffer buffer, HostAllocation allocation 
 	if ( !m_Allocator || ( buffer == VK_NULL_HANDLE && !allocation ) )
 		return;
 	if ( allocation )
+	{
 		Count( allocation, false );
+		Untrack( allocation );
+	}
 	vmaDestroyBuffer( Vma( m_Allocator ), buffer, Of( allocation ) );
 }
 
@@ -198,7 +364,10 @@ void MemoryAllocator::DestroyImage( VkImage image, HostAllocation allocation )
 	if ( !m_Allocator || ( image == VK_NULL_HANDLE && !allocation ) )
 		return;
 	if ( allocation )
+	{
 		Count( allocation, false );
+		Untrack( allocation );
+	}
 	vmaDestroyImage( Vma( m_Allocator ), image, Of( allocation ) );
 }
 
@@ -207,6 +376,7 @@ void MemoryAllocator::Free( HostAllocation allocation )
 	if ( !m_Allocator || !allocation )
 		return;
 	Count( allocation, false );
+	Untrack( allocation );
 	vmaFreeMemory( Vma( m_Allocator ), Of( allocation ) );
 }
 

@@ -236,7 +236,7 @@ struct CoreGeometryBuilder
 	{
 		if ( !material ||
 		     !emissive::SurfaceSource( material->GetMaterialVarFlag( MATERIAL_VAR_SELFILLUM ),
-		         material->GetShaderName() ) )
+		         material->GetShaderName(), material->GetName() ) )
 			return;
 		for ( int i = 1; i + 1 < count; ++i )
 		{
@@ -304,7 +304,7 @@ std::vector<area_light::EmissiveTriangle> WorldEmitters_CoreGeometry( int modelI
 		IMaterial *material = info ? info->material : NULL;
 		if ( !material ||
 		     !emissive::SurfaceSource( material->GetMaterialVarFlag( MATERIAL_VAR_SELFILLUM ),
-		         material->GetShaderName() ) ||
+		         material->GetShaderName(), material->GetName() ) ||
 		     baked.count( int( info - world->texinfo ) ) )
 			continue;
 		const int count = MSurf_VertCount( surface );

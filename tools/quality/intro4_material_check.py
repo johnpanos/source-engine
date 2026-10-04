@@ -9,7 +9,8 @@ glass optics, complete frame performance or platform support. Desktop HiDPI
 captures use regions scaled to the actual pixels; images are never downsampled.
 Use --scene doors for the closed/open door and independent indicator-box cycle.
 Use --scene cables for the rope visibility cycle under captured scene lighting.
-Use --scene emissives for cyan/orange/off light on neighboring wall receivers.
+Use --scene emissives for cyan/orange/off light beside the indicator box and an
+unlit wall beside the visible floor line.
 Use --scene signage for isolated signs, pictograms, chamber boards and movie screens.
 Use --scene camera-eyes for visible red glow and opaque visibility queries.
 Use --scene cameras for attached red lights, hide/show, movement, rotation and removal.
@@ -70,26 +71,45 @@ def door_commands():
     return result
 
 
+# The door-state indicator box (signage/signage_doorstate) on the west-facing
+# wall at (256, 272, 112). The receiver cube and camera use the same offsets
+# from it as the signage scene's exit sign, so the cube's lit upper face is the
+# exit sign's receiver region.
+EMISSIVE_BOX_TOGGLE = 'texturetoggle_exit_doorstate_a02'
+EMISSIVE_BOX_STATES = ((0, 1), (0, 0), (1, 1), (1, 0), (0, 1))
+
+
 def emissive_commands():
-    result = ['cmd noclip', 'r_drawviewmodel 0', 'cmd setpos 120 160 0',
-              'cmd setang 0 0 0',
-              'cmd ent_fire just_enough_door_for_the_job-testchamber_door Close']
-
-    def cycle(toggle):
-        for frame, emitting in ((0, 1), (0, 0), (1, 1), (1, 0), (0, 1)):
-            result.extend(['r_area_lights_debug 2',
-                           f'cmd ent_fire {toggle} SetTextureIndex {frame}',
-                           f'cl_surface_core_emission {emitting}',
-                           'wait 2', 'r_area_lights_debug 0',
-                           'wait 150', 'screenshot', 'wait 12'])
-
-    cycle('texturetoggle_exit_doorstate_a02')
-    result.extend(['cmd ent_create env_texturetoggle targetname rc_emissive_line_toggle '
+    result = ['cmd noclip', 'r_drawviewmodel 0',
+              'cmd ent_fire just_enough_door_for_the_job-testchamber_door Close',
+              'cmd ent_create prop_dynamic_override targetname rc_emissive_receiver '
+              'model models/props/metal_box.mdl',
+              'cmd ent_fire rc_emissive_receiver RunScriptCode '
+              '"self.SetOrigin(Vector(208,288,56))"',
+              'cl_surface_core_emission_filter signage/signage_doorstate',
+              'cmd setpos 120 288 78', 'cmd setang 20 0 0']
+    for index, (frame, emitting) in enumerate(EMISSIVE_BOX_STATES):
+        result.extend([f'cmd ent_fire {EMISSIVE_BOX_TOGGLE} SetTextureIndex {frame}',
+                       f'cl_surface_core_emission {emitting}', 'wait 300',
+                       f'echo RC_EMISSIVE_BOX_{index}_{emitting}'])
+        if emitting:
+            result.extend(['r_area_lights_report 1', 'wait 2'])
+        result.extend(['screenshot', 'wait 12'])
+    # Indicator lines (surface-source policy v2): visible, but no light.
+    result.extend(['cmd ent_fire rc_emissive_receiver Kill',
+                   'cl_surface_core_emission_filter ""',
+                   'cmd ent_create env_texturetoggle targetname rc_emissive_line_toggle '
                    'target exit_doorstate_a02',
                    'cmd setpos -480 56 100', 'cmd setang 32 14 0'])
-    cycle('rc_emissive_line_toggle')
+    for frame, emitting in EMISSIVE_BOX_STATES:
+        result.extend(['r_area_lights_debug 2',
+                       f'cmd ent_fire rc_emissive_line_toggle SetTextureIndex {frame}',
+                       f'cl_surface_core_emission {emitting}',
+                       'wait 2', 'r_area_lights_debug 0',
+                       'wait 150', 'screenshot', 'wait 12'])
     result.extend(['r_core_world_stats', 'r_core_world_strict', 'r_core_dynamic_draws',
-                   'cl_surface_core_emission', 'cl_surface_core_emission_strength'])
+                   'cl_surface_core_emission', 'cl_surface_core_emission_strength',
+                   'cl_surface_core_emission_filter'])
     return result
 
 
@@ -634,13 +654,21 @@ def validate_core_statistics(log):
         raise ValueError('missing dynamic statistics or an unsupported live material draw')
 
 
+# Receivers: the cube's lit upper face below the door-state box, and the wall
+# beside the floor line. Neither contains a source, the reticle or a halo.
+EMISSIVE_RECEIVERS = (('box', 0, (419, 508, 584, 559)),
+                      ('line', 5, (740, 350, 820, 550)))
+# Visible sources: the door-state box face and the floor line's dots.
+EMISSIVE_SOURCES = (('box', 0, (530, 265, 620, 365), .4),
+                    ('line', 5, (568, 462, 640, 650), .03))
+# The door-state box's published source: center and front in world space.
+EMISSIVE_BOX_SOURCE = ((256, 272, 112), (-1, 0, 0))
+
+
 def inspect_emissives(images):
     validate_images(images, 10)
     checks = []
-    # Authored wall receivers beside the box and floor line. These regions
-    # contain neither the emitting textures, the reticle nor a bloom halo.
-    for name, base, bounds in (('box', 0, (153, 320, 235, 590)),
-                               ('line', 5, (740, 350, 820, 550))):
+    for name, base, bounds in EMISSIVE_RECEIVERS:
         receivers = [region(image, *bounds) for image in images[base:base + 5]]
         cyan = receivers[0] - receivers[1]
         orange = receivers[2] - receivers[3]
@@ -648,47 +676,120 @@ def inspect_emissives(images):
         o = orange.mean(axis=(0, 1))
         restored = np.abs(receivers[4] - receivers[0]).mean()
         off_change = np.abs(receivers[3] - receivers[1]).mean()
-        for suffix, passed, value in (
+        if name == 'line':
+            # Surface-source policy v2 (user decision, 2026-10-04): indicator
+            # lines stay visible but publish no light, so the light-only
+            # control changes none of their receivers.
+            cyan_light = np.abs(cyan).mean()
+            orange_light = np.abs(orange).mean()
+            rows = (('no-cyan-receiver-light', cyan_light < .01, cyan_light),
+                    ('no-orange-receiver-light', orange_light < .01, orange_light),
+                    ('cyan-return', restored < .01, restored))
+        else:
+            rows = (
                 ('cyan-receiver', c[2] > .03 and c[1] > .02 and c[2] > 2 * c[0], c[2]),
                 ('orange-receiver', o[0] > .03 and o[1] > .02 and o[0] > 2 * o[2], o[0]),
-                ('cyan-coverage', (cyan.max(axis=2) > .02).mean() > .8,
+                ('cyan-coverage', (cyan.max(axis=2) > .02).mean() > .5,
                  (cyan.max(axis=2) > .02).mean()),
-                ('orange-coverage', (orange.max(axis=2) > .02).mean() > .8,
+                ('orange-coverage', (orange.max(axis=2) > .02).mean() > .5,
                  (orange.max(axis=2) > .02).mean()),
                 ('off-removes-frame-light', off_change < .01, off_change),
-                ('cyan-return', restored < .01, restored)):
+                ('cyan-return', restored < .01, restored))
+        for suffix, passed, value in rows:
             checks.append(dict(name=f'emissive.{name}.{suffix}', passed=bool(passed),
                                value=float(value)))
     # The light-only control must preserve visible emission. The source box
     # and floor dots continue to change frames while their receiver light is off.
-    for base, bounds, name in ((0, (40, 153, 142, 254), 'box'),
-                               (5, (568, 462, 640, 650), 'line')):
+    for name, base, bounds, minimum in EMISSIVE_SOURCES:
         for index, orange in ((0, False), (1, False), (2, True), (3, True), (4, False)):
             source = region(images[base + index], *bounds)
             r, g, b = np.moveaxis(source, 2, 0)
             coverage = np.mean((r > b + .2) & (g > b + .1) & (r > .35)) if orange else \
                 np.mean((b > r + .15) & (g > r + .1) & (b > .3))
             checks.append(dict(name=f'emissive.{name}.visible-frame-{index}',
-                               passed=bool(coverage > (.4 if name == 'box' else .03)),
-                               value=float(coverage)))
+                               passed=bool(coverage > minimum), value=float(coverage)))
     return checks
 
 
 def emissive_sensitivity(images):
     checks = []
-    for name, base, bounds in (('box', 0, (153, 320, 235, 590)),
-                               ('line', 5, (740, 350, 820, 550))):
-        for defect, index, replacement, expected in (
-                ('missing-cyan-light', 0, 1, 'cyan-receiver'),
-                ('missing-orange-light', 2, 3, 'orange-receiver'),
-                ('stale-orange-frame', 2, 0, 'orange-receiver'),
-                ('missing-return', 4, 1, 'cyan-return')):
-            mutated = [image.copy() for image in images]
-            region(mutated[base + index], *bounds)[:] = region(images[base + replacement], *bounds)
-            rows = inspect_emissives(mutated)
-            rejected = any(row['name'] == f'emissive.{name}.{expected}' and
-                           not row['passed'] for row in rows)
-            checks.append(dict(name=f'oracle.rejects-{name}-{defect}', passed=rejected))
+    name, base, bounds = EMISSIVE_RECEIVERS[0]
+    for defect, index, replacement, expected in (
+            ('missing-cyan-light', 0, 1, 'cyan-receiver'),
+            ('missing-orange-light', 2, 3, 'orange-receiver'),
+            ('stale-orange-frame', 2, 0, 'orange-receiver'),
+            ('missing-return', 4, 1, 'cyan-return')):
+        mutated = [image.copy() for image in images]
+        region(mutated[base + index], *bounds)[:] = region(images[base + replacement], *bounds)
+        rows = inspect_emissives(mutated)
+        rejected = any(row['name'] == f'emissive.{name}.{expected}' and
+                       not row['passed'] for row in rows)
+        checks.append(dict(name=f'oracle.rejects-{name}-{defect}', passed=rejected))
+    # A line that still lights its wall: a tinted gain on the line's lit
+    # cyan or orange capture, about the box's measured receiver light.
+    name, base, bounds = EMISSIVE_RECEIVERS[1]
+    for defect, index, gain, expected in (
+            ('cyan-light', 0, (0, .04, .06), 'no-cyan-receiver-light'),
+            ('orange-light', 2, (.06, .04, 0), 'no-orange-receiver-light')):
+        mutated = [image.copy() for image in images]
+        target = region(mutated[base + index], *bounds)
+        target[:] = np.clip(target + np.asarray(gain, dtype=target.dtype), 0, 1)
+        rows = inspect_emissives(mutated)
+        rejected = any(row['name'] == f'emissive.{name}.{expected}' and
+                       not row['passed'] for row in rows)
+        checks.append(dict(name=f'oracle.rejects-{name}-{defect}', passed=rejected))
+    return checks
+
+
+def emissive_reports(log):
+    """The door-state box publishes core-only light in its selected frame's
+    color, and nothing while the light-only control is off."""
+    checks = []
+    number = r'(-?\d+(?:\.\d+)?)'
+    light = re.compile(r'slotless area \d+ key \d+ at ' + ' '.join([number] * 3) +
+                       r' facing ' + ' '.join([number] * 3) + r' area ' + number +
+                       r' one-sided radiance ' + ' '.join([number] * 3))
+    center, normal = EMISSIVE_BOX_SOURCE
+    for index, (frame, emitting) in enumerate(EMISSIVE_BOX_STATES):
+        segments = re.findall(rf'RC_EMISSIVE_BOX_{index}_{emitting}\s*(.*?)'
+                              r'(?=RC_EMISSIVE_BOX_|"cl_surface|views queued|$)',
+                              log, flags=re.S)
+        passed = len(segments) == 1
+        for segment in segments:
+            records = [list(map(float, row)) for row in light.findall(segment)]
+            if not emitting:
+                passed = passed and not records
+                continue
+            summary = re.search(r'area lights generation \d+: (\d+) lit '
+                                r'\((\d+) without a slot\), (\d+) dropped', segment)
+            source = [row for row in records
+                      if max(abs(row[k] - center[k]) for k in range(3)) < .5 and
+                      max(abs(row[k + 3] - normal[k]) for k in range(3)) < .02 and row[6] > 0]
+            color = bool(source) and (
+                source[0][9] > 2 * source[0][7] and source[0][8] > source[0][7]
+                if frame == 0 else
+                source[0][7] > 2 * source[0][9] and source[0][7] > source[0][8])
+            passed = bool(passed and summary and summary[1] == '0' and
+                          int(summary[2]) > 0 and summary[3] == '0' and color)
+        checks.append(dict(name=f'emissive.box.report-{index}', passed=bool(passed)))
+    return checks
+
+
+def emissive_report_sensitivity(log):
+    checks = []
+    orange = re.compile(r'(RC_EMISSIVE_BOX_2_1.*?radiance )(\S+) (\S+) (\S+)', re.S)
+    for name, bad in (
+            ('reversed-box-front', log.replace('facing -1.00 0.00 0.00', 'facing 1.00 0.00 0.00')),
+            ('box-legacy-light-slots', re.sub(r': 0 lit \(\d+ without a slot\)',
+                                              ': 1 lit (0 without a slot)', log)),
+            ('stale-box-frame', orange.sub(lambda match: match[1] + ' '.join(
+                (match[4], match[3], match[2])), log, count=1)),
+            ('box-light-while-off', log.replace(
+                'RC_EMISSIVE_BOX_1_0', 'RC_EMISSIVE_BOX_1_0\n  slotless area 0 key 1 at '
+                '256.0 272.0 112.0 facing -1.00 0.00 0.00 area 1024.0 one-sided '
+                'radiance 0.3 2.2 3.1 reach 500', 1))):
+        checks.append(dict(name=f'oracle.rejects-{name}',
+                           passed=any(not row['passed'] for row in emissive_reports(bad))))
     return checks
 
 
@@ -1188,7 +1289,7 @@ def main():
             if (not strength or any(value != '16' for value in strength) or
                     not emitting or any(value != '1' for value in emitting)):
                 raise ValueError('required emissive source policy queries are missing or incorrect')
-        if args.scene in ('signage', 'portal-emitters', 'all'):
+        if args.scene in ('emissives', 'signage', 'portal-emitters', 'all'):
             filters = re.findall(r'"cl_surface_core_emission_filter" = "([^\"]*)"', log)
             if not filters or any(filters):
                 raise ValueError('the source isolation filter was not restored')
@@ -1209,6 +1310,7 @@ def main():
                                 inspect_doors(images[8:17]) + door_sensitivity(images[8:17]) +
                                 inspect_cables(images[17:20]) + cable_sensitivity(images[17:20]) +
                                 inspect_emissives(images[20:30]) + emissive_sensitivity(images[20:30]) +
+                                emissive_reports(log) + emissive_report_sensitivity(log) +
                                 inspect_signage(images[30:48]) + signage_sensitivity(images[30:48]) +
                                 signage_reports(log) + signage_report_sensitivity(log) +
                                 inspect_camera_eyes(images[48:55]) + camera_eye_sensitivity(images[48:55]) +
@@ -1240,7 +1342,8 @@ def main():
             report['checks'] = (inspect_signage(images) + signage_sensitivity(images) +
                                 signage_reports(log) + signage_report_sensitivity(log))
         elif args.scene == 'emissives':
-            report['checks'] = inspect_emissives(images) + emissive_sensitivity(images)
+            report['checks'] = (inspect_emissives(images) + emissive_sensitivity(images) +
+                                emissive_reports(log) + emissive_report_sensitivity(log))
         elif args.scene == 'doors':
             report['checks'] = inspect_doors(images) + door_sensitivity(images)
         elif args.scene == 'cables':

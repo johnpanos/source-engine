@@ -235,7 +235,35 @@ public:
 	}
 	bool UploadLightmap( const world_mesh_gpu::WorldLightmapUploadRequest &request ) override
 	{
-		const bool accepted = m_pProvider->UploadLightmap( request );
+		// The core's stage reads the total and indirect layers from the full
+		// request. The native backend reads the separated layers only for the
+		// RuntimeIndirect policy (r_indirect_policy 2) and the indirect debug
+		// views (mat_indirect_view 1 and 2); with neither it keeps the total
+		// layer alone, so the map's light is not held twice. Both are cheat
+		// cvars read at upload: change them, then reload the map.
+		world_mesh_gpu::WorldLightmapUploadRequest providerRequest = request;
+		static ConVarRef r_indirect_policy( "r_indirect_policy" );
+		static ConVarRef mat_indirect_view( "mat_indirect_view" );
+		const bool separatedWanted =
+		    ( r_indirect_policy.IsValid() && r_indirect_policy.GetInt() == 2 ) ||
+		    ( mat_indirect_view.IsValid() &&
+		        ( mat_indirect_view.GetInt() == 1 || mat_indirect_view.GetInt() == 2 ) );
+		if ( !request.regions && !separatedWanted && m_pStage )
+		{
+			providerRequest.layerCount = 0;
+			for ( uint32_t i = 0; i < request.layerCount; ++i )
+			{
+				if ( request.roles[i] != world_mesh_gpu::WorldLightmapRole::Total )
+					continue;
+				providerRequest.layers[providerRequest.layerCount] = request.layers[i];
+				providerRequest.roles[providerRequest.layerCount++] = request.roles[i];
+			}
+			if ( providerRequest.layerCount < request.layerCount )
+				Msg( "Render core: LMAP direct/indirect layers kept out of the native backend "
+				     "(no consumer; r_indirect_policy 2 or mat_indirect_view 1/2 before load "
+				     "keeps them)\n" );
+		}
+		const bool accepted = m_pProvider->UploadLightmap( providerRequest );
 		if ( accepted )
 			m_pStage->UploadLightmap( request );
 		return accepted;

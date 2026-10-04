@@ -10,7 +10,9 @@ The client publishes each frame's area lights to the engine
 (`game/client/emissive_area_lights.cpp`) through the version 3 core-routing
 bridge. Version 4 appends authored surface geometry; the earlier interfaces
 remain available. The [surface-source policy](../../../RFC/0016-render-core.md#surface-emission-sources-installed-indicator-slice-2026-10-04)
-owns source eligibility and radiance policy. Core-only sources go directly to
+owns source eligibility and radiance policy; `emissive::SurfaceSource` is its
+code (policy v2 excludes Portal 2 indicator-line materials by content path, and
+the suite checks both excluded and retained names). Core-only sources go directly to
 the frame light set. Retained sources can also occupy black dlight slots flagged
 `DLIGHT_AREA` (`engine/area_lights.cpp`). The consumers today:
 

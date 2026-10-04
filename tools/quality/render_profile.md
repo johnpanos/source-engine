@@ -115,11 +115,18 @@ python3 tools/quality/intro4_material_check.py --scene doors \
 ```
 
 Repeat with `--scene materials` for decals, floor indicators and glass, and
-`--scene cables` for the lit rope on/off/on cycle. `--scene emissives` checks
-neighboring wall receivers beside the indicator box and floor line through
-cyan/on, cyan/off, orange/on, orange/off and cyan/on again. Its 30 checks include
-eight seeded missing-light/stale-frame defects and verify that the light-only
-control preserves the visible source. `--scene signage` isolates exit/arrow
+`--scene cables` for the lit rope on/off/on cycle. `--scene emissives` cycles
+the door-state indicator box and an Intro4 floor indicator line through
+cyan/on, cyan/off, orange/on, orange/off and cyan/on again. The box is isolated
+with `cl_surface_core_emission_filter signage/signage_doorstate` and must light
+the upper face of a metal-box receiver placed in front of it (the exit-sign
+geometry of `--scene signage`), with `r_area_lights_report` showing a
+core-only, west-facing source in the selected frame's color and none while
+off. Under surface-source policy v2 the floor line must light none of its wall
+while its visible frame still changes. Its 34 checks include ten seeded
+missing-light, stale-frame, line-light, reversed-front, legacy-slot and
+light-while-off defects, and verify that the light-only control preserves the
+visible source. `--scene signage` isolates exit/arrow
 signs, both floor pictograms, the chamber board and elevator movie screens. It
 checks on/off/on receiver light, one-sided source facing and core-only routing.
 A metal-box receiver is placed in front of the exit/arrow signs; other sources

@@ -168,6 +168,7 @@ DeviceResult<BufferId> VulkanDevice::CreateBuffer( const BufferDesc &desc )
 		    ( m_Memory.Properties( record.memory ) & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT ) != 0;
 	}
 	Name( VK_OBJECT_TYPE_BUFFER, reinterpret_cast<std::uint64_t>( record.buffer ), desc.debugName );
+	m_Memory.Label( record.memory, desc.debugName );
 	undo.Dismiss();
 	const BufferId id{ ++m_NextId };
 	m_Buffers.emplace( id.value, std::move( record ) );
@@ -264,6 +265,7 @@ DeviceResult<TextureId> VulkanDevice::CreateTexture( const TextureDesc &desc )
 	if ( result != VK_SUCCESS )
 		return Fail( StatusOf( result ), op, result );
 	Name( VK_OBJECT_TYPE_IMAGE, reinterpret_cast<std::uint64_t>( record.image ), desc.debugName );
+	m_Memory.Label( record.memory, desc.debugName );
 	undo.Dismiss();
 	const TextureId id{ ++m_NextId };
 	m_Textures.emplace( id.value, std::move( record ) );
@@ -708,6 +710,7 @@ foundation::Expected<ExternalImage, DeviceError> VulkanDevice::CreateExported(
 	stale = VK_NULL_HANDLE;
 
 	Name( VK_OBJECT_TYPE_IMAGE, reinterpret_cast<std::uint64_t>( record.image ), desc.debugName );
+	m_Memory.Label( record.memory, desc.debugName );
 	undo.Dismiss();
 	const TextureId id{ ++m_NextId };
 	m_Textures.emplace( id.value, std::move( record ) );

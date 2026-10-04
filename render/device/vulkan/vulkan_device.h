@@ -44,6 +44,7 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -113,12 +114,35 @@ public:
 	std::uint64_t LiveAllocations() const { return m_Live.load(); }
 	std::uint64_t LiveBytes() const { return m_Bytes.load(); }
 
+	// Diagnostic memory report (SOURCE_VK_MEMORY_REPORT=<seconds>): live
+	// allocations grouped by owner label, or by image/buffer shape where no
+	// label was given, with the driver's per-heap usage and budget. Reported on
+	// stderr after an allocation failure and, at most once per interval, when
+	// the live total has moved by 32 MiB. Off: no tracking cost.
+	void Label( HostAllocation allocation, std::string_view label );
+	void Report( const char *reason );
+
 private:
+	struct Tracked
+	{
+		std::string key;
+		std::uint64_t size = 0;
+	};
 	void Count( HostAllocation allocation, bool add );
+	void Track( HostAllocation allocation, std::string key );
+	void Untrack( HostAllocation allocation );
+	void ReportFailure( const char *what, VkResult result, std::uint64_t bytes );
+	void MaybeReport();
 
 	void *m_Allocator = nullptr; // VmaAllocator
 	std::atomic<std::uint64_t> m_Live{ 0 };
 	std::atomic<std::uint64_t> m_Bytes{ 0 };
+	double m_ReportSeconds = 0.0; // 0: tracking off
+	std::mutex m_TrackMutex;
+	std::unordered_map<HostAllocation, Tracked> m_Tracked;
+	std::uint64_t m_ReportedBytes = 0;
+	double m_LastReport = 0.0;
+	bool m_FailureReported = false;
 };
 
 // instance.cpp -------------------------------------------------------------

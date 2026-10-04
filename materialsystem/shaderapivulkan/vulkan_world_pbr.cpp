@@ -455,7 +455,8 @@ void CVulkanContext::DestroyPbrGlassPipeline()
 static bool PbrWorldNormalFormat( VkFormat format )
 {
 	return format == VK_FORMAT_R8G8_UNORM || format == VK_FORMAT_BC5_UNORM_BLOCK ||
-	       format == VK_FORMAT_R8G8B8A8_UNORM || format == VK_FORMAT_B8G8R8A8_UNORM;
+	       format == VK_FORMAT_R8G8B8A8_UNORM || format == VK_FORMAT_B8G8R8A8_UNORM ||
+	       format == VK_FORMAT_BC1_RGBA_UNORM_BLOCK || format == VK_FORMAT_BC3_UNORM_BLOCK;
 }
 
 bool CVulkanContext::PbrWorldTexturesReady(
@@ -479,6 +480,8 @@ bool CVulkanContext::PbrWorldTexturesReady(
 	                      ( baseReadSrgb && baseTexture->descSetSrgb != VK_NULL_HANDLE );
 	const bool maskLinear = maskTexture->format == VK_FORMAT_R8G8B8A8_UNORM ||
 	                        maskTexture->format == VK_FORMAT_BC7_UNORM_BLOCK ||
+	                        maskTexture->format == VK_FORMAT_BC1_RGBA_UNORM_BLOCK ||
+	                        maskTexture->format == VK_FORMAT_BC3_UNORM_BLOCK ||
 	                        maskTexture->format == VK_FORMAT_ASTC_4x4_UNORM_BLOCK ||
 	                        maskTexture->format == VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK;
 	const bool normalLinear = !useNormal || PbrWorldNormalFormat( normalTexture->format );
