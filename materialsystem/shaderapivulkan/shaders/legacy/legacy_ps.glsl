@@ -6,6 +6,8 @@
 #define LEGACY_PS_GLSL
 
 #include "legacy_common.glsl"
+#include "../../../../render/shaders/common/color_transfer.glsl"
+layout( constant_id = 31 ) const bool kDecodeLegacyOutput = false;
 
 layout( location = 0 ) out vec4 outColor;
 

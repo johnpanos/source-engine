@@ -179,7 +179,7 @@ vec3 BumpedToWorldNormal( vec3 vBumpedNormal, vec3 vVertexNormal, vec3 vTangentD
 	return normalize( vBumpedNormal.x * t + vBumpedNormal.y * b + vBumpedNormal.z * vVertexNormal );
 }
 
-void main()
+void LegacyColorMain()
 {
 	const int combos = int( consts.params.y );
 	const int flags = int( consts.params.z );
@@ -337,3 +337,5 @@ void main()
 		result = LinearToSrgb( result );
 	outColor = vec4( result, 1.0 );
 }
+
+#include "linear_target.glsl"

@@ -238,12 +238,21 @@ static_assert( static_cast<int>( render::legacy::LegacyFrameStage::kComputeAndUp
 // half-float swapchain, the frame taken there by the core's output pass at
 // the display's headroom. Taken at the next swapchain build when the display
 // can show it; the log says when it is declined.
-static ConVar mat_hdr_output( "mat_hdr_output", "0", FCVAR_ARCHIVE,
+static ConVar mat_hdr_output( "mat_hdr_output", "1", FCVAR_ARCHIVE,
     "Present in the display's extended (HDR/EDR) range where it can show it" );
+
+static ConVar mat_hdr_exposure( "mat_hdr_exposure", "1", FCVAR_ARCHIVE,
+    "HDR scene exposure multiplier", true, 0.25f, true, 4.0f );
+static ConVar mat_hdr_peak_nits( "mat_hdr_peak_nits", "1000", FCVAR_ARCHIVE,
+    "Calibrated HDR display peak brightness in cd/m^2", true, 203.0f, true, 10000.0f );
+static ConVar mat_hdr_output_active( "mat_hdr_output_active", "0", FCVAR_READ_ONLY,
+    "Current presentation: 0 SDR, 1 HDR" );
 
 static bool RunVulkanFrame( std::string *outError )
 {
 	g_VulkanContext.RequestExtendedOutput( mat_hdr_output.GetBool() );
+	g_VulkanContext.SetHdrSettings( mat_hdr_exposure.GetFloat(), mat_hdr_peak_nits.GetFloat() );
+	mat_hdr_output_active.SetValue( g_VulkanContext.ExtendedOutput() ? 1 : 0 );
 	if ( g_FrameExecutor && g_VulkanContext.Port() )
 	{
 		CVulkanFrameSource source;
@@ -288,6 +297,8 @@ static bool InitVulkanContext(
 	if ( const char *shaderDir = getenv( "SOURCE_VK_SHADER_DIR" ) )
 		withTools.shaderDebugDirectory = shaderDir;
 	withTools.deviceFactory = g_DeviceFactory;
+	withTools.hdrScene = g_VulkanContext.HasCorePassRecorder();
+	g_VulkanContext.RequestExtendedOutput( mat_hdr_output.GetBool() );
 	if ( !g_VulkanContext.Init( *host, withTools, outError ) )
 		return false;
 	if ( mat_pix_events.GetInt() < 0 )
@@ -3307,14 +3318,15 @@ private:
 		// scale: the client draws the water views at a quarter of the tone-map
 		// scale in integer HDR, which Water's tint multiplies back.
 		terms.time = static_cast<float>( Sys_FloatTime() ); // CShaderAPIVulkan::CurrentTime
-		const Vector wind = GetVectorRenderingParameter( VECTOR_RENDERPARM_WIND_DIRECTION );
-		const Vector previousWind = GetVectorRenderingParameter( VECTOR_RENDERPARM_PREVIOUS_WIND_DIRECTION );
+		const Vector wind = g_ShaderAPIEmpty.GetVectorRenderingParameter( VECTOR_RENDERPARM_WIND_DIRECTION );
+		const Vector previousWind = g_ShaderAPIEmpty.GetVectorRenderingParameter( VECTOR_RENDERPARM_PREVIOUS_WIND_DIRECTION );
 		terms.foliage[0][0] = wind.x;
 		terms.foliage[0][1] = wind.y;
-		terms.foliage[0][2] = GetFloatRenderingParameter( FLOAT_RENDERPARM_FOLIAGE_TIME );
+		terms.foliage[0][2] = g_ShaderAPIEmpty.GetFloatRenderingParameter( FLOAT_RENDERPARM_FOLIAGE_TIME );
 		terms.foliage[1][0] = previousWind.x;
 		terms.foliage[1][1] = previousWind.y;
-		terms.foliage[1][2] = GetFloatRenderingParameter( FLOAT_RENDERPARM_PREVIOUS_FOLIAGE_TIME );
+		terms.foliage[1][2] = g_ShaderAPIEmpty.GetFloatRenderingParameter( FLOAT_RENDERPARM_PREVIOUS_FOLIAGE_TIME );
+		terms.foliageAvailable = g_ShaderAPIEmpty.GetFloatRenderingParameter( FLOAT_RENDERPARM_FOLIAGE_AVAILABLE ) > 0.0f;
 		terms.waterReflectTintScale = integerHdr ? 4.0f : 1.0f;
 		// The view's fog as SetPixelShaderFogParams and UpdatePixelFogColorConstant
 		// give it to a pass that writes sRGB and fogs to the scene's color.

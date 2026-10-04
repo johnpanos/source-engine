@@ -32,6 +32,8 @@ GlFormat FormatOf( Format format )
 		return { GL_SRGB8_ALPHA8, GL_BGRA, GL_UNSIGNED_BYTE, false };
 	case Format::kRG16Float:
 		return { GL_RG16F, GL_RG, GL_HALF_FLOAT, false };
+	case Format::kRGB10A2Unorm:
+		return { GL_RGB10_A2, GL_RGBA, GL_UNSIGNED_INT_2_10_10_10_REV, false };
 	case Format::kRGBA16Float:
 		return { GL_RGBA16F, GL_RGBA, GL_HALF_FLOAT, false };
 	case Format::kR32Float:

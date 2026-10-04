@@ -16,6 +16,9 @@
 #ifndef RENDER_SHADERS_COMMON_COLOR_ENCODING_GLSL
 #define RENDER_SHADERS_COMMON_COLOR_ENCODING_GLSL
 
+#include "tone_map.glsl"
+#include "color_transfer.glsl"
+
 vec3 LinearToSrgb( vec3 c )
 {
 	c = clamp( c, 0.0, 1.0 );
@@ -25,6 +28,20 @@ vec3 LinearToSrgb( vec3 c )
 const uint kOutputEncodingSrgb = 0u;
 const uint kOutputEncodingHardware = 1u;
 const uint kOutputEncodingLinear = 2u;
+const uint kOutputEncodingPq = 3u;
+
+// Scene primaries are Rec. 709. HDR10 carries Rec. 2020 and absolute PQ;
+// reference white is the output contract's 203 cd/m^2.
+vec3 OutputHdr10( vec3 linear )
+{
+	const vec3 rgb = max( linear, vec3( 0.0 ) );
+	const vec3 wide = vec3( dot( rgb, vec3( 0.627404, 0.329283, 0.043313 ) ),
+	    dot( rgb, vec3( 0.069097, 0.919540, 0.011362 ) ),
+	    dot( rgb, vec3( 0.016391, 0.088013, 0.895595 ) ) );
+	return vec3( OutputPqEncode( wide.r * kOutputReferenceWhiteNits ),
+	    OutputPqEncode( wide.g * kOutputReferenceWhiteNits ),
+	    OutputPqEncode( wide.b * kOutputReferenceWhiteNits ) );
+}
 
 vec3 OutputEncode( vec3 linear, uint encoding )
 {
@@ -32,6 +49,8 @@ vec3 OutputEncode( vec3 linear, uint encoding )
 	if ( encoding == kOutputEncodingLinear )
 		return LinearToSrgb( linear );
 #endif
+	if ( encoding == kOutputEncodingPq )
+		return OutputHdr10( linear );
 	if ( encoding == kOutputEncodingLinear )
 		return max( linear, vec3( 0.0 ) );
 	if ( encoding == kOutputEncodingHardware )

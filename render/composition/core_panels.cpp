@@ -138,7 +138,8 @@ void CorePanels::RecordSlot(
 	panels.device = target.device;
 	// The sRGB view when the target has one; else the unorm view, and the
 	// shader encodes (the output encoding frame term), as the world does.
-	panels.terms.encodeOutput = !target.colorSrgb.IsValid();
+	panels.terms.encodeOutput = !target.colorSrgb.IsValid() &&
+	                            target.colorFormat != device::Format::kRGBA16Float;
 	panels.color = panels.terms.encodeOutput ? target.color : target.colorSrgb;
 	panels.colorFormat = panels.terms.encodeOutput ? target.colorFormat : target.colorSrgbFormat;
 	panels.depth = target.depth;

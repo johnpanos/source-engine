@@ -104,6 +104,8 @@ struct VulkanContextConfig
 	// Wait for vertical blank when presenting. The present mode for either
 	// setting is chosen by render.present-policy.v1; RequestVSync changes it.
 	bool vsync = true;
+	// Game composition keeps scene and render targets linear until render.pass.output.
+	bool hdrScene = false;
 	// Behave as if the device bound at most this many descriptor sets (0: the
 	// device's own maxBoundDescriptorSets). The suites set 4, the Vulkan
 	// minimum, to show what such a device draws.
@@ -339,6 +341,7 @@ public:
 		render::legacy::CorePassFog fog;
 		float time = 0.0f;
 		float foliage[2][4] = {};
+		bool foliageAvailable = false;
 		float waterReflectTintScale = 1.0f;
 		bool operator==( const CorePassTerms & ) const = default;
 	};
@@ -670,6 +673,8 @@ public:
 		// fragment stage that may discard costs a tiled GPU its hidden-surface
 		// removal for every draw that uses it.
 		bool alphaTest = true;
+		// Legacy gamma-valued UI/post outputs into the linear scene.
+		bool decodeOutput = false;
 		// >= 0 builds the pipeline with the fragment stage's static combos
 		// compiled in (specialization constant kSpecCombos, constant_id 1), so
 		// the compiler drops the paths the material does not use; -1 leaves
@@ -1294,6 +1299,13 @@ public:
 	void RequestExtendedOutput( bool extended ) { m_requestedExtendedOutput = extended; }
 	// Whether the current swapchain is extended-linear.
 	bool ExtendedOutput() const { return m_extendedOutput; }
+	bool HasCorePassRecorder() const { return m_corePassRecorder != nullptr; }
+	bool HdrScene() const { return m_config.hdrScene; }
+	void SetHdrSettings( float exposure, float peakNits )
+	{
+		m_hdrExposure = exposure;
+		m_hdrPeakNits = peakNits;
+	}
 	// The present mode of the current swapchain, and a count of swapchains
 	// created since Init (each resize, mode or present-mode change adds one).
 	VkPresentModeKHR PresentMode() const { return m_presentMode; }
@@ -1647,6 +1659,8 @@ private:
 	bool m_requestedExtendedOutput = false;
 	bool m_swapchainExtendedRequest = false; // the request the swapchain was built for
 	bool m_extendedOutput = false;
+	float m_hdrExposure = 1.0f;
+	float m_hdrPeakNits = 1000.0f;
 	VkPresentModeKHR m_presentMode = VK_PRESENT_MODE_FIFO_KHR;
 	VulkanAdapterCaps m_adapterCaps;
 	int m_requestedSamples = 1;

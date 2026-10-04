@@ -43,6 +43,8 @@ const int kModeDownsample = 1;
 const int kModeBlur = 2;
 const int kModeEnginePost = 3;
 
+#include "../../../render/shaders/common/color_transfer.glsl"
+
 vec3 SrgbToLinear( vec3 c )
 {
 	return mix( c / 12.92, pow( ( c + 0.055 ) / 1.055, vec3( 2.4 ) ), step( 0.04045, c ) );
@@ -67,6 +69,8 @@ vec4 Sample0( vec2 uv )
 	vec4 texel = texture( BaseTextureSampler, uv );
 	if ( ( int( consts.params.z ) & 1 ) != 0 )
 		texel.rgb = SrgbToLinear( texel.rgb );
+	if ( ( int( consts.params2.y ) & 1 ) != 0 )
+		texel.rgb = OutputSrgbExtended( texel.rgb );
 	return texel;
 }
 vec4 SampleFB( vec2 uv )
@@ -74,6 +78,8 @@ vec4 SampleFB( vec2 uv )
 	vec4 texel = texture( FBTextureSampler, uv );
 	if ( ( int( consts.params.z ) & 2 ) != 0 )
 		texel.rgb = SrgbToLinear( texel.rgb );
+	if ( ( int( consts.params2.y ) & 2 ) != 0 )
+		texel.rgb = OutputSrgbExtended( texel.rgb );
 	return texel;
 }
 
@@ -270,7 +276,7 @@ vec4 EnginePost( int dynamicIndex )
 	return outColor;
 }
 
-void main()
+void LegacyColorMain()
 {
 	const int mode = int( consts.params.y );
 	const int staticIndex = int( ps.c[16].x );
@@ -286,3 +292,5 @@ void main()
 		result.rgb = LinearToSrgb( result.rgb );
 	outColor = result;
 }
+
+#include "linear_target.glsl"

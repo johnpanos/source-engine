@@ -198,7 +198,7 @@ layout( constant_id = 0 ) const bool kAlphaTest = true;
 // or -1 to read them from params.y: specialized pipelines drop unused paths.
 layout( constant_id = 1 ) const int kSpecCombos = -1;
 
-void main()
+void LegacyColorMain()
 {
 	const int combos = kSpecCombos >= 0 ? kSpecCombos : int( consts.params.y );
 	const int flags = int( consts.params.z );
@@ -456,3 +456,5 @@ void main()
 		result = LinearToSrgb( result );
 	outColor = vec4( result, outAlpha );
 }
+
+#include "linear_target.glsl"

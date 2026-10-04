@@ -2085,6 +2085,7 @@ void WorldPass::RecordBatch(
 		terms.areas = view.lights->areas;
 	terms.time = target.time;
 	std::memcpy( terms.foliage, target.foliage, sizeof( terms.foliage ) );
+	terms.foliageAvailable = target.foliageAvailable;
 	if ( !view.previousViewValid )
 		std::copy_n( terms.foliage[0], 4, terms.foliage[1] );
 	terms.waterReflectTintScale = target.waterReflectTintScale;
@@ -2132,6 +2133,11 @@ void WorldPass::RecordBatch(
 	std::map<std::uint64_t, bool> framesWritten;
 	auto frameGroupReady = [&]( const Resources::Material &m ) -> const Group *
 	{
+		if ( auto error = material::FrameInputError( m.program, terms ) )
+		{
+			note( *error );
+			return nullptr;
+		}
 		const std::uint64_t layout = m.program.request.frameLayout.value;
 		if ( framesWritten[layout] )
 			return &r.frameGroups[layout];

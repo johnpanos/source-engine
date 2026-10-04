@@ -73,6 +73,7 @@ enum class OutputEncoding : std::uint8_t
 	kSrgb = 0,     // the sRGB curve in the shader, into an 8-bit UNORM target
 	kHardware = 1, // linear into an 8-bit sRGB target, which encodes
 	kLinear = 2,   // linear into a half-float target (extended linear range)
+	kPq = 3,       // Rec. 2020 / ST 2084 into RGB10A2 (HDR10)
 };
 
 struct OutputParams

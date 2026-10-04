@@ -58,7 +58,7 @@ vec3 ProjectRows( vec3 p )
 	return vec3( clip.x, -clip.y, clip.w );
 }
 
-void main()
+void LegacyColorMain()
 {
 	const int flags = int( consts.alphaParams.z );
 	const int stage = int( consts.alphaParams.y );
@@ -198,3 +198,5 @@ void main()
 		result.rgb = LinearToSrgb( result.rgb );
 	outColor = result;
 }
+
+#include "linear_target.glsl"

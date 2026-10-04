@@ -256,7 +256,7 @@ vec4 SpriteCardColor( int flags )
 // costs a tiled GPU its hidden-surface removal.
 layout( constant_id = 0 ) const bool kAlphaTest = true;
 
-void main()
+void LegacyColorMain()
 {
 	const int flags = int( consts.alphaParams.z );
 	if ( consts.alphaParams.y > 1.5 && consts.alphaParams.y < 2.5 )
@@ -424,3 +424,5 @@ void main()
 		result.rgb = clamp( mix( vec3( 0.5 ), result.rgb, result.a ), 0.0, 1.0 );
 	outColor = result;
 }
+
+#include "linear_target.glsl"

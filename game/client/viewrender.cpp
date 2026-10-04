@@ -2086,6 +2086,7 @@ void CViewRender::RenderView( const CViewSetup &view, int nClearFlags, int whatT
 	pRenderContext->SetVectorRenderingParameter( VECTOR_RENDERPARM_PREVIOUS_WIND_DIRECTION, m_vecPreviousFoliageWind );
 	pRenderContext->SetFloatRenderingParameter( FLOAT_RENDERPARM_FOLIAGE_TIME, m_flFoliageTime );
 	pRenderContext->SetFloatRenderingParameter( FLOAT_RENDERPARM_PREVIOUS_FOLIAGE_TIME, m_flPreviousFoliageTime );
+	pRenderContext->SetFloatRenderingParameter( FLOAT_RENDERPARM_FOLIAGE_AVAILABLE, 1.0f );
 	ITexture *saveRenderTarget = pRenderContext->GetRenderTarget();
 	pRenderContext.SafeRelease(); // don't want to hold for long periods in case in a locking active share thread mode
 

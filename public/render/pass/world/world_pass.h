@@ -281,6 +281,7 @@ struct WorldTarget
 	// scale).
 	float time = 0.0f;
 	float foliage[2][4] = {};
+	bool foliageAvailable = false;
 	float waterReflectTintScale = 1.0f;
 	// The shadow atlas the composition drew for this slot's view (a world
 	// stage's lights with shadow tiles), in kSampled; invalid without one.

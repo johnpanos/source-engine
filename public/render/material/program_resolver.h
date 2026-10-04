@@ -86,6 +86,7 @@ struct FrameTerms
 	// (x, y, 1 / width, 1 / height).
 	float time = 0.0f;
 	float foliage[2][4] = {};
+	bool foliageAvailable = false;
 	float waterReflectTintScale = 1.0f;
 	float viewRight[2] = { 1.0f, 0.0f };
 	float viewport[4] = { 0.0f, 0.0f, 1.0f, 1.0f };
@@ -111,6 +112,7 @@ struct ResolvedProgram
 	ProgramRequest request;
 	device::BlendMode blend = device::BlendMode::kOpaque;
 	bool sceneColor = false; // the view group needs a snapshot before this draw
+	bool foliage = false; // $treesway needs captured animation time and wind
 	bool twoSided = false;   // authored $nocull; mesh winding belongs to its draw owner
 	// The per-draw inputs the draw group takes, in binding order.
 	std::vector<std::string> drawInputs;
@@ -120,6 +122,10 @@ struct ResolvedProgram
 	// imports the target each view, as the stream drew it before the slot.
 	std::vector<std::string> viewInputs;
 };
+
+// Missing/nonfinite required frame inputs are refused even when the pass
+// already wrote another material's group of the same layout.
+std::optional<std::string> FrameInputError( const ResolvedProgram &program, const FrameTerms &terms );
 
 // Replacement program modules (SPIR-V words): the debug suites' seeded
 // programs. Empty spans keep the families' own.

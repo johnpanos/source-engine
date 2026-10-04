@@ -103,7 +103,7 @@ vec3 VortexPosition( vec3 vortex )
 	return -vec3( dot( v, vWorldTangentS ), dot( v, vWorldTangentT ), dot( v, vWorldNormal ) );
 }
 
-void main()
+void LegacyColorMain()
 {
 	const int statics = int( ps.c[11].x );
 	const int colorFlags = int( consts.params.z );
@@ -339,3 +339,5 @@ void main()
 		result.rgb = LinearToSrgb( result.rgb );
 	outColor = result;
 }
+
+#include "linear_target.glsl"

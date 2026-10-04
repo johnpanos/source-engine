@@ -84,6 +84,7 @@ enum class Format : std::uint8_t
 	kBC3Srgb,
 	kBC4Unorm,
 	kBC5Unorm,
+	kRGB10A2Unorm, // packed R10 G10 B10 A2; HDR10 presentation
 	kCount
 };
 

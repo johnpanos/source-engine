@@ -486,6 +486,11 @@ bool CVulkanContext::CreateSwapchain( std::string *outError, VkSwapchainKHR oldS
 	// then any BGRA/RGBA 8-bit, else the first reported.
 	uint32_t fmtCount = 0;
 	vkGetPhysicalDeviceSurfaceFormatsKHR( m_physicalDevice, m_surface, &fmtCount, nullptr );
+	if ( !fmtCount )
+	{
+		SetError( outError, "surface offers no formats" );
+		return false;
+	}
 	std::vector<VkSurfaceFormatKHR> formats( fmtCount );
 	vkGetPhysicalDeviceSurfaceFormatsKHR( m_physicalDevice, m_surface, &fmtCount, formats.data() );
 	VkSurfaceFormatKHR chosen = formats[0];
@@ -526,16 +531,29 @@ bool CVulkanContext::CreateSwapchain( std::string *outError, VkSwapchainKHR oldS
 		const char *declined = nullptr;
 		if ( !m_corePassRecorder )
 			declined = "no core-pass recorder records the frame's output";
-		else if ( !m_srgbAttachments )
+		else if ( !m_config.hdrScene && !m_srgbAttachments )
 			declined = "the back buffer has no sRGB view to read linear values through";
 		else if ( !m_host->CanShowExtendedRange() )
 			declined = "the window cannot show extended range";
 		else
 		{
-			declined = "the surface offers no extended-linear half-float format";
+			declined = "the surface offers no HDR10 or extended-linear format";
+			// Linux compositors commonly expose HDR10 rather than scRGB.
 			for ( const VkSurfaceFormatKHR &f : formats )
 			{
-				if ( f.format == VK_FORMAT_R16G16B16A16_SFLOAT &&
+				if ( m_config.hdrScene && f.format == VK_FORMAT_A2B10G10R10_UNORM_PACK32 &&
+				     f.colorSpace == VK_COLOR_SPACE_HDR10_ST2084_EXT )
+				{
+					m_presentFormat = f.format;
+					m_presentColorSpace = f.colorSpace;
+					m_extendedOutput = true;
+					declined = nullptr;
+					break;
+				}
+			}
+			for ( const VkSurfaceFormatKHR &f : formats )
+			{
+				if ( !m_extendedOutput && f.format == VK_FORMAT_R16G16B16A16_SFLOAT &&
 				     f.colorSpace == VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT )
 				{
 					m_presentFormat = f.format;
@@ -549,7 +567,18 @@ bool CVulkanContext::CreateSwapchain( std::string *outError, VkSwapchainKHR oldS
 		if ( declined )
 			Log( "extended output declined: %s; presenting in the standard range\n", declined );
 		else
-			Log( "extended output: half-float swapchain in extended linear sRGB\n" );
+			Log( "HDR output: %s\n",
+			    m_presentColorSpace == VK_COLOR_SPACE_HDR10_ST2084_EXT ? "Rec. 2020 / PQ (10-bit)"
+			                                                       : "extended linear sRGB" );
+	}
+
+	if ( m_config.hdrScene )
+	{
+		// Scene precision is independent of the display's dynamic range.
+		m_swapFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
+		m_swapFormatSrgb = VK_FORMAT_UNDEFINED;
+		m_srgbAttachments = false;
+		Log( "HDR scene: linear RGBA16F, %s output\n", m_extendedOutput ? "HDR" : "SDR tone-mapped" );
 	}
 
 	// Present mode: render.present-policy.v1 over what the surface offers.
@@ -2944,6 +2973,7 @@ uint64_t CVulkanContext::RasterStateKey( const DynRasterState &state )
 	       ( state.alphaWrite ? 1ull << 36 : 0ull ) |
 	       ( state.depthBiasEnable ? 1ull << 37 : 0ull ) | ( state.wireframe ? 1ull << 38 : 0ull ) |
 	       ( state.alphaTest ? 0ull : 1ull << 39 ) |
+	       ( state.decodeOutput ? 1ull << 58 : 0ull ) |
 	       ( static_cast<uint64_t>( state.specCombos + 1 ) & kSpecCombosKeyMask ) << 40;
 }
 
@@ -2966,6 +2996,7 @@ CVulkanContext::DynRasterState CVulkanContext::RasterStateFromKey( uint64_t key 
 	state.depthBiasEnable = ( key & ( 1ull << 37 ) ) != 0;
 	state.wireframe = ( key & ( 1ull << 38 ) ) != 0;
 	state.alphaTest = ( key & ( 1ull << 39 ) ) == 0;
+	state.decodeOutput = ( key & ( 1ull << 58 ) ) != 0;
 	state.specCombos = static_cast<int>( ( key >> 40 ) & kSpecCombosKeyMask ) - 1;
 	state.cullMode = static_cast<VkCullModeFlags>( ( k >> 17 ) & 3u );
 	state.stencilEnable = ( ( k >> 19 ) & 1u ) != 0;
@@ -3291,8 +3322,9 @@ VkPipeline CVulkanContext::BuildMaterialPipeline( const DynRasterState &state, V
 	{
 		VkBool32 alphaTest;
 		int32_t combos;
-	} specData = { alphaTest, specCombos };
-	VkSpecializationMapEntry specEntries[2] = {};
+		VkBool32 decodeOutput;
+	} specData = { alphaTest, specCombos, state.decodeOutput ? VK_TRUE : VK_FALSE };
+	VkSpecializationMapEntry specEntries[3] = {};
 	uint32_t specCount = 0;
 	if ( !state.alphaTest )
 		specEntries[specCount++] = {
@@ -3300,6 +3332,8 @@ VkPipeline CVulkanContext::BuildMaterialPipeline( const DynRasterState &state, V
 	if ( state.specCombos >= 0 )
 		specEntries[specCount++] = {
 		    1, offsetof( decltype( specData ), combos ), sizeof( int32_t ) };
+	specEntries[specCount++] = {
+	    31, offsetof( decltype( specData ), decodeOutput ), sizeof( VkBool32 ) };
 	VkSpecializationInfo specialization = {};
 	specialization.mapEntryCount = specCount;
 	specialization.pMapEntries = specEntries;
@@ -6896,6 +6930,7 @@ void CVulkanContext::RecordCorePassSections( render::device::CommandEncoder &enc
 			target.fog = terms.fog;
 			target.time = terms.time;
 			std::memcpy( target.foliage, terms.foliage, sizeof( target.foliage ) );
+			target.foliageAvailable = terms.foliageAvailable;
 			target.waterReflectTintScale = terms.waterReflectTintScale;
 		}
 		tags.clear();
@@ -6963,6 +6998,8 @@ render::device::Format PortFormat( VkFormat format )
 		return render::device::Format::kBC3Unorm;
 	case VK_FORMAT_R16G16B16A16_UNORM:
 		return render::device::Format::kRGBA16Unorm;
+	case VK_FORMAT_A2B10G10R10_UNORM_PACK32:
+		return render::device::Format::kRGB10A2Unorm;
 	case VK_FORMAT_R16G16B16A16_SFLOAT:
 		return render::device::Format::kRGBA16Float;
 	default:
@@ -7171,7 +7208,8 @@ render::legacy::CoreOutputTargets CVulkanContext::CoreOutputTargetsFor()
 	if ( !m_hostDevice || i >= m_swapImages.size() || i >= m_presentImages.size() )
 		return out;
 	out.device = Port();
-	out.sceneFormat = SrgbPortFormat( PortFormat( m_swapFormat ) );
+	out.sceneFormat = m_config.hdrScene ? PortFormat( m_swapFormat )
+	                                    : SrgbPortFormat( PortFormat( m_swapFormat ) );
 	out.sceneWidth = m_swapExtent.width;
 	out.sceneHeight = m_swapExtent.height;
 	out.targetFormat = PortFormat( m_presentFormat );
@@ -7208,14 +7246,21 @@ render::legacy::CoreOutputTargets CVulkanContext::CoreOutputTargetsFor()
 	// encoding for the display's headroom (scene peak 1).
 	float potential = 1.0f;
 	m_host->ReadHeadroom( &out.headroom, &potential );
-	out.headroom = std::max( 1.0f, out.headroom );
+	out.headroom = m_extendedOutput ? std::max( 1.0f, out.headroom ) : 1.0f;
+	if ( m_config.hdrScene )
+	{
+		out.exposure = m_hdrExposure;
+		out.scenePeak = 16.0f;
+		if ( m_extendedOutput )
+			out.headroom = m_hdrPeakNits / 203.0f;
+	}
 	return out;
 }
 
 void CVulkanContext::RecordOutputSection( render::device::CommandEncoder &encoder )
 {
 	m_outputSectionRecorded = false;
-	if ( !m_extendedOutput || !m_corePassRecorder )
+	if ( ( !m_extendedOutput && !m_config.hdrScene ) || !m_corePassRecorder )
 		return;
 	const render::legacy::CoreOutputTargets targets = CoreOutputTargetsFor();
 	m_hostDevice->BeginSection( encoder );
@@ -7693,7 +7738,7 @@ void CVulkanContext::RecordFrameScene( VkCommandBuffer cmd )
 		for ( size_t recordIndex = 0; recordIndex < m_dynDrawRecords.size(); ++recordIndex )
 		{
 			ReplayFrameLabels( &labelCursor, recordIndex );
-			const DynDraw &d = m_dynDrawRecords[recordIndex];
+			DynDraw &d = m_dynDrawRecords[recordIndex];
 			if ( d.kind == kRecordCorePass && d.corePass == render::legacy::kCorePassLegacyHud )
 				legacyHud = true;
 			if ( d.kind == kRecordCorePass && ( d.corePass & render::legacy::kCorePassForwarded ) &&
@@ -7931,7 +7976,7 @@ void CVulkanContext::RecordFrameScene( VkCommandBuffer cmd )
 			bool pbrWorldDelta = false;
 			// sRGB inputs decoded by the sampler and output encoded by the view,
 			// which the shader must then not apply itself.
-			int decodedFlags = openSrgb ? kColorSrgbWrite : 0;
+			int decodedFlags = ( openSrgb || m_config.hdrScene ) ? kColorSrgbWrite : 0;
 			// The test-catalog pipelines (greenify, constant color, passthrough)
 			// are single-sampled; under multisampling their draws are declined.
 			if ( d.shaderIndex == kDynShaderGreenify && m_dynPipelineGreen != VK_NULL_HANDLE )

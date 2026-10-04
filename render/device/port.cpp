@@ -120,6 +120,7 @@ std::uint32_t BytesPerTexel( Format format )
 	{
 	case Format::kR8Unorm:
 		return 1;
+	case Format::kRGB10A2Unorm:
 	case Format::kRGBA8Unorm:
 	case Format::kRGBA8Srgb:
 	case Format::kBGRA8Unorm:

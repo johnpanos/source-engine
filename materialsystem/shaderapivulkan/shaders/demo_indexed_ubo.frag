@@ -3,7 +3,9 @@
 // the rendered pixel back proves the constant reached the shader.
 layout( location = 0 ) out vec4 outColor;
 layout( binding = 0 ) uniform Constants { vec4 color; } consts;
-void main()
+void LegacyColorMain()
 {
 	outColor = consts.color;
 }
+
+#include "linear_target.glsl"

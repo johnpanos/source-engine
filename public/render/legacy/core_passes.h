@@ -106,6 +106,7 @@ struct CorePassTarget
 	// which animated terms read (the water point's flow).
 	float time = 0.0f;
 	float foliage[2][4] = {}; // client-owned wind xy and time z, current/previous frame
+	bool foliageAvailable = false;
 	// The scale of the water point's reflection tint: 4 in integer HDR, where
 	// the client draws the water views at a quarter of the tone-map scale
 	// (SetLightmapScaleForWater) and Water multiplies its tint back; else 1.

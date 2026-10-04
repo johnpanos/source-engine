@@ -116,6 +116,18 @@ std::vector<std::byte> EncodeTexel( Format format, const ClearColor &color )
 		putBytes( 0, h, sizeof( h ) );
 		break;
 	}
+	case Format::kRGB10A2Unorm:
+	{
+		const auto pack = []( float value, unsigned maximum )
+		{
+			return static_cast<std::uint32_t>(
+			    std::lround( std::clamp( value, 0.0f, 1.0f ) * maximum ) );
+		};
+		const std::uint32_t packed = pack( color.r, 1023 ) | ( pack( color.g, 1023 ) << 10 ) |
+		                             ( pack( color.b, 1023 ) << 20 ) | ( pack( color.a, 3 ) << 30 );
+		putBytes( 0, &packed, sizeof( packed ) );
+		break;
+	}
 	case Format::kRGBA16Float:
 	{
 		const std::uint16_t h[4] = {

@@ -588,6 +588,7 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 		SurfaceVariant variant = claim.Variant();
 		variant.layout = s.layout;
 		variant.terms |= ( s.sceneTerms & ~kSurfaceLightmapTerms ) | kSurfaceMeshDirect;
+		out.foliage = variant.treeSwayMode != 0;
 		SurfaceTextures textures;
 		textures.base = TextureOf( material, "basetexture" );
 		if ( claim.normalMap )
@@ -833,11 +834,27 @@ std::optional<GroupRequest> ProgramResolver::DrawGroup(
 	return std::nullopt;
 }
 
+std::optional<std::string> FrameInputError( const ResolvedProgram &program, const FrameTerms &terms )
+{
+	if ( program.foliage )
+	{
+		if ( !terms.foliageAvailable )
+			return "$treesway needs captured wind and animation time";
+		for ( const auto &sample : terms.foliage )
+			for ( float value : sample )
+				if ( !std::isfinite( value ) )
+					return "$treesway wind and animation time must be finite";
+	}
+	return std::nullopt;
+}
+
 std::optional<GroupRequest> ProgramResolver::FrameGroup(
     const ResolvedProgram &program, const FrameTerms &terms ) const
 {
 	const State &s = *m_State;
 	if ( !program.request.frameLayout.IsValid() )
+		return std::nullopt;
+	if ( FrameInputError( program, terms ) )
 		return std::nullopt;
 	if ( program.request.frameLayout == s.lightmapped->FrameLayout() )
 	{

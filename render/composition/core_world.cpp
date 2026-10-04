@@ -2132,7 +2132,8 @@ void CoreWorld::RecordWorldBatch( std::span<const std::uint32_t> tags,
 	world.device = target.device;
 	// The sRGB view when the target has one; else the unorm view, and the
 	// shader encodes (the same curve, the output encoding frame term).
-	world.encodeOutput = !target.colorSrgb.IsValid();
+	world.encodeOutput = !target.colorSrgb.IsValid() &&
+	                     target.colorFormat != device::Format::kRGBA16Float;
 	world.color = world.encodeOutput ? target.color : target.colorSrgb;
 	world.colorFormat = world.encodeOutput ? target.colorFormat : target.colorSrgbFormat;
 	world.colorCopySource = target.colorCopySource;
@@ -2261,6 +2262,7 @@ void CoreWorld::RecordWorldBatch( std::span<const std::uint32_t> tags,
 	world.fogEyeZ = target.fog.eyeZ;
 	world.time = target.time;
 	std::memcpy( world.foliage, target.foliage, sizeof( world.foliage ) );
+	world.foliageAvailable = target.foliageAvailable;
 	world.waterReflectTintScale = target.waterReflectTintScale;
 	const std::shared_ptr<const pass::world::StageLightingInputs> inputs =
 	    m_Pass.LightingInputs( tag, target.streamEpoch );

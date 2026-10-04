@@ -6,11 +6,16 @@
 //=============================================================================//
 
 #include "lab_compute.h"
+#include "lab_canvas.h"
 #include "lab_suite.h"
 #include "lab_support.h"
 #include "suites.h"
 
 #include "spv/tree_sway_check_spv.h"
+
+#include "render/material/program_resolver.h"
+#include "render/material/vmt_import.h"
+#include "render/pass/world/world_pass.h"
 
 #include <algorithm>
 #include <array>
@@ -18,6 +23,7 @@
 #include <cmath>
 #include <cstring>
 #include <memory>
+#include <limits>
 #include <vector>
 
 namespace render::lab
@@ -87,6 +93,136 @@ std::array<double, 3> Reference( const Case &c )
 		                       position[( axis + 1 ) % 3] / length * c.motion[2] + phase );
 	}
 	return out;
+}
+
+class EmptyTextures final : public pass::world::IWorldTextures
+{
+public:
+	device::TextureId Import( int, bool ) override { return {}; }
+	device::SamplerDesc Sampler( int ) override { return {}; }
+};
+
+std::optional<std::string> CheckImages( device::IRenderDevice2 &device, Results &results )
+{
+	using namespace pass::world;
+	resources::TextureCache textures( device );
+	material::GroupResidency groups( device, textures );
+	std::unique_ptr<Canvas> canvas;
+	if ( auto why = Canvas::Create( device, 64, 64, canvas ) )
+		return why;
+	EmptyTextures imports;
+	for ( int mode : { 1, 2 } )
+	{
+		Case c;
+		c.geometry[0] = mode == 1 ? 1.0f : -1.0f;
+		c.geometry[2] = 1;
+		c.motion[0] = .2f;
+		c.motion[1] = .15f;
+		c.motion[2] = 2;
+		c.motion[3] = .03f;
+		c.positionTime[2] = mode == 1 ? .5f : -.5f;
+		c.positionTime[3] = .7f;
+		c.windMode[0] = .4f;
+		c.windMode[1] = .3f;
+		c.windMode[2] = float( mode );
+		c.objectToWorld[11] = mode == 1 ? 0.0f : 1.0f;
+		WorldData world;
+		auto stage = std::make_shared<WorldStage>();
+		stage->lightmap.width = stage->lightmap.height = 1;
+		stage->lightmap.flat.resize( 8 );
+		world.stage = std::move( stage );
+		WorldMaterial foliage;
+		foliage.name = "tree-sway-image";
+		foliage.shader = "VertexLitGeneric";
+		foliage.mesh = true;
+		foliage.variables = { { "$selfillum", "1" }, { "$treesway", std::to_string( mode ) },
+		    { "$treeswayheight", std::to_string( c.geometry[0] ) }, { "$treeswayradius", "1" },
+		    { "$treeswayspeed", ".2" }, { "$treeswaystrength", ".15" },
+		    { "$treeswayscrumblefrequency", "2" }, { "$treeswayscrumblestrength", ".03" } };
+		world.materials.push_back( foliage );
+		WorldData::StaticMesh mesh;
+		for ( const auto &xy : { std::pair{ -.5f, -.5f }, std::pair{ .5f, -.5f },
+		          std::pair{ .5f, .5f }, std::pair{ -.5f, .5f } } )
+		{
+			material::SurfaceModelVertex vertex;
+			vertex.position[0] = xy.first;
+			vertex.position[1] = xy.second;
+			vertex.position[2] = c.positionTime[2];
+			vertex.normal[2] = 1;
+			vertex.tangent[0] = vertex.tangent[3] = 1;
+			mesh.vertices.push_back( vertex );
+		}
+		mesh.indices = { 0, 1, 2, 0, 2, 3 };
+		mesh.surfaces.push_back( { 0, 0, 0, 6 } );
+		world.staticMeshes.push_back( mesh );
+		WorldData::StaticInstance instance;
+		std::copy_n( c.objectToWorld, 16, instance.world );
+		world.staticInstances.push_back( instance );
+		WorldData reference = world;
+		reference.materials[0].variables[1].second = "0";
+		for ( auto &vertex : reference.staticMeshes[0].vertices )
+		{
+			std::copy_n( vertex.position, 3, c.positionTime );
+			const auto deformed = Reference( c );
+			for ( int axis = 0; axis < 3; ++axis )
+				vertex.position[axis] = float( deformed[axis] );
+		}
+		WorldPass animated, expected;
+		animated.SetWorld( std::move( world ) );
+		expected.SetWorld( std::move( reference ) );
+		auto render = [&]( WorldPass &pass, bool prepass, bool available, CanvasImage &image ) -> std::optional<std::string>
+		{
+			WorldView view;
+			for ( int i = 0; i < 4; ++i )
+				view.toClip[i * 5] = 1;
+			view.staticInstances = { 0 };
+			view.viewport = { 0, 0, 64, 64, 0, 1 };
+			const auto tag = pass.QueueView( std::move( view ) );
+			if ( !tag )
+				return "foliage fixture queued no model";
+			return canvas->Render( textures, groups, {}, { 0, 0, 0, 1 }, &image,
+			    [&]( device::CommandEncoder &encoder, device::TextureId color, device::TextureId depth ) -> std::optional<std::string>
+			    {
+				    WorldTarget target;
+				    target.device = &device;
+				    target.color = color;
+				    target.depth = depth;
+				    target.colorFormat = kCanvasColor;
+				    target.depthFormat = kCanvasDepth;
+				    target.width = target.height = 64;
+				    target.textures = &imports;
+				    target.depthPrepass = prepass;
+				    target.foliageAvailable = available;
+				    target.foliage[0][0] = c.windMode[0];
+				    target.foliage[0][1] = c.windMode[1];
+				    target.foliage[0][2] = c.positionTime[3];
+				    pass.Record( tag, encoder, target );
+				    return std::nullopt;
+			    } );
+		};
+		CanvasImage actual, oracle, prepassed, missing;
+		if ( auto why = render( animated, false, true, actual ) )
+			return why;
+		if ( auto why = render( expected, false, false, oracle ) )
+			return why;
+		if ( auto why = render( animated, true, true, prepassed ) )
+			return why;
+		const std::string prefix = "tree-sway.model-stage." + std::to_string( mode );
+		results.That( actual.rgba == oracle.rgba && animated.Stats().viewsFailed == 0,
+		    prefix + ".independently-deformed-mesh-exact", animated.Stats().lastFailure );
+		results.That( actual.rgba == prepassed.rgba, prefix + ".depth-prepass-exact" );
+		results.That( std::count_if( actual.rgba.begin(), actual.rgba.end(),
+		                  []( float value ) { return value > .5f; } ) > 5000,
+		    prefix + ".visible-coverage" );
+		if ( auto why = render( animated, false, false, missing ) )
+			return why;
+		results.That( animated.Stats().viewsFailed == 1 &&
+		                  animated.Stats().lastFailure.find( "$treesway" ) != std::string::npos,
+		    prefix + ".missing-wind-refused-by-name", animated.Stats().lastFailure );
+		animated.ReleaseDevice( device );
+		expected.ReleaseDevice( device );
+	}
+	return std::nullopt;
 }
 
 std::optional<std::string> Run( bool validate, std::span<const std::uint32_t> module,
@@ -166,6 +302,8 @@ std::optional<std::string> Run( bool validate, std::span<const std::uint32_t> mo
 			    "worst source-unit error " + std::to_string( worst ) );
 		}
 	}
+	if ( auto why = CheckImages( *device, results ) )
+		return why;
 	device.reset();
 	messages = counter.load();
 	return std::nullopt;

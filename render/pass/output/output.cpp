@@ -53,7 +53,8 @@ bool ValidParams( const OutputParams &params, OutputEncoding encoding )
 	if ( !std::isfinite( params.headroom ) || params.headroom < 1.0f )
 		return false;
 	// An 8-bit target shows the standard range.
-	return encoding == OutputEncoding::kLinear || params.headroom == 1.0f;
+	return encoding == OutputEncoding::kLinear || encoding == OutputEncoding::kPq ||
+	       params.headroom == 1.0f;
 }
 
 } // namespace
@@ -70,6 +71,8 @@ foundation::Expected<OutputEncoding, OutputStatus> EncodingFor( Format target )
 		return OutputEncoding::kHardware;
 	case Format::kRGBA16Float:
 		return OutputEncoding::kLinear;
+	case Format::kRGB10A2Unorm:
+		return OutputEncoding::kPq;
 	default:
 		return foundation::MakeUnexpected( OutputStatus::kInvalidTarget );
 	}

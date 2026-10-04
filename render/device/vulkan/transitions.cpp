@@ -166,6 +166,8 @@ VkFormat ToVkFormat( Format format )
 		return VK_FORMAT_B8G8R8A8_SRGB;
 	case Format::kRG16Float:
 		return VK_FORMAT_R16G16_SFLOAT;
+	case Format::kRGB10A2Unorm:
+		return VK_FORMAT_A2B10G10R10_UNORM_PACK32;
 	case Format::kRGBA16Float:
 		return VK_FORMAT_R16G16B16A16_SFLOAT;
 	case Format::kR32Float:

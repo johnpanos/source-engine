@@ -119,7 +119,7 @@ vec3 Reflect( vec3 normal, vec3 eyeVector )
 	return 2.0 * dot( normal, eyeVector ) * normal - dot( normal, normal ) * eyeVector;
 }
 
-void main()
+void LegacyColorMain()
 {
 	const int combos = int( consts.params.y );
 	const int flags = int( consts.params.z );
@@ -318,3 +318,5 @@ void main()
 		discard;
 	outColor = vec4( result, clamp( alpha, 0.0, 1.0 ) );
 }
+
+#include "linear_target.glsl"

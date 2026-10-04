@@ -200,7 +200,7 @@ vec3 EnvironmentRadiance( vec3 direction, float roughness, int flags )
 	return environment;
 }
 
-void main()
+void LegacyColorMain()
 {
 	const int flags = int( consts.params.y );
 	const int colorFlags = int( consts.params.z );
@@ -312,3 +312,5 @@ void main()
 		color = LinearToSrgb( color );
 	outColor = vec4( color, baseSample.a );
 }
+
+#include "linear_target.glsl"
