@@ -15,6 +15,7 @@ Use --scene cameras for attached red eyes, hide/show, movement, rotation and rem
 Use --scene particles for soft-particle fade, opaque occlusion, return and removal.
 Use --scene sparks for the additive spark image, hide/show, opaque occlusion and removal.
 Use --scene monitors for the two real static monitors and their live scanline proxy.
+Use --scene portal-emitters for live blue/orange pulse and their receiver light.
 """
 import argparse
 import copy
@@ -341,14 +342,108 @@ def monitor_sensitivity(images):
     return checks
 
 
+def portal_emitter_commands():
+    blue = 'models/props/portal_emitter_lights_on_blue'
+    orange = 'models/props/portal_emitter_lights_on_orange'
+    result = ['cmd noclip', 'r_drawviewmodel 0', 'cmd setpos -448 128 28',
+              'cmd setang 16 -90 0', f'cl_surface_core_emission_filter {blue}',
+              'cmd ent_fire portal_emitter_a_lvl3 Skin 0']
+
+    def capture(wait=150):
+        result.extend([f'wait {wait}', 'screenshot', 'wait 12'])
+
+    capture()
+    result.append('cmd ent_fire portal_emitter_a_lvl3 Skin 1')
+    capture()
+    result.append('cl_surface_core_emission 0')
+    capture()
+    result.append('cl_surface_core_emission 1')
+    capture()
+    capture(17)
+    capture(31)
+    result.extend([f'cl_surface_core_emission_filter {orange}',
+                   'cmd ent_fire portal_emitter_a_lvl3 Skin 2'])
+    capture()
+    result.append('cl_surface_core_emission 0')
+    capture()
+    result.append('cl_surface_core_emission 1')
+    capture()
+    result.extend([f'cl_surface_core_emission_filter {blue}',
+                   'cmd ent_fire portal_emitter_a_lvl3 Skin 0'])
+    capture()
+    result.extend(['cl_surface_core_emission_filter ""', 'r_core_world_stats',
+                   'r_core_world_strict', 'r_core_dynamic_draws',
+                   'cl_surface_core_emission', 'cl_surface_core_emission_strength',
+                   'cl_surface_core_emission_filter'])
+    return result
+
+
+def inspect_portal_emitters(images):
+    validate_images(images, 10)
+    checks = []
+    sources = [region(image, 346, 192, 386, 543) for image in images[:10]]
+    receivers = [region(image, 380, 590, 620, 640) for image in images[:10]]
+    for index in (1, 2, 3, 4, 5, 6, 7, 8):
+        r, g, b = np.moveaxis(sources[index], 2, 0)
+        blue = np.mean((b > r + .06) & (b > g + .03))
+        orange = np.mean((r > b + .06) & (r > g + .03))
+        selected, other = (orange, blue) if index in (6, 7, 8) else (blue, orange)
+        checks.append(dict(name=f'portal-emitter.authored-color-{index}',
+                           passed=bool(selected > .025 and other < .01), value=float(selected)))
+    for name, on, off, channel, other in (('blue', 1, 2, 2, 0),
+                                         ('blue-returned', 3, 2, 2, 0),
+                                         ('orange', 6, 7, 0, 2),
+                                         ('orange-returned', 8, 7, 0, 2)):
+        delta = (receivers[on] - receivers[off]).mean(axis=(0, 1))
+        checks.append(dict(name=f'portal-emitter.{name}-receiver',
+                           passed=bool(delta[channel] > .007 and delta[channel] > 2 * delta[other]),
+                           value=float(delta[channel])))
+    pulse = max(float(np.abs(sources[a] - sources[b]).mean())
+                for a, b in ((3, 4), (3, 5), (4, 5)))
+    checks.append(dict(name='portal-emitter.live-pulse', passed=pulse > .002, value=pulse))
+    for index in (0, 9):
+        sample = sources[index]
+        chroma = np.ptp(sample, axis=2)
+        visible = float(np.mean((sample.max(axis=2) > .15) & (chroma > .06)))
+        checks.append(dict(name=f'portal-emitter.off-has-no-stale-glow-{index}',
+                           passed=visible < .01, value=visible))
+    return checks
+
+
+def portal_emitter_sensitivity(images):
+    checks = []
+    for name, target, replacement, expected in (
+            ('missing-blue', 1, 0, 'authored-color-1'),
+            ('missing-orange', 6, 0, 'authored-color-6'),
+            ('stale-blue-skin', 6, 1, 'authored-color-6'),
+            ('missing-blue-light', 1, 2, 'blue-receiver'),
+            ('missing-orange-light', 6, 7, 'orange-receiver'),
+            ('missing-blue-return', 3, 2, 'blue-returned-receiver'),
+            ('stale-off', 9, 1, 'off-has-no-stale-glow-9')):
+        mutated = copy.deepcopy(images)
+        mutated[target] = images[replacement].copy()
+        rejected = any(row['name'] == f'portal-emitter.{expected}' and not row['passed']
+                       for row in inspect_portal_emitters(mutated))
+        checks.append(dict(name=f'portal-emitter.oracle.rejects-{name}', passed=rejected))
+    mutated = copy.deepcopy(images)
+    mutated[4] = images[3].copy()
+    mutated[5] = images[3].copy()
+    rejected = any(row['name'] == 'portal-emitter.live-pulse' and not row['passed']
+                   for row in inspect_portal_emitters(mutated))
+    checks.append(dict(name='portal-emitter.oracle.rejects-frozen-pulse', passed=rejected))
+    return checks
+
+
 def commands(scene='materials'):
     if scene == 'all':
         result = ['wait 600', 'r_core_world_stats', 'r_temporal_scale']
-        for name in ('materials', 'doors', 'cables', 'emissives', 'signage', 'cameras', 'particles', 'sparks', 'monitors'):
+        for name in ('materials', 'doors', 'cables', 'emissives', 'signage', 'cameras', 'particles', 'sparks', 'monitors', 'portal-emitters'):
             sequence = commands(name)
             result.extend(sequence if name == 'materials' else sequence[1:])
         result.append('r_temporal_scale')
         return result
+    if scene == 'portal-emitters':
+        return portal_emitter_commands()
     if scene == 'monitors':
         return monitor_commands()
     if scene == 'sparks':
@@ -412,6 +507,15 @@ def validate_images(images, required):
     if (len(shape) != 3 or shape[2] != 3 or shape[0] < 768 or shape[1] < 1024 or
             shape[0] * 4 != shape[1] * 3 or any(image.shape != shape for image in images)):
         raise ValueError('complete captures of the fixed 4:3 viewport are required')
+
+
+def validate_core_statistics(log):
+    failures = re.findall(r'views queued \d+ drawn \d+ failed (\d+)', log)
+    if not failures or any(int(value) for value in failures):
+        raise ValueError('missing core statistics or claimed-view failure')
+    refusals = re.findall(r'dynamic draws \d+ refused (\d+)', log)
+    if not refusals or any(int(value) for value in refusals):
+        raise ValueError('missing dynamic statistics or an unsupported live material draw')
 
 
 def inspect_emissives(images):
@@ -835,7 +939,7 @@ def sensitivity(images):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--commands', action='store_true')
-    parser.add_argument('--scene', choices=('materials', 'doors', 'cables', 'emissives', 'signage', 'cameras', 'particles', 'sparks', 'monitors', 'all'),
+    parser.add_argument('--scene', choices=('materials', 'doors', 'cables', 'emissives', 'signage', 'cameras', 'particles', 'sparks', 'monitors', 'portal-emitters', 'all'),
                         default='materials')
     parser.add_argument('--temporal-scale', type=float,
                         help='require this FSR scale in startup settings and live game queries')
@@ -878,15 +982,15 @@ def main():
             raise ValueError('the game reported strict mode disabled')
         dynamic = re.findall(r'"r_core_dynamic_draws" = "([^\"]+)"', log)
         if ((dynamic and any(value != '0' for value in dynamic)) or
-                (args.scene in ('doors', 'cables', 'emissives', 'signage', 'cameras', 'particles', 'sparks', 'monitors', 'all') and (not strict or not dynamic))):
+                (args.scene in ('doors', 'cables', 'emissives', 'signage', 'cameras', 'particles', 'sparks', 'monitors', 'portal-emitters', 'all') and (not strict or not dynamic))):
             raise ValueError('strict/default-cohort game queries are missing or incorrect')
-        if args.scene in ('emissives', 'signage', 'cameras', 'all'):
+        if args.scene in ('emissives', 'signage', 'cameras', 'portal-emitters', 'all'):
             strength = re.findall(r'"cl_surface_core_emission_strength" = "([^\"]+)"', log)
             emitting = re.findall(r'"cl_surface_core_emission" = "([^\"]+)"', log)
             if (not strength or any(value != '16' for value in strength) or
                     not emitting or any(value != '1' for value in emitting)):
                 raise ValueError('required emissive source policy queries are missing or incorrect')
-        if args.scene in ('signage', 'all'):
+        if args.scene in ('signage', 'portal-emitters', 'all'):
             filters = re.findall(r'"cl_surface_core_emission_filter" = "([^\"]*)"', log)
             if not filters or any(filters):
                 raise ValueError('the source isolation filter was not restored')
@@ -900,11 +1004,9 @@ def main():
                         for value in queried)):
                 raise ValueError('required temporal mode settings/queries are missing or incorrect')
             report['temporal_scale'] = selected
-        failures = re.findall(r'views queued \d+ drawn \d+ failed (\d+)', log)
-        if not failures or any(int(value) for value in failures):
-            raise ValueError('missing core statistics or claimed-view failure')
+        validate_core_statistics(log)
         if args.scene == 'all':
-            validate_images(images, 76)
+            validate_images(images, 86)
             report['checks'] = (inspect(images[:8]) + sensitivity(images[:8]) +
                                 inspect_doors(images[8:17]) + door_sensitivity(images[8:17]) +
                                 inspect_cables(images[17:20]) + cable_sensitivity(images[17:20]) +
@@ -915,7 +1017,10 @@ def main():
                                 inspect_particles(images[58:65]) + particle_sensitivity(images[58:65]) +
                                 inspect_sparks(images[65:72]) + spark_sensitivity(images[65:72]) +
                                 inspect_monitors(images[72:76]) + monitor_sensitivity(images[72:76]) +
+                                inspect_portal_emitters(images[76:86]) + portal_emitter_sensitivity(images[76:86]) +
                                 camera_reports(log, True) + camera_report_sensitivity(log, True))
+        elif args.scene == 'portal-emitters':
+            report['checks'] = inspect_portal_emitters(images) + portal_emitter_sensitivity(images)
         elif args.scene == 'monitors':
             report['checks'] = inspect_monitors(images) + monitor_sensitivity(images)
         elif args.scene == 'sparks':

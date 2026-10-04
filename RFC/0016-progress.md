@@ -9803,3 +9803,43 @@ material/model and cutout-shadow coverage remains open; R91/R96 is not promoted.
 Frozen-path: defect fix in `shaderapivulkan` mesh capture: serialize the actual
 live matrix into the core's existing VMT input convention. No legacy shader or
 material-variable behavior changes.
+
+
+### Intro4 portal-emitter live material proof (2026-10-04)
+
+The real `portal_emitter_a_lvl3` at (-448,0,56) uses `portal_emitter.mdl`.
+Its skin table selects the off/blue/orange material on the same mesh reference.
+The map's relay outputs flicker orange skin 2 and off skin 0; blue skin 1 uses
+the companion live Sine proxy. `portal-emitter-strict-game/evidence.json`
+passes 23 checks per mode on the installed runtime, with no build overlay:
+15 physical checks cover authored color, live pulse, floor receiver light,
+source-off states, color return and removal of stale glow; eight seeded images
+must be rejected. The floor regions contain neither source pixels nor bloom.
+The fixture isolates each emitter material with the existing source filter,
+then restores the filter. Native `review/` contains twenty lossless PNGs and
+both ten-state comparisons with source hashes. Visual review confirms both
+colors, pulse, source-only light changes on the floor, and the off skin.
+`installed-product-proof.json` verifies all 22 binaries against the existing
+matrix-fix installation receipt. No game or shader change was needed here;
+the actual core live handoff supports both proxy materials.
+
+The common game oracle now also requires dynamic census reports and zero
+refused live draws. A material declined before claiming a view must not hide
+behind zero failed claims. `portal-emitter-core-statistics.log` passes four
+unit tests, including missing reports, a refused live material and an earlier
+failure followed by a clean report. Original immutable oracle/capture receipts
+are preserved; `portal-emitter-core-statistics-review.json` independently
+validates all four existing full/target logs under the stronger census rule,
+recording each log hash. The all-scene command route now declares 230 checks;
+that combined route has not yet been run. The prior full 207 checks and these
+23 installed target checks are separate evidence, not a claimed combined run.
+
+The loaded eight proxy snapshot refusals now have explicit live-game evidence
+for the selected monitor and portal-emitter meshes; the other monitor skins and
+hidden potato bodygroup remain loaded catalogue entries. This does not certify
+full model/material coverage. The current installed runtime still reports 43
+world triangles omitted from its solid shadow caster and 23 cutout-only static
+props omitted; classification includes translucent surfaces, so these numbers
+must not be mislabeled as exclusively foliage. Alpha-tested foliage requires
+its actual cutout shadow program before the overall goal can close. Portal
+aperture regression and the remaining model audit are also still open.

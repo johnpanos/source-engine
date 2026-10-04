@@ -99,11 +99,11 @@ camera cohort alone, append `--scene cameras` and use a fresh output directory.
 
 The output must be fresh. A failed mode does not stop the other mode's evidence
 collection, and the aggregate fails if either boot or pixel oracle fails.
-`--scene doors`, `materials`, `cables`, `emissives`, `signage`, `cameras`, `particles`, `sparks` or `monitors` selects a bounded
-reproduction; the default `all` runs all 207 pixel, source-report and seeded-negative
+`--scene doors`, `materials`, `cables`, `emissives`, `signage`, `cameras`, `particles`, `sparks`, `monitors` or `portal-emitters` selects a bounded
+reproduction; the default `all` runs all 230 pixel, source-report and seeded-negative
 checks per mode. Retain direct-start captures separately when reproducing a launch-time report.
 
-`intro4_material_check.py --scene materials|doors|cables|emissives|signage|cameras|particles|sparks|monitors|all --commands` emits each
+`intro4_material_check.py --scene materials|doors|cables|emissives|signage|cameras|particles|sparks|monitors|portal-emitters|all --commands` emits each
 installed `portal_boot.py` console sequence. Capture both modes at the same
 1024×768 requested viewport (desktop HiDPI is retained), using the corresponding
 `--startup-command "r_temporal_scale SCALE"`. Pass each capture to the oracle:
@@ -310,3 +310,12 @@ VMT matrix serialization is shared by initial and live capture, preserves rows
 and float precision, and is tested against transpose/rounding defects by
 `test_vmt_matrix_capture.py`. A loaded catalogue proxy refusal only describes the
 immutable snapshot; actual support requires the live mesh handoff and its pixels.
+
+`--scene portal-emitters` exercises the real `portal_emitter_a_lvl3` prop's
+blue and orange skins, its live Sine pulse and source light on an authored floor
+receiver. Ten shots retain visible material emission while toggling the room
+light source, then restore each color and the off skin. Fifteen physical checks
+and eight seeded pixel defects must pass. The emitter material filter is restored
+at the end. Every scene also refuses missing core statistics, any failed claim,
+or any unsupported live draw reported by the dynamic census; zero failed claims
+alone cannot certify a material the core declined.

@@ -25,7 +25,7 @@ def main():
     parser.add_argument('--fsr-scale', choices=('0.5', '0.588235', '0.666667', '1'),
                         default='0.5')
     parser.add_argument('--timeout', type=int, default=300)
-    parser.add_argument('--scene', choices=('all', 'materials', 'doors', 'cables', 'emissives', 'signage', 'cameras', 'particles', 'sparks', 'monitors'),
+    parser.add_argument('--scene', choices=('all', 'materials', 'doors', 'cables', 'emissives', 'signage', 'cameras', 'particles', 'sparks', 'monitors', 'portal-emitters'),
                         default='all')
     args = parser.parse_args()
     if args.out.exists():
