@@ -8882,3 +8882,44 @@ capture cases). Changed-line style is clean for this slice; an unrelated
 world-pass change has STYLE001. Architecture reports its existing charconv
 include occurrence with zero new/stale occurrences. Physical HDR display
 brightness, R96/K12 and temporal-provider qualification remain unverified.
+
+
+### Original-style offline SDR previews (2026-10-03)
+
+The user requested recreating the PNGs from raw HDR with mapping fitted to the
+original game's style. `tools/render/hdr_swipe_tonemap.py` reads the archived
+linear Rec.709 PFMs with their 203-nit scene-white convention, correctly
+reverses PFM's bottom-first rows, and fits a shared monotonic curve against
+A's luminance quantiles. Each pose gets a reference-fitted exposure; the
+shared contrast is 1.21. The curve has a smooth shoulder approaching display
+white and preserves black. Out-of-gamut chroma is compressed towards mapped
+luminance, retaining hue and luminance. Output PNGs carry an sRGB chunk.
+
+```sh
+python3 tools/render/hdr_swipe_tonemap.py \
+  --gallery quality-results/map-comparisons/intro4-8k-native-hdr-20261003 --preview
+python3 tools/render/hdr_swipe_tonemap.py \
+  --gallery quality-results/map-comparisons/intro4-8k-native-hdr-20261003
+```
+
+All 19 B PNGs, difference images and swipe pages are regenerated at 7680x4320.
+Each swipe links the preserved `b-engine.png` and original-style settings.
+`comparison-engine.json` keeps the previous engine receipt. Original capture
+timestamps, A images, PFM archives and HDR sidecars are preserved. The fitted
+curve, per-pose exposure and source/output SHA256s live in the gallery's
+`tone-map.json`. The index explicitly labels the offline SDR grade, and the
+raw HDR links remain available. This presentation grade does not promote a
+native image-fidelity or lighting gate.
+
+Verification: Python compilation and both swipe fixtures pass, including
+their negative capture cases. Black, neutral hue, monotonic brightness and
+non-finite rejection checks pass. All 19 final PNGs have the correct extent
+and sRGB tag, and hashes verify untouched A/HDR/sidecars and preserved engine
+PNGs. Mean encoded luminance-quantile RMSE drops from 0.12314 to 0.04247
+(65.51%). Eighteen of 19 poses improve this statistic; cool-exit has residual
+lighting/detail differences visible in its source capture and its statistic
+rises from 0.1065 to 0.1194. No spatial correction is used to conceal them.
+Evidence: `quality-results/map-swipe-setup/original-style-verification.json`.
+The doorway, overview, both lightboards, cool corridor and warm-room views
+were visually inspected. `tone-map-result.png` in the gallery shows A, the
+engine B preview and the recreated B preview side by side.
