@@ -9467,3 +9467,27 @@ Frozen-path: engine changes correct authored geometry facing and expand light
 diagnostics; client changes are core source-policy/routing plumbing explicitly
 requested for signage. Existing panel image integration and render-core receiver
 shading retain their owners; no legacy shading implementation is added.
+
+
+#### Installed signage screenshot confirmation (2026-10-04)
+
+Follow-up user request: take screenshots to confirm. Fresh actual-game captures
+in `quality-results/intro4-rendercore-completion/signage-screenshot-confirmation/`
+use the installed `run/runtime-p2-fsr` directly, without a build override, in
+strict FSR-on (0.5) and FSR-off (0) modes. Both boots and all 52 signage checks
+per mode pass, with zero claimed-view failures. Installed product hashes still
+match the preceding tested/deployed products.
+
+Visual inspection of all twelve on/off comparisons confirms brighter cube
+upper faces beneath exit/arrow signs, lit debris beneath the floor pictograms,
+the chamber board's illuminated metal border and cyan light on elevator walls
+and floor. The two floor sources are partly hidden by authored debris; their
+receiver contribution is visible. The exit/arrow scenes use a placed receiver
+cube. The film animates between captures; its surrounding receivers are judged.
+
+`review/index.html` contains all six source comparisons in both modes.
+`review/evidence.json` records source screenshot hashes, lossless native PNGs
+and comparison paths: 36 on/off/restored source captures, 1536x1152 pixels each.
+Comparisons preserve captured colors and add only an external label band.
+These images confirm the named source/receiver behaviors; broader material
+and transport completion remains open.
