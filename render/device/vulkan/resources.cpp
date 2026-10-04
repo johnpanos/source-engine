@@ -157,8 +157,8 @@ DeviceResult<BufferId> VulkanDevice::CreateBuffer( const BufferDesc &desc )
 	info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	void *mapped = nullptr;
 	const HostMemory memory = MemoryFor( desc.memory );
-	const VkResult result =
-	    m_Memory.CreateBuffer( info, memory, &record.buffer, &record.memory, &mapped );
+	const VkResult result = m_Memory.CreateBuffer(
+	    info, memory, &record.buffer, &record.memory, &mapped, desc.debugName );
 	if ( result != VK_SUCCESS )
 		return Fail( StatusOf( result ), op, result );
 	if ( memory.mapped )
@@ -256,8 +256,8 @@ DeviceResult<TextureId> VulkanDevice::CreateTexture( const TextureDesc &desc )
 	info.usage = usage;
 	info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-	VkResult result = m_Memory.CreateImage(
-	    info, MemoryFor( MemoryKind::kDeviceLocal ), &record.image, &record.memory );
+	VkResult result = m_Memory.CreateImage( info, MemoryFor( MemoryKind::kDeviceLocal ),
+	    &record.image, &record.memory, desc.debugName );
 	if ( result != VK_SUCCESS )
 		return Fail( StatusOf( result ), op, result );
 

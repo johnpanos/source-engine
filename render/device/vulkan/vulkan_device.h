@@ -101,9 +101,9 @@ public:
 	bool Valid() const { return m_Allocator != nullptr; }
 
 	VkResult CreateBuffer( const VkBufferCreateInfo &info, const HostMemory &memory,
-	    VkBuffer *buffer, HostAllocation *allocation, void **mapped );
+	    VkBuffer *buffer, HostAllocation *allocation, void **mapped, std::string_view label = {} );
 	VkResult CreateImage( const VkImageCreateInfo &info, const HostMemory &memory, VkImage *image,
-	    HostAllocation *allocation );
+	    HostAllocation *allocation, std::string_view label = {} );
 	void DestroyBuffer( VkBuffer buffer, HostAllocation allocation );
 	void DestroyImage( VkImage image, HostAllocation allocation );
 	void Free( HostAllocation allocation );
@@ -131,7 +131,8 @@ private:
 	void Count( HostAllocation allocation, bool add );
 	void Track( HostAllocation allocation, std::string key );
 	void Untrack( HostAllocation allocation );
-	void ReportFailure( const char *what, VkResult result, std::uint64_t bytes );
+	void ReportFailure(
+	    std::string_view label, const char *what, VkResult result, std::uint64_t bytes );
 	void MaybeReport();
 
 	void *m_Allocator = nullptr; // VmaAllocator

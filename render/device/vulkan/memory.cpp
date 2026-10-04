@@ -196,15 +196,24 @@ void MemoryAllocator::Label( HostAllocation allocation, std::string_view label )
 		found->second.key = "core: " + std::string( label );
 }
 
-void MemoryAllocator::ReportFailure( const char *what, VkResult result, std::uint64_t bytes )
+void MemoryAllocator::ReportFailure(
+    std::string_view label, const char *what, VkResult result, std::uint64_t bytes )
 {
 	char size[32] = "";
 	if ( bytes )
 		std::snprintf( size, sizeof( size ), ", %.1f MiB", Mib( bytes ) );
-	std::fprintf( stderr,
-	    "render.device.vulkan: allocation failed (%d): %s%s; %.1f MiB live in %llu allocations\n",
-	    int( result ), what, size, Mib( m_Bytes.load() ),
-	    static_cast<unsigned long long>( m_Live.load() ) );
+	if ( label.empty() )
+		std::fprintf( stderr,
+		    "render.device.vulkan: allocation failed (%d): %s%s; %.1f MiB live in %llu "
+		    "allocations\n",
+		    int( result ), what, size, Mib( m_Bytes.load() ),
+		    static_cast<unsigned long long>( m_Live.load() ) );
+	else
+		std::fprintf( stderr,
+		    "render.device.vulkan: allocation failed (%d): %s '%.*s'%s; %.1f MiB live in %llu "
+		    "allocations\n",
+		    int( result ), what, int( label.size() ), label.data(), size, Mib( m_Bytes.load() ),
+		    static_cast<unsigned long long>( m_Live.load() ) );
 	if ( m_ReportSeconds > 0.0 && !m_FailureReported )
 	{
 		m_FailureReported = true;
@@ -291,7 +300,7 @@ void MemoryAllocator::Count( HostAllocation allocation, bool add )
 }
 
 VkResult MemoryAllocator::CreateBuffer( const VkBufferCreateInfo &info, const HostMemory &memory,
-    VkBuffer *buffer, HostAllocation *allocation, void **mapped )
+    VkBuffer *buffer, HostAllocation *allocation, void **mapped, std::string_view label )
 {
 	*buffer = VK_NULL_HANDLE;
 	*allocation = nullptr;
@@ -305,7 +314,7 @@ VkResult MemoryAllocator::CreateBuffer( const VkBufferCreateInfo &info, const Ho
 	if ( result != VK_SUCCESS )
 	{
 		*buffer = VK_NULL_HANDLE;
-		ReportFailure( BufferKey( info, memory ).c_str(), result, info.size );
+		ReportFailure( label, BufferKey( info, memory ).c_str(), result, info.size );
 		return result;
 	}
 	*allocation = Handle( made );
@@ -321,7 +330,7 @@ VkResult MemoryAllocator::CreateBuffer( const VkBufferCreateInfo &info, const Ho
 }
 
 VkResult MemoryAllocator::CreateImage( const VkImageCreateInfo &info, const HostMemory &memory,
-    VkImage *image, HostAllocation *allocation )
+    VkImage *image, HostAllocation *allocation, std::string_view label )
 {
 	*image = VK_NULL_HANDLE;
 	*allocation = nullptr;
@@ -334,7 +343,7 @@ VkResult MemoryAllocator::CreateImage( const VkImageCreateInfo &info, const Host
 	if ( result != VK_SUCCESS )
 	{
 		*image = VK_NULL_HANDLE;
-		ReportFailure( ImageKey( info ).c_str(), result, 0 );
+		ReportFailure( label, ImageKey( info ).c_str(), result, 0 );
 		return result;
 	}
 	*allocation = Handle( made );

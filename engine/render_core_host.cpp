@@ -111,7 +111,7 @@ ConVar r_temporal_scale( "r_temporal_scale", "0", FCVAR_ARCHIVE,
 ConVar r_core_dynamic_draws( "r_core_dynamic_draws", "0", FCVAR_CHEAT,
     "Experimental rendercore dynamic-material handoff. Explicit opt-in only; "
     "whole-cohort queued rendering and image acceptance are incomplete." );
-ConVar r_core_ao_quality( "r_core_ao_quality", "3", FCVAR_ARCHIVE,
+ConVar r_core_ao_quality( "r_core_ao_quality", "2", FCVAR_ARCHIVE,
     "Render core ambient occlusion (GTAO): 0 off, 1 low, 2 medium, 3 high, 4 ultra.", true, 0, true,
     4 );
 ConVar r_core_depth_prepass( "r_core_depth_prepass", "1", FCVAR_ARCHIVE,
@@ -123,7 +123,7 @@ ConVar r_core_runtime_direct( "r_core_runtime_direct", "1", FCVAR_ARCHIVE,
     "Render core: the world's lightmap is its indirect layer and every light's direct light is "
     "drawn at runtime, shadowed, so moving objects block it (0: the bake's total layer). "
     "Applies at the next map load." );
-ConVar r_core_shadow_quality( "r_core_shadow_quality", "3", FCVAR_ARCHIVE,
+ConVar r_core_shadow_quality( "r_core_shadow_quality", "2", FCVAR_ARCHIVE,
     "Render core shadows: 0 off, 1 low (2048 atlas), 2 medium (4096), 3 high (8192).", true, 0,
     true, 3 );
 

@@ -28,6 +28,9 @@
 #include "SDL.h"
 #endif
 
+#include <atomic>
+#include <thread>
+
 #include "quakedef.h"
 #include "igame.h"
 #include "errno.h"
@@ -400,6 +403,11 @@ void Sys_Error_Internal( bool bMinidump, const char *error, va_list argsList )
 	// Write the error to the log and ensure the log contents get written to disk
 	g_Log.Printf( "Engine error: %s\n", text );
 	g_Log.Flush();
+	// Flush the error to the capture streams immediately, before any popup that
+	// may block: a headless or misconfigured session may never dismiss it, so the
+	// reason must already be on disk/stderr.
+	fflush( stdout );
+	fflush( stderr );
 
 	g_bInErrorExit = true;
 
@@ -416,7 +424,22 @@ void Sys_Error_Internal( bool bMinidump, const char *error, va_list argsList )
 #ifdef _WIN32
 		::MessageBox( NULL, text, "Engine Error", MB_OK | MB_TOPMOST );
 #elif defined( USE_SDL )
-		Sys_MessageBox( "Engine Error", text, false );
+		// The error is already logged and the process is about to exit. Show the
+		// box but never block on it indefinitely: a session that cannot render
+		// the dialog (no compositor, broken X authority, VRAM exhausted) would
+		// otherwise hang the engine forever. Give the user ten seconds to read
+		// and dismiss it, then continue to the exit path.
+		const std::string boxText( text );
+		std::atomic<bool> dismissed{ false };
+		std::thread box(
+		    [boxText, &dismissed]()
+		    {
+			    Sys_MessageBox( "Engine Error", boxText.c_str(), false );
+			    dismissed.store( true, std::memory_order_release );
+		    } );
+		box.detach();
+		for ( int wait = 0; wait < 100 && !dismissed.load( std::memory_order_acquire ); ++wait )
+			Sys_Sleep( 100 );
 #endif
 	}
 

@@ -4646,6 +4646,7 @@ bool CVulkanContext::MaterializeRenderTarget( int handle, std::string *outError 
 	// m_managedTextures and invalidate `shell`.
 	const uint32_t width = shell.width, height = shell.height;
 	std::string label = shell.debugName;
+	const int sampler = shell.samplerState;
 	const int builtHandle =
 	    CreateManagedTexture( static_cast<int>( width ), static_cast<int>( height ), m_swapFormat,
 	        outError, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, 1,
@@ -4664,6 +4665,30 @@ bool CVulkanContext::MaterializeRenderTarget( int handle, std::string *outError 
 	ManagedTexture &t = m_managedTextures[static_cast<size_t>( handle )];
 	t = built;
 	t.storagePending = false;
+	t.samplerState = sampler;
+	if ( sampler != 0 )
+	{
+		// The fresh sets were written with the default sampler; a filter was
+		// requested while the target was deferred, so point them at it now.
+		for ( int srgb = 0; srgb < 2; ++srgb )
+		{
+			const VkDescriptorSet set = srgb ? t.descSetSrgb : t.descSet;
+			if ( set == VK_NULL_HANDLE )
+				continue;
+			VkDescriptorImageInfo dii = {};
+			dii.sampler = m_samplers[sampler];
+			dii.imageView = srgb ? t.srgbView : t.view;
+			dii.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+			VkWriteDescriptorSet wds = {};
+			wds.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			wds.dstSet = set;
+			wds.dstBinding = 0;
+			wds.descriptorCount = 1;
+			wds.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+			wds.pImageInfo = &dii;
+			vkUpdateDescriptorSets( m_device, 1, &wds, 0, nullptr );
+		}
+	}
 	return true;
 }
 
@@ -4703,6 +4728,11 @@ void CVulkanContext::SetManagedTextureSamplerState( int handle, int samplerState
 	if ( t.samplerState == samplerState )
 		return;
 	t.samplerState = samplerState;
+	// A deferred render target's sets are the shared opaque-black image's; never
+	// retire them. The requested filter is applied when its storage is
+	// materialized (MaterializeRenderTarget).
+	if ( t.storagePending )
+		return;
 	if ( t.descSet == VK_NULL_HANDLE || m_samplers[samplerState] == VK_NULL_HANDLE )
 		return;
 	// Source sets sampler state while it creates the texture, before any frame

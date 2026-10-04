@@ -263,11 +263,21 @@ foundation::Expected<Claimed, std::string> MapWorldMaterial( const WorldMaterial
 	{
 		if ( value.kind != material::ValueKind::kTexture )
 			continue;
-		for ( const auto &[key, handle] : source.textures )
+		int handle = 0;
+		for ( const auto &[key, candidate] : source.textures )
 		{
-			if ( Lower( key ) == Lower( value.key ) && handle != 0 )
-				claimed.handles[value.text] = handle;
+			if ( Lower( key ) == Lower( value.key ) )
+			{
+				handle = candidate;
+				break;
+			}
 		}
+		// Name every texture, even one the engine did not load (a model's lazy
+		// bump map before its first draw) or whose handle is 0. A 0-handle
+		// takes the group's neutral texture of that dimension instead of
+		// failing the whole material by name, matching the world path's
+		// "content lacks" fallback.
+		claimed.handles[value.text] = handle;
 	}
 	return claimed;
 }
