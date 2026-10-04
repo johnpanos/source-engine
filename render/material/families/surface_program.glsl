@@ -561,7 +561,14 @@ vec3 RefractSceneColor( vec2 uv )
 {
 	if ( material.meshModes.x > 0.5 )
 		return texture( sampler2D( baseTexture, baseSampler ), uv ).rgb;
-	return texture( sampler2D( sceneColorTexture, sceneColorSampler ), uv ).rgb;
+	// The snapshot covers the whole attachment, while FSR and nested views
+	// can render a smaller viewport within it. Convert view UV to attachment
+	// pixels, and keep distortion inside the rendered viewport.
+	const vec2 extent = vec2( textureSize( sampler2D( sceneColorTexture, sceneColorSampler ), 0 ) );
+	const vec2 viewportSize = 1.0 / frame.viewport.zw;
+	const vec2 pixel = clamp( frame.viewport.xy + uv * viewportSize,
+	    frame.viewport.xy + 0.5, frame.viewport.xy + viewportSize - 0.5 );
+	return texture( sampler2D( sceneColorTexture, sceneColorSampler ), pixel / extent ).rgb;
 }
 
 void RefractSurface()

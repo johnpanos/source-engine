@@ -95,8 +95,9 @@ void TestFamiliesFromMapping( testing::Checks &checks )
 	std::vector<std::string> names;
 	for ( const FamilyDesc &family : families )
 		names.push_back( family.name );
-	checks.That( names == std::vector<std::string>{ "lightmapped", "vertexlit", "unlit", "cable",
-	                          "pbr", "water", "refract", "depth", "portal-mask" },
+	checks.That(
+	    names == std::vector<std::string>{ "lightmapped", "vertexlit", "unlit", "decal-modulate",
+	                 "cable", "pbr", "water", "refract", "depth", "portal-mask" },
 	    "F1.the-mapping-defines-the-core-families-in-order" );
 	FamilyRegistry registry;
 	bool registered = true;

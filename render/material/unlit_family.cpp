@@ -26,10 +26,10 @@ using detail::ReadParameter;
 using detail::SourceGammaToLinear;
 
 // The parameters the family draws, and the ones the caller owns.
-constexpr std::array<std::string_view, 20> kClaimed = { "basetexture", "color", "alpha",
+constexpr std::array<std::string_view, 21> kClaimed = { "basetexture", "color", "alpha",
     "vertexcolor", "vertexalpha", "alphatest", "alphatestreference", "translucent", "additive",
     "model", "nofog", "nocull", "texture2", "frame2", "texture2transform", "ignorez",
-    "hdrcolorscale", "hdrbasetexture", "basetexturetransform", "decal" };
+    "hdrcolorscale", "hdrbasetexture", "basetexturetransform", "decal", "frame" };
 
 } // namespace
 
@@ -96,8 +96,8 @@ UnlitClaim ClaimDecalModulate( const ParameterBlock &block )
 		return claim;
 	}
 	// The shader ignores modulation and vertex colors. Projection owns decalscale.
-	constexpr std::string_view keys[] = { "basetexture", "decal", "decalscale", "vertexcolor",
-	    "vertexalpha", "model", "nocull", "nofog" };
+	constexpr std::string_view keys[] = { "basetexture", "frame", "decal", "decalscale",
+	    "vertexcolor", "vertexalpha", "model", "nocull", "nofog" };
 	if ( const auto unread = detail::UnclaimedParameter( block, keys ) )
 	{
 		claim.reason = "the decal point does not draw " + *unread;

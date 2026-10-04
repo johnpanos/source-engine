@@ -9070,3 +9070,56 @@ inputs. The concrete consumer is the game's missing surface markings and
 core-owned decal cohort will be captured without opting in the entire unfinished
 dynamic-draw cohort. Native game images remain the visual oracle; independent
 GPU blend/fog checks precede this wiring. No completion is recorded yet.
+
+### Intro4 decals, indicator frames and FSR glass capture (2026-10-03)
+
+The concrete game defects are now reproduced with fixed cameras, fixed simulation
+time, FSR quality and `r_core_dynamic_draws 0`. The default handoff captures
+projected decals, UnlitGeneric emission/sky, Refract and VertexLitGeneric model
+surfaces. Other dynamic shader families retain their explicit experimental gate.
+The captured native lightmap handle and original UVs travel together; a compiled
+stage atlas cannot replace the page beneath an already projected decal.
+
+DecalModulate uses raw dimensionless factors, alpha rejection, fog toward 0.5 and
+the device's `kModulate2x` blend, preserving destination alpha. Independent native
+GL/Vulkan blend conformance passes 1,047/1,107 checks without skips in
+`quality-results/intro4-rendercore-completion/decal-device-contracts.json`.
+
+The cracked-glass hatch was a viewport/attachment mismatch: the scene snapshot
+copies the full attachment, while FSR draws into a smaller viewport. Refract now
+converts view UV to attachment pixels, including the viewport origin, and clamps
+distortion to the rendered viewport. The indicator's orange frame was refused as
+an unhandled nonzero `$frame`, although its native texture was already selected.
+Unlit and modulate decals accept that caller-owned selector. Normal and environment
+images use their own frame selectors during capture.
+
+The native Vulkan posed-model suite passes 97 checks with zero validation messages
+in `glass-viewport-gpu.log`, including independent reduced/offset viewport pixel
+expectations and 0/1/0 selected-frame texture snapshots. World/material conformance
+passes 110/82 checks in `glass-viewport-contracts.json`. The strict game capture
+`material-pixel-game/evidence.json` passes; its images show transmitted geometry
+instead of the unrendered hatch, blue/orange/blue indicator lights and the modulated
+Ratman mural. This establishes these behaviors, not complete glass optics or
+complete map/material support.
+
+The installed pixel checker owns this fixed scene's command sequence, regions and
+tolerances. `python3 tools/quality/intro4_material_check.py --commands` prints the
+capture commands for `portal_boot`. The working verification command is:
+
+```sh
+python3 tools/quality/intro4_material_check.py \
+  --capture quality-results/intro4-rendercore-completion/material-pixel-game \
+  --out quality-results/intro4-rendercore-completion/material-pixels.json
+```
+
+It passes 10 checks, including seeded missing-indicator, missing-decal and hatch
+negative controls. Missing captures or core statistics fail. Inputs retain image
+hashes and the boot's build/revision evidence. Style passes 26 files; full archlint
+still reports the pre-existing CAP002 `public/gameui/graphics_settings_service.h`
+`charconv` include, with zero new/stale occurrences. Full material coverage,
+remaining proxy/effect cohorts, matched optics and performance acceptance remain
+open. All implementation is on `subsystem-refactor`.
+
+Frozen-path: shaderapivulkan changes are material/cohort handoff and texture-frame
+defect plumbing into rendercore, explicitly requested for game material support;
+the material math and blend remain owned by render.material/render.device.

@@ -1946,6 +1946,7 @@ std::uint32_t CoreWorld::QueueMesh( const legacy::CoreMeshDraw &draw )
 	geometry.vertices.assign( draw.vertices, draw.vertices + draw.vertexCount );
 	geometry.indices.assign( draw.indices, draw.indices + draw.indexCount );
 	geometry.lightmapPage = draw.lightmapPage;
+	geometry.capturedLightmap = draw.capturedLightmap;
 	view.dynamicDraws.push_back( std::move( geometry ) );
 	const std::uint32_t tag = m_Pass.QueueView( std::move( view ) );
 	if ( tag )

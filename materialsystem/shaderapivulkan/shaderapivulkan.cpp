@@ -5043,6 +5043,17 @@ static render::legacy::CoreMeshKind CoreMeshKindFor( IMaterial *material )
 	if ( material )
 	{
 		const char *shader = material->GetShaderName();
+		if ( material->GetMaterialVarFlag( MATERIAL_VAR_DECAL ) ||
+		     !V_stricmp( shader, "DecalModulate" ) || !V_stricmp( shader, "DecalModulate_dx9" ) )
+			return CoreMeshKind::kDecal;
+		if ( !V_stricmp( shader, "UnlitGeneric" ) || !V_stricmp( shader, "UnlitTwoTexture" ) ||
+		     !V_stricmp( shader, "UnlitTwoTexture_dx9" ) )
+			return CoreMeshKind::kUnlit;
+		if ( !V_stricmp( shader, "Refract" ) || !V_stricmp( shader, "Refract_DX90" ) )
+			return CoreMeshKind::kTransmission;
+		if ( !V_stricmp( shader, "VertexLitGeneric" ) ||
+		     !V_stricmp( shader, "VertexLitGeneric_DX9" ) )
+			return CoreMeshKind::kModelSurface;
 		if ( !V_stricmp( shader, "PortalRefract" ) || !V_stricmp( shader, "PortalRefract_dx9" ) )
 		{
 			bool found = false;
@@ -5179,9 +5190,12 @@ bool CEmptyMesh::EmitToCoreQueue()
 		if ( var->GetType() == MATERIAL_VAR_TYPE_TEXTURE && var->GetTextureValue() )
 		{
 			ITextureInternal *texture = static_cast<ITextureInternal *>( var->GetTextureValue() );
-			const char *frameKey = !V_stricmp( value.key, "$texture2" )  ? "$frame2"
-			                       : !V_stricmp( value.key, "$bumpmap" ) ? "$bumpframe"
-			                                                             : "$frame";
+			const char *frameKey =
+			    !V_stricmp( value.key, "$texture2" ) ? "$frame2"
+			    : !V_stricmp( value.key, "$bumpmap" ) || !V_stricmp( value.key, "$normalmap" )
+			        ? "$bumpframe"
+			    : !V_stricmp( value.key, "$envmap" ) ? "$envmapframe"
+			                                         : "$frame";
 			bool found = false;
 			IMaterialVar *frame = g_pBoundMaterial->FindVar( frameKey, &found, false );
 			value.textureHandle = texture->GetTextureHandle( found ? frame->GetIntValue() : 0 );
@@ -5204,6 +5218,8 @@ bool CEmptyMesh::EmitToCoreQueue()
 	draw.vertexCount = vertices.size();
 	draw.indices = triangles.data();
 	draw.indexCount = triangles.size();
+	draw.lightmapPage = g_boundLightmapHandle;
+	draw.capturedLightmap = true;
 	draw.viewport = { float( g_Viewport.m_nTopLeftX ), float( g_Viewport.m_nTopLeftY ),
 	    float( g_Viewport.m_nWidth ), float( g_Viewport.m_nHeight ), g_Viewport.m_flMinZ,
 	    g_Viewport.m_flMaxZ };

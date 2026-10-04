@@ -2016,16 +2016,17 @@ void WorldPass::RecordBatch(
 	{
 		return materialReadyIn( *r.resolver, r.materials, index );
 	};
-	auto drawKey = []( const Resources::Material &m, int page )
+	auto drawKey = []( const Resources::Material &m, int page, bool captured = false )
 	{
-		std::string inputs;
+		std::string inputs = captured ? "captured;" : "";
 		for ( const std::string &input : m.program.drawInputs )
 			inputs += input + ";";
 		return std::make_tuple( m.program.request.drawLayout.value, page, std::move( inputs ) );
 	};
-	auto drawGroupReady = [&]( const Resources::Material &m, int page ) -> const Group *
+	auto drawGroupReady = [&]( const Resources::Material &m, int page,
+	                          bool captured = false ) -> const Group *
 	{
-		const auto key = drawKey( m, page );
+		const auto key = drawKey( m, page, captured );
 		if ( auto found = r.drawGroups.find( key ); found != r.drawGroups.end() )
 			return found->second.group.IsValid() ? &found->second : nullptr;
 		Group &group = r.drawGroups[key];
@@ -2033,7 +2034,7 @@ void WorldPass::RecordBatch(
 		std::map<std::string, int> handles;
 		for ( const std::string &input : m.program.drawInputs )
 		{
-			if ( world->stage )
+			if ( world->stage && !captured )
 			{
 				// A world stage's pages; an input the stage lacks is off.
 				const WorldStage &stage = *world->stage;
@@ -3108,8 +3109,8 @@ void WorldPass::RecordBatch(
 		Resources::Material &cached = r.dynamicMaterials[MaterialSnapshotKey( draw.material )];
 		Resources::Material *m =
 		    prepareMaterial( *r.resolver, cached, mapped.Value(), draw.material );
-		if ( !m || !drawGroupReady( *m, draw.lightmapPage ) || !frameGroupReady( *m ) ||
-		     ( !m->program.sceneColor && !viewGroupReady( *m ) ) )
+		if ( !m || !drawGroupReady( *m, draw.lightmapPage, draw.capturedLightmap ) ||
+		     !frameGroupReady( *m ) || ( !m->program.sceneColor && !viewGroupReady( *m ) ) )
 		{
 			complete = false;
 			continue;
@@ -3412,7 +3413,8 @@ void WorldPass::RecordBatch(
 		                                                : &r.viewGroups[layout];
 		encoder.SetBindGroup( BindGroupRole::kView, group->group );
 		encoder.SetBindGroup( BindGroupRole::kMaterial, m.group.group );
-		encoder.SetBindGroup( BindGroupRole::kDraw, r.drawGroups[drawKey( m, draw.page )].group );
+		encoder.SetBindGroup( BindGroupRole::kDraw,
+		    r.drawGroups[drawKey( m, draw.page, draw.source->capturedLightmap )].group );
 		material::FamilyDrawConstants dynamicConstants = constants;
 		std::copy_n( draw.source->modelToWorld, 16, dynamicConstants.world );
 		encoder.SetDrawConstants( 0, std::as_bytes( std::span( &dynamicConstants, 1 ) )

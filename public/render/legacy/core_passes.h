@@ -236,6 +236,10 @@ struct CoreMeshVariable
 enum class CoreMeshKind : std::uint8_t
 {
 	kSurface,
+	kDecal,        // authored projected surface cohort, independent of other dynamic draws
+	kUnlit,        // simple emissive surfaces, including the sky behind transmitting glass
+	kTransmission, // scene-color glass, independent of other dynamic draws
+	kModelSurface, // VertexLitGeneric model surfaces, including window frames and coated glass
 	kDepthMask,
 	kStencilClear
 };
@@ -256,7 +260,8 @@ struct CoreMeshDraw
 	float worldToView[16] = {};
 	float viewToClip[16] = {};
 	device::Viewport viewport;
-	int lightmapPage = 0;
+	int lightmapPage = 0; // native texture handle for captured lightmap coordinates
+	bool capturedLightmap = false;
 	bool mesh = false; // model/refraction point, rather than a lightmapped surface
 };
 

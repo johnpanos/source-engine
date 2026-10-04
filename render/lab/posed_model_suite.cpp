@@ -29,6 +29,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
 
 namespace render::lab
 {
@@ -52,6 +53,7 @@ public:
 	TextureId twoTextureOverlay;
 	TextureId cutoutFixture;
 	TextureId environmentFixture;
+	TextureId decalFixture;
 	TextureId Import( int handle, bool ) override
 	{
 		return handle == 1   ? normalFixture
@@ -61,6 +63,7 @@ public:
 		       : handle == 5 ? twoTextureBase
 		       : handle == 6 ? twoTextureOverlay
 		       : handle == 7 ? cutoutFixture
+		       : handle == 9 ? decalFixture
 		       : handle == 8 ? environmentFixture
 		                     : TextureId{};
 	}
@@ -465,19 +468,22 @@ std::optional<std::string> RunChecks(
 	if ( !cutoutTexture )
 		return "the model depth cutout fixture could not be staged";
 	empty.cutoutFixture = cutoutTexture.Value().texture;
-	auto render = [&]( WorldPass &active, float offset, bool lit, std::uint64_t frame,
-	                  const ClearColor &clear, CanvasImage &image, bool twoLayers = false,
-	                  RenderCoreDrawPhase phase = RenderCoreDrawPhase::kAll, bool copySource = true,
-	                  WorldPass *under = nullptr, const WorldMaterial *dynamicMaterial = nullptr,
-	                  bool invalidDynamicIndex = false, float underOffset = 0.1f,
-	                  bool depthPrepass = false, bool staticModels = false, bool clipLeft = false,
-	                  bool splitLayers = false, bool opaqueBatch = false, bool worldSurface = false,
-	                  bool equalDepthSkins = false ) -> std::optional<std::string>
+	auto render =
+	    [&]( WorldPass &active, float offset, bool lit, std::uint64_t frame,
+	        const ClearColor &clear, CanvasImage &image, bool twoLayers = false,
+	        RenderCoreDrawPhase phase = RenderCoreDrawPhase::kAll, bool copySource = true,
+	        WorldPass *under = nullptr, const WorldMaterial *dynamicMaterial = nullptr,
+	        bool invalidDynamicIndex = false, float underOffset = 0.1f, bool depthPrepass = false,
+	        bool staticModels = false, bool clipLeft = false, bool splitLayers = false,
+	        bool opaqueBatch = false, bool worldSurface = false, bool equalDepthSkins = false,
+	        std::optional<Viewport> viewport = std::nullopt ) -> std::optional<std::string>
 	{
 		WorldView view;
 		for ( int i = 0; i < 4; ++i )
 			view.toClip[i * 5] = 1.0f;
 		view.viewport = { 0, 0, float( kSize ), float( kSize ), 0, 1 };
+		if ( viewport )
+			view.viewport = *viewport;
 		view.hostFrame = frame;
 		WorldView::PosedModel pose;
 		pose.phase = phase;
@@ -966,6 +972,24 @@ std::optional<std::string> RunChecks(
 	    "posed-model.refract-displaces-authored-scene-edge",
 	    "no warp " + std::to_string( noWarp.At( 40, 32 )[0] ) + ", warp " +
 	        std::to_string( withWarp.At( 40, 32 )[0] ) );
+	// A smaller or offset viewport shares a full-size scene-color attachment
+	// in the game. It must sample the scene beneath that pixel, not clear
+	// pixels beyond the viewport (the core-only hatch in the game).
+	for ( const Viewport viewport :
+	    { Viewport{ 0, 0, 32, 32, 0, 1 }, Viewport{ 16, 8, 32, 32, 0, 1 } } )
+	{
+		CanvasImage smallView;
+		if ( auto why = render( zeroWarp, 0, false, 23, black, smallView, false,
+		         RenderCoreDrawPhase::kAll, true, &under, nullptr, false, 0.1f, false, false, false,
+		         false, false, false, false, viewport ) )
+			return why;
+		const auto pixel =
+		    smallView.At( std::uint32_t( viewport.x ) + 20, std::uint32_t( viewport.y ) + 16 );
+		results.That( zeroWarp.Stats().viewsFailed == 0 && pixel[0] > 0.9f,
+		    viewport.x == 0 ? "posed-model.refract-reduced-viewport-samples-attachment-pixels"
+		                    : "posed-model.refract-offset-viewport-samples-attachment-pixels",
+		    "transmitted red " + std::to_string( pixel[0] ) );
+	}
 	CanvasImage singlePane, twoPanes;
 	if ( std::optional<std::string> why = render( glass, 0.0f, true, 6, black, singlePane ) )
 		return why;
@@ -1101,6 +1125,137 @@ std::optional<std::string> RunChecks(
 	results.That( cutoutDepth && !material::ClaimForMesh( cutoutDepth.Value(), false ),
 	    "posed-model.writez-does-not-claim-an-unimplemented-alpha-mask" );
 	depthOnly.ReleaseDevice( *device );
+	// The decal texture is dimensionless data, not sRGB color. Its 0.5
+	// neutral factor must survive exposure, fog and destination alpha.
+	TextureDesc decalDesc;
+	decalDesc.format = Format::kRGBA8Unorm;
+	decalDesc.width = 2;
+	decalDesc.height = 1;
+	decalDesc.usages = { ResourceUsage::kSampled };
+	const std::array<std::byte, 8> decalPixels = { std::byte{ 128 }, std::byte{ 64 },
+	    std::byte{ 192 }, std::byte{ 128 }, std::byte{ 255 }, std::byte{ 255 }, std::byte{ 255 },
+	    std::byte{ 0 } };
+	auto decalTexture = textures.Stage( "modulate-decal-data", decalDesc, decalPixels );
+	if ( !decalTexture )
+		return "the decal data fixture could not be staged";
+	empty.decalFixture = decalTexture.Value().texture;
+	WorldMaterial decalMaterial;
+	decalMaterial.name = "modulate-decal-fixture";
+	decalMaterial.shader = "DecalModulate_DX9";
+	decalMaterial.variables = { { "$basetexture", "modulate-decal-data" }, { "$decal", "1" },
+	    { "$vertexcolor", "1" }, { "$vertexalpha", "1" } };
+	decalMaterial.textures = { { "$basetexture", 9 } };
+	WorldPass decalPass;
+	decalPass.SetWorld( MeshWorld() );
+	auto renderDecal = [&]( float uv, float fog, float outputScale, CanvasImage &image,
+	                       const WorldMaterial *overlay = nullptr ) -> std::optional<std::string>
+	{
+		WorldView view;
+		for ( int i = 0; i < 4; ++i )
+			view.toClip[i * 5] = 1.0f;
+		view.viewport = { 0, 0, float( kSize ), float( kSize ), 0, 1 };
+		WorldView::DynamicDraw draw;
+		draw.material = overlay ? *overlay : decalMaterial;
+		if ( overlay )
+		{
+			draw.lightmapPage = 9;
+			draw.capturedLightmap = true;
+		}
+		for ( const auto &vertex : bindPose )
+		{
+			WorldVertex v;
+			std::copy_n( vertex.position, 3, v.position );
+			v.uv[0] = uv;
+			v.uv[1] = 0.5f;
+			v.lightmapUv[0] = 0.25f;
+			v.lightmapUv[1] = 0.5f;
+			// DecalModulate ignores even authored vertex color/alpha flags.
+			std::fill_n( v.color, 4, 0 );
+			draw.vertices.push_back( v );
+		}
+		draw.indices = { 0, 1, 2, 0, 2, 3 };
+		view.dynamicDraws.push_back( std::move( draw ) );
+		const auto tag = decalPass.QueueView( std::move( view ) );
+		if ( !tag )
+			return "decal queue refused: " + decalPass.Stats().lastRefusal;
+		CanvasPost post = [&]( CommandEncoder &encoder, TextureId color,
+		                      TextureId depth ) -> std::optional<std::string>
+		{
+			WorldTarget target;
+			target.device = device.get();
+			target.color = color;
+			target.colorFormat = kCanvasColor;
+			target.depth = depth;
+			target.depthFormat = kCanvasDepth;
+			target.width = target.height = kSize;
+			target.textures = &empty;
+			target.frame = 25;
+			target.outputScale = outputScale;
+			if ( fog >= 0.0f )
+			{
+				target.fogType = 0.0f;
+				target.fogParams[0] = -fog;
+				target.fogParams[2] = 1.0f;
+			}
+			decalPass.Record( tag, encoder, target );
+			return std::nullopt;
+		};
+		return canvas->Render( textures, groups, {}, { 0.8f, 0.6f, 0.4f, 0.25f }, &image, post );
+	};
+	CanvasImage decal, exposedDecal, foggedDecal, emptyDecal;
+	for ( auto [uv, fog, scale, image] :
+	    { std::tuple{ 0.25f, -1.0f, 1.0f, &decal }, std::tuple{ 0.25f, -1.0f, 3.0f, &exposedDecal },
+	        std::tuple{ 0.25f, 0.5f, 3.0f, &foggedDecal },
+	        std::tuple{ 0.75f, -1.0f, 1.0f, &emptyDecal } } )
+	{
+		if ( auto why = renderDecal( uv, fog, scale, *image ) )
+			return why;
+	}
+	const auto *d = decal.At( kSize / 2, kSize / 2 );
+	const auto *f = foggedDecal.At( kSize / 2, kSize / 2 );
+	const auto *e = emptyDecal.At( kSize / 2, kSize / 2 );
+	const float destination[] = { 0.8f, 0.6f, 0.4f };
+	const float factor[] = { 128.0f / 255.0f, 64.0f / 255.0f, 192.0f / 255.0f };
+	bool modulation = true, neutralFog = true, discarded = true;
+	for ( int c = 0; c < 3; ++c )
+	{
+		modulation &= std::fabs( d[c] - 2.0f * factor[c] * destination[c] ) < 0.002f;
+		const float fogWeight = std::pow( 0.5f, 0.8f );
+		neutralFog &=
+		    std::fabs( f[c] - 2.0f * ( factor[c] * ( 1.0f - fogWeight ) + 0.5f * fogWeight ) *
+		                          destination[c] ) < 0.002f;
+		discarded &= std::fabs( e[c] - destination[c] ) < 0.002f;
+	}
+	results.That( modulation && decalPass.Failures() == 0,
+	    "posed-model.decal-modulates-lit-destination", decalPass.Stats().lastFailure );
+	results.That( decal.rgba == exposedDecal.rgba,
+	    "posed-model.decal-neutral-factor-independent-of-exposure" );
+	results.That( neutralFog, "posed-model.decal-fogs-toward-neutral-factor" );
+	results.That( std::fabs( d[3] - 0.25f ) < 0.001f && std::fabs( f[3] - 0.25f ) < 0.001f,
+	    "posed-model.decal-preserves-destination-alpha" );
+	results.That( discarded, "posed-model.decal-zero-alpha-discards" );
+	const auto unsupportedDecal = material::MapVariables(
+	    "DecalModulate", { { "$basetexture", "decal" }, { "$envmap", "cube" } }, {} );
+	results.That( unsupportedDecal && !material::ClaimForDrawing( unsupportedDecal.Value() ),
+	    "posed-model.decal-refuses-unhandled-reflection" );
+	WorldMaterial litOverlay;
+	litOverlay.name = "captured-lightmap-decal";
+	litOverlay.shader = "LightmappedGeneric";
+	litOverlay.variables = {
+	    { "$basetexture", "opaque-white-half" }, { "$translucent", "1" }, { "$decal", "1" } };
+	litOverlay.textures = { { "$basetexture", 7 } };
+	CanvasImage litDecal;
+	if ( auto why = renderDecal( 0.75f, -1.0f, 1.0f, litDecal, &litOverlay ) )
+		return why;
+	const auto *litPixel = litDecal.At( kSize / 2, kSize / 2 );
+	bool capturedLighting = true;
+	for ( int c = 0; c < 3; ++c )
+		capturedLighting &= std::fabs( litPixel[c] - factor[c] ) < 0.002f;
+	results.That( capturedLighting && decalPass.Failures() == 0,
+	    "posed-model.decal-preserves-captured-lightmap-page-and-coordinates",
+	    decalPass.Stats().lastFailure );
+	decalPass.ReleaseDevice( *device );
+
 	WorldMaterial cableMaterial;
 	cableMaterial.shader = "Cable_DX9";
 	cableMaterial.name = "expanded-rope-fixture";
@@ -1197,6 +1352,33 @@ std::optional<std::string> RunChecks(
 	                  invalidImage.At( 32, 32 )[0] == 0,
 	    "posed-model.dynamic-invalid-index-fails-before-draw", dynamic.Stats().lastFailure );
 	dynamic.ReleaseDevice( *device );
+	// The frontend binds the selected native frame before handing off an
+	// animated indicator. Keep the current handle across material snapshots.
+	WorldPass indicator;
+	indicator.SetWorld( MeshWorld() );
+	WorldMaterial indicatorMaterial;
+	indicatorMaterial.name = "animated-indicator";
+	indicatorMaterial.shader = "UnlitGeneric";
+	indicatorMaterial.variables = { { "$basetexture", "indicator" }, { "$decal", "1" } };
+	for ( int frame : { 0, 1, 0 } )
+	{
+		indicatorMaterial.variables.resize( 2 );
+		indicatorMaterial.variables.push_back( { "$frame", std::to_string( frame ) } );
+		indicatorMaterial.textures = { { "$basetexture", frame == 0 ? 5 : 3 } };
+		CanvasImage selected;
+		if ( auto why = render( indicator, 0, false, 28, black, selected, false,
+		         RenderCoreDrawPhase::kAll, true, nullptr, &indicatorMaterial ) )
+			return why;
+		const auto pixel = selected.At( 32, 32 );
+		results.That(
+		    indicator.Failures() == 0 &&
+		        std::abs( pixel[0] - ( frame == 0 ? 0.21586f : 128.0f / 255.0f ) ) < 0.003f &&
+		        std::abs( pixel[1] - ( frame == 0 ? 0.52712f : 128.0f / 255.0f ) ) < 0.003f,
+		    "posed-model.indicator-selected-frame-" + std::to_string( frame ),
+		    indicator.Stats().lastFailure + " red " + std::to_string( pixel[0] ) + " green " +
+		        std::to_string( pixel[1] ) );
+	}
+	indicator.ReleaseDevice( *device );
 	WorldPass refused;
 	refused.SetWorld( MeshWorld() );
 	WorldView unsupported;

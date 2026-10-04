@@ -302,7 +302,7 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::Pipeline(
 	    { ShaderStage::kFragment, 4, variant.viewFeatures },
 	    { ShaderStage::kFragment, 5, alphaCoverage ? 1u : 0u },
 	    { ShaderStage::kFragment, 6, variant.cable ? 1u : 0u },
-        { ShaderStage::kFragment, 7, variant.decalModulate ? 1u : 0u } };
+	    { ShaderStage::kFragment, 7, variant.decalModulate ? 1u : 0u } };
 	// The model vertex reads the terms too (the vertexlit point's lighting).
 	if ( model )
 	{

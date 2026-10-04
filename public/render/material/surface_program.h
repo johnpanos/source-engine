@@ -537,7 +537,7 @@ struct SurfaceVariant
 	std::uint32_t viewFeatures = kSurfaceAllViewFeatures;
 	std::uint32_t treeSwayMode = 0; // vertex specialization; 0 has no deformation cost
 	bool alphaToCoverage = false;   // authored request; effective only with multiple samples
-	bool decalModulate = false; // dimensionless factors, no exposure or output encoding
+	bool decalModulate = false;     // dimensionless factors, no exposure or output encoding
 	bool cable = false;             // fragment specialization: expanded Source rope ribbon
 
 	auto operator<=>( const SurfaceVariant & ) const = default;

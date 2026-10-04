@@ -376,6 +376,9 @@ struct WorldView
 		std::vector<WorldVertex> vertices;
 		std::vector<std::uint32_t> indices;
 		int lightmapPage = 0;
+		// Native page/UV pair captured by the frontend; never reinterpret these
+		// coordinates as the compiled stage atlas's coordinates.
+		bool capturedLightmap = false;
 	};
 	std::vector<DynamicDraw> dynamicDraws;
 

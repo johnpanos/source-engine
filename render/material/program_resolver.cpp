@@ -354,12 +354,13 @@ foundation::Expected<device::BlendMode, std::string> ClaimForDrawing(
 			return foundation::MakeUnexpected( claim.reason );
 		return claim.blend;
 	}
-	if ( material.family == "unlit" || material.family == "cable" || material.family == "decal-modulate" )
+	if ( material.family == "unlit" || material.family == "cable" ||
+	     material.family == "decal-modulate" )
 	{
-		const UnlitClaim claim =
-		    material.family == "cable" ? ClaimCable( *block )
-            : material.family == "decal-modulate" ? ClaimDecalModulate( *block )
-                                                  : ClaimUnlit( *block );
+		const UnlitClaim claim = material.family == "cable" ? ClaimCable( *block )
+		                         : material.family == "decal-modulate"
+		                             ? ClaimDecalModulate( *block )
+		                             : ClaimUnlit( *block );
 		if ( !claim.claimed )
 			return foundation::MakeUnexpected( claim.reason );
 		return claim.blend;
@@ -510,12 +511,14 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 		out.drawInputs = { "lightmap" };
 		return out;
 	}
-	if ( material.family == "unlit" || material.family == "cable" || material.family == "decal-modulate" )
+	if ( material.family == "unlit" || material.family == "cable" ||
+	     material.family == "decal-modulate" )
 	{
 		const UnlitClaim claim = material.family == "cable" ? ClaimCable( *block )
-            : material.family == "decal-modulate" ? ClaimDecalModulate( *block )
-		                         : s.mesh                   ? ClaimUnlitMesh( *block )
-		                                                    : ClaimUnlit( *block );
+		                         : material.family == "decal-modulate"
+		                             ? ClaimDecalModulate( *block )
+		                         : s.mesh ? ClaimUnlitMesh( *block )
+		                                  : ClaimUnlit( *block );
 		if ( !claim.claimed )
 			return foundation::MakeUnexpected( claim.reason );
 		SurfaceTextures textures;
@@ -559,7 +562,7 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 		out.name = "unlit";
 		out.request = std::move( request ).Value();
 		out.blend = claim.blend;
-		out.drawInputs = { "lightmap" }; // bound, not read: a neutral page serves
+		// Unlit points bind the neutral page; no captured lightmap is read.
 		return out;
 	}
 	if ( material.family == "pbr" )
@@ -857,7 +860,8 @@ std::optional<GroupRequest> ProgramResolver::DrawGroup(
 	if ( program.name == "pbr" && inputTextures.size() == 3 )
 		return s.lightmapped->Program().DrawGroup(
 		    inputTextures[0], {}, {}, inputTextures[1], inputTextures[2] );
-	if ( ( program.name == "pbr" || program.name == "refract" || program.name == "depth" ) &&
+	if ( ( program.name == "pbr" || program.name == "refract" || program.name == "depth" ||
+	         program.name == "unlit" ) &&
 	     inputTextures.empty() )
 		return s.lightmapped->Program().DrawGroup( "", {}, {}, {}, {} );
 	if ( program.request.drawLayout == s.lightmapped->DrawLayout() && inputTextures.size() == 1 )

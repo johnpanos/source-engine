@@ -1292,8 +1292,9 @@ inline void ColorWriteMasks( Suite &s )
 // target cleared to ( 0.8, 0.6, 0.4, 0.25 ), a draw of ( 0.01, 0.02, 0.03,
 // 0.05 ) gives ( 0.05, 0.05, 0.05, 0.25 ): the small transmittance applied at
 // the target's precision (a premultiplied blend would give 0.77, 0.59, 0.41).
-inline void TransmittanceBlend( Suite &s )
+inline void ColorBlend( Suite &s, bool modulate = false )
 {
+	const char *clause = modulate ? "D17.modulate2x" : "D21";
 	auto device = s.Create();
 	if ( !device )
 		return;
@@ -1301,12 +1302,12 @@ inline void TransmittanceBlend( Suite &s )
 	for ( std::uint32_t role = 0; role < kMaxBindGroups; ++role )
 	{
 		auto layout = device->CreateBindGroupLayout( { static_cast<BindGroupRole>( role ), {} } );
-		if ( !s.That( layout.HasValue(), "D21", "an empty layout is created" ) )
+		if ( !s.That( layout.HasValue(), clause, "an empty layout is created" ) )
 			return;
 		layouts[role] = layout.Value();
 	}
 	const Format colors[] = { Format::kRGBA16Float };
-	const BlendMode blends[] = { BlendMode::kTransmittance };
+	const BlendMode blends[] = { modulate ? BlendMode::kModulate2x : BlendMode::kTransmittance };
 	const ShaderArtifactView stages[] = { { ShaderStage::kVertex, device->Facts().artifactFormat,
 	                                          s.Code( shaders::kFullScreenVertex ), "main", {} },
 	    { ShaderStage::kFragment, device->Facts().artifactFormat,
@@ -1319,7 +1320,8 @@ inline void TransmittanceBlend( Suite &s )
 	desc.raster.cull = CullMode::kNone;
 	desc.drawConstantBytes = 16;
 	auto pipeline = device->CreatePipeline( desc );
-	if ( !s.That( pipeline.HasValue(), "D21", "a transmittance-blending pipeline is created" ) )
+	if ( !s.That(
+	         pipeline.HasValue(), clause, "the requested color-blending pipeline is created" ) )
 		return;
 
 	constexpr std::uint32_t kSize = 8;
@@ -1329,7 +1331,7 @@ inline void TransmittanceBlend( Suite &s )
 	target.height = kSize;
 	target.usages = { ResourceUsage::kColorAttachment, ResourceUsage::kCopySource };
 	auto color = device->CreateTexture( target );
-	if ( !s.That( color.HasValue(), "D21", "the half-float target is created" ) )
+	if ( !s.That( color.HasValue(), clause, "the half-float target is created" ) )
 		return;
 	const std::uint64_t outBytes = std::uint64_t( kSize ) * kSize * 8;
 	const BufferId out = s.Buffer(
@@ -1359,7 +1361,7 @@ inline void TransmittanceBlend( Suite &s )
 	e.CopyTextureToBuffer( color.Value(), out, { 0, 0, 0, kSize, kSize } );
 	e.TransitionBuffer( out, ResourceUsage::kCopyDestination, ResourceUsage::kCopySource );
 	const std::optional<CompletionToken> token = s.Run( *device, e );
-	s.That( token.has_value(), "D21", "a transmittance-blended draw submits" );
+	s.That( token.has_value(), clause, "the color-blended draw submits" );
 	if ( !token || !s.m_Driver.rasterizes )
 	{
 		if ( !s.m_Driver.rasterizes )
@@ -1379,7 +1381,9 @@ inline void TransmittanceBlend( Suite &s )
 		const double mantissa = 1.0 + ( bits & 1023 ) / 1024.0;
 		return ( bits & 0x8000 ? -1.0 : 1.0 ) * std::ldexp( mantissa, exponent - 15 );
 	};
-	const double want[4] = { 0.01 + 0.8 * 0.05, 0.02 + 0.6 * 0.05, 0.03 + 0.4 * 0.05, 0.25 };
+	const double want[4] = { modulate ? 2.0 * 0.01 * 0.8 : 0.01 + 0.8 * 0.05,
+	    modulate ? 2.0 * 0.02 * 0.6 : 0.02 + 0.6 * 0.05,
+	    modulate ? 2.0 * 0.03 * 0.4 : 0.03 + 0.4 * 0.05, 0.25 };
 	bool matched = pixels.size() == outBytes;
 	double worst = 0.0;
 	for ( std::size_t i = 0; matched && i < outBytes; i += 8 )
@@ -1393,8 +1397,8 @@ inline void TransmittanceBlend( Suite &s )
 			matched &= error <= 2.0 / 1024.0;
 		}
 	}
-	s.That( matched, "D21",
-	    "src + dst * a at a = 0.05 in color within 2^-10, the destination's alpha kept" );
+	s.That( matched, clause,
+	    "the independent color equation matches within 2^-10, destination alpha kept" );
 	if ( !matched )
 		std::printf( "INFO %s.D21 worst relative error %.5f\n", s.m_Driver.name.c_str(), worst );
 }
@@ -2436,7 +2440,8 @@ inline void RunDeviceConformance( testing::Checks &checks, const DeviceDriver &d
 	detail::DrawConstants( suite );
 	detail::ColorWriteMasks( suite );
 	detail::SpecializationConstants( suite );
-	detail::TransmittanceBlend( suite );
+	detail::ColorBlend( suite );
+	detail::ColorBlend( suite, true );
 	detail::ExternalImagesClause( suite );
 	detail::BlockCompressedFormats( suite );
 	detail::RegionCopies( suite );

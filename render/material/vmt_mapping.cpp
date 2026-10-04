@@ -39,7 +39,8 @@ constexpr VmtShaderRow kShaders[] = {
     { "sprite_dx9", "unlit",
         "sprites: an unlit textured quad whose orientation and render mode are parameters "
         "(sprite_vs20/sprite_ps20b)" },
-    { "decalmodulate", "decal-modulate", "dimensionless surface factors with modulate-2x blending" },
+    { "decalmodulate", "decal-modulate",
+        "dimensionless surface factors with modulate-2x blending" },
     { "decalmodulate_dx9", "decal-modulate", "DecalModulate DirectX 9 implementation" },
     { "cable", "cable", "CPU-expanded rope ribbons with normal UV0 and color UV1" },
     { "cable_dx9", "cable", "Cable's expanded ribbon implementation" },
