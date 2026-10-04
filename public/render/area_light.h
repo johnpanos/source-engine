@@ -402,6 +402,30 @@ public:
 	virtual bool GetEnergyFieldSurface( int modelIndex, energy_field::Surface &out ) = 0;
 };
 
+// Authored self-illuminated surface geometry for the core source policy.
+// Positions are model-local for a brush, world-space for modelIndex 0.
+// group joins fragments of one surface; entity identifies an overlay's live
+// proxy owner (-1 when none). Copies contain no borrowed material or entity.
+struct EmissiveTriangle
+{
+	float position[3][3] = {};
+	float uv[3][2] = {};
+	int group = 0;
+	int entity = -1;
+	char material[128] = {};
+};
+
+// v4 preserves both earlier vtables. Geometry ingress performs no lighting.
+inline constexpr const char *kAreaLightsGeometryVersion = "VEngineAreaLights004";
+class IAreaLights4 : public IAreaLights3
+{
+public:
+	// Returns the required count, writing at most max. Zero denotes no authored
+	// source geometry. World faces already represented by baked texture lights
+	// are excluded to avoid publishing their direct light a second time.
+	virtual int GetEmissiveTriangles( int modelIndex, EmissiveTriangle *out, int max ) = 0;
+};
+
 } // namespace area_light
 
 #endif // RENDER_AREA_LIGHT_H

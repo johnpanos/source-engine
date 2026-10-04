@@ -66,11 +66,15 @@ static ConVar r_area_lights( "r_area_lights", AREA_LIGHTS_DEFAULT, 0,
     "view (0: none; at most 64; the first 8 also light models and the lightmaps the render core "
     "does not draw)." );
 static ConVar r_area_lights_scale( "r_area_lights_scale", "1", FCVAR_ARCHIVE,
-    "Strength of emissive area lights: 1 is physical (a surface lights with exactly the "
-    "radiance it draws); more exaggerates it." );
+    "Global multiplier of the radiance published by emissive area-light sources." );
 static ConVar r_area_lights_debug( "r_area_lights_debug", "0", FCVAR_CHEAT,
     "1: draw each emissive area light (green lit, red not); 2: also log each model's emitters "
     "as they are built; 3: log the next frame's candidates once, then 1." );
+static ConVar cl_surface_core_emission( "cl_surface_core_emission", "1", FCVAR_CHEAT,
+    "Self-illuminated surfaces emit area light on core receivers (0: lighting control)." );
+static ConVar cl_surface_core_emission_strength( "cl_surface_core_emission_strength", "16",
+    FCVAR_CHEAT, "Core self-illumination source radiance scale, matching the fizzler policy.", true,
+    0.0f, false, 0.0f );
 
 namespace
 {
@@ -94,12 +98,12 @@ struct SampleTexture_t : vtf_sample::Texture
 	uint64 m_Revision = 0;
 };
 
-std::unordered_map<std::string, SampleTexture_t> s_Textures;
+std::map<std::pair<std::string, int>, SampleTexture_t> s_Textures;
 uint64 s_NextSampleRevision = 2;
 
-const SampleTexture_t &LoadSampleTexture( const char *pTextureName )
+const SampleTexture_t &LoadSampleTexture( const char *pTextureName, int frame = 0 )
 {
-	SampleTexture_t &texture = s_Textures[pTextureName];
+	SampleTexture_t &texture = s_Textures[{ pTextureName, frame }];
 	if ( texture.m_bTried )
 		return texture;
 	texture.m_bTried = true;
@@ -108,7 +112,7 @@ const SampleTexture_t &LoadSampleTexture( const char *pTextureName )
 	Q_snprintf( path, sizeof( path ), "materials/%s.vtf", pTextureName );
 	CUtlBuffer buf;
 	if ( g_pFullFileSystem->ReadFile( path, "GAME", buf ) )
-		vtf_sample::Decode( buf, kMaxSampleDimension, texture );
+		vtf_sample::Decode( buf, kMaxSampleDimension, texture, frame );
 	return texture;
 }
 
@@ -116,9 +120,10 @@ const SampleTexture_t &LoadSampleTexture( const char *pTextureName )
 // selfillum_emission.h).
 struct SampleLoader_t
 {
+	int frame = 0;
 	const vtf_sample::Texture *operator()( const char *pName ) const
 	{
-		return &LoadSampleTexture( pName );
+		return &LoadSampleTexture( pName, frame );
 	}
 };
 
@@ -384,6 +389,107 @@ void PlaceRect(
 	out.twoSided = pose.twoSided;
 }
 
+// Geometry is immutable for the level. Integrated images are cached per
+// selected frame; placement, tint and alpha remain the entity's live state.
+struct CoreSurfaceGroup_t
+{
+	std::vector<area_light::EmissiveTriangle> triangles;
+	IMaterial *material = NULL;
+	int entity = -1;
+	std::map<int, std::vector<emissive::Emitter>> frames;
+};
+std::map<int, std::vector<CoreSurfaceGroup_t>> s_CoreSurfaces;
+std::map<std::vector<int>, int> s_CoreKeys;
+int s_NextCoreKey = 0xc00000;
+
+std::vector<CoreSurfaceGroup_t> &CoreSurfaces( area_light::IAreaLights4 &geometry, int modelIndex )
+{
+	auto found = s_CoreSurfaces.find( modelIndex );
+	if ( found != s_CoreSurfaces.end() )
+		return found->second;
+	auto &groups = s_CoreSurfaces[modelIndex];
+	const int count = geometry.GetEmissiveTriangles( modelIndex, NULL, 0 );
+	if ( count <= 0 )
+		return groups;
+	std::vector<area_light::EmissiveTriangle> triangles(
+	    size_t( count ), area_light::EmissiveTriangle{} );
+	geometry.GetEmissiveTriangles( modelIndex, triangles.data(), count );
+	std::map<int, size_t> indices;
+	for ( const auto &triangle : triangles )
+	{
+		auto group = indices.find( triangle.group );
+		if ( group == indices.end() )
+		{
+			IMaterial *material =
+			    materials->FindMaterial( triangle.material, TEXTURE_GROUP_WORLD, false );
+			if ( !material || material->IsErrorMaterial() )
+				continue;
+			material->IncrementReferenceCount();
+			group = indices.emplace( triangle.group, groups.size() ).first;
+			groups.emplace_back();
+			groups.back().material = material;
+			groups.back().entity = triangle.entity;
+		}
+		groups[group->second].triangles.push_back( triangle );
+	}
+	return groups;
+}
+
+const std::vector<emissive::Emitter> &CoreSurfaceFrame( CoreSurfaceGroup_t &group, int frame )
+{
+	auto found = group.frames.find( frame );
+	if ( found != group.frames.end() )
+		return found->second;
+	SampleLoader_t load{ frame };
+	SampleLoader_t staticImages;
+	Emission_t emission;
+	auto &emitters = group.frames[frame];
+	const bool unlit = !group.material->GetMaterialVarFlag( MATERIAL_VAR_SELFILLUM ) &&
+	                   emissive::UnlitSource( group.material->GetShaderName() );
+	// Base frames animate; independently bound self-illumination masks stay at frame 0.
+	const bool selfIllum = emission.Init( group.material, staticImages );
+	if ( unlit || selfIllum )
+		emission.m_pBase = selfillum_emission::TextureOfVar( group.material, "$basetexture", load );
+	if ( ( !unlit && !selfIllum ) || !emission.m_pBase )
+	{
+		Warning( "core emissive source %s: frame %d has no supported emission image\n",
+		    group.material->GetName(), frame );
+		return emitters;
+	}
+	bool foundVar = false;
+	IMaterialVar *referenceVar = group.material->FindVar( "$alphatestreference", &foundVar, false );
+	const float reference = foundVar && referenceVar && referenceVar->GetFloatValue() > 0
+	                            ? referenceVar->GetFloatValue()
+	                            : 0.5f;
+	const bool alphaTest = group.material->GetMaterialVarFlag( MATERIAL_VAR_ALPHATEST );
+	const bool translucent = group.material->GetMaterialVarFlag( MATERIAL_VAR_TRANSLUCENT );
+	emitters = emissive::BuildMappedEmitters( group.triangles, emission.m_pBase->width,
+	    emission.m_pBase->height,
+	    [&]( float u, float v, float out[3] )
+	    {
+		    if ( !unlit )
+		    {
+			    emission( u, v, out );
+			    return;
+		    }
+		    float alpha;
+		    emission.m_pBase->Fetch( u, v, out, &alpha );
+		    emissive::UnlitRadiance( out, alpha, translucent, alphaTest, reference, out );
+	    } );
+	if ( group.material->GetMaterialVarFlag( MATERIAL_VAR_NOCULL ) )
+		for ( auto &emitter : emitters )
+			emitter.rect.twoSided = true;
+	if ( r_area_lights_debug.GetInt() >= 2 )
+		for ( const auto &emitter : emitters )
+			Msg( "core surface emitter material %s frame %d proxy entity %d group %d "
+			     "center %.3f %.3f %.3f radiance %.6f %.6f %.6f area %.3f\n",
+			    group.material->GetName(), frame, group.entity, emitter.group,
+			    emitter.rect.center[0], emitter.rect.center[1], emitter.rect.center[2],
+			    emitter.radiance[0], emitter.radiance[1], emitter.radiance[2],
+			    area_light::Area( emitter.rect ) );
+	return emitters;
+}
+
 // The pose-to-world transform of an emitter's bone: the entity's last bones,
 // or its transform (the bind pose) when it has none.
 void PoseToWorld(
@@ -461,6 +567,12 @@ public:
 		for ( WorldEmitter_t &emitter : s_World )
 			emitter.m_pMaterial->DecrementReferenceCount();
 		s_World.clear();
+		for ( auto &entry : s_CoreSurfaces )
+			for ( auto &group : entry.second )
+				group.material->DecrementReferenceCount();
+		s_CoreSurfaces.clear();
+		s_CoreKeys.clear();
+		s_NextCoreKey = 0xc00000;
 		s_bWorldFetched = false;
 		s_Textures.clear();
 		m_Lit.clear();
@@ -468,6 +580,7 @@ public:
 	}
 
 	virtual void PreRender();
+	void SetGeometry( area_light::IAreaLights4 *provider ) { m_Geometry = provider; }
 
 private:
 	void Publish( const area_light::AreaLight *pLights, const int *pKeys, int nCount,
@@ -482,6 +595,7 @@ private:
 	int m_nFrame;
 	int m_nPublished;
 	std::vector<int> m_Lit; // the keys lit last frame
+	area_light::IAreaLights4 *m_Geometry = NULL; // composition-owned, main-thread borrower
 };
 
 CEmissiveAreaLights s_EmissiveAreaLights;
@@ -507,6 +621,14 @@ void CEmissiveAreaLights::PreRender()
 	std::vector<Candidate_t> candidates;
 	candidates.reserve( 64 );
 	int nBuilds = 0;
+	static ConVarRef coreWorld( "r_core_world" );
+	const bool core = coreWorld.IsValid() && coreWorld.GetInt() == 1;
+	const float coreStrength =
+	    cl_surface_core_emission.GetBool() ? cl_surface_core_emission_strength.GetFloat() : 0.0f;
+	if ( core && coreStrength > 0.0f && !m_Geometry )
+		Error( "Core emissive surfaces require engine provider %s",
+		    area_light::kAreaLightsGeometryVersion );
+
 	auto wasLit = [this]( int nKey )
 	{
 		for ( int key : m_Lit )
@@ -557,6 +679,7 @@ void CEmissiveAreaLights::PreRender()
 			candidate.m_nKey = EmissiveAreaLights_EntityKey( pAnim->entindex(), int( e ) );
 			candidate.m_pAnim = pAnim;
 			candidate.m_pEmitter = &emitter;
+			candidate.m_bCoreOnly = core;
 			float tint[3] = { 1.0f, 1.0f, 1.0f };
 			static unsigned int s_nTintToken = 0;
 			IMaterialVar *pTint =
@@ -567,7 +690,8 @@ void CEmissiveAreaLights::PreRender()
 			for ( int k = 0; k < 3; ++k )
 			{
 				candidate.m_Tint[k] = MAX( tint[k], 0.0f ) * render[k];
-				light.radiance[k] = emitter.m_Radiance[k] * candidate.m_Tint[k];
+				light.radiance[k] = emitter.m_Radiance[k] * candidate.m_Tint[k] *
+				                    ( core ? coreStrength * color.a / 255.0f : 1.0f );
 			}
 			matrix3x4_t poseToWorld;
 			PoseToWorld( pAnim, pHdr, emitter.m_nBone, false, poseToWorld );
@@ -581,9 +705,10 @@ void CEmissiveAreaLights::PreRender()
 	}
 
 	// Self-illuminated world faces and overlays, at their material's live tint.
-	if ( !s_bWorldFetched )
+	if ( !core && !s_bWorldFetched )
 		FetchWorldEmitters();
-	for ( size_t w = 0; w < s_World.size() && (int)candidates.size() < kMaxCandidates; ++w )
+	for ( size_t w = 0; !core && w < s_World.size() && (int)candidates.size() < kMaxCandidates;
+	    ++w )
 	{
 		const WorldEmitter_t &emitter = s_World[w];
 		Candidate_t candidate;
@@ -607,6 +732,73 @@ void CEmissiveAreaLights::PreRender()
 		candidate.m_pEmitter = NULL;
 		candidate.m_Candidate.wasLit = wasLit( candidate.m_nKey );
 		candidates.push_back( candidate );
+	}
+
+	// Core world/overlay and moving brush sources use the selected image,
+	// geometry and entity state of this frame, without invoking a proxy again.
+	if ( core && coreStrength > 0.0f && m_Geometry )
+	{
+		auto append = [&]( int modelIndex, C_BaseEntity *placement )
+		{
+			for ( auto &group : CoreSurfaces( *m_Geometry, modelIndex ) )
+			{
+				C_BaseEntity *state = placement ? placement
+				                      : group.entity >= 0
+				                          ? ClientEntityList().GetEnt( group.entity )
+				                          : NULL;
+				if ( state && ( state->IsDormant() || state->IsEffectActive( EF_NODRAW ) ||
+				                  state->GetRenderMode() == kRenderNone ) )
+					continue;
+				bool found = false;
+				IMaterialVar *frameVar = group.material->FindVar( "$frame", &found, false );
+				const int frame = state               ? state->GetTextureFrameIndex()
+				                  : found && frameVar ? frameVar->GetIntValue()
+				                                      : 0;
+				float tint[3] = { 1, 1, 1 };
+				IMaterialVar *tintVar = group.material->FindVar( "$selfillumtint", &found, false );
+				if ( found && tintVar && tintVar->IsDefined() )
+					tintVar->GetVecValue( tint, 3 );
+				IMaterialVar *alphaVar = group.material->FindVar( "$alpha", &found, false );
+				const float alpha = found && alphaVar ? alphaVar->GetFloatValue() : 1.0f;
+				const color32 color =
+				    state ? state->GetRenderColor() : color32{ 255, 255, 255, 255 };
+				const float scale = coreStrength * MAX( alpha, 0.0f ) * color.a / 255.0f;
+				int bin = 0;
+				for ( const auto &emitter : CoreSurfaceFrame( group, frame ) )
+				{
+					Candidate_t candidate;
+					candidate.m_pAnim = NULL;
+					candidate.m_pEmitter = NULL;
+					candidate.m_bCoreOnly = true;
+					const std::vector<int> identity = {
+					    placement ? placement->entindex() : -1, modelIndex, emitter.group, bin++ };
+					auto key = s_CoreKeys.find( identity );
+					if ( key == s_CoreKeys.end() )
+						key = s_CoreKeys.emplace( identity, s_NextCoreKey++ ).first;
+					candidate.m_nKey = key->second;
+					auto &light = candidate.m_Candidate.light;
+					light.rect = emitter.rect;
+					if ( placement )
+						PlaceRect( emitter.rect, placement->EntityToWorldTransform(), light.rect );
+					for ( int k = 0; k < 3; ++k )
+						light.radiance[k] = emitter.radiance[k] * MAX( tint[k], 0.0f ) * scale;
+					light.reach = area_light::Reach( light.rect, light.radiance );
+					if ( light.reach <= 0.0f || area_light::DistanceTo( light.rect, view ) >
+					                                area_light::kMaxReach + 512.0f )
+						continue;
+					candidate.m_Candidate.wasLit = wasLit( candidate.m_nKey );
+					candidates.push_back( candidate );
+				}
+			}
+		};
+		append( 0, NULL );
+		for ( C_BaseEntity *entity = ClientEntityList().FirstBaseEntity(); entity;
+		    entity = ClientEntityList().NextBaseEntity( entity ) )
+		{
+			const model_t *model = entity->GetModel();
+			if ( model && modelinfo->GetModelType( model ) == mod_brush )
+				append( entity->GetModelIndex(), entity );
+		}
 	}
 
 	for ( int s = 0; s < s_Sources.Count(); ++s )
@@ -726,6 +918,11 @@ void CEmissiveAreaLights::PreRender()
 }
 
 } // namespace
+
+void EmissiveAreaLights_SetGeometry( area_light::IAreaLights4 *provider )
+{
+	s_EmissiveAreaLights.SetGeometry( provider );
+}
 
 CON_COMMAND(
     r_area_lights_list, "List every model's emissive area-light emitters built this level." )

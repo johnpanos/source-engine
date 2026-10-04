@@ -415,6 +415,56 @@ int main()
 		Check( Near( rgb[0], 0.75, 0.03 ), "a half-masked texture samples to the covered area" );
 	}
 
+	// Live surface image selection: source color and the unlit state must
+	// affect receiver light, rather than only the visible surface.
+	{
+		const float rgb[3] = { 1, 2, 4 };
+		float out[3];
+		emissive::UnlitRadiance( rgb, 0, true, false, 0.5f, out );
+		Check( out[0] == 0 && out[1] == 0 && out[2] == 0,
+		    "transparent fullbright texels emit no light" );
+		emissive::UnlitRadiance( rgb, 0.25f, true, false, 0.5f, out );
+		Check( out[0] == 0.25f && out[1] == 0.5f && out[2] == 1,
+		    "fullbright source power includes image coverage" );
+		emissive::UnlitRadiance( rgb, 0.25f, false, true, 0.5f, out );
+		Check(
+		    out[0] == 0 && out[1] == 0 && out[2] == 0, "clipped fullbright texels emit no light" );
+		std::vector<area_light::EmissiveTriangle> mapped( 2 );
+		const float corners[4][3] = { { -4, -4, 0 }, { 4, -4, 0 }, { 4, 4, 0 }, { -4, 4, 0 } };
+		const int indices[2][3] = { { 0, 1, 2 }, { 0, 2, 3 } };
+		for ( int t = 0; t < 2; ++t )
+			for ( int c = 0; c < 3; ++c )
+			{
+				std::copy_n( corners[indices[t][c]], 3, mapped[t].position[c] );
+				mapped[t].uv[c][0] = ( mapped[t].position[c][0] + 4 ) / 8;
+				mapped[t].uv[c][1] = ( mapped[t].position[c][1] + 4 ) / 8;
+			}
+		const float colors[3][3] = { { 0, 8, 16 }, { 16, 4, 0 }, { 0, 0, 0 } };
+		float received[2][3] = {};
+		for ( int frame = 0; frame < 3; ++frame )
+		{
+			const auto emitters = emissive::BuildMappedEmitters( mapped, 64, 64,
+			    [&]( float, float, float out[3] )
+			    {
+				    std::copy_n( colors[frame], 3, out );
+			    } );
+			Check( emitters.size() == ( frame == 2 ? 0u : 1u ),
+			    "mapped emitting frames fit; a dark frame publishes no emitter" );
+			if ( frame < 2 && emitters.size() == 1 )
+			{
+				AreaLight light;
+				light.rect = emitters[0].rect;
+				std::copy_n( emitters[0].radiance, 3, light.radiance );
+				light.reach = area_light::Reach( light.rect, light.radiance );
+				const float p[3] = { 0, 0, 8 }, n[3] = { 0, 0, -1 };
+				IrradianceAt( light, p, n, received[frame] );
+			}
+		}
+		Check( received[0][0] == 0 && received[0][2] > received[0][1] && received[1][2] == 0 &&
+		           received[1][0] > received[1][1] && Near( received[0][2], received[1][0], 1e-5 ),
+		    "mapped cyan and orange frames cast their selected color and equal power" );
+	}
+
 	// The fit: a flat square keeps its size, facing and power.
 	{
 		std::vector<emissive::Triangle> triangles;

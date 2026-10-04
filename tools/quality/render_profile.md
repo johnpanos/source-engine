@@ -96,11 +96,11 @@ python3 tools/quality/intro4_strict_game.py \
 
 The output must be fresh. A failed mode does not stop the other mode's evidence
 collection, and the aggregate fails if either boot or pixel oracle fails.
-`--scene doors`, `materials` or `cables` selects a bounded reproduction; the
-default `all` runs all 45 pixel and seeded-negative checks per mode. Retain
+`--scene doors`, `materials`, `cables` or `emissives` selects a bounded reproduction;
+the default `all` runs all 75 pixel and seeded-negative checks per mode. Retain
 direct-start captures separately when reproducing a launch-time report.
 
-`intro4_material_check.py --scene materials|doors|cables|all --commands` emits each
+`intro4_material_check.py --scene materials|doors|cables|emissives|all --commands` emits each
 installed `portal_boot.py` console sequence. Capture both modes at the same
 1024×768 requested viewport (desktop HiDPI is retained), using the corresponding
 `--startup-command "r_temporal_scale SCALE"`. Pass each capture to the oracle:
@@ -112,7 +112,11 @@ python3 tools/quality/intro4_material_check.py --scene doors \
 ```
 
 Repeat with `--scene materials` for decals, floor indicators and glass, and
-`--scene cables` for the lit rope on/off/on cycle. These are bounded pixel
+`--scene cables` for the lit rope on/off/on cycle. `--scene emissives` checks
+neighboring wall receivers beside the indicator box and floor line through
+cyan/on, cyan/off, orange/on, orange/off and cyan/on again. Its 30 checks include
+eight seeded missing-light/stale-frame defects and verify that the light-only
+control preserves the visible source. These are bounded pixel
 checks, with seeded missing-surface controls; they do not certify all materials,
 glass optics, presented HDR output or whole-frame performance. A game boot pass
 without the image oracle and zero queried claimed-view failures is insufficient.

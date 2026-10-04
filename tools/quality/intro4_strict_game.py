@@ -23,7 +23,8 @@ def main():
     parser.add_argument('--fsr-scale', choices=('0.5', '0.588235', '0.666667', '1'),
                         default='0.5')
     parser.add_argument('--timeout', type=int, default=300)
-    parser.add_argument('--scene', choices=('all', 'materials', 'doors', 'cables'), default='all')
+    parser.add_argument('--scene', choices=('all', 'materials', 'doors', 'cables', 'emissives'),
+                        default='all')
     args = parser.parse_args()
     if args.out.exists():
         parser.error('evidence already exists; use a fresh output directory')
@@ -48,7 +49,9 @@ def main():
                         'r_core_world 1', 'r_core_world_strict 1', 'r_core_dynamic_draws 0',
                         'r_indirect_producer baked', 'r_core_runtime_direct 1',
                         'cl_render_start_graph 2', 'sv_querycache_job_graph 2',
-                        'mat_colorcorrection 1', f'r_temporal_scale {scale}'):
+                        'mat_colorcorrection 1', 'cl_surface_core_emission 1',
+                        'cl_surface_core_emission_strength 16',
+                        f'r_temporal_scale {scale}'):
             boot.extend(['--startup-command', setting])
         sequence = commands(args.scene)
         if args.scene != 'all':

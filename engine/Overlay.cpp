@@ -16,6 +16,9 @@
 #include "render.h"
 #include "r_decal.h"
 #include "fmtstr.h"
+#include "iclientrenderable.h"
+#include "iclientunknown.h"
+#include "iclientnetworkable.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -142,6 +145,7 @@ public:
 
 	virtual void	SetOverlayBindProxy( int iOverlayID, void *pBindProxy );
 	virtual void EnumerateFragments( FragmentVisitor_t visit, void *pContext );
+	virtual int SourceEntityIndex( int iOverlayID );
 
 private:
 	// Create, destroy material sort order ids...
@@ -748,6 +752,19 @@ void COverlayMgr::SetOverlayBindProxy( int iOverlayID, void *pBindProxy )
 		pOverlay->m_pBindProxy = pBindProxy;
 }
 
+int COverlayMgr::SourceEntityIndex( int iOverlayID )
+{
+	if ( iOverlayID < 0 || iOverlayID >= m_aOverlays.Count() )
+		return -1;
+	const moverlay_t *overlay = GetOverlay( iOverlayID );
+	if ( !overlay || !overlay->m_pBindProxy )
+		return -1;
+	IClientRenderable *renderable = static_cast<IClientRenderable *>( overlay->m_pBindProxy );
+	IClientUnknown *unknown = renderable->GetIClientUnknown();
+	IClientNetworkable *networkable = unknown ? unknown->GetClientNetworkable() : NULL;
+	return networkable ? networkable->entindex() : -1;
+}
+
 //-----------------------------------------------------------------------------
 // RFC 0011 area lights: each overlay's fragments in world space.
 //-----------------------------------------------------------------------------
@@ -775,8 +792,10 @@ void COverlayMgr::EnumerateFragments( FragmentVisitor_t visit, void *pContext )
 				positions[i] = fragment.m_aPrimVerts[i].pos;
 				texCoords[i] = fragment.m_aPrimVerts[i].texCoord[0];
 			}
-			const Vector normal = fragment.m_SurfId ? MSurf_Plane( fragment.m_SurfId ).normal
-			                                        : pOverlay->m_vecBasis[2];
+			Vector normal = fragment.m_SurfId ? MSurf_Plane( fragment.m_SurfId ).normal
+			                                  : pOverlay->m_vecBasis[2];
+			if ( fragment.m_SurfId && ( MSurf_Flags( fragment.m_SurfId ) & SURFDRAW_PLANEBACK ) )
+				normal = -normal;
 			visit( pContext, iOverlay, pTexInfo->material, normal, positions.Base(),
 			    texCoords.Base(), nCount );
 		}

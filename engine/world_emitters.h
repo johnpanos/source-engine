@@ -38,4 +38,8 @@ const std::vector<WorldEmitter> &WorldEmitters_Get();
 // Geometry ingress for the core fizzler source; no lighting is evaluated here.
 bool WorldEmitters_EnergyFieldSurface( int modelIndex, energy_field::Surface &out );
 
+// Core geometry ingress; copied triangles retain captured mapping and the
+// overlay proxy's entity identity, without evaluating its material proxies.
+std::vector<area_light::EmissiveTriangle> WorldEmitters_CoreGeometry( int modelIndex );
+
 #endif // ENGINE_WORLD_EMITTERS_H

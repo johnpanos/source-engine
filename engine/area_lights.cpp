@@ -186,9 +186,16 @@ int FindSlot( int dlightKey )
 	return -1;
 }
 
-class CAreaLights final : public area_light::IAreaLights3
+class CAreaLights final : public area_light::IAreaLights4
 {
 public:
+	int GetEmissiveTriangles( int modelIndex, area_light::EmissiveTriangle *out, int max ) override
+	{
+		const auto triangles = WorldEmitters_CoreGeometry( modelIndex );
+		for ( int i = 0; out && i < max && i < int( triangles.size() ); ++i )
+			out[i] = triangles[size_t( i )];
+		return int( triangles.size() );
+	}
 	int GetWorldEmitters( area_light::WorldEmitterInfo *out, int max ) override
 	{
 		const std::vector<WorldEmitter> &emitters = WorldEmitters_Get();
@@ -382,6 +389,8 @@ EXPOSE_SINGLE_INTERFACE_GLOBALVAR_WITH_NAMESPACE(
     CAreaLights, area_light::, IAreaLights, area_light::kAreaLightsVersion, s_AreaLights );
 EXPOSE_SINGLE_INTERFACE_GLOBALVAR_WITH_NAMESPACE(
     CAreaLights, area_light::, IAreaLights3, area_light::kAreaLightsFrameVersion, s_AreaLights );
+EXPOSE_SINGLE_INTERFACE_GLOBALVAR_WITH_NAMESPACE(
+    CAreaLights, area_light::, IAreaLights4, area_light::kAreaLightsGeometryVersion, s_AreaLights );
 
 int AreaLights_Generation()
 {

@@ -54,6 +54,7 @@
 
 #include "render/area_light.h"
 #include "render/energy_field.h"
+#include "render/emissive_area_lights.h"
 #include "render/material/pbr_family.h"
 #include "render/math/matrix.h"
 #include "render/pbr_brdf.h"
@@ -674,6 +675,56 @@ std::optional<std::string> AreaChecks( Lab &lab, Results &results )
 	const std::pair<const char *, const View *> views[] = {
 	    { "overhead", &overhead }, { "grazing", &grazing } };
 	const auto lights = Lights();
+	// The same mapped-source integration used by live game indicators. A
+	// source image changes from cyan to orange to dark and back to cyan;
+	// receiver pixels, not the source's own brightness, judge the result.
+	{
+		std::vector<area_light::EmissiveTriangle> surfaces( 2 );
+		float corners[4][3];
+		const auto source = Light( { 0, 0, 40 }, { 12, 0, 0 }, { 0, -12, 0 }, 1 );
+		area_light::Corners( source.rect, corners );
+		const int indices[2][3] = { { 0, 1, 2 }, { 0, 2, 3 } };
+		for ( int t = 0; t < 2; ++t )
+			for ( int c = 0; c < 3; ++c )
+				std::copy_n( corners[indices[t][c]], 3, surfaces[t].position[c] );
+		const float colors[4][3] = { { 0, 8, 16 }, { 16, 4, 0 }, { 0, 8, 16 }, { 0, 8, 16 } };
+		CanvasImage images[4];
+		for ( int state = 0; state < 4; ++state )
+		{
+			const auto fitted = emissive::BuildMappedEmitters( surfaces, 64, 64,
+			    [&]( float, float, float out[3] )
+			    {
+				    emissive::UnlitRadiance(
+				        colors[state], state == 2 ? 0.0f : 1.0f, true, false, 0.5f, out );
+			    } );
+			Frame frame{
+			    {}, &kMaterials[0], &overhead, Lobe( shaderlib::DebugBrdf::kDiffuseOnly ) };
+			for ( const auto &emitter : fitted )
+			{
+				area_light::AreaLight light;
+				light.rect = emitter.rect;
+				std::copy_n( emitter.radiance, 3, light.radiance );
+				light.reach = area_light::Reach( light.rect, light.radiance );
+				frame.lights.push_back( light );
+			}
+			if ( auto why = Render( lab, frame, images[state] ) )
+				return why;
+			SaveImage( images[state], "emissive-source.state-" + std::to_string( state ) );
+		}
+		const auto *cyan = images[0].At( kSize / 2, kSize / 2 );
+		const auto *orange = images[1].At( kSize / 2, kSize / 2 );
+		const auto *dark = images[2].At( kSize / 2, kSize / 2 );
+		results.That(
+		    cyan[2] > 0.1f && cyan[0] < 1e-5f && std::fabs( cyan[2] - 2 * cyan[1] ) < 0.002f,
+		    "emissive-source.cyan-image-casts-cyan-receiver-light" );
+		results.That( orange[0] > 0.1f && orange[2] < 1e-5f &&
+		                  std::fabs( orange[0] - 4 * orange[1] ) < 0.002f,
+		    "emissive-source.orange-image-casts-orange-receiver-light" );
+		results.That( dark[0] == 0 && dark[1] == 0 && dark[2] == 0,
+		    "emissive-source.dark-image-casts-no-light" );
+		results.That( SameImage( images[0], images[3] ),
+		    "emissive-source.returning-image-restores-receiver-light" );
+	}
 
 	// Diffuse: every sampled pixel against the exact irradiance.
 	for ( const char *name :

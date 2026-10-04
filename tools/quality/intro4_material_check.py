@@ -9,6 +9,7 @@ glass optics, complete frame performance or platform support. Desktop HiDPI
 captures use regions scaled to the actual pixels; images are never downsampled.
 Use --scene doors for the closed/open door and independent indicator-box cycle.
 Use --scene cables for the rope visibility cycle under captured scene lighting.
+Use --scene emissives for cyan/orange/off light on neighboring wall receivers.
 """
 import argparse
 import copy
@@ -61,16 +62,41 @@ def door_commands():
     return result
 
 
+def emissive_commands():
+    result = ['cmd noclip', 'r_drawviewmodel 0', 'cmd setpos 120 160 0',
+              'cmd setang 0 0 0',
+              'cmd ent_fire just_enough_door_for_the_job-testchamber_door Close']
+
+    def cycle(toggle):
+        for frame, emitting in ((0, 1), (0, 0), (1, 1), (1, 0), (0, 1)):
+            result.extend(['r_area_lights_debug 2',
+                           f'cmd ent_fire {toggle} SetTextureIndex {frame}',
+                           f'cl_surface_core_emission {emitting}',
+                           'wait 2', 'r_area_lights_debug 0',
+                           'wait 150', 'screenshot', 'wait 12'])
+
+    cycle('texturetoggle_exit_doorstate_a02')
+    result.extend(['cmd ent_create env_texturetoggle targetname rc_emissive_line_toggle '
+                   'target exit_doorstate_a02',
+                   'cmd setpos -480 56 100', 'cmd setang 32 14 0'])
+    cycle('rc_emissive_line_toggle')
+    result.extend(['r_core_world_stats', 'r_core_world_strict', 'r_core_dynamic_draws',
+                   'cl_surface_core_emission', 'cl_surface_core_emission_strength'])
+    return result
+
+
 def commands(scene='materials'):
     if scene == 'all':
         result = ['wait 600', 'r_core_world_stats', 'r_temporal_scale']
-        for name in ('materials', 'doors', 'cables'):
+        for name in ('materials', 'doors', 'cables', 'emissives'):
             sequence = commands(name)
             result.extend(sequence if name == 'materials' else sequence[1:])
         result.append('r_temporal_scale')
         return result
     if scene == 'doors':
         return door_commands()
+    if scene == 'emissives':
+        return emissive_commands()
     if scene == 'cables':
         return ['cmd noclip', 'r_drawviewmodel 0', 'cmd setpos 500 -200 112',
                 'cmd setang -15 90 0', 'wait 150', 'screenshot', 'wait 12',
@@ -120,6 +146,64 @@ def validate_images(images, required):
     if (len(shape) != 3 or shape[2] != 3 or shape[0] < 768 or shape[1] < 1024 or
             shape[0] * 4 != shape[1] * 3 or any(image.shape != shape for image in images)):
         raise ValueError('complete captures of the fixed 4:3 viewport are required')
+
+
+def inspect_emissives(images):
+    validate_images(images, 10)
+    checks = []
+    # Authored wall receivers beside the box and floor line. These regions
+    # contain neither the emitting textures, the reticle nor a bloom halo.
+    for name, base, bounds in (('box', 0, (153, 320, 235, 590)),
+                               ('line', 5, (740, 350, 820, 550))):
+        receivers = [region(image, *bounds) for image in images[base:base + 5]]
+        cyan = receivers[0] - receivers[1]
+        orange = receivers[2] - receivers[3]
+        c = cyan.mean(axis=(0, 1))
+        o = orange.mean(axis=(0, 1))
+        restored = np.abs(receivers[4] - receivers[0]).mean()
+        off_change = np.abs(receivers[3] - receivers[1]).mean()
+        for suffix, passed, value in (
+                ('cyan-receiver', c[2] > .03 and c[1] > .02 and c[2] > 2 * c[0], c[2]),
+                ('orange-receiver', o[0] > .03 and o[1] > .02 and o[0] > 2 * o[2], o[0]),
+                ('cyan-coverage', (cyan.max(axis=2) > .02).mean() > .8,
+                 (cyan.max(axis=2) > .02).mean()),
+                ('orange-coverage', (orange.max(axis=2) > .02).mean() > .8,
+                 (orange.max(axis=2) > .02).mean()),
+                ('off-removes-frame-light', off_change < .01, off_change),
+                ('cyan-return', restored < .01, restored)):
+            checks.append(dict(name=f'emissive.{name}.{suffix}', passed=bool(passed),
+                               value=float(value)))
+    # The light-only control must preserve visible emission. The source box
+    # and floor dots continue to change frames while their receiver light is off.
+    for base, bounds, name in ((0, (40, 153, 142, 254), 'box'),
+                               (5, (568, 462, 640, 650), 'line')):
+        for index, orange in ((0, False), (1, False), (2, True), (3, True), (4, False)):
+            source = region(images[base + index], *bounds)
+            r, g, b = np.moveaxis(source, 2, 0)
+            coverage = np.mean((r > b + .2) & (g > b + .1) & (r > .35)) if orange else \
+                np.mean((b > r + .15) & (g > r + .1) & (b > .3))
+            checks.append(dict(name=f'emissive.{name}.visible-frame-{index}',
+                               passed=bool(coverage > (.4 if name == 'box' else .03)),
+                               value=float(coverage)))
+    return checks
+
+
+def emissive_sensitivity(images):
+    checks = []
+    for name, base, bounds in (('box', 0, (153, 320, 235, 590)),
+                               ('line', 5, (740, 350, 820, 550))):
+        for defect, index, replacement, expected in (
+                ('missing-cyan-light', 0, 1, 'cyan-receiver'),
+                ('missing-orange-light', 2, 3, 'orange-receiver'),
+                ('stale-orange-frame', 2, 0, 'orange-receiver'),
+                ('missing-return', 4, 1, 'cyan-return')):
+            mutated = [image.copy() for image in images]
+            region(mutated[base + index], *bounds)[:] = region(images[base + replacement], *bounds)
+            rows = inspect_emissives(mutated)
+            rejected = any(row['name'] == f'emissive.{name}.{expected}' and
+                           not row['passed'] for row in rows)
+            checks.append(dict(name=f'oracle.rejects-{name}-{defect}', passed=rejected))
+    return checks
 
 
 def inspect_cables(images):
@@ -275,7 +359,7 @@ def sensitivity(images):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--commands', action='store_true')
-    parser.add_argument('--scene', choices=('materials', 'doors', 'cables', 'all'),
+    parser.add_argument('--scene', choices=('materials', 'doors', 'cables', 'emissives', 'all'),
                         default='materials')
     parser.add_argument('--temporal-scale', type=float,
                         help='require this FSR scale in startup settings and live game queries')
@@ -318,8 +402,14 @@ def main():
             raise ValueError('the game reported strict mode disabled')
         dynamic = re.findall(r'"r_core_dynamic_draws" = "([^\"]+)"', log)
         if ((dynamic and any(value != '0' for value in dynamic)) or
-                (args.scene in ('doors', 'cables', 'all') and (not strict or not dynamic))):
+                (args.scene in ('doors', 'cables', 'emissives', 'all') and (not strict or not dynamic))):
             raise ValueError('strict/default-cohort game queries are missing or incorrect')
+        if args.scene in ('emissives', 'all'):
+            strength = re.findall(r'"cl_surface_core_emission_strength" = "([^\"]+)"', log)
+            emitting = re.findall(r'"cl_surface_core_emission" = "([^\"]+)"', log)
+            if (not strength or any(value != '16' for value in strength) or
+                    not emitting or any(value != '1' for value in emitting)):
+                raise ValueError('required emissive source policy queries are missing or incorrect')
         if args.temporal_scale is not None:
             selected = args.temporal_scale
             queried = re.findall(r'"r_temporal_scale" = "([^\"]+)"', log)
@@ -334,10 +424,13 @@ def main():
         if not failures or any(int(value) for value in failures):
             raise ValueError('missing core statistics or claimed-view failure')
         if args.scene == 'all':
-            validate_images(images, 20)
+            validate_images(images, 30)
             report['checks'] = (inspect(images[:8]) + sensitivity(images[:8]) +
                                 inspect_doors(images[8:17]) + door_sensitivity(images[8:17]) +
-                                inspect_cables(images[17:20]) + cable_sensitivity(images[17:20]))
+                                inspect_cables(images[17:20]) + cable_sensitivity(images[17:20]) +
+                                inspect_emissives(images[20:30]) + emissive_sensitivity(images[20:30]))
+        elif args.scene == 'emissives':
+            report['checks'] = inspect_emissives(images) + emissive_sensitivity(images)
         elif args.scene == 'doors':
             report['checks'] = inspect_doors(images) + door_sensitivity(images)
         elif args.scene == 'cables':

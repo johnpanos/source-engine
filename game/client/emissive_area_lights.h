@@ -17,6 +17,10 @@
 
 #include "render/area_light.h"
 
+// Composition-owned geometry provider outlives the borrowed client use.
+// Set before frame work starts; clear at client shutdown. Main thread only.
+void EmissiveAreaLights_SetGeometry( area_light::IAreaLights4 *provider );
+
 // A source of area lights besides emissive models: a lit screen or panel.
 class IEmissiveAreaLightSource
 {

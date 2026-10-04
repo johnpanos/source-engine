@@ -221,6 +221,119 @@ const std::vector<WorldEmitter> &WorldEmitters_Get()
 	return s.emitters;
 }
 
+namespace
+{
+// Frozen-path: geometry ingress only. The client supplies live source state;
+// render.emissive-area-lights owns the emission integration and rectangle fit.
+struct CoreGeometryBuilder
+{
+	std::vector<area_light::EmissiveTriangle> triangles;
+	int nextGroup = 0;
+	std::map<int, int> overlays;
+
+	void Add( int group, int entity, IMaterial *material, const Vector &normal,
+	    const Vector *positions, const Vector2D *uvs, int count )
+	{
+		if ( !material ||
+		     !emissive::SurfaceSource( material->GetMaterialVarFlag( MATERIAL_VAR_SELFILLUM ),
+		         material->GetShaderName() ) )
+			return;
+		for ( int i = 1; i + 1 < count; ++i )
+		{
+			int corner[3] = { 0, i, i + 1 };
+			if ( DotProduct(
+			         CrossProduct( positions[i] - positions[0], positions[i + 1] - positions[0] ),
+			         normal ) < 0.0f )
+				V_swap( corner[1], corner[2] );
+			area_light::EmissiveTriangle triangle;
+			triangle.group = group;
+			triangle.entity = entity;
+			Q_strncpy( triangle.material, material->GetName(), sizeof( triangle.material ) );
+			for ( int c = 0; c < 3; ++c )
+			{
+				for ( int k = 0; k < 3; ++k )
+					triangle.position[c][k] = positions[corner[c]][k];
+				triangle.uv[c][0] = uvs[corner[c]].x;
+				triangle.uv[c][1] = uvs[corner[c]].y;
+			}
+			triangles.push_back( triangle );
+		}
+	}
+};
+
+void VisitCoreOverlay( void *context, int overlay, IMaterial *material, const Vector &normal,
+    const Vector *positions, const Vector2D *uvs, int count )
+{
+	CoreGeometryBuilder &builder = *static_cast<CoreGeometryBuilder *>( context );
+	auto found = builder.overlays.find( overlay );
+	if ( found == builder.overlays.end() )
+		found = builder.overlays.emplace( overlay, builder.nextGroup++ ).first;
+	builder.Add( found->second, OverlayMgr()->SourceEntityIndex( overlay ), material, normal,
+	    positions, uvs, count );
+}
+} // namespace
+
+std::vector<area_light::EmissiveTriangle> WorldEmitters_CoreGeometry( int modelIndex )
+{
+	if ( modelIndex < 0 )
+		return {};
+	const model_t *model = modelIndex == 0 ? host_state.worldmodel : cl.GetModel( modelIndex );
+	if ( !model || model->type != mod_brush || !model->brush.pShared )
+		return {};
+	// The client world entity aliases model 0 through the model-precache index.
+	// Its sources were already enumerated once in world space.
+	if ( modelIndex != 0 && model == host_state.worldmodel )
+		return {};
+	worldbrushdata_t *world = model->brush.pShared;
+	std::set<int> baked;
+	if ( modelIndex == 0 )
+		for ( int i = 0; i < world->numworldlights; ++i )
+			if ( world->worldlights[i].type == emit_surface )
+				baked.insert( world->worldlights[i].texinfo );
+	CoreGeometryBuilder builder;
+	CUtlVector<Vector> positions;
+	CUtlVector<Vector2D> uvs;
+	for ( int i = 0; i < model->brush.nummodelsurfaces; ++i )
+	{
+		SurfaceHandle_t surface =
+		    SurfaceHandleFromIndex( model->brush.firstmodelsurface + i, world );
+		if ( MSurf_Flags( surface ) & ( SURFDRAW_NODRAW | SURFDRAW_SKY ) ||
+		     SurfaceHasDispInfo( surface ) )
+			continue;
+		mtexinfo_t *info = MSurf_TexInfo( surface );
+		IMaterial *material = info ? info->material : NULL;
+		if ( !material ||
+		     !emissive::SurfaceSource( material->GetMaterialVarFlag( MATERIAL_VAR_SELFILLUM ),
+		         material->GetShaderName() ) ||
+		     baked.count( int( info - world->texinfo ) ) )
+			continue;
+		const int count = MSurf_VertCount( surface );
+		positions.SetCount( count );
+		uvs.SetCount( count );
+		const float width = float( MAX( material->GetMappingWidth(), 1 ) );
+		const float height = float( MAX( material->GetMappingHeight(), 1 ) );
+		for ( int v = 0; v < count; ++v )
+		{
+			const Vector &p =
+			    world->vertexes[world->vertindices[MSurf_FirstVertIndex( surface ) + v]].position;
+			positions[v] = p;
+			for ( int k = 0; k < 2; ++k )
+				uvs[v][k] =
+				    ( DotProduct( p, info->textureVecsTexelsPerWorldUnits[k].AsVector3D() ) +
+				        info->textureVecsTexelsPerWorldUnits[k][3] ) /
+				    ( k == 0 ? width : height );
+		}
+		Vector normal = MSurf_Plane( surface ).normal;
+		if ( MSurf_Flags( surface ) & SURFDRAW_PLANEBACK )
+			normal = -normal;
+		builder.Add(
+		    builder.nextGroup++, -1, material, normal, positions.Base(), uvs.Base(), count );
+	}
+	if ( modelIndex == 0 )
+		OverlayMgr()->EnumerateFragments( VisitCoreOverlay, &builder );
+	return std::move( builder.triangles );
+}
+
 bool WorldEmitters_EnergyFieldSurface( int modelIndex, energy_field::Surface &out )
 {
 	out = {};

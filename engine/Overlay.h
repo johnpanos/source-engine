@@ -64,6 +64,8 @@ public:
 	typedef void ( *FragmentVisitor_t )( void *pContext, int iOverlay, IMaterial *pMaterial,
 	    const Vector &normal, const Vector *pPositions, const Vector2D *pTexCoords, int nCount );
 	virtual void EnumerateFragments( FragmentVisitor_t visit, void *pContext ) = 0;
+	// The existing bind-proxy owner; -1 for an overlay without one.
+	virtual int SourceEntityIndex( int iOverlayID ) = 0;
 };
 
 

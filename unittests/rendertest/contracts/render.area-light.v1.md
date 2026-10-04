@@ -3,17 +3,20 @@
 `public/render/area_light.h` owns area lights: light that leaves an emitting
 surface rather than a point. They are part of the RFC 0011 runtime light set,
 version 2 (`Snapshot::areas` in `public/render/light_set.h`).
-`public/render/emissive_area_lights.h` owns how an emissive model's
-self-illuminated triangles become area lights, and which are lit each frame.
+`public/render/emissive_area_lights.h` owns how mapped emissive
+triangles become area lights, and which are lit each frame.
 
 The client publishes each frame's area lights to the engine
-(`game/client/emissive_area_lights.cpp`, `VEngineAreaLights001`). The engine
-carries each in a black dlight slot flagged `DLIGHT_AREA`
-(`engine/area_lights.cpp`). The consumers today:
+(`game/client/emissive_area_lights.cpp`) through the version 3 core-routing
+bridge. Version 4 appends authored surface geometry; the earlier interfaces
+remain available. The [surface-source policy](../../../RFC/0016-render-core.md#surface-emission-sources-installed-indicator-slice-2026-10-04)
+owns source eligibility and radiance policy. Core-only sources go directly to
+the frame light set. Retained sources can also occupy black dlight slots flagged
+`DLIGHT_AREA` (`engine/area_lights.cpp`). The consumers today:
 
 - world lightmaps evaluate the exact form factor per luxel and bump basis
   (`engine/gl_lightmap.cpp`);
-- models take a stand-in point light at their lighting origin
+- retained model lighting takes a stand-in point light at their lighting origin
   (`engine/lightcache.cpp`);
 - the light set publishes the rectangles for per-pixel consumers (the
   render core's clustered LTC evaluation, RFC 0016 K7, is judged against the
@@ -64,7 +67,7 @@ carries each in a black dlight slot flagged `DLIGHT_AREA`
     is kept for callers that hand the fit a mixed part.
 - **Power.** The fitted radiance keeps the part's power:
   `radiance x area x sides = sum A_i L_i`.
-- **Selection.** At most `r_area_lights` (8 on desktop, RFC 0011 budget) are
+- **Selection.** At most `r_area_lights` (64 on desktop, 4 on Android) are
   lit. Emitters whose surface is in the view's potentially visible set
   (`IsBoxVisible` on the rectangle's bounds) come before every other; the
   rest only take budget left over. Within each set they are ranked by
@@ -87,6 +90,12 @@ Lambert's formula:
 Tolerances: 0.5% relative (2e-5 absolute) against integration on a 600- to
 800-cell grid, and 0.01% against the closed forms.
 
+The mapped-source checks additionally verify copied authored positions and
+UV integration, covered power, transparent/alpha-tested rejection, a dark frame
+producing no emitters and cyan/orange source frames casting the selected color
+at an independent analytical receiver. The GPU suite and strict game image
+oracle separately judge actual receiver pixels.
+
 ## Sensitivity
 
 Each seeded defect must be rejected by at least one check:
@@ -103,9 +112,9 @@ Each seeded defect must be rejected by at least one check:
 
 ## Known gaps
 
-- Displacements, the WMSH world (BSP2 maps) and per-pixel native paths draw
-  no area light yet. Per-pixel LTC belongs to RFC 0016 K7.
+- Emissive-source geometry ingress does not enumerate displacements or the
+  WMSH world. Native receiver LTC is installed under RFC 0016 K7.
 - There is no occlusion: a light reaches through a wall within its reach.
   The failing fixture for this is still to be written; it is the oracle for
   SDF shadowing later.
-- Area lights are not imaged through portals.
+- Light transport through portals is not supplied by this source slice.

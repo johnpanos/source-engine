@@ -22,6 +22,7 @@
 #include "ienginevgui.h"
 #include "iefx.h"
 #include "render/area_light.h"
+#include "emissive_area_lights.h"
 #include "render/dynamic_occlusion.h"
 #include "dynamic_occluders.h"
 #include "render/projected_light.h"
@@ -1002,6 +1003,8 @@ int CHLClient::Init( CreateInterfaceFn appSystemFactory, CreateInterfaceFn physi
 	// Optional: an engine without area lights (RFC 0011 light set v2).
 	arealights =
 	    (area_light::IAreaLights3 *)appSystemFactory( area_light::kAreaLightsFrameVersion, NULL );
+	EmissiveAreaLights_SetGeometry( static_cast<area_light::IAreaLights4 *>(
+	    appSystemFactory( area_light::kAreaLightsGeometryVersion, NULL ) ) );
 	occluders = (dynamic_occlusion::IOccluders *)appSystemFactory(
 	    dynamic_occlusion::kOccludersVersion, NULL );
 	coreOccluders = (dynamic_occlusion::IOccluders2 *)appSystemFactory(
@@ -1265,10 +1268,11 @@ void CHLClient::PostInit()
 //-----------------------------------------------------------------------------
 void CHLClient::Shutdown( void )
 {
-    if (g_pAchievementsAndStatsInterface)
-    {
-        g_pAchievementsAndStatsInterface->ReleasePanel();
-    }
+	EmissiveAreaLights_SetGeometry( NULL );
+	if ( g_pAchievementsAndStatsInterface )
+	{
+		g_pAchievementsAndStatsInterface->ReleasePanel();
+	}
 
 #ifdef SIXENSE
 	g_pSixenseInput->Shutdown();

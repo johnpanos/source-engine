@@ -44,7 +44,7 @@ struct Texture
 };
 
 // Decodes a VTF file's first mip no larger than `maxDimension`.
-inline bool Decode( CUtlBuffer &buf, int maxDimension, Texture &out )
+inline bool Decode( CUtlBuffer &buf, int maxDimension, Texture &out, int frame = 0 )
 {
 	out = Texture();
 	IVTFTexture *pVTF = CreateVTFTexture();
@@ -59,12 +59,13 @@ inline bool Decode( CUtlBuffer &buf, int maxDimension, Texture &out )
 			++nSkip;
 		}
 		buf.SeekGet( CUtlBuffer::SEEK_HEAD, 0 );
-		if ( pVTF->Unserialize( buf, false, nSkip ) )
+		if ( pVTF->Unserialize( buf, false, nSkip ) && MAX( frame, 0 ) < pVTF->FrameCount() )
 		{
 			pVTF->ConvertImageFormat( IMAGE_FORMAT_RGBA8888, false );
 			out.width = pVTF->Width();
 			out.height = pVTF->Height();
-			const unsigned char *pData = pVTF->ImageData( 0, 0, 0 );
+			const int selected = MAX( frame, 0 );
+			const unsigned char *pData = pVTF->ImageData( selected, 0, 0 );
 			const int nTexels = out.width * out.height;
 			out.rgb.resize( size_t( nTexels ) * 3 );
 			out.alpha.resize( size_t( nTexels ) );

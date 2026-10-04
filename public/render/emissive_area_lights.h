@@ -52,6 +52,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <span>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -68,6 +70,31 @@ constexpr float kTwoSidedOpenness = 0.35f;
 constexpr float kMinRadiance = 1.0f / 255.0f;
 constexpr float kKeepMargin = 1.25f;
 constexpr int kMaxSamplesPerTriangle = 64;
+
+// Reviewed Source surface-source policy v1 (2026-10-04): self-illumination
+// and fullbright UnlitGeneric scene surfaces illuminate core receivers.
+// Sky/nodraw and already baked texture lights remain ingress exclusions.
+inline bool UnlitSource( std::string_view shader )
+{
+	return shader == "UnlitGeneric" || shader == "UnlitGeneric_DX9";
+}
+
+inline bool SurfaceSource( bool selfIllum, std::string_view shader )
+{
+	return selfIllum || UnlitSource( shader );
+}
+
+// Fullbright images emit through their authored coverage, not transparent
+// texels. Alpha-tested coverage is binary, as in the visible surface point.
+inline void UnlitRadiance( const float rgb[3], float alpha, bool translucent, bool alphaTest,
+    float reference, float out[3] )
+{
+	const float coverage = alphaTest && alpha < reference ? 0.0f
+	                       : translucent                  ? std::clamp( alpha, 0.0f, 1.0f )
+	                                                      : 1.0f;
+	for ( int k = 0; k < 3; ++k )
+		out[k] = rgb[k] * coverage;
+}
 
 struct Triangle
 {
@@ -458,6 +485,27 @@ inline void SelectLit( const Candidate *candidates, int count, int budget, const
 		if ( order )
 			order->push_back( hidden[h] );
 	}
+}
+
+// Integrate the current source image over its authored triangle mapping,
+// then fit with the same power-preserving policy as other emissive sources.
+// The caller owns frame selection, radiance policy and image lifetime.
+template <typename Fetch>
+std::vector<Emitter> BuildMappedEmitters(
+    std::span<const area_light::EmissiveTriangle> surfaces, int width, int height, Fetch fetch )
+{
+	std::vector<Triangle> triangles;
+	triangles.reserve( surfaces.size() );
+	for ( const auto &surface : surfaces )
+	{
+		Triangle triangle;
+		triangle.group = surface.group;
+		for ( int c = 0; c < 3; ++c )
+			std::copy_n( surface.position[c], 3, triangle.p[c] );
+		SampleTriangle( surface.uv, width, height, fetch, triangle.radiance );
+		triangles.push_back( triangle );
+	}
+	return BuildEmitters( triangles );
 }
 
 // Every candidate in view.

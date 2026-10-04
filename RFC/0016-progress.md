@@ -9336,3 +9336,62 @@ remain. These changes are on `subsystem-refactor`.
 
 Frozen-path: shaderapivulkan fixes captured lightmap handle plumbing and hands
 rope geometry to the existing core material owner; no legacy shading is added.
+
+
+### Intro4 indicator emission on core receivers (2026-10-04)
+
+User direction: emissive surfaces should light their surroundings like the
+fizzler, including indicator boxes and lines. The previous world producer
+sampled frame zero, omitted moving brush geometry and excluded fullbright
+indicator overlays because they have no `$selfillum` flag. The
+[surface-source policy](0016-render-core.md#surface-emission-sources-installed-indicator-slice-2026-10-04)
+owns the new source behavior and radiance scale.
+
+The core-owned mapped-triangle integration samples the selected source image,
+includes authored coverage and preserves emitted power when fitting area
+rectangles. The geometry bridge preserves the existing area-light interfaces;
+world/overlays are enumerated once, excluding the world entity's model alias.
+Brush sources follow entity transforms. The client's existing source publisher
+reads each overlay's actual proxy owner frame and publishes core-only lights.
+It neither reruns proxies nor allocates legacy CPU stand-in slots. Static mask
+images retain their independently bound frame zero; invalid base frames are
+reported instead of wrapping to another image. Models retain their existing
+geometry/skin/bone producer, with the new core light-radiance scale.
+
+Evidence under `quality-results/intro4-rendercore-completion/`:
+
+- `emissive-final-contracts.json`: 45 checks pass; the existing two-sided and
+  power-loss seeded defects are detected by their sensitivity suites.
+- `emissive-gpu-images.log`: 76 receiver checks pass, zero validation messages.
+  The new mapped cyan/orange/transparent/return cases exercise the same source
+  integration on real GPU receivers; images are in `emissive-lab-images/`.
+- `emissive-product-build-final.log`: installed product build passes using the
+  existing FSR profile, without reconfiguring another session's build.
+- `emissive-strict-final-game/`: the final product runs Intro4 from the menu in
+  strict FSR-on (scale 0.5) and FSR-off (scale 0) modes. Both pass all 75 pixel
+  and seeded-negative checks with zero claimed-view failures. The 30 new checks
+  judge neighboring wall receivers beside the box and floor line through
+  cyan/on, cyan/off, orange/on, orange/off and cyan/on again. Emitting textures
+  remain visible during the light-only off control. Eight deliberate missing
+  light/stale-frame defects are rejected. Existing glass, decals, door and
+  cable checks remain effective. `emissive-strict-game/` retains the first
+  passing pair before the final frame-sampling correction.
+- `emissive-runtime-install.json`: both final captures identify the same 22
+  product files; those tested products are atomically installed into the shared
+  `run/runtime-p2-fsr`. Running games retain their existing file mappings.
+- `emissive-style-final.log`: edited C++ style passes. Architecture baseline and
+  inventory are current. The full architecture check retains the pre-existing
+  CAP002 `charconv` occurrence in `public/gameui/graphics_settings_service.h`,
+  with zero new/stale occurrences. All 73 boot-runner fixtures pass.
+
+The installed strict runner now includes this emission sequence in `all`,
+75 checks per mode; its [guide](../tools/quality/render_profile.md#strict-intro4-material-captures)
+records reproduction and controls. This is bounded source/receiver evidence,
+not completion of R91/R96, all material/proxy support, indirect-light transport
+or the complete-frame performance gate. Advanced UV/emission inputs and animated
+studio-source images remain open. Changes are on `subsystem-refactor`.
+
+Frozen-path: engine overlay/world code only supplies authored geometry, facing
+and live proxy-owner identity; the versioned area-light bridge and client root
+are core plumbing. VTF frame decoding fixes source image selection. Source math
+and receiver shading retain their render-core owners; no legacy shader is added.
