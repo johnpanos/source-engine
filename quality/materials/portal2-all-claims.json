@@ -339,7 +339,7 @@
   },
   "game": "portal2",
   "gaps": {
-    "$envmap needs the stage's native reflection probes": 1,
+    "$envmap needs the stage's native reflection probes": 18,
     "$translucent with $additive blends src-alpha/one, which the port lacks": 24,
     "VMT: missing include materials/models/props_foliage/tree_include_dryleaves.vmt": 1,
     "family vertexlit has no program yet": 25,
@@ -443,7 +443,6 @@
     "the model does not read $refracttinttexture": 12,
     "the model does not read $rimboost": 1,
     "the model does not read $selfillum_envmapmask_alpha": 1,
-    "the model does not read $selfillumfresnel": 17,
     "the model does not read $shadersrgbread360": 154,
     "the model does not read $splinetype": 3,
     "the model does not read $spritescale": 1,
@@ -141552,32 +141551,32 @@
     "materials/paint/bridge_paint_bounce_l_r_speed.vmt": {
       "candidates": [],
       "family": "vertexlit",
-      "gap": "the model does not read $selfillumfresnel",
+      "gap": "$envmap needs the stage's native reflection probes",
       "input_sha256": "5b28ac04b2b4536d0882cae33a8e39830d04d122e4296a4548fc181be2befa9d",
       "mesh_claims": [
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "the modern mesh point does not draw $decal",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "the modern mesh point does not draw $decal",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -141586,22 +141585,20 @@
       ],
       "proxies": [],
       "refusal_features": [
-        "parameter:$selfillumfresnel"
+        "parameter:$decal",
+        "parameter:$envmap"
       ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
-      "unmapped_keys": [
-        "$selfillumfresnel"
-      ],
       "world_claims": [
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -141611,32 +141608,32 @@
     "materials/paint/bridge_paint_bounce_l_speed.vmt": {
       "candidates": [],
       "family": "vertexlit",
-      "gap": "the model does not read $selfillumfresnel",
+      "gap": "$envmap needs the stage's native reflection probes",
       "input_sha256": "b8ca525ba000d2a95d7eb317aae349393e4d5c8c06326dc436201e4051bec9e5",
       "mesh_claims": [
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "the modern mesh point does not draw $decal",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "the modern mesh point does not draw $decal",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -141645,22 +141642,20 @@
       ],
       "proxies": [],
       "refusal_features": [
-        "parameter:$selfillumfresnel"
+        "parameter:$decal",
+        "parameter:$envmap"
       ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
-      "unmapped_keys": [
-        "$selfillumfresnel"
-      ],
       "world_claims": [
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -141670,32 +141665,32 @@
     "materials/paint/bridge_paint_bounce_r_speed.vmt": {
       "candidates": [],
       "family": "vertexlit",
-      "gap": "the model does not read $selfillumfresnel",
+      "gap": "$envmap needs the stage's native reflection probes",
       "input_sha256": "1cbf13f6cbb19aae74a48434ea9b71954fc03177886af2c2cc04b94b1652337c",
       "mesh_claims": [
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "the modern mesh point does not draw $decal",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "the modern mesh point does not draw $decal",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -141704,22 +141699,20 @@
       ],
       "proxies": [],
       "refusal_features": [
-        "parameter:$selfillumfresnel"
+        "parameter:$decal",
+        "parameter:$envmap"
       ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
-      "unmapped_keys": [
-        "$selfillumfresnel"
-      ],
       "world_claims": [
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -141729,32 +141722,32 @@
     "materials/paint/bridge_paint_end_left.vmt": {
       "candidates": [],
       "family": "vertexlit",
-      "gap": "the model does not read $selfillumfresnel",
+      "gap": "$envmap needs the stage's native reflection probes",
       "input_sha256": "c2ff7e3d94a91ccf3e166ff7760cf9cbf6a2840745862a58ff2b26170b18caf1",
       "mesh_claims": [
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "the modern mesh point does not draw $decal",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "the modern mesh point does not draw $decal",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -141763,22 +141756,20 @@
       ],
       "proxies": [],
       "refusal_features": [
-        "parameter:$selfillumfresnel"
+        "parameter:$decal",
+        "parameter:$envmap"
       ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
-      "unmapped_keys": [
-        "$selfillumfresnel"
-      ],
       "world_claims": [
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -141788,32 +141779,32 @@
     "materials/paint/bridge_paint_end_left_bounce_r_speed.vmt": {
       "candidates": [],
       "family": "vertexlit",
-      "gap": "the model does not read $selfillumfresnel",
+      "gap": "$envmap needs the stage's native reflection probes",
       "input_sha256": "9cec485b3dd80821b14d8538f67845069f58096d60ff33faae9a3a0c58e06832",
       "mesh_claims": [
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "the modern mesh point does not draw $decal",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "the modern mesh point does not draw $decal",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -141822,22 +141813,20 @@
       ],
       "proxies": [],
       "refusal_features": [
-        "parameter:$selfillumfresnel"
+        "parameter:$decal",
+        "parameter:$envmap"
       ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
-      "unmapped_keys": [
-        "$selfillumfresnel"
-      ],
       "world_claims": [
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -141847,32 +141836,32 @@
     "materials/paint/bridge_paint_end_left_portal.vmt": {
       "candidates": [],
       "family": "vertexlit",
-      "gap": "the model does not read $selfillumfresnel",
+      "gap": "$envmap needs the stage's native reflection probes",
       "input_sha256": "19bbcfa5e9e3f6e27237fb658f1ad846ee7df65e8c8cff018b3097d25160715d",
       "mesh_claims": [
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "the modern mesh point does not draw $decal",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "the modern mesh point does not draw $decal",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -141881,22 +141870,20 @@
       ],
       "proxies": [],
       "refusal_features": [
-        "parameter:$selfillumfresnel"
+        "parameter:$decal",
+        "parameter:$envmap"
       ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
-      "unmapped_keys": [
-        "$selfillumfresnel"
-      ],
       "world_claims": [
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -141906,32 +141893,32 @@
     "materials/paint/bridge_paint_end_left_speed.vmt": {
       "candidates": [],
       "family": "vertexlit",
-      "gap": "the model does not read $selfillumfresnel",
+      "gap": "$envmap needs the stage's native reflection probes",
       "input_sha256": "c795a3398343801608af8af47215f6edda78afcc34909c8c5abac7459fca02e9",
       "mesh_claims": [
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "the modern mesh point does not draw $decal",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "the modern mesh point does not draw $decal",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -141940,22 +141927,20 @@
       ],
       "proxies": [],
       "refusal_features": [
-        "parameter:$selfillumfresnel"
+        "parameter:$decal",
+        "parameter:$envmap"
       ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
-      "unmapped_keys": [
-        "$selfillumfresnel"
-      ],
       "world_claims": [
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -141965,32 +141950,32 @@
     "materials/paint/bridge_paint_end_right.vmt": {
       "candidates": [],
       "family": "vertexlit",
-      "gap": "the model does not read $selfillumfresnel",
+      "gap": "$envmap needs the stage's native reflection probes",
       "input_sha256": "1033afaf42ae239a5aa6f38fab3a803faa8ddd649514615e37fcdcb1c2d88c42",
       "mesh_claims": [
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "the modern mesh point does not draw $decal",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "the modern mesh point does not draw $decal",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -141999,22 +141984,20 @@
       ],
       "proxies": [],
       "refusal_features": [
-        "parameter:$selfillumfresnel"
+        "parameter:$decal",
+        "parameter:$envmap"
       ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
-      "unmapped_keys": [
-        "$selfillumfresnel"
-      ],
       "world_claims": [
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -142024,32 +142007,32 @@
     "materials/paint/bridge_paint_end_right_bounce_l_speed.vmt": {
       "candidates": [],
       "family": "vertexlit",
-      "gap": "the model does not read $selfillumfresnel",
+      "gap": "$envmap needs the stage's native reflection probes",
       "input_sha256": "01ca5d0dde15245daf32aa3e5816fa4cbad8357b202e77ed0c92c45f9d9d87dc",
       "mesh_claims": [
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "the modern mesh point does not draw $decal",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "the modern mesh point does not draw $decal",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -142058,22 +142041,20 @@
       ],
       "proxies": [],
       "refusal_features": [
-        "parameter:$selfillumfresnel"
+        "parameter:$decal",
+        "parameter:$envmap"
       ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
-      "unmapped_keys": [
-        "$selfillumfresnel"
-      ],
       "world_claims": [
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -142083,32 +142064,32 @@
     "materials/paint/bridge_paint_end_right_portal.vmt": {
       "candidates": [],
       "family": "vertexlit",
-      "gap": "the model does not read $selfillumfresnel",
+      "gap": "$envmap needs the stage's native reflection probes",
       "input_sha256": "b31a7639623fd7592217e116205b00e53c8a9b1ac3877b9d78829f32ab497a50",
       "mesh_claims": [
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "the modern mesh point does not draw $decal",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "the modern mesh point does not draw $decal",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -142117,22 +142098,20 @@
       ],
       "proxies": [],
       "refusal_features": [
-        "parameter:$selfillumfresnel"
+        "parameter:$decal",
+        "parameter:$envmap"
       ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
-      "unmapped_keys": [
-        "$selfillumfresnel"
-      ],
       "world_claims": [
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -142142,32 +142121,32 @@
     "materials/paint/bridge_paint_end_right_speed.vmt": {
       "candidates": [],
       "family": "vertexlit",
-      "gap": "the model does not read $selfillumfresnel",
+      "gap": "$envmap needs the stage's native reflection probes",
       "input_sha256": "76112fd62c1799899ea878fd8a792352505ee3d3e9fc1731cda92e83b85cd1d6",
       "mesh_claims": [
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "the modern mesh point does not draw $decal",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "the modern mesh point does not draw $decal",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -142176,22 +142155,20 @@
       ],
       "proxies": [],
       "refusal_features": [
-        "parameter:$selfillumfresnel"
+        "parameter:$decal",
+        "parameter:$envmap"
       ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
-      "unmapped_keys": [
-        "$selfillumfresnel"
-      ],
       "world_claims": [
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -142201,32 +142178,32 @@
     "materials/paint/bridge_paint_single.vmt": {
       "candidates": [],
       "family": "vertexlit",
-      "gap": "the model does not read $selfillumfresnel",
+      "gap": "$envmap needs the stage's native reflection probes",
       "input_sha256": "7b4ce98f56abcab067fc0addb37c518ef20cd4cbde8c83f84b7baf5b3f446042",
       "mesh_claims": [
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "the modern mesh point does not draw $decal",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "the modern mesh point does not draw $decal",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -142235,22 +142212,20 @@
       ],
       "proxies": [],
       "refusal_features": [
-        "parameter:$selfillumfresnel"
+        "parameter:$decal",
+        "parameter:$envmap"
       ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
-      "unmapped_keys": [
-        "$selfillumfresnel"
-      ],
       "world_claims": [
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -142260,32 +142235,32 @@
     "materials/paint/bridge_paint_single_portal.vmt": {
       "candidates": [],
       "family": "vertexlit",
-      "gap": "the model does not read $selfillumfresnel",
+      "gap": "$envmap needs the stage's native reflection probes",
       "input_sha256": "665c11007da5bc82a927a4fb1d36ceb4b2fb6db634cefcef9d96ffac00a6eb09",
       "mesh_claims": [
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "the modern mesh point does not draw $decal",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "the modern mesh point does not draw $decal",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -142294,22 +142269,20 @@
       ],
       "proxies": [],
       "refusal_features": [
-        "parameter:$selfillumfresnel"
+        "parameter:$decal",
+        "parameter:$envmap"
       ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
-      "unmapped_keys": [
-        "$selfillumfresnel"
-      ],
       "world_claims": [
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -142319,32 +142292,32 @@
     "materials/paint/bridge_paint_single_speed.vmt": {
       "candidates": [],
       "family": "vertexlit",
-      "gap": "the model does not read $selfillumfresnel",
+      "gap": "$envmap needs the stage's native reflection probes",
       "input_sha256": "aaa155f05d79f7645deaad31bb8715fc6f237726cdc5bcc77835ada64d3d6cff",
       "mesh_claims": [
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "the modern mesh point does not draw $decal",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "the modern mesh point does not draw $decal",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -142353,22 +142326,20 @@
       ],
       "proxies": [],
       "refusal_features": [
-        "parameter:$selfillumfresnel"
+        "parameter:$decal",
+        "parameter:$envmap"
       ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
-      "unmapped_keys": [
-        "$selfillumfresnel"
-      ],
       "world_claims": [
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -142378,32 +142349,32 @@
     "materials/paint/bridge_paint_tile.vmt": {
       "candidates": [],
       "family": "vertexlit",
-      "gap": "the model does not read $selfillumfresnel",
+      "gap": "$envmap needs the stage's native reflection probes",
       "input_sha256": "65da40e94c318494918125f208c6e30f125338f23fc08e0a602d38c531aade89",
       "mesh_claims": [
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "the modern mesh point does not draw $decal",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "the modern mesh point does not draw $decal",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -142412,22 +142383,20 @@
       ],
       "proxies": [],
       "refusal_features": [
-        "parameter:$selfillumfresnel"
+        "parameter:$decal",
+        "parameter:$envmap"
       ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
-      "unmapped_keys": [
-        "$selfillumfresnel"
-      ],
       "world_claims": [
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -142437,32 +142406,32 @@
     "materials/paint/bridge_paint_tile_portal.vmt": {
       "candidates": [],
       "family": "vertexlit",
-      "gap": "the model does not read $selfillumfresnel",
+      "gap": "$envmap needs the stage's native reflection probes",
       "input_sha256": "2b856cb8dd495e9bcf110f583563d75776ba5d3029145ef6de01d3df5f35a48f",
       "mesh_claims": [
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "the modern mesh point does not draw $decal",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "the modern mesh point does not draw $decal",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -142471,22 +142440,20 @@
       ],
       "proxies": [],
       "refusal_features": [
-        "parameter:$selfillumfresnel"
+        "parameter:$decal",
+        "parameter:$envmap"
       ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
-      "unmapped_keys": [
-        "$selfillumfresnel"
-      ],
       "world_claims": [
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -142496,32 +142463,32 @@
     "materials/paint/bridge_paint_tile_speed.vmt": {
       "candidates": [],
       "family": "vertexlit",
-      "gap": "the model does not read $selfillumfresnel",
+      "gap": "$envmap needs the stage's native reflection probes",
       "input_sha256": "8923c78cc6ab7010835c1faab8ea833c97368df8432c363f9a997bda68de428a",
       "mesh_claims": [
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "the modern mesh point does not draw $decal",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "the modern mesh point does not draw $decal",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -142530,22 +142497,20 @@
       ],
       "proxies": [],
       "refusal_features": [
-        "parameter:$selfillumfresnel"
+        "parameter:$decal",
+        "parameter:$envmap"
       ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
-      "unmapped_keys": [
-        "$selfillumfresnel"
-      ],
       "world_claims": [
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $selfillumfresnel",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -222334,7 +222299,6 @@
     }
   },
   "qualification": "VMT path is a possible geometry, not scene reachability; pass is derived from blend or imported special family, not proof of integration. Proxies need per-draw evaluation. Texture residency, device pipeline/capabilities and pixels require product evidence.",
-  "refusal_feature_rule": "Unsupported materials only; each relevant claim gap names a feature. Counts are unique materials per feature, not mutually exclusive. First-refusal and unmapped-key counts are separate observations. Possible geometry does not prove scene reachability.",
   "refusal_features": {
     "diagnostic:the model does not read /*": {
       "examples": [
@@ -222594,7 +222558,7 @@
         "materials/decals/bigshot3model.vmt"
       ],
       "first_refusals": 14,
-      "refused_materials": 38,
+      "refused_materials": 55,
       "unmapped_materials": 0
     },
     "parameter:$decalfadeduration": {
@@ -222655,8 +222619,8 @@
         "materials/models/props/futbol_dispenser.vmt",
         "materials/models/props/futbol_effect.vmt"
       ],
-      "first_refusals": 12,
-      "refused_materials": 12,
+      "first_refusals": 29,
+      "refused_materials": 29,
       "unmapped_materials": 11
     },
     "parameter:$flashlightnolambert": {
@@ -222914,16 +222878,6 @@
       "first_refusals": 1,
       "refused_materials": 1,
       "unmapped_materials": 1
-    },
-    "parameter:$selfillumfresnel": {
-      "examples": [
-        "materials/paint/bridge_paint_bounce_l_r_speed.vmt",
-        "materials/paint/bridge_paint_bounce_l_speed.vmt",
-        "materials/paint/bridge_paint_bounce_r_speed.vmt"
-      ],
-      "first_refusals": 17,
-      "refused_materials": 17,
-      "unmapped_materials": 17
     },
     "parameter:$shadersrgbread360": {
       "examples": [

@@ -59,6 +59,9 @@ constexpr std::uint32_t kSize = 64;
 constexpr float kPi = 3.14159265358979323846f;
 // The base texture's handle: two texels, left alpha 1 (emitting), right 0.
 constexpr int kBaseHandle = 1;
+// The $selfillummask fixture's handle: two texels, left rgb 0, right rgb 1,
+// the inverse of the base alpha, so the mask texture alone decides the region.
+constexpr int kMaskHandle = 2;
 // Sample points inside the quad (pixels 16 to 47): the emitting and the
 // unmasked half.
 constexpr std::uint32_t kEmitX = 22, kPlainX = 41, kRow = 32;
@@ -67,9 +70,14 @@ class FixtureTextures final : public IWorldTextures
 {
 public:
 	TextureId base;
+	TextureId mask;
 	TextureId Import( int handle, bool ) override
 	{
-		return handle == kBaseHandle ? base : TextureId{};
+		if ( handle == kBaseHandle )
+			return base;
+		if ( handle == kMaskHandle )
+			return mask;
+		return TextureId{};
 	}
 	SamplerDesc Sampler( int ) override
 	{
@@ -103,7 +111,7 @@ std::vector<material::SurfaceModelVertex> QuadVertices()
 
 using Variables = std::vector<std::pair<std::string, std::string>>;
 
-WorldMaterial Material( const Variables &variables )
+WorldMaterial Material( const Variables &variables, int maskHandle = 0 )
 {
 	WorldMaterial material;
 	material.name = "selfillum-fixture";
@@ -112,17 +120,19 @@ WorldMaterial Material( const Variables &variables )
 	material.variables = { { "$basetexture", "selfillum/two_texels" } };
 	material.variables.insert( material.variables.end(), variables.begin(), variables.end() );
 	material.textures = { { "$basetexture", kBaseHandle } };
+	if ( maskHandle != 0 )
+		material.textures.push_back( { "$selfillummask", maskHandle } );
 	return material;
 }
 
-WorldData World( const Variables &variables )
+WorldData World( const Variables &variables, int maskHandle = 0 )
 {
 	WorldData world;
 	auto stage = std::make_shared<WorldStage>();
 	stage->lightmap.width = stage->lightmap.height = 1;
 	stage->lightmap.flat.resize( 8 );
 	world.stage = std::move( stage );
-	world.materials.push_back( Material( variables ) );
+	world.materials.push_back( Material( variables, maskHandle ) );
 	WorldData::StaticMesh mesh;
 	mesh.vertices = QuadVertices();
 	mesh.indices = { 0, 1, 2, 0, 2, 3 };
@@ -203,6 +213,9 @@ std::optional<std::string> RunChecks( bool validate, std::span<const std::uint32
 	masked.push_back( { "$selfillummask", "paint/mask" } );
 	results.That( refusedNaming( masked, "$selfillummask" ),
 	    "selfillum.claim.refuses-mask-texture-with-fresnel-by-name" );
+	results.That( refusal( { { "$selfillum", "1" }, { "$selfillummask", "paint/mask" } } ).empty(),
+	    "selfillum.claim.mask-texture-without-fresnel-is-claimed",
+	    refusal( { { "$selfillum", "1" }, { "$selfillummask", "paint/mask" } } ) );
 	Variables detailed = fresnel;
 	detailed.push_back( { "$detail", "paint/detail" } );
 	results.That( refusedNaming( detailed, "$detail" ),
@@ -246,6 +259,18 @@ std::optional<std::string> RunChecks( bool validate, std::span<const std::uint32
 	if ( !base )
 		return "the two-texel base fixture could not be staged";
 	fixture.base = base.Value().texture;
+	// The mask texture, the inverse of the base alpha: left rgb 0, right rgb 1.
+	TextureDesc maskDesc;
+	maskDesc.format = Format::kRGBA8Unorm;
+	maskDesc.width = 2;
+	maskDesc.height = 1;
+	maskDesc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kSampled };
+	const std::array<std::byte, 8> maskTexels = { std::byte{ 0 }, std::byte{ 0 }, std::byte{ 0 },
+	    std::byte{ 0 }, std::byte{ 255 }, std::byte{ 255 }, std::byte{ 255 }, std::byte{ 255 } };
+	auto mask = textures.Stage( "selfillum/mask", maskDesc, maskTexels );
+	if ( !mask )
+		return "the two-texel self-illumination mask fixture could not be staged";
+	fixture.mask = mask.Value().texture;
 
 	std::vector<std::unique_ptr<WorldPass>> passes;
 	std::uint64_t frame = 0;
@@ -255,11 +280,12 @@ std::optional<std::string> RunChecks( bool validate, std::span<const std::uint32
 	// stream capture) instead of a posed model; `noNormal` gives that mesh no
 	// vertex normal.
 	auto render = [&]( const Variables &variables, float degrees, bool lit, CanvasImage &image,
-	                  bool dynamic = false, bool noNormal = false ) -> std::optional<std::string>
+	                  bool dynamic = false, bool noNormal = false,
+	                  int maskHandle = 0 ) -> std::optional<std::string>
 	{
 		auto pass = std::make_unique<WorldPass>();
 		pass->SetSurfaceFragmentModule( module );
-		pass->SetWorld( World( variables ) );
+		pass->SetWorld( World( variables, maskHandle ) );
 		WorldView view;
 		for ( int i = 0; i < 4; ++i )
 			view.toClip[i * 5] = 1.0f;
@@ -268,7 +294,7 @@ std::optional<std::string> RunChecks( bool validate, std::span<const std::uint32
 		if ( dynamic )
 		{
 			WorldView::DynamicDraw draw;
-			draw.material = Material( variables );
+			draw.material = Material( variables, maskHandle );
 			for ( const material::SurfaceModelVertex &vertex : QuadVertices() )
 			{
 				WorldVertex out;
@@ -464,6 +490,26 @@ std::optional<std::string> RunChecks( bool validate, std::span<const std::uint32
 		    Detail( "tint [1 .5 .25]", pixel, 2.0f ) );
 	}
 
+	// The $selfillummask texture, not base alpha, selects the region. The
+	// fixture's mask is the inverse of the base alpha, so the emitting half is
+	// the one base alpha would leave dark; a shader that dropped the mask
+	// would light the other half.
+	CanvasImage maskedImage;
+	if ( auto why = render( { { "$selfillum", "1" }, { "$selfillummask", "selfillum/mask" },
+	                            { "$selfillumtint", "[1 .5 .25]" } },
+	         0.0f, false, maskedImage, false, false, kMaskHandle ) )
+		return why;
+	{
+		const float g = std::pow( 128.0f / 255.0f, 2.2f ), b = std::pow( 64.0f / 255.0f, 2.2f );
+		results.That( Gray( maskedImage.At( kEmitX, kRow ), 0.0f ),
+		    "selfillum.mask.base-lit-half-stays-dark-under-the-mask",
+		    Detail( "masked texel 0", maskedImage.At( kEmitX, kRow ), 0.0f ) );
+		const float *pixel = maskedImage.At( kPlainX, kRow );
+		results.That( Near( pixel[0], 1.0f ) && Near( pixel[1], g ) && Near( pixel[2], b ),
+		    "selfillum.mask.texture-controls-the-emitting-region",
+		    Detail( "masked texel 1", pixel, 1.0f ) );
+	}
+
 	for ( auto &pass : passes )
 		pass->ReleaseDevice( *device );
 	(void)device->WaitIdle();
@@ -474,6 +520,7 @@ std::optional<std::string> RunChecks( bool validate, std::span<const std::uint32
 const Seeded kSeeded[] = {
     { "fresnel-ignored", spirv::kSurfaceSelfIllumFresnelIgnored, "selfillum.fresnel" },
     { "brightness-ignored", spirv::kSurfaceSelfIllumBrightnessIgnored, "selfillum.fresnel" },
+    { "mask-ignored", spirv::kSurfaceSelfIllumMaskIgnored, "selfillum.mask" },
 };
 
 } // namespace

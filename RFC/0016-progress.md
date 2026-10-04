@@ -8523,3 +8523,112 @@ Not done, and why:
 - Frame time: desktop and Fold7 unavailable (no GPU, no device). The added
   cost is one uniform branch and a `pow` per self-illuminated fragment.
 - K12/R96 stays `active`: this slice closes no K11 or K12 gate.
+
+### S5 `$selfillummask`: the mask texture path, proven and integrated in-game (2026-10-04)
+
+The second bounded slice of the same emission term, completing the
+[2026-10-03 direction](#material-interpretation-direction-2026-10-03-user-decision)'s
+"its mask, tint and fresnel control the visible emitting region" for the one
+part the fresnel slice could not cover. Cohort: VertexLitGeneric `$selfillum`
+with a bound `$selfillummask` texture and `$selfillumtint`, on the shared PBR
+mesh point. `render.material` remains the only owner of the VMT-to-core
+translation; nothing here adds a family, a specialization term or a shaded
+pass.
+
+Translation, unchanged owner and unchanged surface terms: the mask texture
+occupies the existing emission slot (`program_resolver.cpp`,
+`textures.emission` for `selfillummask`), and the shader reads it through the
+existing `kSelfIllumMask` specialization inside the existing `kSelfIllum`
+block. `$selfillummask` without `$selfillumfresnel` was already claimed; the
+fresnel slice refused it by name only in combination with the fresnel term,
+which the legacy shader resolves by ignoring the mask. Both paths therefore
+follow the one rule.
+
+Oracle (`render.lab.selfillum`, grown from 23 to 26 checks): a second two-texel
+fixture texture whose RGB is the *inverse* of the base fixture's alpha (left 0,
+right 1). With `$selfillum` + `$selfillummask` + `$selfillumtint [1 .5 .25]`,
+the base-lit half emits 0 and the mask-selected half emits the tint's linear
+color, which is only possible if the mask texture and not base alpha selects
+the region. Ten headless claim checks; `$selfillummask` without the fresnel
+term is a claimed cohort, and the fresnel combination stays a named refusal.
+
+Negative control: a third seeded `surface.frag` program
+(`-DSEEDED_SELFILLUM_MASK_IGNORED`, `selfillum_defects_spv.h`) drops the mask
+texture and falls back to base alpha. It inverts the result exactly — the
+masked half reads `1.000 0.219 0.048` where it must be 0, and the
+mask-selected half reads 0 where it must be 1 — so the two new checks fail
+(25 checks, 2 failed) and the sensitivity run rejects it.
+
+Game integration and matched images, on the content host. `render_lab` cannot
+read retail Portal 2 maps (BSP v21 has no WMSH), so the matched pair uses a
+published lighting fixture the core already draws: `lt_cornell_floors`, whose
+`models/lt_cornell_floors/probesphere.mdl` is posed 376 times by the core
+(`r_core_world_stats`: `posed 376 models/lt_cornell_floors/probesphere.mdl`).
+A private content root replaces the sphere's default skin with
+
+    "VertexLitGeneric"
+    {
+        "$basetexture"  "lt_cornell_floors/probegrey/basecolor"
+        "$selfillum"    "1"
+        "$selfillummask" "lt_cornell_floors/probegrey/basecolor"
+        "$selfillumtint" "[1 .5 .25]"
+    }
+
+The game boots Portal 2 native Vulkan with `r_core_world 1` and this content
+(`portal_boot.py --content-root`, 512x384, tone-map scale 1); `render_lab`
+renders the same map, camera and model through the same program
+(`--core-direct`, `--model .../probesphere.mdl`). Images retained under
+`quality-results/rendercore-selfillum-mask-20261004/` together with both
+commands, the boot evidence and the per-suite results.
+
+| Check | Evidence | Result |
+| --- | --- | --- |
+| `render.lab.selfillum` | mask texture controls the region (base-lit half 0, mask-selected half the linear tint); claim checks unchanged; 26 checks, 0 validation messages | pass |
+| `render.lab.selfillum.sensitivity` | mask-ignored inverts both mask checks; fresnel-ignored and brightness-ignored unchanged; control passes; 4 checks | pass |
+| Matched game/lab image | both draw the same visible orange emission from the same `$selfillum`/`$selfillummask`/`$selfillumtint` through the core; overall mean 4.28, p99 31, 25.0% of pixels over 8, all in the sphere and its lit surroundings | diagnostic |
+| Emission-off control | the fixture's own PBRMetalRough skin leaves game and lab agreeing at mean 0.58, p99 4, 0.4% over 8; the override moves the lab frame by mean 5.19 and the game frame by 0.09, so the term is the only variable | pass |
+| Core ownership in-game | `-vkframestats` over the captured frames: `legacy_program_draws` 0 in every settled frame, so the sphere's emission is not a legacy shader port; `r_core_world_stats` reports 376 posed sphere draws | pass |
+| Variables reaching the core | the engine's `ReadVariables` forwards `MATERIAL_VAR_SELFILLUM` through `RenderLegacyMaterialFlags::Keys`, and the block carried `$selfillum 1` with `$selfillummask` bound | pass |
+| Portal 2 claim inventory | the 17 `materials/paint/bridge_paint_*.vmt` rows no longer refuse for `$selfillumfresnel`; they now gate on `$envmap needs the stage's native reflection probes`, a scene input. `material_claim_inventory.py --verify` passes 3738 checks; its 12-check self-test passes | pass |
+| Neighbouring lab suites | posed-model 77/77, lighting-controls 32/32, model-selection 37/37, area-lights 72/72, all with validation | pass |
+| Static checks | `archlint check --all`, `baseline --verify`, `inventory --verify`, `stylelint --changed` and the branch diff, `shader_toolchain.py check` (198 checks, 0 failures), conformance runner over both manifest rows (2 matched) | pass |
+| `render.legacy-freeze` ratchet | 2 pre-existing failures, neither in this change: `materialsystem/shaderapivulkan/shaders/probe_volume.glsl` and `solidenergy.frag` shrank, and `-vkopaquebatch` is a new frozen-path switch, all from concurrent work merged into the base | known fail, pre-existing |
+
+What the game/lab pair does and does not prove. Both frames show the same
+implementation producing visible emission, which is what this slice claims.
+The image score is a **diagnostic**, not a parity gate: `lt_cornell_floors`
+has no declared image profile, the override is a synthetic skin rather than
+retail content, and the sphere's centre differs between the two frames
+(game 194/115/80, lab 183/126/100) — same hue family, different level and
+saturation. That residual is a lighting and scene-input difference, not a
+missing term: it is unchanged when the term is off (0.58 mean), and the
+fresnel/mask/tint math is already checked analytically in the lab.
+
+A finding worth keeping: the legacy VertexLitGeneric shader **clears**
+`MATERIAL_VAR_SELFILLUM` when the base texture has no alpha channel and the
+material supplies neither `$selfillummask` nor `$selfillumfresnel`
+(`InitVertexLitGeneric_DX9`). So a bare `$selfillum` on an opaque texture never
+reaches the core, and the static claim inventory would otherwise over-report
+that cohort. Reaching this cost one instrumented build of
+`engine/render_core_world_draw.cpp` and `materialsystem/cmaterial.cpp`; the
+temporary diagnostics are removed and the rule is now recorded here rather
+than re-derived.
+
+Not done, and why:
+
+- The 17 `bridge_paint_*` materials now need the stage's native reflection
+  probes before they claim, so the real light-bridge material is still not
+  captured in a matched frame. The published-fixture sphere proves the term
+  and its path; the retail bridge remains open.
+- Area lights: unchanged and still refused. This translation publishes none.
+  `$selfillum` supplies no scene-unit radiance, and the existing RFC 0011
+  publishers still infer radiance from base x mask at tint 1, including for
+  materials that set `$selfillumfresnel`, whose view-dependent weight they do
+  not model. Reconciling them with the 2026-10-03 rule stays a separate
+  decision.
+- Retail Portal 2 maps cannot be compared against the lab until they are
+  published with a WMSH lump.
+- Frame time: desktop measured only through boot, not a paced workload; the
+  Fold7 is unavailable. The added cost is one uniform branch and one extra
+  sampler read per self-illuminated fragment.
+- K12/R96 stays `active`: this slice closes no K11 or K12 gate.

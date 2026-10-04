@@ -411,7 +411,9 @@ GENERATED = {
         ("kSurfaceSelfIllumFresnelIgnored", FAMILIES + "/surface.frag",
          DEVICE_OPTIONS + ("-DSEEDED_SELFILLUM_FRESNEL_IGNORED",)),
         ("kSurfaceSelfIllumBrightnessIgnored", FAMILIES + "/surface.frag",
-         DEVICE_OPTIONS + ("-DSEEDED_SELFILLUM_BRIGHTNESS_IGNORED",)))),
+         DEVICE_OPTIONS + ("-DSEEDED_SELFILLUM_BRIGHTNESS_IGNORED",)),
+        ("kSurfaceSelfIllumMaskIgnored", FAMILIES + "/surface.frag",
+         DEVICE_OPTIONS + ("-DSEEDED_SELFILLUM_MASK_IGNORED",)))),
     "debug_view_defects_spv.h": ("render::lab::spirv",
         "render_lab's debug-view suite's seeded programs (render.debug-views sensitivity, "
         "RFC 0014)", (

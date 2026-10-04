@@ -1319,9 +1319,15 @@ void PbrSurface()
 		// Source model base alpha selects the self-lit surface instead of
 		// adding a second copy of its albedo on top of direct lighting.
 		vec3 selfLit = base * material.selfIllumTint.rgb;
+#ifndef SEEDED_SELFILLUM_MASK_IGNORED
 		vec3 mask = Term( kSelfIllumMask )
 		                ? texture( sampler2D( emissionTexture, emissionSampler ), uv ).rgb
 		                : vec3( baseSample.a );
+#else
+		// Negative control: the mask texture is dropped and base alpha selects
+		// the region, the pre-mask behavior.
+		vec3 mask = vec3( baseSample.a );
+#endif
 		// $selfillumfresnel (vertexlit_family.h): the region's coverage
 		// follows the vertex normal's facing, saturate( b + ( 1 - b ) c ) with
 		// b = min / max and c = ( N.V )^exp, at radiance max x tint x albedo.
