@@ -65,7 +65,8 @@ public:
 	TextureId Import( int handle, bool srgb ) override
 	{
 		++imports;
-		if ( handle <= 0 )
+		importedHandles.push_back( handle );
+		if ( handle <= 0 || handle == refusedHandle )
 			return {};
 		TextureDesc desc;
 		desc.format = srgb ? Format::kRGBA8Srgb : Format::kRGBA8Unorm;
@@ -76,6 +77,8 @@ public:
 	}
 	SamplerDesc Sampler( int ) override { return {}; }
 	int imports = 0;
+	int refusedHandle = 0;
+	std::vector<int> importedHandles;
 
 private:
 	IRenderDevice2 &m_Device;
@@ -930,6 +933,42 @@ int main()
 		                 stats.lastFailure.find( "did not import" ) != std::string::npos,
 		    "W6.a-claimed-material-that-fails-is-a-named-failure" );
 		checks.That( pass.Draws( 0 ), "W6.the-failed-material-stays-claimed" );
+	}
+
+	// W6b: a captured decal page fails by name on every attempt, then
+	// recovers after the host publishes the image, without replacing the world.
+	{
+		WorldPass decal;
+		const WorldData fixture = TestWorld();
+		decal.SetWorld( fixture );
+		WorldView view = View( {} );
+		WorldView::DynamicDraw geometry;
+		geometry.material = fixture.materials[0];
+		geometry.vertices = fixture.vertices;
+		geometry.indices = { 0, 1, 2 };
+		geometry.lightmapPage = 198;
+		geometry.capturedLightmap = true;
+		view.dynamicDraws.push_back( std::move( geometry ) );
+		const auto slot = decal.QueueView( std::move( view ) );
+		textures.refusedHandle = 198;
+		textures.importedHandles.clear();
+		for ( int attempt = 0; attempt < 2; ++attempt )
+		{
+			(void)RecordSlot( device, decal, slot, target );
+			const auto failed = decal.Stats();
+			checks.That( failed.viewsFailed == std::uint64_t( attempt + 1 ) &&
+			                 failed.lastFailure.find( "lightmap-page:198 did not import" ) !=
+			                     std::string::npos,
+			    "W6b.repeated-captured-page-failure-is-named" );
+		}
+		textures.refusedHandle = 0;
+		(void)RecordSlot( device, decal, slot, target );
+		checks.That( decal.Stats().viewsFailed == 2 && decal.Stats().dynamicDrawsDrawn == 1 &&
+		                 std::count( textures.importedHandles.begin(),
+		                     textures.importedHandles.end(), 198 ) == 3 &&
+		                 std::count( textures.importedHandles.begin(),
+		                     textures.importedHandles.end(), 197 ) == 0,
+		    "W6b.captured-page-recovers-with-the-exact-host-handle" );
 	}
 
 	// W7: a capture re-records an earlier world's slot after the change.

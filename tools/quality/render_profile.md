@@ -81,7 +81,26 @@ initial-spawn coverage as well as the affected gameplay/material states.
 Use the user's launcher physics, job settings and presentation configuration
 when reproducing a reported crash; record deviations explicitly.
 
-`intro4_material_check.py --scene materials|doors|cables --commands` emits each
+The installed runner launches both modes from a running menu, covers initial
+spawn, then exercises the material transitions. It uses Box3D and the launcher's
+parallel render/job settings. Run it against the built installed product:
+
+```sh
+python3 tools/quality/intro4_strict_game.py \
+  --runtime run/runtime-p2-fsr \
+  --build quality-results/intro4-rendercore-completion/product/usr/local \
+  --fsr-assets external/fsr411/assets \
+  --fsr-scale 0.5 \
+  --out quality-results/intro4-rendercore-completion/strict-modes-NEW
+```
+
+The output must be fresh. A failed mode does not stop the other mode's evidence
+collection, and the aggregate fails if either boot or pixel oracle fails.
+`--scene doors`, `materials` or `cables` selects a bounded reproduction; the
+default `all` runs all 45 pixel and seeded-negative checks per mode. Retain
+direct-start captures separately when reproducing a launch-time report.
+
+`intro4_material_check.py --scene materials|doors|cables|all --commands` emits each
 installed `portal_boot.py` console sequence. Capture both modes at the same
 1024×768 requested viewport (desktop HiDPI is retained), using the corresponding
 `--startup-command "r_temporal_scale SCALE"`. Pass each capture to the oracle:
@@ -97,6 +116,8 @@ Repeat with `--scene materials` for decals, floor indicators and glass, and
 checks, with seeded missing-surface controls; they do not certify all materials,
 glass optics, presented HDR output or whole-frame performance. A game boot pass
 without the image oracle and zero queried claimed-view failures is insufficient.
+For new paired runs, pass `--temporal-scale SCALE` to require matching startup
+settings and live mode queries; the two-mode runner does this automatically.
 Do not turn strict mode off to obtain a passing receipt.
 
 ## Timing semantics

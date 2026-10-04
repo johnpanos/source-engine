@@ -2068,6 +2068,9 @@ void WorldPass::RecordBatch(
 		if ( !request || !buildGroup( *request, handles, group, &why ) )
 		{
 			s.ReleaseGroup( group, CompletionToken() );
+			// Only successful bindings enter the cache. Retrying a missing
+			// image must retain its named error and may succeed after upload.
+			r.drawGroups.erase( key );
 			note( "a draw group: " + ( why.empty() ? std::string( "not resolved" ) : why ) );
 			return nullptr;
 		}
@@ -2487,8 +2490,9 @@ void WorldPass::RecordBatch(
 			        ? materialReadyIn( *r.modelResolver, r.modelMaterials, materialId )
 			        : nullptr;
 			if ( !material && failure.empty() )
-				note( "static model " + std::to_string( instance.mesh ) + " surface " + std::to_string( surfaceId ) +
-				      " names unclaimed material " + std::to_string( materialId ) );
+				note( "static model " + std::to_string( instance.mesh ) + " surface " +
+				      std::to_string( surfaceId ) + " names unclaimed material " +
+				      std::to_string( materialId ) );
 			if ( !material ||
 			     ( material->program.request.drawLayout.IsValid() &&
 			         !drawGroupReady( *material, 0 ) ) ||
@@ -2573,8 +2577,9 @@ void WorldPass::RecordBatch(
 			const std::uint32_t materialId = StaticMaterial( mesh, instance, surfaceId );
 			if ( materialId >= claims->size() )
 			{
-				note( "posed model " + std::to_string( pose.mesh ) + " surface " + std::to_string( surfaceId ) +
-				      " names missing material " + std::to_string( materialId ) );
+				note( "posed model " + std::to_string( pose.mesh ) + " surface " +
+				      std::to_string( surfaceId ) + " names missing material " +
+				      std::to_string( materialId ) );
 				complete = false;
 				continue;
 			}
@@ -2587,8 +2592,9 @@ void WorldPass::RecordBatch(
 			        ? materialReadyIn( *r.modelResolver, r.modelMaterials, materialId )
 			        : nullptr;
 			if ( !material && failure.empty() )
-				note( "posed model " + std::to_string( pose.mesh ) + " surface " + std::to_string( surfaceId ) +
-				      " names unclaimed material " + std::to_string( materialId ) );
+				note( "posed model " + std::to_string( pose.mesh ) + " surface " +
+				      std::to_string( surfaceId ) + " names unclaimed material " +
+				      std::to_string( materialId ) );
 			if ( !material ||
 			     ( material->program.request.drawLayout.IsValid() &&
 			         !drawGroupReady( *material, 0 ) ) ||

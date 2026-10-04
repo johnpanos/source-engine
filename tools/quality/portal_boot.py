@@ -823,6 +823,9 @@ def main(argv=None):
                              "screenshot (repeatable). Player commands such as setpos and "
                              "setang need the client prefix: 'cmd setpos 0 0 64'")
     parser.add_argument("--map", default="testchmb_a_00")
+    parser.add_argument("--map-after-start", action="store_true",
+                        help="wait in the running menu before loading the map; exercises "
+                             "renderer state retained across a menu-to-game transition")
     parser.add_argument("--game", choices=("portal", "portal2"), default="portal",
                         help="game directory; portal2 needs a runtime staged by "
                              "stage_portal2_runtime.py (retail content) and a Portal 2 build")
@@ -898,6 +901,7 @@ def main(argv=None):
                    "+sv_cheats", "1", "+mat_queue_mode", "0", "+mat_vsync", "0", "+fps_max", "60",
                    *args.engine_arg,
                    *( ["+exec", "portal_boot_startup.cfg"] if args.startup_command else [] ),
+                   *( ["+wait", "300"] if args.map_after_start else [] ),
                    "+map", args.map,
                    "+wait", "180", "+status", "+hideconsole", "+developer", "0"]
         if args.startup_command:

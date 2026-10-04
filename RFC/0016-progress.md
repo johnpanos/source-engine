@@ -9264,3 +9264,75 @@ open. No optimization timing or resolution-sweep claim is made.
 
 Frozen-path: shaderapivulkan only hands moving lightmapped brushes to the core;
 constant-alpha blending and selected-frame interpretation stay in render.material.
+
+### Intro4 captured lightmap handles and strict paired loads (2026-10-04)
+
+The reported strict crash occurred while loading Intro4 from the menu. Its
+retained native core dump identifies recorded slots 9 and 10 as
+`overlays/overlay_moss01` and `decals/moss_wall_decal`. Both captured lightmap
+handle 197; their shared draw binding was invalid. The Vulkan frontend stored
+its zero-based managed-texture index in `CoreMeshDraw`, while `ICoreTextures`
+imports material-system handles by subtracting one. This selected the preceding
+image rather than the bound lightmap. Whether that neighboring image happened
+to be importable explains why earlier boots could pass without correct sampling.
+The bridge now converts the index back to the one-based handle (198 in this
+capture), with zero for the neutral page. Coordinates remain the captured page's
+coordinates. The corrected field contract is documented at the existing owners.
+
+The world pass now removes failed draw bindings from its cache. Previously the
+first import failure had a cause, but subsequent attempts reused the invalid
+binding and overwrote the reported cause with the generic claimed-view error.
+Failed imports remain strict failures; a subsequent host upload can recover
+without replacing the world. Deterministic W6b checks repeated named failures,
+the exact captured handle, rejection of the adjacent handle, and recovery.
+World/material conformance passes 113/82 checks (`strict-load-contracts.json`).
+The native GPU posed-model suite, including the captured overlay lightmap and
+decal expectations, passes 108 checks with zero validation messages
+(`strict-load-gpu.log`). The installed product build passes
+(`strict-load-product-build.log`).
+
+The installed [strict paired game runner](../tools/quality/render_profile.md#strict-intro4-material-captures)
+loads `sp_a1_intro4_relit` from the running menu in both modes, waits through
+initial spawn, and exercises glass/decals, indicator frames, two doorways and
+ropes. FSR-on uses scale 0.5; FSR-off launches without the FSR provider arguments
+and requires scale zero. Both query strict mode, default cohorts and temporal
+scale; neither mode can substitute for a failed or missing mode. The same built
+native Vulkan product passes all 45 pixel and seeded-negative checks in each
+mode under `strict-load-fixed-game/`, with zero claimed-view failures. A second
+fresh pair in `strict-load-fixed-repeat-game/` also passes 45 checks per mode
+with zero failures: four successful strict loads and 180 total pixel/negative
+checks. A wrong-scale negative receipt (`strict-dual-wrong-mode-control.json`)
+is rejected rather than certifying the wrong FSR mode.
+These runs use Box3D, the launcher's job settings and a deterministic fixed
+game timestep; requested windowed 1024x768 becomes desktop 1536x1152. They do not
+qualify the user's fullscreen timing, presented PQ appearance or performance.
+The actual crash dump establishes the faulty binding independently of these
+bounded successful captures. Core-dump diagnostics are retained locally under
+`quality-results/intro4-rendercore-completion/`; the memory image is not a
+checked-in fixture.
+
+The tested 22 installed products were atomically replaced in
+`run/runtime-p2-fsr`, with hashes matching both successful mode receipts
+(`strict-load-runtime-install.json`). Running processes preserve their existing
+mappings until restart. The edited C++ regions pass the pinned style checker
+(`strict-load-style.log`); all 73 boot-runner fixtures pass. Architecture baseline
+and inventory verification pass. Full archlint still reports the existing CAP002
+`public/gameui/graphics_settings_service.h` `charconv` include, with zero new
+and zero stale occurrences (`strict-load-arch.log`).
+
+The preceding cable slice also enters the default core frontend cohort:
+Cable/Cable_DX9/SplineRope use the existing core interpretation of normal UV0,
+base UV1, stored normal-blue squared and captured linear vertex illumination.
+The real game `r_drawropes 1/0/1` capture passes nine checks, including three
+seeded missing-rope/failed-return/full-region-darkening controls
+(`cable-visibility-game/`, `cable-pixels.json`). Wind changes its trajectory, so
+the oracle measures the rope footprint without requiring identical on/on pixels.
+
+RFC 0016 owns the new mandatory strict FSR-on/off integration rule; AGENTS.md
+links it. The guide records the installed reproduction command. The complete
+Intro4 effect/proxy/cutout-shadow and performance gates remain open; R91/R96
+remain partial. Eight census proxy refusals and the soft-depth particle gap
+remain. These changes are on `subsystem-refactor`.
+
+Frozen-path: shaderapivulkan fixes captured lightmap handle plumbing and hands
+rope geometry to the existing core material owner; no legacy shading is added.

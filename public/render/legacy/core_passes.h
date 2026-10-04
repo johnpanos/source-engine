@@ -262,7 +262,7 @@ struct CoreMeshDraw
 	float worldToView[16] = {};
 	float viewToClip[16] = {};
 	device::Viewport viewport;
-	int lightmapPage = 0; // native texture handle for captured lightmap coordinates
+	int lightmapPage = 0; // ICoreTextures handle for captured lightmap coordinates; 0 is neutral
 	bool capturedLightmap = false;
 	bool mesh = false; // model/refraction point, rather than a lightmapped surface
 };

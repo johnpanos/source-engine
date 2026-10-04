@@ -5226,7 +5226,9 @@ bool CEmptyMesh::EmitToCoreQueue()
 	draw.vertexCount = vertices.size();
 	draw.indices = triangles.data();
 	draw.indexCount = triangles.size();
-	draw.lightmapPage = g_boundLightmapHandle;
+	// Frozen-path: hand the core the material system's one-based handle,
+	// matching ICoreTextures, rather than this backend's zero-based index.
+	draw.lightmapPage = g_boundLightmapHandle + 1;
 	draw.capturedLightmap = true;
 	draw.viewport = { float( g_Viewport.m_nTopLeftX ), float( g_Viewport.m_nTopLeftY ),
 	    float( g_Viewport.m_nWidth ), float( g_Viewport.m_nHeight ), g_Viewport.m_flMinZ,
