@@ -23,6 +23,86 @@ EMITTER_PREFIXES = map_scene.EMITTER_PREFIXES
 LAMP_SUFFIX = "Lamp"
 
 
+# RFC 0016 runtime-direct split: both lightmap and probe bakes retain sky
+# and non-runtime surface emission in the indirect layer.
+def runtime_emitter_objects(emitters):
+    """The Blender objects of the runtime's lights: the lamps (analytic
+    emitters and distant lights) and the analytic emitters' meshes."""
+    names = {map_scene.emitter_name(index, shape) for index, shape in enumerate(emitters)}
+    return [obj for obj in bpy.data.objects
+            if obj.type == "LIGHT" or (obj.type == "MESH" and obj.name in names)]
+
+
+def static_emission_sockets(emitters):
+    """The strength sockets of the glowing surfaces' materials (shapes, not
+    the analytic emitters): Principled BSDFs that emit."""
+    emitters = {obj.name for obj in runtime_emitter_objects(emitters)}
+    sockets = []
+    for obj in bpy.data.objects:
+        if obj.type != "MESH" or obj.name in emitters:
+            continue
+        for slot in obj.material_slots:
+            if not slot.material or not slot.material.node_tree:
+                continue
+            for node in slot.material.node_tree.nodes:
+                if node.type != "BSDF_PRINCIPLED":
+                    continue
+                strength, color = node.inputs["Emission Strength"], node.inputs["Emission Color"]
+                emits = color.is_linked or max(color.default_value[:3]) > 0
+                if not strength.is_linked and strength.default_value > 0 and emits and \
+                        strength not in sockets:
+                    sockets.append(strength)
+    return sockets
+
+
+def background_strength():
+    world = bpy.context.scene.world
+    nodes = world.node_tree.nodes if world and world.use_nodes else None
+    background = nodes.get("Background") if nodes else None
+    return background.inputs["Strength"] if background else None
+
+
+def has_static_emitters(emitters):
+    strength = background_strength()
+    return bool((strength is not None and strength.default_value > 0) or
+                static_emission_sockets(emitters))
+
+
+@contextlib.contextmanager
+def runtime_lights_only(emitters):
+    """The enclosed bakes see only the runtime's lights: the sky and the
+    glowing surfaces emit nothing (they still occlude)."""
+    sockets = static_emission_sockets(emitters)
+    background = background_strength()
+    saved = [socket.default_value for socket in sockets]
+    saved_background = background.default_value if background is not None else None
+    try:
+        for socket in sockets:
+            socket.default_value = 0.0
+        if background is not None:
+            background.default_value = 0.0
+        yield
+    finally:
+        for socket, value in zip(sockets, saved):
+            socket.default_value = value
+        if background is not None:
+            background.default_value = saved_background
+
+
+@contextlib.contextmanager
+def static_emitters_only(emitters):
+    """The enclosed bakes see only what is not a runtime light: the runtime's
+    lamps and emitter meshes are out of the render."""
+    hidden = [obj for obj in runtime_emitter_objects(emitters) if not obj.hide_render]
+    try:
+        for obj in hidden:
+            obj.hide_render = True
+        yield
+    finally:
+        for obj in hidden:
+            obj.hide_render = False
+
+
 def matrix(values):
     return Matrix(values)
 

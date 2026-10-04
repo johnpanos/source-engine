@@ -18,6 +18,7 @@
 #include "render/material/vmt_import.h"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cstddef>
 #include <cstring>
@@ -151,6 +152,8 @@ struct Resources
 	// from the lit one's; the group maps below are keyed by layout), its
 	// materials and targets.
 	std::unique_ptr<material::ProgramResolver> prepassResolver;
+	std::unique_ptr<material::ProgramResolver> prepassModelResolver;
+	std::vector<Material> prepassModelMaterials;
 	std::vector<Material> prepassMaterials;
 	TextureId prepassDepth;
 	TextureId prepassNormal;
@@ -356,6 +359,12 @@ struct WorldPass::State
 {
 	IRenderDevice2 *device = nullptr; // the device the resources live on
 	std::span<const std::uint32_t> fragmentModule; // SetSurfaceFragmentModule
+	// The last screen output written on this sequence. Another camera or output
+	// invalidates reuse even when a format's own prepass textures still exist.
+	std::uint64_t screenFrame = 0;
+	TextureId screenDepth;
+	TextureId screenOutput;
+	std::array<float, 48> screenInputs = {};
 
 	// Guarded by lock: the world the main thread set and the queued views.
 	mutable std::mutex lock;
@@ -491,6 +500,8 @@ struct WorldPass::State
 			for ( auto &[key, m] : old.dynamicMaterials )
 				ReleaseGroup( m.group, after );
 			for ( Resources::Material &m : old.prepassMaterials )
+				ReleaseGroup( m.group, after );
+			for ( Resources::Material &m : old.prepassModelMaterials )
 				ReleaseGroup( m.group, after );
 			for ( TextureId texture : { old.prepassDepth, old.prepassNormal } )
 			{
@@ -2747,13 +2758,84 @@ void WorldPass::RecordBatch(
 		flushRun();
 	};
 
+	auto recordModel =
+	    [&]( const StaticDraw &draw, const Resources::Material &m, PipelineId pipeline )
+	{
+		const WorldData::StaticInstance *instance =
+		    draw.posed ? nullptr : &world->staticInstances[draw.instance];
+		const WorldData::StaticMesh &mesh = world->staticMeshes[draw.mesh];
+		const WorldSurface &surface = mesh.surfaces[draw.surface];
+		encoder.SetPipeline( pipeline );
+		if ( m.program.request.frameLayout.IsValid() )
+			encoder.SetBindGroup(
+			    BindGroupRole::kFrame, r.frameGroups[m.program.request.frameLayout.value].group );
+		if ( m.program.request.viewLayout.IsValid() )
+		{
+			const std::uint64_t layout = m.program.request.viewLayout.value;
+			const auto lit = modelLitViews.find( layout );
+			const auto scene = sceneViews.find( layout );
+			encoder.SetBindGroup( BindGroupRole::kView,
+			    m.program.sceneColor && scene != sceneViews.end() ? scene->second.group
+			    : lit != modelLitViews.end()                      ? lit->second->group
+			                                                      : r.viewGroups[layout].group );
+		}
+		encoder.SetBindGroup( BindGroupRole::kMaterial, m.group.group );
+		if ( m.program.request.drawLayout.IsValid() )
+			encoder.SetBindGroup( BindGroupRole::kDraw, r.drawGroups[drawKey( m, 0 )].group );
+		material::FamilyDrawConstants modelConstants;
+		if ( instance )
+			std::copy( instance->world, instance->world + 16, modelConstants.world );
+		else
+		{
+			for ( int i = 0; i < 4; ++i )
+				modelConstants.world[i * 5] = 1.0f;
+		}
+		for ( int row = 0; row < 4; ++row )
+		{
+			for ( int col = 0; col < 4; ++col )
+			{
+				float value = 0.0f;
+				for ( int k = 0; k < 4; ++k )
+					value += constants.toClip[row * 4 + k] * modelConstants.world[k * 4 + col];
+				modelConstants.toClip[row * 4 + col] = value;
+			}
+		}
+		encoder.SetDrawConstants( 0, std::as_bytes( std::span( &modelConstants, 1 ) )
+		                                 .first( m.program.request.drawConstantBytes ) );
+		const Resources::StaticMeshBuffers &buffers = r.staticMeshes[draw.mesh];
+		encoder.SetVertexBuffer( 0, draw.posed ? posedBuffers[draw.instance] : buffers.vertices );
+		if ( recordingTemporal )
+			encoder.SetVertexBuffer(
+			    1, draw.posed ? previousPosedBuffers[draw.instance] : buffers.vertices );
+		encoder.SetIndexBuffer( buffers.indices, 0, IndexFormat::kUint32 );
+		encoder.DrawIndexed( surface.indexCount, 1, surface.firstIndex, 0, 0 );
+	};
 	preparation.End();
 	// A world stage's screen passes (render_lab's order): the depth and
 	// normal prepass into the pass's own single-sample targets, with a
 	// resolver of their own, then the composition's ambient occlusion, which
 	// the lit view groups read.
+	auto opaquePbr = []( const Resources::Material &m )
+	{
+		return m.program.blend == BlendMode::kOpaque && !m.program.sceneColor &&
+		       m.program.name == "pbr";
+	};
+	std::array<float, 48> screenInputs;
+	std::copy_n( view.toClip, 16, screenInputs.begin() );
+	screenInputs[16] = view.viewport.x;
+	screenInputs[17] = view.viewport.y;
+	screenInputs[18] = view.viewport.width;
+	screenInputs[19] = view.viewport.height;
+	std::memcpy( screenInputs.data() + 20, target.clipPlanes, sizeof( target.clipPlanes ) );
+	std::copy_n( target.foliage[0], 4, screenInputs.begin() + 44 );
+	const bool screenReusable =
+	    target.frame != 0 && s.screenFrame == target.frame && s.screenDepth == r.prepassDepth &&
+	    s.screenOutput == target.ambientOcclusion && s.screenInputs == screenInputs;
 	if ( world->stage && target.screenPasses && target.ambientOcclusion.IsValid() &&
-	     !order.empty() )
+	     screenReusable )
+		viewOcclusion = target.ambientOcclusion;
+	if ( world->stage && target.screenPasses && target.ambientOcclusion.IsValid() &&
+	     !screenReusable )
 	{
 		preparation.Select( "prepare world prepass" );
 		if ( !r.prepassResolver )
@@ -2770,6 +2852,20 @@ void WorldPass::RecordBatch(
 			{
 				note( "the prepass resolver: " + resolver.Error() );
 			}
+		}
+		if ( !r.prepassModelResolver )
+		{
+			auto resolver = material::ProgramResolver::Create( device, Format::kRGBA16Float,
+			    Format::kD32Float, 1, material::VertexLayout::kModel );
+			if ( resolver )
+			{
+				r.prepassModelResolver = std::move( resolver ).Value();
+				r.prepassModelResolver->SetWorldPbr( true, StageTerms( *world->stage ) );
+				r.prepassModelMaterials.resize( world->materials.size() );
+				r.staticMeshes.resize( world->staticMeshes.size() );
+			}
+			else
+				note( "the model prepass resolver: " + resolver.Error() );
 		}
 		if ( r.prepassResolver && ( r.prepassDepthDesc.width != target.width ||
 		                              r.prepassDepthDesc.height != target.height ) )
@@ -2815,9 +2911,11 @@ void WorldPass::RecordBatch(
 		if ( r.prepassResolver && r.prepassDepth.IsValid() )
 		{
 			std::vector<std::uint32_t> prepass;
-			for ( const std::uint32_t index : order )
+			for ( std::uint32_t index = 0; index < world->surfaces.size(); ++index )
 			{
 				const WorldSurface &surface = world->surfaces[index];
+				if ( surface.material >= claims->size() || !( *claims )[surface.material].draws )
+					continue;
 				const Resources::Material *m =
 				    materialReadyIn( *r.prepassResolver, r.prepassMaterials, surface.material );
 				if ( !m ||
@@ -2829,7 +2927,44 @@ void WorldPass::RecordBatch(
 					complete = false;
 					continue;
 				}
-				prepass.push_back( index );
+				if ( opaquePbr( *m ) )
+					prepass.push_back( index );
+			}
+			std::vector<StaticDraw> prepassModels;
+			if ( r.prepassModelResolver )
+			{
+				for ( std::uint32_t id = 0; id < world->staticInstances.size(); ++id )
+				{
+					const auto &instance = world->staticInstances[id];
+					if ( instance.mesh >= world->staticMeshes.size() )
+						continue;
+					const auto &mesh = world->staticMeshes[instance.mesh];
+					for ( std::uint32_t surface = 0; surface < mesh.surfaces.size(); ++surface )
+					{
+						if ( !SurfaceSelected( instance.surfaceSelection, surface ) )
+							continue;
+						const std::uint32_t material = StaticMaterial( mesh, instance, surface );
+						if ( material >= claims->size() || !( *claims )[material].draws )
+							continue;
+						const auto *m = materialReadyIn(
+						    *r.prepassModelResolver, r.prepassModelMaterials, material );
+						if ( !m )
+						{
+							complete = false;
+							continue;
+						}
+						if ( !opaquePbr( *m ) )
+							continue;
+						if ( !uploadMesh( instance.mesh ) || !drawGroupReady( *m, 0 ) ||
+						     !frameGroupReady( *m ) || !viewGroupReady( *m ) )
+						{
+							complete = false;
+							continue;
+						}
+						prepassModels.push_back(
+						    { 0, false, id, instance.mesh, surface, material } );
+					}
+				}
 			}
 			// The targets rest in kSampled between views (undefined before
 			// their first); their contents are rewritten whole.
@@ -2868,6 +3003,24 @@ void WorldPass::RecordBatch(
 				    }
 				    return worldStatePipeline( m, variant.Value(), material::SurfaceDrawState() );
 			    } );
+			for ( const StaticDraw &draw : prepassModels )
+			{
+				const auto &m = r.prepassModelMaterials[draw.material];
+				auto variant = m.resolver->VariantPipeline(
+				    m.program, material::kSurfaceDepthNormal, material::kSurfaceSsrTargets );
+				if ( !variant )
+				{
+					complete = false;
+					note( "the model prepass: " + variant.Error() );
+					continue;
+				}
+				const auto pipeline =
+				    statePipeline( m, variant.Value(), material::SurfaceDrawState() );
+				if ( pipeline )
+					recordModel( draw, m, *pipeline );
+				else
+					complete = false;
+			}
 			encoder.EndRendering();
 			encoder.EndLabel();
 			encoder.TransitionTexture(
@@ -2876,7 +3029,18 @@ void WorldPass::RecordBatch(
 			    r.prepassDepth, ResourceUsage::kDepthWrite, ResourceUsage::kSampled );
 			if ( target.screenPasses(
 			         encoder, { r.prepassDepth, r.prepassNormal, target.width, target.height } ) )
+			{
 				viewOcclusion = target.ambientOcclusion;
+				s.screenFrame = target.frame;
+				s.screenDepth = r.prepassDepth;
+				s.screenOutput = target.ambientOcclusion;
+				s.screenInputs = screenInputs;
+			}
+			else
+			{
+				complete = false;
+				note( "the camera's ambient occlusion was not recorded" );
+			}
 		}
 	}
 	preparation.Select( "prepare lit view bindings" );
@@ -2990,58 +3154,6 @@ void WorldPass::RecordBatch(
 	rendering.depth = DepthAttachment{ target.depth, LoadOp::kLoad, StoreOp::kStore, 1.0f };
 	rendering.width = target.width;
 	rendering.height = target.height;
-	auto recordModel =
-	    [&]( const StaticDraw &draw, const Resources::Material &m, PipelineId pipeline )
-	{
-		const WorldData::StaticInstance *instance =
-		    draw.posed ? nullptr : &world->staticInstances[draw.instance];
-		const WorldData::StaticMesh &mesh = world->staticMeshes[draw.mesh];
-		const WorldSurface &surface = mesh.surfaces[draw.surface];
-		encoder.SetPipeline( pipeline );
-		if ( m.program.request.frameLayout.IsValid() )
-			encoder.SetBindGroup(
-			    BindGroupRole::kFrame, r.frameGroups[m.program.request.frameLayout.value].group );
-		if ( m.program.request.viewLayout.IsValid() )
-		{
-			const std::uint64_t layout = m.program.request.viewLayout.value;
-			const auto lit = modelLitViews.find( layout );
-			const auto scene = sceneViews.find( layout );
-			encoder.SetBindGroup( BindGroupRole::kView,
-			    m.program.sceneColor && scene != sceneViews.end() ? scene->second.group
-			    : lit != modelLitViews.end()                      ? lit->second->group
-			                                                      : r.viewGroups[layout].group );
-		}
-		encoder.SetBindGroup( BindGroupRole::kMaterial, m.group.group );
-		if ( m.program.request.drawLayout.IsValid() )
-			encoder.SetBindGroup( BindGroupRole::kDraw, r.drawGroups[drawKey( m, 0 )].group );
-		material::FamilyDrawConstants modelConstants;
-		if ( instance )
-			std::copy( instance->world, instance->world + 16, modelConstants.world );
-		else
-		{
-			for ( int i = 0; i < 4; ++i )
-				modelConstants.world[i * 5] = 1.0f;
-		}
-		for ( int row = 0; row < 4; ++row )
-		{
-			for ( int col = 0; col < 4; ++col )
-			{
-				float value = 0.0f;
-				for ( int k = 0; k < 4; ++k )
-					value += constants.toClip[row * 4 + k] * modelConstants.world[k * 4 + col];
-				modelConstants.toClip[row * 4 + col] = value;
-			}
-		}
-		encoder.SetDrawConstants( 0, std::as_bytes( std::span( &modelConstants, 1 ) )
-		                                 .first( m.program.request.drawConstantBytes ) );
-		const Resources::StaticMeshBuffers &buffers = r.staticMeshes[draw.mesh];
-		encoder.SetVertexBuffer( 0, draw.posed ? posedBuffers[draw.instance] : buffers.vertices );
-		if ( recordingTemporal )
-			encoder.SetVertexBuffer(
-			    1, draw.posed ? previousPosedBuffers[draw.instance] : buffers.vertices );
-		encoder.SetIndexBuffer( buffers.indices, 0, IndexFormat::kUint32 );
-		encoder.DrawIndexed( surface.indexCount, 1, surface.firstIndex, 0, 0 );
-	};
 	const auto &stencil = target.drawState.stencil;
 	const bool depthPrepassSafe =
 	    target.depthPrepass && world->stage && !target.drawState.overrideDepth &&
@@ -3056,11 +3168,6 @@ void WorldPass::RecordBatch(
 		state.depthWrite = false;
 		state.depthCompare = CompareOp::kEqual;
 		return state;
-	};
-	auto opaquePbr = []( const Resources::Material &m )
-	{
-		return m.program.blend == BlendMode::kOpaque && !m.program.sceneColor &&
-		       m.program.name == "pbr";
 	};
 	bool worldDepthReady = depthPrepassSafe;
 	// The opaque (and alpha-tested) surfaces' depth first, into the target's
@@ -3285,7 +3392,8 @@ void WorldPass::RecordBatch(
 				continue;
 			}
 		}
-		const auto state = statePipeline( m, m.program.request.pipeline, target.drawState );
+		const auto state = statePipeline( m, m.program.request.pipeline, target.drawState,
+		    frame::DebugSpecializationFor( view.debug, m.program.name ) );
 		if ( !state )
 		{
 			complete = false;

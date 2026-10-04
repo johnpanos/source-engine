@@ -14,8 +14,8 @@ they neither occlude nor reflect, and each maps to one texel of a bake image. A 
 DIFFUSE bake without colour then gives each texel exactly the diffuse light
 (irradiance / pi, the lightmap unit) arriving at the probe for that normal,
 from every light type with its shadows: layer `total` (direct + indirect) and
-layer `indirect` (light that reflected at least once), the split the
-lightmap layers use.
+layer `indirect` (every bounce plus direct light from the sky and glowing
+surfaces that the runtime does not draw), the split the lightmap layers use.
 
 Visibility and placement. Rays from each probe against the world meshes (a
 Blender BVH; dynamic models are not world and are left out) give:
@@ -218,6 +218,27 @@ def bake(obj, target, height, passes, name, out_dir):
     return pixels[..., :3], path
 
 
+def bake_irradiance_layers(obj, target, height, emitters, work):
+    """Both layers with the lightmap baker's runtime/static light split."""
+    layers = []
+    images = {}
+    static_emitters = pbrt_blender.has_static_emitters(emitters)
+    for name, passes in (("total", {"DIRECT", "INDIRECT"}), ("indirect", {"INDIRECT"})):
+        pixels, path = bake(obj, target, height, passes, "ProbeIrradiance_" + name, work)
+        images[name] = {"exr": path.name, "exr_sha256": sha256(path),
+                        "pass_filter": sorted(passes)}
+        if name == "indirect" and static_emitters:
+            with pbrt_blender.static_emitters_only(emitters):
+                static, static_path = bake(obj, target, height, {"DIRECT"},
+                                          "ProbeIrradiance_static_direct", work)
+            pixels = pixels + static
+            images[name]["static_direct"] = {
+                "exr": static_path.name, "exr_sha256": sha256(static_path),
+                "pass_filter": ["DIRECT"]}
+        layers.append(pixels)
+    return layers, images, static_emitters
+
+
 def main():
     arguments = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
     parser = argparse.ArgumentParser(description=__doc__)
@@ -317,15 +338,11 @@ def main():
     directions = probe_volume.interior_directions(INTERIOR).reshape(-1, 3)
     obj, target, height = receiver_mesh(positions, directions)
     args.work.mkdir(parents=True, exist_ok=True)
-    layers = []
-    images = {}
-    for name, passes in (("total", {"DIRECT", "INDIRECT"}), ("indirect", {"INDIRECT"})):
-        pixels, path = bake(obj, target, height, passes, "ProbeIrradiance_" + name, args.work)
-        # Bake images are stored bottom row first; texel k is row k // width.
-        flat = pixels.reshape(-1, 3)[:count * len(directions)]
-        layers.append(flat.reshape(count, INTERIOR, INTERIOR, 3))
-        images[name] = {"exr": path.name, "exr_sha256": sha256(path),
-                        "pass_filter": sorted(passes)}
+    pixels, images, static_emitters = bake_irradiance_layers(
+        obj, target, height, scene["emitters"], args.work)
+    # Bake images are stored bottom row first; texel k is row k // width.
+    layers = [layer.reshape(-1, 3)[:count * len(directions)].reshape(
+        count, INTERIOR, INTERIOR, 3) for layer in pixels]
     irradiance = np.stack(layers)
     irradiance[:, active < 0.5] = 0.0
     if not np.isfinite(irradiance).all() or (irradiance < 0).any():
@@ -349,6 +366,9 @@ def main():
                "adaptive_sampling": False, "sampling": sampling,
                "light_paths": light_paths, "normal_maps": False,
                "layers": ["total", "indirect"], "bake_images": images,
+               "separation": {"runtime_emitters": len(scene["emitters"]),
+                              "runtime_distant_lights": len(scene.get("distant_lights", [])),
+                              "static_emitters_in_indirect": static_emitters},
                "grid": {"origin": grid["origin"], "spacing": grid["spacing"],
                         "dims": grid["dims"], "max_relocation": grid["max_relocation"],
                         "max_distance": grid["max_distance"]},

@@ -563,7 +563,7 @@ def bake_indirect_light(image, label, size, render, keep=None):
     if not SCENE["static"]:
         return halves
     bounced = np.array(image.pixels[:], dtype=np.float32)
-    with static_emitters_only():
+    with pbrt_blender.static_emitters_only(SCENE["emitters"]):
         static = bake_light(image, {"DIRECT"}, label + ": static emitters", size, render)
     summed = bounced + np.array(image.pixels[:], dtype=np.float32)
     summed[3::4] = bounced[3::4]  # the bake's coverage
@@ -572,82 +572,6 @@ def bake_indirect_light(image, label, size, render, keep=None):
         halves = [a + b for a, b in zip(halves, static)]
     return halves
 
-
-def emitter_objects():
-    """The Blender objects of the runtime's lights: the lamps (analytic
-    emitters and distant lights) and the analytic emitters' meshes."""
-    names = {map_scene.emitter_name(index, shape) for index, shape in enumerate(SCENE["emitters"])}
-    return [obj for obj in bpy.data.objects
-            if obj.type == "LIGHT" or (obj.type == "MESH" and obj.name in names)]
-
-
-def static_emission_sockets():
-    """The strength sockets of the glowing surfaces' materials (shapes, not
-    the analytic emitters): Principled BSDFs that emit."""
-    emitters = {obj.name for obj in emitter_objects()}
-    sockets = []
-    for obj in bpy.data.objects:
-        if obj.type != "MESH" or obj.name in emitters:
-            continue
-        for slot in obj.material_slots:
-            if not slot.material or not slot.material.node_tree:
-                continue
-            for node in slot.material.node_tree.nodes:
-                if node.type != "BSDF_PRINCIPLED":
-                    continue
-                strength, color = node.inputs["Emission Strength"], node.inputs["Emission Color"]
-                emits = color.is_linked or max(color.default_value[:3]) > 0
-                if not strength.is_linked and strength.default_value > 0 and emits and \
-                        strength not in sockets:
-                    sockets.append(strength)
-    return sockets
-
-
-def background_strength():
-    world = bpy.context.scene.world
-    nodes = world.node_tree.nodes if world and world.use_nodes else None
-    background = nodes.get("Background") if nodes else None
-    return background.inputs["Strength"] if background else None
-
-
-def has_static_emitters():
-    strength = background_strength()
-    return bool((strength is not None and strength.default_value > 0) or static_emission_sockets())
-
-
-@contextlib.contextmanager
-def runtime_lights_only():
-    """The enclosed bakes see only the runtime's lights: the sky and the
-    glowing surfaces emit nothing (they still occlude)."""
-    sockets = static_emission_sockets()
-    background = background_strength()
-    saved = [socket.default_value for socket in sockets]
-    saved_background = background.default_value if background is not None else None
-    try:
-        for socket in sockets:
-            socket.default_value = 0.0
-        if background is not None:
-            background.default_value = 0.0
-        yield
-    finally:
-        for socket, value in zip(sockets, saved):
-            socket.default_value = value
-        if background is not None:
-            background.default_value = saved_background
-
-
-@contextlib.contextmanager
-def static_emitters_only():
-    """The enclosed bakes see only what is not a runtime light: the runtime's
-    lamps and emitter meshes are out of the render."""
-    hidden = [obj for obj in emitter_objects() if not obj.hide_render]
-    try:
-        for obj in hidden:
-            obj.hide_render = True
-        yield
-    finally:
-        for obj in hidden:
-            obj.hide_render = False
 
 
 def summed_total(layers):
@@ -673,7 +597,7 @@ def bake_separated_layers(merged, layers, out_dir, size, render, parts=None):
         merged.select_set(True)
         bpy.context.view_layer.objects.active = merged
         if role == "direct":
-            with runtime_lights_only(), samples_of(render, SCENE["direct_samples"]):
+            with pbrt_blender.runtime_lights_only(SCENE["emitters"]), samples_of(render, SCENE["direct_samples"]):
                 halves = bake_light(image, SEPARATED_PASSES[role], role, size, render)
         else:
             halves = bake_indirect_light(image, role, size, render)
@@ -1002,7 +926,7 @@ def main():
     pbrt_blender.rebind_materials(scene, normal_maps=False)
     pbrt_blender.restore_emitters(scene)
     pbrt_blender.apply_environment(scene, args.environment)
-    SCENE["static"] = has_static_emitters()
+    SCENE["static"] = pbrt_blender.has_static_emitters(SCENE["emitters"])
     if medium:
         participating_medium.apply_world_medium(medium)
     for obj in meshes:

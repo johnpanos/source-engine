@@ -1912,6 +1912,7 @@ std::uint32_t CoreWorld::QueueMesh( const legacy::CoreMeshDraw &draw )
 	pass::world::WorldView view;
 	std::copy_n( draw.toClip, 16, view.toClip );
 	view.viewport = draw.viewport;
+	view.debug = m_Renderer.AppliedDebug();
 	pass::world::WorldView::DynamicDraw geometry;
 	std::copy_n( draw.modelToWorld, 16, geometry.modelToWorld );
 	geometry.material.name = draw.name;
