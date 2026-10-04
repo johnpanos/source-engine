@@ -76,6 +76,7 @@ namespace render::device::gl
 	X( StencilFunc, PFNGLSTENCILFUNCPROC, glStencilFunc )                                          \
 	X( StencilMask, PFNGLSTENCILMASKPROC, glStencilMask )                                          \
 	X( StencilOp, PFNGLSTENCILOPPROC, glStencilOp )                                                \
+	X( PolygonOffset, PFNGLPOLYGONOFFSETPROC, glPolygonOffset )                                    \
 	X( DepthFunc, PFNGLDEPTHFUNCPROC, glDepthFunc )                                                \
 	X( DepthMask, PFNGLDEPTHMASKPROC, glDepthMask )                                                \
 	X( DepthRangeIndexed, PFNGLDEPTHRANGEINDEXEDPROC, glDepthRangeIndexed )                        \

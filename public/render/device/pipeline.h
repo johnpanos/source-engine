@@ -137,6 +137,8 @@ struct RasterState
 	CullMode cull = CullMode::kBack;
 	bool frontCounterClockwise = true;
 	bool alphaToCoverage = false; // fragment alpha controls multisample coverage
+	float depthBiasConstant = 0.0f; // depth-buffer units, as in Vulkan and glPolygonOffset
+	float depthBiasSlope = 0.0f;
 };
 
 enum class StencilOp : std::uint8_t

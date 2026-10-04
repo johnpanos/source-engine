@@ -156,8 +156,9 @@ struct SurfaceConstants
 	float treeMotion[4] = { 1.0f, 10.0f, 12.0f, 10.0f };
 	float treeCurves[4] = { 2.0f, 1.0f, 1.5f, 5.0f };
 	float treeWind[4] = { 3.0f, 6.0f, 0.0f, 0.0f }; // lerp start/end, static, mode
+	float baseTransform[8] = { 1, 0, 0, 0, 0, 1, 0, 0 }; // independent base texture UV rows
 };
-static_assert( sizeof( SurfaceConstants ) == 528 );
+static_assert( sizeof( SurfaceConstants ) == 560 );
 
 // An area light as the frame block holds it (render.area-light.v1: the
 // rectangle, its radiance and its reach).
@@ -492,6 +493,8 @@ struct SurfaceDrawState
 	bool depthWrite = true;
 	device::CompareOp depthCompare = device::CompareOp::kLessEqual;
 	std::uint8_t colorWrite = device::kColorWriteAll;
+	float depthBiasConstant = 0.0f;
+	float depthBiasSlope = 0.0f;
 	auto operator<=>( const SurfaceDrawState & ) const = default;
 };
 

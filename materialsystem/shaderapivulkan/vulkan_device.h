@@ -699,6 +699,8 @@ public:
 		m_dynDepthBiasConstant = constantFactor;
 		m_dynDepthBiasSlope = slopeFactor;
 	}
+	float DynamicDepthBiasConstant() const { return m_dynDepthBiasConstant; }
+	float DynamicDepthBiasSlope() const { return m_dynDepthBiasSlope; }
 	// D3D9 supplies a normalized bias; Vulkan's constant factor is in depth
 	// buffer units. The D32 float scale is approximate near depth 0.5.
 	float DepthBiasUnitScale() const

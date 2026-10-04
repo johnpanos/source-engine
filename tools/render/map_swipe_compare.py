@@ -2,11 +2,19 @@
 # ==== Copyright Valve Corporation, All rights reserved. ======================
 """Capture two Portal 2 maps at one Source-unit camera and make a swipe comparison.
 
-Example:
-  python3 tools/render/map_swipe_compare.py sp_a2_laser_intro \
-      sp_a2_laser_intro_source2 --pose=-1312,0,-208:0,0,0 \
-      --panel-relay info_sign-info_panel_activate_rl \
-      --out quality-results/map-comparisons/laser-intro
+Default comparison: sp_a1_intro4 / sp_a1_intro4_relit at 3840x2160.
+The new (right) game selects FSR Native AA with MSAA disabled and requests HDR
+display output. HDR presentation requires a capable compositor/display; the
+private headless compositor and RGB PNG comparison do not certify HDR output.
+The original (left) game uses its separate DXVK Native build and legacy rendering.
+
+Example (chamber panel view):
+  python3 tools/render/map_swipe_compare.py --pose=-1552,37,-32:0,-90,0 \
+      --out quality-results/map-comparisons/intro4
+
+All retained Intro4 comparison and survey poses:
+  python3 tools/render/map_swipe_compare.py --all-captures \
+      --out quality-results/map-comparisons/intro4-4k-fsr
 
 Published maps in run/maps/<name>/published.json are mounted automatically.
 The original retail map is loaded from the staged Portal 2 runtime. Each map
@@ -30,6 +38,29 @@ from PIL import Image, ImageChops, ImageEnhance, ImageStat
 
 ROOT = Path(__file__).resolve().parents[2]
 BOOT = ROOT / "tools/quality/portal_boot.py"
+# Retained comparison cameras and art/lightboard/panel survey poses, deduplicated.
+# Survey setpos values were player origins; these cameras include the 64-unit eye offset.
+INTRO4_CAPTURES = (
+    ("panel", "Chamber panel", "-1552,37,-32:0,-90,0"),
+    ("chamber-overview", "Chamber overview", "-300,100,128:0,0,0"),
+    ("chamber", "Damaged chamber", "-420,70,112:-6,5,0"),
+    ("lightboard", "Illuminated lightboard", "-900,180,72:0,310,0"),
+    ("second-lightboard", "Second 04 room", "420,180,100:0,-15,0"),
+    ("panorama", "Chamber panorama", "-360,40,124:-4,10,0"),
+    ("look-up", "Chamber upward view", "-300,100,128:-6,-8,0"),
+    ("oblique", "Chamber oblique view", "-450,130,112:-3,12,0"),
+    ("arrival", "Chamber arrival", "-1100,176,96:-3,0,0"),
+    ("instance-front", "Lightboard front", "-780,150,72:0,270,0"),
+    ("instance-right", "Lightboard right", "-600,160,72:0,230,0"),
+    ("instance-low", "Lightboard low view", "-800,60,40:-5,300,0"),
+    ("main-front", "Second lightboard front", "450,79,100:0,0,0"),
+    ("cool-front", "Cool panel front", "-1200,176,96:-20,0,0"),
+    ("cool-side", "Cool panel side", "-1100,0,96:-24,55,0"),
+    ("cool-exit", "Cool panel exit", "-960,176,96:-25,180,0"),
+    ("warm-front", "Warm panel front", "1250,-528,180:-20,0,0"),
+    ("warm-side", "Warm panel side", "1450,-700,180:-25,45,0"),
+    ("warm-back", "Warm panel back", "1800,-528,180:-20,180,0"),
+)
 sys.path.insert(0, str(ROOT / "tools/quality"))
 import private_session
 
@@ -82,12 +113,13 @@ def verify_camera(view, position, angles, width, height):
         raise ValueError("capture angles differ from request: " + str(view["angles"]))
 
 
-def capture(map_name, side, content, args, out, startup_commands=()):
+def capture(map_name, side, content, args, out, startup_commands=(), engine_args=(),
+            renderer="native-vulkan", build=None):
     position, angles = args.pose
     boot = out / (side + "-boot")
     command = [sys.executable, str(BOOT), "--runtime", str(args.runtime),
-               "--build", str(args.build), "--game", "portal2",
-               "--renderer", "native-vulkan", "--require-vulkan", "--require-wayland",
+               "--build", str(build or args.build), "--game", "portal2",
+               "--renderer", renderer, "--require-vulkan", "--require-wayland",
                "--view-oracle", "--map", map_name, "--out", str(boot),
                "--width", str(args.width), "--height", str(args.height),
                "--timeout", str(args.timeout), "--capture-wait", "120",
@@ -108,6 +140,8 @@ def capture(map_name, side, content, args, out, startup_commands=()):
                "--console-command", "hud_quickinfo 0"]
     for setting in startup_commands:
         command += ["--startup-command", setting]
+    for argument in engine_args:
+        command += ["--engine-arg=" + argument]
     for relay in args.panel_relay:
         command += ["--console-command", "ent_fire " + relay + " Trigger"]
     command += [
@@ -138,9 +172,22 @@ def capture(map_name, side, content, args, out, startup_commands=()):
         raise ValueError("%s screenshot has wrong dimensions" % map_name)
     target = out / (side + ".png")
     image.save(target)
+    render_confirmation = None
+    if "-fsr" in engine_args:
+        log = (boot / "stdout.log").read_text()
+        dispatch = "FSR game: %dx%d -> %dx%d, before post/HUD" % (
+            args.width, args.height, args.width, args.height)
+        if dispatch not in log:
+            raise ValueError("FSR Native AA dispatch was not confirmed in " + str(boot))
+        hdr = re.findall(r"\[NativeVulkan\] (HDR output: [^\n]+|extended output declined: [^\n]+)", log)
+        render_confirmation = {"fsr_dispatch": dispatch,
+                               "hdr_presentation_log": hdr[-1] if hdr else "unconfirmed"}
     return {"map": map_name, "content_root": str(content) if content else None,
+            "renderer": renderer, "build": str(build or args.build),
             "image": target.name, "boot_evidence": str(evidence_path),
             "startup_commands": list(startup_commands),
+            "engine_args": list(engine_args),
+            "render_confirmation": render_confirmation,
             "camera": {key: view[key] for key in ("origin", "angles", "fov", "viewport")}}
 
 
@@ -172,8 +219,11 @@ def make_html(out, left, right, metrics, position, angles):
   #diff { display: none; width: 100%; margin-top: 18px; }
   #diff.visible { display: block; }
 </style>
-<h1>MAP_TITLE</h1><p>POSE · WIDTH×HEIGHT · native Vulkan captures. Drag the divider or use the slider.
+<h1>MAP_TITLE</h1><p>POSE · WIDTH×HEIGHT · LEFT_RENDERER / RIGHT_RENDERER.
+  Drag the divider or use the slider.
   Mean absolute RGB difference: MEAN / 255.</p>
+<p>Right game: FSR Native AA (100%), MSAA off, HDR output requested.
+  These RGB PNGs do not verify HDR display presentation.</p>
 <div class="comparison" id="comparison" aria-label="Image comparison">
   <img src="b.png" alt="RIGHT_LABEL"><img id="top" src="a.png" alt="LEFT_LABEL"><div id="line"></div>
 </div>
@@ -209,24 +259,79 @@ def make_html(out, left, right, metrics, position, angles):
 """
     for marker, value in {"MAP_TITLE": title, "LEFT_LABEL": label_a,
                           "RIGHT_LABEL": label_b, "POSE": pose,
+                          "LEFT_RENDERER": html.escape(left.get("renderer", "native-vulkan")),
+                          "RIGHT_RENDERER": html.escape(right.get("renderer", "native-vulkan")),
                           "WIDTH": str(metrics["size"][0]), "HEIGHT": str(metrics["size"][1]),
                           "MEAN": "%.2f" % metrics["mean_absolute_rgb"]}.items():
         page = page.replace(marker, value)
     (out / "compare.html").write_text(page)
 
 
+def capture_gallery(argv, args, parser):
+    if (args.map_a, args.map_b) != ("sp_a1_intro4", "sp_a1_intro4_relit"):
+        parser.error("--all-captures uses the Intro4 gallery cameras and map pair")
+    out = args.out.resolve()
+    if out.exists() and any(out.iterdir()):
+        parser.error("output directory is not empty: " + str(out))
+    out.mkdir(parents=True, exist_ok=True)
+    # Preserve the caller's build, assets, resolution and content overrides.
+    shared = []
+    arguments = iter(argv)
+    for argument in arguments:
+        if argument == "--all-captures":
+            continue
+        if argument == "--out":
+            next(arguments)
+            continue
+        if argument.startswith("--out="):
+            continue
+        shared.append(argument)
+    cards = []
+    for name, label, pose in INTRO4_CAPTURES:
+        print("Capturing Intro4: " + label, flush=True)
+        result = main(shared + ["--pose=" + pose, "--out", str(out / name),
+                                "--panel-relay", "info_sign-info_panel_activate_rl",
+                                "--panel-relay", "InstanceAuto63-info_panel_activate_rl"])
+        if result:
+            return result
+        cards.append('<a href="%s/compare.html"><img src="%s/b.png" alt="%s">%s</a>' %
+                     (name, name, html.escape(label), html.escape(label)))
+    page = '''<!doctype html><html lang="en"><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Intro4 map comparisons</title><style>
+:root { color-scheme: dark; font: 16px system-ui; }
+body { max-width: 1320px; margin: auto; padding: 24px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(300px,1fr)); gap: 20px; }
+a { color: inherit; } img { display: block; width: 100%; margin-bottom: 8px; }
+</style><h1>Intro4 map comparisons</h1>
+<p>sp_a1_intro4 / sp_a1_intro4_relit · %d×%d · right game: FSR Native AA,
+MSAA off, HDR output requested. RGB PNGs do not verify HDR display presentation.</p>
+<p>Original: DXVK Native legacy renderer. Relit: native Vulkan render core.</p>
+<div class="grid">%s</div></html>''' % (args.width, args.height, "".join(cards))
+    (out / "index.html").write_text(page)
+    print(out / "index.html")
+    return 0
+
+
 def main(argv=None):
+    argv = list(argv if argv is not None else sys.argv[1:])
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("map_a")
-    parser.add_argument("map_b")
-    parser.add_argument("--pose", required=True, type=parse_pose,
-                        help="shared Source-unit camera: x,y,z:pitch,yaw,roll")
+    parser.add_argument("map_a", nargs="?", default="sp_a1_intro4")
+    parser.add_argument("map_b", nargs="?", default="sp_a1_intro4_relit")
+    capture_selection = parser.add_mutually_exclusive_group(required=True)
+    capture_selection.add_argument("--pose", type=parse_pose,
+                                   help="shared Source-unit camera: x,y,z:pitch,yaw,roll")
+    capture_selection.add_argument("--all-captures", action="store_true",
+                                   help="capture all 19 retained Intro4 comparison/survey poses")
     parser.add_argument("--content-root-a", type=Path)
     parser.add_argument("--content-root-b", type=Path)
     parser.add_argument("--panel-relay", action="append", default=[],
                         help="activate a named test chamber panel relay on both maps; repeatable")
-    parser.add_argument("--runtime", type=Path, default=ROOT / "run/runtime-p2")
-    parser.add_argument("--build", type=Path, default=ROOT / "build-p2")
+    parser.add_argument("--runtime", type=Path, default=ROOT / "run/runtime-p2-fsr")
+    parser.add_argument("--build", type=Path, default=ROOT / "build-p2-fsr")
+    parser.add_argument("--build-a", type=Path, default=ROOT / "build-p2-dxvk",
+                        help="original game's separate Portal 2 DXVK Native build")
+    parser.add_argument("--fsr-assets", type=Path, default=ROOT / "external/fsr411/assets")
     parser.add_argument("--width", type=int, default=3840)
     parser.add_argument("--height", type=int, default=2160)
     parser.add_argument("--timeout", type=int, default=900)
@@ -237,8 +342,27 @@ def main(argv=None):
         parser.error("choose two different maps")
     if args.timeout < 1:
         parser.error("timeout must be positive")
+    if not (64 <= args.width <= 8192 and 64 <= args.height <= 8192):
+        parser.error("capture dimensions must be between 64 and 8192")
+    cache = args.build / "c4che/_cache.py"
+    if not cache.is_file() or not re.search(r"^RENDER_FSR411 = True$", cache.read_text(), re.M):
+        parser.error("--build must name an FSR-capable Portal 2 build (./play_p2_fsr)")
+    if not any(re.search(r"^GAMES = ['\"]portal2['\"]$", path.read_text(), re.M)
+               for path in (args.build / "c4che").glob("*_cache.py")):
+        parser.error("--build must be configured for Portal 2")
+    if not args.fsr_assets.is_dir():
+        parser.error("FSR assets are missing: " + str(args.fsr_assets))
+    original_caches = list((args.build_a / "c4che").glob("*_cache.py"))
+    if not any(re.search(r"^DXVK = True$", path.read_text(), re.M)
+               for path in original_caches):
+        parser.error("--build-a must name a DXVK Native build")
+    if not any(re.search(r"^GAMES = ['\"]portal2['\"]$", path.read_text(), re.M)
+               for path in original_caches):
+        parser.error("--build-a must be configured for Portal 2")
     if any(not re.fullmatch(r"[A-Za-z0-9_@-]+", name) for name in args.panel_relay):
         parser.error("panel relay names may contain only letters, digits, _, @, and -")
+    if args.all_captures:
+        return capture_gallery(argv, args, parser)
     out = args.out.resolve()
     if not args.in_compositor:
         out.mkdir(parents=True, exist_ok=True)
@@ -270,8 +394,12 @@ def main(argv=None):
     try:
         content_a = args.content_root_a or published_content(args.map_a)
         content_b = args.content_root_b or published_content(args.map_b)
-        left = capture(args.map_a, "a", content_a, args, out)
-        right = capture(args.map_b, "b", content_b, args, out)
+        left = capture(args.map_a, "a", content_a, args, out,
+                       ("r_temporal_scale 0", "r_core_world 0"), ("-norendercore",),
+                       renderer="vulkan-compat", build=args.build_a)
+        right = capture(args.map_b, "b", content_b, args, out,
+                        ("mat_antialias 0", "r_temporal_scale 1", "mat_hdr_output 1"),
+                        ("-fsr", "-fsr-assets", str(args.fsr_assets.resolve())))
         if abs(left["camera"]["fov"] - right["camera"]["fov"]) > 0.1:
             raise ValueError("captured camera FOV differs between maps")
         a, b = Image.open(out / "a.png"), Image.open(out / "b.png")

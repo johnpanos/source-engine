@@ -18,12 +18,17 @@ public:
 	std::map<std::string, std::string> fields;
 	std::vector<KeyValues *> children;
 	KeyValues *parent = nullptr;
-	~KeyValues() { for ( auto *child : children ) delete child; }
+	~KeyValues()
+	{
+		for ( auto *child : children )
+			delete child;
+	}
 	KeyValues *MakeCopy() const
 	{
 		auto *copy = new KeyValues( name.c_str() );
 		copy->fields = fields;
-		for ( auto *child : children ) copy->AddSubKey( child->MakeCopy() );
+		for ( auto *child : children )
+			copy->AddSubKey( child->MakeCopy() );
 		return copy;
 	}
 	void SetName( const char *value ) { name = value; }
@@ -36,34 +41,57 @@ public:
 	}
 	void SetInt( const char *key, int value ) { fields[key] = std::to_string( value ); }
 	int GetInt( const char *key ) const { return std::atoi( GetString( key ) ); }
-	void AddSubKey( KeyValues *child ) { child->parent = this; children.push_back( child ); }
+	void AddSubKey( KeyValues *child )
+	{
+		child->parent = this;
+		children.push_back( child );
+	}
 	void RemoveSubKey( KeyValues *child )
 	{
 		children.erase( std::remove( children.begin(), children.end(), child ), children.end() );
 		child->parent = nullptr;
 	}
 	void deleteThis() { delete this; }
-	void Clear() { for ( auto *child : children ) delete child; children.clear(); fields.clear(); }
+	void Clear()
+	{
+		for ( auto *child : children )
+			delete child;
+		children.clear();
+		fields.clear();
+	}
 	KeyValues *FindKey( const char *key, bool create = false )
 	{
-		for ( auto *child : children ) if ( child->name == key ) return child;
-		if ( !create ) return nullptr;
-		auto *child = new KeyValues( key ); AddSubKey( child ); return child;
+		for ( auto *child : children )
+			if ( child->name == key )
+				return child;
+		if ( !create )
+			return nullptr;
+		auto *child = new KeyValues( key );
+		AddSubKey( child );
+		return child;
 	}
 	KeyValues *GetFirstTrueSubKey() { return children.empty() ? nullptr : children.front(); }
 	KeyValues *GetNextTrueSubKey()
 	{
-		if ( !parent ) return nullptr;
+		if ( !parent )
+			return nullptr;
 		auto found = std::find( parent->children.begin(), parent->children.end(), this );
 		return ++found == parent->children.end() ? nullptr : *found;
 	}
 };
-int V_stricmp( const char *left, const char *right ) { return strcasecmp( left, right ); }
+int V_stricmp( const char *left, const char *right )
+{
+	return strcasecmp( left, right );
+}
 class CFmtStr
 {
 	char text[80];
+
 public:
-	CFmtStr( const char *format, int value ) { std::snprintf( text, sizeof( text ), format, value ); }
+	CFmtStr( const char *format, int value )
+	{
+		std::snprintf( text, sizeof( text ), format, value );
+	}
 	operator const char *() const { return text; }
 };
 class HdrVideo
@@ -71,7 +99,10 @@ class HdrVideo
 public:
 	struct Menu
 	{
-		struct Settings { int peakNits = 617; } settings;
+		struct Settings
+		{
+			int peakNits = 617;
+		} settings;
 		const Settings &Draft() const { return settings; }
 	} m_Menu;
 	const char *GetName() const { return "HdrVideo"; }
@@ -85,7 +116,11 @@ int main()
 	const auto check = [&]( bool passed, const char *name )
 	{
 		++checks;
-		if ( !passed ) { ++failures; std::fprintf( stderr, "HDR layout: %s\n", name ); }
+		if ( !passed )
+		{
+			++failures;
+			std::fprintf( stderr, "HDR layout: %s\n", name );
+		}
 	};
 	KeyValues resource( "Video.res" );
 	auto *frame = resource.FindKey( "Video", true );
@@ -105,24 +140,28 @@ int main()
 	HdrVideo menu;
 	menu.PreApplyControlSettings( &resource );
 	frame = resource.FindKey( "HdrVideo" );
-	check( frame && frame->GetInt( "tall" ) == 6, "frame identity and extent" );
+	check( frame && frame->GetInt( "tall" ) == 5, "frame identity and extent" );
 	check( !resource.FindKey( "Video" ) && !resource.FindKey( "DrpDisplayMode" ) &&
-	           !resource.FindKey( "BtnAdvanced" ), "obsolete original controls removed" );
+	           !resource.FindKey( "BtnAdvanced" ),
+	    "obsolete original controls removed" );
 	const char *names[] = { "DrpHdrMode", "DrpHdrExposure", "DrpHdrPeak", "BtnHdrApply" };
 	for ( int i = 0; i < 4; ++i )
 	{
 		auto *control = resource.FindKey( names[i] );
 		check( control != nullptr, "control exists" );
-		if ( !control ) continue;
+		if ( !control )
+			continue;
 		check( control->GetInt( "ypos" ) == i * 25, "rows do not overlap" );
 		check( !control->FindKey( "?windowed" ), "windowed overrides cannot collapse rows" );
-		check( std::string( control->GetString( "fieldName" ) ) == names[i], "unique control identity" );
+		check( std::string( control->GetString( "fieldName" ) ) == names[i],
+		    "unique control identity" );
 		check( std::string( control->GetString( "navUp" ) ) == names[( i + 3 ) % 4] &&
 		           std::string( control->GetString( "navDown" ) ) == names[( i + 1 ) % 4],
 		    "controller navigation wraps" );
 	}
 	auto *peak = resource.FindKey( "DrpHdrPeak" )->FindKey( "list" );
-	check( std::string( peak->GetString( "617 nits" ) ) == "HdrPeak617", "exact calibration selectable" );
+	check( std::string( peak->GetString( "617 nits" ) ) == "HdrPeak617",
+	    "exact calibration selectable" );
 	check( std::string( resource.FindKey( "BtnHdrApply" )->GetString( "command" ) ) == "ApplyHDR",
 	    "apply action" );
 	auto *status = resource.FindKey( "LblHdrStatus" );

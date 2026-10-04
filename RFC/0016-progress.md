@@ -8757,3 +8757,36 @@ world.reflection-probes --config release`; `python3 tools/render/lab.py suite
 reflection-candidates --tree build-intro4-support-lab --validate`; the same
 command with `reflection-probes`; the boot runner's exact options are saved
 in `rprb-boot/evidence.json`. R96/K12 and this map's completion remain active.
+
+## Intro4 swipe comparison launch setup (2026-10-03)
+
+User direction: configure `tools/render/map_swipe_compare.py` for
+`sp_a1_intro4_relit`, 1080p FSR Native AA and HDR. The default pair is now
+`sp_a1_intro4` / `sp_a1_intro4_relit`, with 1920x1080 captures from the
+FSR-capable `build-p2-fsr` / `run/runtime-p2-fsr` profile. The right game
+selects the existing FSR provider/assets, `r_temporal_scale 1`,
+`mat_antialias 0` and `mat_hdr_output 1`; the left game explicitly selects
+temporal off and SDR output with the existing 4x MSAA setting. The camera
+remains explicit and verified on both sides. Launch settings are recorded
+in the comparison receipt. No render implementation or frozen path changed.
+
+Reproduction from the repository root:
+
+```sh
+python3 tools/render/map_swipe_compare.py --pose=-1552,37,-32:0,-90,0 \
+  --out quality-results/map-comparisons/intro4
+```
+
+Setup evidence lives in `quality-results/map-swipe-setup/`: the mocked boot
+launch check passes the default maps, extents, FSR/AA/HDR arguments, camera
+verification, comparison output and refusal of a non-FSR build. The 10
+existing map-relight diagnostic tests pass, as do Python compilation and
+scoped whitespace checks. Architecture baseline and loader inventory are
+current. Full architecture checking reports the pre-existing CAP002
+`charconv` include in the unrelated dirty graphics-settings header.
+The installed changed-line style check reports STYLE001 in unrelated
+`render/material/vmt_mapping.cpp`; this setup edits only Python and prose.
+No actual game captures or timing measurements were run for this setup.
+HDR presentation remains unverified: the private headless compositor and
+RGB PNG output cannot establish native HDR display output. R96/K12 and
+RFC 0019 qualification gates remain open.

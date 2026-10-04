@@ -1397,6 +1397,7 @@ Keep the table concise and link details below or from the domain progress file.
   - Changes no row's state: R14 and R18 stay `partial`, and R16's hard-gate
     violation stays until R14 closes.
 
+- Linux game HDR integration: [implementation and evidence](RFC/0016-hdr-game-integration-2026-10-03.md); native menu verification and full performance acceptance remain open.
 - R16-DYNAMIC-RANGE: `partial` (2026-09-28, user request: HDR on iPhone and
   tvOS). `render.presentation.v1` gains an extended-linear range
   (`kRGBA16Float`, `GetDynamicRange()` with headroom). The SDL3-Vulkan

@@ -11,6 +11,7 @@
 #include "render/pbr_split_sum_table.h"
 #include "render/shaderlib/core_artifacts.h"
 
+#include <cmath>
 #include <iterator>
 
 namespace render::material
@@ -259,6 +260,9 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::Pipeline(
 	         ( ( variant.terms & ( kSurfaceDirectionalLightmap | kSurfaceRuntimeDirect ) ) &&
 	             !( variant.terms & kSurfaceBakedLightmap ) ) ) )
 		return foundation::MakeUnexpected( SurfaceStatus::kInvalidRequest );
+	if ( !std::isfinite( variant.drawState.depthBiasConstant ) ||
+	     !std::isfinite( variant.drawState.depthBiasSlope ) )
+		return foundation::MakeUnexpected( SurfaceStatus::kInvalidRequest );
 	const auto key = std::make_pair( variant, debug );
 	if ( auto found = m_Pipelines.find( key ); found != m_Pipelines.end() )
 		return found->second;
@@ -355,6 +359,8 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::Pipeline(
 	desc.vertex = { attributes, buffers };
 	desc.topology = PrimitiveTopology::kTriangleList;
 	desc.raster.cull = variant.drawState.cull;
+	desc.raster.depthBiasConstant = variant.drawState.depthBiasConstant;
+	desc.raster.depthBiasSlope = variant.drawState.depthBiasSlope;
 	const bool depth = m_DepthFormat != Format::kUnknown && !variant.ignoreDepth;
 	desc.depthStencil = { depth,
 	    depth && variant.blend == BlendMode::kOpaque &&

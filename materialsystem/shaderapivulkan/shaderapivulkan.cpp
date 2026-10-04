@@ -3012,9 +3012,13 @@ private:
 	void ApplyShadowStateOverrides( render_vulkan::CVulkanContext::DynRasterState &raster ) const;
 
 public:
-	render_vulkan::CVulkanContext::DynRasterState CoreRaster() const
+	render_vulkan::CVulkanContext::DynRasterState CoreRaster()
 	{
 		auto raster = g_CurrentRaster;
+		ApplyDepthBiasState( raster );
+		if ( raster.cullMode != VK_CULL_MODE_NONE )
+			raster.cullMode = g_DesiredCullMode == MATERIAL_CULLMODE_CW ? VK_CULL_MODE_FRONT_BIT
+			                                                            : VK_CULL_MODE_BACK_BIT;
 		ApplyShadowStateOverrides( raster );
 		return raster;
 	}
@@ -3290,6 +3294,15 @@ private:
 		if ( mesh )
 		{
 			const auto raster = g_ShaderAPIEmpty.CoreRaster();
+			terms.drawState.cull =
+			    raster.cullMode == VK_CULL_MODE_NONE        ? render::device::CullMode::kNone
+			    : raster.cullMode == VK_CULL_MODE_FRONT_BIT ? render::device::CullMode::kFront
+			                                                : render::device::CullMode::kBack;
+			if ( raster.depthBiasEnable )
+			{
+				terms.drawState.depthBiasConstant = g_VulkanContext.DynamicDepthBiasConstant();
+				terms.drawState.depthBiasSlope = g_VulkanContext.DynamicDepthBiasSlope();
+			}
 			terms.drawState.overrideDepth = true;
 			terms.drawState.depthTest = raster.depthTest;
 			terms.drawState.depthWrite = raster.depthWrite;

@@ -106,6 +106,18 @@ bool AtDefault( const std::string &value, const std::string &declared )
 // out unless it holds its legacy shader's declared default.
 std::optional<std::string> UnreadVariable( const MaterialDesc &material )
 {
+	const auto enabled = [&]( std::string_view key )
+	{
+		for ( const VmtPair &variable : material.variables )
+		{
+			if ( SameKey( variable.key, key ) )
+			{
+				const auto value = Numbers( variable.value );
+				return !value || value->size() != 1 || value->front() != 0.0;
+			}
+		}
+		return false;
+	};
 	bool cloakEnabled = false;
 	for ( const VmtPair &variable : material.variables )
 	{
@@ -117,6 +129,16 @@ std::optional<std::string> UnreadVariable( const MaterialDesc &material )
 	}
 	for ( const std::string &key : material.unmapped )
 	{
+		// LightmappedGeneric reads these values only inside the corresponding
+		// distance-field feature. InitParams and declared defaults can differ.
+		if ( material.family == "lightmapped" &&
+		     ( ( !enabled( "$softedges" ) && ( SameKey( key, "$edgesoftnessstart" ) ||
+		                                         SameKey( key, "$edgesoftnessend" ) ) ) ||
+		         ( !enabled( "$outline" ) &&
+		             ( SameKey( key, "$outlinecolor" ) || SameKey( key, "$outlinealpha" ) ||
+		                 SameKey( key, "$outlinestart0" ) || SameKey( key, "$outlinestart1" ) ||
+		                 SameKey( key, "$outlineend0" ) || SameKey( key, "$outlineend1" ) ) ) ) )
+			continue;
 		// VertexLitGeneric only reads these controls inside its enabled cloak
 		// pass. A dormant factor of 1 on the cube does not request transmission.
 		if ( !cloakEnabled && material.family == "vertexlit" &&

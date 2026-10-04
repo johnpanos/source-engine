@@ -37,4 +37,5 @@ layout( set = 2, binding = 0 ) uniform Material
 	vec4 treeMotion;
 	vec4 treeCurves;
 	vec4 treeWind;
+	vec4 baseTransform[2];
 } material;

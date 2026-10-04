@@ -26,10 +26,10 @@ using detail::ReadParameter;
 using detail::SourceGammaToLinear;
 
 // The parameters the family draws, and the ones the caller owns.
-constexpr std::array<std::string_view, 18> kClaimed = { "basetexture", "color", "alpha",
+constexpr std::array<std::string_view, 20> kClaimed = { "basetexture", "color", "alpha",
     "vertexcolor", "vertexalpha", "alphatest", "alphatestreference", "translucent", "additive",
     "model", "nofog", "nocull", "texture2", "frame2", "texture2transform", "ignorez",
-    "hdrcolorscale", "hdrbasetexture" };
+    "hdrcolorscale", "hdrbasetexture", "basetexturetransform", "decal" };
 
 } // namespace
 
@@ -74,6 +74,8 @@ UnlitClaim ClaimUnlit( const ParameterBlock &block )
 	constants.flags[2] = detail::AlphaTestReference( block );
 	constants.state[1] = 1.0f; // UnlitGeneric decodes vertex colors per vertex
 	constants.state[3] = ReadFlag( block, "vertexalpha" ) ? 1.0f : 0.0f;
+	for ( std::size_t i = 0; i < 8; ++i )
+		constants.baseTransform[i] = ReadParameter( block, "basetexturetransform", i );
 	claim.twoTexture = detail::TextureBound( block, "texture2" );
 	constants.meshModes[0] = claim.twoTexture ? 1.0f : 0.0f;
 	if ( claim.twoTexture )

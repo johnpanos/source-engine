@@ -611,6 +611,10 @@ DeviceResult<PipelineId> VulkanDevice::CreatePipeline( const PipelineDesc &desc 
 		                                                        : VK_CULL_MODE_FRONT_BIT;
 		raster.frontFace = desc.raster.frontCounterClockwise ? VK_FRONT_FACE_COUNTER_CLOCKWISE
 		                                                     : VK_FRONT_FACE_CLOCKWISE;
+		raster.depthBiasEnable =
+		    desc.raster.depthBiasConstant != 0.0f || desc.raster.depthBiasSlope != 0.0f;
+		raster.depthBiasConstantFactor = desc.raster.depthBiasConstant;
+		raster.depthBiasSlopeFactor = desc.raster.depthBiasSlope;
 		raster.lineWidth = 1.0f;
 
 		VkPipelineMultisampleStateCreateInfo multisample{};

@@ -618,13 +618,19 @@ void RefractSurface()
 
 // The pbr point. Base and emission are sampled as sRGB, MRAO and the normal
 // map as linear data.
+vec2 BaseTextureUv()
+{
+	const vec4 source = vec4( baseUv, 0.0, 1.0 );
+	return vec2( dot( source, material.baseTransform[0] ), dot( source, material.baseTransform[1] ) );
+}
+
 void PbrSurface( out float coverage )
 {
 	const bool furnace = DebugFurnace();
 	const bool normalMap = Term( kBumpmap | kSsbump );
 	const bool ssbump = Term( kSsbump );
 	const bool emissive = Term( kEmissionTexture );
-	const vec2 uv = baseUv;
+	const vec2 uv = BaseTextureUv();
 	vec4 baseSample = texture( sampler2D( baseTexture, baseSampler ), uv );
 	if ( Term( kDetailTexture ) )
 	{
@@ -634,8 +640,7 @@ void PbrSurface( out float coverage )
 		baseSample = TextureCombine( baseSample, detail, material.detailTint.a );
 	}
 	coverage = 1.0;
-	const float alpha = baseSample.a * material.tint.a *
-	                    ( material.state.w != 0.0 ? color.a : 1.0 );
+	const float alpha = baseSample.a * material.tint.a;
 	if ( kAlphaCoverage )
 	{
 		// RFC 0012's coverage function: midpoint at the authored alpha-test
@@ -652,8 +657,6 @@ void PbrSurface( out float coverage )
 		const vec3 tinted = mix( base, material.tint.rgb, material.meshProbeMasks.w );
 		base = mix( baseSample.rgb, tinted, baseSample.a );
 	}
-	if ( material.flags.x != 0.0 && !furnace )
-		base *= color.rgb;
 	const bool unlitMesh = MaterialFeature( kMaterialUnlitMesh, material.meshModes.w > 0.5 );
 	const vec3 mrao = Term( kMraoTexture )
 	                      ? texture( sampler2D( mraoTexture, mraoSampler ), uv ).rgb
@@ -1393,7 +1396,7 @@ void PbrSurface( out float coverage )
 	    Term( kTransmission ) ? 1.0
 	    : ( Term( kSelfIllum ) || material.meshControls.x > 0.5 ) && material.state.x > 0.5
 	        ? 1.0
-	        : alpha );
+	        : baseSample.a * material.tint.a );
 }
 
 // The vertexlit point: the vertexlit_and_unlit_generic port's DIFFUSELIGHTING
@@ -1403,7 +1406,7 @@ void PbrSurface( out float coverage )
 void VertexLitSurface()
 {
 	const bool furnace = DebugFurnace();
-	const vec4 baseColor = texture( sampler2D( baseTexture, baseSampler ), baseUv );
+	const vec4 baseColor = texture( sampler2D( baseTexture, baseSampler ), BaseTextureUv() );
 	const vec3 albedo = furnace ? vec3( 1.0 ) : baseColor.rgb * material.tint.rgb;
 	const float alpha = material.tint.a * baseColor.a;
 	if ( material.flags.y != 0.0 && alpha < material.flags.z )
@@ -1598,7 +1601,7 @@ void main()
 	{
 		// A legacy point's reflectance: its base texture times its tint.
 		outColor = vec4(
-		    texture( sampler2D( baseTexture, baseSampler ), baseUv ).rgb * material.tint.rgb, 1.0 );
+		    texture( sampler2D( baseTexture, baseSampler ), BaseTextureUv() ).rgb * material.tint.rgb, 1.0 );
 		return;
 	}
 	if ( Term( kDepthNormal ) )
@@ -1618,7 +1621,7 @@ void main()
 	const bool diffuseBumpmap = bumpmap && Term( kDiffuseBumpmap );
 	const bool lightingOne = Term( kUnlit );
 
-	const vec4 base = texture( sampler2D( baseTexture, baseSampler ), baseUv );
+	const vec4 base = texture( sampler2D( baseTexture, baseSampler ), BaseTextureUv() );
 	// GetBaseTextureAndNormal: the bump map is read at the base coordinates;
 	// with only $normalmapalphaenvmapmask its texels are used undecoded, as
 	// the port does.
@@ -1671,8 +1674,6 @@ void main()
 	{
 		alpha *= material.tint.a;
 	}
-	if ( !lightingOne )
-		alpha *= material.surfaceControls.w;
 	if ( material.flags.y != 0.0 && alpha < material.flags.z )
 		discard;
 

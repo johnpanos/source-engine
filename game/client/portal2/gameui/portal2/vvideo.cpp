@@ -1298,7 +1298,7 @@ void HdrVideo::PreApplyControlSettings( KeyValues *resource )
 		{
 			control->SetName( GetName() );
 			control->SetString( "fieldName", GetName() );
-			control->SetInt( "tall", 6 );
+			control->SetInt( "tall", 5 );
 		}
 		else
 		{
@@ -1322,7 +1322,7 @@ void HdrVideo::PreApplyControlSettings( KeyValues *resource )
 		list->Clear();
 		if ( i == 0 )
 		{
-			list->SetString( "Automatic (HDR when available)", "HdrMode1" );
+			list->SetString( "Automatic", "HdrMode1" );
 			list->SetString( "SDR", "HdrMode0" );
 		}
 		else if ( i == 1 )
@@ -1343,7 +1343,7 @@ void HdrVideo::PreApplyControlSettings( KeyValues *resource )
 	row->deleteThis();
 	apply->SetName( "BtnHdrApply" );
 	apply->SetString( "fieldName", "BtnHdrApply" );
-	apply->SetString( "labelText", "#L4D360UI_Apply" );
+	apply->SetString( "labelText", "Apply" );
 	apply->SetString( "command", "ApplyHDR" );
 	apply->SetString( "navUp", "DrpHdrPeak" );
 	apply->SetString( "navDown", "DrpHdrMode" );
@@ -1365,6 +1365,12 @@ void HdrVideo::PreApplyControlSettings( KeyValues *resource )
 void HdrVideo::ApplySchemeSettings( vgui::IScheme *scheme )
 {
 	BaseClass::ApplySchemeSettings( scheme );
+	SetDialogTitle( "HDR" );
+	if ( auto *status = dynamic_cast<vgui::Label *>( FindChildByName( "LblHdrStatus" ) ) )
+	{
+		status->SetFgColor( Color( 0, 0, 0, 255 ) );
+		status->SetWide( GetWide() - 24 );
+	}
 	UpdateState();
 }
 
@@ -1377,14 +1383,15 @@ void HdrVideo::UpdateState()
 	const char *names[] = { "DrpHdrMode", "DrpHdrExposure", "DrpHdrPeak" };
 	const CFmtStr exposureText( "%d%%", int( m_Menu.Draft().exposure * 100.0f + 0.5f ) );
 	const CFmtStr peakText( "%d nits", m_Menu.Draft().peakNits );
-	const char *values[] = { m_Menu.Draft().automatic ? "Automatic (HDR when available)" : "SDR",
-	    exposureText, peakText };
+	const char *values[] = {
+	    m_Menu.Draft().automatic ? "Automatic" : "SDR", exposureText, peakText };
 	for ( int i = 0; i < 3; ++i )
 	{
 		if ( auto *row = dynamic_cast<BaseModHybridButton *>( FindChildByName( names[i] ) ) )
 		{
 			row->SetEnabled( available );
-			row->SetCurrentSelection( values[i] );
+			if ( !row->GetCurrentSelection() || V_stricmp( row->GetCurrentSelection(), values[i] ) )
+				row->SetCurrentSelection( values[i] );
 		}
 	}
 	if ( auto *status = dynamic_cast<vgui::Label *>( FindChildByName( "LblHdrStatus" ) ) )
@@ -1392,13 +1399,13 @@ void HdrVideo::UpdateState()
 		CGameUIConVarRef active( "mat_hdr_output_active" );
 		const bool hdr = active.IsValid() && active.GetBool();
 		status->SetText( !available ? "HDR rendering is unavailable in this session."
-		                            : hdr ? "HDR output active. Set peak brightness to your display's rating."
-		                                  : "SDR output active. HDR scene lighting is tone mapped to SDR." );
+		                 : hdr ? "HDR output active. Set peak brightness to your display's rating."
+		                       : "SDR output active. HDR scene lighting is tone mapped to SDR." );
 	}
 	if ( auto *footer = CBaseModPanel::GetSingleton().GetFooterPanel() )
 	{
 		footer->SetButtons( FB_ABUTTON | FB_BBUTTON );
-		footer->SetButtonText( FB_ABUTTON, "#L4D360UI_Apply" );
+		footer->SetButtonText( FB_ABUTTON, "Apply" );
 		footer->SetButtonText( FB_BBUTTON, "#L4D360UI_Cancel" );
 	}
 }
@@ -1447,7 +1454,6 @@ void HdrVideo::ApplyChanges()
 void HdrVideo::OnThink()
 {
 	BaseClass::OnThink();
-	UpdateState();
 }
 
 bool HdrVideo::CheckSettings( int mode )

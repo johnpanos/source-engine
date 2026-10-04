@@ -795,6 +795,13 @@ private:
 			m_Gl.Enable( GL_SAMPLE_ALPHA_TO_COVERAGE );
 		else
 			m_Gl.Disable( GL_SAMPLE_ALPHA_TO_COVERAGE );
+		if ( p.raster.depthBiasConstant != 0.0f || p.raster.depthBiasSlope != 0.0f )
+		{
+			m_Gl.Enable( GL_POLYGON_OFFSET_FILL );
+			m_Gl.PolygonOffset( p.raster.depthBiasSlope, p.raster.depthBiasConstant );
+		}
+		else
+			m_Gl.Disable( GL_POLYGON_OFFSET_FILL );
 		// GL and the port agree: no depth writes without the depth test.
 		if ( p.depthStencil.depthTest )
 			m_Gl.Enable( GL_DEPTH_TEST );

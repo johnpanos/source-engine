@@ -1731,7 +1731,9 @@ owns the values written for them, in `render.pass.output`:
    copy), chosen by the target: an 8-bit UNORM target gets the sRGB curve;
    an 8-bit sRGB view gets linear values that its attachment encodes; a
    half-float target gets linear values in extended linear sRGB (scRGB,
-   1.0 = SDR white) for a `kExtendedLinear` presentation. 8-bit targets
+   scene 1.0 = 203 cd/m^2), scaled to the presentation reference white
+   (203/80 for desktop scRGB). A RGB10A2 UNORM target gets Rec.709-to-Rec.2020
+   conversion and ST 2084 encoding for HDR10 presentation. 8-bit targets
    take H = 1 only.
 
 The legacy point is P = 1, H = 1: exactly the legacy clip and the sRGB
@@ -1742,9 +1744,12 @@ showing graded HDR on a less capable display. It takes one input from the
 display (its peak), and it is the identity whenever the display covers the
 scene.
 
-Not in this term: PQ (HDR10) or HLG output encodings, which a presentation
-range needing them would add; a paper-white or brightness setting; auto
-exposure.
+Linux game integration (2026-10-03): presentation negotiates HDR10 or
+extended linear output when available. The Video settings transaction owns
+HDR selection, exposure and calibrated display peak. The scene stays linear
+RGBA16F even on SDR; this output pass maps it to the selected display range.
+See [game integration evidence](0016-hdr-game-integration-2026-10-03.md).
+HLG output and auto exposure are outside this slice.
 
 Oracles:
 - `render.output` (Linux GPU): a double-precision C++ reference, sharing

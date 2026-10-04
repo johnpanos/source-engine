@@ -8,6 +8,7 @@
 #include "render/device/validation.h"
 
 #include <algorithm>
+#include <cmath>
 
 namespace render::device
 {
@@ -117,6 +118,9 @@ DeviceResult<void> ValidatePipeline(
     const PipelineDesc &desc, const DeviceFacts &facts, const LayoutLookup &lookup )
 {
 	const DeviceOperation op = DeviceOperation::kCreatePipeline;
+	if ( !std::isfinite( desc.raster.depthBiasConstant ) ||
+	     !std::isfinite( desc.raster.depthBiasSlope ) )
+		return Fail( DeviceStatus::kInvalidDescription, op );
 	if ( desc.depthStencil.stencil.enabled && desc.depthFormat != Format::kD24UnormS8 &&
 	     desc.depthFormat != Format::kD32FloatS8 )
 		return Fail( DeviceStatus::kInvalidDescription, op );
