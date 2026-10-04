@@ -2362,6 +2362,10 @@ private:
 	}
 	bool MaterializeRenderTarget( int handle, std::string *outError );
 	void EnsureRenderTargetStorage( int handle );
+	// Depth image, framebuffers and the initial clear for a render-target
+	// texture whose color image and views are already in `t` (the eager body
+	// shared by CreateRenderTargetTexture and MaterializeRenderTarget).
+	bool BuildRenderTargetStorage( ManagedTexture &t, std::string *outError );
 	void RetireCompletedTextures();
 	// The managed texture currently bound (BindManagedTexture); captured per draw.
 	int m_dynBoundTexHandle = -1;

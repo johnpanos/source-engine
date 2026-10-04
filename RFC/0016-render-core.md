@@ -2318,11 +2318,12 @@ Texture-owner epochs (`ICoreTextures::ContentRevision` in
 sampler and resolution changes invalidate the composite; placement and emission
 scale remain live draw inputs. Opaque procedural sampling retains its existing
 unknown-epoch behavior; immutable unsupported sampling has a stable fallback.
-`video_bink` implements the existing `PRELOAD_VIDEO` request by decoding the
-complete clip once into ordinary immutable textures, shared by the existing
-movie group, with normal texture restoration and teardown. Playback selects a
-resident texture without video decoding or uploads. This is source-image
-caching, independent of panel rendering and receiver shading. See the
+`video_bink` honors the existing `PRELOAD_VIDEO` request by streaming rather
+than predecoding: only the compressed clip, the decoder and one frame texture
+stay resident, and playback decodes and uploads one frame per tick (seeks
+decode forward from the demuxer's seek point). A clip therefore costs a single
+frame's memory instead of a texture per frame, independent of panel rendering
+and receiver shading. See the
 [screen-cache evidence](0016-progress.md#r91-screen-caching-and-video-preload-2026-10-03)
 for startup, memory, correctness and timing limitations.
 

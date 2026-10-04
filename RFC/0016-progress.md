@@ -8303,7 +8303,9 @@ its live state, while preserving lighting and sample counts.
 > `render.video.frame-cache` now checks streamed playback (9/9 checks).
 
 User scope: reduce the impact of elevator movies and other world screens on
-`sp_a1_intro4_probe64`, and predecode every clip frame for resident playback.
+`sp_a1_intro4_probe64`. The 2026-10-03 slice predecoded every clip frame for
+resident playback; that was superseded on 2026-10-04 because it kept hundreds of
+frame textures resident. Each clip now streams (see the note above).
 The panel remains the same ordinary core emissive PBR surface and light source;
 world and glass receivers, including shattered glass, retain their normal paths.
 No panel resolution, light count, shadow sampling or contributing effect is cut.
@@ -8321,11 +8323,12 @@ Ownership and mechanism:
   resolution match. Placement, lighting and emission scale remain live. Render
   targets and unknown epochs always rebuild; handle recreation and uploads change
   identity/epoch. No frozen public texture vtable changes.
-- `video_bink` honors `PRELOAD_VIDEO` with all original frames decoded once into
-  ordinary immutable BGR textures. The existing movie-group material selects a
-  resident frame; playback performs no decode, YUV conversion or video texture
-  upload. The normal texture owner retains regeneration bits for device
-  restoration. Decoder/scratch storage is released after preparation. Cache
+- `video_bink` honors `PRELOAD_VIDEO` by streaming: only the compressed clip, the
+  decoder and one frame texture stay resident, and each tick decodes one frame
+  from the demuxer's current position, converts YUV to RGB and uploads it to the
+  single procedural texture (seeks decode forward from the demuxer's seek point).
+  No per-frame texture, cache array or movie frame selector remains. The normal
+  texture owner retains regeneration bits for device restoration. Cache
   ownership ends with the video material/group, including level screen teardown;
   borrowers can retain the currently selected texture until their own release.
   This does not move decoding to a GPU video codec or create a movie shader.
@@ -8340,8 +8343,8 @@ Ownership and mechanism:
 
 Frozen-path: `shaderapivulkan` changes are core texture-epoch plumbing;
 `vguimatsurface` corrects borrowed texture-regenerator ownership; `video_bink`
-implements the explicit user request for complete frame caching through existing
-material/texture APIs. No new legacy shading or CPU receiver lighting is added.
+removes the resident frame cache and streams through existing material/texture
+APIs. No new legacy shading or CPU receiver lighting is added.
 
 Evidence: `quality-results/core-screens-perf-20261003/` retains original frame
 streams, native logs, binary/source receipts, authored quality fixtures, captured
@@ -8367,15 +8370,14 @@ rendered at 1024x720; its faster medians are not a matched-resolution comparison
 The explicit 1080 resize attempt fell back to 640x480 and is retained as
 `resize-rejected`, excluded from the table.
 
-The elevator clip has 235 frames at 640x400: 229.5 MiB GPU RGBA plus 172.1 MiB
-BGR restoration bits, excluding small CPU thumbnails and panel composites.
-Preparation in the final diagnostic was 282.3 ms. Preparation occurs when the
-existing movie group is first created; it is not yet a separate map-loading
-warm-up stage. Other existing `PRELOAD_VIDEO` consumers also cache complete
-clips: the 304-frame 1280x720 menu background used 1068.8 MiB GPU plus 801.6 MiB
-restoration storage and took 1402.4 ms. These costs are reported, not hidden or
-subtracted from a gameplay frame after capture. Other textures still upload;
-resident video playback alone is upload-free until explicit regeneration.
+Streaming keeps each clip at one frame's memory rather than a full decoded
+cache. The superseded predecode measured the elevator clip's 235 frames at
+640x400 as 229.5 MiB GPU RGBA plus 172.1 MiB BGR restoration bits, and the
+menu background's 304 frames at 1280x720 as 1068.8 MiB GPU plus 801.6 MiB
+restoration storage. Those caches are gone in the streamed path, which holds one
+YUV frame, one RGB frame and one BGR888 texture per video material. The
+streamed path decodes and uploads one frame per tick; its per-frame cost has not
+been remeasured after the supersede.
 
 Validation:
 
@@ -8385,9 +8387,9 @@ Validation:
   72 passed with no Vulkan validation messages (see `lab-final.json`).
 - Installed `render.video.frame-cache` runs
   `tools/quality/video_frame_cache.py`: the native positive sequence passes
-  25 checks for frame count/duration, decoder release, seek, pause, loop,
-  nonloop end, regeneration, borrower lifetime, final cache cleanup and invalid
-  dimensions rollback. An authored wrong-green clip fails its two color checks.
+  25 checks for frame count/duration, seek, pause, loop, nonloop end,
+  regeneration, borrower lifetime, final texture cleanup and invalid dimensions
+  rollback. An authored wrong-green clip fails its two color checks.
   The command runner counts six acceptance checks and rejects missing probes.
   `video-cache/` retains fixtures, logs and the real elevator capture. Manual
   regeneration proves retained bits, not a complete device-loss lifecycle.

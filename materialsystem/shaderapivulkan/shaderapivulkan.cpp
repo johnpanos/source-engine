@@ -11476,7 +11476,7 @@ ShaderAPITextureHandle_t CShaderAPIVulkan::CreateTexture( int width, int height,
 	}
 	const int native =
 	    ( flags & TEXTURE_CREATE_RENDERTARGET )
-	        ? g_VulkanContext.CreateRenderTargetTexture( width, height, &error )
+	        ? g_VulkanContext.CreateRenderTargetTexture( width, height, &error, true )
 	        : g_VulkanContext.CreateManagedTexture( width, height, vkFormat, &error, 0,
 	              static_cast<uint32_t>( std::max( 1, numMipLevels ) ), VK_FORMAT_UNDEFINED,
 	              ( flags & TEXTURE_CREATE_CUBEMAP ) != 0, volumeDepth );

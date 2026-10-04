@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <cstdarg>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <initializer_list>
 #include <limits>
@@ -2791,6 +2792,15 @@ bool CVulkanContext::InitDynamicMesh( std::string *outError )
 		if ( m_whiteVolumeHandle < 0 || !UploadManagedTexture( m_whiteVolumeHandle, whiteVolume,
 		                                    sizeof( whiteVolume ), outError ) )
 			return false;
+		// Opaque black 1x1: what a deferred render target samples (and thereby
+		// "reads") before its storage is allocated on first use.
+		m_unrenderedTargetHandle = CreateManagedTexture(
+		    1, 1, VK_FORMAT_R8G8B8A8_UNORM, outError, 0, 1, VK_FORMAT_UNDEFINED, false );
+		NameManagedTexture( m_unrenderedTargetHandle, "deferred render target (black)" );
+		const uint8_t black[4] = { 0, 0, 0, 255 };
+		if ( m_unrenderedTargetHandle < 0 ||
+		     !UploadManagedTexture( m_unrenderedTargetHandle, black, sizeof( black ), outError ) )
+			return false;
 
 		// The UnlitGeneric push block is larger than the color pipelines': it
 		// carries cModelViewProj (mat4), cModulationColor (vec4), and the two rows
@@ -4343,6 +4353,14 @@ int CVulkanContext::StoreManagedTexture( const ManagedTexture &texture )
 
 void CVulkanContext::ReleaseManagedTextureObjects( ManagedTexture &t )
 {
+	// A render target whose storage is still deferred borrowed its view and
+	// descriptor sets from the shared opaque-black image (m_unrenderedTargetHandle);
+	// they are owned there, and its image/depth/framebuffers never existed.
+	if ( t.storagePending )
+	{
+		t = ManagedTexture();
+		return;
+	}
 	VkDescriptorSet sets[2] = { t.descSet, t.descSetSrgb };
 	for ( VkDescriptorSet set : sets )
 	{
@@ -4375,13 +4393,15 @@ void CVulkanContext::ReleaseManagedTextureObjects( ManagedTexture &t )
 
 void CVulkanContext::DestroyManagedTexture( int handle )
 {
-	if ( !IsValid() || handle < 0 || handle >= static_cast<int>( m_managedTextures.size() ) ||
-	     m_managedTextures[static_cast<size_t>( handle )].image == VK_NULL_HANDLE )
+	if ( !IsValid() || handle < 0 || handle >= static_cast<int>( m_managedTextures.size() ) )
+		return;
+	ManagedTexture &slot = m_managedTextures[static_cast<size_t>( handle )];
+	// A deferred render target has no image yet; a slot with neither is already destroyed.
+	if ( slot.image == VK_NULL_HANDLE && !slot.storagePending )
 		return;
 	// Retired after the frame being recorded is submitted and complete: until
 	// then no record can see the handle reused.
 	ReleaseManagedImport( handle );
-	ManagedTexture &slot = m_managedTextures[static_cast<size_t>( handle )];
 	// Texels still waiting to be uploaded to it are of no use now.
 	size_t keptUploads = 0;
 	for ( const PendingUpload &upload : m_pendingUploads )
@@ -4450,7 +4470,8 @@ void CVulkanContext::RetireCompletedTextures()
 	m_retiredTextures.resize( kept );
 }
 
-int CVulkanContext::CreateRenderTargetTexture( int width, int height, std::string *outError )
+int CVulkanContext::CreateRenderTargetTexture(
+    int width, int height, std::string *outError, bool deferStorage )
 {
 	CFrameCostScope cost( m_frameCost, kCostTextureCreate );
 	if ( !IsValid() || m_renderPassTarget == VK_NULL_HANDLE )
@@ -4470,13 +4491,42 @@ int CVulkanContext::CreateRenderTargetTexture( int width, int height, std::strin
 		SetError( outError, "swapchain format cannot back a render-target texture" );
 		return -1;
 	}
+	// Deferred: the target reads and clears to opaque black until something
+	// actually draws into, copies into or imports it, at which point
+	// MaterializeRenderTarget builds its storage. This avoids ~96 MiB per
+	// full-frame target at 4K for the several the material system never uses.
+	if ( deferStorage && m_unrenderedTargetHandle >= 0 )
+	{
+		const ManagedTexture &black =
+		    m_managedTextures[static_cast<size_t>( m_unrenderedTargetHandle )];
+		ManagedTexture t;
+		t.width = static_cast<uint32_t>( width );
+		t.height = static_cast<uint32_t>( height );
+		t.mipLevels = 1;
+		t.layers = 1;
+		t.depth = 1;
+		t.format = m_swapFormat;
+		t.uploaded = true;
+		t.renderTarget = true;
+		t.storagePending = true;
+		t.view = black.view;
+		t.srgbView = black.srgbView;
+		t.descSet = black.descSet;
+		t.descSetSrgb = black.descSetSrgb;
+		return StoreManagedTexture( t );
+	}
 	const int handle = CreateManagedTexture( width, height, m_swapFormat, outError,
 	    VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, 1,
 	    m_srgbAttachments ? m_swapFormatSrgb : VK_FORMAT_UNDEFINED );
 	if ( handle < 0 )
 		return -1;
-	ManagedTexture &t = m_managedTextures[static_cast<size_t>( handle )];
+	if ( !BuildRenderTargetStorage( m_managedTextures[static_cast<size_t>( handle )], outError ) )
+		return -1;
+	return handle;
+}
 
+bool CVulkanContext::BuildRenderTargetStorage( ManagedTexture &t, std::string *outError )
+{
 	VkImageCreateInfo di = {};
 	di.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
 	di.imageType = VK_IMAGE_TYPE_2D;
@@ -4492,7 +4542,7 @@ int CVulkanContext::CreateRenderTargetTexture( int width, int height, std::strin
 	di.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 	if ( !CreateImage( di, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &t.depthImage, &t.depthMemory,
 	         "render-target depth", outError ) )
-		return -1;
+		return false;
 
 	VkImageViewCreateInfo dv = {};
 	dv.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -4503,7 +4553,7 @@ int CVulkanContext::CreateRenderTargetTexture( int width, int height, std::strin
 	if ( vkCreateImageView( m_device, &dv, nullptr, &t.depthView ) != VK_SUCCESS )
 	{
 		SetError( outError, "vkCreateImageView (render-target depth) failed" );
-		return -1;
+		return false;
 	}
 
 	VkImageView attachments[] = { t.view, t.depthView };
@@ -4518,7 +4568,7 @@ int CVulkanContext::CreateRenderTargetTexture( int width, int height, std::strin
 	if ( vkCreateFramebuffer( m_device, &fb, nullptr, &t.framebuffer ) != VK_SUCCESS )
 	{
 		SetError( outError, "vkCreateFramebuffer (render target) failed" );
-		return -1;
+		return false;
 	}
 	if ( t.srgbView != VK_NULL_HANDLE && m_srgbAttachments )
 	{
@@ -4528,7 +4578,7 @@ int CVulkanContext::CreateRenderTargetTexture( int width, int height, std::strin
 		if ( vkCreateFramebuffer( m_device, &fb, nullptr, &t.framebufferSrgb ) != VK_SUCCESS )
 		{
 			SetError( outError, "vkCreateFramebuffer (render target, sRGB) failed" );
-			return -1;
+			return false;
 		}
 	}
 
@@ -4537,7 +4587,7 @@ int CVulkanContext::CreateRenderTargetTexture( int width, int height, std::strin
 	// opaque black, as a freshly created D3D9 render target does in practice.
 	VkCommandBuffer cmd = VK_NULL_HANDLE;
 	if ( !BeginSingleTimeCommands( &cmd, outError ) )
-		return -1;
+		return false;
 	VkImageMemoryBarrier toDst[2] = {};
 	for ( VkImageMemoryBarrier &b : toDst )
 	{
@@ -4575,11 +4625,73 @@ int CVulkanContext::CreateRenderTargetTexture( int width, int height, std::strin
 	    VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT, 0, 0,
 	    nullptr, 0, nullptr, 2, ready );
 	if ( !EndSingleTimeCommands( cmd, outError ) )
-		return -1;
+		return false;
 
 	t.renderTarget = true;
 	t.uploaded = true;
-	return handle;
+	return true;
+}
+
+bool CVulkanContext::MaterializeRenderTarget( int handle, std::string *outError )
+{
+	if ( handle < 0 || handle >= static_cast<int>( m_managedTextures.size() ) )
+	{
+		SetError( outError, "MaterializeRenderTarget with an invalid handle" );
+		return false;
+	}
+	const ManagedTexture &shell = m_managedTextures[static_cast<size_t>( handle )];
+	if ( !shell.storagePending )
+		return true;
+	// Capture the shell's facts first: CreateManagedTexture may reallocate
+	// m_managedTextures and invalidate `shell`.
+	const uint32_t width = shell.width, height = shell.height;
+	std::string label = shell.debugName;
+	const int builtHandle =
+	    CreateManagedTexture( static_cast<int>( width ), static_cast<int>( height ), m_swapFormat,
+	        outError, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, 1,
+	        m_srgbAttachments ? m_swapFormatSrgb : VK_FORMAT_UNDEFINED );
+	if ( builtHandle < 0 )
+		return false;
+	ManagedTexture built = m_managedTextures[static_cast<size_t>( builtHandle )];
+	m_managedTextures[static_cast<size_t>( builtHandle )] = ManagedTexture();
+	m_freeTextureHandles.push_back( builtHandle );
+	if ( !BuildRenderTargetStorage( built, outError ) )
+	{
+		ReleaseManagedTextureObjects( built );
+		return false;
+	}
+	built.debugName = std::move( label );
+	ManagedTexture &t = m_managedTextures[static_cast<size_t>( handle )];
+	t = built;
+	t.storagePending = false;
+	return true;
+}
+
+void CVulkanContext::EnsureRenderTargetStorage( int handle )
+{
+	if ( !IsStoragePending( handle ) )
+		return;
+	std::string error;
+	if ( MaterializeRenderTarget( handle, &error ) )
+		return;
+	const std::string name = handle >= 0 && handle < static_cast<int>( m_managedTextures.size() )
+	                             ? m_managedTextures[static_cast<size_t>( handle )].debugName
+	                             : std::string();
+	const std::string message =
+	    name.empty()
+	        ? std::string(
+	              "render.device.vulkan: out of device memory allocating a render target: " ) +
+	              error
+	        : std::string(
+	              "render.device.vulkan: out of device memory allocating render target '" ) +
+	              name + "': " + error;
+	if ( m_config.fatalError )
+		m_config.fatalError( message.c_str() );
+	else
+	{
+		Log( "fatal: %s\n", message.c_str() );
+		std::abort();
+	}
 }
 
 void CVulkanContext::SetManagedTextureSamplerState( int handle, int samplerState )
@@ -5084,6 +5196,10 @@ CVulkanContext::DynDraw &CVulkanContext::AppendRecord( int kind )
 	// on-demand capture (ReadPixels) until the engine starts drawing again.
 	if ( m_dynFramePresented )
 		ClearDynamicQueue();
+	// A render target drawn into for the first time allocates its deferred
+	// storage now, before the draw records against it.
+	if ( kind == kRecordDraw && IsStoragePending( m_dynTarget ) )
+		EnsureRenderTargetStorage( m_dynTarget );
 	DynDraw d;
 	d.kind = kind;
 	d.target = m_dynTarget;
@@ -5127,6 +5243,14 @@ void CVulkanContext::QueueClear( bool color, bool depth, bool stencil )
 	stencil = stencil && m_stencilBits > 0;
 	if ( !color && !depth && !stencil )
 		return;
+	// A deferred target already reads opaque black: a color-only clear to that
+	// value is a no-op, so it needs neither storage nor a record (the engine
+	// clears its never-used full-frame targets once at creation).
+	if ( IsStoragePending( m_dynTarget ) && color && !depth && !stencil &&
+	     m_clearColor.float32[0] == 0.0f && m_clearColor.float32[1] == 0.0f &&
+	     m_clearColor.float32[2] == 0.0f && m_clearColor.float32[3] == 1.0f )
+		return;
+	EnsureRenderTargetStorage( m_dynTarget );
 	DynDraw &d = AppendRecord( kRecordClear );
 	NoteSceneChanged();
 	d.clearColor = color;
@@ -5147,6 +5271,8 @@ bool CVulkanContext::QueueCopyToTexture(
 {
 	if ( !IsRenderTargetTexture( dstHandle ) || dstHandle == m_dynTarget )
 		return false;
+	// Copying into a deferred target allocates its storage now.
+	EnsureRenderTargetStorage( dstHandle );
 	// The depth image the alpha pass reads is the scene capture's: make sure it
 	// exists, and have glass capture again after this copy has reused it.
 	std::string error;
@@ -7236,6 +7362,9 @@ render::device::TextureId CVulkanContext::ImportManagedTexture( int handle, bool
 	using render::device::ResourceUsage;
 	if ( !m_hostDevice || handle < 0 || handle >= static_cast<int>( m_managedTextures.size() ) )
 		return {};
+	// Importing a deferred target allocates its storage first (its contents are
+	// only ever consumed here after something has drawn into it).
+	EnsureRenderTargetStorage( handle );
 	const ManagedTexture &texture = m_managedTextures[static_cast<size_t>( handle )];
 	// srgb asks for linear values: an 8-bit or BC image decodes through its
 	// sRGB view; a 16-bit or float image already holds linear values.
