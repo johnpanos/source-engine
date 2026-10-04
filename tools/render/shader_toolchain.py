@@ -405,6 +405,17 @@ GENERATED = {
          DEVICE_OPTIONS + ("-DSEEDED_RPRB_NO_FACING",)),
         ("kReflectionProbesRelightAddedOnly", LAB + "/reflection_probes_check.comp",
          DEVICE_OPTIONS + ("-DSEEDED_RPRB_RELIGHT_ADDED_ONLY",)))),
+    "tree_sway_check_spv.h": ("render::lab::spirv",
+        "render_lab's shared foliage deformation and negative controls", (
+        ("kTreeSwayCheck", LAB + "/tree_sway_check.comp", DEVICE_OPTIONS),
+        ("kTreeSwayStaticIgnored", LAB + "/tree_sway_check.comp",
+         DEVICE_OPTIONS + ("-DSEEDED_TREE_STATIC_IGNORED",)),
+        ("kTreeSwayWindUnrotated", LAB + "/tree_sway_check.comp",
+         DEVICE_OPTIONS + ("-DSEEDED_TREE_WIND_UNROTATED",)),
+        ("kTreeSwayHangingIgnored", LAB + "/tree_sway_check.comp",
+         DEVICE_OPTIONS + ("-DSEEDED_TREE_HANGING_IGNORED",)),
+        ("kTreeSwayRootIgnored", LAB + "/tree_sway_check.comp",
+         DEVICE_OPTIONS + ("-DSEEDED_TREE_ROOT_IGNORED",)))),
     "selfillum_defects_spv.h": ("render::lab::spirv",
         "render_lab's self-illumination suite's seeded programs (render.lab.selfillum "
         "sensitivity, RFC 0016 surface model emission term)", (

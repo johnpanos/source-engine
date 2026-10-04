@@ -6895,6 +6895,7 @@ void CVulkanContext::RecordCorePassSections( render::device::CommandEncoder &enc
 			target.ssbumpNormalized = terms.ssbumpNormalized;
 			target.fog = terms.fog;
 			target.time = terms.time;
+			std::memcpy( target.foliage, terms.foliage, sizeof( target.foliage ) );
 			target.waterReflectTintScale = terms.waterReflectTintScale;
 		}
 		tags.clear();

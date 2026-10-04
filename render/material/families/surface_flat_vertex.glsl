@@ -11,12 +11,7 @@ layout( location = 1 ) in vec2 uv0;
 layout( location = 2 ) in vec2 uv1;
 layout( location = 3 ) in vec4 vertexColor;
 
-layout( set = 2, binding = 0 ) uniform Material
-{
-	vec4 tint;
-	vec4 flags;
-	vec4 state; // y: 1 when the vertex color is gamma-encoded
-} material;
+#include "surface_material.glsl"
 
 layout( push_constant ) uniform Draw
 {

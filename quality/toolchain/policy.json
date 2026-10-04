@@ -134,6 +134,7 @@
     }
   },
   "targets": {
+    "input_gamepad_slots_test": {"dialect": "cxx20", "rfc": "0001"},
     "content_hash": {"dialect": "cxx20", "rfc": "0015"},
     "asset_identity": {"dialect": "cxx20", "rfc": "0015"},
     "asset_index": {"dialect": "cxx20", "rfc": "0015"},

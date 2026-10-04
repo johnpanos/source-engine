@@ -85,3 +85,16 @@ def build(bld):
 			install_path = bld.env.TESTDIR,
 			idx = bld.get_taskgen_count()
 		)
+
+	if bld.env.SDL3:
+		bld.program(
+			source = ['../unittests/platformtest/sdl3/test_gamepad_slots.cpp'],
+			target = 'input_gamepad_slots_test',
+			name = 'input_gamepad_slots_test',
+			arch_module = 'platform.sdl3.native-tests',
+			features = 'cxx',
+			includes = ['../public'],
+			use = ['appframework', 'inputsystem', 'tier1', 'tier0', 'vstdlib', 'SDL3'],
+			install_path = bld.env.TESTDIR,
+			idx = bld.get_taskgen_count()
+		)

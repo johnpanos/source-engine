@@ -2260,6 +2260,7 @@ void CoreWorld::RecordWorldBatch( std::span<const std::uint32_t> tags,
 	std::copy( target.fog.params, target.fog.params + 4, world.fogParams );
 	world.fogEyeZ = target.fog.eyeZ;
 	world.time = target.time;
+	std::memcpy( world.foliage, target.foliage, sizeof( world.foliage ) );
 	world.waterReflectTintScale = target.waterReflectTintScale;
 	const std::shared_ptr<const pass::world::StageLightingInputs> inputs =
 	    m_Pass.LightingInputs( tag, target.streamEpoch );

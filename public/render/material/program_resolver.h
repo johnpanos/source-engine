@@ -85,6 +85,7 @@ struct FrameTerms
 	// camera's right in the water plane (normalized) and the view's viewport
 	// (x, y, 1 / width, 1 / height).
 	float time = 0.0f;
+	float foliage[2][4] = {};
 	float waterReflectTintScale = 1.0f;
 	float viewRight[2] = { 1.0f, 0.0f };
 	float viewport[4] = { 0.0f, 0.0f, 1.0f, 1.0f };

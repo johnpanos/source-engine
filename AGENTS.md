@@ -2168,3 +2168,12 @@ section is kept only as the starting point.
 - RFCs 0005/0006 and this roadmap define future implementation work. No runner,
   C++20 build migration, physics backend, editor port, or scheduler is delivered
   merely by adding these documents.
+
+## Portal 2 local split-screen (user request, 2026-10-03)
+
+First setup: two controllers; worktree creation disabled for this work. Status:
+`partial`: the SDL3 provider's independent controller snapshots and native
+virtual-controller fixture are implemented. Engine local-player admission,
+commands/prediction, server ownership/visibility, split HUD/views and physical
+controller gameplay remain open. [Progress and reproduction](RFC/portal2-splitscreen-progress.md).
+This does not complete LAN pairing R93 or render multi-view acceptance.

@@ -49,6 +49,7 @@
 #include "c_func_reflective_glass.h"
 #include "KeyValues.h"
 #include "renderparm.h"
+#include "env_wind_shared.h"
 #include "studio_stats.h"
 #include "con_nprint.h"
 #include "clientmode_shared.h"
@@ -2068,6 +2069,23 @@ void CViewRender::RenderView( const CViewSetup &view, int nClearFlags, int whatT
 	}
 
 	CMatRenderContextPtr pRenderContext( materials );
+	if ( m_nFoliageFrame != gpGlobals->framecount )
+	{
+		m_vecPreviousFoliageWind = m_vecFoliageWind;
+		m_flPreviousFoliageTime = m_flFoliageTime;
+		GetWindspeedAtTime( gpGlobals->curtime, m_vecFoliageWind );
+		m_flFoliageTime = gpGlobals->curtime;
+		if ( m_nFoliageFrame < 0 || m_flFoliageTime < m_flPreviousFoliageTime )
+		{
+			m_vecPreviousFoliageWind = m_vecFoliageWind;
+			m_flPreviousFoliageTime = m_flFoliageTime;
+		}
+		m_nFoliageFrame = gpGlobals->framecount;
+	}
+	pRenderContext->SetVectorRenderingParameter( VECTOR_RENDERPARM_WIND_DIRECTION, m_vecFoliageWind );
+	pRenderContext->SetVectorRenderingParameter( VECTOR_RENDERPARM_PREVIOUS_WIND_DIRECTION, m_vecPreviousFoliageWind );
+	pRenderContext->SetFloatRenderingParameter( FLOAT_RENDERPARM_FOLIAGE_TIME, m_flFoliageTime );
+	pRenderContext->SetFloatRenderingParameter( FLOAT_RENDERPARM_PREVIOUS_FOLIAGE_TIME, m_flPreviousFoliageTime );
 	ITexture *saveRenderTarget = pRenderContext->GetRenderTarget();
 	pRenderContext.SafeRelease(); // don't want to hold for long periods in case in a locking active share thread mode
 

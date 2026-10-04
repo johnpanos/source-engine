@@ -35,7 +35,7 @@ constexpr std::array<std::string_view, 12> kClaimed = { "basetexture", "color", 
 
 // One modernized dielectric point. Other variables wait for their surface
 // terms instead of being dropped during import.
-constexpr std::array<std::string_view, 54> kMeshClaimed = { "basetexture", "color", "color2",
+constexpr std::array<std::string_view, 71> kMeshClaimed = { "basetexture", "color", "color2",
     "alpha", "translucent", "bumpmap", "phong", "phongexponent", "phongboost", "phongtint",
     "phongfresnelranges", "model", "ignore_alpha_modulation", "selfillum", "selfillummask",
     "selfillumtint", "rimlightexponent", "rimlightboost", "selfillumfresnelminmaxexp",
@@ -46,7 +46,48 @@ constexpr std::array<std::string_view, 54> kMeshClaimed = { "basetexture", "colo
     "detailblendfactor", "detailtint", "blendtintbybasealpha", "blendtintcoloroverbase",
     "envmapfresnelminmaxexp", "envmaplightscale", "envmaplightscaleminmax", "additive",
     "lightwarptexture", "phongwarptexture", "envmapmask", "ssbump", "ssbumpmathfix", "forcephong",
-    "selfillumfresnel" };
+    "selfillumfresnel", "treesway", "treeswayheight", "treeswaystartheight", "treeswayradius",
+    "treeswaystartradius", "treeswayspeed", "treeswayspeedhighwindmultiplier", "treeswaystrength",
+    "treeswayscrumblespeed", "treeswayscrumblestrength", "treeswayscrumblefrequency",
+    "treeswayfalloffexp", "treeswayscrumblefalloffexp", "treeswayspeedlerpstart",
+    "treeswayspeedlerpend", "treeswaystatic", "lowqualityflashlightshadows" };
+
+std::optional<std::string> PackTreeSway( const ParameterBlock &block, SurfaceConstants &constants )
+{
+	const float mode = ReadParameter( block, "treesway" );
+	if ( mode < 0 || mode > 2 )
+		return "$treesway needs mode 0, 1 or 2";
+	constants.treeWind[3] = mode;
+	if ( mode == 0 )
+		return std::nullopt;
+	const char *keys[4][4] = {
+	    { "treeswayheight", "treeswaystartheight", "treeswayradius", "treeswaystartradius" },
+	    { "treeswayspeed", "treeswaystrength", "treeswayscrumblefrequency", "treeswayscrumblestrength" },
+	    { "treeswayspeedhighwindmultiplier", "treeswayscrumblefalloffexp", "treeswayfalloffexp", "treeswayscrumblespeed" },
+	    { "treeswayspeedlerpstart", "treeswayspeedlerpend", "treeswaystatic", "treesway" } };
+	float *rows[] = { constants.treeGeometry, constants.treeMotion, constants.treeCurves, constants.treeWind };
+	for ( int row = 0; row < 4; ++row )
+		for ( int column = 0; column < 4; ++column )
+		{
+			rows[row][column] = ReadParameter( block, keys[row][column] );
+			if ( !std::isfinite( rows[row][column] ) )
+				return std::string( "$" ) + keys[row][column] + " must be finite";
+		}
+	const auto &geometry = constants.treeGeometry;
+	if ( geometry[0] == 0 || geometry[2] <= 0 )
+		return "$treeswayheight must be nonzero and $treeswayradius positive";
+	if ( geometry[1] < 0 || geometry[1] >= 1 || geometry[3] < 0 || geometry[3] >= 1 )
+		return "$treeswaystartheight and $treeswaystartradius must be in [0, 1)";
+	for ( float value : constants.treeMotion )
+		if ( value < 0 )
+			return "tree sway speeds, strengths and frequency must be nonnegative";
+	const auto &curves = constants.treeCurves;
+	if ( curves[0] < 0 || curves[1] <= 0 || curves[2] <= 0 || curves[3] < 0 )
+		return "tree sway falloff exponents must be positive and speeds nonnegative";
+	if ( constants.treeWind[0] < 0 || constants.treeWind[1] <= constants.treeWind[0] )
+		return "$treeswayspeedlerpend must exceed the nonnegative $treeswayspeedlerpstart";
+	return std::nullopt;
+}
 
 } // namespace
 
@@ -101,6 +142,14 @@ VertexLitMeshClaim ClaimVertexLitMesh( const ParameterBlock &block )
 		return claim;
 	}
 	const bool phong = ReadFlag( block, "phong" ) || ReadFlag( block, "forcephong" );
+	if ( auto invalid = PackTreeSway( block, claim.constants ) )
+	{
+		claim.reason = *invalid;
+		return claim;
+	}
+	// $lowqualityflashlightshadows is a legacy shader cost hint, not a light
+	// visibility term. The native point uses its profile's full shadow filter
+	// for either value; it never reduces the authored light or its coverage.
 	const float exponent = ReadParameter( block, "phongexponent" );
 	const float boost = ReadParameter( block, "phongboost" );
 	if ( !std::isfinite( exponent ) ||

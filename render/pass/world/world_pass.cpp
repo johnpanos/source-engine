@@ -2084,6 +2084,9 @@ void WorldPass::RecordBatch(
 	if ( view.lights )
 		terms.areas = view.lights->areas;
 	terms.time = target.time;
+	std::memcpy( terms.foliage, target.foliage, sizeof( terms.foliage ) );
+	if ( !view.previousViewValid )
+		std::copy_n( terms.foliage[0], 4, terms.foliage[1] );
 	terms.waterReflectTintScale = target.waterReflectTintScale;
 	std::copy( view.viewRight, view.viewRight + 2, terms.viewRight );
 	if ( view.viewport.width > 0.0f && view.viewport.height > 0.0f )

@@ -14,12 +14,7 @@ layout( location = 5 ) in vec3 inTangentS;
 // Tangent T in xyz and the bumped pages' offset in w (adjacent in the vertex).
 layout( location = 6 ) in vec4 inTangentTOffset;
 
-layout( set = 2, binding = 0 ) uniform Material
-{
-	vec4 tint;
-	vec4 flags;
-	vec4 state; // y: 1 when the vertex color is gamma-encoded
-} material;
+#include "surface_material.glsl"
 
 layout( push_constant ) uniform Draw
 {

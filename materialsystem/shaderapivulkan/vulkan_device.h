@@ -338,6 +338,7 @@ public:
 		bool ssbumpNormalized = false;
 		render::legacy::CorePassFog fog;
 		float time = 0.0f;
+		float foliage[2][4] = {};
 		float waterReflectTintScale = 1.0f;
 		bool operator==( const CorePassTerms & ) const = default;
 	};

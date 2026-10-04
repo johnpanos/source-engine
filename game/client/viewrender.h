@@ -479,6 +479,13 @@ private:
 
 	// This stores the current view
  	CViewSetup		m_CurrentView;
+	// Wind is sampled once per client frame. Render slots copy both samples,
+	// so queued execution and screenshot replay never query newer wind state.
+	int m_nFoliageFrame = -1;
+	Vector m_vecFoliageWind = Vector( 0, 0, 0 );
+	Vector m_vecPreviousFoliageWind = Vector( 0, 0, 0 );
+	float m_flFoliageTime = 0.0f;
+	float m_flPreviousFoliageTime = 0.0f;
 
 	// VIS Overrides
 	// Set to true to turn off client side vis ( !!!! rendering will be slow since everything will draw )

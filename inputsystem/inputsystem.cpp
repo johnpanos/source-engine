@@ -259,6 +259,33 @@ bool CInputSystem::Connect( CreateInterfaceFn factory )
 	return true;
 }
 
+void *CInputSystem::QueryInterface( const char *pInterfaceName )
+{
+#if defined( USE_SDL3 )
+	if ( !Q_strcmp( pInterfaceName, GAMEPAD_SLOTS_INTERFACE_VERSION ) )
+		return static_cast<IGamepadSlots *>( this );
+#endif
+	return BaseClass::QueryInterface( pInterfaceName );
+}
+
+bool CInputSystem::GetGamepadState( int slot, gamepads::State &state ) const
+{
+	if ( slot < 0 || slot >= gamepads::kSlotCount )
+		return false;
+	state = m_GamepadState[slot];
+	if ( !m_bEnabled )
+	{
+		state.buttons = 0;
+		memset( state.axes, 0, sizeof( state.axes ) );
+	}
+	return true;
+}
+
+void CInputSystem::SetGamepadRumble( int slot, float left, float right )
+{
+	if ( slot >= 0 && slot < gamepads::kSlotCount )
+		SetGamepadDeviceRumble( slot, left, right, !m_bEnabled );
+}
 
 //-----------------------------------------------------------------------------
 // Shutdown
@@ -433,6 +460,11 @@ void CInputSystem::ClearInputState()
 //-----------------------------------------------------------------------------
 void CInputSystem::ResetInputState()
 {
+	for ( gamepads::State &state : m_GamepadState )
+	{
+		state.buttons = 0;
+		memset( state.axes, 0, sizeof( state.axes ) );
+	}
 	ReleaseAllButtons();
 	ZeroAnalogState( 0, ANALOG_CODE_LAST - 1 );
 	memset( m_appXKeys, 0, XUSER_MAX_COUNT * XK_MAX_KEYS * sizeof(appKey_t) );

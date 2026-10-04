@@ -38,6 +38,7 @@
 #include "vibrator_device.h"
 #include "vibrator_policy.h"
 #include "gamepad_rumble.h"
+#include "inputsystem/igamepadslots.h"
 
 #include "steam/steam_api.h"
 
@@ -46,7 +47,7 @@
 //-----------------------------------------------------------------------------
 // Implementation of the input system
 //-----------------------------------------------------------------------------
-class CInputSystem : public CTier2AppSystem< IInputSystem >
+class CInputSystem : public CTier2AppSystem<IInputSystem>, public IGamepadSlots
 {
 	typedef CTier2AppSystem< IInputSystem > BaseClass;
 
@@ -58,6 +59,12 @@ public:
 	// Inherited from IAppSystem
 	virtual	InitReturnVal_t Init();
 	virtual bool Connect( CreateInterfaceFn factory );
+	virtual void *QueryInterface( const char *pInterfaceName );
+	virtual bool GetGamepadState( int slot, gamepads::State &state ) const;
+	virtual void SetGamepadRumble( int slot, float left, float right );
+	int FindGamepadSlot( int deviceId ) const;
+	void CloseGamepads();
+	void SetGamepadDeviceRumble( int slot, float left, float right, bool disabled );
 
 	virtual void Shutdown();
 
@@ -437,10 +444,12 @@ public:
 	bool m_bVibratorWatchInstalled;
 	CDeviceVibrator m_DeviceVibrator;
 	vibrator::CRumbleStream m_VibratorStream;
-	// The active gamepad's rumble lease (slot 0 only).
-	gamepadrumble::CRumbleLease m_GamepadRumble;
+	// One rumble lease per owned device.
+	gamepadrumble::CRumbleLease m_GamepadRumble[gamepads::kSlotCount];
+	gamepads::State m_GamepadState[gamepads::kSlotCount];
 	bool m_bXController;
-	JoystickInfo_t m_pJoystickInfo[ MAX_JOYSTICKS ];
+	// MAX_JOYSTICKS and the frozen button/analog enums stay unchanged.
+	JoystickInfo_t m_pJoystickInfo[gamepads::kSlotCount];
 
 	// Steam Controller
 	struct steampad_t

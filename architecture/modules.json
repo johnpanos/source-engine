@@ -311,15 +311,25 @@
         ],
         "legacyIncludes": [
           "appframework/ilaunchermgr.h",
-          "tier0/icommandline.h"
+          "tier0/icommandline.h",
+          "inputsystem/provider_catalog.h",
+          "inputsystem/iinputsystem.h",
+          "vstdlib/cvar.h"
         ],
         "allowedEdges": [
           "platform.window-provider-contract",
-          "platform.sdl3.launcher"
+          "platform.sdl3.launcher",
+          "platform.input-gamepad-contract"
         ],
         "uselib": [
           "SDL3"
         ]
+      },
+      {
+        "id": "platform.input-gamepad-contract",
+        "kind": "contract",
+        "paths": ["public/inputsystem/igamepadslots.h"],
+        "allowedEdges": []
       },
       {
         "id": "platform.window-provider-contract",
@@ -1609,6 +1619,7 @@
       "vector"
     ],
     "targets": {
+      "input_gamepad_slots_test": {"allowedUse": ["inputsystem", "appframework", "tier1", "tier0", "vstdlib", "SDL3"]},
       "content_hash": {"allowedUse": []},
       "asset_identity": {"allowedUse": ["content_hash"]},
       "asset_index": {"allowedUse": ["asset_identity", "content_hash"]},

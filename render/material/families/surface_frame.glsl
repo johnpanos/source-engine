@@ -46,4 +46,5 @@ layout( set = 0, binding = 0 ) uniform Frame
 	layout( row_major ) mat4 motionCurrentToClip;
 	layout( row_major ) mat4 motionPreviousToClip;
 	vec4 motionExtent; // width, height, valid previous view, reserved
+	vec4 foliage[2]; // xy horizontal wind, z animation time, current/previous frame
 } frame;

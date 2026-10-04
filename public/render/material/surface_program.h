@@ -151,8 +151,13 @@ struct SurfaceConstants
 	// when $selfillumfresnel weights the self-illuminated region
 	// (vertexlit_family.h). Neutral (w 0) for every other point.
 	float selfIllumFresnel[4] = { 0.0f, 1.0f, 1.0f, 0.0f };
+	// tree_sway.glsl: geometry, motion, falloff curves, wind controls/mode.
+	float treeGeometry[4] = { 1000.0f, 0.1f, 300.0f, 0.2f };
+	float treeMotion[4] = { 1.0f, 10.0f, 12.0f, 10.0f };
+	float treeCurves[4] = { 2.0f, 1.0f, 1.5f, 5.0f };
+	float treeWind[4] = { 3.0f, 6.0f, 0.0f, 0.0f }; // lerp start/end, static, mode
 };
-static_assert( sizeof( SurfaceConstants ) == 464 );
+static_assert( sizeof( SurfaceConstants ) == 528 );
 
 // An area light as the frame block holds it (render.area-light.v1: the
 // rectangle, its radiance and its reach).
@@ -310,8 +315,11 @@ struct SurfaceFrame
 	float motionCurrentToClip[16] = {};
 	float motionPreviousToClip[16] = {};
 	float motionExtent[4] = {};
+	// Client-owned horizontal wind and animation clock: xy wind, z time.
+	// Previous sample is captured with the same frame as the previous view.
+	float foliage[2][4] = {};
 };
-static_assert( sizeof( SurfaceFrame ) == 416 + 64 * kSurfaceMaxAreaLights );
+static_assert( sizeof( SurfaceFrame ) == 448 + 64 * kSurfaceMaxAreaLights );
 
 // The flat vertex (surface_flat.vert): position, base and lightmap
 // coordinates, and color as UNORM8x4 (RGBA).
@@ -522,6 +530,7 @@ struct SurfaceVariant
 	bool temporal = false;
 	std::uint32_t materialFeatures = kSurfaceDynamicMaterialFeatures;
 	std::uint32_t viewFeatures = kSurfaceAllViewFeatures;
+	std::uint32_t treeSwayMode = 0; // vertex specialization; 0 has no deformation cost
 
 	auto operator<=>( const SurfaceVariant & ) const = default;
 	bool operator==( const SurfaceVariant & ) const = default;

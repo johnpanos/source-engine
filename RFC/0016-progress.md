@@ -8711,3 +8711,49 @@ named per-material diagnostics and linewise console output are the first
 boundary fix. The full gate stays open until material terms, geometry,
 animation, alpha coverage, cutout/transmission shadows and the map's actual
 runtime draw cohorts have evidence. No claim is loosened by this census work.
+
+### RPRB v5 reader and upload repair
+
+The published map carries 150 reflection probes in RPRB v5. The engine's
+directory check rejected v4/v5, the shared C++ reader rejected v5, and its
+GPU packing copied only one candidate word per cell. The already shared
+shader supports four words; the reader and uploader now preserve all four
+in their serialized cell order. Versions 1/2 retain the 16-probe limit,
+versions 3/4 retain 64, and version 5 accepts 256. Directory and payload
+versions must agree. Failed validation leaves the caller's layout unchanged.
+`mapcontainer` owns the supported-version check; no shading copy is added.
+
+Evidence under `quality-results/intro4-rendercore-completion/`:
+
+- `rprb-reader.json`: release conformance, 143 checks pass. Covers independent
+  64/256-probe fixtures, a conservative 150-probe subset with unchanged
+  captured texels, missing ranks across every mask-word boundary, undeclared
+  bits in the partial third and unused fourth words, GPU packing bounds and
+  complete candidate bytes, plus the original malformed/fuzz/blend/relight
+  corpus. The unknown-version mutation uses version 6; version 4 is declared.
+- `rprb-candidates-lab.log`: Vulkan lab, 29 checks pass; every grid cell,
+  boundaries and outside points, 64/256 probes, four selection modes.
+- `rprb-probes-lab.log`: Vulkan lab, 40 checks pass, including relighting and
+  the independent blend oracle. Both suites report zero validation failures.
+- `rprb-python-format.log`: eight format/relight/capacity Python tests pass.
+  The broader 37-test run has five unrelated placement failures, retained in
+  `rprb-python.log`; this repair does not change placement behavior.
+- `rprb-boot/evidence.json` and `rprb-boot/runtime/engine.log`: Portal 2,
+  native Vulkan, queued mode, strict rendercore world, baked indirect and
+  runtime direct light. Uploads v5, 150 probes, 8192 x 5019 GPU texture.
+  Claimed material slots rise from 270/357 to 336/357; 486/486 world surfaces,
+  6599 core views, zero failures. Static props remain 427/498 (452 eligible),
+  and 123 model import candidates still include four MDL refusals. The boot
+  image proves reachable rendering only; it does not close geometry,
+  foliage deformation, shadow, temporal, nested-view or performance gates.
+- `style.log` and `arch-all.log`: changed-line style and full architecture
+  checks pass. The lab uses isolated `build-intro4-support-lab` with a clean
+  checkout of the profile's pinned KTX revision; existing caches/profiles and
+  the dirty dependency checkout are preserved. Product evidence is privately
+  installed through `--destdir` using `build-p2-fsr`.
+
+Reproduction: `python3 tools/quality/conformance.py check --suite
+world.reflection-probes --config release`; `python3 tools/render/lab.py suite
+reflection-candidates --tree build-intro4-support-lab --validate`; the same
+command with `reflection-probes`; the boot runner's exact options are saved
+in `rprb-boot/evidence.json`. R96/K12 and this map's completion remain active.

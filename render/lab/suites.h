@@ -68,6 +68,7 @@
 
 namespace render::lab
 {
+int RunTreeSwaySuite( int argc, char **argv );
 
 int RunTemporalSuite( int argc, char **argv );
 

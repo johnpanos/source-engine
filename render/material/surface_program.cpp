@@ -250,6 +250,9 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::Pipeline(
 		return foundation::MakeUnexpected( SurfaceStatus::kInvalidRequest );
 	if ( ( variant.terms & kSurfaceTransmission ) && !( variant.terms & kSurfacePbr ) )
 		return foundation::MakeUnexpected( SurfaceStatus::kInvalidRequest );
+	if ( variant.treeSwayMode > 2 ||
+	     ( variant.treeSwayMode && variant.layout != SurfaceVertexLayout::kModel ) )
+		return foundation::MakeUnexpected( SurfaceStatus::kInvalidRequest );
 	// The lightmap basis is the pbr point's, on a world surface.
 	if ( ( variant.terms & kSurfaceLightmapTerms ) &&
 	     ( variant.layout != SurfaceVertexLayout::kWorld || !( variant.terms & kSurfacePbr ) ||
@@ -294,7 +297,10 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::Pipeline(
 	    { ShaderStage::kFragment, 4, variant.viewFeatures } };
 	// The model vertex reads the terms too (the vertexlit point's lighting).
 	if ( model )
+	{
 		constants.push_back( { ShaderStage::kVertex, 0, variant.terms } );
+		constants.push_back( { ShaderStage::kVertex, 1, variant.treeSwayMode } );
+	}
 	shaderlib::AppendDebugConstants( debug, ShaderStage::kFragment, constants );
 	const VertexAttribute flatAttributes[] = { { 0, VertexFormat::kFloat3, 0, 0 },
 	    { 1, VertexFormat::kFloat2, 12, 0 }, { 2, VertexFormat::kFloat2, 20, 0 },

@@ -864,6 +864,7 @@ std::optional<GroupRequest> ProgramResolver::FrameGroup(
 		std::copy( terms.sunColor, terms.sunColor + 4, frame.sunColor );
 		std::copy( terms.sunShadow, terms.sunShadow + 4, frame.sunShadow );
 		frame.water[0] = terms.time;
+		std::memcpy( frame.foliage, terms.foliage, sizeof( frame.foliage ) );
 		frame.water[1] = terms.waterReflectTintScale;
 		frame.water[2] = terms.viewRight[0];
 		frame.water[3] = terms.viewRight[1];

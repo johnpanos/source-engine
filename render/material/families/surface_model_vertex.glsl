@@ -19,6 +19,7 @@ layout( location = 3 ) in vec2 uv0;
 
 // The program's terms (surface.frag's kTerms).
 layout( constant_id = 0 ) const int kTerms = 0;
+layout( constant_id = 1 ) const int kTreeSwayMode = 0;
 const int kHalfLambert = 16;
 const int kVertexLit = 8192;
 const int kMeshDirect = 8388608;
@@ -30,9 +31,11 @@ layout( push_constant ) uniform Draw
 } draw;
 
 #include "surface_lighting.glsl"
+#include "surface_material.glsl"
+#include "surface_frame.glsl"
+#include "../../shaders/common/tree_sway.glsl"
 
 #ifdef SURFACE_TEMPORAL
-#include "surface_frame.glsl"
 layout( location = 7 ) in vec3 previousPosition;
 layout( location = 11 ) out vec4 motionCurrent;
 layout( location = 12 ) out vec4 motionPrevious;
@@ -83,11 +86,15 @@ float CosineTerm( int i, vec3 position, vec3 normal )
 
 void main()
 {
-	const vec4 world = draw.world * vec4( position, 1.0 );
-	gl_Position = draw.toClip * vec4( position, 1.0 );
+	const vec3 animated = TreeSway( position, draw.world, frame.foliage[0].xy, frame.foliage[0].z,
+	    kTreeSwayMode, material.treeGeometry, material.treeMotion, material.treeCurves, material.treeWind );
+	const vec4 world = draw.world * vec4( animated, 1.0 );
+	gl_Position = draw.toClip * vec4( animated, 1.0 );
 #ifdef SURFACE_TEMPORAL
     motionCurrent = frame.motionCurrentToClip * world;
-    motionPrevious = frame.motionPreviousToClip * ( draw.world * vec4( previousPosition, 1.0 ) );
+    const vec3 previous = TreeSway( previousPosition, draw.world, frame.foliage[1].xy, frame.foliage[1].z,
+        kTreeSwayMode, material.treeGeometry, material.treeMotion, material.treeCurves, material.treeWind );
+    motionPrevious = frame.motionPreviousToClip * ( draw.world * vec4( previous, 1.0 ) );
 #endif
 	baseUv = uv0;
 	lightmapUv = vec2( 0.0 );

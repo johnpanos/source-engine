@@ -3307,6 +3307,14 @@ private:
 		// scale: the client draws the water views at a quarter of the tone-map
 		// scale in integer HDR, which Water's tint multiplies back.
 		terms.time = static_cast<float>( Sys_FloatTime() ); // CShaderAPIVulkan::CurrentTime
+		const Vector wind = GetVectorRenderingParameter( VECTOR_RENDERPARM_WIND_DIRECTION );
+		const Vector previousWind = GetVectorRenderingParameter( VECTOR_RENDERPARM_PREVIOUS_WIND_DIRECTION );
+		terms.foliage[0][0] = wind.x;
+		terms.foliage[0][1] = wind.y;
+		terms.foliage[0][2] = GetFloatRenderingParameter( FLOAT_RENDERPARM_FOLIAGE_TIME );
+		terms.foliage[1][0] = previousWind.x;
+		terms.foliage[1][1] = previousWind.y;
+		terms.foliage[1][2] = GetFloatRenderingParameter( FLOAT_RENDERPARM_PREVIOUS_FOLIAGE_TIME );
 		terms.waterReflectTintScale = integerHdr ? 4.0f : 1.0f;
 		// The view's fog as SetPixelShaderFogParams and UpdatePixelFogColorConstant
 		// give it to a pass that writes sRGB and fogs to the scene's color.

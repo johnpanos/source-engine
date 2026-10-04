@@ -280,6 +280,7 @@ struct WorldTarget
 	// HDR, where the client draws the water views at a quarter of the tone-map
 	// scale).
 	float time = 0.0f;
+	float foliage[2][4] = {};
 	float waterReflectTintScale = 1.0f;
 	// The shadow atlas the composition drew for this slot's view (a world
 	// stage's lights with shadow tiles), in kSampled; invalid without one.

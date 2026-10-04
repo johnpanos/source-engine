@@ -126,6 +126,7 @@ struct VertexLitMeshClaim
 		                ( phongExponentTexture ? kSurfacePhongExponentTexture : 0u ) |
 		                ( detail ? kSurfaceDetail : 0u );
 		variant.detailMode = detailMode;
+		variant.treeSwayMode = std::uint32_t( constants.treeWind[3] );
 		variant.blend = blend;
 		variant.alphaWrite = blend == device::BlendMode::kOpaque && !alphaTest;
 		variant.layout = SurfaceVertexLayout::kWorld;
