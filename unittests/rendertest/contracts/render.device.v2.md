@@ -125,7 +125,7 @@ per resource, not per subresource.
 ## Not claimed
 
 Transient aliasing, parallel native recording, async compute and transfer
-queues, ray query, per-heap budgets (VMA is not pinned yet), pipeline caches.
+queues, ray query, pipeline caches.
 
 ## D25: initialized upload buffers (2026-10-02)
 
@@ -142,6 +142,18 @@ legacy engine or extension vtables; all in-tree core providers implement it.
 The shared suite checks independent snapshots after caller mutation, use without
 an encoder write, rejection of destination use, and cleanup. The texture cache
 is its first consumer, eliminating the ring-to-staging GPU transfer.
+
+## D26: memory budget snapshots
+
+`IRenderDevice2::ReadMemoryBudget()` is a nonblocking point-in-time query.
+Vulkan reports VMA's per-heap usage and budget when `VK_EXT_memory_budget` is
+enabled; otherwise it reports allocation usage as an estimate and marks the
+budget unknown. OpenGL reports logical buffer/texture storage as an estimate
+and leaves the driver budget unknown. Null reports the bytes held by its own
+buffer and texture storage, with no physical budget. Every snapshot carries
+the device epoch. Providers that cannot make a snapshot return
+`supported=false`; estimates and unknown budgets cannot drive a physical
+budget/eviction claim.
 
 
 ### Optional resource activity diagnostics

@@ -1066,8 +1066,13 @@ public:
 - **Upload rings** are adapter-owned. Each occupied range records the token
   that allows its reuse. Exhaustion defers the upload to the next
   submission and counts it; it never overwrites and never idles the device.
-- **Memory.** Adapters suballocate and report per-heap budget and use.
-  Aliasing of transient resources is a capability.
+- **Memory.** Adapters suballocate and expose a nonblocking per-heap memory
+  snapshot through `IRenderDevice2::ReadMemoryBudget`. Vulkan reports VMA heap
+  usage/budget when `VK_EXT_memory_budget` is enabled. OpenGL reports its own
+  logical buffer/texture storage estimate and marks the driver budget unknown;
+  the null adapter reports its exact in-memory resource storage and has no
+  physical budget. Consumers must not treat estimates or an unknown budget as
+  a driver allowance. Aliasing of transient resources is a capability.
 - **Encoders.** One encoder is recorded by one thread at a time; diagnostic
   builds check this with `platform::SequenceChecker`. Encoders are
   submitted in the order given to `Submit`.
@@ -2651,6 +2656,7 @@ public/render/
 │   └── pipeline_recipe.h PipelineRecipe → device::PipelineDesc for a given artifact format
 ├── resources/                              render.resources           [K4]
 │   ├── texture_cache.h   ITextureCache: residency, formats, revision, release by token
+│   ├── mip_feedback.h    MipFeedbackFrame: CPU requests from visible screen/UV footprints
 │   └── mesh_cache.h      IMeshCache: vertex and index residency, streaming uploads
 ├── material/                               render.material            [K4]
 │   ├── family.h          FamilyDesc, ParameterSchema, PassKindSet, CapabilityRequirements

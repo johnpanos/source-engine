@@ -347,6 +347,7 @@ public:
 	const DeviceFacts &Facts() const override { return m_Facts; }
 	DeviceState State() const override { return m_State; }
 	std::uint32_t Epoch() const override { return m_Epoch; }
+	MemoryBudgetSnapshot ReadMemoryBudget() const override;
 
 	DeviceResult<BufferId> CreateBuffer( const BufferDesc &desc ) override;
 	DeviceResult<BufferId> CreateUploadBuffer( std::span<const std::byte> bytes ) override;

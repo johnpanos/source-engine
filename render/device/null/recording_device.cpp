@@ -610,6 +610,23 @@ public:
 	const DeviceFacts &Facts() const override { return m_Facts; }
 	DeviceState State() const override { return m_State; }
 	std::uint32_t Epoch() const override { return m_Epoch; }
+	MemoryBudgetSnapshot ReadMemoryBudget() const override
+	{
+		MemoryBudgetSnapshot result;
+		result.supported = true;
+		result.epoch = m_Epoch;
+		HeapMemoryBudget heap;
+		// Null has no physical heap or driver allowance. Its reported usage is
+		// the exact byte storage currently owned by the recording implementation.
+		heap.usageKnown = true;
+		for ( const auto &entry : m_Buffers )
+			heap.usageBytes += entry.second.data.size();
+		for ( const auto &entry : m_Textures )
+			for ( const auto &subresource : entry.second.subresources )
+				heap.usageBytes += subresource.size();
+		result.heaps.push_back( heap );
+		return result;
+	}
 
 	DeviceResult<BufferId> CreateBuffer( const BufferDesc &desc ) override
 	{

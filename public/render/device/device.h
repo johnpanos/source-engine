@@ -50,6 +50,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <span>
+#include <vector>
 
 namespace render::device
 {
@@ -98,6 +99,28 @@ struct ResourceActivity
 	}
 };
 
+// A point-in-time heap snapshot. `usageKnown` says usageBytes is meaningful;
+// `usageEstimated` distinguishes logical estimates from allocator/driver
+// readings. `budgetKnown` says budgetBytes is an actual provider allowance.
+// No query waits for GPU completion.
+struct HeapMemoryBudget
+{
+	std::uint32_t heap = 0;
+	bool deviceLocal = false;
+	bool usageKnown = false;
+	bool usageEstimated = false;
+	bool budgetKnown = false;
+	std::uint64_t usageBytes = 0;
+	std::uint64_t budgetBytes = 0;
+};
+
+struct MemoryBudgetSnapshot
+{
+	bool supported = false;
+	std::uint32_t epoch = 0;
+	std::vector<HeapMemoryBudget> heaps;
+};
+
 // Counter deltas, with end-of-interval gauges. Recovery is a discontinuity,
 // reported unavailable instead of unsigned underflow or a misleading zero.
 inline ResourceActivity ResourceActivitySince(
@@ -125,6 +148,10 @@ public:
 	virtual DeviceState State() const = 0;
 	// Unsupported providers explicitly return supported=false. No GPU wait.
 	virtual ResourceActivity ReadResourceActivity() const { return {}; }
+	// Providers without heap telemetry return supported=false. Implementations
+	// report only their own figures; estimates must not be presented as driver
+	// budgets.
+	virtual MemoryBudgetSnapshot ReadMemoryBudget() const { return {}; }
 	virtual std::uint32_t Epoch() const = 0;
 
 	virtual DeviceResult<BufferId> CreateBuffer( const BufferDesc &desc ) = 0;

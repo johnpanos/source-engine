@@ -95,7 +95,7 @@ public:
 	~MemoryAllocator();
 
 	VkResult Create( VkInstance instance, VkPhysicalDevice physical, VkDevice device,
-	    std::uint32_t apiVersion, bool bufferDeviceAddress );
+	    std::uint32_t apiVersion, bool bufferDeviceAddress, bool memoryBudget );
 	// Reports live allocations on stderr, then destroys the allocator.
 	void Destroy();
 	bool Valid() const { return m_Allocator != nullptr; }
@@ -113,6 +113,7 @@ public:
 	VkMemoryPropertyFlags Properties( HostAllocation allocation ) const;
 	std::uint64_t LiveAllocations() const { return m_Live.load(); }
 	std::uint64_t LiveBytes() const { return m_Bytes.load(); }
+	MemoryBudgetSnapshot ReadBudget( std::uint32_t epoch ) const;
 
 	// Diagnostic memory report (SOURCE_VK_MEMORY_REPORT=<seconds>): live
 	// allocations grouped by owner label, or by image/buffer shape where no
@@ -136,6 +137,7 @@ private:
 	void MaybeReport();
 
 	void *m_Allocator = nullptr; // VmaAllocator
+	bool m_MemoryBudgetEnabled = false;
 	std::atomic<std::uint64_t> m_Live{ 0 };
 	std::atomic<std::uint64_t> m_Bytes{ 0 };
 	double m_ReportSeconds = 0.0; // 0: tracking off
@@ -190,6 +192,7 @@ struct AdapterChoice
 	bool dynamicRendering = false;
 	bool anisotropy = false;
 	bool textureCompressionBC = false; // the kBC* formats (D19)
+	bool memoryBudget = false; // VK_EXT_memory_budget was enabled for VMA
 	// dmabuf export of LINEAR images (external memory fd, dma_buf, DRM
 	// format modifiers): the adapter claims kExternalImages.
 	bool externalImages = false;
@@ -587,6 +590,10 @@ public:
 	DeviceResult<void> Recover() override;
 	std::size_t LiveResourceCount() const override;
 	ResourceActivity ReadResourceActivity() const override;
+	MemoryBudgetSnapshot ReadMemoryBudget() const override
+	{
+		return m_Memory.ReadBudget( Epoch() );
+	}
 	IExternalImages *ExternalImages() override;
 
 	// IExternalImages ----------------------------------------------------------

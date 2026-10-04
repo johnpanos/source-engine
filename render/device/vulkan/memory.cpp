@@ -126,7 +126,7 @@ MemoryAllocator::~MemoryAllocator()
 }
 
 VkResult MemoryAllocator::Create( VkInstance instance, VkPhysicalDevice physical, VkDevice device,
-    std::uint32_t apiVersion, bool bufferDeviceAddress )
+    std::uint32_t apiVersion, bool bufferDeviceAddress, bool memoryBudget )
 {
 	Destroy();
 	VmaVulkanFunctions functions{};
@@ -140,10 +140,15 @@ VkResult MemoryAllocator::Create( VkInstance instance, VkPhysicalDevice physical
 	info.vulkanApiVersion = apiVersion;
 	if ( bufferDeviceAddress )
 		info.flags |= VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
+	if ( memoryBudget )
+		info.flags |= VMA_ALLOCATOR_CREATE_EXT_MEMORY_BUDGET_BIT;
 	VmaAllocator allocator = VK_NULL_HANDLE;
 	const VkResult result = vmaCreateAllocator( &info, &allocator );
 	if ( result == VK_SUCCESS )
+	{
 		m_Allocator = allocator;
+		m_MemoryBudgetEnabled = memoryBudget;
+	}
 	if ( const char *report = std::getenv( "SOURCE_VK_MEMORY_REPORT" ) )
 		m_ReportSeconds = std::max( 1.0, std::atof( report ) );
 	return result;
@@ -162,6 +167,7 @@ void MemoryAllocator::Destroy()
 		    static_cast<unsigned long long>( m_Bytes.load() ) );
 	vmaDestroyAllocator( Vma( m_Allocator ) );
 	m_Allocator = nullptr;
+	m_MemoryBudgetEnabled = false;
 	{
 		std::lock_guard<std::mutex> lock( m_TrackMutex );
 		m_Tracked.clear();
@@ -281,6 +287,37 @@ void MemoryAllocator::Report( const char *reason )
 	for ( std::size_t i = 0; i < shown; ++i )
 		std::fprintf( stderr, "  %9.1f MiB %6llu  %s\n", Mib( sorted[i].second.bytes ),
 		    static_cast<unsigned long long>( sorted[i].second.count ), sorted[i].first.c_str() );
+}
+
+MemoryBudgetSnapshot MemoryAllocator::ReadBudget( std::uint32_t epoch ) const
+{
+	MemoryBudgetSnapshot result;
+	if ( !m_Allocator )
+		return result;
+	const VkPhysicalDeviceMemoryProperties *properties = nullptr;
+	vmaGetMemoryProperties( Vma( m_Allocator ), &properties );
+	if ( !properties )
+		return result;
+	VmaBudget budgets[VK_MAX_MEMORY_HEAPS] = {};
+	vmaGetHeapBudgets( Vma( m_Allocator ), budgets );
+	result.supported = true;
+	result.epoch = epoch;
+	result.heaps.reserve( properties->memoryHeapCount );
+	for ( std::uint32_t heap = 0; heap < properties->memoryHeapCount; ++heap )
+	{
+		HeapMemoryBudget entry;
+		entry.heap = heap;
+		entry.deviceLocal =
+		    ( properties->memoryHeaps[heap].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT ) != 0;
+		entry.usageKnown = true;
+		entry.usageEstimated = !m_MemoryBudgetEnabled;
+		entry.budgetKnown = m_MemoryBudgetEnabled;
+		entry.usageBytes = budgets[heap].usage;
+		if ( entry.budgetKnown )
+			entry.budgetBytes = budgets[heap].budget;
+		result.heaps.push_back( entry );
+	}
+	return result;
 }
 
 void MemoryAllocator::Count( HostAllocation allocation, bool add )

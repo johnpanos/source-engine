@@ -1,5 +1,22 @@
 # RFC 0016 progress: render core
 
+## Device heap snapshots and CPU mip feedback (2026-10-04)
+
+`IRenderDevice2::ReadMemoryBudget()` now exposes a nonblocking per-heap
+snapshot. Vulkan enables `VK_EXT_memory_budget` when available and reads VMA's
+heap usage/budget; without the extension, usage is labeled estimated and the
+budget is unknown. GL reports its own logical buffer/texture storage estimate,
+and null reports the byte storage it owns. These reports do not create cache
+eviction policy or alter legacy material residency.
+
+`render.resources::MipFeedbackFrame` accepts visible texture footprints,
+computes a conservative mip from projected pixel extent and UV span, and
+aggregates repeated material/texture requests to the finest mip. Its sorted
+per-frame result is ready for frame producers. Current world/material frame
+paths do not yet publish those footprints; wiring callers and proving full
+scene behavior remain open. This work does not close R95/R96 or any quality
+gate.
+
 ## FSR temporal reconstruction implementation (2026-10-03, in progress)
 
 User-selected work on `codex/fsr-temporal`, in an isolated worktree, owns

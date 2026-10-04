@@ -677,6 +677,41 @@ std::size_t GlDevice::LiveResourceCount() const
 	       m_BindGroups.size() + m_Pipelines.size();
 }
 
+MemoryBudgetSnapshot GlDevice::ReadMemoryBudget() const
+{
+	MemoryBudgetSnapshot result;
+	if ( m_State != DeviceState::kAvailable )
+		return result;
+	result.supported = true;
+	result.epoch = m_Epoch;
+	HeapMemoryBudget heap;
+	// Core GL exposes no portable heap budget query. Report the adapter's
+	// logical buffer and texture storage estimate, and leave budgetKnown false.
+	heap.usageKnown = true;
+	heap.usageEstimated = true;
+	for ( const auto &entry : m_Buffers )
+		heap.usageBytes += entry.second.desc.size;
+	for ( const auto &entry : m_Textures )
+	{
+		const TextureDesc &desc = entry.second.desc;
+		const std::uint64_t layers = desc.dimension == TextureDimension::kCube
+		                                 ? 6u
+		                                 : ( desc.dimension == TextureDimension::k3D ? 1u
+		                                                                             : desc.depthOrLayers );
+		for ( std::uint32_t mip = 0; mip < desc.mipLevels; ++mip )
+		{
+			const std::uint32_t width = std::max( 1u, desc.width >> mip );
+			const std::uint32_t height = std::max( 1u, desc.height >> mip );
+			const std::uint64_t depth = desc.dimension == TextureDimension::k3D
+			                                ? std::max( 1u, desc.depthOrLayers >> mip )
+			                                : 1u;
+			heap.usageBytes += RegionBytes( desc.format, width, height ) * layers * depth;
+		}
+	}
+	result.heaps.push_back( heap );
+	return result;
+}
+
 // Encoders, submission and completion -------------------------------------------
 
 DeviceResult<CommandEncoder> GlDevice::BeginEncoder( QueueKind queue )

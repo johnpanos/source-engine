@@ -374,7 +374,8 @@ DeviceResult<void> VulkanDevice::CreateLogical()
 	const std::uint32_t apiVersion =
 	    m_Instance->apiVersion != 0 ? m_Instance->apiVersion : VK_API_VERSION_1_2;
 	result = m_Memory.Create( m_Instance->instance, m_Adapter.physical, m_Device,
-	    std::min( apiVersion, m_Properties.apiVersion ), BufferDeviceAddress( features ) );
+	    std::min( apiVersion, m_Properties.apiVersion ), BufferDeviceAddress( features ),
+	    m_Adapter.memoryBudget );
 	if ( result != VK_SUCCESS )
 	{
 		DestroyLogical();
