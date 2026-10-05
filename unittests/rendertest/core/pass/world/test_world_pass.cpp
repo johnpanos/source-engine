@@ -31,6 +31,10 @@
 //			W26 A detail blend mode is drawn with a bump map (the port combines
 //			   the detail into the albedo first); the self-illuminating and
 //			   ssbump combines wait for their own terms.
+//			W27 A reused prepass index list resolves its draw, frame and view
+//			   groups again for the recording it draws: the cached list holds
+//			   indices, never this slot's bindings, and an unresolved one is
+//			   bound as "no group at all" and refused by the device.
 //			W10 Views of a host frame the backend never recorded are skipped,
 //			   not failed; a view whose slot never recorded while another slot
 //			   of its frame did is a failure.
@@ -81,12 +85,23 @@ public:
 		desc.width = desc.height = 4;
 		desc.usages = { ResourceUsage::kSampled };
 		auto texture = m_Device.CreateTexture( desc );
+		if ( texture )
+			imported.push_back( texture.Value() );
 		return texture ? texture.Value() : TextureId();
 	}
 	SamplerDesc Sampler( int ) override { return {}; }
+	// The backend owns what Import returns, so the pass borrows it. The fake
+	// makes each import here: the test owns those and releases them itself.
+	void ReleaseImported( IRenderDevice2 &device )
+	{
+		for ( TextureId texture : imported )
+			(void)device.Release( texture, CompletionToken() );
+		imported.clear();
+	}
 	int imports = 0;
 	int refusedHandle = 0;
 	std::vector<int> importedHandles;
+	std::vector<TextureId> imported;
 
 private:
 	IRenderDevice2 &m_Device;
@@ -976,6 +991,116 @@ void ModelLevelSourceResupply( testing::Checks &checks )
 	checks.That( device.LiveResourceCount() == 0, "W23.source-teardown-leaks-nothing" );
 }
 
+// W27: the world prepass's index list is cached with the world, but the
+// groups its entries bind belong to one recording. A later slot over the
+// reused list must resolve them again, or the record binds "no group at all"
+// and the device refuses the submission.
+void ReusedPrepassList( testing::Checks &checks )
+{
+	auto created = null::Create( {} );
+	if ( !checks.That( created.HasValue(), "W27.device" ) )
+		return;
+	auto &device = *created.Value();
+
+	WorldData world = TestWorld();
+	// One opaque PBR surface: only a "pbr" program enters the prepass index
+	// list, so the fixture has to draw through it.
+	world.surfaces.resize( 1 );
+	world.surfaces[0].lightmapPage = 0;
+	world.materials.clear();
+	WorldMaterial wall;
+	wall.name = "wall";
+	wall.shader = "PBRMetalRough";
+	wall.variables = {
+	    { "$basetexture", "concrete/wall" }, { "$mraotexture", "concrete/wall_mrao" } };
+	wall.textures = { { "$basetexture", 3 }, { "$mraotexture", 4 } };
+	world.materials.push_back( std::move( wall ) );
+	WorldStage stage;
+	stage.lightmap.width = stage.lightmap.height = 4;
+	stage.lightmap.flat.resize( 4 * 4 * 8 );
+	world.stage = std::make_shared<const WorldStage>( std::move( stage ) );
+	// A versioned model revision: revision zero is "unversioned" and makes
+	// SweepModelResidency replace the residency on every record, which
+	// rebuilds the prepass list before the reuse path can be reached.
+	world.modelsRevision = 11;
+	WorldPass pass;
+	pass.SetWorld( std::move( world ) );
+
+	TextureDesc colorDesc;
+	colorDesc.format = Format::kRGBA8Srgb;
+	colorDesc.width = colorDesc.height = 64;
+	colorDesc.usages = { ResourceUsage::kColorAttachment };
+	TextureDesc depthDesc = colorDesc;
+	depthDesc.format = Format::kD32Float;
+	depthDesc.usages = { ResourceUsage::kDepthWrite };
+	TextureDesc aoDesc = colorDesc;
+	aoDesc.format = Format::kRGBA16Float;
+	aoDesc.usages = { ResourceUsage::kSampled };
+	auto color = device.CreateTexture( colorDesc );
+	auto depth = device.CreateTexture( depthDesc );
+	auto occlusion = device.CreateTexture( aoDesc );
+	if ( !color || !depth || !occlusion )
+	{
+		checks.That( false, "W27.textures" );
+		return;
+	}
+	auto setup = device.BeginEncoder( QueueKind::kGraphics );
+	if ( !setup )
+	{
+		checks.That( false, "W27.setup" );
+		return;
+	}
+	setup.Value().TransitionTexture(
+	    color.Value(), ResourceUsage::kUndefined, ResourceUsage::kColorAttachment );
+	setup.Value().TransitionTexture(
+	    depth.Value(), ResourceUsage::kUndefined, ResourceUsage::kDepthWrite );
+	setup.Value().TransitionTexture(
+	    occlusion.Value(), ResourceUsage::kUndefined, ResourceUsage::kSampled );
+	(void)device.Submit( QueueKind::kGraphics, { &setup.Value(), 1 }, {} );
+
+	FakeTextures textures( device );
+	WorldTarget target;
+	target.device = &device;
+	target.color = color.Value();
+	target.colorFormat = Format::kRGBA8Srgb;
+	target.depth = depth.Value();
+	target.depthFormat = Format::kD32Float;
+	target.width = target.height = 64;
+	target.textures = &textures;
+	target.depthPrepass = true;
+	target.ambientOcclusion = occlusion.Value();
+	target.ambientOcclusionDesc = aoDesc;
+	target.screenPasses = []( CommandEncoder &, const WorldTarget::Prepass &prepass )
+	{
+		return prepass.depth.IsValid() && prepass.normalRoughness.IsValid();
+	};
+	// A lit view: its view groups belong to one recording, so the reuse path
+	// has to resolve them again instead of trusting the cached index list.
+	target.lights = std::make_shared<StageViewLights>();
+
+	const auto first = pass.QueueView( View( { 0 } ) );
+	checks.That( RecordSlot( device, pass, first, target ), "W27.lit-prepass-slot-submits" );
+	const std::uint64_t builds = pass.Stats().prepassListBuilds;
+	checks.That( pass.Failures() == 0, "W27.lit-prepass-records-without-failure" );
+
+	WorldTarget reused = target;
+	reused.frame = target.frame + 1;
+	const auto second = pass.QueueView( View( { 0 } ) );
+	checks.That( RecordSlot( device, pass, second, reused ), "W27.reused-prepass-slot-submits" );
+	checks.Equal( pass.Stats().prepassListBuilds, builds, "W27.the-prepass-index-list-was-reused" );
+	checks.Equal( pass.Stats().prepassListReuses, std::uint64_t( 1 ),
+	    "W27.the-reused-list-was-reused-not-rebuilt" );
+	checks.That( pass.Failures() == 0, "W27.the-reused-list-resolves-its-view-groups" );
+
+	pass.ReleaseDevice( device );
+	(void)device.Release( color.Value(), {} );
+	(void)device.Release( depth.Value(), {} );
+	(void)device.Release( occlusion.Value(), {} );
+	textures.ReleaseImported( device );
+	(void)device.Poll();
+	checks.Equal( device.LiveResourceCount(), std::size_t( 0 ), "W27.teardown-leaks-nothing" );
+}
+
 } // namespace
 
 int main()
@@ -988,6 +1113,7 @@ int main()
 	LitViewLifetime( checks );
 	ModelLevelResidency( checks );
 	ModelLevelSourceResupply( checks );
+	ReusedPrepassList( checks );
 	auto created = null::Create( {} );
 	if ( !checks.That( created.HasValue(), "setup.null-device" ) )
 		return checks.Report();

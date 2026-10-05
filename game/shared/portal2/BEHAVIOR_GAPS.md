@@ -30,6 +30,11 @@ Behavior comes from the retail Linux `server.so`/`client.so` (Ghidra 12.0.4
 headless, image base 0x10000; datadesc entries have a 0x40-byte stride). Base-game
 behavior comes from the local `cstrike15_src` drop where it exists.
 
+Session findings, exact retail addresses, tool commands and the proof behind
+every `not a gap` verdict live in
+[`docs/retail-portal2-decomp/`](../../../docs/retail-portal2-decomp/README.md).
+This file stays the authority for what is missing and for each row's state.
+
 ## Checklist
 
 States: `todo`, `active`, `done` (built, with the evidence noted), `deferred`
@@ -50,9 +55,13 @@ States: `todo`, `active`, `done` (built, with the evidence noted), `deferred`
 
 ### High: base-game features (port from cstrike15_src)
 
+Retail entries, owners, handlers and map counts for every row below:
+[`docs/retail-portal2-decomp/findings/g07-g14-base-game-keys.md`](../../../docs/retail-portal2-decomp/findings/g07-g14-base-game-keys.md)
+(2026-10-04). All eight rows are confirmed present in retail `server.so`.
+
 | ID | Gap | Maps | State |
 | --- | --- | --- | --- |
-| G07 | `CBaseEntity`: `mincpulevel`/`maxcpulevel`/`mingpulevel`/`maxgpulevel`, `drawinfastreflection`, `disableshadowdepth`, `shadowdepthnocache`; `DisableDraw`/`EnableDraw` inputs | 115 / 18 | todo |
+| G07 | `CBaseEntity`: `mincpulevel`/`maxcpulevel`/`mingpulevel`/`maxgpulevel`, `drawinfastreflection`, `disableshadowdepth`, `shadowdepthnocache`; `DisableDraw`/`EnableDraw` inputs | 115 / 18 | partial: the four detail-level keys are already handled in `baseentity_shared.cpp:331-352` and retail confirms them as `CBaseEntity` keyfields (`0x011b57e0`…), so they are not a gap ([evidence](../../../docs/retail-portal2-decomp/findings/not-a-gap.md)); the three draw keys (retail `FUN_0046f0e0` = `CBaseEntity::KeyValue`) and the two draw inputs (`0x011b7460`, `0x011b74a0`) remain todo |
 | G08 | `env_projectedtexture`: `SetLightStyle`, `colortransitiontime`, `brightnessscale`, `simpleprojection` | 31–109 | todo |
 | G09 | `env_fade`: `FadeReverse`, `ReverseFadeDuration` | 14 | todo |
 | G10 | `math_counter`: `OnChangedFromMax`/`OnChangedFromMin` | 6 | todo |
@@ -63,14 +72,19 @@ States: `todo`, `active`, `done` (built, with the evidence noted), `deferred`
 
 ### Medium: Portal 2 entity keys and inputs
 
+Retail entries, owners, handlers, FGD lines and map counts:
+[`docs/retail-portal2-decomp/findings/g15-g21-portal2-keys.md`](../../../docs/retail-portal2-decomp/findings/g15-g21-portal2-keys.md)
+(2026-10-04). Note that the shipped `Portal 2/bin/portal2.fgd` declares only
+part of this API, so it is not a completeness check.
+
 | ID | Gap | State |
 | --- | --- | --- |
-| G15 | Cube/paint bomb `PaintPower`, `AllowFunnel`; paint bomb `BombType`, `PlaySpawnSound` | todo |
+| G15 | Cube/paint bomb `PaintPower`, `AllowFunnel`; paint bomb `BombType`, `PlaySpawnSound` | todo (partly resolved 2026-10-04, [evidence](../../../docs/retail-portal2-decomp/findings/g15-g21-portal2-keys.md)): `PaintPower` is already a keyfield (`prop_paint_power_user.h:126`); `BombType` does not exist in retail `server.so`/`client.so`, so it is not a gap; `allowfunnel` (retail `m_bAllowPortalFunnel` on `CPhysicsProp`, `0x01206380`, 215 map uses) and the spawn-sound key remain todo. Retail's key is the literal `Play Spawn Sound` while the FGD and every shipped map use `playspawnsound`, which retail does not contain — implement both and record the deviation |
 | G16 | `info_paint_sprayer` radius keys (`start_radius_*`, `end_radius_*`, `radius_grow_time_*`) | not a gap: retail `server.so` has no such keys (2026-09-28); blob size is `paintblob_min/max_radius_scale` |
 | G17 | `env_portal_laser` `AutoAimEnabled`, `NoPlacementHelper` | todo |
-| G18 | `npc_personality_core` `ModelSkin`, `AltModel`, `EnableReceivingFlashlight`/`DisableReceivingFlashlight` | todo |
-| G19 | `info_placement_helper` `target_size`, `usesizelimit` | todo |
-| G20 | `prop_vehicle_choreo_generic` view limits (`SetMin/MaxPitch/Yaw`), `SetCanShoot`, `UseAttachmentEyes`, `PlayerCanShoot` (done 2026-09-29, see log); `logic_playerproxy` `LowerWeapon` | todo (`PaintPlayerWithPortalPaint` done 2026-09-28, see log) |
+| G18 | `npc_personality_core` `ModelSkin`, `AltModel`, `EnableReceivingFlashlight`/`DisableReceivingFlashlight` | todo (retail placement differs: `ModelSkin` is a `CBaseAnimating` keyfield `0x011b4000`, and the two flashlight inputs are on `CBaseEntity` `0x011b74e0`/`0x011b7520`; only `altmodel` is core-specific `0x011fb120`) |
+| G19 | `info_placement_helper` `target_size`, `usesizelimit` | not a gap (2026-10-04, [evidence](../../../docs/retail-portal2-decomp/findings/not-a-gap.md)): retail defines `target_size` only on `npc_bullseye` (`0x011d45c0`), which our `hl2/npc_bullseye.cpp:93` already implements, and has no `usesizelimit` string at all; its `info_placement_helper` table (`0x011f9240`) carries neither key, so retail ignores the shipped maps' seven uses of each |
+| G20 | `prop_vehicle_choreo_generic` view limits (`SetMin/MaxPitch/Yaw`), `SetCanShoot`, `UseAttachmentEyes`, `PlayerCanShoot` (done 2026-09-29, see log); `logic_playerproxy` `LowerWeapon` | todo (`PaintPlayerWithPortalPaint` done 2026-09-28, see log). `LowerWeapon` is not a gap: the string is absent from both retail binaries and from the FGD ([evidence](../../../docs/retail-portal2-decomp/findings/not-a-gap.md)) |
 | G21 | `prop_tractor_beam` `NoEmitterParticles`; `vgui_screen` `IsTransparent`; `vgui_neurotoxin_countdown` `countdown` (done, see log); `npc_bullseye` `AlwaysTransmit`; `point_viewcontrol` `TrackSpeed` | todo |
 | G22 | Retail-networked base classes (`func_brush`, `func_movelinear`, `func_button`, `prop_door_rotating`, `func_portal_bumper` (done, see log)) and co-op stats (`portal_mp_stats`) | todo |
 

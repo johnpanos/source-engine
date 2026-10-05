@@ -3443,6 +3443,15 @@ void WorldPass::RecordBatch(
 				cached.claims = claims.get();
 			}
 			std::vector<std::uint32_t> &prepass = reusable ? cached.surfaces : prepassStorage;
+			// Draw, frame and view groups for one prepass material. Only the
+			// index list is cached between calls; the view group especially is
+			// this call's state, so a reused list resolves them again below.
+			auto prepassGroupsReady = [&]( const Resources::Material &m, int page ) -> bool
+			{
+				return ( !m.program.request.drawLayout.IsValid() || drawGroupReady( m, page ) ) &&
+				       ( !m.program.request.frameLayout.IsValid() || frameGroupReady( m ) ) &&
+				       ( !m.program.request.viewLayout.IsValid() || viewGroupReady( m ) );
+			};
 			for ( std::uint32_t index = 0;
 			     index < world->surfaces.size() && !reusable; ++index )
 			{
@@ -3451,11 +3460,7 @@ void WorldPass::RecordBatch(
 					continue;
 				const Resources::Material *m =
 				    materialReadyIn( *r.prepassResolver, r.prepassMaterials, surface.material );
-				if ( !m ||
-				     ( m->program.request.drawLayout.IsValid() &&
-				         !drawGroupReady( *m, surface.lightmapPage ) ) ||
-				     ( m->program.request.frameLayout.IsValid() && !frameGroupReady( *m ) ) ||
-				     ( m->program.request.viewLayout.IsValid() && !viewGroupReady( *m ) ) )
+				if ( !m || !prepassGroupsReady( *m, surface.lightmapPage ) )
 				{
 					complete = false;
 					listsComplete = false;
@@ -3500,8 +3505,7 @@ void WorldPass::RecordBatch(
 						if ( lod == ~0u || lod >= s.models.models[instance.mesh].size() ||
 						     !s.models.models[instance.mesh][lod].resident )
 							continue;
-						if ( !drawGroupReady( *m, 0 ) || !frameGroupReady( *m ) ||
-						     !viewGroupReady( *m ) )
+						if ( !prepassGroupsReady( *m, 0 ) )
 						{
 							complete = false;
 							listsComplete = false;
@@ -3510,6 +3514,46 @@ void WorldPass::RecordBatch(
 						prepassModels.push_back(
 						    { 0, false, id, instance.mesh, lod, surface, material } );
 					}
+				}
+			}
+			// A reused list must still resolve the groups its entries bind: they
+			// belong to this call, not to the cache. An entry whose groups are not
+			// ready now is left out of this record without changing the cached
+			// list, so a later call can draw it.
+			std::vector<std::uint32_t> reusedPrepass;
+			std::vector<StaticDraw> reusedPrepassModels;
+			const std::vector<std::uint32_t> *drawnPrepass = &prepass;
+			const std::vector<StaticDraw> *drawnPrepassModels = &prepassModels;
+			if ( reusable )
+			{
+				reusedPrepass.reserve( prepass.size() );
+				for ( const std::uint32_t index : prepass )
+				{
+					const WorldSurface &surface = world->surfaces[index];
+					const Resources::Material *m =
+					    surface.material < claims->size() && ( *claims )[surface.material].draws
+					        ? materialReadyIn(
+					              *r.prepassResolver, r.prepassMaterials, surface.material )
+					        : nullptr;
+					if ( m && prepassGroupsReady( *m, surface.lightmapPage ) )
+						reusedPrepass.push_back( index );
+					else
+						complete = false;
+				}
+				drawnPrepass = &reusedPrepass;
+				if ( r.prepassModelResolver )
+				{
+					reusedPrepassModels.reserve( prepassModels.size() );
+					for ( const StaticDraw &draw : prepassModels )
+					{
+						const auto *m = materialReadyIn(
+						    *r.prepassModelResolver, r.prepassModelMaterials, draw.material );
+						if ( m && prepassGroupsReady( *m, 0 ) )
+							reusedPrepassModels.push_back( draw );
+						else
+							complete = false;
+					}
+					drawnPrepassModels = &reusedPrepassModels;
 				}
 			}
 			// The targets rest in kSampled between views (undefined before
@@ -3537,7 +3581,7 @@ void WorldPass::RecordBatch(
 			prepassViewport.minDepth = 0.0f;
 			prepassViewport.maxDepth = 1.0f;
 			encoder.SetViewport( prepassViewport );
-			drawSurfaces( prepass, r.prepassMaterials,
+			drawSurfaces( *drawnPrepass, r.prepassMaterials,
 			    [&]( const Resources::Material &m ) -> std::optional<PipelineId>
 			    {
 				    auto variant = m.resolver->VariantPipeline(
@@ -3549,7 +3593,7 @@ void WorldPass::RecordBatch(
 				    }
 				    return surfaceStatePipeline( m, variant.Value(), material::SurfaceDrawState() );
 			    } );
-			for ( const StaticDraw &draw : prepassModels )
+			for ( const StaticDraw &draw : *drawnPrepassModels )
 			{
 				const auto &m = r.prepassModelMaterials[draw.material];
 				auto variant = m.resolver->VariantPipeline(

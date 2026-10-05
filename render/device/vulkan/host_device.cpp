@@ -82,7 +82,19 @@ public:
 			AddSubmitSignal( encoder.Value(), signal );
 		auto submitted = m_Device->Submit( QueueKind::kGraphics, { &encoder.Value(), 1 }, {} );
 		if ( !submitted )
+		{
+			// The caller reports only "submission failed"; name the device's
+			// reason for the first failure and then every 600th.
+			static unsigned s_failures = 0;
+			if ( s_failures++ % 600 == 0 )
+			{
+				const DeviceError &error = submitted.Error();
+				std::fprintf( stderr, "[render.device.vulkan] host submit failed (%u so far): %s in %s, native %d\n",
+				    s_failures, DescribeStatus( error.status ), DescribeOperation( error.operation ),
+				    int( error.nativeCode ) );
+			}
 			return false;
+		}
 		if ( token )
 			*token = submitted.Value();
 		return true;
