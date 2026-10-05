@@ -36,13 +36,10 @@ MAT_ARGS="${MAT_ARGS-+mat_colorcorrection 1}"
 # records the core's frame while the main thread runs the next game frame
 # (2026-10-05, sp_a1_intro4_relit's 19 poses, 5 interleaved rounds: summed
 # median interval 239 -> 186 ms, chamber 20.3 -> 14.5 ms; screenshots within
-# run-to-run noise). FSR launches stay unqueued until measured there.
+# run-to-run noise). Every launcher that starts through here (./play_p2_fsr,
+# ./play_p2_coop) runs queued too (user decision, 2026-10-05).
 # QUEUE_ARGS= or +mat_queue_mode 0 rolls back.
-if [[ "$P2_FSR" == 1 ]]; then
-    QUEUE_ARGS="${QUEUE_ARGS-}"
-else
-    QUEUE_ARGS="${QUEUE_ARGS-+mat_queue_mode 2}"
-fi
+QUEUE_ARGS="${QUEUE_ARGS-+mat_queue_mode 2}"
 
 # Render switches (tools/quality/render_flags.sh). The render core draws the
 # world by default, as in ./play (user direction, 2026-09-29): --no-core-world
