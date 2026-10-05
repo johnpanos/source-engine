@@ -10827,3 +10827,17 @@ the table:
 `$flashlightnolambert` stays refused: VertexLitGeneric declares it and it
 changes a projector's lighting. The inventory is now 1,556 / 1,521 / 515
 unsupported (40 more claimed), and `posed-model` passes 107/107.
+
+### K12: Refract `$refracttinttexture` (2026-10-05)
+
+`refract_ps2x.fxc` (`REFRACTTINTTEXTURE`) tints the refracted color with
+2 x `$refracttint` x the tint texture, sampled sRGB at the normal map's
+coordinates. The Refract point now claims the key (a refract key row and
+`kClaimed`). The texture rides the material's emission binding, sRGB and
+unused by Refract. `RefractClaim::tintTexture` sets the point's mode
+(`meshModes.z`), and `RefractSurface` multiplies the tint. New `posed-model`
+checks show the material claims, and that its resolved request binds the
+texture at 13, sRGB, with the mode on. The suite passes 109/109;
+`view-state` passes 16/16. The inventory is now 1,556 / 1,526 / 510
+unsupported (5 more claimed; most of the 12 also hit another refusal). No
+pixel oracle against the port yet. R96 stays `active`.

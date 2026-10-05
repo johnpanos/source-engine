@@ -624,8 +624,12 @@ void RefractSurface()
 	float fade = 1.0;
 	if ( material.transmission.w > 0.5 )
 		fade = pow( clamp( dot( eye, smoothNormal ), 0.0, 1.0 ), 3.0 );
-	vec3 result = mix( RefractSceneColor( unwarped ),
-	    behind * material.tint.rgb, fade );
+	// $refracttinttexture: 2 x $refracttint x the tint texture at the normal
+	// map's coordinates (refract_ps2x.fxc REFRACTTINTTEXTURE).
+	vec3 refractTint = material.tint.rgb;
+	if ( material.meshModes.z > 0.5 )
+		refractTint *= 2.0 * texture( sampler2D( emissionTexture, emissionSampler ), baseUv ).rgb;
+	vec3 result = mix( RefractSceneColor( unwarped ), behind * refractTint, fade );
 	const float alpha = material.meshModes.y > 0.5 ? 1.0 : bump.a;
 	// Authored images contain material radiance. A scene snapshot is already
 	// exposed and fogged, so it must not receive those transforms a second time.

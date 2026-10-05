@@ -725,6 +725,8 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 		textures.bump = TextureOf( material, "normalmap" );
 		if ( claim.envmap && !claim.nativeProbe )
 			textures.envmap = TextureOf( material, "envmap" );
+		if ( claim.tintTexture )
+			textures.emission = TextureOf( material, "refracttinttexture" );
 		auto request = s.lightmapped->Program().Request( variant, claim.constants, textures );
 		if ( !request )
 			return foundation::MakeUnexpected( std::string( "a Refract pipeline was refused" ) );

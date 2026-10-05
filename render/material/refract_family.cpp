@@ -25,9 +25,9 @@ RefractClaim ClaimRefract( const ParameterBlock &block, bool sceneColorAvailable
 		claim.reason = "the block is not Refract";
 		return claim;
 	}
-	constexpr std::array<std::string_view, 12> kClaimed = { "model", "translucent", "basetexture",
+	constexpr std::array<std::string_view, 13> kClaimed = { "model", "translucent", "basetexture",
 	    "normalmap", "refractamount", "refracttint", "bluramount", "fadeoutonsilhouette", "envmap",
-	    "envmaptint", "envmapcontrast", "envmapsaturation" };
+	    "envmaptint", "envmapcontrast", "envmapsaturation", "refracttinttexture" };
 	if ( const std::optional<std::string> unclaimed =
 	         detail::UnclaimedParameter( block, kClaimed ) )
 	{
@@ -72,6 +72,8 @@ RefractClaim ClaimRefract( const ParameterBlock &block, bool sceneColorAvailable
 	    detail::ReadFlag( block, "fadeoutonsilhouette" ) ? 1.0f : 0.0f;
 	claim.constants.meshModes[0] = claim.baseTexture ? 1.0f : 0.0f;
 	claim.constants.meshModes[1] = claim.envmap ? 1.0f : 0.0f;
+	claim.tintTexture = detail::TextureBound( block, "refracttinttexture" );
+	claim.constants.meshModes[2] = claim.tintTexture ? 1.0f : 0.0f;
 	claim.constants.meshProbeColor[0] = contrast;
 	for ( int c = 0; c < 3; ++c )
 	{

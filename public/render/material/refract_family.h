@@ -23,6 +23,10 @@ struct RefractClaim
 	bool nativeProbe = false;
 	bool sceneColor = false;
 	bool baseTexture = false;
+	// $refracttinttexture: the refracted color's tint is 2 x $refracttint x
+	// the texture at the normal map's coordinates (refract_ps2x.fxc), bound
+	// through the material's emission binding (sRGB, unused by Refract).
+	bool tintTexture = false;
 	SurfaceConstants constants;
 
 	SurfaceVariant Variant() const

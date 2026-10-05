@@ -21,6 +21,7 @@
 #include "render/material/vmt_matrix.h"
 
 #include <algorithm>
+#include <cstring>
 #include <array>
 #include <atomic>
 #include <cmath>
@@ -247,6 +248,29 @@ std::optional<std::string> RunChecks(
 		refractPipeline = bool( refractResolver.Value()->ResolveMesh( fracturedGlass.Value() ) );
 	}
 	results.That( refractPipeline, "posed-model.refract-builds-shared-surface-pipeline" );
+	// $refracttinttexture (refract_ps2x.fxc): the tint texture rides the
+	// emission binding, sRGB, with the point's tint-texture mode on.
+	const auto tintedRefract = material::MapVariables( "Refract_DX90",
+	    { { "$model", "1" }, { "$normalmap", "glass/normal" },
+	        { "$refracttinttexture", "glass/tint" }, { "$refracttint", "[1 .5 .25]" } },
+	    {} );
+	results.That( tintedRefract && material::ClaimForMesh( tintedRefract.Value(), true, true ),
+	    "posed-model.refract-tint-texture-claims" );
+	bool tintBound = false;
+	if ( refractResolver && tintedRefract )
+	{
+		const auto resolved = refractResolver.Value()->ResolveMesh( tintedRefract.Value() );
+		if ( resolved )
+		{
+			material::SurfaceConstants constants;
+			std::memcpy( &constants, resolved.Value().request.material.constants.data(),
+			    sizeof( constants ) );
+			for ( const auto &texture : resolved.Value().request.material.textures )
+				tintBound = tintBound || ( texture.binding == 13 && texture.name == "materials/glass/tint" &&
+				                             texture.srgb && constants.meshModes[2] == 1.0f );
+		}
+	}
+	results.That( tintBound, "posed-model.refract-tint-texture-binds-srgb-with-mode" );
 	const auto unsupportedRefract = material::MapVariables( "Refract_DX90",
 	    { { "$normalmap", "glass/normal" }, { "$normalmap2", "glass/other_normal" } }, {} );
 	results.That(

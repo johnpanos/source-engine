@@ -302,6 +302,7 @@ constexpr VmtKeyRow kRefractKeys[] = {
     { "refract", "$envmaptint", "envmaptint", ValueKind::kFloat3, "[1 1 1]" },
     { "refract", "$envmapcontrast", "envmapcontrast", ValueKind::kFloat, "0" },
     { "refract", "$envmapsaturation", "envmapsaturation", ValueKind::kFloat3, "[1 1 1]" },
+    { "refract", "$refracttinttexture", "refracttinttexture", ValueKind::kTexture, "" },
 };
 
 constexpr VmtMetadataRow kMetadata[] = {
