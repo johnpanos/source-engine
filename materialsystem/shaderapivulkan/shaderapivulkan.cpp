@@ -5057,9 +5057,12 @@ static render::legacy::CoreMeshKind CoreMeshKindFor( IMaterial *material )
 		if ( material->GetMaterialVarFlag( MATERIAL_VAR_DECAL ) ||
 		     !V_stricmp( shader, "DecalModulate" ) || !V_stricmp( shader, "DecalModulate_dx9" ) )
 			return CoreMeshKind::kDecal;
+		// Frozen-path: the 2D sky box's faces (R_DrawSkyBox) to the core's unlit
+		// point, which decodes the Sky shader's HDR encodings (RFC 0016 K8).
 		if ( !V_stricmp( shader, "UnlitGeneric" ) || !V_stricmp( shader, "UnlitTwoTexture" ) ||
 		     !V_stricmp( shader, "UnlitTwoTexture_dx9" ) || !V_stricmp( shader, "Sprite" ) ||
-		     !V_stricmp( shader, "Sprite_DX9" ) )
+		     !V_stricmp( shader, "Sprite_DX9" ) || !V_stricmp( shader, "Sky" ) ||
+		     !V_stricmp( shader, "Sky_HDR_DX9" ) || !V_stricmp( shader, "Sky_DX9" ) )
 			return CoreMeshKind::kUnlit;
 		if ( !V_stricmp( shader, "Refract" ) || !V_stricmp( shader, "Refract_DX90" ) )
 			return CoreMeshKind::kTransmission;

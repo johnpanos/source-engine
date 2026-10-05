@@ -32,6 +32,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <memory>
@@ -88,10 +89,26 @@ int main()
 		    refused( "\"UnlitGeneric\" { \"$basetexture\" \"a\" \"$envmapcontrast\" \"0.5\" }",
 		        "envmapcontrast" ),
 		    "claim.refuses-an-env-map-parameter-by-name" );
-		checks.That( refused( "\"UnlitGeneric\" { \"$basetexture\" \"a\" \"$translucent\" \"1\" "
-		                      "\"$additive\" \"1\" }",
-		                 "additive" ),
-		    "claim.refuses-translucent-additive" );
+		// $translucent with $additive blends src-alpha/one (kAlphaAdditive),
+		// as the legacy shaders' additive translucent state does.
+		{
+			VmtImportContext context;
+			auto imported = ImportVmt( "\"UnlitGeneric\" { \"$basetexture\" \"a\" "
+			                           "\"$translucent\" \"1\" \"$additive\" \"1\" }",
+			    context );
+			UnlitClaim claim;
+			if ( imported )
+			{
+				ParameterBlock block( *unlit );
+				if ( ApplyValues( imported.Value(), block ) )
+				{
+					(void)block.SetTexture( "basetexture", device::TextureId( 1 ) );
+					claim = ClaimUnlit( block );
+				}
+			}
+			checks.That( claim.claimed && claim.blend == device::BlendMode::kAlphaAdditive,
+			    "claim.translucent-additive-blends-alpha-additive" );
+		}
 	}
 
 	// The base texture transform is drawn, not refused: UnlitGeneric's pixel
@@ -222,6 +239,128 @@ int main()
 			JudgeCase( checks, testCase, drawn );
 		}
 		checks.That( drawnCases == 6, "cases.every-case-drew" );
+
+		// The Sky shader's RGBS faces (render.pass.sky's claim, ClaimSky):
+		// a 2x1 $hdrcompressedtexture, a dim white texel (alpha 4) beside a
+		// black one (alpha 255). sky_hdr_compressed_rgbs_ps2x filters the
+		// premultiplied texels, rgb * a, and scales by 8 and $color: the
+		// left plateau is 4/255 * 8 in linear light, the middle half that,
+		// and a filter of the encoded texels (then rgb * a) would saturate
+		// the middle to white.
+		{
+			VmtImportContext context;
+			auto imported = ImportVmt( "\"Sky_HDR_DX9\" { \"$hdrcompressedtexture\" \"sky\" "
+			                           "\"$basetexture\" \"sky_ldr\" \"$nofog\" \"1\" "
+			                           "\"$ignorez\" \"1\" }",
+			    context );
+			std::optional<ParameterBlock> block;
+			if ( checks.That( imported.HasValue(), "sky.imports" ) )
+			{
+				block.emplace( *unlit );
+				if ( !checks.That(
+				         ApplyValues( imported.Value(), *block ).HasValue(), "sky.fits" ) )
+					block.reset();
+			}
+			UnlitClaim claim;
+			if ( block )
+			{
+				(void)block->SetTexture( "hdrcompressedtexture", device::TextureId( 1 ) );
+				(void)block->SetTexture( "basetexture", device::TextureId( 2 ) );
+				claim = ClaimSky( *block, true );
+			}
+			That( checks, claim.claimed, "sky.claimed", claim.reason );
+			checks.That( claim.baseParameter == "hdrcompressedtexture" && !claim.baseSrgb &&
+			                 claim.constants.baseDecode[0] == 1.0f &&
+			                 claim.constants.surfaceControls[1] == 8.0f && claim.ignoreDepth,
+			    "sky.rgbs-base-decoded-times-8-depth-ignored" );
+			if ( block )
+			{
+				ParameterBlock ldr = *block;
+				const UnlitClaim plain = ClaimSky( ldr, false );
+				checks.That( plain.claimed && plain.baseParameter == "basetexture" &&
+				                 plain.baseSrgb && plain.constants.baseDecode[0] == 0.0f,
+				    "sky.without-hdr-the-base-texture" );
+				ParameterBlock methodB = *block;
+				(void)methodB.SetTexture( "hdrcompressedtexture", {} );
+				(void)methodB.SetTexture( "hdrcompressedtexture0", device::TextureId( 3 ) );
+				const UnlitClaim refused = ClaimSky( methodB, true );
+				checks.That( !refused.claimed && refused.reason.find( "hdrcompressedtexture0" ) !=
+				                                     std::string::npos,
+				    "sky.refuses-three-exposures-by-name" );
+			}
+			if ( claim.claimed )
+			{
+				CaseTexture rgbs;
+				rgbs.width = 2;
+				rgbs.height = 1;
+				rgbs.clamp = true;
+				rgbs.format = device::Format::kRGBA8Unorm;
+				rgbs.texels = { 255, 255, 255, 4, 0, 0, 0, 255 };
+				auto pipeline = family.Value()->Pipeline( claim );
+				if ( checks.That( pipeline.HasValue(), "sky.pipeline" ) )
+				{
+					// A full-target quad, u across it.
+					std::vector<SurfaceFlatVertex> quad;
+					const float corners[6][4] = { { -1, 1, 0, 0 }, { 1, 1, 1, 0 }, { 1, -1, 1, 1 },
+					    { -1, 1, 0, 0 }, { 1, -1, 1, 1 }, { -1, -1, 0, 1 } };
+					for ( const auto &c : corners )
+					{
+						SurfaceFlatVertex vertex;
+						vertex.position[0] = c[0];
+						vertex.position[1] = c[1];
+						vertex.position[2] = 0.5f;
+						vertex.uv[0] = c[2];
+						vertex.uv[1] = c[3];
+						quad.push_back( vertex );
+					}
+					SurfaceConstants constants = claim.constants;
+					constants.state[0] = 1.0f;
+					CaseDraw sky;
+					sky.pipeline = pipeline.Value();
+					sky.groups.push_back(
+					    { device::BindGroupRole::kMaterial, family.Value()->MaterialLayout(),
+					        std::as_bytes( std::span( &constants, 1 ) ),
+					        { &rgbs, &neutralCube, &neutral, &neutral, &neutral, &neutral,
+					            &neutralSrgb } } );
+					sky.groups.push_back( { device::BindGroupRole::kDraw,
+					    family.Value()->DrawLayout(), std::as_bytes( std::span( &lighting, 1 ) ),
+					    { &neutralSrgb, &neutral, &neutral }, 1 } );
+					sky.groups.push_back( NeutralViewGroup( family.Value()->ViewLayout() ) );
+					sky.groups.push_back( { device::BindGroupRole::kFrame,
+					    family.Value()->FrameLayout(), std::as_bytes( std::span( &frame, 1 ) ),
+					    { &neutral, &neutral, &neutral, &neutral, &neutral, &neutral } } );
+					sky.vertices = std::as_bytes( std::span( quad ) );
+					sky.vertexCount = std::uint32_t( quad.size() );
+					const Drawn drawn = DrawCase( *device, sky );
+					if ( checks.That( drawn.ok, "sky.draws" ) )
+					{
+						const auto srgb = []( double linear )
+						{
+							linear = std::clamp( linear, 0.0, 1.0 );
+							return 255.0 *
+							       ( linear <= 0.0031308
+							               ? linear * 12.92
+							               : 1.055 * std::pow( linear, 1.0 / 2.4 ) - 0.055 );
+						};
+						const auto red = [&]( std::uint32_t x )
+						{
+							return double( drawn.rgba[( 128 * kSize + x ) * 4] );
+						};
+						const double plateau = 4.0 / 255.0 * 8.0;
+						That( checks, std::fabs( red( 16 ) - srgb( plateau ) ) <= 2.0,
+						    "sky.left-plateau-is-rgb-times-a-times-8",
+						    std::to_string( red( 16 ) ) + " for " +
+						        std::to_string( srgb( plateau ) ) );
+						That( checks, std::fabs( red( 240 ) ) <= 2.0, "sky.right-plateau-is-black",
+						    std::to_string( red( 240 ) ) );
+						That( checks, std::fabs( red( 128 ) - srgb( plateau * 0.5 ) ) <= 4.0,
+						    "sky.middle-filters-premultiplied-texels",
+						    std::to_string( red( 128 ) ) + " for " +
+						        std::to_string( srgb( plateau * 0.5 ) ) );
+					}
+				}
+			}
+		}
 	}
 	return devices.Finish( checks );
 }

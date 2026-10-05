@@ -11073,3 +11073,51 @@ unknown label fails by name. It is not yet exercised on the door. The door's
 retail model reaches the game through the fixture's read-only content
 resolver, and the matched door camera (game idle open/closed against the lab
 posed by the same sequences) is the next step. `posed-model` still passes.
+
+### R91: the 2D sky box on the core (2026-10-05, first slice)
+
+Session source-engine-d7, at the user's direction ("Let's do R91"). Under
+`r_core_world 1` the native backend runs core-only: a legacy draw whose
+shader has no core mesh kind (`CoreMeshKindFor`) is dropped. The sky box's
+faces (`R_DrawSkyBox`, shader `Sky_HDR_DX9`) had none, so Portal's
+`escape_02` sky drew as the not-applicable hatch.
+
+- **The material model claims the Sky shader** as an unlit point, as RFC
+  0016 S8 lists it ("Sky (HDR encodings)"). Changes:
+  - `vmt_mapping` rows map `Sky_HDR_DX9` and `Sky_DX9` to `unlit`, with
+    `$hdrcompressedtexture` keys;
+  - `ClaimSky` (`render/material/unlit_family.cpp`);
+  - the resolver binds the claim's `baseParameter`.
+- **The RGBS decode.** `SurfaceConstants::baseDecode` (576 bytes) feeds
+  `LegacyBaseSample` in `surface_program.glsl`. This is
+  `sky_hdr_compressed_rgbs_ps2x`: four texels as rgb × a, blended
+  bilinearly, then times 8 and the raw `$color`. Depth is ignored and fog is
+  off (`IGNOREZ`, `NOFOG`). The three-exposure `$hdrcompressedtexture0` and
+  a lone `$hdrbasetexture` (format-dependent) are refused by name.
+- **The handoff.** One frozen-path plumbing entry
+  (`Frozen-path:` in the commit) sends `Sky`, `Sky_HDR_DX9` and `Sky_DX9`
+  draws to the core's unlit mesh kind. The existing `QueueMesh` route draws
+  them; there is no second owner. A first attempt that added a dedicated
+  `render.pass.sky` and an engine hook was withdrawn for this reason.
+
+| Check | Evidence | Result |
+| --- | --- | --- |
+| Claim and decode | `render.family.unlit` sky checks (claim fields, the LDR fallback, the refused three-exposure form). A 2×1 RGBS texture drawn full-target: the left plateau is 4/255 × 8, the right is black, and the middle filters premultiplied texels (about 0.063 linear; filtering the encoded texels would saturate it). g++ and clang++, Vulkan and GL | pass (81 checks) |
+| Seeded defect | `render.family.unlit.seeded-sky-no-rgbs-decode`: the decode off gives 255 where the oracle expects 99 and 71 | fails as required |
+| In game | `escape_02` at a camera under the sky brush (`setpos 1536 512 1900`, looking up), `r_core_world 1`: blue sky with clouds where the hatch was | drawn by the core |
+| Legacy reference | `r_core_world 0` at the same camera draws a washed-out sky; the native legacy integer `sky` port is a recorded failing family (R32-LEGACY-SHADERS) | not a usable reference |
+
+Open:
+- no matched image oracle for the face images against a decoded reference;
+- Portal 2's `sky_l4d_c4m1_hdr` faces are now claimed (6 rows in
+  `portal2-all-claims.json`), but the inventory files are not regenerated
+  here, because they currently also carry other sessions' uncommitted claims;
+- the 3D sky box view and its cohort census;
+- `$hdrcompressedtexture0` and float `$hdrbasetexture` skies;
+- frame time unmeasured.
+
+While investigating, `build/` turned out to contain a stray `usr/local`
+install (2026-10-04) with a second `hl2_launcher`. That makes
+`stage_runtime.py` and `portal_boot.py --build build` refuse the tree; it
+was staged here through a symlink mirror instead. Not removed: it isn't
+this session's.

@@ -216,7 +216,11 @@ UnlitClaim ClaimSky( const ParameterBlock &block, bool hdr )
 	{
 		claim.baseParameter = "hdrcompressedtexture";
 		claim.baseSrgb = false;
+#if defined( RENDER_MATERIAL_SKY_SEEDED_NO_RGBS_DECODE )
+		constants.baseDecode[0] = 0.0f;
+#else
 		constants.baseDecode[0] = 1.0f;
+#endif
 		scale = 8.0f;
 	}
 	else if ( hdr && detail::TextureBound( block, "hdrcompressedtexture0" ) )
