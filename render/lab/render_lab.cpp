@@ -1061,9 +1061,12 @@ int Run( const Options &options )
 			}
 			else if ( !pbr && m.program.request.drawLayout.IsValid() && !drawGroupOf.count( drawLayout ) )
 			{
-				auto request = resolver.Value()->DrawGroup( m.program, { kLightmapPage } );
+				// The page for each input the program declares (an unlit sky
+				// or cable declares none).
+				const std::vector<std::string> inputs( m.program.drawInputs.size(), kLightmapPage );
+				auto request = resolver.Value()->DrawGroup( m.program, inputs );
 				if ( !request )
-					return Fail( "no draw group" );
+					return Fail( "no draw group for program " + m.program.name );
 				drawGroupOf[drawLayout] = nextGroup++;
 				if ( !groups.Set( drawGroupOf[drawLayout], *request ) )
 					return Fail( "the draw group was refused" );

@@ -10401,7 +10401,14 @@ bands. The diagnostic matrix is in
 | mirror-corridor/down, low | 1.19, 2.47 → 1.17, 2.45 | 17, 41 | 3.3%, 10.4% | reflection edges, unchanged |
 | portal-pair/a-portal, b-floor, b-portal | 0.81, 1.24, 0.63 → 0.73, 1.15, 0.42 | 5, 18, 5 | | |
 | projector-cookie/room, wall | 23.29, 68.37 → 22.15, 63.40 | 168, 178 | | projector term not fed to the game core (open) |
-| sun-colonnade/along, yard | 1.03, 1.49 → not scored | | | `render_lab: no draw group` with or without `--output-peak` (lab regression since 2026-10-01, open) |
+| sun-colonnade/along, yard | 1.03, 1.49 → 0.88, 1.12 | 24, 55 | 2.9%, 2.4% | along within all limits; yard silhouettes (p99) |
+
+The sun-colonnade lab frames had failed with `render_lab: no draw group`
+since the unlit family declared no per-draw inputs: the lab passed the
+lightmap page to every non-PBR program. It now passes one page per input
+the program declares (`ResolvedProgram::drawInputs`) and names the program
+when a draw group is refused; the scores above are from that lab
+(`/tmp` run of `--fixture sun-colonnade`, same build).
 
 **Performance: a blocking miss.** `render_lab --time 20` (the pass in its
 own submission, same camera): median 57.3 ms at 1024x768, 135.5 ms at
