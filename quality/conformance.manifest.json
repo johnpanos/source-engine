@@ -3558,7 +3558,10 @@
         "mapgeometry/transform.cpp",
         "mdl/studio_model.cpp",
         "hammer/adapters/render/viewport_renderer.cpp",
-        "unittests/hammertest/render/test_viewport_models.cpp"
+        "unittests/hammertest/render/test_viewport_models.cpp",
+        "render/graph/scene_color.cpp",
+        "render/material/refract_family.cpp",
+        "render/material/vertexlit_family.cpp"
       ],
       "extra_flags": [
         "-pthread"
@@ -3633,7 +3636,10 @@
         "mapgeometry/transform.cpp",
         "mdl/studio_model.cpp",
         "hammer/adapters/render/viewport_renderer.cpp",
-        "unittests/hammertest/render/test_viewport_renderer.cpp"
+        "unittests/hammertest/render/test_viewport_renderer.cpp",
+        "render/graph/scene_color.cpp",
+        "render/material/refract_family.cpp",
+        "render/material/vertexlit_family.cpp"
       ],
       "extra_flags": [
         "-pthread"
@@ -3709,7 +3715,10 @@
         "hammer/adapters/render/viewport_service.cpp",
         "platform/runners/manual_task_runner.cpp",
         "platform/runners/thread_task_runner.cpp",
-        "unittests/hammertest/render/test_viewport_service.cpp"
+        "unittests/hammertest/render/test_viewport_service.cpp",
+        "render/graph/scene_color.cpp",
+        "render/material/refract_family.cpp",
+        "render/material/vertexlit_family.cpp"
       ],
       "extra_flags": [
         "-pthread"
@@ -3785,7 +3794,10 @@
         "hammer/adapters/render/viewport_service.cpp",
         "platform/runners/manual_task_runner.cpp",
         "platform/runners/thread_task_runner.cpp",
-        "unittests/hammertest/render/test_viewport_service.cpp"
+        "unittests/hammertest/render/test_viewport_service.cpp",
+        "render/graph/scene_color.cpp",
+        "render/material/refract_family.cpp",
+        "render/material/vertexlit_family.cpp"
       ],
       "extra_flags": [
         "-pthread",
@@ -3900,7 +3912,10 @@
         "hammer/core/app/ops/vertex_ops.cpp",
         "hammer/core/app/ops/visgroup_ops.cpp",
         "hammer/core/app/instance_preview.cpp",
-        "unittests/hammertest/render/test_viewport_models_vulkan.cpp"
+        "unittests/hammertest/render/test_viewport_models_vulkan.cpp",
+        "render/graph/scene_color.cpp",
+        "render/material/refract_family.cpp",
+        "render/material/vertexlit_family.cpp"
       ],
       "extra_flags": [
         "-pthread",
@@ -3984,7 +3999,10 @@
         "mapgeometry/transform.cpp",
         "mdl/studio_model.cpp",
         "hammer/adapters/render/viewport_renderer.cpp",
-        "unittests/hammertest/render/test_viewport_renderer_vulkan.cpp"
+        "unittests/hammertest/render/test_viewport_renderer_vulkan.cpp",
+        "render/graph/scene_color.cpp",
+        "render/material/refract_family.cpp",
+        "render/material/vertexlit_family.cpp"
       ],
       "extra_flags": [
         "-pthread",
@@ -4071,7 +4089,10 @@
         "hammer/adapters/render/viewport_service.cpp",
         "platform/runners/manual_task_runner.cpp",
         "platform/runners/thread_task_runner.cpp",
-        "unittests/hammertest/render/test_viewport_service_vulkan.cpp"
+        "unittests/hammertest/render/test_viewport_service_vulkan.cpp",
+        "render/graph/scene_color.cpp",
+        "render/material/refract_family.cpp",
+        "render/material/vertexlit_family.cpp"
       ],
       "extra_flags": [
         "-pthread",
@@ -10292,7 +10313,10 @@
         "engine/dynamic_occlusion.cpp",
         "engine/render_core_host.cpp",
         "game/client/cdll_client_int.cpp",
-        "render/resources/mip_feedback.cpp"
+        "render/resources/mip_feedback.cpp",
+        "render/graph/scene_color.cpp",
+        "render/material/refract_family.cpp",
+        "render/material/vertexlit_family.cpp"
       ],
       "expect": "pass"
     },
@@ -10847,7 +10871,9 @@
         "render/pass/world/world_pass.cpp",
         "render/material/families/surface_program.glsl",
         "tools/render/lab.py",
-        "render/resources/mip_feedback.cpp"
+        "render/resources/mip_feedback.cpp",
+        "render/graph/scene_color.cpp",
+        "render/material/refract_family.cpp"
       ],
       "expect": "pass"
     },
@@ -10884,7 +10910,9 @@
         "render/material/families/surface_program.glsl",
         "public/render/material/vertexlit_family.h",
         "tools/render/lab.py",
-        "render/resources/mip_feedback.cpp"
+        "render/resources/mip_feedback.cpp",
+        "render/graph/scene_color.cpp",
+        "render/material/refract_family.cpp"
       ],
       "expect": "pass"
     },
@@ -10950,7 +10978,10 @@
         "render/pass/world/world_pass.cpp",
         "render/material/families/surface_program.glsl",
         "tools/render/lab.py",
-        "render/resources/mip_feedback.cpp"
+        "render/resources/mip_feedback.cpp",
+        "render/graph/scene_color.cpp",
+        "render/material/refract_family.cpp",
+        "render/material/vertexlit_family.cpp"
       ],
       "expect": "pass"
     },
@@ -11031,7 +11062,9 @@
         "render/material/cable_family.cpp",
         "render/material/program_resolver.cpp",
         "render/material/vertexlit_family.cpp",
-        "quality/materials/portal2-model-claims.json"
+        "quality/materials/portal2-model-claims.json",
+        "render/graph/scene_color.cpp",
+        "render/material/refract_family.cpp"
       ],
       "expect": "pass"
     },
@@ -11072,7 +11105,10 @@
         "render/lab/render_lab.cpp",
         "render/material/cable_family.cpp",
         "render/material/program_resolver.cpp",
-        "quality/materials/portal2-all-claims.json"
+        "quality/materials/portal2-all-claims.json",
+        "render/graph/scene_color.cpp",
+        "render/material/refract_family.cpp",
+        "render/material/vertexlit_family.cpp"
       ],
       "expect": "pass"
     },
@@ -11757,7 +11793,10 @@
         "render/pass/debug/debug_overlays.cpp",
         "render/pass/debug/hatch.frag",
         "materialsystem/shaderapivulkan/vulkan_device.cpp",
-        "render/resources/mip_feedback.cpp"
+        "render/resources/mip_feedback.cpp",
+        "render/graph/scene_color.cpp",
+        "render/material/refract_family.cpp",
+        "render/material/vertexlit_family.cpp"
       ],
       "expect": "pass"
     },
@@ -11811,7 +11850,10 @@
         "render/pass/debug/debug_overlays.cpp",
         "render/pass/debug/hatch.frag",
         "materialsystem/shaderapivulkan/vulkan_device.cpp",
-        "render/resources/mip_feedback.cpp"
+        "render/resources/mip_feedback.cpp",
+        "render/graph/scene_color.cpp",
+        "render/material/refract_family.cpp",
+        "render/material/vertexlit_family.cpp"
       ],
       "expect": "pass"
     },
@@ -12904,7 +12946,9 @@
         "render/pass/skinning/feature.cpp",
         "render/pass/skinning/skinning.cpp",
         "mdl/studio_model.cpp",
-        "unittests/rendertest/core/composition/test_capabilities.cpp"
+        "unittests/rendertest/core/composition/test_capabilities.cpp",
+        "render/graph/scene_color.cpp",
+        "render/material/refract_family.cpp"
       ],
       "min_checks": 13,
       "extra_flags": [
@@ -13006,7 +13050,9 @@
         "render/device/gl/execute.cpp",
         "render/device/gl/formats.cpp",
         "render/device/gl/pipelines.cpp",
-        "unittests/rendertest/core/composition/test_capabilities.cpp"
+        "unittests/rendertest/core/composition/test_capabilities.cpp",
+        "render/graph/scene_color.cpp",
+        "render/material/refract_family.cpp"
       ],
       "min_checks": 13,
       "extra_flags": [

@@ -27,6 +27,7 @@
 
 #include "family_pixel_cases.h"
 #include "render/device/vulkan/provider.h"
+#include "render/material/draw_program.h"
 #include "render/material/lightmapped_family.h"
 #include "render/material/vmt_import.h"
 #include "testing/checks.h"
@@ -295,6 +296,20 @@ int main()
 			draw.vertices = surface ? std::as_bytes( std::span( surfaceQuad ) )
 			                        : std::as_bytes( std::span( flat ) );
 			draw.vertexCount = std::uint32_t( flat.size() );
+			// The draw constants the layout declares: the world point's push
+			// block is { toClip, world } (surface_world_vertex.glsl) and the flat
+			// point's is the clip matrix alone. A world-surface case that supplies
+			// only the matrix is refused for an incomplete block, and a flat one
+			// that supplies the world rows exceeds its declared range.
+			FamilyDrawConstants drawConstants;
+			const std::array<float, 16> toClip = CaseToClip();
+			std::copy( toClip.begin(), toClip.end(), drawConstants.toClip );
+			if ( surface )
+				for ( int i = 0; i < 4; ++i )
+					drawConstants.world[i * 4 + i] = 1.0f;
+			draw.drawConstants = std::as_bytes( std::span( &drawConstants, 1 ) )
+			                         .first( surface ? sizeof( FamilyDrawConstants )
+			                                         : sizeof( FamilyDrawConstants::toClip ) );
 			std::copy( testCase.clear, testCase.clear + 4, draw.clear );
 			const Drawn drawn = DrawCase( *device, draw );
 			if ( !checks.That( drawn.ok, "draw." + name ) )

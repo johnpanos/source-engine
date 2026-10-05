@@ -556,7 +556,6 @@ Drawn DrawCase( device::IRenderDevice2 &device, const CaseDraw &draw )
 	{
 		if ( !created )
 		{
-			std::fprintf( stderr, "DIAG keep failed\n" );
 			ok = false;
 			return;
 		}
@@ -671,8 +670,6 @@ Drawn DrawCase( device::IRenderDevice2 &device, const CaseDraw &draw )
 		auto group = device.CreateBindGroup( { request.layout, entries } );
 		if ( !group )
 		{
-			std::fprintf( stderr, "DIAG bind group %d refused: status %d op %d entries %zu\n",
-			    int( g ), int( group.Error().status ), int( group.Error().operation ), entries.size() );
 			ok = false;
 			break;
 		}
@@ -826,18 +823,10 @@ Drawn DrawCase( device::IRenderDevice2 &device, const CaseDraw &draw )
 			            context.Buffer( readbackRef ), { 0, 0, 0, kSize, kSize } );
 		        } );
 		auto compiled = graph::CompileGraph( std::move( builder ) );
-		if ( !compiled )
-			std::fprintf( stderr, "DIAG compile refused: %s pass %u res %u\n",
-			    DescribeGraphStatus( compiled.Error().status ), compiled.Error().pass, compiled.Error().resource );
 		if ( compiled )
 		{
 			graph::SerialGraphExecutor executor;
 			auto executed = executor.Execute( compiled.Value(), device );
-			if ( !executed )
-				std::fprintf( stderr, "DIAG execute refused: status %d op %d\n",
-				    int( executed.Error().status ), int( executed.Error().operation ) );
-			if ( executed && !Wait( device, executed.Value().token ) )
-				std::fprintf( stderr, "DIAG wait timed out\n" );
 			if ( executed && Wait( device, executed.Value().token ) )
 			{
 				drawn.rgba.resize( kSize * kSize * 4 );

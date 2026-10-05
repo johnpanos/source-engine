@@ -29,12 +29,14 @@
 
 #include "family_pixel_cases.h"
 #include "render/device/vulkan/provider.h"
+#include "render/material/draw_program.h"
 #include "render/material/surface_program.h"
 #include "render/material/vmt_import.h"
 #include "render/material/water_family.h"
 #include "testing/checks.h"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cmath>
 #include <cstdio>
@@ -553,6 +555,15 @@ int main()
 			    { &white, &white, &white, &white, &white, &white } } );
 			draw.vertices = std::as_bytes( std::span( quad ) );
 			draw.vertexCount = std::uint32_t( quad.size() );
+			// The water point draws world vertices, so its push block is the whole
+			// { toClip, world }; DrawCase's flat fallback alone is refused as an
+			// incomplete block. The quad is already in clip space and nothing sways.
+			FamilyDrawConstants drawConstants;
+			const std::array<float, 16> toClip = CaseToClip();
+			std::copy( toClip.begin(), toClip.end(), drawConstants.toClip );
+			for ( int i = 0; i < 4; ++i )
+				drawConstants.world[i * 4 + i] = 1.0f;
+			draw.drawConstants = std::as_bytes( std::span( &drawConstants, 1 ) );
 			const Drawn drawn = DrawCase( *device, draw );
 			if ( !checks.That( drawn.ok, "draw." + name ) )
 				continue;

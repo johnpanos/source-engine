@@ -10172,6 +10172,52 @@ built in this session without overwriting another session's configure (the
 `build` tree's waf lock is stale and reconfiguring it is a shared-profile
 change). The census counters exist so that measurement is one boot away.
 
+### sp_a1_intro4_relit optimization captures and proposals (2026-10-05)
+
+[Record: 0016-intro4-relit-rendercore-optimization-2026-10-05.md](0016-intro4-relit-rendercore-optimization-2026-10-05.md).
+Optimization evidence only: no engine change and no gate state. The published
+P2:CE relit package is now measured against `linux-desktop-high-120` at
+1920x1080/High/4x MSAA on native Vulkan (`quality-results/relit-perf-20261005/`):
+arrival interval 90.8 ms, CPU 85.5 ms, GPU 58.7 ms, and the frame is CPU-bound
+before it is GPU-bound. Three bracket-synced `perf` captures and six controls
+attribute the cost:
+
+- `CoreWorld::RecordWorldBatch` is 65% of all process CPU, and the
+  depth/normal prepass plus GTAO block inside it is **64% of one core view's
+  recording CPU** (47 samples per view per frame, 15.3 ms/frame at two views).
+  The prepass draw lists are rebuilt from every `world->surfaces` record and
+  every static instance x surface on every call, although they depend only on
+  the world generation and material revisions.
+- The frame records **two** core world views. The second is the viewmodel scope
+  (`Push3DView` in `DrawViewModels`), which repeats cluster assignment, the
+  world prepass, GTAO and a share of the 14 per-frame world batch recordings.
+  `+r_drawviewmodel 0` measures -18.3 ms interval, -17.8 ms CPU, -8.0 ms GPU.
+  The retained RenderDoc audit of the same map shows the same duplication
+  (`core world prepass` 499 markers under each scope, two identical 3,568-draw
+  static shadow sets).
+- Shadows remain the largest GPU item (world surfaces 12.8 -> 4.9 ms with
+  `r_core_shadow_quality 0`); the RCV-09 depth prepass is load-bearing (+31 ms
+  arrival GPU without it); GTAO costs 2.7-3.5 ms per recording against its own
+  0.5 ms component budget; opaque batching is mildly helpful and stays on.
+- Two strategic facts: `r_core_world 0` runs the same map and settings at
+  10.4 ms interval (cost context only, different image, not a parity
+  judgement), and the host/engine portion of the frame is 7.9-8.8 ms in a
+  listen-server fixture, already at the row's 8.333 ms CPU limit. A player-client
+  capture is needed before renderer work can be said to be able to satisfy the
+  row.
+
+Seven ranked proposals (P1 viewmodel scope, P2 prepass list caching, P3
+duplicate world geometry between the two depth passes, P4 per-frame VMT
+re-import, P5 `WorldView` copy per batch, P6 receiver attribution, P7 GTAO
+component) each carry their owner, supported size and required evidence. Two
+workloads were added: `portal2-intro4-relit-perf-v1` (budget-linked acceptance
+for this map, same cameras as `portal2-intro4-perf-v1`) and
+`portal2-intro4-relit-diagnostic-v1` (no budget row, so `frame_floor.py`
+accepts switches for attribution; never acceptance evidence). Known gaps: ~6%
+run-to-run noise, static cameras only, no resolution sweep (the collector pins
+a row's dimensions), and 33 missing environment cubemaps in the published
+package (a content gap at load, not a per-frame cost).
+
 ### Static-only prop surface selection repair (2026-10-04)
 
 The per-level geometry migration grouped `WorldSurface` records by LOD but

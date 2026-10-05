@@ -30,6 +30,7 @@
 #include "testing/checks.h"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cstdio>
 #include <cstdlib>
@@ -92,10 +93,35 @@ int main()
 		                      "\"$additive\" \"1\" }",
 		                 "additive" ),
 		    "claim.refuses-translucent-additive" );
-		checks.That( refused( "\"UnlitGeneric\" { \"$basetexture\" \"a\" \"$basetexturetransform\" "
-		                      "\"center .5 .5 scale 2 2 rotate 0 translate 0 0\" }",
-		                 "basetexturetransform" ),
-		    "claim.refuses-a-texture-transform-by-name" );
+	}
+
+	// The base texture transform is drawn, not refused: UnlitGeneric's pixel
+	// stage samples the base texture through it (BaseTextureUv), so the scale
+	// reaches the draw's base transform constants.
+	{
+		VmtImportContext context;
+		auto imported = ImportVmt( "\"UnlitGeneric\" { \"$basetexture\" \"a\" "
+		                          "\"$basetexturetransform\" "
+		                          "\"center .5 .5 scale 2 2 rotate 0 translate 0 0\" }",
+		    context );
+		UnlitClaim claim;
+		if ( checks.That( imported.HasValue(), "transform.imports" ) )
+		{
+			ParameterBlock block( *unlit );
+			if ( checks.That( ApplyValues( imported.Value(), block ).HasValue(), "transform.fits" ) )
+			{
+				(void)block.SetTexture( "basetexture", device::TextureId( 1 ) );
+				claim = ClaimUnlit( block );
+			}
+		}
+		// T( 0.5 ) x S( 2 ) x T( -0.5 ): the scale's linear rows, and the
+		// centre's offset they leave behind (the port's "center" convention).
+		const std::array<float, 8> expected = { 2.0f, 0.0f, 0.0f, -0.5f, 0.0f, 2.0f, 0.0f,
+			-0.5f };
+		checks.That( claim.claimed &&
+		                 std::equal( expected.begin(), expected.end(),
+		                     claim.constants.baseTransform ),
+		    "claim.draws-a-base-texture-transform" );
 	}
 
 	// The alpha test's reference as the legacy shaders set it: 0.7 when the
