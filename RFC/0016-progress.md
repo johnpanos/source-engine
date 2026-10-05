@@ -3200,6 +3200,12 @@ source-engine-43 owns `render_lab` and every lighting term.
 
 ## K10: OpenGL adapter, slices 1–4 (2026-09-29)
 
+Current status is in the
+[2026-10-05 record](#k10-core-pixel-families-on-gl-togl-and-product-composition-2026-10-05):
+capability negotiation and ToGL now pass, the core pixel families are
+compared across adapters, and the product boot still waits on K8/K9. The
+table below is the 2026-09-29 state.
+
 State: `render.device.gl` exists and passes the port suite on the Linux
 desktop (radeonsi) and on llvmpipe. Rebased onto K11 a2 (`04756591`): the
 counts below are from that base (g++ and clang++; Vulkan device suite 851). K10 stays open: capability negotiation,

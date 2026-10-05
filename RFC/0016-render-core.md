@@ -2348,6 +2348,34 @@ does.
 | Lab | `render.lab.panel` and its sensitivity | resolution against a ray-cast oracle; edges sharp at the chosen resolution and blurred at the legacy one (the control); emission value, scale and term; one list and one raster per frame; linear-light mips; tile lights against the GPU image per flicker state and replacement of a live texture with cropped UVs; alpha artwork over a receiver, mixed opaque/alpha surfaces and coverage mips; coatings never add light, scatter as defined, and reflect |
 | Product | `corpus.portal2.sign-panel` | the core draws the sign; its text is sharp where the legacy path's is blurred; through its flicker every frame's pixels follow the light it publishes in that frame; its dirt is in every state and dims its light; it publishes its tile lights |
 
+#### Sky (amended 2026-10-05)
+
+The 2D sky box (the engine's `R_DrawSkyBox` faces) has no pass of its own.
+Its faces are ordinary material-system draws, and the material model claims
+the Sky shader as an unlit point (S8, "Sky (HDR encodings)"): `ClaimSky`
+names the base parameter its encoding uses and the decode. The legacy
+frontend's mesh handoff (`CoreMeshKindFor`, the unlit mesh kind) gives the
+draws to the core at their stream position, as it does for sprites and
+decals. A second owner, such as a dedicated sky pass or an engine hook,
+is not allowed.
+
+- `$hdrcompressedtexture` is RGBS (`sky_hdr_compressed_rgbs_ps2x`): each
+  of the four texels around the coordinate as rgb × a, blended bilinearly,
+  times 8 and `$color` unconverted (`SurfaceConstants::baseDecode`,
+  `surface_program.glsl`'s `LegacyBaseSample`). Depth is ignored and fog is
+  off (`IGNOREZ`, `NOFOG`).
+- Without HDR (`Sky_DX9`) the base is `$basetexture` sampled as sRGB.
+- The three-exposure `$hdrcompressedtexture0` form and a lone
+  `$hdrbasetexture`, whose conversion depends on its texture format, are
+  refused by name until claimed.
+- The 3D sky box is a view of the world, not this cohort: it follows the
+  world's views.
+
+| Check | Runs as | Passes when |
+| --- | --- | --- |
+| Decode | `render.family.unlit` sky checks on Vulkan and GL, and `render.family.unlit.seeded-sky-no-rgbs-decode` | the claim names its base and decode; an RGBS image's plateaus are rgb × a × 8 and its middle filters premultiplied texels; the no-decode control fails |
+| Product | a Portal map with a sky (`escape_02`) under `r_core_world 1` | the sky's pixels are the core's (no hatch, zero sky draws dropped); faces match a decoded reference of their images within tolerance |
+
 ### K9: Retirement
 
 | Check | Runs as | Passes when |
@@ -2367,9 +2395,18 @@ does.
 | Port suite | `render.device.v2` on the OpenGL 4.5 adapter | every clause the adapter claims passes, including the conventions section; unclaimed capabilities are reported, not failed |
 | No portable changes needed | CAP011; the backend-identity scan | CAP011 passes, and no portable module compares the backend identifier |
 | Capability negotiation | `render.composition.capabilities` | with compute masked off, composition selects CPU skinning and reports each disabled feature by name; with a required feature missing, composition fails with a structured error |
+| Core pixel families (amended 2026-10-05) | `render.family.<family>.gl` and `render.family.<family>.cross-backend` for unlit, water, lightmapped, vertexlit and pbr; sensitivity `render.family.unlit.cross-backend.seeded-gl-lower-left` | each family's cases pass the port fixtures on GL; every pixel of each GL frame is within the per-case limit of the Vulkan frame in [`cross-backend-v1.vdf`](../quality/fixtures/render-families/cross-backend-v1.vdf) (levels per channel and a reviewed outlier count, never byte identity); a GL adapter with GL's own origin fails the cross clause |
 | Pixels | pixel families on `portal-linux-gl` | within the cross-backend tolerance recorded per case against the Vulkan result (not byte-identical, per AGENTS.md) |
 | Product boot | `portal_boot.py` on the GL profile | `testchmb_a_01` boots and renders in both queued modes |
-| ToGL untouched | legacy renderer profile build | the ToGL legacy profile still builds and its existing checks pass |
+| ToGL untouched | legacy renderer profile build; `portal_boot.py` on the 64-bit SDL2 ToGL client in a private compositor | the ToGL legacy profile still builds and boots `testchmb_a_01`; no K10 change touches a ToGL or D3D9 input |
+
+The product boot and the product pixel families need a frame the GL device
+draws. The legacy stream executes only on its own backends, and the frozen
+paths take no GL execution path, so these two checks wait for K8/K9: the
+GL boot passes when the core draws the whole frame (port owner's decision,
+2026-09-29). Composing the core on GL beside the native Vulkan backend, with
+frames running as stage passes, is evidence of composition, not of this
+boot.
 
 ### K11: Lighting model proven in `render_lab`
 
