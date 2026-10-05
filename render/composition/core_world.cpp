@@ -2318,7 +2318,7 @@ void CoreWorld::RecordWorldBatch( std::span<const std::uint32_t> tags,
 	world.minDepth = target.minDepth;
 	world.maxDepth = target.maxDepth;
 	world.device = target.device;
-	if ( target.frame )
+	if ( target.frame && m_MipFeedbackConsumer )
 	{
 		auto &feedback = m_MipFeedbackFrames[target.frame];
 		if ( !feedback )

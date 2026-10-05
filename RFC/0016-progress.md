@@ -21,6 +21,61 @@ are not reliable. The requests are collected but are not yet connected to a
 residency/streaming consumer, and scene-wide validation remains open. This work
 does not close R95/R96 or any quality gate.
 
+2026-10-05: with no consumer, `CoreWorld` no longer attaches a collector
+(`m_MipFeedbackConsumer`, off), so record paths skip footprint projection.
+The future residency/streaming consumer turns it on when it reads
+`Requests()`. `sp_a1_intro4_relit` gameplay camera, 1024×768 headless, two
+runs each: backend CPU 10.6/12.3 → 10.3/8.5 ms, interval 19.3/21.0 →
+20.8/18.5 ms (within the shared-GPU noise after the committed object-box
+projection); screenshots identical to the base runs (max 1, as base vs base).
+
+LOD and mip audit (2026-10-05, source read, no pixels changed):
+
+- Model LOD: the core draws the LOD the engine picked per view
+  (`CModelRender::ComputeLOD` for posed models, `DrawStaticPropArrayFast` for
+  static props; `RenderCoreWorldDraw_*` pass it through). `r_lod -1` (engine
+  default) selects by `ComputePixelWidthOfSphere(origin, 0.5)` through the
+  model's authored `$lod` switch metric, clamped to `m_RootLOD`; the
+  High profile, `run.conf` and `play_p2` pin `r_lod 0`, so every model draws
+  LOD 0 there. Static-prop fades and shadow LODs follow the legacy rules.
+- Texture sampling: world and model surfaces sample the material system's
+  managed textures with that texture's sampler state
+  (`CVulkanContext::ManagedTextureSampler`): linear mips, and
+  `mat_forceaniso` anisotropy (16 on High) where the material asks for it.
+  `mat_picmip -1` loads every VTF mip.
+- Residency: no per-mip residency or streaming exists. The legacy texture
+  manager loads whole textures (optionally async); `MipFeedbackFrame` has no
+  consumer (above), and `ITextureCache` residency is RFC 0016 layout only.
+- Smallest change for coverage-based LOD: run the existing `r_lod -1` rule
+  on High with the sphere radius taken from the model's bounds rather than
+  0.5, so `$lod` thresholds follow projected size. That changes authored
+  switch semantics and the shipped High quality, so it is a user decision;
+  not applied here. For the P2:CE 4K/BC7 packs, the first residency slice is
+  a consumer of `Requests()` that uploads mips coarse-first and raises a
+  per-texture min-LOD clamp, then sets `m_MipFeedbackConsumer`.
+
+Gameplay-frame follow-up (2026-10-05, same camera and harness):
+
+- CPU: `perf record -F 999` showed a flat profile; the top symbol was VMT
+  interpretation (`MapValues` 4.4 %, `BlockFor` 0.9 %), run twice per dynamic
+  draw per view (claim and record). `WorldPass::State::Mapped` now memoizes
+  `MapWorldMaterial` by `MaterialSnapshotKey` (which now also carries
+  `translucent` and `hasProxy`), bounded at 4,096 entries, under its own
+  lock. Backend CPU 8.5–10.3 → 8.4–8.8 ms (within noise); screenshots identical.
+- GPU at the arrival camera (`cl_render_debug_gpu_timers`): 13.9 ms, of which
+  the back-buffer pass is 13.0 ms: world PBR surfaces 6.6, static models 3.6,
+  GTAO 1.1, posed models 0.8, prepass 0.3. Only one `_rt_poweroftwofb` copy
+  (22 µs) at this pose; the 18 copies belong to other poses. The next target
+  is the surface program's fragment cost.
+- Far-field LTC (`kAreaFarDiffuse` 36, rough specular 144): exact vs fast on
+  the seven elevator poses, two runs each. On run-stable pixels the
+  difference is max 17–18 levels on 0.006–0.03 % of pixels (depart-back,
+  depart-outside) and ≤1 elsewhere. The max 124 at `elev-arrive` is the
+  elevator video showing a different movie frame, as large between two runs of
+  the same build. Cutoff kept. GPU at `elev-arrive-up` 20–22 ms fast vs 26 ms
+  exact.
+- Unavailable: resolutions above 1024×768 (SDL offscreen cap), Fold7.
+
 ## FSR temporal reconstruction implementation (2026-10-03, in progress)
 
 User-selected work on `codex/fsr-temporal`, in an isolated worktree, owns

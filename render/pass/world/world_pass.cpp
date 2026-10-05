@@ -324,6 +324,8 @@ std::string MaterialSnapshotKey( const WorldMaterial &source )
 	append( source.name );
 	append( source.shader );
 	key += source.mesh ? "M" : "W";
+	key += source.translucent ? "T" : "O";
+	key += source.hasProxy ? "P" : "-";
 	for ( const auto *values : { &source.variables, &source.defaults } )
 	{
 		key += std::to_string( values->size() ) + ":";
@@ -527,6 +529,14 @@ struct WorldPass::State
 	// Host frames with a recorded slot, newest last.
 	std::deque<std::uint64_t> recordedFrames;
 	WorldStats stats;
+	// MapWorldMaterial of each dynamic draw's material, by MaterialSnapshotKey
+	// (every input of the mapping). The claim (main thread) and the record
+	// (render sequence) both read it; entries are immutable, so a cleared
+	// table leaves borrowers their entry.
+	using MappedMaterial = foundation::Expected<Claimed, std::string>;
+	std::mutex mappedLock;
+	std::map<std::string, std::shared_ptr<const MappedMaterial>> mapped;
+	std::shared_ptr<const MappedMaterial> Mapped( const WorldMaterial &source, std::string &key );
 	// A world stage's lighting as it changes (SetStageLightmap,
 	// SetStageProbeVolume, SetStageChange), with revisions that rise with each.
 	// The total page: `stageLightmap` as of `stageLightmapBaseRevision`
@@ -1113,7 +1123,9 @@ std::uint32_t WorldPass::QueueView( WorldView view )
 	// claimed inputs that later lose a texture still fail on the render sequence.
 	for ( const WorldView::DynamicDraw &draw : view.dynamicDraws )
 	{
-		auto mapped = MapWorldMaterial( draw.material );
+		std::string key;
+		const auto entry = s.Mapped( draw.material, key );
+		const State::MappedMaterial &mapped = *entry;
 		std::string why;
 		if ( !mapped )
 			why = mapped.Error();
@@ -1202,6 +1214,24 @@ std::size_t WorldPass::OpaqueBatchSize(
 	const State &s = *m_State;
 	std::lock_guard<std::mutex> guard( s.lock );
 	return s.OpaqueBatchSize( tags, streamEpoch );
+}
+
+std::shared_ptr<const WorldPass::State::MappedMaterial> WorldPass::State::Mapped(
+    const WorldMaterial &source, std::string &key )
+{
+	// Bounded: snapshot values that change every frame would otherwise grow it.
+	constexpr std::size_t kMaxMapped = 4096;
+	key = MaterialSnapshotKey( source );
+	{
+		std::lock_guard<std::mutex> guard( mappedLock );
+		if ( auto found = mapped.find( key ); found != mapped.end() )
+			return found->second;
+	}
+	auto entry = std::make_shared<const MappedMaterial>( MapWorldMaterial( source ) );
+	std::lock_guard<std::mutex> guard( mappedLock );
+	if ( mapped.size() >= kMaxMapped )
+		mapped.clear();
+	return mapped.emplace( key, entry ).first->second;
 }
 
 std::size_t WorldPass::State::OpaqueBatchSize(
@@ -4036,7 +4066,9 @@ void WorldPass::RecordBatch(
 	std::vector<DynamicDraw> dynamicDraws;
 	for ( const WorldView::DynamicDraw &draw : view.dynamicDraws )
 	{
-		auto mapped = MapWorldMaterial( draw.material );
+		std::string key;
+		const auto entry = s.Mapped( draw.material, key );
+		const State::MappedMaterial &mapped = *entry;
 		if ( !mapped || draw.vertices.empty() || draw.indices.empty() ||
 		     draw.indices.size() % 3 != 0 ||
 		     std::any_of( draw.indices.begin(), draw.indices.end(),
@@ -4050,7 +4082,7 @@ void WorldPass::RecordBatch(
 			complete = false;
 			continue;
 		}
-		Resources::Material &cached = r.dynamicMaterials[MaterialSnapshotKey( draw.material )];
+		Resources::Material &cached = r.dynamicMaterials[key];
 		Resources::Material *m =
 		    prepareMaterial( *r.resolver, cached, mapped.Value(), draw.material );
 		if ( !m || !drawGroupReady( *m, draw.lightmapPage, draw.capturedLightmap ) ||

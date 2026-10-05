@@ -547,6 +547,10 @@ private:
 	// CPU mip demand aggregates all world views recorded for one host frame;
 	// bounded replay history lets capture re-records reuse the same collector.
 	std::map<std::uint64_t, std::unique_ptr<resources::MipFeedbackFrame>> m_MipFeedbackFrames;
+	// Collection is off until a residency/streaming consumer reads
+	// MipFeedbackFrame::Requests(); projecting footprints with no reader cost
+	// ~12 ms of CPU per frame on sp_a1_intro4 (2026-10-05).
+	bool m_MipFeedbackConsumer = false;
 	std::atomic<unsigned long long> m_Hatches{ 0 };
 	std::atomic<unsigned long long> m_Tints{ 0 };
 	std::atomic<unsigned long long> m_Redrawn{ 0 };
