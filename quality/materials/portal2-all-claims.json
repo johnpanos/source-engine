@@ -52,9 +52,9 @@
     "decalmodulate": {
       "dynamically_unresolved": 0,
       "statically_supported": 0,
-      "supported_with_requirements": 70,
+      "supported_with_requirements": 80,
       "total": 101,
-      "unsupported": 31
+      "unsupported": 21
     },
     "depthoffield": {
       "dynamically_unresolved": 0,
@@ -276,9 +276,9 @@
     "unlitgeneric": {
       "dynamically_unresolved": 22,
       "statically_supported": 131,
-      "supported_with_requirements": 783,
+      "supported_with_requirements": 786,
       "total": 1039,
-      "unsupported": 103
+      "unsupported": 100
     },
     "unlittwotexture": {
       "dynamically_unresolved": 23,
@@ -416,10 +416,9 @@
     "the model does not read $bumpscale": 1,
     "the model does not read $color2": 2,
     "the model does not read $comparez": 1,
-    "the model does not read $decalfadeduration": 15,
+    "the model does not read $decalfadetime": 12,
     "the model does not read $flashlightnolambert": 3,
     "the model does not read $flat": 7,
-    "the model does not read $fogfadestart": 10,
     "the model does not read $fresnelreflection": 1,
     "the model does not read $groupbame": 1,
     "the model does not read $keywords": 3,
@@ -21254,32 +21253,32 @@
     "materials/decals/combineballfade.vmt": {
       "candidates": [],
       "family": "unlit",
-      "gap": "the model does not read $decalfadeduration",
+      "gap": "the model does not read $decalfadetime",
       "input_sha256": "7cbe6cfbb31d5709c65675d0f5723e7b2125e6763ca6dbe3779df3b35e6faaeb",
       "mesh_claims": [
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -21288,23 +21287,22 @@
       ],
       "proxies": [],
       "refusal_features": [
-        "parameter:$decalfadeduration"
+        "parameter:$decalfadetime"
       ],
       "shader": "unlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
-        "$decalfadeduration",
         "$decalfadetime"
       ],
       "world_claims": [
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "world_stage": true
           }
@@ -21314,32 +21312,32 @@
     "materials/decals/combineballfade2.vmt": {
       "candidates": [],
       "family": "unlit",
-      "gap": "the model does not read $decalfadeduration",
+      "gap": "the model does not read $decalfadetime",
       "input_sha256": "382fbbecd1d1d038ff3a82d8ae0e686d1732535119417fa526b7477c91db9aeb",
       "mesh_claims": [
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -21348,23 +21346,22 @@
       ],
       "proxies": [],
       "refusal_features": [
-        "parameter:$decalfadeduration"
+        "parameter:$decalfadetime"
       ],
       "shader": "unlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
-        "$decalfadeduration",
         "$decalfadetime"
       ],
       "world_claims": [
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "world_stage": true
           }
@@ -21374,32 +21371,32 @@
     "materials/decals/combineballfade3.vmt": {
       "candidates": [],
       "family": "unlit",
-      "gap": "the model does not read $decalfadeduration",
+      "gap": "the model does not read $decalfadetime",
       "input_sha256": "2680bc351841c449cc214b8ccb8dbd4e00028d1d59110a8b8a7cf1bc4566d05d",
       "mesh_claims": [
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -21408,23 +21405,22 @@
       ],
       "proxies": [],
       "refusal_features": [
-        "parameter:$decalfadeduration"
+        "parameter:$decalfadetime"
       ],
       "shader": "unlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
-        "$decalfadeduration",
         "$decalfadetime"
       ],
       "world_claims": [
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "world_stage": true
           }
@@ -23066,32 +23062,32 @@
     "materials/decals/decalsplash.vmt": {
       "candidates": [],
       "family": "unlit",
-      "gap": "the model does not read $decalfadeduration",
+      "gap": "the model does not read $decalfadetime",
       "input_sha256": "1d53917a3989097802a3e30e290a8ac456cdac8d0465fa1d195ddbe139b3d5aa",
       "mesh_claims": [
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -23100,23 +23096,22 @@
       ],
       "proxies": [],
       "refusal_features": [
-        "parameter:$decalfadeduration"
+        "parameter:$decalfadetime"
       ],
       "shader": "unlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
-        "$decalfadeduration",
         "$decalfadetime"
       ],
       "world_claims": [
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "world_stage": true
           }
@@ -23834,32 +23829,32 @@
     "materials/decals/extinguish1.vmt": {
       "candidates": [],
       "family": "lightmapped",
-      "gap": "the model does not read $decalfadeduration",
+      "gap": "the model does not read $decalfadetime",
       "input_sha256": "ef1da6a2e9125472ce9fef35232ef9efeb27574f0437fa07d33642bc1481cfd3",
       "mesh_claims": [
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -23868,23 +23863,22 @@
       ],
       "proxies": [],
       "refusal_features": [
-        "parameter:$decalfadeduration"
+        "parameter:$decalfadetime"
       ],
       "shader": "lightmappedgeneric",
       "status": "unsupported",
       "unmapped_keys": [
-        "$decalfadeduration",
         "$decalfadetime"
       ],
       "world_claims": [
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "world_stage": true
           }
@@ -25963,32 +25957,32 @@
     "materials/decals/plasmaglowfade.vmt": {
       "candidates": [],
       "family": "unlit",
-      "gap": "the model does not read $decalfadeduration",
+      "gap": "the model does not read $decalfadetime",
       "input_sha256": "46229cb3b33f2177863ff64c77aabecd2fefb13cd420bc9d1d38fe0f1c2a5c9d",
       "mesh_claims": [
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -25997,24 +25991,23 @@
       ],
       "proxies": [],
       "refusal_features": [
-        "parameter:$decalfadeduration"
+        "parameter:$decalfadetime"
       ],
       "shader": "unlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
-        "$decalfadeduration",
         "$decalfadetime",
         "$decalsecondpass"
       ],
       "world_claims": [
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "world_stage": true
           }
@@ -30470,32 +30463,32 @@
     "materials/decals/redglowfade.vmt": {
       "candidates": [],
       "family": "unlit",
-      "gap": "the model does not read $decalfadeduration",
+      "gap": "the model does not read $decalfadetime",
       "input_sha256": "efa26d00239bf284c9f7bf04286e22325978860460207b89661802c8ae01493b",
       "mesh_claims": [
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -30504,24 +30497,23 @@
       ],
       "proxies": [],
       "refusal_features": [
-        "parameter:$decalfadeduration"
+        "parameter:$decalfadetime"
       ],
       "shader": "unlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
-        "$decalfadeduration",
         "$decalfadetime",
         "$decalsecondpass"
       ],
       "world_claims": [
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "world_stage": true
           }
@@ -31050,32 +31042,32 @@
     "materials/decals/scorchfade.vmt": {
       "candidates": [],
       "family": "lightmapped",
-      "gap": "the model does not read $decalfadeduration",
+      "gap": "the model does not read $decalfadetime",
       "input_sha256": "8c63b85f0a980d9da01e3850c8b1982687290f6bc1196a9eeddabbab08783381",
       "mesh_claims": [
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -31084,23 +31076,22 @@
       ],
       "proxies": [],
       "refusal_features": [
-        "parameter:$decalfadeduration"
+        "parameter:$decalfadetime"
       ],
       "shader": "lightmappedgeneric",
       "status": "unsupported",
       "unmapped_keys": [
-        "$decalfadeduration",
         "$decalfadetime"
       ],
       "world_claims": [
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "world_stage": true
           }
@@ -31166,32 +31157,32 @@
     "materials/decals/scorchfademodel.vmt": {
       "candidates": [],
       "family": "vertexlit",
-      "gap": "the model does not read $decalfadeduration",
+      "gap": "the model does not read $decalfadetime",
       "input_sha256": "b2093a7c366da2dfab658cbd183d357b9eed96e0c92c82fff12fe41567bc322a",
       "mesh_claims": [
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -31200,23 +31191,22 @@
       ],
       "proxies": [],
       "refusal_features": [
-        "parameter:$decalfadeduration"
+        "parameter:$decalfadetime"
       ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
-        "$decalfadeduration",
         "$decalfadetime"
       ],
       "world_claims": [
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "world_stage": true
           }
@@ -31857,32 +31847,32 @@
     "materials/decals/splash1.vmt": {
       "candidates": [],
       "family": "lightmapped",
-      "gap": "the model does not read $decalfadeduration",
+      "gap": "the model does not read $decalfadetime",
       "input_sha256": "496f0180d18fc39c74ca38392b67a4d3adef1d8753c2196863e1c805350bff01",
       "mesh_claims": [
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -31891,23 +31881,22 @@
       ],
       "proxies": [],
       "refusal_features": [
-        "parameter:$decalfadeduration"
+        "parameter:$decalfadetime"
       ],
       "shader": "lightmappedgeneric",
       "status": "unsupported",
       "unmapped_keys": [
-        "$decalfadeduration",
         "$decalfadetime"
       ],
       "world_claims": [
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "world_stage": true
           }
@@ -31973,32 +31962,32 @@
     "materials/decals/splash2.vmt": {
       "candidates": [],
       "family": "lightmapped",
-      "gap": "the model does not read $decalfadeduration",
+      "gap": "the model does not read $decalfadetime",
       "input_sha256": "496f0180d18fc39c74ca38392b67a4d3adef1d8753c2196863e1c805350bff01",
       "mesh_claims": [
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -32007,23 +31996,22 @@
       ],
       "proxies": [],
       "refusal_features": [
-        "parameter:$decalfadeduration"
+        "parameter:$decalfadetime"
       ],
       "shader": "lightmappedgeneric",
       "status": "unsupported",
       "unmapped_keys": [
-        "$decalfadeduration",
         "$decalfadetime"
       ],
       "world_claims": [
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "world_stage": true
           }
@@ -32089,32 +32077,32 @@
     "materials/decals/splash3.vmt": {
       "candidates": [],
       "family": "lightmapped",
-      "gap": "the model does not read $decalfadeduration",
+      "gap": "the model does not read $decalfadetime",
       "input_sha256": "496f0180d18fc39c74ca38392b67a4d3adef1d8753c2196863e1c805350bff01",
       "mesh_claims": [
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -32123,23 +32111,22 @@
       ],
       "proxies": [],
       "refusal_features": [
-        "parameter:$decalfadeduration"
+        "parameter:$decalfadetime"
       ],
       "shader": "lightmappedgeneric",
       "status": "unsupported",
       "unmapped_keys": [
-        "$decalfadeduration",
         "$decalfadetime"
       ],
       "world_claims": [
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "the model does not read $decalfadetime",
           "scene_inputs": {
             "world_stage": true
           }
@@ -137033,34 +137020,40 @@
       ]
     },
     "materials/overlays/command_target.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the model does not read $decalfadeduration",
       "input_sha256": "7e5e13087bd7abed574a5c43869061345cc48cd1096e7c1ab3d786043cc9574e",
       "mesh_claims": [
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -137068,23 +137061,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$decalfadeduration"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$decalfadeduration"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $decalfadeduration",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $decalfadeduration",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -137092,34 +137079,40 @@
       ]
     },
     "materials/overlays/command_target_orange.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the model does not read $decalfadeduration",
       "input_sha256": "08a5dc169ef25586bf5797c95f8466d07748c106d519a72e65b707e5735394b0",
       "mesh_claims": [
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -137127,23 +137120,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$decalfadeduration"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$decalfadeduration"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $decalfadeduration",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $decalfadeduration",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -137564,34 +137551,40 @@
       ]
     },
     "materials/overlays/coop_ping_decal.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the model does not read $decalfadeduration",
       "input_sha256": "0bf96feec1a72f044d45a1b407cff99b952384cb4a101415690019a6bfdfc5a7",
       "mesh_claims": [
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $decalfadeduration",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -137599,23 +137592,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$decalfadeduration"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$decalfadeduration"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $decalfadeduration",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $decalfadeduration",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -169438,34 +169425,40 @@
       ]
     },
     "materials/signage/underground_num_00.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "modulate2x",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "decal-modulate",
-      "gap": "the model does not read $fogfadestart",
       "input_sha256": "60d79b8f486eff620f5807dbe213bd588914f1226da9e73947867c0dac4cfd84",
       "mesh_claims": [
         {
-          "gap": "the model does not read $fogfadestart",
+          "gap": "family decal-modulate has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $fogfadestart",
+          "gap": "family decal-modulate has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $fogfadestart",
+          "gap": "family decal-modulate has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $fogfadestart",
+          "gap": "family decal-modulate has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -169473,24 +169466,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$fogfadestart"
-      ],
       "shader": "decalmodulate",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$fogfadestart",
-        "$fogfadeend"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $fogfadestart",
+          "claim": "modulate2x",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $fogfadestart",
+          "claim": "modulate2x",
           "scene_inputs": {
             "world_stage": true
           }
@@ -169498,34 +169484,40 @@
       ]
     },
     "materials/signage/underground_num_01.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "modulate2x",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "decal-modulate",
-      "gap": "the model does not read $fogfadestart",
       "input_sha256": "57a02d0a163f34d205e6c773efe425493841f8b3acd877b0eefaeafcba7a0136",
       "mesh_claims": [
         {
-          "gap": "the model does not read $fogfadestart",
+          "gap": "family decal-modulate has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $fogfadestart",
+          "gap": "family decal-modulate has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $fogfadestart",
+          "gap": "family decal-modulate has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $fogfadestart",
+          "gap": "family decal-modulate has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -169533,24 +169525,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$fogfadestart"
-      ],
       "shader": "decalmodulate",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$fogfadestart",
-        "$fogfadeend"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $fogfadestart",
+          "claim": "modulate2x",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $fogfadestart",
+          "claim": "modulate2x",
           "scene_inputs": {
             "world_stage": true
           }
@@ -169558,34 +169543,40 @@
       ]
     },
     "materials/signage/underground_num_02.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "modulate2x",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "decal-modulate",
-      "gap": "the model does not read $fogfadestart",
       "input_sha256": "7aad1007b4e082318ad5b758aaaf74629cc17e9cb524a60a8b90dd28deb5197b",
       "mesh_claims": [
         {
-          "gap": "the model does not read $fogfadestart",
+          "gap": "family decal-modulate has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $fogfadestart",
+          "gap": "family decal-modulate has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $fogfadestart",
+          "gap": "family decal-modulate has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $fogfadestart",
+          "gap": "family decal-modulate has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -169593,24 +169584,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$fogfadestart"
-      ],
       "shader": "decalmodulate",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$fogfadestart",
-        "$fogfadeend"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $fogfadestart",
+          "claim": "modulate2x",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $fogfadestart",
+          "claim": "modulate2x",
           "scene_inputs": {
             "world_stage": true
           }
@@ -169618,34 +169602,40 @@
       ]
     },
     "materials/signage/underground_num_03.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "modulate2x",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "decal-modulate",
-      "gap": "the model does not read $fogfadestart",
       "input_sha256": "0c36a3bd6b26166949b8b319e65303a98d09b5c4d20644eb407cd039276d7aaf",
       "mesh_claims": [
         {
-          "gap": "the model does not read $fogfadestart",
+          "gap": "family decal-modulate has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $fogfadestart",
+          "gap": "family decal-modulate has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $fogfadestart",
+          "gap": "family decal-modulate has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $fogfadestart",
+          "gap": "family decal-modulate has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -169653,24 +169643,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$fogfadestart"
-      ],
       "shader": "decalmodulate",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$fogfadestart",
-        "$fogfadeend"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $fogfadestart",
+          "claim": "modulate2x",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $fogfadestart",
+          "claim": "modulate2x",
           "scene_inputs": {
             "world_stage": true
           }
@@ -169678,34 +169661,40 @@
       ]
     },
     "materials/signage/underground_num_04.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "modulate2x",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "decal-modulate",
-      "gap": "the model does not read $fogfadestart",
       "input_sha256": "c67bc2e2dfb86bdf5583f0284f91170bcb0e4f208f32c50bb20e36e083905836",
       "mesh_claims": [
         {
-          "gap": "the model does not read $fogfadestart",
+          "gap": "family decal-modulate has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $fogfadestart",
+          "gap": "family decal-modulate has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $fogfadestart",
+          "gap": "family decal-modulate has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $fogfadestart",
+          "gap": "family decal-modulate has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -169713,24 +169702,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$fogfadestart"
-      ],
       "shader": "decalmodulate",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$fogfadestart",
-        "$fogfadeend"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $fogfadestart",
+          "claim": "modulate2x",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $fogfadestart",
+          "claim": "modulate2x",
           "scene_inputs": {
             "world_stage": true
           }
@@ -169738,34 +169720,40 @@
       ]
     },
     "materials/signage/underground_num_05.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "modulate2x",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "decal-modulate",
-      "gap": "the model does not read $fogfadestart",
       "input_sha256": "65b7807c6bd2394b59430194accaa46c72a54bb4c1a784533e121e6d59299af0",
       "mesh_claims": [
         {
-          "gap": "the model does not read $fogfadestart",
+          "gap": "family decal-modulate has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $fogfadestart",
+          "gap": "family decal-modulate has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $fogfadestart",
+          "gap": "family decal-modulate has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $fogfadestart",
+          "gap": "family decal-modulate has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -169773,24 +169761,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$fogfadestart"
-      ],
       "shader": "decalmodulate",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$fogfadestart",
-        "$fogfadeend"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $fogfadestart",
+          "claim": "modulate2x",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $fogfadestart",
+          "claim": "modulate2x",
           "scene_inputs": {
             "world_stage": true
           }
@@ -169798,34 +169779,40 @@
       ]
     },
     "materials/signage/underground_num_06.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "modulate2x",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "decal-modulate",
-      "gap": "the model does not read $fogfadestart",
       "input_sha256": "98182ddb0b19964aac4badcfdd008e0ac6272aac5702b495180acd1674de167b",
       "mesh_claims": [
         {
-          "gap": "the model does not read $fogfadestart",
+          "gap": "family decal-modulate has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $fogfadestart",
+          "gap": "family decal-modulate has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $fogfadestart",
+          "gap": "family decal-modulate has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $fogfadestart",
+          "gap": "family decal-modulate has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -169833,24 +169820,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$fogfadestart"
-      ],
       "shader": "decalmodulate",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$fogfadestart",
-        "$fogfadeend"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $fogfadestart",
+          "claim": "modulate2x",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $fogfadestart",
+          "claim": "modulate2x",
           "scene_inputs": {
             "world_stage": true
           }
@@ -169858,34 +169838,40 @@
       ]
     },
     "materials/signage/underground_num_07.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "modulate2x",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "decal-modulate",
-      "gap": "the model does not read $fogfadestart",
       "input_sha256": "4517a081c0eb1930cf9262c2b1871af97dcbc45c04b86d23d5470ec826053b78",
       "mesh_claims": [
         {
-          "gap": "the model does not read $fogfadestart",
+          "gap": "family decal-modulate has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $fogfadestart",
+          "gap": "family decal-modulate has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $fogfadestart",
+          "gap": "family decal-modulate has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $fogfadestart",
+          "gap": "family decal-modulate has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -169893,24 +169879,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$fogfadestart"
-      ],
       "shader": "decalmodulate",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$fogfadestart",
-        "$fogfadeend"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $fogfadestart",
+          "claim": "modulate2x",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $fogfadestart",
+          "claim": "modulate2x",
           "scene_inputs": {
             "world_stage": true
           }
@@ -169918,34 +169897,40 @@
       ]
     },
     "materials/signage/underground_num_08.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "modulate2x",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "decal-modulate",
-      "gap": "the model does not read $fogfadestart",
       "input_sha256": "948524eac7264821ea506129b60c2dcfca96e17ba119892b19199e58890d625c",
       "mesh_claims": [
         {
-          "gap": "the model does not read $fogfadestart",
+          "gap": "family decal-modulate has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $fogfadestart",
+          "gap": "family decal-modulate has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $fogfadestart",
+          "gap": "family decal-modulate has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $fogfadestart",
+          "gap": "family decal-modulate has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -169953,24 +169938,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$fogfadestart"
-      ],
       "shader": "decalmodulate",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$fogfadestart",
-        "$fogfadeend"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $fogfadestart",
+          "claim": "modulate2x",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $fogfadestart",
+          "claim": "modulate2x",
           "scene_inputs": {
             "world_stage": true
           }
@@ -169978,34 +169956,40 @@
       ]
     },
     "materials/signage/underground_num_09.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "modulate2x",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "decal-modulate",
-      "gap": "the model does not read $fogfadestart",
       "input_sha256": "e99618fa4f3914cfc407ce8bcfaadee160fd7a915b834541a0e034879ed03254",
       "mesh_claims": [
         {
-          "gap": "the model does not read $fogfadestart",
+          "gap": "family decal-modulate has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $fogfadestart",
+          "gap": "family decal-modulate has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $fogfadestart",
+          "gap": "family decal-modulate has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $fogfadestart",
+          "gap": "family decal-modulate has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -170013,24 +169997,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$fogfadestart"
-      ],
       "shader": "decalmodulate",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$fogfadestart",
-        "$fogfadeend"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $fogfadestart",
+          "claim": "modulate2x",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $fogfadestart",
+          "claim": "modulate2x",
           "scene_inputs": {
             "world_stage": true
           }
@@ -223168,20 +223145,14 @@
       "refused_materials": 41,
       "unmapped_materials": 0
     },
-    "parameter:$decalfadeduration": {
+    "parameter:$decalfadetime": {
       "examples": [
         "materials/decals/combineballfade.vmt",
         "materials/decals/combineballfade2.vmt",
         "materials/decals/combineballfade3.vmt"
       ],
-      "first_refusals": 15,
-      "refused_materials": 15,
-      "unmapped_materials": 15
-    },
-    "parameter:$decalfadetime": {
-      "examples": [],
-      "first_refusals": 0,
-      "refused_materials": 0,
+      "first_refusals": 12,
+      "refused_materials": 12,
       "unmapped_materials": 12
     },
     "parameter:$decalsecondpass": {
@@ -223241,22 +223212,6 @@
       "first_refusals": 7,
       "refused_materials": 7,
       "unmapped_materials": 7
-    },
-    "parameter:$fogfadeend": {
-      "examples": [],
-      "first_refusals": 0,
-      "refused_materials": 0,
-      "unmapped_materials": 10
-    },
-    "parameter:$fogfadestart": {
-      "examples": [
-        "materials/signage/underground_num_00.vmt",
-        "materials/signage/underground_num_01.vmt",
-        "materials/signage/underground_num_02.vmt"
-      ],
-      "first_refusals": 10,
-      "refused_materials": 10,
-      "unmapped_materials": 10
     },
     "parameter:$forcerefract": {
       "examples": [],
@@ -223991,8 +223946,8 @@
   "status_counts": {
     "dynamically_unresolved": 146,
     "statically_supported": 1494,
-    "supported_with_requirements": 1412,
-    "unsupported": 686
+    "supported_with_requirements": 1425,
+    "unsupported": 673
   },
   "total": 3738
 }

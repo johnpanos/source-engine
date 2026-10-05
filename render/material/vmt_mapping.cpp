@@ -437,6 +437,12 @@ constexpr VmtMetadataRow kMetadata[] = {
         "textures are read through their sRGB views" },
     { "$x360appchooser", "Xbox 360 application-chooser flag; no PC shader reads it" },
     { "$nolod", "texture level-of-detail selection (mat_picmip), not a shading parameter" },
+    { "$decalfadeduration", "the engine's studio decal fade (l_studio.cpp), not a shader parameter" },
+    { "$translucent",
+        "DecalModulate_DX9 always blends dst * src color; the flag changes no state",
+        "decal-modulate" },
+    { "$fogfadestart", "DecalModulate_DX9 declares no shader parameters", "decal-modulate" },
+    { "$fogfadeend", "DecalModulate_DX9 declares no shader parameters", "decal-modulate" },
 };
 
 #include "legacy_shaders.inc"

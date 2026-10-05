@@ -10750,3 +10750,13 @@ unchanged at 3,738). `render_lab` suites `sprite` (40), `softparticle`
 `sp_a2_laser_intro_relit` boots on the core with 3,154/3,154 views drawn and
 0 failed. No image capture of a newly claimed additive translucent material
 in a game scene has been made yet. R96 stays `active`.
+
+Follow-up: three more keys with no shading effect join the table, each with
+its source. `$decalfadeduration` is read by the engine's studio decal system
+(`l_studio.cpp`), not by a shader. On DecalModulate, `$translucent`,
+`$fogfadestart` and `$fogfadeend` are ignored: `DecalModulate_DX9` declares
+no shader parameters and always blends dst x src color. `$flat` stays
+refused: it sets the D3D9 flat shade mode, which changes vertex-color
+interpolation. The inventory is now 1,494 / 1,425 / 673 unsupported (13
+more claimed; most of the materials with these keys also hit another
+refusal), and `posed-model` passes 107/107.
