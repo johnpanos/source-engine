@@ -63,7 +63,7 @@ layout( constant_id = 0 ) const int kTerms = 0;
 layout( constant_id = 1 ) const int kDetailMode = 0;
 layout( constant_id = 2 ) const bool kPortalMask = false;
 layout( constant_id = 3 ) const uint kMaterialFeatures = 0xffffffffu;
-layout( constant_id = 4 ) const uint kViewFeatures = 7u;
+layout( constant_id = 4 ) const uint kViewFeatures = 15u;
 layout( constant_id = 5 ) const bool kAlphaCoverage = false;
 layout( constant_id = 6 ) const bool kCable = false;
 layout( constant_id = 7 ) const bool kDecalModulate = false;
@@ -76,6 +76,7 @@ const uint kMaterialUnlitMesh = 16u;
 const uint kViewSun = 1u;
 const uint kViewProjectors = 2u;
 const uint kViewAreas = 4u;
+const uint kViewClipPlanes = 8u;
 
 bool MaterialFeature( uint feature, bool uniformValue )
 {
@@ -1710,9 +1711,12 @@ void main()
 		if ( length( ( uv * 2.0 - 1.0 ) * 1.075 ) > material.surfaceControls.z )
 			discard;
 	}
-	for ( int plane = 0; plane < 6; ++plane )
-		if ( dot( vec4( worldPosition, 1.0 ), frame.clipPlanes[plane] ) < 0.0 )
-			discard;
+	// A view with no clip planes compiles the test out, so the depth test
+	// can run early (kViewClipPlanes).
+	if ( ViewFeature( kViewClipPlanes ) )
+		for ( int plane = 0; plane < 6; ++plane )
+			if ( dot( vec4( worldPosition, 1.0 ), frame.clipPlanes[plane] ) < 0.0 )
+				discard;
 	// Points without image specular leave the SSR targets empty (weight 0:
 	// render.pass.ssr leaves their pixels unchanged).
 	WriteSsrTargets( vec3( 0.0, 0.0, 1.0 ), 1.0, vec3( 0.0 ), vec3( 0.0 ), false );

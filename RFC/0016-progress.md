@@ -11173,3 +11173,54 @@ and fetch count: per-material feature specialization, fewer always-on
 fetches, the light loop's structure, and the equal-test prepass question.
 Lowering the declared terms or their quality is not a remedy under binding
 rule 7. Not changed here.
+
+### K12/R90: the clip test compiled out of views without clip planes, and render.map-media (2026-10-05)
+
+**An exact frame win.** The surface program discarded on user clip planes
+in every fragment of every view. A shader that may discard keeps the driver
+from testing depth before shading, so the depth prepass's equal-test lit
+pass shaded every fragment and the prepass cost more than it saved. A new
+view feature, `kSurfaceViewClipPlanes`, specializes the test out. The world
+pass sets it only when a view has a non-zero clip plane (water and portal
+views), since all-zero planes never clip, so results do not change. Its
+default, `kSurfaceAllViewFeatures` (now 15), keeps the test for raw users.
+On `portal2-intro4-relit-diagnostic-v1` at 1080p with the prepass on (High):
+
+| | before | after |
+| --- | --- | --- |
+| world / pbr (GPU) | 22.0 ms | 15.9 ms |
+| arrival median | 56.5 ms | 34.6 ms |
+| reverse median | 28.3 ms | 19.8 ms |
+| return median | 50.1 ms | 34.6 ms |
+| average | 23.9 fps | 36.9 fps |
+
+Pixels: `render.world-pbr.native-pixels` (101, and its four-set form),
+`render.world-glass.native-pixels` (36), `render.world.null` (156),
+`render.family.{pbr,lightmapped,water,unlit,vertexlit}`, and `render_lab`'s
+`view-state` (17), `map-terms` (39) and `posed-model` (110) suites pass.
+`view-state` and `posed-model` draw world-pass views through real clip
+planes. The frame still misses the 8.3 ms allowance.
+
+**`render.map-media`.** `render_lab`'s composition check
+(`link.no-render.composition`) failed after the fog and projector slices: the
+lab linked the product composition to reach the media parse and the cookie
+array. Both now live in their own strict module, `render.map-media`
+(`public/render/map_media/`, `render/map_media/`, namespace
+`render::map_media`). It sits in its own layer between the passes and the
+composition (CAP011). The composition and the lab both depend on it, and
+the lab's composition edge is gone. `render.lab.composition` (25),
+`render.lab.volumetric` (18; its sources now list the module in place of
+the deleted `lab_media.cpp`), and the composition rows pass. archlint adds
+nothing new.
+
+Also fixed here:
+- my `$detailblendmode 10` change had broken
+  `render.world.null`'s `W26.a` expectation (mode 10 with an ssbump is now
+  claimed), which I had not run; it passes;
+- the model and all-material claim inventories are regenerated: models 41 of
+  1,165 unsupported, all 489 of 3,738, with source-engine-d7's sky claims
+  included.
+
+`render.material.vmt-corpus` still fails on its stale family fixture and a new
+`black` entry in `legacy_shaders.inc`, from other sessions' family and shader
+additions. That fixture is not updated merely to pass.

@@ -2698,6 +2698,13 @@ void WorldPass::RecordBatch(
 		viewFeatures |= material::kSurfaceViewSun;
 	if ( view.lights && view.lights->view.counts[0] > 0.0f )
 		viewFeatures |= material::kSurfaceViewProjectors;
+	// All-zero planes never clip; any other plane keeps the clip test.
+	if ( std::any_of( &target.clipPlanes[0][0], &target.clipPlanes[0][0] + 24,
+	         []( float value )
+	         {
+		         return value != 0.0f;
+	         } ) )
+		viewFeatures |= material::kSurfaceViewClipPlanes;
 	std::map<std::uint64_t, bool> framesWritten;
 	auto frameGroupReady = [&]( const Resources::Material &m ) -> const Group *
 	{

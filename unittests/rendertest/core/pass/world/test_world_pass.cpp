@@ -1441,8 +1441,9 @@ int main()
 
 	// W26: the detail combine is drawn with a bump map. The port combines the
 	// detail into the albedo before the bump perturbs the lighting, so a bump
-	// map does not narrow the modes; the self-illuminating (5) and ssbump (10)
-	// combines still wait for their own terms.
+	// map does not narrow the modes; the self-illuminating (5) combine still
+	// waits for its own term. Mode 10 with an ssbump is claimed: the shader's
+	// ssbump branch never reads the detail (lightmappedgeneric_ps2_3_x.h).
 	{
 		WorldData world = TestWorld();
 		const WorldMaterial plain = world.materials[0];
@@ -1470,7 +1471,8 @@ int main()
 			    ssbump || reason.find( "does not draw $detailblendmode 10" ) != std::string::npos;
 		}
 		checks.That( detail.Draws( 0 ), "W26.a-detail-mode-7-with-a-bump-map-is-claimed" );
-		checks.That( !detail.Draws( 1 ) && ssbump, "W26.a-detail-mode-10-waits-for-its-term" );
+		checks.That( detail.Draws( 1 ) && !ssbump,
+		    "W26.a-detail-mode-10-with-an-ssbump-is-claimed-without-its-detail" );
 		checks.That( !detail.Draws( 2 ) && selfIllum, "W26.a-detail-mode-5-waits-for-its-term" );
 	}
 

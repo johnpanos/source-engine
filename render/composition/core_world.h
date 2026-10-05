@@ -24,8 +24,8 @@
 #include "render/graph/scene_color.h"
 #include "render/legacy/core_passes.h"
 #include "render/pass/debug/debug_overlays.h"
-#include "render/composition/map_media.h"
-#include "render/composition/projector_cookies.h"
+#include "render/map_media/map_media.h"
+#include "render/map_media/projector_cookies.h"
 #include "render/pass/ao/ao.h"
 #include "render/pass/output/output.h"
 #include "render/pass/ssr/ssr.h"
@@ -54,6 +54,20 @@
 
 namespace render::composition
 {
+
+// The map media and cookie owner (render.map-media).
+using map_media::CookieArray;
+using map_media::CookieImages;
+using map_media::DecodeCookies;
+using map_media::FroxelLayoutOf;
+using map_media::kFroxelFarZ;
+using map_media::kFroxelNearZ;
+using map_media::kFroxelSampling;
+using map_media::kFroxelSliceMultiplier;
+using map_media::kFroxelTileDivisor;
+using map_media::MapMedia;
+using map_media::MediaFromEntities;
+using map_media::MediumLightsFrom;
 
 class CoreWorld final : public IRenderCoreWorld,
                         public legacy::ICorePassRecorder,

@@ -4,7 +4,7 @@
 //			and projector cookies (RFC 0016 K11 step g). Each has one owner
 //			shared with the product's world stage: render.pass.lights'
 //			map_lights.h (the entity lump and the authored lights) and
-//			render.composition's map_media.h (the medium, its froxels) and
+//			render.map-media's map_media.h (the medium, its froxels) and
 //			projector_cookies.h (the cookie array). Private to render.lab.
 //
 //=============================================================================//
@@ -18,8 +18,8 @@
 
 #include "lab_support.h"
 #include "render/device/device.h"
-#include "render/composition/map_media.h"
-#include "render/composition/projector_cookies.h"
+#include "render/map_media/map_media.h"
+#include "render/map_media/projector_cookies.h"
 #include "render/pass/lights/clusters.h"
 #include "render/pass/lights/map_lights.h"
 #include "render/pass/volumetric/volumetric.h"
@@ -37,10 +37,10 @@ namespace render::lab
 using Entity = pass::lights::Entity;
 using pass::lights::ParseEntityLump;
 
-// What the map's entities give the medium: render.composition owns the
+// What the map's entities give the medium: render.map-media owns the
 // parse (map_media.h, shared with the product's world stage).
-using LabMedia = composition::MapMedia;
-using composition::MediaFromEntities;
+using LabMedia = map_media::MapMedia;
+using map_media::MediaFromEntities;
 
 using LabSun = pass::lights::MapSun;
 using LabLights = pass::lights::MapLights;
@@ -50,11 +50,11 @@ inline LabLights LightsFromEntities( const std::vector<Entity> &entities,
 	return pass::lights::MapLightsFromEntities( entities, convention );
 }
 
-using composition::FroxelLayoutOf;
+using map_media::FroxelLayoutOf;
 
-// The projectors' cookies as one RGBA 2D array: render.composition owns
+// The projectors' cookies as one RGBA 2D array: render.map-media owns
 // them (projector_cookies.h, shared with the product's world stage).
-using composition::CookieArray;
+using map_media::CookieArray;
 
 } // namespace render::lab
 

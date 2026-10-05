@@ -1,0 +1,19 @@
+#! /usr/bin/env python
+# encoding: utf-8
+# render.map-media (RFC 0016 K11/K12): a map's participating media and the
+# projector cookie array, read from its entity lump and VTFs, shared by the
+# product's composition and render_lab (which must not link the composition).
+
+def build(bld):
+	bld.stlib(
+		env         = bld.strict_cpp20_env(),
+		features    = 'cxx capability_strict',
+		arch_module = 'render.map-media',
+		target      = 'render_map_media',
+		name        = 'render_map_media',
+		source      = bld.path.ant_glob('*.cpp'),
+		includes    = ['../../public'],
+		use         = ['render_pass_lights', 'render_pass_volumetric', 'render_device', 'render_math',
+		               'vtf_texture_reader', 'mdl'],
+		idx         = bld.get_taskgen_count()
+	)

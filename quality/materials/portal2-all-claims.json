@@ -226,10 +226,10 @@
     },
     "sky": {
       "dynamically_unresolved": 0,
-      "statically_supported": 0,
+      "statically_supported": 6,
       "supported_with_requirements": 0,
       "total": 6,
-      "unsupported": 6
+      "unsupported": 0
     },
     "solidenergy": {
       "dynamically_unresolved": 0,
@@ -380,7 +380,6 @@
     "shader paintblob maps to no family the model draws (legacy)": 4,
     "shader screenspace_general maps to no family the model draws (legacy)": 13,
     "shader showz maps to no family the model draws (legacy)": 1,
-    "shader sky maps to no family the model draws (legacy)": 6,
     "shader spritecard maps to no family the model draws (legacy)": 13,
     "shader wireframe maps to no family the model draws (legacy)": 1,
     "the decal point does not draw $translucent": 21,
@@ -174648,34 +174647,40 @@
       ]
     },
     "materials/skybox/sky_l4d_c4m1_hdrbk.vmt": {
-      "candidates": [],
-      "family": "legacy",
-      "gap": "shader sky maps to no family the model draws (legacy)",
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
+      "family": "unlit",
       "input_sha256": "9011634002a45ee3cc789f4de446b9f4260007b7b0b07283541beb0e74b1eb7f",
       "mesh_claims": [
         {
-          "gap": "shader sky maps to no family the model draws (legacy)",
+          "gap": "the family does not draw $hdrcompressedtexture",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "shader sky maps to no family the model draws (legacy)",
+          "gap": "the family does not draw $hdrcompressedtexture",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "shader sky maps to no family the model draws (legacy)",
+          "gap": "the family does not draw $hdrcompressedtexture",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "shader sky maps to no family the model draws (legacy)",
+          "gap": "the family does not draw $hdrcompressedtexture",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -174683,20 +174688,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "shader_family:sky"
-      ],
       "shader": "sky",
-      "status": "unsupported",
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "shader sky maps to no family the model draws (legacy)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "shader sky maps to no family the model draws (legacy)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -174704,34 +174706,40 @@
       ]
     },
     "materials/skybox/sky_l4d_c4m1_hdrdn.vmt": {
-      "candidates": [],
-      "family": "legacy",
-      "gap": "shader sky maps to no family the model draws (legacy)",
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
+      "family": "unlit",
       "input_sha256": "9b1301adbeaf9d8e09187abf4aa7c79fd8e19632247905e8d61663f618040d7b",
       "mesh_claims": [
         {
-          "gap": "shader sky maps to no family the model draws (legacy)",
+          "gap": "the family does not draw $hdrcompressedtexture",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "shader sky maps to no family the model draws (legacy)",
+          "gap": "the family does not draw $hdrcompressedtexture",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "shader sky maps to no family the model draws (legacy)",
+          "gap": "the family does not draw $hdrcompressedtexture",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "shader sky maps to no family the model draws (legacy)",
+          "gap": "the family does not draw $hdrcompressedtexture",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -174739,20 +174747,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "shader_family:sky"
-      ],
       "shader": "sky",
-      "status": "unsupported",
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "shader sky maps to no family the model draws (legacy)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "shader sky maps to no family the model draws (legacy)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -174760,34 +174765,40 @@
       ]
     },
     "materials/skybox/sky_l4d_c4m1_hdrft.vmt": {
-      "candidates": [],
-      "family": "legacy",
-      "gap": "shader sky maps to no family the model draws (legacy)",
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
+      "family": "unlit",
       "input_sha256": "3dd9977edf34ef35ea89d8d514ad022237a36cdfed548257b0470a6952feecfd",
       "mesh_claims": [
         {
-          "gap": "shader sky maps to no family the model draws (legacy)",
+          "gap": "the family does not draw $hdrcompressedtexture",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "shader sky maps to no family the model draws (legacy)",
+          "gap": "the family does not draw $hdrcompressedtexture",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "shader sky maps to no family the model draws (legacy)",
+          "gap": "the family does not draw $hdrcompressedtexture",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "shader sky maps to no family the model draws (legacy)",
+          "gap": "the family does not draw $hdrcompressedtexture",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -174795,20 +174806,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "shader_family:sky"
-      ],
       "shader": "sky",
-      "status": "unsupported",
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "shader sky maps to no family the model draws (legacy)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "shader sky maps to no family the model draws (legacy)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -174816,34 +174824,40 @@
       ]
     },
     "materials/skybox/sky_l4d_c4m1_hdrlf.vmt": {
-      "candidates": [],
-      "family": "legacy",
-      "gap": "shader sky maps to no family the model draws (legacy)",
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
+      "family": "unlit",
       "input_sha256": "698b4f9aec62a0597aab5d8fb18cd4ca0926560da1e4f4a57fcada42ce3691ae",
       "mesh_claims": [
         {
-          "gap": "shader sky maps to no family the model draws (legacy)",
+          "gap": "the family does not draw $hdrcompressedtexture",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "shader sky maps to no family the model draws (legacy)",
+          "gap": "the family does not draw $hdrcompressedtexture",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "shader sky maps to no family the model draws (legacy)",
+          "gap": "the family does not draw $hdrcompressedtexture",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "shader sky maps to no family the model draws (legacy)",
+          "gap": "the family does not draw $hdrcompressedtexture",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -174851,20 +174865,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "shader_family:sky"
-      ],
       "shader": "sky",
-      "status": "unsupported",
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "shader sky maps to no family the model draws (legacy)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "shader sky maps to no family the model draws (legacy)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -174872,34 +174883,40 @@
       ]
     },
     "materials/skybox/sky_l4d_c4m1_hdrrt.vmt": {
-      "candidates": [],
-      "family": "legacy",
-      "gap": "shader sky maps to no family the model draws (legacy)",
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
+      "family": "unlit",
       "input_sha256": "151884b9f9d72b6d5cd1fca7f0202b3b03fae6975cfb8658445d18ea2c975b96",
       "mesh_claims": [
         {
-          "gap": "shader sky maps to no family the model draws (legacy)",
+          "gap": "the family does not draw $hdrcompressedtexture",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "shader sky maps to no family the model draws (legacy)",
+          "gap": "the family does not draw $hdrcompressedtexture",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "shader sky maps to no family the model draws (legacy)",
+          "gap": "the family does not draw $hdrcompressedtexture",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "shader sky maps to no family the model draws (legacy)",
+          "gap": "the family does not draw $hdrcompressedtexture",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -174907,20 +174924,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "shader_family:sky"
-      ],
       "shader": "sky",
-      "status": "unsupported",
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "shader sky maps to no family the model draws (legacy)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "shader sky maps to no family the model draws (legacy)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -174928,34 +174942,40 @@
       ]
     },
     "materials/skybox/sky_l4d_c4m1_hdrup.vmt": {
-      "candidates": [],
-      "family": "legacy",
-      "gap": "shader sky maps to no family the model draws (legacy)",
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
+      "family": "unlit",
       "input_sha256": "8b2fc2cbff017a8a0d3eb8627c1c008ee3208973f884455ea7b1548cff9ea3c3",
       "mesh_claims": [
         {
-          "gap": "shader sky maps to no family the model draws (legacy)",
+          "gap": "the family does not draw $hdrcompressedtexture",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "shader sky maps to no family the model draws (legacy)",
+          "gap": "the family does not draw $hdrcompressedtexture",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "shader sky maps to no family the model draws (legacy)",
+          "gap": "the family does not draw $hdrcompressedtexture",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "shader sky maps to no family the model draws (legacy)",
+          "gap": "the family does not draw $hdrcompressedtexture",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -174963,20 +174983,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "shader_family:sky"
-      ],
       "shader": "sky",
-      "status": "unsupported",
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "shader sky maps to no family the model draws (legacy)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "shader sky maps to no family the model draws (legacy)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -224265,16 +224282,6 @@
       "refused_materials": 1,
       "unmapped_materials": 0
     },
-    "shader_family:sky": {
-      "examples": [
-        "materials/skybox/sky_l4d_c4m1_hdrbk.vmt",
-        "materials/skybox/sky_l4d_c4m1_hdrdn.vmt",
-        "materials/skybox/sky_l4d_c4m1_hdrft.vmt"
-      ],
-      "first_refusals": 6,
-      "refused_materials": 6,
-      "unmapped_materials": 0
-    },
     "shader_family:solidenergy": {
       "examples": [
         "materials/effects/fizzler.vmt",
@@ -224337,9 +224344,9 @@
   "scope": "all materials/**/*.vmt in the game's ordered search path",
   "status_counts": {
     "dynamically_unresolved": 146,
-    "statically_supported": 1556,
+    "statically_supported": 1562,
     "supported_with_requirements": 1541,
-    "unsupported": 495
+    "unsupported": 489
   },
   "total": 3738
 }

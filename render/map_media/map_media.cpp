@@ -1,11 +1,11 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
 // Purpose: A map's participating media (RFC 0016 K11/K12); see
-//			render/composition/map_media.h.
+//			render/map_media/map_media.h.
 //
 //=============================================================================//
 
-#include "render/composition/map_media.h"
+#include "render/map_media/map_media.h"
 
 #include "render/light_set.h"
 #include "render/projected_light.h"
@@ -14,7 +14,7 @@
 #include <cmath>
 #include <cstring>
 
-namespace render::composition
+namespace render::map_media
 {
 
 namespace
@@ -117,4 +117,4 @@ pass::volumetric::FroxelLayout FroxelLayoutOf( const pass::lights::ClusterGrid &
 	return layout;
 }
 
-} // namespace render::composition
+} // namespace render::map_media

@@ -22,7 +22,7 @@
 //			an env_volumetric_fog_volume or env_volumetric_fog_controller,
 //			render.pass.volumetric applies its fog to the opaque frame, on
 //			render.pass.lights' ClusterGrid subdivided 8 x 4 (lab_media.h),
-//			lit by the lump's lights and projectors as render.composition's
+//			lit by the lump's lights and projectors as render.map-media's
 //			map_media.h reads them for the product too (unshadowed in this
 //			slice). --fog-scale s multiplies every density (0: the fixture's
 //			density-zero state), --no-volumetric leaves the pass out, and
@@ -182,10 +182,10 @@ struct Options
 	std::uint32_t rsmSize = 128; // a projector's reflective shadow map, texels across
 	std::uint32_t timeRepeats = 0;
 	// The inject stage's stratified samples per froxel (across, along).
-	pass::volumetric::VolumetricSampling fogSampling = composition::kFroxelSampling;
+	pass::volumetric::VolumetricSampling fogSampling = map_media::kFroxelSampling;
 	// The light grid's subdivision for the medium (--fog-grid across,depth).
-	std::uint32_t fogTileDivisor = composition::kFroxelTileDivisor;
-	std::uint32_t fogSliceMultiplier = composition::kFroxelSliceMultiplier;
+	std::uint32_t fogTileDivisor = map_media::kFroxelTileDivisor;
+	std::uint32_t fogSliceMultiplier = map_media::kFroxelSliceMultiplier;
 	frame::DebugControls debug;
 };
 
@@ -1192,7 +1192,7 @@ int Run( const Options &options )
 		}
 
 		// The fog's froxels: the light grid of this view (render.pass.lights,
-		// its desktop limits) subdivided as render.composition's map_media.h
+		// its desktop limits) subdivided as render.map-media's map_media.h
 		// sets for the product too, the owner of the depth split.
 		std::unique_ptr<pass::volumetric::VolumetricRenderer> fog;
 		std::optional<pass::lights::ClusterGrid> fogGrid;
@@ -1205,8 +1205,8 @@ int Run( const Options &options )
 			gridView.projection = projection;
 			gridView.widthPixels = options.width;
 			gridView.heightPixels = options.height;
-			gridView.nearZ = composition::kFroxelNearZ;
-			gridView.farZ = composition::kFroxelFarZ;
+			gridView.nearZ = map_media::kFroxelNearZ;
+			gridView.farZ = map_media::kFroxelFarZ;
 			auto lightGrid =
 			    pass::lights::CreateClusterGrid( gridView, pass::lights::DesktopClusterLimits() );
 			if ( !lightGrid )

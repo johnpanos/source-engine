@@ -969,7 +969,7 @@
           "render.contracts",
           "jobs.graph",
           "testing.contracts",
-          "render.composition",
+          "render.map-media",
           "render.pass.output"
         ],
         "externalHeaders": [
@@ -1093,6 +1093,24 @@
           "render.contracts",
           "render.device",
           "render.shader-library"
+        ]
+      },
+      {
+        "id": "render.map-media",
+        "paths": [
+          "public/render/map_media/",
+          "render/map_media/"
+        ],
+        "allowedEdges": [
+          "foundation",
+          "render.math",
+          "render.contracts",
+          "render.device",
+          "render.pass.lights",
+          "render.pass.volumetric",
+          "content.vtf-reader",
+          "content.texture-contract",
+          "content.studio-model"
         ]
       },
       {
@@ -1237,7 +1255,7 @@
           "render.pass.panels",
           "render.legacy-pass-contract",
           "render.pass.volumetric",
-          "content.vtf-reader",
+          "render.map-media",
           "render.pass.ssr"
         ]
       },
@@ -1820,6 +1838,16 @@
           "render_shaderlib"
         ]
       },
+      "render_map_media": {
+        "allowedUse": [
+          "render_pass_lights",
+          "render_pass_volumetric",
+          "render_device",
+          "render_math",
+          "vtf_texture_reader",
+          "mdl"
+        ]
+      },
       "render_pass_bounce": {
         "allowedUse": [
           "render_device",
@@ -1888,7 +1916,7 @@
           "render_shaderlib"
         ]
       },
-      "render_lab": {"allowedUse": ["render_device", "render_device_vulkan", "render_resources", "render_material", "render_math", "render_spv", "mapcontainer", "mdl", "vtf_texture_reader", "render_shaderlib", "render_frame", "render_graph", "jobsystem", "render_pass_lines", "render_pass_lights", "render_pass_volumetric", "render_pass_ssr", "render_pass_temporal", "render_pass_ao", "render_pass_bounce", "render_pass_world", "render_pass_panels", "render_composition", "render_pass_output", "asset_resolver", "asset_index", "asset_identity", "content_hash"]},
+      "render_lab": {"allowedUse": ["render_device", "render_device_vulkan", "render_resources", "render_material", "render_math", "render_spv", "mapcontainer", "mdl", "vtf_texture_reader", "render_shaderlib", "render_frame", "render_graph", "jobsystem", "render_pass_lines", "render_pass_lights", "render_pass_volumetric", "render_pass_ssr", "render_pass_temporal", "render_pass_ao", "render_pass_bounce", "render_pass_world", "render_pass_panels", "render_map_media", "render_pass_output", "asset_resolver", "asset_index", "asset_identity", "content_hash"]},
       "render_pass_debug": {
         "allowedUse": [
           "render_device",
@@ -1953,7 +1981,7 @@
           "render_pass_indirect",
           "render_pass_panels",
           "render_pass_volumetric",
-          "vtf_texture_reader",
+          "render_map_media",
           "render_pass_ssr"
         ]
       },
@@ -2310,6 +2338,9 @@
             "render.renderer",
             "render.pass.*",
             "render.legacy-frontend"
+          ],
+          [
+            "render.map-media"
           ],
           [
             "render.composition"

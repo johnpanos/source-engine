@@ -34,7 +34,7 @@ def build(bld):
 		includes  = [ '../../public' ],
 		use       = [ 'render_device_vulkan', 'render_pass_lines', 'render_pass_lights', 'render_pass_ssr', 'render_pass_temporal', 'render_material', 'render_frame',
 		              'render_graph', 'jobsystem', 'render_resources', 'render_shaderlib',
-		              'render_pass_shadows', 'render_pass_volumetric', 'render_pass_ao', 'render_pass_bounce', 'render_pass_world', 'render_pass_panels', 'render_composition', 'render_pass_output',
+		              'render_pass_shadows', 'render_pass_volumetric', 'render_pass_ao', 'render_pass_bounce', 'render_pass_world', 'render_pass_panels', 'render_map_media', 'render_pass_output',
 		              'render_device', 'render_math', 'render_spv', 'mapcontainer', 'mdl',
 		              'vtf_texture_reader', 'asset_resolver', 'asset_index', 'asset_identity', 'content_hash' ],
 		install_path = None,

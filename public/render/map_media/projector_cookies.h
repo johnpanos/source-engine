@@ -21,8 +21,8 @@
 //
 //=============================================================================//
 
-#ifndef RENDER_COMPOSITION_PROJECTOR_COOKIES_H
-#define RENDER_COMPOSITION_PROJECTOR_COOKIES_H
+#ifndef RENDER_MAP_MEDIA_PROJECTOR_COOKIES_H
+#define RENDER_MAP_MEDIA_PROJECTOR_COOKIES_H
 
 #include "foundation/expected.h"
 #include "mdl/studio_model.h"
@@ -34,7 +34,7 @@
 #include <string>
 #include <vector>
 
-namespace render::composition
+namespace render::map_media
 {
 
 struct CookieImages
@@ -81,6 +81,6 @@ private:
 	CookieImages m_Images;
 };
 
-} // namespace render::composition
+} // namespace render::map_media
 
-#endif // RENDER_COMPOSITION_PROJECTOR_COOKIES_H
+#endif // RENDER_MAP_MEDIA_PROJECTOR_COOKIES_H

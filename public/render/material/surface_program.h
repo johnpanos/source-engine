@@ -536,7 +536,12 @@ std::uint32_t SurfaceMaterialFeatures( const SurfaceConstants &constants );
 inline constexpr std::uint32_t kSurfaceViewSun = 1u;
 inline constexpr std::uint32_t kSurfaceViewProjectors = 2u;
 inline constexpr std::uint32_t kSurfaceViewAreas = 4u;
-inline constexpr std::uint32_t kSurfaceAllViewFeatures = 7u;
+// The view's user clip planes (FrameTerms::clipPlanes, a water or portal
+// view's). Without it the fragment's clip test, whose discard keeps the
+// driver from testing depth early, is compiled out; only a view whose planes
+// are all zero (which never clip) may omit it.
+inline constexpr std::uint32_t kSurfaceViewClipPlanes = 8u;
+inline constexpr std::uint32_t kSurfaceAllViewFeatures = 15u;
 
 // One point of the program: its pipeline state and specialization.
 struct SurfaceVariant

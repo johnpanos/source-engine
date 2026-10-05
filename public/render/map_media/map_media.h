@@ -6,6 +6,8 @@
 //			and the froxel layout copied from render.pass.lights' ClusterGrid.
 //			The one owner shared by the product's world stage (CoreWorld)
 //			and render_lab, so the game and the lab read the same medium.
+//			Its own module (render.map-media), beside the composition, so
+//			render_lab reads it without linking the product composition.
 //
 //			Entities (quality/fixtures/lighting/README.md, names decided by
 //			the render-core owner, 2026-09-29):
@@ -31,8 +33,8 @@
 //
 //=============================================================================//
 
-#ifndef RENDER_COMPOSITION_MAP_MEDIA_H
-#define RENDER_COMPOSITION_MAP_MEDIA_H
+#ifndef RENDER_MAP_MEDIA_MAP_MEDIA_H
+#define RENDER_MAP_MEDIA_MAP_MEDIA_H
 
 #include "render/pass/lights/clusters.h"
 #include "render/pass/lights/map_lights.h"
@@ -43,7 +45,7 @@
 #include <string>
 #include <vector>
 
-namespace render::composition
+namespace render::map_media
 {
 
 // What the map's entities give the medium.
@@ -89,6 +91,6 @@ inline constexpr float kFroxelFarZ = 65536.0f;
 // layout (its slice depths are borrowed).
 pass::volumetric::FroxelLayout FroxelLayoutOf( const pass::lights::ClusterGrid &grid );
 
-} // namespace render::composition
+} // namespace render::map_media
 
-#endif // RENDER_COMPOSITION_MAP_MEDIA_H
+#endif // RENDER_MAP_MEDIA_MAP_MEDIA_H

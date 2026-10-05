@@ -37,6 +37,7 @@ PORTABLE = [
 	'pass/bounce',
 	'pass/indirect',
 	'legacy',
+	'map_media',
 	'composition',
 ]
 

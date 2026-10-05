@@ -1,11 +1,11 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
 // Purpose: Projector cookies as one RGBA 2D array (RFC 0016 K11/K12); see
-//			render/composition/projector_cookies.h.
+//			render/map_media/projector_cookies.h.
 //
 //=============================================================================//
 
-#include "render/composition/projector_cookies.h"
+#include "render/map_media/projector_cookies.h"
 
 #include "texturecontainer/texture_image.h"
 #include "texturecontainer/vtf_image_reader.h"
@@ -16,7 +16,7 @@
 #include <cstring>
 #include <span>
 
-namespace render::composition
+namespace render::map_media
 {
 
 using namespace render::device;
@@ -206,4 +206,4 @@ void CookieArray::RecordUpload( CommandEncoder &encoder )
 	    m_Texture, ResourceUsage::kCopyDestination, ResourceUsage::kSampled, { 0, 1, 0, layers } );
 }
 
-} // namespace render::composition
+} // namespace render::map_media
