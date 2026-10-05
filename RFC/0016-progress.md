@@ -11121,3 +11121,35 @@ install (2026-10-04) with a second `hl2_launcher`. That makes
 `stage_runtime.py` and `portal_boot.py --build build` refuse the tree; it
 was staged here through a symlink mirror instead. Not removed: it isn't
 this session's.
+
+### K12/R90: where the frame goes on the intro4 route (2026-10-05, measurement)
+
+`frame_floor.py --profile` on `portal2-intro4-relit-diagnostic-v1` (1920x1080
+compositor, RADV 8060S, High, every K12 term on). The core's own section
+timers (`cl_render_debug_gpu_timers`; per-frame means in the console) and the
+backend's pass stream (`frames.jsonl`) say:
+
+- GPU is about 26.7 ms a frame. 23.1 ms is the back-buffer pass that holds the
+  core's world view.
+- In the core: **world / pbr (the main view's world surfaces) 22.0 ms**
+  median; posed models / pbr 3.0 ms (9.2 ms in some blocks); GTAO 2.5 ms;
+  SSR 1.2 ms; shadow depth, tile save and restore about 1.0 ms; cutout
+  shadows 0.02 ms; cluster assignment 0.4 ms.
+- **No single lighting term carries the world cost.** Switching one term
+  off through `cl_render_debug_term` leaves world / pbr at 21.2 (area), 23.1
+  (clustered), 21.2 (probes), 24.7 (ibl) and 21.4 (ssr) ms, and at 21.6 ms
+  with shadows off (`r_core_shadow_quality 0`).
+- **It scales with pixels:** 7.1 ms at 1024x768 against 22.0 at 1920x1080
+  (3.1x the time for 2.6x the pixels), about 10 ns a pixel.
+- **The depth prepass does not pay for itself here:** `r_core_depth_prepass 0`
+  gives 19.9 ms against 22.0 with it. Either the equal-test lit pass loses
+  early rejection (the shader's clip/discard), or this view has little
+  overdraw for it to remove.
+
+So the frame allowance's main blocker on this route is the world surface
+program's per-pixel baseline, not any one K12 term. The next step for the
+optimization program (R90-CLUSTER-PERF, the in-game pipeline priority) is a
+shader-level profile of `surface.frag`'s world PBR point: RADV's RGP capture,
+occupancy and VGPR count, texture fetch count, and the equal-test
+early-rejection question. Measurement only: no pass or program was changed.
+Logs: `/tmp/claude-1000/vf/ff/` (`prof2`, `t2-*`, `res1024`, `noprepass`).
