@@ -275,10 +275,10 @@
     },
     "unlitgeneric": {
       "dynamically_unresolved": 22,
-      "statically_supported": 131,
-      "supported_with_requirements": 786,
+      "statically_supported": 162,
+      "supported_with_requirements": 790,
       "total": 1039,
-      "unsupported": 100
+      "unsupported": 65
     },
     "unlittwotexture": {
       "dynamically_unresolved": 23,
@@ -388,7 +388,6 @@
     "the family does not draw $basetexture2": 16,
     "the family does not draw $detailblendmode 10": 14,
     "the family does not draw $detailblendmode 5": 2,
-    "the family does not draw $selfillum": 35,
     "the family does not draw $spriteorigin": 1,
     "the model does not bind the per-view texture _rt_camera ($basetexture)": 1,
     "the model does not bind the per-view texture _rt_depthdoubler ($basetexture)": 1,
@@ -453,33 +452,46 @@
   },
   "materials": {
     "materials/anim_wp/ekg/ekg_anim.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {}
+        },
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
       "input_sha256": "aa6af2af9c174ee17960b02e6edaf2cecf779d2973562b846926a1fa9b8c846e",
       "mesh_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -493,13 +505,13 @@
       "status": "dynamically_unresolved",
       "world_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -52237,34 +52249,46 @@
       ]
     },
     "materials/lights/blue001.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {}
+        },
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the family does not draw $selfillum",
       "input_sha256": "e8b79f6b069b691761460df1d29b47b55a8727870c517ecc522e8a9d0e45e684",
       "mesh_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -52272,20 +52296,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$selfillum"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -52293,34 +52314,46 @@
       ]
     },
     "materials/lights/light_orange001.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {}
+        },
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the family does not draw $selfillum",
       "input_sha256": "70b69407dfc43f294faec0cae55489fdc84cf4f72fa68b9a6529403f4b975aa9",
       "mesh_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -52328,20 +52361,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$selfillum"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -52349,34 +52379,46 @@
       ]
     },
     "materials/lights/light_orange002.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {}
+        },
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the family does not draw $selfillum",
       "input_sha256": "fa1be47c018132ca174b83bb4fed06c600dfe29c4cf930bc6a6c3276f5fe40b8",
       "mesh_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -52384,20 +52426,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$selfillum"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -52659,34 +52698,46 @@
       ]
     },
     "materials/lights/light_toxin01.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {}
+        },
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the family does not draw $selfillum",
       "input_sha256": "bce4289db5f07087082c3357eb2d6d81308c53ab8de2b25c077519c3193f101d",
       "mesh_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -52694,20 +52745,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$selfillum"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -52715,34 +52763,46 @@
       ]
     },
     "materials/lights/white001.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {}
+        },
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the family does not draw $selfillum",
       "input_sha256": "8f5abe4b8dc543760ec4bb532bc3cb809d005fc51dc9c33b36bc92d93d7bac1e",
       "mesh_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -52750,20 +52810,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$selfillum"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -52771,34 +52828,46 @@
       ]
     },
     "materials/lights/white003.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {}
+        },
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the family does not draw $selfillum",
       "input_sha256": "9da362997fdd39da38b3aacdab715e53d3364f3f0a5cf3b62b4be174f4f34658",
       "mesh_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -52806,20 +52875,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$selfillum"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -52827,34 +52893,46 @@
       ]
     },
     "materials/lights/white004.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {}
+        },
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the family does not draw $selfillum",
       "input_sha256": "b72952bca207aaa0d5e7b35cd5e7f2122ba6dbfc1b170a798e3abde233791d24",
       "mesh_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -52862,20 +52940,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$selfillum"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -52883,34 +52958,46 @@
       ]
     },
     "materials/lights/white008.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {}
+        },
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the family does not draw $selfillum",
       "input_sha256": "25ede4d0b0ce44fa72001145883352e8d386406a8b66474012e87d6cea12ebc4",
       "mesh_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -52918,20 +53005,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$selfillum"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -52939,34 +53023,46 @@
       ]
     },
     "materials/lights/white009.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {}
+        },
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the family does not draw $selfillum",
       "input_sha256": "8f5abe4b8dc543760ec4bb532bc3cb809d005fc51dc9c33b36bc92d93d7bac1e",
       "mesh_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -52974,20 +53070,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$selfillum"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -52995,34 +53088,46 @@
       ]
     },
     "materials/lights/white010.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {}
+        },
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the family does not draw $selfillum",
       "input_sha256": "8f5abe4b8dc543760ec4bb532bc3cb809d005fc51dc9c33b36bc92d93d7bac1e",
       "mesh_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -53030,20 +53135,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$selfillum"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -53051,34 +53153,46 @@
       ]
     },
     "materials/lights/white011.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {}
+        },
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the family does not draw $selfillum",
       "input_sha256": "02bb712ad873802e04351a7814c1c72d5394f89c73b80f73b1bb913b73ead639",
       "mesh_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -53086,20 +53200,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$selfillum"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -157988,34 +158099,46 @@
       ]
     },
     "materials/signage/countdown_background.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {}
+        },
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the family does not draw $selfillum",
       "input_sha256": "a50860d07899a0cc195902c91cb58cdba8d9e6e6bd5baa2ce793f0df7c72a006",
       "mesh_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -158023,20 +158146,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$selfillum"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -158044,34 +158164,46 @@
       ]
     },
     "materials/signage/countdown_background_on.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {}
+        },
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the family does not draw $selfillum",
       "input_sha256": "edcde1d57a75721fa796190dcec365cbe24946ccb10fcb461f32c373e80c8ed0",
       "mesh_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -158079,20 +158211,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$selfillum"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -159103,34 +159232,46 @@
       ]
     },
     "materials/signage/indicator_checked.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {}
+        },
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the family does not draw $selfillum",
       "input_sha256": "dc6ecff392347ec5d3feae206c1022792bf27e96df34c748abf05726bf50de6f",
       "mesh_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -159138,20 +159279,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$selfillum"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -159821,34 +159959,46 @@
       ]
     },
     "materials/signage/indicator_unchecked.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {}
+        },
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the family does not draw $selfillum",
       "input_sha256": "70e7dc39d17d826f2383c8f130b0d9f65a43b839a9603314e0189e75bf74bed6",
       "mesh_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -159856,20 +160006,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$selfillum"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -160705,34 +160852,46 @@
       ]
     },
     "materials/signage/shape01.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {}
+        },
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the family does not draw $selfillum",
       "input_sha256": "88016b2042f78a1637d4f5855b54c5d57574d7c3132404acb3374b33c79e2c03",
       "mesh_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -160740,20 +160899,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$selfillum"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -160761,34 +160917,46 @@
       ]
     },
     "materials/signage/shape02.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {}
+        },
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the family does not draw $selfillum",
       "input_sha256": "da1cb483b7a96ccb21f7d8ae9b9ba5fd8ef531cf38b7281ee8078466644c4336",
       "mesh_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -160796,20 +160964,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$selfillum"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -160817,34 +160982,46 @@
       ]
     },
     "materials/signage/shape03.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {}
+        },
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the family does not draw $selfillum",
       "input_sha256": "6ba443b1eb4ff044f2d717c723504b1f2d6b2050f341eac2f7be3dcd0d4548ee",
       "mesh_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -160852,20 +161029,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$selfillum"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -160873,34 +161047,46 @@
       ]
     },
     "materials/signage/shape04.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {}
+        },
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the family does not draw $selfillum",
       "input_sha256": "3551a68c9426061fe2f13da9ce79cbd0e2e4133e2dac134a5d358c99e6a2a47e",
       "mesh_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -160908,20 +161094,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$selfillum"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -160929,34 +161112,46 @@
       ]
     },
     "materials/signage/shape05.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {}
+        },
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the family does not draw $selfillum",
       "input_sha256": "655b4a6c65e019373a882b52d1d6a9c75ce3fc36331428d2e046e9c55c70dbec",
       "mesh_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -160964,20 +161159,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$selfillum"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -164061,34 +164253,46 @@
       ]
     },
     "materials/signage/signage_shape_circle.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {}
+        },
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the family does not draw $selfillum",
       "input_sha256": "a455b96a779b206d7c08383b21f65922dc5f94039525331933790486fe9ca5b5",
       "mesh_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -164096,20 +164300,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$selfillum"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -164117,34 +164318,46 @@
       ]
     },
     "materials/signage/signage_shape_sine.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {}
+        },
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the family does not draw $selfillum",
       "input_sha256": "e62fcb0f5198e561b55653222c2cbf48f58f1250971022ccdfad0e19134fd9d2",
       "mesh_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -164152,20 +164365,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$selfillum"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -164173,34 +164383,46 @@
       ]
     },
     "materials/signage/signage_shape_slash.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {}
+        },
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the family does not draw $selfillum",
       "input_sha256": "7c3b4627226099eee5bdccf3635f434f12e16b83daf87d002c59dc4b6fbac832",
       "mesh_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -164208,20 +164430,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$selfillum"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -164229,34 +164448,46 @@
       ]
     },
     "materials/signage/signage_shape_star.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {}
+        },
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the family does not draw $selfillum",
       "input_sha256": "51b50f178ed710270bcdc336359b0ed05814deea80d1a2540d987fc8fd5f4c2a",
       "mesh_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -164264,20 +164495,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$selfillum"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -164285,34 +164513,46 @@
       ]
     },
     "materials/signage/signage_shape_wavy.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {}
+        },
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the family does not draw $selfillum",
       "input_sha256": "68fc75206c89dceebd4cd5ba4744c63c6e132c3c8690c67a7c99e8d13f0eb510",
       "mesh_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -164320,20 +164560,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$selfillum"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -172314,34 +172551,46 @@
       ]
     },
     "materials/signage/xbla_signage_crusher.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {}
+        },
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the family does not draw $selfillum",
       "input_sha256": "c54bc79e6576ada61f0a646a51322d17cae61a9eb37f20e8f5ced5ac66c5e563",
       "mesh_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -172349,20 +172598,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$selfillum"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -184609,34 +184855,46 @@
       ]
     },
     "materials/traincar_interior/traincar_bulb_white.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {}
+        },
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the family does not draw $selfillum",
       "input_sha256": "1b7fc7059349c00a26310e57ba7d008ff3bc1d7caff8b709b767ad45fe5a45c1",
       "mesh_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -184644,20 +184902,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$selfillum"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -210941,34 +211196,40 @@
       ]
     },
     "materials/vgui/screens/vgui_level_icon.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the family does not draw $selfillum",
       "input_sha256": "308793ade0e20c85f46cf9777aac7b25f0b86d6384559b85df2dbb5e51427fba",
       "mesh_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -210976,20 +211237,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$selfillum"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -210997,34 +211255,40 @@
       ]
     },
     "materials/vgui/screens/vgui_level_select_icon.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the family does not draw $selfillum",
       "input_sha256": "65ef2cda01f702f515ca8977f78dbae23fef2d5e012608927f94cf679e376d3e",
       "mesh_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -211032,20 +211296,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$selfillum"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -211481,34 +211742,40 @@
       ]
     },
     "materials/vgui/screens/vgui_signage_blank_bg.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the family does not draw $selfillum",
       "input_sha256": "a2df0a71df6762417c1bca1c84b4761e5c6b2c5e67c31aed85710209ad92ade4",
       "mesh_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -211516,20 +211783,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$selfillum"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -211537,34 +211801,40 @@
       ]
     },
     "materials/vgui/screens/vgui_signage_blank_bg_wide.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the family does not draw $selfillum",
       "input_sha256": "64c0adca80c5c09526c309ec53d353a00840d1d2fc7616e3d22b15e0720d987b",
       "mesh_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -211572,20 +211842,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$selfillum"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -212065,34 +212332,46 @@
       ]
     },
     "materials/vgui/signage/vgui_countdown_background.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {}
+        },
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the family does not draw $selfillum",
       "input_sha256": "a50860d07899a0cc195902c91cb58cdba8d9e6e6bd5baa2ce793f0df7c72a006",
       "mesh_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -212100,20 +212379,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$selfillum"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -212121,34 +212397,46 @@
       ]
     },
     "materials/vgui/signage/vgui_countdown_background_on.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {}
+        },
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the family does not draw $selfillum",
       "input_sha256": "edcde1d57a75721fa796190dcec365cbe24946ccb10fcb461f32c373e80c8ed0",
       "mesh_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -212156,20 +212444,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$selfillum"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -212295,34 +212580,46 @@
       ]
     },
     "materials/vgui/signage/vgui_indicator_checked.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {}
+        },
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the family does not draw $selfillum",
       "input_sha256": "dc6ecff392347ec5d3feae206c1022792bf27e96df34c748abf05726bf50de6f",
       "mesh_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -212330,20 +212627,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$selfillum"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -212351,34 +212645,46 @@
       ]
     },
     "materials/vgui/signage/vgui_indicator_unchecked.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {}
+        },
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the family does not draw $selfillum",
       "input_sha256": "70e7dc39d17d826f2383c8f130b0d9f65a43b839a9603314e0189e75bf74bed6",
       "mesh_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -212386,20 +212692,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$selfillum"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the family does not draw $selfillum",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -223390,16 +223693,6 @@
       "refused_materials": 0,
       "unmapped_materials": 1
     },
-    "parameter:$selfillum": {
-      "examples": [
-        "materials/lights/blue001.vmt",
-        "materials/lights/light_orange001.vmt",
-        "materials/lights/light_orange002.vmt"
-      ],
-      "first_refusals": 35,
-      "refused_materials": 35,
-      "unmapped_materials": 0
-    },
     "parameter:$selfillum_envmapmask_alpha": {
       "examples": [
         "materials/models/props_lights/light_panel.vmt"
@@ -223945,9 +224238,9 @@
   "scope": "all materials/**/*.vmt in the game's ordered search path",
   "status_counts": {
     "dynamically_unresolved": 146,
-    "statically_supported": 1494,
-    "supported_with_requirements": 1425,
-    "unsupported": 673
+    "statically_supported": 1525,
+    "supported_with_requirements": 1429,
+    "unsupported": 638
   },
   "total": 3738
 }

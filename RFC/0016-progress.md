@@ -10760,3 +10760,12 @@ refused: it sets the D3D9 flat shade mode, which changes vertex-color
 interpolation. The inventory is now 1,494 / 1,425 / 673 unsupported (13
 more claimed; most of the materials with these keys also hit another
 refusal), and `posed-model` passes 107/107.
+
+Follow-up: UnlitGeneric's `$selfillum` is read and has no effect. The
+legacy helper clears `MATERIAL_VAR_SELFILLUM` for UnlitGeneric at init
+(`vertexlitgeneric_dx9_helper.cpp`), because an unlit surface already is
+its base color. It is a declared unlit schema parameter, so it joins the
+unlit family's claimed list rather than the no-effect key table. The
+inventory is now 1,525 statically supported, 1,429 with requirements and 638
+unsupported (35 more claimed). `selfillum` (25), `sprite` (40), `panel` (76)
+and `posed-model` (107) pass.

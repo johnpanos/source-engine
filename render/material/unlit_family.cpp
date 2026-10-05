@@ -26,12 +26,15 @@ using detail::ReadFlag;
 using detail::ReadParameter;
 using detail::SourceGammaToLinear;
 
-// The parameters the family draws, and the ones the caller owns.
-constexpr std::array<std::string_view, 23> kClaimed = { "basetexture", "color", "alpha",
+// The parameters the family draws, and the ones the caller owns. $selfillum
+// is read and has no effect: UnlitGeneric clears MATERIAL_VAR_SELFILLUM at
+// init (vertexlitgeneric_dx9_helper.cpp), since an unlit surface already is
+// its base color.
+constexpr std::array<std::string_view, 24> kClaimed = { "basetexture", "color", "alpha",
     "vertexcolor", "vertexalpha", "alphatest", "alphatestreference", "translucent", "additive",
     "model", "nofog", "nocull", "texture2", "frame2", "texture2transform", "ignorez",
     "hdrcolorscale", "hdrbasetexture", "basetexturetransform", "decal", "frame", "depthblend",
-    "depthblendscale" };
+    "depthblendscale", "selfillum" };
 
 } // namespace
 
