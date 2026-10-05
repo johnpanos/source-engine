@@ -110,6 +110,10 @@ struct OutputDirectTargets
 	device::ResourceUsage targetUsage = device::ResourceUsage::kColorAttachment;
 	std::uint32_t width = 0;
 	std::uint32_t height = 0;
+	// render.pass.post's bloom (RFC 0016 K8), in kSampled, added to the
+	// tone-mapped frame in its sRGB encoding; invalid for none. A debug view
+	// adds none.
+	device::TextureId bloom;
 };
 
 // The encoding for a target format, or kInvalidTarget.
@@ -153,8 +157,8 @@ private:
 
 	// Records the draw; false when the device refused its bind group.
 	bool RecordDraw( device::CommandEncoder &encoder, device::TextureId scene,
-	    device::TextureId target, std::uint32_t width, std::uint32_t height, bool scaled,
-	    const void *constants );
+	    device::TextureId bloom, device::TextureId target, std::uint32_t width,
+	    std::uint32_t height, bool scaled, const void *constants );
 
 	device::IRenderDevice2 &m_Device;
 	device::Format m_TargetFormat = device::Format::kUnknown;

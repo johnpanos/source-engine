@@ -525,6 +525,10 @@
       "dialect": "cxx20",
       "rfc": "0016"
     },
+    "render_pass_post": {
+      "dialect": "cxx20",
+      "rfc": "0016"
+    },
     "render_legacy": {
       "dialect": "cxx20",
       "rfc": "0016"

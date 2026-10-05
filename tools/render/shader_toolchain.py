@@ -92,6 +92,7 @@ LIGHTS = "render/pass/lights"
 SHADOWS = "render/pass/shadows"
 DEBUG = "render/pass/debug"
 OUTPUT = "render/pass/output"
+POST = "render/pass/post"
 VOLUMETRIC = "render/pass/volumetric"
 LAB = "render/lab"
 SSR = "render/pass/ssr"
@@ -234,6 +235,17 @@ GENERATED = {
         "the output pass: exposure, tone map and output encoding (RFC 0016, render.output.v1)", (
         ("kOutputVertex", OUTPUT + "/output.vert", DEVICE_OPTIONS),
         ("kOutputFragment", OUTPUT + "/output.frag", DEVICE_OPTIONS))),
+    "post_spv.h": ("render::pass::post::spirv",
+        "render.pass.post: the engine's bloom chain (RFC 0016 K8 \"Post and screen effects\")", (
+        ("kPostFragment", POST + "/post.frag", DEVICE_OPTIONS),)),
+    "post_defects_spv.h": ("rendertest::post::spirv",
+        "the post suite's seeded fragment programs (render.pass.post)", (
+        ("kPostLinearShape", POST + "/post.frag",
+         DEVICE_OPTIONS + ("-DSEEDED_POST_LINEAR_SHAPE",)),
+        ("kPostBlurYHeightStep", POST + "/post.frag",
+         DEVICE_OPTIONS + ("-DSEEDED_POST_BLUR_Y_HEIGHT_STEP",)),
+        ("kOutputBloomBeforeToneMap", OUTPUT + "/output.frag",
+         DEVICE_OPTIONS + ("-DSEEDED_BLOOM_BEFORE_TONE_MAP",)))),
     "indirect_spv.h": ("render::pass::indirect::spirv",
         "render.pass.indirect: the indirect-light producers' GPU work (RFC 0016 K12, "
         "RFC 0011's SDF producer)", (
@@ -478,7 +490,7 @@ GLSL_GENERATED = {
 CORE_PROGRAM_HEADERS = ("cluster_assign_spv.h", "debug_spv.h", "families_spv.h", "lines_spv.h",
                         "output_spv.h", "temporal_spv.h", "shadow_spv.h", "skin_spv.h", "volumetric_spv.h",
                         "ssr_spv.h", "ao_spv.h", "bounce_spv.h", "indirect_spv.h",
-                        "panels_spv.h")
+                        "panels_spv.h", "post_spv.h")
 for _header in CORE_PROGRAM_HEADERS:
     _namespace, _purpose, _rows = GENERATED[_header]
     GLSL_GENERATED[_header.replace("_spv.h", "_glsl.h")] = (

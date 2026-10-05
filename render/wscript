@@ -30,6 +30,7 @@ PORTABLE = [
 	'pass/lights',
 	'pass/shadows',
 	'pass/output',
+	'pass/post',
 	'pass/volumetric',
 	'pass/ssr',
 	'pass/temporal',

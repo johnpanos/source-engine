@@ -253,7 +253,8 @@ enum class CoreMeshKind : std::uint8_t
 	kDepthMask,
 	kStencilClear,
 	kLightmappedSurface, // moving brushes and proxy-selected indicator panels
-	kCable               // gameplay-expanded rope ribbons with captured vertex illumination
+	kCable,              // gameplay-expanded rope ribbons with captured vertex illumination
+	kScreenEffect        // the engine bloom chain (render.pass.post consumes it by name)
 };
 struct CoreMeshDraw
 {

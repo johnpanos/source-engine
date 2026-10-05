@@ -11230,3 +11230,58 @@ Also fixed here:
 `render.material.vmt-corpus` still fails on its stale family fixture and a new
 `black` entry in `legacy_shaders.inc`, from other sessions' family and shader
 additions. That fixture is not updated merely to pass.
+
+### R91: the engine's bloom on the core (2026-10-05, post cohort, first slice)
+
+User direction: port the post shaders' existing native GLSL into the core
+rather than rewrite them, and burn down the screen-space cohort ("Post and
+screen effects", K8). Under `r_core_world 1` the bloom chain was dropped
+every frame. On `testchmb_a_01` that was `dev/downsample_non_hdr`,
+`dev/blurfilterx_nohdr`, `dev/blurfiltery_nohdr` and `dev/engine_post`; on
+`sp_a1_intro4` it was the first three and Portal 2's `dev/bloomadd`. The
+census now names each dropped material's shader.
+
+- **`render.pass.post`** (new strict module, `render/pass/post`): the
+  downsample and the two blurs ported from `screenspace_post.frag`.
+  - The downsample reads the core's linear scene as the legacy 8-bit frame
+    buffer held it: exposed, clipped and sRGB encoded.
+  - BlurFilterY's step by 1 / width is kept as a named quirk.
+  - `ClaimPostDraw` is the cohort's one claim. Counter-Strike's shape,
+    `engine_post`'s software AA and other `screenspace_general` programs are
+    refused by name.
+- **`render.pass.output`** takes the bloom as an optional input. It adds the
+  bloom to the tone-mapped frame in its sRGB encoding, the legacy order, for
+  both `engine_post` and `bloomadd`.
+- **Composition.** `CoreOutput` consumes claimed draws at their stream
+  position and records the bloom once in the output stage when the frame
+  holds the whole chain. Claims stay queued (bounded) so a capture replay
+  sees them.
+- **Frozen-path plumbing** (`Frozen-path:` in the commit):
+  - `CoreMeshKindFor` sends `Downsample_nohdr`, `BlurFilterX/Y`,
+    `Engine_Post` and `dev/bloomadd` to `CoreMeshKind::kScreenEffect`;
+  - the handoff passes `r_bloomtint*` as `$bloomtint`;
+  - the dropped-material census names each material's shader.
+
+| Check | Evidence | Result |
+| --- | --- | --- |
+| Pass, Vulkan | `render.pass.post`: 64×32 scene, CPU oracle from the fxc sources | 24 checks; bloom and output within 2 levels |
+| Pass, GL | `render.pass.post.gl` | 21 checks; within 2 levels |
+| Discriminating cases | the height-step oracle against the quirk | differs by more than 10 levels |
+| Seeded | linear shaping, a height step, the bloom before the tone map | each fails (108, 37 and 23 levels) |
+| Regressions | `render.output` (27 checks), `render.composition*` (4 suites), `render.family.*` (Vulkan, GL, cross-backend, seeded rows), `render.shader-artifacts` (SPIR-V, GL, GLES) | pass |
+| In game | headless `portal_boot.py` under `r_core_world 1`, `testchmb_a_01` and `sp_a1_intro4` | zero bloom-chain draws dropped and no refusal. Against a `mat_disable_bloom 1` control, the Portal frame shows a soft glow around the bright openings and the portal. Portal 2's dark intro4 view changes by a mean of 0.04 levels. |
+
+Open:
+- `engine_post` colour correction (shader-API volumes and weights through the
+  frame description) and software AA;
+- Portal 2's `dev/motion_blur` and `dev/lumcompare` (exposure input), still
+  dropped;
+- no `render_lab` scene draws the chain;
+- `screenspace_post.frag` and the native `post#` pipeline remain for
+  `r_core_world 0`, and are deleted at K9;
+- the legacy chain's half-texel tap drift is not reproduced;
+- frame time not measured (three quarter-resolution passes).
+
+Separate finding: on both maps many VertexLitGeneric model draws are refused
+by the core even though they have a mesh kind. That is lit-surface work
+outside this cohort.

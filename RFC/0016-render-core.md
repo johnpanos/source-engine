@@ -2401,33 +2401,46 @@ for three reasons:
 
 They are one module, `render.pass.post` (`render/pass/post`), ported from the
 native backend's `screenspace_post.frag` as the K8 rule above requires:
-- **Downsample**: four taps, each shaped by luminance against the bloom tint
-  and raised to its exponent, at the legacy offsets of 0.5 and 2.5 texels.
+- **Downsample**: each source texel is the scene times the exposure, clipped
+  at SDR white and sRGB encoded (the legacy 8-bit frame buffer). Four taps,
+  each the average of a 2×2 block, cover the 4×4 source block. Each tap is
+  shaped by luminance against the bloom tint (`r_bloomtint*`, or 1/3 grey and
+  exponent 1 with `$bloomtintenable 0`) and raised to the tint's exponent.
+  The half-texel drift of the legacy screen-space rectangle is not
+  reproduced.
 - **Blur**: the 13-tap separable Gaussian with its weights and tap distances,
   scaled by `$bloomamount` on the second axis. Legacy BlurFilterY derives its
   vertical step from the source's *width*. The port keeps this quirk (its
-  output depends on it) and names it in the claim.
-- **Engine post**: the frame plus bloom × factor, the software AA
-  (`AA_QUALITY_MODE`, one-pixel-line reduction), then up to four 32³
-  colour-correction volume lookups with their default and per-volume weights.
+  output depends on it) and names it in the module.
+- Each step writes an 8-bit image, as `_rt_SmallFB0`/`_rt_SmallFB1` did.
+- **The add**: `render.pass.output` adds the bloom to the tone-mapped frame in
+  its sRGB encoding, then decodes it for the output encoding. This is both
+  Portal's `engine_post` (`$bloomenable`, factor 1) and Portal 2's
+  `dev/bloomadd` (`screenspace_general` with `bloomadd_ps20`, additive). A
+  debug view adds none.
+- **Not yet claimed, refused by name**: `engine_post`'s software AA (non-zero
+  `$AAINTERNAL1.x`) and colour correction (its volumes and weights are
+  shader-API state the frontend does not pass yet), and the Counter-Strike
+  shape.
 
-It runs in the output stage on the tone-mapped image, before the output
-encoding, so the legacy order holds: tone map, then bloom, then colour
-correction. It reads the core's scene image, not a legacy copy. Its inputs are
-part of `FrameDesc`: the bloom scale and tint, AA tweakables and the
-colour-correction state. The legacy frontend fills them from the material
-system and shader API. The four materials are claimed by name: under
-`r_core_world 1` their draws are consumed (counted, not dropped), and the pass
-draws their effect once per frame. A second owner, such as replaying them
-through the mesh handoff, is not allowed. `screenspace_post.frag` and the
-native `post#` pipeline are deleted when the pass draws the product.
+The pass reads the core's scene image, not a legacy copy. `ClaimPostDraw`
+in the module is the one claim for these shaders. The frontend's mesh
+handoff gives their draws to the composition (`CoreMeshKind::kScreenEffect`),
+which consumes them in stream order. When a frame's stream holds the whole
+chain, the output stage records the bloom once. A second owner, such as
+drawing them as meshes, is not allowed. `screenspace_post.frag` and the
+native `post#` pipeline stay while `r_core_world 0` uses them, and are
+deleted when the core is the only path (K9).
+
 `dev/lumcompare` is exposure input, not drawing. It belongs to the output
-pass's exposure term and stays refused by name until then.
+pass's exposure term and stays unclaimed until then. Portal 2's
+`dev/motion_blur` (MotionBlur) is the cohort's next shader.
 
 | Check | Runs as | Passes when |
 | --- | --- | --- |
-| Lab | `render.lab.post` on Vulkan and GL, with sensitivity rows | downsample, blur, AA and colour correction each match a CPU oracle of the fxc math on small synthetic images; the BlurFilterY width step is exercised by a non-square source (a height-step control fails); a colour-correction identity volume leaves the image unchanged and a seeded swapped-weights kernel fails; bloom applies after the tone map (a pre-tone-map control fails) |
-| Product | `testchmb_a_01` under `r_core_world 1`, bloom and a colour-correction volume active | zero `dev/*` post draws dropped; the frame shows the core's bloom and correction; the native `post#` pipeline has no caller and is deleted |
+| Pass | `render.pass.post` on Vulkan and `render.pass.post.gl` on GL: the core alone, no engine | a 64×32 scene through the chain and the output matches a CPU oracle of the fxc math within two levels (8-bit bloom and output); without a bloom the output is the legacy clip; the BlurFilterY width step is exercised by the non-square source (the height-step oracle differs by more than ten levels); claims and refusals by name; seeded programs (linear shaping, a height step, the bloom before the tone map) each fail |
+| Lab scene | `render_lab` with bloom | open: no `render_lab` scene draws the chain yet |
+| Product | `testchmb_a_01` and `sp_a1_intro4` under `r_core_world 1` | zero bloom-chain draws dropped; the frame shows the core's bloom against a `mat_disable_bloom 1` control; colour correction and AA claimed (open); the native `post#` pipeline has no caller and is deleted (K9) |
 
 ### K9: Retirement
 

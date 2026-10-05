@@ -4304,7 +4304,10 @@ static std::vector<std::pair<std::string, uint64_t>> g_DroppedMaterials;
 
 static void NoteDroppedMaterial()
 {
-	const char *name = g_pBoundMaterial ? g_pBoundMaterial->GetName() : "(no material)";
+	// The census names each material with its shader, so cohorts group by shader.
+	std::string name = g_pBoundMaterial ? std::string( g_pBoundMaterial->GetName() ) + " [" +
+	                                          g_pBoundMaterial->GetShaderName() + "]"
+	                                    : std::string( "(no material)" );
 	for ( auto &entry : g_DroppedMaterials )
 	{
 		if ( entry.first == name )
@@ -5064,6 +5067,15 @@ static render::legacy::CoreMeshKind CoreMeshKindFor( IMaterial *material )
 		     !V_stricmp( shader, "Sprite_DX9" ) || !V_stricmp( shader, "Sky" ) ||
 		     !V_stricmp( shader, "Sky_HDR_DX9" ) || !V_stricmp( shader, "Sky_DX9" ) )
 			return CoreMeshKind::kUnlit;
+		// Frozen-path: the engine's bloom chain to render.pass.post, which claims
+		// it by name and draws it once in the output stage (RFC 0016 K8).
+		if ( !V_stricmp( shader, "Downsample_nohdr" ) || !V_stricmp( shader, "BlurFilterX" ) ||
+		     !V_stricmp( shader, "BlurFilterY" ) || !V_stricmp( shader, "Engine_Post" ) ||
+		     !V_stricmp( shader, "Engine_Post_dx9" ) ||
+		     ( !V_stricmp( material->GetName(), "dev/bloomadd" ) &&
+		         ( !V_stricmp( shader, "screenspace_general" ) ||
+		             !V_stricmp( shader, "screenspace_general_dx9" ) ) ) )
+			return CoreMeshKind::kScreenEffect;
 		if ( !V_stricmp( shader, "Refract" ) || !V_stricmp( shader, "Refract_DX90" ) )
 			return CoreMeshKind::kTransmission;
 		if ( !V_stricmp( shader, "VertexLitGeneric" ) ||
@@ -5187,7 +5199,7 @@ bool CEmptyMesh::EmitToCoreQueue()
 	// GetStringValue formats numeric values into temporary storage. Copy each
 	// one now; retaining its pointer until the final QueueMesh corrupts values.
 	std::vector<std::string> values;
-	values.reserve( g_pBoundMaterial->ShaderParamCount() );
+	values.reserve( g_pBoundMaterial->ShaderParamCount() + 1 ); // + the bloom tint
 	IMaterialVar **params = g_pBoundMaterial->GetShaderParams();
 	IShader *shader = g_pBoundMaterial->GetShader();
 	for ( int i = 0; i < g_pBoundMaterial->ShaderParamCount(); ++i )
@@ -5226,6 +5238,21 @@ bool CEmptyMesh::EmitToCoreQueue()
 	{
 		if ( g_pBoundMaterial->GetMaterialVarFlag( flag.flag ) )
 			variables.push_back( { flag.key, "1", "0", 0 } );
+	}
+	// Frozen-path: Downsample_nohdr reads its tint from these cvars, not its
+	// material; render.pass.post takes them as one "$bloomtint" value.
+	if ( !V_stricmp( g_pBoundMaterial->GetShaderName(), "Downsample_nohdr" ) )
+	{
+		static ConVarRef tintR( "r_bloomtintr" ), tintG( "r_bloomtintg" ), tintB( "r_bloomtintb" ),
+		    tintExponent( "r_bloomtintexponent" );
+		if ( tintR.IsValid() && tintG.IsValid() && tintB.IsValid() && tintExponent.IsValid() )
+		{
+			values.emplace_back( "[" + std::to_string( tintR.GetFloat() ) + " " +
+			                     std::to_string( tintG.GetFloat() ) + " " +
+			                     std::to_string( tintB.GetFloat() ) + " " +
+			                     std::to_string( tintExponent.GetFloat() ) + "]" );
+			variables.push_back( { "$bloomtint", values.back().c_str(), nullptr, 0 } );
+		}
 	}
 	render::legacy::CoreMeshDraw draw;
 	draw.kind = CoreMeshKindFor( g_pBoundMaterial );

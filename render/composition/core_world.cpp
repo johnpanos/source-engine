@@ -2229,6 +2229,10 @@ std::optional<pass::world::WorldSceneColor> CoreWorld::Capture( device::IRenderD
 
 std::uint32_t CoreWorld::QueueMesh( const legacy::CoreMeshDraw &draw )
 {
+	// The engine's bloom chain (RFC 0016 K8): claimed by name, drawn once by
+	// the output stage.
+	if ( draw.kind == legacy::CoreMeshKind::kScreenEffect )
+		return m_Output.QueuePost( draw );
 	if ( !AcceptsMeshes() && draw.kind == legacy::CoreMeshKind::kSurface )
 		return 0;
 	if ( !draw.name || !draw.shader || !draw.vertices || !draw.indices || !draw.vertexCount ||
@@ -2354,6 +2358,11 @@ void CoreWorld::RecordSlot(
 			    int( m_MotionTargets.count( target.color.value ) ), target.samples );
 			(void)encoder.TakeBackend();
 		}
+		return;
+	}
+	if ( IsPostTag( tag ) )
+	{
+		m_Output.RecordPost( tag );
 		return;
 	}
 	if ( tag == legacy::kCorePassLegacyHud )

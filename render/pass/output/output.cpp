@@ -24,7 +24,7 @@ struct Constants
 {
 	float params[4] = {};        // exposure, scene peak, headroom, 0
 	std::uint32_t modes[4] = {}; // encoding, tone map (1) or a debug view (0), scaled (1)
-	float extent[4] = {};        // the target's width and height
+	float extent[4] = {};        // the target's width and height, 1 to add the bloom
 };
 static_assert( sizeof( Constants ) == 48 );
 
@@ -99,7 +99,9 @@ OutputRenderer::CreateWithFragment(
 	renderer->m_Encoding = encoding.Value();
 
 	const BindingDesc draw[] = { { 0, BindingKind::kSampledTexture, 1, { ShaderStage::kFragment } },
-	    { 1, BindingKind::kSampler, 1, { ShaderStage::kFragment } } };
+	    { 1, BindingKind::kSampler, 1, { ShaderStage::kFragment } },
+	    { 2, BindingKind::kSampledTexture, 1, { ShaderStage::kFragment } },
+	    { 3, BindingKind::kSampler, 1, { ShaderStage::kFragment } } };
 	auto layout = device.CreateBindGroupLayout( { BindGroupRole::kDraw, draw } );
 	if ( !layout )
 		return foundation::MakeUnexpected( OutputStatus::kDevice );
@@ -191,7 +193,7 @@ foundation::Expected<void, OutputStatus> OutputRenderer::AddPass(
 	pass.Execute(
 	    [this, targets, constants, scaled]( graph::RecordContext &context )
 	    {
-		    (void)RecordDraw( context.Encoder(), context.Texture( targets.scene ),
+		    (void)RecordDraw( context.Encoder(), context.Texture( targets.scene ), TextureId(),
 		        context.Texture( targets.target ), targets.width, targets.height, scaled,
 		        &constants );
 	    } );
@@ -210,15 +212,17 @@ foundation::Expected<void, OutputStatus> OutputRenderer::Record(
 		return foundation::MakeUnexpected( OutputStatus::kSizeMismatch );
 	const bool scaled =
 	    targets.sceneWidth != targets.width || targets.sceneHeight != targets.height;
-	const Constants constants =
+	Constants constants =
 	    MakeConstants( params, m_Encoding, targets.width, targets.height, scaled );
+	const bool bloom = targets.bloom.IsValid() && params.toneMap;
+	constants.extent[2] = bloom ? 1.0f : 0.0f;
 	if ( targets.sceneUsage != ResourceUsage::kSampled )
 		encoder.TransitionTexture( targets.scene, targets.sceneUsage, ResourceUsage::kSampled );
 	if ( targets.targetUsage != ResourceUsage::kColorAttachment )
 		encoder.TransitionTexture(
 		    targets.target, targets.targetUsage, ResourceUsage::kColorAttachment );
-	const bool drawn = RecordDraw(
-	    encoder, targets.scene, targets.target, targets.width, targets.height, scaled, &constants );
+	const bool drawn = RecordDraw( encoder, targets.scene, bloom ? targets.bloom : TextureId(),
+	    targets.target, targets.width, targets.height, scaled, &constants );
 	if ( targets.sceneUsage != ResourceUsage::kSampled )
 		encoder.TransitionTexture( targets.scene, ResourceUsage::kSampled, targets.sceneUsage );
 	if ( targets.targetUsage != ResourceUsage::kColorAttachment )
@@ -229,11 +233,15 @@ foundation::Expected<void, OutputStatus> OutputRenderer::Record(
 	return {};
 }
 
-bool OutputRenderer::RecordDraw( CommandEncoder &encoder, TextureId scene, TextureId target,
-    std::uint32_t width, std::uint32_t height, bool scaled, const void *constants )
+bool OutputRenderer::RecordDraw( CommandEncoder &encoder, TextureId scene, TextureId bloom,
+    TextureId target, std::uint32_t width, std::uint32_t height, bool scaled,
+    const void *constants )
 {
-	const BindGroupEntry entries[] = {
-	    { 0, {}, 0, 0, scene, {} }, { 1, {}, 0, 0, {}, scaled ? m_LinearSampler : m_Sampler } };
+	// Without a bloom the scene fills its slot; the constants leave it unread.
+	const BindGroupEntry entries[] = { { 0, {}, 0, 0, scene, {} },
+	    { 1, {}, 0, 0, {}, scaled ? m_LinearSampler : m_Sampler },
+	    { 2, {}, 0, 0, bloom.IsValid() ? bloom : scene, {} },
+	    { 3, {}, 0, 0, {}, m_LinearSampler } };
 	auto group = m_Device.CreateBindGroup( { m_Layout, entries } );
 	{
 		std::lock_guard<std::mutex> lock( m_PendingLock );

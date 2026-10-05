@@ -1186,6 +1186,18 @@
         ]
       },
       {
+        "id": "render.pass.post",
+        "paths": [
+          "public/render/pass/post/",
+          "render/pass/post/"
+        ],
+        "allowedEdges": [
+          "foundation",
+          "render.device",
+          "render.shader-library"
+        ]
+      },
+      {
         "id": "render.legacy-pass-contract",
         "paths": [
           "public/render/legacy/core_passes.h"
@@ -1247,6 +1259,7 @@
           "render.legacy-provider-contract",
           "render.pass.debug",
           "render.pass.output",
+          "render.pass.post",
           "render.pass.lights",
           "render.pass.shadows",
           "render.pass.ao",
@@ -1291,6 +1304,7 @@
           "render.pass.lights",
           "render.pass.shadows",
           "render.pass.output",
+          "render.pass.post",
           "render.legacy-frontend",
           "render.legacy-provider-contract",
           "render.composition",
@@ -1890,6 +1904,13 @@
           "render_shaderlib"
         ]
       },
+      "render_pass_post": {
+        "allowedUse": [
+          "render_device",
+          "render_spv",
+          "render_shaderlib"
+        ]
+      },
       "render_pass_skinning": {
         "allowedUse": [
           "render_frame",
@@ -1962,6 +1983,7 @@
           "render_pass_present",
           "render_pass_world",
           "render_pass_output",
+          "render_pass_post",
           "render_legacy",
           "render_scene",
           "render_frame",

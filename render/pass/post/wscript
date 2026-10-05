@@ -1,0 +1,18 @@
+#! /usr/bin/env python
+# encoding: utf-8
+# render.pass.post (RFC 0016 layer 6 feature, K8 "Post and screen effects"):
+# the engine's bloom chain, ported from the native backend's
+# screenspace_post.frag; render.pass.output adds its image.
+
+def build(bld):
+	bld.stlib(
+		env         = bld.strict_cpp20_env(),
+		features    = 'cxx capability_strict',
+		arch_module = 'render.pass.post',
+		target      = 'render_pass_post',
+		name        = 'render_pass_post',
+		source      = bld.path.ant_glob('*.cpp'),
+		includes    = ['../../../public'],
+		use         = ['render_device', 'render_spv', 'render_shaderlib'],
+		idx         = bld.get_taskgen_count()
+	)

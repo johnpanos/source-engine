@@ -5,7 +5,7 @@
 
 def build(bld):
 	use = ['mdl', 'render_renderer', 'render_pass_present', 'render_pass_world', 'render_pass_debug',
-		'render_pass_output', 'render_pass_temporal',
+		'render_pass_output', 'render_pass_post', 'render_pass_temporal',
 		'render_legacy', 'render_scene',
 		'render_frame', 'render_graph', 'render_resources', 'render_material',
 		'render_pass_skinning',
