@@ -107,10 +107,10 @@
     },
     "lightmappedgeneric": {
       "dynamically_unresolved": 70,
-      "statically_supported": 438,
+      "statically_supported": 452,
       "supported_with_requirements": 268,
       "total": 811,
-      "unsupported": 35
+      "unsupported": 21
     },
     "lightshafts": {
       "dynamically_unresolved": 0,
@@ -386,7 +386,6 @@
     "the decal point does not draw $translucent": 21,
     "the family does not draw $allowalphatocoverage": 1,
     "the family does not draw $basetexture2": 16,
-    "the family does not draw $detailblendmode 10": 14,
     "the family does not draw $detailblendmode 5": 2,
     "the family does not draw $spriteorigin": 1,
     "the model does not bind the per-view texture _rt_camera ($basetexture)": 1,
@@ -179535,9 +179534,15 @@
       ]
     },
     "materials/tile/ceiling_tile002b.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the family does not draw $detailblendmode 10",
       "input_sha256": "ea7afdaf5ec30479f931403e8607ebc1225da0a76ab365baa55054789c154c9f",
       "mesh_claims": [
         {
@@ -179570,21 +179575,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "mesh_point:lightmapped",
-        "parameter:$detailblendmode"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "the family does not draw $detailblendmode 10",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the family does not draw $detailblendmode 10",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -181319,9 +181320,15 @@
       ]
     },
     "materials/tile/white_ceiling_tile002a.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the family does not draw $detailblendmode 10",
       "input_sha256": "d2c5bac0565ec07f992e6c0bcac8108b02d6f162997e43fb20d359bbe9c77836",
       "mesh_claims": [
         {
@@ -181354,21 +181361,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "mesh_point:lightmapped",
-        "parameter:$detailblendmode"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "the family does not draw $detailblendmode 10",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the family does not draw $detailblendmode 10",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -181494,9 +181497,15 @@
       ]
     },
     "materials/tile/white_floor_tile002a.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the family does not draw $detailblendmode 10",
       "input_sha256": "dba1d15cccae07df159f474d749e283b99488ae996f7daf8748e0754110901f6",
       "mesh_claims": [
         {
@@ -181529,21 +181538,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "mesh_point:lightmapped",
-        "parameter:$detailblendmode"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "the family does not draw $detailblendmode 10",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the family does not draw $detailblendmode 10",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -181551,9 +181556,15 @@
       ]
     },
     "materials/tile/white_floor_tile002a_ssbumptest.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the family does not draw $detailblendmode 10",
       "input_sha256": "38258122334afe4a1cc347a00e0165b27edc1e03a252b42abe16c0d039a05b0f",
       "mesh_claims": [
         {
@@ -181586,21 +181597,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "mesh_point:lightmapped",
-        "parameter:$detailblendmode"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "the family does not draw $detailblendmode 10",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the family does not draw $detailblendmode 10",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -181608,9 +181615,15 @@
       ]
     },
     "materials/tile/white_floor_tile002b.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the family does not draw $detailblendmode 10",
       "input_sha256": "da88bbdd1b58e938bff9a9472a3168e3256a64be344baf55a6a83f7a24f8b01f",
       "mesh_claims": [
         {
@@ -181643,21 +181656,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "mesh_point:lightmapped",
-        "parameter:$detailblendmode"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "the family does not draw $detailblendmode 10",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the family does not draw $detailblendmode 10",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -181665,9 +181674,15 @@
       ]
     },
     "materials/tile/white_floor_tile002c.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the family does not draw $detailblendmode 10",
       "input_sha256": "64c4b389c5396bf025a1477612e2324d388f4442b707ba31b3e9389b4daf8b2e",
       "mesh_claims": [
         {
@@ -181700,21 +181715,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "mesh_point:lightmapped",
-        "parameter:$detailblendmode"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "the family does not draw $detailblendmode 10",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the family does not draw $detailblendmode 10",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -181899,9 +181910,15 @@
       ]
     },
     "materials/tile/white_floor_tile004d.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the family does not draw $detailblendmode 10",
       "input_sha256": "9d1cc434c25381ae1f9dff9a2d4d385e655d15631b9944f6ee0261d8fe687db9",
       "mesh_claims": [
         {
@@ -181934,21 +181951,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "mesh_point:lightmapped",
-        "parameter:$detailblendmode"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "the family does not draw $detailblendmode 10",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the family does not draw $detailblendmode 10",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -182205,9 +182218,15 @@
       ]
     },
     "materials/tile/white_wall_tile003a.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the family does not draw $detailblendmode 10",
       "input_sha256": "d9fb6d9b80ecca0a2f48174ae67974bf900f676790cb350f458d965531e8213b",
       "mesh_claims": [
         {
@@ -182243,21 +182262,17 @@
         ".3"
       ],
       "proxies": [],
-      "refusal_features": [
-        "mesh_point:lightmapped",
-        "parameter:$detailblendmode"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "the family does not draw $detailblendmode 10",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the family does not draw $detailblendmode 10",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -182389,9 +182404,15 @@
       ]
     },
     "materials/tile/white_wall_tile003c.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the family does not draw $detailblendmode 10",
       "input_sha256": "26b0774dbcc6f4a76edfbbd8144fc6fba08c1a7253f21bf130fb484a0770cf60",
       "mesh_claims": [
         {
@@ -182424,21 +182445,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "mesh_point:lightmapped",
-        "parameter:$detailblendmode"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "the family does not draw $detailblendmode 10",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the family does not draw $detailblendmode 10",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -182570,9 +182587,15 @@
       ]
     },
     "materials/tile/white_wall_tile003f.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the family does not draw $detailblendmode 10",
       "input_sha256": "53cda525030c7b551d2661dba02c3c65a9d5620145c4d9ca74567de8271af354",
       "mesh_claims": [
         {
@@ -182605,21 +182628,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "mesh_point:lightmapped",
-        "parameter:$detailblendmode"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "the family does not draw $detailblendmode 10",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the family does not draw $detailblendmode 10",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -182686,9 +182705,15 @@
       ]
     },
     "materials/tile/white_wall_tile003h.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the family does not draw $detailblendmode 10",
       "input_sha256": "5617f1750c788f42d4bb35e0fe9188533b65477f5e16859bccb57ce8b07cf3ba",
       "mesh_claims": [
         {
@@ -182721,21 +182746,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "mesh_point:lightmapped",
-        "parameter:$detailblendmode"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "the family does not draw $detailblendmode 10",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the family does not draw $detailblendmode 10",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -182743,9 +182764,15 @@
       ]
     },
     "materials/tile/white_wall_tile003i.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the family does not draw $detailblendmode 10",
       "input_sha256": "454df24a6bb819feb019cae0b9845d46dc7b0a3e9e1028779e3c6fa5223cfff4",
       "mesh_claims": [
         {
@@ -182778,21 +182805,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "mesh_point:lightmapped",
-        "parameter:$detailblendmode"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "the family does not draw $detailblendmode 10",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the family does not draw $detailblendmode 10",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -182800,9 +182823,15 @@
       ]
     },
     "materials/tile/white_wall_tile003l.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the family does not draw $detailblendmode 10",
       "input_sha256": "66cebe2e337f1a6e0632cdefae007c0d2d901af94789073f524fcd9f836fd0aa",
       "mesh_claims": [
         {
@@ -182835,21 +182864,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "mesh_point:lightmapped",
-        "parameter:$detailblendmode"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "the family does not draw $detailblendmode 10",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the family does not draw $detailblendmode 10",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -183447,9 +183472,15 @@
       ]
     },
     "materials/tile/white_wall_tile004h.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the family does not draw $detailblendmode 10",
       "input_sha256": "39521d56aef1ab27e68fb900f7371636b701debbc48dd113423cf5c1d9a2f634",
       "mesh_claims": [
         {
@@ -183482,21 +183513,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "mesh_point:lightmapped",
-        "parameter:$detailblendmode"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "the family does not draw $detailblendmode 10",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the family does not draw $detailblendmode 10",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -223394,7 +223421,7 @@
         "materials/glass/glasswindow_frosted_004.vmt"
       ],
       "first_refusals": 0,
-      "refused_materials": 34,
+      "refused_materials": 20,
       "unmapped_materials": 0
     },
     "parameter:$additive": {
@@ -223538,11 +223565,10 @@
     "parameter:$detailblendmode": {
       "examples": [
         "materials/signage/mgf_overlay_bullseye.vmt",
-        "materials/signage/mgf_overlay_bullseye_smaller.vmt",
-        "materials/tile/ceiling_tile002b.vmt"
+        "materials/signage/mgf_overlay_bullseye_smaller.vmt"
       ],
-      "first_refusals": 16,
-      "refused_materials": 16,
+      "first_refusals": 2,
+      "refused_materials": 2,
       "unmapped_materials": 0
     },
     "parameter:$diffuseexp": {
@@ -224313,9 +224339,9 @@
   "scope": "all materials/**/*.vmt in the game's ordered search path",
   "status_counts": {
     "dynamically_unresolved": 146,
-    "statically_supported": 1525,
+    "statically_supported": 1539,
     "supported_with_requirements": 1471,
-    "unsupported": 596
+    "unsupported": 582
   },
   "total": 3738
 }

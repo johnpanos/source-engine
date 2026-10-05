@@ -365,7 +365,8 @@ float FogFactor()
 	return clamp( f * projZ * frame.fogParams.w, 0.0, 1.0 );
 }
 
-// common_ps_fxc.h TextureCombine for the modes the family claims.
+// common_ps_fxc.h TextureCombine for the modes the family claims (mode 10,
+// TCOMBINE_SSBUMP_BUMP, leaves the albedo and scales the bump basis below).
 vec4 TextureCombine( vec4 baseColor, vec4 detailColor, float blendFactor )
 {
 	if ( kDetailMode == 0 )
@@ -1883,6 +1884,13 @@ void main()
 			dp.y = clamp( dot( normalSample.xyz, bumpBasis[1] ), 0.0, 1.0 );
 			dp.z = clamp( dot( normalSample.xyz, bumpBasis[2] ), 0.0, 1.0 );
 			dp *= dp;
+			// TCOMBINE_SSBUMP_BUMP: the detail modulates the light as an
+			// ssbump would (lightmappedgeneric_ps2_3_x.h), not the albedo.
+			if ( kDetailMode == 10 && Term( kDetailTexture ) )
+				dp *= 2.0 * material.detailTint.rgb *
+				      texture( sampler2D( detailTexture, detailSampler ),
+				          baseUv * material.detailScale.xy )
+				          .rgb;
 			diffuse = dp.x * light1 + dp.y * light2 + dp.z * light3;
 			baked = diffuse / dot( dp, vec3( 1.0 ) ) * frame.light.x;
 			diffuse *= c12 / dot( dp, vec3( 1.0 ) );

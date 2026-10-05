@@ -49,7 +49,7 @@ constexpr std::array<std::string_view, 36> kClaimed = { "basetexture", "color", 
 bool DetailModeDrawn( int mode )
 {
 	return mode == 0 || mode == 1 || mode == 2 || mode == 3 || mode == 4 || mode == 7 ||
-	       mode == 8 || mode == 9;
+	       mode == 8 || mode == 9 || mode == 10;
 }
 
 } // namespace
@@ -96,8 +96,15 @@ LightmappedClaim ClaimLightmapped( const ParameterBlock &block )
 			claim.reason = "the family does not draw $detailblendmode " + std::to_string( mode );
 			return claim;
 		}
-		claim.terms |= kSurfaceDetail;
-		claim.detailMode = std::uint32_t( mode );
+		// Mode 10 (TCOMBINE_SSBUMP_BUMP) scales a normal map's basis weights
+		// by the detail. With an ssbump the shader's ssbump branch never reads
+		// the detail and TextureCombine has no mode 10 case
+		// (lightmappedgeneric_ps2_3_x.h), so the detail has no effect.
+		if ( !( mode == 10 && ReadFlag( block, "ssbump" ) ) )
+		{
+			claim.terms |= kSurfaceDetail;
+			claim.detailMode = std::uint32_t( mode );
+		}
 	}
 
 	const bool alphaBlended = ReadFlag( block, "translucent" ) ||

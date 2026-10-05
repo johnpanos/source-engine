@@ -10776,3 +10776,25 @@ ambient occlusion is a per-pixel screen-space input, which the core supplies
 as `render.pass.ao`. It joins the no-effect key table with that reason. The
 inventory is now 1,525 / 1,471 / 596 unsupported (42 more claimed), and
 `posed-model` passes 107/107.
+
+### K12: LightmappedGeneric `$detailblendmode 10` (2026-10-05)
+
+Mode 10 (`TCOMBINE_SSBUMP_BUMP`, `lightmappedgeneric_ps2_3_x.h`) leaves the
+albedo alone (TextureCombine has no mode 10 case). On a normal map's basis
+path it scales the three basis weights by twice the tinted detail before
+they light and normalize: `dp *= 2 * detail`. The surface program now does
+that in its bumped basis branch, and the claim accepts mode 10. With an
+ssbump, the shader's ssbump branch never reads the detail, so the detail has
+no effect: such a claim drops the detail term. That is all 14 shipped
+Portal 2 uses. The inventory is now 1,539 / 1,471 / 582 unsupported (14
+more claimed). `render.family.lightmapped` passes 198/198 against its port,
+and its seeded control still fails. There is no port pixel case of mode 10
+on a normal map yet, so the non-ssbump transcription is unproven by pixels;
+no shipped material uses it.
+
+Finding, not changed: the legacy helper picks the effective mode from the
+detail texture's `TEXTUREFLAGS_SSBUMP` flag (10 with a bump map, 11 without)
+whatever the authored `$detailblendmode`. The core claims from the authored
+value, so a material whose detail VTF is ssbump-flagged and authored with
+another mode is interpreted differently. A texture-flag input to the claim
+is needed to close this.
