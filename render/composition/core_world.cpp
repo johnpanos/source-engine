@@ -2010,6 +2010,8 @@ void CoreWorld::GetStats( RenderCoreWorldStats *out ) const
 	out->cutoutShadowDraws = stats.cutoutShadowDraws;
 	out->cutoutShadowRefused = stats.cutoutShadowRefused;
 	out->cutoutShadowNotResident = stats.cutoutShadowNotResident;
+	out->ssrViews = m_SsrViews.load( std::memory_order_relaxed );
+	out->ssrRefused = m_SsrRefused.load( std::memory_order_relaxed );
 	std::snprintf( out->lastFailure, sizeof( out->lastFailure ), "%s", stats.lastFailure.c_str() );
 	std::size_t used = 0;
 	for ( const auto &[reason, count] : stats.gaps )
@@ -2045,6 +2047,7 @@ void CoreWorld::SetQuality( const RenderCoreWorldQuality &quality )
 	m_ShadowMovers.store( quality.shadowMovers != 0, std::memory_order_relaxed );
 	m_RuntimeDirect.store( quality.runtimeDirect != 0, std::memory_order_relaxed );
 	m_VolumetricOn.store( quality.volumetric != 0, std::memory_order_relaxed );
+	m_SsrOn.store( quality.ssr != 0, std::memory_order_relaxed );
 	m_StageRuntimeDirect.store(
 	    quality.runtimeDirect != 0 && m_StageHasIndirect.load( std::memory_order_relaxed ),
 	    std::memory_order_relaxed );
@@ -2858,7 +2861,59 @@ void CoreWorld::RecordWorldBatch( std::span<const std::uint32_t> tags,
 
 	if ( timers )
 		encoder.EndLabel();
+	// render.ssr.v1 (RFC 0016 K12): the stage view's lit pass writes the
+	// reflections' inputs, then the trace replaces its image-based specular
+	// where it hits, before the medium and the translucent stream.
+	bool ssrView = false;
+	if ( pending && !sharedStage && shadows && pending->inputs.stageWorld && target.device &&
+	     m_SsrOn.load( std::memory_order_relaxed ) )
+	{
+		const char *refusal = target.samples != 1                             ? "a multisampled target"
+		                      : world.motion.IsValid()                        ? "a temporal view"
+		                      : target.colorFormat != device::Format::kRGBA16Float ? "an 8-bit target"
+		                      : !target.depth.IsValid() || !target.color.IsValid()
+		                          ? "a target without imported color or depth"
+		                          : nullptr;
+		if ( refusal )
+		{
+			if ( m_SsrRefused.fetch_add( 1, std::memory_order_relaxed ) == 0 )
+				std::fprintf( stderr, "render core: screen-space reflections refused: %s\n", refusal );
+		}
+		else if ( EnsureSsr( *target.device, target.width, target.height, target.submitted ) )
+		{
+			if ( m_SsrFresh )
+			{
+				for ( const device::TextureId t : m_SsrTargets )
+					encoder.TransitionTexture(
+					    t, device::ResourceUsage::kUndefined, device::ResourceUsage::kSampled );
+				encoder.TransitionTexture( m_SsrOutput, device::ResourceUsage::kUndefined,
+				    device::ResourceUsage::kStorageWrite );
+				m_SsrFresh = false;
+			}
+			if ( target.frame != m_SsrFrame )
+			{
+				m_Ssr->Collect( target.submitted );
+				m_SsrCopy->Collect( target.submitted );
+				m_SsrFrame = target.frame;
+			}
+			world.ssrNormalRoughness = m_SsrTargets[0];
+			world.ssrIblRadiance = m_SsrTargets[1];
+			world.ssrSpecularWeight = m_SsrTargets[2];
+			ssrView = true;
+		}
+		else if ( m_SsrRefused.fetch_add( 1, std::memory_order_relaxed ) == 0 )
+			std::fprintf( stderr, "render core: screen-space reflections refused: the device "
+			                      "refused their targets or programs\n" );
+	}
 	m_Pass.RecordBatch( tags, encoder, world );
+	if ( ssrView )
+	{
+		if ( timers )
+			encoder.BeginLabel( "core world ssr" );
+		RecordSsr( encoder, target, *shadows );
+		if ( timers )
+			encoder.EndLabel();
+	}
 	// The participating media over the view's opaque frame, once per view
 	// and record frame (RFC 0016 K12; the lab's step g).
 	if ( pending && !sharedStage && shadows && pending->inputs.stageWorld && m_Media &&
@@ -3004,6 +3059,130 @@ void CoreWorld::RecordVolumetric( device::CommandEncoder &encoder,
 		    "%ux%ux%u; projectors not in the medium yet\n",
 		    target.width, target.height, lights.size(), unsupported, layout.tilesX, layout.tilesY,
 		    layout.slices );
+}
+
+bool CoreWorld::EnsureSsr( device::IRenderDevice2 &device, std::uint32_t width,
+    std::uint32_t height, device::CompletionToken submitted )
+{
+	using namespace render::device;
+	BindStageDevice( device );
+	if ( !m_Ssr )
+	{
+		auto created = pass::ssr::ScreenSpaceReflections::Create( device, {} );
+		if ( !created )
+			return false;
+		m_Ssr = std::move( created ).Value();
+	}
+	if ( !m_SsrCopy )
+	{
+		auto created = pass::output::OutputRenderer::Create( device, Format::kRGBA16Float );
+		if ( !created )
+			return false;
+		m_SsrCopy = std::move( created ).Value();
+	}
+	if ( m_SsrOutput.IsValid() && m_SsrWidth == width && m_SsrHeight == height )
+		return true;
+	// A resize: the old targets go behind the frames that used them.
+	ReleaseSsr( device, submitted );
+	auto make = [&]( std::initializer_list<ResourceUsage> usages, const char *name )
+	{
+		TextureDesc desc;
+		desc.format = Format::kRGBA16Float;
+		desc.width = width;
+		desc.height = height;
+		desc.usages = UsageSet( usages );
+		desc.debugName = name;
+		auto made = device.CreateTexture( desc );
+		return made ? made.Value() : TextureId();
+	};
+	m_SsrTargets[0] = make( { ResourceUsage::kColorAttachment, ResourceUsage::kSampled },
+	    "stage ssr normal roughness" );
+	m_SsrTargets[1] =
+	    make( { ResourceUsage::kColorAttachment, ResourceUsage::kSampled }, "stage ssr ibl" );
+	m_SsrTargets[2] =
+	    make( { ResourceUsage::kColorAttachment, ResourceUsage::kSampled }, "stage ssr weight" );
+	m_SsrOutput =
+	    make( { ResourceUsage::kStorageWrite, ResourceUsage::kSampled }, "stage ssr output" );
+	m_SsrWidth = width;
+	m_SsrHeight = height;
+	m_SsrFresh = true;
+	return m_SsrTargets[0].IsValid() && m_SsrTargets[1].IsValid() && m_SsrTargets[2].IsValid() &&
+	       m_SsrOutput.IsValid();
+}
+
+void CoreWorld::ReleaseSsr( device::IRenderDevice2 &device, device::CompletionToken token )
+{
+	for ( device::TextureId &texture : m_SsrTargets )
+	{
+		if ( texture.IsValid() )
+			(void)device.Release( texture, token );
+		texture = device::TextureId();
+	}
+	if ( m_SsrOutput.IsValid() )
+		(void)device.Release( m_SsrOutput, token );
+	m_SsrOutput = device::TextureId();
+	m_SsrWidth = m_SsrHeight = 0;
+}
+
+void CoreWorld::RecordSsr( device::CommandEncoder &encoder, const legacy::CorePassTarget &target,
+    const ShadowWork &work )
+{
+	using namespace render::device;
+	auto refuse = [&]( const char *why )
+	{
+		if ( m_SsrRefused.fetch_add( 1, std::memory_order_relaxed ) == 0 )
+			std::fprintf( stderr, "render core: screen-space reflections refused: %s\n", why );
+	};
+	// The pass reads its inputs in kSampled; the frame's own depth and color
+	// rest elsewhere between slots.
+	encoder.TransitionTexture( target.depth, ResourceUsage::kDepthWrite, ResourceUsage::kSampled );
+	encoder.TransitionTexture(
+	    target.color, ResourceUsage::kColorAttachment, ResourceUsage::kSampled );
+	pass::ssr::SsrDirectTargets targets;
+	targets.depth = target.depth;
+	targets.normalRoughness = m_SsrTargets[0];
+	targets.iblRadiance = m_SsrTargets[1];
+	targets.specularWeight = m_SsrTargets[2];
+	targets.lit = target.color;
+	targets.output = m_SsrOutput;
+	targets.outputUsage = ResourceUsage::kStorageWrite;
+	targets.width = target.width;
+	targets.height = target.height;
+	pass::ssr::SsrView view;
+	// The projection the world pass rasterized with (its half-pixel shift).
+	view.toClip = math::Multiply( work.projection, work.view );
+	std::copy( work.eye, work.eye + 3, view.eye );
+	bool traced = false;
+	if ( !m_Ssr->Record( encoder, targets, view ) )
+		refuse( "the pass did not record" );
+	else
+	{
+		// The output replaces the frame (encoding alone: linear into the
+		// float frame).
+		encoder.TransitionTexture(
+		    m_SsrOutput, ResourceUsage::kStorageWrite, ResourceUsage::kSampled );
+		pass::output::OutputDirectTargets copy;
+		copy.scene = m_SsrOutput;
+		copy.sceneUsage = ResourceUsage::kSampled;
+		copy.sceneWidth = target.width;
+		copy.sceneHeight = target.height;
+		copy.target = target.color;
+		copy.targetUsage = ResourceUsage::kSampled;
+		copy.width = target.width;
+		copy.height = target.height;
+		pass::output::OutputParams params;
+		params.toneMap = false;
+		traced = bool( m_SsrCopy->Record( encoder, copy, params ) );
+		if ( !traced )
+			refuse( "the copy back into the frame did not record" );
+		encoder.TransitionTexture(
+		    m_SsrOutput, ResourceUsage::kSampled, ResourceUsage::kStorageWrite );
+	}
+	encoder.TransitionTexture(
+	    target.color, ResourceUsage::kSampled, ResourceUsage::kColorAttachment );
+	encoder.TransitionTexture( target.depth, ResourceUsage::kSampled, ResourceUsage::kDepthWrite );
+	if ( traced )
+		m_SsrViews.fetch_add( 1, std::memory_order_relaxed );
 }
 
 device::TextureId CoreWorld::DrawStageShadows( device::IRenderDevice2 &device,
@@ -3547,6 +3726,9 @@ void CoreWorld::BindStageDevice( device::IRenderDevice2 &device )
 	m_Ao.reset();
 	m_Volumetric.reset();
 	m_VolumetricFormat = device::Format::kUnknown;
+	ReleaseSsr( device, device::CompletionToken() );
+	m_Ssr.reset();
+	m_SsrCopy.reset();
 	if ( m_Cookies )
 		m_Cookies->Release( device::CompletionToken() );
 	m_Cookies.reset();
@@ -3617,6 +3799,9 @@ void CoreWorld::ReleaseShadows( device::IRenderDevice2 &device )
 	m_Ao.reset();
 	m_Volumetric.reset();
 	m_VolumetricFormat = device::Format::kUnknown;
+	ReleaseSsr( device, device::CompletionToken() );
+	m_Ssr.reset();
+	m_SsrCopy.reset();
 	if ( m_Cookies )
 		m_Cookies->Release( device::CompletionToken() );
 	m_Cookies.reset();

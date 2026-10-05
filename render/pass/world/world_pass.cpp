@@ -3240,10 +3240,23 @@ void WorldPass::RecordBatch(
 	// Surfaces of one binding whose index ranges touch draw as one range (a
 	// world stage's meshlets, in the mesh's order).
 	bool recordingTemporal = false;
+	bool recordingSsr = false;
 	auto statePipeline =
 	    [&]( const Resources::Material &m, PipelineId base, const material::SurfaceDrawState &state,
 	        const shaderlib::DebugSpecialization &debug = {} ) -> std::optional<PipelineId>
 	{
+		// The SSR targets' variant of the draw's point: three more outputs.
+		if ( recordingSsr )
+		{
+			auto ssr = m.resolver->Program().VariantPipeline(
+			    base, material::kSurfaceSsrTargets, 0 );
+			if ( !ssr )
+			{
+				note( "the SSR targets' variant was refused for " + m.program.name );
+				return std::nullopt;
+			}
+			base = ssr.Value();
+		}
 		auto result =
 		    recordingTemporal
 		        ? m.resolver->Program().TemporalPipeline( base, state, viewFeatures, debug )
@@ -4480,8 +4493,32 @@ void WorldPass::RecordBatch(
 		colors.push_back( { target.motionDepth, LoadOp::kLoad, StoreOp::kStore, {}, {} } );
 		rendering.colors = colors;
 	}
+	// render.ssr.v1's inputs: three more attachments, cleared at the first
+	// begin and kept across the scene-color captures' restarts.
+	const TextureId ssrTargets[] = {
+	    target.ssrNormalRoughness, target.ssrIblRadiance, target.ssrSpecularWeight };
+	recordingSsr = world->stage && !recordingTemporal && target.samples == 1 &&
+	               std::all_of( std::begin( ssrTargets ), std::end( ssrTargets ),
+	                   []( TextureId t )
+	                   {
+		                   return t.IsValid();
+	                   } );
+	if ( recordingSsr )
+	{
+		const ClearColor clears[] = { { 0, 0, 1, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 } };
+		for ( int i = 0; i < 3; ++i )
+		{
+			encoder.TransitionTexture(
+			    ssrTargets[i], ResourceUsage::kSampled, ResourceUsage::kColorAttachment );
+			colors.push_back( { ssrTargets[i], LoadOp::kClear, StoreOp::kStore, clears[i], {} } );
+		}
+		rendering.colors = colors;
+	}
 	encoder.BeginRendering( rendering );
 	encoder.SetViewport( view.viewport );
+	if ( recordingSsr )
+		for ( std::size_t i = colors.size() - 3; i < colors.size(); ++i )
+			colors[i].load = LoadOp::kLoad;
 	RecordSection draws( encoder );
 	draws.Select( "world surfaces" );
 	drawSurfaces(
@@ -4648,6 +4685,10 @@ void WorldPass::RecordBatch(
 
 	draws.End();
 	encoder.EndRendering();
+	if ( recordingSsr )
+		for ( const TextureId t : ssrTargets )
+			encoder.TransitionTexture( t, ResourceUsage::kColorAttachment, ResourceUsage::kSampled );
+	recordingSsr = false;
 	encoder.EndLabel();
 	preparation.Select( "retire world view resources" );
 	for ( auto &group : transientLitViews )

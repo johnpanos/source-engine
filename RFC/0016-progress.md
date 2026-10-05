@@ -10889,3 +10889,57 @@ limits. The misses are projector-cookie/wall (marginal), material-sweep x2
 Also decided under the same instruction: SSR waits for the uncommitted
 runtime-direct change in the world pass to land, rather than editing
 around it.
+
+### K12: screen-space reflections in the game (2026-10-05)
+
+`render.ssr.v1` was a lab-only term. Its absence caused most of the
+remaining game/lab misses: glossy floors and spheres reflected the probes
+alone in the game. With the runtime-direct change committed, the world pass
+was free to take it:
+
+- **World pass.** `WorldTarget` carries three RGBA16F targets (octahedral
+  normal and roughness, image-based specular radiance, its weight). With
+  them, a single-sample, non-temporal stage view's lit rendering adds them
+  as attachments: cleared at the first begin and loaded across the
+  scene-color captures' restarts. Every draw in it, world, static, posed
+  and dynamic, takes the surface program's `kSurfaceSsrTargets` variant of
+  its own point, specialized by the existing per-view state. The depth
+  prepasses are unchanged.
+- **Composition.** `CoreWorld` owns the targets, the pass and a copy-back
+  (`render.pass.output` with encoding alone, linear into the float frame),
+  all resized behind the frames that used them. After the stage view's
+  batch, it traces with the projection the world pass rasterized with (half
+  pixel shift included), writes the pass's output and copies it into the
+  frame. That happens before the medium and the translucent stream.
+- **Refusals by name**, counted in `RenderCoreWorldStats::ssrRefused` with the
+  first logged: a multisampled target, a temporal (FSR) view, a target that
+  is not RGBA16F, or a pass that does not record. `r_core_ssr` (default 1)
+  leaves the term out, as the lab's `--no-ssr`. `r_core_world_stats` prints
+  the counts.
+
+Evidence (same host and caveats):
+
+| Camera | Mean /255 before → with SSR | p99 | > 8 |
+| --- | --- | --- | --- |
+| portal-pair/b-floor | 1.15 → 0.53 | 8 | 1.5% (passes; missed before) |
+| mirror-corridor/down | 1.17 → 0.90 | 13 | 1.9% (passes; missed before) |
+| mirror-corridor/low | 2.45 → 0.79 | 15 | 2.1% (passes; missed before) |
+| material-sweep/grazing | 1.30 → 1.15 | 21 | 2.9% (passes; missed before) |
+| material-sweep/front | 1.63 → 1.56 | 28 | 4.2% (still over p99 and > 8) |
+
+Game/lab is now **19 of 22** cameras within the first-profile limits. The
+misses are material-sweep/front, projector-cookie/wall (3.7% over 8) and
+sun-colonnade/yard (p99 55).
+
+`sp_a2_laser_intro_relit` boots on the core: SSR over 288 views, 0 refused;
+4,224/4,224 views drawn, 0 failed. Against `r_core_ssr 0` the frame
+differs by 1.47/255 on average (glossy floors). `render_lab suite ssr`
+passes 24/24.
+
+The composition conformance rows now list `render/pass/ssr/ssr.cpp`. Their
+current link failure is the in-progress sky's missing sources (`CoreSky`,
+`SkyPass`; source-engine-d7 notified), not this change.
+
+Open: SSR under FSR (temporal; the pass needs a temporal form of the
+targets), under 4x MSAA, and on 8-bit targets. Its frame cost is unmeasured;
+the resolution sweep is owed. R96 stays `active`.

@@ -126,6 +126,9 @@ ConVar r_core_runtime_direct( "r_core_runtime_direct", "1", FCVAR_ARCHIVE,
     "drawn at runtime, shadowed, so moving objects block it (0: the bake's total layer, with "
     "every light's direct light and shadows baked; the Low profile's choice). Applies at the "
     "next frame." );
+ConVar r_core_ssr( "r_core_ssr", "1", FCVAR_ARCHIVE,
+    "Render core: screen-space reflections over a stage view's glossy surfaces "
+    "(render.ssr.v1; 0: the probes alone)." );
 ConVar r_core_volumetric( "r_core_volumetric", "1", FCVAR_ARCHIVE,
     "Render core: composite the map's participating media (env_volumetric_fog_volume and "
     "env_volumetric_fog_controller) over its views (0: the term is left out)." );
@@ -442,7 +445,7 @@ void RenderCoreHost_BeginFrame()
 			    r_core_shadow_quality.GetInt(), r_core_depth_prepass.GetInt(),
 			    r_core_shadow_movers.GetInt(), r_core_runtime_direct.GetInt(),
 			    RenderCoreWorldDraw_OnlyCore(), r_core_dynamic_draws.GetBool(),
-			    r_core_volumetric.GetInt() };
+			    r_core_volumetric.GetInt(), r_core_ssr.GetInt() };
 			host.world->SetQuality( quality );
 			host.world->BeginFrame();
 		}

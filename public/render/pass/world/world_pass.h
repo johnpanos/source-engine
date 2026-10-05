@@ -351,6 +351,14 @@ struct WorldTarget
 	// Cutout casters to draw into the slot's shadow atlas before the view
 	// (null: none).
 	std::shared_ptr<const WorldCutoutShadows> cutoutShadows;
+	// render.ssr.v1's inputs from the lit pass (RFC 0016 K12): with all three
+	// valid, a single-sample, non-temporal stage view's lit rendering writes
+	// the surface program's kSurfaceSsrTargets outputs (octahedral normal and
+	// roughness, image-based specular radiance, its weight) into them, cleared
+	// first. RGBA16F at the target's extent, in kSampled before and after.
+	device::TextureId ssrNormalRoughness;
+	device::TextureId ssrIblRadiance;
+	device::TextureId ssrSpecularWeight;
 	// Runtime direct light (material::kSurfaceRuntimeDirect): a stage's
 	// surfaces take the indirect layer as their basis and every light's
 	// direct light is drawn at runtime; otherwise they take the bake's total

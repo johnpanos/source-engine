@@ -27,6 +27,8 @@
 #include "render/composition/map_media.h"
 #include "render/composition/projector_cookies.h"
 #include "render/pass/ao/ao.h"
+#include "render/pass/output/output.h"
+#include "render/pass/ssr/ssr.h"
 #include "render/pass/volumetric/volumetric.h"
 #include "render/pass/indirect/port_compute.h"
 #include "render/pass/lights/map_lights.h"
@@ -671,6 +673,25 @@ private:
 	std::unique_ptr<pass::ao::AmbientOcclusion> m_Ao;
 	// The volumetric term over a stage view (render sequence), made for the
 	// format of the target it blends into.
+	// render.ssr.v1 over a stage view (render sequence): the lit pass's three
+	// targets, the reflections' output and its copy back into the frame, at
+	// the target's extent.
+	std::unique_ptr<pass::ssr::ScreenSpaceReflections> m_Ssr;
+	std::unique_ptr<pass::output::OutputRenderer> m_SsrCopy;
+	device::TextureId m_SsrTargets[3];
+	device::TextureId m_SsrOutput;
+	std::uint32_t m_SsrWidth = 0;
+	std::uint32_t m_SsrHeight = 0;
+	std::uint64_t m_SsrFrame = 0;
+	bool m_SsrFresh = false; // new targets still in kUndefined
+	std::atomic<bool> m_SsrOn{ true };
+	std::atomic<unsigned long long> m_SsrViews{ 0 };
+	std::atomic<unsigned long long> m_SsrRefused{ 0 };
+	bool EnsureSsr( device::IRenderDevice2 &device, std::uint32_t width, std::uint32_t height,
+	    device::CompletionToken submitted );
+	void RecordSsr( device::CommandEncoder &encoder, const legacy::CorePassTarget &target,
+	    const ShadowWork &work );
+	void ReleaseSsr( device::IRenderDevice2 &device, device::CompletionToken token );
 	std::unique_ptr<pass::volumetric::VolumetricRenderer> m_Volumetric;
 	device::Format m_VolumetricFormat = device::Format::kUnknown;
 	std::uint64_t m_VolumetricFrame = 0;

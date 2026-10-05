@@ -157,6 +157,10 @@ struct RenderCoreWorldQuality
 	// controller) are composited over its views (render.pass.volumetric);
 	// zero leaves the term out, as render_lab's --no-volumetric.
 	int volumetric = 1;
+	// Nonzero: render.ssr.v1's glossy reflections over a stage view's lit
+	// frame (single-sample, non-temporal, HDR float targets); zero leaves the
+	// term out, as render_lab's --no-ssr.
+	int ssr = 1;
 };
 
 // The game's files as the core reads them (projector cookies,
@@ -234,6 +238,11 @@ struct RenderCoreWorldStats
 	unsigned long long cutoutShadowDraws;
 	unsigned long long cutoutShadowRefused;
 	unsigned long long cutoutShadowNotResident; // static props whose level is off the device
+	// Stage views the screen-space reflections traced, and those refused by
+	// name (a multisampled, temporal or 8-bit target; a pass that does not
+	// record).
+	unsigned long long ssrViews;
+	unsigned long long ssrRefused;
 	char lastFailure[256];
 	char lastRefusal[256];
 	char gaps[16384];   // bounded scene census: "count reason" lines, most frequent first

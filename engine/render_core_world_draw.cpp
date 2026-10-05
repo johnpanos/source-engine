@@ -1186,6 +1186,9 @@ CON_COMMAND( r_core_world_stats, "RFC 0016 K5: the core world's surfaces, views 
 		    stats.volumetricMedium, stats.volumetricViews, stats.volumetricRefused,
 		    stats.projectorsLit, stats.projectorsRefused, stats.cutoutShadowDraws,
 		    stats.cutoutShadowRefused, stats.cutoutShadowNotResident );
+	if ( State().stageWorld )
+		Msg( "r_core_world_stats: screen-space reflections over %llu views (%llu refused)\n",
+		    stats.ssrViews, stats.ssrRefused );
 	if ( State().worldMeshViews )
 		Msg( "r_core_world_stats: declined %llu view(s): the map's world is its WMSH\n",
 		    State().worldMeshViews );

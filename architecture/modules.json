@@ -1237,7 +1237,8 @@
           "render.pass.panels",
           "render.legacy-pass-contract",
           "render.pass.volumetric",
-          "content.vtf-reader"
+          "content.vtf-reader",
+          "render.pass.ssr"
         ]
       },
       {
@@ -1952,7 +1953,8 @@
           "render_pass_indirect",
           "render_pass_panels",
           "render_pass_volumetric",
-          "vtf_texture_reader"
+          "vtf_texture_reader",
+          "render_pass_ssr"
         ]
       },
       "jobsystem": {
