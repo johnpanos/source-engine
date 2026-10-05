@@ -7,7 +7,11 @@
     "samples": 128,
     "device": "gpu",
     "denoise": true,
-    "directional": false
+    "directional": false,
+    "seam_gate": {
+      "p99": 0.004,
+      "max": 0.24
+    }
   },
   "reflection_probe": null,
   "reference": {

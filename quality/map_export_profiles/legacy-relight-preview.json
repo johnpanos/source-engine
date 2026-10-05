@@ -16,7 +16,11 @@
     ],
     "exclude_materials": [
       "relight_occluder"
-    ]
+    ],
+    "seam_gate": {
+      "p99": 0.004,
+      "max": 0.24
+    }
   },
   "probe_volume": {
     "spacing_m": 4.0,
