@@ -10691,8 +10691,9 @@ design rather than editing around their work. The penumbra band is a
 separate, smaller shadow-filter difference, not yet attributed.
 
 Status of "game matches lab" on the matched matrix (diagnostic, current
-build): 16 of 20 cameras are within the first-profile limits (mean 3, p99
+build): 14 of 22 cameras are within the first-profile limits (mean 3, p99
 25, 3% over 8). The misses are projector-cookie room/wall (the
 projector-colour convention decision), material-sweep front/grazing (SSR),
-mirror-corridor/low (reflection edges, 10.4% over 8; SSR is likely there
-too) and sun-colonnade/yard (p99 55, silhouettes). R96 stays `active`.
+mirror-corridor/down and low (3.3% and 10.4% over 8; reflection edges, with
+SSR likely), portal-pair/b-floor (5.9% over 8) and sun-colonnade/yard (p99
+55, silhouettes). R96 stays `active`.
