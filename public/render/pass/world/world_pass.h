@@ -306,6 +306,31 @@ public:
 	    const device::TextureDesc &sourceDesc, std::uint64_t frame ) = 0;
 };
 
+// A shadow view of the slot's atlas that cutout casters draw into
+// (WorldTarget::cutoutShadows): its world-to-clip (row-major, column
+// vectors) and the tile's inner viewport in atlas texels.
+struct WorldShadowView
+{
+	float viewProjection[16] = {};
+	std::uint32_t x = 0;
+	std::uint32_t y = 0;
+	std::uint32_t size = 0;
+};
+
+// The stage world's alpha-tested surfaces as shadow casters (RFC 0016 K12,
+// material-owned cutout shadows): each surface's own coverage through the
+// surface program's depth point (SurfaceProgram::ShadowPipeline) drawn over
+// what the atlas's other casters drew. `atlas` is a D32 texture in kSampled
+// before and after. The composition chooses the surfaces (the ones it left
+// out of its position-only casters) and passes them once per atlas.
+struct WorldCutoutShadows
+{
+	device::TextureId atlas;
+	std::uint32_t atlasSize = 0;
+	std::vector<WorldShadowView> views;
+	std::vector<std::uint32_t> surfaces; // into WorldData::surfaces
+};
+
 struct WorldTarget
 {
 	material::SurfaceDrawState drawState;
@@ -322,6 +347,9 @@ struct WorldTarget
 	// Draw the opaque surfaces' depth into the target first
 	// (material::kSurfaceDepthOnly), so the lit pass shades each pixel once.
 	bool depthPrepass = false;
+	// Cutout casters to draw into the slot's shadow atlas before the view
+	// (null: none).
+	std::shared_ptr<const WorldCutoutShadows> cutoutShadows;
 	// The device the slot records on (the legacy backend's); the pass's
 	// device objects live on it.
 	device::IRenderDevice2 *device = nullptr;
@@ -554,6 +582,12 @@ struct WorldStats
 	std::uint64_t posedDrawsDrawn = 0;
 	std::uint64_t dynamicDrawsDrawn = 0;
 	std::uint64_t dynamicDrawsRefused = 0; // unsupported input, never claimed or queued
+	// Cutout shadow casters (WorldTarget::cutoutShadows): surface draws into
+	// the atlas, and surfaces refused by name (lastRefusal): an animated
+	// ($treesway) cutout, whose cached tiles would hold a stale pose, or a
+	// material or depth point that is not ready.
+	std::uint64_t cutoutShadowDraws = 0;
+	std::uint64_t cutoutShadowRefused = 0;
 	std::string lastRefusal;
 	std::string lastFailure;
 	// Unclaimed material names, reasons and counts, most frequent first.

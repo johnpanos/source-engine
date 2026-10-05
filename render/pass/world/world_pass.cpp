@@ -198,6 +198,9 @@ struct Resources
 	std::map<std::tuple<std::uint64_t, int, std::string>, Group> drawGroups;
 	// Frame groups by frame layout; their constants are written per slot.
 	std::map<std::uint64_t, Group> frameGroups;
+	// The surface program's depth points of cutout materials (by material
+	// index), for WorldTarget::cutoutShadows.
+	std::map<std::uint32_t, PipelineId> cutoutPipelines;
 	// The programs' neutral view groups, by view layout (the world pass
 	// supplies no clustered lights yet).
 	std::map<std::uint64_t, Group> viewGroups;
@@ -3698,6 +3701,128 @@ void WorldPass::RecordBatch(
 		encoder.DrawIndexed( surface.indexCount, 1, surface.firstIndex, 0, 0 );
 	};
 	preparation.End();
+	// Cutout casters (RFC 0016 K12): the stage's alpha-tested surfaces, each
+	// through its own material's depth point, drawn over the atlas the
+	// composition's other casters drew, before any view reads it.
+	std::uint64_t cutoutDraws = 0;
+	std::uint64_t cutoutRefused = 0;
+	if ( world->stage && target.cutoutShadows && target.cutoutShadows->atlas.IsValid() &&
+	     !target.cutoutShadows->views.empty() )
+	{
+		const WorldCutoutShadows &cutouts = *target.cutoutShadows;
+		struct CutoutDraw
+		{
+			PipelineId pipeline;
+			const Resources::Material *material = nullptr;
+			const Group *frame = nullptr;
+			const Group *view = nullptr;
+			const Group *draw = nullptr;
+			const WorldSurface *surface = nullptr;
+		};
+		std::vector<CutoutDraw> draws;
+		for ( const std::uint32_t index : cutouts.surfaces )
+		{
+			if ( index >= world->surfaces.size() )
+				continue;
+			const WorldSurface &surface = world->surfaces[index];
+			Resources::Material *m = materialReady( surface.material );
+			if ( !m )
+			{
+				++cutoutRefused;
+				continue;
+			}
+			if ( m->program.foliage )
+			{
+				++cutoutRefused;
+				note( "an animated ($treesway) cutout casts no cached shadow yet" );
+				continue;
+			}
+			auto cached = r.cutoutPipelines.find( surface.material );
+			if ( cached == r.cutoutPipelines.end() )
+			{
+				// A blended or transmitting point is no opaque caster: the
+				// program refuses it, and it casts nothing (as the visible
+				// point lets light through).
+				auto pipeline =
+				    m->resolver->Program().ShadowPipeline( m->program.request.pipeline );
+				cached = r.cutoutPipelines
+				             .emplace( surface.material, pipeline ? pipeline.Value() : PipelineId() )
+				             .first;
+			}
+			if ( !cached->second.IsValid() )
+				continue;
+			const Group *frame =
+			    m->program.request.frameLayout.IsValid() ? frameGroupReady( *m ) : nullptr;
+			const Group *draw =
+			    m->program.request.drawLayout.IsValid() ? drawGroupReady( *m, 0 ) : nullptr;
+			const Group *viewGroup = nullptr;
+			if ( m->program.request.viewLayout.IsValid() )
+			{
+				Group &group = r.viewGroups[m->program.request.viewLayout.value];
+				std::string why;
+				if ( !group.group.IsValid() && m->program.request.neutralView &&
+				     !buildGroup( *m->program.request.neutralView, {}, group, &why ) )
+					s.ReleaseGroup( group, CompletionToken() );
+				viewGroup = group.group.IsValid() ? &group : nullptr;
+			}
+			if ( ( m->program.request.frameLayout.IsValid() && !frame ) ||
+			     ( m->program.request.drawLayout.IsValid() && !draw ) ||
+			     ( m->program.request.viewLayout.IsValid() && !viewGroup ) )
+			{
+				++cutoutRefused;
+				note( "a cutout caster's groups are not ready" );
+				continue;
+			}
+			draws.push_back( { cached->second, m, frame, viewGroup, draw, &surface } );
+		}
+		if ( !draws.empty() )
+		{
+			preparation.Select( "cutout shadows" );
+			encoder.TransitionTexture(
+			    cutouts.atlas, ResourceUsage::kSampled, ResourceUsage::kDepthWrite );
+			DepthAttachment depth;
+			depth.texture = cutouts.atlas;
+			depth.load = LoadOp::kLoad;
+			RenderingDesc rendering;
+			rendering.depth = depth;
+			rendering.width = cutouts.atlasSize;
+			rendering.height = cutouts.atlasSize;
+			encoder.BeginRendering( rendering );
+			for ( const WorldShadowView &shadowView : cutouts.views )
+			{
+				encoder.SetViewport( { float( shadowView.x ), float( shadowView.y ),
+				    float( shadowView.size ), float( shadowView.size ), 0.0f, 1.0f } );
+				material::FamilyDrawConstants shadowConstants;
+				std::memcpy( shadowConstants.toClip, shadowView.viewProjection,
+				    sizeof( shadowConstants.toClip ) );
+				for ( int i = 0; i < 4; ++i )
+					shadowConstants.world[i * 5] = 1.0f;
+				const auto shadowBytes = std::as_bytes( std::span( &shadowConstants, 1 ) );
+				for ( const CutoutDraw &cutout : draws )
+				{
+					const auto &request = cutout.material->program.request;
+					encoder.SetPipeline( cutout.pipeline );
+					encoder.SetBindGroup( BindGroupRole::kMaterial, cutout.material->group.group );
+					if ( cutout.frame )
+						encoder.SetBindGroup( BindGroupRole::kFrame, cutout.frame->group );
+					if ( cutout.view )
+						encoder.SetBindGroup( BindGroupRole::kView, cutout.view->group );
+					if ( cutout.draw )
+						encoder.SetBindGroup( BindGroupRole::kDraw, cutout.draw->group );
+					encoder.SetVertexBuffer( 0, r.vertices, 0 );
+					encoder.SetIndexBuffer( r.indices, 0, IndexFormat::kUint32 );
+					encoder.SetDrawConstants( 0, shadowBytes.first( request.drawConstantBytes ) );
+					encoder.DrawIndexed(
+					    cutout.surface->indexCount, 1, cutout.surface->firstIndex, 0, 0 );
+					++cutoutDraws;
+				}
+			}
+			encoder.EndRendering();
+			encoder.TransitionTexture(
+			    cutouts.atlas, ResourceUsage::kDepthWrite, ResourceUsage::kSampled );
+			preparation.End();
+		}
+	}
 	// A world stage's screen passes (render_lab's order): the depth and
 	// normal prepass into the pass's own single-sample targets, with a
 	// resolver of their own, then the composition's ambient occlusion, which
@@ -4427,6 +4552,8 @@ void WorldPass::RecordBatch(
 	s.stats.staticDrawsDrawn += drawnStatic;
 	s.stats.posedDrawsDrawn += drawnPosed;
 	s.stats.dynamicDrawsDrawn += drawnDynamic;
+	s.stats.cutoutShadowDraws += cutoutDraws;
+	s.stats.cutoutShadowRefused += cutoutRefused;
 	if ( !complete )
 	{
 		++s.stats.viewsFailed;

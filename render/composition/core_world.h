@@ -471,6 +471,8 @@ private:
 			device::TextureDesc shadowAtlasDesc;
 			// The view's medium is composited once per record frame.
 			std::atomic<bool> fogged{ false };
+			// The cutout casters are drawn into shadowAtlas once.
+			std::atomic<bool> cutoutsDrawn{ false };
 		};
 
 		ViewLightInputs inputs;
@@ -577,6 +579,10 @@ private:
 	// The stage map's participating media (its entity lump; render
 	// sequence reads it only between SetWorldMesh calls, as m_MapLights).
 	std::shared_ptr<const MapMedia> m_Media;
+	// The stage's alpha-tested surfaces (WorldData::surfaces indices), left
+	// out of the position-only casters and drawn by the world pass with
+	// their materials' coverage (WorldTarget::cutoutShadows).
+	std::vector<std::uint32_t> m_CutoutSurfaces;
 	// The game's files and the frame's projector cookies (main thread):
 	// decoded again only when the set of cookie names changes. A set that
 	// does not decode leaves the frame's projectors out, by name.

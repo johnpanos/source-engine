@@ -6,12 +6,15 @@
 //			one owner shared by the product's world stage (CoreWorld) and
 //			render_lab, so both read the same texels.
 //
-//			A cookie is materials/<name>.vtf, decoded by the shared VTF
-//			container reader to 8-bit RGBA; its texels are linear (pixel /
-//			255), as the flashlight shader reads them. Layer i is name i;
-//			the array has at least two layers, the rest white. Every cookie
-//			must have the first one's size: a different size, a missing file
-//			or one that does not decode is refused by name, never resampled.
+//			A cookie is materials/<name>.vtf's top level, read by the shared
+//			VTF container reader in its own format: 8-bit RGBA or BGRA, or
+//			BC1 to BC5 blocks as shipped (Portal 2's flashlight cookies are
+//			block-compressed), sampled through a linear (unorm) view: the
+//			texels are linear, pixel / 255, as the flashlight shader reads
+//			them. Layer i is name i; the array has at least two layers, the
+//			rest white. Every cookie must have the first one's size and
+//			format: a different one, a missing file or one that does not
+//			decode is refused by name, never resampled or converted.
 //
 //			Decoding is CPU work (DecodeCookies, any thread); the array is
 //			made and uploaded on the device's sequence (CookieArray).
@@ -41,7 +44,8 @@ struct CookieImages
 	std::uint32_t height = 1;
 	std::uint32_t layers = 2;
 	std::uint64_t layerBytes = 4;
-	std::vector<std::byte> bytes; // layers x layerBytes, RGBA8
+	device::Format format = device::Format::kRGBA8Unorm; // a linear view
+	std::vector<std::byte> bytes; // layers x layerBytes
 };
 
 // The cookies' texels, or the reason one is refused.

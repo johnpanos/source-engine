@@ -10,6 +10,8 @@
 #include "texturecontainer/texture_image.h"
 #include "texturecontainer/vtf_image_reader.h"
 
+#include <optional>
+
 #include <algorithm>
 #include <cstring>
 #include <span>
@@ -19,11 +21,66 @@ namespace render::composition
 
 using namespace render::device;
 
+namespace
+{
+
+using texturecontainer::PixelFormat;
+
+// The linear (unorm) view of a cookie's format, and one white texel block
+// (4 x 4 texels for the block formats).
+struct CookieFormat
+{
+	Format format = Format::kUnknown;
+	std::vector<std::uint8_t> white;
+};
+
+std::optional<CookieFormat> CookieFormatOf( PixelFormat format )
+{
+	switch ( format )
+	{
+	case PixelFormat::Rgba8Unorm:
+	case PixelFormat::Rgba8Srgb:
+		return CookieFormat{ Format::kRGBA8Unorm, { 255, 255, 255, 255 } };
+	case PixelFormat::Bgra8Unorm:
+	case PixelFormat::Bgra8Srgb:
+		return CookieFormat{ Format::kBGRA8Unorm, { 255, 255, 255, 255 } };
+	case PixelFormat::Bc1Unorm:
+	case PixelFormat::Bc1Srgb:
+		// Both endpoints white, every index 0.
+		return CookieFormat{ Format::kBC1Unorm, { 255, 255, 255, 255, 0, 0, 0, 0 } };
+	case PixelFormat::Bc2Unorm:
+	case PixelFormat::Bc2Srgb:
+		// Explicit alpha (4 bits a texel, all 15), then the BC1 white block.
+		return CookieFormat{ Format::kBC2Unorm,
+		    { 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 0, 0, 0, 0 } };
+	case PixelFormat::Bc3Unorm:
+	case PixelFormat::Bc3Srgb:
+		// Interpolated alpha (endpoints 255, every index 0), then BC1 white.
+		return CookieFormat{
+		    Format::kBC3Unorm, { 255, 255, 0, 0, 0, 0, 0, 0, 255, 255, 255, 255, 0, 0, 0, 0 } };
+	case PixelFormat::Bc4Unorm:
+		return CookieFormat{ Format::kBC4Unorm, { 255, 255, 0, 0, 0, 0, 0, 0 } };
+	case PixelFormat::Bc5Unorm:
+		return CookieFormat{
+		    Format::kBC5Unorm, { 255, 255, 0, 0, 0, 0, 0, 0, 255, 255, 0, 0, 0, 0, 0, 0 } };
+	default:
+		return std::nullopt;
+	}
+}
+
+bool BlockFormat( Format format )
+{
+	return format != Format::kRGBA8Unorm && format != Format::kBGRA8Unorm;
+}
+
+} // namespace
+
 foundation::Expected<CookieImages, std::string> DecodeCookies(
     const mdl::IModelFiles &files, const std::vector<std::string> &names )
 {
 	using foundation::MakeUnexpected;
 	std::vector<texturecontainer::TextureImage> images;
+	std::optional<CookieFormat> format;
 	for ( const std::string &name : names )
 	{
 		std::string bytes;
@@ -33,19 +90,33 @@ foundation::Expected<CookieImages, std::string> DecodeCookies(
 		    std::as_bytes( std::span( bytes.data(), bytes.size() ) ) );
 		if ( !image || image.Value().levels.empty() )
 			return MakeUnexpected( "cookie " + name + " does not decode" );
-		const texturecontainer::PixelFormat format = image.Value().format;
-		if ( format != texturecontainer::PixelFormat::Rgba8Unorm &&
-		     format != texturecontainer::PixelFormat::Rgba8Srgb )
-			return MakeUnexpected( "cookie " + name + " is not 8-bit RGBA after decoding" );
+		const std::optional<CookieFormat> mine = CookieFormatOf( image.Value().format );
+		if ( !mine )
+			return MakeUnexpected(
+			    "cookie " + name + " is in a format the cookie array does not take" );
+		if ( format && format->format != mine->format )
+			return MakeUnexpected( "cookie " + name + " differs in format from the first" );
+		format = mine;
 		images.push_back( std::move( image ).Value() );
 	}
 	CookieImages out;
 	out.names = names;
+	if ( format )
+		out.format = format->format;
+	const std::vector<std::uint8_t> white =
+	    format ? format->white : std::vector<std::uint8_t>{ 255, 255, 255, 255 };
 	out.width = images.empty() ? 1 : images[0].levels[0].width;
 	out.height = images.empty() ? 1 : images[0].levels[0].height;
 	out.layers = std::max<std::uint32_t>( 2, std::uint32_t( images.size() ) + 1 );
-	out.layerBytes = std::uint64_t( out.width ) * out.height * 4;
-	out.bytes.assign( out.layerBytes * out.layers, std::byte( 255 ) );
+	// A block format's layer is whole 4 x 4 blocks; a texel format's, texels.
+	const bool blocks = BlockFormat( out.format );
+	const std::uint64_t units =
+	    blocks ? std::uint64_t( ( out.width + 3 ) / 4 ) * ( ( out.height + 3 ) / 4 )
+	           : std::uint64_t( out.width ) * out.height;
+	out.layerBytes = units * white.size();
+	out.bytes.resize( out.layerBytes * out.layers );
+	for ( std::uint64_t unit = 0; unit < units * out.layers; ++unit )
+		std::memcpy( out.bytes.data() + unit * white.size(), white.data(), white.size() );
 	for ( std::size_t i = 0; i < images.size(); ++i )
 	{
 		const texturecontainer::ImageLevel &level = images[i].levels[0];
@@ -60,7 +131,7 @@ foundation::Expected<CookieImages, std::string> DecodeCookies(
 device::TextureDesc CookieArray::Desc() const
 {
 	device::TextureDesc desc;
-	desc.format = device::Format::kRGBA8Unorm;
+	desc.format = m_Images.format;
 	desc.width = m_Images.width;
 	desc.height = m_Images.height;
 	desc.depthOrLayers = m_Images.layers;

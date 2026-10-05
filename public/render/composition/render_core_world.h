@@ -228,6 +228,11 @@ struct RenderCoreWorldStats
 	// not decode or differs in size from the first; no file source).
 	unsigned int projectorsLit;
 	unsigned long long projectorsRefused;
+	// Cutout shadow casters (alpha-tested world surfaces through their
+	// materials' coverage): draws into the shadow atlas, and surfaces refused
+	// by name (an animated cutout; groups not ready).
+	unsigned long long cutoutShadowDraws;
+	unsigned long long cutoutShadowRefused;
 	char lastFailure[256];
 	char lastRefusal[256];
 	char gaps[16384];   // bounded scene census: "count reason" lines, most frequent first

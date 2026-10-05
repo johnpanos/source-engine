@@ -15,6 +15,7 @@
 #include "render/graph/executor.h"
 #include "render/graph/graph_builder.h"
 #include "render/pass/lights/clusters.h"
+#include "render/pass/shadows/atlas.h"
 #include "mdl/studio_model.h"
 
 #include <algorithm>
@@ -355,11 +356,17 @@ void CoreWorld::SetWorldMesh( const void *wmsh, unsigned long long wmshBytes,
 	}
 	const std::size_t cutoutTriangles =
 	    std::count( opaqueTriangles.begin(), opaqueTriangles.end(), 0 );
+	// Those surfaces cast through their materials' coverage instead.
+	m_CutoutSurfaces.clear();
+	for ( unsigned int i = 0; i < meshletCount; ++i )
+		if ( meshlets[i].material < data.materials.size() &&
+		     !OpaqueShadowMaterial( data.materials[meshlets[i].material] ) )
+			m_CutoutSurfaces.push_back( i );
 	if ( cutoutTriangles )
 		std::fprintf( stderr,
-		    "Render core: %zu alpha-tested world triangles need cutout "
-		    "shadows; omitted from the solid caster\n",
-		    cutoutTriangles );
+		    "Render core: %zu alpha-tested world triangles in %zu surfaces cast "
+		    "through their materials' coverage\n",
+		    cutoutTriangles, m_CutoutSurfaces.size() );
 	SetWorldCasters( data, opaqueTriangles );
 	data.surfaces.reserve( meshletCount );
 	for ( unsigned int i = 0; i < meshletCount; ++i )
@@ -1989,6 +1996,8 @@ void CoreWorld::GetStats( RenderCoreWorldStats *out ) const
 	out->volumetricRefused = m_VolumetricRefused.load( std::memory_order_relaxed );
 	out->projectorsLit = m_ProjectorsLit;
 	out->projectorsRefused = m_ProjectorsRefused.load( std::memory_order_relaxed );
+	out->cutoutShadowDraws = stats.cutoutShadowDraws;
+	out->cutoutShadowRefused = stats.cutoutShadowRefused;
 	std::snprintf( out->lastFailure, sizeof( out->lastFailure ), "%s", stats.lastFailure.c_str() );
 	std::size_t used = 0;
 	for ( const auto &[reason, count] : stats.gaps )
@@ -2730,6 +2739,30 @@ void CoreWorld::RecordWorldBatch( std::span<const std::uint32_t> tags,
 		shadows = lighting->shadows;
 		world.shadowAtlas = lighting->shadowAtlas;
 		world.shadowAtlasDesc = lighting->shadowAtlasDesc;
+		// The stage's cutout casters, into this frame's atlas once.
+		if ( shadows && lighting->shadowAtlas.IsValid() && !m_CutoutSurfaces.empty() &&
+		     !shadows->views.empty() &&
+		     !lighting->cutoutsDrawn.exchange( true, std::memory_order_relaxed ) )
+		{
+			auto cutouts = std::make_shared<pass::world::WorldCutoutShadows>();
+			cutouts->atlas = lighting->shadowAtlas;
+			cutouts->atlasSize = shadows->atlasSize;
+			cutouts->surfaces = m_CutoutSurfaces;
+			for ( const pass::shadows::ShadowPlanView &planned : shadows->views )
+			{
+				pass::world::WorldShadowView view;
+				for ( int r = 0; r < 4; ++r )
+					std::memcpy( view.viewProjection + r * 4, &planned.viewProjection.rows[r].x,
+					    4 * sizeof( float ) );
+				const pass::shadows::ShadowViewport inner =
+				    pass::shadows::TileViewport( planned.tile, shadows->guardTexels );
+				view.x = inner.x;
+				view.y = inner.y;
+				view.size = inner.size;
+				cutouts->views.push_back( view );
+			}
+			world.cutoutShadows = std::move( cutouts );
+		}
 	}
 	if ( timers )
 		encoder.BeginLabel( "prepare screen passes" );

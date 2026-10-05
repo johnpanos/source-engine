@@ -10604,3 +10604,50 @@ their links (reported by source-engine-d7). Now `render.composition` (65),
 `.capabilities` (14) and `.capabilities.gl` (14) pass. The four failures in
 `tools/render/tests` are in `shader_toolchain` and `vulkan_scans`, whose
 tools have another session's uncommitted edits.
+
+### K12: cutout shadow casters in the game, and block-compressed cookies (2026-10-05)
+
+This continues the [material-owned cutout shadow preparation](#material-owned-cutout-shadow-preparation-2026-10-04-game-migration-open)
+into the game. Before this, the product left the stage's alpha-tested world
+surfaces out of its position-only casters ("14 alpha-tested world triangles
+need cutout shadows; omitted"), so they cast nothing.
+
+- **Ownership.** The composition keeps the caster policy: the meshlets it
+  leaves out of the solid casters are its cutout surfaces. It hands each
+  frame's shadow atlas, its planned views (with `TileViewport`'s inner
+  rectangles) and that surface list to the world pass once per atlas
+  (`WorldTarget::cutoutShadows`, `FrameLighting::cutoutsDrawn`). The world
+  pass owns the materials and groups, so it draws each surface through the
+  surface program's depth point (`SurfaceProgram::ShadowPipeline`). That
+  point evaluates the material's own coverage, so there is no second alpha
+  evaluator. It binds the material, frame, neutral view and draw groups the
+  lit pass uses, with `toClip` set to the shadow view's matrix. It draws
+  over whatever the atlas holds (new, kept, shared or mover-composited
+  tiles), before any view reads the atlas.
+- **Refusals by name.** An animated (`$treesway`) cutout is refused: its
+  cached tiles would hold a stale pose, and wind-driven tile invalidation is
+  not built. Groups that are not ready are refused too. Blended and
+  transmitting points are not opaque casters; `ShadowPipeline` refuses them
+  and they cast nothing, as their visible point lets light through.
+  `WorldStats` and `RenderCoreWorldStats` count draws and refusals, and
+  `r_core_world_stats` prints them with the medium and projector counts.
+- **Cookies as shipped.** The first game boot refused Portal 2's own
+  projector: `effects/flashlight003` is block-compressed, and the cookie
+  array took only RGBA8. `DecodeCookies` now keeps a cookie's own format
+  (RGBA8, BGRA8 or BC1-BC5, through a unorm view) and pads with a white
+  block of that format. A cookie whose format or size differs from the
+  first is refused by name, never converted.
+
+Evidence: `sp_a2_laser_intro_relit`, native Vulkan, `r_core_world 1`,
+1024x768 headless (`portal_boot.py` pass, `/tmp` run; same host and
+dirty-tree caveat as above). `r_core_world_stats` reports: 1 cutout surface
+(14 triangles); 300 cutout shadow draws over 75 lighting builds, 0 refused;
+1 projected light lit, 0 refused (it was refused before the cookie change);
+no medium on this map. The frame is visually sane.
+
+Not yet: an in-game image oracle of a cutout shadow against the lab's
+`cutout-shadows` suite, which proves the coverage math; animated foliage
+casters; static props with cutout-only materials (the boot logs "8
+cutout-only" props still outside the casters); and the cost. The cutouts are
+redrawn every frame into every planned view, not only into dirty tiles, and
+no frame-time measurement has been made. R96 stays `active`.
