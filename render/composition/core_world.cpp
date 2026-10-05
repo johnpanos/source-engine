@@ -1251,6 +1251,8 @@ std::shared_ptr<const pass::world::StageViewLights> CoreWorld::StageViewLightsFo
 	{
 		out->shadowTiles = std::move( plan.tiles );
 		work->views = std::move( plan.views );
+		work->sunFirst = plan.sunFirst;
+		work->sunCount = plan.sunCount;
 		work->movers = in.movers;
 		work->triangles = in.triangles;
 		work->atlasSize = plan.atlasSize;
@@ -2678,6 +2680,7 @@ device::TextureId CoreWorld::DrawStageShadows( device::IRenderDevice2 &device,
 	{
 		m_AtlasFrame = frame;
 		m_AtlasNext = 0;
+		m_FrameAtlasIndices.clear();
 	}
 	if ( m_AtlasNext == m_Atlases.size() )
 	{
@@ -2739,6 +2742,63 @@ device::TextureId CoreWorld::DrawStageShadows( device::IRenderDevice2 &device,
 		                  } ) )
 			dirty.push_back( &view );
 	}
+	struct SharedTiles
+	{
+		std::size_t source = 0;
+		std::vector<pass::shadows::ShadowTile> tiles;
+	};
+	std::vector<SharedTiles> shared;
+	std::vector<const pass::shadows::ShadowPlanView *> sharedViews;
+	auto isSunView = []( int first, int count, std::size_t view )
+	{
+		return first >= 0 && count > 0 && view >= std::size_t( first ) &&
+		       view < std::size_t( first + count );
+	};
+	for ( const pass::shadows::ShadowPlanView *view : dirty )
+	{
+		const std::size_t viewIndex = std::size_t( view - work.views.data() );
+		if ( isSunView( work.sunFirst, work.sunCount, viewIndex ) )
+			continue; // sun cascades are fitted to this camera's frustum
+		for ( std::size_t sourceIndex : m_FrameAtlasIndices )
+		{
+			if ( sourceIndex >= m_Atlases.size() || sourceIndex == m_AtlasNext )
+				continue;
+			const Atlas &source = m_Atlases[sourceIndex];
+			if ( source.usage != ResourceUsage::kSampled ||
+			     source.desc.width != work.atlasSize ||
+			     source.generation != casters->generation ||
+			     source.guardTexels != work.guardTexels )
+				continue;
+			bool found = false;
+			for ( std::size_t heldIndex = 0; heldIndex < source.drawn.size(); ++heldIndex )
+			{
+				if ( isSunView( source.sunFirst, source.sunCount, heldIndex ) ||
+				     !same( source.drawn[heldIndex], *view ) )
+					continue;
+				auto group = std::find_if( shared.begin(), shared.end(),
+				    [&]( const SharedTiles &candidate )
+				    {
+					    return candidate.source == sourceIndex;
+				    } );
+				if ( group == shared.end() )
+				{
+					shared.push_back( { sourceIndex, {} } );
+					group = std::prev( shared.end() );
+				}
+				group->tiles.push_back( view->tile );
+				sharedViews.push_back( view );
+				found = true;
+				break;
+			}
+			if ( found )
+				break;
+		}
+	}
+	std::erase_if( dirty,
+	    [&]( const pass::shadows::ShadowPlanView *view )
+	    {
+		    return std::find( sharedViews.begin(), sharedViews.end(), view ) != sharedViews.end();
+	    } );
 	m_ShadowTilesKept.fetch_add( work.views.size() - dirty.size(), std::memory_order_relaxed );
 	m_ShadowTilesDrawn.fetch_add( dirty.size(), std::memory_order_relaxed );
 	// Each view draws the chunks inside its frustum (a chunk's box wholly
@@ -2877,8 +2937,11 @@ device::TextureId CoreWorld::DrawStageShadows( device::IRenderDevice2 &device,
 			++it;
 	}
 	const bool composite = anyMover || !atlas.moverTiles.empty();
-	if ( dirty.empty() && !composite )
+	if ( dirty.empty() && shared.empty() && !composite )
 	{
+		atlas.sunFirst = work.sunFirst;
+		atlas.sunCount = work.sunCount;
+		m_FrameAtlasIndices.push_back( m_AtlasNext );
 		++m_AtlasNext;
 		*desc = atlas.desc;
 		return atlas.texture;
@@ -2908,7 +2971,7 @@ device::TextureId CoreWorld::DrawStageShadows( device::IRenderDevice2 &device,
 		return true;
 	};
 	// The static tiles whose view changed (cached otherwise).
-	if ( !dirty.empty() )
+	if ( !dirty.empty() || !shared.empty() )
 	{
 		std::vector<std::vector<pass::shadows::ShadowCaster>> chunkCasters( dirty.size() );
 		std::vector<pass::shadows::ShadowDepthView> views;
@@ -2927,18 +2990,44 @@ device::TextureId CoreWorld::DrawStageShadows( device::IRenderDevice2 &device,
 		uploads( builder );
 		const graph::ResourceRef atlasRef = builder.ImportTexture(
 		    "stage shadow atlas", atlas.texture, atlas.desc, atlas.usage, ResourceUsage::kSampled );
+		if ( whole && !shared.empty() )
+		{
+			builder.AddPass( "clear shared stage shadow atlas", graph::PassKind::kCopy )
+			    .Write( atlasRef, ResourceUsage::kCopyDestination )
+			    .Execute(
+			        [atlasRef]( graph::RecordContext &context )
+			        {
+				        context.Encoder().ClearTexture(
+				            context.Texture( atlasRef ), { 1.0f, 0.0f, 0.0f, 0.0f } );
+			        } );
+		}
+		for ( const SharedTiles &tiles : shared )
+		{
+			const Atlas &source = m_Atlases[tiles.source];
+			const graph::ResourceRef sourceRef = builder.ImportTexture( "shared stage shadow atlas",
+			    source.texture, source.desc, source.usage, ResourceUsage::kSampled );
+			pass::shadows::ShadowDepthRenderer::AddTileCopy(
+			    builder, sourceRef, atlasRef, tiles.tiles );
+		}
 		pass::shadows::ShadowAtlasTarget target{ atlasRef, work.atlasSize, work.guardTexels };
-		target.keep = !whole;
-		if ( !m_ShadowRenderer->AddPasses( builder, target, views ) ||
+		target.keep = !whole || !shared.empty();
+		if ( ( !views.empty() && !m_ShadowRenderer->AddPasses( builder, target, views ) ) ||
 		     !execute( std::move( builder ) ) )
 			return {};
 		atlas.usage = ResourceUsage::kSampled;
 		atlas.drawn = work.views;
+		atlas.sunFirst = work.sunFirst;
+		atlas.sunCount = work.sunCount;
 		atlas.generation = casters->generation;
 		atlas.guardTexels = work.guardTexels;
+		m_FrameAtlasIndices.push_back( m_AtlasNext );
 	}
 	if ( !composite )
 	{
+		atlas.sunFirst = work.sunFirst;
+		atlas.sunCount = work.sunCount;
+		if ( m_FrameAtlasIndices.empty() || m_FrameAtlasIndices.back() != m_AtlasNext )
+			m_FrameAtlasIndices.push_back( m_AtlasNext );
 		++m_AtlasNext;
 		*desc = atlas.desc;
 		return atlas.texture;

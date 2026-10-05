@@ -237,8 +237,28 @@ class Bsp2File:
         return self.data[entry["offset"]:entry["offset"] + entry["size"]]
 
     def legacy_lump(self, index):
+        """The carried lump's stored bytes. A compressed legacy lump stays
+        compressed: the legacy export has to reproduce its file byte for byte."""
         entry = self.by_id.get(legacy_fourcc(index))
         return self.lump(entry) if entry else b""
+
+    def legacy_records(self, index):
+        """The lump's records: decoded when the legacy header says it is a
+        compressed lump. Portal2's shipped maps (and P2:CE's) carry most of them
+        as Valve LZMA streams, and only the decoded bytes divide into records -
+        the same rule the engine's loader applies (engine/modelloader.cpp reads
+        the header's uncompressed size)."""
+        raw = self.legacy_lump(index)
+        uncompressed = self.legacy["lumps"][index][3]
+        if not uncompressed or uncompressed == len(raw):
+            return raw
+        from source_vcs import decompress_valve_lzma
+        decoded = decompress_valve_lzma(raw)
+        if len(decoded) != uncompressed:
+            raise FormatError("legacy-structure",
+                              "L%03d decoded to %d bytes, not the %d its header declares"
+                              % (index, len(decoded), uncompressed))
+        return decoded
 
     def _validate_gaps(self):
         if LGAP not in self.by_id:
@@ -285,7 +305,7 @@ class Bsp2File:
 
     def check_legacy_structures(self):
         for i, (ofs, _length, _v, _u) in enumerate(self.legacy["lumps"]):
-            check_legacy_structure(self.legacy["version"], i, self.legacy_lump(i), ofs)
+            check_legacy_structure(self.legacy["version"], i, self.legacy_records(i), ofs)
 
 
 def write_bsp2(revision, lumps):

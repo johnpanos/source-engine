@@ -375,6 +375,8 @@ private:
 	struct ShadowWork
 	{
 		std::vector<pass::shadows::ShadowPlanView> views;
+		int sunFirst = -1;
+		int sunCount = 0;
 		std::uint32_t atlasSize = 0;
 		std::uint32_t guardTexels = 0;
 		math::float4x4 view;
@@ -568,6 +570,8 @@ private:
 		device::TextureDesc desc;
 		device::ResourceUsage usage = device::ResourceUsage::kUndefined;
 		std::vector<pass::shadows::ShadowPlanView> drawn; // what its tiles hold
+		int sunFirst = -1;
+		int sunCount = 0;
 		std::uint64_t generation = 0;                     // of the casters drawn
 		std::uint32_t guardTexels = 0;
 		// The frame's atlas while movers cast: the static tiles restored,
@@ -576,6 +580,8 @@ private:
 		device::TextureId composite;
 		device::ResourceUsage compositeUsage = device::ResourceUsage::kUndefined;
 		std::vector<pass::shadows::ShadowPlanView> compositeHeld;
+		std::uint64_t compositeGeneration = 0;
+		std::uint32_t compositeGuardTexels = 0;
 		// Each tile's movers as drawn in the frame's atlas (a hash of their
 		// entities, parts and pose versions; 0: none): a tile is drawn again
 		// only when they change.
@@ -589,6 +595,9 @@ private:
 	std::vector<Atlas> m_Atlases;
 	std::size_t m_AtlasNext = 0;
 	std::uint64_t m_AtlasFrame = 0;
+	// Earlier per-view atlas slots used by this frame. Exact matching
+	// non-sun tiles can seed a later view's atlas without rerasterizing casters.
+	std::vector<std::size_t> m_FrameAtlasIndices;
 	// The screen passes (render sequence): GTAO and its output.
 	std::unique_ptr<pass::ao::AmbientOcclusion> m_Ao;
 	bool m_OcclusionNeutral = true; // m_Occlusion holds one (made so, or cleared since)
