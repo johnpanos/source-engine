@@ -1946,7 +1946,10 @@ Keep the table concise and link details below or from the domain progress file.
     Portal maps and `gi_door` boot queued with 0 cross-thread calls;
     `gi_door` frames byte-identical across modes; frame pacing on a loaded
     host shows mode 2 at least as fast with a lower p99.
-  - `run.conf` and `run.sh` pass `+mat_queue_mode 2`. `portal_boot.py`, the
+  - `run.conf`, `run.sh` and `./play_p2` (with `./play_p2_fsr` and
+    `./play_p2_coop`; 2026-10-05,
+    [measurements](RFC/0016-progress.md#device-heap-snapshots-and-cpu-mip-feedback-2026-10-04))
+    pass `+mat_queue_mode 2`. `portal_boot.py`, the
     Android launcher and the iOS/tvOS launcher still pin 0.
     `frame_pacing.py` defaults to 0 and takes `--mat-queue-mode 2`.
   - A TSan run of the product tree found 46 signatures only in mode 2, each

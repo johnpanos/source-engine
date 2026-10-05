@@ -76,6 +76,53 @@ Gameplay-frame follow-up (2026-10-05, same camera and harness):
   exact.
 - Unavailable: resolutions above 1024×768 (SDL offscreen cap), Fold7.
 
+Main-thread follow-up: footprint boxes and queued Portal 2 (2026-10-05):
+
+- Footprints (`c159ac943`): before the collector was turned off (above),
+  `WorldPass::RecordBatch` was 55–76 % of CPU in every pose, almost all of it
+  projecting every index of every drawn model surface to clip space. Model
+  surfaces now project the eight corners of an object-space box with UV
+  bounds. Static meshes' boxes are built in `SetWorld`. Posed models' boxes are
+  measured once per pose per view. A corner behind the eye falls back to the
+  exact per-vertex projection. 19 `INTRO4_CAPTURES` poses, default frame cap:
+  chamber 50.1 → 22.2 ms frame interval, backend CPU 36.1 → 9.1 ms. Mip
+  requests over 1,348 frames: 94 % identical, the rest 1–4 levels finer, never
+  coarser (a box only enlarges the screen extent).
+- Pooled work, measured and not kept: posing each model on the compute pool
+  (`ParallelFor` over `CoreWorld::PoseModel`) was within noise of serial in
+  every pose, so it was reverted. After the two changes above, draw recording
+  (the frontend's translation, the encoder and `RecordBatch`) is about 10 % of
+  samples, so pooled recording (K5) could save at most about 2 ms here.
+- Overlap instead: the frame interval was about engine + backend CPU, both on
+  the main thread, because `./play_p2` ran `mat_queue_mode 0` while `run.conf`
+  already queues Portal. `./play_p2` now passes `+mat_queue_mode 2` for every
+  launcher that starts through it (`./play_p2_fsr`, `./play_p2_coop`;
+  `581d5603b`, `a8ccf29a7`, user decision). `QUEUE_ARGS=` or
+  `+mat_queue_mode 0` rolls back.
+
+  | Run (19 poses, `fps_max 0`) | Rounds | Summed median interval | Chamber |
+  | --- | --- | --- | --- |
+  | FSR off, unqueued → queued | 5 interleaved | 239 → 186 ms | 20.3 → 14.5 ms |
+  | FSR quality (0.666667), unqueued → queued | 3 interleaved | 205 → 155 ms | 20.3 → 12.9 ms |
+
+  Queued was faster in 75 of 95 pose-rounds with FSR off and 46 of 57 with it
+  on. Every pose over 10 ms gains 25–40 %. With FSR on, three light poses
+  (`arrival`, `instance-front`, `instance-right`, 3.6–4.9 ms) are up to 1.5 ms
+  slower queued, which is the handoff cost at very short frames. Images:
+  queued vs unqueued differ no more than two unqueued runs do (FSR off: max
+  15 vs 12 levels, no pixel above 16; FSR on: max 55–70 levels in both
+  comparisons from temporal accumulation, at most 0.007 % of pixels above 16).
+  The heavy poses now sit near their GPU time (about 11.5 ms), so the next
+  target is GPU cost, starting with the surface program.
+- FSR refuses 4x MSAA (`reconstruction failed … samples=4`), which
+  `r_core_world_strict` turns into a fatal error, queued or not. The FSR runs
+  above set `mat_antialias 0`.
+- Harness: `tools/quality/portal_boot.py` through `poses.py`-style drivers on
+  `run/runtime-p2-fsr`, `-deterministicrender -vkframestats`, `host_framerate
+  0.015`, Box3D, shared GPU and host (load about 7). Unavailable: an
+  interactive desktop run, Fold7, resolutions above 1024×768, and a
+  ThreadSanitizer run of queued Portal 2.
+
 ## FSR temporal reconstruction implementation (2026-10-03, in progress)
 
 User-selected work on `codex/fsr-temporal`, in an isolated worktree, owns
