@@ -1,0 +1,33 @@
+{
+  "schema": "portal2-scenarios/v1",
+  "description": "Diagnostic copy of portal2-intro4-relit-perf-v1 without the hard budget row, so frame_floor.py accepts render switches for cost attribution. Every run must pass '+exec render_budget_high' in --extra-arg to hold the pinned High settings, and no result here is acceptance evidence: the budget row's own workload owns that. The short scenario name 'r' keeps the launch under the Linux 512-byte argv limit (tier0/vcrmode_posix.cpp's MAX_LINUX_CMDLINE) once the diagnostic arguments are added.",
+  "driver": "../portal2-wheatley-v1/qa_driver.nut",
+  "scenarios": [
+    {
+      "name": "r",
+      "map": "sp_a1_intro4_relit",
+      "script": "r.nut",
+      "timeout_seconds": 180,
+      "required_checks": [
+        "map.loaded",
+        "view.arrival",
+        "view.reverse",
+        "view.return",
+        "map.fixture"
+      ],
+      "console_checks": [
+        {
+          "name": "map.fixture",
+          "window": "map_identity",
+          "select": "^map\\s+:",
+          "expect": "^map\\s+: sp_a1_intro4_relit at:"
+        }
+      ]
+    }
+  ],
+  "frame_floor": {
+    "floor_fps": 120,
+    "low_1pct_fps": 120,
+    "low_01pct_fps": 120
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "schema": "portal2-scenarios/v1",
+  "description": "Versioned Intro4 performance camera on the published relit map: eye (145,-440,90), pitch 8, yaw 20/200/20. Identical cameras, marks and warming to portal2-intro4-perf-v1, so the two published packages differ only in content. Camera workload, not story parity, complete-image or cohort acceptance.",
+  "driver": "../portal2-wheatley-v1/qa_driver.nut",
+  "scenarios": [
+    {
+      "name": "sp_a1_intro4_relit",
+      "map": "sp_a1_intro4_relit",
+      "script": "sp_a1_intro4_relit.nut",
+      "timeout_seconds": 180,
+      "required_checks": [
+        "map.loaded",
+        "view.arrival",
+        "view.reverse",
+        "view.return",
+        "map.fixture"
+      ],
+      "console_checks": [
+        {
+          "name": "map.fixture",
+          "window": "map_identity",
+          "select": "^map\\s+:",
+          "expect": "^map\\s+: sp_a1_intro4_relit at:"
+        }
+      ]
+    }
+  ],
+  "render_budget_row": "linux-desktop-high-120"
+}

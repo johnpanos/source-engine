@@ -86,6 +86,26 @@ std::optional<std::vector<double>> Numbers( const std::string &value )
 	return numbers;
 }
 
+// A legacy colour default is written in the shader's own 0-255 form
+// ("{255 255 255}") while the material system reports the same colour in unit
+// scale ("[ 1.000000 1.000000 1.000000 ]"), so both sides are brought to unit
+// scale before they are compared. A three- or four-number value with a
+// component above 1 is the 0-255 form; a scalar or a pair is never a colour.
+std::vector<double> UnitScale( std::vector<double> numbers )
+{
+	if ( numbers.size() < 3 )
+		return numbers;
+	for ( const double number : numbers )
+	{
+		if ( number <= 1.0 )
+			continue;
+		for ( double &component : numbers )
+			component /= 255.0;
+		break;
+	}
+	return numbers;
+}
+
 // Whether a variable's value is its declared default: equal numbers, or equal
 // text ignoring case. An empty declared default is 0 for a number.
 bool AtDefault( const std::string &value, const std::string &declared )
@@ -96,11 +116,13 @@ bool AtDefault( const std::string &value, const std::string &declared )
 		b = std::vector<double>{ 0.0 };
 	if ( a && b && !a->empty() )
 	{
-		if ( a->size() != b->size() )
+		const std::vector<double> left = UnitScale( *a );
+		const std::vector<double> right = UnitScale( *b );
+		if ( left.size() != right.size() )
 			return false;
-		for ( std::size_t i = 0; i < a->size(); ++i )
+		for ( std::size_t i = 0; i < left.size(); ++i )
 		{
-			if ( std::fabs( ( *a )[i] - ( *b )[i] ) > 1e-4 )
+			if ( std::fabs( left[i] - right[i] ) > 1e-4 )
 				return false;
 		}
 		return true;
@@ -151,6 +173,14 @@ std::optional<std::string> UnreadVariable( const MaterialDesc &material )
 		     ( SameKey( key, "$cloakpassenabled" ) || SameKey( key, "$cloakfactor" ) ||
 		         SameKey( key, "$cloakcolortint" ) || SameKey( key, "$cloaktint" ) ||
 		         SameKey( key, "$refractamount" ) ) )
+			continue;
+		// VertexLitGeneric uploads $seamless_scale only when seamless mapping is
+		// on for the base or the detail texture (vertexlitgeneric_dx9_helper.cpp's
+		// "if ( bSeamlessDetail || bSeamlessBase )"), and its declared default is
+		// the 1.0 an unenabled pass never uses. A scale with neither enabled is
+		// inert, so its value cannot change a pixel.
+		if ( material.family == "vertexlit" && SameKey( key, "$seamless_scale" ) &&
+		     !enabled( "$seamless_base" ) && !enabled( "$seamless_detail" ) )
 			continue;
 		const VmtPair *set = nullptr;
 		for ( const VmtPair &variable : material.variables )

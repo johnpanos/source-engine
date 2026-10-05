@@ -23,6 +23,14 @@
 //			W9 A variable the model does not read keeps a material out unless
 //			   it holds its shader's neutral value (declared defaults), and a
 //			   variable with no neutral value keeps it out.
+//			W24 A colour is compared in one scale: a shader's 0-255 default and
+//			   the material system's unit scale are the same colour; a colour
+//			   off its neutral is a named gap.
+//			W25 A $seamless_scale with neither seamless pass enabled is inert and
+//			   claims; an enabled seamless pass is a named gap.
+//			W26 A detail blend mode is drawn with a bump map (the port combines
+//			   the detail into the albedo first); the self-illuminating and
+//			   ssbump combines wait for their own terms.
 //			W10 Views of a host frame the backend never recorded are skipped,
 //			   not failed; a view whose slot never recorded while another slot
 //			   of its frame did is a failure.
@@ -1260,6 +1268,84 @@ int main()
 		checks.That( !unread.Draws( 1 ) && named, "W9.an-unread-variable-set-is-a-named-gap" );
 		checks.That(
 		    !unread.Draws( 2 ) && unknown, "W9.an-unread-variable-without-neutral-is-a-gap" );
+	}
+
+	// W24: a colour compared in one scale. Refract declares $color "unused" at
+	// "{255 255 255}" and the material system reports the same colour in unit
+	// scale, so the shader's 0-255 form is not a different value.
+	{
+		WorldData world = TestWorld();
+		world.materials[0].shader = "Refract";
+		world.materials[0].mesh = true;
+		world.materials[0].variables.push_back( { "$normalmap", "glass/refract_normal" } );
+		world.materials[0].variables.push_back( { "$color", "[ 1.000000 1.000000 1.000000 ]" } );
+		world.materials[0].defaults = { { "$color", "{255 255 255}" } };
+		world.materials[1] = world.materials[0];
+		world.materials[1].variables.back().second = "[ 1.000000 0.000000 0.000000 ]";
+		WorldPass colour;
+		colour.SetWorld( std::move( world ) );
+		bool named = false;
+		for ( const auto &[reason, count] : colour.Stats().gaps )
+			named = named || reason.find( "does not read $color [ 1.000000 0.000000 0.000000 ]" ) !=
+			                     std::string::npos;
+		checks.That( colour.Draws( 0 ), "W24.a-colour-in-the-shader's-own-scale-is-claimed" );
+		checks.That( !colour.Draws( 1 ) && named, "W24.a-colour-off-its-neutral-is-a-named-gap" );
+	}
+
+	// W25: VertexLitGeneric's $seamless_scale is read only inside its seamless
+	// pass, so a scale with neither $seamless_base nor $seamless_detail enabled
+	// cannot change a pixel even though its declared default is 1.0.
+	{
+		WorldData world = TestWorld();
+		world.materials[0].shader = "VertexLitGeneric";
+		world.materials[0].mesh = true;
+		world.materials[0].variables.push_back( { "$seamless_scale", "0.000000" } );
+		world.materials[0].defaults = { { "$seamless_scale", "1.0" } };
+		world.materials[1] = world.materials[0];
+		world.materials[1].variables.push_back( { "$seamless_base", "1" } );
+		world.materials[1].defaults.push_back( { "$seamless_base", "0" } );
+		WorldPass seamless;
+		seamless.SetWorld( std::move( world ) );
+		bool named = false;
+		for ( const auto &[reason, count] : seamless.Stats().gaps )
+			named = named || reason.find( "does not read $seamless" ) != std::string::npos;
+		checks.That( seamless.Draws( 0 ), "W25.a-dormant-seamless-scale-is-claimed" );
+		checks.That( !seamless.Draws( 1 ) && named, "W25.an-enabled-seamless-pass-is-a-named-gap" );
+	}
+
+	// W26: the detail combine is drawn with a bump map. The port combines the
+	// detail into the albedo before the bump perturbs the lighting, so a bump
+	// map does not narrow the modes; the self-illuminating (5) and ssbump (10)
+	// combines still wait for their own terms.
+	{
+		WorldData world = TestWorld();
+		const WorldMaterial plain = world.materials[0];
+		const auto detailed = [&world, &plain]( std::uint32_t index, const char *mode )
+		{
+			world.materials[index] = plain;
+			world.materials[index].name = "detail" + std::string( mode );
+			world.materials[index].variables.push_back( { "$bumpmap", "metal/plate_height" } );
+			world.materials[index].variables.push_back( { "$ssbump", "1" } );
+			world.materials[index].variables.push_back( { "$detail", "detail/grunge" } );
+			world.materials[index].variables.push_back( { "$detailblendmode", mode } );
+		};
+		detailed( 0, "7" );
+		detailed( 1, "10" );
+		detailed( 2, "5" );
+		WorldPass detail;
+		detail.SetWorld( std::move( world ) );
+		bool selfIllum = false;
+		bool ssbump = false;
+		for ( const auto &[reason, count] : detail.Stats().gaps )
+		{
+			selfIllum =
+			    selfIllum || reason.find( "does not draw $detailblendmode 5" ) != std::string::npos;
+			ssbump =
+			    ssbump || reason.find( "does not draw $detailblendmode 10" ) != std::string::npos;
+		}
+		checks.That( detail.Draws( 0 ), "W26.a-detail-mode-7-with-a-bump-map-is-claimed" );
+		checks.That( !detail.Draws( 1 ) && ssbump, "W26.a-detail-mode-10-waits-for-its-term" );
+		checks.That( !detail.Draws( 2 ) && selfIllum, "W26.a-detail-mode-5-waits-for-its-term" );
 	}
 
 	// P1: the editor preview against strict resolution.
