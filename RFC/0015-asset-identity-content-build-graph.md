@@ -2,7 +2,10 @@
 
 - Status: Proposed (2026-09-26); no implementation gate complete. Open
   decisions 1–6 were answered on 2026-09-26 at the user's direction (see
-  [Decisions](#decisions-2026-09-26))
+  [Decisions](#decisions-2026-09-26)). Amended 2026-10-05 at the user's
+  direction: legacy VPK, VTF and VMT are degenerate cases of the asset
+  index, and the resolver is the only asset lookup path (see
+  [One lookup path](#one-lookup-path-amended-2026-10-05))
 - Date: 2026-09-26
 - Scope: How every kind of game content is named, compiled, recorded,
   packaged, resolved at runtime and reloaded during development. This
@@ -76,8 +79,10 @@ formats. It does not copy Source 2's file formats.
 5. **Packages carry an index.** A package is the reference closure of a set
    of root assets for one product profile. It carries an asset index
    (entries, variants, references, provenance). The runtime resolves
-   profile variants and checks closure through that index. Legacy search
-   paths remain for unindexed content.
+   profile variants and checks closure through that index. Every mounted
+   source has an index: a VPK or loose directory gets one generated at
+   mount, so legacy content is a degenerate case, not a second lookup path
+   ([amended 2026-10-05](#one-lookup-path-amended-2026-10-05)).
 6. **Live reload is a development composition.** On desktop, a watcher
    rebuilds changed assets through the same graph. It publishes them to an
    overlay package, and the running game reloads them at a frame boundary.
@@ -271,7 +276,8 @@ here was measured for this RFC.
 | Compiler contract | `content.asset-compiler` | `IAssetCompiler`, `IBuildInputs`, compile records | identity |
 | Build graph | `content.build-graph` | Nodes, keys, the store, executors, publication and traces | compiler contract, index, `jobsystem`, `platform.tool-process` |
 | Compilers | one module per kind (for example `content.compile.texture`) | One kind's compile or passthrough | compiler contract, that kind's format library |
-| Runtime resolution | `content.asset-resolver` | Mounting package indexes, variant selection and closure queries | asset index |
+| Package sources | `content.package-source` | `IPackageSource` and its backends: block-container archive (stored index), VPK (generated index over the VPK directory) and loose directory (generated index by scan); `Open(entry)` per backend | asset index, block container, the VPK reader |
+| Runtime resolution | `content.asset-resolver` | The ordered mount stack of package sources, variant selection and closure queries; the only asset lookup path | asset index, package sources |
 | Live reload | `content.live-reload` (desktop development composition only) | The watcher, overlay package, change notices and reloader registration | build graph, resolver |
 | Applications | `content_build` CLI, Hammer, engine roots, `./play` | Composing providers, choosing profiles, presentation | the layers above |
 
@@ -477,10 +483,12 @@ graph at the cheapest level that gives closure and references:
 | `nav` | An optional node per game that runs the headless dedicated server's `nav_generate` against the compiled map; shipped `.nav` files pass through | `nav.generate`, `nav.passthrough` |
 | `map` | Existing compilers become node sequences (see above); shipped BSPs pass through | per the RFC 0008 ledger |
 
-A kind without an adopted compiler is packaged as *unindexed* content. It is
-copied with a recorded reason and counted in the package report. That count
-is an exact ratchet per package. Unindexed content can't take part in
-closure checks, so no gate that requires closure can pass with it.
+A kind without an adopted compiler or reference extractor is packaged as
+*unextracted* content. It is copied with a recorded reason, has an index
+entry like any other file (so it is found the same way), and is counted in
+the package report. Its references are unknown, so that count is an exact
+ratchet per package, and no gate that requires closure can pass with it.
+(Amended 2026-10-05: this was called *unindexed*; nothing is unindexed now.)
 
 ## Packages (`content.package-index.v1`)
 
@@ -518,27 +526,56 @@ fixes retention and garbage collection.
 
 ## Runtime resolution (`content.asset-resolver.v1`)
 
-- **Mounting.** The filesystem owner mounts each package's index when it
-  mounts the package. The resolver answers `Find(AssetRef, variant
-  preference)`, `References(entry)` and `Closure(roots)`. It is read-only
-  after mounting and safe to share across threads once published, so
-  readers need no lock.
-- **Loaders** keep their names and entry points. The first consumer is
-  texture variant selection: `CTexture` asks the resolver for the best
-  variant the device supports, which closes R55's "material-system file
-  selection" item. Models, particles and sounds follow as separate
-  cohorts.
-- **Missing references.** When an indexed package lacks an asset, the
-  error names the referrer, which is known from the index. The legacy
-  error fallback (`models/error.mdl`, the missing-texture checker) is kept
-  and logged with that name.
-- **Unindexed content** still loads through legacy search paths. The
-  resolver reports it as unindexed and never pretends it closed.
+*(Amended 2026-10-05.)*
+
+- **Package sources.** Every mount is an `IPackageSource` that yields an
+  `AssetIndex`; the index is not optional. Backends:
+  - block-container archive: the index block stored in the file;
+  - VPK: an index generated from the VPK directory tree at mount and cached
+    by archive hash ([decision 5](#5-base-archives-hash-eagerly-once-per-archive));
+  - loose directory: an index generated by scanning. This covers `GAME`
+    and `MOD` loose files, a map's pak lump and the development overlay
+    (which also writes its index file).
+
+  All backends share the index type, `Find`, `References` and `Closure`;
+  only `Open(entry)` differs (`CPackedStore`, archive offset, file path).
+- **The mount stack.** The filesystem owner mounts sources in order.
+  `gameinfo.txt` search paths become that order, keeping today's override
+  priority, and the P2:CE/Workshop mount policy (AGENTS.md) is the same
+  stack, not a second registry. The resolver answers `Find(AssetRef,
+  variant preference)`, `References(entry)` and `Closure(roots)`. It is
+  read-only after mounting and safe to share across threads once
+  published, so readers need no lock.
+- **Variants.** A legacy file is one variant of its asset: `vtf` for a
+  texture, `vmt` for a material. KTX2 encodings are further variants of the
+  same `AssetRef`. A device states an ordered preference; decoding
+  dispatches on the variant's container (`content.vtf-reader`,
+  `content.ktx2-reader`).
+- **References in generated indexes** are extracted lazily on first query,
+  or eagerly by a tool pass, and cached with the index. The extractor is
+  the one the kind's compiler uses (`material.vmt` for VMT), so each kind
+  has one owner for its references.
+- **Loaders** keep their names and entry points but find files only
+  through the resolver. The first product consumer is `CTexture`: its
+  `materials/%s.vtf` path building becomes one `Find(texture, device
+  variants)` call. `IFileSystem` keeps its frozen ABI and implements its
+  path lookups on the resolver, so callers that open by path keep working
+  without a second lookup path.
+- **Missing references.** When a mounted package lacks an asset, the error
+  names the referrer, which is known from the index. The legacy error
+  fallback (`models/error.mdl`, the missing-texture checker) is kept and
+  logged with that name.
+- **Unextracted references** (a kind with no extractor yet) are reported
+  per entry and counted by the package ratchet. The file is still found
+  through the same index; there is no unindexed lookup.
+- **Not assets.** Writable locations (`DEFAULT_WRITE_PATH`, saves,
+  configs, logs) stay with the paths contract (R11) and are not mounted.
 - **Map-load prefetch** reads a map's closure from the index and issues
   reads as a job graph: decode on the pool, commit on the owning thread. A
   budget is set before it becomes a default (AGENTS.md: measure first).
-- **Static composition.** Mobile static products link the resolver and
-  the index reader as ordinary modules. They never link a compiler.
+- **Static composition.** Mobile static products link the resolver, the
+  package sources and the index reader as ordinary modules. They never
+  link a compiler.
 
 ## Live reload (`content.live-reload.v1`, desktop development only)
 
@@ -575,15 +612,71 @@ fixes retention and garbage collection.
 ## Editor and agents
 
 - **The asset catalog** (RFC 0002 state table: "Asset identity and metadata
-  revision") is the resolver plus the index of the workspace's packages.
-  It is not a separate scan of search paths. The browser, thumbnails and
-  material previews key off `AssetRef` and content hash.
+  revision") is the resolver over the workspace's mount stack, the same
+  stack the game mounts. It is not a separate scan of search paths or
+  VPKs. Hammer's `MaterialCatalog` keeps listing, filtering, thumbnails and
+  preview decoding, and enumerates the resolver's `material` entries; its
+  VPK reader becomes the VPK package source shared with the game and
+  `render_lab`. The browser, thumbnails and material previews key off
+  `AssetRef` and content hash.
 - **Builds.** Hammer builds through the same library. `IMapBuilder` gains a
   graph-backed provider, and `MapBuildQueue` keeps its threading. The
   `ToolProcessMapBuilder` → `vmf_map_build.py` path is deleted when the VMF
   pipeline runs on the graph.
 - **MCP.** The command catalog gains `find_asset`, `asset_references` and
   `build_assets`, so agents use the same authority (`hammer_cli --mcp`).
+
+## One lookup path (amended 2026-10-05)
+
+User direction, 2026-10-05: legacy VPK, VTF and VMT are degenerate cases
+of the asset index, and the migration must finish with one lookup path,
+not two. These rules bind every cohort of C5 and C6.
+
+- **End state.** The resolver is the only way an asset is found. Deleted:
+  `CTexture`'s `materials/%s` + `TEXTURE_FNAME_EXTENSION` path building,
+  Hammer's own VPK and search-path walk, the search-path loop inside
+  `IFileSystem`'s asset lookups, and `AssetLookupStatus::Unindexed`.
+  `CPackedStore` is reachable only from the VPK package source.
+- **Shrink-only ratchet.** A static scan (`tools/quality/`, an exact entry
+  in `quality/baseline.json`, like `render.legacy-freeze`) counts:
+  - texture or material path building from a format string and extension;
+  - direct `CPackedStore` or VPK-reader use outside the VPK source;
+  - search-path enumeration in asset loaders (`FindFirst`, `GetSearchPath`,
+    per-path-ID loops);
+  - references to `Unindexed`.
+
+  Every migration commit lowers the count and updates the baseline in the
+  same change; an increase fails CI. The scan's sensitivity suite seeds
+  each pattern and must catch it.
+- **Dependency rules.** archlint allows the VPK reader and raw directory
+  scanning only in `content.package-source`. `hammer.*`, `render_lab` and
+  content tools may not include filesystem search-path headers for asset
+  lookup. A seeded violation per rule must fail `check --all`.
+- **Delete in the same change.** The commit that moves a caller cohort to
+  the resolver deletes that cohort's old lookup. A rollback switch, if one
+  is needed while a cohort is proven, names its deletion condition and
+  counts in the ratchet until it is gone. No long-lived legacy lookup mode.
+- **Runtime census.** The filesystem counts asset opens that bypass the
+  resolver and logs the count at shutdown. `portal_boot`, `./play_p2` and
+  `corpus.hammer.ui` record it; the target is zero on their declared maps,
+  with the same shrink-only rule. This catches names built at runtime.
+- **Equivalence oracle.** For every path in the Portal and Portal 2
+  corpora, resolver lookup returns the same bytes as legacy
+  `IFileSystem::FindFile`/`Open`: search-path order, path IDs, the BSP pak
+  lump, case folding and `-game` overrides, each legacy rule also a seeded
+  fault. Only a pass permits deleting the `IFileSystem` search loop.
+- **Cohort order.** One cohort at a time; the next starts only when the
+  previous one has a single path, its count dropped, its old code deleted
+  and its evidence linked:
+  1. `render_lab` (`GameFiles`);
+  2. the Hammer asset catalog;
+  3. `CTexture` variants;
+  4. VMT loading;
+  5. `mdlcache`;
+  6. particles, sounds and scenes;
+  7. `IFileSystem` internals (after the equivalence oracle).
+- **Closure.** R83 is not `done` while any count above is nonzero; there
+  is no "done except" state.
 
 ## Delivery plan and gates
 
@@ -664,7 +757,7 @@ reproduction commands) and the AGENTS.md reporting rules.
   platform's container. This supplies the mechanics for RFC 0008 F7.
 - Gate:
   - Each package's closure equals its index's reference closure.
-  - The unindexed ratchet holds.
+  - The unextracted-reference ratchet holds.
   - Installed-package smoke tests pass on the desktop profile. For
     mobile, see R58 and R29.
   - A package that is missing a required profile format fails the build,
@@ -672,10 +765,21 @@ reproduction commands) and the AGENTS.md reporting rules.
 
 ### C5: Runtime resolver
 
-- Mount the index; select texture variants in `CTexture`; report missing
-  references with their referrer.
+- Deliver `content.package-source` with archive, VPK and loose-directory
+  backends, and the resolver's mount stack; migrate the cohorts in
+  [One lookup path](#one-lookup-path-amended-2026-10-05)'s order, ending
+  with `IFileSystem`'s lookups on the resolver.
+- Select texture variants in `CTexture`; report missing references with
+  their referrer.
 - Add map-load closure prefetch behind a switch, with a serial mode.
 - Gate:
+  - The lookup ratchet and the runtime census are zero, the archlint
+    dependency rules hold with their seeded violations, and
+    `AssetLookupStatus::Unindexed` no longer exists.
+  - The equivalence oracle passes on the Portal and Portal 2 corpora, with
+    each legacy search rule detected as a seeded fault.
+  - Generating a VPK index at mount, cold and cached, meets a budget
+    recorded before measuring, on desktop and the Fold7.
   - A BSP2 map with KTX2 variants renders on native Vulkan through
     ordinary material loads, and the pixel families match their fixtures.
   - The dedicated server's link evidence shows no render dependency.
@@ -725,6 +829,8 @@ instruction, 2026-09-26: rows are added as `planned`.
 | Statistical compilers break the incremental-equals-clean oracle | Determinism is declared per compiler; statistical outputs use their domain tolerance, and seeded exact modes are preferred |
 | Name normalization changes behavior for mixed-case legacy content | The C0 corpus scan lists every case-fold collision before normalization is enforced; collisions are resolved as reviewed decisions |
 | Live reload leaves stale state | The reload-equals-cold-start oracle, kinds that aren't safe declare `restart-required`, and no reload channel in installed products |
+| Legacy and resolver lookups both survive the migration | One lookup path rules: shrink-only ratchet, archlint rules, delete-in-same-change, runtime census, and R83 closing only at zero |
+| A generated index changes which file wins | The `FindFile` equivalence oracle over the Portal and Portal 2 corpora, with each search rule as a seeded fault, before the legacy search loop is deleted |
 | The archive reader is slower than `CPackedStore` | C4 measures load time and memory against VPK on desktop and the Fold7, and a regression blocks the gate until the reader is fixed (decision 1) |
 | The store grows without bound, or GC deletes live data | Mark and sweep from kept versions, leases for running sessions, and a size budget (decision 3) |
 
@@ -794,7 +900,10 @@ Three forms, by use:
   with the same index file. An edit then writes one file, not a new
   archive.
 - **Shipped base content**, meaning Valve's VPKs, stays VPK. It is mounted
-  read-only by the existing `CPackedStore` and never written by the graph.
+  read-only through the VPK package source over `CPackedStore` and never
+  written by the graph. The index is independent of the container
+  (amended 2026-10-05): an archive stores it, a VPK or loose directory
+  gets it generated at mount, and every consumer sees the same index.
 
 The filesystem mounts an archive as a pack backend next to `CPackedStore`,
 so a legacy loader opens an entry by its legacy path without changing.
@@ -916,8 +1025,10 @@ Why this pays off:
   It is keyed by the hash of the archive's directory file, plus each
   chunk's hash memoized by size and mtime. It is rebuilt only when an
   archive changes.
-- **It is a cached graph output.** Products may ship it so the runtime
-  resolver treats base content as indexed.
+- **It is a cached graph output and the VPK source's index.** Products
+  may ship it to skip generation at mount; without it, the VPK package
+  source generates the same index at mount (amended 2026-10-05). Either
+  way base content is indexed; there is no unindexed path.
 
 Why this pays off:
 

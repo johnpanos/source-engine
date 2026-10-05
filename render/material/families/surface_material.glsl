@@ -38,4 +38,5 @@ layout( set = 2, binding = 0 ) uniform Material
 	vec4 treeCurves;
 	vec4 treeWind;
 	vec4 baseTransform[2];
+	vec4 baseDecode; // x: 1 RGBS (rgb * a, premultiplied bilinear); the scale is surfaceControls.y
 } material;

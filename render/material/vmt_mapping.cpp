@@ -39,6 +39,10 @@ constexpr VmtShaderRow kShaders[] = {
     { "sprite_dx9", "unlit",
         "sprites: an unlit textured quad whose orientation and render mode are parameters "
         "(sprite_vs20/sprite_ps20b)" },
+    { "sky_hdr_dx9", "unlit",
+        "the 2D sky box's faces (Sky, render.pass.sky): an unlit textured quad whose base is an "
+        "HDR encoding ($hdrcompressedtexture RGBS times 8, sky_hdr_compressed_rgbs_ps2x)" },
+    { "sky_dx9", "unlit", "the sky box's faces without HDR: $basetexture times $color" },
     { "decalmodulate", "decal-modulate",
         "dimensionless surface factors with modulate-2x blending" },
     { "decalmodulate_dx9", "decal-modulate", "DecalModulate DirectX 9 implementation" },
@@ -217,6 +221,10 @@ constexpr VmtKeyRow kLegacyDerivedKeys[] = {
     { "cable", "$minlight", "minlight", ValueKind::kFloat, "0.1" },
     { "cable", "$maxlight", "maxlight", ValueKind::kFloat, "0.3" },
     { "unlit", "$hdrbasetexture", "hdrbasetexture", ValueKind::kTexture, "" },
+    { "unlit", "$hdrcompressedtexture", "hdrcompressedtexture", ValueKind::kTexture, "" },
+    { "unlit", "$hdrcompressedtexture0", "hdrcompressedtexture0", ValueKind::kTexture, "" },
+    { "unlit", "$hdrcompressedtexture1", "hdrcompressedtexture1", ValueKind::kTexture, "" },
+    { "unlit", "$hdrcompressedtexture2", "hdrcompressedtexture2", ValueKind::kTexture, "" },
     { "unlit", "$vertexalphatest", "vertexalphatest", ValueKind::kBool, "0" },
     { "unlit", "$texture2", "texture2", ValueKind::kTexture, "" },
     { "unlit", "$frame2", "frame2", ValueKind::kInt, "0" },

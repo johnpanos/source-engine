@@ -66,6 +66,16 @@ MapMedia MediaFromEntities( const std::vector<pass::lights::Entity> &entities,
 std::vector<pass::volumetric::MediumLight> MediumLightsFrom(
     std::span<const light_set::RuntimeLight> lights, std::uint32_t *unsupported );
 
+// The medium's froxel grid and samples, shared by the product's world stage
+// and render_lab: the view's light grid (64-pixel tiles) subdivided
+// kFroxelTileDivisor across and kFroxelSliceMultiplier in depth, and the
+// inject stage's stratified samples per froxel. Chosen against the frame
+// budget (user decision 2026-10-05: coarser froxels and fewer samples
+// approved; RFC/0016-progress.md).
+inline constexpr std::uint32_t kFroxelTileDivisor = 8;
+inline constexpr std::uint32_t kFroxelSliceMultiplier = 4;
+inline constexpr pass::volumetric::VolumetricSampling kFroxelSampling{ 2, 4 };
+
 // The grid as render.pass.volumetric reads it; the grid must outlive the
 // layout (its slice depths are borrowed).
 pass::volumetric::FroxelLayout FroxelLayoutOf( const pass::lights::ClusterGrid &grid );

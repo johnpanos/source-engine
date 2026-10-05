@@ -178,7 +178,10 @@ struct Options
 	std::uint32_t rsmSize = 128; // a projector's reflective shadow map, texels across
 	std::uint32_t timeRepeats = 0;
 	// The inject stage's stratified samples per froxel (across, along).
-	pass::volumetric::VolumetricSampling fogSampling;
+	pass::volumetric::VolumetricSampling fogSampling = composition::kFroxelSampling;
+	// The light grid's subdivision for the medium (--fog-grid across,depth).
+	std::uint32_t fogTileDivisor = composition::kFroxelTileDivisor;
+	std::uint32_t fogSliceMultiplier = composition::kFroxelSliceMultiplier;
 	frame::DebugControls debug;
 };
 
@@ -295,6 +298,9 @@ std::optional<Options> ParseOptions( int argc, char **argv )
 			options.outputPeak = float( std::atof( take() ) );
 		else if ( arg == "--time" )
 			options.timeRepeats = std::uint32_t( std::atoi( take() ) );
+		else if ( arg == "--fog-grid" && std::sscanf( value, "%u,%u", &options.fogTileDivisor,
+		                                    &options.fogSliceMultiplier ) == 2 )
+			take();
 		else if ( arg == "--fog-samples" &&
 		          std::sscanf( value, "%u,%u", &options.fogSampling.samplesXY,
 		              &options.fogSampling.samplesDepth ) == 2 )
@@ -1189,7 +1195,8 @@ int Run( const Options &options )
 			    pass::lights::CreateClusterGrid( gridView, pass::lights::DesktopClusterLimits() );
 			if ( !lightGrid )
 				return Fail( "the light grid does not build" );
-			auto fine = pass::lights::SubdivideClusterGrid( lightGrid.Value(), 8, 4 );
+			auto fine = pass::lights::SubdivideClusterGrid(
+			    lightGrid.Value(), options.fogTileDivisor, options.fogSliceMultiplier );
 			if ( !fine )
 				return Fail( "the fog's grid does not subdivide the light grid" );
 			fogGrid = std::move( fine ).Value();

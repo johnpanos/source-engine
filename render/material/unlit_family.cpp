@@ -193,6 +193,66 @@ UnlitClaim ClaimDecalModulate( const ParameterBlock &block )
 	return claim;
 }
 
+UnlitClaim ClaimSky( const ParameterBlock &block, bool hdr )
+{
+	UnlitClaim claim;
+	if ( block.Family().desc.name != "unlit" )
+	{
+		claim.reason = "the sky block is of family " + block.Family().desc.name;
+		return claim;
+	}
+	constexpr std::string_view keys[] = { "basetexture", "hdrcompressedtexture",
+	    "hdrcompressedtexture0", "hdrcompressedtexture1", "hdrcompressedtexture2", "hdrbasetexture",
+	    "basetexturetransform", "color", "frame", "nofog", "ignorez", "model", "nocull" };
+	if ( const auto unread = detail::UnclaimedParameter( block, keys ) )
+	{
+		claim.reason = "the sky point does not draw " + *unread;
+		return claim;
+	}
+	SurfaceConstants &constants = claim.constants;
+	// sky_hdr_dx9.cpp: c0 is $color as given; RGBS scales it by 8.
+	float scale = 1.0f;
+	if ( hdr && detail::TextureBound( block, "hdrcompressedtexture" ) )
+	{
+		claim.baseParameter = "hdrcompressedtexture";
+		claim.baseSrgb = false;
+		constants.baseDecode[0] = 1.0f;
+		scale = 8.0f;
+	}
+	else if ( hdr && detail::TextureBound( block, "hdrcompressedtexture0" ) )
+	{
+		claim.reason = "$hdrcompressedtexture0 (three exposures) needs an unimplemented decode";
+		return claim;
+	}
+	else if ( hdr )
+	{
+		claim.reason = "a lone $hdrbasetexture needs its format's conversion, not yet claimed";
+		return claim;
+	}
+	else
+	{
+		claim.baseParameter = "basetexture";
+		claim.baseSrgb = true;
+	}
+	if ( !detail::TextureBound( block, claim.baseParameter ) )
+	{
+		claim.reason = "the sky needs its $" + claim.baseParameter;
+		return claim;
+	}
+	claim.blend = device::BlendMode::kOpaque;
+	claim.alphaWrite = true;
+	claim.ignoreDepth = true; // SHADER_INIT_PARAMS sets IGNOREZ
+	constants.surfaceControls[0] = 1.0f; // and NOFOG
+	constants.surfaceControls[1] = scale;
+	for ( int c = 0; c < 3; ++c )
+		constants.tint[c] = ReadParameter( block, "color", c );
+	constants.tint[3] = 1.0f;
+	for ( std::size_t i = 0; i < 8; ++i )
+		constants.baseTransform[i] = ReadParameter( block, "basetexturetransform", i );
+	claim.claimed = true;
+	return claim;
+}
+
 UnlitClaim ClaimUnlitMesh( const ParameterBlock &block )
 {
 	// The ordinary unlit claim owns every shared parameter. The authored env

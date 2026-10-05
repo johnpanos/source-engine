@@ -519,7 +519,13 @@ reports cancellation, and invalidates stale results after subsequent edits.
 - **Asset catalog.** The catalog's identity and metadata revision are RFC
   0015 `AssetRef` values and content hashes. They are read from the asset
   index of the workspace's packages; the editor doesn't scan search paths
-  separately.
+  separately. Amended 2026-10-05: the editor mounts the same package
+  stack as the game through RFC 0015's resolver, VPKs included through
+  the shared VPK package source. `MaterialCatalog` keeps presentation
+  (listing, filtering, thumbnails, preview decoding) and loses its own VPK
+  and search-path walk in the same change, under RFC 0015's
+  [one lookup path](0015-asset-identity-content-build-graph.md#one-lookup-path-amended-2026-10-05)
+  rules.
 - **Builds.** Build and preview requests go to RFC 0015's content build
   graph through the `IMapBuilder` port. The graph owns cache hits,
   hermetic inputs and atomic publication. The job controller presents the

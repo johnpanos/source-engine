@@ -3016,7 +3016,8 @@ void CoreWorld::RecordVolumetric( device::CommandEncoder &encoder,
 	auto grid = pass::lights::CreateClusterGrid( desc, pass::lights::DesktopClusterLimits() );
 	if ( !grid )
 		return refuse( "the view's light grid does not build" );
-	auto fine = pass::lights::SubdivideClusterGrid( grid.Value(), 8, 4 );
+	auto fine = pass::lights::SubdivideClusterGrid(
+	    grid.Value(), kFroxelTileDivisor, kFroxelSliceMultiplier );
 	if ( !fine )
 		return refuse( "the light grid does not subdivide" );
 	const pass::volumetric::FroxelLayout layout = FroxelLayoutOf( fine.Value() );
@@ -3045,6 +3046,7 @@ void CoreWorld::RecordVolumetric( device::CommandEncoder &encoder,
 	pass::volumetric::VolumetricFrame frame;
 	frame.medium = &medium;
 	frame.lights = lights;
+	frame.sampling = kFroxelSampling;
 	pass::volumetric::VolumetricTargets targets;
 	targets.color = color;
 	targets.depth = target.depth;

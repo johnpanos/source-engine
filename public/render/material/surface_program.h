@@ -158,8 +158,13 @@ struct SurfaceConstants
 	float treeCurves[4] = { 2.0f, 1.0f, 1.5f, 5.0f };
 	float treeWind[4] = { 3.0f, 6.0f, 0.0f, 0.0f }; // lerp start/end, static, mode
 	float baseTransform[8] = { 1, 0, 0, 0, 0, 1, 0, 0 }; // independent base texture UV rows
+	// The base texture's encoding on the unlit point. x: 1 for RGBS (the
+	// Sky shader's $hdrcompressedtexture: color times alpha, filtered as
+	// premultiplied texels, sky_hdr_compressed_rgbs_ps2x); its scale is
+	// surfaceControls.y. Neutral (0) for every other point.
+	float baseDecode[4] = {};
 };
-static_assert( sizeof( SurfaceConstants ) == 560 );
+static_assert( sizeof( SurfaceConstants ) == 576 );
 
 // An area light as the frame block holds it (render.area-light.v1: the
 // rectangle, its radiance and its reach).

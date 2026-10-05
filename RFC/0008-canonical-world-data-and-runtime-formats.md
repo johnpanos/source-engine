@@ -504,7 +504,11 @@ recorded from device queries on R29 runners, not assumed here.
   and KTX2 (new) both produce the same in-memory texture description. Legacy
   VTF content is never converted. *(Amended by RFC 0015.)* `CTexture`
   chooses among a texture's variants through RFC 0015's runtime resolver
-  (C5), not by probing file extensions.
+  (C5), not by probing file extensions. A legacy VTF is the `vtf` variant
+  of its asset, and KTX2 encodings are further variants of the same
+  `AssetRef`; the `materials/%s.vtf` path building is deleted when this
+  lands (RFC 0015 [one lookup path](0015-asset-identity-content-build-graph.md#one-lookup-path-amended-2026-10-05),
+  amended 2026-10-05).
 - The native Vulkan provider adds the BC4/5/6H/7, ASTC, and ETC2 format mappings
   it lacks today (as of 2026-09-22 it maps only DXT1/DXT3/DXT5 to BC1–BC3).
 - The Hammer core texture reader (`hammer/core/formats/vtf_image.cpp`) gains

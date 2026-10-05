@@ -62,6 +62,12 @@ bool IsSprite( const MaterialDesc &material )
 	return material.legacyShader == "sprite_dx9";
 }
 
+// The Sky shader's faces (render.pass.sky); HDR selects its encodings.
+bool IsSky( const MaterialDesc &material )
+{
+	return material.legacyShader == "sky_hdr_dx9" || material.legacyShader == "sky_dx9";
+}
+
 // The numbers of a value ("0.5", "[1 1 1]", "{255 255 255}"), when it is
 // only numbers.
 std::optional<std::vector<double>> Numbers( const std::string &value )
@@ -408,7 +414,9 @@ foundation::Expected<device::BlendMode, std::string> ClaimForDrawing( const Mate
 		                         : material.family == "decal-modulate"
 		                             ? ClaimDecalModulate( *block )
 		                         : IsSprite( material ) ? ClaimSprite( *block )
-		                                                : ClaimUnlit( *block );
+		                         : IsSky( material )
+		                             ? ClaimSky( *block, material.legacyShader == "sky_hdr_dx9" )
+		                             : ClaimUnlit( *block );
 		if ( !claim.claimed )
 			return foundation::MakeUnexpected( claim.reason );
 		if ( requiresDepthAlpha )
@@ -580,14 +588,17 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 		                         : material.family == "decal-modulate"
 		                             ? ClaimDecalModulate( *block )
 		                         : IsSprite( material ) ? ClaimSprite( *block )
-		                         : s.mesh               ? ClaimUnlitMesh( *block )
-		                                                : ClaimUnlit( *block );
+		                         : IsSky( material )
+		                             ? ClaimSky( *block, material.legacyShader == "sky_hdr_dx9" )
+		                         : s.mesh ? ClaimUnlitMesh( *block )
+		                                  : ClaimUnlit( *block );
 		if ( !claim.claimed )
 			return foundation::MakeUnexpected( claim.reason );
 		SurfaceTextures textures;
 		textures.baseSrgb = claim.baseSrgb;
-		textures.base = TextureOf( material, "hdrbasetexture" );
-		if ( textures.base.empty() )
+		textures.base = claim.baseParameter.empty() ? TextureOf( material, "hdrbasetexture" )
+		                                            : TextureOf( material, claim.baseParameter );
+		if ( textures.base.empty() && claim.baseParameter.empty() )
 			textures.base = TextureOf( material, "basetexture" );
 		if ( claim.cable )
 			textures.bump = TextureOf( material, "bumpmap" );

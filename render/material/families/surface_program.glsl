@@ -680,6 +680,30 @@ vec2 BaseTextureUv()
 	return vec2( dot( source, material.baseTransform[0] ), dot( source, material.baseTransform[1] ) );
 }
 
+// The legacy points' base color, decoded by material.baseDecode. RGBS (the
+// Sky shader's $hdrcompressedtexture, sky_hdr_compressed_rgbs_ps2x): the four
+// texels around the coordinate each as rgb * a, then blended bilinearly, so
+// the encoding is filtered as linear light; the edge texels hold (the faces
+// clamp). The output alpha is one, as that shader writes it.
+vec4 LegacyBaseSample()
+{
+	const vec2 uv = BaseTextureUv();
+	if ( material.baseDecode.x < 0.5 )
+		return texture( sampler2D( baseTexture, baseSampler ), uv );
+	const ivec2 size = textureSize( sampler2D( baseTexture, baseSampler ), 0 );
+	const vec2 p = uv * vec2( size ) - 0.5;
+	const ivec2 i = ivec2( floor( p ) );
+	const vec2 f = p - floor( p );
+	vec3 s[4];
+	for ( int k = 0; k < 4; ++k )
+	{
+		const ivec2 at = clamp( i + ivec2( k & 1, k >> 1 ), ivec2( 0 ), size - 1 );
+		const vec4 texel = texelFetch( sampler2D( baseTexture, baseSampler ), at, 0 );
+		s[k] = texel.rgb * texel.a;
+	}
+	return vec4( mix( mix( s[0], s[1], f.x ), mix( s[2], s[3], f.x ), f.y ), 1.0 );
+}
+
 // The coverage function shared by native PBR and legacy surface points.
 float CutoutCoverage( float alpha )
 {
@@ -1762,7 +1786,7 @@ void main()
 	const bool diffuseBumpmap = bumpmap && Term( kDiffuseBumpmap );
 	const bool lightingOne = Term( kUnlit );
 
-	const vec4 base = texture( sampler2D( baseTexture, baseSampler ), BaseTextureUv() );
+	const vec4 base = LegacyBaseSample();
 	// GetBaseTextureAndNormal: the bump map is read at the base coordinates;
 	// with only $normalmapalphaenvmapmask its texels are used undecoded, as
 	// the port does.

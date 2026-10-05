@@ -64,6 +64,9 @@ struct UnlitClaim
 	bool depthBlend = false; // requires the view's copied scene depth in alpha
 	bool baseSrgb = true;
 	bool fogToBlack = false;
+	// The parameter whose texture is the base (empty: $hdrbasetexture when
+	// bound, else $basetexture).
+	std::string baseParameter;
 	// tint: $color and $alpha; flags.x $vertexcolor, .y $alphatest, .z its
 	// reference; state.y 1 (gamma vertex colors); state.w $vertexalpha.
 	SurfaceConstants constants;
@@ -90,6 +93,12 @@ UnlitClaim ClaimDecalModulate( const ParameterBlock &block );
 // Model extension: an authored env map is resolved from the stage's native
 // reflection probes and shaded beside the emissive base in the PBR point.
 UnlitClaim ClaimUnlitMesh( const ParameterBlock &block );
+// The Sky shader's faces (Sky_HDR_DX9, Sky_DX9; render.pass.sky): the base
+// as its encoding gives it ($hdrcompressedtexture RGBS times 8, else
+// $basetexture), times $color unconverted, depth ignored. The three-texture
+// encoding ($hdrcompressedtexture0) and a lone $hdrbasetexture, whose
+// conversion depends on the texture's format, are refused by name.
+UnlitClaim ClaimSky( const ParameterBlock &block, bool hdr );
 
 using UnlitStatus = SurfaceStatus;
 
