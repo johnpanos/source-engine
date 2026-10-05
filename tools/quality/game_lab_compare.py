@@ -23,6 +23,12 @@ import lighting_lab_inputs as lab_inputs
 
 PROFILE = ("area-room", "overview", (512, 384))
 LIMITS = {"mean": 3.0, "p99": 25.0, "fraction_gt8": 0.03}
+# The game's output under the core (render.pass.output): the native backend
+# composes an HDR scene whenever the core records passes and maps it to the
+# SDR back buffer with the BT.2390 tone map from this scene peak
+# (CVulkanContext's output targets, vulkan_device.cpp). The lab applies the
+# same pass (--output-peak) so both images hold display values.
+GAME_SCENE_PEAK = 16.0
 
 
 def sha256(path):
@@ -110,7 +116,8 @@ def render_lab(lab_binary, content_root, fixture, camera, out, state=None):
                "--up", ",".join("%.6f" % value for value in authored["up"]),
                "--hfov", str(fixture["horizontal_fov_degrees"]),
                "--size", "%dx%d" % (film["width"], film["height"]),
-               "--core-direct", "--out", str(out)]
+               "--core-direct", "--output-peak", "%g" % GAME_SCENE_PEAK,
+               "--out", str(out)]
     model = lab_inputs.probe_model(fixture, state)
     if model:
         command += ["--model", model[0], "--model-origin",

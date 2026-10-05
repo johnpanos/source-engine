@@ -24,7 +24,9 @@
 #include "render/graph/scene_color.h"
 #include "render/legacy/core_passes.h"
 #include "render/pass/debug/debug_overlays.h"
+#include "render/composition/map_media.h"
 #include "render/pass/ao/ao.h"
+#include "render/pass/volumetric/volumetric.h"
 #include "render/pass/indirect/port_compute.h"
 #include "render/pass/lights/map_lights.h"
 #include "render/pass/lights/cluster_pass.h"
@@ -458,6 +460,8 @@ private:
 			std::shared_ptr<const ShadowWork> shadows;
 			device::TextureId shadowAtlas;
 			device::TextureDesc shadowAtlasDesc;
+			// The view's medium is composited once per record frame.
+			std::atomic<bool> fogged{ false };
 		};
 
 		ViewLightInputs inputs;
@@ -561,6 +565,9 @@ private:
 	// The stage map's authored lights (its entity lump), and whether its
 	// lightmap packs the sun's baked visibility (the total page's alpha).
 	pass::lights::MapLights m_MapLights;
+	// The stage map's participating media (its entity lump; render
+	// sequence reads it only between SetWorldMesh calls, as m_MapLights).
+	std::shared_ptr<const MapMedia> m_Media;
 	bool m_StageSunMask = false;
 	std::atomic<unsigned long long> m_StageLightingBuilds{ 0 };
 	// Render sequence: views that read the frame's stage lighting instead of
@@ -630,6 +637,16 @@ private:
 	std::vector<std::size_t> m_FrameAtlasIndices;
 	// The screen passes (render sequence): GTAO and its output.
 	std::unique_ptr<pass::ao::AmbientOcclusion> m_Ao;
+	// The volumetric term over a stage view (render sequence), made for the
+	// format of the target it blends into.
+	std::unique_ptr<pass::volumetric::VolumetricRenderer> m_Volumetric;
+	device::Format m_VolumetricFormat = device::Format::kUnknown;
+	std::uint64_t m_VolumetricFrame = 0;
+	std::atomic<bool> m_VolumetricOn{ true };
+	std::atomic<unsigned long long> m_VolumetricViews{ 0 };
+	std::atomic<unsigned long long> m_VolumetricRefused{ 0 };
+	void RecordVolumetric( device::CommandEncoder &encoder, const legacy::CorePassTarget &target,
+	    const ViewLightInputs &in );
 	bool m_OcclusionNeutral = true; // m_Occlusion holds one (made so, or cleared since)
 	// RFC 0014 D4: made and replaced on the render sequence; m_TimersLock
 	// guards the pointer against the main thread's TakeGpuTimes.

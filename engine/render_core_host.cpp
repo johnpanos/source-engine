@@ -123,6 +123,9 @@ ConVar r_core_runtime_direct( "r_core_runtime_direct", "1", FCVAR_ARCHIVE,
     "Render core: the world's lightmap is its indirect layer and every light's direct light is "
     "drawn at runtime, shadowed, so moving objects block it (0: the bake's total layer). "
     "Applies at the next map load." );
+ConVar r_core_volumetric( "r_core_volumetric", "1", FCVAR_ARCHIVE,
+    "Render core: composite the map's participating media (env_volumetric_fog_volume and "
+    "env_volumetric_fog_controller) over its views (0: the term is left out)." );
 ConVar r_core_shadow_quality( "r_core_shadow_quality", "2", FCVAR_ARCHIVE,
     "Render core shadows: 0 off, 1 low (2048 atlas), 2 medium (4096), 3 high (8192).", true, 0,
     true, 3 );
@@ -410,7 +413,8 @@ void RenderCoreHost_BeginFrame()
 			const RenderCoreWorldQuality quality{ r_core_ao_quality.GetInt(),
 			    r_core_shadow_quality.GetInt(), r_core_depth_prepass.GetInt(),
 			    r_core_shadow_movers.GetInt(), r_core_runtime_direct.GetInt(),
-			    RenderCoreWorldDraw_OnlyCore(), r_core_dynamic_draws.GetBool() };
+			    RenderCoreWorldDraw_OnlyCore(), r_core_dynamic_draws.GetBool(),
+			    r_core_volumetric.GetInt() };
 			host.world->SetQuality( quality );
 			host.world->BeginFrame();
 		}

@@ -34,108 +34,6 @@ constexpr double kPi = 3.14159265358979323846;
 
 } // namespace
 
-LabMedia MediaFromEntities( const std::vector<Entity> &entities )
-{
-	LabMedia media;
-	for ( const Entity &entity : entities )
-	{
-		const std::string classname = Value( entity, "classname" );
-		const math::float3 origin = Vector3( Numbers( entity, "origin", 3 ) );
-		if ( classname == "env_volumetric_fog_volume" )
-		{
-			media.present = true;
-			volumetric::FogVolume volume;
-			const math::float3 lo = Vector3( Numbers( entity, "box_mins", 3 ) );
-			const math::float3 hi = Vector3( Numbers( entity, "box_maxs", 3 ) );
-			volume.mins = origin + lo;
-			volume.maxs = origin + hi;
-			volume.extinction = Numbers( entity, "density", 1 )[0];
-			volume.albedo = Numbers( entity, "albedo", 1, 1.0f )[0];
-			volume.anisotropy = Numbers( entity, "anisotropy", 1 )[0];
-			volume.emission = Vector3( Numbers( entity, "emission", 3 ) );
-			media.medium.volumes.push_back( volume );
-		}
-		else if ( classname == "env_volumetric_fog_controller" )
-		{
-			media.present = true;
-			volumetric::HeightFog &fog = media.medium.fog;
-			fog.density = Numbers( entity, "density", 1 )[0];
-			fog.heightDensity = Numbers( entity, "height_fog_density", 1 )[0];
-			fog.heightFalloff = Numbers( entity, "height_fog_falloff", 1 )[0];
-			fog.baseHeight = Has( entity, "origin" ) ? origin.z : 0.0f;
-			fog.albedo = Numbers( entity, "albedo", 1, 1.0f )[0];
-			fog.anisotropy = Numbers( entity, "anisotropy", 1 )[0];
-		}
-		else if ( classname == "light" || classname == "light_spot" )
-		{
-			const std::vector<float> attn = { Numbers( entity, "_constant_attn", 1 )[0],
-			    Numbers( entity, "_linear_attn", 1 )[0],
-			    Numbers( entity, "_quadratic_attn", 1 )[0] };
-			if ( !( attn[0] == 0.0f && attn[1] == 0.0f && attn[2] == 1.0f ) )
-			{
-				++media.unsupportedLights;
-				continue;
-			}
-			volumetric::MediumLight light;
-			light.falloff = light_set::LightFalloff::InverseSquare;
-			light.position = origin;
-			light.color = GammaColor( Numbers( entity, "_light", 4 ) );
-			if ( classname == "light_spot" )
-			{
-				const std::vector<float> angles = Numbers( entity, "angles", 3 );
-				const float pitch =
-				    Has( entity, "pitch" ) ? Numbers( entity, "pitch", 1 )[0] : angles[0];
-				const double p = pitch * kPi / 180.0;
-				const double y = angles[1] * kPi / 180.0;
-				light.direction = { float( std::cos( y ) * std::cos( p ) ),
-				    float( std::sin( y ) * std::cos( p ) ), float( std::sin( p ) ) };
-				float inner = Numbers( entity, "_inner_cone", 1, 10.0f )[0];
-				float outer = Numbers( entity, "_cone", 1, 0.0f )[0];
-				if ( outer == 0.0f )
-					outer = inner;
-				outer = std::max( outer, inner );
-				if ( !( inner == 180.0f && outer == 180.0f ) )
-				{
-					light.kind = volumetric::MediumLightKind::kSpot;
-					light.innerCos = float( std::cos( std::min( inner, 90.0f ) * kPi / 180.0 ) );
-					light.outerCos = float( std::cos( std::min( outer, 90.0f ) * kPi / 180.0 ) );
-					light.spotExponent = Numbers( entity, "_exponent", 1, 0.0f )[0];
-				}
-			}
-			media.lights.push_back( light );
-		}
-		else if ( classname == "env_projectedtexture" )
-		{
-			volumetric::MediumProjector projector;
-			projected_light::Light &light = projector.light;
-			math::float3 forward, right, up;
-			AngleVectors( Numbers( entity, "angles", 3 ), forward, right, up );
-			const float axes[3][3] = { { forward.x, forward.y, forward.z },
-			    { right.x, right.y, right.z }, { up.x, up.y, up.z } };
-			std::memcpy( light.forward, axes[0], sizeof( light.forward ) );
-			std::memcpy( light.right, axes[1], sizeof( light.right ) );
-			std::memcpy( light.up, axes[2], sizeof( light.up ) );
-			light.origin[0] = origin.x;
-			light.origin[1] = origin.y;
-			light.origin[2] = origin.z;
-			light.horizontalFovDegrees = light.verticalFovDegrees =
-			    Numbers( entity, "lightfov", 1, 90.0f )[0];
-			light.nearZ = Numbers( entity, "nearz", 1, 4.0f )[0];
-			light.farZ = Numbers( entity, "farz", 1, 750.0f )[0];
-			const math::float3 color = GammaColor( Numbers( entity, "lightcolor", 4 ) );
-			light.color[0] = color.x;
-			light.color[1] = color.y;
-			light.color[2] = color.z;
-			light.shadows = Value( entity, "enableshadows" ) != "0";
-			light.lightsWorld = Value( entity, "lightworld" ) != "0";
-			projector.cookieLayer = std::uint32_t( media.projectors.size() );
-			media.projectors.push_back( projector );
-			media.cookieNames.push_back( Value( entity, "texturename" ) );
-		}
-	}
-	return media;
-}
-
 device::TextureDesc CookieArray::Desc() const
 {
 	device::TextureDesc desc;
@@ -145,26 +43,6 @@ device::TextureDesc CookieArray::Desc() const
 	desc.depthOrLayers = m_Layers;
 	desc.usages = { device::ResourceUsage::kCopyDestination, device::ResourceUsage::kSampled };
 	return desc;
-}
-
-pass::volumetric::FroxelLayout FroxelLayoutOf( const pass::lights::ClusterGrid &grid )
-{
-	pass::volumetric::FroxelLayout layout;
-	layout.tilesX = grid.tilesX;
-	layout.tilesY = grid.tilesY;
-	layout.slices = grid.slices;
-	layout.tileSizePixels = grid.limits.tileSizePixels;
-	layout.widthPixels = grid.widthPixels;
-	layout.heightPixels = grid.heightPixels;
-	layout.sliceScale = grid.sliceScale;
-	layout.sliceBias = grid.sliceBias;
-	layout.nearZ = grid.nearZ;
-	layout.farZ = grid.farZ;
-	layout.sliceDepths = grid.sliceDepths;
-	layout.view = grid.view;
-	layout.rayTopLeft = grid.cornerRays.front();
-	layout.rayBottomRight = grid.cornerRays.back();
-	return layout;
 }
 
 CookieArray::~CookieArray()

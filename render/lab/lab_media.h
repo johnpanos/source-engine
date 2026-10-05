@@ -37,6 +37,7 @@
 
 #include "lab_support.h"
 #include "render/device/device.h"
+#include "render/composition/map_media.h"
 #include "render/pass/lights/clusters.h"
 #include "render/pass/lights/map_lights.h"
 #include "render/pass/volumetric/volumetric.h"
@@ -54,18 +55,10 @@ namespace render::lab
 using Entity = pass::lights::Entity;
 using pass::lights::ParseEntityLump;
 
-// What the map's entities give the medium.
-struct LabMedia
-{
-	bool present = false; // a fog volume or controller exists
-	pass::volumetric::Medium medium;
-	std::vector<pass::volumetric::MediumLight> lights;
-	std::vector<pass::volumetric::MediumProjector> projectors;
-	std::vector<std::string> cookieNames; // per projector, its layer's texture
-	std::uint32_t unsupportedLights = 0;  // attenuations other than inverse square
-};
-
-LabMedia MediaFromEntities( const std::vector<Entity> &entities );
+// What the map's entities give the medium: render.composition owns the
+// parse (map_media.h, shared with the product's world stage).
+using LabMedia = composition::MapMedia;
+using composition::MediaFromEntities;
 
 using LabSun = pass::lights::MapSun;
 using LabLights = pass::lights::MapLights;
@@ -74,9 +67,7 @@ inline LabLights LightsFromEntities( const std::vector<Entity> &entities )
 	return pass::lights::MapLightsFromEntities( entities );
 }
 
-// The subdivided grid as render.pass.volumetric reads it; the grid must
-// outlive the layout (its slice depths are borrowed).
-pass::volumetric::FroxelLayout FroxelLayoutOf( const pass::lights::ClusterGrid &grid );
+using composition::FroxelLayoutOf;
 
 // The projectors' cookies as one RGBA 2D array (at least two layers; layer i
 // is projector i's cookie, the rest white), uploaded by RecordUpload.

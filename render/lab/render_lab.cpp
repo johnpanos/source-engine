@@ -22,7 +22,8 @@
 //			an env_volumetric_fog_volume or env_volumetric_fog_controller,
 //			render.pass.volumetric applies its fog to the opaque frame, on
 //			render.pass.lights' ClusterGrid subdivided 8 x 4 (lab_media.h),
-//			lit by the lump's lights and projectors (unshadowed in this
+//			lit by the lump's lights and projectors as render.composition's
+//			map_media.h reads them for the product too (unshadowed in this
 //			slice). --fog-scale s multiplies every density (0: the fixture's
 //			density-zero state), --no-volumetric leaves the pass out, and
 //			--fog-samples xy,depth sets the inject stage's samples per froxel
@@ -30,6 +31,12 @@
 //			pass's median time over n more submissions,
 //			and --inscatter-only clears the frame before the composite (the
 //			in-scattered light alone, as Cycles' Volume Direct pass).
+//
+//			--output-peak p applies the game's output (render.pass.output:
+//			exposure 1, the BT.2390 tone map from scene peak p onto SDR
+//			headroom 1) before readback, so a game/lab comparison judges the
+//			display values both show; without it the image is the frame's
+//			linear scene values.
 //
 //			The frame's debug controls (RFC 0014) apply through the --debug-*
 //			options, as cl_render_debug_* apply in the product: validated by
@@ -41,7 +48,8 @@
 //			           --out <file.pfm> [--model <models/x.mdl> --model-origin
 //			           x,y,z] [--model-no-shadow] [--mover x0,y0,z0,x1,y1,z1,material]
 //			           [--validate] [--dump-mesh] [--core-direct]
-//			           [--debug-view n] [--fog-scale s] [--no-volumetric] [--time n]
+//			           [--debug-view n] [--fog-scale s] [--no-volumetric]
+//			           [--output-peak p] [--time n]
 //			           [--debug-program name] [--debug-scale s]
 //			           [--debug-range r] [--debug-threshold t] [--debug-brdf n]
 //			           [--debug-furnace] [--debug-term name[,name...]]
@@ -81,6 +89,7 @@
 #include "render/pass/shadows/shadow_passes.h"
 #include "render/pass/ssr/ssr.h"
 #include "render/resources/mesh_cache.h"
+#include "render/pass/output/output.h"
 #include "render/pass/volumetric/volumetric.h"
 #include "render/resources/texture_cache.h"
 #include "texturecontainer/texture_image.h"
@@ -136,6 +145,11 @@ struct Options
 	// Participating media: every density times this; the pass left out.
 	float fogScale = 1.0f;
 	bool noVolumetric = false;
+	// The game's output (render.pass.output, render.output.v1) applied to
+	// the frame before readback, at this scene peak and SDR headroom 1, so
+	// the image holds the display values a game frame shows; 0 leaves the
+	// frame's linear scene values (the default).
+	float outputPeak = 0.0f;
 	// A diagnostic: the frame cleared to black before the composite, so the
 	// image is the medium's in-scattered light alone (Cycles' Volume Direct).
 	bool inscatterOnly = false;
@@ -266,6 +280,8 @@ std::optional<Options> ParseOptions( int argc, char **argv )
 			options.horizontalFov = float( std::atof( take() ) );
 		else if ( arg == "--fog-scale" )
 			options.fogScale = float( std::atof( take() ) );
+		else if ( arg == "--output-peak" )
+			options.outputPeak = float( std::atof( take() ) );
 		else if ( arg == "--time" )
 			options.timeRepeats = std::uint32_t( std::atoi( take() ) );
 		else if ( arg == "--fog-samples" &&
@@ -1178,6 +1194,20 @@ int Run( const Options &options )
 			    media.projectors.size(), fogLayout.tilesX, fogLayout.tilesY, fogLayout.slices,
 			    double( media.medium.densityScale ) );
 		}
+		// The game's output pass (--output-peak) into a frame of its own.
+		std::unique_ptr<pass::output::OutputRenderer> output;
+		TextureId displayed;
+		if ( options.outputPeak > 0.0f )
+		{
+			auto created = pass::output::OutputRenderer::Create( *device, Format::kRGBA16Float );
+			if ( !created )
+				return Fail( "the output pass was refused" );
+			output = std::move( created ).Value();
+			displayed = target( Format::kRGBA16Float,
+			    { ResourceUsage::kColorAttachment, ResourceUsage::kCopySource } );
+			if ( !displayed.IsValid() )
+				return Fail( "the output frame was refused" );
+		}
 		// The frame's final colour: the reflections' output, or the lit
 		// colour without them.
 		const TextureId final = reflections ? reflected : color;
@@ -1512,10 +1542,33 @@ int Run( const Options &options )
 		}
 		if ( fog && status == 0 && !fog->Record( encoder, fogView, fogFrame, fogTargets ) )
 			status = Fail( "the volumetric pass did not record" );
-		encoder.TransitionTexture( final, ResourceUsage::kColorAttachment, ResourceUsage::kCopySource );
+		// The game's output, when asked for: the frame's scene values to the
+		// display values the game's back buffer holds.
+		TextureId shown = final;
+		if ( output && status == 0 )
+		{
+			pass::output::OutputDirectTargets outputTargets;
+			outputTargets.scene = final;
+			outputTargets.sceneUsage = ResourceUsage::kColorAttachment;
+			outputTargets.sceneWidth = options.width;
+			outputTargets.sceneHeight = options.height;
+			outputTargets.target = displayed;
+			outputTargets.targetUsage = ResourceUsage::kColorAttachment;
+			outputTargets.width = options.width;
+			outputTargets.height = options.height;
+			pass::output::OutputParams outputParams;
+			outputParams.scenePeak = options.outputPeak;
+			encoder.TransitionTexture(
+			    displayed, ResourceUsage::kUndefined, ResourceUsage::kColorAttachment );
+			if ( !output->Record( encoder, outputTargets, outputParams ) )
+				status = Fail( "the output pass did not record" );
+			shown = displayed;
+		}
+		encoder.TransitionTexture(
+		    shown, ResourceUsage::kColorAttachment, ResourceUsage::kCopySource );
 		encoder.TransitionBuffer(
 		    readback, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
-		encoder.CopyTextureToBuffer( final, readback, { 0, 0, 0, options.width, options.height } );
+		encoder.CopyTextureToBuffer( shown, readback, { 0, 0, 0, options.width, options.height } );
 		auto token = device->Submit( QueueKind::kGraphics, { &encoder, 1 }, {} );
 		if ( !token )
 			return Fail( "the frame was refused at submission" );
@@ -1525,6 +1578,8 @@ int Run( const Options &options )
 		meshes.Retire( token.Value() );
 		if ( fog )
 			fog->Collect( token.Value() );
+		if ( output )
+			output->Collect( token.Value() );
 		if ( ambient )
 			ambient->Collect( token.Value() );
 		if ( reflections )
@@ -1703,7 +1758,7 @@ int main( int argc, char **argv )
 		    "x,y,z --hfov degrees --size WxH --out <file.pfm> [--model <models/x.mdl> "
 		    "--model-origin x,y,z] [--model-no-shadow] [--mover x0,y0,z0,x1,y1,z1,material] "
 		    "[--validate] [--dump-mesh] [--core-direct] [--debug-* ...]\n"
-		    "           [--fog-scale s] [--no-volumetric] [--time n]\n"
+		    "           [--fog-scale s] [--no-volumetric] [--output-peak p] [--time n]\n"
 		    "       render_lab suite <name> [--validate] [--seeded <defect>]\n"
 		    "       render_lab claim-batch < NUL-delimited-materials\n" );
 		return 2;

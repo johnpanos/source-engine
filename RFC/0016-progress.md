@@ -10334,3 +10334,88 @@ This also keeps selector indices aligned with the new LOD-grouped surfaces.
 The source/style review covers the regression repair; no product boot or
 conformance run has yet verified the catwalk in-game. K5/K12 and map completion
 remain open.
+
+### K12: volumetric fog in the game, and the game's output in game/lab comparisons (2026-10-05)
+
+The R96 fog gap from the [matched map sweep](#k12-gi-door-and-matched-gamelab-map-sweep-2026-10-01)
+was that Portal 2 ignored `env_volumetric_fog_*` and the product never composed
+`render.pass.volumetric`. This slice moves the participating-media term from
+`render_lab` into the product world stage, with one owner of the inputs.
+
+- **One owner.** `render.composition`'s `map_media.h` now owns the entity
+  parse (`MediaFromEntities`, `FroxelLayoutOf`, `MediumLightsFrom`), which
+  `render_lab` used to keep privately. The lab reaches it through
+  `lab_media.h` aliases; `render.lab` gains the `render.composition` edge
+  (it sits above composition), and `render.composition` gains
+  `render.pass.volumetric`. The medium's lights and projectors are
+  `render.pass.lights`' `MapLights` through `MediumLightFrom`, the surfaces'
+  own set with its windows, not a second light parse. Attenuated (vrad
+  c/l/q) lights and non-point/spot shapes count as unsupported, by name.
+- **Game.** `CoreWorld` reads the media with the map's lights at
+  `SetWorldMesh`. After each stage view's opaque batch, once per view and
+  record frame, it composites the medium over the frame on the view's own
+  light grid subdivided 8 x 4 (the lab's froxels). It uses the view's
+  merged runtime lights (`MediumLightsFrom`), scaled with emission by the
+  slot's output scale, and blends through the target's sRGB view. A
+  multisampled target, a target without imported color/depth, a viewport
+  that does not cover its target, or a refused/unrecorded pass is refused by
+  name and counted (`RenderCoreWorldStats::volumetricRefused`, with the
+  first reason logged). `volumetricViews` counts composited views. The
+  new `r_core_volumetric` (default 1) leaves the term out at 0, as the lab's
+  `--no-volumetric`.
+- **Not yet in the game's medium:** projectors (their cookies have no
+  product upload path; logged at the first composite), shadows (as in the
+  lab), the translucent application (as in the lab), and MSAA targets.
+- **The comparison's output.** Every core-world game frame is an HDR scene
+  that the native backend's `render.pass.output` maps to the SDR back buffer
+  with BT.2390 at scene peak 16 (`hdrScene` whenever a core pass recorder
+  exists). The lab's PFM was the linear scene, and the comparator only
+  clipped it. Binned by lab luminance, the unfogged hall matched the game to
+  0.999 below 0.4 linear and fell to 0.50 at 1-2 and 0.10 above 2, so bright
+  fixtures were being scored on the output transform, not on lighting.
+  `render_lab --output-peak p` now records the same `render.pass.output`
+  (exposure 1, headroom 1) before readback, and `game_lab_compare.py` passes
+  `GAME_SCENE_PEAK` (16). The new
+  `test_lab_frame_takes_the_games_output` check fails when the peak is
+  seeded to 0.
+
+Evidence (Linux, AMD Radeon 8060S / RADV, native Vulkan, 512x384, source
+`b06363170` plus the dirty tree; the build's other sessions' WIP was
+present). `render_lab suite volumetric` 17/17 and `map-terms` 38/38 pass;
+`tools/quality/tests/test_game_lab_compare.py` 7/7 and the matrix tests
+pass; `archlint check --all` adds nothing new and `baseline --verify` is
+current. In-game A/B at the nave camera (`r_core_volumetric 0`/`1`, same
+build): the fog adds 0.105, 0.077 and 0.048 linear in the top three row
+bands. The diagnostic matrix is in
+`quality-results/rendercore-model-game/volumetric-output-matrix-20261005/`:
+
+| Camera | Mean /255 (2026-10-01 → now) | p99 | > 8 | Note |
+| --- | --- | --- | --- | --- |
+| foggy-hall/nave | 18.49 → 1.52 | 17 | 3.17% | fog and output; 0.17 pt over the 3% limit |
+| foggy-hall/side | 24.49 → 1.65 | 18 | 2.02% | within all three first-profile limits |
+| area-room/overview | 1.42 → 1.09 | 12 | 1.50% | declared gate passes |
+| area-room/grazing, wall | 1.80, 0.74 → 1.38, 0.55 | 18, 7 | 2.8%, 1.0% | |
+| cornell-floors/floor, front | 0.82, 2.18 → 0.76, 0.59 | 8, 10 | 1.0%, 1.3% | |
+| door-room/a-door, b-door | 0.49, 0.52 → 0.43, 0.46 | 5, 5 | 0.8%, 0.8% | |
+| material-sweep/front, grazing | 1.94, 1.51 → 1.63, 1.30 | 30, 27 | 4.3%, 3.2% | p99 over 25 |
+| mirror-corridor/down, low | 1.19, 2.47 → 1.17, 2.45 | 17, 41 | 3.3%, 10.4% | reflection edges, unchanged |
+| portal-pair/a-portal, b-floor, b-portal | 0.81, 1.24, 0.63 → 0.73, 1.15, 0.42 | 5, 18, 5 | | |
+| projector-cookie/room, wall | 23.29, 68.37 → 22.15, 63.40 | 168, 178 | | projector term not fed to the game core (open) |
+| sun-colonnade/along, yard | 1.03, 1.49 → not scored | | | `render_lab: no draw group` with or without `--output-peak` (lab regression since 2026-10-01, open) |
+
+**Performance: a blocking miss.** `render_lab --time 20` (the pass in its
+own submission, same camera): median 57.3 ms at 1024x768, 135.5 ms at
+1920x1080, 223.4 ms at 2560x1440 and 488.7 ms at 3840x2160. Every froxel
+loops over every light (256 here) at 2 x 2 x 4 samples on a grid that
+scales with the screen. Under binding rule 7 this blocks the term's
+performance acceptance on `linux-desktop-high-120`. No sample count or
+froxel resolution is cut. Shipped Portal 2 maps carry no
+`env_volumetric_fog_*`, so their frames do not run the pass. The exact
+optimizations named next are per-froxel light lists (the RFC's open
+"cluster lists") and skipping froxels beyond each tile's farthest scene
+depth, which the composite never reads. No Fold7 run.
+
+R96 stays `active`: projectors, cutout shadows, transmission and
+refraction, remaining materials, skinned models, nested and portal views
+and moving doors remain; "game matches lab" is not met (projector-cookie,
+mirror-corridor/low, material-sweep), and `r_core_world` stays opt-in.

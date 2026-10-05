@@ -80,6 +80,37 @@ class GameLabComparisonTests(unittest.TestCase):
                 root / "materials/example.vmt")
             self.assertEqual(compare.content_mismatches(root, staged), [])
 
+    def test_lab_frame_takes_the_games_output(self):
+        # The game's frame is tone mapped by render.pass.output from its HDR
+        # scene; a lab frame compared without the same output would score
+        # every highlight as an error.
+        seen = {}
+
+        class Done:
+            returncode = 0
+            stdout = "render_lab: drawn"
+            stderr = ""
+
+        def run(command, **kwargs):
+            seen["command"] = command
+            Path(command[command.index("--out") + 1]).write_bytes(b"pfm")
+            return Done()
+
+        fixture = json.loads((compare.lf.ROOT /
+                              "quality/fixtures/lighting/area-room/fixture.json").read_text())
+        original = compare.subprocess.run
+        compare.subprocess.run = run
+        try:
+            with tempfile.TemporaryDirectory() as directory:
+                out = Path(directory) / "lab.pfm"
+                compare.render_lab(Path(directory) / "render_lab", Path(directory), fixture,
+                                   "overview", out)
+        finally:
+            compare.subprocess.run = original
+        command = seen["command"]
+        self.assertEqual(float(command[command.index("--output-peak") + 1]),
+                         compare.GAME_SCENE_PEAK)
+
 
 if __name__ == "__main__":
     unittest.main()

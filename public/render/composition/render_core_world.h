@@ -153,6 +153,10 @@ struct RenderCoreWorldQuality
 	// Unfinished ordered dynamic handoff. Disabled in the playable composition
 	// until queued/capture/resize and image acceptance pass for the whole cohort.
 	bool dynamicDraws = false;
+	// Nonzero: a stage map's participating media (its fog volumes and
+	// controller) are composited over its views (render.pass.volumetric);
+	// zero leaves the term out, as render_lab's --no-volumetric.
+	int volumetric = 1;
 };
 
 struct RenderCoreWorldStats
@@ -202,6 +206,14 @@ struct RenderCoreWorldStats
 	// Nonzero: the world stage draws its lights' direct light at runtime
 	// over the lightmap's indirect layer (RenderCoreWorldQuality::runtimeDirect).
 	unsigned int stageRuntimeDirect;
+	// The stage map's participating media (render.pass.volumetric, RFC 0016
+	// K12): nonzero when its entity lump holds a fog volume or controller;
+	// stage views the medium was composited over, and those it refused by
+	// name (multisampled targets, a target without sampled depth, a pass
+	// that does not record).
+	unsigned int volumetricMedium;
+	unsigned long long volumetricViews;
+	unsigned long long volumetricRefused;
 	char lastFailure[256];
 	char lastRefusal[256];
 	char gaps[16384];   // bounded scene census: "count reason" lines, most frequent first
