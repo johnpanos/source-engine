@@ -10651,3 +10651,17 @@ casters; static props with cutout-only materials (the boot logs "8
 cutout-only" props still outside the casters); and the cost. The cutouts are
 redrawn every frame into every planned view, not only into dirty tiles, and
 no frame-time measurement has been made. R96 stays `active`.
+
+Follow-up the same day: **static props' alpha-tested surfaces cast too.**
+`SetStaticCasters` now lists every selected prop surface whose material is
+not an opaque shadow material as an (instance, surface) pair, not just the
+props with no opaque surface at all. Props that mix opaque and cutout
+surfaces had lost their cutout parts as well. The world pass draws each
+pair from its model level with the instance's transform and skin
+(`StaticMaterial`), through the model material's depth point and the lit
+pass's groups. A level that is not resident is skipped and counted
+(`cutoutShadowNotResident`). One that is drawn is marked used for the frame,
+so residency keeps it for the GPU work. On `sp_a2_laser_intro_relit`,
+`r_core_world_stats` reports 2,128 cutout shadow draws, 0 refused and 0 not
+resident, with 2,280/2,280 views drawn and 0 failed; the boot passes. The
+in-game image oracle and the cost remain open, as above.

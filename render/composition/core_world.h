@@ -583,6 +583,9 @@ private:
 	// out of the position-only casters and drawn by the world pass with
 	// their materials' coverage (WorldTarget::cutoutShadows).
 	std::vector<std::uint32_t> m_CutoutSurfaces;
+	// The static props' alpha-tested surfaces (instance, surface), from
+	// SetStaticCasters (main thread, at map load).
+	std::vector<std::pair<std::uint32_t, std::uint32_t>> m_CutoutStaticSurfaces;
 	// The game's files and the frame's projector cookies (main thread):
 	// decoded again only when the set of cookie names changes. A set that
 	// does not decode leaves the frame's projectors out, by name.

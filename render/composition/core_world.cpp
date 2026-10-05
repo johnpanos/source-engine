@@ -471,6 +471,7 @@ void CoreWorld::SetStaticCasters()
 	if ( !m_WorldCasters )
 		return;
 	auto casters = std::make_shared<Casters>( *m_WorldCasters );
+	m_CutoutStaticSurfaces.clear();
 	unsigned int instances = 0;
 	unsigned int noShadow = 0;
 	unsigned int cutout = 0;
@@ -506,9 +507,14 @@ void CoreWorld::SetStaticCasters()
 			std::uint32_t material = mesh.surfaces[s].material;
 			if ( !mesh.skinMaterials.empty() )
 				material = mesh.skinMaterials[instance.skin][s];
-			if ( material >= m_StaticMaterials.size() ||
-			     !OpaqueShadowMaterial( m_StaticMaterials[material] ) )
+			if ( material >= m_StaticMaterials.size() )
 				continue;
+			if ( !OpaqueShadowMaterial( m_StaticMaterials[material] ) )
+			{
+				// Cast through its material's coverage (the world pass).
+				m_CutoutStaticSurfaces.emplace_back( i, std::uint32_t( s ) );
+				continue;
+			}
 			const std::uint32_t lod = mesh.LodOfSurface( s );
 			if ( lod == ~0u || !mesh.lods[lod].vertices || !mesh.lods[lod].indices )
 				continue;
@@ -590,8 +596,8 @@ void CoreWorld::SetStaticCasters()
 	}
 	std::fprintf( stderr,
 	    "Render core: %u opaque static props cast core shadows (%u authored no-shadow, %u "
-	    "cutout-only)\n",
-	    instances, noShadow, cutout );
+	    "cutout-only); %zu alpha-tested prop surfaces cast through their materials' coverage\n",
+	    instances, noShadow, cutout, m_CutoutStaticSurfaces.size() );
 }
 
 void CoreWorld::SetStaticProps( const RenderCoreStaticModel *models, unsigned int modelCount,
@@ -1998,6 +2004,7 @@ void CoreWorld::GetStats( RenderCoreWorldStats *out ) const
 	out->projectorsRefused = m_ProjectorsRefused.load( std::memory_order_relaxed );
 	out->cutoutShadowDraws = stats.cutoutShadowDraws;
 	out->cutoutShadowRefused = stats.cutoutShadowRefused;
+	out->cutoutShadowNotResident = stats.cutoutShadowNotResident;
 	std::snprintf( out->lastFailure, sizeof( out->lastFailure ), "%s", stats.lastFailure.c_str() );
 	std::size_t used = 0;
 	for ( const auto &[reason, count] : stats.gaps )
@@ -2740,7 +2747,8 @@ void CoreWorld::RecordWorldBatch( std::span<const std::uint32_t> tags,
 		world.shadowAtlas = lighting->shadowAtlas;
 		world.shadowAtlasDesc = lighting->shadowAtlasDesc;
 		// The stage's cutout casters, into this frame's atlas once.
-		if ( shadows && lighting->shadowAtlas.IsValid() && !m_CutoutSurfaces.empty() &&
+		if ( shadows && lighting->shadowAtlas.IsValid() &&
+		     ( !m_CutoutSurfaces.empty() || !m_CutoutStaticSurfaces.empty() ) &&
 		     !shadows->views.empty() &&
 		     !lighting->cutoutsDrawn.exchange( true, std::memory_order_relaxed ) )
 		{
@@ -2748,6 +2756,7 @@ void CoreWorld::RecordWorldBatch( std::span<const std::uint32_t> tags,
 			cutouts->atlas = lighting->shadowAtlas;
 			cutouts->atlasSize = shadows->atlasSize;
 			cutouts->surfaces = m_CutoutSurfaces;
+			cutouts->staticSurfaces = m_CutoutStaticSurfaces;
 			for ( const pass::shadows::ShadowPlanView &planned : shadows->views )
 			{
 				pass::world::WorldShadowView view;

@@ -1172,10 +1172,10 @@ CON_COMMAND( r_core_world_stats, "RFC 0016 K5: the core world's surfaces, views 
 		    stats.stageSharedViews );
 	if ( State().stageWorld )
 		Msg( "r_core_world_stats: medium %u (%llu views, %llu refused), %u projected lights "
-		     "(%llu refused), cutout shadow draws %llu (%llu refused)\n",
+		     "(%llu refused), cutout shadow draws %llu (%llu refused, %llu not resident)\n",
 		    stats.volumetricMedium, stats.volumetricViews, stats.volumetricRefused,
 		    stats.projectorsLit, stats.projectorsRefused, stats.cutoutShadowDraws,
-		    stats.cutoutShadowRefused );
+		    stats.cutoutShadowRefused, stats.cutoutShadowNotResident );
 	if ( State().worldMeshViews )
 		Msg( "r_core_world_stats: declined %llu view(s): the map's world is its WMSH\n",
 		    State().worldMeshViews );

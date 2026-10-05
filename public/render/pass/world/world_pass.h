@@ -329,6 +329,11 @@ struct WorldCutoutShadows
 	std::uint32_t atlasSize = 0;
 	std::vector<WorldShadowView> views;
 	std::vector<std::uint32_t> surfaces; // into WorldData::surfaces
+	// Static props' alpha-tested surfaces: (instance into
+	// WorldData::staticInstances, surface into its mesh's surfaces), each
+	// drawn with the instance's transform and skin from its level when the
+	// level is resident.
+	std::vector<std::pair<std::uint32_t, std::uint32_t>> staticSurfaces;
 };
 
 struct WorldTarget
@@ -588,6 +593,7 @@ struct WorldStats
 	// material or depth point that is not ready.
 	std::uint64_t cutoutShadowDraws = 0;
 	std::uint64_t cutoutShadowRefused = 0;
+	std::uint64_t cutoutShadowNotResident = 0; // static props whose level is not on the device
 	std::string lastRefusal;
 	std::string lastFailure;
 	// Unclaimed material names, reasons and counts, most frequent first.

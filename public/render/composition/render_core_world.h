@@ -233,6 +233,7 @@ struct RenderCoreWorldStats
 	// by name (an animated cutout; groups not ready).
 	unsigned long long cutoutShadowDraws;
 	unsigned long long cutoutShadowRefused;
+	unsigned long long cutoutShadowNotResident; // static props whose level is off the device
 	char lastFailure[256];
 	char lastRefusal[256];
 	char gaps[16384];   // bounded scene census: "count reason" lines, most frequent first
