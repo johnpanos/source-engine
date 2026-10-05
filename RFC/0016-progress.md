@@ -10999,3 +10999,42 @@ whole-frame optimization program (R90-CLUSTER-PERF, the in-game pipeline
 priority) owns the next steps. The resolution sweep from 1024x768 to 4K was
 not run in this session. Evidence: `/tmp/claude-1000/vf/ff/` runs
 (`run3`, `diag2-ssr1`, `diag2-ssr0`), not retained in the repository.
+
+### K12: volumetric fog within budget (2026-10-05, user decision)
+
+**User decisions (2026-10-05):** coarser froxels and fewer samples for the
+volumetric term are approved. "Moving doors" in the R96 list means Portal
+2's test-chamber door entity.
+
+The medium's froxel grid and samples now have one owner,
+`render.composition`'s `map_media.h`, which the product and `render_lab`
+both read:
+
+- `kFroxelTileDivisor` 2 and `kFroxelSliceMultiplier` 2: 32-pixel froxels and
+  twice the light grid's slices, against 8 and 4.
+- `kFroxelSampling` 1 x 1 x 2 samples, against 2 x 2 x 4.
+- A shared froxel depth range, `kFroxelNearZ` 1 to `kFroxelFarZ` 65536. With
+  one depth sample per froxel, the game's projection-derived planes (3 to
+  29998) sliced the medium unlike the lab, and blocky lamp halos appeared;
+  the composite reads distance through the view's own projection. The
+  game's now-dead plane derivation is removed.
+- `render_lab --fog-grid across,depth` sweeps the grid; `--fog-samples`
+  already swept the samples.
+
+Measured (`render_lab --time 10`, foggy-hall nave, RADV 8060S; the pass in
+its own submission):
+
+| Setting | 1024x768 | 1920x1080 | 3840x2160 | Image vs old at 1080p (/255) |
+| --- | --- | --- | --- | --- |
+| old 8,4 / 2,2,4 | 55.6 ms | 182.9 ms | 688.4 ms | reference |
+| 4,2 / 1,1,2 | 1.05 | 2.64 | 19.4 | mean 0.71, p99 14.7 |
+| **2,2 / 1,1,2 (chosen)** | **0.73** | **2.20** | **10.2** | mean 0.75, p99 14.6 |
+| 2,2 / 2,2,2 | 1.43 | 3.88 | 18.6 | mean 0.77, p99 16.2 |
+| 2,2 / 1,1,1 | 0.51 | 1.44 | 7.7 | (more banding) |
+
+Game/lab with the shared settings: foggy-hall nave 1.07 mean /255 (p99 8,
+1.3% over 8) and side 1.30 (p99 7, 1.0%). Both are within all three limits,
+better than before (1.43 / 1.56). `render_lab suite volumetric` passes
+17/17. The fog pass is no longer the frame's blocker. The whole frame still
+misses the allowance (see the frame-allowance measurement above). 4K's
+10.2 ms is recorded for the resolution sweep.

@@ -1177,7 +1177,8 @@ int Run( const Options &options )
 		}
 
 		// The fog's froxels: the light grid of this view (render.pass.lights,
-		// its desktop limits) subdivided 8 x 4, the owner of the depth split.
+		// its desktop limits) subdivided as render.composition's map_media.h
+		// sets for the product too, the owner of the depth split.
 		std::unique_ptr<pass::volumetric::VolumetricRenderer> fog;
 		std::optional<pass::lights::ClusterGrid> fogGrid;
 		pass::volumetric::FroxelLayout fogLayout;
@@ -1189,8 +1190,8 @@ int Run( const Options &options )
 			gridView.projection = projection;
 			gridView.widthPixels = options.width;
 			gridView.heightPixels = options.height;
-			gridView.nearZ = 1.0f;
-			gridView.farZ = 65536.0f;
+			gridView.nearZ = composition::kFroxelNearZ;
+			gridView.farZ = composition::kFroxelFarZ;
 			auto lightGrid =
 			    pass::lights::CreateClusterGrid( gridView, pass::lights::DesktopClusterLimits() );
 			if ( !lightGrid )

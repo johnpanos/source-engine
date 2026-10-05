@@ -3007,12 +3007,9 @@ void CoreWorld::RecordVolumetric( device::CommandEncoder &encoder,
 	desc.projection = matrix( in.viewToClip );
 	desc.widthPixels = target.width;
 	desc.heightPixels = target.height;
-	const float a = in.viewToClip[2 * 4 + 2];
-	const float b = in.viewToClip[2 * 4 + 3];
-	desc.nearZ = a != 0.0f ? b / a : 0.0f;
-	desc.farZ = a + 1.0f != 0.0f ? b / ( a + 1.0f ) : 0.0f;
-	if ( !std::isfinite( desc.farZ ) || desc.farZ <= desc.nearZ )
-		desc.farZ = 65536.0f;
+	// The medium's slices span the shared fog range, not the view's planes.
+	desc.nearZ = kFroxelNearZ;
+	desc.farZ = kFroxelFarZ;
 	auto grid = pass::lights::CreateClusterGrid( desc, pass::lights::DesktopClusterLimits() );
 	if ( !grid )
 		return refuse( "the view's light grid does not build" );

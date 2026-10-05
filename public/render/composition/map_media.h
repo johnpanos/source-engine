@@ -72,9 +72,18 @@ std::vector<pass::volumetric::MediumLight> MediumLightsFrom(
 // inject stage's stratified samples per froxel. Chosen against the frame
 // budget (user decision 2026-10-05: coarser froxels and fewer samples
 // approved; RFC/0016-progress.md).
-inline constexpr std::uint32_t kFroxelTileDivisor = 8;
-inline constexpr std::uint32_t kFroxelSliceMultiplier = 4;
-inline constexpr pass::volumetric::VolumetricSampling kFroxelSampling{ 2, 4 };
+// 2 x 2 (32-pixel froxels, twice the light grid's slices) and 1 x 1 x 2
+// samples: 0.73 / 2.2 / 10.2 ms at 1024x768 / 1080p / 4K against 56 / 183 /
+// 688 ms for the earlier 8 x 4 and 2 x 2 x 4; the image moves by 0.75 mean
+// and 14.6 p99 /255 at 1080p (foggy-hall nave).
+inline constexpr std::uint32_t kFroxelTileDivisor = 2;
+inline constexpr std::uint32_t kFroxelSliceMultiplier = 2;
+inline constexpr pass::volumetric::VolumetricSampling kFroxelSampling{ 1, 2 };
+// The froxels' depth range (their logarithmic slices), the same in every
+// view whatever its projection's planes, so the game and the lab slice the
+// medium alike; the composite reads distance through the view's projection.
+inline constexpr float kFroxelNearZ = 1.0f;
+inline constexpr float kFroxelFarZ = 65536.0f;
 
 // The grid as render.pass.volumetric reads it; the grid must outlive the
 // layout (its slice depths are borrowed).
