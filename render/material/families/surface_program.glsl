@@ -506,6 +506,12 @@ void AreaLightCorners( AreaLight light, out vec3 corners[4] )
 	corners[3] = light.center.xyz - light.halfU.xyz + light.halfV.xyz;
 }
 
+// Squared distance over area beyond which an area light is integrated in
+// its far-field form (ltc.glsl LtcRectangleFast): six sides away for the
+// diffuse lobe, twelve for a rough specular lobe.
+const float kAreaFarDiffuse = 36.0;
+const float kAreaFarSpecular = 144.0;
+
 // Area-light visibility has one owner for PBR and lightmapped receivers.
 float AreaLightVisibility( AreaLight light, vec3 p, vec3 smoothNormal,
     vec3 geometricNormal, float rotation )
@@ -560,8 +566,8 @@ vec3 AreaLightIrradiance( vec3 n, vec3 geometricNormal, vec3 p )
 		if ( visibility <= 0.0 )
 			continue;
 		sum += light.radiance.rgb * window * visibility *
-		       LtcRectangle( n, normalize( frame.eye.xyz - p ), p, mat3( 1.0 ), corners,
-		           light.center.w > 0.5 );
+		       LtcRectangleFast( n, normalize( frame.eye.xyz - p ), p, mat3( 1.0 ), corners,
+		           light.center.w > 0.5, kAreaFarDiffuse );
 	}
 	return sum;
 }
@@ -1108,6 +1114,9 @@ void PbrSurface( out float coverage )
 #endif
 		const mat3 ltc =
 		    LtcInverse( LtcLookup( ltcTexture, ltcSampler, roughness, normalDotView ) );
+		// A narrow lobe is narrower than a rectangle's extent from afar: only a
+		// rough surface takes the far-field form, and from farther away.
+		const float areaFarSpecular = roughness >= 0.35 ? kAreaFarSpecular : 0.0;
 #ifdef SEEDED_LTC_NO_MAGNITUDE
 		const vec3 areaSpecular = vec3( 1.0 );
 #else
@@ -1160,8 +1169,8 @@ void PbrSurface( out float coverage )
 			if ( diffuseLobe && ( light.halfV.w < 0.5 || meshDirect || runtimeDirect ) )
 			{
 				const vec3 diffuse = diffuseColor * radiance *
-				                     LtcRectangle( normal, view, worldPosition, mat3( 1.0 ),
-				                         corners, twoSided );
+				                     LtcRectangleFast( normal, view, worldPosition, mat3( 1.0 ),
+				                         corners, twoSided, kAreaFarDiffuse );
 				color += diffuse;
 				direct += diffuse;
 			}
@@ -1169,7 +1178,8 @@ void PbrSurface( out float coverage )
 			{
 				const vec3 specular =
 				    areaSpecular * radiance * directSpecularMask *
-				    LtcRectangle( normal, view, worldPosition, ltc, corners, twoSided ) *
+				    LtcRectangleFast( normal, view, worldPosition, ltc, corners, twoSided,
+				        areaFarSpecular ) *
 				    MeshSpecularWarp( normal, view,
 				        normalize( light.center.xyz - worldPosition ), exponent );
 				color += specular;
