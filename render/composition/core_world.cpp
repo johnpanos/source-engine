@@ -1915,15 +1915,19 @@ unsigned int CoreWorld::TakeGpuTimes( char *out, unsigned int size )
 		if ( written > 0 )
 			used = std::min( std::size_t( size ) - 1, used + std::size_t( written ) );
 	}
-	// The shadow tiles the views drew, and kept from earlier frames (CPU
-	// counts; the time is the shadow-depth passes').
+	// The shadow tiles drawn, kept, and shared across views (CPU counts; the
+	// time is the shadow-depth passes').
 	const std::uint64_t tilesDrawn = m_ShadowTilesDrawn.exchange( 0, std::memory_order_relaxed );
 	const std::uint64_t tilesKept = m_ShadowTilesKept.exchange( 0, std::memory_order_relaxed );
-	if ( tilesDrawn + tilesKept && used + 1 < size )
+	const std::uint64_t tilesShared =
+	    m_ShadowTilesShared.exchange( 0, std::memory_order_relaxed );
+	if ( tilesDrawn + tilesKept + tilesShared && used + 1 < size )
 	{
 		const int written = std::snprintf( out + used, size - used,
-		    "0 0 %.2f shadow tiles drawn (count; %.2f kept, %.2f with movers per frame)\n",
+		    "0 0 %.2f shadow tiles drawn (count; %.2f kept, %.2f shared across views, "
+		    "%.2f with movers per frame)\n",
 		    double( tilesDrawn ) / frames, double( tilesKept ) / frames,
+		    double( tilesShared ) / frames,
 		    double( m_ShadowTilesMoving.exchange( 0, std::memory_order_relaxed ) ) / frames );
 		if ( written > 0 )
 			used = std::min( std::size_t( size ) - 1, used + std::size_t( written ) );
@@ -2742,6 +2746,7 @@ device::TextureId CoreWorld::DrawStageShadows( device::IRenderDevice2 &device,
 		                  } ) )
 			dirty.push_back( &view );
 	}
+	const std::size_t dirtyBeforeShare = dirty.size();
 	struct SharedTiles
 	{
 		std::size_t source = 0;
@@ -2783,7 +2788,7 @@ device::TextureId CoreWorld::DrawStageShadows( device::IRenderDevice2 &device,
 				if ( group == shared.end() )
 				{
 					shared.push_back( { sourceIndex, {} } );
-					group = std::prev( shared.end() );
+					group = shared.end() - 1;
 				}
 				group->tiles.push_back( view->tile );
 				sharedViews.push_back( view );
@@ -2799,7 +2804,9 @@ device::TextureId CoreWorld::DrawStageShadows( device::IRenderDevice2 &device,
 	    {
 		    return std::find( sharedViews.begin(), sharedViews.end(), view ) != sharedViews.end();
 	    } );
-	m_ShadowTilesKept.fetch_add( work.views.size() - dirty.size(), std::memory_order_relaxed );
+	m_ShadowTilesKept.fetch_add(
+	    work.views.size() - dirtyBeforeShare, std::memory_order_relaxed );
+	m_ShadowTilesShared.fetch_add( sharedViews.size(), std::memory_order_relaxed );
 	m_ShadowTilesDrawn.fetch_add( dirty.size(), std::memory_order_relaxed );
 	// Each view draws the chunks inside its frustum (a chunk's box wholly
 	// outside one clip plane is culled).
@@ -3046,6 +3053,8 @@ device::TextureId CoreWorld::DrawStageShadows( device::IRenderDevice2 &device,
 		atlas.composite = texture.Value();
 		atlas.compositeUsage = ResourceUsage::kUndefined;
 		atlas.compositeHeld.clear();
+		atlas.compositeGeneration = 0;
+		atlas.compositeGuardTexels = 0;
 	}
 	std::vector<pass::shadows::ShadowTile> restore;
 	std::vector<pass::shadows::ShadowDepthView> moverViews;
@@ -3056,6 +3065,8 @@ device::TextureId CoreWorld::DrawStageShadows( device::IRenderDevice2 &device,
 		// What the frame's atlas holds in this tile: this view's static depth
 		// with the movers of `drawnSignature` over it.
 		const bool held = atlas.compositeUsage != ResourceUsage::kUndefined &&
+		                  atlas.compositeGeneration == casters->generation &&
+		                  atlas.compositeGuardTexels == work.guardTexels &&
 		                  std::any_of( atlas.compositeHeld.begin(), atlas.compositeHeld.end(),
 		                      [&]( const pass::shadows::ShadowPlanView &kept )
 		                      {
@@ -3094,6 +3105,12 @@ device::TextureId CoreWorld::DrawStageShadows( device::IRenderDevice2 &device,
 	{
 		atlas.compositeHeld = work.views;
 		atlas.moverTiles = std::move( moverTiles );
+		atlas.compositeGeneration = casters->generation;
+		atlas.compositeGuardTexels = work.guardTexels;
+		atlas.sunFirst = work.sunFirst;
+		atlas.sunCount = work.sunCount;
+		if ( m_FrameAtlasIndices.empty() || m_FrameAtlasIndices.back() != m_AtlasNext )
+			m_FrameAtlasIndices.push_back( m_AtlasNext );
 		++m_AtlasNext;
 		*desc = atlas.desc;
 		return atlas.composite;
@@ -3108,6 +3125,12 @@ device::TextureId CoreWorld::DrawStageShadows( device::IRenderDevice2 &device,
 	atlas.compositeUsage = ResourceUsage::kSampled;
 	atlas.compositeHeld = work.views;
 	atlas.moverTiles = std::move( moverTiles );
+	atlas.compositeGeneration = casters->generation;
+	atlas.compositeGuardTexels = work.guardTexels;
+	atlas.sunFirst = work.sunFirst;
+	atlas.sunCount = work.sunCount;
+	if ( m_FrameAtlasIndices.empty() || m_FrameAtlasIndices.back() != m_AtlasNext )
+		m_FrameAtlasIndices.push_back( m_AtlasNext );
 	++m_AtlasNext;
 	*desc = atlas.desc;
 	return atlas.composite;
@@ -3145,6 +3168,9 @@ void CoreWorld::BindStageDevice( device::IRenderDevice2 &device )
 	m_CasterMeshes.reset();
 	m_TriangleRevisions.clear();
 	m_Atlases.clear();
+	m_AtlasNext = 0;
+	m_AtlasFrame = 0;
+	m_FrameAtlasIndices.clear();
 	m_CastersStaged = 0;
 	m_Ao.reset();
 	m_Occlusion = device::TextureId();
@@ -3218,6 +3244,9 @@ void CoreWorld::ReleaseShadows( device::IRenderDevice2 &device )
 			(void)device.Release( atlas.composite, device::CompletionToken() );
 	}
 	m_Atlases.clear();
+	m_AtlasNext = 0;
+	m_AtlasFrame = 0;
+	m_FrameAtlasIndices.clear();
 	m_CasterMeshes.reset();
 	m_TriangleRevisions.clear();
 	m_ClusterKernel.reset();

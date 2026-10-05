@@ -590,6 +590,7 @@ private:
 	// Shadow tiles drawn and kept (RFC 0014 D4's report, render sequence).
 	std::atomic<std::uint64_t> m_ShadowTilesDrawn{ 0 };
 	std::atomic<std::uint64_t> m_ShadowTilesKept{ 0 };
+	std::atomic<std::uint64_t> m_ShadowTilesShared{ 0 };
 	std::atomic<std::uint64_t> m_ShadowTilesMoving{ 0 }; // tiles movers were drawn in
 	const resources::MeshEntry *BoxCasterMesh();
 	std::vector<Atlas> m_Atlases;
