@@ -432,6 +432,10 @@ constexpr VmtMetadataRow kMetadata[] = {
         "water: the client's reflection view draws only entities marked to reflect" },
     { "$fogenable", "water: the engine's water fog volume (R_SetFogVolumeState)" },
     { "$waterdepth", "water: the depth vbsp writes into cube-map patches (no shader reads it)" },
+    { "$shadersrgbread360",
+        "Xbox 360 shader-side sRGB read; no shader in this tree declares it, and PC "
+        "textures are read through their sRGB views" },
+    { "$x360appchooser", "Xbox 360 application-chooser flag; no PC shader reads it" },
 };
 
 #include "legacy_shaders.inc"

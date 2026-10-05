@@ -35,7 +35,7 @@ DEFAULT_PROFILES = {
 MESH_INPUTS = ((False, False), (False, True), (True, False), (True, True))
 WORLD_INPUTS = (False, True)
 BLENDS = {"0": "opaque", "1": "alpha", "2": "premultiplied", "3": "additive",
-          "4": "transmittance"}
+          "4": "transmittance", "5": "modulate2x", "6": "alpha-additive"}
 PARAMETER = re.compile(r"\$[a-zA-Z][a-zA-Z0-9_]*")
 
 

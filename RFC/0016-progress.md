@@ -10573,3 +10573,34 @@ Not in this slice: projectors in the volumetric medium (the game's medium
 still logs "projectors not in the medium yet"); `lightworld 0` (models-only)
 projectors are lit like any other; and the projector bounce, which is out of
 the game's scope by decision. R96 stays `active`.
+
+### K12: no-effect console keys and a current Portal 2 claim inventory (2026-10-05)
+
+The largest refusal group in the [feature census](#k12-refusal-groups-by-feature-2026-10-03),
+`$shadersrgbread360` (154 materials), has no effect on PC. No shader in
+this tree declares it, and PC textures are read through their sRGB views.
+`render.material`'s no-effect key table (`vmt_mapping.cpp`) now records it,
+with `$x360appchooser`, with reasons, as it already did for other keys no
+shader reads. `material_claim_inventory.py` learned the device's newer
+`kModulate2x` and `kAlphaAdditive` blends (5 and 6); without them the
+inventory could no longer be regenerated.
+
+The regenerated `quality/materials/portal2-all-claims.json` (3,738 VMTs;
+`--verify` 3,738/0) moves from 1,354 statically supported, 1,062 supported
+with requirements, 1,176 unsupported and 146 dynamically unresolved to
+1,494 / 1,306 / 792 / 146. So 2,800 of 3,738 now claim, against 1,850 in
+the R96 row. Of the 384 materials that left `unsupported`, 154 are this
+change; the other 230 are earlier sessions' claim work that the checked-in
+inventory had not recorded. The largest remaining groups are SpriteCard
+(143), `env_cubemap` per-view textures (63), Subrect (57), and
+`$ambientocclusion` and `$translucent` (45 each). The claim inventory is
+VMT reachability, not scene or pixel evidence.
+
+The composition conformance rows (`render.composition`, `.capabilities`,
+`.capabilities.gl`, `.gles` and the product rows that compile
+`core_world.cpp`) now list `map_media.cpp`, `projector_cookies.cpp`, the
+volumetric pass and the VTF reader. The fog and projector slices had broken
+their links (reported by source-engine-d7). Now `render.composition` (65),
+`.capabilities` (14) and `.capabilities.gl` (14) pass. The four failures in
+`tools/render/tests` are in `shader_toolchain` and `vulkan_scans`, whose
+tools have another session's uncommitted edits.
