@@ -10665,3 +10665,34 @@ so residency keeps it for the GPU work. On `sp_a2_laser_intro_relit`,
 `r_core_world_stats` reports 2,128 cutout shadow draws, 0 refused and 0 not
 resident, with 2,280/2,280 views drawn and 0 failed; the boot passes. The
 in-game image oracle and the cost remain open, as above.
+
+### K12: material-sweep's residual is a missing term, SSR (2026-10-05, finding)
+
+Reviewing the [projector matrix](#k12-projected-lights-on-the-games-core-and-one-cookie-owner-2026-10-05)'s
+material-sweep/front (mean 1.63, p99 30, 4.3% over 8): the difference
+image concentrates on the glossy gold row's reflections, plus a thin band
+at the shadow penumbrae. The lab composes `render.pass.ssr` (its log reads
+"ao, ssr"), and the game's `CoreWorld` composes no SSR at all. So the
+game's glossy reflections are the probes' alone. SSR is a declared term of
+`render.lighting.v1` ("relit probes with SSR"), so this is an R96
+integration gap, not a tolerance question.
+
+What wiring needs (from `ssr.h`'s contract): the stage's lit pass draws
+the surface program's `kSsrTargets` variant, with three more color outputs
+(octahedral normal and roughness, IBL radiance, specular weight) at the
+view's extent. The pass needs an RGBA16F lit frame and the opaque depth in
+`kSampled`. `ScreenSpaceReflections::Record` writes a separate RGBA16F
+output, which then replaces the view's color before the translucent stream
+continues. In the game the lit pass renders into the backend's frame, so
+this changes the world pass's lit rendering (attachments, pipeline
+variants, per-view targets). That code is under another session's
+uncommitted runtime-direct change, so this slice records the gap and the
+design rather than editing around their work. The penumbra band is a
+separate, smaller shadow-filter difference, not yet attributed.
+
+Status of "game matches lab" on the matched matrix (diagnostic, current
+build): 16 of 20 cameras are within the first-profile limits (mean 3, p99
+25, 3% over 8). The misses are projector-cookie room/wall (the
+projector-colour convention decision), material-sweep front/grazing (SSR),
+mirror-corridor/low (reflection edges, 10.4% over 8; SSR is likely there
+too) and sun-colonnade/yard (p99 55, silhouettes). R96 stays `active`.
