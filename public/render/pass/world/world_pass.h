@@ -54,6 +54,7 @@
 #include "render/device/device.h"
 #include "render/frame/debug_controls.h"
 #include "render/material/surface_program.h"
+#include "render/projected_light.h"
 #include "render/resources/mip_feedback.h"
 #include "render/shadow_tile.h"
 
@@ -420,6 +421,13 @@ struct StageViewLights
 	float sunDirection[4] = {};
 	float sunColor[4] = {};
 	float sunShadow[4] = { -1.0f, 0.0f, 0.0f, 0.0f };
+	// The view's projected lights (render.projected-light.v1), each with its
+	// cookie layer and shadow tile, and the cookies as one 2D array in
+	// kSampled (render.composition's CookieArray); view.counts[0] is their
+	// number.
+	std::vector<projected_light::LightGpu> projectors;
+	device::TextureId cookies;
+	device::TextureDesc cookiesDesc;
 };
 
 // Opaque composition-owned lighting snapshot. Its lifetime follows the view

@@ -1088,6 +1088,73 @@ void CoreWorld::StageCapture::Release()
 	reflection.clear();
 }
 
+namespace
+{
+
+// The game's files through the host's RenderCoreFileSource.
+class HostFiles final : public mdl::IModelFiles
+{
+public:
+	explicit HostFiles( const RenderCoreFileSource &source ) : m_Source( source ) {}
+	bool Exists( const std::string &path ) const override
+	{
+		return m_Source.size && m_Source.size( path.c_str() ) != 0;
+	}
+	bool Read( const std::string &path, std::string &out ) const override
+	{
+		if ( !m_Source.size || !m_Source.read )
+			return false;
+		const unsigned long long bytes = m_Source.size( path.c_str() );
+		if ( bytes == 0 || bytes > ( 256ull << 20 ) )
+			return false;
+		out.resize( std::size_t( bytes ) );
+		return m_Source.read( path.c_str(), out.data(), bytes );
+	}
+
+private:
+	RenderCoreFileSource m_Source;
+};
+
+} // namespace
+
+void CoreWorld::RefreshCookies()
+{
+	std::vector<std::string> names;
+	for ( const light_set::RuntimeProjectedLight &projected : m_Lights.projected )
+	{
+		const std::string cookie = projected.light.cookie;
+		if ( !cookie.empty() && std::find( names.begin(), names.end(), cookie ) == names.end() )
+			names.push_back( cookie );
+	}
+	if ( names == m_CookieNames && ( m_CookieImages || !m_CookieRefusal.empty() ) )
+		return;
+	m_CookieNames = names;
+	m_CookieImages.reset();
+	m_CookieRefusal.clear();
+	if ( m_Lights.projected.empty() )
+	{
+		m_ProjectorsLit = 0;
+		return;
+	}
+	if ( !m_Files.size || !m_Files.read )
+		m_CookieRefusal = "no file source for projector cookies";
+	else
+	{
+		auto images = DecodeCookies( HostFiles( m_Files ), names );
+		if ( images )
+			m_CookieImages = std::make_shared<const CookieImages>( std::move( images ).Value() );
+		else
+			m_CookieRefusal = images.Error();
+	}
+	m_ProjectorsLit = m_CookieImages ? unsigned( m_Lights.projected.size() ) : 0u;
+	if ( !m_CookieImages )
+	{
+		m_ProjectorsRefused.fetch_add( m_Lights.projected.size(), std::memory_order_relaxed );
+		std::fprintf( stderr, "render core: %zu projected light(s) refused: %s\n",
+		    m_Lights.projected.size(), m_CookieRefusal.c_str() );
+	}
+}
+
 CoreWorld::ViewLightInputs CoreWorld::TakeViewLightInputs(
     const float worldToView[16], const float viewToClip[16], const float viewport[6] ) const
 {
@@ -1110,6 +1177,22 @@ CoreWorld::ViewLightInputs CoreWorld::TakeViewLightInputs(
 	in.mapAreas = in.stageWorld ? std::min( m_MapLights.areas.size(), in.areas.size() ) : 0;
 	if ( in.stageWorld )
 		in.sun = m_MapLights.sun;
+	// The frame's projected lights, each with its cookie's layer (the white
+	// layer after the named ones for a projector without a cookie).
+	if ( in.stageWorld && m_CookieImages )
+	{
+		in.cookies = m_CookieImages;
+		const std::vector<std::string> &names = m_CookieImages->names;
+		for ( const light_set::RuntimeProjectedLight &projected : m_Lights.projected )
+		{
+			const std::string cookie = projected.light.cookie;
+			const auto found = std::find( names.begin(), names.end(), cookie );
+			in.projectors.push_back( projected.light );
+			in.cookieLayers.push_back( cookie.empty() || found == names.end()
+			                               ? int( names.size() )
+			                               : int( found - names.begin() ) );
+		}
+	}
 	in.sunMask = m_StageSunMask;
 	in.shadowQuality = m_ShadowQuality.load( std::memory_order_relaxed );
 	if ( in.shadowQuality > 0 && m_ShadowMovers.load( std::memory_order_relaxed ) )
@@ -1210,11 +1293,13 @@ std::shared_ptr<const pass::world::StageViewLights> CoreWorld::StageViewLightsFo
 	const std::vector<area_light::AreaLight> &areas = in.areas;
 	const std::optional<pass::lights::MapSun> &sun = in.sun;
 	pass::shadows::ShadowPlan plan;
-	if ( ( !shadowed.empty() || !areas.empty() || sun ) && in.shadowQuality > 0 )
+	if ( ( !shadowed.empty() || !areas.empty() || sun || !in.projectors.empty() ) &&
+	     in.shadowQuality > 0 )
 	{
 		pass::shadows::ShadowPlanInput input;
 		input.lights = shadowed;
 		input.areas = areas;
+		input.projectors = in.projectors;
 		if ( sun )
 			input.toSun = sun->toSun;
 		input.camera.view = desc.view;
@@ -1262,6 +1347,16 @@ std::shared_ptr<const pass::world::StageViewLights> CoreWorld::StageViewLightsFo
 		const RuntimeShadowLayout layout =
 		    tile >= 0 ? plan.lightLayouts[k] : RuntimeShadowLayout::kSingle;
 		out->lights.push_back( material::PackSurfaceLight( light, tile, layout, light.baked ) );
+	}
+	// The projected lights, with their cookie layers and tiles.
+	for ( std::size_t i = 0; i < in.projectors.size(); ++i )
+		out->projectors.push_back( projected_light::PackLightGpu( in.projectors[i],
+		    in.cookieLayers[i], i < plan.projectorTiles.size() ? plan.projectorTiles[i] : -1 ) );
+	out->view.counts[0] = float( out->projectors.size() );
+	if ( m_Cookies && m_CookiesUploaded == in.cookies )
+	{
+		out->cookies = m_Cookies->Texture();
+		out->cookiesDesc = m_Cookies->Desc();
 	}
 	// The area lights and the sun, with their tiles.
 	PackViewAreaLights( areas, in.mapAreas, plan.areaTiles, *out );
@@ -1571,6 +1666,7 @@ bool CoreWorld::DrawView( const unsigned int *surfaces, unsigned int count,
 		if ( !pending )
 		{
 			pending = std::make_shared<PendingView>();
+			RefreshCookies();
 			pending->inputs = TakeViewLightInputs( worldToView, viewToClip, viewport );
 			if ( m_QueuedLighting.size() < 64 )
 				m_QueuedLighting.push_back( { hostFrame, m_Lights.revision, movers, pending } );
@@ -1891,6 +1987,8 @@ void CoreWorld::GetStats( RenderCoreWorldStats *out ) const
 	out->volumetricMedium = m_Media ? 1u : 0u;
 	out->volumetricViews = m_VolumetricViews.load( std::memory_order_relaxed );
 	out->volumetricRefused = m_VolumetricRefused.load( std::memory_order_relaxed );
+	out->projectorsLit = m_ProjectorsLit;
+	out->projectorsRefused = m_ProjectorsRefused.load( std::memory_order_relaxed );
 	std::snprintf( out->lastFailure, sizeof( out->lastFailure ), "%s", stats.lastFailure.c_str() );
 	std::size_t used = 0;
 	for ( const auto &[reason, count] : stats.gaps )
@@ -2585,6 +2683,25 @@ void CoreWorld::RecordWorldBatch( std::span<const std::uint32_t> tags,
 	{
 		if ( timers )
 			encoder.BeginLabel( "prepare lights and shadows" );
+		// The frame's cookie set, uploaded once per set; the old array goes
+		// behind the frames that read it.
+		if ( pending->inputs.cookies && pending->inputs.cookies != m_CookiesUploaded )
+		{
+			if ( m_Cookies )
+				m_Cookies->Release( target.submitted );
+			m_Cookies = std::make_unique<CookieArray>();
+			m_CookiesUploaded = pending->inputs.cookies;
+			if ( std::optional<std::string> why =
+			         m_Cookies->Create( *target.device, *pending->inputs.cookies ) )
+			{
+				std::fprintf(
+				    stderr, "render core: projector cookies refused: %s\n", why->c_str() );
+				m_Cookies->Release( target.submitted );
+				m_Cookies.reset();
+			}
+			else
+				m_Cookies->RecordUpload( encoder );
+		}
 		const std::shared_ptr<PendingView::FrameLighting> lighting =
 		    pending->ForFrame( target.frame );
 		std::call_once( lighting->made,
@@ -3379,6 +3496,10 @@ void CoreWorld::BindStageDevice( device::IRenderDevice2 &device )
 	m_Ao.reset();
 	m_Volumetric.reset();
 	m_VolumetricFormat = device::Format::kUnknown;
+	if ( m_Cookies )
+		m_Cookies->Release( device::CompletionToken() );
+	m_Cookies.reset();
+	m_CookiesUploaded.reset();
 	m_Occlusion = device::TextureId();
 	m_OcclusionDesc = device::TextureDesc();
 	m_ShadowDevice = &device;
@@ -3445,6 +3566,10 @@ void CoreWorld::ReleaseShadows( device::IRenderDevice2 &device )
 	m_Ao.reset();
 	m_Volumetric.reset();
 	m_VolumetricFormat = device::Format::kUnknown;
+	if ( m_Cookies )
+		m_Cookies->Release( device::CompletionToken() );
+	m_Cookies.reset();
+	m_CookiesUploaded.reset();
 	for ( const Atlas &atlas : m_Atlases )
 	{
 		(void)device.Release( atlas.texture, device::CompletionToken() );

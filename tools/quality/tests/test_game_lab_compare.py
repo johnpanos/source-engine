@@ -110,6 +110,8 @@ class GameLabComparisonTests(unittest.TestCase):
         command = seen["command"]
         self.assertEqual(float(command[command.index("--output-peak") + 1]),
                          compare.GAME_SCENE_PEAK)
+        # Moving-light GI (the projectors' bounce) is out of the game's scope.
+        self.assertIn("--no-bounce", command)
 
 
 if __name__ == "__main__":

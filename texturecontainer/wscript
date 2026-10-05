@@ -13,6 +13,18 @@ def configure(conf):
 
 def build(bld):
 	bld.add_subproject('vtf')
+	# The VTF reader needs no KTX: the render core's cookies and the lab read
+	# VTFs in every client build.
+	bld.stlib(
+		features='c cxx',
+		env=bld.strict_cpp20_env(),
+		source=['vtf_reader.cpp'],
+		target='vtf_texture_reader',
+		name='vtf_texture_reader',
+		arch_module='content.vtf-reader',
+		includes=['../public'],
+		use=['vtf_container'],
+		install_path=None)
 	if not bld.env.KTX_READ_ENABLED:
 		return
 	bld.stlib(
@@ -23,14 +35,4 @@ def build(bld):
 		arch_module='content.ktx2-reader',
 		includes=['../public'] + bld.env.INCLUDES_KTXREAD + bld.env.INCLUDES_VULKAN,
 		use=['KTXREAD', 'VULKAN'],
-		install_path=None)
-	bld.stlib(
-		features='c cxx',
-		env=bld.strict_cpp20_env(),
-		source=['vtf_reader.cpp'],
-		target='vtf_texture_reader',
-		name='vtf_texture_reader',
-		arch_module='content.vtf-reader',
-		includes=['../public'],
-		use=['vtf_container'],
 		install_path=None)

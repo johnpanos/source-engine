@@ -8,6 +8,8 @@
 #include "dynamic_occlusion.h"
 
 #include "render_core_world.h"
+#include "filesystem.h"
+#include "filesystem_engine.h"
 
 #include "engine/render_core_binding.h"
 #include "render/composition/render_core.h"
@@ -180,6 +182,29 @@ render::frame::DebugControls DebugControlsFromConVars( const RenderCoreHostState
 	return debug;
 }
 
+// The game's files for the core (RenderCoreFileSource): the GAME search
+// path, VPKs included.
+unsigned long long CoreFileSize( const char *path )
+{
+	FileHandle_t file = g_pFileSystem->Open( path, "rb", "GAME" );
+	if ( !file )
+		return 0;
+	const unsigned long long size = g_pFileSystem->Size( file );
+	g_pFileSystem->Close( file );
+	return size;
+}
+
+bool CoreFileRead( const char *path, void *out, unsigned long long bytes )
+{
+	FileHandle_t file = g_pFileSystem->Open( path, "rb", "GAME" );
+	if ( !file )
+		return false;
+	const bool read = g_pFileSystem->Size( file ) == bytes &&
+	                  g_pFileSystem->Read( out, int( bytes ), file ) == int( bytes );
+	g_pFileSystem->Close( file );
+	return read;
+}
+
 } // namespace
 
 DLL_EXPORT bool Engine_BindRenderCore( const RenderCoreBinding *pBinding )
@@ -200,6 +225,8 @@ DLL_EXPORT bool Engine_BindRenderCore( const RenderCoreBinding *pBinding )
 	host.deviceName = pBinding->deviceName;
 	host.capabilities = pBinding->capabilities;
 	host.world = pBinding->world;
+	if ( host.world )
+		host.world->SetFileSource( { &CoreFileSize, &CoreFileRead } );
 	host.temporal = pBinding->temporal;
 	host.panels = pBinding->panels;
 	host.gpuCompute = pBinding->gpuCompute;

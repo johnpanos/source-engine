@@ -2841,8 +2841,12 @@ void WorldPass::RecordBatch(
 				screen.sceneColor = viewSceneColor;
 				screen.sceneColorDesc = viewSceneColorDesc;
 			}
-			material::GroupRequest request = m.resolver->Program().ViewGroup(
-			    lights.view, lights.froxels, lights.indices, lights.lights, shadows, {}, screen );
+			material::SurfaceProjectors projectors;
+			projectors.lights = lights.projectors;
+			projectors.cookies = lights.cookies;
+			projectors.cookiesDesc = lights.cookiesDesc;
+			material::GroupRequest request = m.resolver->Program().ViewGroup( lights.view,
+			    lights.froxels, lights.indices, lights.lights, shadows, projectors, screen );
 			for ( auto &buffer : request.storage )
 			{
 				if ( buffer.binding == 1 && lights.gpuFroxels.IsValid() )

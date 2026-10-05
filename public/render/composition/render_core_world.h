@@ -159,6 +159,15 @@ struct RenderCoreWorldQuality
 	int volumetric = 1;
 };
 
+// The game's files as the core reads them (projector cookies,
+// materials/<name>.vtf): size returns the file's bytes (0 when absent) and
+// read fills exactly that many. Main thread.
+struct RenderCoreFileSource
+{
+	unsigned long long ( *size )( const char *path ) = nullptr;
+	bool ( *read )( const char *path, void *out, unsigned long long bytes ) = nullptr;
+};
+
 struct RenderCoreWorldStats
 {
 	unsigned int materials;
@@ -214,6 +223,11 @@ struct RenderCoreWorldStats
 	unsigned int volumetricMedium;
 	unsigned long long volumetricViews;
 	unsigned long long volumetricRefused;
+	// The frame's projected lights (env_projectedtexture) the stage views
+	// light with, and those refused by name (a cookie that is missing, does
+	// not decode or differs in size from the first; no file source).
+	unsigned int projectorsLit;
+	unsigned long long projectorsRefused;
 	char lastFailure[256];
 	char lastRefusal[256];
 	char gaps[16384];   // bounded scene census: "count reason" lines, most frequent first
@@ -351,6 +365,9 @@ public:
 	virtual void SetGpuTimers( bool enabled ) = 0;
 	// The stage's quality settings, from its next view. Main thread.
 	virtual void SetQuality( const RenderCoreWorldQuality &quality ) = 0;
+	// The game's files (projector cookies). Main thread, before the views
+	// that need them; without one the frame's projectors are refused.
+	virtual void SetFileSource( const RenderCoreFileSource & ) {}
 	// The sections' GPU time since the last call, over the frames read (the
 	// return value; 0 when none was), as "depth ms-per-frame
 	// count-per-frame name" lines in `out`. Main thread.

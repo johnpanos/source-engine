@@ -10426,3 +10426,73 @@ R96 stays `active`: projectors, cutout shadows, transmission and
 refraction, remaining materials, skinned models, nested and portal views
 and moving doors remain; "game matches lab" is not met (projector-cookie,
 mirror-corridor/low, material-sweep), and `r_core_world` stays opt-in.
+
+### K12: projected lights on the game's core, and one cookie owner (2026-10-05)
+
+The R96 projector gap (`lt_projector_cookie` room/wall 23.29/68.37 of 255,
+"the product world stage does not feed the projector/cookie to the core
+lighting pass") is closed for the lighting path. A level difference remains,
+from a recorded convention mismatch (below).
+
+- **One cookie owner.** `render.composition`'s `projector_cookies.h` now
+  owns the cookie array: `DecodeCookies` (CPU, any thread, the shared VTF
+  container reader) and `CookieArray` (device array, upload, and a
+  token-based `Release` so a running renderer never waits idle). The lab's
+  private copy and `render/lab/lab_media.cpp` are deleted, and
+  `lab_media.h` aliases the shared owner. `texturecontainer/wscript` now
+  defines `vtf_texture_reader` before its KTX check (the reader needs no
+  KTX, and a client tree without KTX silently dropped it from `use`).
+  `render.composition` gains the `content.vtf-reader` edge.
+- **Game.** The engine installs a `RenderCoreFileSource` (the GAME search
+  path, VPKs included) when it binds the world. `CoreWorld`'s light sink
+  keeps the light set's `projected` lights. On the main thread, when the
+  set of cookie names changes, it decodes them once and gives each queued
+  stage view its projectors with cookie layers and the shared images. On
+  the render sequence it uploads each new cookie set once (the old array is
+  released behind the frames that read it). The projectors join the view's
+  shadow plan (`ShadowPlanInput::projectors`, so they get atlas tiles) and
+  reach the surface program through `StageViewLights` and
+  `SurfaceProjectors`, as in the lab. A cookie that is missing, does not
+  decode or differs in size from the first refuses the frame's projectors
+  by name (`RenderCoreWorldStats::projectorsRefused`, first reason logged).
+  Without a file source they are refused too.
+- **The comparator** leaves the lab's projected-light bounce out
+  (`LAB_TERMS_OUT_OF_GAME = --no-bounce`). It is moving-light GI, which the
+  user's 2026-09-30 decision keeps out of the product, so a lab frame that
+  includes it can never match the game. The check
+  `test_lab_frame_takes_the_games_output` asserts it.
+
+Evidence (same host, build and dirty-tree caveat as the fog slice):
+`render_lab suite volumetric` 17/17, `map-terms` 38/38 and `bounce` 5/5;
+comparator and matrix tests 14/14; archlint adds nothing new (its two stale
+QuickTime entries are another session's removal). Matrix:
+`quality-results/rendercore-model-game/projectors-matrix-20261005/`.
+
+| Camera | Mean /255 (fog slice → now) | p99 | > 8 |
+| --- | --- | --- | --- |
+| projector-cookie/room | 22.15 → 9.26 | 88 | 12.5% |
+| projector-cookie/wall | 63.40 → 30.27 | 89 | 40.7% |
+| foggy-hall/nave | 1.52 → 1.43 | 15 | 2.92%: now within all three limits (the hall's projector lights it) |
+| foggy-hall/side | 1.65 → 1.56 | 16 | 1.92% |
+
+Every other camera is unchanged from the fog slice's table.
+
+**The remaining projector difference is a convention decision, not
+lighting.** In the beam, the game is 0.245x the lab (median per pixel, linear
+light), and the cookie, frustum, shadows and range match. The light records
+differ only in color: the lab has (2.5, 2.3, 2.0) and the game (0.490, 0.471,
+0.442). `render.pass.lights`' `MapLightsFromEntities` (the lab) reads
+`lightcolor "255 245.5 230.4 637.5"` as GammaToLinear(rgb) x brightness / 255,
+Portal's server convention. Portal 2's server (`game/server/portal2/
+env_projectedtexture.cpp`) keeps it in a `color32`, so the brightness 637.5
+wraps to 125 in a byte. Its client then folds rgb / 255 x alpha / 255 x
+lightstyle x `brightnessscale`, linear, as the retail shaders do:
+255/255 x 125/255 = 0.490. Which convention the shared map-light parse
+follows per game, and whether this fixture should author a brightness that
+Portal 2 can represent, is for the light-set owner and the user. It is not
+changed here.
+
+Not in this slice: projectors in the volumetric medium (the game's medium
+still logs "projectors not in the medium yet"); `lightworld 0` (models-only)
+projectors are lit like any other; and the projector bounce, which is out of
+the game's scope by decision. R96 stays `active`.

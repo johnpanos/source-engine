@@ -59,10 +59,12 @@ def build(bld):
 	# RFC 0016: this root composes the render core (render.composition). Its
 	# modules are static libraries of client, tool and test builds only.
 	if bld.env.RENDER_CORE:
-		# jobsystem and mapcontainer are named here as well: the render modules
-		# use them, but waf first reaches them through a shared library in this
-		# list and would then leave them out of this link.
-		libs += ['render_composition', 'mdl', 'jobsystem', 'mapcontainer', 'render_device']
+		# jobsystem, mapcontainer and vtf_texture_reader are named here as
+		# well: the render modules use them, but waf first reaches them through
+		# a shared library in this list and would then leave them out of this
+		# link.
+		libs += ['render_composition', 'mdl', 'jobsystem', 'mapcontainer', 'render_device',
+			'vtf_texture_reader']
 		defines += ['LINKED_RENDER_CORE',
 			'RENDER_CORE_DEFAULT_DEVICE="%s"' % bld.env.RENDER_CORE_DEVICE,
 			'RENDER_CORE_FEATURES="%s"' % bld.env.RENDER_CORE_FEATURES,

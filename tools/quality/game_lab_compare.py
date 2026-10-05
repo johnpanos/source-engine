@@ -29,6 +29,11 @@ LIMITS = {"mean": 3.0, "p99": 25.0, "fraction_gt8": 0.03}
 # (CVulkanContext's output targets, vulkan_device.cpp). The lab applies the
 # same pass (--output-peak) so both images hold display values.
 GAME_SCENE_PEAK = 16.0
+# Lab terms the game does not compose by decision, left out of the lab frame
+# so the comparison judges the game's declared terms: the projected lights'
+# bounce (render.pass.bounce) is moving-light GI, out of the product's scope
+# (user decision 2026-09-30; the indirect light is the bake's).
+LAB_TERMS_OUT_OF_GAME = ("--no-bounce",)
 
 
 def sha256(path):
@@ -117,7 +122,7 @@ def render_lab(lab_binary, content_root, fixture, camera, out, state=None):
                "--hfov", str(fixture["horizontal_fov_degrees"]),
                "--size", "%dx%d" % (film["width"], film["height"]),
                "--core-direct", "--output-peak", "%g" % GAME_SCENE_PEAK,
-               "--out", str(out)]
+               *LAB_TERMS_OUT_OF_GAME, "--out", str(out)]
     model = lab_inputs.probe_model(fixture, state)
     if model:
         command += ["--model", model[0], "--model-origin",

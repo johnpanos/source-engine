@@ -25,6 +25,7 @@
 #include "render/legacy/core_passes.h"
 #include "render/pass/debug/debug_overlays.h"
 #include "render/composition/map_media.h"
+#include "render/composition/projector_cookies.h"
 #include "render/pass/ao/ao.h"
 #include "render/pass/volumetric/volumetric.h"
 #include "render/pass/indirect/port_compute.h"
@@ -147,6 +148,7 @@ public:
 	void GetStats( RenderCoreWorldStats *out ) const override;
 	void SetGpuTimers( bool enabled ) override;
 	void SetQuality( const RenderCoreWorldQuality &quality ) override;
+	void SetFileSource( const RenderCoreFileSource &source ) override { m_Files = source; }
 	unsigned int TakeGpuTimes( char *out, unsigned int size ) override;
 	void ReadCosts( RenderCoreCostReport *out ) override;
 
@@ -365,12 +367,14 @@ private:
 			++revision;
 			lights = snapshot.lights;
 			areas = snapshot.areas;
+			projected = snapshot.projected;
 			occluders = snapshot.occluders;
 			triangles = snapshot.coreTriangles;
 		}
 		std::uint64_t revision = 0; // each publication invalidates queued-view reuse
 		std::vector<light_set::RuntimeLight> lights;
 		std::vector<light_set::RuntimeAreaLight> areas;
+		std::vector<light_set::RuntimeProjectedLight> projected;
 		std::vector<dynamic_occlusion::TriangleOccluder> triangles;
 		std::vector<light_set::RuntimeOccluder> occluders; // the moving objects
 	};
@@ -447,6 +451,11 @@ private:
 		int shadowQuality = 0;
 		std::vector<dynamic_occlusion::TriangleOccluder> triangles;
 		std::vector<light_set::RuntimeOccluder> movers; // the frame's moving objects
+		// The frame's projected lights with a cookie, each with its layer of
+		// `cookies` (the frame's cookie set, decoded on the main thread).
+		std::vector<projected_light::Light> projectors;
+		std::vector<int> cookieLayers;
+		std::shared_ptr<const CookieImages> cookies;
 	};
 	// A queued stage view keeps its CPU input snapshot across record-stream
 	// replays. GPU light lists belong to one device submission frame: the
@@ -568,6 +577,19 @@ private:
 	// The stage map's participating media (its entity lump; render
 	// sequence reads it only between SetWorldMesh calls, as m_MapLights).
 	std::shared_ptr<const MapMedia> m_Media;
+	// The game's files and the frame's projector cookies (main thread):
+	// decoded again only when the set of cookie names changes. A set that
+	// does not decode leaves the frame's projectors out, by name.
+	RenderCoreFileSource m_Files;
+	std::vector<std::string> m_CookieNames;
+	std::shared_ptr<const CookieImages> m_CookieImages;
+	std::string m_CookieRefusal;
+	unsigned int m_ProjectorsLit = 0;
+	std::atomic<unsigned long long> m_ProjectorsRefused{ 0 };
+	void RefreshCookies();
+	// The uploaded cookie array (render sequence), of the images it holds.
+	std::unique_ptr<CookieArray> m_Cookies;
+	std::shared_ptr<const CookieImages> m_CookiesUploaded;
 	bool m_StageSunMask = false;
 	std::atomic<unsigned long long> m_StageLightingBuilds{ 0 };
 	// Render sequence: views that read the frame's stage lighting instead of
