@@ -18,7 +18,10 @@
     "layout": "planar",
     "exclude_materials": [
       "relight_occluder"
-    ]
+    ],
+    "seam_gate": {
+      "max": 0.24
+    }
   },
   "probe_volume": {
     "spacing_m": 2.0,
