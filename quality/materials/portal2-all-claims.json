@@ -108,9 +108,9 @@
     "lightmappedgeneric": {
       "dynamically_unresolved": 70,
       "statically_supported": 452,
-      "supported_with_requirements": 268,
+      "supported_with_requirements": 281,
       "total": 811,
-      "unsupported": 21
+      "unsupported": 8
     },
     "lightshafts": {
       "dynamically_unresolved": 0,
@@ -276,9 +276,9 @@
     "unlitgeneric": {
       "dynamically_unresolved": 22,
       "statically_supported": 162,
-      "supported_with_requirements": 798,
+      "supported_with_requirements": 809,
       "total": 1039,
-      "unsupported": 57
+      "unsupported": 46
     },
     "unlittwotexture": {
       "dynamically_unresolved": 23,
@@ -289,17 +289,17 @@
     },
     "vertexlitgeneric": {
       "dynamically_unresolved": 22,
-      "statically_supported": 841,
-      "supported_with_requirements": 283,
+      "statically_supported": 844,
+      "supported_with_requirements": 292,
       "total": 1211,
-      "unsupported": 65
+      "unsupported": 53
     },
     "water": {
       "dynamically_unresolved": 0,
       "statically_supported": 0,
-      "supported_with_requirements": 36,
+      "supported_with_requirements": 40,
       "total": 59,
-      "unsupported": 23
+      "unsupported": 19
     },
     "windowimposter": {
       "dynamically_unresolved": 0,
@@ -339,11 +339,11 @@
   },
   "game": "portal2",
   "gaps": {
-    "$envmap needs the stage's native reflection probes": 20,
+    "$envmap needs the stage's native reflection probes": 21,
     "$spriterendermode 8 needs an unimplemented sprite point": 4,
     "Cable needs its base texture and normal texture": 4,
     "VMT: missing include materials/models/props_foliage/tree_include_dryleaves.vmt": 1,
-    "family vertexlit has no program yet": 25,
+    "family vertexlit has no program yet": 26,
     "import: Black": 1,
     "import: DebugLuxels": 3,
     "import: DepthOfField": 1,
@@ -403,9 +403,8 @@
     "the model does not bind the per-view texture _rt_waterreflection ($basetexture)": 2,
     "the model does not bind the per-view texture _rt_waterrefraction ($basetexture)": 2,
     "the model does not bind the per-view texture _rt_waterrefraction ($refracttexture)": 3,
-    "the model does not bind the per-view texture env_cubemap ($envmap)": 14,
+    "the model does not bind the per-view texture env_cubemap ($envmap)": 15,
     "the model does not read $additive": 4,
-    "the model does not read $alphaenvmapmask": 4,
     "the model does not read $alphatesttocoverage": 1,
     "the model does not read $blendframes": 1,
     "the model does not read $bump_force_on": 2,
@@ -413,20 +412,17 @@
     "the model does not read $bumpscale": 1,
     "the model does not read $color2": 2,
     "the model does not read $comparez": 1,
-    "the model does not read $decalfadetime": 12,
-    "the model does not read $diffuseexp": 3,
+    "the model does not read $decalsecondpass": 2,
     "the model does not read $flashlightnolambert": 3,
     "the model does not read $flat": 7,
     "the model does not read $fresnelreflection": 1,
     "the model does not read $groupbame": 1,
-    "the model does not read $keywords": 3,
     "the model does not read $linearwrite": 1,
     "the model does not read $nomip": 1,
     "the model does not read $nooverbright": 1,
     "the model does not read $nopaint": 2,
     "the model does not read $normalmapenvmapmask": 1,
     "the model does not read $phong": 1,
-    "the model does not read $pseudotranslucent": 5,
     "the model does not read $reflect2dskybox": 1,
     "the model does not read $refracttinttexture": 12,
     "the model does not read $rimboost": 1,
@@ -435,15 +431,11 @@
     "the model does not read $splinetype": 3,
     "the model does not read $spritescale": 1,
     "the model does not read $startfadesize": 2,
-    "the model does not read $use_in_fillrate_mode": 4,
     "the model does not read $vertexalpha": 5,
     "the model does not read $vertexcolors": 1,
-    "the model does not read $vertextcolor": 4,
-    "the model does not read $worldimposter": 5,
     "the model does not read $writez": 1,
     "the model does not read /*": 2,
     "the model does not read ignorez": 1,
-    "the model does not read phong": 5,
     "the modern mesh point does not draw $ignorez": 1
   },
   "materials": {
@@ -21289,34 +21281,40 @@
       ]
     },
     "materials/decals/combineballfade.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the model does not read $decalfadetime",
       "input_sha256": "7cbe6cfbb31d5709c65675d0f5723e7b2125e6763ca6dbe3779df3b35e6faaeb",
       "mesh_claims": [
         {
-          "gap": "the model does not read $decalfadetime",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $decalfadetime",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $decalfadetime",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $decalfadetime",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -21324,23 +21322,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$decalfadetime"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$decalfadetime"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $decalfadetime",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $decalfadetime",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -21348,34 +21340,40 @@
       ]
     },
     "materials/decals/combineballfade2.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the model does not read $decalfadetime",
       "input_sha256": "382fbbecd1d1d038ff3a82d8ae0e686d1732535119417fa526b7477c91db9aeb",
       "mesh_claims": [
         {
-          "gap": "the model does not read $decalfadetime",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $decalfadetime",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $decalfadetime",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $decalfadetime",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -21383,23 +21381,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$decalfadetime"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$decalfadetime"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $decalfadetime",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $decalfadetime",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -21407,34 +21399,40 @@
       ]
     },
     "materials/decals/combineballfade3.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the model does not read $decalfadetime",
       "input_sha256": "2680bc351841c449cc214b8ccb8dbd4e00028d1d59110a8b8a7cf1bc4566d05d",
       "mesh_claims": [
         {
-          "gap": "the model does not read $decalfadetime",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $decalfadetime",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $decalfadetime",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $decalfadetime",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -21442,23 +21440,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$decalfadetime"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$decalfadetime"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $decalfadetime",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $decalfadetime",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -23100,32 +23092,32 @@
     "materials/decals/decalsplash.vmt": {
       "candidates": [],
       "family": "unlit",
-      "gap": "the model does not read $decalfadetime",
+      "gap": "$envmap needs the stage's native reflection probes",
       "input_sha256": "1d53917a3989097802a3e30e290a8ac456cdac8d0465fa1d195ddbe139b3d5aa",
       "mesh_claims": [
         {
-          "gap": "the model does not read $decalfadetime",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $decalfadetime",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $decalfadetime",
+          "gap": "the family does not draw $envmapmask",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $decalfadetime",
+          "gap": "the family does not draw $envmapmask",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -23134,22 +23126,20 @@
       ],
       "proxies": [],
       "refusal_features": [
-        "parameter:$decalfadetime"
+        "parameter:$envmap",
+        "parameter:$envmapmask"
       ],
       "shader": "unlitgeneric",
       "status": "unsupported",
-      "unmapped_keys": [
-        "$decalfadetime"
-      ],
       "world_claims": [
         {
-          "gap": "the model does not read $decalfadetime",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $decalfadetime",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -23865,34 +23855,40 @@
       ]
     },
     "materials/decals/extinguish1.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the model does not read $decalfadetime",
       "input_sha256": "ef1da6a2e9125472ce9fef35232ef9efeb27574f0437fa07d33642bc1481cfd3",
       "mesh_claims": [
         {
-          "gap": "the model does not read $decalfadetime",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $decalfadetime",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $decalfadetime",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $decalfadetime",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -23900,23 +23896,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$decalfadetime"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$decalfadetime"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $decalfadetime",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $decalfadetime",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -25995,32 +25985,32 @@
     "materials/decals/plasmaglowfade.vmt": {
       "candidates": [],
       "family": "unlit",
-      "gap": "the model does not read $decalfadetime",
+      "gap": "the model does not read $decalsecondpass",
       "input_sha256": "46229cb3b33f2177863ff64c77aabecd2fefb13cd420bc9d1d38fe0f1c2a5c9d",
       "mesh_claims": [
         {
-          "gap": "the model does not read $decalfadetime",
+          "gap": "the model does not read $decalsecondpass",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $decalfadetime",
+          "gap": "the model does not read $decalsecondpass",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $decalfadetime",
+          "gap": "the model does not read $decalsecondpass",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $decalfadetime",
+          "gap": "the model does not read $decalsecondpass",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -26029,23 +26019,22 @@
       ],
       "proxies": [],
       "refusal_features": [
-        "parameter:$decalfadetime"
+        "parameter:$decalsecondpass"
       ],
       "shader": "unlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
-        "$decalfadetime",
         "$decalsecondpass"
       ],
       "world_claims": [
         {
-          "gap": "the model does not read $decalfadetime",
+          "gap": "the model does not read $decalsecondpass",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $decalfadetime",
+          "gap": "the model does not read $decalsecondpass",
           "scene_inputs": {
             "world_stage": true
           }
@@ -30501,32 +30490,32 @@
     "materials/decals/redglowfade.vmt": {
       "candidates": [],
       "family": "unlit",
-      "gap": "the model does not read $decalfadetime",
+      "gap": "the model does not read $decalsecondpass",
       "input_sha256": "efa26d00239bf284c9f7bf04286e22325978860460207b89661802c8ae01493b",
       "mesh_claims": [
         {
-          "gap": "the model does not read $decalfadetime",
+          "gap": "the model does not read $decalsecondpass",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $decalfadetime",
+          "gap": "the model does not read $decalsecondpass",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $decalfadetime",
+          "gap": "the model does not read $decalsecondpass",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $decalfadetime",
+          "gap": "the model does not read $decalsecondpass",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -30535,23 +30524,22 @@
       ],
       "proxies": [],
       "refusal_features": [
-        "parameter:$decalfadetime"
+        "parameter:$decalsecondpass"
       ],
       "shader": "unlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
-        "$decalfadetime",
         "$decalsecondpass"
       ],
       "world_claims": [
         {
-          "gap": "the model does not read $decalfadetime",
+          "gap": "the model does not read $decalsecondpass",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $decalfadetime",
+          "gap": "the model does not read $decalsecondpass",
           "scene_inputs": {
             "world_stage": true
           }
@@ -31078,34 +31066,40 @@
       ]
     },
     "materials/decals/scorchfade.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the model does not read $decalfadetime",
       "input_sha256": "8c63b85f0a980d9da01e3850c8b1982687290f6bc1196a9eeddabbab08783381",
       "mesh_claims": [
         {
-          "gap": "the model does not read $decalfadetime",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $decalfadetime",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $decalfadetime",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $decalfadetime",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -31113,23 +31107,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$decalfadetime"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$decalfadetime"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $decalfadetime",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $decalfadetime",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -31195,32 +31183,32 @@
     "materials/decals/scorchfademodel.vmt": {
       "candidates": [],
       "family": "vertexlit",
-      "gap": "the model does not read $decalfadetime",
+      "gap": "family vertexlit has no program yet",
       "input_sha256": "b2093a7c366da2dfab658cbd183d357b9eed96e0c92c82fff12fe41567bc322a",
       "mesh_claims": [
         {
-          "gap": "the model does not read $decalfadetime",
+          "gap": "the modern mesh point does not draw $decal",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $decalfadetime",
+          "gap": "the modern mesh point does not draw $decal",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $decalfadetime",
+          "gap": "the modern mesh point does not draw $decal",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $decalfadetime",
+          "gap": "the modern mesh point does not draw $decal",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -31229,22 +31217,20 @@
       ],
       "proxies": [],
       "refusal_features": [
-        "parameter:$decalfadetime"
+        "family_program:vertexlit",
+        "parameter:$decal"
       ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
-      "unmapped_keys": [
-        "$decalfadetime"
-      ],
       "world_claims": [
         {
-          "gap": "the model does not read $decalfadetime",
+          "gap": "family vertexlit has no program yet",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $decalfadetime",
+          "gap": "family vertexlit has no program yet",
           "scene_inputs": {
             "world_stage": true
           }
@@ -31883,34 +31869,40 @@
       ]
     },
     "materials/decals/splash1.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the model does not read $decalfadetime",
       "input_sha256": "496f0180d18fc39c74ca38392b67a4d3adef1d8753c2196863e1c805350bff01",
       "mesh_claims": [
         {
-          "gap": "the model does not read $decalfadetime",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $decalfadetime",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $decalfadetime",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $decalfadetime",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -31918,23 +31910,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$decalfadetime"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$decalfadetime"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $decalfadetime",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $decalfadetime",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -31998,34 +31984,40 @@
       ]
     },
     "materials/decals/splash2.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the model does not read $decalfadetime",
       "input_sha256": "496f0180d18fc39c74ca38392b67a4d3adef1d8753c2196863e1c805350bff01",
       "mesh_claims": [
         {
-          "gap": "the model does not read $decalfadetime",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $decalfadetime",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $decalfadetime",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $decalfadetime",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -32033,23 +32025,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$decalfadetime"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$decalfadetime"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $decalfadetime",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $decalfadetime",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -32113,34 +32099,40 @@
       ]
     },
     "materials/decals/splash3.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the model does not read $decalfadetime",
       "input_sha256": "496f0180d18fc39c74ca38392b67a4d3adef1d8753c2196863e1c805350bff01",
       "mesh_claims": [
         {
-          "gap": "the model does not read $decalfadetime",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $decalfadetime",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $decalfadetime",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $decalfadetime",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -32148,23 +32140,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$decalfadetime"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$decalfadetime"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $decalfadetime",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $decalfadetime",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -50509,34 +50495,40 @@
       ]
     },
     "materials/glass/glasswindow_frosted.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the model does not read $worldimposter",
       "input_sha256": "c37c4ff13dc20171279c068f5ea656619c97cbac939a14b49a59c34418349e70",
       "mesh_claims": [
         {
-          "gap": "the model does not read $worldimposter",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $worldimposter",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $worldimposter",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $worldimposter",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -50544,23 +50536,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$worldimposter"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$worldimposter"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $worldimposter",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $worldimposter",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -50568,34 +50554,40 @@
       ]
     },
     "materials/glass/glasswindow_frosted_002.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the model does not read $worldimposter",
       "input_sha256": "64d9460da86e3a4d7b141b16ac52992a75a58d5988bfcc4e16bc71a1485d501a",
       "mesh_claims": [
         {
-          "gap": "the model does not read $worldimposter",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $worldimposter",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $worldimposter",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $worldimposter",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -50603,23 +50595,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$worldimposter"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$worldimposter"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $worldimposter",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $worldimposter",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -50627,34 +50613,40 @@
       ]
     },
     "materials/glass/glasswindow_frosted_002b.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the model does not read $worldimposter",
       "input_sha256": "c37c4ff13dc20171279c068f5ea656619c97cbac939a14b49a59c34418349e70",
       "mesh_claims": [
         {
-          "gap": "the model does not read $worldimposter",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $worldimposter",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $worldimposter",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $worldimposter",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -50662,23 +50654,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$worldimposter"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$worldimposter"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $worldimposter",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $worldimposter",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -50863,34 +50849,40 @@
       ]
     },
     "materials/glass/glasswindow_frosted_break001a.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the model does not read $worldimposter",
       "input_sha256": "81f64813e4b9a0ffafbd3e6872f76bd6978c6c666bace70fb7909e379760945f",
       "mesh_claims": [
         {
-          "gap": "the model does not read $worldimposter",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $worldimposter",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $worldimposter",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $worldimposter",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -50898,23 +50890,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$worldimposter"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$worldimposter"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $worldimposter",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $worldimposter",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -50922,34 +50908,42 @@
       ]
     },
     "materials/glass/glasswindow_frosted_shiny.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {
+            "world_stage": true
+          }
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the model does not read $worldimposter",
       "input_sha256": "ef918b76f2fc1804c7226f7a5777300a99993b417958831e372841670061a47a",
       "mesh_claims": [
         {
-          "gap": "the model does not read $worldimposter",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $worldimposter",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $worldimposter",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $worldimposter",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -50957,23 +50951,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$worldimposter"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$worldimposter"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $worldimposter",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $worldimposter",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -53244,34 +53232,40 @@
       ]
     },
     "materials/liquids/water_swamp_m2.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "water",
+          "scene_inputs": {}
+        }
+      ],
       "family": "water",
-      "gap": "the model does not read $pseudotranslucent",
       "input_sha256": "3d884d0a2a93a20a817ac43c33584061706eadac2a9bd84c0dabdaced098fdc4",
       "mesh_claims": [
         {
-          "gap": "the model does not read $pseudotranslucent",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $pseudotranslucent",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $pseudotranslucent",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $pseudotranslucent",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -53279,23 +53273,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$pseudotranslucent"
-      ],
       "shader": "water",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$pseudotranslucent"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $pseudotranslucent",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $pseudotranslucent",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -75612,34 +75600,40 @@
       ]
     },
     "materials/models/player/chell/chell_rev2_head.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
       "family": "vertexlit",
-      "gap": "the model does not read $diffuseexp",
       "input_sha256": "3422981d76b619061ddcde53aaffa6b2c1b6cbac98a27ea935f8b9db11895936",
       "mesh_claims": [
         {
-          "gap": "the model does not read $diffuseexp",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $diffuseexp",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $diffuseexp",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $diffuseexp",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -75647,23 +75641,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$diffuseexp"
-      ],
       "shader": "vertexlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$diffuseexp"
-      ],
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "the model does not read $diffuseexp",
+          "gap": "family vertexlit has no program yet",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $diffuseexp",
+          "gap": "family vertexlit has no program yet",
           "scene_inputs": {
             "world_stage": true
           }
@@ -75671,34 +75659,40 @@
       ]
     },
     "materials/models/player/chell/chell_rev2_legs.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
       "family": "vertexlit",
-      "gap": "the model does not read $diffuseexp",
       "input_sha256": "ebe522eca687f2b2e9cfccabb996aaa584622ed0759a1bce0983359c673adbb9",
       "mesh_claims": [
         {
-          "gap": "the model does not read $diffuseexp",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $diffuseexp",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $diffuseexp",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $diffuseexp",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -75706,23 +75700,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$diffuseexp"
-      ],
       "shader": "vertexlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$diffuseexp"
-      ],
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "the model does not read $diffuseexp",
+          "gap": "family vertexlit has no program yet",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $diffuseexp",
+          "gap": "family vertexlit has no program yet",
           "scene_inputs": {
             "world_stage": true
           }
@@ -75730,34 +75718,40 @@
       ]
     },
     "materials/models/player/chell/chell_rev2_torso.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
       "family": "vertexlit",
-      "gap": "the model does not read $diffuseexp",
       "input_sha256": "2782fb8b6362a838681cee54962d6e68f19594be5ee75ffa05700e90f5389a77",
       "mesh_claims": [
         {
-          "gap": "the model does not read $diffuseexp",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $diffuseexp",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $diffuseexp",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $diffuseexp",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -75765,23 +75759,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$diffuseexp"
-      ],
       "shader": "vertexlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$diffuseexp"
-      ],
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "the model does not read $diffuseexp",
+          "gap": "family vertexlit has no program yet",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $diffuseexp",
+          "gap": "family vertexlit has no program yet",
           "scene_inputs": {
             "world_stage": true
           }
@@ -83294,34 +83282,42 @@
       ]
     },
     "materials/models/props/bed01_glass.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "additive",
+          "geometry": "model_mesh",
+          "pass": "blended",
+          "scene_inputs": {
+            "native_reflection_probes": true
+          }
+        }
+      ],
       "family": "vertexlit",
-      "gap": "the model does not read $alphaenvmapmask",
       "input_sha256": "b9f7d831dba21c7885768ee7a317966576e667e2ac16cba8cf344b524288d4ce",
       "mesh_claims": [
         {
-          "gap": "the model does not read $alphaenvmapmask",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $alphaenvmapmask",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $alphaenvmapmask",
+          "claim": "additive",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $alphaenvmapmask",
+          "claim": "additive",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -83329,23 +83325,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$alphaenvmapmask"
-      ],
       "shader": "vertexlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$alphaenvmapmask"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $alphaenvmapmask",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $alphaenvmapmask",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -83412,34 +83402,42 @@
       ]
     },
     "materials/models/props/box_dropper_tube.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "additive",
+          "geometry": "model_mesh",
+          "pass": "blended",
+          "scene_inputs": {
+            "native_reflection_probes": true
+          }
+        }
+      ],
       "family": "vertexlit",
-      "gap": "the model does not read $alphaenvmapmask",
       "input_sha256": "f0e64f627a08f6e46b06a948aa9c770c45ef7560832f1da13e537a5701875adf",
       "mesh_claims": [
         {
-          "gap": "the model does not read $alphaenvmapmask",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $alphaenvmapmask",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $alphaenvmapmask",
+          "claim": "additive",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $alphaenvmapmask",
+          "claim": "additive",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -83447,23 +83445,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$alphaenvmapmask"
-      ],
       "shader": "vertexlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$alphaenvmapmask"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $alphaenvmapmask",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $alphaenvmapmask",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -94831,34 +94823,42 @@
       ]
     },
     "materials/models/props_bts/booth_glass.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "model_mesh",
+          "pass": "blended",
+          "scene_inputs": {
+            "native_reflection_probes": true
+          }
+        }
+      ],
       "family": "vertexlit",
-      "gap": "the model does not read $alphaenvmapmask",
       "input_sha256": "25fd39cb2ea312fcddc1c97654c9aaa22c4693726e11581174757e9353860f16",
       "mesh_claims": [
         {
-          "gap": "the model does not read $alphaenvmapmask",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $alphaenvmapmask",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $alphaenvmapmask",
+          "claim": "alpha",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $alphaenvmapmask",
+          "claim": "alpha",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -94866,23 +94866,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$alphaenvmapmask"
-      ],
       "shader": "vertexlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$alphaenvmapmask"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $alphaenvmapmask",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $alphaenvmapmask",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -95480,34 +95474,42 @@
       ]
     },
     "materials/models/props_bts/clear_tubes_glass.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "additive",
+          "geometry": "model_mesh",
+          "pass": "blended",
+          "scene_inputs": {
+            "native_reflection_probes": true
+          }
+        }
+      ],
       "family": "vertexlit",
-      "gap": "the model does not read $alphaenvmapmask",
       "input_sha256": "f0e64f627a08f6e46b06a948aa9c770c45ef7560832f1da13e537a5701875adf",
       "mesh_claims": [
         {
-          "gap": "the model does not read $alphaenvmapmask",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $alphaenvmapmask",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $alphaenvmapmask",
+          "claim": "additive",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $alphaenvmapmask",
+          "claim": "additive",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -95515,23 +95517,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$alphaenvmapmask"
-      ],
       "shader": "vertexlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$alphaenvmapmask"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $alphaenvmapmask",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $alphaenvmapmask",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -116363,34 +116359,42 @@
       ]
     },
     "materials/models/props_office/dod_trophy.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {
+            "native_reflection_probes": true
+          }
+        }
+      ],
       "family": "vertexlit",
-      "gap": "the model does not read phong",
       "input_sha256": "053c64e4cb6c9cb44f18e27792144ace64f5c1e9aa40809de0d664eaed23fc70",
       "mesh_claims": [
         {
-          "gap": "the model does not read phong",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read phong",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read phong",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read phong",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -116398,23 +116402,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$phong"
-      ],
       "shader": "vertexlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "phong"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read phong",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read phong",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -116422,34 +116420,42 @@
       ]
     },
     "materials/models/props_office/dod_trophy2.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {
+            "native_reflection_probes": true
+          }
+        }
+      ],
       "family": "vertexlit",
-      "gap": "the model does not read phong",
       "input_sha256": "9046c294cdf6eb34a55b9dab2537427f10c78809d0a5657996dea0851a2c909a",
       "mesh_claims": [
         {
-          "gap": "the model does not read phong",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read phong",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read phong",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read phong",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -116457,23 +116463,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$phong"
-      ],
       "shader": "vertexlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "phong"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read phong",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read phong",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -116481,34 +116481,42 @@
       ]
     },
     "materials/models/props_office/dod_trophy3.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {
+            "native_reflection_probes": true
+          }
+        }
+      ],
       "family": "vertexlit",
-      "gap": "the model does not read phong",
       "input_sha256": "9797b943618dddc991f2d08909f59a1273e5267894a93bcb24a3619615f45507",
       "mesh_claims": [
         {
-          "gap": "the model does not read phong",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read phong",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read phong",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read phong",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -116516,23 +116524,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$phong"
-      ],
       "shader": "vertexlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "phong"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read phong",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read phong",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -118562,34 +118564,42 @@
       ]
     },
     "materials/models/props_office/potato_trophy.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {
+            "native_reflection_probes": true
+          }
+        }
+      ],
       "family": "vertexlit",
-      "gap": "the model does not read phong",
       "input_sha256": "0b30a1ea3bd4c32828269ef22bde7eca45e83a6faa32ae3f3bafd952ac97d52c",
       "mesh_claims": [
         {
-          "gap": "the model does not read phong",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read phong",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read phong",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read phong",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -118597,23 +118607,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$phong"
-      ],
       "shader": "vertexlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "phong"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read phong",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read phong",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -118621,34 +118625,42 @@
       ]
     },
     "materials/models/props_office/shower_trophy.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {
+            "native_reflection_probes": true
+          }
+        }
+      ],
       "family": "vertexlit",
-      "gap": "the model does not read phong",
       "input_sha256": "bc98edbdcd9fb7ff1aaaf6dd1699c4f5c961cee752f79917c42be744f8d23e9a",
       "mesh_claims": [
         {
-          "gap": "the model does not read phong",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read phong",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read phong",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read phong",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -118656,23 +118668,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$phong"
-      ],
       "shader": "vertexlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "phong"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read phong",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read phong",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -136331,34 +136337,40 @@
       ]
     },
     "materials/nature/water_a1_intro3.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "water",
+          "scene_inputs": {}
+        }
+      ],
       "family": "water",
-      "gap": "the model does not read $pseudotranslucent",
       "input_sha256": "334074c2cc35a511f92b4e1f18bc5cadd9e7c4648a35dc2aa7a4e3fabe4a9691",
       "mesh_claims": [
         {
-          "gap": "the model does not read $pseudotranslucent",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $pseudotranslucent",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $pseudotranslucent",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $pseudotranslucent",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -136366,23 +136378,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$pseudotranslucent"
-      ],
       "shader": "water",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$pseudotranslucent"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $pseudotranslucent",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $pseudotranslucent",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -136390,34 +136396,40 @@
       ]
     },
     "materials/nature/water_a2_laser_intro.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "water",
+          "scene_inputs": {}
+        }
+      ],
       "family": "water",
-      "gap": "the model does not read $pseudotranslucent",
       "input_sha256": "334074c2cc35a511f92b4e1f18bc5cadd9e7c4648a35dc2aa7a4e3fabe4a9691",
       "mesh_claims": [
         {
-          "gap": "the model does not read $pseudotranslucent",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $pseudotranslucent",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $pseudotranslucent",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $pseudotranslucent",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -136425,23 +136437,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$pseudotranslucent"
-      ],
       "shader": "water",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$pseudotranslucent"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $pseudotranslucent",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $pseudotranslucent",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -136508,34 +136514,40 @@
       ]
     },
     "materials/nature/water_bts_01.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "water",
+          "scene_inputs": {}
+        }
+      ],
       "family": "water",
-      "gap": "the model does not read $pseudotranslucent",
       "input_sha256": "334074c2cc35a511f92b4e1f18bc5cadd9e7c4648a35dc2aa7a4e3fabe4a9691",
       "mesh_claims": [
         {
-          "gap": "the model does not read $pseudotranslucent",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $pseudotranslucent",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $pseudotranslucent",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $pseudotranslucent",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -136543,23 +136555,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$pseudotranslucent"
-      ],
       "shader": "water",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$pseudotranslucent"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $pseudotranslucent",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $pseudotranslucent",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -136625,32 +136631,32 @@
     "materials/nature/water_glados_01_cheap.vmt": {
       "candidates": [],
       "family": "water",
-      "gap": "the model does not read $pseudotranslucent",
+      "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
       "input_sha256": "e6e4c3f82bc43a9c34691cdde16c76518cf31f491247b145b1f813058006361d",
       "mesh_claims": [
         {
-          "gap": "the model does not read $pseudotranslucent",
+          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $pseudotranslucent",
+          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $pseudotranslucent",
+          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $pseudotranslucent",
+          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -136659,22 +136665,19 @@
       ],
       "proxies": [],
       "refusal_features": [
-        "parameter:$pseudotranslucent"
+        "per_view_texture:env_cubemap"
       ],
       "shader": "water",
       "status": "unsupported",
-      "unmapped_keys": [
-        "$pseudotranslucent"
-      ],
       "world_claims": [
         {
-          "gap": "the model does not read $pseudotranslucent",
+          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $pseudotranslucent",
+          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
           "scene_inputs": {
             "world_stage": true
           }
@@ -137272,34 +137275,40 @@
       ]
     },
     "materials/overlays/construction_mark002.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the model does not read $keywords",
       "input_sha256": "75139c7d2577c131168cb9c1a8a6bd8119b87ced1d9525ed2a276ad6c684d68a",
       "mesh_claims": [
         {
-          "gap": "the model does not read $keywords",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $keywords",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $keywords",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $keywords",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -137307,23 +137316,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$keywords"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$keywords"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $keywords",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $keywords",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -137390,34 +137393,40 @@
       ]
     },
     "materials/overlays/construction_mark005.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the model does not read $keywords",
       "input_sha256": "3570d342aec11b19d8364c1f77d85f9d3e0f24dc5db5cd4afc6bd8d16ce2bd6a",
       "mesh_claims": [
         {
-          "gap": "the model does not read $keywords",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $keywords",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $keywords",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $keywords",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -137425,23 +137434,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$keywords"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$keywords"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $keywords",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $keywords",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -137449,34 +137452,40 @@
       ]
     },
     "materials/overlays/construction_mark007.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the model does not read $keywords",
       "input_sha256": "d86041bfd661ffe949688299d325613ee97b08a209d96e1f7b94485f7bfe80cf",
       "mesh_claims": [
         {
-          "gap": "the model does not read $keywords",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $keywords",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $keywords",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $keywords",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -137484,23 +137493,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$keywords"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$keywords"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $keywords",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $keywords",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -192990,34 +192993,40 @@
       ]
     },
     "materials/vgui/hud/800corner1.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the model does not read $use_in_fillrate_mode",
       "input_sha256": "fff7ac9edc7453b7e7fce0b603354c35433b3d8eb334903a00ec8a5382d2e1d7",
       "mesh_claims": [
         {
-          "gap": "the model does not read $use_in_fillrate_mode",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $use_in_fillrate_mode",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $use_in_fillrate_mode",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $use_in_fillrate_mode",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -193025,23 +193034,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$use_in_fillrate_mode"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$use_in_fillrate_mode"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $use_in_fillrate_mode",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $use_in_fillrate_mode",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -193049,34 +193052,40 @@
       ]
     },
     "materials/vgui/hud/800corner2.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the model does not read $use_in_fillrate_mode",
       "input_sha256": "ac681b80390a12e5c29d9f826b1f6b869654c1b57e627fb4f3714aab522ca4ff",
       "mesh_claims": [
         {
-          "gap": "the model does not read $use_in_fillrate_mode",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $use_in_fillrate_mode",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $use_in_fillrate_mode",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $use_in_fillrate_mode",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -193084,23 +193093,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$use_in_fillrate_mode"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$use_in_fillrate_mode"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $use_in_fillrate_mode",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $use_in_fillrate_mode",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -193108,34 +193111,40 @@
       ]
     },
     "materials/vgui/hud/800corner3.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the model does not read $use_in_fillrate_mode",
       "input_sha256": "6049adacddf10c6ca6c78f0a84c423289c9dd7571e22bfc4f2498dd8908a0a55",
       "mesh_claims": [
         {
-          "gap": "the model does not read $use_in_fillrate_mode",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $use_in_fillrate_mode",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $use_in_fillrate_mode",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $use_in_fillrate_mode",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -193143,23 +193152,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$use_in_fillrate_mode"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$use_in_fillrate_mode"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $use_in_fillrate_mode",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $use_in_fillrate_mode",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -193167,34 +193170,40 @@
       ]
     },
     "materials/vgui/hud/800corner4.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the model does not read $use_in_fillrate_mode",
       "input_sha256": "4e4bb05bc1648f09d05dda6ce2c0efa162d0a9f40a0b9e0dbd97015e9ee42ebe",
       "mesh_claims": [
         {
-          "gap": "the model does not read $use_in_fillrate_mode",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $use_in_fillrate_mode",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $use_in_fillrate_mode",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $use_in_fillrate_mode",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -193202,23 +193211,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$use_in_fillrate_mode"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$use_in_fillrate_mode"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $use_in_fillrate_mode",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $use_in_fillrate_mode",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -193226,34 +193229,40 @@
       ]
     },
     "materials/vgui/hud/autoaim.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the model does not read $vertextcolor",
       "input_sha256": "fc6eedb58406c4bccbf8386ae5ee36d56e3f77c134fd8d5b8053f6b1cf97d2a3",
       "mesh_claims": [
         {
-          "gap": "the model does not read $vertextcolor",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $vertextcolor",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $vertextcolor",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $vertextcolor",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -193261,23 +193270,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$vertextcolor"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$vertextcolor"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $vertextcolor",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $vertextcolor",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -197828,34 +197831,40 @@
       ]
     },
     "materials/vgui/hud/icon_commentary.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the model does not read $vertextcolor",
       "input_sha256": "e4048a2bb15ac57da529c94c1a91f8f53ad494f673e47d143a0f846316f29d85",
       "mesh_claims": [
         {
-          "gap": "the model does not read $vertextcolor",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $vertextcolor",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $vertextcolor",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $vertextcolor",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -197863,23 +197872,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$vertextcolor"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$vertextcolor"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $vertextcolor",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $vertextcolor",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -197887,34 +197890,40 @@
       ]
     },
     "materials/vgui/hud/icon_commentary_small.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the model does not read $vertextcolor",
       "input_sha256": "11ea1475611ff576c4eb0bfbda4d08a760bd9eb6a4f5ef73c466a2349ad972d7",
       "mesh_claims": [
         {
-          "gap": "the model does not read $vertextcolor",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $vertextcolor",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $vertextcolor",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $vertextcolor",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -197922,23 +197931,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$vertextcolor"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$vertextcolor"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $vertextcolor",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $vertextcolor",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -198005,34 +198008,40 @@
       ]
     },
     "materials/vgui/hud/icon_locked.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the model does not read $vertextcolor",
       "input_sha256": "c2fd0bdf74327a4d9bd932982bfe20dcac3e40993de7fee6ad0f8c799e5d4256",
       "mesh_claims": [
         {
-          "gap": "the model does not read $vertextcolor",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $vertextcolor",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $vertextcolor",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $vertextcolor",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -198040,23 +198049,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$vertextcolor"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$vertextcolor"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $vertextcolor",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $vertextcolor",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -223343,8 +223346,8 @@
         "materials/decals/bigshot1model.vmt",
         "materials/decals/bigshot2model.vmt"
       ],
-      "first_refusals": 25,
-      "refused_materials": 25,
+      "first_refusals": 26,
+      "refused_materials": 26,
       "unmapped_materials": 0
     },
     "import:black": {
@@ -223455,16 +223458,6 @@
       "refused_materials": 1,
       "unmapped_materials": 0
     },
-    "parameter:$alphaenvmapmask": {
-      "examples": [
-        "materials/models/props/bed01_glass.vmt",
-        "materials/models/props/box_dropper_tube.vmt",
-        "materials/models/props_bts/booth_glass.vmt"
-      ],
-      "first_refusals": 4,
-      "refused_materials": 4,
-      "unmapped_materials": 4
-    },
     "parameter:$alphatesttocoverage": {
       "examples": [
         "materials/models/props_underground/railing_underground.vmt"
@@ -223556,23 +223549,16 @@
         "materials/decals/bigshot3model.vmt"
       ],
       "first_refusals": 0,
-      "refused_materials": 41,
+      "refused_materials": 42,
       "unmapped_materials": 0
     },
-    "parameter:$decalfadetime": {
-      "examples": [
-        "materials/decals/combineballfade.vmt",
-        "materials/decals/combineballfade2.vmt",
-        "materials/decals/combineballfade3.vmt"
-      ],
-      "first_refusals": 12,
-      "refused_materials": 12,
-      "unmapped_materials": 12
-    },
     "parameter:$decalsecondpass": {
-      "examples": [],
-      "first_refusals": 0,
-      "refused_materials": 0,
+      "examples": [
+        "materials/decals/plasmaglowfade.vmt",
+        "materials/decals/redglowfade.vmt"
+      ],
+      "first_refusals": 2,
+      "refused_materials": 2,
       "unmapped_materials": 2
     },
     "parameter:$detailblendmode": {
@@ -223584,16 +223570,6 @@
       "refused_materials": 2,
       "unmapped_materials": 0
     },
-    "parameter:$diffuseexp": {
-      "examples": [
-        "materials/models/player/chell/chell_rev2_head.vmt",
-        "materials/models/player/chell/chell_rev2_legs.vmt",
-        "materials/models/player/chell/chell_rev2_torso.vmt"
-      ],
-      "first_refusals": 3,
-      "refused_materials": 3,
-      "unmapped_materials": 3
-    },
     "parameter:$endfadesize": {
       "examples": [],
       "first_refusals": 0,
@@ -223602,12 +223578,20 @@
     },
     "parameter:$envmap": {
       "examples": [
+        "materials/decals/decalsplash.vmt",
         "materials/effects/coop_airlock_portalwindow.vmt",
-        "materials/glass/glasswindow_frosted_003.vmt",
-        "materials/glass/glasswindow_frosted_004.vmt"
+        "materials/glass/glasswindow_frosted_003.vmt"
       ],
-      "first_refusals": 20,
-      "refused_materials": 20,
+      "first_refusals": 21,
+      "refused_materials": 21,
+      "unmapped_materials": 0
+    },
+    "parameter:$envmapmask": {
+      "examples": [
+        "materials/decals/decalsplash.vmt"
+      ],
+      "first_refusals": 0,
+      "refused_materials": 1,
       "unmapped_materials": 0
     },
     "parameter:$flashlightnolambert": {
@@ -223660,16 +223644,6 @@
       "first_refusals": 2,
       "refused_materials": 2,
       "unmapped_materials": 2
-    },
-    "parameter:$keywords": {
-      "examples": [
-        "materials/overlays/construction_mark002.vmt",
-        "materials/overlays/construction_mark005.vmt",
-        "materials/overlays/construction_mark007.vmt"
-      ],
-      "first_refusals": 3,
-      "refused_materials": 3,
-      "unmapped_materials": 3
     },
     "parameter:$linearwrite": {
       "examples": [
@@ -223732,13 +223706,11 @@
     },
     "parameter:$phong": {
       "examples": [
-        "materials/animated_wallpanels/wallpanel_temp_white.vmt",
-        "materials/models/props_office/dod_trophy.vmt",
-        "materials/models/props_office/dod_trophy2.vmt"
+        "materials/animated_wallpanels/wallpanel_temp_white.vmt"
       ],
-      "first_refusals": 6,
-      "refused_materials": 6,
-      "unmapped_materials": 6
+      "first_refusals": 1,
+      "refused_materials": 1,
+      "unmapped_materials": 1
     },
     "parameter:$phongboost": {
       "examples": [],
@@ -223763,16 +223735,6 @@
       "first_refusals": 0,
       "refused_materials": 0,
       "unmapped_materials": 1
-    },
-    "parameter:$pseudotranslucent": {
-      "examples": [
-        "materials/liquids/water_swamp_m2.vmt",
-        "materials/nature/water_a1_intro3.vmt",
-        "materials/nature/water_a2_laser_intro.vmt"
-      ],
-      "first_refusals": 5,
-      "refused_materials": 5,
-      "unmapped_materials": 5
     },
     "parameter:$reflect2dskybox": {
       "examples": [
@@ -223879,16 +223841,6 @@
       "refused_materials": 21,
       "unmapped_materials": 0
     },
-    "parameter:$use_in_fillrate_mode": {
-      "examples": [
-        "materials/vgui/hud/800corner1.vmt",
-        "materials/vgui/hud/800corner2.vmt",
-        "materials/vgui/hud/800corner3.vmt"
-      ],
-      "first_refusals": 4,
-      "refused_materials": 4,
-      "unmapped_materials": 4
-    },
     "parameter:$vertexalpha": {
       "examples": [
         "materials/particle/toxic_slime/toxic_slime_warp.vmt",
@@ -223918,26 +223870,6 @@
       "first_refusals": 1,
       "refused_materials": 1,
       "unmapped_materials": 1
-    },
-    "parameter:$vertextcolor": {
-      "examples": [
-        "materials/vgui/hud/autoaim.vmt",
-        "materials/vgui/hud/icon_commentary.vmt",
-        "materials/vgui/hud/icon_commentary_small.vmt"
-      ],
-      "first_refusals": 4,
-      "refused_materials": 4,
-      "unmapped_materials": 4
-    },
-    "parameter:$worldimposter": {
-      "examples": [
-        "materials/glass/glasswindow_frosted.vmt",
-        "materials/glass/glasswindow_frosted_002.vmt",
-        "materials/glass/glasswindow_frosted_002b.vmt"
-      ],
-      "first_refusals": 5,
-      "refused_materials": 5,
-      "unmapped_materials": 5
     },
     "parameter:$writez": {
       "examples": [
@@ -224068,8 +224000,8 @@
         "materials/nature/toxicslime002a_noreflect.vmt",
         "materials/nature/toxicslime_a3_03.vmt"
       ],
-      "first_refusals": 14,
-      "refused_materials": 14,
+      "first_refusals": 15,
+      "refused_materials": 15,
       "unmapped_materials": 0
     },
     "shader_family:blurfilterx": {
@@ -224341,9 +224273,9 @@
   "scope": "all materials/**/*.vmt in the game's ordered search path",
   "status_counts": {
     "dynamically_unresolved": 146,
-    "statically_supported": 1553,
-    "supported_with_requirements": 1484,
-    "unsupported": 555
+    "statically_supported": 1556,
+    "supported_with_requirements": 1521,
+    "unsupported": 515
   },
   "total": 3738
 }

@@ -10812,3 +10812,18 @@ declared by any shader (the flag is `$translucent`). `envmap` without a `$`
 (for example `models/props/futbol_dispenser.vmt`) sets nothing, because
 shader parameters are looked up as `$envmap`. The inventory is now 1,553 /
 1,484 / 555 unsupported (19 more claimed).
+
+Follow-up: more keys with no shading effect, each with its source, join
+the table:
+- `phong` without a `$`, which sets nothing;
+- the misspelled `$vertextcolor`;
+- `$decalfadetime`, the engine's decal fade (`r_decal.cpp`);
+- `$use_in_fillrate_mode`, used only by `mat_fillrate`'s debug drawing
+  (`shadersystem.cpp`);
+- `$keywords`, tool metadata;
+- `$worldimposter`, `$alphaenvmapmask`, `$diffuseexp` and
+  `$pseudotranslucent`, which no shader in this tree declares.
+
+`$flashlightnolambert` stays refused: VertexLitGeneric declares it and it
+changes a projector's lighting. The inventory is now 1,556 / 1,521 / 515
+unsupported (40 more claimed), and `posed-model` passes 107/107.
