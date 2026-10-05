@@ -1268,7 +1268,8 @@ int main()
 	    { "ignored-write-masks", writeMasks, "under-test.D17 a red-and-alpha mask" },
 	    { "stale-export", staleExport, "under-test.D18 the exported memory" },
 	    { "null-exporter", nullExporter, "under-test.D18 the exporter is present" },
-	    { "transmittance-as-premultiplied", transmittance, "under-test.D21 src + dst * a" },
+	    { "transmittance-as-premultiplied", transmittance,
+	        "under-test.D21 the independent color equation" },
 	    { "early-upload-reuse", uploads, "under-test.D10 " },
 	};
 	// D10 records its uploads with the queue held (Driver's hold), so early

@@ -3289,6 +3289,83 @@ session), taken on the slice 1-4 report:
    link on GL (`render.shader-artifacts.gl`).
 3. **Product boot:** blocked on K8/K9 (see the table).
 
+## K10: core pixel families on GL, ToGL and product composition (2026-10-05)
+
+Session source-engine-d7, on HEAD `b06363170` plus this change, Linux
+desktop (radeonsi), g++ 16.2.1 and clang++ 22.1.8. The K10 row stays
+`partial`: the product boot and product pixel families remain blocked, as
+before, and their state is unchanged.
+
+- **The port suite again** (HEAD in a clean worktree, so other sessions' WIP
+  is excluded): `render.device.v2.gl` 1,047 checks, `.sensitivity` 19,
+  `render.shader-artifacts.gl` 19 and `render.composition.capabilities.gl`
+  14 pass on radeonsi and on llvmpipe. `render.device.v2.vulkan.sensitivity`
+  (21) and `render.composition.capabilities` (14) pass. The two D21
+  sensitivity cases expected the clause's old text (`src + dst * a`) and
+  failed the GL row. They now name `the independent color equation`.
+- **Core pixel families on GL** (`unittests/rendertest/core/material/family_devices.{h,cpp}`):
+  the five K4 family suites choose their device at build time.
+  - Without a define they run on Vulkan, as before.
+  - `RENDERTEST_FAMILY_GL` runs on `render.device.gl`.
+  - `RENDERTEST_FAMILY_CROSS` draws each case on Vulkan, then on GL, in one
+    process. Every GL frame must be within the per-case limit of the Vulkan
+    frame over all 65,536 pixels, not only the port samples.
+  - The limits are a recorded fixture,
+    [`cross-backend-v1.vdf`](../quality/fixtures/render-families/cross-backend-v1.vdf):
+    2 levels per channel and a reviewed outlier count. Of the 47 cases, 34
+    are byte-identical and 10 differ by one level. Three PBR cases differ
+    only along one hard shading edge (16–24 pixels; peak 3, 15 and 28
+    levels at 117,182), where the two drivers' compilers round a step
+    differently. They are allowed 64 or 96 channels.
+  - New rows `render.family.<f>.gl` and `render.family.<f>.cross-backend`
+    for unlit, water, lightmapped, vertexlit and pbr, plus the sensitivity
+    row `render.family.unlit.cross-backend.seeded-gl-lower-left`. That row
+    flips the GL adapter's origin, and the cross clause catches it.
+  - Result: all 21 family rows pass on g++ and clang++. Each GL row is also
+    judged against the legacy port fixture and must report no GL debug
+    message.
+  - The lightmapped fog check judged every pixel as drawn. On llvmpipe, a
+    quad edge on a pixel center leaves pixel 0,0 uncovered, which GL leaves
+    to the rasterizer. The check now skips pixels neither draw covered.
+  - On llvmpipe, `family_lightmapped_bump_nodiffusebumplighting` and
+    `bump_envmap_normalmapalpha` miss the port fixture (83 levels). Vulkan
+    on lavapipe misses the same two, so this is the shared Mesa software
+    rasterizer, not the adapter. The required runs are GPU runs; the
+    cross-backend rows need both adapters on the same GPU.
+  - This is the core's own pixel families on GL. The K10 "Pixels" check
+    names `material_pixel_conformance.py` on `portal-linux-gl`, which needs
+    the product boot.
+- **Product composition** (not the K10 boot): a native Vulkan Portal
+  client built with `--render-core-gl --render-core-device=gl` logs
+  `Render core: device gl`. Its frames run as four stage passes of the
+  core's frame graph on the GL adapter, while the legacy stream draws
+  through the native Vulkan backend. `portal_boot.py` on `testchmb_a_01`
+  passes in `mat_queue_mode` 0 and 2. The GL device does not draw the
+  frame, so this is not the "Product boot" check.
+- **ToGL** (`--render-backend=legacy --use-togl=1 --build-games=portal`,
+  64-bit SDL2): builds at HEAD and installs `libtogl.so`. In a private
+  headless mutter (Xwayland), `portal_boot.py` boots `testchmb_a_01` and
+  passes.
+  - The saved screenshot is noise (stride-like rows over the top third,
+    black below). A build at `9e50b9054`, the parent of the first K10
+    commit, gives the same, so the defect predates K10.
+  - No ToGL, `togl/` or D3D9 input changed in the K10 commits. No ToGL
+    check is recorded in `quality/baseline.json`.
+  - Over SDL's Wayland driver, the ToGL client crashes in `libtogl.so`
+    (`strstr` on a GL string). X11 works.
+  - "ToGL untouched" holds for the build and the boot harness. The
+    screenshot defect is a pre-existing legacy-profile finding, outside K10
+    (frozen path).
+
+| K10 check | Result (2026-10-05) |
+| --- | --- |
+| Port suite | pass (radeonsi and llvmpipe, g++ and clang++) |
+| No portable changes needed | pass (unchanged since slices 1–4) |
+| Capability negotiation | pass (at HEAD; in the shared tree, `.gl` does not link against other sessions' uncommitted `CoreWorld` sources) |
+| Pixels | the core families pass on GL and within the recorded cross-backend limits; the product families on `portal-linux-gl` remain blocked with the boot |
+| Product boot | blocked on K8/K9 (R91), per the port owner's 2026-09-29 decision and the frozen-path rules; the client composes and runs the core on GL in both queued modes |
+| ToGL untouched | pass (build and boot); the screenshot noise predates K10 |
+
 ## K11: the lab gallery, and where render_lab stands against Cycles (2026-09-29)
 
 User request: "make that easy to replicate, and add it to the rfcs … being

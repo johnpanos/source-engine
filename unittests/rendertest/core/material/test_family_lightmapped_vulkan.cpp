@@ -25,8 +25,8 @@
 //
 //=============================================================================//
 
+#include "family_devices.h"
 #include "family_pixel_cases.h"
-#include "render/device/vulkan/provider.h"
 #include "render/material/draw_program.h"
 #include "render/material/lightmapped_family.h"
 #include "render/material/vmt_import.h"
@@ -49,7 +49,6 @@ namespace
 using namespace render;
 using namespace render::material;
 using namespace rendertest::families;
-namespace vulkan = render::device::vulkan;
 
 const SurfaceFrame kLdrFrame;
 
@@ -171,25 +170,18 @@ int main()
 		    "claim.alpha-test-reference-is-a-byte" );
 	}
 
-	const bool layer = vulkan::ValidationLayerAvailable();
-	std::atomic<std::uint64_t> messages{ 0 };
-	vulkan::VulkanAdapterOptions options;
-	options.validation = layer;
-	options.validationCounter = &messages;
-	if ( const char *adapter = std::getenv( "RENDER_VK_ADAPTER" ) )
-		options.adapterIndex = std::atoi( adapter );
-	int drawnCases = 0;
-	bool fogChecked = false;
-	bool areaChecked = false;
+	CaseDevices devices( checks );
+	for ( const CaseDevices::Entry &entry : devices.entries )
 	{
-		auto created = vulkan::Create( options );
-		if ( !checks.That( created.HasValue(), "device.a-vulkan-device-is-created" ) )
-			return checks.Report();
-		std::unique_ptr<device::IRenderDevice2> device = std::move( created ).Value();
+		std::printf( "INFO device %s\n", entry.name.c_str() );
+		device::IRenderDevice2 *const device = entry.device.get();
+		int drawnCases = 0;
+		bool fogChecked = false;
+		bool areaChecked = false;
 		auto family = LightmappedFamily::Create(
 		    *device, device::Format::kRGBA8Srgb, device::Format::kUnknown );
 		if ( !checks.That( family.HasValue(), "family.creates" ) )
-			return checks.Report();
+			continue;
 
 		for ( const FamilyCase &testCase : set->cases )
 		{
@@ -315,6 +307,7 @@ int main()
 			if ( !checks.That( drawn.ok, "draw." + name ) )
 				continue;
 			++drawnCases;
+			devices.Compare( checks, entry, name, drawn );
 			JudgeCase( checks, testCase, drawn );
 
 			// The frame's emitting surfaces (render.area-light.v1) on the
@@ -450,6 +443,20 @@ int main()
 			int worst = 0;
 			for ( std::size_t i = 0; i + 3 < drawn.rgba.size(); i += 4 )
 			{
+				// A pixel neither draw covered keeps the clear color: a quad
+				// edge on a pixel center is the rasterizer's choice in GL
+				// (llvmpipe leaves the top-left corner pixel uncovered).
+				const auto isClear = [&]( const Drawn &frame )
+				{
+					for ( int c = 0; c < 3; ++c )
+					{
+						if ( frame.rgba[i + c] != draw.clear[c] )
+							return false;
+					}
+					return true;
+				};
+				if ( isClear( drawn ) && isClear( withFog ) )
+					continue;
 				for ( int c = 0; c < 3; ++c )
 				{
 					const float plain = toLinear( drawn.rgba[i + c] / 255.0f );
@@ -465,11 +472,6 @@ int main()
 		checks.That( drawnCases == int( set->cases.size() ), "cases.every-case-drew" );
 		checks.That( fogChecked, "fog.an-opaque-case-was-fogged" );
 		checks.That( areaChecked, "area.an-opaque-world-case-was-lit" );
-		(void)device->WaitIdle();
 	}
-	if ( layer )
-		checks.Equal( messages.load(), std::uint64_t( 0 ), "validation.no-messages" );
-	else
-		std::printf( "SKIP validation: the Khronos validation layer is not installed\n" );
-	return checks.Report();
+	return devices.Finish( checks );
 }

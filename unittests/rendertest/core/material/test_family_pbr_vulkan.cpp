@@ -28,8 +28,8 @@
 //
 //=============================================================================//
 
+#include "family_devices.h"
 #include "family_pixel_cases.h"
-#include "render/device/vulkan/provider.h"
 #include "render/material/pbr_family.h"
 #include "render/material/vmt_import.h"
 #include "testing/checks.h"
@@ -51,7 +51,6 @@ namespace
 using namespace render;
 using namespace render::material;
 using namespace rendertest::families;
-namespace vulkan = render::device::vulkan;
 
 const char *const kFixture = "quality/fixtures/render-families/pbr-port-v1.vdf";
 
@@ -261,19 +260,12 @@ int main()
 		    "lighting.directional-and-spot-flags-and-cone" );
 	}
 
-	const bool layer = vulkan::ValidationLayerAvailable();
-	std::atomic<std::uint64_t> messages{ 0 };
-	vulkan::VulkanAdapterOptions options;
-	options.validation = layer;
-	options.validationCounter = &messages;
-	if ( const char *adapter = std::getenv( "RENDER_VK_ADAPTER" ) )
-		options.adapterIndex = std::atoi( adapter );
-	int drawnCases = 0;
+	CaseDevices devices( checks );
+	for ( const CaseDevices::Entry &entry : devices.entries )
 	{
-		auto created = vulkan::Create( options );
-		if ( !checks.That( created.HasValue(), "device.a-vulkan-device-is-created" ) )
-			return checks.Report();
-		std::unique_ptr<device::IRenderDevice2> device = std::move( created ).Value();
+		std::printf( "INFO device %s\n", entry.name.c_str() );
+		device::IRenderDevice2 *const device = entry.device.get();
+		int drawnCases = 0;
 		// Portal views keep stencil on the imported D32S8 target. Building the
 		// same PBR point with that raster state must remain a valid pipeline.
 		{
@@ -327,7 +319,7 @@ int main()
 		auto family =
 		    PbrFamily::Create( *device, device::Format::kRGBA8Srgb, device::Format::kUnknown );
 		if ( !checks.That( family.HasValue(), "family.creates" ) )
-			return checks.Report();
+			continue;
 
 		const PbrSplitSumTable table = SplitSumTable();
 		CaseTexture splitSum;
@@ -457,6 +449,7 @@ int main()
 			if ( !checks.That( drawn.ok, "draw." + name ) )
 				continue;
 			++drawnCases;
+			devices.Compare( checks, entry, name, drawn );
 			JudgeCase( checks, testCase, drawn );
 			// Compare against the raw uniform-driven pipeline above, with exactly
 			// the same bindings and geometry. Empty view lighting is specialized
@@ -617,11 +610,6 @@ int main()
 			}
 		}
 		checks.That( drawnCases == 8, "cases.every-case-drew" );
-		(void)device->WaitIdle();
 	}
-	if ( layer )
-		checks.Equal( messages.load(), std::uint64_t( 0 ), "validation.no-messages" );
-	else
-		std::printf( "SKIP validation: the Khronos validation layer is not installed\n" );
-	return checks.Report();
+	return devices.Finish( checks );
 }

@@ -1,0 +1,60 @@
+// RFC 0016 K10 "Pixels": the per-case cross-backend limits of the family pixel
+// cases (render.family.<family>.cross-backend). Each GL frame is compared with
+// the Vulkan frame of the same case over every pixel: no channel may differ by
+// more than "limit" levels, except at most "outliers" channels. The limit is
+// the port tolerance (2 levels); outliers are recorded only where measured
+// differences sit on one hard shading edge, where the two drivers' shader
+// compilers round a step differently (radeonsi, 2026-10-05: pbr_lights 52,
+// pbr_metal 67, pbr_four_lights 72 channels, peak 3/15/28 levels at 117,182;
+// 34 of 47 cases byte-identical, 10 within one level). Never byte identity
+// (AGENTS.md); a new case needs a reviewed row here.
+"cross-backend"
+{
+	"case" { "name" "a2-goo" "limit" "2" "outliers" "0" }
+	"case" { "name" "a2-goo-covering-sludge" "limit" "2" "outliers" "0" }
+	"case" { "name" "a3-goo-env-map" "limit" "2" "outliers" "0" }
+	"case" { "name" "blend-factor" "limit" "2" "outliers" "0" }
+	"case" { "name" "family_lightmapped_alphatest" "limit" "2" "outliers" "0" }
+	"case" { "name" "family_lightmapped_base" "limit" "2" "outliers" "0" }
+	"case" { "name" "family_lightmapped_bump" "limit" "2" "outliers" "0" }
+	"case" { "name" "family_lightmapped_bump_envmap_normalmapalpha" "limit" "2" "outliers" "0" }
+	"case" { "name" "family_lightmapped_bump_nodiffusebumplighting" "limit" "2" "outliers" "0" }
+	"case" { "name" "family_lightmapped_color" "limit" "2" "outliers" "0" }
+	"case" { "name" "family_lightmapped_detail_additive_bump" "limit" "2" "outliers" "0" }
+	"case" { "name" "family_lightmapped_detail_mod2x_tint" "limit" "2" "outliers" "0" }
+	"case" { "name" "family_lightmapped_envmap_basealphaenvmapmask" "limit" "2" "outliers" "0" }
+	"case" { "name" "family_lightmapped_envmap_envmapmask_contrast_fresnel" "limit" "2" "outliers" "0" }
+	"case" { "name" "family_lightmapped_selfillum_tint" "limit" "2" "outliers" "0" }
+	"case" { "name" "family_lightmapped_ssbump" "limit" "2" "outliers" "0" }
+	"case" { "name" "family_lightmapped_translucent_alpha" "limit" "2" "outliers" "0" }
+	"case" { "name" "family_lightmapped_vertexalpha_only" "limit" "2" "outliers" "0" }
+	"case" { "name" "family_lightmapped_vertexalpha_translucent" "limit" "2" "outliers" "0" }
+	"case" { "name" "family_lightmapped_vertexcolor" "limit" "2" "outliers" "0" }
+	"case" { "name" "family_lightmapped_vertexcolor_alpha" "limit" "2" "outliers" "0" }
+	"case" { "name" "family_unlit_additive" "limit" "2" "outliers" "0" }
+	"case" { "name" "family_unlit_alphatest" "limit" "2" "outliers" "0" }
+	"case" { "name" "family_unlit_base_color" "limit" "2" "outliers" "0" }
+	"case" { "name" "family_unlit_translucent_alpha" "limit" "2" "outliers" "0" }
+	"case" { "name" "family_unlit_vertexcolor" "limit" "2" "outliers" "0" }
+	"case" { "name" "family_unlit_vertexcolor_alpha" "limit" "2" "outliers" "0" }
+	"case" { "name" "forced-fresnel" "limit" "2" "outliers" "0" }
+	"case" { "name" "pbr_ambient" "limit" "2" "outliers" "0" }
+	"case" { "name" "pbr_bumped" "limit" "2" "outliers" "0" }
+	"case" { "name" "pbr_emissive" "limit" "2" "outliers" "0" }
+	"case" { "name" "pbr_four_lights" "limit" "2" "outliers" "96" }
+	"case" { "name" "pbr_lights" "limit" "2" "outliers" "64" }
+	"case" { "name" "pbr_metal" "limit" "2" "outliers" "96" }
+	"case" { "name" "pbr_model_transform" "limit" "2" "outliers" "0" }
+	"case" { "name" "pbr_skinned" "limit" "2" "outliers" "0" }
+	"case" { "name" "reflective-water" "limit" "2" "outliers" "0" }
+	"case" { "name" "vertexlit_alpha_modulated" "limit" "2" "outliers" "0" }
+	"case" { "name" "vertexlit_alphatest" "limit" "2" "outliers" "0" }
+	"case" { "name" "vertexlit_ambient" "limit" "2" "outliers" "0" }
+	"case" { "name" "vertexlit_directional_color" "limit" "2" "outliers" "0" }
+	"case" { "name" "vertexlit_four_lights" "limit" "2" "outliers" "0" }
+	"case" { "name" "vertexlit_halflambert" "limit" "2" "outliers" "0" }
+	"case" { "name" "vertexlit_point" "limit" "2" "outliers" "0" }
+	"case" { "name" "vertexlit_spot" "limit" "2" "outliers" "0" }
+	"case" { "name" "vertexlit_translucent" "limit" "2" "outliers" "0" }
+	"case" { "name" "vertexlit_vertexcolor_ignored" "limit" "2" "outliers" "0" }
+}

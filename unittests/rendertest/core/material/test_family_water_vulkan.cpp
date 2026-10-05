@@ -27,8 +27,8 @@
 //
 //=============================================================================//
 
+#include "family_devices.h"
 #include "family_pixel_cases.h"
-#include "render/device/vulkan/provider.h"
 #include "render/material/draw_program.h"
 #include "render/material/surface_program.h"
 #include "render/material/vmt_import.h"
@@ -53,7 +53,6 @@ namespace
 using namespace render;
 using namespace render::material;
 using namespace rendertest::families;
-namespace vulkan = render::device::vulkan;
 
 // Portal 2's goo (materials/nature/toxicslime_a2_laser_over_goo.vmt, its
 // GPU>=1 block taken) and old Aperture goo (toxicslime_a3_jump_intro.vmt with
@@ -429,23 +428,16 @@ int main()
 		refused( noFlow, "no $flowmap", "claim.refuses-bumped-lightmap-water" );
 	}
 
-	const bool layer = vulkan::ValidationLayerAvailable();
-	std::atomic<std::uint64_t> messages{ 0 };
-	vulkan::VulkanAdapterOptions options;
-	options.validation = layer;
-	options.validationCounter = &messages;
-	if ( const char *adapter = std::getenv( "RENDER_VK_ADAPTER" ) )
-		options.adapterIndex = std::atoi( adapter );
-	int drawnCases = 0;
+	CaseDevices devices( checks );
+	for ( const CaseDevices::Entry &entry : devices.entries )
 	{
-		auto created = vulkan::Create( options );
-		if ( !checks.That( created.HasValue(), "device.a-vulkan-device-is-created" ) )
-			return checks.Report();
-		std::unique_ptr<device::IRenderDevice2> device = std::move( created ).Value();
+		std::printf( "INFO device %s\n", entry.name.c_str() );
+		device::IRenderDevice2 *const device = entry.device.get();
+		int drawnCases = 0;
 		auto program =
 		    SurfaceProgram::Create( *device, device::Format::kRGBA8Srgb, device::Format::kUnknown );
 		if ( !checks.That( program.HasValue(), "program.creates" ) )
-			return checks.Report();
+			continue;
 
 		struct Case
 		{
@@ -568,6 +560,7 @@ int main()
 			if ( !checks.That( drawn.ok, "draw." + name ) )
 				continue;
 			++drawnCases;
+			devices.Compare( checks, entry, name, drawn );
 			// Pixels in the top and bottom halves (the reflection's two
 			// texels) at several columns (the fresnel term varies).
 			const int samples[][2] = {
@@ -604,11 +597,6 @@ int main()
 			}
 		}
 		checks.That( drawnCases == int( cases.size() ), "cases.every-case-drew" );
-		(void)device->WaitIdle();
 	}
-	if ( layer )
-		checks.Equal( messages.load(), std::uint64_t( 0 ), "validation.no-messages" );
-	else
-		std::printf( "SKIP validation: the Khronos validation layer is not installed\n" );
-	return checks.Report();
+	return devices.Finish( checks );
 }
