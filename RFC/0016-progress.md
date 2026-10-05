@@ -10697,3 +10697,38 @@ projector-colour convention decision), material-sweep front/grazing (SSR),
 mirror-corridor/down and low (3.3% and 10.4% over 8; reflection edges, with
 SSR likely), portal-pair/b-floor (5.9% over 8) and sun-colonnade/yard (p99
 55, silhouettes). R96 stays `active`.
+
+### K12: LightmappedGeneric `$envmap env_cubemap` reads the stage's reflection probes (2026-10-05)
+
+No LightmappedGeneric material with an `$envmap` claimed. The 49 Portal 2
+materials that name the view's `env_cubemap` were refused ("the model does
+not bind the per-view texture env_cubemap"), on worlds and meshes. Under
+the surface model's native interpretation, a stage's `env_cubemap` is its
+reflection probes (RPRB). VertexLitGeneric, UnlitGeneric and Refract
+already read it that way; the lightmapped point now does too:
+
+- `BlockFor` admits a lightmapped `env_cubemap` only when the scene carries
+  reflection probes. The resolver gives such a claim
+  `kSurfaceReflectionProbes` and no cube texture.
+  `ClaimForDrawing(..., nativeReflectionProbes)` takes the stage's fact from
+  the world pass (a stage with a non-empty RPRB) and from the lab's
+  claim-batch world-stage input.
+- `surface_program.glsl`'s cubemap term then reads `ReflectionProbesRadiance`
+  (linear radiance, so no legacy `ENV_MAP_SCALE`) at the mirror roughness,
+  with the ambient cube as the probes' miss, as the world PBR point does.
+  The legacy cube path is unchanged for named cube maps.
+
+Evidence: the regenerated full inventory moves from 1,494 statically
+supported, 1,306 with requirements and 792 unsupported to 1,494 / 1,353 /
+745 (47 materials newly claimed; `supported_with_requirements`,
+since they need a probe stage). `render_lab suite reflection-probes` 39/39,
+`map-terms` 38/38 and `posed-model` 107/107 pass. `debug-views` fails before
+and after this change ("the canvas frame was refused at submission (device
+status 9)", reproduced with HEAD's shader). That is a pre-existing lab
+failure, recorded here and open. `sp_a2_laser_intro_relit` boots on the
+core with 3,230/3,230 views drawn, 0 failed and 106/106 materials claimed.
+
+Open: no image oracle yet. Under binding rule 2 a `render_lab` image check
+of a lightmapped `env_cubemap` surface against its probe radiance is owed.
+Whether a shipped map draws one of the 47 on the core has not been
+captured. R96 stays `active`.

@@ -1719,7 +1719,10 @@ int ClaimBatch()
 		for ( bool worldStage : { false, true } )
 		{
 			std::printf( "\t" );
-			const auto claim = render::material::ClaimForDrawing( mapped.Value(), worldStage );
+			// A world stage here is one with reflection probes (a stage map's
+			// RPRB): a LightmappedGeneric env_cubemap reads them.
+			const auto claim = render::material::ClaimForDrawing(
+			    mapped.Value(), worldStage, nullptr, worldStage );
 			if ( claim )
 				std::printf( "C\t%u", unsigned( claim.Value() ) );
 			else

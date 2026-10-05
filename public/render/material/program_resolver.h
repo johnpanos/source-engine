@@ -217,8 +217,12 @@ private:
 // rules as Resolve, minus pipelines; worldPbr as SetWorldPbr (a pbr material
 // is claimed only with it). Optional requiresDepthAlpha reports the claimed
 // point’s ordered depth input, so callers never interpret a family’s variables.
+// nativeReflectionProbes: the world stage carries reflection probes (RPRB),
+// which a LightmappedGeneric $envmap env_cubemap reads in place of the
+// view's legacy cube map.
 foundation::Expected<device::BlendMode, std::string> ClaimForDrawing(
-    const MaterialDesc &material, bool worldPbr = false, bool *requiresDepthAlpha = nullptr );
+    const MaterialDesc &material, bool worldPbr = false, bool *requiresDepthAlpha = nullptr,
+    bool nativeReflectionProbes = false );
 // Additional ordering requirements for an already claimed opaque material:
 // no scene-color dependency, animated frame time or depth/stencil-only effect.
 // Evaluated when the material snapshot is claimed, not during view recording.

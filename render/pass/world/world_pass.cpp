@@ -768,7 +768,9 @@ void WorldPass::SetWorld( WorldData data )
 			                 ? material::ClaimForMesh( claimed.desc,
 			                       data.stage && !data.stage->reflectionProbes.empty(),
 			                       data.stage != nullptr )
-			                 : material::ClaimForDrawing( claimed.desc, data.stage != nullptr );
+			                 : material::ClaimForDrawing( claimed.desc, data.stage != nullptr,
+			                       nullptr,
+			                       data.stage && !data.stage->reflectionProbes.empty() );
 			if ( !blend )
 				gap = claimed.desc.family + ": " + blend.Error();
 			else if ( !source.mesh && blend.Value() != BlendMode::kOpaque )
@@ -1141,7 +1143,8 @@ std::uint32_t WorldPass::QueueView( WorldView view )
 			                       s.world->stage && !s.world->stage->reflectionProbes.empty(),
 			                       s.world->stage != nullptr )
 			                 : material::ClaimForDrawing( mapped.Value().desc,
-			                       s.world->stage != nullptr, &requiresDepthAlpha );
+			                       s.world->stage != nullptr, &requiresDepthAlpha,
+			                       s.world->stage && !s.world->stage->reflectionProbes.empty() );
 			if ( !claim )
 				why = claim.Error();
 			else if ( requiresDepthAlpha &&

@@ -108,9 +108,9 @@
     "lightmappedgeneric": {
       "dynamically_unresolved": 70,
       "statically_supported": 438,
-      "supported_with_requirements": 221,
+      "supported_with_requirements": 268,
       "total": 811,
-      "unsupported": 82
+      "unsupported": 35
     },
     "lightshafts": {
       "dynamically_unresolved": 0,
@@ -339,7 +339,7 @@
   },
   "game": "portal2",
   "gaps": {
-    "$envmap needs the stage's native reflection probes": 18,
+    "$envmap needs the stage's native reflection probes": 20,
     "$spriterendermode 8 needs an unimplemented sprite point": 4,
     "$translucent with $additive blends src-alpha/one, which the port lacks": 24,
     "Cable needs its base texture and normal texture": 4,
@@ -406,7 +406,7 @@
     "the model does not bind the per-view texture _rt_waterreflection ($basetexture)": 2,
     "the model does not bind the per-view texture _rt_waterrefraction ($basetexture)": 2,
     "the model does not bind the per-view texture _rt_waterrefraction ($refracttexture)": 3,
-    "the model does not bind the per-view texture env_cubemap ($envmap)": 63,
+    "the model does not bind the per-view texture env_cubemap ($envmap)": 14,
     "the model does not read $additive": 4,
     "the model does not read $alphaenvmapmask": 4,
     "the model does not read $alphatesttocoverage": 1,
@@ -12071,34 +12071,42 @@
       ]
     },
     "materials/concrete/concrete_bts_floor001a.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {
+            "world_stage": true
+          }
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
       "input_sha256": "7ded91f759a9d5cae2c04ff60d92f0f9f1e88096a8ed0ba30def059ed1007892",
       "mesh_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -12109,20 +12117,17 @@
         ".2"
       ],
       "proxies": [],
-      "refusal_features": [
-        "per_view_texture:env_cubemap"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -13959,34 +13964,42 @@
       ]
     },
     "materials/concrete/concretefloor003b.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {
+            "world_stage": true
+          }
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
       "input_sha256": "6d82ee3eb39ff82bc8cf7459a51a611ba59d125225873149635a94ff9b9262ba",
       "mesh_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -13994,20 +14007,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "per_view_texture:env_cubemap"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -50055,34 +50065,42 @@
       ]
     },
     "materials/glass/glasswindow002a.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {
+            "world_stage": true
+          }
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
       "input_sha256": "09138440ceaae23dd4a2f7a4e1a694c1b430759e9f73f1dfa103b47ba639ad4c",
       "mesh_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -50090,20 +50108,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "per_view_texture:env_cubemap"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -50111,34 +50126,42 @@
       ]
     },
     "materials/glass/glasswindow007a.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {
+            "world_stage": true
+          }
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
       "input_sha256": "6ab289452c0fd545589c868318fe502eece2026198c64fa09389243bddb589b4",
       "mesh_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -50146,20 +50169,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "per_view_texture:env_cubemap"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -50167,34 +50187,42 @@
       ]
     },
     "materials/glass/glasswindow007a_less_shiny.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {
+            "world_stage": true
+          }
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
       "input_sha256": "bcc4e117a4d86c266267b9fd408e24324172eb14f3fadeef4feac308fe26c15d",
       "mesh_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -50202,20 +50230,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "per_view_texture:env_cubemap"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -50583,32 +50608,32 @@
     "materials/glass/glasswindow_frosted_003.vmt": {
       "candidates": [],
       "family": "lightmapped",
-      "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+      "gap": "$envmap needs the stage's native reflection probes",
       "input_sha256": "92a860f403a7f0268e8e6f16e911f6eadd49149446358d1fd4edd540cf86a174",
       "mesh_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -50617,19 +50642,21 @@
       ],
       "proxies": [],
       "refusal_features": [
-        "per_view_texture:env_cubemap"
+        "mesh_point:lightmapped",
+        "parameter:$additive",
+        "parameter:$envmap"
       ],
       "shader": "lightmappedgeneric",
       "status": "unsupported",
       "world_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "the family does not draw $additive",
           "scene_inputs": {
             "world_stage": true
           }
@@ -50637,34 +50664,42 @@
       ]
     },
     "materials/glass/glasswindow_frosted_003b.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {
+            "world_stage": true
+          }
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
       "input_sha256": "8bdfbfba749f3eee8df16202e32938eead929cf39a015cc78f1ce7578fb86cc5",
       "mesh_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -50672,20 +50707,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "per_view_texture:env_cubemap"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -50695,32 +50727,32 @@
     "materials/glass/glasswindow_frosted_004.vmt": {
       "candidates": [],
       "family": "lightmapped",
-      "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+      "gap": "$envmap needs the stage's native reflection probes",
       "input_sha256": "30f95835417870cb5579a8fd30e9c2da3ee3ef7230b4b8c65939499bcd95feae",
       "mesh_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -50729,19 +50761,21 @@
       ],
       "proxies": [],
       "refusal_features": [
-        "per_view_texture:env_cubemap"
+        "mesh_point:lightmapped",
+        "parameter:$additive",
+        "parameter:$envmap"
       ],
       "shader": "lightmappedgeneric",
       "status": "unsupported",
       "world_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "the family does not draw $additive",
           "scene_inputs": {
             "world_stage": true
           }
@@ -54250,34 +54284,42 @@
       ]
     },
     "materials/metal/black_wall_metal_001b.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {
+            "world_stage": true
+          }
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
       "input_sha256": "f91d18b2e213236f807001428595fb347e43527e2ef4cee9458707ed7921cc4a",
       "mesh_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -54288,20 +54330,17 @@
         ".3"
       ],
       "proxies": [],
-      "refusal_features": [
-        "per_view_texture:env_cubemap"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -54309,34 +54348,42 @@
       ]
     },
     "materials/metal/black_wall_metal_001c.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {
+            "world_stage": true
+          }
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
       "input_sha256": "093fa932e2e3b13455eb3c9d2f9afa0f3b13be989819f2530bd4ce4a8be96e31",
       "mesh_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -54347,20 +54394,17 @@
         ".3"
       ],
       "proxies": [],
-      "refusal_features": [
-        "per_view_texture:env_cubemap"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -54368,34 +54412,42 @@
       ]
     },
     "materials/metal/black_wall_metal_001d.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {
+            "world_stage": true
+          }
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
       "input_sha256": "6527a91e3cb07240998b1c572af4709956f95dfd0987f38ba6c452d7b00e28ed",
       "mesh_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -54406,20 +54458,17 @@
         ".3"
       ],
       "proxies": [],
-      "refusal_features": [
-        "per_view_texture:env_cubemap"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -57054,34 +57103,42 @@
       ]
     },
     "materials/metal/factory_metal_floor001a.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {
+            "world_stage": true
+          }
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
       "input_sha256": "e0fbe20622c28ee1b8ce8a232d6ddfe6b38e27ab676feeca8e092654d55fd7df",
       "mesh_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -57089,20 +57146,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "per_view_texture:env_cubemap"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -57110,34 +57164,42 @@
       ]
     },
     "materials/metal/factory_metal_floor001b.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {
+            "world_stage": true
+          }
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
       "input_sha256": "0752562641dc2cb53ce33dd7699fe7b2bc4b0d41d770b963b6554a969b7cd3d9",
       "mesh_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -57145,20 +57207,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "per_view_texture:env_cubemap"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -57166,34 +57225,42 @@
       ]
     },
     "materials/metal/factory_metal_floor001c.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {
+            "world_stage": true
+          }
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
       "input_sha256": "df07cac8f023d8cc04deb36d9d3be52808d169ccf3c0836d89d3b4628af24542",
       "mesh_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -57201,20 +57268,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "per_view_texture:env_cubemap"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -57222,34 +57286,42 @@
       ]
     },
     "materials/metal/metal_lift001.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {
+            "world_stage": true
+          }
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
       "input_sha256": "18c1102431db6928651cbc8733bb237ae4910112d377e9c40ce38461e23cab3d",
       "mesh_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -57257,20 +57329,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "per_view_texture:env_cubemap"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -57278,34 +57347,42 @@
       ]
     },
     "materials/metal/metal_lift001_gradient.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {
+            "world_stage": true
+          }
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
       "input_sha256": "adb1e5a5db74e987d39e587c46732105825c1217b7605fc26f6737e6ee7ed1be",
       "mesh_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -57313,20 +57390,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "per_view_texture:env_cubemap"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -57334,34 +57408,42 @@
       ]
     },
     "materials/metal/metal_lift001_rusty.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {
+            "world_stage": true
+          }
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
       "input_sha256": "80dc1ce264314d5d403fb905caf6aaf224b1dd740a64149c244f38b8ccc419a6",
       "mesh_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -57369,20 +57451,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "per_view_texture:env_cubemap"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -57390,34 +57469,42 @@
       ]
     },
     "materials/metal/metal_modular_floor001.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {
+            "world_stage": true
+          }
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
       "input_sha256": "856e76ad07ade58c25d37d63393e541a804236c9c91da6fc83776cf59038b6e8",
       "mesh_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -57425,20 +57512,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "per_view_texture:env_cubemap"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -57446,34 +57530,42 @@
       ]
     },
     "materials/metal/metal_modular_floor002.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {
+            "world_stage": true
+          }
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
       "input_sha256": "5092757904e2e16485c51a730a4ad19825589a319e0f346d5afb7f9e602ccae3",
       "mesh_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -57481,20 +57573,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "per_view_texture:env_cubemap"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -57856,34 +57945,42 @@
       ]
     },
     "materials/metal/metaldoor_white01.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {
+            "world_stage": true
+          }
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
       "input_sha256": "8c9e71c93eced72575b49b5f0d06758e1b0cf982fdd33137ce9848b3b6311eac",
       "mesh_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -57891,20 +57988,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "per_view_texture:env_cubemap"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -57912,34 +58006,42 @@
       ]
     },
     "materials/metal/metalfloor001b.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {
+            "world_stage": true
+          }
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
       "input_sha256": "b7d530dced719198d7ffe8283950072c07ee1bb284083b7abcae5ea0c886578b",
       "mesh_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -57947,20 +58049,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "per_view_texture:env_cubemap"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -58027,34 +58126,42 @@
       ]
     },
     "materials/metal/metalfloor_bts_001b.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {
+            "world_stage": true
+          }
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
       "input_sha256": "77bb825607da1ba660e2ede2c6b851a2240db16aeaedcd13b3c9bae37d1a4e2f",
       "mesh_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -58062,20 +58169,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "per_view_texture:env_cubemap"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -58555,34 +58659,42 @@
       ]
     },
     "materials/metal/metalwall048b.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {
+            "world_stage": true
+          }
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
       "input_sha256": "e5ce676bd69df6c032d09b38da0fa1f823a7e8da5ed02c3f2eebd0652d44021c",
       "mesh_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -58590,20 +58702,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "per_view_texture:env_cubemap"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -58670,34 +58779,42 @@
       ]
     },
     "materials/metal/metalwall048c.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {
+            "world_stage": true
+          }
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
       "input_sha256": "c8726f218eeaeeda898cad21c6a76872c707727fb76d57a4cfb1acda38fd8ba1",
       "mesh_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -58705,20 +58822,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "per_view_texture:env_cubemap"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -58785,34 +58899,42 @@
       ]
     },
     "materials/metal/metalwall048e.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {
+            "world_stage": true
+          }
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
       "input_sha256": "80c1a631a6d8ea2a23ea0593dc8d3bdb5e76370453b254704606215d65af71b9",
       "mesh_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -58820,20 +58942,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "per_view_texture:env_cubemap"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -58959,34 +59078,42 @@
       ]
     },
     "materials/metal/metalwall_bts_001b.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {
+            "world_stage": true
+          }
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
       "input_sha256": "d1d8c935679b6799c7fa8257c828184ad219f363df5a4d9161588441178e7894",
       "mesh_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -58994,20 +59121,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "per_view_texture:env_cubemap"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -59074,34 +59198,42 @@
       ]
     },
     "materials/metal/metalwall_bts_003a.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {
+            "world_stage": true
+          }
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
       "input_sha256": "6ecab4aca7942d496dcba5b61458ba9ab89dcdd0ce894a03d283d9161ce1a10d",
       "mesh_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -59109,20 +59241,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "per_view_texture:env_cubemap"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -59484,34 +59613,42 @@
       ]
     },
     "materials/metal/metalwall_bts_006d_gradient.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {
+            "world_stage": true
+          }
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
       "input_sha256": "da55e6f816a8a7a41ccc2ac2307d842ab77b7fc96361fef3f2f4d5c088ce039e",
       "mesh_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -59519,20 +59656,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "per_view_texture:env_cubemap"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -60543,34 +60677,42 @@
       ]
     },
     "materials/metal/underground_pipe001a.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {
+            "world_stage": true
+          }
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
       "input_sha256": "d066b09220901625aa40a6a749302b6fcf7d0ac18619d490d77fe40126ba07dd",
       "mesh_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -60578,20 +60720,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "per_view_texture:env_cubemap"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -60658,34 +60797,42 @@
       ]
     },
     "materials/metal/underground_wall_metal001b.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {
+            "world_stage": true
+          }
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
       "input_sha256": "e2a04bd8bfc4c98f33130dbcb8c719e9bf97f821b6c696dd7cabd370761d3dbe",
       "mesh_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -60693,20 +60840,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "per_view_texture:env_cubemap"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -60714,34 +60858,42 @@
       ]
     },
     "materials/metal/underground_wall_metal001c.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {
+            "world_stage": true
+          }
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
       "input_sha256": "42dffd237fa1447108b0b5e1dd56f1a2cc917a47ec3ea74718a49ed8b360ac76",
       "mesh_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -60749,20 +60901,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "per_view_texture:env_cubemap"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -60770,34 +60919,42 @@
       ]
     },
     "materials/metal/underground_wall_metal001d.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {
+            "world_stage": true
+          }
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
       "input_sha256": "14ebccdf1ce780421704dd97b3f3161dcded2b5804b44befef1360a14bd0ad0c",
       "mesh_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -60805,20 +60962,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "per_view_texture:env_cubemap"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -132844,34 +132998,42 @@
       ]
     },
     "materials/nature/dirtfloor004d.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {
+            "world_stage": true
+          }
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
       "input_sha256": "cadc2fba6b1b521bc48e88eb8a1cd420cc9662c85f28c8f12bc74cc8ff9614d4",
       "mesh_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -132879,20 +133041,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "per_view_texture:env_cubemap"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -153442,34 +153601,42 @@
       ]
     },
     "materials/plastic/plastic_light002a.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {
+            "world_stage": true
+          }
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
       "input_sha256": "dbd07370d582c1538d7c1cf812cd82d9e6a51fedd0350ca7273a41a03aab9a7a",
       "mesh_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -153477,20 +153644,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "per_view_texture:env_cubemap"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -153498,34 +153662,42 @@
       ]
     },
     "materials/plastic/plastic_light002b.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {
+            "world_stage": true
+          }
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
       "input_sha256": "16fa480a0941211b3c99baa86173dae843abfa63913d8e2130e8df3a8c631b7a",
       "mesh_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -153533,20 +153705,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "per_view_texture:env_cubemap"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -153554,34 +153723,42 @@
       ]
     },
     "materials/plastic/plastic_light002c.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {
+            "world_stage": true
+          }
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
       "input_sha256": "0ec5ef74c7b71ab7e43e5dda06b674f11150e2886edf88ad541f4f470d4b62ff",
       "mesh_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -153589,20 +153766,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "per_view_texture:env_cubemap"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -153610,34 +153784,42 @@
       ]
     },
     "materials/plastic/plasticwall001a.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {
+            "world_stage": true
+          }
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
       "input_sha256": "577fe4ca154057d43ca3013efcecf492326ee711d970c17b0e7b8dae12db9cda",
       "mesh_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -153645,20 +153827,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "per_view_texture:env_cubemap"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -153666,34 +153845,42 @@
       ]
     },
     "materials/plastic/plasticwall001b.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {
+            "world_stage": true
+          }
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
       "input_sha256": "138a7fc6afb583bbe652575620809d64e50653faf13ad7bb6def26aa22982978",
       "mesh_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -153701,20 +153888,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "per_view_texture:env_cubemap"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -153840,34 +154024,42 @@
       ]
     },
     "materials/plastic/plasticwall003a.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {
+            "world_stage": true
+          }
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
       "input_sha256": "ffeba75d5a9e50976fb1d4d9bc137a0d5e2b82f9c6a186bb5608bacce27914dd",
       "mesh_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -153875,20 +154067,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "per_view_texture:env_cubemap"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -153896,34 +154085,42 @@
       ]
     },
     "materials/plastic/plasticwall004a.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {
+            "world_stage": true
+          }
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
       "input_sha256": "f798a4c72f745690a729a4b991c79508255ccef65fc2b92c6996538509687ce4",
       "mesh_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -153931,20 +154128,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "per_view_texture:env_cubemap"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -179422,34 +179616,42 @@
       ]
     },
     "materials/tile/floor_tile_005a.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {
+            "world_stage": true
+          }
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
       "input_sha256": "7e5eaad67cc8cdd4c2b4a01a0f69bbb1ad1a0f4ac5c493ace2d3425b60efbd6d",
       "mesh_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -179457,20 +179659,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "per_view_texture:env_cubemap"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -179478,34 +179677,42 @@
       ]
     },
     "materials/tile/lobby_tilefloor_1940_001a.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {
+            "world_stage": true
+          }
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
       "input_sha256": "f400f25b907ef8b1f36def49b911fcefc1a93da90e3c428385ad312a9a268394",
       "mesh_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -179513,20 +179720,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "per_view_texture:env_cubemap"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -179534,34 +179738,42 @@
       ]
     },
     "materials/tile/lobby_tilefloor_1940_001b.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {
+            "world_stage": true
+          }
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
       "input_sha256": "d7ce85e59f24b7a7baeb2da6c85eb8d7a53e8c2d08f2d5f4c83410f89ae1a475",
       "mesh_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -179569,20 +179781,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "per_view_texture:env_cubemap"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -179590,34 +179799,42 @@
       ]
     },
     "materials/tile/lobby_tilefloor_1940_001c.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {
+            "world_stage": true
+          }
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
       "input_sha256": "b417d2e601cfaf55bbffa368485ccef23a929255447c8fb0b178bba99de4fd9d",
       "mesh_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -179625,20 +179842,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "per_view_texture:env_cubemap"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -180177,34 +180391,42 @@
       ]
     },
     "materials/tile/underground_black_tile_002a.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {
+            "world_stage": true
+          }
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
       "input_sha256": "57b870c7640981af7c50132b09181b91f4bee4fd9dc48153bff732c92669a3c0",
       "mesh_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -180212,20 +180434,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "per_view_texture:env_cubemap"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -180351,34 +180570,42 @@
       ]
     },
     "materials/tile/underground_black_tile_002c.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {
+            "world_stage": true
+          }
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
       "input_sha256": "f0da0b95cb2a443ce8d5dea424308139d7fc799ce64e3b87e413cb45c9543bc7",
       "mesh_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -180386,20 +180613,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "per_view_texture:env_cubemap"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -180584,34 +180808,42 @@
       ]
     },
     "materials/tile/underground_white_tile_001a.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {
+            "world_stage": true
+          }
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
       "input_sha256": "03765eb3274eb62046b7b4780006678a1efc8229c6f0d442f1254759a75e55fc",
       "mesh_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -180619,20 +180851,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "per_view_texture:env_cubemap"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -180640,34 +180869,42 @@
       ]
     },
     "materials/tile/underground_white_tile_001b.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {
+            "world_stage": true
+          }
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
       "input_sha256": "59901f59ece97fdc23c84a0f84e16246068bc61b6a3277a6a7f06c9a7be06cec",
       "mesh_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -180675,20 +180912,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "per_view_texture:env_cubemap"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -181580,34 +181814,42 @@
       ]
     },
     "materials/tile/white_wall_tile001a.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {
+            "world_stage": true
+          }
+        }
+      ],
       "family": "lightmapped",
-      "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
       "input_sha256": "a01711343532285fee223eff5228f8406cbc54768362efacc18d9d096e6f23a5",
       "mesh_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family lightmapped has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -181615,20 +181857,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "per_view_texture:env_cubemap"
-      ],
       "shader": "lightmappedgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -222703,11 +222942,11 @@
     "mesh_point:lightmapped": {
       "examples": [
         "materials/anim_wp/framework/blend_backpanels02_pipes.vmt",
-        "materials/metal/blendblackfloormetal_dirt02.vmt",
-        "materials/moon/moon_blend_footprints_dust01.vmt"
+        "materials/glass/glasswindow_frosted_003.vmt",
+        "materials/glass/glasswindow_frosted_004.vmt"
       ],
       "first_refusals": 0,
-      "refused_materials": 32,
+      "refused_materials": 34,
       "unmapped_materials": 0
     },
     "parameter:$additive": {
@@ -222717,7 +222956,7 @@
         "materials/effects/combinemuzzle1_nocull.vmt"
       ],
       "first_refusals": 28,
-      "refused_materials": 28,
+      "refused_materials": 30,
       "unmapped_materials": 4
     },
     "parameter:$allowalphatocoverage": {
@@ -222889,11 +223128,11 @@
     "parameter:$envmap": {
       "examples": [
         "materials/effects/coop_airlock_portalwindow.vmt",
-        "materials/models/props/futbol_dispenser.vmt",
-        "materials/models/props/futbol_effect.vmt"
+        "materials/glass/glasswindow_frosted_003.vmt",
+        "materials/glass/glasswindow_frosted_004.vmt"
       ],
-      "first_refusals": 29,
-      "refused_materials": 29,
+      "first_refusals": 31,
+      "refused_materials": 31,
       "unmapped_materials": 11
     },
     "parameter:$flashlightnolambert": {
@@ -223397,12 +223636,12 @@
     },
     "per_view_texture:env_cubemap": {
       "examples": [
-        "materials/concrete/concrete_bts_floor001a.vmt",
-        "materials/concrete/concretefloor003b.vmt",
-        "materials/glass/glasswindow002a.vmt"
+        "materials/liquids/water_underground_cave.vmt",
+        "materials/nature/toxicslime002a_noreflect.vmt",
+        "materials/nature/toxicslime_a3_03.vmt"
       ],
-      "first_refusals": 63,
-      "refused_materials": 63,
+      "first_refusals": 14,
+      "refused_materials": 14,
       "unmapped_materials": 0
     },
     "shader_family:blurfilterx": {
@@ -223675,8 +223914,8 @@
   "status_counts": {
     "dynamically_unresolved": 146,
     "statically_supported": 1494,
-    "supported_with_requirements": 1306,
-    "unsupported": 792
+    "supported_with_requirements": 1353,
+    "unsupported": 745
   },
   "total": 3738
 }

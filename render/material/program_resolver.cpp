@@ -265,7 +265,8 @@ std::optional<ParameterBlock> BlockFor(
 		if ( suppressEnvmap && value.parameter == "envmap" )
 			continue;
 		if ( ( material.family == "vertexlit" || material.family == "unlit" ||
-		         ( material.family == "refract" && value.text == "env_cubemap" ) ) &&
+		         ( ( material.family == "refract" || material.family == "lightmapped" ) &&
+		             value.text == "env_cubemap" ) ) &&
 		     value.parameter == "envmap" )
 		{
 			if ( !nativeReflectionProbes )
@@ -373,13 +374,14 @@ foundation::Expected<std::unique_ptr<ProgramResolver>, std::string> ProgramResol
 	return std::unique_ptr<ProgramResolver>( new ProgramResolver( std::move( state ) ) );
 }
 
-foundation::Expected<device::BlendMode, std::string> ClaimForDrawing(
-    const MaterialDesc &material, bool worldPbr, bool *requiresDepthAlpha )
+foundation::Expected<device::BlendMode, std::string> ClaimForDrawing( const MaterialDesc &material,
+    bool worldPbr, bool *requiresDepthAlpha, bool nativeReflectionProbes )
 {
 	if ( requiresDepthAlpha )
 		*requiresDepthAlpha = false;
 	std::string why;
-	const std::optional<ParameterBlock> block = BlockFor( material, &why );
+	const std::optional<ParameterBlock> block =
+	    BlockFor( material, &why, material.family == "lightmapped" && nativeReflectionProbes );
 	if ( !block )
 		return foundation::MakeUnexpected( why );
 	if ( material.family == "depth" || material.family == "portal-mask" )
@@ -495,8 +497,9 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 {
 	State &s = *m_State;
 	std::string why;
-	const std::optional<ParameterBlock> block =
-	    BlockFor( material, &why, s.mesh && ( s.sceneTerms & kSurfaceReflectionProbes ) != 0 );
+	const std::optional<ParameterBlock> block = BlockFor( material, &why,
+	    ( s.mesh || material.family == "lightmapped" ) &&
+	        ( s.sceneTerms & kSurfaceReflectionProbes ) != 0 );
 	if ( !block )
 		return foundation::MakeUnexpected( why );
 	ResolvedProgram out;
@@ -529,12 +532,19 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 
 	if ( material.family == "lightmapped" )
 	{
-		const LightmappedClaim claim = ClaimLightmapped( *block );
+		LightmappedClaim claim = ClaimLightmapped( *block );
 		if ( !claim.claimed )
 			return foundation::MakeUnexpected( claim.reason );
 		SurfaceTextures textures;
 		textures.base = TextureOf( material, "basetexture" );
 		textures.envmap = TextureOf( material, "envmap" );
+		// The view's env_cubemap is the stage's reflection probes (RPRB),
+		// which BlockFor admitted only when the scene carries them.
+		if ( textures.envmap == "env_cubemap" )
+		{
+			claim.terms |= kSurfaceReflectionProbes;
+			textures.envmap.clear();
+		}
 		textures.envmapMask = TextureOf( material, "envmapmask" );
 		textures.bump = TextureOf( material, "bumpmap" );
 		textures.detail = TextureOf( material, "detail" );

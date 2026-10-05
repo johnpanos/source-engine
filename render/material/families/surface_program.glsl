@@ -1957,10 +1957,19 @@ void main()
 		    2.0 * dot( normal, toEye ) * normal - dot( normal, normal ) * toEye;
 		float fresnel = pow( 1.0 - dot( normal, normalize( toEye ) ), 5.0 );
 		fresnel = fresnel * material.envContrast.a + material.envTint.a;
-		vec3 specular = furnace ? vec3( 1.0 )
-		                        : frame.eye.w * texture( samplerCube( envmapTexture, envmapSampler ),
-		                                            reflected )
-		                                            .rgb;
+		vec3 specular = vec3( 1.0 );
+		if ( !furnace && Term( kReflectionProbes ) )
+		{
+			// $envmap env_cubemap on a stage: the stage's reflection probes
+			// (linear radiance, so no legacy ENV_MAP_SCALE), at the mirror
+			// roughness the legacy cube's top level stands for.
+			if ( !ReflectionProbesRadiance(
+			         worldPosition, worldNormal, normalize( reflected ), 0.02, specular ) )
+				specular = AmbientCube( normalize( reflected ) );
+		}
+		else if ( !furnace )
+			specular = frame.eye.w *
+			           texture( samplerCube( envmapTexture, envmapSampler ), reflected ).rgb;
 		// Portal 2's $envmaplightscale: darker where the diffuse light is.
 		if ( material.envLightScale.z > 0.0 )
 		{
