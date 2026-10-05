@@ -46,7 +46,8 @@
 //			Usage: render_lab --game <dir> --map <file.bsp> --eye x,y,z
 //			           --forward x,y,z --up x,y,z --hfov degrees --size WxH
 //			           --out <file.pfm> [--model <models/x.mdl> --model-origin
-//			           x,y,z] [--model-no-shadow] [--mover x0,y0,z0,x1,y1,z1,material]
+//			           x,y,z] [--model-sequence label] [--model-no-shadow]
+//			           [--mover x0,y0,z0,x1,y1,z1,material]
 //			           [--validate] [--dump-mesh] [--core-direct]
 //			           [--debug-view n] [--fog-scale s] [--no-volumetric]
 //			           [--output-peak p] [--entities portal|portal2] [--time n]
@@ -134,6 +135,9 @@ struct Options
 	math::float3 forward{ 1, 0, 0 };
 	math::float3 up{ 0, 0, 1 };
 	math::float3 modelOrigin{ 0, 0, 0 };
+	// The model's pose: the first frame of this sequence (mdl::PoseModel);
+	// empty for the reference pose.
+	std::string modelSequence;
 	float horizontalFov = 90.0f;
 	std::uint32_t width = 256;
 	std::uint32_t height = 192;
@@ -264,6 +268,8 @@ std::optional<Options> ParseOptions( int argc, char **argv )
 			options.out = take();
 		else if ( arg == "--model" )
 			options.model = take();
+		else if ( arg == "--model-sequence" )
+			options.modelSequence = take();
 		else if ( arg == "--eye" && ParseVector( value, options.eye ) )
 			take();
 		else if ( arg == "--forward" && ParseVector( value, options.forward ) )
@@ -731,7 +737,16 @@ int Run( const Options &options )
 			auto model = mdl::LoadModel( files, options.model.string(), 0 );
 			if ( !model )
 				return Fail( "model " + options.model.string() + " does not load" );
-			const mdl::Model &m = model.Value();
+			mdl::Model posed = model.Value();
+			if ( !options.modelSequence.empty() )
+			{
+				const std::int32_t sequence = mdl::FindSequence( posed, options.modelSequence );
+				if ( sequence < 0 )
+					return Fail( "model " + options.model.string() + " has no sequence " +
+					             options.modelSequence );
+				posed = mdl::PoseModel( posed, sequence );
+			}
+			const mdl::Model &m = posed;
 			for ( const mdl::Mesh &part : m.meshes )
 			{
 				const std::int16_t texture =
@@ -1781,7 +1796,7 @@ int main( int argc, char **argv )
 		std::fprintf( stderr,
 		    "usage: render_lab --game <dir> --map <file.bsp> --eye x,y,z --forward x,y,z --up "
 		    "x,y,z --hfov degrees --size WxH --out <file.pfm> [--model <models/x.mdl> "
-		    "--model-origin x,y,z] [--model-no-shadow] [--mover x0,y0,z0,x1,y1,z1,material] "
+		    "--model-origin x,y,z] [--model-sequence label] [--model-no-shadow] [--mover x0,y0,z0,x1,y1,z1,material] "
 		    "[--validate] [--dump-mesh] [--core-direct] [--debug-* ...]\n"
 		    "           [--fog-scale s] [--no-volumetric] [--output-peak p] [--entities portal|portal2] [--time n]\n"
 		    "       render_lab suite <name> [--validate] [--seeded <defect>]\n"

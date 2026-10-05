@@ -11066,3 +11066,10 @@ sequence )`; bone controllers, IK and pose parameters are not modelled.)
 The next step is a lab `--model-sequence` input for the door's idle open and
 closed states, against matched game captures. The CPU skinning the
 door uses is the same R89/K6 GPU-skinning item that remains open.
+
+Follow-up: `render_lab --model-sequence <label>` poses the `--model` at that
+sequence's first frame (`mdl::FindSequence`, `mdl::PoseModel`), and an
+unknown label fails by name. It is not yet exercised on the door. The door's
+retail model reaches the game through the fixture's read-only content
+resolver, and the matched door camera (game idle open/closed against the lab
+posed by the same sequences) is the next step. `posed-model` still passes.
