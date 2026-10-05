@@ -247,10 +247,10 @@
     },
     "sprite": {
       "dynamically_unresolved": 1,
-      "statically_supported": 90,
+      "statically_supported": 98,
       "supported_with_requirements": 1,
       "total": 105,
-      "unsupported": 13
+      "unsupported": 5
     },
     "spritecard": {
       "dynamically_unresolved": 0,
@@ -446,8 +446,7 @@
     "the model does not read envmap": 11,
     "the model does not read ignorez": 1,
     "the model does not read phong": 5,
-    "the modern mesh point does not draw $ignorez": 1,
-    "the sprite point does not draw $ignorez": 8
+    "the modern mesh point does not draw $ignorez": 1
   },
   "materials": {
     "materials/anim_wp/ekg/ekg_anim.vmt": {
@@ -176062,9 +176061,15 @@
       ]
     },
     "materials/sprites/ar2_muzzle1b.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the sprite point does not draw $ignorez",
       "input_sha256": "9b6f5d24af79f2b3c2bb7ff1846e373f0f33787403ab6ca9473020c35398a54a",
       "mesh_claims": [
         {
@@ -176097,21 +176102,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$ignorez",
-        "parameter:$spriteorigin"
-      ],
       "shader": "sprite",
-      "status": "unsupported",
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "the sprite point does not draw $ignorez",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the sprite point does not draw $ignorez",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -176119,9 +176120,15 @@
       ]
     },
     "materials/sprites/ar2_muzzle2b.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the sprite point does not draw $ignorez",
       "input_sha256": "a3edcce2c2017c8a098ccc975cb6f7d3cf646e876f86e06963e225217e3b11c1",
       "mesh_claims": [
         {
@@ -176154,21 +176161,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$ignorez",
-        "parameter:$spriteorigin"
-      ],
       "shader": "sprite",
-      "status": "unsupported",
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "the sprite point does not draw $ignorez",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the sprite point does not draw $ignorez",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -176176,9 +176179,15 @@
       ]
     },
     "materials/sprites/ar2_muzzle3b.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the sprite point does not draw $ignorez",
       "input_sha256": "e4cc6f964b348d6a79f9ad35ac12f119350f5761da0456927fe7bab91e9ec4ab",
       "mesh_claims": [
         {
@@ -176211,21 +176220,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$ignorez",
-        "parameter:$spriteorigin"
-      ],
       "shader": "sprite",
-      "status": "unsupported",
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "the sprite point does not draw $ignorez",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the sprite point does not draw $ignorez",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -176233,9 +176238,15 @@
       ]
     },
     "materials/sprites/ar2_muzzle4b.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the sprite point does not draw $ignorez",
       "input_sha256": "ce9469173f82d5716a09b3588b5108085c599613b025012231a2070e92646289",
       "mesh_claims": [
         {
@@ -176268,21 +176279,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$ignorez",
-        "parameter:$spriteorigin"
-      ],
       "shader": "sprite",
-      "status": "unsupported",
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "the sprite point does not draw $ignorez",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the sprite point does not draw $ignorez",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -177118,9 +177125,15 @@
       ]
     },
     "materials/sprites/grav_beam_noz.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the sprite point does not draw $ignorez",
       "input_sha256": "17f1f43e91df469de57a7472855347dbfe1a14552ef0ce5f7c24ca71408b54f7",
       "mesh_claims": [
         {
@@ -177153,21 +177166,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$ignorez",
-        "parameter:$spriteorigin"
-      ],
       "shader": "sprite",
-      "status": "unsupported",
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "the sprite point does not draw $ignorez",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the sprite point does not draw $ignorez",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -177821,9 +177830,15 @@
       ]
     },
     "materials/sprites/orangecore1.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the sprite point does not draw $ignorez",
       "input_sha256": "996f6e8ee4227836193579c0901eedc9ba760a8201c8b7e80ef579f3cfe6749d",
       "mesh_claims": [
         {
@@ -177856,21 +177871,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$ignorez",
-        "parameter:$spriteorigin"
-      ],
       "shader": "sprite",
-      "status": "unsupported",
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "the sprite point does not draw $ignorez",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the sprite point does not draw $ignorez",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -178055,9 +178066,15 @@
       ]
     },
     "materials/sprites/orangelight1_noz.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the sprite point does not draw $ignorez",
       "input_sha256": "5a0abb78a2e2a714e9b4caa202307558ab3d055722b77556e2fb2068115b9746",
       "mesh_claims": [
         {
@@ -178090,21 +178107,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$ignorez",
-        "parameter:$spriteorigin"
-      ],
       "shader": "sprite",
-      "status": "unsupported",
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "the sprite point does not draw $ignorez",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the sprite point does not draw $ignorez",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -178112,9 +178125,15 @@
       ]
     },
     "materials/sprites/physcannon_bluelight1.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the sprite point does not draw $ignorez",
       "input_sha256": "efacada73bda5e55260de400a212d553e19054ee68acda57b921d35c634a511f",
       "mesh_claims": [
         {
@@ -178147,21 +178166,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$ignorez",
-        "parameter:$spriteorigin"
-      ],
       "shader": "sprite",
-      "status": "unsupported",
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "the sprite point does not draw $ignorez",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the sprite point does not draw $ignorez",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -223642,11 +223657,10 @@
     "parameter:$ignorez": {
       "examples": [
         "materials/effects/tesla_glow_noz.vmt",
-        "materials/models/editor/white_model_outline.vmt",
-        "materials/sprites/ar2_muzzle1b.vmt"
+        "materials/models/editor/white_model_outline.vmt"
       ],
-      "first_refusals": 10,
-      "refused_materials": 10,
+      "first_refusals": 2,
+      "refused_materials": 2,
       "unmapped_materials": 2
     },
     "parameter:$keywords": {
@@ -223827,7 +223841,7 @@
         "materials/effects/gunshipmuzzle.vmt"
       ],
       "first_refusals": 1,
-      "refused_materials": 13,
+      "refused_materials": 5,
       "unmapped_materials": 0
     },
     "parameter:$spriterendermode": {
@@ -224339,9 +224353,9 @@
   "scope": "all materials/**/*.vmt in the game's ordered search path",
   "status_counts": {
     "dynamically_unresolved": 146,
-    "statically_supported": 1539,
+    "statically_supported": 1547,
     "supported_with_requirements": 1471,
-    "unsupported": 582
+    "unsupported": 574
   },
   "total": 3738
 }

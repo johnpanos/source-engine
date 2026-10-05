@@ -117,7 +117,8 @@ UnlitClaim ClaimSprite( const ParameterBlock &block )
 	// blending, vertex color and depth. Keep that policy here, not in the bridge.
 	constexpr std::string_view keys[] = { "basetexture", "frame", "color", "alpha", "model",
 	    "nocull", "nofog", "vertexcolor", "vertexalpha", "translucent", "additive", "spriteorigin",
-	    "spriteorientation", "spriterendermode", "ignorevertexcolors", "nosrgb", "hdrcolorscale" };
+	    "spriteorientation", "spriterendermode", "ignorevertexcolors", "nosrgb", "hdrcolorscale",
+	    "ignorez" };
 	if ( const auto unread = detail::UnclaimedParameter( block, keys ) )
 	{
 		claim.reason = "the sprite point does not draw " + *unread;
@@ -136,7 +137,10 @@ UnlitClaim ClaimSprite( const ParameterBlock &block )
 	              : mode   ? BlendMode::kAlpha
 	                       : BlendMode::kOpaque;
 	claim.alphaWrite = false;
-	claim.ignoreDepth = glow;
+	// $ignorez: CBaseShader::SetInitialShadowState turns the depth test and
+	// writes off before the sprite's render mode sets its state, which only
+	// the glow modes change again.
+	claim.ignoreDepth = glow || ReadFlag( block, "ignorez" );
 	claim.fogToBlack = additive;
 	claim.baseSrgb = !ReadFlag( block, "nosrgb" );
 	const bool vertexColor = mode != 0 && ( mode != 5 || !ReadFlag( block, "ignorevertexcolors" ) );

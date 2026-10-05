@@ -10798,3 +10798,10 @@ whatever the authored `$detailblendmode`. The core claims from the authored
 value, so a material whose detail VTF is ssbump-flagged and authored with
 another mode is interpreted differently. A texture-flag input to the claim
 is needed to close this.
+
+Follow-up: the sprite point claims `$ignorez`. `CBaseShader::SetInitialShadowState`
+turns the depth test and writes off for the flag before `Sprite_DX9`'s
+render mode sets its state, and only the glow modes touch the depth test
+again. So the claim ignores depth for an `$ignorez` sprite in every mode.
+The inventory is now 1,547 / 1,471 / 574 unsupported (8 more claimed), and
+`render_lab suite sprite` passes 40/40.
