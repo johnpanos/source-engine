@@ -84,7 +84,8 @@ STATS_LINE = re.compile(
     r"r_core_world_stats: materials (?P<materials>\d+) claimed (?P<claimed_materials>\d+) "
     r"surfaces (?P<surfaces>\d+) claimed (?P<claimed_surfaces>\d+) views queued (?P<queued>\d+) "
     r"drawn (?P<drawn>\d+) failed (?P<failed>\d+) skipped (?P<skipped>\d+) "
-    r"surfaces drawn (?P<surfaces_drawn>\d+) last failure '(?P<last_failure>[^'\n]*)'")
+    r"surfaces drawn (?P<surfaces_drawn>\d+) static queued (?P<static_queued>\d+) "
+    r"drawn (?P<static_drawn>\d+) last failure '(?P<last_failure>[^'\n]*)'")
 NO_CORE_LINE = "r_core_world_stats: no render core"
 STATS_SECTION = re.compile(r"r_core_world_stats: (gaps|drawn by the core):$")
 # One token each: echo writes each argument separately, and a console line
@@ -878,7 +879,8 @@ def command_list(args):
 
 def synthetic_stats(queued, drawn, failed=0, skipped=0, claimed=12, last=""):
     return ("r_core_world_stats: materials 40 claimed 3 surfaces 900 claimed %d views queued %d "
-            "drawn %d failed %d skipped %d surfaces drawn %d last failure '%s'"
+            "drawn %d failed %d skipped %d surfaces drawn %d static queued 0 drawn 0 "
+            "last failure '%s'"
             % (claimed, queued, drawn, failed, skipped, drawn * 10, last))
 
 

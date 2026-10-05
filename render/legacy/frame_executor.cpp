@@ -7,8 +7,10 @@
 #include "render/graph/compiled_graph.h"
 #include "render/graph/executor.h"
 #include "render/legacy/frame_source.h"
+#include "render/device/errors.h"
 
 #include <atomic>
+#include <cstdio>
 #include <string>
 #include <utility>
 
@@ -59,6 +61,10 @@ public:
 		auto executed = m_Executor.Execute( compiled.Value(), source.Device() );
 		const bool submitted = executed.HasValue();
 		m_LastPasses = submitted ? executed.Value().passes : 0u;
+		if ( !submitted )
+			std::fprintf( stderr, "render core: submit failed: %s during %s\n",
+			    device::DescribeStatus( executed.Error().status ),
+			    device::DescribeOperation( executed.Error().operation ) );
 		const bool finished = source.Finish(
 		    submitted ? executed.Value().token : device::CompletionToken{}, submitted );
 		++m_Frames;

@@ -1519,15 +1519,16 @@ bool CoreWorld::DrawView( const unsigned int *surfaces, unsigned int count,
 		}
 	}
 	view.waterZOffset = waterZOffset;
-	// A view that draws no world geometry of its own (the client's viewmodel
-	// scope, which pushes its own 3D view) has no world to plan lighting or
-	// screen passes for. When the frame's stage lighting is already recorded,
-	// its slot records below reads that instead, so the frame builds one
-	// shadow atlas and one ambient occlusion pass rather than one per view. A
-	// frame whose world view has not recorded yet keeps this view's own
-	// lighting inputs.
-	view.drawsWorldGeometry =
-	    !view.surfaces.empty() || !view.staticInstances.empty() || !view.posedModels.empty();
+	// A view that draws no *world* geometry of its own (the client's viewmodel
+	// scope, which pushes its own 3D view and queues only the handed-off model
+	// it draws) has no world to plan lighting or screen passes for: the depth
+	// and normal prepass and the ambient occlusion over them are the world's,
+	// and the world was drawn by the frame's own view. When that view's stage
+	// lighting is already recorded, this view's slot reads it below, so the
+	// frame builds one shadow atlas and one ambient-occlusion pass rather than
+	// one per view. A frame whose world view has not recorded yet, and a view
+	// with its own surfaces or static instances, keep their own lighting.
+	view.drawsWorldGeometry = !view.surfaces.empty() || !view.staticInstances.empty();
 	// A stage view's lights are clustered and its shadows planned when its
 	// slot records (the render sequence), from what the frame holds now.
 	std::shared_ptr<PendingView> pending;
@@ -2505,7 +2506,8 @@ void CoreWorld::RecordWorldBatch( std::span<const std::uint32_t> tags,
 	// A view that draws no world geometry of its own, in a frame whose stage
 	// lighting another view already recorded: it reads that lighting, its
 	// shadow atlas and its occlusion instead of planning a second set. The
-	// viewmodel scope is this case, and it is the frame's second view.
+	// viewmodel scope is this case: the frame's second view, drawing only the
+	// handed-off model.
 	const bool sharedStage = pending && !m_Pass.ViewDrawsWorldGeometry( tag, target.streamEpoch ) &&
 	                         m_StreamLightingFrame == target.frame && m_StreamLighting.lights &&
 	                         m_StreamLighting.ambientOcclusion.IsValid() &&

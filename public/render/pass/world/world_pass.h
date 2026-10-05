@@ -488,15 +488,15 @@ struct WorldView
 	// that frame (a resize, a lost surface, a dropped queued frame).
 	std::uint64_t hostFrame = 0;
 	std::shared_ptr<const StageLightingInputs> stageLighting;
-	// Whether this view draws world geometry of its own: BSP surfaces, static
-	// instances or posed models. A view that draws only dynamic geometry (the
+	// Whether this view draws world geometry of its own: BSP surfaces or
+	// static instances. A view that draws only a handed-off model (the
 	// client's viewmodel scope, which pushes its own 3D view) has no world to
 	// build lighting inputs or screen passes for; it reads the frame's stage
-	// lighting and the neutral occlusion instead, and the composition does not
-	// plan a second shadow atlas or ambient-occlusion pass for it. Captured
-	// when the view is queued: the composition owns the decision, and a view
-	// whose queues were filled by an earlier frame keeps the value it was
-	// queued with.
+	// lighting and its occlusion instead, and the composition does not plan a
+	// second shadow atlas or ambient-occlusion pass for it. Captured when the
+	// view is queued: the composition owns the decision, and a view whose
+	// queues were filled by an earlier frame keeps the value it was queued
+	// with.
 	bool drawsWorldGeometry = true;
 	// The frame's debug controls (RFC 0014), as the renderer applied them
 	// when the view was queued: the render sequence draws with the main
