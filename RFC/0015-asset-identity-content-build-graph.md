@@ -637,17 +637,23 @@ not two. These rules bind every cohort of C5 and C6.
   Hammer's own VPK and search-path walk, the search-path loop inside
   `IFileSystem`'s asset lookups, and `AssetLookupStatus::Unindexed`.
   `CPackedStore` is reachable only from the VPK package source.
-- **Shrink-only ratchet.** A static scan (`tools/quality/`, an exact entry
-  in `quality/baseline.json`, like `render.legacy-freeze`) counts:
+- **Shrink-only ratchet.** `tools/quality/content_lookup_scan.py check`
+  (conformance rows `content.lookup.ratchet` and
+  `content.lookup.sensitivity`, recorded in
+  `tools/quality/content_lookup_ratchet.json`) counts:
   - texture or material path building from a format string and extension;
   - direct `CPackedStore` or VPK-reader use outside the VPK source;
   - search-path enumeration in asset loaders (`FindFirst`, `GetSearchPath`,
     per-path-ID loops);
   - references to `Unindexed`.
 
-  Every migration commit lowers the count and updates the baseline in the
+  Every migration commit lowers the count and updates the ratchet in the
   same change; an increase fails CI. The scan's sensitivity suite seeds
-  each pattern and must catch it.
+  each pattern and must catch it (13 checks). A reviewed site that is not
+  an asset lookup goes in the ratchet's `exempt` map with a reason.
+  Installed 2026-10-05 with 375 sites in 129 files: `path-build` 123,
+  `search-enum` 116, `fs-search-loop` 107, `vpk-direct` 24 and
+  `unindexed` 5.
 - **Dependency rules.** archlint allows the VPK reader and raw directory
   scanning only in `content.package-source`. `hammer.*`, `render_lab` and
   content tools may not include filesystem search-path headers for asset

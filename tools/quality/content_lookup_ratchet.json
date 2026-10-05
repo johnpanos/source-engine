@@ -1,0 +1,414 @@
+{
+  "exempt": {},
+  "files": {
+    "content/asset_identity.cpp": {
+      "path-build": 2
+    },
+    "content/asset_resolver.cpp": {
+      "unindexed": 2
+    },
+    "content/material_compiler.cpp": {
+      "path-build": 4
+    },
+    "datacache/mdlcache.cpp": {
+      "path-build": 2
+    },
+    "dedicated/vgui/CreateMultiplayerGameServerPage.cpp": {
+      "search-enum": 2
+    },
+    "engine/buildcubemaps.cpp": {
+      "path-build": 7
+    },
+    "engine/cl_texturelistpanel.cpp": {
+      "path-build": 6
+    },
+    "engine/download.cpp": {
+      "search-enum": 1
+    },
+    "engine/gl_matsysiface.cpp": {
+      "path-build": 2
+    },
+    "engine/host_cmd.cpp": {
+      "search-enum": 1
+    },
+    "engine/logofile_shared.cpp": {
+      "path-build": 1
+    },
+    "engine/modelloader.cpp": {
+      "path-build": 2
+    },
+    "engine/render_core_world_draw.cpp": {
+      "path-build": 1
+    },
+    "engine/sample_textures.cpp": {
+      "path-build": 1
+    },
+    "engine/saverestore_filesystem.cpp": {
+      "search-enum": 2
+    },
+    "engine/sys_dll.cpp": {
+      "search-enum": 2
+    },
+    "engine/sys_getmodes.cpp": {
+      "path-build": 4
+    },
+    "filesystem/basefilesystem.cpp": {
+      "fs-search-loop": 99,
+      "vpk-direct": 11
+    },
+    "filesystem/basefilesystem.h": {
+      "fs-search-loop": 4,
+      "vpk-direct": 1
+    },
+    "filesystem/filesystem_steam.cpp": {
+      "fs-search-loop": 4,
+      "search-enum": 4
+    },
+    "game/client/c_slideshow_display.cpp": {
+      "path-build": 2,
+      "search-enum": 1
+    },
+    "game/client/c_smokestack.cpp": {
+      "path-build": 1
+    },
+    "game/client/c_te_playerdecal.cpp": {
+      "path-build": 1
+    },
+    "game/client/cstrike/VGUI/cstrikespectatorgui.cpp": {
+      "path-build": 2
+    },
+    "game/client/emissive_area_lights.cpp": {
+      "path-build": 1
+    },
+    "game/client/game_controls/slideshowpanel.cpp": {
+      "path-build": 1
+    },
+    "game/client/hud_closecaption.cpp": {
+      "search-enum": 1
+    },
+    "game/client/material_proxy_capture.cpp": {
+      "path-build": 1,
+      "search-enum": 1
+    },
+    "game/client/mp3player.cpp": {
+      "search-enum": 2
+    },
+    "game/client/portal2/gameui/basesavegamedialog.cpp": {
+      "search-enum": 1
+    },
+    "game/client/portal2/gameui/createmultiplayergameserverpage.cpp": {
+      "search-enum": 1
+    },
+    "game/client/portal2/gameui/gameui_interface.cpp": {
+      "search-enum": 2
+    },
+    "game/client/portal2/gameui/optionssubmultiplayer.cpp": {
+      "path-build": 6,
+      "search-enum": 3
+    },
+    "game/client/portal2/gameui/portal2/basemodpanel.cpp": {
+      "search-enum": 1
+    },
+    "game/client/portal2/gameui/portal2/vaddons.cpp": {
+      "search-enum": 2,
+      "vpk-direct": 1
+    },
+    "game/client/portal2/gameui/portal2/vattractscreen.cpp": {
+      "search-enum": 1
+    },
+    "game/client/portal2/gameui/portal2/vloadingprogress.cpp": {
+      "path-build": 1
+    },
+    "game/client/portal2/gameui/portal2/vmultiplayer.cpp": {
+      "search-enum": 1
+    },
+    "game/client/portal2/gameui/portal2/vpuzzlemakermychambers.cpp": {
+      "search-enum": 1
+    },
+    "game/client/replay/vgui/replaybrowserlistitempanel.cpp": {
+      "path-build": 1
+    },
+    "game/client/spritemodel.cpp": {
+      "path-build": 1
+    },
+    "game/client/touch.cpp": {
+      "path-build": 1
+    },
+    "game/server/cstrike/cs_nav_file.cpp": {
+      "search-enum": 1
+    },
+    "game/server/nav_file.cpp": {
+      "search-enum": 1
+    },
+    "game/server/nav_merge.cpp": {
+      "search-enum": 1
+    },
+    "game/server/portal/Portal_CustomStatsVisualizer.cpp": {
+      "search-enum": 1
+    },
+    "game/server/slideshow_display.cpp": {
+      "path-build": 2,
+      "search-enum": 1
+    },
+    "game/server/smokestack.cpp": {
+      "path-build": 1
+    },
+    "game/shared/achievementmgr.cpp": {
+      "search-enum": 1
+    },
+    "game/shared/multiplay_gamerules.cpp": {
+      "search-enum": 1
+    },
+    "game/shared/sceneimage.cpp": {
+      "search-enum": 1
+    },
+    "gameui/BaseSaveGameDialog.cpp": {
+      "search-enum": 1
+    },
+    "gameui/BonusMapsDatabase.cpp": {
+      "search-enum": 2
+    },
+    "gameui/CreateMultiplayerGameServerPage.cpp": {
+      "search-enum": 1
+    },
+    "gameui/GameUI_Interface.cpp": {
+      "search-enum": 3
+    },
+    "gameui/LoadCommentaryDialog.cpp": {
+      "search-enum": 1
+    },
+    "gameui/NewGameDialog.cpp": {
+      "search-enum": 1
+    },
+    "gameui/OptionsSubMultiplayer.cpp": {
+      "path-build": 6,
+      "search-enum": 3
+    },
+    "gameui/SaveGameBrowserDialog.cpp": {
+      "search-enum": 1
+    },
+    "hammer/core/formats/material_catalog.cpp": {
+      "path-build": 8
+    },
+    "hammer/core/formats/material_info_adapter.cpp": {
+      "path-build": 1
+    },
+    "hammer/gtk/app.cpp": {
+      "vpk-direct": 2
+    },
+    "hammer/gtk/catalog_models.cpp": {
+      "vpk-direct": 1
+    },
+    "hammer/gtk/catalog_models.h": {
+      "vpk-direct": 1
+    },
+    "hammer/gtk/catalog_textures.cpp": {
+      "path-build": 1,
+      "vpk-direct": 1
+    },
+    "hammer/gtk/catalog_textures.h": {
+      "vpk-direct": 1
+    },
+    "hammer/material.cpp": {
+      "search-enum": 2
+    },
+    "hammer/soundsystem.cpp": {
+      "search-enum": 2
+    },
+    "hammer/studiomodel.cpp": {
+      "search-enum": 1
+    },
+    "hammer/texturesystem.cpp": {
+      "path-build": 1,
+      "search-enum": 2
+    },
+    "materialsystem/checkmaterials.cpp": {
+      "path-build": 3
+    },
+    "materialsystem/cmaterial.cpp": {
+      "path-build": 6
+    },
+    "materialsystem/cmaterialsystem.cpp": {
+      "path-build": 4,
+      "search-enum": 1
+    },
+    "materialsystem/ctexture.cpp": {
+      "path-build": 5
+    },
+    "materialsystem/dxsupport_keyvalues.cpp": {
+      "search-enum": 1
+    },
+    "materialsystem/shadersystem.cpp": {
+      "search-enum": 1
+    },
+    "materialsystem/texturemanager.cpp": {
+      "search-enum": 1
+    },
+    "mdl/studio_model.cpp": {
+      "path-build": 1
+    },
+    "movieobjects/dmeanimationset.cpp": {
+      "search-enum": 1
+    },
+    "movieobjects/dmobjserializer.cpp": {
+      "search-enum": 1
+    },
+    "public/content/asset_resolver.h": {
+      "unindexed": 2
+    },
+    "public/filesystem_init.cpp": {
+      "search-enum": 1
+    },
+    "public/filesystem_passthru.h": {
+      "search-enum": 3
+    },
+    "public/render/emissive_area_lights.h": {
+      "path-build": 1
+    },
+    "public/render/pbr_material_schema.h": {
+      "path-build": 1
+    },
+    "render/map_media/projector_cookies.cpp": {
+      "path-build": 1
+    },
+    "render/lab/lab_support.cpp": {
+      "unindexed": 1
+    },
+    "render/lab/render_lab.cpp": {
+      "path-build": 3
+    },
+    "render/material/vmt_import.cpp": {
+      "path-build": 3
+    },
+    "replay/baserecordingsession.cpp": {
+      "search-enum": 1
+    },
+    "replay/genericpersistentmanager.h": {
+      "search-enum": 1
+    },
+    "replay/sv_replaycontext.cpp": {
+      "search-enum": 1
+    },
+    "sdklauncher/ModWizard_CopyFiles.cpp": {
+      "search-enum": 1
+    },
+    "sdklauncher/min_footprint_files.cpp": {
+      "search-enum": 1
+    },
+    "serverbrowser/QuickListPanel.cpp": {
+      "path-build": 1
+    },
+    "sfmobjects/sfmphonemeextractor.cpp": {
+      "search-enum": 1
+    },
+    "tier2/fileutils.cpp": {
+      "search-enum": 9
+    },
+    "tools/portal_pbr/portal_assets.cpp": {
+      "path-build": 1,
+      "vpk-direct": 5
+    },
+    "tools/vmt/vmttool.cpp": {
+      "path-build": 1
+    },
+    "utils/FileSystemOpenDialog/FileSystemOpenDlg.cpp": {
+      "search-enum": 1
+    },
+    "utils/common/bsplib.cpp": {
+      "search-enum": 1
+    },
+    "utils/common/scriplib.cpp": {
+      "search-enum": 1
+    },
+    "utils/gamestats_reader/gamestats_reader.cpp": {
+      "search-enum": 1
+    },
+    "utils/hlfaceposer/AnimationBrowser.cpp": {
+      "search-enum": 1
+    },
+    "utils/hlfaceposer/choreoview.cpp": {
+      "search-enum": 1
+    },
+    "utils/hlfaceposer/expclass.cpp": {
+      "search-enum": 1
+    },
+    "utils/hlfaceposer/faceposer_models.cpp": {
+      "search-enum": 1
+    },
+    "utils/hlfaceposer/mxexpressiontray.cpp": {
+      "search-enum": 1
+    },
+    "utils/hlfaceposer/phonemeeditor.cpp": {
+      "search-enum": 1
+    },
+    "utils/hlfaceposer/vcdbrowser.cpp": {
+      "search-enum": 2
+    },
+    "utils/hlfaceposer/wavebrowser.cpp": {
+      "search-enum": 2
+    },
+    "utils/localization_check/localization_check.cpp": {
+      "search-enum": 1
+    },
+    "utils/scenemanager/wavebrowser.cpp": {
+      "search-enum": 2
+    },
+    "utils/studiomdl/studiomdl.cpp": {
+      "search-enum": 1
+    },
+    "utils/vbsp/cubemap.cpp": {
+      "path-build": 5
+    },
+    "utils/vbsp/materialpatch.cpp": {
+      "path-build": 9
+    },
+    "utils/vmtcheck/vmtcheck.cpp": {
+      "path-build": 1
+    },
+    "utils/vrad/macro_texture.cpp": {
+      "path-build": 1
+    },
+    "utils/vrad/vradstaticprops.cpp": {
+      "path-build": 2
+    },
+    "utils/vtex/vtex.cpp": {
+      "path-build": 2
+    },
+    "vgui2/matsys_controls/QCGenerator.cpp": {
+      "search-enum": 1
+    },
+    "vgui2/matsys_controls/baseassetpicker.cpp": {
+      "search-enum": 3
+    },
+    "vgui2/matsys_controls/gamefiletreeview.cpp": {
+      "search-enum": 3
+    },
+    "vgui2/matsys_controls/mdlpicker.cpp": {
+      "path-build": 1
+    },
+    "vgui2/src/LocalizedStringTable.cpp": {
+      "search-enum": 2
+    },
+    "vgui2/vgui_controls/DirectorySelectDialog.cpp": {
+      "search-enum": 2
+    },
+    "vgui2/vgui_controls/FileOpenDialog.cpp": {
+      "search-enum": 2
+    },
+    "vgui2/vgui_controls/PerforceFileExplorer.cpp": {
+      "search-enum": 1
+    },
+    "video/videoservices.cpp": {
+      "search-enum": 1
+    }
+  },
+  "note": "RFC 0015 'One lookup path': asset lookups that bypass the resolver, per file and category. Only shrinks; rewrite with `content_lookup_scan.py check --write` after review. R83 needs zero.",
+  "schema": "content-lookup-ratchet/v1",
+  "totals": {
+    "fs-search-loop": 107,
+    "path-build": 123,
+    "search-enum": 116,
+    "unindexed": 5,
+    "vpk-direct": 24
+  }
+}

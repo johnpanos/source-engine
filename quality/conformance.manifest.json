@@ -17788,6 +17788,58 @@
       "expect": "pass"
     },
     {
+      "id": "content.lookup.ratchet",
+      "domain": "Q-ARCH",
+      "rfc": "0015",
+      "migration": "R83",
+      "contract": "tools/quality/content_lookup_scan.py",
+      "kind": "positive",
+      "profile": "linux-host-corpus",
+      "description": "RFC 0015 'One lookup path' static ratchet: first-party asset lookups that bypass the resolver (materials/ path building, direct CPackedStore/VpkArchive use, search-path enumeration calls, the IFileSystem search loop, the Unindexed status), per file and category, equal tools/quality/content_lookup_ratchet.json exactly: growth fails, and so does a shrink not yet recorded. R83 needs every count at 0 (375 sites in 129 files on 2026-10-05).",
+      "command": [
+        "{python}",
+        "tools/quality/content_lookup_scan.py",
+        "check"
+      ],
+      "sources": [
+        "tools/quality/content_lookup_scan.py",
+        "tools/quality/content_lookup_ratchet.json",
+        "tools/render/retirement_scans.py",
+        "tools/quality/conformance_result.py"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 4,
+      "timeout_seconds": 300,
+      "requires": [
+        "executable:git"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "content.lookup.sensitivity",
+      "domain": "Q-ARCH",
+      "rfc": "0015",
+      "migration": "R83",
+      "contract": "tools/quality/content_lookup_scan.py",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "description": "Seeded faults for the RFC 0015 lookup ratchet in private temporary trees: a new or grown site in each category, a stale ratchet, an exemption without a reason and tampered totals are each rejected; comment literals and the VPK readers' own implementation are not counted; a clean tree passes.",
+      "command": [
+        "{python}",
+        "tools/quality/content_lookup_scan.py",
+        "sensitivity"
+      ],
+      "sources": [
+        "tools/quality/content_lookup_scan.py",
+        "tools/render/retirement_scans.py",
+        "tools/quality/conformance_result.py"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 13,
+      "timeout_seconds": 120,
+      "expect": "pass"
+    },
+    {
       "id": "render.legacy-shaders.deleted",
       "domain": "Q-ARCH",
       "rfc": "0016",
