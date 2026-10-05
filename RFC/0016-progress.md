@@ -10967,3 +10967,35 @@ while `render_lab` (which has no PVS) shows it. The fix belongs to the
 fixture: recompile `lt_sun_colonnade`'s visibility so the yard sees the
 colonnade's interior, or move the yard camera inside it. It is not a
 render term, and none of the game/lab tolerances change.
+
+### K12: frame allowance with every declared term on (2026-10-05, measurement)
+
+Runs of the installed `frame_floor.py` on this host (AMD Radeon 8060S /
+RADV, private headless compositor, 1920x1080, High profile, the current
+build with fog, projectors, cutout shadows and SSR):
+
+- **`portal2-frame-floor-v1` (`sp_a1_intro4_probe64`, the budget-linked
+  row `linux-desktop-high-120`):** with the default stop it fails at the first
+  judged frame (83.5 ms). With `--no-stop`, 216 frames: median 93.4 ms, p99
+  155.7, 1% low 6.3 fps; CPU p99 39.9 ms and GPU render p99 142.8 ms against
+  the hard budget. The route also reports `map.loaded failed`. Every gate
+  fails.
+- **`portal2-intro4-relit-diagnostic-v1`, SSR on against `+r_core_ssr 0`**
+  (same binary, diagnostic, never acceptance):
+
+| Phase | SSR on (median ms) | SSR off (median ms) |
+| --- | --- | --- |
+| arrival | 45.5 | 46.4 |
+| reverse | 27.6 | 24.7 |
+| return | 45.5 | 45.6 |
+
+SSR costs about 3 ms where it shows (reverse) and nothing measurable
+elsewhere. The frame misses the 8.3 ms allowance by 3-5x without it. So
+the frame allowance does **not** hold with every declared term on, and the
+miss is mostly the existing frame, not today's terms. Under binding rule 7
+this blocks performance acceptance and promotion of R96's terms. Development
+continues: no effect, resolution or sample count is cut. The
+whole-frame optimization program (R90-CLUSTER-PERF, the in-game pipeline
+priority) owns the next steps. The resolution sweep from 1024x768 to 4K was
+not run in this session. Evidence: `/tmp/claude-1000/vf/ff/` runs
+(`run3`, `diag2-ssr1`, `diag2-ssr0`), not retained in the repository.
