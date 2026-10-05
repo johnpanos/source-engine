@@ -10943,3 +10943,27 @@ current link failure is the in-progress sky's missing sources (`CoreSky`,
 Open: SSR under FSR (temporal; the pass needs a temporal form of the
 targets), under 4x MSAA, and on 8-bit targets. Its frame cost is unmeasured;
 the resolution sweep is owed. R96 stays `active`.
+
+### Game/lab: sun-colonnade/yard's residual is the fixture's visibility, not rendering (2026-10-05, finding)
+
+sun-colonnade/yard's p99 55 is one object: the fixture's `ProbeSphere`
+(`prop_dynamic_override`, `models/lt_sun_colonnade/probesphere.mdl`). The
+lab draws it at its stage position (590.6, 315.0, 47.2), 514 units straight
+ahead of the yard eye; the game frame has nothing there.
+
+- The prop exists and draws on the core: `r_core_world_stats` counts its
+  posed draws, and a camera at (590, 200, 50) or (590, 0, 98) shows it
+  correctly lit and shadowed.
+- From (590, −120, 98), and from the yard eye at y = −196.9, it is absent,
+  on the core and on the legacy renderer (`r_core_world 0`) alike.
+- `r_novis 1` (client-side visibility) does not bring it back, nor does
+  zeroing the prop's fade. The model has one LOD and no `$staticprop`.
+- That leaves the server's per-player PVS: an entity outside the player's
+  potentially visible set is never transmitted. `sv_force_transmit_ents`,
+  which would confirm it, is development-only and not registered here.
+
+So the map's compiled visibility says the yard cannot see the sphere's leaf,
+while `render_lab` (which has no PVS) shows it. The fix belongs to the
+fixture: recompile `lt_sun_colonnade`'s visibility so the yard sees the
+colonnade's interior, or move the yard camera inside it. It is not a
+render term, and none of the game/lab tolerances change.
