@@ -400,6 +400,8 @@ struct WorldPass::State
 	TextureId screenOutput;
 	std::array<float, 48> screenInputs = {};
 
+	IModelLevelSource *levelSource = nullptr; // SetModelLevelSource; null retains staging
+
 	// Guarded by lock: the world the main thread set and the queued views.
 	mutable std::mutex lock;
 	std::shared_ptr<const WorldData> world;
@@ -498,6 +500,10 @@ struct WorldPass::State
 		// and whether its buffers are on the device now.
 		std::uint64_t lastUsedFrame = 0;
 		bool resident = false;
+		// True after the first upload when a model level source is set: the
+		// composition may release the staging shared_ptrs, and a re-upload
+		// uses the source instead.
+		bool stagingReleased = false;
 	};
 	struct ModelGeometry
 	{
@@ -729,6 +735,30 @@ void WorldPass::ClearWorld()
 	// skip their views (an earlier world's) rather than fail.
 }
 
+void WorldPass::SetModelLevelSource( IModelLevelSource *source )
+{
+	m_State->levelSource = source;
+}
+
+std::vector<std::pair<std::uint32_t, std::uint32_t>> WorldPass::DrainReleasedStaging()
+{
+	State &s = *m_State;
+	std::vector<std::pair<std::uint32_t, std::uint32_t>> released;
+	for ( std::uint32_t m = 0; m < s.models.models.size(); ++m )
+	{
+		auto &model = s.models.models[m];
+		for ( std::uint32_t l = 0; l < model.size(); ++l )
+		{
+			if ( model[l].stagingReleased )
+			{
+				released.emplace_back( m, l );
+				model[l].stagingReleased = false;
+			}
+		}
+	}
+	return released;
+}
+
 void WorldPass::SetStageLightmap( LightmapPages pages )
 {
 	State &s = *m_State;
@@ -954,6 +984,34 @@ std::uint32_t WorldPass::QueueView( WorldView view )
 		    "the core view queue is full; no previously accepted work was discarded";
 		return 0;
 	}
+	// Prefetch non-resident levels whose staging was released, so the
+	// source can start rebuilding bytes before the render sequence needs
+	// them. We don't know the exact LOD at queue time, so prefetch every
+	// non-resident level of each referenced mesh.
+	if ( s.levelSource )
+	{
+		auto prefetchMesh = [&]( std::uint32_t meshId )
+		{
+			if ( meshId >= s.models.models.size() )
+				return;
+			const auto &levels = s.models.models[meshId];
+			for ( std::uint32_t lod = 0; lod < levels.size(); ++lod )
+			{
+				if ( levels[lod].resident )
+					continue;
+				const WorldData::StaticMeshLod &src = s.world->staticMeshes[meshId].lods[lod];
+				if ( !src.vertices && !src.indices )
+					s.levelSource->PrefetchLevel( meshId, lod );
+			}
+		};
+		for ( const WorldView::StaticInstance &draw : view.staticInstances )
+		{
+			const WorldData::StaticInstance &inst = s.world->staticInstances[draw.instance];
+			prefetchMesh( inst.mesh );
+		}
+		for ( const WorldView::PosedModel &pose : view.posedModels )
+			prefetchMesh( pose.mesh );
+	}
 	s.stats.staticInstancesQueued += view.staticInstances.size();
 	s.stats.posedModelsQueued += view.posedModels.size();
 	const std::uint32_t serial = s.nextSerial;
@@ -1075,7 +1133,9 @@ std::size_t WorldPass::State::OpaqueBatchSize(
 }
 
 // Render sequence: one (model, level)'s buffers, uploaded from the world's
-// staging on first use and again after a release. False when the level has
+// staging on first use and again after a release. When a model level source
+// is set, the staging shared_ptrs are released after the first upload and
+// the source resupplies the bytes for a re-upload. False when the level has
 // no geometry left to upload (a named failure; the caller draws nothing).
 bool WorldPass::UploadModelLevel( State &state, device::IRenderDevice2 &device,
     device::CommandEncoder &encoder, const WorldData::StaticMesh &mesh, std::uint32_t meshId,
@@ -1090,10 +1150,31 @@ bool WorldPass::UploadModelLevel( State &state, device::IRenderDevice2 &device,
 	level.lastUsedFrame = frame;
 	if ( level.resident )
 		return true;
-	if ( !source.vertices || !source.indices )
+	// The staging shared_ptrs: present on first upload, absent after the
+	// composition released them (stagingReleased). A re-upload without
+	// staging asks the source; without a source either, the level stays out.
+	std::optional<IModelLevelSource::LevelGeometry> resupplied;
+	std::span<const std::byte> vertexBytes;
+	std::span<const std::byte> indexBytes;
+	if ( source.vertices && source.indices )
+	{
+		vertexBytes = std::as_bytes( std::span( *source.vertices ) );
+		indexBytes = std::as_bytes( std::span( *source.indices ) );
+	}
+	else if ( state.levelSource )
+	{
+		resupplied = state.levelSource->ResupplyLevel( meshId, lod );
+		if ( !resupplied ||
+		     resupplied->vertices.size() != source.vertexCount ||
+		     resupplied->indices.size() != source.indexCount )
+			return false;
+		vertexBytes = std::as_bytes( std::span( resupplied->vertices ) );
+		indexBytes = std::as_bytes( std::span( resupplied->indices ) );
+	}
+	else
+	{
 		return false;
-	const auto vertexBytes = std::as_bytes( std::span( *source.vertices ) );
-	const auto indexBytes = std::as_bytes( std::span( *source.indices ) );
+	}
 	if ( vertexBytes.size() !=
 	         std::size_t( source.vertexCount ) * sizeof( material::SurfaceModelVertex ) ||
 	     indexBytes.size() != std::size_t( source.indexCount ) * sizeof( std::uint32_t ) )
@@ -1109,8 +1190,8 @@ bool WorldPass::UploadModelLevel( State &state, device::IRenderDevice2 &device,
 	auto indices = device.CreateBuffer( desc );
 	if ( !vertices || !indices )
 	{
-		// A refused allocation keeps the level non-resident and its staging, so
-		// the next frame that draws it tries again with no bytes dropped.
+		// A refused allocation keeps the level non-resident, so the next
+		// frame that draws it tries again with no bytes dropped.
 		if ( vertices )
 			(void)device.Release( vertices.Value(), CompletionToken() );
 		if ( indices )
@@ -1132,6 +1213,11 @@ bool WorldPass::UploadModelLevel( State &state, device::IRenderDevice2 &device,
 	encoder.WriteBuffer( level.indices, 0, indexBytes );
 	encoder.TransitionBuffer(
 	    level.indices, ResourceUsage::kCopyDestination, ResourceUsage::kIndex );
+	// Mark the staging as releasable: the composition releases its own copies
+	// on the next world publication. The source resupplies bytes for any
+	// re-upload after that.
+	if ( state.levelSource && !ModelLevelPinned( mesh, lod ) )
+		level.stagingReleased = true;
 	return true;
 }
 
@@ -1205,11 +1291,26 @@ void WorldPass::PublishModelResidency( State &state )
 		return;
 	state.residencyReportedFrame = state.residencyFrame;
 	std::uint32_t resident = 0;
-	for ( const auto &model : state.models.models )
-		for ( const State::ModelLevel &level : model )
-			resident += level.resident ? 1u : 0u;
+	std::uint64_t stagingBytes = 0;
+	for ( std::uint32_t m = 0; m < state.models.models.size(); ++m )
+	{
+		const auto &model = state.models.models[m];
+		for ( std::uint32_t l = 0; l < model.size(); ++l )
+		{
+			resident += model[l].resident ? 1u : 0u;
+			if ( state.world && m < state.world->staticMeshes.size() )
+			{
+				const WorldData::StaticMeshLod &src = state.world->staticMeshes[m].lods[l];
+				if ( src.vertices )
+					stagingBytes += src.vertices->size() * sizeof( material::SurfaceModelVertex );
+				if ( src.indices )
+					stagingBytes += src.indices->size() * sizeof( std::uint32_t );
+			}
+		}
+	}
 	state.stats.modelLevelsResident = resident;
 	state.stats.modelBufferBytes = state.models.bytes;
+	state.stats.modelStagingBytes = stagingBytes;
 	state.stats.modelLevelsReleased = state.models.releasedLevels > 0xfffffffeu
 	                                      ? 0xfffffffeu
 	                                      : std::uint32_t( state.models.releasedLevels );

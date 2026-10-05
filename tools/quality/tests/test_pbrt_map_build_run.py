@@ -61,6 +61,33 @@ if __name__ == "__main__":
     unittest.main()
 
 
+class StepSilenceTest(unittest.TestCase):
+    """No step may wait forever: a command that stops printing is stopped."""
+
+    def test_a_silent_command_is_stopped_by_default(self):
+        handle, seen = io.StringIO(), []
+        real, pbrt_map_build.DEFAULT_STEP_SILENCE = pbrt_map_build.DEFAULT_STEP_SILENCE, 1
+        try:
+            status, quiet = pbrt_map_build.run_logged(["sh", "-c", "sleep 30"], handle,
+                                                      on_line=seen.append)
+        finally:
+            pbrt_map_build.DEFAULT_STEP_SILENCE = real
+        self.assertEqual((status, quiet), (None, 1))
+        self.assertIn("stopped: no output for 1 s", handle.getvalue())
+
+    def test_the_default_applies_when_a_step_asks_for_no_bound(self):
+        """A step that passes silence=None is bounded, not left waiting."""
+        self.assertEqual(pbrt_map_build.DEFAULT_STEP_SILENCE, 10 * 60)
+        handle = io.StringIO()
+        real, pbrt_map_build.DEFAULT_STEP_SILENCE = pbrt_map_build.DEFAULT_STEP_SILENCE, 1
+        try:
+            status, quiet = pbrt_map_build.run_logged(["sh", "-c", "sleep 30"], handle,
+                                                      silence=None)
+        finally:
+            pbrt_map_build.DEFAULT_STEP_SILENCE = real
+        self.assertEqual((status, quiet), (None, 1))
+
+
 class PreviewProfileTest(unittest.TestCase):
     """The one production profile, and the declared preview rung beside it."""
 

@@ -171,9 +171,10 @@ struct WorldData
 	struct StaticMeshLod
 	{
 		// The level's geometry, one allocation shared with the composition
-		// that parsed it (the same shared_ptr, never a second copy). The pass
-		// uploads it into this level's buffers and keeps it only as the source
-		// a released level's re-upload needs.
+		// that parsed it (the same shared_ptr, never a second copy). With a
+		// model level source the pass releases the staging after the first
+		// upload (ResupplyLevel rebuilds the bytes); without one it retains
+		// staging as the only source a re-upload has.
 		std::shared_ptr<const std::vector<material::SurfaceModelVertex>> vertices;
 		std::shared_ptr<const std::vector<std::uint32_t>> indices; // from zero, into the level
 		// Increasing surface ids into StaticMesh::surfaces, this level's only.
@@ -516,6 +517,7 @@ struct WorldStats
 	std::uint32_t modelLevelsResident = 0;
 	std::uint32_t modelLevelsReleased = 0;
 	std::uint64_t modelBufferBytes = 0;
+	std::uint64_t modelStagingBytes = 0; // CPU staging retained for re-upload (0 with a source)
 	std::uint64_t modelLevelUploads = 0;
 	std::uint64_t viewsQueued = 0;
 	std::uint64_t viewsDrawn = 0;
@@ -551,6 +553,34 @@ inline bool IsWorldTag( std::uint32_t tag )
 	return ( tag & kWorldTag ) != 0 && ( tag & ~( kWorldTag | kWorldSerialMask ) ) == 0;
 }
 
+// A host port that re-supplies one model level's geometry bytes after the
+// pass has released its CPU staging (zero CPU staging, RFC 0016 model
+// geometry residency). The composition builds the bytes from the MDL cache
+// and hands them back; the pass uploads them into the level's GPU buffers
+// as it does on first use. Without a source the pass retains staging.
+class IModelLevelSource
+{
+public:
+	struct LevelGeometry
+	{
+		std::vector<material::SurfaceModelVertex> vertices;
+		std::vector<std::uint32_t> indices;
+	};
+	// Called on the render sequence when a released level needs its bytes
+	// again. Returns the level's geometry, or nullopt on failure (the level
+	// stays non-resident and is retried next frame). The caller checks
+	// counts against the level's declared vertexCount and indexCount.
+	virtual std::optional<LevelGeometry> ResupplyLevel(
+	    std::uint32_t mesh, std::uint32_t lod ) = 0;
+	// Called on the main thread (QueueView) when a view selects a level that
+	// is not resident. The implementation may start preparing the bytes on a
+	// worker so ResupplyLevel finds them ready; doing nothing is valid.
+	virtual void PrefetchLevel( std::uint32_t mesh, std::uint32_t lod ) = 0;
+
+protected:
+	~IModelLevelSource() = default;
+};
+
 class WorldPass
 {
 public:
@@ -561,6 +591,13 @@ public:
 
 	// Main thread.
 	void SetWorld( WorldData data );
+	// Set after SetWorld. With a source, the pass releases a level's CPU
+	// staging after uploading it to the GPU; without one it retains staging
+	// as the only source a re-upload has. The source must outlive the world.
+	void SetModelLevelSource( IModelLevelSource *source );
+	// Returns the (mesh, lod) pairs whose staging the source may release: the
+	// pass has uploaded them and set stagingReleased. Resets the flags.
+	std::vector<std::pair<std::uint32_t, std::uint32_t>> DrainReleasedStaging();
 	void ClearWorld();
 	// render_lab's sensitivity runs: a replacement fragment module for the
 	// surface program (SPIR-V words the caller keeps alive), used by the

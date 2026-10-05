@@ -527,6 +527,63 @@ void ShadowDepthRenderer::AddTileCopy( graph::GraphBuilder &builder, graph::Reso
 	        } );
 }
 
+void ShadowDepthRenderer::AddTileRemapCopy( graph::GraphBuilder &builder, graph::ResourceRef from,
+    graph::ResourceRef to, std::span<const TileRemap> remaps )
+{
+	if ( remaps.empty() )
+		return;
+	struct Entry
+	{
+		ShadowTile source;
+		ShadowTile destination;
+		std::uint64_t offset;
+	};
+	auto list = std::make_shared<std::vector<Entry>>();
+	std::uint64_t bytes = 0;
+	for ( const TileRemap &r : remaps )
+	{
+		list->push_back( { r.source, r.destination, bytes } );
+		bytes += std::uint64_t( r.source.size ) * r.source.size * 4;
+	}
+	BufferDesc desc;
+	desc.size = bytes;
+	const graph::ResourceRef staging = builder.CreateBuffer( "shadow-remap-copy", desc );
+	builder.AddPass( "shadow-remap-save", graph::PassKind::kCopy )
+	    .Read( from, ResourceUsage::kCopySource )
+	    .Write( staging, ResourceUsage::kCopyDestination )
+	    .Execute(
+	        [list, from, staging]( graph::RecordContext &context )
+	        {
+		        for ( const auto &e : *list )
+		        {
+			        TextureBufferCopy copy;
+			        copy.bufferOffset = e.offset;
+			        copy.x = e.source.x;
+			        copy.y = e.source.y;
+			        copy.width = copy.height = e.source.size;
+			        context.Encoder().CopyTextureToBuffer(
+			            context.Texture( from ), context.Buffer( staging ), copy );
+		        }
+	        } );
+	builder.AddPass( "shadow-remap-restore", graph::PassKind::kCopy )
+	    .Read( staging, ResourceUsage::kCopySource )
+	    .Write( to, ResourceUsage::kCopyDestination )
+	    .Execute(
+	        [list, to, staging]( graph::RecordContext &context )
+	        {
+		        for ( const auto &e : *list )
+		        {
+			        TextureBufferCopy copy;
+			        copy.bufferOffset = e.offset;
+			        copy.x = e.destination.x;
+			        copy.y = e.destination.y;
+			        copy.width = copy.height = e.destination.size;
+			        context.Encoder().CopyBufferToTexture(
+			            context.Buffer( staging ), context.Texture( to ), copy );
+		        }
+	        } );
+}
+
 void ShadowDepthRenderer::Collect( CompletionToken token )
 {
 	std::lock_guard<std::mutex> lock( m_PendingLock );

@@ -390,13 +390,21 @@ def applicable_exclusions(excluded, authored, scene_materials):
 # (a HIP queue lost to a GPU fault waits forever); scene import and CPU
 # tracing between bakes stay well under it.
 BLENDER_SILENCE = 30 * 60
+# The same bound for every other step, so no step can wait forever: a USD
+# import, a host tool or a Python step that stops printing is stopped and
+# reported rather than hanging the build. It is the default, not a per-call
+# argument, so a new step is bounded without having to remember.
+DEFAULT_STEP_SILENCE = 10 * 60
 
 
 def run_logged(command, handle, env=None, on_line=None, silence=None):
     """Run `command` (in its own process group), writing its output to
     `handle` and passing each line to `on_line`. Returns (exit status, None),
     or (None, seconds) when it printed nothing for `silence` seconds and its
-    whole process group was killed."""
+    whole process group was killed. `silence` defaults to
+    DEFAULT_STEP_SILENCE: a step that stops talking is stopped, so no step can
+    hang the build. Pass `silence=0` to wait for a command that is meant to be
+    silent until it exits."""
     import queue
     import signal
     import threading
@@ -404,6 +412,7 @@ def run_logged(command, handle, env=None, on_line=None, silence=None):
                                stderr=subprocess.STDOUT, cwd=ROOT, text=True, errors="replace",
                                bufsize=1, env=dict(os.environ, **(env or {})),
                                start_new_session=True)
+    silence = DEFAULT_STEP_SILENCE if silence is None else silence
     lines = queue.Queue()
 
     def pump():
@@ -414,7 +423,7 @@ def run_logged(command, handle, env=None, on_line=None, silence=None):
     reader.start()
     while True:
         try:
-            line = lines.get(timeout=silence)
+            line = lines.get(timeout=silence or None)
         except queue.Empty:
             os.killpg(process.pid, signal.SIGKILL)
             process.wait()

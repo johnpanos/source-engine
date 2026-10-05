@@ -109,6 +109,8 @@ public:
 		m_StaticCastsShadow.clear();
 		m_StaticMaterials.clear();
 		m_ModelPoseSources.clear();
+		m_ModelBytes.clear();
+		m_Pass.SetModelLevelSource( nullptr );
 		m_Pass.ClearWorld();
 	}
 	bool Draws( unsigned int material ) const override { return m_Pass.Draws( material ); }
@@ -294,6 +296,26 @@ private:
 	    const RenderCorePosedModel &source, pass::world::WorldView::PosedModel &out ) const;
 	std::vector<pass::world::WorldMaterial> WorldMaterials(
 	    const RenderCoreWorldMaterial *materials, unsigned int materialCount ) const;
+	// Raw MDL/VVD/VTX bytes per model, kept for zero-staging resupply.
+	struct ModelBytes
+	{
+		std::string mdl, vvd, vtx;
+		unsigned int materialCount = 0;
+		unsigned int materialLodCount = 0;
+	};
+	std::vector<ModelBytes> m_ModelBytes;
+	class ModelLevelSource final : public pass::world::IModelLevelSource
+	{
+	public:
+		explicit ModelLevelSource( CoreWorld &owner ) : m_Owner( owner ) {}
+		std::optional<LevelGeometry> ResupplyLevel(
+		    std::uint32_t mesh, std::uint32_t lod ) override;
+		void PrefetchLevel( std::uint32_t mesh, std::uint32_t lod ) override;
+
+	private:
+		CoreWorld &m_Owner;
+	};
+	ModelLevelSource m_ModelLevelSource{ *this };
 
 	// The engine's world mesh uploads, kept for the world stage (main
 	// thread): the lightmap's pages, the baked probe volume and the

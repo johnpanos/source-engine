@@ -408,6 +408,16 @@ void CoreWorld::SetStage()
 	const std::uint32_t materialBase = std::uint32_t( data.materials.size() );
 	for ( pass::world::WorldMaterial &material : m_StaticMaterials )
 		data.materials.push_back( material );
+	// Release staging the pass has uploaded, so the new world data starts
+	// without those shared_ptrs: re-uploads use the model level source.
+	for ( const auto &[meshId, lodId] : m_Pass.DrainReleasedStaging() )
+	{
+		if ( meshId < m_StaticMeshes.size() && lodId < m_StaticMeshes[meshId].lods.size() )
+		{
+			m_StaticMeshes[meshId].lods[lodId].vertices.reset();
+			m_StaticMeshes[meshId].lods[lodId].indices.reset();
+		}
+	}
 	data.staticMeshes = m_StaticMeshes;
 	for ( pass::world::WorldData::StaticMesh &mesh : data.staticMeshes )
 	{
@@ -427,6 +437,7 @@ void CoreWorld::SetStage()
 	// uploaded when only the stage's lighting changed (a late probe volume).
 	data.modelsRevision = m_ModelsRevision;
 	m_Pass.SetWorld( std::move( data ) );
+	m_Pass.SetModelLevelSource( m_ModelBytes.empty() ? nullptr : &m_ModelLevelSource );
 	m_StageSet = true;
 	// The change the capture holds (parts arrive relative to it).
 	if ( m_Capture.table )
@@ -571,9 +582,11 @@ void CoreWorld::SetStaticProps( const RenderCoreStaticModel *models, unsigned in
 	m_StaticInstances.clear();
 	m_StaticCastsShadow.clear();
 	m_ModelPoseSources.clear();
+	m_ModelBytes.clear();
 	++m_ModelsRevision;
 	m_StaticMeshes.resize( modelCount );
 	m_ModelPoseSources.resize( modelCount );
+	m_ModelBytes.resize( modelCount );
 	m_StaticInstances.reserve( propCount );
 	for ( unsigned int i = 0; i < modelCount; ++i )
 	{
@@ -595,6 +608,13 @@ void CoreWorld::SetStaticProps( const RenderCoreStaticModel *models, unsigned in
 			continue;
 		}
 		const mdl::Model &model = parsed.Value();
+		// Keep the raw MDL bytes for zero-staging resupply.
+		ModelBytes &raw = m_ModelBytes[i];
+		raw.mdl.assign( static_cast<const char *>( source.mdl ), std::size_t( source.mdlBytes ) );
+		raw.vvd.assign( static_cast<const char *>( source.vvd ), std::size_t( source.vvdBytes ) );
+		raw.vtx.assign( static_cast<const char *>( source.vtx ), std::size_t( source.vtxBytes ) );
+		raw.materialCount = source.materialCount;
+		raw.materialLodCount = source.materialLodCount;
 		ModelPoseSource &poseSource = m_ModelPoseSources[i];
 		poseSource.bodyParts = model.bodyParts;
 		poseSource.lodCount = std::uint32_t( model.lodTextures.size() );
@@ -2750,7 +2770,7 @@ device::TextureId CoreWorld::DrawStageShadows( device::IRenderDevice2 &device,
 	struct SharedTiles
 	{
 		std::size_t source = 0;
-		std::vector<pass::shadows::ShadowTile> tiles;
+		std::vector<pass::shadows::ShadowDepthRenderer::TileRemap> remaps;
 	};
 	std::vector<SharedTiles> shared;
 	std::vector<const pass::shadows::ShadowPlanView *> sharedViews;
@@ -2777,8 +2797,14 @@ device::TextureId CoreWorld::DrawStageShadows( device::IRenderDevice2 &device,
 			bool found = false;
 			for ( std::size_t heldIndex = 0; heldIndex < source.drawn.size(); ++heldIndex )
 			{
-				if ( isSunView( source.sunFirst, source.sunCount, heldIndex ) ||
-				     !same( source.drawn[heldIndex], *view ) )
+				if ( isSunView( source.sunFirst, source.sunCount, heldIndex ) )
+					continue;
+				// Match by light-space viewProjection only: the same light
+				// may be packed at a different tile position in this view's
+				// atlas because the sun cascades (camera-dependent) shifted
+				// the layout.
+				if ( std::memcmp( &source.drawn[heldIndex].viewProjection,
+				         &view->viewProjection, sizeof( view->viewProjection ) ) != 0 )
 					continue;
 				auto group = std::find_if( shared.begin(), shared.end(),
 				    [&]( const SharedTiles &candidate )
@@ -2790,7 +2816,7 @@ device::TextureId CoreWorld::DrawStageShadows( device::IRenderDevice2 &device,
 					shared.push_back( { sourceIndex, {} } );
 					group = shared.end() - 1;
 				}
-				group->tiles.push_back( view->tile );
+				group->remaps.push_back( { source.drawn[heldIndex].tile, view->tile } );
 				sharedViews.push_back( view );
 				found = true;
 				break;
@@ -3013,8 +3039,8 @@ device::TextureId CoreWorld::DrawStageShadows( device::IRenderDevice2 &device,
 			const Atlas &source = m_Atlases[tiles.source];
 			const graph::ResourceRef sourceRef = builder.ImportTexture( "shared stage shadow atlas",
 			    source.texture, source.desc, source.usage, ResourceUsage::kSampled );
-			pass::shadows::ShadowDepthRenderer::AddTileCopy(
-			    builder, sourceRef, atlasRef, tiles.tiles );
+			pass::shadows::ShadowDepthRenderer::AddTileRemapCopy(
+			    builder, sourceRef, atlasRef, tiles.remaps );
 		}
 		pass::shadows::ShadowAtlasTarget target{ atlasRef, work.atlasSize, work.guardTexels };
 		target.keep = !whole || !shared.empty();
@@ -3254,6 +3280,101 @@ void CoreWorld::ReleaseShadows( device::IRenderDevice2 &device )
 	m_ShadowRenderer.reset();
 	m_CastersStaged = 0;
 	m_ShadowDevice = nullptr;
+}
+
+std::optional<pass::world::IModelLevelSource::LevelGeometry>
+CoreWorld::ModelLevelSource::ResupplyLevel( std::uint32_t mesh, std::uint32_t lod )
+{
+	if ( mesh >= m_Owner.m_ModelBytes.size() )
+		return std::nullopt;
+	const ModelBytes &raw = m_Owner.m_ModelBytes[mesh];
+	if ( raw.mdl.empty() )
+		return std::nullopt;
+	mdl::ModelBytes bytes;
+	bytes.mdl = { raw.mdl.data(), raw.mdl.size() };
+	bytes.vvd = { raw.vvd.data(), raw.vvd.size() };
+	bytes.vtx = { raw.vtx.data(), raw.vtx.size() };
+	auto parsed = mdl::ParseModelGeometryVariants( bytes );
+	if ( !parsed )
+		return std::nullopt;
+	const mdl::Model &model = parsed.Value();
+	const std::size_t levelCount = model.lodTextures.size();
+	if ( lod >= levelCount )
+		return std::nullopt;
+	std::vector<const mdl::Mesh *> parts;
+	for ( const mdl::Mesh &part : model.meshes )
+	{
+		if ( part.lod == lod )
+			parts.push_back( &part );
+	}
+	if ( parts.empty() )
+		return std::nullopt;
+	LevelGeometry result;
+	for ( const mdl::Mesh *part : parts )
+	{
+		const bool resolvedLod = part->lod < raw.materialLodCount;
+		const bool unchangedLod = model.lodTextures[part->lod] == model.lodTextures[0];
+		const std::int32_t texture =
+		    model.skinFamilies.empty()
+		        ? part->textureRef
+		        : ( part->textureRef >= 0 &&
+		                      std::size_t( part->textureRef ) < model.skinFamilies[0].size()
+		                  ? model.skinFamilies[0][std::size_t( part->textureRef )]
+		                  : -1 );
+		if ( !resolvedLod && !unchangedLod )
+			continue;
+		if ( texture < 0 || std::uint32_t( texture ) >= raw.materialCount )
+			return std::nullopt;
+		const std::uint32_t base = std::uint32_t( result.vertices.size() );
+		for ( const mdl::Vertex &from : part->vertices )
+		{
+			material::SurfaceModelVertex to;
+			to.position[0] = from.position.x;
+			to.position[1] = from.position.y;
+			to.position[2] = from.position.z;
+			to.normal[0] = from.normal.x;
+			to.normal[1] = from.normal.y;
+			to.normal[2] = from.normal.z;
+			to.uv[0] = from.u;
+			to.uv[1] = from.v;
+			if ( from.tangentSign != 0.0f )
+			{
+				to.tangent[0] = from.tangent.x;
+				to.tangent[1] = from.tangent.y;
+				to.tangent[2] = from.tangent.z;
+				to.tangent[3] = from.tangentSign;
+			}
+			else
+			{
+				const bool useZ = std::fabs( from.normal.z ) < 0.9f;
+				float x = useZ ? from.normal.y : 0.0f;
+				float y = useZ ? -from.normal.x : from.normal.z;
+				float z = useZ ? 0.0f : -from.normal.y;
+				const float length = std::sqrt( x * x + y * y + z * z );
+				if ( length > 0.0f )
+				{
+					x /= length;
+					y /= length;
+					z /= length;
+				}
+				to.tangent[0] = x;
+				to.tangent[1] = y;
+				to.tangent[2] = z;
+				to.tangent[3] = 1.0f;
+			}
+			result.vertices.push_back( to );
+		}
+		for ( std::uint32_t index : part->indices )
+			result.indices.push_back( base + index );
+	}
+	return result;
+}
+
+void CoreWorld::ModelLevelSource::PrefetchLevel( std::uint32_t, std::uint32_t )
+{
+	// Synchronous resupply: the raw MDL bytes are in memory and the parse is
+	// fast enough to run inline on the render sequence. A future async
+	// prefetch would start the parse on a worker here.
 }
 
 } // namespace render::composition

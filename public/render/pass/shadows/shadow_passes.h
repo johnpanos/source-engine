@@ -145,6 +145,17 @@ public:
 	static void AddTileCopy( graph::GraphBuilder &builder, graph::ResourceRef from,
 	    graph::ResourceRef to, std::span<const ShadowTile> tiles );
 
+	// Copies tiles from `from` to `to` when the source and destination tile
+	// positions differ (cross-view atlas sharing where the packer assigned
+	// different positions for the same light-space view).
+	struct TileRemap
+	{
+		ShadowTile source;
+		ShadowTile destination;
+	};
+	static void AddTileRemapCopy( graph::GraphBuilder &builder, graph::ResourceRef from,
+	    graph::ResourceRef to, std::span<const TileRemap> remaps );
+
 private:
 	explicit ShadowDepthRenderer( device::IRenderDevice2 &device ) : m_Device( device ) {}
 	// clear: the tile clear's pipeline (depth test always).
