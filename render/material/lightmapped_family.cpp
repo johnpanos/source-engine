@@ -38,13 +38,16 @@ constexpr std::array<std::string_view, 36> kClaimed = { "basetexture", "color", 
     "frame" };
 
 // The detail modes the port's combos draw: every TextureCombine mode but the
-// self-illuminating ones (5, 6) without a bump map, and 0 and 1 with one
-// (lightmappedgeneric_ps2_3_x.h's SKIP lines). 10 and 11 are the ssbump
-// detail modes, which a detail texture's own flag selects.
-bool DetailModeDrawn( int mode, bool bump )
+// self-illuminating ones (5, 6). 10 and 11 are the ssbump detail modes, which
+// a detail texture's own flag selects.
+//
+// A bump map does not narrow this: the port combines the detail into the albedo
+// before the bump perturbs the lighting and tests only the detail texture
+// (lightmappedgeneric_ps2_3_x.h's "if( bDetailTexture ) albedo =
+// TextureCombine( ... )"), and none of its SKIP lines exclude a detail texture
+// with a bump map.
+bool DetailModeDrawn( int mode )
 {
-	if ( bump )
-		return mode == 0 || mode == 1;
 	return mode == 0 || mode == 1 || mode == 2 || mode == 3 || mode == 4 || mode == 7 ||
 	       mode == 8 || mode == 9;
 }
@@ -88,10 +91,9 @@ LightmappedClaim ClaimLightmapped( const ParameterBlock &block )
 	if ( TextureBound( block, "detail" ) )
 	{
 		const int mode = int( ReadParameter( block, "detailblendmode" ) );
-		if ( !DetailModeDrawn( mode, bump ) )
+		if ( !DetailModeDrawn( mode ) )
 		{
-			claim.reason = "the family does not draw $detailblendmode " + std::to_string( mode ) +
-			               ( bump ? " with a bump map" : "" );
+			claim.reason = "the family does not draw $detailblendmode " + std::to_string( mode );
 			return claim;
 		}
 		claim.terms |= kSurfaceDetail;

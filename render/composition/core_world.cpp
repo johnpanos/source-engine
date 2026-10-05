@@ -765,6 +765,11 @@ void CoreWorld::SetStaticProps( const RenderCoreStaticModel *models, unsigned in
 					indices.push_back( base + index );
 				surface.indexCount = std::uint32_t( indices.size() ) - surface.firstIndex;
 				surfaces.push_back( surface );
+				// Keep the body/LOD selector indexed exactly like the surfaces,
+				// which are grouped by LOD above. Static-only models need this
+				// selection metadata too; only their skinning copy is omitted.
+				poseSource.surfaceBodies.push_back(
+				    { std::uint32_t( part->bodyPart ), part->bodyModel, part->lod } );
 				for ( std::size_t skin = 0; skin < model.skinFamilies.size(); ++skin )
 				{
 					const std::vector<std::int16_t> &family = model.skinFamilies[skin];
@@ -800,9 +805,6 @@ void CoreWorld::SetStaticProps( const RenderCoreStaticModel *models, unsigned in
 		}
 		else if ( posed )
 		{
-			for ( const mdl::Mesh &part : model.meshes )
-				poseSource.surfaceBodies.push_back(
-				    { std::uint32_t( part.bodyPart ), part.bodyModel, part.lod } );
 			poseSource.vertices = std::move( skinByLevel );
 		}
 		poseSource.parsed = complete;

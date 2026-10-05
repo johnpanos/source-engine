@@ -10171,3 +10171,18 @@ re-upload at a level switch, are unmeasured because no product tree could be
 built in this session without overwriting another session's configure (the
 `build` tree's waf lock is stale and reconfiguring it is a shared-profile
 change). The census counters exist so that measurement is one boot away.
+
+### Static-only prop surface selection repair (2026-10-04)
+
+The per-level geometry migration grouped `WorldSurface` records by LOD but
+populated `ModelPoseSource::surfaceBodies` only for posed models, in the old
+mesh order. A static-only prop therefore selected an empty surface list; the
+core accepted it as a valid blank selection, and the engine suppressed the
+legacy draw because it considered the prop claimed. The body/LOD selector is
+now appended beside each surface as that surface is emitted, for both posed
+and static-only models. Skinning vertices remain conditional on `posed`.
+This also keeps selector indices aligned with the new LOD-grouped surfaces.
+
+The source/style review covers the regression repair; no product boot or
+conformance run has yet verified the catwalk in-game. K5/K12 and map completion
+remain open.
