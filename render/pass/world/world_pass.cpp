@@ -425,6 +425,65 @@ LightmapPages SplitLightmapLayer(
 	return pages;
 }
 
+// The vertices of one world surface that a mip footprint projects: each
+// referenced vertex once, in a contiguous array, with the UV bounds. A surface
+// the footprint rejects (an index range or vertex outside the data, a
+// non-finite UV) is invalid for every view.
+struct SurfaceFootprintGeometry
+{
+	bool valid = false;
+	float minU = 0.0f, minV = 0.0f, maxU = 0.0f, maxV = 0.0f;
+	std::vector<std::array<float, 3>> positions;
+};
+
+// The object-space box and UV bounds of one model surface: a mip footprint
+// projects the box's eight corners instead of every index.
+struct SurfaceFootprintBounds
+{
+	bool valid = false;
+	float lo[3] = {}, hi[3] = {};
+	float minU = 0.0f, minV = 0.0f, maxU = 0.0f, maxV = 0.0f;
+};
+
+template <typename Vertices>
+SurfaceFootprintBounds MeasureFootprintBounds( const WorldSurface &surface,
+    const Vertices &vertices, const std::vector<std::uint32_t> &indices )
+{
+	SurfaceFootprintBounds out;
+	if ( !surface.indexCount || surface.firstIndex > indices.size() ||
+	     surface.indexCount > indices.size() - surface.firstIndex )
+		return out;
+	for ( int axis = 0; axis < 3; ++axis )
+	{
+		out.lo[axis] = std::numeric_limits<float>::max();
+		out.hi[axis] = std::numeric_limits<float>::lowest();
+	}
+	out.minU = out.minV = std::numeric_limits<float>::max();
+	out.maxU = out.maxV = std::numeric_limits<float>::lowest();
+	for ( std::uint32_t k = 0; k < surface.indexCount; ++k )
+	{
+		const std::uint32_t vertexIndex = indices[surface.firstIndex + k];
+		if ( vertexIndex >= vertices.size() )
+			return {};
+		const auto &vertex = vertices[vertexIndex];
+		if ( !std::isfinite( vertex.uv[0] ) || !std::isfinite( vertex.uv[1] ) )
+			return {};
+		for ( int axis = 0; axis < 3; ++axis )
+		{
+			if ( !std::isfinite( vertex.position[axis] ) )
+				return {};
+			out.lo[axis] = std::min( out.lo[axis], vertex.position[axis] );
+			out.hi[axis] = std::max( out.hi[axis], vertex.position[axis] );
+		}
+		out.minU = std::min( out.minU, vertex.uv[0] );
+		out.minV = std::min( out.minV, vertex.uv[1] );
+		out.maxU = std::max( out.maxU, vertex.uv[0] );
+		out.maxV = std::max( out.maxV, vertex.uv[1] );
+	}
+	out.valid = true;
+	return out;
+}
+
 struct WorldPass::State
 {
 	IRenderDevice2 *device = nullptr;              // the device the resources live on
@@ -442,6 +501,13 @@ struct WorldPass::State
 	mutable std::mutex lock;
 	std::shared_ptr<const WorldData> world;
 	std::shared_ptr<const std::vector<Claimed>> claims;
+	// Per world surface, the unique vertex positions and UV bounds its mip
+	// footprint reads each frame (built once, with the world).
+	std::shared_ptr<const std::vector<SurfaceFootprintGeometry>> footprintGeometry;
+	// Per static mesh and surface, the object-space footprint bounds in the
+	// surface's own level (built once, with the world; static instances reuse
+	// them every frame).
+	std::shared_ptr<const std::vector<std::vector<SurfaceFootprintBounds>>> modelFootprintBounds;
 	std::uint64_t generation = 0;
 	std::uint32_t nextSerial = 1;
 	struct Queued
@@ -739,9 +805,72 @@ void WorldPass::SetWorld( WorldData data )
 	    {
 		    return a.second > b.second;
 	    } );
+	auto footprints = std::make_shared<std::vector<SurfaceFootprintGeometry>>();
+	footprints->resize( data.surfaces.size() );
+	{
+		std::vector<std::uint32_t> mark( data.vertices.size(), ~0u );
+		for ( std::size_t i = 0; i < data.surfaces.size(); ++i )
+		{
+			const WorldSurface &surface = data.surfaces[i];
+			SurfaceFootprintGeometry &out = ( *footprints )[i];
+			if ( surface.firstIndex > data.indices.size() ||
+			     surface.indexCount > data.indices.size() - surface.firstIndex )
+				continue;
+			bool valid = true;
+			out.minU = out.minV = std::numeric_limits<float>::max();
+			out.maxU = out.maxV = std::numeric_limits<float>::lowest();
+			for ( std::uint32_t k = 0; k < surface.indexCount && valid; ++k )
+			{
+				const std::uint32_t vertexIndex = data.indices[surface.firstIndex + k];
+				if ( vertexIndex >= data.vertices.size() )
+				{
+					valid = false;
+					break;
+				}
+				const auto &vertex = data.vertices[vertexIndex];
+				if ( !std::isfinite( vertex.uv[0] ) || !std::isfinite( vertex.uv[1] ) )
+				{
+					valid = false;
+					break;
+				}
+				out.minU = std::min( out.minU, vertex.uv[0] );
+				out.minV = std::min( out.minV, vertex.uv[1] );
+				out.maxU = std::max( out.maxU, vertex.uv[0] );
+				out.maxV = std::max( out.maxV, vertex.uv[1] );
+				if ( mark[vertexIndex] != std::uint32_t( i ) )
+				{
+					mark[vertexIndex] = std::uint32_t( i );
+					out.positions.push_back(
+					    { vertex.position[0], vertex.position[1], vertex.position[2] } );
+				}
+			}
+			out.valid = valid && surface.indexCount != 0;
+			if ( !out.valid )
+				out.positions.clear();
+		}
+	}
+	auto modelBounds = std::make_shared<std::vector<std::vector<SurfaceFootprintBounds>>>(
+	    data.staticMeshes.size() );
+	for ( std::size_t meshId = 0; meshId < data.staticMeshes.size(); ++meshId )
+	{
+		const WorldData::StaticMesh &mesh = data.staticMeshes[meshId];
+		auto &bounds = ( *modelBounds )[meshId];
+		bounds.resize( mesh.surfaces.size() );
+		for ( std::size_t i = 0; i < mesh.surfaces.size(); ++i )
+		{
+			if ( i >= mesh.surfaceLods.size() || mesh.surfaceLods[i] >= mesh.lods.size() )
+				continue;
+			const WorldData::StaticMeshLod &level = mesh.lods[mesh.surfaceLods[i]];
+			if ( level.vertices && level.indices )
+				bounds[i] =
+				    MeasureFootprintBounds( mesh.surfaces[i], *level.vertices, *level.indices );
+		}
+	}
 	std::lock_guard<std::mutex> guard( s.lock );
 	s.world = std::make_shared<const WorldData>( std::move( data ) );
 	s.claims = std::move( claims );
+	s.footprintGeometry = std::move( footprints );
+	s.modelFootprintBounds = std::move( modelBounds );
 	++s.generation;
 	// A new world starts from its stage's own lighting.
 	s.stageLightmap.reset();
@@ -771,6 +900,8 @@ void WorldPass::ClearWorld()
 	std::lock_guard<std::mutex> guard( s.lock );
 	s.world.reset();
 	s.claims.reset();
+	s.footprintGeometry.reset();
+	s.modelFootprintBounds.reset();
 	++s.generation;
 	// Queued views stay with their world's generation: in queued mode the
 	// slots of a frame that straddles a level change record after it, and
@@ -1483,6 +1614,8 @@ void WorldPass::RecordBatch(
 	std::vector<std::size_t> staticCohorts, posedCohorts;
 	std::shared_ptr<const WorldData> world;
 	std::shared_ptr<const std::vector<Claimed>> claims;
+	std::shared_ptr<const std::vector<SurfaceFootprintGeometry>> footprintGeometry;
+	std::shared_ptr<const std::vector<std::vector<SurfaceFootprintBounds>>> modelFootprintBounds;
 	std::uint64_t generation = 0;
 	WorldView view;
 	bool found = false;
@@ -1587,6 +1720,8 @@ void WorldPass::RecordBatch(
 		}
 		world = s.world;
 		claims = s.claims;
+		footprintGeometry = s.footprintGeometry;
+		modelFootprintBounds = s.modelFootprintBounds;
 		generation = s.generation;
 	}
 	if ( earlierWorld )
@@ -3088,82 +3223,263 @@ void WorldPass::RecordBatch(
 		state.cull = m.program.twoSided ? CullMode::kNone : CullMode::kBack;
 		return statePipeline( m, base, state, debug );
 	};
+	// A surface's screen and UV extents depend on the view and the surface, not
+	// on the pass that draws it: the prepass, depth and color passes (and a
+	// model's depth and color draws) share one projection of its vertices.
+	struct FootprintExtents
+	{
+		enum class State : std::uint8_t
+		{
+			kUnknown,
+			kValid,
+			kInvalid
+		};
+		State state = State::kUnknown;
+		float minX = 0.0f, minY = 0.0f, maxX = 0.0f, maxY = 0.0f;
+		float minU = 0.0f, minV = 0.0f, maxU = 0.0f, maxV = 0.0f;
+		// The material sets whose texture requests this surface has already made
+		// this view (a repeat is a no-op: requests merge to the finest mip).
+		const void *submitted[3] = {};
+	};
+	// A material's texture slots with their mip descriptions, resolved once
+	// per view instead of once per surface.
+	struct FootprintSlot
+	{
+		std::uint32_t slot, width, height, levels;
+	};
+	std::map<std::pair<const void *, std::uint64_t>, std::vector<FootprintSlot>> footprintSlots;
+	FootprintExtents scratchFootprint;
+	std::vector<FootprintExtents> worldFootprints;
+	if ( target.mipFeedback && world )
+		worldFootprints.resize( world->surfaces.size() );
+	std::map<std::tuple<bool, std::uint32_t, std::uint32_t, std::uint32_t, std::uint32_t>,
+	    FootprintExtents>
+	    modelFootprints;
 	auto submitSurfaceFootprints =
 	    [&]( const WorldSurface &surface, const std::vector<Resources::Material> &materials,
-	        const auto &vertices, const auto &indices, const float *objectToWorld = nullptr )
+	        const auto &vertices, const auto &indices, FootprintExtents &extents,
+	        const float *objectToWorld = nullptr, const SurfaceFootprintGeometry *compact = nullptr,
+	        const SurfaceFootprintBounds *box = nullptr )
 	{
 		if ( !target.mipFeedback || !view.viewport.width || !view.viewport.height ||
 		     surface.firstIndex > indices.size() ||
 		     surface.indexCount > indices.size() - surface.firstIndex )
 			return;
-		float minX = view.viewport.width;
-		float minY = view.viewport.height;
-		float maxX = 0.0f;
-		float maxY = 0.0f;
-		float minU = std::numeric_limits<float>::max();
-		float minV = std::numeric_limits<float>::max();
-		float maxU = std::numeric_limits<float>::lowest();
-		float maxV = std::numeric_limits<float>::lowest();
-		bool valid = true;
-		for ( std::uint32_t i = 0; i < surface.indexCount; ++i )
+		// The box's eight corners bound every vertex's projection while all of
+		// them are in front of the eye; a corner behind it falls back to the
+		// surface's own vertices, which may still all be in front.
+		bool boxResolved = false;
+		if ( extents.state == FootprintExtents::State::kUnknown && box )
 		{
-			const std::uint32_t vertexIndex = indices[surface.firstIndex + i];
-			if ( vertexIndex >= vertices.size() )
-				return;
-			const auto &vertex = vertices[vertexIndex];
-			if ( !std::isfinite( vertex.uv[0] ) || !std::isfinite( vertex.uv[1] ) )
-				return;
-			float position[4] = {
-			    vertex.position[0], vertex.position[1], vertex.position[2], 1.0f };
-			if ( objectToWorld )
+			extents.state = FootprintExtents::State::kInvalid;
+			boxResolved = true;
+			if ( box->valid )
 			{
-				float transformed[4] = {};
+				float toClip[16];
 				for ( int row = 0; row < 4; ++row )
 					for ( int col = 0; col < 4; ++col )
-						transformed[row] += objectToWorld[row * 4 + col] * position[col];
-				std::copy_n( transformed, 4, position );
+					{
+						float value = 0.0f;
+						for ( int k = 0; k < 4; ++k )
+							value += view.toClip[row * 4 + k] *
+							         ( objectToWorld ? objectToWorld[k * 4 + col]
+							                         : ( k == col ? 1.0f : 0.0f ) );
+						toClip[row * 4 + col] = value;
+					}
+				float minX = view.viewport.width, minY = view.viewport.height;
+				float maxX = 0.0f, maxY = 0.0f;
+				bool front = true;
+				for ( int corner = 0; corner < 8 && front; ++corner )
+				{
+					const float p[3] = { ( corner & 1 ) ? box->hi[0] : box->lo[0],
+					    ( corner & 2 ) ? box->hi[1] : box->lo[1],
+					    ( corner & 4 ) ? box->hi[2] : box->lo[2] };
+					float clip[4];
+					for ( int row = 0; row < 4; ++row )
+						clip[row] = toClip[row * 4 + 0] * p[0] + toClip[row * 4 + 1] * p[1] +
+						            toClip[row * 4 + 2] * p[2] + toClip[row * 4 + 3];
+					if ( !std::isfinite( clip[0] ) || !std::isfinite( clip[1] ) ||
+					     !std::isfinite( clip[3] ) || clip[3] <= 1.0e-6f )
+					{
+						front = false;
+						break;
+					}
+					const float x =
+					    std::clamp( ( clip[0] / clip[3] * 0.5f + 0.5f ) * view.viewport.width, 0.0f,
+					        view.viewport.width );
+					const float y =
+					    std::clamp( ( 0.5f - clip[1] / clip[3] * 0.5f ) * view.viewport.height,
+					        0.0f, view.viewport.height );
+					minX = std::min( minX, x );
+					minY = std::min( minY, y );
+					maxX = std::max( maxX, x );
+					maxY = std::max( maxY, y );
+				}
+				if ( !front )
+				{
+					extents.state = FootprintExtents::State::kUnknown;
+					boxResolved = false;
+				}
+				else if ( maxX > minX && maxY > minY && box->maxU >= box->minU &&
+				          box->maxV >= box->minV )
+					extents = { FootprintExtents::State::kValid, minX, minY, maxX, maxY, box->minU,
+					    box->minV, box->maxU, box->maxV };
 			}
-			float clip[4] = {};
-			for ( int row = 0; row < 4; ++row )
-				for ( int col = 0; col < 4; ++col )
-					clip[row] += view.toClip[row * 4 + col] * position[col];
-			if ( !std::isfinite( clip[0] ) || !std::isfinite( clip[1] ) ||
-			     !std::isfinite( clip[3] ) || clip[3] <= 1.0e-6f )
-			{
-				valid = false;
-				break;
-			}
-			const float x = std::clamp( ( clip[0] / clip[3] * 0.5f + 0.5f ) * view.viewport.width,
-			    0.0f, view.viewport.width );
-			const float y = std::clamp( ( 0.5f - clip[1] / clip[3] * 0.5f ) * view.viewport.height,
-			    0.0f, view.viewport.height );
-			minX = std::min( minX, x );
-			minY = std::min( minY, y );
-			maxX = std::max( maxX, x );
-			maxY = std::max( maxY, y );
-			minU = std::min( minU, vertex.uv[0] );
-			minV = std::min( minV, vertex.uv[1] );
-			maxU = std::max( maxU, vertex.uv[0] );
-			maxV = std::max( maxV, vertex.uv[1] );
 		}
-		if ( !valid || maxX <= minX || maxY <= minY || maxU < minU || maxV < minV )
-			return;
-		const auto &handles = ( *claims )[surface.material].handles;
-		const auto &texturesUsed = materials[surface.material].program.request.material.textures;
-		for ( std::uint32_t slot = 0; slot < texturesUsed.size(); ++slot )
+		if ( !boxResolved && extents.state == FootprintExtents::State::kUnknown )
 		{
-			const auto handle = handles.find( texturesUsed[slot].name );
-			if ( handle == handles.end() || handle->second <= 0 )
-				continue;
-			const auto info = target.textures->MipDescription( handle->second );
-			if ( !info )
-				continue;
+			extents.state = FootprintExtents::State::kInvalid;
+			if ( compact )
+			{
+				if ( compact->valid )
+				{
+					float minX = view.viewport.width, minY = view.viewport.height;
+					float maxX = 0.0f, maxY = 0.0f;
+					bool valid = true;
+					for ( const std::array<float, 3> &position : compact->positions )
+					{
+						float clip[4] = {};
+						for ( int row = 0; row < 4; ++row )
+							clip[row] = view.toClip[row * 4 + 0] * position[0] +
+							            view.toClip[row * 4 + 1] * position[1] +
+							            view.toClip[row * 4 + 2] * position[2] +
+							            view.toClip[row * 4 + 3];
+						if ( !std::isfinite( clip[0] ) || !std::isfinite( clip[1] ) ||
+						     !std::isfinite( clip[3] ) || clip[3] <= 1.0e-6f )
+						{
+							valid = false;
+							break;
+						}
+						const float x =
+						    std::clamp( ( clip[0] / clip[3] * 0.5f + 0.5f ) * view.viewport.width,
+						        0.0f, view.viewport.width );
+						const float y =
+						    std::clamp( ( 0.5f - clip[1] / clip[3] * 0.5f ) * view.viewport.height,
+						        0.0f, view.viewport.height );
+						minX = std::min( minX, x );
+						minY = std::min( minY, y );
+						maxX = std::max( maxX, x );
+						maxY = std::max( maxY, y );
+					}
+					if ( valid && maxX > minX && maxY > minY && compact->maxU >= compact->minU &&
+					     compact->maxV >= compact->minV )
+						extents = { FootprintExtents::State::kValid, minX, minY, maxX, maxY,
+						    compact->minU, compact->minV, compact->maxU, compact->maxV };
+				}
+			}
+			else
+			{
+				float minX = view.viewport.width;
+				float minY = view.viewport.height;
+				float maxX = 0.0f;
+				float maxY = 0.0f;
+				float minU = std::numeric_limits<float>::max();
+				float minV = std::numeric_limits<float>::max();
+				float maxU = std::numeric_limits<float>::lowest();
+				float maxV = std::numeric_limits<float>::lowest();
+				bool valid = true;
+				for ( std::uint32_t i = 0; i < surface.indexCount; ++i )
+				{
+					const std::uint32_t vertexIndex = indices[surface.firstIndex + i];
+					if ( vertexIndex >= vertices.size() )
+						valid = false;
+					if ( !valid )
+						break;
+					const auto &vertex = vertices[vertexIndex];
+					if ( !std::isfinite( vertex.uv[0] ) || !std::isfinite( vertex.uv[1] ) )
+					{
+						valid = false;
+						break;
+					}
+					float position[4] = {
+					    vertex.position[0], vertex.position[1], vertex.position[2], 1.0f };
+					if ( objectToWorld )
+					{
+						float transformed[4] = {};
+						for ( int row = 0; row < 4; ++row )
+							for ( int col = 0; col < 4; ++col )
+								transformed[row] += objectToWorld[row * 4 + col] * position[col];
+						std::copy_n( transformed, 4, position );
+					}
+					float clip[4] = {};
+					for ( int row = 0; row < 4; ++row )
+						for ( int col = 0; col < 4; ++col )
+							clip[row] += view.toClip[row * 4 + col] * position[col];
+					if ( !std::isfinite( clip[0] ) || !std::isfinite( clip[1] ) ||
+					     !std::isfinite( clip[3] ) || clip[3] <= 1.0e-6f )
+					{
+						valid = false;
+						break;
+					}
+					const float x =
+					    std::clamp( ( clip[0] / clip[3] * 0.5f + 0.5f ) * view.viewport.width, 0.0f,
+					        view.viewport.width );
+					const float y =
+					    std::clamp( ( 0.5f - clip[1] / clip[3] * 0.5f ) * view.viewport.height,
+					        0.0f, view.viewport.height );
+					minX = std::min( minX, x );
+					minY = std::min( minY, y );
+					maxX = std::max( maxX, x );
+					maxY = std::max( maxY, y );
+					minU = std::min( minU, vertex.uv[0] );
+					minV = std::min( minV, vertex.uv[1] );
+					maxU = std::max( maxU, vertex.uv[0] );
+					maxV = std::max( maxV, vertex.uv[1] );
+				}
+				if ( valid && maxX > minX && maxY > minY && maxU >= minU && maxV >= minV )
+				{
+					extents = { FootprintExtents::State::kValid, minX, minY, maxX, maxY, minU, minV,
+					    maxU, maxV };
+				}
+			}
+		}
+		if ( extents.state != FootprintExtents::State::kValid )
+			return;
+		const float minX = extents.minX, minY = extents.minY, maxX = extents.maxX,
+		            maxY = extents.maxY, minU = extents.minU, minV = extents.minV,
+		            maxU = extents.maxU, maxV = extents.maxV;
+		const void **seen = extents.submitted;
+		const void **free = nullptr;
+		for ( int i = 0; i < 3; ++i )
+		{
+			if ( seen[i] == &materials )
+				return;
+			if ( !seen[i] && !free )
+				free = &seen[i];
+		}
+		if ( free )
+			*free = &materials;
+		auto slots = footprintSlots.find( { &materials, surface.material } );
+		if ( slots == footprintSlots.end() )
+		{
+			std::vector<FootprintSlot> resolved;
+			const auto &handles = ( *claims )[surface.material].handles;
+			const auto &texturesUsed =
+			    materials[surface.material].program.request.material.textures;
+			for ( std::uint32_t slot = 0; slot < texturesUsed.size(); ++slot )
+			{
+				const auto handle = handles.find( texturesUsed[slot].name );
+				if ( handle == handles.end() || handle->second <= 0 )
+					continue;
+				const auto info = target.textures->MipDescription( handle->second );
+				if ( !info )
+					continue;
+				resolved.push_back( { slot, info->width, info->height, info->levels } );
+			}
+			slots = footprintSlots
+			            .emplace(
+			                std::pair{ static_cast<const void *>( &materials ), surface.material },
+			                std::move( resolved ) )
+			            .first;
+		}
+		for ( const FootprintSlot &slot : slots->second )
+		{
 			resources::VisibleTextureFootprint footprint;
 			footprint.material = surface.material;
-			footprint.textureSlot = slot;
-			footprint.textureWidth = info->width;
-			footprint.textureHeight = info->height;
-			footprint.mipLevels = info->levels;
+			footprint.textureSlot = slot.slot;
+			footprint.textureWidth = slot.width;
+			footprint.textureHeight = slot.height;
+			footprint.mipLevels = slot.levels;
 			footprint.screenWidth = maxX - minX;
 			footprint.screenHeight = maxY - minY;
 			footprint.uvWidth = maxU - minU;
@@ -3236,7 +3552,11 @@ void WorldPass::RecordBatch(
 			}
 			if ( skipping )
 				continue;
-			submitSurfaceFootprints( surface, materials, world->vertices, world->indices );
+			submitSurfaceFootprints( surface, materials, world->vertices, world->indices,
+			    worldFootprints.empty() ? scratchFootprint : worldFootprints[index], nullptr,
+			    footprintGeometry && index < footprintGeometry->size()
+			        ? &( *footprintGeometry )[index]
+			        : nullptr );
 			if ( m.program.request.drawLayout.IsValid() &&
 			     ( !pageBound || surface.lightmapPage != boundPage ) )
 			{
@@ -3315,10 +3635,32 @@ void WorldPass::RecordBatch(
 		feedbackSurface.material = draw.material;
 		// The level's own staging, whose indices the level's surface counts into.
 		const WorldData::StaticMeshLod &level = mesh.lods[draw.lod];
-		if ( level.vertices && level.indices )
-			submitSurfaceFootprints( feedbackSurface, r.modelMaterials,
-			    draw.posed ? view.posedModels[draw.instance].vertices : *level.vertices,
-			    *level.indices, instance ? instance->world : nullptr );
+		if ( level.vertices && level.indices && target.mipFeedback )
+		{
+			const auto &vertices =
+			    draw.posed ? view.posedModels[draw.instance].vertices : *level.vertices;
+			FootprintExtents &extents =
+			    modelFootprints[{ draw.posed, draw.instance, draw.mesh, draw.lod, draw.surface }];
+			// A static instance's box is the world's, built once; a pose's box
+			// is measured once per view from its own vertices.
+			SurfaceFootprintBounds posedBox;
+			const SurfaceFootprintBounds *box = nullptr;
+			if ( extents.state == FootprintExtents::State::kUnknown )
+			{
+				if ( draw.posed )
+				{
+					posedBox = MeasureFootprintBounds( surface, vertices, *level.indices );
+					box = &posedBox;
+				}
+				else if ( modelFootprintBounds && draw.mesh < modelFootprintBounds->size() &&
+				          draw.surface < ( *modelFootprintBounds )[draw.mesh].size() &&
+				          draw.surface < mesh.surfaceLods.size() &&
+				          mesh.surfaceLods[draw.surface] == draw.lod )
+					box = &( *modelFootprintBounds )[draw.mesh][draw.surface];
+			}
+			submitSurfaceFootprints( feedbackSurface, r.modelMaterials, vertices, *level.indices,
+			    extents, instance ? instance->world : nullptr, nullptr, box );
+		}
 		encoder.DrawIndexed( surface.indexCount, 1, surface.firstIndex, 0, 0 );
 	};
 	preparation.End();
