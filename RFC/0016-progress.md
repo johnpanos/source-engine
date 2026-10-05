@@ -10805,3 +10805,10 @@ render mode sets its state, and only the glow modes touch the depth test
 again. So the claim ignores depth for an `$ignorez` sprite in every mode.
 The inventory is now 1,547 / 1,471 / 574 unsupported (8 more claimed), and
 `render_lab suite sprite` passes 40/40.
+
+Follow-up: two misspelled keys that no shader reads join the no-effect
+table, as `$basemapalphaenvmapmask` already had. `$translucency` is not
+declared by any shader (the flag is `$translucent`). `envmap` without a `$`
+(for example `models/props/futbol_dispenser.vmt`) sets nothing, because
+shader parameters are looked up as `$envmap`. The inventory is now 1,553 /
+1,484 / 555 unsupported (19 more claimed).

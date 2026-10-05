@@ -276,9 +276,9 @@
     "unlitgeneric": {
       "dynamically_unresolved": 22,
       "statically_supported": 162,
-      "supported_with_requirements": 790,
+      "supported_with_requirements": 798,
       "total": 1039,
-      "unsupported": 65
+      "unsupported": 57
     },
     "unlittwotexture": {
       "dynamically_unresolved": 23,
@@ -289,10 +289,10 @@
     },
     "vertexlitgeneric": {
       "dynamically_unresolved": 22,
-      "statically_supported": 835,
-      "supported_with_requirements": 278,
+      "statically_supported": 841,
+      "supported_with_requirements": 283,
       "total": 1211,
-      "unsupported": 76
+      "unsupported": 65
     },
     "water": {
       "dynamically_unresolved": 0,
@@ -435,7 +435,6 @@
     "the model does not read $splinetype": 3,
     "the model does not read $spritescale": 1,
     "the model does not read $startfadesize": 2,
-    "the model does not read $translucency": 8,
     "the model does not read $use_in_fillrate_mode": 4,
     "the model does not read $vertexalpha": 5,
     "the model does not read $vertexcolors": 1,
@@ -443,7 +442,6 @@
     "the model does not read $worldimposter": 5,
     "the model does not read $writez": 1,
     "the model does not read /*": 2,
-    "the model does not read envmap": 11,
     "the model does not read ignorez": 1,
     "the model does not read phong": 5,
     "the modern mesh point does not draw $ignorez": 1
@@ -85087,34 +85085,40 @@
       ]
     },
     "materials/models/props/futbol_dispenser.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
       "family": "vertexlit",
-      "gap": "the model does not read envmap",
       "input_sha256": "f1e94157f20c41fe172b9547c777b89541e3faa01ac2b43c3c13f7cea27d0f31",
       "mesh_claims": [
         {
-          "gap": "the model does not read envmap",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read envmap",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read envmap",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read envmap",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -85122,23 +85126,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$envmap"
-      ],
       "shader": "vertexlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "envmap"
-      ],
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "the model does not read envmap",
+          "gap": "family vertexlit has no program yet",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read envmap",
+          "gap": "family vertexlit has no program yet",
           "scene_inputs": {
             "world_stage": true
           }
@@ -85146,34 +85144,40 @@
       ]
     },
     "materials/models/props/futbol_effect.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "additive",
+          "geometry": "model_mesh",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "vertexlit",
-      "gap": "the model does not read envmap",
       "input_sha256": "7bf2b68e67601d6c9bbef4f7d36365258c576e2e50248ed3a1a3bd2ead16f78f",
       "mesh_claims": [
         {
-          "gap": "the model does not read envmap",
+          "claim": "additive",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read envmap",
+          "claim": "additive",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read envmap",
+          "claim": "additive",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read envmap",
+          "claim": "additive",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -85181,23 +85185,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$envmap"
-      ],
       "shader": "vertexlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "envmap"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read envmap",
+          "gap": "family vertexlit has no program yet",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read envmap",
+          "gap": "family vertexlit has no program yet",
           "scene_inputs": {
             "world_stage": true
           }
@@ -85264,34 +85262,40 @@
       ]
     },
     "materials/models/props/futbol_glass.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "additive",
+          "geometry": "model_mesh",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "vertexlit",
-      "gap": "the model does not read envmap",
       "input_sha256": "82ff3b5f20eb2151b4e109ea7bdd2abf99ef3c3d47b932395146bae8eba4f392",
       "mesh_claims": [
         {
-          "gap": "the model does not read envmap",
+          "claim": "additive",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read envmap",
+          "claim": "additive",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read envmap",
+          "claim": "additive",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read envmap",
+          "claim": "additive",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -85299,23 +85303,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$envmap"
-      ],
       "shader": "vertexlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "envmap"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read envmap",
+          "gap": "family vertexlit has no program yet",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read envmap",
+          "gap": "family vertexlit has no program yet",
           "scene_inputs": {
             "world_stage": true
           }
@@ -85323,34 +85321,40 @@
       ]
     },
     "materials/models/props/futbol_glass_black.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "additive",
+          "geometry": "model_mesh",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "vertexlit",
-      "gap": "the model does not read envmap",
       "input_sha256": "613b38fd448134a66d93763cbdd233aada8d6e855433ab930388456603e0cb3e",
       "mesh_claims": [
         {
-          "gap": "the model does not read envmap",
+          "claim": "additive",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read envmap",
+          "claim": "additive",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read envmap",
+          "claim": "additive",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read envmap",
+          "claim": "additive",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -85358,23 +85362,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$envmap"
-      ],
       "shader": "vertexlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "envmap"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read envmap",
+          "gap": "family vertexlit has no program yet",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read envmap",
+          "gap": "family vertexlit has no program yet",
           "scene_inputs": {
             "world_stage": true
           }
@@ -88518,34 +88516,40 @@
       ]
     },
     "materials/models/props/pedestal_glass.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "additive",
+          "geometry": "model_mesh",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "vertexlit",
-      "gap": "the model does not read envmap",
       "input_sha256": "b023f4f3059dedbc45c9681b330ae8f0579b771f20a5a77e02d87ae3e62f605c",
       "mesh_claims": [
         {
-          "gap": "the model does not read envmap",
+          "claim": "additive",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read envmap",
+          "claim": "additive",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read envmap",
+          "claim": "additive",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read envmap",
+          "claim": "additive",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -88553,23 +88557,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$envmap"
-      ],
       "shader": "vertexlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "envmap"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read envmap",
+          "gap": "family vertexlit has no program yet",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read envmap",
+          "gap": "family vertexlit has no program yet",
           "scene_inputs": {
             "world_stage": true
           }
@@ -91151,34 +91149,40 @@
       ]
     },
     "materials/models/props/tripwire_turret.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
       "family": "vertexlit",
-      "gap": "the model does not read envmap",
       "input_sha256": "27f5b7eb7dde34bc4d3fda9375060ec35618b6973a271adff9d295d502b951a1",
       "mesh_claims": [
         {
-          "gap": "the model does not read envmap",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read envmap",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read envmap",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read envmap",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -91186,23 +91190,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$envmap"
-      ],
       "shader": "vertexlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "envmap"
-      ],
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "the model does not read envmap",
+          "gap": "family vertexlit has no program yet",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read envmap",
+          "gap": "family vertexlit has no program yet",
           "scene_inputs": {
             "world_stage": true
           }
@@ -95364,34 +95362,40 @@
       ]
     },
     "materials/models/props_bts/cage_light.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
       "family": "vertexlit",
-      "gap": "the model does not read envmap",
       "input_sha256": "0c5c4e674007866ac85ad43550a652c9f32e58f82f63d631fa22191cd7ef22a1",
       "mesh_claims": [
         {
-          "gap": "the model does not read envmap",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read envmap",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read envmap",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read envmap",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -95399,23 +95403,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$envmap"
-      ],
       "shader": "vertexlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "envmap"
-      ],
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "the model does not read envmap",
+          "gap": "family vertexlit has no program yet",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read envmap",
+          "gap": "family vertexlit has no program yet",
           "scene_inputs": {
             "world_stage": true
           }
@@ -96072,34 +96070,40 @@
       ]
     },
     "materials/models/props_bts/glados_screenborder.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
       "family": "vertexlit",
-      "gap": "the model does not read envmap",
       "input_sha256": "c4ac20676ec7133debc98248bb8f7c6d6ba25f69f522d5fe20c29a8a0bbd8430",
       "mesh_claims": [
         {
-          "gap": "the model does not read envmap",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read envmap",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read envmap",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read envmap",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -96107,23 +96111,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$envmap"
-      ],
       "shader": "vertexlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "envmap"
-      ],
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "the model does not read envmap",
+          "gap": "family vertexlit has no program yet",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read envmap",
+          "gap": "family vertexlit has no program yet",
           "scene_inputs": {
             "world_stage": true
           }
@@ -96367,34 +96365,40 @@
       ]
     },
     "materials/models/props_bts/lab_floorlight.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
       "family": "vertexlit",
-      "gap": "the model does not read envmap",
       "input_sha256": "722ce0ce2e4200fc5540e760d68af4ecfebbda8ae083274d514c7e5755c774c9",
       "mesh_claims": [
         {
-          "gap": "the model does not read envmap",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read envmap",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read envmap",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read envmap",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -96402,23 +96406,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$envmap"
-      ],
       "shader": "vertexlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "envmap"
-      ],
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "the model does not read envmap",
+          "gap": "family vertexlit has no program yet",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read envmap",
+          "gap": "family vertexlit has no program yet",
           "scene_inputs": {
             "world_stage": true
           }
@@ -96426,34 +96424,40 @@
       ]
     },
     "materials/models/props_bts/lab_floorlight_glass.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "additive",
+          "geometry": "model_mesh",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "vertexlit",
-      "gap": "the model does not read envmap",
       "input_sha256": "0223f71a687d71fc37c5eecee2cf0e5f7111dd32102f796bc52b7216e1d188b6",
       "mesh_claims": [
         {
-          "gap": "the model does not read envmap",
+          "claim": "additive",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read envmap",
+          "claim": "additive",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read envmap",
+          "claim": "additive",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read envmap",
+          "claim": "additive",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -96461,23 +96465,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$envmap"
-      ],
       "shader": "vertexlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "envmap"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read envmap",
+          "gap": "family vertexlit has no program yet",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read envmap",
+          "gap": "family vertexlit has no program yet",
           "scene_inputs": {
             "world_stage": true
           }
@@ -97665,34 +97663,40 @@
       ]
     },
     "materials/models/props_bts/rocket_sentry.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {}
+        }
+      ],
       "family": "vertexlit",
-      "gap": "the model does not read envmap",
       "input_sha256": "2f5866d8b08ba509ae512c69aae318da2e29e8075aa0943a468059438249db6f",
       "mesh_claims": [
         {
-          "gap": "the model does not read envmap",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read envmap",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read envmap",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read envmap",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -97700,23 +97704,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$envmap"
-      ],
       "shader": "vertexlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "envmap"
-      ],
+      "status": "statically_supported",
       "world_claims": [
         {
-          "gap": "the model does not read envmap",
+          "gap": "family vertexlit has no program yet",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read envmap",
+          "gap": "family vertexlit has no program yet",
           "scene_inputs": {
             "world_stage": true
           }
@@ -193287,34 +193285,40 @@
       ]
     },
     "materials/vgui/hud/bounce_paint_indicator.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the model does not read $translucency",
       "input_sha256": "a2b673f94719170eddb0b351036bdd592fd22df9762cec38aa89d3da59de7960",
       "mesh_claims": [
         {
-          "gap": "the model does not read $translucency",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $translucency",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $translucency",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $translucency",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -193322,23 +193326,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$translucency"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$translucency"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $translucency",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $translucency",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -197299,34 +197297,40 @@
       ]
     },
     "materials/vgui/hud/current_paint_indicator.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the model does not read $translucency",
       "input_sha256": "787da39da1d49e2687e30918f7fa67ee47c44d6d82eeb9678f687c1767b2b577",
       "mesh_claims": [
         {
-          "gap": "the model does not read $translucency",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $translucency",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $translucency",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $translucency",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -197334,23 +197338,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$translucency"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$translucency"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $translucency",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $translucency",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -198479,34 +198477,40 @@
       ]
     },
     "materials/vgui/hud/paint_bounce_icon_idle.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the model does not read $translucency",
       "input_sha256": "c31b753be4f19ed0ca7c3c02294557f792e243a86a2e2aa4030192a97d2d8e30",
       "mesh_claims": [
         {
-          "gap": "the model does not read $translucency",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $translucency",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $translucency",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $translucency",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -198514,23 +198518,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$translucency"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$translucency"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $translucency",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $translucency",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -198538,34 +198536,40 @@
       ]
     },
     "materials/vgui/hud/paint_speed_icon_idle.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the model does not read $translucency",
       "input_sha256": "5386a6a6129b66dc5d92ebc183762137e8ee5743ebecf05d3b6fe8efa4dfd88b",
       "mesh_claims": [
         {
-          "gap": "the model does not read $translucency",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $translucency",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $translucency",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $translucency",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -198573,23 +198577,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$translucency"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$translucency"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $translucency",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $translucency",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -198597,34 +198595,40 @@
       ]
     },
     "materials/vgui/hud/paint_stick_icon_idle.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the model does not read $translucency",
       "input_sha256": "499e124ef2a76c2a1bf34c0cae6bb5d0799ed8111e29304f5793e38e5b44e1f2",
       "mesh_claims": [
         {
-          "gap": "the model does not read $translucency",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $translucency",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $translucency",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $translucency",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -198632,23 +198636,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$translucency"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$translucency"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $translucency",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $translucency",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -198656,34 +198654,40 @@
       ]
     },
     "materials/vgui/hud/speed_paint_indicator.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the model does not read $translucency",
       "input_sha256": "ead6f8a1ff540a3c3db6d9ef1075179fd4a287dd48f49eed069d4afb26bb339d",
       "mesh_claims": [
         {
-          "gap": "the model does not read $translucency",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $translucency",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $translucency",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $translucency",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -198691,23 +198695,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$translucency"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$translucency"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $translucency",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $translucency",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -198774,34 +198772,40 @@
       ]
     },
     "materials/vgui/hud/stick_paint_indicator.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the model does not read $translucency",
       "input_sha256": "db9661db0b39a155fa5e229bd170365dcc8d8b752939a9c6b7281609e4273c45",
       "mesh_claims": [
         {
-          "gap": "the model does not read $translucency",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $translucency",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $translucency",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $translucency",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -198809,23 +198813,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$translucency"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$translucency"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $translucency",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $translucency",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -198833,34 +198831,40 @@
       ]
     },
     "materials/vgui/hud/swap_guns_indicator.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the model does not read $translucency",
       "input_sha256": "d6538a75d1f4ec856e7832199f281a1a6004f26c0daf597aeae7fff3e07d3548",
       "mesh_claims": [
         {
-          "gap": "the model does not read $translucency",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $translucency",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $translucency",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $translucency",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -198868,23 +198872,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$translucency"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$translucency"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $translucency",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $translucency",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -223608,9 +223606,9 @@
         "materials/glass/glasswindow_frosted_003.vmt",
         "materials/glass/glasswindow_frosted_004.vmt"
       ],
-      "first_refusals": 31,
-      "refused_materials": 31,
-      "unmapped_materials": 11
+      "first_refusals": 20,
+      "refused_materials": 20,
+      "unmapped_materials": 0
     },
     "parameter:$flashlightnolambert": {
       "examples": [
@@ -223870,16 +223868,6 @@
       "first_refusals": 2,
       "refused_materials": 2,
       "unmapped_materials": 3
-    },
-    "parameter:$translucency": {
-      "examples": [
-        "materials/vgui/hud/bounce_paint_indicator.vmt",
-        "materials/vgui/hud/current_paint_indicator.vmt",
-        "materials/vgui/hud/paint_bounce_icon_idle.vmt"
-      ],
-      "first_refusals": 8,
-      "refused_materials": 8,
-      "unmapped_materials": 8
     },
     "parameter:$translucent": {
       "examples": [
@@ -224353,9 +224341,9 @@
   "scope": "all materials/**/*.vmt in the game's ordered search path",
   "status_counts": {
     "dynamically_unresolved": 146,
-    "statically_supported": 1547,
-    "supported_with_requirements": 1471,
-    "unsupported": 574
+    "statically_supported": 1553,
+    "supported_with_requirements": 1484,
+    "unsupported": 555
   },
   "total": 3738
 }
