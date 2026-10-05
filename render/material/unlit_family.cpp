@@ -51,17 +51,17 @@ UnlitClaim ClaimUnlit( const ParameterBlock &block )
 	}
 	const bool translucent = ReadFlag( block, "translucent" );
 	const bool additive = ReadFlag( block, "additive" );
-	if ( translucent && additive )
-	{
-		claim.reason = "$translucent with $additive blends src-alpha/one, which the port lacks";
-		return claim;
-	}
 	// Gameplay fades (including area-portal covers) modulate $alpha even
 	// when the authored material has no $translucent flag.
 	const bool alphaBlended =
 	    translucent || ReadFlag( block, "vertexalpha" ) || ReadParameter( block, "alpha" ) < 1.0f;
-	claim.blend =
-	    additive ? BlendMode::kAdditive : ( alphaBlended ? BlendMode::kAlpha : BlendMode::kOpaque );
+	// $translucent with $additive blends src-alpha/one, as the legacy
+	// shaders' additive translucent state does (render.device.v2's
+	// kAlphaAdditive).
+	claim.blend = additive && translucent ? BlendMode::kAlphaAdditive
+	              : additive              ? BlendMode::kAdditive
+	              : alphaBlended          ? BlendMode::kAlpha
+	                                      : BlendMode::kOpaque;
 	claim.alphaWrite = !alphaBlended && !ReadFlag( block, "alphatest" );
 	claim.ignoreDepth = ReadFlag( block, "ignorez" );
 	claim.depthBlend = ReadFlag( block, "depthblend" );

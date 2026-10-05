@@ -276,9 +276,9 @@
     "unlitgeneric": {
       "dynamically_unresolved": 22,
       "statically_supported": 131,
-      "supported_with_requirements": 724,
+      "supported_with_requirements": 783,
       "total": 1039,
-      "unsupported": 162
+      "unsupported": 103
     },
     "unlittwotexture": {
       "dynamically_unresolved": 23,
@@ -341,7 +341,6 @@
   "gaps": {
     "$envmap needs the stage's native reflection probes": 20,
     "$spriterendermode 8 needs an unimplemented sprite point": 4,
-    "$translucent with $additive blends src-alpha/one, which the port lacks": 24,
     "Cable needs its base texture and normal texture": 4,
     "VMT: missing include materials/models/props_foliage/tree_include_dryleaves.vmt": 1,
     "family vertexlit has no program yet": 25,
@@ -425,7 +424,6 @@
     "the model does not read $groupbame": 1,
     "the model does not read $keywords": 3,
     "the model does not read $linearwrite": 1,
-    "the model does not read $nolod": 35,
     "the model does not read $nomip": 1,
     "the model does not read $nooverbright": 1,
     "the model does not read $nopaint": 2,
@@ -15264,34 +15262,40 @@
       ]
     },
     "materials/console/portal2_product_1.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the model does not read $nolod",
       "input_sha256": "a884bd71b8695f4aa110e81093ebf069b8b7d3a667906d1717b03e392e0decac",
       "mesh_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -15299,23 +15303,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$nolod"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$nolod"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -15323,34 +15321,40 @@
       ]
     },
     "materials/console/portal2_product_1_widescreen.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the model does not read $nolod",
       "input_sha256": "1bd356ef117999dad9472af9ee2522614c7279291627619ae07855f239f65020",
       "mesh_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -15358,23 +15362,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$nolod"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$nolod"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -15382,34 +15380,40 @@
       ]
     },
     "materials/console/portal2_product_2.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the model does not read $nolod",
       "input_sha256": "c8485fe99eef46c5ab6310ba82b45b7069f6504b0ba03172aed5af6ca1a5fb66",
       "mesh_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -15417,23 +15421,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$nolod"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$nolod"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -15441,34 +15439,40 @@
       ]
     },
     "materials/console/portal2_product_2_widescreen.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the model does not read $nolod",
       "input_sha256": "f39323f79f4b919339304950636f4133b972cfbabfb2fb488ea035c104ae078a",
       "mesh_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -15476,23 +15480,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$nolod"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$nolod"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -42209,33 +42207,40 @@
       ]
     },
     "materials/effects/ar2_altfire1.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha-additive",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
       "input_sha256": "f05f550b237620fb4e77446307197399bff8dae9f13df47102ea7f2b242a9930",
       "mesh_claims": [
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -42249,13 +42254,13 @@
       "status": "dynamically_unresolved",
       "world_claims": [
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "world_stage": true
           }
@@ -42263,34 +42268,40 @@
       ]
     },
     "materials/effects/ar2_altfire1b.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha-additive",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
       "input_sha256": "7b3559105d9c112157275749cd89bc899cd0cb7cf5cda3ba33d0caba477d23ba",
       "mesh_claims": [
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -42298,21 +42309,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$additive",
-        "parameter:$translucent"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "world_stage": true
           }
@@ -42962,34 +42969,40 @@
       ]
     },
     "materials/effects/combinemuzzle1.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha-additive",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
       "input_sha256": "a88057d55e37a218d6966582bba2ad379781bff68f2075439a96ea0cd612e4ed",
       "mesh_claims": [
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -42997,21 +43010,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$additive",
-        "parameter:$translucent"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "world_stage": true
           }
@@ -43019,34 +43028,40 @@
       ]
     },
     "materials/effects/combinemuzzle1_nocull.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha-additive",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
       "input_sha256": "7214827b524bd387dbbee5531dc68ec6903b9922cc93414731900e21807b3944",
       "mesh_claims": [
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -43054,21 +43069,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$additive",
-        "parameter:$translucent"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "world_stage": true
           }
@@ -43076,34 +43087,40 @@
       ]
     },
     "materials/effects/combinemuzzle1_noz.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha-additive",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
       "input_sha256": "4152a958abcc389ce938b78151b7e8882233c9cd2a730dee1c1659ac5500b9fa",
       "mesh_claims": [
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -43111,21 +43128,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$additive",
-        "parameter:$translucent"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "world_stage": true
           }
@@ -43133,34 +43146,40 @@
       ]
     },
     "materials/effects/combinemuzzle2.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha-additive",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
       "input_sha256": "b03ea1fd4f1f9b2f85226a0f58aba9cae30a352d235a1fd9864720848e8cbf3f",
       "mesh_claims": [
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -43168,21 +43187,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$additive",
-        "parameter:$translucent"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "world_stage": true
           }
@@ -43190,34 +43205,40 @@
       ]
     },
     "materials/effects/combinemuzzle2_dark.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha-additive",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
       "input_sha256": "6fad859bf0598a2494a575ae1ea422cefc064d17cd36e06fc302751364a75a5c",
       "mesh_claims": [
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -43225,21 +43246,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$additive",
-        "parameter:$translucent"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "world_stage": true
           }
@@ -43247,34 +43264,40 @@
       ]
     },
     "materials/effects/combinemuzzle2_nocull.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha-additive",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
       "input_sha256": "abcdb4c692925ef4425b8014dfd80d308fa7c6ed0d7be884f7b067c6ef8d4109",
       "mesh_claims": [
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -43282,21 +43305,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$additive",
-        "parameter:$translucent"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "world_stage": true
           }
@@ -43304,34 +43323,40 @@
       ]
     },
     "materials/effects/combinemuzzle2_noz.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha-additive",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
       "input_sha256": "41b4fe66b9c7fbd59caf9feed6666321f9c7629684d919eca4aeb9a469fd1f09",
       "mesh_claims": [
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -43339,21 +43364,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$additive",
-        "parameter:$translucent"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "world_stage": true
           }
@@ -44133,33 +44154,40 @@
       ]
     },
     "materials/effects/eball_finite_life.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha-additive",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
       "input_sha256": "aca1557f62f593bc761f1039a063e7b6ce9300d66b60e12d613a619d950841dc",
       "mesh_claims": [
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -44173,13 +44201,13 @@
       "status": "dynamically_unresolved",
       "world_claims": [
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "world_stage": true
           }
@@ -44187,33 +44215,40 @@
       ]
     },
     "materials/effects/eball_infinite_life.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha-additive",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
       "input_sha256": "74e1107f75deb2f00e740476b1a98ea590aeda41b897ba7fe36a67d85a6f0cf7",
       "mesh_claims": [
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -44227,13 +44262,13 @@
       "status": "dynamically_unresolved",
       "world_claims": [
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "world_stage": true
           }
@@ -44601,34 +44636,40 @@
       ]
     },
     "materials/effects/fire_cloud1.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha-additive",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
       "input_sha256": "2a2aaa2a63ab41a4945796ad0c72fbaaf6573fce78f762f1329c2eae664b2d20",
       "mesh_claims": [
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -44636,21 +44677,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$additive",
-        "parameter:$translucent"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "world_stage": true
           }
@@ -44658,34 +44695,40 @@
       ]
     },
     "materials/effects/fire_cloud2.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha-additive",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
       "input_sha256": "d1ccd4246fe642c3df4484d732035ba8bb97112db31d87f5894ce8ecd93392fd",
       "mesh_claims": [
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -44693,21 +44736,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$additive",
-        "parameter:$translucent"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "world_stage": true
           }
@@ -44715,34 +44754,40 @@
       ]
     },
     "materials/effects/fire_embers1.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha-additive",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
       "input_sha256": "397f58dfee35bf6477bf1c784a7e12f837ff3189132b9d022bad182da1e8dfa1",
       "mesh_claims": [
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -44750,21 +44795,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$additive",
-        "parameter:$translucent"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "world_stage": true
           }
@@ -44772,34 +44813,40 @@
       ]
     },
     "materials/effects/fire_embers2.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha-additive",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
       "input_sha256": "ffddf835ce22ad7fd36bda1115e2bcaba5af2594b6ad5d1fb83753e988256214",
       "mesh_claims": [
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -44807,21 +44854,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$additive",
-        "parameter:$translucent"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "world_stage": true
           }
@@ -44829,34 +44872,40 @@
       ]
     },
     "materials/effects/fire_embers3.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha-additive",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
       "input_sha256": "281ca8846ddff063a83681bce64f186298ee01838cdebdb89112dcaaddf45d30",
       "mesh_claims": [
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -44864,21 +44913,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$additive",
-        "parameter:$translucent"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "world_stage": true
           }
@@ -46312,34 +46357,40 @@
       ]
     },
     "materials/effects/laser1.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha-additive",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
       "input_sha256": "ed0a2760809e330177be45286e1bf9702539f5aac8f151a9223b0cc45374414b",
       "mesh_claims": [
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -46347,21 +46398,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$additive",
-        "parameter:$translucent"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "world_stage": true
           }
@@ -46549,34 +46596,40 @@
       ]
     },
     "materials/effects/muzzleflash2.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha-additive",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
       "input_sha256": "2b41852c332dd8c4ed2cdf9ec14ad18b49c03941f94e71700edebed476fa19d1",
       "mesh_claims": [
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -46584,21 +46637,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$additive",
-        "parameter:$translucent"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "world_stage": true
           }
@@ -46606,34 +46655,40 @@
       ]
     },
     "materials/effects/muzzleflash2_noz.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha-additive",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
       "input_sha256": "b1c2b2808a11a3dc90ba788110b54226ce7c80fcce51cb221917e5ec153ef6f0",
       "mesh_claims": [
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -46641,21 +46696,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$additive",
-        "parameter:$translucent"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "world_stage": true
           }
@@ -46958,34 +47009,40 @@
       ]
     },
     "materials/effects/portal_2_particle.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha-additive",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
       "input_sha256": "c346ac49ac275efe2ce144d359d1e2ba3c73b2bcc58e4e4c67589ad43c0e6d8c",
       "mesh_claims": [
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -46993,21 +47050,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$additive",
-        "parameter:$translucent"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "world_stage": true
           }
@@ -47927,34 +47980,40 @@
       ]
     },
     "materials/effects/stunstick.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha-additive",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
       "input_sha256": "f3cc4df509766800b5485838c9a57f1597686b1469e013622eae10e901f43d86",
       "mesh_claims": [
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -47962,21 +48021,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$additive",
-        "parameter:$translucent"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "world_stage": true
           }
@@ -52077,34 +52132,40 @@
       ]
     },
     "materials/hud/light_glow03.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha-additive",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
       "input_sha256": "8a2bc4880ff57b181891ae8c48bab9662886d3a942ab09af2ec568df6524d0fc",
       "mesh_claims": [
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -52112,21 +52173,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$additive",
-        "parameter:$translucent"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "world_stage": true
           }
@@ -75959,34 +76016,40 @@
       ]
     },
     "materials/models/player/chell_nodraw.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha-additive",
+          "geometry": "model_mesh",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
       "input_sha256": "07c026f11f444c523ca74756cb083d9c0033747afce5fc04204b0aba92e751cb",
       "mesh_claims": [
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -75994,21 +76057,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$additive",
-        "parameter:$translucent"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "world_stage": true
           }
@@ -106068,33 +106127,40 @@
       ]
     },
     "materials/models/props_gameplay/coop_ping_arrow.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha-additive",
+          "geometry": "model_mesh",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
       "input_sha256": "3a3210b17a9bd76f9389c19635654a626900bdf344b9934483464c8d59473153",
       "mesh_claims": [
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -106108,13 +106174,13 @@
       "status": "dynamically_unresolved",
       "world_claims": [
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "world_stage": true
           }
@@ -146998,34 +147064,40 @@
       ]
     },
     "materials/particle/particle_debris_burst/particle_debris_burst_002_add.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha-additive",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
       "input_sha256": "0acfabe260f87c13dc1a2b5413687945916057f75a92765e6d8e5694baaa0365",
       "mesh_claims": [
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -147033,21 +147105,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$additive",
-        "parameter:$translucent"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "world_stage": true
           }
@@ -148573,34 +148641,40 @@
       ]
     },
     "materials/particle/particle_glow_05_addnofog.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha-additive",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
       "input_sha256": "eb427408cc56ece0fa605cc6ce0cb92115e9ab2203073b0f090a44c47acc5c08",
       "mesh_claims": [
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -148608,21 +148682,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$additive",
-        "parameter:$translucent"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "world_stage": true
           }
@@ -164874,34 +164944,46 @@
       ]
     },
     "materials/signage/stasis_chamber_01.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha-additive",
+          "geometry": "model_mesh",
+          "pass": "blended",
+          "scene_inputs": {}
+        },
+        {
+          "blend": "alpha-additive",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
       "input_sha256": "2bff88e7a70395b3edca63e762ac227bf55658127f5df23bac5b7e3a296a65ea",
       "mesh_claims": [
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -164909,21 +164991,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$additive",
-        "parameter:$translucent"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "world_stage": true
           }
@@ -177317,34 +177395,40 @@
       ]
     },
     "materials/sprites/light_glow02_add_noz.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha-additive",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
       "input_sha256": "541c3887bbd7f3de9f5e5f6ee288e809eeaa6da2750254f5e3def86df59c0d11",
       "mesh_claims": [
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -177352,21 +177436,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$additive",
-        "parameter:$translucent"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "world_stage": true
           }
@@ -188391,34 +188471,40 @@
       ]
     },
     "materials/vgui/backgrounds/background01.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the model does not read $nolod",
       "input_sha256": "b3a37031ed1e15520cf230c4c300ba9015a684020008e7eaabeb499983484c94",
       "mesh_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -188426,23 +188512,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$nolod"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$nolod"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -188450,34 +188530,40 @@
       ]
     },
     "materials/vgui/backgrounds/background01_widescreen.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the model does not read $nolod",
       "input_sha256": "d161a92bfa9e82cd4d84a0186c211a6de92776f663cb37ff061093cdb8abd9bc",
       "mesh_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -188485,23 +188571,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$nolod"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$nolod"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -188509,34 +188589,40 @@
       ]
     },
     "materials/vgui/backgrounds/background02.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the model does not read $nolod",
       "input_sha256": "aa59afdb0a992c8f1b16aff06cc6ab408257e6a4c06d7a82924fee262d0606bb",
       "mesh_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -188544,23 +188630,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$nolod"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$nolod"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -188568,34 +188648,40 @@
       ]
     },
     "materials/vgui/backgrounds/background02_widescreen.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the model does not read $nolod",
       "input_sha256": "158c0062702009f0b2831740d6507e2deb8fffbee5c055d234680af107ddcdfc",
       "mesh_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -188603,23 +188689,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$nolod"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$nolod"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -188627,34 +188707,40 @@
       ]
     },
     "materials/vgui/backgrounds/background03.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the model does not read $nolod",
       "input_sha256": "7c124c6e33d07e5e95ce797228e542d0c07de7ebf5ad93e265a03415f48e995c",
       "mesh_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -188662,23 +188748,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$nolod"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$nolod"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -188686,34 +188766,40 @@
       ]
     },
     "materials/vgui/backgrounds/background03_widescreen.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the model does not read $nolod",
       "input_sha256": "7cc0ec0bc09c092f4c378b9fb4c3fa1740aa049f6f3257bc8dbc0e2f9454b2fa",
       "mesh_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -188721,23 +188807,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$nolod"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$nolod"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -188745,34 +188825,40 @@
       ]
     },
     "materials/vgui/backgrounds/background04.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the model does not read $nolod",
       "input_sha256": "cb9bc4081583996ba2b07e01a6f787b89848e61d246cfa6fb24ec69c3940716f",
       "mesh_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -188780,23 +188866,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$nolod"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$nolod"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -188804,34 +188884,40 @@
       ]
     },
     "materials/vgui/backgrounds/background04_widescreen.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the model does not read $nolod",
       "input_sha256": "6e6cbd9dd0af0000c107e8f4ae5681ee4463fb49987ae6ec663fb47f4745712a",
       "mesh_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -188839,23 +188925,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$nolod"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$nolod"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -188863,34 +188943,40 @@
       ]
     },
     "materials/vgui/backgrounds/background05.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the model does not read $nolod",
       "input_sha256": "4b2556a8529a6f2b3857e756d91d0af6d4fd2e6f5674d040678730273473a21d",
       "mesh_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -188898,23 +188984,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$nolod"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$nolod"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -188922,34 +189002,40 @@
       ]
     },
     "materials/vgui/backgrounds/background05_widescreen.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the model does not read $nolod",
       "input_sha256": "72839c1be0c8b6629e575d92d1575fbd08c607a0ff97e06c17fcbe0d59b297d5",
       "mesh_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -188957,23 +189043,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$nolod"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$nolod"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -188981,34 +189061,40 @@
       ]
     },
     "materials/vgui/backgrounds/community_background.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the model does not read $nolod",
       "input_sha256": "16e984a72c9961df6044f90aa21f9abe469e0dc4fe6cc676c4dfbd6a7de20d37",
       "mesh_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -189016,23 +189102,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$nolod"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$nolod"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -189040,34 +189120,40 @@
       ]
     },
     "materials/vgui/backgrounds/community_background_widescreen.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the model does not read $nolod",
       "input_sha256": "e5bae2c3441154177d6530f54f02510ce5b5d590021ba903a2b10ecfdcf5e125",
       "mesh_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -189075,23 +189161,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$nolod"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$nolod"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -189099,34 +189179,40 @@
       ]
     },
     "materials/vgui/badgebg.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the model does not read $nolod",
       "input_sha256": "6f12abc36cfc854d5ae994607db4e7e053511bb66c81dc203fb5cf7f1d4e5974",
       "mesh_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -189134,23 +189220,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$nolod"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$nolod"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -189158,34 +189238,40 @@
       ]
     },
     "materials/vgui/badgeoverlay.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the model does not read $nolod",
       "input_sha256": "f2c308b9b5c28b6c64da1303a33dd08131ce8008ff354c5090c0be6d3371e739",
       "mesh_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -189193,23 +189279,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$nolod"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$nolod"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -198280,34 +198360,40 @@
       ]
     },
     "materials/vgui/hud/spinner_saving.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the model does not read $nolod",
       "input_sha256": "f337001677cbb85cb883a6edffc9655510a0d2e112db361ef62246ddea79a48f",
       "mesh_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -198315,23 +198401,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$nolod"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$nolod"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -198882,34 +198962,40 @@
       ]
     },
     "materials/vgui/loadbar_dots.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the model does not read $nolod",
       "input_sha256": "8adc3b6d624466b3e46960b58b396613bb9beca62fc5b0e3521ba84a2531fc46",
       "mesh_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -198917,23 +199003,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$nolod"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$nolod"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -204092,34 +204172,40 @@
       ]
     },
     "materials/vgui/logo_aperture_badge.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the model does not read $nolod",
       "input_sha256": "643735316967a69068889997e322e716f2099b09c3f3a3cdad3b23720419b399",
       "mesh_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -204127,23 +204213,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$nolod"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$nolod"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -206760,34 +206840,40 @@
       ]
     },
     "materials/vgui/progress.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the model does not read $nolod",
       "input_sha256": "53e05597a2896109d9a5b6d0537d000809404773df7872015d3a5aacd0393d28",
       "mesh_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -206795,23 +206881,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$nolod"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$nolod"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -207645,34 +207725,40 @@
       ]
     },
     "materials/vgui/resource/best_with_ati.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the model does not read $nolod",
       "input_sha256": "1066f70f4e60af144a26a4ad6a0c7cbc19cdd81752dbb26ea02536447c316441",
       "mesh_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -207680,23 +207766,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$nolod"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$nolod"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -208873,33 +208953,40 @@
       ]
     },
     "materials/vgui/scanline/scanline512x2_.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha-additive",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
       "input_sha256": "cbe196c4daebc9456fdaf384d7f33b7e4509e6be2115e239ee520e702221b002",
       "mesh_claims": [
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -208913,13 +209000,13 @@
       "status": "dynamically_unresolved",
       "world_claims": [
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "$translucent with $additive blends src-alpha/one, which the port lacks",
+          "claim": "alpha-additive",
           "scene_inputs": {
             "world_stage": true
           }
@@ -213955,34 +214042,40 @@
       ]
     },
     "materials/vgui/spinner.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the model does not read $nolod",
       "input_sha256": "d33b4a8b1a3c9a925d00a6faa710e5d1636b3fca544c95836a584e4462adbf75",
       "mesh_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -213990,23 +214083,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$nolod"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$nolod"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -215266,34 +215353,40 @@
       ]
     },
     "materials/vgui/store/store_button_focus_anim.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the model does not read $nolod",
       "input_sha256": "9fc0b8563f6f59f3059176823e120e45de3d81f4c0573b0f653ad9e796eb085f",
       "mesh_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -215301,23 +215394,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$nolod"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$nolod"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -217652,34 +217739,40 @@
       ]
     },
     "materials/vgui/thumbs_down_nobg_default.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the model does not read $nolod",
       "input_sha256": "0cd7471f5ce3d1253d72b331945e704ef374a8c4feba7b8e39f9f34b9c37af05",
       "mesh_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -217687,23 +217780,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$nolod"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$nolod"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -217711,34 +217798,40 @@
       ]
     },
     "materials/vgui/thumbs_down_nobg_focus.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the model does not read $nolod",
       "input_sha256": "200dff16574550c6b66a6ec8f145b7fbf63574acea3c2bae21ea33b3a5b77f99",
       "mesh_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -217746,23 +217839,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$nolod"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$nolod"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -218006,34 +218093,40 @@
       ]
     },
     "materials/vgui/thumbs_up_nobg_default.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the model does not read $nolod",
       "input_sha256": "6855de046ee0b368513623b17e861220b8169a220014526f42e317dafb67fe0f",
       "mesh_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -218041,23 +218134,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$nolod"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$nolod"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -218065,34 +218152,40 @@
       ]
     },
     "materials/vgui/thumbs_up_nobg_focus.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the model does not read $nolod",
       "input_sha256": "63431c8152af580314a81ae7e416719371ffb9eed6a1bc5af0aa9220a39cad43",
       "mesh_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -218100,23 +218193,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$nolod"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$nolod"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -221098,34 +221185,40 @@
       ]
     },
     "materials/vgui/upgrade01.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the model does not read $nolod",
       "input_sha256": "91c4ff52b81abf1ab74526b091bfb2c9d2aa300bb15588cf35e5cb59f6bb935b",
       "mesh_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -221133,23 +221226,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$nolod"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$nolod"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -221157,34 +221244,40 @@
       ]
     },
     "materials/vgui/upgrade02.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the model does not read $nolod",
       "input_sha256": "f745b7cad80e8cb865c98a3a29cfb394effb0162fee8c463bb03dee9ff8d22f8",
       "mesh_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -221192,23 +221285,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$nolod"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$nolod"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -221216,34 +221303,40 @@
       ]
     },
     "materials/vgui/upgrade03.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the model does not read $nolod",
       "input_sha256": "a4d8e06a3e3e78787b2319d4c7349fec2e2ec806bf98155a7b76aa94e28dcdf3",
       "mesh_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -221251,23 +221344,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$nolod"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$nolod"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -221275,34 +221362,40 @@
       ]
     },
     "materials/vgui/upgrade04.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the model does not read $nolod",
       "input_sha256": "90a0103522a1fab1e06316bc031b26469179caa6f574dd13e9f00c448d06f183",
       "mesh_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -221310,23 +221403,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$nolod"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$nolod"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -221334,34 +221421,40 @@
       ]
     },
     "materials/vgui/upgrade05.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the model does not read $nolod",
       "input_sha256": "68596b98835c7eae74ad364dc9816c4e22a34db603bb14bc53af373047eec9a2",
       "mesh_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -221369,23 +221462,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$nolod"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$nolod"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -221393,34 +221480,40 @@
       ]
     },
     "materials/vgui/upgrade06.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "blended",
+          "scene_inputs": {}
+        }
+      ],
       "family": "unlit",
-      "gap": "the model does not read $nolod",
       "input_sha256": "1bff5a5ad5feeaae6e007ef06abe6a3f12a4d1d07a5844be91fa8f22508c55f0",
       "mesh_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "gap": "model vertices have no color or alpha channel",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -221428,23 +221521,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$nolod"
-      ],
       "shader": "unlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$nolod"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $nolod",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -222951,12 +223038,12 @@
     },
     "parameter:$additive": {
       "examples": [
-        "materials/effects/ar2_altfire1b.vmt",
-        "materials/effects/combinemuzzle1.vmt",
-        "materials/effects/combinemuzzle1_nocull.vmt"
+        "materials/glass/glasswindow_frosted_003.vmt",
+        "materials/glass/glasswindow_frosted_004.vmt",
+        "materials/models/props_underground/stasis_chamber_glass_02.vmt"
       ],
-      "first_refusals": 28,
-      "refused_materials": 30,
+      "first_refusals": 4,
+      "refused_materials": 6,
       "unmapped_materials": 4
     },
     "parameter:$allowalphatocoverage": {
@@ -223233,16 +223320,6 @@
       "refused_materials": 0,
       "unmapped_materials": 9
     },
-    "parameter:$nolod": {
-      "examples": [
-        "materials/console/portal2_product_1.vmt",
-        "materials/console/portal2_product_1_widescreen.vmt",
-        "materials/console/portal2_product_2.vmt"
-      ],
-      "first_refusals": 35,
-      "refused_materials": 35,
-      "unmapped_materials": 35
-    },
     "parameter:$nomip": {
       "examples": [
         "materials/console/startup_loading.vmt"
@@ -223447,8 +223524,8 @@
         "materials/decals/alienflesh/shot2.vmt",
         "materials/decals/alienflesh/shot3.vmt"
       ],
-      "first_refusals": 45,
-      "refused_materials": 45,
+      "first_refusals": 21,
+      "refused_materials": 21,
       "unmapped_materials": 0
     },
     "parameter:$use_in_fillrate_mode": {
@@ -223914,8 +223991,8 @@
   "status_counts": {
     "dynamically_unresolved": 146,
     "statically_supported": 1494,
-    "supported_with_requirements": 1353,
-    "unsupported": 745
+    "supported_with_requirements": 1412,
+    "unsupported": 686
   },
   "total": 3738
 }

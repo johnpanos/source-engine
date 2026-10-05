@@ -436,6 +436,7 @@ constexpr VmtMetadataRow kMetadata[] = {
         "Xbox 360 shader-side sRGB read; no shader in this tree declares it, and PC "
         "textures are read through their sRGB views" },
     { "$x360appchooser", "Xbox 360 application-chooser flag; no PC shader reads it" },
+    { "$nolod", "texture level-of-detail selection (mat_picmip), not a shading parameter" },
 };
 
 #include "legacy_shaders.inc"

@@ -10732,3 +10732,21 @@ Open: no image oracle yet. Under binding rule 2 a `render_lab` image check
 of a lightmapped `env_cubemap` surface against its probe radiance is owed.
 Whether a shipped map draws one of the 47 on the core has not been
 captured. R96 stays `active`.
+
+### K12: additive translucent UnlitGeneric and `$nolod` (2026-10-05)
+
+- UnlitGeneric with both `$translucent` and `$additive` blends src-alpha/one,
+  as the legacy shaders' additive translucent state does. The device now has
+  that blend (`kAlphaAdditive`, already used by sprite glows), so the claim
+  takes it instead of refusing "which the port lacks".
+- `$nolod` is the material system's texture level-of-detail flag
+  (`TEXTUREFLAGS_NOLOD`, mat_picmip), not a shading parameter. It joins the
+  no-effect key table with that reason.
+
+The regenerated inventory has 1,494 statically supported, 1,412 with
+requirements and 686 unsupported (59 more claimed; `--verify`'s total is
+unchanged at 3,738). `render_lab` suites `sprite` (40), `softparticle`
+(63), `selfillum` (25), `panel` (76) and `posed-model` (107) pass.
+`sp_a2_laser_intro_relit` boots on the core with 3,154/3,154 views drawn and
+0 failed. No image capture of a newly claimed additive translucent material
+in a game scene has been made yet. R96 stays `active`.
