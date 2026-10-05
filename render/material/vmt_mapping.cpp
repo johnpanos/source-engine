@@ -443,6 +443,9 @@ constexpr VmtMetadataRow kMetadata[] = {
         "decal-modulate" },
     { "$fogfadestart", "DecalModulate_DX9 declares no shader parameters", "decal-modulate" },
     { "$fogfadeend", "DecalModulate_DX9 declares no shader parameters", "decal-modulate" },
+    { "$ambientocclusion",
+        "no shader in this tree declares it; ambient occlusion is the frame's screen-space term "
+        "(render.pass.ao), not a material value" },
 };
 
 #include "legacy_shaders.inc"

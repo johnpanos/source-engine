@@ -290,9 +290,9 @@
     "vertexlitgeneric": {
       "dynamically_unresolved": 22,
       "statically_supported": 835,
-      "supported_with_requirements": 236,
+      "supported_with_requirements": 278,
       "total": 1211,
-      "unsupported": 118
+      "unsupported": 76
     },
     "water": {
       "dynamically_unresolved": 0,
@@ -408,7 +408,6 @@
     "the model does not read $additive": 4,
     "the model does not read $alphaenvmapmask": 4,
     "the model does not read $alphatesttocoverage": 1,
-    "the model does not read $ambientocclusion": 45,
     "the model does not read $blendframes": 1,
     "the model does not read $bump_force_on": 2,
     "the model does not read $bumpframe": 1,
@@ -416,6 +415,7 @@
     "the model does not read $color2": 2,
     "the model does not read $comparez": 1,
     "the model does not read $decalfadetime": 12,
+    "the model does not read $diffuseexp": 3,
     "the model does not read $flashlightnolambert": 3,
     "the model does not read $flat": 7,
     "the model does not read $fresnelreflection": 1,
@@ -10554,34 +10554,42 @@
       ]
     },
     "materials/br_debris/beef.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {
+            "native_reflection_probes": true
+          }
+        }
+      ],
       "family": "vertexlit",
-      "gap": "the model does not read $ambientocclusion",
       "input_sha256": "f4f9a2071d30a023f9400f074abd216ab782f344ae87888d9e4eb25d39be395c",
       "mesh_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -10589,23 +10597,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$ambientocclusion"
-      ],
       "shader": "vertexlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$ambientocclusion"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -10613,34 +10615,42 @@
       ]
     },
     "materials/br_debris/broken_xing_sign.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {
+            "native_reflection_probes": true
+          }
+        }
+      ],
       "family": "vertexlit",
-      "gap": "the model does not read $ambientocclusion",
       "input_sha256": "a2af33636e0611cdcf6e0105c40c347a1bb1f3b650993b870cbf87602fe1e80d",
       "mesh_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -10648,23 +10658,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$ambientocclusion"
-      ],
       "shader": "vertexlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$ambientocclusion"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -10672,34 +10676,42 @@
       ]
     },
     "materials/br_debris/crate_foam.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {
+            "native_reflection_probes": true
+          }
+        }
+      ],
       "family": "vertexlit",
-      "gap": "the model does not read $ambientocclusion",
       "input_sha256": "7d7b694752ccce11a6dae36336bf7c867f09dc6b622ac6dc7e4314490c61a31d",
       "mesh_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -10707,23 +10719,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$ambientocclusion"
-      ],
       "shader": "vertexlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$ambientocclusion"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -10731,34 +10737,42 @@
       ]
     },
     "materials/br_debris/dave_crate_2k_c.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {
+            "native_reflection_probes": true
+          }
+        }
+      ],
       "family": "vertexlit",
-      "gap": "the model does not read $ambientocclusion",
       "input_sha256": "80fedeae950cc84d60008577c3562b3a567fc2e9a5c4e7aa5ddc7d0470e18da4",
       "mesh_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -10766,23 +10780,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$ambientocclusion"
-      ],
       "shader": "vertexlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$ambientocclusion"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -10790,34 +10798,42 @@
       ]
     },
     "materials/br_debris/dave_crate_broken_body_01_c.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {
+            "native_reflection_probes": true
+          }
+        }
+      ],
       "family": "vertexlit",
-      "gap": "the model does not read $ambientocclusion",
       "input_sha256": "08457a813df8772b58bb32a2ef3149c9650ab675b957526af4ac930d6df5cf09",
       "mesh_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -10825,23 +10841,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$ambientocclusion"
-      ],
       "shader": "vertexlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$ambientocclusion"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -10849,34 +10859,42 @@
       ]
     },
     "materials/br_debris/deb_ac_unit.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {
+            "native_reflection_probes": true
+          }
+        }
+      ],
       "family": "vertexlit",
-      "gap": "the model does not read $ambientocclusion",
       "input_sha256": "6afda63070172da5f460bbd98d8df3a25e9d47e1aa7332cd6a1e13f1f30f5f2e",
       "mesh_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -10884,23 +10902,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$ambientocclusion"
-      ],
       "shader": "vertexlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$ambientocclusion"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -10967,34 +10979,42 @@
       ]
     },
     "materials/br_debris/deb_license_plate.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {
+            "native_reflection_probes": true
+          }
+        }
+      ],
       "family": "vertexlit",
-      "gap": "the model does not read $ambientocclusion",
       "input_sha256": "eff4775d75fec011554a41c307fe0d2f7f189cceb20f2a7723b95cb25435aa0f",
       "mesh_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -11002,23 +11022,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$ambientocclusion"
-      ],
       "shader": "vertexlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$ambientocclusion"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -11026,34 +11040,42 @@
       ]
     },
     "materials/br_debris/deb_mil_helmet.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {
+            "native_reflection_probes": true
+          }
+        }
+      ],
       "family": "vertexlit",
-      "gap": "the model does not read $ambientocclusion",
       "input_sha256": "d720ecb7b6c9fdc0e67773e7b422bb4003b7dd06f44c30ae41d00b36de90c03b",
       "mesh_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -11061,23 +11083,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$ambientocclusion"
-      ],
       "shader": "vertexlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$ambientocclusion"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -11085,34 +11101,42 @@
       ]
     },
     "materials/br_debris/deb_watertower.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {
+            "native_reflection_probes": true
+          }
+        }
+      ],
       "family": "vertexlit",
-      "gap": "the model does not read $ambientocclusion",
       "input_sha256": "a5c4b2fe6dd1546bc4074914d2f54641c9c914f04f515642534078b7aec5155c",
       "mesh_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -11120,23 +11144,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$ambientocclusion"
-      ],
       "shader": "vertexlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$ambientocclusion"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -11144,34 +11162,42 @@
       ]
     },
     "materials/br_debris/gas_canister_1k_c.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {
+            "native_reflection_probes": true
+          }
+        }
+      ],
       "family": "vertexlit",
-      "gap": "the model does not read $ambientocclusion",
       "input_sha256": "5a7442236c549c25e8545aee889c66610be08849efa32e4ed2a2ef85c77a82c9",
       "mesh_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -11179,23 +11205,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$ambientocclusion"
-      ],
       "shader": "vertexlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$ambientocclusion"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -11203,34 +11223,42 @@
       ]
     },
     "materials/br_debris/handheld_crate_base.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {
+            "native_reflection_probes": true
+          }
+        }
+      ],
       "family": "vertexlit",
-      "gap": "the model does not read $ambientocclusion",
       "input_sha256": "66b6fa0168d8fdea4cabe9c84ee538e6ed0346534162fd36898b7c1de2d078bd",
       "mesh_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -11238,23 +11266,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$ambientocclusion"
-      ],
       "shader": "vertexlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$ambientocclusion"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -11262,34 +11284,42 @@
       ]
     },
     "materials/br_debris/rect_crate_long_base.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {
+            "native_reflection_probes": true
+          }
+        }
+      ],
       "family": "vertexlit",
-      "gap": "the model does not read $ambientocclusion",
       "input_sha256": "4e522930f40349f5548b9415d9d67e70a7d526f3a299e8191d1e5a39fd9692a4",
       "mesh_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -11297,23 +11327,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$ambientocclusion"
-      ],
       "shader": "vertexlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$ambientocclusion"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -11321,34 +11345,42 @@
       ]
     },
     "materials/br_debris/s8_cube.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {
+            "native_reflection_probes": true
+          }
+        }
+      ],
       "family": "vertexlit",
-      "gap": "the model does not read $ambientocclusion",
       "input_sha256": "4ca70d2e746f0177966c47ab7b753929d1225cbb1b4a189b1f0e1105e7b0c4d1",
       "mesh_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -11356,23 +11388,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$ambientocclusion"
-      ],
       "shader": "vertexlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$ambientocclusion"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -11380,34 +11406,42 @@
       ]
     },
     "materials/br_debris/small_green_crate_base.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {
+            "native_reflection_probes": true
+          }
+        }
+      ],
       "family": "vertexlit",
-      "gap": "the model does not read $ambientocclusion",
       "input_sha256": "96971ccec0196085e4418a1299b174cc8977a187cb2cdade8fd84155a58ff537",
       "mesh_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -11415,23 +11449,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$ambientocclusion"
-      ],
       "shader": "vertexlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$ambientocclusion"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -11439,34 +11467,42 @@
       ]
     },
     "materials/br_debris/traincar_shutter_1k_c.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {
+            "native_reflection_probes": true
+          }
+        }
+      ],
       "family": "vertexlit",
-      "gap": "the model does not read $ambientocclusion",
       "input_sha256": "00c64d865670788c7cf85ded6aeda0e5ef9cd1e3285652c68622543803b60364",
       "mesh_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -11474,23 +11510,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$ambientocclusion"
-      ],
       "shader": "vertexlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$ambientocclusion"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -75588,32 +75618,32 @@
     "materials/models/player/chell/chell_rev2_head.vmt": {
       "candidates": [],
       "family": "vertexlit",
-      "gap": "the model does not read $ambientocclusion",
+      "gap": "the model does not read $diffuseexp",
       "input_sha256": "3422981d76b619061ddcde53aaffa6b2c1b6cbac98a27ea935f8b9db11895936",
       "mesh_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "the model does not read $diffuseexp",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "the model does not read $diffuseexp",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "the model does not read $diffuseexp",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "the model does not read $diffuseexp",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -75622,23 +75652,22 @@
       ],
       "proxies": [],
       "refusal_features": [
-        "parameter:$ambientocclusion"
+        "parameter:$diffuseexp"
       ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
-        "$ambientocclusion",
         "$diffuseexp"
       ],
       "world_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "the model does not read $diffuseexp",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "the model does not read $diffuseexp",
           "scene_inputs": {
             "world_stage": true
           }
@@ -75648,32 +75677,32 @@
     "materials/models/player/chell/chell_rev2_legs.vmt": {
       "candidates": [],
       "family": "vertexlit",
-      "gap": "the model does not read $ambientocclusion",
+      "gap": "the model does not read $diffuseexp",
       "input_sha256": "ebe522eca687f2b2e9cfccabb996aaa584622ed0759a1bce0983359c673adbb9",
       "mesh_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "the model does not read $diffuseexp",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "the model does not read $diffuseexp",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "the model does not read $diffuseexp",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "the model does not read $diffuseexp",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -75682,23 +75711,22 @@
       ],
       "proxies": [],
       "refusal_features": [
-        "parameter:$ambientocclusion"
+        "parameter:$diffuseexp"
       ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
-        "$ambientocclusion",
         "$diffuseexp"
       ],
       "world_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "the model does not read $diffuseexp",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "the model does not read $diffuseexp",
           "scene_inputs": {
             "world_stage": true
           }
@@ -75708,32 +75736,32 @@
     "materials/models/player/chell/chell_rev2_torso.vmt": {
       "candidates": [],
       "family": "vertexlit",
-      "gap": "the model does not read $ambientocclusion",
+      "gap": "the model does not read $diffuseexp",
       "input_sha256": "2782fb8b6362a838681cee54962d6e68f19594be5ee75ffa05700e90f5389a77",
       "mesh_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "the model does not read $diffuseexp",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "the model does not read $diffuseexp",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "the model does not read $diffuseexp",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "the model does not read $diffuseexp",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -75742,23 +75770,22 @@
       ],
       "proxies": [],
       "refusal_features": [
-        "parameter:$ambientocclusion"
+        "parameter:$diffuseexp"
       ],
       "shader": "vertexlitgeneric",
       "status": "unsupported",
       "unmapped_keys": [
-        "$ambientocclusion",
         "$diffuseexp"
       ],
       "world_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "the model does not read $diffuseexp",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "the model does not read $diffuseexp",
           "scene_inputs": {
             "world_stage": true
           }
@@ -184920,34 +184947,42 @@
       ]
     },
     "materials/traincar_interior/traincar_burnt_popsicle.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "model_mesh",
+          "pass": "blended",
+          "scene_inputs": {
+            "native_reflection_probes": true
+          }
+        }
+      ],
       "family": "vertexlit",
-      "gap": "the model does not read $ambientocclusion",
       "input_sha256": "1a8943fc4b51ec553418149b017284d20e9505a8391545b7d55ca5b9425b73a8",
       "mesh_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "alpha",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "alpha",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -184955,23 +184990,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$ambientocclusion"
-      ],
       "shader": "vertexlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$ambientocclusion"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -184979,34 +185008,42 @@
       ]
     },
     "materials/traincar_interior/traincar_clipboard.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {
+            "native_reflection_probes": true
+          }
+        }
+      ],
       "family": "vertexlit",
-      "gap": "the model does not read $ambientocclusion",
       "input_sha256": "ed0220c5dc5252da9aa3a636f15c7ab57845d73e8f59dd2038036cc0ed1e1be4",
       "mesh_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -185014,23 +185051,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$ambientocclusion"
-      ],
       "shader": "vertexlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$ambientocclusion"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -185038,34 +185069,42 @@
       ]
     },
     "materials/traincar_interior/traincar_cube_bl.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {
+            "native_reflection_probes": true
+          }
+        }
+      ],
       "family": "vertexlit",
-      "gap": "the model does not read $ambientocclusion",
       "input_sha256": "8499f1cae3e074f1ee7bdf33cc2891906782c706f46a8a28233fbc6ac9ba96a5",
       "mesh_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -185073,23 +185112,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$ambientocclusion"
-      ],
       "shader": "vertexlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$ambientocclusion"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -185097,34 +185130,42 @@
       ]
     },
     "materials/traincar_interior/traincar_envelope.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {
+            "native_reflection_probes": true
+          }
+        }
+      ],
       "family": "vertexlit",
-      "gap": "the model does not read $ambientocclusion",
       "input_sha256": "656522d8782c6659abb21b44a90277a29077e3dc49e3f291d681ee0fc3c6600f",
       "mesh_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -185132,23 +185173,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$ambientocclusion"
-      ],
       "shader": "vertexlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$ambientocclusion"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -185156,34 +185191,42 @@
       ]
     },
     "materials/traincar_interior/traincar_hatch.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {
+            "native_reflection_probes": true
+          }
+        }
+      ],
       "family": "vertexlit",
-      "gap": "the model does not read $ambientocclusion",
       "input_sha256": "4a65c472128933bfb2e2504120f98fc2471045a7d44ec448a2f66ce810fde7e5",
       "mesh_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -185191,23 +185234,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$ambientocclusion"
-      ],
       "shader": "vertexlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$ambientocclusion"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -185215,34 +185252,42 @@
       ]
     },
     "materials/traincar_interior/traincar_int_uv1.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {
+            "native_reflection_probes": true
+          }
+        }
+      ],
       "family": "vertexlit",
-      "gap": "the model does not read $ambientocclusion",
       "input_sha256": "f8bc3b9219d64e95bd86445b11ab4824a7f9c79f30e1bdaf1063938a04645820",
       "mesh_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -185250,23 +185295,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$ambientocclusion"
-      ],
       "shader": "vertexlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$ambientocclusion"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -185274,34 +185313,42 @@
       ]
     },
     "materials/traincar_interior/traincar_int_uv2.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {
+            "native_reflection_probes": true
+          }
+        }
+      ],
       "family": "vertexlit",
-      "gap": "the model does not read $ambientocclusion",
       "input_sha256": "f38d3952d9c12e86b14554944d9de7ce9377266a7ee0ca680ddff0d907e5fdae",
       "mesh_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -185309,23 +185356,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$ambientocclusion"
-      ],
       "shader": "vertexlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$ambientocclusion"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -185333,34 +185374,42 @@
       ]
     },
     "materials/traincar_interior/traincar_int_uv3.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {
+            "native_reflection_probes": true
+          }
+        }
+      ],
       "family": "vertexlit",
-      "gap": "the model does not read $ambientocclusion",
       "input_sha256": "e40a3f93c2615f44223d7383a2475302e23e3973da7187808e3b703bf968e4c9",
       "mesh_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -185368,23 +185417,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$ambientocclusion"
-      ],
       "shader": "vertexlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$ambientocclusion"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -185392,34 +185435,42 @@
       ]
     },
     "materials/traincar_interior/traincar_int_uv4.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {
+            "native_reflection_probes": true
+          }
+        }
+      ],
       "family": "vertexlit",
-      "gap": "the model does not read $ambientocclusion",
       "input_sha256": "6e246b36c43fee758925be31f196ab9b6b6f3ac7f016849e76a65ccc59e39d54",
       "mesh_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -185427,23 +185478,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$ambientocclusion"
-      ],
       "shader": "vertexlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$ambientocclusion"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -185451,34 +185496,42 @@
       ]
     },
     "materials/traincar_interior/traincar_int_uv5.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {
+            "native_reflection_probes": true
+          }
+        }
+      ],
       "family": "vertexlit",
-      "gap": "the model does not read $ambientocclusion",
       "input_sha256": "2ba027211df3468a16f176552eeee8e063666b1ed0d77d30abb798244586cb51",
       "mesh_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -185486,23 +185539,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$ambientocclusion"
-      ],
       "shader": "vertexlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$ambientocclusion"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -185510,34 +185557,42 @@
       ]
     },
     "materials/traincar_interior/traincar_int_uv6.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {
+            "native_reflection_probes": true
+          }
+        }
+      ],
       "family": "vertexlit",
-      "gap": "the model does not read $ambientocclusion",
       "input_sha256": "2ba027211df3468a16f176552eeee8e063666b1ed0d77d30abb798244586cb51",
       "mesh_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -185545,23 +185600,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$ambientocclusion"
-      ],
       "shader": "vertexlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$ambientocclusion"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -185569,34 +185618,42 @@
       ]
     },
     "materials/traincar_interior/traincar_met_desk.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {
+            "native_reflection_probes": true
+          }
+        }
+      ],
       "family": "vertexlit",
-      "gap": "the model does not read $ambientocclusion",
       "input_sha256": "c8ea41eb81140555b2e1bf4ce799bb08270832498a7781cfb63e90402bba8a9b",
       "mesh_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -185604,23 +185661,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$ambientocclusion"
-      ],
       "shader": "vertexlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$ambientocclusion"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -185628,34 +185679,42 @@
       ]
     },
     "materials/traincar_interior/traincar_newspaper.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {
+            "native_reflection_probes": true
+          }
+        }
+      ],
       "family": "vertexlit",
-      "gap": "the model does not read $ambientocclusion",
       "input_sha256": "4fa076df07b05e359626000d1d445f5d67e959eb1d6e25432d78b4447c10b8f7",
       "mesh_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -185663,23 +185722,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$ambientocclusion"
-      ],
       "shader": "vertexlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$ambientocclusion"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -185687,34 +185740,42 @@
       ]
     },
     "materials/traincar_interior/traincar_paper.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "model_mesh",
+          "pass": "blended",
+          "scene_inputs": {
+            "native_reflection_probes": true
+          }
+        }
+      ],
       "family": "vertexlit",
-      "gap": "the model does not read $ambientocclusion",
       "input_sha256": "5f12288e2444a0df0b3c52c7fd7c189df6f886a45fd3958496f9504296d69252",
       "mesh_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "alpha",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "alpha",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -185722,23 +185783,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$ambientocclusion"
-      ],
       "shader": "vertexlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$ambientocclusion"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -185746,34 +185801,42 @@
       ]
     },
     "materials/traincar_interior/traincar_shelf.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {
+            "native_reflection_probes": true
+          }
+        }
+      ],
       "family": "vertexlit",
-      "gap": "the model does not read $ambientocclusion",
       "input_sha256": "1f4208b4843c0b41ff1d89f228abf66530f08f400d4a3d9c2b71c4df7cb114c7",
       "mesh_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -185781,23 +185844,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$ambientocclusion"
-      ],
       "shader": "vertexlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$ambientocclusion"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -185805,34 +185862,42 @@
       ]
     },
     "materials/traincar_interior/traincar_tabbed_folder.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {
+            "native_reflection_probes": true
+          }
+        }
+      ],
       "family": "vertexlit",
-      "gap": "the model does not read $ambientocclusion",
       "input_sha256": "12b0da865f1f23973f66586563568073a6b9bf1b8d6455ee57dda7e90fd3a604",
       "mesh_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -185840,23 +185905,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$ambientocclusion"
-      ],
       "shader": "vertexlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$ambientocclusion"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -185864,34 +185923,42 @@
       ]
     },
     "materials/traincar_interior/traincar_thermos.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {
+            "native_reflection_probes": true
+          }
+        }
+      ],
       "family": "vertexlit",
-      "gap": "the model does not read $ambientocclusion",
       "input_sha256": "17ad427fedc1cbd05720830df9daf008e1b4929f8b2f4bfe2dd777849777850b",
       "mesh_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -185899,23 +185966,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$ambientocclusion"
-      ],
       "shader": "vertexlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$ambientocclusion"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -185923,34 +185984,42 @@
       ]
     },
     "materials/traincar_interior/traincar_wall_clock_c.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {
+            "native_reflection_probes": true
+          }
+        }
+      ],
       "family": "vertexlit",
-      "gap": "the model does not read $ambientocclusion",
       "input_sha256": "8528fa972d2bd88e43d759141521703749a4c1e07361f8a5cd10645b9738c66a",
       "mesh_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -185958,23 +186027,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$ambientocclusion"
-      ],
       "shader": "vertexlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$ambientocclusion"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -185982,34 +186045,42 @@
       ]
     },
     "materials/traincar_interior/traincar_wall_map.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {
+            "native_reflection_probes": true
+          }
+        }
+      ],
       "family": "vertexlit",
-      "gap": "the model does not read $ambientocclusion",
       "input_sha256": "46dfc4d10995276cd8782a8b361e7f4e01a87c9384242b3be2161fafa577542d",
       "mesh_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -186017,23 +186088,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$ambientocclusion"
-      ],
       "shader": "vertexlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$ambientocclusion"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -186041,34 +186106,42 @@
       ]
     },
     "materials/traincars/cbackwall1msdm.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {
+            "native_reflection_probes": true
+          }
+        }
+      ],
       "family": "vertexlit",
-      "gap": "the model does not read $ambientocclusion",
       "input_sha256": "f3c6c2744a859cdd979035dba6e47b6dc6fe00875f11dcc9d8682ca5bcb486fe",
       "mesh_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -186076,23 +186149,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$ambientocclusion"
-      ],
       "shader": "vertexlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$ambientocclusion"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -186100,34 +186167,42 @@
       ]
     },
     "materials/traincars/croofhpattern1msdm.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {
+            "native_reflection_probes": true
+          }
+        }
+      ],
       "family": "vertexlit",
-      "gap": "the model does not read $ambientocclusion",
       "input_sha256": "4189d786ec31074f9435beeb4e08561ccafacfcc6cdb461d3a95aab6de44903d",
       "mesh_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -186135,23 +186210,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$ambientocclusion"
-      ],
       "shader": "vertexlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$ambientocclusion"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -186159,34 +186228,42 @@
       ]
     },
     "materials/traincars/croofmain1msdm.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {
+            "native_reflection_probes": true
+          }
+        }
+      ],
       "family": "vertexlit",
-      "gap": "the model does not read $ambientocclusion",
       "input_sha256": "8834d5cd21954b24c7f4d9d460254835e79122783ae6e878a46aace07e7c2a95",
       "mesh_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -186194,23 +186271,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$ambientocclusion"
-      ],
       "shader": "vertexlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$ambientocclusion"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -186218,34 +186289,42 @@
       ]
     },
     "materials/traincars/cundersidecover1msdm.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {
+            "native_reflection_probes": true
+          }
+        }
+      ],
       "family": "vertexlit",
-      "gap": "the model does not read $ambientocclusion",
       "input_sha256": "a0113cee4e4f31095939aec020929adb15ef38d25be49ac7a0db9bea49190423",
       "mesh_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -186253,23 +186332,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$ambientocclusion"
-      ],
       "shader": "vertexlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$ambientocclusion"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -186277,34 +186350,42 @@
       ]
     },
     "materials/traincars/cundersupporta3msdm.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {
+            "native_reflection_probes": true
+          }
+        }
+      ],
       "family": "vertexlit",
-      "gap": "the model does not read $ambientocclusion",
       "input_sha256": "ac9f397eee2b787cd6e93e0a5ed3675658a5a88841d1328f59edae4c76828a03",
       "mesh_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -186312,23 +186393,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$ambientocclusion"
-      ],
       "shader": "vertexlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$ambientocclusion"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -186458,34 +186533,42 @@
       ]
     },
     "materials/traincars/lwheelbfront1msdm.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {
+            "native_reflection_probes": true
+          }
+        }
+      ],
       "family": "vertexlit",
-      "gap": "the model does not read $ambientocclusion",
       "input_sha256": "8113f9e5d7f5f7b9d482721aa3815afa9674089c000b3fd86db8c58ff2ae8ff2",
       "mesh_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -186493,23 +186576,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$ambientocclusion"
-      ],
       "shader": "vertexlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$ambientocclusion"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -186517,34 +186594,42 @@
       ]
     },
     "materials/traincars/monster_car.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {
+            "native_reflection_probes": true
+          }
+        }
+      ],
       "family": "vertexlit",
-      "gap": "the model does not read $ambientocclusion",
       "input_sha256": "01a62f2041f8f87bf31a4b8115d4a8a5fcb4474bdbae1a2c271fb2df08884cfd",
       "mesh_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -186552,23 +186637,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$ambientocclusion"
-      ],
       "shader": "vertexlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$ambientocclusion"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -186576,34 +186655,42 @@
       ]
     },
     "materials/traincars/undercarriage.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {
+            "native_reflection_probes": true
+          }
+        }
+      ],
       "family": "vertexlit",
-      "gap": "the model does not read $ambientocclusion",
       "input_sha256": "59f4d2834f5841bdbca7fa7d505fab442bc5e7d57cdd3c323ac7468547b7486c",
       "mesh_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -186611,23 +186698,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$ambientocclusion"
-      ],
       "shader": "vertexlitgeneric",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$ambientocclusion"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $ambientocclusion",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -223352,16 +223433,6 @@
       "refused_materials": 1,
       "unmapped_materials": 1
     },
-    "parameter:$ambientocclusion": {
-      "examples": [
-        "materials/br_debris/beef.vmt",
-        "materials/br_debris/broken_xing_sign.vmt",
-        "materials/br_debris/crate_foam.vmt"
-      ],
-      "first_refusals": 45,
-      "refused_materials": 45,
-      "unmapped_materials": 45
-    },
     "parameter:$ambientonly": {
       "examples": [
         "materials/debug/debugambientcube.vmt"
@@ -223475,9 +223546,13 @@
       "unmapped_materials": 0
     },
     "parameter:$diffuseexp": {
-      "examples": [],
-      "first_refusals": 0,
-      "refused_materials": 0,
+      "examples": [
+        "materials/models/player/chell/chell_rev2_head.vmt",
+        "materials/models/player/chell/chell_rev2_legs.vmt",
+        "materials/models/player/chell/chell_rev2_torso.vmt"
+      ],
+      "first_refusals": 3,
+      "refused_materials": 3,
       "unmapped_materials": 3
     },
     "parameter:$endfadesize": {
@@ -224239,8 +224314,8 @@
   "status_counts": {
     "dynamically_unresolved": 146,
     "statically_supported": 1525,
-    "supported_with_requirements": 1429,
-    "unsupported": 638
+    "supported_with_requirements": 1471,
+    "unsupported": 596
   },
   "total": 3738
 }

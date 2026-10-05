@@ -10769,3 +10769,10 @@ unlit family's claimed list rather than the no-effect key table. The
 inventory is now 1,525 statically supported, 1,429 with requirements and 638
 unsupported (35 more claimed). `selfillum` (25), `sprite` (40), `panel` (76)
 and `posed-model` (107) pass.
+
+Follow-up: VertexLitGeneric's `$ambientocclusion` has no effect in this
+tree. No shader declares the parameter; `common_vertexlitgeneric_dx9.h`'s
+ambient occlusion is a per-pixel screen-space input, which the core supplies
+as `render.pass.ao`. It joins the no-effect key table with that reason. The
+inventory is now 1,525 / 1,471 / 596 unsupported (42 more claimed), and
+`posed-model` passes 107/107.
