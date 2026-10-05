@@ -11058,8 +11058,11 @@ start, partial, open, reclosed and removed-blocker states, including its
 live negative control (`/tmp` evidence of `conformance.py check --suite
 render.product.fizzler-door-light`).
 
-Open, for "game matches lab": `render_lab` cannot pose a Studio model's
-animation (no sequence or bone setup in `mdl`), so there is no lab frame of
-the door at a given pose to compare. Giving the lab a posed-model input, a
-captured bone palette from the game, is the next step. The CPU skinning the
+Open, for "game matches lab": `render_lab` draws a `--model` in its
+reference pose only, so there is no lab frame of the door's idle states to
+compare. (Correction to the first draft of this note: `mdl` does pose a
+sequence's first frame, through `FindSequence` and `PoseModel( model,
+sequence )`; bone controllers, IK and pose parameters are not modelled.)
+The next step is a lab `--model-sequence` input for the door's idle open and
+closed states, against matched game captures. The CPU skinning the
 door uses is the same R89/K6 GPU-skinning item that remains open.
