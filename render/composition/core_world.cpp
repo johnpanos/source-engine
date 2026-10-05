@@ -154,6 +154,7 @@ void CoreWorld::SetWorld( const RenderCoreWorldVertex *vertices, unsigned int ve
 	m_StaticInstances.clear();
 	m_StaticMaterials.clear();
 	m_StageRuntimeDirect.store( false, std::memory_order_relaxed );
+	m_StageHasIndirect.store( false, std::memory_order_relaxed );
 	m_MapLights = pass::lights::MapLights();
 	m_Media.reset();
 	std::vector<unsigned char> opaqueTriangles( data.indices.size() / 3, 0 );
@@ -277,6 +278,7 @@ void CoreWorld::SetWorldMesh( const void *wmsh, unsigned long long wmshBytes,
 	m_StaticInstances.clear();
 	m_StaticMaterials.clear();
 	m_StageRuntimeDirect.store( false, std::memory_order_relaxed );
+	m_StageHasIndirect.store( false, std::memory_order_relaxed );
 	m_StageWorld.reset();
 	m_MapLights = pass::lights::MapLights();
 	m_Media.reset();
@@ -408,10 +410,12 @@ void CoreWorld::SetStage()
 			stage->indirectGradient = m_Capture.indirectGradient;
 	}
 	// Runtime direct light (r_core_runtime_direct) needs the indirect layer;
-	// a map without one draws its total layer.
-	stage->runtimeDirect =
-	    m_RuntimeDirect.load( std::memory_order_relaxed ) && !stage->indirect.empty();
-	m_StageRuntimeDirect.store( stage->runtimeDirect, std::memory_order_relaxed );
+	// a map without one draws its total layer. The stage keeps both layers,
+	// so the setting changes between frames (SetQuality).
+	m_StageHasIndirect.store( !stage->indirect.empty(), std::memory_order_relaxed );
+	m_StageRuntimeDirect.store(
+	    m_RuntimeDirect.load( std::memory_order_relaxed ) && !stage->indirect.empty(),
+	    std::memory_order_relaxed );
 	stage->probes = m_Capture.probes;
 	stage->reflectionWidth = m_Capture.reflectionWidth;
 	stage->reflectionHeight = m_Capture.reflectionHeight;
@@ -424,7 +428,8 @@ void CoreWorld::SetStage()
 	    stage->indirect.empty()           ? ", no indirect layer"
 	    : stage->indirectGradient.empty() ? ", indirect layer (flat)"
 	                                      : ", indirect layer (directional)",
-	    stage->runtimeDirect ? ", runtime direct light" : ", baked direct light",
+	    m_StageRuntimeDirect.load( std::memory_order_relaxed ) ? ", runtime direct light"
+	                                                           : ", baked direct light",
 	    stage->probes ? "yes" : "no", stage->reflectionProbes.empty() ? "no" : "yes" );
 	data.stage = std::move( stage );
 	const std::uint32_t materialBase = std::uint32_t( data.materials.size() );
@@ -2040,6 +2045,9 @@ void CoreWorld::SetQuality( const RenderCoreWorldQuality &quality )
 	m_ShadowMovers.store( quality.shadowMovers != 0, std::memory_order_relaxed );
 	m_RuntimeDirect.store( quality.runtimeDirect != 0, std::memory_order_relaxed );
 	m_VolumetricOn.store( quality.volumetric != 0, std::memory_order_relaxed );
+	m_StageRuntimeDirect.store(
+	    quality.runtimeDirect != 0 && m_StageHasIndirect.load( std::memory_order_relaxed ),
+	    std::memory_order_relaxed );
 }
 
 void CoreWorld::SetGpuTimers( bool enabled )
@@ -2584,6 +2592,7 @@ void CoreWorld::RecordWorldBatch( std::span<const std::uint32_t> tags,
 	world.streamEpoch = target.streamEpoch;
 	world.lightmapScale = target.lightmapScale;
 	world.depthPrepass = m_DepthPrepass.load( std::memory_order_relaxed );
+	world.runtimeDirect = m_StageRuntimeDirect.load( std::memory_order_relaxed );
 	world.outputScale = target.outputScale;
 	std::copy( target.eye, target.eye + 3, world.eye );
 	world.envmapScale = target.envmapScale;

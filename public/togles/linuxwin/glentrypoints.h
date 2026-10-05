@@ -316,15 +316,9 @@ public:
 #define _APIENTRY APIENTRY
 #endif
 
-#ifdef OSX
-#define GL_EXT(x,glmajor,glminor) bool m_bHave_##x;
-#define GL_FUNC(ext,req,ret,fn,arg,call) CDynamicFunctionOpenGL< req, ret (*) arg, ret > fn;
-#define GL_FUNC_VOID(ext,req,fn,arg,call) CDynamicFunctionOpenGL< req, void (*) arg, void > fn;
-#else
 #define GL_EXT(x,glmajor,glminor) bool m_bHave_##x;
 #define GL_FUNC(ext,req,ret,fn,arg,call) CDynamicFunctionOpenGL< req, ret (_APIENTRY *) arg, ret > fn;
 #define GL_FUNC_VOID(ext,req,fn,arg,call) CDynamicFunctionOpenGL< req, void (_APIENTRY *) arg, void > fn;
-#endif
 
 #include "togles/glfuncs.inl"
 #undef GL_FUNC_VOID

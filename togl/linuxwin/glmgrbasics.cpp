@@ -33,12 +33,6 @@
 #include "tier1/utlmap.h"
 #include "tier0/vprof.h"
 
-#ifdef OSX
-#include <OpenGL/OpenGL.h>
-#ifdef CGLPROFILER_ENABLE
-#include <OpenGL/CGLProfilerFunctionEnum.h>
-#endif
-#endif
 
 #include "tier0/valve_minmax_off.h"
 #include <algorithm>
@@ -391,25 +385,6 @@ const GLMValueEntry_t g_d3d_vtxdeclusages_short[] =
 
 const GLMValueEntry_t	g_cgl_rendids[] =			// need to mask with 0xFFFFFF00 to match on these (ex: 8800GT == 0x00022608 
 {
-#ifdef OSX
-	VE( kCGLRendererGenericID ),
-	VE( kCGLRendererGenericFloatID ),
-	VE( kCGLRendererAppleSWID ),
-	VE( kCGLRendererATIRage128ID ),
-	VE( kCGLRendererATIRadeonID ),
-	VE( kCGLRendererATIRageProID ),
-	VE( kCGLRendererATIRadeon8500ID ),
-	VE( kCGLRendererATIRadeon9700ID ),
-	VE( kCGLRendererATIRadeonX1000ID ),
-	VE( kCGLRendererATIRadeonX2000ID ),
-	VE( kCGLRendererGeForce2MXID ),
-	VE( kCGLRendererGeForce3ID ),
-	VE( kCGLRendererGeForceFXID ),			// also for GF6 and GF7
-	VE( kCGLRendererGeForce8xxxID ),
-	VE( kCGLRendererVTBladeXP2ID ),
-	VE( kCGLRendererIntel900ID ),
-	VE( kCGLRendererMesa3DFXID ),
-#endif
 	VE( TERMVALUE )
 };
 
@@ -2603,19 +2578,6 @@ const char	*GLMDecodeMask( GLMThing_t kind, unsigned long value )
 bool	GLMDetectOGLP( void )
 {
 	bool result = false;
-#if defined( OSX ) && defined( CGLPROFILER_ENABLE )
-	GLint forceFlush;
-	CGLError error = CGLGetParameter(CGLGetCurrentContext(), kCGLCPEnableForceFlush, &forceFlush);
-	result = error == 0;
-	if (result)
-	{
-		// enable a breakpoint on color4sv
-		int oglp_bkpt[3] = { kCGLFEglColor4sv, kCGLProfBreakBefore, 1 };
-		
-		CGLSetOption( kCGLGOEnableBreakpoint, (GLint)oglp_bkpt );			
-	}
-	
-#endif
 	return result;
 }
 
@@ -2643,43 +2605,7 @@ bool	GLMDetectOGLP( void )
 
 bool	GLMDetectGDB( void )			// aka AmIBeingDebugged()
 {
-#ifdef OSX
-	bool				result;	
-    int                 junk;  
-    int                 mib[4];  
-    struct kinfo_proc   info;  
-    size_t              size;  
-  
-    // Initialize the flags so that,  
-    // if sysctl fails for some bizarre  
-    // reason, we get a predictable result.  
-  
-    info.kp_proc.p_flag = 0;  
-  
-    // Initialize mib, which tells sysctl the info  
-    // we want, in this case we're looking for  
-    // information about a specific process ID.  
-  
-    mib[0] = CTL_KERN;  
-    mib[1] = KERN_PROC;  
-    mib[2] = KERN_PROC_PID;  
-    mib[3] = getpid();  
-  
-    // Call sysctl.  
-  
-    size = sizeof(info);  
-    junk = sysctl(mib, sizeof(mib) / sizeof(*mib), &info, &size, NULL, 0);  
-  
-    assert(junk == 0);  
-  
-    // We're being debugged if the P_TRACED  
-    // flag is set.  
-  
-    result = ( (info.kp_proc.p_flag & P_TRACED) != 0 );  
-	return result;
-#else
 	return Sys_IsDebuggerPresent();
-#endif
 }
 
 
@@ -2813,12 +2739,6 @@ uint	GLMDebugFlavorMask( uint *newValue )
 void GLMEnableTrace( bool on )
 {
 #if GLMDEBUG
-#if defined( OSX ) && defined( CGLPROFILER_ENABLE )
-	if ( GLMDebugChannelMask() & (1<<eGLProfiler) )
-	{
-		CGLSetOption(kCGLGOEnableFunctionTrace, on ? GL_TRUE : GL_FALSE );
-	}
-#endif
 #endif
 }
 
@@ -2839,12 +2759,6 @@ void	GLMStringOut( char *string )
 #endif
 	}
 
-#if defined( OSX ) && defined( CGLPROFILER_ENABLE )
-	if ( GLMDebugChannelMask() & (1<<eGLProfiler) )
-	{
-		CGLSetOption( kCGLGOComment, (GLint)string );
-	}
-#endif
 
 	if ( GLMDebugChannelMask() & (1<<eGLProfiler) )
 	{
@@ -2858,12 +2772,10 @@ void	GLMStringOut( char *string )
 int		g_glm_indent = 0;
 int		g_glm_indent_max = 40;		// 40 tabs max
 
-#ifndef OSX
 const char *strnstr( const char *haystack, const char *needle, int len )
 {
 	return strstr( haystack, needle );
 }
-#endif
 
 EGLMDebugFlavor	GLMAssessFlavor( char *str )
 {
@@ -3116,7 +3028,6 @@ void	GLMSetIndent( int indent )
 char sg_pPIXName[128];
 
 
-#ifndef OSX
 ConVar gl_telemetry_gpu_pipeline_flushing( "gl_telemetry_gpu_pipeline_flushing", "0" );
 
 class CGPUTimestampManager
@@ -3718,13 +3629,11 @@ void GLMGPUTimestampManagerTick()
 	g_GPUTimestampManager.Tick();
 }
 
-#endif // !OSX
 
 static uint g_nPIXEventIndex;
 
 void GLMBeginPIXEvent( const char *str )
 {
-#ifndef OSX
 	char szName[1024];
 	V_snprintf( szName, sizeof( szName ), "[ID:%u FR:%u] %s", g_nPIXEventIndex, g_GPUTimestampManager.GetCurFrame(), str );
 	const char *p = tmDynamicString( TELEMETRY_LEVEL2, szName ); //p can be null if tm is getting shut down
@@ -3733,12 +3642,8 @@ void GLMBeginPIXEvent( const char *str )
 	g_nPIXEventIndex++;
 			
 	g_GPUTimestampManager.BeginZone( p );
-#endif // !OSX
 	V_strncpy( sg_pPIXName, str, 128 );
 
-#if defined( OSX ) && defined( CGLPROFILER_ENABLE )
-	CGLSetOption( kCGLGOComment, (GLint)sg_pPIXName );
-#endif
 
 	if ( gGL->m_bHave_GL_GREMEDY_string_marker )
 	{
@@ -3748,13 +3653,8 @@ void GLMBeginPIXEvent( const char *str )
 
 void GLMEndPIXEvent( void )
 {
-#ifndef OSX
 	g_GPUTimestampManager.EndZone();
-#endif
 
-#if defined( OSX ) && defined( CGLPROFILER_ENABLE )
-	CGLSetOption( kCGLGOComment, (GLint)sg_pPIXName );
-#endif
 
 	if ( gGL->m_bHave_GL_GREMEDY_string_marker )
 	{
@@ -3822,11 +3722,7 @@ float	GLMKnob( char *knobname, float *setvalue )
 		g_knobMap->SetLessFunc( LessFunc_GLMKnobKey );
 	}
 	
-#ifdef OSX
-	uint mods = GetCurrentKeyModifiers();
-#else
 	uint mods = 0;
-#endif
 	// is it a special key name ?
 	if (!strcmp(knobname,"caps-key"))
 	{
@@ -3906,31 +3802,18 @@ float	GLMKnobToggle( char *knobname )
 // helpers for CGLSetOption - no op if no profiler
 void	GLMProfilerClearTrace( void )
 {
-#if defined( OSX ) && defined( CGLPROFILER_ENABLE )
-	CGLSetOption( kCGLGOResetFunctionTrace, 0 );
-#else
 	Assert( !"impl me" );
-#endif
 }
 
 void	GLMProfilerEnableTrace( bool enable )
 {
-#if defined( OSX ) && defined( CGLPROFILER_ENABLE )
-	CGLSetOption( kCGLGOEnableFunctionTrace, enable ? GL_TRUE : GL_FALSE );
-#else
 	Assert( !"impl me" );
-#endif
 }
 
 // helpers for CGLSetParameter - no op if no profiler
 void	GLMProfilerDumpState( void )
 {
-#if defined( OSX ) && defined( CGLPROFILER_ENABLE )
-	CGLContextObj curr = CGLGetCurrentContext();
-	CGLSetParameter( curr, kCGLCPDumpState, (const GLint*)1 );
-#else
 	Assert( !"impl me" );
-#endif
 }
 
 
@@ -4002,11 +3885,7 @@ static bool stat_diff( struct stat *a, struct stat *b )
 		return true;
 	}
 	
-#ifdef OSX
-	if (memcmp( &a->st_mtimespec, &b->st_mtimespec, sizeof( struct timespec ) ) )
-#else
 	if (memcmp( &a->st_mtime, &b->st_mtime, sizeof( time_t ) ) )
-#endif
 	{
 		return true;
 	}

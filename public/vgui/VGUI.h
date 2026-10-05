@@ -78,14 +78,7 @@ const HFont INVALID_FONT = 0; // the value of an invalid font handle
 
 #include "tier1/strtools.h"
 
-#if 0 // defined( OSX ) // || defined( LINUX )
-// Disabled all platforms. Did a major cleanup of osxfont.cpp, and having this
-//  turned off renders much closer to Windows and Linux and also uses the same
-//  code paths (which is good).
-#define USE_GETKERNEDCHARWIDTH 1
-#else
 #define USE_GETKERNEDCHARWIDTH 0
-#endif
 
 
 #endif // VGUI_H

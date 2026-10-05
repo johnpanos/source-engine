@@ -4406,20 +4406,6 @@
       "excerpt": "virtual bool Connect( CreateInterfaceFn factory );"
     },
     {
-      "fingerprint": "06d27aeee732e0ce5dd8",
-      "rule": "ARCH105",
-      "path": "video/video_quicktime/quicktime_video.cpp",
-      "line": 104,
-      "excerpt": "bool CQuickTimeVideoSubSystem::Connect( CreateInterfaceFn factory )"
-    },
-    {
-      "fingerprint": "702d90da30956385b2c2",
-      "rule": "ARCH105",
-      "path": "video/video_quicktime/quicktime_video.h",
-      "line": 67,
-      "excerpt": "virtual bool Connect( CreateInterfaceFn factory );"
-    },
-    {
       "fingerprint": "fc4ea242d6c5aa18cf67",
       "rule": "ARCH105",
       "path": "video/video_webm/webm_video.cpp",

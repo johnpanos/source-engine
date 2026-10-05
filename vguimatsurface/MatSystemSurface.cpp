@@ -8,11 +8,6 @@
 #if defined( WIN32 )
 #include <windows.h>
 #endif
-#ifdef OSX
-#if !defined( PLATFORM_IOS )
-#include <Carbon/Carbon.h>
-#endif
-#endif
 
 #if defined( USE_SDL )
 #include <appframework/ilaunchermgr.h>

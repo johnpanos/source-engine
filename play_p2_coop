@@ -16,7 +16,7 @@ answers a challenge request on the LAN, the client starts with `+connect`, and
 the join is read from the host's engine.log (launcher/launcher.cpp writes the
 console there on every peer). The phones take
 their arguments from commandline.txt in their content directory
-(launcher_main/android_main.cpp, ios_main.cpp); the previous file is put back
+(launcher_main/android_main.cpp, apple_main.cpp); the previous file is put back
 once the game has read it. The apps are not built or installed here: use
 ./build-android-portal2-apk.sh --install and ./build-ios-portal2-app.sh with
 ./ios-deploy.sh, from the same source revision on both peers.

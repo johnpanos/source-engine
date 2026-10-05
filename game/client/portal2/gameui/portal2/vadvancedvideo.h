@@ -10,6 +10,7 @@
 #include "basemodui.h"
 #include "vflyoutmenu.h"
 #include "optionssubvideo.h"
+#include "gameui/render_core_lighting_preset.h"
 
 #define MAX_DYNAMIC_AA_MODES 10
 
@@ -99,6 +100,7 @@ private:
 	BaseModHybridButton		*m_drpQueuedMode;
 	BaseModHybridButton		*m_drpShaderDetail;
 	BaseModHybridButton		*m_drpCPUDetail;
+	BaseModHybridButton *m_drpCorePreset;
 	BaseModHybridButton *m_drpCoreAO;
 	BaseModHybridButton *m_drpCoreShadows;
 	BaseModHybridButton *m_drpCoreDepth;
@@ -118,11 +120,7 @@ private:
 	int		m_iQueuedMode;
 	int		m_iGPUDetail;
 	int		m_iCPUDetail;
-	int m_iCoreAO;
-	int m_iCoreShadows;
-	int m_iCoreDepth;
-	int m_iCoreMovers;
-	int m_iCoreDirect;
+	gameui::RenderCoreLighting m_CoreLighting;
 
 	VideoWarning_e	m_VideoWarning;
 	bool			m_bAcceptWarning[VW_MAXWARNINGS];

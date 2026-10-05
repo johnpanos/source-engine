@@ -342,7 +342,8 @@
       {
         "id": "gameui.graphics-settings-contract",
         "paths": [
-          "public/gameui/graphics_settings_service.h"
+          "public/gameui/graphics_settings_service.h",
+          "public/gameui/render_core_lighting_preset.h"
         ],
         "allowedEdges": []
       },
@@ -351,7 +352,8 @@
         "kind": "native-test",
         "paths": [
           "unittests/vguitest/test_graphics_settings_service.cpp",
-          "unittests/vguitest/test_portal2_video_input.cpp"
+          "unittests/vguitest/test_portal2_video_input.cpp",
+          "unittests/vguitest/test_render_core_lighting_menu.cpp"
         ],
         "allowedEdges": [
           "gameui.graphics-settings-contract",
@@ -1563,6 +1565,24 @@
         "owner": "gameui.graphics-settings-tests",
         "producer": "tools/quality/portal2_video_input_test.py (exact production method slices)",
         "rfc": "0016: Portal 2 graphics menu input regression fixture"
+      },
+      {
+        "prefix": "render_core_lighting_menu.inc",
+        "owner": "gameui.graphics-settings-tests",
+        "producer": "tools/quality/render_core_lighting_menu_test.py (exact production slices of vadvancedvideo.cpp)",
+        "rfc": "0016: Portal 2 render core lighting menu fixture"
+      },
+      {
+        "prefix": "render_core_lighting_button.inc",
+        "owner": "gameui.graphics-settings-tests",
+        "producer": "tools/quality/render_core_lighting_menu_test.py (exact production slices of vhybridbutton.cpp)",
+        "rfc": "0016: Portal 2 render core lighting menu fixture"
+      },
+      {
+        "prefix": "render_core_lighting_profile.inc",
+        "owner": "gameui.graphics-settings-tests",
+        "producer": "tools/quality/render_core_lighting_menu_test.py (the Portal 2 product profile's render_quality values)",
+        "rfc": "0016: Portal 2 render core lighting menu fixture"
       },
       {
         "prefix": "spv/",

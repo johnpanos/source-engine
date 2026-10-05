@@ -65,8 +65,6 @@ struct MediaProviders
 extern "C" const audio::MP3Provider *Audio_MP3Provider();
 extern "C" const audio::VoiceCodecProvider *Audio_OpusVoiceProvider();
 extern "C" const audio::VoiceRecordProvider *VoiceRecord_SDLProvider();
-extern "C" const audio::VoiceRecordProvider *VoiceRecord_AudioQueueProvider();
-extern "C" const audio::VoiceRecordProvider *VoiceRecord_OpenALProvider();
 extern "C" const audio::VoiceRecordProvider *VoiceRecord_DirectSoundProvider();
 extern "C" bool Engine_BindAudioMediaProviders(
     IEngineAPI *engine, const audio::MediaProviders *providers );

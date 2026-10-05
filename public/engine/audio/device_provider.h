@@ -44,8 +44,6 @@ struct DeviceSelection
 } // namespace audio
 
 extern "C" const audio::DeviceProvider *Audio_SDLProvider();
-extern "C" const audio::DeviceProvider *Audio_AudioQueueProvider();
-extern "C" const audio::DeviceProvider *Audio_OpenALProvider();
 extern "C" const audio::DeviceProvider *Audio_DirectSoundProvider();
 extern "C" const audio::DeviceProvider *Audio_WaveProvider();
 extern "C" const audio::DeviceProvider *Audio_NullProvider();

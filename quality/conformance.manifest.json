@@ -8022,6 +8022,120 @@
       "expect": "fail"
     },
     {
+      "id": "vgui.render_core_lighting_menu",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
+      "min_checks": 384,
+      "sources": [
+        "tools/quality/render_core_lighting_menu_test.py",
+        "unittests/vguitest/test_render_core_lighting_menu.cpp",
+        "public/gameui/render_core_lighting_preset.h",
+        "game/client/portal2/gameui/portal2/vadvancedvideo.cpp",
+        "game/client/portal2/gameui/portal2/vhybridbutton.cpp",
+        "quality/product_profiles/portal2-linux-native-vulkan-high.json"
+      ],
+      "command": [
+        "{python}",
+        "tools/quality/render_core_lighting_menu_test.py"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "vgui.render_core_lighting_menu.stale-preset",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
+      "min_checks": 384,
+      "sources": [
+        "tools/quality/render_core_lighting_menu_test.py",
+        "unittests/vguitest/test_render_core_lighting_menu.cpp",
+        "public/gameui/render_core_lighting_preset.h",
+        "game/client/portal2/gameui/portal2/vadvancedvideo.cpp",
+        "game/client/portal2/gameui/portal2/vhybridbutton.cpp",
+        "quality/product_profiles/portal2-linux-native-vulkan-high.json"
+      ],
+      "command": [
+        "{python}",
+        "tools/quality/render_core_lighting_menu_test.py",
+        "--seed-stale-preset"
+      ],
+      "expect": "fail"
+    },
+    {
+      "id": "vgui.render_core_lighting_menu.profile-drift",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
+      "min_checks": 384,
+      "sources": [
+        "tools/quality/render_core_lighting_menu_test.py",
+        "unittests/vguitest/test_render_core_lighting_menu.cpp",
+        "public/gameui/render_core_lighting_preset.h",
+        "game/client/portal2/gameui/portal2/vadvancedvideo.cpp",
+        "game/client/portal2/gameui/portal2/vhybridbutton.cpp",
+        "quality/product_profiles/portal2-linux-native-vulkan-high.json"
+      ],
+      "command": [
+        "{python}",
+        "tools/quality/render_core_lighting_menu_test.py",
+        "--seed-profile-drift"
+      ],
+      "expect": "fail"
+    },
+    {
+      "id": "vgui.render_core_lighting_menu.broken-nav",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
+      "min_checks": 360,
+      "sources": [
+        "tools/quality/render_core_lighting_menu_test.py",
+        "unittests/vguitest/test_render_core_lighting_menu.cpp",
+        "public/gameui/render_core_lighting_preset.h",
+        "game/client/portal2/gameui/portal2/vadvancedvideo.cpp",
+        "game/client/portal2/gameui/portal2/vhybridbutton.cpp",
+        "quality/product_profiles/portal2-linux-native-vulkan-high.json"
+      ],
+      "command": [
+        "{python}",
+        "tools/quality/render_core_lighting_menu_test.py",
+        "--seed-broken-nav"
+      ],
+      "expect": "fail"
+    },
+    {
+      "id": "vgui.render_core_lighting_menu.mouse-reversed",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
+      "min_checks": 384,
+      "sources": [
+        "tools/quality/render_core_lighting_menu_test.py",
+        "unittests/vguitest/test_render_core_lighting_menu.cpp",
+        "public/gameui/render_core_lighting_preset.h",
+        "game/client/portal2/gameui/portal2/vadvancedvideo.cpp",
+        "game/client/portal2/gameui/portal2/vhybridbutton.cpp",
+        "quality/product_profiles/portal2-linux-native-vulkan-high.json"
+      ],
+      "command": [
+        "{python}",
+        "tools/quality/render_core_lighting_menu_test.py",
+        "--seed-mouse-reversed"
+      ],
+      "expect": "fail"
+    },
+    {
       "id": "vgui.graphics_settings",
       "domain": "Q-PRESENTATION",
       "rfc": "0001",

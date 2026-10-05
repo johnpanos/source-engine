@@ -12,7 +12,7 @@ resolved by profile_extends.py) names the platform, the app and its content
 directory in the app's data container (content.container_directory:
 Documents on iOS, Library/Caches on tvOS). The installed app
 (ios-deploy.sh) appends that directory's commandline.txt to its arguments
-(launcher_main/ios_main.cpp), so the harness writes the scenario cfgs and
+(launcher_main/apple_main.cpp), so the harness writes the scenario cfgs and
 that file into the container, launches the app attached to its console, and
 copies the frame stream back. commandline.txt is emptied again afterwards.
 

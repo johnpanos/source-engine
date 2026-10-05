@@ -34,9 +34,7 @@
 #pragma once
 
 #undef HAVE_GL_ARB_SYNC
-#ifndef OSX
 #define HAVE_GL_ARB_SYNC 1
-#endif
 
 #include "glbase.h"
 #include "glentrypoints.h"
@@ -1205,7 +1203,6 @@ public:
 };
 
 //===========================================================================//
-#ifndef OSX
 
 #ifndef GL_EXTERNAL_VIRTUAL_MEMORY_BUFFER_AMD
 #define GL_EXTERNAL_VIRTUAL_MEMORY_BUFFER_AMD 0x9160
@@ -1329,7 +1326,6 @@ private:
 	GLsync m_nSyncObj;
 #endif
 };
-#endif // !OSX
 
 //===========================================================================//
 
@@ -1558,9 +1554,7 @@ class GLMContext
 		GLMContext( IDirect3DDevice9 *pDevice, GLMDisplayParams *params );
 		~GLMContext();
 
-#ifndef OSX
 		FORCEINLINE GLuint FindSamplerObject( const GLMTexSamplingParams &desiredParams );
-#endif
 
 		FORCEINLINE void SetBufAndVertexAttribPointer( uint nIndex, GLuint nGLName, GLuint stride, GLuint datatype, GLboolean normalized, GLuint nCompCount, const void *pBuf, uint nRevision )
 		{
@@ -1654,9 +1648,7 @@ class GLMContext
 		void GenDebugFontTex( void );
 		void DrawDebugText( float x, float y, float z, float drawCharWidth, float drawCharHeight, char *string );
 
-#ifndef OSX
 		CPinnedMemoryBuffer *GetCurPinnedMemoryBuffer( ) { return &m_PinnedMemoryBuffers[m_nCurPinnedMemoryBuffer]; }
-#endif
 
 		CPersistentBuffer* GetCurPersistentBuffer( EGLMBufferType type ) { return &( m_persistentBuffer[m_nCurPersistentBuffer][type] ); }
 
@@ -1794,9 +1786,6 @@ class GLMContext
 		CGLMProgram						*m_preload3DTexFragmentProgram;
 		CGLMProgram						*m_preloadCubeTexFragmentProgram;
 
-#if defined( OSX ) && defined( GLMDEBUG )
-		CGLMProgram						*m_boundProgram[ kGLMNumProgramTypes ];
-#endif
 
 		CGLMShaderPairCache				*m_pairCache;				// GLSL only
 		CGLMShaderPair					*m_pBoundPair;				// GLSL only
@@ -1859,11 +1848,9 @@ class GLMContext
 		GLuint							m_destroyPBO;
 		CUtlVector< TextureEntry_t >	m_availableTextures;
 
-#ifndef OSX
 		enum { cNumPinnedMemoryBuffers = 4 };
 		CPinnedMemoryBuffer m_PinnedMemoryBuffers[cNumPinnedMemoryBuffers];
 		uint m_nCurPinnedMemoryBuffer;
-#endif
 
 		enum { cNumPersistentBuffers = 3 };
 		CPersistentBuffer	m_persistentBuffer[cNumPersistentBuffers][kGLMNumBufferTypes];

@@ -36,13 +36,6 @@
 #include "SDL_opengl.h"
 #endif
 
-#ifdef OSX
-#include <OpenGL/OpenGL.h>
-#include <OpenGL/gl.h>
-#include <OpenGL/CGLTypes.h>
-#include <OpenGL/CGLRenderers.h>
-#include <OpenGL/CGLCurrent.h>
-#endif
 
 #ifdef MAC_OS_X_VERSION_10_9
 typedef uint32_t CGDirectDisplayID;
@@ -63,10 +56,6 @@ struct GLMDisplayModeInfoFields
 
 struct GLMDisplayInfoFields
 {
-#ifdef OSX
-	CGDirectDisplayID				m_cgDisplayID;
-	CGOpenGLDisplayMask				m_glDisplayMask;		// result of CGDisplayIDToOpenGLDisplayMask on the cg_displayID.
-#endif
 	uint							m_displayPixelWidth;
 	uint							m_displayPixelHeight;	
 };

@@ -24,7 +24,6 @@ namespace volumetric = render::pass::volumetric;
 
 using namespace render::pass::lights;
 
-constexpr double kPi = 3.14159265358979323846;
 
 } // namespace
 

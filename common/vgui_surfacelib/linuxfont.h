@@ -9,8 +9,6 @@
 #define LINUXFONT_H
 
 #include "utlrbtree.h"
-#include <tier0/memdbgoff.h>
-#include <tier0/memdbgon.h>
 #include "tier1/strtools.h"
 #include "tier1/utlstring.h"
 
@@ -19,7 +17,7 @@
 
 
 //-----------------------------------------------------------------------------
-// Purpose: encapsulates a OSX font
+// Purpose: encapsulates a FreeType font
 //-----------------------------------------------------------------------------
 class CLinuxFont
 {

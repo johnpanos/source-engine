@@ -48,13 +48,13 @@ def options(opt):
 	grp = opt.add_option_group('Common options')
 	grp.add_option('--static-composition', action='store_true', dest='STATIC_COMPOSITION',
 		default=False, help='link every first-party module statically into the product '
-		'programs (the iOS composition policy)')
+		'programs (the Apple composition policy)')
 
 
 def configure(conf):
 	conf.env.STATIC_COMPOSITION = bool(getattr(conf.options, 'STATIC_COMPOSITION', False))
-	if conf.env.DEST_OS == 'ios' and not conf.env.STATIC_COMPOSITION:
-		conf.fatal('iOS products are statically composed; configure with --static-composition')
+	if conf.env.DEST_OS in ('darwin', 'ios') and not conf.env.STATIC_COMPOSITION:
+		conf.fatal('Apple products are statically composed; configure with --static-composition')
 	if not conf.env.STATIC_COMPOSITION:
 		return
 	if conf.env.DEST_OS == 'win32' or conf.env.COMPILER_CXX == 'msvc':

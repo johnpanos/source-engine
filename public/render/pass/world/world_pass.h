@@ -150,10 +150,6 @@ struct WorldStage
 	// The indirect layer's gradient page (its own directional half); empty
 	// when the bake wrote none.
 	std::vector<std::byte> indirectGradient;
-	// Runtime direct light (material::kSurfaceRuntimeDirect): the surfaces'
-	// basis is the indirect layer and every light's direct light is drawn at
-	// runtime. Needs the indirect layer.
-	bool runtimeDirect = false;
 	std::optional<StageProbeVolume> probes;
 	std::uint32_t reflectionWidth = 0;
 	std::uint32_t reflectionHeight = 0;
@@ -355,6 +351,13 @@ struct WorldTarget
 	// Cutout casters to draw into the slot's shadow atlas before the view
 	// (null: none).
 	std::shared_ptr<const WorldCutoutShadows> cutoutShadows;
+	// Runtime direct light (material::kSurfaceRuntimeDirect): a stage's
+	// surfaces take the indirect layer as their basis and every light's
+	// direct light is drawn at runtime; otherwise they take the bake's total
+	// layer (its direct light baked, shadows included). Ignored without the
+	// stage's indirect layer. A change rebuilds the pass's programs, so it
+	// may change between frames.
+	bool runtimeDirect = false;
 	// The device the slot records on (the legacy backend's); the pass's
 	// device objects live on it.
 	device::IRenderDevice2 *device = nullptr;

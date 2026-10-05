@@ -33,12 +33,7 @@
 
 // 7LS TODO : took out cmdline here
 bool g_bUsePseudoBufs = false; //( Plat_GetCommandLineA() ) ? ( strstr( Plat_GetCommandLineA(), "-gl_enable_pseudobufs" ) != NULL ) : false;
-#ifdef OSX
-// Significant perf degradation on some OSX parts if static buffers not disabled
-bool g_bDisableStaticBuffer = true;
-#else
 bool g_bDisableStaticBuffer = false; //( Plat_GetCommandLineA() ) ? ( strstr( Plat_GetCommandLineA(), "-gl_disable_static_buffer" ) != NULL ) : false;
-#endif
 
 // http://www.opengl.org/registry/specs/ARB/vertex_buffer_object.txt
 // http://www.opengl.org/registry/specs/ARB/pixel_buffer_object.txt
@@ -792,7 +787,6 @@ void CGLMBuffer::Lock( GLMBuffLockParams *pParams, char **pAddressOut )
 
 		//DevMsg( " --> buff=%x, startOffset=%d, paramsOffset=%d, persistOffset = %d\n", this, m_nPersistentBufferStartOffset, pParams->m_nOffset, persistentBufferOffset );
 	}
-#ifndef OSX
 	else if ( m_bDynamic && gGL->m_bHave_GL_AMD_pinned_memory && ( m_pCtx->GetCurPinnedMemoryBuffer()->GetBytesRemaining() >= pParams->m_nSize ) )
 	{
 		if ( pParams->m_bDiscard )
@@ -811,7 +805,6 @@ void CGLMBuffer::Lock( GLMBuffLockParams *pParams, char **pAddressOut )
 		
 		pTempBuffer->Append( pParams->m_nSize );
 	}
-#endif // OSX
 	else if ( !g_bDisableStaticBuffer && ( pParams->m_bDiscard || pParams->m_bNoOverwrite ) && ( pParams->m_nSize <= GL_STATIC_BUFFER_SIZE ) )
 	{
 #if TOGL_SUPPORT_NULL_DEVICE
@@ -1071,7 +1064,6 @@ void CGLMBuffer::Unlock( int nActualSize, const void *pActualData )
 		g_nTotalVBLockBytes += nActualSize;
 #endif
 
-#ifndef OSX
 	if ( m_nPinnedMemoryOfs >= 0 )
 	{
 #if TOGL_SUPPORT_NULL_DEVICE
@@ -1097,7 +1089,6 @@ void CGLMBuffer::Unlock( int nActualSize, const void *pActualData )
 		m_nPinnedMemoryOfs = -1;
 	}
 	else
-#endif // !OSX
 	if ( m_bUsingPersistentBuffer )
 	{
 		if ( nActualSize )

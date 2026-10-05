@@ -7,7 +7,7 @@
 //			This is the tvOS record store: tvOS gives apps no persistent local
 //			storage outside the bundle except the user-defaults database, and
 //			may purge Library/Caches, where the game content and its files
-//			live (launcher_main/ios_main.cpp). Apple bounds that database on
+//			live (launcher_main/apple_main.cpp). Apple bounds that database on
 //			tvOS, so records are capped at kMaxRecordBytes, well above the
 //			achievement state it holds (a few KB).
 //

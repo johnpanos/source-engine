@@ -58,8 +58,9 @@ bool findFileInDirCaseInsensitive_safe( const char *file, OUT_Z_ARRAY char (&out
 // Case-sensitive filesystems: retail content is mixed case (Portal 2's
 // platform/resource/linux_fonts/DejaVuSans.ttf) while the engine asks for
 // lowercase or scheme-cased names, so a failed open, stat or chmod retries
-// with a case-insensitive directory scan. iOS volumes are case-sensitive.
-#if defined( LINUX ) || defined( PLATFORM_BSD ) || defined( PLATFORM_IOS )
+// with a case-insensitive directory scan. iOS volumes are case-sensitive, and
+// a macOS volume may be.
+#if defined( LINUX ) || defined( PLATFORM_BSD ) || defined( OSX )
 #define FILESYSTEM_CASE_INSENSITIVE_FALLBACK 1
 #endif
 

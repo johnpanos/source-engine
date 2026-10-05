@@ -296,8 +296,8 @@ static bool Sys_GetExecutableName( char *out, int len )
 bool FileSystem_GetExecutableDir( char *exedir, int exeDirLen )
 {
 	// App-container platforms: the entry point names the directories
-	// (launcher_main/android_main.cpp, launcher_main/ios_main.cpp).
-#if defined( ANDROID ) || defined( PLATFORM_IOS )
+	// (launcher_main/android_main.cpp, launcher_main/apple_main.cpp).
+#if defined( ANDROID ) || defined( OSX )
 	Q_snprintf( exedir, exeDirLen, "%s", getenv("APP_LIB_PATH") );
 #else
 	exedir[0] = 0;
@@ -345,7 +345,7 @@ bool FileSystem_GetExecutableDir( char *exedir, int exeDirLen )
 
 static bool FileSystem_GetBaseDir( char *baseDir, int baseDirLen )
 {
-#if defined( ANDROID ) || defined( PLATFORM_IOS )
+#if defined( ANDROID ) || defined( OSX )
 	strncpy(baseDir, getenv("VALVE_GAME_PATH"), baseDirLen);
 	return true;
 #else

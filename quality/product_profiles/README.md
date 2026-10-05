@@ -249,9 +249,9 @@ mkdir -p dependencies/tvos/sdk/AppleTVOS.sdk
 ssh macvm "tar -C '$remote' -czf - ." | tar -xzf - -C dependencies/tvos/sdk/AppleTVOS.sdk
 ```
 
-`./build-tvos-app.sh` runs `build-ios-app.sh --profile` with this profile
+`./build-tvos-app.sh` runs `build-apple-app.sh --profile` with this profile
 and produces an unsigned `build-tvos/Portal.app`. Waf builds tvOS as part of
-the `ios` (UIKit) family, with `PLATFORM_TVOS`; the SDK passed to `--ios-sdk`
+the `ios` (UIKit) family, with `PLATFORM_TVOS`; the SDK passed to `--apple-sdk`
 selects it. The content goes into the app's `Library/Caches` (user decision).
 tvOS has no persistent app storage outside the bundle, and the system may
 purge the caches, so the content must be recopied after a purge. tvOS is
@@ -266,6 +266,39 @@ On the device (Apple TV 4K, 2026-09-26):
 - The commands, the budget's meaning on a FIFO-only display and the device
   traps are in the
   [device testing record](../../RFC/0005-ios-device-progress.md#apple-tv-4k-tvos-profile-2026-09-26).
+
+## macOS Portal profile
+
+`portal-macos-native-vulkan.json` declares the macOS client. It replaces the
+legacy macOS build (Carbon, AppKit, CGL/ToGL, OpenAL, AudioQueue and
+QuickTime), which was deleted (user direction, 2026-10-05). macOS is now the
+third platform of the Apple app path:
+- one build script, `build-apple-app.sh`, for macOS, iOS and tvOS, with the
+  `build-macos-app.sh`, `build-ios-app.sh` and `build-tvos-app.sh` wrappers;
+- one Waf configuration (`--apple-sdk`, `env.APPLE`): `OSX` names the Apple
+  family, and `PLATFORM_MACOS` or `PLATFORM_IOS` the platform;
+- one composition: every first-party module statically linked, SDL3 for
+  windows, input and audio, native Vulkan over MoltenVK;
+- one app root, `launcher_main/apple_main.cpp`, with each platform's half in
+  `apple_app_macos.cpp` or `apple_app_uikit.cpp`.
+
+The profile pins only what differs. The host toolchain and SDL3 point at the
+iOS profile and KTX at the Android profile. MoltenVK comes from the tvOS
+profile's all-platforms archive (its universal macOS slice), with the
+`build-macos/` out directory and the macOS bundle keys. The bundle id is the
+iOS one, so one app record can carry every Apple platform.
+
+```sh
+./build-macos-app.sh --fetch-sdk-from macvm   # first build: copies MacOSX.sdk
+./build-macos-app.sh                          # later builds
+```
+
+The app is `build-macos/Portal.app` (`Contents/MacOS/hl2_launcher`), unsigned;
+sign it on the Mac. It reads its content from
+`~/Library/Application Support/com.panos.sourceengine/` (`platform/`,
+`portal/`, `hl2/` and an optional `commandline.txt`), which it creates at
+first start. No platform achievement service is bound on macOS yet: Game
+Center's presentation is UIKit only.
 
 ## Gyro aiming
 

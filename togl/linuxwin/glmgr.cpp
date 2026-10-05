@@ -39,10 +39,6 @@
 
 #include "glmgr_flush.inl"
 
-#ifdef OSX
-#include <OpenGL/OpenGL.h>
-#include "intelglmallocworkaround.h"
-#endif
 
 // memdbgon -must- be the last include file in a .cpp file.
 #include "tier0/memdbgon.h"
@@ -645,12 +641,10 @@ void GLMContext::ForceFlushStates()
 	gGL->glBindBufferARB( GL_ELEMENT_ARRAY_BUFFER_ARB, m_nBoundGLBuffer[ kGLMIndexBuffer] );
 	gGL->glBindBufferARB( GL_ARRAY_BUFFER_ARB, m_nBoundGLBuffer[ kGLMVertexBuffer] );
 
-#ifndef OSX
 	if ( gGL->m_bHave_GL_AMD_pinned_memory )
 	{
 		gGL->glBindBufferARB( GL_EXTERNAL_VIRTUAL_MEMORY_BUFFER_AMD, m_PinnedMemoryBuffers[m_nCurPinnedMemoryBuffer].GetHandle() );
 	}
-#endif
 }
 
 const GLMRendererInfoFields& GLMContext::Caps( void )
@@ -1771,12 +1765,10 @@ void GLMContext::PreloadTex( CGLMTex *tex, bool force )
 	// bind texture and sampling params
 	CGLMTex *pPrevTex = m_samplers[15].m_pBoundTex;
 
-#ifndef OSX // 10.6
 	if ( m_bUseSamplerObjects )
 	{
 		gGL->glBindSampler( 15, 0 );
 	}
-#endif // !OSX
 
 	BindTexToTMU( tex, 15 );
 	
@@ -2331,22 +2323,9 @@ void GLMContext::Present( CGLMTex *tex )
 		showparams.m_onlySyncView = false;
 	
 		bool refresh = true;
-	#ifdef OSX
-		if ( (glm_nullrefresh_capslock.GetInt()) && (GetCurrentKeyModifiers() & EalphaLock) )
-		{
-			refresh = false;
-		}
-	#endif	
 		static int counter;
 		counter ++;
 
-	#ifdef OSX
-		if ( (glm_literefresh_capslock.GetInt()) && (GetCurrentKeyModifiers() & EalphaLock) && (counter & 127) )
-		{
-			// just show every 128th frame
-			refresh = false;
-		}
-	#endif
 
 		if (refresh)
 		{
@@ -2410,9 +2389,7 @@ void GLMContext::Present( CGLMTex *tex )
 	m_nTotalVSUniformCalls = 0, m_nTotalVSUniformBoneCalls = 0, m_nTotalVSUniformsSet = 0, m_nTotalVSUniformsBoneSet = 0, m_nTotalPSUniformCalls = 0, m_nTotalPSUniformsSet = 0;
 #endif
 
-#ifndef OSX
 	GLMGPUTimestampManagerTick();
-#endif
 }
 
 //===============================================================================
@@ -2492,7 +2469,6 @@ GLMContext::GLMContext( IDirect3DDevice9 *pDevice, GLMDisplayParams *params )
 
 	ClearCurAttribs();
 
-#ifndef OSX
 	m_nCurPinnedMemoryBuffer = 0;
 	if ( gGL->m_bHave_GL_AMD_pinned_memory )
 	{
@@ -2503,7 +2479,6 @@ GLMContext::GLMContext( IDirect3DDevice9 *pDevice, GLMDisplayParams *params )
 
 		gGL->glBindBufferARB( GL_EXTERNAL_VIRTUAL_MEMORY_BUFFER_AMD, m_PinnedMemoryBuffers[m_nCurPinnedMemoryBuffer].GetHandle() );
 	}
-#endif // OSX
 
 	m_nCurPersistentBuffer = 0;
 	if ( gGL->m_bHave_GL_ARB_buffer_storage )
@@ -2609,7 +2584,6 @@ GLMContext::GLMContext( IDirect3DDevice9 *pDevice, GLMDisplayParams *params )
 
 	m_texLayoutTable = new CGLMTexLayoutTable;
 
-#ifndef OSX
 	if ( m_bUseSamplerObjects )
 	{
 		memset( m_samplerObjectHash, 0, sizeof( m_samplerObjectHash ) );
@@ -2620,7 +2594,6 @@ GLMContext::GLMContext( IDirect3DDevice9 *pDevice, GLMDisplayParams *params )
 			gGL->glGenSamplers( 1, &m_samplerObjectHash[i].m_samplerObject );
 		}
 	}
-#endif // !OSX
 
 	memset( m_samplers, 0, sizeof( m_samplers ) );
 	for( int i=0; i< GLM_SAMPLER_COUNT; i++)
@@ -2704,9 +2677,6 @@ GLMContext::GLMContext( IDirect3DDevice9 *pDevice, GLMDisplayParams *params )
 	// debug state
 	m_debugFrameIndex = -1;
 
-#if defined( OSX ) && defined( GLMDEBUG )
-    memset( m_boundProgram , 0, sizeof( m_boundProgram ) );
-#endif
 	
 #if GLMDEBUG
 	// #######################################################################################
@@ -2755,76 +2725,6 @@ GLMContext::GLMContext( IDirect3DDevice9 *pDevice, GLMDisplayParams *params )
 	// Create a bunch of texture names for us to use forever and ever ramen.
 	FillTexCache( false, kGLMInitialTexCount );
 
-#ifdef OSX
-	bool new_mtgl = m_caps.m_hasPerfPackage1;	// i.e. 10.6.4 plus new driver
-	
-	if ( CommandLine()->FindParm("-glmenablemtgl2") )
-	{
-		new_mtgl = true;
-	}
-
-	if ( CommandLine()->FindParm("-glmdisablemtgl2") )
-	{
-		new_mtgl = false;
-	}
-
-	bool mtgl_on = params->m_mtgl;
-	if (CommandLine()->FindParm("-glmenablemtgl"))
-	{
-		mtgl_on = true;
-	}
-	
-	if (CommandLine()->FindParm("-glmdisablemtgl"))
-	{
-		mtgl_on = false;
-	}
-
-	CGLError result = (CGLError)0;
-	if (mtgl_on)
-	{
-		bool ready = false;
-		CGLContextObj context = GetCGLContextFromNSGL(m_ctx);
-		if (new_mtgl)
-		{
-			// afterburner
-			CGLContextEnable kCGLCPGCDMPEngine = ((CGLContextEnable)1314);
-			result = CGLEnable( context, kCGLCPGCDMPEngine );
-			if (!result)
-			{
-				ready = true;	// succeeded - no need to try non-MTGL
-				printf("\nMTGL detected.\n");
-			}
-			else
-			{
-				printf("\nMTGL *not* detected, falling back.\n");
-			}
-		}
-
-		if (!ready)
-		{
-			// try old MTGL
-			result = CGLEnable( context, kCGLCEMPEngine );
-			if (!result)
-			{
-				printf("\nMTGL has been detected.\n");
-				ready = true;	// succeeded - no need to try non-MTGL
-			}
-		}
-	}
-
-/*
-	if ( m_caps.m_badDriver108Intel )
-	{
-		// this way we have something to look for in terminal spew if users report issues related to this in the future.
-		printf( "\nEnabling GLSL compiler `malloc' workaround.\n" );
-		if ( !IntelGLMallocWorkaround::Get()->Enable() )
-		{
-			Warning( "Unable to enable OSX 10.8 / Intel HD4000 workaround, there might be crashes.\n" );
-		}
-	}
-*/
-
-#endif
 	// also, set the remote convar "gl_can_query_fast" to 1 if perf package present, else 0.
 	gl_can_query_fast.SetValue( m_caps.m_hasPerfPackage1?1:0 );
 
@@ -2850,7 +2750,6 @@ void GLMContext::Reset()
 
 GLMContext::~GLMContext	()
 {
-#ifndef OSX
 	GLMGPUTimestampManagerDeinit();
 		
 	for ( uint t = 0; t < cNumPinnedMemoryBuffers; t++ )
@@ -2882,7 +2781,6 @@ GLMContext::~GLMContext	()
 			m_samplerObjectHash[i].m_samplerObject = 0;
 		}
 	}
-#endif // !OSX
 
 	if (m_debugFontTex)
 	{
@@ -3195,11 +3093,6 @@ void GLMContext::PurgeTexCache()
 	m_availableTextures.RemoveAll();
 }
 
-#ifdef OSX
-// As far as I can tell this stuff is only useful under OSX.
-ConVar	gl_can_mix_shader_gammas( "gl_can_mix_shader_gammas", 0 );
-ConVar	gl_cannot_mix_shader_gammas( "gl_cannot_mix_shader_gammas", 0 );
-#endif
 
 // ConVar param_write_mode("param_write_mode", "0");
 
@@ -4555,35 +4448,6 @@ void GLMContext::CheckNative( void )
 {
 	// note that this is available in release.  We don't use GLMPRINTF for that reason.
 	// note we do not get called unless either slow-batch asserting or logging is enabled.
-#ifdef OSX	
-	bool gpuProcessing;
-	GLint fragmentGPUProcessing, vertexGPUProcessing;
-	
-	CGLGetParameter (CGLGetCurrentContext(), kCGLCPGPUFragmentProcessing, &fragmentGPUProcessing);
-	CGLGetParameter(CGLGetCurrentContext(), kCGLCPGPUVertexProcessing, &vertexGPUProcessing);
-
-	// spews then asserts.
-	// that way you can enable both, get log output on a pair if it's slow, and then the debugger will pop.
-	if(m_slowSpewEnable)
-	{
-		if ( !vertexGPUProcessing )
-		{
-			m_drawingProgram[ kGLMVertexProgram ]->LogSlow( m_drawingLang );
-		}
-		if ( !fragmentGPUProcessing )
-		{
-			m_drawingProgram[ kGLMFragmentProgram ]->LogSlow( m_drawingLang );
-		}
-	}
-
-	if(m_slowAssertEnable)
-	{
-		if ( !vertexGPUProcessing || !fragmentGPUProcessing)
-		{
-			Assert( !"slow batch" );
-		}
-	}
-#else
 	//Assert( !"impl GLMContext::CheckNative()" );
 
 	if (m_checkglErrorsAfterEveryBatch)
@@ -4608,7 +4472,6 @@ void GLMContext::CheckNative( void )
 		}
 	}
 
-#endif
 
 }
 
@@ -5252,11 +5115,7 @@ void GLMContext::DrawRangeElements(GLenum mode, GLuint start, GLuint end, GLsize
 		}
 		else
 		{
-#if defined( OSX )
-            // MoeMod: TOGL IS NOT USING m_boundProgram THIS AT ALL
-#else
 			AssertOnce(!"drawing with no vertex program bound");
-#endif
 		}
 
 		if (m_boundProgram[kGLMFragmentProgram])
@@ -5265,11 +5124,7 @@ void GLMContext::DrawRangeElements(GLenum mode, GLuint start, GLuint end, GLsize
 		}
 		else
 		{
-#if defined( OSX )
-            // MoeMod: TOGL IS NOT USING m_boundProgram THIS AT ALL
-#else
 			AssertOnce(!"drawing with no fragment program bound");
-#endif
 		}
 #endif
 

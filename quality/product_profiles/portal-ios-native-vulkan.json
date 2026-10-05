@@ -14,7 +14,7 @@
     "window_provider": "sdl3",
     "render_provider": "native-vulkan",
     "vulkan_implementation": "MoltenVK (Vulkan portability subset over Metal), statically linked",
-    "physics_provider": "vphysics_box3d (Box3D) by default (user decision 2026-09-26; launcher_main/ios_main.cpp passes -physics vphysics_box3d); vphysics (IVP) is linked too",
+    "physics_provider": "vphysics_box3d (Box3D) by default (user decision 2026-09-26; launcher_main/apple_main.cpp passes -physics vphysics_box3d); vphysics (IVP) is linked too",
     "support_scope": "R29 groundwork. Not platform acceptance: no device, simulator or packaging evidence yet.",
     "packaging": ".app assembled on Linux; codesign, provisioning and install (xcrun devicectl) on the Mac. Licensed Portal content is copied into the app's data container separately.",
     "deployment_target_reason": "17.0: devicectl installs, current SDL3 and MoltenVK (libMoltenVK.a minos 15.0) all support it; revisit before a store build."

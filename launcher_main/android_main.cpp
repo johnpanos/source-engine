@@ -19,7 +19,7 @@
 #include <string.h>
 #include <unistd.h>
 
-#include "mobile_app_root.h"
+#include "app_root.h"
 #include "tier0/platform.h"
 #include "tier0/threadtools.h"
 
@@ -91,11 +91,11 @@ extern "C" int SDL_main( int, char ** )
 		return 1;
 	}
 	// The app's own UI art ships in the APK's assets.
-	mobileapp::InstallTouchIcons( "", ANDROID_DEFAULT_GAME );
+	approot::InstallTouchIcons( "", ANDROID_DEFAULT_GAME );
 
 	static char program[PATH_MAX];
 	snprintf( program, sizeof( program ), "%s/hl2_linux", libraryDir );
-	static char *argv[mobileapp::kMaxArgs];
+	static char *argv[approot::kMaxArgs];
 	int argc = 0;
 	argv[argc++] = program;
 	argv[argc++] = const_cast<char *>( "-game" );
@@ -120,7 +120,7 @@ extern "C" int SDL_main( int, char ** )
 	static char argumentsPath[PATH_MAX];
 	static char argumentsStorage[4096];
 	snprintf( argumentsPath, sizeof( argumentsPath ), "%s/commandline.txt", contentDir );
-	argc = mobileapp::AppendArgumentsFile(
+	argc = approot::AppendArgumentsFile(
 	    argumentsPath, argv, argc, argumentsStorage, sizeof( argumentsStorage ) );
 	argv[argc] = NULL;
 

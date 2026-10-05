@@ -332,64 +332,76 @@ class Android:
 				ldflags += ['-march=armv5te']
 		return ldflags
 
-def configure_ios(conf):
-	"""--ios-sdk: cross-compile for a UIKit platform with the pinned host
-	toolchain (tools/ios/build_toolchain.py) and the user's SDK: iPhoneOS for
-	iOS or AppleTVOS for tvOS. The SDK is never downloaded: it comes from Xcode
-	on the user's Mac. Both platforms are DEST_OS ios (the UIKit family, with
-	PLATFORM_IOS); the SDK selects the triple, and tvOS adds PLATFORM_TVOS."""
-	sdk = os.path.abspath(conf.options.IOS_SDK)
+# The Apple SDKs the build targets: SDK canonical-name prefix -> (target
+# platform, -target triple OS, Waf DEST_OS). macOS is DEST_OS darwin; iOS and
+# tvOS are the ios (UIKit) family, told apart by APPLE_PLATFORM.
+APPLE_SDKS = {
+	'macosx' : ('macos', 'macos', 'darwin'),
+	'iphoneos' : ('ios', 'ios', 'ios'),
+	'appletvos' : ('tvos', 'tvos', 'ios'),
+}
+APPLE_PLATFORM_NAMES = { 'macos' : 'macOS', 'ios' : 'iOS', 'tvos' : 'tvOS' }
+
+def configure_apple(conf):
+	"""--apple-sdk: cross-compile for an Apple platform with the pinned host
+	toolchain (tools/ios/build_toolchain.py) and the user's SDK: MacOSX for
+	macOS, iPhoneOS for iOS or AppleTVOS for tvOS. The SDK is never
+	downloaded: it comes from Xcode on the user's Mac. The SDK selects the
+	triple; Waf's compiler probe then sets DEST_OS (darwin or ios)."""
+	sdk = os.path.abspath(conf.options.APPLE_SDK)
 	settings = os.path.join(sdk, 'SDKSettings.json')
 	if not os.path.isfile(settings):
-		conf.fatal('--ios-sdk=%s is not an iPhoneOS or AppleTVOS SDK (no SDKSettings.json); copy '
-			'it from the Mac: xcrun --sdk iphoneos|appletvos --show-sdk-path' % sdk)
+		conf.fatal('--apple-sdk=%s is not an Apple SDK (no SDKSettings.json); copy it from the '
+			'Mac: xcrun --sdk macosx|iphoneos|appletvos --show-sdk-path' % sdk)
 	import json
 	with open(settings) as stream:
 		sdk_info = json.load(stream)
-	platforms = { 'iphoneos' : 'ios', 'appletvos' : 'tvos' }
-	platform = platforms.get(sdk_info.get('CanonicalName', '').rstrip('0123456789.'))
-	if not platform:
-		conf.fatal('%s is %s, not an iPhoneOS or AppleTVOS SDK' % (sdk, sdk_info.get('CanonicalName')))
-	toolchain = os.path.abspath(conf.options.IOS_TOOLCHAIN)
+	entry = APPLE_SDKS.get(sdk_info.get('CanonicalName', '').rstrip('0123456789.'))
+	if not entry:
+		conf.fatal('%s is %s, not a MacOSX, iPhoneOS or AppleTVOS SDK' % (sdk, sdk_info.get('CanonicalName')))
+	platform, triple_os, _ = entry
+	toolchain = os.path.abspath(conf.options.APPLE_TOOLCHAIN)
 	bindir = os.path.join(toolchain, 'bin')
 	for tool in ('clang', 'clang++', 'ld64.lld', 'ld64', 'llvm-ar'):
 		if not os.path.isfile(os.path.join(bindir, tool)):
 			conf.fatal('%s has no %s; run python3 tools/ios/build_toolchain.py' % (toolchain, tool))
-	triple = 'arm64-apple-%s%s' % (platform, conf.options.IOS_DEPLOYMENT_TARGET)
+	if not conf.options.APPLE_DEPLOYMENT_TARGET:
+		conf.fatal('--apple-sdk needs --apple-deployment-target (the product profile pins it)')
+	triple = 'arm64-apple-%s%s' % (triple_os, conf.options.APPLE_DEPLOYMENT_TARGET)
 	target = ['-target', triple, '-isysroot', sdk]
 	conf.environ['PATH'] = bindir + os.pathsep + conf.environ.get('PATH', '')
 	# The target is part of the compiler command, so Waf's compiler probe
-	# (clang -dM -E) sees the iOS macros and sets DEST_OS to ios.
+	# (clang -dM -E) sees the platform's macros and sets DEST_OS.
 	conf.environ['CC'] = ' '.join([os.path.join(bindir, 'clang')] + target)
 	conf.environ['CXX'] = ' '.join([os.path.join(bindir, 'clang++')] + target)
 	conf.environ['AR'] = os.path.join(bindir, 'llvm-ar')
 	conf.env.LINKFLAGS += ['-fuse-ld=lld']
-	conf.env.IOS_SDK = sdk
-	conf.env.IOS_SDK_VERSION = sdk_info.get('Version', '')
-	conf.env.IOS_DEPLOYMENT_TARGET = conf.options.IOS_DEPLOYMENT_TARGET
-	conf.env.IOS_TRIPLE = triple
+	conf.env.APPLE_SDK = sdk
+	conf.env.APPLE_SDK_VERSION = sdk_info.get('Version', '')
+	conf.env.APPLE_DEPLOYMENT_TARGET = conf.options.APPLE_DEPLOYMENT_TARGET
+	conf.env.APPLE_TRIPLE = triple
 	conf.env.APPLE_PLATFORM = platform
-	conf.msg('Selected %s SDK' % { 'ios' : 'iOS', 'tvos' : 'tvOS' }[platform], '%s (%s)' % (sdk, conf.env.IOS_SDK_VERSION))
+	conf.msg('Selected %s SDK' % APPLE_PLATFORM_NAMES[platform], '%s (%s)' % (sdk, conf.env.APPLE_SDK_VERSION))
 	conf.msg('... target', triple)
 
 def options(opt):
-	ios = opt.add_option_group('iOS options')
-	ios.add_option('--ios-sdk', action='store', dest='IOS_SDK', default=None,
-		help='cross-compile for iOS or tvOS with this iPhoneOS.sdk or AppleTVOS.sdk (copied from Xcode on a Mac)')
-	ios.add_option('--ios-toolchain', action='store', dest='IOS_TOOLCHAIN',
+	apple = opt.add_option_group('Apple options')
+	apple.add_option('--apple-sdk', action='store', dest='APPLE_SDK', default=None,
+		help='cross-compile for macOS, iOS or tvOS with this MacOSX.sdk, iPhoneOS.sdk or AppleTVOS.sdk (copied from Xcode on a Mac)')
+	apple.add_option('--apple-toolchain', action='store', dest='APPLE_TOOLCHAIN',
 		default=os.path.join('dependencies', 'ios', 'toolchain'),
 		help='host toolchain built by tools/ios/build_toolchain.py [default: %default]')
-	ios.add_option('--ios-deployment-target', action='store', dest='IOS_DEPLOYMENT_TARGET',
-		default='17.0', help='minimum iOS or tvOS version [default: %default]')
+	apple.add_option('--apple-deployment-target', action='store', dest='APPLE_DEPLOYMENT_TARGET',
+		default=None, help='minimum OS version of the target platform (from the product profile)')
 	android = opt.add_option_group('Android options')
 	android.add_option('--android', action='store', dest='ANDROID_OPTS', default=None,
 		help='enable building for android, format: --android=<arch>,<toolchain>,<api>, example: --android=armeabi-v7a-hard,4.9,21')
 
 def configure(conf):
-	if getattr(conf.options, 'IOS_SDK', None):
+	if getattr(conf.options, 'APPLE_SDK', None):
 		if conf.options.ANDROID_OPTS:
-			conf.fatal('--ios-sdk and --android select different targets')
-		configure_ios(conf)
+			conf.fatal('--apple-sdk and --android select different targets')
+		configure_apple(conf)
 	if conf.options.ANDROID_OPTS:
 		values = conf.options.ANDROID_OPTS.split(',')
 		if len(values) != 3:
@@ -509,11 +521,11 @@ def apply_android_soname(self):
 
 @TaskGen.feature('c', 'cxx')
 @TaskGen.before_method('process_source')
-def apply_ios_ivp_alloca(self):
+def apply_apple_ivp_alloca(self):
 	"""IVP (the ivp submodule, upstream source-physics) includes <alloca.h>
-	only for LINUX/SUN; on macOS a system header supplied alloca transitively,
-	on iOS none does. Give only the IVP targets the header."""
-	if self.env.DEST_OS != 'ios':
+	only for LINUX/SUN; no Apple SDK header supplies alloca transitively.
+	Give only the IVP targets the header."""
+	if self.env.DEST_OS not in ('darwin', 'ios'):
 		return
 	ivp = self.bld.srcnode.find_node('ivp')
 	if ivp and self.path.is_child_of(ivp):

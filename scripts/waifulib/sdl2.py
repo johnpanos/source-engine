@@ -21,33 +21,20 @@ def options(opt):
 	grp.add_option('--skip-sdl2-sanity-check', action='store_false', default = True, dest='SDL2_SANITY_CHECK',
 		help = 'skip checking SDL2 sanity')
 
-def my_dirname(path):
-	# really dumb, will not work with /path/framework//, but still enough
-	if path[-1] == '/':
-		path = path[:-1]
-	return os.path.dirname(path)
-
 def sdl2_configure_path(conf, path):
 	conf.env.HAVE_SDL2 = 1
-	if conf.env.DEST_OS == 'darwin':
-		conf.env.INCLUDES_SDL2 = [
-			os.path.abspath(os.path.join(path, 'Headers'))
-		]
-		conf.env.FRAMEWORKPATH_SDL2 = [my_dirname(path)]
-		conf.env.FRAMEWORK_SDL2 = ['SDL2']
-	else:
-		conf.env.INCLUDES_SDL2 = [
-			os.path.abspath(os.path.join(path, 'include')),
-			os.path.abspath(os.path.join(path, 'include/SDL2'))
-		]
-		libpath = 'lib'
-		if conf.env.COMPILER_CC == 'msvc':
-			if conf.env.DEST_CPU in ['x86_64', 'amd64']:
-				libpath = 'lib/x64'
-			else:
-				libpath = 'lib/' + conf.env.DEST_CPU
-		conf.env.LIBPATH_SDL2 = [os.path.abspath(os.path.join(path, libpath))]
-		conf.env.LIB_SDL2 = ['SDL2']
+	conf.env.INCLUDES_SDL2 = [
+		os.path.abspath(os.path.join(path, 'include')),
+		os.path.abspath(os.path.join(path, 'include/SDL2'))
+	]
+	libpath = 'lib'
+	if conf.env.COMPILER_CC == 'msvc':
+		if conf.env.DEST_CPU in ['x86_64', 'amd64']:
+			libpath = 'lib/x64'
+		else:
+			libpath = 'lib/' + conf.env.DEST_CPU
+	conf.env.LIBPATH_SDL2 = [os.path.abspath(os.path.join(path, libpath))]
+	conf.env.LIB_SDL2 = ['SDL2']
 
 def configure(conf):
 	if conf.options.SDL2_PATH:

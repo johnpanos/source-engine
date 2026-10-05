@@ -12,7 +12,7 @@ reached over ssh) copies into the app's data container with
 
 then launches the app with its console attached until the scenario's `quit`,
 and copies <content>/frame-stats.jsonl (-vkframestats) back. The content
-root is the app's (launcher_main/ios_main.cpp): Documents on iOS,
+root is the app's (launcher_main/apple_main.cpp): Documents on iOS,
 Library/Caches on tvOS. commandline.txt is emptied afterwards so the next
 normal launch is unaffected.
 

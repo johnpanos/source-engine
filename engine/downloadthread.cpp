@@ -30,9 +30,9 @@
 #include "download_internal.h"
 #include "tier1/strtools.h"
 #include "tier0/threadtools.h"
-#if defined( PLATFORM_IOS )
-// Proxy lookup (SetProxiesForURL): iOS has the CFNetwork calls but no
-// SystemConfiguration dynamic store.
+#if defined( OSX )
+// Proxy lookup (SetProxiesForURL): the system proxy settings through
+// CFNetwork, on macOS as on iOS and tvOS.
 #include <CFNetwork/CFNetwork.h>
 #endif
 
@@ -619,10 +619,6 @@ RequestContext_t g_pacRequestCtx;
 // system specific headers for proxy configuration
 #if defined(OSX)
 #include <CoreFoundation/CoreFoundation.h>
-#if !defined( PLATFORM_IOS )
-#include <CoreServices/CoreServices.h>
-#include <SystemConfiguration/SystemConfiguration.h>
-#endif
 #endif
 
 void SetProxiesForURL( CURL *hMasterCURL, const char *pszURL )
@@ -637,11 +633,7 @@ void SetProxiesForURL( CURL *hMasterCURL, const char *pszURL )
 	// create an urlref around the raw URL
 	CFURLRef url = CFURLCreateWithBytes( NULL, ( const UInt8 * ) pszURL, strlen( pszURL ), kCFStringEncodingASCII, NULL );
 	// copy the proxies dictionary
-#if defined( PLATFORM_IOS )
 	CFDictionaryRef proxyDict = CFNetworkCopySystemProxySettings();
-#else
-	CFDictionaryRef proxyDict = SCDynamicStoreCopyProxies(NULL);
-#endif
 	// and ask the system what proxies it thinks I should consider for the given URL
 	CFArrayRef proxies = CFNetworkCopyProxiesForURL( url, proxyDict );
 	

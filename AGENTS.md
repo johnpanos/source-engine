@@ -580,7 +580,7 @@ marks no implementation gate done.
 | 26 / R26 | Remaining foundation providers; 0001 rank 12 | R10, R11 | Native clock/thread/memory/process/environment/paths/diagnostics suites pass for supported profiles, including failure and cleanup | planned |
 | 27 / R27 | Vulkan compatibility waypoint; 0001 rank 13 | R10, R16, R18 | Deployment, shader artifacts, profile selection and SDL3 presentation proven by a measured compatibility experiment; limitations recorded | partial ([Portal slice](RFC/0001-portal-vulkan-progress.md)) |
 | 28 / R28 | Native Vulkan bootstrap; 0001 rank 14 | R10, R16, R18 | Native adapter/device/queues and SDL3 bridge present smoke frame; required-profile failure and validation diagnostics work | partial ([native Vulkan slice](RFC/0001-native-vulkan-progress.md)) |
-| 29 / R29 | Four-platform architecture proof; 0001 rank 15 expanded to Linux/macOS/iOS/Android | R12, R18, R26, R28 | Each target passes foundation and SDL3/Vulkan native lifecycle smoke; Apple portability, iOS static composition and mobile packaging demonstrated; headless roles tested where declared | partial (children R29-IOS-STATIC and R29-ANDROID-BUILD: iOS static build and iPhone runs, Android APK on the Fold7; no lifecycle gate, no macOS) |
+| 29 / R29 | Four-platform architecture proof; 0001 rank 15 expanded to Linux/macOS/iOS/Android | R12, R18, R26, R28 | Each target passes foundation and SDL3/Vulkan native lifecycle smoke; Apple portability, iOS static composition and mobile packaging demonstrated; headless roles tested where declared | partial (children R29-IOS-STATIC, R29-ANDROID-BUILD and R29-MACOS-APP: iOS static build and iPhone runs, Android APK on the Fold7, an unsigned macOS app built on Linux; no lifecycle gate, no macOS run) |
 | 30 / R30 | Existing parallel kernels; 0003 E | R21 | Each bones/query-cache/entity-packing/leaf/shadow cohort independently passes three-mode, ownership, latency/performance and rollback gates | partial ([batch migration](RFC/0003-batch-migration-progress.md)) |
 | 31 / R31 | Physics core compatibility; 0004 C | R19 | Required traces, filters, events, materials, constraints/ragdolls, controllers and persistence pass client/dedicated gameplay corpus | partial (provider level; [0004 progress](RFC/0004-progress.md)) |
 | 32 / R32 | Native Vulkan functional MVP; 0001 rank 16 | R10, R28 | Representative map renders opt-in; resource/pipeline/upload/sync/swapchain contracts pass; unsupported features fail explicitly | active ([video options](RFC/0001-native-vulkan-video-options-progress.md); [Portal 2 graphics input fix](RFC/0016-progress.md#portal-2-front-end-graphics-option-input-2026-10-03); [queued rendering](RFC/0001-native-vulkan-queued-rendering-progress.md)) |
@@ -1587,6 +1587,32 @@ Keep the table concise and link details below or from the domain progress file.
   - Home-screen icons (`e86cb26d`): `tools/ios/app_icons.py` makes the iOS
     and tvOS icons from pinned key art; `actool` on the Mac compiles the
     asset catalog.
+
+- R29-MACOS-APP: `partial` (2026-10-05, user direction: "modernize and
+  delete the legacy macOS version ... use SDL3 for macOS, similar to iOS").
+  - Deleted: the legacy macOS build. That is Carbon/AppKit/CGL in ToGL,
+    togles, the D3D9 shader API and appframework; the AudioQueue and OpenAL
+    audio providers; QuickTime; `osxfont`; the Carbon pasteboard, FSEvents
+    and key polling; `scripts/*-macos-amd64.sh` and their CI lanes. A
+    preprocessor oracle showed the ToGL/D3D9 edits leave every non-Apple
+    configuration unchanged (`Frozen-path:` edit by user request).
+  - macOS is the third platform of one Apple path: `--apple-sdk` and
+    `env.APPLE` in Waf (`OSX` = Apple family, `PLATFORM_MACOS` or
+    `PLATFORM_IOS`), static composition, SDL3 window/input/audio, native
+    Vulkan over MoltenVK, `launcher_main/apple_main.cpp` with
+    `apple_app_macos.cpp` or `apple_app_uikit.cpp`, and
+    `build-apple-app.sh` behind the `build-macos-app.sh`,
+    `build-ios-app.sh` and `build-tvos-app.sh` wrappers. Profile:
+    [`portal-macos-native-vulkan.json`](quality/product_profiles/portal-macos-native-vulkan.json).
+  - Evidence: `./build-macos-app.sh` builds an unsigned
+    `build-macos/Portal.app` (arm64, platform macOS, minos 13.0, SDK
+    26.5); `static_composition.py` passes (24 module objects, 22 linked
+    entries); the app links no OpenGL or AGL. Carbon is linked only by
+    SDL3's keyboard-layout code. The iOS app and the affected Linux
+    targets still build.
+  - Not done: a run on an Apple-silicon Mac (the macOS VM has no Metal
+    device), signing and Gatekeeper, surface recreation, Game Center on
+    macOS.
 
 - TVOS-PROFILE: `partial` (2026-09-25, user direction: "add a tvos product
   profile", then "run the build in the background and use the cache

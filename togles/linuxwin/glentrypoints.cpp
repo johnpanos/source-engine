@@ -54,7 +54,7 @@
 #error
 #endif
 
-#if defined(PLATFORM_BSD) || defined(OSX) || defined(LINUX) || (defined (WIN32) && defined( DX_TO_GL_ABSTRACTION ))
+#if defined( PLATFORM_BSD ) || defined( LINUX ) || ( defined( WIN32 ) && defined( DX_TO_GL_ABSTRACTION ) )
 	#include "appframework/ilaunchermgr.h"
 	ILauncherMgr *g_pLauncherMgr = NULL;
 #endif
@@ -306,7 +306,7 @@ static bool CheckOpenGLExtension_internal(const char *ext, const int coremajor, 
 			}
 		}
 
-#elif !defined ( OSX ) && !defined( __ANDROID__ )
+#elif !defined( __ANDROID__ )
 /*
 		if (!ptr)
 		{
@@ -455,10 +455,6 @@ COpenGLEntryPoints::COpenGLEntryPoints()
 #undef GL_EXT
 #endif
 
-#ifdef OSX
-	m_bHave_GL_NV_bindless_texture = false;
-	m_bHave_GL_AMD_pinned_memory = false;
-#else
 	if ( ( m_bHave_GL_NV_bindless_texture ) && ( !CommandLine()->CheckParm( "-gl_nv_bindless_texturing" ) ) )
 	{
 		m_bHave_GL_NV_bindless_texture = false;
@@ -479,7 +475,6 @@ COpenGLEntryPoints::COpenGLEntryPoints()
 	{
 		m_bHave_GL_AMD_pinned_memory = false;
 	}
-#endif // !OSX
 
 	// Getting reports of black screens, etc. with ARB_buffer_storage and AMD drivers. This type of thing:
 	//  http://forums.steampowered.com/forums/showthread.php?t=3266806
@@ -494,13 +489,6 @@ COpenGLEntryPoints::COpenGLEntryPoints()
 	printf( "GL_EXT_buffer_storage: %s\n", m_bHave_GL_EXT_buffer_storage ? "AVAILABLE" : "NOT AVAILABLE" );
 	printf( "GL_EXT_texture_sRGB_decode: %s\n", m_bHave_GL_EXT_texture_sRGB_decode ? "AVAILABLE" : "NOT AVAILABLE" );
 
-#ifdef OSX
-	if ( CommandLine()->FindParm( "-glmnosrgbdecode" ) )
-	{
-		Msg( "Forcing m_bHave_GL_EXT_texture_sRGB_decode off.\n" );
-		m_bHave_GL_EXT_texture_sRGB_decode = false;
-	}
-#endif
 
 /*#ifndef OSX
 	if ( !m_bHave_GL_EXT_texture_sRGB_decode )

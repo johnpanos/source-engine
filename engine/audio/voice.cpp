@@ -182,12 +182,6 @@ bool				g_bUsingSteamVoice = false;
 
 #ifdef WIN32
 extern IVoiceRecord* CreateVoiceRecord_DSound(int nSamplesPerSec);
-#elif defined( OSX )
-extern IVoiceRecord* CreateVoiceRecord_AudioQueue(int sampleRate);
-#endif
-
-#ifdef POSIX
-extern IVoiceRecord* CreateVoiceRecord_OpenAL(int sampleRate);
 #endif
 
 #ifdef USE_SDL

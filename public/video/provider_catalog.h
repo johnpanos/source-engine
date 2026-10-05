@@ -27,7 +27,6 @@ extern "C"
 	const VideoProviderCatalog *VideoServices_GetBuiltProviders();
 	IVideoServices *VideoServices_CreateWithProviders( const VideoProviderCatalog *catalog );
 	IVideoSubSystem *VideoBink_Create();
-	IVideoSubSystem *VideoQuickTime_Create();
 	IVideoSubSystem *VideoWebM_Create();
 }
 

@@ -54,7 +54,7 @@
 #error
 #endif
 
-#if defined(OSX) || defined(LINUX) || (defined (WIN32) && defined( DX_TO_GL_ABSTRACTION )) || defined(PLATFORM_BSD)
+#if defined( LINUX ) || ( defined( WIN32 ) && defined( DX_TO_GL_ABSTRACTION ) ) || defined( PLATFORM_BSD )
 	#include "appframework/ilaunchermgr.h"
 	ILauncherMgr *g_pLauncherMgr = NULL;
 #endif
@@ -296,7 +296,7 @@ static bool CheckOpenGLExtension_internal(const char *ext, const int coremajor, 
 				return false;
 			}
 		}
-#elif !defined ( OSX ) && !defined( __ANDROID__ )
+#elif !defined( __ANDROID__ )
 		if (!ptr)
 		{
 			static CDynamicFunctionOpenGL< true, Display *( APIENTRY *)( ), Display* > glXGetCurrentDisplay("glXGetCurrentDisplay");
@@ -427,10 +427,6 @@ COpenGLEntryPoints::COpenGLEntryPoints()
 #undef GL_EXT
 #endif
 
-#ifdef OSX
-	m_bHave_GL_NV_bindless_texture = false;
-	m_bHave_GL_AMD_pinned_memory = false;
-#else
 	if ( ( m_bHave_GL_NV_bindless_texture ) && ( !CommandLine()->CheckParm( "-gl_nv_bindless_texturing" ) ) )
 	{
 		m_bHave_GL_NV_bindless_texture = false;
@@ -449,7 +445,6 @@ COpenGLEntryPoints::COpenGLEntryPoints()
 	{
 		m_bHave_GL_AMD_pinned_memory = false;
 	}
-#endif // !OSX
 
 	// Getting reports of black screens, etc. with ARB_buffer_storage and AMD drivers. This type of thing:
 	//  http://forums.steampowered.com/forums/showthread.php?t=3266806
@@ -470,20 +465,11 @@ COpenGLEntryPoints::COpenGLEntryPoints()
 		Error( "This application requires either the GL_EXT_texture_compression_s3tc, or the GL_EXT_texture_compression_dxt1 + GL_ANGLE_texture_compression_dxt3 + GL_ANGLE_texture_compression_dxt5 OpenGL extensions. Please install S3TC texture support.\n" );
 	}
 
-#ifdef OSX
-	if ( CommandLine()->FindParm( "-glmnosrgbdecode" ) )
-	{
-		Msg( "Forcing m_bHave_GL_EXT_texture_sRGB_decode off.\n" );
-		m_bHave_GL_EXT_texture_sRGB_decode = false;
-	}
-#endif
 
-#ifndef OSX
 	if ( !m_bHave_GL_EXT_texture_sRGB_decode )
  	{
  		Error( "Required OpenGL extension \"GL_EXT_texture_sRGB_decode\" is not supported. Please update your OpenGL driver.\n" );
  	}
-#endif
 }
 
 COpenGLEntryPoints::~COpenGLEntryPoints()

@@ -401,13 +401,8 @@ VideoResult_t CBinkMaterial::SoundDeviceCommand( VideoSoundDeviceOperation_t ope
 		}
 		case VideoSoundDeviceOperation::SET_SOUND_MANAGER_DEVICE:
 		{
-#if defined ( OSX )
-			SAFE_RELEASE_AUDIOCONTEXT( m_AudioContext );
-			return ( CreateMovieAudioContext( m_bHasAudio, m_QTMovie, &m_AudioContext ) ? SetResult( VideoResult::SUCCESS ) : SetResult( VideoResult::AUDIO_ERROR_OCCURED ) );
-#else
 			// On any other OS, we don't support this operation
 			return SetResult( VideoResult::OPERATION_NOT_SUPPORTED );
-#endif
 		}
 		case VideoSoundDeviceOperation::SET_LIB_AUDIO_DEVICE:
 		case VideoSoundDeviceOperation::HOOK_X_AUDIO:
@@ -949,8 +944,6 @@ void CBinkMaterial::OpenMovie( const char *theMovieFileName )
 	// Set graphics port 
 #if defined ( WIN32 )
 	SetGWorld ( (CGrafPtr) GetNativeWindowPort( nil ), nil ); 
-#elif defined ( OSX		)
-	SetGWorld( nil, nil );
 #endif
 */
 

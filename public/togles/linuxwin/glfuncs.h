@@ -184,7 +184,6 @@ GL_EXT(GL_EXT_direct_state_access,-1,-1)
 GL_FUNC_VOID(GL_EXT_direct_state_access,false,glBindMultiTextureEXT,(GLenum a,GLuint b, GLuint c),(a,b,c))
 GL_EXT(GL_NV_bindless_texture,-1,-1)
 
-#ifndef OSX
 GL_FUNC_VOID(OpenGL, true, glGenSamplers, (GLuint a, GLuint *b), (a, b))
 GL_FUNC_VOID(OpenGL, true, glDeleteSamplers, (GLsizei a, const GLuint *b), (a, b))
 GL_FUNC_VOID(OpenGL, true, glBindSampler, (GLuint a, GLuint b), (a, b))
@@ -203,15 +202,12 @@ GL_FUNC_VOID(OpenGL,true,glDeleteQueries,(GLsizei n, const GLuint *ids),(n, ids)
 GL_FUNC_VOID(OpenGL,true,glBeginQuery,(GLenum target, GLuint id), (target, id))
 GL_FUNC_VOID(OpenGL,true,glEndQuery,(GLenum target), (target))
 GL_FUNC_VOID(OpenGL,true,glCopyBufferSubData,(GLenum readtarget, GLenum writetarget, GLintptr readoffset, GLintptr writeoffset, GLsizeiptr size),(readtarget, writetarget, readoffset, writeoffset, size))
-#endif // !OSX
 
 GL_EXT(GL_AMD_pinned_memory,-1,-1)
 
-#ifndef OSX
 GL_FUNC_VOID(OpenGL,true,glGenVertexArrays,(GLsizei n, GLuint *arrays),(n, arrays))
 GL_FUNC_VOID(OpenGL,true,glDeleteVertexArrays,(GLsizei n, GLuint *arrays),(n, arrays))
 GL_FUNC_VOID(OpenGL,true,glBindVertexArray,(GLuint a),(a))
-#endif // !OSX
 
 GL_EXT(GL_QCOM_alpha_test,-1,-1)
 

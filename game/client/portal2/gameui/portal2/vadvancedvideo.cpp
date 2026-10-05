@@ -34,14 +34,17 @@ using namespace vgui;
 using namespace BaseModUI;
 
 #define VIDEO_ANTIALIAS_COMMAND_PREFIX "_antialias"
+#define VIDEO_CORE_PRESET_COMMAND_PREFIX "_corepreset"
 #define VIDEO_CORE_AO_COMMAND_PREFIX "_coreao"
 #define VIDEO_CORE_SHADOWS_COMMAND_PREFIX "_coreshadows"
 #define VIDEO_CORE_DEPTH_COMMAND_PREFIX "_coredepth"
 #define VIDEO_CORE_MOVERS_COMMAND_PREFIX "_coremovers"
 #define VIDEO_CORE_DIRECT_COMMAND_PREFIX "_coredirect"
 
-// The five RenderCoreWorldQuality settings (RFC 0016 K12). Each row's
-// choice index is the ConVar value. Runtime direct light applies at map load.
+// The five RenderCoreWorldQuality settings (RFC 0016 K12) and the lighting
+// preset over them (gameui/render_core_lighting_preset.h, which owns the
+// values). Each row's choice index is the ConVar value; every row applies
+// at the next frame.
 static const char *const s_RenderCoreQualityNames[] = {
     "#GameUI_QualityOff",
     "#GameUI_Low",
@@ -49,13 +52,42 @@ static const char *const s_RenderCoreQualityNames[] = {
     "#GameUI_High",
     "#GameUI_QualityUltra",
 };
-static const int kRenderCoreAOChoices = 5;
-static const int kRenderCoreShadowChoices = 4;
-static const int kRenderCoreToggleChoices = 2;
+using gameui::kRenderCoreAOChoices;
+using gameui::kRenderCoreShadowChoices;
+using gameui::kRenderCoreToggleChoices;
+using gameui::RenderCoreLightingRow;
+static const char *const s_RenderCorePresetNames[] = {
+    "#GameUI_Low",
+    "#GameUI_High",
+    "#GameUI_CoreLightingCustom",
+};
 static const char *const s_RenderCoreToggleNames[] = {
     "#GameUI_QualityOff",
     "#GameUI_QualityOn",
 };
+
+// The command prefix of each lighting row, in RenderCoreLightingRow order.
+static const char *RenderCoreRowPrefix( RenderCoreLightingRow row )
+{
+	static const char *const kPrefixes[] = { VIDEO_CORE_AO_COMMAND_PREFIX,
+	    VIDEO_CORE_SHADOWS_COMMAND_PREFIX, VIDEO_CORE_DEPTH_COMMAND_PREFIX,
+	    VIDEO_CORE_MOVERS_COMMAND_PREFIX, VIDEO_CORE_DIRECT_COMMAND_PREFIX };
+	return kPrefixes[int( row )];
+}
+
+// The lighting row a list command selects a choice of, or NULL.
+static const RenderCoreLightingRow *RenderCoreRowOfCommand( const char *command )
+{
+	static const RenderCoreLightingRow kRows[] = { RenderCoreLightingRow::kAmbientOcclusion,
+	    RenderCoreLightingRow::kShadows, RenderCoreLightingRow::kDepthPrepass,
+	    RenderCoreLightingRow::kShadowMovers, RenderCoreLightingRow::kRuntimeDirect };
+	for ( const RenderCoreLightingRow &row : kRows )
+	{
+		if ( StringHasPrefix( command, RenderCoreRowPrefix( row ) ) )
+			return &row;
+	}
+	return NULL;
+}
 
 // The shipped localization has none of these tokens (and its GameUI_Ultra
 // reads "Very High"), so the English text, in this dialog's title case, is
@@ -71,7 +103,9 @@ static void AddRenderCoreQualityStrings()
 	    { "GameUI_DynamicShadows", L"Dynamic Shadows" },
 	    { "GameUI_CoreDepthPrepass", L"Depth Prepass" },
 	    { "GameUI_CoreShadowMovers", L"Moving Object Shadows" },
-	    { "GameUI_CoreRuntimeDirect", L"Runtime Direct Light (Next Map)" },
+	    { "GameUI_CoreLightingPreset", L"Lighting Quality" },
+	    { "GameUI_CoreLightingCustom", L"Custom" },
+	    { "GameUI_CoreRuntimeDirect", L"Dynamic Direct Light" },
 	    { "GameUI_QualityOn", L"On" },
 	    { "GameUI_QualityOff", L"Off" },
 	    { "GameUI_QualityUltra", L"Ultra" },
@@ -88,9 +122,14 @@ static void AddRenderCoreQualityStrings()
 	    { "GameUI_CoreShadowMovers_Info",
 	        L"Moving Object Shadows enables real-time dynamic shadows cast by physics objects, "
 	        L"moving panels, and characters." },
+	    { "GameUI_CoreLightingPreset_Info",
+	        L"Lighting Quality sets the lighting rows below together. Low draws every light's "
+	        L"direct light and shadows from the map's bake, so lights stay static; High lights "
+	        L"and shadows them in real time. Editing a row shows Custom." },
 	    { "GameUI_CoreRuntimeDirect_Info",
-	        L"Runtime Direct Light enables dynamic evaluation of direct light sources in real "
-	        L"time. Changes take effect on the next map load." },
+	        L"Dynamic Direct Light shades every light's direct light in real time, so moving "
+	        L"objects block it. Off uses the map's baked direct light and shadows instead. "
+	        L"Takes effect immediately." },
 	};
 	for ( const auto &entry : kStrings )
 	{
@@ -126,6 +165,7 @@ BaseClass(parent, panelName)
 	m_drpVSync = NULL;
 	m_drpShaderDetail = NULL;
 	m_drpCPUDetail = NULL;
+	m_drpCorePreset = NULL;
 	m_drpCoreAO = NULL;
 	m_drpCoreShadows = NULL;
 	m_drpCoreDepth = NULL;
@@ -153,11 +193,6 @@ BaseClass(parent, panelName)
 	m_bTripleBuffered = false;
 	m_iGPUDetail = 0;
 	m_iCPUDetail = 0;
-	m_iCoreAO = 0;
-	m_iCoreShadows = 0;
-	m_iCoreDepth = 0;
-	m_iCoreMovers = 0;
-	m_iCoreDirect = 0;
 	m_iQueuedMode = -1;
 
 	m_lblDescriptionTitle = NULL;
@@ -186,6 +221,7 @@ void CAdvancedVideo::ApplySchemeSettings( vgui::IScheme *pScheme )
 	m_drpQueuedMode = dynamic_cast< BaseModHybridButton* >( FindChildByName( "DrpQueuedMode" ) );
 	m_drpShaderDetail = dynamic_cast< BaseModHybridButton* >( FindChildByName( "DrpShaderDetail" ) );
 	m_drpCPUDetail = dynamic_cast< BaseModHybridButton* >( FindChildByName( "DrpCPUDetail" ) );
+	m_drpCorePreset = dynamic_cast<BaseModHybridButton *>( FindChildByName( "DrpCorePreset" ) );
 	m_drpCoreAO = dynamic_cast<BaseModHybridButton *>( FindChildByName( "DrpCoreAO" ) );
 	m_drpCoreShadows = dynamic_cast<BaseModHybridButton *>( FindChildByName( "DrpCoreShadows" ) );
 	m_drpCoreDepth = dynamic_cast<BaseModHybridButton *>( FindChildByName( "DrpCoreDepth" ) );
@@ -317,13 +353,11 @@ void CAdvancedVideo::GetCurrentSettings( void )
 
 	if ( HasRenderCoreQuality() )
 	{
-		CGameUIConVarRef r_core_ao_quality( "r_core_ao_quality" );
-		CGameUIConVarRef r_core_shadow_quality( "r_core_shadow_quality" );
-		m_iCoreAO = clamp( r_core_ao_quality.GetInt(), 0, kRenderCoreAOChoices - 1 );
-		m_iCoreShadows = clamp( r_core_shadow_quality.GetInt(), 0, kRenderCoreShadowChoices - 1 );
-		m_iCoreDepth = clamp( CGameUIConVarRef( "r_core_depth_prepass" ).GetInt(), 0, 1 );
-		m_iCoreMovers = clamp( CGameUIConVarRef( "r_core_shadow_movers" ).GetInt(), 0, 1 );
-		m_iCoreDirect = clamp( CGameUIConVarRef( "r_core_runtime_direct" ).GetInt(), 0, 1 );
+		m_CoreLighting = gameui::Clamped( { CGameUIConVarRef( "r_core_ao_quality" ).GetInt(),
+		    CGameUIConVarRef( "r_core_shadow_quality" ).GetInt(),
+		    CGameUIConVarRef( "r_core_depth_prepass" ).GetInt(),
+		    CGameUIConVarRef( "r_core_shadow_movers" ).GetInt(),
+		    CGameUIConVarRef( "r_core_runtime_direct" ).GetInt() } );
 	}
 }
 
@@ -357,17 +391,12 @@ bool CAdvancedVideo::GetRecommendedSettings( void )
 	// defaults are the ConVars' defaults.
 	if ( HasRenderCoreQuality() )
 	{
-		CGameUIConVarRef r_core_ao_quality( "r_core_ao_quality" );
-		CGameUIConVarRef r_core_shadow_quality( "r_core_shadow_quality" );
-		m_iCoreAO = clamp( atoi( r_core_ao_quality.GetDefault() ), 0, kRenderCoreAOChoices - 1 );
-		m_iCoreShadows =
-		    clamp( atoi( r_core_shadow_quality.GetDefault() ), 0, kRenderCoreShadowChoices - 1 );
-		m_iCoreDepth =
-		    clamp( atoi( CGameUIConVarRef( "r_core_depth_prepass" ).GetDefault() ), 0, 1 );
-		m_iCoreMovers =
-		    clamp( atoi( CGameUIConVarRef( "r_core_shadow_movers" ).GetDefault() ), 0, 1 );
-		m_iCoreDirect =
-		    clamp( atoi( CGameUIConVarRef( "r_core_runtime_direct" ).GetDefault() ), 0, 1 );
+		m_CoreLighting =
+		    gameui::Clamped( { atoi( CGameUIConVarRef( "r_core_ao_quality" ).GetDefault() ),
+		        atoi( CGameUIConVarRef( "r_core_shadow_quality" ).GetDefault() ),
+		        atoi( CGameUIConVarRef( "r_core_depth_prepass" ).GetDefault() ),
+		        atoi( CGameUIConVarRef( "r_core_shadow_movers" ).GetDefault() ),
+		        atoi( CGameUIConVarRef( "r_core_runtime_direct" ).GetDefault() ) } );
 	}
 
 	m_bDirtyValues = true;
@@ -661,16 +690,20 @@ void CAdvancedVideo::SetModelDetailState()
 
 void CAdvancedVideo::SetRenderCoreQualityState()
 {
+	const gameui::RenderCoreLighting &lighting = m_CoreLighting;
+	if ( m_drpCorePreset )
+		m_drpCorePreset->SetCurrentSelection(
+		    s_RenderCorePresetNames[int( gameui::ClassifyPreset( lighting ) )] );
 	if ( m_drpCoreAO )
-		m_drpCoreAO->SetCurrentSelection( s_RenderCoreQualityNames[m_iCoreAO] );
+		m_drpCoreAO->SetCurrentSelection( s_RenderCoreQualityNames[lighting.ambientOcclusion] );
 	if ( m_drpCoreShadows )
-		m_drpCoreShadows->SetCurrentSelection( s_RenderCoreQualityNames[m_iCoreShadows] );
+		m_drpCoreShadows->SetCurrentSelection( s_RenderCoreQualityNames[lighting.shadows] );
 	if ( m_drpCoreDepth )
-		m_drpCoreDepth->SetCurrentSelection( s_RenderCoreToggleNames[m_iCoreDepth] );
+		m_drpCoreDepth->SetCurrentSelection( s_RenderCoreToggleNames[lighting.depthPrepass] );
 	if ( m_drpCoreMovers )
-		m_drpCoreMovers->SetCurrentSelection( s_RenderCoreToggleNames[m_iCoreMovers] );
+		m_drpCoreMovers->SetCurrentSelection( s_RenderCoreToggleNames[lighting.shadowMovers] );
 	if ( m_drpCoreDirect )
-		m_drpCoreDirect->SetCurrentSelection( s_RenderCoreToggleNames[m_iCoreDirect] );
+		m_drpCoreDirect->SetCurrentSelection( s_RenderCoreToggleNames[lighting.runtimeDirect] );
 }
 
 void CAdvancedVideo::SetPagedPoolState()
@@ -965,33 +998,20 @@ void CAdvancedVideo::OnCommand(const char *command)
 		m_iCPUDetail = 0;
 		m_bDirtyValues = true;
 	}
-	else if ( StringHasPrefix( command, VIDEO_CORE_AO_COMMAND_PREFIX ) )
+	else if ( StringHasPrefix( command, VIDEO_CORE_PRESET_COMMAND_PREFIX ) )
 	{
-		m_iCoreAO = clamp( atoi( command + V_strlen( VIDEO_CORE_AO_COMMAND_PREFIX ) ), 0,
-		    kRenderCoreAOChoices - 1 );
+		// Low and High set every lighting row; the rows show the result.
+		m_CoreLighting = gameui::WithPreset(
+		    m_CoreLighting, atoi( command + V_strlen( VIDEO_CORE_PRESET_COMMAND_PREFIX ) ) );
+		SetRenderCoreQualityState();
 		m_bDirtyValues = true;
 	}
-	else if ( StringHasPrefix( command, VIDEO_CORE_SHADOWS_COMMAND_PREFIX ) )
+	else if ( const RenderCoreLightingRow *pRow = RenderCoreRowOfCommand( command ) )
 	{
-		m_iCoreShadows = clamp( atoi( command + V_strlen( VIDEO_CORE_SHADOWS_COMMAND_PREFIX ) ), 0,
-		    kRenderCoreShadowChoices - 1 );
-		m_bDirtyValues = true;
-	}
-	else if ( StringHasPrefix( command, VIDEO_CORE_DEPTH_COMMAND_PREFIX ) )
-	{
-		m_iCoreDepth = clamp( atoi( command + V_strlen( VIDEO_CORE_DEPTH_COMMAND_PREFIX ) ), 0, 1 );
-		m_bDirtyValues = true;
-	}
-	else if ( StringHasPrefix( command, VIDEO_CORE_MOVERS_COMMAND_PREFIX ) )
-	{
-		m_iCoreMovers =
-		    clamp( atoi( command + V_strlen( VIDEO_CORE_MOVERS_COMMAND_PREFIX ) ), 0, 1 );
-		m_bDirtyValues = true;
-	}
-	else if ( StringHasPrefix( command, VIDEO_CORE_DIRECT_COMMAND_PREFIX ) )
-	{
-		m_iCoreDirect =
-		    clamp( atoi( command + V_strlen( VIDEO_CORE_DIRECT_COMMAND_PREFIX ) ), 0, 1 );
+		// One row's choice; the preset row then shows Low, High or Custom.
+		m_CoreLighting = gameui::WithChoice(
+		    m_CoreLighting, *pRow, atoi( command + V_strlen( RenderCoreRowPrefix( *pRow ) ) ) );
+		SetRenderCoreQualityState();
 		m_bDirtyValues = true;
 	}
 	else if ( !V_stricmp( "Cancel", command ) || !V_stricmp( "Back", command ) )
@@ -1059,13 +1079,11 @@ void CAdvancedVideo::ApplyChanges()
 
 	if ( HasRenderCoreQuality() )
 	{
-		CGameUIConVarRef r_core_ao_quality( "r_core_ao_quality" );
-		CGameUIConVarRef r_core_shadow_quality( "r_core_shadow_quality" );
-		r_core_ao_quality.SetValue( m_iCoreAO );
-		r_core_shadow_quality.SetValue( m_iCoreShadows );
-		CGameUIConVarRef( "r_core_depth_prepass" ).SetValue( m_iCoreDepth );
-		CGameUIConVarRef( "r_core_shadow_movers" ).SetValue( m_iCoreMovers );
-		CGameUIConVarRef( "r_core_runtime_direct" ).SetValue( m_iCoreDirect );
+		CGameUIConVarRef( "r_core_ao_quality" ).SetValue( m_CoreLighting.ambientOcclusion );
+		CGameUIConVarRef( "r_core_shadow_quality" ).SetValue( m_CoreLighting.shadows );
+		CGameUIConVarRef( "r_core_depth_prepass" ).SetValue( m_CoreLighting.depthPrepass );
+		CGameUIConVarRef( "r_core_shadow_movers" ).SetValue( m_CoreLighting.shadowMovers );
+		CGameUIConVarRef( "r_core_runtime_direct" ).SetValue( m_CoreLighting.runtimeDirect );
 	}
 
 	// apply changes
@@ -1170,6 +1188,11 @@ void CAdvancedVideo::UpdateDescription( Panel *pControl )
 		pTitle = "#L4D360UI_VideoOptions_Paged_Pool_Mem";
 		pDesc = "#L4D360UI_VideoOptions_Paged_Pool_Mem_Info";
 	}
+	else if ( !V_stricmp( pName, "DrpCorePreset" ) )
+	{
+		pTitle = "#GameUI_CoreLightingPreset";
+		pDesc = "#GameUI_CoreLightingPreset_Info";
+	}
 	else if ( !V_stricmp( pName, "DrpCoreAO" ) )
 	{
 		pTitle = "#GameUI_AmbientOcclusion";
@@ -1242,9 +1265,11 @@ static KeyValues *AddRenderCoreQualityRow( KeyValues *pResourceData, KeyValues *
 		pOldList->deleteThis();
 	}
 	KeyValues *pList = pRow->FindKey( "list", true );
+	const bool bPreset = !V_strcmp( pCommandPrefix, VIDEO_CORE_PRESET_COMMAND_PREFIX );
 	for ( int i = 0; i < nChoices; ++i )
-		pList->SetString( nChoices == kRenderCoreToggleChoices ? s_RenderCoreToggleNames[i]
-		                                                       : s_RenderCoreQualityNames[i],
+		pList->SetString( bPreset                                ? s_RenderCorePresetNames[i]
+		                  : nChoices == kRenderCoreToggleChoices ? s_RenderCoreToggleNames[i]
+		                                                         : s_RenderCoreQualityNames[i],
 		    CFmtStr( "%s%d", pCommandPrefix, i ) );
 	pResourceData->AddSubKey( pRow );
 	return pRow;
@@ -1297,7 +1322,11 @@ void CAdvancedVideo::PreApplyControlSettings( KeyValues *pResourceData )
 	int nPitch = pAboveLast ? pLast->GetInt( "ypos" ) - pAboveLast->GetInt( "ypos" ) : 0;
 	if ( nPitch <= 0 )
 		nPitch = 25;
-	const int nAOY = pLast->GetInt( "ypos" ) + nPitch;
+	const int nPresetY = pLast->GetInt( "ypos" ) + nPitch;
+	KeyValues *pPreset = AddRenderCoreQualityRow( pResourceData, pTemplate, "DrpCorePreset",
+	    "#GameUI_CoreLightingPreset", VIDEO_CORE_PRESET_COMMAND_PREFIX,
+	    gameui::kRenderCoreLightingPresetChoices, nPresetY );
+	const int nAOY = nPresetY + nPitch;
 	KeyValues *pAO = AddRenderCoreQualityRow( pResourceData, pTemplate, "DrpCoreAO",
 	    "#GameUI_AmbientOcclusion", VIDEO_CORE_AO_COMMAND_PREFIX, kRenderCoreAOChoices, nAOY );
 	KeyValues *pShadows = AddRenderCoreQualityRow( pResourceData, pTemplate, "DrpCoreShadows",
@@ -1325,8 +1354,10 @@ void CAdvancedVideo::PreApplyControlSettings( KeyValues *pResourceData )
 	pShadows->SetString( "navDown", "DrpCoreDepth" );
 	pShadows->SetString( "navUp", "DrpCoreAO" );
 	pAO->SetString( "navDown", "DrpCoreShadows" );
-	pAO->SetString( "navUp", pLast->GetName() );
-	pLast->SetString( "navDown", "DrpCoreAO" );
+	pAO->SetString( "navUp", "DrpCorePreset" );
+	pPreset->SetString( "navDown", "DrpCoreAO" );
+	pPreset->SetString( "navUp", pLast->GetName() );
+	pLast->SetString( "navDown", "DrpCorePreset" );
 
 	// The frame's size is in dialog tiles (Dialog.TileHeight, the same
 	// proportional units as the rows).
@@ -1361,8 +1392,10 @@ bool CAdvancedVideo::DescribeRenderCoreQuality( char *pOut, int nOutSize )
 	    wszShadows ? wszShadows : L"?", szShadowsText, sizeof( szShadowsText ) );
 	V_snprintf( pOut, nOutSize,
 	    "ambient occlusion \"%s\" (%s), dynamic shadows \"%s\" (%s), "
-	    "depth prepass %d, moving shadows %d, runtime direct %d",
-	    szAOText, szAO, szShadowsText, szShadows, m_iCoreDepth, m_iCoreMovers, m_iCoreDirect );
+	    "depth prepass %d, moving shadows %d, runtime direct %d, preset %d",
+	    szAOText, szAO, szShadowsText, szShadows, m_CoreLighting.depthPrepass,
+	    m_CoreLighting.shadowMovers, m_CoreLighting.runtimeDirect,
+	    int( gameui::ClassifyPreset( m_CoreLighting ) ) );
 	return true;
 }
 

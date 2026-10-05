@@ -14,12 +14,12 @@
     "window_provider": "sdl3",
     "render_provider": "native-vulkan",
     "vulkan_implementation": "MoltenVK (Vulkan portability subset over Metal), statically linked",
-    "physics_provider": "vphysics_box3d (Box3D) by default, as on iOS (user decision 2026-09-26; launcher_main/ios_main.cpp); vphysics (IVP) is linked too",
+    "physics_provider": "vphysics_box3d (Box3D) by default, as on iOS (user decision 2026-09-26; launcher_main/apple_main.cpp); vphysics (IVP) is linked too",
     "input": "Game controllers through SDL3's gamepad API. The Siri Remote is not a gamepad (SDL_HINT_TV_REMOTE_AS_JOYSTICK=0), so it cannot take the engine's single active gamepad slot; remote-driven menus are out of scope (user direction, 2026-09-26).",
     "support_scope": "Product scope added by the user (2026-09-25). tvOS is not one of the four AGENTS.md north-star targets; R29 neither requires nor is closed by it. An unsigned app builds on Linux; no device, simulator or install evidence yet.",
     "packaging": ".app assembled on Linux by build-tvos-app.sh (build-ios-app.sh with this profile); codesign, provisioning and install on the Mac, as for iOS. Licensed Portal content is copied into the app's Library/Caches separately.",
     "deployment_target_reason": "17.0 matches the iOS profile; the SDK accepts 12.0 and later, and MoltenVK's tvOS slice is built for minos 15.0. Revisit before a store build.",
-    "render_defaults": "User direction (2026-09-26): 1080p scaled to 4K by the system (-nohighdpi), no MSAA, no bloom ('bloom looks dated anyways'), sound at volume 1, and the Video Advanced values raised from Low as far as the 60 fps budget allows: high textures and models, 16x anisotropic filtering, medium shadows; shader detail low, no color correction, low water. launcher_main/ios_main.cpp writes them to <game>/cfg/tvos_defaults.cfg and execs it after config.cfg. Budget: quality/budgets/render-v1.json row tvos-portal-frame-pacing-60."
+    "render_defaults": "User direction (2026-09-26): 1080p scaled to 4K by the system (-nohighdpi), no MSAA, no bloom ('bloom looks dated anyways'), sound at volume 1, and the Video Advanced values raised from Low as far as the 60 fps budget allows: high textures and models, 16x anisotropic filtering, medium shadows; shader detail low, no color correction, low water. launcher_main/apple_app_uikit.cpp writes them to <game>/cfg/tvos_defaults.cfg and execs it after config.cfg. Budget: quality/budgets/render-v1.json row tvos-portal-frame-pacing-60."
   },
   "tvos": {
     "bundle_id": "com.panos.sourceengine",
@@ -116,7 +116,7 @@
     "build_games": "portal"
   },
   "content": {
-    "location": "the app's data container, Library/Caches (launcher_main/ios_main.cpp under PLATFORM_TVOS), copied from the Mac",
+    "location": "the app's data container, Library/Caches (launcher_main/apple_app_uikit.cpp under PLATFORM_TVOS), copied from the Mac",
     "container_directory": "Library/Caches",
     "directories": [
       "platform",

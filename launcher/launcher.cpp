@@ -265,7 +265,7 @@ bool GetExecutableName( char *out, int outSize )
 //-----------------------------------------------------------------------------
 char *GetBaseDirectory( void )
 {
-#if defined( ANDROID ) || defined( PLATFORM_IOS )
+#if defined( ANDROID ) || defined( OSX )
 	return getenv("VALVE_GAME_PATH");
 #else
 	return g_szBasedir;
@@ -652,15 +652,10 @@ static bool BindAudioMediaProviders( IEngineAPI *engine )
 	media.voiceBindings = voice;
 	media.voiceBindingCount = ARRAYSIZE( voice );
 #endif
-#ifdef AUDIO_RECORD_AUDIOQUEUE
-	media.recording = VoiceRecord_AudioQueueProvider();
-	media.recordingFallback = VoiceRecord_OpenALProvider();
-#elif defined( AUDIO_RECORD_DIRECTSOUND )
+#if defined( AUDIO_RECORD_DIRECTSOUND )
 	media.recording = VoiceRecord_DirectSoundProvider();
 #elif defined( AUDIO_RECORD_SDL )
 	media.recording = VoiceRecord_SDLProvider();
-#elif defined( AUDIO_RECORD_OPENAL )
-	media.recording = VoiceRecord_OpenALProvider();
 #endif
 	return Engine_BindAudioMediaProviders( engine, &media );
 }
@@ -673,12 +668,6 @@ static bool BindAudioProviders( IEngineAPI *engine )
 #ifdef AUDIO_PROVIDER_SDL
 	    Audio_SDLProvider(),
 #endif
-#ifdef AUDIO_PROVIDER_AUDIOQUEUE
-	    Audio_AudioQueueProvider(),
-#endif
-#ifdef AUDIO_PROVIDER_OPENAL
-	    Audio_OpenALProvider(),
-#endif
 #ifdef AUDIO_PROVIDER_DIRECTSOUND
 	    Audio_DirectSoundProvider(),
 #endif
@@ -689,14 +678,6 @@ static bool BindAudioProviders( IEngineAPI *engine )
 	audio::DeviceSelection selection;
 	selection.primary = catalog[0];
 	selection.nullProvider = Audio_NullProvider();
-#ifdef AUDIO_PROVIDER_AUDIOQUEUE
-	selection.fallback = Audio_OpenALProvider();
-	if ( CommandLine()->FindParm( "-snd_openal" ) )
-	{
-		selection.primary = Audio_OpenALProvider();
-		selection.fallback = NULL;
-	}
-#endif
 #ifdef AUDIO_PROVIDER_DIRECTSOUND
 	selection.fallback = Audio_WaveProvider();
 	selection.waveOnly = Audio_WaveProvider();
@@ -1213,15 +1194,14 @@ bool GrabSourceMutex()
 	}
 #elif defined(POSIX)
 
-	// Under OSX use flock in /tmp/source_engine_<game>.lock, create the file if it doesn't exist
 	const char *pchGameParam = CommandLine()->ParmValue( "-game", DEFAULT_HL2_GAMEDIR );
 	CRC32_t gameCRC;
 	CRC32_Init(&gameCRC);
 	CRC32_ProcessBuffer( &gameCRC, (void *)pchGameParam, Q_strlen( pchGameParam ) );
 	CRC32_Final( &gameCRC );
 
-#if defined( ANDROID ) || defined( PLATFORM_IOS )
-	// The system runs one instance of an app; an iOS app also cannot lock
+#if defined( ANDROID ) || defined( OSX )
+	// The system runs one instance of an app; an Apple app also cannot lock
 	// files in /tmp, which is outside its sandbox.
 	return true;
 #elif defined (LINUX) || defined(PLATFORM_BSD)
@@ -1259,30 +1239,7 @@ bool GrabSourceMutex()
 	}
 
 	return true;
-#else
-	/*
-	 * OSX
- 	 */
-	V_snprintf( g_lockFilename, sizeof(g_lockFilename), "/tmp/source_engine_%u.lock", gameCRC );
-
-	g_lockfd = open( g_lockFilename, O_CREAT | O_WRONLY | O_EXLOCK | O_NONBLOCK | O_TRUNC, 0777 );
-	if (g_lockfd >= 0)
-	{
-		// make sure we give full perms to the file, we only one instance per machine
-		fchmod( g_lockfd, 0777 );
-
-		// we leave the file open, under unix rules when we die we'll automatically close and remove the locks
-		return true;
-	}   		 
-
-	// We were unable to open the file, it should be because we are unable to retain a lock
-	if ( errno != EWOULDBLOCK)
-	{
-		fprintf( stderr, "unexpected error %d trying to exclusively lock %s\n", errno, g_lockFilename );
-	}
-
-	return false;
-#endif // OSX
+#endif
 
 #endif // POSIX
 	return true;
@@ -1779,10 +1736,10 @@ DLL_EXPORT int LauncherMain( int argc, char **argv )
 		RegCloseKey(hKey);
 	}
 
-#elif defined( PLATFORM_IOS )
-	// No relaunch URL on iOS: nothing writes the desktop relaunch file, and an
-	// app cannot run a shell command.
-#elif defined( OSX ) || defined( LINUX ) || defined(PLATFORM_BSD)
+#elif defined( OSX )
+	// No relaunch URL in Apple apps: nothing writes the desktop relaunch file,
+	// and an app does not run shell commands.
+#elif defined( LINUX ) || defined(PLATFORM_BSD)
 	struct stat st;
 	if ( stat( RELAUNCH_FILE, &st ) == 0 ) 
 	{

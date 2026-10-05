@@ -274,12 +274,12 @@ def run_test(self, fragment, msg):
 
 def resolve_render_backend(conf):
 	# Native Vulkan is the default client renderer (user decision, 2026-09-26)
-	# where the SDL3/Vulkan profiles build: 64-bit Linux, Android and iOS/tvOS
-	# clients. Server, test and tool products, 32-bit and GLES builds, other
+	# where the SDL3/Vulkan profiles build: 64-bit Linux, Android and Apple
+	# (macOS, iOS, tvOS) clients. Server, test and tool products, 32-bit and GLES builds, other
 	# OSes, and an explicit --platform-provider=sdl2 keep the legacy renderer.
 	if conf.options.RENDER_BACKEND == 'auto':
 		client = not (conf.options.DEDICATED or conf.options.TESTS or conf.options.TOOLS)
-		native = (client and conf.env.DEST_OS in ('linux', 'android', 'ios')
+		native = (client and conf.env.DEST_OS in ('linux', 'android', 'darwin', 'ios')
 			and not conf.options.TARGET32 and not conf.options.TOGLES
 			and conf.options.PLATFORM_PROVIDER != 'sdl2')
 		conf.options.RENDER_BACKEND = 'native-vulkan' if native else 'legacy'
@@ -287,28 +287,35 @@ def resolve_render_backend(conf):
 
 def resolve_platform_provider(conf):
 	# SDL3 is the window/input provider wherever the product can use it: every
-	# Vulkan client, and the iOS/tvOS client. SDL2 remains only for the
+	# Vulkan client, and every Apple client. SDL2 remains only for the
 	# legacy-renderer products and compatibility profiles (AGENTS.md, R14/R18).
 	# The resolved name replaces 'auto' so product-profile checks see the
 	# provider actually linked; stored options keep 'auto' and resolve again.
 	if conf.options.PLATFORM_PROVIDER == 'auto':
 		vulkan = conf.options.RENDER_BACKEND in ('vulkan', 'native-vulkan')
-		conf.options.PLATFORM_PROVIDER = 'sdl3' if vulkan or conf.env.DEST_OS == 'ios' else 'sdl2'
+		conf.options.PLATFORM_PROVIDER = 'sdl3' if vulkan or conf.env.APPLE else 'sdl2'
 	conf.msg('Window/input provider', conf.options.PLATFORM_PROVIDER)
 
 def define_platform(conf):
+	# macOS (darwin), iOS and tvOS (ios) are one Apple family: statically
+	# composed SDL3 apps on native Vulkan over MoltenVK. The legacy macOS
+	# build (Carbon, AppKit, CGL/ToGL, OpenAL) was removed.
+	conf.env.APPLE = conf.env.DEST_OS in ('darwin', 'ios')
+	if conf.env.APPLE and (conf.options.DEDICATED or conf.options.TESTS or conf.options.TOOLS):
+		conf.fatal('Apple targets build only the SDL3/native Vulkan client app')
 	resolve_render_backend(conf)
 	resolve_platform_provider(conf)
 	conf.env.SDL3 = conf.options.PLATFORM_PROVIDER == 'sdl3'
 	conf.env.DXVK = conf.options.RENDER_BACKEND == 'vulkan'
 	conf.env.NATIVE_VULKAN = conf.options.RENDER_BACKEND == 'native-vulkan'
 	if conf.env.SDL3 or conf.env.DXVK or conf.env.NATIVE_VULKAN:
-		if conf.env.DEST_OS not in ['linux', 'android', 'ios'] or conf.options.DEDICATED or conf.options.TESTS or conf.options.TOOLS:
-			conf.fatal('The SDL3/Vulkan profiles currently target the Linux, Android and iOS clients')
+		if conf.env.DEST_OS not in ['linux', 'android', 'darwin', 'ios'] or conf.options.DEDICATED or conf.options.TESTS or conf.options.TOOLS:
+			conf.fatal('The SDL3/Vulkan profiles currently target the Linux, Android and Apple clients')
 		if conf.env.DEST_OS == 'android' and not conf.env.NATIVE_VULKAN:
 			conf.fatal('The Android client requires --render-backend=native-vulkan')
-		if conf.env.DEST_OS == 'ios' and not (conf.env.NATIVE_VULKAN and conf.env.SDL3):
-			conf.fatal('The iOS and tvOS clients require --platform-provider=sdl3 --render-backend=native-vulkan')
+	if conf.env.APPLE and not (conf.env.NATIVE_VULKAN and conf.env.SDL3):
+		conf.fatal('The Apple clients require --platform-provider=sdl3 --render-backend=native-vulkan')
+	if conf.env.SDL3 or conf.env.DXVK or conf.env.NATIVE_VULKAN:
 		if not (conf.env.SDL3 and (conf.env.DXVK or conf.env.NATIVE_VULKAN)):
 			conf.fatal('SDL3 and the Vulkan render backends require each other; '
 				'--platform-provider=sdl2 selects the legacy renderer')
@@ -404,21 +411,14 @@ def define_platform(conf):
 			'_ALLOW_MSC_VER_MISMATCH',
 			'NO_X360_XDK'
 		])
-	elif conf.env.DEST_OS == 'darwin':
+	elif conf.env.APPLE:
+		# OSX names the Apple family (Darwin: mach, sysctl, BSD qsort_r, and
+		# the app-container launch of launcher_main/apple_main.cpp).
+		# PLATFORM_MACOS and PLATFORM_IOS (the UIKit family, iOS and tvOS)
+		# tell the platforms apart where their behavior differs.
 		conf.env.append_unique('DEFINES', [
 			'OSX=1', '_OSX=1',
-			'POSIX=1', '_POSIX=1', 'PLATFORM_POSIX=1',
-			'GNUC',
-			'NO_HOOK_MALLOC',
-			'_DLL_EXT=.dylib'
-		])
-
-	elif conf.env.DEST_OS == 'ios':
-		# Apple POSIX semantics (mach, sysctl, BSD qsort_r) come with OSX;
-		# PLATFORM_IOS excludes the macOS-only APIs (AppKit, Carbon, IOKit,
-		# CoreAudio HAL, FSEvents, process spawning).
-		conf.env.append_unique('DEFINES', [
-			'OSX=1', '_OSX=1', 'PLATFORM_IOS=1',
+			'PLATFORM_MACOS=1' if conf.env.DEST_OS == 'darwin' else 'PLATFORM_IOS=1',
 			'POSIX=1', '_POSIX=1', 'PLATFORM_POSIX=1',
 			'GNUC',
 			'NO_HOOK_MALLOC',
@@ -603,33 +603,21 @@ def check_deps(conf):
 			for i in a:
 				conf.check_cc(lib = i)
 
-	if conf.env.DEST_OS == "darwin":
-		conf.check(lib='iconv', uselib_store='ICONV')
-		conf.env.FRAMEWORK_APPKIT = "AppKit"
-		conf.env.FRAMEWORK_IOKIT = "IOKit"
-		conf.env.FRAMEWORK_FOUNDATION = "Foundation"
-		conf.env.FRAMEWORK_COREFOUNDATION = "CoreFoundation"
-		conf.env.FRAMEWORK_COREGRAPHICS = "CoreGraphics"
-		conf.env.FRAMEWORK_OPENGL = "OpenGL"
-		conf.env.FRAMEWORK_CARBON = "Carbon"
-		conf.env.FRAMEWORK_APPLICATIONSERVICES = "ApplicationServices"
-		conf.env.FRAMEWORK_CORESERVICES = "CoreServices"
-		conf.env.FRAMEWORK_COREAUDIO = "CoreAudio"
-		conf.env.FRAMEWORK_AUDIOTOOLBOX = "AudioToolbox"
-		conf.env.FRAMEWORK_SYSTEMCONFIGURATION = "SystemConfiguration"
-	elif conf.env.DEST_OS == 'ios':
-		# No AppKit, Carbon, IOKit, OpenGL or ApplicationServices on iOS.
+	if conf.env.APPLE:
+		# The frameworks the engine names itself; SDL3 and MoltenVK bring
+		# their own through pkg-config (AppKit on macOS, UIKit on iOS and tvOS).
 		conf.check(lib='iconv', uselib_store='ICONV')
 		frameworks = ['Foundation', 'CoreFoundation', 'CoreGraphics', 'CoreAudio',
-			'AudioToolbox', 'SystemConfiguration', 'UIKit', 'CoreServices', 'CFNetwork',
-			'GameKit']
-		# QuartzCore: the Metal layer's dynamic range (render/bridge/sdl3-vulkan).
-		frameworks += ['QuartzCore']
-		if conf.env.APPLE_PLATFORM != 'tvos':
-			frameworks += ['CoreMotion'] # not in the tvOS SDK
-		else:
-			# tvOS's HDR display mode (AVDisplayManager, AVDisplayCriteria).
-			frameworks += ['AVFoundation', 'AVKit', 'CoreMedia']
+			'AudioToolbox', 'SystemConfiguration', 'CoreServices', 'CFNetwork', 'GameKit']
+		if conf.env.DEST_OS == 'ios':
+			# UIKit and QuartzCore: the Metal layer's dynamic range
+			# (render/bridge/sdl3-vulkan) and Game Center's presentation.
+			frameworks += ['UIKit', 'QuartzCore']
+			if conf.env.APPLE_PLATFORM != 'tvos':
+				frameworks += ['CoreMotion'] # not in the tvOS SDK
+			else:
+				# tvOS's HDR display mode (AVDisplayManager, AVDisplayCriteria).
+				frameworks += ['AVFoundation', 'AVKit', 'CoreMedia']
 		for framework in frameworks:
 			conf.env['FRAMEWORK_' + framework.upper()] = framework
 
@@ -649,8 +637,8 @@ def check_deps(conf):
 			conf.check(lib='libpng', uselib_store='PNG', define_name='HAVE_PNG')
 		return
 
-	if conf.env.DEST_OS == 'ios':
-		# As on Android: PKG_CONFIG_LIBDIR names only build-ios-app.sh's
+	if conf.env.APPLE:
+		# As on Android: PKG_CONFIG_LIBDIR names only build-apple-app.sh's
 		# cross-built prefix. No fontconfig (fonts ship with the content) and
 		# no OpenAL: audio uses SDL3. zlib is the SDK's system library.
 		conf.check_cfg(package='sdl3', uselib_store='SDL2', args=['--cflags', '--libs', '--static'])
@@ -676,10 +664,7 @@ def check_deps(conf):
 			else:
 				conf.check_pkg('freetype2', 'FT2', FT2_CHECK)
 				conf.check_pkg('fontconfig', 'FC', FC_CHECK)
-				if conf.env.DEST_OS == "darwin":
-					conf.env.FRAMEWORK_OPENAL = "OpenAL"
-				else:
-					conf.check_cfg(package='openal', uselib_store='OPENAL', args=['--cflags', '--libs'])
+				conf.check_cfg(package='openal', uselib_store='OPENAL', args=['--cflags', '--libs'])
 				conf.check_cfg(package='libjpeg', uselib_store='JPEG', args=['--cflags', '--libs'])
 				conf.check_cfg(package='libpng', uselib_store='PNG', args=['--cflags', '--libs'])
 				conf.check_cfg(package='libcurl', uselib_store='CURL', args=['--cflags', '--libs'])
@@ -751,7 +736,7 @@ def configure(conf):
 	conf.load('subproject xcompile compiler_c compiler_cxx gccdeps gitversion clang_compilation_database strip_on_install_v2 waf_unit_test enforce_pic')
 	if conf.env.DEST_OS == 'win32' and conf.env.DEST_CPU == 'amd64':
 		conf.load('masm')
-	elif conf.env.DEST_OS in ('darwin', 'ios'):
+	elif conf.env.DEST_OS in ('darwin', 'ios'): # before define_platform sets APPLE
 		conf.load('mm_hook')
 
 	conf.env.BIT32_MANDATORY = conf.options.TARGET32
@@ -826,7 +811,7 @@ def configure(conf):
 		]
 
 		flags += ['-funwind-tables', '-g']
-	elif conf.env.COMPILER_CC != 'msvc' and conf.env.DEST_OS != 'darwin' and conf.env.DEST_CPU in ['x86', 'x86_64']:
+	elif conf.env.COMPILER_CC != 'msvc' and conf.env.DEST_CPU in ['x86', 'x86_64']:
 		flags += ['-march=core2']
 
 	if conf.env.DEST_CPU in ['x86', 'x86_64']:
@@ -934,12 +919,12 @@ def configure(conf):
 		if not (conf.options.KTX_SOURCE_ROOT and conf.options.KTX_BUILD_ROOT):
 			conf.fatal('KTX reader tests require both --ktx-source-root and --ktx-build-root')
 		# The mobile products build the Android profile's pinned archive.
-		ktx_android = conf.env.DEST_OS in ('android', 'ios')
+		ktx_android = conf.env.DEST_OS == 'android' or conf.env.APPLE
 		# Clients with the native Vulkan backend, and the Linux tools product (the
 		# Hammer shell's KTX2 material previews, RFC 0008 F3).
 		ktx_tools = conf.options.TOOLS and conf.env.DEST_OS == 'linux'
-		if not ( ( conf.env.NATIVE_VULKAN and conf.env.DEST_OS in ('linux', 'android', 'ios') ) or ktx_tools ):
-			conf.fatal('KTX reader profile requires a Linux, Android or iOS native Vulkan client '
+		if not ( ( conf.env.NATIVE_VULKAN and conf.env.DEST_OS in ('linux', 'android', 'darwin', 'ios') ) or ktx_tools ):
+			conf.fatal('KTX reader profile requires a Linux, Android or Apple native Vulkan client '
 				'or the Linux tools product')
 		with open('quality/product_profiles/ktx2-linux-tools.json') as profile_file:
 			ktx_profile = json.load(profile_file)

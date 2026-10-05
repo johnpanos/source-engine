@@ -1,0 +1,146 @@
+{
+  "schema": "source-macos-product-profile/v1",
+  "id": "portal-macos-native-vulkan-v1",
+  "description": "macOS Portal client: the Apple profiles' static composition (every first-party module linked into the app), SDL3 and the native Vulkan renderer over MoltenVK. It replaces the legacy macOS build (Carbon, AppKit, CGL/ToGL, OpenAL), which was removed (user direction, 2026-10-05). Built on a Linux host with the iOS profile's pinned host toolchain; signed on a Mac.",
+  "target": {
+    "product": "portal-client",
+    "os": "macos",
+    "arch": "arm64",
+    "llvm_triple": "arm64-apple-macos13.0",
+    "deployment_target": "13.0"
+  },
+  "intent": {
+    "composition": "static: no first-party shared library or module search path, as on iOS (AGENTS.md 'Platform-compliant composition'); one Apple composition policy (agent decision under the user's direction to share the iOS path, 2026-10-05)",
+    "window_provider": "sdl3",
+    "render_provider": "native-vulkan",
+    "vulkan_implementation": "MoltenVK (Vulkan portability subset over Metal), statically linked",
+    "audio_provider": "SDL3 playback and voice recording, as on iOS and Linux; the AudioQueue and OpenAL providers were macOS-only and are removed",
+    "physics_provider": "vphysics_box3d (Box3D) by default, as on iOS (launcher_main/apple_main.cpp); vphysics (IVP) is linked too",
+    "app_root": "launcher_main/apple_main.cpp (shared with iOS and tvOS) with launcher_main/apple_app_macos.cpp: a desktop window whose mode and UI come from the player's configuration",
+    "platform_services": "none bound: the game modules keep their file record store, as on the Linux desktop. Game Center's presentation is UIKit only (platform/apple/game_center_achievements.mm).",
+    "support_scope": "North-star target (AGENTS.md macOS row, runner optional by user decision 2026-09-25). An unsigned app builds on Linux; no run, package or distribution evidence yet.",
+    "packaging": ".app assembled on Linux by build-macos-app.sh (build-apple-app.sh with this profile); codesign on the Mac. Licensed Portal content is copied into ~/Library/Application Support/<bundle id>/ separately.",
+    "deployment_target_reason": "13.0 (Ventura): every Apple-silicon Mac it targets runs it, and it is above SDL3's and MoltenVK's macOS minima (MoltenVK's slice is built for 10.15). Agent decision, 2026-10-05; revisit before a distribution build."
+  },
+  "macos": {
+    "bundle_id": "com.panos.sourceengine",
+    "bundle_id_reason": "The iOS and tvOS profiles' bundle id, so one app record can carry every Apple platform (universal purchase). Agent decision, 2026-10-05.",
+    "display_name": "Portal (Source Engine)",
+    "app_category": "public.app-category.puzzle-games",
+    "version": "0.1.0",
+    "build_number": 1,
+    "build_directory": "build-macos",
+    "system_frameworks": [
+      "Foundation",
+      "AppKit",
+      "Metal",
+      "QuartzCore",
+      "IOSurface",
+      "IOKit",
+      "CoreGraphics",
+      "CoreFoundation",
+      "CFNetwork",
+      "SystemConfiguration",
+      "CoreServices",
+      "AudioToolbox",
+      "CoreAudio",
+      "GameController",
+      "GameKit",
+      "CoreHaptics",
+      "ForceFeedback"
+    ],
+    "system_libraries": [
+      "c++",
+      "z",
+      "bz2",
+      "iconv"
+    ],
+    "app_bundle": "Portal.app",
+    "executable": "hl2_launcher",
+    "microphone_usage": "Voice chat records from the microphone.",
+    "note": "Info.plist is generated from these keys by build-apple-app.sh. AppKit, IOKit and the frameworks after it reach the link through SDL3's and MoltenVK's pkg-config files, not engine code."
+  },
+  "sdk": {
+    "name": "MacOSX.sdk",
+    "directory": "dependencies/macos/sdk/MacOSX.sdk",
+    "source": "copied from Xcode on the user's Mac (xcrun --sdk macosx --show-sdk-path); never downloaded by the build",
+    "minimum_version": "26.0",
+    "licence_note": "Apple's Xcode licence covers use of the SDK on Apple-branded computers; placing it on the Linux build host follows the user's decision for the iOS and tvOS SDKs (2026-09-25)."
+  },
+  "host_toolchain": {
+    "pin_source": "quality/product_profiles/portal-ios-native-vulkan.json",
+    "directory": "dependencies/ios/toolchain",
+    "note": "One pin for every Apple target: the iOS profile's LLVM (AArch64), ld64.lld and cctools-port ld64 target macOS with the arm64-apple-macos triple. tools/ios/build_toolchain.py builds it."
+  },
+  "dependencies": {
+    "moltenvk": {
+      "version": "v1.4.2",
+      "url": "https://github.com/KhronosGroup/MoltenVK/releases/download/v1.4.2/MoltenVK-all.tar",
+      "sha256": "562a15a29bc358446a56a4091c5f7e08f604184187c1d34f712148b61ef17276",
+      "archive_bytes": 180474368,
+      "cache_archive": "MoltenVK-all-v1.4.2.tar",
+      "extracted_directory": "moltenvk-1.4.2",
+      "static_library": "MoltenVK/MoltenVK/static/MoltenVK.xcframework/macos-arm64_x86_64/libMoltenVK.a",
+      "include_directory": "MoltenVK/MoltenVK/include",
+      "note": "The tvOS profile's all-platforms archive (the v1.4.2 release has no macOS-only archive); its macOS static slice is universal (arm64 and x86_64), and the app links its arm64 half."
+    },
+    "sdl3": {
+      "pin_source": "quality/product_profiles/portal-ios-native-vulkan.json",
+      "version": "3.4.16",
+      "note": "The iOS profile's archive and sha256; built as a static library for macOS."
+    },
+    "ktx_software": {
+      "pin_source": "quality/product_profiles/portal-android-native-vulkan.json",
+      "revision": "90967979cbb7e9401ee2401ff997f30b4b7507d6",
+      "note": "The Android profile's archive, sha256 and CMake options, as on iOS."
+    },
+    "vendored": {
+      "source": "thirdparty submodule (revision pinned by the superproject)",
+      "libraries": [
+        "freetype",
+        "libpng",
+        "libjpeg",
+        "curl (HTTP only)"
+      ],
+      "note": "Cross-built as static libraries like the iOS profile; zlib, bzip2 and iconv come from the SDK."
+    }
+  },
+  "configure_options": {
+    "static_composition": true,
+    "platform_provider": "sdl3",
+    "render_backend": "native-vulkan",
+    "build_games": "portal"
+  },
+  "content": {
+    "location": "~/Library/Application Support/<bundle id>/ (launcher_main/apple_app_macos.cpp), created at first start; copied by the player",
+    "container_directory": "Library/Application Support/com.panos.sourceengine",
+    "directories": [
+      "platform",
+      "portal",
+      "hl2"
+    ]
+  },
+  "required_checks": [
+    "build-macos-app.sh (build-apple-app.sh --profile this file): the shared pinned host toolchain, macOS dependency builds, Waf engine build",
+    "tools/quality/static_composition.py check on the macOS tree: Mach-O module isolation, no first-party dylib, every module linked",
+    "the link map holds no Carbon, OpenGL or AGL framework and no first-party dylib",
+    "startup on an Apple-silicon Mac with no first-party dylib or module search path: window, input, audio, a rendered map",
+    "window resize, fullscreen toggle, display change and app hide/unhide (surface recreation)",
+    "codesigned bundle that Gatekeeper accepts for the selected distribution channel"
+  ],
+  "evidence": {
+    "status": "unverified",
+    "known_blockers": [
+      "No run: the user's macOS VM (x86_64, VMware SVGA) has no Metal device, so MoltenVK cannot start there; a run needs an Apple-silicon Mac.",
+      "No platform achievement service on macOS (Game Center presentation is UIKit only)."
+    ],
+    "observations": []
+  },
+  "app_icon": {
+    "url": "https://assets.nintendo.com/image/upload/ar_16:9,b_auto:border,c_lpad/b_white/f_auto/q_auto/dpr_1.5/c_scale,w_1300/store/software/switch/70010000050319/122954ab00a225034fa09c8e5ba29b2f9fc0b371a8d550c34ebeecc2727522c3",
+    "sha256": "9e90c4fe45f1deac2baff67c26d4d8f47cb05ebb9817e8fc080ed999810217a4",
+    "bytes": 79959,
+    "cache_archive": "portal-keyart-1950x1097.jpg",
+    "note": "Portal key art (1950x1097 JPEG, the Nintendo eShop store image), chosen by the user (2026-09-26) for the home-screen icons. Not committed: fetched and verified by sha256 like the other pins, and made into the app's asset catalog by tools/ios/app_icons.py; build-ios-app.sh compiles it with actool on the Mac. The artwork is Valve's; it is used for the user's own device builds, not for distribution."
+  }
+}

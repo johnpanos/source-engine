@@ -10,9 +10,6 @@
 #if defined( _WIN32 )
 #include "winlite.h"
 #elif defined(OSX)
-#if !defined( PLATFORM_IOS )
-#include <Carbon/Carbon.h>
-#endif
 #include <sys/sysctl.h>
 #elif defined(PLATFORM_BSD)
 #include <sys/types.h>

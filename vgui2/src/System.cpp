@@ -768,11 +768,7 @@ double CSystem::GetTimeSinceLastUse()
 //-----------------------------------------------------------------------------
 int CSystem::GetAvailableDrives(char *buf, int bufLen)
 {
-#if defined( OSX )
-	return 0;
-#else
 	return GetLogicalDriveStrings( bufLen, buf );
-#endif
 }
 
 //-----------------------------------------------------------------------------

@@ -397,6 +397,7 @@ private:
 	// on the stage set.
 	std::atomic<bool> m_RuntimeDirect{ true };
 	std::atomic<bool> m_StageRuntimeDirect{ false };
+	std::atomic<bool> m_StageHasIndirect{ false }; // the stage carries the indirect layer
 	// A world stage view's work at its slot: the shadow plan's depth views,
 	// drawn into an atlas (none without shadowed lights), and the view and
 	// projection its screen passes (GTAO) reconstruct positions with.

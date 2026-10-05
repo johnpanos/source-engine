@@ -422,11 +422,7 @@ static HardwareShader_t CreateD3DPixelShader( DWORD *pByteCode, unsigned int nCe
 
 	HardwareShader_t shader;
 	#if defined( DX_TO_GL_ABSTRACTION ) 
-		#if defined( OSX ) 
-			HRESULT hr = Dx9Device()->CreatePixelShader( pByteCode, ( IDirect3DPixelShader ** )&shader, pShaderName, debugLabel );
-		#else
 			HRESULT hr = Dx9Device()->CreatePixelShader( pByteCode, ( IDirect3DPixelShader ** )&shader, pShaderName, debugLabel, &nCentroidMask );
-		#endif
 	#else
 		if ( IsEmulatingGL() )
 		{
@@ -3659,11 +3655,7 @@ void	CShaderManager::DoStartupShaderPreloading()
 		s_NumVertexShadersCreated = s_NumPixelShadersCreated = 0;
 
 		// try base file
-#ifdef OSX		
-		if ( !LoadShaderCache("glbaseshaders_osx.cfg") )		// factory cache
-#else
 		if ( !LoadShaderCache("glbaseshaders.cfg") )		// factory cache
-#endif
 		{
 			Warning( "Could not find base GL shader cache file\n" );
 		}

@@ -23,10 +23,6 @@
 
 #if defined( WIN32 )
 	#include <windows.h>
-#elif defined( OSX )
-#if !defined( PLATFORM_IOS )
-#include <Carbon/Carbon.h>
-#endif
 #endif
 
 #if defined( USE_SDL )
@@ -44,9 +40,6 @@ ILauncherMgr *g_pLauncherMgr = NULL;
 DLL_EXPORT const VideoProviderCatalog *VideoServices_GetBuiltProviders()
 {
 	static const VideoProviderDescriptor providers[] = {
-#if defined( LINK_VIDEO_QUICKTIME )
-	    { "quicktime", VideoSystem::QUICKTIME, VideoQuickTime_Create, false },
-#endif
 #if defined( LINK_VIDEO_BINK )
 	    { "bink", VideoSystem::BINK, VideoBink_Create, false },
 #endif
@@ -1308,13 +1301,7 @@ bool CVideoCommonServices::ProcessFullScreenInput( bool &bAbortEvent, bool &bPau
 	bool bEscPressed	= ( m_bScanEsc )    ? ( s_pfnGetAsyncKeyState( VK_ESCAPE ) & 0x8000 ) != 0 : false;
 	bool bReturnPressed	= ( m_bScanReturn ) ? ( s_pfnGetAsyncKeyState( VK_RETURN ) & 0x8000 ) != 0 : false;
 	bool bSpacePressed	= ( m_bScanSpace )  ? ( s_pfnGetAsyncKeyState( VK_SPACE ) & 0x8000 ) != 0  : false;
-#elif defined( OSX ) && !defined( PLATFORM_IOS )
-	g_pLauncherMgr->PumpWindowsMessageLoop();
-	// Escape, return, or space stops or pauses the playback
-	bool bEscPressed    = ( m_bScanEsc )    ? CGEventSourceKeyState( kCGEventSourceStateCombinedSessionState, kVK_Escape ) : false;
-	bool bReturnPressed = ( m_bScanReturn ) ? CGEventSourceKeyState( kCGEventSourceStateCombinedSessionState, kVK_Return ) : false;
-	bool bSpacePressed  = ( m_bScanSpace )  ? CGEventSourceKeyState( kCGEventSourceStateCombinedSessionState, kVK_Space )  : false;
-#elif defined( LINUX ) || defined( PLATFORM_BSD ) || defined( PLATFORM_IOS )
+#elif defined( LINUX ) || defined( PLATFORM_BSD ) || defined( OSX )
 	g_pLauncherMgr->PumpWindowsMessageLoop();
 
 	// Escape, return, or space stops or pauses the playback

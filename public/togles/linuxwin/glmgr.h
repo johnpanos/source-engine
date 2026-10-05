@@ -34,9 +34,7 @@
 #pragma once
 
 #undef HAVE_GL_ARB_SYNC
-#ifndef OSX
 #define HAVE_GL_ARB_SYNC 1
-#endif
 
 #include "glbase.h"
 #include "glentrypoints.h"
@@ -1474,9 +1472,7 @@ class GLMContext
 		GLMContext( IDirect3DDevice9 *pDevice, GLMDisplayParams *params );
 		~GLMContext();
 
-#ifndef OSX
 		FORCEINLINE GLuint FindSamplerObject( const GLMTexSamplingParams &desiredParams );
-#endif
 
 		FORCEINLINE void SetBufAndVertexAttribPointer( uint nIndex, GLuint nGLName, GLuint stride, GLuint datatype, GLboolean normalized, GLuint nCompCount, const void *pBuf, uint nRevision )
 		{
@@ -1706,9 +1702,6 @@ class GLMContext
 		CGLMProgram						*m_preload3DTexFragmentProgram;
 		CGLMProgram						*m_preloadCubeTexFragmentProgram;
 
-#if defined( OSX ) && defined( GLMDEBUG )
-		CGLMProgram						*m_boundProgram[ kGLMNumProgramTypes ];
-#endif
 
 		CGLMShaderPairCache				*m_pairCache;				// GLSL only
 		CGLMShaderPair					*m_pBoundPair;				// GLSL only

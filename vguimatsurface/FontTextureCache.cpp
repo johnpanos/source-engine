@@ -8,11 +8,7 @@
 #if defined( WIN32 )
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
-#elif defined( OSX )
-#if !defined( PLATFORM_IOS )
-#include <Carbon/Carbon.h>
-#endif
-#elif defined( LINUX ) || defined(PLATFORM_BSD)
+#elif defined( OSX ) || defined( LINUX ) || defined(PLATFORM_BSD)
 //#error
 #else
 #error

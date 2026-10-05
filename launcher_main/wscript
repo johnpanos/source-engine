@@ -12,7 +12,7 @@ def options(opt):
 	return
 
 def configure(conf):
-	# The Android application root names the game it launches (-game).
+	# The Android and Apple application roots name the game they launch (-game).
 	conf.env.GAMES = conf.options.GAMES
 
 def build(bld):
@@ -27,7 +27,7 @@ def build(bld):
 	if bld.env.ANDROID_SDL3:
 		# SDLActivity's native entry: libmain.so exporting SDL_main.
 		bld.shlib(
-			source   = ['android_main.cpp', 'mobile_app_root.cpp'],
+			source   = ['android_main.cpp', 'app_root.cpp'],
 			target   = 'main',
 			name     = PROJECT_NAME,
 			features = 'c cxx',
@@ -40,21 +40,28 @@ def build(bld):
 		return
 	if bld.env.DEST_OS == 'android':
 		return
-	if bld.env.DEST_OS == 'ios':
-		# The app executable: SDL3 owns main() (SDL_main.h) and starts UIKit;
-		# the root links and binds every module (static_composition.cpp).
+	if bld.env.APPLE:
+		# The app executable for macOS, iOS and tvOS: SDL3 owns main()
+		# (SDL_main.h) and starts AppKit or UIKit; apple_main.cpp is the shared
+		# launch sequence and apple_app_<platform>.cpp the platform's half. The
+		# root links and binds every module (static_composition.cpp).
+		source = ['apple_main.cpp', 'apple_thermal.mm', 'app_root.cpp', 'static_composition.cpp']
+		libs = ['launcher', 'client', 'server', 'GameUI', 'scenefilecache',
+			'soundemittersystem', 'tier0', 'SDL3', 'FOUNDATION', 'COREFOUNDATION'] + game_libs
+		if bld.env.DEST_OS == 'ios':
+			# Game Center achievements and the tvOS user-defaults record store.
+			source += ['apple_app_uikit.cpp']
+			libs += ['platform_apple', 'platform_achievements', 'platform_records', 'GAMEKIT']
+		else:
+			source += ['apple_app_macos.cpp']
 		bld(
-			source   = ['ios_main.cpp', 'apple_thermal.mm', 'mobile_app_root.cpp',
-				'static_composition.cpp'],
+			source   = source,
 			target   = PROJECT_NAME,
 			name     = PROJECT_NAME,
 			features = 'c cxx cxxprogram',
 			includes = ['../public', '../public/tier0', '../public/tier1'],
-			defines  = ['IOS_DEFAULT_GAME="%s"' % bld.env.GAMES] + game_defines,
-			use      = ['launcher', 'client', 'server', 'GameUI', 'scenefilecache',
-				'soundemittersystem', 'tier0', 'SDL3', 'FOUNDATION',
-				'platform_apple', 'platform_achievements', 'platform_records',
-				'GAMEKIT'] + game_libs,
+			defines  = ['APPLE_DEFAULT_GAME="%s"' % bld.env.GAMES] + game_defines,
+			use      = libs,
 			install_path = bld.env.BINDIR,
 			idx      = bld.get_taskgen_count()
 		)

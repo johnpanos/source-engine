@@ -31,7 +31,7 @@ def check_32bit(ctx, *k, **kw):
 	return ctx.check_cc( fragment='int main(void){int check[sizeof(void*)==4?1:-1];return 0;}', *k, **kw)
 
 def configure(conf):
-	flags = ['-m32'] if not conf.env.DEST_OS == 'darwin' else ['-arch', 'i386']
+	flags = ['-m32']
 	
 	if conf.check_32bit():
 		conf.env.DEST_SIZEOF_VOID_P = 4

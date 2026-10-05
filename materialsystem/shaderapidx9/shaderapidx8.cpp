@@ -108,10 +108,6 @@ mat_fullbright 1 doesn't work properly on alpha materials in testroom_standards
 // the surface, not the texture it came from).
 static ShaderAPITextureHandle_t s_hFixtureColorTarget = SHADER_RENDERTARGET_BACKBUFFER;
 
-#if defined( OSX )
-	typedef unsigned int DWORD;
-	typedef DWORD* LPDWORD;
-#endif
 
 #ifdef _WIN32
 #pragma warning (disable:4189)
@@ -6382,7 +6378,7 @@ void CShaderAPIDx8::SetTextureState( Sampler_t sampler, ShaderAPITextureHandle_t
 
 	// For now do this the old way on OSX since the dxabstract layer doesn't support SetSamplerStates
 	// ###OSX### punting on OSX for now
-#if DX_TO_GL_ABSTRACTION && !OSX
+#if DX_TO_GL_ABSTRACTION
 	if ( ( samplerState.m_MinFilter != minFilter ) || ( samplerState.m_MagFilter != magFilter ) || ( samplerState.m_MipFilter != mipFilter ) ||
 		( samplerState.m_UTexWrap != uTexWrap ) || ( samplerState.m_VTexWrap != vTexWrap ) || ( samplerState.m_WTexWrap != wTexWrap ) || 
 		( samplerState.m_FinestMipmapLevel != finestMipmapLevel ) || ( samplerState.m_LodBias != lodBias ) )
@@ -10143,7 +10139,7 @@ void CShaderAPIDx8::SetVertexShaderStateSkinningMatrices()
 	SetVertexShaderConstant( VERTEX_SHADER_MODEL, m_boneMatrix[0].Base(), matricesLoaded * 3, true );
 
 	// ###OSX### punting on OSX for now		
-#if defined( DX_TO_GL_ABSTRACTION ) && !defined( OSX )
+#if defined( DX_TO_GL_ABSTRACTION )
 	Dx9Device()->SetMaxUsedVertexShaderConstantsHint( VERTEX_SHADER_MODEL + ( matricesLoaded * 3 ) );
 #endif
 
@@ -10308,7 +10304,7 @@ void CShaderAPIDx8::SetSkinningMatrices()
 	if ( m_DynamicState.m_NumBones == 0 )
 	{
 		// ###OSX### punting on OSX for now
-#if defined( DX_TO_GL_ABSTRACTION ) && !defined( OSX)
+#if defined( DX_TO_GL_ABSTRACTION )
 		Dx9Device()->SetMaxUsedVertexShaderConstantsHint( VERTEX_SHADER_BONE_TRANSFORM( 0 ) + 3 );
 #endif
 		return;
@@ -10322,7 +10318,7 @@ void CShaderAPIDx8::SetSkinningMatrices()
 	}
 	else if ( IsPC() )
 	{
-#if defined( DX_TO_GL_ABSTRACTION ) && !defined( OSX)
+#if defined( DX_TO_GL_ABSTRACTION )
 		Assert( 0 );
 #else
 		SetFixedFunctionStateSkinningMatrices();
@@ -12103,11 +12099,7 @@ void CShaderAPIDx8::GetDX9LightState( LightState_t *state ) const
 		Assert( m_DynamicState.m_NumLights <= (MAX_LIGHTS-2) );	// 2.0 hardware gets two less
 	}
 
-#ifdef OSX
-	state->m_nNumLights = MIN(MAX_NUM_LIGHTS,m_DynamicState.m_NumLights);
-#else
 	state->m_nNumLights = m_DynamicState.m_NumLights;
-#endif	
 	
 	state->m_nNumLights = m_DynamicState.m_NumLights;
 	state->m_bStaticLightVertex = m_pRenderMesh->HasColorMesh();

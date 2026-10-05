@@ -125,9 +125,6 @@ CShaderDeviceMgrDx8::~CShaderDeviceMgrDx8()
 {
 }
 
-#ifdef OSX
-#include <Carbon/Carbon.h>
-#endif
 //-----------------------------------------------------------------------------
 // Connect, disconnect
 //-----------------------------------------------------------------------------
@@ -694,12 +691,7 @@ bool CShaderDeviceMgrDx8::ComputeCapsFromD3D( HardwareCaps_t *pCaps, int nAdapte
 		pCaps->m_SupportsVertexShaders_2_0 = true;
 	}
 
-#ifdef OSX
-	// Static control flow is disabled by default on OSX (the Mac version of togl has known bugs preventing this path from working properly that we've fixed in togl linux/win)
-	pCaps->m_bSupportsStaticControlFlow = CommandLine()->CheckParm( "-glslcontrolflow" ) != NULL;
-#else
 	pCaps->m_bSupportsStaticControlFlow = !CommandLine()->CheckParm( "-noglslcontrolflow" );
-#endif
 
 	// NOTE: Texture stages is a fixed-function concept
 	// NOTE: Normally, the number of texture units == the number of texture

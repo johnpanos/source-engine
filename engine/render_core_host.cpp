@@ -123,8 +123,9 @@ ConVar r_core_shadow_movers( "r_core_shadow_movers", "1", FCVAR_ARCHIVE,
     "Render core: moving objects cast shadows over the cached static shadow tiles." );
 ConVar r_core_runtime_direct( "r_core_runtime_direct", "1", FCVAR_ARCHIVE,
     "Render core: the world's lightmap is its indirect layer and every light's direct light is "
-    "drawn at runtime, shadowed, so moving objects block it (0: the bake's total layer). "
-    "Applies at the next map load." );
+    "drawn at runtime, shadowed, so moving objects block it (0: the bake's total layer, with "
+    "every light's direct light and shadows baked; the Low profile's choice). Applies at the "
+    "next frame." );
 ConVar r_core_volumetric( "r_core_volumetric", "1", FCVAR_ARCHIVE,
     "Render core: composite the map's participating media (env_volumetric_fog_volume and "
     "env_volumetric_fog_controller) over its views (0: the term is left out)." );

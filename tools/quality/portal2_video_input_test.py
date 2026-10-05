@@ -56,7 +56,8 @@ def run(output, seed_fallthrough=False):
     executable = output / "portal2_video_input_test"
     command = conformance.build_command(
         str(ROOT), os.environ.get("CONFORMANCE_CXX", "g++"), profile,
-        {"sources": [FIXTURE], "extra_flags": ["-I", str(output)]},
+        # vhybridbutton.cpp's legacy if ( ( a == b ) ), which clang rejects.
+        {"sources": [FIXTURE], "extra_flags": ["-I", str(output), "-Wno-parentheses-equality"]},
         str(executable), config="release")
     (output / "compile-command.json").write_text(json.dumps(command, indent=2) + "\n")
     compiled = subprocess.run(command, capture_output=True, text=True, timeout=60)

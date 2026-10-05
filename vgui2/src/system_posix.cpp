@@ -35,11 +35,6 @@
 #define _LARGEFILE64_SOURCE
 #include <sys/vfs.h>
 #endif
-#ifdef OSX
-#if !defined( PLATFORM_IOS )
-#include <Carbon/Carbon.h>
-#endif
-#endif
 
 #ifdef USE_SDL
 #include "SDL_clipboard.h"
@@ -144,9 +139,6 @@ private:
 	bool m_bRegistryDirty;
 	
 	char m_szRegistryPath[ MAX_PATH ];
-#if defined( OSX ) && !defined( PLATFORM_IOS )
-	PasteboardRef m_PasteBoardRef;
-#endif
 	
 };
 
@@ -172,9 +164,6 @@ CSystem::CSystem()
 	m_flRegistrySaveTime = 0.0;
 	m_bRegistryDirty = false;
 	m_pUserConfigData = NULL;
-#if defined( OSX ) && !defined( PLATFORM_IOS )
-	PasteboardCreate( kPasteboardClipboard, &m_PasteBoardRef );
-#endif
 	
 	Q_snprintf( m_szRegistryPath, sizeof(m_szRegistryPath), "%s", REGISTRY_NAME );
 	
@@ -187,9 +176,6 @@ CSystem::CSystem()
 CSystem::~CSystem()
 {
 	SaveRegistryToFile( true );
-#if defined( OSX ) && !defined( PLATFORM_IOS )
-	CFRelease( m_PasteBoardRef );
-#endif
 }
 							
 void CSystem::SaveRegistryToFile( bool bForce )
@@ -286,17 +272,13 @@ void CSystem::ShellExecute(const char *command, const char *file)
 		return;
 	}
 
-#if defined( PLATFORM_IOS )
-	// No processes on iOS or tvOS (where fork and exec are not even declared
-	// available): hand the URL or path to the system.
+#if defined( OSX )
+	// Apple apps hand the URL or path to the system (iOS and tvOS do not even
+	// declare fork and exec available).
 	if ( !SDL_OpenURL( file ) )
 		Msg( "SDL_OpenURL failed: %s\n", SDL_GetError() );
 #else
-#if defined( OSX )
-	const char *szCommand = "open";
-#else
 	const char *szCommand = "xdg-open";
-#endif
 
 	pid_t pid = fork();
 	if ( pid == 0 )
@@ -324,7 +306,7 @@ void CSystem::ShellExecute(const char *command, const char *file)
 		execlp( szCommand, szCommand, file, (char *)0 );
 		Assert( !"execlp failed" );
 	}
-#endif // PLATFORM_IOS
+#endif // OSX
 }
 
 void CSystem::ShellExecuteEx( const char *command, const char *file, const char *pParams )
@@ -335,13 +317,7 @@ void CSystem::ShellExecuteEx( const char *command, const char *file, const char 
 
 void CSystem::SetClipboardText(const char *text, int textLen)
 {
-#if defined( OSX ) && !defined( PLATFORM_IOS )
-	PasteboardSynchronize( m_PasteBoardRef );
-	PasteboardClear( m_PasteBoardRef );
-	CFDataRef theData = CFDataCreate( kCFAllocatorDefault, (const UInt8*)text, textLen );
-	PasteboardPutItemFlavor( m_PasteBoardRef, (PasteboardItemID)1, CFSTR("public.utf8-plain-text"), theData, 0 );
-	CFRelease( theData );
-#elif defined( USE_SDL )
+#if defined( USE_SDL )
 	if ( Q_strlen( text ) <= textLen )
 	{
 		const auto result = SDL_SetClipboardText( text );
@@ -391,14 +367,7 @@ void CSystem::SetClipboardText(const wchar_t *text, int textLen)
 
 	Q_UnicodeToUTF8( text, charStr, textLen*4 );
 
-#if defined( OSX ) && !defined( PLATFORM_IOS )
-	PasteboardSynchronize( m_PasteBoardRef );
-	PasteboardClear( m_PasteBoardRef );
-
-	CFDataRef theData = CFDataCreate( kCFAllocatorDefault, (const UInt8*)charStr, Q_strlen(charStr) );
-	PasteboardPutItemFlavor( m_PasteBoardRef, (PasteboardItemID)1, CFSTR("public.utf8-plain-text"), theData, 0 );
-	CFRelease( theData );
-#elif defined( USE_SDL )
+#if defined( USE_SDL )
 	SetClipboardText( charStr, Q_strlen( charStr ) );
 #endif
 
@@ -407,31 +376,7 @@ void CSystem::SetClipboardText(const wchar_t *text, int textLen)
 
 int CSystem::GetClipboardTextCount()
 {
-#if defined( OSX ) && !defined( PLATFORM_IOS )
-	ItemCount count;
-	PasteboardSynchronize( m_PasteBoardRef );
-	
-	OSStatus err = PasteboardGetItemCount( m_PasteBoardRef, &count );
-	if ( err != noErr )
-		return 0;
-	
-	if ( count <= 0 )
-		return 0;
-	
-	PasteboardItemID ItemID;
-	// always use the last item on the clipboard for any cut and paste data
-	err = PasteboardGetItemIdentifier( m_PasteBoardRef, count, &ItemID );
-	if ( err != noErr )
-		return 0;
-	CFDataRef outData;
-	err = PasteboardCopyItemFlavorData ( m_PasteBoardRef, ItemID, CFSTR ("public.utf8-plain-text"), &outData);
-	if ( err != noErr )
-		return 0;
-	
-	int copyLen = CFDataGetLength( outData );
-	CFRelease( outData );
-	return (int)copyLen + 1;
-#elif defined( USE_SDL )
+#if defined( USE_SDL )
 	int Count = 0;
 
 	if ( SDL_HasClipboardText() )
@@ -455,31 +400,7 @@ int CSystem::GetClipboardText(int offset, char *buf, int bufLen)
 {
 	Assert( !offset );
 
-#if defined( OSX ) && !defined( PLATFORM_IOS )
-	ItemCount count;
-	PasteboardSynchronize( m_PasteBoardRef );
-	
-	OSStatus err = PasteboardGetItemCount( m_PasteBoardRef, &count );
-	if ( err != noErr )
-		return 0;
-	
-	char *pchOutData;
-	PasteboardItemID ItemID;
-	// pull the last item from the clipboard
-	err = PasteboardGetItemIdentifier( m_PasteBoardRef, count, &ItemID );
-	if ( err != noErr )
-		return 0;
-	CFDataRef outData;
-	err = PasteboardCopyItemFlavorData ( m_PasteBoardRef, ItemID, CFSTR ("public.utf8-plain-text"), &outData);
-	if ( err != noErr )
-		return 0;
-	pchOutData = (char *)CFDataGetBytePtr(outData );
-	int copyLen = MIN( CFDataGetLength( outData ), bufLen ) ;
-	if ( pchOutData )
-		memcpy( buf, pchOutData, copyLen );
-	CFRelease( outData );
-	return copyLen;
-#elif defined( USE_SDL )
+#if defined( USE_SDL )
 	if( SDL_HasClipboardText() )
 	{
 		char *text = SDL_GetClipboardText();

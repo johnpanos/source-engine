@@ -73,16 +73,6 @@ jobs:
         python3 tools/archlint/archlint.py check --all --compile-deps build
         python3 tools/archlint/archlint.py targets --verify --partial build
 
-  tests-macos-amd64:
-    runs-on: macos-latest
-    timeout-minutes: 60
-
-    steps:
-    - uses: actions/checkout@v2
-    - name: Run tests macos-amd64
-      run: |
-        scripts/tests-macos-amd64.sh
-
   tests-windows-i386:
     runs-on: windows-2022
     timeout-minutes: 60

@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """Build the app's icon asset catalog from the product profile's pinned key art.
 
-    python3 tools/ios/app_icons.py --platform ios|tvos --art ART [--banner ART]
+    python3 tools/ios/app_icons.py --platform macos|ios|tvos --art ART [--banner ART]
         [--icon-fit cover|contain] --out Assets.xcassets
 
 The catalog is plain files (Contents.json and PNGs), made here on the Linux
 build host; Apple's actool compiles it to Assets.car on the Mac
-(build-ios-app.sh). The key art is 16:9 artwork with a centred wordmark.
+(build-apple-app.sh). The key art is 16:9 artwork with a centred wordmark.
 
+  macos the "AppIcon" at every size macOS lists (16 to 512 points, @1x and
+        @2x): the ios icon on Apple's macOS icon grid, a rounded square
+        824/1024 of the canvas on a clear margin (macOS does not mask icons).
   ios   one 1024x1024 "AppIcon" (actool makes every size from it): the
         artwork's centre, as wide as the square, on a blurred, darkened
         stretch of the same art that fills the rest.
@@ -26,7 +29,7 @@ from pathlib import Path
 import shutil
 import sys
 
-from PIL import Image, ImageEnhance, ImageFilter
+from PIL import Image, ImageDraw, ImageEnhance, ImageFilter
 
 
 INFO = {"author": "xcode", "version": 1}
@@ -83,6 +86,38 @@ def ios_catalog(art, out):
     square_icon(art, 1024).save(icon / "icon-1024.png")
 
 
+MAC_ICON_POINTS = (16, 32, 128, 256, 512)
+
+
+def mac_icon(art, size):
+    """square_icon on the macOS icon grid: a rounded square 824/1024 of the
+    canvas, centred on a clear margin."""
+    canvas = 1024
+    body = 824
+    radius = 185
+    icon = square_icon(art, body).convert("RGBA")
+    mask = Image.new("L", (body, body), 0)
+    ImageDraw.Draw(mask).rounded_rectangle((0, 0, body - 1, body - 1), radius, fill=255)
+    image = Image.new("RGBA", (canvas, canvas), (0, 0, 0, 0))
+    offset = (canvas - body) // 2
+    image.paste(icon, (offset, offset), mask)
+    return image.resize((size, size), Image.LANCZOS)
+
+
+def macos_catalog(art, out):
+    icon = out / "AppIcon.appiconset"
+    icon.mkdir(parents=True, exist_ok=True)
+    master = mac_icon(art, 1024)
+    images = []
+    for points in MAC_ICON_POINTS:
+        for scale in (1, 2):
+            filename = "icon-%d@%dx.png" % (points, scale)
+            master.resize((points * scale, points * scale), Image.LANCZOS).save(icon / filename)
+            images.append({"filename": filename, "idiom": "mac", "scale": "%dx" % scale,
+                           "size": "%dx%d" % (points, points)})
+    write_json(icon, {"images": images, "info": INFO})
+
+
 def imageset(path, name, width, height, render, scales, clear=False):
     images = []
     for scale in scales:
@@ -125,7 +160,7 @@ def tvos_catalog(art, out, banner=None, icon_fit="cover"):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--platform", choices=("ios", "tvos"), required=True)
+    parser.add_argument("--platform", choices=("macos", "ios", "tvos"), required=True)
     parser.add_argument("--art", type=Path, required=True, help="the pinned key art")
     parser.add_argument("--banner", type=Path, help="the pinned top-shelf art (tvos; default --art)")
     parser.add_argument("--icon-fit", choices=("cover", "contain"), default="cover",
@@ -137,7 +172,9 @@ def main(argv=None):
     if args.out.exists():
         shutil.rmtree(args.out)
     write_json(args.out, {"info": INFO})
-    if args.platform == "ios":
+    if args.platform == "macos":
+        macos_catalog(art, args.out)
+    elif args.platform == "ios":
         ios_catalog(art, args.out)
     else:
         tvos_catalog(art, args.out, banner, args.icon_fit)

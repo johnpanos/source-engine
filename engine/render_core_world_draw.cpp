@@ -86,6 +86,9 @@ namespace
 struct CoreWorldState
 {
 	bool loaded = false;
+	// The r_core_runtime_direct the direct occlusion was last built under
+	// (BuildDirectOcclusion), so a change of it rebuilds the occlusion.
+	int occlusionRuntimeDirect = -1;
 	bool viewActive = false;
 	// The map's world is its WMSH, which the core holds as a world stage
 	// (RFC 0016 K12): views name meshlets, and stageTakes says per WMSH batch
@@ -663,6 +666,8 @@ static void BuildDirectOcclusion()
 		pWorld->GetStats( &stats );
 	const bool coreLights =
 	    pWorld && state.stageWorld && r_core_world.GetBool() && stats.stageRuntimeDirect != 0;
+	static ConVarRef r_core_runtime_direct( "r_core_runtime_direct" );
+	state.occlusionRuntimeDirect = r_core_runtime_direct.GetInt();
 	if ( !coreLights || !pBrush || !pBrush->pWorldMeshBatches || !pBrush->pWorldMeshClusters )
 	{
 		IndirectLight_BuildDirectOcclusion( nullptr, 0, true );
@@ -1035,6 +1040,11 @@ void RenderCoreWorldDraw_BeginStageView()
 		return;
 	CheckFailures( pWorld );
 	state.stageView = true;
+	// r_core_runtime_direct changes between frames (the stage keeps both
+	// lightmap layers): the surfaces the core lights itself change with it.
+	static ConVarRef r_core_runtime_direct( "r_core_runtime_direct" );
+	if ( r_core_runtime_direct.GetInt() != state.occlusionRuntimeDirect )
+		BuildDirectOcclusion();
 }
 
 bool RenderCoreWorldDraw_StageView()

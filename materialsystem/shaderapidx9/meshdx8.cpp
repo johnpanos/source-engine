@@ -1150,9 +1150,6 @@ inline int CIndexBufferDx8::IndexSize() const
 //-----------------------------------------------------------------------------
 bool CIndexBufferDx8::Allocate()
 {
-#ifdef OSX
-	Debugger();
-#endif
 	Assert( !m_pIndexBuffer );
 	m_nFirstUnwrittenOffset = 0;
 

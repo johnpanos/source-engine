@@ -231,7 +231,7 @@ echo "==> Installing on $DEVICE"
 xcrun devicectl device install app --device "$DEVICE" "$APP"
 
 # tvOS apps have no persistent storage outside the bundle: the app reads its
-# content from Library/Caches there (launcher_main/ios_main.cpp), which the
+# content from Library/Caches there (launcher_main/apple_main.cpp), which the
 # system may purge; rerun with --with-content after a purge.
 CONTENT_ROOT=Documents
 [ "$PLATFORM" = tvOS ] && CONTENT_ROOT=Library/Caches
