@@ -11153,3 +11153,23 @@ shader-level profile of `surface.frag`'s world PBR point: RADV's RGP capture,
 occupancy and VGPR count, texture fetch count, and the equal-test
 early-rejection question. Measurement only: no pass or program was changed.
 Logs: `/tmp/claude-1000/vf/ff/` (`prof2`, `t2-*`, `res1024`, `noprepass`).
+
+The surface program's cost, from RADV's own statistics (`RADV_DEBUG=shaderstats`
+over a `render_lab` foggy-hall frame, the same program family the game
+draws):
+
+- The largest pixel shader (the world PBR point): 9,076 instructions (6,023
+  VALU, 831 SALU, 224 VMEM, 117 SMEM, 171 branches).
+- 192 VGPRs (146 before scheduling), 108 SGPRs, no spills; 8 subgroups per
+  SIMD.
+- Code size 48,952 bytes; the compiler's latency estimate is 63,667 cycles
+  and its inverse throughput 15,917.
+- A second variant is 144 VGPRs with almost the same code.
+
+That fits the term-insensitive, pixel-proportional ~10 ns a pixel above: the
+specialization constants leave a very large program for every world pixel.
+The direction for the optimization owner is to cut this point's instruction
+and fetch count: per-material feature specialization, fewer always-on
+fetches, the light loop's structure, and the equal-test prepass question.
+Lowering the declared terms or their quality is not a remedy under binding
+rule 7. Not changed here.
