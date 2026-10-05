@@ -494,10 +494,9 @@ struct WorldPass::State
 	{
 		BufferId vertices;
 		BufferId indices;
-		// The last recorded frame that drew or uploaded this level, and how
-		// many frames since with no use.
+		// The last recorded frame that drew or uploaded this level (0: never),
+		// and whether its buffers are on the device now.
 		std::uint64_t lastUsedFrame = 0;
-		std::uint32_t idleFrames = 0;
 		bool resident = false;
 	};
 	struct ModelGeometry
@@ -1088,7 +1087,6 @@ bool WorldPass::UploadModelLevel( State &state, device::IRenderDevice2 &device,
 	if ( !source.Drawable() )
 		return false;
 	State::ModelLevel &level = state.models.models[meshId][lod];
-	level.idleFrames = 0;
 	level.lastUsedFrame = frame;
 	if ( level.resident )
 		return true;

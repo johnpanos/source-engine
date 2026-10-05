@@ -399,9 +399,15 @@ static void LevelInitModels( IRenderCoreWorld *pWorld )
 	}
 	const int modelCount = int( state.registeredModels.size() );
 	state.posedClaims.assign( modelCount, 0 );
+	// A model the precache table never names keeps no per-frame skinning copy
+	// in the core (RFC 0016 model geometry residency), so a product boot can
+	// report how much of the set that is.
+	int staticOnly = 0;
+	for ( const bool posed : state.registeredPosed )
+		staticOnly += posed ? 0 : 1;
 	Msg( "r_core_world: %d static models, %d candidate posed models from %d scanned precache "
-	     "entries\n",
-	    staticModelCount, modelCount - staticModelCount, precached );
+	     "entries, %d static-only\n",
+	    staticModelCount, modelCount - staticModelCount, precached, staticOnly );
 	const int propCount = StaticPropMgr_CorePropCount();
 	std::vector<ModelSource> sources( modelCount );
 	std::vector<RenderCoreStaticModel> models( modelCount );

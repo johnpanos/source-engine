@@ -22,7 +22,11 @@ def build(bld):
 		features     = 'c cxx cxxprogram',
 		includes     = [ '../../public' ],
 		defines      = [],
-		use          = [ 'mapcontainer' ],
+		# mapcontainer reads the consolidated VTF container reader (RFC 0008 F3),
+		# whose implementation is this separate strict library; naming it here
+		# links it explicitly, because `vtf`'s own `use` of it does not reach a
+		# tools link line.
+		use          = [ 'mapcontainer', 'vtf_container' ],
 		install_path = bld.env.BINDIR,
 		subsystem    = bld.env.MSVC_SUBSYSTEM,
 		idx          = bld.get_taskgen_count()

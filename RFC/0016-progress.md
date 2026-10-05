@@ -10047,3 +10047,127 @@ and metadata, but no copyable texel source; `TextureCache` stages owned images
 from CPU mip bytes. The next implementation slice must provide an owned content
 snapshot at that boundary and route core-world textures through its cache.
 No render quality gate or support profile is promoted by this work.
+
+## K5/K12: per-level model geometry, residency and CPU-copy ownership (2026-10-04)
+
+Code revision: `0fd1c88c4`. The working-tree change was swept into another
+session's `jp: pbr` commit in the shared checkout while this slice was being
+recorded, so the diff this entry describes is the one that commit carries, not a
+separate commit of its own.
+
+User request: "keep model LODs as separate allocations so far-away models can
+drop their LOD0 buffers, and drop the CPU copies once a model is uploaded."
+This slice owns `render.pass.world`'s model geometry and
+`render.composition`'s publication of it, plus the host declaration that says
+which models may be posed. No frozen render path changed, no pixel changed, and
+R89/R91/R96 acceptance is unaffected.
+
+**Structure.** `WorldData::StaticMesh` is now a list of
+`WorldData::StaticMeshLod` blocks, one per Studio hardware level, each with its
+own vertex and index allocation (`MakeLevel` publishes one; `AddLevel` is the
+one rule that appends a block's surfaces and per-skin materials and keeps the
+counts, so a block's allocation, index range and surface ids cannot disagree).
+`WorldSurface::firstIndex` is its level's local index from zero, and
+`StaticMesh::LodOfSurface` is the one mapping from a surface to its level. The
+composition groups the parsed Studio meshes by level and publishes each block's
+staging as one shared allocation (`std::shared_ptr<const std::vector<...>>`),
+so the composition and the pass's immutable world snapshot hold one copy
+between them rather than a copy each.
+
+**Ownership.** Model buffers moved out of `Resources` (per target format) into
+`WorldPass::State`, because model geometry is world data, not target state: a
+target format change or a stage republication (a late probe volume re-setting
+the stage) no longer drops and re-uploads every model. `WorldData::
+modelsRevision` names the geometry revision; a republication with the same
+revision keeps the resident buffers, and revision zero means "unversioned", so
+a lab scene or test fixture never inherits another world's buffers.
+
+**Residency.** A level no view has selected for `kModelLevelIdleFrames` (120
+recorded frames) is released, and its buffers retire behind the frame's
+submitted token like any other retired buffer; a view that selects it again
+uploads it from the world's staging in that recording. Two levels are pinned
+and never released: a model's coarsest level (what every distance selects) and
+every level of a model the host may pose (`RenderCoreStaticModel::posed`, which
+defaults to true). The depth-and-normal prepass over the world's instances draws
+only levels already resident, because it passes over every instance and would
+otherwise keep every level resident forever. `WorldStats` reports the levels
+resident, their bytes and the levels released, published once per recorded frame
+after that frame's uploads.
+
+**CPU copies.** The staging a level is uploaded from is now shared, not copied.
+A model the host declares static-only gets no per-frame skinning copy at all
+(`ModelPoseSource::vertices` is per level and empty), which is the second CPU
+copy every static prop used to hold. The engine sets the declaration from the
+one thing that decides it: the client model precache table
+(`engine/render_core_world_draw.cpp`), which also fixes a static prop that is
+both a prop model and precached - it used to be deduplicated into the static
+entry and lost its posable status. The boot line reports the static-only count.
+`RenderCoreWorldStats` gained `modelLevels`, `modelStagingBytes`,
+`modelPoseSources` and `modelPoseBytes` so the CPU geometry a level set holds is
+observable from `r_core_world_stats`.
+
+**Deferred, with the reason.** The staging of a releasable level is still
+retained, because it is the only source its re-upload has, and a device change
+or a new world needs the same source: dropping it needs a host port that
+re-supplies one level's bytes and an asynchronous prefetch so the render
+sequence never reads a file. Until that port exists, zero CPU staging is
+impossible for any level that can be released or rebuilt, and this slice does
+not pretend otherwise. What it removes today is the duplicate copy per owner and
+the entire per-frame skinning copy of a static-only model.
+
+Validation and reproduction (Linux desktop, Radeon 8060S/RADV, `build-rc-modelres`):
+
+| Check | Result |
+| --- | --- |
+| `render.world.null` | 128 checks pass (113 before); new W22 group: one level is one allocation, a second level uploads its own buffers and bytes, an unused level releases them after its idle window and is uploaded again when selected, the coarsest level stays pinned, a level with no staging fails by name, teardown leaks nothing |
+| `render.composition` | 65 checks pass (58 before); new P11 group: every hardware level is published, a static-only model keeps no skinning copy, a posed one keeps it, the level geometry is one allocation either way, every level (including the blank one) is a valid selection |
+| `render.resources`, `render.opaque.null`, `render.lines.null`, `render.scene.v1`, `render.material.v2`, `render.frame.v1`, `render.shadows.atlas`, `render.skinning.reference`, `render.graph.v1`, `render.material.programs`, `render.lab.composition.selftest`, `render.debug-views.product.selftest`, `render.legacy-frame-executor` | pass |
+| `render_lab suite posed-model` (Vulkan, validation) | 108 checks pass, 0 validation messages |
+| `render_lab suite model-selection` (Vulkan, validation) | 37 checks pass (36 before) |
+| `render_lab suite selfillum`, `tree-sway`, `view-state`, `shadowed-lights`, `sprite`, `softparticle`, `clustered-lights`, `volumetric`, `ssr`, `energy-field`, `cost-overlay`, `reflection-candidates`, `shadow-receiver-perf`, `panel`, `gtao`, `bounce`, `area-lights`, `lightmap-basis`, `probe-volume`, `reflection-probes`, `map-terms`, `cutout-shadows` (Vulkan, validation) | pass |
+| `engine/render_core_world_draw.cpp` syntax-only with the Portal 2 product profile's flags | pass |
+| archlint `check --all`, `baseline --verify`, `inventory --verify`, `targets --verify --partial build-r03-tests`, 166 archlint and 38 stylelint tests | pass; the two recorded CAP002 findings (graphics_settings_service.h, world_pass.h) are present with this change stashed |
+| stylelint `--changed --diff` | my files clean; `public/content/build_graph.h` is another session's file |
+
+```sh
+python3 tools/quality/conformance.py check --suite render.world.null --suite render.composition \
+  --out quality-results/model-level-residency.json
+WAFLOCK=.lock-waf-modelres ./waf configure --tools --disable-warns -T release -o build-rc-modelres \
+  --render-core-vulkan=on --ktx-source-root=/tmp/rfc0008-ktx-pin \
+  --ktx-build-root=/tmp/rfc0008-ktx-pin/build-rfc0008
+WAFLOCK=.lock-waf-modelres ./waf build --targets=render_lab -j8
+LD_LIBRARY_PATH=build-rc-modelres/tier0 build-rc-modelres/render/lab/render_lab suite posed-model --validate
+LD_LIBRARY_PATH=build-rc-modelres/tier0 build-rc-modelres/render/lab/render_lab suite model-selection --validate
+```
+
+Pre-existing failures found while running this slice, none caused by it and none
+fixed here:
+
+- `quality/conformance.manifest.json` had drifted from the sources: eleven
+  suites that compile `render/pass/world/world_pass.cpp` omitted
+  `render/resources/mip_feedback.cpp`, and six that compile
+  `render/composition/core_world.cpp` omitted `render/composition/
+  core_temporal.cpp`, `render/pass/temporal/temporal.cpp` and
+  `render/pass/temporal/input_copy.cpp`. All seventeen failed to link at HEAD
+  (`undefined reference to MipFeedbackFrame::AddVisible`, `CoreTemporal::*`,
+  `InputCopy::*`), which includes `render.world.null` and `render.composition`.
+  This slice adds the missing sources; the repair is a manifest correction, not
+  a behaviour change.
+- `render_lab suite debug-views` and `suite lighting-controls` fail at HEAD with
+  "the canvas frame was refused at submission (device status 9)", reproduced
+  with this slice's changes stashed. The Vulkan port's recorded-command
+  validation rejects the first draw: the pipeline declares 128 bytes of draw
+  constants and the fixture writes fewer, so `DrawConstantCoverage::Ready()`
+  (D16) is false. `render/lab/debug_views_suite.cpp` was last changed by
+  `20c101df3` ("jp: pbr"), which also changed the draw-constant size the
+  fixture has to write. Not repaired here: that file belongs to that slice.
+- `render_lab suite temporal` (RFC 0019 FSR) reports "FSR device: unsupported"
+  and exits without a checks-v1 record in this tree's configuration.
+
+No performance acceptance, support profile or roadmap gate changes with this
+slice. The residency window (120 frames) is a declared constant, not a measured
+optimum; the number of levels a real map releases, and the frame cost of a
+re-upload at a level switch, are unmeasured because no product tree could be
+built in this session without overwriting another session's configure (the
+`build` tree's waf lock is stale and reconfiguring it is a shared-profile
+change). The census counters exist so that measurement is one boot away.
