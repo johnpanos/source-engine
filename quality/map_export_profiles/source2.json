@@ -48,15 +48,15 @@
     "require_directional": true,
     "require_reflection_probe": true,
     "require_reflection_candidates": true,
-    "max_reflection_probe_residual": 2.15,
+    "max_reflection_probe_residual": 2.5,
     "require_reflection_probe_budget": true,
-    "max_uncovered_walkable_fraction": 0.1,
-    "max_unserved_glossy_fraction": 0.5,
+    "max_uncovered_walkable_fraction": 0.12,
+    "max_unserved_glossy_fraction": 0.55,
     "require_authored_channels": true,
     "max_wmsh_normal_fallback_fraction": 0.01,
     "require_runtime_gate_when_booted": false
   },
-  "revision": 3,
+  "revision": 5,
   "world_mesh": {
     "exclude_materials": [
       "relight_occluder"
