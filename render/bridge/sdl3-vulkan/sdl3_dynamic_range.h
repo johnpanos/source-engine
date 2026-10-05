@@ -27,6 +27,8 @@ struct Sdl3DisplayHeadroom
 {
 	float current = 1.0f;
 	float potential = 1.0f;
+	// The system's SDR (paper) white in cd/m^2; 0 where it does not say.
+	float sdrWhiteNits = 0.0f;
 };
 
 // Whether the platform can show extended-linear output in 'window' at all

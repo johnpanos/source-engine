@@ -123,8 +123,9 @@ m_autodelete_pResourceLoadConditions( (KeyValues*) NULL )
 	CGameUIConVarRef hdrExposure( "mat_hdr_exposure" );
 	CGameUIConVarRef hdrPeak( "mat_hdr_peak_nits" );
 	current.hdr.automatic = hdrMode.IsValid() && hdrMode.GetBool();
-	current.hdr.exposure = hdrExposure.IsValid() ? hdrExposure.GetFloat() : 1.0f;
-	current.hdr.peakNits = hdrPeak.IsValid() ? hdrPeak.GetInt() : 1000;
+	current.hdr.exposure =
+	    hdrExposure.IsValid() && hdrExposure.GetFloat() >= 0.25f ? hdrExposure.GetFloat() : 0.0f;
+	current.hdr.peakNits = hdrPeak.IsValid() && hdrPeak.GetInt() >= 203 ? hdrPeak.GetInt() : 0;
 	m_GraphicsSettings.Begin( current );
 
 	GetRecommendedSettings();
@@ -1327,16 +1328,20 @@ void HdrVideo::PreApplyControlSettings( KeyValues *resource )
 		}
 		else if ( i == 1 )
 		{
+			list->SetString( "From display", "HdrExposure0" );
 			for ( int percent : { 25, 50, 75, 100, 125, 150, 200, 400 } )
 				list->SetString( CFmtStr( "%d%%", percent ), CFmtStr( "HdrExposure%d", percent ) );
 		}
 		else
 		{
+			list->SetString( "From display", "HdrPeak0" );
 			for ( int nits : { 203, 400, 600, 1000, 1600, 2000, 4000 } )
 				list->SetString( CFmtStr( "%d nits", nits ), CFmtStr( "HdrPeak%d", nits ) );
 			// Keep the measured calibration selectable even between presets.
 			const int calibrated = m_Menu.Draft().peakNits;
-			list->SetString( CFmtStr( "%d nits", calibrated ), CFmtStr( "HdrPeak%d", calibrated ) );
+			if ( calibrated > 0 )
+				list->SetString(
+				    CFmtStr( "%d nits", calibrated ), CFmtStr( "HdrPeak%d", calibrated ) );
 		}
 		resource->AddSubKey( control );
 	}
@@ -1383,8 +1388,9 @@ void HdrVideo::UpdateState()
 	const char *names[] = { "DrpHdrMode", "DrpHdrExposure", "DrpHdrPeak" };
 	const CFmtStr exposureText( "%d%%", int( m_Menu.Draft().exposure * 100.0f + 0.5f ) );
 	const CFmtStr peakText( "%d nits", m_Menu.Draft().peakNits );
-	const char *values[] = {
-	    m_Menu.Draft().automatic ? "Automatic" : "SDR", exposureText, peakText };
+	const char *values[] = { m_Menu.Draft().automatic ? "Automatic" : "SDR",
+	    m_Menu.Draft().exposure > 0.0f ? exposureText.Get() : "From display",
+	    m_Menu.Draft().peakNits > 0 ? peakText.Get() : "From display" };
 	for ( int i = 0; i < 3; ++i )
 	{
 		if ( auto *row = dynamic_cast<BaseModHybridButton *>( FindChildByName( names[i] ) ) )
@@ -1397,9 +1403,16 @@ void HdrVideo::UpdateState()
 	if ( auto *status = dynamic_cast<vgui::Label *>( FindChildByName( "LblHdrStatus" ) ) )
 	{
 		CGameUIConVarRef active( "mat_hdr_output_active" );
+		CGameUIConVarRef peak( "mat_hdr_peak_nits_active" );
+		CGameUIConVarRef exposure( "mat_hdr_exposure_active" );
+		CGameUIConVarRef reported( "mat_hdr_peak_from_display" );
 		const bool hdr = active.IsValid() && active.GetBool();
+		const CFmtStr hdrText( "HDR output active: %d nits peak%s, exposure %d%%.",
+		    peak.IsValid() ? peak.GetInt() : 0,
+		    reported.IsValid() && reported.GetBool() ? " (reported by the display)" : "",
+		    exposure.IsValid() ? int( exposure.GetFloat() * 100.0f + 0.5f ) : 100 );
 		status->SetText( !available ? "HDR rendering is unavailable in this session."
-		                 : hdr ? "HDR output active. Set peak brightness to your display's rating."
+		                 : hdr ? hdrText.Get()
 		                       : "SDR output active. HDR scene lighting is tone mapped to SDR." );
 	}
 	if ( auto *footer = CBaseModPanel::GetSingleton().GetFooterPanel() )

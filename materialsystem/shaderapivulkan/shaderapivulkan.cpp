@@ -244,10 +244,39 @@ static_assert( static_cast<int>( render::legacy::LegacyFrameStage::kComputeAndUp
 static ConVar mat_hdr_output( "mat_hdr_output", "1", FCVAR_ARCHIVE,
     "Present in the display's extended (HDR/EDR) range where it can show it" );
 
-static ConVar mat_hdr_exposure( "mat_hdr_exposure", "1", FCVAR_ARCHIVE,
-    "HDR scene exposure multiplier", true, 0.25f, true, 4.0f );
-static ConVar mat_hdr_peak_nits( "mat_hdr_peak_nits", "1000", FCVAR_ARCHIVE,
-    "Calibrated HDR display peak brightness in cd/m^2", true, 203.0f, true, 10000.0f );
+static ConVar mat_hdr_exposure( "mat_hdr_exposure", "0", FCVAR_ARCHIVE,
+    "HDR scene exposure multiplier (0.25-4); 0 takes it from the system's SDR white level", true,
+    0.0f, true, 4.0f );
+static ConVar mat_hdr_peak_nits( "mat_hdr_peak_nits", "0", FCVAR_ARCHIVE,
+    "HDR display peak brightness in cd/m^2 (203-10000); 0 takes it from the display", true, 0.0f,
+    true, 10000.0f );
+static ConVar mat_hdr_exposure_active(
+    "mat_hdr_exposure_active", "1", FCVAR_NONE, "Exposure the output pass uses" );
+static ConVar mat_hdr_peak_nits_active(
+    "mat_hdr_peak_nits_active", "1000", FCVAR_NONE, "Display peak the output pass uses" );
+static ConVar mat_hdr_peak_from_display(
+    "mat_hdr_peak_from_display", "0", FCVAR_NONE, "1 when the display reported the peak in use" );
+
+// A manual value below the range's floor means "from the display".
+static float HdrManualValue( const ConVar &var, float floor )
+{
+	return var.GetFloat() >= floor ? var.GetFloat() : 0.0f;
+}
+
+static void PublishHdrSettings()
+{
+	g_VulkanContext.SetHdrSettings(
+	    HdrManualValue( mat_hdr_exposure, 0.25f ), HdrManualValue( mat_hdr_peak_nits, 203.0f ) );
+	float exposure = 1.0f, peak = 1000.0f;
+	bool fromDisplay = false;
+	g_VulkanContext.ResolvedHdrSettings( &exposure, &peak, &fromDisplay );
+	if ( mat_hdr_exposure_active.GetFloat() != exposure )
+		mat_hdr_exposure_active.SetValue( exposure );
+	if ( mat_hdr_peak_nits_active.GetFloat() != peak )
+		mat_hdr_peak_nits_active.SetValue( peak );
+	if ( mat_hdr_peak_from_display.GetBool() != fromDisplay )
+		mat_hdr_peak_from_display.SetValue( fromDisplay ? 1 : 0 );
+}
 static ConVar mat_hdr_output_active(
     "mat_hdr_output_active", "0", FCVAR_NONE, "Current presentation: 0 SDR, 1 HDR" );
 static ConVar mat_hdr_scene_active(
@@ -258,7 +287,7 @@ static ConVar mat_hdr_output_recorded(
 static bool RunVulkanFrame( std::string *outError )
 {
 	g_VulkanContext.RequestExtendedOutput( mat_hdr_output.GetBool() );
-	g_VulkanContext.SetHdrSettings( mat_hdr_exposure.GetFloat(), mat_hdr_peak_nits.GetFloat() );
+	PublishHdrSettings();
 	mat_hdr_output_active.SetValue( g_VulkanContext.ExtendedOutput() ? 1 : 0 );
 	mat_hdr_scene_active.SetValue( g_VulkanContext.HdrScene() ? 1 : 0 );
 	if ( g_FrameExecutor && g_VulkanContext.Port() )

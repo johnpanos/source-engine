@@ -41,15 +41,25 @@ int main()
 	Backend backend;
 	HdrSettingsMenu menu( video );
 	using Action = HdrSettingsMenu::Action;
+	check( initial.hdr.exposure == 0.0f && initial.hdr.peakNits == 0,
+	    "defaults come from the display" );
 	check( menu.Command( "HdrMode0" ) == Action::Changed, "select SDR" );
 	check( video.GetState() == GraphicsSettingsService::State::Editing, "Video becomes Editing" );
 	check( !video.Draft().hdr.automatic && video.Applied() == initial, "no premature apply" );
 	check( menu.Command( "HdrExposure150" ) == Action::Changed, "select exposure" );
 	check( menu.Command( "HdrPeak617" ) == Action::Changed, "select calibrated peak" );
 	check( menu.Draft().peakNits == 617, "exact user calibration preserved" );
+	check( menu.Command( "HdrPeak0" ) == Action::Changed && menu.Draft().peakNits == 0,
+	    "peak back to the display's" );
+	check( menu.Command( "HdrExposure0" ) == Action::Changed && menu.Draft().exposure == 0.0f,
+	    "exposure back to the system's" );
+	check( menu.Command( "HdrExposure150" ) == Action::Changed &&
+	           menu.Command( "HdrPeak617" ) == Action::Changed,
+	    "manual override again" );
 	check( backend.applies == 0 && backend.saves == 0, "selection has no external effects" );
-	for ( const char *invalid : { "HdrMode2", "HdrMode", "HdrExposure0", "HdrExposure401",
-	         "HdrPeak202", "HdrPeak10001", "HdrPeak1000junk", "HdrExposure99999999999" } )
+	for ( const char *invalid :
+	    { "HdrMode2", "HdrMode", "HdrExposure24", "HdrExposure401", "HdrPeak202", "HdrPeak1",
+	        "HdrPeak10001", "HdrPeak1000junk", "HdrExposure99999999999" } )
 	{
 		const auto before = video.Draft();
 		check( menu.Command( invalid ) == Action::Invalid, "malformed/range refusal" );

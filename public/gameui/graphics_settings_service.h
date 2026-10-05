@@ -16,8 +16,9 @@ namespace gameui
 struct HdrSettings
 {
 	bool automatic = true;
-	float exposure = 1.0f;
-	int peakNits = 1000;
+	// 0 takes each from the display (mat_hdr_exposure, mat_hdr_peak_nits).
+	float exposure = 0.0f;
+	int peakNits = 0;
 	bool operator==( const HdrSettings & ) const = default;
 };
 
@@ -74,9 +75,10 @@ public:
 
 	bool Stage( const GraphicsSettings &draft )
 	{
-		if ( m_state == State::Uninitialized || !std::isfinite( draft.hdr.exposure ) || draft.hdr.exposure < 0.25f ||
-		     draft.hdr.exposure > 4.0f || draft.hdr.peakNits < 203 || draft.hdr.peakNits > 10000 ||
-		     draft.width <= 0 || draft.height <= 0 ||
+		if ( m_state == State::Uninitialized || !std::isfinite( draft.hdr.exposure ) ||
+		     ( draft.hdr.exposure != 0.0f && draft.hdr.exposure < 0.25f ) ||
+		     draft.hdr.exposure > 4.0f || ( draft.hdr.peakNits != 0 && draft.hdr.peakNits < 203 ) ||
+		     draft.hdr.peakNits > 10000 || draft.width <= 0 || draft.height <= 0 ||
 		     ( draft.borderless && !draft.windowed ) || !std::isfinite( draft.uiScale ) ||
 		     draft.uiScale < 0.0f || !std::isfinite( draft.temporalScale ) ||
 		     ( draft.temporalScale != 0.0f && draft.temporalScale < 0.5f ) ||

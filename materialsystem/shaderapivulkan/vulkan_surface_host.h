@@ -69,6 +69,9 @@ public:
 	{
 		*outCurrent = *outPotential = 1.0f;
 	}
+	// The system's SDR (paper) white in cd/m^2, 0 when the platform does not
+	// report it. With the headroom it gives the display's peak.
+	virtual float ReadSdrWhiteNits() const { return 0.0f; }
 };
 
 } // namespace render_vulkan

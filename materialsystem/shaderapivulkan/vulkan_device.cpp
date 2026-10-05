@@ -7537,7 +7537,8 @@ render::legacy::CoreOutputTargets CVulkanContext::CoreOutputTargetsFor()
 	out.headroom = m_extendedOutput ? std::max( 1.0f, out.headroom ) : 1.0f;
 	if ( m_config.hdrScene )
 	{
-		out.exposure = m_hdrExposure;
+		float peakNits = 0.0f;
+		ResolvedHdrSettings( &out.exposure, &peakNits );
 		out.scenePeak = 16.0f;
 #if defined( __linux__ )
 		// Linux scRGB uses 80 cd/m^2 per linear unit; scene white is 203.
@@ -7545,9 +7546,28 @@ render::legacy::CoreOutputTargets CVulkanContext::CoreOutputTargetsFor()
 			out.linearScale = 203.0f / 80.0f;
 #endif
 		if ( m_extendedOutput )
-			out.headroom = m_hdrPeakNits / 203.0f;
+			out.headroom = peakNits / 203.0f;
 	}
 	return out;
+}
+
+void CVulkanContext::ResolvedHdrSettings(
+    float *outExposure, float *outPeakNits, bool *outFromDisplay ) const
+{
+	const float white = m_host ? m_host->ReadSdrWhiteNits() : 0.0f;
+	float headroom = 1.0f, potential = 1.0f;
+	if ( m_host )
+		m_host->ReadHeadroom( &headroom, &potential );
+	const bool reported = headroom > 1.0f;
+	*outExposure = m_hdrExposure > 0.0f ? m_hdrExposure
+	               : white > 0.0f       ? std::clamp( white / 203.0f, 0.25f, 4.0f )
+	                                    : 1.0f;
+	*outPeakNits =
+	    m_hdrPeakNits > 0.0f ? m_hdrPeakNits
+	    : reported ? std::clamp( ( white > 0.0f ? white : 203.0f ) * headroom, 203.0f, 10000.0f )
+	               : 1000.0f;
+	if ( outFromDisplay )
+		*outFromDisplay = m_hdrPeakNits <= 0.0f && reported;
 }
 
 void CVulkanContext::RecordOutputSection( render::device::CommandEncoder &encoder )

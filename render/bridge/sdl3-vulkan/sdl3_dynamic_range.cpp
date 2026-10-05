@@ -40,6 +40,12 @@ Sdl3DisplayHeadroom Sdl3ReadHeadroom( SDL_Window *window )
 	    SDL_GetWindowProperties( window ), SDL_PROP_WINDOW_HDR_HEADROOM_FLOAT, 1.0f );
 	headroom.current = reported > 1.0f ? reported : 1.0f;
 	headroom.potential = headroom.current;
+	// SDL gives SDR white as a multiple of 80 cd/m^2 (scRGB's unit), 1 where
+	// the window system reports nothing; only an HDR display reports more.
+	const float white = SDL_GetFloatProperty(
+	    SDL_GetWindowProperties( window ), SDL_PROP_WINDOW_SDR_WHITE_LEVEL_FLOAT, 0.0f );
+	if ( white > 1.0f && headroom.current > 1.0f )
+		headroom.sdrWhiteNits = white * 80.0f;
 	return headroom;
 }
 

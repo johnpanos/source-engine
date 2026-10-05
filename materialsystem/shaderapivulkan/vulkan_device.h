@@ -1332,11 +1332,18 @@ public:
 	bool HasCorePassRecorder() const { return m_corePassRecorder != nullptr; }
 	bool HdrScene() const { return m_config.hdrScene; }
 	bool OutputPassRecorded() const { return m_outputSectionRecorded; }
+	// 0 for either takes it from the display (ResolvedHdrSettings).
 	void SetHdrSettings( float exposure, float peakNits )
 	{
 		m_hdrExposure = exposure;
 		m_hdrPeakNits = peakNits;
 	}
+	// The exposure and peak the output pass uses: the user's values, or for a
+	// 0 the system's SDR white over the 203 cd/m^2 reference, and SDR white
+	// times the display's headroom. Without a report: exposure 1, 1000 nits.
+	// Sets *outFromDisplay when the display supplied the peak.
+	void ResolvedHdrSettings(
+	    float *outExposure, float *outPeakNits, bool *outFromDisplay = nullptr ) const;
 	// The present mode of the current swapchain, and a count of swapchains
 	// created since Init (each resize, mode or present-mode change adds one).
 	VkPresentModeKHR PresentMode() const { return m_presentMode; }

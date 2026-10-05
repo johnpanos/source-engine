@@ -89,6 +89,7 @@ public:
 		*outCurrent = headroom.current;
 		*outPotential = headroom.potential;
 	}
+	float ReadSdrWhiteNits() const override { return Sdl3ReadHeadroom( m_Window ).sdrWhiteNits; }
 
 	uint64_t GetNativeSurfaceGeneration() const override
 	{
