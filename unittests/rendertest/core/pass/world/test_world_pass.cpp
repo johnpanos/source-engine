@@ -793,6 +793,181 @@ void ModelLevelResidency( testing::Checks &checks )
 	checks.That( device.LiveResourceCount() == 0, "W22.residency-teardown-leaks-nothing" );
 }
 
+// W23: model level source resupply. A model level source rebuilds the bytes
+// for a level the idle-frame rule released whose staging the composition
+// dropped (stagingReleased in the pass, nulled shared_ptrs in the world data).
+class FakeLevelSource final : public IModelLevelSource
+{
+public:
+	std::optional<LevelGeometry> ResupplyLevel(
+	    std::uint32_t mesh, std::uint32_t lod ) override
+	{
+		++resupplies;
+		if ( mesh >= levels.size() || lod >= levels[mesh].size() || !levels[mesh][lod] )
+			return std::nullopt;
+		return *levels[mesh][lod];
+	}
+	void PrefetchLevel( std::uint32_t mesh, std::uint32_t lod ) override
+	{
+		prefetches.emplace_back( mesh, lod );
+	}
+	// Per (mesh, lod): the geometry the source holds, or null for "not available".
+	std::vector<std::vector<std::optional<LevelGeometry>>> levels;
+	std::uint32_t resupplies = 0;
+	std::vector<std::pair<std::uint32_t, std::uint32_t>> prefetches;
+};
+
+void ModelLevelSourceResupply( testing::Checks &checks )
+{
+	auto created = null::Create( {} );
+	if ( !checks.That( created.HasValue(), "W23.setup" ) )
+		return;
+	IRenderDevice2 &device = *created.Value();
+	TextureDesc colorDesc;
+	colorDesc.format = Format::kRGBA8Srgb;
+	colorDesc.width = colorDesc.height = 64;
+	colorDesc.usages = { ResourceUsage::kColorAttachment };
+	TextureDesc depthDesc = colorDesc;
+	depthDesc.format = Format::kD32Float;
+	depthDesc.usages = { ResourceUsage::kDepthWrite };
+	auto color = device.CreateTexture( colorDesc ).Value();
+	auto depth = device.CreateTexture( depthDesc ).Value();
+	auto setup = device.BeginEncoder( QueueKind::kGraphics ).Value();
+	setup.TransitionTexture( color, ResourceUsage::kUndefined, ResourceUsage::kColorAttachment );
+	setup.TransitionTexture( depth, ResourceUsage::kUndefined, ResourceUsage::kDepthWrite );
+
+	WorldMaterial model;
+	model.name = "model/cube";
+	model.shader = "VertexLitGeneric";
+	model.mesh = true;
+
+	// A two-level model whose near geometry the source can resupply.
+	std::vector<material::SurfaceModelVertex> nearVerts( 4 );
+	std::vector<material::SurfaceModelVertex> farVerts( 4 );
+	for ( int i = 0; i < 4; ++i )
+	{
+		nearVerts[i].position[0] = float( i );
+		nearVerts[i].normal[2] = nearVerts[i].tangent[0] = nearVerts[i].tangent[3] = 1.0f;
+		farVerts[i].position[0] = float( i ) * 0.5f;
+		farVerts[i].normal[2] = farVerts[i].tangent[0] = farVerts[i].tangent[3] = 1.0f;
+	}
+	std::vector<std::uint32_t> nearIdx = { 0, 1, 2, 0, 2, 3 };
+	std::vector<std::uint32_t> farIdx = { 0, 1, 2 };
+
+	WorldData world = TestWorld();
+	world.materials.push_back( model );
+	WorldData::StaticMesh mesh;
+	mesh.AddLevel(
+	    WorldData::StaticMeshLod::MakeLevel( nearVerts, nearIdx ), { { 4, 0, 0, 6 } } );
+	mesh.AddLevel( WorldData::StaticMeshLod::MakeLevel( farVerts, farIdx ), { { 4, 0, 0, 3 } } );
+	world.staticMeshes.push_back( std::move( mesh ) );
+	WorldData::StaticInstance instance;
+	instance.surfaceSelection.emplace();
+	instance.surfaceSelection->push_back( 0 );
+	world.staticInstances.push_back( instance );
+	world.modelsRevision = 10;
+
+	FakeLevelSource source;
+	IModelLevelSource::LevelGeometry nearGeo;
+	nearGeo.vertices = nearVerts;
+	nearGeo.indices = nearIdx;
+	source.levels.resize( 1 );
+	source.levels[0].resize( 2 );
+	source.levels[0][0] = nearGeo;
+
+	WorldPass pass;
+	pass.SetWorld( std::move( world ) );
+	pass.SetModelLevelSource( &source );
+
+	FakeTextures textures( device );
+	WorldTarget target;
+	target.device = &device;
+	target.color = color;
+	target.colorFormat = colorDesc.format;
+	target.depth = depth;
+	target.depthFormat = depthDesc.format;
+	target.width = target.height = 64;
+	target.textures = &textures;
+	target.frame = 1;
+
+	auto recordLevel = [&]( std::uint64_t frame, std::uint32_t surface )
+	{
+		target.frame = frame;
+		WorldView view;
+		WorldView::StaticInstance draw( 0 );
+		draw.surfaceSelection = std::vector<std::uint32_t>{ surface };
+		view.staticInstances.push_back( draw );
+		auto encoder = device.BeginEncoder( QueueKind::kGraphics ).Value();
+		pass.Record( pass.QueueView( std::move( view ) ), encoder, target );
+	};
+
+	// Upload level 0 from staging; source is not called.
+	recordLevel( 1, 0 );
+	checks.Equal( pass.Stats().modelLevelUploads, 1u, "W23.first-upload-from-staging" );
+	checks.Equal( source.resupplies, 0u, "W23.source-not-called-while-staging-present" );
+
+	// After upload with a source, the level is marked stagingReleased.
+	auto released = pass.DrainReleasedStaging();
+	checks.Equal( released.size(), std::size_t( 1 ), "W23.one-level-marked-releasable" );
+	checks.That(
+	    !released.empty() && released[0].first == 0 && released[0].second == 0,
+	    "W23.near-level-is-the-released-one" );
+
+	// Republish with nulled staging (simulating what the composition does).
+	WorldData world2 = TestWorld();
+	world2.materials.push_back( model );
+	WorldData::StaticMesh mesh2;
+	// Near level: counts but no staging (the composition released it).
+	WorldData::StaticMeshLod nearBlock;
+	nearBlock.vertexCount = 4;
+	nearBlock.indexCount = 6;
+	mesh2.AddLevel( std::move( nearBlock ), { { 4, 0, 0, 6 } } );
+	mesh2.AddLevel(
+	    WorldData::StaticMeshLod::MakeLevel( farVerts, farIdx ), { { 4, 0, 0, 3 } } );
+	world2.staticMeshes.push_back( std::move( mesh2 ) );
+	world2.staticInstances.push_back( instance );
+	world2.modelsRevision = 10; // same revision: keep existing GPU allocations
+	pass.SetWorld( std::move( world2 ) );
+
+	// Let level 0 go idle: stop using it past the idle window.
+	recordLevel( 2, 1 );
+	recordLevel( 130, 1 );
+	checks.Equal(
+	    pass.Stats().modelLevelsResident, 1u, "W23.near-level-released-after-idle-window" );
+
+	// Select level 0 again: the source is called because staging is null.
+	recordLevel( 131, 0 );
+	checks.That( source.resupplies > 0, "W23.source-called-for-released-staging" );
+	checks.Equal( pass.Stats().modelLevelUploads, 3u, "W23.re-upload-from-source" );
+	checks.Equal(
+	    pass.Stats().modelLevelsResident, 2u, "W23.re-uploaded-level-is-resident-again" );
+
+	// The coarsest level (level 1 here) is pinned and never marked released.
+	auto released2 = pass.DrainReleasedStaging();
+	bool coarsestReleased = false;
+	for ( const auto &p : released2 )
+		coarsestReleased |= ( p.second == 1 );
+	checks.That( !coarsestReleased, "W23.coarsest-level-never-released" );
+
+	// Staging bytes: the near level's staging is null, only far's counts.
+	checks.Equal( pass.Stats().modelStagingBytes,
+	    4 * sizeof( material::SurfaceModelVertex ) + 3 * sizeof( std::uint32_t ),
+	    "W23.staging-bytes-exclude-released-levels" );
+
+	// Prefetch: a view queueing a mesh whose staging was released triggers
+	// PrefetchLevel for its non-resident levels.
+	source.prefetches.clear();
+	recordLevel( 260, 1 ); // let level 0 go idle again
+	recordLevel( 261, 0 ); // queue it: should prefetch
+	checks.That( !source.prefetches.empty(), "W23.prefetch-called-for-released-staging" );
+
+	pass.ReleaseDevice( device );
+	(void)device.Release( color, {} );
+	(void)device.Release( depth, {} );
+	(void)device.Poll();
+	checks.That( device.LiveResourceCount() == 0, "W23.source-teardown-leaks-nothing" );
+}
+
 } // namespace
 
 int main()
@@ -804,6 +979,7 @@ int main()
 	GroupReuse( checks );
 	LitViewLifetime( checks );
 	ModelLevelResidency( checks );
+	ModelLevelSourceResupply( checks );
 	auto created = null::Create( {} );
 	if ( !checks.That( created.HasValue(), "setup.null-device" ) )
 		return checks.Report();
