@@ -48,7 +48,7 @@ std::vector<volumetric::MediumLight> MediumLightsFrom(
 	return out;
 }
 
-MapMedia MediaFromEntities( const std::vector<Entity> &entities )
+MapMedia MediaFromEntities( const std::vector<Entity> &entities, EntityConvention convention )
 {
 	MapMedia media;
 	for ( const Entity &entity : entities )
@@ -83,7 +83,7 @@ MapMedia MediaFromEntities( const std::vector<Entity> &entities )
 	}
 	// The lights and projectors are render.pass.lights' (the surfaces'
 	// own, windows included), so the medium and the surfaces see one set.
-	const MapLights map = MapLightsFromEntities( entities );
+	const MapLights map = MapLightsFromEntities( entities, convention );
 	media.lights = MediumLightsFrom( map.lights, &media.unsupportedLights );
 	media.unsupportedLights += map.unsupported;
 	for ( std::size_t i = 0; i < map.projectors.size(); ++i )

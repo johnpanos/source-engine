@@ -49,7 +49,7 @@
 //			           x,y,z] [--model-no-shadow] [--mover x0,y0,z0,x1,y1,z1,material]
 //			           [--validate] [--dump-mesh] [--core-direct]
 //			           [--debug-view n] [--fog-scale s] [--no-volumetric]
-//			           [--output-peak p] [--time n]
+//			           [--output-peak p] [--entities portal|portal2] [--time n]
 //			           [--debug-program name] [--debug-scale s]
 //			           [--debug-range r] [--debug-threshold t] [--debug-brdf n]
 //			           [--debug-furnace] [--debug-term name[,name...]]
@@ -150,6 +150,9 @@ struct Options
 	// the image holds the display values a game frame shows; 0 leaves the
 	// frame's linear scene values (the default).
 	float outputPeak = 0.0f;
+	// Whose server reads the map's entity keys (--entities portal|portal2;
+	// env_projectedtexture's lightcolor differs, map_lights.h).
+	pass::lights::EntityConvention entityConvention = pass::lights::EntityConvention::kPortal;
 	// A diagnostic: the frame cleared to black before the composite, so the
 	// image is the medium's in-scattered light alone (Cycles' Volume Direct).
 	bool inscatterOnly = false;
@@ -280,6 +283,14 @@ std::optional<Options> ParseOptions( int argc, char **argv )
 			options.horizontalFov = float( std::atof( take() ) );
 		else if ( arg == "--fog-scale" )
 			options.fogScale = float( std::atof( take() ) );
+		else if ( arg == "--entities" )
+		{
+			const std::string game = take();
+			if ( game != "portal" && game != "portal2" )
+				return std::nullopt;
+			options.entityConvention = game == "portal2" ? pass::lights::EntityConvention::kPortal2
+			                                             : pass::lights::EntityConvention::kPortal;
+		}
 		else if ( arg == "--output-peak" )
 			options.outputPeak = float( std::atof( take() ) );
 		else if ( arg == "--time" )
@@ -479,8 +490,8 @@ int Run( const Options &options )
 			    mapBytes->substr( std::size_t( info.offset ), std::size_t( info.storedSize ) ) );
 			if ( !parsed )
 				return Fail( options.map.string() + ": the entity lump does not parse" );
-			media = MediaFromEntities( *parsed );
-			lights = LightsFromEntities( *parsed );
+			media = MediaFromEntities( *parsed, options.entityConvention );
+			lights = LightsFromEntities( *parsed, options.entityConvention );
 		}
 		media.medium.densityScale = options.fogScale;
 	}
@@ -1764,7 +1775,7 @@ int main( int argc, char **argv )
 		    "x,y,z --hfov degrees --size WxH --out <file.pfm> [--model <models/x.mdl> "
 		    "--model-origin x,y,z] [--model-no-shadow] [--mover x0,y0,z0,x1,y1,z1,material] "
 		    "[--validate] [--dump-mesh] [--core-direct] [--debug-* ...]\n"
-		    "           [--fog-scale s] [--no-volumetric] [--output-peak p] [--time n]\n"
+		    "           [--fog-scale s] [--no-volumetric] [--output-peak p] [--entities portal|portal2] [--time n]\n"
 		    "       render_lab suite <name> [--validate] [--seeded <defect>]\n"
 		    "       render_lab claim-batch < NUL-delimited-materials\n" );
 		return 2;

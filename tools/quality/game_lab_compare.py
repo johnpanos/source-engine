@@ -34,6 +34,10 @@ GAME_SCENE_PEAK = 16.0
 # bounce (render.pass.bounce) is moving-light GI, out of the product's scope
 # (user decision 2026-09-30; the indirect light is the bake's).
 LAB_TERMS_OUT_OF_GAME = ("--no-bounce",)
+# The matrix boots Portal 2, whose server reads the entities' keys
+# (env_projectedtexture's byte-truncated lightcolor): the lab reads them the
+# same way (render.pass.lights' EntityConvention).
+GAME_ENTITY_CONVENTION = "portal2"
 
 
 def sha256(path):
@@ -122,7 +126,8 @@ def render_lab(lab_binary, content_root, fixture, camera, out, state=None):
                "--hfov", str(fixture["horizontal_fov_degrees"]),
                "--size", "%dx%d" % (film["width"], film["height"]),
                "--core-direct", "--output-peak", "%g" % GAME_SCENE_PEAK,
-               *LAB_TERMS_OUT_OF_GAME, "--out", str(out)]
+               *LAB_TERMS_OUT_OF_GAME, "--entities", GAME_ENTITY_CONVENTION,
+               "--out", str(out)]
     model = lab_inputs.probe_model(fixture, state)
     if model:
         command += ["--model", model[0], "--model-origin",

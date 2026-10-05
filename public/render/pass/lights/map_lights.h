@@ -88,7 +88,21 @@ struct MapLights
 	std::uint32_t unsupported = 0;                  // unsupported authored falloff controls
 };
 
-MapLights MapLightsFromEntities( const std::vector<Entity> &entities );
+// Whose server reads the entities' keys. The games differ only in
+// env_projectedtexture's "lightcolor": Portal keeps GammaToLinear( rgb ) x
+// brightness / 255 as floats (game/server/env_projectedtexture.cpp); Portal 2
+// keeps the four values in a color32 (game/server/portal2/
+// env_projectedtexture.cpp), so the brightness is truncated to a byte, and its
+// client folds rgb / 255 x alpha / 255 x "brightnessscale", linear, as the
+// retail shaders do (game/client/c_env_projectedtexture.cpp).
+enum class EntityConvention : std::uint8_t
+{
+	kPortal,
+	kPortal2,
+};
+
+MapLights MapLightsFromEntities(
+    const std::vector<Entity> &entities, EntityConvention convention = EntityConvention::kPortal );
 
 // Add the always-on authored lights missing from a frame's compiled world
 // lights. A relit BSP can retain one switchable world light while its baked

@@ -57,7 +57,8 @@ struct MapMedia
 	std::uint32_t unsupportedLights = 0;  // lights the medium does not take (MediumLightsFrom)
 };
 
-MapMedia MediaFromEntities( const std::vector<pass::lights::Entity> &entities );
+MapMedia MediaFromEntities( const std::vector<pass::lights::Entity> &entities,
+    pass::lights::EntityConvention convention = pass::lights::EntityConvention::kPortal );
 
 // The lights the medium takes from a light set: points and spots with the
 // inverse-square or legacy falloff (render.light-set.v1), at most

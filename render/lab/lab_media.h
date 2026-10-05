@@ -44,9 +44,10 @@ using composition::MediaFromEntities;
 
 using LabSun = pass::lights::MapSun;
 using LabLights = pass::lights::MapLights;
-inline LabLights LightsFromEntities( const std::vector<Entity> &entities )
+inline LabLights LightsFromEntities( const std::vector<Entity> &entities,
+    pass::lights::EntityConvention convention = pass::lights::EntityConvention::kPortal )
 {
-	return pass::lights::MapLightsFromEntities( entities );
+	return pass::lights::MapLightsFromEntities( entities, convention );
 }
 
 using composition::FroxelLayoutOf;

@@ -112,6 +112,8 @@ class GameLabComparisonTests(unittest.TestCase):
                          compare.GAME_SCENE_PEAK)
         # Moving-light GI (the projectors' bounce) is out of the game's scope.
         self.assertIn("--no-bounce", command)
+        # The game's server reads the entity keys (Portal 2's lightcolor).
+        self.assertEqual(command[command.index("--entities") + 1], "portal2")
 
 
 if __name__ == "__main__":

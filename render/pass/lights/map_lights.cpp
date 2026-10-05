@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 
@@ -138,7 +139,8 @@ std::optional<std::vector<Entity>> ParseEntityLump( const std::string &text )
 	}
 }
 
-MapLights MapLightsFromEntities( const std::vector<Entity> &entities )
+MapLights MapLightsFromEntities(
+    const std::vector<Entity> &entities, EntityConvention convention )
 {
 	MapLights out;
 	std::uint32_t nextId = 1;
@@ -287,7 +289,23 @@ MapLights MapLightsFromEntities( const std::vector<Entity> &entities )
 			    Numbers( entity, "lightfov", 1, 90.0f )[0];
 			light.nearZ = Numbers( entity, "nearz", 1, 4.0f )[0];
 			light.farZ = Numbers( entity, "farz", 1, 750.0f )[0];
-			const math::float3 color = GammaColor( Numbers( entity, "lightcolor", 4 ) );
+			const std::vector<float> authored = Numbers( entity, "lightcolor", 4 );
+			math::float3 color;
+			if ( convention == EntityConvention::kPortal2 )
+			{
+				// color32: each value truncated to a byte; then the client's
+				// linear rgb / 255 x alpha / 255 x brightnessscale.
+				auto byte = []( float value )
+				{
+					return float( std::uint32_t( std::int64_t( value ) ) & 0xffu );
+				};
+				const float scale = byte( authored[3] ) / 255.0f *
+				                    Numbers( entity, "brightnessscale", 1, 1.0f )[0];
+				color = { byte( authored[0] ) / 255.0f * scale, byte( authored[1] ) / 255.0f * scale,
+				    byte( authored[2] ) / 255.0f * scale };
+			}
+			else
+				color = GammaColor( authored );
 			light.color[0] = color.x;
 			light.color[1] = color.y;
 			light.color[2] = color.z;

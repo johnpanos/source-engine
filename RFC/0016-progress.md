@@ -10856,3 +10856,36 @@ cube on a miss), as the lightmapped point does. Inventory: 1,556 / 1,541 /
 495 unsupported (15 more claimed). `render.family.water` passes;
 `posed-model` (109), `reflection-probes` (39) and `map-terms` (38) pass. No
 water pixel case of the probe reflection yet. R96 stays `active`.
+
+### K12: entity conventions per game; projector-cookie matches (2026-10-05, agent decision)
+
+The projector-colour convention was recorded as an open decision. Under
+the user's standing instruction (choose the recommended long-term option
+and record it), it is decided here: **the shared map-light parse follows
+the convention of the game whose server reads the map's entities, chosen
+by an explicit input.**
+
+- `render.pass.lights` gains `EntityConvention` (`kPortal`, `kPortal2`) on
+  `MapLightsFromEntities` and `MediaFromEntities`. Its documentation owns
+  the one difference found: `env_projectedtexture`'s `lightcolor`. Portal's
+  server keeps GammaToLinear(rgb) x brightness / 255 as floats. Portal 2's
+  server keeps all four values in a `color32`, so each is truncated to a
+  byte, and its client folds rgb / 255 x alpha / 255 x `brightnessscale`
+  linearly.
+- `render_lab --entities portal|portal2` selects it (default Portal), and
+  `game_lab_compare.py` passes `portal2` because the matrix boots Portal 2
+  (`GAME_ENTITY_CONVENTION`, asserted by its test, 7/7).
+- The fixture keeps its authored values, so the comparison shows what
+  Portal 2 actually draws from them.
+
+Result (same host; diagnostic): projector-cookie/room 9.26 → 0.48 mean /255
+(p99 15, 1.9% over 8: within all three first-profile limits).
+Projector-cookie/wall goes 30.27 → 0.83 (p99 17, 3.7% over 8: 0.7 pt over
+the fraction limit). `clustered-lights` (25), `bounce` (5), `volumetric`
+(17) and `map-terms` (38) pass. Game/lab is now 15 of 22 cameras within the
+limits. The misses are projector-cookie/wall (marginal), material-sweep x2
+(SSR), mirror-corridor x2, portal-pair/b-floor and sun-colonnade/yard.
+
+Also decided under the same instruction: SSR waits for the uncommitted
+runtime-direct change in the world pass to land, rather than editing
+around it.
