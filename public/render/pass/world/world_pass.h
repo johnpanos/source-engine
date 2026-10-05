@@ -488,6 +488,16 @@ struct WorldView
 	// that frame (a resize, a lost surface, a dropped queued frame).
 	std::uint64_t hostFrame = 0;
 	std::shared_ptr<const StageLightingInputs> stageLighting;
+	// Whether this view draws world geometry of its own: BSP surfaces, static
+	// instances or posed models. A view that draws only dynamic geometry (the
+	// client's viewmodel scope, which pushes its own 3D view) has no world to
+	// build lighting inputs or screen passes for; it reads the frame's stage
+	// lighting and the neutral occlusion instead, and the composition does not
+	// plan a second shadow atlas or ambient-occlusion pass for it. Captured
+	// when the view is queued: the composition owns the decision, and a view
+	// whose queues were filled by an earlier frame keeps the value it was
+	// queued with.
+	bool drawsWorldGeometry = true;
 	// The frame's debug controls (RFC 0014), as the renderer applied them
 	// when the view was queued: the render sequence draws with the main
 	// thread's frame value, in either queued mode.
@@ -519,6 +529,12 @@ struct WorldStats
 	std::uint64_t modelBufferBytes = 0;
 	std::uint64_t modelStagingBytes = 0; // CPU staging retained for re-upload (0 with a source)
 	std::uint64_t modelLevelUploads = 0;
+	// The screen passes' prepass draw lists (RFC 0016 K12 ambient occlusion):
+	// how many times they were built for a world, reused from the built lists,
+	// and rebuilt because a material or group in them was not ready.
+	std::uint64_t prepassListBuilds = 0;
+	std::uint64_t prepassListReuses = 0;
+	std::uint64_t prepassListRetries = 0;
 	std::uint64_t viewsQueued = 0;
 	std::uint64_t viewsDrawn = 0;
 	std::uint64_t viewsFailed = 0;  // claimed work not drawn: never legacy's
@@ -658,6 +674,10 @@ public:
 	    std::uint32_t tag, std::uint64_t streamEpoch ) const;
 	// The view's queued temporal choice, including replay of the same stream.
 	bool TemporalView( std::uint32_t tag, std::uint64_t streamEpoch ) const;
+	// Whether the view draws world geometry of its own (WorldView::
+	// drawsWorldGeometry), including replay of the same stream. True for a
+	// slot the pass does not know, so an unknown view keeps the work.
+	bool ViewDrawsWorldGeometry( std::uint32_t tag, std::uint64_t streamEpoch ) const;
 	// WorldStats::viewsFailed alone (cheap, for a per-view policy check).
 	std::uint64_t Failures() const;
 

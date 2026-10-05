@@ -559,6 +559,9 @@ private:
 	pass::lights::MapLights m_MapLights;
 	bool m_StageSunMask = false;
 	std::atomic<unsigned long long> m_StageLightingBuilds{ 0 };
+	// Render sequence: views that read the frame's stage lighting instead of
+	// planning their own lights, shadow atlas and occlusion.
+	std::atomic<unsigned long long> m_SharedStageViews{ 0 };
 	unsigned long long m_StageLitViews = 0; // main thread
 	// Stream-view metadata and the stage's casters.
 	std::mutex m_ShadowLock;

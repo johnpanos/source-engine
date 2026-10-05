@@ -1519,6 +1519,15 @@ bool CoreWorld::DrawView( const unsigned int *surfaces, unsigned int count,
 		}
 	}
 	view.waterZOffset = waterZOffset;
+	// A view that draws no world geometry of its own (the client's viewmodel
+	// scope, which pushes its own 3D view) has no world to plan lighting or
+	// screen passes for. When the frame's stage lighting is already recorded,
+	// its slot records below reads that instead, so the frame builds one
+	// shadow atlas and one ambient occlusion pass rather than one per view. A
+	// frame whose world view has not recorded yet keeps this view's own
+	// lighting inputs.
+	view.drawsWorldGeometry =
+	    !view.surfaces.empty() || !view.staticInstances.empty() || !view.posedModels.empty();
 	// A stage view's lights are clustered and its shadows planned when its
 	// slot records (the render sequence), from what the frame holds now.
 	std::shared_ptr<PendingView> pending;
@@ -1825,6 +1834,9 @@ void CoreWorld::GetStats( RenderCoreWorldStats *out ) const
 	out->surfacesDrawn = stats.surfacesDrawn;
 	out->staticInstancesQueued = stats.staticInstancesQueued;
 	out->staticDrawsDrawn = stats.staticDrawsDrawn;
+	out->prepassListBuilds = stats.prepassListBuilds;
+	out->prepassListReuses = stats.prepassListReuses;
+	out->prepassListRetries = stats.prepassListRetries;
 	out->posedModelsQueued = stats.posedModelsQueued;
 	out->posedDrawsDrawn = stats.posedDrawsDrawn;
 	// Model geometry: the published blocks, the CPU geometry they share and
@@ -1858,6 +1870,7 @@ void CoreWorld::GetStats( RenderCoreWorldStats *out ) const
 	    unsigned( pass::lights::MergeMapLights( m_Lights.lights, m_MapLights ).size() );
 	out->stageLitViews = m_StageLitViews;
 	out->stageLightingBuilds = m_StageLightingBuilds.load( std::memory_order_relaxed );
+	out->stageSharedViews = m_SharedStageViews.load( std::memory_order_relaxed );
 	out->stageRuntimeDirect = m_StageRuntimeDirect.load( std::memory_order_relaxed ) ? 1u : 0u;
 	std::snprintf( out->lastFailure, sizeof( out->lastFailure ), "%s", stats.lastFailure.c_str() );
 	std::size_t used = 0;
@@ -2489,6 +2502,30 @@ void CoreWorld::RecordWorldBatch( std::span<const std::uint32_t> tags,
 		world.ambientOcclusionDesc = m_StreamLighting.ambientOcclusionDesc;
 	}
 
+	// A view that draws no world geometry of its own, in a frame whose stage
+	// lighting another view already recorded: it reads that lighting, its
+	// shadow atlas and its occlusion instead of planning a second set. The
+	// viewmodel scope is this case, and it is the frame's second view.
+	const bool sharedStage = pending && !m_Pass.ViewDrawsWorldGeometry( tag, target.streamEpoch ) &&
+	                         m_StreamLightingFrame == target.frame && m_StreamLighting.lights &&
+	                         m_StreamLighting.ambientOcclusion.IsValid() &&
+	                         world.color == m_StreamLighting.color &&
+	                         world.depth == m_StreamLighting.depth &&
+	                         world.width == m_StreamLighting.width &&
+	                         world.height == m_StreamLighting.height;
+	if ( sharedStage )
+	{
+		m_SharedStageViews.fetch_add( 1, std::memory_order_relaxed );
+		world.lights = m_StreamLighting.lights;
+		world.shadowAtlas = m_StreamLighting.shadowAtlas;
+		world.shadowAtlasDesc = m_StreamLighting.shadowAtlasDesc;
+		world.ambientOcclusion = m_StreamLighting.ambientOcclusion;
+		world.ambientOcclusionDesc = m_StreamLighting.ambientOcclusionDesc;
+		// No prepass and no ambient occlusion pass of its own: there is no
+		// world geometry in this view to build them from, and the occlusion
+		// it reads is the frame's.
+	}
+
 	if ( pending && !target.device )
 	{
 		++m_LightingFailures;
@@ -2523,7 +2560,7 @@ void CoreWorld::RecordWorldBatch( std::span<const std::uint32_t> tags,
 		encoder.BeginLabel( "core world view" );
 	}
 	std::shared_ptr<const ShadowWork> shadows;
-	if ( pending )
+	if ( pending && !sharedStage )
 	{
 		if ( timers )
 			encoder.BeginLabel( "prepare lights and shadows" );
@@ -2618,7 +2655,7 @@ void CoreWorld::RecordWorldBatch( std::span<const std::uint32_t> tags,
 			return recorded;
 		};
 	}
-	if ( pending )
+	if ( pending && !sharedStage )
 	{
 		std::copy_n( pending->inputs.worldToView, 16, m_StreamLightingView.view.begin() );
 		std::copy_n( pending->inputs.viewToClip, 16, m_StreamLightingView.projection.begin() );

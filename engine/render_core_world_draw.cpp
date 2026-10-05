@@ -1144,6 +1144,9 @@ CON_COMMAND( r_core_world_stats, "RFC 0016 K5: the core world's surfaces, views 
 	    stats.lastFailure );
 	Msg( "r_core_world_stats: posed models queued %llu draws %llu\n", stats.posedModelsQueued,
 	    stats.posedDrawsDrawn );
+	Msg( "r_core_world_stats: screen-pass prepass lists: %llu build(s), %llu reuse(s), %llu "
+	     "rebuild(s) after an unready material or group\n",
+	    stats.prepassListBuilds, stats.prepassListReuses, stats.prepassListRetries );
 	Msg( "r_core_world_stats: dynamic draws %llu refused %llu last refusal '%s'\n",
 	    stats.dynamicDrawsDrawn, stats.dynamicDrawsRefused, stats.lastRefusal );
 	for ( std::size_t i = 0; i < State().posedClaims.size(); ++i )
@@ -1164,8 +1167,9 @@ CON_COMMAND( r_core_world_stats, "RFC 0016 K5: the core world's surfaces, views 
 	}
 	if ( State().stageWorld )
 		Msg( "r_core_world_stats: world stage: %u runtime lights, %llu lit views, %llu lighting "
-		     "builds\n",
-		    stats.stageLights, stats.stageLitViews, stats.stageLightingBuilds );
+		     "builds, %llu view(s) sharing the frame's lighting\n",
+		    stats.stageLights, stats.stageLitViews, stats.stageLightingBuilds,
+		    stats.stageSharedViews );
 	if ( State().worldMeshViews )
 		Msg( "r_core_world_stats: declined %llu view(s): the map's world is its WMSH\n",
 		    State().worldMeshViews );

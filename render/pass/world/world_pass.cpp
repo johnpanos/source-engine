@@ -103,6 +103,21 @@ struct Claimed
 	std::map<std::string, int> handles; // the importer's texture name -> handle
 };
 
+// One opaque model draw of a recorded batch: which cohort's instance list it
+// came from, whether it is a posed model, and its instance, mesh, level,
+// surface and material. The screen passes' prepass lists hold these too (their
+// cohort is 0: the prepass draws the world's instances, not a view's).
+struct StaticDraw
+{
+	std::size_t cohort = 0;
+	bool posed = false;
+	std::uint32_t instance = 0;
+	std::uint32_t mesh = 0;
+	std::uint32_t lod = 0;
+	std::uint32_t surface = 0;
+	std::uint32_t material = 0;
+};
+
 // A resolved group: its device objects.
 struct Group
 {
@@ -155,6 +170,27 @@ struct Resources
 	TextureDesc prepassDepthDesc;
 	TextureDesc prepassNormalDesc;
 	bool prepassUsed = false; // the targets rest in kSampled after their first view
+	// A world stage's screen-pass prepass draw lists (the depth and normal
+	// prepass that feeds ambient occlusion): the world's surfaces and its
+	// instances' opaque PBR draws, built once instead of once per view per
+	// frame. They are this resource set's, because they come from its own
+	// resolvers, materials and groups (one set per target format), and they
+	// depend on nothing in the view: the same entries are drawn into the
+	// pass's own targets for every view that needs them. Only a complete
+	// build is kept, so a material or group that was not ready is retried
+	// rather than remembered as absent.
+	struct PrepassLists
+	{
+		std::uint64_t generation = 0;
+		std::uint64_t residencyRevision = 0;
+		// The claims the world was set with, by pointer: SetWorld replaces the
+		// vector, so its identity changes with the world's contents.
+		const std::vector<Claimed> *claims = nullptr;
+		std::vector<std::uint32_t> surfaces; // into WorldData::surfaces
+		std::vector<StaticDraw> models;
+		bool valid = false;
+	};
+	PrepassLists prepassLists;
 	// Draw groups by (draw layout, lightmap page).
 	// Draw groups by (draw layout, lightmap page, the program's draw inputs):
 	// programs that share a layout may read different inputs (the pbr point
@@ -513,6 +549,12 @@ struct WorldPass::State
 		std::uint64_t releasedLevels = 0; // levels the residency rule has released
 	};
 	ModelGeometry models;
+	// Rises with every level that becomes resident or is released, and whenever
+	// the model table is rebuilt (a new models revision, a new device). It is
+	// monotone across those resets, unlike ModelGeometry itself. The screen
+	// passes' prepass lists name the resident levels, so this is part of their
+	// cache key.
+	std::uint64_t modelResidencyRevision = 0;
 	// The frame that last swept residency, and the frame the report was
 	// published for, so each runs once per recorded frame.
 	std::uint64_t residencyFrame = 0;
@@ -1201,6 +1243,8 @@ bool WorldPass::UploadModelLevel( State &state, device::IRenderDevice2 &device,
 	level.vertices = vertices.Value();
 	level.indices = indices.Value();
 	level.resident = true;
+	// The screen passes' prepass lists name the resident levels.
+	++state.modelResidencyRevision;
 	state.models.bytes += vertexBytes.size() + indexBytes.size();
 	++state.stats.modelLevelUploads;
 	encoder.TransitionBuffer(
@@ -1250,6 +1294,9 @@ void WorldPass::SweepModelResidency(
 					state.retiredModelBuffers.push_back( { 0, level.indices } );
 			}
 		state.models = State::ModelGeometry();
+		// A new models revision replaces every level: the screen passes'
+		// prepass lists are keyed by this too.
+		++state.modelResidencyRevision;
 		state.models.modelsRevision = world.modelsRevision;
 		state.models.models.resize( world.staticMeshes.size() );
 		for ( std::size_t mesh = 0; mesh < world.staticMeshes.size(); ++mesh )
@@ -1276,6 +1323,8 @@ void WorldPass::SweepModelResidency(
 				        sizeof( material::SurfaceModelVertex ) +
 				    std::size_t( data.lods[lod].indexCount ) * sizeof( std::uint32_t );
 				++state.models.releasedLevels;
+				// The screen passes' prepass lists name the resident levels.
+				++state.modelResidencyRevision;
 				level = State::ModelLevel();
 			}
 		}
@@ -1345,6 +1394,7 @@ void WorldPass::ReleaseDevice( IRenderDevice2 &device )
 				(void)device.Release( level.indices, CompletionToken() );
 		}
 	s.models = State::ModelGeometry();
+	++s.modelResidencyRevision;
 	for ( auto &[frame, group] : s.retiredGroups )
 		s.ReleaseGroup( group, CompletionToken() );
 	s.retiredGroups.clear();
@@ -1394,6 +1444,20 @@ bool WorldPass::TemporalView( std::uint32_t tag, std::uint64_t streamEpoch ) con
 		if ( queued.serial == serial )
 			return queued.view.temporalView != 0;
 	return false;
+}
+
+bool WorldPass::ViewDrawsWorldGeometry( std::uint32_t tag, std::uint64_t streamEpoch ) const
+{
+	const State &s = *m_State;
+	std::lock_guard<std::mutex> guard( s.lock );
+	const std::uint32_t serial = tag & kWorldSerialMask;
+	for ( auto kept = s.recorded.rbegin(); kept != s.recorded.rend(); ++kept )
+		if ( kept->serial == serial && ( streamEpoch == 0 || kept->recordedStream == streamEpoch ) )
+			return kept->view.drawsWorldGeometry;
+	for ( const State::Queued &queued : s.views )
+		if ( queued.serial == serial )
+			return queued.view.drawsWorldGeometry;
+	return true;
 }
 
 std::uint64_t WorldPass::Failures() const
@@ -1581,6 +1645,7 @@ void WorldPass::RecordBatch(
 		// publishes its staging again (SweepModelResidency adopts it).
 		s.retiredModelBuffers.clear();
 		s.models = State::ModelGeometry();
+		++s.modelResidencyRevision;
 		s.groupResources = GroupResources();
 		s.device = target.device;
 	}
@@ -2731,16 +2796,6 @@ void WorldPass::RecordBatch(
 	// Model geometry residency: adopt the world's levels, then release the ones
 	// no view has selected for a while (once per recorded frame).
 	SweepModelResidency( s, *world, target );
-	struct StaticDraw
-	{
-		std::size_t cohort;
-		bool posed;
-		std::uint32_t instance;
-		std::uint32_t mesh;
-		std::uint32_t lod;
-		std::uint32_t surface;
-		std::uint32_t material;
-	};
 	std::vector<StaticDraw> staticDraws;
 	std::vector<BufferId> posedBuffers( view.posedModels.size() );
 	std::vector<BufferId> previousPosedBuffers( view.posedModels.size() );
@@ -3366,8 +3421,30 @@ void WorldPass::RecordBatch(
 		}
 		if ( r.prepassResolver && r.prepassDepth.IsValid() )
 		{
-			std::vector<std::uint32_t> prepass;
-			for ( std::uint32_t index = 0; index < world->surfaces.size(); ++index )
+			// The lists are the world's, not the view's: the same entries are
+			// drawn into the pass's own targets whichever view needs them, and
+			// they change only with the world, its claims and which model
+			// levels are resident. Built once for this resource set, retried
+			// while any material or group in them is not ready.
+			Resources::PrepassLists &cached = r.prepassLists;
+			const bool reusable = cached.valid && cached.generation == generation &&
+			                      cached.residencyRevision == s.modelResidencyRevision &&
+			                      cached.claims == claims.get();
+			std::vector<std::uint32_t> prepassStorage;
+			std::vector<StaticDraw> prepassModelStorage;
+			// A material or group that was not ready leaves an entry out, so a
+			// partial build is never remembered: the next view tries again.
+			bool listsComplete = true;
+			if ( !reusable )
+			{
+				cached = Resources::PrepassLists();
+				cached.generation = generation;
+				cached.residencyRevision = s.modelResidencyRevision;
+				cached.claims = claims.get();
+			}
+			std::vector<std::uint32_t> &prepass = reusable ? cached.surfaces : prepassStorage;
+			for ( std::uint32_t index = 0;
+			     index < world->surfaces.size() && !reusable; ++index )
 			{
 				const WorldSurface &surface = world->surfaces[index];
 				if ( surface.material >= claims->size() || !( *claims )[surface.material].draws )
@@ -3381,13 +3458,15 @@ void WorldPass::RecordBatch(
 				     ( m->program.request.viewLayout.IsValid() && !viewGroupReady( *m ) ) )
 				{
 					complete = false;
+					listsComplete = false;
 					continue;
 				}
 				if ( opaquePbr( *m ) )
 					prepass.push_back( index );
 			}
-			std::vector<StaticDraw> prepassModels;
-			if ( r.prepassModelResolver )
+			std::vector<StaticDraw> &prepassModels =
+			    reusable ? cached.models : prepassModelStorage;
+			if ( r.prepassModelResolver && !reusable )
 			{
 				// The prepass covers the world's instances, not this view's, so
 				// it draws only the levels already resident: a released level is
@@ -3412,6 +3491,7 @@ void WorldPass::RecordBatch(
 						if ( !m )
 						{
 							complete = false;
+							listsComplete = false;
 							continue;
 						}
 						if ( !opaquePbr( *m ) )
@@ -3424,6 +3504,7 @@ void WorldPass::RecordBatch(
 						     !viewGroupReady( *m ) )
 						{
 							complete = false;
+							listsComplete = false;
 							continue;
 						}
 						prepassModels.push_back(
@@ -3505,6 +3586,23 @@ void WorldPass::RecordBatch(
 			{
 				complete = false;
 				note( "the camera's ambient occlusion was not recorded" );
+			}
+			// Keep a complete build for the next view and the next frame; the
+			// aliases above are finished with.
+			if ( !reusable && listsComplete )
+			{
+				cached.surfaces = std::move( prepassStorage );
+				cached.models = std::move( prepassModelStorage );
+				cached.valid = true;
+				++s.stats.prepassListBuilds;
+			}
+			else if ( !reusable )
+			{
+				++s.stats.prepassListRetries;
+			}
+			else
+			{
+				++s.stats.prepassListReuses;
 			}
 		}
 	}

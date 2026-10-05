@@ -168,6 +168,11 @@ struct RenderCoreWorldStats
 	unsigned long long surfacesDrawn;
 	unsigned long long staticInstancesQueued;
 	unsigned long long staticDrawsDrawn;
+	// The screen passes' prepass draw lists: builds, reuses and rebuilds
+	// after a material or group in them was not ready.
+	unsigned long long prepassListBuilds;
+	unsigned long long prepassListReuses;
+	unsigned long long prepassListRetries;
 	unsigned long long posedModelsQueued;
 	unsigned long long posedDrawsDrawn;
 	// Model geometry (RFC 0016 residency): the published (model, hardware
@@ -191,6 +196,9 @@ struct RenderCoreWorldStats
 	unsigned int stageLights;
 	unsigned long long stageLitViews;
 	unsigned long long stageLightingBuilds;
+	// Views that drew no world geometry and read the frame's stage lighting
+	// instead of planning their own (the viewmodel scope).
+	unsigned long long stageSharedViews;
 	// Nonzero: the world stage draws its lights' direct light at runtime
 	// over the lightmap's indirect layer (RenderCoreWorldQuality::runtimeDirect).
 	unsigned int stageRuntimeDirect;
