@@ -1615,8 +1615,16 @@ void WaterSurface()
 	{
 		const vec3 reflected = 2.0 * dot( normal.xyz, toEye ) * normal.xyz -
 		                       dot( normal.xyz, normal.xyz ) * toEye;
-		reflection =
-		    frame.eye.w * texture( samplerCube( envmapTexture, envmapSampler ), reflected ).rgb;
+		if ( Term( kReflectionProbes ) )
+		{
+			// $envmap env_cubemap on a stage: its reflection probes (linear).
+			if ( !ReflectionProbesRadiance( worldPosition, worldNormal, normalize( reflected ),
+			         0.02, reflection ) )
+				reflection = AmbientCube( normalize( reflected ) );
+		}
+		else
+			reflection =
+			    frame.eye.w * texture( samplerCube( envmapTexture, envmapSampler ), reflected ).rgb;
 	}
 	reflection *= material.waterReflect.rgb * frame.water.y;
 

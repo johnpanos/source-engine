@@ -264,6 +264,14 @@ std::optional<ParameterBlock> BlockFor(
 			continue;
 		if ( suppressEnvmap && value.parameter == "envmap" )
 			continue;
+		// Water reads its env map only as a forced reflection; the water
+		// claim's callers require the probes then (WaterEnvNeedsProbes).
+		if ( material.family == "water" && value.parameter == "envmap" &&
+		     value.text == "env_cubemap" )
+		{
+			(void)block.SetTexture( value.parameter, device::TextureId( 1 ) );
+			continue;
+		}
 		if ( ( material.family == "vertexlit" || material.family == "unlit" ||
 		         ( ( material.family == "refract" || material.family == "lightmapped" ) &&
 		             value.text == "env_cubemap" ) ) &&
@@ -422,6 +430,10 @@ foundation::Expected<device::BlendMode, std::string> ClaimForDrawing( const Mate
 		const WaterClaim claim = ClaimWater( *block );
 		if ( !claim.claimed )
 			return foundation::MakeUnexpected( claim.reason );
+		if ( !claim.reflectTarget && TextureOf( material, "envmap" ) == "env_cubemap" &&
+		     !nativeReflectionProbes )
+			return foundation::MakeUnexpected(
+			    std::string( "$envmap needs the stage's native reflection probes" ) );
 		return claim.blend;
 	}
 	return foundation::MakeUnexpected( "family " + material.family + " has no program yet" );
@@ -755,12 +767,20 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 			textures.flowmap = TextureOf( material, "flowmap" );
 			textures.flowNoise = TextureOf( material, "flow_noise_texture" );
 		}
+		SurfaceVariant variant = claim.Variant();
 		if ( claim.reflectTarget )
 			out.viewInputs = { TextureOf( material, "reflecttexture" ) };
+		else if ( TextureOf( material, "envmap" ) == "env_cubemap" )
+		{
+			// The view's env_cubemap is the stage's reflection probes (RPRB).
+			if ( ( s.sceneTerms & kSurfaceReflectionProbes ) == 0 )
+				return foundation::MakeUnexpected(
+				    std::string( "$envmap needs the stage's native reflection probes" ) );
+			variant.terms |= kSurfaceReflectionProbes;
+		}
 		else
 			textures.envmap = TextureOf( material, "envmap" );
-		auto request =
-		    s.lightmapped->Program().Request( claim.Variant(), claim.constants, textures );
+		auto request = s.lightmapped->Program().Request( variant, claim.constants, textures );
 		if ( !request )
 			return foundation::MakeUnexpected( std::string( "a water pipeline was refused" ) );
 		out.name = "water";

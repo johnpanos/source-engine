@@ -297,9 +297,9 @@
     "water": {
       "dynamically_unresolved": 0,
       "statically_supported": 0,
-      "supported_with_requirements": 40,
+      "supported_with_requirements": 55,
       "total": 59,
-      "unsupported": 19
+      "unsupported": 4
     },
     "windowimposter": {
       "dynamically_unresolved": 0,
@@ -403,7 +403,6 @@
     "the model does not bind the per-view texture _rt_waterreflection ($basetexture)": 2,
     "the model does not bind the per-view texture _rt_waterrefraction ($basetexture)": 2,
     "the model does not bind the per-view texture _rt_waterrefraction ($refracttexture)": 3,
-    "the model does not bind the per-view texture env_cubemap ($envmap)": 15,
     "the model does not read $additive": 4,
     "the model does not read $alphatesttocoverage": 1,
     "the model does not read $blendframes": 1,
@@ -53346,34 +53345,42 @@
       ]
     },
     "materials/liquids/water_underground_cave.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "water",
+          "scene_inputs": {
+            "world_stage": true
+          }
+        }
+      ],
       "family": "water",
-      "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
       "input_sha256": "bf9747355962ccfe9ec26e1f021834cfeade7a01e08678fa7419c706bf4eb518",
       "mesh_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -53381,20 +53388,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "per_view_texture:env_cubemap"
-      ],
       "shader": "water",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -133550,34 +133554,42 @@
       ]
     },
     "materials/nature/toxicslime002a_noreflect.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "water",
+          "scene_inputs": {
+            "world_stage": true
+          }
+        }
+      ],
       "family": "water",
-      "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
       "input_sha256": "4ec649d05c8e893accc4fccd354a06bae516476e2ad294b05c64e95123a6dc34",
       "mesh_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -133585,20 +133597,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "per_view_texture:env_cubemap"
-      ],
       "shader": "water",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -134137,34 +134146,42 @@
       ]
     },
     "materials/nature/toxicslime_a3_03.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "water",
+          "scene_inputs": {
+            "world_stage": true
+          }
+        }
+      ],
       "family": "water",
-      "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
       "input_sha256": "1d197cfee5394bcf57fd57bcc28c650d0af59afd148d70ff8a0cd1c23a8716be",
       "mesh_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -134172,20 +134189,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "per_view_texture:env_cubemap"
-      ],
       "shader": "water",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -134193,34 +134207,42 @@
       ]
     },
     "materials/nature/toxicslime_a3_bomb_flings.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "water",
+          "scene_inputs": {
+            "world_stage": true
+          }
+        }
+      ],
       "family": "water",
-      "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
       "input_sha256": "ad811f672c92d9e69ca43b64d83b210e980ec33a95a135422d4654521052ba16",
       "mesh_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -134228,20 +134250,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "per_view_texture:env_cubemap"
-      ],
       "shader": "water",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -134249,34 +134268,42 @@
       ]
     },
     "materials/nature/toxicslime_a3_crazy_box.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "water",
+          "scene_inputs": {
+            "world_stage": true
+          }
+        }
+      ],
       "family": "water",
-      "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
       "input_sha256": "2034084ced075d0e4b35aa014a65b889f944d5801fef6bae01bf2ba0ad09aaf2",
       "mesh_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -134284,20 +134311,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "per_view_texture:env_cubemap"
-      ],
       "shader": "water",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -134305,34 +134329,42 @@
       ]
     },
     "materials/nature/toxicslime_a3_jump_intro.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "water",
+          "scene_inputs": {
+            "world_stage": true
+          }
+        }
+      ],
       "family": "water",
-      "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
       "input_sha256": "2034084ced075d0e4b35aa014a65b889f944d5801fef6bae01bf2ba0ad09aaf2",
       "mesh_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -134340,20 +134372,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "per_view_texture:env_cubemap"
-      ],
       "shader": "water",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -134361,34 +134390,42 @@
       ]
     },
     "materials/nature/toxicslime_a3_speed_flings.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "water",
+          "scene_inputs": {
+            "world_stage": true
+          }
+        }
+      ],
       "family": "water",
-      "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
       "input_sha256": "094d8611a33638979127fea0169418c8eb9598e78284a1fdc4b87d5209825aea",
       "mesh_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -134396,20 +134433,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "per_view_texture:env_cubemap"
-      ],
       "shader": "water",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -134417,34 +134451,42 @@
       ]
     },
     "materials/nature/toxicslime_a3_speed_ramp.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "water",
+          "scene_inputs": {
+            "world_stage": true
+          }
+        }
+      ],
       "family": "water",
-      "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
       "input_sha256": "82fbf5ba87fed4bba15699ff56e3004e6b99e18f4f6df37b02da392c7b8720fa",
       "mesh_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -134452,20 +134494,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "per_view_texture:env_cubemap"
-      ],
       "shader": "water",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -134473,34 +134512,42 @@
       ]
     },
     "materials/nature/toxicslime_a4_finale2.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "water",
+          "scene_inputs": {
+            "world_stage": true
+          }
+        }
+      ],
       "family": "water",
-      "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
       "input_sha256": "9dd7e9e6a27c0140127514ed0dcab4d46ee337220961f682c49cd173261dd292",
       "mesh_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -134508,20 +134555,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "per_view_texture:env_cubemap"
-      ],
       "shader": "water",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -134529,34 +134573,42 @@
       ]
     },
     "materials/nature/toxicslime_coop_2paints_1bridge_noreflect.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "water",
+          "scene_inputs": {
+            "world_stage": true
+          }
+        }
+      ],
       "family": "water",
-      "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
       "input_sha256": "f48ba0481ac7961b94464c2e9ad0f4171dfcaa9df9c965e0ad606ae28b71f309",
       "mesh_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -134564,20 +134616,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "per_view_texture:env_cubemap"
-      ],
       "shader": "water",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -134821,34 +134870,42 @@
       ]
     },
     "materials/nature/toxicslime_coop_catapult_wall_intro.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "water",
+          "scene_inputs": {
+            "world_stage": true
+          }
+        }
+      ],
       "family": "water",
-      "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
       "input_sha256": "394ed555a56c749a49a833b97fbf541db29d8299b6311c679b2cc44457895d7d",
       "mesh_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -134856,20 +134913,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "per_view_texture:env_cubemap"
-      ],
       "shader": "water",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -134877,34 +134931,42 @@
       ]
     },
     "materials/nature/toxicslime_coop_catapult_wall_intro_noref.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "water",
+          "scene_inputs": {
+            "world_stage": true
+          }
+        }
+      ],
       "family": "water",
-      "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
       "input_sha256": "394ed555a56c749a49a833b97fbf541db29d8299b6311c679b2cc44457895d7d",
       "mesh_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -134912,20 +134974,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "per_view_texture:env_cubemap"
-      ],
       "shader": "water",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -135936,34 +135995,42 @@
       ]
     },
     "materials/nature/toxicslime_coop_turret_ball_noreflect.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "water",
+          "scene_inputs": {
+            "world_stage": true
+          }
+        }
+      ],
       "family": "water",
-      "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
       "input_sha256": "ba793161b61cb4d4be8a661b25da2ad4f173b381dbe264618b6909e48a57695a",
       "mesh_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -135971,20 +136038,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "per_view_texture:env_cubemap"
-      ],
       "shader": "water",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -136051,34 +136115,42 @@
       ]
     },
     "materials/nature/toxicslime_coop_turret_walls_noreflect.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "world_surface",
+          "pass": "water",
+          "scene_inputs": {
+            "world_stage": true
+          }
+        }
+      ],
       "family": "water",
-      "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
       "input_sha256": "10b3536baf99bc6a3c850ae465be82077ea414d2646b04da29f7a91a10b34acd",
       "mesh_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -136086,20 +136158,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "per_view_texture:env_cubemap"
-      ],
       "shader": "water",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "claim": "opaque",
           "scene_inputs": {
             "world_stage": true
           }
@@ -136635,34 +136704,42 @@
       ]
     },
     "materials/nature/water_glados_01_cheap.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "world_surface",
+          "pass": "water",
+          "scene_inputs": {
+            "world_stage": true
+          }
+        }
+      ],
       "family": "water",
-      "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
       "input_sha256": "e6e4c3f82bc43a9c34691cdde16c76518cf31f491247b145b1f813058006361d",
       "mesh_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "family water has no mesh point yet",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -136670,20 +136747,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "per_view_texture:env_cubemap"
-      ],
       "shader": "water",
-      "status": "unsupported",
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not bind the per-view texture env_cubemap ($envmap)",
+          "claim": "alpha",
           "scene_inputs": {
             "world_stage": true
           }
@@ -223994,16 +224068,6 @@
       "refused_materials": 5,
       "unmapped_materials": 0
     },
-    "per_view_texture:env_cubemap": {
-      "examples": [
-        "materials/liquids/water_underground_cave.vmt",
-        "materials/nature/toxicslime002a_noreflect.vmt",
-        "materials/nature/toxicslime_a3_03.vmt"
-      ],
-      "first_refusals": 15,
-      "refused_materials": 15,
-      "unmapped_materials": 0
-    },
     "shader_family:blurfilterx": {
       "examples": [
         "materials/dev/blurfilterx.vmt",
@@ -224274,8 +224338,8 @@
   "status_counts": {
     "dynamically_unresolved": 146,
     "statically_supported": 1556,
-    "supported_with_requirements": 1526,
-    "unsupported": 510
+    "supported_with_requirements": 1541,
+    "unsupported": 495
   },
   "total": 3738
 }

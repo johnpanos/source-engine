@@ -10841,3 +10841,18 @@ texture at 13, sRGB, with the mode on. The suite passes 109/109;
 `view-state` passes 16/16. The inventory is now 1,556 / 1,526 / 510
 unsupported (5 more claimed; most of the 12 also hit another refusal). No
 pixel oracle against the port yet. R96 stays `active`.
+
+### K12: Water's `$envmap env_cubemap` (2026-10-05)
+
+Water reads its env map only as a forced reflection (`$forceenvmap` without
+`$reflecttexture`). Before this, every water material that named the view's
+`env_cubemap` was refused, even when the reflection target meant the cube
+was never read. `BlockFor` now admits water's `env_cubemap`. The claim's
+callers require the stage's reflection probes only when the env map is the
+reflection: `ClaimForDrawing` refuses without them, and the resolver gives
+the variant `kSurfaceReflectionProbes`. `WaterSurface`'s cube branch then
+reads `ReflectionProbesRadiance` (linear, mirror roughness, the ambient
+cube on a miss), as the lightmapped point does. Inventory: 1,556 / 1,541 /
+495 unsupported (15 more claimed). `render.family.water` passes;
+`posed-model` (109), `reflection-probes` (39) and `map-terms` (38) pass. No
+water pixel case of the probe reflection yet. R96 stays `active`.
