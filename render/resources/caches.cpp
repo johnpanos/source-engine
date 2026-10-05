@@ -51,18 +51,18 @@ foundation::Expected<TextureEntry, ResourceError> TextureCache::StageMips( std::
 	// Each level at a 16-byte aligned offset of one staging buffer: a
 	// multiple of every texel size, as a buffer-to-texture copy needs.
 	constexpr std::uint64_t kAlign = 16;
-	const std::uint32_t texel = device::BytesPerTexel( desc.format );
 	// A cube uploads its six faces; every other texture its first layer.
 	const std::uint32_t layers = desc.dimension == device::TextureDimension::kCube ? 6u : 1u;
 	if ( desc.dimension == device::TextureDimension::kCube && desc.depthOrLayers != 6 )
 		return Fail( ResourceStatus::kSizeMismatch );
 	std::vector<Level> placed;
 	std::uint64_t total = 0;
+	std::uint64_t residentBytes = 0;
 	for ( std::size_t m = 0; m < levels.size(); ++m )
 	{
 		const std::uint32_t width = std::max( desc.width >> m, 1u );
 		const std::uint32_t height = std::max( desc.height >> m, 1u );
-		const std::uint64_t layerBytes = static_cast<std::uint64_t>( width ) * height * texel;
+		const std::uint64_t layerBytes = device::RegionBytes( desc.format, width, height );
 		const std::uint64_t expected = layerBytes * layers;
 		if ( desc.width == 0 || desc.height == 0 || expected == 0 || levels[m].size() != expected )
 			return Fail( ResourceStatus::kSizeMismatch );
@@ -71,19 +71,24 @@ foundation::Expected<TextureEntry, ResourceError> TextureCache::StageMips( std::
 		total = ( total + kAlign - 1 ) / kAlign * kAlign;
 		placed.push_back( { total, width, height, layers, layerStride } );
 		total += layerStride * ( layers - 1 ) + layerBytes;
+		residentBytes += expected;
 	}
 	device::TextureDesc resident = desc;
+	// The allocation contains exactly the supplied prefix. Sampling clamps at
+	// its last resident mip until a later replacement stages a longer chain.
+	resident.mipLevels = static_cast<std::uint32_t>( levels.size() );
 	resident.usages.Add( device::ResourceUsage::kCopyDestination )
 	    .Add( device::ResourceUsage::kSampled );
 	auto texture = m_Device.CreateTexture( resident );
 	if ( !texture )
 		return Fail( ResourceStatus::kDevice, texture.Error() );
 
-	TextureEntry entry{ texture.Value(), resident, 1 };
+	TextureEntry entry{ texture.Value(), resident, 1, residentBytes, 0 };
 	const auto found = m_Entries.find( name );
 	if ( found != m_Entries.end() )
 	{
 		entry.revision = found->second.revision + 1;
+		entry.priority = found->second.priority;
 		m_Replaced.push_back( found->second.texture );
 		// An upload not yet recorded for the replaced texture is dropped.
 		std::erase_if( m_Uploads,
@@ -118,6 +123,38 @@ const TextureEntry *TextureCache::Find( std::string_view name ) const
 {
 	const auto found = m_Entries.find( name );
 	return found == m_Entries.end() ? nullptr : &found->second;
+}
+
+bool TextureCache::SetPriority( std::string_view name, std::uint32_t score )
+{
+	const auto found = m_Entries.find( name );
+	if ( found == m_Entries.end() )
+		return false;
+	found->second.priority = score;
+	return true;
+}
+
+std::uint64_t TextureCache::ResidentBytes() const
+{
+	std::uint64_t total = 0;
+	for ( const auto &[name, entry] : m_Entries )
+		total += entry.residentBytes;
+	return total;
+}
+
+void TextureCache::EvictToBudget( std::uint64_t budgetBytes )
+{
+	while ( ResidentBytes() > budgetBytes && !m_Entries.empty() )
+	{
+		auto victim = std::min_element( m_Entries.begin(), m_Entries.end(),
+		    []( const auto &left, const auto &right )
+		    {
+			    if ( left.second.priority != right.second.priority )
+				    return left.second.priority < right.second.priority;
+			    return left.first < right.first;
+		    } );
+		(void)Evict( victim->first );
+	}
 }
 
 foundation::Expected<void, ResourceError> TextureCache::Evict( std::string_view name )
@@ -202,6 +239,7 @@ foundation::Expected<MeshEntry, ResourceError> MeshCache::Stage(
 	entry.indexCount = static_cast<std::uint32_t>( data.indices.size() / indexSize );
 	entry.indexFormat = data.indexFormat;
 	entry.revision = 1;
+	entry.residentBytes = data.vertices.size() + data.indices.size();
 
 	device::BufferDesc vertices;
 	vertices.size = data.vertices.size();
@@ -229,6 +267,7 @@ foundation::Expected<MeshEntry, ResourceError> MeshCache::Stage(
 	if ( found != m_Entries.end() )
 	{
 		entry.revision = found->second.revision + 1;
+		entry.priority = found->second.priority;
 		const MeshEntry old = found->second;
 		std::erase_if( m_Uploads,
 		    [&]( const Upload &upload )
@@ -256,6 +295,38 @@ const MeshEntry *MeshCache::Find( std::string_view name ) const
 {
 	const auto found = m_Entries.find( name );
 	return found == m_Entries.end() ? nullptr : &found->second;
+}
+
+bool MeshCache::SetPriority( std::string_view name, std::uint32_t score )
+{
+	const auto found = m_Entries.find( name );
+	if ( found == m_Entries.end() )
+		return false;
+	found->second.priority = score;
+	return true;
+}
+
+std::uint64_t MeshCache::ResidentBytes() const
+{
+	std::uint64_t total = 0;
+	for ( const auto &[name, entry] : m_Entries )
+		total += entry.residentBytes;
+	return total;
+}
+
+void MeshCache::EvictToBudget( std::uint64_t budgetBytes )
+{
+	while ( ResidentBytes() > budgetBytes && !m_Entries.empty() )
+	{
+		auto victim = std::min_element( m_Entries.begin(), m_Entries.end(),
+		    []( const auto &left, const auto &right )
+		    {
+			    if ( left.second.priority != right.second.priority )
+				    return left.second.priority < right.second.priority;
+			    return left.first < right.first;
+		    } );
+		(void)Evict( victim->first );
+	}
 }
 
 foundation::Expected<void, ResourceError> MeshCache::Evict( std::string_view name )

@@ -10021,3 +10021,29 @@ reproduction script `verify-latest-b.py`, build and refresh logs alongside it.
 `latest-b-rerun.json` identifies the active capture and prior-gallery backup;
 `latest-b-review.png` contains the visual review. This capture refresh adds no
 render implementation or qualification claim.
+
+## Resource cache residency policy slice (2026-10-04)
+
+`TextureCache::StageMips` now creates a texture with exactly the supplied mip
+prefix, so a partial chain consumes only the image levels it can sample. The
+entry reports its resident payload bytes. Both texture and mesh entries now
+carry explicit integer priority scores and resident-byte counts;
+`EvictToBudget` removes the lowest scores first, with name-order tie breaking,
+until the caller's byte allowance is met. Entries disappear from lookup when
+evicted, and their device objects still retire behind the recorded completion
+token. Texture byte sizing uses device format block geometry, so BC images can
+be staged and accounted correctly.
+
+The `render.resources` null-device conformance suite passes 43 checks,
+including partial-chain allocation/accounting and texture/mesh budget eviction.
+The changed-file style check passes. `archlint check --changed` reports two
+existing CAP002 violations in `public/gameui/graphics_settings_service.h` and
+`public/render/pass/world/world_pass.h`; neither file is part of this change.
+
+This does not yet move the core-world material path off borrowed legacy GPU
+images, and the cache budget methods are not wired to a product cache owner.
+The current `ICoreTextures` boundary exposes imported GPU IDs, sampler state
+and metadata, but no copyable texel source; `TextureCache` stages owned images
+from CPU mip bytes. The next implementation slice must provide an owned content
+snapshot at that boundary and route core-world textures through its cache.
+No render quality gate or support profile is promoted by this work.

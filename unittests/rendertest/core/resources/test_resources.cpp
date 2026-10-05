@@ -207,7 +207,7 @@ int main()
 		    "R3.evict-removes-a-name-once" );
 		textures.Retire( token );
 
-		// R6: a mip chain, every level uploaded in one submission.
+		// R6/R10: a mip chain, including a deliberately partial resident prefix.
 		device::TextureDesc chain = desc;
 		chain.width = 8;
 		chain.height = 4;
@@ -246,7 +246,13 @@ int main()
 			landed = ReadTexture( *device, mips.Value().texture, std::max( 8u >> m, 1u ),
 			             std::max( 4u >> m, 1u ), m ) == levels[m];
 		checks.That( landed, "R6.every-level-lands-in-its-mip" );
+		std::vector<std::span<const std::byte>> partialLevels( views.begin(), views.begin() + 2 );
+		auto partial = textures.StageMips( "partial", chain, partialLevels );
+		checks.That(
+		    partial && partial.Value().desc.mipLevels == 2 && partial.Value().residentBytes == 160,
+		    "R10.partial-mip-chain-allocates-only-resident-levels" );
 		checks.That( textures.Evict( "chain" ).HasValue(), "R6.the-chain-evicts" );
+		checks.That( textures.Evict( "partial" ).HasValue(), "R10.partial-chain-evicts" );
 		textures.Retire( chainToken );
 
 		// R7: a cube stages its six faces, each into its own layer.
@@ -278,6 +284,18 @@ int main()
 		checks.That( facesLanded, "R7.every-face-lands-in-its-layer" );
 		checks.That( textures.Evict( "cube" ).HasValue(), "R7.the-cube-evicts" );
 		textures.Retire( cubeToken );
+		const auto budgetLow = textures.Stage( "budget-low", desc, Bytes( 32, 1 ) );
+		const auto budgetHigh = textures.Stage( "budget-high", desc, Bytes( 32, 2 ) );
+		checks.That( budgetLow && budgetHigh && textures.ResidentBytes() == 64,
+		    "R10.texture-budget-accounts-resident-bytes" );
+		checks.That( textures.SetPriority( "budget-low", 1 ) &&
+		                 textures.SetPriority( "budget-high", 10 ) &&
+		                 !textures.SetPriority( "missing", 10 ),
+		    "R10.texture-priority-is-explicit-and-named" );
+		textures.EvictToBudget( 32 );
+		checks.That( !textures.Find( "budget-low" ) && textures.Find( "budget-high" ) &&
+		                 textures.ResidentBytes() == 32,
+		    "R10.texture-budget-keeps-higher-priority-resource" );
 
 		resources::MeshCache meshes( *device );
 		const std::vector<std::byte> vertices = Bytes( 96, 3 );
@@ -315,6 +333,22 @@ int main()
 		}
 		checks.That( vertexWritten, "R4.vertex-bytes-are-written" );
 		checks.That( vertexReady && indexReady, "R4.buffers-end-in-kVertex-and-kIndex" );
+		const std::vector<std::byte> smallVertices = Bytes( 32, 7 );
+		const std::vector<std::byte> smallIndices = Bytes( 4, 8 );
+		const auto meshLow = meshes.Stage(
+		    "budget-low", { smallVertices, 16, smallIndices, device::IndexFormat::kUint16 } );
+		const auto meshHigh = meshes.Stage(
+		    "budget-high", { smallVertices, 16, smallIndices, device::IndexFormat::kUint16 } );
+		checks.That( meshLow && meshHigh && meshes.ResidentBytes() == 180,
+		    "R10.mesh-budget-accounts-vertex-and-index-bytes" );
+		checks.That( meshes.SetPriority( "crate", 5 ) && meshes.SetPriority( "budget-low", 1 ) &&
+		                 meshes.SetPriority( "budget-high", 10 ) &&
+		                 !meshes.SetPriority( "missing", 10 ),
+		    "R10.mesh-priority-is-explicit-and-named" );
+		meshes.EvictToBudget( 144 );
+		checks.That( !meshes.Find( "budget-low" ) && meshes.Find( "budget-high" ) &&
+		                 meshes.ResidentBytes() == 144,
+		    "R10.mesh-budget-keeps-higher-priority-resource" );
 		meshes.Retire( meshToken );
 	}
 	{

@@ -33,6 +33,8 @@ struct MeshEntry
 	std::uint32_t indexCount = 0;
 	device::IndexFormat indexFormat = device::IndexFormat::kUint16;
 	std::uint64_t revision = 0;
+	std::uint64_t residentBytes = 0;
+	std::uint32_t priority = 0; // larger scores survive budget eviction longer
 };
 
 struct MeshData
@@ -55,6 +57,12 @@ public:
 	    std::string_view name, const MeshData &data );
 	const MeshEntry *Find( std::string_view name ) const;
 	foundation::Expected<void, ResourceError> Evict( std::string_view name );
+	bool SetPriority( std::string_view name, std::uint32_t score );
+	std::uint64_t ResidentBytes() const;
+	// Evicts lowest-priority resources until at most budgetBytes are accounted
+	// resident. Ties use name order for deterministic results. Buffers remain
+	// alive behind the last submitted token via Retire().
+	void EvictToBudget( std::uint64_t budgetBytes );
 
 	std::size_t RecordUploads( device::CommandEncoder &encoder );
 	void Retire( device::CompletionToken token );

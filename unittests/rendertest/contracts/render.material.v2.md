@@ -27,6 +27,7 @@ recorded K4 fixtures.
 | R6 | `TextureCache::StageMips` (2026-09-28, for the Hammer viewports' mipmaps): a mip chain of 1 to `mipLevels` levels, each `max(1, size >> m)` texels, stages as one upload with one buffer-to-texture copy per level from a single staging buffer (16-byte aligned offsets), and every level lands in its mip. A level of the wrong size, no level, or more levels than the texture has fails and stages nothing. `Stage` is `StageMips` with mip 0 alone |
 | R8 | A failed staging-buffer allocation leaves the texture upload pending with its original bytes. Other queued uploads can record, and a later recording retries only the failed uploads; successful uploads are not repeated. `PendingUploads()` exposes the incomplete work |
 | R9 | Texture staging uses D25 initialized upload buffers directly as copy sources: one buffer-to-texture copy per mip/layer, with no intervening encoder buffer write or GPU buffer-to-buffer transfer. Staging-buffer retirement still follows R1–R5 |
+| R10 | `StageMips` allocates and accounts only for the supplied mip prefix, allowing a texture to be resident at partial mip resolution. Texture and mesh caches account for resident payload bytes, accept an explicit per-resource priority score, and deterministically evict lower scores first until within the requested budget. Eviction removes lookup visibility immediately and retires device resources only after the last token |
 
 ## K4 clauses (2026-09-28)
 

@@ -2,6 +2,8 @@
 <module type="EMPTY_MODULE" version="4">
   <component name="NewModuleRootManager">
     <content url="file://$MODULE_DIR$">
+      <excludeFolder url="file://$MODULE_DIR$/quality-results/rfc0008-legacy-wine/prefix/dosdevices/c:/users/john/Documents/loadtest/.venv" />
+      <excludeFolder url="file://$MODULE_DIR$/quality-results/rfc0008-legacy-wine/prefix/drive_c/users/john/Documents/loadtest/.venv" />
       <excludeFolder url="file://$MODULE_DIR$/thirdparty/armorpaint-mcp/.venv" />
     </content>
     <orderEntry type="inheritedJdk" />

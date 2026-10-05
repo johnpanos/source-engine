@@ -8,9 +8,11 @@
 //			staging buffers and replaced textures behind it. Nothing is freed
 //			before the GPU is done with it.
 //
-//			StageMips stages a mip chain: every level it is given is uploaded
-//			from one initialized upload buffer (16-byte aligned level offsets),
-//			in the same submission. Stage is StageMips with mip 0 alone.
+//			StageMips stages a resident prefix of a mip chain: the texture
+//			allocation contains only the levels supplied, uploaded from one
+//			initialized upload buffer (16-byte aligned level offsets) in the
+//			same submission. Stage is StageMips with mip 0 alone. Both caches
+//			account payload bytes and trim by explicit priority when asked.
 //
 //			Staging and recording belong to one sequence (the render sequence);
 //			the cache is not thread-safe.
@@ -40,6 +42,8 @@ struct TextureEntry
 	device::TextureId texture;
 	device::TextureDesc desc;
 	std::uint64_t revision = 0; // rises by one per replacement
+	std::uint64_t residentBytes = 0;
+	std::uint32_t priority = 0; // larger scores survive budget eviction longer
 };
 
 class TextureCache
@@ -57,12 +61,18 @@ public:
 	// max(1, height >> m) texels per layer; 1 <= levels.size() <=
 	// desc.mipLevels. A cube's level holds its six faces one after another
 	// (+x, -x, +y, -y, +z, -z); every other texture's level holds one layer.
-	// Levels past the last one given are not uploaded (a sampler must not
-	// reach them). A level of the wrong size fails and stages nothing.
+	// Levels past the last one given are not allocated; sampling clamps at the
+	// last resident level. A level of the wrong size fails and stages nothing.
 	foundation::Expected<TextureEntry, ResourceError> StageMips( std::string_view name,
 	    const device::TextureDesc &desc, std::span<const std::span<const std::byte>> levels );
 	const TextureEntry *Find( std::string_view name ) const;
 	foundation::Expected<void, ResourceError> Evict( std::string_view name );
+	bool SetPriority( std::string_view name, std::uint32_t score );
+	std::uint64_t ResidentBytes() const;
+	// Evicts lowest-priority resources until at most budgetBytes are accounted
+	// resident. Ties use name order for deterministic results. Resources remain
+	// alive behind the last submitted token via Retire().
+	void EvictToBudget( std::uint64_t budgetBytes );
 
 	// Returns the number recorded. A staging allocation failure leaves that
 	// upload pending for retry; successfully recorded uploads are removed.
