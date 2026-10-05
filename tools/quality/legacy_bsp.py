@@ -27,6 +27,26 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from bsp2_reader import parse_legacy_header  # noqa: E402
+from source_vcs import decompress_valve_lzma  # noqa: E402
+
+
+def decompress_lzma_lump(blob, what, expected=0):
+    """`blob` decoded when it is a Valve LZMA stream, else unchanged.
+
+    Portal 2's shipped maps store their lumps, and the sub-lumps inside the
+    game lump (the static prop models, for one), as `lzma_header_t` streams. A
+    short or unparsable prefix is left alone: the smallest such sub-lumps are a
+    bare 12-byte header with no payload, and reading them as text is right."""
+    if blob[:4] != b"LZMA":
+        return blob
+    try:
+        decoded = decompress_valve_lzma(blob)
+    except Exception:
+        return blob
+    if expected and len(decoded) != expected:
+        raise ValueError("%s decoded to %d bytes, not the %d its header declares"
+                         % (what, len(decoded), expected))
+    return decoded
 
 LUMP_ENTITIES = 0
 LUMP_PLANES = 1
@@ -153,12 +173,18 @@ class LegacyBsp:
         return cls(Path(path).read_bytes())
 
     def lump(self, index, record=1):
-        offset, length, _version, _uncompressed = self.lumps[index]
+        offset, length, _version, uncompressed = self.lumps[index]
         if offset < 0 or length < 0 or offset + length > len(self.data):
             raise ValueError("lump %d is out of bounds" % index)
-        if length % record:
+        raw = self.data[offset:offset + length]
+        if uncompressed and uncompressed != length:
+            # A lump whose header carries an uncompressed size is a Valve LZMA
+            # stream: Portal 2's shipped maps (and P2:CE's) store most of them
+            # that way, and the record size only divides the decoded bytes.
+            raw = decompress_lzma_lump(raw, index, uncompressed)
+        if record and len(raw) % record:
             raise ValueError("lump %d has a partial record" % index)
-        return self.data[offset:offset + length]
+        return raw
 
     def lump_version(self, index):
         return self.lumps[index][2]
@@ -411,7 +437,8 @@ class LegacyBsp:
                 continue
             if offset < 0 or length < 4 or offset + length > len(self.data):
                 raise ValueError("static prop game lump is out of bounds")
-            data = self.data[offset:offset + length]
+            data = decompress_lzma_lump(self.data[offset:offset + length],
+                                        "static prop game lump")
             names = struct.unpack_from("<i", data, 0)[0]
             if names < 0 or 4 + 128 * names + 4 > len(data):
                 raise ValueError("static prop dictionary is out of bounds")

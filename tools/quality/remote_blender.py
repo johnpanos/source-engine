@@ -34,6 +34,23 @@ Blender's own.
     # use it: any pipeline command that takes --toolchain, with the GPU device
     python3 tools/quality/portal2_gi_chamber.py --toolchain build/toolchains/pbrt-map-toolchain-gpu.json --device gpu
 
+`provision` installs that host instead of asking for it: it reads the pinned
+host profile (`quality/remote_hosts/pbrt-map-remote-host.json`), works out
+which prefix the host can use (`/opt`, or `~/.local/opt` when the root
+filesystem is read-only, as on an immutable or atomic image such as Bazzite,
+Silverblue or SteamOS), fetches every pinned archive by digest, installs the
+post-bake Python packages with the host's own Blender Python, writes the
+toolchain and then reports what it found:
+
+    python3 tools/quality/remote_blender.py provision --host bazzite@192.168.0.13 \\
+        --out build/toolchains/pbrt-map-toolchain-bazzite.json
+    python3 tools/quality/remote_blender.py check --toolchain build/toolchains/pbrt-map-toolchain-bazzite.json --smoke
+
+The pinned archives are ordinary files: a prefix you own installs them
+unchanged, with no package manager and no root. Packages are installed only
+when the host is actually missing `rsync`, `curl`, `tar`, `xz` or `sha256sum`,
+and an unknown distribution is refused by name rather than guessed at.
+
 The block:
 
     "remote_blender": {
@@ -122,33 +139,57 @@ class RemoteBlender:
         return subprocess.run(self.ssh + [self.host, command], capture_output=capture, text=True,
                               check=check)
 
-    def rsync(self, sources, destination, delete=False, relative=True, update=False):
+    def rsync(self, sources, destination, delete=False, update=False, cwd=None, relative=True):
+        # --relative keeps each source at the path it is named with, so a
+        # relative source run from the checkout lands at the same absolute path
+        # on the host; a plain rsync would drop the leading directories. It is
+        # off when pulling, whose destination already IS that path.
         command = ["rsync", "-a", "-e", " ".join(shlex.quote(p) for p in self.ssh)]
-        command += ["--exclude=" + e for e in EXCLUDES]
         if relative:
             command.append("--relative")
+        command += ["--exclude=" + e for e in EXCLUDES]
         if delete:
             command.append("--delete")
         if update:
             command.append("--update")
+        # the output is the remote side's stderr: rsync says which path it could
+        # not read, and a read-only host prefix otherwise fails as exit 23 alone
         subprocess.run(command + [str(s) for s in sources] + [destination], check=True,
-                       capture_output=True, text=True)
+                       text=True, cwd=cwd)
 
     def push(self, paths, mirror):
-        """Mirror the support trees, `mirror` (with deletion) and `paths` to the host."""
+        """Mirror the support trees, `mirror` (with deletion) and `paths` to the
+        host, each at the SAME absolute path it has here.
+
+        The paths are relative to this checkout and the destination is the host's
+        copy of it, rather than absolute paths into the host's `/`: an atomic or
+        immutable host has a read-only root, and the checkout is the one place
+        on it that a remote step can write."""
         support = [self.root / t for t in SUPPORT_TREES]
-        self.rsync([str(p) + "/" if p.is_dir() else p for p in support], self.host + ":/")
-        self.rsync([str(mirror) + "/"], self.host + ":/", delete=True)
+        destination = "%s:%s/" % (self.host, self.root)
+        # no trailing slash on a source: rsync reads that as "the contents of",
+        # which would land each tree in the checkout root instead of at its own
+        # path (and let the mirror's --delete erase it again)
+        self.rsync([self._relative(p) for p in support], destination, cwd=self.root)
+        self.rsync([self._relative(mirror)], destination, delete=True, cwd=self.root)
         extra = sorted({str(Path(p)) for p in paths
                         if Path(p).exists() and not _inside(p, [mirror] + support)})
         if extra:
-            self.rsync(extra, self.host + ":/")
+            outside = [p for p in extra if not _inside(p, [self.root])]
+            if outside:
+                raise ValueError("remote steps read and write paths inside %s, but %s are "
+                                 "outside it; there is no place on the host to mirror them to"
+                                 % (self.root, outside))
+            self.rsync(extra, destination, cwd=self.root)
+
+    def _relative(self, path):
+        return str(Path(path).resolve().relative_to(self.root.resolve()))
 
     def pull(self, mirror, update=False):
         """Bring `mirror` back; `update` keeps local files newer than the host's
         (a log appended here while the host ran)."""
-        self.rsync(["%s:%s/" % (self.host, mirror)], str(mirror) + "/", relative=False,
-                   update=update)
+        self.rsync(["%s:%s/" % (self.host, mirror)], str(mirror) + "/", update=update,
+                   relative=False)
 
     def command(self, arguments, env):
         """The local command that runs Blender with `arguments` on the host."""
@@ -379,6 +420,22 @@ def check(remote, pinned, smoke=False):
     if writable.returncode:
         problems.append("%s is not writable on the host; run there once: sudo mkdir -p %s && "
                         "sudo chown $USER %s" % (remote.root, root, root))
+    if remote.python:
+        # the tool steps' own interpreter and environment, which the block names
+        facts["tool_steps"] = {}
+        for name, command in (("python", "test -x %s" % shlex.quote(remote.python)),
+                              ("python_packages", "test -d %s" % shlex.quote(
+                                  remote.env.get("PYTHONPATH", ""))),
+                              ("denoiser", "test -e %s" % shlex.quote(
+                                  str(Path(remote.env.get("LD_LIBRARY_PATH", "")) /
+                                      "libOpenImageDenoise.so.2"))),
+                              ("exr_codec", "test -e %s" % shlex.quote(
+                                  remote.env.get("IMAGEIO_FREEIMAGE_LIB", "")))):
+            present = remote.remote(command, check=False)
+            facts["tool_steps"][name] = not present.returncode
+            if present.returncode:
+                problems.append("the host's %s is missing; run `remote_blender.py provision` "
+                                "against it, or drop the tool steps from the block" % name)
     devices = remote.remote("%s -b --factory-startup --python-expr %s 2>&1"
                             % (shlex.quote(remote.blender), shlex.quote(DEVICE_PROBE)),
                             check=False)
@@ -400,17 +457,258 @@ def pinned_blender():
     return profile["host_packages"]["blender"]["version"]
 
 
+# ============================================================== provisioning
+# What a remote host installs, pinned by digest: `quality/remote_hosts/
+# pbrt-map-remote-host.json` owns the versions, URLs and digests; this module
+# owns installing them and recording where they landed. `vast_blender.py` rents
+# a Debian host and calls the same code.
+HOST_PROFILE = ROOT / "quality/remote_hosts/pbrt-map-remote-host.json"
+HOST = json.loads(HOST_PROFILE.read_text())
+# The profile's canonical install prefix, and the fallback for a host whose
+# root filesystem is not writable without root (an immutable or atomic image:
+# Bazzite, Silverblue, SteamOS). The pinned archives are ordinary files, so a
+# user-owned prefix installs them unchanged and needs no package manager and no
+# sudo.
+CANONICAL_BASE = "/opt"
+USER_BASE = ".local/opt"
+# What a Debian host needs from apt for Blender's X11/GL libraries; a host that
+# already has these (or cannot install anything without a layer) is reported
+# rather than assumed.
+BLENDER_LIBS = ("libx11-6 libxi6 libxxf86vm1 libxfixes3 libxrender1 libxext6 libxkbcommon0 "
+                "libsm6 libice6 libgl1 libegl1 libglu1-mesa")
+BASE_TOOLS = ("rsync", "curl", "tar", "xz", "sha256sum")
+
+
+def relayout(package, base):
+    """`package` with its install paths moved from the canonical prefix to `base`."""
+    moved = dict(package)
+    for key in ("directory", "path"):
+        if key in moved:
+            moved[key] = base + moved[key][len(CANONICAL_BASE):]
+    return moved
+
+
+def paths(base):
+    """Every path the remote steps need on a host installed under `base`."""
+    blender = relayout(HOST["blender"], base)
+    oidn = relayout(HOST["oidn"], base)
+    freeimage = relayout(HOST["freeimage"], base)
+    directory = base + HOST["blender"]["directory"][len(CANONICAL_BASE):]
+    return {"base": base,
+            "blender": directory + "/" + HOST["blender"]["executable"],
+            "python": directory + "/" + HOST["blender"]["python"],
+            "python_target": base + HOST["python_packages"]["target"][len(CANONICAL_BASE):],
+            "oidn_lib_dir": oidn["directory"] + "/" + str(Path(oidn["library"]).parent),
+            "freeimage": freeimage["path"]}
+
+
+def tool_env(base):
+    """The environment of the Python tool steps on a host installed under `base`."""
+    installed = paths(base)
+    return {"PYTHONPATH": installed["python_target"],
+            "LD_LIBRARY_PATH": installed["oidn_lib_dir"],
+            "IMAGEIO_FREEIMAGE_LIB": installed["freeimage"]}
+
+
+def fetch_pinned(package, archive):
+    """Shell lines that download `package` into the canonical prefix, verify its
+    digest and unpack it, unless its directory exists. A dropped transfer
+    resumes (-C -); a bad or stuck source moves to the next URL."""
+    return [
+        "if [ ! -d %s ]; then" % shlex.quote(package["directory"]),
+        "  cd %s" % shlex.quote(str(Path(package["directory"]).parent)),
+        "  for url in %s; do" % " ".join(shlex.quote(u) for u in package["urls"]),
+        "    for try in 1 2 3; do",
+        "      curl -fsSL --retry 3 --retry-all-errors --speed-limit 1000000 --speed-time 30 "
+        "-C - -o %s \"$url\" && break" % archive,
+        "    done",
+        "    echo '%s  %s' | sha256sum -c --quiet - && break" % (package["sha256"], archive),
+        "    rm -f %s" % archive,
+        "  done",
+        "  test -f %s" % archive,
+        "  tar xf %s && rm %s" % (archive, archive),
+        "fi",
+    ]
+
+
+def fetch_pinned_file(package):
+    """Shell lines that download one pinned file to its `path` and verify it."""
+    path = shlex.quote(package["path"])
+    return [
+        "if ! echo '%s  %s' | sha256sum -c --quiet - >/dev/null 2>&1; then"
+        % (package["sha256"], package["path"]),
+        "  mkdir -p %s" % shlex.quote(str(Path(package["path"]).parent)),
+        "  for url in %s; do" % " ".join(shlex.quote(u) for u in package["urls"]),
+        "    curl -fsSL --retry 3 --retry-all-errors -o %s \"$url\" && "
+        "echo '%s  %s' | sha256sum -c --quiet - && break" % (path, package["sha256"],
+                                                              package["path"]),
+        "    rm -f %s" % path,
+        "  done",
+        "  test -f %s" % path,
+        "fi",
+    ]
+
+
+def package_lines(facts, distro):
+    """Shell lines that install what the host is missing, or nothing when it is
+    an immutable image that already carries the tools (the pinned archives
+    themselves never need a package manager)."""
+    missing = [tool for tool in BASE_TOOLS if tool not in facts.get("tools", {})]
+    if not missing:
+        return []
+    if distro in ("debian", "ubuntu"):
+        return ["export DEBIAN_FRONTEND=noninteractive",
+                "apt-get update -qq",
+                "apt-get install -y -qq --no-install-recommends %s >/dev/null"
+                % " ".join(missing + ["ca-certificates"] + list(BLENDER_LIBS))]
+    if distro in ("fedora", "rhel", "centos"):
+        return ["dnf install -y -q %s >/dev/null" % " ".join(missing)]
+    raise ValueError("no package manager is known for %r; install %s by hand, or point the "
+                     "toolchain at paths that already exist" % (distro, " ".join(missing)))
+
+
+def requirements(base):
+    return "\n".join("%s==%s --hash=sha256:%s" % (wheel["name"], wheel["version"], wheel["sha256"])
+                     for wheel in HOST["python_packages"]["wheels"])
+
+
+TOOLS_IMPORT = ("import ctypes, numpy, scipy, imageio.v3 as iio, OpenImageIO, PIL; "
+                "ctypes.CDLL('libOpenImageDenoise.so.2'); "
+                "iio.imwrite('/tmp/check.exr', numpy.ones((4, 4, 4), numpy.float32)); "
+                "assert iio.imread('/tmp/check.exr').shape == (4, 4, 4); "
+                "print('TOOLS', numpy.__version__)")
+
+
+def provision_script(base, distro, facts, tools=True):
+    """The shell a remote host runs to install the pinned Blender, OIDN, imageio
+    EXR codec and (with `tools`) the post-bake Python packages under `base`."""
+    installed = paths(base)
+    lines = ["set -eu", "mkdir -p %s" % shlex.quote(base)]
+    lines += package_lines(facts, distro)
+    lines += fetch_pinned(relayout(HOST["blender"], base), "blender.tar.xz")
+    python = shlex.quote(installed["python"])
+    if tools:
+        lines += fetch_pinned(relayout(HOST["oidn"], base), "oidn.tar.gz")
+        lines += fetch_pinned_file(relayout(HOST["freeimage"], base))
+        wanted = shlex.quote(base + "/source-python.txt.new")
+        lines += ["cat > %s <<'REQUIREMENTS'\n%s\nREQUIREMENTS" % (wanted, requirements(base)),
+                  "%s -m pip --version >/dev/null 2>&1 || %s -m ensurepip --default-pip >/dev/null"
+                  % (python, python),
+                  "if ! cmp -s %s %s; then" % (wanted, shlex.quote(base + "/source-python.txt")),
+                  "  %s -m pip install --quiet --disable-pip-version-check "
+                  "--root-user-action=ignore --no-deps --only-binary :all: --require-hashes "
+                  "--upgrade --target %s -r %s" % (python, shlex.quote(installed["python_target"]),
+                                                   wanted),
+                  "  mv %s %s" % (wanted, shlex.quote(base + "/source-python.txt")),
+                  "fi",
+                  "env %s %s -c %s" % (" ".join("%s=%s" % item for item in sorted(tool_env(base).items())),
+                                       python, shlex.quote(TOOLS_IMPORT))]
+    lines += [shlex.quote(installed["blender"]) + " --version | head -1", "echo PROVISIONED"]
+    return "\n".join(lines) + "\n"
+
+
+
+def survey(remote):
+    """What a candidate host is: its distro, the tools it has, and which install
+    prefix it can use. Nothing here needs root."""
+    facts = {}
+    release = remote.remote("cat /etc/os-release 2>/dev/null || true", check=False)
+    facts["os"] = dict(re.findall(r"^([A-Z_]+)=(.*)$", release.stdout, re.M))
+    facts["distro"] = facts["os"].get("ID", "unknown")
+    facts["tools"] = {}
+    for tool in BASE_TOOLS + ("nvidia-smi",):
+        facts["tools"][tool] = bool(remote.remote("command -v %s" % tool, check=False).returncode == 0)
+    canonical = remote.remote("test -w %s" % CANONICAL_BASE, check=False)
+    facts["base"] = CANONICAL_BASE if canonical.returncode == 0 else "$HOME/" + USER_BASE
+    facts["base_writable"] = canonical.returncode == 0
+    facts["home"] = remote.remote("printf %s \"$HOME\"", check=False).stdout.strip()
+    # a derivative image (Bazzite, Silverblue, SteamOS) carries its parent's ID
+    # only in ID_LIKE; an unknown name is refused by name rather than guessed at
+    facts["distro"] = facts["os"].get("ID", "unknown")
+    if facts["distro"] not in ("debian", "ubuntu", "fedora", "rhel", "centos"):
+        for parent in re.findall(r'"([^"]+)"', facts["os"].get("ID_LIKE", "")):
+            if parent in ("debian", "ubuntu", "fedora", "rhel", "centos"):
+                facts["distro"] = parent
+                break
+    return facts
+
+
+def provision(remote, base=None, tools=True):
+    """Install the pinned host packages on `remote` and return (facts, problems)."""
+    facts = survey(remote)
+    problems = []
+    install = base or facts["base"]
+    if install.startswith("$HOME"):
+        install = facts["home"] + install[len("$HOME"):]
+    if not facts["base_writable"] and not install.startswith(facts["home"]):
+        problems.append("%s is not writable and %s is not under your home; pass --base with a "
+                        "directory you own" % (CANONICAL_BASE, install))
+    if problems:
+        return facts, problems
+    facts["installed_at"] = install
+    if not facts["tools"].get("nvidia-smi"):
+        facts["notes"] = ["nvidia-smi not found on the host; Cycles will run on the CPU"]
+    script = provision_script(install, facts["distro"], facts, tools)
+    result = subprocess.run(remote.ssh + [remote.host, "bash -s"], input=script,
+                            capture_output=True, text=True)
+    facts["provision"] = (result.stdout or "").strip().splitlines()
+    if result.returncode:
+        problems.append("provisioning failed: %s"
+                        % (result.stderr or result.stdout).strip()[-400:])
+        return facts, problems
+    # the steps mirror this checkout to the SAME absolute path on the host, so
+    # that path has to exist and be writable there, by this user or by root
+    root = shlex.quote(str(remote.root))
+    mirror = remote.remote("mkdir -p %s && test -w %s" % (root, root), check=False)
+    facts["mirror_root"] = str(remote.root)
+    if mirror.returncode:
+        problems.append("%s is not writable on the host; run there once: sudo mkdir -p %s && "
+                        "sudo chown $USER %s" % (remote.root, root, root))
+    return facts, problems
+
+
+def block_for(host, base, ssh=None, blender=None, tools=True):
+    """The `remote_blender` block for a host provisioned under `base`: the
+    pinned Blender there, and (with `tools`) the host's Python, its environment
+    and the pinned tools the post-bake steps name in their cache keys."""
+    installed = paths(base)
+    block = {"host": host, "blender": blender or installed["blender"]}
+    if ssh:
+        block["ssh"] = shlex.split(ssh)
+    block["steps"] = list(REMOTE_STEPS) + (list(TOOL_STEPS) if tools else [])
+    if tools:
+        block["python"] = installed["python"]
+        block["env"] = tool_env(base)
+        block["tools"] = {"openimagedenoise": {"version": HOST["oidn"]["version"],
+                                              "sha256": HOST["oidn"]["sha256"]}}
+    return block
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     commands = parser.add_subparsers(dest="command", required=True)
     configure = commands.add_parser("configure", help="write a toolchain with a remote_blender")
     configure.add_argument("--host", required=True)
-    configure.add_argument("--blender", required=True, help="Blender's path on the host")
+    configure.add_argument("--blender", help="Blender's path on the host (default: the pinned one)")
     configure.add_argument("--ssh", help="ssh command, e.g. 'ssh -p 2222 -o BatchMode=yes'")
+    configure.add_argument("--base", help="where the host installed the pinned packages "
+                                         "(default: /opt, or ~/.local/opt when /opt is read-only)")
     configure.add_argument("--toolchain", type=Path,
                            default=ROOT / "build/toolchains/pbrt-map-toolchain.json")
     configure.add_argument("--out", type=Path,
+                           default=ROOT / "build/toolchains/pbrt-map-toolchain-gpu.json")
+    installer = commands.add_parser("provision",
+                                    help="install the pinned Blender and tools on a remote host")
+    installer.add_argument("--host", required=True, help="ssh destination, e.g. bazzite@192.168.0.13")
+    installer.add_argument("--ssh", help="ssh command")
+    installer.add_argument("--base", help="install prefix (default: the first writable of /opt, "
+                                          "~/.local/opt)")
+    installer.add_argument("--no-tools", action="store_true",
+                           help="install Blender only, leaving the Python steps local")
+    installer.add_argument("--toolchain", type=Path,
+                           default=ROOT / "build/toolchains/pbrt-map-toolchain.json")
+    installer.add_argument("--out", type=Path,
                            default=ROOT / "build/toolchains/pbrt-map-toolchain-gpu.json")
     checker = commands.add_parser("check", help="check the host a toolchain names")
     checker.add_argument("--toolchain", type=Path,
@@ -424,14 +722,23 @@ def main():
     if args.command == "exec":
         return execute(json.loads(args.ssh), args.host, args.line)
     if args.command == "configure":
+        block = block_for(args.host, args.base or CANONICAL_BASE, args.ssh, args.blender)
         toolchain = json.loads(args.toolchain.read_text())
-        block = {"host": args.host, "blender": args.blender}
-        if args.ssh:
-            block["ssh"] = shlex.split(args.ssh)
         toolchain["remote_blender"] = block
         args.out.write_text(json.dumps(toolchain, indent=2) + "\n")
         print("wrote " + str(args.out))
         return 0
+    if args.command == "provision":
+        remote = RemoteBlender(block_for(args.host, CANONICAL_BASE, args.ssh))
+        facts, problems = provision(remote, args.base, not args.no_tools)
+        if "installed_at" in facts:
+            block = block_for(args.host, facts["installed_at"], args.ssh, tools=not args.no_tools)
+            toolchain = json.loads(args.toolchain.read_text())
+            toolchain["remote_blender"] = block
+            args.out.write_text(json.dumps(toolchain, indent=2) + "\n")
+            facts["wrote"] = str(args.out)
+        print(json.dumps({"host": args.host, "facts": facts, "problems": problems}, indent=2))
+        return 1 if problems else 0
     remote = from_toolchain(json.loads(args.toolchain.read_text()))
     if remote is None:
         parser.error("%s has no remote_blender block" % args.toolchain)

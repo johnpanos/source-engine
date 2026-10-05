@@ -198,17 +198,19 @@ void OpaqueBatching( testing::Checks &checks )
 	model.mesh = true;
 	world.materials.push_back( model );
 	WorldData::StaticMesh mesh;
+	std::vector<material::SurfaceModelVertex> modelVertices;
 	for ( const auto &v : world.vertices )
 	{
 		material::SurfaceModelVertex vertex;
 		std::copy_n( v.position, 3, vertex.position );
 		vertex.normal[2] = 1;
 		vertex.tangent[0] = vertex.tangent[3] = 1;
-		mesh.vertices.push_back( vertex );
+		modelVertices.push_back( vertex );
 	}
-	mesh.indices = { 0, 1, 2, 0, 2, 3 };
-	mesh.surfaces.push_back( { 4, 0, 0, 6 } );
-	world.staticMeshes.push_back( mesh );
+	mesh.AddLevel(
+	    WorldData::StaticMeshLod::MakeLevel( std::move( modelVertices ), { 0, 1, 2, 0, 2, 3 } ),
+	    { { 4, 0, 0, 6 } } );
+	world.staticMeshes.push_back( std::move( mesh ) );
 	WorldData::StaticInstance instance;
 	for ( int i = 0; i < 4; ++i )
 		instance.world[i * 5] = 1;
@@ -605,6 +607,192 @@ void GroupReuse( testing::Checks &checks )
 	checks.That( device.LiveResourceCount() == 0, "W18.bounded-caches-release-all-resources" );
 }
 
+// W21: one hardware level is one allocation, and a level no view selects is
+// released and uploaded again on demand. The null device counts live resources,
+// so "resident" and "released" are observed, not asserted from internals.
+void ModelLevelResidency( testing::Checks &checks )
+{
+	auto created = null::Create( {} );
+	if ( !checks.That( created.HasValue(), "W22.device" ) )
+		return;
+	IRenderDevice2 &device = *created.Value();
+	TextureDesc colorDesc;
+	colorDesc.format = Format::kRGBA8Srgb;
+	colorDesc.width = colorDesc.height = 64;
+	colorDesc.usages = { ResourceUsage::kColorAttachment };
+	TextureDesc depthDesc = colorDesc;
+	depthDesc.format = Format::kD32Float;
+	depthDesc.usages = { ResourceUsage::kDepthWrite };
+	auto color = device.CreateTexture( colorDesc ).Value();
+	auto depth = device.CreateTexture( depthDesc ).Value();
+	auto setup = device.BeginEncoder( QueueKind::kGraphics ).Value();
+	setup.TransitionTexture( color, ResourceUsage::kUndefined, ResourceUsage::kColorAttachment );
+	setup.TransitionTexture( depth, ResourceUsage::kUndefined, ResourceUsage::kDepthWrite );
+	// A model with two levels: level zero is the near one, level one its own
+	// (smaller) allocation. Its instances select a level per view.
+	WorldData world = TestWorld();
+	WorldMaterial model;
+	model.name = "lod-model";
+	model.shader = "VertexLitGeneric";
+	model.mesh = true;
+	world.materials.push_back( model );
+	WorldData::StaticMesh mesh;
+	std::vector<material::SurfaceModelVertex> near;
+	std::vector<material::SurfaceModelVertex> far;
+	for ( std::size_t i = 0; i < 4; ++i )
+	{
+		material::SurfaceModelVertex vertex;
+		vertex.position[0] = float( i );
+		vertex.normal[2] = 1.0f;
+		vertex.tangent[0] = vertex.tangent[3] = 1.0f;
+		near.push_back( vertex );
+		vertex.position[0] = float( i ) * 0.5f;
+		far.push_back( vertex );
+	}
+	mesh.AddLevel(
+	    WorldData::StaticMeshLod::MakeLevel( near, { 0, 1, 2, 0, 2, 3 } ), { { 4, 0, 0, 6 } } );
+	mesh.AddLevel( WorldData::StaticMeshLod::MakeLevel( far, { 0, 1, 2 } ), { { 4, 0, 0, 3 } } );
+	world.staticMeshes.push_back( std::move( mesh ) );
+	WorldData::StaticInstance instance;
+	instance.surfaceSelection.emplace();
+	instance.surfaceSelection->push_back( 0 );
+	world.staticInstances.push_back( instance );
+	world.modelsRevision = 7;
+	WorldPass pass;
+	pass.SetWorld( std::move( world ) );
+
+	FakeTextures textures( device );
+	WorldTarget target;
+	target.device = &device;
+	target.color = color;
+	target.colorFormat = colorDesc.format;
+	target.depth = depth;
+	target.depthFormat = depthDesc.format;
+	target.width = target.height = 64;
+	target.textures = &textures;
+	target.frame = 1;
+
+	// A view selecting each level in turn; the level is the view's geometry
+	// selection, exactly as a static prop's LOD selection reaches the pass.
+	auto recordLevel = [&]( std::uint64_t frame, std::uint32_t surface )
+	{
+		target.frame = frame;
+		WorldView view;
+		WorldView::StaticInstance draw( 0 );
+		draw.surfaceSelection = std::vector<std::uint32_t>{ surface };
+		view.staticInstances.push_back( draw );
+		auto encoder = device.BeginEncoder( QueueKind::kGraphics ).Value();
+		pass.Record( pass.QueueView( std::move( view ) ), encoder, target );
+	};
+	// Draw level zero: its own vertex and index allocation (two buffers).
+	recordLevel( 1, 0 );
+	checks.That( pass.Failures() == 0 && pass.Stats().staticDrawsDrawn == 1,
+	    "W22.one-level-records-its-surface" );
+	checks.Equal( pass.Stats().modelLevelUploads, 1u, "W22.one-level-is-uploaded-once" );
+	checks.Equal( pass.Stats().modelLevelsResident, 1u, "W22.one-level-is-its-own-allocation" );
+	// Draw level one as well: a second pair, and no re-upload of level zero.
+	recordLevel( 2, 1 );
+	checks.Equal(
+	    pass.Stats().modelLevelUploads, 2u, "W22.a-second-level-uploads-its-own-buffers" );
+	checks.Equal( pass.Stats().modelLevelsResident, 2u, "W22.both-levels-are-resident" );
+	checks.Equal( pass.Stats().modelBufferBytes,
+	    2 * 4 * sizeof( material::SurfaceModelVertex ) + ( 6 + 3 ) * sizeof( std::uint32_t ),
+	    "W22.each-level-holds-its-own-bytes" );
+
+	// Stop selecting level zero for longer than the idle window: it is
+	// released, and its buffers leave the device behind the submitted token.
+	recordLevel( 130, 1 );
+	// Only the level still drawn holds buffers: the released level's vertex and
+	// index allocation are gone from the resident set (its device buffers retire
+	// behind the token of a later frame, as every retired buffer does).
+	checks.Equal( pass.Stats().modelBufferBytes,
+	    4 * sizeof( material::SurfaceModelVertex ) + 3 * sizeof( std::uint32_t ),
+	    "W22.an-unused-level-releases-its-buffers-after-its-idle-window" );
+	checks.Equal(
+	    pass.Stats().modelLevelsResident, 1u, "W22.a-released-level-leaves-the-resident-set" );
+	checks.Equal( pass.Stats().modelLevelsReleased, 1u, "W22.the-release-is-counted" );
+	// Selecting it again uploads it from the world's staging: the same level,
+	// the same pixels, one more upload.
+	recordLevel( 131, 0 );
+	checks.Equal( pass.Stats().modelLevelUploads, 3u,
+	    "W22.a-released-level-is-uploaded-again-when-a-view-selects-it" );
+	checks.Equal(
+	    pass.Stats().modelLevelsResident, 2u, "W22.the-re-uploaded-level-is-resident-again" );
+
+	// The coarsest level is pinned: it is what every distance selects, so it
+	// stays resident and needs no staging to come back from.
+	WorldData pinned = TestWorld();
+	pinned.materials.push_back( model );
+	WorldData::StaticMesh pinnedMesh;
+	pinnedMesh.AddLevel(
+	    WorldData::StaticMeshLod::MakeLevel( near, { 0, 1, 2, 0, 2, 3 } ), { { 4, 0, 0, 6 } } );
+	pinnedMesh.AddLevel(
+	    WorldData::StaticMeshLod::MakeLevel( far, { 0, 1, 2 } ), { { 4, 0, 0, 3 } } );
+	pinned.staticMeshes.push_back( std::move( pinnedMesh ) );
+	WorldData::StaticInstance coarse;
+	coarse.surfaceSelection.emplace();
+	coarse.surfaceSelection->push_back( 1 );
+	pinned.staticInstances.push_back( coarse );
+	pinned.modelsRevision = 8;
+	WorldPass coarsePass;
+	coarsePass.SetWorld( std::move( pinned ) );
+	std::uint64_t coarseFrame = 1;
+	auto recordCoarse = [&]( std::uint32_t surface )
+	{
+		WorldView view;
+		WorldView::StaticInstance draw( 0 );
+		draw.surfaceSelection = std::vector<std::uint32_t>{ surface };
+		view.staticInstances.push_back( draw );
+		auto encoder = device.BeginEncoder( QueueKind::kGraphics ).Value();
+		coarsePass.Record( coarsePass.QueueView( std::move( view ) ), encoder, target );
+		target.frame = ++coarseFrame;
+	};
+	recordCoarse( 0 );
+	recordCoarse( 1 );
+	coarseFrame = 400;
+	recordCoarse( 1 );
+	checks.That( coarsePass.Failures() == 0 && coarsePass.Stats().modelLevelsResident == 2 &&
+	                 coarsePass.Stats().modelLevelsReleased == 0,
+	    "W22.the-coarsest-level-is-pinned" );
+
+	// A level with no geometry left to upload is a named failure, not a silent
+	// skip: the view counts once and nothing is drawn.
+	WorldData empty = TestWorld();
+	empty.materials.push_back( model );
+	WorldData::StaticMesh emptyMesh;
+	emptyMesh.AddLevel(
+	    WorldData::StaticMeshLod::MakeLevel( near, { 0, 1, 2, 0, 2, 3 } ), { { 4, 0, 0, 6 } } );
+	WorldData::StaticMeshLod gone;
+	gone.vertexCount = 4;
+	gone.indexCount = 6; // counts without staging: nothing can upload it
+	emptyMesh.AddLevel( std::move( gone ), { { 4, 0, 0, 6 } } );
+	empty.staticMeshes.push_back( std::move( emptyMesh ) );
+	WorldData::StaticInstance goneInstance;
+	goneInstance.surfaceSelection.emplace();
+	goneInstance.surfaceSelection->push_back( 1 );
+	empty.staticInstances.push_back( goneInstance );
+	WorldPass emptyPass;
+	emptyPass.SetWorld( std::move( empty ) );
+	target.frame = 1;
+	WorldView goneView;
+	WorldView::StaticInstance goneDraw( 0 );
+	goneDraw.surfaceSelection = std::vector<std::uint32_t>{ 1 };
+	goneView.staticInstances.push_back( goneDraw );
+	auto goneEncoder = device.BeginEncoder( QueueKind::kGraphics ).Value();
+	emptyPass.Record( emptyPass.QueueView( std::move( goneView ) ), goneEncoder, target );
+	checks.That( emptyPass.Failures() == 1 && emptyPass.Stats().lastFailure.find(
+	                                              "no geometry to upload" ) != std::string::npos,
+	    "W22.a-level-with-no-staging-fails-by-name" );
+
+	pass.ReleaseDevice( device );
+	coarsePass.ReleaseDevice( device );
+	emptyPass.ReleaseDevice( device );
+	(void)device.Release( color, {} );
+	(void)device.Release( depth, {} );
+	(void)device.Poll();
+	checks.That( device.LiveResourceCount() == 0, "W22.residency-teardown-leaks-nothing" );
+}
+
 } // namespace
 
 int main()
@@ -615,6 +803,7 @@ int main()
 	OpaqueBatching( checks );
 	GroupReuse( checks );
 	LitViewLifetime( checks );
+	ModelLevelResidency( checks );
 	auto created = null::Create( {} );
 	if ( !checks.That( created.HasValue(), "setup.null-device" ) )
 		return checks.Report();
@@ -788,6 +977,8 @@ int main()
 		alternate.name = "crate-alternate-skin";
 		props.materials.push_back( std::move( alternate ) );
 		WorldData::StaticMesh mesh;
+		mesh.skinMaterials = { {}, {} };
+		std::vector<material::SurfaceModelVertex> triangle;
 		for ( const auto &xy :
 		    { std::pair{ 0.0f, 0.0f }, std::pair{ 1.0f, 0.0f }, std::pair{ 0.0f, 1.0f } } )
 		{
@@ -797,11 +988,10 @@ int main()
 			vertex.normal[2] = 1.0f;
 			vertex.tangent[0] = 1.0f;
 			vertex.tangent[3] = 1.0f;
-			mesh.vertices.push_back( vertex );
+			triangle.push_back( vertex );
 		}
-		mesh.indices = { 0, 1, 2 };
-		mesh.surfaces.push_back( { 4, 0, 0, 3 } );
-		mesh.skinMaterials = { { 4 }, { 5 } };
+		mesh.AddLevel( WorldData::StaticMeshLod::MakeLevel( std::move( triangle ), { 0, 1, 2 } ),
+		    { { 4, 0, 0, 3 } }, { { 4 }, { 5 } } );
 		props.staticMeshes.push_back( std::move( mesh ) );
 		WorldData::StaticInstance instance;
 		instance.world[0] = instance.world[5] = instance.world[10] = instance.world[15] = 1.0f;
@@ -1226,16 +1416,17 @@ int main()
 		const auto materialId = std::uint32_t( world.materials.size() );
 		world.materials.push_back( foliage );
 		WorldData::StaticMesh mesh;
+		std::vector<material::SurfaceModelVertex> triangle;
 		for ( const auto &v : world.vertices )
 		{
 			material::SurfaceModelVertex vertex;
 			std::copy_n( v.position, 3, vertex.position );
 			vertex.normal[2] = 1;
 			vertex.tangent[0] = vertex.tangent[3] = 1;
-			mesh.vertices.push_back( vertex );
+			triangle.push_back( vertex );
 		}
-		mesh.indices = { 0, 1, 2 };
-		mesh.surfaces = { { materialId, 0, 0, 3 }, { 0, 0, 0, 3 } };
+		mesh.AddLevel( WorldData::StaticMeshLod::MakeLevel( std::move( triangle ), { 0, 1, 2 } ),
+		    { { materialId, 0, 0, 3 }, { 0, 0, 0, 3 } } );
 		world.staticMeshes.push_back( std::move( mesh ) );
 		WorldData::StaticInstance instance;
 		for ( int i = 0; i < 4; ++i )

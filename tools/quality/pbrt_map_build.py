@@ -268,18 +268,50 @@ def load_medium(manifest):
     return participating_medium.validate(medium) if medium is not None else None
 
 
-def load_profile(name):
-    """A declared export-quality profile (quality/map_export_profiles/<name>.json)."""
+def load_profile(name, preview=False):
+    """A declared export-quality profile (quality/map_export_profiles/<name>.json).
+
+    `preview` allows a declared preview rung (`PREVIEW_PROFILES`) as well as the
+    production profile: the run then does every step at that profile's cost, and
+    the pipeline records it as non-production. Nothing else may stand in for the
+    production profile (user decision, 2026-10-02: one production map profile)."""
     path = PROFILES / (name + ".json")
     if not path.is_file():
         raise ValueError("unknown map export quality profile " + name)
     profile = json.loads(path.read_text())
     if profile.get("schema") != "map-export-profile/v1" or profile.get("name") != name:
         raise ValueError("invalid map export profile " + str(path))
-    if name != DEFAULT_QUALITY and profile.get("purpose") != "fixture":
-        raise ValueError("the production map profile is source2; unsupported profile: " + name)
+    if name != DEFAULT_QUALITY and profile.get("purpose") != "fixture" and not preview:
+        raise ValueError("the production map profile is source2; unsupported profile: " + name
+                         + " (a preview run asks for --preview)")
     profile["path"] = str(path)
     return profile
+
+
+# The three quality rungs, named after Valve's own (Source 2 level-design docs,
+# Building Lighting), cheapest first:
+#
+#   preview        "Preview Baked Lighting": a low-quality look at the map while
+#                  you work. Valve's does not bake lightmaps at all - it uses
+#                  vertex lighting and many per-pixel dynamic lights, so there is
+#                  no lightmap equivalent to point at; our cheapest rung is the
+#                  smallest real bake (a 1024 atlas at 128 samples, no probe
+#                  volume, no directional page, no reflection probes).
+#   full-compile   "Full Compile" (F9's default): 1k lightmaps, "relatively fast
+#                  ... a few minutes" on a simple map.
+#   final-compile  "Final Compile" (the release option): 2k lightmaps, "a little
+#                  while on a typical home PC". Our release rung is denser than
+#                  Valve's 2k (4096, Vulkan's guaranteed max texture size; see
+#                  quality/map_export_profiles/source2.json).
+#
+# Every rung but `final-compile` is a preview: it runs the same steps at that
+# profile's cost and is recorded as non-production.
+QUALITY_LADDER = {"preview": "preview",
+                  "full-compile": "portal2-chamber-preview",
+                  "final-compile": DEFAULT_QUALITY}
+# The declared preview rung of the production profile, which `--preview` uses.
+PREVIEW_PROFILES = {production: QUALITY_LADDER["full-compile"]
+                    for production in QUALITY_LADDER.values() if production == DEFAULT_QUALITY}
 
 
 def bsp_entities(path):
@@ -401,7 +433,13 @@ def run_logged(command, handle, env=None, on_line=None, silence=None):
 class Pipeline:
     def __init__(self, manifest, toolchain, out, force_from, boot, keep_going=False,
                  publish=True, until=None):
-        self.profile = load_profile(manifest["quality"])
+        # A preview run does every step at its profile's preview cost and says so
+        # in its manifest and summary; it is not a production export.
+        self.preview = bool(manifest.get("preview"))
+        self.profile = load_profile(manifest["quality"], self.preview)
+        if self.preview and self.profile["name"] == DEFAULT_QUALITY:
+            raise ValueError("--preview runs the declared preview rung of %s (%s), not %s itself"
+                             % (DEFAULT_QUALITY, PREVIEW_PROFILES[DEFAULT_QUALITY], DEFAULT_QUALITY))
         if publish and self.profile.get("purpose") == "fixture":
             raise ValueError("a fixture profile cannot publish production content")
         for key in QUALITY_FIELDS:
@@ -1499,7 +1537,8 @@ class Pipeline:
                 p["directional_indirect"].with_name(p["directional_indirect"].name + ".json"))
                 if path.is_file()]
             self.step("audit", receipts, {"profile": self.profile["name"],
-                                         "profile_sha256": self.profile_hash, "boot": self.boot},
+                                         "profile_sha256": self.profile_hash, "boot": self.boot,
+                                         "preview": self.preview},
                       ["map_export_audit.py"], [p["audit"]],
                       lambda: self.run("audit", [
                           sys.executable, HERE / "map_export_audit.py", "--build", self.out,
@@ -1507,6 +1546,8 @@ class Pipeline:
                           (["--booted"] if self.boot else [])))
         summary = {"status": "gate-failed" if self.failed_gates else "pass",
                    "quality": self.profile["name"],
+                   "preview": self.preview,
+                   "production": not self.preview,
                    "profile_revision": self.profile.get("revision"),
                    "profile_sha256": self.profile_hash,
                    "failed_gates": self.failed_gates, "map": self.map, "manifest_scene": scene,

@@ -203,14 +203,14 @@ void LodComposition( testing::Checks &checks, const RenderCoreBinding &binding )
 
 	mdltest::SyntheticFiles files = mdltest::WriteModel( mdltest::LodPixelModel() );
 	RenderCoreStaticModel model{ "arbitrary/lods.mdl", files.mdl.data(), files.mdl.size(),
-		files.vvd.data(), files.vvd.size(), files.vtx.data(), files.vtx.size(), materials, 1, 3 };
+	    files.vvd.data(), files.vvd.size(), files.vtx.data(), files.vtx.size(), materials, 1, 3 };
 	RenderCoreStaticProp prop{};
 	prop.world[0] = prop.world[5] = prop.world[10] = 1.0f;
 	world.SetStaticProps( &model, 1, &prop, 1 );
 	checks.That( world.DrawsStaticProp( 0 ), "P10.static-default-selects-LOD-zero" );
 
-	const float bones[] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 0,
-		0, 0, 1, 0 };
+	const float bones[] = {
+	    1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0 };
 	const float transform[] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
 	const float viewport[] = { 0, 0, 64, 64, 0, 1 };
 	const auto drawsStatic = [&]( unsigned int lod )
@@ -227,8 +227,8 @@ void LodComposition( testing::Checks &checks, const RenderCoreBinding &binding )
 		pose.lod = lod;
 		pose.body = body;
 		g_Slots.tags.clear();
-		return world.DrawView(
-		           nullptr, 0, transform, viewport, 1, nullptr, nullptr, 0, nullptr, 0, &pose, 1 ) &&
+		return world.DrawView( nullptr, 0, transform, viewport, 1, nullptr, nullptr, 0, nullptr, 0,
+		           &pose, 1 ) &&
 		       g_Slots.tags.size() == 1;
 	};
 	checks.That( draws( 0 ), "P10.LOD-zero-is-eligible" );
@@ -258,6 +258,82 @@ void LodComposition( testing::Checks &checks, const RenderCoreBinding &binding )
 	checks.That( world.DrawsStaticProp( 0, 0 ) && !world.DrawsStaticProp( 0, 1 ) &&
 	                 !drawsStatic( 1 ) && g_Slots.tags.empty(),
 	    "P10.static-missing-replacement-descriptor-refuses-only-that-LOD" );
+	world.ClearWorld();
+	g_Slots.tags.clear();
+}
+
+// P11: model geometry residency. Each hardware level is published as its own
+// block (one shared CPU allocation and one device allocation pair), a level with
+// no geometry is a valid blank level, and only a model the host may pose keeps a
+// per-frame skinning copy.
+void ModelGeometryComposition( testing::Checks &checks, const RenderCoreBinding &binding )
+{
+	IRenderCoreWorld &world = *binding.world;
+	const std::uint16_t texel[] = { 0x3c00, 0x3c00, 0x3c00, 0x3c00 };
+	world_mesh_gpu::WorldLightmapUploadRequest lightmap;
+	lightmap.width = lightmap.height = lightmap.layerCount = 1;
+	lightmap.layers[0] = texel;
+	checks.That( world.StageUpload()->UploadLightmap( lightmap ), "P11.selection-stage-lightmap" );
+	const std::string stage = SelectionStage();
+	const RenderCoreWorldMeshlet meshlet{ 0, 0, 3 };
+	RenderCoreWorldMaterial materials[3]{};
+	for ( int slot = 0; slot < 3; ++slot )
+	{
+		materials[slot].name = "supported";
+		materials[slot].shader = "UnlitGeneric";
+	}
+	world.SetWorldMesh( stage.data(), stage.size(), &meshlet, 1, materials, 1, nullptr );
+
+	// Three hardware levels: level zero and one have geometry, level two is the
+	// blank shadow level the host may still select.
+	const mdltest::SyntheticFiles files = mdltest::WriteModel( mdltest::LodPixelModel() );
+	RenderCoreStaticModel model{ "arbitrary/levels.mdl", files.mdl.data(), files.mdl.size(),
+	    files.vvd.data(), files.vvd.size(), files.vtx.data(), files.vtx.size(), materials, 1, 3 };
+	RenderCoreStaticProp prop{};
+	prop.world[0] = prop.world[5] = prop.world[10] = 1.0f;
+
+	// Static-only: the host never poses it, so the core keeps no per-frame
+	// skinning copy of its geometry.
+	model.posed = false;
+	world.SetStaticProps( &model, 1, &prop, 1 );
+	RenderCoreWorldStats stats{};
+	world.GetStats( &stats );
+	checks.Equal( stats.modelLevels, 3u, "P11.every-hardware-level-is-published" );
+	checks.That( stats.modelPoseSources == 0 && stats.modelPoseBytes == 0,
+	    "P11.a-static-only-model-keeps-no-skinning-copy" );
+	// The same model as a posed candidate keeps one (the default, so a host that
+	// cannot tell loses nothing).
+	model.posed = true;
+	world.SetStaticProps( &model, 1, &prop, 1 );
+	world.GetStats( &stats );
+	checks.That( stats.modelPoseSources == 1 && stats.modelPoseBytes != 0,
+	    "P11.a-posed-model-keeps-its-per-frame-skinning-copy" );
+	// The level geometry itself is one shared allocation either way: the pose
+	// copy is additional, and the blocks' bytes are the model's own geometry.
+	const std::uint64_t posedStaging = stats.modelStagingBytes;
+	model.posed = false;
+	world.SetStaticProps( &model, 1, &prop, 1 );
+	world.GetStats( &stats );
+	checks.Equal( stats.modelStagingBytes, posedStaging,
+	    "P11.the-level-geometry-is-one-allocation-whatever-the-host-poses" );
+
+	// Every level is a valid selection, including the blank one, and level zero
+	// queues its own surfaces.
+	model.posed = true;
+	world.SetStaticProps( &model, 1, &prop, 1 );
+	checks.That( world.DrawsStaticProp( 0, 0 ) && world.DrawsStaticProp( 0, 1 ) &&
+	                 world.DrawsStaticProp( 0, 2 ) && !world.DrawsStaticProp( 0, 3 ),
+	    "P11.every-level-is-a-valid-selection" );
+	const float identity[] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
+	const float viewport[] = { 0, 0, 64, 64, 0, 1 };
+	const float bones[] = {
+	    1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0 };
+	RenderCorePosedModel pose{ 0, 0, bones, 2 };
+	g_Slots.tags.clear();
+	const bool accepted = world.DrawView(
+	    nullptr, 0, identity, viewport, 1, nullptr, nullptr, 0, nullptr, 0, &pose, 1 );
+	checks.That(
+	    accepted && g_Slots.tags.size() == 1u, "P11.level-zero-queues-only-its-own-surfaces" );
 	world.ClearWorld();
 	g_Slots.tags.clear();
 }
@@ -422,6 +498,7 @@ int main()
 	{
 		BodyGroupComposition( checks, *probedBinding );
 		LodComposition( checks, *probedBinding );
+		ModelGeometryComposition( checks, *probedBinding );
 		RenderCoreWorldQuality quality{};
 		quality.coreOnly = true;
 		probedBinding->world->SetQuality( quality );

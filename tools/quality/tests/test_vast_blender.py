@@ -98,15 +98,17 @@ class VastBlenderTest(unittest.TestCase):
             json.loads(blender_only.read_text())).applies("denoise"))
 
     def test_provisioning_verifies_the_pinned_tarball(self):
-        script = vast_blender.provision_script(Path("/src/engine"))
+        # the rented host is Debian with nothing installed, so the shared
+        # provisioning script installs every tool it needs with apt
+        script = remote_blender.provision_script("/opt", "debian", {"tools": {}})
         self.assertIn(vast_blender.BLENDER_SHA256 + "  blender.tar.xz' | sha256sum -c", script)
-        self.assertIn("mkdir -p /src/engine", script)
         self.assertIn(vast_blender.HOST["oidn"]["sha256"] + "  oidn.tar.gz' | sha256sum -c", script)
         self.assertIn("--require-hashes", script)
         for wheel in vast_blender.HOST["python_packages"]["wheels"]:
             self.assertIn("%s==%s --hash=sha256:%s" % (wheel["name"], wheel["version"],
                                                         wheel["sha256"]), script)
-        self.assertNotIn("oidn.tar.gz", vast_blender.provision_script(Path("/x"), tools=False))
+        self.assertNotIn("oidn.tar.gz", remote_blender.provision_script(
+            "/opt", "debian", {"tools": {}}, tools=False))
         self.assertTrue(vast_blender.BLENDER_REMOTE.startswith("/opt/blender-%s-"
                                                                % vast_blender.BLENDER_VERSION))
 

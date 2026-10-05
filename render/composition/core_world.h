@@ -163,8 +163,8 @@ public:
 	std::optional<pass::world::WorldSceneColor> Capture( device::IRenderDevice2 &device,
 	    device::CommandEncoder &encoder, device::TextureId source,
 	    const device::TextureDesc &sourceDesc, std::uint64_t frame ) override;
-	bool RecordOutput( device::CommandEncoder &encoder,
-	    const legacy::CoreOutputTargets &targets ) override
+	bool RecordOutput(
+	    device::CommandEncoder &encoder, const legacy::CoreOutputTargets &targets ) override
 	{
 		return m_Output.Record( encoder, targets );
 	}
@@ -247,16 +247,30 @@ private:
 	// Rebuilds the static shadow mesh from the stage and the core-claimed props.
 	void SetStaticCasters();
 	std::vector<pass::world::WorldData::StaticMesh> m_StaticMeshes;
+	// Rises whenever the model geometry changes (SetStaticProps), so a world
+	// republished with the same revision keeps its resident model levels.
+	std::uint64_t m_ModelsRevision = 0;
 	std::vector<pass::world::WorldData::StaticInstance> m_StaticInstances;
 	std::vector<bool> m_StaticCastsShadow;
 	std::vector<pass::world::WorldMaterial> m_StaticMaterials;
 	struct ModelPoseSource
 	{
 		bool parsed = false;
-		std::vector<pass::skinning::SkinVertex> vertices;
+		// Each hardware level's skinning source, in the same vertex order as
+		// that level's WorldData::StaticMeshLod block. Empty for a model the
+		// host declared static-only: nothing ever skins it.
+		std::vector<std::vector<pass::skinning::SkinVertex>> vertices;
 		std::vector<pass::skinning::BoneMatrix> poseToBone;
 		std::vector<mdl::BodyPart> bodyParts;
 		std::uint32_t lodCount = 0;
+		// The per-frame source of one level's posed vertices; empty when the
+		// model has no pose source.
+		std::span<const pass::skinning::SkinVertex> LevelVertices( std::uint32_t lod ) const
+		{
+			return lod < vertices.size()
+			           ? std::span<const pass::skinning::SkinVertex>( vertices[lod] )
+			           : std::span<const pass::skinning::SkinVertex>();
+		}
 		struct SurfaceVariant
 		{
 			std::uint32_t part, model, lod;

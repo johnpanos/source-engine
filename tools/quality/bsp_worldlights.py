@@ -33,6 +33,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import leaf_ambient_from_prbv  # noqa: E402
+from legacy_bsp import decompress_lzma_lump  # noqa: E402
 
 LUMP_WORLDLIGHTS = 15
 LUMP_WORLDLIGHTS_HDR = 54
@@ -49,21 +50,24 @@ def filter_lights(data, drop):
     _, lumps = leaf_ambient_from_prbv.read_lumps(data)
     replacements, removed = {}, {}
     for lump in (LUMP_WORLDLIGHTS, LUMP_WORLDLIGHTS_HDR):
-        offset, length, version, _ = lumps[lump]
+        offset, length, version = lumps[lump][:3]
         if not length:
             continue
+        # Portal 2's shipped maps store this lump as a Valve LZMA stream too;
+        # the record size only divides the decoded bytes.
+        payload = decompress_lzma_lump(data[offset:offset + length], "world light lump %d" % lump)
         # The compile tools wrote version-1 records under lump version 0 until
         # 2026-09-25 (the engine misread every field after the normal); the
         # length decides which records these are, and a rewritten lump of
         # version-1 records is tagged version 1 (public/bspfile.h
         # WorldlightLumpLayout reads the old tag the same way).
-        record = RECORD if version == 1 or length % RECORD_V0.size else RECORD_V0
-        if length % record.size:
+        record = RECORD if version == 1 or len(payload) % RECORD_V0.size else RECORD_V0
+        if len(payload) % record.size:
             raise ValueError("world light lump %d is not whole %d-byte records" %
                              (lump, record.size))
         kept, dropped = b"", 0
-        for i in range(length // record.size):
-            raw = data[offset + i * record.size:offset + (i + 1) * record.size]
+        for i in range(len(payload) // record.size):
+            raw = payload[i * record.size:(i + 1) * record.size]
             values = record.unpack(raw)
             intensity = values[3:6]
             style = values[14] if record is RECORD else values[11]

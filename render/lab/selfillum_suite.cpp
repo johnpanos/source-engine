@@ -134,9 +134,8 @@ WorldData World( const Variables &variables, int maskHandle = 0 )
 	world.stage = std::move( stage );
 	world.materials.push_back( Material( variables, maskHandle ) );
 	WorldData::StaticMesh mesh;
-	mesh.vertices = QuadVertices();
-	mesh.indices = { 0, 1, 2, 0, 2, 3 };
-	mesh.surfaces.push_back( { 0, 0, 0, 6 } );
+	mesh.AddLevel( WorldData::StaticMeshLod::MakeLevel( QuadVertices(), { 0, 1, 2, 0, 2, 3 } ),
+	    { { 0, 0, 0, 6 } } );
 	world.staticMeshes.push_back( std::move( mesh ) );
 	return world;
 }

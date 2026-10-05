@@ -78,7 +78,7 @@ struct WorldMaterial
 {
 	std::string name;
 	std::string shader;
-	bool mesh = false; // object-space static model; resolves through the PBR mesh point
+	bool mesh = false;        // object-space static model; resolves through the PBR mesh point
 	bool translucent = false; // Studio's two-pass material classification
 	std::vector<std::pair<std::string, std::string>> variables; // "$key", value
 	// The material system handle of each texture variable ("$key", handle).
@@ -91,9 +91,9 @@ struct WorldMaterial
 
 struct WorldSurface
 {
-	std::uint32_t material = 0; // into WorldData::materials
-	int lightmapPage = 0;       // the material system handle of its lightmap page
-	std::uint32_t firstIndex = 0;
+	std::uint32_t material = 0;   // into WorldData::materials
+	int lightmapPage = 0;         // the material system handle of its lightmap page
+	std::uint32_t firstIndex = 0; // a model's own level (its StaticMeshLod), from zero
 	std::uint32_t indexCount = 0;
 };
 
@@ -165,14 +165,88 @@ struct WorldData
 	std::vector<std::uint32_t> indices; // triangle lists, into vertices
 	std::vector<WorldSurface> surfaces;
 	std::vector<WorldMaterial> materials;
+	// One Studio hardware level of one model: its own vertex and index
+	// allocation, so a level no view selects is released while the rest of
+	// the model stays resident (RFC 0016 model geometry residency).
+	struct StaticMeshLod
+	{
+		// The level's geometry, one allocation shared with the composition
+		// that parsed it (the same shared_ptr, never a second copy). The pass
+		// uploads it into this level's buffers and keeps it only as the source
+		// a released level's re-upload needs.
+		std::shared_ptr<const std::vector<material::SurfaceModelVertex>> vertices;
+		std::shared_ptr<const std::vector<std::uint32_t>> indices; // from zero, into the level
+		// Increasing surface ids into StaticMesh::surfaces, this level's only.
+		// A WorldSurface::firstIndex is this level's local index.
+		std::vector<std::uint32_t> surfaces;
+		std::uint32_t vertexCount = 0;
+		std::uint32_t indexCount = 0;
+		bool Drawable() const { return vertexCount != 0 && indexCount != 0; }
+		// The level's own allocation from its geometry: the staging is moved in
+		// (the caller's copy goes away) and the counts follow it.
+		[[nodiscard]] static StaticMeshLod MakeLevel(
+		    std::vector<material::SurfaceModelVertex> vertices, std::vector<std::uint32_t> indices )
+		{
+			StaticMeshLod level;
+			level.vertexCount = std::uint32_t( vertices.size() );
+			level.indexCount = std::uint32_t( indices.size() );
+			level.vertices = std::make_shared<const std::vector<material::SurfaceModelVertex>>(
+			    std::move( vertices ) );
+			level.indices =
+			    std::make_shared<const std::vector<std::uint32_t>>( std::move( indices ) );
+			return level;
+		}
+	};
 	struct StaticMesh
 	{
-		std::vector<material::SurfaceModelVertex> vertices;
-		std::vector<std::uint32_t> indices;
-		std::vector<WorldSurface> surfaces; // material indexes into WorldData::materials
+		std::vector<StaticMeshLod> lods;
+		// The model's surfaces with material indexes into WorldData::materials,
+		// and the level each belongs to (parallel). A surface a level does not
+		// list is not drawable.
+		std::vector<WorldSurface> surfaces;
+		std::vector<std::uint32_t> surfaceLods;
 		// One material per surface for each studio skin; geometry and GPU buffers
 		// remain shared across instances and skins. Empty means skin zero only.
 		std::vector<std::vector<std::uint32_t>> skinMaterials;
+		// A posed model is drawn at any level the host selects, so its levels
+		// are never released; a static-only model's coarsest level is pinned
+		// because it is the one every distance selects. The pass owns this
+		// policy; a host that draws neither kind (a lab scene) leaves it false.
+		bool posed = false;
+		std::uint32_t vertexCount = 0; // every level, for a posed model's correspondence
+		std::uint32_t lodCount() const { return std::uint32_t( lods.size() ); }
+		// The level a surface belongs to, or ~0u when it belongs to none.
+		std::uint32_t LodOfSurface( std::uint32_t surface ) const
+		{
+			return surface < surfaceLods.size() ? surfaceLods[surface] : ~0u;
+		}
+		// Publish one level's geometry as its own allocation. `level`'s staging
+		// is moved in (the caller's copy goes away); `surfaces` are this level's,
+		// with firstIndex relative to the level's indices, and `skinMaterials`
+		// is one row per studio skin over those surfaces (parallel to
+		// StaticMesh::skinMaterials, which this level appends to). The one rule
+		// for adding a level, so a level's allocation, index range, surface ids
+		// and counts cannot disagree.
+		void AddLevel( StaticMeshLod &&level, std::vector<WorldSurface> surfaces,
+		    std::vector<std::vector<std::uint32_t>> skinMaterials = {} )
+		{
+			const std::uint32_t index = std::uint32_t( lods.size() );
+			for ( std::uint32_t i = 0; i < surfaces.size(); ++i )
+			{
+				this->surfaces.push_back( surfaces[i] );
+				surfaceLods.push_back( index );
+				level.surfaces.push_back( std::uint32_t( this->surfaces.size() ) - 1 );
+			}
+			for ( std::size_t skin = 0;
+			    skin < skinMaterials.size() && skin < this->skinMaterials.size(); ++skin )
+			{
+				for ( std::uint32_t i = 0; i < surfaces.size(); ++i )
+					this->skinMaterials[skin].push_back(
+					    i < skinMaterials[skin].size() ? skinMaterials[skin][i] : ~0u );
+			}
+			vertexCount += level.vertexCount;
+			lods.push_back( std::move( level ) );
+		}
 	};
 	struct StaticInstance
 	{
@@ -185,6 +259,10 @@ struct WorldData
 	};
 	std::vector<StaticMesh> staticMeshes;
 	std::vector<StaticInstance> staticInstances;
+	// Rises when staticMeshes changes. A world republished with the same
+	// revision (a late probe volume re-setting the stage) keeps its resident
+	// model buffers, so stage lighting does not re-upload every model.
+	std::uint64_t modelsRevision = 0;
 	// Set for a world stage (a BSP2 map's WMSH); null for the BSP surfaces.
 	std::shared_ptr<const WorldStage> stage;
 };
@@ -397,8 +475,8 @@ struct WorldView
 	int depthAlphaHandle = 0;
 	float depthAlphaRange = 0.0f;
 
-	float toClip[16] = {};               // world to clip, row-major, D3D9 conventions
-	float motionToClip[16] = {};         // unjittered camera transform
+	float toClip[16] = {};       // world to clip, row-major, D3D9 conventions
+	float motionToClip[16] = {}; // unjittered camera transform
 	float previousToClip[16] = {};
 	bool previousViewValid = false;
 	std::uint64_t temporalView = 0; // producer identity, never inferred from matrices
@@ -432,6 +510,13 @@ struct WorldStats
 	std::uint32_t claimedMaterials = 0; // opaque materials the model draws
 	std::uint32_t surfaces = 0;
 	std::uint32_t claimedSurfaces = 0;
+	// Model geometry residency: the (model, level) allocations resident now,
+	// their bytes, and the levels this world has uploaded (a release and a
+	// re-upload of the same level each count once).
+	std::uint32_t modelLevelsResident = 0;
+	std::uint32_t modelLevelsReleased = 0;
+	std::uint64_t modelBufferBytes = 0;
+	std::uint64_t modelLevelUploads = 0;
 	std::uint64_t viewsQueued = 0;
 	std::uint64_t viewsDrawn = 0;
 	std::uint64_t viewsFailed = 0;  // claimed work not drawn: never legacy's
@@ -549,6 +634,19 @@ public:
 private:
 	struct State;
 	std::unique_ptr<State> m_State;
+	// Render sequence: release the (model, level) allocations no view has
+	// selected for kModelLevelIdleFrames recorded frames, and retire the
+	// buffers whose last reader may still be in flight.
+	void SweepModelResidency( State &state, const WorldData &world, const WorldTarget &target );
+	// Render sequence: the residency report (levels resident, bytes, released),
+	// published once per recorded frame after that frame's uploads.
+	void PublishModelResidency( State &state );
+	// Render sequence: one (model, level)'s buffers, uploaded from the world's
+	// staging on first use and again after a release. False when the level has
+	// no geometry left to upload (a named failure; the caller draws nothing).
+	bool UploadModelLevel( State &state, device::IRenderDevice2 &device,
+	    device::CommandEncoder &encoder, const WorldData::StaticMesh &mesh, std::uint32_t meshId,
+	    std::uint32_t lod, std::uint64_t frame );
 };
 
 } // namespace render::pass::world

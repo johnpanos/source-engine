@@ -162,7 +162,7 @@ void CheckMotion( const Case &current, const pass::world::WorldData::StaticMesh 
 	Case c = current;
 	for ( int vertex = 0; vertex < 4; ++vertex )
 	{
-		std::copy_n( mesh.vertices[vertex].position, 3, c.positionTime );
+		std::copy_n( mesh.lods[0].vertices->at( vertex ).position, 3, c.positionTime );
 		now[vertex] = Reference( c );
 		Case previous = c;
 		previous.positionTime[3] = .2f;
@@ -259,7 +259,7 @@ std::optional<std::string> CheckImages( device::IRenderDevice2 &device, Results 
 		    { "$treeswayspeed", ".2" }, { "$treeswaystrength", ".15" },
 		    { "$treeswayscrumblefrequency", "2" }, { "$treeswayscrumblestrength", ".03" } };
 		world.materials.push_back( foliage );
-		WorldData::StaticMesh mesh;
+		std::vector<material::SurfaceModelVertex> quad;
 		for ( const auto &xy : { std::pair{ -.5f, -.5f }, std::pair{ .5f, -.5f },
 		          std::pair{ .5f, .5f }, std::pair{ -.5f, .5f } } )
 		{
@@ -269,10 +269,13 @@ std::optional<std::string> CheckImages( device::IRenderDevice2 &device, Results 
 			vertex.position[2] = c.positionTime[2];
 			vertex.normal[2] = 1;
 			vertex.tangent[0] = vertex.tangent[3] = 1;
-			mesh.vertices.push_back( vertex );
+			quad.push_back( vertex );
 		}
-		mesh.indices = { 0, 1, 2, 0, 2, 3 };
-		mesh.surfaces.push_back( { 0, 0, 0, 6 } );
+		WorldData::StaticMesh mesh;
+		mesh.AddLevel(
+		    WorldData::StaticMeshLod::MakeLevel( quad, { 0, 1, 2, 0, 2, 3 } ), { { 0, 0, 0, 6 } } );
+		// A copy of the mesh record, not of its geometry: the level's staging is
+		// shared, and CheckMotion reads it after the worlds take theirs.
 		world.staticMeshes.push_back( mesh );
 		WorldData::StaticInstance instance;
 		std::copy_n( c.objectToWorld, 16, instance.world );
@@ -281,13 +284,20 @@ std::optional<std::string> CheckImages( device::IRenderDevice2 &device, Results 
 		rest.materials[0].variables[1].second = "0";
 		WorldData reference = rest;
 		reference.materials[0].variables[1].second = "0";
-		for ( auto &vertex : reference.staticMeshes[0].vertices )
+		// The reference's own level: its vertices are the CPU-deformed ones, so
+		// it must not share the animated world's staging.
+		std::vector<material::SurfaceModelVertex> deformed = quad;
+		for ( auto &vertex : deformed )
 		{
 			std::copy_n( vertex.position, 3, c.positionTime );
-			const auto deformed = Reference( c );
+			const auto expectedVertex = Reference( c );
 			for ( int axis = 0; axis < 3; ++axis )
-				vertex.position[axis] = float( deformed[axis] );
+				vertex.position[axis] = float( expectedVertex[axis] );
 		}
+		reference.staticMeshes[0].lods.clear();
+		reference.staticMeshes[0].AddLevel(
+		    WorldData::StaticMeshLod::MakeLevel( deformed, { 0, 1, 2, 0, 2, 3 } ),
+		    { { 0, 0, 0, 6 } } );
 		WorldPass animated, expected, stationary;
 		animated.SetWorld( std::move( world ) );
 		expected.SetWorld( std::move( reference ) );

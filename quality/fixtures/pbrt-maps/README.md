@@ -346,34 +346,48 @@ The host needs:
 
 - Linux (or WSL2 with GPU passthrough) with a recent NVIDIA driver
   (`nvidia-smi` works); Cycles uses OptiX, then CUDA;
-- Blender at the profile's pinned version (5.2.2): the official
-  `blender-5.2.2-linux-x64.tar.xz` from download.blender.org, unpacked
-  anywhere; it includes Cycles' CUDA and OptiX kernels;
-- `rsync`, and an SSH server this machine can log in to with a key
+- an SSH server this machine can log in to with a key
   (`ssh-copy-id user@host`, then `ssh -o BatchMode=yes user@host true`);
 - write access to this checkout's absolute path. If the user differs, once:
   `sudo mkdir -p /home/john/src/source-engine && sudo chown $USER /home/john/src/source-engine`;
 - disk for the mirrored scripts and fixtures (about 120 MB) plus the build
   directory of the map being baked (a few GB for a 4096 atlas).
 
-Then, here:
+Blender, the OIDN library, imageio's EXR codec and the post-bake Python
+packages are pinned by digest in `quality/remote_hosts/pbrt-map-remote-host.json`
+and installed by `provision`, which picks the first prefix the host can write:
+`/opt`, or `~/.local/opt` when the root filesystem is read-only (an immutable or
+atomic image such as Bazzite, Silverblue or SteamOS). Those are ordinary
+files, so a prefix you own installs them with no package manager and no root.
+Packages are installed only when the host is actually missing `rsync`, `curl`,
+`tar`, `xz` or `sha256sum`; an unknown distribution is refused by name.
 
 ```sh
-python3 tools/quality/remote_blender.py configure --host user@host \
-  --blender /opt/blender-5.2.2-linux-x64/blender        # writes ...toolchain-gpu.json
-python3 tools/quality/remote_blender.py check --smoke   # SSH, rsync, version, root, GPUs, a render
+# install the pinned Blender 5.2.2 and the post-bake tools, and write the toolchain
+python3 tools/quality/remote_blender.py provision --host user@host \
+  --out build/toolchains/pbrt-map-toolchain-gpu.json
+# check it: SSH, rsync, Blender digest, mirror root, Cycles GPUs, a GPU render
+python3 tools/quality/remote_blender.py check --smoke \
+  --toolchain build/toolchains/pbrt-map-toolchain-gpu.json
+# use it: any pipeline command that takes --toolchain
 python3 tools/quality/portal2_gi_chamber.py \
   --toolchain build/toolchains/pbrt-map-toolchain-gpu.json --device gpu
 ```
 
-Any pipeline command that takes `--toolchain` works the same way. GPU bakes
-are statistical, not bit-identical like CPU bakes (`cycles_device.py`), so
-they must pass the pipeline's noise and denoise gates rather than match a CPU
+`configure` writes the same block by hand for a host that is already set up
+(`--host`, and the paths it already has); `check --smoke` is the same gate
+either way.
+
+GPU bakes are statistical, not bit-identical like CPU bakes (`cycles_device.py`),
+so they must pass the pipeline's noise and denoise gates rather than match a CPU
 bake. The remote Blender's version and binary digest (not its host) are part
 of each step's cache key: another host with the same pinned Blender, such as
 a new vast.ai rental, reuses the cache. The transport was rehearsed on this
 machine with a stand-in `ssh` that runs commands locally, on the chamber
-preview (all five steps, gameplay identity passing).
+preview (all five steps, gameplay identity passing), and on a LAN workstation
+(Bazzite 44, RTX 3070): `provision`, `check --smoke` and a real
+`lighting_fixtures.py render --fixture cornell-floors --device gpu` all ran
+there, the two reference cameras rendered on its GPU and came back by rsync.
 
 The reference renders (`gi_reference.Tools.blender`: `gi_reference.py`,
 `lighting_fixtures.py render`, `gi_probes.py`) take the same block, as the

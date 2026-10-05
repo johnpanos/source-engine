@@ -123,13 +123,6 @@ struct Resources
 	std::unique_ptr<material::ProgramResolver> modelResolver;
 	BufferId vertices;
 	BufferId indices;
-	struct StaticMeshBuffers
-	{
-		BufferId vertices;
-		BufferId indices;
-		bool uploaded = false;
-	};
-	std::vector<StaticMeshBuffers> staticMeshes;
 	struct Material
 	{
 		material::ResolvedProgram program;
@@ -249,7 +242,8 @@ std::string Lower( std::string text )
 foundation::Expected<Claimed, std::string> MapWorldMaterial( const WorldMaterial &source )
 {
 	if ( source.hasProxy )
-		return foundation::MakeUnexpected( std::string( "selected material needs a live proxy handoff" ) );
+		return foundation::MakeUnexpected(
+		    std::string( "selected material needs a live proxy handoff" ) );
 	Claimed claimed;
 	claimed.blended = source.translucent;
 	std::vector<material::VmtPair> variables;
@@ -337,6 +331,34 @@ std::uint32_t StaticMaterial( const WorldData::StaticMesh &mesh,
 	return mesh.skinMaterials[instance.skin][surface];
 }
 
+// Model geometry residency (RFC 0016). A level no view has selected for this
+// many recorded frames is released, so a model only ever holds the levels its
+// instances actually draw: level zero of a model every instance draws coarsely
+// is not resident for the rest of the level's life. Re-upload costs one buffer
+// creation and copy, which is why the window is long enough to keep a camera
+// that crosses a level's switch point from thrashing.
+constexpr std::uint32_t kModelLevelIdleFrames = 120;
+
+// A pinned level is never released, so it needs no staging to come back from.
+// The coarsest level is what every distance selects; a posed model is drawn at
+// whichever level the host selects, at any distance.
+bool ModelLevelPinned( const WorldData::StaticMesh &mesh, std::uint32_t lod )
+{
+	return mesh.posed || lod + 1 >= mesh.lodCount();
+}
+
+// A surface's index range is its own level's, from zero: a surface no level
+// lists, or one whose range leaves that level's indices, is not drawable.
+bool LevelSurfaceDrawable(
+    const WorldData::StaticMesh &mesh, std::uint32_t surface, const WorldSurface &range )
+{
+	const std::uint32_t lod = mesh.LodOfSurface( surface );
+	if ( lod == ~0u || lod >= mesh.lodCount() || !mesh.lods[lod].Drawable() )
+		return false;
+	return range.firstIndex <= mesh.lods[lod].indexCount &&
+	       range.indexCount <= mesh.lods[lod].indexCount - range.firstIndex;
+}
+
 } // namespace
 
 LightmapPages SplitLightmapLayer(
@@ -369,7 +391,7 @@ LightmapPages SplitLightmapLayer(
 
 struct WorldPass::State
 {
-	IRenderDevice2 *device = nullptr; // the device the resources live on
+	IRenderDevice2 *device = nullptr;              // the device the resources live on
 	std::span<const std::uint32_t> fragmentModule; // SetSurfaceFragmentModule
 	// The last screen output written on this sequence. Another camera or output
 	// invalidates reuse even when a format's own prepass textures still exist.
@@ -462,6 +484,41 @@ struct WorldPass::State
 	std::uint64_t variantsGeneration = 0;
 	std::vector<Resources> variants;
 	std::vector<std::pair<std::uint64_t, Resources>> retired;
+	// Render sequence only: the world's model geometry, one allocation pair per
+	// (model, level). Model buffers are world data, not target state, so they
+	// outlive a target format change and a stage republication (WorldData's
+	// modelsRevision); they are released with the world, with the device, or by
+	// the residency rule below, and a released level is uploaded again from
+	// the world's staging when a view selects it.
+	struct ModelLevel
+	{
+		BufferId vertices;
+		BufferId indices;
+		// The last recorded frame that drew or uploaded this level, and how
+		// many frames since with no use.
+		std::uint64_t lastUsedFrame = 0;
+		std::uint32_t idleFrames = 0;
+		bool resident = false;
+	};
+	struct ModelGeometry
+	{
+		std::uint64_t modelsRevision = 0; // WorldData::modelsRevision it belongs to
+		std::vector<std::vector<ModelLevel>> models;
+		std::uint64_t bytes = 0;          // resident vertex and index bytes
+		std::uint64_t releasedLevels = 0; // levels the residency rule has released
+	};
+	ModelGeometry models;
+	// The frame that last swept residency, and the frame the report was
+	// published for, so each runs once per recorded frame.
+	std::uint64_t residencyFrame = 0;
+	std::uint64_t residencyReportedFrame = 0;
+	// Model buffers released with the frame whose slot may still read them.
+	struct RetiredModelBuffer
+	{
+		std::uint64_t frame = 0;
+		BufferId buffer;
+	};
+	std::vector<RetiredModelBuffer> retiredModelBuffers;
 	// Staging buffers of stage uploads, and a stage's per-view groups, with
 	// the frame that recorded them.
 	std::vector<std::pair<std::uint64_t, BufferId>> retiredBuffers;
@@ -544,13 +601,6 @@ struct WorldPass::State
 				(void)device->Release( old.vertices, after );
 			if ( old.indices.IsValid() )
 				(void)device->Release( old.indices, after );
-			for ( const Resources::StaticMeshBuffers &mesh : old.staticMeshes )
-			{
-				if ( mesh.vertices.IsValid() )
-					(void)device->Release( mesh.vertices, after );
-				if ( mesh.indices.IsValid() )
-					(void)device->Release( mesh.indices, after );
-			}
 		}
 		old = Resources();
 	}
@@ -765,7 +815,7 @@ bool WorldPass::DrawsStaticInstance( std::uint32_t instance ) const
 		return false;
 	if ( placement.surfaceSelection && placement.surfaceSelection->empty() )
 		return true;
-	if ( data.vertices.empty() || data.indices.empty() || data.surfaces.empty() )
+	if ( data.surfaces.empty() )
 		return false;
 	for ( std::uint32_t i = 0; i < data.surfaces.size(); ++i )
 	{
@@ -773,9 +823,8 @@ bool WorldPass::DrawsStaticInstance( std::uint32_t instance ) const
 			continue;
 		const WorldSurface &surface = data.surfaces[i];
 		const std::uint32_t material = StaticMaterial( data, placement, i );
-		if ( material >= s.claims->size() || !( *s.claims )[material].draws ||
-		     !s.world->materials[material].mesh || surface.firstIndex > data.indices.size() ||
-		     surface.indexCount > data.indices.size() - surface.firstIndex )
+		if ( !LevelSurfaceDrawable( data, i, surface ) || material >= s.claims->size() ||
+		     !( *s.claims )[material].draws || !s.world->materials[material].mesh )
 			return false;
 	}
 	return true;
@@ -794,7 +843,7 @@ bool WorldPass::DrawsPosedModel( std::uint32_t meshId, std::uint32_t skin,
 		return false;
 	if ( surfaceSelection && surfaceSelection->empty() )
 		return true;
-	if ( mesh.vertices.empty() || mesh.indices.empty() || mesh.surfaces.empty() )
+	if ( mesh.surfaces.empty() )
 		return false;
 	WorldData::StaticInstance instance;
 	instance.mesh = meshId;
@@ -813,9 +862,8 @@ bool WorldPass::DrawsPosedModel( std::uint32_t meshId, std::uint32_t skin,
 		     ( phase == RenderCoreDrawPhase::kBlended && !blended ) )
 			continue;
 		hasSurface = true;
-		if ( material >= s.claims->size() || !( *s.claims )[material].draws ||
-		     !s.world->materials[material].mesh || surface.firstIndex > mesh.indices.size() ||
-		     surface.indexCount > mesh.indices.size() - surface.firstIndex )
+		if ( !LevelSurfaceDrawable( mesh, i, surface ) || material >= s.claims->size() ||
+		     !( *s.claims )[material].draws || !s.world->materials[material].mesh )
 			return false;
 	}
 	return hasSurface || ( surfaceSelection && surfaceSelection->empty() );
@@ -1027,6 +1075,148 @@ std::size_t WorldPass::State::OpaqueBatchSize(
 	return count;
 }
 
+// Render sequence: one (model, level)'s buffers, uploaded from the world's
+// staging on first use and again after a release. False when the level has
+// no geometry left to upload (a named failure; the caller draws nothing).
+bool WorldPass::UploadModelLevel( State &state, device::IRenderDevice2 &device,
+    device::CommandEncoder &encoder, const WorldData::StaticMesh &mesh, std::uint32_t meshId,
+    std::uint32_t lod, std::uint64_t frame )
+{
+	if ( meshId >= state.models.models.size() || lod >= mesh.lodCount() )
+		return false;
+	const WorldData::StaticMeshLod &source = mesh.lods[lod];
+	if ( !source.Drawable() )
+		return false;
+	State::ModelLevel &level = state.models.models[meshId][lod];
+	level.idleFrames = 0;
+	level.lastUsedFrame = frame;
+	if ( level.resident )
+		return true;
+	if ( !source.vertices || !source.indices )
+		return false;
+	const auto vertexBytes = std::as_bytes( std::span( *source.vertices ) );
+	const auto indexBytes = std::as_bytes( std::span( *source.indices ) );
+	if ( vertexBytes.size() !=
+	         std::size_t( source.vertexCount ) * sizeof( material::SurfaceModelVertex ) ||
+	     indexBytes.size() != std::size_t( source.indexCount ) * sizeof( std::uint32_t ) )
+		return false;
+	BufferDesc desc;
+	desc.size = vertexBytes.size();
+	desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kVertex };
+	desc.debugName = "model level vertices";
+	auto vertices = device.CreateBuffer( desc );
+	desc.size = indexBytes.size();
+	desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kIndex };
+	desc.debugName = "model level indices";
+	auto indices = device.CreateBuffer( desc );
+	if ( !vertices || !indices )
+	{
+		// A refused allocation keeps the level non-resident and its staging, so
+		// the next frame that draws it tries again with no bytes dropped.
+		if ( vertices )
+			(void)device.Release( vertices.Value(), CompletionToken() );
+		if ( indices )
+			(void)device.Release( indices.Value(), CompletionToken() );
+		return false;
+	}
+	level.vertices = vertices.Value();
+	level.indices = indices.Value();
+	level.resident = true;
+	state.models.bytes += vertexBytes.size() + indexBytes.size();
+	++state.stats.modelLevelUploads;
+	encoder.TransitionBuffer(
+	    level.vertices, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+	encoder.WriteBuffer( level.vertices, 0, vertexBytes );
+	encoder.TransitionBuffer(
+	    level.vertices, ResourceUsage::kCopyDestination, ResourceUsage::kVertex );
+	encoder.TransitionBuffer(
+	    level.indices, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+	encoder.WriteBuffer( level.indices, 0, indexBytes );
+	encoder.TransitionBuffer(
+	    level.indices, ResourceUsage::kCopyDestination, ResourceUsage::kIndex );
+	return true;
+}
+
+// Render sequence: adopt the world's model geometry (its (model, level)
+// allocations survive a target format change and a stage republication), then
+// release the levels no view has selected for kModelLevelIdleFrames, once per
+// recorded frame.
+void WorldPass::SweepModelResidency(
+    State &state, const WorldData &world, const WorldTarget &target )
+{
+	// Reuse the resident levels only for a world that declares the same model
+	// geometry revision: revision zero is "unversioned", so such a world (a lab
+	// scene, a test fixture) uploads its own levels rather than inheriting
+	// another world's buffers.
+	bool sameGeometry = world.modelsRevision != 0 &&
+	                    state.models.modelsRevision == world.modelsRevision &&
+	                    state.models.models.size() == world.staticMeshes.size();
+	for ( std::size_t mesh = 0; sameGeometry && mesh < world.staticMeshes.size(); ++mesh )
+		sameGeometry = state.models.models[mesh].size() == world.staticMeshes[mesh].lodCount();
+	if ( !sameGeometry )
+	{
+		// Another world's models: every level's buffers go with it, released at
+		// a slot whose submitted token covers the frames that read them.
+		for ( auto &model : state.models.models )
+			for ( State::ModelLevel &level : model )
+			{
+				if ( level.vertices.IsValid() )
+					state.retiredModelBuffers.push_back( { 0, level.vertices } );
+				if ( level.indices.IsValid() )
+					state.retiredModelBuffers.push_back( { 0, level.indices } );
+			}
+		state.models = State::ModelGeometry();
+		state.models.modelsRevision = world.modelsRevision;
+		state.models.models.resize( world.staticMeshes.size() );
+		for ( std::size_t mesh = 0; mesh < world.staticMeshes.size(); ++mesh )
+			state.models.models[mesh].resize( world.staticMeshes[mesh].lodCount() );
+	}
+	if ( target.frame == 0 || state.residencyFrame == target.frame )
+		return;
+	state.residencyFrame = target.frame;
+	for ( std::size_t mesh = 0; mesh < state.models.models.size(); ++mesh )
+	{
+		const WorldData::StaticMesh &data = world.staticMeshes[mesh];
+		for ( std::size_t lod = 0; lod < state.models.models[mesh].size(); ++lod )
+		{
+			State::ModelLevel &level = state.models.models[mesh][lod];
+			if ( !level.resident )
+				continue;
+			if ( !ModelLevelPinned( data, std::uint32_t( lod ) ) && level.lastUsedFrame != 0 &&
+			     target.frame > level.lastUsedFrame + kModelLevelIdleFrames )
+			{
+				state.retiredModelBuffers.push_back( { target.frame, level.vertices } );
+				state.retiredModelBuffers.push_back( { target.frame, level.indices } );
+				state.models.bytes -=
+				    std::size_t( data.lods[lod].vertexCount ) *
+				        sizeof( material::SurfaceModelVertex ) +
+				    std::size_t( data.lods[lod].indexCount ) * sizeof( std::uint32_t );
+				++state.models.releasedLevels;
+				level = State::ModelLevel();
+			}
+		}
+	}
+}
+
+// Render sequence: the residency report the frame's views can read (the levels
+// resident now, their bytes, and the levels released this world). Once per
+// recorded frame, after this frame's uploads.
+void WorldPass::PublishModelResidency( State &state )
+{
+	if ( state.residencyFrame == 0 || state.residencyReportedFrame == state.residencyFrame )
+		return;
+	state.residencyReportedFrame = state.residencyFrame;
+	std::uint32_t resident = 0;
+	for ( const auto &model : state.models.models )
+		for ( const State::ModelLevel &level : model )
+			resident += level.resident ? 1u : 0u;
+	state.stats.modelLevelsResident = resident;
+	state.stats.modelBufferBytes = state.models.bytes;
+	state.stats.modelLevelsReleased = state.models.releasedLevels > 0xfffffffeu
+	                                      ? 0xfffffffeu
+	                                      : std::uint32_t( state.models.releasedLevels );
+}
+
 void WorldPass::ReleaseDevice( IRenderDevice2 &device )
 {
 	State &s = *m_State;
@@ -1041,6 +1231,21 @@ void WorldPass::ReleaseDevice( IRenderDevice2 &device )
 	for ( auto &[frame, buffer] : s.retiredBuffers )
 		(void)device.Release( buffer, CompletionToken() );
 	s.retiredBuffers.clear();
+	for ( const State::RetiredModelBuffer &retired : s.retiredModelBuffers )
+		(void)device.Release( retired.buffer, CompletionToken() );
+	s.retiredModelBuffers.clear();
+	// The world's model geometry went with the device. A view that selects a
+	// level again needs the world republished: nothing else can name its
+	// staging.
+	for ( const auto &model : s.models.models )
+		for ( const State::ModelLevel &level : model )
+		{
+			if ( level.vertices.IsValid() )
+				(void)device.Release( level.vertices, CompletionToken() );
+			if ( level.indices.IsValid() )
+				(void)device.Release( level.indices, CompletionToken() );
+		}
+	s.models = State::ModelGeometry();
 	for ( auto &[frame, group] : s.retiredGroups )
 		s.ReleaseGroup( group, CompletionToken() );
 	s.retiredGroups.clear();
@@ -1273,6 +1478,10 @@ void WorldPass::RecordBatch(
 		s.retiredBuffers.clear();
 		s.retiredGroups.clear();
 		s.retiredTextures.clear();
+		// The old device's model levels went with it; the world they belong to
+		// publishes its staging again (SweepModelResidency adopts it).
+		s.retiredModelBuffers.clear();
+		s.models = State::ModelGeometry();
 		s.groupResources = GroupResources();
 		s.device = target.device;
 	}
@@ -1347,6 +1556,16 @@ void WorldPass::RecordBatch(
 		    (void)device.Release( old.second, target.submitted );
 		    return true;
 	    } );
+	// A released model level's buffers: its last reader may be a submission
+	// this token already covers.
+	std::erase_if( s.retiredModelBuffers,
+	    [&]( const State::RetiredModelBuffer &old )
+	    {
+		    if ( target.frame == 0 || old.frame >= target.frame )
+			    return false;
+		    (void)device.Release( old.buffer, target.submitted );
+		    return true;
+	    } );
 	std::erase_if( s.retiredTextures,
 	    [&]( const std::pair<std::uint64_t, TextureId> &old )
 	    {
@@ -1395,7 +1614,6 @@ void WorldPass::RecordBatch(
 		r.modelResolver->SetWorldPbr( true, world->stage ? StageTerms( *world->stage ) : 0 );
 		r.modelResolver->SetSceneColorAvailable( world->stage != nullptr );
 		r.modelMaterials.resize( world->materials.size() );
-		r.staticMeshes.resize( world->staticMeshes.size() );
 	}
 	if ( !r.uploaded )
 	{
@@ -1722,9 +1940,9 @@ void WorldPass::RecordBatch(
 				    patch.regions, patch.texels );
 			}
 			const std::vector<float> table = paddedTable( stageTable, rows );
-			if ( !fits || !stageUpload( r.stageTextures[kStageProbeGrids],
-			                  r.stageDescs[kStageProbeGrids],
-			                  std::as_bytes( std::span( table ) ), ResourceUsage::kSampled ) )
+			if ( !fits ||
+			     !stageUpload( r.stageTextures[kStageProbeGrids], r.stageDescs[kStageProbeGrids],
+			         std::as_bytes( std::span( table ) ), ResourceUsage::kSampled ) )
 			{
 				guard.unlock();
 				s.Fail( "the world stage's probe change does not fit its volume" );
@@ -1751,8 +1969,8 @@ void WorldPass::RecordBatch(
 						    ( std::size_t( region.y + y ) * probes.atlasWidth + region.x ) * 8;
 						if ( at + row <= s.stageChangeBase.size() &&
 						     offset + row <= patch.texels.size() )
-							std::memcpy( s.stageChangeBase.data() + at,
-							    patch.texels.data() + offset, row );
+							std::memcpy(
+							    s.stageChangeBase.data() + at, patch.texels.data() + offset, row );
 						offset += row;
 					}
 				}
@@ -2411,58 +2629,40 @@ void WorldPass::RecordBatch(
 		                                            : x.firstIndex < y.firstIndex;
 	    } );
 	preparation.Select( "prepare model materials and meshes" );
+	// Model geometry residency: adopt the world's levels, then release the ones
+	// no view has selected for a while (once per recorded frame).
+	SweepModelResidency( s, *world, target );
 	struct StaticDraw
 	{
 		std::size_t cohort;
 		bool posed;
 		std::uint32_t instance;
 		std::uint32_t mesh;
+		std::uint32_t lod;
 		std::uint32_t surface;
 		std::uint32_t material;
 	};
 	std::vector<StaticDraw> staticDraws;
 	std::vector<BufferId> posedBuffers( view.posedModels.size() );
 	std::vector<BufferId> previousPosedBuffers( view.posedModels.size() );
-	auto uploadMesh = [&]( std::uint32_t meshId ) -> bool
+	// One (model, level)'s buffers for this recording: uploaded from the
+	// world's staging on first use, and again after the residency rule released
+	// them. Null when the level has no geometry left to upload.
+	auto modelLevel = [&]( std::uint32_t meshId, std::uint32_t lod ) -> const State::ModelLevel *
 	{
-		Resources::StaticMeshBuffers &buffers = r.staticMeshes[meshId];
-		if ( buffers.uploaded )
-			return true;
-		const WorldData::StaticMesh &mesh = world->staticMeshes[meshId];
-		const auto vertexBytes = std::as_bytes( std::span( mesh.vertices ) );
-		const auto indexBytes = std::as_bytes( std::span( mesh.indices ) );
-		BufferDesc desc;
-		desc.size = vertexBytes.size();
-		desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kVertex };
-		desc.debugName = "model vertices";
-		auto vertices = device.CreateBuffer( desc );
-		desc.size = indexBytes.size();
-		desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kIndex };
-		desc.debugName = "model indices";
-		auto indices = device.CreateBuffer( desc );
-		if ( !vertices || !indices || vertexBytes.empty() || indexBytes.empty() )
+		if ( meshId >= world->staticMeshes.size() || lod >= world->staticMeshes[meshId].lodCount() )
 		{
-			if ( vertices )
-				(void)device.Release( vertices.Value(), CompletionToken() );
-			if ( indices )
-				(void)device.Release( indices.Value(), CompletionToken() );
-			note( "a model mesh's buffers were refused" );
-			return false;
+			note( "a model names a level it does not have" );
+			return nullptr;
 		}
-		buffers.vertices = vertices.Value();
-		buffers.indices = indices.Value();
-		encoder.TransitionBuffer(
-		    buffers.vertices, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
-		encoder.WriteBuffer( buffers.vertices, 0, vertexBytes );
-		encoder.TransitionBuffer(
-		    buffers.vertices, ResourceUsage::kCopyDestination, ResourceUsage::kVertex );
-		encoder.TransitionBuffer(
-		    buffers.indices, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
-		encoder.WriteBuffer( buffers.indices, 0, indexBytes );
-		encoder.TransitionBuffer(
-		    buffers.indices, ResourceUsage::kCopyDestination, ResourceUsage::kIndex );
-		buffers.uploaded = true;
-		return true;
+		const WorldData::StaticMesh &mesh = world->staticMeshes[meshId];
+		if ( !UploadModelLevel( s, device, encoder, mesh, meshId, lod, target.frame ) )
+		{
+			note( "model " + std::to_string( meshId ) + " level " + std::to_string( lod ) +
+			      " has no geometry to upload" );
+			return nullptr;
+		}
+		return &s.models.models[meshId][lod];
 	};
 	for ( std::size_t staticIndex = 0; staticIndex < view.staticInstances.size(); ++staticIndex )
 	{
@@ -2490,11 +2690,6 @@ void WorldPass::RecordBatch(
 		}
 		if ( draw.surfaceSelection && draw.surfaceSelection->empty() )
 			continue;
-		if ( !uploadMesh( instance.mesh ) )
-		{
-			complete = false;
-			continue;
-		}
 		for ( std::uint32_t surfaceId = 0; surfaceId < mesh.surfaces.size(); ++surfaceId )
 		{
 			if ( !SurfaceSelected( draw.surfaceSelection, surfaceId ) )
@@ -2517,8 +2712,16 @@ void WorldPass::RecordBatch(
 				complete = false;
 				continue;
 			}
+			// Each surface's level is its own allocation; the first surface
+			// that needs one uploads it and the rest of the level reuses it.
+			const std::uint32_t lod = mesh.LodOfSurface( surfaceId );
+			if ( lod == ~0u || !modelLevel( instance.mesh, lod ) )
+			{
+				complete = false;
+				continue;
+			}
 			staticDraws.push_back( { staticCohorts[staticIndex], false, instanceId, instance.mesh,
-			    surfaceId, materialId } );
+			    lod, surfaceId, materialId } );
 		}
 	}
 	for ( std::uint32_t poseId = 0; poseId < view.posedModels.size(); ++poseId )
@@ -2533,12 +2736,77 @@ void WorldPass::RecordBatch(
 		const WorldData::StaticMesh &mesh = world->staticMeshes[pose.mesh];
 		if ( pose.surfaceSelection && pose.surfaceSelection->empty() )
 			continue;
-		if ( pose.vertices.size() != mesh.vertices.size() || !uploadMesh( pose.mesh ) )
+		// A posed model draws one hardware level: the selection names that
+		// level's surfaces, its index buffer is that level's own, and the host's
+		// vertices are the pose of that level.
+		WorldData::StaticInstance instance;
+		instance.mesh = pose.mesh;
+		instance.skin = pose.skin;
+		std::uint32_t level = ~0u;
+		bool levelRefused = false;
+		for ( std::uint32_t surfaceId = 0; surfaceId < mesh.surfaces.size(); ++surfaceId )
 		{
-			note( "a posed model has the wrong vertex count or no mesh buffers" );
-			complete = false;
-			continue;
+			if ( !SurfaceSelected( pose.surfaceSelection, surfaceId ) )
+				continue;
+			const std::uint32_t lod = mesh.LodOfSurface( surfaceId );
+			if ( lod == ~0u || !modelLevel( pose.mesh, lod ) )
+			{
+				levelRefused = true;
+				continue;
+			}
+			if ( level != ~0u && level != lod )
+			{
+				note( "a posed model's selection spans two hardware levels" );
+				complete = false;
+				levelRefused = true;
+				break;
+			}
+			if ( pose.vertices.size() != mesh.lods[lod].vertexCount )
+			{
+				note( "a posed model's vertices are not its selected level's" );
+				complete = false;
+				levelRefused = true;
+				break;
+			}
+			level = lod;
+			const std::uint32_t materialId = StaticMaterial( mesh, instance, surfaceId );
+			if ( materialId >= claims->size() )
+			{
+				note( "posed model " + std::to_string( pose.mesh ) + " surface " +
+				      std::to_string( surfaceId ) + " names missing material " +
+				      std::to_string( materialId ) );
+				complete = false;
+				continue;
+			}
+			const bool blended = ( *claims )[materialId].blended;
+			if ( ( pose.phase == RenderCoreDrawPhase::kOpaque && blended ) ||
+			     ( pose.phase == RenderCoreDrawPhase::kBlended && !blended ) )
+				continue;
+			const Resources::Material *material =
+			    materialId < claims->size() && ( *claims )[materialId].draws
+			        ? materialReadyIn( *r.modelResolver, r.modelMaterials, materialId )
+			        : nullptr;
+			if ( !material && failure.empty() )
+				note( "posed model " + std::to_string( pose.mesh ) + " surface " +
+				      std::to_string( surfaceId ) + " names unclaimed material " +
+				      std::to_string( materialId ) );
+			if ( !material ||
+			     ( material->program.request.drawLayout.IsValid() &&
+			         !drawGroupReady( *material, 0 ) ) ||
+			     ( material->program.request.frameLayout.IsValid() &&
+			         !frameGroupReady( *material ) ) )
+			{
+				complete = false;
+				continue;
+			}
+			staticDraws.push_back(
+			    { posedCohorts[poseId], true, poseId, pose.mesh, lod, surfaceId, materialId } );
 		}
+		if ( levelRefused || level == ~0u )
+			continue;
+		// The pose's own vertices, in the level's vertex order, uploaded for
+		// this frame: the host's pose changes every frame, so this buffer is
+		// per frame while the level's index buffer is resident.
 		const auto bytes = std::as_bytes( std::span( pose.vertices ) );
 		BufferDesc desc;
 		desc.size = bytes.size();
@@ -2582,48 +2850,9 @@ void WorldPass::RecordBatch(
 		encoder.WriteBuffer( buffer.Value(), 0, bytes );
 		encoder.TransitionBuffer(
 		    buffer.Value(), ResourceUsage::kCopyDestination, ResourceUsage::kVertex );
-		WorldData::StaticInstance instance;
-		instance.mesh = pose.mesh;
-		instance.skin = pose.skin;
-		for ( std::uint32_t surfaceId = 0; surfaceId < mesh.surfaces.size(); ++surfaceId )
-		{
-			if ( !SurfaceSelected( pose.surfaceSelection, surfaceId ) )
-				continue;
-			const std::uint32_t materialId = StaticMaterial( mesh, instance, surfaceId );
-			if ( materialId >= claims->size() )
-			{
-				note( "posed model " + std::to_string( pose.mesh ) + " surface " +
-				      std::to_string( surfaceId ) + " names missing material " +
-				      std::to_string( materialId ) );
-				complete = false;
-				continue;
-			}
-			const bool blended = ( *claims )[materialId].blended;
-			if ( ( pose.phase == RenderCoreDrawPhase::kOpaque && blended ) ||
-			     ( pose.phase == RenderCoreDrawPhase::kBlended && !blended ) )
-				continue;
-			const Resources::Material *material =
-			    materialId < claims->size() && ( *claims )[materialId].draws
-			        ? materialReadyIn( *r.modelResolver, r.modelMaterials, materialId )
-			        : nullptr;
-			if ( !material && failure.empty() )
-				note( "posed model " + std::to_string( pose.mesh ) + " surface " +
-				      std::to_string( surfaceId ) + " names unclaimed material " +
-				      std::to_string( materialId ) );
-			if ( !material ||
-			     ( material->program.request.drawLayout.IsValid() &&
-			         !drawGroupReady( *material, 0 ) ) ||
-			     ( material->program.request.frameLayout.IsValid() &&
-			         !frameGroupReady( *material ) ) )
-			{
-				complete = false;
-				continue;
-			}
-			staticDraws.push_back(
-			    { posedCohorts[poseId], true, poseId, pose.mesh, surfaceId, materialId } );
-		}
 	}
 
+	PublishModelResidency( s );
 	preparation.Select( "prepare world view" );
 	// The view's planar reflection: the render target the view's programs
 	// name (one per view: the client draws one reflection view), imported
@@ -2705,10 +2934,9 @@ void WorldPass::RecordBatch(
 		state.cull = m.program.twoSided ? CullMode::kNone : CullMode::kBack;
 		return statePipeline( m, base, state, debug );
 	};
-	auto submitSurfaceFootprints = [&]( const WorldSurface &surface,
-	                                    const std::vector<Resources::Material> &materials,
-	                                    const auto &vertices, const auto &indices,
-	                                    const float *objectToWorld = nullptr )
+	auto submitSurfaceFootprints =
+	    [&]( const WorldSurface &surface, const std::vector<Resources::Material> &materials,
+	        const auto &vertices, const auto &indices, const float *objectToWorld = nullptr )
 	{
 		if ( !target.mipFeedback || !view.viewport.width || !view.viewport.height ||
 		     surface.firstIndex > indices.size() ||
@@ -2731,7 +2959,8 @@ void WorldPass::RecordBatch(
 			const auto &vertex = vertices[vertexIndex];
 			if ( !std::isfinite( vertex.uv[0] ) || !std::isfinite( vertex.uv[1] ) )
 				return;
-			float position[4] = { vertex.position[0], vertex.position[1], vertex.position[2], 1.0f };
+			float position[4] = {
+			    vertex.position[0], vertex.position[1], vertex.position[2], 1.0f };
 			if ( objectToWorld )
 			{
 				float transformed[4] = {};
@@ -2750,11 +2979,9 @@ void WorldPass::RecordBatch(
 				valid = false;
 				break;
 			}
-			const float x = std::clamp( ( clip[0] / clip[3] * 0.5f + 0.5f ) *
-			                                view.viewport.width,
+			const float x = std::clamp( ( clip[0] / clip[3] * 0.5f + 0.5f ) * view.viewport.width,
 			    0.0f, view.viewport.width );
-			const float y = std::clamp( ( 0.5f - clip[1] / clip[3] * 0.5f ) *
-			                                view.viewport.height,
+			const float y = std::clamp( ( 0.5f - clip[1] / clip[3] * 0.5f ) * view.viewport.height,
 			    0.0f, view.viewport.height );
 			minX = std::min( minX, x );
 			minY = std::min( minY, y );
@@ -2855,8 +3082,7 @@ void WorldPass::RecordBatch(
 			}
 			if ( skipping )
 				continue;
-			submitSurfaceFootprints(
-			    surface, materials, world->vertices, world->indices );
+			submitSurfaceFootprints( surface, materials, world->vertices, world->indices );
 			if ( m.program.request.drawLayout.IsValid() &&
 			     ( !pageBound || surface.lightmapPage != boundPage ) )
 			{
@@ -2925,7 +3151,7 @@ void WorldPass::RecordBatch(
 		}
 		encoder.SetDrawConstants( 0, std::as_bytes( std::span( &modelConstants, 1 ) )
 		                                 .first( m.program.request.drawConstantBytes ) );
-		const Resources::StaticMeshBuffers &buffers = r.staticMeshes[draw.mesh];
+		const State::ModelLevel &buffers = s.models.models[draw.mesh][draw.lod];
 		encoder.SetVertexBuffer( 0, draw.posed ? posedBuffers[draw.instance] : buffers.vertices );
 		if ( recordingTemporal )
 			encoder.SetVertexBuffer(
@@ -2933,9 +3159,12 @@ void WorldPass::RecordBatch(
 		encoder.SetIndexBuffer( buffers.indices, 0, IndexFormat::kUint32 );
 		WorldSurface feedbackSurface = surface;
 		feedbackSurface.material = draw.material;
-		submitSurfaceFootprints( feedbackSurface, r.modelMaterials,
-		    draw.posed ? view.posedModels[draw.instance].vertices : mesh.vertices, mesh.indices,
-		    instance ? instance->world : nullptr );
+		// The level's own staging, whose indices the level's surface counts into.
+		const WorldData::StaticMeshLod &level = mesh.lods[draw.lod];
+		if ( level.vertices && level.indices )
+			submitSurfaceFootprints( feedbackSurface, r.modelMaterials,
+			    draw.posed ? view.posedModels[draw.instance].vertices : *level.vertices,
+			    *level.indices, instance ? instance->world : nullptr );
 		encoder.DrawIndexed( surface.indexCount, 1, surface.firstIndex, 0, 0 );
 	};
 	preparation.End();
@@ -2991,7 +3220,6 @@ void WorldPass::RecordBatch(
 				r.prepassModelResolver->SetWorldPbr( true, StageTerms( *world->stage ) );
 				r.prepassModelResolver->SetSceneColorAvailable( true );
 				r.prepassModelMaterials.resize( world->materials.size() );
-				r.staticMeshes.resize( world->staticMeshes.size() );
 			}
 			else
 				note( "the model prepass resolver: " + resolver.Error() );
@@ -3062,6 +3290,10 @@ void WorldPass::RecordBatch(
 			std::vector<StaticDraw> prepassModels;
 			if ( r.prepassModelResolver )
 			{
+				// The prepass covers the world's instances, not this view's, so
+				// it draws only the levels already resident: a released level is
+				// uploaded when a view selects it, not by this pass over every
+				// instance (which would keep every level resident forever).
 				for ( std::uint32_t id = 0; id < world->staticInstances.size(); ++id )
 				{
 					const auto &instance = world->staticInstances[id];
@@ -3085,14 +3317,18 @@ void WorldPass::RecordBatch(
 						}
 						if ( !opaquePbr( *m ) )
 							continue;
-						if ( !uploadMesh( instance.mesh ) || !drawGroupReady( *m, 0 ) ||
-						     !frameGroupReady( *m ) || !viewGroupReady( *m ) )
+						const std::uint32_t lod = mesh.LodOfSurface( surface );
+						if ( lod == ~0u || lod >= s.models.models[instance.mesh].size() ||
+						     !s.models.models[instance.mesh][lod].resident )
+							continue;
+						if ( !drawGroupReady( *m, 0 ) || !frameGroupReady( *m ) ||
+						     !viewGroupReady( *m ) )
 						{
 							complete = false;
 							continue;
 						}
 						prepassModels.push_back(
-						    { 0, false, id, instance.mesh, surface, material } );
+						    { 0, false, id, instance.mesh, lod, surface, material } );
 					}
 				}
 			}

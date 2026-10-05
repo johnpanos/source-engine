@@ -66,13 +66,9 @@ def relight(bsp, name, out, toolchain, quality=pbrt_map_build.LEGACY_QUALITY, ga
         extra["reflection_probe"] = {"positions": probe_positions}
     if probe_volumes is not None:
         extra.setdefault("reflection_probe", {})["volumes"] = probe_volumes
-    if max_seam_p99 is not None:
-        lightmap = {"seam_gate": {"p99": max_seam_p99}}
-        if device:
-            lightmap["device"] = device
-        extra["lightmap"] = lightmap
     return map_lighting.light(bsp, name, out, toolchain, None, quality, game, runtime, device,
-                              force_from, boot, keep_going, publish, extra or None)
+                              force_from, boot, keep_going, publish, extra or None,
+                              max_seam_p99=max_seam_p99)
 
 
 def load_probe_positions(path, map_name):

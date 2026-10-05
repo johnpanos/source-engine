@@ -45,7 +45,10 @@ WorldData SelectionWorld()
 	stage->lightmap.width = stage->lightmap.height = 1;
 	stage->lightmap.flat.resize( 8 );
 	world.stage = std::move( stage );
-	WorldData::StaticMesh mesh;
+	// One hardware level with three body alternatives, each its own surface.
+	std::vector<material::SurfaceModelVertex> vertices;
+	std::vector<std::uint32_t> indices;
+	std::vector<WorldSurface> surfaces;
 	for ( std::uint32_t i = 0; i < 3; ++i )
 	{
 		WorldMaterial mat;
@@ -67,13 +70,16 @@ WorldData SelectionWorld()
 			vertex.position[2] = 0.5f;
 			vertex.normal[2] = 1.0f;
 			vertex.tangent[0] = vertex.tangent[3] = 1.0f;
-			mesh.vertices.push_back( vertex );
+			vertices.push_back( vertex );
 		}
 		const std::uint32_t base = i * 4;
-		mesh.indices.insert(
-		    mesh.indices.end(), { base, base + 1, base + 2, base, base + 2, base + 3 } );
-		mesh.surfaces.push_back( { i, 0, i * 6, 6 } );
+		indices.insert( indices.end(), { base, base + 1, base + 2, base, base + 2, base + 3 } );
+		surfaces.push_back( { i, 0, i * 6, 6 } );
 	}
+	WorldData::StaticMesh mesh;
+	mesh.AddLevel(
+	    WorldData::StaticMeshLod::MakeLevel( std::move( vertices ), std::move( indices ) ),
+	    std::move( surfaces ) );
 	world.staticMeshes.push_back( std::move( mesh ) );
 	for ( std::uint32_t i = 0; i < 3; ++i )
 	{
@@ -94,7 +100,11 @@ WorldView SelectionView( const WorldData &world, int body )
 	const mdl::BodyPart part{ 1, 4 };
 	const std::uint32_t selected = part.SelectedModel( body );
 	WorldView::PosedModel pose;
-	pose.vertices = world.staticMeshes[0].vertices;
+	// A wholly blank model has no level and no vertices, and is still a valid
+	// empty draw.
+	if ( !world.staticMeshes.empty() && !world.staticMeshes[0].lods.empty() &&
+	     world.staticMeshes[0].lods[0].vertices )
+		pose.vertices = *world.staticMeshes[0].lods[0].vertices;
 	pose.surfaceSelection.emplace();
 	if ( selected < 3 )
 		pose.surfaceSelection->push_back( selected );
@@ -135,24 +145,35 @@ WorldData ImportedLodWorld( const mdl::Model &model )
 		material.variables.emplace_back( "$color", slots[0] == "base" ? "[1 0 0]" : "[0 1 0]" );
 		world.materials.push_back( std::move( material ) );
 	}
+	// One allocation per hardware LOD, as the composition publishes them.
 	WorldData::StaticMesh mesh;
-	for ( const mdl::Mesh &part : model.meshes )
+	for ( std::uint32_t lod = 0; lod < model.lodTextures.size(); ++lod )
 	{
-		const std::uint32_t firstVertex = std::uint32_t( mesh.vertices.size() );
-		const std::uint32_t firstIndex = std::uint32_t( mesh.indices.size() );
-		for ( const mdl::Vertex &vertex : part.vertices )
+		std::vector<material::SurfaceModelVertex> vertices;
+		std::vector<std::uint32_t> indices;
+		std::vector<WorldSurface> surfaces;
+		for ( const mdl::Mesh &part : model.meshes )
 		{
-			material::SurfaceModelVertex out;
-			out.position[0] = vertex.position.x;
-			out.position[1] = vertex.position.y;
-			out.position[2] = vertex.position.z;
-			out.normal[2] = out.tangent[0] = out.tangent[3] = 1.0f;
-			mesh.vertices.push_back( out );
+			if ( part.lod != lod )
+				continue;
+			const std::uint32_t firstVertex = std::uint32_t( vertices.size() );
+			for ( const mdl::Vertex &vertex : part.vertices )
+			{
+				material::SurfaceModelVertex out;
+				out.position[0] = vertex.position.x;
+				out.position[1] = vertex.position.y;
+				out.position[2] = vertex.position.z;
+				out.normal[2] = out.tangent[0] = out.tangent[3] = 1.0f;
+				vertices.push_back( out );
+			}
+			const std::uint32_t firstIndex = std::uint32_t( indices.size() );
+			for ( std::uint32_t index : part.indices )
+				indices.push_back( firstVertex + index );
+			surfaces.push_back( { part.lod, 0, firstIndex, std::uint32_t( part.indices.size() ) } );
 		}
-		for ( std::uint32_t index : part.indices )
-			mesh.indices.push_back( firstVertex + index );
-		mesh.surfaces.push_back(
-		    { part.lod, 0, firstIndex, std::uint32_t( part.indices.size() ) } );
+		mesh.AddLevel(
+		    WorldData::StaticMeshLod::MakeLevel( std::move( vertices ), std::move( indices ) ),
+		    std::move( surfaces ) );
 	}
 	world.staticMeshes.push_back( std::move( mesh ) );
 	WorldData::StaticInstance instance;
@@ -168,14 +189,18 @@ WorldView ImportedLodView(
 	view.toClip[0] = view.toClip[5] = view.toClip[10] = view.toClip[15] = 1.0f;
 	view.viewport = { 0, 0, float( kSize ), float( kSize ), 0, 1 };
 	WorldView::PosedModel pose;
-	pose.vertices = world.staticMeshes[0].vertices;
+	pose.vertices = *world.staticMeshes[0].lods[lod].vertices;
 	pose.surfaceSelection.emplace();
-	for ( std::uint32_t i = 0; i < model.meshes.size(); ++i )
+	// The level's own surfaces, in the hardware mesh order, filtered by the
+	// selected body group.
+	std::uint32_t surface = 0;
+	for ( const mdl::Mesh &part : model.meshes )
 	{
-		const mdl::Mesh &mesh = model.meshes[i];
-		if ( mesh.lod == lod &&
-		     model.bodyParts[mesh.bodyPart].SelectedModel( body ) == mesh.bodyModel )
-			pose.surfaceSelection->push_back( i );
+		if ( part.lod != lod )
+			continue;
+		if ( model.bodyParts[part.bodyPart].SelectedModel( body ) == part.bodyModel )
+			pose.surfaceSelection->push_back( world.staticMeshes[0].lods[lod].surfaces[surface] );
+		++surface;
 	}
 	view.posedModels.push_back( std::move( pose ) );
 	return view;

@@ -423,6 +423,9 @@ void CoreWorld::SetStage()
 		}
 	}
 	data.staticInstances = m_StaticInstances;
+	// The model geometry's revision, so the pass keeps the levels it already
+	// uploaded when only the stage's lighting changed (a late probe volume).
+	data.modelsRevision = m_ModelsRevision;
 	m_Pass.SetWorld( std::move( data ) );
 	m_StageSet = true;
 	// The change the capture holds (parts arrive relative to it).
@@ -451,7 +454,16 @@ void CoreWorld::SetStaticCasters()
 		if ( instance.mesh >= m_StaticMeshes.size() )
 			continue;
 		const pass::world::WorldData::StaticMesh &mesh = m_StaticMeshes[instance.mesh];
-		std::vector<const pass::world::WorldSurface *> surfaces;
+		// The instance's selected surfaces, grouped by the level that owns them:
+		// a level is its own vertex and index allocation, so the caster geometry
+		// is built one level at a time (only the selected levels' vertices are
+		// copied; the triangles are the same ones the model draws).
+		struct CasterLevel
+		{
+			const pass::world::WorldData::StaticMeshLod *block;
+			std::vector<const pass::world::WorldSurface *> surfaces;
+		};
+		std::vector<CasterLevel> levels;
 		for ( std::size_t s = 0; s < mesh.surfaces.size(); ++s )
 		{
 			if ( instance.surfaceSelection &&
@@ -461,62 +473,81 @@ void CoreWorld::SetStaticCasters()
 			std::uint32_t material = mesh.surfaces[s].material;
 			if ( !mesh.skinMaterials.empty() )
 				material = mesh.skinMaterials[instance.skin][s];
-			if ( material < m_StaticMaterials.size() &&
-			     OpaqueShadowMaterial( m_StaticMaterials[material] ) )
-				surfaces.push_back( &mesh.surfaces[s] );
+			if ( material >= m_StaticMaterials.size() ||
+			     !OpaqueShadowMaterial( m_StaticMaterials[material] ) )
+				continue;
+			const std::uint32_t lod = mesh.LodOfSurface( s );
+			if ( lod == ~0u || !mesh.lods[lod].vertices || !mesh.lods[lod].indices )
+				continue;
+			auto level = std::find_if( levels.begin(), levels.end(),
+			    [&]( const CasterLevel &held )
+			    {
+				    return held.block == &mesh.lods[lod];
+			    } );
+			if ( level == levels.end() )
+			{
+				levels.push_back( { &mesh.lods[lod], {} } );
+				level = levels.end() - 1;
+			}
+			level->surfaces.push_back( &mesh.surfaces[s] );
 		}
-		if ( surfaces.empty() )
+		if ( levels.empty() )
 		{
 			++cutout;
 			continue;
 		}
-		bool valid = true;
-		for ( const pass::world::WorldSurface *surface : surfaces )
+		for ( const CasterLevel &level : levels )
 		{
-			for ( std::uint32_t index = surface->firstIndex;
-			    index < surface->firstIndex + surface->indexCount; ++index )
-				valid = valid && mesh.indices[index] < mesh.vertices.size();
-		}
-		if ( !valid )
-			continue;
-		const std::uint32_t firstVertex = std::uint32_t( casters->positions.size() / 3 );
-		for ( const material::SurfaceModelVertex &vertex : mesh.vertices )
-		{
-			for ( int axis = 0; axis < 3; ++axis )
+			const pass::world::WorldData::StaticMeshLod &block = *level.block;
+			bool valid = true;
+			for ( const pass::world::WorldSurface *surface : level.surfaces )
 			{
-				const float *row = instance.world + axis * 4;
-				casters->positions.push_back( row[0] * vertex.position[0] +
-				                              row[1] * vertex.position[1] +
-				                              row[2] * vertex.position[2] + row[3] );
+				for ( std::uint32_t index = surface->firstIndex;
+				    index < surface->firstIndex + surface->indexCount; ++index )
+					valid = valid && index < block.indexCount &&
+					        ( *block.indices )[index] < block.vertexCount;
 			}
-		}
-		Casters::Chunk chunk;
-		chunk.firstIndex = std::uint32_t( casters->indices.size() );
-		for ( int axis = 0; axis < 3; ++axis )
-		{
-			chunk.min[axis] = std::numeric_limits<float>::max();
-			chunk.max[axis] = -std::numeric_limits<float>::max();
-		}
-		for ( const pass::world::WorldSurface *surface : surfaces )
-		{
-			for ( std::uint32_t index = surface->firstIndex;
-			    index < surface->firstIndex + surface->indexCount; ++index )
+			if ( !valid )
+				continue;
+			const std::uint32_t firstVertex = std::uint32_t( casters->positions.size() / 3 );
+			for ( const material::SurfaceModelVertex &vertex : *block.vertices )
 			{
-				const std::uint32_t vertex = firstVertex + mesh.indices[index];
-				casters->indices.push_back( vertex );
 				for ( int axis = 0; axis < 3; ++axis )
 				{
-					const float position = casters->positions[vertex * 3 + axis];
-					chunk.min[axis] = std::min( chunk.min[axis], position );
-					chunk.max[axis] = std::max( chunk.max[axis], position );
+					const float *row = instance.world + axis * 4;
+					casters->positions.push_back( row[0] * vertex.position[0] +
+					                              row[1] * vertex.position[1] +
+					                              row[2] * vertex.position[2] + row[3] );
 				}
 			}
-		}
-		chunk.indexCount = std::uint32_t( casters->indices.size() ) - chunk.firstIndex;
-		if ( chunk.indexCount )
-		{
-			casters->chunks.push_back( chunk );
-			++instances;
+			Casters::Chunk chunk;
+			chunk.firstIndex = std::uint32_t( casters->indices.size() );
+			for ( int axis = 0; axis < 3; ++axis )
+			{
+				chunk.min[axis] = std::numeric_limits<float>::max();
+				chunk.max[axis] = -std::numeric_limits<float>::max();
+			}
+			for ( const pass::world::WorldSurface *surface : level.surfaces )
+			{
+				for ( std::uint32_t index = surface->firstIndex;
+				    index < surface->firstIndex + surface->indexCount; ++index )
+				{
+					const std::uint32_t vertex = firstVertex + ( *block.indices )[index];
+					casters->indices.push_back( vertex );
+					for ( int axis = 0; axis < 3; ++axis )
+					{
+						const float position = casters->positions[vertex * 3 + axis];
+						chunk.min[axis] = std::min( chunk.min[axis], position );
+						chunk.max[axis] = std::max( chunk.max[axis], position );
+					}
+				}
+			}
+			chunk.indexCount = std::uint32_t( casters->indices.size() ) - chunk.firstIndex;
+			if ( chunk.indexCount )
+			{
+				casters->chunks.push_back( chunk );
+				++instances;
+			}
 		}
 	}
 	{
@@ -540,6 +571,7 @@ void CoreWorld::SetStaticProps( const RenderCoreStaticModel *models, unsigned in
 	m_StaticInstances.clear();
 	m_StaticCastsShadow.clear();
 	m_ModelPoseSources.clear();
+	++m_ModelsRevision;
 	m_StaticMeshes.resize( modelCount );
 	m_ModelPoseSources.resize( modelCount );
 	m_StaticInstances.reserve( propCount );
@@ -566,7 +598,13 @@ void CoreWorld::SetStaticProps( const RenderCoreStaticModel *models, unsigned in
 		ModelPoseSource &poseSource = m_ModelPoseSources[i];
 		poseSource.bodyParts = model.bodyParts;
 		poseSource.lodCount = std::uint32_t( model.lodTextures.size() );
-		if ( model.bones.size() <= 255 )
+		// Only a model the host may pose needs its per-frame pose source: a
+		// static-only model's vertices are never skinned by the core, so its
+		// skinning copy would be a second CPU copy of geometry it keeps once.
+		// The host declares it (RenderCoreStaticModel::posed, which defaults
+		// to true), so a host that does not know keeps every model posable.
+		const bool posed = source.posed;
+		if ( posed && model.bones.size() <= 255 )
 		{
 			for ( const mdl::Bone &bone : model.bones )
 			{
@@ -591,105 +629,161 @@ void CoreWorld::SetStaticProps( const RenderCoreStaticModel *models, unsigned in
 			m_StaticMaterials.push_back( std::move( material ) );
 		}
 		pass::world::WorldData::StaticMesh &mesh = m_StaticMeshes[i];
+		mesh.posed = posed;
 		mesh.skinMaterials.resize( model.skinFamilies.size() );
-		bool complete = true;
+		// One block per hardware level, each with its own vertex and index
+		// allocation (RFC 0016 model geometry residency), published as shared
+		// staging: the composition and the pass hold one allocation between them,
+		// never a copy each.
+		const std::size_t levelCount = model.lodTextures.size();
+		std::vector<std::vector<const mdl::Mesh *>> partsByLevel( levelCount );
 		for ( const mdl::Mesh &part : model.meshes )
 		{
-			const bool resolvedLod = part.lod < source.materialLodCount;
-			const bool unchangedLod = model.lodTextures[part.lod] == model.lodTextures[0];
-			const std::uint32_t lodMaterialBase =
-			    materialBase + ( resolvedLod ? part.lod * source.materialCount : 0u );
-			const std::int32_t texture =
-			    model.skinFamilies.empty()
-			        ? part.textureRef
-			        : ( part.textureRef >= 0 &&
-			                      std::size_t( part.textureRef ) < model.skinFamilies[0].size()
-			                  ? model.skinFamilies[0][std::size_t( part.textureRef )]
-			                  : -1 );
-			if ( texture < 0 || std::uint32_t( texture ) >= source.materialCount )
+			if ( part.lod < partsByLevel.size() )
+				partsByLevel[part.lod].push_back( &part );
+		}
+		// Each level's pose source, in the same vertex order as its block (only a
+		// model the host may pose needs one).
+		std::vector<std::vector<pass::skinning::SkinVertex>> skinByLevel( levelCount );
+		bool complete = true;
+		for ( std::size_t lod = 0; lod < partsByLevel.size() && complete; ++lod )
+		{
+			// A level with no geometry is still a level: the host selects it, and
+			// an empty selection is a valid blank model rather than a refusal.
+			if ( partsByLevel[lod].empty() )
 			{
-				mesh.surfaces.clear();
-				complete = false;
-				break;
+				mesh.AddLevel( {}, {} );
+				continue;
 			}
-			const std::uint32_t base = std::uint32_t( mesh.vertices.size() );
-			for ( std::size_t vertexIndex = 0; vertexIndex < part.vertices.size(); ++vertexIndex )
+			std::vector<material::SurfaceModelVertex> vertices;
+			std::vector<std::uint32_t> indices;
+			std::vector<pass::world::WorldSurface> surfaces;
+			std::vector<std::vector<std::uint32_t>> levelSkins( model.skinFamilies.size() );
+			std::vector<pass::skinning::SkinVertex> &skin = skinByLevel[lod];
+			for ( const mdl::Mesh *part : partsByLevel[lod] )
 			{
-				const mdl::Vertex &from = part.vertices[vertexIndex];
-				material::SurfaceModelVertex to;
-				to.position[0] = from.position.x;
-				to.position[1] = from.position.y;
-				to.position[2] = from.position.z;
-				to.normal[0] = from.normal.x;
-				to.normal[1] = from.normal.y;
-				to.normal[2] = from.normal.z;
-				to.uv[0] = from.u;
-				to.uv[1] = from.v;
-				if ( from.tangentSign != 0.0f )
+				const bool resolvedLod = part->lod < source.materialLodCount;
+				const bool unchangedLod = model.lodTextures[part->lod] == model.lodTextures[0];
+				const std::uint32_t lodMaterialBase =
+				    materialBase + ( resolvedLod ? part->lod * source.materialCount : 0u );
+				const std::int32_t texture =
+				    model.skinFamilies.empty()
+				        ? part->textureRef
+				        : ( part->textureRef >= 0 &&
+				                      std::size_t( part->textureRef ) < model.skinFamilies[0].size()
+				                  ? model.skinFamilies[0][std::size_t( part->textureRef )]
+				                  : -1 );
+				if ( texture < 0 || std::uint32_t( texture ) >= source.materialCount )
 				{
-					to.tangent[0] = from.tangent.x;
-					to.tangent[1] = from.tangent.y;
-					to.tangent[2] = from.tangent.z;
-					to.tangent[3] = from.tangentSign;
+					complete = false;
+					break;
 				}
-				else
+				const std::uint32_t base = std::uint32_t( vertices.size() );
+				for ( std::size_t vertexIndex = 0; vertexIndex < part->vertices.size();
+				    ++vertexIndex )
 				{
-					// A model without a tangent block may still draw its
-					// unbumped material. Keep a stable perpendicular frame.
-					const bool useZ = std::fabs( from.normal.z ) < 0.9f;
-					float x = useZ ? from.normal.y : 0.0f;
-					float y = useZ ? -from.normal.x : from.normal.z;
-					float z = useZ ? 0.0f : -from.normal.y;
-					const float length = std::sqrt( x * x + y * y + z * z );
-					if ( length > 0.0f )
+					const mdl::Vertex &from = part->vertices[vertexIndex];
+					material::SurfaceModelVertex to;
+					to.position[0] = from.position.x;
+					to.position[1] = from.position.y;
+					to.position[2] = from.position.z;
+					to.normal[0] = from.normal.x;
+					to.normal[1] = from.normal.y;
+					to.normal[2] = from.normal.z;
+					to.uv[0] = from.u;
+					to.uv[1] = from.v;
+					if ( from.tangentSign != 0.0f )
 					{
-						x /= length;
-						y /= length;
-						z /= length;
+						to.tangent[0] = from.tangent.x;
+						to.tangent[1] = from.tangent.y;
+						to.tangent[2] = from.tangent.z;
+						to.tangent[3] = from.tangentSign;
 					}
-					to.tangent[0] = x;
-					to.tangent[1] = y;
-					to.tangent[2] = z;
-					to.tangent[3] = 1.0f;
+					else
+					{
+						// A model without a tangent block may still draw its
+						// unbumped material. Keep a stable perpendicular frame.
+						const bool useZ = std::fabs( from.normal.z ) < 0.9f;
+						float x = useZ ? from.normal.y : 0.0f;
+						float y = useZ ? -from.normal.x : from.normal.z;
+						float z = useZ ? 0.0f : -from.normal.y;
+						const float length = std::sqrt( x * x + y * y + z * z );
+						if ( length > 0.0f )
+						{
+							x /= length;
+							y /= length;
+							z /= length;
+						}
+						to.tangent[0] = x;
+						to.tangent[1] = y;
+						to.tangent[2] = z;
+						to.tangent[3] = 1.0f;
+					}
+					vertices.push_back( to );
+					if ( posed && !poseSource.poseToBone.empty() &&
+					     vertexIndex < part->weights.size() )
+					{
+						const mdl::BoneWeights &weights = part->weights[vertexIndex];
+						pass::skinning::SkinVertex vertex;
+						std::copy( to.position, to.position + 3, vertex.position );
+						std::copy( to.normal, to.normal + 3, vertex.normal );
+						std::copy( to.tangent, to.tangent + 4, vertex.tangent );
+						vertex.weight0 = weights.weights[0];
+						vertex.weight1 = weights.count > 1 ? weights.weights[1] : 0.0f;
+						for ( int bone = 0; bone < 3; ++bone )
+							vertex.bones |= std::uint32_t( weights.bones[bone] ) << ( bone * 8 );
+						skin.push_back( vertex );
+					}
 				}
-				mesh.vertices.push_back( to );
-				if ( !poseSource.poseToBone.empty() && vertexIndex < part.weights.size() )
+				pass::world::WorldSurface surface;
+				surface.material =
+				    resolvedLod || unchangedLod ? lodMaterialBase + std::uint32_t( texture ) : ~0u;
+				// The level's own index range, from zero: a level is its own
+				// allocation.
+				surface.firstIndex = std::uint32_t( indices.size() );
+				for ( std::uint32_t index : part->indices )
+					indices.push_back( base + index );
+				surface.indexCount = std::uint32_t( indices.size() ) - surface.firstIndex;
+				surfaces.push_back( surface );
+				for ( std::size_t skin = 0; skin < model.skinFamilies.size(); ++skin )
 				{
-					const mdl::BoneWeights &weights = part.weights[vertexIndex];
-					pass::skinning::SkinVertex skin;
-					std::copy( to.position, to.position + 3, skin.position );
-					std::copy( to.normal, to.normal + 3, skin.normal );
-					std::copy( to.tangent, to.tangent + 4, skin.tangent );
-					skin.weight0 = weights.weights[0];
-					skin.weight1 = weights.count > 1 ? weights.weights[1] : 0.0f;
-					for ( int bone = 0; bone < 3; ++bone )
-						skin.bones |= std::uint32_t( weights.bones[bone] ) << ( bone * 8 );
-					poseSource.vertices.push_back( skin );
+					const std::vector<std::int16_t> &family = model.skinFamilies[skin];
+					const std::int32_t selected =
+					    part->textureRef >= 0 && std::size_t( part->textureRef ) < family.size()
+					        ? family[std::size_t( part->textureRef )]
+					        : -1;
+					levelSkins[skin].push_back(
+					    ( resolvedLod || unchangedLod ) && selected >= 0 &&
+					            std::uint32_t( selected ) < source.materialCount
+					        ? lodMaterialBase + std::uint32_t( selected )
+					        : ~0u );
 				}
 			}
-			pass::world::WorldSurface surface;
-			surface.material =
-			    resolvedLod || unchangedLod ? lodMaterialBase + std::uint32_t( texture ) : ~0u;
-			surface.firstIndex = std::uint32_t( mesh.indices.size() );
-			for ( std::uint32_t index : part.indices )
-				mesh.indices.push_back( base + index );
-			surface.indexCount = std::uint32_t( mesh.indices.size() ) - surface.firstIndex;
-			mesh.surfaces.push_back( surface );
-			poseSource.surfaceBodies.push_back(
-			    { std::uint32_t( part.bodyPart ), part.bodyModel, part.lod } );
-			for ( std::size_t skin = 0; skin < model.skinFamilies.size(); ++skin )
-			{
-				const std::vector<std::int16_t> &family = model.skinFamilies[skin];
-				const std::int32_t selected =
-				    part.textureRef >= 0 && std::size_t( part.textureRef ) < family.size()
-				        ? family[std::size_t( part.textureRef )]
-				        : -1;
-				mesh.skinMaterials[skin].push_back(
-				    ( resolvedLod || unchangedLod ) && selected >= 0 &&
-				            std::uint32_t( selected ) < source.materialCount
-				        ? lodMaterialBase + std::uint32_t( selected )
-				        : ~0u );
-			}
+			if ( !complete )
+				break;
+			pass::world::WorldData::StaticMeshLod block;
+			block.vertexCount = std::uint32_t( vertices.size() );
+			block.indexCount = std::uint32_t( indices.size() );
+			block.vertices = std::make_shared<const std::vector<material::SurfaceModelVertex>>(
+			    std::move( vertices ) );
+			block.indices =
+			    std::make_shared<const std::vector<std::uint32_t>>( std::move( indices ) );
+			mesh.AddLevel( std::move( block ), std::move( surfaces ), std::move( levelSkins ) );
+		}
+		if ( !complete )
+		{
+			// One unusable material slot rejects the model whole: a level whose
+			// materials could not be resolved draws nothing rather than part of
+			// itself with another material.
+			mesh = {};
+			poseSource = {};
+		}
+		else if ( posed )
+		{
+			for ( const mdl::Mesh &part : model.meshes )
+				poseSource.surfaceBodies.push_back(
+				    { std::uint32_t( part.bodyPart ), part.bodyModel, part.lod } );
+			poseSource.vertices = std::move( skinByLevel );
 		}
 		poseSource.parsed = complete;
 	}
@@ -875,9 +969,9 @@ bool CoreWorld::StageCapture::UploadProbeVolume(
 				const std::size_t row = std::size_t( region.width ) * 8;
 				for ( std::uint32_t y = 0; y < region.height; ++y )
 				{
-					std::memcpy( change.data() +
-					                 ( std::size_t( region.y + y ) * request.atlasWidth + region.x ) *
-					                     8,
+					std::memcpy(
+					    change.data() +
+					        ( std::size_t( region.y + y ) * request.atlasWidth + region.x ) * 8,
 					    packed + offset, row );
 					offset += row;
 				}
@@ -1198,30 +1292,41 @@ bool CoreWorld::PoseModel(
 		return false;
 	const ModelPoseSource &pose = m_ModelPoseSources[source.model];
 	const pass::world::WorldData::StaticMesh &mesh = m_StaticMeshes[source.model];
-	if ( !pose.parsed || source.lod >= pose.lodCount || pose.poseToBone.empty() ||
-	     source.boneCount < pose.poseToBone.size() || pose.vertices.size() != mesh.vertices.size() )
+	// A posed model draws one hardware level: its own vertex block is the base
+	// the pose is applied to and its own index buffer is bound for the draw.
+	const std::uint32_t lod = source.lod;
+	if ( !pose.parsed || lod >= pose.lodCount || lod >= mesh.lodCount() ||
+	     pose.poseToBone.empty() || source.boneCount < pose.poseToBone.size() )
 		return false;
-	out.surfaceSelection = pose.SelectedSurfaces( source.body, source.lod );
+	out.surfaceSelection = pose.SelectedSurfaces( source.body, lod );
 	if ( !m_Pass.DrawsPosedModel( source.model, source.skin, source.phase, out.surfaceSelection ) )
+		return false;
+	if ( out.surfaceSelection->empty() )
+		return true; // a blank level draws nothing; there is nothing to pose
+	const pass::world::WorldData::StaticMeshLod &block = mesh.lods[lod];
+	if ( !block.vertices || !block.indices )
+		return false;
+	const std::span<const pass::skinning::SkinVertex> skinning = pose.LevelVertices( lod );
+	if ( skinning.size() != block.vertexCount )
 		return false;
 	// Only the selected topology borrows the live palette. The host may have
 	// prepared no matrices for bones used exclusively by other body groups/LODs.
-	std::vector<bool> usedVertices( pose.vertices.size() );
+	std::vector<bool> usedVertices( skinning.size() );
 	for ( std::uint32_t surfaceId : *out.surfaceSelection )
 	{
 		const pass::world::WorldSurface &surface = mesh.surfaces[surfaceId];
 		for ( std::uint32_t i = surface.firstIndex; i < surface.firstIndex + surface.indexCount;
 		    ++i )
-			usedVertices[mesh.indices[i]] = true;
+			usedVertices[( *block.indices )[i]] = true;
 	}
 	std::vector<pass::skinning::SkinVertex> active;
 	std::vector<std::uint32_t> activeIndices;
 	std::vector<bool> usedBones( pose.poseToBone.size() );
-	for ( std::uint32_t i = 0; i < pose.vertices.size(); ++i )
+	for ( std::uint32_t i = 0; i < skinning.size(); ++i )
 	{
 		if ( !usedVertices[i] )
 			continue;
-		const pass::skinning::SkinVertex &vertex = pose.vertices[i];
+		const pass::skinning::SkinVertex &vertex = skinning[i];
 		const auto weights = vertex.Weights();
 		for ( unsigned int influence = 0; influence < 3; ++influence )
 		{
@@ -1259,7 +1364,7 @@ bool CoreWorld::PoseModel(
 	out.mesh = source.model;
 	out.skin = source.skin;
 	out.phase = source.phase;
-	out.vertices = mesh.vertices;
+	out.vertices = *block.vertices;
 	for ( std::size_t i = 0; i < skinned.size(); ++i )
 	{
 		auto &vertex = out.vertices[activeIndices[i]];
@@ -1519,6 +1624,12 @@ bool CoreWorld::ReconstructTemporal( int x, int y, int rw, int rh, int ow, int o
 				const auto selected =
 				    m_ModelPoseSources[pose.model].SelectedSurfaces( pose.body, pose.lod );
 				const auto &mesh = m_StaticMeshes[pose.model];
+				// The pose's own level: its surfaces and its indices are that
+				// level's, from zero.
+				const pass::world::WorldData::StaticMeshLod *level =
+				    pose.lod < mesh.lodCount() ? &mesh.lods[pose.lod] : nullptr;
+				if ( !level || !level->indices )
+					continue;
 				for ( std::size_t surface = 0; surface < mesh.surfaces.size(); ++surface )
 				{
 					const auto material = mesh.skinMaterials.empty()
@@ -1550,7 +1661,7 @@ bool CoreWorld::ReconstructTemporal( int x, int y, int rw, int rh, int ow, int o
 						std::array<float, 18> probe;
 						for ( unsigned corner = 0; corner < 3; ++corner )
 						{
-							const auto vertex = mesh.indices[index + corner];
+							const auto vertex = ( *level->indices )[index + corner];
 							std::copy_n(
 							    pose.vertices[vertex].position, 3, probe.begin() + corner * 3 );
 							std::copy_n( old->second.vertices[vertex].position, 3,
@@ -1562,7 +1673,7 @@ bool CoreWorld::ReconstructTemporal( int x, int y, int rw, int rh, int ow, int o
 					for ( auto index = surface.firstIndex;
 					    index < surface.firstIndex + surface.indexCount; ++index )
 					{
-						const auto vertex = mesh.indices[index];
+						const auto vertex = ( *level->indices )[index];
 						for ( unsigned axis = 0; axis < 3; ++axis )
 						{
 							const float current = pose.vertices[vertex].position[axis];
@@ -1692,6 +1803,27 @@ void CoreWorld::GetStats( RenderCoreWorldStats *out ) const
 	out->staticDrawsDrawn = stats.staticDrawsDrawn;
 	out->posedModelsQueued = stats.posedModelsQueued;
 	out->posedDrawsDrawn = stats.posedDrawsDrawn;
+	// Model geometry: the published blocks, the CPU geometry they share and
+	// the per-frame skinning copies the host's posed models need.
+	for ( std::size_t i = 0; i < m_StaticMeshes.size(); ++i )
+	{
+		const pass::world::WorldData::StaticMesh &mesh = m_StaticMeshes[i];
+		out->modelLevels += unsigned( mesh.lodCount() );
+		for ( const pass::world::WorldData::StaticMeshLod &level : mesh.lods )
+		{
+			// One allocation per block, shared with the world the pass holds.
+			out->modelStagingBytes +=
+			    std::uint64_t( level.vertexCount ) * sizeof( material::SurfaceModelVertex ) +
+			    std::uint64_t( level.indexCount ) * sizeof( std::uint32_t );
+		}
+		if ( i >= m_ModelPoseSources.size() || m_ModelPoseSources[i].poseToBone.empty() )
+			continue;
+		++out->modelPoseSources;
+		for ( const std::vector<pass::skinning::SkinVertex> &level :
+		    m_ModelPoseSources[i].vertices )
+			out->modelPoseBytes +=
+			    std::uint64_t( level.size() ) * sizeof( pass::skinning::SkinVertex );
+	}
 	out->dynamicDrawsDrawn = stats.dynamicDrawsDrawn;
 	out->dynamicDrawsRefused = stats.dynamicDrawsRefused;
 	std::snprintf( out->lastRefusal, sizeof( out->lastRefusal ), "%s", stats.lastRefusal.c_str() );
@@ -2150,15 +2282,16 @@ void CoreWorld::RecordWorldBatch( std::span<const std::uint32_t> tags,
 		if ( !feedback )
 			feedback = std::make_unique<resources::MipFeedbackFrame>( target.frame );
 		world.mipFeedback = feedback.get();
-		std::erase_if( m_MipFeedbackFrames, [&]( const auto &entry )
-		{
-			return entry.first + 4 < target.frame;
-		} );
+		std::erase_if( m_MipFeedbackFrames,
+		    [&]( const auto &entry )
+		    {
+			    return entry.first + 4 < target.frame;
+		    } );
 	}
 	// The sRGB view when the target has one; else the unorm view, and the
 	// shader encodes (the same curve, the output encoding frame term).
-	world.encodeOutput = !target.colorSrgb.IsValid() &&
-	                     target.colorFormat != device::Format::kRGBA16Float;
+	world.encodeOutput =
+	    !target.colorSrgb.IsValid() && target.colorFormat != device::Format::kRGBA16Float;
 	world.color = target.colorSrgb.IsValid() ? target.colorSrgb : target.color;
 	world.colorFormat = target.colorSrgb.IsValid() ? target.colorSrgbFormat : target.colorFormat;
 	world.colorCopySource = target.colorCopySource;

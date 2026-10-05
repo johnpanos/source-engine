@@ -27,6 +27,14 @@ byte for byte (`gameplay_identity.py`), and publishes it for ./play.
 `--medium` (the manifest's `medium`, participating_medium.py) is an explicit,
 opt-in participating medium the lightmap bake's light paths cross; without it
 the map bakes exactly as before.
+
+`--preview [RUNG]` runs the same steps at one rung of Valve's own three
+(`pbrt_map_build.QUALITY_LADDER`, documented there): `preview`, `full-compile`
+(bare `--preview`, Valve's F9 default) or `final-compile`, for checking the chain
+and the look without a production bake's cost. Only the production profile and
+the declared fixture profiles load otherwise; a preview run records
+`"preview": true` in its manifest and `"production": false` in its summary, so it
+can never be read as a production export.
 """
 
 import argparse
@@ -48,7 +56,7 @@ def load_toolchain(path=None):
 
 
 def manifest_for(bsp, name, scene=None, quality=None, game=None, runtime=None, device=None,
-                 extra=None, medium=None):
+                 extra=None, medium=None, preview=False):
     """The back end's manifest for `bsp` (and an authored `scene`)."""
     manifest = {"schema": "pbrt-map-manifest/v1", "map": name, "bsp": str(Path(bsp).resolve()),
                 "quality": quality or pbrt_map_build.LEGACY_QUALITY,
@@ -60,9 +68,24 @@ def manifest_for(bsp, name, scene=None, quality=None, game=None, runtime=None, d
         manifest["legacy_game"] = str(Path(game).resolve())
     if runtime:
         manifest["legacy_runtime"] = str(Path(runtime).resolve())
+    # The lightmap block is merged, not replaced: a front end's `extra` may add
+    # this map's seam gate while `--device` still names the Cycles device.
+    lightmap = dict((extra or {}).get("lightmap") or {})
     if device:
-        manifest["lightmap"] = {"device": device}
-    manifest.update(extra or {})
+        lightmap.setdefault("device", device)
+    if lightmap:
+        manifest["lightmap"] = lightmap
+    if preview:
+        # The same steps at the named rung of `pbrt_map_build.QUALITY_LADDER`
+        # (Valve's own three), for checking the chain and the look. Recorded in
+        # the manifest and the summary: not a production export. The top rung is
+        # the production profile itself, so naming it asks for production, not a
+        # preview of it.
+        manifest["quality"] = pbrt_map_build.QUALITY_LADDER[preview]
+        if manifest["quality"] != pbrt_map_build.DEFAULT_QUALITY:
+            manifest["preview"] = True
+    manifest.update({name: value for name, value in (extra or {}).items()
+                     if name != "lightmap"})
     if medium is not None:
         if "medium" in (extra or {}):
             raise ValueError("the medium is given once: as `medium`, not in `extra`")
@@ -72,8 +95,13 @@ def manifest_for(bsp, name, scene=None, quality=None, game=None, runtime=None, d
 
 def light(bsp, name, out, toolchain, scene=None, quality=None, game=None, runtime=None,
           device=None, force_from=None, boot=False, keep_going=False, publish=True, extra=None,
-          medium=None):
+          medium=None, preview=False, max_seam_p99=None):
     """Light the compiled map `bsp` as map `name`, built in `out`.
+
+    `max_seam_p99` waives the stitched seam gate's default 99th percentile for
+    this map (the manifest's lightmap.seam_gate, `lightmap_ktx2.py`'s
+    `--max-seam-p99`); the value the bake actually measured is recorded either
+    way, and it is this map's own recorded limit, not a skipped check.
 
     `scene` is an authored visual scene (PBRT or USD, in the map's space);
     without one the scene is derived from the BSP. `game` is the directory the
@@ -87,13 +115,25 @@ def light(bsp, name, out, toolchain, scene=None, quality=None, game=None, runtim
     never written). A published build is playable with ./play (./play_p2)."""
     out = Path(out).resolve()
     out.mkdir(parents=True, exist_ok=True)
+    extra = dict(extra or {})
+    if max_seam_p99 is not None:
+        extra.setdefault("lightmap", {})["seam_gate"] = {"p99": max_seam_p99}
     manifest_path = out / "manifest.json"
     manifest_path.write_text(json.dumps(manifest_for(bsp, name, scene, quality, game, runtime,
-                                                     device, extra, medium),
+                                                     device, extra, medium, preview),
                                         indent=2) + "\n")
     manifest = pbrt_map_build.load_manifest(manifest_path)
-    pipeline = pbrt_map_build.Pipeline(manifest, toolchain, out, force_from, boot, keep_going,
-                                       publish=publish)
+    try:
+        pipeline = pbrt_map_build.Pipeline(manifest, toolchain, out, force_from, boot,
+                                           keep_going, publish=publish)
+    except ValueError as error:
+        if "seam_gate" not in str(error):
+            raise
+        # The gate has one owner: a per-run limit cannot replace the profile's.
+        raise SystemExit("%s\nThe stitched seam gate is owned by the map export profile, so "
+                         "a per-map --max-seam-p99 only reaches a fixture lane. Set "
+                         "lightmap.seam_gate {\"p99\": x} in the profile the run names (the "
+                         "measured value is recorded either way)." % error)
     failure = None
     try:
         pipeline.build()
@@ -126,6 +166,17 @@ def main():
     parser.add_argument("--toolchain", type=Path)
     parser.add_argument("--from", dest="force_from", choices=pbrt_map_build.STEPS)
     parser.add_argument("--keep-going", action="store_true")
+    parser.add_argument("--max-seam-p99", type=float,
+                        help="this map's stitched seam gate, 99th percentile (relative), in "
+                             "place of lightmap_ktx2.py's 0.002; recorded in the manifest")
+    parser.add_argument("--preview", nargs="?", const="full-compile", default=None,
+                        choices=sorted(pbrt_map_build.QUALITY_LADDER),
+                        metavar="RUNG",
+                        help="run every step at this rung of Valve's ladder (%s), for "
+                             "checking the chain and the look; the run is recorded as "
+                             "non-production. Bare --preview is Valve's Full Compile"
+                             % ", ".join("%s=%s" % item for item in
+                                         sorted(pbrt_map_build.QUALITY_LADDER.items())))
     parser.add_argument("--no-publish", action="store_true")
     parser.add_argument("--medium", type=json.loads,
                         help="a participating medium for the lightmap bake, as JSON "
@@ -134,7 +185,8 @@ def main():
     light(args.bsp, args.map, args.out or ROOT / "quality-results/lighting" / args.map,
           load_toolchain(args.toolchain), args.scene, args.quality, args.game, args.runtime,
           args.device, args.force_from, keep_going=args.keep_going,
-          publish=not args.no_publish, medium=args.medium)
+          publish=not args.no_publish, medium=args.medium, preview=args.preview,
+          max_seam_p99=args.max_seam_p99)
     return 0
 
 

@@ -9,6 +9,8 @@ import struct
 from pathlib import Path
 
 from bsp2_reader import parse_legacy_header
+import leaf_ambient_from_prbv
+from legacy_bsp import decompress_lzma_lump
 
 
 HEADER = 128
@@ -179,8 +181,10 @@ def leaf_faces(bsp_path):
         raise ValueError("WMSH preview requires a compiled v21 BSP")
 
     def lump(index):
+        # Portal 2's shipped maps store several lumps as Valve LZMA streams
+        # (the record size only divides the decoded bytes).
         offset, size, *_ = header["lumps"][index]
-        return data[offset:offset + size]
+        return decompress_lzma_lump(data[offset:offset + size], "lump %d" % index)
 
     leaves = lump(10)
     references = lump(16)
@@ -204,14 +208,9 @@ def leaf_volumes(bsp_path):
     header = parse_legacy_header(data, len(data))
     if header["version"] not in (20, 21) or header["lumps"][10][2] != 1:
         raise ValueError("WMSH leaf volumes require a v20/v21 BSP with version-1 leaves")
-    offset, size, *_ = header["lumps"][10]
-    leaves = data[offset:offset + size]
-    if not leaves or len(leaves) % 32:
-        raise ValueError("BSP leaf layout is unsupported")
-    return [(struct.unpack_from("<i", leaves, index * 32)[0],
-             struct.unpack_from("<3h", leaves, index * 32 + 8),
-             struct.unpack_from("<3h", leaves, index * 32 + 14))
-            for index in range(len(leaves) // 32)]
+    # the same records, from the one leaf reader
+    return [(contents, tuple(mins.astype(int)), tuple(maxs.astype(int)))
+            for contents, mins, maxs in leaf_ambient_from_prbv.leaves(data, header["lumps"])]
 
 
 FLOAT32 = struct.Struct("<3f")

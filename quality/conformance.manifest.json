@@ -36,6 +36,7 @@
       "sources": [
         "render/lab/temporal_suite.cpp",
         "render/pass/temporal/temporal.cpp",
+        "render/pass/temporal/input_copy.cpp",
         "public/render/pass/temporal/temporal.h",
         "public/render/device/temporal.h",
         "render/device/vulkan/fsr.cpp",
@@ -80,6 +81,7 @@
       "sources": [
         "render/lab/temporal_suite.cpp",
         "render/pass/temporal/temporal.cpp",
+        "render/pass/temporal/input_copy.cpp",
         "public/render/pass/temporal/temporal.h",
         "public/render/device/temporal.h",
         "render/device/vulkan/fsr.cpp",
@@ -9253,6 +9255,7 @@
         "render/material/pbr_family.cpp",
         "render/material/vertexlit_family.cpp",
         "render/resources/caches.cpp",
+        "render/resources/mip_feedback.cpp",
         "render/material/material_programs.cpp",
         "render/material/cable_family.cpp",
         "render/material/program_resolver.cpp",
@@ -10280,12 +10283,16 @@
         "game/client/dynamic_occluders.cpp",
         "public/render/dynamic_occlusion.h",
         "render/composition/core_world.cpp",
+        "render/composition/core_temporal.cpp",
+        "render/pass/temporal/temporal.cpp",
+        "render/pass/temporal/input_copy.cpp",
         "render/pass/world/world_pass.cpp",
         "render/material/families/surface_program.glsl",
         "public/render/light_set.h",
         "engine/dynamic_occlusion.cpp",
         "engine/render_core_host.cpp",
-        "game/client/cdll_client_int.cpp"
+        "game/client/cdll_client_int.cpp",
+        "render/resources/mip_feedback.cpp"
       ],
       "expect": "pass"
     },
@@ -10839,7 +10846,8 @@
         "render/material/program_resolver.cpp",
         "render/pass/world/world_pass.cpp",
         "render/material/families/surface_program.glsl",
-        "tools/render/lab.py"
+        "tools/render/lab.py",
+        "render/resources/mip_feedback.cpp"
       ],
       "expect": "pass"
     },
@@ -10875,7 +10883,8 @@
         "render/pass/world/world_pass.cpp",
         "render/material/families/surface_program.glsl",
         "public/render/material/vertexlit_family.h",
-        "tools/render/lab.py"
+        "tools/render/lab.py",
+        "render/resources/mip_feedback.cpp"
       ],
       "expect": "pass"
     },
@@ -10940,7 +10949,8 @@
         "render/material/surface_program.cpp",
         "render/pass/world/world_pass.cpp",
         "render/material/families/surface_program.glsl",
-        "tools/render/lab.py"
+        "tools/render/lab.py",
+        "render/resources/mip_feedback.cpp"
       ],
       "expect": "pass"
     },
@@ -10980,7 +10990,8 @@
         "tools/render/lab.py",
         "render/lab/fixtures/model-lods/selection.mdl",
         "render/lab/fixtures/model-lods/selection.vvd",
-        "render/lab/fixtures/model-lods/selection.vtx"
+        "render/lab/fixtures/model-lods/selection.vtx",
+        "render/resources/mip_feedback.cpp"
       ],
       "expect": "pass"
     },
@@ -11728,6 +11739,9 @@
         "tools/render/debug_views_product.py",
         "engine/render_core_host.cpp",
         "render/composition/core_world.cpp",
+        "render/composition/core_temporal.cpp",
+        "render/pass/temporal/temporal.cpp",
+        "render/pass/temporal/input_copy.cpp",
         "render/pass/lights/map_lights.cpp",
         "render/pass/ao/ao.cpp",
         "render/pass/shadows/shadow_plan.cpp",
@@ -11742,7 +11756,8 @@
         "render/pass/world/world_pass.cpp",
         "render/pass/debug/debug_overlays.cpp",
         "render/pass/debug/hatch.frag",
-        "materialsystem/shaderapivulkan/vulkan_device.cpp"
+        "materialsystem/shaderapivulkan/vulkan_device.cpp",
+        "render/resources/mip_feedback.cpp"
       ],
       "expect": "pass"
     },
@@ -11778,6 +11793,9 @@
         "tools/render/debug_views_product.py",
         "engine/render_core_host.cpp",
         "render/composition/core_world.cpp",
+        "render/composition/core_temporal.cpp",
+        "render/pass/temporal/temporal.cpp",
+        "render/pass/temporal/input_copy.cpp",
         "render/pass/lights/map_lights.cpp",
         "render/pass/ao/ao.cpp",
         "render/pass/shadows/shadow_plan.cpp",
@@ -11792,7 +11810,8 @@
         "render/pass/world/world_pass.cpp",
         "render/pass/debug/debug_overlays.cpp",
         "render/pass/debug/hatch.frag",
-        "materialsystem/shaderapivulkan/vulkan_device.cpp"
+        "materialsystem/shaderapivulkan/vulkan_device.cpp",
+        "render/resources/mip_feedback.cpp"
       ],
       "expect": "pass"
     },
@@ -12752,6 +12771,9 @@
         "jobsystem/pooled_executor.cpp",
         "render/composition/render_core.cpp",
         "render/composition/core_world.cpp",
+        "render/composition/core_temporal.cpp",
+        "render/pass/temporal/temporal.cpp",
+        "render/pass/temporal/input_copy.cpp",
         "render/composition/core_panels.cpp",
         "render/pass/panels/panels.cpp",
         "render/pass/lights/map_lights.cpp",
@@ -12780,6 +12802,7 @@
         "render/material/model_lighting.cpp",
         "render/material/material_programs.cpp",
         "render/resources/caches.cpp",
+        "render/resources/mip_feedback.cpp",
         "render/composition/feature_catalog.cpp",
         "render/composition/negotiation.cpp",
         "render/pass/skinning/feature.cpp",
@@ -12844,6 +12867,9 @@
         "jobsystem/pooled_executor.cpp",
         "render/composition/render_core.cpp",
         "render/composition/core_world.cpp",
+        "render/composition/core_temporal.cpp",
+        "render/pass/temporal/temporal.cpp",
+        "render/pass/temporal/input_copy.cpp",
         "render/composition/core_panels.cpp",
         "render/pass/panels/panels.cpp",
         "render/pass/lights/map_lights.cpp",
@@ -12872,6 +12898,7 @@
         "render/material/model_lighting.cpp",
         "render/material/material_programs.cpp",
         "render/resources/caches.cpp",
+        "render/resources/mip_feedback.cpp",
         "render/composition/feature_catalog.cpp",
         "render/composition/negotiation.cpp",
         "render/pass/skinning/feature.cpp",
@@ -12936,6 +12963,9 @@
         "jobsystem/pooled_executor.cpp",
         "render/composition/render_core.cpp",
         "render/composition/core_world.cpp",
+        "render/composition/core_temporal.cpp",
+        "render/pass/temporal/temporal.cpp",
+        "render/pass/temporal/input_copy.cpp",
         "render/composition/core_panels.cpp",
         "render/pass/panels/panels.cpp",
         "render/pass/lights/map_lights.cpp",
@@ -12964,6 +12994,7 @@
         "render/material/model_lighting.cpp",
         "render/material/material_programs.cpp",
         "render/resources/caches.cpp",
+        "render/resources/mip_feedback.cpp",
         "render/composition/feature_catalog.cpp",
         "render/composition/negotiation.cpp",
         "render/pass/skinning/feature.cpp",

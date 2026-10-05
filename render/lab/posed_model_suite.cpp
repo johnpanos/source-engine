@@ -126,7 +126,7 @@ WorldData MeshWorld( bool blended = false )
 		material.variables.push_back( { "$alpha", "0.5" } );
 	}
 	world.materials.push_back( std::move( material ) );
-	WorldData::StaticMesh mesh;
+	std::vector<material::SurfaceModelVertex> quad;
 	for ( const auto &xy : { std::pair{ -0.5f, -0.5f }, std::pair{ 0.5f, -0.5f },
 	          std::pair{ 0.5f, 0.5f }, std::pair{ -0.5f, 0.5f } } )
 	{
@@ -136,10 +136,12 @@ WorldData MeshWorld( bool blended = false )
 		vertex.position[2] = 0.5f;
 		vertex.normal[2] = 1.0f;
 		vertex.tangent[0] = vertex.tangent[3] = 1.0f;
-		mesh.vertices.push_back( vertex );
+		quad.push_back( vertex );
 	}
-	mesh.indices = { 0, 1, 2, 0, 2, 3 };
-	mesh.surfaces.push_back( { 0, 0, 0, 6 } );
+	WorldData::StaticMesh mesh;
+	mesh.posed = true; // a posed fixture: its level is pinned and never released
+	mesh.AddLevel(
+	    WorldData::StaticMeshLod::MakeLevel( quad, { 0, 1, 2, 0, 2, 3 } ), { { 0, 0, 0, 6 } } );
 	world.staticMeshes.push_back( std::move( mesh ) );
 	return world;
 }
@@ -153,7 +155,15 @@ WorldData MixedWorld()
 	glass.variables.push_back( { "$translucent", "1" } );
 	glass.variables.push_back( { "$alpha", "0.5" } );
 	world.materials.push_back( std::move( glass ) );
-	world.staticMeshes[0].surfaces.push_back( { 1, 0, 0, 6 } );
+	// One level, two surfaces over the same index range: the same geometry
+	// drawn opaque (material zero) and blended (material one), which is what
+	// puts a studio two-pass surface in both phases.
+	WorldData::StaticMesh mixed;
+	mixed.posed = true;
+	mixed.AddLevel( WorldData::StaticMeshLod::MakeLevel( *world.staticMeshes[0].lods[0].vertices,
+	                    *world.staticMeshes[0].lods[0].indices ),
+	    { { 0, 0, 0, 6 }, { 1, 0, 0, 6 } } );
+	world.staticMeshes[0] = std::move( mixed );
 	return world;
 }
 
@@ -400,10 +410,10 @@ std::optional<std::string> RunChecks(
 	    {} );
 	results.That( unknownControl && !material::ClaimForMesh( unknownControl.Value(), true ),
 	    "posed-model.unknown-render-control-remains-a-gap" );
-	const auto inactiveCloak = material::MapVariables( "VertexLitGeneric",
-	    { { "$cloakfactor", "1" }, { "$cloakpassenabled", "0" } }, {} );
-	const auto activeCloak = material::MapVariables( "VertexLitGeneric",
-	    { { "$cloakfactor", "1" }, { "$cloakpassenabled", "1" } }, {} );
+	const auto inactiveCloak = material::MapVariables(
+	    "VertexLitGeneric", { { "$cloakfactor", "1" }, { "$cloakpassenabled", "0" } }, {} );
+	const auto activeCloak = material::MapVariables(
+	    "VertexLitGeneric", { { "$cloakfactor", "1" }, { "$cloakpassenabled", "1" } }, {} );
 	results.That( inactiveCloak && material::ClaimForMesh( inactiveCloak.Value(), true ),
 	    "posed-model.disabled-cloak-factor-is-inert" );
 	results.That( activeCloak && !material::ClaimForMesh( activeCloak.Value(), true ),
@@ -415,7 +425,7 @@ std::optional<std::string> RunChecks(
 	results.That( emissiveProbe && material::ClaimForMesh( emissiveProbe.Value(), true ) &&
 	                  !material::ClaimForMesh( emissiveProbe.Value(), false ),
 	    "posed-model.unlit-reflection-requires-native-rprb" );
-	const auto bindPose = world.staticMeshes[0].vertices;
+	const auto bindPose = *world.staticMeshes[0].lods[0].vertices;
 	WorldPass pass;
 	pass.SetWorld( std::move( world ) );
 	results.That( pass.DrawsPosedModel( 0, 0 ), "posed-model.claims-mesh-program" );
@@ -784,11 +794,18 @@ std::optional<std::string> RunChecks(
 	cutoutWorld.materials[0].variables.push_back( { "$alphatest", "1" } );
 	cutoutWorld.materials[0].variables.push_back( { "$basetexture", "model-depth-cutout" } );
 	cutoutWorld.materials[0].textures.push_back( { "$basetexture", 7 } );
-	for ( auto &vertex : cutoutWorld.staticMeshes[0].vertices )
+	// The cutout level's own staging, its uv from object position. The second
+	// mesh shares it (the same geometry with the other material).
+	WorldData::StaticMeshLod &cutoutLevel = cutoutWorld.staticMeshes[0].lods[0];
+	std::vector<material::SurfaceModelVertex> cutout = *cutoutLevel.vertices;
+	for ( auto &vertex : cutout )
 	{
 		vertex.uv[0] = vertex.position[0] + 0.5f;
 		vertex.uv[1] = vertex.position[1] + 0.5f;
 	}
+	cutoutLevel.vertexCount = std::uint32_t( cutout.size() );
+	cutoutLevel.vertices =
+	    std::make_shared<const std::vector<material::SurfaceModelVertex>>( std::move( cutout ) );
 	cutoutWorld.staticMeshes.push_back( cutoutWorld.staticMeshes[0] );
 	cutoutWorld.staticMeshes[1].surfaces[0].material = 1;
 	frontStatic.world[11] = 0.0f;
@@ -831,9 +848,13 @@ std::optional<std::string> RunChecks(
 	    "posed-model.reused-view-resources-preserve-every-pixel" );
 	WorldData backwardsModel = MeshWorld();
 	backwardsModel.materials[0].shader = "UnlitGeneric";
-	for ( unsigned i = 0; i < backwardsModel.staticMeshes[0].indices.size(); i += 3 )
-		std::swap( backwardsModel.staticMeshes[0].indices[i + 1],
-		    backwardsModel.staticMeshes[0].indices[i + 2] );
+	// The reversed winding is its own level's index staging.
+	WorldData::StaticMeshLod &backwardsLevel = backwardsModel.staticMeshes[0].lods[0];
+	std::vector<std::uint32_t> reversed = *backwardsLevel.indices;
+	for ( unsigned i = 0; i < reversed.size(); i += 3 )
+		std::swap( reversed[i + 1], reversed[i + 2] );
+	backwardsLevel.indices =
+	    std::make_shared<const std::vector<std::uint32_t>>( std::move( reversed ) );
 	WorldData twoSidedModel = backwardsModel;
 	twoSidedModel.materials[0].variables.emplace_back( "$nocull", "1" );
 	WorldPass backwards, twoSided;
@@ -1380,8 +1401,8 @@ std::optional<std::string> RunChecks(
 	    { "$basetexture", "two-texture-base" }, { "$texture2", "two-texture-overlay" } };
 	twoTextureWorld.materials[0].textures = { { "$basetexture", 5 }, { "$texture2", 6 } };
 	WorldData transformedWorld = twoTextureWorld;
-	transformedWorld.materials[0].variables.push_back( { "$texture2transform",
-	    "center .5 .5 scale 1 1 rotate 0 translate .75 0" } );
+	transformedWorld.materials[0].variables.push_back(
+	    { "$texture2transform", "center .5 .5 scale 1 1 rotate 0 translate .75 0" } );
 	WorldPass twoTexture, transformed;
 	twoTexture.SetWorld( std::move( twoTextureWorld ) );
 	transformed.SetWorld( std::move( transformedWorld ) );
@@ -1398,8 +1419,9 @@ std::optional<std::string> RunChecks(
 	                  std::abs( multiplied.At( 32, 32 )[2] - 0.05127f ) < 0.003f &&
 	                  std::abs( multiplied.At( 32, 32 )[3] - 1.0f ) < 0.003f,
 	    "posed-model.two-texture-linear-product-and-opaque-alpha",
-	    twoTexture.Stats().lastFailure + " claims " + std::to_string( twoTexture.Stats().claimedMaterials ) +
-	        " rgb " + std::to_string( multiplied.At( 32, 32 )[0] ) + " " +
+	    twoTexture.Stats().lastFailure + " claims " +
+	        std::to_string( twoTexture.Stats().claimedMaterials ) + " rgb " +
+	        std::to_string( multiplied.At( 32, 32 )[0] ) + " " +
 	        std::to_string( multiplied.At( 32, 32 )[1] ) + " " +
 	        std::to_string( multiplied.At( 32, 32 )[2] ) );
 	results.That( transformed.Stats().viewsFailed == 0 &&

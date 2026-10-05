@@ -85,13 +85,19 @@ struct RenderCoreStaticModel
 	// single level may serve unchanged slots at other levels; a replacement
 	// without its resolved descriptor cannot be claimed.
 	unsigned int materialLodCount = 1;
+	// The host may draw this model as a posed (animated) model, not only as
+	// static instances. A posed model keeps a per-frame CPU copy of its
+	// skinning geometry and its levels stay resident; a static-only model does
+	// not. True unless the host says otherwise, so a host that cannot tell
+	// keeps every model posable.
+	bool posed = true;
 };
 
 struct RenderCoreStaticProp
 {
 	unsigned int model; // into the models array
 	int skin;
-	float world[12]; // model to world, three rows of four
+	float world[12];         // model to world, three rows of four
 	bool castsShadow = true; // authored static-prop and Studio shadow flags
 };
 
@@ -164,6 +170,14 @@ struct RenderCoreWorldStats
 	unsigned long long staticDrawsDrawn;
 	unsigned long long posedModelsQueued;
 	unsigned long long posedDrawsDrawn;
+	// Model geometry (RFC 0016 residency): the published (model, hardware
+	// level) blocks, the CPU geometry bytes they share (one copy per block,
+	// never one per owner), and the models that keep a per-frame skinning copy
+	// because the host may pose them, with those copies' bytes.
+	unsigned int modelLevels;
+	unsigned long long modelStagingBytes;
+	unsigned int modelPoseSources;
+	unsigned long long modelPoseBytes;
 	unsigned long long dynamicDrawsDrawn;
 	unsigned long long dynamicDrawsRefused;
 	// RFC 0014 debug slots: frames hatched (a pixel view or legacy 2),

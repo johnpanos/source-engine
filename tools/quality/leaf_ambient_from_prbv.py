@@ -37,6 +37,7 @@ import numpy as np
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+import legacy_bsp  # noqa: E402
 import probe_volume  # noqa: E402
 
 HEADER_LUMPS = 64
@@ -77,12 +78,20 @@ def read_lumps(data):
 
 
 def leaves(data, lumps):
-    offset, length, version, _ = lumps[LUMP_LEAFS]
-    if version != 1 or length % LEAF_BYTES:
-        raise ValueError("unsupported leaf lump (version %d, %d bytes)" % (version, length))
-    for i in range(length // LEAF_BYTES):
-        contents, = struct.unpack_from("<i", data, offset + i * LEAF_BYTES)
-        box = struct.unpack_from("<6h", data, offset + i * LEAF_BYTES + 8)
+    """The leaf records, from a lump that may be a Valve LZMA stream.
+
+    Portal 2's shipped maps (and P2:CE's) store the leaf lump compressed, with
+    the uncompressed size in the lump header; the record size only divides the
+    decoded bytes, so decompress before counting."""
+    offset, length, version = lumps[LUMP_LEAFS][:3]
+    # This reader keeps the header's fourth field as its four compression-id
+    # bytes, so the stream itself says whether it is compressed.
+    raw = legacy_bsp.decompress_lzma_lump(data[offset:offset + length], "leaf lump")
+    if version != 1 or len(raw) % LEAF_BYTES:
+        raise ValueError("unsupported leaf lump (version %d, %d bytes)" % (version, len(raw)))
+    for i in range(len(raw) // LEAF_BYTES):
+        contents, = struct.unpack_from("<i", raw, i * LEAF_BYTES)
+        box = struct.unpack_from("<6h", raw, i * LEAF_BYTES + 8)
         yield contents, np.array(box[:3], float), np.array(box[3:], float)
 
 

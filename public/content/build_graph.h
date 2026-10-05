@@ -52,8 +52,11 @@ public:
 	    const AssetRef &ref, BuildInputs &inputs, std::string &error ) const = 0;
 	virtual std::optional<std::vector<std::uint8_t>> Compile(
 	    const AssetRef &ref, BuildInputs &inputs, std::string &error ) const = 0;
+	// A compiler that asks for the profile's facts gets none by default; the
+	// parameter stays named because an override documents its meaning.
 	virtual std::map<std::string, std::string> ProfileFacts( std::string_view profile ) const
 	{
+		( void )profile;
 		return {};
 	}
 };

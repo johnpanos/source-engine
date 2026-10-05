@@ -73,21 +73,21 @@ LABEL = "source-engine-blender"
 
 # What the rented host installs, pinned by digest: the profile's Blender, the
 # OIDN library and the Python packages of the post-bake tool steps.
-HOST_PROFILE = ROOT / "quality/remote_hosts/pbrt-map-remote-host.json"
-HOST = json.loads(HOST_PROFILE.read_text())
+# What the rented host installs is `remote_blender`'s business: the pinned host
+# profile, the provisioning script and the toolchain block all live there, so a
+# rented Debian host and a LAN workstation install the same digests the same way.
+HOST_PROFILE = remote_blender.HOST_PROFILE
+HOST = remote_blender.HOST
+INSTALL = remote_blender.paths(remote_blender.CANONICAL_BASE)
 BLENDER_VERSION = HOST["blender"]["version"]
 BLENDER_SHA256 = HOST["blender"]["sha256"]
-BLENDER_REMOTE = HOST["blender"]["directory"] + "/" + HOST["blender"]["executable"]
-REMOTE_PYTHON = HOST["blender"]["directory"] + "/" + HOST["blender"]["python"]
-OIDN_LIB_DIR = str(Path(HOST["oidn"]["directory"]) / Path(HOST["oidn"]["library"]).parent)
-PYTHON_TARGET = HOST["python_packages"]["target"]
+BLENDER_REMOTE = INSTALL["blender"]
+REMOTE_PYTHON = INSTALL["python"]
 # Blender needs only the driver's libcuda/libnvoptix, which the NVIDIA
 # container runtime mounts; `all` capabilities include OptiX.
 IMAGE = "nvidia/cuda:12.4.1-base-ubuntu22.04"
 GPUS = ("RTX 3090", "RTX 3090 Ti", "RTX 4080", "RTX 4080S", "RTX 4090", "RTX 5080",
         "RTX 5090", "RTX A5000", "RTX A6000", "L40", "L40S")
-BLENDER_LIBS = ("libx11-6 libxi6 libxxf86vm1 libxfixes3 libxrender1 libxext6 libxkbcommon0 "
-                "libsm6 libice6 libgl1 libegl1 libglu1-mesa")
 
 
 # ===================================================================== API
@@ -317,88 +317,6 @@ def ssh_transport(instance_id, port):
             "-o", "ServerAliveInterval=30", "-o", "LogLevel=ERROR"]
 
 
-def fetch_pinned(package, archive):
-    """Shell lines that download `package` (a HOST entry) into /opt/<archive>,
-    verify its digest and unpack it, unless its directory exists. A dropped
-    transfer resumes (-C -); a bad or stuck source moves to the next URL."""
-    return [
-        "if [ ! -d %s ]; then" % shlex.quote(package["directory"]),
-        "  cd /opt",
-        "  for url in %s; do" % " ".join(shlex.quote(u) for u in package["urls"]),
-        "    for try in 1 2 3; do",
-        "      curl -fsSL --retry 3 --retry-all-errors --speed-limit 1000000 --speed-time 30 "
-        "-C - -o %s \"$url\" && break" % archive,
-        "    done",
-        "    echo '%s  %s' | sha256sum -c --quiet - && break" % (package["sha256"], archive),
-        "    rm -f %s" % archive,
-        "  done",
-        "  test -f %s" % archive,
-        "  tar xf %s && rm %s" % (archive, archive),
-        "fi",
-    ]
-
-
-def fetch_pinned_file(package):
-    """Shell lines that download one pinned file to its `path` and verify it."""
-    path = shlex.quote(package["path"])
-    return [
-        "if ! echo '%s  %s' | sha256sum -c --quiet - >/dev/null 2>&1; then"
-        % (package["sha256"], package["path"]),
-        "  mkdir -p %s" % shlex.quote(str(Path(package["path"]).parent)),
-        "  for url in %s; do" % " ".join(shlex.quote(u) for u in package["urls"]),
-        "    curl -fsSL --retry 3 --retry-all-errors -o %s \"$url\" && "
-        "echo '%s  %s' | sha256sum -c --quiet - && break" % (path, package["sha256"],
-                                                             package["path"]),
-        "    rm -f %s" % path,
-        "  done",
-        "  test -f %s" % path,
-        "fi",
-    ]
-
-
-def tool_env():
-    """The environment of the Python tool steps on the host: the pinned
-    packages, the OIDN library and imageio's EXR codec."""
-    return {"PYTHONPATH": PYTHON_TARGET, "LD_LIBRARY_PATH": OIDN_LIB_DIR,
-            "IMAGEIO_FREEIMAGE_LIB": HOST["freeimage"]["path"]}
-
-
-def provision_script(root, tools=True):
-    lines = [
-        "set -eu",
-        "export DEBIAN_FRONTEND=noninteractive",
-        "apt-get update -qq",
-        "apt-get install -y -qq --no-install-recommends rsync xz-utils curl ca-certificates "
-        + BLENDER_LIBS + " >/dev/null",
-    ] + fetch_pinned(HOST["blender"], "blender.tar.xz")
-    if tools:
-        requirements = "\n".join("%s==%s --hash=sha256:%s" % (w["name"], w["version"], w["sha256"])
-                                  for w in HOST["python_packages"]["wheels"])
-        python = shlex.quote(REMOTE_PYTHON)
-        lines += fetch_pinned(HOST["oidn"], "oidn.tar.gz")
-        lines += fetch_pinned_file(HOST["freeimage"]) + [
-            "%s -m pip --version >/dev/null 2>&1 || %s -m ensurepip --default-pip >/dev/null"
-            % (python, python),
-            "printf '%s\\n' > /opt/source-python.new" % requirements,
-            "if ! cmp -s /opt/source-python.new /opt/source-python.txt; then",
-            "  %s -m pip install --quiet --disable-pip-version-check --root-user-action=ignore "
-            "--no-deps --only-binary :all: --require-hashes --upgrade --target %s "
-            "-r /opt/source-python.new" % (python, shlex.quote(PYTHON_TARGET)),
-            "  mv /opt/source-python.new /opt/source-python.txt",
-            "fi",
-            "env %s %s -c %s" % (" ".join("%s=%s" % i for i in sorted(tool_env().items())), python,
-                                 shlex.quote("import ctypes, numpy, scipy, imageio.v3 as iio, "
-                                             "OpenImageIO, PIL; "
-                                             "ctypes.CDLL('libOpenImageDenoise.so.2'); "
-                                             "iio.imwrite('/tmp/check.exr', numpy.ones((4, 4, 4), "
-                                             "numpy.float32)); "
-                                             "assert iio.imread('/tmp/check.exr').shape "
-                                             "== (4, 4, 4); "
-                                             "print('TOOLS', numpy.__version__)")),
-        ]
-    return "\n".join(lines + ["mkdir -p %s" % shlex.quote(str(root)), "echo PROVISIONED"])
-
-
 # ================================================================ lifecycle
 def log(message):
     print("[vast %s] %s" % (time.strftime("%H:%M:%S"), message), file=sys.stderr, flush=True)
@@ -522,13 +440,10 @@ def wait_ready(vast, instance_id, timeout):
 
 def write_toolchain(ssh, host, instance_id, base, out, tools=True):
     toolchain = json.loads(Path(base).read_text())
-    block = {"host": host, "blender": BLENDER_REMOTE, "ssh": ssh}
-    if tools:
-        block.update({
-            "steps": list(remote_blender.REMOTE_STEPS) + list(HOST["remote_tool_steps"]),
-            "python": REMOTE_PYTHON, "env": tool_env(),
-            "tools": {"openimagedenoise": {"version": HOST["oidn"]["version"],
-                                           "sha256": HOST["oidn"]["sha256"]}}})
+    block = remote_blender.block_for(host, remote_blender.CANONICAL_BASE, ssh=" ".join(ssh),
+                                     blender=BLENDER_REMOTE, tools=tools)
+    if not tools:
+        block.pop("steps", None)
     toolchain["remote_blender"] = block
     toolchain["vast"] = {"instance": instance_id}
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -546,10 +461,16 @@ def up(args):
         ssh, host = wait_ready(vast, instance_id, args.start_timeout)
         log("provisioning %s (Blender %s)" % (host, BLENDER_VERSION))
         tools = args.tool_steps
-        result = subprocess.run(ssh + [host, "bash -s"], input=provision_script(ROOT, tools),
-                                capture_output=True, text=True)
+        result = subprocess.run(ssh + [host, "bash -s"], capture_output=True, text=True,
+                                input=remote_blender.provision_script(
+                                    remote_blender.CANONICAL_BASE, "debian", {"tools": {}}, tools))
         if result.returncode or "PROVISIONED" not in result.stdout:
             raise RuntimeError("provisioning failed:\n" + (result.stdout + result.stderr)[-2000:])
+        root = shlex.quote(str(ROOT))
+        mirrored = subprocess.run(ssh + [host, "mkdir -p %s && test -w %s" % (root, root)])
+        if mirrored.returncode:
+            raise RuntimeError("%s is not writable on the host; run there once: sudo mkdir -p %s"
+                               " && sudo chown $USER %s" % (ROOT, root, root))
         out = write_toolchain(ssh, host, instance_id, args.toolchain, args.out, tools)
         remote = remote_blender.RemoteBlender(json.loads(out.read_text())["remote_blender"])
         facts, problems = remote_blender.check(remote, BLENDER_VERSION, smoke=True)

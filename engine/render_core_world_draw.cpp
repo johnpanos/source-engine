@@ -106,6 +106,10 @@ struct CoreWorldState
 	// Static meshes first (their prop indices are stable), then the Studio
 	// models the client precache table supplies for posed draws.
 	std::vector<const model_t *> registeredModels;
+	// Per registered model: the client may draw it as a posed model (it is in
+	// the precache table), so the core keeps its per-frame skinning copy. A
+	// static prop the precache table never names is static-only and keeps none.
+	std::vector<bool> registeredPosed;
 	std::vector<unsigned long long> posedClaims; // per registered model, this level
 };
 
@@ -354,9 +358,14 @@ static void LevelInitModels( IRenderCoreWorld *pWorld )
 	const int staticModelCount = StaticPropMgr_CoreModelCount();
 	CoreWorldState &state = State();
 	state.registeredModels.clear();
+	state.registeredPosed.clear();
 	state.registeredModels.reserve( staticModelCount );
+	state.registeredPosed.reserve( staticModelCount );
 	for ( int i = 0; i < staticModelCount; ++i )
+	{
 		state.registeredModels.push_back( StaticPropMgr_CoreModel( i ) );
+		state.registeredPosed.push_back( false );
+	}
 	// Loading every precached Studio model is a core-world composition step.
 	// The default legacy path keeps its lazy model loading behavior.
 	const int precached = r_core_world.GetInt() == 1 && cl.m_pModelPrecacheTable
@@ -369,15 +378,24 @@ static void LevelInitModels( IRenderCoreWorld *pWorld )
 		if ( length < 4 || V_stricmp( name + length - 4, ".mdl" ) )
 			continue;
 		const model_t *model = cl.GetModel( i );
-		if ( !model || model->type != mod_studio ||
-		     std::find( state.registeredModels.begin(), state.registeredModels.end(), model ) !=
-		         state.registeredModels.end() )
+		if ( !model || model->type != mod_studio )
 			continue;
+		const auto held =
+		    std::find( state.registeredModels.begin(), state.registeredModels.end(), model );
 		studiohdr_t *header = modelinfo->GetStudiomodel( model );
 		if ( !header || header->numbones <= 0 || header->numbones > 255 ||
 		     header->numflexdesc != 0 )
 			continue;
+		if ( held != state.registeredModels.end() )
+		{
+			// Already registered as a static prop: the precache table makes it
+			// posable too, which the core needs to know before it drops the
+			// model's per-frame skinning copy.
+			state.registeredPosed[held - state.registeredModels.begin()] = true;
+			continue;
+		}
 		state.registeredModels.push_back( model );
+		state.registeredPosed.push_back( true );
 	}
 	const int modelCount = int( state.registeredModels.size() );
 	state.posedClaims.assign( modelCount, 0 );
@@ -485,6 +503,7 @@ static void LevelInitModels( IRenderCoreWorld *pWorld )
 			continue;
 		}
 		RenderCoreStaticModel &out = models[i];
+		out.posed = state.registeredPosed[i];
 		out.name = source.name.c_str();
 		out.mdl = source.mdl.data();
 		out.mdlBytes = source.mdl.size();
@@ -683,6 +702,7 @@ static void LevelInitWorld()
 	state.takes.RemoveAll();
 	state.entryOf.RemoveAll();
 	state.registeredModels.clear();
+	state.registeredPosed.clear();
 	state.posedClaims.clear();
 	IRenderCoreWorld *pWorld = RenderCoreHost_World();
 	if ( pWorld )
@@ -833,6 +853,7 @@ void RenderCoreWorldDraw_LevelShutdown()
 {
 	CoreWorldState &state = State();
 	state.registeredModels.clear();
+	state.registeredPosed.clear();
 	state.posedClaims.clear();
 	for ( int i = 0; i < state.heldTextures.Count(); ++i )
 		state.heldTextures[i]->DecrementReferenceCount();
