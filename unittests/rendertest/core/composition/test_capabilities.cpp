@@ -20,7 +20,9 @@
 //			   capability name fails RENDER_CORE_INVALID_CONFIG.
 //
 //			The device is the null adapter, or the OpenGL one when built with
-//			RENDER_CORE_GL (render.composition.capabilities.gl).
+//			RENDER_CORE_GL (render.composition.capabilities.gl), or its OpenGL
+//			ES 3.1 dialect with RENDER_CORE_GLES as well
+//			(render.composition.capabilities.gles, RFC 0022 E4).
 //
 //=============================================================================//
 
@@ -43,7 +45,9 @@ using render::composition::Negotiation;
 using render::composition::NegotiationFaults;
 using render::composition::NegotiationStatus;
 
-#if defined( RENDER_CORE_GL )
+#if defined( RENDER_CORE_GLES )
+constexpr const char *kDevice = "gles";
+#elif defined( RENDER_CORE_GL )
 constexpr const char *kDevice = "gl";
 #else
 constexpr const char *kDevice = "null";

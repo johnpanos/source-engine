@@ -91,7 +91,8 @@ std::optional<Capability> FirstMissing( CapabilitySet have, CapabilitySet requir
 enum class ArtifactFormat : std::uint8_t
 {
 	kSpirv,
-	kGlsl450
+	kGlsl450,
+	kGlslEs310 // the GL adapter's ES dialect (RFC 0022)
 };
 
 struct Limits

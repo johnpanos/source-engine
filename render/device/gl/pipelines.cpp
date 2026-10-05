@@ -179,6 +179,19 @@ DeviceResult<const Program *> GlDevice::AcquireProgram(
 		key += std::to_string( static_cast<int>( stage.stage ) ) + ":" + *source + "\n";
 		sources.emplace_back( StageType( stage.stage ), std::move( *source ) );
 	}
+	// ES links no graphics program without a fragment shader (RFC 0022): a
+	// depth-only pipeline gets one that writes nothing.
+	const bool vertexOnly = desc.kind == PipelineKind::kGraphics &&
+	                        std::none_of( desc.stages.begin(), desc.stages.end(),
+	                            []( const ShaderArtifactView &stage )
+	                            {
+		                            return stage.stage == ShaderStage::kFragment;
+	                            } );
+	if ( IsEs() && vertexOnly )
+	{
+		sources.emplace_back( GL_FRAGMENT_SHADER, "#version 310 es\nvoid main()\n{\n}\n" );
+		key += "es-empty-fragment\n";
+	}
 	if ( const auto found = m_Programs.find( key ); found != m_Programs.end() )
 	{
 		++found->second.users;
@@ -386,6 +399,7 @@ DeviceResult<PipelineId> GlDevice::CreatePipeline( const PipelineDesc &desc )
 		for ( std::uint32_t slot = 0; slot < record.vertexBuffers; ++slot )
 		{
 			record.strides[slot] = desc.vertex.buffers[slot].stride;
+			record.perInstance[slot] = desc.vertex.buffers[slot].perInstance;
 			gl.VertexArrayBindingDivisor(
 			    record.vertexArray, slot, desc.vertex.buffers[slot].perInstance ? 1 : 0 );
 		}

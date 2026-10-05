@@ -438,12 +438,14 @@ def mark_specialization(text, constants):
     return "%s\n%s %s\n%s" % (version, GL_SPECIALIZATION_LINE, " ".join(entries), rest)
 
 
-def cross_compile(spirv, stage):
-    """The GLSL 4.50 artifact of a SPIR-V module for the GL adapter: slots
-    flattened, resources named, the draw constants a uniform block, combined
-    samplers on their textures' slots, specialization constants listed with
-    their types. It must compile as OpenGL GLSL with the pinned
-    glslangValidator."""
+def cross_compile(spirv, stage, es=False):
+    """The GLSL 4.50 artifact (es: GLSL ES 3.10, RFC 0022) of a SPIR-V module
+    for the GL adapter: slots flattened, resources named, the draw constants a
+    uniform block, combined samplers on their textures' slots, specialization
+    constants listed with their types. Both dialects share that form; the ES
+    one adds default precisions. It must compile with the pinned
+    glslangValidator for its API."""
+    version = ["--version", "310", "--es"] if es else ["--version", "450", "--no-es"]
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / "module.spv"
         path.write_bytes(spirv)
@@ -451,10 +453,16 @@ def cross_compile(spirv, stage):
                                    "spirv-cross --reflect").stdout).get(
                                        "specialization_constants", [])
         path.write_bytes(flatten_bindings(rename(spirv, gl_names(spirv))))
-        result = run([st.spirv_cross(), str(path), "--version", "450", "--no-es",
+        result = run([st.spirv_cross(), str(path), *version,
                       "--combined-samplers-inherit-bindings", "--glsl-emit-push-constant-as-ubo"],
-                     "spirv-cross --version 450")
-        text = mark_specialization(result.stdout, constants)
+                     "spirv-cross " + " ".join(version))
+        text = result.stdout
+        if es:
+            # The port's math is 32-bit: SPIRV-Cross defaults fragment floats to
+            # mediump, which ES 3.1 lets a driver run at 16 bits.
+            text = text.replace("precision mediump float;", "precision highp float;")
+            text = text.replace("precision mediump int;", "precision highp int;")
+        text = mark_specialization(text, constants)
         text, bound = re.subn(r"layout\(std140\) uniform %s\b" % GL_DRAW_CONSTANTS_BLOCK,
                               "layout(binding = %d, std140) uniform %s"
                               % (GL_DRAW_CONSTANTS_SLOT, GL_DRAW_CONSTANTS_BLOCK), text)
@@ -462,7 +470,9 @@ def cross_compile(spirv, stage):
             raise ArtifactError("SPIRV-Cross wrote the draw constants in an unexpected form")
         check = Path(tmp) / ("artifact" + {v: k for k, v in STAGES.items()}[stage])
         check.write_text(text)
-        run([st.glslang_validator(), str(check)], "glslangValidator (OpenGL) on the GLSL 4.50")
+        run([st.glslang_validator(), str(check)],
+            "glslangValidator on the GLSL ES 3.10" if es else
+            "glslangValidator (OpenGL) on the GLSL 4.50")
     return text
 
 
@@ -750,8 +760,9 @@ def write_headers(units, words, out_dir, root=ROOT):
         words[array] = future.result()
     for header in st.GENERATED:
         written[header] = st.render_generated(header, lambda array: words[array])
-    written.update(glsl_headers(words, root))
-    written[st.STORE_HEADER] = store_header(words)
+    glsl, es_missing = glsl_headers(words, root)
+    written.update(glsl)
+    written[st.STORE_HEADER] = store_header(words, es_missing)
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     for name, text in written.items():
@@ -820,17 +831,19 @@ def reflect_port(spirv):
     return bindings, push
 
 
-def store_header(words):
+def store_header(words, es_missing=None):
     """spv/core_artifact_table.h: the artifact store's table (public/render/
     shaderlib/core_artifacts.h), one entry per core program row and format:
-    source, stage, format, code (the generated SPIR-V and GLSL 4.50 arrays),
+    source, stage, format, code (the generated SPIR-V, GLSL 4.50 and, for the
+    rows in es_missing's complement, GLSL ES 3.10 arrays),
     reflected bindings and draw-constant bytes."""
     pin = st.load_pin()
     compiler = compiler_identities(pin)["glsl450"]
     includes, bindings_out, entries = [], [], []
     for header in st.CORE_PROGRAM_HEADERS:
         namespace, _, rows = st.GENERATED[header]
-        includes += [header, header.replace("_spv.h", "_glsl.h")]
+        includes += [header, header.replace("_spv.h", "_glsl.h"),
+                     header.replace("_spv.h", "_gles.h")]
         for array, source, _ in rows:
             spirv = bytes_of(words[array])
             reflected, push = reflect_port(spirv)
@@ -850,6 +863,14 @@ def store_header(words):
                            '        std::as_bytes( std::span( %s::%s ).first( sizeof( %s::%s ) - 1 ) ),'
                            ' %s, %d },\n'
                            % (source, stage, glsl_namespace, array, glsl_namespace, array, span,
+                              push))
+            if array in (es_missing or {}):
+                continue
+            gles_namespace = namespace.replace("::spirv", "::gles")
+            entries.append('    { "%s", device::ShaderStage::%s, device::ArtifactFormat::kGlslEs310,\n'
+                           '        std::as_bytes( std::span( %s::%s ).first( sizeof( %s::%s ) - 1 ) ),'
+                           ' %s, %d },\n'
+                           % (source, stage, gles_namespace, array, gles_namespace, array, span,
                               push))
     return "".join(
         ["//========= Copyright Valve Corporation, All rights reserved. ============//\n",
@@ -877,23 +898,39 @@ def store_header(words):
 
 
 def glsl_headers(words, root=ROOT):
-    """{name: text} of the GLSL_GENERATED headers: each row's SPIR-V (its
-    artifact when the row is a unit or a GENERATED row, else compiled here)
-    through cross_compile."""
+    """({name: text} of the GLSL_GENERATED and GLES_GENERATED headers, {array:
+    reason} of the rows with no ES artifact): each row's SPIR-V (its artifact
+    when the row is a unit or a GENERATED row, else compiled here) through
+    cross_compile in both dialects. A GLSL 4.50 failure fails the build; an ES
+    failure leaves the row out of its ES header and the store."""
     rows = [row for _, _, header_rows in st.GLSL_GENERATED.values() for row in header_rows]
     compiler = st.glslc()
 
-    def text_of(row):
+    def spirv_of(row):
         array, source, options = row
         spirv = words.get(array)
         if spirv is None:
             spirv = st.compile_module(compiler, Path(root) / source, list(options))
-        return cross_compile(bytes_of(spirv), STAGES[Path(source).suffix])
+        return bytes_of(spirv)
+
+    def text_of(row):
+        return cross_compile(spirv_of(row), STAGES[Path(row[1]).suffix])
+
+    def es_text_of(row):
+        try:
+            return cross_compile(spirv_of(row), STAGES[Path(row[1]).suffix], es=True), None
+        except ArtifactError as error:
+            return None, str(error)
 
     with concurrent.futures.ThreadPoolExecutor(os.cpu_count() or 4) as pool:
         texts = dict(zip((row[0] for row in rows), pool.map(text_of, rows)))
-    return {header: st.render_glsl(header, lambda array: texts[array])
-            for header in st.GLSL_GENERATED}
+        es_results = dict(zip((row[0] for row in rows), pool.map(es_text_of, rows)))
+    headers = {header: st.render_glsl(header, lambda array: texts[array])
+               for header in st.GLSL_GENERATED}
+    headers.update({header: st.render_glsl(header, lambda array: es_results[array][0])
+                    for header in st.GLES_GENERATED})
+    es_missing = {array: reason for array, (text, reason) in es_results.items() if text is None}
+    return headers, es_missing
 
 
 def generate_headers(out_dir, root=ROOT):

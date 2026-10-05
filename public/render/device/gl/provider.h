@@ -10,6 +10,12 @@
 //			from the SPIR-V with the pinned SPIRV-Cross
 //			(tools/render/shader_artifacts.py cross_compile owns their form).
 //
+//			The same adapter has an OpenGL ES 3.1 dialect (RFC 0022,
+//			GlAdapterOptions::api, the "gles" descriptor): it needs an ES 3.1
+//			context with GL_EXT_clip_control, per-attachment blend state and
+//			base-vertex draws, and accepts GLSL ES 3.10 artifacts
+//			(ArtifactFormat::kGlslEs310) of the same form.
+//
 //			Its context is its own (EGL, surfaceless, so it needs no window)
 //			and is current only inside the device's calls, on the calling
 //			thread, which restores what was current before. One sequence calls
@@ -32,8 +38,16 @@
 namespace render::device::gl
 {
 
+// The GL dialect a device speaks (RFC 0022).
+enum class GlApiKind : std::uint8_t
+{
+	kDesktop45, // OpenGL 4.5 core
+	kEs31       // OpenGL ES 3.1 (a 3.2 context is accepted)
+};
+
 struct GlAdapterOptions
 {
+	GlApiKind api = GlApiKind::kDesktop45;
 	// Enable GL debug output (KHR_debug) on a debug context. Without it the
 	// device is created anyway.
 	bool validation = false;
@@ -64,7 +78,9 @@ struct GlAdapterOptions
 	Sensitivity sensitivity;
 };
 
+// "gl" (desktop 4.5) and "gles" (ES 3.1).
 const DeviceProviderDescriptor &Describe();
+const DeviceProviderDescriptor &DescribeEs();
 DeviceResult<std::unique_ptr<IRenderDevice2>> Create( const GlAdapterOptions &options );
 
 // Messages the debug output reported for device so far (see

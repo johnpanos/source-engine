@@ -64,6 +64,25 @@ GLint Integer( const GlApi &gl, GLenum name )
 	return value;
 }
 
+// Consumes pending GL errors (bounded: a lost context may keep reporting).
+void ClearErrors( const GlApi &gl )
+{
+	for ( int i = 0; i < 16 && gl.GetError() != GL_NO_ERROR; ++i )
+	{
+	}
+}
+
+// A query a driver may refuse (some ES 3.1 drivers tie the multisample
+// texture limits to GL_OES_texture_storage_multisample_2d_array): fallback
+// when it does, with the error consumed.
+GLint IntegerOr( const GlApi &gl, GLenum name, GLint fallback )
+{
+	ClearErrors( gl );
+	GLint value = 0;
+	gl.GetIntegerv( name, &value );
+	return gl.GetError() == GL_NO_ERROR ? value : fallback;
+}
+
 void APIENTRY DebugMessage(
     GLenum, GLenum type, GLuint, GLenum severity, GLsizei, const GLchar *message, const void *user )
 {
@@ -116,7 +135,7 @@ DeviceResult<void> GlDevice::Initialize()
 		return Fail( DeviceStatus::kInvalidDescription, DeviceOperation::kCreateDevice );
 	std::lock_guard<std::recursive_mutex> lock( m_Lock );
 	std::string error;
-	m_Context = EglContext::Create( m_Options.validation, error );
+	m_Context = EglContext::Create( m_Options.api, m_Options.validation, error );
 	if ( !m_Context )
 	{
 		std::fprintf( stderr, "render.device.gl: %s\n", error.c_str() );
@@ -133,8 +152,14 @@ DeviceResult<void> GlDevice::CreateContextObjects()
 	const GlApi &gl = Gl();
 	const GLint major = Integer( gl, GL_MAJOR_VERSION );
 	const GLint minor = Integer( gl, GL_MINOR_VERSION );
-	if ( major < 4 || ( major == 4 && minor < 5 ) )
+	if ( IsEs() ? ( major < 3 || ( major == 3 && minor < 1 ) )
+	            : ( major < 4 || ( major == 4 && minor < 5 ) ) )
 		return Fail( DeviceStatus::kUnsupported, DeviceOperation::kCreateDevice );
+	if ( IsEs() )
+	{
+		if ( auto required = CheckEsRequirements( major, minor ); !required )
+			return required;
+	}
 	// Flat slots the artifacts use: four groups of kSlotsPerGroup per kind and
 	// the draw-constant block, and a texture unit per texture slot.
 	if ( Integer( gl, GL_MAX_UNIFORM_BUFFER_BINDINGS ) < GLint( kDrawConstantsSlot + 1 ) ||
@@ -142,7 +167,7 @@ DeviceResult<void> GlDevice::CreateContextObjects()
 	     Integer( gl, GL_MAX_VERTEX_ATTRIB_BINDINGS ) < GLint( kMaxVertexSlots ) )
 		return Fail( DeviceStatus::kUnsupported, DeviceOperation::kCreateDevice );
 
-	if ( m_Options.validation )
+	if ( m_Options.validation && ( !IsEs() || Es().core.DebugMessageCallback ) )
 	{
 		gl.Enable( GL_DEBUG_OUTPUT );
 		gl.Enable( GL_DEBUG_OUTPUT_SYNCHRONOUS );
@@ -156,25 +181,42 @@ DeviceResult<void> GlDevice::CreateContextObjects()
 	    broken.negativeOneToOneDepth ? GL_NEGATIVE_ONE_TO_ONE : GL_ZERO_TO_ONE );
 	// Writes to sRGB attachments encode, as Vulkan's do; cube maps filter
 	// across faces, as Vulkan's always do; shaders set the point size.
-	gl.Enable( GL_FRAMEBUFFER_SRGB );
-	gl.Enable( GL_TEXTURE_CUBE_MAP_SEAMLESS );
-	gl.Enable( GL_PROGRAM_POINT_SIZE );
+	// ES always does all three.
+	if ( !IsEs() )
+	{
+		gl.Enable( GL_FRAMEBUFFER_SRGB );
+		gl.Enable( GL_TEXTURE_CUBE_MAP_SEAMLESS );
+		gl.Enable( GL_PROGRAM_POINT_SIZE );
+	}
 	gl.PixelStorei( GL_PACK_ALIGNMENT, 1 );
 	gl.PixelStorei( GL_UNPACK_ALIGNMENT, 1 );
 
-	gl.CreateBuffers( 1, &m_RingBuffer );
-	const GLbitfield flags = GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT;
-	gl.NamedBufferStorage(
-	    m_RingBuffer, static_cast<GLsizeiptr>( m_Options.uploadRingBytes ), nullptr, flags );
-	m_RingData = static_cast<std::byte *>( gl.MapNamedBufferRange(
-	    m_RingBuffer, 0, static_cast<GLsizeiptr>( m_Options.uploadRingBytes ), flags ) );
-	if ( !m_RingData )
-		return Fail( DeviceStatus::kOutOfMemory, DeviceOperation::kCreateDevice, gl.GetError() );
+	if ( IsEs() && !Es().core.BufferStorage )
+	{
+		// RFC 0022: without EXT_buffer_storage the ring is CPU memory, copied
+		// into each upload's destination when the submission replays.
+		m_RingCpu.assign( m_Options.uploadRingBytes, std::byte{} );
+		m_RingData = m_RingCpu.data();
+	}
+	else
+	{
+		gl.CreateBuffers( 1, &m_RingBuffer );
+		const GLbitfield flags = GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT;
+		gl.NamedBufferStorage(
+		    m_RingBuffer, static_cast<GLsizeiptr>( m_Options.uploadRingBytes ), nullptr, flags );
+		m_RingData = static_cast<std::byte *>( gl.MapNamedBufferRange(
+		    m_RingBuffer, 0, static_cast<GLsizeiptr>( m_Options.uploadRingBytes ), flags ) );
+		if ( !m_RingData )
+			return Fail(
+			    DeviceStatus::kOutOfMemory, DeviceOperation::kCreateDevice, gl.GetError() );
+	}
 	{
 		std::lock_guard<std::mutex> ring( m_RingLock );
 		m_Ring.Reset( m_Options.uploadRingBytes );
 	}
 	QueryFacts();
+	// Later calls judge their own GL errors: none may be left from setup.
+	ClearErrors( gl );
 	return {};
 }
 
@@ -209,6 +251,22 @@ void GlDevice::DestroyContextObjects()
 	}
 	m_RingBuffer = 0;
 	m_RingData = nullptr;
+	m_RingCpu.clear();
+	if ( EsState *es = m_Context->Es() )
+	{
+		for ( GLuint *framebuffer : { &es->readFramebuffer, &es->clearFramebuffer } )
+		{
+			if ( *framebuffer )
+				gl.DeleteFramebuffers( 1, framebuffer );
+			*framebuffer = 0;
+		}
+		for ( GLuint *program : { &es->depthCopy2D, &es->depthCopyArray } )
+		{
+			if ( *program )
+				gl.DeleteProgram( *program );
+			*program = 0;
+		}
+	}
 	m_Buffers.clear();
 	m_Textures.clear();
 	m_Samplers.clear();
@@ -231,26 +289,32 @@ void GlDevice::QueryFacts()
 	const char *renderer = reinterpret_cast<const char *>( gl.GetString( GL_RENDERER ) );
 	m_AdapterName = renderer ? renderer : "OpenGL";
 	m_Facts = {};
-	m_Facts.diagnosticBackend = "gl";
+	m_Facts.diagnosticBackend = IsEs() ? "gles" : "gl";
 	m_Facts.adapterName = m_AdapterName;
-	m_Facts.artifactFormat = ArtifactFormat::kGlsl450;
+	m_Facts.artifactFormat = IsEs() ? ArtifactFormat::kGlslEs310 : ArtifactFormat::kGlsl450;
 
 	CapabilitySet have;
-	// Compute and storage bindings take the flat slots of all four groups.
+	// Compute and storage bindings take the flat slots of all four groups; ES
+	// also has to allow storage blocks outside compute (its minimum is none).
 	if ( Integer( gl, GL_MAX_SHADER_STORAGE_BUFFER_BINDINGS ) >= GLint( kDrawConstantsSlot ) &&
 	     Integer( gl, GL_MAX_IMAGE_UNITS ) >= GLint( kDrawConstantsSlot ) &&
-	     Integer( gl, GL_MAX_COMPUTE_SHADER_STORAGE_BLOCKS ) > 0 )
+	     Integer( gl, GL_MAX_COMPUTE_SHADER_STORAGE_BLOCKS ) > 0 &&
+	     ( !IsEs() || ( Integer( gl, GL_MAX_FRAGMENT_SHADER_STORAGE_BLOCKS ) > 0 &&
+	                      Integer( gl, GL_MAX_VERTEX_SHADER_STORAGE_BLOCKS ) > 0 ) ) )
 	{
 		have.Add( Capability::kCompute );
 		have.Add( Capability::kStorageBuffers );
 	}
-	if ( HasExtension( gl, "GL_EXT_texture_compression_s3tc" ) &&
+	// RFC 0022: ES claims neither block compression (it cannot read a
+	// compressed texture back, D19) nor timestamps (no query-buffer write, D23).
+	if ( !IsEs() && HasExtension( gl, "GL_EXT_texture_compression_s3tc" ) &&
 	     ( HasExtension( gl, "GL_EXT_texture_sRGB" ) ||
 	         HasExtension( gl, "GL_EXT_texture_compression_s3tc_srgb" ) ) )
 		have.Add( Capability::kTextureCompressionBC );
 	// D23: GL timestamps are nanoseconds.
 	GLint timestampBits = 0;
-	gl.GetQueryiv( GL_TIMESTAMP, GL_QUERY_COUNTER_BITS, &timestampBits );
+	if ( !IsEs() )
+		gl.GetQueryiv( GL_TIMESTAMP, GL_QUERY_COUNTER_BITS, &timestampBits );
 	if ( timestampBits > 0 )
 		have.Add( Capability::kTimestamps );
 	CapabilitySet claimed;
@@ -266,6 +330,18 @@ void GlDevice::QueryFacts()
 		m_Facts.timestampPeriodNs = 1.0;
 	m_Anisotropy = HasExtension( gl, "GL_ARB_texture_filter_anisotropic" ) ||
 	               HasExtension( gl, "GL_EXT_texture_filter_anisotropic" );
+	if ( IsEs() )
+	{
+		const bool es32 =
+		    Integer( gl, GL_MINOR_VERSION ) >= 2 || Integer( gl, GL_MAJOR_VERSION ) > 3;
+		m_EsFloatTargets = HasExtension( gl, "GL_EXT_color_buffer_float" );
+		m_EsHalfFloatTargets =
+		    m_EsFloatTargets || HasExtension( gl, "GL_EXT_color_buffer_half_float" );
+		m_EsNorm16 = HasExtension( gl, "GL_EXT_texture_norm16" );
+		m_EsCubeArrays = es32 || HasExtension( gl, "GL_EXT_texture_cube_map_array" ) ||
+		                 HasExtension( gl, "GL_OES_texture_cube_map_array" );
+		m_EsMultisampleArrays = Es().core.TexStorage3DMultisample != nullptr;
+	}
 
 	Limits &limits = m_Facts.limits;
 	limits.maxBindGroups = kMaxBindGroups;
@@ -275,12 +351,79 @@ void GlDevice::QueryFacts()
 	limits.maxVertexBuffers = kMaxVertexSlots;
 	limits.uniformBufferAlignment =
 	    static_cast<std::uint32_t>( Integer( gl, GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT ) );
+	// A refused multisample-texture limit claims single sampling only.
 	const GLint samples =
-	    std::min( { Integer( gl, GL_MAX_SAMPLES ), Integer( gl, GL_MAX_COLOR_TEXTURE_SAMPLES ),
-	        Integer( gl, GL_MAX_DEPTH_TEXTURE_SAMPLES ) } );
+	    std::min( { Integer( gl, GL_MAX_SAMPLES ), IntegerOr( gl, GL_MAX_COLOR_TEXTURE_SAMPLES, 1 ),
+	        IntegerOr( gl, GL_MAX_DEPTH_TEXTURE_SAMPLES, 1 ) } );
 	limits.sampleCounts = 0;
 	for ( GLint count = 1; count <= samples && count <= 64; count *= 2 )
 		limits.sampleCounts |= static_cast<std::uint32_t>( count );
+}
+
+DeviceResult<void> GlDevice::CheckEsRequirements( GLint major, GLint minor )
+{
+	// RFC 0022 decision 3. eglGetProcAddress may return an entry point the
+	// driver does not support, so the extensions decide, not the loads.
+	const GlApi &gl = Gl();
+	EsState &es = Es();
+	const bool es32 = major > 3 || minor >= 2;
+	const char *missing = nullptr;
+	if ( !HasExtension( gl, "GL_EXT_clip_control" ) )
+		missing = "GL_EXT_clip_control";
+	else if ( !es32 && !HasExtension( gl, "GL_OES_draw_buffers_indexed" ) &&
+	          !HasExtension( gl, "GL_EXT_draw_buffers_indexed" ) )
+		missing = "per-attachment blend state (ES 3.2 or GL_OES_draw_buffers_indexed)";
+	else if ( !es32 && !HasExtension( gl, "GL_OES_draw_elements_base_vertex" ) &&
+	          !HasExtension( gl, "GL_EXT_draw_elements_base_vertex" ) )
+		missing = "base-vertex draws (ES 3.2 or GL_OES_draw_elements_base_vertex)";
+	if ( missing )
+	{
+		std::fprintf( stderr, "render.device.gl: the OpenGL ES context lacks %s\n", missing );
+		return Fail( DeviceStatus::kUnsupported, DeviceOperation::kCreateDevice );
+	}
+	if ( !HasExtension( gl, "GL_EXT_buffer_storage" ) )
+		es.core.BufferStorage = nullptr;
+	if ( !es32 && !HasExtension( gl, "GL_OES_texture_storage_multisample_2d_array" ) )
+		es.core.TexStorage3DMultisample = nullptr;
+	if ( !m_Context->Robust() )
+		es.core.GetGraphicsResetStatus = nullptr;
+	if ( !es32 && !HasExtension( gl, "GL_KHR_debug" ) )
+	{
+		es.core.DebugMessageCallback = nullptr;
+		es.core.DebugMessageControl = nullptr;
+		es.core.ObjectLabel = nullptr;
+		es.core.PushDebugGroup = nullptr;
+		es.core.PopDebugGroup = nullptr;
+	}
+	// Edits bind the last texture unit, beyond every artifact slot.
+	es.editUnit = static_cast<GLuint>( Integer( gl, GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS ) - 1 );
+	return {};
+}
+
+bool GlDevice::EsFormatSupported( const TextureDesc &desc, bool attachment ) const
+{
+	switch ( desc.format )
+	{
+	// No BGRA storage in ES 3.1 (RFC 0022 decision 6).
+	case Format::kBGRA8Unorm:
+	case Format::kBGRA8Srgb:
+		return false;
+	case Format::kRGBA16Unorm:
+		return m_EsNorm16;
+	case Format::kRG16Float:
+	case Format::kRGBA16Float:
+		return !attachment || m_EsHalfFloatTargets;
+	case Format::kR32Float:
+	case Format::kRGBA32Float:
+		return !attachment || m_EsFloatTargets;
+	default:
+		break;
+	}
+	if ( desc.dimension == TextureDimension::kCube && desc.depthOrLayers > 6 && !m_EsCubeArrays )
+		return false;
+	if ( desc.sampleCount > 1 && desc.depthOrLayers > 1 && !m_EsMultisampleArrays )
+		return false;
+	return true;
 }
 
 void GlDevice::SimulateLoss()
@@ -460,7 +603,7 @@ DeviceResult<TextureId> GlDevice::CreateTexture( const TextureDesc &desc )
 	     ( storage && ( IsDepthFormat( desc.format ) || desc.format == Format::kRGBA8Srgb ||
 	                      desc.format == Format::kBGRA8Srgb ||
 	                      !m_Facts.capabilities.Has( Capability::kStorageBuffers ) ) ) ||
-	     format.internal == 0 )
+	     format.internal == 0 || ( IsEs() && !EsFormatSupported( desc, attachment ) ) )
 		return Fail( DeviceStatus::kUnsupported, op );
 	ContextScope scope( *m_Context );
 	if ( !scope.Ok() )
@@ -991,7 +1134,7 @@ DeviceResult<void> GlDevice::Recover()
 	m_Submitted = 0;
 	m_Completed.store( 0 );
 	std::string error;
-	m_Context = EglContext::Create( m_Options.validation, error );
+	m_Context = EglContext::Create( m_Options.api, m_Options.validation, error );
 	if ( !m_Context || !CreateContextObjects() )
 	{
 		m_State = DeviceState::kFatal;
@@ -1004,9 +1147,11 @@ DeviceResult<void> GlDevice::Recover()
 namespace
 {
 
-DeviceResult<std::unique_ptr<IRenderDevice2>> CreateFromRequest( const DeviceRequest &request )
+DeviceResult<std::unique_ptr<IRenderDevice2>> CreateWithApi(
+    const DeviceRequest &request, GlApiKind api )
 {
 	GlAdapterOptions options;
+	options.api = api;
 	options.validation = request.validation;
 	auto created = Create( options );
 	if ( !created )
@@ -1014,6 +1159,16 @@ DeviceResult<std::unique_ptr<IRenderDevice2>> CreateFromRequest( const DeviceReq
 	if ( FirstMissing( created.Value()->Facts().capabilities, request.required ) )
 		return Fail( DeviceStatus::kUnsupported, DeviceOperation::kCreateDevice );
 	return created;
+}
+
+DeviceResult<std::unique_ptr<IRenderDevice2>> CreateFromRequest( const DeviceRequest &request )
+{
+	return CreateWithApi( request, GlApiKind::kDesktop45 );
+}
+
+DeviceResult<std::unique_ptr<IRenderDevice2>> CreateEsFromRequest( const DeviceRequest &request )
+{
+	return CreateWithApi( request, GlApiKind::kEs31 );
 }
 
 GlDevice *Of( const IRenderDevice2 &device )
@@ -1026,6 +1181,12 @@ GlDevice *Of( const IRenderDevice2 &device )
 const DeviceProviderDescriptor &Describe()
 {
 	static const DeviceProviderDescriptor descriptor{ "gl", &CreateFromRequest };
+	return descriptor;
+}
+
+const DeviceProviderDescriptor &DescribeEs()
+{
+	static const DeviceProviderDescriptor descriptor{ "gles", &CreateEsFromRequest };
 	return descriptor;
 }
 

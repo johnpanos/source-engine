@@ -1,17 +1,19 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
-// Purpose: render.device.gl private: the adapter's own OpenGL 4.5 core context,
-//			on an EGL surfaceless display (EGL_MESA_platform_surfaceless), so it
-//			needs no window and no presentation. A ContextScope makes it current
-//			on the calling thread for one device call and restores whatever was
-//			current before.
+// Purpose: render.device.gl private: the adapter's own OpenGL 4.5 core (or
+//			OpenGL ES 3.1, RFC 0022) context, on an EGL surfaceless display
+//			(EGL_MESA_platform_surfaceless), so it needs no window and no
+//			presentation. A ContextScope makes it current on the calling thread
+//			for one device call and restores whatever was current before.
 //
 //=============================================================================//
 
 #ifndef RENDER_DEVICE_GL_GL_CONTEXT_H
 #define RENDER_DEVICE_GL_GL_CONTEXT_H
 
+#include "es_shims.h"
 #include "gl_api.h"
+#include "render/device/gl/provider.h"
 
 #include <EGL/egl.h>
 
@@ -24,9 +26,9 @@ namespace render::device::gl
 class EglContext
 {
 public:
-	// nullptr, with the reason in error, when EGL or a 4.5 core context is
-	// unavailable.
-	static std::unique_ptr<EglContext> Create( bool debug, std::string &error );
+	// nullptr, with the reason in error, when EGL or a context of the api
+	// (4.5 core, ES 3.1) is unavailable.
+	static std::unique_ptr<EglContext> Create( GlApiKind api, bool debug, std::string &error );
 	~EglContext();
 	EglContext( const EglContext & ) = delete;
 	EglContext &operator=( const EglContext & ) = delete;
@@ -36,9 +38,15 @@ public:
 	// The entry points, loaded when the context was created.
 	const GlApi &Api() const { return m_Api; }
 	bool Robust() const { return m_Robust; }
+	GlApiKind ApiKind() const { return m_ApiKind; }
+	// The ES dialect's state; nullptr on a desktop context.
+	EsState *Es() const { return m_Es.get(); }
 
 private:
 	EglContext() = default;
+
+	GlApiKind m_ApiKind = GlApiKind::kDesktop45;
+	std::unique_ptr<EsState> m_Es;
 
 	EGLDisplay m_Display = EGL_NO_DISPLAY;
 	EGLContext m_Context = EGL_NO_CONTEXT;
@@ -64,6 +72,8 @@ private:
 	EGLContext m_PreviousContext = EGL_NO_CONTEXT;
 	EGLSurface m_PreviousDraw = EGL_NO_SURFACE;
 	EGLSurface m_PreviousRead = EGL_NO_SURFACE;
+	EGLenum m_PreviousApi = 0;
+	EsState *m_PreviousEs = nullptr;
 	bool m_Switched = false;
 	bool m_Ok = false;
 };

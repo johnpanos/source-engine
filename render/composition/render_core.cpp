@@ -106,6 +106,7 @@ const render::device::DeviceProviderDescriptor *FindDevice( std::string_view nam
 #endif
 #if defined( RENDER_CORE_GL )
 	    &render::device::gl::Describe(),
+	    &render::device::gl::DescribeEs(), // RFC 0022
 #endif
 	};
 	for ( const render::device::DeviceProviderDescriptor *descriptor : linked )
@@ -175,9 +176,11 @@ render::device::DeviceResult<std::unique_ptr<render::device::IRenderDevice2>> Cr
 		return render::device::null::Create( options );
 	}
 #if defined( RENDER_CORE_GL )
-	if ( descriptor.id == "gl" )
+	if ( descriptor.id == "gl" || descriptor.id == "gles" )
 	{
 		render::device::gl::GlAdapterOptions options;
+		options.api = descriptor.id == "gles" ? render::device::gl::GlApiKind::kEs31
+		                                      : render::device::gl::GlApiKind::kDesktop45;
 		options.validation = request.validation;
 		options.allowed = allow( options.allowed );
 		return render::device::gl::Create( options );

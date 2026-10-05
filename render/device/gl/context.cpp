@@ -77,17 +77,30 @@ void ReleaseDisplay()
 
 } // namespace
 
-std::unique_ptr<EglContext> EglContext::Create( bool debug, std::string &error )
+namespace
 {
+
+EGLenum EglApi( GlApiKind api )
+{
+	return api == GlApiKind::kEs31 ? EGL_OPENGL_ES_API : EGL_OPENGL_API;
+}
+
+} // namespace
+
+std::unique_ptr<EglContext> EglContext::Create( GlApiKind api, bool debug, std::string &error )
+{
+	const bool es = api == GlApiKind::kEs31;
 	std::unique_ptr<EglContext> context( new EglContext );
+	context->m_ApiKind = api;
 	context->m_Display = AcquireDisplay( error );
 	if ( context->m_Display == EGL_NO_DISPLAY )
 		return nullptr;
 	const char *extensions = eglQueryString( context->m_Display, EGL_EXTENSIONS );
 	if ( !HasExtension( extensions, "EGL_KHR_surfaceless_context" ) ||
-	     !HasExtension( extensions, "EGL_KHR_no_config_context" ) || !eglBindAPI( EGL_OPENGL_API ) )
+	     !HasExtension( extensions, "EGL_KHR_no_config_context" ) || !eglBindAPI( EglApi( api ) ) )
 	{
-		error = "EGL cannot make a surfaceless, configless OpenGL context";
+		error = es ? "EGL cannot make a surfaceless, configless OpenGL ES context"
+		           : "EGL cannot make a surfaceless, configless OpenGL context";
 		return nullptr;
 	}
 	const bool flushControl = HasExtension( extensions, "EGL_KHR_context_flush_control" );
@@ -101,13 +114,15 @@ std::unique_ptr<EglContext> EglContext::Create( bool debug, std::string &error )
 			attributes[count++] = name;
 			attributes[count++] = value;
 		};
-		put( EGL_CONTEXT_MAJOR_VERSION, 4 );
-		put( EGL_CONTEXT_MINOR_VERSION, 5 );
-		put( EGL_CONTEXT_OPENGL_PROFILE_MASK, EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT );
+		put( EGL_CONTEXT_MAJOR_VERSION, es ? 3 : 4 );
+		put( EGL_CONTEXT_MINOR_VERSION, es ? 1 : 5 );
+		if ( !es )
+			put( EGL_CONTEXT_OPENGL_PROFILE_MASK, EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT );
 		if ( debug )
 			put( EGL_CONTEXT_OPENGL_DEBUG, EGL_TRUE );
 		if ( robust )
 		{
+			// EGL 1.5 applies these to OpenGL ES contexts too.
 			put( EGL_CONTEXT_OPENGL_ROBUST_ACCESS, EGL_TRUE );
 			put( EGL_CONTEXT_OPENGL_RESET_NOTIFICATION_STRATEGY, EGL_LOSE_CONTEXT_ON_RESET );
 		}
@@ -126,22 +141,28 @@ std::unique_ptr<EglContext> EglContext::Create( bool debug, std::string &error )
 	}
 	if ( context->m_Context == EGL_NO_CONTEXT )
 	{
-		error = "no OpenGL 4.5 core context";
+		error = es ? "no OpenGL ES 3.1 context" : "no OpenGL 4.5 core context";
 		return nullptr;
 	}
+	if ( es )
+		context->m_Es = std::make_unique<EsState>();
 	ContextScope scope( *context );
 	if ( !scope.Ok() )
 	{
-		error = "the OpenGL context cannot be made current";
+		error = es ? "the OpenGL ES context cannot be made current"
+		           : "the OpenGL context cannot be made current";
 		return nullptr;
 	}
-	if ( const char *missing = context->m_Api.LoadAll(
-	         []( const char *name )
-	         {
-		         return eglGetProcAddress( name );
-	         } ) )
+	const auto load = []( const char *name ) -> void *
 	{
-		error = std::string( "the OpenGL context lacks " ) + missing;
+		return reinterpret_cast<void *>( eglGetProcAddress( name ) );
+	};
+	const char *missing =
+	    es ? LoadEs( context->m_Api, *context->m_Es, load ) : context->m_Api.LoadAll( load );
+	if ( missing )
+	{
+		error = std::string( es ? "the OpenGL ES context lacks " : "the OpenGL context lacks " ) +
+		        missing;
 		return nullptr;
 	}
 	return context;
@@ -153,18 +174,28 @@ EglContext::~EglContext()
 		return;
 	if ( m_Context != EGL_NO_CONTEXT )
 	{
+		const EGLenum previous = eglQueryAPI();
+		eglBindAPI( EglApi( m_ApiKind ) );
 		if ( eglGetCurrentContext() == m_Context )
+		{
 			eglMakeCurrent( m_Display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT );
+			CurrentEs() = nullptr;
+		}
 		eglDestroyContext( m_Display, m_Context );
+		eglBindAPI( previous );
 	}
 	ReleaseDisplay();
 }
 
 ContextScope::ContextScope( const EglContext &context ) : m_Context( context )
 {
-	// EGL keeps a current context per client API; the device's is OpenGL.
-	if ( eglQueryAPI() != EGL_OPENGL_API )
-		eglBindAPI( EGL_OPENGL_API );
+	m_PreviousEs = CurrentEs();
+	CurrentEs() = context.Es();
+	// EGL keeps a current context per client API binding: bind the device's.
+	m_PreviousApi = eglQueryAPI();
+	const EGLenum api = EglApi( context.ApiKind() );
+	if ( m_PreviousApi != api )
+		eglBindAPI( api );
 	if ( eglGetCurrentContext() == context.Context() )
 	{
 		m_Ok = true;
@@ -181,12 +212,16 @@ ContextScope::ContextScope( const EglContext &context ) : m_Context( context )
 
 ContextScope::~ContextScope()
 {
-	if ( !m_Switched )
-		return;
-	if ( m_PreviousContext != EGL_NO_CONTEXT && m_PreviousDisplay != EGL_NO_DISPLAY )
-		eglMakeCurrent( m_PreviousDisplay, m_PreviousDraw, m_PreviousRead, m_PreviousContext );
-	else
-		eglMakeCurrent( m_Context.Display(), EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT );
+	if ( m_Switched )
+	{
+		if ( m_PreviousContext != EGL_NO_CONTEXT && m_PreviousDisplay != EGL_NO_DISPLAY )
+			eglMakeCurrent( m_PreviousDisplay, m_PreviousDraw, m_PreviousRead, m_PreviousContext );
+		else
+			eglMakeCurrent( m_Context.Display(), EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT );
+	}
+	if ( m_PreviousApi != 0 && m_PreviousApi != eglQueryAPI() )
+		eglBindAPI( m_PreviousApi );
+	CurrentEs() = m_PreviousEs;
 }
 
 } // namespace render::device::gl

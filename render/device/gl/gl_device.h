@@ -156,6 +156,7 @@ struct PipelineRecord
 	const Program *program = nullptr;
 	GLuint vertexArray = 0;
 	std::array<std::uint32_t, kMaxVertexSlots> strides{};
+	std::array<bool, kMaxVertexSlots> perInstance{}; // ES: offset by the first instance
 	std::uint32_t vertexBuffers = 0;
 	GLenum topology = 0;
 	RasterState raster;
@@ -299,7 +300,8 @@ private:
 	std::uint32_t m_Labels = 0;
 };
 
-// The upload ring: one persistently mapped, coherent GL buffer. Ranges retire
+// The upload ring: one persistently mapped, coherent GL buffer (on ES without
+// EXT_buffer_storage, CPU memory each upload is copied from at replay). Ranges retire
 // in order once their token completes, or when their encoder is destroyed
 // without submitting.
 class UploadRing
@@ -414,6 +416,11 @@ private:
 	};
 
 	const GlApi &Gl() const { return m_Context->Api(); }
+	// The ES dialect (RFC 0022); Es() only on an ES device, context current.
+	bool IsEs() const { return m_Options.api == GlApiKind::kEs31; }
+	EsState &Es() const { return *m_Context->Es(); }
+	DeviceResult<void> CheckEsRequirements( GLint major, GLint minor );
+	bool EsFormatSupported( const TextureDesc &desc, bool attachment ) const;
 	DeviceResult<void> CreateContextObjects();
 	void DestroyContextObjects();
 	void QueryFacts();
@@ -472,8 +479,15 @@ private:
 	// Completed graphics submissions of the current epoch: written with the
 	// context current, read by recording threads (ring retirement).
 	mutable std::atomic<std::uint64_t> m_Completed{ 0 };
-	GLuint m_RingBuffer = 0;
+	GLuint m_RingBuffer = 0; // 0: the ring is m_RingCpu (ES without EXT_buffer_storage)
 	std::byte *m_RingData = nullptr;
+	std::vector<std::byte> m_RingCpu;
+	// ES features beyond 3.1 core (QueryFacts).
+	bool m_EsFloatTargets = false;
+	bool m_EsHalfFloatTargets = false;
+	bool m_EsNorm16 = false;
+	bool m_EsCubeArrays = false;
+	bool m_EsMultisampleArrays = false;
 	UploadRing m_Ring;
 	mutable std::mutex m_RingLock; // guards m_Ring, m_NextAllocation, m_DeferredUploads
 	std::uint64_t m_NextAllocation = 0;

@@ -10,6 +10,10 @@
 //			placement, calls from another thread, the caller's current context
 //			kept, and a masked capability.
 //
+//			Built with RENDER_DEVICE_GL_ES it is render.device.v2.gles: the
+//			same clauses on the adapter's OpenGL ES 3.1 dialect (RFC 0022), with
+//			the fixtures' GLSL ES 3.10 artifacts (spv/device_fixtures_gles.h).
+//
 //			Built with RENDER_DEVICE_GL_SENSITIVITY it is
 //			render.device.v2.gl.sensitivity instead: each bad GL adapter
 //			(GlAdapterOptions::Sensitivity) must fail the clause it breaks and
@@ -21,6 +25,7 @@
 
 #include "device_conformance.h"
 #include "render/device/gl/provider.h"
+#include "spv/device_fixtures_gles.h"
 #include "spv/device_fixtures_glsl.h"
 
 #include <EGL/egl.h>
@@ -45,17 +50,39 @@ struct Fixture
 	std::string_view glsl;
 };
 
-// Each suite fixture's SPIR-V and its GLSL 4.50 artifact.
+#if defined( RENDER_DEVICE_GL_ES )
+namespace text = rendertest::gles;
+constexpr gl::GlApiKind kApi = gl::GlApiKind::kEs31;
+constexpr ArtifactFormat kFormat = ArtifactFormat::kGlslEs310;
+constexpr const char *kName = "gles";
+constexpr EGLenum kEglApi = EGL_OPENGL_ES_API;
+#else
+namespace text = rendertest::glsl;
+constexpr gl::GlApiKind kApi = gl::GlApiKind::kDesktop45;
+constexpr ArtifactFormat kFormat = ArtifactFormat::kGlsl450;
+constexpr const char *kName = "gl";
+constexpr EGLenum kEglApi = EGL_OPENGL_API;
+#endif
+
+// The adapter's options for this build's dialect.
+gl::GlAdapterOptions Options()
+{
+	gl::GlAdapterOptions options;
+	options.api = kApi;
+	return options;
+}
+
+// Each suite fixture's SPIR-V and its GLSL 4.50 (GLSL ES 3.10) artifact.
 const Fixture kFixtures[] = {
-    { rendertest::shaders::kFullScreenVertex, rendertest::glsl::kFullScreenVertex },
-    { rendertest::shaders::kTopHalfVertex, rendertest::glsl::kTopHalfVertex },
-    { rendertest::shaders::kColorFragment, rendertest::glsl::kColorFragment },
-    { rendertest::shaders::kConstantFragment, rendertest::glsl::kConstantFragment },
-    { rendertest::shaders::kSpecializedFragment, rendertest::glsl::kSpecializedFragment },
-    { rendertest::shaders::kDoubleCompute, rendertest::glsl::kDoubleCompute },
-    { rendertest::shaders::kSampledFragment, rendertest::glsl::kSampledFragment },
-    { rendertest::shaders::kComparisonFragment, rendertest::glsl::kComparisonFragment },
-    { rendertest::shaders::kPositionVertex, rendertest::glsl::kPositionVertex },
+    { rendertest::shaders::kFullScreenVertex, text::kFullScreenVertex },
+    { rendertest::shaders::kTopHalfVertex, text::kTopHalfVertex },
+    { rendertest::shaders::kColorFragment, text::kColorFragment },
+    { rendertest::shaders::kConstantFragment, text::kConstantFragment },
+    { rendertest::shaders::kSpecializedFragment, text::kSpecializedFragment },
+    { rendertest::shaders::kDoubleCompute, text::kDoubleCompute },
+    { rendertest::shaders::kSampledFragment, text::kSampledFragment },
+    { rendertest::shaders::kComparisonFragment, text::kComparisonFragment },
+    { rendertest::shaders::kPositionVertex, text::kPositionVertex },
 };
 
 std::span<const std::byte> Artifact( std::span<const std::uint32_t> spirv )
@@ -156,7 +183,7 @@ bool OnlyClause( const std::string &failures, const char *clause )
 int main()
 {
 	testing::Checks checks;
-	const gl::GlAdapterOptions options;
+	const gl::GlAdapterOptions options = Options();
 	{
 		const std::string failures = FailuresOf( Driver( "under-test", options ) );
 		checks.That( failures.empty(), "control-passes" );
@@ -196,7 +223,8 @@ int main()
 	    { "dropped-specialization", specialization, "under-test.D20 the constant's value" },
 	    { "early-upload-reuse", uploads, "under-test.D10 " },
 	    { "reversed-sampler-compare", comparison, "under-test.D24 " },
-	    { "transmittance-as-premultiplied", transmittance, "under-test.D21 src + dst * a" },
+	    { "transmittance-as-premultiplied", transmittance,
+	        "under-test.D21 the independent color equation" },
 	};
 	// D10 records its uploads with the queue held (Driver's hold), so early
 	// reuse shows on every driver, including one that copies at submission
@@ -226,9 +254,9 @@ namespace
 void FactsClauses( testing::Checks &checks, const IRenderDevice2 &device )
 {
 	const DeviceFacts &facts = device.Facts();
-	checks.That( facts.artifactFormat == ArtifactFormat::kGlsl450,
-	    "gl.facts the device accepts GLSL 4.50 artifacts" );
-	checks.That( facts.diagnosticBackend == "gl" && !facts.adapterName.empty(),
+	checks.That( facts.artifactFormat == kFormat,
+	    "gl.facts the device accepts its dialect's GLSL artifacts" );
+	checks.That( facts.diagnosticBackend == kName && !facts.adapterName.empty(),
 	    "gl.facts the device names its backend and adapter" );
 	std::string claimed, unclaimed;
 	for ( std::uint32_t bit = 0; bit < static_cast<std::uint32_t>( Capability::kCount ); ++bit )
@@ -248,7 +276,7 @@ void FactsClauses( testing::Checks &checks, const IRenderDevice2 &device )
 // reused once their token completes.
 void RingClauses( testing::Checks &checks, const rendertest::DeviceDriver &driver )
 {
-	gl::GlAdapterOptions options;
+	gl::GlAdapterOptions options = Options();
 	options.uploadRingBytes = 64 * 1024;
 	auto created = gl::Create( options );
 	checks.That( created.HasValue(), "gl.ring creates a device with a 64 KiB ring" );
@@ -397,7 +425,7 @@ void ThreadClauses( testing::Checks &checks, const rendertest::DeviceDriver &dri
 	    eglGetPlatformDisplay( EGL_PLATFORM_SURFACELESS_MESA, EGL_DEFAULT_DISPLAY, nullptr );
 	EGLint major = 0, minor = 0;
 	if ( !checks.That( display != EGL_NO_DISPLAY && eglInitialize( display, &major, &minor ) &&
-	                       eglBindAPI( EGL_OPENGL_API ),
+	                       eglBindAPI( kEglApi ),
 	         "gl.threads a host context's display initializes" ) )
 		return;
 	const EGLint attributes[] = { EGL_CONTEXT_MAJOR_VERSION, 3, EGL_NONE };
@@ -420,7 +448,7 @@ void ThreadClauses( testing::Checks &checks, const rendertest::DeviceDriver &dri
 // buffers, and refuses a compute pipeline and a storage layout by status.
 void MaskClauses( testing::Checks &checks )
 {
-	gl::GlAdapterOptions options;
+	gl::GlAdapterOptions options = Options();
 	options.allowed.Remove( Capability::kCompute ).Remove( Capability::kStorageBuffers );
 	auto created = gl::Create( options );
 	if ( !checks.That( created.HasValue(), "gl.mask a device without compute is created" ) )
@@ -434,7 +462,7 @@ void MaskClauses( testing::Checks &checks )
 	auto layout = device.CreateBindGroupLayout( { BindGroupRole::kDraw, storage } );
 	checks.That( !layout && layout.Error().status == DeviceStatus::kUnsupported,
 	    "gl.mask a storage binding fails kUnsupported" );
-	const ShaderArtifactView stage[] = { { ShaderStage::kCompute, ArtifactFormat::kGlsl450,
+	const ShaderArtifactView stage[] = { { ShaderStage::kCompute, kFormat,
 	    Artifact( rendertest::shaders::kDoubleCompute ), "main", {} } };
 	PipelineDesc desc;
 	desc.kind = PipelineKind::kCompute;
@@ -444,10 +472,13 @@ void MaskClauses( testing::Checks &checks )
 	    "gl.mask a compute pipeline fails kUnsupported" );
 	DeviceRequest request;
 	request.required = { Capability::kCompute };
-	auto described = gl::Describe().create( request );
+	const DeviceProviderDescriptor &descriptor =
+	    kApi == gl::GlApiKind::kEs31 ? gl::DescribeEs() : gl::Describe();
+	checks.That( descriptor.id == kName, "gl.mask the descriptor is named for its dialect" );
+	auto described = descriptor.create( request );
 	checks.That( described.HasValue(), "gl.mask the descriptor makes a device with compute" );
 	request.required = { Capability::kRayQuery };
-	auto missing = gl::Describe().create( request );
+	auto missing = descriptor.create( request );
 	checks.That( !missing && missing.Error().status == DeviceStatus::kUnsupported,
 	    "gl.mask the descriptor refuses a required capability the adapter lacks" );
 }
@@ -458,21 +489,23 @@ int main()
 {
 	testing::Checks checks;
 	std::atomic<std::uint64_t> messages{ 0 };
-	gl::GlAdapterOptions options;
+	gl::GlAdapterOptions options = Options();
 	options.validationCounter = &messages;
 	{
 		auto probe = gl::Create( options );
-		if ( !checks.That( probe.HasValue(), "gl.setup an OpenGL 4.5 core context is available" ) )
+		if ( !checks.That(
+		         probe.HasValue(), "gl.setup an OpenGL 4.5 core (ES 3.1) context is available" ) )
 			return checks.Report();
 		FactsClauses( checks, *probe.Value() );
 	}
 
-	const rendertest::DeviceDriver driver = Driver( "gl", options );
+	const rendertest::DeviceDriver driver = Driver( kName, options );
 	rendertest::RunDeviceConformance( checks, driver );
 	rendertest::RunRasterConformance( checks, driver );
 	gl::GlAdapterOptions small = options;
 	small.uploadRingBytes = 256 * 1024;
-	rendertest::RunDeviceConformance( checks, Driver( "gl-small-ring", small ) );
+	rendertest::RunDeviceConformance(
+	    checks, Driver( ( std::string( kName ) + "-small-ring" ).c_str(), small ) );
 	RingClauses( checks, driver );
 	{
 		rendertest::detail::Suite suite( checks, driver );
@@ -486,8 +519,9 @@ int main()
 	// Once more under GL debug output: no error or high/medium message.
 	gl::GlAdapterOptions validated = options;
 	validated.validation = true;
-	rendertest::RunDeviceConformance( checks, Driver( "gl-validated", validated ) );
-	rendertest::RunRasterConformance( checks, Driver( "gl-validated", validated ) );
+	const std::string validatedName = std::string( kName ) + "-validated";
+	rendertest::RunDeviceConformance( checks, Driver( validatedName.c_str(), validated ) );
+	rendertest::RunRasterConformance( checks, Driver( validatedName.c_str(), validated ) );
 	std::printf(
 	    "INFO gl.validation messages: %llu\n", static_cast<unsigned long long>( messages.load() ) );
 	checks.That( messages.load() == 0,

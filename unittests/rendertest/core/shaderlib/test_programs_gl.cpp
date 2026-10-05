@@ -15,6 +15,10 @@
 //			   on GL (output, skinning, cluster assignment), and a suite's seeded
 //			   SPIR-V variant is refused on GL rather than run unseeded.
 //
+//			Built with RENDER_DEVICE_GL_ES it is render.shader-artifacts.gles
+//			(RFC 0022 E3): the same clauses for the GLSL ES 3.10 artifacts on the
+//			adapter's OpenGL ES 3.1 dialect.
+//
 //=============================================================================//
 
 #include "render/device/gl/provider.h"
@@ -37,6 +41,16 @@ namespace
 
 using namespace render;
 using namespace render::device;
+
+#if defined( RENDER_DEVICE_GL_ES )
+constexpr gl::GlApiKind kApi = gl::GlApiKind::kEs31;
+constexpr ArtifactFormat kFormat = ArtifactFormat::kGlslEs310;
+constexpr const char *kDialect = "GLSL ES 3.10";
+#else
+constexpr gl::GlApiKind kApi = gl::GlApiKind::kDesktop45;
+constexpr ArtifactFormat kFormat = ArtifactFormat::kGlsl450;
+constexpr const char *kDialect = "GLSL 4.50";
+#endif
 
 struct Program
 {
@@ -129,7 +143,7 @@ void StoreClauses( testing::Checks &checks )
 			const shaderlib::ArtifactKey spirv{ std::string( source ),
 			    std::string( shaderlib::CoreCompiler() ), ArtifactFormat::kSpirv, 0 };
 			shaderlib::ArtifactKey glsl = spirv;
-			glsl.format = ArtifactFormat::kGlsl450;
+			glsl.format = kFormat;
 			const shaderlib::ShaderArtifact *a = store.Find( spirv );
 			const shaderlib::ShaderArtifact *b = store.Find( glsl );
 			both += a && b && a->code.size() % 4 == 0 && b->code.size() > 8 &&
@@ -139,14 +153,13 @@ void StoreClauses( testing::Checks &checks )
 			        a->drawConstantBytes == b->drawConstantBytes;
 		}
 	}
-	checks.That( both == stages,
-	    "gl.store every core stage is held in SPIR-V and GLSL 4.50 with one reflection" );
+	checks.That( both == stages, std::string( "gl.store every core stage is held in SPIR-V and " ) +
+	                                 kDialect + " with one reflection" );
 	shaderlib::PipelineRecipe recipe = shaderlib::CoreRecipe(
 	    { "render/pass/output/output.vert", "render/pass/output/output.frag" } );
-	auto glsl = shaderlib::Resolve( recipe, store, ArtifactFormat::kGlsl450 );
+	auto glsl = shaderlib::Resolve( recipe, store, kFormat );
 	auto spirv = shaderlib::Resolve( recipe, store, ArtifactFormat::kSpirv );
-	checks.That( glsl && spirv &&
-	                 glsl.Value().Desc().stages[1].format == ArtifactFormat::kGlsl450 &&
+	checks.That( glsl && spirv && glsl.Value().Desc().stages[1].format == kFormat &&
 	                 spirv.Value().Desc().stages[1].format == ArtifactFormat::kSpirv,
 	    "gl.store Resolve takes the artifacts of the format asked for" );
 }
@@ -157,8 +170,10 @@ int main()
 {
 	testing::Checks checks;
 	StoreClauses( checks );
-	auto created = gl::Create( {} );
-	if ( !checks.That( created.HasValue(), "gl.programs an OpenGL 4.5 core device is created" ) )
+	gl::GlAdapterOptions options;
+	options.api = kApi;
+	auto created = gl::Create( options );
+	if ( !checks.That( created.HasValue(), "gl.programs a device of the dialect is created" ) )
 		return checks.Report();
 	IRenderDevice2 &device = *created.Value();
 	for ( const Program &program : kPrograms )
@@ -171,7 +186,7 @@ int main()
 	// Negative control: an artifact cut short does not compile.
 	shaderlib::ArtifactOverlay truncated( shaderlib::CoreArtifacts() );
 	const shaderlib::ArtifactKey key{ "render/material/families/surface.frag",
-	    std::string( shaderlib::CoreCompiler() ), ArtifactFormat::kGlsl450, 0 };
+	    std::string( shaderlib::CoreCompiler() ), kFormat, 0 };
 	const shaderlib::ShaderArtifact *whole = shaderlib::CoreArtifacts().Find( key );
 	const bool cut =
 	    whole && truncated.Replace( key,

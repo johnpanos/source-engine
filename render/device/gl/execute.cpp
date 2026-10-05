@@ -481,7 +481,12 @@ private:
 		case Op::kWriteBuffer:
 		{
 			const BufferRecord *b = m_D.ExistingBuffer( command.a );
-			if ( command.fromRing )
+			if ( command.fromRing && !m_D.m_RingBuffer )
+				m_Gl.NamedBufferSubData( b->name,
+				    static_cast<GLintptr>( command.copy.destinationOffset ),
+				    static_cast<GLsizeiptr>( command.copy.size ),
+				    m_D.m_RingData + command.ringOffset );
+			else if ( command.fromRing )
 				m_Gl.CopyNamedBufferSubData( m_D.m_RingBuffer, b->name,
 				    static_cast<GLintptr>( command.ringOffset ),
 				    static_cast<GLintptr>( command.copy.destinationOffset ),
@@ -564,6 +569,11 @@ private:
 
 	void ClearTexture( const Command &command )
 	{
+		if ( m_D.IsEs() )
+		{
+			ClearTextureEs( command );
+			return;
+		}
 		const TextureRecord &t = *m_D.ExistingTexture( command.a );
 		const Format format = t.desc.format;
 		GLenum dataFormat = GL_RGBA;
@@ -617,8 +627,119 @@ private:
 		}
 	}
 
+	// ES has no texture clear (RFC 0022): each mip and layer is attached to a
+	// scratch framebuffer and cleared there, with the scissor off and every
+	// mask open (the next draw applies its pipeline's again). A clear of an
+	// sRGB attachment encodes, so the port's linear color is passed as is.
+	void ClearTextureEs( const Command &command )
+	{
+		const TextureRecord &t = *m_D.ExistingTexture( command.a );
+		EsState &es = m_D.Es();
+		if ( !es.clearFramebuffer )
+			m_Gl.CreateFramebuffers( 1, &es.clearFramebuffer );
+		const bool depth = IsDepthFormat( t.desc.format );
+		const bool stencil = depth && HasStencil( t.desc.format );
+		const GLenum attachment = !depth    ? GL_COLOR_ATTACHMENT0
+		                          : stencil ? GL_DEPTH_STENCIL_ATTACHMENT
+		                                    : GL_DEPTH_ATTACHMENT;
+		const float color[4] = {
+		    command.color.r, command.color.g, command.color.b, command.color.a };
+		m_Gl.Disable( GL_SCISSOR_TEST );
+		m_Gl.ColorMaski( 0, GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE );
+		m_Gl.DepthMask( GL_TRUE );
+		m_Gl.StencilMask( 0xFF );
+		m_StateDirty = true;
+		const GLenum none = GL_NONE;
+		const GLenum first = GL_COLOR_ATTACHMENT0;
+		m_Gl.NamedFramebufferDrawBuffers( es.clearFramebuffer, 1, depth ? &none : &first );
+		const SubresourceRange &r = command.range;
+		const std::uint32_t mips = std::min( r.baseMip + r.mipCount, t.desc.mipLevels );
+		for ( std::uint32_t mip = r.baseMip; mip < mips; ++mip )
+		{
+			const std::uint32_t layers = t.desc.dimension == TextureDimension::k3D
+			                                 ? std::max( 1u, t.desc.depthOrLayers >> mip )
+			                                 : std::min( r.baseLayer + r.layerCount, t.layers );
+			const std::uint32_t firstLayer =
+			    t.desc.dimension == TextureDimension::k3D ? 0u : r.baseLayer;
+			for ( std::uint32_t layer = firstLayer; layer < layers; ++layer )
+			{
+				m_Gl.NamedFramebufferTextureLayer( es.clearFramebuffer, attachment, t.name,
+				    static_cast<GLint>( mip ), static_cast<GLint>( layer ) );
+				if ( !depth )
+					m_Gl.ClearNamedFramebufferfv( es.clearFramebuffer, GL_COLOR, 0, color );
+				else if ( stencil )
+					m_Gl.ClearNamedFramebufferfi(
+					    es.clearFramebuffer, GL_DEPTH_STENCIL, 0, command.color.r, 0 );
+				else
+					m_Gl.ClearNamedFramebufferfv(
+					    es.clearFramebuffer, GL_DEPTH, 0, &command.color.r );
+			}
+		}
+		// Detach, so the scratch framebuffer holds no texture a release frees.
+		m_Gl.NamedFramebufferTextureLayer( es.clearFramebuffer, attachment, 0, 0, 0 );
+		if ( m_Rendering )
+			m_Gl.Enable( GL_SCISSOR_TEST );
+	}
+
+	// ES readback (RFC 0022): color through glReadPixels into the pixel-pack
+	// buffer; depth (which ReadPixels cannot read) through a compute program
+	// that writes the port's 32-bit floats into the buffer as storage.
+	void CopyTextureToBufferEs( const Command &command )
+	{
+		const TextureRecord &t = *m_D.ExistingTexture( command.a );
+		const BufferRecord &b = *m_D.ExistingBuffer( command.b );
+		const TextureBufferCopy &copy = command.textureCopy;
+		EsState &es = m_D.Es();
+		if ( IsDepthFormat( t.desc.format ) )
+		{
+			const bool array = t.target != GL_TEXTURE_2D;
+			const GLuint program = DepthCopyProgram( m_Gl, es, array );
+			if ( !program || t.target == GL_TEXTURE_CUBE_MAP || copy.bufferOffset % 4 != 0 )
+			{
+				m_D.CountMessage();
+				std::fprintf( stderr, "render.device.gl: ES cannot copy this depth texture\n" );
+				return;
+			}
+			m_Gl.UseProgram( program );
+			m_StateDirty = true;
+			es.core.Uniform1i(
+			    m_Gl.GetUniformLocation( program, "source" ), static_cast<GLint>( es.editUnit ) );
+			es.core.Uniform4i( m_Gl.GetUniformLocation( program, "region" ),
+			    static_cast<GLint>( copy.x ), static_cast<GLint>( copy.y ),
+			    static_cast<GLint>( copy.width ), static_cast<GLint>( copy.height ) );
+			es.core.Uniform4i( m_Gl.GetUniformLocation( program, "where" ),
+			    static_cast<GLint>( copy.bufferOffset / 4 ), static_cast<GLint>( copy.mip ),
+			    static_cast<GLint>( copy.layer ), 0 );
+			m_Gl.BindTextureUnit( es.editUnit, t.name );
+			m_Gl.BindSampler( es.editUnit, 0 );
+			m_Gl.BindBufferRange(
+			    GL_SHADER_STORAGE_BUFFER, 0, b.name, 0, static_cast<GLsizeiptr>( b.desc.size ) );
+			m_Gl.DispatchCompute( ( copy.width + 7 ) / 8, ( copy.height + 7 ) / 8, 1 );
+			m_Gl.MemoryBarrier( GL_ALL_BARRIER_BITS );
+			return;
+		}
+		if ( !es.readFramebuffer )
+			m_Gl.CreateFramebuffers( 1, &es.readFramebuffer );
+		m_Gl.NamedFramebufferTextureLayer( es.readFramebuffer, GL_COLOR_ATTACHMENT0, t.name,
+		    static_cast<GLint>( copy.mip ), static_cast<GLint>( copy.layer ) );
+		m_Gl.NamedFramebufferReadBuffer( es.readFramebuffer, GL_COLOR_ATTACHMENT0 );
+		const GlFormat format = FormatOf( t.desc.format );
+		m_Gl.BindBuffer( GL_PIXEL_PACK_BUFFER, b.name );
+		es.core.ReadPixels( static_cast<GLint>( copy.x ), static_cast<GLint>( copy.y ),
+		    static_cast<GLsizei>( copy.width ), static_cast<GLsizei>( copy.height ), format.format,
+		    format.type,
+		    reinterpret_cast<void *>( static_cast<std::uintptr_t>( copy.bufferOffset ) ) );
+		m_Gl.BindBuffer( GL_PIXEL_PACK_BUFFER, 0 );
+		m_Gl.NamedFramebufferTextureLayer( es.readFramebuffer, GL_COLOR_ATTACHMENT0, 0, 0, 0 );
+	}
+
 	void CopyTextureToBuffer( const Command &command )
 	{
+		if ( m_D.IsEs() )
+		{
+			CopyTextureToBufferEs( command );
+			return;
+		}
 		const TextureRecord &t = *m_D.ExistingTexture( command.a );
 		const BufferRecord &b = *m_D.ExistingBuffer( command.b );
 		const TextureBufferCopy &copy = command.textureCopy;
@@ -958,8 +1079,13 @@ private:
 		for ( std::uint32_t slot = 0; slot < p.vertexBuffers; ++slot )
 		{
 			const Binding &binding = m_VertexBuffers[slot];
+			// ES has no base instance (RFC 0022): per-instance buffers start at
+			// the first instance's element instead.
+			std::uint64_t offset = binding.offset;
+			if ( m_D.IsEs() && p.perInstance[slot] )
+				offset += std::uint64_t( command.firstInstance ) * p.strides[slot];
 			m_Gl.VertexArrayVertexBuffer( p.vertexArray, slot,
-			    m_D.ExistingBuffer( binding.buffer )->name, static_cast<GLintptr>( binding.offset ),
+			    m_D.ExistingBuffer( binding.buffer )->name, static_cast<GLintptr>( offset ),
 			    static_cast<GLsizei>( p.strides[slot] ) );
 		}
 		const bool storage = BindGroups();
