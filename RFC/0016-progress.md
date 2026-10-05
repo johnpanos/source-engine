@@ -11038,3 +11038,28 @@ better than before (1.43 / 1.56). `render_lab suite volumetric` passes
 17/17. The fog pass is no longer the frame's blocker. The whole frame still
 misses the allowance (see the frame-allowance measurement above). 4K's
 10.2 ms is recorded for the resolution sweep.
+
+### K12: moving doors, the Portal 2 test-chamber door (2026-10-05)
+
+Per the user's scoping, "moving doors" is Portal 2's test-chamber door
+(`prop_testchamber_door`, `models/props/portal_door_combined.mdl`). Its
+product path is in place:
+
+- The core draws the door's live pose: the bone palette is skinned on the
+  CPU and drawn through the stage lighting. Of the earlier claim gaps, the
+  Fresnel enable still names its own gap.
+- Its physical panels block the core's lights through the shadow atlas
+  (R91's door-aperture slice, `render.dynamic-occlusion.v1`'s physical
+  caster extension).
+
+On the current build, with fog, projectors, cutout casters and SSR on,
+`render.product.fizzler-door-light` passes 13/13 across closed, opening
+start, partial, open, reclosed and removed-blocker states, including its
+live negative control (`/tmp` evidence of `conformance.py check --suite
+render.product.fizzler-door-light`).
+
+Open, for "game matches lab": `render_lab` cannot pose a Studio model's
+animation (no sequence or bone setup in `mdl`), so there is no lab frame of
+the door at a given pose to compare. Giving the lab a posed-model input, a
+captured bone palette from the game, is the next step. The CPU skinning the
+door uses is the same R89/K6 GPU-skinning item that remains open.
