@@ -1240,10 +1240,12 @@ class Pipeline:
                        "max_mean_relative_residual": coverage_rules.get(
                            "max_reflection_probe_residual"),
                        "candidate_bounds_m": envelope},
-                      ["reflection_probe_set.py", "reflection_probe.py", "gi_reference.py"],
+                      ["reflection_probe_set.py", "reflection_probe.py", "gi_reference.py",
+                       "../texture/bc_codec.py"],
                       [p["rprb"], p["rprb"].with_name(p["rprb"].name + ".json")],
                       lambda: self.run("rprb", [sys.executable, HERE / "reflection_probe_set.py",
                                                 "pack", "--probes-dir", p["probe"],
+                                                "--ktx-tool", self.tools["ktx"],
                                                 "--width", str(probe.get("width", 512)),
                                                 "--preview-gain",
                                                 str(self.lightmap["preview_gain"]),

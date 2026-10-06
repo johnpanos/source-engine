@@ -1320,7 +1320,7 @@ def depth_convention(depths, checks):
 
 
 def pack(probes_dir, width, gain, prefilter_samples=256, max_mean_relative_residual=None,
-         candidate_bounds_m=None):
+         candidate_bounds_m=None, tool=None):
     """(RPRB bytes, receipt) from `pbrt_reflection_probe.py`'s output."""
     import gi_reference
     import hashlib
@@ -1390,7 +1390,7 @@ def pack(probes_dir, width, gain, prefilter_samples=256, max_mean_relative_resid
     if candidate_bounds_m is not None:
         bounds = (np.asarray(candidate_bounds_m[0], dtype=np.float64) * SOURCE_UNITS_PER_METER,
                   np.asarray(candidate_bounds_m[1], dtype=np.float64) * SOURCE_UNITS_PER_METER)
-    data = build(probes, chains, relight=relight if gbuffer else None,
+    data = build(probes, chains, tool=tool, relight=relight if gbuffer else None,
                  candidate_bounds=bounds)
     masks = read(data)["candidates"]["masks"]
     candidate_counts = [sum(int(mask).bit_count() for mask in row)
@@ -1641,6 +1641,9 @@ def main():
     commands = parser.add_subparsers(dest="command", required=True)
     command = commands.add_parser("pack", help="fit, prefilter and encode the rendered probes")
     command.add_argument("--probes-dir", type=Path, required=True)
+    command.add_argument("--ktx-tool", type=Path,
+                         help="the pinned ktx that encodes the BC6H radiance bands "
+                              "(default: the map toolchain's)")
     command.add_argument("--width", type=int, default=512,
                          help="equirect width of every probe's mip 0")
     command.add_argument("--preview-gain", type=float, default=1.0,
@@ -1688,7 +1691,7 @@ def main():
     data, receipt = pack(args.probes_dir, args.width, args.preview_gain,
                          max_mean_relative_residual=args.max_mean_relative_residual,
                          candidate_bounds_m=(args.candidate_bounds_m[:3], args.candidate_bounds_m[3:])
-                         if args.candidate_bounds_m else None)
+                         if args.candidate_bounds_m else None, tool=args.ktx_tool)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     temporary = args.out.with_name(args.out.name + ".tmp")
     temporary.write_bytes(data)

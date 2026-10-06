@@ -98,10 +98,10 @@ import light_baker  # noqa: E402
 REFERENCE_RENDER = "render"
 REMOTE_STEPS = tuple(light_baker.OPERATIONS) + (REFERENCE_RENDER,)
 # Post-bake steps that are one Python script (numpy, scipy, imageio,
-# OpenImageIO, OIDN): opt-in, with the block's `python`. ktx2 and the USD
-# steps stay local (their tools are this host's builds, and ktx2 comes after
-# the last remote step, so nothing it writes would be uploaded).
-TOOL_STEPS = ("noise", "denoise", "directional", "rprb")
+# OpenImageIO, OIDN): opt-in, with the block's `python`. ktx2, rprb (RPRB
+# v7 encodes BC6H with the pinned ktx) and the USD steps stay local: their
+# tools are this host's builds.
+TOOL_STEPS = ("noise", "denoise", "directional")
 DEFAULT_SSH = ("ssh", "-o", "BatchMode=yes", "-o", "ServerAliveInterval=30")
 # Repository trees the Blender scripts read besides their inputs: the scripts
 # and their imports, and the export/product profiles some of them load.
