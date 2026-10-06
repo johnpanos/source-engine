@@ -11349,3 +11349,23 @@ Open:
 - frame time unmeasured.
 - The legacy `r_core_world 0` frame on `testchmb_a_01` is washed out, so it
   could not serve as a brightness reference.
+
+### K5/R91: dynamic draw materials kept across frames (2026-10-05)
+
+The world pass cleared its dynamic-material cache (`Resources::dynamicMaterials`)
+every frame, so each mesh-handoff material resolved its program and built its
+material group once per frame. On `sp_a1_intro4` the debris material alone
+resolved 293 times in one boot. A snapshot's key (`MaterialSnapshotKey`)
+already holds every value and texture handle it binds, as the world
+materials' persistent groups assume. Entries now stay while drawn within the
+last 8 recorded frames, capped at 1,024. Failed entries still retry next
+frame, and evicted groups retire behind the frame's token. After the change
+the whole run resolves fewer than 64 materials.
+
+| Check | Evidence | Result |
+| --- | --- | --- |
+| Suites | `render.world.null`, `render.composition`, `render.lab.posed-model` | pass |
+| Frame time | `frame_pacing.py` A/B, `portal-frame-pacing-v1`, `r_core_world 1`, `mat_queue_mode 2`, 3 interleaved rounds; A = the build before (copied `liblauncher.so`), B = after | median 30.30 → 29.30 ms (0.967x), p99 45.30 → 42.91 ms (0.947x); B faster in every round |
+
+The frame is still about 30 ms and CPU-bound on this workload. This removes
+one per-frame cost; it does not meet a budget.

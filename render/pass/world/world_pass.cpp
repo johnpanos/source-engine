@@ -146,6 +146,7 @@ struct Resources
 		bool ready = false;
 		bool failed = false;
 		std::string failure; // why, when failed
+		std::uint64_t lastUsed = 0; // the frame a dynamic snapshot last drew
 		// The material system handle of the view render target the program
 		// reads through its view group (ResolvedProgram::viewInputs: the
 		// water point's planar reflection), or 0.
@@ -153,8 +154,12 @@ struct Resources
 	};
 	std::vector<Material> materials;
 	std::vector<Material> modelMaterials;
-	// Only snapshots used in the current recorded frame are retained. Replaced
-	// groups retire behind the same submitted token as transient geometry.
+	// Snapshots used in the last kDynamicMaterialFrames recorded frames are
+	// retained (a snapshot's key holds every value and texture handle it
+	// binds, so a kept one is still exact); older ones and the overflow of
+	// kMaxDynamicMaterials retire behind the submitted token, as transient
+	// geometry does. Before 2026-10-05 every frame cleared the map, which
+	// re-resolved each model material once per frame.
 	std::map<std::string, Material> dynamicMaterials;
 	std::uint64_t dynamicFrame = 0;
 	// A world stage's depth-and-normal prepass (the screen passes' input): a
@@ -1888,9 +1893,20 @@ void WorldPass::RecordBatch(
 	}
 	if ( r.dynamicFrame != target.frame )
 	{
-		for ( auto &[key, m] : r.dynamicMaterials )
-			s.retiredGroups.emplace_back( r.dynamicFrame, std::move( m.group ) );
-		r.dynamicMaterials.clear();
+		constexpr std::uint64_t kDynamicMaterialFrames = 8;
+		constexpr std::size_t kMaxDynamicMaterials = 1024;
+		const bool overfull = r.dynamicMaterials.size() > kMaxDynamicMaterials;
+		std::erase_if( r.dynamicMaterials,
+		    [&]( auto &entry )
+		    {
+			    Resources::Material &m = entry.second;
+			    // A failure retries next frame (a texture may finish uploading).
+			    if ( !overfull && !m.failed && m.lastUsed + kDynamicMaterialFrames >= target.frame &&
+			         m.lastUsed <= target.frame )
+				    return false;
+			    s.retiredGroups.emplace_back( r.dynamicFrame, std::move( m.group ) );
+			    return true;
+		    } );
 		r.dynamicFrame = target.frame;
 	}
 
@@ -4366,6 +4382,7 @@ void WorldPass::RecordBatch(
 			continue;
 		}
 		Resources::Material &cached = r.dynamicMaterials[key];
+		cached.lastUsed = target.frame;
 		Resources::Material *m =
 		    prepareMaterial( *r.resolver, cached, mapped.Value(), draw.material );
 		if ( !m || !drawGroupReady( *m, draw.lightmapPage, draw.capturedLightmap ) ||
