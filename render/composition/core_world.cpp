@@ -2513,12 +2513,12 @@ std::uint32_t CoreWorld::QueueMesh( const legacy::CoreMeshDraw &draw )
 	if ( !draw.name || !draw.shader || !draw.vertices || !draw.indices || !draw.vertexCount ||
 	     !draw.indexCount || ( draw.variableCount && !draw.variables ) )
 		return 0;
-	// A static prop lit by its baked vertex color has no core term yet: a
-	// named refusal, never a draw lit by the wrong source.
-	if ( draw.staticVertexLighting )
+	// A static prop's baked vertex lighting reaches the core in its
+	// vertices' color, for the mesh point alone (VertexLitGeneric).
+	if ( draw.staticVertexLighting && !draw.mesh )
 	{
 		m_Pass.NoteRefusal( std::string( "material " ) + draw.name +
-		                    ": a static prop's baked vertex lighting has no core term" );
+		                    ": baked vertex lighting on a shader without the mesh point" );
 		return 0;
 	}
 	pass::world::WorldView view;
@@ -2539,6 +2539,7 @@ std::uint32_t CoreWorld::QueueMesh( const legacy::CoreMeshDraw &draw )
 		geometry.material.variables.emplace_back( "$nofog", "1" );
 	}
 	geometry.material.mesh = draw.mesh;
+	geometry.staticVertexLight = draw.staticVertexLighting;
 
 	for ( std::uint32_t i = 0;
 	    draw.kind != legacy::CoreMeshKind::kStencilClear && i < draw.variableCount; ++i )
@@ -2903,6 +2904,7 @@ void CoreWorld::RecordWorldBatch( std::span<const std::uint32_t> tags,
 	world.gpuSubmission = gpuSubmission != 0;
 	world.gpuOcclusion = gpuSubmission >= 2;
 	world.runtimeDirect = m_StageRuntimeDirect.load( std::memory_order_relaxed );
+	world.ambientOcclusionTerm = m_AoQuality.load( std::memory_order_relaxed ) > 0;
 	world.outputScale = target.outputScale;
 	std::copy( target.eye, target.eye + 3, world.eye );
 	world.envmapScale = target.envmapScale;

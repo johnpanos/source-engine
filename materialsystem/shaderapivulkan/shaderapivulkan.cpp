@@ -5217,6 +5217,11 @@ bool CEmptyMesh::EmitToCoreQueue()
 	if ( !valid || triangles.empty() )
 		return false;
 	std::vector<render::material::SurfaceWorldVertex> vertices( source.m_numVerts );
+	const bool meshShader = !V_stricmp( g_pBoundMaterial->GetShaderName(), "VertexLitGeneric" );
+	const CEmptyMesh *staticColorMesh = !meshShader         ? nullptr
+	                                    : source.HasColorMesh() ? &source
+	                                    : HasColorMesh()        ? this
+	                                                            : nullptr;
 	const bool brushTangents = ( source.m_format & VERTEX_TANGENT_S ) != 0;
 	for ( int i = 0; i < source.m_numVerts; ++i )
 	{
@@ -5238,6 +5243,16 @@ bool CEmptyMesh::EmitToCoreQueue()
 		out.color[1] = raw[13];
 		out.color[2] = raw[12];
 		out.color[3] = raw[15];
+		// Frozen-path: core progress (R91 baked-colour static props) - a static
+		// prop's baked lighting (its color mesh) is the core vertex's color;
+		// the core's kSurfaceStaticVertexLight decodes it as STATIC_LIGHT does.
+		float staticLight[3];
+		if ( staticColorMesh && staticColorMesh->StaticColor( i, staticLight ) )
+		{
+			for ( int c = 0; c < 3; ++c )
+				out.color[c] = std::uint8_t( staticLight[c] * 255.0f + 0.5f );
+			out.color[3] = 255;
+		}
 		float normal[3], tangent[4];
 		memcpy( normal, raw + kMeshNormalOffset, sizeof( normal ) );
 		memcpy( tangent, raw + ( brushTangents ? kMeshTangentSOffset : kMeshUserDataOffset ),

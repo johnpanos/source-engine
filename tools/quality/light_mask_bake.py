@@ -115,8 +115,22 @@ def bake_light_masks(merged, scene, path, size, render):
     render.cycles.samples = SAMPLES
     render.render.bake.use_pass_indirect = False
     top = light_shadow_masks.TopFour(size, size)
+    # A checkpoint after each group, so a crashed bake (a GPU fault) resumes
+    # where it stopped; it is keyed by the groups' lights and the size.
+    checkpoint = path.with_name(path.name + ".partial.npz")
+    key = json.dumps([[light["source"], light_id] for light, light_id in zip(candidates, ids)] +
+                     [size, SAMPLES])
+    done = set()
+    if checkpoint.is_file():
+        saved = np.load(checkpoint)
+        if str(saved["key"]) == key:
+            top.light, top.visibility, top.ids = saved["light"], saved["visibility"], saved["ids"]
+            done = set(int(v) for v in saved["done"])
+            message("resuming light masks after %d of %d groups" % (len(done), len(lamps)))
     try:
         for light_id in sorted(lamps):
+            if light_id in done:
+                continue
             keep = set(lamps[light_id])
             for obj in lit_objects:
                 obj.hide_render = obj not in keep
@@ -148,6 +162,9 @@ def bake_light_masks(merged, scene, path, size, render):
             visibility = np.where(lit, np.clip(shadowed / np.maximum(open_light, 1e-6), 0.0, 1.0),
                                   1.0)
             top.add(light_id, np.where(lit, open_light, 0.0), visibility)
+            done.add(light_id)
+            np.savez(str(checkpoint.with_suffix("")), key=key, light=top.light,
+                     visibility=top.visibility, ids=top.ids, done=sorted(done))
     finally:
         for obj in lit_objects:
             obj.hide_render = False
@@ -165,6 +182,7 @@ def bake_light_masks(merged, scene, path, size, render):
         image.save_render(filepath=str(out.resolve()), scene=render)
         if not out.is_file():
             raise RuntimeError("Cycles did not save " + out.name)
+    checkpoint.unlink(missing_ok=True)
     return {"records": [{"origin": light["origin"], "id": light_id, "source": light["source"],
                          "reach_units": light["radius"]}
                         for light, light_id in zip(candidates, ids) if light_id is not None],

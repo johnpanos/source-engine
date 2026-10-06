@@ -66,6 +66,8 @@ int RunSuite( int argc, char **argv )
 		return RunPosedModelSuite( argc - 1, argv + 1 );
 	if ( name == "sprite" )
 		return RunSpriteSuite( argc - 1, argv + 1 );
+	if ( name == "static-light" )
+		return RunStaticLightSuite( argc - 1, argv + 1 );
 	if ( name == "softparticle" )
 		return RunSoftParticleSuite( argc - 1, argv + 1 );
 	if ( name == "selfillum" )

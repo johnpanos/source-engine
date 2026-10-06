@@ -32,7 +32,7 @@ class TopFourTests(unittest.TestCase):
         for group, light in enumerate([0.1, 0.5, 0.3, 0.9, 0.2, 0.0], start=1):
             top.add(group, np.array([[light]]), np.array([[group / 10.0]]))
         self.assertEqual(top.ids[0, 0].tolist(), [4, 2, 3, 5])
-        self.assertEqual(top.visibility[0, 0].tolist(), [0.4, 0.2, 0.3, 0.5])
+        np.testing.assert_allclose(top.visibility[0, 0], [0.4, 0.2, 0.3, 0.5], rtol=1e-6)
 
     def test_unlit_groups_take_no_slot(self):
         top = lsmk.TopFour(1, 1)

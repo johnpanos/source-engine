@@ -274,7 +274,7 @@ constexpr std::uint32_t kStageOccluderRows = 16;
 
 // Adapt the product's stage to the surface program's shared scene policy.
 // The view's occlusion is one where no screen pass recorded it.
-std::uint32_t StageTerms( const WorldStage &stage, bool runtimeDirect )
+std::uint32_t StageTerms( const WorldStage &stage, bool runtimeDirect, bool ambientOcclusion )
 {
 	material::SceneTermInputs inputs;
 	inputs.runtimeDirect = runtimeDirect;
@@ -284,7 +284,8 @@ std::uint32_t StageTerms( const WorldStage &stage, bool runtimeDirect )
 	inputs.probeVolume = stage.probes.has_value();
 	inputs.probeBounce = stage.probes.has_value(); // the change atlas is always supplied
 	inputs.reflectionProbes = stage.reflection.has_value();
-	inputs.ambientOcclusion = true; // the neutral view binds one when AO is off
+	// Off: compiled out of the programs (the neutral view still binds one).
+	inputs.ambientOcclusion = ambientOcclusion;
 	return material::SceneTerms( inputs );
 }
 
@@ -706,6 +707,7 @@ struct WorldPass::State
 	// The runtime direct light the variants' programs were resolved with
 	// (WorldTarget::runtimeDirect).
 	bool variantsRuntimeDirect = false;
+	bool variantsAmbientOcclusion = true;
 	std::vector<Resources> variants;
 	std::vector<std::pair<std::uint64_t, Resources>> retired;
 	// Render sequence only: the world's model geometry, one allocation pair per
@@ -2001,13 +2003,15 @@ void WorldPass::RecordBatch(
 	// it may have used them, so they are released at a later frame's slot,
 	// whose submitted token covers this frame.
 	constexpr std::size_t kMaxVariants = 4;
-	if ( s.variantsGeneration != generation || s.variantsRuntimeDirect != target.runtimeDirect )
+	if ( s.variantsGeneration != generation || s.variantsRuntimeDirect != target.runtimeDirect ||
+	     s.variantsAmbientOcclusion != target.ambientOcclusionTerm )
 	{
 		for ( Resources &variant : s.variants )
 			s.retired.emplace_back( target.frame, std::move( variant ) );
 		s.variants.clear();
 		s.variantsGeneration = generation;
 		s.variantsRuntimeDirect = target.runtimeDirect;
+		s.variantsAmbientOcclusion = target.ambientOcclusionTerm;
 	}
 	auto variant = std::find_if( s.variants.begin(), s.variants.end(),
 	    [&]( const Resources &v )
@@ -2159,7 +2163,7 @@ void WorldPass::RecordBatch(
 		// points too. World pbr surfaces stay a stage's alone; their claim
 		// (ClaimForDrawing's worldPbr) asks for the stage itself.
 		r.resolver->SetWorldPbr(
-		    true, world->stage ? StageTerms( *world->stage, target.runtimeDirect ) : 0 );
+		    true, world->stage ? StageTerms( *world->stage, target.runtimeDirect, target.ambientOcclusionTerm ) : 0 );
 		r.resolver->SetSceneColorAvailable( world->stage != nullptr );
 		r.materials.resize( world->materials.size() );
 	}
@@ -2175,7 +2179,7 @@ void WorldPass::RecordBatch(
 		}
 		r.modelResolver = std::move( resolver ).Value();
 		r.modelResolver->SetWorldPbr(
-		    true, world->stage ? StageTerms( *world->stage, target.runtimeDirect ) : 0 );
+		    true, world->stage ? StageTerms( *world->stage, target.runtimeDirect, target.ambientOcclusionTerm ) : 0 );
 		r.modelResolver->SetSceneColorAvailable( world->stage != nullptr );
 		r.modelMaterials.resize( world->materials.size() );
 		prewarmResolver( *r.modelResolver, "model" );
@@ -4963,7 +4967,7 @@ void WorldPass::RecordBatch(
 			{
 				r.prepassResolver = std::move( resolver ).Value();
 				r.prepassResolver->SetWorldPbr(
-				    true, StageTerms( *world->stage, target.runtimeDirect ) );
+				    true, StageTerms( *world->stage, target.runtimeDirect, target.ambientOcclusionTerm ) );
 				r.prepassMaterials.resize( world->materials.size() );
 			}
 			else
@@ -4979,7 +4983,7 @@ void WorldPass::RecordBatch(
 			{
 				r.prepassModelResolver = std::move( resolver ).Value();
 				r.prepassModelResolver->SetWorldPbr(
-				    true, StageTerms( *world->stage, target.runtimeDirect ) );
+				    true, StageTerms( *world->stage, target.runtimeDirect, target.ambientOcclusionTerm ) );
 				r.prepassModelResolver->SetSceneColorAvailable( true );
 				r.prepassModelMaterials.resize( world->materials.size() );
 			}
@@ -5340,6 +5344,7 @@ void WorldPass::RecordBatch(
 		int page;
 		const WorldView::DynamicDraw *source;
 		const Group *lit = nullptr; // the draw's own group, with its model lighting
+		PipelineId pipeline;        // the program's, or its static vertex light variant
 	};
 	std::vector<DynamicDraw> dynamicDraws;
 	// Draw groups holding one draw's model lighting: built per draw and
@@ -5424,8 +5429,24 @@ void WorldPass::RecordBatch(
 			encoder.TransitionBuffer( buffer, ResourceUsage::kCopyDestination, usage );
 			s.retiredBuffers.emplace_back( target.frame, buffer );
 		}
+		// A static prop's baked vertex lighting is a variant of its program.
+		PipelineId pipeline = m->program.request.pipeline;
+		if ( draw.staticVertexLight )
+		{
+			auto variant = m->resolver->VariantPipeline(
+			    m->program, material::kSurfaceStaticVertexLight, 0 );
+			if ( !variant )
+			{
+				// The buffers above retire with the frame.
+				note( "material " + draw.material.name +
+				      ": its static vertex light variant: " + variant.Error() );
+				complete = false;
+				continue;
+			}
+			pipeline = variant.Value();
+		}
 		dynamicDraws.push_back( { m, vertices.Value(), indices.Value(),
-		    std::uint32_t( draw.indices.size() ), draw.lightmapPage, &draw, lit } );
+		    std::uint32_t( draw.indices.size() ), draw.lightmapPage, &draw, lit, pipeline } );
 	}
 
 	preparation.End();
@@ -5766,7 +5787,7 @@ void WorldPass::RecordBatch(
 				continue;
 			}
 		}
-		const auto state = statePipeline( m, m.program.request.pipeline, target.drawState,
+		const auto state = statePipeline( m, draw.pipeline, target.drawState,
 		    frame::DebugSpecializationFor( view.debug, m.program.name ) );
 		if ( !state )
 		{

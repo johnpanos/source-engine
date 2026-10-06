@@ -478,6 +478,12 @@ inline constexpr std::uint32_t kSurfaceMraoTexture = 268435456;
 // A VertexLit mesh uses its separate RGB self-illumination mask in the
 // material emission slot, instead of base alpha.
 inline constexpr std::uint32_t kSurfaceSelfIllumMask = 536870912;
+// A static prop's baked per-vertex lighting (Source's static-prop color
+// lump, VertexLitGeneric's STATIC_LIGHT): the world vertex's color carries
+// it, decoded as GammaToLinear( color * 2 ). It is the surface's baked diffuse
+// light, as a lightmap is a world surface's: the probe volume is not read,
+// and a baked light adds its specular lobe alone.
+inline constexpr std::uint32_t kSurfaceStaticVertexLight = 2147483648u;
 // VertexLit's Phong exponent texture uses the material mask slot. Its red
 // channel supplies the exponent when the constant is zero; green controls
 // albedo tint and alpha may mask the rim.

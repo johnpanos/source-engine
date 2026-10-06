@@ -113,9 +113,10 @@ ConVar r_temporal_scale( "r_temporal_scale", "0", FCVAR_ARCHIVE,
 ConVar r_core_dynamic_draws( "r_core_dynamic_draws", "0", FCVAR_CHEAT,
     "Experimental rendercore dynamic-material handoff. Explicit opt-in only; "
     "whole-cohort queued rendering and image acceptance are incomplete." );
-ConVar r_core_ao_quality( "r_core_ao_quality", "2", FCVAR_ARCHIVE,
-    "Render core ambient occlusion (GTAO): 0 off, 1 low, 2 medium, 3 high, 4 ultra.", true, 0, true,
-    4 );
+ConVar r_core_ao_quality( "r_core_ao_quality", "0", FCVAR_ARCHIVE,
+    "Render core ambient occlusion (GTAO): 0 off (the default: Source 2's lighting, compiled out), "
+    "1 low, 2 medium, 3 high, 4 ultra.",
+    true, 0, true, 4 );
 ConVar r_core_depth_prepass( "r_core_depth_prepass", "1", FCVAR_ARCHIVE,
     "Render core: draw the world's opaque depth before lighting it, so each pixel is shaded "
     "once (0 lights every fragment the depth test passes)." );
@@ -138,9 +139,9 @@ ConVar r_core_runtime_direct( "r_core_runtime_direct", "1", FCVAR_ARCHIVE,
     "drawn at runtime, shadowed, so moving objects block it (0: the bake's total layer, with "
     "every light's direct light and shadows baked; the Low profile's choice). Applies at the "
     "next frame." );
-ConVar r_core_ssr( "r_core_ssr", "1", FCVAR_ARCHIVE,
+ConVar r_core_ssr( "r_core_ssr", "0", FCVAR_ARCHIVE,
     "Render core: screen-space reflections over a stage view's glossy surfaces "
-    "(render.ssr.v1; 0: the probes alone)." );
+    "(render.ssr.v1; 0, the default: the probes alone, Source 2's lighting)." );
 ConVar r_core_volumetric( "r_core_volumetric", "1", FCVAR_ARCHIVE,
     "Render core: composite the map's participating media (env_volumetric_fog_volume and "
     "env_volumetric_fog_controller) over its views (0: the term is left out)." );

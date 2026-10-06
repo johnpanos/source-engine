@@ -233,9 +233,10 @@ platform acceptance.
     (user decision, 2026-10-03): complete gameplay-frame measurements select
     and judge work across the pipeline; isolated render-core gains are diagnostic.
     Its [optimization resolution sweep](RFC/0016-render-core.md#optimization-resolution-sweep-user-decision-2026-10-03)
-    (user decision, 2026-10-03) requires a baseline from 1024×768 through
-    4K (3840×2160) and a matched candidate sweep to identify CPU/GPU limits
-    and gains per resolution. No gain at 1024×768 cannot rule out a gain at 4K.
+    (user decision, 2026-10-03; points amended 2026-10-06) requires a baseline
+    at 720p, 1080p, 1440p and 4K and a matched candidate sweep to identify
+    CPU/GPU limits and gains per resolution. No gain at 720p cannot rule out
+    a gain at 4K.
 
 ## DRY and Liskov Substitution Principle
 
@@ -433,6 +434,26 @@ working protocol).
 
 Within the render program, take the remaining work in this order, subject to
 the roadmap's hard prerequisites:
+
+0. **Source 2 lighting parity at Source 2 cost on the High profile** (user
+   direction, 2026-10-06), ahead of every other render-optimization slice.
+   [RFC 0016's Source 2 lighting defaults](RFC/0016-render-core.md#source-2-lighting-defaults-user-direction-2026-10-06)
+   own the decisions: static lights' shadows baked per texel (LSMK), LTC area
+   lights off by default, PCSS a user setting. In order: (a) close the two
+   Source 2 gaps on the core, baked per-vertex lighting for static props and
+   the core-rendered planar reflection view, each with lab proof, matched
+   game/lab captures and the old copy deleted; (b) High defaults with GTAO
+   and SSR off (LTC is already off and compiled out by default), compiled out
+   by specialization constants, still selectable, their lab oracles kept
+   passing; (c) measure VGPRs, spills and occupancy
+   of the world, static-model and posed-model PBR pipelines on the Radeon
+   8060S and the RTX 3070, before and after, then the full resolution sweep
+   with the frame-floor suite and the intro4 demo, ABBA interleaved, judged by
+   the High 120 FPS row; (d) if the 3070 still misses, reduce the remaining
+   register peak (shadow-receiving live state, per-light fetch chains)
+   without cutting filter samples, resolution or cohorts. Current standing
+   (what is done, last recorded VGPRs and frame times, open items) is in
+   [RFC 0016's priority table](RFC/0016-render-core.md#source-2-lighting-defaults-user-direction-2026-10-06).
 
 Game integration fixes follow RFC 0016's
 [strict FSR-on/off game coverage rule](RFC/0016-render-core.md#the-rules)

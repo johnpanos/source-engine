@@ -20,7 +20,7 @@ namespace gameui
 // One value per ConVar, each the ConVar's integer value.
 struct RenderCoreLighting
 {
-	int ambientOcclusion = 2; // r_core_ao_quality: 0 off .. 4 ultra
+	int ambientOcclusion = 0; // r_core_ao_quality: 0 off (the default) .. 4 ultra
 	int shadows = 2;          // r_core_shadow_quality: 0 off .. 3 high
 	int depthPrepass = 1;     // r_core_depth_prepass: 0/1
 	int shadowMovers = 1;     // r_core_shadow_movers: 0/1
@@ -134,8 +134,10 @@ inline constexpr int kRenderCoreLightingPresetChoices = 3;
 inline constexpr RenderCoreLighting PresetLighting( RenderCoreLightingPreset preset )
 {
 	if ( preset == RenderCoreLightingPreset::kLow )
-		return RenderCoreLighting{ 1, 0, 1, 0, 0, 0 };
-	return RenderCoreLighting{ 3, 3, 1, 1, 1, 1 };
+		return RenderCoreLighting{ 0, 0, 1, 0, 0, 0 };
+	// GTAO off in High too (user direction, 2026-10-06: Source 2 lighting
+	// at Source 2 cost; the profile's declared-off terms).
+	return RenderCoreLighting{ 0, 3, 1, 1, 1, 1 };
 }
 
 inline constexpr RenderCoreLightingPreset ClassifyPreset( const RenderCoreLighting &lighting )

@@ -76,6 +76,7 @@ int RunTemporalSuite( int argc, char **argv );
 int RunSuite( int argc, char **argv );
 int RunPosedModelSuite( int argc, char **argv );
 int RunSpriteSuite( int argc, char **argv );
+int RunStaticLightSuite( int argc, char **argv );
 int RunSoftParticleSuite( int argc, char **argv );
 int RunSelfIllumSuite( int argc, char **argv );
 int RunViewStateSuite( int argc, char **argv );

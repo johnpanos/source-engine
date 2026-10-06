@@ -20,7 +20,11 @@ layout( location = 6 ) in vec4 inTangentTOffset;
 #include "surface_material.glsl"
 #include "surface_frame.glsl"
 #include "../../shaders/common/tree_sway.glsl"
+// The program's terms (surface.frag's kTerms).
+layout( constant_id = 0 ) const int kTerms = 0;
 layout( constant_id = 1 ) const int kTreeSwayMode = 0;
+// A static prop's baked vertex lighting in the vertex color (surface_program.h).
+const int kStaticVertexLight = int( 0x80000000u );
 
 layout( push_constant ) uniform Draw
 {
@@ -97,4 +101,12 @@ void main()
 #endif
 	lightAtten = atten;
 	vertexLighting = vec3( 0.0 );
+	// vertexlit_and_unlit_generic's STATIC_LIGHT: GammaToLinear( color *
+	// cOverbright ), the static-prop color lump's baked light. The color is
+	// that light, not a tint.
+	if ( ( kTerms & kStaticVertexLight ) != 0 )
+	{
+		vertexLighting = pow( vertexColor.rgb * 2.0, vec3( 2.2 ) );
+		color = vec4( 1.0, 1.0, 1.0, vertexColor.a );
+	}
 }

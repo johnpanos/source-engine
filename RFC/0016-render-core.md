@@ -567,14 +567,15 @@ alpha coverage, portal/stencil effects, transparency and scene-color captures.
 The objective is lower complete in-game frame cost; a faster isolated core pass
 is supporting evidence only.
 
-#### Optimization resolution sweep (user decision, 2026-10-03; range amended 2026-10-06)
+#### Optimization resolution sweep (user decision, 2026-10-03)
 
 **Before optimizing a rendered workload, capture a baseline by sweeping from
 720p (1280×720) through 4K (3840×2160). Repeat the same sweep for the candidate.**
-Include exactly 1280×720, 1920×1080, 2560×1440 and 3840×2160, plus the profile's
-declared resolution when different. The user narrowed the range on 2026-10-06:
-1024×768 is no longer a sweep point, and every point is 16:9. This section owns the resolution methodology for
-in-game pipeline optimization and rendered CPU/GPU placement comparisons.
+The sweep is exactly four points: 720p (1280×720), 1080p (1920×1080), 1440p
+(2560×1440) and 4K (3840×2160) (user decision, 2026-10-06, replacing the
+earlier 1024×768 starting point). Every point is 16:9. This section owns the
+resolution methodology for in-game pipeline optimization and rendered CPU/GPU
+placement comparisons.
 Headless server, compiler and simulation benchmarks keep their domain's workload
 scaling instead of acquiring an artificial screen-resolution requirement.
 
@@ -583,9 +584,7 @@ scaling instead of acquiring an artificial screen-resolution requirement.
   and warmup policy for each baseline/candidate pair. Record both variants'
   binary identities and build settings, keeping each variant fixed across its
   sweep. Record actual render and output extents, viewport, aspect ratio, FOV,
-  LOD and texture settings. The 4:3 starting point and 16:9 points can expose
-  different scene coverage; verify
-  visible work and add matched-aspect controls when that changes the workload.
+  LOD and texture settings. Verify visible work at each point.
   Pin dynamic resolution and record any resolution-dependent LOD changes rather
   than attributing less geometry or a different image to the optimization.
 - **Measure each point.** Interleave repeated baseline/candidate runs, retain
@@ -605,7 +604,7 @@ scaling instead of acquiring an artificial screen-resolution requirement.
   processor limits the frame. Report CPU-bound, GPU-bound, mixed, capped or
   unresolved per point, with the supporting measurements.
 - **Judge gains at the resolution where they occur.** No visible frame-time
-  improvement at 1024×768 must not be used to reject a possible 4K improvement:
+  improvement at 720p must not be used to reject a possible 4K improvement:
   a CPU-limited low-resolution frame can hide reduced GPU cost that lowers the
   complete frame time once GPU work becomes limiting. The converse also applies
   to a CPU optimization hidden by GPU cost at 4K. Use the baseline to select
@@ -626,8 +625,8 @@ mode's declared input/output ratio or extent policy and recording both extents
 at every point. Compare native and upscaled modes at the same output extent,
 with their explicit sample and quality policies and matched-image review;
 reconstruction cost and lower input shading cost both count in the complete
-frame. A 1024×768 input reconstructed to a larger output is not a native
-1024×768 baseline. The installed profiling workflow and its current sweep
+frame. A 720p input reconstructed to a larger output is not a native
+720p baseline. The installed profiling workflow and its current sweep
 limitations are documented in [the collector guide](../tools/quality/render_profile.md#resolution-sweep-before-and-after-optimization).
 
 ### Enforcement
@@ -1960,6 +1959,46 @@ govern all of it.
   Video: "Soft Shadows (PCSS)", on in High, off in Low). Off gives every
   runtime shadow the hard 2x2 filter; baked masks are unaffected.
 
+**Priority: Source 2 parity at Source 2 cost on High** (user direction,
+2026-10-06; ahead of other render-optimization slices; work order in
+AGENTS.md's render-quality priority, item 0). The surface program already
+covers every Source 2 lighting technique plus five extras: LTC area lights,
+GTAO, SSR, relit reflection probes and the opt-in runtime GI producers. The
+extras cost registers: RCV-07 measured about 48 VGPRs each for area lights
+and shadow receiving (96 without both on the world PBR pipeline, 84 on
+static models), against the then 192-VGPR program. At 128 VGPRs Ampere runs
+16 of 48 warps and RDNA 3.5 12 of 16 waves.
+
+Current standing (2026-10-06, from the source; no new measurement):
+
+| Item | State |
+| --- | --- |
+| LTC area lights | **Off by default** (`r_core_area_lights 0`, above). With no area lights the world pass clears `kSurfaceViewAreas`, so the LTC path is compiled out of the view's pipelines, not branched around |
+| Baked static-light shadows (LSMK) | **On** (above) |
+| PCSS | User setting, on in High (above) |
+| SSR | **Still on by default** (`r_core_ssr 1`); High's default not yet changed |
+| GTAO | **Still always on** in stage views (no convar; `CoreWorld` composes it over the prepass); High's default not yet changed |
+| Static-prop baked per-vertex lighting | **Not on the core**: those props draw through the legacy stream (R91 "baked-colour static props") |
+| Planar reflection view | **Partial**: the core's water point reads the view's reflection, but the legacy stream renders the view (R91) |
+| Register allocation | Last recorded 144 VGPRs on RADV with area lights compiled in (RCV-08/RCV-12, [evidence](0016-progress.md#rcv-12-retained-incremental-optimization-and-final-route-evidence)). No record exists for the area-off default (128 observed by the user, unrecorded) or for any NVIDIA GPU |
+| Frame time | Radeon 8060S, intro4 High 1080p 4x MSAA: arrival median 34.6 ms after the clip-test fix ([record](0016-progress.md#k12r90-the-clip-test-compiled-out-of-views-without-clip-planes-and-rendermap-media-2026-10-05)). RTX 3070, intro4 demo 1440p no MSAA: 17.2 fps, GPU-bound again ([record](0016-progress.md#render-thread-cpu-read-only-imports-leave-the-host-boundaries-plane-based-shadow-chunk-culling-2026-10-06-user-goal)). The High 120 FPS row fails on both; no sweep at the 2026-10-06 points exists |
+
+Remaining work, in order:
+
+- close the two Source 2 gaps on the core: baked per-vertex lighting of
+  static props (the static-prop colour lump) and the planar reflection view
+  rendered by the core;
+- High declares GTAO and SSR off, compiled out through specialization
+  constants as LTC already is; each stays selectable and keeps its lab
+  oracle;
+- register allocation, spills and occupancy of the world, static-model and
+  posed-model PBR pipelines are measured on the Radeon 8060S and the RTX
+  3070 before and after, then the
+  [resolution sweep](#optimization-resolution-sweep-user-decision-2026-10-03)
+  judges the result against the High 120 FPS row. A remaining miss is
+  attacked in the register peak, never by cutting filter samples,
+  resolution or cohorts.
+
 ### The model
 
 Every surface the core shades evaluates one sum. Legacy materials are
@@ -2041,25 +2080,6 @@ Rules for the whole model:
   (binding rule 7); only the user can turn a term off for a profile's
   shipped default. A term that a profile declares is never silently
   dropped.
-- **Source 2 parity at Source 2 cost (user decision, 2026-10-06).** The
-  High profile's lighting target is Source 2's technique set at Source 2's
-  cost. Its shipped default declares three terms off by name, compiled out
-  through specialization constants rather than branched around: LTC area
-  lights (per-pixel evaluation; area emitters keep their emissive surfaces
-  and the bake's contribution), GTAO, and SSR. Each stays selectable by
-  convar/profile, and its `render_lab` oracles and suites keep passing.
-  Why: RCV-07 attributed about 48 of the world PBR program's VGPRs each to
-  area lighting and shadow receiving
-  ([evidence](0016-progress.md#k11k12-shadow-receiver-microbenchmark-slice-2026-10-02-in-progress));
-  material/view specialization (RCV-12) cut code but not the register peak,
-  and the RTX 3070 loses the most occupancy to it. Parity first needs two
-  Source 2 techniques the core still lacks: baked per-vertex lighting on
-  static props (the static-prop colour lump) and the planar reflection
-  view rendered by the core. This decision turns terms off; it relaxes no
-  sample count, resolution, filter or cohort, and the High budget row is
-  unchanged. Measure VGPRs, spills and occupancy on the Radeon 8060S and
-  the RTX 3070 before and after, then the
-  [resolution sweep](#optimization-resolution-sweep-user-decision-2026-10-03-range-amended-2026-10-06).
 
 ### Output (`render.output.v1`) (amended 2026-09-28)
 

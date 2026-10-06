@@ -89,14 +89,14 @@ class TopFour:
     """Running per-texel selection of the four dominant groups."""
 
     def __init__(self, height, width):
-        self.light = np.zeros((height, width, CHANNELS), np.float64)
-        self.visibility = np.ones((height, width, CHANNELS), np.float64)
+        self.light = np.zeros((height, width, CHANNELS), np.float32)
+        self.visibility = np.ones((height, width, CHANNELS), np.float32)
         self.ids = np.zeros((height, width, CHANNELS), np.uint8)
 
     def add(self, group_id, unshadowed, visibility):
         """A group's unshadowed diffuse light and visibility, (h, w) each."""
-        light = np.concatenate([self.light, unshadowed[..., None]], axis=2)
-        vis = np.concatenate([self.visibility, visibility[..., None]], axis=2)
+        light = np.concatenate([self.light, unshadowed[..., None].astype(np.float32)], axis=2)
+        vis = np.concatenate([self.visibility, visibility[..., None].astype(np.float32)], axis=2)
         ids = np.concatenate([self.ids, np.full(unshadowed.shape + (1,), group_id, np.uint8)],
                              axis=2)
         ids[..., CHANNELS][unshadowed <= 0] = 0

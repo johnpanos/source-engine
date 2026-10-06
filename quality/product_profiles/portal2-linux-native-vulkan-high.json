@@ -24,16 +24,25 @@
           "mat_colorcorrection": "1",
           "r_core_world": "1",
           "r_core_dynamic_draws": "1",
-          "r_core_ao_quality": "3",
+          "r_core_ao_quality": "0",
           "r_core_shadow_quality": "3",
           "r_core_depth_prepass": "1",
           "r_core_shadow_movers": "1",
           "r_core_shadow_pcss": "1",
           "r_core_runtime_direct": "1",
           "r_core_area_lights": "0",
+          "r_core_ssr": "0",
           "r_indirect_producer": "baked",
           "r_drawviewmodel": "1",
           "cl_drawmonitors": "1"
+        },
+        "declared_off_terms": {
+          "decision": "user direction 2026-10-06: Source 2 lighting parity at Source 2 cost (RFC 0016 Source 2 lighting defaults)",
+          "terms": {
+            "area-lights": "r_core_area_lights 0: LTC area lights compiled out (no view area lights, kViewAreas off); fixtures keep their emissive surfaces and baked light",
+            "gtao": "r_core_ao_quality 0: kSurfaceAmbientOcclusion compiled out; material AO and the bake's occlusion remain",
+            "ssr": "r_core_ssr 0: the SSR targets' variant is not used; reflection probes alone"
+          }
         },
         "required_image_coverage": "RFC 0016 K11/K12 and R91: world, static and animated models, full shadows/material coverage, glass/water, decals, particles, beams, sky, post, UI and nested views; rejected or missing cohorts cannot pass."
       },
@@ -48,13 +57,14 @@
           "mat_colorcorrection": "1",
           "r_core_world": "1",
           "r_core_dynamic_draws": "1",
-          "r_core_ao_quality": "1",
+          "r_core_ao_quality": "0",
           "r_core_shadow_quality": "0",
           "r_core_depth_prepass": "1",
           "r_core_shadow_movers": "0",
           "r_core_shadow_pcss": "0",
           "r_core_runtime_direct": "0",
           "r_core_area_lights": "0",
+          "r_core_ssr": "0",
           "r_indirect_producer": "baked",
           "r_drawviewmodel": "1",
           "cl_drawmonitors": "1"

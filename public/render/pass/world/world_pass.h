@@ -422,6 +422,10 @@ struct WorldTarget
 	// stage's indirect layer. A change rebuilds the pass's programs, so it
 	// may change between frames.
 	bool runtimeDirect = false;
+	// The ambient occlusion term (material::kSurfaceAmbientOcclusion) is
+	// compiled into the stage's programs; false compiles it out (the AO
+	// setting off). A change rebuilds the pass's programs, as runtimeDirect's.
+	bool ambientOcclusionTerm = true;
 	// The device the slot records on (the legacy backend's); the pass's
 	// device objects live on it.
 	device::IRenderDevice2 *device = nullptr;
@@ -580,6 +584,9 @@ struct WorldView
 		// Source's model lighting at the draw, for a mesh point without stage
 		// lights (a plain map); the neutral block when absent.
 		std::optional<material::ModelLighting> lighting;
+		// A static prop: its vertices' color is its baked lighting (the
+		// static-prop color lump), drawn by kSurfaceStaticVertexLight.
+		bool staticVertexLight = false;
 	};
 	std::vector<DynamicDraw> dynamicDraws;
 	// Captured ordered depth-copy input for soft particles; one-based importer

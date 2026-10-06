@@ -135,6 +135,8 @@ const int kWater = 33554432;
 // Runtime direct light on a world surface (surface_program.h): the basis
 // reads the indirect layer, and every light's direct light is drawn here.
 const int kRuntimeDirect = 134217728;
+// A static prop's baked vertex lighting (surface_program.h), in vertexLighting.
+const int kStaticVertexLight = int( 0x80000000u );
 
 #include "surface_frame.glsl"
 // The split-sum table (RFC 0007, pbr_split_sum_table.h), read by the pbr point.
@@ -973,7 +975,10 @@ void PbrSurface( out float coverage )
 	// direct light at runtime (shadowed, both lobes) over the probe volume's
 	// indirect layer, when the volume carries one (RFC 0011's layers: total,
 	// indirect).
-	const bool meshDirect = Term( kMeshDirect ) && !lightmapped && Term( kProbeVolume ) &&
+	// kStaticVertexLight: the vertex's baked light is the surface's lightmap.
+	const bool staticVertexLight = Term( kStaticVertexLight ) && !lightmapped;
+	const bool meshDirect = Term( kMeshDirect ) && !lightmapped && !staticVertexLight &&
+	                        Term( kProbeVolume ) &&
 	                        ProbeGridRow( 5, 0 ).x >= 2.0 && !furnace;
 	const vec3 indirectOcclusion =
 	    occlusion * MultiBounceOcclusion( screenOcclusion, diffuseColor + directionalAlbedo );
@@ -1001,7 +1006,14 @@ void PbrSurface( out float coverage )
 		color = diffuseColor * light * occlusion;
 		diffuseIrradiance = light;
 	}
-	else if ( diffuseLobe && !lightmapped && DebugTermOn( kDebugTermProbes ) )
+	else if ( diffuseLobe && staticVertexLight && DebugTermOn( kDebugTermBaked ) )
+	{
+		const vec3 light = furnace ? vec3( 1.0 ) : vertexLighting;
+		color = diffuseColor * light * occlusion;
+		diffuseIrradiance = light;
+	}
+	else if ( diffuseLobe && !lightmapped && !staticVertexLight &&
+	          DebugTermOn( kDebugTermProbes ) )
 	{
 		// A surface the probe volume lights reads its indirect layer when it
 		// has one, and then takes every light's direct light itself
