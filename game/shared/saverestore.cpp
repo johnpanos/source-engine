@@ -792,7 +792,7 @@ bool CSave::WriteBasicField( const char *pname, void *pData, datamap_t *pRootMap
 		}
 
 		default:
-			Warning( "Bad field type\n" );
+			Warning( "Bad field type %d in field \"%s\"\n", (int)pField->fieldType, pField->fieldName ? pField->fieldName : "?" );
 			Assert(0);
 			return false;
 	}
@@ -1309,7 +1309,7 @@ bool CSave::WriteGameField( const char *pname, void *pData, datamap_t *pRootMap,
 			break;
 
 		default:
-			Warning( "Bad field type\n" );
+			Warning( "Bad field type %d in field \"%s\"\n", (int)pField->fieldType, pField->fieldName ? pField->fieldName : "?" );
 			Assert(0);
 			return false;
 	}
@@ -1462,7 +1462,7 @@ void CRestore::ReadBasicField( const SaveRestoreRecordHeader_t &header, void *pD
 		}
 		
 		default:
-			Warning( "Bad field type\n" );
+			Warning( "Bad field type %d in field \"%s\"\n", (int)pField->fieldType, pField->fieldName ? pField->fieldName : "?" );
 			Assert(0);
 	}
 }
@@ -2153,7 +2153,7 @@ void CRestore::ReadGameField( const SaveRestoreRecordHeader_t &header, void *pDe
 			break;
 
 		default:
-			Warning( "Bad field type\n" );
+			Warning( "Bad field type %d in field \"%s\"\n", (int)pField->fieldType, pField->fieldName ? pField->fieldName : "?" );
 			Assert(0);
 	}
 }

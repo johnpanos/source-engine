@@ -274,6 +274,13 @@ private:
 extern	CClientState	cl;
 
 #ifndef SWDS
+// The client state of the active local player's slot (slot -1) or of an explicit slot; the base
+// client is always slot 0 (engine.splitscreen-wire.v1, cl_splitscreen.cpp)
+CClientState &GetLocalClient( int nSlot = -1 );
+CClientState &GetBaseLocalClient();
+#endif
+
+#ifndef SWDS
 extern CGlobalVarsBase g_ClientGlobalVariables;
 #endif
 

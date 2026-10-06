@@ -303,7 +303,8 @@ void CWeaponPortalgun::SetCanFirePortal2( bool bCanFire /*= true*/ )
 
 	if ( pOwner == NULL )
 	{
-		Msg( "Weapon_portalgun has no owner when trying to upgrade!\n" );
+		// A gun that map logic upgrades before anyone holds it keeps the flag; the owner gets the
+		// upgrade with the gun, so there is nothing to play yet
 		return;
 	}
 

@@ -75,12 +75,12 @@
 #define SECURITY_CAMERA_TOTAL_TO_KNOCK_DOWN 33
 
 #ifdef PORTAL2
-// The Portal 2 header shares the floor turret's turretState_e; the camera's
+// The Portal 2 header shares the floor turret's securityCameraState_e; the camera's
 // extra dead state follows its last value (PreThink ignores the state).
-#define TURRET_DEAD ( (turretState_e)TURRET_STATE_TOTAL )
+#define TURRET_DEAD ( (securityCameraState_e)TURRET_STATE_TOTAL )
 #else
 //Turret states
-enum turretState_e
+enum securityCameraState_e
 {
 	TURRET_SEARCHING,
 	TURRET_AUTO_SEARCHING,
@@ -169,7 +169,7 @@ public:
 
 protected:
 	
-	bool	PreThink( turretState_e state );
+	bool	PreThink( securityCameraState_e state );
 	void	Ping( void );	
 	void	Toggle( void );
 	void	Enable( void );
@@ -921,7 +921,7 @@ void CNPC_SecurityCamera::SearchThink( void )
 // Purpose: Allows a generic think function before the others are called
 // Input  : state - which state the turret is currently in
 //-----------------------------------------------------------------------------
-bool CNPC_SecurityCamera::PreThink( turretState_e state )
+bool CNPC_SecurityCamera::PreThink( securityCameraState_e state )
 {
 	CheckPVSCondition();
 

@@ -28,6 +28,10 @@ public:
 	model_t		*worldmodel;	// cl_entitites[0].model
 	struct worldbrushdata_t *worldbrush;
 	float		interval_per_tick;		// Tick interval for game
+	// Local split-screen players this game supports (engine.splitscreen-wire.v1). Set when
+	// the server starts from the game DLL; 1 means the game has no split-screen.
+	int			max_splitscreen_players = 1;
+	int			max_splitscreen_players_clientdll = 1;
 	void SetWorldModel( model_t *pModel );
 };
 

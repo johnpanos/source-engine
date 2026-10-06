@@ -48,6 +48,10 @@ void SearchForDevice()
 	SDL_JoystickID *devices = SDL_GetGamepads( &count );
 	for ( int i = 0; devices && i < count; ++i )
 	{
+		// a controller that already has a slot keeps it
+		if ( pInputSystem->GamepadSlotForDevice( devices[i] ) >= 0 )
+			continue;
+
 		if ( newJoystickId < 0 || devices[i] == static_cast<SDL_JoystickID>( newJoystickId ) )
 		{
 			pInputSystem->JoystickHotplugAdded( devices[i] );
@@ -217,9 +221,10 @@ void CInputSystem::InitializeJoysticks( void )
 	// assume no joystick
 	m_nJoystickCount = 0;
 	memset( m_pJoystickInfo, 0, sizeof( m_pJoystickInfo ) );
-	for ( int i = 0; i < MAX_JOYSTICKS; ++i )
+	for ( int i = 0; i < gamepads::kSlotCount; ++i )
 	{
 		m_pJoystickInfo[ i ].m_nDeviceId = -1;
+		m_GamepadState[ i ] = gamepads::State();
 	}
 
 	// abort startup if user requests no joystick
@@ -303,6 +308,10 @@ void CInputSystem::ShutdownJoysticks()
 	{
 		JoystickHotplugRemoved( m_pJoystickInfo[ 0 ].m_nDeviceId );
 	}
+	for ( int slot = 1; slot < gamepads::kSlotCount; ++slot )
+	{
+		CloseGamepadSlot( slot );
+	}
 	SDL_QuitSubSystem( SDL_INIT_GAMECONTROLLER | SDL_INIT_HAPTIC );
 
 	m_bJoystickInitialized = false;
@@ -384,6 +393,10 @@ void CInputSystem::JoystickHotplugAdded( int joystickIndex )
 
 #endif
 
+	// A controller that is already in a slot stays there
+	if ( GamepadSlotForDevice( joystickId ) >= 0 )
+		return;
+
 	int activeJoystick = joy_active.GetInt();
 	JoystickInfo_t& info = m_pJoystickInfo[ 0 ];
 	if ( activeJoystick < 0 )
@@ -400,6 +413,17 @@ void CInputSystem::JoystickHotplugAdded( int joystickIndex )
 #endif
 			if ( !bTakesOver )
 			{
+#if defined( USE_SDL3 )
+				// A second controller belongs to the second local player
+				for ( int slot = 1; slot < gamepads::kSlotCount; ++slot )
+				{
+					if ( m_pJoystickInfo[ slot ].m_nDeviceId == -1 )
+					{
+						OpenGamepadSlot( slot, joystickId );
+						return;
+					}
+				}
+#endif
 				Msg( "Detected supported joystick #%i '%s'. Currently active joystick is #%i.\n",
 				    joystickId, pJoystickName, info.m_nDeviceId );
 				return;
@@ -480,6 +504,10 @@ void CInputSystem::JoystickHotplugAdded( int joystickIndex )
 	m_nJoystickCount = 1;
 	m_bXController =  true;
 
+	m_GamepadState[ 0 ] = gamepads::State();
+	m_GamepadState[ 0 ].connected = true;
+	m_GamepadState[ 0 ].generation = ++m_nGamepadGeneration;
+
 	// We reset joy_active to -1 because joystick ids are never reused - until you restart.
 	// Setting it to -1 means that you get expected hotplugging behavior if you disconnect the current joystick.
 	joy_active.SetValue(-1);
@@ -487,6 +515,13 @@ void CInputSystem::JoystickHotplugAdded( int joystickIndex )
 
 void CInputSystem::JoystickHotplugRemoved( int joystickId )
 {
+	const int nRemovedSlot = GamepadSlotForDevice( joystickId );
+	if ( nRemovedSlot > 0 )
+	{
+		CloseGamepadSlot( nRemovedSlot );
+		return;
+	}
+
 	JoystickInfo_t& info = m_pJoystickInfo[ 0 ];
 	if ( info.m_nDeviceId != joystickId )
 	{
@@ -517,11 +552,163 @@ void CInputSystem::JoystickHotplugRemoved( int joystickId )
 	info.m_bGamepadRumble = false;
 	m_GamepadRumble[0].Reset();
 
+	m_GamepadState[ 0 ] = gamepads::State();
+	m_GamepadState[ 0 ].generation = ++m_nGamepadGeneration;
+
 	Msg("Joystick %i removed.\n", joystickId);
+}
+
+//-----------------------------------------------------------------------------
+// Controller slots after the first (SDL3): a gamepad the second local player holds.
+//-----------------------------------------------------------------------------
+int CInputSystem::GamepadSlotForDevice( int joystickId ) const
+{
+	for ( int slot = 0; slot < gamepads::kSlotCount; ++slot )
+	{
+		if ( m_pJoystickInfo[ slot ].m_nDeviceId == joystickId && joystickId != -1 )
+			return slot;
+	}
+	return -1;
+}
+
+void CInputSystem::OpenGamepadSlot( int slot, int joystickId )
+{
+#if defined( USE_SDL3 )
+	if ( slot <= 0 || slot >= gamepads::kSlotCount || m_pJoystickInfo[ slot ].m_nDeviceId != -1 )
+		return;
+
+	SDL_Gamepad *pGamepad = SDL_OpenGamepad( static_cast<SDL_JoystickID>( joystickId ) );
+	if ( pGamepad == NULL )
+	{
+		Warning( "Failed to open gamepad #%i for slot %i: %s\n", joystickId, slot, SDL_GetError() );
+		return;
+	}
+
+	JoystickInfo_t &info = m_pJoystickInfo[ slot ];
+	memset( &info, 0, sizeof( info ) );
+	info.m_pDevice = pGamepad;
+	info.m_nDeviceId = joystickId;
+	info.m_nButtonCount = SDL_GAMEPAD_BUTTON_COUNT;
+	// Rumble goes through the gamepad API; there is no haptic device for a second controller
+	info.m_bGamepadRumble = SDL_GetBooleanProperty(
+	    SDL_GetGamepadProperties( pGamepad ), SDL_PROP_GAMEPAD_CAP_RUMBLE_BOOLEAN, false );
+	m_GamepadRumble[ slot ].Reset();
+
+	m_GamepadState[ slot ] = gamepads::State();
+	m_GamepadState[ slot ].connected = true;
+	m_GamepadState[ slot ].generation = ++m_nGamepadGeneration;
+
+	Msg( "Gamepad #%i is in controller slot %i.\n", joystickId, slot );
+#endif
+}
+
+void CInputSystem::CloseGamepadSlot( int slot )
+{
+#if defined( USE_SDL3 )
+	if ( slot <= 0 || slot >= gamepads::kSlotCount )
+		return;
+
+	JoystickInfo_t &info = m_pJoystickInfo[ slot ];
+	if ( info.m_nDeviceId == -1 )
+		return;
+
+	if ( info.m_pDevice )
+	{
+		SDL_Gamepad *pGamepad = static_cast<SDL_Gamepad *>( info.m_pDevice );
+		SDL_RumbleGamepad( pGamepad, 0, 0, 0 );
+		SDL_CloseGamepad( pGamepad );
+	}
+	Msg( "Gamepad #%i left controller slot %i.\n", info.m_nDeviceId, slot );
+
+	memset( &info, 0, sizeof( info ) );
+	info.m_nDeviceId = -1;
+	m_GamepadRumble[ slot ].Reset();
+
+	m_GamepadState[ slot ] = gamepads::State();
+	m_GamepadState[ slot ].generation = ++m_nGamepadGeneration;
+#endif
+}
+
+#if defined( USE_SDL3 )
+static std::uint32_t PadButtonBit( int button )
+{
+	switch ( button )
+	{
+	case SDL_GAMEPAD_BUTTON_SOUTH:			return gamepads::A;
+	case SDL_GAMEPAD_BUTTON_EAST:			return gamepads::B;
+	case SDL_GAMEPAD_BUTTON_WEST:			return gamepads::X;
+	case SDL_GAMEPAD_BUTTON_NORTH:			return gamepads::Y;
+	case SDL_GAMEPAD_BUTTON_BACK:			return gamepads::Back;
+	case SDL_GAMEPAD_BUTTON_START:			return gamepads::Start;
+	case SDL_GAMEPAD_BUTTON_LEFT_STICK:		return gamepads::LeftStick;
+	case SDL_GAMEPAD_BUTTON_RIGHT_STICK:	return gamepads::RightStick;
+	case SDL_GAMEPAD_BUTTON_LEFT_SHOULDER:	return gamepads::LeftShoulder;
+	case SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER:	return gamepads::RightShoulder;
+	case SDL_GAMEPAD_BUTTON_DPAD_UP:		return gamepads::Up;
+	case SDL_GAMEPAD_BUTTON_DPAD_DOWN:		return gamepads::Down;
+	case SDL_GAMEPAD_BUTTON_DPAD_LEFT:		return gamepads::Left;
+	case SDL_GAMEPAD_BUTTON_DPAD_RIGHT:		return gamepads::Right;
+	}
+	return 0;
+}
+
+static int PadAxisIndex( int axis )
+{
+	switch ( axis )
+	{
+	case SDL_GAMEPAD_AXIS_LEFTX:			return gamepads::LeftX;
+	case SDL_GAMEPAD_AXIS_LEFTY:			return gamepads::LeftY;
+	case SDL_GAMEPAD_AXIS_RIGHTX:			return gamepads::RightX;
+	case SDL_GAMEPAD_AXIS_RIGHTY:			return gamepads::RightY;
+	case SDL_GAMEPAD_AXIS_LEFT_TRIGGER:		return gamepads::LeftTrigger;
+	case SDL_GAMEPAD_AXIS_RIGHT_TRIGGER:	return gamepads::RightTrigger;
+	}
+	return -1;
+}
+#endif
+
+void CInputSystem::UpdateGamepadButton( int slot, int button, bool bDown )
+{
+#if defined( USE_SDL3 )
+	if ( slot < 0 || slot >= gamepads::kSlotCount )
+		return;
+
+	const std::uint32_t nBit = PadButtonBit( button );
+	if ( bDown )
+		m_GamepadState[ slot ].buttons |= nBit;
+	else
+		m_GamepadState[ slot ].buttons &= ~nBit;
+#endif
+}
+
+void CInputSystem::UpdateGamepadAxis( int slot, int axis, int value )
+{
+#if defined( USE_SDL3 )
+	if ( slot < 0 || slot >= gamepads::kSlotCount )
+		return;
+
+	const int nIndex = PadAxisIndex( axis );
+	if ( nIndex >= 0 )
+	{
+		const bool bTrigger = nIndex == gamepads::LeftTrigger || nIndex == gamepads::RightTrigger;
+		m_GamepadState[ slot ].axes[ nIndex ] = bTrigger ? MAX( value, 0 ) : value;
+	}
+#endif
 }
 
 void CInputSystem::JoystickButtonPress( int joystickId, int button )
 {
+	const int nSlot = GamepadSlotForDevice( joystickId );
+	if ( nSlot >= 0 )
+	{
+		UpdateGamepadButton( nSlot, button, true );
+	}
+	if ( nSlot != 0 )
+	{
+		// Only the first controller feeds the legacy joystick events; a controller with no slot is ignored
+		return;
+	}
+
 	JoystickInfo_t& info = m_pJoystickInfo[ 0 ];
 	if ( info.m_nDeviceId != joystickId )
 	{
@@ -535,6 +722,14 @@ void CInputSystem::JoystickButtonPress( int joystickId, int button )
 
 void CInputSystem::JoystickButtonRelease( int joystickId, int button )
 {
+	const int nSlot = GamepadSlotForDevice( joystickId );
+	if ( nSlot >= 0 )
+	{
+		UpdateGamepadButton( nSlot, button, false );
+	}
+	if ( nSlot != 0 )
+		return;
+
 	JoystickInfo_t& info = m_pJoystickInfo[ 0 ];
 	if ( info.m_nDeviceId != joystickId )
 	{
@@ -548,6 +743,14 @@ void CInputSystem::JoystickButtonRelease( int joystickId, int button )
 
 void CInputSystem::JoystickAxisMotion( int joystickId, int axis, int value )
 {
+	const int nSlot = GamepadSlotForDevice( joystickId );
+	if ( nSlot >= 0 )
+	{
+		UpdateGamepadAxis( nSlot, axis, value );
+	}
+	if ( nSlot != 0 )
+		return;
+
 	JoystickInfo_t& info = m_pJoystickInfo[ 0 ];
 	if ( info.m_nDeviceId != joystickId )
 	{
@@ -657,10 +860,39 @@ void CInputSystem::PollJoystick( void )
 
 void CInputSystem::SetGamepadDeviceRumble( int slot, float left, float right, bool disabled )
 {
-	// The legacy joystick path currently owns only slot 0.
-	if ( slot != 0 )
+	if ( slot == 0 )
+	{
+		SetXDeviceRumble( disabled ? 0.f : left, disabled ? 0.f : right, slot );
 		return;
-	SetXDeviceRumble( disabled ? 0.f : left, disabled ? 0.f : right, slot );
+	}
+
+#if defined( USE_SDL3 )
+	// The other controllers rumble through the gamepad API only
+	if ( slot < 0 || slot >= gamepads::kSlotCount )
+		return;
+	JoystickInfo_t &info = m_pJoystickInfo[ slot ];
+	if ( info.m_nDeviceId < 0 || !info.m_bGamepadRumble || info.m_pDevice == NULL )
+		return;
+
+	ConVarRef joystickVar( "joystick" );
+	const bool bOff = disabled || !joystickVar.IsValid() || !joystickVar.GetBool();
+	const int64_t nNowMs = static_cast<int64_t>( Plat_FloatTime() * 1000.0 );
+	const gamepadrumble::Command command =
+	    bOff ? m_GamepadRumble[ slot ].Update( 0.f, 0.f, nNowMs ) : m_GamepadRumble[ slot ].Update( left, right, nNowMs );
+	SDL_Gamepad *pGamepad = static_cast<SDL_Gamepad *>( info.m_pDevice );
+	if ( command.m_Kind == gamepadrumble::Command::STOP )
+	{
+		SDL_RumbleGamepad( pGamepad, 0, 0, 0 );
+	}
+	else if ( command.m_Kind == gamepadrumble::Command::PLAY &&
+	          !SDL_RumbleGamepad( pGamepad, static_cast<Uint16>( command.m_nLow ),
+	              static_cast<Uint16>( command.m_nHigh ), command.m_nDurationMs ) )
+	{
+		Warning( "Couldn't rumble the gamepad in slot %i: %s\n", slot, SDL_GetError() );
+		info.m_bGamepadRumble = false;
+		m_GamepadRumble[ slot ].Reset();
+	}
+#endif
 }
 
 void CInputSystem::SetXDeviceRumble( float fLeftMotor, float fRightMotor, int userId )

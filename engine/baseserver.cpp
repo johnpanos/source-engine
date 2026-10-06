@@ -1956,6 +1956,8 @@ void CBaseServer::RunFrame( void )
 	{
 		SetPausedForced( false );
 	}
+
+	ProcessSplitScreenDisconnects();
 }
 
 //-----------------------------------------------------------------------------
@@ -2119,6 +2121,12 @@ void CBaseServer::Shutdown( void )
 		CBaseClient * cl = m_Clients[ i ];
 		if ( cl->IsConnected() )
 		{
+			// Hack, but this forces instant cleanup of split-screen users
+			if ( cl->IsSplitScreenUser() )
+			{
+				cl->m_bSplitScreenUser = false;
+			}
+
 			cl->Disconnect( "Server shutting down" );
 		}
 		else
@@ -2549,4 +2557,88 @@ void CBaseServer::SetPausedForced( bool bPaused, float flDuration /*= -1.f*/ )
 
 	SVC_SetPauseTimed setpause( bPaused, m_flPausedTimeEnd );
 	BroadcastMessage( setpause );
+}
+
+//-----------------------------------------------------------------------------
+// Local split-screen (ported from the CS:GO engine's baseserver.cpp)
+//-----------------------------------------------------------------------------
+CBaseClient *CBaseServer::CreateSplitClient( const char *pName, CBaseClient *pAttachedTo )
+{
+	// 0.0.0.0:0 signifies a split client. It plumbs down to the socket layer but never sends.
+	// (Not a null address: a null channel drops every message, and this one carries the player's.)
+	netadr_t adr( (uint)0, (uint16)0 );
+	CBaseClient *pSplitClient = GetFreeClient( adr );
+	if ( !pSplitClient )
+	{
+		// server is full
+		return NULL;
+	}
+
+	// Split clients configure no encryption or challenge: the master channel carries their data.
+	INetChannel *netchan = NET_CreateNetChannel( m_Socket, &adr, "SPLIT", pSplitClient, true );
+	if ( !netchan )
+	{
+		return NULL;
+	}
+
+	int nUserID = GetNextUserID();
+	m_nUserid = nUserID;
+
+	pSplitClient->Connect( ( pName && pName[ 0 ] ) ? pName : "split", nUserID, netchan, true, pAttachedTo->m_clientChallenge );
+
+	Assert( pSplitClient->m_bFakePlayer == true );
+	pSplitClient->m_bSplitScreenUser = true;
+	pSplitClient->m_pAttachedTo = pAttachedTo;
+
+	pSplitClient->m_nSignonTick = m_nTickCount;
+
+	pSplitClient->m_bSplitAllowFastDisconnect = true;
+
+	if ( !pSplitClient->CheckConnect() )
+	{
+		pSplitClient->m_bSplitAllowFastDisconnect = false;
+		return NULL;
+	}
+
+	pSplitClient->m_bSplitAllowFastDisconnect = false;
+
+	return pSplitClient;
+}
+
+CBaseClient *CBaseServer::GetBaseUserForSplitClient( CBaseClient *pSplitUser )
+{
+	if ( pSplitUser->m_pAttachedTo )
+		return pSplitUser->m_pAttachedTo;
+
+	return pSplitUser;
+}
+
+void CBaseServer::QueueSplitScreenDisconnect( CBaseClient *pSplitHost, CBaseClient *pSplitUser )
+{
+	SplitDisconnect_t disc;
+	disc.m_pUser = pSplitHost;
+	disc.m_pSplit = pSplitUser;
+
+	m_QueuedForDisconnect.AddToTail( disc );
+}
+
+void CBaseServer::ProcessSplitScreenDisconnects()
+{
+	// Destroy it
+	for ( int i = 0; i < m_QueuedForDisconnect.Count(); ++i )
+	{
+		SplitDisconnect_t &disc = m_QueuedForDisconnect[ i ];
+		CBaseClient *pClient = disc.m_pUser;
+		for ( int j = 0; j < splitscreenwire::kMaxLocalPlayers; ++j )
+		{
+			if ( pClient->m_SplitScreenUsers[ j ] != disc.m_pSplit )
+				continue;
+
+			pClient->m_SplitScreenUsers[ j ] = NULL;
+			disc.m_pSplit->m_bSplitAllowFastDisconnect = true;
+			disc.m_pSplit->Disconnect( "leaving splitscreen" );
+			disc.m_pSplit->m_bSplitScreenUser = false;
+		}
+	}
+	m_QueuedForDisconnect.Purge();
 }

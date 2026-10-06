@@ -119,6 +119,9 @@ HUGE = 65536.0
 # between 0.01 and 0.1, and vbsp itself treats vertices within 0.1 units
 # (faces.cpp POINT_EPSILON) as one: merge below 0.01.
 MERGE_UNITS = 1e-2
+# vbsp quantizes a displacement's start and its face corners separately (retail Portal 2
+# maps differ by up to ~0.03 units); a start nearer than this is that corner.
+DISP_START_UNITS = 0.1
 
 
 def canonical_vertices(vertices, merge=MERGE_UNITS):
@@ -344,7 +347,7 @@ class LegacyBsp:
         if corners.shape != (4, 3) or not np.isfinite(start).all():
             raise ValueError("displacement %d needs a finite quad" % index)
         origin = int(np.argmin(np.linalg.norm(corners - start, axis=1)))
-        if np.linalg.norm(corners[origin] - start) > MERGE_UNITS:
+        if np.linalg.norm(corners[origin] - start) > DISP_START_UNITS:
             raise ValueError("displacement %d start is not a face corner" % index)
         corners = np.roll(corners, -origin, axis=0)
         side = (1 << power) + 1
@@ -356,8 +359,11 @@ class LegacyBsp:
             raise ValueError("displacement %d vertex or triangle range is out of bounds" % index)
         values = np.frombuffer(raw, dtype="<f4").reshape(-1, 5)[
             first_vertex:first_vertex + count].astype(np.float64)
-        if not np.isfinite(values).all() or ((values[:, 4] < 0) | (values[:, 4] > 255)).any():
+        if not np.isfinite(values).all():
             raise ValueError("displacement %d has invalid vertices or blend weights" % index)
+        # Portal 2 maps carry blend alphas above 255 (sp_a1_wakeup holds up to 9600);
+        # the weight only mixes materials, so it saturates instead of failing the relight.
+        values[:, 4] = np.clip(values[:, 4], 0, 255)
         # Columns run toward corner 3; rows toward corner 1, as builddisp.cpp.
         s, t = np.meshgrid(np.linspace(0, 1, side), np.linspace(0, 1, side))
         s, t = s.ravel()[:, None], t.ravel()[:, None]

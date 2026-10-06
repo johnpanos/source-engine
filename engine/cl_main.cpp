@@ -882,6 +882,42 @@ CON_COMMAND_F( connect, "Connect to specified server.", FCVAR_DONTRECORD )
 	vecArgs.PurgeAndDeleteElementsArray();
 }
 
+//-----------------------------------------------------------------------------
+// connect_splitscreen <server> <# of players> (ported from the CS:GO engine's cl_main.cpp):
+// connect, then bring in the other local players once the primary one is fully connected.
+//-----------------------------------------------------------------------------
+CON_COMMAND_F( connect_splitscreen, "Connect to specified server with the given number of local split-screen players.", FCVAR_DONTRECORD )
+{
+	// Default command processing considers ':' a command separator,
+	// and we donly want spaces to count.  So we'll need to re-split the arg string
+	CUtlVector<char*> vecArgs;
+	V_SplitString( args.ArgS(), " ", vecArgs );
+
+	if ( vecArgs.Count() < 2 )
+	{
+		ConMsg( "Usage:  connect_splitscreen <server> <# of players>\n" );
+		vecArgs.PurgeAndDeleteElementsArray();
+		return;
+	}
+
+	int numPlayers = Q_atoi( vecArgs[ 1 ] );
+	if ( numPlayers < 1 )
+	{
+		ConMsg( "Must have at least one player.\n" );
+	}
+	else if ( numPlayers > host_state.max_splitscreen_players )
+	{
+		ConMsg( "Too many players\n" );
+	}
+	else
+	{
+		CL_Connect( vecArgs[ 0 ], "splitscreen" );
+		// CL_Connect clears the connection state, so set this after it
+		cl.m_nNumPlayersToConnect = numPlayers;
+	}
+	vecArgs.PurgeAndDeleteElementsArray();
+}
+
 CON_COMMAND_F( redirect, "Redirect client to specified server.", FCVAR_DONTRECORD | FCVAR_SERVER_CAN_EXECUTE )
 {
 	if ( !CBaseClientState::ConnectMethodAllowsRedirects() )
@@ -2058,24 +2094,30 @@ void CL_DecayLights (void)
 
 void CL_ExtraMouseUpdate( float frametime )
 {
-	// Not ready for commands yet.
-	if ( !cl.IsActive() )
-		return;
-
 	if ( !Host_ShouldRun() )
 		return;
 
-	// Don't create usercmds here during playback, they were encoded into the packet already
+	// Every local player samples its own mouse (ported from the CS:GO engine)
+	FOR_EACH_VALID_SPLITSCREEN_PLAYER( i )
+	{
+		ACTIVE_SPLITSCREEN_PLAYER_GUARD( i );
+
+		// Not ready for commands yet.
+		if ( !GetLocalClient().IsActive() )
+			continue;
+
+		// Don't create usercmds here during playback, they were encoded into the packet already
 #if defined( REPLAY_ENABLED )
-	if ( demoplayer->IsPlayingBack() && !cl.ishltv && !cl.isreplay )
-		return;
+		if ( demoplayer->IsPlayingBack() && !GetLocalClient().ishltv && !GetLocalClient().isreplay )
+			continue;
 #else
-	if ( demoplayer->IsPlayingBack() && !cl.ishltv )
-		return;
+		if ( demoplayer->IsPlayingBack() && !GetLocalClient().ishltv )
+			continue;
 #endif
 
-	// Have client .dll create and store usercmd structure
-	g_ClientDLL->ExtraMouseSample( frametime, !cl.m_bPaused );
+		// Have client .dll create and store usercmd structure
+		g_ClientDLL->ExtraMouseSample( frametime, !GetLocalClient().m_bPaused );
+	}
 }
 
 /*
@@ -2096,39 +2138,46 @@ void CL_SendMove( void )
 	
 	int nextcommandnr = cl.lastoutgoingcommand + cl.chokedcommands + 1;
 
-	// send the client update packet
-
-	CLC_Move moveMsg;
-
-	moveMsg.m_DataOut.StartWriting( data, sizeof( data ) );
-
-	// Determine number of backup commands to send along
-	int cl_cmdbackup = 2;
-	moveMsg.m_nBackupCommands = clamp( cl_cmdbackup, 0, MAX_BACKUP_COMMANDS );
-
-	// How many real new commands have queued up
-	moveMsg.m_nNewCommands = 1 + cl.chokedcommands;
-	moveMsg.m_nNewCommands = clamp( moveMsg.m_nNewCommands, 0, MAX_NEW_COMMANDS );
-
-	int numcmds = moveMsg.m_nNewCommands + moveMsg.m_nBackupCommands;
-
-	int from = -1;	// first command is deltaed against zeros 
-
-	bool bOK = true;
-
-	for ( int to = nextcommandnr - numcmds + 1; to <= nextcommandnr; to++ )
+	// send the client update packet, one move per local player on that player's channel
+	FOR_EACH_VALID_SPLITSCREEN_PLAYER( i )
 	{
-		bool isnewcmd = to >= (nextcommandnr - moveMsg.m_nNewCommands + 1);
+		ACTIVE_SPLITSCREEN_PLAYER_GUARD( i );
 
-		// first valid command number is 1
-		bOK = bOK && g_ClientDLL->WriteUsercmdDeltaToBuffer( &moveMsg.m_DataOut, from, to, isnewcmd );
-		from = to;
-	}
+		if ( splitscreen->IsDisconnecting( i ) )
+			continue;
 
-	if ( bOK )
-	{
-		// only write message if all usercmds were written correctly, otherwise parsing would fail
-		cl.m_NetChannel->SendNetMsg( moveMsg );
+		CLC_Move moveMsg;
+
+		moveMsg.m_DataOut.StartWriting( data, sizeof( data ) );
+
+		// Determine number of backup commands to send along
+		int cl_cmdbackup = 2;
+		moveMsg.m_nBackupCommands = clamp( cl_cmdbackup, 0, MAX_BACKUP_COMMANDS );
+
+		// How many real new commands have queued up
+		moveMsg.m_nNewCommands = 1 + cl.chokedcommands;
+		moveMsg.m_nNewCommands = clamp( moveMsg.m_nNewCommands, 0, MAX_NEW_COMMANDS );
+
+		int numcmds = moveMsg.m_nNewCommands + moveMsg.m_nBackupCommands;
+
+		int from = -1;	// first command is deltaed against zeros 
+
+		bool bOK = true;
+
+		for ( int to = nextcommandnr - numcmds + 1; to <= nextcommandnr; to++ )
+		{
+			bool isnewcmd = to >= (nextcommandnr - moveMsg.m_nNewCommands + 1);
+
+			// first valid command number is 1
+			bOK = bOK && g_ClientDLL->WriteUsercmdDeltaToBuffer( &moveMsg.m_DataOut, from, to, isnewcmd );
+			from = to;
+		}
+
+		if ( bOK )
+		{
+			// only write message if all usercmds were written correctly, otherwise parsing would fail
+			GetLocalClient().m_NetChannel->SendNetMsg( moveMsg );
+		}
 	}
 }
 
@@ -2178,17 +2227,24 @@ void CL_Move(float accumulated_extra_samples, bool bFinalTick )
 
 		int nextcommandnr = cl.lastoutgoingcommand + cl.chokedcommands + 1;
 
-		// Have client .dll create and store usercmd structure
-		g_ClientDLL->CreateMove( 
-			nextcommandnr, 
-			host_state.interval_per_tick - accumulated_extra_samples,
-			!cl.IsPaused() );
-
-		// Store new usercmd to dem file
-		if ( demorecorder->IsRecording() )
+		// Have client .dll create and store a CUserCmd for each local player
+		FOR_EACH_VALID_SPLITSCREEN_PLAYER( i )
 		{
-			// Back up one because we've incremented outgoing_sequence each frame by 1 unit
-			demorecorder->RecordUserInput( nextcommandnr );
+			ACTIVE_SPLITSCREEN_PLAYER_GUARD( i );
+			if ( splitscreen->IsDisconnecting( i ) )
+				continue;
+
+			g_ClientDLL->CreateMove( 
+				nextcommandnr, 
+				host_state.interval_per_tick - accumulated_extra_samples,
+				!cl.IsPaused() );
+
+			// Store new usercmd to dem file
+			if ( demorecorder->IsRecording() )
+			{
+				// Back up one because we've incremented outgoing_sequence each frame by 1 unit
+				demorecorder->RecordUserInput( nextcommandnr );
+			}
 		}
 
 		if ( bSendPacket )
@@ -2841,6 +2897,9 @@ CL_Init
 void CL_Init (void)
 {	
 	cl.Clear();
+
+	// Slot 0 is the global cl; further local players get their own client state
+	splitscreen->Init();
 	
 	CL_InitLanguageCvar();
 	CL_InitCloudSettingsCvar();
@@ -2851,6 +2910,7 @@ void CL_Init (void)
 //-----------------------------------------------------------------------------
 void CL_Shutdown( void )
 {
+	splitscreen->Shutdown();
 }
 
 CON_COMMAND_F( cl_fullupdate, "Forces the server to send a full update packet", FCVAR_CHEAT )

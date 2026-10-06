@@ -463,6 +463,9 @@ def define_platform(conf):
 			'NDEBUG'
 		])
 
+	if conf.options.PRODUCT_FLAVOR == 'release':
+		conf.env.append_unique('DEFINES', ['SOURCE_RELEASE_BUILD=1'])
+
 	# The commit hash is defined only where it is read (tier0's log header, see
 	# tier0/wscript). A global define would put a per-commit value on every compile
 	# command, defeating ccache's direct lookup across trees and after reconfigure.
@@ -833,7 +836,10 @@ def configure(conf):
 
 		flags += ['-funwind-tables', '-g']
 	elif conf.env.COMPILER_CC != 'msvc' and conf.env.DEST_CPU in ['x86', 'x86_64']:
-		flags += ['-march=core2']
+		if conf.options.PRODUCT_FLAVOR == 'release' and conf.env.DEST_CPU == 'x86_64':
+			flags += ['-march=' + conf.options.RELEASE_MARCH]
+		else:
+			flags += ['-march=core2']
 
 	if conf.env.DEST_CPU in ['x86', 'x86_64']:
 		flags += ['-mfpmath=sse']

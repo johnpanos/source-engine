@@ -167,7 +167,7 @@ void *SendProxy_SendBaseCombatCharacterLocalDataTable( const SendProp *pProp, co
 	{
 		if ( pBCC->IsPlayer() )
 		{
-			pRecipients->SetOnly( pBCC->entindex() - 1 );
+			SendProxy_SetOnlyPlayerRecipients( pRecipients, pBCC->entindex() - 1 );
 		}
 		else
 		{

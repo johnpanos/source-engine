@@ -23,9 +23,11 @@
 #include "userid.h"
 #include "tier1/bitbuf.h"
 #include "steam/steamclientpublic.h"
+#include "splitscreen_wire.h"
 
 // class CClientFrame;
 class CBaseServer;
+class CCommand;
 class CClientFrame;
 struct player_info_s;
 class CFrameSnapshot;
@@ -126,7 +128,17 @@ public:
 
 	virtual void	SetMaxRoutablePayloadSize( int nMaxRoutablePayloadSize );
 
-	virtual bool	IsSplitScreenUser( void ) const { return false; } // !KLUDGE! We don't have splitscreen support, but this makes merges easier
+	// Local split-screen (ported from the CS:GO engine): non-primary local players are
+	// full clients that ride on their owner's connection.
+	virtual bool	IsSplitScreenUser( void ) const { return m_bSplitScreenUser; }
+	virtual IClient	*GetSplitScreenOwner() { return m_pAttachedTo; }
+	virtual bool	ChangeSplitscreenUser( int nSplitScreenUserSlot );
+	virtual bool	CheckConnect( void ) { return true; }	// the game may reject a new client
+	bool			IsSplitScreenPartner( const CBaseClient *pOther ) const;
+	int				GetNumPlayers();
+	int				GetAvailableSplitScreenSlot() const;
+	void			SplitScreenDisconnect( const CCommand &args );
+	void			DisconnectSplitScreenUser( CBaseClient *pSplitClient );
 
 public: // IClientMessageHandlers
 	
@@ -134,8 +146,10 @@ public: // IClientMessageHandlers
 	PROCESS_NET_MESSAGE( StringCmd );
 	PROCESS_NET_MESSAGE( SetConVar );
 	PROCESS_NET_MESSAGE( SignonState );
+	PROCESS_NET_MESSAGE( SplitScreenUser );
 	
 	PROCESS_CLC_MESSAGE( ClientInfo );
+	PROCESS_CLC_MESSAGE( SplitPlayerConnect );
 	PROCESS_CLC_MESSAGE( BaselineAck );
 	PROCESS_CLC_MESSAGE( ListenEvents );
 	PROCESS_CLC_MESSAGE( CmdKeyValues );
@@ -191,6 +205,15 @@ private:
 
 
 public:
+
+	// Local split-screen state (ported from the CS:GO engine). A non-primary local player
+	// is a client of its own whose channel is attached to its owner's (m_pAttachedTo).
+	bool			m_bSplitScreenUser;
+	bool			m_bSplitAllowFastDisconnect;	// true while the owner tears this client down
+	bool			m_bSplitPlayerDisconnecting;
+	int				m_nSplitScreenPlayerSlot;		// 0 for the primary client
+	CBaseClient		*m_pAttachedTo;					// the owner, for a split-screen user
+	CBaseClient		*m_SplitScreenUsers[ splitscreenwire::kMaxLocalPlayers ];	// [0] is this client when primary
 
 	// Array index in svs.clients:
 	int				m_nClientSlot;	

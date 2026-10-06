@@ -5,6 +5,14 @@
 // $NoKeywords: $
 //===========================================================================//
 
+// The Portal 2 client compiles shared and Portal 1 sources that spell this
+// header "PortalRender.h"; on case-sensitive filesystems that found this Portal 1
+// CPortalRender, a different layout from Portal 2's (an ODR violation that LTO
+// turned into a crash, RFC 0023). Portal 2 builds take its own header.
+#if defined( PORTAL2 )
+#include "game/client/portal2/portal/portalrender.h"
+#else
+
 #ifndef PORTALRENDER_H
 #define PORTALRENDER_H
 
@@ -332,3 +340,4 @@ inline void CPortalRenderable::SetViewEntranceAndExitPortals( CPortalRenderable 
 
 #endif //#ifndef PORTALRENDER_H
 
+#endif // PORTAL2

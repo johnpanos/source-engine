@@ -266,6 +266,8 @@ def build(bld):
 			'cl_steamauth.cpp',
 			'cdll_engine_int.cpp',
 			'cl_main.cpp',
+			'cl_splitscreen.cpp',
+			'cl_gamepad_slots.cpp',
 			'cl_demo.cpp',
 			'cl_demoaction.cpp',
 			'cl_demoaction_types.cpp',

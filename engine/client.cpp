@@ -332,6 +332,17 @@ bool CClientState::SetSignonState ( int state, int count )
 				}
 
 				HostState_OnClientConnected();
+
+				// connect_splitscreen: the primary player is in, bring in the other local players.
+				// (Each ss_connect takes the lowest free slot; the server admits them in order.)
+				if ( !m_bSplitScreenUser )
+				{
+					for ( int nSlot = 1; nSlot < m_nNumPlayersToConnect; ++nSlot )
+					{
+						Cbuf_AddText( "ss_connect\n" );
+					}
+					m_nNumPlayersToConnect = 1;
+				}
 				
 				if ( m_nMaxClients > 1 )
 				{

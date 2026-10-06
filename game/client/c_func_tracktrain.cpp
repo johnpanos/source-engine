@@ -22,6 +22,10 @@ public:
 	DECLARE_CLIENTCLASS();
 
 public:
+	// Sound spatialization can query the train before its first data update;
+	// m_nLongAxis indexes vecDir, so never leave it to operator new's zero fill.
+	C_FuncTrackTrain() : m_nLongAxis( 2 ), m_flRadius( 0.0f ), m_flLineLength( 0.0f ) {}
+
 	virtual void OnDataChanged( DataUpdateType_t updateType );
 	virtual bool GetSoundSpatialization( SpatializationInfo_t& info );
 

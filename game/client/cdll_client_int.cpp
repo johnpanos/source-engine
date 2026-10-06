@@ -216,6 +216,7 @@ extern IClientMode *GetClientModeNormal();
 
 // IF YOU ADD AN INTERFACE, EXTERN IT IN THE HEADER FILE.
 IVEngineClient	*engine = NULL;
+IEngineSplitScreen *g_pEngineSplitScreen = NULL;
 IRenderStageMarkers *g_pRenderStageMarkers = NULL;
 IRenderTemporalViews2 *g_pRenderTemporalViews = NULL;
 IRenderMaterialBlocks *g_pRenderMaterialBlocks = NULL;
@@ -936,6 +937,8 @@ int CHLClient::Init( CreateInterfaceFn appSystemFactory, CreateInterfaceFn physi
 	// please don't collapse this into one monolithic boolean expression (impossible to debug)
 	if ( (engine = (IVEngineClient *)appSystemFactory( VENGINE_CLIENT_INTERFACE_VERSION, NULL )) == NULL )
 		return false;
+	// Optional: without it there is one local player (slot 0)
+	g_pEngineSplitScreen = (IEngineSplitScreen *)appSystemFactory( ENGINE_SPLITSCREEN_INTERFACE_VERSION, NULL );
 #ifdef PORTAL2
 	// Portal 2 shared variables require the engine's single-player shared memory.
 	if ( !Portal2_ConnectEngineInterfaces( appSystemFactory ) )
@@ -1507,7 +1510,7 @@ bool CHLClient::IN_IsKeyDown( const char *name, bool& isdown )
 		return false;
 	}
 	
-	isdown = ( key->state & 1 ) ? true : false;
+	isdown = ( key->GetPerUser().state & 1 ) ? true : false;
 
 	// Found the key by name
 	return true;
@@ -2740,4 +2743,33 @@ void CHLClient::IN_TouchEvent( int type, int fingerId, int x, int y )
 		inputsystem->GetTouchAccumulators( fingerId, ev.dx, ev.dy );
 
 	gTouch.ProcessEvent( &ev );
+}
+
+//-----------------------------------------------------------------------------
+// The engine tells the client when the number of local players changes
+// (IClientSplitScreen is a separate interface so IBaseClientDLL keeps its vtable).
+//-----------------------------------------------------------------------------
+class CClientSplitScreen : public IClientSplitScreen
+{
+public:
+	virtual void OnActiveSplitscreenPlayerChanged( int nNewSlot );
+	virtual void OnSplitScreenStateChanged();
+};
+
+static CClientSplitScreen g_ClientSplitScreen;
+EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CClientSplitScreen, IClientSplitScreen, CLIENT_SPLITSCREEN_INTERFACE_VERSION, g_ClientSplitScreen );
+
+void CClientSplitScreen::OnActiveSplitscreenPlayerChanged( int nNewSlot )
+{
+}
+
+void CClientSplitScreen::OnSplitScreenStateChanged()
+{
+	// Update visibility for all ents so that each local player's view sees the right things
+	C_BaseEntityIterator iterator;
+	C_BaseEntity *pEnt;
+	while ( (pEnt = iterator.Next()) != NULL )
+	{
+		pEnt->UpdateVisibility();
+	}
 }

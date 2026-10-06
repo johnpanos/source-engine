@@ -85,7 +85,8 @@ extern ConVar default_fov;
 extern ConVar sensitivity;
 #endif
 
-static C_BasePlayer *s_pLocalPlayer = NULL;
+// One local player per split-screen slot (slot 0 is the primary player)
+static C_BasePlayer *s_pLocalPlayer[ MAX_SPLITSCREEN_PLAYERS ];
 
 static ConVar	cl_customsounds ( "cl_customsounds", "1", 0, "Enable customized player sound playback" );
 static ConVar	spec_track		( "spec_track", "0", 0, "Tracks an entity in spec mode" );
@@ -406,6 +407,8 @@ LINK_ENTITY_TO_CLASS( player, C_BasePlayer );
 // -------------------------------------------------------------------------------- //
 C_BasePlayer::C_BasePlayer() : m_iv_vecViewOffset( "C_BasePlayer::m_iv_vecViewOffset" )
 {
+	m_nSplitScreenSlot = 0;
+	m_bIsLocalPlayer = false;
 	AddVar( &m_vecViewOffset, &m_iv_vecViewOffset, LATCH_SIMULATION_VAR );
 #ifdef PORTAL2
 	m_afButtonForced = 0;
@@ -453,9 +456,16 @@ C_BasePlayer::C_BasePlayer() : m_iv_vecViewOffset( "C_BasePlayer::m_iv_vecViewOf
 C_BasePlayer::~C_BasePlayer()
 {
 	DeactivateVguiScreen( m_pCurrentVguiScreen.Get() );
-	if ( this == s_pLocalPlayer )
+	for ( int i = 0; i < MAX_SPLITSCREEN_PLAYERS; ++i )
 	{
-		s_pLocalPlayer = NULL;
+		if ( this == s_pLocalPlayer[ i ] )
+		{
+			s_pLocalPlayer[ i ] = NULL;
+		}
+		else if ( s_pLocalPlayer[ i ] )
+		{
+			s_pLocalPlayer[ i ]->RemoveSplitScreenPlayer( this );
+		}
 	}
 
 	delete m_pFlashlight;
@@ -794,25 +804,23 @@ void C_BasePlayer::PostDataUpdate( DataUpdateType_t updateType )
 	//  on this same frame are not stomped because prediction thinks there
 	//  isn't a local player yet!!!
 
-	if ( updateType == DATA_UPDATE_CREATED )
+	// Which local split-screen slot, if any, does this entity belong to?
+	int nSlot = -1;
+	FOR_EACH_VALID_SPLITSCREEN_PLAYER( i )
 	{
-		// Make sure s_pLocalPlayer is correct
-
-		int iLocalPlayerIndex = engine->GetLocalPlayer();
-
-		if ( g_nKillCamMode )
-			iLocalPlayerIndex = g_nKillCamTarget1;
-
-		if ( iLocalPlayerIndex == index )
+		if ( g_pEngineSplitScreen ? ( g_pEngineSplitScreen->GetSplitScreenPlayer( i ) == index ) : ( i == 0 && engine->GetLocalPlayer() == index ) )
 		{
-			Assert( s_pLocalPlayer == NULL );
-			s_pLocalPlayer = this;
-
-			// Reset our sound mixed in case we were in a freeze cam when we
-			// changed level, which would cause the snd_soundmixer to be left modified.
-			ConVar *pVar = (ConVar *)cvar->FindVar( "snd_soundmixer" );
-			pVar->Revert();
+			nSlot = i;
+			break;
 		}
+	}
+	// Outside any slot this is not a local player; scope to slot 0 (as before split-screen)
+	ACTIVE_SPLITSCREEN_PLAYER_GUARD( nSlot >= 0 ? nSlot : 0 );
+
+	bool bRecheck = ( nSlot != -1 && !s_pLocalPlayer[ nSlot ] );
+	if ( updateType == DATA_UPDATE_CREATED || bRecheck )
+	{
+		CheckForLocalPlayer( nSlot );
 	}
 
 	bool bForceEFNoInterp = IsNoInterpolationFrame();
@@ -1826,9 +1834,130 @@ C_BaseAnimating* C_BasePlayer::GetRenderedWeaponModel()
 // Purpose: Gets a pointer to the local player, if it exists yet.
 // Output : C_BasePlayer
 //-----------------------------------------------------------------------------
-C_BasePlayer *C_BasePlayer::GetLocalPlayer( void )
+C_BasePlayer *C_BasePlayer::GetLocalPlayer( int nSlot /*= -1*/ )
 {
-	return s_pLocalPlayer;
+	if ( nSlot == -1 )
+	{
+		nSlot = GET_ACTIVE_SPLITSCREEN_SLOT();
+	}
+	Assert( nSlot >= 0 && nSlot < MAX_SPLITSCREEN_PLAYERS );
+	if ( nSlot < 0 || nSlot >= MAX_SPLITSCREEN_PLAYERS )
+		return NULL;
+	return s_pLocalPlayer[ nSlot ];
+}
+
+bool C_BasePlayer::HasAnyLocalPlayer()
+{
+	FOR_EACH_VALID_SPLITSCREEN_PLAYER( i )
+	{
+		if ( s_pLocalPlayer[ i ] )
+			return true;
+	}
+	return false;
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Makes sure the local-player slots are correct for this entity. A player that is the
+//			engine's local player of nSplitScreenSlot becomes that slot's local player; a
+//			non-primary one attaches itself to the primary player ("host") as a parasite.
+//-----------------------------------------------------------------------------
+void C_BasePlayer::CheckForLocalPlayer( int nSplitScreenSlot )
+{
+	if ( nSplitScreenSlot < 0 || nSplitScreenSlot >= MAX_SPLITSCREEN_PLAYERS )
+		return;
+
+	// Make sure s_pLocalPlayer is correct
+	int iLocalPlayerIndex = g_pEngineSplitScreen ? g_pEngineSplitScreen->GetSplitScreenPlayer( nSplitScreenSlot ) : engine->GetLocalPlayer();
+
+	if ( g_nKillCamMode )
+		iLocalPlayerIndex = g_nKillCamTarget1;
+
+	if ( iLocalPlayerIndex == index )
+	{
+		Assert( s_pLocalPlayer[ nSplitScreenSlot ] == NULL || s_pLocalPlayer[ nSplitScreenSlot ] == this );
+		s_pLocalPlayer[ nSplitScreenSlot ] = this;
+		m_bIsLocalPlayer = true;
+
+		// Tell host player about the parasitic splitscreen user
+		if ( nSplitScreenSlot != 0 )
+		{
+			Assert( s_pLocalPlayer[ 0 ] );
+			m_nSplitScreenSlot = nSplitScreenSlot;
+			m_hSplitOwner = s_pLocalPlayer[ 0 ];
+			if ( s_pLocalPlayer[ 0 ] )
+			{
+				s_pLocalPlayer[ 0 ]->AddSplitScreenPlayer( this );
+			}
+		}
+		else
+		{
+			// We're the host, not the parasite...
+			m_nSplitScreenSlot = 0;
+			m_hSplitOwner = NULL;
+
+			// Reset our sound mixed in case we were in a freeze cam when we
+			// changed level, which would cause the snd_soundmixer to be left modified.
+			ConVar *pVar = (ConVar *)cvar->FindVar( "snd_soundmixer" );
+			pVar->Revert();
+		}
+	}
+}
+
+bool C_BasePlayer::IsLocalPlayer( const C_BaseEntity *pEntity )
+{
+	if ( !pEntity || !pEntity->IsPlayer() )
+		return false;
+
+	return static_cast< const C_BasePlayer * >( pEntity )->m_bIsLocalPlayer;
+}
+
+int C_BasePlayer::GetSplitScreenSlotForPlayer( C_BaseEntity *pl )
+{
+	C_BasePlayer *pPlayer = ToBasePlayer( pl );
+	if ( !pPlayer )
+	{
+		Assert( 0 );
+		return -1;
+	}
+	return pPlayer->GetSplitScreenPlayerSlot();
+}
+
+bool C_BasePlayer::IsSplitScreenPartner( C_BasePlayer *pPlayer )
+{
+	if ( !pPlayer || pPlayer == this )
+		return false;
+
+	for ( int i = 0; i < MAX_SPLITSCREEN_PLAYERS; ++i )
+	{
+		if ( s_pLocalPlayer[ i ] == pPlayer )
+			return true;
+	}
+
+	return false;
+}
+
+void C_BasePlayer::AddSplitScreenPlayer( C_BasePlayer *pOther )
+{
+	CHandle< C_BasePlayer > h;
+	h = pOther;
+	if ( m_hSplitScreenPlayers.Find( h ) == m_hSplitScreenPlayers.InvalidIndex() )
+	{
+		m_hSplitScreenPlayers.AddToTail( h );
+	}
+}
+
+void C_BasePlayer::RemoveSplitScreenPlayer( C_BasePlayer *pOther )
+{
+	CHandle< C_BasePlayer > h;
+	h = pOther;
+	m_hSplitScreenPlayers.FindAndRemove( h );
+}
+
+// The slot of the local player entity (0 for any other entity); used by the active-slot guard.
+int GetSplitScreenSlotForEntity( C_BaseEntity *pEntity )
+{
+	C_BasePlayer *pPlayer = ToBasePlayer( pEntity );
+	return pPlayer ? pPlayer->GetSplitScreenPlayerSlot() : 0;
 }
 
 //-----------------------------------------------------------------------------
@@ -1954,10 +2083,6 @@ bool C_BasePlayer::ShouldDrawThisPlayer()
 // Purpose: 
 // Output : Returns true on success, false on failure.
 //-----------------------------------------------------------------------------
-bool C_BasePlayer::IsLocalPlayer( void ) const
-{
-	return ( GetLocalPlayer() == this );
-}
 
 int	C_BasePlayer::GetUserID( void )
 {
@@ -3011,3 +3136,29 @@ void CC_DumpClientSoundscapeData( const CCommand& args )
 	Msg("End dump.\n");
 }
 static ConCommand soundscape_dumpclient("soundscape_dumpclient", CC_DumpClientSoundscapeData, "Dumps the client's soundscape data.\n", FCVAR_CHEAT);
+
+//-----------------------------------------------------------------------------
+// Purpose: Reports which local player each split-screen slot resolves to
+//-----------------------------------------------------------------------------
+CON_COMMAND( cl_splitscreen_status, "Lists the local split-screen players." )
+{
+	FOR_EACH_VALID_SPLITSCREEN_PLAYER( i )
+	{
+		C_BasePlayer *pPlayer = C_BasePlayer::GetLocalPlayer( i );
+		if ( pPlayer )
+		{
+			const Vector &origin = pPlayer->GetAbsOrigin();
+			Msg( "slot %d: entity %d, owner %s, origin %.0f %.0f %.0f, local data: area bits %02x%02x, fov %d\n", i, pPlayer->entindex(),
+			     pPlayer->IsSplitScreenPlayer() ? "attached" : "primary", origin.x, origin.y, origin.z,
+			     pPlayer->m_Local.m_chAreaBits[ 0 ], pPlayer->m_Local.m_chAreaBits[ 1 ], pPlayer->GetFOV() );
+			const Vector &eye = pPlayer->EyePosition();
+			const Vector &viewOffset = pPlayer->GetViewOffset();
+			Msg( "slot %d: eye %.0f %.0f %.0f, view offset %.0f %.0f %.0f, render origin %.0f %.0f %.0f\n", i, eye.x, eye.y, eye.z,
+			     viewOffset.x, viewOffset.y, viewOffset.z, MainViewOrigin( i ).x, MainViewOrigin( i ).y, MainViewOrigin( i ).z );
+		}
+		else
+		{
+			Msg( "slot %d: no local player yet\n", i );
+		}
+	}
+}

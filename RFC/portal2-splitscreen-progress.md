@@ -135,3 +135,146 @@ the research directory). First engine findings (stripped; names from strings):
 
 Client-layout comparison against the dSYM is still to do; nothing here is
 implemented in the engine.
+
+Engine and client findings (net messages `net_SplitScreenUser`,
+`clc_SplitPlayerConnect`, `svc_SplitScreen`; `ss_connect`/`ss_disconnect`; per-slot
+`SPLIT%d` engine state; the retail maximum of 2) are recorded in
+[portal2-splitscreen-retail-engine.md](portal2-splitscreen-retail-engine.md),
+with observed facts separated from hypotheses.
+
+## Slice 1: split-screen wire codecs (2026-10-06)
+
+`common/splitscreen_wire.h` holds the bit-level codecs for `net_SplitScreenUser`,
+`svc_SplitScreen` and `clc_SplitPlayerConnect` (layouts from retail, ids 35/34/18
+allocated by this fork; see
+[portal2-splitscreen-retail-engine.md](portal2-splitscreen-retail-engine.md),
+which also holds the retail flows, the CS:GO source reference and the ordered
+slice plan). Contract: `unittests/enginetest/contracts/engine.splitscreen-wire.v1.md`.
+Suites `engine.splitscreen-wire` and `.sensitivity` (4 seeded defects detected)
+pass on `linux-headless-core`. Nothing uses the codecs yet: not registered as
+net messages, no handlers, no engine state. The engine's slot owner is the ported `CSplitScreen` (`engine/cl_splitscreen.cpp`); a clean-room registry written first was deleted so there is one owner.
+
+## Slice 2–4: engine port from the CS:GO tree (2026-10-06, in progress)
+
+User direction: copy as much of the CS:GO engine as can be copied. It is a protobuf-era
+engine, so the message layer cannot be dropped in; the split-screen logic is ported
+function by function onto this engine's bitstream messages. Builds in `build-p2`
+(`waf build --targets=engine`); **not run**: no map has been booted with two players.
+
+Installed in the engine (compiles; no runtime evidence yet):
+
+- **Messages** `net_SplitScreenUser` (35), `svc_SplitScreen` (34), `clc_SplitPlayerConnect` (18):
+  `common/netmessages`, handler interfaces get refusing defaults (`public/inetmsghandler.h`).
+- **Net channel multiplexing** (`engine/net_chan.*`): `SplitPlayer_t`, attach/detach, merge of
+  each attached channel's reliable/unreliable/voice buffers under `net_SplitScreenUser`
+  markers on send, active-channel dispatch on receive. `INetChannel` gets three methods with
+  refusing defaults.
+- **Server** (`baseclient`, `baseserver`, `sv_main`): split clients (`CreateSplitClient`,
+  owner/partner links, queued `ss_disconnect`, "leaving splitscreen"), `clc_SplitPlayerConnect`
+  admission with the retail refusals, `svc_SplitScreen` add/remove, owner-driven signon,
+  `max_splitscreen_players` from the game (`IServerGameClients` version 5,
+  `GetMaxSplitscreenPlayers`; engine accepts 003-005), PVS player bits, view-angle updates.
+- **Client** (`cl_splitscreen.*` copied from the CS:GO engine, `baseclientstate`, `cl_main`,
+  `client.cpp`): slot manager with per-slot `CClientState` (slot 0 is the global `cl`),
+  active-slot guard and macros, per-slot `CL_Move` / `CL_SendMove` / extra mouse sampling.
+- **Commands**: `ss_map`, `connect_splitscreen <server> <n>`, `ss_connect`, `ss_disconnect`.
+  Deliberate deviation: the connectionless connect packet is unchanged. Extra local players
+  join through `ss_connect` once the primary player is fully connected.
+- **Interfaces** (`public/isplitscreen.h`, frozen vtables untouched): `IEngineSplitScreen`
+  (slot queries for the client DLL), `IClientSplitScreen` (client DLL notifications),
+  `IEngineServerSplitScreen` (server DLL queries).
+
+Open: the game DLLs still compile their split-screen stubs (`MAX_SPLITSCREEN_PLAYERS 1`);
+per-slot cvars and key routing; the dedicated (`SWDS`) engine build is unchecked; remote
+clients do not learn `max_splitscreen_players` (only a listen server knows it); views, HUD,
+audio, and the two-controller acceptance run.
+
+### First engine run with a second local player (2026-10-06)
+
+Headless Portal 2 listen server on `sp_a1_intro1` with `-maxplayers 2`, `build-p2`
+(`tools/quality/portal_boot.py --game portal2 --headless`, evidence under the session
+scratchpad, not retained): `ss_connect` after the map loads sends `clc_SplitPlayerConnect`;
+the server admits it, spawns the coop player (`[coopdbg] Spawn team=2`), replies
+`svc_SplitScreen: add slot 1 entity 2`; both channels' messages then interleave under
+`net_SplitScreenUser` markers (`net_showmsg 1`); `status` lists the second player
+(`"... (2)"`, address `0.0.0.0:0`, active); `ss_disconnect` ends in
+`Dropped ... (leaving splitscreen)`; the run exits cleanly.
+
+What this does not show: the client DLL still treats every slot as the one local player
+(its split-screen macros are stubs), so the second player has no input of its own (slot 1
+sends slot 0's commands), no view, no HUD. `ss_connect` on a map with `maxplayers 1` prints
+"server full" and changes nothing. Fixed on the way: the commands were developer-only
+(stripped in release builds); `ss_disconnect` was not an allowed client command and was
+missing from the dedicated build; Portal 2's taunt manager refused slot 1.
+
+### Independent input per local player (2026-10-06)
+
+Engine (`build-p2`, `portal_boot.py --game portal2 --headless`, `sp_a1_intro4` with `-maxplayers 2`;
+not retained evidence): with `ss_connect`, `cmd2 +forward` made the server see
+`forwardmove 450, buttons 0x8` on player 2 and `0` on player 1; `+forward` then did the reverse
+(`sv_splitscreen_status`, a new server console command). Each local player's usercmds travel on
+its own channel and are applied by its own server player. The chamber holds players in place at
+map start, so no origin change was observed; that is the map, not the split path.
+
+Ported on the way (CS:GO engine / client code, each in its own file):
+
+- Engine: per-slot command buffers with `cmd1`/`cmd2` (`cmd.cpp`), `in_forceuser` and the active slot around
+  key events (`keys.cpp`), per-slot view angles, `GetLocalPlayer`, forwarded commands and
+  key-value commands (`cdll_engine_int.cpp`, `cmd.cpp`), the second controller's button edges run as
+  bindings of that player (`cl_gamepad_slots.cpp`, from `IGamepadSlots`).
+- Client DLL: per-user input (`kbutton_t::GetPerUser`, `CInput::PerUserInput_t`), local players per
+  slot (`C_BasePlayer::GetLocalPlayer(slot)`, `CheckForLocalPlayer`, split owner/partner lists),
+  `game/shared/splitscreen_game.h` (the active-slot macros for the client DLL; the server DLL keeps
+  one slot), `cl_splitscreen_status` (client console command).
+- Fixes found by running it: split channels were created with a *null* address (every message was
+  dropped; they are `0.0.0.0:0`, as in CS:GO); server shutdown crashed because an owner kept a
+  pointer to a deleted split client; the per-slot `ss_*` commands were stripped from release builds.
+
+Still open: the second controller's *analog* input (sticks) in the client's joystick code, views and
+HUD per slot, prediction per slot, audio listener, menus and the two-controller acceptance run.
+
+### Two views, per-slot local players and server data (2026-10-06)
+
+`build-p2`, headless, `sp_a1_intro4` with `-maxplayers 2` after `ss_connect`
+(`tools/quality/portal_boot.py --game portal2 --headless`; images and logs not retained):
+
+- The window shows two views, top and bottom, one per local player: player 1 set to look up at the
+  ceiling (`setang -60 0 0`) fills the top half with ceiling panels, and player 2 placed and turned by
+  `cmd2 setpos ...; cmd2 setang 40 180 0` fills the bottom half with the room's corner. Split layout is
+  top/bottom for windows narrower than 3:2 and left/right for wider ones (`ss_splitmode`), with the fov
+  of Portal 2's own `splitscreen_config.txt`.
+- `cl_splitscreen_status` lists slot 0 (entity 1, primary) and slot 1 (entity 2, attached); `cmd2 setpos`
+  moved slot 1's player and the client saw its new origin.
+- Server: a split-screen player's local data, weapon data and visibility ride on its owner's connection
+  (`SendProxy_SetOnlyPlayerRecipients`, `CBasePlayer::GetConnectionClientIndex`, PVS merge, transmit
+  rules), through the engine's `IEngineServerSplitScreen`.
+
+Known gaps in this slice: the HUD is not drawn while two local players exist (it is laid out for the
+whole window); the second player is not predicted (it is a non-predicted local player); no second
+audio listener; the second player's `m_Local` area bits are empty (the owner's cover both);
+no controller-driven run; `ss_map` from the menus untried; non-primary menus and VGUI input.
+
+## Second controller slot provider (2026-10-06)
+
+`inputsystem/joystick_sdl.cpp` now fills `IGamepadSlots` for both slots: a second SDL3 gamepad opens into slot 1
+(`OpenGamepadSlot`), button/axis events update that slot's snapshot, slot 0 keeps the legacy joystick events, removal
+bumps the generation, `SearchForDevice` skips owned devices, and slot-1 rumble uses `SDL_RumbleGamepad`.
+Observed with two uinput pads: `ss_gamepad_status` reports both slots connected (generations 1 and 2). Button
+delivery to player 2 (pad two's A held while status is read) is not yet shown; the pad scripts had ended by the time
+the status ran. Dedicated (SWDS) and other-game builds remain unverified.
+
+Two-pad acceptance (2026-10-06, headless, uinput pads): with both pads held, `ss_gamepad_status` shows slot 0 buttons 0x4 (X)
+and slot 1 buttons 0x1 (A); the server sees player 1 buttons 0x20 (+use) and player 2 buttons 0x2 (+jump), so each
+controller drives its own local player. Not yet shown with physical controllers, and no matched images.
+
+## Second player's viewmodel, procedural names and console commands (2026-10-06)
+
+- Viewmodel: `CBaseViewModel::ShouldTransmit` now sends a split-screen player's viewmodel to its owner's connection
+  (`IsSplitScreenUserOnEdict`), so the second view draws its own gun (an orange P-body gun in `mp_coop_lobby_2`).
+- `!player_blue` / `!player_orange` resolve to the team 3 / team 2 player (`CGlobalEntityList::FindEntityProcedural`).
+- `Weapon_portalgun has no owner when trying to upgrade!` printed when map logic upgraded an unheld gun; the flag is
+  kept and the message is gone (retail prints it too).
+- `voicerecord_toggle` is registered without `VOICE_VOX_ENABLE`; `r_flashlightbrightness` (0.25, cheat) is defined in
+  `engine/view.cpp`; `ss_force_primary_fullscreen` is defined in `game/client/view.cpp`.
+- The harness's "lacks scene detail" failure did not reproduce after these changes: `mp_coop_lobby_2` with `ss_connect`
+  and 300-tick waits passed 4 of 4 runs, with and without `cl_splitscreen_status`. Its earlier cause is not identified.

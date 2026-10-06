@@ -6179,16 +6179,22 @@ void DSP_SetDspAuto( int dsp_preset )
 extern ConVar das_process_overhang_spaces;
 extern ConVar das_max_z_trace_length;
 
-// Defaults of CS:GO's PORTAL2 build: automatic room DSP, and room detection that
-// processes overhang spaces and ignores the player's height.
+// Defaults of CS:GO's PORTAL2 build: automatic room DSP, a 0.8 master dsp volume, and room
+// detection that processes overhang spaces and ignores the player's height.
 void DSP_SetPortal2Defaults( bool bPortal2 )
 {
 	if ( !bPortal2 )
 		return;
 
+	// Defaults, not just values: the soundscape reverts dsp_volume to its default
+	dsp_room.SetDefault( "1" );
 	dsp_room.SetValue( 1 );
+	das_process_overhang_spaces.SetDefault( "1" );
 	das_process_overhang_spaces.SetValue( 1 );
+	das_max_z_trace_length.SetDefault( "100000" );
 	das_max_z_trace_length.SetValue( 100000.0f );
+	dsp_volume.SetDefault( "0.8" );	// CS:GO's master dsp volume default; retail Portal 2 logs 0.8
+	dsp_volume.SetValue( 0.8f );
 }
 
 // wrapper on dsp_room GetInt so that dsp_automatic can override

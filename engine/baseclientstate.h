@@ -94,6 +94,7 @@ public: // IServerMessageHandlers
 	PROCESS_NET_MESSAGE( StringCmd );
 	PROCESS_NET_MESSAGE( SetConVar );
 	PROCESS_NET_MESSAGE( SignonState );
+	PROCESS_NET_MESSAGE( SplitScreenUser );
 
 	PROCESS_SVC_MESSAGE( Print );
 	PROCESS_SVC_MESSAGE( ServerInfo );
@@ -109,6 +110,10 @@ public: // IServerMessageHandlers
 	PROCESS_SVC_MESSAGE( GetCvarValue );
 	PROCESS_SVC_MESSAGE( CmdKeyValues );
 	PROCESS_SVC_MESSAGE( SetPauseTimed );
+	PROCESS_SVC_MESSAGE( SplitScreen );
+
+	// The connection switched to this local player's slot (net_SplitScreenUser)
+	bool ChangeSplitscreenUser( int nSplitScreenUserSlot );
 
 	// Returns dem file protocol version, or, if not playing a demo, just returns PROTOCOL_VERSION
 	virtual int GetDemoProtocolVersion() const;
@@ -181,6 +186,9 @@ public:
 	CUtlString		m_sRetrySourceTag; // string that describes why we decided to connect to this server (empty for command line, "serverbrowser", "quickplay", etc)
 	int				m_retryChallenge; // challenge we sent to the server
 	int				m_nSignonState;    // see SIGNONSTATE_* definitions
+	bool			m_bSplitScreenUser;	// a non-primary local player (its state rides on the base client's connection)
+	int				m_nSplitScreenSlot;	// 0 for the primary local player
+	int				m_nNumPlayersToConnect;	// local players to bring in once connected (connect_splitscreen)
 	double			m_flNextCmdTime; // When can we send the next command packet?
 	int				m_nServerCount;	// server identification for prespawns, must match the svs.spawncount which
 									// is incremented on server spawning.  This supercedes svs.spawn_issued, in that

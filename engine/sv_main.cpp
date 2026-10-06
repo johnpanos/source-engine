@@ -735,12 +735,44 @@ void SetupMaxPlayers( int iDesiredMaxPlayers )
 
 }
 
+// The next server needs room for at least this many clients (local split-screen players each take one)
+static int s_nMinMaxPlayersForNextServer = 0;
+
+void SV_RequireMaxPlayers( int nPlayers )
+{
+	s_nMinMaxPlayersForNextServer = nPlayers;
+
+	// The server's slot count is set when the game DLL starts and then only changes through the
+	// maxplayers command (not while a server runs): make the room now, before the next map spawns.
+	if ( !sv.IsActive() && sv.GetMaxClients() < nPlayers )
+	{
+		sv.SetMaxClients( nPlayers );
+	}
+}
+
+int SV_GetGameMaxSplitScreenPlayers()
+{
+	if ( !serverGameClients || g_iServerGameClientsVersion < 5 )
+		return 1;
+
+	return clamp( serverGameClients->GetMaxSplitscreenPlayers(), 1, (int)splitscreenwire::kMaxLocalPlayers );
+}
+
 void CGameServer::InitMaxClients( void )
 {
 	int newmaxplayers = CommandLine()->ParmValue( "-maxplayers", -1 );
 	if ( newmaxplayers == -1 )
 	{
 		newmaxplayers = CommandLine()->ParmValue( "+maxplayers", -1 );
+	}
+
+	if ( s_nMinMaxPlayersForNextServer > 0 )
+	{
+		if ( newmaxplayers < s_nMinMaxPlayersForNextServer )
+		{
+			newmaxplayers = s_nMinMaxPlayersForNextServer;
+		}
+		s_nMinMaxPlayersForNextServer = 0;
 	}
 
 	SetupMaxPlayers( newmaxplayers );
@@ -945,6 +977,25 @@ void SV_InitGameDLL( void )
 	{
 		Sys_Error( "GetTickInterval returned bogus tick interval (%f)[%f to %f is valid range]", host_state.interval_per_tick,
 			MINIMUM_TICK_INTERVAL, MAXIMUM_TICK_INTERVAL );
+	}
+
+	// How many local split-screen players the game supports (version 5 of the game's client
+	// interface; older games have none). -tools mode clamps to one.
+	host_state.max_splitscreen_players_clientdll = 1;
+	if ( g_iServerGameClientsVersion >= 5 )
+	{
+		host_state.max_splitscreen_players_clientdll = clamp( serverGameClients->GetMaxSplitscreenPlayers(), 1, (int)splitscreenwire::kMaxLocalPlayers );
+	}
+	host_state.max_splitscreen_players = host_state.max_splitscreen_players_clientdll;
+	if ( CommandLine()->CheckParm( "-tools" ) )
+	{
+		Msg( "Clamping split screen users to 1 due to -tools mode\n" );
+		host_state.max_splitscreen_players = 1;
+	}
+
+	if ( host_state.max_splitscreen_players > 1 )
+	{
+		Msg( "Game supporting (%d) split screen players\n", host_state.max_splitscreen_players );
 	}
 
 	// set maxclients limit based on Mod or commandline settings
@@ -1238,6 +1289,13 @@ void SV_DetermineMulticastRecipients( bool usepas, const Vector& origin, CBitVec
 		int iBitNumber = CM_LeafCluster( CM_PointLeafnum( vecEarPosition ) );
 		if ( iBitNumber < 0 || !(pMask[iBitNumber>>3] & (1<<(iBitNumber&7)) ) )
 			continue;
+
+		// A split-screen user's messages ride on its owner's connection: mark the owner
+		if ( pClient->IsSplitScreenUser() )
+		{
+			playerbits.Set( pClient->m_pAttachedTo->GetPlayerSlot() );
+			continue;
+		}
 
 		playerbits.Set( i );
 	}
@@ -1872,7 +1930,16 @@ void CGameServer::SendClientMessages ( bool bSendSnapshots )
 		
 		// Update Host client send state...
 		if ( !client->ShouldSendMessages() )
+		{
+			// For split screen users, adds this into parent stream
+			// This works since this user is always "ready" to receive data since they don't
+			// exist while the parent entity isn't good for receiving data
+			if ( client->IsSplitScreenUser() )
+			{
+				client->WriteViewAngleUpdate();
+			}
 			continue;
+		}
 		
 		// Append the unreliable data (player updates and packet entities)
 		if ( bSendSnapshots && client->IsActive() )

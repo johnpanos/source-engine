@@ -64,6 +64,9 @@ colorVec R_LightPoint (Vector& p);
 void R_DrawLightmaps( IWorldRenderList *pList, int pageId );
 void R_DrawIdentityBrushModel( IWorldRenderList *pRenderList, model_t *model );
 
+// Brightness of the flashlight projection; the game sets it (Portal 2 co-op maps use 0.25)
+ConVar r_flashlightbrightness( "r_flashlightbrightness", "0.25", FCVAR_CHEAT );
+
 static ConVar mat_color_projection( "mat_color_projection", "0", FCVAR_ARCHIVE );
 
 /*
@@ -502,7 +505,7 @@ public:
 
 	int GetViewEntity( void )
 	{
-		return cl.m_nViewEntity;
+		return GetLocalClient().m_nViewEntity;
 	}
 
 	float GetFieldOfView( void )

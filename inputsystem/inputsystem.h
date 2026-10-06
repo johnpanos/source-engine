@@ -350,6 +350,13 @@ public:
 
 	void JoystickHotplugAdded( int joystickIndex );
 	void JoystickHotplugRemoved( int joystickId );
+	// Controller slots (IGamepadSlots): slot 0 is the legacy joystick; the others report through
+	// m_GamepadState only. A device keeps its slot while it is connected.
+	int GamepadSlotForDevice( int joystickId ) const;
+	void OpenGamepadSlot( int slot, int joystickId );
+	void CloseGamepadSlot( int slot );
+	void UpdateGamepadButton( int slot, int button, bool bDown );
+	void UpdateGamepadAxis( int slot, int axis, int value );
 	void JoystickButtonPress( int joystickId, int button ); // button is a SDL_CONTROLLER_BUTTON;
 	void JoystickButtonRelease( int joystickId, int button ); // same as above.
 	void JoystickAxisMotion( int joystickId, int axis, int value );
@@ -447,6 +454,7 @@ public:
 	// One rumble lease per owned device.
 	gamepadrumble::CRumbleLease m_GamepadRumble[gamepads::kSlotCount];
 	gamepads::State m_GamepadState[gamepads::kSlotCount];
+	std::uint64_t m_nGamepadGeneration = 0;
 	bool m_bXController;
 	// MAX_JOYSTICKS and the frozen button/analog enums stay unchanged.
 	JoystickInfo_t m_pJoystickInfo[gamepads::kSlotCount];

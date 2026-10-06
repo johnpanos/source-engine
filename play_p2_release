@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Release flavor of ./play_p2 (RFC 0023): its own tree, Waf lock and runtime,
+# built with --product-flavor=release and LTO. Arguments are ./play_p2's.
+set -euo pipefail
+R="$(cd "$(dirname "$0")" && pwd)"
+export P2_BUILD_DIR="$R/build-p2-release"
+export P2_RUNTIME="$R/run/runtime-p2-release"
+export P2_WAFLOCK=.lock-waf-p2-release
+export P2_FLAVOR=release
+exec "$R/play_p2" "$@"

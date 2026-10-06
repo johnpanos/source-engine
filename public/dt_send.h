@@ -635,6 +635,10 @@ void* SendProxy_DataTablePtrToDataTable( const SendProp *pProp, const void *pStr
 // Used on player entities - only sends the data to the local player (objectID-1).
 void* SendProxy_SendLocalDataTable( const SendProp *pProp, const void *pStruct, const void *pVarData, CSendProxyRecipients *pRecipients, int objectID );
 
+// Optional: who gets data meant for one player alone (see SendProxy_SendLocalDataTable)
+typedef void ( *SendProxySetOnlyRecipientFn )( CSendProxyRecipients *pRecipients, int iClientIndex );
+extern SendProxySetOnlyRecipientFn g_pfnSendProxySetOnlyRecipient;
+
 
 // ------------------------------------------------------------------------ //
 // Use these functions to setup your data tables.

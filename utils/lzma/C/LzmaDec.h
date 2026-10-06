@@ -45,7 +45,7 @@ SRes LzmaProps_Decode(CLzmaProps *p, const Byte *data, unsigned size);
 
 #define LZMA_REQUIRED_INPUT_MAX 20
 
-typedef struct
+typedef struct _CLzmaDec_t /* tagged so tier1/lzmaDecoder.h can forward-declare it (RFC 0023 ODR) */
 {
   CLzmaProps prop;
   CLzmaProb *probs;

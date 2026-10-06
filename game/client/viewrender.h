@@ -11,6 +11,7 @@
 #endif
 
 #include "shareddefs.h"
+#include "splitscreen_game.h"
 #include "tier1/utlstack.h"
 #include "iviewrender.h"
 #include "view_shared.h"
@@ -343,7 +344,7 @@ protected:
 
 	// This stores all of the view setup parameters that the engine needs to know about.
     // Best way to pick the right one is with ::GetView(), rather than directly.
-	CViewSetup		m_View;         // mono <- in stereo mode, this will be between the two eyes and is the "main" view.
+	CViewSetup		m_UserView[ MAX_SPLITSCREEN_PLAYERS ];	// mono, one per local player <- in stereo mode, this will be between the two eyes and is the "main" view.
 	CViewSetup		m_ViewLeft;     // left (unused for mono)
 	CViewSetup		m_ViewRight;    // right (unused for mono)
 

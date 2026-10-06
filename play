@@ -40,9 +40,9 @@ if [ $# -gt 0 ] && [ "${1#[-+]}" = "$1" ]; then
 fi
 
 case "$backend" in
-    native) build_dir=build; renderer=native-vulkan ;;
+    native) build_dir=${PLAY_BUILD_DIR:-build}; renderer=native-vulkan ;;
     dxvk) build_dir=build-portal-vulkan; renderer=vulkan-compat ;;
-    null) build_dir=build; renderer=null ;;
+    null) build_dir=${PLAY_BUILD_DIR:-build}; renderer=null ;;
 esac
 if [ ! -d "$build_dir" ]; then
     echo "play: $build_dir is not configured; see RFC/0001-native-vulkan-progress.md" >&2

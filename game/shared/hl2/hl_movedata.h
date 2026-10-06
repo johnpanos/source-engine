@@ -22,6 +22,11 @@ public:
 	bool		m_bIsSprinting;
 };
 
+// The client's ladder is C_FuncLadder (func_ladder.h remaps the name). Remap here
+// too, so m_hForceLadder has one type whichever header a file includes first.
+#if defined( CLIENT_DLL )
+#define CFuncLadder C_FuncLadder
+#endif
 class CFuncLadder;
 class CReservePlayerSpot;
 

@@ -87,6 +87,12 @@ public:
 	virtual bool	IsProximityHearingClient(int index) const = 0;
 
 	virtual void	SetMaxRoutablePayloadSize( int nMaxRoutablePayloadSize ) = 0;
+
+	// Local split-screen (engine.splitscreen-wire.v1): switch the connection's active slot,
+	// whether this client is a non-primary local player, and the primary client it rides on.
+	virtual bool	ChangeSplitscreenUser( int nSplitScreenUserSlot ) = 0;
+	virtual bool	IsSplitScreenUser( void ) const = 0;
+	virtual IClient	*GetSplitScreenOwner() = 0;
 };
 
 #endif // ICLIENT_H

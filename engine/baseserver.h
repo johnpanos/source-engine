@@ -159,6 +159,14 @@ protected:
 	
 	virtual CBaseClient *GetFreeClient( netadr_t &adr );
 
+public:
+	// A non-primary local player: a client of its own whose channel rides on pAttachedTo's.
+	CBaseClient		*CreateSplitClient( const char *pName, CBaseClient *pAttachedTo );
+	CBaseClient		*GetBaseUserForSplitClient( CBaseClient *pSplitUser );
+	void			QueueSplitScreenDisconnect( CBaseClient *pSplitHost, CBaseClient *pSplitUser );
+	void			ProcessSplitScreenDisconnects();
+protected:
+
 	virtual CBaseClient *CreateNewClient( int slot ) { AssertMsg( 0, "CBaseServer::CreateNewClient() being called - must be implemented in derived class!" ); return NULL; }; // must be derived
 
 	
@@ -240,6 +248,14 @@ protected:
 
 
 	CUtlVector<CBaseClient*>	m_Clients;		// array of up to [maxclients] client slots.
+
+	// Local split-screen (ported from the CS:GO engine)
+	struct SplitDisconnect_t
+	{
+		CBaseClient *m_pUser;	// the owner
+		CBaseClient *m_pSplit;	// the split-screen user leaving
+	};
+	CUtlVector< SplitDisconnect_t >	m_QueuedForDisconnect;
 	
 	bool		m_bIsDedicated;
 

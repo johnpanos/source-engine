@@ -70,7 +70,7 @@ int CBaseViewModel::ShouldTransmit( const CCheckTransmitInfo *pInfo )
 	// check if receipient owns this weapon viewmodel
 	CBasePlayer *pOwner = ToBasePlayer( m_hOwner );
 
-	if ( pOwner && pOwner->edict() == pInfo->m_pClientEnt )
+	if ( pOwner && ( pOwner->edict() == pInfo->m_pClientEnt || pOwner->IsSplitScreenUserOnEdict( pInfo->m_pClientEnt ) ) )
 	{
 		return FL_EDICT_ALWAYS;
 	}

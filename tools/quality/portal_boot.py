@@ -992,6 +992,8 @@ def main(argv=None):
             # SDL3's offscreen driver: real GPU rendering through
             # VK_EXT_headless_surface, no window, compositor or display.
             environment["SDL_VIDEODRIVER"] = environment["SDL_VIDEO_DRIVER"] = "offscreen"
+            # An offscreen window never has focus; controllers (real or uinput_pad.py) must still be read.
+            environment["SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS"] = "1"
             for variable in ("WAYLAND_DISPLAY", "DISPLAY"):
                 environment.pop(variable, None)
         if environment.get("SDL_VIDEODRIVER") == "offscreen":

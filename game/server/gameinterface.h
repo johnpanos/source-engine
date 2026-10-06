@@ -57,6 +57,7 @@ public:
 
 	// Notify that the player is spawned
 	virtual void			ClientSpawned( edict_t *pPlayer ) OVERRIDE;
+	virtual int				GetMaxSplitscreenPlayers() OVERRIDE;
 };
 
 

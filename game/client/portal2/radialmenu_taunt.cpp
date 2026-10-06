@@ -29,10 +29,8 @@
 char g_szPositions[NUM_TAUNT_POSITIONS][16] = {
     "North", "South", "West", "East", "NorthWest", "NorthEast", "SouthWest", "SouthEast" };
 
-// This branch's engine has no split-screen client implementation (see
-// CBaseClient::IsSplitScreenUser). Keep one manager for its supported local
-// player instead of indexing an unavailable active-slot API.
-static ClientMenuManagerTaunt TheClientMenuManagerTaunt;
+// One manager per local split-screen player
+static ClientMenuManagerTaunt TheClientMenuManagerTaunt[ MAX_SPLITSCREEN_PLAYERS ];
 
 static void BuildTauntSaveData( KeyValues *pRoot )
 {
@@ -49,13 +47,12 @@ static void BuildTauntSaveData( KeyValues *pRoot )
 
 ClientMenuManagerTaunt &GetClientMenuManagerTaunt( int nSlot )
 {
-	if ( nSlot > 0 )
+	if ( nSlot < 0 )
 	{
-		Error(
-		    "Portal 2 taunt manager: split-screen slot %d is unsupported by this engine\n", nSlot );
+		nSlot = GET_ACTIVE_SPLITSCREEN_SLOT();
 	}
-
-	return TheClientMenuManagerTaunt;
+	Assert( nSlot >= 0 && nSlot < MAX_SPLITSCREEN_PLAYERS );
+	return TheClientMenuManagerTaunt[ clamp( nSlot, 0, MAX_SPLITSCREEN_PLAYERS - 1 ) ];
 }
 
 void ClientMenuManagerTaunt::ClearTauntStatusData( void )

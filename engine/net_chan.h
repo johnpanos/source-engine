@@ -17,6 +17,7 @@
 #include <inetmessage.h>
 #include <filesystem.h>
 #include "utlvector.h"
+#include "utlrbtree.h"
 #include "utlbuffer.h"
 #include "const.h"
 #include "inetchannel.h"
@@ -200,6 +201,11 @@ public:	// INetChannel interface
 
 	virtual int		GetProtocolVersion();
 
+	// Local split-screen multiplexing
+	virtual bool	SetActiveChannel( INetChannel *pNewChannel );
+	virtual void	AttachSplitPlayer( int nSplitPlayerSlot, INetChannel *pChannel );
+	virtual void	DetachSplitPlayer( int nSplitPlayerSlot );
+
 	int			IncrementSplitPacketSequence();
 
 public:
@@ -219,6 +225,7 @@ private:
 	void	FlowNewPacket(int flow, int seqnr, int acknr, int nChoked, int nDropped, int nSize );
 	
 	bool	ProcessMessages( bf_read &buf );
+	bool	_ProcessMessages( bf_read &buf );
 	bool	ProcessControlMessage( int cmd, bf_read &buf);
 	bool	SendReliableViaStream( dataFragments_t *data);
 	bool	SendReliableAcknowledge( int seqnr );
@@ -243,6 +250,29 @@ private:
 	void	SendTCPData( void );
 
 	INetMessage *FindMessage(int type);
+
+	// Local split-screen multiplexing (ported from the CS:GO engine's net_chan.cpp).
+	struct SplitPlayer_t
+	{
+		int				m_nSlot;
+		INetChannel		*m_pChannel;
+
+		SplitPlayer_t() : m_nSlot( 0 ), m_pChannel( NULL ) {}
+		static bool Less( const SplitPlayer_t &lhs, const SplitPlayer_t &rhs ) { return lhs.m_nSlot < rhs.m_nSlot; }
+	};
+
+	enum EBufType
+	{
+		BUF_RELIABLE = 0,
+		BUF_UNRELIABLE,
+		BUF_VOICE,
+	};
+
+	void		ChangeSplitUser( bf_write &out, int slot );
+	void		MaybeAppendBuffer( EBufType eBufType, bf_write &out, SplitPlayer_t &sp, bf_write &src, int *pnCurrentSlot );
+	bf_write	&GetBuffer( EBufType eBufType );
+	void		MergeSplitUserBuffers( EBufType eBufType, bf_write &outbuf );
+	void		SplitUserCombineForSending();
 
 	static bool HandleUpload( dataFragments_t *data, INetChannelHandler *MessageHandler );
 
@@ -335,6 +365,8 @@ public:
 	float		m_Timeout;		// in seconds 
 
 	INetChannelHandler			*m_MessageHandler;	// who registers and processes messages
+	CNetChan					*m_pActiveChannel;	// channel whose messages are parsed now (split-screen routing)
+	CUtlRBTree< SplitPlayer_t >	m_SplitPlayers;		// local players multiplexed onto this connection
 	CUtlVector<INetMessage*>	m_NetMessages;		// list of registered message
 	IDemoRecorder				*m_DemoRecorder;			// if != NULL points to a recording/playback demo object
 	int							m_nQueuedPackets;

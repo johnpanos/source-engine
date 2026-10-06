@@ -29,6 +29,7 @@
 #include "tier0/memalloc.h"
 #include "netmessages.h"
 #include "client.h"
+#include "cl_splitscreen.h"
 #include "sv_plugin.h"
 #include "tier1/CommandBuffer.h"
 #include "cvar.h"
@@ -66,7 +67,17 @@ struct cmdalias_t
 
 static cmdalias_t	*cmd_alias = NULL;
 
-static CCommandBuffer s_CommandBuffer;
+// One command buffer per local split-screen player (ported from the CS:GO engine's cmd.cpp): text added
+// while a slot is active runs later as that player, so a player's key bindings and console input stay
+// theirs. A game without split-screen has the one buffer.
+static CCommandBuffer s_CommandBuffers[ splitscreenwire::kMaxLocalPlayers ];
+static inline CCommandBuffer &CurrentCommandBuffer()
+{
+	const int nSlot = GET_ACTIVE_SPLITSCREEN_SLOT();
+	return s_CommandBuffers[ ( nSlot >= 0 && nSlot < splitscreenwire::kMaxLocalPlayers ) ? nSlot : 0 ];
+}
+// The buffer of the player that is active when it is used
+#define s_CommandBuffer ( CurrentCommandBuffer() )
 static CThreadFastMutex s_CommandBufferMutex;
 #define LOCK_COMMAND_BUFFER() AUTO_LOCK(s_CommandBufferMutex)
 
@@ -217,7 +228,10 @@ CON_COMMAND_F( PerfMark, "inserts a telemetry marker into the stream. If args ar
 void Cbuf_Init()
 {
 	// Wait for 1 execute time
-	s_CommandBuffer.SetWaitDelayTime( 1 );
+	for ( int i = 0; i < splitscreenwire::kMaxLocalPlayers; ++i )
+	{
+		s_CommandBuffers[ i ].SetWaitDelayTime( 1 );
+	}
 }
 
 void Cbuf_Shutdown()
@@ -241,6 +255,22 @@ void Cbuf_AddText( const char *pText )
 {
 	LOCK_COMMAND_BUFFER();
 	if ( !s_CommandBuffer.AddText( pText ) )
+	{
+		ConMsg( "Cbuf_AddText: buffer overflow\n" );
+	}
+}
+
+
+//-----------------------------------------------------------------------------
+// Adds command text to the end of a given local player's buffer, whichever slot is active
+//-----------------------------------------------------------------------------
+void Cbuf_AddTextForSlot( int nSlot, const char *pText )
+{
+	if ( nSlot < 0 || nSlot >= splitscreenwire::kMaxLocalPlayers )
+		return;
+
+	LOCK_COMMAND_BUFFER();
+	if ( !s_CommandBuffers[ nSlot ].AddText( pText ) )
 	{
 		ConMsg( "Cbuf_AddText: buffer overflow\n" );
 	}
@@ -399,26 +429,38 @@ void Cbuf_Execute()
 
 	LOCK_COMMAND_BUFFER();
 
-	// If text was added with Cbuf_AddText and then Cbuf_Execute gets called from within handler, we're going
-	//  to execute the new commands anyway, so we can ignore this extra execute call here.
-	if ( s_CommandBuffer.IsProcessingCommands() )
-		return;
-
-	// Allow/Don't allow wait commands.
-	if ( sv_allow_wait_command.GetBool() != s_CommandBuffer.IsWaitEnabled() )
+	// Each player's buffer runs as that player: the active slot is theirs while it executes
+	const int nSaveSlot = GET_ACTIVE_SPLITSCREEN_SLOT();
+	const int nSlots = MIN( (int)splitscreenwire::kMaxLocalPlayers, (int)host_state.max_splitscreen_players );
+	for ( int i = 0; i < nSlots; ++i )
 	{
-		s_CommandBuffer.SetWaitEnabled( sv_allow_wait_command.GetBool() );
-	}
+		CCommandBuffer &buffer = s_CommandBuffers[ i ];
 
-	// NOTE: The command buffer knows about execution time related to commands,
-	// but since HL2 doesn't, we're going to spoof the command time to simply
-	// be the the number of times Cbuf_Execute is called.
-	s_CommandBuffer.BeginProcessingCommands( 1 );
-	while ( s_CommandBuffer.DequeueNextCommand( ) )
-	{
-		Cbuf_ExecuteCommand( s_CommandBuffer.GetCommand(), src_command );
+		// If text was added with Cbuf_AddText and then Cbuf_Execute gets called from within handler, we're going
+		//  to execute the new commands anyway, so we can ignore this extra execute call here.
+		if ( buffer.IsProcessingCommands() )
+			continue;
+
+		ACTIVE_SPLITSCREEN_PLAYER_GUARD( i );
+
+		// Allow/Don't allow wait commands.
+		if ( sv_allow_wait_command.GetBool() != buffer.IsWaitEnabled() )
+		{
+			buffer.SetWaitEnabled( sv_allow_wait_command.GetBool() );
+		}
+
+		// NOTE: The command buffer knows about execution time related to commands,
+		// but since HL2 doesn't, we're going to spoof the command time to simply
+		// be the the number of times Cbuf_Execute is called.
+		buffer.BeginProcessingCommands( 1 );
+		while ( buffer.DequeueNextCommand( ) )
+		{
+			Cbuf_ExecuteCommand( buffer.GetCommand(), src_command );
+		}
+		buffer.EndProcessingCommands( );
 	}
-	s_CommandBuffer.EndProcessingCommands( );
+	Assert( GET_ACTIVE_SPLITSCREEN_SLOT() == nSaveSlot );
+	(void)nSaveSlot;
 }
 
 
@@ -818,6 +860,30 @@ CON_COMMAND( cmd, "Forward command to server." )
 	Cmd_ForwardToServer( args );
 }
 
+// cmd1..cmd4: run the rest of the line as the local split-screen player in that slot
+// (ported from the CS:GO engine's cvar.cpp)
+static void Cmd_SetPlayer( int nSlot, const CCommand &args )
+{
+	if ( nSlot >= host_state.max_splitscreen_players )
+	{
+		DevMsg( 1, "ignore:  %d '%s'\n", nSlot, args.ArgS() );
+		return;
+	}
+
+	// Strip the cmdN and pass the rest of the command to the appropriate slot
+	Cbuf_AddTextForSlot( nSlot, args.ArgS() );
+	Cbuf_AddTextForSlot( nSlot, "\n" );
+}
+
+CON_COMMAND( cmd1, "sets userinfo string for split screen player in slot 1" )
+{
+	Cmd_SetPlayer( 0, args );
+}
+CON_COMMAND( cmd2, "sets userinfo string for split screen player in slot 2" )
+{
+	Cmd_SetPlayer( 1, args );
+}
+
 CON_COMMAND_AUTOCOMPLETEFILE( exec, Cmd_Exec_f, "Execute script file.", "cfg", cfg );
 
 
@@ -995,7 +1061,9 @@ const ConCommandBase *Cmd_ExecuteCommand( const CCommand &command, cmd_source_t 
 					// Special processing for listen server player
 					if ( isServerCommand )
 					{
-						g_pServerPluginHandler->SetCommandClient( cl.m_nPlayerSlot );
+						// the local player of the active split-screen slot, if one can be resolved here
+						g_pServerPluginHandler->SetCommandClient(
+							splitscreen->IsLocalPlayerResolvable() ? GetLocalClient().m_nPlayerSlot : GetBaseLocalClient().m_nPlayerSlot );
 					}
 #endif
 				}
@@ -1103,6 +1171,6 @@ void Cmd_ForwardToServer( const CCommand &args, bool bReliable )
 		Q_strncat( str, args.ArgS(), sizeof( str ), COPY_ALL_CHARACTERS );
 	}
 	
-	cl.SendStringCmd( str );
+	GetLocalClient().SendStringCmd( str );
 #endif
 }

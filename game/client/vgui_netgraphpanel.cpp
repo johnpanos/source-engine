@@ -912,7 +912,7 @@ int CNetGraphPanel::GraphValue( void )
 
 	graphtype = net_graph.GetInt();
 	
-	if ( !graphtype && !( in_graph.state & 1 ) )
+	if ( !graphtype && !( in_graph.GetPerUser().state & 1 ) )
 		return 0;
 
 	// With +graph key, use max area

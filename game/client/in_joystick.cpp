@@ -25,6 +25,7 @@
 #include "tier0/icommandline.h"
 #include "inputsystem/iinputsystem.h"
 #include "inputsystem/ButtonCode.h"
+#include "inputsystem/igamepadslots.h"
 #include "math.h"
 #include "tier1/convar_serverbounded.h"
 #include "cam_thirdperson.h"
@@ -637,27 +638,72 @@ float CInput::ScaleAxisValue( const float axisValue, const float axisThreshold )
 
 void CInput::Joystick_SetSampleTime(float frametime)
 {
-	m_flRemainingJoystickSampleTime = frametime;
+	GetPerUser().m_flRemainingJoystickSampleTime = frametime;
 }
 
 float CInput::Joystick_GetForward( void )
 {
-	return m_flPreviousJoystickForward;
+	return GetPerUser().m_flPreviousJoystickForward;
 }
 
 float CInput::Joystick_GetSide( void )
 {
-	return m_flPreviousJoystickSide;
+	return GetPerUser().m_flPreviousJoystickSide;
 }
 
 float CInput::Joystick_GetPitch( void )
 {
-	return m_flPreviousJoystickPitch;
+	return GetPerUser().m_flPreviousJoystickPitch;
 }
 
 float CInput::Joystick_GetYaw( void )
 {
-	return m_flPreviousJoystickYaw;
+	return GetPerUser().m_flPreviousJoystickYaw;
+}
+
+//-----------------------------------------------------------------------------
+// The controllers of the local players after the first come from the input system's gamepad
+// slots (IGamepadSlots); the first player's is joystick 0 as always.
+//-----------------------------------------------------------------------------
+static bool GetSlotGamepad( int nSlot, gamepads::State &state )
+{
+	static IGamepadSlots *s_pSlots = NULL;
+	static bool s_bLooked = false;
+	if ( !s_bLooked && inputsystem )
+	{
+		s_bLooked = true;
+		s_pSlots = static_cast< IGamepadSlots * >( inputsystem->QueryInterface( GAMEPAD_SLOTS_INTERFACE_VERSION ) );
+	}
+	return s_pSlots && s_pSlots->GetGamepadState( nSlot, state ) && state.connected;
+}
+
+// One joystick axis (JOY_AXIS_*) of the active local player's controller, in inputsystem->GetAnalogValue's units
+static float GetActiveJoystickAxis( int nAxis )
+{
+	const int nSlot = GET_ACTIVE_SPLITSCREEN_SLOT();
+	if ( nSlot == 0 )
+		return inputsystem->GetAnalogValue( (AnalogCode_t)JOYSTICK_AXIS( 0, nAxis ) );
+
+	gamepads::State state;
+	if ( !GetSlotGamepad( nSlot, state ) )
+		return 0.0f;
+
+	int nValue = 0;
+	switch ( nAxis )
+	{
+	case JOY_AXIS_X:	nValue = state.axes[ gamepads::LeftX ]; break;
+	case JOY_AXIS_Y:	nValue = state.axes[ gamepads::LeftY ]; break;
+	case JOY_AXIS_U:	nValue = state.axes[ gamepads::RightX ]; break;
+	case JOY_AXIS_R:	nValue = state.axes[ gamepads::RightY ]; break;
+	case JOY_AXIS_Z:	nValue = state.axes[ gamepads::RightTrigger ] ? state.axes[ gamepads::RightTrigger ] : state.axes[ gamepads::LeftTrigger ]; break;
+	}
+
+	// the input system's dead zone for slot 0
+	static ConVarRef deadzone( "joy_axis_deadzone" );
+	const int nMin = deadzone.IsValid() ? (int)( deadzone.GetFloat() * 32767 ) : 0;
+	if ( abs( nValue ) < nMin )
+		return 0.0f;
+	return (float)nValue;
 }
 
 //-----------------------------------------------------------------------------
@@ -689,21 +735,31 @@ void CInput::JoyStickMove( float frametime, CUserCmd *cmd )
 		return;
 
 	// Reinitialize the 'advanced joystick' system if hotplugging has caused us toggle between some/none joysticks.
+	const int nJoystickSlot = GET_ACTIVE_SPLITSCREEN_SLOT();
 	bool haveJoysticks = ( inputsystem->GetJoystickCount() > 0 );
-	if ( haveJoysticks != m_fHadJoysticks )
+	if ( nJoystickSlot == 0 )
 	{
-		Joystick_Advanced();
-		m_fHadJoysticks = haveJoysticks;
+		if ( haveJoysticks != m_fHadJoysticks )
+		{
+			Joystick_Advanced();
+			m_fHadJoysticks = haveJoysticks;
+		}
+	}
+	else
+	{
+		// another local player has a controller of its own, or nothing to read
+		gamepads::State slotState;
+		haveJoysticks = GetSlotGamepad( nJoystickSlot, slotState );
 	}
 
 	// Verify that a joystick is available
 	if ( !haveJoysticks )
 		return; 
 
-	if ( m_flRemainingJoystickSampleTime <= 0 )
+	if ( GetPerUser().m_flRemainingJoystickSampleTime <= 0 )
 		return;
-	frametime = MIN(m_flRemainingJoystickSampleTime, frametime);
-	m_flRemainingJoystickSampleTime -= frametime;
+	frametime = MIN(GetPerUser().m_flRemainingJoystickSampleTime, frametime);
+	GetPerUser().m_flRemainingJoystickSampleTime -= frametime;
 
 	QAngle viewangles;
 
@@ -724,7 +780,7 @@ void CInput::JoyStickMove( float frametime, CUserCmd *cmd )
 		if ( GAME_AXIS_NONE == m_rgAxes[i].AxisMap )
 			continue;
 
-		float fAxisValue = inputsystem->GetAnalogValue( (AnalogCode_t)JOYSTICK_AXIS( 0, i ) );
+		float fAxisValue = GetActiveJoystickAxis( i );
 
 		if (joy_wwhack2.GetInt() != 0 )
 		{
@@ -745,7 +801,7 @@ void CInput::JoyStickMove( float frametime, CUserCmd *cmd )
 	}
 
 	// Re-map the axis values if necessary, based on the joystick configuration
-	if ( (joy_advanced.GetInt() == 0) && (in_jlook.state & 1) )
+	if ( (joy_advanced.GetInt() == 0) && (in_jlook.GetPerUser().state & 1) )
 	{
 		// user wants forward control to become pitch control
 		gameAxes[GAME_AXIS_PITCH] = gameAxes[GAME_AXIS_FORWARD];
@@ -759,17 +815,17 @@ void CInput::JoyStickMove( float frametime, CUserCmd *cmd )
 		}
 	}
 
-	if ( (in_strafe.state & 1) || ( lookstrafe.GetFloat() && (in_jlook.state & 1) ) )
+	if ( (in_strafe.GetPerUser().state & 1) || ( lookstrafe.GetFloat() && (in_jlook.GetPerUser().state & 1) ) )
 	{
 		// user wants yaw control to become side control
 		gameAxes[GAME_AXIS_SIDE] = gameAxes[GAME_AXIS_YAW];
 		gameAxes[GAME_AXIS_YAW].value = 0;
 	}
 
-	m_flPreviousJoystickForward	= ScaleAxisValue( gameAxes[GAME_AXIS_FORWARD].value, MAX_BUTTONSAMPLE * joy_forwardthreshold.GetFloat() );
-	m_flPreviousJoystickSide	= ScaleAxisValue( gameAxes[GAME_AXIS_SIDE].value, MAX_BUTTONSAMPLE * joy_sidethreshold.GetFloat()  );
-	m_flPreviousJoystickPitch	= ScaleAxisValue( gameAxes[GAME_AXIS_PITCH].value, MAX_BUTTONSAMPLE * joy_pitchthreshold.GetFloat()  );
-	m_flPreviousJoystickYaw		= ScaleAxisValue( gameAxes[GAME_AXIS_YAW].value, MAX_BUTTONSAMPLE * joy_yawthreshold.GetFloat()  );
+	GetPerUser().m_flPreviousJoystickForward	= ScaleAxisValue( gameAxes[GAME_AXIS_FORWARD].value, MAX_BUTTONSAMPLE * joy_forwardthreshold.GetFloat() );
+	GetPerUser().m_flPreviousJoystickSide	= ScaleAxisValue( gameAxes[GAME_AXIS_SIDE].value, MAX_BUTTONSAMPLE * joy_sidethreshold.GetFloat()  );
+	GetPerUser().m_flPreviousJoystickPitch	= ScaleAxisValue( gameAxes[GAME_AXIS_PITCH].value, MAX_BUTTONSAMPLE * joy_pitchthreshold.GetFloat()  );
+	GetPerUser().m_flPreviousJoystickYaw		= ScaleAxisValue( gameAxes[GAME_AXIS_YAW].value, MAX_BUTTONSAMPLE * joy_yawthreshold.GetFloat()  );
 
 	// Skip out if vgui is active
 	if ( vgui::surface()->IsCursorVisible() )
@@ -778,36 +834,36 @@ void CInput::JoyStickMove( float frametime, CUserCmd *cmd )
 	// If we're inverting our joystick, do so
 	if ( joy_inverty.GetBool() )
 	{
-		m_flPreviousJoystickPitch *= -1.0f;
+		GetPerUser().m_flPreviousJoystickPitch *= -1.0f;
 	}
 
 	// drive yaw, pitch and move like a screen relative platformer game
 	if ( CAM_IsThirdPerson() && thirdperson_platformer.GetInt() )
 	{
-		if ( m_flPreviousJoystickForward || m_flPreviousJoystickSide )
+		if ( GetPerUser().m_flPreviousJoystickForward || GetPerUser().m_flPreviousJoystickSide )
 		{
 			// apply turn control [ YAW ]
 			// factor in the camera offset, so that the move direction is relative to the thirdperson camera
-			viewangles[ YAW ] = RAD2DEG(atan2(-m_flPreviousJoystickSide, -m_flPreviousJoystickForward)) + g_ThirdPersonManager.GetCameraOffsetAngles()[ YAW ];
+			viewangles[ YAW ] = RAD2DEG(atan2(-GetPerUser().m_flPreviousJoystickSide, -GetPerUser().m_flPreviousJoystickForward)) + g_ThirdPersonManager.GetCameraOffsetAngles()[ YAW ];
 			engine->SetViewAngles( viewangles );
 
 			// apply movement
-			Vector2D moveDir( m_flPreviousJoystickForward, m_flPreviousJoystickSide );
+			Vector2D moveDir( GetPerUser().m_flPreviousJoystickForward, GetPerUser().m_flPreviousJoystickSide );
 			cmd->forwardmove += moveDir.Length() * cl_forwardspeed.GetFloat();
 		}
 
-		if ( m_flPreviousJoystickPitch || m_flPreviousJoystickYaw )
+		if ( GetPerUser().m_flPreviousJoystickPitch || GetPerUser().m_flPreviousJoystickYaw )
 		{
 			Vector vTempOffset = g_ThirdPersonManager.GetCameraOffsetAngles();
 
 			// look around with the camera
-			vTempOffset[ PITCH ] += m_flPreviousJoystickPitch * joy_pitchsensitivity.GetFloat();
-			vTempOffset[ YAW ]   += m_flPreviousJoystickYaw * joy_yawsensitivity.GetFloat();
+			vTempOffset[ PITCH ] += GetPerUser().m_flPreviousJoystickPitch * joy_pitchsensitivity.GetFloat();
+			vTempOffset[ YAW ]   += GetPerUser().m_flPreviousJoystickYaw * joy_yawsensitivity.GetFloat();
 
 			g_ThirdPersonManager.SetCameraOffsetAngles( vTempOffset );
 		}
 
-		if ( m_flPreviousJoystickForward || m_flPreviousJoystickSide || m_flPreviousJoystickPitch || m_flPreviousJoystickYaw )
+		if ( GetPerUser().m_flPreviousJoystickForward || GetPerUser().m_flPreviousJoystickSide || GetPerUser().m_flPreviousJoystickPitch || GetPerUser().m_flPreviousJoystickYaw )
 		{
 			Vector vTempOffset = g_ThirdPersonManager.GetCameraOffsetAngles();
 
@@ -835,12 +891,12 @@ void CInput::JoyStickMove( float frametime, CUserCmd *cmd )
 		iResponseCurve = joy_response_move.GetInt();
 	}	
 	
-	float val = ResponseCurve( iResponseCurve, m_flPreviousJoystickForward, PITCH, joy_forwardsensitivity.GetFloat() );
+	float val = ResponseCurve( iResponseCurve, GetPerUser().m_flPreviousJoystickForward, PITCH, joy_forwardsensitivity.GetFloat() );
 	joyForwardMove	+= val * cl_forwardspeed.GetFloat();
-	val = ResponseCurve( iResponseCurve, m_flPreviousJoystickSide, YAW, joy_sidesensitivity.GetFloat() );
+	val = ResponseCurve( iResponseCurve, GetPerUser().m_flPreviousJoystickSide, YAW, joy_sidesensitivity.GetFloat() );
 	joySideMove		+= val * cl_sidespeed.GetFloat();
 
-	Vector2D move( m_flPreviousJoystickYaw, m_flPreviousJoystickPitch );
+	Vector2D move( GetPerUser().m_flPreviousJoystickYaw, GetPerUser().m_flPreviousJoystickPitch );
 	float dist = move.Length();
 
 	// apply turn control
@@ -848,12 +904,12 @@ void CInput::JoyStickMove( float frametime, CUserCmd *cmd )
 
 	if ( JOY_ABSOLUTE_AXIS == gameAxes[GAME_AXIS_YAW].controlType )
 	{
-		float fAxisValue = ResponseCurveLook( joy_response_look.GetInt(), m_flPreviousJoystickYaw, YAW, m_flPreviousJoystickPitch, dist, frametime );
+		float fAxisValue = ResponseCurveLook( joy_response_look.GetInt(), GetPerUser().m_flPreviousJoystickYaw, YAW, GetPerUser().m_flPreviousJoystickPitch, dist, frametime );
 		angle = fAxisValue * joy_yawsensitivity.GetFloat() * aspeed * cl_yawspeed.GetFloat();
 	}
 	else
 	{
-		angle = m_flPreviousJoystickYaw * joy_yawsensitivity.GetFloat() * aspeed * 180.0;
+		angle = GetPerUser().m_flPreviousJoystickYaw * joy_yawsensitivity.GetFloat() * aspeed * 180.0;
 	}
 
 	angle = JoyStickAdjustYaw( angle );
@@ -861,22 +917,22 @@ void CInput::JoyStickMove( float frametime, CUserCmd *cmd )
 	cmd->mousedx = angle;
 
 	// apply look control
-	if ( in_jlook.state & 1 )
+	if ( in_jlook.GetPerUser().state & 1 )
 	{
 		float angle = 0;
 		if ( JOY_ABSOLUTE_AXIS == gameAxes[GAME_AXIS_PITCH].controlType )
 		{
-			float fAxisValue = ResponseCurveLook( joy_response_look.GetInt(), m_flPreviousJoystickPitch, PITCH, m_flPreviousJoystickYaw, dist, frametime );
+			float fAxisValue = ResponseCurveLook( joy_response_look.GetInt(), GetPerUser().m_flPreviousJoystickPitch, PITCH, GetPerUser().m_flPreviousJoystickYaw, dist, frametime );
 			angle = fAxisValue * joy_pitchsensitivity.GetFloat() * aspeed * cl_pitchspeed.GetFloat();
 		}
 		else
 		{
-			angle = m_flPreviousJoystickPitch * joy_pitchsensitivity.GetFloat() * aspeed * 180.0;
+			angle = GetPerUser().m_flPreviousJoystickPitch * joy_pitchsensitivity.GetFloat() * aspeed * 180.0;
 		}
 		viewangles[PITCH] += angle;
 		cmd->mousedy = angle;
 		view->StopPitchDrift();
-		if( m_flPreviousJoystickPitch == 0.f && lookspring.GetFloat() == 0.f )
+		if( GetPerUser().m_flPreviousJoystickPitch == 0.f && lookspring.GetFloat() == 0.f )
 		{
 			// no pitch movement
 			// disable pitch return-to-center unless requested by user

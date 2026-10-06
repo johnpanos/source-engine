@@ -2667,7 +2667,7 @@ void* SendProxy_SendActiveLocalWeaponDataTable( const SendProp *pProp, const voi
 		CBasePlayer *pPlayer = ToBasePlayer( pWeapon->GetOwner() );
 		if ( pPlayer /*&& pPlayer->GetActiveWeapon() == pWeapon*/ )
 		{
-			pRecipients->SetOnly( pPlayer->GetClientIndex() );
+			pRecipients->SetOnly( pPlayer->GetConnectionClientIndex() );
 			return (void*)pVarData;
 		}
 	}
@@ -2689,7 +2689,7 @@ void* SendProxy_SendLocalWeaponDataTable( const SendProp *pProp, const void *pSt
 		CBasePlayer *pPlayer = ToBasePlayer( pWeapon->GetOwner() );
 		if ( pPlayer )
 		{
-			pRecipients->SetOnly( pPlayer->GetClientIndex() );
+			pRecipients->SetOnly( pPlayer->GetConnectionClientIndex() );
 			return (void*)pVarData;
 		}
 	}

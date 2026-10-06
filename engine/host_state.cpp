@@ -105,6 +105,7 @@ public:
 	bool		m_bRememberLocation;
 	bool		m_bBackgroundLevel;
 	bool		m_bWaitingForConnection;
+	bool		m_bSplitScreenConnect;	// connect every local split-screen player when the map starts
 };
 
 static bool Host_ValidGame( void );
@@ -133,7 +134,7 @@ void HostState_RunGameInit()
 //-----------------------------------------------------------------------------
 // start a new game as soon as possible
 //-----------------------------------------------------------------------------
-void HostState_NewGame( char const *pMapName, bool remember_location, bool background )
+void HostState_NewGame( char const *pMapName, bool remember_location, bool background, bool bSplitScreenConnect )
 {
 	Q_strncpy( g_HostState.m_levelName, pMapName, sizeof( g_HostState.m_levelName ) );
 
@@ -141,6 +142,7 @@ void HostState_NewGame( char const *pMapName, bool remember_location, bool backg
 	g_HostState.m_bRememberLocation = remember_location;
 	g_HostState.m_bWaitingForConnection = true;
 	g_HostState.m_bBackgroundLevel = background;
+	g_HostState.m_bSplitScreenConnect = bSplitScreenConnect;
 	if ( remember_location )
 	{
 		g_HostState.RememberLocation();
@@ -169,6 +171,7 @@ void HostState_LoadGame( char const *pSaveFileName, bool remember_location )
 
 	g_HostState.m_bRememberLocation = remember_location;
 	g_HostState.m_bBackgroundLevel = false;
+	g_HostState.m_bSplitScreenConnect = false;
 	g_HostState.m_bWaitingForConnection = true;
 	if ( remember_location )
 	{
@@ -291,6 +294,7 @@ void CHostState::Init()
 	m_landmarkName[0] = 0;
 	m_bRememberLocation = 0;
 	m_bBackgroundLevel = false;
+	m_bSplitScreenConnect = false;
 	m_vecLocation.Init();
 	m_angLocation.Init();
 	m_bWaitingForConnection = false;
@@ -357,7 +361,9 @@ void CHostState::State_NewGame()
 		}
 		else
 		{
-			if ( Host_NewGame( m_levelName, false, m_bBackgroundLevel ) )
+			bool bSplitScreenConnect = m_bSplitScreenConnect;
+			m_bSplitScreenConnect = false;
+			if ( Host_NewGame( m_levelName, false, m_bBackgroundLevel, NULL, NULL, false, bSplitScreenConnect ) )
 			{
 				// succesfully started the new game
 				SetState( HS_RUN, true );

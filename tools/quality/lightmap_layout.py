@@ -91,6 +91,9 @@ MAX_STRETCH = 1.5
 # MAX_STRETCH], so its texel area density can differ from another's by up to
 # this factor (flat triangles take the atlas density exactly).
 CURVED_DENSITY_SPREAD = MAX_STRETCH ** 4
+# Flat triangles take the atlas density to within this factor: float32 positions and UVs
+# on large retail faces move it by up to ~0.3 % (sp_a2_turret_intro).
+FLAT_DENSITY_TOLERANCE = 1.005
 # xatlas chart options: maxCost, normalDeviationWeight, roundnessWeight,
 # straightnessWeight, normalSeamWeight, textureSeamWeight, maxChartArea,
 # maxBoundaryLength, then maxIterations. Normal seams above 1000 are always
@@ -721,7 +724,7 @@ def main():
     # take the atlas density exactly (float32 storage of positions and UVs
     # moves it by ~1e-4 at most) and curved ones stay within MAX_STRETCH.
     invariants = lightmap_seams.chart_invariants(
-        positions, uvs, args.size, CURVED_DENSITY_SPREAD if curved.any() else 1.001)
+        positions, uvs, args.size, CURVED_DENSITY_SPREAD if curved.any() else FLAT_DENSITY_TOLERANCE)
     violations = []
     # Parked and zero-area triangles draw nothing and have no texel scale.
     measured = ~np.all(uvs == parking_uv(args.size), axis=(1, 2)) & \
@@ -732,7 +735,8 @@ def main():
                                                 uvs[measured] * args.size,
                                                 record["texels_per_metre"])
         planar = ~curved & measured
-        if planar.any() and (low[planar].min() < 1 / 1.001 or high[planar].max() > 1.001):
+        if planar.any() and (low[planar].min() < 1 / FLAT_DENSITY_TOLERANCE or
+                                 high[planar].max() > FLAT_DENSITY_TOLERANCE):
             violations.append("flat_density")
         if curved.any() and (low[curved].min() < 1 / MAX_STRETCH - 1e-3 or
                              high[curved].max() > MAX_STRETCH + 1e-3):

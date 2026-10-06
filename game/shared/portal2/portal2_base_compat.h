@@ -147,13 +147,11 @@ inline void UTIL_ClearTrace( TraceType &trace )
 #endif
 
 //-----------------------------------------------------------------------------
-// Split screen. This engine has one local player per client, so the Portal 2
-// split-screen scaffolding compiles to its single-player form (the same form
-// CS:GO uses when SPLIT_SCREEN_STUBS is defined).
+// Split screen: Portal 2 supports two local players. The engine owns the slots
+// (public/isplitscreen.h); the active-slot macros live in splitscreen_game.h.
 //-----------------------------------------------------------------------------
-#define SPLIT_SCREEN_STUBS
 #ifndef MAX_SPLITSCREEN_PLAYERS
-#define MAX_SPLITSCREEN_PLAYERS 1
+#define MAX_SPLITSCREEN_PLAYERS 2
 #endif
 #ifndef MAX_SPLITSCREEN_CLIENT_BITS
 #define MAX_SPLITSCREEN_CLIENT_BITS 1
@@ -161,20 +159,7 @@ inline void UTIL_ClearTrace( TraceType &trace )
 #ifndef MAX_SPLITSCREEN_CLIENTS
 #define MAX_SPLITSCREEN_CLIENTS ( 1 << MAX_SPLITSCREEN_CLIENT_BITS )
 #endif
-
-#define VGUI_SCREENSIZE_SPLITSCREEN_GUARD( slot )
-#define ACTIVE_SPLITSCREEN_PLAYER_GUARD( slot )
-#define ACTIVE_SPLITSCREEN_PLAYER_GUARD_ENT( entity )
-#define ACTIVE_SPLITSCREEN_PLAYER_GUARD_VGUI( slot )
-#define ACTIVE_SPLITSCREEN_PLAYER_GUARD_ENT_VGUI( entity )
-#define HACK_GETLOCALPLAYER_GUARD( desc )
-#define VGUI_ABSPOS_SPLITSCREEN_GUARD( slot )
-#define VGUI_ABSPOS_SPLITSCREEN_GUARD_INVERT( slot )
-#define FOR_EACH_VALID_SPLITSCREEN_PLAYER( iteratorName ) \
-	for ( int iteratorName = 0; iteratorName == 0; ++iteratorName )
-#define ASSERT_LOCAL_PLAYER_RESOLVABLE()
-#define ASSERT_LOCAL_PLAYER_NOT_RESOLVABLE()
-#define GET_ACTIVE_SPLITSCREEN_SLOT() ( 0 )
+#include "../splitscreen_game.h"
 
 //-----------------------------------------------------------------------------
 // CEG copy protection is not built into this fork.

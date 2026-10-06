@@ -805,6 +805,76 @@ const char *NET_SignonState::ToString(void) const
 	return s_text;
 }
 
+bool NET_SplitScreenUser::WriteToBuffer( bf_write &buffer )
+{
+	buffer.WriteUBitLong( GetType(), NETMSG_TYPE_BITS );
+	splitscreenwire::NetSplitScreenUser wire = { m_nSlot };
+	return splitscreenwire::WriteNetSplitScreenUser( buffer, wire );
+}
+
+bool NET_SplitScreenUser::ReadFromBuffer( bf_read &buffer )
+{
+	VPROF( "NET_SplitScreenUser::ReadFromBuffer" );
+
+	splitscreenwire::NetSplitScreenUser wire;
+	if ( !splitscreenwire::ReadNetSplitScreenUser( buffer, wire ) )
+		return false;
+	m_nSlot = wire.slot;
+	return true;
+}
+
+const char *NET_SplitScreenUser::ToString( void ) const
+{
+	Q_snprintf( s_text, sizeof( s_text ), "%s: slot %i", GetName(), m_nSlot );
+	return s_text;
+}
+
+bool SVC_SplitScreen::WriteToBuffer( bf_write &buffer )
+{
+	buffer.WriteUBitLong( GetType(), NETMSG_TYPE_BITS );
+	splitscreenwire::SvcSplitScreen wire = { m_nAction, m_nSlot, m_nEntityIndex };
+	return splitscreenwire::WriteSvcSplitScreen( buffer, wire );
+}
+
+bool SVC_SplitScreen::ReadFromBuffer( bf_read &buffer )
+{
+	VPROF( "SVC_SplitScreen::ReadFromBuffer" );
+
+	splitscreenwire::SvcSplitScreen wire;
+	if ( !splitscreenwire::ReadSvcSplitScreen( buffer, wire ) )
+		return false;
+	m_nAction = wire.action;
+	m_nSlot = wire.slot;
+	m_nEntityIndex = wire.entityIndex;
+	return true;
+}
+
+const char *SVC_SplitScreen::ToString( void ) const
+{
+	Q_snprintf( s_text, sizeof( s_text ), "%s: %s slot %i entity %i", GetName(),
+	            m_nAction == splitscreenwire::kActionAdd ? "add" : "remove", m_nSlot, m_nEntityIndex );
+	return s_text;
+}
+
+bool CLC_SplitPlayerConnect::WriteToBuffer( bf_write &buffer )
+{
+	buffer.WriteUBitLong( GetType(), NETMSG_TYPE_BITS );
+	return splitscreenwire::WriteClcSplitPlayerConnect( buffer, m_Connect );
+}
+
+bool CLC_SplitPlayerConnect::ReadFromBuffer( bf_read &buffer )
+{
+	VPROF( "CLC_SplitPlayerConnect::ReadFromBuffer" );
+
+	return splitscreenwire::ReadClcSplitPlayerConnect( buffer, m_Connect );
+}
+
+const char *CLC_SplitPlayerConnect::ToString( void ) const
+{
+	Q_snprintf( s_text, sizeof( s_text ), "%s: %i player(s)", GetName(), m_Connect.count );
+	return s_text;
+}
+
 bool SVC_BSPDecal::WriteToBuffer( bf_write &buffer )
 {
 	buffer.WriteUBitLong( GetType(), NETMSG_TYPE_BITS );

@@ -51,14 +51,13 @@ extern ConVar cam_idealyaw;
 // FIXME, tie to entity state parsing for player!!!
 int g_iAlive = 1;
 
-static int s_ClearInputState = 0;
 
 // Defined in pm_math.c
 float anglemod( float a );
 
 // FIXME void V_Init( void );
-static int in_impulse = 0;
-static int in_cancel = 0;
+static int in_impulse[ MAX_SPLITSCREEN_PLAYERS ];
+static int in_cancel[ MAX_SPLITSCREEN_PLAYERS ];
 
 ConVar cl_anglespeedkey( "cl_anglespeedkey", "0.67", 0 );
 ConVar cl_yawspeed( "cl_yawspeed", "210", FCVAR_NONE, "Client yaw speed.", true, -100000, true, 100000 );
@@ -313,9 +312,7 @@ void CInput::AddKeyButton( const char *name, kbutton_t *pkb )
 //-----------------------------------------------------------------------------
 CInput::CInput( void )
 {
-	m_pCommands = NULL;
-	m_pCameraThirdData = NULL;
-	m_pVerifiedCommands = NULL;
+	// every PerUserInput_t starts empty (its constructor)
 }
 
 //-----------------------------------------------------------------------------
@@ -360,6 +357,16 @@ void CInput::Shutdown_Keyboard( void )
 	m_pKeys = NULL;
 }
 
+kbutton_t::Split_t &kbutton_t::GetPerUser( int nSlot /*=-1*/ )
+{
+	if ( nSlot == -1 )
+	{
+		nSlot = GET_ACTIVE_SPLITSCREEN_SLOT();
+	}
+	Assert( nSlot >= 0 && nSlot < MAX_SPLITSCREEN_PLAYERS );
+	return m_PerUser[ clamp( nSlot, 0, MAX_SPLITSCREEN_PLAYERS - 1 ) ];
+}
+
 /*
 ============
 KeyDown
@@ -373,25 +380,25 @@ void KeyDown( kbutton_t *b, const char *c )
 		k = atoi(c);
 	}
 
-	if (k == b->down[0] || k == b->down[1])
+	if (k == b->GetPerUser().down[0] || k == b->GetPerUser().down[1])
 		return;		// repeating key
 	
-	if (!b->down[0])
-		b->down[0] = k;
-	else if (!b->down[1])
-		b->down[1] = k;
+	if (!b->GetPerUser().down[0])
+		b->GetPerUser().down[0] = k;
+	else if (!b->GetPerUser().down[1])
+		b->GetPerUser().down[1] = k;
 	else
 	{
 		if ( c[0] )
 		{
-			DevMsg( 1,"Three keys down for a button '%c' '%c' '%c'!\n", b->down[0], b->down[1], c[0]);
+			DevMsg( 1,"Three keys down for a button '%c' '%c' '%c'!\n", b->GetPerUser().down[0], b->GetPerUser().down[1], c[0]);
 		}
 		return;
 	}
 	
-	if (b->state & 1)
+	if (b->GetPerUser().state & 1)
 		return;		// still down
-	b->state |= 1 + 2;	// down + impulse down
+	b->GetPerUser().state |= 1 + 2;	// down + impulse down
 }
 
 /*
@@ -403,31 +410,31 @@ void KeyUp( kbutton_t *b, const char *c )
 {	
 	if ( !c || !c[0] )
 	{
-		b->down[0] = b->down[1] = 0;
-		b->state = 4;	// impulse up
+		b->GetPerUser().down[0] = b->GetPerUser().down[1] = 0;
+		b->GetPerUser().state = 4;	// impulse up
 		return;
 	}
 
 	int k = atoi(c);
 
-	if (b->down[0] == k)
-		b->down[0] = 0;
-	else if (b->down[1] == k)
-		b->down[1] = 0;
+	if (b->GetPerUser().down[0] == k)
+		b->GetPerUser().down[0] = 0;
+	else if (b->GetPerUser().down[1] == k)
+		b->GetPerUser().down[1] = 0;
 	else
 		return;		// key up without coresponding down (menu pass through)
 
-	if (b->down[0] || b->down[1])
+	if (b->GetPerUser().down[0] || b->GetPerUser().down[1])
 	{
-		//Msg ("Keys down for button: '%c' '%c' '%c' (%d,%d,%d)!\n", b->down[0], b->down[1], c, b->down[0], b->down[1], c);
+		//Msg ("Keys down for button: '%c' '%c' '%c' (%d,%d,%d)!\n", b->GetPerUser().down[0], b->GetPerUser().down[1], c, b->GetPerUser().down[0], b->GetPerUser().down[1], c);
 		return;		// some other key is still holding it down
 	}
 
-	if (!(b->state & 1))
+	if (!(b->GetPerUser().state & 1))
 		return;		// still up (this should not happen)
 
-	b->state &= ~1;		// now up
-	b->state |= 4; 		// impulse up
+	b->GetPerUser().state &= ~1;		// now up
+	b->GetPerUser().state |= 4; 		// impulse up
 }
 
 void IN_CommanderMouseMoveDown( const CCommand &args ) {KeyDown(&in_commandermousemove, args[1] );}
@@ -516,18 +523,18 @@ void IN_AttackDown( const CCommand &args )
 void IN_AttackUp( const CCommand &args )
 {
 	KeyUp( &in_attack, args[1] );
-	in_cancel = 0;
+	in_cancel[ GET_ACTIVE_SPLITSCREEN_SLOT() ] = 0;
 }
 
 // Special handling
 void IN_Cancel( const CCommand &args )
 {
-	in_cancel = 1;
+	in_cancel[ GET_ACTIVE_SPLITSCREEN_SLOT() ] = 1;
 }
 
 void IN_Impulse( const CCommand &args )
 {
-	in_impulse = atoi( args[1] );
+	in_impulse[ GET_ACTIVE_SPLITSCREEN_SLOT() ] = atoi( args[1] );
 }
 
 void IN_ScoreDown( const CCommand &args )
@@ -562,7 +569,7 @@ int CInput::KeyEvent( int down, ButtonCode_t code, const char *pszCurrentBinding
 	// Deal with camera intercepting the mouse
 	if ( ( code == MOUSE_LEFT ) || ( code == MOUSE_RIGHT ) )
 	{
-		if ( m_fCameraInterceptingMouse )
+		if ( GetPerUser().m_fCameraInterceptingMouse )
 			return 0;
 	}
 
@@ -589,9 +596,9 @@ float CInput::KeyState ( kbutton_t *key )
 	float		val = 0.0;
 	int			impulsedown, impulseup, down;
 	
-	impulsedown = key->state & 2;
-	impulseup	= key->state & 4;
-	down		= key->state & 1;
+	impulsedown = key->GetPerUser().state & 2;
+	impulseup	= key->GetPerUser().state & 4;
+	down		= key->GetPerUser().state & 1;
 	
 	if ( impulsedown && !impulseup )
 	{
@@ -626,13 +633,13 @@ float CInput::KeyState ( kbutton_t *key )
 	}
 
 	// clear impulses
-	key->state &= 1;		
+	key->GetPerUser().state &= 1;		
 	return val;
 }
 
 void CInput::IN_SetSampleTime( float frametime )
 {
-	m_flKeyboardSampleTime = frametime;
+	GetPerUser().m_flKeyboardSampleTime = frametime;
 }
 
 /*
@@ -648,18 +655,18 @@ float CInput::DetermineKeySpeed( float frametime )
 
 	if ( in_usekeyboardsampletime.GetBool() )
 	{
-		if ( m_flKeyboardSampleTime <= 0 )
+		if ( GetPerUser().m_flKeyboardSampleTime <= 0 )
 			return 0.0f;
 	
-		frametime = MIN( m_flKeyboardSampleTime, frametime );
-		m_flKeyboardSampleTime -= frametime;
+		frametime = MIN( GetPerUser().m_flKeyboardSampleTime, frametime );
+		GetPerUser().m_flKeyboardSampleTime -= frametime;
 	}
 	
 	float speed;
 
 	speed = frametime;
 
-	if ( in_speed.state & 1 )
+	if ( in_speed.GetPerUser().state & 1 )
 	{
 		speed *= cl_anglespeedkey.GetFloat();
 	}
@@ -675,7 +682,7 @@ AdjustYaw
 */
 void CInput::AdjustYaw( float speed, QAngle& viewangles )
 {
-	if ( !(in_strafe.state & 1) )
+	if ( !(in_strafe.GetPerUser().state & 1) )
 	{
 		viewangles[YAW] -= speed*cl_yawspeed.GetFloat() * KeyState (&in_right);
 		viewangles[YAW] += speed*cl_yawspeed.GetFloat() * KeyState (&in_left);
@@ -712,7 +719,7 @@ void CInput::AdjustPitch( float speed, QAngle& viewangles )
 	{
 		float	up, down;
 
-		if ( in_klook.state & 1 )
+		if ( in_klook.GetPerUser().state & 1 )
 		{
 			view->StopPitchDrift ();
 			viewangles[PITCH] -= speed*cl_pitchspeed.GetFloat() * KeyState (&in_forward);
@@ -829,7 +836,7 @@ void CInput::ComputeSideMove( CUserCmd *cmd )
 	}
 
 	// If strafing, check left and right keys and act like moveleft and moveright keys
-	if ( in_strafe.state & 1 )
+	if ( in_strafe.GetPerUser().state & 1 )
 	{
 		cmd->sidemove += cl_sidespeed.GetFloat() * KeyState (&in_right);
 		cmd->sidemove -= cl_sidespeed.GetFloat() * KeyState (&in_left);
@@ -891,7 +898,7 @@ void CInput::ComputeForwardMove( CUserCmd *cmd )
 		return;
 	}
 
-	if ( !(in_klook.state & 1 ) )
+	if ( !(in_klook.GetPerUser().state & 1 ) )
 	{	
 		cmd->forwardmove += cl_forwardspeed.GetFloat() * KeyState (&in_forward);
 		cmd->forwardmove -= cl_backspeed.GetFloat() * KeyState (&in_back);
@@ -944,7 +951,7 @@ void CInput::ControllerMove( float frametime, CUserCmd *cmd )
 {
 	if ( IsPC() )
 	{
-		if ( !m_fCameraInterceptingMouse && m_fMouseActive )
+		if ( !GetPerUser().m_fCameraInterceptingMouse && m_fMouseActive )
 		{
 			MouseMove( cmd);
 		}
@@ -987,9 +994,29 @@ void CInput::ControllerMove( float frametime, CUserCmd *cmd )
 // Purpose: 
 // Input  : *weapon - 
 //-----------------------------------------------------------------------------
+CInput::PerUserInput_t &CInput::GetPerUser( int nSlot /*=-1*/ )
+{
+	if ( nSlot == -1 )
+	{
+		nSlot = GET_ACTIVE_SPLITSCREEN_SLOT();
+	}
+	Assert( nSlot >= 0 && nSlot < MAX_SPLITSCREEN_PLAYERS );
+	return m_PerUser[ clamp( nSlot, 0, MAX_SPLITSCREEN_PLAYERS - 1 ) ];
+}
+
+const CInput::PerUserInput_t &CInput::GetPerUser( int nSlot /*=-1*/ ) const
+{
+	if ( nSlot == -1 )
+	{
+		nSlot = GET_ACTIVE_SPLITSCREEN_SLOT();
+	}
+	Assert( nSlot >= 0 && nSlot < MAX_SPLITSCREEN_PLAYERS );
+	return m_PerUser[ clamp( nSlot, 0, MAX_SPLITSCREEN_PLAYERS - 1 ) ];
+}
+
 void CInput::MakeWeaponSelection( C_BaseCombatWeapon *weapon )
 {
-	m_hSelectedWeapon = weapon;
+	GetPerUser().m_hSelectedWeapon = weapon;
 }
 
 /*
@@ -1066,11 +1093,11 @@ void CInput::ExtraMouseSample( float frametime, bool active )
 	if ( g_iAlive )
 	{
 		VectorCopy( viewangles, cmd->viewangles );
-		VectorCopy( viewangles, m_angPreviousViewAngles );
+		VectorCopy( viewangles, GetPerUser().m_angPreviousViewAngles );
 	}
 	else
 	{
-		VectorCopy( m_angPreviousViewAngles, cmd->viewangles );
+		VectorCopy( GetPerUser().m_angPreviousViewAngles, cmd->viewangles );
 	}
 
 	// Let the move manager override anything it wants to.
@@ -1111,8 +1138,8 @@ void CInput::ExtraMouseSample( float frametime, bool active )
 
 void CInput::CreateMove ( int sequence_number, float input_sample_frametime, bool active )
 {	
-	CUserCmd *cmd = &m_pCommands[ sequence_number % MULTIPLAYER_BACKUP ];
-	CVerifiedUserCmd *pVerified = &m_pVerifiedCommands[ sequence_number % MULTIPLAYER_BACKUP ];
+	CUserCmd *cmd = &GetPerUser().m_pCommands[ sequence_number % MULTIPLAYER_BACKUP ];
+	CVerifiedUserCmd *pVerified = &GetPerUser().m_pVerifiedCommands[ sequence_number % MULTIPLAYER_BACKUP ];
 
 	cmd->Reset();
 
@@ -1155,7 +1182,7 @@ void CInput::CreateMove ( int sequence_number, float input_sample_frametime, boo
 	else
 	{
 		// need to run and reset mouse input so that there is no view pop when unpausing
-		if ( !m_fCameraInterceptingMouse && m_fMouseActive )
+		if ( !GetPerUser().m_fCameraInterceptingMouse && m_fMouseActive )
 		{
 			float mx, my;
 			GetAccumulatedMouseDeltasAndResetAccumulators( &mx, &my );
@@ -1166,19 +1193,19 @@ void CInput::CreateMove ( int sequence_number, float input_sample_frametime, boo
 	engine->GetViewAngles( viewangles );
 
 	// Latch and clear impulse
-	cmd->impulse = in_impulse;
-	in_impulse = 0;
+	cmd->impulse = in_impulse[ GET_ACTIVE_SPLITSCREEN_SLOT() ];
+	in_impulse[ GET_ACTIVE_SPLITSCREEN_SLOT() ] = 0;
 
 	// Latch and clear weapon selection
-	if ( m_hSelectedWeapon != NULL )
+	if ( GetPerUser().m_hSelectedWeapon != NULL )
 	{
-		C_BaseCombatWeapon *weapon = m_hSelectedWeapon;
+		C_BaseCombatWeapon *weapon = GetPerUser().m_hSelectedWeapon;
 
 		cmd->weaponselect = weapon->entindex();
 		cmd->weaponsubtype = weapon->GetSubType();
 
 		// Always clear weapon selection
-		m_hSelectedWeapon = NULL;
+		GetPerUser().m_hSelectedWeapon = NULL;
 	}
 
 	// Set button and flag bits
@@ -1218,11 +1245,11 @@ void CInput::CreateMove ( int sequence_number, float input_sample_frametime, boo
 	if ( g_iAlive )
 	{
 		VectorCopy( viewangles, cmd->viewangles );
-		VectorCopy( viewangles, m_angPreviousViewAngles );
+		VectorCopy( viewangles, GetPerUser().m_angPreviousViewAngles );
 	}
 	else
 	{
-		VectorCopy( m_angPreviousViewAngles, cmd->viewangles );
+		VectorCopy( GetPerUser().m_angPreviousViewAngles, cmd->viewangles );
 	}
 
 	// Let the move manager override anything it wants to.
@@ -1268,7 +1295,7 @@ void CInput::CreateMove ( int sequence_number, float input_sample_frametime, boo
 		}
 	}
 
-	m_flLastForwardMove = cmd->forwardmove;
+	GetPerUser().m_flLastForwardMove = cmd->forwardmove;
 
 	cmd->random_seed = MD5_PseudoRandom( sequence_number ) & 0x7fffffff;
 
@@ -1280,11 +1307,11 @@ void CInput::CreateMove ( int sequence_number, float input_sample_frametime, boo
 #if defined( HL2_CLIENT_DLL )
 	// copy backchannel data
 	int i;
-	for (i = 0; i < m_EntityGroundContact.Count(); i++)
+	for (i = 0; i < GetPerUser().m_EntityGroundContact.Count(); i++)
 	{
-		cmd->entitygroundcontact.AddToTail( m_EntityGroundContact[i] );
+		cmd->entitygroundcontact.AddToTail( GetPerUser().m_EntityGroundContact[i] );
 	}
-	m_EntityGroundContact.RemoveAll();
+	GetPerUser().m_EntityGroundContact.RemoveAll();
 #endif
 
 	pVerified->m_cmd = *cmd;
@@ -1314,7 +1341,7 @@ void CInput::EncodeUserCmdToBuffer( bf_write& buf, int sequence_number )
 void CInput::DecodeUserCmdFromBuffer( bf_read& buf, int sequence_number )
 {
 	CUserCmd nullcmd;
-	CUserCmd *cmd = &m_pCommands[ sequence_number % MULTIPLAYER_BACKUP];
+	CUserCmd *cmd = &GetPerUser().m_pCommands[ sequence_number % MULTIPLAYER_BACKUP];
 
 	ReadUsercmd( &buf, cmd, &nullcmd );
 }
@@ -1323,9 +1350,9 @@ void CInput::ValidateUserCmd( CUserCmd *usercmd, int sequence_number )
 {
 	// Validate that the usercmd hasn't been changed
 	CRC32_t crc = usercmd->GetChecksum();
-	if ( crc != m_pVerifiedCommands[ sequence_number % MULTIPLAYER_BACKUP ].m_crc )
+	if ( crc != GetPerUser().m_pVerifiedCommands[ sequence_number % MULTIPLAYER_BACKUP ].m_crc )
 	{
-		*usercmd = m_pVerifiedCommands[ sequence_number % MULTIPLAYER_BACKUP ].m_cmd;
+		*usercmd = GetPerUser().m_pVerifiedCommands[ sequence_number % MULTIPLAYER_BACKUP ].m_cmd;
 	}
 }
 
@@ -1337,7 +1364,7 @@ void CInput::ValidateUserCmd( CUserCmd *usercmd, int sequence_number )
 //-----------------------------------------------------------------------------
 bool CInput::WriteUsercmdDeltaToBuffer( bf_write *buf, int from, int to, bool isnewcommand )
 {
-	Assert( m_pCommands );
+	Assert( GetPerUser().m_pCommands );
 
 	CUserCmd nullcmd;
 
@@ -1399,9 +1426,9 @@ bool CInput::WriteUsercmdDeltaToBuffer( bf_write *buf, int from, int to, bool is
 //-----------------------------------------------------------------------------
 CUserCmd *CInput::GetUserCmd( int sequence_number )
 {
-	Assert( m_pCommands );
+	Assert( GetPerUser().m_pCommands );
 
-	CUserCmd *usercmd = &m_pCommands[ sequence_number % MULTIPLAYER_BACKUP ];
+	CUserCmd *usercmd = &GetPerUser().m_pCommands[ sequence_number % MULTIPLAYER_BACKUP ];
 
 	if ( usercmd->command_number != sequence_number )
 	{
@@ -1423,7 +1450,7 @@ CUserCmd *CInput::GetUserCmd( int sequence_number )
 static void CalcButtonBits( int& bits, int in_button, int in_ignore, kbutton_t *button, bool reset )
 {
 	// Down or still down?
-	if ( button->state & 3 )
+	if ( button->GetPerUser().state & 3 )
 	{
 		bits |= in_button;
 	}
@@ -1439,7 +1466,7 @@ static void CalcButtonBits( int& bits, int in_button, int in_ignore, kbutton_t *
 
 	if ( reset )
 	{
-		button->state &= clearmask;
+		button->GetPerUser().state &= clearmask;
 	}
 }
 
@@ -1455,27 +1482,27 @@ int CInput::GetButtonBits( int bResetState )
 {
 	int bits = 0;
 
-	CalcButtonBits( bits, IN_SPEED, s_ClearInputState, &in_speed, bResetState );
-	CalcButtonBits( bits, IN_WALK, s_ClearInputState, &in_walk, bResetState );
-	CalcButtonBits( bits, IN_ATTACK, s_ClearInputState, &in_attack, bResetState );
-	CalcButtonBits( bits, IN_DUCK, s_ClearInputState, &in_duck, bResetState );
-	CalcButtonBits( bits, IN_JUMP, s_ClearInputState, &in_jump, bResetState );
-	CalcButtonBits( bits, IN_FORWARD, s_ClearInputState, &in_forward, bResetState );
-	CalcButtonBits( bits, IN_BACK, s_ClearInputState, &in_back, bResetState );
-	CalcButtonBits( bits, IN_USE, s_ClearInputState, &in_use, bResetState );
-	CalcButtonBits( bits, IN_LEFT, s_ClearInputState, &in_left, bResetState );
-	CalcButtonBits( bits, IN_RIGHT, s_ClearInputState, &in_right, bResetState );
-	CalcButtonBits( bits, IN_MOVELEFT, s_ClearInputState, &in_moveleft, bResetState );
-	CalcButtonBits( bits, IN_MOVERIGHT, s_ClearInputState, &in_moveright, bResetState );
-	CalcButtonBits( bits, IN_ATTACK2, s_ClearInputState, &in_attack2, bResetState );
-	CalcButtonBits( bits, IN_RELOAD, s_ClearInputState, &in_reload, bResetState );
-	CalcButtonBits( bits, IN_ALT1, s_ClearInputState, &in_alt1, bResetState );
-	CalcButtonBits( bits, IN_ALT2, s_ClearInputState, &in_alt2, bResetState );
-	CalcButtonBits( bits, IN_SCORE, s_ClearInputState, &in_score, bResetState );
-	CalcButtonBits( bits, IN_ZOOM, s_ClearInputState, &in_zoom, bResetState );
-	CalcButtonBits( bits, IN_GRENADE1, s_ClearInputState, &in_grenade1, bResetState );
-	CalcButtonBits( bits, IN_GRENADE2, s_ClearInputState, &in_grenade2, bResetState );
-	CalcButtonBits( bits, IN_ATTACK3, s_ClearInputState, &in_attack3, bResetState );
+	CalcButtonBits( bits, IN_SPEED, GetPerUser().m_nClearInputState, &in_speed, bResetState );
+	CalcButtonBits( bits, IN_WALK, GetPerUser().m_nClearInputState, &in_walk, bResetState );
+	CalcButtonBits( bits, IN_ATTACK, GetPerUser().m_nClearInputState, &in_attack, bResetState );
+	CalcButtonBits( bits, IN_DUCK, GetPerUser().m_nClearInputState, &in_duck, bResetState );
+	CalcButtonBits( bits, IN_JUMP, GetPerUser().m_nClearInputState, &in_jump, bResetState );
+	CalcButtonBits( bits, IN_FORWARD, GetPerUser().m_nClearInputState, &in_forward, bResetState );
+	CalcButtonBits( bits, IN_BACK, GetPerUser().m_nClearInputState, &in_back, bResetState );
+	CalcButtonBits( bits, IN_USE, GetPerUser().m_nClearInputState, &in_use, bResetState );
+	CalcButtonBits( bits, IN_LEFT, GetPerUser().m_nClearInputState, &in_left, bResetState );
+	CalcButtonBits( bits, IN_RIGHT, GetPerUser().m_nClearInputState, &in_right, bResetState );
+	CalcButtonBits( bits, IN_MOVELEFT, GetPerUser().m_nClearInputState, &in_moveleft, bResetState );
+	CalcButtonBits( bits, IN_MOVERIGHT, GetPerUser().m_nClearInputState, &in_moveright, bResetState );
+	CalcButtonBits( bits, IN_ATTACK2, GetPerUser().m_nClearInputState, &in_attack2, bResetState );
+	CalcButtonBits( bits, IN_RELOAD, GetPerUser().m_nClearInputState, &in_reload, bResetState );
+	CalcButtonBits( bits, IN_ALT1, GetPerUser().m_nClearInputState, &in_alt1, bResetState );
+	CalcButtonBits( bits, IN_ALT2, GetPerUser().m_nClearInputState, &in_alt2, bResetState );
+	CalcButtonBits( bits, IN_SCORE, GetPerUser().m_nClearInputState, &in_score, bResetState );
+	CalcButtonBits( bits, IN_ZOOM, GetPerUser().m_nClearInputState, &in_zoom, bResetState );
+	CalcButtonBits( bits, IN_GRENADE1, GetPerUser().m_nClearInputState, &in_grenade1, bResetState );
+	CalcButtonBits( bits, IN_GRENADE2, GetPerUser().m_nClearInputState, &in_grenade2, bResetState );
+	CalcButtonBits( bits, IN_ATTACK3, GetPerUser().m_nClearInputState, &in_attack3, bResetState );
 
 	if ( KeyState(&in_ducktoggle) )
 	{
@@ -1483,7 +1510,7 @@ int CInput::GetButtonBits( int bResetState )
 	}
 
 	// Cancel is a special flag
-	if (in_cancel)
+	if (in_cancel[ GET_ACTIVE_SPLITSCREEN_SLOT() ])
 	{
 		bits |= IN_CANCEL;
 	}
@@ -1499,11 +1526,11 @@ int CInput::GetButtonBits( int bResetState )
 	}
 
 	// Clear out any residual
-	bits &= ~s_ClearInputState;
+	bits &= ~GetPerUser().m_nClearInputState;
 
 	if ( bResetState )
 	{
-		s_ClearInputState = 0;
+		GetPerUser().m_nClearInputState = 0;
 	}
 
 	return bits;
@@ -1515,7 +1542,7 @@ int CInput::GetButtonBits( int bResetState )
 //-----------------------------------------------------------------------------
 void CInput::ClearInputButton( int bits )
 {
-	s_ClearInputState |= bits;
+	GetPerUser().m_nClearInputState |= bits;
 }
 
 
@@ -1536,7 +1563,7 @@ float CInput::GetLookSpring( void )
 //-----------------------------------------------------------------------------
 float CInput::GetLastForwardMove( void )
 {
-	return m_flLastForwardMove;
+	return GetPerUser().m_flLastForwardMove;
 }
 
 
@@ -1553,16 +1580,16 @@ void CInput::AddIKGroundContactInfo( int entindex, float minheight, float maxhei
 	data.minheight = minheight;
 	data.maxheight = maxheight;
 
-	AUTO_LOCK( m_EntityGroundContactMutex );
-	if (m_EntityGroundContact.Count() >= MAX_EDICTS)
+	AUTO_LOCK( GetPerUser().m_EntityGroundContactMutex );
+	if (GetPerUser().m_EntityGroundContact.Count() >= MAX_EDICTS)
 	{
 		// some overflow here, probably bogus anyway
 		Assert(0);
-		m_EntityGroundContact.RemoveAll();
+		GetPerUser().m_EntityGroundContact.RemoveAll();
 		return;
 	}
 
-	m_EntityGroundContact.AddToTail( data );
+	GetPerUser().m_EntityGroundContact.AddToTail( data );
 }
 #endif
 
@@ -1650,9 +1677,12 @@ Init_All
 */
 void CInput::Init_All (void)
 {
-	Assert( !m_pCommands );
-	m_pCommands = new CUserCmd[ MULTIPLAYER_BACKUP ];
-	m_pVerifiedCommands = new CVerifiedUserCmd[ MULTIPLAYER_BACKUP ];
+	for ( int i = 0; i < MAX_SPLITSCREEN_PLAYERS; ++i )
+	{
+		Assert( !m_PerUser[ i ].m_pCommands );
+		m_PerUser[ i ].m_pCommands = new CUserCmd[ MULTIPLAYER_BACKUP ];
+		m_PerUser[ i ].m_pVerifiedCommands = new CVerifiedUserCmd[ MULTIPLAYER_BACKUP ];
+	}
 
 	m_fMouseInitialized	= false;
 	m_fRestoreSPI		= false;
@@ -1668,7 +1698,10 @@ void CInput::Init_All (void)
 	m_fMouseParmsValid	= false;
 	m_fJoystickAdvancedInit = false;
 	m_fHadJoysticks = false;
-	m_flLastForwardMove = 0.0;
+	for ( int i = 0; i < MAX_SPLITSCREEN_PLAYERS; ++i )
+	{
+		m_PerUser[ i ].m_flLastForwardMove = 0.0;
+	}
 
 	// Initialize inputs
 	if ( IsPC() )
@@ -1691,18 +1724,24 @@ void CInput::Shutdown_All(void)
 	DeactivateMouse();
 	Shutdown_Keyboard();
 
-	delete[] m_pCommands;
-	m_pCommands = NULL;
+	for ( int i = 0; i < MAX_SPLITSCREEN_PLAYERS; ++i )
+	{
+		delete[] m_PerUser[ i ].m_pCommands;
+		m_PerUser[ i ].m_pCommands = NULL;
 
-	delete[] m_pVerifiedCommands;
-	m_pVerifiedCommands = NULL;
+		delete[] m_PerUser[ i ].m_pVerifiedCommands;
+		m_PerUser[ i ].m_pVerifiedCommands = NULL;
+	}
 }
 
 void CInput::LevelInit( void )
 {
 #if defined( HL2_CLIENT_DLL )
 	// Remove any IK information
-	m_EntityGroundContact.RemoveAll();
+	for ( int i = 0; i < MAX_SPLITSCREEN_PLAYERS; ++i )
+	{
+		m_PerUser[ i ].m_EntityGroundContact.RemoveAll();
+	}
 #endif
 }
 

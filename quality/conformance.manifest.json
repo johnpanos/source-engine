@@ -1411,6 +1411,100 @@
       "expect": "pass"
     },
     {
+      "id": "engine.splitscreen-wire",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0001",
+      "migration": "P2-SPLITSCREEN-001",
+      "contract": "unittests/enginetest/contracts/engine.splitscreen-wire.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
+      "extra_flags": [
+        "-DLINUX",
+        "-D_LINUX",
+        "-DPOSIX",
+        "-D_POSIX",
+        "-DPLATFORM_POSIX",
+        "-DGNUC",
+        "-DNO_MALLOC_OVERRIDE",
+        "-isystem",
+        "public",
+        "-isystem",
+        "public/tier0",
+        "-isystem",
+        "public/tier1"
+      ],
+      "units": [
+        {
+          "id": "bitbuf",
+          "dialect": "cxx20-permissive",
+          "flags": [
+            "-Wno-unused-parameter",
+            "-Wno-deprecated-enum-float-conversion"
+          ],
+          "sources": [
+            "tier1/bitbuf.cpp"
+          ]
+        },
+        {
+          "id": "suite",
+          "dialect": "cxx20",
+          "sources": [
+            "unittests/enginetest/splitscreen/test_splitscreen_wire.cpp",
+            "unittests/enginetest/splitscreen/tier0_link_fake.cpp"
+          ]
+        }
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "engine.splitscreen-wire.sensitivity",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0001",
+      "migration": "P2-SPLITSCREEN-001",
+      "contract": "unittests/enginetest/contracts/engine.splitscreen-wire.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
+      "extra_flags": [
+        "-DLINUX",
+        "-D_LINUX",
+        "-DPOSIX",
+        "-D_POSIX",
+        "-DPLATFORM_POSIX",
+        "-DGNUC",
+        "-DNO_MALLOC_OVERRIDE",
+        "-isystem",
+        "public",
+        "-isystem",
+        "public/tier0",
+        "-isystem",
+        "public/tier1"
+      ],
+      "units": [
+        {
+          "id": "bitbuf",
+          "dialect": "cxx20-permissive",
+          "flags": [
+            "-Wno-unused-parameter",
+            "-Wno-deprecated-enum-float-conversion"
+          ],
+          "sources": [
+            "tier1/bitbuf.cpp"
+          ]
+        },
+        {
+          "id": "suite",
+          "dialect": "cxx20",
+          "sources": [
+            "unittests/enginetest/splitscreen/test_splitscreen_wire_negative.cpp",
+            "unittests/enginetest/splitscreen/tier0_link_fake.cpp"
+          ]
+        }
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "platform.tool_process",
       "domain": "Q-FOUNDATION",
       "rfc": "0001",

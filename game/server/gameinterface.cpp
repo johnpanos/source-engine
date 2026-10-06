@@ -7,6 +7,7 @@
 //===========================================================================//
 
 #include "cbase.h"
+#include "isplitscreen.h"
 #include "gamestringpool.h"
 #include "mapentities_shared.h"
 #include "game.h"
@@ -174,6 +175,7 @@ CUtlLinkedList<CMapEntityRef, unsigned short> g_MapEntityRefs;
 
 // Engine interfaces.
 IVEngineServer	*engine = NULL;
+IEngineServerSplitScreen *g_pEngineServerSplitScreen = NULL;
 IVoiceServer	*g_pVoiceServer = NULL;
 #if !defined(_STATIC_LINKED)
 IFileSystem		*filesystem = NULL;
@@ -617,6 +619,10 @@ bool CServerGameDLL::DLLInit( CreateInterfaceFn appSystemFactory,
 #endif
 
 	// init each (seperated for ease of debugging)
+	// Optional: without it every client is a single local player
+	g_pEngineServerSplitScreen = (IEngineServerSplitScreen *)appSystemFactory( ENGINE_SERVER_SPLITSCREEN_INTERFACE_VERSION, NULL );
+	g_pfnSendProxySetOnlyRecipient = SendProxy_SetOnlyPlayerRecipients;
+
 	if ( (engine = (IVEngineServer*)appSystemFactory(INTERFACEVERSION_VENGINESERVER, NULL)) == NULL )
 		return false;
 	if ( (g_pVoiceServer = (IVoiceServer*)appSystemFactory(INTERFACEVERSION_VOICESERVER, NULL)) == NULL )
@@ -2691,6 +2697,7 @@ void CServerGameEnts::CheckTransmit( CCheckTransmitInfo *pInfo, const unsigned s
 CServerGameClients g_ServerGameClients;
 // INTERFACEVERSION_SERVERGAMECLIENTS_VERSION_3 is compatible with the latest since we're only adding things to the end, so expose that as well.
 EXPOSE_SINGLE_INTERFACE_GLOBALVAR(CServerGameClients, IServerGameClients003, INTERFACEVERSION_SERVERGAMECLIENTS_VERSION_3, g_ServerGameClients );
+EXPOSE_SINGLE_INTERFACE_GLOBALVAR(CServerGameClients, IServerGameClients004, INTERFACEVERSION_SERVERGAMECLIENTS_VERSION_4, g_ServerGameClients );
 EXPOSE_SINGLE_INTERFACE_GLOBALVAR(CServerGameClients, IServerGameClients, INTERFACEVERSION_SERVERGAMECLIENTS, g_ServerGameClients );
 
 
@@ -2769,6 +2776,19 @@ void CServerGameClients::ClientSpawned( edict_t *pPlayer )
 	{
 		g_pGameRules->ClientSpawned( pPlayer );
 	}
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: How many local split-screen players this game supports per client.
+//			A game opts in by defining MAX_SPLITSCREEN_PLAYERS (portal2_base_compat.h).
+//-----------------------------------------------------------------------------
+int CServerGameClients::GetMaxSplitscreenPlayers()
+{
+#if defined( MAX_SPLITSCREEN_PLAYERS )
+	return MAX_SPLITSCREEN_PLAYERS;
+#else
+	return 1;
+#endif
 }
 
 //-----------------------------------------------------------------------------

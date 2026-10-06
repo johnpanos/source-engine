@@ -214,13 +214,21 @@ public:
 	}
 
 
-	bool						IsLocalPlayer( void ) const;
+	// Makes sure the local-player slots are properly initialized
+	void						CheckForLocalPlayer( int nSplitScreenSlot );
+
+	// Is this one of the local players (one per split-screen slot)?
+	bool						IsLocalPlayer( void ) const { return m_bIsLocalPlayer; }
+	static bool					IsLocalPlayer( const C_BaseEntity *pEntity );
 
 	// Global/static methods
 	virtual void				ThirdPersonSwitch( bool bThirdperson );
 	static bool					LocalPlayerInFirstPersonView();
 	static bool					ShouldDrawLocalPlayer();
-	static C_BasePlayer			*GetLocalPlayer( void );
+	// The local player of nSlot, or of the active split-screen slot (-1)
+	static C_BasePlayer			*GetLocalPlayer( int nSlot = -1 );
+	static bool					HasAnyLocalPlayer();
+	static int					GetSplitScreenSlotForPlayer( C_BaseEntity *pl );
 	int							GetUserID( void );
 	virtual bool				CanSetSoundMixer( void );
 	virtual int					GetVisionFilterFlags( bool bWeaponsCheck = false ) { return 0x00; }
@@ -302,22 +310,25 @@ public:
 
 	C_BaseEntity				*GetUseEntity();
 
+	// Local split-screen (ported from the CS:GO client): the primary local player (slot 0) owns the
+	// list of the other local players ("parasites"), each of which points back at its owner.
+	int							GetSplitScreenPlayerSlot() const { return m_nSplitScreenSlot; }
+	bool						IsSplitScreenPlayer() const { return m_nSplitScreenSlot >= 1; }
+	bool						IsSplitScreenPartner( C_BasePlayer *pPlayer );
+	void						AddSplitScreenPlayer( C_BasePlayer *pOther );
+	void						RemoveSplitScreenPlayer( C_BasePlayer *pOther );
+	CUtlVector< CHandle< C_BasePlayer > > &GetSplitScreenPlayers() { return m_hSplitScreenPlayers; }
+
 #ifdef PORTAL2
-	// Later (CS:GO-era) base-player API used by the Portal 2 player. This
-	// engine has one local player, so every split-screen slot is slot 0.
+	// Later (CS:GO-era) base-player API used by the Portal 2 player.
 	void						ForceButtons( int nButtons );
 	void						UnforceButtons( int nButtons );
 	int							m_afButtonForced;	// These are forced onto the player's inputs
 	float						GetAirTime( void );
 	float						m_flTimeLastTouchedGround;
-	int							GetSplitScreenPlayerSlot() const { return 0; }
-	static C_BasePlayer			*GetLocalPlayer( int nSlot ) { return GetLocalPlayer(); }
 	// Implemented with the Portal 2 pickup controller (portal_grabcontroller_shared.cpp).
 	bool						ClearUseEntity();
 	virtual bool				CanPickupObject( C_BaseEntity *pObject, float massLimit, float sizeLimit );
-	// No split-screen partners: this player is never one, and has none.
-	bool						IsSplitScreenPlayer() const { return false; }
-	CUtlVector< CHandle< C_BasePlayer > > &GetSplitScreenPlayers() { static CUtlVector< CHandle< C_BasePlayer > > s_NoPlayers; Assert( s_NoPlayers.Count() == 0 ); return s_NoPlayers; }
 	void						SetUseEntity( C_BaseEntity *pUseEntity ) { m_hUseEntity = pUseEntity; }
 #endif
 
@@ -522,6 +533,12 @@ private:
 	EHANDLE			m_hVehicle;
 	EHANDLE			m_hOldVehicle;
 	EHANDLE			m_hUseEntity;
+
+	// The other local players attached to this one (see IsSplitScreenPlayer)
+	CUtlVector< CHandle< C_BasePlayer > > m_hSplitScreenPlayers;
+	int				m_nSplitScreenSlot;		// 0 for the primary local player, and for non-local players
+	CHandle< C_BasePlayer > m_hSplitOwner;	// the primary local player, for a split-screen player
+	bool			m_bIsLocalPlayer;
 	
 	float			m_flMaxspeed;
 

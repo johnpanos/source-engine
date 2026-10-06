@@ -63,6 +63,9 @@ bool Cbuf_EscapeCommandArg( const char *pText, char *pOut, unsigned int nOut );
 //-----------------------------------------------------------------------------
 void Cbuf_AddText (const char *text);
 
+// The same, on the buffer of the local split-screen player in nSlot (it runs as that player)
+void Cbuf_AddTextForSlot( int nSlot, const char *text );
+
 
 //-----------------------------------------------------------------------------
 // when a command wants to issue other commands immediately, the text is

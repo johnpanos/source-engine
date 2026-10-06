@@ -101,9 +101,12 @@ typedef unsigned int DWORD;
 typedef char TCHAR;
 #endif
 
+// MAX_PATH sizes ZIPENTRY::name, so it must equal tier0/platform.h's 260 in every
+// file: XUnzip.cpp (no platform.h) used PATH_MAX while its callers used 260, two
+// ZIPENTRY layouts and a strcpy past the callers' buffer (ODR, RFC 0023).
 #if defined(POSIX) && !defined(MAX_PATH)
 #include <limits.h>
-#define MAX_PATH PATH_MAX
+#define MAX_PATH  260
 typedef bool BOOL;
 #endif
 

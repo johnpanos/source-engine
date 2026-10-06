@@ -92,6 +92,8 @@ enum
 #define net_SetConVar	5			// sends one/multiple convar settings
 #define	net_SignonState	6			// signals current signon state
 
+#define net_SplitScreenUser	35		// subsequent messages belong to this local split-screen slot
+
 //
 // server to client
 //
@@ -141,7 +143,11 @@ enum
 #define svc_CmdKeyValues	32	// Server submits KeyValues command for the client
 #define svc_SetPauseTimed	33	// Timed pause - to avoid breaking demos
 
-#define SVC_LASTMSG			33	// last known server messages
+// Local split-screen extension (engine.splitscreen-wire.v1). The ids are this fork's own;
+// one-player peers never see them (RFC/portal2-splitscreen-retail-engine.md).
+#define svc_SplitScreen		34	// add or remove a local split-screen player
+
+#define SVC_LASTMSG			34	// last known server messages
 
 //
 // client to server
@@ -158,7 +164,9 @@ enum
 #define clc_CmdKeyValues		16
 #define clc_FileMD5Check		17		// client is sending a file's MD5 to the server to be verified.
 
-#define CLC_LASTMSG			17		//	last known client message
+#define clc_SplitPlayerConnect	18		// connect a local split-screen player on this connection
+
+#define CLC_LASTMSG			18		//	last known client message
 
 #define RES_FATALIFMISSING	(1<<0)   // Disconnect if we can't get this file.
 #define RES_PRELOAD			(1<<1)  // Load on client rather than just reserving name

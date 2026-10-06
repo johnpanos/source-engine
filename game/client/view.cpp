@@ -93,12 +93,23 @@ bool g_bRenderingCameraView = false;
 
 // These are the vectors for the "main" view - the one the player is looking down.
 // For stereo views, they are the vectors for the middle eye.
-static Vector g_vecRenderOrigin(0,0,0);
-static QAngle g_vecRenderAngles(0,0,0);
-static Vector g_vecPrevRenderOrigin(0,0,0);	// Last frame's render origin
-static QAngle g_vecPrevRenderAngles(0,0,0); // Last frame's render angles
-static Vector g_vecVForward(0,0,0), g_vecVRight(0,0,0), g_vecVUp(0,0,0);
-static VMatrix g_matCamInverse;
+// One set per local player (split-screen slot); a slot of -1 is the active slot.
+static Vector g_vecRenderOrigin[ MAX_SPLITSCREEN_PLAYERS ];
+static QAngle g_vecRenderAngles[ MAX_SPLITSCREEN_PLAYERS ];
+static Vector g_vecPrevRenderOrigin[ MAX_SPLITSCREEN_PLAYERS ];	// Last frame's render origin
+static QAngle g_vecPrevRenderAngles[ MAX_SPLITSCREEN_PLAYERS ]; // Last frame's render angles
+static Vector g_vecVForward[ MAX_SPLITSCREEN_PLAYERS ], g_vecVRight[ MAX_SPLITSCREEN_PLAYERS ], g_vecVUp[ MAX_SPLITSCREEN_PLAYERS ];
+static VMatrix g_matCamInverse[ MAX_SPLITSCREEN_PLAYERS ];
+
+static inline int ViewSlot( int nSlot = -1 )
+{
+	if ( nSlot < 0 )
+	{
+		nSlot = GET_ACTIVE_SPLITSCREEN_SLOT();
+	}
+	Assert( nSlot >= 0 && nSlot < MAX_SPLITSCREEN_PLAYERS );
+	return clamp( nSlot, 0, MAX_SPLITSCREEN_PLAYERS - 1 );
+}
 
 extern ConVar cl_forwardspeed;
 
@@ -177,7 +188,8 @@ CViewSetup &CViewRender::GetView(StereoEye_t eEye)
 {
 	if ( eEye == STEREO_EYE_MONO )
     {
-		return m_View;
+		// the active local player's view
+		return m_UserView[ ViewSlot() ];
     }
 	else if ( eEye == STEREO_EYE_RIGHT )
     {
@@ -199,44 +211,44 @@ const CViewSetup &CViewRender::GetView(StereoEye_t eEye) const
 //-----------------------------------------------------------------------------
 // Accessors to return the main view (where the player's looking)
 //-----------------------------------------------------------------------------
-const Vector &MainViewOrigin()
+const Vector &MainViewOrigin( int nSlot )
 {
-	return g_vecRenderOrigin;
+	return g_vecRenderOrigin[ ViewSlot( nSlot ) ];
 }
 
-const QAngle &MainViewAngles()
+const QAngle &MainViewAngles( int nSlot )
 {
-	return g_vecRenderAngles;
+	return g_vecRenderAngles[ ViewSlot( nSlot ) ];
 }
 
-const Vector &MainViewForward()
+const Vector &MainViewForward( int nSlot )
 {
-	return g_vecVForward;
+	return g_vecVForward[ ViewSlot( nSlot ) ];
 }
 
-const Vector &MainViewRight()
+const Vector &MainViewRight( int nSlot )
 {
-	return g_vecVRight;
+	return g_vecVRight[ ViewSlot( nSlot ) ];
 }
 
-const Vector &MainViewUp()
+const Vector &MainViewUp( int nSlot )
 {
-	return g_vecVUp;
+	return g_vecVUp[ ViewSlot( nSlot ) ];
 }
 
-const VMatrix &MainWorldToViewMatrix()
+const VMatrix &MainWorldToViewMatrix( int nSlot )
 {
-	return g_matCamInverse;
+	return g_matCamInverse[ ViewSlot( nSlot ) ];
 }
 
-const Vector &PrevMainViewOrigin()
+const Vector &PrevMainViewOrigin( int nSlot )
 {
-	return g_vecPrevRenderOrigin;
+	return g_vecPrevRenderOrigin[ ViewSlot( nSlot ) ];
 }
 
-const QAngle &PrevMainViewAngles()
+const QAngle &PrevMainViewAngles( int nSlot )
 {
-	return g_vecPrevRenderAngles;
+	return g_vecPrevRenderAngles[ ViewSlot( nSlot ) ];
 }
 
 //-----------------------------------------------------------------------------
@@ -301,6 +313,18 @@ void CViewRender::Init( void )
 
 	m_pDrawEntities		= cvar->FindVar( "r_drawentities" );
 	m_pDrawBrushModels	= cvar->FindVar( "r_drawbrushmodels" );
+
+	for ( int i = 0; i < MAX_SPLITSCREEN_PLAYERS; ++i )
+	{
+		g_vecRenderOrigin[ i ].Init();
+		g_vecRenderAngles[ i ].Init();
+		g_vecPrevRenderOrigin[ i ].Init();
+		g_vecPrevRenderAngles[ i ].Init();
+		g_vecVForward[ i ].Init();
+		g_vecVRight[ i ].Init();
+		g_vecVUp[ i ].Init();
+		g_matCamInverse[ i ].Identity();
+	}
 
 	beams->InitBeams();
 	tempents->Init();
@@ -514,54 +538,59 @@ void CViewRender::OnRenderStart()
 {
 	VPROF_("CViewRender::OnRenderStart", 2, VPROF_BUDGETGROUP_OTHER_UNACCOUNTED, false, 0);
 
-    SetUpViews();
-
-	// Adjust mouse sensitivity based upon the current FOV
-	C_BasePlayer *player = C_BasePlayer::GetLocalPlayer();
-	if ( player )
+	// Every local player sets up its own view (and the sensitivity that goes with its FOV)
+	FOR_EACH_VALID_SPLITSCREEN_PLAYER( hh )
 	{
-		default_fov.SetValue( player->m_iDefaultFOV );
+		ACTIVE_SPLITSCREEN_PLAYER_GUARD( hh );
+	    SetUpViews();
 
-		//Update our FOV, including any zooms going on
-		int iDefaultFOV = default_fov.GetInt();
-		int	localFOV	= player->GetFOV();
-		int min_fov		= player->GetMinFOV();
-
-		// Don't let it go too low
-		localFOV = MAX( min_fov, localFOV );
-
-		gHUD.m_flFOVSensitivityAdjust = 1.0f;
-#ifndef _XBOX
-		if ( gHUD.m_flMouseSensitivityFactor )
+		// Adjust mouse sensitivity based upon the current FOV
+		C_BasePlayer *player = C_BasePlayer::GetLocalPlayer();
+		if ( player )
 		{
-			gHUD.m_flMouseSensitivity = sensitivity.GetFloat() * gHUD.m_flMouseSensitivityFactor;
-		}
-		else
-#endif
-		{
-			// No override, don't use huge sensitivity
-			if ( localFOV == iDefaultFOV )
+			default_fov.SetValue( player->m_iDefaultFOV );
+
+			//Update our FOV, including any zooms going on
+			int iDefaultFOV = default_fov.GetInt();
+			int	localFOV	= player->GetFOV();
+			int min_fov		= player->GetMinFOV();
+
+			// Don't let it go too low
+			localFOV = MAX( min_fov, localFOV );
+
+			gHUD.m_flFOVSensitivityAdjust = 1.0f;
+	#ifndef _XBOX
+			if ( gHUD.m_flMouseSensitivityFactor )
 			{
-#ifndef _XBOX
-				// reset to saved sensitivity
-				gHUD.m_flMouseSensitivity = 0;
-#endif
+				gHUD.m_flMouseSensitivity = sensitivity.GetFloat() * gHUD.m_flMouseSensitivityFactor;
 			}
 			else
-			{  
-				// Set a new sensitivity that is proportional to the change from the FOV default and scaled
-				//  by a separate compensating factor
-				if ( iDefaultFOV == 0 )
+	#endif
+			{
+				// No override, don't use huge sensitivity
+				if ( localFOV == iDefaultFOV )
 				{
-					Assert(0); // would divide by zero, something is broken with iDefatulFOV
-					iDefaultFOV = 1;
+	#ifndef _XBOX
+					// reset to saved sensitivity
+					gHUD.m_flMouseSensitivity = 0;
+	#endif
 				}
-				gHUD.m_flFOVSensitivityAdjust = 
-					((float)localFOV / (float)iDefaultFOV) * // linear fov downscale
-					zoom_sensitivity_ratio.GetFloat(); // sensitivity scale factor
-#ifndef _XBOX
-				gHUD.m_flMouseSensitivity = gHUD.m_flFOVSensitivityAdjust * sensitivity.GetFloat(); // regular sensitivity
-#endif
+				else
+				{  
+					// Set a new sensitivity that is proportional to the change from the FOV default and scaled
+					//  by a separate compensating factor
+					if ( iDefaultFOV == 0 )
+					{
+						Assert(0); // would divide by zero, something is broken with iDefatulFOV
+						iDefaultFOV = 1;
+					}
+					gHUD.m_flFOVSensitivityAdjust = 
+						((float)localFOV / (float)iDefaultFOV) * // linear fov downscale
+						zoom_sensitivity_ratio.GetFloat(); // sensitivity scale factor
+	#ifndef _XBOX
+					gHUD.m_flMouseSensitivity = gHUD.m_flFOVSensitivityAdjust * sensitivity.GetFloat(); // regular sensitivity
+	#endif
+				}
 			}
 		}
 	}
@@ -597,8 +626,8 @@ void CViewRender::DisableVis( void )
 }
 
 #ifdef DBGFLAG_ASSERT
-static Vector s_DbgSetupOrigin;
-static QAngle s_DbgSetupAngles;
+static Vector s_DbgSetupOrigin[ MAX_SPLITSCREEN_PLAYERS ];
+static QAngle s_DbgSetupAngles[ MAX_SPLITSCREEN_PLAYERS ];
 #endif
 
 //-----------------------------------------------------------------------------
@@ -647,7 +676,7 @@ void CViewRender::SetUpViews()
 	float farZ = GetZFar();
 
 	// Set up the mono/middle view.
-	CViewSetup &view = m_View;
+	CViewSetup &view = GetView( STEREO_EYE_MONO );
 
 	view.zFar			= farZ;
 	view.zFarViewmodel		= farZ;
@@ -763,21 +792,21 @@ void CViewRender::SetUpViews()
 		}
 
 		HeadtrackMovementMode_t hmmOverrideMode = g_pClientMode->ShouldOverrideHeadtrackControl();
-		g_ClientVirtualReality.OverrideView( &m_View, &ViewModelOrigin, &ViewModelAngles, hmmOverrideMode );
+		g_ClientVirtualReality.OverrideView( &GetView( STEREO_EYE_MONO ), &ViewModelOrigin, &ViewModelAngles, hmmOverrideMode );
 
 		// left and right stereo views should default to being the same as the mono/middle view
-		m_ViewLeft = m_View;
-		m_ViewRight = m_View;
+		m_ViewLeft = GetView( STEREO_EYE_MONO );
+		m_ViewRight = GetView( STEREO_EYE_MONO );
 		m_ViewLeft.m_eStereoEye = STEREO_EYE_LEFT;
 		m_ViewRight.m_eStereoEye = STEREO_EYE_RIGHT;
 
-		g_ClientVirtualReality.OverrideStereoView( &m_View, &m_ViewLeft, &m_ViewRight );
+		g_ClientVirtualReality.OverrideStereoView( &GetView( STEREO_EYE_MONO ), &m_ViewLeft, &m_ViewRight );
 	}
 	else
 	{
 		// left and right stereo views should default to being the same as the mono/middle view
-		m_ViewLeft = m_View;
-		m_ViewRight = m_View;
+		m_ViewLeft = GetView( STEREO_EYE_MONO );
+		m_ViewRight = GetView( STEREO_EYE_MONO );
 		m_ViewLeft.m_eStereoEye = STEREO_EYE_LEFT;
 		m_ViewRight.m_eStereoEye = STEREO_EYE_RIGHT;
 	}
@@ -798,7 +827,7 @@ void CViewRender::SetUpViews()
 	// Compute the world->main camera transform
     // This is only done for the main "middle-eye" view, not for the various other views.
 	ComputeCameraVariables( view.origin, view.angles, 
-		&g_vecVForward, &g_vecVRight, &g_vecVUp, &g_matCamInverse );
+		&g_vecVForward[ ViewSlot() ], &g_vecVRight[ ViewSlot() ], &g_vecVUp[ ViewSlot() ], &g_matCamInverse[ ViewSlot() ] );
 
 	// set up the hearing origin...
 	AudioState_t audioState;
@@ -816,14 +845,14 @@ void CViewRender::SetUpViews()
 
 	engine->SetAudioState( audioState );
 
-	g_vecPrevRenderOrigin = g_vecRenderOrigin;
-	g_vecPrevRenderAngles = g_vecRenderAngles;
-	g_vecRenderOrigin = view.origin;
-	g_vecRenderAngles = view.angles;
+	g_vecPrevRenderOrigin[ ViewSlot() ] = g_vecRenderOrigin[ ViewSlot() ];
+	g_vecPrevRenderAngles[ ViewSlot() ] = g_vecRenderAngles[ ViewSlot() ];
+	g_vecRenderOrigin[ ViewSlot() ] = view.origin;
+	g_vecRenderAngles[ ViewSlot() ] = view.angles;
 
 #ifdef DBGFLAG_ASSERT
-	s_DbgSetupOrigin = view.origin;
-	s_DbgSetupAngles = view.angles;
+	s_DbgSetupOrigin[ ViewSlot() ] = view.origin;
+	s_DbgSetupAngles[ ViewSlot() ] = view.angles;
 #endif
 }
 
@@ -1058,18 +1087,126 @@ void CViewRender::SetUpOverView()
 }
 
 //-----------------------------------------------------------------------------
+// Local split-screen: which part of the window each local player's view fills. Two players
+// split the window into top/bottom (horizontal) or left/right (vertical) halves, the layouts of
+// Portal 2's splitscreen_config.txt: ss_splitmode 0 picks by width (widescreen splits vertically,
+// anything narrower horizontally), 1 forces horizontal, 2 forces vertical.
+//-----------------------------------------------------------------------------
+static ConVar ss_splitmode( "ss_splitmode", "0", FCVAR_ARCHIVE, "Two player split screen mode (0 - recommended settings based on the width, 1 - horizontal, 2 - vertical (only allowed in widescreen)" );
+
+// A split-screen slot draws once its local player exists on the client (the engine adds the slot
+// when the server's message arrives, before the player's entity does).
+// Set by the game for scenes the first player watches full screen (the other views are not drawn)
+ConVar ss_force_primary_fullscreen( "ss_force_primary_fullscreen", "0", FCVAR_NONE, "Draw only the first split screen player's view, full screen" );
+
+static bool IsSplitScreenViewReady( int nSlot )
+{
+	if ( nSlot != 0 && ss_force_primary_fullscreen.GetBool() )
+		return false;
+
+	return nSlot == 0 || C_BasePlayer::GetLocalPlayer( nSlot ) != NULL;
+}
+
+static int CountSplitScreenViews()
+{
+	int nViews = 0;
+	FOR_EACH_VALID_SPLITSCREEN_PLAYER( i )
+	{
+		if ( IsSplitScreenViewReady( i ) )
+		{
+			++nViews;
+		}
+	}
+	return nViews;
+}
+
+bool IsSplitScreenSplitVertical( int nWidth, int nHeight )
+{
+	const bool bWidescreen = nHeight > 0 && ( (float)nWidth / (float)nHeight ) >= 1.5f;
+	switch ( ss_splitmode.GetInt() )
+	{
+	case 1:		return false;
+	case 2:		return bWidescreen;
+	default:	return bWidescreen;
+	}
+}
+
+// The fov and viewmodel fov of a split-screen view: the block of splitscreen_config.txt that matches
+// the window ("nonwidescreen", "widescreen_horizontal_split" or "widescreen_vertical_split"). They
+// are final for the shape of the split view, so they are not scaled by the screen width again.
+static void GetSplitScreenFov( int nWidth, int nHeight, float &flFov, float &flViewmodelFov )
+{
+	const bool bWidescreen = nHeight > 0 && ( (float)nWidth / (float)nHeight ) >= 1.5f;
+	const bool bVertical = IsSplitScreenSplitVertical( nWidth, nHeight );
+	const char *pszBlock = !bWidescreen ? "nonwidescreen" : ( bVertical ? "widescreen_vertical_split" : "widescreen_horizontal_split" );
+
+	// the values of Portal 2's own file, used when it is missing
+	flFov = !bWidescreen ? 80.0f : ( bVertical ? 110.0f : 75.0f );
+	flViewmodelFov = bVertical ? 50.0f : 55.0f;
+
+	KeyValues *pConfig = new KeyValues( "splitscreenconfig" );
+	if ( pConfig->LoadFromFile( filesystem, "splitscreen_config.txt", "GAME" ) )
+	{
+		if ( KeyValues *pBlock = pConfig->FindKey( pszBlock ) )
+		{
+			flFov = pBlock->GetFloat( "fov", flFov );
+			flViewmodelFov = pBlock->GetFloat( "viewmodelfov", flViewmodelFov );
+		}
+		else
+		{
+			Warning( "%s:  Missing settings block for split screen mode '%s'\n", "splitscreen_config.txt", pszBlock );
+		}
+	}
+	pConfig->deleteThis();
+}
+
+void GetSplitScreenViewRect( int nSlot, const vrect_t &full, vrect_t &out )
+{
+	out = full;
+
+	// Only the local players that exist share the window (one player fills it)
+	int nPlayers = 0;
+	int nIndex = 0;
+	FOR_EACH_VALID_SPLITSCREEN_PLAYER( i )
+	{
+		if ( !IsSplitScreenViewReady( i ) )
+			continue;
+		if ( i == nSlot )
+		{
+			nIndex = nPlayers;
+		}
+		++nPlayers;
+	}
+	if ( nPlayers < 2 )
+		return;
+
+	if ( IsSplitScreenSplitVertical( full.width, full.height ) )
+	{
+		const int nHalf = full.width / 2;
+		out.x = full.x + ( nIndex == 0 ? 0 : nHalf );
+		out.width = ( nIndex == 0 ) ? nHalf : full.width - nHalf;
+	}
+	else
+	{
+		const int nHalf = full.height / 2;
+		out.y = full.y + ( nIndex == 0 ? 0 : nHalf );
+		out.height = ( nIndex == 0 ) ? nHalf : full.height - nHalf;
+	}
+}
+
+//-----------------------------------------------------------------------------
 // Purpose: Render current view into specified rectangle
 // Input  : *rect - is computed by CVideoMode_Common::GetClientViewRect()
 //-----------------------------------------------------------------------------
 void CViewRender::Render( vrect_t *rect )
 {
-	Assert(s_DbgSetupOrigin == m_View.origin);
-	Assert(s_DbgSetupAngles == m_View.angles);
+	Assert(s_DbgSetupOrigin[ ViewSlot() ] == GetView( STEREO_EYE_MONO ).origin);
+	Assert(s_DbgSetupAngles[ ViewSlot() ] == GetView( STEREO_EYE_MONO ).angles);
 
 	VPROF_BUDGET( "CViewRender::Render", "CViewRender::Render" );
 	tmZone( TELEMETRY_LEVEL0, TMZF_NONE, "%s", __FUNCTION__ );
 
-	vrect_t vr = *rect;
+	const vrect_t engineRect = *rect;
 
 	// Stub out the material system if necessary.
 	CMatStubHandler matStub;
@@ -1079,11 +1216,22 @@ void CViewRender::Render( vrect_t *rect )
 	// Assume normal vis
 	m_bForceNoVis			= false;
 	
+	// Each local player renders its own view into its part of the window
+	FOR_EACH_VALID_SPLITSCREEN_PLAYER( hh )
+	{
+	if ( !IsSplitScreenViewReady( hh ) )
+		continue;
+
+	ACTIVE_SPLITSCREEN_PLAYER_GUARD( hh );
+
+	vrect_t vr;
+	GetSplitScreenViewRect( hh, engineRect, vr );
+	const bool bSplitScreen = CountSplitScreenViews() > 1;
+
 	C_BasePlayer *pPlayer = C_BasePlayer::GetLocalPlayer();
 
-
     // Set for console commands, etc.
-    render->SetMainView ( m_View.origin, m_View.angles );
+    render->SetMainView ( GetView( STEREO_EYE_MONO ).origin, GetView( STEREO_EYE_MONO ).angles );
 
     for( StereoEye_t eEye = GetFirstEye(); eEye <= GetLastEye(); eEye = (StereoEye_t)(eEye+1) )
 	{
@@ -1141,8 +1289,19 @@ void CViewRender::Render( vrect_t *rect )
 		    limitedAspectRatio = MIN( aspectRatio, 1.85f * 0.75f ); // cap out the FOV advantage at a 1.85:1 ratio (about the widest any legit user should be)
 	    }
 
+	    if ( bSplitScreen )
+	    {
+		    // the split view's own aspect and the config's fov for it
+		    float flSplitFov, flSplitViewmodelFov;
+		    GetSplitScreenFov( engineRect.width, engineRect.height, flSplitFov, flSplitViewmodelFov );
+		    view.fov = flSplitFov;
+		    view.fovViewmodel = flSplitViewmodelFov;
+	    }
+	    else
+	    {
 	    view.fov = ScaleFOVByWidthRatio( view.fov, limitedAspectRatio );
 	    view.fovViewmodel = ScaleFOVByWidthRatio( view.fovViewmodel, aspectRatio );
+	    }
 
 	    // Let the client mode hook stuff.
 	    g_pClientMode->PreRender(&view);
@@ -1177,6 +1336,11 @@ void CViewRender::Render( vrect_t *rect )
 				view.height			= vr.height * flViewportScale;
 #endif
 			    float engineAspectRatio = engine->GetScreenAspectRatio();
+			    if ( bSplitScreen )
+			    {
+				    // the engine's aspect is the whole window's: a split view has its own shape
+				    engineAspectRatio = ( view.height > 0 ) ? (float)view.width / (float)view.height : 0.0f;
+			    }
 			    view.m_flAspectRatio	= ( engineAspectRatio > 0.0f ) ? engineAspectRatio : ( (float)view.width / (float)view.height );
 			}
 			break;
@@ -1250,7 +1414,9 @@ void CViewRender::Render( vrect_t *rect )
 	    }
 
 	    int flags = 0;
-		if( eEye == STEREO_EYE_MONO || eEye == STEREO_EYE_LEFT || ( g_ClientVirtualReality.ShouldRenderHUDInWorld() ) )
+		// (The HUD is laid out for the whole window: with several local players it is not drawn into
+		// their partial views until it has a root panel per player.)
+		if( ( eEye == STEREO_EYE_MONO || eEye == STEREO_EYE_LEFT || ( g_ClientVirtualReality.ShouldRenderHUDInWorld() ) ) && !bSplitScreen )
 		{
 			flags = RENDERVIEW_DRAWHUD;
 		}
@@ -1289,6 +1455,7 @@ void CViewRender::Render( vrect_t *rect )
 			}
 		}
     }
+	}	// each local player
 
 
 	// TODO: should these be inside or outside the stereo eye stuff?

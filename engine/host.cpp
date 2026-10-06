@@ -4430,7 +4430,7 @@ SERVER TRANSITIONS
 
 ===============================================================================
 */
-bool Host_NewGame( char *mapName, bool loadGame, bool bBackgroundLevel, const char *pszOldMap, const char *pszLandmark, bool bOldSave )
+bool Host_NewGame( char *mapName, bool loadGame, bool bBackgroundLevel, const char *pszOldMap, const char *pszLandmark, bool bOldSave, bool bSplitScreenConnect )
 {
 	VPROF( "Host_NewGame" );
 	COM_TimestampedLog( "Host_NewGame" );
@@ -4469,6 +4469,12 @@ bool Host_NewGame( char *mapName, bool loadGame, bool bBackgroundLevel, const ch
 
 	DevMsg( "---- Host_NewGame ----\n" );
 	host_map.SetValue( szMapName );
+
+	// Local split-screen players are clients of the server: it needs a slot for each
+	if ( bSplitScreenConnect && !bBackgroundLevel )
+	{
+		SV_RequireMaxPlayers( SV_GetGameMaxSplitScreenPlayers() );
+	}
 
 	CheckForFlushMemory( previousMapName, szMapName );
 
@@ -4541,8 +4547,22 @@ bool Host_NewGame( char *mapName, bool loadGame, bool bBackgroundLevel, const ch
 	{
 		COM_TimestampedLog( "Stuff 'connect localhost' to console" );
 
+		// With split-screen, every local player the game supports joins (bots and loads keep one).
+		int nNumPlayers = 1;
+		if ( bSplitScreenConnect && !bBackgroundLevel )
+		{
+			nNumPlayers = host_state.max_splitscreen_players;
+		}
+
 		char str[512];
-		Q_snprintf( str, sizeof( str ), "connect localhost:%d listenserver", sv.GetUDPPort() );
+		if ( nNumPlayers > 1 )
+		{
+			Q_snprintf( str, sizeof( str ), "connect_splitscreen localhost:%d %d", sv.GetUDPPort(), nNumPlayers );
+		}
+		else
+		{
+			Q_snprintf( str, sizeof( str ), "connect localhost:%d listenserver", sv.GetUDPPort() );
+		}
 		Cbuf_AddText( str );
 	}
 	else

@@ -377,10 +377,10 @@ namespace Portal2Engine
 	// Relative save directory with trailing slash ("save/"), as the engine's save code uses.
 	const char *GetSaveDirName();
 
-	// Split screen: this engine has one local player in slot 0.
+	// Split screen: the engine's slots (IEngineSplitScreen); one local player in slot 0 without it.
 	int GetActiveSplitScreenPlayerSlot();
-	int SetActiveSplitScreenPlayerSlot( int nSlot );	// returns the previous slot; only slot 0 exists
-	bool IsLocalPlayerResolvable();						// always true: the single local player
+	int SetActiveSplitScreenPlayerSlot( int nSlot );	// returns the previous slot
+	bool IsLocalPlayerResolvable();						// whether "the local player" resolves on this thread
 
 	// Commentary mode, from the client's commentary state.
 	bool IsInCommentaryMode();

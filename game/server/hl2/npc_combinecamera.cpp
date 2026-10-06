@@ -92,7 +92,7 @@ enum cameraState_e
 
 
 // Eye states
-enum eyeState_t
+enum cameraEyeState_t
 {
 	CAMERA_EYE_IDLE,				// Nothing abnormal in the inner or outer viewcone, dim green.
 	CAMERA_EYE_SEEKING_TARGET,		// Something in the outer viewcone, flashes amber as it converges on the target.
@@ -162,7 +162,7 @@ protected:
 	void TrackTarget(CBaseEntity *pTarget);
 
 	bool PreThink(cameraState_e state);
-	void SetEyeState(eyeState_t state);
+	void SetEyeState(cameraEyeState_t state);
 	void MaintainEye();
 	void Ping();	
 	void Toggle();
@@ -826,7 +826,7 @@ bool CNPC_CombineCamera::PreThink(cameraState_e state)
 // Purpose: Sets the state of the glowing eye attached to the camera
 // Input  : state - state the eye should be in
 //-----------------------------------------------------------------------------
-void CNPC_CombineCamera::SetEyeState(eyeState_t state)
+void CNPC_CombineCamera::SetEyeState(cameraEyeState_t state)
 {
 	// Must have a valid eye to affect
 	if (m_pEyeGlow == NULL)

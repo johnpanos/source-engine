@@ -286,6 +286,9 @@ static inline void CL_ParseDeltaHeader( CEntityReadInfo &u )
 
 CBaseClientState::CBaseClientState()
 {
+	m_bSplitScreenUser = false;
+	m_nSplitScreenSlot = 0;
+	m_nNumPlayersToConnect = 1;
 	m_Socket = NS_CLIENT;
 	m_pServerClasses = NULL;
 	m_StringTableContainer = NULL;
@@ -331,6 +334,7 @@ void CBaseClientState::Clear( void )
 	m_nServerClasses = 0;
 	m_nServerClassBits = 0;
 	m_nPlayerSlot = 0;
+	m_nSplitScreenSlot = 0;
 	m_szLevelFileName[0] = 0;
 	m_szLevelBaseName[ 0 ] = 0;
 	m_nMaxClients = 0;
@@ -352,7 +356,11 @@ void CBaseClientState::Clear( void )
 
 	FreeEntityBaselines();
 
-	RecvTable_Term( false );
+	// The receive tables are shared: only the primary local player owns them
+	if ( !m_bSplitScreenUser )
+	{
+		RecvTable_Term( false );
+	}
 
 	if ( m_NetChannel ) 
 		m_NetChannel->Reset();
@@ -402,6 +410,7 @@ void CBaseClientState::ConnectionStart(INetChannel *chan)
 	REGISTER_NET_MSG( StringCmd );
 	REGISTER_NET_MSG( SetConVar );
 	REGISTER_NET_MSG( SignonState );
+	REGISTER_NET_MSG( SplitScreenUser );
 
 	REGISTER_SVC_MSG( Print );
 	REGISTER_SVC_MSG( ServerInfo );
@@ -427,6 +436,7 @@ void CBaseClientState::ConnectionStart(INetChannel *chan)
 	REGISTER_SVC_MSG( GameEventList );
 	REGISTER_SVC_MSG( GetCvarValue );
 	REGISTER_SVC_MSG( CmdKeyValues );
+	REGISTER_SVC_MSG( SplitScreen );
 	REGISTER_SVC_MSG( SetPauseTimed );
 }
 
@@ -759,6 +769,14 @@ void CBaseClientState::Disconnect( const char *pszReason, bool bShowMainMenu )
 		m_NetChannel->Shutdown( ( pszReason && *pszReason ) ? pszReason : "Disconnect by user." );
 		m_NetChannel = NULL;
 	}
+
+#ifndef SWDS
+	if ( m_bSplitScreenUser &&
+		splitscreen->IsValidSplitScreenSlot( m_nSplitScreenSlot ) )
+	{
+		splitscreen->RemoveSplitScreenUser( m_nSplitScreenSlot, m_nPlayerSlot + 1 );
+	}
+#endif
 }
 
 void CBaseClientState::RunFrame (void)
@@ -1188,7 +1206,13 @@ bool CBaseClientState::ProcessServerInfo( SVC_ServerInfo *msg )
 	g_GameEventManager.HasClientListenersChanged( true );
 	
 	m_nPlayerSlot = msg->m_nPlayerSlot;
-	m_nViewEntity = m_nPlayerSlot + 1; 
+	m_nViewEntity = m_nPlayerSlot + 1;
+#ifndef SWDS
+	if ( !m_bSplitScreenUser )
+	{
+		splitscreen->AddBaseUser( 0, m_nPlayerSlot + 1 );
+	}
+#endif 
 	
 	if ( msg->m_fTickInterval < MINIMUM_TICK_INTERVAL ||
 		 msg->m_fTickInterval > MAXIMUM_TICK_INTERVAL )
@@ -1850,4 +1874,59 @@ bool CBaseClientState::IsClientConnectionViaMatchMaking( void )
 	return ( V_strnistr( cl_connectmethod.GetString(), "quickplay", 9 ) || V_strnistr( cl_connectmethod.GetString(), "matchmaking", 11 ) );
 }
 
+//-----------------------------------------------------------------------------
+// Local split-screen (ported from the CS:GO engine's baseclientstate.cpp)
+//-----------------------------------------------------------------------------
+bool CBaseClientState::ProcessSplitScreen( SVC_SplitScreen *msg )
+{
+#ifndef SWDS
+	switch ( msg->m_nAction )
+	{
+	default:
+		Assert( 0 );
+		return false;
+	case splitscreenwire::kActionAdd:
+		splitscreen->AddSplitScreenUser( msg->m_nSlot, msg->m_nEntityIndex );
+		break;
+	case splitscreenwire::kActionRemove:
+		splitscreen->RemoveSplitScreenUser( msg->m_nSlot, msg->m_nEntityIndex );
+		break;
+	}
+#endif
 
+	return true;
+}
+
+bool CBaseClientState::ProcessSplitScreenUser( NET_SplitScreenUser *msg )
+{
+	return ChangeSplitscreenUser( msg->m_nSlot );
+}
+
+bool CBaseClientState::ChangeSplitscreenUser( int nSplitScreenUserSlot )
+{
+#ifndef SWDS
+	Assert( splitscreen->IsValidSplitScreenSlot( nSplitScreenUserSlot ) );
+	if ( !splitscreen->IsValidSplitScreenSlot( nSplitScreenUserSlot ) )
+		return true;
+
+	// Msg( "Networking changing slot to %d\n", nSplitScreenUserSlot );
+	splitscreen->SetActiveSplitScreenPlayerSlot( nSplitScreenUserSlot );
+#endif
+	return true;
+}
+
+#ifndef SWDS
+CSetActiveSplitScreenPlayerGuard::CSetActiveSplitScreenPlayerGuard( char const *pchContext, int nLine, int slot )
+{
+	m_pchContext = pchContext;
+	m_nLine = nLine;
+	m_nSaveSlot = splitscreen->SetActiveSplitScreenPlayerSlot( slot );
+	m_bResolvable = splitscreen->SetLocalPlayerIsResolvable( pchContext, nLine, true );
+}
+
+CSetActiveSplitScreenPlayerGuard::~CSetActiveSplitScreenPlayerGuard()
+{
+	splitscreen->SetActiveSplitScreenPlayerSlot( m_nSaveSlot );
+	splitscreen->SetLocalPlayerIsResolvable( m_pchContext, m_nLine, m_bResolvable );
+}
+#endif

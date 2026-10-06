@@ -80,6 +80,7 @@ class NET_Tick;
 class NET_StringCmd;
 class NET_SetConVar;
 class NET_SignonState;
+class NET_SplitScreenUser;
 
 
 class INetMessageHandler 
@@ -91,6 +92,9 @@ public:
 	PROCESS_NET_MESSAGE( StringCmd ) = 0;
 	PROCESS_NET_MESSAGE( SetConVar ) = 0;
 	PROCESS_NET_MESSAGE( SignonState ) = 0;
+	// Local split-screen (engine.splitscreen-wire.v1). A handler without split-screen
+	// support refuses the message, which ends the connection, instead of ignoring it.
+	PROCESS_NET_MESSAGE( SplitScreenUser ) { return false; }
 };
 
 class CLC_ClientInfo;
@@ -103,6 +107,7 @@ class CLC_FileCRCCheck;
 class CLC_FileMD5Check;
 class CLC_SaveReplay;
 class CLC_CmdKeyValues;
+class CLC_SplitPlayerConnect;
 
 class IClientMessageHandler : public INetMessageHandler
 {
@@ -121,6 +126,7 @@ public:
 	PROCESS_CLC_MESSAGE( SaveReplay ) = 0;
 #endif
 	PROCESS_CLC_MESSAGE( CmdKeyValues ) = 0;
+	PROCESS_CLC_MESSAGE( SplitPlayerConnect ) { return false; }
 };
 
 class SVC_Print;
@@ -148,6 +154,7 @@ class SVC_GameEventList;
 class SVC_GetCvarValue;
 class SVC_CmdKeyValues;
 class SVC_SetPauseTimed;
+class SVC_SplitScreen;
 
 class IServerMessageHandler : public INetMessageHandler
 {
@@ -182,6 +189,7 @@ public:
 	PROCESS_SVC_MESSAGE( GetCvarValue ) = 0;
 	PROCESS_SVC_MESSAGE( CmdKeyValues ) = 0;
 	PROCESS_SVC_MESSAGE( SetPauseTimed ) = 0;
+	PROCESS_SVC_MESSAGE( SplitScreen ) { return false; }
 };
 
 class MM_Heartbeat;

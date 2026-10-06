@@ -1192,21 +1192,29 @@ static bool LoadThisDll( char *szDllFilename, bool bIsServerOnly )
 		serverGameClients = (IServerGameClients*)g_ServerFactory(INTERFACEVERSION_SERVERGAMECLIENTS, NULL);
 		if ( serverGameClients )
 		{
-			g_iServerGameClientsVersion = 4;
+			g_iServerGameClientsVersion = 5;
 		}
 		else
 		{
-			// Try the previous version.
-			const char *pINTERFACEVERSION_SERVERGAMECLIENTS_V3 = "ServerGameClients003";
-			serverGameClients = (IServerGameClients*)g_ServerFactory(pINTERFACEVERSION_SERVERGAMECLIENTS_V3, NULL);
+			// Try the previous versions (only methods were appended, so an older table is a prefix).
+			serverGameClients = (IServerGameClients*)g_ServerFactory(INTERFACEVERSION_SERVERGAMECLIENTS_VERSION_4, NULL);
 			if ( serverGameClients )
 			{
-				g_iServerGameClientsVersion = 3;
+				g_iServerGameClientsVersion = 4;
 			}
 			else
 			{
-				ConMsg( "Could not get IServerGameClients interface from library %s", szDllFilename );
-				goto IgnoreThisDLL;
+				const char *pINTERFACEVERSION_SERVERGAMECLIENTS_V3 = "ServerGameClients003";
+				serverGameClients = (IServerGameClients*)g_ServerFactory(pINTERFACEVERSION_SERVERGAMECLIENTS_V3, NULL);
+				if ( serverGameClients )
+				{
+					g_iServerGameClientsVersion = 3;
+				}
+				else
+				{
+					ConMsg( "Could not get IServerGameClients interface from library %s", szDllFilename );
+					goto IgnoreThisDLL;
+				}
 			}
 		}
 		serverGameDirector = (IHLTVDirector*)g_ServerFactory(INTERFACEVERSION_HLTVDIRECTOR, NULL);

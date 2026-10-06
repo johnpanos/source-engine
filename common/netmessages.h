@@ -29,6 +29,7 @@
 #include <engine/iserverplugin.h>
 #include <Color.h>
 #include "proto_version.h"
+#include "splitscreen_wire.h"
 
 #include "xbox/xboxstubs.h"
 
@@ -185,6 +186,19 @@ public:
 	int			m_nSpawnCount;			// server spawn count (session number)
 };
 
+// Selects the local split-screen slot that the messages after it belong to
+// (engine.splitscreen-wire.v1; the net channel writes it, see CNetChan::ChangeSplitUser).
+class NET_SplitScreenUser : public CNetMessage
+{
+	DECLARE_NET_MESSAGE( SplitScreenUser );
+
+	NET_SplitScreenUser() { m_nSlot = 0; }
+	explicit NET_SplitScreenUser( int slot ) { m_nSlot = slot; }
+
+public:
+	int			m_nSlot;
+};
+
 
 ///////////////////////////////////////////////////////////////////////////////////////
 // Client messages:
@@ -207,6 +221,17 @@ public:
 };
 
 
+
+// A local split-screen player joins this connection (ss_connect). Reliable.
+class CLC_SplitPlayerConnect : public CNetMessage
+{
+	DECLARE_CLC_MESSAGE( SplitPlayerConnect );
+
+	CLC_SplitPlayerConnect() { memset( &m_Connect, 0, sizeof( m_Connect ) ); }
+
+public:
+	splitscreenwire::ClcSplitPlayerConnect m_Connect;
+};
 
 class CLC_Move : public CNetMessage
 {
@@ -446,6 +471,21 @@ public:
 	int						m_nNumServerClasses;
 };
 	
+
+// The server added or removed a local split-screen player on this connection.
+class SVC_SplitScreen : public CNetMessage
+{
+	DECLARE_SVC_MESSAGE( SplitScreen );
+
+	int	GetGroup() const { return INetChannelInfo::SIGNON; }
+
+	SVC_SplitScreen() { m_bReliable = true; m_nAction = 0; m_nSlot = 0; m_nEntityIndex = 0; }
+
+public:
+	int			m_nAction;		// splitscreenwire::SvcAction
+	int			m_nSlot;
+	int			m_nEntityIndex;	// 1-based client entity index
+};
 
 class SVC_SetPause : public CNetMessage
 {

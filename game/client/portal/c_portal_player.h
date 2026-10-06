@@ -5,6 +5,13 @@
 // $NoKeywords: $
 //
 //===========================================================================//
+// Portal 1 sources built into Portal 2 find this header first (quoted includes
+// search their own folder); Portal 2 builds take Portal 2's player instead of a
+// second, different definition of the same class (ODR, RFC 0023).
+#if defined( PORTAL2 )
+#include "game/client/portal2/portal/c_portal_player.h"
+#else
+
 #ifndef PORTAL_PLAYER_H
 #define PORTAL_PLAYER_H
 #pragma once
@@ -220,3 +227,5 @@ inline C_Portal_Player *GetPortalPlayer( void )
 }
 
 #endif //Portal_PLAYER_H
+
+#endif // PORTAL2

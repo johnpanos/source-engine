@@ -51,6 +51,8 @@
 #include "replayserver.h"
 #endif
 #include "cdll_engine_int.h"
+#include "cl_splitscreen.h"
+#include "toolframework/itoolframework.h"
 #include "cl_steamauth.h"
 #ifndef SWDS
 #include "vgui_baseui_interface.h"
@@ -639,7 +641,7 @@ static bool Host_Map_Helper_FuzzyName( const CCommand &args, char *name, size_t 
 	return false;
 }
 
-void Host_Map_Helper( const CCommand &args, bool bEditmode, bool bBackground, bool bCommentary )
+void Host_Map_Helper( const CCommand &args, bool bEditmode, bool bBackground, bool bCommentary, bool bSplitScreenConnect = false )
 {
 	if ( cmd_source != src_command )
 		return;
@@ -723,7 +725,7 @@ void Host_Map_Helper( const CCommand &args, bool bEditmode, bool bBackground, bo
 
 	Host_Disconnect( false );	// stop old game
 
-	HostState_NewGame( szMapName, false, bBackground );
+	HostState_NewGame( szMapName, false, bBackground, bSplitScreenConnect );
 
 	if (args.ArgC() == 10)
 	{
@@ -773,18 +775,110 @@ CON_COMMAND( map_edit, "" )
 #endif
 
 //-----------------------------------------------------------------------------
-// Purpose: Portal 2's menus launch local split-screen with
-// "ss_map <map> [*mp]". The engine has one local player per client, so the
-// composition is refused by name before the running game is touched, instead
-// of the command being silently unknown. Replace with the real admission path
-// once the engine owns two local-player identities
-// (RFC/portal2-splitscreen-progress.md, "Remaining product boundaries").
+// Purpose: "ss_map <map> [*mp]" (Portal 2's menus): start a map and connect every local
+//			split-screen player the game supports. "connect_splitscreen" does the connect.
 //-----------------------------------------------------------------------------
 #ifndef SWDS
-CON_COMMAND( ss_map, "Start local split-screen play on the specified map (unsupported: refused)." )
+// ss_connect / ss_disconnect (ported from the CS:GO engine's host_cmd.cpp)
+CON_COMMAND_F( ss_connect, "If connected with available split screen slots, connects a split screen player to this machine.", FCVAR_DONTRECORD )
 {
-	Warning( "ss_map: local split-screen is not supported by this engine "
-	         "(one local player per client); the running game was not changed.\n" );
+	if ( host_state.max_splitscreen_players == 1 )
+	{
+		if ( toolframework->InToolMode() )
+		{
+			Msg( "Can't ss_connect, split screen not supported when running -tools mode.\n" );
+		}
+		else
+		{
+			Msg( "Can't ss_connect, game does not support split screen.\n" );
+		}
+		return;
+	}
+
+	if ( !GetBaseLocalClient().IsConnected() )
+	{
+		Msg( "Can't ss_connect, not connected to game.\n" );
+		return;
+	}
+
+	int nSlot = 1;
+	while ( splitscreen->IsValidSplitScreenSlot( nSlot ) )
+	{
+		++nSlot;
+	}
+
+	if ( nSlot >= host_state.max_splitscreen_players )
+	{
+		Msg( "Can't ss_connect, no more split screen player slots!\n" );
+		return;
+	}
+
+	// The new player's name; its other settings follow over its own channel once it is added.
+	CLC_SplitPlayerConnect msg;
+	msg.m_Connect.count = 1;
+	Q_snprintf( msg.m_Connect.records[ 0 ].first, sizeof( msg.m_Connect.records[ 0 ].first ), "%s (%d)",
+	            GetBaseLocalClient().GetClientName(), nSlot + 1 );
+
+	GetBaseLocalClient().m_NetChannel->SendNetMsg( msg );
+}
+#endif
+
+// The server runs this when a client asks to drop one of its local players (dedicated too);
+// the client runs it to ask.
+CON_COMMAND_F( ss_disconnect, "Disconnect a split screen player (the first, or the given slot).", FCVAR_DONTRECORD )
+{
+	if ( cmd_source == src_client )
+	{
+		// On the server: the client asked to drop one of its local players
+		host_client->SplitScreenDisconnect( args );
+		return;
+	}
+
+#ifndef SWDS
+	// Get the first valid slot
+	int nSlot = -1;
+	for ( int i = 1; i < host_state.max_splitscreen_players; ++i )
+	{
+		if ( IS_VALID_SPLIT_SCREEN_SLOT( i ) )
+		{
+			nSlot = i;
+			break;
+		}
+	}
+
+	if ( args.ArgC() > 1 )
+	{
+		int cmdslot = Q_atoi( args.Arg( 1 ) );
+		if ( IS_VALID_SPLIT_SCREEN_SLOT( cmdslot ) )
+		{
+			nSlot = cmdslot;
+		}
+		else
+		{
+			Msg( "Can't ss_disconnect, slot %d not active\n", cmdslot );
+			return;
+		}
+	}
+
+	if ( ! IS_VALID_SPLIT_SCREEN_SLOT( nSlot ) )
+	{
+		Msg( "Can't ss_disconnect, no split screen users active\n" );
+		return;
+	}
+
+	char buf[ 256 ];
+	Q_snprintf( buf, sizeof( buf ), "ss_disconnect %d\n", nSlot );
+
+	CCommand argsClient;
+	argsClient.Tokenize( buf );
+	Cmd_ForwardToServer( argsClient );
+#endif
+}
+
+#ifndef SWDS
+CON_COMMAND( ss_map, "Start local split-screen play on the specified map." )
+{
+	Host_Map_Helper( args, false, false, false, true );
 }
 #endif
 
@@ -1875,7 +1969,6 @@ void Host_VoiceRecordStop_f(void)
 	}
 }
 
-#ifdef VOICE_VOX_ENABLE
 void Host_VoiceToggle_f( const CCommand &args )
 {
 	if ( cl.IsActive() )
@@ -1919,7 +2012,6 @@ void Host_VoiceToggle_f( const CCommand &args )
 #endif // NO_VOICE
 	}
 }
-#endif // VOICE_VOX_ENABLE
 	
 #endif // SWDS
 
@@ -2044,9 +2136,7 @@ static ConCommand cmd_exit("exit", Host_Quit_f, "Exit the engine.");
 #ifdef VOICE_OVER_IP
 static ConCommand startvoicerecord("+voicerecord", Host_VoiceRecordStart_f);
 static ConCommand endvoicerecord("-voicerecord", Host_VoiceRecordStop_f);
-#ifdef VOICE_VOX_ENABLE
 static ConCommand togglevoicerecord("voicerecord_toggle", Host_VoiceToggle_f);
-#endif // VOICE_VOX_ENABLE
 #endif // VOICE_OVER_IP
 
 #endif // SWDS

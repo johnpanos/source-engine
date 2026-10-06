@@ -85,6 +85,14 @@ public:
 	virtual int		GetMaxRoutablePayloadSize() = 0;
 
 	virtual int		GetProtocolVersion() = 0;
+
+	// Local split-screen (engine.splitscreen-wire.v1). One connection carries every local
+	// player: the owner's channel merges each attached channel's buffers when it sends,
+	// and routes incoming messages to the active channel (selected by net_SplitScreenUser).
+	// The defaults refuse: a channel that does not multiplex local players says so.
+	virtual bool	SetActiveChannel( INetChannel *pNewChannel ) { return false; }
+	virtual void	AttachSplitPlayer( int nSplitPlayerSlot, INetChannel *pChannel ) { Assert( !"split-screen not supported by this channel" ); }
+	virtual void	DetachSplitPlayer( int nSplitPlayerSlot ) { Assert( !"split-screen not supported by this channel" ); }
 };
 
 

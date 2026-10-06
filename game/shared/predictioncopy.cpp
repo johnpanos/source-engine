@@ -1205,6 +1205,16 @@ void CPredictionCopy::CopyFields( int chain_count, datamap_t *pRootMap, typedesc
 				if ( bShouldWatch ) WatchEHandle( difftype, (EHANDLE *)pOutputData, (EHANDLE const *)pInputData, fieldSize );
 			}
 			break;
+		case FIELD_VMATRIX:
+			{
+				// a VMatrix is 16 contiguous floats
+				int nFloats = fieldSize * 16;
+				difftype = CompareFloat( (float *)pOutputData, (float const *)pInputData, nFloats );
+				CopyFloat( difftype, (float *)pOutputData, (float const *)pInputData, nFloats );
+				if ( m_bErrorCheck && m_bShouldDescribe ) DescribeFloat( difftype, (float *)pOutputData, (float const *)pInputData, nFloats );
+				if ( bShouldWatch ) WatchFloat( difftype, (float *)pOutputData, (float const *)pInputData, nFloats );
+			}
+			break;
 		case FIELD_FUNCTION:
 			{
 			Assert( 0 );
@@ -1217,7 +1227,7 @@ void CPredictionCopy::CopyFields( int chain_count, datamap_t *pRootMap, typedesc
 			break;
 		default:
 			{
-				Warning( "Bad field type\n" );
+				Warning( "Bad field type %d in field \"%s\"\n", (int)m_pCurrentField->fieldType, m_pCurrentField->fieldName ? m_pCurrentField->fieldName : "?" );
 				Assert(0);
 			}
 			break;
@@ -1717,6 +1727,9 @@ void CPredictionDescribeData::DescribeFields_R( int chain_count, datamap_t *pRoo
 		case FIELD_EHANDLE:
 			DescribeEHandle( (EHANDLE const *)pInputData, fieldSize );
 			break;
+		case FIELD_VMATRIX:
+			DescribeFloat( (float const *)pInputData, fieldSize * 16 );
+			break;
 		case FIELD_FUNCTION:
 			Assert( 0 );
 			break;
@@ -1724,7 +1737,7 @@ void CPredictionDescribeData::DescribeFields_R( int chain_count, datamap_t *pRoo
 			Describe( "FIELD_VOID: empty field\n" );
 			break;
 		default:
-			Warning( "Bad field type\n" );
+			Warning( "Bad field type %d in field \"%s\"\n", (int)m_pCurrentField->fieldType, m_pCurrentField->fieldName ? m_pCurrentField->fieldName : "?" );
 			Assert(0);
 			break;
 		}

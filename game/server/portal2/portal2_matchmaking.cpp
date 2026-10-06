@@ -125,13 +125,8 @@ void CMatchServerHostPortal2::ApplyGameSettings( KeyValues *pKV )
 				sv_cheats->SetValue( 0 );
 			}
 
+			// "map", or "ss_map" for local split-screen (the engine's ss_map connects every local player)
 			char const *szMapCommand = pKV->GetString( "map/mapcommand", "map" );
-			if ( !V_stricmp( szMapCommand, "ss_map" ) )
-			{
-				// Portal 2 port: this engine has no split-screen map command.
-				PORTAL2_UNSUPPORTED( "split-screen map loading" );
-				szMapCommand = "map";
-			}
 			DevMsg( "            starting: %s %s...\n", szMapCommand, szMap );
 			engine->ServerCommand( CFmtStr( "%s %s reserved\n", szMapCommand, szMap ) );
 		}

@@ -15,6 +15,13 @@ P2_RUNTIME="${P2_RUNTIME:-$ROOT/run/runtime-p2}"
 P2_BUILD_DIR="${P2_BUILD_DIR:-$ROOT/build-p2}"
 P2_WAFLOCK="${P2_WAFLOCK:-.lock-waf-p2}"
 P2_FSR="${P2_FSR:-0}"
+# RFC 0023: release is the optimized, low-instrumentation flavor (./play_p2_release).
+# Unset accepts the configured tree's own flavor (harnesses pass P2_BUILD_DIR only).
+P2_FLAVOR="${P2_FLAVOR:-}"
+if [[ -n "$P2_FLAVOR" && "$P2_FLAVOR" != dev && "$P2_FLAVOR" != release ]]; then
+    echo "play_p2: P2_FLAVOR must be dev, release or unset" >&2
+    exit 1
+fi
 if [[ "$P2_FSR" != 0 && "$P2_FSR" != 1 ]]; then
     echo "play_p2: P2_FSR must be 0 or 1" >&2
     exit 1
@@ -81,6 +88,9 @@ configure_tree() {
     if [[ "$P2_FSR" == 1 ]]; then
         fsr_config+=(--render-fsr411)
     fi
+    if [[ "$P2_FLAVOR" == release ]]; then
+        fsr_config+=(--product-flavor=release --enable-lto)
+    fi
     (cd "$ROOT" && WAFLOCK="$P2_WAFLOCK" python3 ./waf configure \
         --platform-provider=sdl3 --render-backend=native-vulkan \
         --build-games=portal2 --physics-backend=both --disable-warns \
@@ -105,6 +115,14 @@ if [[ -d "$P2_BUILD_DIR/c4che" ]]; then
         exit 1
     fi
     # Trees configured before the AV1 provider (default since 2026-10-05) link only Bink.
+    release_tree=0
+    grep -q "SOURCE_RELEASE_BUILD" "$P2_BUILD_DIR/c4che/_cache.py" && release_tree=1
+    if [[ "$P2_FLAVOR" == release && "$release_tree" == 0 ]] ||
+       [[ "$P2_FLAVOR" == dev && "$release_tree" == 1 ]]; then
+        # P2_FLAVOR was set explicitly and names the other flavor.
+        echo "play_p2: $P2_BUILD_DIR flavor does not match P2_FLAVOR=$P2_FLAVOR" >&2
+        exit 1
+    fi
     if [[ "${P2_NO_BUILD:-}" != 1 ]] && ! grep -q '^VIDEO_AV1 = True$' "$P2_BUILD_DIR/c4che/_cache.py"; then
         configure_tree
     fi

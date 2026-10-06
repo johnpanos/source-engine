@@ -691,13 +691,28 @@ void CBasePlayer::UpdateOnRemove( void )
 void CBasePlayer::SetupVisibility( CBaseEntity *pViewEntity, unsigned char *pvs, int pvssize )
 {
 	// If we have a viewentity, we don't add the player's origin.
-	if ( pViewEntity )
-		return;
+	if ( !pViewEntity )
+	{
+		Vector org;
+		org = EyePosition();
 
-	Vector org;
-	org = EyePosition();
+		engine->AddOriginToPVS( org );
+	}
 
-	engine->AddOriginToPVS( org );
+	// Merge in the PVS of the local split-screen players riding on this connection
+	if ( g_pEngineServerSplitScreen )
+	{
+		const int nSplitUsers = g_pEngineServerSplitScreen->GetNumSplitScreenUsersAttachedToEdict( entindex() );
+		for ( int nSlot = 1, nFound = 0; nFound < nSplitUsers && nSlot < MAX_SPLITSCREEN_PLAYERS; ++nSlot )
+		{
+			CBasePlayer *pSplit = ToBasePlayer( CBaseEntity::Instance( g_pEngineServerSplitScreen->GetSplitScreenPlayerForEdict( entindex(), nSlot ) ) );
+			if ( !pSplit )
+				continue;
+
+			++nFound;
+			engine->AddOriginToPVS( pSplit->EyePosition() );
+		}
+	}
 }
 
 int	CBasePlayer::UpdateTransmitState()
@@ -710,7 +725,8 @@ int CBasePlayer::ShouldTransmit( const CCheckTransmitInfo *pInfo )
 {
 	// Allow me to introduce myself to, err, myself.
 	// I.e., always update the recipient player data even if it's nodraw (first person mode)
-	if ( pInfo->m_pClientEnt == edict() )
+	// A split-screen player uses its owner's connection, so it introduces itself there too.
+	if ( pInfo->m_pClientEnt == edict() || IsSplitScreenUserOnEdict( pInfo->m_pClientEnt ) )
 	{
 		return FL_EDICT_ALWAYS;
 	}
@@ -9453,3 +9469,85 @@ BEGIN_ENT_SCRIPTDESC( CBasePlayer, CBaseAnimating, "The player entity." )
 	DEFINE_SCRIPTFUNC_NAMED( ScriptIsPlayerNoclipping, "IsNoclipping", "Returns true if the player is in noclip mode." )
 END_SCRIPTDESC();
 #endif // PORTAL2
+
+//-----------------------------------------------------------------------------
+// Purpose: Lists the players the server runs, with what a local split-screen user looks like
+//-----------------------------------------------------------------------------
+CON_COMMAND( sv_splitscreen_status, "Lists the server's players: entity, flags, origin, last forward move." )
+{
+	Msg( "server tick %d, curtime %.2f\n", gpGlobals->tickcount, gpGlobals->curtime );
+	for ( int i = 1; i <= gpGlobals->maxClients; i++ )
+	{
+		CBasePlayer *pPlayer = UTIL_PlayerByIndex( i );
+		if ( !pPlayer )
+			continue;
+
+		const Vector &origin = pPlayer->GetAbsOrigin();
+		const CUserCmd *pCmd = pPlayer->GetLastUserCommand();
+		Msg( "player %d \"%s\": %s, origin %.0f %.0f %.0f, forwardmove %.0f, buttons 0x%x\n", i, pPlayer->GetPlayerName(),
+		     ( pPlayer->GetFlags() & FL_FAKECLIENT ) ? "fake client" : "client", origin.x, origin.y, origin.z,
+		     pCmd ? pCmd->forwardmove : 0.0f, pCmd ? pCmd->buttons : 0 );
+	}
+}
+
+//-----------------------------------------------------------------------------
+// Local split-screen (the pairing is the engine's: IEngineServerSplitScreen)
+//-----------------------------------------------------------------------------
+bool CBasePlayer::IsSplitScreenPlayer() const
+{
+	return g_pEngineServerSplitScreen && g_pEngineServerSplitScreen->IsSplitScreenPlayer( entindex() );
+}
+
+CBasePlayer *CBasePlayer::GetSplitScreenPlayerOwner()
+{
+	if ( !g_pEngineServerSplitScreen )
+		return NULL;
+
+	edict_t *pOwner = g_pEngineServerSplitScreen->GetSplitScreenPlayerAttachToEdict( entindex() );
+	return pOwner ? ToBasePlayer( CBaseEntity::Instance( pOwner ) ) : NULL;
+}
+
+bool CBasePlayer::IsSplitScreenUserOnEdict( edict_t *pEdict )
+{
+	if ( !pEdict || !IsSplitScreenPlayer() )
+		return false;
+
+	CBasePlayer *pOwner = GetSplitScreenPlayerOwner();
+	return pOwner && pOwner->edict() == pEdict;
+}
+
+int CBasePlayer::GetSplitScreenPlayerSlot()
+{
+	if ( !IsSplitScreenPlayer() )
+		return 0;
+
+	CBasePlayer *pOwner = GetSplitScreenPlayerOwner();
+	if ( !pOwner )
+		return 0;
+
+	for ( int nSlot = 1; nSlot < MAX_SPLITSCREEN_PLAYERS; ++nSlot )
+	{
+		if ( g_pEngineServerSplitScreen->GetSplitScreenPlayerForEdict( pOwner->entindex(), nSlot ) == edict() )
+			return nSlot;
+	}
+	return 0;
+}
+
+int CBasePlayer::GetConnectionClientIndex()
+{
+	CBasePlayer *pOwner = IsSplitScreenPlayer() ? GetSplitScreenPlayerOwner() : NULL;
+	return ( pOwner ? pOwner : this )->GetClientIndex();
+}
+
+// Data meant for one player alone: that player's connection, which for a split-screen player is its owner's.
+void SendProxy_SetOnlyPlayerRecipients( CSendProxyRecipients *pRecipients, int iClientIndex )
+{
+	CBasePlayer *pPlayer = UTIL_PlayerByIndex( iClientIndex + 1 );
+	if ( pPlayer && pPlayer->IsSplitScreenPlayer() )
+	{
+		pRecipients->SetOnly( pPlayer->GetConnectionClientIndex() );
+		return;
+	}
+
+	pRecipients->SetOnly( iClientIndex );
+}

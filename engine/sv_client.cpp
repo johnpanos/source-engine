@@ -61,6 +61,7 @@ extern ConVar sv_pure_trace;
 static const char * s_clcommands[] = 
 {
 	"status",
+	"ss_disconnect",	// local split-screen: the client drops one of its local players
 	"pause",
 	"setpause",
 	"unpause",

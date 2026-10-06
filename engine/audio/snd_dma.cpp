@@ -92,6 +92,7 @@ bool DSP_CheckDspAutoEnabled( void );
 // by the running game at S_Init: sounds are treated as streaming, and automatic room
 // detection tolerates overhangs and any player height.
 bool g_bSndPortal2 = false;
+extern ConVar snd_ducking_off;
 
 void DSP_SetDspAuto( int dsp_preset );
 void DSP_SetPortal2Defaults( bool bPortal2 );
@@ -678,6 +679,8 @@ void S_Init( void )
 
 	g_bSndPortal2 = !Q_stricmp( COM_GetModDirectory(), "portal2" );
 	DSP_SetPortal2Defaults( g_bSndPortal2 );
+	if ( g_bSndPortal2 )
+		snd_ducking_off.SetValue( 1 );
 
 	g_ActiveChannels.Init();
 	S_Startup();
@@ -1666,11 +1669,9 @@ float SND_GetFacingDirection( channel_t *pChannel, const QAngle &source_angles )
 	Vector SL;				// sound -> listener unit vector
 	float dotSFSL;
 
-	// no facing direction unless wavtyp CHAR_DIRECTIONAL
+	// Retail (CS:GO base) gives every sound a facing direction, not only
+	// CHAR_DIRECTIONAL waves; retail Portal 2 logs dspface -0.84 for a plain wave.
 
-	if ( pChannel->wavtype != CHAR_DIRECTIONAL )
-		return 1.0;
-	
 	VectorSubtract(listener_origin, pChannel->origin, SL);
 	VectorNormalize(SL);
 
@@ -6242,8 +6243,17 @@ ConVar snd_duckerattacktime( "snd_duckerattacktime", "0.5", FCVAR_ARCHIVE );
 ConVar snd_duckerreleasetime( "snd_duckerreleasetime", "2.5", FCVAR_ARCHIVE );
 ConVar snd_duckerthreshold("snd_duckerthreshold", "0.15", FCVAR_ARCHIVE );
 
+// Retail Portal 2 ships the global voice ducker off (S_Init sets 1 for the portal2 game).
+ConVar snd_ducking_off("snd_ducking_off", "0", FCVAR_ARCHIVE );
+
 static void S_UpdateVoiceDuck( int voiceChannelCount, int voiceChannelMaxVolume, float frametime )
 {
+	if ( snd_ducking_off.GetInt() )
+	{
+		g_DuckScale = 1.0;
+		return;
+	}
+
 	float volume_when_ducked = snd_ducktovolume.GetFloat();
 	int volume_threshold = (int)(snd_duckerthreshold.GetFloat() * 255.0);
 

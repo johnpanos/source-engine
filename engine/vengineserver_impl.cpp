@@ -10,6 +10,7 @@
 #include <algorithm>
 #include "tier0/valve_minmax_on.h"
 #include "vengineserver_impl.h"
+#include "isplitscreen.h"
 #include "vox.h"
 #include "sound.h"
 #include "gl_model_private.h"
@@ -2102,3 +2103,77 @@ bool CVEngineServer::IsLowViolence()
 {
 	return g_bLowViolence;
 }
+
+//-----------------------------------------------------------------------------
+// Local split-screen: which clients are local split-screen players
+// (IEngineServerSplitScreen; ported from the CS:GO engine's IVEngineServer methods)
+//-----------------------------------------------------------------------------
+class CEngineServerSplitScreen : public IEngineServerSplitScreen
+{
+public:
+	virtual bool IsSplitScreenPlayer( int ent_num )
+	{
+		if ( ent_num < 1 || ent_num > sv.GetClientCount() )
+			return false;
+
+		CGameClient *client = sv.Client( ent_num - 1 );
+		return client->IsSplitScreenUser();
+	}
+
+	virtual edict_t *GetSplitScreenPlayerAttachToEdict( int ent_num )
+	{
+		if ( ent_num < 1 || ent_num > sv.GetClientCount() )
+			return NULL;
+
+		CGameClient *client = sv.Client( ent_num - 1 );
+		if ( !client->IsSplitScreenUser() )
+			return NULL;
+
+		Assert( client->m_pAttachedTo );
+		if ( !client->m_pAttachedTo )
+			return NULL;
+
+		return static_cast< CGameClient * >( client->m_pAttachedTo )->edict;
+	}
+
+	virtual int GetNumSplitScreenUsersAttachedToEdict( int ent_num )
+	{
+		if ( ent_num < 1 || ent_num > sv.GetClientCount() )
+			return 0;
+
+		CGameClient *client = sv.Client( ent_num - 1 );
+		if ( client->IsSplitScreenUser() )
+			return 0;
+
+		int c = 0;
+		for ( int i = 1; i < host_state.max_splitscreen_players; ++i )
+		{
+			if ( client->m_SplitScreenUsers[ i ] )
+				++c;
+		}
+
+		return c;
+	}
+
+	virtual edict_t *GetSplitScreenPlayerForEdict( int ent_num, int nSlot )
+	{
+		if ( ent_num < 1 || ent_num > sv.GetClientCount() )
+			return NULL;
+
+		CGameClient *client = sv.Client( ent_num - 1 );
+		if ( client->IsSplitScreenUser() )
+			return NULL;
+
+		if ( nSlot <= 0 || nSlot >= host_state.max_splitscreen_players )
+			return NULL;
+
+		CBaseClient *cl = client->m_SplitScreenUsers[ nSlot ];
+		if ( !cl )
+			return NULL;
+
+		return ( ( CGameClient * )cl )->edict;
+	}
+};
+
+static CEngineServerSplitScreen s_EngineServerSplitScreen;
+EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CEngineServerSplitScreen, IEngineServerSplitScreen, ENGINE_SERVER_SPLITSCREEN_INTERFACE_VERSION, s_EngineServerSplitScreen );

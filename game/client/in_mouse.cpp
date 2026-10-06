@@ -138,8 +138,8 @@ void CInput::ActivateMouse (void)
 #endif
 
 		// Clear accumulated error, too
-		m_flAccumulatedMouseXMovement = 0;
-		m_flAccumulatedMouseYMovement = 0;
+		GetPerUser().m_flAccumulatedMouseXMovement = 0;
+		GetPerUser().m_flAccumulatedMouseYMovement = 0;
 
 		// clear raw mouse accumulated data
 		int rawX, rawY;
@@ -173,8 +173,8 @@ void CInput::DeactivateMouse (void)
 #endif
 
 		// Clear accumulated error, too
-		m_flAccumulatedMouseXMovement = 0;
-		m_flAccumulatedMouseYMovement = 0;
+		GetPerUser().m_flAccumulatedMouseXMovement = 0;
+		GetPerUser().m_flAccumulatedMouseYMovement = 0;
 	}
 }
 
@@ -249,8 +249,8 @@ void CInput::Init_Mouse (void)
 	if ( CommandLine()->FindParm("-nomouse" ) ) 
 		return; 
 
-	m_flPreviousMouseXPosition = 0.0f;
-	m_flPreviousMouseYPosition = 0.0f;
+	GetPerUser().m_flPreviousMouseXPosition = 0.0f;
+	GetPerUser().m_flPreviousMouseYPosition = 0.0f;
 	
 	m_fMouseInitialized = true;
 
@@ -338,8 +338,8 @@ void CInput::GetAccumulatedMouseDeltasAndResetAccumulators( float *mx, float *my
 	Assert( mx );
 	Assert( my );
 
-	*mx = m_flAccumulatedMouseXMovement;
-	*my = m_flAccumulatedMouseYMovement;
+	*mx = GetPerUser().m_flAccumulatedMouseXMovement;
+	*my = GetPerUser().m_flAccumulatedMouseYMovement;
 
 	if ( m_rawinput.GetBool() )
 	{
@@ -351,8 +351,8 @@ void CInput::GetAccumulatedMouseDeltasAndResetAccumulators( float *mx, float *my
 		}
 	}
 	
-	m_flAccumulatedMouseXMovement = 0;
-	m_flAccumulatedMouseYMovement = 0;
+	GetPerUser().m_flAccumulatedMouseXMovement = 0;
+	GetPerUser().m_flAccumulatedMouseYMovement = 0;
 }
 
 //-----------------------------------------------------------------------------
@@ -370,8 +370,8 @@ void CInput::GetMouseDelta( float inmousex, float inmousey, float *pOutMouseX, f
 	if ( m_filter.GetBool() )
 	{
 		// Average over last two samples
-		*pOutMouseX = ( inmousex + m_flPreviousMouseXPosition ) * 0.5f;
-		*pOutMouseY = ( inmousey + m_flPreviousMouseYPosition ) * 0.5f;
+		*pOutMouseX = ( inmousex + GetPerUser().m_flPreviousMouseXPosition ) * 0.5f;
+		*pOutMouseY = ( inmousey + GetPerUser().m_flPreviousMouseYPosition ) * 0.5f;
 	}
 	else
 	{
@@ -380,8 +380,8 @@ void CInput::GetMouseDelta( float inmousex, float inmousey, float *pOutMouseX, f
 	}
 
 	// Latch previous
-	m_flPreviousMouseXPosition = inmousex;
-	m_flPreviousMouseYPosition = inmousey;
+	GetPerUser().m_flPreviousMouseXPosition = inmousex;
+	GetPerUser().m_flPreviousMouseYPosition = inmousey;
 
 }
 
@@ -451,7 +451,7 @@ void CInput::ScaleMouse( float *x, float *y )
 //-----------------------------------------------------------------------------
 void CInput::ApplyMouse( QAngle& viewangles, CUserCmd *cmd, float mouse_x, float mouse_y )
 {
-	if ( !((in_strafe.state & 1) || lookstrafe.GetInt()) )
+	if ( !((in_strafe.GetPerUser().state & 1) || lookstrafe.GetInt()) )
 	{
 #ifdef PORTAL
 		if ( g_bUpsideDown )
@@ -493,7 +493,7 @@ void CInput::ApplyMouse( QAngle& viewangles, CUserCmd *cmd, float mouse_x, float
 
 	// If mouselooking and not holding strafe key, then use vertical mouse
 	//  to adjust view pitch.
-	if (!(in_strafe.state & 1))
+	if (!(in_strafe.GetPerUser().state & 1))
 	{
 #ifdef PORTAL
 		if ( g_bUpsideDown )
@@ -538,7 +538,7 @@ void CInput::ApplyMouse( QAngle& viewangles, CUserCmd *cmd, float mouse_x, float
 	else
 	{
 		// Otherwise if holding strafe key and noclipping, then move upward
-/*		if ((in_strafe.state & 1) && IsNoClipping() )
+/*		if ((in_strafe.GetPerUser().state & 1) && IsNoClipping() )
 		{
 			cmd->upmove -= m_forward.GetFloat() * mouse_y;
 		} 
@@ -583,7 +583,7 @@ void CInput::AccumulateMouse( void )
 	int y = h >> 1;	y;
 
 	//only accumulate mouse if we are not moving the camera with the mouse
-	if ( !m_fCameraInterceptingMouse && vgui::surface()->IsCursorLocked() )
+	if ( !GetPerUser().m_fCameraInterceptingMouse && vgui::surface()->IsCursorLocked() )
 	{
 		//Assert( !vgui::surface()->IsCursorVisible() );
 		// By design, we follow the old mouse path even when using SDL for Windows, to retain old mouse behavior.
@@ -592,14 +592,14 @@ void CInput::AccumulateMouse( void )
 
 		GetMousePos(current_posx, current_posy);
 
-		m_flAccumulatedMouseXMovement += current_posx - x;
-		m_flAccumulatedMouseYMovement += current_posy - y;
+		GetPerUser().m_flAccumulatedMouseXMovement += current_posx - x;
+		GetPerUser().m_flAccumulatedMouseYMovement += current_posy - y;
 		
 #elif defined( USE_SDL )
 		int dx, dy;
 		engine->GetMouseDelta( dx, dy );
-		m_flAccumulatedMouseXMovement += dx;
-		m_flAccumulatedMouseYMovement += dy;
+		GetPerUser().m_flAccumulatedMouseXMovement += dx;
+		GetPerUser().m_flAccumulatedMouseYMovement += dy;
 #else
 #error
 #endif
@@ -662,7 +662,7 @@ void CInput::MouseMove( CUserCmd *cmd )
 
 	//jjb - this disables normal mouse control if the user is trying to 
 	//      move the camera, or if the mouse cursor is visible 
-	if ( !m_fCameraInterceptingMouse && 
+	if ( !GetPerUser().m_fCameraInterceptingMouse && 
 		 !vgui::surface()->IsCursorVisible() )
 	{
 		// Sample mouse one more time
@@ -765,8 +765,8 @@ void CInput::ClearStates (void)
 	if ( !m_fMouseActive )
 		return;
 
-	m_flAccumulatedMouseXMovement = 0;
-	m_flAccumulatedMouseYMovement = 0;
+	GetPerUser().m_flAccumulatedMouseXMovement = 0;
+	GetPerUser().m_flAccumulatedMouseYMovement = 0;
 
 	// clear raw mouse accumulated data
 	int rawX, rawY;

@@ -63,7 +63,7 @@ int ACT_CEILING_TURRET_FIRE;
 int ACT_CEILING_TURRET_DRYFIRE;
 
 //Turret states
-enum turretState_e
+enum ceilingTurretState_e
 {
 	TURRET_SEARCHING,
 	TURRET_AUTO_SEARCHING,
@@ -74,7 +74,7 @@ enum turretState_e
 };
 
 //Eye states
-enum eyeState_t
+enum ceilingEyeState_t
 {
 	TURRET_EYE_SEE_TARGET,			//Sees the target, bright and big
 	TURRET_EYE_SEEKING_TARGET,		//Looking for a target, blinking (bright)
@@ -148,9 +148,9 @@ public:
 
 protected:
 	
-	bool	PreThink( turretState_e state );
+	bool	PreThink( ceilingTurretState_e state );
 	void	Shoot( const Vector &vecSrc, const Vector &vecDirToEnemy );
-	void	SetEyeState( eyeState_t state );
+	void	SetEyeState( ceilingEyeState_t state );
 	void	Ping( void );	
 	void	Toggle( void );
 	void	Enable( void );
@@ -864,7 +864,7 @@ void CNPC_CeilingTurret::Shoot( const Vector &vecSrc, const Vector &vecDirToEnem
 // Purpose: Allows a generic think function before the others are called
 // Input  : state - which state the turret is currently in
 //-----------------------------------------------------------------------------
-bool CNPC_CeilingTurret::PreThink( turretState_e state )
+bool CNPC_CeilingTurret::PreThink( ceilingTurretState_e state )
 {
 	CheckPVSCondition();
 
@@ -879,7 +879,7 @@ bool CNPC_CeilingTurret::PreThink( turretState_e state )
 // Purpose: Sets the state of the glowing eye attached to the turret
 // Input  : state - state the eye should be in
 //-----------------------------------------------------------------------------
-void CNPC_CeilingTurret::SetEyeState( eyeState_t state )
+void CNPC_CeilingTurret::SetEyeState( ceilingEyeState_t state )
 {
 	//Must have a valid eye to affect
 	if ( m_pEyeGlow == NULL )

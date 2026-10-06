@@ -66,6 +66,13 @@ CBaseClient::CBaseClient()
 	m_bReportFakeClient = true;
 	m_iTracing = 0;
 	m_bPlayerNameLocked = false;
+	m_bSplitScreenUser = false;
+	m_bSplitAllowFastDisconnect = false;
+	m_bSplitPlayerDisconnecting = false;
+	m_nSplitScreenPlayerSlot = 0;
+	m_pAttachedTo = NULL;
+	Q_memset( m_SplitScreenUsers, 0, sizeof( m_SplitScreenUsers ) );
+	m_SplitScreenUsers[ 0 ] = this;
 }
 
 CBaseClient::~CBaseClient()
@@ -173,6 +180,12 @@ char const *CBaseClient::GetUserSetting(char const *pchCvar) const
 
 	if ( value[0]==0 )
 	{
+		// A split-screen user defers settings it does not carry to its owner
+		if ( m_bSplitScreenUser && m_pAttachedTo )
+		{
+			return m_pAttachedTo->GetUserSetting( pchCvar );
+		}
+
 		// check if this var even existed
 		if ( m_ConVars->GetDataType( pchCvar ) ==	KeyValues::TYPE_NONE )
 		{
@@ -273,6 +286,11 @@ void CBaseClient::Clear()
 	m_bFullyAuthenticated = false;
 	m_fTimeLastNameChange = 0.0;
 	m_szPendingNameChange[0] = '\0';
+	m_bSplitScreenUser = false;
+	m_bSplitAllowFastDisconnect = false;
+	m_bSplitPlayerDisconnecting = false;
+	m_nSplitScreenPlayerSlot = 0;
+	m_pAttachedTo = NULL;
 
 	Q_memset( m_nCustomFiles, 0, sizeof(m_nCustomFiles) );
 }
@@ -295,10 +313,22 @@ bool CBaseClient::SetSignonState(int state, int spawncount)
 		case SIGNONSTATE_PRESPAWN	:	SpawnPlayer();
 										break;
 
-		case SIGNONSTATE_SPAWN		:	ActivatePlayer();
+		case SIGNONSTATE_SPAWN		:	for ( int i = 0; i < splitscreenwire::kMaxLocalPlayers; ++i )
+										{
+											if ( m_SplitScreenUsers[ i ] )
+											{
+												m_SplitScreenUsers[ i ]->ActivatePlayer();
+											}
+										}
 										break;
 
-		case SIGNONSTATE_FULL		:	OnSignonStateFull();
+		case SIGNONSTATE_FULL		:	for ( int i = 0; i < splitscreenwire::kMaxLocalPlayers; ++i )
+										{
+											if ( m_SplitScreenUsers[ i ] )
+											{
+												m_SplitScreenUsers[ i ]->OnSignonStateFull();
+											}
+										}
 										break;
 
 		case SIGNONSTATE_CHANGELEVEL:	break;	
@@ -608,6 +638,30 @@ void CBaseClient::Disconnect( const char *fmt, ... )
 	if ( m_nSignonState == SIGNONSTATE_NONE )
 		return;	// no recursion
 
+	// A split-screen user leaves through its owner: ask the client to run "ss_disconnect <slot>",
+	// which removes the user on both sides. The owner tears it down directly (fast disconnect).
+	if ( IsSplitScreenUser() && !m_bSplitAllowFastDisconnect )
+	{
+		NET_StringCmd stringCmd( va( "ss_disconnect %d\n", m_nSplitScreenPlayerSlot ) );
+		SendNetMsg( stringCmd, true );
+		return;
+	}
+
+	// All of the owner's split-screen users go away with it
+	if ( !IsSplitScreenUser() )
+	{
+		for ( int j = splitscreenwire::kMaxLocalPlayers; j -- > 1; )
+		{
+			if ( !m_SplitScreenUsers[ j ] )
+				continue;
+
+			CBaseClient *pSplit = m_SplitScreenUsers[ j ];
+			m_SplitScreenUsers[ j ] = NULL;
+			pSplit->m_bSplitAllowFastDisconnect = true;
+			pSplit->Disconnect( "leaving splitscreen" );
+		}
+	}
+
 #if !defined( SWDS ) && defined( ENABLE_RPT )
 	SV_NotifyRPTOfDisconnect( m_nClientSlot );
 #endif
@@ -628,6 +682,22 @@ void CBaseClient::Disconnect( const char *fmt, ... )
 
 	// remove the client as listener
 	g_GameEventManager.RemoveListener( this );
+
+	if ( m_pAttachedTo )
+	{
+		// The owner must not keep a pointer to a client that is going away (server shutdown deletes
+		// the split users before their owner)
+		if ( m_nSplitScreenPlayerSlot > 0 && m_nSplitScreenPlayerSlot < splitscreenwire::kMaxLocalPlayers &&
+			m_pAttachedTo->m_SplitScreenUsers[ m_nSplitScreenPlayerSlot ] == this )
+		{
+			m_pAttachedTo->m_SplitScreenUsers[ m_nSplitScreenPlayerSlot ] = NULL;
+		}
+		if ( m_pAttachedTo->GetNetChannel() )
+		{
+			m_pAttachedTo->GetNetChannel()->DetachSplitPlayer( m_nSplitScreenPlayerSlot );
+		}
+		m_pAttachedTo = NULL;
+	}
 
 	// Send the remaining reliable buffer so the client finds out the server is shutting down.
 	if ( m_NetChannel )
@@ -765,8 +835,10 @@ void CBaseClient::ConnectionStart(INetChannel *chan)
 	REGISTER_NET_MSG( StringCmd );
 	REGISTER_NET_MSG( SetConVar );
 	REGISTER_NET_MSG( SignonState );
+	REGISTER_NET_MSG( SplitScreenUser );
 
 	REGISTER_CLC_MSG( ClientInfo );
+	REGISTER_CLC_MSG( SplitPlayerConnect );
 	REGISTER_CLC_MSG( Move );
 	REGISTER_CLC_MSG( VoiceData );
 	REGISTER_CLC_MSG( BaselineAck );
@@ -857,6 +929,10 @@ bool CBaseClient::ProcessSetConVar( NET_SetConVar *msg )
 
 bool CBaseClient::ProcessSignonState( NET_SignonState *msg)
 {
+	// A split-screen user follows its owner's progress (the owner drives it in SetSignonState)
+	if ( IsSplitScreenUser() )
+		return true;
+
 	if ( msg->m_nSignonState == SIGNONSTATE_CHANGELEVEL )
 	{
 		return true; // ignore this message
@@ -1726,4 +1802,180 @@ void CBaseClient::OnSignonStateFull()
 		g_pServerReplayContext->CreateSessionOnClient( m_nClientSlot );
 	}
 #endif
+}
+
+//-----------------------------------------------------------------------------
+// Local split-screen (ported from the CS:GO engine's baseclient.cpp; the wire
+// format is engine.splitscreen-wire.v1)
+//-----------------------------------------------------------------------------
+int CBaseClient::GetAvailableSplitScreenSlot() const
+{
+	for ( int i = 1; i < host_state.max_splitscreen_players; ++i )
+	{
+		if ( m_SplitScreenUsers[ i ] )
+			continue;
+		return i;
+	}
+
+	return -1;
+}
+
+bool CBaseClient::ProcessSplitPlayerConnect( CLC_SplitPlayerConnect *msg )
+{
+	// Only the owner's own channel carries this message; a split user must not nest another
+	if ( IsSplitScreenUser() )
+	{
+		Disconnect( "Split screen users cannot connect split screen users" );
+		return false;
+	}
+
+	int slot = GetAvailableSplitScreenSlot();
+	if ( slot == -1 )
+	{
+		Warning( "no more split screen slots!\n" );
+		Disconnect( "No more split screen slots!" );
+		return true;
+	}
+
+	CBaseClient *pSplitClient = sv.CreateSplitClient( msg->m_Connect.records[ 0 ].first, this );
+	if ( pSplitClient )
+	{
+		Assert( pSplitClient->m_bSplitScreenUser );
+		pSplitClient->m_nSplitScreenPlayerSlot = slot;
+
+		Assert( slot < ARRAYSIZE(m_SplitScreenUsers) );
+		m_SplitScreenUsers[ slot ] = pSplitClient;
+
+		SVC_SplitScreen splitscreenmsg;
+		splitscreenmsg.m_nEntityIndex = pSplitClient->m_nEntityIndex;
+		splitscreenmsg.m_nSlot = slot;
+		splitscreenmsg.m_nAction = splitscreenwire::kActionAdd;
+
+		m_NetChannel->AttachSplitPlayer( slot, pSplitClient->m_NetChannel );
+
+		SendNetMsg( splitscreenmsg, true );
+
+		if ( pSplitClient->m_pAttachedTo->IsActive() )
+		{
+			//only activate if the main player is in a state where we would want to, otherwise the client will take care of it later.
+			pSplitClient->ActivatePlayer();
+		}
+	}
+	else
+	{
+		// The server has no free client slot (maxplayers) for another local player
+		Warning( "split screen player refused: server full\n" );
+		ClientPrintf( "Server full: cannot add a split screen player\n" );
+	}
+
+	return true;
+}
+
+void CBaseClient::SplitScreenDisconnect( const CCommand &args )
+{
+	// Fixme, this will work for 2 players, but not 4 right now
+	int nSlot = 1;
+	if ( args.ArgC() > 1 )
+	{
+		nSlot = Q_atoi( args.Arg( 1 ) );
+	}
+
+	if ( nSlot <= 0 )
+		nSlot = 1;
+
+	if ( nSlot < splitscreenwire::kMaxLocalPlayers && m_SplitScreenUsers[ nSlot ] != NULL )
+	{
+		CBaseClient *pSplitClient = m_SplitScreenUsers[ nSlot ];
+		DisconnectSplitScreenUser( pSplitClient );
+	}
+}
+
+void CBaseClient::DisconnectSplitScreenUser( CBaseClient *pSplitClient )
+{
+	sv.QueueSplitScreenDisconnect( this, pSplitClient );
+	SVC_SplitScreen msg;
+	msg.m_nEntityIndex = pSplitClient->m_nEntityIndex;
+	msg.m_nSlot = pSplitClient->m_nSplitScreenPlayerSlot;
+	msg.m_nAction = splitscreenwire::kActionRemove;
+
+	m_NetChannel->DetachSplitPlayer( pSplitClient->m_nSplitScreenPlayerSlot );
+
+	SendNetMsg( msg, true );
+}
+
+bool CBaseClient::ProcessSplitScreenUser( NET_SplitScreenUser *msg )
+{
+	return ChangeSplitscreenUser( msg->m_nSlot );
+}
+
+bool CBaseClient::ChangeSplitscreenUser( int nSplitScreenUserSlot )
+{
+	if ( IsSplitScreenUser() )
+	{
+		return m_pAttachedTo->ChangeSplitscreenUser( nSplitScreenUserSlot );
+	}
+
+	int other = nSplitScreenUserSlot;
+
+	bool success = false;
+	if ( other == -1 )
+	{
+		// Revert to self
+		success = m_NetChannel->SetActiveChannel( m_NetChannel );
+	}
+	else
+	{
+		if ( ( other >= 0 ) && ( other < ARRAYSIZE(m_SplitScreenUsers) ) && m_SplitScreenUsers[ other ] )
+		{
+			success = m_NetChannel->SetActiveChannel( m_SplitScreenUsers[ other ]->m_NetChannel );
+		}
+	}
+
+	if ( !success )
+	{
+		if ( !NET_IsDedicated() )
+		{
+			Msg( "Unable to set SetActiveChannel to user in slot %d\n", nSplitScreenUserSlot );
+		}
+		Assert( 0 );
+		return false;
+	}
+	return true;
+}
+
+bool CBaseClient::IsSplitScreenPartner( const CBaseClient *pOther ) const
+{
+	if ( !pOther )
+		return false;
+
+	if ( pOther->IsSplitScreenUser() &&
+		pOther->m_pAttachedTo == this )
+		return true;
+
+	if ( IsSplitScreenUser() &&
+		m_pAttachedTo == pOther )
+		return true;
+
+	return false;
+}
+
+int CBaseClient::GetNumPlayers()
+{
+	if ( IsSplitScreenUser() )
+	{
+		if ( m_pAttachedTo )
+			return m_pAttachedTo->GetNumPlayers();
+		else
+			return 0;
+	}
+	else
+	{
+		int numPlayers = 0;
+		for ( int k = 0; k < ARRAYSIZE( m_SplitScreenUsers ); ++ k )
+		{
+			if ( m_SplitScreenUsers[k] )
+				++ numPlayers;
+		}
+		return numPlayers;
+	}
 }

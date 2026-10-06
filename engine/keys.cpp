@@ -16,6 +16,9 @@
 #include "tier2/tier2.h"
 #include "inputsystem/iinputsystem.h"
 #include "cheatcodes.h"
+#include "cl_splitscreen.h"
+
+ConVar in_forceuser( "in_forceuser", "0", FCVAR_CHEAT, "Force keyboard and mouse input to this split screen player." );
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -713,6 +716,16 @@ void Key_Event( const InputEvent_t &event )
 
 	bool bDown = event.m_nType != IE_ButtonReleased;
 	ButtonCode_t code = (ButtonCode_t)event.m_nData;
+
+	// Keyboard and mouse belong to one local player: in_forceuser's slot, else the primary player.
+	// (Slot 0's controller is joystick 0; the other controllers come in through
+	// CL_PollSplitScreenGamepads.) The binding's command is queued on that player's buffer.
+	int nSplitScreenPlayerSlot = 0;
+	if ( !IsJoystickCode( code ) && !IsSteamControllerCode( code ) && splitscreen->IsValidSplitScreenSlot( in_forceuser.GetInt() ) )
+	{
+		nSplitScreenPlayerSlot = in_forceuser.GetInt();
+	}
+	ACTIVE_SPLITSCREEN_PLAYER_GUARD( nSplitScreenPlayerSlot );
 
 #ifdef LINUX
 	// We're getting some crashes referencing s_pKeyInfo[ code ]. Let's try to

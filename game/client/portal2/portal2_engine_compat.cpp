@@ -458,21 +458,17 @@ const char *GetSaveDirName()
 
 int GetActiveSplitScreenPlayerSlot()
 {
-	return 0;
+	return GET_ACTIVE_SPLITSCREEN_SLOT();
 }
 
 int SetActiveSplitScreenPlayerSlot( int nSlot )
 {
-	if ( nSlot != 0 )
-	{
-		PORTAL2_UNSUPPORTED( "split screen slots other than 0" );
-	}
-	return 0;
+	return g_pEngineSplitScreen ? g_pEngineSplitScreen->SetActiveSplitScreenPlayerSlot( nSlot ) : 0;
 }
 
 bool IsLocalPlayerResolvable()
 {
-	return true;
+	return g_pEngineSplitScreen ? g_pEngineSplitScreen->IsLocalPlayerResolvable() : true;
 }
 
 bool IsInCommentaryMode()

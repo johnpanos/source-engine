@@ -15,6 +15,7 @@
 #include "iinput.h"
 #include "mathlib/vector.h"
 #include "kbutton.h"
+#include "splitscreen_game.h"
 #include "ehandle.h"
 #include "inputsystem/AnalogCode.h"
 #include "tier0/threadtools.h"
@@ -203,14 +204,6 @@ private:
 	// Used to support hotplugging by reinitializing the advanced joystick system when we toggle between some/none joysticks.
 	bool		m_fHadJoysticks;
 
-	// Accumulated mouse deltas
-	float		m_flAccumulatedMouseXMovement;
-	float		m_flAccumulatedMouseYMovement;
-	float		m_flPreviousMouseXPosition;
-	float		m_flPreviousMouseYPosition;
-	float		m_flRemainingJoystickSampleTime;
-	float		m_flKeyboardSampleTime;
-
 	// Flag to restore systemparameters when exiting
 	bool		m_fRestoreSPI;
 	// Original mouse parameters
@@ -225,55 +218,110 @@ private:
 	// List of queryable keys
 	CKeyboardKey *m_pKeys;
 	
-	// Is the 3rd person camera using the mouse?
-	bool		m_fCameraInterceptingMouse;
-	// Are we in 3rd person view?
-	bool		m_fCameraInThirdPerson;
-	// Should we move view along with mouse?
-	bool		m_fCameraMovingWithMouse;
-
-	
-	// Is the camera in distance moving mode?
-	bool		m_fCameraDistanceMove;
-	// Old and current mouse position readings.
-	int			m_nCameraOldX;
-	int			m_nCameraOldY;
-	int			m_nCameraX;
-	int			m_nCameraY;
-
-	// orthographic camera settings
-	bool		m_CameraIsOrthographic;
-
-	QAngle		m_angPreviousViewAngles;
-
-	float		m_flLastForwardMove;
-
-	float m_flPreviousJoystickForward;
-	float m_flPreviousJoystickSide;
-	float m_flPreviousJoystickPitch;
-	float m_flPreviousJoystickYaw;
-
 	class CVerifiedUserCmd
 	{
 	public:
 		CUserCmd	m_cmd;
 		CRC32_t		m_crc;
 	};
-				
-	CUserCmd	*m_pCommands;
-	CVerifiedUserCmd *m_pVerifiedCommands;
 
-	CameraThirdData_t	*m_pCameraThirdData;
+	// Everything that belongs to one local player (ported from the CS:GO client's input.h).
+	// The active split-screen slot picks the instance, see GetPerUser().
+	struct PerUserInput_t
+	{
+		PerUserInput_t()
+		{
+			// Accumulated mouse deltas
+			m_flAccumulatedMouseXMovement = 0;
+			m_flAccumulatedMouseYMovement = 0;
+			m_flPreviousMouseXPosition = 0;
+			m_flPreviousMouseYPosition = 0;
+			m_flRemainingJoystickSampleTime = 0;
+			m_flKeyboardSampleTime = 0;
 
-	// Set until polled by CreateMove and cleared
-	CHandle< C_BaseCombatWeapon > m_hSelectedWeapon;
+			m_fCameraInterceptingMouse = false;
+			m_fCameraInThirdPerson = false;
+			m_fCameraMovingWithMouse = false;
+			m_fCameraDistanceMove = false;
+			m_nCameraOldX = 0;
+			m_nCameraOldY = 0;
+			m_nCameraX = 0;
+			m_nCameraY = 0;
+			m_CameraIsOrthographic = false;
+
+			m_angPreviousViewAngles.Init();
+			m_flLastForwardMove = 0;
+
+			m_flPreviousJoystickForward = 0;
+			m_flPreviousJoystickSide = 0;
+			m_flPreviousJoystickPitch = 0;
+			m_flPreviousJoystickYaw = 0;
+
+			m_pCommands = NULL;
+			m_pVerifiedCommands = NULL;
+			m_pCameraThirdData = NULL;
+
+			m_nClearInputState = 0;
+		}
+
+		// Accumulated mouse deltas
+		float		m_flAccumulatedMouseXMovement;
+		float		m_flAccumulatedMouseYMovement;
+		float		m_flPreviousMouseXPosition;
+		float		m_flPreviousMouseYPosition;
+		float		m_flRemainingJoystickSampleTime;
+		float		m_flKeyboardSampleTime;
+
+		// Is the 3rd person camera using the mouse?
+		bool		m_fCameraInterceptingMouse;
+		// Are we in 3rd person view?
+		bool		m_fCameraInThirdPerson;
+		// Should we move view along with mouse?
+		bool		m_fCameraMovingWithMouse;
+		// Is the camera in distance moving mode?
+		bool		m_fCameraDistanceMove;
+		// Old and current mouse position readings.
+		int			m_nCameraOldX;
+		int			m_nCameraOldY;
+		int			m_nCameraX;
+		int			m_nCameraY;
+		// orthographic camera settings
+		bool		m_CameraIsOrthographic;
+
+		QAngle		m_angPreviousViewAngles;
+		float		m_flLastForwardMove;
+
+		float		m_flPreviousJoystickForward;
+		float		m_flPreviousJoystickSide;
+		float		m_flPreviousJoystickPitch;
+		float		m_flPreviousJoystickYaw;
+
+		CUserCmd	*m_pCommands;
+		CVerifiedUserCmd *m_pVerifiedCommands;
+
+		CameraThirdData_t	*m_pCameraThirdData;
+
+		// Set until polled by CreateMove and cleared
+		CHandle< C_BaseCombatWeapon > m_hSelectedWeapon;
+
+		// Input bits to ignore until the keys are released
+		int			m_nClearInputState;
 
 #if defined( HL2_CLIENT_DLL )
-	CUtlVector< CEntityGroundContact > m_EntityGroundContact;
-	// Pooled bone setup (C_BaseAnimating::ThreadedBoneSetup) appends from
-	// several workers; CreateMove reads on the main thread after the batch.
-	CThreadFastMutex m_EntityGroundContactMutex;
+		CUtlVector< CEntityGroundContact > m_EntityGroundContact;
+		// Pooled bone setup (C_BaseAnimating::ThreadedBoneSetup) appends from
+		// several workers; CreateMove reads on the main thread after the batch.
+		CThreadFastMutex m_EntityGroundContactMutex;
 #endif
+	};
+
+public:
+	// The state of the local player in nSlot, or in the active slot (-1)
+	PerUserInput_t		&GetPerUser( int nSlot = -1 );
+	const PerUserInput_t &GetPerUser( int nSlot = -1 ) const;
+
+private:
+	PerUserInput_t		m_PerUser[ MAX_SPLITSCREEN_PLAYERS ];
 };
 
 extern kbutton_t in_strafe;

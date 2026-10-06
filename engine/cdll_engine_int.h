@@ -22,6 +22,8 @@ class IClientReplay;
 bool ClientDLL_Load( void );
 void ClientDLL_Unload ( void );
 void ClientDLL_Init( void );
+void ClientDLL_OnActiveSplitscreenPlayerChanged( int slot );
+void ClientDLL_OnSplitScreenStateChanged();
 void ClientDLL_Shutdown( void );
 void ClientDLL_HudVidInit( void );
 void ClientDLL_ProcessInput( void );

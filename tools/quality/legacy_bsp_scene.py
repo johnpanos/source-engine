@@ -1210,6 +1210,9 @@ def build_model(bsp, resolver, texture_dir, model_tool=None, map_name=None,
                 np.column_stack((uv, np.ones(len(uv)))), flat, rcond=None)
             if rank != 3:
                 raise ValueError("paint surface has degenerate material UVs")
+            # Painted-surface composition is slow on paint-heavy maps; the step runner stops
+            # a step that prints nothing for ten minutes.
+            print("[legacy-scene] composing painted surface of face %d" % face["index"], flush=True)
             for paint in paints:
                 paint["density"] = legacy_surface_textures.paint_density(world_from_uv[:2], paint)
             mapped, tile = legacy_surface_textures.compose(

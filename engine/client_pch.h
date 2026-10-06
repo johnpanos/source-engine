@@ -38,6 +38,7 @@
 #include "cdll_engine_int.h"
 #include "client_class.h"
 #include "client.h"
+#include "cl_splitscreen.h"
 #include "cl_main.h"
 #include "cl_pred.h"
 

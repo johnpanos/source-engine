@@ -26,13 +26,13 @@ public:
 };
 
 
-struct BeamInfo_t
+struct TractorBeamInfo_t
 {
-	BeamInfo_t() : m_hBeamHandle( NULL ), m_nLastFrameUpdate( 0 )
+	TractorBeamInfo_t() : m_hBeamHandle( NULL ), m_nLastFrameUpdate( 0 )
 	{
 	}
 
-	BeamInfo_t( const BeamInfo_t& copy )
+	TractorBeamInfo_t( const TractorBeamInfo_t& copy )
 	{
 		m_hBeamHandle = copy.m_hBeamHandle;
 		m_nLastFrameUpdate = copy.m_nLastFrameUpdate;
@@ -97,7 +97,7 @@ struct EntityBeamHistory_t
 		m_beams.Purge();
 	}
 
-	CUtlVectorFixed< BeamInfo_t, 6 > m_beams;
+	CUtlVectorFixed< TractorBeamInfo_t, 6 > m_beams;
 };
 
 class CTractorBeam_Manager : public CAutoGameSystemPerFrame

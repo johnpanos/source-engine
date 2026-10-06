@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Release flavor of ./play (RFC 0023): native Vulkan Portal from build-release,
+# configured like build/ plus --product-flavor=release and LTO, staged into
+# run/runtime-release. Arguments are ./play's (the dxvk backend is not offered).
+set -euo pipefail
+cd "$(dirname "$0")"
+if [ ! -d build-release/c4che ]; then
+    echo "play_release: configuring build-release"
+    # Lock only in the output tree (as build/), so run.sh's in-tree build finds it.
+    python3 ./waf configure --no-lock-in-run --no-lock-in-top \
+        --platform-provider=sdl3 --render-backend=native-vulkan --build-games=portal \
+        --product-profile=quality/product_profiles/portal-linux-wayland-native-vulkan.json \
+        --product-flavor=release --enable-lto -T release -o build-release
+fi
+if ! grep -q SOURCE_RELEASE_BUILD build-release/c4che/_cache.py; then
+    echo "play_release: build-release is not a release-flavor tree" >&2
+    exit 1
+fi
+export PLAY_BUILD_DIR=build-release RUNTIME=${RUNTIME:-run/runtime-release}
+exec ./play "$@"

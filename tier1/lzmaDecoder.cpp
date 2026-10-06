@@ -18,8 +18,7 @@
 #include "../utils/lzma/C/LzmaEnc.h"
 #include "../utils/lzma/C/LzmaDec.h"
 
-// Ugly define to let us forward declare the anonymous-struct-typedef that is CLzmaDec in the header.
-#define CLzmaDec_t CLzmaDec
+// LzmaDec.h tags CLzmaDec as struct _CLzmaDec_t, which lzmaDecoder.h forward-declares.
 #include "tier1/lzmaDecoder.h"
 #include "tier1/convar.h"
 

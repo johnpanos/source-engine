@@ -34,14 +34,18 @@ class VPlane;
 // what's currently being rendered, which, owing to monitors or water,
 // could be just about anywhere.
 //-----------------------------------------------------------------------------
-const Vector &MainViewOrigin();
-const QAngle &MainViewAngles();
-const Vector &PrevMainViewOrigin();
-const QAngle &PrevMainViewAngles();
-const VMatrix &MainWorldToViewMatrix();
-const Vector &MainViewForward();
-const Vector &MainViewRight();
-const Vector &MainViewUp();
+const Vector &MainViewOrigin( int nSlot = -1 );
+const QAngle &MainViewAngles( int nSlot = -1 );
+const Vector &PrevMainViewOrigin( int nSlot = -1 );
+const QAngle &PrevMainViewAngles( int nSlot = -1 );
+const VMatrix &MainWorldToViewMatrix( int nSlot = -1 );
+const Vector &MainViewForward( int nSlot = -1 );
+const Vector &MainViewRight( int nSlot = -1 );
+const Vector &MainViewUp( int nSlot = -1 );
+
+// Local split-screen: the part of the window nSlot's view fills (all of it with one local player)
+void GetSplitScreenViewRect( int nSlot, const vrect_t &full, vrect_t &out );
+bool IsSplitScreenSplitVertical( int nWidth, int nHeight );
 
 const Vector &CurrentViewOrigin();
 const QAngle &CurrentViewAngles();

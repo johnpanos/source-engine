@@ -11,6 +11,7 @@
 #endif
 
 #include "basecombatcharacter.h"
+#include "splitscreen_game.h"
 #include "usercmd.h"
 #include "playerlocaldata.h"
 #include "PlayerState.h"
@@ -737,6 +738,15 @@ public:
 	virtual bool IsBotOfType( int botType ) const;	// return true if this player is a bot of the specific type (zero is invalid)
 	virtual int GetBotType( void ) const;			// return a unique int representing the type of bot instance this is
 
+	// Local split-screen: a non-primary local player is a client of its own whose data rides on the
+	// connection of the primary one (its "owner"). The engine knows the pairing.
+	bool			IsSplitScreenPlayer() const;
+	CBasePlayer		*GetSplitScreenPlayerOwner();
+	bool			IsSplitScreenUserOnEdict( edict_t *pEdict );	// is this player riding on that edict's connection?
+	int				GetSplitScreenPlayerSlot();						// 0 for a primary player
+	// Index of the client whose connection carries this player's data: its own, or its owner's
+	int				GetConnectionClientIndex();
+
 	bool	IsPredictingWeapons( void ) const; 
 	int		CurrentCommandNumber() const;
 	const CUserCmd *GetCurrentUserCommand() const;
@@ -1367,6 +1377,9 @@ inline bool CBasePlayer::IsFiringWeapon( void ) const
 //-----------------------------------------------------------------------------
 // Converts an entity to a player
 //-----------------------------------------------------------------------------
+// Recipients for data meant for one player (its connection; a split-screen player's is its owner's)
+void SendProxy_SetOnlyPlayerRecipients( CSendProxyRecipients *pRecipients, int iClientIndex );
+
 inline CBasePlayer *ToBasePlayer( CBaseEntity *pEntity )
 {
 	if ( !pEntity || !pEntity->IsPlayer() )

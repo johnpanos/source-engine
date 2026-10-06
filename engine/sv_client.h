@@ -103,7 +103,7 @@ public:
 	bool	SetSignonState(int state, int spawncount);
 	void	SendSnapshot( CClientFrame *pFrame );
 	bool	ShouldSendMessages( void );
-	bool	CheckConnect( void );
+	virtual bool	CheckConnect( void ) OVERRIDE;
 	void	SpawnPlayer( void );
 	bool	SendSignonData( void );
 	void	ActivatePlayer( void );

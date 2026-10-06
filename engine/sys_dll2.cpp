@@ -58,6 +58,9 @@
 #include "l_studio.h"
 #include "IHammer.h"
 #include "sys_dll.h"
+#ifndef SWDS
+#include "cl_splitscreen.h"
+#endif
 #include "materialsystem/materialsystem_config.h"
 #include "server.h"
 #include "video/ivideoservices.h"
@@ -1444,7 +1447,10 @@ void CEngineAPI::PumpMessages()
 	// Get input from attached devices
 	g_pInputSystem->PollInputState();
 
-	
+#ifndef SWDS
+	// The other local players' controllers
+	CL_PollSplitScreenGamepads();
+#endif
 
 	// NOTE: Under some implementations of Win9x, 
 	// dispatching messages can cause the FPU control word to change

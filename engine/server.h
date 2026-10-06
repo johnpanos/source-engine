@@ -184,6 +184,10 @@ extern IServerGameEnts *serverGameEnts;
 extern IServerGameClients *serverGameClients;
 extern int g_iServerGameClientsVersion;	// This matches the number at the end of the interface name (so for "ServerGameClients004", this would be 4).
 
+// Local split-screen: how many local players the server DLL supports, and room for them on the next server
+int SV_GetGameMaxSplitScreenPlayers();
+void SV_RequireMaxPlayers( int nPlayers );
+
 extern IHLTVDirector *serverGameDirector;
 
 extern IServerGameTags *serverGameTags;

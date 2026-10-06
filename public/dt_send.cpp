@@ -302,9 +302,16 @@ static void SendProxy_Empty( const SendProp *pProp, const void *pStruct, const v
 //			objectID - 
 //-----------------------------------------------------------------------------
 
+// A game that has local split-screen players sets this: data for one player goes down that player's
+// connection, which for a split-screen player is its owner's.
+SendProxySetOnlyRecipientFn g_pfnSendProxySetOnlyRecipient = NULL;
+
 void* SendProxy_SendLocalDataTable( const SendProp *pProp, const void *pStruct, const void *pVarData, CSendProxyRecipients *pRecipients, int objectID )
 {
-	pRecipients->SetOnly( objectID - 1 );
+	if ( g_pfnSendProxySetOnlyRecipient )
+		g_pfnSendProxySetOnlyRecipient( pRecipients, objectID - 1 );
+	else
+		pRecipients->SetOnly( objectID - 1 );
 	return ( void * )pVarData;
 }
 

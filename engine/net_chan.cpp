@@ -412,8 +412,9 @@ void CNetChan::Shutdown(const char *pReason)
 	}
 }
 
-CNetChan::CNetChan()
+CNetChan::CNetChan() : m_SplitPlayers( 0, 0, SplitPlayer_t::Less )
 {
+	m_pActiveChannel = this;
 	m_nSplitPacketSequence = 1;
 	m_nMaxRoutablePayloadSize = MAX_ROUTABLE_PAYLOAD;
 	m_bProcessingMessages = false;
@@ -1604,6 +1605,9 @@ int CNetChan::SendDatagram(bf_write *datagram)
 		return m_nOutSequenceNr-1;
 	}
 
+	// If we have "split" users hanging off of us, we need to merge their data in now
+	SplitUserCombineForSending();
+
 	// process all new and pending reliable data, return true if reliable data should
 	// been send with this packet
 
@@ -1866,6 +1870,14 @@ bool CNetChan::ProcessControlMessage( int cmd, bf_read &buf)
 
 bool CNetChan::ProcessMessages( bf_read &buf  )
 {
+	// For split screen support: net_SplitScreenUser switches this to an attached channel
+	m_pActiveChannel = this;
+	return _ProcessMessages( buf );
+	// Can't safely put code here because delete this could have occurred!!!
+}
+
+bool CNetChan::_ProcessMessages( bf_read &buf  )
+{
 	VPROF( "CNetChan::ProcessMessages" );
 
 	const char * showmsgname = net_showmsg.GetString();
@@ -1917,7 +1929,7 @@ bool CNetChan::ProcessMessages( bf_read &buf  )
 		}
 
 		// see if we have a registered message object for this type
-		INetMessage	* netmsg = FindMessage( cmd );
+		INetMessage	* netmsg = m_pActiveChannel->FindMessage( cmd );
 		
 		if ( netmsg )
 		{
@@ -3225,3 +3237,111 @@ bool CNetChan::IsValidFileForTransfer( const char *pszFilename )
 	return true;
 }
 
+
+//-----------------------------------------------------------------------------
+// Local split-screen multiplexing (ported from the CS:GO engine's net_chan.cpp)
+//-----------------------------------------------------------------------------
+bool CNetChan::SetActiveChannel( INetChannel *pNewChannel )
+{
+	m_pActiveChannel = static_cast< CNetChan * >( pNewChannel );
+	Assert( m_pActiveChannel );
+	return m_pActiveChannel ? true : false;
+}
+
+void CNetChan::AttachSplitPlayer( int nSplitPlayerSlot, INetChannel *pChannel )
+{
+	SplitPlayer_t search;
+	search.m_nSlot = nSplitPlayerSlot;
+	search.m_pChannel = pChannel;
+	int idx = m_SplitPlayers.Find( search );
+	if ( idx == m_SplitPlayers.InvalidIndex() )
+	{
+		m_SplitPlayers.Insert( search );
+	}
+}
+
+void CNetChan::DetachSplitPlayer( int nSplitPlayerSlot )
+{
+	SplitPlayer_t search;
+	search.m_nSlot = nSplitPlayerSlot;
+	int idx = m_SplitPlayers.Find( search );
+	if ( idx != m_SplitPlayers.InvalidIndex() )
+	{
+		m_SplitPlayers.RemoveAt( idx );
+	}
+}
+
+void CNetChan::ChangeSplitUser( bf_write &out, int slot )
+{
+	// Msg( "Changing to slot %d on %s\n", slot, GetName() );
+	NET_SplitScreenUser splitScreenUser( slot );
+	splitScreenUser.WriteToBuffer( out );
+}
+
+void CNetChan::MaybeAppendBuffer( EBufType eBufType, bf_write &out, SplitPlayer_t &sp, bf_write &src, int *pnCurrentSlot )
+{
+	if ( src.GetNumBitsWritten() <= 0 )
+		return;
+
+	if ( sp.m_nSlot != *pnCurrentSlot )
+	{
+		*pnCurrentSlot = sp.m_nSlot;
+		ChangeSplitUser( out, sp.m_nSlot );
+	}
+
+	out.WriteBits( src.GetData(), src.GetNumBitsWritten() );
+
+	src.Reset();
+}
+
+bf_write &CNetChan::GetBuffer( EBufType eBufType )
+{
+	switch ( eBufType )
+	{
+	default:
+		break;
+	case BUF_RELIABLE:
+		return m_StreamReliable;
+	case BUF_UNRELIABLE:
+		return m_StreamUnreliable;
+	case BUF_VOICE:
+		return m_StreamVoice;
+	}
+
+	Assert( 0 );
+	return m_StreamReliable;
+}
+
+void CNetChan::MergeSplitUserBuffers( EBufType eBufType, bf_write &outbuf )
+{
+	int nCurrentSlot = 0;
+
+	for ( int user = m_SplitPlayers.FirstInorder(); user != m_SplitPlayers.InvalidIndex(); user = m_SplitPlayers.NextInorder( user ) )
+	{
+		SplitPlayer_t &sp = m_SplitPlayers[ user ];
+		CNetChan *chan = static_cast< CNetChan * >( sp.m_pChannel );
+		if ( !chan )
+			continue;
+
+		bf_write &src = chan->GetBuffer( eBufType );
+		// This might change the user
+		MaybeAppendBuffer( eBufType, outbuf, sp, src, &nCurrentSlot );
+	}
+
+	if ( nCurrentSlot != 0 )
+	{
+		ChangeSplitUser( outbuf, 0 );
+	}
+}
+
+void CNetChan::SplitUserCombineForSending()
+{
+	// Nothing to do?
+	if ( m_SplitPlayers.Count() == 0 )
+		return;
+
+	MergeSplitUserBuffers( BUF_RELIABLE, m_StreamReliable );
+	// FIXME:  datagram payload?
+	MergeSplitUserBuffers( BUF_UNRELIABLE, m_StreamUnreliable );
+	MergeSplitUserBuffers( BUF_VOICE, m_StreamVoice );
+}

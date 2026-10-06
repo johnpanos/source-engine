@@ -89,13 +89,13 @@ CFLAGS = {
 
 LTO_CFLAGS = {
 	'msvc':  ['/GL'],
-	'gcc':   ['-flto'],
+	'gcc':   ['-flto=auto'],
 	'clang': ['-flto']
 }
 
 LTO_LINKFLAGS = {
 	'msvc':  ['/LTCG'],
-	'gcc':   ['-flto'],
+	'gcc':   ['-flto=auto'],
 	'clang': ['-flto']
 }
 
@@ -103,6 +103,23 @@ POLLY_CFLAGS = {
 	'gcc':   ['-fgraphite-identity'],
 	'clang': ['-mllvm', '-polly']
 	# msvc sosat :(
+}
+
+# RFC 0023 release flavor: appended after the build type's flags, so -O3 wins over
+# release's -O2. Floating-point flags are not touched (AGENTS.md). Each entry stays
+# only while an interleaved A/B shows a gain with identical images (R1/R2).
+# -fno-lifetime-dse: Source's operator new overloads (C_BaseEntity, CHudElement)
+# memset the object and constructors rely on the zeroes; once LTO makes the
+# allocator visible, gcc deletes that memset as a dead store before the object's
+# lifetime begins, and members read garbage (crashed the first release build).
+RELEASE_FLAVOR_CFLAGS = {
+	'gcc':   ['-O3', '-fno-semantic-interposition', '-fno-lifetime-dse'],
+	'clang': ['-O3', '-fno-semantic-interposition'],
+}
+
+RELEASE_FLAVOR_LINKFLAGS = {
+	'gcc':   ['-Wl,-O1'],
+	'clang': ['-Wl,-O1'],
 }
 
 def options(opt):
@@ -113,6 +130,14 @@ def options(opt):
 
 	grp.add_option('--enable-lto', action = 'store_true', dest = 'LTO', default = False,
 		help = 'enable Link Time Optimization if possible [default: %default]')
+
+	grp.add_option('--product-flavor', action = 'store', dest = 'PRODUCT_FLAVOR', default = 'dev',
+		choices = ['dev', 'release'],
+		help = 'dev keeps development instrumentation; release (RFC 0023) adds RELEASE_FLAVOR_CFLAGS, the '
+		'--release-march ISA and SOURCE_RELEASE_BUILD [default: %default]')
+
+	grp.add_option('--release-march', action = 'store', dest = 'RELEASE_MARCH', default = 'native',
+		help = 'x86 ISA for --product-flavor=release: native (this host only) or x86-64-v3 (portable) [default: %default]')
 
 	grp.add_option('--enable-poly-opt', action = 'store_true', dest = 'POLLY', default = False,
 		help = 'enable polyhedral optimization if possible [default: %default]')
@@ -128,6 +153,7 @@ def configure(conf):
 	conf.end_msg(conf.options.BUILD_TYPE)
 
 	conf.msg('LTO build', 'yes' if conf.options.LTO else 'no')
+	conf.msg('Product flavor', conf.options.PRODUCT_FLAVOR)
 	conf.msg('PolyOpt build', 'yes' if conf.options.POLLY else 'no')
 
 	# -march=native should not be used
@@ -158,5 +184,9 @@ def get_optimization_flags(conf):
 
 	if conf.options.POLLY:
 		cflags   += conf.get_flags_by_compiler(POLLY_CFLAGS, conf.env.COMPILER_CC)
+
+	if conf.options.PRODUCT_FLAVOR == 'release':
+		cflags    += conf.get_flags_by_compiler(RELEASE_FLAVOR_CFLAGS, conf.env.COMPILER_CC)
+		linkflags += conf.get_flags_by_compiler(RELEASE_FLAVOR_LINKFLAGS, conf.env.COMPILER_CC)
 
 	return cflags, linkflags

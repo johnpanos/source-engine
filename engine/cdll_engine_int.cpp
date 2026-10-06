@@ -97,6 +97,8 @@
 #endif
 #include "linked_game_modules_internal.h"
 #include "iclientsoundspatialization.h"
+#include "isplitscreen.h"
+#include "cl_splitscreen.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -769,7 +771,8 @@ bool CEngineClient::Con_IsVisible( void )
 
 int CEngineClient::GetLocalPlayer( void )
 {
-	return cl.m_nPlayerSlot + 1;
+	// the active split-screen slot's player
+	return GetLocalClient().m_nPlayerSlot + 1;
 }
 
 float CEngineClient::GetLastTimeStamp( void )
@@ -825,17 +828,18 @@ bool CEngineClient::IsStreaming( CAudioSource *pAudioSource ) const
 // FIXME, move entirely to client .dll
 void CEngineClient::GetViewAngles( QAngle& va )
 {
-	VectorCopy( cl.viewangles, va );
+	VectorCopy( GetLocalClient().viewangles, va );
 }
 
 void CEngineClient::SetViewAngles( QAngle& va )
 {
-	cl.viewangles.x = AngleNormalize( va.x );
-	cl.viewangles.y = AngleNormalize( va.y );
-	cl.viewangles.z = AngleNormalize( va.z );
-	Assert( !IS_NAN(cl.viewangles.x ) );
-	Assert( !IS_NAN(cl.viewangles.y ) );
-	Assert( !IS_NAN(cl.viewangles.z ) );
+	CClientState &localClient = GetLocalClient();
+	localClient.viewangles.x = AngleNormalize( va.x );
+	localClient.viewangles.y = AngleNormalize( va.y );
+	localClient.viewangles.z = AngleNormalize( va.z );
+	Assert( !IS_NAN(localClient.viewangles.x ) );
+	Assert( !IS_NAN(localClient.viewangles.y ) );
+	Assert( !IS_NAN(localClient.viewangles.z ) );
 }
 
 int CEngineClient::GetMaxClients( void )
@@ -1597,7 +1601,7 @@ void CEngineClient::GetMouseDelta( int &x, int &y, bool bIgnoreNextMouseDelta )
 
 void CEngineClient::ServerCmdKeyValues( KeyValues *pKeyValues )
 {
-	cl.SendServerCmdKeyValues( pKeyValues );
+	GetLocalClient().SendServerCmdKeyValues( pKeyValues );
 }
 
 bool CEngineClient::IsSkippingPlayback( void )
@@ -1657,6 +1661,7 @@ IBaseClientDLL *g_ClientDLL = NULL;
 IClientVirtualReality *g_pClientVR = NULL;
 // Optional; NULL when the client adds no game-specific sound origins.
 IClientSoundSpatialization *g_pClientSoundSpatialization = NULL;
+IClientSplitScreen *g_pClientSplitScreen = NULL;
 IPrediction	*g_pClientSidePrediction = NULL;
 IClientRenderTargets *g_pClientRenderTargets = NULL;
 IClientEntityList *entitylist = NULL;
@@ -1750,6 +1755,8 @@ bool ClientDLL_Load()
 
 			g_pClientSoundSpatialization = (IClientSoundSpatialization *)g_ClientFactory(
 			    CLIENTSOUNDSPATIALIZATION_INTERFACE_VERSION, NULL );
+			g_pClientSplitScreen = (IClientSplitScreen *)g_ClientFactory(
+			    CLIENT_SPLITSCREEN_INTERFACE_VERSION, NULL );
 
 			if( g_pSourceVR )
 			{
@@ -1972,6 +1979,7 @@ void ClientDLL_Shutdown( void )
 	entitylist = NULL;
 	g_pClientSidePrediction = NULL;
 	g_pClientSoundSpatialization = NULL;
+	g_pClientSplitScreen = NULL;
 	g_ClientFactory = NULL;
 	centerprint = NULL;
 
@@ -2012,7 +2020,7 @@ void ClientDLL_ProcessInput( void )
 
 	VPROF("ClientDLL_ProcessInput");
 	tmZoneFiltered( TELEMETRY_LEVEL0, 50, TMZF_NONE, "%s", __FUNCTION__ );
-	g_ClientDLL->HudProcessInput( cl.IsConnected() );
+	g_ClientDLL->HudProcessInput( GetLocalClient().IsConnected() );
 }
 
 //-----------------------------------------------------------------------------
@@ -2224,3 +2232,53 @@ void CEngineClient::TakeScreenshot( const char *pszFilename, const char *pszFold
 		Shader_SwapBuffers();
 	}
 }
+
+//-----------------------------------------------------------------------------
+// Local split-screen: slot queries for the client DLL (IEngineSplitScreen) and
+// slot-change notifications to it (IClientSplitScreen, optional).
+//-----------------------------------------------------------------------------
+#ifndef DEDICATED
+class CEngineSplitScreen : public IEngineSplitScreen
+{
+public:
+	virtual int		GetActiveSplitScreenPlayerSlot() { return GET_ACTIVE_SPLITSCREEN_SLOT(); }
+	virtual int		SetActiveSplitScreenPlayerSlot( int slot ) { return splitscreen->SetActiveSplitScreenPlayerSlot( slot ); }
+	virtual int		GetSplitScreenPlayer( int nSlot ) { return splitscreen->GetSplitScreenPlayerEntity( nSlot ); }
+	virtual bool	IsSplitScreenActive()
+	{
+		for ( int i = 1; i < splitscreen->GetNumSplitScreenPlayers(); i++ )
+		{
+			if ( splitscreen->IsValidSplitScreenSlot( i ) )
+				return true;
+		}
+		return false;
+	}
+	virtual bool	IsValidSplitScreenSlot( int nSlot ) { return splitscreen->IsValidSplitScreenSlot( nSlot ); }
+	virtual int		FirstValidSplitScreenSlot() { return splitscreen->FirstValidSplitScreenSlot(); }
+	virtual int		NextValidSplitScreenSlot( int nPreviousSlot ) { return splitscreen->NextValidSplitScreenSlot( nPreviousSlot ); }
+	virtual bool	SetLocalPlayerIsResolvable( char const *pchContext, int nLine, bool bResolvable )
+	{
+		return splitscreen->SetLocalPlayerIsResolvable( pchContext, nLine, bResolvable );
+	}
+	virtual bool	IsLocalPlayerResolvable() { return splitscreen->IsLocalPlayerResolvable(); }
+};
+
+static CEngineSplitScreen s_EngineSplitScreen;
+EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CEngineSplitScreen, IEngineSplitScreen, ENGINE_SPLITSCREEN_INTERFACE_VERSION, s_EngineSplitScreen );
+
+void ClientDLL_OnActiveSplitscreenPlayerChanged( int slot )
+{
+	if ( g_pClientSplitScreen )
+	{
+		g_pClientSplitScreen->OnActiveSplitscreenPlayerChanged( slot );
+	}
+}
+
+void ClientDLL_OnSplitScreenStateChanged()
+{
+	if ( g_pClientSplitScreen )
+	{
+		g_pClientSplitScreen->OnSplitScreenStateChanged();
+	}
+}
+#endif

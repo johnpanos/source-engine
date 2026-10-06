@@ -673,7 +673,8 @@ public:
 };
 
 #define INTERFACEVERSION_SERVERGAMECLIENTS_VERSION_3	"ServerGameClients003"
-#define INTERFACEVERSION_SERVERGAMECLIENTS				"ServerGameClients004"
+#define INTERFACEVERSION_SERVERGAMECLIENTS_VERSION_4	"ServerGameClients004"
+#define INTERFACEVERSION_SERVERGAMECLIENTS				"ServerGameClients005"
 
 //-----------------------------------------------------------------------------
 // Purpose: Player / Client related functions
@@ -738,9 +739,13 @@ public:
 
 	// Hook for player spawning
 	virtual void			ClientSpawned( edict_t *pPlayer ) = 0;
+
+	// How many local split-screen players this game supports per client (1 = none). Version 5.
+	virtual int				GetMaxSplitscreenPlayers() = 0;
 };
 
 typedef IServerGameClients IServerGameClients003;
+typedef IServerGameClients IServerGameClients004;
 
 
 #define INTERFACEVERSION_UPLOADGAMESTATS		"ServerUploadGameStats001"

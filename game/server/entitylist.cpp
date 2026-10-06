@@ -524,6 +524,20 @@ CBaseEntity *CGlobalEntityList::FindEntityProcedural( const char *szName, CBaseE
 		{
 			return (CBaseEntity *)UTIL_PlayerByIndex( 1 );
 		}
+		else if ( FStrEq( pName, "player_blue" ) || FStrEq( pName, "player_orange" ) )
+		{
+			// Portal 2 co-op: the player of the blue (ATLAS) or orange (P-body) team
+			const int nTeam = FStrEq( pName, "player_blue" ) ? 3 : 2;
+			for ( int i = 1; i <= gpGlobals->maxClients; ++i )
+			{
+				CBasePlayer *pPlayer = UTIL_PlayerByIndex( i );
+				if ( pPlayer && pPlayer->GetTeamNumber() == nTeam )
+				{
+					return pPlayer;
+				}
+			}
+			return NULL;
+		}
 		else if ( FStrEq( pName, "pvsplayer" ) )
 		{
 			if ( pSearchingEntity )
