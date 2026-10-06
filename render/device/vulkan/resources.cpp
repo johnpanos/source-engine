@@ -172,7 +172,7 @@ DeviceResult<BufferId> VulkanDevice::CreateBuffer( const BufferDesc &desc )
 	Name( VK_OBJECT_TYPE_BUFFER, reinterpret_cast<std::uint64_t>( record.buffer ), desc.debugName );
 	m_Memory.Label( record.memory, desc.debugName );
 	undo.Dismiss();
-	const BufferId id{ ++m_NextId };
+	const BufferId id{ m_Buffers.NextId() };
 	m_Buffers.emplace( id.value, std::move( record ) );
 	++m_ResourceActivity.created[std::size_t( ResourceKind::kBuffer )];
 	m_ResourceActivity.bufferBytes += desc.size;
@@ -273,7 +273,7 @@ DeviceResult<TextureId> VulkanDevice::CreateTexture( const TextureDesc &desc )
 	Name( VK_OBJECT_TYPE_IMAGE, reinterpret_cast<std::uint64_t>( record.image ), desc.debugName );
 	m_Memory.Label( record.memory, desc.debugName );
 	undo.Dismiss();
-	const TextureId id{ ++m_NextId };
+	const TextureId id{ m_Textures.NextId() };
 	m_Textures.emplace( id.value, std::move( record ) );
 	++m_ResourceActivity.created[std::size_t( ResourceKind::kTexture )];
 	return id;
@@ -375,7 +375,7 @@ DeviceResult<TextureId> VulkanDevice::ImportImage(
 	if ( result != VK_SUCCESS )
 		return Fail( StatusOf( result ), op, result );
 	undo.Dismiss();
-	const TextureId id{ ++m_NextId };
+	const TextureId id{ m_Textures.NextId() };
 	m_Textures.emplace( id.value, std::move( record ) );
 	++m_ResourceActivity.created[std::size_t( ResourceKind::kTexture )];
 	m_Imported.insert( id.value );
@@ -440,7 +440,7 @@ DeviceResult<SamplerId> VulkanDevice::CreateSampler( const SamplerDesc &desc )
 	const VkResult result = vkCreateSampler( m_Device, &info, nullptr, &record.sampler );
 	if ( result != VK_SUCCESS )
 		return Fail( StatusOf( result ), op, result );
-	const SamplerId id{ ++m_NextId };
+	const SamplerId id{ m_Samplers.NextId() };
 	m_Samplers.emplace( id.value, record );
 	++m_ResourceActivity.created[std::size_t( ResourceKind::kSampler )];
 	return id;
@@ -727,7 +727,7 @@ foundation::Expected<ExternalImage, DeviceError> VulkanDevice::CreateExported(
 	Name( VK_OBJECT_TYPE_IMAGE, reinterpret_cast<std::uint64_t>( record.image ), desc.debugName );
 	m_Memory.Label( record.memory, desc.debugName );
 	undo.Dismiss();
-	const TextureId id{ ++m_NextId };
+	const TextureId id{ m_Textures.NextId() };
 	m_Textures.emplace( id.value, std::move( record ) );
 	++m_ResourceActivity.created[std::size_t( ResourceKind::kTexture )];
 	ExternalImage image;

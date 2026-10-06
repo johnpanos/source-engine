@@ -172,6 +172,11 @@ struct RenderCoreWorldQuality
 	// (render.pass.world's gpuOcclusion).
 	// Opt-in until RFC 0003's placement measurement selects it.
 	int gpuSubmission = 0;
+	// Nonzero: runtime area lights (render.area-light.v1, LTC): the map's
+	// light fixtures' specular and the frame's emitting surfaces. Zero (the
+	// default, Source 2's model): a fixture's light is the bake's and its
+	// reflection the probes'; static lights shadow from their baked masks.
+	int areaLights = 0;
 };
 
 // The game's files as the core reads them (projector cookies,

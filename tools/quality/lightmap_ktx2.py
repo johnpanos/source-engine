@@ -260,35 +260,13 @@ def main():
     if args.light_masks:
         if not (args.coverage_exr and args.lsmk_out):
             raise ValueError("--light-masks needs --coverage-exr and --lsmk-out")
-        receipt = json.loads(Path(str(args.light_masks) + ".json").read_text())
-        light_masks = receipt.get("light_masks")
-        if receipt.get("status") != "pass" or \
-                receipt.get("lighting_stage_sha256") != sha256(args.lighting_stage) or \
-                not light_masks or light_masks.get("exr_sha256") != sha256(args.light_masks):
-            raise ValueError("light masks differ from their receipt or the lighting stage")
-        from scipy import ndimage
         import light_shadow_masks
-        id_path = args.light_masks.with_name(args.light_masks.stem + "-ids.exr")
-        if light_masks.get("ids_exr_sha256") != sha256(id_path):
-            raise ValueError("light mask ids differ from their receipt")
-        visibility = iio.imread(args.light_masks)[:, :, :4].astype(np.float64)
-        ids = np.round(iio.imread(id_path)[:, :, :4]).astype(np.int64)
-        covered = iio.imread(args.coverage_exr)[:, :, :3].min(axis=2) > 0.5
-        if visibility.shape != (size, size, 4) or ids.shape != visibility.shape or \
-                covered.shape != (size, size) or ids.min() < 0 or ids.max() > 255:
-            raise ValueError("light masks, ids or coverage have the wrong size or values")
-        # Gutters take their nearest covered texel's lights (ids and values
-        # together; seam stitching would mix different lights' channels).
-        _, (rows, columns) = ndimage.distance_transform_edt(~covered, return_indices=True)
-        records = [(record["origin"], int(record["id"])) for record in light_masks["records"]]
-        lump, report = light_shadow_masks.build(
-            records, np.clip(visibility[rows, columns], 0.0, 1.0)[::-1],
-            ids[rows, columns].astype(np.uint8)[::-1])
+        lump, report = light_shadow_masks.pack(args.light_masks, args.coverage_exr,
+                                               args.lighting_stage)
         temporary = args.lsmk_out.with_name(args.lsmk_out.name + ".tmp")
         temporary.write_bytes(lump)
         os.replace(temporary, args.lsmk_out)
-        light_masks = dict(report, sha256=sha256(args.lsmk_out),
-                           exr_sha256=sha256(args.light_masks))
+        light_masks = dict(report, sha256=sha256(args.lsmk_out))
     pages = [rgba]
     layer_receipts = {}
     source_bake = evidence.get("source_bake_evidence_sha256")

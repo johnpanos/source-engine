@@ -277,8 +277,8 @@ int main()
 			const GroupRequest group = family.Value()->LightingGroup( lighting );
 			checks.That( group.layout == family.Value()->DrawLayout() &&
 			                 group.constants.size() == sizeof( ModelLighting ) &&
-			                 group.textures.size() == 3 && group.textures[0].name.empty() &&
-			                 group.textures[1].name.empty(),
+			                 group.textures.size() == 4 && group.textures[0].name.empty() &&
+			                 group.textures[1].name.empty() && group.textures[3].name.empty(),
 			    "request.lighting-is-the-draw-group" );
 		}
 
@@ -328,7 +328,7 @@ int main()
 			    family.Value()->MaterialLayout(), std::as_bytes( std::span( &constants, 1 ) ),
 			    { texture, &neutralCube, &neutral, &neutral, &neutral, &neutral, &neutralSrgb } } );
 			draw.groups.push_back( { device::BindGroupRole::kDraw, lighting.layout,
-			    lighting.constants, { &neutralSrgb, &neutral, &neutral }, 1 } );
+			    lighting.constants, { &neutralSrgb, &neutral, &neutral, &neutral }, 1 } );
 			draw.groups.push_back( NeutralViewGroup( family.Value()->ViewLayout() ) );
 			draw.groups.push_back( { device::BindGroupRole::kFrame, family.Value()->FrameLayout(),
 			    std::as_bytes( std::span( &frame, 1 ) ),

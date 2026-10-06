@@ -36,6 +36,12 @@
 #                       lightmap layer, +r_core_runtime_direct 0) instead of
 #                       every light's direct light drawn at runtime, shadowed
 #                       (id Tech's split, the default)
+#   --area-lights       runtime LTC area lights (+r_core_area_lights 1). Off by
+#                       default (user direction, 2026-10-06: Source 2's
+#                       lighting): fixtures light through the bake and reflect
+#                       through the probes
+#   --hard-shadows      soft shadows (PCSS) off (+r_core_shadow_pcss 0; Advanced
+#                       Video: Soft Shadows (PCSS))
 #   --render-help       this list
 render_flags_usage()
 {
@@ -51,6 +57,7 @@ render_flags_parse()
 	local no_core=0
 	local producer=baked
 	local runtime_direct=1
+	local area_lights=0
 	while [ $# -gt 0 ]; do
 		case "$1" in
 			--native) RENDER_BACKEND=native ;;
@@ -64,6 +71,8 @@ render_flags_parse()
 			--validate) RENDER_GAME_ARGS+=(-vkvalidate) ;;
 			--moving-light-gi) producer=sdf ;;
 			--baked-direct) runtime_direct=0 ;;
+			--area-lights) area_lights=1 ;;
+			--hard-shadows) RENDER_GAME_ARGS+=(+r_core_shadow_pcss 0) ;;
 			--render-help) render_flags_usage; exit 0 ;;
 			*) break ;;
 		esac
@@ -76,5 +85,6 @@ render_flags_parse()
 	fi
 	# The indirect-light producer (an archived setting, so always passed) and
 	# the core's direct light.
-	RENDER_GAME_ARGS+=(+r_indirect_producer "$producer" +r_core_runtime_direct "$runtime_direct")
+	RENDER_GAME_ARGS+=(+r_indirect_producer "$producer" +r_core_runtime_direct "$runtime_direct"
+		+r_core_area_lights "$area_lights")
 }

@@ -30,6 +30,7 @@
 #define RENDER_DEVICE_VULKAN_VULKAN_DEVICE_H
 
 #include "host_device.h"
+#include "id_table.h"
 #include "render/device/validation.h"
 #include "render/device/vulkan/provider.h"
 
@@ -837,7 +838,6 @@ private:
 	}
 	std::uint32_t m_SharedFamilies[2] = {};
 	std::atomic<std::uint64_t> m_DeferredUploads{ 0 };
-	std::uint64_t m_NextId = 0;
 	// Label observers may sample from recording workers. Counters are diagnostic
 	// only; they never publish resource contents or control retirement.
 	struct ActivityCounters
@@ -848,14 +848,14 @@ private:
 		std::atomic<std::uint64_t> bufferBytes{ 0 };
 		std::atomic<std::uint64_t> pending{ 0 };
 	} m_ResourceActivity;
-	std::unordered_map<std::uint64_t, BufferRecord> m_Buffers;
-	std::unordered_map<std::uint64_t, TextureRecord> m_Textures;
+	IdTable<BufferRecord> m_Buffers{ 1 };
+	IdTable<TextureRecord> m_Textures{ 2 };
 	std::unordered_set<std::uint64_t> m_Imported; // host images among m_Textures
 	std::unordered_set<std::uint64_t> m_WritableImports; // those with a write usage
-	std::unordered_map<std::uint64_t, SamplerRecord> m_Samplers;
-	std::unordered_map<std::uint64_t, LayoutRecord> m_Layouts;
-	std::unordered_map<std::uint64_t, BindGroupRecord> m_BindGroups;
-	std::unordered_map<std::uint64_t, PipelineRecord> m_Pipelines;
+	IdTable<SamplerRecord> m_Samplers{ 3 };
+	IdTable<LayoutRecord> m_Layouts{ 4 };
+	IdTable<BindGroupRecord> m_BindGroups{ 5 };
+	IdTable<PipelineRecord> m_Pipelines{ 6 };
 	std::vector<PendingRelease> m_Releases;
 	Translator *m_Translating = nullptr; // during Submit's translation only
 	mutable std::mutex m_HostReleaseMutex;

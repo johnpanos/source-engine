@@ -154,7 +154,8 @@ import remote_blender  # noqa: E402
 STEPS = ("legacy-scene", "scene", "environment", "stage", "probe-placement", "reference-gate",
          "collision", "compile",
          "layout", "bake", "noise", "denoise", "directional", "directional-indirect", "seams",
-         "probe", "rprb", "probe-volume", "radiosity", "sdf", "light-masks", "ktx2", "sky", "pack", "identity",
+         "light-masks", "probe", "rprb", "probe-volume", "radiosity", "sdf", "ktx2", "sky", "pack",
+         "identity",
          "content", "boot", "camera-boot", "runtime-gate", "traversal-boot", "traversal", "audit")
 BAKE_SCOPE = "pbrt-shared-lightmap-uv-and-cycles-bake"
 # Quality gates report, they never stop a build or block publishing (user
@@ -175,7 +176,8 @@ USD_TOOLS = ("openusd", "compile_tools")
 # name their client build in their settings.
 STEP_TOOLS = {"legacy-scene": USD_TOOLS, "scene": USD_TOOLS, "stage": BLENDER_TOOLS,
               "probe-placement": BLENDER_TOOLS,
-              "layout": USD_TOOLS + ("xatlas",), "bake": BLENDER_TOOLS, "denoise": ("openimagedenoise",),
+              "layout": USD_TOOLS + ("xatlas",), "bake": BLENDER_TOOLS,
+              "light-masks": BLENDER_TOOLS, "denoise": ("openimagedenoise",),
               "noise": ("openimagedenoise",),
               "directional": ("openimagedenoise",),
               "directional-indirect": ("openimagedenoise",), "probe": BLENDER_TOOLS,
@@ -1201,14 +1203,11 @@ class Pipeline:
                       [p["light_masks"], p["light_mask_ids"], p["light_masks"].with_name(
                           p["light_masks"].name + ".json")],
                       lambda: self.baker.bake("light-masks", [
-                          "--masks-only", "--layout", "authored", "--scene", scene,
-                          "--stage", p["lighting_stage"],
-                          "--out-stage", p["light_masks"].with_suffix(".unused.usdc"),
+                          "--scene", scene, "--stage", p["lighting_stage"],
                           "--out-exr", p["light_masks"],
-                          "--size", str(self.lightmap["size"]), "--samples", "1",
+                          "--size", str(self.lightmap["size"]),
                           "--device", self.lightmap["device"],
-                          "--seed", str(self.lightmap["seed"]),
-                          "--light-paths", self.lightmap["light_paths"]] + env_args +
+                          "--seed", str(self.lightmap["seed"])] +
                           [item for material in self.lightmap["exclude_materials"]
                            for item in ("--exclude-material", material)]))
             masks_receipt = json.loads(p["light_masks"].with_name(

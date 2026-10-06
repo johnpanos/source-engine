@@ -29,6 +29,8 @@ tolerance render.pass.lights' MergeMapLights matches lamps by): a relit
 map's lights reach the core from its entities, not its worldlights lump.
 
     python3 tools/quality/light_shadow_masks.py info MASKS.lsmk
+    python3 tools/quality/light_shadow_masks.py pack --masks light_masks.exr \
+        --coverage uv-coverage.exr --lighting-stage STAGE --out light_masks.lsmk
 """
 
 import argparse
@@ -172,14 +174,66 @@ def decode(data):
     return layout, (page & 255) / 255.0, (page >> 8).astype(np.uint8)
 
 
+def sha256(path):
+    import hashlib
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def pack(masks_exr, coverage_exr, lighting_stage):
+    """(LSMK bytes, report) of a light_mask_bake.py output: its receipt beside
+    `masks_exr` must name `lighting_stage` and both EXRs. Gutters take their
+    nearest covered texel's lights (ids and values together; seam stitching
+    would mix different lights' channels). Rows flip to LMAP's top first."""
+    import imageio.v3 as iio
+    from scipy import ndimage
+    masks_exr = Path(masks_exr)
+    receipt = json.loads(Path(str(masks_exr) + ".json").read_text())
+    masks = receipt.get("light_masks")
+    ids_exr = masks_exr.with_name(masks_exr.stem + "-ids.exr")
+    if receipt.get("status") != "pass" or not masks or \
+            receipt.get("lighting_stage_sha256") != sha256(lighting_stage) or \
+            masks.get("exr_sha256") != sha256(masks_exr) or \
+            masks.get("ids_exr_sha256") != sha256(ids_exr):
+        raise MaskError("light masks differ from their receipt or the lighting stage")
+    visibility = iio.imread(masks_exr)[:, :, :4].astype(np.float64)
+    ids = np.round(iio.imread(ids_exr)[:, :, :4]).astype(np.int64)
+    covered = iio.imread(coverage_exr)[:, :, :3].min(axis=2) > 0.5
+    if ids.shape != visibility.shape or covered.shape != visibility.shape[:2] or \
+            ids.min() < 0 or ids.max() > MAX_IDS:
+        raise MaskError("light masks, ids or coverage have the wrong size or values")
+    _, (rows, columns) = ndimage.distance_transform_edt(~covered, return_indices=True)
+    records = [(record["origin"], int(record["id"])) for record in masks["records"]]
+    data, report = build(records, np.clip(visibility[rows, columns], 0.0, 1.0)[::-1],
+                         ids[rows, columns].astype(np.uint8)[::-1])
+    report.update(exr_sha256=masks["exr_sha256"], ids_exr_sha256=masks["ids_exr_sha256"],
+                  groups=masks.get("groups"), without_id=len(masks.get("without_id", [])))
+    return data, report
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True)
     info = sub.add_parser("info")
     info.add_argument("path", type=Path)
+    packer = sub.add_parser("pack")
+    packer.add_argument("--masks", type=Path, required=True, help="light_mask_bake.py --out-exr")
+    packer.add_argument("--coverage", type=Path, required=True, help="the atlas's UV coverage")
+    packer.add_argument("--lighting-stage", type=Path, required=True)
+    packer.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
+    if args.command == "pack":
+        data, report = pack(args.masks, args.coverage, args.lighting_stage)
+        temporary = args.out.with_name(args.out.name + ".tmp")
+        temporary.write_bytes(data)
+        temporary.replace(args.out)
+        report["sha256"] = sha256(args.out)
+        args.out.with_name(args.out.name + ".json").write_text(
+            json.dumps(report, indent=2, sort_keys=True) + "\n")
+        print(json.dumps(report, sort_keys=True))
+        return
     layout = read(args.path.read_bytes())
+    layout["lights"] = len(layout["lights"])
     print(json.dumps(layout, indent=2))
 
 

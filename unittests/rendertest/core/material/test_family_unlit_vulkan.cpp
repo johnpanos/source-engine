@@ -223,7 +223,7 @@ int main()
 			    family.Value()->MaterialLayout(), std::as_bytes( std::span( &constants, 1 ) ),
 			    { texture, &neutralCube, &neutral, &neutral, &neutral, &neutral, &neutralSrgb } } );
 			draw.groups.push_back( { device::BindGroupRole::kDraw, family.Value()->DrawLayout(),
-			    std::as_bytes( std::span( &lighting, 1 ) ), { &neutralSrgb, &neutral, &neutral }, 1 } );
+			    std::as_bytes( std::span( &lighting, 1 ) ), { &neutralSrgb, &neutral, &neutral, &neutral }, 1 } );
 			draw.groups.push_back( NeutralViewGroup( family.Value()->ViewLayout() ) );
 			draw.groups.push_back( { device::BindGroupRole::kFrame, family.Value()->FrameLayout(),
 			    std::as_bytes( std::span( &frame, 1 ) ),
@@ -324,7 +324,7 @@ int main()
 					            &neutralSrgb } } );
 					sky.groups.push_back( { device::BindGroupRole::kDraw,
 					    family.Value()->DrawLayout(), std::as_bytes( std::span( &lighting, 1 ) ),
-					    { &neutralSrgb, &neutral, &neutral }, 1 } );
+					    { &neutralSrgb, &neutral, &neutral, &neutral }, 1 } );
 					sky.groups.push_back( NeutralViewGroup( family.Value()->ViewLayout() ) );
 					sky.groups.push_back( { device::BindGroupRole::kFrame,
 					    family.Value()->FrameLayout(), std::as_bytes( std::span( &frame, 1 ) ),

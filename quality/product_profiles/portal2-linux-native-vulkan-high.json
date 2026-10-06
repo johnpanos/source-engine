@@ -30,6 +30,7 @@
           "r_core_shadow_movers": "1",
           "r_core_shadow_pcss": "1",
           "r_core_runtime_direct": "1",
+          "r_core_area_lights": "0",
           "r_indirect_producer": "baked",
           "r_drawviewmodel": "1",
           "cl_drawmonitors": "1"
@@ -53,6 +54,7 @@
           "r_core_shadow_movers": "0",
           "r_core_shadow_pcss": "0",
           "r_core_runtime_direct": "0",
+          "r_core_area_lights": "0",
           "r_indirect_producer": "baked",
           "r_drawviewmodel": "1",
           "cl_drawmonitors": "1"

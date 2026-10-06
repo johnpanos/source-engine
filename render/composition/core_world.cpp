@@ -1674,6 +1674,9 @@ std::shared_ptr<const pass::world::StageViewLights> CoreWorld::StageViewLightsFo
 std::vector<area_light::AreaLight> CoreWorld::ViewAreaLights( bool withMapAreas ) const
 {
 	std::vector<area_light::AreaLight> areas;
+	// Runtime (LTC) area lights are opt-in (r_core_area_lights).
+	if ( !m_AreaLightsOn.load( std::memory_order_relaxed ) )
+		return areas;
 	if ( withMapAreas )
 		areas = m_MapLights.areas;
 	for ( const light_set::RuntimeAreaLight &area : m_Lights.areas )
@@ -2316,6 +2319,7 @@ void CoreWorld::SetQuality( const RenderCoreWorldQuality &quality )
 	m_RuntimeDirect.store( quality.runtimeDirect != 0, std::memory_order_relaxed );
 	m_VolumetricOn.store( quality.volumetric != 0, std::memory_order_relaxed );
 	m_SsrOn.store( quality.ssr != 0, std::memory_order_relaxed );
+	m_AreaLightsOn.store( quality.areaLights != 0, std::memory_order_relaxed );
 	m_StageRuntimeDirect.store(
 	    quality.runtimeDirect != 0 && m_StageHasIndirect.load( std::memory_order_relaxed ),
 	    std::memory_order_relaxed );

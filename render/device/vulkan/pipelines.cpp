@@ -229,7 +229,7 @@ DeviceResult<BindGroupLayoutId> VulkanDevice::CreateBindGroupLayout(
 	record.role = desc.role;
 	record.bindings.assign( desc.bindings.begin(), desc.bindings.end() );
 	record.handle = std::make_shared<SetLayout>( m_Device, layout );
-	const BindGroupLayoutId id{ ++m_NextId };
+	const BindGroupLayoutId id{ m_Layouts.NextId() };
 	m_Layouts.emplace( id.value, std::move( record ) );
 	++m_ResourceActivity.created[std::size_t( ResourceKind::kBindGroupLayout )];
 	return id;
@@ -409,7 +409,7 @@ DeviceResult<BindGroupId> VulkanDevice::CreateBindGroup( const BindGroupDesc &de
 	if ( !writes.empty() )
 		vkUpdateDescriptorSets(
 		    m_Device, static_cast<std::uint32_t>( writes.size() ), writes.data(), 0, nullptr );
-	const BindGroupId id{ ++m_NextId };
+	const BindGroupId id{ m_BindGroups.NextId() };
 	m_BindGroups.emplace( id.value, std::move( record ) );
 	++m_ResourceActivity.created[std::size_t( ResourceKind::kBindGroup )];
 	return id;
@@ -735,7 +735,7 @@ DeviceResult<PipelineId> VulkanDevice::CreatePipeline( const PipelineDesc &desc 
 	}
 	Name( VK_OBJECT_TYPE_PIPELINE, reinterpret_cast<std::uint64_t>( record.pipeline ),
 	    desc.debugName );
-	const PipelineId id{ ++m_NextId };
+	const PipelineId id{ m_Pipelines.NextId() };
 	m_Pipelines.emplace( id.value, std::move( record ) );
 	++m_ResourceActivity.created[std::size_t( ResourceKind::kPipeline )];
 	return id;

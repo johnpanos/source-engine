@@ -129,6 +129,10 @@ ConVar r_core_shadow_pcss( "r_core_shadow_pcss", "1", FCVAR_ARCHIVE,
     "Render core: soft shadows (PCSS: penumbrae sized by each light's emitter). 0 gives every "
     "runtime shadow the hard 2x2 filter, which is cheaper (Advanced Video: Soft Shadows "
     "(PCSS)). Static lights with baked shadow masks use their masks either way." );
+ConVar r_core_area_lights( "r_core_area_lights", "0", FCVAR_ARCHIVE,
+    "Render core: runtime area lights (LTC) for the map's light fixtures and the frame's "
+    "emitting surfaces. 0 (default, Source 2's lighting): fixtures light through the bake and "
+    "reflect through the probes." );
 ConVar r_core_runtime_direct( "r_core_runtime_direct", "1", FCVAR_ARCHIVE,
     "Render core: the world's lightmap is its indirect layer and every light's direct light is "
     "drawn at runtime, shadowed, so moving objects block it (0: the bake's total layer, with "
@@ -457,7 +461,7 @@ void RenderCoreHost_BeginFrame()
 			    r_core_runtime_direct.GetInt(),
 			    RenderCoreWorldDraw_OnlyCore(), r_core_dynamic_draws.GetBool(),
 			    r_core_volumetric.GetInt(), r_core_ssr.GetInt(),
-			    r_core_world_gpu_submit.GetInt() };
+			    r_core_world_gpu_submit.GetInt(), r_core_area_lights.GetInt() };
 			host.world->SetQuality( quality );
 			host.world->BeginFrame();
 		}

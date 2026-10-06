@@ -425,6 +425,7 @@ private:
 	std::atomic<int> m_GpuSubmission{ 0 }; // 0 off, 1 GPU culling, 2 with occlusion
 	std::atomic<bool> m_ShadowMovers{ true };
 	std::atomic<bool> m_ShadowPcss{ true };
+	std::atomic<bool> m_AreaLightsOn{ false };
 	// Runtime direct light on the next stage (RenderCoreWorldQuality), and
 	// on the stage set.
 	std::atomic<bool> m_RuntimeDirect{ true };

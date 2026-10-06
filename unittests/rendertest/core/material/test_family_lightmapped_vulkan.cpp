@@ -286,7 +286,7 @@ int main()
 			    { device::BindGroupRole::kMaterial, family.Value()->MaterialLayout(),
 			        std::as_bytes( std::span( &constants, 1 ) ), materialTextures } );
 			draw.groups.push_back( { device::BindGroupRole::kDraw, family.Value()->DrawLayout(),
-			    std::as_bytes( std::span( &lighting, 1 ) ), { testCase.lightmap, splitSum, splitSum }, 1 } );
+			    std::as_bytes( std::span( &lighting, 1 ) ), { testCase.lightmap, splitSum, splitSum, splitSum }, 1 } );
 			// The frame terms at their LDR defaults (the port's cases are LDR).
 			draw.groups.push_back( NeutralViewGroup( family.Value()->ViewLayout() ) );
 			draw.groups.push_back( { device::BindGroupRole::kFrame, family.Value()->FrameLayout(),

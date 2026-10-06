@@ -434,7 +434,7 @@ int main()
 			    std::as_bytes( std::span( &frame, 1 ) ),
 			    { &splitSum, &unused, &unused, &unused, &unused, &unused } } );
 			draw.groups.push_back( { device::BindGroupRole::kDraw, family.Value()->DrawLayout(),
-			    std::as_bytes( std::span( &lighting, 1 ) ), { &unused, &unused, &unused }, 1 } );
+			    std::as_bytes( std::span( &lighting, 1 ) ), { &unused, &unused, &unused, &unused }, 1 } );
 			SurfaceConstants constants = claim.constants;
 			constants.state[0] = 1.0f; // opaque, as Request packs it
 			draw.groups.push_back( { device::BindGroupRole::kMaterial,

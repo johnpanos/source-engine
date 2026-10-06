@@ -977,9 +977,14 @@ private:
 
 	// Shader accesses through bind groups: a resource in a write usage
 	// (storage write) is written; the others are only read.
-	void GroupAccesses( const std::vector<std::uint64_t> &groups )
+	void GroupAccesses( std::vector<std::uint64_t> groups )
 	{
-		std::unordered_set<std::uint64_t> seen;
+		// A pass binds the same few groups draw after draw: each group, then
+		// each resource, is accessed once (sorted scratch, no node set).
+		std::sort( groups.begin(), groups.end() );
+		groups.erase( std::unique( groups.begin(), groups.end() ), groups.end() );
+		std::vector<std::uint64_t> &resources = m_GroupScratch;
+		resources.clear();
 		for ( std::uint64_t groupId : groups )
 		{
 			const auto group = m_D.m_BindGroups.find( groupId );
@@ -987,12 +992,14 @@ private:
 				continue;
 			for ( const ResourceId &resource : group->second.resources )
 			{
-				if ( resource.kind == ResourceKind::kSampler ||
-				     !seen.insert( resource.value ).second )
-					continue;
-				Access( resource.value, IsWrite( TrackOf( resource.value ).usage ) );
+				if ( resource.kind != ResourceKind::kSampler )
+					resources.push_back( resource.value );
 			}
 		}
+		std::sort( resources.begin(), resources.end() );
+		resources.erase( std::unique( resources.begin(), resources.end() ), resources.end() );
+		for ( std::uint64_t id : resources )
+			Access( id, IsWrite( TrackOf( id ).usage ) );
 	}
 
 	void Flush( VkPipelineBindPoint point )
@@ -1063,7 +1070,7 @@ private:
 			if ( TimestampBufferTransition( commands[i] ) )
 				Transition( commands[i].a, commands[i].before, commands[i].after );
 		}
-		GroupAccesses( groups );
+		GroupAccesses( std::move( groups ) );
 
 		std::vector<VkRenderingAttachmentInfo> colors;
 		for ( const ColorAttachment &color : command.colors )
@@ -1437,6 +1444,7 @@ private:
 	std::vector<std::pair<std::size_t, std::size_t>> m_Sections;
 	std::size_t m_SectionsRun = 0;
 	std::unordered_map<std::uint64_t, Track> m_Tracks;
+	std::vector<std::uint64_t> m_GroupScratch; // GroupAccesses' resources
 	const PipelineRecord *m_Pipeline = nullptr;
 	std::array<std::uint64_t, kMaxBindGroups> m_Groups{};
 	std::array<bool, kMaxBindGroups> m_GroupDirty{};

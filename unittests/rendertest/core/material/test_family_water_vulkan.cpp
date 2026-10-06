@@ -540,7 +540,7 @@ int main()
 			    program.Value()->MaterialLayout(), std::as_bytes( std::span( &constants, 1 ) ),
 			    { &base, &cube, &flowmap, &normal, &white, &noise, &whiteSrgb } } );
 			draw.groups.push_back( { device::BindGroupRole::kDraw, program.Value()->DrawLayout(),
-			    std::as_bytes( std::span( &lighting, 1 ) ), { &page, &white, &white }, 1 } );
+			    std::as_bytes( std::span( &lighting, 1 ) ), { &page, &white, &white, &white }, 1 } );
 			draw.groups.push_back( view );
 			draw.groups.push_back( { device::BindGroupRole::kFrame, program.Value()->FrameLayout(),
 			    std::as_bytes( std::span( &frame, 1 ) ),
