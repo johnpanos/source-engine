@@ -47,6 +47,15 @@ enum class PassKind : std::uint8_t
 	kCopy
 };
 
+// The queue a pass runs on (RFC 0016 GPU-driven submission S8). Only compute
+// passes may ask for kAsyncCompute; CompileGraph places every pass on
+// kGraphics unless its options say the device has a separate compute queue.
+enum class Queue : std::uint8_t
+{
+	kGraphics,
+	kAsyncCompute
+};
+
 class RecordContext;
 using ExecuteFn = std::function<void( RecordContext & )>;
 
@@ -76,6 +85,7 @@ struct PassDecl
 	PassKind kind = PassKind::kRender;
 	std::vector<Access> accesses;
 	bool sideEffect = false;
+	Queue queue = Queue::kGraphics;
 	ExecuteFn execute;
 };
 
@@ -89,6 +99,9 @@ public:
 	PassBuilder &Write( ResourceRef resource, device::ResourceUsage usage );
 	// Kept even if nothing reads what it writes (presentation, readback).
 	PassBuilder &SideEffect();
+	// Asks for the async compute queue; a non-compute pass that asks fails
+	// compilation with kQueueKindMismatch.
+	PassBuilder &OnQueue( Queue queue );
 	PassBuilder &Execute( ExecuteFn execute );
 
 private:

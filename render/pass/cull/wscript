@@ -1,0 +1,16 @@
+#! /usr/bin/env python
+# encoding: utf-8
+# render.pass.cull (RFC 0016 layer 6 feature, GPU-driven submission S4).
+
+def build(bld):
+	bld.stlib(
+		env         = bld.strict_cpp20_env(),
+		features    = 'cxx capability_strict',
+		arch_module = 'render.pass.cull',
+		target      = 'render_pass_cull',
+		name        = 'render_pass_cull',
+		source      = bld.path.ant_glob('*.cpp'),
+		includes    = ['../../../public'],
+		use         = ['render_scene', 'render_graph', 'render_device', 'render_shaderlib', 'render_spv'],
+		idx         = bld.get_taskgen_count()
+	)

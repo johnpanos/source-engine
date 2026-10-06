@@ -17,6 +17,7 @@
 #include "render/graph/executor.h"
 
 #include <algorithm>
+#include <array>
 #include <functional>
 #include <cstdint>
 #include <random>
@@ -332,6 +333,140 @@ inline Model Reference(
 		    return std::make_tuple( a.pass, a.resource ) < std::make_tuple( b.pass, b.resource );
 	    } );
 	return model;
+}
+
+// Seeded random graphs on two queues (RFC 0016 GPU-driven submission S8):
+// render passes on graphics and compute passes on either queue, over
+// storage, sampled and uniform usages, so the compiled graph needs
+// cross-queue waits. A separate generator, so MakeRandomGraph's seeds keep
+// their graphs.
+inline RandomGraph MakeRandomQueueGraph( std::uint32_t seed, device::IRenderDevice2 &device )
+{
+	std::mt19937 random( seed ^ 0x51u );
+	auto pick = [&]( int n )
+	{
+		return static_cast<int>( random() % static_cast<std::uint32_t>( n ) );
+	};
+	RandomGraph out;
+	const int resourceCount = 2 + pick( 6 );
+	std::vector<bool> imported;
+	for ( int r = 0; r < resourceCount; ++r )
+	{
+		const bool import = pick( 4 ) == 0;
+		imported.push_back( import );
+		device::BufferDesc desc;
+		desc.size = pick( 2 ) ? 256 : 512;
+		if ( import )
+		{
+			desc.usages = RandomBufferUsages();
+			out.builder.ImportBuffer( "import", device.CreateBuffer( desc ).Value(), desc,
+			    ResourceUsage::kUndefined, ResourceUsage::kUndefined );
+		}
+		else
+		{
+			out.builder.CreateBuffer( "transient", desc );
+		}
+	}
+	const ResourceUsage reads[] = { ResourceUsage::kStorageRead, ResourceUsage::kUniform };
+	std::vector<bool> written( resourceCount, false );
+	const int passCount = 2 + pick( 14 );
+	for ( int p = 0; p < passCount; ++p )
+	{
+		const bool compute = pick( 3 ) != 0;
+		PassBuilder pass =
+		    out.builder.AddPass( "pass", compute ? PassKind::kCompute : PassKind::kRender );
+		if ( compute && pick( 2 ) == 0 )
+			pass.OnQueue( Queue::kAsyncCompute );
+		std::vector<bool> used( resourceCount, false );
+		const int accesses = 1 + pick( 3 );
+		for ( int a = 0; a < accesses; ++a )
+		{
+			const int r = pick( resourceCount );
+			if ( used[r] )
+				continue;
+			used[r] = true;
+			const bool canRead = imported[r] || written[r];
+			const bool write = !canRead || pick( 2 ) == 0;
+			const ResourceRef ref{ static_cast<std::uint32_t>( r ) };
+			if ( write )
+				pass.Write( ref, ResourceUsage::kStorageWrite );
+			else
+				pass.Read( ref, reads[pick( 2 )] );
+			written[r] = written[r] || write;
+		}
+		if ( pick( 4 ) == 0 )
+			pass.SideEffect();
+		pass.Execute( Noop );
+	}
+	out.resources = out.builder.Resources();
+	out.passes = out.builder.Passes();
+	return out;
+}
+
+// The cross-queue waits the model requires, from the model's kept order and
+// alias sets: for each kept pass, the latest earlier pass on the other queue
+// that touches the same state owner with a write on either side, unless the
+// pass's queue already knows it complete (a vector clock over the model's
+// own waits). Queues come from the declarations (asyncCompute compiles).
+inline std::vector<TraceWait> ReferenceWaits( const std::vector<ResourceDecl> &resources,
+    const std::vector<PassDecl> &passes, const Model &model )
+{
+	std::vector<int> owner( resources.size(), -1 );
+	for ( std::size_t s = 0; s < model.aliasSets.size(); ++s )
+	{
+		for ( std::uint32_t r : model.aliasSets[s] )
+			owner[r] = static_cast<int>( resources.size() + s );
+	}
+	auto ownerOf = [&]( std::uint32_t r )
+	{
+		return owner[r] >= 0 ? owner[r] : static_cast<int>( r );
+	};
+	const std::size_t n = model.kept.size();
+	auto queueOf = [&]( std::size_t k )
+	{
+		return passes[model.kept[k]].queue == Queue::kAsyncCompute ? 1 : 0;
+	};
+	std::vector<std::array<long, 2>> clock( n, { -1, -1 } );
+	std::vector<TraceWait> waits;
+	for ( std::size_t j = 0; j < n; ++j )
+	{
+		const int q = queueOf( j );
+		std::array<long, 2> known = { -1, -1 };
+		for ( std::size_t m = j; m-- > 0; )
+		{
+			if ( queueOf( m ) == q )
+			{
+				known = clock[m];
+				break;
+			}
+		}
+		long need = -1;
+		for ( std::size_t i = 0; i < j; ++i )
+		{
+			if ( queueOf( i ) == q )
+				continue;
+			bool conflict = false;
+			for ( const Access &x : passes[model.kept[i]].accesses )
+			{
+				for ( const Access &y : passes[model.kept[j]].accesses )
+					conflict =
+					    conflict || ( ownerOf( x.resource.index ) == ownerOf( y.resource.index ) &&
+					                    ( x.write || y.write ) );
+			}
+			if ( conflict )
+				need = static_cast<long>( i );
+		}
+		if ( need > known[1 - q] )
+		{
+			waits.push_back(
+			    { static_cast<std::uint32_t>( j ), static_cast<std::uint32_t>( need ) } );
+			known[1 - q] = need;
+			known[q] = std::max( known[q], clock[need][q] );
+		}
+		known[q] = static_cast<long>( j );
+		clock[j] = known;
+	}
+	return waits;
 }
 
 // The compiler's trace in the model's order.

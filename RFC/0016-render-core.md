@@ -1333,6 +1333,16 @@ reserved here and may be renumbered when installed.
 | S7 | Mobile tile memory: graph-local transient attachments (MSAA colour, depth with no later read) use lazily allocated memory and don't-care stores | `kLazyAttachments` fact (D34) | `TRANSIENT_ATTACHMENT` + `LAZILY_ALLOCATED` | ignored | Fold7 GPU time and memory; desktop gains nothing (the 2026-09-23 render-pass merge showed no Adreno gain, so measure) |
 | S8 | Async compute: per-pass queue assignment, queue-family ownership transfers, cross-queue timeline waits; candidates GTAO, cluster assignment, fog froxels, S4 culling | `kAsyncCompute` claimed when a separate compute family exists (D35) | separate compute family | no | the independent graph model extended to two queues with bad graphs for missing waits; only after S0 shows those passes serialized with idle graphics |
 
+**Status (2026-10-05):** S4's kernel and S8's graph model are installed
+([record](0003-progress.md#s4-gpu-culling-placement-and-the-two-queue-graph-model-2026-10-05-user-goal)).
+`render.pass.cull` keeps exactly what the CPU culler keeps (`render.cull`,
+bit for bit), and `render.graph` places compute passes on a second queue
+with compiled cross-queue waits and ownership moves (`render.graph.v1`
+G12). By RFC 0003's placement rule the CPU culler stays the product path:
+product scenes (about 2k–5k instances) are below the measured crossover
+while the consumer is a CPU draw list. A real second queue in the Vulkan
+adapter, GPU compaction and indirect commands remain open.
+
 **Order:** S0; then S1, S2 and S5 (they reshape draw records and pipeline
 keys); then S3 (the main CPU gain) and S4; S6–S8 as their measurements
 justify. Mesh shaders wait for R63's dense-scene workload and S4's results;

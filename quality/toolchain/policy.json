@@ -477,6 +477,10 @@
       "dialect": "cxx20",
       "rfc": "0016"
     },
+    "render_pass_cull": {
+      "dialect": "cxx20",
+      "rfc": "0016"
+    },
     "render_pass_skinning": {
       "dialect": "cxx20",
       "rfc": "0016"

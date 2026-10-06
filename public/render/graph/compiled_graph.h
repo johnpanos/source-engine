@@ -27,7 +27,8 @@ enum class GraphStatus : std::uint8_t
 	kConflictingAccess,   // one pass uses a resource in two different usages
 	kInvalidResource,     // a reference the builder never returned
 	kUsageKindMismatch,   // a write usage declared as a read, or the reverse
-	kNoExecute            // a kept pass without an execute function
+	kNoExecute,           // a kept pass without an execute function
+	kQueueKindMismatch    // a non-compute pass asked for the async compute queue
 };
 
 struct GraphError
@@ -50,6 +51,15 @@ struct CompiledPass
 {
 	std::uint32_t declaration = 0; // index in GraphBuilder::Passes()
 	std::vector<Transition> transitions;
+	Queue queue = Queue::kGraphics; // where it runs (kGraphics unless options allow)
+	// The latest compiled pass on the other queue that must complete before
+	// this one starts (a timeline wait), or UINT32_MAX. Queues execute in
+	// compiled order, so one wait covers every earlier pass on that queue.
+	std::uint32_t waitFor = UINT32_MAX;
+	// Resources whose previous access was on the other queue: their
+	// ownership moves to this pass's queue (a queue-family transfer where
+	// the queues are distinct families).
+	std::vector<ResourceRef> acquires;
 };
 
 struct Lifetime
@@ -91,7 +101,16 @@ public:
 	GraphTrace trace;
 };
 
-foundation::Expected<CompiledGraph, GraphError> CompileGraph( GraphBuilder &&builder );
+struct CompileOptions
+{
+	// The device has a compute queue separate from graphics
+	// (device::Capability::kAsyncCompute). Without it every pass runs on
+	// kGraphics and the compiled graph has no waits.
+	bool asyncCompute = false;
+};
+
+foundation::Expected<CompiledGraph, GraphError> CompileGraph(
+    GraphBuilder &&builder, const CompileOptions &options = {} );
 
 } // namespace render::graph
 

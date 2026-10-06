@@ -153,6 +153,64 @@ bool DropWriter( CompiledGraph &graph )
 	return false;
 }
 
+// Two queues (RFC 0016 GPU-driven submission S8): the compiler emits a wait
+// only where a pass on one queue conflicts with one on the other that its
+// queue does not already know complete, so each wait is needed.
+bool KeyConflict( const CompiledGraph &graph, std::size_t a, std::size_t b )
+{
+	auto key = [&]( std::uint32_t r ) -> std::int64_t
+	{
+		const std::int32_t p = graph.physicalOf[r];
+		return p >= 0 ? static_cast<std::int64_t>( graph.resources.size() ) + p : r;
+	};
+	for ( const Access &x : graph.passes[graph.order[a].declaration].accesses )
+	{
+		for ( const Access &y : graph.passes[graph.order[b].declaration].accesses )
+		{
+			if ( ( x.write || y.write ) && key( x.resource.index ) == key( y.resource.index ) )
+				return true;
+		}
+	}
+	return false;
+}
+
+bool DropQueueWait( CompiledGraph &graph )
+{
+	for ( CompiledPass &pass : graph.order )
+	{
+		if ( pass.waitFor != UINT32_MAX )
+		{
+			pass.waitFor = UINT32_MAX;
+			return true;
+		}
+	}
+	return false;
+}
+
+// Waits for the producer queue's pass before the one it needs (or for
+// nothing when there is none), where the needed pass conflicts directly.
+bool WaitTooEarly( CompiledGraph &graph )
+{
+	for ( std::size_t j = 0; j < graph.order.size(); ++j )
+	{
+		const std::uint32_t wait = graph.order[j].waitFor;
+		if ( wait == UINT32_MAX || !KeyConflict( graph, wait, j ) )
+			continue;
+		std::uint32_t earlier = UINT32_MAX;
+		for ( std::uint32_t m = wait; m-- > 0; )
+		{
+			if ( graph.order[m].queue == graph.order[wait].queue )
+			{
+				earlier = m;
+				break;
+			}
+		}
+		graph.order[j].waitFor = earlier;
+		return true;
+	}
+	return false;
+}
+
 } // namespace
 
 int main()
@@ -194,6 +252,41 @@ int main()
 		}
 	}
 	checks.Equal( clean, kSeeds, "control.unseeded-graphs-validate" );
+
+	Mutation queueMutations[] = {
+	    { "missing-queue-wait", &DropQueueWait, ViolationKind::kMissingQueueWait },
+	    { "queue-wait-too-early", &WaitTooEarly, ViolationKind::kMissingQueueWait },
+	};
+	int queueClean = 0;
+	for ( int seed = 0; seed < kSeeds; ++seed )
+	{
+		auto device = render::device::null::Create( {} ).Value();
+		fixtures::RandomGraph random =
+		    fixtures::MakeRandomQueueGraph( static_cast<std::uint32_t>( seed ), *device );
+		CompileOptions async;
+		async.asyncCompute = true;
+		auto compiled = CompileGraph( std::move( random.builder ), async );
+		if ( !compiled )
+			continue;
+		queueClean += ValidateCompiledGraph( compiled.Value() ).empty();
+		for ( Mutation &mutation : queueMutations )
+		{
+			CompiledGraph copy = compiled.Value();
+			if ( !mutation.apply( copy ) )
+				continue;
+			++mutation.applied;
+			mutation.detected += Reports( copy, mutation.kind );
+		}
+	}
+	checks.Equal( queueClean, kSeeds, "control.unseeded-two-queue-graphs-validate" );
+	for ( const Mutation &mutation : queueMutations )
+	{
+		std::printf( "INFO graph sensitivity: %s seeded into %d graphs, detected %d\n",
+		    mutation.name, mutation.applied, mutation.detected );
+		checks.That( mutation.applied >= 50, std::string( "seeded " ) + mutation.name );
+		checks.Equal(
+		    mutation.detected, mutation.applied, std::string( "detects " ) + mutation.name );
+	}
 	for ( const Mutation &mutation : mutations )
 	{
 		std::printf( "INFO graph sensitivity: %s seeded into %d graphs, detected %d\n",

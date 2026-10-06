@@ -1,0 +1,87 @@
+// render.pass.cull (RFC 0016 GPU-driven submission S4): the GPU path of
+// public/render/pass/cull/cull.h. render::scene's CullRange and
+// math::Intersects( Frustum, Aabb ) are its oracle; the plane test follows
+// their order of operations, and `precise` keeps the compiler from fusing
+// it, so the two agree bit for bit.
+//
+// Each invocation writes one word of the visibility mask: 32 instances.
+//
+// SEEDED_NEAR_CORNER, SEEDED_VIEW_MASK_IGNORED and SEEDED_EMPTY_KEPT build
+// the defective variants the render.cull suite must reject; no product uses
+// them.
+#version 450
+
+layout( local_size_x = 64 ) in;
+
+struct CullInstance
+{
+	vec4 minMask; // w: the view mask (bits)
+	vec4 maxPad;
+};
+
+layout( std430, set = 3, binding = 0 ) readonly buffer Instances
+{
+	CullInstance instances[];
+};
+
+layout( std430, set = 3, binding = 1 ) readonly buffer View
+{
+	vec4 planes[6];
+	uvec4 bitCount; // x: the view bit, y: the instance count
+};
+
+layout( std430, set = 3, binding = 2 ) writeonly buffer Visibility
+{
+	uint words[];
+};
+
+bool Kept( uint index )
+{
+	const CullInstance instance = instances[index];
+	const uint viewBit = bitCount.x;
+	const uint mask = floatBitsToUint( instance.minMask.w );
+#ifndef SEEDED_VIEW_MASK_IGNORED
+	if ( viewBit < 32u && ( mask & ( 1u << viewBit ) ) == 0u )
+		return false;
+#endif
+	const vec3 lo = instance.minMask.xyz;
+	const vec3 hi = instance.maxPad.xyz;
+#ifndef SEEDED_EMPTY_KEPT
+	if ( lo.x > hi.x || lo.y > hi.y || lo.z > hi.z )
+		return false;
+#endif
+	for ( int p = 0; p < 6; ++p )
+	{
+		const vec4 plane = planes[p];
+#ifdef SEEDED_NEAR_CORNER
+		const vec3 corner = vec3( plane.x >= 0.0 ? lo.x : hi.x, plane.y >= 0.0 ? lo.y : hi.y,
+		    plane.z >= 0.0 ? lo.z : hi.z );
+#else
+		const vec3 corner = vec3( plane.x >= 0.0 ? hi.x : lo.x, plane.y >= 0.0 ? hi.y : lo.y,
+		    plane.z >= 0.0 ? hi.z : lo.z );
+#endif
+		precise float distance = plane.x * corner.x;
+		distance = distance + plane.y * corner.y;
+		distance = distance + plane.z * corner.z;
+		distance = distance + plane.w;
+		if ( distance < 0.0 )
+			return false;
+	}
+	return true;
+}
+
+void main()
+{
+	const uint word = gl_GlobalInvocationID.x;
+	const uint count = bitCount.y;
+	if ( word * 32u >= count )
+		return;
+	uint bits = 0u;
+	for ( uint b = 0u; b < 32u; ++b )
+	{
+		const uint index = word * 32u + b;
+		if ( index < count && Kept( index ) )
+			bits |= 1u << b;
+	}
+	words[word] = bits;
+}

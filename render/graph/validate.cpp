@@ -26,6 +26,8 @@ const char *DescribeViolation( ViolationKind kind )
 		return "reordered dependency";
 	case ViolationKind::kUndefinedRead:
 		return "undefined read";
+	case ViolationKind::kMissingQueueWait:
+		return "missing queue wait";
 	}
 	return "unknown";
 }
@@ -141,6 +143,50 @@ std::vector<GraphViolation> ValidateCompiledGraph( const CompiledGraph &graph )
 			if ( conflict )
 				out.push_back(
 				    { ViolationKind::kReorderedDependency, static_cast<std::uint32_t>( b ), 0 } );
+		}
+	}
+
+	// Queues: each queue runs its passes in compiled order, and a wait makes
+	// a pass start after its producer (and everything before the producer on
+	// the producer's queue). Two conflicting passes on different queues need
+	// the later one to be ordered after the earlier through those edges.
+	const std::size_t count = graph.order.size();
+	std::vector<std::vector<bool>> after( count, std::vector<bool>( count, false ) );
+	for ( std::size_t j = 0; j < count; ++j )
+	{
+		for ( std::size_t i = 0; i < j; ++i )
+		{
+			const bool sameQueue = graph.order[i].queue == graph.order[j].queue;
+			const std::uint32_t wait = graph.order[j].waitFor;
+			bool ordered =
+			    sameQueue ||
+			    ( wait != UINT32_MAX && wait < j &&
+			        ( wait == i || ( wait > i && after[wait][i] ) ||
+			            ( wait > i && graph.order[wait].queue == graph.order[i].queue ) ) );
+			// Through an earlier pass on j's own queue.
+			for ( std::size_t m = i + 1; m < j && !ordered; ++m )
+				ordered = graph.order[m].queue == graph.order[j].queue && after[m][i];
+			after[j][i] = ordered;
+		}
+	}
+	for ( std::size_t j = 0; j < count; ++j )
+	{
+		const PassDecl &later = graph.passes[graph.order[j].declaration];
+		for ( std::size_t i = 0; i < j; ++i )
+		{
+			if ( graph.order[i].queue == graph.order[j].queue || after[j][i] )
+				continue;
+			const PassDecl &earlier = graph.passes[graph.order[i].declaration];
+			bool conflict = false;
+			for ( const Access &x : earlier.accesses )
+			{
+				for ( const Access &y : later.accesses )
+					conflict |= key( x.resource.index ) == key( y.resource.index ) &&
+					            ( x.write || y.write );
+			}
+			if ( conflict )
+				out.push_back(
+				    { ViolationKind::kMissingQueueWait, graph.order[j].declaration, 0 } );
 		}
 	}
 	return out;

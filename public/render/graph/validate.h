@@ -34,7 +34,8 @@ enum class ViolationKind : std::uint8_t
 	kOverlappingAliases,
 	kCulledSideEffect,
 	kReorderedDependency,
-	kUndefinedRead
+	kUndefinedRead,
+	kMissingQueueWait // conflicting passes on two queues with no wait between them
 };
 
 struct GraphViolation

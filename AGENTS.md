@@ -1082,7 +1082,11 @@ Keep the table concise and link details below or from the domain progress file.
   baseline, bindless textures, per-draw data by address, multi-draw
   indirect, GPU culling with indirect count, dynamic pipeline state, push
   bindings, mobile lazy attachments, async compute; GL/ES fallbacks named
-  per phase. Culling is CPU today. Children of K5/K9; no row changes state.
+  per phase. Children of K5/K9; no row changes state. 2026-10-05: S4's
+  `render.pass.cull` (equal to the CPU culler bit for bit; CPU stays the
+  product path by RFC 0003's placement rule) and S8's two-queue graph model
+  (`render.graph.v1` G12) installed;
+  [record](RFC/0003-progress.md#s4-gpu-culling-placement-and-the-two-queue-graph-model-2026-10-05-user-goal).
 
 - R86/R88 memory follow-up (2026-10-02, user request): [audit and direct
   texture uploads](RFC/0016-progress.md#k1k4-render-core-memory-and-cache-audit-2026-10-02)

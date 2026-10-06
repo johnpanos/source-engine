@@ -27,6 +27,16 @@ struct TraceTransition
 	friend bool operator==( const TraceTransition &, const TraceTransition & ) = default;
 };
 
+// A cross-queue wait: compiled pass `consumer` starts after compiled pass
+// `producer`, on the other queue, has completed.
+struct TraceWait
+{
+	std::uint32_t consumer = 0;
+	std::uint32_t producer = 0;
+
+	friend bool operator==( const TraceWait &, const TraceWait & ) = default;
+};
+
 struct GraphTrace
 {
 	std::vector<std::uint32_t> kept;   // declaration indices, in execution order
@@ -35,6 +45,8 @@ struct GraphTrace
 	// Transients that share one physical resource, each list in first-use
 	// order (resource indices); a transient alone is a set of one.
 	std::vector<std::vector<std::uint32_t>> aliasSets;
+	// Cross-queue waits, in consumer order; empty on one queue.
+	std::vector<TraceWait> waits;
 
 	// One line per decision, stable for comparison and logs.
 	std::string ToString() const;

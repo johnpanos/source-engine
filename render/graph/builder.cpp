@@ -29,6 +29,12 @@ PassBuilder &PassBuilder::SideEffect()
 	return *this;
 }
 
+PassBuilder &PassBuilder::OnQueue( Queue queue )
+{
+	m_Builder.m_Passes[m_Pass].queue = queue;
+	return *this;
+}
+
 PassBuilder &PassBuilder::Execute( ExecuteFn execute )
 {
 	m_Builder.m_Passes[m_Pass].execute = std::move( execute );

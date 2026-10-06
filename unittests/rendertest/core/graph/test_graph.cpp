@@ -622,6 +622,104 @@ void Pooling( testing::Checks &checks )
 	    device->LiveResourceCount(), baseline, "G10.destroying-the-pool-releases-everything" );
 }
 
+// G12 (RFC 0016 GPU-driven submission S8): two queues. On seeded random
+// graphs with compute passes on either queue, the compiler's cross-queue
+// waits equal the reference model's, the validator finds every compiled
+// graph ordered, ownership moves where a resource changes queue, and the
+// serial executor still runs the graph; without async compute the same
+// graphs compile to one queue with no waits; a render pass cannot ask for
+// the compute queue.
+void QueueGraphs( testing::Checks &checks, int count )
+{
+	int agreements = 0;
+	int valid = 0;
+	int withWaits = 0;
+	int executed = 0;
+	int singleQueue = 0;
+	int acquiresMatch = 0;
+	for ( int seed = 0; seed < count; ++seed )
+	{
+		auto device = ManualDevice();
+		fixtures::RandomGraph random =
+		    fixtures::MakeRandomQueueGraph( static_cast<std::uint32_t>( seed ), *device );
+		CompileOptions async;
+		async.asyncCompute = true;
+		auto graph = CompileGraph( std::move( random.builder ), async );
+		if ( !graph )
+		{
+			std::printf( "seed %d: queue graph failed to compile (%s)\n", seed,
+			    DescribeGraphStatus( graph.Error().status ) );
+			continue;
+		}
+		const fixtures::Model model = fixtures::Reference( random.resources, random.passes );
+		const std::vector<TraceWait> expected =
+		    fixtures::ReferenceWaits( random.resources, random.passes, model );
+		const bool agrees = expected == graph.Value().trace.waits;
+		agreements += agrees;
+		if ( !agrees && agreements + 5 > seed )
+			std::printf( "seed %d: waits disagree with the model\n%s", seed,
+			    graph.Value().trace.ToString().c_str() );
+		valid += ValidateCompiledGraph( graph.Value() ).empty();
+		withWaits += !graph.Value().trace.waits.empty();
+		// Every pass whose resource last ran on the other queue acquires it.
+		bool acquires = true;
+		std::vector<int> lastQueue( random.resources.size() + graph.Value().physical.size(), -1 );
+		for ( const CompiledPass &compiled : graph.Value().order )
+		{
+			const int q = static_cast<int>( compiled.queue );
+			std::size_t expectedAcquires = 0;
+			for ( const Access &access : graph.Value().passes[compiled.declaration].accesses )
+			{
+				const std::int32_t physical = graph.Value().physicalOf[access.resource.index];
+				const std::size_t k = physical >= 0
+				                          ? random.resources.size() + std::size_t( physical )
+				                          : access.resource.index;
+				expectedAcquires += lastQueue[k] >= 0 && lastQueue[k] != q;
+				lastQueue[k] = q;
+			}
+			acquires = acquires && compiled.acquires.size() == expectedAcquires;
+		}
+		acquiresMatch += acquires;
+		SerialGraphExecutor serial;
+		executed += serial.Execute( graph.Value(), *device ).HasValue();
+
+		auto oneQueueDevice = ManualDevice();
+		fixtures::RandomGraph again =
+		    fixtures::MakeRandomQueueGraph( static_cast<std::uint32_t>( seed ), *oneQueueDevice );
+		auto oneQueue = CompileGraph( std::move( again.builder ) );
+		singleQueue += oneQueue && oneQueue.Value().trace.waits.empty() &&
+		               std::all_of( oneQueue.Value().order.begin(), oneQueue.Value().order.end(),
+		                   []( const CompiledPass &compiled )
+		                   {
+			                   return compiled.queue == Queue::kGraphics &&
+			                          compiled.waitFor == UINT32_MAX && compiled.acquires.empty();
+		                   } ) &&
+		               ValidateCompiledGraph( oneQueue.Value() ).empty();
+	}
+	checks.Equal( agreements, count, "G12.cross-queue-waits-agree-with-the-reference-model" );
+	checks.Equal( valid, count, "G12.every-two-queue-graph-validates" );
+	checks.Equal( acquiresMatch, count, "G12.ownership-moves-where-a-resource-changes-queue" );
+	checks.Equal( executed, count, "G12.the-serial-executor-runs-two-queue-graphs" );
+	checks.Equal( singleQueue, count, "G12.without-async-compute-one-queue-and-no-waits" );
+	checks.That( withWaits > count / 4, "G12.the-random-graphs-exercise-waits" );
+	std::printf(
+	    "INFO graph: %d of %d two-queue graphs need a cross-queue wait\n", withWaits, count );
+
+	GraphBuilder builder;
+	const ResourceRef target = builder.CreateTexture( "target", fixtures::Color() );
+	builder.AddPass( "render", PassKind::kRender )
+	    .OnQueue( Queue::kAsyncCompute )
+	    .Write( target, ResourceUsage::kColorAttachment )
+	    .SideEffect()
+	    .Execute( fixtures::Noop );
+	CompileOptions async;
+	async.asyncCompute = true;
+	auto refused = CompileGraph( std::move( builder ), async );
+	checks.That( !refused && refused.Error().status == GraphStatus::kQueueKindMismatch &&
+	                 refused.Error().pass == 0,
+	    "G12.a-render-pass-cannot-ask-for-the-compute-queue" );
+}
+
 } // namespace
 
 int main()
@@ -633,6 +731,7 @@ int main()
 	Execution( checks );
 	SceneColorCapture( checks );
 	RandomGraphs( checks, 1000 );
+	QueueGraphs( checks, 1000 );
 	Pooling( checks );
 	PassTimers( checks );
 	return checks.Report();

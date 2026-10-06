@@ -84,6 +84,7 @@ from conformance_result import Checks  # noqa: E402
 SHADERS = "materialsystem/shaderapivulkan/shaders"
 DEVICE = "unittests/rendertest/core/device"
 SKINNING = "render/pass/skinning"
+CULL = "render/pass/cull"
 LINES = "render/pass/lines"
 PANELS = "render/pass/panels"
 FAMILIES = "render/material/families"
@@ -160,6 +161,15 @@ GENERATED = {
         ("g_demoDynVertSpv", SHADERS + "/demo_dyn.vert", ()))),
     "skin_spv.h": ("render::pass::skinning::spirv", "the skinning compute pass (RFC 0016 K6)", (
         ("kSkinCompute", SKINNING + "/skin.comp", DEVICE_OPTIONS),)),
+    "cull_spv.h": ("render::pass::cull::spirv",
+        "the GPU culling pass (RFC 0016 GPU-driven submission S4)", (
+        ("kCullCompute", CULL + "/cull.comp", DEVICE_OPTIONS),)),
+    "cull_defects_spv.h": ("rendertest::cull::spirv",
+        "the culling suite's seeded kernels (render.cull sensitivity)", (
+        ("kCullNearCorner", CULL + "/cull.comp", DEVICE_OPTIONS + ("-DSEEDED_NEAR_CORNER",)),
+        ("kCullViewMaskIgnored", CULL + "/cull.comp",
+         DEVICE_OPTIONS + ("-DSEEDED_VIEW_MASK_IGNORED",)),
+        ("kCullEmptyKept", CULL + "/cull.comp", DEVICE_OPTIONS + ("-DSEEDED_EMPTY_KEPT",)))),
     "families_spv.h": ("render::material::spirv",
         "the material families' programs (RFC 0016 K4, render.material)", (
         ("kSurfaceFlatVertex", FAMILIES + "/surface_flat.vert", DEVICE_OPTIONS),
@@ -487,7 +497,7 @@ GLSL_GENERATED = {
 # The core's programs (the GENERATED headers the render passes and material
 # families embed) each have a GLSL 4.50 twin: <stem>_glsl.h in the namespace's
 # ::glsl sibling, with the same array names.
-CORE_PROGRAM_HEADERS = ("cluster_assign_spv.h", "debug_spv.h", "families_spv.h", "lines_spv.h",
+CORE_PROGRAM_HEADERS = ("cluster_assign_spv.h", "cull_spv.h", "debug_spv.h", "families_spv.h", "lines_spv.h",
                         "output_spv.h", "temporal_spv.h", "shadow_spv.h", "skin_spv.h", "volumetric_spv.h",
                         "ssr_spv.h", "ao_spv.h", "bounce_spv.h", "indirect_spv.h",
                         "panels_spv.h", "post_spv.h")

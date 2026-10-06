@@ -11396,3 +11396,9 @@ reserving device clauses D28–D35. Observed on the way: culling runs on the
 CPU (`scene.cpp` `CullRange`), every bind group is its own descriptor set,
 and the Vulkan adapter claims no async compute. The BC6H/BC7/B10G11R11
 formats (`90c219166`) are separate format work. Next: S0's baseline.
+
+Same day, S4 and S8 first slices: `render.pass.cull` (GPU culling equal to
+the CPU culler bit for bit) and two queues in `render.graph` (waits, ownership
+moves, `kMissingQueueWait`). The CPU culler stays the product path by RFC
+0003's placement rule; evidence and timings in
+[RFC 0003's record](0003-progress.md#s4-gpu-culling-placement-and-the-two-queue-graph-model-2026-10-05-user-goal).

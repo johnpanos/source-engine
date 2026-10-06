@@ -1024,6 +1024,21 @@
         ]
       },
       {
+        "id": "render.pass.cull",
+        "paths": [
+          "public/render/pass/cull/",
+          "render/pass/cull/"
+        ],
+        "allowedEdges": [
+          "foundation",
+          "render.device",
+          "render.graph",
+          "render.math",
+          "render.scene",
+          "render.shader-library"
+        ]
+      },
+      {
         "id": "render.pass.skinning",
         "paths": [
           "public/render/pass/skinning/",
@@ -1297,6 +1312,7 @@
           "render.frame",
           "render.renderer",
           "render.pass.present",
+          "render.pass.cull",
           "render.pass.skinning",
           "render.pass.opaque",
           "render.pass.world",
@@ -1906,6 +1922,15 @@
       },
       "render_pass_post": {
         "allowedUse": [
+          "render_device",
+          "render_spv",
+          "render_shaderlib"
+        ]
+      },
+      "render_pass_cull": {
+        "allowedUse": [
+          "render_scene",
+          "render_graph",
           "render_device",
           "render_spv",
           "render_shaderlib"

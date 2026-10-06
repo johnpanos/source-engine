@@ -816,3 +816,65 @@ records. The original list:
    under the R06 kernel when those rows land.
 4. Optional hardening: forbidden-nested-wait detection across executors, and a
    lock-free ready structure only once it earns correctness/performance evidence.
+
+## S4 GPU culling placement and the two-queue graph model (2026-10-05, user goal)
+
+User goal: "RFC 0003: S4's GPU culling falls under its CPU/GPU placement
+rule, with the CPU culler kept as the oracle. S8 (async compute) needs the
+graph model extended to two queues." Owner: this session. Plan:
+[RFC 0016 GPU-driven submission](0016-render-core.md#gpu-driven-submission-plan-2026-10-05-user-direction).
+
+**Installed.**
+
+- `render.pass.cull` (new layer-6 module, `public/render/pass/cull/cull.h`,
+  `render/pass/cull/cull.comp`): frustum and view-mask culling of scene
+  instances on the GPU, one visibility bit per instance, as a compute graph
+  pass that asks for the async compute queue. The kernel follows the CPU
+  culler's order of operations and forbids contraction (`precise`), so the
+  oracle is exact. Contract `render.cull.v1`; suite `render.cull`.
+- `render.graph` two queues: `Queue` on `PassDecl` (`PassBuilder::OnQueue`,
+  compute passes only, else `kQueueKindMismatch`); `CompileOptions`
+  (`asyncCompute`, default off, so existing graphs compile unchanged);
+  per compiled pass its queue, one `waitFor` (the latest pass on the other
+  queue it must follow, omitted when the queue already knows it complete)
+  and the `acquires` whose ownership moves; `GraphTrace::waits`; the
+  validator's `kMissingQueueWait` (vector-clock reachability over the
+  compiled waits, independent of the compiler's last-writer/reader state).
+  Contract clause G12 of `render.graph.v1`.
+
+**Evidence** (Linux desktop, RADV Strix Halo; g++ 16 and clang++ 22):
+
+| Suite | Result |
+| --- | --- |
+| `render.cull` | 12 checks: GPU mask equals `scene::BuildDrawList` bit for bit on 200 seeded scenes (up to 20,000 instances, straddling boxes, empty boxes, view masks, view bit 32); seeded near-corner, ignored-mask and kept-empty kernels disagree on 39, 32 and 33 of 40 scenes (3 of 3 rejected); async and graphics placements both read back the oracle mask; null device without compute fails `kNoCompute`; validation layer silent |
+| `render.graph.v1` | 96 checks; G12: waits equal the reference model on 1,000 two-queue graphs (671 need a wait), all validate, ownership moves match, serial executor runs them, no waits without async compute, render pass refused on the compute queue |
+| `render.graph.v1.sensitivity` | 16 checks; dropped wait and too-early wait each detected in 671 of 671 seeded graphs; the five K2 mutations unchanged |
+| `render.graph.v1.vulkan`, `render.skinning` | pass (unchanged behaviour) |
+| `render.graph.v1.tsan` | passes on clang++; the g++ lane cannot link here (`libtsan.so` missing on the host, a known host gap) |
+
+**Placement decision (the rule's equivalent-output, full-cost comparison).**
+Median microseconds over 21 runs; the CPU culler's timings include its
+draw-list sort, which biases the comparison toward the GPU:
+
+| Instances | CPU serial | CPU pooled (4) | GPU round trip | GPU, instances resident |
+| --- | --- | --- | --- | --- |
+| 1,024 | 42 | 56 | 230 | 193 |
+| 4,096 | 120 | 90 | 300 | 180 |
+| 16,384 | 412 | 210 | 603 | 192 |
+| 65,536 | 3,762 | 2,644 | 1,750 | 203 |
+
+Today's consumer is the CPU draw list, so the GPU path must read the mask
+back and wait. Portal maps hold about 1,500–2,400 BSP leaves plus a few
+hundred props per scene, well under the measured crossover (between 16,384
+and 65,536 instances). **The CPU culler stays the product path** for
+CPU-recorded draw lists; the GPU kernel is installed and proven equal, not
+wired into a product. The ~190 µs resident floor is submission and a
+blocking wait, which S3 removes by consuming the mask on the GPU; the
+decision is re-taken then, with in-frame GPU timestamps against the pooled
+CPU culler, and for R63's dense USD scenes, which exceed the crossover.
+
+**Not done.** Executing a real second queue (the Vulkan adapter does not
+claim `kAsyncCompute`; executors still run every pass on graphics in
+compiled order, which satisfies every wait), queue-family ownership
+transfers in the adapter, GPU compaction into indirect commands (S3/S4),
+HiZ occlusion, Fold7 and Apple measurements, and a game frame using either.

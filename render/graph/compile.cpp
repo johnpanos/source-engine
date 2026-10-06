@@ -16,6 +16,7 @@
 #include "render/graph/compiled_graph.h"
 
 #include <algorithm>
+#include <array>
 #include <sstream>
 #include <utility>
 
@@ -65,6 +66,8 @@ const char *DescribeGraphStatus( GraphStatus status )
 		return "usage kind mismatch";
 	case GraphStatus::kNoExecute:
 		return "no execute";
+	case GraphStatus::kQueueKindMismatch:
+		return "queue kind mismatch";
 	}
 	return "unknown";
 }
@@ -84,10 +87,13 @@ std::string GraphTrace::ToString() const
 		    << " resource=" << t.resource << " " << static_cast<int>( t.before ) << "->"
 		    << static_cast<int>( t.after ) << "\n";
 	}
+	for ( const TraceWait &w : waits )
+		out << "wait pass=" << w.consumer << " for=" << w.producer << "\n";
 	return out.str();
 }
 
-foundation::Expected<CompiledGraph, GraphError> CompileGraph( GraphBuilder &&builder )
+foundation::Expected<CompiledGraph, GraphError> CompileGraph(
+    GraphBuilder &&builder, const CompileOptions &options )
 {
 	CompiledGraph graph;
 	graph.resources = builder.Resources();
@@ -98,6 +104,11 @@ foundation::Expected<CompiledGraph, GraphError> CompileGraph( GraphBuilder &&bui
 	// Access shape.
 	for ( std::size_t p = 0; p < passCount; ++p )
 	{
+		if ( graph.passes[p].queue == Queue::kAsyncCompute &&
+		     graph.passes[p].kind != PassKind::kCompute )
+			return Fail( GraphStatus::kQueueKindMismatch, p, 0 );
+		if ( !options.asyncCompute )
+			graph.passes[p].queue = Queue::kGraphics;
 		const std::vector<Access> &accesses = graph.passes[p].accesses;
 		for ( std::size_t a = 0; a < accesses.size(); ++a )
 		{
@@ -235,11 +246,66 @@ foundation::Expected<CompiledGraph, GraphError> CompileGraph( GraphBuilder &&bui
 	std::vector<std::int64_t> lastWriter( keyCount, -1 );
 	for ( std::size_t r = 0; r < resourceCount; ++r )
 		state[r] = graph.resources[r].initialUsage;
+	// Cross-queue ordering. Per state owner: the queue of its last access,
+	// and per queue the latest reader since its last write. Per queue: the
+	// latest pass on the other queue already known complete before the
+	// queue's next pass (its waits so far, and what those producers knew).
+	constexpr std::size_t kQueues = 2;
+	auto queueOf = []( Queue queue )
+	{
+		return static_cast<std::size_t>( queue );
+	};
+	std::vector<std::int64_t> lastQueue( keyCount, -1 );
+	std::vector<std::array<std::int64_t, kQueues>> lastReader( keyCount, { -1, -1 } );
+	std::vector<std::size_t> compiledQueue;
+	std::vector<std::array<std::int64_t, kQueues>> knownAfter; // per compiled pass
+	std::array<std::int64_t, kQueues> lastOnQueue = { -1, -1 };
 	for ( std::uint32_t p : graph.trace.kept )
 	{
 		CompiledPass compiled;
 		compiled.declaration = p;
+		compiled.queue = graph.passes[p].queue;
 		const std::uint32_t index = static_cast<std::uint32_t>( graph.order.size() );
+		const std::size_t q = queueOf( compiled.queue );
+		const std::size_t other = 1 - q;
+		// What this queue knows of the other before any new wait.
+		std::array<std::int64_t, kQueues> known = { -1, -1 };
+		if ( lastOnQueue[q] >= 0 )
+			known = knownAfter[static_cast<std::size_t>( lastOnQueue[q] )];
+		std::int64_t need = -1;
+		for ( const Access &access : graph.passes[p].accesses )
+		{
+			const std::size_t k = key( access.resource.index );
+			const std::int64_t writer = lastWriter[k];
+			if ( writer >= 0 && compiledQueue[static_cast<std::size_t>( writer )] == other )
+				need = std::max( need, writer );
+			if ( access.write )
+				need = std::max( need, lastReader[k][other] );
+			if ( lastQueue[k] >= 0 && static_cast<std::size_t>( lastQueue[k] ) != q )
+				compiled.acquires.push_back( access.resource );
+		}
+		if ( need > known[other] )
+		{
+			compiled.waitFor = static_cast<std::uint32_t>( need );
+			graph.trace.waits.push_back( { index, compiled.waitFor } );
+			const std::array<std::int64_t, kQueues> &producer =
+			    knownAfter[static_cast<std::size_t>( need )];
+			known[other] = need;
+			known[q] = std::max( known[q], producer[q] );
+		}
+		known[q] = index;
+		knownAfter.push_back( known );
+		compiledQueue.push_back( q );
+		lastOnQueue[q] = index;
+		for ( const Access &access : graph.passes[p].accesses )
+		{
+			const std::size_t k = key( access.resource.index );
+			lastQueue[k] = static_cast<std::int64_t>( q );
+			if ( access.write )
+				lastReader[k] = { -1, -1 };
+			else
+				lastReader[k][q] = index;
+		}
 		for ( const Access &access : graph.passes[p].accesses )
 		{
 			const std::uint32_t r = access.resource.index;
