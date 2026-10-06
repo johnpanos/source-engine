@@ -3,6 +3,9 @@
 // Purpose: render.graph.v1 pooled executor (RFC 0016); see executor.h.
 //			Encoders are begun and submitted on the calling thread; only the
 //			recording runs as jobs, one encoder per job (port clause D14).
+//			A two-queue graph begins each pass's encoder on its own queue and
+//			submits each run of same-queue passes with the compiled waits, as
+//			the serial executor does (RFC 0016 S8).
 //
 //=============================================================================//
 
@@ -10,6 +13,7 @@
 
 #include "jobsystem/job_graph.h"
 
+#include <optional>
 #include <vector>
 
 namespace render::graph
@@ -24,9 +28,16 @@ foundation::Expected<ExecuteResult, device::DeviceError> PooledGraphExecutor::Ex
 	// One encoder per kept pass, and one for the final transitions.
 	std::vector<device::CommandEncoder> encoders;
 	encoders.reserve( graph.order.size() + 1 );
+	// Entry graph.order.size() is the final transitions, always on graphics.
+	auto queueOf = [&graph]( std::size_t i )
+	{
+		return i < graph.order.size() && graph.order[i].queue == Queue::kAsyncCompute
+		           ? device::QueueKind::kCompute
+		           : device::QueueKind::kGraphics;
+	};
 	for ( std::size_t i = 0; i <= graph.order.size(); ++i )
 	{
-		auto encoder = device.BeginEncoder( device::QueueKind::kGraphics );
+		auto encoder = device.BeginEncoder( queueOf( i ) );
 		if ( !encoder )
 		{
 			detail::Finish( graph, plan.Value(), device, m_Pool, nullptr );
@@ -59,19 +70,57 @@ foundation::Expected<ExecuteResult, device::DeviceError> PooledGraphExecutor::Ex
 		    device::DeviceStatus::kInternal, device::DeviceOperation::kSubmit, 0 } );
 	}
 	detail::RecordFinal( encoders.back(), graph, shared );
-	auto token = device.Submit( device::QueueKind::kGraphics, encoders, waits );
-	if ( !token )
+
+	// One submission per run of consecutive same-queue encoders; a one-queue
+	// graph is one graphics run, so one submission as before.
+	using device::CompletionToken;
+	const std::size_t total = encoders.size();
+	std::vector<CompletionToken> tokenOf( total );
+	std::optional<CompletionToken> lastCompute;
+	std::optional<CompletionToken> last;
+	std::uint32_t computeSubmissions = 0;
+	bool firstOn[2] = { true, true };
+	std::size_t begin = 0;
+	while ( begin < total )
 	{
-		detail::Finish( graph, plan.Value(), device, m_Pool, nullptr );
-		return foundation::MakeUnexpected( token.Error() );
+		const device::QueueKind kind = queueOf( begin );
+		const bool compute = kind == device::QueueKind::kCompute;
+		std::size_t end = begin;
+		while ( end < total && queueOf( end ) == kind )
+			++end;
+		std::vector<CompletionToken> segmentWaits;
+		if ( firstOn[compute ? 1 : 0] )
+			segmentWaits.assign( waits.tokens.begin(), waits.tokens.end() );
+		firstOn[compute ? 1 : 0] = false;
+		for ( std::size_t i = begin; i < end && i < graph.order.size(); ++i )
+		{
+			if ( graph.order[i].waitFor != UINT32_MAX )
+				segmentWaits.push_back( tokenOf[graph.order[i].waitFor] );
+		}
+		if ( end == total && lastCompute )
+			segmentWaits.push_back( *lastCompute );
+		auto token = device.Submit( kind,
+		    std::span<device::CommandEncoder>( encoders.data() + begin, end - begin ),
+		    { segmentWaits } );
+		if ( !token )
+		{
+			detail::Finish( graph, plan.Value(), device, m_Pool, last ? &*last : nullptr );
+			return foundation::MakeUnexpected( token.Error() );
+		}
+		for ( std::size_t i = begin; i < end; ++i )
+			tokenOf[i] = token.Value();
+		( compute ? lastCompute : last ) = token.Value();
+		computeSubmissions += compute;
+		begin = end;
 	}
 	ExecuteResult result;
-	result.token = token.Value();
+	result.token = *last;
 	result.passes = static_cast<std::uint32_t>( graph.order.size() );
 	result.transitions = detail::TransitionCount( graph );
 	result.transients = shared.created;
 	result.reused = shared.reused;
 	result.encoders = static_cast<std::uint32_t>( encoders.size() );
+	result.computeSubmissions = computeSubmissions;
 	detail::Finish( graph, plan.Value(), device, m_Pool, &result.token );
 	return result;
 }

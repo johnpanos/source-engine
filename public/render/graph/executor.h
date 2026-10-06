@@ -58,6 +58,7 @@ struct ExecuteResult
 	std::uint32_t transients = 0; // physical transients created by this execution
 	std::uint32_t reused = 0;     // physical transients taken from a pool
 	std::uint32_t encoders = 0;
+	std::uint32_t computeSubmissions = 0; // submissions on the async compute queue
 };
 
 // A graph recorded into an encoder owned by a host frame. The owner keeps
@@ -163,7 +164,10 @@ private:
 // of a jobs.graph graph run by the injected executor (the engine's pool in
 // products); the encoders are submitted together in pass order. Pass execute
 // functions must therefore not share mutable state. The recorded command
-// stream equals the serial executor's (render.graph.v1 G9).
+// stream equals the serial executor's (render.graph.v1 G9). A two-queue graph
+// begins each pass's encoder on its pass's queue and submits each run of
+// consecutive same-queue passes as the serial executor does, with the same
+// waits and the same final graphics submission (G12).
 class PooledGraphExecutor
 {
 public:

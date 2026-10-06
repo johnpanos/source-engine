@@ -254,11 +254,15 @@ int main()
 			std::printf( "SKIP G12.vulkan the device has no async compute queue\n" );
 		else
 		{
-			int queueCompiled = 0, queueRan = 0, waited = 0;
+			int queueCompiled = 0, queueRan = 0, waited = 0, pooledQueueRan = 0;
+			std::uint64_t serialCompute = 0, pooledCompute = 0;
 			std::uint64_t queueEncoders = 0;
 			constexpr int kQueueGraphs = 200;
-			for ( int seed = 0; seed < kQueueGraphs; ++seed )
+			for ( int run = 0; run < 2 * kQueueGraphs; ++run )
 			{
+				// Each seed runs on the serial executor, then the pooled one.
+				const int seed = run / 2;
+				const bool pooledRun = run % 2 == 1;
 				fixtures::RandomGraph random = fixtures::MakeRandomQueueGraph(
 				    static_cast<std::uint32_t>( seed ), *device, true, RealWork );
 				std::vector<device::ResourceId> imports;
@@ -270,7 +274,15 @@ int main()
 				CompileOptions options;
 				options.asyncCompute = true;
 				auto graph = CompileGraph( std::move( random.builder ), options );
-				if ( graph && ValidateCompiledGraph( graph.Value() ).empty() )
+				if ( graph && ValidateCompiledGraph( graph.Value() ).empty() && pooledRun )
+				{
+					auto executed = pooled.Execute( graph.Value(), *device );
+					const bool ran = executed && Wait( *device, executed.Value().token );
+					pooledQueueRan += ran;
+					if ( ran )
+						pooledCompute += executed.Value().computeSubmissions;
+				}
+				else if ( graph && ValidateCompiledGraph( graph.Value() ).empty() )
 				{
 					++queueCompiled;
 					waited += !graph.Value().trace.waits.empty();
@@ -278,7 +290,10 @@ int main()
 					const bool ran = executed && Wait( *device, executed.Value().token );
 					queueRan += ran;
 					if ( ran )
+					{
 						queueEncoders += executed.Value().encoders;
+						serialCompute += executed.Value().computeSubmissions;
+					}
 				}
 				for ( device::ResourceId id : imports )
 					(void)device->Release( id, device::CompletionToken() );
@@ -291,6 +306,13 @@ int main()
 			checks.Equal( queueCompiled, kQueueGraphs, "G12.vulkan-every-two-queue-graph-compiles" );
 			checks.Equal( queueRan, queueCompiled,
 			    "G12.vulkan-every-two-queue-graph-runs-on-the-compute-and-graphics-queues" );
+			checks.Equal( pooledQueueRan, queueCompiled,
+			    "G12.vulkan-the-pooled-executor-runs-every-two-queue-graph" );
+			std::printf( "INFO graph vulkan two queues: compute submissions serial %llu, pooled %llu\n",
+			    static_cast<unsigned long long>( serialCompute ),
+			    static_cast<unsigned long long>( pooledCompute ) );
+			checks.That( serialCompute > 0 && pooledCompute == serialCompute,
+			    "G12.vulkan-the-pooled-executor-submits-the-serial-executors-compute-runs" );
 			checks.That( waited > kQueueGraphs / 4 && queueEncoders > std::uint64_t( queueRan ),
 			    "G12.vulkan-the-graphs-cross-queues-with-waits" );
 		}

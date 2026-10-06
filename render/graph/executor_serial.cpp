@@ -160,6 +160,7 @@ foundation::Expected<ExecuteResult, device::DeviceError> SerialGraphExecutor::Ex
 			tokenOf[i] = token.Value();
 		( compute ? lastCompute : last ) = token.Value();
 		++result.encoders;
+		result.computeSubmissions += compute;
 		begin = end;
 	}
 	if ( graph.order.empty() || graph.order.back().queue == Queue::kAsyncCompute )
