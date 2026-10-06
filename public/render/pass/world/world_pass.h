@@ -637,6 +637,9 @@ struct WorldStats
 	// pyramids built for them.
 	std::uint64_t gpuOcclusionViews = 0;
 	std::uint64_t gpuPyramids = 0;
+	// Screen prepasses whose world surfaces were drawn GPU-driven (the depth
+	// prepass into the target shares the lit pass's commands, in gpuViews).
+	std::uint64_t gpuPrepassViews = 0;
 	std::uint64_t staticInstancesQueued = 0;
 	std::uint64_t staticDrawsDrawn = 0;
 	std::uint64_t posedModelsQueued = 0;

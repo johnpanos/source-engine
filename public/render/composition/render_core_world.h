@@ -264,6 +264,8 @@ struct RenderCoreWorldStats
 	// the depth pyramids built for them.
 	unsigned long long gpuOcclusionViews;
 	unsigned long long gpuPyramids;
+	// Screen prepasses whose world surfaces were drawn GPU-driven.
+	unsigned long long gpuPrepassViews;
 };
 
 // Debug-only snapshot of the latest completed core frame, ABI-safe across

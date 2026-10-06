@@ -4262,177 +4262,180 @@ void WorldPass::RecordBatch(
 		GpuList out;
 		if ( list.empty() || list.size() > culling::kMaxCompactInstances )
 			return out;
-	using namespace render::culling;
-	if ( !s.gpuCull )
-	{
-		auto cull = CullKernel::Create( device );
-		auto compact = CompactKernel::Create( device );
-		if ( cull && compact )
+		using namespace render::culling;
+		if ( !s.gpuCull )
 		{
-			s.gpuCull = std::move( cull ).Value();
-			s.gpuCompact = std::move( compact ).Value();
-		}
-	}
-	if ( s.gpuBoundsWorld != world.get() )
-	{
-		s.gpuBounds.assign( world->surfaces.size(), {} );
-		for ( std::size_t i = 0; i < world->surfaces.size(); ++i )
-		{
-			const WorldSurface &surface = world->surfaces[i];
-			CullInstance &bounds = s.gpuBounds[i];
-			bounds.viewMask = ~0u;
-			std::fill_n( bounds.min, 3, 3.4e38f );
-			std::fill_n( bounds.max, 3, -3.4e38f );
-			for ( std::uint32_t k = 0; k < surface.indexCount; ++k )
+			auto cull = CullKernel::Create( device );
+			auto compact = CompactKernel::Create( device );
+			if ( cull && compact )
 			{
-				const std::uint32_t at = surface.firstIndex + k;
-				if ( at >= world->indices.size() || world->indices[at] >= world->vertices.size() )
-					continue;
-				const float *p = world->vertices[world->indices[at]].position;
-				for ( int c = 0; c < 3; ++c )
+				s.gpuCull = std::move( cull ).Value();
+				s.gpuCompact = std::move( compact ).Value();
+			}
+		}
+		if ( s.gpuBoundsWorld != world.get() )
+		{
+			s.gpuBounds.assign( world->surfaces.size(), {} );
+			for ( std::size_t i = 0; i < world->surfaces.size(); ++i )
+			{
+				const WorldSurface &surface = world->surfaces[i];
+				CullInstance &bounds = s.gpuBounds[i];
+				bounds.viewMask = ~0u;
+				std::fill_n( bounds.min, 3, 3.4e38f );
+				std::fill_n( bounds.max, 3, -3.4e38f );
+				for ( std::uint32_t k = 0; k < surface.indexCount; ++k )
 				{
-					bounds.min[c] = std::min( bounds.min[c], p[c] );
-					bounds.max[c] = std::max( bounds.max[c], p[c] );
+					const std::uint32_t at = surface.firstIndex + k;
+					if ( at >= world->indices.size() ||
+					     world->indices[at] >= world->vertices.size() )
+						continue;
+					const float *p = world->vertices[world->indices[at]].position;
+					for ( int c = 0; c < 3; ++c )
+					{
+						bounds.min[c] = std::min( bounds.min[c], p[c] );
+						bounds.max[c] = std::max( bounds.max[c], p[c] );
+					}
 				}
 			}
+			s.gpuBoundsWorld = world.get();
 		}
-		s.gpuBoundsWorld = world.get();
-	}
-	const auto count = static_cast<std::uint32_t>( list.size() );
-	std::vector<CullInstance> instances( count );
-	std::vector<DrawTemplate> templates( count );
-	std::vector<DrawBucket> buckets;
-	for ( std::uint32_t k = 0; k < count; ++k )
-	{
-		const WorldSurface &surface = world->surfaces[list[k]];
-		const Resources::Material &m = materials[surface.material];
-		const int page = m.program.request.drawLayout.IsValid() ? surface.lightmapPage : 0;
-		if ( out.buckets.empty() || out.buckets.back().material != surface.material ||
-		     out.buckets.back().page != page )
+		const auto count = static_cast<std::uint32_t>( list.size() );
+		std::vector<CullInstance> instances( count );
+		std::vector<DrawTemplate> templates( count );
+		std::vector<DrawBucket> buckets;
+		for ( std::uint32_t k = 0; k < count; ++k )
 		{
-			out.buckets.push_back( { surface.material, page, k, 0 } );
-			buckets.push_back( { k, 0 } );
-		}
-		++out.buckets.back().count;
-		++buckets.back().count;
-		instances[k] = s.gpuBounds[list[k]];
-		if ( occlude )
-		{
-			// A surface facing the camera rasterizes at its box's nearest
-			// depth up to rounding: one unit of margin keeps it from
-			// occluding itself. Only opaque PBR surfaces are tested.
-			for ( int c = 0; c < 3; ++c )
+			const WorldSurface &surface = world->surfaces[list[k]];
+			const Resources::Material &m = materials[surface.material];
+			const int page = m.program.request.drawLayout.IsValid() ? surface.lightmapPage : 0;
+			if ( out.buckets.empty() || out.buckets.back().material != surface.material ||
+			     out.buckets.back().page != page )
 			{
-				instances[k].min[c] -= 1.0f;
-				instances[k].max[c] += 1.0f;
+				out.buckets.push_back( { surface.material, page, k, 0 } );
+				buckets.push_back( { k, 0 } );
 			}
-			instances[k].flags = opaquePbr( m ) ? 0u : kCullNeverOcclude;
+			++out.buckets.back().count;
+			++buckets.back().count;
+			instances[k] = s.gpuBounds[list[k]];
+			if ( occlude )
+			{
+				// A surface facing the camera rasterizes at its box's nearest
+				// depth up to rounding: one unit of margin keeps it from
+				// occluding itself. Only opaque PBR surfaces are tested.
+				for ( int c = 0; c < 3; ++c )
+				{
+					instances[k].min[c] -= 1.0f;
+					instances[k].max[c] += 1.0f;
+				}
+				instances[k].flags = opaquePbr( m ) ? 0u : kCullNeverOcclude;
+			}
+			templates[k] = { surface.indexCount, surface.firstIndex, 0,
+			    static_cast<std::uint32_t>( buckets.size() - 1 ) };
 		}
-		templates[k] = { surface.indexCount, surface.firstIndex, 0,
-		    static_cast<std::uint32_t>( buckets.size() - 1 ) };
-	}
-	const auto bucketCount = static_cast<std::uint32_t>( buckets.size() );
-	const math::float4x4 toClip = viewToClip();
-	const CullView cullView = PackView( math::ExtractFrustum( toClip ), 32, count );
-	std::vector<BufferId> made;
-	auto make = [&]( std::uint64_t size, UsageSet usages )
-	{
-		BufferDesc desc;
-		desc.size = std::max<std::uint64_t>( size, 16 );
-		desc.usages = usages;
-		auto created = device.CreateBuffer( desc );
-		made.push_back( created ? created.Value() : BufferId() );
-		return made.back();
-	};
-	const UsageSet in = { ResourceUsage::kCopyDestination, ResourceUsage::kStorageRead };
-	const BufferId instanceBuffer = make( count * sizeof( CullInstance ), in );
-	const BufferId viewBuffer = make( sizeof( CullView ), in );
-	const BufferId templateBuffer = make( count * sizeof( DrawTemplate ), in );
-	const BufferId bucketBuffer = make( bucketCount * sizeof( DrawBucket ), in );
-	const BufferId mask = make( std::uint64_t( MaskWords( count ) ) * 4,
-	    { ResourceUsage::kStorageWrite, ResourceUsage::kStorageRead } );
-	const BufferId commands = make( CommandBufferBytes( count, bucketCount ),
-	    { ResourceUsage::kStorageWrite, ResourceUsage::kIndirect } );
-	OcclusionView occlusionView;
-	BufferId occlusionViewBuffer;
-	BufferId visibility;
-	if ( occlude )
-	{
-		occlusionView = s.gpuPyramid.view;
-		occlusionView.count = count;
-		occlusionViewBuffer = make( sizeof( OcclusionView ), in );
-		visibility = make( std::uint64_t( MaskWords( count ) ) * 4,
-		    { ResourceUsage::kStorageWrite, ResourceUsage::kStorageRead } );
-	}
-	const bool ready = s.gpuCull && std::all_of( made.begin(), made.end(),
-	                                    []( BufferId id )
-	                                    {
-		                                    return id.IsValid();
-	                                    } );
-	if ( ready )
-	{
-		encoder.BeginLabel( "core world gpu cull" );
-		auto upload = [&]( BufferId buffer, std::span<const std::byte> bytes )
+		const auto bucketCount = static_cast<std::uint32_t>( buckets.size() );
+		const math::float4x4 toClip = viewToClip();
+		const CullView cullView = PackView( math::ExtractFrustum( toClip ), 32, count );
+		std::vector<BufferId> made;
+		auto make = [&]( std::uint64_t size, UsageSet usages )
 		{
-			encoder.TransitionBuffer(
-			    buffer, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
-			encoder.WriteBuffer( buffer, 0, bytes );
-			encoder.TransitionBuffer(
-			    buffer, ResourceUsage::kCopyDestination, ResourceUsage::kStorageRead );
+			BufferDesc desc;
+			desc.size = std::max<std::uint64_t>( size, 16 );
+			desc.usages = usages;
+			auto created = device.CreateBuffer( desc );
+			made.push_back( created ? created.Value() : BufferId() );
+			return made.back();
 		};
-		upload( instanceBuffer, std::as_bytes( std::span( instances ) ) );
-		upload( viewBuffer, std::as_bytes( std::span( &cullView, 1 ) ) );
-		upload( templateBuffer, std::as_bytes( std::span( templates ) ) );
-		upload( bucketBuffer, std::as_bytes( std::span( buckets ) ) );
-		encoder.TransitionBuffer( mask, ResourceUsage::kUndefined, ResourceUsage::kStorageWrite );
-		const bool culled =
-		    s.gpuCull->Record( encoder, { instanceBuffer, viewBuffer, mask, count } ).HasValue();
-		encoder.TransitionBuffer(
-		    mask, ResourceUsage::kStorageWrite, ResourceUsage::kStorageRead );
-		BufferId kept = mask;
-		bool occluded = true;
+		const UsageSet in = { ResourceUsage::kCopyDestination, ResourceUsage::kStorageRead };
+		const BufferId instanceBuffer = make( count * sizeof( CullInstance ), in );
+		const BufferId viewBuffer = make( sizeof( CullView ), in );
+		const BufferId templateBuffer = make( count * sizeof( DrawTemplate ), in );
+		const BufferId bucketBuffer = make( bucketCount * sizeof( DrawBucket ), in );
+		const BufferId mask = make( std::uint64_t( MaskWords( count ) ) * 4,
+		    { ResourceUsage::kStorageWrite, ResourceUsage::kStorageRead } );
+		const BufferId commands = make( CommandBufferBytes( count, bucketCount ),
+		    { ResourceUsage::kStorageWrite, ResourceUsage::kIndirect } );
+		OcclusionView occlusionView;
+		BufferId occlusionViewBuffer;
+		BufferId visibility;
 		if ( occlude )
 		{
-			upload( occlusionViewBuffer, std::as_bytes( std::span( &occlusionView, 1 ) ) );
-			encoder.TransitionBuffer(
-			    visibility, ResourceUsage::kUndefined, ResourceUsage::kStorageWrite );
-			occluded = s.gpuOcclusion
-			               ->RecordOcclusion(
-			                   encoder, { instanceBuffer, occlusionViewBuffer,
-			                                s.gpuPyramid.pyramid, mask, visibility, count } )
-			               .HasValue();
-			encoder.TransitionBuffer(
-			    visibility, ResourceUsage::kStorageWrite, ResourceUsage::kStorageRead );
-			for ( BindGroupId group : s.gpuOcclusion->TakeRecorded() )
-				s.retiredBindGroups.emplace_back( target.frame, group );
-			kept = visibility;
+			occlusionView = s.gpuPyramid.view;
+			occlusionView.count = count;
+			occlusionViewBuffer = make( sizeof( OcclusionView ), in );
+			visibility = make( std::uint64_t( MaskWords( count ) ) * 4,
+			    { ResourceUsage::kStorageWrite, ResourceUsage::kStorageRead } );
 		}
-		encoder.TransitionBuffer(
-		    commands, ResourceUsage::kUndefined, ResourceUsage::kStorageWrite );
-		const bool compacted =
-		    occluded && s.gpuCompact
-		                    ->Record( encoder, { kept, templateBuffer, viewBuffer, bucketBuffer,
-		                                           commands, count, bucketCount } )
-		                    .HasValue();
-		encoder.TransitionBuffer(
-		    commands, ResourceUsage::kStorageWrite, ResourceUsage::kIndirect );
-		encoder.EndLabel();
-		for ( BindGroupId group : s.gpuCull->TakeRecorded() )
-			s.retiredBindGroups.emplace_back( target.frame, group );
-		for ( BindGroupId group : s.gpuCompact->TakeRecorded() )
-			s.retiredBindGroups.emplace_back( target.frame, group );
-		if ( culled && compacted )
+		const bool ready = s.gpuCull && std::all_of( made.begin(), made.end(),
+		                                    []( BufferId id )
+		                                    {
+			                                    return id.IsValid();
+		                                    } );
+		if ( ready )
 		{
-			out.commands = commands;
+			encoder.BeginLabel( "core world gpu cull" );
+			auto upload = [&]( BufferId buffer, std::span<const std::byte> bytes )
+			{
+				encoder.TransitionBuffer(
+				    buffer, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+				encoder.WriteBuffer( buffer, 0, bytes );
+				encoder.TransitionBuffer(
+				    buffer, ResourceUsage::kCopyDestination, ResourceUsage::kStorageRead );
+			};
+			upload( instanceBuffer, std::as_bytes( std::span( instances ) ) );
+			upload( viewBuffer, std::as_bytes( std::span( &cullView, 1 ) ) );
+			upload( templateBuffer, std::as_bytes( std::span( templates ) ) );
+			upload( bucketBuffer, std::as_bytes( std::span( buckets ) ) );
+			encoder.TransitionBuffer(
+			    mask, ResourceUsage::kUndefined, ResourceUsage::kStorageWrite );
+			const bool culled =
+			    s.gpuCull->Record( encoder, { instanceBuffer, viewBuffer, mask, count } )
+			        .HasValue();
+			encoder.TransitionBuffer(
+			    mask, ResourceUsage::kStorageWrite, ResourceUsage::kStorageRead );
+			BufferId kept = mask;
+			bool occluded = true;
+			if ( occlude )
+			{
+				upload( occlusionViewBuffer, std::as_bytes( std::span( &occlusionView, 1 ) ) );
+				encoder.TransitionBuffer(
+				    visibility, ResourceUsage::kUndefined, ResourceUsage::kStorageWrite );
+				occluded = s.gpuOcclusion
+				               ->RecordOcclusion(
+				                   encoder, { instanceBuffer, occlusionViewBuffer,
+				                                s.gpuPyramid.pyramid, mask, visibility, count } )
+				               .HasValue();
+				encoder.TransitionBuffer(
+				    visibility, ResourceUsage::kStorageWrite, ResourceUsage::kStorageRead );
+				for ( BindGroupId group : s.gpuOcclusion->TakeRecorded() )
+					s.retiredBindGroups.emplace_back( target.frame, group );
+				kept = visibility;
+			}
+			encoder.TransitionBuffer(
+			    commands, ResourceUsage::kUndefined, ResourceUsage::kStorageWrite );
+			const bool compacted =
+			    occluded && s.gpuCompact
+			                    ->Record( encoder, { kept, templateBuffer, viewBuffer, bucketBuffer,
+			                                           commands, count, bucketCount } )
+			                    .HasValue();
+			encoder.TransitionBuffer(
+			    commands, ResourceUsage::kStorageWrite, ResourceUsage::kIndirect );
+			encoder.EndLabel();
+			for ( BindGroupId group : s.gpuCull->TakeRecorded() )
+				s.retiredBindGroups.emplace_back( target.frame, group );
+			for ( BindGroupId group : s.gpuCompact->TakeRecorded() )
+				s.retiredBindGroups.emplace_back( target.frame, group );
+			if ( culled && compacted )
+			{
+				out.commands = commands;
+			}
+			else
+				out.buckets.clear();
 		}
 		else
 			out.buckets.clear();
-	}
-	else
-		out.buckets.clear();
-	for ( BufferId id : made )
-		if ( id.IsValid() )
-			s.retiredBuffers.emplace_back( target.frame, id );
+		for ( BufferId id : made )
+			if ( id.IsValid() )
+				s.retiredBuffers.emplace_back( target.frame, id );
 		return out;
 	};
 	// One indirect draw per bucket of `gpu`, bound as drawSurfaces binds the
@@ -4720,6 +4723,12 @@ void WorldPass::RecordBatch(
 			prepassRendering.width = target.width;
 			prepassRendering.height = target.height;
 			preparation.End();
+			// GPU-driven: the world's prepass list frustum-culled to this
+			// view (it lists every opaque surface of the world) and drawn per
+			// bucket; never occlusion-tested, since it makes the pyramid.
+			const GpuList prepassGpu = target.gpuSubmission && gpuDeviceCapable
+			                               ? gpuCullList( *drawnPrepass, r.prepassMaterials, false )
+			                               : GpuList();
 			encoder.BeginLabel( "core world prepass" );
 			encoder.BeginRendering( prepassRendering );
 			// This private D32 target has no stencil and encodes projection
@@ -4729,18 +4738,24 @@ void WorldPass::RecordBatch(
 			prepassViewport.minDepth = 0.0f;
 			prepassViewport.maxDepth = 1.0f;
 			encoder.SetViewport( prepassViewport );
-			drawSurfaces( *drawnPrepass, r.prepassMaterials,
-			    [&]( const Resources::Material &m ) -> std::optional<PipelineId>
-			    {
-				    auto variant = m.resolver->VariantPipeline(
-				        m.program, material::kSurfaceDepthNormal, material::kSurfaceSsrTargets );
-				    if ( !variant )
-				    {
-					    note( "the prepass: " + variant.Error() );
-					    return std::nullopt;
-				    }
-				    return surfaceStatePipeline( m, variant.Value(), material::SurfaceDrawState() );
-			    } );
+			auto prepassPipeline = [&]( const Resources::Material &m ) -> std::optional<PipelineId>
+			{
+				auto variant = m.resolver->VariantPipeline(
+				    m.program, material::kSurfaceDepthNormal, material::kSurfaceSsrTargets );
+				if ( !variant )
+				{
+					note( "the prepass: " + variant.Error() );
+					return std::nullopt;
+				}
+				return surfaceStatePipeline( m, variant.Value(), material::SurfaceDrawState() );
+			};
+			if ( prepassGpu.commands.IsValid() )
+			{
+				gpuDrawList( prepassGpu, *drawnPrepass, r.prepassMaterials, prepassPipeline );
+				++s.stats.gpuPrepassViews;
+			}
+			else
+				drawSurfaces( *drawnPrepass, r.prepassMaterials, prepassPipeline );
 			if ( occlusionWanted )
 			{
 				// The pyramid holds the world surfaces only: the models'
@@ -4966,6 +4981,23 @@ void WorldPass::RecordBatch(
 		state.depthCompare = CompareOp::kEqual;
 		return state;
 	};
+	// The view's list, GPU-culled once for the depth prepass and the lit
+	// pass (which draw the same buckets).
+	const bool gpuCapable = gpuDeviceCapable;
+	// This view's pyramid: built from the same frame's screen prepass with
+	// the same camera, clip planes and viewport inputs.
+	const bool gpuOccluding = occlusionWanted && s.gpuPyramid.pyramid.IsValid() &&
+	                          s.gpuPyramid.frame == target.frame &&
+	                          s.gpuPyramid.depth == r.prepassDepth &&
+	                          s.gpuPyramid.inputs == screenInputs && s.gpuOcclusion;
+	if ( target.gpuSubmission && !gpuCapable )
+		++s.stats.gpuFallbacks;
+	const GpuList gpuView = target.gpuSubmission && gpuCapable
+	                            ? gpuCullList( order, r.materials, gpuOccluding )
+	                            : GpuList();
+	if ( gpuView.commands.IsValid() )
+		s.stats.gpuOcclusionViews += gpuOccluding;
+
 	bool worldDepthReady = depthPrepassSafe;
 	// The opaque (and alpha-tested) surfaces' depth first, into the target's
 	// own depth with its color masked. Eligible PBR lighting reads that depth
@@ -4987,23 +5019,32 @@ void WorldPass::RecordBatch(
 			encoder.BeginLabel( "core world depth" );
 			encoder.BeginRendering( rendering );
 			encoder.SetViewport( view.viewport );
-			drawSurfaces( opaque, r.materials,
-			    [&]( const Resources::Material &m ) -> std::optional<PipelineId>
-			    {
-				    auto variant = m.resolver->VariantPipeline( m.program,
-				        material::kSurfaceDepthNormal | material::kSurfaceDepthOnly,
-				        material::kSurfaceSsrTargets );
-				    if ( !variant )
+			auto depthPipeline = [&]( const Resources::Material &m ) -> std::optional<PipelineId>
+			{
+				auto variant = m.resolver->VariantPipeline( m.program,
+				    material::kSurfaceDepthNormal | material::kSurfaceDepthOnly,
+				    material::kSurfaceSsrTargets );
+				if ( !variant )
+				{
+					worldDepthReady = false;
+					note( "the depth prepass: " + variant.Error() );
+					return std::nullopt;
+				}
+				const auto state = surfaceStatePipeline( m, variant.Value(), target.drawState );
+				if ( !state )
+					worldDepthReady = false;
+				return state;
+			};
+			// GPU-driven: the view's buckets of opaque materials, from the
+			// lit pass's commands (the same surfaces `opaque` lists).
+			if ( gpuView.commands.IsValid() )
+				gpuDrawList( gpuView, order, r.materials, depthPipeline,
+				    []( const Resources::Material &m )
 				    {
-					    worldDepthReady = false;
-					    note( "the depth prepass: " + variant.Error() );
-					    return std::nullopt;
-				    }
-				    const auto state = surfaceStatePipeline( m, variant.Value(), target.drawState );
-				    if ( !state )
-					    worldDepthReady = false;
-				    return state;
-			    } );
+					    return m.program.blend != BlendMode::kOpaque;
+				    } );
+			else
+				drawSurfaces( opaque, r.materials, depthPipeline );
 			encoder.EndRendering();
 			encoder.EndLabel();
 		}
@@ -5046,23 +5087,6 @@ void WorldPass::RecordBatch(
 		encoder.EndRendering();
 		encoder.EndLabel();
 	}
-	// The view's list, GPU-culled once for the depth prepass and the lit
-	// pass (which draw the same buckets).
-	const bool gpuCapable = gpuDeviceCapable;
-	// This view's pyramid: built from the same frame's screen prepass with
-	// the same camera, clip planes and viewport inputs.
-	const bool gpuOccluding = occlusionWanted && s.gpuPyramid.pyramid.IsValid() &&
-	                          s.gpuPyramid.frame == target.frame &&
-	                          s.gpuPyramid.depth == r.prepassDepth &&
-	                          s.gpuPyramid.inputs == screenInputs && s.gpuOcclusion;
-	if ( target.gpuSubmission && !gpuCapable )
-		++s.stats.gpuFallbacks;
-	const GpuList gpuView = target.gpuSubmission && gpuCapable
-	                            ? gpuCullList( order, r.materials, gpuOccluding )
-	                            : GpuList();
-	if ( gpuView.commands.IsValid() )
-		s.stats.gpuOcclusionViews += gpuOccluding;
-
 	encoder.BeginLabel( "core world" );
 	recordingTemporal = target.motion.IsValid();
 	if ( recordingTemporal )

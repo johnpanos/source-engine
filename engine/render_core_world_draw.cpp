@@ -1155,9 +1155,9 @@ CON_COMMAND( r_core_world_stats, "RFC 0016 K5: the core world's surfaces, views 
 	Msg( "r_core_world_stats: posed models queued %llu draws %llu\n", stats.posedModelsQueued,
 	    stats.posedDrawsDrawn );
 	Msg( "r_core_world_stats: gpu submission views %llu indirect draws %llu fallbacks %llu "
-	     "occlusion views %llu pyramids %llu\n",
+	     "occlusion views %llu pyramids %llu prepass views %llu\n",
 	    stats.gpuViews, stats.gpuIndirectDraws, stats.gpuFallbacks, stats.gpuOcclusionViews,
-	    stats.gpuPyramids );
+	    stats.gpuPyramids, stats.gpuPrepassViews );
 	Msg( "r_core_world_stats: screen-pass prepass lists: %llu build(s), %llu reuse(s), %llu "
 	     "rebuild(s) after an unready material or group\n",
 	    stats.prepassListBuilds, stats.prepassListReuses, stats.prepassListRetries );
