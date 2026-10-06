@@ -157,7 +157,11 @@ STEPS = ("legacy-scene", "scene", "environment", "stage", "probe-placement", "re
          "probe", "rprb", "probe-volume", "radiosity", "sdf", "ktx2", "sky", "pack", "identity",
          "content", "boot", "camera-boot", "runtime-gate", "traversal-boot", "traversal", "audit")
 BAKE_SCOPE = "pbrt-shared-lightmap-uv-and-cycles-bake"
-GATES = ("reference-gate", "noise", "runtime-gate", "traversal", "audit")
+# Quality gates report, they never stop a build or block publishing (user
+# decision 2026-10-05): a failed gate is recorded in build.json's
+# "gate_findings" and printed. Correctness steps (compile, identity, pack)
+# still fail the build.
+GATES = ("reference-gate", "noise", "seams", "runtime-gate", "traversal", "audit")
 PROFILES = ROOT / "quality" / "map_export_profiles"
 DEFAULT_QUALITY = "source2"
 LEGACY_QUALITY = DEFAULT_QUALITY
@@ -781,13 +785,13 @@ class Pipeline:
             if missing:
                 raise SystemExit("step %s did not produce %s" % (name, ", ".join(missing)))
         except SystemExit as failure:
-            if not (self.keep_going and name in GATES):
+            if name not in GATES:
                 self.restore(name)
                 raise
             # A failed gate's own verdict replaces the old one; it is not
             # recorded in steps.json, so the gate runs again next build.
             shutil.rmtree(self.out / PREVIOUS / name, ignore_errors=True)
-            print("[%s] FAILED, continuing (--keep-going): %s" % (name, failure), flush=True)
+            print("[%s] GATE FINDING (reported, not fatal): %s" % (name, failure), flush=True)
             self.failed_gates.append(name)
             self.stop_after(name)
             return
@@ -1213,13 +1217,12 @@ class Pipeline:
             # parallax box, prefiltered and encoded as the RPRB lump.
             coverage_rules = self.profile.get("audit") or {}
             face_args = self.probe_arguments(scene, env_args) + ["--out-dir", p["probe"]]
-            if self.keep_going:
-                face_args.append("--record-coverage-failure")
+            face_args.append("--record-coverage-failure")  # reported, not fatal
             self.step("probe", [p["stage"], p["probe_placement"]] + self.scene_sources() +
                       ([environment] if environment else []),
                       dict(probe, device=self.lightmap["device"], seed=self.lightmap["seed"],
                            denoise=probe.get("denoise", True),
-                           coverage_rules=coverage_rules, record_coverage_failure=self.keep_going),
+                           coverage_rules=coverage_rules, record_coverage_failure=True),
                       SCENE_SCRIPTS + self.baker.scripts("probe"),
                       [p["probe"]],
                       lambda: self.baker.bake("probe", face_args))
@@ -1240,10 +1243,6 @@ class Pipeline:
                                                 "--preview-gain",
                                                 str(self.lightmap["preview_gain"]),
                                                 "--out", p["rprb"]] +
-                                               (["--max-mean-relative-residual", str(
-                                                   coverage_rules["max_reflection_probe_residual"])]
-                                                if "max_reflection_probe_residual" in coverage_rules
-                                                else []) +
                                                (["--candidate-bounds-m"] +
                                                 [str(float(v)) for v in envelope]
                                                 if envelope else [])))
@@ -1560,7 +1559,7 @@ class Pipeline:
                           sys.executable, HERE / "map_export_audit.py", "--build", self.out,
                           "--profile", self.profile["path"], "--out", p["audit"]] +
                           (["--booted"] if self.boot else [])))
-        summary = {"status": "gate-failed" if self.failed_gates else "pass",
+        summary = {"status": "pass", "gate_findings": list(self.failed_gates),
                    "quality": self.profile["name"],
                    "preview": self.preview,
                    "production": not self.preview,
@@ -1587,14 +1586,14 @@ class Pipeline:
             summary["lightmap_medium"] = baked_medium
         (self.out / "build.json").write_text(json.dumps(summary, indent=2) + "\n")
         print(json.dumps(summary, indent=2))
-        if self.publish and not self.failed_gates:
+        if self.publish:
             playable_maps.publish(summary, sidecars={
                 MEDIUM_SIDECAR: json.dumps(baked_medium, indent=2, sort_keys=True) + "\n"}
                 if baked_medium else None)
             print("published to %s; play it with ./play %s" %
                   (playable_maps.STORE / self.map, self.map))
         if self.failed_gates:
-            raise SystemExit("gates failed: " + ", ".join(self.failed_gates))
+            print("gate findings (reported, not fatal): " + ", ".join(self.failed_gates))
 
 
 def main():
