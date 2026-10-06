@@ -5195,9 +5195,14 @@ bool CEmptyMesh::EmitToCoreQueue()
 		    source.m_vertexData.data() + std::size_t( i ) * source.RecordStride();
 		auto &out = vertices[i];
 		memcpy( out.position, raw, sizeof( out.position ) );
+		// Frozen-path: a skinned position is already world space (the bone
+		// matrices carry the model transform, as skin and vertexlit vs20 apply
+		// them); only a rigid one takes the model matrix. The view model's
+		// non-identity model matrix put its skinned vertices off screen.
 		if ( g_NumBoneWeights > 0 )
 			SkinPosition( raw, out.position );
-		ModelToWorld( out.position );
+		else
+			ModelToWorld( out.position );
 		memcpy( out.uv, raw + 16, sizeof( out.uv ) );
 		memcpy( out.lightmapUv, raw + 24, sizeof( out.lightmapUv ) );
 		out.color[0] = raw[14];

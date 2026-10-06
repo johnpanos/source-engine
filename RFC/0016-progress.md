@@ -11369,3 +11369,19 @@ the whole run resolves fewer than 64 materials.
 
 The frame is still about 30 ms and CPU-bound on this workload. This removes
 one per-frame cost; it does not meet a budget.
+
+### R91: the Portal 2 view model drawn by the core (2026-10-05)
+
+The view model (`v_portalgun`) was claimed but invisible. Its draws reached
+the core with the view-model depth range (0–0.1), but its vertices projected
+to NDC x ≈ 4. `EmitToCoreQueue` applied the model matrix after skinning.
+Skinned positions are already in world space, since the bone matrices carry
+the model transform (skin and vertexlit vs20; the native path's own vertex
+code guards it the same way). Studio draws normally have an identity model
+matrix, so this went unnoticed; the view model's is not. A frozen-path defect
+fix applies the model matrix to rigid vertices only.
+
+In game, the gun now draws on `sp_a1_intro4`. It is dark: it is lit by its
+ambient cube and one weak light, and the projected light is still open.
+`testchmb_a_01` is unchanged outside animated areas (0.76% of pixels differ
+by more than 8 levels against the previous frame).
