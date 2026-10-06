@@ -9,7 +9,7 @@ block in the toolchain file, those steps run on the remote host instead, and
 nothing else changes: the other steps, the step cache and the outputs stay
 local. For each remote step:
 
-  1. push: rsync mirrors the scripts (tools/quality, quality/), the build
+  1. push: rsync mirrors the scripts (tools/quality, tools/texture, quality/), the build
      directory (with --delete, so the outputs the step set aside are gone
      there too) and every other input path to the SAME absolute paths on the
      host: scenes, receipts and USD stages name each other by absolute path;
@@ -105,7 +105,7 @@ TOOL_STEPS = ("noise", "denoise", "directional", "rprb")
 DEFAULT_SSH = ("ssh", "-o", "BatchMode=yes", "-o", "ServerAliveInterval=30")
 # Repository trees the Blender scripts read besides their inputs: the scripts
 # and their imports, and the export/product profiles some of them load.
-SUPPORT_TREES = ("tools/quality", "quality")
+SUPPORT_TREES = ("tools/quality", "tools/texture", "quality")
 EXCLUDES = ("__pycache__", ".previous", "logs")
 
 

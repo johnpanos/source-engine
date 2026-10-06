@@ -159,7 +159,7 @@ class ProvisioningTest(unittest.TestCase):
         self.assertEqual(self.rsync_arguments(remote.push, [], Path("/src/engine/out")), [
             # the support trees first, then the work directory, which is deleted there
             ["-a", "--relative", "--exclude=__pycache__", "--exclude=.previous",
-             "--exclude=logs", "tools/quality", "quality", "h:/src/engine/"],
+             "--exclude=logs", "tools/quality", "tools/texture", "quality", "h:/src/engine/"],
             ["-a", "--relative", "--exclude=__pycache__", "--exclude=.previous",
              "--exclude=logs", "--delete", "out", "h:/src/engine/"]])
         self.assertEqual(self.rsync_arguments(remote.pull, Path("/src/engine/out"), update=True),
