@@ -937,6 +937,37 @@ def estimate_box(raycast, capture, directions):
     return box_min, box_max, report
 
 
+def room_bounded(box, fit, covered, capture, bounds_min, bounds_max, fade):
+    """A placed probe's box with every open face (its fit saw sky or void
+    there: reflection_probe.OPEN_EXTENT) cut back to the probe's own room.
+
+    Horizontally the room is what the probe covers: the walkable samples it
+    sees inside its box, plus the fade. Vertically it is the placement
+    bounds, so walls above eye height in an open-roofed space keep their
+    probe. Without this an open face reaches about a kilometre: the probe
+    then wins the blend on surfaces far from its capture (on
+    sp_a1_intro4_relit, 9% of the playable surface took a reflection
+    captured a median 2,254 units away) and stretches the candidate grid.
+    """
+    box_min, box_max = (np.array(value, dtype=np.float64) for value in box)
+    faces = fit.get("faces", {})
+    points = np.asarray(covered, dtype=np.float64).reshape(-1, 3)
+    if not len(points):
+        points = np.asarray(capture, dtype=np.float64).reshape(1, 3)
+    for name, axis, sign in reflection_probe.AXES:
+        if not faces.get(name, {}).get("open"):
+            continue
+        if axis == 2:
+            limit = bounds_max[2] if sign > 0 else bounds_min[2]
+        else:
+            limit = points[:, axis].max() + fade if sign > 0 else points[:, axis].min() - fade
+        if sign > 0:
+            box_max[axis] = min(box_max[axis], max(limit, capture[axis] + fade))
+        else:
+            box_min[axis] = max(box_min[axis], min(limit, capture[axis] - fade))
+    return box_min, box_max
+
+
 def visible(raycast, origins, targets):
     delta = np.asarray(targets) - np.asarray(origins)
     length = np.linalg.norm(delta, axis=1)
@@ -1095,10 +1126,12 @@ def place(raycast, bounds_min, bounds_max, glossy=None, params=None, seeds=(), v
         uncovered &= ~seen
     for seed in seeds:
         seed = np.asarray(seed, dtype=np.float64)
-        box_min, box_max = estimate_box(raycast, seed, directions)[:2]
+        box_min, box_max, fit = estimate_box(raycast, seed, directions)
         within = np.nonzero(inside(walkable, box_min, box_max, params["fade_m"]))[0]
         seen = np.zeros(len(walkable), dtype=bool)
         seen[within] = visible(raycast, np.tile(seed, (len(within), 1)), walkable[within])
+        box_min, box_max = room_bounded((box_min, box_max), fit, walkable[seen], seed,
+                                        bounds_min, bounds_max, params["fade_m"])
         probes.append({"capture": seed.copy(), "box_min": box_min, "box_max": box_max,
                        "influence_min": box_min - margin, "influence_max": box_max + margin,
                        "fade": params["fade_m"], "role": "room", "seeded": True,
@@ -1137,7 +1170,8 @@ def place(raycast, bounds_min, bounds_max, glossy=None, params=None, seeds=(), v
         math.floor(len(walkable) * rules.get("max_uncovered_walkable_fraction", 0)),
         math.floor(int(servable.sum()) * rules.get("max_unserved_glossy_fraction", 0)))
     for index in chosen:
-        box_min, box_max = boxes[index]
+        box_min, box_max = room_bounded(boxes[index], estimates[index][2], walkable[covers[index]],
+                                        walkable[index], bounds_min, bounds_max, params["fade_m"])
         influence_min, influence_max = box_min - margin, box_max + margin
         # A joint capture also serves visible glossy points within the same
         # near-field radius; include those in its authored influence.

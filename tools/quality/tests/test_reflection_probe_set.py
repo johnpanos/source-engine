@@ -694,7 +694,7 @@ class PlacementTest(unittest.TestCase):
         scene = self.two_rooms()
         probes, report = rps.place(scene, (0.0, 0.0, -0.5), (11.2, 4.0, 2.9),
                                    params={"spacing_m": 0.5, "fit_rays": 512})
-        rooms = [p for p in probes if p["role"] == "room"]
+        rooms = [p for p in probes if p["role"] == "joint"]
         self.assertEqual(report["uncovered_walkable"], 0)
         self.assertEqual(len(rooms), 2)
         xs = sorted(p["capture"][0] for p in rooms)
@@ -732,6 +732,31 @@ class PlacementTest(unittest.TestCase):
                 else:
                     self.assertEqual(got[key], want[key])
 
+    def test_an_open_side_ends_at_the_probes_own_room(self):
+        # A 6 x 4 m room whose whole +x wall is open to the sky: the fit
+        # reaches OPEN_EXTENT there, and placement must cut it back to the
+        # floor the probe covers (plus the fade), not a kilometre away.
+        scene = rps.BoxScene(rooms=[((0.0, 0.0, 0.0), (6.0, 4.0, 3.0))],
+                             openings=[((5.9, -0.1, -0.1), (6.1, 4.1, 3.1))])
+        probes, _ = rps.place(scene, (0.0, 0.0, -0.5), (6.0, 4.0, 2.9),
+                              params={"spacing_m": 0.5, "fit_rays": 512})
+        fade = rps.PLACEMENT_DEFAULTS["fade_m"]
+        margin = rps.PLACEMENT_DEFAULTS["influence_margin_m"]
+        placed = [p for p in probes if p["role"] == "joint"]
+        self.assertTrue(placed)
+        for probe in placed:
+            self.assertLessEqual(probe["box_max"][0], 6.0 + fade + 1e-6)
+            self.assertLessEqual(probe["influence_max"][0], 6.0 + fade + margin + 1e-6)
+            self.assertEqual(probe["box_max"][2], 3.0)  # the closed ceiling is untouched
+
+    def test_closed_faces_are_unchanged_by_the_room_bound(self):
+        fit = {"faces": {"px": {"open": False}}}
+        box = (np.array([0.0, 0.0, 0.0]), np.array([5.0, 4.0, 3.0]))
+        out = rps.room_bounded(box, fit, np.array([[1.0, 1.0, 1.6]]), np.array([1.0, 1.0, 1.6]),
+                               np.zeros(3), np.array([5.0, 4.0, 3.0]), 0.8)
+        self.assertEqual(out[0].tolist(), box[0].tolist())
+        self.assertEqual(out[1].tolist(), box[1].tolist())
+
     def test_no_probe_straddles_a_doorway(self):
         # The two-rooms fixture's geometry: 5 m rooms, a 0.2 m wall and a
         # 1.2 m doorway. A capture in front of the doorway fits a box through
@@ -743,7 +768,7 @@ class PlacementTest(unittest.TestCase):
         probes, report = rps.place(scene, (0.0, 0.0, -0.5), (10.2, 4.0, 2.9),
                                    params={"spacing_m": 0.75, "fit_rays": 512})
         self.assertEqual(report["uncovered_walkable"], 0)
-        rooms = sorted((p for p in probes if p["role"] == "room"),
+        rooms = sorted((p for p in probes if p["role"] == "joint"),
                        key=lambda p: p["capture"][0])
         self.assertEqual(len(rooms), 2)
         self.assertLessEqual(rooms[0]["box_max"][0], 5.05)
@@ -798,7 +823,7 @@ class PlacementTest(unittest.TestCase):
         self.assertGreater(capped["walkable_spacing_m"], 0.25)
         self.assertEqual(full["walkable_spacing_m"], 0.25)
         self.assertEqual(capped["uncovered_walkable"], 0)
-        xs = sorted(p["capture"][0] for p in probes if p["role"] == "room")
+        xs = sorted(p["capture"][0] for p in probes if p["role"] == "joint")
         self.assertEqual(len(xs), 2)
         self.assertLess(xs[0], 6.0)
         self.assertGreater(xs[1], 6.2)
