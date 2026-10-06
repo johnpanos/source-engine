@@ -196,9 +196,14 @@ platform acceptance.
   [binding rules](RFC/0016-render-core.md#binding-rules-for-all-render-work-user-decision-2026-09-28).
   - The legacy render paths (`materialsystem/shaderapivulkan/`, the D3D9
     backend and stdshaders, the legacy material system's shading, and the
-    engine's CPU runtime-lighting path) are frozen. They take only defect
-    fixes, core plumbing, or a specific explicit user request, and each
-    such commit carries a `Frozen-path:` line.
+    engine's CPU runtime-lighting path) are frozen against new features.
+    They take defect fixes, core plumbing, a specific explicit user
+    request, and (user decision, 2026-10-06) any change that serves the
+    render core's long-term gain: adopt the core's new formats and
+    contracts, drop shims kept only for them, delete what the core
+    replaces. Favor progress over preserving a frozen path; never put new
+    work in the wrong place. Each such commit carries a `Frozen-path:`
+    line.
   - New render work lands on the core in its owning module and is proven
     in `render_lab` before any integration.
   - The old copy is deleted in the change that replaces it.

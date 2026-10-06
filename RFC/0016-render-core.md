@@ -328,7 +328,7 @@ A frozen path receives no new feature. A feature is any of:
 - a new console variable that changes what is drawn;
 - any look the path did not produce before.
 
-Only these three changes are allowed on a frozen path:
+Only these four changes are allowed on a frozen path:
 
 1. **A defect fix.** The path does not match the behavior it already
    claims: a crash, a leak, a race, a validation error, or pixels that
@@ -347,11 +347,22 @@ Only these three changes are allowed on a frozen path:
    A general goal ("make it look better", "Source 2 quality", "fix the
    lighting") is not such a request. Work toward a general goal goes to the
    core.
+4. **Core progress (user decision, 2026-10-06).** Any change that serves the
+   render core's long-term gain: adopting a format, contract or data layout
+   the core introduces (a new lump version read natively instead of through
+   a CPU conversion kept only for the old path), removing duplicated or
+   now-wrong work, simplifying a handover, or deleting frozen code. Favor
+   progress: do not hold the core back, or add shims and converters, to keep
+   a frozen path unchanged. The frozen path may change or lose behavior the
+   core supersedes; record what it loses in the progress record.
+   This does not relax rule 2: a new feature still never lands on a frozen
+   path. The test is where the work belongs, not whether the path is
+   touched.
 
 A commit that changes a frozen path names its exception in the message:
-`Frozen-path: defect <oracle>`, `Frozen-path: core plumbing <gate>`, or
-`Frozen-path: user request <date>`. A change that fits none of the three
-does not land.
+`Frozen-path: defect <oracle>`, `Frozen-path: core plumbing <gate>`,
+`Frozen-path: user request <date>`, or `Frozen-path: core progress
+<reason>`. A change that fits none of the four does not land.
 
 **Rule 2: New render work lands on the core, in its owning module.** Every
 new lighting term, material capability, pass or render feature is built in

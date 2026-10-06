@@ -44,7 +44,7 @@
                    in the frozen paths.
                  Anything recorded that disappeared must be recorded too
                  (the ratchet stays exact). A change that grows a set is a
-                 Frozen-path commit (defect fix or explicit user request)
+                 Frozen-path commit (one of RFC 0016 rule 1's exceptions)
                  that rewrites the ratchet with --write in the same commit.
                  --rev REV reads the frozen paths (and, when checking, the
                  ratchet) from a git revision instead of the working tree.
@@ -341,8 +341,8 @@ def check_legacy_freeze(root, checks, write=False, rev=None):
     if write:
         data = {"schema": FREEZE_SCHEMA,
                 "note": "RFC 0016 binding rule 1: the frozen legacy render paths. Exact; a set "
-                        "may grow only in a Frozen-path commit (defect fix or explicit user "
-                        "request) that rewrites this file with `retirement_scans.py "
+                        "may grow only in a Frozen-path commit (one of RFC 0016 rule 1's "
+                        "exceptions) that rewrites this file with `retirement_scans.py "
                         "legacy-freeze --write`. Deletions are recorded the same way.",
                 "frozen": current}
         path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n")

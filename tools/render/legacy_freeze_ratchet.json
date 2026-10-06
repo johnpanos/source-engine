@@ -2035,6 +2035,6 @@
       "-vkvalidate"
     ]
   },
-  "note": "RFC 0016 binding rule 1: the frozen legacy render paths. Exact; a set may grow only in a Frozen-path commit (defect fix or explicit user request) that rewrites this file with `retirement_scans.py legacy-freeze --write`. Deletions are recorded the same way.",
+  "note": "RFC 0016 binding rule 1: the frozen legacy render paths. Exact; a set may grow only in a Frozen-path commit (one of RFC 0016 rule 1's exceptions) that rewrites this file with `retirement_scans.py legacy-freeze --write`. Deletions are recorded the same way.",
   "schema": "render-legacy-freeze-ratchet/v1"
 }
