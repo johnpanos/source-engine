@@ -577,6 +577,68 @@ class CapacityTest(unittest.TestCase):
                 self.assertEqual(table[63, 3, 3], 190)
 
 
+class RegridTest(unittest.TestCase):
+    """A probe whose fitted box reaches past the world (a depth fit that saw
+    the void) stretched the 16^3 candidate grid over the whole map."""
+
+    def setUp(self):
+        layout = rps.read(rps.capacity_fixture())
+        probes = [dict(probe) for probe in layout["probes"]]
+        local = next(i for i, probe in enumerate(probes) if not probe["global"] and probe["rank"] >= 2)
+        probes[local]["influence_min"] = probes[local]["influence_min"] - 40000.0
+        probes[local]["influence_max"] = probes[local]["influence_max"] + 40000.0
+        self.data = rps.build(probes, layout["chains"], scale=1, candidates=True)
+        others = [p for p in probes if not p["global"] and p is not probes[local]]
+        self.bounds = (np.min([p["influence_min"] for p in others], axis=0),
+                       np.max([p["influence_max"] for p in others], axis=0))
+
+    def test_bounds_shrink_cells_and_keep_every_other_byte(self):
+        out = rps.regrid(self.data, self.bounds)
+        before, after = rps.read(self.data)["candidates"], rps.read(out)["candidates"]
+        self.assertLess(after["step"], before["step"])
+        self.assertLess(max(rps.candidates_per_cell(out)), max(rps.candidates_per_cell(self.data)))
+        layout = rps.read(self.data)
+        base = (rps.HEADER_BYTES + rps.RECORD_BYTES * layout["count"] + 15) & ~15
+        self.assertEqual(len(out), len(self.data))
+        self.assertEqual(out[:base], self.data[:base])
+        self.assertEqual(out[layout["atlas_offset"]:], self.data[layout["atlas_offset"]:])
+
+    def test_bounded_masks_hold_every_weighted_probe(self):
+        out = rps.read(rps.regrid(self.data, self.bounds))
+        grid, probes = out["candidates"], out["probes"]
+        masks = grid["masks"].reshape(rps.CANDIDATE_CELLS, -1)
+        rng = np.random.default_rng(7)
+        # Points inside every probe's own reach (clipped to the bounds), so
+        # each probe is weighted somewhere in the sample.
+        points = np.concatenate([
+            rng.uniform(np.maximum(p["influence_min"], self.bounds[0]),
+                        np.minimum(p["influence_max"], self.bounds[1]), size=(6, 3))
+            for p in probes if np.all(np.minimum(p["influence_max"], self.bounds[1]) >
+                                      np.maximum(p["influence_min"], self.bounds[0]))])
+        normals = rng.normal(size=points.shape)
+        normals /= np.linalg.norm(normals, axis=1, keepdims=True)
+        weights = rps.blend_weights(points, normals, probes)
+        for point, row in zip(points, weights):
+            cell = np.floor((point - grid["origin"]) / grid["step"]).astype(int)
+            if np.any(cell < 0) or np.any(cell >= rps.CANDIDATE_DIM):
+                continue  # outside the grid every rank is a candidate
+            mask = masks[cell[0] + 16 * (cell[1] + 16 * cell[2])]
+            for index in np.nonzero(row)[0]:
+                rank = probes[index]["rank"]
+                self.assertTrue(int(mask[rank // 64]) >> (rank % 64) & 1,
+                                "rank %d weighs %g at %s but is no candidate" % (rank, row[index], point))
+
+    def test_the_bake_and_regrid_paths_agree(self):
+        layout = rps.read(self.data)
+        baked = rps.build(layout["probes"], layout["chains"], scale=1, candidates=True,
+                          candidate_bounds=self.bounds)
+        self.assertEqual(baked, rps.regrid(self.data, self.bounds))
+
+    def test_bounds_missing_every_probe_are_refused(self):
+        with self.assertRaises(rps.RprbError):
+            rps.regrid(self.data, (np.full(3, 9e5), np.full(3, 9.5e5)))
+
+
 class PlacementTest(unittest.TestCase):
     def authored(self):
         return {"capture": [3, 2, 1.6], "box_min": list(ROOM[0]), "box_max": list(ROOM[1]),

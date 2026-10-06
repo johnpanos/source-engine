@@ -267,10 +267,21 @@ def candidate_bytes(count):
     return 32 + CANDIDATE_CELLS * 8 * (1 if count <= 64 else 4)
 
 
-def candidate_grid(probes):
+def candidate_grid(probes, bounds=None):
+    """The 16x16x16 grid over the local probes' reach. `bounds` (world
+    min, max) limits it to where surfaces can be: a probe whose fitted box
+    reaches past the world (a depth fit that saw the void) would otherwise
+    stretch every cell over the whole map. Masks stay conservative inside the
+    grid and every rank is a candidate outside it, so bounds change only the
+    candidates visited, never a weight."""
     local = [p for p in probes if not p["global"]] or probes
     low = np.min([p["influence_min"] - p["fade"] for p in local], axis=0)
     high = np.max([p["influence_max"] + p["fade"] for p in local], axis=0)
+    if bounds is not None:
+        low = np.maximum(low, np.asarray(bounds[0], dtype=np.float64))
+        high = np.minimum(high, np.asarray(bounds[1], dtype=np.float64))
+        if np.any(high <= low):
+            raise RprbError("InvalidCandidates", "the bounds miss every local probe")
     step = 2.0 ** math.ceil(math.log2(max(1.0, float(np.max(high - low)) /
                                        (CANDIDATE_DIM - 1))))
     origin = np.floor(low / step) * step
@@ -278,8 +289,39 @@ def candidate_grid(probes):
             "masks": candidate_required(probes, origin, step)}
 
 
-def build(probes, chains, scale=SOURCE_UNITS_PER_METER, relight=None, candidates=False):
-    """RPRB bytes. `probes`: dicts with capture, box_min, box_max,
+def serialized_probes(records, count):
+    """The candidate grid's inputs as the runtime validator reads them."""
+    serialized = []
+    for index in range(count):
+        f = struct.unpack_from("<16f4I", records, index * RECORD_BYTES)
+        serialized.append({"influence_min": np.array(f[10:13]),
+                           "influence_max": np.array(f[13:16]), "fade": f[3],
+                           "rank": f[16], "global": bool(f[17] & FLAG_GLOBAL)})
+    return serialized
+
+
+def regrid(data, bounds):
+    """RPRB bytes with the candidate grid rebuilt inside world `bounds`
+    (Source units); records, header and atlas are unchanged."""
+    layout = read(data)
+    if layout.get("candidates") is None:
+        raise RprbError("InvalidCandidates", "only v4/v5 RPRB carry a candidate grid")
+    count = layout["count"]
+    base_offset = (HEADER_BYTES + RECORD_BYTES * count + 15) & ~15
+    grid = candidate_grid(serialized_probes(data[HEADER_BYTES:], count), bounds)
+    section = struct.pack("<4f4I", *grid["origin"], grid["step"], 0, 0, 0, 0)
+    section += grid["masks"].astype("<u8").tobytes()
+    if base_offset + len(section) != layout["atlas_offset"]:
+        raise RprbError("InvalidCandidates", "the grid section changed size")
+    out = data[:base_offset] + section + data[base_offset + len(section):]
+    read(out)
+    return out
+
+
+def build(probes, chains, scale=SOURCE_UNITS_PER_METER, relight=None, candidates=False,
+          candidate_bounds=None):
+    """RPRB bytes. `candidate_bounds` (min, max in Source units) limits the
+    candidate grid to the playable envelope (candidate_grid). `probes`: dicts with capture, box_min, box_max,
     influence_min, influence_max (meters), fade (meters), global; `chains`:
     each probe's `reflection_probe.mip_chain` (linear, already exposure
     scaled). Exactly one probe is global. `relight` (v2): each probe's
@@ -342,13 +384,7 @@ def build(probes, chains, scale=SOURCE_UNITS_PER_METER, relight=None, candidates
     candidates = candidates or count > 64
     if candidates:
         # Read back the exact serialized floats used by the runtime validator.
-        serialized = []
-        for index in range(count):
-            f = struct.unpack_from("<16f4I", records, index * RECORD_BYTES)
-            serialized.append({"influence_min": np.array(f[10:13]),
-                               "influence_max": np.array(f[13:16]), "fade": f[3],
-                               "rank": f[16], "global": bool(f[17] & FLAG_GLOBAL)})
-        grid = candidate_grid(serialized)
+        grid = candidate_grid(serialized_probes(records, count), candidate_bounds)
         candidate_data = struct.pack("<4f4I", *grid["origin"], grid["step"], 0, 0, 0, 0)
         candidate_data += grid["masks"].astype("<u8").tobytes()
     atlas_offset = base_offset + len(candidate_data)
@@ -1210,7 +1246,8 @@ def depth_convention(depths, checks):
     return best, medians
 
 
-def pack(probes_dir, width, gain, prefilter_samples=256, max_mean_relative_residual=None):
+def pack(probes_dir, width, gain, prefilter_samples=256, max_mean_relative_residual=None,
+         candidate_bounds_m=None):
     """(RPRB bytes, receipt) from `pbrt_reflection_probe.py`'s output."""
     import gi_reference
     import hashlib
@@ -1276,7 +1313,12 @@ def pack(probes_dir, width, gain, prefilter_samples=256, max_mean_relative_resid
     # space.
     global_index = next(i for i, record in enumerate(receipt["probes"]) if record["global"])
     probes[global_index]["global"] = True
-    data = build(probes, chains, relight=relight if gbuffer else None, candidates=True)
+    bounds = None
+    if candidate_bounds_m is not None:
+        bounds = (np.asarray(candidate_bounds_m[0], dtype=np.float64) * SOURCE_UNITS_PER_METER,
+                  np.asarray(candidate_bounds_m[1], dtype=np.float64) * SOURCE_UNITS_PER_METER)
+    data = build(probes, chains, relight=relight if gbuffer else None, candidates=True,
+                 candidate_bounds=bounds)
     masks = read(data)["candidates"]["masks"]
     candidate_counts = [sum(int(mask).bit_count() for mask in row)
                         for row in masks.reshape(CANDIDATE_CELLS, -1)]
@@ -1468,6 +1510,51 @@ def write_fixture(out):
     (out / "relight-samples.txt").write_text("\n".join(rows) + "\n")
 
 
+def world_bounds(bsp2):
+    """Model 0's bounds (the world brushes) from a BSP2 map's carried lump."""
+    import legacy_bsp
+    raw = legacy_bsp.decompress_lzma_lump(bsp2.legacy_lump(legacy_bsp.LUMP_MODELS), "model lump")
+    if len(raw) < legacy_bsp.MODEL_BYTES:
+        raise RprbError("InvalidCandidates", "the map has no world model")
+    f = struct.unpack_from("<6f", raw, 0)
+    return np.array(f[:3]), np.array(f[3:])
+
+
+def candidates_per_cell(data):
+    masks = read(data)["candidates"]["masks"].reshape(CANDIDATE_CELLS, -1)
+    return [sum(int(word).bit_count() for word in row) for row in masks]
+
+
+def regrid_map(path, out):
+    import bsp2_reader
+    data = Path(path).read_bytes()
+    kind, bsp2 = bsp2_reader.open_any(data)
+    if kind != "bsp2":
+        raise RprbError("InvalidCandidates", "regrid reads BSP2 maps")
+    entry = bsp2.by_id.get(bsp2_reader.fourcc("RPRB"))
+    if entry is None:
+        raise RprbError("InvalidCandidates", "the map has no RPRB lump")
+    old = bsp2.lump(entry)
+    bounds = world_bounds(bsp2)
+    new = regrid(old, bounds)
+    lumps = [(e["fourcc"], e["version"], e["flags"], e["alignment"],
+              new if e is entry else bsp2.lump(e)) for e in bsp2.entries]
+    Path(out).write_bytes(bsp2_reader.write_bsp2(bsp2.revision, lumps))
+    base = (HEADER_BYTES + RECORD_BYTES * read(old)["count"] + 15) & ~15
+    end = read(old)["atlas_offset"]
+    changed_outside = sum(a != b for a, b in zip(old[:base] + old[end:], new[:base] + new[end:]))
+    if len(old) != len(new) or changed_outside:
+        raise RprbError("InvalidCandidates", "regrid changed bytes outside the grid")
+    before, after = candidates_per_cell(old), candidates_per_cell(new)
+    grid = read(new)["candidates"]
+    return {"world_bounds": [bounds[0].tolist(), bounds[1].tolist()],
+            "step": float(grid["step"]), "origin": [float(v) for v in grid["origin"]],
+            "candidates_per_cell": {"before_max": max(before), "after_max": max(after),
+                                    "before_mean": round(sum(before) / len(before), 2),
+                                    "after_mean": round(sum(after) / len(after), 2)},
+            "changed_bytes_outside_grid": changed_outside}
+
+
 def main():
     import argparse
     import hashlib
@@ -1482,6 +1569,13 @@ def main():
                         help="the lightmap's exposure gain (the LMAP writer's)")
     command.add_argument("--max-mean-relative-residual", type=float,
                          help="reject depth-fitted proxy boxes above this runtime limit")
+    command.add_argument("--candidate-bounds-m", type=float, nargs=6,
+                         metavar=("XMIN", "YMIN", "ZMIN", "XMAX", "YMAX", "ZMAX"),
+                         help="the playable envelope (meters) the candidate grid covers")
+    command.add_argument("--out", type=Path, required=True)
+    command = commands.add_parser(
+        "regrid", help="rebuild a BSP2 map's candidate grid inside its world bounds")
+    command.add_argument("--map", type=Path, required=True)
     command.add_argument("--out", type=Path, required=True)
     command = commands.add_parser("info", help="validate RPRB bytes and print their records")
     command.add_argument("rprb", type=Path)
@@ -1498,6 +1592,10 @@ def main():
         args.out.parent.mkdir(parents=True, exist_ok=True)
         args.out.write_bytes(data)
         return
+    if args.command == "regrid":
+        report = regrid_map(args.map, args.out)
+        print(json.dumps(report, indent=1))
+        return
     if args.command == "fixture":
         write_fixture(args.out)
         return
@@ -1510,7 +1608,9 @@ def main():
                                      for probe in layout["probes"]]}, indent=2))
         return
     data, receipt = pack(args.probes_dir, args.width, args.preview_gain,
-                         max_mean_relative_residual=args.max_mean_relative_residual)
+                         max_mean_relative_residual=args.max_mean_relative_residual,
+                         candidate_bounds_m=(args.candidate_bounds_m[:3], args.candidate_bounds_m[3:])
+                         if args.candidate_bounds_m else None)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     temporary = args.out.with_name(args.out.name + ".tmp")
     temporary.write_bytes(data)

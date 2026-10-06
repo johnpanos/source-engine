@@ -1223,11 +1223,15 @@ class Pipeline:
                       SCENE_SCRIPTS + self.baker.scripts("probe"),
                       [p["probe"]],
                       lambda: self.baker.bake("probe", face_args))
+            # The candidate grid covers the playable envelope, as the PRBV
+            # does: a probe box fitted past the world must not stretch it.
+            envelope = self.probe_volume_bounds()
             self.step("rprb", [p["probe"] / "probes.json"],
                       {"width": probe.get("width", 512),
                        "preview_gain": self.lightmap["preview_gain"],
                        "max_mean_relative_residual": coverage_rules.get(
-                           "max_reflection_probe_residual")},
+                           "max_reflection_probe_residual"),
+                       "candidate_bounds_m": envelope},
                       ["reflection_probe_set.py", "reflection_probe.py", "gi_reference.py"],
                       [p["rprb"], p["rprb"].with_name(p["rprb"].name + ".json")],
                       lambda: self.run("rprb", [sys.executable, HERE / "reflection_probe_set.py",
@@ -1239,7 +1243,10 @@ class Pipeline:
                                                (["--max-mean-relative-residual", str(
                                                    coverage_rules["max_reflection_probe_residual"])]
                                                 if "max_reflection_probe_residual" in coverage_rules
-                                                else [])))
+                                                else []) +
+                                               (["--candidate-bounds-m"] +
+                                                [str(float(v)) for v in envelope]
+                                                if envelope else [])))
         volume = self.probe_volume
         if volume:
             volume_bounds = self.probe_volume_bounds()
