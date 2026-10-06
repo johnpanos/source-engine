@@ -233,3 +233,102 @@ No frozen path is touched.
 - **Reproduction:**
   - `python3 tools/quality/ios_conformance.py check --suite render.presentation.edr`
   - the same with `--device-profile tvos-arm64-device`
+
+## Direct presentation: frames render into the swapchain image (2026-10-05)
+
+User request: direct scanout for the Vulkan backends, taken as (3) removing
+the present blit and (1) making the swapchain eligible for compositor
+direct scanout. This slice delivers (3) on the SDL3–Vulkan bridge and the
+swapchain side of (1). Compositor scanout itself is not verified.
+
+- **Change:** when the swapchain can be the back buffer (the surface offers
+  the back buffer's format and every usage it has: transfer, color
+  attachment and sampled), `BeginFrame` returns the acquired swapchain image
+  as the frame's resource and `Present` only transitions it. The blit stays
+  as the fallback: a format or usage the surface lacks, a back-buffer extent
+  that differs from the drawable, or `SDL3_VULKAN_PRESENT_BLIT=1`.
+  - The surface format chooser now prefers the back buffer's own format.
+  - Ordering: `BeginFrame` submits a context that waits for the acquire. Its
+    `ALL_COMMANDS` barrier (`UNDEFINED` → `GENERAL`, the back buffer's resting
+    layout) chains that wait to every later submission on the queue.
+    The image's previous contents are discarded; the contract never
+    promised that they survive.
+  - Lifetime: the swapchain images are registered as device resources
+    without ownership (`VulkanDeviceEndpoint::RegisterBorrowedImage`; the
+    endpoint version is now 2). Their registrations retire behind an ordering
+    token on a swapchain rebuild, on presentation retirement, and on a
+    `ResizeTo` that leaves direct mode, so the shared suite's retirement
+    checks hold.
+  - `Sdl3VulkanPresentationBridge::LastFrameDirect` is a test endpoint.
+- **Evidence** (`build-hdr-game`, isolated headless mutter, Wayland, RADV):
+  - `render_presentation_sdl3_vulkan_conformance` passes 49 of 49 shared
+    checks and 5 of 5 pixel checks in 4 runs, and reports "window A
+    presented direct (no blit)".
+  - With `SDL3_VULKAN_PRESENT_BLIT=1` it passes 49 of 49 and 6 of 6, and
+    `pixels.forced_blit` holds.
+  - Under the Khronos validation layer with synchronization validation, the
+    direct path reports 1 sync hazard and 12 `vkDestroySemaphore` messages.
+    The blit path's baseline already has 4 and 12 of the same messages, so
+    the change introduces none.
+- **Not done:**
+  - the product's legacy native Vulkan host keeps its own swapchain and
+    blit; this slice covers the bridge (`render_lab` and the R16 suites);
+  - X11, a hosted CI lane, Android and Apple;
+  - frame-time measurement (the resolution sweep);
+  - the compositor half of (1): a fullscreen opaque surface, a scanout-capable
+    modifier from the compositor's dmabuf feedback, and a trace that proves
+    the compositor scanned the frame out.
+
+### Follow-up: the game's present path and compositor scanout (2026-10-05)
+
+User goal: remove the game's present blit and prove compositor direct scanout.
+The user authorized edits to the frozen native backend for this
+(`Frozen-path:` user request, scanout follow-up).
+
+- **The game does not blit in its product path.** With the render core
+  composed (the product default), the backend runs with `hdrScene`, and
+  `RecordPresentOutput` has the core's `render.pass.output` write the acquired
+  swapchain image directly. The blit (`RecordPresentBlit`) runs only without
+  the core (`-norendercore`) or when no output section was recorded.
+  - The backend now logs its present path when it changes
+    (`[NativeVulkan] present path: output|gamma|blit`).
+  - Portal 2 boot of `sp_a1_intro3` in an isolated mutter logs `output`; the
+    `-norendercore` control logs `blit`.
+  - The earlier record's "the game still blits" was wrong for the product
+    path. No change to the game's back buffers was needed or made.
+- **Suboptimal presents with an unchanged surface now rebuild the swapchain
+  once** in both presenters (`vulkan_device.cpp` FinishFrame, bridge
+  `QueuePresent`). Mesa's Wayland WSI reports new dmabuf feedback, such as a
+  compositor's scanout tranche, this way. Both presenters had ignored it
+  unless the size or transform changed, so a swapchain could never move to
+  a scanout modifier. The next `VK_SUCCESS` re-arms the rebuild, so a
+  persistently suboptimal surface (a rotated display) rebuilds once.
+- **Probe:** `tools/quality/scanout_probe.py` (5 self-tests in
+  `tools/quality/tests/test_scanout_probe.py`). It is read-only: it samples the
+  framebuffers on the display's planes (GETPLANE and GETFB2 on the card node;
+  no DRM master needed) before, during and after a client run, and parses
+  the client's `WAYLAND_DEBUG` log for dmabuf-feedback scanout tranches. The
+  verdict is `scanout` only with a scanout tranche plus client-only
+  framebuffers on the full-size plane.
+  - Negative control (isolated headless mutter, no planes): 11 tranches,
+    0 scanout, verdict `composited`.
+- **Live run on the user's GNOME 50.5 session** (with consent; eDP-1
+  2880×1800, scale 1.5, RADV, Mesa 26.2.3): verdict `composited`. The
+  surface is fullscreen with 2880×1800 `XB30` buffers (AMD DCC modifier
+  `0x0200000018637b04`), viewported exactly to the output. The client
+  declares BT.2020 primaries and the PQ transfer function, matching the
+  output, but 0 of 11 tranches are scanout.
+  - Cause, from mutter's source (`find_scanout_candidate`): mutter rejects a
+    surface whose color state "needs mapping to the output's", and color
+    states compare luminance as a whole. The panel runs in HDR (BT.2100)
+    with reference white 241 cd/m². The client's description, written by
+    Mesa's WSI, has no luminances, so the PQ default of 203 applies.
+  - The game cannot declare 241: Mesa's WSI owns the description, and
+    `VkHdrMetadataEXT` has no reference-white field.
+- **Not done:** a positive live scanout proof. It needs an output whose
+  color state the client can match: SDR mode, an HDR reference white of
+  203, or an external SDR monitor. Only the HDR eDP is connected, and the
+  user chose not to change the display mode. Not touched: the R32
+  `portal_boot --resize-stress` regression. It fails with blank resize
+  images in sync and queued modes at HEAD without these changes too
+  (16 failures in sync mode), so it predates this work.

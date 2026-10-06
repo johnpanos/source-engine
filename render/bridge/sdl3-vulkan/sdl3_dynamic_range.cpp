@@ -61,6 +61,24 @@ Sdl3DisplayMode Sdl3ReadDisplayMode( SDL_Window *window )
 	return Sdl3DisplayMode();
 }
 
+#if !defined( SDL3_WAYLAND_COLOR )
+// No color-management-v1 client in this product (sdl3_dynamic_range_wayland.cpp).
+bool Sdl3PrepareOutputDescription( SDL_Window *, Sdl3OutputDescription * )
+{
+	return false;
+}
+bool Sdl3AttachOutputDescription( SDL_Window * )
+{
+	return false;
+}
+void Sdl3DetachOutputDescription( SDL_Window * ) {}
+bool Sdl3OutputDescriptionChanged( SDL_Window * )
+{
+	return false;
+}
+void Sdl3ReleaseOutputDescription( SDL_Window * ) {}
+#endif
+
 } // namespace render_vulkan
 
 #endif // !UIKit

@@ -87,6 +87,19 @@ class CodecError(Exception):
     pass
 
 
+def default_tool():
+    """The pinned ktx from build/toolchains (the map toolchain records it), or
+    None when no toolchain is installed."""
+    import json
+    for name in ("pbrt-map-toolchain.json", "pbrt-map-toolchain-bazzite.json"):
+        path = ROOT / "build" / "toolchains" / name
+        if path.is_file():
+            tool = json.loads(path.read_text()).get("ktx")
+            if tool and Path(tool).is_file():
+                return Path(tool)
+    return None
+
+
 def block_bytes(target, width, height):
     """Bytes of `target` blocks covering width x height (partial blocks padded)."""
     return ((width + 3) // 4) * ((height + 3) // 4) * BLOCK_BYTES[target]

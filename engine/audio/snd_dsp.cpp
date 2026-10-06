@@ -6176,6 +6176,21 @@ void DSP_SetDspAuto( int dsp_preset )
 	dsp_automatic.SetValue( dsp_preset );
 }
 
+extern ConVar das_process_overhang_spaces;
+extern ConVar das_max_z_trace_length;
+
+// Defaults of CS:GO's PORTAL2 build: automatic room DSP, and room detection that
+// processes overhang spaces and ignores the player's height.
+void DSP_SetPortal2Defaults( bool bPortal2 )
+{
+	if ( !bPortal2 )
+		return;
+
+	dsp_room.SetValue( 1 );
+	das_process_overhang_spaces.SetValue( 1 );
+	das_max_z_trace_length.SetValue( 100000.0f );
+}
+
 // wrapper on dsp_room GetInt so that dsp_automatic can override
 
 int dsp_room_GetInt ( void )
@@ -7280,6 +7295,7 @@ int DSP_ConstructPreset( bool bskyabove, int width, int length, int height, floa
 
 	ADSP_GetAutoShape( &ap );
 	
+
 	// set up min/max presets based on shape
 
 	switch ( ap.shape )

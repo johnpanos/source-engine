@@ -366,6 +366,22 @@ Sdl3DisplayMode Sdl3ReadDisplayMode( SDL_Window *window )
 	return mode;
 }
 
+// No Wayland on Apple platforms (sdl3_dynamic_range.h).
+bool Sdl3PrepareOutputDescription( SDL_Window *, Sdl3OutputDescription * )
+{
+	return false;
+}
+bool Sdl3AttachOutputDescription( SDL_Window * )
+{
+	return false;
+}
+void Sdl3DetachOutputDescription( SDL_Window * ) {}
+bool Sdl3OutputDescriptionChanged( SDL_Window * )
+{
+	return false;
+}
+void Sdl3ReleaseOutputDescription( SDL_Window * ) {}
+
 } // namespace render_vulkan
 
 #endif // UIKit

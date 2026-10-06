@@ -527,6 +527,8 @@ bool CVulkanContext::CreateSwapchain( std::string *outError, VkSwapchainKHR oldS
 	m_presentColorSpace = m_swapColorSpace;
 	m_swapchainExtendedRequest = m_requestedExtendedOutput;
 	m_extendedOutput = false;
+	m_outputDescription = false;
+	m_presentDescriptionDirty = false;
 	if ( m_requestedExtendedOutput )
 	{
 		const char *declined = nullptr;
@@ -552,6 +554,25 @@ bool CVulkanContext::CreateSwapchain( std::string *outError, VkSwapchainKHR oldS
 					break;
 				}
 			}
+			// The same PQ pixels under the output's own image description,
+			// which the host declares (on Wayland, color-management-v1): the
+			// WSI declares nothing for PASS_THROUGH, the surface then needs no
+			// color mapping (the output encodes white at the display's SDR
+			// white, ResolvedHdrSettings) and a compositor may scan it out.
+			if ( m_extendedOutput && m_presentColorSpace == VK_COLOR_SPACE_HDR10_ST2084_EXT &&
+			     !m_outputDescriptionRefused && m_host->PrepareOutputDescription() )
+			{
+				for ( const VkSurfaceFormatKHR &f : formats )
+				{
+					if ( f.format == m_presentFormat &&
+					     f.colorSpace == VK_COLOR_SPACE_PASS_THROUGH_EXT )
+					{
+						m_presentColorSpace = f.colorSpace;
+						m_outputDescription = true;
+						break;
+					}
+				}
+			}
 			for ( const VkSurfaceFormatKHR &f : formats )
 			{
 				if ( !m_extendedOutput && f.format == VK_FORMAT_R16G16B16A16_SFLOAT &&
@@ -569,8 +590,9 @@ bool CVulkanContext::CreateSwapchain( std::string *outError, VkSwapchainKHR oldS
 			Log( "extended output declined: %s; presenting in the standard range\n", declined );
 		else
 			Log( "HDR output: %s\n",
-			    m_presentColorSpace == VK_COLOR_SPACE_HDR10_ST2084_EXT ? "Rec. 2020 / PQ (10-bit)"
-			                                                       : "extended linear sRGB" );
+			    m_outputDescription ? "Rec. 2020 / PQ (10-bit), the output's image description"
+			    : m_presentColorSpace == VK_COLOR_SPACE_HDR10_ST2084_EXT ? "Rec. 2020 / PQ (10-bit)"
+			                                                             : "extended linear sRGB" );
 	}
 
 	if ( m_config.hdrScene )
@@ -678,6 +700,10 @@ bool CVulkanContext::CreateSwapchain( std::string *outError, VkSwapchainKHR oldS
 		info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	}
 
+	// A surface takes one color-management object: the WSI declares its
+	// swapchain's color space itself unless it is PASS_THROUGH.
+	if ( !m_outputDescription )
+		m_host->DetachOutputDescription();
 	r = vkCreateSwapchainKHR( m_device, &info, nullptr, &m_swapchain );
 	if ( r != VK_SUCCESS )
 	{
@@ -685,6 +711,14 @@ bool CVulkanContext::CreateSwapchain( std::string *outError, VkSwapchainKHR oldS
 		return false;
 	}
 	++m_swapchainGeneration;
+	if ( m_outputDescription && !m_host->AttachOutputDescription() )
+	{
+		// The frames would be shown as uninterpreted values: rebuild with the
+		// WSI's HDR10 color space, and do not try again on this window.
+		Log( "the output's image description could not be attached; using HDR10\n" );
+		m_outputDescriptionRefused = true;
+		m_presentDescriptionDirty = true;
+	}
 
 	uint32_t actual = 0;
 	vkGetSwapchainImagesKHR( m_device, m_swapchain, &actual, nullptr );
@@ -6921,8 +6955,22 @@ bool CVulkanContext::PrepareFrame( bool *outSkip, std::string *outError )
 	                                   m_requestedBackBuffer.height != m_swapExtent.height );
 	const bool presentModePending = m_requestedVSync != m_swapchainVSync;
 	const bool outputRangePending = m_requestedExtendedOutput != m_swapchainExtendedRequest;
+	if ( m_suboptimalPending )
+	{
+		m_suboptimalPending = false;
+		m_suboptimalRebuilt = true;
+		++m_suboptimalRebuilds;
+		m_presentDescriptionDirty = true; // the shared rebuild trigger below
+		Log( "swapchain suboptimal with an unchanged surface; rebuilding it (%u)\n",
+		    m_suboptimalRebuilds );
+	}
+	// The compositor's preferred description changed (brightness, mode): the
+	// swapchain is rebuilt and declares the new one.
+	if ( m_outputDescription && m_host->OutputDescriptionChanged() )
+		m_presentDescriptionDirty = true;
 	// A new back-buffer size alone keeps the swapchain (RecreateBackBuffers).
 	if ( drawableChanged || presentModePending || outputRangePending || m_acquireTimedOut ||
+	     m_presentDescriptionDirty ||
 	     ( backBufferPending && m_swapchain == VK_NULL_HANDLE ) )
 	{
 		if ( !RecreateSwapchain( outError ) )
@@ -6990,6 +7038,13 @@ bool CVulkanContext::PrepareFrame( bool *outSkip, std::string *outError )
 			*outSkip = true;
 		return true;
 	}
+	// Mesa's Wayland WSI reports new dmabuf feedback (a compositor's scanout
+	// tranche) as a suboptimal acquire: the image is still used this frame
+	// and the swapchain is rebuilt before the next (NoteSuboptimal).
+	if ( r == VK_SUBOPTIMAL_KHR )
+		NoteSuboptimal();
+	else if ( r == VK_SUCCESS )
+		m_suboptimalRebuilt = false;
 	if ( r != VK_SUCCESS && r != VK_SUBOPTIMAL_KHR )
 	{
 		SetError( outError, std::string( "vkAcquireNextImageKHR failed: " ) + ResultString( r ) );
@@ -9098,14 +9153,25 @@ void CVulkanContext::RecordFramePresent( VkCommandBuffer cmd )
 	ApplyPublishedGammaRamp();
 	// An extended-linear swapchain takes the frame through the core's output
 	// (RFC 0016 "Output"), which the monitor gamma ramp does not apply to.
+	const char *path = "blit";
 	if ( m_outputSectionRecorded )
+	{
 		RecordPresentOutput( cmd, imageIndex, backBufferLayout );
+		path = "output";
+	}
 	else if ( m_config.hdrScene )
 		return;
 	// RFC 0014: a frame the core alone draws presents without the ramp.
-	else if ( !m_gammaActive || m_frameLegacyOff ||
-	          !RecordPresentGamma( cmd, imageIndex, backBufferLayout, capturePresented ) )
+	else if ( m_gammaActive && !m_frameLegacyOff &&
+	          RecordPresentGamma( cmd, imageIndex, backBufferLayout, capturePresented ) )
+		path = "gamma";
+	else
 		RecordPresentBlit( cmd, imageIndex, backBufferLayout, capturePresented );
+	if ( path != m_presentPath )
+	{
+		Log( "present path: %s\n", path );
+		m_presentPath = path;
+	}
 	m_captureRequested = m_capturePresented = m_captureHdrRequested = false;
 
 	if ( m_computeFlush )
@@ -9252,6 +9318,16 @@ void CVulkanContext::RecordPresentBlit(
 
 	RecordPresentedCaptureAndRelease( cmd, imageIndex, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 	    VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, capture );
+}
+
+// A suboptimal acquire or present with the surface unchanged (a changed one
+// is rebuilt by its own path) asks for one rebuild before the next frame. The
+// next clean acquire re-arms it, so a surface that stays suboptimal (a rotated
+// display the compositor adapts) rebuilds once instead of every frame.
+void CVulkanContext::NoteSuboptimal()
+{
+	if ( !m_suboptimalRebuilt && !SurfaceChangedSinceSwapchain() )
+		m_suboptimalPending = true;
 }
 
 void CVulkanContext::NotePresent( bool scaled )
@@ -10081,7 +10157,11 @@ bool CVulkanContext::FinishFrame(
 		return true;
 	}
 	if ( r == VK_SUBOPTIMAL_KHR )
-		return true; // Presented; the compositor adapts (e.g. rotates) the image.
+	{
+		// Presented; the window system prefers another swapchain.
+		NoteSuboptimal();
+		return true;
+	}
 	if ( r != VK_SUCCESS )
 	{
 		SetError( outError, std::string( "vkQueuePresentKHR failed: " ) + ResultString( r ) );

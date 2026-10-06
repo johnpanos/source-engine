@@ -300,6 +300,16 @@ void CheckPixels( render_vulkan::VulkanRenderBackend &provider,
 	Check(
 	    okA && UniformColor( pixels, w, h, red ) && RenderExtent{ w, h } == a->GetDrawableExtent(),
 	    "pixels.window_a", "window A presents its red back buffer at its drawable size" );
+	// Direct presentation: the frame rendered into the swapchain image. The
+	// blit is the fallback where the swapchain cannot be the back buffer, and
+	// SDL3_VULKAN_PRESENT_BLIT=1 must force it.
+	const char *forceBlit = std::getenv( "SDL3_VULKAN_PRESENT_BLIT" );
+	const bool forced = forceBlit && forceBlit[0] == '1';
+	const bool direct = pa && bridge.LastFrameDirect( *pa );
+	std::printf( "render.presentation.sdl3_vulkan: window A presented %s\n",
+	    direct ? "direct (no blit)" : "through the back-buffer blit" );
+	if ( forced )
+		Check( !direct, "pixels.forced_blit", "SDL3_VULKAN_PRESENT_BLIT=1 takes the blit path" );
 	bool okB = pb && PresentAndCapture( *device, *pb, bridge, harness, blue, &pixels, &w, &h );
 	Check(
 	    okB && UniformColor( pixels, w, h, blue ) && RenderExtent{ w, h } == b->GetDrawableExtent(),

@@ -865,6 +865,8 @@ Findings, most important first:
 6. The manifest warns about the `new_sound_scripts_must_go_below_here`
    marker (cosmetic; retail uses it for the PS3 hash table).
 
+Update 2026-10-06: the operator system is built and wired in (finding 1 no longer applies), and the Portal 2 branches of CS:GO's audio code are selected at run time by the mod directory `portal2` (`g_bSndPortal2`, `DSP_SetPortal2Defaults`): `dsp_room` 1, `das_process_overhang_spaces` 1, `das_max_z_trace_length` 100000, and every sound treated as streaming. With a fresh build the retail check passes 22 of 24; the remaining failures are `ambient.level` (+2.7 to +3.8 dB, finding 4, undiagnosed: retail capture needs Steam running) and `falloff.v1_near_fidelity` (ncc 0.76 against 0.85). Captures killed by another session's global `pkill` give spurious failures; rerun.
+
 Open: the operator system and script-handle transmission (finding 1); the
 room-DSP default (finding 3); five checks removed because two retail runs
 disagreed at this listener position (stopsound silence, the far reverb tail,

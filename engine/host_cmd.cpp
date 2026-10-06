@@ -772,6 +772,21 @@ CON_COMMAND( map_edit, "" )
 }
 #endif
 
+//-----------------------------------------------------------------------------
+// Purpose: Portal 2's menus launch local split-screen with
+// "ss_map <map> [*mp]". The engine has one local player per client, so the
+// composition is refused by name before the running game is touched, instead
+// of the command being silently unknown. Replace with the real admission path
+// once the engine owns two local-player identities
+// (RFC/portal2-splitscreen-progress.md, "Remaining product boundaries").
+//-----------------------------------------------------------------------------
+#ifndef SWDS
+CON_COMMAND( ss_map, "Start local split-screen play on the specified map (unsupported: refused)." )
+{
+	Warning( "ss_map: local split-screen is not supported by this engine "
+	         "(one local player per client); the running game was not changed.\n" );
+}
+#endif
 
 //-----------------------------------------------------------------------------
 // Purpose: Runs a map as the background

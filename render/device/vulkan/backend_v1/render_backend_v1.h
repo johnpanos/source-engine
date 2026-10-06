@@ -57,7 +57,7 @@ struct VulkanProviderOptions
 class VulkanDeviceEndpoint
 {
 public:
-	static const uint32_t kVersion = 1;
+	static const uint32_t kVersion = 2;
 
 	virtual VkInstance Instance() const = 0;
 	virtual VkPhysicalDevice PhysicalDevice() const = 0;
@@ -74,6 +74,10 @@ public:
 	virtual render::RenderResourceHandle CreateImage(
 	    uint32_t width, uint32_t height, VkFormat format, VkImageUsageFlags usage ) = 0;
 	virtual VkImage Image( render::RenderResourceHandle handle ) const = 0;
+	// A native image the caller owns (a swapchain image) registered as a device
+	// resource. DestroyResourceWhenComplete ends the registration once the
+	// token completes and never destroys the image.
+	virtual render::RenderResourceHandle RegisterBorrowedImage( VkImage image ) = 0;
 
 	// The recording command buffer behind a context from CreateCommandContext.
 	virtual VkCommandBuffer CommandBuffer( render::IRenderCommandContext &context ) const = 0;

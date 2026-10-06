@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 namespace render_vulkan
@@ -76,8 +77,8 @@ bool IsExtendedLinearSurfaceFormat( const VkSurfaceFormatKHR &f )
 	       f.colorSpace == VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT;
 }
 
-bool ChooseSurfaceFormat( const std::vector<VkSurfaceFormatKHR> &formats,
-    RenderDynamicRange range, VkSurfaceFormatKHR *outChosen )
+bool ChooseSurfaceFormat( const std::vector<VkSurfaceFormatKHR> &formats, RenderDynamicRange range,
+    VkFormat backBuffer, VkSurfaceFormatKHR *outChosen )
 {
 	if ( range == RenderDynamicRange::kExtendedLinear )
 	{
@@ -92,7 +93,9 @@ bool ChooseSurfaceFormat( const std::vector<VkSurfaceFormatKHR> &formats,
 	// Standard range: an 8-bit format in the SDR color space (with
 	// VK_EXT_swapchain_colorspace the list also offers the same formats in
 	// other color spaces).
-	const VkFormat preferred[] = { VK_FORMAT_B8G8R8A8_UNORM, VK_FORMAT_R8G8B8A8_UNORM };
+	// The back buffer's own format first, so the frame can render straight
+	// into the swapchain image (direct presentation) instead of a blit.
+	const VkFormat preferred[] = { backBuffer, VK_FORMAT_B8G8R8A8_UNORM, VK_FORMAT_R8G8B8A8_UNORM };
 	for ( VkFormat want : preferred )
 		for ( const VkSurfaceFormatKHR &f : formats )
 			if ( f.format == want && f.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR )
@@ -283,9 +286,8 @@ public:
 		if ( m_Config.dynamicRange == RenderDynamicRange::kExtendedLinear )
 		{
 			VkSurfaceFormatKHR chosen = {};
-			if ( !ChooseSurfaceFormat(
-			         SurfaceFormats( m_Ep.PhysicalDevice(), m_VkSurface ), m_Config.dynamicRange,
-			         &chosen ) ||
+			if ( !ChooseSurfaceFormat( SurfaceFormats( m_Ep.PhysicalDevice(), m_VkSurface ),
+			         m_Config.dynamicRange, BackBufferFormat( m_Config.format ), &chosen ) ||
 			     !Sdl3CanShowExtendedRange( window ) )
 			{
 				Fail( error, RenderCreateStatus::kSurfaceIncompatible,
@@ -307,9 +309,18 @@ public:
 		if ( m_FrameOpen )
 			return false;
 		CollectRetired();
+		const bool wasDirect = PresentsDirect();
 		m_Extent = extent;
 		if ( m_BackBuffer != kInvalidResource && m_BackBufferExtent != extent )
 			RetireBackBuffer();
+		// Direct frames' back buffers are the swapchain images: a new extent
+		// retires their registrations behind the last completion, and the
+		// next BeginFrame rebuilds the swapchain (as its oldSwapchain).
+		if ( wasDirect && !PresentsDirect() )
+		{
+			ReleaseSwapHandles( OrderingToken( m_Device ) );
+			m_SwapDirty = true;
+		}
 		return true;
 	}
 
@@ -352,7 +363,8 @@ public:
 			if ( m_Swapchain == VK_NULL_HANDLE )
 				return RenderPresentStatus::kSuspended;
 		}
-		if ( m_BackBuffer == kInvalidResource && !CreateBackBuffer() )
+		const bool direct = PresentsDirect();
+		if ( !direct && m_BackBuffer == kInvalidResource && !CreateBackBuffer() )
 			return RenderPresentStatus::kRecoverable;
 
 		// Reuse a frame slot only after its previous present completed on the GPU.
@@ -374,15 +386,46 @@ public:
 		}
 		if ( r == VK_SUBOPTIMAL_KHR )
 		{
-			if ( SurfaceChangedSinceSwapchain() )
-				m_SwapDirty = true;
+			NoteSuboptimal();
 		}
-		else if ( r != VK_SUCCESS )
+		else if ( r == VK_SUCCESS )
+		{
+			m_SuboptimalRebuilt = false;
+		}
+		else
 		{
 			return RenderPresentStatus::kRecoverable;
 		}
 		m_ImageIndex = index;
 		m_FrameOpen = true;
+		m_AcquireConsumed = false;
+		if ( direct )
+		{
+			// The caller renders into the swapchain image itself. Its writes
+			// are later submissions on the same queue: this one waits for the
+			// acquire, and its barrier (ALL_COMMANDS on both sides) chains that
+			// wait to every later command. The image arrives in GENERAL, the
+			// back buffer's resting layout; its old contents are discarded.
+			IRenderCommandContext *context = m_Device.CreateCommandContext();
+			if ( !context )
+			{
+				CancelFrame();
+				return RenderPresentStatus::kRecoverable;
+			}
+			context->RecordUse( m_SwapHandles[index] );
+			ImageBarrier( m_Ep.CommandBuffer( *context ), m_SwapImages[index],
+			    VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
+			    VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+			    VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT );
+			m_SlotToken[m_Slot] = m_Ep.SubmitWithSemaphores( *context, m_ImageAvailable[m_Slot],
+			    VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_NULL_HANDLE );
+			m_AcquireConsumed = true;
+			m_FrameDirect = true;
+			if ( outBackBuffer )
+				*outBackBuffer = m_SwapHandles[index];
+			return RenderPresentStatus::kOk;
+		}
+		m_FrameDirect = false;
 		if ( outBackBuffer )
 			*outBackBuffer = m_BackBuffer;
 		return RenderPresentStatus::kOk;
@@ -401,6 +444,9 @@ public:
 			           ? RenderPresentStatus::kLost
 			           : RenderPresentStatus::kRecoverable;
 		}
+
+		if ( m_FrameDirect )
+			return PresentDirect();
 
 		IRenderCommandContext *context = m_Device.CreateCommandContext();
 		if ( !context )
@@ -477,7 +523,94 @@ public:
 			m_CaptureExtent = m_SwapExtent;
 		}
 		m_Slot = ( m_Slot + 1 ) % kFrameSlots;
+		return QueuePresent();
+	}
 
+	// A suboptimal acquire or present. A changed surface rebuilds; with the
+	// surface unchanged the window system prefers another swapchain (Mesa's
+	// Wayland WSI reports new dmabuf feedback, such as a scanout tranche for a
+	// fullscreen surface, at acquire) and it is rebuilt once. The next clean
+	// acquire re-arms that, so a rotated display does not rebuild every frame.
+	void NoteSuboptimal()
+	{
+		if ( SurfaceChangedSinceSwapchain() )
+		{
+			m_SwapDirty = true;
+		}
+		else if ( !m_SuboptimalRebuilt )
+		{
+			m_SuboptimalRebuilt = true;
+			++m_SuboptimalRebuilds;
+			m_SwapDirty = true;
+		}
+	}
+
+	// Whether frames render straight into the swapchain image: the swapchain
+	// was created renderable in the back buffer's format and extent.
+	// SDL3_VULKAN_PRESENT_BLIT=1 forces the blit path.
+	bool PresentsDirect() const
+	{
+		return m_SwapDirect && m_SwapExtent.width == m_Extent.width &&
+		       m_SwapExtent.height == m_Extent.height;
+	}
+	bool LastFrameDirect() const { return m_FrameDirect; }
+
+	RenderPresentStatus PresentDirect()
+	{
+		IRenderCommandContext *context = m_Device.CreateCommandContext();
+		if ( !context )
+			return RenderPresentStatus::kRecoverable;
+		context->RecordUse( m_SwapHandles[m_ImageIndex] );
+		VkCommandBuffer cmd = m_Ep.CommandBuffer( *context );
+		const VkImage swap = m_SwapImages[m_ImageIndex];
+		const bool capture = m_CaptureRequested && m_SwapCapturable && PrepareCaptureBuffer();
+		if ( capture )
+		{
+			ImageBarrier( cmd, swap, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+			    VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_ACCESS_MEMORY_WRITE_BIT,
+			    VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT );
+			VkBufferImageCopy copy = {};
+			copy.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+			copy.imageSubresource.layerCount = 1;
+			copy.imageExtent = { m_SwapExtent.width, m_SwapExtent.height, 1 };
+			vkCmdCopyImageToBuffer(
+			    cmd, swap, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, m_CaptureBuffer, 1, &copy );
+			VkBufferMemoryBarrier host = {};
+			host.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+			host.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+			host.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+			host.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+			host.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+			host.buffer = m_CaptureBuffer;
+			host.size = VK_WHOLE_SIZE;
+			vkCmdPipelineBarrier( cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_HOST_BIT,
+			    0, 0, nullptr, 1, &host, 0, nullptr );
+			ImageBarrier( cmd, swap, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+			    VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+			    VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0 );
+		}
+		else
+		{
+			// The caller's writes (earlier submissions) happen before present.
+			ImageBarrier( cmd, swap, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+			    VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_ACCESS_MEMORY_WRITE_BIT,
+			    VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0 );
+		}
+		IRenderCompletionToken *token = m_Ep.SubmitWithSemaphores(
+		    *context, VK_NULL_HANDLE, 0, m_RenderFinished[m_ImageIndex] );
+		m_SlotToken[m_Slot] = token;
+		if ( capture )
+		{
+			m_CaptureRequested = false;
+			m_CaptureToken = token;
+			m_CaptureExtent = m_SwapExtent;
+		}
+		m_Slot = ( m_Slot + 1 ) % kFrameSlots;
+		return QueuePresent();
+	}
+
+	RenderPresentStatus QueuePresent()
+	{
 		VkPresentInfoKHR present = {};
 		present.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
 		present.waitSemaphoreCount = 1;
@@ -496,8 +629,8 @@ public:
 			m_SurfaceLost = true;
 			return RenderPresentStatus::kRecoverable;
 		}
-		if ( r == VK_SUBOPTIMAL_KHR && SurfaceChangedSinceSwapchain() )
-			m_SwapDirty = true;
+		if ( r == VK_SUBOPTIMAL_KHR )
+			NoteSuboptimal();
 		if ( r != VK_SUCCESS && r != VK_SUBOPTIMAL_KHR )
 			return RenderPresentStatus::kRecoverable;
 		return RenderPresentStatus::kOk;
@@ -578,6 +711,7 @@ public:
 			m_RenderFinished.clear();
 			m_SwapImages.clear();
 			ordering = OrderingToken( m_Device );
+			ReleaseSwapHandles( ordering );
 		}
 		for ( const RetiredSwapchain &r : m_RetiredSwapchains )
 		{
@@ -718,6 +852,20 @@ private:
 		       caps.currentExtent.height != m_SwapSurfaceExtent.height;
 	}
 
+	// Ends the registrations of the swapchain images behind 'token' (the
+	// images themselves go with their swapchain).
+	void ReleaseSwapHandles( IRenderCompletionToken *token )
+	{
+		for ( RenderResourceHandle h : m_SwapHandles )
+		{
+			if ( token )
+				m_Device.DestroyResourceWhenComplete( h, *token );
+			m_RetiringBackBuffers.push_back( h );
+		}
+		m_SwapHandles.clear();
+		m_SwapDirect = false;
+	}
+
 	void RetireSwapchain()
 	{
 		if ( m_Swapchain == VK_NULL_HANDLE )
@@ -730,6 +878,7 @@ private:
 		m_Swapchain = VK_NULL_HANDLE;
 		m_RenderFinished.clear();
 		m_SwapImages.clear();
+		ReleaseSwapHandles( r.token );
 	}
 
 	bool RebuildSwapchain( RenderExtent drawable )
@@ -760,8 +909,8 @@ private:
 			return false;
 
 		VkSurfaceFormatKHR chosen = {};
-		if ( !ChooseSurfaceFormat(
-		         SurfaceFormats( phys, m_VkSurface ), m_Config.dynamicRange, &chosen ) )
+		if ( !ChooseSurfaceFormat( SurfaceFormats( phys, m_VkSurface ), m_Config.dynamicRange,
+		         BackBufferFormat( m_Config.format ), &chosen ) )
 			return false;
 		VkFormatProperties fp = {};
 		vkGetPhysicalDeviceFormatProperties( phys, chosen.format, &fp );
@@ -790,6 +939,20 @@ private:
 		info.imageExtent = extent;
 		info.imageArrayLayers = 1;
 		info.imageUsage = VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+		// Direct presentation: the swapchain image is the back buffer, so it
+		// needs every usage the back buffer has (CreateBackBuffer).
+		const VkImageUsageFlags backUsage =
+		    VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT |
+		    VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+		const VkFormatFeatureFlags backFeatures =
+		    VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT;
+		const char *forceBlit = std::getenv( "SDL3_VULKAN_PRESENT_BLIT" );
+		const bool direct = !( forceBlit && forceBlit[0] == '1' ) &&
+		                    chosen.format == BackBufferFormat( m_Config.format ) &&
+		                    ( caps.supportedUsageFlags & backUsage ) == backUsage &&
+		                    ( fp.optimalTilingFeatures & backFeatures ) == backFeatures;
+		if ( direct )
+			info.imageUsage |= backUsage;
 		m_SwapCapturable = ( caps.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_SRC_BIT ) != 0;
 		if ( m_SwapCapturable )
 			info.imageUsage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
@@ -826,6 +989,26 @@ private:
 		vkGetSwapchainImagesKHR( m_Ep.Device(), m_Swapchain, &actual, nullptr );
 		m_SwapImages.resize( actual );
 		vkGetSwapchainImagesKHR( m_Ep.Device(), m_Swapchain, &actual, m_SwapImages.data() );
+		m_SwapDirect = direct;
+		m_SwapHandles.clear();
+		if ( direct )
+		{
+			for ( VkImage image : m_SwapImages )
+			{
+				const RenderResourceHandle h = m_Ep.RegisterBorrowedImage( image );
+				if ( h == kInvalidResource )
+				{
+					m_SwapDirect = false;
+					break;
+				}
+				m_SwapHandles.push_back( h );
+			}
+			if ( !m_SwapDirect )
+				ReleaseSwapHandles( OrderingToken( m_Device ) );
+		}
+		// The blit path's back buffer is not needed while frames go direct.
+		if ( PresentsDirect() && m_BackBuffer != kInvalidResource )
+			RetireBackBuffer();
 		VkSemaphoreCreateInfo sci = {};
 		sci.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
 		m_RenderFinished.assign( actual, VK_NULL_HANDLE );
@@ -872,10 +1055,14 @@ private:
 			return;
 		m_FrameOpen = false;
 		const uint32_t slot = m_Slot;
-		IRenderCommandContext *context = m_Device.CreateCommandContext();
+		// A direct frame's BeginFrame already waited on the acquire; its image
+		// stays in GENERAL, which the next acquire's UNDEFINED barrier accepts.
+		IRenderCommandContext *context =
+		    m_AcquireConsumed ? nullptr : m_Device.CreateCommandContext();
 		if ( context )
 			m_SlotToken[slot] = m_Ep.SubmitWithSemaphores( *context, m_ImageAvailable[slot],
 			    VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_NULL_HANDLE );
+		m_AcquireConsumed = false;
 		m_Slot = ( m_Slot + 1 ) % kFrameSlots;
 	}
 
@@ -917,6 +1104,12 @@ private:
 	bool m_SwapDirty = false;
 	bool m_SwapCapturable = false;
 	std::vector<VkImage> m_SwapImages;
+	bool m_SwapDirect = false;                       // frames render into m_SwapImages
+	std::vector<RenderResourceHandle> m_SwapHandles; // per swapchain image, when direct
+	bool m_FrameDirect = false;
+	bool m_AcquireConsumed = false;   // the open frame's acquire wait was submitted
+	bool m_SuboptimalRebuilt = false; // see NoteSuboptimal
+	uint32_t m_SuboptimalRebuilds = 0;
 	std::vector<VkSemaphore> m_RenderFinished; // per swapchain image
 	std::vector<RetiredSwapchain> m_RetiredSwapchains;
 
@@ -1124,6 +1317,12 @@ bool Sdl3VulkanPresentationBridge::RequestCapture( IRenderPresentation &presenta
 {
 	Sdl3VulkanPresentation *p = Find( presentation );
 	return p && p->RequestCapture();
+}
+
+bool Sdl3VulkanPresentationBridge::LastFrameDirect( IRenderPresentation &presentation ) const
+{
+	const Sdl3VulkanPresentation *p = Find( presentation );
+	return p && p->LastFrameDirect();
 }
 
 bool Sdl3VulkanPresentationBridge::ReadCapture( IRenderPresentation &presentation,

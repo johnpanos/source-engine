@@ -72,6 +72,19 @@ public:
 	// The system's SDR (paper) white in cd/m^2, 0 when the platform does not
 	// report it. With the headroom it gives the display's peak.
 	virtual float ReadSdrWhiteNits() const { return 0.0f; }
+
+	// The output's own image description (on Wayland, color-management-v1).
+	// PrepareOutputDescription is true when the output is HDR10 (BT.2020, PQ)
+	// and the host can declare that description itself; the swapchain is then
+	// made with VK_COLOR_SPACE_PASS_THROUGH_EXT and AttachOutputDescription
+	// called after it, so the surface needs no color mapping and a compositor
+	// may scan it out. DetachOutputDescription precedes a swapchain whose WSI
+	// declares its own color space. OutputDescriptionChanged reports a new
+	// preferred description (the caller rebuilds the swapchain).
+	virtual bool PrepareOutputDescription() { return false; }
+	virtual bool AttachOutputDescription() { return false; }
+	virtual void DetachOutputDescription() {}
+	virtual bool OutputDescriptionChanged() { return false; }
 };
 
 } // namespace render_vulkan

@@ -75,6 +75,10 @@ public:
 	// Copies the next presented swapchain image to host memory. ReadCapture waits
 	// for that frame's GPU completion and returns tightly packed RGBA8.
 	bool RequestCapture( render::IRenderPresentation &presentation );
+	// Whether the presentation's last opened frame rendered straight into the
+	// swapchain image (direct presentation) rather than a back buffer blitted
+	// at Present.
+	bool LastFrameDirect( render::IRenderPresentation &presentation ) const;
 	bool ReadCapture( render::IRenderPresentation &presentation, std::vector<uint8_t> *outRgba,
 	    uint32_t *outWidth, uint32_t *outHeight );
 	// The same for a kRGBA16Float swapchain: linear RGBA floats, as presented

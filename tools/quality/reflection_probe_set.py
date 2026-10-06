@@ -82,6 +82,15 @@ is 131104 bytes; GPU texel 3.w is 4, and eight byte-valued texels store each
 cell. V1-v4 retain their count limits and layouts. Runtime iterates selected
 ranks in order across words, preserving the two-probe blend.
 
+RPRB v7 (2026-10-05) is v6 with its radiance bands block-compressed: the
+atlas section holds the radiance rows (0 .. P W0/2, all 2 W0 columns) as
+BC6H unsigned blocks (4 x 4 texels, 16 bytes, row-major; a band's W0/2 >= 4
+rows are whole blocks), then the relight rows as RGBA16F. Atlas bytes are
+their sum. Readers expand the blocks into the v6 atlas: inside a mip the
+decoded light with alpha 1, outside every channel 0 (`inside_mips`). The
+pinned ktx encodes (bc_codec.encode_bc6h: UASTC HDR, transcoded); each probe's
+chain is under 1/8 of its RGBA16F bytes.
+
 Relighting (McAuley, "Rendering the World of Far Cry 4", GDC 2015: a G-buffer
 cubemap relit at runtime; here with the distance too): at the lookup
 direction and lod, the capture saw the point capture + direction * distance
@@ -134,11 +143,13 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "texture"))
+import bc_codec  # noqa: E402
 import reflection_probe  # noqa: E402
 
 MAGIC = 0x42525052  # "RPRB"
-# RPRB v6, the one version (2026-10-05): every earlier version is refused.
-VERSION = 6
+# RPRB v7, the one version (2026-10-05): every earlier version is refused.
+VERSION = 7
 CANDIDATE_DIM = 32
 CANDIDATE_CELLS = CANDIDATE_DIM ** 3
 CANDIDATE_HEADER_BYTES = 32
@@ -198,6 +209,22 @@ class RprbError(ValueError):
 
 def atlas_layout(count, width, relight=False):
     return 2 * width, count * (width // 2) * (3 if relight else 1)
+
+
+def radiance_block_bytes(count, width):
+    """The v7 radiance bands' BC6H bytes."""
+    return bc_codec.block_bytes("bc6hu", 2 * width, count * (width // 2))
+
+
+def inside_mips(height, width, mips):
+    """Atlas texels inside a mip (bands of `width` / 2 rows)."""
+    band = width // 2
+    inside = np.zeros((height, 2 * width), dtype=bool)
+    for top in range(0, height, band):
+        for level in range(mips):
+            x = 2 * width - (2 * width >> level)
+            inside[top:top + (width >> level) // 2, x:x + (width >> level)] = True
+    return inside
 
 
 def relight_rows(count, width, index):
@@ -327,13 +354,15 @@ def regrid(data, bounds):
     return out
 
 
-def build(probes, chains, scale=SOURCE_UNITS_PER_METER, relight=None, candidate_bounds=None):
+def build(probes, chains, scale=SOURCE_UNITS_PER_METER, relight=None, candidate_bounds=None,
+          tool=None):
     """RPRB bytes. `candidate_bounds` (min, max in Source units) limits the
     candidate grid to the playable envelope (candidate_grid). `probes`: dicts with capture, box_min, box_max,
     influence_min, influence_max (meters), fade (meters), global; `chains`:
     each probe's `reflection_probe.mip_chain` (linear, already exposure
     scaled). Exactly one probe is global. `relight` (v2): each probe's
-    `relight_chain` (distances in meters), mip for mip like its chain."""
+    `relight_chain` (distances in meters), mip for mip like its chain.
+    `tool`: the pinned ktx (default bc_codec.default_tool())."""
     count = len(probes)
     if not 1 <= count <= MAX_PROBES or len(chains) != count:
         raise RprbError("InvalidCounts", "1..%d probes with one chain each" % MAX_PROBES)
@@ -392,14 +421,20 @@ def build(probes, chains, scale=SOURCE_UNITS_PER_METER, relight=None, candidate_
     grid = candidate_grid(serialized_probes(records, count), candidate_bounds)
     candidate_data = candidate_section(grid, count)
     atlas_offset = base_offset + len(candidate_data)
-    texels = atlas.astype("<f2")
+    tool = tool or bc_codec.default_tool()
+    if tool is None:
+        raise RprbError("InvalidAtlas", "no pinned ktx tool to encode the radiance bands")
+    radiance_rows = count * band
+    blocks = bc_codec.encode_bc6h(tool, np.ascontiguousarray(
+        atlas[:radiance_rows, :, :3].astype(np.float32)))
+    texels = blocks + atlas[radiance_rows:].astype("<f2").tobytes()
     global_index = next(i for i, probe in enumerate(probes) if probe.get("global"))
     header = struct.pack("<IIIIIIIIQQIIII", MAGIC, VERSION, count, mips, width,
-                         atlas_width, atlas_height, RECORD_BYTES, atlas_offset, texels.nbytes,
+                         atlas_width, atlas_height, RECORD_BYTES, atlas_offset, len(texels),
                          PREFILTER_VERSION, 0 if relight is None else FLAG_RELIGHT,
                          global_index, 0)
     data = header + records
-    data += b"\0" * (base_offset - len(data)) + candidate_data + texels.tobytes()
+    data += b"\0" * (base_offset - len(data)) + candidate_data + texels
     read(data)  # the writer never emits what the reader rejects
     return data
 
@@ -410,7 +445,7 @@ def build(probes, chains, scale=SOURCE_UNITS_PER_METER, relight=None, candidate_
 # same error for each.
 MALFORMATIONS = (
     (0, "<I", 0x12345678, "BadMagic"),
-    (4, "<I", 5, "UnsupportedVersion"),        # every version but 6 is refused
+    (4, "<I", 6, "UnsupportedVersion"),        # every version but 7 is refused
     (4, "<I", 1, "UnsupportedVersion"),
     (8, "<I", 0, "InvalidCounts"),
     (8, "<I", 257, "InvalidCounts"),
@@ -433,11 +468,14 @@ MALFORMATIONS = (
 )
 
 # Edits of the valid relight payload, which has two probes of width 32
-# (rows: radiance 0..31, probe 0 albedo 32..47, normal 48..63, probe 1 albedo
-# 64..79, normal 80..95; the atlas follows the records and the candidate
-# grid, rows of 64 texels of 8 bytes).
-RELIGHT_ATLAS = 224 + CANDIDATE_HEADER_BYTES + CANDIDATE_CELLS * 8
+# (rows: radiance 0..31 as BC6H blocks, probe 0 albedo 32..47, normal 48..63,
+# probe 1 albedo 64..79, normal 80..95; the atlas follows the records and the
+# candidate grid, relight rows of 64 texels of 8 bytes). RELIGHT_ATLAS is
+# where row 0 would start were the radiance rows RGBA16F too, so row r >= 32
+# is at RELIGHT_ATLAS + r * RELIGHT_ROW.
 RELIGHT_ROW = 64 * 8
+RELIGHT_ATLAS = (224 + CANDIDATE_HEADER_BYTES + CANDIDATE_CELLS * 8 + radiance_block_bytes(2, 32)
+                 - 32 * RELIGHT_ROW)
 RELIGHT_MALFORMATIONS = (
     (52, "<I", 3, "UnsupportedVersion"),       # an unknown header flag
     (24, "<I", 32, "InvalidAtlas"),            # the height without bands, with the flag
@@ -474,7 +512,11 @@ def read(data):
     base_offset = (HEADER_BYTES + RECORD_BYTES * count + 15) & ~15
     words = candidate_words(count)
     expected_offset = base_offset + candidate_bytes(count)
-    if (atlas_offset != expected_offset or atlas_bytes != atlas_width * atlas_height * 8 or
+    band = width // 2
+    radiance_rows = count * band
+    radiance_bytes = radiance_block_bytes(count, width)
+    if (atlas_offset != expected_offset or
+            atlas_bytes != radiance_bytes + atlas_width * (atlas_height - radiance_rows) * 8 or
             len(data) != atlas_offset + atlas_bytes):
         raise RprbError("InvalidSections")
     if any(data[HEADER_BYTES + RECORD_BYTES * count:base_offset]):
@@ -517,10 +559,18 @@ def read(data):
     if np.any(masks & ~valid) or np.any((masks & required) != required):
         raise RprbError("InvalidCandidates", "missing required or out-of-range rank")
     candidates = {"origin": origin, "step": step, "masks": masks}
-    atlas = np.frombuffer(data, dtype="<f2", count=atlas_width * atlas_height * 4,
-                          offset=atlas_offset).reshape(atlas_height, atlas_width, 4)
-    atlas = atlas.astype(np.float64)
-    band = width // 2
+    inside = inside_mips(atlas_height, width, mips)
+    # The radiance bands as the C++ decoder expands them (half floats, alpha 1
+    # inside a mip, 0 outside); the relight rows as stored.
+    atlas = np.zeros((atlas_height, atlas_width, 4), dtype=np.float64)
+    light = bc_codec.decode_bc6h(data[atlas_offset:atlas_offset + radiance_bytes], atlas_width,
+                                 radiance_rows).astype("<f2").astype(np.float64)
+    atlas[:radiance_rows, :, :3] = light
+    atlas[:radiance_rows, :, 3] = 1.0
+    atlas[:radiance_rows][~inside[:radiance_rows]] = 0.0
+    atlas[radiance_rows:] = np.frombuffer(
+        data, dtype="<f2", count=atlas_width * (atlas_height - radiance_rows) * 4,
+        offset=atlas_offset + radiance_bytes).reshape(-1, atlas_width, 4)
     # Radiance and albedo rows hold non-negative colour; normal rows signed.
     normal_rows = np.zeros(atlas_height, dtype=bool)
     if relight:
@@ -529,12 +579,6 @@ def read(data):
             normal_rows[row:row + band] = True
     if not np.all(np.isfinite(atlas)) or atlas[~normal_rows, :3].min() < 0:
         raise RprbError("InvalidTexels")
-    inside = np.zeros((atlas_height, atlas_width), dtype=bool)
-    for top in range(0, atlas_height, band):
-        for level in range(mips):
-            x = 2 * width - (2 * width >> level)
-            rows, columns = (width >> level) // 2, width >> level
-            inside[top:top + rows, x:x + columns] = True
     if np.any(atlas[~inside] != 0.0):
         raise RprbError("InvalidTexels")
     albedo_rows = np.zeros(atlas_height, dtype=bool)
@@ -565,6 +609,7 @@ def read(data):
                           for index in range(count)]
     return {"count": count, "mips": mips, "width": width, "atlas_width": atlas_width,
             "atlas_height": atlas_height, "atlas_offset": atlas_offset, "probes": probes,
+            "atlas": atlas,
             "chains": chains, "relight": relight_chains, "global_index": global_index,
             "candidates": candidates}
 

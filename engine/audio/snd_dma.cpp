@@ -88,7 +88,13 @@ const char *GetClientClassname( SoundSource soundsource );
 float SND_GetGainObscured( channel_t *ch, bool fplayersound, bool flooping, bool bAttenuated );
 void DSP_ChangePresetValue( int idsp, int channel, int iproc, float value );
 bool DSP_CheckDspAutoEnabled( void );
+// Portal 2 audio differences from the CS:GO engine (its PORTAL2 branches), selected
+// by the running game at S_Init: sounds are treated as streaming, and automatic room
+// detection tolerates overhangs and any player height.
+bool g_bSndPortal2 = false;
+
 void DSP_SetDspAuto( int dsp_preset );
+void DSP_SetPortal2Defaults( bool bPortal2 );
 int dsp_room_GetInt ( void );
 
 // Sound mixers (mix groups, mixers, mix layers) live in snd_mixgroups.cpp.
@@ -669,6 +675,9 @@ void S_Init( void )
 	}
 
 	snd_initialized = true;
+
+	g_bSndPortal2 = !Q_stricmp( COM_GetModDirectory(), "portal2" );
+	DSP_SetPortal2Defaults( g_bSndPortal2 );
 
 	g_ActiveChannels.Init();
 	S_Startup();
@@ -2027,6 +2036,10 @@ void SND_ChannelTraceReset( void )
 
 bool SND_IsLongWave( channel_t *pChannel )
 {
+	// force it to look like everything is streaming, like on the consoles
+	if ( g_bSndPortal2 )
+		return true;
+
 	CAudioSource *pSource = pChannel->sfx ? pChannel->sfx->pSource : NULL;
 	if ( pSource )
 	{
@@ -2968,6 +2981,11 @@ void DAS_SetRoomBounds( das_room_t *proom, Vector &hit, bool bheight )
 // returns false if room parameters are not in good location to place a node
 // note: false occurs if up vector doesn't hit sky, but one or more up diagonal vectors do hit sky
 
+// Portal 2 processes overhang spaces and keeps testing while the player is in the air
+// (CS:GO's PORTAL2 defaults; DSP_SetPortal2Defaults selects them).
+ConVar das_process_overhang_spaces( "das_process_overhang_spaces", "0" );
+ConVar das_max_z_trace_length( "das_max_z_trace_length", "72", FCVAR_NONE, "Maximum height of player and still test for adsp" );
+
 bool DAS_CalcRoomProps( das_room_t *proom )
 {
 	int length_max = 0;
@@ -2979,21 +2997,25 @@ bool DAS_CalcRoomProps( das_room_t *proom )
 	int i;
 	int j;
 	int k;
-	bool b_diaghitsky = false;
 
-	// reject this location if up vector doesn't hit sky, but 
-	// one or more up diagonals do hit sky - 
-	// in this case, player is under a slight overhang, narrow bridge, or
-	// standing just inside a window or doorway. keep looking for better node location
-	
-	for (i = IVEC_DIAG_UP; i < IVEC_UP; i++)
+	if ( das_process_overhang_spaces.GetInt() != 1 )
 	{
-		if (proom->skyhits[i] > 0.0)
-			b_diaghitsky = true;
-	}
+		bool b_diaghitsky = false;
 
-	if (b_diaghitsky && !(proom->skyhits[IVEC_UP] > 0.0))
-		return false;
+		// reject this location if up vector doesn't hit sky, but 
+		// one or more up diagonals do hit sky - 
+		// in this case, player is under a slight overhang, narrow bridge, or
+		// standing just inside a window or doorway. keep looking for better node location
+
+		for (i = IVEC_DIAG_UP; i < IVEC_UP; i++)
+		{
+			if (proom->skyhits[i] > 0.0)
+				b_diaghitsky = true;
+		}
+
+		if (b_diaghitsky && !(proom->skyhits[IVEC_UP] > 0.0))
+			return false;
+	}
 
 	// get all distance pairs
 
@@ -3323,7 +3345,7 @@ bool DAS_StartTraceChecks( das_room_t *proom )
 
 	// if player jumping or in air, don't continue
 
-	if (trD.DidHit() && abs(trD.endpos.z - trD.startpos.z) > 72)
+	if (trD.DidHit() && abs(trD.endpos.z - trD.startpos.z) > das_max_z_trace_length.GetFloat() )
 		return false;
 
 	v_dir = g_das_vec3[IVEC_UP];			// up - find ceiling

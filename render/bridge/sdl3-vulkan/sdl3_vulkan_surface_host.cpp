@@ -23,6 +23,7 @@ class Sdl3WindowSurfaceHost : public IVulkanSurfaceHost
 {
 public:
 	explicit Sdl3WindowSurfaceHost( SDL_Window *window ) : m_Window( window ) {}
+	~Sdl3WindowSurfaceHost() override { Sdl3ReleaseOutputDescription( m_Window ); }
 
 	bool GetInstanceExtensions(
 	    std::vector<const char *> *outExtensions, std::string *outError ) const override
@@ -90,6 +91,13 @@ public:
 		*outPotential = headroom.potential;
 	}
 	float ReadSdrWhiteNits() const override { return Sdl3ReadHeadroom( m_Window ).sdrWhiteNits; }
+	bool PrepareOutputDescription() override
+	{
+		return Sdl3PrepareOutputDescription( m_Window, nullptr );
+	}
+	bool AttachOutputDescription() override { return Sdl3AttachOutputDescription( m_Window ); }
+	void DetachOutputDescription() override { Sdl3DetachOutputDescription( m_Window ); }
+	bool OutputDescriptionChanged() override { return Sdl3OutputDescriptionChanged( m_Window ); }
 
 	uint64_t GetNativeSurfaceGeneration() const override
 	{

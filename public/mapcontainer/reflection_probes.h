@@ -32,15 +32,18 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <vector>
 
 namespace mapcontainer
 {
 
 static const uint32_t kLumpReflectionProbes = 0x42525052u; // "RPRB"
-// RPRB v6 is the one version (2026-10-05); every earlier version is refused.
+// RPRB v7 is the one version (2026-10-05); every earlier version is refused.
+// Its radiance bands are BC6H blocks (relight bands stay RGBA16F), which
+// DecodeReflectionProbes expands into the RGBA16F atlas every consumer reads.
 // Its conservative spatial rank masks (encoding owner: reflection_probe_set.py)
 // are always present: a dim^3 grid of ceil(count / 64) uint64 words per cell.
-static const uint32_t kReflectionProbesVersion = 6;
+static const uint32_t kReflectionProbesVersion = 7;
 static const uint32_t kReflectionProbeCandidateDim = 32;
 static const uint32_t kReflectionProbeCandidateCells =
     kReflectionProbeCandidateDim * kReflectionProbeCandidateDim * kReflectionProbeCandidateDim;
@@ -132,8 +135,11 @@ struct ReflectionProbesLayout
 	uint32_t atlasHeight;
 	uint32_t globalIndex;
 	bool relight;         // v2: relight bands follow the radiance bands
-	uint64_t atlasOffset; // RGBA16F texels, rows top-left first
+	uint64_t atlasOffset; // RGBA16F texels, rows top-left first (decoded bytes)
 	uint64_t atlasBytes;
+	// In the lump: the radiance bands' BC6H bytes, before the relight rows;
+	// 0 in a layout from DecodeReflectionProbes, whose atlas is all RGBA16F.
+	uint64_t radianceBlockBytes = 0;
 	ReflectionProbeRecord probes[kReflectionProbesMaxProbes];
 	// Immutable, validated conservative rank masks in the original payload.
 	uint64_t candidateOffset = 0;
@@ -142,11 +148,18 @@ struct ReflectionProbesLayout
 	float candidateStep = 0;
 };
 
-// Validates complete RPRB bytes (header, records, sections, and every atlas
-// texel: finite, non-negative colour, alpha 1 inside a mip and 0 outside)
-// without retaining them or allocating.
+// Validates complete RPRB bytes (header, records, sections, the radiance
+// blocks' size, and every relight texel: finite, alpha 1 inside a mip and 0
+// outside) without retaining them or allocating.
 ReflectionProbesError ValidateReflectionProbes(
     const void *pData, size_t size, ReflectionProbesLayout *pLayout = nullptr ) noexcept;
+// Validates, then expands the lump into `pOut`: its bytes up to the atlas
+// unchanged, then the RGBA16F atlas (radiance decoded from BC6H, alpha 1
+// inside a mip and every channel 0 outside). `pLayout` describes `pOut`, so
+// the consumers below take `pOut->data()` and it. Errors are
+// ValidateReflectionProbes'; a failed allocation reports Truncated.
+ReflectionProbesError DecodeReflectionProbes( const void *pData, size_t size,
+    std::vector<std::byte> *pOut, ReflectionProbesLayout *pLayout );
 const char *ReflectionProbesErrorName( ReflectionProbesError error ) noexcept;
 
 // The GPU form the shaders read: one RGBA16F texture 2 * width wide and

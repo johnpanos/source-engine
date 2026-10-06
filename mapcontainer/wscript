@@ -25,7 +25,7 @@ def build(bld):
 		name      = PROJECT_NAME,
 		arch_module = 'world.map-container',
 		features  = 'c cxx',
-		includes  = [ '../public' ],
+		includes  = [ '../public', '..' ],
 		defines   = [],
 		use       = [ 'content_hash' ],
 		subsystem = bld.env.MSVC_SUBSYSTEM,

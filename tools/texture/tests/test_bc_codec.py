@@ -1,6 +1,5 @@
 """Fixtures for tools/texture/bc_codec.py: round trips through the pinned ktx."""
 from pathlib import Path
-import json
 import sys
 import unittest
 
@@ -9,20 +8,9 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import bc_codec
 
-ROOT = Path(__file__).resolve().parents[3]
 
 
-def ktx_tool():
-    for name in ("pbrt-map-toolchain.json", "pbrt-map-toolchain-bazzite.json"):
-        path = ROOT / "build" / "toolchains" / name
-        if path.is_file():
-            tool = json.loads(path.read_text()).get("ktx")
-            if tool and Path(tool).is_file():
-                return Path(tool)
-    return None
-
-
-TOOL = ktx_tool()
+TOOL = bc_codec.default_tool()
 
 
 @unittest.skipIf(TOOL is None, "the pinned ktx tool is not built (build/toolchains)")

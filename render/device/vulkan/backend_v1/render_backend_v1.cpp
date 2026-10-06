@@ -131,6 +131,7 @@ struct GpuResource
 	VkBuffer buffer = VK_NULL_HANDLE;
 	VkImage image = VK_NULL_HANDLE;
 	render::device::vulkan::HostAllocation memory = nullptr;
+	bool borrowed = false; // RegisterBorrowedImage: the caller owns the image
 };
 
 // Plain aggregates (no default member initializers) so brace-initialization
@@ -328,6 +329,19 @@ public:
 		return static_cast<RenderResourceHandle>( m_Resources.size() );
 	}
 
+	RenderResourceHandle RegisterBorrowedImage( VkImage image ) override
+	{
+		if ( image == VK_NULL_HANDLE )
+			return kInvalidResource;
+		GpuResource r;
+		r.type = RenderResourceType::kTexture;
+		r.image = image;
+		r.borrowed = true;
+		r.live = true;
+		m_Resources.push_back( r );
+		return static_cast<RenderResourceHandle>( m_Resources.size() );
+	}
+
 	VkImage Image( RenderResourceHandle handle ) const override
 	{
 		const GpuResource *r = Slot( handle );
@@ -480,7 +494,9 @@ private:
 
 	void DestroyResourceObjects( GpuResource &r )
 	{
-		if ( r.image != VK_NULL_HANDLE )
+		if ( r.borrowed )
+			; // the caller owns the image
+		else if ( r.image != VK_NULL_HANDLE )
 			m_Host->DestroyImage( r.image, r.memory );
 		else if ( r.buffer != VK_NULL_HANDLE || r.memory )
 			m_Host->DestroyBuffer( r.buffer, r.memory );

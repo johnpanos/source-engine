@@ -1628,6 +1628,7 @@ private:
 	bool RecordPresentGamma(
 	    VkCommandBuffer cmd, uint32_t imageIndex, VkImageLayout backBufferLayout, bool capture );
 	// Counts a present, scaled when the back buffer and the drawable differ.
+	void NoteSuboptimal();
 	void NotePresent( bool scaled );
 	// Copies the presented swapchain image (in `layout`, last written at
 	// `srcStage`/`srcAccess`) for capture if requested, then transitions it to
@@ -1716,6 +1717,11 @@ private:
 	VkColorSpaceKHR m_swapColorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
 	VkFormat m_presentFormat = VK_FORMAT_UNDEFINED;
 	VkColorSpaceKHR m_presentColorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
+	// The swapchain is PASS_THROUGH and the surface declares the output's own
+	// image description (IVulkanSurfaceHost::PrepareOutputDescription).
+	bool m_outputDescription = false;
+	bool m_outputDescriptionRefused = false; // attaching failed on this window
+	bool m_presentDescriptionDirty = false;  // rebuild the swapchain for it
 	bool m_requestedExtendedOutput = false;
 	bool m_swapchainExtendedRequest = false; // the request the swapchain was built for
 	bool m_extendedOutput = false;
@@ -1751,6 +1757,14 @@ private:
 	uint64_t m_swapchainGeneration = 0;
 	uint64_t m_acquireTimeouts = 0;
 	bool m_acquireTimedOut = false;
+	// An acquire or present reported VK_SUBOPTIMAL_KHR with the surface
+	// unchanged (NoteSuboptimal). On Wayland that is new dmabuf feedback (a
+	// scanout tranche for a fullscreen surface): the rebuilt swapchain takes
+	// the modifiers the display can scan out. Rebuilt is cleared by the next
+	// clean acquire, so a persistently suboptimal surface rebuilds once.
+	bool m_suboptimalPending = false;
+	bool m_suboptimalRebuilt = false;
+	uint32_t m_suboptimalRebuilds = 0;
 	// m_swapImages are the back buffers the engine renders into, one per
 	// swapchain image, at m_swapExtent (the video mode's size). The swapchain's
 	// own images (m_presentImages, at the drawable's m_presentExtent) only
@@ -1789,6 +1803,10 @@ private:
 	uint64_t m_appliedRampRevision = 0;
 	render::GammaRamp16 m_activeRamp = {};
 	bool m_gammaActive = false;
+	// How the last frame reached its swapchain image (logged on change):
+	// 'output' and 'gamma' are passes that write it directly, 'blit' copies
+	// the back buffer.
+	const char *m_presentPath = nullptr;
 	// The frame being recorded turned the legacy stream off (RFC 0014,
 	// render::legacy::kCorePassLegacyOff): it presents without the ramp.
 	bool m_frameLegacyOff = false;

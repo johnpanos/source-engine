@@ -13,6 +13,10 @@
 
 #include "foundation/float_classify.h"
 
+#define BCDECDEF static inline
+#define BCDEC_IMPLEMENTATION
+#include "external/bcdec/bcdec.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -151,8 +155,15 @@ ReflectionProbesError ValidateReflectionProbes(
 	layout.atlasBytes = U64( p + 40 );
 	const uint64_t baseOffset = AtlasOffset( layout.count );
 	layout.candidateWords = ( layout.count + 63 ) / 64;
+	// The radiance bands as BC6H blocks (4 x 4 texels, 16 bytes; a band is
+	// width / 2 >= 4 rows, so the region's rows are whole blocks), then the
+	// relight rows' RGBA16F texels.
+	const uint32_t radianceRows = layout.count * ( width / 2 );
+	layout.radianceBlockBytes = uint64_t( layout.atlasWidth / 4 ) * ( radianceRows / 4 ) * 16;
 	if ( layout.atlasOffset != baseOffset + ReflectionProbeCandidateBytes( layout.count ) ||
-	     layout.atlasBytes != uint64_t( layout.atlasWidth ) * layout.atlasHeight * 8 ||
+	     layout.atlasBytes != layout.radianceBlockBytes + uint64_t( layout.atlasWidth ) *
+	                                                         ( layout.atlasHeight - radianceRows ) *
+	                                                         8 ||
 	     size != layout.atlasOffset + layout.atlasBytes )
 		return ReflectionProbesError::InvalidSections;
 	for ( uint64_t i =
@@ -271,30 +282,33 @@ ReflectionProbesError ValidateReflectionProbes(
 			}
 		}
 	}
-	// Every texel: finite, and non-negative colour outside normal bands; then
-	// all channels 0 outside a mip, and inside one alpha 1 (radiance and
-	// normal bands), albedo at most 1 with a distance in (0, max], normals
-	// within the limit (the reader checks finiteness over the whole atlas
-	// before the layout, as the Python reader does). Bands are width / 2
-	// rows: radiance bands first, then each probe's albedo and normal bands.
-	const unsigned char *atlas = p + layout.atlasOffset;
+	// Every relight texel: finite, and non-negative colour outside normal
+	// bands; then all channels 0 outside a mip, and inside one alpha 1
+	// (normal bands), albedo at most 1 with a distance in (0, max], normals
+	// within the limit (the reader checks finiteness over the rows before
+	// the layout, as the Python reader does). Bands are width / 2 rows: the
+	// radiance bands (BC6H, any block decodes to finite non-negative light),
+	// then each probe's albedo and normal bands; `relight` is the first
+	// relight row.
 	const uint32_t band = width / 2;
+	const unsigned char *relight = p + layout.atlasOffset + layout.radianceBlockBytes;
 	const auto normalRow = [&]( uint32_t y )
 	{ return layout.relight && y >= layout.count * band && ( y / band - layout.count ) % 2 == 1; };
-	for ( uint32_t y = 0; y < layout.atlasHeight; ++y )
+	for ( uint32_t y = radianceRows; y < layout.atlasHeight; ++y )
 		for ( uint32_t x = 0; x < layout.atlasWidth; ++x )
 			for ( int c = 0; c < 4; ++c )
 			{
-				const uint16_t half =
-				    U16( atlas + ( uint64_t( y ) * layout.atlasWidth + x ) * 8 + 2 * c );
+				const uint16_t half = U16(
+				    relight + ( uint64_t( y - radianceRows ) * layout.atlasWidth + x ) * 8 + 2 * c );
 				if ( ( half & 0x7c00u ) == 0x7c00u ||
 				     ( c < 3 && !normalRow( y ) && ( half & 0x8000u ) && ( half & 0x7fffu ) != 0 ) )
 					return ReflectionProbesError::InvalidTexels;
 			}
-	for ( uint32_t y = 0; y < layout.atlasHeight; ++y )
+	for ( uint32_t y = radianceRows; y < layout.atlasHeight; ++y )
 		for ( uint32_t x = 0; x < layout.atlasWidth; ++x )
 		{
-			const unsigned char *texel = atlas + ( uint64_t( y ) * layout.atlasWidth + x ) * 8;
+			const unsigned char *texel =
+			    relight + ( uint64_t( y - radianceRows ) * layout.atlasWidth + x ) * 8;
 			if ( InsideMip( x, y % band, width, layout.mipCount ) )
 			{
 				const bool albedoRow = y >= layout.count * band && !normalRow( y );
@@ -322,6 +336,56 @@ ReflectionProbesError ValidateReflectionProbes(
 						return ReflectionProbesError::InvalidTexels;
 			}
 		}
+	if ( pLayout )
+		*pLayout = layout;
+	return ReflectionProbesError::Ok;
+}
+
+ReflectionProbesError DecodeReflectionProbes( const void *pData, size_t size,
+    std::vector<std::byte> *pOut, ReflectionProbesLayout *pLayout )
+{
+	ReflectionProbesLayout layout;
+	const ReflectionProbesError error = ValidateReflectionProbes( pData, size, &layout );
+	if ( error != ReflectionProbesError::Ok )
+		return error;
+	const unsigned char *p = static_cast<const unsigned char *>( pData );
+	const uint64_t rowBytes = uint64_t( layout.atlasWidth ) * 8;
+	const uint32_t band = layout.width / 2;
+	const uint32_t radianceRows = layout.count * band;
+	try
+	{
+		pOut->assign( size_t( layout.atlasOffset + rowBytes * layout.atlasHeight ), std::byte{ 0 } );
+	}
+	catch ( ... )
+	{
+		return ReflectionProbesError::Truncated;
+	}
+	unsigned char *out = reinterpret_cast<unsigned char *>( pOut->data() );
+	std::memcpy( out, p, size_t( layout.atlasOffset ) );
+	unsigned char *atlas = out + layout.atlasOffset;
+	const unsigned char *blocks = p + layout.atlasOffset;
+	const uint32_t blocksAcross = layout.atlasWidth / 4;
+	for ( uint32_t by = 0; by < radianceRows / 4; ++by )
+		for ( uint32_t bx = 0; bx < blocksAcross; ++bx )
+		{
+			float light[16 * 3];
+			bcdec_bc6h_float( blocks + 16 * ( uint64_t( by ) * blocksAcross + bx ), light, 4 * 3, 0 );
+			for ( uint32_t t = 0; t < 16; ++t )
+			{
+				const uint32_t x = bx * 4 + t % 4;
+				const uint32_t y = by * 4 + t / 4;
+				if ( !InsideMip( x, y % band, layout.width, layout.mipCount ) )
+					continue; // every channel stays 0
+				unsigned char *texel = atlas + uint64_t( y ) * rowBytes + uint64_t( x ) * 8;
+				const uint16_t halves[4] = { FloatToHalf( light[t * 3 + 0] ),
+				    FloatToHalf( light[t * 3 + 1] ), FloatToHalf( light[t * 3 + 2] ), 0x3c00u };
+				std::memcpy( texel, halves, sizeof( halves ) );
+			}
+		}
+	std::memcpy( atlas + uint64_t( radianceRows ) * rowBytes, blocks + layout.radianceBlockBytes,
+	    size_t( rowBytes * ( layout.atlasHeight - radianceRows ) ) );
+	layout.atlasBytes = rowBytes * layout.atlasHeight;
+	layout.radianceBlockBytes = 0;
 	if ( pLayout )
 		*pLayout = layout;
 	return ReflectionProbesError::Ok;

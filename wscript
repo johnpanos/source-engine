@@ -675,6 +675,11 @@ def check_deps(conf):
 				if conf.env.SDL3:
 					conf.check_cfg(package='sdl3', uselib_store='SDL3', args=['--cflags', '--libs'])
 					conf.env.INCLUDES_SDL2 += [os.path.abspath('platform/sdl3/legacy_include')]
+					# Optional: the SDL3-Vulkan pair declares the output's image
+					# description on Wayland (render/bridge/sdl3-vulkan).
+					if conf.env.DEST_OS == 'linux':
+						conf.check_cfg(package='wayland-client', uselib_store='WAYLAND_CLIENT',
+							args=['--cflags', '--libs'], mandatory=False)
 			if conf.options.DEDICATED:
 				conf.check_cfg(package='libedit', uselib_store='EDIT', args=['--cflags', '--libs'])
 			else:

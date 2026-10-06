@@ -87,3 +87,51 @@ uses the strict C++20 dialect from `quality/toolchain/policy.json`.
 
 These results qualify this input prerequisite only. Physical-controller gameplay
 and the remaining product boundaries above have not passed.
+
+## `ss_map` refusal (2026-10-05)
+
+The menus' `ss_map <map> [*mp]` was an unknown console command. `engine/host_cmd.cpp`
+now registers `ss_map` (client builds only), which warns that local split-screen is
+unsupported and changes nothing, so the running game is untouched. This is a
+placeholder refusal, not admission: it is replaced when the engine owns two
+local-player identities. Not built or run here; no gate changes.
+
+## Retail class layouts (2026-10-05)
+
+`tools/portal2/dsym/class_layout.py` dumps full class layouts from the 852_3
+client and server dSYMs into `external/portal2_steam2_decompiled/layouts/`, with
+the split-screen members tabulated in its README (player slot, owner/partner
+handles, prediction slot, the active-slot guard, `CInput::CheckSplitScreenMimic`).
+Reference only; the retail-binary comparison and the engine-side classes (the dSYMs
+cover game DLLs only) remain open.
+
+### Retail comparison (2026-10-05)
+
+Against the retail Linux `server.so` (Ghidra project `portal2_retail`): retail's
+`IsLocalSplitScreen` script function tests that a player's split-screen vector is
+non-empty, and its `GetSplitScreenPlayers()` accessor is `this + 0x11f8`. The 2010
+dSYM has that vector at `+0x121c`, so retail `CBasePlayer` differs by 0x24 bytes
+and the dSYM offsets are not retail offsets. Only that one member was verified.
+Retail client and engine are not imported, so the client layouts and engine classes
+remain uncompared. Details in
+`external/portal2_steam2_decompiled/layouts/README.md`.
+
+### Retail client and engine imported (2026-10-05)
+
+`client.so` and `engine.so` (retail Linux) are now in the Ghidra project
+`portal2_retail` beside `server.so`, analyzed (`ghidra/import_client_engine.sh` in
+the research directory). First engine findings (stripped; names from strings):
+
+- `ss_map` (registered at 0x00bc6700, handler `FUN_004995a0`) calls the shared map
+  launch helper `FUN_004991f0(args, 8)`. Flag 8 is the split-screen launch mode.
+  It is the same helper family as `map`; this fork's `ss_map` refusal stands in
+  for it.
+- `connect_splitscreen <server> <# of players>` (`FUN_003cced0`, `cl_main.cpp`)
+  parses the address, requires at least one player and no more than a global
+  maximum (`DAT_00bc3e64`), then runs a per-local-slot loop (a slot guard at
+  `cl_main.cpp:0x42f`, vtable slot +0x94 per slot, apparently a disconnect of
+  each slot) before one connect call that carries the player count. Slot guard
+  and callee names are not yet recovered.
+
+Client-layout comparison against the dSYM is still to do; nothing here is
+implemented in the engine.

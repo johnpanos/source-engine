@@ -71,6 +71,28 @@ struct Sdl3DisplayMode
 };
 Sdl3DisplayMode Sdl3ReadDisplayMode( SDL_Window *window );
 
+// The output's own image description on Wayland (color-management-v1;
+// sdl3_dynamic_range_wayland.cpp). A surface that declares it needs no color
+// mapping, which lets a compositor scan HDR10 frames out directly. Prepare
+// fetches the output's preferred description (true when it is BT.2020/PQ);
+// Attach sets it on the surface for a VK_COLOR_SPACE_PASS_THROUGH_EXT
+// swapchain (applied by the next present); Detach releases it before a
+// swapchain whose WSI declares its own color space; Changed reports the
+// compositor's preferred_changed, after which the caller prepares again.
+// False and no-ops on other platforms and window systems.
+struct Sdl3OutputDescription
+{
+	bool hdr10 = false;
+	float minNits = 0.0f;
+	float maxNits = 0.0f;
+	float referenceNits = 0.0f;
+};
+bool Sdl3PrepareOutputDescription( SDL_Window *window, Sdl3OutputDescription *out );
+bool Sdl3AttachOutputDescription( SDL_Window *window );
+void Sdl3DetachOutputDescription( SDL_Window *window );
+bool Sdl3OutputDescriptionChanged( SDL_Window *window );
+void Sdl3ReleaseOutputDescription( SDL_Window *window );
+
 } // namespace render_vulkan
 
 #endif // RENDER_BRIDGE_SDL3_DYNAMIC_RANGE_H
