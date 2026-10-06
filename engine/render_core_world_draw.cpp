@@ -891,8 +891,12 @@ bool RenderCoreWorldDraw_ViewEligible( unsigned long flags, bool bWorldMeshWorld
 	CoreWorldState &state = State();
 	if ( !state.loaded || !r_core_world.GetBool() || RenderCoreWorld_ViewDepth() < 1 )
 		return false;
+	// A water reflection view is the core's too (Source 2: one forward
+	// renderer for every view): it draws into the reflection render target's
+	// slot under the view's water clip plane (a captured slot term). The
+	// refraction view stays declined until water refraction is claimed.
 	if ( flags & ( DRAWWORLDLISTS_DRAW_SHADOWDEPTH | DRAWWORLDLISTS_DRAW_SSAO |
-	                 DRAWWORLDLISTS_DRAW_REFRACTION | DRAWWORLDLISTS_DRAW_REFLECTION ) )
+	                 DRAWWORLDLISTS_DRAW_REFRACTION ) )
 		return false;
 	if ( bWorldMeshWorld && !state.stageWorld )
 	{
@@ -902,8 +906,8 @@ bool RenderCoreWorldDraw_ViewEligible( unsigned long flags, bool bWorldMeshWorld
 			     "the WMSH path draws the world\n" );
 		return false;
 	}
-	// Only the back buffer is a slot target. The view's fog (range or height)
-	// is a frame term, captured when the slot is marked.
+	// The view's target (the back buffer or a render target) and its fog
+	// (range or height) are slot terms, captured when the slot is marked.
 	VMatrix view, projection;
 	int viewport[4];
 	return R_CurrentSceneView( view, projection, viewport );

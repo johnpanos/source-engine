@@ -189,7 +189,7 @@ class FrameFloorTest(unittest.TestCase):
 
     def test_small_drawable_and_quality_overrides_cannot_qualify(self):
         for overrides in ({"width": 1024, "height": 768}, {"display": "offscreen"},
-                          {"extra_arg": ["+r_core_ao_quality", "0"]},
+                          {"extra_arg": ["+r_core_shadow_pcss", "0"]},
                           {"render_switch": ["--no-core-world"]}):
             with self.subTest(overrides=overrides), self.assertRaises(frame_floor.FloorError):
                 frame_floor.configure_budget(self.workload, arguments(**overrides))
@@ -210,7 +210,7 @@ class FrameFloorTest(unittest.TestCase):
         self.assertEqual(self.receipt(self.quality_log(1024, 768))["status"], "fail")
 
     def test_disabled_effect_missing_query_and_wrong_gpu_fail(self):
-        values = dict(self.budget["settings"], r_core_ao_quality="0")
+        values = dict(self.budget["settings"], r_core_shadow_pcss="0")
         self.assertEqual(self.receipt(self.quality_log(settings=values))["status"], "fail")
         del values["mat_antialias"]
         self.assertTrue(any("mat_antialias" in failure for failure in

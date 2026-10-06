@@ -1976,8 +1976,8 @@ Current standing (2026-10-06, from the source; no new measurement):
 | LTC area lights | **Off by default** (`r_core_area_lights 0`, above). With no area lights the world pass clears `kSurfaceViewAreas`, so the LTC path is compiled out of the view's pipelines, not branched around |
 | Baked static-light shadows (LSMK) | **On** (above) |
 | PCSS | User setting, on in High (above) |
-| SSR | **Still on by default** (`r_core_ssr 1`); High's default not yet changed |
-| GTAO | **Still always on** in stage views (no convar; `CoreWorld` composes it over the prepass); High's default not yet changed |
+| SSR | **Off by default** (`r_core_ssr 0`; High and Low declare it off); `r_core_ssr 1` selects it, and its lab oracle stays
+| GTAO | **Off by default** (`r_core_ao_quality 0`, compiled out through `kSurfaceAmbientOcclusion`; High and Low and the menu presets declare it off); quality 1–4 selects it, and its lab oracle stays
 | Static-prop baked per-vertex lighting | **Not on the core**: those props draw through the legacy stream (R91 "baked-colour static props") |
 | Planar reflection view | **Partial**: the core's water point reads the view's reflection, but the legacy stream renders the view (R91) |
 | Register allocation | Last recorded 144 VGPRs on RADV with area lights compiled in (RCV-08/RCV-12, [evidence](0016-progress.md#rcv-12-retained-incremental-optimization-and-final-route-evidence)). No record exists for the area-off default (128 observed by the user, unrecorded) or for any NVIDIA GPU |
@@ -1988,9 +1988,6 @@ Remaining work, in order:
 - close the two Source 2 gaps on the core: baked per-vertex lighting of
   static props (the static-prop colour lump) and the planar reflection view
   rendered by the core;
-- High declares GTAO and SSR off, compiled out through specialization
-  constants as LTC already is; each stays selectable and keeps its lab
-  oracle;
 - register allocation, spills and occupancy of the world, static-model and
   posed-model PBR pipelines are measured on the Radeon 8060S and the RTX
   3070 before and after, then the
