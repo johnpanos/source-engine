@@ -40,6 +40,14 @@ RETAIL_WRITE_PATHS = ("update", "update/cfg") + RETAIL_EMPTY_WRITE_DIRS + ("port
 # line) and saves the session's archived cvars back into it on exit
 # (hud_quickinfo 0, joystick 0, ...), which then apply to the player's game.
 RETAIL_ENGINE_ARGS = ("+cl_cloud_settings", "0")
+# The offline AV1 transcodes of the retail movies (tools/video/transcode_av1.py),
+# linked into the runtime under this name. Each game directory's media is mounted
+# just ahead of that directory, keeping retail's precedence between same-named
+# movies (portal2_dlc2/media/valve.bik over portal2's).
+AV1_MEDIA_LINK = "media_av1"
+# The default transcode root (./play_p2's P2_AV1_MEDIA). AV1 is the launcher's
+# default video provider, so every staging mounts it when it exists.
+DEFAULT_AV1_MEDIA = Path(__file__).resolve().parents[2] / "run/media-av1"
 
 
 def private_retail_write_dir(steam_root, mirror):
@@ -95,15 +103,20 @@ def private_retail_write_dir(steam_root, mirror):
     return target
 
 
-def retail_search_paths(contents, mount_custom=False):
+def retail_search_paths(contents, mount_custom=False, av1_media=()):
+    """av1_media: the game directories with an AV1 media tree under AV1_MEDIA_LINK."""
     lines = ["\t\tSearchPaths", "\t\t{"]
     if mount_custom:
         # Ahead of retail content, as in the Portal gameinfo: the Android app
         # installs its touch-control icons into <game>/custom/android_touch.
         lines.append("\t\t\tgame+mod\t\t\t|gameinfo_path|custom/*")
     for name in RETAIL_OVERLAY_DIRS:
+        if name in av1_media:
+            lines.append("\t\t\tgame+mod\t\t\t|gameinfo_path|../%s/%s" % (AV1_MEDIA_LINK, name))
         lines.append("\t\t\tgame+mod\t\t\t|gameinfo_path|../%s/pak01_dir.vpk" % name)
         lines.append("\t\t\tgame+mod\t\t\t|gameinfo_path|../%s" % name)
+    if "portal2" in av1_media:
+        lines.append("\t\t\tgame+mod\t\t\t|gameinfo_path|../%s/portal2" % AV1_MEDIA_LINK)
     lines += [
         "\t\t\tgame+mod\t\t\t|gameinfo_path|pak01_dir.vpk",
         "\t\t\tgame+mod+mod_write+game_write+default_write_path\t|gameinfo_path|.",
@@ -120,7 +133,42 @@ def retail_search_paths(contents, mount_custom=False):
     return contents[:start] + "\n".join(lines) + contents[close_brace + 1:]
 
 
-def stage_content(steam_root, runtime, mount_custom=False):
+def stage_av1_media(runtime, av1_media):
+    """Link the AV1 content root into the runtime; return the game dirs it serves.
+
+    None removes the link, so a runtime staged without AV1 media mounts none."""
+    link = runtime / AV1_MEDIA_LINK
+    if av1_media is None:
+        if link.is_symlink():
+            link.unlink()
+        return ()
+    av1_media = Path(av1_media).resolve()
+    if not (av1_media / "manifest.json").is_file():
+        raise ValueError("%s has no AV1 transcodes (tools/video/transcode_av1.py)" % av1_media)
+    if link.is_symlink() and link.resolve() != av1_media:
+        link.unlink()
+    elif link.exists() and not link.is_symlink():
+        raise ValueError("staged %s is not a link" % AV1_MEDIA_LINK)
+    if not link.is_symlink():
+        link.symlink_to(av1_media, target_is_directory=True)
+    return tuple(sorted(p.name for p in av1_media.iterdir() if (p / "media").is_dir()))
+
+
+def default_av1_media():
+    """The default AV1 root when it has transcodes, else None (and a warning)."""
+    if (DEFAULT_AV1_MEDIA / "manifest.json").is_file():
+        return DEFAULT_AV1_MEDIA
+    print("stage_portal2_runtime: no AV1 movies in %s; run tools/video/transcode_av1.py "
+          "(movies will not play with the default av1 provider)" % DEFAULT_AV1_MEDIA,
+          file=sys.stderr)
+    return None
+
+
+def stage_content(steam_root, runtime, mount_custom=False, av1_media="default"):
+    """av1_media: an AV1 transcode root, "default" for DEFAULT_AV1_MEDIA when
+    present, or None to mount none."""
+    if av1_media == "default":
+        av1_media = default_av1_media()
     steam_root, runtime = Path(steam_root).resolve(), Path(runtime).resolve()
     source_vpk = steam_root / "portal2/pak01_dir.vpk"
     if not source_vpk.is_file():
@@ -142,9 +190,10 @@ def stage_content(steam_root, runtime, mount_custom=False):
         if link.exists() or link.is_symlink():
             raise ValueError("staged %s is not a link to the selected Steam installation" % link.name)
         link.symlink_to(source, target_is_directory=True)
+    av1_dirs = stage_av1_media(runtime, av1_media)
     gameinfo = runtime / "portal2/gameinfo.txt"
     contents = gameinfo.read_text()
-    staged = retail_search_paths(contents, mount_custom)
+    staged = retail_search_paths(contents, mount_custom, av1_dirs)
     if staged != contents:  # keep the modification time a device sync compares
         gameinfo.write_text(staged)
 
@@ -193,10 +242,17 @@ def main(argv=None):
                         help="mount the map pipeline's published maps (run/maps) as "
                              "portal2/custom/pbrt-<map>, as ./play does for Portal "
                              "(implies --mount-custom)")
+    parser.add_argument("--av1-media", type=Path,
+                        help="the AV1 transcode root (tools/video/transcode_av1.py) mounted "
+                             "ahead of each game directory (default: run/media-av1 when it "
+                             "has transcodes)")
+    parser.add_argument("--no-av1-media", action="store_true",
+                        help="mount no AV1 movies (for -video-provider bink)")
     args = parser.parse_args(argv)
     try:
         vpk = stage_content(args.steam_root, args.runtime,
-                            args.mount_custom or args.mount_published)
+                            args.mount_custom or args.mount_published,
+                            None if args.no_av1_media else args.av1_media or "default")
         print("Portal 2 content: " + str(vpk.resolve()))
         if args.mount_published:
             import playable_maps

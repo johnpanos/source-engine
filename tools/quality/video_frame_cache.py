@@ -4,6 +4,9 @@
 
 Uses only authored lossless 16x16 clips, with ordinary provider textures and the
 installed Portal 2 composition. Retail movie captures are separate evidence.
+The same sequences run twice: FFV1 clips through the Bink provider's material,
+and lossless AV1 clips through the av1 provider's (which must also refuse the
+FFV1 clip, a valid non-AV1 movie).
 """
 
 import argparse
@@ -18,15 +21,18 @@ from conformance_result import Checks
 import portal_boot
 
 
-def fixture(root, name, colors, size=16):
+def fixture(root, name, colors, size=16, codec="ffv1"):
     raw = root / (name + ".yuv")
     raw.write_bytes(b"".join(bytes([y]) * (size * size) +
                              bytes([u]) * (size * size // 4) +
                              bytes([v]) * (size * size // 4) for y, u, v in colors))
-    clip = root / (name + ".mkv")
+    clip = root / (name + (".mkv" if codec == "ffv1" else ".webm"))
+    # AV1 clips are lossless (libaom, crf 0), so the colours are the authored ones.
+    encoder = ["-c:v", "ffv1"] if codec == "ffv1" else \
+        ["-c:v", "libaom-av1", "-crf", "0", "-cpu-used", "8", "-g", "1"]
     subprocess.run(["ffmpeg", "-v", "error", "-f", "rawvideo", "-pixel_format", "yuv420p",
                     "-video_size", "%dx%d" % (size, size), "-framerate", "24", "-i", str(raw),
-                    "-c:v", "ffv1", str(clip)], check=True, timeout=30)
+                    *encoder, str(clip)], check=True, timeout=60)
     return clip
 
 
@@ -47,8 +53,12 @@ def main(argv=None):
         positive = fixture(output, "rgb", [red, green, blue])
         negative = fixture(output, "wrong-green", [red, red, blue])
         invalid = fixture(output, "too-small", [red], size=4)
+        av1_positive = fixture(output, "rgb", [red, green, blue], codec="av1")
+        av1_negative = fixture(output, "wrong-green", [red, red, blue], codec="av1")
+        av1_invalid = fixture(output, "too-small", [red], size=4, codec="av1")
         evidence["fixtures"] = {p.name: portal_boot.sha256(p)
-                                for p in (positive, negative, invalid)}
+                                for p in (positive, negative, invalid, av1_positive,
+                                          av1_negative, av1_invalid)}
         evidence["ffmpeg"] = subprocess.run(["ffmpeg", "-version"], capture_output=True,
                                             text=True, check=True).stdout.splitlines()[0]
         boot = output / "boot"
@@ -58,20 +68,26 @@ def main(argv=None):
             "--capture-wait", "30", "--startup-command", "r_core_world 1",
             "--console-command", "video_bink_cache_probe %s %s" % (positive, invalid),
             "--console-command", "video_bink_cache_probe %s %s" % (negative, invalid),
+            "--console-command", "video_bink_cache_probe %s %s av1 %s" % (
+                av1_positive, av1_invalid, positive),
+            "--console-command", "video_bink_cache_probe %s %s av1 %s" % (
+                av1_negative, av1_invalid, positive),
             "--console-command", "vgui_texture_borrow_probe",
             "--console-command", "r_drawviewmodel 0", "--console-command", "cl_drawhud 0",
             "--console-command", "noclip", "--console-command", "cmd setpos -1552 37 -96",
             "--console-command", "cmd setang 0 -90 0"])
         checks.equal(result, 0, "native boot")
         log = (boot / "runtime/portal2/console.log").read_text(errors="replace")
-        records = [(int(count), int(failed)) for count, failed in
-                   re.findall(r"VIDEO_CACHE_PROBE checks=(\d+) failures=(\d+)", log)]
+        records = [(mode, int(count), int(failed)) for mode, count, failed in
+                   re.findall(r"VIDEO_CACHE_PROBE mode=(\w+) checks=(\d+) failures=(\d+)", log)]
         evidence["native_records"] = records
-        if checks.equal(len(records), 2, "both native probes executed"):
-            checks.check(records[0][0] >= 22, "positive operation count")
-            checks.equal(records[0][1], 0, "positive operation sequence")
-            checks.check(records[1][0] >= 22, "negative operation count")
-            checks.check(records[1][1] > 0, "wrong green rejected")
+        if checks.equal([r[0] for r in records], ["any", "any", "av1", "av1"],
+                        "all four native probes executed"):
+            for offset, mode, count in ((0, "ffv1", 22), (2, "av1", 24)):
+                checks.check(records[offset][1] >= count, mode + " positive operation count")
+                checks.equal(records[offset][2], 0, mode + " positive operation sequence")
+                checks.check(records[offset + 1][1] >= count, mode + " negative operation count")
+                checks.check(records[offset + 1][2] > 0, mode + " wrong green rejected")
         borrowed = re.findall(r"VGUI_TEXTURE_BORROW_PROBE checks=(\d+) failures=(\d+)", log)
         evidence["vgui_records"] = borrowed
         if checks.equal(len(borrowed), 1, "borrowed texture probe executed"):

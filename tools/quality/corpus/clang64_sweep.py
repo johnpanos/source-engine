@@ -114,7 +114,7 @@ CONFIGS = [
      "options": ["--build-games=hl2"]},
     {"name": "portal2-native", "compiler": "clang",
      "options": ["--platform-provider=sdl3", "--render-backend=native-vulkan",
-                 "--build-games=portal2", "--physics-backend=both", "--video-provider=bink"]},
+                 "--build-games=portal2", "--physics-backend=both", "--video-provider=ffmpeg"]},
 ]
 COMMON_OPTIONS = ["--disable-warns", "-T", "release"]
 

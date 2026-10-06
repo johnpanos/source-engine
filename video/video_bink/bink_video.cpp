@@ -36,6 +36,16 @@ DLL_EXPORT IVideoSubSystem *VideoBink_Create()
 	return &g_BinkSystem;
 }
 
+// The same FFmpeg decoder as the AV1 provider: it claims only the offline
+// transcodes (AV1 in WebM, tools/content/transcode_video_av1.py), decodes them
+// with dav1d and refuses any other codec by name.
+static CBinkVideoSubSystem g_AV1System( true );
+
+DLL_EXPORT IVideoSubSystem *VideoAV1_Create()
+{
+	return &g_AV1System;
+}
+
 // ===========================================================================
 // List of file extensions and features supported by this subsystem
 // ===========================================================================
@@ -45,17 +55,21 @@ VideoFileExtensionInfo_t s_BinkExtensions[] =
 };
 
 const int s_BinkExtensionCount = ARRAYSIZE( s_BinkExtensions );
+
+VideoFileExtensionInfo_t s_AV1Extensions[] = {
+    { ".webm", VideoSystem::WEBM, VideoSystemFeature::PLAY_VIDEO_FILE_IN_MATERIAL },
+};
+
+const int s_AV1ExtensionCount = ARRAYSIZE( s_AV1Extensions );
 const VideoSystemFeature_t	CBinkVideoSubSystem::DEFAULT_FEATURE_SET = VideoSystemFeature::PLAY_VIDEO_FILE_IN_MATERIAL;
 
 // ===========================================================================
 // CBinkVideoSubSystem class
 // ===========================================================================
-CBinkVideoSubSystem::CBinkVideoSubSystem() :
-	m_bBinkInitialized( false ),
-	m_LastResult( VideoResult::SUCCESS ),
-	m_CurrentStatus( VideoSystemStatus::NOT_INITIALIZED ),
-	m_AvailableFeatures( CBinkVideoSubSystem::DEFAULT_FEATURE_SET ),
-	m_pCommonServices( nullptr )
+CBinkVideoSubSystem::CBinkVideoSubSystem( bool bAV1 )
+    : m_bAV1( bAV1 ), m_bBinkInitialized( false ), m_LastResult( VideoResult::SUCCESS ),
+      m_CurrentStatus( VideoSystemStatus::NOT_INITIALIZED ),
+      m_AvailableFeatures( CBinkVideoSubSystem::DEFAULT_FEATURE_SET ), m_pCommonServices( nullptr )
 {
 
 }
@@ -129,7 +143,7 @@ void CBinkVideoSubSystem::Shutdown()
 // ===========================================================================
 VideoSystem_t CBinkVideoSubSystem::GetSystemID()
 {
-	return VideoSystem::BINK;
+	return m_bAV1 ? VideoSystem::WEBM : VideoSystem::BINK;
 }
 
 
@@ -147,7 +161,7 @@ VideoSystemFeature_t CBinkVideoSubSystem::GetSupportedFeatures()
 
 const char* CBinkVideoSubSystem::GetVideoSystemName()
 {
-	return "BINK";
+	return m_bAV1 ? "AV1" : "BINK";
 }
 
 
@@ -199,19 +213,25 @@ VideoResult_t CBinkVideoSubSystem::VideoSoundDeviceCMD( VideoSoundDeviceOperatio
 // ===========================================================================
 int CBinkVideoSubSystem::GetSupportedFileExtensionCount()
 {
-	return s_BinkExtensionCount;
+	return m_bAV1 ? s_AV1ExtensionCount : s_BinkExtensionCount;
 }
 
  
 const char* CBinkVideoSubSystem::GetSupportedFileExtension( int num )
 {
-	return ( num < 0 || num >= s_BinkExtensionCount ) ? nullptr : s_BinkExtensions[num].m_FileExtension;
+	const VideoFileExtensionInfo_t *pExtensions = m_bAV1 ? s_AV1Extensions : s_BinkExtensions;
+	return ( num < 0 || num >= GetSupportedFileExtensionCount() )
+	           ? nullptr
+	           : pExtensions[num].m_FileExtension;
 }
 
  
 VideoSystemFeature_t CBinkVideoSubSystem::GetSupportedFileExtensionFeatures( int num )
 {
-	 return ( num < 0 || num >= s_BinkExtensionCount ) ? VideoSystemFeature::NO_FEATURES : s_BinkExtensions[num].m_VideoFeatures;
+	const VideoFileExtensionInfo_t *pExtensions = m_bAV1 ? s_AV1Extensions : s_BinkExtensions;
+	return ( num < 0 || num >= GetSupportedFileExtensionCount() )
+	           ? VideoSystemFeature::NO_FEATURES
+	           : pExtensions[num].m_VideoFeatures;
 }
 
 
@@ -234,7 +254,8 @@ IVideoMaterial* CBinkVideoSubSystem::CreateVideoMaterial( const char *pMaterialN
 	AssertExitN( m_CurrentStatus == VideoSystemStatus::OK && IS_NOT_EMPTY( pMaterialName ) || IS_NOT_EMPTY( pVideoFileName ) );
 
 	CBinkMaterial *pVideoMaterial = new CBinkMaterial();
-	if ( pVideoMaterial == nullptr || pVideoMaterial->Init( pMaterialName, pVideoFileName, flags ) == false )
+	if ( pVideoMaterial == nullptr ||
+	     pVideoMaterial->Init( pMaterialName, pVideoFileName, flags, m_bAV1 ) == false )
 	{
 		SAFE_DELETE( pVideoMaterial );
 		SetResult( VideoResult::VIDEO_ERROR_OCCURED );

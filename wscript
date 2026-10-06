@@ -335,9 +335,23 @@ def define_platform(conf):
 	conf.env.TOGLES = conf.options.TOGLES
 	conf.env.GL = conf.options.GL and not conf.options.TESTS and not conf.options.DEDICATED and not conf.options.TOOLS
 	conf.env.OPUS = conf.options.OPUS
-	conf.env.VIDEO_BINK = conf.options.VIDEO_PROVIDER == 'bink'
-	if conf.env.VIDEO_BINK and (conf.options.TESTS or conf.options.DEDICATED):
-		conf.fatal('The Bink video provider belongs to client products only')
+	# One FFmpeg provider library (video/video_bink) serves both providers: 'bink'
+	# plays retail .bik, 'av1' plays the offline AV1 transcodes, 'ffmpeg' links
+	# both and lets -video-provider choose at launch.
+	# auto: both for desktop Portal 2 clients, the only products with movies
+	# (AV1 is the launcher's default provider); none elsewhere, so other
+	# products and the mobile cross builds need no FFmpeg.
+	video_provider = conf.options.VIDEO_PROVIDER
+	if video_provider == 'auto':
+		cross = [getattr(conf.options, name, None) for name in ('ANDROID_OPTS', 'APPLE_SDK', 'IOS_SDK')]
+		desktop_client = not (conf.options.TESTS or conf.options.DEDICATED or conf.options.TOOLS or
+			any(cross))
+		video_provider = 'ffmpeg' if desktop_client and conf.options.GAMES == 'portal2' else 'none'
+	conf.env.VIDEO_BINK = video_provider in ('bink', 'ffmpeg')
+	conf.env.VIDEO_AV1 = video_provider in ('av1', 'ffmpeg')
+	conf.env.VIDEO_FFMPEG = conf.env.VIDEO_BINK or conf.env.VIDEO_AV1
+	if conf.env.VIDEO_FFMPEG and (conf.options.TESTS or conf.options.DEDICATED):
+		conf.fatal('The FFmpeg video providers belong to client products only')
 
 	arch32 = conf.run_test(CPP_32BIT_CHECK, 'Testing 32bit support')
 	arch64 = conf.run_test(CPP_64BIT_CHECK, 'Testing 64bit support')
@@ -516,8 +530,10 @@ def options(opt):
 	# so giving the option an effect would drop Box3D from them on reconfigure.
 	grp.add_option('--physics-backend', choices=['ivp', 'box3d', 'both'], default='box3d',
 		dest='PHYSICS_BACKEND', help='recorded physics provider; the run-time default is Box3D')
-	grp.add_option('--video-provider', choices=['none', 'bink'], default='none',
-		dest='VIDEO_PROVIDER', help='linked video decoder (bink requires FFmpeg development libraries)')
+	grp.add_option('--video-provider', choices=['auto', 'none', 'bink', 'av1', 'ffmpeg'], default='auto',
+		dest='VIDEO_PROVIDER', help='linked video decoder: bink (retail .bik), av1 (offline AV1 '
+		'transcodes) or ffmpeg (both); each requires FFmpeg development libraries. auto: ffmpeg '
+		'for desktop Portal 2 clients, none otherwise')
 	grp.add_option('--debug-api', choices=['enabled', 'disabled'], default='disabled',
 		dest='DEBUG_API', help='engine debug API server (JSON-RPC 2.0; Linux desktop development only)')
 	grp.add_option('--protobuf-root', default='', dest='PROTOBUF_ROOT',
@@ -1011,7 +1027,7 @@ def configure(conf):
 			conf.env.WORLDSTAGE_TBB_LIBDIR]
 		conf.env.LIB_OPENUSD = ['usd_usdLux', 'usd_usdGeom', 'usd_usd', 'usd_sdf', 'usd_tf', 'usd_vt',
 			'usd_gf', 'usd_plug', 'usd_python', 'tbb', 'python3.12']
-	if conf.env.VIDEO_BINK:
+	if conf.env.VIDEO_FFMPEG:
 		for package, store in [('libavcodec', 'AVCODEC'), ('libavformat', 'AVFORMAT'), ('libavutil', 'AVUTIL')]:
 			conf.check_cfg(package=package, uselib_store=store, args=['--cflags', '--libs'])
 	if conf.env.DXVK:
@@ -1116,7 +1132,7 @@ def configure(conf):
 					projects['game'] += ['unittests/texturecontainertest']
 		if not conf.env.ANDROID_SDL3:
 			projects['game'] += ['unittests/physicstest']
-		if conf.env.VIDEO_BINK:
+		if conf.env.VIDEO_FFMPEG:
 			projects['game'] += ['video/video_bink']
 		# The Squirrel VScript provider is needed only by the Portal 2 game DLLs.
 		if conf.options.GAMES == 'portal2':
@@ -1246,7 +1262,7 @@ def build(bld):
 		elif bld.env.GL:
 			projects['game'] += ['togl']
 
-		if bld.env.VIDEO_BINK:
+		if bld.env.VIDEO_FFMPEG:
 			projects['game'] += ['video/video_bink']
 		# Configured only for --build-games=portal2 (see configure).
 		if 'vscript' in bld.all_envs:

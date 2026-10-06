@@ -38,6 +38,7 @@ extern IMaterialSystem	*materials;
 extern "C"
 {
 #include <libavutil/imgutils.h>
+#include <libavutil/pixdesc.h>
 #include <libavutil/samplefmt.h>
 #include <libavutil/timestamp.h>
 #include <libavcodec/avcodec.h>
@@ -80,10 +81,12 @@ class CBinkMaterial : public IVideoMaterial
 		static const int			MAX_FILENAME_LEN = 255;
 		static const int			MAX_MATERIAL_NAME_LEN = 255;	
 		static const int			TEXTURE_SIZE_ALIGNMENT = 8;
-		static void TestCachedFrames( const char *filename, const char *invalidFilename );
+		static void TestCachedFrames( const char *filename, const char *invalidFilename,
+		    const char *pRefusedFilename = nullptr );
 
 		// Initializes, shuts down the material
-		bool						Init( const char *pMaterialName, const char *pFileName, VideoPlaybackFlags_t flags );
+		bool						Init( const char *pMaterialName, const char *pFileName,
+										  VideoPlaybackFlags_t flags, bool bRequireAV1 = false );
 		void						Shutdown();
 
 		// Video information functions		
@@ -180,6 +183,7 @@ class CBinkMaterial : public IVideoMaterial
 	    VideoPlaybackFlags_t m_PlaybackFlags; // option flags user supplied
 
 	    bool m_bInitCalled;
+	    bool m_bRequireAV1; // the AV1 provider's materials: AV1 yuv420p streams only
 	    bool m_bMovieInitialized;
 	    bool m_bMoviePlaying;
 	    bool m_bMovieFinishedPlaying;

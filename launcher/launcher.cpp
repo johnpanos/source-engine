@@ -758,7 +758,23 @@ bool CSourceAppSystemGroup::Create()
 		video.providers = NULL;
 		video.count = 0;
 	}
-	else if ( Q_stricmp( requestedVideo, "auto" ) )
+	else if ( !Q_stricmp( requestedVideo, "auto" ) )
+	{
+		// AV1 is the default wherever it is linked (user direction, 2026-10-05):
+		// Bink then plays only on -video-provider bink. With both active, a
+		// request for media/<name>.bik would resolve to the retail .bik before
+		// its AV1 transcode is searched.
+		for ( int i = 0; i < builtVideo->count; ++i )
+		{
+			if ( !Q_stricmp( builtVideo->providers[i].name, "av1" ) )
+			{
+				video.providers = &builtVideo->providers[i];
+				video.count = 1;
+				break;
+			}
+		}
+	}
+	else
 	{
 		video.count = 0;
 		for ( int i = 0; i < builtVideo->count; ++i )

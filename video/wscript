@@ -34,6 +34,9 @@ def build(bld):
 	libs = ['tier0','tier1','tier2','tier3','vstdlib']
 	if bld.env.VIDEO_BINK:
 		defines += ['LINK_VIDEO_BINK']
+	if bld.env.VIDEO_AV1:
+		defines += ['LINK_VIDEO_AV1']
+	if bld.env.VIDEO_FFMPEG:
 		libs += ['video_bink']
 
 	if bld.env.DEST_OS == 'win32':

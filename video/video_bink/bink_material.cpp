@@ -49,7 +49,8 @@ char *COPY_STRING( const char *pString )
 	return pNewStr;
 }
 
-int open_codec_context(int *stream_idx, AVCodecContext **dec_ctx, AVFormatContext *fmt_ctx, enum AVMediaType type)
+int open_codec_context( int *stream_idx, AVCodecContext **dec_ctx, AVFormatContext *fmt_ctx,
+    enum AVMediaType type, bool requireAV1 )
 {
 	int ret, stream_index;
 	AVStream *st;
@@ -67,8 +68,20 @@ int open_codec_context(int *stream_idx, AVCodecContext **dec_ctx, AVFormatContex
 		stream_index = ret;
 		st = fmt_ctx->streams[stream_index];
 
-		/* find decoder for the stream */
-		dec = avcodec_find_decoder(st->codecpar->codec_id);
+		// The AV1 provider plays only AV1 and refuses anything else by name, so a
+		// stray Bink or other clip never plays through it.
+		if ( requireAV1 && st->codecpar->codec_id != AV_CODEC_ID_AV1 )
+		{
+			Warning( "AV1 video provider: stream is %s, not AV1\n",
+			    avcodec_get_name( st->codecpar->codec_id ) );
+			return AVERROR( EINVAL );
+		}
+
+		/* find decoder for the stream: dav1d first for AV1, FFmpeg's own otherwise */
+		if ( st->codecpar->codec_id == AV_CODEC_ID_AV1 )
+			dec = avcodec_find_decoder_by_name( "libdav1d" );
+		if ( !dec )
+			dec = avcodec_find_decoder( st->codecpar->codec_id );
 		if (!dec)
 		{
 			Warning("Failed to find %s codec\n",
@@ -192,11 +205,9 @@ void CBinkMaterialRGBTextureRegenerator::Release()
 //-----------------------------------------------------------------------------
 // CBinkMaterial Constructor
 //-----------------------------------------------------------------------------
-CBinkMaterial::CBinkMaterial() :
-	m_pFileName( nullptr ),
-	m_bInitCalled( false ),
-	m_AVFrame( nullptr ),
-	m_AVPkt( nullptr )
+CBinkMaterial::CBinkMaterial()
+    : m_pFileName( nullptr ), m_bInitCalled( false ), m_bRequireAV1( false ), m_AVFrame( nullptr ),
+      m_AVPkt( nullptr )
 {
 	memset( m_AVVideoData, 0, sizeof(m_AVVideoData) );
 	memset( m_AVVideoLinesize, 0, sizeof(m_AVVideoLinesize) );
@@ -422,7 +433,8 @@ VideoResult_t CBinkMaterial::SoundDeviceCommand( VideoSoundDeviceOperation_t ope
 //-----------------------------------------------------------------------------
 // Initializes the video material
 //-----------------------------------------------------------------------------
-bool CBinkMaterial::Init( const char *pMaterialName, const char *pFileName, VideoPlaybackFlags_t flags )
+bool CBinkMaterial::Init(
+    const char *pMaterialName, const char *pFileName, VideoPlaybackFlags_t flags, bool bRequireAV1 )
 {
 	printf("CBinkMaterial::Init\n");
 
@@ -431,6 +443,7 @@ bool CBinkMaterial::Init( const char *pMaterialName, const char *pFileName, Vide
 	AssertExitF( m_bInitCalled == false );
 
 	m_PlaybackFlags	= flags;
+	m_bRequireAV1 = bRequireAV1;
 	m_bLoopMovie = BITFLAGS_SET( flags, VideoPlaybackFlags::LOOP_VIDEO );
 
 	OpenMovie( pFileName );	// Open up the Quicktime file
@@ -966,8 +979,8 @@ void CBinkMaterial::OpenMovie( const char *theMovieFileName )
 		return;
 	}
 
-	if ( open_codec_context(
-	         &m_AVVideoStreamID, &m_AVVideoDecCtx, m_AVFmtCtx, AVMEDIA_TYPE_VIDEO ) == 0 )
+	if ( open_codec_context( &m_AVVideoStreamID, &m_AVVideoDecCtx, m_AVFmtCtx, AVMEDIA_TYPE_VIDEO,
+	         m_bRequireAV1 ) == 0 )
 	{
 		m_AVVideoStream = m_AVFmtCtx->streams[m_AVVideoStreamID];
 
@@ -975,6 +988,16 @@ void CBinkMaterial::OpenMovie( const char *theMovieFileName )
 		m_VideoFrameWidth = m_AVVideoDecCtx->width;
 		m_VideoFrameHeight = m_AVVideoDecCtx->height;
 		m_AVPixFormat = m_AVVideoDecCtx->pix_fmt;
+		// The frame conversion reads planar 8-bit 4:2:0; refuse other layouts by name
+		// instead of converting garbage (offline AV1 clips are encoded as yuv420p).
+		if ( m_bRequireAV1 && m_AVPixFormat != AV_PIX_FMT_YUV420P )
+		{
+			Warning( "AV1 video provider: %s is %s, not yuv420p\n", theMovieFileName,
+			    av_get_pix_fmt_name( (AVPixelFormat)m_AVPixFormat ) );
+			Reset();
+			SetResult( VideoResult::VIDEO_ERROR_OCCURED );
+			return;
+		}
 		if ( m_VideoFrameWidth < cMinVideoFrameWidth || m_VideoFrameWidth > cMaxVideoFrameWidth ||
 		     m_VideoFrameHeight < cMinVideoFrameHeight ||
 		     m_VideoFrameHeight > cMaxVideoFrameHeight )
@@ -1151,8 +1174,12 @@ void CBinkMaterial::CloseFile()
 // Native operation-sequence oracle using an authored three-frame RGB fixture,
 // played by streaming decode (PRELOAD_VIDEO keeps no resident frame cache).
 // This creates a private material and never changes a game's movie group.
-void CBinkMaterial::TestCachedFrames( const char *filename, const char *invalidFilename )
+// With pRefusedFilename, every material requires AV1 (the av1 provider's) and
+// that clip, valid but not AV1, must be refused.
+void CBinkMaterial::TestCachedFrames(
+    const char *filename, const char *invalidFilename, const char *pRefusedFilename )
 {
+	const bool bRequireAV1 = pRefusedFilename != nullptr;
 	int checks = 0, failures = 0;
 	auto check = [&]( bool passed, const char *label )
 	{
@@ -1166,7 +1193,7 @@ void CBinkMaterial::TestCachedFrames( const char *filename, const char *invalidF
 	CBinkMaterial movie;
 	const auto flags = VideoPlaybackFlags::PRELOAD_VIDEO | VideoPlaybackFlags::NO_AUDIO |
 	                   VideoPlaybackFlags::DONT_AUTO_START_VIDEO;
-	const bool initialized = movie.Init( "__video_cache_probe", filename, flags );
+	const bool initialized = movie.Init( "__video_cache_probe", filename, flags, bRequireAV1 );
 	check( initialized, "preload" );
 	if ( initialized )
 	{
@@ -1212,19 +1239,29 @@ void CBinkMaterial::TestCachedFrames( const char *filename, const char *invalidF
 		check( !materials->IsTextureLoaded( name.c_str() ), "texture released" );
 	}
 	CBinkMaterial invalid;
-	check(
-	    !invalid.Init( "__video_cache_invalid", invalidFilename, flags ), "reject invalid clip" );
+	check( !invalid.Init( "__video_cache_invalid", invalidFilename, flags, bRequireAV1 ),
+	    "reject invalid clip" );
 	check( !invalid.IsVideoReadyToPlay(), "failure rollback" );
-	Msg( "VIDEO_CACHE_PROBE checks=%d failures=%d\n", checks, failures );
+	if ( bRequireAV1 )
+	{
+		CBinkMaterial refused;
+		check( !refused.Init( "__video_cache_refused", pRefusedFilename, flags, true ),
+		    "refuse non-AV1 clip" );
+		check( !refused.IsVideoReadyToPlay(), "refusal rollback" );
+	}
+	Msg( "VIDEO_CACHE_PROBE mode=%s checks=%d failures=%d\n", bRequireAV1 ? "av1" : "any", checks,
+	    failures );
 }
 
 CON_COMMAND_F(
     video_bink_cache_probe, "Quality oracle: three RGB frames and an invalid clip", FCVAR_CHEAT )
 {
-	if ( args.ArgC() != 3 )
+	const bool bAV1 = args.ArgC() == 5 && !V_stricmp( args[3], "av1" );
+	if ( args.ArgC() != 3 && !bAV1 )
 	{
-		Warning( "video_bink_cache_probe <three-frame clip> <invalid clip>\n" );
+		Warning(
+		    "video_bink_cache_probe <three-frame clip> <invalid clip> [av1 <non-AV1 clip>]\n" );
 		return;
 	}
-	CBinkMaterial::TestCachedFrames( args[1], args[2] );
+	CBinkMaterial::TestCachedFrames( args[1], args[2], bAV1 ? args[4] : nullptr );
 }

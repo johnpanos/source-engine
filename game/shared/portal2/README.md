@@ -96,6 +96,25 @@ Fixed on the way:
   is the frame's size and BGR, and it reinstalls its regenerator before each
   upload: the VGUI surface replaces the regenerator of a procedural material's
   base texture.
+- Movies play from offline AV1 transcodes (user direction, 2026-10-05).
+  `tools/video/transcode_av1.py` encodes every retail `media/*.bik` to AV1
+  (SVT-AV1, 8-bit 4:2:0) with Opus audio in `run/media-av1/<game dir>/media/*.webm`,
+  keeping a clip only when its frame count matches and its mean SSIM against the
+  Bink decode (frames paired by index) is at least 0.97, walking a CRF ladder
+  (24, 18, 12) per clip. AV1 is the default everywhere video exists: Waf's
+  `--video-provider=auto` links both FFmpeg providers for desktop Portal 2
+  clients (none elsewhere), the launcher's `-video-provider auto` selects only
+  `av1` when it is linked, and `stage_portal2_runtime.py` mounts `run/media-av1`
+  ahead of each game directory whenever it has transcodes (`--no-av1-media`
+  opts out). `./play_p2` (and so `./play_p2_fsr` and the desktop
+  `./play_p2_coop` peers) runs the transcoder incrementally before staging.
+  The game still asks for `media/<name>.bik`; with only the av1 provider
+  active, video services' alternate-file search resolves it to the `.webm`.
+  The av1 provider decodes with dav1d and refuses non-AV1 streams by name;
+  `-video-provider bink` (`VIDEO_ARGS="-video-provider bink" ./play_p2`) plays
+  the retail files. Decoding is on
+  the CPU (one dav1d thread per movie) with the existing YUV-to-RGB upload;
+  GPU video decode and the Android/iOS packages are not done.
 - Published `_relit` and `_source2` maps expose their original map name to
   Portal 2 VScript so the shipped elevator movie, choreography and transition
   tables select the original authored entries. The actual BSP name remains

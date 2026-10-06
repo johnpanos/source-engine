@@ -43,6 +43,9 @@ DLL_EXPORT const VideoProviderCatalog *VideoServices_GetBuiltProviders()
 #if defined( LINK_VIDEO_BINK )
 	    { "bink", VideoSystem::BINK, VideoBink_Create, false },
 #endif
+#if defined( LINK_VIDEO_AV1 )
+	    { "av1", VideoSystem::WEBM, VideoAV1_Create, false },
+#endif
 #if defined( LINK_VIDEO_WEBM )
 	    { "webm", VideoSystem::WEBM, VideoWebM_Create, false },
 #endif

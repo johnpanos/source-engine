@@ -41,7 +41,8 @@ class CBinkVideoSubSystem : public CTier2AppSystem< IVideoSubSystem >
 	typedef CTier2AppSystem< IVideoSubSystem > BaseClass;
 
 	public:
-		CBinkVideoSubSystem();
+		// bAV1: the AV1 provider (AV1 in WebM only) instead of Bink.
+		explicit CBinkVideoSubSystem( bool bAV1 = false );
 		~CBinkVideoSubSystem();
 
 		// Inherited from IAppSystem 
@@ -92,6 +93,7 @@ class CBinkVideoSubSystem : public CTier2AppSystem< IVideoSubSystem >
 
 		VideoResult_t					SetResult( VideoResult_t status );
 
+		const bool						m_bAV1;
 		bool							m_bBinkInitialized;
 		VideoResult_t					m_LastResult;
 		
