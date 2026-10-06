@@ -986,10 +986,11 @@ class Pipeline:
             self.step("probe-placement", [p["stage"]] + self.scene_sources() +
                       ([environment] if environment else []),
                       {"probe": self.probe, "bounds_m": probe_bounds,
-                       "rules": self.profile.get("audit") or {}},
+                       "rules": self.profile.get("audit") or {}, "coverage": "reported"},
                       SCENE_SCRIPTS + self.baker.scripts("probe"),
                       [p["probe_placement"], placement_dir],
-                      lambda: self.baker.place(probe_args + ["--out-dir", placement_dir]))
+                      lambda: self.baker.place(probe_args + ["--out-dir", placement_dir,
+                                                             "--record-coverage-failure"]))
         supplied = self.manifest.get("reference", {})
         if reference and supplied.get("gate"):
             gate_args = ["render", "--reference", ROOT / supplied["png"],
