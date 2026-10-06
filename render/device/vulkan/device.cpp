@@ -114,6 +114,12 @@ DeviceResult<void> VulkanDevice::Initialize()
 		m_Facts.capabilities.Add( Capability::kMultiDrawIndirect );
 	if ( m_Adapter.drawIndirectCount )
 		m_Facts.capabilities.Add( Capability::kDrawIndirectCount );
+	if ( m_Adapter.multiDrawIndirect && m_Adapter.drawIndirectFirstInstance )
+		m_Facts.capabilities.Add( Capability::kIndirectFirstInstance );
+	// S8: a second queue from a compute-only family (port mode; a host keeps
+	// its one queue).
+	if ( m_Adapter.computeFamily != UINT32_MAX && !m_HostMode )
+		m_Facts.capabilities.Add( Capability::kAsyncCompute );
 	// D23: timestamps where the queue family writes them.
 	{
 		std::uint32_t families = 0;
@@ -232,6 +238,8 @@ struct RequiredFeatures
 			head.features.textureCompressionBC = VK_TRUE;
 		if ( adapter.multiDrawIndirect )
 			head.features.multiDrawIndirect = VK_TRUE;
+		if ( adapter.drawIndirectFirstInstance )
+			head.features.drawIndirectFirstInstance = VK_TRUE;
 		if ( auto *have =
 		         FindInChain( &head, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES ) )
 		{
@@ -331,6 +339,13 @@ DeviceResult<void> VulkanDevice::CreateLogical()
 	{
 		queues[1] = queues[0];
 		queues[1].queueFamilyIndex = m_Adapter.presentFamily;
+		queueCount = 2;
+	}
+	const bool asyncCompute = m_Adapter.computeFamily != UINT32_MAX && !m_HostMode;
+	if ( asyncCompute )
+	{
+		queues[1] = queues[0];
+		queues[1].queueFamilyIndex = m_Adapter.computeFamily;
 		queueCount = 2;
 	}
 
@@ -446,6 +461,22 @@ DeviceResult<void> VulkanDevice::CreateLogical()
 		return Fail( StatusOf( result ), op, result );
 	}
 	m_Completed.store( m_Submitted );
+	if ( asyncCompute )
+	{
+		vkGetDeviceQueue( m_Device, m_Adapter.computeFamily, 0, &m_Compute.queue );
+		type.initialValue = m_Compute.submitted;
+		result = vkCreateSemaphore( m_Device, &semaphore, nullptr, &m_Compute.timeline );
+		if ( result != VK_SUCCESS )
+		{
+			m_Compute.timeline = VK_NULL_HANDLE;
+			m_Compute.queue = VK_NULL_HANDLE;
+			DestroyLogical();
+			return Fail( StatusOf( result ), op, result );
+		}
+		m_Compute.completed.store( m_Compute.submitted );
+		m_SharedFamilies[0] = m_Adapter.queueFamily;
+		m_SharedFamilies[1] = m_Adapter.computeFamily;
+	}
 
 	VkDescriptorSetLayoutCreateInfo empty{};
 	empty.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -541,6 +572,21 @@ void VulkanDevice::DestroyLogical()
 	}
 	m_FreeContexts.clear();
 	m_InFlight.clear();
+	for ( auto *contexts : { &m_Compute.free } )
+		for ( CommandContext &context : *contexts )
+			vkDestroyCommandPool( m_Device, context.pool, nullptr );
+	for ( CommandContext &context : m_Compute.inFlight )
+	{
+		vkDestroyCommandPool( m_Device, context.pool, nullptr );
+		for ( HostBuffer &staging : context.staging )
+			DestroyHostBuffer( staging );
+	}
+	m_Compute.free.clear();
+	m_Compute.inFlight.clear();
+	if ( m_Compute.timeline != VK_NULL_HANDLE )
+		vkDestroySemaphore( m_Device, m_Compute.timeline, nullptr );
+	m_Compute.timeline = VK_NULL_HANDLE;
+	m_Compute.queue = VK_NULL_HANDLE;
 	for ( VkDescriptorPool pool : m_DescriptorPools )
 		vkDestroyDescriptorPool( m_Device, pool, nullptr );
 	m_DescriptorPools.clear();
@@ -586,13 +632,36 @@ std::uint64_t VulkanDevice::CompletedValue() const
 	return m_Completed.load();
 }
 
+std::uint64_t VulkanDevice::CompletedValue( QueueKind queue ) const
+{
+	if ( queue != QueueKind::kCompute )
+		return CompletedValue();
+	if ( m_Device == VK_NULL_HANDLE || m_State != DeviceState::kAvailable || !AsyncCompute() )
+		return m_Compute.completed.load();
+	std::uint64_t value = 0;
+	const VkResult result =
+	    m_Vk.getSemaphoreCounterValue( m_Device, m_Compute.timeline, &value );
+	if ( result == VK_ERROR_DEVICE_LOST )
+		m_State = DeviceState::kLost;
+	else if ( result == VK_SUCCESS )
+	{
+		std::uint64_t cached = m_Compute.completed.load();
+		while ( value > cached && !m_Compute.completed.compare_exchange_weak( cached, value ) )
+		{
+		}
+	}
+	return m_Compute.completed.load();
+}
+
 bool VulkanDevice::IsComplete( CompletionToken token ) const
 {
 	if ( !token.NamesSubmission() || token.epoch < m_Epoch )
 		return true;
-	if ( token.epoch > m_Epoch || token.queue != QueueKind::kGraphics || token.value > m_Submitted )
+	const bool known = token.queue == QueueKind::kGraphics ||
+	                   ( token.queue == QueueKind::kCompute && AsyncCompute() );
+	if ( token.epoch > m_Epoch || !known || token.value > SubmittedValue( token.queue ) )
 		return false;
-	return token.value <= CompletedValue();
+	return token.value <= CompletedValue( token.queue );
 }
 
 void VulkanDevice::RecycleCompleted()
@@ -618,6 +687,19 @@ void VulkanDevice::RecycleCompleted()
 		}
 	}
 	m_Ring.Retire( completed );
+	const std::uint64_t computed = CompletedValue( QueueKind::kCompute );
+	while ( !m_Compute.inFlight.empty() && m_Compute.inFlight.front().value <= computed )
+	{
+		CommandContext context = std::move( m_Compute.inFlight.front() );
+		m_Compute.inFlight.pop_front();
+		for ( HostBuffer &staging : context.staging )
+			DestroyHostBuffer( staging );
+		context.staging.clear();
+		if ( vkResetCommandPool( m_Device, context.pool, 0 ) == VK_SUCCESS )
+			m_Compute.free.push_back( std::move( context ) );
+		else
+			vkDestroyCommandPool( m_Device, context.pool, nullptr );
+	}
 }
 
 std::size_t VulkanDevice::Poll()
@@ -944,8 +1026,9 @@ DeviceResult<CommandEncoder> VulkanDevice::BeginEncoder( QueueKind queue )
 {
 	if ( m_State != DeviceState::kAvailable )
 		return Fail( DeviceStatus::kDeviceLost, DeviceOperation::kBeginEncoder );
-	// Only the graphics queue: async compute and transfer are not claimed.
-	if ( queue != QueueKind::kGraphics )
+	// The graphics queue, and the compute queue where kAsyncCompute is
+	// claimed; async transfer is not.
+	if ( queue != QueueKind::kGraphics && !( queue == QueueKind::kCompute && AsyncCompute() ) )
 		return Fail( DeviceStatus::kUnsupported, DeviceOperation::kBeginEncoder );
 	return CommandEncoder( queue, std::make_unique<VulkanEncoder>( *this, queue ) );
 }

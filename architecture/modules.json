@@ -889,6 +889,7 @@
           "render.material",
           "render.resources",
           "render.frame",
+          "render.culling",
           "render.shader-library",
           "render.contracts"
         ]
@@ -1024,10 +1025,10 @@
         ]
       },
       {
-        "id": "render.pass.cull",
+        "id": "render.culling",
         "paths": [
-          "public/render/pass/cull/",
-          "render/pass/cull/"
+          "public/render/culling/",
+          "render/culling/"
         ],
         "allowedEdges": [
           "foundation",
@@ -1312,7 +1313,7 @@
           "render.frame",
           "render.renderer",
           "render.pass.present",
-          "render.pass.cull",
+          "render.culling",
           "render.pass.skinning",
           "render.pass.opaque",
           "render.pass.world",
@@ -1927,7 +1928,7 @@
           "render_shaderlib"
         ]
       },
-      "render_pass_cull": {
+      "render_culling": {
         "allowedUse": [
           "render_scene",
           "render_graph",
@@ -1958,6 +1959,7 @@
       "render_pass_world": {
         "allowedUse": [
           "render_material",
+          "render_culling",
           "render_device",
           "render_spv",
           "render_frame",
@@ -2381,7 +2383,8 @@
             "render.legacy-pass-contract"
           ],
           [
-            "render.frame"
+            "render.frame",
+            "render.culling"
           ],
           [
             "render.renderer",

@@ -1,0 +1,151 @@
+// render.pass.cull (RFC 0016 GPU-driven submission S4): occlusion culling of
+// the frustum culler's kept instances against the depth pyramid, the GPU
+// path of cull.h's OcclusionReference. Each invocation writes one word of
+// the output mask (32 instances): an instance stays when the frustum mask
+// keeps it and it is not occluded.
+//
+// Occluded: every corner of the instance's world box projects in front of
+// the camera (clip w above a small epsilon) and past the near plane, and the
+// nearest projected depth is farther than the pyramid's farthest depth over
+// the box's screen rectangle, read at the first level where that rectangle
+// spans at most 2x2 texels. Conventions (render.device.v2 D13): clip depth 0
+// near to 1 far, clip Y up, row 0 at the top.
+//
+// SEEDED_FAR_CORNER (tests the farthest corner) and SEEDED_ONE_TEXEL (reads
+// one texel at the rectangle's centre on level 0) build the defective
+// variants the render.cull suite must reject; no product uses them.
+#version 450
+
+layout( local_size_x = 64 ) in;
+
+struct CullInstance
+{
+	vec4 minMask;
+	vec4 maxPad;
+};
+
+layout( std430, set = 3, binding = 0 ) readonly buffer Instances
+{
+	CullInstance instances[];
+};
+
+layout( std430, set = 3, binding = 1 ) readonly buffer View
+{
+	vec4 viewProjection[4]; // rows
+	uvec4 sizeLevelsCount;  // width, height, levels, instance count
+	uvec4 levelOffsets[4];
+};
+
+layout( std430, set = 3, binding = 2 ) readonly buffer Pyramid
+{
+	float depths[];
+};
+
+layout( std430, set = 3, binding = 3 ) readonly buffer Frustum
+{
+	uint frustumWords[];
+};
+
+layout( std430, set = 3, binding = 4 ) writeonly buffer Visibility
+{
+	uint words[];
+};
+
+const float kMinW = 1e-5;
+
+uint LevelOffset( uint level )
+{
+	return levelOffsets[level / 4u][level % 4u];
+}
+
+uvec2 LevelSize( uint level )
+{
+	uvec2 size = sizeLevelsCount.xy;
+	for ( uint l = 0u; l < level; ++l )
+		size = max( ( size + 1u ) / 2u, uvec2( 1u ) );
+	return size;
+}
+
+bool Occluded( uint index )
+{
+	const vec3 lo = instances[index].minMask.xyz;
+	const vec3 hi = instances[index].maxPad.xyz;
+	float minU = 1e30, minV = 1e30, maxU = -1e30, maxV = -1e30;
+	float nearZ = 1e30, farZ = -1e30;
+	for ( uint c = 0u; c < 8u; ++c )
+	{
+		const vec4 p = vec4( ( c & 1u ) != 0u ? hi.x : lo.x, ( c & 2u ) != 0u ? hi.y : lo.y,
+		    ( c & 4u ) != 0u ? hi.z : lo.z, 1.0 );
+		precise vec4 clip = vec4( dot( viewProjection[0], p ), dot( viewProjection[1], p ),
+		    dot( viewProjection[2], p ), dot( viewProjection[3], p ) );
+		if ( clip.w <= kMinW )
+			return false;
+		const vec3 ndc = clip.xyz / clip.w;
+		const float u = ndc.x * 0.5 + 0.5;
+		const float v = 0.5 - ndc.y * 0.5;
+		minU = min( minU, u );
+		maxU = max( maxU, u );
+		minV = min( minV, v );
+		maxV = max( maxV, v );
+		nearZ = min( nearZ, ndc.z );
+		farZ = max( farZ, ndc.z );
+	}
+	if ( nearZ <= 0.0 )
+		return false;
+	const uvec2 size0 = sizeLevelsCount.xy;
+	const uint levels = sizeLevelsCount.z;
+#ifdef SEEDED_FAR_CORNER
+	const float testZ = farZ;
+#else
+	const float testZ = nearZ;
+#endif
+#ifdef SEEDED_ONE_TEXEL
+	const uvec2 centre = min( uvec2( vec2( ( minU + maxU ) * 0.5, ( minV + maxV ) * 0.5 ) *
+	                              vec2( size0 ) ),
+	    size0 - 1u );
+	return testZ > depths[centre.y * size0.x + centre.x];
+#else
+	minU = clamp( minU, 0.0, 1.0 );
+	maxU = clamp( maxU, 0.0, 1.0 );
+	minV = clamp( minV, 0.0, 1.0 );
+	maxV = clamp( maxV, 0.0, 1.0 );
+	uint x0 = min( uint( minU * float( size0.x ) ), size0.x - 1u );
+	uint x1 = min( uint( maxU * float( size0.x ) ), size0.x - 1u );
+	uint y0 = min( uint( minV * float( size0.y ) ), size0.y - 1u );
+	uint y1 = min( uint( maxV * float( size0.y ) ), size0.y - 1u );
+	uint level = 0u;
+	while ( ( x1 - x0 > 1u || y1 - y0 > 1u ) && level + 1u < levels )
+	{
+		x0 >>= 1u;
+		x1 >>= 1u;
+		y0 >>= 1u;
+		y1 >>= 1u;
+		++level;
+	}
+	const uvec2 size = LevelSize( level );
+	const uint base = LevelOffset( level );
+	float farthest = 0.0;
+	for ( uint y = y0; y <= y1; ++y )
+		for ( uint x = x0; x <= x1; ++x )
+			farthest = max( farthest, depths[base + y * size.x + x] );
+	return testZ > farthest;
+#endif
+}
+
+void main()
+{
+	const uint word = gl_GlobalInvocationID.x;
+	const uint count = sizeLevelsCount.w;
+	if ( word * 32u >= count )
+		return;
+	uint bits = frustumWords[word];
+	for ( uint b = 0u; b < 32u; ++b )
+	{
+		const uint index = word * 32u + b;
+		if ( index >= count )
+			bits &= ~( 1u << b );
+		else if ( ( bits & ( 1u << b ) ) != 0u && Occluded( index ) )
+			bits &= ~( 1u << b );
+	}
+	words[word] = bits;
+}

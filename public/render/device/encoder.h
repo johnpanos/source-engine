@@ -244,7 +244,11 @@ public:
 	// kIndirect; offset and stride are multiples of 4, the stride at least
 	// 20, and every record lies inside the buffer. A draw count of zero
 	// draws nothing. Without the capability the submission fails
-	// (kUnsupported); an invalid call fails it (kInvalidState).
+	// (kUnsupported); an invalid call fails it (kInvalidState). A record's
+	// firstInstance must be 0 unless the device claims
+	// Capability::kIndirectFirstInstance, which makes it offset the instance
+	// index and instance-rate attributes as DrawIndexed's does (the GPU reads
+	// it, so the port cannot check it).
 	void DrawIndexedIndirect(
 	    BufferId buffer, std::uint64_t offset, std::uint32_t drawCount, std::uint32_t stride );
 	// D31 (Capability::kDrawIndirectCount): as D30, with the draw count read

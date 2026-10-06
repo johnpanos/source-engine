@@ -250,6 +250,10 @@ void GlDevice::DestroyContextObjects()
 		gl.DeleteBuffers( 1, &m_RingBuffer );
 	}
 	m_RingBuffer = 0;
+	if ( m_IndexScratch )
+		gl.DeleteBuffers( 1, &m_IndexScratch );
+	m_IndexScratch = 0;
+	m_IndexScratchBytes = 0;
 	m_RingData = nullptr;
 	m_RingCpu.clear();
 	if ( EsState *es = m_Context->Es() )
@@ -317,6 +321,14 @@ void GlDevice::QueryFacts()
 		gl.GetQueryiv( GL_TIMESTAMP, GL_QUERY_COUNTER_BITS, &timestampBits );
 	if ( timestampBits > 0 )
 		have.Add( Capability::kTimestamps );
+	// D30: GL 4.3's glMultiDrawElementsIndirect; ES 3.1 draws one GPU-read
+	// record at a time. D31 where the context has the count entry point (GL
+	// 4.6 or ARB_indirect_parameters; ES has none). Neither honours a
+	// record's firstInstance in the shaders' instance index, so
+	// kIndirectFirstInstance is not claimed.
+	have.Add( Capability::kMultiDrawIndirect );
+	if ( !IsEs() && gl.MultiDrawElementsIndirectCount )
+		have.Add( Capability::kDrawIndirectCount );
 	CapabilitySet claimed;
 	for ( std::uint32_t bit = 0; bit < static_cast<std::uint32_t>( Capability::kCount ); ++bit )
 	{
@@ -909,7 +921,7 @@ DeviceResult<CompletionToken> GlDevice::Submit(
 	{
 		for ( const Command &command : encoder->Commands() )
 		{
-			// D30/D31: the GL adapter claims neither capability.
+			// D30/D31: refused where unclaimed.
 			if ( ( command.op == Op::kDrawIndexedIndirect &&
 			         !m_Facts.capabilities.Has( Capability::kMultiDrawIndirect ) ) ||
 			     ( command.op == Op::kDrawIndexedIndirectCount &&

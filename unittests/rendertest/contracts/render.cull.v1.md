@@ -1,11 +1,12 @@
 # Contract: `render.cull.v1`
 
-Module: `render.pass.cull` (RFC 0016 layer 6 feature)
-Header: `public/render/pass/cull/cull.h`
-Kernels: `render/pass/cull/cull.comp` (mask) and `render/pass/cull/compact.comp`
-(indirect commands)
-Suite: `unittests/rendertest/core/pass/cull/test_cull_vulkan.cpp`
-(`render.cull`, `linux-native-vulkan-gpu`)
+Module: `render.culling` (RFC 0016 layer 5 mechanism, below the passes that consume it)
+Header: `public/render/culling/cull.h`
+Kernels: `render/culling/cull.comp` (frustum mask), `compact.comp` (bucketed
+indirect commands), `hiz.comp` (depth pyramid) and `occlusion.comp`
+Suites: `unittests/rendertest/core/culling/test_cull_vulkan.cpp`
+(`render.cull`, `linux-native-vulkan-gpu`) and `render/lab/gpu_submission_suite.cpp`
+(`render.lab.gpu-submission`)
 Rows: R89 (RFC 0016
 [GPU-driven submission](../../../RFC/0016-render-core.md#gpu-driven-submission-plan-2026-10-05-user-direction)
 phases S3 and S4)
@@ -26,9 +27,12 @@ either way.
 | C5 | The pass is a compute pass that asks for the async compute queue; compiled with `CompileOptions::asyncCompute` it runs there and a later reader on graphics waits for it; compiled without, it runs on graphics with no wait |
 | C6 | A device without `Capability::kCompute` fails kernel creation with `kNoCompute`; a dispatch the kernel cannot record counts in `RecordFailures` |
 | C7 | Bind groups of recorded dispatches are released behind the token passed to `Collect` |
-| C8 | Compaction (`compact.comp`, `CompactKernel`, `AddCompactPass`): for the mask and each instance's `DrawTemplate`, the output's first 32-bit word is the number of kept instances and from `kCommandsOffset` one `DrawIndexedIndirectCommand` per kept instance i, `{ indexCount, 1, firstIndex, vertexOffset, i }`, in instance order, equal to `CompactReference` exactly; zero instances write a zero count |
+| C8 | Compaction (`compact.comp`, `CompactKernel`, `AddCompactPass`): instances are ordered by bucket (`DrawBucket { first, count }`, one per pipeline and its bindings) and each `DrawTemplate` names its bucket; word b of the output is bucket b's kept count and from `CommandsOffset( bucketCount )` bucket b's region at its instances' indices holds one `DrawIndexedIndirectCommand` per kept instance i, `{ indexCount, 1, firstIndex, vertexOffset, i }`, in instance order, equal to `CompactReference` exactly (1 to 64 buckets, some empty); zero instances write zero counts; at most `kMaxCompactInstances` instances |
 | C9 | A seeded kernel that drops the last command from the count, and one that writes the wrong first instance, each disagree with the reference |
-| C10 | On a device claiming `kDrawIndirectCount`, `DrawIndexedIndirectCount( out, kCommandsOffset, out, 0, count, 20 )` over the compacted buffer draws an image equal, byte for byte, to direct `DrawIndexed` calls for the CPU culler's kept instances in instance order |
+| C10 | On a device claiming `kDrawIndirectCount`, one `DrawIndexedIndirectCount` per bucket over the compacted buffer draws an image equal, byte for byte, to direct `DrawIndexed` calls for the CPU culler's kept instances in instance order |
+| C11 | Occlusion (`hiz.comp`, `occlusion.comp`, `OcclusionKernels`, `AddOcclusionPass`): the depth pyramid's levels equal `DepthPyramidReference` of its level 0 exactly (max of up to 2x2, sizes rounding up); an instance kept by the frustum mask is removed exactly when all eight corners of its box are in front of the camera and past the near plane and its nearest depth is farther than the pyramid's farthest over its screen rectangle at the first level spanning at most 2x2 texels; the GPU mask agrees with `OcclusionReference` on the read-back pyramid (at least 99.5 %) |
+| C12 | Conservative: drawing an occluder and only the occlusion-kept boxes gives the image drawing every frustum-kept box gives, byte for byte, while a real share is removed; a kernel testing the farthest corner, or one texel of level 0, changes an image |
+| C13 | The world pass (`WorldTarget::gpuSubmission`, `r_core_world_gpu_submit`) culls a view's surfaces per surface, compacts them per (material, lightmap page) bucket and draws each bucket with one `DrawIndexedIndirectCount` from the world's shared buffers, giving the per-surface path's image pixel for pixel (`render.lab.gpu-submission`) |
 
 The placement comparison (CPU serial and pooled against the GPU round trip
 and resident instances) is printed, never judged here; its decision and

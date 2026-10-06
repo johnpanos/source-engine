@@ -365,6 +365,14 @@ struct WorldTarget
 	// Draw the opaque surfaces' depth into the target first
 	// (material::kSurfaceDepthOnly), so the lit pass shades each pixel once.
 	bool depthPrepass = false;
+	// GPU-driven submission (RFC 0016 S3/S4): the view's world surfaces are
+	// frustum-culled per surface on the GPU (render.culling) and compacted
+	// into one indirect command list per (material, lightmap page) bucket,
+	// each drawn by one DrawIndexedIndirectCount from the world's shared
+	// buffers. Same triangles, bindings and order as the per-surface path.
+	// Needs Capability::kCompute, kStorageBuffers and kDrawIndirectCount;
+	// without them the per-surface path draws (counted in WorldStats).
+	bool gpuSubmission = false;
 	// Cutout casters to draw into the slot's shadow atlas before the view
 	// (null: none).
 	std::shared_ptr<const WorldCutoutShadows> cutoutShadows;
@@ -612,6 +620,12 @@ struct WorldStats
 	std::uint64_t viewsFailed = 0;  // claimed work not drawn: never legacy's
 	std::uint64_t viewsSkipped = 0; // views of a host frame the backend never recorded
 	std::uint64_t surfacesDrawn = 0;
+	// GPU-driven submission (WorldTarget::gpuSubmission): views drawn by it,
+	// the indirect draws (buckets) they issued, and views that asked for it on
+	// a device without the capabilities (drawn per surface).
+	std::uint64_t gpuViews = 0;
+	std::uint64_t gpuIndirectDraws = 0;
+	std::uint64_t gpuFallbacks = 0;
 	std::uint64_t staticInstancesQueued = 0;
 	std::uint64_t staticDrawsDrawn = 0;
 	std::uint64_t posedModelsQueued = 0;

@@ -34,6 +34,7 @@ consumer at every new boundary. The active program is defined by these RFCs:
 | [0020](RFC/0020-native-game-ui-qualification.md) | Future native game UI qualification: curved visor HUD and Portal 2 flipping menu panels as required visual, interaction and performance scenes (proposed; no implementation gate or ranked row yet) |
 | [0021](RFC/0021-external-render-sdk-and-runtime-provider-selection.md) | External render SDK intake and runtime provider selection: two execution routes (the standard pipeline path and a documented adapter bridge), one composition-owned provider catalog with runtime selection and refusal by name, declared input conventions for AI upscaling, per-SDK licence and pinning policy, and the library-level findings for FSR 4.1.1, XeSS 3 and DLSS (proposed; V0 licensing decision blocks any shipping claim, no gate complete and no ranked row yet) |
 | [0022](RFC/0022-opengl-es-3.1-compatibility-preset.md) | OpenGL ES 3.1 compatibility preset: an ES dialect of the K10 GL adapter (`"gles"` provider, `kGlslEs310` artifacts, DSA shims), the shared port suite and bad adapters on ES (proposed, user direction 2026-10-05; E1–E2 pass on Mesa, E0, E3 and E4 partial, E5 device and E6 pixels open; child of R92, no ranked row) |
+| [0023](RFC/0023-release-play-builds.md) | Release builds of `play`, `play_p2` and `play_p2_fsr`: separate trees with measured fastest code generation (O3/ISA/LTO/PGO candidates) and per-frame logging, counters, tracing and verifiers compiled out, with image and gameplay unchanged (proposed, user direction 2026-10-06; no ranked row) |
 
 RFC status and implementation status are separate. A proposed interface, tool,
 directory, or command is not installed infrastructure. Read the relevant RFC
@@ -1089,7 +1090,9 @@ Keep the table concise and link details below or from the domain progress file.
   product path by RFC 0003's placement rule) and S8's two-queue graph model
   (`render.graph.v1` G12) installed; then the port's indirect draws (D30,
   D31) and compaction of the mask into indirect commands, drawn equal to
-  direct draws;
+  direct draws; 2026-10-06: the world pass draws through it
+  (`r_core_world_gpu_submit`, opt-in, game frame identical), GL/ES indirect,
+  a real Vulkan async compute queue, HiZ occlusion culling;
   [record](RFC/0003-progress.md#s4-gpu-culling-placement-and-the-two-queue-graph-model-2026-10-05-user-goal).
 
 - R86/R88 memory follow-up (2026-10-02, user request): [audit and direct

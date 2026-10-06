@@ -37,18 +37,19 @@
 //=============================================================================//
 
 #include "spv/cull_defects_spv.h"
-#include "../../device/test_shaders.h"
+#include "../device/test_shaders.h"
 #include "render/device/null/provider.h"
 #include "render/device/vulkan/provider.h"
 #include "render/graph/compiled_graph.h"
 #include "render/graph/executor.h"
 #include "render/graph/validate.h"
-#include "render/pass/cull/cull.h"
+#include "render/culling/cull.h"
 #include "render/scene/draw_list.h"
 #include "jobsystem/parallel_executor.h"
 #include "testing/checks.h"
 
 #include <algorithm>
+#include <bit>
 #include <atomic>
 #include <chrono>
 #include <cmath>
@@ -65,7 +66,7 @@ namespace
 
 using namespace render;
 using namespace render::device;
-using namespace render::pass::cull;
+using namespace render::culling;
 using Clock = std::chrono::steady_clock;
 
 bool Wait( IRenderDevice2 &device, CompletionToken token )
@@ -385,8 +386,7 @@ public:
 		    { ShaderStage::kVertex, ArtifactFormat::kSpirv,
 		        std::as_bytes( std::span( rendertest::shaders::kPositionVertex ) ), "main", {} },
 		    { ShaderStage::kFragment, ArtifactFormat::kSpirv,
-		        std::as_bytes( std::span( rendertest::shaders::kColorFragment ) ), "main",
-		        used } };
+		        std::as_bytes( std::span( rendertest::shaders::kColorFragment ) ), "main", used } };
 		const VertexAttribute attributes[] = { { 0, VertexFormat::kFloat2, 0, 0 } };
 		const VertexBufferLayout buffers[] = { { 8, false } };
 		const Format colors[] = { Format::kRGBA8Unorm };
@@ -413,10 +413,26 @@ public:
 
 	struct Output
 	{
-		std::uint32_t drawCount = 0;
-		std::vector<DrawIndexedIndirectCommand> commands; // the first drawCount
+		std::uint32_t drawCount = 0; // over every bucket
+		// Per bucket, its first count commands.
+		std::vector<std::vector<DrawIndexedIndirectCommand>> buckets;
 		std::vector<std::byte> pixels;
 	};
+
+	// The buckets the templates' bucket fields order (contiguous, ascending).
+	static std::vector<DrawBucket> BucketsOf( std::span<const DrawTemplate> templates )
+	{
+		std::vector<DrawBucket> buckets;
+		for ( std::uint32_t i = 0; i < templates.size(); ++i )
+		{
+			while ( buckets.size() <= templates[i].bucket )
+				buckets.push_back( { i, 0 } );
+			++buckets[templates[i].bucket].count;
+		}
+		if ( buckets.empty() )
+			buckets.push_back( { 0, 0 } );
+		return buckets;
+	}
 
 	// The quad grid's geometry for `count` instances: vertices, indices and
 	// each instance's template (its own six indices, vertex offset 0).
@@ -436,7 +452,8 @@ public:
 			const std::uint32_t base = static_cast<std::uint32_t>( vertices.size() / 2 );
 			for ( float v : { x0, y0, x1, y0, x1, y1, x0, y1 } )
 				vertices.push_back( v );
-			templates[i] = { 6, static_cast<std::uint32_t>( indices.size() ), 0, 0 };
+			// Seven buckets of up to 40: one indirect draw each.
+			templates[i] = { 6, static_cast<std::uint32_t>( indices.size() ), 0, i / 40 };
 			for ( std::uint32_t k : { 0u, 1u, 2u, 0u, 2u, 3u } )
 				indices.push_back( base + k );
 		}
@@ -477,7 +494,12 @@ public:
 		    { ResourceUsage::kStorageWrite, ResourceUsage::kStorageRead }, dMask );
 		const BufferId templateBuffer =
 		    buffer( templates.size() * sizeof( DrawTemplate ), storageIn, dTemplates );
-		const std::uint64_t commandBytes = CommandBufferBytes( count );
+		const std::vector<DrawBucket> buckets = BucketsOf( templates );
+		const auto bucketCount = static_cast<std::uint32_t>( buckets.size() );
+		const std::uint64_t commandBytes = CommandBufferBytes( count, bucketCount );
+		BufferDesc dBuckets;
+		const BufferId bucketBuffer =
+		    buffer( buckets.size() * sizeof( DrawBucket ), storageIn, dBuckets );
 		const BufferId commands = buffer( commandBytes,
 		    { ResourceUsage::kStorageWrite, ResourceUsage::kIndirect, ResourceUsage::kCopySource },
 		    dCommands );
@@ -489,8 +511,8 @@ public:
 		    { ResourceUsage::kCopyDestination, ResourceUsage::kIndex }, dIndices );
 		const BufferId uniform =
 		    buffer( 256, { ResourceUsage::kCopyDestination, ResourceUsage::kUniform }, dUniform );
-		const BufferId pixelBuffer = buffer( kSize * kSize * 4,
-		    { ResourceUsage::kCopyDestination }, dPixels, MemoryKind::kReadback );
+		const BufferId pixelBuffer = buffer( kSize * kSize * 4, { ResourceUsage::kCopyDestination },
+		    dPixels, MemoryKind::kReadback );
 		TextureDesc target;
 		target.format = Format::kRGBA8Unorm;
 		target.width = kSize;
@@ -513,17 +535,20 @@ public:
 		{
 			using graph::ResourceRef;
 			graph::GraphBuilder b;
-			auto import = [&]( const char *name, BufferId id, const BufferDesc &desc,
-			                  ResourceUsage final )
+			auto import =
+			    [&]( const char *name, BufferId id, const BufferDesc &desc, ResourceUsage final )
 			{
 				return b.ImportBuffer( name, id, desc, ResourceUsage::kUndefined, final );
 			};
 			const ResourceRef rInstances =
 			    import( "instances", instances, dInstances, ResourceUsage::kStorageRead );
-			const ResourceRef rView = import( "view", viewBuffer, dView, ResourceUsage::kStorageRead );
+			const ResourceRef rView =
+			    import( "view", viewBuffer, dView, ResourceUsage::kStorageRead );
 			const ResourceRef rMask = import( "mask", mask, dMask, ResourceUsage::kStorageRead );
 			const ResourceRef rTemplates =
 			    import( "templates", templateBuffer, dTemplates, ResourceUsage::kStorageRead );
+			const ResourceRef rBuckets =
+			    import( "buckets", bucketBuffer, dBuckets, ResourceUsage::kStorageRead );
 			const ResourceRef rCommands =
 			    import( "commands", commands, dCommands, ResourceUsage::kCopySource );
 			const ResourceRef rReadback =
@@ -542,6 +567,7 @@ public:
 			    .Write( rInstances, ResourceUsage::kCopyDestination )
 			    .Write( rView, ResourceUsage::kCopyDestination )
 			    .Write( rTemplates, ResourceUsage::kCopyDestination )
+			    .Write( rBuckets, ResourceUsage::kCopyDestination )
 			    .Write( rVertices, ResourceUsage::kCopyDestination )
 			    .Write( rIndices, ResourceUsage::kCopyDestination )
 			    .Write( rUniform, ResourceUsage::kCopyDestination )
@@ -550,23 +576,28 @@ public:
 			        {
 				        CommandEncoder &e = c.Encoder();
 				        if ( !packed.empty() )
-					        e.WriteBuffer( c.Buffer( rInstances ), 0, std::as_bytes( std::span( packed ) ) );
+					        e.WriteBuffer(
+					            c.Buffer( rInstances ), 0, std::as_bytes( std::span( packed ) ) );
 				        e.WriteBuffer(
 				            c.Buffer( rView ), 0, std::as_bytes( std::span( &view, 1 ) ) );
 				        if ( !templates.empty() )
 					        e.WriteBuffer( c.Buffer( rTemplates ), 0, std::as_bytes( templates ) );
+				        e.WriteBuffer(
+				            c.Buffer( rBuckets ), 0, std::as_bytes( std::span( buckets ) ) );
 				        if ( !vertices.empty() )
 					        e.WriteBuffer(
 					            c.Buffer( rVertices ), 0, std::as_bytes( std::span( vertices ) ) );
 				        if ( !indices.empty() )
 					        e.WriteBuffer(
 					            c.Buffer( rIndices ), 0, std::as_bytes( std::span( indices ) ) );
-				        e.WriteBuffer( c.Buffer( rUniform ), 0, std::as_bytes( std::span( color ) ) );
+				        e.WriteBuffer(
+				            c.Buffer( rUniform ), 0, std::as_bytes( std::span( color ) ) );
 			        } );
 			if ( mode != 2 )
 			{
 				AddCullPass( b, m_Cull, { rInstances, rView, rMask, count, false } );
-				AddCompactPass( b, m_Compact, { rMask, rTemplates, rView, rCommands, count, false } );
+				AddCompactPass( b, m_Compact,
+				    { rMask, rTemplates, rView, rBuckets, rCommands, count, bucketCount, false } );
 			}
 			if ( mode != 0 )
 			{
@@ -594,15 +625,21 @@ public:
 					        e.SetIndexBuffer( c.Buffer( rIndices ), 0, IndexFormat::kUint32 );
 					        if ( mode == 1 )
 					        {
+						        // One draw per bucket, each its own command list.
 						        const BufferId records = c.Buffer( rCommands );
-						        e.DrawIndexedIndirectCount( records, kCommandsOffset, records, 0,
-						            count, sizeof( DrawIndexedIndirectCommand ) );
+						        for ( std::uint32_t k = 0; k < bucketCount; ++k )
+							        e.DrawIndexedIndirectCount( records,
+							            CommandsOffset( bucketCount ) +
+							                std::uint64_t( buckets[k].first ) *
+							                    sizeof( DrawIndexedIndirectCommand ),
+							            records, std::uint64_t( k ) * 4, buckets[k].count,
+							            sizeof( DrawIndexedIndirectCommand ) );
 					        }
 					        else
 					        {
 						        for ( std::uint32_t i : kept )
-							        e.DrawIndexed( templates[i].indexCount, 1, templates[i].firstIndex,
-							            templates[i].vertexOffset, i );
+							        e.DrawIndexed( templates[i].indexCount, 1,
+							            templates[i].firstIndex, templates[i].vertexOffset, i );
 					        }
 					        e.EndRendering();
 				        } );
@@ -613,8 +650,8 @@ public:
 				    .Execute(
 				        [&]( graph::RecordContext &c )
 				        {
-					        c.Encoder().CopyTextureToBuffer(
-					            c.Texture( rColor ), c.Buffer( rPixels ), { 0, 0, 0, kSize, kSize } );
+					        c.Encoder().CopyTextureToBuffer( c.Texture( rColor ),
+					            c.Buffer( rPixels ), { 0, 0, 0, kSize, kSize } );
 				        } );
 			}
 			if ( mode != 2 )
@@ -625,8 +662,8 @@ public:
 				    .Execute(
 				        [&]( graph::RecordContext &c )
 				        {
-					        c.Encoder().CopyBuffer(
-					            c.Buffer( rCommands ), c.Buffer( rReadback ), { 0, 0, commandBytes } );
+					        c.Encoder().CopyBuffer( c.Buffer( rCommands ), c.Buffer( rReadback ),
+					            { 0, 0, commandBytes } );
 				        } );
 			auto compiled = graph::CompileGraph( std::move( b ) );
 			ok = compiled.HasValue() && graph::ValidateCompiledGraph( compiled.Value() ).empty();
@@ -646,11 +683,21 @@ public:
 		{
 			std::vector<std::byte> bytes( commandBytes );
 			ok = m_Device.ReadBuffer( readback, 0, bytes ).HasValue();
-			std::memcpy( &out.drawCount, bytes.data(), 4 );
-			out.commands.resize( std::min( out.drawCount, count ) );
-			if ( !out.commands.empty() )
-				std::memcpy( out.commands.data(), bytes.data() + kCommandsOffset,
-				    out.commands.size() * sizeof( DrawIndexedIndirectCommand ) );
+			out.drawCount = 0;
+			out.buckets.assign( bucketCount, {} );
+			for ( std::uint32_t k = 0; k < bucketCount; ++k )
+			{
+				std::uint32_t n = 0;
+				std::memcpy( &n, bytes.data() + 4 * k, 4 );
+				out.drawCount += n;
+				out.buckets[k].resize( std::min( n, buckets[k].count ) );
+				if ( !out.buckets[k].empty() )
+					std::memcpy( out.buckets[k].data(),
+					    bytes.data() + CommandsOffset( bucketCount ) +
+					        std::uint64_t( buckets[k].first ) *
+					            sizeof( DrawIndexedIndirectCommand ),
+					    out.buckets[k].size() * sizeof( DrawIndexedIndirectCommand ) );
+			}
 		}
 		if ( ok && mode != 0 )
 		{
@@ -683,15 +730,26 @@ bool SameCommand( const DrawIndexedIndirectCommand &a, const DrawIndexedIndirect
 	       a.firstInstance == b.firstInstance;
 }
 
-// Templates with varied counts, first indices and signed vertex offsets.
+// Templates with varied counts, first indices and signed vertex offsets, in
+// 1 to 64 buckets of random sizes (some empty).
 std::vector<DrawTemplate> RandomTemplates( std::uint32_t seed, std::uint32_t count )
 {
 	std::mt19937 random( seed * 31 + 7 );
 	std::vector<DrawTemplate> out( count );
-	for ( DrawTemplate &t : out )
-		t = { static_cast<std::uint32_t>( 3 * ( 1 + random() % 100 ) ),
+	const std::uint32_t bucketCount = 1 + random() % 64;
+	std::vector<std::uint32_t> cuts;
+	for ( std::uint32_t k = 1; k < bucketCount; ++k )
+		cuts.push_back( count ? static_cast<std::uint32_t>( random() % ( count + 1 ) ) : 0 );
+	std::sort( cuts.begin(), cuts.end() );
+	std::uint32_t bucket = 0;
+	for ( std::uint32_t i = 0; i < count; ++i )
+	{
+		while ( bucket < cuts.size() && cuts[bucket] <= i )
+			++bucket;
+		out[i] = { static_cast<std::uint32_t>( 3 * ( 1 + random() % 100 ) ),
 		    static_cast<std::uint32_t>( random() % 100000 ),
-		    static_cast<std::int32_t>( random() % 2001 ) - 1000, 0 };
+		    static_cast<std::int32_t>( random() % 2001 ) - 1000, bucket };
+	}
 	return out;
 }
 
@@ -712,14 +770,21 @@ int CompactionDisagreements(
 		IndirectChain::Output out;
 		if ( !chain.Run( scene, templates, 0, {}, out ) )
 			return -1;
-		const auto expected = CompactReference( CpuMask( scene ), templates, count );
-		const bool same = out.drawCount == expected.size() &&
-		                  out.commands.size() == expected.size() &&
-		                  std::equal( out.commands.begin(), out.commands.end(), expected.begin(),
-		                      SameCommand );
+		const auto expected = CompactReference(
+		    CpuMask( scene ), templates, IndirectChain::BucketsOf( templates ), count );
+		bool same = out.buckets.size() == expected.size();
+		std::size_t expectedDraws = 0;
+		for ( std::size_t k = 0; same && k < expected.size(); ++k )
+		{
+			expectedDraws += expected[k].size();
+			same = out.buckets[k].size() == expected[k].size() &&
+			       std::equal( out.buckets[k].begin(), out.buckets[k].end(), expected[k].begin(),
+			           SameCommand );
+		}
+		same = same && out.drawCount == expectedDraws;
 		if ( !same && ++differ <= 2 )
-			std::printf( "  scene %d: %u instances, gpu draws %u, cpu %zu\n", seed, count,
-			    out.drawCount, expected.size() );
+			std::printf( "  scene %d: %u instances in %zu buckets, gpu draws %u, cpu %zu\n", seed,
+			    count, expected.size(), out.drawCount, expectedDraws );
 	}
 	return differ;
 }
@@ -732,8 +797,8 @@ void Compaction( testing::Checks &checks, IRenderDevice2 &device, CullKernel &cu
 	const int differ = CompactionDisagreements( device, cull, *compact.Value(), 60 );
 	checks.That( differ >= 0, "compact.every-dispatch-runs" );
 	checks.Equal( differ, 0,
-	    "compact.commands-and-count-equal-the-reference on 60 seeded scenes (0 to 20,000 "
-	    "instances), in instance order" );
+	    "compact.each-bucket's-commands-and-count-equal-the-reference on 60 seeded scenes (0 to "
+	    "20,000 instances, 1 to 64 buckets), in instance order" );
 	struct Defect
 	{
 		const char *name;
@@ -749,8 +814,8 @@ void Compaction( testing::Checks &checks, IRenderDevice2 &device, CullKernel &cu
 		auto seeded = CompactKernel::Create( device, defect.code );
 		const int seededDiffer =
 		    seeded ? CompactionDisagreements( device, cull, *seeded.Value(), 12 ) : -1;
-		std::printf( "INFO compact defect %s: %d of 12 scenes disagree\n", defect.name,
-		    seededDiffer );
+		std::printf(
+		    "INFO compact defect %s: %d of 12 scenes disagree\n", defect.name, seededDiffer );
 		rejected += seededDiffer > 0;
 	}
 	checks.Equal( rejected, 2, "compact.defects.each-seeded-kernel-disagrees (2 of 2)" );
@@ -797,6 +862,395 @@ void Compaction( testing::Checks &checks, IRenderDevice2 &device, CullKernel &cu
 	    "draw.the-indirect-image-equals-direct-draws-of-the-cpu-kept-instances (8 scenes)" );
 	checks.Equal( lit, kImages, "draw.each-kept-instance-and-only-those-lights-its-16-pixels" );
 	checks.That( mixed >= kImages / 2, "draw.the-scenes-keep-some-instances-and-cull-others" );
+}
+
+// Occlusion culling (S4): a wall drawn into the depth buffer, and cubes in
+// front of it, behind it and around its edges. The pyramid's upper levels
+// must equal the CPU rebuild of its level 0; the GPU mask must agree with
+// OcclusionReference on the read-back pyramid; drawing the wall and only
+// the kept cubes must give the image drawing every cube gives, byte for
+// byte (nothing visible is culled); and a real share of the frustum-kept
+// cubes must be culled.
+class OcclusionScene
+{
+public:
+	static constexpr std::uint32_t kSize = 128;
+	static constexpr std::uint32_t kCubes = 400;
+
+	struct Result
+	{
+		bool ran = false;
+		std::vector<std::uint32_t> frustum, mask;
+		std::vector<float> pyramid;
+		std::vector<std::byte> culledImage, fullImage;
+		OcclusionView view;
+		std::vector<CullInstance> instances;
+	};
+
+	OcclusionScene( IRenderDevice2 &device ) : m_Device( device )
+	{
+		const ShaderArtifactView stages[] = {
+		    { ShaderStage::kVertex, ArtifactFormat::kSpirv,
+		        std::as_bytes( std::span( rendertest::cull::spirv::kBoxVertex ) ), "main", {}, 64 },
+		    { ShaderStage::kFragment, ArtifactFormat::kSpirv,
+		        std::as_bytes( std::span( rendertest::cull::spirv::kBoxFragment ) ), "main", {} } };
+		const VertexAttribute attributes[] = {
+		    { 0, VertexFormat::kFloat3, 0, 0 }, { 1, VertexFormat::kFloat3, 12, 0 } };
+		const VertexBufferLayout buffers[] = { { 24, false } };
+		const Format colors[] = { Format::kRGBA8Unorm };
+		PipelineDesc desc;
+		desc.stages = stages;
+		desc.vertex = { attributes, buffers };
+		desc.colorFormats = colors;
+		desc.depthFormat = Format::kD32Float;
+		desc.depthStencil.depthTest = true;
+		desc.depthStencil.depthWrite = true;
+		desc.depthStencil.compare = CompareOp::kLess;
+		desc.raster.cull = CullMode::kNone;
+		desc.drawConstantBytes = 64;
+		auto pipeline = device.CreatePipeline( desc );
+		if ( pipeline )
+			m_Pipeline = pipeline.Value();
+		else
+			std::printf(
+			    "INFO occlusion box pipeline: %s\n", DescribeStatus( pipeline.Error().status ) );
+		SamplerDesc sampler;
+		auto made = device.CreateSampler( sampler );
+		if ( made )
+			m_Sampler = made.Value();
+		else
+			std::printf( "INFO occlusion sampler: %s\n", DescribeStatus( made.Error().status ) );
+	}
+	~OcclusionScene()
+	{
+		(void)m_Device.WaitIdle();
+		if ( m_Pipeline.IsValid() )
+			(void)m_Device.Release( m_Pipeline, CompletionToken() );
+		if ( m_Sampler.IsValid() )
+			(void)m_Device.Release( m_Sampler, CompletionToken() );
+		(void)m_Device.Poll();
+	}
+	bool Valid() const { return m_Pipeline.IsValid() && m_Sampler.IsValid(); }
+
+	Result Run( std::uint32_t seed, CullKernel &cull, OcclusionKernels &occlusion )
+	{
+		Result out;
+		std::mt19937 random( seed * 977 + 13 );
+		std::uniform_real_distribution<float> unit( 0.0f, 1.0f );
+		// Box 0 is the wall; boxes 1.. are the cubes (instances 0..).
+		struct Box
+		{
+			math::float3 lo, hi, color;
+		};
+		std::vector<Box> boxes;
+		boxes.push_back( { { -60, -20, -50 }, { 60, -15, 50 }, { 0.2f, 0.2f, 0.25f } } );
+		for ( std::uint32_t i = 0; i < kCubes; ++i )
+		{
+			const math::float3 c = { -150 + 300 * unit( random ), -150 + 320 * unit( random ),
+			    -120 + 240 * unit( random ) };
+			const float h = 1.0f + 9.0f * unit( random );
+			boxes.push_back( { { c.x - h, c.y - h, c.z - h }, { c.x + h, c.y + h, c.z + h },
+			    { 0.3f + 0.7f * unit( random ), 0.3f + 0.7f * unit( random ),
+			        0.3f + 0.7f * unit( random ) } } );
+		}
+		scene::ViewDesc viewDesc;
+		viewDesc.view = math::LookAt( { 0, -200, 0 }, { 0, 0, 0 }, { 0, 0, 1 } );
+		viewDesc.projection = math::Perspective( 1.0f, 1.0f, 2.0f, 1000.0f );
+		viewDesc.viewBit = 32;
+		const scene::SceneView view = scene::MakeView( viewDesc );
+		scene::SceneSnapshot snapshot;
+		snapshot.instances.resize( kCubes );
+		for ( std::uint32_t i = 0; i < kCubes; ++i )
+			snapshot.instances[i].worldBounds = { boxes[i + 1].lo, boxes[i + 1].hi };
+		out.instances = PackInstances( snapshot );
+		const CullView cullView = PackView( view, kCubes );
+		out.view = MakeOcclusionView( view.viewProjection, kSize, kSize, kCubes );
+		std::vector<float> vertices;
+		std::vector<std::uint32_t> indices;
+		for ( const Box &b : boxes )
+		{
+			const std::uint32_t base = static_cast<std::uint32_t>( vertices.size() / 6 );
+			for ( std::uint32_t c = 0; c < 8; ++c )
+				for ( float v : { ( c & 1 ) ? b.hi.x : b.lo.x, ( c & 2 ) ? b.hi.y : b.lo.y,
+				          ( c & 4 ) ? b.hi.z : b.lo.z, b.color.x, b.color.y, b.color.z } )
+					vertices.push_back( v );
+			static const std::uint32_t kFaces[36] = { 0, 1, 3, 0, 3, 2, 4, 6, 7, 4, 7, 5, 0, 4, 5,
+			    0, 5, 1, 2, 3, 7, 2, 7, 6, 0, 2, 6, 0, 6, 4, 1, 5, 7, 1, 7, 3 };
+			for ( std::uint32_t k : kFaces )
+				indices.push_back( base + k );
+		}
+		float rows[16];
+		for ( int r = 0; r < 4; ++r )
+		{
+			rows[r * 4 + 0] = view.viewProjection.rows[r].x;
+			rows[r * 4 + 1] = view.viewProjection.rows[r].y;
+			rows[r * 4 + 2] = view.viewProjection.rows[r].z;
+			rows[r * 4 + 3] = view.viewProjection.rows[r].w;
+		}
+
+		std::vector<BufferId> made;
+		auto buffer =
+		    [&]( std::uint64_t size, UsageSet usages, MemoryKind memory = MemoryKind::kDeviceLocal )
+		{
+			BufferDesc desc;
+			desc.size = std::max<std::uint64_t>( size, 16 );
+			desc.usages = usages;
+			desc.memory = memory;
+			auto created = m_Device.CreateBuffer( desc );
+			made.push_back( created ? created.Value() : BufferId() );
+			return made.back();
+		};
+		const UsageSet in = { ResourceUsage::kCopyDestination, ResourceUsage::kStorageRead };
+		const std::uint64_t maskBytes = std::uint64_t( MaskWords( kCubes ) ) * 4;
+		const std::uint64_t pyramidBytes = PyramidFloats( out.view ) * 4;
+		const BufferId instances = buffer( out.instances.size() * sizeof( CullInstance ), in );
+		const BufferId cullViewBuffer = buffer( sizeof( CullView ), in );
+		const BufferId occlusionView = buffer( sizeof( OcclusionView ), in );
+		const BufferId frustum =
+		    buffer( maskBytes, { ResourceUsage::kStorageWrite, ResourceUsage::kStorageRead,
+		                           ResourceUsage::kCopySource } );
+		const BufferId mask =
+		    buffer( maskBytes, { ResourceUsage::kStorageWrite, ResourceUsage::kCopySource } );
+		const BufferId pyramid =
+		    buffer( pyramidBytes, { ResourceUsage::kStorageWrite, ResourceUsage::kCopySource } );
+		const BufferId vertexBuffer = buffer(
+		    vertices.size() * 4, { ResourceUsage::kCopyDestination, ResourceUsage::kVertex } );
+		const BufferId indexBuffer = buffer(
+		    indices.size() * 4, { ResourceUsage::kCopyDestination, ResourceUsage::kIndex } );
+		const BufferId readMasks = buffer( maskBytes * 2 + pyramidBytes,
+		    { ResourceUsage::kCopyDestination }, MemoryKind::kReadback );
+		const BufferId readPixels =
+		    buffer( kSize * kSize * 4, { ResourceUsage::kCopyDestination }, MemoryKind::kReadback );
+		TextureDesc colorDesc;
+		colorDesc.format = Format::kRGBA8Unorm;
+		colorDesc.width = colorDesc.height = kSize;
+		colorDesc.usages = { ResourceUsage::kColorAttachment, ResourceUsage::kCopySource };
+		TextureDesc depthDesc = colorDesc;
+		depthDesc.format = Format::kD32Float;
+		depthDesc.usages = { ResourceUsage::kDepthWrite, ResourceUsage::kSampled };
+		auto color = m_Device.CreateTexture( colorDesc );
+		auto depth = m_Device.CreateTexture( depthDesc );
+		bool ok = color && depth;
+		for ( BufferId id : made )
+			ok = ok && id.IsValid();
+
+		// Draws boxes [first, first + count) or the listed cubes after the wall.
+		auto draw = [&]( CommandEncoder &e, const std::vector<std::uint32_t> *cubes )
+		{
+			const ColorAttachment colorAttachment[] = {
+			    { color.Value(), LoadOp::kClear, StoreOp::kStore, { 0, 0, 0, 1 }, {} } };
+			RenderingDesc rendering;
+			rendering.colors = colorAttachment;
+			rendering.depth =
+			    DepthAttachment{ depth.Value(), LoadOp::kClear, StoreOp::kStore, 1.0f };
+			rendering.width = rendering.height = kSize;
+			e.BeginRendering( rendering );
+			e.SetPipeline( m_Pipeline );
+			e.SetDrawConstants( 0, std::as_bytes( std::span( rows ) ) );
+			e.SetVertexBuffer( 0, vertexBuffer );
+			e.SetIndexBuffer( indexBuffer, 0, IndexFormat::kUint32 );
+			e.DrawIndexed( 36, 1, 0, 0, 0 ); // the wall
+			if ( cubes )
+				for ( std::uint32_t i : *cubes )
+				{
+					e.SetDrawConstants( 0, std::as_bytes( std::span( rows ) ) );
+					e.DrawIndexed( 36, 1, 36 * ( i + 1 ), 0, 0 );
+				}
+			e.EndRendering();
+		};
+		auto submit = [&]( CommandEncoder &e )
+		{
+			auto token = m_Device.Submit( QueueKind::kGraphics, { &e, 1 }, {} );
+			return token && Wait( m_Device, token.Value() );
+		};
+		if ( ok )
+		{
+			auto encoder = m_Device.BeginEncoder( QueueKind::kGraphics );
+			ok = encoder.HasValue();
+			if ( ok )
+			{
+				CommandEncoder &e = encoder.Value();
+				auto fill = [&]( BufferId b, std::span<const std::byte> bytes, ResourceUsage after )
+				{
+					e.TransitionBuffer(
+					    b, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+					e.WriteBuffer( b, 0, bytes );
+					e.TransitionBuffer( b, ResourceUsage::kCopyDestination, after );
+				};
+				fill( instances, std::as_bytes( std::span( out.instances ) ),
+				    ResourceUsage::kStorageRead );
+				fill( cullViewBuffer, std::as_bytes( std::span( &cullView, 1 ) ),
+				    ResourceUsage::kStorageRead );
+				fill( occlusionView, std::as_bytes( std::span( &out.view, 1 ) ),
+				    ResourceUsage::kStorageRead );
+				fill(
+				    vertexBuffer, std::as_bytes( std::span( vertices ) ), ResourceUsage::kVertex );
+				fill( indexBuffer, std::as_bytes( std::span( indices ) ), ResourceUsage::kIndex );
+				e.TransitionTexture(
+				    color.Value(), ResourceUsage::kUndefined, ResourceUsage::kColorAttachment );
+				e.TransitionTexture(
+				    depth.Value(), ResourceUsage::kUndefined, ResourceUsage::kDepthWrite );
+				draw( e, nullptr ); // the occluder's depth
+				e.TransitionTexture(
+				    depth.Value(), ResourceUsage::kDepthWrite, ResourceUsage::kSampled );
+				e.TransitionBuffer(
+				    frustum, ResourceUsage::kUndefined, ResourceUsage::kStorageWrite );
+				(void)cull.Record( e, { instances, cullViewBuffer, frustum, kCubes } );
+				e.TransitionBuffer(
+				    frustum, ResourceUsage::kStorageWrite, ResourceUsage::kStorageRead );
+				e.TransitionBuffer(
+				    pyramid, ResourceUsage::kUndefined, ResourceUsage::kStorageWrite );
+				e.TransitionBuffer( mask, ResourceUsage::kUndefined, ResourceUsage::kStorageWrite );
+				(void)occlusion.RecordPyramid(
+				    e, { depth.Value(), m_Sampler, occlusionView, pyramid }, out.view );
+				(void)occlusion.RecordOcclusion(
+				    e, { instances, occlusionView, pyramid, frustum, mask, kCubes } );
+				e.TransitionBuffer(
+				    frustum, ResourceUsage::kStorageRead, ResourceUsage::kCopySource );
+				e.TransitionBuffer(
+				    mask, ResourceUsage::kStorageWrite, ResourceUsage::kCopySource );
+				e.TransitionBuffer(
+				    pyramid, ResourceUsage::kStorageWrite, ResourceUsage::kCopySource );
+				e.TransitionBuffer(
+				    readMasks, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+				e.CopyBuffer( frustum, readMasks, { 0, 0, maskBytes } );
+				e.CopyBuffer( mask, readMasks, { 0, maskBytes, maskBytes } );
+				e.CopyBuffer( pyramid, readMasks, { 0, maskBytes * 2, pyramidBytes } );
+				ok = submit( e );
+				if ( ok )
+				{
+					cull.Collect( CompletionToken() );
+					occlusion.Collect( CompletionToken() );
+				}
+			}
+		}
+		if ( ok )
+		{
+			std::vector<std::byte> bytes( maskBytes * 2 + pyramidBytes );
+			ok = m_Device.ReadBuffer( readMasks, 0, bytes ).HasValue();
+			out.frustum.resize( MaskWords( kCubes ) );
+			out.mask.resize( MaskWords( kCubes ) );
+			out.pyramid.resize( PyramidFloats( out.view ) );
+			std::memcpy( out.frustum.data(), bytes.data(), maskBytes );
+			std::memcpy( out.mask.data(), bytes.data() + maskBytes, maskBytes );
+			std::memcpy( out.pyramid.data(), bytes.data() + maskBytes * 2, pyramidBytes );
+		}
+		// The two images: every frustum-kept cube, and the occlusion-kept ones.
+		auto image = [&]( const std::vector<std::uint32_t> &words, std::vector<std::byte> &pixels )
+		{
+			std::vector<std::uint32_t> cubes;
+			for ( std::uint32_t i = 0; i < kCubes; ++i )
+				if ( ( words[i / 32] >> ( i % 32 ) ) & 1u )
+					cubes.push_back( i );
+			auto encoder = m_Device.BeginEncoder( QueueKind::kGraphics );
+			if ( !encoder )
+				return false;
+			CommandEncoder &e = encoder.Value();
+			e.TransitionTexture(
+			    color.Value(), ResourceUsage::kUndefined, ResourceUsage::kColorAttachment );
+			e.TransitionTexture(
+			    depth.Value(), ResourceUsage::kUndefined, ResourceUsage::kDepthWrite );
+			draw( e, &cubes );
+			e.TransitionTexture(
+			    color.Value(), ResourceUsage::kColorAttachment, ResourceUsage::kCopySource );
+			e.TransitionBuffer(
+			    readPixels, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+			e.CopyTextureToBuffer( color.Value(), readPixels, { 0, 0, 0, kSize, kSize } );
+			if ( !submit( e ) )
+				return false;
+			pixels.resize( kSize * kSize * 4 );
+			return m_Device.ReadBuffer( readPixels, 0, pixels ).HasValue();
+		};
+		ok = ok && image( out.frustum, out.fullImage ) && image( out.mask, out.culledImage );
+		out.ran = ok;
+		(void)m_Device.WaitIdle();
+		if ( color )
+			(void)m_Device.Release( color.Value(), CompletionToken() );
+		if ( depth )
+			(void)m_Device.Release( depth.Value(), CompletionToken() );
+		for ( BufferId id : made )
+			if ( id.IsValid() )
+				(void)m_Device.Release( id, CompletionToken() );
+		(void)m_Device.Poll();
+		return out;
+	}
+
+private:
+	IRenderDevice2 &m_Device;
+	PipelineId m_Pipeline;
+	SamplerId m_Sampler;
+};
+
+int Bits( const std::vector<std::uint32_t> &words )
+{
+	int n = 0;
+	for ( std::uint32_t w : words )
+		n += std::popcount( w );
+	return n;
+}
+
+void Occlusion( testing::Checks &checks, IRenderDevice2 &device, CullKernel &cull )
+{
+	auto kernels = OcclusionKernels::Create( device );
+	if ( !checks.That( kernels.HasValue(), "occlusion.kernels-are-created" ) )
+		return;
+	OcclusionScene scene( device );
+	if ( !checks.That( scene.Valid(), "occlusion.the-draw-fixture-is-created" ) )
+		return;
+	constexpr int kScenes = 6;
+	int ran = 0, pyramids = 0, sameImages = 0;
+	int kept = 0, culled = 0, disagreements = 0;
+	for ( int seed = 0; seed < kScenes; ++seed )
+	{
+		const OcclusionScene::Result r = scene.Run( seed, cull, *kernels.Value() );
+		if ( !r.ran )
+			continue;
+		++ran;
+		std::vector<float> level0(
+		    r.pyramid.begin(), r.pyramid.begin() + r.view.width * r.view.height );
+		pyramids += DepthPyramidReference( level0, r.view ) == r.pyramid;
+		sameImages += r.culledImage == r.fullImage;
+		kept += Bits( r.frustum );
+		culled += Bits( r.frustum ) - Bits( r.mask );
+		const auto expected = OcclusionReference( r.instances, r.frustum, r.pyramid, r.view );
+		for ( std::size_t w = 0; w < expected.size(); ++w )
+			disagreements += std::popcount( expected[w] ^ r.mask[w] );
+	}
+	std::printf( "INFO occlusion: %d of %d frustum-kept cubes culled over %d scenes; %d "
+	             "disagree with the CPU reference\n",
+	    culled, kept, ran, disagreements );
+	checks.Equal( ran, kScenes, "occlusion.every-scene-runs" );
+	checks.Equal( pyramids, kScenes, "occlusion.pyramid-levels-equal-the-cpu-rebuild-exactly" );
+	checks.Equal( sameImages, kScenes,
+	    "occlusion.drawing-only-kept-cubes-gives-the-full-image-byte-for-byte" );
+	checks.That( culled * 10 >= kept, "occlusion.at-least-a-tenth-of-the-kept-cubes-are-culled" );
+	checks.That( disagreements * 200 <= kept,
+	    "occlusion.gpu-and-cpu-reference-agree-on-at-least-99.5-percent" );
+
+	struct Defect
+	{
+		const char *name;
+		std::span<const std::uint32_t> code;
+	};
+	const Defect defects[] = {
+	    { "far-corner", rendertest::cull::spirv::kOcclusionFarCorner },
+	    { "one-texel", rendertest::cull::spirv::kOcclusionOneTexel },
+	};
+	int rejected = 0;
+	for ( const Defect &defect : defects )
+	{
+		auto seeded = OcclusionKernels::Create( device, defect.code );
+		int changed = 0;
+		for ( int seed = 0; seeded && seed < kScenes; ++seed )
+		{
+			const OcclusionScene::Result r = scene.Run( seed, cull, *seeded.Value() );
+			changed += r.ran && r.culledImage != r.fullImage;
+		}
+		std::printf(
+		    "INFO occlusion defect %s: %d of %d images change\n", defect.name, changed, kScenes );
+		rejected += changed > 0;
+	}
+	checks.Equal( rejected, 2, "occlusion.defects.each-seeded-kernel-changes-an-image (2 of 2)" );
 }
 
 } // namespace
@@ -885,6 +1339,7 @@ int main()
 		}
 
 		Compaction( checks, *device, *kernel.Value() );
+		Occlusion( checks, *device, *kernel.Value() );
 		Placement( checks, *device, *kernel.Value() );
 		kernel.Value().reset();
 		(void)device->WaitIdle();

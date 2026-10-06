@@ -122,6 +122,14 @@ DeviceResult<AdapterChoice> Evaluate( VkPhysicalDevice physical, bool host )
 	}
 	if ( !found )
 		return Fail( DeviceStatus::kUnsupported, op );
+	// S8: a compute family without graphics is the async compute queue.
+	for ( std::uint32_t i = 0; i < familyCount; ++i )
+	{
+		const VkQueueFlags flags = families[i].queueFlags;
+		if ( ( flags & VK_QUEUE_COMPUTE_BIT ) && !( flags & VK_QUEUE_GRAPHICS_BIT ) &&
+		     families[i].queueCount > 0 && choice.computeFamily == UINT32_MAX )
+			choice.computeFamily = i;
+	}
 
 	std::uint32_t extensionCount = 0;
 	vkEnumerateDeviceExtensionProperties( physical, nullptr, &extensionCount, nullptr );
@@ -203,6 +211,7 @@ DeviceResult<AdapterChoice> Evaluate( VkPhysicalDevice physical, bool host )
 	choice.anisotropy = features.features.samplerAnisotropy == VK_TRUE;
 	choice.textureCompressionBC = features.features.textureCompressionBC == VK_TRUE;
 	choice.multiDrawIndirect = features.features.multiDrawIndirect == VK_TRUE;
+	choice.drawIndirectFirstInstance = features.features.drawIndirectFirstInstance == VK_TRUE;
 	choice.drawIndirectCount = choice.core12 && features12.drawIndirectCount == VK_TRUE;
 	choice.memoryBudget = HasDeviceExtension( extensions, VK_EXT_MEMORY_BUDGET_EXTENSION_NAME );
 	if ( choice.memoryBudget )

@@ -477,7 +477,7 @@
       "dialect": "cxx20",
       "rfc": "0016"
     },
-    "render_pass_cull": {
+    "render_culling": {
       "dialect": "cxx20",
       "rfc": "0016"
     },

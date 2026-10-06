@@ -981,14 +981,22 @@ void DescriptorClauses( testing::Checks &checks )
 		                         .Remove( Capability::kTextureCompressionBC )
 		                         .Remove( Capability::kTimestamps )
 		                         .Remove( Capability::kMultiDrawIndirect )
-		                         .Remove( Capability::kDrawIndirectCount ) ==
+		                         .Remove( Capability::kDrawIndirectCount )
+		                         .Remove( Capability::kIndirectFirstInstance )
+		                         .Remove( Capability::kAsyncCompute ) ==
 		                     CapabilitySet{ Capability::kCompute, Capability::kStorageBuffers },
 		    "vulkan.facts name the backend and adapter and claim only compute and storage "
 		    "(and external images where the driver exports dmabufs, D18, BC formats, D19, "
-		    "timestamps, D23, and indirect draws, D30 and D31, where the device has them)" );
+		    "timestamps, D23, indirect draws, D30 and D31, and async compute where the device "
+		    "has them)" );
+		const bool async = facts.capabilities.Has( Capability::kAsyncCompute );
 		auto compute = device.Value()->BeginEncoder( QueueKind::kCompute );
-		checks.That( !compute && compute.Error().status == DeviceStatus::kUnsupported,
-		    "vulkan.queues a compute-queue encoder is unsupported (no async compute)" );
+		checks.That( async ? compute.HasValue()
+		                   : !compute && compute.Error().status == DeviceStatus::kUnsupported,
+		    "vulkan.queues a compute-queue encoder exists exactly when async compute is claimed" );
+		auto transfer = device.Value()->BeginEncoder( QueueKind::kTransfer );
+		checks.That( !transfer && transfer.Error().status == DeviceStatus::kUnsupported,
+		    "vulkan.queues a transfer-queue encoder is unsupported (no async transfer)" );
 	}
 	auto missing =
 	    vulkan::Describe().create( DeviceRequest{ { Capability::kTransientAliasing }, false } );
@@ -1245,8 +1253,10 @@ int main()
 	flipY.flipY = true;
 	vulkan::VulkanAdapterOptions::Sensitivity glDepth;
 	glDepth.glDepthRange = true;
-	vulkan::VulkanAdapterOptions::Sensitivity asyncCompute;
-	asyncCompute.falseClaims.Add( Capability::kAsyncCompute );
+	// A queue the adapter has no family for (async compute is real where the
+	// device has a compute-only family, S8).
+	vulkan::VulkanAdapterOptions::Sensitivity asyncTransfer;
+	asyncTransfer.falseClaims.Add( Capability::kAsyncTransfer );
 	vulkan::VulkanAdapterOptions::Sensitivity aliasing;
 	aliasing.falseClaims.Add( Capability::kTransientAliasing );
 	vulkan::VulkanAdapterOptions::Sensitivity writeMasks;
@@ -1265,7 +1275,7 @@ int main()
 	    { "reversed-sampler-compare", comparison, "under-test.D24 " },
 	    { "flipped-y", flipY, "under-test.D13 clip y" },
 	    { "gl-depth-range", glDepth, "under-test.D13 clip z" },
-	    { "false-async-compute", asyncCompute, "under-test.D15 claimed async compute" },
+	    { "false-async-transfer", asyncTransfer, "under-test.D15 claimed async transfer" },
 	    { "false-aliasing", aliasing, "under-test.D15 claims transient-aliasing" },
 	    { "ignored-write-masks", writeMasks, "under-test.D17 a red-and-alpha mask" },
 	    { "stale-export", staleExport, "under-test.D18 the exported memory" },

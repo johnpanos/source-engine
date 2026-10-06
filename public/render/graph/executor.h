@@ -45,6 +45,11 @@ private:
 	const std::vector<device::BufferId> &m_Buffers;
 };
 
+namespace detail
+{
+struct Plan;
+}
+
 struct ExecuteResult
 {
 	device::CompletionToken token;
@@ -124,6 +129,15 @@ private:
 // The serial executor: every kept pass recorded into one encoder, in order,
 // with its transitions before it; one submission. The oracle and
 // low-capacity mode (RFC 0003).
+//
+// A graph compiled with CompileOptions::asyncCompute whose passes use both
+// queues (RFC 0016 S8) runs as one submission per run of consecutive passes
+// on one queue, in compiled order, each waiting for the submissions of the
+// passes its waitFor names (and the caller's waits, on each queue's first
+// submission). The last submission is on graphics and also waits for the
+// last compute submission, so ExecuteResult::token covers the whole graph;
+// transients are released behind it. The device must claim
+// Capability::kAsyncCompute.
 class SerialGraphExecutor
 {
 public:
@@ -137,6 +151,10 @@ public:
 	void SetLabelObserver( device::ILabelObserver *observer ) { m_Observer = observer; }
 
 private:
+	foundation::Expected<ExecuteResult, device::DeviceError> ExecuteTwoQueues(
+	    const CompiledGraph &graph, device::IRenderDevice2 &device,
+	    const device::SubmitWaits &waits, detail::Plan &plan );
+
 	TransientPool *m_Pool = nullptr;
 	device::ILabelObserver *m_Observer = nullptr;
 };

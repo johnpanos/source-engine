@@ -1,5 +1,5 @@
-// render.pass.cull (RFC 0016 GPU-driven submission S4): the GPU path of
-// public/render/pass/cull/cull.h. render::scene's CullRange and
+// render.culling (RFC 0016 GPU-driven submission S4): the GPU path of
+// public/render/culling/cull.h. render::scene's CullRange and
 // math::Intersects( Frustum, Aabb ) are its oracle; the plane test follows
 // their order of operations, and `precise` keeps the compiler from fusing
 // it, so the two agree bit for bit.

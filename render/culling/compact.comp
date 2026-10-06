@@ -1,0 +1,163 @@
+// render.culling (RFC 0016 GPU-driven submission S3/S4): compaction of a
+// visibility mask (cull.comp's or occlusion.comp's output) into indexed
+// indirect draw commands, one command list per bucket (a pipeline and its
+// bindings), the GPU path of public/render/culling/cull.h's CompactReference.
+//
+// Instances are ordered by bucket: bucket b owns instances
+// [first_b, first_b + count_b) and its own command region at the same
+// indices, and each instance's DrawTemplate names its bucket. The output
+// holds bucket b's draw count as 32-bit word b, and from CommandsOffset
+// (cull.h) the commands, five words each: a kept instance i of bucket b is
+// written at index first_b + (its rank among b's kept instances) as
+// { indexCount, 1, firstIndex, vertexOffset, i }. So bucket b draws with
+//   DrawIndexedIndirectCount( out, commandsOffset + 20 * first_b, out, 4 * b,
+//                             count_b, 20 ).
+//
+// One workgroup: phase 1 prefix-scans the mask's words into shared memory
+// (at most kMaxCompactWords words), phase 2 places each kept instance by
+// the ranks phase 1 gives, phase 3 writes the counts. Order is deterministic,
+// so the oracle comparison is exact.
+//
+// SEEDED_COMPACT_DROPS_LAST and SEEDED_COMPACT_WRONG_INSTANCE build the
+// defective variants the render.cull suite must reject; no product uses them.
+#version 450
+
+layout( local_size_x = 256 ) in;
+
+const uint kMaxCompactWords = 3072; // cull.h kMaxCompactInstances / 32
+
+struct DrawTemplate
+{
+	uint indexCount;
+	uint firstIndex;
+	int vertexOffset;
+	uint bucket;
+};
+
+layout( std430, set = 3, binding = 0 ) readonly buffer Visibility
+{
+	uint words[];
+};
+
+layout( std430, set = 3, binding = 1 ) readonly buffer Templates
+{
+	DrawTemplate templates[];
+};
+
+// The cull pass's view (CullView): y of viewBitAndCount is the instance count.
+layout( std430, set = 3, binding = 2 ) readonly buffer View
+{
+	vec4 planes[6];
+	uvec4 viewBitAndCount;
+};
+
+// x: the bucket's first instance, y: its instance count; then, after the
+// buckets, nothing. The bucket count arrives in the draw constants.
+layout( std430, set = 3, binding = 3 ) readonly buffer Buckets
+{
+	uvec2 buckets[];
+};
+
+layout( std430, set = 3, binding = 4 ) writeonly buffer Commands
+{
+	uint data[]; // counts, then commands from commandsWord
+};
+
+layout( push_constant ) uniform Constants
+{
+	uint bucketCount;
+	uint commandsWord; // CommandsOffset / 4
+} constants;
+
+shared uint s_Prefix[kMaxCompactWords]; // kept instances before each word
+shared uint s_Scan[256];
+
+uint Bits( uint word, uint instanceCount )
+{
+	const uint wordCount = ( instanceCount + 31u ) / 32u;
+	if ( word >= wordCount )
+		return 0u;
+	uint bits = words[word];
+	// Bits past the last instance are not instances.
+	if ( word == wordCount - 1u && ( instanceCount & 31u ) != 0u )
+		bits &= ( 1u << ( instanceCount & 31u ) ) - 1u;
+	return bits;
+}
+
+// Kept instances before instance j (j may equal the instance count).
+uint RankAt( uint j, uint instanceCount, uint total )
+{
+	const uint word = j / 32u;
+	const uint wordCount = ( instanceCount + 31u ) / 32u;
+	if ( word >= wordCount )
+		return total;
+	const uint below = ( j & 31u ) == 0u ? 0u : ( 1u << ( j & 31u ) ) - 1u;
+	return s_Prefix[word] + bitCount( Bits( word, instanceCount ) & below );
+}
+
+void main()
+{
+	const uint lane = gl_LocalInvocationID.x;
+	const uint instanceCount = viewBitAndCount.y;
+	const uint wordCount = min( ( instanceCount + 31u ) / 32u, kMaxCompactWords );
+
+	// Phase 1: the exclusive prefix of kept instances per word.
+	uint base = 0u;
+	for ( uint first = 0u; first < wordCount; first += 256u )
+	{
+		const uint word = first + lane;
+		const uint own = bitCount( Bits( word, instanceCount ) );
+		s_Scan[lane] = own;
+		barrier();
+		for ( uint step = 1u; step < 256u; step <<= 1u )
+		{
+			const uint add = lane >= step ? s_Scan[lane - step] : 0u;
+			barrier();
+			s_Scan[lane] += add;
+			barrier();
+		}
+		if ( word < wordCount )
+			s_Prefix[word] = base + s_Scan[lane] - own;
+		base += s_Scan[255];
+		barrier();
+	}
+	const uint total = base;
+
+	// Phase 2: each kept instance at its rank within its bucket.
+	for ( uint word = lane; word < wordCount; word += 256u )
+	{
+		uint bits = Bits( word, instanceCount );
+		while ( bits != 0u )
+		{
+			const uint b = uint( findLSB( bits ) );
+			bits &= bits - 1u;
+			const uint instance = word * 32u + b;
+			const DrawTemplate t = templates[instance];
+			const uint start = buckets[t.bucket].x;
+			const uint rank =
+			    RankAt( instance, instanceCount, total ) - RankAt( start, instanceCount, total );
+			const uint o = constants.commandsWord + ( start + rank ) * 5u;
+			data[o + 0u] = t.indexCount;
+			data[o + 1u] = 1u;
+			data[o + 2u] = t.firstIndex;
+			data[o + 3u] = uint( t.vertexOffset );
+#ifdef SEEDED_COMPACT_WRONG_INSTANCE
+			data[o + 4u] = word;
+#else
+			data[o + 4u] = instance;
+#endif
+		}
+	}
+
+	// Phase 3: each bucket's draw count.
+	for ( uint bucket = lane; bucket < constants.bucketCount; bucket += 256u )
+	{
+		const uvec2 range = buckets[bucket];
+		uint kept = RankAt( min( range.x + range.y, instanceCount ), instanceCount, total ) -
+		            RankAt( min( range.x, instanceCount ), instanceCount, total );
+#ifdef SEEDED_COMPACT_DROPS_LAST
+		kept = kept > 0u ? kept - 1u : 0u;
+#endif
+		data[bucket] = kept;
+	}
+}

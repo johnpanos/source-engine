@@ -72,6 +72,8 @@ int RunSuite( int argc, char **argv )
 		return RunSelfIllumSuite( argc - 1, argv + 1 );
 	if ( name == "view-state" )
 		return RunViewStateSuite( argc - 1, argv + 1 );
+	if ( name == "gpu-submission" )
+		return RunGpuSubmissionSuite( argc - 1, argv + 1 );
 	if ( name == "model-selection" )
 		return RunModelSelectionSuite( argc - 1, argv + 1 );
 	std::fprintf( stderr, "render_lab suite: no suite %s\n", name.c_str() );

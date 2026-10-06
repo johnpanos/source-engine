@@ -915,3 +915,73 @@ per-pipeline buckets that consume these commands without a readback.
 
 **Not done.** That product pass; GL 4.3/4.6 and ES indirect draws; per-pipeline
 bucketing in the compaction (one bucket today); a real second queue.
+
+## Game pass on indirect commands, GL/ES indirect, a real second queue, occlusion culling (2026-10-06, user goal)
+
+User goal: complete the four open items of the compaction record above.
+Owner: this session.
+
+**Installed.**
+
+- **A game pass drawing from the commands.** `render.pass.cull` moved to
+  `render.culling`, a layer-5 mechanism (beside `render.frame`) that feature
+  passes may use; the layer contract keeps passes independent. Compaction is
+  bucketed: one command list per bucket (`DrawBucket`), each bucket's count
+  as word b and its commands in its instances' slots, deterministic (two
+  phases in one workgroup, at most 98,304 instances). The world pass's main
+  draw (`WorldTarget::gpuSubmission`, engine `r_core_world_gpu_submit`,
+  default 0) uploads the view's surface list with cached per-surface world
+  bounds, culls it per surface and compacts it into one list per (material,
+  lightmap page) bucket before rendering, then binds each bucket exactly as
+  the per-surface path does (one shared `bindSurfaceMaterial`) and issues one
+  `DrawIndexedIndirectCount` from the world's shared vertex and index
+  buffers. Per-frame buffers and bind groups retire by frame. Devices
+  without `kDrawIndirectCount` draw per surface and count a fallback.
+- **Indirect draws on GL and ES.** GL 4.5 claims D30
+  (`glMultiDrawElementsIndirect`; a bound index offset is honoured by a GPU
+  copy of the indices into a scratch element buffer) and D31 where the
+  context has `glMultiDrawElementsIndirectCount`; ES 3.1 claims D30 as one
+  GPU-read `glDrawElementsIndirect` per record. New
+  `Capability::kIndirectFirstInstance` (records with a nonzero
+  `firstInstance`): Vulkan claims it with `drawIndirectFirstInstance`
+  (enabled at creation, missing before); GL and ES do not.
+- **A real second queue.** The Vulkan adapter selects a compute-only family,
+  creates its queue, timeline and command pools, claims `kAsyncCompute`, and
+  creates resources with concurrent sharing between the two families.
+  Tokens name their queue; submissions wait on either timeline; compute
+  encoders refuse rendering, draws, host work and timestamps; their uploads
+  take staging buffers (the ring retires by the graphics timeline); barriers
+  on the compute queue use the generic all-commands scopes. The serial graph
+  executor runs a two-queue graph as one submission per same-queue run with
+  the compiled waits, ending in a graphics submission that covers both.
+- **Occlusion culling.** `hiz.comp` builds a max-depth pyramid from a depth
+  texture (one dispatch per level); `occlusion.comp` removes frustum-kept
+  instances whose nearest projected depth lies behind the pyramid's
+  farthest over their screen rectangle (first level spanning at most 2x2
+  texels; boxes crossing the near plane stay). `OcclusionKernels`,
+  `AddOcclusionPass`, and the oracles `DepthPyramidReference` and
+  `OcclusionReference`.
+
+**Evidence** (RADV Strix Halo; Mesa for GL/ES):
+
+| Check | Result |
+| --- | --- |
+| `render.device.v2.gl` / `.gles` | D30/D31 refusals and pixels on GL (claims both) and ES (claims D30); 1,177 and 1,062 checks |
+| `render.device.v2.vulkan` | D15 runs a dispatch on the compute queue; compute encoders exist exactly when async compute is claimed; sensitivity's false claim moved to async transfer |
+| `render.graph.v1.vulkan` | 200 two-queue random graphs (130 with cross-queue waits) ran in 638 submissions on the compute and graphics queues; synchronization validation silent |
+| `render.cull` | bucketed compaction equals the reference on 60 scenes (1 to 64 buckets); multi-bucket indirect image equals direct draws; occlusion: 412 of 1,608 frustum-kept cubes culled over 6 scenes, pyramid equal to its CPU rebuild, 0 disagreements with the CPU reference, images with and without occlusion identical byte for byte, far-corner and one-texel kernels change 5 and 6 of 6 images |
+| `render.lab.gpu-submission` | 400 quads, six materials: per-surface and GPU-driven images identical pixel for pixel, one indirect draw per bucket, no fallback, validation silent |
+| Game, `testchmb_a_01` (`build-r03-portal-native`, headless, `-deterministicrender`, `r_core_world 1`) | with `r_core_world_gpu_submit 1`: 204 views GPU-driven, 7,956 indirect draws, 0 fallbacks, 0 failed views; the screenshot equals the per-surface run's (0 of 786,432 pixels differ) |
+
+**Placement.** The world pass's GPU path is opt-in (default 0): it still
+builds the CPU list and the per-surface mip footprints, so its CPU saving is
+the draw calls and bindings only, and its whole-frame cost against the
+per-surface path is not yet measured with the resolution sweep. RFC 0003's
+rule selects the product default from that measurement; occlusion culling
+is not yet wired into the world pass (it needs the previous frame's depth).
+
+**Not done.** The whole-frame measurement and default; occlusion in the
+world pass; the remaining views that draw per surface (prepass, models,
+shadows); per-instance data through `kIndirectFirstInstance` in a product
+shader; the pooled executor still records two-queue graphs on graphics;
+Fold7 and Apple runs.

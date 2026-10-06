@@ -246,6 +246,54 @@ int main()
 		checks.That( reused > 0, "G10.the-pool-reuses-transients-on-vulkan" );
 		SceneColorCapture( checks, *device, 1 );
 		SceneColorCapture( checks, *device, 4 );
+		// G12 on a real second queue (RFC 0016 S8): two-queue random graphs
+		// whose writes are transfer writes, run as per-queue submissions with
+		// the compiled cross-queue waits, under synchronization validation.
+		const bool async = device->Facts().capabilities.Has( device::Capability::kAsyncCompute );
+		if ( !async )
+			std::printf( "SKIP G12.vulkan the device has no async compute queue\n" );
+		else
+		{
+			int queueCompiled = 0, queueRan = 0, waited = 0;
+			std::uint64_t queueEncoders = 0;
+			constexpr int kQueueGraphs = 200;
+			for ( int seed = 0; seed < kQueueGraphs; ++seed )
+			{
+				fixtures::RandomGraph random = fixtures::MakeRandomQueueGraph(
+				    static_cast<std::uint32_t>( seed ), *device, true, RealWork );
+				std::vector<device::ResourceId> imports;
+				for ( const ResourceDecl &decl : random.resources )
+				{
+					if ( decl.imported )
+						imports.push_back( device::ResourceId( decl.importedBuffer ) );
+				}
+				CompileOptions options;
+				options.asyncCompute = true;
+				auto graph = CompileGraph( std::move( random.builder ), options );
+				if ( graph && ValidateCompiledGraph( graph.Value() ).empty() )
+				{
+					++queueCompiled;
+					waited += !graph.Value().trace.waits.empty();
+					auto executed = serial.Execute( graph.Value(), *device );
+					const bool ran = executed && Wait( *device, executed.Value().token );
+					queueRan += ran;
+					if ( ran )
+						queueEncoders += executed.Value().encoders;
+				}
+				for ( device::ResourceId id : imports )
+					(void)device->Release( id, device::CompletionToken() );
+				(void)device->Poll();
+			}
+			std::printf( "INFO graph vulkan two queues: %d graphs (%d with cross-queue waits), "
+			             "%d ran in %llu submissions\n",
+			    queueCompiled, waited, queueRan,
+			    static_cast<unsigned long long>( queueEncoders ) );
+			checks.Equal( queueCompiled, kQueueGraphs, "G12.vulkan-every-two-queue-graph-compiles" );
+			checks.Equal( queueRan, queueCompiled,
+			    "G12.vulkan-every-two-queue-graph-runs-on-the-compute-and-graphics-queues" );
+			checks.That( waited > kQueueGraphs / 4 && queueEncoders > std::uint64_t( queueRan ),
+			    "G12.vulkan-the-graphs-cross-queues-with-waits" );
+		}
 		(void)device->WaitIdle();
 	}
 	if ( layer )

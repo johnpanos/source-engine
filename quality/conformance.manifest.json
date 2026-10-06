@@ -9503,6 +9503,18 @@
         "render/material/material_programs.cpp",
         "render/material/cable_family.cpp",
         "render/material/program_resolver.cpp",
+        "render/culling/cull.cpp",
+        "render/math/bounds.cpp",
+        "render/math/matrix.cpp",
+        "render/scene/scene.cpp",
+        "jobsystem/job_graph.cpp",
+        "render/graph/builder.cpp",
+        "render/graph/compile.cpp",
+        "render/graph/execution_plan.cpp",
+        "render/graph/executor_serial.cpp",
+        "render/graph/executor_pooled.cpp",
+        "render/graph/pass_timers.cpp",
+        "render/graph/validate.cpp",
         "render/pass/world/world_pass.cpp",
         "unittests/rendertest/core/pass/world/test_world_pass.cpp"
       ],
@@ -11936,6 +11948,39 @@
       "expect": "pass"
     },
     {
+      "id": "render.lab.gpu-submission",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "migration": "R89",
+      "contract": "unittests/rendertest/contracts/render.cull.v1.md",
+      "profile": "linux-native-vulkan-gpu",
+      "kind": "positive",
+      "description": "GPU-driven submission through the core world pass (RFC 0016 S3/S4, WorldTarget::gpuSubmission): 400 overlapping depth-tested quads in six materials, a quarter outside the view, drawn per surface and then culled on the GPU (render.culling), compacted into one command list per (material, lightmap page) bucket and drawn with one DrawIndexedIndirectCount per bucket from the world's shared buffers; the two images are identical pixel for pixel, the view counts as GPU-driven with one indirect draw per bucket and no fallback, the image shows every colour, and native Vulkan validation is silent.",
+      "command": [
+        "{python}",
+        "tools/render/lab.py",
+        "suite",
+        "gpu-submission",
+        "--validate"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 8,
+      "timeout_seconds": 300,
+      "requires": [
+        "path:build-rc-lab/render/lab/render_lab",
+        "vulkan-device:gpu"
+      ],
+      "sources": [
+        "render/lab/gpu_submission_suite.cpp",
+        "render/pass/world/world_pass.cpp",
+        "render/culling/cull.cpp",
+        "render/culling/cull.comp",
+        "render/culling/compact.comp",
+        "tools/render/lab.py"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "render.lab.model-selection",
       "domain": "Q-PRESENTATION",
       "rfc": "0016",
@@ -12994,7 +13039,7 @@
       "contract": "unittests/rendertest/contracts/render.cull.v1.md",
       "kind": "positive",
       "profile": "linux-native-vulkan-gpu",
-      "description": "render.pass.cull (RFC 0016 GPU-driven submission S4) on render.device.vulkan: cull.comp dispatched as a render.graph compute pass (upload, cull, readback through the serial executor) keeps exactly the instances render::scene::BuildDrawList keeps (frustum planes, empty boxes, view masks, view bit 32 for every view) on 200 seeded scenes of up to 20,000 instances, bit for bit; the seeded near-corner, ignored-view-mask and kept-empty-box kernels each disagree (3 of 3); the pass asks for the async compute queue, runs there when the graph is compiled with async compute (the readback waits for it) and on graphics otherwise, with the oracle mask either way; a null device without compute fails kNoCompute; with the Khronos validation layer the run reports no message. Compaction (S3/S4): compact.comp turns the mask into indexed indirect commands and a draw count in instance order, equal to CompactReference on the CPU culler's mask on 60 seeded scenes (0 to 20,000 instances); seeded dropped-last and wrong-instance kernels disagree (2 of 2); on a device claiming kDrawIndirectCount, an image drawn by DrawIndexedIndirectCount from the compacted buffer equals direct draws of the CPU-kept instances on 8 scenes. Prints RFC 0003's full-cost placement comparison (CPU culler serial and pooled against the GPU round trip and resident instances, 1,024 to 65,536 instances); timing fails nothing.",
+      "description": "render.culling (RFC 0016 GPU-driven submission S4) on render.device.vulkan: cull.comp dispatched as a render.graph compute pass (upload, cull, readback through the serial executor) keeps exactly the instances render::scene::BuildDrawList keeps (frustum planes, empty boxes, view masks, view bit 32 for every view) on 200 seeded scenes of up to 20,000 instances, bit for bit; the seeded near-corner, ignored-view-mask and kept-empty-box kernels each disagree (3 of 3); the pass asks for the async compute queue, runs there when the graph is compiled with async compute (the readback waits for it) and on graphics otherwise, with the oracle mask either way; a null device without compute fails kNoCompute; with the Khronos validation layer the run reports no message. Compaction (S3/S4): compact.comp turns the mask into indexed indirect commands and a draw count in instance order, equal to CompactReference on the CPU culler's mask on 60 seeded scenes (0 to 20,000 instances); seeded dropped-last and wrong-instance kernels disagree (2 of 2); on a device claiming kDrawIndirectCount, an image drawn by DrawIndexedIndirectCount from the compacted buffer equals direct draws of the CPU-kept instances on 8 scenes. Prints RFC 0003's full-cost placement comparison (CPU culler serial and pooled against the GPU round trip and resident instances, 1,024 to 65,536 instances); timing fails nothing.",
       "result_protocol": "checks-v1",
       "sources": [
         "render/shaderlib/shaderlib.cpp",
@@ -13024,9 +13069,9 @@
         "render/math/matrix.cpp",
         "render/scene/scene.cpp",
         "render/device/null/recording_device.cpp",
-        "render/pass/cull/cull.cpp",
+        "render/culling/cull.cpp",
         "jobsystem/parallel_executor.cpp",
-        "unittests/rendertest/core/pass/cull/test_cull_vulkan.cpp"
+        "unittests/rendertest/core/culling/test_cull_vulkan.cpp"
       ],
       "min_checks": 17,
       "extra_flags": [
@@ -13942,6 +13987,7 @@
         "render/composition/core_output.cpp",
         "render/pass/post/post.cpp",
         "render/pass/output/output.cpp",
+        "render/culling/cull.cpp",
         "render/pass/world/world_pass.cpp",
         "render/pass/indirect/port_compute.cpp",
         "render/legacy/frame_executor.cpp",
@@ -14047,6 +14093,7 @@
         "render/composition/core_output.cpp",
         "render/pass/post/post.cpp",
         "render/pass/output/output.cpp",
+        "render/culling/cull.cpp",
         "render/pass/world/world_pass.cpp",
         "render/pass/indirect/port_compute.cpp",
         "render/legacy/frame_executor.cpp",
@@ -14150,6 +14197,7 @@
         "render/composition/core_output.cpp",
         "render/pass/post/post.cpp",
         "render/pass/output/output.cpp",
+        "render/culling/cull.cpp",
         "render/pass/world/world_pass.cpp",
         "render/pass/indirect/port_compute.cpp",
         "render/legacy/frame_executor.cpp",
@@ -14265,6 +14313,7 @@
         "render/composition/core_output.cpp",
         "render/pass/post/post.cpp",
         "render/pass/output/output.cpp",
+        "render/culling/cull.cpp",
         "render/pass/world/world_pass.cpp",
         "render/pass/indirect/port_compute.cpp",
         "render/legacy/frame_executor.cpp",

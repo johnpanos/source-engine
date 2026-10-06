@@ -6,6 +6,8 @@
 //=============================================================================//
 
 #include "render/pass/world/world_pass.h"
+
+#include "render/culling/cull.h"
 #include "group_resources.h"
 
 #include "render/device/errors.h"
@@ -737,6 +739,14 @@ struct WorldPass::State
 	// Staging buffers of stage uploads, and a stage's per-view groups, with
 	// the frame that recorded them.
 	std::vector<std::pair<std::uint64_t, BufferId>> retiredBuffers;
+	// GPU-driven submission: the kernels on this device, the per-surface
+	// world bounds of the world they were built for, and the frame-retired
+	// bind groups of recorded dispatches.
+	std::unique_ptr<culling::CullKernel> gpuCull;
+	std::unique_ptr<culling::CompactKernel> gpuCompact;
+	const WorldData *gpuBoundsWorld = nullptr;
+	std::vector<culling::CullInstance> gpuBounds;
+	std::vector<std::pair<std::uint64_t, BindGroupId>> retiredBindGroups;
 	std::vector<std::pair<std::uint64_t, Group>> retiredGroups;
 	GroupResources groupResources;
 	std::vector<std::pair<std::uint64_t, TextureId>> retiredTextures;
@@ -1649,6 +1659,11 @@ void WorldPass::ReleaseDevice( IRenderDevice2 &device )
 	for ( auto &[frame, buffer] : s.retiredBuffers )
 		(void)device.Release( buffer, CompletionToken() );
 	s.retiredBuffers.clear();
+	for ( auto &[frame, group] : s.retiredBindGroups )
+		(void)device.Release( group, CompletionToken() );
+	s.retiredBindGroups.clear();
+	s.gpuCull.reset();
+	s.gpuCompact.reset();
 	for ( const State::RetiredModelBuffer &retired : s.retiredModelBuffers )
 		(void)device.Release( retired.buffer, CompletionToken() );
 	s.retiredModelBuffers.clear();
@@ -1913,6 +1928,9 @@ void WorldPass::RecordBatch(
 		s.variants.clear();
 		s.retired.clear();
 		s.retiredBuffers.clear();
+		s.retiredBindGroups.clear();
+		s.gpuCull.reset();
+		s.gpuCompact.reset();
 		s.retiredGroups.clear();
 		s.retiredTextures.clear();
 		// The old device's model levels went with it; the world they belong to
@@ -2000,6 +2018,14 @@ void WorldPass::RecordBatch(
 	    } );
 	std::erase_if( s.retiredBuffers,
 	    [&]( const std::pair<std::uint64_t, BufferId> &old )
+	    {
+		    if ( target.frame == 0 || old.first >= target.frame )
+			    return false;
+		    (void)device.Release( old.second, target.submitted );
+		    return true;
+	    } );
+	std::erase_if( s.retiredBindGroups,
+	    [&]( const std::pair<std::uint64_t, BindGroupId> &old )
 	    {
 		    if ( target.frame == 0 || old.first >= target.frame )
 			    return false;
@@ -3672,6 +3698,35 @@ void WorldPass::RecordBatch(
 			target.mipFeedback->AddVisible( footprint );
 		}
 	};
+	// A world material's pipeline, groups, the world's shared vertex and index
+	// buffers, and the view's draw constants: what both the per-surface runs
+	// and the GPU-driven buckets bind.
+	auto bindSurfaceMaterial = [&]( const Resources::Material &m, PipelineId pipeline )
+	{
+		encoder.SetPipeline( pipeline );
+		if ( m.program.request.frameLayout.IsValid() )
+			encoder.SetBindGroup(
+			    BindGroupRole::kFrame, r.frameGroups[m.program.request.frameLayout.value].group );
+		if ( m.program.request.viewLayout.IsValid() )
+		{
+			const std::uint64_t layout = m.program.request.viewLayout.value;
+			const auto lit = litViews.find( layout );
+			const auto reflect = reflectViews.find( layout );
+			encoder.SetBindGroup( BindGroupRole::kView,
+			    lit != litViews.end()                               ? lit->second->group
+			    : m.viewInput != 0 && reflect != reflectViews.end() ? reflect->second.group
+			                                                        : r.viewGroups[layout].group );
+		}
+		encoder.SetBindGroup( BindGroupRole::kMaterial, m.group.group );
+		encoder.SetVertexBuffer( 0, r.vertices, 0 );
+		if ( recordingTemporal )
+			encoder.SetVertexBuffer( 1, r.vertices, 0 );
+		encoder.SetIndexBuffer( r.indices, 0, IndexFormat::kUint32 );
+		encoder.SetDrawConstants(
+		    0, ( m.program.name == "water" && view.waterZOffset != 0.0f ? waterConstantBytes
+		                                                                : constantBytes )
+		           .first( m.program.request.drawConstantBytes ) );
+	};
 	auto drawSurfaces =
 	    [&]( const std::vector<std::uint32_t> &list,
 	        const std::vector<Resources::Material> &materials,
@@ -3710,30 +3765,7 @@ void WorldPass::RecordBatch(
 					complete = false;
 					continue;
 				}
-				encoder.SetPipeline( *pipeline );
-				if ( m.program.request.frameLayout.IsValid() )
-					encoder.SetBindGroup( BindGroupRole::kFrame,
-					    r.frameGroups[m.program.request.frameLayout.value].group );
-				if ( m.program.request.viewLayout.IsValid() )
-				{
-					const std::uint64_t layout = m.program.request.viewLayout.value;
-					const auto lit = litViews.find( layout );
-					const auto reflect = reflectViews.find( layout );
-					encoder.SetBindGroup(
-					    BindGroupRole::kView, lit != litViews.end() ? lit->second->group
-					                          : m.viewInput != 0 && reflect != reflectViews.end()
-					                              ? reflect->second.group
-					                              : r.viewGroups[layout].group );
-				}
-				encoder.SetBindGroup( BindGroupRole::kMaterial, m.group.group );
-				encoder.SetVertexBuffer( 0, r.vertices, 0 );
-				if ( recordingTemporal )
-					encoder.SetVertexBuffer( 1, r.vertices, 0 );
-				encoder.SetIndexBuffer( r.indices, 0, IndexFormat::kUint32 );
-				encoder.SetDrawConstants(
-				    0, ( m.program.name == "water" && view.waterZOffset != 0.0f ? waterConstantBytes
-				                                                                : constantBytes )
-				           .first( m.program.request.drawConstantBytes ) );
+				bindSurfaceMaterial( m, *pipeline );
 			}
 			if ( skipping )
 				continue;
@@ -4635,6 +4667,161 @@ void WorldPass::RecordBatch(
 		encoder.EndRendering();
 		encoder.EndLabel();
 	}
+	// GPU-driven submission (RFC 0016 S3/S4): before the pass's rendering,
+	// cull the listed surfaces on the GPU and compact them into one command
+	// list per bucket, a run of `order` with one material and lightmap page:
+	// the runs drawSurfaces binds once each.
+	struct GpuBucket
+	{
+		std::uint32_t material = 0;
+		int page = 0;
+		std::uint32_t first = 0; // into order
+		std::uint32_t count = 0;
+	};
+	std::vector<GpuBucket> gpuBuckets;
+	BufferId gpuCommands;
+	const CapabilitySet &caps = device.Facts().capabilities;
+	const bool gpuCapable = caps.Has( Capability::kCompute ) &&
+	                        caps.Has( Capability::kStorageBuffers ) &&
+	                        caps.Has( Capability::kDrawIndirectCount );
+	if ( target.gpuSubmission && !gpuCapable )
+		++s.stats.gpuFallbacks;
+	if ( target.gpuSubmission && gpuCapable && !order.empty() &&
+	     order.size() <= culling::kMaxCompactInstances )
+	{
+		using namespace render::culling;
+		if ( !s.gpuCull )
+		{
+			auto cull = CullKernel::Create( device );
+			auto compact = CompactKernel::Create( device );
+			if ( cull && compact )
+			{
+				s.gpuCull = std::move( cull ).Value();
+				s.gpuCompact = std::move( compact ).Value();
+			}
+		}
+		if ( s.gpuBoundsWorld != world.get() )
+		{
+			s.gpuBounds.assign( world->surfaces.size(), {} );
+			for ( std::size_t i = 0; i < world->surfaces.size(); ++i )
+			{
+				const WorldSurface &surface = world->surfaces[i];
+				CullInstance &bounds = s.gpuBounds[i];
+				bounds.viewMask = ~0u;
+				std::fill_n( bounds.min, 3, 3.4e38f );
+				std::fill_n( bounds.max, 3, -3.4e38f );
+				for ( std::uint32_t k = 0; k < surface.indexCount; ++k )
+				{
+					const std::uint32_t at = surface.firstIndex + k;
+					if ( at >= world->indices.size() || world->indices[at] >= world->vertices.size() )
+						continue;
+					const float *p = world->vertices[world->indices[at]].position;
+					for ( int c = 0; c < 3; ++c )
+					{
+						bounds.min[c] = std::min( bounds.min[c], p[c] );
+						bounds.max[c] = std::max( bounds.max[c], p[c] );
+					}
+				}
+			}
+			s.gpuBoundsWorld = world.get();
+		}
+		const auto count = static_cast<std::uint32_t>( order.size() );
+		std::vector<CullInstance> instances( count );
+		std::vector<DrawTemplate> templates( count );
+		std::vector<DrawBucket> buckets;
+		for ( std::uint32_t k = 0; k < count; ++k )
+		{
+			const WorldSurface &surface = world->surfaces[order[k]];
+			const Resources::Material &m = r.materials[surface.material];
+			const int page = m.program.request.drawLayout.IsValid() ? surface.lightmapPage : 0;
+			if ( gpuBuckets.empty() || gpuBuckets.back().material != surface.material ||
+			     gpuBuckets.back().page != page )
+			{
+				gpuBuckets.push_back( { surface.material, page, k, 0 } );
+				buckets.push_back( { k, 0 } );
+			}
+			++gpuBuckets.back().count;
+			++buckets.back().count;
+			instances[k] = s.gpuBounds[order[k]];
+			templates[k] = { surface.indexCount, surface.firstIndex, 0,
+			    static_cast<std::uint32_t>( buckets.size() - 1 ) };
+		}
+		const auto bucketCount = static_cast<std::uint32_t>( buckets.size() );
+		math::float4x4 toClip;
+		for ( int row = 0; row < 4; ++row )
+			toClip.rows[row] = { view.toClip[row * 4 + 0], view.toClip[row * 4 + 1],
+			    view.toClip[row * 4 + 2], view.toClip[row * 4 + 3] };
+		const CullView cullView = PackView( math::ExtractFrustum( toClip ), 32, count );
+		std::vector<BufferId> made;
+		auto make = [&]( std::uint64_t size, UsageSet usages )
+		{
+			BufferDesc desc;
+			desc.size = std::max<std::uint64_t>( size, 16 );
+			desc.usages = usages;
+			auto created = device.CreateBuffer( desc );
+			made.push_back( created ? created.Value() : BufferId() );
+			return made.back();
+		};
+		const UsageSet in = { ResourceUsage::kCopyDestination, ResourceUsage::kStorageRead };
+		const BufferId instanceBuffer = make( count * sizeof( CullInstance ), in );
+		const BufferId viewBuffer = make( sizeof( CullView ), in );
+		const BufferId templateBuffer = make( count * sizeof( DrawTemplate ), in );
+		const BufferId bucketBuffer = make( bucketCount * sizeof( DrawBucket ), in );
+		const BufferId mask = make( std::uint64_t( MaskWords( count ) ) * 4,
+		    { ResourceUsage::kStorageWrite, ResourceUsage::kStorageRead } );
+		const BufferId commands = make( CommandBufferBytes( count, bucketCount ),
+		    { ResourceUsage::kStorageWrite, ResourceUsage::kIndirect } );
+		const bool ready = s.gpuCull && std::all_of( made.begin(), made.end(),
+		                                    []( BufferId id )
+		                                    {
+			                                    return id.IsValid();
+		                                    } );
+		if ( ready )
+		{
+			encoder.BeginLabel( "core world gpu cull" );
+			auto upload = [&]( BufferId buffer, std::span<const std::byte> bytes )
+			{
+				encoder.TransitionBuffer(
+				    buffer, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+				encoder.WriteBuffer( buffer, 0, bytes );
+				encoder.TransitionBuffer(
+				    buffer, ResourceUsage::kCopyDestination, ResourceUsage::kStorageRead );
+			};
+			upload( instanceBuffer, std::as_bytes( std::span( instances ) ) );
+			upload( viewBuffer, std::as_bytes( std::span( &cullView, 1 ) ) );
+			upload( templateBuffer, std::as_bytes( std::span( templates ) ) );
+			upload( bucketBuffer, std::as_bytes( std::span( buckets ) ) );
+			encoder.TransitionBuffer( mask, ResourceUsage::kUndefined, ResourceUsage::kStorageWrite );
+			const bool culled =
+			    s.gpuCull->Record( encoder, { instanceBuffer, viewBuffer, mask, count } ).HasValue();
+			encoder.TransitionBuffer(
+			    mask, ResourceUsage::kStorageWrite, ResourceUsage::kStorageRead );
+			encoder.TransitionBuffer(
+			    commands, ResourceUsage::kUndefined, ResourceUsage::kStorageWrite );
+			const bool compacted =
+			    s.gpuCompact
+			        ->Record( encoder, { mask, templateBuffer, viewBuffer, bucketBuffer, commands,
+			                               count, bucketCount } )
+			        .HasValue();
+			encoder.TransitionBuffer(
+			    commands, ResourceUsage::kStorageWrite, ResourceUsage::kIndirect );
+			encoder.EndLabel();
+			for ( BindGroupId group : s.gpuCull->TakeRecorded() )
+				s.retiredBindGroups.emplace_back( target.frame, group );
+			for ( BindGroupId group : s.gpuCompact->TakeRecorded() )
+				s.retiredBindGroups.emplace_back( target.frame, group );
+			if ( culled && compacted )
+				gpuCommands = commands;
+			else
+				gpuBuckets.clear();
+		}
+		else
+			gpuBuckets.clear();
+		for ( BufferId id : made )
+			if ( id.IsValid() )
+				s.retiredBuffers.emplace_back( target.frame, id );
+	}
+
 	encoder.BeginLabel( "core world" );
 	recordingTemporal = target.motion.IsValid();
 	if ( recordingTemporal )
@@ -4671,15 +4858,52 @@ void WorldPass::RecordBatch(
 			colors[i].load = LoadOp::kLoad;
 	RecordSection draws( encoder );
 	draws.Select( "world surfaces" );
-	drawSurfaces(
-	    order, r.materials,
-	    [&]( const Resources::Material &m ) -> std::optional<PipelineId>
-	    {
-		    return surfaceStatePipeline( m, m.program.request.pipeline,
-		        worldDepthReady && opaquePbr( m ) ? prepassedState() : target.drawState,
-		        frame::DebugSpecializationFor( view.debug, m.program.name ) );
-	    },
-	    true );
+	auto worldPipeline = [&]( const Resources::Material &m ) -> std::optional<PipelineId>
+	{
+		return surfaceStatePipeline( m, m.program.request.pipeline,
+		    worldDepthReady && opaquePbr( m ) ? prepassedState() : target.drawState,
+		    frame::DebugSpecializationFor( view.debug, m.program.name ) );
+	};
+	if ( gpuCommands.IsValid() )
+	{
+		// One indirect draw per bucket: its pipeline and bindings as
+		// drawSurfaces binds them, its GPU-compacted commands and count.
+		const auto bucketCount = static_cast<std::uint32_t>( gpuBuckets.size() );
+		for ( std::uint32_t b = 0; b < bucketCount; ++b )
+		{
+			const GpuBucket &bucket = gpuBuckets[b];
+			const Resources::Material &m = r.materials[bucket.material];
+			const std::optional<PipelineId> pipeline = worldPipeline( m );
+			if ( !pipeline )
+			{
+				complete = false;
+				continue;
+			}
+			bindSurfaceMaterial( m, *pipeline );
+			if ( m.program.request.drawLayout.IsValid() )
+				encoder.SetBindGroup(
+				    BindGroupRole::kDraw, r.drawGroups[drawKey( m, bucket.page )].group );
+			for ( std::uint32_t k = bucket.first; k < bucket.first + bucket.count; ++k )
+			{
+				const std::uint32_t index = order[k];
+				submitSurfaceFootprints( world->surfaces[index], r.materials, world->vertices,
+				    world->indices,
+				    worldFootprints.empty() ? scratchFootprint : worldFootprints[index], nullptr,
+				    footprintGeometry && index < footprintGeometry->size()
+				        ? &( *footprintGeometry )[index]
+				        : nullptr );
+			}
+			encoder.DrawIndexedIndirectCount( gpuCommands,
+			    culling::CommandsOffset( bucketCount ) +
+			        std::uint64_t( bucket.first ) * sizeof( DrawIndexedIndirectCommand ),
+			    gpuCommands, std::uint64_t( b ) * 4, bucket.count,
+			    sizeof( DrawIndexedIndirectCommand ) );
+			++s.stats.gpuIndirectDraws;
+		}
+		++s.stats.gpuViews;
+	}
+	else
+		drawSurfaces( order, r.materials, worldPipeline, true );
 	draws.Select( "prepare model draw order" );
 	// The model list is built in caller order. Opaque draws can be grouped by
 	// material, while blended surfaces must stay after them and retain their

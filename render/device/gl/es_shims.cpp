@@ -7,6 +7,7 @@
 
 #include "es_shims.h"
 
+#include <cstdint>
 #include <cstring>
 #include <initializer_list>
 #include <string>
@@ -402,6 +403,20 @@ void APIENTRY DrawElementsInstancedBaseVertexBaseInstance( GLenum mode, GLsizei 
 	Core().DrawElementsInstancedBaseVertex( mode, count, type, indices, instances, baseVertex );
 }
 
+// ES 3.1 has one-record indirect draws only: each record is a GPU-read
+// glDrawElementsIndirect (D30). ES requires the record's firstInstance to be
+// 0, which is why ES claims no kIndirectFirstInstance.
+void APIENTRY MultiDrawElementsIndirect(
+    GLenum mode, GLenum type, const void *indirect, GLsizei drawCount, GLsizei stride )
+{
+	const std::uintptr_t first = reinterpret_cast<std::uintptr_t>( indirect );
+	const std::uintptr_t step =
+	    stride == 0 ? std::uintptr_t( 20 ) : static_cast<std::uintptr_t>( stride );
+	for ( GLsizei i = 0; i < drawCount; ++i )
+		Core().DrawElementsIndirect( mode, type,
+		    reinterpret_cast<const void *>( first + std::uintptr_t( i ) * step ) );
+}
+
 GLenum APIENTRY GetGraphicsResetStatus()
 {
 	return Core().GetGraphicsResetStatus ? Core().GetGraphicsResetStatus() : GL_NO_ERROR;
@@ -594,6 +609,7 @@ const char *LoadEs( GlApi &api, EsState &state, ProcLoader load )
 	api.DepthRangeIndexed = &DepthRangeIndexed;
 	api.DrawArraysInstancedBaseInstance = &DrawArraysInstancedBaseInstance;
 	api.DrawElementsInstancedBaseVertexBaseInstance = &DrawElementsInstancedBaseVertexBaseInstance;
+	api.MultiDrawElementsIndirect = &MultiDrawElementsIndirect;
 	api.EnableVertexArrayAttrib = &EnableVertexArrayAttrib;
 	api.GetCompressedTextureSubImage = &GetCompressedTextureSubImage;
 	api.GetGraphicsResetStatus = &GetGraphicsResetStatus;

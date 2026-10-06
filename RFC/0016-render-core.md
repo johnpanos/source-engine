@@ -1346,9 +1346,12 @@ Vulkan, refused by name on GL and ES) and `render.pass.cull`'s compaction
 of the mask into indirect commands with a GPU draw count, whose image
 equals direct draws of the CPU-kept instances
 ([record](0003-progress.md#compaction-into-indirect-draw-commands-2026-10-05-user-goal)).
-Open: a product pass drawing from them (S3's shared geometry buffers and
-per-pipeline buckets), a real second queue, HiZ occlusion, GL/ES indirect
-draws.
+2026-10-06: the world pass draws from them (`r_core_world_gpu_submit`,
+opt-in; game frame identical), GL and ES claim indirect draws, Vulkan runs
+a real async compute queue, and `render.culling` adds HiZ occlusion
+([record](0003-progress.md#game-pass-on-indirect-commands-gles-indirect-a-real-second-queue-occlusion-culling-2026-10-06-user-goal)).
+Open: the whole-frame placement measurement and default, occlusion in the
+world pass, the other world draws.
 
 **Order:** S0; then S1, S2 and S5 (they reshape draw records and pipeline
 keys); then S3 (the main CPU gain) and S4; S6–S8 as their measurements

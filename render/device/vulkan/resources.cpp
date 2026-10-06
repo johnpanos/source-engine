@@ -117,6 +117,7 @@ DeviceResult<HostBuffer> VulkanDevice::CreateHostBuffer(
 	info.size = size;
 	info.usage = usage;
 	info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+	ApplySharing( info ); // concurrent with the async compute queue (S8)
 	void *mapped = nullptr;
 	const VkResult result = m_Memory.CreateBuffer(
 	    info, MemoryFor( MemoryKind::kUpload ), &out.buffer, &out.memory, &mapped );
@@ -155,6 +156,7 @@ DeviceResult<BufferId> VulkanDevice::CreateBuffer( const BufferDesc &desc )
 	info.size = desc.size;
 	info.usage = BufferUsageFlags( desc.usages );
 	info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+	ApplySharing( info ); // concurrent with the async compute queue (S8)
 	void *mapped = nullptr;
 	const HostMemory memory = MemoryFor( desc.memory );
 	const VkResult result = m_Memory.CreateBuffer(
@@ -255,6 +257,7 @@ DeviceResult<TextureId> VulkanDevice::CreateTexture( const TextureDesc &desc )
 	info.tiling = VK_IMAGE_TILING_OPTIMAL;
 	info.usage = usage;
 	info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+	ApplySharing( info ); // concurrent with the async compute queue (S8)
 	info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 	VkResult result = m_Memory.CreateImage( info, MemoryFor( MemoryKind::kDeviceLocal ),
 	    &record.image, &record.memory, desc.debugName );

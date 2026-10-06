@@ -183,6 +183,9 @@ struct AdapterChoice
 	VkPhysicalDevice physical = VK_NULL_HANDLE;
 	std::uint32_t queueFamily = 0;
 	std::uint32_t presentFamily = 0; // host mode: the family that presents
+	// A compute family without graphics (RFC 0016 S8: the async compute
+	// queue, Capability::kAsyncCompute), or UINT32_MAX. Port mode only.
+	std::uint32_t computeFamily = UINT32_MAX;
 	bool core12 = false;             // else Vulkan 1.1 with VK_KHR_timeline_semaphore
 	bool core13 = false;             // else the synchronization2 extension
 	// Dynamic rendering: always for the port's own device; a host device may
@@ -194,6 +197,7 @@ struct AdapterChoice
 	bool textureCompressionBC = false; // the kBC* formats (D19)
 	bool multiDrawIndirect = false;    // D30: drawCount above 1
 	bool drawIndirectCount = false;    // D31: Vulkan 1.2's drawIndirectCount
+	bool drawIndirectFirstInstance = false; // D30: nonzero firstInstance in records
 	bool memoryBudget = false; // VK_EXT_memory_budget was enabled for VMA
 	// dmabuf export of LINEAR images (external memory fd, dma_buf, DRM
 	// format modifiers): the adapter claims kExternalImages.
@@ -736,7 +740,7 @@ private:
 	bool ImportsAtHome( const std::unordered_map<std::uint64_t, ResourceUsage> &states );
 	bool ValidateDraw( const ValidationState &state, bool indexed ) const;
 	bool GroupsMatch( const ValidationState &state ) const;
-	DeviceResult<CommandContext> AcquireContext();
+	DeviceResult<CommandContext> AcquireContext( QueueKind queue = QueueKind::kGraphics );
 
 	BufferRecord *LiveBuffer( std::uint64_t id );
 	TextureRecord *LiveTexture( std::uint64_t id );
@@ -786,6 +790,36 @@ private:
 	// device, is dropped with it). Before every idle wait and teardown.
 	void ReleaseHold();
 	mutable std::atomic<std::uint64_t> m_Completed{ 0 };
+	// The async compute queue (Capability::kAsyncCompute; RFC 0016 S8): its
+	// own family, timeline and command contexts; tokens name it by
+	// QueueKind::kCompute. Resources are created with concurrent sharing
+	// between the two families, so work moves between queues by semaphore
+	// waits alone (no queue-family ownership transfers).
+	struct ComputeQueue
+	{
+		VkQueue queue = VK_NULL_HANDLE;
+		VkSemaphore timeline = VK_NULL_HANDLE;
+		std::uint64_t submitted = 0;
+		mutable std::atomic<std::uint64_t> completed{ 0 };
+		std::vector<CommandContext> free;
+		std::deque<CommandContext> inFlight;
+	} m_Compute;
+	bool AsyncCompute() const { return m_Compute.queue != VK_NULL_HANDLE; }
+	std::uint64_t CompletedValue( QueueKind queue ) const;
+	std::uint64_t SubmittedValue( QueueKind queue ) const
+	{
+		return queue == QueueKind::kCompute ? m_Compute.submitted : m_Submitted;
+	}
+	// Concurrent sharing between the graphics and compute families.
+	template <typename Info> void ApplySharing( Info &info ) const
+	{
+		if ( !AsyncCompute() )
+			return;
+		info.sharingMode = VK_SHARING_MODE_CONCURRENT;
+		info.queueFamilyIndexCount = 2;
+		info.pQueueFamilyIndices = m_SharedFamilies;
+	}
+	std::uint32_t m_SharedFamilies[2] = {};
 	std::atomic<std::uint64_t> m_DeferredUploads{ 0 };
 	std::uint64_t m_NextId = 0;
 	// Label observers may sample from recording workers. Counters are diagnostic

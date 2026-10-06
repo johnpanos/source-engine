@@ -2092,6 +2092,9 @@ void CoreWorld::GetStats( RenderCoreWorldStats *out ) const
 	}
 	out->dynamicDrawsDrawn = stats.dynamicDrawsDrawn;
 	out->dynamicDrawsRefused = stats.dynamicDrawsRefused;
+	out->gpuViews = stats.gpuViews;
+	out->gpuIndirectDraws = stats.gpuIndirectDraws;
+	out->gpuFallbacks = stats.gpuFallbacks;
 	std::snprintf( out->lastRefusal, sizeof( out->lastRefusal ), "%s", stats.lastRefusal.c_str() );
 	out->debugHatches = m_Hatches.load( std::memory_order_relaxed );
 	out->debugTints = m_Tints.load( std::memory_order_relaxed );
@@ -2144,6 +2147,7 @@ void CoreWorld::SetQuality( const RenderCoreWorldQuality &quality )
 	m_AoQuality.store( std::clamp( quality.ambientOcclusion, 0, 4 ), std::memory_order_relaxed );
 	m_ShadowQuality.store( std::clamp( quality.shadows, 0, 3 ), std::memory_order_relaxed );
 	m_DepthPrepass.store( quality.depthPrepass != 0, std::memory_order_relaxed );
+	m_GpuSubmission.store( quality.gpuSubmission != 0, std::memory_order_relaxed );
 	m_ShadowMovers.store( quality.shadowMovers != 0, std::memory_order_relaxed );
 	m_RuntimeDirect.store( quality.runtimeDirect != 0, std::memory_order_relaxed );
 	m_VolumetricOn.store( quality.volumetric != 0, std::memory_order_relaxed );
@@ -2724,6 +2728,7 @@ void CoreWorld::RecordWorldBatch( std::span<const std::uint32_t> tags,
 	world.streamEpoch = target.streamEpoch;
 	world.lightmapScale = target.lightmapScale;
 	world.depthPrepass = m_DepthPrepass.load( std::memory_order_relaxed );
+	world.gpuSubmission = m_GpuSubmission.load( std::memory_order_relaxed );
 	world.runtimeDirect = m_StageRuntimeDirect.load( std::memory_order_relaxed );
 	world.outputScale = target.outputScale;
 	std::copy( target.eye, target.eye + 3, world.eye );

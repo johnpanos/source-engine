@@ -37,6 +37,7 @@ enum class Capability : std::uint8_t
 	kTimestamps,           // CommandEncoder::WriteTimestamp (clause D23)
 	kMultiDrawIndirect,    // CommandEncoder::DrawIndexedIndirect (clause D30)
 	kDrawIndirectCount,    // CommandEncoder::DrawIndexedIndirectCount (clause D31)
+	kIndirectFirstInstance, // indirect records may carry a nonzero firstInstance (D30)
 	kCount
 };
 

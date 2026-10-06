@@ -197,8 +197,8 @@ enum class Op : std::uint8_t
 	kBeginLabel,
 	kEndLabel,
 	kWriteTimestamp, // D23: buffer a, at offset
-	// D30/D31: recorded so that a submission refuses them by name; the
-	// adapter claims neither capability yet (RFC 0016 GPU-driven submission).
+	// D30/D31: glMultiDrawElementsIndirect (ES: one glDrawElementsIndirect
+	// per record) and glMultiDrawElementsIndirectCount where the context has it.
 	kDrawIndexedIndirect,
 	kDrawIndexedIndirectCount
 };
@@ -488,6 +488,10 @@ private:
 	// context current, read by recording threads (ring retirement).
 	mutable std::atomic<std::uint64_t> m_Completed{ 0 };
 	GLuint m_RingBuffer = 0; // 0: the ring is m_RingCpu (ES without EXT_buffer_storage)
+	// Indirect draws read indices from the element buffer's start; a bound
+	// index offset is honoured by copying the indices here first (D30).
+	GLuint m_IndexScratch = 0;
+	std::uint64_t m_IndexScratchBytes = 0;
 	std::byte *m_RingData = nullptr;
 	std::vector<std::byte> m_RingCpu;
 	// ES features beyond 3.1 core (QueryFacts).

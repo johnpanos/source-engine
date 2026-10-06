@@ -89,6 +89,8 @@ namespace render::device::gl
 	X( DrawElementsInstancedBaseVertexBaseInstance,                                                \
 	    PFNGLDRAWELEMENTSINSTANCEDBASEVERTEXBASEINSTANCEPROC,                                      \
 	    glDrawElementsInstancedBaseVertexBaseInstance )                                            \
+	X( MultiDrawElementsIndirect, PFNGLMULTIDRAWELEMENTSINDIRECTPROC,                              \
+	    glMultiDrawElementsIndirect )                                                              \
 	X( Enable, PFNGLENABLEPROC, glEnable )                                                         \
 	X( Enablei, PFNGLENABLEIPROC, glEnablei )                                                      \
 	X( EnableVertexArrayAttrib, PFNGLENABLEVERTEXARRAYATTRIBPROC, glEnableVertexArrayAttrib )      \
@@ -166,6 +168,9 @@ struct GlApi
 #define RENDER_GL_MEMBER( member, type, name ) type member = nullptr;
 	RENDER_GL_FUNCTIONS( RENDER_GL_MEMBER )
 #undef RENDER_GL_MEMBER
+	// Optional: GL 4.6's glMultiDrawElementsIndirectCount or
+	// ARB_indirect_parameters' (D31); null when the context has neither.
+	PFNGLMULTIDRAWELEMENTSINDIRECTCOUNTPROC MultiDrawElementsIndirectCount = nullptr;
 
 	// Loads every entry point through load(name); the name of the first one
 	// missing, or nullptr when all are present.
@@ -177,6 +182,12 @@ struct GlApi
 		return #name;
 		RENDER_GL_FUNCTIONS( RENDER_GL_LOAD )
 #undef RENDER_GL_LOAD
+		MultiDrawElementsIndirectCount = reinterpret_cast<PFNGLMULTIDRAWELEMENTSINDIRECTCOUNTPROC>(
+		    load( "glMultiDrawElementsIndirectCount" ) );
+		if ( !MultiDrawElementsIndirectCount )
+			MultiDrawElementsIndirectCount =
+			    reinterpret_cast<PFNGLMULTIDRAWELEMENTSINDIRECTCOUNTPROC>(
+			        load( "glMultiDrawElementsIndirectCountARB" ) );
 		return nullptr;
 	}
 };

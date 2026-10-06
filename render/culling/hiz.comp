@@ -1,0 +1,74 @@
+// render.pass.cull (RFC 0016 GPU-driven submission S4): the hierarchical
+// depth pyramid occlusion culling reads, the GPU path of cull.h's
+// DepthPyramidReference. Level 0 is the depth texture itself; each later
+// level holds, per texel, the largest (farthest) depth of the up-to-2x2
+// texels of the level before it that it covers (sizes round up, so an odd
+// edge takes one or two). One dispatch per level; the level arrives in the
+// draw constants. Max is exact, so the oracle comparison is exact.
+#version 450
+
+layout( local_size_x = 8, local_size_y = 8 ) in;
+
+layout( set = 3, binding = 0 ) uniform texture2D depthTexture;
+layout( set = 3, binding = 1 ) uniform sampler depthSampler;
+
+// OcclusionView (cull.h).
+layout( std430, set = 3, binding = 2 ) readonly buffer View
+{
+	vec4 viewProjection[4];
+	uvec4 sizeLevelsCount; // width, height, levels, instance count
+	uvec4 levelOffsets[4]; // in floats, 16 levels
+};
+
+layout( std430, set = 3, binding = 3 ) buffer Pyramid
+{
+	float depths[];
+};
+
+layout( push_constant ) uniform Constants
+{
+	uint level;
+} constants;
+
+uint LevelOffset( uint level )
+{
+	return levelOffsets[level / 4u][level % 4u];
+}
+
+uvec2 LevelSize( uint level )
+{
+	uvec2 size = sizeLevelsCount.xy;
+	for ( uint l = 0u; l < level; ++l )
+		size = max( ( size + 1u ) / 2u, uvec2( 1u ) );
+	return size;
+}
+
+void main()
+{
+	const uint level = constants.level;
+	const uvec2 size = LevelSize( level );
+	const uvec2 texel = gl_GlobalInvocationID.xy;
+	if ( texel.x >= size.x || texel.y >= size.y )
+		return;
+	float depth;
+	if ( level == 0u )
+	{
+		depth = texelFetch( sampler2D( depthTexture, depthSampler ), ivec2( texel ), 0 ).r;
+	}
+	else
+	{
+		const uvec2 below = LevelSize( level - 1u );
+		const uint base = LevelOffset( level - 1u );
+		depth = 0.0;
+		for ( uint dy = 0u; dy < 2u; ++dy )
+		{
+			for ( uint dx = 0u; dx < 2u; ++dx )
+			{
+				const uvec2 at = texel * 2u + uvec2( dx, dy );
+				if ( at.x < below.x && at.y < below.y )
+					depth = max( depth, depths[base + at.y * below.x + at.x] );
+			}
+		}
+	}
+	depths[LevelOffset( level ) + texel.y * size.x + texel.x] = depth;
+}

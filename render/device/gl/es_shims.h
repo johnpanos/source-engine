@@ -41,6 +41,7 @@ typedef void( APIENTRYP PFNRENDERBUFFERSTORAGEEXTPROC )(
 #define RENDER_GLES_REQUIRED( X )                                                                  \
 	X( ActiveTexture, PFNGLACTIVETEXTUREPROC, "glActiveTexture" )                                  \
 	X( BindBuffer, PFNGLBINDBUFFERPROC, "glBindBuffer" )                                           \
+	X( DrawElementsIndirect, PFNGLDRAWELEMENTSINDIRECTPROC, "glDrawElementsIndirect" )             \
 	X( BindFramebuffer, PFNGLBINDFRAMEBUFFERPROC, "glBindFramebuffer" )                            \
 	X( BindTexture, PFNGLBINDTEXTUREPROC, "glBindTexture" )                                        \
 	X( BindVertexArray, PFNGLBINDVERTEXARRAYPROC, "glBindVertexArray" )                            \

@@ -340,7 +340,10 @@ inline Model Reference(
 // storage, sampled and uniform usages, so the compiled graph needs
 // cross-queue waits. A separate generator, so MakeRandomGraph's seeds keep
 // their graphs.
-inline RandomGraph MakeRandomQueueGraph( std::uint32_t seed, device::IRenderDevice2 &device )
+// copyWrites: writes are copy destinations (the Vulkan lane records a real
+// transfer write for each); makeExecute as for MakeRandomGraph.
+inline RandomGraph MakeRandomQueueGraph( std::uint32_t seed, device::IRenderDevice2 &device,
+    bool copyWrites = false, const MakeExecuteFn &makeExecute = {} )
 {
 	std::mt19937 random( seed ^ 0x51u );
 	auto pick = [&]( int n )
@@ -389,14 +392,19 @@ inline RandomGraph MakeRandomQueueGraph( std::uint32_t seed, device::IRenderDevi
 			const bool write = !canRead || pick( 2 ) == 0;
 			const ResourceRef ref{ static_cast<std::uint32_t>( r ) };
 			if ( write )
-				pass.Write( ref, ResourceUsage::kStorageWrite );
+				pass.Write(
+				    ref, copyWrites ? ResourceUsage::kCopyDestination : ResourceUsage::kStorageWrite );
 			else
 				pass.Read( ref, reads[pick( 2 )] );
 			written[r] = written[r] || write;
 		}
 		if ( pick( 4 ) == 0 )
 			pass.SideEffect();
-		pass.Execute( Noop );
+		if ( makeExecute )
+			pass.Execute(
+			    makeExecute( out.builder.Passes().back().accesses, out.builder.Resources() ) );
+		else
+			pass.Execute( Noop );
 	}
 	out.resources = out.builder.Resources();
 	out.passes = out.builder.Passes();

@@ -384,7 +384,12 @@ void VulkanEncoder::EndLabel()
 void VulkanDevice::StageUpload(
     VulkanEncoder &encoder, Command &command, std::span<const std::byte> bytes )
 {
-	if ( const auto allocation = m_Ring.Allocate( bytes.size(), CompletedValue() ) )
+	// The ring retires by the graphics timeline; compute-queue uploads take
+	// their own staging buffer, released with their submission (S8).
+	const bool computeQueue = encoder.Queue() == QueueKind::kCompute;
+	if ( const auto allocation = computeQueue
+	                                 ? std::nullopt
+	                                 : m_Ring.Allocate( bytes.size(), CompletedValue() ) )
 	{
 		std::memcpy( m_Ring.Data( allocation->first ), bytes.data(), bytes.size() );
 		command.ringOffset = allocation->first;
@@ -393,7 +398,8 @@ void VulkanDevice::StageUpload(
 	}
 	// The ring is full: this upload gets its own staging buffer, released
 	// behind its submission's token. Never an overwrite, never a wait.
-	m_DeferredUploads.fetch_add( 1 );
+	if ( !computeQueue )
+		m_DeferredUploads.fetch_add( 1 );
 	auto staging = CreateHostBuffer(
 	    bytes.size(), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, DeviceOperation::kSubmit );
 	if ( !staging )
@@ -740,7 +746,10 @@ bool VulkanDevice::Validate(
 class Translator
 {
 public:
-	Translator( VulkanDevice &device, VkCommandBuffer buffer ) : m_D( device ), m_Cmd( buffer ) {}
+	Translator( VulkanDevice &device, VkCommandBuffer buffer, bool computeQueue = false )
+	    : m_D( device ), m_Cmd( buffer ), m_ComputeQueue( computeQueue )
+	{
+	}
 
 	bool Encoder( const std::vector<Command> &commands )
 	{
@@ -822,15 +831,31 @@ private:
 		return m_Tracks.emplace( id, initial ).first->second;
 	}
 
+	// A compute-only queue cannot name graphics stages or their accesses;
+	// there the barrier is the generic all-commands, memory-write to
+	// memory-read-and-write one (the cross-queue order itself comes from the
+	// submission's semaphore waits, S8).
+	void Scopes( const UsageScope &src, const UsageScope &dst, VkPipelineStageFlags2 &srcStages,
+	    VkAccessFlags2 &srcAccess, VkPipelineStageFlags2 &dstStages, VkAccessFlags2 &dstAccess ) const
+	{
+		srcStages = src.stages;
+		srcAccess = src.access;
+		dstStages = dst.stages;
+		dstAccess = dst.access;
+		if ( !m_ComputeQueue )
+			return;
+		srcStages = dstStages = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+		srcAccess = src.access ? VK_ACCESS_2_MEMORY_WRITE_BIT : 0;
+		dstAccess = dst.access ? VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT : 0;
+	}
+
 	void ImageBarrier( const TextureRecord &texture, const UsageScope &src, const UsageScope &dst,
 	    VkImageLayout oldLayout )
 	{
 		VkImageMemoryBarrier2 barrier{};
 		barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
-		barrier.srcStageMask = src.stages;
-		barrier.srcAccessMask = src.access;
-		barrier.dstStageMask = dst.stages;
-		barrier.dstAccessMask = dst.access;
+		Scopes( src, dst, barrier.srcStageMask, barrier.srcAccessMask, barrier.dstStageMask,
+		    barrier.dstAccessMask );
 		barrier.oldLayout = oldLayout;
 		barrier.newLayout = dst.layout;
 		barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
@@ -850,10 +875,8 @@ private:
 	{
 		VkBufferMemoryBarrier2 barrier{};
 		barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2;
-		barrier.srcStageMask = src.stages;
-		barrier.srcAccessMask = src.access;
-		barrier.dstStageMask = dst.stages;
-		barrier.dstAccessMask = dst.access;
+		Scopes( src, dst, barrier.srcStageMask, barrier.srcAccessMask, barrier.dstStageMask,
+		    barrier.dstAccessMask );
 		barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 		barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 		barrier.buffer = buffer.buffer;
@@ -1348,6 +1371,7 @@ private:
 
 	VulkanDevice &m_D;
 	VkCommandBuffer m_Cmd;
+	bool m_ComputeQueue = false;
 	VkQueryPool m_Queries = VK_NULL_HANDLE;
 	std::uint32_t m_NextQuery = 0;
 	std::vector<PendingTimestamp> m_Timestamps;
@@ -1374,19 +1398,21 @@ bool VulkanDevice::RunSection( VkCommandBuffer cmd, std::uint32_t index )
 	return m_Translating && m_Translating->RunSection( cmd, index );
 }
 
-DeviceResult<VulkanDevice::CommandContext> VulkanDevice::AcquireContext()
+DeviceResult<VulkanDevice::CommandContext> VulkanDevice::AcquireContext( QueueKind queue )
 {
-	if ( !m_FreeContexts.empty() )
+	const bool compute = queue == QueueKind::kCompute;
+	std::vector<CommandContext> &free = compute ? m_Compute.free : m_FreeContexts;
+	if ( !free.empty() )
 	{
-		CommandContext context = std::move( m_FreeContexts.back() );
-		m_FreeContexts.pop_back();
+		CommandContext context = std::move( free.back() );
+		free.pop_back();
 		return context;
 	}
 	CommandContext context;
 	VkCommandPoolCreateInfo pool{};
 	pool.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
 	pool.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
-	pool.queueFamilyIndex = m_Adapter.queueFamily;
+	pool.queueFamilyIndex = compute ? m_Adapter.computeFamily : m_Adapter.queueFamily;
 	VkResult result = vkCreateCommandPool( m_Device, &pool, nullptr, &context.pool );
 	if ( result != VK_SUCCESS )
 		return Fail( StatusOf( result ), DeviceOperation::kSubmit, result );
@@ -1417,19 +1443,25 @@ DeviceResult<CompletionToken> VulkanDevice::Submit(
 
 	if ( m_State != DeviceState::kAvailable )
 		return Fail( DeviceStatus::kDeviceLost, op );
-	if ( queue != QueueKind::kGraphics )
+	const bool compute = queue == QueueKind::kCompute;
+	if ( queue != QueueKind::kGraphics && !( compute && AsyncCompute() ) )
 		return Fail( DeviceStatus::kUnsupported, op );
+	// Waits per queue: the latest value of each timeline (S8: a compute
+	// submission may wait for graphics work and the reverse).
 	std::uint64_t waitValue = 0;
+	std::uint64_t computeWaitValue = 0;
 	for ( const CompletionToken &wait : waits.tokens )
 	{
 		if ( wait.NamesSubmission() && wait.epoch < m_Epoch )
 			return Fail( DeviceStatus::kStaleEpoch, op );
 		if ( !wait.NamesSubmission() )
 			continue;
-		if ( wait.queue != QueueKind::kGraphics || wait.epoch > m_Epoch ||
-		     wait.value > m_Submitted )
+		const bool waitCompute = wait.queue == QueueKind::kCompute;
+		if ( ( wait.queue != QueueKind::kGraphics && !( waitCompute && AsyncCompute() ) ) ||
+		     wait.epoch > m_Epoch || wait.value > SubmittedValue( wait.queue ) )
 			return Fail( DeviceStatus::kInvalidDescription, op );
-		waitValue = std::max( waitValue, wait.value );
+		std::uint64_t &into = waitCompute ? computeWaitValue : waitValue;
+		into = std::max( into, wait.value );
 	}
 
 	std::unordered_map<std::uint64_t, ResourceUsage> states;
@@ -1467,6 +1499,15 @@ DeviceResult<CompletionToken> VulkanDevice::Submit(
 			if ( command.op == Op::kDrawIndexedIndirectCount &&
 			     !m_Facts.capabilities.Has( Capability::kDrawIndirectCount ) )
 				return Fail( DeviceStatus::kUnsupported, op );
+			// The compute queue runs transfers and dispatches: no rendering,
+			// draws, host work or timestamps (S8).
+			if ( compute &&
+			     ( command.op == Op::kBeginRendering || command.op == Op::kDraw ||
+			         command.op == Op::kDrawIndexed || command.op == Op::kDrawIndexedIndirect ||
+			         command.op == Op::kDrawIndexedIndirectCount ||
+			         command.op == Op::kNative || command.op == Op::kSectionBegin ||
+			         command.op == Op::kComputeInterop || command.op == Op::kWriteTimestamp ) )
+				return Fail( DeviceStatus::kUnsupported, op );
 			if ( command.op != Op::kWriteTimestamp )
 				continue;
 			if ( !m_Facts.capabilities.Has( Capability::kTimestamps ) )
@@ -1479,7 +1520,7 @@ DeviceResult<CompletionToken> VulkanDevice::Submit(
 	}
 
 	RecycleCompleted();
-	auto acquired = AcquireContext();
+	auto acquired = AcquireContext( queue );
 	if ( !acquired )
 		return foundation::MakeUnexpected( acquired.Error() );
 	CommandContext context = std::move( acquired ).Value();
@@ -1489,7 +1530,7 @@ DeviceResult<CompletionToken> VulkanDevice::Submit(
 			MarkLost();
 		if ( vkResetCommandPool( m_Device, context.pool, 0 ) == VK_SUCCESS )
 		{
-			m_FreeContexts.push_back( std::move( context ) );
+			( compute ? m_Compute.free : m_FreeContexts ).push_back( std::move( context ) );
 		}
 		else
 		{
@@ -1528,7 +1569,7 @@ DeviceResult<CompletionToken> VulkanDevice::Submit(
 	VkResult result = vkBeginCommandBuffer( context.buffer, &begin );
 	if ( result != VK_SUCCESS )
 		return giveBack( result );
-	Translator translator( *this, context.buffer );
+	Translator translator( *this, context.buffer, compute );
 	if ( timestamps > 0 )
 	{
 		vkCmdResetQueryPool( context.buffer, context.queries, 0, timestamps );
@@ -1556,10 +1597,10 @@ DeviceResult<CompletionToken> VulkanDevice::Submit(
 	if ( result != VK_SUCCESS )
 		return giveBack( result );
 
-	const std::uint64_t value = m_Submitted + 1;
+	const std::uint64_t value = SubmittedValue( queue ) + 1;
 	VkSemaphoreSubmitInfo signal{};
 	signal.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
-	signal.semaphore = m_Timeline;
+	signal.semaphore = compute ? m_Compute.timeline : m_Timeline;
 	signal.value = value;
 	signal.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
 	VkSemaphoreSubmitInfo wait{};
@@ -1575,6 +1616,13 @@ DeviceResult<CompletionToken> VulkanDevice::Submit(
 	std::vector<VkSemaphoreSubmitInfo> signalInfos{ signal };
 	if ( waitValue > 0 )
 		waitInfos.push_back( wait );
+	if ( computeWaitValue > 0 )
+	{
+		VkSemaphoreSubmitInfo computeWait = wait;
+		computeWait.semaphore = m_Compute.timeline;
+		computeWait.value = computeWaitValue;
+		waitInfos.push_back( computeWait );
+	}
 	if ( m_Holding )
 	{
 		// Tests only (Hold): the work starts once the host releases the hold.
@@ -1602,12 +1650,13 @@ DeviceResult<CompletionToken> VulkanDevice::Submit(
 	{
 		// A borrowing host shares the queue (host_device.h).
 		std::lock_guard<std::mutex> lock( m_QueueMutex );
-		result = m_Vk.queueSubmit2( m_Queue, 1, &submit, VK_NULL_HANDLE );
+		result = m_Vk.queueSubmit2(
+		    compute ? m_Compute.queue : m_Queue, 1, &submit, VK_NULL_HANDLE );
 	}
 	if ( result != VK_SUCCESS )
 		return giveBack( result ); // marks the device lost on VK_ERROR_DEVICE_LOST
 
-	m_Submitted = value;
+	( compute ? m_Compute.submitted : m_Submitted ) = value;
 	const CompletionToken token{ queue, m_Epoch, value };
 	translator.Commit();
 	for ( VulkanEncoder *encoder : recorded )
@@ -1632,7 +1681,7 @@ DeviceResult<CompletionToken> VulkanDevice::Submit(
 		encoder->MarkSubmitted();
 	}
 	context.value = value;
-	m_InFlight.push_back( std::move( context ) );
+	( compute ? m_Compute.inFlight : m_InFlight ).push_back( std::move( context ) );
 	return token;
 }
 

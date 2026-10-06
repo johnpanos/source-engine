@@ -282,9 +282,27 @@ bool GlDevice::Validate(
 		case Op::kSetViewport:
 		case Op::kBeginLabel:
 		case Op::kEndLabel:
-		case Op::kDrawIndexedIndirect: // refused after validation (unclaimed)
-		case Op::kDrawIndexedIndirectCount:
 			break;
+		case Op::kDrawIndexedIndirect:
+		case Op::kDrawIndexedIndirectCount:
+		{
+			// D30/D31: records (and the count) in kIndirect buffers. The
+			// capability is checked after validation (kUnsupported).
+			const BufferRecord *records = buffer( command.a, ResourceUsage::kIndirect );
+			if ( !ValidateDraw( v, true ) || !v.constants.Ready() || !records ||
+			     !IndirectRecordsFit( records->desc.size, command.offset, command.count,
+			         command.first ) )
+				return false;
+			if ( command.op == Op::kDrawIndexedIndirectCount )
+			{
+				const std::uint64_t at = command.copy.destinationOffset;
+				const BufferRecord *count = buffer( command.b, ResourceUsage::kIndirect );
+				if ( !count || at % 4 != 0 || at > count->desc.size ||
+				     count->desc.size - at < 4 )
+					return false;
+			}
+			break;
+		}
 		}
 	}
 	return true;
@@ -449,6 +467,8 @@ private:
 					std::memcpy(
 					    block.data() + command.offset, command.bytes.data(), command.bytes.size() );
 				else if ( ( command.op == Op::kDraw || command.op == Op::kDrawIndexed ||
+				              command.op == Op::kDrawIndexedIndirect ||
+				              command.op == Op::kDrawIndexedIndirectCount ||
 				              command.op == Op::kDispatch ) &&
 				          bytes > 0 )
 				{
@@ -545,8 +565,10 @@ private:
 			Dispatch( command );
 			break;
 		case Op::kSetDrawConstants:
-		case Op::kDrawIndexedIndirect: // never reaches execution (unclaimed)
+			break;
+		case Op::kDrawIndexedIndirect:
 		case Op::kDrawIndexedIndirectCount:
+			DrawIndirect( command );
 			break;
 		case Op::kBeginLabel:
 			m_Gl.PushDebugGroup( GL_DEBUG_SOURCE_APPLICATION, 0,
@@ -1073,6 +1095,87 @@ private:
 		m_Gl.BindBufferRange( GL_UNIFORM_BUFFER, kDrawConstantsSlot, m_Constants,
 		    static_cast<GLintptr>( m_NextConstants * m_Stride ), kMaxDrawConstantBytes );
 		++m_NextConstants;
+	}
+
+	// Binds a draw's vertex buffers, groups and constants; true when the
+	// groups hold storage (the draw then needs a barrier after it).
+	bool PrepareDraw( std::uint32_t firstInstance )
+	{
+		if ( m_StateDirty )
+			ApplyState();
+		const PipelineRecord &p = *m_Pipeline;
+		for ( std::uint32_t slot = 0; slot < p.vertexBuffers; ++slot )
+		{
+			const Binding &binding = m_VertexBuffers[slot];
+			// ES has no base instance (RFC 0022): per-instance buffers start at
+			// the first instance's element instead.
+			std::uint64_t offset = binding.offset;
+			if ( m_D.IsEs() && p.perInstance[slot] )
+				offset += std::uint64_t( firstInstance ) * p.strides[slot];
+			m_Gl.VertexArrayVertexBuffer( p.vertexArray, slot,
+			    m_D.ExistingBuffer( binding.buffer )->name, static_cast<GLintptr>( offset ),
+			    static_cast<GLsizei>( p.strides[slot] ) );
+		}
+		const bool storage = BindGroups();
+		BindConstants();
+		if ( p.program->baseInstance >= 0 )
+			m_Gl.ProgramUniform1i(
+			    p.program->name, p.program->baseInstance, static_cast<GLint>( firstInstance ) );
+		return storage;
+	}
+
+	// D30/D31. Indirect records index from the element buffer's start, so a
+	// bound index offset is honoured by a GPU copy of the indices from it
+	// into the device's scratch element buffer. Records carry no base
+	// instance the shaders' SPIRV_Cross_BaseInstance could follow, so it is
+	// 0 here (GL claims no kIndirectFirstInstance).
+	void DrawIndirect( const Command &command )
+	{
+		const PipelineRecord &p = *m_Pipeline;
+		const bool storage = PrepareDraw( 0 );
+		const BufferRecord &indices = *m_D.ExistingBuffer( m_Index.buffer );
+		GLuint elements = indices.name;
+		if ( m_Index.offset != 0 )
+		{
+			const std::uint64_t bytes = indices.desc.size - m_Index.offset;
+			if ( m_D.m_IndexScratchBytes < bytes )
+			{
+				if ( m_D.m_IndexScratch )
+					m_Gl.DeleteBuffers( 1, &m_D.m_IndexScratch );
+				m_Gl.CreateBuffers( 1, &m_D.m_IndexScratch );
+				m_Gl.NamedBufferStorage(
+				    m_D.m_IndexScratch, static_cast<GLsizeiptr>( bytes ), nullptr, 0 );
+				m_D.m_IndexScratchBytes = bytes;
+			}
+			m_Gl.CopyNamedBufferSubData( indices.name, m_D.m_IndexScratch,
+			    static_cast<GLintptr>( m_Index.offset ), 0, static_cast<GLsizeiptr>( bytes ) );
+			m_Gl.MemoryBarrier( GL_ELEMENT_ARRAY_BARRIER_BIT );
+			elements = m_D.m_IndexScratch;
+		}
+		m_Gl.VertexArrayElementBuffer( p.vertexArray, elements );
+		const GLenum type = m_IndexFormat == IndexFormat::kUint32 ? GL_UNSIGNED_INT
+		                                                          : GL_UNSIGNED_SHORT;
+		m_Gl.MemoryBarrier( GL_COMMAND_BARRIER_BIT );
+		m_Gl.BindBuffer( GL_DRAW_INDIRECT_BUFFER, m_D.ExistingBuffer( command.a )->name );
+		const void *records =
+		    reinterpret_cast<const void *>( static_cast<std::uintptr_t>( command.offset ) );
+		if ( command.op == Op::kDrawIndexedIndirect )
+		{
+			if ( command.count > 0 )
+				m_Gl.MultiDrawElementsIndirect( p.topology, type, records,
+				    static_cast<GLsizei>( command.count ), static_cast<GLsizei>( command.first ) );
+		}
+		else
+		{
+			m_Gl.BindBuffer( GL_PARAMETER_BUFFER, m_D.ExistingBuffer( command.b )->name );
+			m_Gl.MultiDrawElementsIndirectCount( p.topology, type, records,
+			    static_cast<GLintptr>( command.copy.destinationOffset ),
+			    static_cast<GLsizei>( command.count ), static_cast<GLsizei>( command.first ) );
+			m_Gl.BindBuffer( GL_PARAMETER_BUFFER, 0 );
+		}
+		m_Gl.BindBuffer( GL_DRAW_INDIRECT_BUFFER, 0 );
+		if ( storage )
+			m_Gl.MemoryBarrier( GL_ALL_BARRIER_BITS );
 	}
 
 	void Draw( const Command &command )

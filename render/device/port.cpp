@@ -103,6 +103,8 @@ const char *CapabilityName( Capability capability )
 		return "multi-draw-indirect";
 	case Capability::kDrawIndirectCount:
 		return "draw-indirect-count";
+	case Capability::kIndirectFirstInstance:
+		return "indirect-first-instance";
 	case Capability::kCount:
 		break;
 	}

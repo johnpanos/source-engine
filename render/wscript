@@ -22,7 +22,7 @@ PORTABLE = [
 	'renderer',
 	'pass/present',
 	'pass/skinning',
-	'pass/cull',
+	'culling',
 	'pass/opaque',
 	'pass/world',
 	'pass/lines',

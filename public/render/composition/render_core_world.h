@@ -161,6 +161,11 @@ struct RenderCoreWorldQuality
 	// frame (single-sample, non-temporal, HDR float targets); zero leaves the
 	// term out, as render_lab's --no-ssr.
 	int ssr = 1;
+	// Nonzero: GPU-driven submission (RFC 0016 S3/S4): a stage view's world
+	// surfaces are culled and compacted on the GPU into one indirect draw per
+	// (material, lightmap page) bucket (render.pass.world's gpuSubmission).
+	// Opt-in until RFC 0003's placement measurement selects it.
+	int gpuSubmission = 0;
 };
 
 // The game's files as the core reads them (projector cookies,
@@ -247,6 +252,12 @@ struct RenderCoreWorldStats
 	char lastRefusal[256];
 	char gaps[16384];   // bounded scene census: "count reason" lines, most frequent first
 	char claimed[1024]; // "surfaces material" lines the core draws
+	// GPU-driven submission (r_core_world_gpu_submit): views drawn by it, their
+	// indirect draws (one per material and lightmap page), and views that
+	// asked for it on a device without the capabilities.
+	unsigned long long gpuViews;
+	unsigned long long gpuIndirectDraws;
+	unsigned long long gpuFallbacks;
 };
 
 // Debug-only snapshot of the latest completed core frame, ABI-safe across

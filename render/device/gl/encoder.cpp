@@ -310,8 +310,10 @@ void GlEncoder::DrawIndexed( std::uint32_t indexCount, std::uint32_t instanceCou
 	Push( std::move( command ) );
 }
 
+// D30/D31: a the records' buffer at offset, b the count's buffer at
+// copy.destinationOffset; count the draw count (maximum); first the stride.
 void GlEncoder::DrawIndexedIndirect(
-    BufferId buffer, std::uint64_t offset, std::uint32_t drawCount, std::uint32_t )
+    BufferId buffer, std::uint64_t offset, std::uint32_t drawCount, std::uint32_t stride )
 {
 	Drawing();
 	Command command;
@@ -319,11 +321,13 @@ void GlEncoder::DrawIndexedIndirect(
 	command.a = buffer.value;
 	command.offset = offset;
 	command.count = drawCount;
+	command.first = stride;
 	Push( std::move( command ) );
 }
 
 void GlEncoder::DrawIndexedIndirectCount( BufferId buffer, std::uint64_t offset,
-    BufferId countBuffer, std::uint64_t, std::uint32_t maxDrawCount, std::uint32_t )
+    BufferId countBuffer, std::uint64_t countOffset, std::uint32_t maxDrawCount,
+    std::uint32_t stride )
 {
 	Drawing();
 	Command command;
@@ -331,7 +335,9 @@ void GlEncoder::DrawIndexedIndirectCount( BufferId buffer, std::uint64_t offset,
 	command.a = buffer.value;
 	command.b = countBuffer.value;
 	command.offset = offset;
+	command.copy.destinationOffset = countOffset;
 	command.count = maxDrawCount;
+	command.first = stride;
 	Push( std::move( command ) );
 }
 

@@ -84,7 +84,7 @@ from conformance_result import Checks  # noqa: E402
 SHADERS = "materialsystem/shaderapivulkan/shaders"
 DEVICE = "unittests/rendertest/core/device"
 SKINNING = "render/pass/skinning"
-CULL = "render/pass/cull"
+CULL = "render/culling"
 LINES = "render/pass/lines"
 PANELS = "render/pass/panels"
 FAMILIES = "render/material/families"
@@ -161,12 +161,14 @@ GENERATED = {
         ("g_demoDynVertSpv", SHADERS + "/demo_dyn.vert", ()))),
     "skin_spv.h": ("render::pass::skinning::spirv", "the skinning compute pass (RFC 0016 K6)", (
         ("kSkinCompute", SKINNING + "/skin.comp", DEVICE_OPTIONS),)),
-    "cull_spv.h": ("render::pass::cull::spirv",
+    "cull_spv.h": ("render::culling::spirv",
         "the GPU culling pass (RFC 0016 GPU-driven submission S4)", (
         ("kCullCompute", CULL + "/cull.comp", DEVICE_OPTIONS),
-        ("kCompactCompute", CULL + "/compact.comp", DEVICE_OPTIONS))),
+        ("kCompactCompute", CULL + "/compact.comp", DEVICE_OPTIONS),
+        ("kHiZCompute", CULL + "/hiz.comp", DEVICE_OPTIONS),
+        ("kOcclusionCompute", CULL + "/occlusion.comp", DEVICE_OPTIONS))),
     "cull_defects_spv.h": ("rendertest::cull::spirv",
-        "the culling suite's seeded kernels (render.cull sensitivity)", (
+        "the culling suite's seeded kernels and draw fixtures (render.cull)", (
         ("kCullNearCorner", CULL + "/cull.comp", DEVICE_OPTIONS + ("-DSEEDED_NEAR_CORNER",)),
         ("kCullViewMaskIgnored", CULL + "/cull.comp",
          DEVICE_OPTIONS + ("-DSEEDED_VIEW_MASK_IGNORED",)),
@@ -174,7 +176,14 @@ GENERATED = {
         ("kCompactDropsLast", CULL + "/compact.comp",
          DEVICE_OPTIONS + ("-DSEEDED_COMPACT_DROPS_LAST",)),
         ("kCompactWrongInstance", CULL + "/compact.comp",
-         DEVICE_OPTIONS + ("-DSEEDED_COMPACT_WRONG_INSTANCE",)))),
+         DEVICE_OPTIONS + ("-DSEEDED_COMPACT_WRONG_INSTANCE",)),
+        ("kOcclusionFarCorner", CULL + "/occlusion.comp",
+         DEVICE_OPTIONS + ("-DSEEDED_FAR_CORNER",)),
+        ("kOcclusionOneTexel", CULL + "/occlusion.comp",
+         DEVICE_OPTIONS + ("-DSEEDED_ONE_TEXEL",)),
+        ("kBoxVertex", "unittests/rendertest/core/culling/shaders/box.vert", DEVICE_OPTIONS),
+        ("kBoxFragment", "unittests/rendertest/core/culling/shaders/box.frag",
+         DEVICE_OPTIONS))),
     "families_spv.h": ("render::material::spirv",
         "the material families' programs (RFC 0016 K4, render.material)", (
         ("kSurfaceFlatVertex", FAMILIES + "/surface_flat.vert", DEVICE_OPTIONS),
