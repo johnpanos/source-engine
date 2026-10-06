@@ -245,13 +245,14 @@ std::optional<std::string> BlendChecks( Lab &lab, Results &results )
 {
 	const std::vector<unsigned char> bytes = Load( "valid.rprb" );
 	ReflectionProbesLayout layout{};
+	std::vector<std::byte> decoded;
 	const bool valid =
-	    !bytes.empty() && mapcontainer::ValidateReflectionProbes( bytes.data(), bytes.size(),
-	                          &layout ) == mapcontainer::ReflectionProbesError::Ok;
+	    !bytes.empty() && mapcontainer::DecodeReflectionProbes( bytes.data(), bytes.size(),
+	                          &decoded, &layout ) == mapcontainer::ReflectionProbesError::Ok;
 	results.That( valid, "rprb.valid.validates" );
 	if ( !valid )
 		return std::nullopt;
-	const ReflectionProbesView view( bytes.data(), layout );
+	const ReflectionProbesView view( decoded.data(), layout );
 	const ReflectionProbeMode modes[] = { ReflectionProbeMode::Blend, ReflectionProbeMode::Nearest,
 	    ReflectionProbeMode::DirectionOnly, ReflectionProbeMode::BlendWeights };
 	std::vector<float> gpu[std::size( modes )];
@@ -315,14 +316,15 @@ std::optional<std::string> RelightChecks( Lab &lab, Results &results )
 {
 	const std::vector<unsigned char> bytes = Load( "valid-relight.rprb" );
 	ReflectionProbesLayout layout{};
+	std::vector<std::byte> decoded;
 	const bool valid = !bytes.empty() &&
-	                   mapcontainer::ValidateReflectionProbes( bytes.data(), bytes.size(),
+	                   mapcontainer::DecodeReflectionProbes( bytes.data(), bytes.size(), &decoded,
 	                       &layout ) == mapcontainer::ReflectionProbesError::Ok &&
 	                   layout.relight;
 	results.That( valid, "rprb.relight.validates-with-bands" );
 	if ( !valid )
 		return std::nullopt;
-	const ReflectionProbesView view( bytes.data(), layout );
+	const ReflectionProbesView view( decoded.data(), layout );
 	const ReflectionProbeRelight relight = { FixtureLight, nullptr, &kFixtureOccluder, 1 };
 	const ReflectionProbeRelight open = { FixtureLight, nullptr, nullptr, 0 };
 	for ( ReflectionProbeMode mode : { ReflectionProbeMode::Blend, ReflectionProbeMode::Nearest,
@@ -360,14 +362,15 @@ std::optional<std::string> CapacityChecks( Lab &lab, Results &results )
 	{
 		const auto bytes = Load( bands ? "capacity64-relight.rprb" : "capacity64.rprb" );
 		ReflectionProbesLayout layout{};
-		const bool valid = mapcontainer::ValidateReflectionProbes( bytes.data(), bytes.size(),
-		                       &layout ) == mapcontainer::ReflectionProbesError::Ok &&
+		std::vector<std::byte> decoded;
+		const bool valid = mapcontainer::DecodeReflectionProbes( bytes.data(), bytes.size(),
+		                       &decoded, &layout ) == mapcontainer::ReflectionProbesError::Ok &&
 		                   layout.count == 64;
 		const std::string prefix = bands ? "rprb.capacity64-relight." : "rprb.capacity64.";
 		results.That( valid, prefix + "valid" );
 		if ( !valid )
 			return std::nullopt;
-		const ReflectionProbesView view( bytes.data(), layout );
+		const ReflectionProbesView view( decoded.data(), layout );
 		for ( auto mode : { ReflectionProbeMode::Blend, ReflectionProbeMode::Nearest,
 		          ReflectionProbeMode::DirectionOnly, ReflectionProbeMode::BlendWeights } )
 		{

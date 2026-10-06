@@ -244,9 +244,12 @@ const char *ModeName( ReflectionProbeMode mode )
 
 void Compare( Device &d, ComputeResources &compute )
 {
-	const std::vector<char> bytes = Load( "valid.rprb" );
+	// The decoded form (RPRB v7's radiance blocks expanded) feeds both the
+	// GPU texture and the reference view.
+	const std::vector<char> raw = Load( "valid.rprb" );
 	ReflectionProbesLayout layout = {};
-	Check( ValidateReflectionProbes( bytes.data(), bytes.size(), &layout ) ==
+	std::vector<std::byte> bytes;
+	Check( DecodeReflectionProbes( raw.data(), raw.size(), &bytes, &layout ) ==
 	           ReflectionProbesError::Ok,
 	    "the RPRB fixture validates" );
 	if ( g_failures )
@@ -318,9 +321,10 @@ const ReflectionProbeOccluder kFixtureOccluder = {
 
 void CompareRelight( Device &d, ComputeResources &compute )
 {
-	const std::vector<char> bytes = Load( "valid-relight.rprb" );
+	const std::vector<char> raw = Load( "valid-relight.rprb" );
 	ReflectionProbesLayout layout = {};
-	Check( ValidateReflectionProbes( bytes.data(), bytes.size(), &layout ) ==
+	std::vector<std::byte> bytes;
+	Check( DecodeReflectionProbes( raw.data(), raw.size(), &bytes, &layout ) ==
 	               ReflectionProbesError::Ok &&
 	           layout.relight,
 	    "the relight fixture validates with relight bands" );

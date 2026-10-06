@@ -425,8 +425,20 @@ def build(probes, chains, scale=SOURCE_UNITS_PER_METER, relight=None, candidate_
     if tool is None:
         raise RprbError("InvalidAtlas", "no pinned ktx tool to encode the radiance bands")
     radiance_rows = count * band
-    blocks = bc_codec.encode_bc6h(tool, np.ascontiguousarray(
-        atlas[:radiance_rows, :, :3].astype(np.float32)))
+    # A mip shorter than a block (W0 >> l = 4: 2 rows) shares its blocks with
+    # rows outside every mip; repeating its last row there keeps the blocks'
+    # endpoints on its light (readers zero those texels again).
+    padded = atlas[:radiance_rows, :, :3].astype(np.float32)
+    for index in range(count):
+        x = 0
+        for mip in chains[index]:
+            rows, columns = mip.shape[:2]
+            if rows % 4:
+                top = index * band
+                fill = top + rows + (-rows % 4)
+                padded[top + rows:fill, x:x + columns] = padded[top + rows - 1, x:x + columns]
+            x += columns
+    blocks = bc_codec.encode_bc6h(tool, np.ascontiguousarray(padded))
     texels = blocks + atlas[radiance_rows:].astype("<f2").tobytes()
     global_index = next(i for i, probe in enumerate(probes) if probe.get("global"))
     header = struct.pack("<IIIIIIIIQQIIII", MAGIC, VERSION, count, mips, width,

@@ -121,10 +121,13 @@ std::optional<std::string> StageProbeVolume( resources::TextureCache &cache,
 // WriteReflectionProbeTexture's GPU form (RGBA16F) in `mode`, relit when the
 // probes carry relight bands and `relight` asks, as `name`. The reason when
 // it does not validate or is refused.
+// `layout` receives the decoded form's layout (RPRB v7's radiance blocks
+// expanded, mapcontainer::DecodeReflectionProbes), and `decoded`, when given,
+// its bytes, which a ReflectionProbesView takes with it.
 std::optional<std::string> StageReflectionProbes( resources::TextureCache &cache,
     const std::string &name, std::span<const std::byte> lump,
     mapcontainer::ReflectionProbeMode mode, bool relight,
-    mapcontainer::ReflectionProbesLayout &layout );
+    mapcontainer::ReflectionProbesLayout &layout, std::vector<std::byte> *decoded = nullptr );
 
 // The lab's device: the Vulkan adapter (RENDER_VK_ADAPTER picks the physical
 // device), with the Khronos validation layer and synchronization validation

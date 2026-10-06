@@ -19,6 +19,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import reflection_probe  # noqa: E402
 import reflection_probe_set as rps  # noqa: E402
+import bc_codec  # noqa: E402  (reflection_probe_set puts tools/texture on the path)
 
 ROOM = ((0.0, 0.0, 0.0), (6.0, 4.0, 3.0))
 
@@ -199,9 +200,15 @@ class RprbFormatTest(unittest.TestCase):
         self.assertEqual([p["rank"] for p in layout["probes"]], [0, 1])
         np.testing.assert_allclose(layout["probes"][0]["capture"],
                                    probes[0]["capture"] * rps.SOURCE_UNITS_PER_METER, rtol=1e-6)
-        for chain, decoded in zip(chains, layout["chains"]):
-            for mip, back in zip(chain, decoded):
-                np.testing.assert_allclose(back, mip, rtol=2e-3, atol=1e-4)
+        # v7: the radiance chains are the BC6H blocks decoded (as halves);
+        # this fixture's saturated checker is BC6H's worst case, so quality is
+        # judged on smooth light below.
+        data = rps.build(probes, chains)
+        blocks = data[layout["atlas_offset"]:layout["atlas_offset"] +
+                      rps.radiance_block_bytes(2, 64)]
+        decoded = bc_codec.decode_bc6h(blocks, 128, 64).astype("<f2").astype(np.float64)
+        for index, chain in enumerate(layout["chains"]):
+            np.testing.assert_array_equal(chain[0], decoded[index * 32:(index + 1) * 32, :64])
         texture = rps.gpu_texture(layout)
         grid_rows = -(-rps.CANDIDATE_CELLS * 2 * rps.candidate_words(2) // 128)
         self.assertEqual(texture.shape, (1 + 2 + 2 * 32 + grid_rows, 128, 4))
@@ -216,6 +223,22 @@ class RprbFormatTest(unittest.TestCase):
         # The atlas follows the table, band by band.
         np.testing.assert_array_equal(texture[3:3 + 32, :64, :3],
                                       layout["chains"][0][0].astype(np.float16))
+
+    def test_smooth_light_survives_the_block_encoding(self):
+        probes, _ = two_probe_layout()
+        y, x = np.mgrid[0:32, 0:64] / 64.0
+        smooth = np.stack([0.5 + 4 * x, 0.3 + 2 * y, 0.2 + x * y], axis=2)
+        chains = [reflection_probe.mip_chain(smooth * (1 + i)) for i in range(2)]
+        layout = rps.read(rps.build(probes, chains))
+        # A steep ramp is harsher than real light (a 512-wide Portal 2 probe:
+        # 0.7-4.5% mean per mip, at most 0.6 stops at mip 0's hard edges;
+        # RFC/0016-progress.md); this ramp reaches 13% on its 4 x 2 mip. The
+        # bounds catch gross breakage (misplaced or unpadded blocks).
+        for chain, back in zip(chains, layout["chains"]):
+            for level, (mip, decoded) in enumerate(zip(chain, back)):
+                error = bc_codec.hdr_error(mip, decoded)
+                self.assertLess(error["relative_mean"], 0.15 if level == len(chain) - 1 else 0.06)
+                self.assertLess(error["stops_max"], 0.3)
 
     def mutate(self, offset, fmt, value, code):
         probes, chains = two_probe_layout()
@@ -233,17 +256,8 @@ class RprbFormatTest(unittest.TestCase):
         data = rps.build(probes, chains)
         with self.assertRaises(rps.RprbError):
             rps.read(data[:-2])                           # truncated atlas
-        layout = rps.read(data)
-        corrupt = bytearray(data)
-        struct.pack_into("<e", corrupt, layout["atlas_offset"] + 8 * 3,
-                         float("inf"))                    # non-finite texel
-        with self.assertRaises(rps.RprbError):
-            rps.read(bytes(corrupt))
-        corrupt = bytearray(data)
-        # A texel outside every mip (the band's last column) must be zero.
-        struct.pack_into("<e", corrupt, layout["atlas_offset"] + 8 * (2 * 64 - 1), 1.0)
-        with self.assertRaises(rps.RprbError):
-            rps.read(bytes(corrupt))
+        # Texel corruption is judged in the relight rows (RELIGHT_MALFORMATIONS):
+        # any BC6H block decodes to finite, non-negative light.
 
     def test_writer_refuses_two_globals(self):
         probes, chains = two_probe_layout()
@@ -553,7 +567,7 @@ class CapacityTest(unittest.TestCase):
                 texture[65 + (i // columns) * band:65 + (i // columns + 1) * band,
                         (i % columns) * width:(i % columns + 1) * width]
                 for i in range(layout["atlas_height"] // band)])
-            self.assertEqual(restored.tobytes(), data[layout["atlas_offset"]:])
+            self.assertEqual(restored.tobytes(), layout["atlas"].astype("<f2").tobytes())
             weights = rps.blend_weights(np.array([[1, 2, 0]]) * rps.SOURCE_UNITS_PER_METER,
                                        np.array([[0, 0, 1]]), layout["probes"])
             self.assertEqual(int(np.argmax(weights)), 62)
@@ -639,7 +653,12 @@ class RegridTest(unittest.TestCase):
         layout = rps.read(self.data)
         baked = rps.build(layout["probes"], layout["chains"], scale=1,
                           candidate_bounds=self.bounds)
-        self.assertEqual(baked, rps.regrid(self.data, self.bounds))
+        regridded = rps.regrid(self.data, self.bounds)
+        # The same records and grid; the atlas is the input's own blocks (a
+        # rebuild re-encodes decoded light, which BC6H does not reproduce).
+        end = layout["atlas_offset"]
+        self.assertEqual(baked[:end], regridded[:end])
+        self.assertEqual(regridded[end:], self.data[end:])
 
     def test_bounds_missing_every_probe_are_refused(self):
         with self.assertRaises(rps.RprbError):

@@ -4600,9 +4600,12 @@ static void UploadWorldReflectionProbes( world_mesh_gpu::IWorldMeshUpload *uploa
 		remove();
 		return;
 	}
+	// v7's radiance bands are BC6H blocks; the GPU table takes the decoded
+	// RGBA16F atlas.
 	mapcontainer::ReflectionProbesLayout layout{};
+	std::vector<std::byte> decoded;
 	const mapcontainer::ReflectionProbesError error =
-	    mapcontainer::ValidateReflectionProbes( bytes.Base(), bytes.Count(), &layout );
+	    mapcontainer::DecodeReflectionProbes( bytes.Base(), bytes.Count(), &decoded, &layout );
 	if ( error != mapcontainer::ReflectionProbesError::Ok )
 	{
 		Warning( "Map %s: RPRB rejected (%s)\n", s_szMapName,
@@ -4630,7 +4633,7 @@ static void UploadWorldReflectionProbes( world_mesh_gpu::IWorldMeshUpload *uploa
 	CUtlVector<uint16> texels;
 	texels.SetCount( int( texelValues ) );
 	mapcontainer::WriteReflectionProbeTexture(
-	    bytes.Base(), layout, mapcontainer::ReflectionProbeMode::Blend, texels.Base() );
+	    decoded.data(), layout, mapcontainer::ReflectionProbeMode::Blend, texels.Base() );
 	request.texels = texels.Base();
 	if ( uploader->UploadReflectionProbes( request ) )
 		Msg( "Map %s: RPRB v%u, %u reflection probe%s, %u mips from %u wide%s\n", s_szMapName,

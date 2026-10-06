@@ -312,10 +312,12 @@ std::optional<std::string> StageProbeVolume( resources::TextureCache &cache,
 std::optional<std::string> StageReflectionProbes( resources::TextureCache &cache,
     const std::string &name, std::span<const std::byte> lump,
     mapcontainer::ReflectionProbeMode mode, bool relight,
-    mapcontainer::ReflectionProbesLayout &layout )
+    mapcontainer::ReflectionProbesLayout &layout, std::vector<std::byte> *decoded )
 {
+	std::vector<std::byte> local;
+	std::vector<std::byte> &bytes = decoded ? *decoded : local;
 	if ( const mapcontainer::ReflectionProbesError error =
-	         mapcontainer::ValidateReflectionProbes( lump.data(), lump.size(), &layout );
+	         mapcontainer::DecodeReflectionProbes( lump.data(), lump.size(), &bytes, &layout );
 	    error != mapcontainer::ReflectionProbesError::Ok )
 		return std::string( "RPRB: " ) + mapcontainer::ReflectionProbesErrorName( error );
 	TextureDesc desc;
@@ -324,7 +326,7 @@ std::optional<std::string> StageReflectionProbes( resources::TextureCache &cache
 	desc.height = mapcontainer::ReflectionProbeTextureRows( layout );
 	desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kSampled };
 	std::vector<std::uint16_t> texels( std::size_t( desc.width ) * desc.height * 4 );
-	mapcontainer::WriteReflectionProbeTexture( lump.data(), layout, mode, texels.data(), relight );
+	mapcontainer::WriteReflectionProbeTexture( bytes.data(), layout, mode, texels.data(), relight );
 	if ( !cache.Stage( name, desc, std::as_bytes( std::span( texels ) ) ) )
 		return std::string( "RPRB: its texture was refused" );
 	return std::nullopt;

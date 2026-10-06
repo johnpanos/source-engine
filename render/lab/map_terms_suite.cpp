@@ -508,11 +508,12 @@ std::optional<std::string> ReflectionProbeChecks( Lab &lab, Results &results )
 {
 	const std::vector<unsigned char> bytes = Load( "quality/fixtures/reflection/rprb/valid.rprb" );
 	mapcontainer::ReflectionProbesLayout layout{};
+	std::vector<std::byte> decoded;
 	if ( std::optional<std::string> why =
 	         StageReflectionProbes( lab.textures, "mt/probes", std::as_bytes( std::span( bytes ) ),
-	             mapcontainer::ReflectionProbeMode::Blend, true, layout ) )
+	             mapcontainer::ReflectionProbeMode::Blend, true, layout, &decoded ) )
 		return why;
-	const mapcontainer::ReflectionProbesView probes( bytes.data(), layout );
+	const mapcontainer::ReflectionProbesView probes( decoded.data(), layout );
 	// The fixture room's floor (6 x 4 m), seen from above its middle.
 	const float low[2] = { 0.0f, 0.0f }, high[2] = { 236.0f, 157.0f };
 	const View view = MakeView( { 118, 78, 100 }, { 150, 78, 0 }, { 0, 0, 1 }, 1.0f );

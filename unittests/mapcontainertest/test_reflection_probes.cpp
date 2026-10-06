@@ -76,6 +76,17 @@ ReflectionProbesError Validate( const std::vector<char> &bytes, ReflectionProbes
 	return ValidateReflectionProbes( bytes.data(), bytes.size(), layout );
 }
 
+// The decoded form (RPRB v7's radiance blocks expanded) and its layout, which
+// the GPU texture writer and the reference view take; empty when invalid.
+std::vector<std::byte> Decoded( const std::vector<char> &bytes, ReflectionProbesLayout *layout )
+{
+	std::vector<std::byte> decoded;
+	if ( DecodeReflectionProbes( bytes.data(), bytes.size(), &decoded, layout ) !=
+	     ReflectionProbesError::Ok )
+		decoded.clear();
+	return decoded;
+}
+
 void CheckFixture( const std::vector<char> &valid, ReflectionProbesLayout *layout )
 {
 	Check( !valid.empty(), "fixture valid.rprb is present" );
@@ -142,24 +153,63 @@ void CheckMalformations( const std::vector<char> &valid )
 	    "a short atlas is InvalidSections" );
 }
 
-void CheckTexels( const std::vector<char> &valid, const ReflectionProbesLayout &layout )
+// Texel checks run on the relight rows (RGBA16F in v7; any BC6H radiance
+// block decodes to finite, non-negative light). Row 0 of them is probe 0's
+// albedo band (alpha its distance), row width / 2 its normal band.
+void CheckTexels()
 {
-	const size_t atlas = size_t( layout.atlasOffset );
+	const std::vector<char> relit = Load( "valid-relight.rprb" );
+	ReflectionProbesLayout layout = {};
+	if ( Validate( relit, &layout ) != ReflectionProbesError::Ok )
+	{
+		Check( false, "the relight fixture validates for the texel checks" );
+		return;
+	}
+	const size_t rows = size_t( layout.atlasOffset + layout.radianceBlockBytes );
+	const size_t normalRow = size_t( layout.width / 2 ) * layout.atlasWidth;
 	const auto corrupt = [&]( size_t texel, int channel, uint16_t half, const char *what )
 	{
-		std::vector<char> bytes = valid;
-		Put( bytes, atlas + texel * 8 + 2 * channel, &half, 2 );
+		std::vector<char> bytes = relit;
+		Put( bytes, rows + texel * 8 + 2 * channel, &half, 2 );
 		Check( Validate( bytes, nullptr ) == ReflectionProbesError::InvalidTexels, what );
 	};
 	corrupt( 3, 0, 0x7c00u, "an infinite texel is rejected" );
 	corrupt( 3, 1, 0x7e00u, "a NaN texel is rejected" );
-	corrupt( 3, 2, 0xbc00u, "a negative colour is rejected" );
-	corrupt( 3, 3, 0x3800u, "a mip texel's alpha must be 1" );
+	corrupt( 3, 2, 0xbc00u, "a negative albedo is rejected" );
+	corrupt( normalRow + 3, 3, 0x3800u, "a normal texel's alpha must be 1" );
 	corrupt( layout.atlasWidth - 1, 0, 0x3c00u, "a texel outside every mip must be 0" );
-	std::vector<char> bytes = valid;
+	std::vector<char> bytes = relit;
 	const uint16_t negativeZero = 0x8000u;
-	Put( bytes, atlas + 3 * 8, &negativeZero, 2 );
+	Put( bytes, rows + 3 * 8, &negativeZero, 2 );
 	Check( Validate( bytes, nullptr ) == ReflectionProbesError::Ok, "negative zero is zero" );
+}
+
+void CheckDecode( const std::vector<char> &valid, const ReflectionProbesLayout &layout )
+{
+	ReflectionProbesLayout decodedLayout = {};
+	const std::vector<std::byte> decoded = Decoded( valid, &decodedLayout );
+	Check( decoded.size() == layout.atlasOffset + uint64_t( layout.atlasWidth ) *
+	                                                  layout.atlasHeight * 8 &&
+	           decodedLayout.atlasBytes == uint64_t( layout.atlasWidth ) * layout.atlasHeight * 8 &&
+	           decodedLayout.radianceBlockBytes == 0 && layout.radianceBlockBytes ==
+	                                                    uint64_t( layout.atlasWidth ) *
+	                                                        layout.atlasHeight,
+	    "the decoded atlas is RGBA16F; the lump's radiance is 1 byte per texel" );
+	const auto half = [&]( uint32_t x, uint32_t y, int c )
+	{
+		uint16_t value;
+		std::memcpy( &value,
+		    decoded.data() + layout.atlasOffset +
+		        ( size_t( y ) * layout.atlasWidth + x ) * 8 + 2 * c,
+		    2 );
+		return value;
+	};
+	Check( half( 3, 0, 3 ) == 0x3c00u && half( layout.atlasWidth - 1, 0, 0 ) == 0 &&
+	           half( layout.atlasWidth - 1, 0, 3 ) == 0,
+	    "decoded alpha is 1 inside a mip, every channel 0 outside" );
+	Check( DecodeReflectionProbes( valid.data(), 63, nullptr, nullptr ) ==
+	           ReflectionProbesError::Truncated,
+	    "decoding validates first" );
 }
 
 void CheckGpuTexture( const std::vector<char> &valid, const ReflectionProbesLayout &layout )
@@ -172,7 +222,10 @@ void CheckGpuTexture( const std::vector<char> &valid, const ReflectionProbesLayo
 	    textureWidth;
 	Check( rows == 1 + 2 + 32 + gridRows, "texture rows: header, table, atlas, candidate grid" );
 	std::vector<uint16_t> texture( size_t( textureWidth ) * rows * 4 );
-	WriteReflectionProbeTexture( valid.data(), layout, ReflectionProbeMode::Blend, texture.data() );
+	ReflectionProbesLayout decodedLayout = {};
+	const std::vector<std::byte> decoded = Decoded( valid, &decodedLayout );
+	WriteReflectionProbeTexture(
+	    decoded.data(), decodedLayout, ReflectionProbeMode::Blend, texture.data() );
 	Check( expected.size() == texture.size() * 2 &&
 	           std::memcmp( expected.data(), texture.data(), expected.size() ) == 0,
 	    "GPU texture is byte-identical to reflection_probe_set.gpu_texture" );
@@ -191,7 +244,7 @@ void CheckGpuTexture( const std::vector<char> &valid, const ReflectionProbesLayo
 		}
 	}
 	WriteReflectionProbeTexture(
-	    valid.data(), layout, ReflectionProbeMode::Nearest, texture.data() );
+	    decoded.data(), decodedLayout, ReflectionProbeMode::Nearest, texture.data() );
 	Check( HalfToFloat( texture[4] ) == 2.0f, "the mode texel follows the mode" );
 }
 
@@ -215,7 +268,8 @@ std::vector<char> PartialCandidateFixture()
 	    ~uint64_t( 15 );
 	const uint32_t words = ( count + 63 ) / 64;
 	const uint64_t atlasOffset = gridOffset + ReflectionProbeCandidateBytes( count );
-	const uint64_t atlasBytes = uint64_t( original.atlasWidth ) * height * 8;
+	// v7 radiance: BC6H, 1 byte per texel; a band's rows are whole blocks.
+	const uint64_t atlasBytes = uint64_t( original.atlasWidth ) * height;
 	std::vector<char> bytes( atlasOffset + atlasBytes );
 	std::copy_n( source.begin(), kReflectionProbesHeaderBytes, bytes.begin() );
 	Put( bytes, 8, &count, 4 );
@@ -224,7 +278,7 @@ std::vector<char> PartialCandidateFixture()
 	Put( bytes, 40, &atlasBytes, 8 );
 	const uint32_t global = count - 1;
 	Put( bytes, 56, &global, 4 );
-	const size_t bandBytes = size_t( original.atlasWidth ) * original.width / 2 * 8;
+	const size_t bandBytes = size_t( original.atlasWidth ) * original.width / 2;
 	for ( uint32_t rank = 0; rank < count; ++rank )
 	{
 		uint32_t index = original.globalIndex;
@@ -256,12 +310,12 @@ void CheckCandidates()
 {
 	{
 		auto old = Load( "candidates64.rprb" );
-		for ( uint32_t version : { 0u, 1u, 2u, 3u, 4u, 5u, 7u } )
+		for ( uint32_t version : { 0u, 1u, 2u, 3u, 4u, 5u, 6u, 8u } )
 		{
 			auto changed = old;
 			Put( changed, 4, &version, 4 );
 			Check( Validate( changed, nullptr ) == ReflectionProbesError::UnsupportedVersion,
-			    "RPRB v" + std::to_string( version ) + " is refused (v6 only)" );
+			    "RPRB v" + std::to_string( version ) + " is refused (v7 only)" );
 		}
 	}
 	for ( const char *name : { "candidates64.rprb", "candidates150", "candidates256.rprb" } )
@@ -279,8 +333,10 @@ void CheckCandidates()
 		const uint32_t width = ReflectionProbeTextureWidth( layout );
 		const uint32_t rows = ReflectionProbeTextureRows( layout );
 		std::vector<uint16_t> texture( size_t( width ) * rows * 4 + 16, 0x1234 );
+		ReflectionProbesLayout decodedLayout = {};
+		const std::vector<std::byte> decoded = Decoded( bytes, &decodedLayout );
 		WriteReflectionProbeTexture(
-		    bytes.data(), layout, ReflectionProbeMode::Blend, texture.data() );
+		    decoded.data(), decodedLayout, ReflectionProbeMode::Blend, texture.data() );
 		Check( HalfToFloat( texture[15] ) == words, "GPU header declares every candidate word" );
 		uint32_t start = 0;
 		for ( int i = 0; i < 4; ++i )
@@ -520,16 +576,19 @@ void CheckRelight()
 	const std::vector<char> expected = Load( "gpu-relight-mode1.rgba16f" );
 	const uint32_t rows = ReflectionProbeTextureRows( layout );
 	std::vector<uint16_t> texture( size_t( ReflectionProbeTextureWidth( layout ) ) * rows * 4 );
-	WriteReflectionProbeTexture( relit.data(), layout, ReflectionProbeMode::Blend, texture.data() );
+	ReflectionProbesLayout decodedLayout = {};
+	const std::vector<std::byte> decoded = Decoded( relit, &decodedLayout );
+	WriteReflectionProbeTexture(
+	    decoded.data(), decodedLayout, ReflectionProbeMode::Blend, texture.data() );
 	Check( expected.size() == texture.size() * 2 &&
 	           std::memcmp( expected.data(), texture.data(), expected.size() ) == 0,
 	    "the relight GPU texture is byte-identical to reflection_probe_set.gpu_texture" );
 	Check( HalfToFloat( texture[5] ) == 1.0f, "texel 1's y turns relighting on" );
 	WriteReflectionProbeTexture(
-	    relit.data(), layout, ReflectionProbeMode::Blend, texture.data(), false );
+	    decoded.data(), decodedLayout, ReflectionProbeMode::Blend, texture.data(), false );
 	Check( HalfToFloat( texture[5] ) == 0.0f, "relight false turns it off" );
 	// The reference against the Python oracle's relit samples.
-	const ReflectionProbesView view( relit.data(), layout );
+	const ReflectionProbesView view( decoded.data(), decodedLayout );
 	ReflectionProbeRelight relight = { FixtureLight, nullptr, &kFixtureOccluder, 1 };
 	ReflectionProbeRelight open = { FixtureLight, nullptr, nullptr, 0 };
 	const ReflectionProbeRelight unchanged = { UnchangedLight, nullptr, nullptr, 0 };
@@ -598,10 +657,11 @@ void CheckFuzz( const std::vector<char> &valid )
 			bytes[rng() % limit] = char( rng() );
 		}
 		ReflectionProbesLayout layout;
-		if ( Validate( bytes, &layout ) != ReflectionProbesError::Ok )
+		const std::vector<std::byte> decoded = Decoded( bytes, &layout );
+		if ( decoded.empty() )
 			continue;
 		++accepted;
-		const ReflectionProbesView view( bytes.data(), layout );
+		const ReflectionProbesView view( decoded.data(), layout );
 		const float position[3] = { 100.0f, 80.0f, 10.0f };
 		const float normal[3] = { 0.0f, 0.0f, 1.0f };
 		const float reflected[3] = { 0.6f, 0.0f, 0.8f };
@@ -625,10 +685,13 @@ int main()
 	if ( g_failures == 0 )
 	{
 		CheckMalformations( valid );
-		CheckTexels( valid, layout );
+		CheckTexels();
+		CheckDecode( valid, layout );
 		CheckGpuTexture( valid, layout );
 		CheckCandidates();
-		const ReflectionProbesView view( valid.data(), layout );
+		ReflectionProbesLayout decodedLayout = {};
+		const std::vector<std::byte> decoded = Decoded( valid, &decodedLayout );
+		const ReflectionProbesView view( decoded.data(), decodedLayout );
 		CheckSamples( view );
 		CheckBlend( view );
 		CheckFuzz( valid );
