@@ -300,6 +300,29 @@ def serialized_probes(records, count):
     return serialized
 
 
+def add_candidates(data, bounds):
+    """A v3 lump (no candidate grid) re-encoded as v4/v5 with a bounded grid.
+    Records and atlas must come out byte for byte; anything else refuses."""
+    layout = read(data)
+    if layout.get("candidates") is not None:
+        raise RprbError("InvalidCandidates", "the lump already has a candidate grid")
+    version = struct.unpack_from("<I", data, 4)[0]
+    if version != TILED_VERSION:
+        raise RprbError("InvalidCandidates", "only v3 lumps gain a grid (this is v%d)" % version)
+    # The stored ranks own the blend order; as priorities they come back exactly.
+    count = layout["count"]
+    probes = [dict(probe, priority=count - probe["rank"]) for probe in layout["probes"]]
+    out = build(probes, layout["chains"], scale=1, relight=layout.get("relight"),
+                candidates=True, candidate_bounds=bounds)
+    count = layout["count"]
+    records = slice(HEADER_BYTES, HEADER_BYTES + RECORD_BYTES * count)
+    new = read(out)
+    if out[records] != data[records] or \
+            out[new["atlas_offset"]:] != data[layout["atlas_offset"]:]:
+        raise RprbError("InvalidCandidates", "re-encoding changed the records or the atlas")
+    return out
+
+
 def regrid(data, bounds):
     """RPRB bytes with the candidate grid rebuilt inside world `bounds`
     (Source units); records, header and atlas are unchanged."""
@@ -1536,23 +1559,28 @@ def regrid_map(path, out):
         raise RprbError("InvalidCandidates", "the map has no RPRB lump")
     old = bsp2.lump(entry)
     bounds = world_bounds(bsp2)
-    new = regrid(old, bounds)
+    added = read(old).get("candidates") is None
+    new = add_candidates(old, bounds) if added else regrid(old, bounds)
     lumps = [(e["fourcc"], e["version"], e["flags"], e["alignment"],
               new if e is entry else bsp2.lump(e)) for e in bsp2.entries]
     Path(out).write_bytes(bsp2_reader.write_bsp2(bsp2.revision, lumps))
-    base = (HEADER_BYTES + RECORD_BYTES * read(old)["count"] + 15) & ~15
-    end = read(old)["atlas_offset"]
-    changed_outside = sum(a != b for a, b in zip(old[:base] + old[end:], new[:base] + new[end:]))
-    if len(old) != len(new) or changed_outside:
-        raise RprbError("InvalidCandidates", "regrid changed bytes outside the grid")
-    before, after = candidates_per_cell(old), candidates_per_cell(new)
+    changed_outside = 0
+    if not added:
+        base = (HEADER_BYTES + RECORD_BYTES * read(old)["count"] + 15) & ~15
+        end = read(old)["atlas_offset"]
+        changed_outside = sum(a != b for a, b in zip(old[:base] + old[end:], new[:base] + new[end:]))
+        if len(old) != len(new) or changed_outside:
+            raise RprbError("InvalidCandidates", "regrid changed bytes outside the grid")
+    count = read(old)["count"]
+    before = [count] * CANDIDATE_CELLS if added else candidates_per_cell(old)
+    after = candidates_per_cell(new)
     grid = read(new)["candidates"]
     return {"world_bounds": [bounds[0].tolist(), bounds[1].tolist()],
             "step": float(grid["step"]), "origin": [float(v) for v in grid["origin"]],
             "candidates_per_cell": {"before_max": max(before), "after_max": max(after),
                                     "before_mean": round(sum(before) / len(before), 2),
                                     "after_mean": round(sum(after) / len(after), 2)},
-            "changed_bytes_outside_grid": changed_outside}
+            "changed_bytes_outside_grid": changed_outside, "grid_added": added}
 
 
 def main():

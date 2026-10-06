@@ -634,6 +634,19 @@ class RegridTest(unittest.TestCase):
                           candidate_bounds=self.bounds)
         self.assertEqual(baked, rps.regrid(self.data, self.bounds))
 
+    def test_a_v3_lump_gains_a_grid_with_identical_records_and_atlas(self):
+        data = rps.capacity_fixture()
+        layout = rps.read(data)
+        self.assertIsNone(layout.get("candidates"))
+        out = rps.add_candidates(data, self.bounds)
+        upgraded = rps.read(out)
+        self.assertIsNotNone(upgraded["candidates"])
+        records = slice(rps.HEADER_BYTES, rps.HEADER_BYTES + rps.RECORD_BYTES * layout["count"])
+        self.assertEqual(out[records], data[records])
+        self.assertEqual(out[upgraded["atlas_offset"]:], data[layout["atlas_offset"]:])
+        with self.assertRaises(rps.RprbError):
+            rps.add_candidates(out, self.bounds)  # already has one
+
     def test_bounds_missing_every_probe_are_refused(self):
         with self.assertRaises(rps.RprbError):
             rps.regrid(self.data, (np.full(3, 9e5), np.full(3, 9.5e5)))
