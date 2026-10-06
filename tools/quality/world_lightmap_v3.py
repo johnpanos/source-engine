@@ -43,6 +43,7 @@ HEADER_BYTES = 64
 FLAG_SUN = 1
 MAX_LAYERS = 3
 MAX_DIMENSION = 16384
+BC6H_MAX = 65504.0
 IRRADIANCE_VKFORMAT = bc_codec.VK_FORMAT["bc6hu"]
 GRADIENT_VKFORMAT = bc_codec.VK_FORMAT["bc7"]
 ROLES = {1: ["total"], 2: ["total", "indirect"], 3: ["total", "direct", "indirect"]}
@@ -83,6 +84,13 @@ def build(tool, layers, sun=None):
     for index, (irradiance, beta) in enumerate(layers):
         irradiance = np.asarray(irradiance, np.float32)
         beta = np.asarray(beta, np.float32)
+        if np.isnan(irradiance).any() or np.isnan(beta).any():
+            raise LightmapError("InvalidTexels", "layer %d has NaN texels" % index)
+        # BC6H unsigned holds [0, 65504]: seam stitching can leave small
+        # negatives and a half-float page can hold overflowed infinities.
+        negative = float(np.mean(irradiance < 0.0))
+        overflow = float(np.mean(irradiance > BC6H_MAX))
+        irradiance = np.clip(irradiance, 0.0, BC6H_MAX)
         if irradiance.shape != (height, width, 3) or beta.shape != (height, width, 3):
             raise LightmapError("InvalidDescriptor", "layer %d has different pages" % index)
         texels, clamped = gradient_texels(beta, sun)
@@ -95,6 +103,8 @@ def build(tool, layers, sun=None):
                  "irradiance": bc_codec.hdr_error(
                      irradiance, bc_codec.decode_bc6h(flat_blocks, width, height)),
                  "beta_clamped_share": clamped,
+                 "irradiance_negative_share": negative,
+                 "irradiance_overflow_share": overflow,
                  "beta_abs_error_mean": float(np.abs(beta_back - np.clip(beta, -1, 1)).mean()),
                  "beta_abs_error_max": float(np.abs(beta_back - np.clip(beta, -1, 1)).max())}
         if sun is not None:

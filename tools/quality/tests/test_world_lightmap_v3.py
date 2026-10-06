@@ -47,6 +47,20 @@ class LightmapV3Test(unittest.TestCase):
         _, report = lmap.build(TOOL, [(flat, beta * 4)])
         self.assertGreater(report["layers"][0]["beta_clamped_share"], 0.0)
 
+    def test_negative_and_overflowed_light_is_clamped_and_reported(self):
+        flat, beta, _ = pages()
+        flat = flat.copy()
+        flat[0, 0] = -0.01
+        flat[1, 1] = np.inf
+        data, report = lmap.build(TOOL, [(flat, beta)])
+        back = lmap.decode_layer(data, lmap.read(data), 0)[0]
+        self.assertGreater(report["layers"][0]["irradiance_negative_share"], 0.0)
+        self.assertGreater(report["layers"][0]["irradiance_overflow_share"], 0.0)
+        self.assertTrue(np.isfinite(back).all() and back.min() >= 0.0)
+        with self.assertRaises(lmap.LightmapError):
+            flat[2, 2] = np.nan
+            lmap.build(TOOL, [(flat, beta)])
+
     def test_malformed_lumps_are_refused(self):
         flat, beta, _ = pages()
         data, _ = lmap.build(TOOL, [(flat, beta)])
