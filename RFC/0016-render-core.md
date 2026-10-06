@@ -1936,6 +1936,29 @@ model and names one owner per term. Gates K11 (prove) and K12 (integrate)
 carry it. The [binding rules](#binding-rules-for-all-render-work-user-decision-2026-09-28)
 govern all of it.
 
+### Source 2 lighting defaults (user direction, 2026-10-06)
+
+"We're going full Source 2 with our lighting." Three decisions follow:
+
+- **Static lights' shadows are baked.** A static light's shadow from static
+  geometry never changes, so the map bake stores it per lightmap texel: each
+  texel holds the visibility of its four dominant lights (the LSMK lump,
+  [`light_shadow_masks.py`](../tools/quality/light_shadow_masks.py) owns the
+  encoding, `public/mapcontainer/light_shadow_masks.h` mirrors it). A
+  lightmapped surface takes such a light's visibility from the mask and skips
+  the shadow atlas; while a moving caster is in the light's reach it takes
+  the lesser of the mask and the light's tile. Where a light is not among a
+  texel's four, and on models, the runtime shadow remains. Runtime PCSS is
+  for moving casters and lights without a mask.
+- **LTC area lights are off by default** (`r_core_area_lights 0`). A light
+  fixture's light is the bake's and its reflection the probes', as in
+  Source 2; the frame's emitting surfaces add no runtime light. The LTC
+  term below stays in the model and in `render_lab` as an opt-in
+  (`r_core_area_lights 1`, `./play_p2 --area-lights`).
+- **Soft shadows (PCSS) are a user setting** (`r_core_shadow_pcss`, Advanced
+  Video: "Soft Shadows (PCSS)", on in High, off in Low). Off gives every
+  runtime shadow the hard 2x2 filter; baked masks are unaffected.
+
 ### The model
 
 Every surface the core shades evaluates one sum. Legacy materials are
@@ -1964,9 +1987,9 @@ core implements.
 | Filtered roughness | RFC 0012 [Specular antialiasing](0012-antialiasing-msaa-specular-alpha-coverage.md#specular-antialiasing-renderpbr-specular-aav1) | feeds every roughness consumer in this table | input roughness |
 | Runtime lights (points, spots, dlights, spark lights) | RFC 0011 [Runtime light set](0011-runtime-indirect-lighting.md#runtime-light-set-renderlight-setv1) | clustered evaluation (this RFC, [Lights and shadows](#lights-and-shadows-renderlightsv1-rendershadowsv1)): both lobes on every family, world surfaces included | no lights |
 | Sun | this RFC, `render.shadows.v1`: cascaded shadow maps, practical splits, bounding-sphere cascades, texel snapping, a blend band between cascades | the cascade pass and receiver | no sun |
-| Area lights | RFC 0011 [Area lights](0011-runtime-indirect-lighting.md#area-lights-light-set-v2-amendment-2026-09-28) (the rectangle, its radiance and `area_light::IrradianceAt`) | per-pixel linearly transformed cosines (Heitz et al. 2016) for the diffuse and GGX lobes, clipped to the horizon, LUTs in the frame group | no area lights |
+| Area lights | RFC 0011 [Area lights](0011-runtime-indirect-lighting.md#area-lights-light-set-v2-amendment-2026-09-28) (the rectangle, its radiance and `area_light::IrradianceAt`) | per-pixel linearly transformed cosines (Heitz et al. 2016) for the diffuse and GGX lobes, clipped to the horizon, LUTs in the frame group; off by default ([Source 2 lighting defaults](#source-2-lighting-defaults-user-direction-2026-10-06)) | no area lights |
 | Projected lights | RFC 0011 `render.projected-light.v1` (the light and its rule) | the per-view projector list ([above](#projected-lights-a-per-view-projector-list-amended-2026-09-28)) | empty list |
-| Direct visibility | this RFC, `render.shadows.v1`: atlas depth with a filtered comparison for spots, projectors and the sun; optional point-light cube shadows; moving objects as atlas casters. RFC 0011 decision 4 owns SDF shadows for unbaked lights without a tile | the atlas, caster passes and `shadow_sample.glsl`; one visibility per light and surface | visibility one |
+| Direct visibility | this RFC, `render.shadows.v1`: atlas depth with a filtered comparison for spots, projectors and the sun; optional point-light cube shadows; moving objects as atlas casters. RFC 0011 decision 4 owns SDF shadows for unbaked lights without a tile | the atlas, caster passes and `shadow_sample.glsl`; one visibility per light and surface; a static light's baked shadow mask (LSMK) on lightmapped surfaces ([Source 2 lighting defaults](#source-2-lighting-defaults-user-direction-2026-10-06)) | visibility one |
 | Indirect diffuse, static surfaces | values: RFC 0007 [Shading model](0007-physically-based-lighting-pipeline.md#shading-model); encoding: RFC 0008; runtime layer and change volume: RFC 0011 [Indirect-light policy](0011-runtime-indirect-lighting.md#indirect-light-policy-renderindirect-policyv1) | samples the lightmap basis at the mapped normal and applies the policy | lighting one (unlit) |
 | Indirect diffuse, dynamic surfaces | RFC 0011 [Probe volume contract](0011-runtime-indirect-lighting.md#probe-volume-contract-renderprobe-volumev1) | samples the volume with visibility; the ambient cube where no volume covers the point | the ambient cube |
 | Image-based specular | RFC 0007 [Image-based lighting](0007-physically-based-lighting-pipeline.md#image-based-lighting) (probes, parallax, relighting, distance-based roughness, split sum) | samples the probes by that definition | reflectance zero |
