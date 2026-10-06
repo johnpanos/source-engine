@@ -11045,6 +11045,38 @@ better than before (1.43 / 1.56). `render_lab suite volumetric` passes
 misses the allowance (see the frame-allowance measurement above). 4K's
 10.2 ms is recorded for the resolution sweep.
 
+### Fog pass into an RG11B10 scene target: no measured gain (2026-10-05)
+
+User goal: "switch the scene color and fog targets to B10G11R11, then
+measure the fog pass with the resolution sweep."
+
+- `render_lab --scene-format rgba16f|rg11b10` selects the lit scene
+  target (`Format::kRG11B10Float`, render.device.v2 since `90c219166`);
+  the readback decodes the packed floats.
+- The fog *volume* cannot take the format: its alpha is the froxel's
+  extinction, which the composite integrates (`volumetric_composite.frag`).
+  Splitting it into RG11B10 plus a separate extinction texture saves at most
+  2 of 8 bytes per froxel on a volume of a few MB, so it was not done.
+- Measured (`render_lab --time 15/40`, foggy-hall nave, `--no-ssr` so the
+  composite writes the scene target, RADV 8060S, interleaved; the fixture
+  map converted to LMAP v3 in a scratch copy):
+
+| Size | RGBA16F min (ms) | RG11B10 min (ms) |
+| --- | --- | --- |
+| 1024x768 | 0.54-0.56 | 0.47-0.51 |
+| 1920x1080 | 1.11-1.38 | 1.13-1.74 |
+| 2560x1440 | 1.46-2.57 | 1.44-1.78 |
+| 3840x2160 | 3.27-10.4 | 3.22-9.12 |
+
+  4K is bimodal for both formats (the shared host's GPU load); no size
+  shows a gain beyond that noise. Image: mean relative difference 1.1%,
+  p99 3.4%, the format's 6-bit mantissa.
+- Decision: the fog pass is bound by its per-pixel march over every slice,
+  not by scene-target bandwidth, so the product's scene target (owned by
+  the frozen backend) is not switched. The cost to remove is the march:
+  integrate the volume front to back once in a compute pass so the
+  composite reads one texel (the next fog optimization).
+
 ### K12: moving doors, the Portal 2 test-chamber door (2026-10-05)
 
 Per the user's scoping, "moving doors" is Portal 2's test-chamber door

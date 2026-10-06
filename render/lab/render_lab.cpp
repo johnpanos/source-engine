@@ -28,7 +28,9 @@
 //			density-zero state), --no-volumetric leaves the pass out, and
 //			--fog-samples xy,depth sets the inject stage's samples per froxel
 //			(default 2,4: 2 x 2 across and 4 along), --time n prints the
-//			pass's median time over n more submissions,
+//			pass's median time over n more submissions, --scene-format
+//			rgba16f|rg11b10 picks the lit scene target's format (rg11b10:
+//			packed unsigned floats, half the bytes, no alpha),
 //			and --inscatter-only clears the frame before the composite (the
 //			in-scattered light alone, as Cycles' Volume Direct pass).
 //
@@ -51,6 +53,7 @@
 //			           [--validate] [--dump-mesh] [--core-direct]
 //			           [--debug-view n] [--fog-scale s] [--no-volumetric]
 //			           [--output-peak p] [--entities portal|portal2] [--time n]
+//			           [--scene-format rgba16f|rg11b10]
 //			           [--debug-program name] [--debug-scale s]
 //			           [--debug-range r] [--debug-threshold t] [--debug-brdf n]
 //			           [--debug-furnace] [--debug-term name[,name...]]
@@ -107,6 +110,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <map>
 #include <memory>
 #include <optional>
@@ -123,6 +127,21 @@ using namespace render;
 using namespace render::device;
 using namespace render::lab;
 namespace fs = std::filesystem;
+
+// One unsigned packed float of kRG11B10Float: a 5-bit exponent (bias 15)
+// over `mantissaBits` of mantissa.
+float PackedFloatToFloat( std::uint32_t bits, int mantissaBits )
+{
+	const std::uint32_t exponent = bits >> mantissaBits;
+	const std::uint32_t mantissa = bits & ( ( 1u << mantissaBits ) - 1u );
+	const float fraction = float( mantissa ) / float( 1u << mantissaBits );
+	if ( exponent == 0 )
+		return std::ldexp( fraction, -14 );
+	if ( exponent == 31 )
+		return mantissa ? std::numeric_limits<float>::quiet_NaN()
+		                : std::numeric_limits<float>::infinity();
+	return std::ldexp( 1.0f + fraction, int( exponent ) - 15 );
+}
 
 struct Options
 {
@@ -181,6 +200,8 @@ struct Options
 	std::vector<Mover> movers;
 	std::uint32_t rsmSize = 128; // a projector's reflective shadow map, texels across
 	std::uint32_t timeRepeats = 0;
+	// The lit scene target's format (--scene-format).
+	Format sceneFormat = Format::kRGBA16Float;
 	// The inject stage's stratified samples per froxel (across, along).
 	pass::volumetric::VolumetricSampling fogSampling = map_media::kFroxelSampling;
 	// The light grid's subdivision for the medium (--fog-grid across,depth).
@@ -304,6 +325,10 @@ std::optional<Options> ParseOptions( int argc, char **argv )
 			options.outputPeak = float( std::atof( take() ) );
 		else if ( arg == "--time" )
 			options.timeRepeats = std::uint32_t( std::atoi( take() ) );
+		else if ( arg == "--scene-format" && value && ( std::strcmp( value, "rgba16f" ) == 0 ||
+		                                         std::strcmp( value, "rg11b10" ) == 0 ) )
+			options.sceneFormat =
+			    std::strcmp( take(), "rg11b10" ) == 0 ? Format::kRG11B10Float : Format::kRGBA16Float;
 		else if ( arg == "--fog-grid" && std::sscanf( value, "%u,%u", &options.fogTileDivisor,
 		                                    &options.fogSliceMultiplier ) == 2 )
 			take();
@@ -542,7 +567,7 @@ int Run( const Options &options )
 		return Fail( *why );
 	int status = 0;
 	{
-		const Format colorFormat = Format::kRGBA16Float;
+		const Format colorFormat = options.sceneFormat;
 		const Format depthFormat = Format::kD32Float;
 		auto resolver = material::ProgramResolver::Create(
 		    *device, colorFormat, depthFormat, 1, material::VertexLayout::kSurface );
@@ -1634,11 +1659,26 @@ int Run( const Options &options )
 			if ( !device->ReadBuffer( readback, 0, pixels ) )
 				return Fail( "the frame did not read back" );
 			std::vector<float> rgba( std::size_t( options.width ) * options.height * 4 );
-			for ( std::size_t i = 0; i < rgba.size(); ++i )
+			if ( shown == color && colorFormat == Format::kRG11B10Float )
 			{
-				std::uint16_t half;
-				std::memcpy( &half, pixels.data() + i * 2, sizeof( half ) );
-				rgba[i] = HalfToFloat( half );
+				for ( std::size_t i = 0; i < rgba.size() / 4; ++i )
+				{
+					std::uint32_t packed;
+					std::memcpy( &packed, pixels.data() + i * 4, sizeof( packed ) );
+					rgba[i * 4 + 0] = PackedFloatToFloat( packed & 0x7ffu, 6 );
+					rgba[i * 4 + 1] = PackedFloatToFloat( ( packed >> 11 ) & 0x7ffu, 6 );
+					rgba[i * 4 + 2] = PackedFloatToFloat( packed >> 22, 5 );
+					rgba[i * 4 + 3] = 1.0f;
+				}
+			}
+			else
+			{
+				for ( std::size_t i = 0; i < rgba.size(); ++i )
+				{
+					std::uint16_t half;
+					std::memcpy( &half, pixels.data() + i * 2, sizeof( half ) );
+					rgba[i] = HalfToFloat( half );
+				}
 			}
 			if ( !WritePfm( options.out, options.width, options.height, rgba ) )
 				return Fail( "cannot write " + options.out.string() );

@@ -8,13 +8,13 @@
 //   bsp2tool convert <legacy.bsp> <out>    legacy VBSP -> BSP2 (lossless)
 //   bsp2tool export  <bsp2> <out>          BSP2 -> byte-identical legacy VBSP
 //   bsp2tool pack-world <legacy.bsp> <world.wmsh> <out.bsp2>
-//   bsp2tool pack-world-lit <legacy.bsp> <world.wmsh> <atlas.ktx2> <out.bsp2>
-//   bsp2tool pack-world-probed <legacy.bsp> <world.wmsh> <atlas.ktx2> <volume.prbv>
+//   bsp2tool pack-world-lit <legacy.bsp> <world.wmsh> <atlas.lmap> <out.bsp2>
+//   bsp2tool pack-world-probed <legacy.bsp> <world.wmsh> <atlas.lmap> <volume.prbv>
 //            <out.bsp2>                   also carries the RFC 0011 probe volume
-//   bsp2tool pack-world-gi <legacy.bsp> <world.wmsh> <atlas.ktx2> <volume.prbv>
+//   bsp2tool pack-world-gi <legacy.bsp> <world.wmsh> <atlas.lmap> <volume.prbv>
 //            <transfer.rtrn> <out.bsp2>   and its radiosity transfer, validated
 //                                          against that volume
-//   bsp2tool pack-world-sdf <legacy.bsp> <world.wmsh> <atlas.ktx2> <volume.prbv>
+//   bsp2tool pack-world-sdf <legacy.bsp> <world.wmsh> <atlas.lmap> <volume.prbv>
 //            <transfer.rtrn> <field.sdfv> <out.bsp2>   and the signed distance
 //                                          volume of RFC 0011 G6
 //   Every pack-world-lit* command also takes a trailing
@@ -253,10 +253,10 @@ int main( int argc, char **argv )
 		std::fprintf( stderr,
 		    "usage: bsp2tool info|verify <map> | convert|export <in> <out> | "
 		    "pack-world <legacy.bsp> <world.wmsh> <out.bsp2> | "
-		    "pack-world-lit <legacy.bsp> <world.wmsh> <atlas.ktx2> <out.bsp2> | "
-		    "pack-world-probed <legacy.bsp> <world.wmsh> <atlas.ktx2> <volume.prbv> "
-		    "<out.bsp2> | pack-world-gi <legacy.bsp> <world.wmsh> <atlas.ktx2> <volume.prbv> "
-		    "<transfer.rtrn> <out.bsp2> | pack-world-sdf <legacy.bsp> <world.wmsh> <atlas.ktx2> "
+		    "pack-world-lit <legacy.bsp> <world.wmsh> <atlas.lmap> <out.bsp2> | "
+		    "pack-world-probed <legacy.bsp> <world.wmsh> <atlas.lmap> <volume.prbv> "
+		    "<out.bsp2> | pack-world-gi <legacy.bsp> <world.wmsh> <atlas.lmap> <volume.prbv> "
+		    "<transfer.rtrn> <out.bsp2> | pack-world-sdf <legacy.bsp> <world.wmsh> <atlas.lmap> "
 		    "<volume.prbv> <transfer.rtrn> <field.sdfv> <out.bsp2> "
 		    "[--reflection-probes <probes.rprb>]\n" );
 		return 2;
