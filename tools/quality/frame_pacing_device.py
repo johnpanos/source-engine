@@ -48,6 +48,7 @@ CONTENT_ROOTS = {"ios": "Documents", "tvos": "Library/Caches",
                  "android": "/sdcard/Android/data/%s/files"}
 ANDROID_ACTIVITY = "org.libsdl.app.SDLActivity"
 CFG_DIRECTORY = "portal/custom/frame_pacing/cfg"
+GAME_DIRECTORIES = {"portal": "portal", "portal2": "portal2"}
 STATS_NAME = "frame-stats.jsonl"
 BUDGETS = Path(__file__).resolve().parents[2] / "quality/budgets/render-v1.json"
 
@@ -98,6 +99,7 @@ def run_android(args, cfgs, arguments, output):
     """Stage, run and collect one Android run; returns the local stats path."""
     import time
     package = args.bundle_id
+    cfg_directory = CFG_DIRECTORY.replace("portal/", GAME_DIRECTORIES[args.game] + "/", 1)
     content = CONTENT_ROOTS["android"] % package
     if "package:%s" % package not in adb(args.device, ["shell", "pm", "list", "packages", package]).split():
         raise DeviceError("%s is not installed on the device" % package)
@@ -108,9 +110,9 @@ def run_android(args, cfgs, arguments, output):
             (local / "cfg" / name).write_text(text)
         (local / "commandline.txt").write_text(" ".join(arguments) + "\n")
         (local / "empty.txt").write_text("")
-        adb(args.device, ["shell", "mkdir", "-p", "%s/%s" % (content, CFG_DIRECTORY)])
+        adb(args.device, ["shell", "mkdir", "-p", "%s/%s" % (content, cfg_directory)])
         for name in cfgs:
-            adb(args.device, ["push", str(local / "cfg" / name), "%s/%s/%s" % (content, CFG_DIRECTORY, name)])
+            adb(args.device, ["push", str(local / "cfg" / name), "%s/%s/%s" % (content, cfg_directory, name)])
         # An empty stats file first: a run that fails to start must not leave
         # the previous run's stream to be read as its own.
         adb(args.device, ["push", str(local / "empty.txt"), "%s/%s" % (content, STATS_NAME)])
@@ -119,8 +121,8 @@ def run_android(args, cfgs, arguments, output):
         # app cannot read; the content it already reads is world-accessible.
         # Only what was pushed: the game writes app-owned files under the
         # custom folder (its sound cache), which a recursive chmod cannot touch.
-        pushed = ["%s/portal/custom/frame_pacing" % content, "%s/%s" % (content, CFG_DIRECTORY)]
-        pushed += ["%s/%s/%s" % (content, CFG_DIRECTORY, name) for name in cfgs]
+        pushed = ["%s/%s/custom/frame_pacing" % (content, GAME_DIRECTORIES[args.game]), "%s/%s" % (content, cfg_directory)]
+        pushed += ["%s/%s/%s" % (content, cfg_directory, name) for name in cfgs]
         pushed += ["%s/%s" % (content, STATS_NAME), "%s/commandline.txt" % content]
         adb(args.device, ["shell", "chmod", "a+rwX"] + pushed)
         try:
@@ -260,6 +262,7 @@ def main(argv=None):
         args.bundle_id = "org.sourceengine.portal" if args.platform == "android" else "com.panos.sourceengine"
 
     scenario = frame_pacing.load_scenario(args.scenario)
+    args.game = scenario.get("game", "portal")
     passes = args.passes or scenario.get("passes", 1)
     output = args.out.resolve()
     output.mkdir(parents=True, exist_ok=True)

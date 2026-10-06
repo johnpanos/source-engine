@@ -1,0 +1,33 @@
+{
+  "schema": "frame-pacing-scenario/v1",
+  "id": "intro4-relit-device-v1",
+  "game": "portal2",
+  "map": "sp_a1_intro4_relit",
+  "host_framerate": 120,
+  "passes": 3,
+  "setup": [
+    "r_core_world 1",
+    "r_drawviewmodel 0",
+    "cl_drawhud 0",
+    "noclip",
+    "god",
+    "cmd setpos 145 -440 90",
+    "cmd setang 8 20 0",
+    "wait 120"
+  ],
+  "body": [
+    "cmd setpos 145 -440 90",
+    "cmd setang 8 20 0",
+    "wait 60",
+    "vk_frame_mark arrival",
+    "wait 180",
+    "cmd setang 8 200 0",
+    "wait 60",
+    "vk_frame_mark reverse",
+    "wait 180",
+    "cmd setang 8 20 0",
+    "wait 60",
+    "vk_frame_mark return",
+    "wait 180"
+  ]
+}

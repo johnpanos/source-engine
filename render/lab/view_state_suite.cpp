@@ -27,6 +27,17 @@ public:
 	SamplerDesc Sampler( int ) override { return {}; }
 };
 
+// A texture the backend has made and not filled: Import has nothing yet, and
+// Pending says so (a picmip reload), or it is simply unavailable.
+class PendingTextures final : public IWorldTextures
+{
+public:
+	bool pending = true;
+	TextureId Import( int, bool ) override { return {}; }
+	SamplerDesc Sampler( int ) override { return {}; }
+	bool Pending( int handle ) override { return pending && handle == 7; }
+};
+
 WorldData Fixture()
 {
 	WorldData world;
@@ -274,6 +285,72 @@ std::optional<std::string> RunChecks(
 	    "view-state.reversed-dynamic-aperture-is-culled-negative-control" );
 	results.That(
 	    pass.Stats().viewsFailed == 0, "view-state.no-lost-slots", pass.Stats().lastFailure );
+	// A material whose texture the backend has made but not filled is skipped
+	// and retried, never a failed view; the same texture merely unavailable is
+	// a failure (the negative control).
+	for ( bool pending : { true, false } )
+	{
+		WorldData world;
+		WorldMaterial material;
+		material.name = "pending-texture";
+		material.shader = "UnlitGeneric";
+		material.variables = { { "$basetexture", "pending/test" } };
+		material.textures = { { "$basetexture", 7 } };
+		world.materials.push_back( std::move( material ) );
+		for ( auto xy : { std::pair{ -1.0f, -1.0f }, std::pair{ 1.0f, -1.0f },
+		          std::pair{ 1.0f, 1.0f }, std::pair{ -1.0f, 1.0f } } )
+		{
+			WorldVertex v{};
+			v.position[0] = xy.first;
+			v.position[1] = xy.second;
+			v.position[2] = 0.3f;
+			v.normal[2] = v.tangentS[0] = 1.0f;
+			for ( auto &c : v.color )
+				c = 255;
+			world.vertices.push_back( v );
+		}
+		world.indices = { 0, 1, 2, 0, 2, 3 };
+		world.surfaces.push_back( { 0, 0, 0, 6 } );
+		PendingTextures waiting;
+		waiting.pending = pending;
+		WorldPass waitingPass;
+		waitingPass.SetWorld( world );
+		const unsigned tag = waitingPass.QueueView( View( 0 ) );
+		CanvasImage image;
+		CanvasPost post = [&]( CommandEncoder &encoder, TextureId color,
+		                      TextureId ) -> std::optional<std::string>
+		{
+			RenderingDesc clear;
+			clear.width = clear.height = kSize;
+			clear.depth = DepthAttachment{ depth.Value(), LoadOp::kClear, StoreOp::kStore, 1 };
+			encoder.BeginRendering( clear );
+			encoder.EndRendering();
+			WorldTarget target;
+			target.device = device.get();
+			target.color = color;
+			target.colorFormat = kCanvasColor;
+			target.depth = depth.Value();
+			target.depthFormat = depthDesc.format;
+			target.width = target.height = kSize;
+			target.textures = &waiting;
+			target.frame = ++frame;
+			waitingPass.Record( tag, encoder, target );
+			return std::nullopt;
+		};
+		if ( auto why = canvas->Render( textures, groups, {}, { 0, 0, 0, 1 }, &image, post ) )
+			return why;
+		const WorldStats stats = waitingPass.Stats();
+		results.That( tag != 0 && ( pending ? stats.viewsFailed == 0 && stats.viewsPending == 1 &&
+		                                          stats.pendingMaterials > 0
+		                                    : stats.viewsFailed == 1 && stats.viewsPending == 0 &&
+		                                          stats.pendingMaterials == 0 ),
+		    pending ? "view-state.a-texture-still-being-filled-is-pending-not-failed"
+		            : "view-state.an-unavailable-texture-fails-the-view-negative-control",
+		    std::to_string( stats.viewsFailed ) + " failed, " +
+		        std::to_string( stats.viewsPending ) + " pending: " + stats.lastFailure );
+		(void)device->WaitIdle();
+		waitingPass.ReleaseDevice( *device );
+	}
 	(void)device->WaitIdle();
 	pass.ReleaseDevice( *device );
 	(void)device->Release( depth.Value(), {} );

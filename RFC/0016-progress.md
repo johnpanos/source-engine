@@ -11523,9 +11523,31 @@ applied at the next map load. intro4 (119 probes, 7 mips of 256 px faces):
 62.9 MB of BC6H, about 15.7 MB at one dropped mip and 3.9 MB at two. The lab
 checks it (`rprb.base-mip.*`: the GPU over the dropped array equals the
 reference at `max(lod, base)`, and the undropped reference rejects it; a seeded
-kernel that ignores the offset is detected: 8 of 8 seeded variants). (`mat_picmip 1`
-itself currently stops the core in strict mode on the view model's texture, a
-separate defect, which is why the dedicated convar exists.)
+kernel that ignores the offset is detected: 8 of 8 seeded variants). `mat_picmip 1` (Medium) used to stop the core in strict mode; two defects
+behind it are fixed (below), and the demo now plays through at picmip 1 with
+zero core failures and the probes uploaded from mip 1 (128 px faces).
+
+mat_picmip 1 in strict mode (user request, fixed):
+
+- A picmip change reloads textures, and for a while a handle exists with no
+  storage. The core imported it, failed, and `r_core_world_strict` aborted.
+  `ICoreTextures::Pending` (the frozen backend answers: made, not uploaded, not
+  a render target) lets the world pass skip the material and retry it at its
+  next use, counted in `WorldStats::pendingMaterials` and `viewsPending`, never
+  `viewsFailed`; a texture that is merely unavailable still fails the view.
+  `render.lab.view-state` (19 checks) covers both, the second as the negative
+  control.
+- Behind it, `DrawStageShadows` matched a held shadow tile to a new one by
+  light-space matrix alone. The plan resizes a light's tile as other lights
+  come and go, so a 64 px tile could be restored into a 128 px one, past the end
+  of the staging buffer: the submission failed `kInvalidState`, 20-24 times a
+  run, and the views lost their shadow atlas (`the view's lights have shadow
+  tiles and the slot no atlas`). A tile now matches only at the same size.
+- Evidence: `demo_frames.py` on intro4 at 1920x1080 with `+mat_picmip 1`:
+  incomplete (aborted) before, complete after (p50 35.2 ms, 0 failures).
+  The v7 binary at picmip 1 failed on the view model's texture every frame
+  (3-5 views, thousands of frames) with `r_core_world_strict 0`.
+
 
 Game evidence on `sp_a1_intro4_relit` (the published map, RPRB v8, and a copy
 with only its RPRB lump v7, repacked from the same probe faces; WMSH, LMAP and
