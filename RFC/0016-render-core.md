@@ -567,12 +567,13 @@ alpha coverage, portal/stencil effects, transparency and scene-color captures.
 The objective is lower complete in-game frame cost; a faster isolated core pass
 is supporting evidence only.
 
-#### Optimization resolution sweep (user decision, 2026-10-03)
+#### Optimization resolution sweep (user decision, 2026-10-03; range amended 2026-10-06)
 
 **Before optimizing a rendered workload, capture a baseline by sweeping from
-1024×768 through 4K (3840×2160). Repeat the same sweep for the candidate.** Include
-at least 1024×768, 1920×1080, 2560×1440 and 3840×2160, plus the profile's declared
-resolution when different. This section owns the resolution methodology for
+720p (1280×720) through 4K (3840×2160). Repeat the same sweep for the candidate.**
+Include exactly 1280×720, 1920×1080, 2560×1440 and 3840×2160, plus the profile's
+declared resolution when different. The user narrowed the range on 2026-10-06:
+1024×768 is no longer a sweep point, and every point is 16:9. This section owns the resolution methodology for
 in-game pipeline optimization and rendered CPU/GPU placement comparisons.
 Headless server, compiler and simulation benchmarks keep their domain's workload
 scaling instead of acquiring an artificial screen-resolution requirement.
@@ -2040,6 +2041,25 @@ Rules for the whole model:
   (binding rule 7); only the user can turn a term off for a profile's
   shipped default. A term that a profile declares is never silently
   dropped.
+- **Source 2 parity at Source 2 cost (user decision, 2026-10-06).** The
+  High profile's lighting target is Source 2's technique set at Source 2's
+  cost. Its shipped default declares three terms off by name, compiled out
+  through specialization constants rather than branched around: LTC area
+  lights (per-pixel evaluation; area emitters keep their emissive surfaces
+  and the bake's contribution), GTAO, and SSR. Each stays selectable by
+  convar/profile, and its `render_lab` oracles and suites keep passing.
+  Why: RCV-07 attributed about 48 of the world PBR program's VGPRs each to
+  area lighting and shadow receiving
+  ([evidence](0016-progress.md#k11k12-shadow-receiver-microbenchmark-slice-2026-10-02-in-progress));
+  material/view specialization (RCV-12) cut code but not the register peak,
+  and the RTX 3070 loses the most occupancy to it. Parity first needs two
+  Source 2 techniques the core still lacks: baked per-vertex lighting on
+  static props (the static-prop colour lump) and the planar reflection
+  view rendered by the core. This decision turns terms off; it relaxes no
+  sample count, resolution, filter or cohort, and the High budget row is
+  unchanged. Measure VGPRs, spills and occupancy on the Radeon 8060S and
+  the RTX 3070 before and after, then the
+  [resolution sweep](#optimization-resolution-sweep-user-decision-2026-10-03-range-amended-2026-10-06).
 
 ### Output (`render.output.v1`) (amended 2026-09-28)
 
