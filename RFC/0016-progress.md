@@ -11498,12 +11498,12 @@ What changed:
 
 Evidence (Linux desktop, Vulkan validation clean):
 
-- `render.lab.reflection-probes --validate`: 40 checks, 0 failed. Interior
+- `render.lab.reflection-probes --validate`: 45 checks, 0 failed. Interior
   lookups agree with `ReflectionProbesView::Radiance` within 6e-3 + 1e-3
   relative (fixed-point trilinear weights), lookups whose footprint crosses a
   cube edge within 0.2 (the specification leaves the neighbour texel to the
-  implementation). `--sensitivity`: 7 of 7 (the three old seeded kernels and
-  wrong face, wrong lod, wrong layer) detected, control passes.
+  implementation). `--sensitivity`: 8 of 8 (the three old seeded kernels and
+  wrong face, wrong lod, wrong layer, base mip ignored) detected, control passes.
   `reflection-candidates` 29, `map-terms` 39 (the surface program over the
   fixture's cube array), `posed-model` 110 pass; 34 of 37 `render.lab.*` suites
   pass, 3 unavailable (missing `build-fsr` and a gi map; not run).
@@ -11514,16 +11514,53 @@ Evidence (Linux desktop, Vulkan validation clean):
   `test_vast_blender` (remote rprb policy, predates this) and the lighting
   fixture stage-layer check (missing `quality-results` files).
 
-Open (not claimed): intro4 on v8 in game (matched game/lab captures through
-`sp_a1_intro4_relit`), the 1024x768 to 4K sweep (world-pass GPU time, probe
-memory, bake and pack time against v7: `build-p2-release-v7` is the v7 binary
-kept for it), Fold7 and Apple runs, and a hosted CI lane. Probe memory is
-computed, not measured, until then: 119 probes at a 256 px face with 7 mips
-are 119 x 6 x 87.3 KB = 62 MB of BC6H, about twice v7's 31.7 MB: a 256 px
-cube face has 0.35 degrees per texel at its centre against the 512-wide
-equirect's 0.7 at the equator (6 x 256^2 = 3x the texels). The profiles'
-`cube_size` is W0/2 as the target asked; a 128 px face matches v7's angular
-resolution at half its size (15.6 MB), and the sweep decides the default.
+Texture setting (user request): the lump keeps its full mip chain, and a
+base mip drops the top levels of the radiance cube array at upload
+(`ReflectionProbeBaseMip`; probe buffer word 7; the shader reads
+`max(lod, base) - base`). `r_reflection_probe_mip_drop` (default -1) follows
+`mat_picmip` (1 halves the faces, 2 quarters them, at least four mips stay),
+applied at the next map load. intro4 (119 probes, 7 mips of 256 px faces):
+62.9 MB of BC6H, about 15.7 MB at one dropped mip and 3.9 MB at two. The lab
+checks it (`rprb.base-mip.*`: the GPU over the dropped array equals the
+reference at `max(lod, base)`, and the undropped reference rejects it; a seeded
+kernel that ignores the offset is detected: 8 of 8 seeded variants). (`mat_picmip 1`
+itself currently stops the core in strict mode on the view model's texture, a
+separate defect, which is why the dedicated convar exists.)
+
+Game evidence on `sp_a1_intro4_relit` (the published map, RPRB v8, and a copy
+with only its RPRB lump v7, repacked from the same probe faces; WMSH, LMAP and
+PRBV hashes equal), release builds (`build-p2-release`; the v7 binary is a
+reflink copy of the build before this change), 1024x768 and the map's profiling
+camera at four yaws:
+
+- Frames: v7 and v8 differ by 0.08-0.25 levels of 255 on average (at most 0.31%
+  of pixels by more than 8) through the core, 0.1-0.4 through the frozen
+  backend (`r_core_world 0`). Vulkan validation: the same 10 (core) and 12
+  (frozen) pre-existing messages in v7 and v8, none about cube arrays or probes.
+- Demo playback (`demo_frames.py`, the user's intro4 demo, FSR off, two
+  interleaved rounds, frame interval p50 in ms, v7 / v8): 1024x768 18.8 / 18.3;
+  1920x1080 32.1 / 32.7; 2560x1440 49.0 / 50.2; 3840x2160 122.7 / 128.6 (round 1
+  of v8 at 4K had a p99 of 1.7 s; round 2 118.9). The v7/v8 difference is inside
+  the round-to-round spread at every resolution: no measurable frame-time change.
+  With `--profile` at 1080p, one run each (v7 / v8): `world / pbr` 10.55 / 10.08
+  ms, `core world` 16.04 / 13.57 ms. One sample each, so not a claimed gain.
+  A mip drop of 1 gave p50 29.5 ms at 1080p, a drop of 2 gave 32.6 ms and a
+  drop of 1 at 4K 139.8 ms (single runs on a shared GPU: no trend claimed).
+- Memory: the v7 probe texture was 8192 x 3976 RGBA16F, 260 MB of device
+  memory, from a 31.7 MB lump; v8 is a 62.9 MB BC6H cube array on the device
+  (about 4x less device memory and 2x the lump), 15.7 MB with one mip dropped.
+- Bake: the v8 pack was 22 min (serial pure-Python GGX prefilter) against 4 min
+  for v7. `pack` now prefilters each probe in its own process (`--workers`,
+  default the CPUs): 2 min 52 s on this 32-thread host for the same faces, with
+  the radiance data byte-identical to the serial pack (sha256 equal).
+
+Open (not claimed): the matched game/lab captures through
+`sp_a1_intro4_relit` on the lab's camera set (the lab suites above are the lab
+side; a lab frame of the map's RPRB through `render_lab` was not rendered), a
+Fold7, iOS or Apple run, the GL and GLES adapters drawing the surface program
+with cube-array probes, and a hosted CI lane. At the target's S = W0/2 the cube
+has 3x v7's texels (a 128 px face matches v7's angular resolution at a quarter
+of the 256 px size); the profiles keep W0/2 and the texture setting lowers it.
 
 ## K7/K12: shadowed lights keep their tiles as the camera turns (2026-10-06, user report)
 
