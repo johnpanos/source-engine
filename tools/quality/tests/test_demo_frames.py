@@ -57,6 +57,12 @@ class PlaybackWindowTest(unittest.TestCase):
         selected = demo_frames.playback_window(rows, workload()["playback_window"])
         self.assertEqual(12, selected[0]["f"])
 
+    def test_a_wrapped_cpu_counter_is_not_playback(self):
+        rows = stream(load=5, playback=80)
+        rows[5]["cpu"] = (1 << 64) - 19571000  # frame 6: a negative delta wrapped into uint64
+        selected = demo_frames.playback_window(rows, workload()["playback_window"])
+        self.assertEqual(7, selected[0]["f"])
+
     def test_a_demo_that_never_settles_is_rejected(self):
         rows = [frame(i + 1, 400.0) for i in range(100)]
         with self.assertRaises(demo_frames.DemoError):
@@ -85,6 +91,19 @@ class StatisticsTest(unittest.TestCase):
         self.assertEqual(2, len(failures))
         self.assertTrue(any("mat_antialias is 4" in failure for failure in failures))
         self.assertTrue(any("mat_queue_mode is unreported" in failure for failure in failures))
+
+
+class CorePassTest(unittest.TestCase):
+    def test_a_row_deeper_than_its_predecessor_is_not_misattributed(self):
+        console = ("cl_render_debug_stats: core GPU passes, mean of 10 frame(s):\n"
+                   "  core world view                   20.000 ms  x2.0\n"
+                   "    core model depth                 0.070 ms  x1.0\n"
+                   "        world / pbr                  9.800 ms  x1.0\n")
+        passes = {item["pass"]: item["mean_ms"]
+                  for item in demo_frames.core_pass_means(demo_frames.render_profile.core_reports(console))}
+        self.assertEqual(0.07, passes["core world view > core model depth"])
+        self.assertNotIn("core world view > core model depth > world / pbr", passes)
+        self.assertEqual(9.8, passes["(unplaced) > (unplaced) > (unplaced) > world / pbr"])
 
 
 class AnalyzeTest(unittest.TestCase):

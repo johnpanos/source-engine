@@ -79,7 +79,9 @@ def load_workload(path):
 def playback_window(rows, rule):
     """The settled playback frames: level load before, the quit frame after."""
     settle, limit_us = rule["settle_frames"], rule["settle_interval_ms"] * 1000
+    # A load frame can carry a wrapped CPU counter; it is not playback.
     settled = [0 < row["interval"] < limit_us and row.get("records", 0) > rule["min_records"]
+               and frame_floor.valid_duration_us(row.get("cpu"))
                for row in rows]
     for start in range(1, len(rows) - settle):
         if all(settled[start:start + settle]):
@@ -138,7 +140,12 @@ def core_pass_means(reports):
     for report in reports:
         path = []
         for item in report["passes"]:
-            path = path[:item["depth"]] + [item["name"]]
+            if item["depth"] > len(path):
+                # The engine prints some sections deeper than the row above
+                # them (a family split of an earlier scope): no parent is known.
+                path = ["(unplaced)"] * item["depth"] + [item["name"]]
+            else:
+                path = path[:item["depth"]] + [item["name"]]
             entry = totals.setdefault(" > ".join(path), {"ms": 0.0, "per_frame": 0.0, "kind": item["kind"]})
             entry["ms"] += item["mean_ms"] * report["frames"]
             entry["per_frame"] += item["per_frame"] * report["frames"]
