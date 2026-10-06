@@ -119,9 +119,15 @@ def seam_stitcher(args):
         record["pages"][name] = {"before": before, "after": after,
                                  "refined": recovered}
         if after["p99"] > args.max_seam_p99 or after["max"] > args.max_seam:
-            raise ValueError("%s page: stitched seam discontinuity p99 %.4g / max %.4g exceeds "
-                             "the gate (%g / %g)" % (name, after["p99"], after["max"],
-                                                     args.max_seam_p99, args.max_seam))
+            finding = ("%s page: stitched seam discontinuity p99 %.4g / max %.4g exceeds the "
+                       "gate (%g / %g)" % (name, after["p99"], after["max"], args.max_seam_p99,
+                                           args.max_seam))
+            if not args.record_seam_failure:
+                raise ValueError(finding)
+            # Reported, not fatal (map bakes, user decision 2026-10-05).
+            record["pages"][name]["gate_failed"] = True
+            record.setdefault("findings", []).append(finding)
+            print("GATE FINDING (reported, not fatal): " + finding, file=sys.stderr)
         return result
 
     stitch.record = record
@@ -159,6 +165,8 @@ def main():
                              "surfaces that stitching may move freely")
     parser.add_argument("--max-seam-p99", type=float, default=DEFAULT_MAX_SEAM_P99,
                         help="gate: stitched seam discontinuity 99th percentile (relative)")
+    parser.add_argument("--record-seam-failure", action="store_true",
+                        help="record a seam gate miss in the receipt instead of failing")
     parser.add_argument("--max-seam", type=float, default=DEFAULT_MAX_SEAM,
                         help="gate: stitched seam discontinuity maximum (relative)")
     parser.add_argument("--out", type=Path, required=True)

@@ -1213,7 +1213,8 @@ class Pipeline:
                                             "--ktx-tool", self.tools["ktx"],
                                             "--preview-gain", str(self.lightmap["preview_gain"]),
                                             "--expected-scope", scope, "--out", p["ktx2"],
-                                            "--lmap-out", p["lmap"]] +
+                                            "--lmap-out", p["lmap"],
+                                            "--record-seam-failure"] +
                                            directional_args + layer_args + seam_args + sun_args))
         if probe:
             # Reflection probes (R50-PARALLAX): placed per room and per glossy
