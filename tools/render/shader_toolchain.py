@@ -198,6 +198,8 @@ GENERATED = {
         ("kSurfaceFlatTemporalVertex", FAMILIES + "/surface_flat_temporal.vert", DEVICE_OPTIONS),
         ("kSurfaceWorldTemporalVertex", FAMILIES + "/surface_world_temporal.vert", DEVICE_OPTIONS),
         ("kSurfaceModelTemporalVertex", FAMILIES + "/surface_model_temporal.vert", DEVICE_OPTIONS),
+        ("kSurfaceModelInstancedVertex", FAMILIES + "/surface_model_instanced.vert",
+         DEVICE_OPTIONS),
         ("kSurfaceTemporalFragment", FAMILIES + "/surface_temporal.frag", DEVICE_OPTIONS))),
     "lines_spv.h": ("render::pass::lines::spirv",
         "the lines pass: wireframe, grid and overlays (RFC 0016, Hammer viewports)", (

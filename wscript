@@ -463,7 +463,8 @@ def define_platform(conf):
 			'NDEBUG'
 		])
 
-	if conf.options.PRODUCT_FLAVOR == 'release':
+	if conf.options.PRODUCT_FLAVOR == 'release' and \
+			'instrumentation' not in conf.options.RELEASE_SKIP.split(','):
 		conf.env.append_unique('DEFINES', ['SOURCE_RELEASE_BUILD=1'])
 
 	# The commit hash is defined only where it is read (tier0's log header, see
@@ -836,7 +837,8 @@ def configure(conf):
 
 		flags += ['-funwind-tables', '-g']
 	elif conf.env.COMPILER_CC != 'msvc' and conf.env.DEST_CPU in ['x86', 'x86_64']:
-		if conf.options.PRODUCT_FLAVOR == 'release' and conf.env.DEST_CPU == 'x86_64':
+		if conf.options.PRODUCT_FLAVOR == 'release' and conf.env.DEST_CPU == 'x86_64' and \
+				'march' not in conf.options.RELEASE_SKIP.split(','):
 			flags += ['-march=' + conf.options.RELEASE_MARCH]
 		else:
 			flags += ['-march=core2']

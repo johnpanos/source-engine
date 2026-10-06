@@ -1055,7 +1055,7 @@ void CheckSun( testing::Checks &checks, IRenderDevice2 &device, ShadowDepthRende
 // out.
 std::vector<float> DrawKept( IRenderDevice2 &device, ShadowDepthRenderer &depth, TextureId atlas,
     const TextureDesc &atlasDesc, ResourceUsage &usage, std::uint32_t guard,
-    std::span<const ShadowDepthView> views, bool keep )
+    std::span<const ShadowDepthView> views, bool keep, ShadowDepthStats *stats = nullptr )
 {
 	const std::uint32_t size = atlasDesc.width;
 	BufferDesc readDesc;
@@ -1070,7 +1070,10 @@ std::vector<float> DrawKept( IRenderDevice2 &device, ShadowDepthRenderer &depth,
 	    builder.ImportTexture( "atlas", atlas, atlasDesc, usage, ResourceUsage::kSampled );
 	ShadowAtlasTarget target{ atlasRef, size, guard };
 	target.keep = keep;
-	bool ok = depth.AddPasses( builder, target, views ).HasValue();
+	auto added = depth.AddPasses( builder, target, views );
+	bool ok = added.HasValue();
+	if ( ok && stats )
+		*stats = added.Value();
 	const graph::ResourceRef copy = builder.ImportBuffer( "atlas-readback", read.Value(), readDesc,
 	    ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
 	builder.AddPass( "atlas-readback", graph::PassKind::kCopy )
@@ -1196,6 +1199,32 @@ void CheckCachedTiles( testing::Checks &checks, IRenderDevice2 &device, ShadowDe
 	checks.That( !partial.empty() && partial.size() == full.size() &&
 	                 std::memcmp( partial.data(), full.data(), full.size() * 4 ) != 0,
 	    "C2.dropping-half-of-each-mesh-differs-(sensitivity)" );
+
+	// Multi-draw indirect (RFC 0016 S2): the split casters (two ranges of
+	// each mesh) drawn as one indirect run per mesh per tile give the atlas
+	// that drawing each caster alone gives, texel for texel.
+	if ( device.Facts().capabilities.Has( Capability::kMultiDrawIndirect ) &&
+	     device.Facts().capabilities.Has( Capability::kIndirectFirstInstance ) )
+	{
+		ShadowDepthStats multiStats, singleStats;
+		const std::vector<float> multi = DrawKept( device, depth, fresh.Value(), atlasDesc,
+		    splitUsage, kGuard, split, false, &multiStats );
+		depth.SetMultiDraw( false );
+		const std::vector<float> single = DrawKept( device, depth, fresh.Value(), atlasDesc,
+		    splitUsage, kGuard, split, false, &singleStats );
+		depth.SetMultiDraw( true );
+		std::printf( "INFO shadows multi-draw: %u caster draws in %u indirect calls\n",
+		    multiStats.draws, multiStats.indirectDraws );
+		checks.That( multiStats.indirectDraws > 0 && multiStats.indirectDraws < multiStats.draws &&
+		                 singleStats.indirectDraws == 0,
+		    "M1.material-less-casters-draw-as-indirect-runs" );
+		checks.That( !multi.empty() && multi.size() == single.size() &&
+		                 std::memcmp( multi.data(), single.data(), multi.size() * 4 ) == 0 &&
+		                 std::memcmp( multi.data(), full.data(), full.size() * 4 ) == 0,
+		    "M1.the-indirect-atlas-equals-drawing-each-caster-alone" );
+	}
+	else
+		std::printf( "SKIP M1 the device claims no multi-draw indirect with first instance\n" );
 	for ( auto *texture : { &fresh, &kept, &stale } )
 		(void)device.Release( texture->Value(), CompletionToken() );
 }

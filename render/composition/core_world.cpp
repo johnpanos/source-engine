@@ -2098,6 +2098,7 @@ void CoreWorld::GetStats( RenderCoreWorldStats *out ) const
 	out->gpuOcclusionViews = stats.gpuOcclusionViews;
 	out->gpuPyramids = stats.gpuPyramids;
 	out->gpuPrepassViews = stats.gpuPrepassViews;
+	out->gpuModelViews = stats.gpuModelViews;
 	std::snprintf( out->lastRefusal, sizeof( out->lastRefusal ), "%s", stats.lastRefusal.c_str() );
 	out->debugHatches = m_Hatches.load( std::memory_order_relaxed );
 	out->debugTints = m_Tints.load( std::memory_order_relaxed );

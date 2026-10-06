@@ -30,6 +30,33 @@ layout( push_constant ) uniform Draw
 	layout( row_major ) mat4 world;
 } draw;
 
+#ifdef SURFACE_INSTANCED
+// GPU-driven draws (SurfaceVariant::instanced): the same two matrices per
+// instance, as rows, from the per-instance buffer the indirect command's
+// first instance selects.
+layout( location = 8 ) in vec4 instanceToClip[4];
+layout( location = 12 ) in vec4 instanceWorld[4];
+mat4 DrawToClip()
+{
+	return transpose( mat4( instanceToClip[0], instanceToClip[1], instanceToClip[2],
+	    instanceToClip[3] ) );
+}
+mat4 DrawWorld()
+{
+	return transpose( mat4( instanceWorld[0], instanceWorld[1], instanceWorld[2],
+	    instanceWorld[3] ) );
+}
+#else
+mat4 DrawToClip()
+{
+	return draw.toClip;
+}
+mat4 DrawWorld()
+{
+	return draw.world;
+}
+#endif
+
 #include "surface_lighting.glsl"
 #include "surface_material.glsl"
 #include "surface_frame.glsl"
@@ -72,22 +99,22 @@ float CosineTerm( int i, vec3 position, vec3 normal )
 
 void main()
 {
-	const vec3 animated = TreeSway( position, draw.world, frame.foliage[0].xy, frame.foliage[0].z,
+	const vec3 animated = TreeSway( position, DrawWorld(), frame.foliage[0].xy, frame.foliage[0].z,
 	    kTreeSwayMode, material.treeGeometry, material.treeMotion, material.treeCurves, material.treeWind );
-	const vec4 world = draw.world * vec4( animated, 1.0 );
-	gl_Position = draw.toClip * vec4( animated, 1.0 );
+	const vec4 world = DrawWorld() * vec4( animated, 1.0 );
+	gl_Position = DrawToClip() * vec4( animated, 1.0 );
 #ifdef SURFACE_TEMPORAL
     motionCurrent = frame.motionCurrentToClip * world;
-    const vec3 previous = TreeSway( previousPosition, draw.world, frame.foliage[1].xy, frame.foliage[1].z,
+    const vec3 previous = TreeSway( previousPosition, DrawWorld(), frame.foliage[1].xy, frame.foliage[1].z,
         kTreeSwayMode, material.treeGeometry, material.treeMotion, material.treeCurves, material.treeWind );
-    motionPrevious = frame.motionPreviousToClip * ( draw.world * vec4( previous, 1.0 ) );
+    motionPrevious = frame.motionPreviousToClip * ( DrawWorld() * vec4( previous, 1.0 ) );
 #endif
 	baseUv = uv0;
 	lightmapUv = vec2( 0.0 );
 	color = vec4( 1.0 );
 	fogDepth = vec2( gl_Position.z, world.z );
 	worldPosition = world.xyz;
-	const mat3 basis = mat3( draw.world );
+	const mat3 basis = mat3( DrawWorld() );
 	worldNormal = basis * normal;
 	tangentS = basis * tangent.xyz;
 	tangentT = cross( worldNormal, tangentS ) * tangent.w;

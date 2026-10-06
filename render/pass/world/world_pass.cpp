@@ -118,6 +118,7 @@ struct StaticDraw
 	std::uint32_t lod = 0;
 	std::uint32_t surface = 0;
 	std::uint32_t material = 0;
+	bool gpu = false; // drawn GPU-driven this view (the per-draw loops skip it)
 };
 
 // A resolved group: its device objects.
@@ -3819,31 +3820,12 @@ void WorldPass::RecordBatch(
 		flushRun();
 	};
 
-	auto recordModel =
-	    [&]( const StaticDraw &draw, const Resources::Material &m, PipelineId pipeline )
+	// A model draw's FamilyDrawConstants: its object-to-world (identity for
+	// a pose, whose vertices are in world space) and object-to-clip.
+	auto modelDrawConstants = [&]( const StaticDraw &draw )
 	{
 		const WorldData::StaticInstance *instance =
 		    draw.posed ? nullptr : &world->staticInstances[draw.instance];
-		const WorldData::StaticMesh &mesh = world->staticMeshes[draw.mesh];
-		const WorldSurface &surface = mesh.surfaces[draw.surface];
-		encoder.SetPipeline( pipeline );
-		if ( m.program.request.frameLayout.IsValid() )
-			encoder.SetBindGroup(
-			    BindGroupRole::kFrame, r.frameGroups[m.program.request.frameLayout.value].group );
-		if ( m.program.request.viewLayout.IsValid() )
-		{
-			const std::uint64_t layout = m.program.request.viewLayout.value;
-			const auto lit = modelLitViews.find( layout );
-			const auto scene = sceneViews.find( layout );
-			encoder.SetBindGroup( BindGroupRole::kView,
-			    ( m.program.sceneColor || m.program.depthBlend ) && scene != sceneViews.end()
-			        ? scene->second.group
-			    : lit != modelLitViews.end() ? lit->second->group
-			                                 : r.viewGroups[layout].group );
-		}
-		encoder.SetBindGroup( BindGroupRole::kMaterial, m.group.group );
-		if ( m.program.request.drawLayout.IsValid() )
-			encoder.SetBindGroup( BindGroupRole::kDraw, r.drawGroups[drawKey( m, 0 )].group );
 		material::FamilyDrawConstants modelConstants;
 		if ( instance )
 			std::copy( instance->world, instance->world + 16, modelConstants.world );
@@ -3862,14 +3844,52 @@ void WorldPass::RecordBatch(
 				modelConstants.toClip[row * 4 + col] = value;
 			}
 		}
+		return modelConstants;
+	};
+	// Binds a model draw's pipeline, groups and buffers; with `instances`
+	// (an instanced point's per-instance records) instead of its draw
+	// constants.
+	auto bindModel = [&]( const StaticDraw &draw, const Resources::Material &m,
+	                     PipelineId pipeline, BufferId instances = {} )
+	{
+		encoder.SetPipeline( pipeline );
+		if ( m.program.request.frameLayout.IsValid() )
+			encoder.SetBindGroup(
+			    BindGroupRole::kFrame, r.frameGroups[m.program.request.frameLayout.value].group );
+		if ( m.program.request.viewLayout.IsValid() )
+		{
+			const std::uint64_t layout = m.program.request.viewLayout.value;
+			const auto lit = modelLitViews.find( layout );
+			const auto scene = sceneViews.find( layout );
+			encoder.SetBindGroup( BindGroupRole::kView,
+			    ( m.program.sceneColor || m.program.depthBlend ) && scene != sceneViews.end()
+			        ? scene->second.group
+			    : lit != modelLitViews.end() ? lit->second->group
+			                                 : r.viewGroups[layout].group );
+		}
+		encoder.SetBindGroup( BindGroupRole::kMaterial, m.group.group );
+		if ( m.program.request.drawLayout.IsValid() )
+			encoder.SetBindGroup( BindGroupRole::kDraw, r.drawGroups[drawKey( m, 0 )].group );
+		const material::FamilyDrawConstants modelConstants =
+		    instances.IsValid() ? material::FamilyDrawConstants() : modelDrawConstants( draw );
 		encoder.SetDrawConstants( 0, std::as_bytes( std::span( &modelConstants, 1 ) )
 		                                 .first( m.program.request.drawConstantBytes ) );
 		const State::ModelLevel &buffers = s.models.models[draw.mesh][draw.lod];
 		encoder.SetVertexBuffer( 0, draw.posed ? posedBuffers[draw.instance] : buffers.vertices );
-		if ( recordingTemporal )
+		if ( instances.IsValid() )
+			encoder.SetVertexBuffer( 1, instances );
+		else if ( recordingTemporal )
 			encoder.SetVertexBuffer(
 			    1, draw.posed ? previousPosedBuffers[draw.instance] : buffers.vertices );
 		encoder.SetIndexBuffer( buffers.indices, 0, IndexFormat::kUint32 );
+	};
+	// A model draw's texture mip feedback (the per-surface footprint).
+	auto modelFeedback = [&]( const StaticDraw &draw )
+	{
+		const WorldData::StaticInstance *instance =
+		    draw.posed ? nullptr : &world->staticInstances[draw.instance];
+		const WorldData::StaticMesh &mesh = world->staticMeshes[draw.mesh];
+		const WorldSurface &surface = mesh.surfaces[draw.surface];
 		WorldSurface feedbackSurface = surface;
 		feedbackSurface.material = draw.material;
 		// The level's own staging, whose indices the level's surface counts into.
@@ -3900,6 +3920,13 @@ void WorldPass::RecordBatch(
 			submitSurfaceFootprints( feedbackSurface, r.modelMaterials, vertices, *level.indices,
 			    extents, instance ? instance->world : nullptr, nullptr, box );
 		}
+	};
+	auto recordModel =
+	    [&]( const StaticDraw &draw, const Resources::Material &m, PipelineId pipeline )
+	{
+		bindModel( draw, m, pipeline );
+		modelFeedback( draw );
+		const WorldSurface &surface = world->staticMeshes[draw.mesh].surfaces[draw.surface];
 		encoder.DrawIndexed( surface.indexCount, 1, surface.firstIndex, 0, 0 );
 	};
 	preparation.End();
@@ -3907,6 +3934,7 @@ void WorldPass::RecordBatch(
 	// through its own material's depth point, drawn over the atlas the
 	// composition's other casters drew, before any view reads it.
 	std::uint64_t cutoutDraws = 0;
+	std::uint64_t cutoutIndirectDraws = 0;
 	std::uint64_t cutoutRefused = 0;
 	std::uint64_t cutoutNotResident = 0;
 	if ( world->stage && target.cutoutShadows && target.cutoutShadows->atlas.IsValid() &&
@@ -3925,6 +3953,11 @@ void WorldPass::RecordBatch(
 			BufferId vertices;
 			BufferId indices;
 			const float *world = nullptr;
+			// Multi-draw indirect: a run's first world surface issues its
+			// records (indirectCount from indirectFirst); the rest are covered.
+			std::uint32_t indirectFirst = 0;
+			std::uint32_t indirectCount = 0;
+			bool covered = false;
 		};
 		std::vector<CutoutDraw> draws;
 		std::uint64_t notResident = 0;
@@ -4067,6 +4100,68 @@ void WorldPass::RecordBatch(
 			draws.push_back( { cached->second, m, frame, viewGroup, draw, &surface, r.vertices,
 			    r.indices, nullptr } );
 		}
+		// World surfaces (RFC 0016 S2): their draws differ only in index
+		// range within a material, so each material's run is one multi-draw
+		// whose records serve every view (the atlas depth does not depend on
+		// their order). Props keep one draw each (their matrices differ).
+		BufferId cutoutCommands;
+		if ( !draws.empty() && device.Facts().capabilities.Has( Capability::kMultiDrawIndirect ) )
+		{
+			const auto plain = std::stable_partition( draws.begin(), draws.end(),
+			    []( const CutoutDraw &cutout )
+			    {
+				    return cutout.world == nullptr;
+			    } );
+			auto key = []( const CutoutDraw &cutout )
+			{
+				return std::make_pair( cutout.pipeline.value, cutout.material );
+			};
+			std::stable_sort( draws.begin(), plain,
+			    [&]( const CutoutDraw &a, const CutoutDraw &b )
+			    {
+				    return key( a ) < key( b );
+			    } );
+			std::vector<DrawIndexedIndirectCommand> commands;
+			for ( auto run = draws.begin(); run != plain; )
+			{
+				auto end = run;
+				while ( end != plain && key( *end ) == key( *run ) )
+				{
+					commands.push_back( { end->surface->indexCount, 1, end->surface->firstIndex,
+					    0, 0 } );
+					end->covered = end != run;
+					++end;
+				}
+				run->indirectCount = static_cast<std::uint32_t>( end - run );
+				run->indirectFirst = static_cast<std::uint32_t>( commands.size() ) -
+				                     run->indirectCount;
+				run = end;
+			}
+			BufferDesc desc;
+			desc.size = std::max<std::uint64_t>(
+			    commands.size() * sizeof( DrawIndexedIndirectCommand ), 20 );
+			desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kIndirect };
+			if ( auto made = commands.empty() ? std::nullopt
+			                                  : std::optional( device.CreateBuffer( desc ) );
+			     made && *made )
+			{
+				cutoutCommands = made->Value();
+				s.retiredBuffers.emplace_back( target.frame, cutoutCommands );
+				encoder.TransitionBuffer(
+				    cutoutCommands, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+				encoder.WriteBuffer( cutoutCommands, 0, std::as_bytes( std::span( commands ) ) );
+				encoder.TransitionBuffer(
+				    cutoutCommands, ResourceUsage::kCopyDestination, ResourceUsage::kIndirect );
+			}
+			else
+			{
+				for ( CutoutDraw &cutout : draws )
+				{
+					cutout.indirectCount = 0;
+					cutout.covered = false;
+				}
+			}
+		}
 		if ( !draws.empty() )
 		{
 			preparation.Select( "cutout shadows" );
@@ -4086,6 +4181,8 @@ void WorldPass::RecordBatch(
 				    float( shadowView.size ), float( shadowView.size ), 0.0f, 1.0f } );
 				for ( const CutoutDraw &cutout : draws )
 				{
+					if ( cutout.covered )
+						continue;
 					// toClip = the view's matrix times the caster's
 					// object-to-world (the identity for the world).
 					material::FamilyDrawConstants shadowConstants;
@@ -4115,9 +4212,21 @@ void WorldPass::RecordBatch(
 					encoder.SetVertexBuffer( 0, cutout.vertices, 0 );
 					encoder.SetIndexBuffer( cutout.indices, 0, IndexFormat::kUint32 );
 					encoder.SetDrawConstants( 0, shadowBytes.first( request.drawConstantBytes ) );
-					encoder.DrawIndexed(
-					    cutout.surface->indexCount, 1, cutout.surface->firstIndex, 0, 0 );
-					++cutoutDraws;
+					if ( cutout.indirectCount )
+					{
+						encoder.DrawIndexedIndirect( cutoutCommands,
+						    std::uint64_t( cutout.indirectFirst ) *
+						        sizeof( DrawIndexedIndirectCommand ),
+						    cutout.indirectCount, sizeof( DrawIndexedIndirectCommand ) );
+						cutoutDraws += cutout.indirectCount;
+						++cutoutIndirectDraws;
+					}
+					else
+					{
+						encoder.DrawIndexed(
+						    cutout.surface->indexCount, 1, cutout.surface->firstIndex, 0, 0 );
+						++cutoutDraws;
+					}
 				}
 			}
 			encoder.EndRendering();
@@ -4255,13 +4364,16 @@ void WorldPass::RecordBatch(
 		std::vector<GpuBucket> buckets;
 		BufferId commands;
 	};
-	auto gpuCullList = [&]( const std::vector<std::uint32_t> &list,
-	                       const std::vector<Resources::Material> &materials,
-	                       bool occlude ) -> GpuList
+	// The dispatches of GPU-driven submission (RFC 0016 S3/S4), outside a
+	// rendering: cull `instances` against the view (and this view's pyramid
+	// when `occlude`), then compact the kept ones' `templates` into one
+	// command list per bucket (counts as words, culling::CommandsOffset).
+	// The command buffer, invalid when the kernels or buffers were refused.
+	auto gpuCompactCommands = [&]( const std::vector<culling::CullInstance> &instances,
+	                              const std::vector<culling::DrawTemplate> &templates,
+	                              const std::vector<culling::DrawBucket> &buckets,
+	                              bool occlude ) -> BufferId
 	{
-		GpuList out;
-		if ( list.empty() || list.size() > culling::kMaxCompactInstances )
-			return out;
 		using namespace render::culling;
 		if ( !s.gpuCull )
 		{
@@ -4273,66 +4385,9 @@ void WorldPass::RecordBatch(
 				s.gpuCompact = std::move( compact ).Value();
 			}
 		}
-		if ( s.gpuBoundsWorld != world.get() )
-		{
-			s.gpuBounds.assign( world->surfaces.size(), {} );
-			for ( std::size_t i = 0; i < world->surfaces.size(); ++i )
-			{
-				const WorldSurface &surface = world->surfaces[i];
-				CullInstance &bounds = s.gpuBounds[i];
-				bounds.viewMask = ~0u;
-				std::fill_n( bounds.min, 3, 3.4e38f );
-				std::fill_n( bounds.max, 3, -3.4e38f );
-				for ( std::uint32_t k = 0; k < surface.indexCount; ++k )
-				{
-					const std::uint32_t at = surface.firstIndex + k;
-					if ( at >= world->indices.size() ||
-					     world->indices[at] >= world->vertices.size() )
-						continue;
-					const float *p = world->vertices[world->indices[at]].position;
-					for ( int c = 0; c < 3; ++c )
-					{
-						bounds.min[c] = std::min( bounds.min[c], p[c] );
-						bounds.max[c] = std::max( bounds.max[c], p[c] );
-					}
-				}
-			}
-			s.gpuBoundsWorld = world.get();
-		}
-		const auto count = static_cast<std::uint32_t>( list.size() );
-		std::vector<CullInstance> instances( count );
-		std::vector<DrawTemplate> templates( count );
-		std::vector<DrawBucket> buckets;
-		for ( std::uint32_t k = 0; k < count; ++k )
-		{
-			const WorldSurface &surface = world->surfaces[list[k]];
-			const Resources::Material &m = materials[surface.material];
-			const int page = m.program.request.drawLayout.IsValid() ? surface.lightmapPage : 0;
-			if ( out.buckets.empty() || out.buckets.back().material != surface.material ||
-			     out.buckets.back().page != page )
-			{
-				out.buckets.push_back( { surface.material, page, k, 0 } );
-				buckets.push_back( { k, 0 } );
-			}
-			++out.buckets.back().count;
-			++buckets.back().count;
-			instances[k] = s.gpuBounds[list[k]];
-			if ( occlude )
-			{
-				// A surface facing the camera rasterizes at its box's nearest
-				// depth up to rounding: one unit of margin keeps it from
-				// occluding itself. Only opaque PBR surfaces are tested.
-				for ( int c = 0; c < 3; ++c )
-				{
-					instances[k].min[c] -= 1.0f;
-					instances[k].max[c] += 1.0f;
-				}
-				instances[k].flags = opaquePbr( m ) ? 0u : kCullNeverOcclude;
-			}
-			templates[k] = { surface.indexCount, surface.firstIndex, 0,
-			    static_cast<std::uint32_t>( buckets.size() - 1 ) };
-		}
+		const auto count = static_cast<std::uint32_t>( instances.size() );
 		const auto bucketCount = static_cast<std::uint32_t>( buckets.size() );
+		BufferId result;
 		const math::float4x4 toClip = viewToClip();
 		const CullView cullView = PackView( math::ExtractFrustum( toClip ), 32, count );
 		std::vector<BufferId> made;
@@ -4425,18 +4480,253 @@ void WorldPass::RecordBatch(
 			for ( BindGroupId group : s.gpuCompact->TakeRecorded() )
 				s.retiredBindGroups.emplace_back( target.frame, group );
 			if ( culled && compacted )
-			{
-				out.commands = commands;
-			}
-			else
-				out.buckets.clear();
+				result = commands;
 		}
-		else
-			out.buckets.clear();
 		for ( BufferId id : made )
 			if ( id.IsValid() )
 				s.retiredBuffers.emplace_back( target.frame, id );
+		return result;
+	};
+	auto gpuCullList = [&]( const std::vector<std::uint32_t> &list,
+	                       const std::vector<Resources::Material> &materials,
+	                       bool occlude ) -> GpuList
+	{
+		GpuList out;
+		if ( list.empty() || list.size() > culling::kMaxCompactInstances )
+			return out;
+		using namespace render::culling;
+		if ( s.gpuBoundsWorld != world.get() )
+		{
+			s.gpuBounds.assign( world->surfaces.size(), {} );
+			for ( std::size_t i = 0; i < world->surfaces.size(); ++i )
+			{
+				const WorldSurface &surface = world->surfaces[i];
+				CullInstance &bounds = s.gpuBounds[i];
+				bounds.viewMask = ~0u;
+				std::fill_n( bounds.min, 3, 3.4e38f );
+				std::fill_n( bounds.max, 3, -3.4e38f );
+				for ( std::uint32_t k = 0; k < surface.indexCount; ++k )
+				{
+					const std::uint32_t at = surface.firstIndex + k;
+					if ( at >= world->indices.size() ||
+					     world->indices[at] >= world->vertices.size() )
+						continue;
+					const float *p = world->vertices[world->indices[at]].position;
+					for ( int c = 0; c < 3; ++c )
+					{
+						bounds.min[c] = std::min( bounds.min[c], p[c] );
+						bounds.max[c] = std::max( bounds.max[c], p[c] );
+					}
+				}
+			}
+			s.gpuBoundsWorld = world.get();
+		}
+		const auto count = static_cast<std::uint32_t>( list.size() );
+		std::vector<CullInstance> instances( count );
+		std::vector<DrawTemplate> templates( count );
+		std::vector<DrawBucket> buckets;
+		for ( std::uint32_t k = 0; k < count; ++k )
+		{
+			const WorldSurface &surface = world->surfaces[list[k]];
+			const Resources::Material &m = materials[surface.material];
+			const int page = m.program.request.drawLayout.IsValid() ? surface.lightmapPage : 0;
+			if ( out.buckets.empty() || out.buckets.back().material != surface.material ||
+			     out.buckets.back().page != page )
+			{
+				out.buckets.push_back( { surface.material, page, k, 0 } );
+				buckets.push_back( { k, 0 } );
+			}
+			++out.buckets.back().count;
+			++buckets.back().count;
+			instances[k] = s.gpuBounds[list[k]];
+			if ( occlude )
+			{
+				// A surface facing the camera rasterizes at its box's nearest
+				// depth up to rounding: one unit of margin keeps it from
+				// occluding itself. Only opaque PBR surfaces are tested.
+				for ( int c = 0; c < 3; ++c )
+				{
+					instances[k].min[c] -= 1.0f;
+					instances[k].max[c] += 1.0f;
+				}
+				instances[k].flags = opaquePbr( m ) ? 0u : kCullNeverOcclude;
+			}
+			templates[k] = { surface.indexCount, surface.firstIndex, 0,
+			    static_cast<std::uint32_t>( buckets.size() - 1 ) };
+		}
+		out.commands = gpuCompactCommands( instances, templates, buckets, occlude );
+		if ( !out.commands.IsValid() )
+			out.buckets.clear();
 		return out;
+	};
+	// GPU-driven static models (RFC 0016 S3): a list's opaque static model
+	// draws whose surface bounds are known, culled per draw (and occlusion-
+	// tested with the world's surfaces when `occlude`) and compacted into one
+	// command list per (material, mesh, level) run of the lit pass's order. A
+	// command's first instance selects the draw's matrices in a per-instance
+	// buffer, which the instanced point reads (SurfaceVariant::instanced).
+	// Poses, temporal views, debug-specialized (with `viewDebug`), blended
+	// and transmitting draws stay per draw. `taken` marks the list's entries
+	// it draws (empty: none).
+	struct GpuModelBucket
+	{
+		std::uint32_t material = 0;
+		std::uint32_t mesh = 0;
+		std::uint32_t lod = 0;
+		std::uint32_t first = 0; // into draws
+		std::uint32_t count = 0;
+	};
+	struct GpuModels
+	{
+		std::vector<GpuModelBucket> buckets;
+		std::vector<StaticDraw> draws;
+		std::vector<bool> taken;
+		BufferId commands;
+		BufferId records;
+	};
+	auto gpuCullModels = [&]( const std::vector<StaticDraw> &list,
+	                         const std::vector<Resources::Material> &materials, bool occlude,
+	                         bool viewDebug ) -> GpuModels
+	{
+		using namespace render::culling;
+		GpuModels out;
+		if ( !target.gpuSubmission || !gpuDeviceCapable ||
+		     !gpuCaps.Has( Capability::kIndirectFirstInstance ) || target.motion.IsValid() ||
+		     !modelFootprintBounds )
+			return out;
+		out.taken.assign( list.size(), false );
+		for ( std::size_t i = 0; i < list.size(); ++i )
+		{
+			const StaticDraw &draw = list[i];
+			const Resources::Material &m = materials[draw.material];
+			if ( draw.posed || m.program.blend != BlendMode::kOpaque || m.program.sceneColor ||
+			     ( viewDebug &&
+			         !frame::DebugSpecializationFor( view.debug, m.program.name ).IsNeutral() ) )
+				continue;
+			const WorldData::StaticMesh &mesh = world->staticMeshes[draw.mesh];
+			if ( draw.mesh >= modelFootprintBounds->size() ||
+			     draw.surface >= ( *modelFootprintBounds )[draw.mesh].size() ||
+			     draw.surface >= mesh.surfaceLods.size() ||
+			     mesh.surfaceLods[draw.surface] != draw.lod ||
+			     !( *modelFootprintBounds )[draw.mesh][draw.surface].valid )
+				continue;
+			out.taken[i] = true;
+			out.draws.push_back( draw );
+		}
+		std::sort( out.draws.begin(), out.draws.end(),
+		    []( const StaticDraw &a, const StaticDraw &b )
+		    {
+			    return std::tie( a.cohort, a.material, a.mesh, a.posed, a.instance, a.surface ) <
+			           std::tie( b.cohort, b.material, b.mesh, b.posed, b.instance, b.surface );
+		    } );
+		const auto count = static_cast<std::uint32_t>( out.draws.size() );
+		std::vector<CullInstance> instances( count );
+		std::vector<DrawTemplate> templates( count );
+		std::vector<DrawBucket> buckets;
+		std::vector<material::FamilyDrawConstants> records( count );
+		for ( std::uint32_t k = 0; k < count; ++k )
+		{
+			const StaticDraw &draw = out.draws[k];
+			if ( out.buckets.empty() || out.buckets.back().material != draw.material ||
+			     out.buckets.back().mesh != draw.mesh || out.buckets.back().lod != draw.lod )
+			{
+				out.buckets.push_back( { draw.material, draw.mesh, draw.lod, k, 0 } );
+				buckets.push_back( { k, 0 } );
+			}
+			++out.buckets.back().count;
+			++buckets.back().count;
+			records[k] = modelDrawConstants( draw );
+			// The surface's object box in world space: centre and extents
+			// through object-to-world (row-major, column vectors).
+			const SurfaceFootprintBounds &box = ( *modelFootprintBounds )[draw.mesh][draw.surface];
+			const float *w = records[k].world;
+			const float margin = occlude ? 1.0f : 0.0f;
+			CullInstance &instance = instances[k];
+			instance.viewMask = ~0u;
+			for ( int i = 0; i < 3; ++i )
+			{
+				float centre = w[i * 4 + 3], extent = 0.0f;
+				for ( int j = 0; j < 3; ++j )
+				{
+					centre += w[i * 4 + j] * 0.5f * ( box.lo[j] + box.hi[j] );
+					extent += std::fabs( w[i * 4 + j] ) * 0.5f * ( box.hi[j] - box.lo[j] );
+				}
+				instance.min[i] = centre - extent - margin;
+				instance.max[i] = centre + extent + margin;
+			}
+			instance.flags =
+			    !occlude || opaquePbr( materials[draw.material] ) ? 0u : kCullNeverOcclude;
+			const WorldSurface &surface = world->staticMeshes[draw.mesh].surfaces[draw.surface];
+			templates[k] = { surface.indexCount, surface.firstIndex, 0,
+			    static_cast<std::uint32_t>( buckets.size() - 1 ) };
+		}
+		if ( count != 0 && count <= kMaxCompactInstances )
+		{
+			BufferDesc recordDesc;
+			recordDesc.size = std::uint64_t( count ) * sizeof( material::FamilyDrawConstants );
+			recordDesc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kVertex };
+			auto recordBuffer = device.CreateBuffer( recordDesc );
+			if ( recordBuffer )
+			{
+				s.retiredBuffers.emplace_back( target.frame, recordBuffer.Value() );
+				encoder.TransitionBuffer( recordBuffer.Value(), ResourceUsage::kUndefined,
+				    ResourceUsage::kCopyDestination );
+				encoder.WriteBuffer(
+				    recordBuffer.Value(), 0, std::as_bytes( std::span( records ) ) );
+				encoder.TransitionBuffer( recordBuffer.Value(), ResourceUsage::kCopyDestination,
+				    ResourceUsage::kVertex );
+				out.commands = gpuCompactCommands( instances, templates, buckets, occlude );
+				out.records = recordBuffer.Value();
+			}
+		}
+		if ( !out.commands.IsValid() )
+			return GpuModels(); // refused: every draw goes back to the per-draw loops
+		return out;
+	};
+	// One indirect draw per bucket of `models` whose material `skip` does not
+	// name, bound as recordModel binds its first draw, with the instanced
+	// point of `pipelineOf`'s pipeline. The draws it covers (submitted; the
+	// GPU culls some).
+	auto drawModelBuckets =
+	    [&]( const GpuModels &models, const std::vector<Resources::Material> &materials,
+	        const std::function<std::optional<PipelineId>( const Resources::Material & )>
+	            &pipelineOf,
+	        const std::function<bool( const Resources::Material & )> &skip ) -> std::uint64_t
+	{
+		std::uint64_t covered = 0;
+		const auto bucketCount = static_cast<std::uint32_t>( models.buckets.size() );
+		for ( std::uint32_t b = 0; b < bucketCount; ++b )
+		{
+			const GpuModelBucket &bucket = models.buckets[b];
+			const Resources::Material &m = materials[bucket.material];
+			if ( skip( m ) )
+				continue;
+			const std::optional<PipelineId> base = pipelineOf( m );
+			if ( !base )
+			{
+				complete = false;
+				continue;
+			}
+			auto instanced = m.resolver->Program().InstancedPipeline( *base );
+			if ( !instanced )
+			{
+				note( "the instanced point was refused for " + m.program.name + ": " +
+				      m.resolver->Program().PipelineFailure() );
+				complete = false;
+				continue;
+			}
+			bindModel( models.draws[bucket.first], m, instanced.Value(), models.records );
+			for ( std::uint32_t k = bucket.first; k < bucket.first + bucket.count; ++k )
+				modelFeedback( models.draws[k] );
+			encoder.DrawIndexedIndirectCount( models.commands,
+			    culling::CommandsOffset( bucketCount ) +
+			        std::uint64_t( bucket.first ) * sizeof( DrawIndexedIndirectCommand ),
+			    models.commands, std::uint64_t( b ) * 4, bucket.count,
+			    sizeof( DrawIndexedIndirectCommand ) );
+			++s.stats.gpuIndirectDraws;
+			covered += bucket.count;
+		}
+		return covered;
 	};
 	// One indirect draw per bucket of `gpu`, bound as drawSurfaces binds the
 	// same run; buckets whose material `skip` names are left out.
@@ -4729,6 +5019,8 @@ void WorldPass::RecordBatch(
 			const GpuList prepassGpu = target.gpuSubmission && gpuDeviceCapable
 			                               ? gpuCullList( *drawnPrepass, r.prepassMaterials, false )
 			                               : GpuList();
+			const GpuModels prepassModelsGpu =
+			    gpuCullModels( *drawnPrepassModels, r.prepassModelMaterials, false, false );
 			encoder.BeginLabel( "core world prepass" );
 			encoder.BeginRendering( prepassRendering );
 			// This private D32 target has no stencil and encodes projection
@@ -4772,24 +5064,35 @@ void WorldPass::RecordBatch(
 				encoder.BeginRendering( prepassRendering );
 				encoder.SetViewport( prepassViewport );
 			}
-			for ( const StaticDraw &draw : *drawnPrepassModels )
+			auto prepassModelPipeline =
+			    [&]( const Resources::Material &m ) -> std::optional<PipelineId>
 			{
-				const auto &m = r.prepassModelMaterials[draw.material];
 				auto variant = m.resolver->VariantPipeline(
 				    m.program, material::kSurfaceDepthNormal, material::kSurfaceSsrTargets );
 				if ( !variant )
 				{
-					complete = false;
 					note( "the model prepass: " + variant.Error() );
-					continue;
+					return std::nullopt;
 				}
-				const auto pipeline =
-				    surfaceStatePipeline( m, variant.Value(), material::SurfaceDrawState() );
-				if ( pipeline )
+				return surfaceStatePipeline( m, variant.Value(), material::SurfaceDrawState() );
+			};
+			for ( std::size_t i = 0; i < drawnPrepassModels->size(); ++i )
+			{
+				if ( i < prepassModelsGpu.taken.size() && prepassModelsGpu.taken[i] )
+					continue;
+				const StaticDraw &draw = ( *drawnPrepassModels )[i];
+				const auto &m = r.prepassModelMaterials[draw.material];
+				if ( const auto pipeline = prepassModelPipeline( m ) )
 					recordModel( draw, m, *pipeline );
 				else
 					complete = false;
 			}
+			(void)drawModelBuckets( prepassModelsGpu, r.prepassModelMaterials,
+			    prepassModelPipeline,
+			    []( const Resources::Material & )
+			    {
+				    return false;
+			    } );
 			encoder.EndRendering();
 			encoder.EndLabel();
 			encoder.TransitionTexture(
@@ -4998,6 +5301,22 @@ void WorldPass::RecordBatch(
 	if ( gpuView.commands.IsValid() )
 		s.stats.gpuOcclusionViews += gpuOccluding;
 
+	// The view's opaque static models, GPU-driven (gpuCullModels); the
+	// per-draw loops skip the draws it takes.
+	const GpuModels gpuViewModels =
+	    gpuCullModels( staticDraws, r.modelMaterials, gpuOccluding, true );
+	for ( std::size_t i = 0; i < staticDraws.size(); ++i )
+		staticDraws[i].gpu = gpuViewModels.taken.size() == staticDraws.size() &&
+		                     gpuViewModels.taken[i];
+	if ( gpuViewModels.commands.IsValid() )
+		++s.stats.gpuModelViews;
+	auto drawGpuModels =
+	    [&]( const std::function<std::optional<PipelineId>( const Resources::Material & )>
+	             &pipelineOf,
+	        const std::function<bool( const Resources::Material & )> &skip ) -> std::uint64_t
+	{
+		return drawModelBuckets( gpuViewModels, r.modelMaterials, pipelineOf, skip );
+	};
 	bool worldDepthReady = depthPrepassSafe;
 	// The opaque (and alpha-tested) surfaces' depth first, into the target's
 	// own depth with its color masked. Eligible PBR lighting reads that depth
@@ -5060,11 +5379,8 @@ void WorldPass::RecordBatch(
 		encoder.BeginLabel( "core model depth" );
 		encoder.BeginRendering( rendering );
 		encoder.SetViewport( view.viewport );
-		for ( const StaticDraw &draw : staticDraws )
+		auto depthPipeline = [&]( const Resources::Material &m ) -> std::optional<PipelineId>
 		{
-			const Resources::Material &m = r.modelMaterials[draw.material];
-			if ( !opaquePbr( m ) )
-				continue;
 			auto variant = m.resolver->VariantPipeline( m.program,
 			    material::kSurfaceDepthNormal | material::kSurfaceDepthOnly,
 			    material::kSurfaceSsrTargets );
@@ -5073,17 +5389,29 @@ void WorldPass::RecordBatch(
 				modelDepthReady = false;
 				complete = false;
 				note( "the model depth prepass: " + variant.Error() );
-				continue;
+				return std::nullopt;
 			}
 			const auto state = surfaceStatePipeline( m, variant.Value(), target.drawState );
 			if ( !state )
 			{
 				modelDepthReady = false;
 				complete = false;
-				continue;
 			}
-			recordModel( draw, m, *state );
+			return state;
+		};
+		for ( const StaticDraw &draw : staticDraws )
+		{
+			const Resources::Material &m = r.modelMaterials[draw.material];
+			if ( !opaquePbr( m ) || draw.gpu )
+				continue;
+			if ( const auto state = depthPipeline( m ) )
+				recordModel( draw, m, *state );
 		}
+		(void)drawGpuModels( depthPipeline,
+		    [&]( const Resources::Material &m )
+		    {
+			    return !opaquePbr( m );
+		    } );
 		encoder.EndRendering();
 		encoder.EndLabel();
 	}
@@ -5154,6 +5482,17 @@ void WorldPass::RecordBatch(
 	    } );
 	draws.End();
 	std::uint64_t drawnStatic = 0;
+	draws.Select( "models static gpu" );
+	drawnStatic += drawGpuModels(
+	    [&]( const Resources::Material &m )
+	    {
+		    return surfaceStatePipeline( m, m.program.request.pipeline,
+		        modelDepthReady && opaquePbr( m ) ? prepassedState() : target.drawState );
+	    },
+	    []( const Resources::Material & )
+	    {
+		    return false;
+	    } );
 	std::uint64_t drawnPosed = 0;
 	bool captureAttempted = false;
 	bool sceneViewsPrepared = true;
@@ -5190,6 +5529,8 @@ void WorldPass::RecordBatch(
 	};
 	for ( const StaticDraw &draw : staticDraws )
 	{
+		if ( draw.gpu )
+			continue;
 		const Resources::Material &m = r.modelMaterials[draw.material];
 		draws.Select( m.program.sceneColor ? "models transmitting / "
 		              : draw.posed         ? "models posed / "
@@ -5316,6 +5657,7 @@ void WorldPass::RecordBatch(
 	s.stats.posedDrawsDrawn += drawnPosed;
 	s.stats.dynamicDrawsDrawn += drawnDynamic;
 	s.stats.cutoutShadowDraws += cutoutDraws;
+	s.stats.cutoutShadowIndirectDraws += cutoutIndirectDraws;
 	s.stats.cutoutShadowRefused += cutoutRefused;
 	s.stats.cutoutShadowNotResident += cutoutNotResident;
 	if ( !complete )

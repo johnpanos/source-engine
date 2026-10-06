@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <tuple>
 #include <utility>
 
 namespace render::pass::shadows
@@ -63,6 +64,12 @@ struct Draw
 	std::uint32_t indexCount = 0; // 0: the whole mesh
 	std::optional<ShadowMaterial> material = {};
 	material::FamilyDrawConstants constants = {};
+	// Multi-draw indirect (RFC 0016 S2): the first draw of a run of indexed,
+	// material-less draws on one mesh issues the run's `indirectCount`
+	// records from `indirectFirst`; the rest of the run is `covered`.
+	std::uint32_t indirectFirst = 0;
+	std::uint32_t indirectCount = 0;
+	bool covered = false;
 };
 
 bool Complete( const material::ResidentGroup &group )
@@ -290,6 +297,7 @@ foundation::Expected<ShadowDepthStats, ShadowPassStatus> ShadowDepthRenderer::Ad
 	{
 		std::vector<Matrix> clips;
 		std::vector<Draw> draws;
+		std::vector<DrawIndexedIndirectCommand> commands;
 		struct View
 		{
 			ShadowViewport viewport;
@@ -303,6 +311,9 @@ foundation::Expected<ShadowDepthStats, ShadowPassStatus> ShadowDepthRenderer::Ad
 	MeshImports imports;
 	GroupImports groups;
 	ShadowDepthStats stats;
+	const CapabilitySet &caps = m_Device.Facts().capabilities;
+	const bool indirect = m_MultiDraw && caps.Has( Capability::kMultiDrawIndirect ) &&
+	                      caps.Has( Capability::kIndirectFirstInstance );
 	// A kept atlas: each view's tile is cleared first, by a triangle over the
 	// whole tile at depth 1 (clip matrix 0, the identity).
 	PipelineId clearPipeline;
@@ -361,6 +372,49 @@ foundation::Expected<ShadowDepthStats, ShadowPassStatus> ShadowDepthRenderer::Ad
 			frame->draws.push_back( std::move( draw ) );
 			imports.Add( builder, caster.mesh );
 		}
+		if ( indirect )
+		{
+			// The view's material-less indexed casters, grouped by pipeline and
+			// mesh (the tile's depth does not depend on their order), each run
+			// one multi-draw: its records select their clip matrices by first
+			// instance, as the per-draw path does.
+			const auto begin = frame->draws.begin() + std::ptrdiff_t( first );
+			const auto plain = std::stable_partition( begin, frame->draws.end(),
+			    []( const Draw &draw )
+			    {
+				    return !draw.material && draw.mesh.indices.IsValid();
+			    } );
+			auto key = []( const Draw &draw )
+			{
+				return std::make_tuple( draw.pipeline.value, draw.mesh.vertices.value,
+				    draw.mesh.indices.value, int( draw.mesh.indexFormat ) );
+			};
+			std::stable_sort( begin, plain,
+			    [&]( const Draw &a, const Draw &b )
+			    {
+				    return key( a ) < key( b );
+			    } );
+			for ( auto run = begin; run != plain; )
+			{
+				auto end = run;
+				while ( end != plain && key( *end ) == key( *run ) )
+				{
+					DrawIndexedIndirectCommand command;
+					command.indexCount = end->indexCount ? end->indexCount : end->mesh.indexCount;
+					command.instanceCount = 1;
+					command.firstIndex = end->indexCount ? end->firstIndex : 0;
+					command.firstInstance = end->instance;
+					frame->commands.push_back( command );
+					end->covered = end != run;
+					++end;
+				}
+				run->indirectCount = static_cast<std::uint32_t>( end - run );
+				run->indirectFirst =
+				    static_cast<std::uint32_t>( frame->commands.size() ) - run->indirectCount;
+				++stats.indirectDraws;
+				run = end;
+			}
+		}
 		frame->views.push_back(
 		    { TileViewport( view.tile, target.guardTexels ), { first, frame->draws.size() },
 		        { view.tile.x, view.tile.y, view.tile.size }, view.clearTile } );
@@ -376,13 +430,24 @@ foundation::Expected<ShadowDepthStats, ShadowPassStatus> ShadowDepthRenderer::Ad
 	clearDesc.size = 9 * sizeof( float );
 	const graph::ResourceRef clearBuffer =
 	    target.keep ? builder.CreateBuffer( "shadow-tile-clear", clearDesc ) : graph::ResourceRef();
+	BufferDesc indirectDesc;
+	indirectDesc.size = frame->commands.size() * sizeof( DrawIndexedIndirectCommand );
+	const graph::ResourceRef indirectBuffer =
+	    frame->commands.empty() ? graph::ResourceRef()
+	                            : builder.CreateBuffer( "shadow-indirect", indirectDesc );
 	graph::PassBuilder upload = builder.AddPass( "shadow-depth-upload", graph::PassKind::kCopy );
 	upload.Write( clipBuffer, ResourceUsage::kCopyDestination );
 	if ( target.keep )
 		upload.Write( clearBuffer, ResourceUsage::kCopyDestination );
+	if ( indirectBuffer.IsValid() )
+		upload.Write( indirectBuffer, ResourceUsage::kCopyDestination );
 	upload.Execute(
-	    [frame, clipBuffer, clearBuffer]( graph::RecordContext &context )
+	    [frame, clipBuffer, clearBuffer, indirectBuffer]( graph::RecordContext &context )
 	    {
+		    if ( indirectBuffer.IsValid() )
+			    context.Encoder().WriteBuffer( context.Buffer( indirectBuffer ), 0,
+			        std::as_bytes( std::span<const DrawIndexedIndirectCommand>(
+			            frame->commands ) ) );
 		    if ( !frame->clips.empty() )
 			    context.Encoder().WriteBuffer( context.Buffer( clipBuffer ), 0,
 			        std::as_bytes( std::span<const Matrix>( frame->clips ) ) );
@@ -399,10 +464,12 @@ foundation::Expected<ShadowDepthStats, ShadowPassStatus> ShadowDepthRenderer::Ad
 	    .Write( target.atlas, ResourceUsage::kDepthWrite );
 	if ( target.keep )
 		pass.Read( clearBuffer, ResourceUsage::kVertex );
+	if ( indirectBuffer.IsValid() )
+		pass.Read( indirectBuffer, ResourceUsage::kIndirect );
 	imports.Declare( pass );
 	groups.Declare( pass );
 	pass.Execute(
-	    [this, frame, clipBuffer, clearBuffer, clearPipeline, target](
+	    [this, frame, clipBuffer, clearBuffer, indirectBuffer, clearPipeline, target](
 	        graph::RecordContext &context )
 	    {
 		    const BindGroupEntry entry[] = { { 0, context.Buffer( clipBuffer ), 0, 0, {}, {} } };
@@ -445,6 +512,8 @@ foundation::Expected<ShadowDepthStats, ShadowPassStatus> ShadowDepthRenderer::Ad
 			    for ( std::size_t d = range.first; d < range.second; ++d )
 			    {
 				    const Draw &draw = frame->draws[d];
+				    if ( draw.covered )
+					    continue;
 				    if ( draw.pipeline != bound )
 				    {
 					    encoder.SetPipeline( draw.pipeline );
@@ -468,7 +537,17 @@ foundation::Expected<ShadowDepthStats, ShadowPassStatus> ShadowDepthRenderer::Ad
 				    }
 				    else
 					    encoder.SetBindGroup( BindGroupRole::kDraw, group.Value() );
-				    RecordDraw( encoder, draw );
+				    if ( draw.indirectCount )
+				    {
+					    encoder.SetVertexBuffer( 0, draw.mesh.vertices );
+					    encoder.SetIndexBuffer( draw.mesh.indices, 0, draw.mesh.indexFormat );
+					    encoder.DrawIndexedIndirect( context.Buffer( indirectBuffer ),
+					        std::uint64_t( draw.indirectFirst ) *
+					            sizeof( DrawIndexedIndirectCommand ),
+					        draw.indirectCount, sizeof( DrawIndexedIndirectCommand ) );
+				    }
+				    else
+					    RecordDraw( encoder, draw );
 			    }
 		    }
 		    encoder.EndRendering();

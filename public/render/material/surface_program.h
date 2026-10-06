@@ -543,6 +543,10 @@ inline constexpr std::uint32_t kSurfaceViewAreas = 4u;
 inline constexpr std::uint32_t kSurfaceViewClipPlanes = 8u;
 inline constexpr std::uint32_t kSurfaceAllViewFeatures = 15u;
 
+// The per-instance record of an instanced model point: FamilyDrawConstants
+// (object-to-clip, then object-to-world, row-major).
+inline constexpr std::uint32_t kSurfaceInstanceStride = 128;
+
 // One point of the program: its pipeline state and specialization.
 struct SurfaceVariant
 {
@@ -566,6 +570,13 @@ struct SurfaceVariant
 	// A single-sample shadow atlas: the same vertex deformation and alpha
 	// coverage as the visible point, with no color attachments or lighting.
 	bool shadowDepth = false;
+	// A model point drawn GPU-driven (RFC 0016 S3): the draw's object-to-
+	// clip and object-to-world rows come from a per-instance vertex buffer
+	// (slot 1, kSurfaceInstanceStride bytes per instance, the
+	// FamilyDrawConstants layout) instead of the draw constants, so one
+	// indirect draw covers many instances. Model layout only, not temporal
+	// or shadow depth.
+	bool instanced = false;
 
 	auto operator<=>( const SurfaceVariant & ) const = default;
 	bool operator==( const SurfaceVariant & ) const = default;
@@ -666,6 +677,11 @@ public:
 	// caller retains the point's material/frame/draw groups and vertex layout.
 	foundation::Expected<device::PipelineId, SurfaceStatus> ShadowPipeline(
 	    device::PipelineId shipped );
+	// Any pipeline this program made (without a debug specialization) drawn
+	// instanced (SurfaceVariant::instanced); kInvalidRequest for one it did
+	// not make or a point that cannot be instanced.
+	foundation::Expected<device::PipelineId, SurfaceStatus> InstancedPipeline(
+	    device::PipelineId pipeline );
 	// A point as a MaterialPrograms request: the pipeline, the frame and draw
 	// layouts, and the material group (the constants, with state.x set from
 	// the variant, and the seven textures, one sampler description for all).

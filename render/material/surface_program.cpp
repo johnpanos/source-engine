@@ -31,7 +31,8 @@ constexpr const char *kFragmentSource = "render/material/families/surface.frag";
 constexpr const char *kSsrFragmentSource = "render/material/families/surface_ssr.frag";
 constexpr const char *kShadowFragmentSource = "render/material/families/surface_shadow.frag";
 
-const char *VertexSource( SurfaceVertexLayout layout, bool temporal = false, bool shadow = false )
+const char *VertexSource( SurfaceVertexLayout layout, bool temporal = false, bool shadow = false,
+    bool instanced = false )
 {
 	switch ( layout )
 	{
@@ -40,7 +41,8 @@ const char *VertexSource( SurfaceVertexLayout layout, bool temporal = false, boo
 		       : temporal ? "render/material/families/surface_world_temporal.vert"
 		                  : "render/material/families/surface_world.vert";
 	case SurfaceVertexLayout::kModel:
-		return shadow     ? "render/material/families/surface_model_shadow.vert"
+		return instanced  ? "render/material/families/surface_model_instanced.vert"
+		       : shadow   ? "render/material/families/surface_model_shadow.vert"
 		       : temporal ? "render/material/families/surface_model_temporal.vert"
 		                  : "render/material/families/surface_model.vert";
 	case SurfaceVertexLayout::kFlat:
@@ -274,6 +276,12 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::Pipeline(
 	         ( ( variant.terms & ( kSurfaceDirectionalLightmap | kSurfaceRuntimeDirect ) ) &&
 	             !( variant.terms & kSurfaceBakedLightmap ) ) ) )
 		return foundation::MakeUnexpected( SurfaceStatus::kInvalidRequest );
+	if ( variant.instanced && ( variant.layout != SurfaceVertexLayout::kModel ||
+	                              variant.temporal || variant.shadowDepth ) )
+	{
+		m_PipelineFailure = "only a model point that is not temporal or shadow depth instances";
+		return foundation::MakeUnexpected( SurfaceStatus::kInvalidRequest );
+	}
 	if ( !std::isfinite( variant.drawState.depthBiasConstant ) ||
 	     !std::isfinite( variant.drawState.depthBiasSlope ) )
 		return foundation::MakeUnexpected( SurfaceStatus::kInvalidRequest );
@@ -296,7 +304,7 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::Pipeline(
 	const bool withSsrTargets =
 	    ( variant.terms & kSurfaceSsrTargets ) != 0 && !( variant.terms & kSurfaceDepthNormal );
 	shaderlib::PipelineRecipe recipe = shaderlib::CoreRecipe(
-	    { VertexSource( variant.layout, variant.temporal, variant.shadowDepth ),
+	    { VertexSource( variant.layout, variant.temporal, variant.shadowDepth, variant.instanced ),
 	        variant.shadowDepth ? kShadowFragmentSource
 	        : variant.temporal  ? "render/material/families/surface_temporal.frag"
 	        : withSsrTargets    ? kSsrFragmentSource
@@ -342,6 +350,8 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::Pipeline(
 	std::vector<VertexBufferLayout> buffers = { { SurfaceVertexStride( variant.layout ), false } };
 	if ( variant.temporal )
 		buffers.push_back( buffers.front() );
+	if ( variant.instanced )
+		buffers.push_back( { kSurfaceInstanceStride, true } );
 	const BindGroupLayoutId layouts[] = {
 	    m_FrameLayout, m_ViewLayout, m_MaterialLayout, m_DrawLayout };
 	// The prepass writes the normal and roughness alone; the SSR targets are
@@ -379,6 +389,11 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::Pipeline(
 		attributes.assign( std::begin( modelAttributes ), std::end( modelAttributes ) );
 	if ( variant.temporal )
 		attributes.push_back( { 7, VertexFormat::kFloat3, 0, 1 } );
+	// The instance record's eight rows: object-to-clip at 8-11, object-to-
+	// world at 12-15 (surface_model_vertex.glsl's SURFACE_INSTANCED).
+	if ( variant.instanced )
+		for ( std::uint32_t row = 0; row < 8; ++row )
+			attributes.push_back( { 8 + row, VertexFormat::kFloat4, row * 16, 1 } );
 	desc.vertex = { attributes, buffers };
 	desc.topology = PrimitiveTopology::kTriangleList;
 	desc.raster.cull = variant.drawState.cull;
@@ -486,6 +501,20 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::VariantPipeline(
 		return foundation::MakeUnexpected( SurfaceStatus::kInvalidRequest );
 	SurfaceVariant variant = found->second;
 	variant.terms = ( variant.terms | add ) & ~remove;
+	return Pipeline( variant );
+}
+
+foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::InstancedPipeline(
+    PipelineId pipeline )
+{
+	const auto found = m_Shipped.find( pipeline.value );
+	if ( found == m_Shipped.end() )
+	{
+		m_PipelineFailure = "the surface program did not create the requested point";
+		return foundation::MakeUnexpected( SurfaceStatus::kInvalidRequest );
+	}
+	SurfaceVariant variant = found->second;
+	variant.instanced = true;
 	return Pipeline( variant );
 }
 

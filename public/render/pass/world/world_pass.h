@@ -640,6 +640,9 @@ struct WorldStats
 	// Screen prepasses whose world surfaces were drawn GPU-driven (the depth
 	// prepass into the target shares the lit pass's commands, in gpuViews).
 	std::uint64_t gpuPrepassViews = 0;
+	// Views whose opaque static model draws were drawn GPU-driven
+	// (instanced points, one indirect draw per material, mesh and level).
+	std::uint64_t gpuModelViews = 0;
 	std::uint64_t staticInstancesQueued = 0;
 	std::uint64_t staticDrawsDrawn = 0;
 	std::uint64_t posedModelsQueued = 0;
@@ -651,6 +654,9 @@ struct WorldStats
 	// ($treesway) cutout, whose cached tiles would hold a stale pose, or a
 	// material or depth point that is not ready.
 	std::uint64_t cutoutShadowDraws = 0;
+	// Of those, world surfaces drawn by multi-draw indirect runs (one per
+	// material per atlas view): the indirect calls.
+	std::uint64_t cutoutShadowIndirectDraws = 0;
 	std::uint64_t cutoutShadowRefused = 0;
 	std::uint64_t cutoutShadowNotResident = 0; // static props whose level is not on the device
 	std::string lastRefusal;

@@ -75,8 +75,9 @@
 #define SECURITY_CAMERA_TOTAL_TO_KNOCK_DOWN 33
 
 #ifdef PORTAL2
-// The Portal 2 header shares the floor turret's securityCameraState_e; the camera's
+// The Portal 2 header shares the floor turret's turretState_e; the camera's
 // extra dead state follows its last value (PreThink ignores the state).
+typedef turretState_e securityCameraState_e;
 #define TURRET_DEAD ( (securityCameraState_e)TURRET_STATE_TOTAL )
 #else
 //Turret states

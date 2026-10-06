@@ -200,6 +200,11 @@ def stage(args, workload):
     game = runtime / "portal2"
     shutil.copyfile(workload["demo_path"], game / workload["demo_name"])
     queries = ["%s" % name for name in workload["settings"]]
+    # Console variables set with --extra-arg +name value are queried too, so
+    # the console log records the value each run actually used.
+    queries += [argument[1:] for argument in args.extra_arg
+                if argument.startswith("+") and argument[1:] not in ("exec", "map") and
+                argument[1:].replace("_", "").isalnum()]
     timers = ["cl_render_debug_gpu_timers 1", "cl_render_debug_stats 1"] if args.profile else []
     # Startup cvars live here, not on the command line: ./play_p2 adds its own
     # switches, and the engine refuses command lines over 512 characters.

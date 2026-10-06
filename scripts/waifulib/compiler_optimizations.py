@@ -139,6 +139,10 @@ def options(opt):
 	grp.add_option('--release-march', action = 'store', dest = 'RELEASE_MARCH', default = 'native',
 		help = 'x86 ISA for --product-flavor=release: native (this host only) or x86-64-v3 (portable) [default: %default]')
 
+	grp.add_option('--release-skip', action = 'store', dest = 'RELEASE_SKIP', default = '',
+		help = 'comma list of release-flavor parts to leave out, for leave-one-out timing (RFC 0023 '
+		'R1): o3, march, instrumentation (LTO has --enable-lto) [default: none]')
+
 	grp.add_option('--enable-poly-opt', action = 'store_true', dest = 'POLLY', default = False,
 		help = 'enable polyhedral optimization if possible [default: %default]')
 
@@ -165,6 +169,13 @@ def configure(conf):
 	except IndexError:
 		conf.env.CC_VERSION = (0,)
 
+def release_skip(conf):
+	skip = set(part for part in conf.options.RELEASE_SKIP.split(',') if part)
+	unknown = skip - set(['o3', 'march', 'instrumentation'])
+	if unknown:
+		conf.fatal('--release-skip: unknown part(s) %s' % ', '.join(sorted(unknown)))
+	return skip
+
 @conf
 def get_optimization_flags(conf):
 	'''Returns a list of compile flags,
@@ -186,7 +197,10 @@ def get_optimization_flags(conf):
 		cflags   += conf.get_flags_by_compiler(POLLY_CFLAGS, conf.env.COMPILER_CC)
 
 	if conf.options.PRODUCT_FLAVOR == 'release':
-		cflags    += conf.get_flags_by_compiler(RELEASE_FLAVOR_CFLAGS, conf.env.COMPILER_CC)
+		flavor = conf.get_flags_by_compiler(RELEASE_FLAVOR_CFLAGS, conf.env.COMPILER_CC)
+		if 'o3' in release_skip(conf):
+			flavor = [flag for flag in flavor if flag != '-O3']
+		cflags    += flavor
 		linkflags += conf.get_flags_by_compiler(RELEASE_FLAVOR_LINKFLAGS, conf.env.COMPILER_CC)
 
 	return cflags, linkflags

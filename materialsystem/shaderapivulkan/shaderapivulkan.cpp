@@ -1171,6 +1171,9 @@ static void ReportUnimplementedEntries()
 	    {
 		    return a.first > b.first;
 	    } );
+#if defined( SOURCE_RELEASE_BUILD )
+	fprintf( stderr, "[vulkan] drawn pass routes: compiled out in release (RFC 0023)\n" );
+#endif
 	fprintf( stderr, "[vulkan] %zu drawn pass routes\n", routes.size() );
 	for ( size_t i = 0; i < routes.size() && i < 60; ++i )
 		fprintf( stderr, "[vulkan]   route draws=%-7llu %s (%s)\n",
@@ -9354,7 +9357,9 @@ void CShaderAPIVulkan::BeginPass( StateSnapshot_t snapshot )
 	// pixel-shader name and route the dynamic-mesh draw to the matching native
 	// Vulkan pipeline. This is how a material's chosen shader reaches the GPU.
 	const size_t index = static_cast<size_t>( ( snapshot >> 4 ) & 0x7FF );
+#if !defined( SOURCE_RELEASE_BUILD ) // RFC 0023: the route census is development instrumentation
 	g_CurrentRouteKey = index < g_snapshotRouteKeys.size() ? g_snapshotRouteKeys[index] : "";
+#endif
 	if ( index < g_snapshotShaders.size() )
 	{
 		const std::string &name = g_snapshotShaders[index];
@@ -9997,10 +10002,12 @@ void CShaderAPIVulkan::RenderPass( int nPass, int nPassCount )
 		// place; the vertex color carries the jitter (EmitToNativeQueue).
 		if ( g_CurrentShadowProjection )
 			g_VulkanContext.SetDynamicModulation( g_psConstants[1] );
+#if !defined( SOURCE_RELEASE_BUILD ) // RFC 0023: a map lookup per draw, development only
 		RouteCensus &census = g_RouteCensus[g_CurrentRouteKey];
 		++census.draws;
 		if ( census.material.empty() && g_pBoundMaterial )
 			census.material = g_pBoundMaterial->GetName();
+#endif
 		g_pRenderMesh->EmitDrawRanges();
 	}
 	if ( drawstatefixture::Instance().Enabled() )

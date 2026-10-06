@@ -118,6 +118,10 @@ struct ShadowDepthStats
 {
 	std::uint32_t views = 0;
 	std::uint32_t draws = 0;
+	// Multi-draw indirect calls that drew the views' material-less indexed
+	// casters, one per run on one mesh (with kMultiDrawIndirect and
+	// kIndirectFirstInstance; zero without them, every caster drawn alone).
+	std::uint32_t indirectDraws = 0;
 };
 
 class ShadowDepthRenderer
@@ -136,6 +140,9 @@ public:
 	    std::span<const ShadowDepthView> views );
 	void Collect( device::CompletionToken token );
 	std::uint32_t RecordFailures() const;
+	// Multi-draw indirect for material-less casters where the device claims
+	// it (default on; off draws every caster alone, the oracle).
+	void SetMultiDraw( bool enabled ) { m_MultiDraw = enabled; }
 
 	// Copies `tiles` (guard bands included) from atlas `from` to atlas `to`,
 	// both of `atlasSize` (written as kCopySource and kCopyDestination),
@@ -167,6 +174,7 @@ private:
 	device::BindGroupLayoutId m_DrawLayout;
 	std::map<std::uint32_t, device::PipelineId> m_Pipelines; // by vertex stride
 	device::PipelineId m_ClearPipeline;                      // float3 positions
+	bool m_MultiDraw = true;
 	mutable std::mutex m_PendingLock;
 	std::vector<device::BindGroupId> m_Pending;
 	std::uint32_t m_RecordFailures = 0;
