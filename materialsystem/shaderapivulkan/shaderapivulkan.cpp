@@ -355,6 +355,27 @@ static bool InitVulkanContext(
 	if ( statsPath && CommandLine()->FindParm( "-vkgputimers" ) &&
 	     !g_VulkanContext.EnableGpuTimers( &timerError ) )
 		Warning( "[NativeVulkan] GPU timers unavailable: %s\n", timerError.c_str() );
+#if defined( POSIX )
+	extern bool RenderDocTriggerListedFrame();
+	// -vkrenderdocframes N[,N...]: capture those stats frames under RenderDoc
+	// (tools/quality/demo_frames.py --renderdoc-frames).
+	if ( const char *rdcFrames =
+	         CommandLine()->ParmValue( "-vkrenderdocframes", (const char *)NULL ) )
+	{
+		std::vector<uint64_t> frames;
+		for ( const char *p = rdcFrames; *p; )
+		{
+			char *end = nullptr;
+			const unsigned long long frame = std::strtoull( p, &end, 10 );
+			if ( end == p )
+				break;
+			frames.push_back( frame );
+			p = *end == ',' ? end + 1 : end;
+		}
+		std::sort( frames.begin(), frames.end() );
+		g_VulkanContext.SetRenderDocFrames( std::move( frames ), RenderDocTriggerListedFrame );
+	}
+#endif
 	// -vkpassmerge 0 restores one render pass per view change (A/B, rollback).
 	g_VulkanContext.SetPassMerging( CommandLine()->ParmValue( "-vkpassmerge", 1 ) != 0 );
 	// Core plumbing: same-binary diagnostic control for complete-view batching.
@@ -398,13 +419,13 @@ CON_COMMAND( vk_frame_mark, "Label the current frame in the -vkframestats stream
 // (renderdoccmd capture ...), through RenderDoc's in-application API
 // (renderdoc_app.h, RENDERDOC_API_1_1_2: TriggerCapture is its 16th entry).
 // Scenario scripts use it to capture exactly the frame they compare.
-CON_COMMAND( vk_renderdoc_capture, "Capture the next frame with RenderDoc when running under it" )
+static bool RenderDocTriggerCapture( const char *who )
 {
 	void *pModule = dlopen( "librenderdoc.so", RTLD_NOW | RTLD_NOLOAD );
 	if ( !pModule )
 	{
-		Warning( "vk_renderdoc_capture: not running under RenderDoc\n" );
-		return;
+		Warning( "%s: not running under RenderDoc\n", who );
+		return false;
 	}
 	typedef int ( *GetApiFn )( int version, void **outApi );
 	GetApiFn pGetApi = reinterpret_cast<GetApiFn>( dlsym( pModule, "RENDERDOC_GetAPI" ) );
@@ -413,11 +434,22 @@ CON_COMMAND( vk_renderdoc_capture, "Capture the next frame with RenderDoc when r
 	const int kTriggerCaptureSlot = 15;
 	if ( !pGetApi || !pGetApi( kApiVersion_1_1_2, reinterpret_cast<void **>( &pApi ) ) || !pApi )
 	{
-		Warning( "vk_renderdoc_capture: RenderDoc API 1.1.2 unavailable\n" );
-		return;
+		Warning( "%s: RenderDoc API 1.1.2 unavailable\n", who );
+		return false;
 	}
 	reinterpret_cast<void ( * )()>( pApi[kTriggerCaptureSlot] )();
-	Msg( "vk_renderdoc_capture: capturing the next frame\n" );
+	return true;
+}
+
+CON_COMMAND( vk_renderdoc_capture, "Capture the next frame with RenderDoc when running under it" )
+{
+	if ( RenderDocTriggerCapture( "vk_renderdoc_capture" ) )
+		Msg( "vk_renderdoc_capture: capturing the next frame\n" );
+}
+
+bool RenderDocTriggerListedFrame()
+{
+	return RenderDocTriggerCapture( "-vkrenderdocframes" );
 }
 #endif
 

@@ -1417,6 +1417,11 @@ public:
 	bool EnableGpuTimers( std::string *outError );
 	void CloseFrameStats();
 	void MarkFrame( const char *label );
+	// -vkrenderdocframes: capture the listed stats frames under RenderDoc.
+	// `trigger` (RenderDoc's TriggerCapture) runs right after frame N-1's
+	// present, so the capture holds exactly stats frame N, whose stats line
+	// then carries "renderdoc_capture":true. `frames` must be ascending.
+	void SetRenderDocFrames( std::vector<uint64_t> frames, bool ( *trigger )() );
 	FrameCost &CurrentFrameCost() { return m_frameCost; }
 	// The costs of the last finished frame (kept when its stats are written).
 	const FrameCost &LastFrameCost() const { return m_lastFrameCost; }
@@ -1442,6 +1447,9 @@ private:
 	uint64_t m_frameBeginCpuUs = 0;
 	uint64_t m_prevFrameBeginCpuUs = 0;
 	std::string m_frameMarks;
+	std::vector<uint64_t> m_renderDocFrames; // ascending, not yet captured
+	bool ( *m_renderDocTrigger )() = nullptr;
+	bool m_renderDocArmed = false; // the frame being built is being captured
 	VkQueryPool m_timestampPool = VK_NULL_HANDLE;
 	double m_timestampPeriodNs = 0.0;
 	uint64_t m_timestampMask = 0;

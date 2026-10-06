@@ -10448,6 +10448,12 @@ void CVulkanContext::MarkFrame( const char *label )
 	}
 }
 
+void CVulkanContext::SetRenderDocFrames( std::vector<uint64_t> frames, bool ( *trigger )() )
+{
+	m_renderDocFrames = std::move( frames );
+	m_renderDocTrigger = trigger;
+}
+
 void CVulkanContext::WriteFrameStats( uint64_t endUs )
 {
 	if ( m_frameStatsFile )
@@ -10534,6 +10540,8 @@ void CVulkanContext::WriteFrameStats( uint64_t endUs )
 		}
 		if ( !m_frameMarks.empty() )
 			std::fprintf( m_frameStatsFile, ",\"mark\":\"%s\"", m_frameMarks.c_str() );
+		if ( m_renderDocArmed )
+			std::fputs( ",\"renderdoc_capture\":true", m_frameStatsFile );
 		std::fputs( "}\n", m_frameStatsFile );
 		// Bounded loss if the process is killed rather than shut down.
 		if ( m_statsFrame % 60 == 0 )
@@ -10541,6 +10549,15 @@ void CVulkanContext::WriteFrameStats( uint64_t endUs )
 	}
 	m_gpuResultFrame = 0;
 	m_frameMarks.clear();
+	// This frame is presented: arm RenderDoc for the next one if it is listed.
+	m_renderDocArmed = false;
+	while ( !m_renderDocFrames.empty() && m_renderDocFrames.front() <= m_statsFrame )
+		m_renderDocFrames.erase( m_renderDocFrames.begin() );
+	if ( !m_renderDocFrames.empty() && m_renderDocFrames.front() == m_statsFrame + 1 )
+	{
+		m_renderDocFrames.erase( m_renderDocFrames.begin() );
+		m_renderDocArmed = m_renderDocTrigger && m_renderDocTrigger();
+	}
 	m_lastFrameCost = m_frameCost;
 	m_frameCost.Reset();
 	m_prevFrameBeginUs = m_frameBeginUs;

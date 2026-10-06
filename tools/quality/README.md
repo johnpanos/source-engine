@@ -282,6 +282,35 @@ python3 -m unittest tools/quality/tests/test_frame_pacing.py
 
 Evidence and findings: `RFC/0001-native-vulkan-frame-pacing-progress.md`.
 
+### Recorded demos (`demo_frames.py`)
+
+`demo_frames.py` plays a recorded Portal 2 demo
+([`portal2-intro4-demo-v1`](../../quality/workloads/portal2-intro4-demo-v1/workload.json),
+the user's `sp_a1_intro4_relit` recording) in real time through `./play_p2` in a
+private headless mutter and the launch sandbox, and reports every presented
+frame of the playback window: percentiles, 1%/0.1% lows, hitch counts, the
+GPU-bound share, CPU costs and worst frames. The effective settings are queried
+in-game and must equal the recording's. Diagnostic only: no budget row.
+
+```sh
+python3 tools/quality/demo_frames.py run --runtime /tmp/claude-1000/i4rt --out /tmp/claude-1000/i4/a1
+python3 tools/quality/demo_frames.py run --runtime /tmp/claude-1000/i4rt --no-stage \
+  --out /tmp/claude-1000/i4/p1 --profile          # backend + core per-pass GPU timers
+python3 tools/quality/demo_frames.py run --runtime /tmp/claude-1000/i4rt --no-stage \
+  --out /tmp/claude-1000/i4/rd --renderdoc-frames 900,930
+python3 tools/quality/demo_frames.py analyze /tmp/claude-1000/i4/a1
+python3 -m unittest tools/quality/tests/test_demo_frames.py
+```
+
+`--renderdoc-frames` runs the game under `renderdoccmd` and passes the native
+backend's `-vkrenderdocframes`, which triggers RenderDoc right after frame N-1's
+present so each capture is exactly `-vkframestats` frame N (tagged
+`"renderdoc_capture":true`). Inspect with `tools/renderdoc/rdc.py`. Frame numbers
+drift by a few between runs, and a capture run is not a timing measurement.
+Captures of this map are about 1.5 GB each. The first run against a cold
+driver shader cache shows multi-second first-use stalls; compare warm runs,
+interleaved.
+
 The hard desktop High target is `linux-desktop-high-120` in
 [`quality/budgets/render-v1.json`](../../quality/budgets/render-v1.json).
 [`portal2-linux-native-vulkan-high.json`](../../quality/product_profiles/portal2-linux-native-vulkan-high.json)

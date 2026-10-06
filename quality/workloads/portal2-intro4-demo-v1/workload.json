@@ -1,0 +1,26 @@
+{
+  "schema": "portal2-demo/v1",
+  "description": "Recorded gameplay demo through the published sp_a1_intro4_relit map, recorded by the user on ./play_p2_fsr (2026-10-05) as the fixture for in-game performance and stutter work. Played back in real time (playdemo) by tools/quality/demo_frames.py; every presented frame of the playback window is reported. Diagnostic workload: no budget row, no acceptance claim.",
+  "demo": "../../fixtures/demos/sp_a1_intro4_relit.dem",
+  "demo_sha256": "d88908c20baa8fb84f3594a9437643e6686e96e088444505f2786be34cfca978",
+  "map": "sp_a1_intro4_relit",
+  "build": "build-p2-fsr",
+  "fsr": true,
+  "width": 1920,
+  "height": 1080,
+  "refresh_hz": 60,
+  "timeout_seconds": 600,
+  "settings": {
+    "r_temporal_scale": "0",
+    "mat_antialias": "0",
+    "mat_queue_mode": "2",
+    "r_core_world": "1"
+  },
+  "playback_window": {
+    "description": "The demo carries no frame marks. The window starts at the first frame of the first run of settle_frames consecutive frames that each draw the world (records above min_records) and present within settle_interval_ms; level-load frames come before it. The final frame (the quit) is excluded.",
+    "settle_frames": 30,
+    "settle_interval_ms": 250,
+    "min_records": 10
+  },
+  "hitch_thresholds_ms": [33.3, 50, 100, 250]
+}

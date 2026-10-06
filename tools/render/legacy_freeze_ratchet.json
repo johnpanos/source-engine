@@ -2031,6 +2031,7 @@
       "-vkopaquebatch",
       "-vkpassmerge",
       "-vkpipelinecache",
+      "-vkrenderdocframes",
       "-vkvalidate"
     ]
   },
