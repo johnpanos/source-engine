@@ -765,8 +765,10 @@ Keep the table concise and link details below or from the domain progress file.
     directly.
   - Since then (2026-09-25): WMSH draws by default (`r_worldmesh_draw 2`) with
     cone and occlusion culling; `RPRB`, `PRBV`, `RTRN` and `SDFV` lumps exist.
-    Installed encodings differ from the RFC's plan (`LMAP` is one RGBA16F
-    page, `RPRB` a raw atlas, WMSH keeps face IDs). See
+    Installed encodings differ from the RFC's plan (`LMAP` v3 is BC6H
+    irradiance and BC7 gradient pages, `RPRB` v7 BC6H radiance bands with
+    RGBA16F relight bands, both decoded on the CPU for now; WMSH keeps face
+    IDs). See
     [RFC 0008 current state](RFC/0008-progress.md). R57–R58 remain planned.
 
 - R48-BAKER: `planned` (2026-09-24, user direction). This is one
