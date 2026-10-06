@@ -100,6 +100,14 @@ def default_tool():
     return None
 
 
+# The pinned encoder refuses a source wider or taller than 16384 texels
+# (basis_universal's BASISU_MAX_SUPPORTED_TEXTURE_DIMENSION). Taller images go
+# through in bands of whole block rows: blocks are independent and stored
+# row-major, so the bands' blocks concatenate to the whole image's.
+MAX_ENCODE_DIMENSION = 16384
+MAX_ENCODE_ROWS = MAX_ENCODE_DIMENSION  # a multiple of four
+
+
 def block_bytes(target, width, height):
     """Bytes of `target` blocks covering width x height (partial blocks padded)."""
     return ((width + 3) // 4) * ((height + 3) // 4) * BLOCK_BYTES[target]
@@ -114,6 +122,23 @@ def _ktx2_level0(path, expected_format):
         raise CodecError("ktx produced VkFormat %d, expected %d" % (vk_format, expected_format))
     offset, length, _ = struct.unpack_from("<QQQ", data, 80)
     return data[offset:offset + length]
+
+
+def _encode_bands(tool, texels, vk_source, codec, target, extra=()):
+    """Blocks of `texels` (height, width, channels; the source format's
+    dtype), encoded in bands of MAX_ENCODE_ROWS rows."""
+    height, width = texels.shape[:2]
+    if width > MAX_ENCODE_DIMENSION:
+        raise CodecError("%d texels wide: the encoder takes at most %d"
+                         % (width, MAX_ENCODE_DIMENSION))
+    if MAX_ENCODE_ROWS % 4:
+        raise CodecError("bands must be whole block rows")
+    blocks = []
+    for top in range(0, height, MAX_ENCODE_ROWS):
+        band = np.ascontiguousarray(texels[top:top + MAX_ENCODE_ROWS])
+        blocks.append(_encode(tool, band.tobytes(), vk_source, width, band.shape[0], codec, target,
+                              extra))
+    return b"".join(blocks)
 
 
 def _encode(tool, raw, vk_source, width, height, codec, target, extra=()):
@@ -144,8 +169,7 @@ def encode_bc6h(tool, rgb):
         raise CodecError("BC6H takes finite non-negative RGB")
     height, width, _ = rgb.shape
     rgba = np.concatenate([rgb, np.ones((height, width, 1), np.float32)], axis=2)
-    return _encode(tool, rgba.astype("<f2").tobytes(), "R16G16B16A16_SFLOAT", width, height,
-                   "uastc-hdr-4x4", "bc6hu")
+    return _encode_bands(tool, rgba.astype("<f2"), "R16G16B16A16_SFLOAT", "uastc-hdr-4x4", "bc6hu")
 
 
 def encode_bc7(tool, rgba8):
@@ -153,9 +177,7 @@ def encode_bc7(tool, rgba8):
     rgba8 = np.ascontiguousarray(rgba8, dtype=np.uint8)
     if rgba8.ndim != 3 or rgba8.shape[2] != 4:
         raise CodecError("BC7 takes uint8 RGBA")
-    height, width, _ = rgba8.shape
-    return _encode(tool, rgba8.tobytes(), "R8G8B8A8_UNORM", width, height, "uastc", "bc7",
-                   ("--uastc-quality", "4"))
+    return _encode_bands(tool, rgba8, "R8G8B8A8_UNORM", "uastc", "bc7", ("--uastc-quality", "4"))
 
 
 def encode_bc4(tool, r8):
@@ -163,11 +185,9 @@ def encode_bc4(tool, r8):
     r8 = np.ascontiguousarray(r8, dtype=np.uint8)
     if r8.ndim != 2:
         raise CodecError("BC4 takes one uint8 channel")
-    height, width = r8.shape
     rgba = np.repeat(r8[..., None], 4, axis=2)
     rgba[..., 3] = 255
-    return _encode(tool, rgba.tobytes(), "R8G8B8A8_UNORM", width, height, "uastc", "bc4",
-                   ("--uastc-quality", "4"))
+    return _encode_bands(tool, rgba, "R8G8B8A8_UNORM", "uastc", "bc4", ("--uastc-quality", "4"))
 
 
 _library = None

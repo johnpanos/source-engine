@@ -40,6 +40,31 @@ class RoundTripTest(unittest.TestCase):
         back = bc_codec.decode_bc4(bc_codec.encode_bc4(TOOL, mask), 96, 64)
         self.assertLessEqual(np.abs(back.astype(int) - mask.astype(int)).max(), 2)
 
+    def test_tall_images_encode_in_bands_with_the_same_blocks(self):
+        hdr = (0.2 + 4 * self.x * self.y)[..., None] * np.array([1.0, 0.8, 0.6], np.float32)
+        rgba = np.stack([self.x * 255, self.y * 255, self.x * 0 + 64, self.x * 0 + 255],
+                        -1).astype(np.uint8)
+        whole = (bc_codec.encode_bc6h(TOOL, hdr), bc_codec.encode_bc7(TOOL, rgba),
+                 bc_codec.encode_bc4(TOOL, rgba[..., 0]))
+        saved = bc_codec.MAX_ENCODE_ROWS
+        try:
+            bc_codec.MAX_ENCODE_ROWS = 24  # 64 rows: bands of 24, 24 and 16
+            banded = (bc_codec.encode_bc6h(TOOL, hdr), bc_codec.encode_bc7(TOOL, rgba),
+                      bc_codec.encode_bc4(TOOL, rgba[..., 0]))
+        finally:
+            bc_codec.MAX_ENCODE_ROWS = saved
+        self.assertEqual(banded, whole)
+
+    def test_the_encoder_limit_is_respected(self):
+        # Taller than the encoder's 16384 rows: two bands, every block present.
+        tall = np.full((16392, 4, 4), 128, np.uint8)
+        blocks = bc_codec.encode_bc7(TOOL, tall)
+        self.assertEqual(len(blocks), bc_codec.block_bytes("bc7", 4, 16392))
+        back = bc_codec.decode_bc7(blocks, 4, 16392)
+        self.assertLessEqual(np.abs(back.astype(int) - 128).max(), 1)
+        with self.assertRaises(bc_codec.CodecError):
+            bc_codec.encode_bc4(TOOL, np.zeros((4, 16388), np.uint8))
+
     def test_invalid_input_is_refused(self):
         with self.assertRaises(bc_codec.CodecError):
             bc_codec.encode_bc6h(TOOL, -np.ones((4, 4, 3), np.float32))
