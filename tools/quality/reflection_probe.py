@@ -2,23 +2,15 @@
 packager and `world_pbr.frag`.
 
 A probe is rendered as six 90-degree cube faces at one point (USD/Source Z-up
-world), resampled to the pipeline's equirect convention (the same one as
-`pbrt_scene.environment_equirect`: row 0 is the zenith, u = 0.5 - phi / 2pi
-with phi = atan2(y, x)), and reduced to a GGX-prefiltered roughness mip chain:
+world), resampled to a cube in the Vulkan convention (`CUBE_FACES`, sampled by
+the world direction), and reduced to a GGX-prefiltered roughness mip chain:
 mip i of M holds the scene convolved with the GGX lobe of perceptual roughness
 i / (M - 1) (alpha = roughness^2) under the split-sum N = V = R assumption, by
-filtered importance sampling of a box-reduced source pyramid. `world_pbr.frag`
-selects lod = roughness * (M - 1), so a rough surface no longer mirrors small
-bright emitters as hot spots the way the former blurred box mips did.
-
-Legacy carrier: maps built before RPRB keep the chain in a band of rows
-reserved at the top of the LMAP atlas (texel row 0 up, the rows the shader
-fetches first). Mip i is W_i x W_i/2 texels at x = sum of earlier widths,
-y = 0. Texel (atlas_width - 1, 0) is the marker: RGBA = (mip count, mip-0
-width, band rows, -1). A real lightmap texel never has negative alpha, so the
-shader enables probe specular only when it finds it. New maps carry their
-probes in the RPRB lump instead (`reflection_probe_set.py`), with the same mip
-layout per probe.
+filtered importance sampling of a box-reduced source pyramid. The core's
+surface program selects lod = roughness * (M - 1) of the RPRB cube array, so a
+rough surface no longer mirrors small bright emitters as hot spots the way the
+former blurred box mips did. (Before RPRB v8 the chain was an equirect strip
+atlas; that form and the LMAP-band carrier are gone.)
 
 Parallax correction (the per-probe math `world_pbr_probe.glsl` mirrors):
 
@@ -62,65 +54,6 @@ def face_basis(name):
     return forward, up, right
 
 
-def equirect_directions(width):
-    height = width // 2
-    u = (np.arange(width) + 0.5) / width
-    v = (np.arange(height) + 0.5) / height
-    u, v = np.meshgrid(u, v)
-    phi = (0.5 - u) * 2.0 * math.pi
-    elevation = (0.5 - v) * math.pi
-    return np.stack((np.cos(elevation) * np.cos(phi), np.cos(elevation) * np.sin(phi),
-                     np.sin(elevation)), axis=-1)
-
-
-def cube_to_equirect(faces, width, channels=3):
-    """faces: name -> (N, N, C) image (C >= 3; 3 channels are kept unless
-    `channels` says otherwise), row 0 at the face's `up` edge; nearest texel."""
-    directions = equirect_directions(width).reshape(-1, 3)
-    result = np.zeros((directions.shape[0], channels), dtype=np.float64)
-    best = np.full(directions.shape[0], -np.inf)
-    for name, image in faces.items():
-        forward, up, right = face_basis(name)
-        depth = directions @ forward
-        chosen = depth > best
-        best = np.where(chosen, depth, best)
-        size = image.shape[0]
-        safe = np.maximum(depth, 1e-9)
-        x = (directions @ right) / safe
-        y = (directions @ up) / safe
-        column = np.clip(((x + 1) / 2 * size).astype(np.int64), 0, size - 1)
-        row = np.clip(((1 - y) / 2 * size).astype(np.int64), 0, size - 1)
-        result[chosen] = image[row[chosen], column[chosen], :channels]
-    return result.reshape(width // 2, width, channels)
-
-
-def box_pyramid(equirect, minimum_width):
-    levels = [equirect]
-    while levels[-1].shape[1] // 2 >= minimum_width:
-        previous = levels[-1]
-        height, width = previous.shape[0] // 2, previous.shape[1] // 2
-        levels.append(previous[:height * 2, :width * 2].reshape(
-            height, 2, width, 2, previous.shape[2]).mean(axis=(1, 3)))
-    return levels
-
-
-def sample_equirect(image, directions):
-    """Bilinear lookup (longitude wraps, latitude clamps) of unit directions."""
-    height, width = image.shape[:2]
-    phi = np.arctan2(directions[:, 1], directions[:, 0])
-    elevation = np.arcsin(np.clip(directions[:, 2], -1.0, 1.0))
-    x = (0.5 - phi / (2 * math.pi)) * width - 0.5
-    y = np.clip((0.5 - elevation / math.pi) * height - 0.5, 0.0, height - 1.0)
-    x0 = np.floor(x).astype(np.int64)
-    y0 = np.floor(y).astype(np.int64)
-    fx, fy = (x - x0)[:, None], (y - y0)[:, None]
-    x1, y1 = (x0 + 1) % width, np.minimum(y0 + 1, height - 1)
-    x0 %= width
-    top = image[y0, x0] * (1 - fx) + image[y0, x1] * fx
-    bottom = image[y1, x0] * (1 - fx) + image[y1, x1] * fx
-    return top * (1 - fy) + bottom * fy
-
-
 def hammersley(count):
     bits = np.arange(count, dtype=np.uint32)
     bits = ((bits << 16) | (bits >> 16)) & 0xFFFFFFFF
@@ -131,57 +64,177 @@ def hammersley(count):
     return np.arange(count) / count, bits.astype(np.float64) / 2.0 ** 32
 
 
-def ggx_prefilter(pyramid, width, roughness, samples):
-    """One mip: GGX(alpha = roughness^2) convolution with N = V = R."""
-    directions = equirect_directions(width).reshape(-1, 3)
+# ------------------------------------------------------------ cube layout
+#
+# RPRB v8 stores each probe as a cube (layer `rank`-independent: layer = probe
+# index) in the Vulkan cube convention, sampled by world direction with no
+# remap: layer faces are +X -X +Y -Y +Z -Z, and a direction's face and
+# (s, t) are the Vulkan specification's cube map face selection table
+# (a texel (column, row) sits at s = (column + 0.5) / size, t = (row + 0.5) /
+# size). World space is the bake's (Z up); nothing else is converted.
+
+CUBE_FACES = ("px", "nx", "py", "ny", "pz", "nz")
+
+
+def cube_vectors(face, sc, tc):
+    """Unnormalized directions of cube face index array `face` at tangent-plane
+    coordinates (sc, tc) in [-1, 1] (the inverse of `cube_select`)."""
+    one = np.ones_like(sc)
+    x = np.select([face == 0, face == 1, face == 2, face == 3, face == 4],
+                  [one, -one, sc, sc, sc], -sc)
+    y = np.select([face == 0, face == 1, face == 2, face == 3, face == 4],
+                  [-tc, -tc, one, -one, -tc], -tc)
+    z = np.select([face == 0, face == 1, face == 2, face == 3, face == 4],
+                  [-sc, sc, tc, -tc, one], -one)
+    return np.stack((x, y, z), axis=-1)
+
+
+def cube_face_directions(face, size):
+    """(size, size, 3) unit directions of a cube face's texel centres."""
+    s = (np.arange(size) + 0.5) / size * 2.0 - 1.0
+    sc, tc = np.meshgrid(s, s)  # sc varies along columns, tc along rows
+    d = cube_vectors(np.full(sc.shape, CUBE_FACES.index(face)), sc, tc)
+    return d / np.linalg.norm(d, axis=-1, keepdims=True)
+
+
+def cube_select(directions):
+    """(face index, s, t) of directions per the Vulkan face selection table;
+    s and t are in [0, 1]."""
+    d = np.asarray(directions, dtype=np.float64)
+    a = np.abs(d)
+    x_major = (a[..., 0] >= a[..., 1]) & (a[..., 0] >= a[..., 2])
+    y_major = ~x_major & (a[..., 1] >= a[..., 2])
+    face = np.where(x_major, np.where(d[..., 0] >= 0, 0, 1),
+                    np.where(y_major, np.where(d[..., 1] >= 0, 2, 3),
+                             np.where(d[..., 2] >= 0, 4, 5)))
+    ma = np.where(x_major, a[..., 0], np.where(y_major, a[..., 1], a[..., 2]))
+    ma = np.maximum(ma, 1e-30)
+    x, y, z = d[..., 0], d[..., 1], d[..., 2]
+    sc = np.select([face == 0, face == 1, face == 2, face == 3, face == 4],
+                   [-z, z, x, x, x], -x)
+    tc = np.select([face == 0, face == 1, face == 2, face == 3, face == 4],
+                   [-y, -y, z, -z, -y], -y)
+    return face, (sc / ma + 1.0) / 2.0, (tc / ma + 1.0) / 2.0
+
+
+def faces_to_cube(faces, size, channels=3):
+    """The bake's face images (`FACES`, name -> (N, N, C), row 0 at the face's
+    up edge) resampled, nearest texel, to a (6, size, size, channels) cube."""
+    result = np.zeros((6, size, size, channels), dtype=np.float64)
+    for index, name in enumerate(CUBE_FACES):
+        directions = cube_face_directions(name, size).reshape(-1, 3)
+        best = np.full(directions.shape[0], -np.inf)
+        out = np.zeros((directions.shape[0], channels))
+        for source, image in faces.items():
+            forward, up, right = face_basis(source)
+            depth = directions @ forward
+            chosen = depth > best
+            best = np.where(chosen, depth, best)
+            n = image.shape[0]
+            safe = np.maximum(depth, 1e-9)
+            column = np.clip((((directions @ right) / safe + 1) / 2 * n).astype(np.int64), 0, n - 1)
+            row = np.clip(((1 - (directions @ up) / safe) / 2 * n).astype(np.int64), 0, n - 1)
+            out[chosen] = image[row[chosen], column[chosen], :channels]
+        result[index] = out.reshape(size, size, channels)
+    return result
+
+
+def cube_pyramid(cube, minimum_size):
+    """Box-filtered levels (2x2 per face) down to `minimum_size`."""
+    levels = [cube]
+    while levels[-1].shape[1] // 2 >= minimum_size:
+        previous = levels[-1]
+        size = previous.shape[1] // 2
+        levels.append(previous.reshape(6, size, 2, size, 2, previous.shape[3]).mean(axis=(2, 4)))
+    return levels
+
+
+def sample_cube(cube, directions):
+    """Bilinear, seamless lookup of unit directions in a (6, N, N, C) cube:
+    taps beyond a face's edge re-select the face by direction."""
+    n = cube.shape[1]
+    d = np.asarray(directions, dtype=np.float64).reshape(-1, 3)
+    face, s, t = cube_select(d)
+    x = s * n - 0.5
+    y = t * n - 0.5
+    x0 = np.floor(x).astype(np.int64)
+    y0 = np.floor(y).astype(np.int64)
+    fx, fy = (x - x0)[:, None], (y - y0)[:, None]
+    result = np.zeros((d.shape[0], cube.shape[3]))
+    for dx, dy, weight in ((0, 0, (1 - fx) * (1 - fy)), (1, 0, fx * (1 - fy)),
+                           (0, 1, (1 - fx) * fy), (1, 1, fx * fy)):
+        cx, cy = x0 + dx, y0 + dy
+        inside = (cx >= 0) & (cx < n) & (cy >= 0) & (cy < n)
+        tap_face = face.copy()
+        tcx, tcy = np.clip(cx, 0, n - 1), np.clip(cy, 0, n - 1)
+        outside = ~inside
+        if outside.any():
+            # The tap's direction on the tangent plane of its own face.
+            sc = ((cx[outside] + 0.5) / n) * 2 - 1
+            tc = ((cy[outside] + 0.5) / n) * 2 - 1
+            vec = cube_vectors(face[outside], sc, tc)
+            nface, ns, nt = cube_select(vec)
+            tap_face[outside] = nface
+            tcx[outside] = np.clip((ns * n).astype(np.int64), 0, n - 1)
+            tcy[outside] = np.clip((nt * n).astype(np.int64), 0, n - 1)
+        result += cube[tap_face, tcy, tcx] * weight
+    return result
+
+
+def ggx_prefilter_cube(pyramid, size, roughness, samples):
+    """One cube mip of `size`: the GGX convolution of `ggx_prefilter` over a
+    cube pyramid. Returns (6, size, size, 3)."""
+    out = np.zeros((6, size, size, 3))
     alpha = roughness * roughness
     first, second = hammersley(samples)
     phi = 2 * math.pi * first
     cos_theta = np.sqrt((1 - second) / (1 + (alpha * alpha - 1) * second))
     sin_theta = np.sqrt(1 - cos_theta * cos_theta)
-    # Sample half vectors in a local frame (z = N); L = 2 (V.H) H - V with V = N.
     local_h = np.stack((sin_theta * np.cos(phi), sin_theta * np.sin(phi), cos_theta), axis=1)
     local_l = 2 * cos_theta[:, None] * local_h - np.array((0.0, 0.0, 1.0))
     n_dot_l = local_l[:, 2]
     keep = n_dot_l > 0
     local_l, n_dot_l, cos_theta = local_l[keep], n_dot_l[keep], cos_theta[keep]
-    # Filtered importance sampling: read a coarser source where a sample's
-    # solid angle covers several source texels (pdf(L) = D(H) / 4 with V = N).
     d = alpha * alpha / (math.pi * ((cos_theta ** 2) * (alpha * alpha - 1) + 1) ** 2)
     sample_solid_angle = 1.0 / (len(first) * d / 4.0 + 1e-12)
     base = pyramid[0]
-    texel_solid_angle = 4 * math.pi / (base.shape[0] * base.shape[1])
+    texel_solid_angle = 4 * math.pi / (6 * base.shape[1] * base.shape[2])
     lods = np.clip(0.5 * np.log2(sample_solid_angle / texel_solid_angle) + 1.0, 0,
                    len(pyramid) - 1)
-    up = np.where(np.abs(directions[:, 2:3]) < 0.999, np.array((0.0, 0.0, 1.0)),
-                  np.array((1.0, 0.0, 0.0)))
-    tangent = np.cross(up, directions)
-    tangent /= np.linalg.norm(tangent, axis=1, keepdims=True)
-    bitangent = np.cross(directions, tangent)
-    total = np.zeros((directions.shape[0], 3))
-    weight = 0.0
-    for k in range(len(local_l)):
-        world = (local_l[k, 0] * tangent + local_l[k, 1] * bitangent +
-                 local_l[k, 2] * directions)
-        level = lods[k]
-        lower = int(math.floor(level))
-        upper = min(lower + 1, len(pyramid) - 1)
-        blend = level - lower
-        radiance = sample_equirect(pyramid[lower], world) * (1 - blend) + \
-            sample_equirect(pyramid[upper], world) * blend
-        total += radiance * n_dot_l[k]
-        weight += n_dot_l[k]
-    return (total / weight).reshape(width // 2, width, 3)
+    for index, name in enumerate(CUBE_FACES):
+        directions = cube_face_directions(name, size).reshape(-1, 3)
+        up = np.where(np.abs(directions[:, 2:3]) < 0.999, np.array((0.0, 0.0, 1.0)),
+                      np.array((1.0, 0.0, 0.0)))
+        tangent = np.cross(up, directions)
+        tangent /= np.linalg.norm(tangent, axis=1, keepdims=True)
+        bitangent = np.cross(directions, tangent)
+        total = np.zeros((directions.shape[0], 3))
+        weight = 0.0
+        for k in range(len(local_l)):
+            world = (local_l[k, 0] * tangent + local_l[k, 1] * bitangent +
+                     local_l[k, 2] * directions)
+            level = lods[k]
+            lower = int(math.floor(level))
+            upper = min(lower + 1, len(pyramid) - 1)
+            blend = level - lower
+            radiance = sample_cube(pyramid[lower], world) * (1 - blend)
+            if blend > 0:
+                radiance += sample_cube(pyramid[upper], world) * blend
+            total += radiance * n_dot_l[k]
+            weight += n_dot_l[k]
+        out[index] = (total / weight).reshape(size, size, 3)
+    return out
 
 
-def mip_chain(equirect, minimum_width=4, samples=256):
-    """GGX-prefiltered chain; mip i has perceptual roughness i / (count - 1)."""
-    pyramid = box_pyramid(equirect, minimum_width)
+def cube_mip_chain(cube, minimum_size=4, samples=256):
+    """GGX-prefiltered cube chain; mip i has perceptual roughness
+    i / (count - 1). Level 0 is `cube` unchanged."""
+    pyramid = cube_pyramid(cube, minimum_size)
     count = len(pyramid)
-    mips = [equirect]
+    mips = [cube]
     for index in range(1, count):
-        mips.append(ggx_prefilter(pyramid, pyramid[index].shape[1], index / (count - 1),
-                                  samples))
+        mips.append(ggx_prefilter_cube(pyramid, pyramid[index].shape[1], index / (count - 1),
+                                       samples))
     return mips
 
 
@@ -208,7 +261,7 @@ def face_samples(depths):
     """(directions, distances, solid-angle weights) of six depth faces.
 
     `depths`: name -> (N, N) ray distances from the capture point, row 0 at
-    the face's `up` edge (the layout `cube_to_equirect` reads). Cycles' depth
+    the face's `up` edge (the layout `faces_to_cube` reads). Cycles' depth
     pass is planar (camera z); `pbrt_reflection_probe.py` converts it.
     """
     directions, distances, weights = [], [], []
@@ -424,35 +477,11 @@ def corrected_direction(lookup, reflected, roughness):
     return mixed / np.maximum(np.linalg.norm(mixed, axis=1, keepdims=True), 1e-12)
 
 
-def equirect_uv(directions):
-    """world_pbr_probe.glsl's equirect coordinates of unit directions."""
-    directions = np.asarray(directions, dtype=np.float64)
-    return np.stack((0.5 - np.arctan2(directions[:, 1], directions[:, 0]) / (2 * math.pi),
-                     0.5 - np.arcsin(np.clip(directions[:, 2], -1.0, 1.0)) / math.pi), axis=1)
-
-
-def sample_level(mip, uv, channels=3):
-    """Bilinear fetch as the shader does: texel coordinates clamped to
-    [0.5, extent - 0.5] (no longitude wrap), then linear filtering."""
-    height, width = mip.shape[:2]
-    extent = np.array((width, height), dtype=np.float64)
-    texel = np.clip(uv * extent, 0.5, extent - 0.5) - 0.5
-    x0 = np.floor(texel[:, 0]).astype(np.int64)
-    y0 = np.floor(texel[:, 1]).astype(np.int64)
-    fx, fy = (texel[:, 0] - x0)[:, None], (texel[:, 1] - y0)[:, None]
-    x1, y1 = np.minimum(x0 + 1, width - 1), np.minimum(y0 + 1, height - 1)
-    c = slice(0, channels)
-    top = mip[y0, x0, c] * (1 - fx) + mip[y0, x1, c] * fx
-    bottom = mip[y1, x0, c] * (1 - fx) + mip[y1, x1, c] * fx
-    return top * (1 - fy) + bottom * fy
-
-
-def sample_chain(mips, directions, roughness, channels=3):
-    """The shader's split-sum probe fetch: lod = roughness * (M - 1),
-    interpolated between the two nearest mips."""
-    roughness = np.broadcast_to(np.asarray(roughness, dtype=np.float64),
-                                (len(directions),))
-    uv = equirect_uv(directions)
+def sample_cube_chain(mips, directions, roughness, channels=3):
+    """The shader's split-sum probe fetch on a cube chain (mips of
+    (6, N, N, C)): lod = roughness * (M - 1), trilinear between the two
+    nearest mips, each bilinear and seamless."""
+    roughness = np.broadcast_to(np.asarray(roughness, dtype=np.float64), (len(directions),))
     lod = np.clip(roughness, 0.0, 1.0) * (len(mips) - 1)
     lower = np.floor(lod).astype(np.int64)
     upper = np.minimum(lower + 1, len(mips) - 1)
@@ -460,8 +489,10 @@ def sample_chain(mips, directions, roughness, channels=3):
     for level in range(len(mips)):
         sample = None
         for side, weight in ((lower, 1 - (lod - lower)), (upper, lod - lower)):
-            chosen = side == level
+            chosen = (side == level) & (weight > 0)
             if chosen.any():
-                sample = sample_level(mips[level], uv, channels) if sample is None else sample
+                if sample is None:
+                    sample = sample_cube(mips[level], directions)[:, :channels]
                 result[chosen] += sample[chosen] * weight[chosen, None]
     return result
+

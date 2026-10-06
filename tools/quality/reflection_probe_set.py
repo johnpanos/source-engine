@@ -4,7 +4,7 @@ RFC 0008 names `RPRB` as the map's reflection probes; this module owns its
 encoding (the writer `build` and the independent reader `read`), the blend
 the shaders evaluate per pixel (`blend_weights`, `shade`), and the automatic
 placement the Blender renderer runs (`place`). `reflection_probe.py` owns
-the per-probe math: the equirect GGX chain, the proxy-box fit and the
+the per-probe math: the cube GGX chain, the proxy-box fit and the
 parallax-corrected lookup. `public/mapcontainer/reflection_probes.h` must
 accept exactly what `build` writes and reject what `read` rejects.
 
@@ -20,76 +20,49 @@ inside, a smaller volume taking precedence over a larger one that contains
 it, normalized. Frostbite (Lagarde and de Rousiers, SIGGRAPH 2014 notes,
 Listing F.1) fades at the influence boundary with a smoothstep.
 
-RPRB v1, little-endian:
+RPRB v8 (2026-10-06) is the one version; every earlier version, including
+the v7 equirect strip atlas, is refused. Little-endian:
 
   header, 64 bytes
-    0  u32 magic "RPRB"          4  u32 version (1)
-    8  u32 probe count P (1..16) 12 u32 mip count M (1..12)
-   16  u32 mip-0 width W0 (power of two, 8..2048, W0 >> (M - 1) >= 4)
-   20  u32 atlas width (2 W0)    24 u32 atlas height (P W0 / 2)
-   28  u32 record bytes (80)     32 u64 atlas offset (64 + 80 P, 16-aligned)
-   40  u64 atlas bytes (width * height * 8)
-   48  u32 prefilter version (1: `reflection_probe.mip_chain`)
-   52  u32 flags (0)             56 u32 global probe index   60 u32 0
+    0  u32 magic "RPRB"          4  u32 version (8)
+    8  u32 probe count P (1..256) 12 u32 mip count M (1..12)
+   16  u32 face size S (power of two, 8..1024, S >> (M - 1) >= 4)
+   20  u32 relight face size (S with relight cubes, else 0)   24  u32 0
+   28  u32 record bytes (80)     32 u64 data offset (after the candidate grid)
+   40  u64 data bytes (radiance BC6H, then relight cubes)
+   48  u32 prefilter version (1)
+   52  u32 flags (bit 0: relight cubes present)   56 u32 global probe index   60 u32 0
   P records, 80 bytes, floats in Source units
     0 capture xyz     12 fade distance (> 0)
    16 parallax box min xyz        28 parallax box max xyz
    40 influence box min xyz       52 influence box max xyz
    64 u32 rank (a permutation of 0..P-1; the global probe ranks last)
-   68 u32 flags (bit 0: global)   72 u32 band row (index * W0 / 2)   76 u32 0
-  atlas: RGBA16F texels, rows top first. Probe i's chain occupies rows
-    [i W0/2, (i + 1) W0/2): mip l is W_l x W_l/2 at x = 2 W0 (1 - 2^-l), the
-    legacy band's layout; alpha 1 inside a mip, texels outside mips all 0.
+   68 u32 flags (bit 0: global)   72 u32 cube layer (= index)
+   76 u32 relight layer (= index with relight cubes, else 0)
+  candidate grid (aligned after the records, unchanged since v5): a 32-byte
+    header (origin xyz and power-of-two cell size as float32, u32 dimension
+    32, u32 words per cell ceil(P / 64), 8 zero bytes) and 32^3 cells of that
+    many little-endian uint64 rank masks (x fastest), validated for coverage.
+  data: each probe is a cube, layer = probe index, in the Vulkan cube
+    convention (`reflection_probe.CUBE_FACES`: +X -X +Y -Y +Z -Z, face and
+    (s, t) by the specification's selection table, sampled by the world
+    direction directly; texel (column, row) at s = (column + 0.5) / size).
+    Mip l is (S >> l)^2 per face, GGX-prefiltered at perceptual roughness
+    l / (M - 1) (`reflection_probe.cube_mip_chain`). The radiance cube array
+    is BC6H unsigned blocks (4 x 4 texels, 16 bytes), ordered mip-major, then
+    probe, then face, each face-mip whole blocks (its size is >= 4). With
+    relight cubes, two more arrays follow, RGBA16F, same order and size: the
+    albedo array (RGB diffuse albedo 0..1 of what the capture saw, A the ray
+    distance in Source units, 0 < d <= MAX_DISTANCE) and the normal array (RGB
+    world shading normal, each component in [-1, 1], A 1). Mips are box
+    filtered (normals renormalized).
 
 Constraints: finite values under 1e6 in magnitude; box and influence min < max
 per axis; the capture inside its parallax box; exactly one global probe.
 
-RPRB v2 (R50-RELIGHT) is v1 plus relight bands, header flag bit 0: each
-probe also carries a G-buffer of what its capture sees, in two more bands of
-the same mip layout after all radiance bands. Probe i's albedo band starts at
-row (P + 2 i) W0/2: RGB the diffuse albedo (Cycles' Diffuse Color pass, 0..1)
-and alpha the ray distance from the capture point (Source units, 0 < d <=
-MAX_DISTANCE); its normal band follows at + W0/2: RGB the world-space shading
-normal (Cycles' Normal pass, each component in [-1, 1]), alpha 1. Mips are
-box-filtered (normals renormalized). The atlas is then 3 P W0/2 rows tall and
-the record's last u32 is the albedo band's row (0 in v1). A v1 payload never
-has the flag.
-
-RPRB v3 retains those disk records and atlas bands, accepts 1..64 probes,
-and uses flag bit 0 to select whether relight bands are present. V1/v2 keep
-their 16-probe limit. Sets above 16 are tiled on GPU upload: texel (2, 0).x
-holds the power-of-two column count (zero in the old form), metadata rows
-stay at 1 + rank, and complete bands are tiled below row 1 + P. Extended
-GPU metadata stores band indices rather than row offsets, avoiding half-float
-overflow for large relight atlases. The serialized atlas remains unchanged.
-Only the GPU adapter performs this translation; the CPU oracle reads disk bands.
-
-RPRB v4 adds a conservative 16x16x16 spatial candidate grid before the atlas,
-after the aligned records. Its first 32 bytes are origin xyz and power-of-two
-cell size (four float32), then sixteen zero bytes, followed by 4096 little-endian
-uint64 rank masks (x fastest). Atlas offset includes this section. Readers
-validate candidate coverage as well as bits and bounds. Global and first-two
-ranks are always present (including the blend's zero-share tie behavior).
-Outside the grid and in nearest mode, all ranks remain candidates.
-GPU row-zero texel 3 = (16,16,16,1); texels 4..7 contain the four grid float32
-bit patterns as four byte-valued half channels; texel 8 stores the candidate
-start row as uint32 bytes. Masks follow the radiance bands: two RGBA16F texels
-per cell, containing eight exact bytes. V1-v3 retain their existing layout.
-
-RPRB v5 extends capacity to 256 captures. Each cell holds four little-endian
-uint64 rank words (ranks 0..63, 64..127, 128..191, 192..255). The grid section
-is 131104 bytes; GPU texel 3.w is 4, and eight byte-valued texels store each
-cell. V1-v4 retain their count limits and layouts. Runtime iterates selected
-ranks in order across words, preserving the two-probe blend.
-
-RPRB v7 (2026-10-05) is v6 with its radiance bands block-compressed: the
-atlas section holds the radiance rows (0 .. P W0/2, all 2 W0 columns) as
-BC6H unsigned blocks (4 x 4 texels, 16 bytes, row-major; a band's W0/2 >= 4
-rows are whole blocks), then the relight rows as RGBA16F. Atlas bytes are
-their sum. Readers expand the blocks into the v6 atlas: inside a mip the
-decoded light with alpha 1, outside every channel 0 (`inside_mips`). The
-pinned ktx encodes (bc_codec.encode_bc6h: UASTC HDR, transcoded); each probe's
-chain is under 1/8 of its RGBA16F bytes.
+The GPU form is a probe buffer plus the cube-array textures (`gpu_buffer`):
+metadata and candidate masks in a storage buffer in float32/uint32 words, so
+nothing is packed into half-float texels or tiled into an atlas.
 
 Relighting (McAuley, "Rendering the World of Far Cry 4", GDC 2015: a G-buffer
 cubemap relit at runtime; here with the distance too): at the lookup
@@ -148,8 +121,8 @@ import bc_codec  # noqa: E402
 import reflection_probe  # noqa: E402
 
 MAGIC = 0x42525052  # "RPRB"
-# RPRB v7, the one version (2026-10-05): every earlier version is refused.
-VERSION = 7
+# RPRB v8, the one version (2026-10-06): every earlier version is refused.
+VERSION = 8
 CANDIDATE_DIM = 32
 CANDIDATE_CELLS = CANDIDATE_DIM ** 3
 CANDIDATE_HEADER_BYTES = 32
@@ -163,7 +136,7 @@ HEADER_BYTES = 64
 RECORD_BYTES = 80
 MAX_PROBES = 256
 MAX_MIPS = 12
-MIN_WIDTH, MAX_WIDTH = 8, 2048
+MIN_FACE, MAX_FACE = 8, 1024
 PREFILTER_VERSION = 1
 FLAG_GLOBAL = 1
 MAX_COORDINATE = 1.0e6
@@ -173,17 +146,6 @@ FACING_EDGE = 0.1
 # (indirect_sdf.h's kRelativeFloor), and at most this many moving occluders.
 RELIGHT_FLOOR = 1e-4
 MAX_OCCLUDERS = 16
-# The GPU form (`gpu_texture`, mapcontainer::WriteReflectionProbeTexture):
-# one RGBA16F texture, 2 W0 wide times the tile columns. Row 0: texel 0 = (count, mips, W0,
-# GPU_MARKER), texel 1 = (mode, 0, 0, 0). Row 1 + rank: the probe of that
-# rank as five vec4 - capture.xyz, fade | box min.xyz, band row | box
-# max.xyz, global | influence min.xyz, 0 | influence max.xyz, 0 - each
-# stored as two texels, hi = half(v) and lo = half(v - hi), so positions
-# keep ~0.01-unit precision. Rows 1 + count on: the RPRB atlas.
-# GPU_MARKER tells this texture from an LMAP page (whose texels are never
-# negative) wherever a shader may receive either.
-GPU_MARKER = -3.0
-TABLE_VEC4 = 5
 # Modes (`mat_reflection_probes`): 0 off, 1 blended and parallax-corrected,
 # 2 the nearest capture alone (Source 1's switch, the blend check's
 # negative control), 3 blended but direction-only (the parallax check's).
@@ -207,41 +169,33 @@ class RprbError(ValueError):
 
 # ------------------------------------------------------------- encoding
 
-def atlas_layout(count, width, relight=False):
-    return 2 * width, count * (width // 2) * (3 if relight else 1)
+def mip_sizes(face, mips):
+    return [face >> level for level in range(mips)]
 
 
-def radiance_block_bytes(count, width):
-    """The v7 radiance bands' BC6H bytes."""
-    return bc_codec.block_bytes("bc6hu", 2 * width, count * (width // 2))
+def radiance_block_bytes(count, face, mips):
+    """The v8 radiance cube array's BC6H bytes: mip-major, then probe, then
+    the six faces, each face-mip whole 4x4 blocks."""
+    return sum(count * 6 * bc_codec.block_bytes("bc6hu", size, size)
+               for size in mip_sizes(face, mips))
 
 
-def inside_mips(height, width, mips):
-    """Atlas texels inside a mip (bands of `width` / 2 rows)."""
-    band = width // 2
-    inside = np.zeros((height, 2 * width), dtype=bool)
-    for top in range(0, height, band):
-        for level in range(mips):
-            x = 2 * width - (2 * width >> level)
-            inside[top:top + (width >> level) // 2, x:x + (width >> level)] = True
-    return inside
+def relight_bytes(count, face, mips):
+    """Both relight cube arrays (albedo + distance, then normal): RGBA16F,
+    mip-major, then probe, then face."""
+    return 2 * sum(count * 6 * size * size * 8 for size in mip_sizes(face, mips))
 
 
-def relight_rows(count, width, index):
-    """The first rows of probe `index`'s albedo and normal bands (v2)."""
-    band = width // 2
-    return (count + 2 * index) * band, (count + 2 * index + 1) * band
-
-
-def relight_chain(albedo, normal, distance, minimum_width=4):
-    """A probe's relight bands from its equirect G-buffer (meters): box-
-    filtered chains of (albedo rgb, distance) and of the unit normal."""
-    albedo_distance = np.concatenate((np.clip(albedo, 0.0, 1.0), distance[..., None]), axis=2)
-    first = reflection_probe.box_pyramid(albedo_distance, minimum_width)
-    second = reflection_probe.box_pyramid(normal, minimum_width)
+def relight_chain(albedo, normal, distance, minimum_size=4):
+    """A probe's relight cubes from its cube G-buffer (meters): box-filtered
+    chains of (albedo rgb, distance) and of the unit normal. `albedo` and
+    `normal` are (6, N, N, 3), `distance` (6, N, N)."""
+    albedo_distance = np.concatenate((np.clip(albedo, 0.0, 1.0), distance[..., None]), axis=3)
+    first = reflection_probe.cube_pyramid(albedo_distance, minimum_size)
+    second = reflection_probe.cube_pyramid(normal, minimum_size)
     normals = []
     for level in second:
-        length = np.linalg.norm(level, axis=2, keepdims=True)
+        length = np.linalg.norm(level, axis=3, keepdims=True)
         normals.append(np.where(length > 1e-6, level / np.maximum(length, 1e-6),
                                 (0.0, 0.0, 1.0)))
     return first, normals
@@ -356,56 +310,35 @@ def regrid(data, bounds):
 
 def build(probes, chains, scale=SOURCE_UNITS_PER_METER, relight=None, candidate_bounds=None,
           tool=None):
-    """RPRB bytes. `candidate_bounds` (min, max in Source units) limits the
-    candidate grid to the playable envelope (candidate_grid). `probes`: dicts with capture, box_min, box_max,
-    influence_min, influence_max (meters), fade (meters), global; `chains`:
-    each probe's `reflection_probe.mip_chain` (linear, already exposure
-    scaled). Exactly one probe is global. `relight` (v2): each probe's
-    `relight_chain` (distances in meters), mip for mip like its chain.
-    `tool`: the pinned ktx (default bc_codec.default_tool())."""
+    """RPRB v8 bytes. `candidate_bounds` (min, max in Source units) limits the
+    candidate grid to the playable envelope (candidate_grid). `probes`: dicts
+    with capture, box_min, box_max, influence_min, influence_max (meters),
+    fade (meters), global; `chains`: each probe's
+    `reflection_probe.cube_mip_chain` (linear, already exposure scaled; mip
+    i is (6, S >> i, S >> i, 3)). Exactly one probe is global. `relight`:
+    each probe's `relight_chain` (distances in meters), mip for mip like its
+    chain. `tool`: the pinned ktx (default bc_codec.default_tool())."""
     count = len(probes)
     if not 1 <= count <= MAX_PROBES or len(chains) != count:
         raise RprbError("InvalidCounts", "1..%d probes with one chain each" % MAX_PROBES)
     if sum(bool(probe.get("global")) for probe in probes) != 1:
         raise RprbError("InvalidGlobal", "exactly one probe must be global")
     mips = len(chains[0])
-    width = chains[0][0].shape[1]
+    face = chains[0][0].shape[1]
     for chain in chains:
-        if len(chain) != mips or chain[0].shape[1] != width:
-            raise RprbError("InvalidAtlas", "every probe needs the same mip count and width")
+        if len(chain) != mips or chain[0].shape[1] != face:
+            raise RprbError("InvalidAtlas", "every probe needs the same mip count and face size")
         for level, mip in enumerate(chain):
-            if mip.shape[:2] != (max(width >> level, 1) // 2, width >> level):
+            if mip.shape[:3] != (6, face >> level, face >> level):
                 raise RprbError("InvalidAtlas", "mip %d has the wrong size" % level)
     if relight is not None:
         if len(relight) != count:
             raise RprbError("InvalidCounts", "one relight chain pair per probe")
         for first, second in relight:
             if len(first) != mips or len(second) != mips or any(
-                    a.shape[:2] != b.shape[:2] or a.shape[:2] != chains[0][level].shape[:2]
+                    a.shape[:3] != b.shape[:3] or a.shape[:3] != chains[0][level].shape[:3]
                     for level, (a, b) in enumerate(zip(first, second))):
-                raise RprbError("InvalidAtlas", "relight bands must match the radiance mips")
-    atlas_width, atlas_height = atlas_layout(count, width, relight is not None)
-    atlas = np.zeros((atlas_height, atlas_width, 4), dtype=np.float64)
-    band = width // 2
-
-    def place(top, mips_of_band, alpha=None):
-        x = 0
-        for mip in mips_of_band:
-            rows, columns = mip.shape[:2]
-            atlas[top:top + rows, x:x + columns, :mip.shape[2]] = mip
-            if alpha is not None:
-                atlas[top:top + rows, x:x + columns, 3] = alpha
-            x += columns
-
-    for index, chain in enumerate(chains):
-        place(index * band, [mip[..., :3] for mip in chain], 1.0)
-    if relight is not None:
-        for index, (first, second) in enumerate(relight):
-            albedo_row, normal_row = relight_rows(count, width, index)
-            place(albedo_row, [np.concatenate(
-                (level[..., :3], np.clip(level[..., 3:4] * scale, 1.0 / 16.0, MAX_DISTANCE)),
-                axis=2) for level in first])
-            place(normal_row, second, 1.0)
+                raise RprbError("InvalidAtlas", "relight cubes must match the radiance mips")
     rank = ranks(probes)
     records = b""
     for index, probe in enumerate(probes):
@@ -413,40 +346,43 @@ def build(probes, chains, scale=SOURCE_UNITS_PER_METER, relight=None, candidate_
                   for key in ("capture", "box_min", "box_max", "influence_min", "influence_max")]
         records += struct.pack("<3ff3f3f3f3fIIII", *values[0], probe["fade"] * scale,
                                *values[1], *values[2], *values[3], *values[4], rank[index],
-                               FLAG_GLOBAL if probe.get("global") else 0, index * band,
-                               relight_rows(count, width, index)[0] if relight is not None
-                               else 0)
+                               FLAG_GLOBAL if probe.get("global") else 0, index,
+                               index if relight is not None else 0)
     base_offset = (HEADER_BYTES + RECORD_BYTES * count + 15) & ~15
     # Read back the exact serialized floats used by the runtime validator.
     grid = candidate_grid(serialized_probes(records, count), candidate_bounds)
     candidate_data = candidate_section(grid, count)
-    atlas_offset = base_offset + len(candidate_data)
+    data_offset = base_offset + len(candidate_data)
     tool = tool or bc_codec.default_tool()
     if tool is None:
-        raise RprbError("InvalidAtlas", "no pinned ktx tool to encode the radiance bands")
-    radiance_rows = count * band
-    # A mip shorter than a block (W0 >> l = 4: 2 rows) shares its blocks with
-    # rows outside every mip; repeating its last row there keeps the blocks'
-    # endpoints on its light (readers zero those texels again).
-    padded = atlas[:radiance_rows, :, :3].astype(np.float32)
-    for index in range(count):
-        x = 0
-        for mip in chains[index]:
-            rows, columns = mip.shape[:2]
-            if rows % 4:
-                top = index * band
-                fill = top + rows + (-rows % 4)
-                padded[top + rows:fill, x:x + columns] = padded[top + rows - 1, x:x + columns]
-            x += columns
-    blocks = bc_codec.encode_bc6h(tool, np.ascontiguousarray(padded))
-    texels = blocks + atlas[radiance_rows:].astype("<f2").tobytes()
+        raise RprbError("InvalidAtlas", "no pinned ktx tool to encode the radiance cubes")
+    texels = []
+    for level in range(mips):
+        # All probes' faces of a mip as one tall image: faces are whole block
+        # rows, so its blocks are the (probe, face) blocks in order.
+        size = face >> level
+        tall = np.stack([chain[level] for chain in chains]).reshape(count * 6 * size, size, 3)
+        texels.append(bc_codec.encode_bc6h(tool, np.ascontiguousarray(tall.astype(np.float32))))
+    if relight is not None:
+        for which in (0, 1):
+            for level in range(mips):
+                size = face >> level
+                cubes = [pair[which][level] for pair in relight]
+                if which == 0:
+                    cubes = [np.concatenate((c[..., :3], np.clip(
+                        c[..., 3:4] * scale, 1.0 / 16.0, MAX_DISTANCE)), axis=3) for c in cubes]
+                else:
+                    cubes = [np.concatenate((c, np.ones(c.shape[:3] + (1,))), axis=3)
+                             for c in cubes]
+                texels.append(np.stack(cubes).astype("<f2").tobytes())
+    payload = b"".join(texels)
     global_index = next(i for i, probe in enumerate(probes) if probe.get("global"))
-    header = struct.pack("<IIIIIIIIQQIIII", MAGIC, VERSION, count, mips, width,
-                         atlas_width, atlas_height, RECORD_BYTES, atlas_offset, len(texels),
-                         PREFILTER_VERSION, 0 if relight is None else FLAG_RELIGHT,
-                         global_index, 0)
+    header = struct.pack("<IIIIIIIIQQIIII", MAGIC, VERSION, count, mips, face,
+                         face if relight is not None else 0, 0, RECORD_BYTES, data_offset,
+                         len(payload), PREFILTER_VERSION,
+                         0 if relight is None else FLAG_RELIGHT, global_index, 0)
     data = header + records
-    data += b"\0" * (base_offset - len(data)) + candidate_data + texels
+    data += b"\0" * (base_offset - len(data)) + candidate_data + payload
     read(data)  # the writer never emits what the reader rejects
     return data
 
@@ -457,15 +393,15 @@ def build(probes, chains, scale=SOURCE_UNITS_PER_METER, relight=None, candidate_
 # same error for each.
 MALFORMATIONS = (
     (0, "<I", 0x12345678, "BadMagic"),
-    (4, "<I", 6, "UnsupportedVersion"),        # every version but 7 is refused
+    (4, "<I", 7, "UnsupportedVersion"),        # every version but 8 is refused
     (4, "<I", 1, "UnsupportedVersion"),
     (8, "<I", 0, "InvalidCounts"),
     (8, "<I", 257, "InvalidCounts"),
-    (16, "<I", 48, "InvalidAtlas"),            # width not a power of two
+    (16, "<I", 48, "InvalidAtlas"),            # face not a power of two
     (28, "<I", 96, "InvalidAtlas"),            # record size
     (32, "<Q", 64 + 160 + 16, "InvalidSections"),
     (48, "<I", 2, "UnsupportedVersion"),       # prefilter version
-    (52, "<I", 1, "InvalidAtlas"),             # the relight flag without its bands
+    (52, "<I", 1, "InvalidAtlas"),             # the relight flag without its cubes
     (64 + 12, "<f", 0.0, "InvalidRecord"),     # fade
     (64 + 0, "<f", float("nan"), "InvalidRecord"),
     (64 + 0, "<f", -500.0, "InvalidRecord"),   # capture outside its box
@@ -474,40 +410,58 @@ MALFORMATIONS = (
     (64 + 64, "<I", 1, "InvalidRanks"),
     (64 + 68, "<I", 1, "InvalidGlobal"),       # two global probes
     (64 + 68, "<I", 2, "InvalidRecord"),       # unknown flag
-    (64 + 72, "<I", 7, "InvalidRecord"),       # band row
+    (64 + 72, "<I", 7, "InvalidRecord"),       # layer
     (64 + 80 + 64, "<I", 0, "InvalidRanks"),   # duplicate rank
     (56, "<I", 0, "InvalidGlobal"),            # header names a non-global probe
 )
 
-# Edits of the valid relight payload, which has two probes of width 32
-# (rows: radiance 0..31 as BC6H blocks, probe 0 albedo 32..47, normal 48..63,
-# probe 1 albedo 64..79, normal 80..95; the atlas follows the records and the
-# candidate grid, relight rows of 64 texels of 8 bytes). RELIGHT_ATLAS is
-# where row 0 would start were the radiance rows RGBA16F too, so row r >= 32
-# is at RELIGHT_ATLAS + r * RELIGHT_ROW.
-RELIGHT_ROW = 64 * 8
-RELIGHT_ATLAS = (224 + CANDIDATE_HEADER_BYTES + CANDIDATE_CELLS * 8 + radiance_block_bytes(2, 32)
-                 - 32 * RELIGHT_ROW)
-RELIGHT_MALFORMATIONS = (
-    (52, "<I", 3, "UnsupportedVersion"),       # an unknown header flag
-    (24, "<I", 32, "InvalidAtlas"),            # the height without bands, with the flag
-    (64 + 76, "<I", 48, "InvalidRecord"),      # albedo band row
-    (64 + 80 + 76, "<I", 0, "InvalidRecord"),  # a v2 probe without its bands
-    (RELIGHT_ATLAS + 40 * RELIGHT_ROW + 8 * 3 + 0, "<e", 1.5, "InvalidTexels"),   # albedo > 1
-    (RELIGHT_ATLAS + 40 * RELIGHT_ROW + 8 * 3 + 6, "<e", 0.0, "InvalidTexels"),   # distance 0
-    (RELIGHT_ATLAS + 40 * RELIGHT_ROW + 8 * 3 + 6, "<e", -2.0, "InvalidTexels"),  # negative
-    (RELIGHT_ATLAS + 56 * RELIGHT_ROW + 8 * 3 + 2, "<e", 1.5, "InvalidTexels"),   # normal > 1
-    (RELIGHT_ATLAS + 56 * RELIGHT_ROW + 8 * 3 + 6, "<e", 0.5, "InvalidTexels"),   # normal alpha
-    (RELIGHT_ATLAS + 40 * RELIGHT_ROW + 8 * 62 + 0, "<e", 0.5, "InvalidTexels"),  # outside a mip
-)
+# Edits of the valid relight payload, which has two probes of face 16 and
+# mips 2 (sizes 16, 8). Its data section follows the records and candidate
+# grid: radiance BC6H (mip 0: 2 probes x 6 faces x 256 B, mip 1: 2 x 6 x 64
+# B), then the albedo cube array (mip 0: 12 faces x 256 texels x 8 B, mip 1:
+# 12 x 64 x 8), then the normal array. Offsets are computed by `relight_
+# offsets` from the layout the fixture writer produces.
+RELIGHT_FIXTURE_FACE = 16
+RELIGHT_FIXTURE_MIPS = 2
+
+
+def relight_offsets(count, face, mips, data_offset):
+    """(albedo array start, normal array start, per-mip texel starts of the
+    albedo array) in bytes from the payload start."""
+    radiance = radiance_block_bytes(count, face, mips)
+    albedo = data_offset + radiance
+    normal = albedo + relight_bytes(count, face, mips) // 2
+    starts, at = [], albedo
+    for size in mip_sizes(face, mips):
+        starts.append(at)
+        at += count * 6 * size * size * 8
+    return albedo, normal, starts
+
+
+def relight_malformations(data_offset):
+    albedo, normal, starts = relight_offsets(2, RELIGHT_FIXTURE_FACE, RELIGHT_FIXTURE_MIPS,
+                                             data_offset)
+    normal_starts = [normal + (start - albedo) for start in starts]
+    texel = 8 * (3 * 16 + 5)  # a texel inside the first face's mip 0
+    return (
+        (52, "<I", 3, "UnsupportedVersion"),       # an unknown header flag
+        (20, "<I", 8, "InvalidAtlas"),             # relight face differs from the face size
+        (64 + 76, "<I", 1, "InvalidRecord"),       # a relight layer other than the probe's
+        (64 + 80 + 76, "<I", 0, "InvalidRecord"),  # a probe without its relight layer
+        (starts[0] + texel + 0, "<e", 1.5, "InvalidTexels"),    # albedo > 1
+        (starts[0] + texel + 6, "<e", 0.0, "InvalidTexels"),    # distance 0
+        (starts[0] + texel + 6, "<e", -2.0, "InvalidTexels"),   # negative
+        (normal_starts[0] + texel + 2, "<e", 1.5, "InvalidTexels"),  # normal > 1
+        (normal_starts[0] + texel + 6, "<e", 0.5, "InvalidTexels"),  # normal alpha
+    )
 
 
 def read(data):
     """Validate RPRB bytes; return the layout and records (Source units)."""
     if len(data) < HEADER_BYTES:
         raise RprbError("Truncated")
-    (magic, version, count, mips, width, atlas_width, atlas_height, record_bytes, atlas_offset,
-     atlas_bytes, prefilter, flags, global_index, reserved) = struct.unpack_from(
+    (magic, version, count, mips, face, relight_face, reserved0, record_bytes, data_offset,
+     data_bytes, prefilter, flags, global_index, reserved) = struct.unpack_from(
         "<IIIIIIIIQQIIII", data)
     if magic != MAGIC:
         raise RprbError("BadMagic")
@@ -517,19 +471,17 @@ def read(data):
     relight = bool(flags & FLAG_RELIGHT)
     if not 1 <= count <= MAX_PROBES or not 1 <= mips <= MAX_MIPS:
         raise RprbError("InvalidCounts")
-    if (width & (width - 1) or not MIN_WIDTH <= width <= MAX_WIDTH or (width >> (mips - 1)) < 4
-            or (atlas_width, atlas_height) != atlas_layout(count, width, relight)
+    if (face & (face - 1) or not MIN_FACE <= face <= MAX_FACE or (face >> (mips - 1)) < 4
+            or relight_face != (face if relight else 0) or reserved0
             or record_bytes != RECORD_BYTES):
         raise RprbError("InvalidAtlas")
     base_offset = (HEADER_BYTES + RECORD_BYTES * count + 15) & ~15
     words = candidate_words(count)
     expected_offset = base_offset + candidate_bytes(count)
-    band = width // 2
-    radiance_rows = count * band
-    radiance_bytes = radiance_block_bytes(count, width)
-    if (atlas_offset != expected_offset or
-            atlas_bytes != radiance_bytes + atlas_width * (atlas_height - radiance_rows) * 8 or
-            len(data) != atlas_offset + atlas_bytes):
+    radiance_bytes = radiance_block_bytes(count, face, mips)
+    expected_bytes = radiance_bytes + (relight_bytes(count, face, mips) if relight else 0)
+    if (data_offset != expected_offset or data_bytes != expected_bytes or
+            len(data) != data_offset + data_bytes):
         raise RprbError("InvalidSections")
     if any(data[HEADER_BYTES + RECORD_BYTES * count:base_offset]):
         raise RprbError("InvalidSections", "nonzero padding")
@@ -537,7 +489,7 @@ def read(data):
     for index in range(count):
         fields = struct.unpack_from("<3ff3f3f3f3fIIII", data, HEADER_BYTES + index * RECORD_BYTES)
         floats = np.array(fields[:16], dtype=np.float64)
-        rank, flag, band_row, relight_row = fields[16:]
+        rank, flag, layer, relight_layer = fields[16:]
         probe = {"capture": floats[0:3], "fade": float(floats[3]), "box_min": floats[4:7],
                  "box_max": floats[7:10], "influence_min": floats[10:13],
                  "influence_max": floats[13:16], "rank": rank,
@@ -548,8 +500,8 @@ def read(data):
                 np.any(probe["capture"] < probe["box_min"]) or
                 np.any(probe["capture"] > probe["box_max"])):
             raise RprbError("InvalidRecord", str(index))
-        if (flag & ~FLAG_GLOBAL or band_row != index * (width // 2) or
-                relight_row != (relight_rows(count, width, index)[0] if relight else 0)):
+        if (flag & ~FLAG_GLOBAL or layer != index or
+                relight_layer != (index if relight else 0)):
             raise RprbError("InvalidRecord", "flags %d" % index)
         probes.append(probe)
     if sorted(probe["rank"] for probe in probes) != list(range(count)):
@@ -571,134 +523,93 @@ def read(data):
     if np.any(masks & ~valid) or np.any((masks & required) != required):
         raise RprbError("InvalidCandidates", "missing required or out-of-range rank")
     candidates = {"origin": origin, "step": step, "masks": masks}
-    inside = inside_mips(atlas_height, width, mips)
-    # The radiance bands as the C++ decoder expands them (half floats, alpha 1
-    # inside a mip, 0 outside); the relight rows as stored.
-    atlas = np.zeros((atlas_height, atlas_width, 4), dtype=np.float64)
-    light = bc_codec.decode_bc6h(data[atlas_offset:atlas_offset + radiance_bytes], atlas_width,
-                                 radiance_rows).astype("<f2").astype(np.float64)
-    atlas[:radiance_rows, :, :3] = light
-    atlas[:radiance_rows, :, 3] = 1.0
-    atlas[:radiance_rows][~inside[:radiance_rows]] = 0.0
-    atlas[radiance_rows:] = np.frombuffer(
-        data, dtype="<f2", count=atlas_width * (atlas_height - radiance_rows) * 4,
-        offset=atlas_offset + radiance_bytes).reshape(-1, atlas_width, 4)
-    # Radiance and albedo rows hold non-negative colour; normal rows signed.
-    normal_rows = np.zeros(atlas_height, dtype=bool)
-    if relight:
+    # The radiance cubes as the C++ consumers see them: BC6H decoded to half
+    # floats. chains[probe][mip] is (6, S, S, 3).
+    chains = [[None] * mips for _ in range(count)]
+    at = data_offset
+    for level, size in enumerate(mip_sizes(face, mips)):
+        length = count * 6 * bc_codec.block_bytes("bc6hu", size, size)
+        light = bc_codec.decode_bc6h(data[at:at + length], size, count * 6 * size)
+        light = light.astype("<f2").astype(np.float64).reshape(count, 6, size, size, 3)
         for index in range(count):
-            row = relight_rows(count, width, index)[1]
-            normal_rows[row:row + band] = True
-    if not np.all(np.isfinite(atlas)) or atlas[~normal_rows, :3].min() < 0:
-        raise RprbError("InvalidTexels")
-    if np.any(atlas[~inside] != 0.0):
-        raise RprbError("InvalidTexels")
-    albedo_rows = np.zeros(atlas_height, dtype=bool)
-    albedo_rows[count * band:] = ~normal_rows[count * band:]
-    radiance = inside.copy()
-    radiance[count * band:] = False
-    albedo = inside & albedo_rows[:, None]
-    normal = inside & normal_rows[:, None]
-    if (np.any(atlas[radiance, 3] != 1.0) or np.any(atlas[normal, 3] != 1.0) or
-            np.any(atlas[albedo, :3] > 1.0) or np.any(atlas[albedo, 3] <= 0.0) or
-            np.any(atlas[albedo, 3] > MAX_DISTANCE) or
-            np.any(np.abs(atlas[normal, :3]) > NORMAL_LIMIT)):
-        raise RprbError("InvalidTexels")
-
-    def chain_at(top, channels):
-        chain = []
-        for level in range(mips):
-            x = 2 * width - (2 * width >> level)
-            rows, columns = (width >> level) // 2, width >> level
-            chain.append(atlas[top:top + rows, x:x + columns, :channels])
-        return chain
-
-    chains = [chain_at(index * band, 3) for index in range(count)]
+            chains[index][level] = light[index]
+        at += length
     relight_chains = None
     if relight:
-        relight_chains = [(chain_at(relight_rows(count, width, index)[0], 4),
-                           chain_at(relight_rows(count, width, index)[1], 3))
+        arrays = []
+        for which in (0, 1):
+            levels = []
+            for size in mip_sizes(face, mips):
+                length = count * 6 * size * size * 8
+                levels.append(np.frombuffer(data, dtype="<f2", count=count * 6 * size * size * 4,
+                                            offset=at).astype(np.float64).reshape(
+                    count, 6, size, size, 4))
+                at += length
+            arrays.append(levels)
+        for levels in arrays:
+            for array in levels:
+                if not np.all(np.isfinite(array)):
+                    raise RprbError("InvalidTexels")
+        for levels in arrays[:1]:
+            for array in levels:
+                if (array[..., :3].min() < 0 or array[..., :3].max() > 1.0 or
+                        array[..., 3].min() <= 0.0 or array[..., 3].max() > MAX_DISTANCE):
+                    raise RprbError("InvalidTexels")
+        for array in arrays[1]:
+            if np.any(np.abs(array[..., :3]) > NORMAL_LIMIT) or np.any(array[..., 3] != 1.0):
+                raise RprbError("InvalidTexels")
+        relight_chains = [([arrays[0][level][index] for level in range(mips)],
+                           [arrays[1][level][index][..., :3] for level in range(mips)])
                           for index in range(count)]
-    return {"count": count, "mips": mips, "width": width, "atlas_width": atlas_width,
-            "atlas_height": atlas_height, "atlas_offset": atlas_offset, "probes": probes,
-            "atlas": atlas,
-            "chains": chains, "relight": relight_chains, "global_index": global_index,
-            "candidates": candidates}
+    return {"count": count, "mips": mips, "face": face, "data_offset": data_offset,
+            "probes": probes, "chains": chains, "relight": relight_chains,
+            "global_index": global_index, "candidates": candidates}
 
 
-def gpu_columns(layout):
-    # Complete bands (including relight bands) tile in a power-of-two
-    # number of columns; a mip is never split.
-    bands = layout["count"] * (3 if layout.get("relight") else 1)
-    columns = 1
-    while columns * columns * 4 < bands:
-        columns *= 2
-    return columns
+# The storage buffer the shaders read (mapcontainer::WriteReflectionProbeBuffer):
+# little-endian 32-bit words. Header, 16 words: count, mips, face size,
+# candidate words per cell, mode, relight switch (1 when probes are relit:
+# `mat_reflection_relight` and relight cubes present), candidate dimension, 0,
+# candidate origin xyz (float), candidate step (float), four zeros. From word
+# GPU_PROBES_WORD, one 20-float record per rank (capture.xyz, fade | box
+# min.xyz, layer | box max.xyz, global | influence min.xyz, relight layer |
+# influence max.xyz, 0); from GPU_MASKS_WORD the candidate masks as lo/hi
+# word pairs. Radiance and relight live in cube-array textures, not here.
+GPU_HEADER_WORDS = 16
+GPU_PROBES_WORD = 16
+GPU_RECORD_WORDS = 20
+GPU_MASKS_WORD = GPU_PROBES_WORD + GPU_RECORD_WORDS * MAX_PROBES
 
 
-def gpu_texture(layout, mode=MODE_BLEND, relight=True):
-    """The RGBA16F texture the shaders read (see GPU_MARKER), as float16.
-    Texel (1, 0).y is 1 when the probes are relit (`mat_reflection_relight`
-    and relight bands present); table field 3's w is the albedo band's row
-    (0 without bands)."""
-    count, width = layout["count"], layout["width"]
-    bands = layout.get("relight")
-    columns = gpu_columns(layout)
-    band = width // 2
-    band_count = layout["atlas_height"] // band
-    rows = 1 + count + ((band_count + columns - 1) // columns) * band
-    candidate_start = rows
-    candidates = layout.get("candidates")
+def gpu_buffer(layout, mode=MODE_BLEND, relight=True):
+    """The shader's probe buffer for a read `layout`, as uint32 words."""
+    count = layout["count"]
     words = candidate_words(count)
-    rows += (CANDIDATE_CELLS * 2 * words + 2 * width * columns - 1) // (2 * width * columns)
-    texture = np.zeros((rows, 2 * width * columns, 4), dtype=np.float16)
-    texture[0, 0] = (count, layout["mips"], width, GPU_MARKER)
-    texture[0, 1] = (mode, 1.0 if relight and bands else 0.0, 0, 0)
-    texture[0, 2] = (columns, 0, 0, 0)
-    texture[0, 3] = (CANDIDATE_DIM, CANDIDATE_DIM, CANDIDATE_DIM, words)
-    for index, value in enumerate((*candidates["origin"], candidates["step"])):
-        texture[0, 4 + index] = list(struct.pack("<f", value))
-    texture[0, 8] = list(struct.pack("<I", candidate_start))
-    packed = np.frombuffer(candidates["masks"].astype("<u8").tobytes(), dtype=np.uint8)
-    texture[candidate_start:].reshape(-1)[:len(packed)] = packed
-    row_unit = band
+    candidates = layout["candidates"]
+    out = np.zeros(GPU_MASKS_WORD + CANDIDATE_CELLS * words * 2, dtype=np.uint32)
+    out[0:8] = (count, layout["mips"], layout["face"], words, mode,
+                1 if relight and layout["relight"] is not None else 0, CANDIDATE_DIM, 0)
+    out[8:12] = np.array([*candidates["origin"], candidates["step"]],
+                         dtype=np.float32).view(np.uint32)
     for index, probe in enumerate(layout["probes"]):
         values = np.array([(*probe["capture"], probe["fade"]),
-                           (*probe["box_min"], index * band // row_unit),
+                           (*probe["box_min"], index),
                            (*probe["box_max"], 1.0 if probe["global"] else 0.0),
-                           (*probe["influence_min"],
-                            relight_rows(count, width, index)[0] // row_unit if bands else 0.0),
+                           (*probe["influence_min"], index if layout["relight"] else 0.0),
                            (*probe["influence_max"], 0.0)], dtype=np.float32)
-        hi = values.astype(np.float16)
-        lo = (values - hi.astype(np.float32)).astype(np.float16)
-        row = texture[1 + probe["rank"]]
-        row[0:2 * TABLE_VEC4:2] = hi
-        row[1:2 * TABLE_VEC4:2] = lo
-    def place(top, chain, alpha):
-        index = (top - 1 - count) // band
-        x = (index % columns) * 2 * width
-        top = 1 + count + (index // columns) * band
-        for mip in chain:
-            height, mip_width = mip.shape[:2]
-            texture[top:top + height, x:x + mip_width, :mip.shape[2]] = mip
-            if alpha is not None:
-                texture[top:top + height, x:x + mip_width, 3] = alpha
-            x += mip_width
-
-    for index, chain in enumerate(layout["chains"]):
-        place(1 + count + index * (width // 2), chain, 1.0)
-    for index, (first, second) in enumerate(bands or ()):
-        albedo_row, normal_row = relight_rows(count, width, index)
-        place(1 + count + albedo_row, first, None)
-        place(1 + count + normal_row, second, 1.0)
-    return texture
+        at = GPU_PROBES_WORD + probe["rank"] * GPU_RECORD_WORDS
+        out[at:at + GPU_RECORD_WORDS] = values.reshape(-1).view(np.uint32)
+    out[GPU_MASKS_WORD:] = np.frombuffer(candidates["masks"].astype("<u8").tobytes(),
+                                         dtype="<u4")
+    return out
 
 
-def texture_table(texture):
-    """Decode the GPU table rows back to float32 vec4s (the shader's view)."""
-    count = int(texture[0, 0, 0])
-    table = texture[1:1 + count, :2 * TABLE_VEC4].astype(np.float32)
-    return table[:, 0::2] + table[:, 1::2]
+def buffer_table(buffer):
+    """Decode the buffer's probe records back to (count, 5, 4) float32 in rank
+    order (the shader's view)."""
+    count = int(buffer[0])
+    at = GPU_PROBES_WORD
+    return buffer[at:at + GPU_RECORD_WORDS * count].view(np.float32).reshape(count, 5, 4)
 
 
 # ------------------------------------------------------------- blending
@@ -822,11 +733,11 @@ def probe_radiance(points, reflected, roughness, probe, chain, parallax=True, ba
         local = np.where(valid, reflection_probe.distance_roughness(roughness, shaded,
                                                                     captured), roughness)
         direction = reflection_probe.corrected_direction(lookup, reflected, roughness)
-    radiance = reflection_probe.sample_chain(chain, direction, local)
+    radiance = reflection_probe.sample_cube_chain(chain, direction, local)
     if bands is None or light is None:
         return radiance
-    albedo = reflection_probe.sample_chain(bands[0], direction, local, channels=4)
-    normal = reflection_probe.sample_chain(bands[1], direction, local)
+    albedo = reflection_probe.sample_cube_chain(bands[0], direction, local, channels=4)
+    normal = reflection_probe.sample_cube_chain(bands[1], direction, local)
     normal /= np.maximum(np.linalg.norm(normal, axis=1, keepdims=True), 1e-12)
     capture = np.asarray(probe["capture"], dtype=np.float64)
     hidden, t, face, reflectance = occluded_segment(capture, direction, albedo[:, 3],
@@ -1319,7 +1230,7 @@ def depth_convention(depths, checks):
     return best, medians
 
 
-def pack(probes_dir, width, gain, prefilter_samples=256, max_mean_relative_residual=None,
+def pack(probes_dir, face, gain, prefilter_samples=256, max_mean_relative_residual=None,
          candidate_bounds_m=None, tool=None):
     """(RPRB bytes, receipt) from `pbrt_reflection_probe.py`'s output."""
     import gi_reference
@@ -1364,14 +1275,14 @@ def pack(probes_dir, width, gain, prefilter_samples=256, max_mean_relative_resid
                        "influence_min": influence_min, "influence_max": influence_max,
                        "fade": record["fade"], "role": record["role"],
                        "priority": record.get("priority", 0), "name": record.get("name")})
-        chains.append([mip * gain for mip in reflection_probe.mip_chain(
-            reflection_probe.cube_to_equirect(colors, width), samples=prefilter_samples)])
+        chains.append([mip * gain for mip in reflection_probe.cube_mip_chain(
+            reflection_probe.faces_to_cube(colors, face), samples=prefilter_samples)])
         if gbuffer:
-            distance = reflection_probe.cube_to_equirect(
+            distance = reflection_probe.faces_to_cube(
                 {name: np.minimum(depth, MAX_DISTANCE / SOURCE_UNITS_PER_METER)[..., None]
-                 for name, depth in distances.items()}, width, channels=1)[..., 0]
-            relight.append(relight_chain(reflection_probe.cube_to_equirect(albedos, width),
-                                         reflection_probe.cube_to_equirect(normals, width),
+                 for name, depth in distances.items()}, face, channels=1)[..., 0]
+            relight.append(relight_chain(reflection_probe.faces_to_cube(albedos, face),
+                                         reflection_probe.faces_to_cube(normals, face),
                                          distance))
         reports.append(dict(report, index=record["index"], role=record["role"],
                             capture=list(capture), priority=record.get("priority", 0),
@@ -1396,7 +1307,7 @@ def pack(probes_dir, width, gain, prefilter_samples=256, max_mean_relative_resid
     candidate_counts = [sum(int(mask).bit_count() for mask in row)
                         for row in masks.reshape(CANDIDATE_CELLS, -1)]
     return data, {"status": "pass", "schema": "rprb-pack/v1", "probes": len(probes),
-                  "width": width, "mips": len(chains[0]), "preview_gain": gain,
+                  "face": face, "mips": len(chains[0]), "preview_gain": gain,
                   "relight": gbuffer,
                   "candidate_grid": {"dimensions": [CANDIDATE_DIM] * 3,
                                      "bytes": candidate_bytes(len(probes)),
@@ -1420,7 +1331,7 @@ def layout_meters(layout):
                                       "influence_max")}, fade=probe["fade"] * scale))
     relight = None
     if layout.get("relight"):
-        relight = [([np.concatenate((level[..., :3], level[..., 3:4] * scale), axis=2)
+        relight = [([np.concatenate((level[..., :3], level[..., 3:4] * scale), axis=3)
                      for level in first], second) for first, second in layout["relight"]]
     return dict(layout, probes=probes, relight=relight)
 
@@ -1428,9 +1339,16 @@ def layout_meters(layout):
 FIXTURE_DIR = Path(__file__).resolve().parents[2] / "quality/fixtures/reflection/rprb"
 
 
+def fixture_directions(face=16):
+    """(6 * face * face, 3) unit directions of a cube's texels, in the face
+    and row-major order the cube stores them."""
+    return np.concatenate([reflection_probe.cube_face_directions(name, face).reshape(-1, 3)
+                           for name in reflection_probe.CUBE_FACES])
+
+
 def fixture_layout():
     """The shared two-probe fixture (meters): a 6 x 4 x 3 m striped room, a
-    small probe at x = 1.5 and the global one at x = 4.5, width 32."""
+    small probe at x = 1.5 and the global one at x = 4.5, face 16, 2 mips."""
     room = ((0.0, 0.0, 0.0), (6.0, 4.0, 3.0))
     scene = BoxScene(rooms=[room])
     probes = [
@@ -1442,14 +1360,14 @@ def fixture_layout():
          "influence_max": np.array((6.15, 4.15, 3.15)), "fade": 0.5, "global": True}]
     chains = []
     for probe in probes:
-        directions = reflection_probe.equirect_directions(32).reshape(-1, 3)
+        directions = fixture_directions()
         distance, _ = scene(np.tile(probe["capture"], (len(directions), 1)), directions, 1e4)
         hits = probe["capture"] + distance[:, None] * directions
         phase = np.floor(hits[:, 0] / 0.5) + 2 * np.floor(hits[:, 1] / 0.5) + \
             3 * np.floor(hits[:, 2] / 0.5)
         radiance = np.stack((0.2 + 0.8 * (phase % 2), 0.2 + 0.8 * ((phase // 2) % 2),
-                             0.2 + 0.8 * ((phase // 4) % 2)), axis=1).reshape(16, 32, 3)
-        chains.append(reflection_probe.mip_chain(radiance, samples=16))
+                             0.2 + 0.8 * ((phase // 4) % 2)), axis=1).reshape(6, 16, 16, 3)
+        chains.append(reflection_probe.cube_mip_chain(radiance, minimum_size=8, samples=16))
     return probes, chains
 
 
@@ -1461,7 +1379,7 @@ def fixture_relight(probes):
     scene = BoxScene(rooms=[room])
     bands = []
     for probe in probes:
-        directions = reflection_probe.equirect_directions(32).reshape(-1, 3)
+        directions = fixture_directions()
         distance, normal = scene(np.tile(probe["capture"], (len(directions), 1)), directions,
                                  1e4)
         hits = probe["capture"] + distance[:, None] * directions
@@ -1470,8 +1388,8 @@ def fixture_relight(probes):
                            0.8 - 0.4 * (stripe % 2)), axis=1)
         # The scene's normal faces the ray; the room's surfaces face inward.
         normal = -np.sign(np.sum(normal * directions, axis=1))[:, None] * normal
-        bands.append(relight_chain(albedo.reshape(16, 32, 3), normal.reshape(16, 32, 3),
-                                   distance.reshape(16, 32)))
+        bands.append(relight_chain(albedo.reshape(6, 16, 16, 3), normal.reshape(6, 16, 16, 3),
+                                   distance.reshape(6, 16, 16), minimum_size=8))
     return bands
 
 
@@ -1522,7 +1440,7 @@ def capacity_fixture(relight=False, count=64):
 
 
 def write_fixture(out):
-    """The C++ reader's inputs: valid.rprb, its GPU texture (mode 1),
+    """The C++ reader's inputs: valid.rprb, its GPU buffer (mode 1),
     the malformation corpus and shading samples of the reference blend."""
     probes, chains = fixture_layout()
     data = build(probes, chains)
@@ -1531,7 +1449,7 @@ def write_fixture(out):
     (out / "capacity64.rprb").write_bytes(capacity_fixture())
     (out / "capacity64-relight.rprb").write_bytes(capacity_fixture(relight=True))
     layout = read(data)
-    (out / "gpu-mode1.rgba16f").write_bytes(gpu_texture(layout, MODE_BLEND).tobytes())
+    (out / "gpu-mode1.u32").write_bytes(gpu_buffer(layout, MODE_BLEND).tobytes())
     lines = ["# offset format value error (reflection_probe_set.MALFORMATIONS)"]
     for offset, fmt, value, code in MALFORMATIONS:
         lines.append("%d %s %r %s" % (offset, fmt[1:], value, code))
@@ -1558,10 +1476,9 @@ def write_fixture(out):
     relit = build(probes, chains, relight=fixture_relight(probes))
     (out / "valid-relight.rprb").write_bytes(relit)
     relit_layout = read(relit)
-    (out / "gpu-relight-mode1.rgba16f").write_bytes(
-        gpu_texture(relit_layout, MODE_BLEND).tobytes())
-    lines = ["# offset format value error (reflection_probe_set.RELIGHT_MALFORMATIONS)"]
-    for offset, fmt, value, code in RELIGHT_MALFORMATIONS:
+    (out / "gpu-relight-mode1.u32").write_bytes(gpu_buffer(relit_layout, MODE_BLEND).tobytes())
+    lines = ["# offset format value error (reflection_probe_set.relight_malformations)"]
+    for offset, fmt, value, code in relight_malformations(relit_layout["data_offset"]):
         lines.append("%d %s %r %s" % (offset, fmt[1:], value, code))
     (out / "relight-malformations.txt").write_text("\n".join(lines) + "\n")
     rows = ["# mode px py pz nx ny nz rx ry rz roughness -> r g b (Source units), relit by "
@@ -1617,7 +1534,7 @@ def regrid_map(path, out):
     changed_outside = 0
     if not added:
         base = (HEADER_BYTES + RECORD_BYTES * read(old)["count"] + 15) & ~15
-        end = read(old)["atlas_offset"]
+        end = read(old)["data_offset"]
         changed_outside = sum(a != b for a, b in zip(old[:base] + old[end:], new[:base] + new[end:]))
         if len(old) != len(new) or changed_outside:
             raise RprbError("InvalidCandidates", "regrid changed bytes outside the grid")
@@ -1644,8 +1561,8 @@ def main():
     command.add_argument("--ktx-tool", type=Path,
                          help="the pinned ktx that encodes the BC6H radiance bands "
                               "(default: the map toolchain's)")
-    command.add_argument("--width", type=int, default=512,
-                         help="equirect width of every probe's mip 0")
+    command.add_argument("--face", type=int, default=256,
+                         help="cube face size of every probe's mip 0")
     command.add_argument("--preview-gain", type=float, default=1.0,
                         help="the lightmap's exposure gain (the LMAP writer's)")
     command.add_argument("--max-mean-relative-residual", type=float,
@@ -1683,12 +1600,12 @@ def main():
     if args.command == "info":
         layout = read(args.rprb.read_bytes())
         print(json.dumps({"count": layout["count"], "mips": layout["mips"],
-                          "width": layout["width"], "global_index": layout["global_index"],
+                          "face": layout["face"], "global_index": layout["global_index"],
                           "probes": [{key: (value.tolist() if hasattr(value, "tolist")
                                             else value) for key, value in probe.items()}
                                      for probe in layout["probes"]]}, indent=2))
         return
-    data, receipt = pack(args.probes_dir, args.width, args.preview_gain,
+    data, receipt = pack(args.probes_dir, args.face, args.preview_gain,
                          max_mean_relative_residual=args.max_mean_relative_residual,
                          candidate_bounds_m=(args.candidate_bounds_m[:3], args.candidate_bounds_m[3:])
                          if args.candidate_bounds_m else None, tool=args.ktx_tool)
