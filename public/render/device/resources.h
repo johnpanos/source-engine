@@ -84,7 +84,15 @@ enum class Format : std::uint8_t
 	kBC3Srgb,
 	kBC4Unorm,
 	kBC5Unorm,
+	// BC6H (unsigned half-float RGB) and BC7 (RGBA), 16-byte 4x4 blocks, under
+	// the same capability (Vulkan's textureCompressionBC; GL 4.2's BPTC).
+	kBC6HUfloat,
+	kBC7Unorm,
+	kBC7Srgb,
 	kRGB10A2Unorm, // packed R10 G10 B10 A2; HDR10 presentation
+	// Packed unsigned floats: R and G 11-bit (5-bit exponent, 6-bit mantissa),
+	// B 10-bit (5-bit mantissa); half of kRGBA16Float's bytes, no alpha.
+	kRG11B10Float,
 	kCount
 };
 
@@ -93,6 +101,9 @@ enum class Format : std::uint8_t
 std::uint32_t BytesPerTexel( Format format );
 bool IsDepthFormat( Format format );
 bool IsBlockCompressed( Format format );
+// One kRG11B10Float texel from linear RGB: round to nearest even; negatives
+// and NaN become 0; values past the largest finite clamp to it.
+std::uint32_t PackRG11B10Float( float r, float g, float b );
 
 // A format's unit of storage: one texel, or a block of a compressed format.
 struct FormatBlock

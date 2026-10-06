@@ -1713,7 +1713,10 @@ inline void BlockCompressedFormats( Suite &s )
 	s.That( RegionBytes( Format::kBC1Unorm, 12, 6 ) == 48 &&
 	            RegionBytes( Format::kBC3Unorm, 12, 6 ) == 96 &&
 	            RegionBytes( Format::kBC1Unorm, 6, 3 ) == 16 &&
-	            RegionBytes( Format::kBC5Unorm, 1, 1 ) == 16,
+	            RegionBytes( Format::kBC5Unorm, 1, 1 ) == 16 &&
+	            RegionBytes( Format::kBC6HUfloat, 12, 6 ) == 96 &&
+	            RegionBytes( Format::kBC7Unorm, 6, 3 ) == 32 &&
+	            IsBlockCompressed( Format::kBC7Srgb ),
 	    "D19", "a region takes whole blocks" );
 	TextureDesc attachment = desc;
 	attachment.usages = { ResourceUsage::kSampled, ResourceUsage::kColorAttachment };
@@ -1726,7 +1729,8 @@ inline void BlockCompressedFormats( Suite &s )
 	            !badSamples && badSamples.Error().status == DeviceStatus::kInvalidDescription,
 	    "D19", "an attachment usage or several samples fail kInvalidDescription" );
 
-	for ( const Format format : { Format::kBC1Unorm, Format::kBC3Unorm } )
+	for ( const Format format :
+	    { Format::kBC1Unorm, Format::kBC3Unorm, Format::kBC6HUfloat, Format::kBC7Unorm } )
 	{
 		TextureDesc blocks = desc;
 		blocks.format = format;
@@ -1758,7 +1762,10 @@ inline void BlockCompressedFormats( Suite &s )
 		e.TransitionBuffer( out, ResourceUsage::kCopyDestination, ResourceUsage::kCopySource );
 		const std::optional<CompletionToken> token = s.Run( *device, e );
 		const bool finished = token && s.Finish( *device, *token );
-		const std::string what = std::string( format == Format::kBC1Unorm ? "BC1" : "BC3" ) +
+		const std::string what = std::string( format == Format::kBC1Unorm     ? "BC1"
+		                                      : format == Format::kBC3Unorm   ? "BC3"
+		                                      : format == Format::kBC6HUfloat ? "BC6H"
+		                                                                      : "BC7" ) +
 		                         ": both mips copy in and back unchanged";
 		s.That( finished && s.ReadBack( *device, out, bytes ) == pattern, "D19", what.c_str() );
 
@@ -1791,6 +1798,62 @@ inline void BlockCompressedFormats( Suite &s )
 		(void)device->Release( source, token.value_or( CompletionToken{} ) );
 		(void)device->Release( out, token.value_or( CompletionToken{} ) );
 	}
+}
+
+// D27 packed unsigned floats (kRG11B10Float): PackRG11B10Float rounds to
+// nearest even, maps negatives and NaN to 0 and clamps past the largest
+// finite value; a 4x4 colour attachment cleared to a colour copies out as
+// that packing.
+inline void PackedFloatTargets( Suite &s )
+{
+	s.That(
+	    PackRG11B10Float( 1.0f, 1.0f, 1.0f ) == ( 0x3c0u | ( 0x3c0u << 11 ) | ( 0x1e0u << 22 ) ) &&
+	        PackRG11B10Float( 0.5f, 0.0f, 2.0f ) == ( 0x380u | ( 0x200u << 22 ) ) &&
+	        PackRG11B10Float( -1.0f, std::nanf( "" ), 0.0f ) == 0u &&
+	        PackRG11B10Float( 1.0e9f, 0.0f, 1.0e9f ) == ( 0x7bfu | ( 0x3dfu << 22 ) ) &&
+	        BytesPerTexel( Format::kRG11B10Float ) == 4,
+	    "D27", "the packing rounds, zeroes negatives and NaN, and clamps" );
+	auto device = s.Create();
+	if ( !device )
+		return;
+	TextureDesc desc;
+	desc.format = Format::kRG11B10Float;
+	desc.width = 4;
+	desc.height = 4;
+	desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kCopySource,
+	    ResourceUsage::kColorAttachment, ResourceUsage::kSampled };
+	auto texture = device->CreateTexture( desc );
+	if ( !s.That( texture.HasValue(), "D27", "a packed-float colour attachment is created" ) )
+		return;
+	const BufferId pixels =
+	    s.Buffer( *device, 64, { ResourceUsage::kCopyDestination, ResourceUsage::kCopySource } );
+	auto clear = device->BeginEncoder( QueueKind::kGraphics );
+	if ( !clear )
+		return;
+	CommandEncoder &c = clear.Value();
+	c.TransitionTexture(
+	    texture.Value(), ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+	c.ClearTexture( texture.Value(), { 0.25f, 3.0f, 0.5f, 1.0f } );
+	c.TransitionTexture(
+	    texture.Value(), ResourceUsage::kCopyDestination, ResourceUsage::kCopySource );
+	c.TransitionBuffer( pixels, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+	c.CopyTextureToBuffer( texture.Value(), pixels, { 0, 0, 0, 4, 4 } );
+	c.TransitionBuffer( pixels, ResourceUsage::kCopyDestination, ResourceUsage::kCopySource );
+	const std::optional<CompletionToken> token = s.Run( *device, c );
+	if ( token )
+		(void)s.Finish( *device, *token );
+	const std::vector<std::byte> texels = s.ReadBack( *device, pixels, 64 );
+	const std::uint32_t expected = PackRG11B10Float( 0.25f, 3.0f, 0.5f );
+	bool all = token.has_value() && texels.size() == 64;
+	for ( std::size_t i = 0; all && i < 64; i += 4 )
+	{
+		std::uint32_t texel = 0;
+		std::memcpy( &texel, texels.data() + i, 4 );
+		all = texel == expected;
+	}
+	s.That( all, "D27", "a cleared packed-float target copies out as its packed clear colour" );
+	(void)device->Release( texture.Value(), token.value_or( CompletionToken{} ) );
+	(void)device->Release( pixels, token.value_or( CompletionToken{} ) );
 }
 
 // D22 region copies: a buffer-to-texture copy at (x, y) writes that
@@ -2444,6 +2507,7 @@ inline void RunDeviceConformance( testing::Checks &checks, const DeviceDriver &d
 	detail::ColorBlend( suite, true );
 	detail::ExternalImagesClause( suite );
 	detail::BlockCompressedFormats( suite );
+	detail::PackedFloatTargets( suite );
 	detail::RegionCopies( suite );
 	detail::Timestamps( suite );
 	detail::ComparisonSampling( suite );

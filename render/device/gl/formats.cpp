@@ -34,6 +34,8 @@ GlFormat FormatOf( Format format )
 		return { GL_RG16F, GL_RG, GL_HALF_FLOAT, false };
 	case Format::kRGB10A2Unorm:
 		return { GL_RGB10_A2, GL_RGBA, GL_UNSIGNED_INT_2_10_10_10_REV, false };
+	case Format::kRG11B10Float:
+		return { GL_R11F_G11F_B10F, GL_RGB, GL_UNSIGNED_INT_10F_11F_11F_REV, false };
 	case Format::kRGBA16Float:
 		return { GL_RGBA16F, GL_RGBA, GL_HALF_FLOAT, false };
 	case Format::kR32Float:
@@ -67,6 +69,13 @@ GlFormat FormatOf( Format format )
 		return { GL_COMPRESSED_RED_RGTC1, 0, 0, true };
 	case Format::kBC5Unorm:
 		return { GL_COMPRESSED_RG_RGTC2, 0, 0, true };
+	// BPTC is core since GL 4.2 (the adapter targets 4.5; ES claims no BC).
+	case Format::kBC6HUfloat:
+		return { GL_COMPRESSED_RGB_BPTC_UNSIGNED_FLOAT, 0, 0, true };
+	case Format::kBC7Unorm:
+		return { GL_COMPRESSED_RGBA_BPTC_UNORM, 0, 0, true };
+	case Format::kBC7Srgb:
+		return { GL_COMPRESSED_SRGB_ALPHA_BPTC_UNORM, 0, 0, true };
 	case Format::kUnknown:
 	case Format::kCount:
 		break;

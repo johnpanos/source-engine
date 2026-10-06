@@ -128,6 +128,12 @@ std::vector<std::byte> EncodeTexel( Format format, const ClearColor &color )
 		putBytes( 0, &packed, sizeof( packed ) );
 		break;
 	}
+	case Format::kRG11B10Float:
+	{
+		const std::uint32_t packed = PackRG11B10Float( color.r, color.g, color.b );
+		putBytes( 0, &packed, sizeof( packed ) );
+		break;
+	}
 	case Format::kRGBA16Float:
 	{
 		const std::uint16_t h[4] = {
@@ -173,6 +179,9 @@ std::vector<std::byte> EncodeTexel( Format format, const ClearColor &color )
 	case Format::kBC3Srgb:
 	case Format::kBC4Unorm:
 	case Format::kBC5Unorm:
+	case Format::kBC6HUfloat:
+	case Format::kBC7Unorm:
+	case Format::kBC7Srgb:
 	case Format::kUnknown:
 	case Format::kCount:
 		break;

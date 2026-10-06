@@ -8,6 +8,8 @@
 #include "render/device/facts.h"
 #include "render/device/resources.h"
 
+#include <cstring>
+
 namespace render::device
 {
 
@@ -121,6 +123,7 @@ std::uint32_t BytesPerTexel( Format format )
 	case Format::kR8Unorm:
 		return 1;
 	case Format::kRGB10A2Unorm:
+	case Format::kRG11B10Float:
 	case Format::kRGBA8Unorm:
 	case Format::kRGBA8Srgb:
 	case Format::kBGRA8Unorm:
@@ -144,6 +147,9 @@ std::uint32_t BytesPerTexel( Format format )
 	case Format::kBC3Srgb:
 	case Format::kBC4Unorm:
 	case Format::kBC5Unorm:
+	case Format::kBC6HUfloat:
+	case Format::kBC7Unorm:
+	case Format::kBC7Srgb:
 	case Format::kUnknown:
 	case Format::kCount:
 		break;
@@ -158,7 +164,7 @@ bool IsDepthFormat( Format format )
 
 bool IsBlockCompressed( Format format )
 {
-	return format >= Format::kBC1Unorm && format <= Format::kBC5Unorm;
+	return format >= Format::kBC1Unorm && format <= Format::kBC7Srgb;
 }
 
 FormatBlock BlockOf( Format format )
@@ -174,10 +180,58 @@ FormatBlock BlockOf( Format format )
 	case Format::kBC3Unorm:
 	case Format::kBC3Srgb:
 	case Format::kBC5Unorm:
+	case Format::kBC6HUfloat:
+	case Format::kBC7Unorm:
+	case Format::kBC7Srgb:
 		return { 4, 4, 16 };
 	default:
 		return { 1, 1, BytesPerTexel( format ) };
 	}
+}
+
+namespace
+{
+// An unsigned float with a 5-bit exponent (bias 15) and `mantissaBits`.
+std::uint32_t PackUnsignedFloat( float value, int mantissaBits )
+{
+	const std::uint32_t maxFinite = ( 30u << mantissaBits ) | ( ( 1u << mantissaBits ) - 1 );
+	if ( !( value > 0.0f ) ) // negative, zero and NaN
+		return 0;
+	std::uint32_t bits;
+	std::memcpy( &bits, &value, sizeof( bits ) );
+	int exponent = int( ( bits >> 23 ) & 255u ) - 127 + 15;
+	std::uint32_t mantissa = bits & 0x7fffffu;
+	if ( ( ( bits >> 23 ) & 255u ) == 255u ) // infinity
+		return maxFinite;
+	if ( exponent <= 0 )
+	{
+		const int shift = 1 - exponent;
+		if ( shift > 24 )
+			return 0;
+		mantissa = ( mantissa | 0x800000u ) >> shift;
+		exponent = 0;
+	}
+	const int drop = 23 - mantissaBits;
+	std::uint32_t kept = mantissa >> drop;
+	const std::uint32_t rest = mantissa & ( ( 1u << drop ) - 1 );
+	const std::uint32_t half = 1u << ( drop - 1 );
+	if ( rest > half || ( rest == half && ( kept & 1u ) ) )
+		++kept;
+	if ( kept == ( 1u << mantissaBits ) )
+	{
+		kept = 0;
+		++exponent;
+	}
+	if ( exponent >= 31 )
+		return maxFinite;
+	return ( std::uint32_t( exponent ) << mantissaBits ) | kept;
+}
+} // namespace
+
+std::uint32_t PackRG11B10Float( float r, float g, float b )
+{
+	return PackUnsignedFloat( r, 6 ) | ( PackUnsignedFloat( g, 6 ) << 11 ) |
+	       ( PackUnsignedFloat( b, 5 ) << 22 );
 }
 
 std::uint64_t RegionBytes( Format format, std::uint32_t width, std::uint32_t height )

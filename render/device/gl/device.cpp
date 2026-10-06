@@ -415,6 +415,7 @@ bool GlDevice::EsFormatSupported( const TextureDesc &desc, bool attachment ) con
 		return !attachment || m_EsHalfFloatTargets;
 	case Format::kR32Float:
 	case Format::kRGBA32Float:
+	case Format::kRG11B10Float: // colour-renderable under EXT_color_buffer_float
 		return !attachment || m_EsFloatTargets;
 	default:
 		break;
