@@ -471,7 +471,8 @@ bool VulkanDevice::ValidateDraw( const ValidationState &state, bool indexed ) co
 
 bool VulkanDevice::ImportsAtHome( const std::unordered_map<std::uint64_t, ResourceUsage> &states )
 {
-	for ( std::uint64_t id : m_Imported )
+	// A read-only import has one usage, its home: only a writable one can leave it.
+	for ( std::uint64_t id : m_WritableImports )
 	{
 		const auto found = states.find( id );
 		const TextureRecord *texture = LiveTexture( id );
@@ -943,7 +944,7 @@ private:
 	// in their home usage (Validate put each one there).
 	void HostBoundary()
 	{
-		for ( std::uint64_t id : m_D.Imported() )
+		for ( std::uint64_t id : m_D.WritableImports() )
 		{
 			if ( m_Tracks.find( id ) != m_Tracks.end() )
 				Access( id, false );
@@ -953,7 +954,7 @@ private:
 	// The host may have written any imported texture in its home usage.
 	void HostWrote()
 	{
-		for ( std::uint64_t id : m_D.Imported() )
+		for ( std::uint64_t id : m_D.WritableImports() )
 			TrackOf( id ).dirty = true;
 	}
 

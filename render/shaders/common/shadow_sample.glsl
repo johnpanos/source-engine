@@ -152,10 +152,14 @@ float ShadowClipPerWorld( ShadowTile tile, float linearDepth )
 	return tile.params.z > 0.0 ? scale / max( linearDepth, 1e-4 ) : scale;
 }
 
+// The includer sets this when soft shadows are off (a view setting): every
+// shadow then takes the hard 2x2 filter.
+bool gShadowHardOnly = false;
+
 float ShadowVisibilitySoft( texture2D atlas, sampler pointSampler, sampler comparisonSampler, ShadowTile tile, vec3 world,
     vec3 normal, float size, float rotation )
 {
-	if ( tile.params.z == 0.0 )
+	if ( tile.params.z == 0.0 || gShadowHardOnly )
 		return ShadowVisibility( atlas, pointSampler, comparisonSampler, tile, world );
 	// The receiver moved off its surface along `normal` (the caller's offset
 	// direction, its length a multiplier: ShadowReceiverOffset) by one and a

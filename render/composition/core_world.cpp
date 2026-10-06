@@ -10,6 +10,7 @@
 #endif
 
 #include "mapcontainer/probe_volume.h"
+#include "mapcontainer/light_shadow_masks.h"
 #include "mapcontainer/world_lightmap.h"
 #include "mapcontainer/world_mesh_decode.h"
 #include "render/graph/compiled_graph.h"
@@ -462,6 +463,16 @@ void CoreWorld::SetStage()
 	// header's flag, or any texel below one in decoded pages).
 	m_StageSunMask = m_Capture.sunMask && m_Capture.lightmap.Directional();
 	stage->lightmap = m_Capture.lightmap;
+	// Baked shadow masks serve the runtime direct light's lightmapped surfaces.
+	if ( !m_Capture.shadowMask.flat.empty() &&
+	     m_Capture.shadowMask.width == m_Capture.lightmap.width &&
+	     m_Capture.shadowMask.height == m_Capture.lightmap.height )
+	{
+		stage->shadowMask = m_Capture.shadowMask;
+		m_StageMaskLights = m_Capture.maskLights;
+	}
+	else
+		m_StageMaskLights = nullptr;
 	if ( m_Capture.indirect.flat.size() == m_Capture.lightmap.flat.size() &&
 	     m_Capture.indirect.flatFormat == m_Capture.lightmap.flatFormat )
 		stage->indirect = m_Capture.indirect;
@@ -1073,6 +1084,31 @@ bool CoreWorld::StageCapture::UploadLightmap(
 	}
 	if ( total.flat.empty() )
 		return false;
+	// The static lights' baked shadow masks at the total page's size.
+	pass::world::LightmapPages masks;
+	std::shared_ptr<std::vector<mapcontainer::LightShadowMaskRecord>> maskLights;
+	mapcontainer::LightShadowMasks maskLayout;
+	if ( request.lsmk &&
+	     mapcontainer::ValidateLightShadowMasks(
+	         request.lsmk, std::size_t( request.lsmkBytes ), &maskLayout ) &&
+	     maskLayout.width == total.width && maskLayout.height == total.height )
+	{
+		const std::byte *bytes = static_cast<const std::byte *>( request.lsmk );
+		masks.width = maskLayout.width;
+		masks.height = maskLayout.height;
+		masks.flatFormat = device::Format::kRGBA16Unorm;
+		masks.flat.assign(
+		    bytes + maskLayout.pageOffset, bytes + maskLayout.pageOffset + maskLayout.pageBytes );
+		maskLights = std::make_shared<std::vector<mapcontainer::LightShadowMaskRecord>>();
+		for ( std::uint32_t i = 0; i < maskLayout.lightCount; ++i )
+			maskLights->push_back( mapcontainer::LightShadowMaskRecordAt( request.lsmk, i ) );
+	}
+	// A region update (no lump) keeps the stage's masks.
+	if ( request.lsmk || request.lmap )
+	{
+		shadowMask = std::move( masks );
+		this->maskLights = std::move( maskLights );
+	}
 	// Recomposed while a stage draws: the pass updates its pages in place.
 	if ( m_Owner.m_StageSet && !lightmap.flat.empty() && lightmap.flatFormat == total.flatFormat )
 	{
@@ -1396,6 +1432,7 @@ CoreWorld::ViewLightInputs CoreWorld::TakeViewLightInputs(
 		}
 	}
 	in.sunMask = m_StageSunMask;
+	in.maskLights = m_StageMaskLights;
 	in.shadowQuality = m_ShadowQuality.load( std::memory_order_relaxed );
 	if ( in.shadowQuality > 0 && m_ShadowMovers.load( std::memory_order_relaxed ) )
 	{
@@ -1453,6 +1490,7 @@ std::shared_ptr<const pass::world::StageViewLights> CoreWorld::StageViewLightsFo
 	out->view.slices[0] = grid.Value().sliceScale;
 	out->view.slices[1] = grid.Value().sliceBias;
 	out->view.slices[2] = grid.Value().nearZ;
+	out->view.slices[3] = m_ShadowPcss.load( std::memory_order_relaxed ) ? 0.0f : 1.0f;
 	out->view.counts[2] = viewport[0];
 	out->view.counts[3] = viewport[1];
 	const math::float4 &z = desc.view.rows[2];
@@ -1549,7 +1587,43 @@ std::shared_ptr<const pass::world::StageViewLights> CoreWorld::StageViewLightsFo
 		    k >= 0 && std::size_t( k ) < plan.lightTiles.size() ? plan.lightTiles[k] : -1;
 		const RuntimeShadowLayout layout =
 		    tile >= 0 ? plan.lightLayouts[k] : RuntimeShadowLayout::kSingle;
-		out->lights.push_back( material::PackSurfaceLight( light, tile, layout, light.baked ) );
+		// A static light with a baked shadow mask (its record at the light's
+		// origin): its static shadow is the mask's; its tile still serves
+		// moving casters in its reach.
+		int maskId = -1;
+		bool moverInReach = false;
+		if ( in.maskLights && light.kind == light_set::LightKind::World )
+			for ( const mapcontainer::LightShadowMaskRecord &record : *in.maskLights )
+				if ( std::fabs( record.origin[0] - light.position[0] ) <=
+				         mapcontainer::kLightShadowMasksMatchUnits &&
+				     std::fabs( record.origin[1] - light.position[1] ) <=
+				         mapcontainer::kLightShadowMasksMatchUnits &&
+				     std::fabs( record.origin[2] - light.position[2] ) <=
+				         mapcontainer::kLightShadowMasksMatchUnits )
+				{
+					maskId = int( record.id );
+					break;
+				}
+		if ( maskId > 0 && tile >= 0 )
+			for ( const light_set::RuntimeOccluder &mover : in.movers )
+			{
+				float reach = 0.0f, distance = 0.0f;
+				for ( int a = 0; a < 3; ++a )
+				{
+					for ( int k = 0; k < 3; ++k )
+						reach += mover.box.axes[a][k] * mover.box.axes[a][k];
+					const float d = mover.box.center[a] - light.position[a];
+					distance += d * d;
+				}
+				const float limit = std::sqrt( reach ) + light.radius;
+				if ( light.radius <= 0.0f || distance < limit * limit )
+				{
+					moverInReach = true;
+					break;
+				}
+			}
+		out->lights.push_back( material::PackSurfaceLight(
+		    light, tile, layout, light.baked, maskId, moverInReach ) );
 	}
 	// The projected lights, with their cookie layers and tiles.
 	for ( std::size_t i = 0; i < in.projectors.size(); ++i )
@@ -2238,6 +2312,7 @@ void CoreWorld::SetQuality( const RenderCoreWorldQuality &quality )
 	m_DepthPrepass.store( quality.depthPrepass != 0, std::memory_order_relaxed );
 	m_GpuSubmission.store( quality.gpuSubmission, std::memory_order_relaxed );
 	m_ShadowMovers.store( quality.shadowMovers != 0, std::memory_order_relaxed );
+	m_ShadowPcss.store( quality.shadowPcss != 0, std::memory_order_relaxed );
 	m_RuntimeDirect.store( quality.runtimeDirect != 0, std::memory_order_relaxed );
 	m_VolumetricOn.store( quality.volumetric != 0, std::memory_order_relaxed );
 	m_SsrOn.store( quality.ssr != 0, std::memory_order_relaxed );
@@ -3590,29 +3665,38 @@ device::TextureId CoreWorld::DrawStageShadows( device::IRenderDevice2 &device,
 	m_ShadowTilesShared.fetch_add( sharedViews.size(), std::memory_order_relaxed );
 	m_ShadowTilesDrawn.fetch_add( dirty.size(), std::memory_order_relaxed );
 	// Each view draws the chunks inside its frustum (a chunk's box wholly
-	// outside one clip plane is culled).
-	auto inside = []( const math::float4x4 &clip, const Casters::Chunk &chunk )
+	// outside one clip plane is culled). The six clip half-spaces of a view
+	// (-w <= x, y <= w, 0 <= z <= w) are planes over its matrix's rows, and a
+	// box is wholly outside one when its corner farthest along the plane's
+	// normal is: one dot product per plane instead of eight transforms.
+	using ClipPlanes = std::array<math::float4, 6>;
+	auto planesOf = []( const math::float4x4 &clip ) -> ClipPlanes
 	{
-		int outside[6] = {};
-		for ( int corner = 0; corner < 8; ++corner )
+		const math::float4 *r = clip.rows;
+		const auto add = []( const math::float4 &a, const math::float4 &b, float sign )
 		{
-			const math::float4 h =
-			    math::Transform( clip, { corner & 1 ? chunk.max[0] : chunk.min[0],
-			                               corner & 2 ? chunk.max[1] : chunk.min[1],
-			                               corner & 4 ? chunk.max[2] : chunk.min[2], 1.0f } );
-			outside[0] += h.x < -h.w;
-			outside[1] += h.x > h.w;
-			outside[2] += h.y < -h.w;
-			outside[3] += h.y > h.w;
-			outside[4] += h.z < 0.0f;
-			outside[5] += h.z > h.w;
-		}
-		return std::none_of( outside, outside + 6,
-		    []( int count )
-		    {
-			    return count == 8;
-		    } );
+			return math::float4{ a.x + sign * b.x, a.y + sign * b.y, a.z + sign * b.z,
+				a.w + sign * b.w };
+		};
+		return { add( r[3], r[0], 1.0f ), add( r[3], r[0], -1.0f ), add( r[3], r[1], 1.0f ),
+			add( r[3], r[1], -1.0f ), r[2], add( r[3], r[2], -1.0f ) };
 	};
+	auto inside = []( const ClipPlanes &planes, const Casters::Chunk &chunk )
+	{
+		for ( const math::float4 &n : planes )
+		{
+			const float far = n.x * ( n.x >= 0.0f ? chunk.max[0] : chunk.min[0] ) +
+			                  n.y * ( n.y >= 0.0f ? chunk.max[1] : chunk.min[1] ) +
+			                  n.z * ( n.z >= 0.0f ? chunk.max[2] : chunk.min[2] ) + n.w;
+			if ( far < 0.0f )
+				return false;
+		}
+		return true;
+	};
+	std::vector<ClipPlanes> viewPlanes;
+	viewPlanes.reserve( work.views.size() );
+	for ( const pass::shadows::ShadowPlanView &view : work.views )
+		viewPlanes.push_back( planesOf( view.viewProjection ) );
 	// The moving casters (the frame's occluder boxes, render.dynamic-occlusion):
 	// a unit cube placed by each box, per view that sees it.
 	std::vector<std::vector<pass::shadows::ShadowCaster>> moverCasters( work.views.size() );
@@ -3648,7 +3732,7 @@ device::TextureId CoreWorld::DrawStageShadows( device::IRenderDevice2 &device,
 					( &place.rows[r].x )[3] = mover.center[r];
 				}
 				place.rows[3] = { 0.0f, 0.0f, 0.0f, 1.0f };
-				if ( inside( work.views[v].viewProjection, bounds ) )
+				if ( inside( viewPlanes[v], bounds ) )
 				{
 					moverCasters[v].push_back( { *box, place } );
 					// Order-independent: a sum of each mover's mixed key.
@@ -3700,7 +3784,7 @@ device::TextureId CoreWorld::DrawStageShadows( device::IRenderDevice2 &device,
 		}
 		for ( std::size_t v = 0; v < work.views.size(); ++v )
 		{
-			if ( !inside( work.views[v].viewProjection, bounds ) )
+			if ( !inside( viewPlanes[v], bounds ) )
 				continue;
 			moverCasters[v].push_back( { *geometry, math::float4x4::Identity() } );
 			std::uint64_t key = part.version ^
@@ -3766,9 +3850,11 @@ device::TextureId CoreWorld::DrawStageShadows( device::IRenderDevice2 &device,
 		views.reserve( dirty.size() );
 		for ( std::size_t v = 0; v < dirty.size(); ++v )
 		{
+			const ClipPlanes planes = planesOf( dirty[v]->viewProjection );
+			chunkCasters[v].reserve( casters->chunks.size() );
 			for ( const Casters::Chunk &chunk : casters->chunks )
 			{
-				if ( inside( dirty[v]->viewProjection, chunk ) )
+				if ( inside( planes, chunk ) )
 					chunkCasters[v].push_back(
 					    { *mesh, math::float4x4::Identity(), chunk.firstIndex, chunk.indexCount } );
 			}

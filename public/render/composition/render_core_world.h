@@ -142,6 +142,10 @@ struct RenderCoreWorldQuality
 	// Nonzero: the frame's moving objects (render.dynamic-occlusion boxes)
 	// cast shadows over the cached static tiles.
 	int shadowMovers;
+	// Nonzero: shadows are percentage-closer soft shadows (PCSS, the
+	// emitter's penumbra); zero gives every shadow the hard 2x2 filter, the
+	// cheaper choice (r_core_shadow_pcss, a performance setting).
+	int shadowPcss;
 	// Nonzero: runtime direct light (id Tech's split): the world's lightmap
 	// is its indirect layer and every light's direct light is drawn at
 	// runtime, shadowed, so moving objects block it; zero draws the bake's

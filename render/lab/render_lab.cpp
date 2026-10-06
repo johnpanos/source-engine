@@ -1100,7 +1100,7 @@ int Run( const Options &options )
 				const std::vector<std::string> inputs =
 				    m.mesh ? std::vector<std::string>{}
 				           : std::vector<std::string>{ kLightmapPage, kLightmapGradient,
-				                 indirectPage ? kLightmapIndirect : "" };
+				                 indirectPage ? kLightmapIndirect : "", "" };
 				auto request = resolver.Value()->DrawGroup( m.program, inputs );
 				if ( !request )
 					return Fail( "no pbr draw group" );

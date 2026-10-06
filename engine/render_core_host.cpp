@@ -125,6 +125,10 @@ ConVar r_core_world_gpu_submit( "r_core_world_gpu_submit", "0", FCVAR_ARCHIVE,
     "them against the view's world depth)." );
 ConVar r_core_shadow_movers( "r_core_shadow_movers", "1", FCVAR_ARCHIVE,
     "Render core: moving objects cast shadows over the cached static shadow tiles." );
+ConVar r_core_shadow_pcss( "r_core_shadow_pcss", "1", FCVAR_ARCHIVE,
+    "Render core: soft shadows (PCSS: penumbrae sized by each light's emitter). 0 gives every "
+    "runtime shadow the hard 2x2 filter, which is cheaper (Advanced Video: Soft Shadows "
+    "(PCSS)). Static lights with baked shadow masks use their masks either way." );
 ConVar r_core_runtime_direct( "r_core_runtime_direct", "1", FCVAR_ARCHIVE,
     "Render core: the world's lightmap is its indirect layer and every light's direct light is "
     "drawn at runtime, shadowed, so moving objects block it (0: the bake's total layer, with "
@@ -449,7 +453,8 @@ void RenderCoreHost_BeginFrame()
 		{
 			const RenderCoreWorldQuality quality{ r_core_ao_quality.GetInt(),
 			    r_core_shadow_quality.GetInt(), r_core_depth_prepass.GetInt(),
-			    r_core_shadow_movers.GetInt(), r_core_runtime_direct.GetInt(),
+			    r_core_shadow_movers.GetInt(), r_core_shadow_pcss.GetInt(),
+			    r_core_runtime_direct.GetInt(),
 			    RenderCoreWorldDraw_OnlyCore(), r_core_dynamic_draws.GetBool(),
 			    r_core_volumetric.GetInt(), r_core_ssr.GetInt(),
 			    r_core_world_gpu_submit.GetInt() };

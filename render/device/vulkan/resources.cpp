@@ -379,6 +379,15 @@ DeviceResult<TextureId> VulkanDevice::ImportImage(
 	m_Textures.emplace( id.value, std::move( record ) );
 	++m_ResourceActivity.created[std::size_t( ResourceKind::kTexture )];
 	m_Imported.insert( id.value );
+	for ( std::uint32_t bit = 0; bit < static_cast<std::uint32_t>( ResourceUsage::kCount ); ++bit )
+	{
+		const ResourceUsage usage = static_cast<ResourceUsage>( bit );
+		if ( desc.usages.Has( usage ) && IsWrite( usage ) )
+		{
+			m_WritableImports.insert( id.value );
+			break;
+		}
+	}
 	return id;
 }
 

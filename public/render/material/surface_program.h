@@ -194,7 +194,9 @@ SurfaceAreaLight PackAreaLight(
 struct SurfaceViewGpu
 {
 	std::uint32_t grid[4] = {}; // tilesX, tilesY, slices, tile size in pixels
-	float slices[4] = {};       // sliceScale, sliceBias, nearZ, 0
+	// sliceScale, sliceBias, nearZ, and 1 when soft shadows (PCSS) are off:
+	// every shadow takes the hard 2x2 filter (r_core_shadow_pcss 0).
+	float slices[4] = {};
 	// The view distance of a world point p: dot( xyz, p ) + w (the negated z
 	// row of world-to-view).
 	float viewDistance[4] = {};
@@ -220,7 +222,11 @@ struct SurfaceLightGpu
 	float cone[4] = {};
 	// x: the cone ramp's exponent (light_set::SpotFactor); y: 1 when its
 	// diffuse light is in the surface's baked light (the specular lobe only);
-	// z: RuntimeShadowLayout (single tile or world-aligned cube from cone.w)
+	// z: RuntimeShadowLayout (single tile or world-aligned cube from cone.w);
+	// w: the light's baked shadow mask (LSMK) on a lightmapped surface: 0
+	// none; id its static visibility where the texels' ids hold it (the
+	// tile is not sampled there); -id the lesser of that and its tile (a
+	// moving caster is in the light's reach).
 	float spot[4] = {};
 	// xyz: vrad's constant, linear and quadratic terms (cone.y 2: an
 	// Attenuated world light, light_set::AttenuatedFalloff)
@@ -229,7 +235,8 @@ struct SurfaceLightGpu
 static_assert( sizeof( SurfaceLightGpu ) == 96 );
 
 SurfaceLightGpu PackSurfaceLight( const light_set::RuntimeLight &light, int shadowTile = -1,
-    RuntimeShadowLayout shadowLayout = RuntimeShadowLayout::kSingle, bool diffuseInBake = false );
+    RuntimeShadowLayout shadowLayout = RuntimeShadowLayout::kSingle, bool diffuseInBake = false,
+    int maskId = -1, bool moverInReach = false );
 
 // A view's shadows as the view group binds them: the atlas the view's shadow
 // passes drew (render.pass.shadows; kSampled wherever the group is read, and
@@ -735,7 +742,7 @@ public:
 	// (kSurfaceAmbientOcclusion on a world surface; empty otherwise).
 	GroupRequest DrawGroup( std::string page, const ModelLighting &lighting = {},
 	    const device::SamplerDesc &sampler = {}, std::string gradient = {},
-	    std::string indirect = {} ) const;
+	    std::string indirect = {}, std::string shadowMask = {} ) const;
 
 private:
 	explicit SurfaceProgram( device::IRenderDevice2 &device ) : m_Device( device ) {}

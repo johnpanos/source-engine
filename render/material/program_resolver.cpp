@@ -717,7 +717,7 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 			out.drawInputs = { "lightmap",
 			    ( variant.terms & kSurfaceRuntimeDirect ) ? "lightmap-indirect-gradient"
 			                                              : "lightmap-gradient",
-			    "lightmap-indirect" };
+			    "lightmap-indirect", "lightmap-shadow-mask" };
 		return out;
 	}
 	if ( material.family == "vertexlit" )
@@ -982,9 +982,9 @@ std::optional<GroupRequest> ProgramResolver::DrawGroup( const ResolvedProgram &p
 	if ( !program.request.drawLayout.IsValid() ||
 	     inputTextures.size() != program.drawInputs.size() )
 		return std::nullopt;
-	if ( program.name == "pbr" && inputTextures.size() == 3 )
+	if ( program.name == "pbr" && inputTextures.size() == 4 )
 		return s.lightmapped->Program().DrawGroup(
-		    inputTextures[0], {}, {}, inputTextures[1], inputTextures[2] );
+		    inputTextures[0], {}, {}, inputTextures[1], inputTextures[2], inputTextures[3] );
 	if ( ( program.name == "pbr" || program.name == "refract" || program.name == "depth" ||
 	         program.name == "unlit" ) &&
 	     inputTextures.empty() )

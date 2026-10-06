@@ -16,6 +16,7 @@
 
 #include "core_output.h"
 #include "core_temporal.h"
+#include "mapcontainer/light_shadow_masks.h"
 #include "mdl/studio_model.h"
 #include "render/composition/render_core.h"
 #include "render/legacy/core_backend.h"
@@ -369,6 +370,10 @@ private:
 		// decoded for a region update), and whether it carries a sun mask.
 		std::vector<std::byte> lmap;
 		bool sunMask = false;
+		// The static lights' baked shadow masks (LSMK; flat empty: none) and
+		// their lights (origin and id).
+		pass::world::LightmapPages shadowMask;
+		std::shared_ptr<const std::vector<mapcontainer::LightShadowMaskRecord>> maskLights;
 		// Block pages become RGBA16F pages (a region update needs texels).
 		bool DecodePages();
 		std::optional<pass::world::StageProbeVolume> probes; // the bake
@@ -419,6 +424,7 @@ private:
 	std::atomic<bool> m_DepthPrepass{ true };
 	std::atomic<int> m_GpuSubmission{ 0 }; // 0 off, 1 GPU culling, 2 with occlusion
 	std::atomic<bool> m_ShadowMovers{ true };
+	std::atomic<bool> m_ShadowPcss{ true };
 	// Runtime direct light on the next stage (RenderCoreWorldQuality), and
 	// on the stage set.
 	std::atomic<bool> m_RuntimeDirect{ true };
@@ -475,6 +481,8 @@ private:
 		std::size_t mapAreas = 0;
 		std::optional<pass::lights::MapSun> sun;
 		bool sunMask = false;
+		// The stage's baked shadow mask lights, or null.
+		std::shared_ptr<const std::vector<mapcontainer::LightShadowMaskRecord>> maskLights;
 		int shadowQuality = 0;
 		std::vector<dynamic_occlusion::TriangleOccluder> triangles;
 		std::vector<light_set::RuntimeOccluder> movers; // the frame's moving objects
@@ -632,6 +640,8 @@ private:
 	std::unique_ptr<CookieArray> m_Cookies;
 	std::shared_ptr<const CookieImages> m_CookiesUploaded;
 	bool m_StageSunMask = false;
+	// The stage's baked shadow mask lights (LSMK), or null.
+	std::shared_ptr<const std::vector<mapcontainer::LightShadowMaskRecord>> m_StageMaskLights;
 	std::atomic<unsigned long long> m_StageLightingBuilds{ 0 };
 	// Render sequence: views that read the frame's stage lighting instead of
 	// planning their own lights, shadow atlas and occlusion.

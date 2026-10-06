@@ -556,6 +556,7 @@ void VulkanDevice::DestroyLogical()
 	m_Samplers.clear();
 	m_Textures.clear();
 	m_Imported.clear();
+	m_WritableImports.clear();
 	m_Buffers.clear();
 	m_BindGroups.clear(); // their sets go with the pools below
 	m_Layouts.clear();
@@ -783,6 +784,7 @@ void VulkanDevice::Erase( ResourceId resource )
 			DestroyTexture( found->second );
 			m_Textures.erase( found );
 			m_Imported.erase( resource.value );
+			m_WritableImports.erase( resource.value );
 		}
 		break;
 	case ResourceKind::kSampler:

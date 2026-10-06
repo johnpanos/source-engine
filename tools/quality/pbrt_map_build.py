@@ -154,7 +154,7 @@ import remote_blender  # noqa: E402
 STEPS = ("legacy-scene", "scene", "environment", "stage", "probe-placement", "reference-gate",
          "collision", "compile",
          "layout", "bake", "noise", "denoise", "directional", "directional-indirect", "seams",
-         "probe", "rprb", "probe-volume", "radiosity", "sdf", "ktx2", "sky", "pack", "identity",
+         "probe", "rprb", "probe-volume", "radiosity", "sdf", "light-masks", "ktx2", "sky", "pack", "identity",
          "content", "boot", "camera-boot", "runtime-gate", "traversal-boot", "traversal", "audit")
 BAKE_SCOPE = "pbrt-shared-lightmap-uv-and-cycles-bake"
 # Quality gates report, they never stop a build or block publishing (user
@@ -584,6 +584,9 @@ class Pipeline:
             "layers": self.out / "lighting" / "layers",
             "directional_bakes": self.out / "lighting" / "directional",
             "sun_visibility": self.out / "lighting" / "sun_visibility.exr",
+            "light_masks": self.out / "lighting" / "light_masks.exr",
+            "light_mask_ids": self.out / "lighting" / "light_masks-ids.exr",
+            "lsmk": self.out / "lighting" / "light_masks.lsmk",
             "directional": self.out / "lighting" / "atlas-directional.exr",
             "directional_indirect": self.out / "lighting" / "indirect-directional.exr",
             "audit": self.out / "audit.json",
@@ -1187,6 +1190,32 @@ class Pipeline:
             sun_args = ["--sun-visibility", p["sun_visibility"],
                         "--sun-bake-evidence", raw_receipt]
             sun_inputs = [p["sun_visibility"], raw_receipt]
+        # Static lights' baked shadow masks (LSMK) where the runtime draws
+        # direct light (an indirect layer): their static shadows leave PCSS.
+        mask_args = []
+        if self.lightmap.get("light_masks", "indirect" in self.lightmap["layers"]):
+            mask_settings = {k: self.lightmap[k] for k in ("size", "device", "seed",
+                                                           "exclude_materials")}
+            self.step("light-masks", [p["lighting_stage"]] + self.scene_sources(), mask_settings,
+                      SCENE_SCRIPTS + self.baker.scripts("light-masks"),
+                      [p["light_masks"], p["light_mask_ids"], p["light_masks"].with_name(
+                          p["light_masks"].name + ".json")],
+                      lambda: self.baker.bake("light-masks", [
+                          "--masks-only", "--layout", "authored", "--scene", scene,
+                          "--stage", p["lighting_stage"],
+                          "--out-stage", p["light_masks"].with_suffix(".unused.usdc"),
+                          "--out-exr", p["light_masks"],
+                          "--size", str(self.lightmap["size"]), "--samples", "1",
+                          "--device", self.lightmap["device"],
+                          "--seed", str(self.lightmap["seed"]),
+                          "--light-paths", self.lightmap["light_paths"]] + env_args +
+                          [item for material in self.lightmap["exclude_materials"]
+                           for item in ("--exclude-material", material)]))
+            masks_receipt = json.loads(p["light_masks"].with_name(
+                p["light_masks"].name + ".json").read_text())
+            if masks_receipt.get("status") == "pass":
+                mask_args = ["--light-masks", p["light_masks"], "--lsmk-out", p["lsmk"]]
+                sun_inputs = sun_inputs + [p["light_masks"], p["light_mask_ids"]]
         layer_args = [item for role, out in denoised_layers.items()
                       for item in ("--layer", "%s=%s" % (role, out))]
         seam_args = ["--seams", p["seams"], "--buried-exr", p["atlas"], "--coverage-exr",
@@ -1205,8 +1234,9 @@ class Pipeline:
                   ([p["directional_indirect"]] if directional and "indirect" in denoised_layers
                    else [p["directional"]] if directional else []) + sun_inputs,
                   ktx2_settings,
-                  ["lightmap_ktx2.py", "world_lightmap_v3.py", "../texture/bc_codec.py"],
-                  [p["ktx2"], p["lmap"]],
+                  ["lightmap_ktx2.py", "world_lightmap_v3.py", "light_shadow_masks.py",
+                   "../texture/bc_codec.py"],
+                  [p["ktx2"], p["lmap"]] + ([p["lsmk"]] if mask_args else []),
                   lambda: self.run("ktx2", [sys.executable, HERE / "lightmap_ktx2.py",
                                             "--exr", atlas, "--bake-evidence", atlas_receipt,
                                             "--lighting-stage", p["lighting_stage"],
@@ -1215,7 +1245,8 @@ class Pipeline:
                                             "--expected-scope", scope, "--out", p["ktx2"],
                                             "--lmap-out", p["lmap"],
                                             "--record-seam-failure"] +
-                                           directional_args + layer_args + seam_args + sun_args))
+                                           directional_args + layer_args + seam_args + sun_args +
+                                           mask_args))
         if probe:
             # Reflection probes (R50-PARALLAX): placed per room and per glossy
             # surface, each rendered with its depth pass, then fitted to a
@@ -1380,8 +1411,10 @@ class Pipeline:
                       (["--probe-volume", p["prbv"]] if volume else []) +
                       (["--radiosity-transfer", p["rtrn"]] if radiosity else []) +
                       (["--sdf-volume", p["sdfv"]] if self.sdf_volume else []) +
-                      (["--reflection-probes", p["rprb"]] if probe else []))
+                      (["--reflection-probes", p["rprb"]] if probe else []) +
+                      (["--light-masks", p["lsmk"]] if p["lsmk"].is_file() else []))
         self.step("pack", [pack_stage, p["lighting_stage"], p["bsp"], p["lmap"]] +
+                  ([p["lsmk"]] if p["lsmk"].is_file() else []) +
                   ([p["prbv"]] if volume else []) + ([p["rtrn"]] if radiosity else []) +
                   ([p["sdfv"]] if self.sdf_volume else []) +
                   ([p["rprb"]] if probe else []) +

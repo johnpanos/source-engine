@@ -515,6 +515,7 @@ public:
 	BaseModHybridButton *m_drpCoreShadows = nullptr;
 	BaseModHybridButton *m_drpCoreDepth = nullptr;
 	BaseModHybridButton *m_drpCoreMovers = nullptr;
+	BaseModHybridButton *m_drpCorePcss = nullptr;
 	BaseModHybridButton *m_drpCoreDirect = nullptr;
 	vgui::Label titleLabel, descriptionLabel;
 	vgui::Label *m_lblDescriptionTitle = &titleLabel;
@@ -570,7 +571,7 @@ void ParentButton::OnKeyCodePressed( KeyCode code )
 // The test.
 
 static const char *const kCoreRows[] = { "DrpCorePreset", "DrpCoreAO", "DrpCoreShadows",
-    "DrpCoreDepth", "DrpCoreMovers", "DrpCoreDirect" };
+    "DrpCoreDepth", "DrpCoreMovers", "DrpCorePcss", "DrpCoreDirect" };
 
 // The shipped dialog's rows the layout builds on: two list rows looping
 // into each other, the last of them the template, and the frame.
@@ -649,13 +650,14 @@ int main()
 	check( high == kProfileHigh, "High preset equals the profile's high settings" );
 	check( low.runtimeDirect == 0, "Low draws baked direct light" );
 	check( low.shadows == 0 && low.shadowMovers == 0, "Low has no shadow atlas" );
+	check( high.shadowPcss == 1, "High has soft shadows (PCSS)" );
 	check( high.runtimeDirect == 1, "High draws runtime direct light" );
 	check( gameui::ClassifyPreset( low ) == RenderCoreLightingPreset::kLow, "Low classifies" );
 	check( gameui::ClassifyPreset( high ) == RenderCoreLightingPreset::kHigh, "High classifies" );
 	check( gameui::ClassifyPreset( RenderCoreLighting{} ) == RenderCoreLightingPreset::kCustom,
 	    "the ConVar defaults are Custom" );
-	check( gameui::Clamped( RenderCoreLighting{ 9, -3, 7, -1, 5 } ) ==
-	           RenderCoreLighting{ 4, 0, 1, 0, 1 },
+	check( gameui::Clamped( RenderCoreLighting{ 9, -3, 7, -1, 3, 5 } ) ==
+	           RenderCoreLighting{ 4, 0, 1, 0, 1, 1 },
 	    "Clamped" );
 
 	// --- Layout: the production code adds the rows to the shipped resource.
@@ -698,8 +700,8 @@ int main()
 	MakeButton( menu, res->FindKey( "DrpModelDetail" ), 1 );
 	const int expectedChoices[] = { gameui::kRenderCoreLightingPresetChoices, kRenderCoreAOChoices,
 	    kRenderCoreShadowChoices, kRenderCoreToggleChoices, kRenderCoreToggleChoices,
-	    kRenderCoreToggleChoices };
-	for ( int i = 0; i < 6; ++i )
+	    kRenderCoreToggleChoices, kRenderCoreToggleChoices };
+	for ( int i = 0; i < 7; ++i )
 	{
 		BaseModHybridButton *button = MakeButton( menu, laidOut[i], 2 + i );
 		check( button->m_DialogListItems.Count() == expectedChoices[i],
@@ -713,9 +715,11 @@ int main()
 	menu.m_drpCoreShadows = menu.Find( "DrpCoreShadows" );
 	menu.m_drpCoreDepth = menu.Find( "DrpCoreDepth" );
 	menu.m_drpCoreMovers = menu.Find( "DrpCoreMovers" );
+	menu.m_drpCorePcss = menu.Find( "DrpCorePcss" );
 	menu.m_drpCoreDirect = menu.Find( "DrpCoreDirect" );
 	BaseModHybridButton *const rows[] = { menu.m_drpCorePreset, menu.m_drpCoreAO,
-	    menu.m_drpCoreShadows, menu.m_drpCoreDepth, menu.m_drpCoreMovers, menu.m_drpCoreDirect };
+	    menu.m_drpCoreShadows, menu.m_drpCoreDepth, menu.m_drpCoreMovers, menu.m_drpCorePcss,
+	    menu.m_drpCoreDirect };
 
 	// What each row shows, against the menu's value.
 	const auto shows = [&]( const RenderCoreLighting &lighting )
@@ -726,8 +730,9 @@ int main()
 		    s_RenderCoreQualityNames[lighting.shadows],
 		    s_RenderCoreToggleNames[lighting.depthPrepass],
 		    s_RenderCoreToggleNames[lighting.shadowMovers],
+		    s_RenderCoreToggleNames[lighting.shadowPcss],
 		    s_RenderCoreToggleNames[lighting.runtimeDirect] };
-		for ( int i = 0; i < 6; ++i )
+		for ( int i = 0; i < 7; ++i )
 		{
 			const char *shown = rows[i]->GetCurrentSelection();
 			if ( !shown || V_strcmp( shown, expected[i] ) )
@@ -803,7 +808,7 @@ int main()
 		        b.OnMousePressed( MOUSE_LEFT );
 	        } },
 	};
-	for ( int r = 0; r < 5; ++r )
+	for ( int r = 0; r < 6; ++r )
 	{
 		const auto row = RenderCoreLightingRow( r );
 		BaseModHybridButton &button = *rows[1 + r];
@@ -876,12 +881,12 @@ int main()
 	// rows in order and loops; Up walks back. The description follows.
 	const char *const kTitles[] = { "#GameUI_CoreLightingPreset", "#GameUI_AmbientOcclusion",
 	    "#GameUI_DynamicShadows", "#GameUI_CoreDepthPrepass", "#GameUI_CoreShadowMovers",
-	    "#GameUI_CoreRuntimeDirect" };
+	    "#GameUI_CoreShadowPcss", "#GameUI_CoreRuntimeDirect" };
 	const char *const kDown[] = { "DrpModelDetail", "DrpCorePreset", "DrpCoreAO", "DrpCoreShadows",
-	    "DrpCoreDepth", "DrpCoreMovers", "DrpCoreDirect", "DrpAntialias" };
+	    "DrpCoreDepth", "DrpCoreMovers", "DrpCorePcss", "DrpCoreDirect", "DrpAntialias" };
 	BaseModHybridButton *focus = menu.Find( kDown[0] );
 	focus->RequestFocus( 0 );
-	for ( int i = 1; i < 8; ++i )
+	for ( int i = 1; i < 9; ++i )
 	{
 		focus->OnKeyCodePressed( KEY_DOWN );
 		focus = static_cast<BaseModHybridButton *>( vgui::s_pFocus );
@@ -889,7 +894,7 @@ int main()
 		    std::string( "Down from " ) + kDown[i - 1] + " reaches " + kDown[i] );
 		if ( V_strcmp( focus->GetName(), kDown[i] ) )
 			break;
-		if ( i >= 1 && i <= 6 ) // kDown[i] is kCoreRows[i - 1]
+		if ( i >= 1 && i <= 7 ) // kDown[i] is kCoreRows[i - 1]
 		{
 			check( menu.titleLabel.text == kTitles[i - 1], std::string( kDown[i] ) + " title" );
 			check( menu.descriptionLabel.text == std::string( kTitles[i - 1] ) + "_Info",
@@ -900,7 +905,7 @@ int main()
 	}
 	focus = menu.Find( "DrpAntialias" );
 	focus->RequestFocus( 0 );
-	for ( int i = 6; i >= 0; --i )
+	for ( int i = 7; i >= 0; --i )
 	{
 		focus->OnKeyCodePressed( KEY_UP );
 		focus = static_cast<BaseModHybridButton *>( vgui::s_pFocus );
@@ -910,7 +915,7 @@ int main()
 	}
 
 	// --- Mouse hover: entering a row focuses it and describes it.
-	for ( int i = 0; i < 6; ++i )
+	for ( int i = 0; i < 7; ++i )
 	{
 		menu.Find( "DrpAntialias" )->RequestFocus( 0 );
 		rows[i]->OnCursorEntered();

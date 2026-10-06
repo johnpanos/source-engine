@@ -8,6 +8,8 @@ the tree runs a map-lighting bake:
 
     bake          the lightmap atlas: direct and indirect layers, the
                   directional page, the noise halves (LMAP)
+    light-masks   the static lights' baked shadow masks (LSMK) from the
+                  lighting stage
     probe         reflection-probe faces with depth and relight bands (RPRB)
     probe-volume  the irradiance and visibility probe volume (PRBV)
     radiosity     the radiosity transfer of the switchable sources (RTRN)
@@ -26,6 +28,8 @@ below; the back end's steps and cache keys name operations, not scripts.
 # operation -> (Blender script, the scripts it reads besides the scene reader)
 OPERATIONS = {
     "bake": ("pbrt_lightmap_bake.py", ["pbrt_blender.py"]),
+    "light-masks": ("pbrt_lightmap_bake.py", ["pbrt_blender.py", "light_shadow_masks.py",
+                                              "../texture/bc_codec.py"]),
     "probe": ("pbrt_reflection_probe.py",
               ["reflection_probe_set.py", "reflection_probe.py", "pbrt_blender.py",
                "map_export_audit.py"]),

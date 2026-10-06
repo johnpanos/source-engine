@@ -152,6 +152,12 @@ def main():
                         help="UV coverage used to fill the visibility's gutters")
     parser.add_argument("--sun-bake-evidence", type=Path,
                         help="the bake receipt whose `sun` names the visibility EXR")
+    parser.add_argument("--light-masks", type=Path,
+                        help="static lights' shadow masks EXR (pbrt_lightmap_bake.py "
+                             "--masks-only of --lighting-stage; receipt beside it; needs "
+                             "--coverage-exr and --lsmk-out)")
+    parser.add_argument("--lsmk-out", type=Path,
+                        help="write the LSMK lump (light_shadow_masks.py) of --light-masks")
     parser.add_argument("--layer", action="append", default=[], metavar="ROLE=EXR",
                         help="separated-light layer (direct, indirect) and its denoised EXR")
     parser.add_argument("--layer-directional", action="append", default=[],
@@ -250,6 +256,39 @@ def main():
         filled = stitch("sun_visibility", visibility[rows, columns][:, :, None],
                         absolute=True)[:, :, 0]
         rgba[:, :size, 3] = np.clip(filled, 0.0, 1.0)[::-1].astype("<f2")
+    light_masks = None
+    if args.light_masks:
+        if not (args.coverage_exr and args.lsmk_out):
+            raise ValueError("--light-masks needs --coverage-exr and --lsmk-out")
+        receipt = json.loads(Path(str(args.light_masks) + ".json").read_text())
+        light_masks = receipt.get("light_masks")
+        if receipt.get("status") != "pass" or \
+                receipt.get("lighting_stage_sha256") != sha256(args.lighting_stage) or \
+                not light_masks or light_masks.get("exr_sha256") != sha256(args.light_masks):
+            raise ValueError("light masks differ from their receipt or the lighting stage")
+        from scipy import ndimage
+        import light_shadow_masks
+        id_path = args.light_masks.with_name(args.light_masks.stem + "-ids.exr")
+        if light_masks.get("ids_exr_sha256") != sha256(id_path):
+            raise ValueError("light mask ids differ from their receipt")
+        visibility = iio.imread(args.light_masks)[:, :, :4].astype(np.float64)
+        ids = np.round(iio.imread(id_path)[:, :, :4]).astype(np.int64)
+        covered = iio.imread(args.coverage_exr)[:, :, :3].min(axis=2) > 0.5
+        if visibility.shape != (size, size, 4) or ids.shape != visibility.shape or \
+                covered.shape != (size, size) or ids.min() < 0 or ids.max() > 255:
+            raise ValueError("light masks, ids or coverage have the wrong size or values")
+        # Gutters take their nearest covered texel's lights (ids and values
+        # together; seam stitching would mix different lights' channels).
+        _, (rows, columns) = ndimage.distance_transform_edt(~covered, return_indices=True)
+        records = [(record["origin"], int(record["id"])) for record in light_masks["records"]]
+        lump, report = light_shadow_masks.build(
+            records, np.clip(visibility[rows, columns], 0.0, 1.0)[::-1],
+            ids[rows, columns].astype(np.uint8)[::-1])
+        temporary = args.lsmk_out.with_name(args.lsmk_out.name + ".tmp")
+        temporary.write_bytes(lump)
+        os.replace(temporary, args.lsmk_out)
+        light_masks = dict(report, sha256=sha256(args.lsmk_out),
+                           exr_sha256=sha256(args.light_masks))
     pages = [rgba]
     layer_receipts = {}
     source_bake = evidence.get("source_bake_evidence_sha256")
@@ -347,6 +386,7 @@ def main():
               "lmap_v3": {"sha256": lmap_receipt["lmap_sha256"], "bytes": lmap_receipt["bytes"]}
               if lmap_receipt else None,
               "seams": stitch.record,
+              "light_masks": light_masks,
               "sun": {"visibility_exr_sha256": sha256(args.sun_visibility),
                       "direction_to_sun": (-np.asarray(sun["direction"])).tolist(),
                       "irradiance": sun["irradiance"]} if sun else None}

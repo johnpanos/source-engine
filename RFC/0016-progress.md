@@ -11635,3 +11635,42 @@ frame with no per-view culling; `world surfaces` is 7.1 ms instead of 5.2 ms.
 Per-view cutout culling (it needs caster bounds) and caching static cutouts
 in the kept tiles are the follow-ups. This slice records no resolution sweep,
 and its performance acceptance stays open.
+
+## Render-thread CPU: read-only imports leave the host boundaries, plane-based shadow-chunk culling (2026-10-06, user goal)
+
+After the scene-colour fix the intro4 demo frame was CPU-limited on the
+render thread (`MatQueue0`). Profiled with `perf` (DWARF call graphs) on the
+Bazzite RTX 3070 box, fullscreen 2560×1440, `sp_a1_intro4_relit.dem`,
+`mat_queue_mode 2`, `r_temporal_scale 0`, no MSAA:
+
+- `Translator::Access` was 27 % of the render thread: at every host-work
+  section boundary (each legacy-stream slot, 32–48 world recordings per
+  frame) `HostWrote` marked every imported texture dirty and `HostBoundary`
+  issued a barrier for each one the encoder had touched. The core imports
+  every material texture it samples (`CVulkanContext` managed imports,
+  usages `{kSampled}`), so barriers per frame grew with the materials drawn.
+  An import none of whose declared usages writes is never written by the
+  port, and the host orders its own writes to it (`ImportImage`'s contract),
+  so the Vulkan adapter now keeps `WritableImports()` and only those take
+  part in the host boundaries and `ImportsAtHome`.
+- `CoreWorld::DrawStageShadows` was 13 %, mostly `math::Transform`: each
+  dirty shadow view tested every caster chunk by transforming its eight
+  corners. It now extracts the view's six clip planes once and tests each
+  box's farthest corner per plane (the same "wholly outside one plane"
+  rule); mover and triangle-part culls share the per-view planes.
+
+| bazzite, warm, 1440p | before | after |
+| --- | --- | --- |
+| frames / playback | 775 / 60.5 s (12.8 fps) | 970 / 56.4 s (17.2 fps) |
+| interval p50 / p90 / p99 | 63.9 / 150.1 / 243.6 ms | 46.9 / 110.7 / 181.5 ms |
+| render-thread CPU p50 | 60.1 ms | 29.8 ms |
+| GPU-bound frames | 116 of 774 | 615 of 969 |
+
+Per interval bucket the GPU time now meets or exceeds the CPU time
+(40–60 ms frames: CPU 31.6, GPU 43.7 ms); the frame is GPU-limited again.
+`render.device.v2.vulkan` (1,300 checks), its sensitivity suite,
+`render.graph.v1.vulkan` and `render.shadows.pixels` pass. The first run
+after new binaries shows multi-second pipeline-compile hitches (NVIDIA's
+`_nv002nvvm` thread); warm runs do not. Open: `VulkanDevice::Submit`/`Validate`
+hash lookups (~14 % of the render thread), recording on the pool, the full
+resolution sweep, Fold7 and other GPUs. No gate closes.

@@ -39,9 +39,10 @@ using namespace BaseModUI;
 #define VIDEO_CORE_SHADOWS_COMMAND_PREFIX "_coreshadows"
 #define VIDEO_CORE_DEPTH_COMMAND_PREFIX "_coredepth"
 #define VIDEO_CORE_MOVERS_COMMAND_PREFIX "_coremovers"
+#define VIDEO_CORE_PCSS_COMMAND_PREFIX "_corepcss"
 #define VIDEO_CORE_DIRECT_COMMAND_PREFIX "_coredirect"
 
-// The five RenderCoreWorldQuality settings (RFC 0016 K12) and the lighting
+// The six RenderCoreWorldQuality settings (RFC 0016 K12) and the lighting
 // preset over them (gameui/render_core_lighting_preset.h, which owns the
 // values). Each row's choice index is the ConVar value; every row applies
 // at the next frame.
@@ -71,7 +72,8 @@ static const char *RenderCoreRowPrefix( RenderCoreLightingRow row )
 {
 	static const char *const kPrefixes[] = { VIDEO_CORE_AO_COMMAND_PREFIX,
 	    VIDEO_CORE_SHADOWS_COMMAND_PREFIX, VIDEO_CORE_DEPTH_COMMAND_PREFIX,
-	    VIDEO_CORE_MOVERS_COMMAND_PREFIX, VIDEO_CORE_DIRECT_COMMAND_PREFIX };
+	    VIDEO_CORE_MOVERS_COMMAND_PREFIX, VIDEO_CORE_PCSS_COMMAND_PREFIX,
+	    VIDEO_CORE_DIRECT_COMMAND_PREFIX };
 	return kPrefixes[int( row )];
 }
 
@@ -80,7 +82,8 @@ static const RenderCoreLightingRow *RenderCoreRowOfCommand( const char *command 
 {
 	static const RenderCoreLightingRow kRows[] = { RenderCoreLightingRow::kAmbientOcclusion,
 	    RenderCoreLightingRow::kShadows, RenderCoreLightingRow::kDepthPrepass,
-	    RenderCoreLightingRow::kShadowMovers, RenderCoreLightingRow::kRuntimeDirect };
+	    RenderCoreLightingRow::kShadowMovers, RenderCoreLightingRow::kShadowPcss,
+	    RenderCoreLightingRow::kRuntimeDirect };
 	for ( const RenderCoreLightingRow &row : kRows )
 	{
 		if ( StringHasPrefix( command, RenderCoreRowPrefix( row ) ) )
@@ -103,6 +106,7 @@ static void AddRenderCoreQualityStrings()
 	    { "GameUI_DynamicShadows", L"Dynamic Shadows" },
 	    { "GameUI_CoreDepthPrepass", L"Depth Prepass" },
 	    { "GameUI_CoreShadowMovers", L"Moving Object Shadows" },
+	    { "GameUI_CoreShadowPcss", L"Soft Shadows (PCSS)" },
 	    { "GameUI_CoreLightingPreset", L"Lighting Quality" },
 	    { "GameUI_CoreLightingCustom", L"Custom" },
 	    { "GameUI_CoreRuntimeDirect", L"Dynamic Direct Light" },
@@ -122,6 +126,11 @@ static void AddRenderCoreQualityStrings()
 	    { "GameUI_CoreShadowMovers_Info",
 	        L"Moving Object Shadows enables real-time dynamic shadows cast by physics objects, "
 	        L"moving panels, and characters." },
+	    { "GameUI_CoreShadowPcss_Info",
+	        L"Soft Shadows (PCSS) gives real-time shadows soft edges that widen with distance "
+	        L"from the caster, sized by each light. It is the most expensive part of dynamic "
+	        L"shadows: turn it Off for sharp-edged shadows and a large GPU saving. Static "
+	        L"lights use their baked shadows either way." },
 	    { "GameUI_CoreLightingPreset_Info",
 	        L"Lighting Quality sets the lighting rows below together. Low draws every light's "
 	        L"direct light and shadows from the map's bake, so lights stay static; High lights "
@@ -144,6 +153,7 @@ static bool HasRenderCoreQuality()
 	       CGameUIConVarRef( "r_core_shadow_quality" ).IsValid() &&
 	       CGameUIConVarRef( "r_core_depth_prepass" ).IsValid() &&
 	       CGameUIConVarRef( "r_core_shadow_movers" ).IsValid() &&
+	       CGameUIConVarRef( "r_core_shadow_pcss" ).IsValid() &&
 	       CGameUIConVarRef( "r_core_runtime_direct" ).IsValid();
 }
 
@@ -170,6 +180,7 @@ BaseClass(parent, panelName)
 	m_drpCoreShadows = NULL;
 	m_drpCoreDepth = NULL;
 	m_drpCoreMovers = NULL;
+	m_drpCorePcss = NULL;
 	m_drpCoreDirect = NULL;
 
 	m_bDirtyValues = false;
@@ -226,6 +237,7 @@ void CAdvancedVideo::ApplySchemeSettings( vgui::IScheme *pScheme )
 	m_drpCoreShadows = dynamic_cast<BaseModHybridButton *>( FindChildByName( "DrpCoreShadows" ) );
 	m_drpCoreDepth = dynamic_cast<BaseModHybridButton *>( FindChildByName( "DrpCoreDepth" ) );
 	m_drpCoreMovers = dynamic_cast<BaseModHybridButton *>( FindChildByName( "DrpCoreMovers" ) );
+	m_drpCorePcss = dynamic_cast<BaseModHybridButton *>( FindChildByName( "DrpCorePcss" ) );
 	m_drpCoreDirect = dynamic_cast<BaseModHybridButton *>( FindChildByName( "DrpCoreDirect" ) );
 	m_lblDescriptionTitle = dynamic_cast<vgui::Label *>( FindChildByName( "LblDescriptionTitle" ) );
 	m_lblDescription = dynamic_cast<vgui::Label *>( FindChildByName( "LblDescription" ) );
@@ -357,6 +369,7 @@ void CAdvancedVideo::GetCurrentSettings( void )
 		    CGameUIConVarRef( "r_core_shadow_quality" ).GetInt(),
 		    CGameUIConVarRef( "r_core_depth_prepass" ).GetInt(),
 		    CGameUIConVarRef( "r_core_shadow_movers" ).GetInt(),
+		    CGameUIConVarRef( "r_core_shadow_pcss" ).GetInt(),
 		    CGameUIConVarRef( "r_core_runtime_direct" ).GetInt() } );
 	}
 }
@@ -396,6 +409,7 @@ bool CAdvancedVideo::GetRecommendedSettings( void )
 		        atoi( CGameUIConVarRef( "r_core_shadow_quality" ).GetDefault() ),
 		        atoi( CGameUIConVarRef( "r_core_depth_prepass" ).GetDefault() ),
 		        atoi( CGameUIConVarRef( "r_core_shadow_movers" ).GetDefault() ),
+		        atoi( CGameUIConVarRef( "r_core_shadow_pcss" ).GetDefault() ),
 		        atoi( CGameUIConVarRef( "r_core_runtime_direct" ).GetDefault() ) } );
 	}
 
@@ -702,6 +716,8 @@ void CAdvancedVideo::SetRenderCoreQualityState()
 		m_drpCoreDepth->SetCurrentSelection( s_RenderCoreToggleNames[lighting.depthPrepass] );
 	if ( m_drpCoreMovers )
 		m_drpCoreMovers->SetCurrentSelection( s_RenderCoreToggleNames[lighting.shadowMovers] );
+	if ( m_drpCorePcss )
+		m_drpCorePcss->SetCurrentSelection( s_RenderCoreToggleNames[lighting.shadowPcss] );
 	if ( m_drpCoreDirect )
 		m_drpCoreDirect->SetCurrentSelection( s_RenderCoreToggleNames[lighting.runtimeDirect] );
 }
@@ -1083,6 +1099,7 @@ void CAdvancedVideo::ApplyChanges()
 		CGameUIConVarRef( "r_core_shadow_quality" ).SetValue( m_CoreLighting.shadows );
 		CGameUIConVarRef( "r_core_depth_prepass" ).SetValue( m_CoreLighting.depthPrepass );
 		CGameUIConVarRef( "r_core_shadow_movers" ).SetValue( m_CoreLighting.shadowMovers );
+		CGameUIConVarRef( "r_core_shadow_pcss" ).SetValue( m_CoreLighting.shadowPcss );
 		CGameUIConVarRef( "r_core_runtime_direct" ).SetValue( m_CoreLighting.runtimeDirect );
 	}
 
@@ -1213,6 +1230,11 @@ void CAdvancedVideo::UpdateDescription( Panel *pControl )
 		pTitle = "#GameUI_CoreShadowMovers";
 		pDesc = "#GameUI_CoreShadowMovers_Info";
 	}
+	else if ( !V_stricmp( pName, "DrpCorePcss" ) )
+	{
+		pTitle = "#GameUI_CoreShadowPcss";
+		pDesc = "#GameUI_CoreShadowPcss_Info";
+	}
 	else if ( !V_stricmp( pName, "DrpCoreDirect" ) )
 	{
 		pTitle = "#GameUI_CoreRuntimeDirect";
@@ -1338,16 +1360,21 @@ void CAdvancedVideo::PreApplyControlSettings( KeyValues *pResourceData )
 	KeyValues *pMovers = AddRenderCoreQualityRow( pResourceData, pTemplate, "DrpCoreMovers",
 	    "#GameUI_CoreShadowMovers", VIDEO_CORE_MOVERS_COMMAND_PREFIX, kRenderCoreToggleChoices,
 	    nAOY + 3 * nPitch );
+	KeyValues *pPcss = AddRenderCoreQualityRow( pResourceData, pTemplate, "DrpCorePcss",
+	    "#GameUI_CoreShadowPcss", VIDEO_CORE_PCSS_COMMAND_PREFIX, kRenderCoreToggleChoices,
+	    nAOY + 4 * nPitch );
 	KeyValues *pDirect = AddRenderCoreQualityRow( pResourceData, pTemplate, "DrpCoreDirect",
 	    "#GameUI_CoreRuntimeDirect", VIDEO_CORE_DIRECT_COMMAND_PREFIX, kRenderCoreToggleChoices,
-	    nAOY + 4 * nPitch );
+	    nAOY + 5 * nPitch );
 
 	const char *pFirst = pLast->GetString( "navDown" );
 	if ( KeyValues *pFirstRow = pResourceData->FindKey( pFirst ) )
 		pFirstRow->SetString( "navUp", "DrpCoreDirect" );
 	pDirect->SetString( "navDown", pFirst );
-	pDirect->SetString( "navUp", "DrpCoreMovers" );
-	pMovers->SetString( "navDown", "DrpCoreDirect" );
+	pDirect->SetString( "navUp", "DrpCorePcss" );
+	pPcss->SetString( "navDown", "DrpCoreDirect" );
+	pPcss->SetString( "navUp", "DrpCoreMovers" );
+	pMovers->SetString( "navDown", "DrpCorePcss" );
 	pMovers->SetString( "navUp", "DrpCoreDepth" );
 	pDepth->SetString( "navDown", "DrpCoreMovers" );
 	pDepth->SetString( "navUp", "DrpCoreShadows" );
@@ -1375,7 +1402,7 @@ void CAdvancedVideo::PreApplyControlSettings( KeyValues *pResourceData )
 bool CAdvancedVideo::DescribeRenderCoreQuality( char *pOut, int nOutSize )
 {
 	if ( !m_drpCoreAO || !m_drpCoreShadows || !m_drpCoreDepth || !m_drpCoreMovers ||
-	     !m_drpCoreDirect )
+	     !m_drpCorePcss || !m_drpCoreDirect )
 		return false;
 	const char *szAO = m_drpCoreAO->GetCurrentSelection();
 	const char *szShadows = m_drpCoreShadows->GetCurrentSelection();
@@ -1392,9 +1419,10 @@ bool CAdvancedVideo::DescribeRenderCoreQuality( char *pOut, int nOutSize )
 	    wszShadows ? wszShadows : L"?", szShadowsText, sizeof( szShadowsText ) );
 	V_snprintf( pOut, nOutSize,
 	    "ambient occlusion \"%s\" (%s), dynamic shadows \"%s\" (%s), "
-	    "depth prepass %d, moving shadows %d, runtime direct %d, preset %d",
+	    "depth prepass %d, moving shadows %d, soft shadows (PCSS) %d, runtime direct %d, "
+	    "preset %d",
 	    szAOText, szAO, szShadowsText, szShadows, m_CoreLighting.depthPrepass,
-	    m_CoreLighting.shadowMovers, m_CoreLighting.runtimeDirect,
+	    m_CoreLighting.shadowMovers, m_CoreLighting.shadowPcss, m_CoreLighting.runtimeDirect,
 	    int( gameui::ClassifyPreset( m_CoreLighting ) ) );
 	return true;
 }

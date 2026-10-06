@@ -666,6 +666,11 @@ public:
 	    VkImage image, const TextureDesc &desc, ResourceUsage home );
 	// The imported textures, for the host-work boundaries of a submission.
 	const std::unordered_set<std::uint64_t> &Imported() const { return m_Imported; }
+	// The imports some usage of which writes (attachment, storage, copy
+	// destination). The rest (sampled-only material textures) are never
+	// written by the port, and the host orders its own writes to them
+	// (ImportImage), so no host-work boundary needs a barrier for them.
+	const std::unordered_set<std::uint64_t> &WritableImports() const { return m_WritableImports; }
 	// Runs section `index` of the host work being translated (host_device.h
 	// RunSection); false outside host work or past its last section.
 	bool RunSection( VkCommandBuffer cmd, std::uint32_t index );
@@ -846,6 +851,7 @@ private:
 	std::unordered_map<std::uint64_t, BufferRecord> m_Buffers;
 	std::unordered_map<std::uint64_t, TextureRecord> m_Textures;
 	std::unordered_set<std::uint64_t> m_Imported; // host images among m_Textures
+	std::unordered_set<std::uint64_t> m_WritableImports; // those with a write usage
 	std::unordered_map<std::uint64_t, SamplerRecord> m_Samplers;
 	std::unordered_map<std::uint64_t, LayoutRecord> m_Layouts;
 	std::unordered_map<std::uint64_t, BindGroupRecord> m_BindGroups;

@@ -261,6 +261,7 @@ constexpr const char *kStageLightmap = "stage:lightmap";
 constexpr const char *kStageGradient = "stage:lightmap-gradient";
 constexpr const char *kStageIndirect = "stage:lightmap-indirect";
 constexpr const char *kStageIndirectGradient = "stage:lightmap-indirect-gradient";
+constexpr const char *kStageShadowMask = "stage:lightmap-shadow-mask";
 constexpr const char *kStageProbeAtlas = "stage:probe-atlas";
 constexpr const char *kStageProbeGrids = "stage:probe-grids";
 constexpr const char *kStageChange = "stage:change";
@@ -2395,6 +2396,9 @@ void WorldPass::RecordBatch(
 		if ( made && indirect.Directional() )
 			made = stageMake( kStageIndirectGradient, indirect.gradientFormat, pages.width,
 			    pages.height, indirect.gradient );
+		if ( made && !stage.shadowMask.flat.empty() )
+			made = stageMake( kStageShadowMask, stage.shadowMask.flatFormat,
+			    stage.shadowMask.width, stage.shadowMask.height, stage.shadowMask.flat );
 		if ( made && stage.probes )
 		{
 			const StageProbeVolume &probes = *stage.probes;
@@ -2925,6 +2929,8 @@ void WorldPass::RecordBatch(
 				else if ( input == "lightmap-indirect-gradient" )
 					inputs.push_back(
 					    stage.indirect.Directional() ? kStageIndirectGradient : "" );
+				else if ( input == "lightmap-shadow-mask" )
+					inputs.push_back( stage.shadowMask.flat.empty() ? "" : kStageShadowMask );
 				else
 				{
 					note( "a program reads draw input " + input + ", which the world stage lacks" );

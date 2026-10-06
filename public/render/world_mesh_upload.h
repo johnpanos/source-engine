@@ -52,6 +52,11 @@ struct WorldLightmapUploadRequest
 	// one: a provider may upload its BC6H/BC7 blocks instead of the layers.
 	const void *lmap = nullptr;
 	uint64_t lmapBytes = 0;
+	// The map's validated LSMK lump (the static lights' baked shadow masks,
+	// mapcontainer/light_shadow_masks.h), when it has one, at the LMAP page's
+	// size. A provider without the render core ignores it.
+	const void *lsmk = nullptr;
+	uint64_t lsmkBytes = 0;
 	// A partial update of the provider's current lightmap (the last whole
 	// request's size and layers): `layers` are null, and `regionCount`
 	// rectangles of the total layer changed, their texels packed rectangle

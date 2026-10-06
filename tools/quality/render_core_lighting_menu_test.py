@@ -49,7 +49,7 @@ BUTTON_METHODS = (
 FIXTURE = "unittests/vguitest/test_render_core_lighting_menu.cpp"
 PROFILE = "quality/product_profiles/portal2-linux-native-vulkan-high.json"
 CONVARS = ("r_core_ao_quality", "r_core_shadow_quality", "r_core_depth_prepass",
-           "r_core_shadow_movers", "r_core_runtime_direct")
+           "r_core_shadow_movers", "r_core_shadow_pcss", "r_core_runtime_direct")
 
 
 def block(source, start, end_marker="\n}"):
@@ -112,7 +112,7 @@ def menu_slice(seed_stale_preset=False, seed_broken_nav=False):
 
 
 def profile_presets(seed_profile_drift=False):
-    """The profile's low and high values of the five ConVars, as an include."""
+    """The profile's low and high values of the six ConVars, as an include."""
     profile = json.loads((ROOT / PROFILE).read_text())
     quality = profile["intent"]["render_quality"]
     lines = []

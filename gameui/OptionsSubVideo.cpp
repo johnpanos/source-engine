@@ -275,6 +275,7 @@ static void AddRenderCoreQualityStrings()
 	    { "GameUI_DynamicShadows", L"Dynamic shadows" },
 	    { "GameUI_CoreDepthPrepass", L"Depth prepass" },
 	    { "GameUI_CoreShadowMovers", L"Moving object shadows" },
+	    { "GameUI_CoreShadowPcss", L"Soft shadows (PCSS)" },
 	    { "GameUI_CoreRuntimeDirect", L"Runtime direct light (next map)" },
 	    { "GameUI_QualityOff", L"Off" },
 	    { "GameUI_QualityOn", L"On" },
@@ -800,7 +801,7 @@ public:
 		}
 	}
 
-	// The five RenderCoreWorldQuality settings. The shipped .res predates
+	// The six RenderCoreWorldQuality settings. The shipped .res predates
 	// them; place three rows below Motion Blur and move any controls below.
 	void CreateRenderCoreQualityControls()
 	{
@@ -808,9 +809,10 @@ public:
 		ConVarRef shadows( "r_core_shadow_quality" );
 		ConVarRef depth( "r_core_depth_prepass" );
 		ConVarRef movers( "r_core_shadow_movers" );
+		ConVarRef pcss( "r_core_shadow_pcss" );
 		ConVarRef direct( "r_core_runtime_direct" );
 		if ( !ao.IsValid() || !shadows.IsValid() || !depth.IsValid() || !movers.IsValid() ||
-		     !direct.IsValid() )
+		     !pcss.IsValid() || !direct.IsValid() )
 			return;
 		AddRenderCoreQualityStrings();
 
@@ -863,6 +865,9 @@ public:
 		    kRenderCoreToggleChoices, column, labelY + rowPitch, wide, tall, scale );
 		m_pCoreDirect = AddRenderCoreQualityRow( "CoreRuntimeDirect", "#GameUI_CoreRuntimeDirect",
 		    kRenderCoreToggleChoices, x, labelY + 2 * rowPitch, wide, tall, scale );
+		m_pCorePcss = AddRenderCoreQualityRow( "CoreShadowPcss", "#GameUI_CoreShadowPcss",
+		    kRenderCoreToggleChoices, column, labelY + 2 * rowPitch, wide, tall, scale );
+		SetComboItemAsRecommended( m_pCorePcss, clamp( atoi( pcss.GetDefault() ), 0, 1 ) );
 		SetComboItemAsRecommended(
 		    m_pCoreAO, clamp( atoi( ao.GetDefault() ), 0, kRenderCoreAOChoices - 1 ) );
 		SetComboItemAsRecommended( m_pCoreShadows,
@@ -906,11 +911,13 @@ public:
 		ConVarRef shadows( "r_core_shadow_quality" );
 		ConVarRef depth( "r_core_depth_prepass" );
 		ConVarRef movers( "r_core_shadow_movers" );
+		ConVarRef pcss( "r_core_shadow_pcss" );
 		ConVarRef direct( "r_core_runtime_direct" );
 		m_pCoreAO->ActivateItem( clamp( ao.GetInt(), 0, kRenderCoreAOChoices - 1 ) );
 		m_pCoreShadows->ActivateItem( clamp( shadows.GetInt(), 0, kRenderCoreShadowChoices - 1 ) );
 		m_pCoreDepth->ActivateItem( clamp( depth.GetInt(), 0, 1 ) );
 		m_pCoreMovers->ActivateItem( clamp( movers.GetInt(), 0, 1 ) );
+		m_pCorePcss->ActivateItem( clamp( pcss.GetInt(), 0, 1 ) );
 		m_pCoreDirect->ActivateItem( clamp( direct.GetInt(), 0, 1 ) );
 	}
 
@@ -922,6 +929,7 @@ public:
 		ApplyChangesToConVar( "r_core_shadow_quality", m_pCoreShadows->GetActiveItem() );
 		ApplyChangesToConVar( "r_core_depth_prepass", m_pCoreDepth->GetActiveItem() );
 		ApplyChangesToConVar( "r_core_shadow_movers", m_pCoreMovers->GetActiveItem() );
+		ApplyChangesToConVar( "r_core_shadow_pcss", m_pCorePcss->GetActiveItem() );
 		ApplyChangesToConVar( "r_core_runtime_direct", m_pCoreDirect->GetActiveItem() );
 	}
 
@@ -934,16 +942,18 @@ public:
 			return;
 		}
 		// The active items' text: the combo's own text follows a message later.
-		char ao[64], shadows[64], depth[64], movers[64], direct[64];
+		char ao[64], shadows[64], depth[64], movers[64], pcss[64], direct[64];
 		m_pCoreAO->GetItemText( m_pCoreAO->GetActiveItem(), ao, sizeof( ao ) );
 		m_pCoreShadows->GetItemText( m_pCoreShadows->GetActiveItem(), shadows, sizeof( shadows ) );
 		m_pCoreDepth->GetItemText( m_pCoreDepth->GetActiveItem(), depth, sizeof( depth ) );
 		m_pCoreMovers->GetItemText( m_pCoreMovers->GetActiveItem(), movers, sizeof( movers ) );
+		m_pCorePcss->GetItemText( m_pCorePcss->GetActiveItem(), pcss, sizeof( pcss ) );
 		m_pCoreDirect->GetItemText( m_pCoreDirect->GetActiveItem(), direct, sizeof( direct ) );
 		Q_snprintf( out, size,
 		    "ambient occlusion \"%s\", dynamic shadows \"%s\", "
-		    "depth prepass \"%s\", moving shadows \"%s\", runtime direct \"%s\"",
-		    ao, shadows, depth, movers, direct );
+		    "depth prepass \"%s\", moving shadows \"%s\", soft shadows (PCSS) \"%s\", "
+		    "runtime direct \"%s\"",
+		    ao, shadows, depth, movers, pcss, direct );
 	}
 
 	// Selects the quality rows and confirms the dialog as OK and Apply do.
@@ -1291,6 +1301,7 @@ private:
 	vgui::ComboBox *m_pCoreShadows = nullptr;
 	vgui::ComboBox *m_pCoreDepth = nullptr;
 	vgui::ComboBox *m_pCoreMovers = nullptr;
+	vgui::ComboBox *m_pCorePcss = nullptr;
 	vgui::ComboBox *m_pCoreDirect = nullptr;
 
 	int m_nNumAAModes;

@@ -105,6 +105,7 @@ private:
 	BaseModHybridButton *m_drpCoreShadows;
 	BaseModHybridButton *m_drpCoreDepth;
 	BaseModHybridButton *m_drpCoreMovers;
+	BaseModHybridButton *m_drpCorePcss;
 	BaseModHybridButton *m_drpCoreDirect;
 
 	bool	m_bDirtyValues;

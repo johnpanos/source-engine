@@ -109,7 +109,7 @@ PbrSplitSumTable LtcTable()
 }
 
 SurfaceLightGpu PackSurfaceLight( const light_set::RuntimeLight &light, int shadowTile,
-    RuntimeShadowLayout shadowLayout, bool diffuseInBake )
+    RuntimeShadowLayout shadowLayout, bool diffuseInBake, int maskId, bool moverInReach )
 {
 	SurfaceLightGpu packed;
 	const bool spot = light.shape == light_set::LightShape::Spot;
@@ -133,6 +133,8 @@ SurfaceLightGpu PackSurfaceLight( const light_set::RuntimeLight &light, int shad
 	packed.spot[0] = light.spotExponent;
 	packed.spot[1] = diffuseInBake ? 1.0f : 0.0f;
 	packed.spot[2] = float( shadowLayout );
+	if ( maskId > 0 )
+		packed.spot[3] = float( moverInReach ? -maskId : maskId );
 	return packed;
 }
 
@@ -199,7 +201,9 @@ foundation::Expected<std::unique_ptr<SurfaceProgram>, SurfaceStatus> SurfaceProg
 	    { 3, BindingKind::kSampledTexture, 1, { ShaderStage::kFragment } },
 	    { 4, BindingKind::kSampler, 1, { ShaderStage::kFragment } },
 	    { 5, BindingKind::kSampledTexture, 1, { ShaderStage::kFragment } },
-	    { 6, BindingKind::kSampler, 1, { ShaderStage::kFragment } } };
+	    { 6, BindingKind::kSampler, 1, { ShaderStage::kFragment } },
+	    { 7, BindingKind::kSampledTexture, 1, { ShaderStage::kFragment } },
+	    { 8, BindingKind::kSampler, 1, { ShaderStage::kFragment } } };
 	const BindingDesc view[] = { { 0, BindingKind::kUniformBuffer, 1, { ShaderStage::kFragment } },
 	    { 1, BindingKind::kStorageBuffer, 1, { ShaderStage::kFragment } },
 	    { 2, BindingKind::kStorageBuffer, 1, { ShaderStage::kFragment } },
@@ -836,7 +840,8 @@ GroupRequest SurfaceProgram::NeutralViewGroup( const SurfaceScreenInputs &screen
 }
 
 GroupRequest SurfaceProgram::DrawGroup( std::string page, const ModelLighting &lighting,
-    const SamplerDesc &sampler, std::string gradient, std::string indirect ) const
+    const SamplerDesc &sampler, std::string gradient, std::string indirect,
+    std::string shadowMask ) const
 {
 	GroupRequest request;
 	request.layout = m_DrawLayout;
@@ -847,6 +852,8 @@ GroupRequest SurfaceProgram::DrawGroup( std::string page, const ModelLighting &l
 	// The gradient page is signed linear data, filtered as the page is.
 	request.textures.push_back( { 3, std::move( gradient ), 4, sampler } );
 	request.textures.push_back( { 5, std::move( indirect ), 6, sampler } );
+	// The baked shadow masks are visibility, filtered as the page is.
+	request.textures.push_back( { 7, std::move( shadowMask ), 8, sampler } );
 	return request;
 }
 

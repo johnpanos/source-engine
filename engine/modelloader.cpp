@@ -25,6 +25,7 @@
 #include "mapcontainer/radiosity_transfer.h"
 #include "mapcontainer/reflection_probes.h"
 #include "mapcontainer/sdf_volume.h"
+#include "mapcontainer/light_shadow_masks.h"
 #include "mapcontainer/world_lightmap.h"
 #include "mapcontainer/world_mesh.h"
 #include "mapcontainer/world_mesh_format.h"
@@ -4787,6 +4788,7 @@ void CModelLoader::Map_LoadWorldMesh()
 		return;
 	}
 	world_mesh_gpu::WorldLightmapUploadRequest lightmapRequest;
+	CUtlVector<byte> lightShadowMasks; // alive until UploadLightmap returns
 	if ( hasLightmap )
 	{
 		lightmapRequest.width = lightmapLayout.width;
@@ -4801,6 +4803,33 @@ void CModelLoader::Map_LoadWorldMesh()
 		// The render core uploads the lump's blocks; the frozen backend the layers.
 		lightmapRequest.lmap = lightmapBytes.Base();
 		lightmapRequest.lmapBytes = uint64( lightmapBytes.Count() );
+		// The static lights' baked shadow masks, when the bake wrote them.
+		mapcontainer::MapLumpInfo maskLump{};
+		if ( s_pMapContainer->FindLump( mapcontainer::kLumpLightShadowMasks, &maskLump ) )
+		{
+			mapcontainer::LightShadowMasks masks{};
+			lightShadowMasks.SetCount(
+			    int( maskLump.storedSize <= ( 1ull << 30 ) ? maskLump.storedSize : 0 ) );
+			if ( maskLump.version == mapcontainer::kLightShadowMasksVersion &&
+			     maskLump.storedSize <= ( 1ull << 30 ) &&
+			     s_MapByteSource.ReadAt(
+			         maskLump.offset, lightShadowMasks.Base(), lightShadowMasks.Count() ) &&
+			     s_pMapContainer
+			         ->VerifyContent( maskLump, lightShadowMasks.Base(), lightShadowMasks.Count() )
+			         .Ok() &&
+			     mapcontainer::ValidateLightShadowMasks(
+			         lightShadowMasks.Base(), lightShadowMasks.Count(), &masks ) &&
+			     masks.width * 2 == lightmapLayout.width && masks.height == lightmapLayout.height )
+			{
+				lightmapRequest.lsmk = lightShadowMasks.Base();
+				lightmapRequest.lsmkBytes = uint64( lightShadowMasks.Count() );
+				Msg( "Map %s: LSMK %ux%u, %u static light%s\n", s_szMapName, masks.width,
+				    masks.height, masks.lightCount, masks.lightCount == 1 ? "" : "s" );
+			}
+			else
+				Warning( "Map %s: LSMK rejected; static lights keep runtime shadows\n",
+				    s_szMapName );
+		}
 		Msg( "Map %s: LMAP v%u %ux%u, %u layer%s\n", s_szMapName, lightmapLayout.version,
 		    lightmapLayout.width, lightmapLayout.height, lightmapLayout.layerCount,
 		    lightmapLayout.layerCount == 1 ? "" : "s" );

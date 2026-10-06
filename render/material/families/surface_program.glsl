@@ -156,7 +156,7 @@ struct RuntimeLightRecord
 layout( set = 1, binding = 0 ) uniform ClusterView
 {
 	uvec4 grid;         // tilesX, tilesY, slices, tile size in pixels
-	vec4 slices;        // sliceScale, sliceBias, nearZ
+	vec4 slices;        // sliceScale, sliceBias, nearZ, 1: hard shadows (PCSS off)
 	vec4 viewDistance;  // a world point's view distance: dot( xyz, p ) + w
 	vec4 counts;        // x: projectors; y: screen scale; zw: viewport origin
 	vec4 depthAlpha;    // range, inverse source extent
@@ -271,6 +271,60 @@ layout( set = 3, binding = 4 ) uniform sampler lightmapGradientSampler;
 // The bake's indirect layer of the same page (kAmbientOcclusion).
 layout( set = 3, binding = 5 ) uniform texture2D lightmapIndirect;
 layout( set = 3, binding = 6 ) uniform sampler lightmapIndirectSampler;
+// The static lights' baked shadow masks (LSMK) at the page's texels
+// (RGBA16 unorm): each channel is id << 8 | visibility * 255 of one of the
+// texel's four dominant lights. A light whose record's spot.w is not 0 is
+// light |spot.w| there.
+layout( set = 3, binding = 7 ) uniform texture2D lightmapShadowMask;
+layout( set = 3, binding = 8 ) uniform sampler lightmapShadowMaskSampler;
+
+// The 2x2 mask texels around a lightmap UV and their bilinear weights.
+struct ShadowMaskTexels
+{
+	uvec4 texel[4];
+	vec4 weight;
+};
+
+ShadowMaskTexels ShadowMaskFetch( vec2 uv )
+{
+	ShadowMaskTexels m;
+	const ivec2 size = textureSize( sampler2D( lightmapShadowMask, lightmapShadowMaskSampler ), 0 );
+	const vec2 p = uv * vec2( size ) - 0.5;
+	const ivec2 base = ivec2( floor( p ) );
+	const vec2 f = p - floor( p );
+	for ( int t = 0; t < 4; ++t )
+	{
+		const ivec2 at = clamp( base + ivec2( t & 1, t >> 1 ), ivec2( 0 ), size - 1 );
+		m.texel[t] = uvec4( round(
+		    texelFetch( sampler2D( lightmapShadowMask, lightmapShadowMaskSampler ), at, 0 ) *
+		    65535.0 ) );
+	}
+	m.weight = vec4( ( 1.0 - f.x ) * ( 1.0 - f.y ), f.x * ( 1.0 - f.y ), ( 1.0 - f.x ) * f.y,
+	    f.x * f.y );
+	return m;
+}
+
+// Light `id`'s baked visibility, or -1 where a texel with weight does not
+// hold it (the light is not among that texel's four: its runtime shadow).
+float ShadowMaskVisibility( ShadowMaskTexels m, uint id )
+{
+	float visibility = 0.0;
+	for ( int t = 0; t < 4; ++t )
+	{
+		if ( m.weight[t] <= 0.0 )
+			continue;
+		bool found = false;
+		for ( int k = 0; k < 4; ++k )
+			if ( ( m.texel[t][k] >> 8u ) == id )
+			{
+				visibility += m.weight[t] * float( m.texel[t][k] & 255u ) / 255.0;
+				found = true;
+			}
+		if ( !found )
+			return -1.0;
+	}
+	return visibility;
+}
 
 layout( location = 0 ) in vec2 baseUv;
 layout( location = 1 ) in vec2 lightmapUv;
@@ -1015,8 +1069,16 @@ void PbrSurface( out float coverage )
 #ifdef LAB_VISIBILITY_WRITE
 	vec4 receiverVisibility = vec4( 1.0 );
 #endif
+	// Soft shadows (PCSS) off: the view's every shadow takes the hard filter.
+	if ( Term( kClustered ) )
+		gShadowHardOnly = clusterView.slices.w > 0.5;
 	if ( Term( kClustered ) && DebugTermOn( kDebugTermClustered ) && !furnace )
 	{
+		// The baked shadow masks, read once (a draw without them binds a
+		// neutral page, and no light record names a mask).
+		ShadowMaskTexels shadowMask;
+		if ( lightmapped )
+			shadowMask = ShadowMaskFetch( lightmapUv );
 		const float distance =
 		    dot( clusterView.viewDistance.xyz, worldPosition ) + clusterView.viewDistance.w;
 		const uvec2 range = froxelRanges[ClusterFroxel( gl_FragCoord.xy, distance )];
@@ -1086,7 +1148,16 @@ void PbrSurface( out float coverage )
 				visibility = ShadowVisibility( shadowAtlas, shadowSampler, shadowComparisonSampler,
 				    shadowTiles[( tile + 1 ) % shadowTiles.length()], worldPosition );
 #elif !defined( SEEDED_SHADOW_IGNORED )
-			if ( tile >= 0 && tiles == 6 && DebugTermOn( kDebugTermShadowVisibility ) )
+			// A static light's shadow from static geometry is baked (Source
+			// 2's split): its mask alone, or the lesser of the mask and its
+			// tile while a moving caster is in its reach.
+			const int maskCode = lightmapped ? int( runtime.spot.w ) : 0;
+			const float baked = maskCode != 0
+			                        ? ShadowMaskVisibility( shadowMask, uint( abs( maskCode ) ) )
+			                        : -1.0;
+			if ( maskCode > 0 && baked >= 0.0 && DebugTermOn( kDebugTermShadowVisibility ) )
+				visibility = baked;
+			else if ( tile >= 0 && tiles == 6 && DebugTermOn( kDebugTermShadowVisibility ) )
 				visibility = ShadowTerminatorFade( smoothNormal, light,
 				    ShadowWorldCubeVisibility( shadowAtlas, shadowSampler, shadowComparisonSampler, tile,
 			        -toLight, worldPosition,
@@ -1097,6 +1168,8 @@ void PbrSurface( out float coverage )
 				    ShadowVisibilitySoft( shadowAtlas, shadowSampler, shadowComparisonSampler, shadowTiles[tile],
 				        worldPosition, ShadowReceiverOffset( geometricNormal, light ),
 				        max( runtime.cone.z, 0.5 ), rotation ) );
+			if ( maskCode < 0 && baked >= 0.0 && DebugTermOn( kDebugTermShadowVisibility ) )
+				visibility = min( visibility, baked );
 #endif
 #endif
 #ifdef LAB_VISIBILITY_WRITE

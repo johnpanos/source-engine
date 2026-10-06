@@ -187,6 +187,9 @@ struct WorldStage
 	// The indirect layer's pages (flat empty without one; its gradient empty
 	// when the bake wrote none), the same size and kind as the total's.
 	LightmapPages indirect;
+	// The static lights' baked shadow masks (LSMK): a BC7 page of the
+	// lightmap's size in `flat` (empty without), sampled at the page's UVs.
+	LightmapPages shadowMask;
 	std::optional<StageProbeVolume> probes;
 	std::optional<StageReflectionProbes> reflection; // the map's RPRB (v8); absent without
 };

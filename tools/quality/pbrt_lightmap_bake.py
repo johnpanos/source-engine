@@ -64,6 +64,9 @@ FRAME_SAMPLES = 16
 # resolve a partly covered texel as FRAME_SAMPLES do the frame.
 COVERAGE_SAMPLES = 16
 SUN_SAMPLES = 256
+# The light masks' bakes: a ratio of two same-seed bakes, so their noise is
+# correlated; each group is one pair.
+LIGHT_MASK_SAMPLES = 64
 PROJECTED_PART_LIMIT = 4096
 PROXY_PREFIX = "_lightmap_footprint_"
 CHART_PREFIX = "_lightmap_chart_"
@@ -524,6 +527,131 @@ def bake_sun_visibility(merged, scene, path, size, render):
             "ignored_distant_lights": len(scene["distant_lights"]) - 1}
 
 
+def light_reach_m(shape):
+    """Where an emitter's diffuse light falls to light_shadow_masks.REACH_CUTOFF
+    lightmap units (the runtime's reach, render.pass.lights' kReachCutoff):
+    radiance times its projected area over pi d^2, times vrad's falloff
+    relative to an inverse square, within its hard radius."""
+    import light_shadow_masks
+    peak = max(shape["emission"]["radiance"]) * shape["emission"].get("scale", 1.0)
+    area = shape.get("area_m2") or 0.0
+    projected = area / 4.0 if shape["shape"]["kind"] == "sphere" else area
+    attenuation = shape.get("attenuation")
+    hard = (attenuation or {}).get("radius_m", 0.0)
+
+    def light(d):
+        value = peak * projected / (math.pi * d * d)
+        return value * map_scene.vrad_falloff(attenuation, d) if attenuation else value
+    low, high = 1e-3, 1e4
+    if light(high) > light_shadow_masks.REACH_CUTOFF:
+        return hard or 0.0  # unbounded: keeps runtime shadows unless hard-limited
+    for _ in range(60):
+        mid = math.sqrt(low * high)
+        low, high = (mid, high) if light(mid) > light_shadow_masks.REACH_CUTOFF else (low, mid)
+    return min(high, hard) if hard > 0 else high
+
+
+def bake_light_masks(merged, scene, path, size, render):
+    """Static lights' shadow masks (light_shadow_masks.py, LSMK). Lights are
+    grouped so a group's reaches are disjoint; per group, its direct diffuse
+    light with / without shadows gives each texel its light and visibility,
+    and each texel keeps its four dominant groups. Writes `path` (visibility,
+    RGBA) and `<path stem>-ids.exr` (the ids as floats); None when no
+    emitter is a map light."""
+    import re
+    import numpy as np
+    import light_shadow_masks
+    meters = float(scene.get("meters_per_unit") or 0.0254)
+    candidates = []
+    for index, shape in enumerate(scene["emitters"]):
+        # legacy_bsp_scene's map lights: <entity or type>_<world light> under
+        # the stage's lights scope; the runtime matches them by origin.
+        if not re.search(r"/Lights/[^/]*_\d+$", shape.get("source") or "") or \
+                not pbrt_blender.lamp_kind(shape):
+            continue
+        candidates.append({"index": index, "source": shape["source"],
+                           "origin": [v / meters for v in shape["shape"]["centre"]],
+                           "radius": light_reach_m(shape) / meters})
+    ids = light_shadow_masks.group_lights(candidates)
+    lamps = {}
+    for light, light_id in zip(candidates, ids):
+        if light_id is None:
+            continue
+        names = pbrt_blender.emitter_objects(light["index"], scene["emitters"][light["index"]])
+        lamps.setdefault(light_id, []).extend(
+            bpy.data.objects[name] for name in names if name in bpy.data.objects)
+    if not lamps:
+        return None
+    lit_objects = [obj for obj in bpy.data.objects if obj.hide_render is False and
+                   (obj.type == "LIGHT" or obj.name.startswith(pbrt_blender.EMITTER_PREFIXES))]
+    world = render.world
+    background = world.node_tree.nodes.get("Background") if world and world.use_nodes else None
+    strength = background.inputs["Strength"].default_value if background else None
+    if background:
+        background.inputs["Strength"].default_value = 0.0
+    samples = render.cycles.samples
+    render.cycles.samples = LIGHT_MASK_SAMPLES
+    render.render.bake.use_pass_indirect = False
+    top = light_shadow_masks.TopFour(size, size)
+    try:
+        for light_id in sorted(lamps):
+            keep = set(lamps[light_id])
+            for obj in lit_objects:
+                obj.hide_render = obj not in keep
+            planes = []
+            for shadows in (True, False):
+                for obj in keep:
+                    if obj.type == "LIGHT":
+                        obj.data.use_shadow = shadows
+                image = bpy.data.images.new("PbrtLightMask%d%d" % (light_id, shadows),
+                                            width=size, height=size, alpha=True,
+                                            float_buffer=True)
+                for material in {slot.material for slot in merged.material_slots}:
+                    target = material.node_tree.nodes["BakeTarget"]
+                    target.image = image
+                    material.node_tree.nodes.active = target
+                announce("light mask group %d/%d %s" % (light_id, len(lamps),
+                                                        "shadowed" if shadows else "unshadowed"),
+                         size)
+                with pbrt_blender.direct_only_light_paths():
+                    bpy.ops.object.bake(type="DIFFUSE", pass_filter={"DIRECT"})
+                planes.append(np.array(image.pixels[:], dtype=np.float32)
+                              .reshape(size, size, 4)[..., :3].mean(axis=2))
+                bpy.data.images.remove(image)
+            for obj in keep:
+                if obj.type == "LIGHT":
+                    obj.data.use_shadow = True
+            shadowed, open_light = planes
+            lit = open_light > 1e-6
+            visibility = np.where(lit, np.clip(shadowed / np.maximum(open_light, 1e-6), 0.0, 1.0),
+                                  1.0)
+            top.add(light_id, np.where(lit, open_light, 0.0), visibility)
+    finally:
+        for obj in lit_objects:
+            obj.hide_render = False
+        render.cycles.samples = samples
+        render.render.bake.use_pass_indirect = True
+        if background:
+            background.inputs["Strength"].default_value = strength
+        for material in {slot.material for slot in merged.material_slots}:
+            material.node_tree.nodes["BakeTarget"].image = bpy.data.images["PbrtLightmap"]
+    id_path = path.with_name(path.stem + "-ids.exr")
+    for name, values, out in (("PbrtLightMasks", top.visibility, path),
+                              ("PbrtLightMaskIds", top.ids, id_path)):
+        image = bpy.data.images.new(name, width=size, height=size, alpha=True, float_buffer=True)
+        image.pixels.foreach_set(values.astype(np.float32).ravel())
+        image.save_render(filepath=str(out.resolve()), scene=render)
+        if not out.is_file():
+            raise RuntimeError("Cycles did not save " + out.name)
+    return {"records": [{"origin": light["origin"], "id": light_id, "source": light["source"],
+                         "reach_units": light["radius"]}
+                        for light, light_id in zip(candidates, ids) if light_id is not None],
+            "without_id": [light["source"] for light, light_id in zip(candidates, ids)
+                           if light_id is None],
+            "groups": len(lamps), "samples": LIGHT_MASK_SAMPLES,
+            "exr_sha256": sha256(path), "ids_exr_sha256": sha256(id_path)}
+
+
 # Separated diffuse light (RFC 0011, RFC 0016's runtime direct light). The
 # direct layer is the direct light of the lights the runtime evaluates: the
 # scene's analytic emitters (the map's light entities) and its distant
@@ -762,6 +890,10 @@ def main():
     parser.add_argument("--out-coverage-exr", type=Path,
                         help="undilated white UV footprint for safe gutter filling")
     parser.add_argument("--size", type=int, default=2048)
+    parser.add_argument("--masks-only", action="store_true",
+                        help="bake only the static lights' shadow masks (LSMK) into --out-exr "
+                             "from a lighting stage (--stage, --layout authored); writes no "
+                             "stage or atlas")
     parser.add_argument("--samples", type=int, default=64)
     parser.add_argument("--direct-samples", type=int, default=0,
                         help="the direct layer's samples (the atlas's when 0): the runtime "
@@ -918,7 +1050,10 @@ def main():
         obj.data.uv_layers.active = obj.data.uv_layers.get("st")
     args.out_stage.parent.mkdir(parents=True, exist_ok=True)
     pbrt_blender.sort_collections()
-    if bpy.ops.wm.usd_export(filepath=str(args.out_stage.resolve()), export_materials=True,
+    if args.masks_only:
+        if not authored:
+            parser.error("--masks-only bakes a lighting stage's authored layout")
+    elif bpy.ops.wm.usd_export(filepath=str(args.out_stage.resolve()), export_materials=True,
                              export_uvmaps=True, rename_uvmaps=False, export_normals=True,
                              export_cameras=True, export_lights=True,
                              triangulate_meshes=True,
@@ -982,6 +1117,19 @@ def main():
         ", coverage" if args.out_coverage_exr else ""))
     render.render.image_settings.file_format = "OPEN_EXR"
     render.render.image_settings.color_depth = "32"
+    if args.masks_only:
+        args.out_exr.parent.mkdir(parents=True, exist_ok=True)
+        masks = bake_light_masks(merged, scene, args.out_exr, args.size, render)
+        receipt = {"status": "pass" if masks else "none", "scope": "light-shadow-masks",
+                   "lighting_stage_sha256": sha256(args.stage), "size": args.size,
+                   "device": device, "light_masks": masks,
+                   "blender": bpy.app.version_string}
+        args.out_exr.with_name(args.out_exr.name + ".json").write_text(
+            json.dumps(receipt, indent=2, sort_keys=True) + "\n")
+        print("PBRT_LIGHT_MASKS " + json.dumps({"status": receipt["status"],
+                                                "lights": len(masks["records"]) if masks
+                                                else 0}))
+        return
     import numpy as np
     separated, parts = {}, {}
     if summed_total(layers):

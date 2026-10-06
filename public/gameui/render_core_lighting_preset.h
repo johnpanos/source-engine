@@ -1,12 +1,12 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
 // Purpose: The render core's lighting settings as the video menus present
-//			them: five ConVar choices and the Low/High presets over them
+//			them: six ConVar choices and the Low/High presets over them
 //			(RFC 0016 K12). Menu-independent, so a test drives it without VGUI.
 //
 //			The presets are the render_quality "low" and "high" settings of
 //			quality/product_profiles/portal2-linux-native-vulkan-high.json for
-//			these five ConVars; a change to either changes both.
+//			these six ConVars; a change to either changes both.
 //=============================================================================//
 
 #ifndef GAMEUI_RENDER_CORE_LIGHTING_PRESET_H
@@ -24,6 +24,7 @@ struct RenderCoreLighting
 	int shadows = 2;          // r_core_shadow_quality: 0 off .. 3 high
 	int depthPrepass = 1;     // r_core_depth_prepass: 0/1
 	int shadowMovers = 1;     // r_core_shadow_movers: 0/1
+	int shadowPcss = 1;       // r_core_shadow_pcss: 0 hard shadows, 1 soft (PCSS)
 	int runtimeDirect = 1;    // r_core_runtime_direct: 0 baked direct light, 1 runtime
 	bool operator==( const RenderCoreLighting & ) const = default;
 };
@@ -39,6 +40,7 @@ enum class RenderCoreLightingRow
 	kShadows,
 	kDepthPrepass,
 	kShadowMovers,
+	kShadowPcss,
 	kRuntimeDirect,
 };
 
@@ -63,6 +65,7 @@ inline constexpr RenderCoreLighting Clamped( RenderCoreLighting lighting )
 	lighting.shadows = std::clamp( lighting.shadows, 0, kRenderCoreShadowChoices - 1 );
 	lighting.depthPrepass = std::clamp( lighting.depthPrepass, 0, 1 );
 	lighting.shadowMovers = std::clamp( lighting.shadowMovers, 0, 1 );
+	lighting.shadowPcss = std::clamp( lighting.shadowPcss, 0, 1 );
 	lighting.runtimeDirect = std::clamp( lighting.runtimeDirect, 0, 1 );
 	return lighting;
 }
@@ -85,6 +88,9 @@ inline constexpr RenderCoreLighting WithChoice(
 	case RenderCoreLightingRow::kShadowMovers:
 		lighting.shadowMovers = choice;
 		break;
+	case RenderCoreLightingRow::kShadowPcss:
+		lighting.shadowPcss = choice;
+		break;
 	case RenderCoreLightingRow::kRuntimeDirect:
 		lighting.runtimeDirect = choice;
 		break;
@@ -104,6 +110,8 @@ inline constexpr int Choice( const RenderCoreLighting &lighting, RenderCoreLight
 		return lighting.depthPrepass;
 	case RenderCoreLightingRow::kShadowMovers:
 		return lighting.shadowMovers;
+	case RenderCoreLightingRow::kShadowPcss:
+		return lighting.shadowPcss;
 	case RenderCoreLightingRow::kRuntimeDirect:
 		return lighting.runtimeDirect;
 	}
@@ -126,8 +134,8 @@ inline constexpr int kRenderCoreLightingPresetChoices = 3;
 inline constexpr RenderCoreLighting PresetLighting( RenderCoreLightingPreset preset )
 {
 	if ( preset == RenderCoreLightingPreset::kLow )
-		return RenderCoreLighting{ 1, 0, 1, 0, 0 };
-	return RenderCoreLighting{ 3, 3, 1, 1, 1 };
+		return RenderCoreLighting{ 1, 0, 1, 0, 0, 0 };
+	return RenderCoreLighting{ 3, 3, 1, 1, 1, 1 };
 }
 
 inline constexpr RenderCoreLightingPreset ClassifyPreset( const RenderCoreLighting &lighting )

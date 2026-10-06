@@ -25,6 +25,7 @@
 //
 //=============================================================================//
 
+#include "mapcontainer/light_shadow_masks.h"
 #include "mapcontainer/map_container.h"
 #include "mapcontainer/map_container_builder.h"
 #include "mapcontainer/probe_volume.h"
@@ -147,6 +148,18 @@ bool ReadReflectionProbes( const char *pPath, std::vector<std::byte> *pBytes )
 	return true;
 }
 
+// The static lights' baked shadow masks (LSMK), fully validated.
+bool ReadLightShadowMasks( const char *pPath, std::vector<std::byte> *pBytes )
+{
+	FileByteSource source( pPath );
+	if ( !source.IsOpen() || source.Size() < kLightShadowMasksHeaderBytes ||
+	     source.Size() > ( 1ull << 30 ) )
+		return false;
+	pBytes->resize( size_t( source.Size() ) );
+	return source.ReadAt( 0, pBytes->data(), pBytes->size() ) &&
+	       ValidateLightShadowMasks( pBytes->data(), pBytes->size() );
+}
+
 // An RTRN radiosity transfer, fully validated and paired with its volume.
 bool ReadRadiosityTransfer(
     const char *pPath, const std::vector<std::byte> &probeVolume, std::vector<std::byte> *pBytes )
@@ -258,15 +271,23 @@ int main( int argc, char **argv )
 		    "<out.bsp2> | pack-world-gi <legacy.bsp> <world.wmsh> <atlas.lmap> <volume.prbv> "
 		    "<transfer.rtrn> <out.bsp2> | pack-world-sdf <legacy.bsp> <world.wmsh> <atlas.lmap> "
 		    "<volume.prbv> <transfer.rtrn> <field.sdfv> <out.bsp2> "
-		    "[--reflection-probes <probes.rprb>]\n" );
+		    "[--reflection-probes <probes.rprb>] [--light-masks <masks.lsmk>]\n" );
 		return 2;
 	}
 	const std::string command = argv[1];
 	// The optional trailing reflection probes of any pack-world-lit* command.
+	// and baked light shadow masks, in either order.
 	const char *pReflectionProbes = nullptr;
-	if ( argc >= 5 && std::string( argv[argc - 2] ) == "--reflection-probes" )
+	const char *pLightMasks = nullptr;
+	while ( argc >= 5 )
 	{
-		pReflectionProbes = argv[argc - 1];
+		const std::string option = argv[argc - 2];
+		if ( option == "--reflection-probes" && !pReflectionProbes )
+			pReflectionProbes = argv[argc - 1];
+		else if ( option == "--light-masks" && !pLightMasks )
+			pLightMasks = argv[argc - 1];
+		else
+			break;
 		argc -= 2;
 	}
 	const bool bTwoPaths = command == "convert" || command == "export";
@@ -291,9 +312,10 @@ int main( int argc, char **argv )
 		std::fprintf( stderr, "bsp2tool: wrong argument count for '%s'\n", command.c_str() );
 		return 2;
 	}
-	if ( pReflectionProbes && !bPackWorldLit )
+	if ( ( pReflectionProbes || pLightMasks ) && !bPackWorldLit )
 	{
-		std::fprintf( stderr, "bsp2tool: --reflection-probes needs a pack-world-lit* command\n" );
+		std::fprintf( stderr,
+		    "bsp2tool: --reflection-probes and --light-masks need a pack-world-lit* command\n" );
 		return 2;
 	}
 	if ( !bTwoPaths && !bPackWorld && !bPackWorldLit )
@@ -350,6 +372,12 @@ int main( int argc, char **argv )
 		std::fprintf( stderr, "bsp2tool: invalid RPRB file %s\n", pReflectionProbes );
 		return 2;
 	}
+	std::vector<std::byte> lightMasks;
+	if ( pLightMasks && !ReadLightShadowMasks( pLightMasks, &lightMasks ) )
+	{
+		std::fprintf( stderr, "bsp2tool: invalid LSMK file %s\n", pLightMasks );
+		return 2;
+	}
 	const char *pOutput = argv[bPackWorldSdf        ? 8
 	                           : bPackWorldGi       ? 7
 	                           : bPackWorldProbed ? 6
@@ -388,6 +416,9 @@ int main( int argc, char **argv )
 		litLumps.push_back( fieldLump );
 	if ( pReflectionProbes )
 		litLumps.push_back( reflectionLump );
+	if ( pLightMasks )
+		litLumps.push_back( { kLumpLightShadowMasks, kLightShadowMasksVersion, 0,
+		    kBsp2BulkAlignment, lightMasks } );
 	const MapContainerStatus status =
 	    command == "export" ? ExportLegacyFromBsp2( source, sink )
 	    : bPackWorldLit     ? ConvertLegacyToBsp2( source, sink, litLumps )

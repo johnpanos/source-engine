@@ -160,8 +160,9 @@ public:
 	// point on the world vertex, with kSurfaceBakedLightmap and these scene
 	// terms (kSurfaceDirectionalLightmap, kSurfaceMapProbeTerms,
 	// kSurfaceClustered and the other scene terms of surface_program.h),
-	// taking the draw inputs "lightmap", "lightmap-gradient" and
-	// "lightmap-indirect" ("lightmap-indirect-gradient" in place of the
+	// taking the draw inputs "lightmap", "lightmap-gradient",
+	// "lightmap-indirect" and "lightmap-shadow-mask" (the static lights'
+	// baked shadow masks, LSMK) ("lightmap-indirect-gradient" in place of the
 	// second with kSurfaceRuntimeDirect among the terms). Without it
 	// (the default, and the product until K12) a pbr material is refused by
 	// name. Call before resolving; programs already resolved keep theirs.
