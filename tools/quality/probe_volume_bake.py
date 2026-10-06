@@ -35,7 +35,6 @@ import argparse
 import hashlib
 import json
 import math
-import multiprocessing
 import sys
 import time
 from pathlib import Path
@@ -47,6 +46,7 @@ from mathutils.bvhtree import BVHTree
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import cpu_budget  # noqa: E402
+import fork_pool  # noqa: E402
 import map_scene  # noqa: E402
 import pbrt_blender  # noqa: E402
 import probe_volume  # noqa: E402
@@ -170,7 +170,7 @@ def trace_probes(bvh, homes, rays, lobes, spacing_min, max_distance, workers):
     runs = [(first, min(first + run, count)) for first in range(0, count, run)]
     try:
         if workers > 1 and len(runs) > 1:
-            with multiprocessing.get_context("fork").Pool(min(workers, len(runs))) as pool:
+            with fork_pool.ForkPool(min(workers, len(runs))) as pool:
                 results = pool.map(trace_run, runs, chunksize=1)
         else:
             results = [trace_run(bounds) for bounds in runs]

@@ -46,7 +46,6 @@ import contextlib
 import hashlib
 import json
 import math
-import multiprocessing
 import sys
 import time
 from pathlib import Path
@@ -59,6 +58,7 @@ from mathutils.kdtree import KDTree
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import cpu_budget  # noqa: E402
+import fork_pool  # noqa: E402
 import map_scene  # noqa: E402
 import pbrt_blender  # noqa: E402
 import probe_volume  # noqa: E402
@@ -513,7 +513,7 @@ def worker_pool(workers):
     if workers <= 1:
         yield None
         return
-    with multiprocessing.get_context("fork").Pool(workers) as pool:
+    with fork_pool.ForkPool(workers) as pool:
         yield pool
 
 

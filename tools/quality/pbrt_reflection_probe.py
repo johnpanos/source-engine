@@ -30,7 +30,6 @@ import argparse
 import hashlib
 import json
 import math
-import multiprocessing
 import os
 import sys
 from pathlib import Path
@@ -43,6 +42,7 @@ from mathutils.bvhtree import BVHTree
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import cycles_device  # noqa: E402
 import cpu_budget  # noqa: E402
+import fork_pool  # noqa: E402
 import pbrt_blender  # noqa: E402
 import map_scene  # noqa: E402
 import map_export_audit  # noqa: E402
@@ -181,7 +181,7 @@ class BvhCaster:
         run = max(1, min(64, count // max(1, 4 * workers)))
         ranges = [(first, min(first + run, count)) for first in range(0, count, run)]
         try:
-            with multiprocessing.get_context("fork").Pool(workers) as pool:
+            with fork_pool.ForkPool(workers) as pool:
                 chunks = pool.map(_estimate_run, ranges, chunksize=1)
         finally:
             _PLACEMENT.clear()
