@@ -60,7 +60,8 @@ public:
 	// levels[m] is mip m, rows tightly packed, max(1, width >> m) by
 	// max(1, height >> m) texels per layer; 1 <= levels.size() <=
 	// desc.mipLevels. A cube's level holds its six faces one after another
-	// (+x, -x, +y, -y, +z, -z); every other texture's level holds one layer.
+	// (+x, -x, +y, -y, +z, -z), a cube array's its cubes one after another
+	// (layer 6n + f); every other texture's level holds one layer.
 	// Levels past the last one given are not allocated; sampling clamps at the
 	// last resident level. A level of the wrong size fails and stages nothing.
 	foundation::Expected<TextureEntry, ResourceError> StageMips( std::string_view name,

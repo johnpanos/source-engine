@@ -172,17 +172,25 @@ public:
 	// is destroyed behind the frames that may read it).
 	void SetShadowField( int handle, const float origin[3], float voxel, const uint32_t dims[3] );
 	bool ShadowFieldResident() const { return m_shadowFieldHandle >= 0; }
-	// R50-PARALLAX: the map's RPRB reflection probes as one RGBA16F texture
-	// (mapcontainer::WriteReflectionProbeTexture; null texels: none). The
-	// context keeps the texels and applies `mat_reflection_probes` and
-	// `mat_reflection_relight` (R50-RELIGHT) by rewriting the mode texel into
-	// a new texture; each replaced texture is
-	// destroyed behind the frames that sample it. The checked upload is
-	// vulkan_world_reflection_probes.cpp's UploadWorldReflectionProbes.
-	bool SetReflectionProbes( const uint16_t *texels, uint32_t width, uint32_t height,
-	    uint32_t count, std::string *outError = nullptr );
-	void SetReflectionProbeMode( int mode, bool relight );
+	// R50-PARALLAX: the map's RPRB (v8) reflection probes: `blocks` are the
+	// BC6H radiance cube array as the lump stores it (mip-major, then probe,
+	// then face; `count` cubes of `faceSize` and `mips` levels) and `words` the
+	// probe buffer (mapcontainer::WriteReflectionProbeBuffer), which the shaders
+	// read as an R32_UINT texture (null `words`: no probes). The context keeps
+	// the words and applies `mat_reflection_probes` by rewriting the mode word
+	// into a new table texture; each replaced texture is destroyed behind the
+	// frames that sample it. This backend does not relight probes. The checked
+	// upload is vulkan_world_reflection_probes.cpp's UploadWorldReflectionProbes.
+	bool SetReflectionProbes( const uint32_t *words, uint32_t wordCount, uint32_t count,
+	    uint32_t faceSize, uint32_t mips, const uint8_t *blocks, std::string *outError = nullptr );
+	void SetReflectionProbeMode( int mode );
 	int ReflectionProbeHandle() const { return m_reflectionProbeHandle; }
+	// The frame set's reflection images: the probes' cube array and table, or
+	// neutral ones (a count of 0) without them.
+	CGroupedDescriptors::Image ReflectionCubesImage() const;
+	CGroupedDescriptors::Image ReflectionTableImage() const;
+	CGroupedDescriptors::Image ReflectionNeutralCubesImage() const;
+	CGroupedDescriptors::Image ReflectionNeutralTableImage() const;
 	bool ProbeVolumeResident() const { return m_probeAtlasHandle >= 0 && m_probeGridCount > 0; }
 	int ProbeAtlasHandle() const { return m_probeAtlasHandle; }
 	int ProbeDeltaHandle() const { return m_probeDeltaHandle; }
@@ -827,9 +835,11 @@ public:
 	// mutable between the two and also gets an sRGB view (render targets).
 	// `depth` > 1 makes a volume (3D) texture, one level, not a cube; its
 	// uploads cover every slice at once.
+	// `cubeCount` > 1 makes a cube array of that many cubes (layer 6n + face).
 	int CreateManagedTexture( int width, int height, VkFormat format, std::string *outError,
 	    VkImageUsageFlags extraUsage = 0, uint32_t mipLevels = 1,
-	    VkFormat srgbAlias = VK_FORMAT_UNDEFINED, bool cube = false, uint32_t depth = 1 );
+	    VkFormat srgbAlias = VK_FORMAT_UNDEFINED, bool cube = false, uint32_t depth = 1,
+	    uint32_t cubeCount = 1 );
 	// The selected device's largest volume texture edge.
 	uint32_t MaxVolumeTextureDimension() const { return m_maxImageDimension3D; }
 	bool UploadManagedTexture( int handle, const uint8_t *data, size_t dataSize,
@@ -2346,12 +2356,13 @@ private:
 	int m_probeAtlasHandle = -1;
 	int m_shadowFieldHandle = -1;
 	// R50-PARALLAX: SetReflectionProbes' texture, its texels and mode.
-	int m_reflectionProbeHandle = -1;
+	CGroupedDescriptors::Image ProbeImage( int handle ) const;
+	int m_reflectionProbeHandle = -1;   // the radiance cube array
+	int m_reflectionTableHandle = -1;   // the probe buffer's words, R32_UINT
+	int m_neutralProbeCubesHandle = -1; // a cube array bound without probes
+	int m_neutralProbeTableHandle = -1; // a table whose count is 0
 	int m_reflectionProbeMode = 1;
-	bool m_reflectionProbeRelight = true;
-	uint32_t m_reflectionProbeWidth = 0;
-	uint32_t m_reflectionProbeHeight = 0;
-	std::vector<uint16_t> m_reflectionProbeTexels;
+	std::vector<uint32_t> m_reflectionProbeWords;
 	float m_shadowFieldOrigin[4] = {}; // xyz the first voxel centre, w the voxel size
 	float m_shadowFieldDims[4] = {};
 	int m_probeGridHandle = -1;

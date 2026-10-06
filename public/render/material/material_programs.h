@@ -166,6 +166,7 @@ private:
 	// filled at the next RecordUploads.
 	device::TextureId m_Neutral2D;
 	device::TextureId m_NeutralCube;
+	device::TextureId m_NeutralCubeArray;
 	device::TextureId m_Neutral2DArray;
 	device::TextureId m_NeutralDepth;
 	device::BufferId m_NeutralStaging;

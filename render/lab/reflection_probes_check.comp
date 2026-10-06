@@ -1,19 +1,22 @@
 // render_lab suite reflection-probes (RFC 0016 K11): evaluates the reflection
 // probes (render/shaders/common/reflection_probes.glsl) at each case, so the
 // suite can judge them against their oracle, mapcontainer::
-// ReflectionProbesView. The probe texture (WriteReflectionProbeTexture's GPU
-// form) is a sampled texture; its texels are fetched exactly and filtered
-// explicitly, as the reference filters them, so the blend, parallax and lod
-// arithmetic is what is judged. Per case it writes the radiance, and 1 in w
-// when the texture carried probes.
+// ReflectionProbesView. The probes are RPRB v8's: the radiance, albedo and
+// normal cube arrays (BC6H and RGBA16F) read by world direction with the
+// hardware's trilinear filter, and the probe buffer (WriteReflectionProbeBuffer)
+// as a storage buffer, so the blend, parallax, lod and face selection are what
+// is judged. Per case it writes the radiance, and 1 in w when the buffer
+// carried probes.
 #version 450
 
 #include "../shaders/common/pbr_brdf.glsl"
 
 layout( local_size_x = 64 ) in;
 
-layout( set = 3, binding = 0 ) uniform texture2D probeTexture;
-layout( set = 3, binding = 1 ) uniform sampler probeSampler;
+layout( set = 3, binding = 0 ) uniform textureCubeArray probeRadiance;
+layout( set = 3, binding = 1 ) uniform textureCubeArray probeAlbedo;
+layout( set = 3, binding = 2 ) uniform textureCubeArray probeNormal;
+layout( set = 3, binding = 3 ) uniform sampler probeSampler;
 
 struct Case
 {
@@ -22,34 +25,43 @@ struct Case
 	vec4 reflected; // the unit reflected ray
 };
 
-layout( std430, set = 3, binding = 2 ) readonly buffer Cases
+layout( std430, set = 3, binding = 4 ) readonly buffer Cases
 {
 	uvec4 header; // x: the case count
 	Case cases[];
 };
 
-layout( std430, set = 3, binding = 3 ) writeonly buffer Results
+layout( std430, set = 3, binding = 5 ) writeonly buffer Results
 {
 	vec4 results[];
 };
 
-vec4 ReflectionProbesFetch( ivec2 texel )
+layout( std430, set = 3, binding = 6 ) readonly buffer ProbeBuffer
 {
-	const ivec2 size = textureSize( sampler2D( probeTexture, probeSampler ), 0 );
-	return texelFetch( sampler2D( probeTexture, probeSampler ),
-	    clamp( texel, ivec2( 0 ), size - ivec2( 1 ) ), 0 );
+	uint probeWords[];
+};
+
+uint ReflectionProbesWord( uint index )
+{
+	return probeWords[index];
 }
 
-vec4 ReflectionProbesSample( vec2 texel )
+vec4 ReflectionProbesRadianceFetch( vec3 direction, float layer, float lod )
 {
-	const vec2 t = texel - vec2( 0.5 );
-	const ivec2 corner = ivec2( floor( t ) );
-	const vec2 f = t - vec2( corner );
-	const vec4 upper = mix( ReflectionProbesFetch( corner ),
-	    ReflectionProbesFetch( corner + ivec2( 1, 0 ) ), f.x );
-	const vec4 lower = mix( ReflectionProbesFetch( corner + ivec2( 0, 1 ) ),
-	    ReflectionProbesFetch( corner + ivec2( 1, 1 ) ), f.x );
-	return mix( upper, lower, f.y );
+	return textureLod( samplerCubeArray( probeRadiance, probeSampler ), vec4( direction, layer ),
+	    lod );
+}
+
+vec4 ReflectionProbesAlbedoFetch( vec3 direction, float layer, float lod )
+{
+	return textureLod( samplerCubeArray( probeAlbedo, probeSampler ), vec4( direction, layer ),
+	    lod );
+}
+
+vec4 ReflectionProbesNormalFetch( vec3 direction, float layer, float lod )
+{
+	return textureLod( samplerCubeArray( probeNormal, probeSampler ), vec4( direction, layer ),
+	    lod );
 }
 
 // R50-RELIGHT: the analytic light (now and baked) and the moving occluder
@@ -90,7 +102,7 @@ void main()
 	vec4 selection;
 	bool carried = ReflectionProbesRadianceDebug( c.positionRoughness.xyz, c.normal.xyz,
 	    c.reflected.xyz, c.positionRoughness.w, radiance, selection );
-	int count = int( ReflectionProbesFetch( ivec2( 0, 0 ) ).x );
+	int count = int( ReflectionProbesWord( 0u ) );
 	bool covered = true;
 	int candidateCount = 0;
 	for ( int group = 0; group < ( count + 63 ) / 64; ++group )

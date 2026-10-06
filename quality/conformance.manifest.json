@@ -8833,41 +8833,6 @@
       "expect": "pass"
     },
     {
-      "id": "render.reflection-probes.glsl",
-      "domain": "Q-PRESENTATION",
-      "rfc": "0007",
-      "kind": "positive",
-      "profile": "linux-native-vulkan-gpu",
-      "result_protocol": "checks-v1",
-      "description": "R50-PARALLAX: shaders/reflection_probes.glsl, the RPRB blend every native PBR stage includes, evaluated in a compute program on a headless device over the RPRB fixture's GPU texture and compared with mapcontainer::ReflectionProbesView on 448 cases in each of four modes (blended and parallax-corrected, nearest capture, direction-only, weight view); every other mode's reference is rejected by the same comparator; a texture without the marker carries no probes; R50-RELIGHT: over the RPRB v2 relight fixture the shader relit by the fixture's analytic change matches the relit reference in three modes, the unrelit reference is rejected, and the relight switch off matches it; validation-clean with the layer",
-      "sources": [
-        "unittests/shaderapivulkantest/test_reflection_probes_glsl.cpp",
-        "materialsystem/shaderapivulkan/vulkan_compute.cpp",
-        "mapcontainer/reflection_probes.cpp",
-        "mapcontainer/probe_volume.cpp",
-        "materialsystem/shaderapivulkan/vulkan_debug_utils.cpp",
-        "materialsystem/shaderapivulkan/vulkan_shader_library.cpp",
-        "render/device/port.cpp",
-        "render/device/encoder.cpp",
-        "render/device/validation.cpp",
-        "render/device/vulkan/device.cpp",
-        "render/device/vulkan/fsr_features.cpp",
-        "render/device/vulkan/encoder.cpp",
-        "render/device/vulkan/host_device.cpp",
-        "render/device/vulkan/instance.cpp",
-        "render/device/vulkan/memory.cpp",
-        "render/device/vulkan/pipelines.cpp",
-        "render/device/vulkan/resources.cpp",
-        "render/device/vulkan/transitions.cpp",
-        "render/device/vulkan/upload_ring.cpp"
-      ],
-      "extra_flags": [
-        "-pthread",
-        "-isystemdependencies/vulkan-memory-allocator/include"
-      ],
-      "expect": "pass"
-    },
-    {
       "id": "render.grouped-descriptors",
       "domain": "Q-PRESENTATION",
       "rfc": "0001",
@@ -13791,7 +13756,7 @@
       "contract": "unittests/rendertest/contracts/render.shadows.v1.md",
       "kind": "positive",
       "profile": "linux-headless-core",
-      "description": "render.shadows.v1 (RFC 0016 K7, headless slice): shadow atlas plans over 1,000 seeded request sets (tiles aligned, in bounds, disjoint; budget and shortages honest; order-independent), spot and flashlight shadow views over 1,000 seeded lights, cascade splits and gap-free coverage of the view frustum with casters over 1,000 seeded cameras, texel-snapped cascades. Honors CONFORMANCE_SEED.",
+      "description": "render.shadows.v1 (RFC 0016 K7, headless slice): shadow atlas plans over 1,000 seeded request sets (tiles aligned, in bounds, disjoint; budget and shortages honest; order-independent), spot and flashlight shadow views over 1,000 seeded lights, cascade splits and gap-free coverage of the view frustum with casters over 1,000 seeded cameras, texel-snapped cascades, and every request keeps a tile while all fit at the minimum size (S8, the sp_a1_intro4_relit view whose sunlit spot lost its shadow as the camera turned). Honors CONFORMANCE_SEED.",
       "result_protocol": "checks-v1",
       "sources": [
         "render/math/matrix.cpp",
@@ -13799,7 +13764,7 @@
         "render/pass/shadows/shadow_views.cpp",
         "unittests/rendertest/core/pass/shadows/test_shadows.cpp"
       ],
-      "min_checks": 25,
+      "min_checks": 26,
       "expect": "pass"
     },
     {
@@ -17014,6 +16979,39 @@
         "quality/workloads/portal2-materials-v1/mat_sp_a2_fizzler_intro.nut"
       ],
       "expect": "pass"
+    },
+    {
+      "id": "corpus.portal2.intro4-shadows",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "kind": "positive",
+      "profile": "linux-host-corpus",
+      "migration": "R96",
+      "description": "Shadowed lights keep their shadows as the camera turns (RFC 0016 K7/K12; user report 2026-10-06): quality/workloads/portal2-intro4-shadows-v1 holds four views at 391.94 -412.03 on sp_a1_intro4_relit (turned first, facing the sunlit wall, turned again, turned with r_core_shadow_quality 0) on build-p2 with r_core_world 1 and cl_render_debug_stats. Every stats line while a shadowed view is held reports 0 shadowed lights without tiles, and the turned view is at least 38 percent darker than with the core's shadows off. The greedy atlas planner reported 81-86 per frame here. Needs a local Portal 2 install and a built build-p2; about 1 minute.",
+      "command": [
+        "{python}",
+        "tools/quality/portal2_shadow_views.py",
+        "--workload",
+        "quality/workloads/portal2-intro4-shadows-v1/views.json",
+        "--out",
+        "{out}"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 10,
+      "timeout_seconds": 600,
+      "requires": [
+        "env:SOURCE_PORTAL2_STEAM_ROOT",
+        "vulkan-device:gpu",
+        "path:build-p2/c4che/_cache.py"
+      ],
+      "optional": true,
+      "sources": [
+        "tools/quality/portal2_shadow_views.py",
+        "tools/quality/portal2_map_views.py",
+        "tools/quality/stage_portal2_runtime.py",
+        "tools/quality/conformance_result.py",
+        "quality/workloads/portal2-intro4-shadows-v1/views.json"
+      ]
     },
     {
       "id": "corpus.portal2.water-retail",

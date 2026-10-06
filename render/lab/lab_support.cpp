@@ -311,24 +311,71 @@ std::optional<std::string> StageProbeVolume( resources::TextureCache &cache,
 
 std::optional<std::string> StageReflectionProbes( resources::TextureCache &cache,
     const std::string &name, std::span<const std::byte> lump,
-    mapcontainer::ReflectionProbeMode mode, bool relight,
-    mapcontainer::ReflectionProbesLayout &layout, std::vector<std::byte> *decoded )
+    mapcontainer::ReflectionProbeMode mode, bool relight, StagedReflectionProbes &out,
+    std::uint32_t baseMip )
 {
-	std::vector<std::byte> local;
-	std::vector<std::byte> &bytes = decoded ? *decoded : local;
+	mapcontainer::ReflectionProbesLayout &layout = out.layout;
 	if ( const mapcontainer::ReflectionProbesError error =
-	         mapcontainer::DecodeReflectionProbes( lump.data(), lump.size(), &bytes, &layout );
+	         mapcontainer::ValidateReflectionProbes( lump.data(), lump.size(), &layout );
 	    error != mapcontainer::ReflectionProbesError::Ok )
 		return std::string( "RPRB: " ) + mapcontainer::ReflectionProbesErrorName( error );
-	TextureDesc desc;
-	desc.format = Format::kRGBA16Float;
-	desc.width = mapcontainer::ReflectionProbeTextureWidth( layout );
-	desc.height = mapcontainer::ReflectionProbeTextureRows( layout );
-	desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kSampled };
-	std::vector<std::uint16_t> texels( std::size_t( desc.width ) * desc.height * 4 );
-	mapcontainer::WriteReflectionProbeTexture( bytes.data(), layout, mode, texels.data(), relight );
-	if ( !cache.Stage( name, desc, std::as_bytes( std::span( texels ) ) ) )
-		return std::string( "RPRB: its texture was refused" );
+	if ( const mapcontainer::ReflectionProbesError error = mapcontainer::DecodeReflectionProbes(
+	         lump.data(), lump.size(), &out.decoded, &out.decodedLayout );
+	    error != mapcontainer::ReflectionProbesError::Ok )
+		return std::string( "RPRB: " ) + mapcontainer::ReflectionProbesErrorName( error );
+	if ( baseMip >= layout.mipCount )
+		return std::string( "RPRB: the base mip is past its chain" );
+	const auto stage = [&]( const std::string &textureName, Format format,
+	                       mapcontainer::ReflectionProbeArray array,
+	                       std::uint32_t first = 0 ) -> bool
+	{
+		TextureDesc desc;
+		desc.dimension = TextureDimension::kCube;
+		desc.format = format;
+		desc.width = desc.height = layout.faceSize >> first;
+		// Two cubes at least: one probe's six layers would be a plain cube.
+		const std::uint32_t cubes = std::max( layout.count, 2u );
+		desc.depthOrLayers = 6 * cubes;
+		desc.mipLevels = layout.mipCount - first;
+		desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kSampled };
+		std::vector<std::vector<std::byte>> padded;
+		padded.reserve( layout.mipCount );
+		std::vector<std::span<const std::byte>> levels;
+		for ( std::uint32_t level = first; level < layout.mipCount; ++level )
+		{
+			std::uint64_t offset, bytes;
+			mapcontainer::ReflectionProbeMipRange( layout, array, level, &offset, &bytes );
+			std::span<const std::byte> mip =
+			    lump.subspan( std::size_t( layout.dataOffset + offset ), std::size_t( bytes ) );
+			if ( cubes != layout.count )
+			{
+				padded.emplace_back( mip.begin(), mip.end() );
+				padded.back().resize( std::size_t( bytes ) / layout.count * cubes );
+				mip = padded.back();
+			}
+			levels.push_back( mip );
+		}
+		return bool( cache.StageMips( textureName, desc, levels ) );
+	};
+	out.radiance = name + "-radiance";
+	if ( !stage( out.radiance, Format::kBC6HUfloat, mapcontainer::ReflectionProbeArray::kRadiance,
+	         baseMip ) )
+		return std::string( "RPRB: its radiance cube array was refused" );
+	if ( layout.relight )
+	{
+		out.albedo = name + "-albedo";
+		out.normal = name + "-normal";
+		if ( !stage(
+		         out.albedo, Format::kRGBA16Float, mapcontainer::ReflectionProbeArray::kAlbedo ) ||
+		     !stage(
+		         out.normal, Format::kRGBA16Float, mapcontainer::ReflectionProbeArray::kNormal ) )
+			return std::string( "RPRB: its relight cube arrays were refused" );
+	}
+	std::vector<std::uint32_t> words( mapcontainer::ReflectionProbeBufferWords( layout ) );
+	mapcontainer::WriteReflectionProbeBuffer(
+	    lump.data(), layout, mode, words.data(), relight, baseMip );
+	const std::byte *raw = reinterpret_cast<const std::byte *>( words.data() );
+	out.buffer = std::make_shared<const std::vector<std::byte>>( raw, raw + words.size() * 4 );
 	return std::nullopt;
 }
 

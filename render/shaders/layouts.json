@@ -182,7 +182,7 @@
     },
     {
      "set": 0,
-     "binding": 6,
+     "binding": 7,
      "kind": "combined-image-sampler",
      "stages": [
       "fragment"
@@ -297,7 +297,7 @@
     },
     {
      "set": 0,
-     "binding": 6,
+     "binding": 7,
      "kind": "combined-image-sampler",
      "stages": [
       "fragment"
@@ -799,41 +799,6 @@
     }
    ]
   },
-  "reflection-probes-check": {
-   "description": "render.reflection-probes.glsl suite program.",
-   "sources": [
-    "materialsystem/shaderapivulkan/shaders/reflection_probes_check.comp"
-   ],
-   "push_constants": [
-    "compute"
-   ],
-   "bindings": [
-    {
-     "set": 0,
-     "binding": 0,
-     "kind": "storage-buffer",
-     "stages": [
-      "compute"
-     ]
-    },
-    {
-     "set": 0,
-     "binding": 1,
-     "kind": "storage-buffer",
-     "stages": [
-      "compute"
-     ]
-    },
-    {
-     "set": 0,
-     "binding": 2,
-     "kind": "storage-buffer",
-     "stages": [
-      "compute"
-     ]
-    }
-   ]
-  },
   "sdf-probe-trace-ray-query": {
    "description": "RFC 0011 G7: the probe update traced with ray queries (SPIR-V 1.5), the scene's acceleration structure at set 0 binding 5.",
    "push_constants": [
@@ -1157,6 +1122,13 @@
      {
       "binding": 12,
       "kind": "sampler",
+      "stages": [
+       "fragment"
+      ]
+     },
+     {
+      "binding": 13,
+      "kind": "storage-buffer",
       "stages": [
        "fragment"
       ]

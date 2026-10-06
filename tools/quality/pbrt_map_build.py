@@ -1235,7 +1235,7 @@ class Pipeline:
             # does: a probe box fitted past the world must not stretch it.
             envelope = self.probe_volume_bounds()
             self.step("rprb", [p["probe"] / "probes.json"],
-                      {"width": probe.get("width", 512),
+                      {"cube_size": probe.get("cube_size", probe.get("face_size", 256)),
                        "preview_gain": self.lightmap["preview_gain"],
                        "max_mean_relative_residual": coverage_rules.get(
                            "max_reflection_probe_residual"),
@@ -1246,7 +1246,7 @@ class Pipeline:
                       lambda: self.run("rprb", [sys.executable, HERE / "reflection_probe_set.py",
                                                 "pack", "--probes-dir", p["probe"],
                                                 "--ktx-tool", self.tools["ktx"],
-                                                "--width", str(probe.get("width", 512)),
+                                                "--face", str(probe.get("cube_size", probe.get("face_size", 256))),
                                                 "--preview-gain",
                                                 str(self.lightmap["preview_gain"]),
                                                 "--out", p["rprb"]] +

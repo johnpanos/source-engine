@@ -8,7 +8,7 @@
   layers, a new `RTRN` radiosity transfer lump, and runtime indirect light for
   F10 follows RFC 0011's producers. Amended passages say so inline
 - Registered 2026-09-25: the `SDFV` signed distance lump (RFC 0011 G6, as
-  built) and `RPRB` v2 relight bands (R50-RELIGHT) in the render lump table;
+  built) and `RPRB` v2 relight bands (R50-RELIGHT) in the render lump table (v8, 2026-10-06, makes each probe a BC6H cube: see the installed encodings);
   [installed encodings](#installed-encodings-2026-09-25) records what the
   readers accept today
 - Amended: 2026-09-26 by [RFC 0015](0015-asset-identity-content-build-graph.md)
@@ -412,7 +412,7 @@ dependencies (checked by R12's link evidence).
 | `PRBV` | Probe volume *(amended by RFC 0011)*: one or more axis-aligned probe grids (origin, spacing, dimensions); per probe an octahedral irradiance tile and an octahedral visibility tile (hit-distance mean and mean²), an active mask and a bounded relocation offset; style layers; stored as 2D atlases in the `render.probe-volume.v1` encoding so load is a copy | Leaf ambient cubes |
 | `RTRN` | Radiance transfer *(RFC 0011 G4, optional)*: surface patches mapped to lightmap charts, sparse visibility-weighted form factors, probe gather weights, per-patch visibility of each baked light | — (new capability: runtime radiosity) |
 | `SDFV` | Signed distance volume *(RFC 0011 G6, optional)*: a uniform voxel grid over the static world (signed distance, reflectance, emission and its light source per voxel), the analytic lights the traced producers shadow-test, and (v2) per-cell light lists | — (new capability: SDF-traced indirect light and unbaked-light shadows) |
-| `RPRB` | Reflection probes: position, influence and parallax boxes, blend priority, KTX2 prefiltered HDR cube (GGX roughness mips); optionally *(R50-RELIGHT)* relight bands (albedo, distance, normal of what each capture saw) | `env_cubemap` VTFs from `buildcubemaps` |
+| `RPRB` | Reflection probes: position, influence and parallax boxes, blend priority, a BC6H prefiltered HDR cube array (GGX roughness mips; installed as RPRB v8); optionally *(R50-RELIGHT)* relight bands (albedo, distance, normal of what each capture saw) | `env_cubemap` VTFs from `buildcubemaps` |
 | `MTBL` | Material table: canonical material asset identity (an RFC 0015 `AssetRef`), optional legacy VMT path, family, shader capability requirement, hashes | `texdata` string table lookups for render batching |
 | `PKMF` | Package manifest: profile, formats chosen, source stage hashes, tool versions, derived-legacy flag, and *(RFC 0015)* the build request hash and the map's runtime references for the package index | — |
 
@@ -432,7 +432,7 @@ lump is rejected with a warning and the map stays playable without it.
 | `PRBV` | 1 | `probe_volume.h` / `probe_volume.py` | `render.probe-volume.v1`, with total and indirect layers |
 | `RTRN` | 1 | `radiosity_transfer.h` / `radiosity_transfer.py` | As RFC 0011 G4 defines it |
 | `SDFV` | 1, 2 | `sdf_volume.h` / `sdf_volume.py` | v2 adds sphere and spot lights and light cells |
-| `RPRB` | 1, 2, 3, 4, 5 | `reflection_probes.h` / `reflection_probe_set.py` | Raw RGBA16F GGX-prefiltered equirect mip chains; v1/v2 retain 16 probes, v3/v4 retain 64; v4 adds conservative spatial rank masks; v5 supports 256 with four uint64 words per cell. Extended sets use tiled GPU uploads. |
+| `RPRB` | 8 only (2026-10-06; every earlier version, the v7 equirect strip atlas included, is refused) | `reflection_probes.h` / `reflection_probe_set.py` | One cube per probe in the Vulkan cube convention (layer = probe index, sampled by the world direction), a full GGX-prefiltered mip chain (roughness `l / (M - 1)`), the radiance array BC6H and the optional relight arrays (albedo + distance, normal) RGBA16F, stored mip-major then probe then face so a consumer uploads the lump's bytes as they are. Probe metadata (capture, boxes, fade, rank, layer, candidate masks) is a storage buffer of float32/uint32 words (`WriteReflectionProbeBuffer`), not texels; up to 256 probes, face size 8–1024. `CubeArrays` (device clause D36) is required. The frozen backend reads the cube array natively (BC6H and cube arrays required, no relight); the render core ignores the relight cubes |
 
 `LSTY`, `MTBL`, `PKMF` and the asset table lump have no reader or writer.
 

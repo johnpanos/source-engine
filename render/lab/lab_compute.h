@@ -7,7 +7,8 @@
 //			linear, clamped to edge unless explicit descriptions are supplied), the cases at n+s (a storage buffer: a
 //			uvec4 header whose x is the case count, then the cases) and the
 //			results at n+s+1 (a storage buffer); 64 invocations per group, one
-//			per case.
+//			per case. Optional read-only storage buffers follow the results
+//			(binding n+s+2 on; a probe table).
 //			Private to render.lab.
 //
 //=============================================================================//
@@ -51,7 +52,7 @@ public:
 	// `samplers` samplers; the reason when the device refuses it.
 	std::optional<std::string> Create( std::span<const std::uint32_t> module,
 	    std::uint32_t textures, std::uint32_t samplers, std::string_view name,
-	    std::span<const device::SamplerDesc> samplerDescs = {} );
+	    std::span<const device::SamplerDesc> samplerDescs = {}, std::uint32_t extraBuffers = 0 );
 
 	// Records the cache's pending uploads, dispatches one invocation per case
 	// over `textures` (in binding order) and reads `resultBytes` back. Optional
@@ -61,12 +62,13 @@ public:
 	std::optional<std::string> Run( resources::TextureCache &cache,
 	    std::span<const device::TextureId> textures, std::uint32_t caseCount,
 	    std::span<const std::byte> cases, std::uint64_t resultBytes, std::vector<std::byte> &out,
-	    Comparison *comparison = nullptr );
+	    Comparison *comparison = nullptr, std::span<const std::span<const std::byte>> extra = {} );
 
 private:
 	device::IRenderDevice2 &m_Device;
 	std::uint32_t m_Textures = 0;
 	std::uint32_t m_Samplers = 0;
+	std::uint32_t m_Extra = 0;
 	device::BindGroupLayoutId m_Layout;
 	device::PipelineId m_Pipeline;
 	std::vector<device::SamplerId> m_SamplerIds;

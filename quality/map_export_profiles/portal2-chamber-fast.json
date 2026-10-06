@@ -33,7 +33,7 @@
     ]
   },
   "reflection_probe": {
-    "width": 512,
+    "cube_size": 256,
     "face_size": 256,
     "samples": 128,
     "light_paths": "gi-reference",

@@ -32,12 +32,13 @@ enum class Capability : std::uint8_t
 	kAsyncCompute,      // a compute queue separate from graphics
 	kAsyncTransfer,     // a transfer queue separate from graphics
 	kRayQuery,
-	kExternalImages,       // textures whose memory is exported (external_images.h, clause D18)
-	kTextureCompressionBC, // the kBC* formats (clause D19)
-	kTimestamps,           // CommandEncoder::WriteTimestamp (clause D23)
-	kMultiDrawIndirect,    // CommandEncoder::DrawIndexedIndirect (clause D30)
-	kDrawIndirectCount,    // CommandEncoder::DrawIndexedIndirectCount (clause D31)
+	kExternalImages,        // textures whose memory is exported (external_images.h, clause D18)
+	kTextureCompressionBC,  // the kBC* formats (clause D19)
+	kTimestamps,            // CommandEncoder::WriteTimestamp (clause D23)
+	kMultiDrawIndirect,     // CommandEncoder::DrawIndexedIndirect (clause D30)
+	kDrawIndirectCount,     // CommandEncoder::DrawIndexedIndirectCount (clause D31)
 	kIndirectFirstInstance, // indirect records may carry a nonzero firstInstance (D30)
+	kCubeArrays,            // kCube textures of more than six layers (clause D36)
 	kCount
 };
 

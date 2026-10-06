@@ -15,7 +15,7 @@
     ]
   },
   "reflection_probe": {
-    "width": 64,
+    "cube_size": 32,
     "face_size": 32,
     "samples": 16,
     "denoise": false

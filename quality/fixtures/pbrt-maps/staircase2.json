@@ -42,8 +42,8 @@
     "max_mottle_ratio": 1.15
   },
   "reflection_probe": {
-    "width": 512,
     "face_size": 256,
-    "samples": 512
+    "samples": 512,
+    "cube_size": 256
   }
 }

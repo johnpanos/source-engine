@@ -24,7 +24,7 @@
   "radiosity": null,
   "sdf_volume": null,
   "reflection_probe": {
-    "width": 2048,
+    "cube_size": 1024,
     "face_size": 512,
     "samples": 1024,
     "light_paths": "gi-reference",

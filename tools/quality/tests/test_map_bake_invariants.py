@@ -82,7 +82,7 @@ class CompiledCandidates(unittest.TestCase):
         probes, chains = rprb.fixture_layout()
         cls.data = rprb.build(probes, chains)
         cls.layout = rprb.read(cls.data)
-        cls.grid = cls.layout["atlas_offset"] - rprb.candidate_bytes(cls.layout["count"])
+        cls.grid = cls.layout["data_offset"] - rprb.candidate_bytes(cls.layout["count"])
 
     def reject(self, offset, fmt, value):
         data = bytearray(self.data)
@@ -103,13 +103,10 @@ class CompiledCandidates(unittest.TestCase):
                 self.reject(self.grid + offset, "<f", value)
         self.reject(self.grid + 16, "<I", 1)
 
-    def test_texture_contains_grid(self):
-        texture = rprb.gpu_texture(self.layout, rprb.MODE_BLEND)
-        dim = rprb.CANDIDATE_DIM
-        self.assertTrue(bool((texture[0, 3] == (dim, dim, dim, 1)).all()))
-        start = struct.unpack("<I", bytes(int(x) for x in texture[0, 8]))[0]
-        self.assertGreaterEqual(texture[start:].size, rprb.CANDIDATE_CELLS * 8)
-        self.assertTrue(bool(rprb.np.isfinite(texture).all()))
+    def test_buffer_contains_grid(self):
+        buffer = rprb.gpu_buffer(self.layout, rprb.MODE_BLEND)
+        self.assertEqual((int(buffer[6]), int(buffer[3])), (rprb.CANDIDATE_DIM, 1))
+        self.assertEqual(buffer[rprb.GPU_MASKS_WORD:].size, rprb.CANDIDATE_CELLS * 2)
 
 
 class WideCandidates(unittest.TestCase):
@@ -121,13 +118,13 @@ class WideCandidates(unittest.TestCase):
     def test_high_ranks_and_gpu_storage(self):
         self.assertEqual(self.layout["count"], 256)
         self.assertEqual(self.layout["candidates"]["masks"].shape, (rprb.CANDIDATE_CELLS, 4))
-        texture = rprb.gpu_texture(self.layout)
-        self.assertEqual(texture[0, 3, 3], 4)
-        self.assertTrue(np.isfinite(texture).all())
+        buffer = rprb.gpu_buffer(self.layout)
+        self.assertEqual(int(buffer[3]), 4)
+        self.assertEqual(buffer[rprb.GPU_MASKS_WORD:].size, rprb.CANDIDATE_CELLS * 4 * 2)
 
     def test_missing_high_word_coverage_rejected(self):
         data = bytearray(self.data)
-        grid = self.layout["atlas_offset"] - rprb.candidate_bytes(256)
+        grid = self.layout["data_offset"] - rprb.candidate_bytes(256)
         struct.pack_into("<Q", data, grid + 32 + 24, 0)
         with self.assertRaisesRegex(rprb.RprbError, "InvalidCandidates"):
             rprb.read(data)
@@ -141,7 +138,7 @@ class WideCandidates(unittest.TestCase):
     def test_unused_high_words_rejected(self):
         data = bytearray(rprb.capacity_fixture(count=65))
         layout = rprb.read(data)
-        grid = layout["atlas_offset"] - rprb.candidate_bytes(65)
+        grid = layout["data_offset"] - rprb.candidate_bytes(65)
         struct.pack_into("<Q", data, grid + 32 + 24, 1 << 63)
         with self.assertRaisesRegex(rprb.RprbError, "InvalidCandidates"):
             rprb.read(data)

@@ -116,18 +116,30 @@ std::optional<std::string> StageProbeVolume( resources::TextureCache &cache,
     const std::string &name, std::span<const std::byte> lump,
     mapcontainer::ProbeVolumeLayout &layout );
 
-// An RPRB lump (RFC 0008's reflection probes, R50) staged as
-// render/shaders/common/reflection_probes.glsl reads it:
-// WriteReflectionProbeTexture's GPU form (RGBA16F) in `mode`, relit when the
-// probes carry relight bands and `relight` asks, as `name`. The reason when
-// it does not validate or is refused.
-// `layout` receives the decoded form's layout (RPRB v7's radiance blocks
-// expanded, mapcontainer::DecodeReflectionProbes), and `decoded`, when given,
-// its bytes, which a ReflectionProbesView takes with it.
+// An RPRB v8 lump (RFC 0008's reflection probes, R50) staged as
+// render/shaders/common/reflection_probes.glsl reads it: the BC6H radiance cube
+// array as `<name>-radiance`, with relight cubes the RGBA16F albedo and normal
+// arrays as `<name>-albedo` and `<name>-normal` (empty names without), and the
+// probe buffer (WriteReflectionProbeBuffer in `mode`, relit when the lump has
+// relight cubes and `relight` asks) as bytes. Every array is staged as the lump
+// stores it, a cube per probe with its mips.
+struct StagedReflectionProbes
+{
+	mapcontainer::ReflectionProbesLayout layout; // the lump's
+	std::string radiance, albedo, normal;
+	std::shared_ptr<const std::vector<std::byte>> buffer;
+	// The expanded form (mapcontainer::DecodeReflectionProbes), which a
+	// ReflectionProbesView takes with `decodedLayout`.
+	std::vector<std::byte> decoded;
+	mapcontainer::ReflectionProbesLayout decodedLayout;
+};
+// The reason when the lump does not validate or is refused.
 std::optional<std::string> StageReflectionProbes( resources::TextureCache &cache,
     const std::string &name, std::span<const std::byte> lump,
-    mapcontainer::ReflectionProbeMode mode, bool relight,
-    mapcontainer::ReflectionProbesLayout &layout, std::vector<std::byte> *decoded = nullptr );
+    mapcontainer::ReflectionProbeMode mode, bool relight, StagedReflectionProbes &out,
+    std::uint32_t baseMip = 0 );
+// `baseMip` > 0 drops the radiance array's top mips as a texture setting does
+// (the albedo and normal arrays stay whole); the buffer's word 7 carries it.
 
 // The lab's device: the Vulkan adapter (RENDER_VK_ADAPTER picks the physical
 // device), with the Khronos validation layer and synchronization validation

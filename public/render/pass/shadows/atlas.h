@@ -6,11 +6,15 @@
 //			and a caster budget.
 //
 //			Planning is deterministic: requests are ranked by priority, then
-//			by the tile size they want, then by key, and take power-of-two
-//			square tiles from a quadtree in that order (a buddy allocator, so
-//			tiles never overlap and stay inside the atlas). A request that
-//			does not fit at its size takes the largest smaller size that does,
-//			down to the profile's minimum. Nothing fails silently: every
+//			by the tile size they want, then by key. Every request within the
+//			budget keeps a tile while the atlas holds them all at the
+//			profile's minimum size: short of room, the lowest-ranked tile
+//			halves first, and a request loses its tile (lowest rank first)
+//			only when every tile is at the minimum; reduced tiles then grow
+//			back in rank order while room remains. The tiles are
+//			power-of-two squares taken from a quadtree, largest first (a
+//			buddy allocator, so tiles never overlap and stay inside the
+//			atlas). Nothing fails silently: every
 //			request comes back with a status, and requests beyond the budget
 //			or with no room left are reported as such.
 //

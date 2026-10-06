@@ -99,7 +99,7 @@ def audit(build, profile, booted):
     rprb = load(build / "lighting" / "reflection_probes.rprb.json") or {}
     if rules.get("require_reflection_probe"):
         check("reflection-probe", rprb.get("status") == "pass" and rprb.get("probes", 0) >= 1,
-              {"probes": rprb.get("probes"), "width": rprb.get("width")})
+              {"probes": rprb.get("probes"), "face": rprb.get("face")})
     if rules.get("require_reflection_candidates"):
         import reflection_probe_set as encoding
         grid = rprb.get("candidate_grid") or {}

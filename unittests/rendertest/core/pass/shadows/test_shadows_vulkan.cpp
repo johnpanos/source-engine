@@ -616,14 +616,15 @@ void CheckSpot( testing::Checks &checks, IRenderDevice2 &device, ShadowDepthRend
 	const Camera camera{ { 0.0, -16.0, 13.0 }, { 0.0, 1.0, 0.0 }, 1.0 };
 	const Spot spot{ { 1.0, 0.5, 11.0 }, Unit( { 0.05, 0.1, -1.0 } ), 38.0 * kPi / 180.0, 40.0 };
 
-	// Two other lights take their tiles first.
+	// Two other lights take their tiles first (the same size as the spot's:
+	// the atlas packs larger tiles first, then by rank).
 	ShadowAtlasLimits limits;
 	limits.atlasSize = 2048;
 	limits.minTileSize = 128;
 	limits.maxTileSize = 1024;
 	limits.casterBudget = 8;
 	limits.guardTexels = 2;
-	const ShadowRequest requests[] = { { 1, 5.0f, 0.5f }, { 2, 4.0f, 0.5f }, { 3, 3.0f, 1.0f } };
+	const ShadowRequest requests[] = { { 1, 5.0f, 1.0f }, { 2, 4.0f, 1.0f }, { 3, 3.0f, 1.0f } };
 	auto plan = PlanShadowAtlas( limits, requests );
 	auto spotView = BuildSpotShadowView( { F( spot.position ), F( spot.axis ),
 	    float( std::cos( spot.halfAngle ) ), 0.5f, float( spot.range ) } );

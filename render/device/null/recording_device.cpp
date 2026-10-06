@@ -704,6 +704,9 @@ public:
 		if ( IsBlockCompressed( desc.format ) &&
 		     !m_Facts.capabilities.Has( Capability::kTextureCompressionBC ) )
 			return Fail( DeviceStatus::kUnsupported, DeviceOperation::kCreateTexture );
+		if ( desc.dimension == TextureDimension::kCube && desc.depthOrLayers > 6 &&
+		     !m_Facts.capabilities.Has( Capability::kCubeArrays ) )
+			return Fail( DeviceStatus::kUnsupported, DeviceOperation::kCreateTexture );
 		Texture texture;
 		texture.desc = desc;
 		texture.desc.debugName = {};

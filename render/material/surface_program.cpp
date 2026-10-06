@@ -156,6 +156,10 @@ foundation::Expected<std::unique_ptr<SurfaceProgram>, SurfaceStatus> SurfaceProg
     std::span<const std::uint32_t> fragmentModule,
     std::span<const std::uint32_t> shadowFragmentModule )
 {
+	// The frame group reads the map's reflection probes as a cube array (RPRB
+	// v8), so the program needs the device's cube arrays (clause D32).
+	if ( !device.Facts().capabilities.Has( Capability::kCubeArrays ) )
+		return foundation::MakeUnexpected( SurfaceStatus::kDevice );
 	std::unique_ptr<SurfaceProgram> program( new SurfaceProgram( device ) );
 	program->m_FragmentModule = fragmentModule;
 	program->m_ShadowFragmentModule = shadowFragmentModule;
@@ -175,7 +179,8 @@ foundation::Expected<std::unique_ptr<SurfaceProgram>, SurfaceStatus> SurfaceProg
 	    { 9, BindingKind::kSampledTexture, 1, { ShaderStage::kFragment } },
 	    { 10, BindingKind::kSampler, 1, { ShaderStage::kFragment } },
 	    { 11, BindingKind::kSampledTexture, 1, { ShaderStage::kFragment } },
-	    { 12, BindingKind::kSampler, 1, { ShaderStage::kFragment } } };
+	    { 12, BindingKind::kSampler, 1, { ShaderStage::kFragment } },
+	    { 13, BindingKind::kStorageBuffer, 1, { ShaderStage::kFragment } } };
 	std::vector<BindingDesc> material = {
 	    { 0, BindingKind::kUniformBuffer, 1, { ShaderStage::kVertex, ShaderStage::kFragment } } };
 	for ( std::uint32_t texture = 0; texture < kMaterialTextures; ++texture )
@@ -607,7 +612,23 @@ GroupRequest SurfaceProgram::FrameGroup( const SurfaceFrame &frame, std::string 
 	// grid table is fetched. The probe texture is fetched and filtered.
 	request.textures.push_back( { 5, map.probeAtlas, 6, clamped } );
 	request.textures.push_back( { 7, map.probeGrids, 8, clamped } );
-	request.textures.push_back( { 9, map.reflectionProbes, 10, clamped } );
+	// The reflection probes' radiance: a cube array read by world direction
+	// (a neutral cube array where a map has none), trilinear, clamped.
+	ProgramTexture radiance;
+	radiance.binding = 9;
+	radiance.name = map.reflectionProbes;
+	radiance.samplerBinding = 10;
+	radiance.sampler = clamped;
+	radiance.dimension = TextureDimension::kCube;
+	radiance.array = true;
+	request.textures.push_back( std::move( radiance ) );
+	GroupBuffer probes;
+	probes.binding = 13;
+	if ( map.reflectionBuffer && !map.reflectionBuffer->empty() )
+		probes.bytes = *map.reflectionBuffer;
+	else
+		probes.bytes.assign( 16, std::byte( 0 ) ); // count 0: no probes
+	request.storage.push_back( std::move( probes ) );
 	// The bounce atlas has the probe atlas's layout and is sampled with its
 	// sampler (binding 6).
 	ProgramTexture bounce;

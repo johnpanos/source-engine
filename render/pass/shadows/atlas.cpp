@@ -153,28 +153,96 @@ foundation::Expected<ShadowAtlasPlan, ShadowAtlasError> PlanShadowAtlas(
 		    return requests[a].key < requests[b].key;
 	    } );
 
-	BuddyAtlas atlas( limits.atlasSize );
-	for ( std::size_t rank = 0; rank < ranked.size(); ++rank )
+	// Sizes first, by area: every request within the budget keeps a tile
+	// while the atlas can hold them all at the minimum size. Short of room,
+	// the lowest-ranked tile halves first; only when every tile is at the
+	// minimum does the lowest-ranked request lose its tile. Then reduced
+	// tiles grow back, highest rank first, while room remains. (Giving the
+	// first-ranked requests their whole size made which lights kept a
+	// shadow depend on how many others shared the view.)
+	const std::size_t served = std::min<std::size_t>( ranked.size(), limits.casterBudget );
+	for ( std::size_t rank = served; rank < ranked.size(); ++rank )
 	{
-		ShadowAllocation &allocation = plan.allocations[ranked[rank]];
-		if ( rank >= limits.casterBudget )
+		plan.allocations[ranked[rank]].status = ShadowTileStatus::kOverBudget;
+		++plan.overBudget;
+	}
+	const std::uint64_t capacity = std::uint64_t( limits.atlasSize ) * limits.atlasSize;
+	const auto area = []( std::uint32_t size )
+	{
+		return std::uint64_t( size ) * size;
+	};
+	std::vector<std::uint32_t> sizes( served );
+	std::uint64_t used = 0;
+	for ( std::size_t rank = 0; rank < served; ++rank )
+	{
+		sizes[rank] = plan.allocations[ranked[rank]].desiredSize;
+		used += area( sizes[rank] );
+	}
+	std::size_t kept = served;
+	while ( used > capacity && kept > 0 )
+	{
+		std::size_t shrink = kept;
+		for ( std::size_t rank = kept; rank-- > 0; )
 		{
-			allocation.status = ShadowTileStatus::kOverBudget;
-			++plan.overBudget;
-			continue;
-		}
-		allocation.status = ShadowTileStatus::kAtlasFull;
-		for ( std::uint32_t size = allocation.desiredSize; size >= limits.minTileSize; size /= 2 )
-		{
-			if ( const std::optional<ShadowTile> tile = atlas.Take( size ) )
+			if ( sizes[rank] > limits.minTileSize )
 			{
-				allocation.tile = *tile;
-				allocation.status = size == allocation.desiredSize ? ShadowTileStatus::kAllocated
-				                                                   : ShadowTileStatus::kReduced;
+				shrink = rank;
 				break;
 			}
 		}
-		switch ( allocation.status )
+		if ( shrink < kept )
+		{
+			used -= area( sizes[shrink] ) - area( sizes[shrink] / 2 );
+			sizes[shrink] /= 2;
+		}
+		else
+		{
+			--kept;
+			used -= area( sizes[kept] );
+		}
+	}
+	for ( bool grew = true; grew; )
+	{
+		grew = false;
+		for ( std::size_t rank = 0; rank < kept; ++rank )
+		{
+			const std::uint32_t desired = plan.allocations[ranked[rank]].desiredSize;
+			const std::uint64_t more = area( sizes[rank] * 2 ) - area( sizes[rank] );
+			if ( sizes[rank] < desired && used + more <= capacity )
+			{
+				used += more;
+				sizes[rank] *= 2;
+				grew = true;
+			}
+		}
+	}
+	// Then the tiles, largest first (then by rank): power-of-two squares
+	// whose areas sum to at most the atlas's always pack into its quadtree.
+	std::vector<std::size_t> packing( kept );
+	for ( std::size_t rank = 0; rank < kept; ++rank )
+		packing[rank] = rank;
+	std::stable_sort( packing.begin(), packing.end(),
+	    [&]( std::size_t a, std::size_t b )
+	    {
+		    return sizes[a] > sizes[b];
+	    } );
+	BuddyAtlas atlas( limits.atlasSize );
+	for ( const std::size_t rank : packing )
+	{
+		ShadowAllocation &allocation = plan.allocations[ranked[rank]];
+		allocation.status = ShadowTileStatus::kAtlasFull;
+		if ( const std::optional<ShadowTile> tile = atlas.Take( sizes[rank] ) )
+		{
+			allocation.tile = *tile;
+			allocation.status = sizes[rank] == allocation.desiredSize ? ShadowTileStatus::kAllocated
+			                                                          : ShadowTileStatus::kReduced;
+		}
+	}
+	for ( std::size_t rank = kept; rank < served; ++rank )
+		plan.allocations[ranked[rank]].status = ShadowTileStatus::kAtlasFull;
+	for ( std::size_t rank = 0; rank < served; ++rank )
+	{
+		switch ( plan.allocations[ranked[rank]].status )
 		{
 		case ShadowTileStatus::kAllocated:
 			++plan.allocated;

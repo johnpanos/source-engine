@@ -6,6 +6,7 @@
 
 #include "lab_compute.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 
@@ -27,7 +28,7 @@ CheckKernel::~CheckKernel()
 
 std::optional<std::string> CheckKernel::Create( std::span<const std::uint32_t> module,
     std::uint32_t textures, std::uint32_t samplers, std::string_view name,
-    std::span<const SamplerDesc> samplerDescs )
+    std::span<const SamplerDesc> samplerDescs, std::uint32_t extraBuffers )
 {
 	if ( !m_Device.Facts().capabilities.Has( Capability::kCompute ) )
 		return std::string( "the device has no compute" );
@@ -35,6 +36,7 @@ std::optional<std::string> CheckKernel::Create( std::span<const std::uint32_t> m
 		return std::string( "the sampler description count differs from the bindings" );
 	m_Textures = textures;
 	m_Samplers = samplers;
+	m_Extra = extraBuffers;
 	const ShaderStageSet compute{ ShaderStage::kCompute };
 	std::vector<BindingDesc> bindings;
 	std::vector<ReflectedBinding> reflected;
@@ -49,7 +51,7 @@ std::optional<std::string> CheckKernel::Create( std::span<const std::uint32_t> m
 		bindings.push_back( { s, BindingKind::kSampler, 1, compute } );
 		reflected.push_back( { role, s, BindingKind::kSampler } );
 	}
-	for ( std::uint32_t b = textures + samplers; b <= textures + samplers + 1; ++b )
+	for ( std::uint32_t b = textures + samplers; b <= textures + samplers + 1 + extraBuffers; ++b )
 	{
 		bindings.push_back( { b, BindingKind::kStorageBuffer, 1, compute } );
 		reflected.push_back( { role, b, BindingKind::kStorageBuffer } );
@@ -85,8 +87,11 @@ std::optional<std::string> CheckKernel::Create( std::span<const std::uint32_t> m
 
 std::optional<std::string> CheckKernel::Run( resources::TextureCache &cache,
     std::span<const TextureId> textures, std::uint32_t caseCount, std::span<const std::byte> cases,
-    std::uint64_t resultBytes, std::vector<std::byte> &out, Comparison *comparison )
+    std::uint64_t resultBytes, std::vector<std::byte> &out, Comparison *comparison,
+    std::span<const std::span<const std::byte>> extra )
 {
+	if ( extra.size() != m_Extra )
+		return std::string( "the kernel takes " ) + std::to_string( m_Extra ) + " extra buffers";
 	if ( textures.size() != m_Textures )
 		return std::string( "the kernel takes " ) + std::to_string( m_Textures ) + " textures";
 	if ( comparison &&
@@ -152,6 +157,19 @@ std::optional<std::string> CheckKernel::Run( resources::TextureCache &cache,
 	const std::uint32_t buffers = m_Textures + m_Samplers;
 	entries.push_back( { buffers, input, 0, caseBytes, {}, {} } );
 	entries.push_back( { buffers + 1, results, 0, resultBytes, {}, {} } );
+	const std::size_t resultsEntry = entries.size() - 1;
+	std::vector<BufferId> extras;
+	for ( std::size_t i = 0; i < extra.size(); ++i )
+	{
+		const std::uint64_t size = std::max<std::uint64_t>( extra[i].size(), 16 );
+		const BufferId made =
+		    buffer( size, { ResourceUsage::kCopyDestination, ResourceUsage::kStorageRead },
+		        MemoryKind::kDeviceLocal );
+		if ( !made.IsValid() )
+			return std::string( "an extra buffer was refused" );
+		extras.push_back( made );
+		entries.push_back( { buffers + 2 + std::uint32_t( i ), made, 0, size, {}, {} } );
+	}
 	auto group = m_Device.CreateBindGroup( { m_Layout, entries } );
 	if ( !group )
 		return std::string( "the kernel's group was refused" );
@@ -160,7 +178,7 @@ std::optional<std::string> CheckKernel::Run( resources::TextureCache &cache,
 	{
 		for ( std::uint32_t s = 0; s < m_Samplers; ++s )
 			entries[m_Textures + s].sampler = comparison->control.m_SamplerIds[s];
-		entries.back().buffer = controlResults;
+		entries[resultsEntry].buffer = controlResults;
 		auto made = m_Device.CreateBindGroup( { comparison->control.m_Layout, entries } );
 		if ( !made )
 			return std::string( "the comparison group was refused" );
@@ -181,6 +199,15 @@ std::optional<std::string> CheckKernel::Run( resources::TextureCache &cache,
 	encoder.TransitionBuffer( input, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
 	encoder.WriteBuffer( input, 0, bytes );
 	encoder.TransitionBuffer( input, ResourceUsage::kCopyDestination, ResourceUsage::kStorageRead );
+	for ( std::size_t i = 0; i < extra.size(); ++i )
+	{
+		encoder.TransitionBuffer(
+		    extras[i], ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+		if ( !extra[i].empty() )
+			encoder.WriteBuffer( extras[i], 0, extra[i] );
+		encoder.TransitionBuffer(
+		    extras[i], ResourceUsage::kCopyDestination, ResourceUsage::kStorageRead );
+	}
 	encoder.TransitionBuffer( results, ResourceUsage::kUndefined, ResourceUsage::kStorageWrite );
 	encoder.SetPipeline( m_Pipeline );
 	encoder.SetBindGroup( BindGroupRole::kDraw, group.Value() );

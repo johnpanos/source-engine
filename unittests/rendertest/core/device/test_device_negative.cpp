@@ -1,6 +1,6 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
-// Purpose: render.device.v2.sensitivity (RFC 0016 K1): ten deliberately bad
+// Purpose: render.device.v2.sensitivity (RFC 0016 K1): deliberately bad
 //			adapters, each a decorator over the null adapter that breaks one
 //			clause. The shared suite must fail each on the clause it breaks,
 //			while the undecorated control passes.
@@ -45,7 +45,8 @@ enum class Defect
 	kDropsRegionOrigin,   // D22: copies every buffer-to-texture region to (0, 0)
 	kDropsTimestamps,     // D23: records no timestamp
 	kClampsIndirectDraws, // D30: draws only the records that fit, instead of failing
-	kIgnoresCountOffset   // D31: reads the count at offset 0 whatever was asked
+	kIgnoresCountOffset,  // D31: reads the count at offset 0 whatever was asked
+	kCollapsesCubeLayers  // D36: copies every cube-array face to its cube's layer 0..5
 };
 
 // Draw-constant block sizes by pipeline, for kFillsDrawConstants.
@@ -99,6 +100,8 @@ public:
 		TextureBufferCopy region = copy;
 		if ( m_Defect == Defect::kDropsRegionOrigin )
 			region.x = region.y = 0;
+		if ( m_Defect == Defect::kCollapsesCubeLayers )
+			region.layer %= 6;
 		m_Inner->CopyBufferToTexture( source, destination, region );
 	}
 	void BeginRendering( const RenderingDesc &desc ) override { m_Inner->BeginRendering( desc ); }
@@ -405,6 +408,7 @@ int main()
 	    { Defect::kDropsInitialUpload, "under-test.D25 " },
 	    { Defect::kClampsIndirectDraws, "under-test.D30 " },
 	    { Defect::kIgnoresCountOffset, "under-test.D31 " },
+	    { Defect::kCollapsesCubeLayers, "under-test.D36 " },
 	};
 	for ( const Case &c : cases )
 	{

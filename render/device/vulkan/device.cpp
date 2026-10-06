@@ -109,6 +109,8 @@ DeviceResult<void> VulkanDevice::Initialize()
 		m_Facts.capabilities.Add( Capability::kExternalImages );
 	if ( m_Adapter.textureCompressionBC )
 		m_Facts.capabilities.Add( Capability::kTextureCompressionBC );
+	if ( m_Adapter.imageCubeArray )
+		m_Facts.capabilities.Add( Capability::kCubeArrays );
 	// D30/D31: indirect draws where the device enables them.
 	if ( m_Adapter.multiDrawIndirect )
 		m_Facts.capabilities.Add( Capability::kMultiDrawIndirect );
@@ -238,6 +240,8 @@ struct RequiredFeatures
 			head.features.textureCompressionBC = VK_TRUE;
 		if ( adapter.multiDrawIndirect )
 			head.features.multiDrawIndirect = VK_TRUE;
+		if ( adapter.imageCubeArray )
+			head.features.imageCubeArray = VK_TRUE;
 		if ( adapter.drawIndirectFirstInstance )
 			head.features.drawIndirectFirstInstance = VK_TRUE;
 		if ( auto *have =

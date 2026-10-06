@@ -98,13 +98,6 @@
       "count": 1,
       "class": "test-fixture",
       "reason": "test fixture teardown before destroying its own device"
-    },
-    {
-      "path": "unittests/shaderapivulkantest/test_reflection_probes_glsl.cpp",
-      "function": "main",
-      "count": 1,
-      "class": "test-fixture",
-      "reason": "test fixture teardown before destroying its own device"
     }
   ]
 }

@@ -301,7 +301,7 @@ def regrid(data, bounds):
     base_offset = (HEADER_BYTES + RECORD_BYTES * count + 15) & ~15
     grid = candidate_grid(serialized_probes(data[HEADER_BYTES:], count), bounds)
     section = candidate_section(grid, count)
-    if base_offset + len(section) != layout["atlas_offset"]:
+    if base_offset + len(section) != layout["data_offset"]:
         raise RprbError("InvalidCandidates", "the grid section changed size")
     out = data[:base_offset] + section + data[base_offset + len(section):]
     read(out)
@@ -362,6 +362,8 @@ def build(probes, chains, scale=SOURCE_UNITS_PER_METER, relight=None, candidate_
         # rows, so its blocks are the (probe, face) blocks in order.
         size = face >> level
         tall = np.stack([chain[level] for chain in chains]).reshape(count * 6 * size, size, 3)
+        print("pack: BC6H mip %d (%d faces of %d texels)" % (level, count * 6, size),
+              file=sys.stderr, flush=True)
         texels.append(bc_codec.encode_bc6h(tool, np.ascontiguousarray(tall.astype(np.float32))))
     if relight is not None:
         for which in (0, 1):
@@ -569,7 +571,7 @@ def read(data):
 # The storage buffer the shaders read (mapcontainer::WriteReflectionProbeBuffer):
 # little-endian 32-bit words. Header, 16 words: count, mips, face size,
 # candidate words per cell, mode, relight switch (1 when probes are relit:
-# `mat_reflection_relight` and relight cubes present), candidate dimension, 0,
+# `mat_reflection_relight` and relight cubes present), candidate dimension, base mip (the radiance array's first lump mip),
 # candidate origin xyz (float), candidate step (float), four zeros. From word
 # GPU_PROBES_WORD, one 20-float record per rank (capture.xyz, fade | box
 # min.xyz, layer | box max.xyz, global | influence min.xyz, relight layer |
@@ -581,14 +583,14 @@ GPU_RECORD_WORDS = 20
 GPU_MASKS_WORD = GPU_PROBES_WORD + GPU_RECORD_WORDS * MAX_PROBES
 
 
-def gpu_buffer(layout, mode=MODE_BLEND, relight=True):
+def gpu_buffer(layout, mode=MODE_BLEND, relight=True, base_mip=0):
     """The shader's probe buffer for a read `layout`, as uint32 words."""
     count = layout["count"]
     words = candidate_words(count)
     candidates = layout["candidates"]
     out = np.zeros(GPU_MASKS_WORD + CANDIDATE_CELLS * words * 2, dtype=np.uint32)
     out[0:8] = (count, layout["mips"], layout["face"], words, mode,
-                1 if relight and layout["relight"] is not None else 0, CANDIDATE_DIM, 0)
+                1 if relight and layout["relight"] is not None else 0, CANDIDATE_DIM, base_mip)
     out[8:12] = np.array([*candidates["origin"], candidates["step"]],
                          dtype=np.float32).view(np.uint32)
     for index, probe in enumerate(layout["probes"]):
@@ -1230,10 +1232,65 @@ def depth_convention(depths, checks):
     return best, medians
 
 
-def pack(probes_dir, face, gain, prefilter_samples=256, max_mean_relative_residual=None,
-         candidate_bounds_m=None, tool=None):
-    """(RPRB bytes, receipt) from `pbrt_reflection_probe.py`'s output."""
+def _pack_probe(job):
+    """One probe of `pack`: verify and read its faces, fit its proxy box and
+    prefilter its cube chain. Pure in its arguments, so the probes run in
+    parallel processes and the result does not depend on the schedule."""
     import gi_reference
+    import hashlib
+    probes_dir, record, gbuffer, face, gain, prefilter_samples, margin = job
+    directory = probes_dir / record["dir"]
+    colors, depths, albedos, normals = {}, {}, {}, {}
+    for name in reflection_probe.FACES:
+        path = directory / (name + ".exr")
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        if record["faces"].get(name) != digest:
+            raise ValueError("probe face differs from its receipt: %s/%s" %
+                             (record["dir"], name))
+        passes = gi_reference.render_passes(path)
+        colors[name] = passes["Combined"][..., :3].astype(np.float64)
+        depths[name] = passes["Depth"][..., 0].astype(np.float64)
+        if gbuffer:
+            albedos[name] = passes["DiffCol"][..., :3].astype(np.float64)
+            normals[name] = passes["Normal"][..., :3].astype(np.float64)
+    convention, medians = depth_convention(depths, record["depth_checks"])
+    distances = {name: depth * face_ray_scale(depth.shape[0]) if convention == "planar"
+                 else depth for name, depth in depths.items()}
+    capture = np.asarray(record["capture"], dtype=np.float64)
+    directions, values, weights = reflection_probe.face_samples(distances)
+    box_min, box_max, report = reflection_probe.fit_parallax_box(capture, directions,
+                                                                 values, weights)
+    if record["role"] == "room":
+        influence_min, influence_max = box_min - margin, box_max + margin
+    else:
+        influence_min = np.asarray(record["influence_min"], dtype=np.float64)
+        influence_max = np.asarray(record["influence_max"], dtype=np.float64)
+    probe = {"capture": capture, "box_min": box_min, "box_max": box_max,
+             "influence_min": influence_min, "influence_max": influence_max,
+             "fade": record["fade"], "role": record["role"],
+             "priority": record.get("priority", 0), "name": record.get("name")}
+    chain = [mip * gain for mip in reflection_probe.cube_mip_chain(
+        reflection_probe.faces_to_cube(colors, face), samples=prefilter_samples)]
+    bands = None
+    if gbuffer:
+        distance = reflection_probe.faces_to_cube(
+            {name: np.minimum(depth, MAX_DISTANCE / SOURCE_UNITS_PER_METER)[..., None]
+             for name, depth in distances.items()}, face, channels=1)[..., 0]
+        bands = relight_chain(reflection_probe.faces_to_cube(albedos, face),
+                              reflection_probe.faces_to_cube(normals, face), distance)
+    report = dict(report, index=record["index"], role=record["role"],
+                  capture=list(capture), priority=record.get("priority", 0),
+                  name=record.get("name"), box_min=list(box_min), box_max=list(box_max),
+                  depth_convention=convention, depth_check_median_error=medians[convention])
+    return probe, chain, bands, report, convention
+
+
+def pack(probes_dir, face, gain, prefilter_samples=256, max_mean_relative_residual=None,
+         candidate_bounds_m=None, tool=None, workers=None):
+    """(RPRB bytes, receipt) from `pbrt_reflection_probe.py`'s output. The
+    probes are prefiltered in `workers` processes (default: the CPUs, at most
+    one per probe); the bytes do not depend on it."""
+    import concurrent.futures
     import hashlib
     receipt = json.loads((probes_dir / "probes.json").read_text())
     if receipt.get("status") != "pass" or receipt.get("schema") != "reflection-probe-faces/v2":
@@ -1242,53 +1299,31 @@ def pack(probes_dir, face, gain, prefilter_samples=256, max_mean_relative_residu
     # Faces rendered with the Diffuse Color and Normal passes carry the
     # relight G-buffer (RPRB v2).
     gbuffer = bool(receipt.get("gbuffer"))
-    probes, chains, reports, conventions, relight = [], [], [], set(), []
-    for record in receipt["probes"]:
-        directory = probes_dir / record["dir"]
-        colors, depths, albedos, normals = {}, {}, {}, {}
-        for name in reflection_probe.FACES:
-            path = directory / (name + ".exr")
-            digest = hashlib.sha256(path.read_bytes()).hexdigest()
-            if record["faces"].get(name) != digest:
-                raise ValueError("probe face differs from its receipt: %s/%s" %
-                                 (record["dir"], name))
-            passes = gi_reference.render_passes(path)
-            colors[name] = passes["Combined"][..., :3].astype(np.float64)
-            depths[name] = passes["Depth"][..., 0].astype(np.float64)
-            if gbuffer:
-                albedos[name] = passes["DiffCol"][..., :3].astype(np.float64)
-                normals[name] = passes["Normal"][..., :3].astype(np.float64)
-        convention, medians = depth_convention(depths, record["depth_checks"])
-        conventions.add(convention)
-        distances = {name: depth * face_ray_scale(depth.shape[0]) if convention == "planar"
-                     else depth for name, depth in depths.items()}
-        capture = np.asarray(record["capture"], dtype=np.float64)
-        directions, values, weights = reflection_probe.face_samples(distances)
-        box_min, box_max, report = reflection_probe.fit_parallax_box(capture, directions,
-                                                                     values, weights)
-        if record["role"] == "room":
-            influence_min, influence_max = box_min - margin, box_max + margin
-        else:
-            influence_min = np.asarray(record["influence_min"], dtype=np.float64)
-            influence_max = np.asarray(record["influence_max"], dtype=np.float64)
-        probes.append({"capture": capture, "box_min": box_min, "box_max": box_max,
-                       "influence_min": influence_min, "influence_max": influence_max,
-                       "fade": record["fade"], "role": record["role"],
-                       "priority": record.get("priority", 0), "name": record.get("name")})
-        chains.append([mip * gain for mip in reflection_probe.cube_mip_chain(
-            reflection_probe.faces_to_cube(colors, face), samples=prefilter_samples)])
-        if gbuffer:
-            distance = reflection_probe.faces_to_cube(
-                {name: np.minimum(depth, MAX_DISTANCE / SOURCE_UNITS_PER_METER)[..., None]
-                 for name, depth in distances.items()}, face, channels=1)[..., 0]
-            relight.append(relight_chain(reflection_probe.faces_to_cube(albedos, face),
-                                         reflection_probe.faces_to_cube(normals, face),
-                                         distance))
-        reports.append(dict(report, index=record["index"], role=record["role"],
-                            capture=list(capture), priority=record.get("priority", 0),
-                            name=record.get("name"), box_min=list(box_min),
-                            box_max=list(box_max), depth_convention=convention,
-                            depth_check_median_error=medians[convention]))
+    total = len(receipt["probes"])
+    jobs = [(probes_dir, record, gbuffer, face, gain, prefilter_samples, margin)
+            for record in receipt["probes"]]
+    workers = max(1, min(workers or os.cpu_count() or 1, total))
+    print("pack: %d probes on %d worker%s" % (total, workers, "" if workers == 1 else "s"),
+          file=sys.stderr, flush=True)
+    results = []
+    if workers == 1:
+        for index, job in enumerate(jobs):
+            # Progress: the pipeline stops a step that prints nothing for 10
+            # minutes, and prefiltering a large set takes longer than that.
+            print("pack: probe %d/%d (%s)" % (index + 1, total, job[1]["dir"]), file=sys.stderr,
+                  flush=True)
+            results.append(_pack_probe(job))
+    else:
+        with concurrent.futures.ProcessPoolExecutor(max_workers=workers) as pool:
+            for index, result in enumerate(pool.map(_pack_probe, jobs)):
+                print("pack: probe %d/%d (%s)" % (index + 1, total, jobs[index][1]["dir"]),
+                      file=sys.stderr, flush=True)
+                results.append(result)
+    probes = [result[0] for result in results]
+    chains = [result[1] for result in results]
+    relight = [result[2] for result in results]
+    reports = [result[3] for result in results]
+    conventions = {result[4] for result in results}
     residuals = [report["mean_relative_residual"] for report in reports]
     if max_mean_relative_residual is not None and max(residuals) > max_mean_relative_residual:
         raise ValueError("reflection probe proxy residual %.6g exceeds the runtime limit %g" %
@@ -1301,8 +1336,10 @@ def pack(probes_dir, face, gain, prefilter_samples=256, max_mean_relative_residu
     if candidate_bounds_m is not None:
         bounds = (np.asarray(candidate_bounds_m[0], dtype=np.float64) * SOURCE_UNITS_PER_METER,
                   np.asarray(candidate_bounds_m[1], dtype=np.float64) * SOURCE_UNITS_PER_METER)
+    print("pack: encoding %d probes (BC6H cube array)" % total, file=sys.stderr, flush=True)
     data = build(probes, chains, tool=tool, relight=relight if gbuffer else None,
                  candidate_bounds=bounds)
+    print("pack: encoded %d bytes" % len(data), file=sys.stderr, flush=True)
     masks = read(data)["candidates"]["masks"]
     candidate_counts = [sum(int(mask).bit_count() for mask in row)
                         for row in masks.reshape(CANDIDATE_CELLS, -1)]
@@ -1346,9 +1383,10 @@ def fixture_directions(face=16):
                            for name in reflection_probe.CUBE_FACES])
 
 
-def fixture_layout():
+def fixture_layout(face=16, minimum_size=8):
     """The shared two-probe fixture (meters): a 6 x 4 x 3 m striped room, a
-    small probe at x = 1.5 and the global one at x = 4.5, face 16, 2 mips."""
+    small probe at x = 1.5 and the global one at x = 4.5, face 16, 2 mips (`face` and
+    `minimum_size` give the longer chains of the base-mip fixture)."""
     room = ((0.0, 0.0, 0.0), (6.0, 4.0, 3.0))
     scene = BoxScene(rooms=[room])
     probes = [
@@ -1360,14 +1398,15 @@ def fixture_layout():
          "influence_max": np.array((6.15, 4.15, 3.15)), "fade": 0.5, "global": True}]
     chains = []
     for probe in probes:
-        directions = fixture_directions()
+        directions = fixture_directions(face)
         distance, _ = scene(np.tile(probe["capture"], (len(directions), 1)), directions, 1e4)
         hits = probe["capture"] + distance[:, None] * directions
         phase = np.floor(hits[:, 0] / 0.5) + 2 * np.floor(hits[:, 1] / 0.5) + \
             3 * np.floor(hits[:, 2] / 0.5)
         radiance = np.stack((0.2 + 0.8 * (phase % 2), 0.2 + 0.8 * ((phase // 2) % 2),
-                             0.2 + 0.8 * ((phase // 4) % 2)), axis=1).reshape(6, 16, 16, 3)
-        chains.append(reflection_probe.cube_mip_chain(radiance, minimum_size=8, samples=16))
+                             0.2 + 0.8 * ((phase // 4) % 2)), axis=1).reshape(6, face, face, 3)
+        chains.append(reflection_probe.cube_mip_chain(radiance, minimum_size=minimum_size,
+                                                      samples=16))
     return probes, chains
 
 
@@ -1446,6 +1485,12 @@ def write_fixture(out):
     data = build(probes, chains)
     out.mkdir(parents=True, exist_ok=True)
     (out / "valid.rprb").write_bytes(data)
+    # One probe (the global one): a cube array of one cube, which the
+    # consumers pad to two so its view is an array view.
+    (out / "single.rprb").write_bytes(build(probes[1:], chains[1:]))
+    # Five mips (faces 64 to 4), so a texture setting can drop the top one.
+    long_probes, long_chains = fixture_layout(64, 4)
+    (out / "mips5.rprb").write_bytes(build(long_probes, long_chains))
     (out / "capacity64.rprb").write_bytes(capacity_fixture())
     (out / "capacity64-relight.rprb").write_bytes(capacity_fixture(relight=True))
     layout = read(data)
@@ -1561,6 +1606,8 @@ def main():
     command.add_argument("--ktx-tool", type=Path,
                          help="the pinned ktx that encodes the BC6H radiance bands "
                               "(default: the map toolchain's)")
+    command.add_argument("--workers", type=int,
+                         help="prefilter processes (default: the CPUs, at most one per probe)")
     command.add_argument("--face", type=int, default=256,
                          help="cube face size of every probe's mip 0")
     command.add_argument("--preview-gain", type=float, default=1.0,
@@ -1608,7 +1655,8 @@ def main():
     data, receipt = pack(args.probes_dir, args.face, args.preview_gain,
                          max_mean_relative_residual=args.max_mean_relative_residual,
                          candidate_bounds_m=(args.candidate_bounds_m[:3], args.candidate_bounds_m[3:])
-                         if args.candidate_bounds_m else None, tool=args.ktx_tool)
+                         if args.candidate_bounds_m else None, tool=args.ktx_tool,
+                         workers=args.workers)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     temporary = args.out.with_name(args.out.name + ".tmp")
     temporary.write_bytes(data)

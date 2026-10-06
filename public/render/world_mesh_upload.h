@@ -134,18 +134,34 @@ struct ShadowFieldUploadRequest
 	const uint16_t *distances = nullptr;
 };
 
-// R50-PARALLAX: the map's RPRB reflection probes in their GPU form
-// (mapcontainer::WriteReflectionProbeTexture): `width` x `height` RGBA16F
-// texels, rows top first, the header's mode texel set to Blend. The caller
-// owns `texels` until the call returns; the provider keeps its own copy and
-// may rewrite the mode texel (mat_reflection_probes). A request without
-// texels removes the map's probes.
+// R50-PARALLAX: the map's RPRB (v8) reflection probes. Probe metadata is
+// the probe buffer (mapcontainer::WriteReflectionProbeBuffer: `bufferWords`
+// 32-bit words, the mode word set to Blend); radiance is the lump's BC6H cube
+// array and the optional relight arrays are the lump's RGBA16F cubes, all in
+// the lump's order (mip-major, then probe layer, then face), uploaded as they
+// are. `layout` is the lump's validated layout (mapcontainer::
+// ValidateReflectionProbes), whose ReflectionProbeMipRange gives each mip's
+// range inside `data`. The caller owns every pointer until the call returns;
+// the provider keeps its own copies (a provider without BC6H cube-array
+// sampling expands the blocks itself: mapcontainer::DecodeReflectionProbes).
+// A request without `data` removes the map's probes.
 struct ReflectionProbesUploadRequest
 {
-	uint32_t width = 0;
-	uint32_t height = 0;
 	uint32_t probeCount = 0;
-	const uint16_t *texels = nullptr;
+	uint32_t mipCount = 0;
+	uint32_t faceSize = 0;
+	bool relight = false;
+	// The first lump mip to upload (a texture setting drops the top mips of the
+	// radiance cube array; the buffer's word 7 carries the same value and
+	// shifts every lookup's lod). The relight arrays are never dropped.
+	uint32_t baseMip = 0;
+	const uint32_t *buffer = nullptr;
+	uint32_t bufferWords = 0;
+	// The lump's cube data: BC6H radiance, then (relight) the albedo and
+	// normal arrays; `dataBytes` of it, after the lump header and records.
+	const void *data = nullptr;
+	uint64_t dataBytes = 0;
+	uint64_t radianceBytes = 0; // the BC6H part of `data`
 };
 
 class IWorldMeshUpload

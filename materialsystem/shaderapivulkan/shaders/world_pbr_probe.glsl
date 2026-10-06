@@ -1,26 +1,25 @@
 // Shared by world_pbr.frag, world_pbr_glass.frag and model_pbr.frag: the map
-// reflection probes and the tangent-space normal. The includer declares
-// `lightmapTexture` (frame set binding 1), the map's LMAP atlas, whose top
-// rows carry a map built before RPRB's one direction-only probe; the map's
-// RPRB probes are frame set binding 5 (R50-PARALLAX, reflection_probes.glsl).
-// An includer that defines REFLECTION_PROBE_RELIGHT before including this
-// file defines ReflectionProbeDiffuseLight, ReflectionProbeOccluderCount and
-// ReflectionProbeOccluder (R50-RELIGHT; reflection_probes.glsl).
+// reflection probes and the tangent-space normal. `lightmapTexture` (frame set
+// binding 1) is the LMAP atlas, whose top rows carry an older map's one
+// direction-only probe. The RPRB v8 probes are frame binding 5 (the radiance
+// cube array) and 7 (the probe words, an R32_UINT texture). No relight here.
 
 #include "../../../render/shaders/common/pbr_brdf.glsl"
 
-// The map's RPRB texture, or the built-in 2D texture when it has none (its
-// first texel lacks the marker, so ReflectionProbesRadiance declines).
-layout( set = 0, binding = 5 ) uniform sampler2D reflectionProbes;
+// Neutral inputs (a count of 0) when the map has no probes.
+layout( set = 0, binding = 5 ) uniform samplerCubeArray reflectionProbes;
+layout( set = 0, binding = 7 ) uniform usampler2D reflectionTable;
 
-vec4 ReflectionProbesFetch( ivec2 texel )
+uint ReflectionProbesWord( uint index )
 {
-	return texelFetch( reflectionProbes, texel, 0 );
+	const ivec2 size = textureSize( reflectionTable, 0 );
+	const ivec2 texel = ivec2( int( index % uint( size.x ) ), int( index / uint( size.x ) ) );
+	return texel.y < size.y ? texelFetch( reflectionTable, texel, 0 ).x : 0u;
 }
 
-vec4 ReflectionProbesSample( vec2 texel )
+vec4 ReflectionProbesRadianceFetch( vec3 direction, float layer, float lod )
 {
-	return textureLod( reflectionProbes, texel / vec2( textureSize( reflectionProbes, 0 ) ), 0.0 );
+	return textureLod( reflectionProbes, vec4( direction, layer ), lod );
 }
 
 #include "../../../render/shaders/common/reflection_probes.glsl"

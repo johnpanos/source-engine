@@ -105,6 +105,8 @@ const char *CapabilityName( Capability capability )
 		return "draw-indirect-count";
 	case Capability::kIndirectFirstInstance:
 		return "indirect-first-instance";
+	case Capability::kCubeArrays:
+		return "cube-arrays";
 	case Capability::kCount:
 		break;
 	}

@@ -633,11 +633,6 @@ static ConVar mat_reflection_probes( "mat_reflection_probes", "1", FCVAR_CHEAT,
     "parallax-corrected, 2 the nearest capture alone (Source 1's switch), 3 blended but "
     "direction-only; add 4 to show the blend weights (each probe's colour by rank) instead of "
     "radiance" );
-// R50-RELIGHT: probes with relight bands (RPRB v2) gain albedo times the
-// scene's diffuse-light change since the bake at the point each one saw.
-static ConVar mat_reflection_relight( "mat_reflection_relight", "1", FCVAR_CHEAT,
-    "Relight the map's reflection probes that carry relight bands with the unbaked lights and "
-    "the indirect producer's change: 0 as baked, 1 relit" );
 static ConVar mat_indirect_view( "mat_indirect_view", "0", FCVAR_CHEAT,
     "Indirect-light debug view: 0 off, 1 indirect diffuse light (irradiance / pi), "
     "2 indirect diffuse radiance, 3 all diffuse light (the bake, the producer's change and the "
@@ -1833,8 +1828,7 @@ public:
 		InvokePendingModeChangeCallbacks();
 		g_VulkanContext.SetIndirectLightView(
 		    mat_indirect_view.GetInt(), mat_indirect_view_scale.GetFloat() );
-		g_VulkanContext.SetReflectionProbeMode(
-		    mat_reflection_probes.GetInt(), mat_reflection_relight.GetBool() );
+		g_VulkanContext.SetReflectionProbeMode( mat_reflection_probes.GetInt() );
 		g_VulkanContext.SetIndirectPolicy(
 		    r_indirect_policy.GetInt(), r_indirect_policy_seed_double.GetBool() );
 		// The engine's RFC 0011 probe-volume switches (lightcache.cpp) also

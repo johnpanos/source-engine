@@ -26,10 +26,10 @@
   "map": "gi_door",
   "quality": "gi-fixture",
   "reflection_probe": {
+    "cube_size": 256,
     "face_size": 256,
     "light_paths": "gi-reference",
-    "samples": 256,
-    "width": 512
+    "samples": 256
   },
   "scene": "quality/fixtures/gi/door/states/open.usda",
   "schema": "pbrt-map-manifest/v1"

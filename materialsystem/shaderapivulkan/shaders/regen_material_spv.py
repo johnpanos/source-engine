@@ -78,8 +78,6 @@ SHADERS = (
                                                                "-DCLIP_PLANES"]),
     # RFC 0011 G5: the compute conformance suite's program.
     ("g_computeFillSpv", "compute_fill.comp", []),
-    # R50-PARALLAX: the reflection-probe GLSL suite's program.
-    ("g_reflectionProbesCheckSpv", "reflection_probes_check.comp", []),
     # RFC 0011 G7: the probe update traced with ray queries (SPIR-V 1.5), from
     # the one copy of the GLSL (render.pass.indirect, which runs the SDF
     # variant on the core since RFC 0016 K12).

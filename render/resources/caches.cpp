@@ -51,9 +51,12 @@ foundation::Expected<TextureEntry, ResourceError> TextureCache::StageMips( std::
 	// Each level at a 16-byte aligned offset of one staging buffer: a
 	// multiple of every texel size, as a buffer-to-texture copy needs.
 	constexpr std::uint64_t kAlign = 16;
-	// A cube uploads its six faces; every other texture its first layer.
-	const std::uint32_t layers = desc.dimension == device::TextureDimension::kCube ? 6u : 1u;
-	if ( desc.dimension == device::TextureDimension::kCube && desc.depthOrLayers != 6 )
+	// A cube uploads its six faces, a cube array its faces cube by cube (layer
+	// 6n + f); every other texture its first layer.
+	const std::uint32_t layers =
+	    desc.dimension == device::TextureDimension::kCube ? desc.depthOrLayers : 1u;
+	if ( desc.dimension == device::TextureDimension::kCube &&
+	     ( desc.depthOrLayers == 0 || desc.depthOrLayers % 6 != 0 ) )
 		return Fail( ResourceStatus::kSizeMismatch );
 	std::vector<Level> placed;
 	std::uint64_t total = 0;

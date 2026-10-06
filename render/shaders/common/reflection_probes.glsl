@@ -4,13 +4,22 @@
 // includer weights by the split-sum directional albedo (pbr_brdf.glsl). The
 // core's one copy, also consumed by the legacy frontend's PBR wrappers.
 // Its oracle is mapcontainer::ReflectionProbesView. The includer defines
-// the texture fetch/sampling adapter:
+// the probe buffer and cube-array adapters (RPRB v8):
 //
-//   vec4 ReflectionProbesFetch( ivec2 texel )   the exact texel
-//   vec4 ReflectionProbesSample( vec2 texel )   bilinear, texel coordinates
-//                                               (texel centres at + 0.5)
+//   uint ReflectionProbesWord( uint index )   a 32-bit word of the probe buffer
+//                                             (mapcontainer::WriteReflectionProbeBuffer)
+//   vec4 ReflectionProbesRadianceFetch( vec3 direction, float layer, float lod )
+//                                             the BC6H radiance cube array, trilinear
+//                                             (textureLod of a samplerCubeArray), sampled
+//                                             by the world direction
 //
-// and, when it defines REFLECTION_PROBE_RELIGHT (R50-RELIGHT), the scene's
+// and, when it defines REFLECTION_PROBE_RELIGHT (R50-RELIGHT), the relight
+// cube arrays,
+//
+//   vec4 ReflectionProbesAlbedoFetch( vec3 direction, float layer, float lod )
+//   vec4 ReflectionProbesNormalFetch( vec3 direction, float layer, float lod )
+//
+// and the scene's
 // diffuse light (irradiance / pi, the lightmap's unit) at a world point with a
 // unit normal, now and as baked, and the moving occluders (axis-aligned boxes
 // in Source units with a diffuse reflectance, at most
@@ -22,9 +31,9 @@
 //   void ReflectionProbeOccluder( int k, out vec3 lo, out vec3 hi,
 //                                 out float reflectance )
 //
-// A surface program reads a sampler; render/lab/reflection_probes_check.comp
-// filters texel fetches explicitly, so the lab suite runs this file's blend,
-// parallax and lod arithmetic unchanged.
+// A surface program reads a samplerCubeArray; render/lab/reflection_probes_check.comp
+// reads the same arrays, so the lab suite runs this file's blend, parallax and
+// lod arithmetic unchanged.
 //
 // The C++ reference is mapcontainer::ReflectionProbesView (Radiance and
 // Weights), which the world.reflection-probes suite checks against the
@@ -62,15 +71,15 @@
 //     the viewer moves (Source 1 switches cubemaps instead; 3kliksphilip,
 //     "Advanced Reflections in CS:GO... and for Source 2?", 2019).
 //
-// Texture layout: row 0 texel 0 = (count, mips, mip-0 width, -3), texel 1 =
-// (mode, 0, 0, 0); row 1 + rank = the probe's five vec4, each stored as a hi
-// and a lo texel; the atlas from row 1 + count, probe i's band at its band
-// row: mip l of W_l x W_l / 2 at x = 2 W0 (1 - 2^-l). With relight bands,
-// influence min's w is the probe's albedo band row (rgb albedo, a distance;
-// the normal band follows at + W0 / 2), and texel 1's y is the relight
-// switch. Texel (2, 0).x is the tile column count, the table stores band
-// indices, and complete bands tile below it; texel (3, 0) is the candidate
-// grid (dim, dim, dim, uint64 words per cell). RPRB v6 is the only form.
+// Probe buffer layout (mapcontainer/reflection_probes.h): word 0 count, 1 mips,
+// 2 face size, 3 candidate words per cell, 4 mode, 5 relight switch, 6 candidate
+// dimension, 7 base mip (the radiance array's first lump mip), 8..10 candidate
+// origin and 11 step (float); from word 16 one
+// 20-float record per rank (capture.xyz, fade | box min.xyz, layer | box max.xyz,
+// global | influence min.xyz, relight layer | influence max.xyz, 0); from word
+// kReflectionProbeMasksWord the candidate masks as lo/hi word pairs. Radiance is
+// cube array layer = the record's layer at lod = roughness * (mips - 1);
+// relight layers are the same arrays' albedo/normal (RPRB v8 is the only form).
 
 #ifdef REFLECTION_PROBE_RELIGHT
 void ReflectionProbeDiffuseLight( vec3 position, vec3 normal, out vec3 now, out vec3 baked );
@@ -78,9 +87,12 @@ int ReflectionProbeOccluderCount();
 void ReflectionProbeOccluder( int k, out vec3 lo, out vec3 hi, out float reflectance );
 #endif
 
-const float kReflectionProbesMarker = -3.0;
 const float kReflectionProbeFacingEdge = 0.1;
 const int kReflectionProbesMaxProbes = 256;
+// mapcontainer::kReflectionProbeBufferProbesWord, RecordWords and MasksWord.
+const uint kReflectionProbeProbesWord = 16u;
+const uint kReflectionProbeRecordWords = 20u;
+const uint kReflectionProbeMasksWord = 5136u;
 // mapcontainer::kReflectionProbeRelightFloor and kReflectionProbeMaxOccluders.
 const float kReflectionProbeRelightFloor = 1e-4;
 const int kReflectionProbeMaxOccluders = 16;
@@ -91,27 +103,58 @@ const vec3 kReflectionProbeWeightPalette[6] = vec3[6]( vec3( 1.0, 0.0, 0.0 ),
 
 vec4 ReflectionProbeRecord( int rank, int field )
 {
-	return ReflectionProbesFetch( ivec2( 2 * field, 1 + rank ) ) +
-	       ReflectionProbesFetch( ivec2( 2 * field + 1, 1 + rank ) );
+	uint at = kReflectionProbeProbesWord + uint( rank ) * kReflectionProbeRecordWords +
+	          uint( field ) * 4u;
+	return vec4( uintBitsToFloat( ReflectionProbesWord( at ) ),
+	    uintBitsToFloat( ReflectionProbesWord( at + 1u ) ),
+	    uintBitsToFloat( ReflectionProbesWord( at + 2u ) ),
+	    uintBitsToFloat( ReflectionProbesWord( at + 3u ) ) );
 }
 
-vec4 ReflectionProbeLevel( vec2 uv, float level, float width0, float top )
+// The direction a cube array is read along: the world direction. The seeded
+// wrong-face defect swaps x and y (a rotated cube).
+vec3 ReflectionProbeCubeDirection( vec3 direction )
 {
-	// The GPU writer tiles whole bands in texel (2, 0).x columns (RPRB v6).
-	float columns = ReflectionProbesFetch( ivec2( 2, 0 ) ).x;
-	float base = 1.0 + ReflectionProbesFetch( ivec2( 0, 0 ) ).x;
-	float band = floor( ( top - base ) / ( width0 * 0.5 ) + 0.5 );
-	vec2 tile = vec2( mod( band, columns ) * 2.0 * width0,
-	    base + floor( band / columns ) * width0 * 0.5 );
-	float width = width0 * exp2( -level );
-	vec2 extent = vec2( width, width * 0.5 );
-	float left = 2.0 * width0 * ( 1.0 - exp2( -level ) );
-	return ReflectionProbesSample(
-	    tile + vec2( left, 0.0 ) + clamp( uv * extent, vec2( 0.5 ), extent - vec2( 0.5 ) ) );
+#ifdef SEEDED_RPRB_WRONG_FACE
+	return direction.yxz;
+#else
+	return direction;
+#endif
 }
 
-// One probe's split-sum fetch along the reflected ray from `position`,
-// relit when `relight` and the probe carries relight bands.
+// The lod and layer a probe is read at; the seeded defects read the wrong mip
+// (roughness inverted) and the wrong probe (the next layer).
+float ReflectionProbeLod( float roughness, float mips )
+{
+#ifdef SEEDED_RPRB_WRONG_LOD
+	return ( 1.0 - clamp( roughness, 0.0, 1.0 ) ) * ( mips - 1.0 );
+#else
+	return clamp( roughness, 0.0, 1.0 ) * ( mips - 1.0 );
+#endif
+}
+
+// The first mip the radiance array holds (probe buffer word 7): a graphics
+// setting that drops the top mips of the cube array at upload. The array's
+// level j is the lump's level j + base, so a lookup at lod l reads the
+// array at max(l, base) - base; the seeded defect ignores the offset.
+float ReflectionProbeBaseMip()
+{
+#ifdef SEEDED_RPRB_BASE_MIP_IGNORED
+	return 0.0;
+#else
+	return float( ReflectionProbesWord( 7u ) );
+#endif
+}
+
+float ReflectionProbeLayer( float layer, int count )
+{
+#ifdef SEEDED_RPRB_WRONG_LAYER
+	return mod( layer + 1.0, float( count ) );
+#else
+	return layer;
+#endif
+}
+
 #ifdef REFLECTION_PROBE_RELIGHT
 // The relight rule per channel (mapcontainer::ReflectionProbeRelit).
 vec3 ReflectionProbeRelit( vec3 radiance, vec3 albedo, vec3 now, vec3 baked )
@@ -201,27 +244,18 @@ vec3 ReflectionProbeSample( int rank, int count, vec3 header, vec3 position, vec
 		direction /= max( length( direction ), 1e-12 );
 	}
 	float mips = header.y;
-	vec2 uv = vec2( 0.5 - atan( direction.y, direction.x ) / ( 2.0 * kPi ),
-	    0.5 - asin( clamp( direction.z, -1.0, 1.0 ) ) / kPi );
-	float lod = clamp( lookupRoughness, 0.0, 1.0 ) * ( mips - 1.0 );
-	float lower = floor( lod );
-	float upper = min( lower + 1.0, mips - 1.0 );
-	// Tables store band indices, keeping large atlases' addresses exactly
-	// representable in half floats.
-	float rowUnit = header.z * 0.5;
-	float top = float( 1 + count ) + boxMinBand.w * rowUnit;
-	vec3 radiance = mix( ReflectionProbeLevel( uv, lower, header.z, top ),
-	    ReflectionProbeLevel( uv, upper, header.z, top ), lod - lower ).rgb;
+	float lod = ReflectionProbeLod( lookupRoughness, mips );
+	vec3 cubeDirection = ReflectionProbeCubeDirection( direction );
+	float layer = ReflectionProbeLayer( boxMinBand.w, count );
+	vec3 radiance = ReflectionProbesRadianceFetch(
+	    cubeDirection, layer, max( lod, ReflectionProbeBaseMip() ) - ReflectionProbeBaseMip() )
+	                        .rgb;
 #ifdef REFLECTION_PROBE_RELIGHT
-	float relightRow = ReflectionProbeRecord( rank, 3 ).w * rowUnit;
-	if ( relight && relightRow > 0.5 )
+	float relightLayer = ReflectionProbeRecord( rank, 3 ).w;
+	if ( relight )
 	{
-		float albedoTop = float( 1 + count ) + relightRow;
-		float normalTop = albedoTop + 0.5 * header.z;
-		vec4 albedo = mix( ReflectionProbeLevel( uv, lower, header.z, albedoTop ),
-		    ReflectionProbeLevel( uv, upper, header.z, albedoTop ), lod - lower );
-		vec3 normal = mix( ReflectionProbeLevel( uv, lower, header.z, normalTop ),
-		    ReflectionProbeLevel( uv, upper, header.z, normalTop ), lod - lower ).rgb;
+		vec4 albedo = ReflectionProbesAlbedoFetch( cubeDirection, relightLayer, lod );
+		vec3 normal = ReflectionProbesNormalFetch( cubeDirection, relightLayer, lod ).rgb;
 		normal /= max( length( normal ), 1e-12 );
 		float t, reflectance;
 		vec3 face;
@@ -238,12 +272,6 @@ vec3 ReflectionProbeSample( int rank, int count, vec3 header, vec3 position, vec
 	return radiance;
 }
 
-uint ReflectionCandidateBytes( ivec2 texel )
-{
-	uvec4 bytes = uvec4( ReflectionProbesFetch( texel ) );
-	return bytes.x | ( bytes.y << 8u ) | ( bytes.z << 16u ) | ( bytes.w << 24u );
-}
-
 // v4 masks are validated for conservative spatial coverage when loaded.
 // Facing, rank, weights and radiance remain runtime computations.
 uvec2 ReflectionCandidates( vec3 position, int count, int group )
@@ -253,43 +281,39 @@ uvec2 ReflectionCandidates( vec3 position, int count, int group )
 	    remaining <= 32   ? 0u
 	    : remaining == 64 ? 0xffffffffu
 	                      : ( 1u << uint( remaining - 32 ) ) - 1u );
-	vec4 grid = ReflectionProbesFetch( ivec2( 3, 0 ) );
-	int dim = int( grid.x );
-	int groups = int( grid.w );
+	int dim = int( ReflectionProbesWord( 6u ) );
+	int groups = int( ReflectionProbesWord( 3u ) );
 	if ( groups < 1 || groups > 4 || dim < 1 )
 		return allRanks;
-	vec3 origin = vec3( uintBitsToFloat( ReflectionCandidateBytes( ivec2( 4, 0 ) ) ),
-	    uintBitsToFloat( ReflectionCandidateBytes( ivec2( 5, 0 ) ) ),
-	    uintBitsToFloat( ReflectionCandidateBytes( ivec2( 6, 0 ) ) ) );
-	float step = uintBitsToFloat( ReflectionCandidateBytes( ivec2( 7, 0 ) ) );
+	vec3 origin = vec3( uintBitsToFloat( ReflectionProbesWord( 8u ) ),
+	    uintBitsToFloat( ReflectionProbesWord( 9u ) ),
+	    uintBitsToFloat( ReflectionProbesWord( 10u ) ) );
+	float step = uintBitsToFloat( ReflectionProbesWord( 11u ) );
 	vec3 cell = floor( ( position - origin ) / step );
 	if ( any( lessThan( cell, vec3( 0.0 ) ) ) || any( greaterThanEqual( cell, vec3( float( dim ) ) ) ) )
 		return allRanks;
 	ivec3 index = ivec3( cell );
-	int offset = 2 * ( groups * ( index.x + dim * ( index.y + dim * index.z ) ) + group );
-	int columns = int( ReflectionProbesFetch( ivec2( 2, 0 ) ).x );
-	int width = 2 * int( ReflectionProbesFetch( ivec2( 0, 0 ) ).z ) * columns;
-	int start = int( ReflectionCandidateBytes( ivec2( 8, 0 ) ) );
-	ivec2 texel = ivec2( offset % width, start + offset / width );
-	return uvec2(
-	    ReflectionCandidateBytes( texel ), ReflectionCandidateBytes( texel + ivec2( 1, 0 ) ) );
+	uint offset = kReflectionProbeMasksWord +
+	              2u * uint( groups * ( index.x + dim * ( index.y + dim * index.z ) ) + group );
+	return uvec2( ReflectionProbesWord( offset ), ReflectionProbesWord( offset + 1u ) );
 }
 
 // Specular image light at `position` (geometric normal `normal`) along the
-// unit reflected ray; false when the texture carries no reflection probes
-// (the fallback texture) or the mode is off.
+// unit reflected ray; false when the buffer carries no reflection probes
+// (the neutral buffer: count 0) or the mode is off.
 bool ReflectionProbesRadianceDebug( vec3 position, vec3 normal, vec3 reflected, float roughness,
     out vec3 radiance, out vec4 selectionInfo )
 {
 	radiance = vec3( 0.0 );
 	selectionInfo = vec4( -1.0, -1.0, 0.0, 0.0 );
-	vec4 header = ReflectionProbesFetch( ivec2( 0, 0 ) );
-	if ( header.w != kReflectionProbesMarker || header.x < 1.0 )
+	uint words = ReflectionProbesWord( 0u );
+	if ( words < 1u )
 		return false;
-	int count = min( int( header.x + 0.5 ), kReflectionProbesMaxProbes );
-	vec4 modeTexel = ReflectionProbesFetch( ivec2( 1, 0 ) );
-	int mode = int( modeTexel.x + 0.5 );
-	bool relight = modeTexel.y > 0.5;
+	int count = min( int( words ), kReflectionProbesMaxProbes );
+	vec3 header = vec3( float( count ), float( ReflectionProbesWord( 1u ) ),
+	    float( ReflectionProbesWord( 2u ) ) );
+	int mode = int( ReflectionProbesWord( 4u ) );
+	bool relight = ReflectionProbesWord( 5u ) != 0u;
 	int selection = mode & 3;
 	if ( selection == 0 )
 		return false;
@@ -387,7 +411,7 @@ bool ReflectionProbesRadianceDebug( vec3 position, vec3 normal, vec3 reflected, 
 			radiance +=
 			    weights[i] * ( ( mode & 4 ) != 0
 			                         ? kReflectionProbeWeightPalette[ranks[i] % 6]
-			                         : ReflectionProbeSample( ranks[i], count, header.xyz, position,
+			                         : ReflectionProbeSample( ranks[i], count, header, position,
 			                               reflected, roughness, selection != 3, relight ) );
 	return true;
 }

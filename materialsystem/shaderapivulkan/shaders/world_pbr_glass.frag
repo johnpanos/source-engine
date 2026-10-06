@@ -43,44 +43,12 @@ layout( push_constant ) uniform Constants
 }
 consts;
 
-// R50-RELIGHT: when material.w is 1 the producer's change volume (binding 2),
-// the grid table (3) and the published volume (6) are bound, and the map's
-// reflection probes that carry relight bands are relit (reflection_probes.glsl)
-// by the light at each point a probe saw: the published volume's total now,
-// that less the total change as baked; the grid table's occluder rows are the
-// moving occluders.
+// When material.w is 1 the producer's change volume (binding 2), the grid
+// table (3) and the published volume (6) are bound.
 layout( set = 0, binding = 2 ) uniform sampler2D probeAtlas;
 layout( set = 0, binding = 3 ) uniform sampler2D probeGrids;
-layout( set = 0, binding = 6 ) uniform sampler2D probeSecondAtlas;
-#define PROBE_VOLUME_SECOND
 #include "probe_volume.glsl"
-#define REFLECTION_PROBE_RELIGHT
 #include "world_pbr_probe.glsl"
-
-bool ProbeChangeBound()
-{
-	return consts.material.w > 0.5;
-}
-
-void ReflectionProbeDiffuseLight( vec3 position, vec3 normal, out vec3 now, out vec3 baked )
-{
-	now = vec3( 0.0 );
-	baked = vec3( 0.0 );
-	vec3 change;
-	if ( ProbeChangeBound() &&
-	     ProbeIrradiancePair( position, normal, 0, true, change, now ) )
-		baked = now - change;
-}
-
-int ReflectionProbeOccluderCount()
-{
-	return ProbeChangeBound() ? ProbeOccluderCount() : 0;
-}
-
-void ReflectionProbeOccluder( int k, out vec3 lo, out vec3 hi, out float reflectance )
-{
-	ProbeOccluder( k, lo, hi, reflectance );
-}
 
 // Window position of a world point, relative to this fragment's.
 vec2 ScreenOffset( vec3 from, vec3 to )

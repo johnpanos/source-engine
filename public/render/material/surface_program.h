@@ -490,13 +490,16 @@ inline constexpr std::uint32_t kSurfaceMapProbeTerms =
 
 // The map's textures a frame group names (TextureCache names; empty when
 // the map has none, which the terms must then not ask for): the PRBV atlas
-// (RGBA16F) and grid table (RGBA32F, WriteProbeGridTable), and the RPRB
-// texture (RGBA16F, WriteReflectionProbeTexture).
+// (RGBA16F) and grid table (RGBA32F, WriteProbeGridTable), and the RPRB (v8)
+// radiance cube array (BC6H or RGBA16F, one cube per probe) with its probe
+// buffer (WriteReflectionProbeBuffer's words as bytes; absent: a neutral
+// buffer whose count is 0).
 struct SurfaceMapTextures
 {
 	std::string probeAtlas;
 	std::string probeGrids;
 	std::string reflectionProbes;
+	std::shared_ptr<const std::vector<std::byte>> reflectionBuffer;
 	// The projected lights' bounce atlas (kSurfaceProbeBounce): a texture
 	// the owner made (render.pass.bounce), bound as it is.
 	device::TextureId probeBounce;

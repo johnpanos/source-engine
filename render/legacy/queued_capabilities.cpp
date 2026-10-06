@@ -227,14 +227,17 @@ public:
 	{
 		if ( !Queued() )
 			return m_Provider->UploadReflectionProbes( request );
-		std::shared_ptr<Bytes> texels = CopyBytes(
-		    request.texels, std::size_t( request.width ) * request.height * kRgba16fTexelBytes );
+		// RPRB v8: the probe buffer and the cube data, copied for the queue.
+		std::shared_ptr<Bytes> buffer =
+		    CopyBytes( request.buffer, std::size_t( request.bufferWords ) * sizeof( std::uint32_t ) );
+		std::shared_ptr<Bytes> data = CopyBytes( request.data, std::size_t( request.dataBytes ) );
 		world_mesh_gpu::ReflectionProbesUploadRequest copy = request;
 		world_mesh_gpu::IWorldMeshUpload *provider = m_Provider;
 		Queue( m_Host,
-		    [provider, copy, texels]() mutable
+		    [provider, copy, buffer, data]() mutable
 		    {
-			    copy.texels = static_cast<const std::uint16_t *>( DataOrNull( texels ) );
+			    copy.buffer = static_cast<const std::uint32_t *>( DataOrNull( buffer ) );
+			    copy.data = DataOrNull( data );
 			    provider->UploadReflectionProbes( copy );
 		    } );
 		return true;

@@ -650,16 +650,17 @@ int Run( const Options &options )
 		// relight bands.
 		if ( const std::optional<std::string> rprb = lump( mapcontainer::kLumpReflectionProbes ) )
 		{
-			mapcontainer::ReflectionProbesLayout probesLayout{};
+			StagedReflectionProbes probes;
 			if ( std::optional<std::string> why =
 			         StageReflectionProbes( cache, "lab:reflection-probes",
 			             std::as_bytes( std::span( rprb->data(), rprb->size() ) ),
-			             mapcontainer::ReflectionProbeMode::Blend, true, probesLayout ) )
+			             mapcontainer::ReflectionProbeMode::Blend, true, probes ) )
 				return Fail( *why );
-			map.reflectionProbes = "lab:reflection-probes";
-			std::printf( "render_lab: RPRB %u probe%s, %u mips from %u wide%s\n",
-			    probesLayout.count, probesLayout.count == 1 ? "" : "s", probesLayout.mipCount,
-			    probesLayout.width, probesLayout.relight ? ", relightable" : "" );
+			map.reflectionProbes = probes.radiance;
+			map.reflectionBuffer = probes.buffer;
+			std::printf( "render_lab: RPRB %u probe%s, %u mips of %u px faces%s\n",
+			    probes.layout.count, probes.layout.count == 1 ? "" : "s", probes.layout.mipCount,
+			    probes.layout.faceSize, probes.layout.relight ? ", relight cubes (unused)" : "" );
 		}
 		if ( !StageTable( cache, kSplitSumTable, material::SplitSumTable() ) ||
 		     !StageTable( cache, kLtcTable, material::LtcTable() ) )

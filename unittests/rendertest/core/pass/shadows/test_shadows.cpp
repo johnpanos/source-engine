@@ -19,7 +19,10 @@
 //			   the light included;
 //			S7 cascades are texel-snapped: camera moves shift a cascade's
 //			   projection of a fixed point by whole texels, and camera turns
-//			   keep its texel size.
+//			   keep its texel size;
+//			S8 every request keeps a tile while all fit at the minimum size
+//			   (the sp_a1_intro4_relit view whose sunlit spot lost its shadow
+//			   as the camera turned).
 //
 //=============================================================================//
 
@@ -198,6 +201,54 @@ int main()
 	    "S2 tiles in bounds, aligned, disjoint; budget and shortages honest over 1,000 plans" );
 	checks.That( shortages > 100 && overBudget > 100, "S2 the plans exercise shortage and budget" );
 	checks.Equal( orderDependent, 0, "S3 plans do not depend on request order" );
+
+	// S8: sp_a1_intro4_relit at 391.94 -412.03 (2026-10-06). The view's shadow
+	// plan (render.pass.shadows PlanShadows on a 4096 atlas) asks for 3
+	// projectors and 20 spots at half the maximum tile and 14 point-light
+	// cubes; the room's sun-through-the-ceiling spot ranked late and lost
+	// its tile whenever the view held enough other lights, so turning the
+	// camera switched its shadow on and off. Every request keeps a tile
+	// while they all fit at the minimum size, whoever else is in the view.
+	{
+		shadows::ShadowAtlasLimits limits;
+		limits.atlasSize = 4096;
+		limits.minTileSize = 64;
+		limits.maxTileSize = 2048;
+		limits.casterBudget = 4096;
+		limits.guardTexels = 4;
+		std::vector<shadows::ShadowRequest> requests;
+		std::uint64_t key = 1;
+		for ( int i = 0; i < 3; ++i )
+			requests.push_back( { key++, 90.0f, 0.5f } );
+		for ( int i = 0; i < 20; ++i )
+			requests.push_back( { key++, 50.0f + 0.01f * float( i ), 0.5f } );
+		for ( int light = 0; light < 14; ++light )
+			for ( int face = 0; face < 6; ++face )
+				requests.push_back( { key++, 10.0f + 0.01f * float( light ), 0.0625f } );
+		const std::uint64_t sunSpot = 4; // the farthest-ranked spot
+		bool everyTile = true;
+		bool keptAlone = false;
+		bool fits = true;
+		for ( std::size_t count = 1; count <= requests.size(); ++count )
+		{
+			std::vector<shadows::ShadowRequest> subset(
+			    requests.begin(), requests.begin() + std::ptrdiff_t( count ) );
+			auto plan = planner( limits, subset );
+			if ( !plan )
+			{
+				fits = false;
+				continue;
+			}
+			for ( const auto &allocation : plan.Value().allocations )
+			{
+				everyTile = everyTile && allocation.HasTile();
+				if ( allocation.key == sunSpot && count == sunSpot )
+					keptAlone = allocation.HasTile();
+			}
+		}
+		checks.That( fits && keptAlone && everyTile,
+		    "S8 intro4: every shadowed light keeps a tile however many share the view" );
+	}
 
 	// S4, S5.
 	Findings spots;

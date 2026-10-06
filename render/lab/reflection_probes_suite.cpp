@@ -13,22 +13,26 @@
 //			- the fixture's shading samples and 400 seeded random rays (in
 //			  and outside every influence, behind walls, mirror to rough) in
 //			  each selection mode (blended, the nearest capture, direction
-//			  only, the weight view): every case within 2e-3 + 1e-3 relative
-//			  (the native oracle's bound: device trigonometry moves a lookup
-//			  by a rounding);
+//			  only, the weight view): every case within 6e-3 + 1e-3 relative
+//			  (fixed-point trilinear weights; device trigonometry moves a
+//			  lookup by a rounding), a case whose footprint crosses a cube edge
+//			  within 0.2 (the specification leaves the neighbour texel to the
+//			  implementation);
 //			- each mode's GPU results are rejected by every other mode's
 //			  reference (under 90 percent agree), so agreement is not vacuous;
-//			- a texture without the marker (an LMAP page) carries no probes;
+//			- a probe buffer whose count is 0 carries no probes;
 //			- relit (RPRB v2) by the fixture's analytic light and moving
 //			  occluder: the relit reference in each selection mode; the relit
 //			  results are rejected by the unrelit reference, and, blended, by
-//			  the reference without the occluder; with the texture's relight
+//			  the reference without the occluder; with the buffer's relight
 //			  switch off the unrelit reference.
 //			The split-sum weighting of this light is the pbr point's
 //			(pbr_brdf.glsl's directional albedo), judged by its own suites.
 //
 //			Seeded (--sensitivity): distance-based roughness dropped, the
-//			facing term dropped, and removed light relit additively: each a
+//			facing term dropped, removed light relit additively, the cube read
+//			through the wrong face (x and y swapped), at the wrong lod (roughness
+//			inverted) and from the wrong layer (the next probe): each a
 //			check kernel built from reflection_probes.glsl. The fixtures
 //			carry two probes, so the blend's third share is always zero and
 //			its subtraction is not exercised (a seeded kernel without it
@@ -74,9 +78,18 @@ using mapcontainer::ReflectionProbesLayout;
 using mapcontainer::ReflectionProbesView;
 
 constexpr const char *kFixtures = "quality/fixtures/reflection/rprb/";
-constexpr float kAbsolute = 2e-3f;
+// Hardware trilinear filtering weighs its taps in fixed point (the Vulkan
+// specification allows as little as 6 bits of sub-texel precision; an 8-bit
+// weight moves a lerp across a 0.8-step by 0.003), so the bound over three
+// lerps is wider than the arithmetic's own 2e-3.
+constexpr float kAbsolute = 6e-3f;
 constexpr float kRelative = 1e-3f;
 constexpr int kRandomCases = 400;
+// A lookup whose bilinear footprint crosses a cube edge reads the neighbouring
+// face, which the Vulkan specification leaves to the implementation within one
+// texel (the seam); those cases are judged within this absolute bound, so a
+// wrong face, lod or layer still fails on the interior cases that decide it.
+constexpr float kSeamAbsolute = 0.2f;
 
 struct Case
 {
@@ -185,21 +198,32 @@ struct Lab
 	int staged = 0;
 };
 
-// The GPU radiance (and carried flag) of every case over a probe texture.
+// The GPU radiance (and carried flag) of every case over a probe cube array
+// and buffer; `neutral` binds the probe buffer of a map without probes (count 0).
 std::optional<std::string> Evaluate( Lab &lab, const std::vector<unsigned char> &bytes,
-    ReflectionProbeMode mode, bool relight, std::vector<float> &out )
+    ReflectionProbeMode mode, bool relight, std::vector<float> &out, bool neutral = false,
+    std::uint32_t baseMip = 0 )
 {
 	resources::TextureCache cache( lab.device );
-	ReflectionProbesLayout layout{};
+	StagedReflectionProbes staged;
 	const std::string name = "probes-" + std::to_string( lab.staged++ );
 	if ( std::optional<std::string> why = StageReflectionProbes(
-	         cache, name, std::as_bytes( std::span( bytes ) ), mode, relight, layout ) )
+	         cache, name, std::as_bytes( std::span( bytes ) ), mode, relight, staged, baseMip ) )
 		return why;
-	const TextureId textures[] = { cache.Find( name )->texture };
+	// Without relight cubes the albedo and normal bindings take the radiance
+	// array (the relight switch is off, so they are never read).
+	const TextureId radiance = cache.Find( staged.radiance )->texture;
+	const TextureId textures[] = { radiance,
+	    staged.albedo.empty() ? radiance : cache.Find( staged.albedo )->texture,
+	    staged.normal.empty() ? radiance : cache.Find( staged.normal )->texture };
+	const std::vector<std::byte> none( 16, std::byte( 0 ) );
+	const std::span<const std::byte> table[] = {
+	    neutral ? std::span<const std::byte>( none )
+	            : std::span<const std::byte>( *staged.buffer ) };
 	std::vector<std::byte> results;
-	if ( std::optional<std::string> why =
-	         lab.kernel.Run( cache, textures, std::uint32_t( lab.cases.size() ),
-	             std::as_bytes( std::span( lab.cases ) ), lab.cases.size() * 16, results ) )
+	if ( std::optional<std::string> why = lab.kernel.Run( cache, textures,
+	         std::uint32_t( lab.cases.size() ), std::as_bytes( std::span( lab.cases ) ),
+	         lab.cases.size() * 16, results, nullptr, table ) )
 		return why;
 	out.resize( lab.cases.size() * 4 );
 	std::memcpy( out.data(), results.data(), results.size() );
@@ -216,13 +240,16 @@ std::size_t Agreeing( const Lab &lab, const ReflectionProbesView &view, Reflecti
 	{
 		const Case &c = lab.cases[i];
 		float cpu[3];
+		view.ResetSeamTaps();
 		view.Radiance( c.positionRoughness, c.normal, c.reflected, c.positionRoughness[3], mode,
 		    cpu, relight );
+		const bool seam = view.SeamTaps() > 0;
 		const float *g = &gpu[i * 4];
 		bool close = g[3] == 1.0f;
 		for ( int k = 0; k < 3; ++k )
 			close = close && std::isfinite( g[k] ) &&
-			        std::fabs( g[k] - cpu[k] ) <= kAbsolute + kRelative * std::fabs( cpu[k] );
+			        std::fabs( g[k] - cpu[k] ) <=
+			            ( seam ? kSeamAbsolute : kAbsolute + kRelative * std::fabs( cpu[k] ) );
 		if ( close )
 		{
 			++agreeing;
@@ -282,33 +309,82 @@ std::optional<std::string> BlendChecks( Lab &lab, Results &results )
 			        " agree" );
 		}
 	}
-	// A texture without the marker (an LMAP page's first texel) carries none.
+	// A map without probes (a probe buffer whose count is 0) carries none.
 	{
-		resources::TextureCache cache( lab.device );
-		TextureDesc desc;
-		desc.format = Format::kRGBA16Float;
-		desc.width = mapcontainer::ReflectionProbeTextureWidth( layout );
-		desc.height = mapcontainer::ReflectionProbeTextureRows( layout );
-		desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kSampled };
-		const std::vector<std::uint16_t> page(
-		    std::size_t( desc.width ) * desc.height * 4, FloatToHalf( 0.5f ) );
-		auto staged = cache.Stage( "page", desc, std::as_bytes( std::span( page ) ) );
-		if ( !staged )
-			return std::string( "the page was refused" );
-		const TextureId textures[] = { staged.Value().texture };
-		std::vector<std::byte> out;
+		std::vector<float> values;
 		if ( std::optional<std::string> why =
-		         lab.kernel.Run( cache, textures, std::uint32_t( lab.cases.size() ),
-		             std::as_bytes( std::span( lab.cases ) ), lab.cases.size() * 16, out ) )
+		         Evaluate( lab, bytes, ReflectionProbeMode::Blend, true, values, true ) )
 			return why;
-		std::vector<float> values( out.size() / 4 );
-		std::memcpy( values.data(), out.data(), out.size() );
 		bool silent = true;
 		for ( std::size_t i = 0; i < lab.cases.size(); ++i )
 			silent = silent && values[i * 4 + 3] == 0.0f && values[i * 4] == 0.0f &&
 			         values[i * 4 + 1] == 0.0f && values[i * 4 + 2] == 0.0f;
-		results.That( silent, "rprb.no-marker-carries-none" );
+		results.That( silent, "rprb.no-probes-carries-none" );
 	}
+	return std::nullopt;
+}
+
+// One probe is a cube array of one cube, padded to two so the array view
+// exists: the blend over it agrees with the reference like any other.
+std::optional<std::string> SingleProbeChecks( Lab &lab, Results &results )
+{
+	const std::vector<unsigned char> bytes = Load( "single.rprb" );
+	ReflectionProbesLayout layout{};
+	std::vector<std::byte> decoded;
+	const bool valid = !bytes.empty() &&
+	                   mapcontainer::DecodeReflectionProbes( bytes.data(), bytes.size(), &decoded,
+	                       &layout ) == mapcontainer::ReflectionProbesError::Ok &&
+	                   layout.count == 1;
+	results.That( valid, "rprb.single.valid" );
+	if ( !valid )
+		return std::nullopt;
+	const ReflectionProbesView view( decoded.data(), layout );
+	std::vector<float> gpu;
+	if ( auto why = Evaluate( lab, bytes, ReflectionProbeMode::Blend, false, gpu ) )
+		return why;
+	std::string first;
+	const std::size_t agreeing =
+	    Agreeing( lab, view, ReflectionProbeMode::Blend, gpu, &first, nullptr );
+	results.That( agreeing == lab.cases.size(), "rprb.single.blended",
+	    std::to_string( agreeing ) + " of " + std::to_string( lab.cases.size() ) + " agree" +
+	        ( first.empty() ? "" : "; first " + first ) );
+	return std::nullopt;
+}
+
+// A texture setting drops the radiance array's top mips: the GPU result over
+// the dropped array equals the reference reading the whole chain at
+// max(lod, base), and differs from the undropped reference (the lookups at
+// low roughness are blurrier), so the check can fail.
+std::optional<std::string> BaseMipChecks( Lab &lab, Results &results )
+{
+	const std::vector<unsigned char> bytes = Load( "mips5.rprb" );
+	ReflectionProbesLayout layout{};
+	std::vector<std::byte> decoded;
+	if ( mapcontainer::DecodeReflectionProbes( bytes.data(), bytes.size(), &decoded, &layout ) !=
+	     mapcontainer::ReflectionProbesError::Ok )
+		return std::nullopt;
+	ReflectionProbesView view( decoded.data(), layout );
+	const std::uint32_t base = mapcontainer::ReflectionProbeBaseMip( layout.mipCount, 1 );
+	results.That( layout.mipCount == 5 && base == 1 &&
+	                  mapcontainer::ReflectionProbeBaseMip( layout.mipCount, 9 ) == 1 &&
+	                  mapcontainer::ReflectionProbeBaseMip( 3, 2 ) == 0,
+	    "rprb.base-mip.keeps-four-mips" );
+	std::vector<float> dropped;
+	if ( auto why =
+	         Evaluate( lab, bytes, ReflectionProbeMode::Blend, false, dropped, false, base ) )
+		return why;
+	view.SetBaseMip( base );
+	std::string first;
+	const std::size_t agreeing =
+	    Agreeing( lab, view, ReflectionProbeMode::Blend, dropped, &first, nullptr );
+	results.That( agreeing == lab.cases.size(), "rprb.base-mip.oracle",
+	    std::to_string( agreeing ) + " of " + std::to_string( lab.cases.size() ) + " agree" +
+	        ( first.empty() ? "" : "; first " + first ) );
+	view.SetBaseMip( 0 );
+	const std::size_t undropped =
+	    Agreeing( lab, view, ReflectionProbeMode::Blend, dropped, nullptr, nullptr );
+	results.That( undropped < lab.cases.size() * 9 / 10, "rprb.base-mip.rejects-undropped",
+	    std::to_string( undropped ) + " of " + std::to_string( lab.cases.size() ) + " agree" );
 	return std::nullopt;
 }
 
@@ -397,10 +473,14 @@ std::optional<std::string> RunOnce( bool validate, std::span<const std::uint32_t
 		if ( std::optional<std::string> why = kernel.Create(
 		         module.empty() ? std::span<const std::uint32_t>( spirv::kReflectionProbesCheck )
 		                        : module,
-		         1, 1, "render_lab.reflection-probes-check" ) )
+		         3, 1, "render_lab.reflection-probes-check", {}, 1 ) )
 			return why;
 		Lab lab{ *device, kernel, Cases() };
 		if ( std::optional<std::string> why = BlendChecks( lab, results ) )
+			return why;
+		if ( std::optional<std::string> why = SingleProbeChecks( lab, results ) )
+			return why;
+		if ( std::optional<std::string> why = BaseMipChecks( lab, results ) )
 			return why;
 		if ( std::optional<std::string> why = RelightChecks( lab, results ) )
 			return why;
@@ -416,7 +496,11 @@ std::optional<std::string> RunOnce( bool validate, std::span<const std::uint32_t
 const Seeded kProbesSeeded[] = {
     { "no-distance-roughness", spirv::kReflectionProbesNoDistanceRoughness, "rprb." },
     { "no-facing", spirv::kReflectionProbesNoFacing, "rprb." },
-    { "relight-added-only", spirv::kReflectionProbesRelightAddedOnly, "rprb.relight." } };
+    { "relight-added-only", spirv::kReflectionProbesRelightAddedOnly, "rprb.relight." },
+    { "wrong-face", spirv::kReflectionProbesWrongFace, "rprb." },
+    { "wrong-lod", spirv::kReflectionProbesWrongLod, "rprb." },
+    { "wrong-layer", spirv::kReflectionProbesWrongLayer, "rprb." },
+    { "base-mip-ignored", spirv::kReflectionProbesBaseMipIgnored, "rprb.base-mip." } };
 
 } // namespace
 
@@ -437,8 +521,8 @@ int RunReflectionCandidatesSuite( int argc, char **argv )
 			return why;
 		{
 			CheckKernel kernel( *device );
-			if ( auto why = kernel.Create( spirv::kReflectionCandidateInvariants, 1, 1,
-			         "render_lab.reflection-candidate-invariants" ) )
+			if ( auto why = kernel.Create( spirv::kReflectionCandidateInvariants, 3, 1,
+			         "render_lab.reflection-candidate-invariants", {}, 1 ) )
 				return why;
 			for ( const char *fixture : { "candidates64.rprb", "candidates256.rprb" } )
 			{

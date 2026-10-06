@@ -2826,6 +2826,26 @@ bool CVulkanContext::InitDynamicMesh( std::string *outError )
 		if ( m_whiteVolumeHandle < 0 || !UploadManagedTexture( m_whiteVolumeHandle, whiteVolume,
 		                                    sizeof( whiteVolume ), outError ) )
 			return false;
+		// The reflection probes' neutral inputs: a two-cube array and a table
+		// whose first word (the probe count) is 0, bound where a map has none.
+		m_neutralProbeCubesHandle = CreateManagedTexture(
+		    1, 1, VK_FORMAT_R8G8B8A8_UNORM, outError, 0, 1, VK_FORMAT_UNDEFINED, true, 1, 2 );
+		NameManagedTexture( m_neutralProbeCubesHandle, "neutral reflection cubes" );
+		if ( m_neutralProbeCubesHandle < 0 )
+			return false;
+		for ( uint32_t face = 0; face < 12; ++face )
+			if ( !UploadManagedTexture(
+			         m_neutralProbeCubesHandle, white, sizeof( white ), outError, 0, face ) )
+				return false;
+		m_neutralProbeTableHandle = CreateManagedTexture(
+		    1, 1, VK_FORMAT_R32_UINT, outError, 0, 1, VK_FORMAT_UNDEFINED, false );
+		NameManagedTexture( m_neutralProbeTableHandle, "neutral reflection table" );
+		const uint32_t noProbes = 0;
+		if ( m_neutralProbeTableHandle < 0 ||
+		     !UploadManagedTexture( m_neutralProbeTableHandle,
+		         reinterpret_cast<const uint8_t *>( &noProbes ), sizeof( noProbes ), outError ) )
+			return false;
+		SetManagedTextureSamplerState( m_neutralProbeTableHandle, kSamplerClampU | kSamplerClampV );
 		// Opaque black 1x1: what a deferred render target samples (and thereby
 		// "reads") before its storage is allocated on first use.
 		m_unrenderedTargetHandle = CreateManagedTexture(
@@ -4155,14 +4175,21 @@ void CVulkanContext::SetAnisotropicLevel( int level )
 
 int CVulkanContext::CreateManagedTexture( int width, int height, VkFormat format,
     std::string *outError, VkImageUsageFlags extraUsage, uint32_t mipLevels, VkFormat srgbAlias,
-    bool cube, uint32_t depth )
+    bool cube, uint32_t depth, uint32_t cubeCount )
 {
 	CFrameCostScope cost( m_frameCost, kCostTextureCreate );
 	const bool volume = depth > 1;
 	if ( !IsValid() || width <= 0 || height <= 0 || ( cube && width != height ) || depth == 0 ||
-	     ( volume && cube ) )
+	     ( volume && cube ) || cubeCount == 0 || ( cubeCount > 1 && !cube ) || cubeCount > 256 )
 	{
 		SetError( outError, "CreateManagedTexture with invalid size or context" );
+		return -1;
+	}
+	if ( cubeCount > 1 &&
+	     !m_hostDevice->Port().Facts().capabilities.Has(
+	         render::device::Capability::kCubeArrays ) )
+	{
+		SetError( outError, "cube arrays are unsupported on the selected device" );
 		return -1;
 	}
 	if ( volume && ( static_cast<uint32_t>( width ) > m_maxImageDimension3D ||
@@ -4198,7 +4225,7 @@ int CVulkanContext::CreateManagedTexture( int width, int height, VkFormat format
 	ManagedTexture t;
 	t.width = static_cast<uint32_t>( width );
 	t.height = static_cast<uint32_t>( height );
-	t.layers = cube ? 6 : 1;
+	t.layers = cube ? 6 * cubeCount : 1;
 	t.depth = depth;
 	t.format = format;
 	uint32_t fullChain = 1;
@@ -4281,7 +4308,7 @@ int CVulkanContext::CreateManagedTexture( int width, int height, VkFormat format
 	VkImageViewCreateInfo iv = {};
 	iv.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
 	iv.image = t.image;
-	iv.viewType = cube     ? VK_IMAGE_VIEW_TYPE_CUBE
+	iv.viewType = cube ? ( cubeCount > 1 ? VK_IMAGE_VIEW_TYPE_CUBE_ARRAY : VK_IMAGE_VIEW_TYPE_CUBE )
 	              : volume ? VK_IMAGE_VIEW_TYPE_3D
 	                       : VK_IMAGE_VIEW_TYPE_2D;
 	iv.format = format;
@@ -6470,6 +6497,8 @@ void CVulkanContext::DestroyDynamicMesh()
 		ReleaseManagedTextureObjects( t );
 	m_managedTextures.clear();
 	m_whiteVolumeHandle = -1;
+	m_neutralProbeCubesHandle = m_neutralProbeTableHandle = -1;
+	m_reflectionProbeHandle = m_reflectionTableHandle = -1;
 	m_sceneColorHandle = -1;
 	m_sceneDepthHandle = -1;
 	m_sceneDepthCaptured = false;
@@ -6627,7 +6656,7 @@ bool CVulkanContext::UploadWorldMesh( const void *vertices, size_t vertexBytes, 
 	SetProbeVolumeHandles( -1, -1, 0 );
 	SetProbeDeltaHandle( -1 );
 	SetShadowField( -1, nullptr, 0.0f, nullptr );
-	SetReflectionProbes( nullptr, 0, 0, 0 );
+	SetReflectionProbes( nullptr, 0, 0, 0, 0, nullptr );
 	// Submitted frames may still read the old mesh; nothing recorded later
 	// does (a replay binds the resident buffers). Released behind the newest
 	// submission's value, without waiting.
@@ -6689,80 +6718,168 @@ void CVulkanContext::SetShadowField(
 	m_shadowFieldOrigin[3] = handle >= 0 ? voxel : 0.0f;
 }
 
-// The mode texel's value (0..7, reflection_probes.h's ReflectionProbeMode)
-// as an IEEE binary16; the integers 0..7 are exact halves.
-static const uint16_t kReflectionProbeModeHalf[8] = {
-    0x0000, 0x3c00, 0x4000, 0x4200, 0x4400, 0x4500, 0x4600, 0x4700 };
+// The probe words as an R32_UINT texture (kProbeTableWidth wide) the shaders
+// fetch by index (world_pbr_probe.glsl ReflectionProbesWord).
+static const uint32_t kProbeTableWidth = 4096;
 
-bool CVulkanContext::SetReflectionProbes(
-    const uint16_t *texels, uint32_t width, uint32_t height, uint32_t count, std::string *outError )
+// The words padded to whole rows of the table texture.
+static std::vector<uint32_t> ProbeTableTexels( const std::vector<uint32_t> &words, uint32_t *rows )
 {
-	if ( !texels )
+	*rows = ( uint32_t( words.size() ) + kProbeTableWidth - 1 ) / kProbeTableWidth;
+	std::vector<uint32_t> table( size_t( *rows ) * kProbeTableWidth, 0 );
+	std::copy( words.begin(), words.end(), table.begin() );
+	return table;
+}
+
+bool CVulkanContext::SetReflectionProbes( const uint32_t *words, uint32_t wordCount, uint32_t count,
+    uint32_t faceSize, uint32_t mips, const uint8_t *blocks, std::string *outError )
+{
+	const auto release = [this]()
 	{
 		if ( m_reflectionProbeHandle >= 0 )
 			DestroyManagedTexture( m_reflectionProbeHandle );
-		m_reflectionProbeHandle = -1;
-		m_reflectionProbeTexels.clear();
-		m_reflectionProbeWidth = m_reflectionProbeHeight = 0;
+		if ( m_reflectionTableHandle >= 0 )
+			DestroyManagedTexture( m_reflectionTableHandle );
+		m_reflectionProbeHandle = m_reflectionTableHandle = -1;
+	};
+	if ( !words )
+	{
+		release();
+		m_reflectionProbeWords.clear();
 		return true;
 	}
-	std::vector<uint16_t> copy( texels, texels + size_t( width ) * height * 4 );
-	// Texel 1 of row 0 is the mode and the relight switch
-	// (shaders/reflection_probes.glsl); relight applies only to probes whose
-	// table carries a relight row.
-	copy[4] = kReflectionProbeModeHalf[m_reflectionProbeMode];
-	copy[5] = m_reflectionProbeRelight ? 0x3c00 : 0x0000;
-	std::string detail;
-	const int handle =
-	    CreateManagedTexture( int( width ), int( height ), VK_FORMAT_R16G16B16A16_SFLOAT, &detail );
-	NameManagedTexture( handle, "RPRB reflection probes" );
-	if ( handle < 0 ||
-	     !UploadManagedTexture(
-	         handle, reinterpret_cast<const uint8_t *>( copy.data() ), copy.size() * 2, &detail ) )
+	if ( count == 0 || mips == 0 || faceSize == 0 || !blocks || wordCount < 16 )
 	{
-		if ( handle >= 0 )
-			DestroyManagedTexture( handle );
 		if ( outError )
-			*outError = "reflection probe texture upload failed: " + detail;
+			*outError = "reflection probe upload is malformed";
 		return false;
 	}
-	// The table is read with texelFetch; the atlas with clamped bilinear
-	// filtering inside each mip (the shader clamps to texel centres).
-	SetManagedTextureSamplerState( handle, kSamplerClampU | kSamplerClampV | kSamplerLinear );
-	if ( m_reflectionProbeHandle >= 0 )
-		DestroyManagedTexture( m_reflectionProbeHandle );
-	m_reflectionProbeHandle = handle;
-	m_reflectionProbeTexels.swap( copy );
-	m_reflectionProbeWidth = width;
-	m_reflectionProbeHeight = height;
-	(void)count;
+	// Two cubes at least: one probe's array would be a plain cube view.
+	const uint32_t cubes = std::max( count, 2u );
+	std::string detail;
+	const int radiance = CreateManagedTexture( int( faceSize ), int( faceSize ),
+	    VK_FORMAT_BC6H_UFLOAT_BLOCK, &detail, 0, mips, VK_FORMAT_UNDEFINED, true, 1, cubes );
+	NameManagedTexture( radiance, "RPRB reflection probes" );
+	bool ok = radiance >= 0;
+	size_t offset = 0;
+	for ( uint32_t level = 0; ok && level < mips; ++level )
+	{
+		const uint32_t size = faceSize >> level;
+		const size_t faceBytes = size_t( ( size + 3 ) / 4 ) * ( ( size + 3 ) / 4 ) * 16;
+		for ( uint32_t layer = 0; ok && layer < 6 * count; ++layer )
+		{
+			ok =
+			    UploadManagedTexture( radiance, blocks + offset, faceBytes, &detail, level, layer );
+			offset += faceBytes;
+		}
+	}
+	if ( !ok )
+	{
+		if ( radiance >= 0 )
+			DestroyManagedTexture( radiance );
+		if ( outError )
+			*outError = "reflection probe cube array upload failed: " + detail;
+		return false;
+	}
+	SetManagedTextureSamplerState(
+	    radiance, kSamplerClampU | kSamplerClampV | kSamplerLinear | kSamplerMipLinear );
+	std::vector<uint32_t> copy( words, words + wordCount );
+	copy[4] = uint32_t( m_reflectionProbeMode );
+	copy[5] = 0; // no relight in this backend
+	uint32_t rows = 0;
+	const std::vector<uint32_t> table = ProbeTableTexels( copy, &rows );
+	const int tableHandle = CreateManagedTexture(
+	    int( kProbeTableWidth ), int( rows ), VK_FORMAT_R32_UINT, &detail, 0, 1 );
+	NameManagedTexture( tableHandle, "RPRB probe table" );
+	if ( tableHandle < 0 ||
+	     !UploadManagedTexture( tableHandle, reinterpret_cast<const uint8_t *>( table.data() ),
+	         table.size() * 4, &detail ) )
+	{
+		DestroyManagedTexture( radiance );
+		if ( tableHandle >= 0 )
+			DestroyManagedTexture( tableHandle );
+		if ( outError )
+			*outError = "reflection probe table upload failed: " + detail;
+		return false;
+	}
+	// Fetched by index: nearest, clamped.
+	SetManagedTextureSamplerState( tableHandle, kSamplerClampU | kSamplerClampV );
+	release();
+	m_reflectionProbeHandle = radiance;
+	m_reflectionTableHandle = tableHandle;
+	m_reflectionProbeWords.swap( copy );
 	return true;
 }
 
-void CVulkanContext::SetReflectionProbeMode( int mode, bool relight )
+void CVulkanContext::SetReflectionProbeMode( int mode )
 {
 	// Valid modes are 0..3 and 5..7 (reflection_probes.h); anything else
 	// is the default blend.
 	if ( mode < 0 || mode > 7 || mode == 4 )
 		mode = 1;
-	if ( mode == m_reflectionProbeMode && relight == m_reflectionProbeRelight )
+	if ( mode == m_reflectionProbeMode )
 		return;
 	m_reflectionProbeMode = mode;
-	m_reflectionProbeRelight = relight;
-	if ( m_reflectionProbeHandle < 0 )
+	if ( m_reflectionTableHandle < 0 || m_reflectionProbeWords.size() < 16 )
 		return;
-	// A new texture with the new mode texel; the old one is retired behind
-	// the frames that read it.
-	std::vector<uint16_t> texels;
-	texels.swap( m_reflectionProbeTexels );
+	// A new table with the new mode word; the old one is retired behind the
+	// frames that read it.
 	std::string error;
-	if ( !SetReflectionProbes(
-	         texels.data(), m_reflectionProbeWidth, m_reflectionProbeHeight, 0, &error ) )
+	m_reflectionProbeWords[4] = uint32_t( mode );
+	uint32_t rows = 0;
+	const std::vector<uint32_t> table = ProbeTableTexels( m_reflectionProbeWords, &rows );
+	const int handle = CreateManagedTexture(
+	    int( kProbeTableWidth ), int( rows ), VK_FORMAT_R32_UINT, &error, 0, 1 );
+	if ( handle < 0 ||
+	     !UploadManagedTexture(
+	         handle, reinterpret_cast<const uint8_t *>( table.data() ), table.size() * 4, &error ) )
 	{
-		m_reflectionProbeTexels.swap( texels );
-		Log( "mat_reflection_probes %d / mat_reflection_relight %d not applied: %s\n", mode,
-		    relight ? 1 : 0, error.c_str() );
+		if ( handle >= 0 )
+			DestroyManagedTexture( handle );
+		Log( "mat_reflection_probes %d not applied: %s\n", mode, error.c_str() );
+		return;
 	}
+	SetManagedTextureSamplerState( handle, kSamplerClampU | kSamplerClampV );
+	DestroyManagedTexture( m_reflectionTableHandle );
+	m_reflectionTableHandle = handle;
+}
+
+// A managed texture's view and sampler for a frame binding (no dimension
+// match: the reflection inputs are a cube array and an integer table).
+CGroupedDescriptors::Image CVulkanContext::ProbeImage( int handle ) const
+{
+	CGroupedDescriptors::Image result;
+	if ( handle < 0 || handle >= static_cast<int>( m_managedTextures.size() ) )
+		return result;
+	const ManagedTexture &t = m_managedTextures[static_cast<size_t>( handle )];
+	result.view = t.view;
+	result.sampler = t.samplerState >= 0 && t.samplerState < kSamplerStates &&
+	                         m_samplers[t.samplerState] != VK_NULL_HANDLE
+	                     ? m_samplers[t.samplerState]
+	                     : m_dynTexSampler;
+	return result;
+}
+
+CGroupedDescriptors::Image CVulkanContext::ReflectionCubesImage() const
+{
+	return ProbeImage(
+	    m_reflectionProbeHandle >= 0 ? m_reflectionProbeHandle : m_neutralProbeCubesHandle );
+}
+
+CGroupedDescriptors::Image CVulkanContext::ReflectionTableImage() const
+{
+	return ProbeImage(
+	    m_reflectionTableHandle >= 0 ? m_reflectionTableHandle : m_neutralProbeTableHandle );
+}
+
+CGroupedDescriptors::Image CVulkanContext::ReflectionNeutralCubesImage() const
+{
+	return ProbeImage( m_neutralProbeCubesHandle );
+}
+
+CGroupedDescriptors::Image CVulkanContext::ReflectionNeutralTableImage() const
+{
+	return ProbeImage( m_neutralProbeTableHandle );
 }
 
 void CVulkanContext::SetProbeVolumeHandles( int atlas, int grids, uint32_t gridCount )
@@ -6884,7 +7001,7 @@ void CVulkanContext::ReleaseWorldMesh()
 	SetProbeVolumeHandles( -1, -1, 0 );
 	SetProbeDeltaHandle( -1 );
 	SetShadowField( -1, nullptr, 0.0f, nullptr );
-	SetReflectionProbes( nullptr, 0, 0, 0 );
+	SetReflectionProbes( nullptr, 0, 0, 0, 0, nullptr );
 	// Released behind the newest submission, without waiting (UploadWorldMesh).
 	ReleaseStreamBufferAfter( m_hostDevice->SubmittedValue(), m_worldIndexBuffer );
 	ReleaseStreamBufferAfter( m_hostDevice->SubmittedValue(), m_worldVertexBuffer );
@@ -8678,10 +8795,10 @@ void CVulkanContext::RecordFrameScene( VkCommandBuffer cmd )
 					    GroupedImage(
 					        pbrModelProbe ? m_probeGridHandle : -1, -1, openTarget, false ),
 					    GroupedImage( -1, m_whiteVolumeHandle, openTarget, false ),
+					    pbrModelEnv ? ReflectionNeutralCubesImage() : ReflectionCubesImage(),
 					    GroupedImage(
-					        pbrModelEnv ? -1 : m_reflectionProbeHandle, -1, openTarget, false ),
-					    GroupedImage(
-					        pbrModelChange ? m_probeDeltaHandle : -1, -1, openTarget, false ) };
+					        pbrModelChange ? m_probeDeltaHandle : -1, -1, openTarget, false ),
+					    pbrModelEnv ? ReflectionNeutralTableImage() : ReflectionTableImage() };
 					bool baseSrgb = false;
 					const CGroupedDescriptors::Image
 					    material[CGroupedDescriptors::kMaterialBindings] = {
@@ -8832,8 +8949,10 @@ void CVulkanContext::RecordFrameScene( VkCommandBuffer cmd )
 					    GroupedImage( indirectSource, -1, openTarget, false ),
 					    GroupedImage( probeChange ? m_probeGridHandle : -1, -1, openTarget, false ),
 					    GroupedImage( shadowField, m_whiteVolumeHandle, openTarget, false ),
-					    GroupedImage( m_reflectionProbeHandle, -1, openTarget, false ),
-					    GroupedImage( probeChange ? m_probeAtlasHandle : -1, -1, openTarget, false ) };
+					    ReflectionCubesImage(),
+					    GroupedImage(
+					        probeChange ? m_probeAtlasHandle : -1, -1, openTarget, false ),
+					    ReflectionTableImage() };
 					bool baseSrgb = false;
 					const CGroupedDescriptors::Image
 					    material[CGroupedDescriptors::kMaterialBindings] = {

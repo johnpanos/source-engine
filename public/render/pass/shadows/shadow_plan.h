@@ -79,6 +79,8 @@ struct ShadowPlan
 	std::vector<int> projectorTiles; // per input projector
 	int sunFirst = -1;
 	int sunCount = 0;
+	// Shadowed lights (and the sun) the atlas left without their tiles.
+	std::uint32_t unshadowed = 0;
 };
 
 // The reason when the sun's cascades or the plan are refused.

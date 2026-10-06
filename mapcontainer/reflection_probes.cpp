@@ -1,6 +1,6 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
-// Purpose: RPRB reflection probe validation, GPU texture and reference blend.
+// Purpose: RPRB reflection probe validation, GPU buffer and reference blend.
 //          tools/quality/reflection_probe_set.py owns the encoding; the
 //          checks below run in its reader's order so each malformation of
 //          the shared corpus fails with the same error.
@@ -26,8 +26,6 @@ namespace mapcontainer
 namespace
 {
 
-const float kPi = 3.14159265358979323846f;
-
 uint32_t U32( const unsigned char *p ) noexcept
 {
 	return uint32_t( p[0] ) | ( uint32_t( p[1] ) << 8 ) | ( uint32_t( p[2] ) << 16 ) |
@@ -52,28 +50,90 @@ uint16_t U16( const unsigned char *p ) noexcept
 	return uint16_t( p[0] | ( p[1] << 8 ) );
 }
 
-uint64_t AtlasOffset( uint32_t count ) noexcept
+uint32_t MipSize( uint32_t face, uint32_t level ) noexcept
 {
-	return ( uint64_t( kReflectionProbesHeaderBytes ) + kReflectionProbeRecordBytes * count + 15 ) &
-	       ~uint64_t( 15 );
+	return face >> level;
 }
 
-// x of mip `level` in a probe's band: 2 W (1 - 2^-level).
-uint32_t MipLeft( uint32_t width, uint32_t level ) noexcept
+// Bytes of one array across every mip: count probes x six faces.
+uint64_t BlockBytes( uint32_t count, uint32_t face, uint32_t mips ) noexcept
 {
-	return 2 * width - ( ( 2 * width ) >> level );
-}
-
-bool InsideMip( uint32_t x, uint32_t yInBand, uint32_t width, uint32_t mips ) noexcept
-{
+	uint64_t bytes = 0;
 	for ( uint32_t level = 0; level < mips; ++level )
 	{
-		const uint32_t left = MipLeft( width, level );
-		const uint32_t columns = width >> level;
-		if ( x >= left && x < left + columns )
-			return yInBand < columns / 2;
+		const uint64_t blocks = MipSize( face, level ) / 4;
+		bytes += uint64_t( count ) * 6 * blocks * blocks * 16;
 	}
-	return false;
+	return bytes;
+}
+
+uint64_t HalfBytes( uint32_t count, uint32_t face, uint32_t mips ) noexcept
+{
+	uint64_t bytes = 0;
+	for ( uint32_t level = 0; level < mips; ++level )
+		bytes += uint64_t( count ) * 6 * MipSize( face, level ) * MipSize( face, level ) * 8;
+	return bytes;
+}
+
+// The Vulkan cube face selection (reflection_probe.py cube_select): the face
+// of a direction and its (s, t) in [0, 1].
+void CubeSelect( const float d[3], uint32_t *face, float *s, float *t ) noexcept
+{
+	const float ax = std::fabs( d[0] ), ay = std::fabs( d[1] ), az = std::fabs( d[2] );
+	const bool xMajor = ax >= ay && ax >= az;
+	const bool yMajor = !xMajor && ay >= az;
+	float ma, sc, tc;
+	if ( xMajor )
+	{
+		*face = d[0] >= 0 ? 0 : 1;
+		ma = ax;
+		sc = d[0] >= 0 ? -d[2] : d[2];
+		tc = -d[1];
+	}
+	else if ( yMajor )
+	{
+		*face = d[1] >= 0 ? 2 : 3;
+		ma = ay;
+		sc = d[0];
+		tc = d[1] >= 0 ? d[2] : -d[2];
+	}
+	else
+	{
+		*face = d[2] >= 0 ? 4 : 5;
+		ma = az;
+		sc = d[2] >= 0 ? d[0] : -d[0];
+		tc = -d[1];
+	}
+	ma = std::max( ma, 1e-30f );
+	*s = ( sc / ma + 1.0f ) * 0.5f;
+	*t = ( tc / ma + 1.0f ) * 0.5f;
+}
+
+// The inverse (reflection_probe.py cube_vectors): a direction of a face at
+// tangent-plane coordinates in [-1, 1].
+void CubeVector( uint32_t face, float sc, float tc, float out[3] ) noexcept
+{
+	switch ( face )
+	{
+	case 0:
+		out[0] = 1, out[1] = -tc, out[2] = -sc;
+		break;
+	case 1:
+		out[0] = -1, out[1] = -tc, out[2] = sc;
+		break;
+	case 2:
+		out[0] = sc, out[1] = 1, out[2] = tc;
+		break;
+	case 3:
+		out[0] = sc, out[1] = -1, out[2] = -tc;
+		break;
+	case 4:
+		out[0] = sc, out[1] = -tc, out[2] = 1;
+		break;
+	default:
+		out[0] = -sc, out[1] = -tc, out[2] = -1;
+		break;
+	}
 }
 
 float Smoothstep( float edge0, float edge1, float x ) noexcept
@@ -141,30 +201,27 @@ ReflectionProbesError ValidateReflectionProbes(
 	if ( layout.count < 1 || layout.count > kReflectionProbesMaxProbes || layout.mipCount < 1 ||
 	     layout.mipCount > kReflectionProbesMaxMips )
 		return ReflectionProbesError::InvalidCounts;
-	layout.width = U32( p + 16 );
-	layout.atlasWidth = U32( p + 20 );
-	layout.atlasHeight = U32( p + 24 );
-	const uint32_t width = layout.width;
-	if ( ( width & ( width - 1 ) ) != 0 || width < kReflectionProbesMinWidth ||
-	     width > kReflectionProbesMaxWidth || ( width >> ( layout.mipCount - 1 ) ) < 4 ||
-	     layout.atlasWidth != 2 * width ||
-	     layout.atlasHeight != layout.count * ( width / 2 ) * ( layout.relight ? 3 : 1 ) ||
+	layout.faceSize = U32( p + 16 );
+	const uint32_t face = layout.faceSize;
+	if ( ( face & ( face - 1 ) ) != 0 || face < kReflectionProbesMinFace ||
+	     face > kReflectionProbesMaxFace || ( face >> ( layout.mipCount - 1 ) ) < 4 ||
+	     U32( p + 20 ) != ( layout.relight ? face : 0 ) || U32( p + 24 ) != 0 ||
 	     U32( p + 28 ) != kReflectionProbeRecordBytes )
 		return ReflectionProbesError::InvalidAtlas;
-	layout.atlasOffset = U64( p + 32 );
-	layout.atlasBytes = U64( p + 40 );
-	const uint64_t baseOffset = AtlasOffset( layout.count );
+	layout.dataOffset = U64( p + 32 );
+	layout.dataBytes = U64( p + 40 );
+	const uint64_t baseOffset = ( uint64_t( kReflectionProbesHeaderBytes ) +
+	                                kReflectionProbeRecordBytes * layout.count + 15 ) &
+	                            ~uint64_t( 15 );
 	layout.candidateWords = ( layout.count + 63 ) / 64;
-	// The radiance bands as BC6H blocks (4 x 4 texels, 16 bytes; a band is
-	// width / 2 >= 4 rows, so the region's rows are whole blocks), then the
-	// relight rows' RGBA16F texels.
-	const uint32_t radianceRows = layout.count * ( width / 2 );
-	layout.radianceBlockBytes = uint64_t( layout.atlasWidth / 4 ) * ( radianceRows / 4 ) * 16;
-	if ( layout.atlasOffset != baseOffset + ReflectionProbeCandidateBytes( layout.count ) ||
-	     layout.atlasBytes != layout.radianceBlockBytes + uint64_t( layout.atlasWidth ) *
-	                                                         ( layout.atlasHeight - radianceRows ) *
-	                                                         8 ||
-	     size != layout.atlasOffset + layout.atlasBytes )
+	// The radiance cubes as BC6H blocks, then the relight cubes' RGBA16F
+	// texels (albedo array, then normal array).
+	layout.radianceBlockBytes = BlockBytes( layout.count, face, layout.mipCount );
+	const uint64_t relightBytes =
+	    layout.relight ? 2 * HalfBytes( layout.count, face, layout.mipCount ) : 0;
+	if ( layout.dataOffset != baseOffset + ReflectionProbeCandidateBytes( layout.count ) ||
+	     layout.dataBytes != layout.radianceBlockBytes + relightBytes ||
+	     size != layout.dataOffset + layout.dataBytes )
 		return ReflectionProbesError::InvalidSections;
 	for ( uint64_t i =
 	          kReflectionProbesHeaderBytes + uint64_t( kReflectionProbeRecordBytes ) * layout.count;
@@ -198,11 +255,10 @@ ReflectionProbesError ValidateReflectionProbes(
 			return ReflectionProbesError::InvalidRecord;
 		probe.rank = U32( r + 64 );
 		probe.flags = U32( r + 68 );
-		probe.bandRow = U32( r + 72 );
-		probe.relightRow = U32( r + 76 );
-		const uint32_t relightRow = layout.relight ? ( layout.count + 2 * index ) * ( width / 2 ) : 0;
-		if ( ( probe.flags & ~kReflectionProbeGlobal ) != 0 || probe.relightRow != relightRow ||
-		     probe.bandRow != index * ( width / 2 ) )
+		probe.layer = U32( r + 72 );
+		probe.relightLayer = U32( r + 76 );
+		if ( ( probe.flags & ~kReflectionProbeGlobal ) != 0 || probe.layer != index ||
+		     probe.relightLayer != ( layout.relight ? index : 0 ) )
 			return ReflectionProbesError::InvalidRecord;
 	}
 	bool ranked[kReflectionProbesMaxProbes] = {};
@@ -282,60 +338,37 @@ ReflectionProbesError ValidateReflectionProbes(
 			}
 		}
 	}
-	// Every relight texel: finite, and non-negative colour outside normal
-	// bands; then all channels 0 outside a mip, and inside one alpha 1
-	// (normal bands), albedo at most 1 with a distance in (0, max], normals
-	// within the limit (the reader checks finiteness over the rows before
-	// the layout, as the Python reader does). Bands are width / 2 rows: the
-	// radiance bands (BC6H, any block decodes to finite non-negative light),
-	// then each probe's albedo and normal bands; `relight` is the first
-	// relight row.
-	const uint32_t band = width / 2;
-	const unsigned char *relight = p + layout.atlasOffset + layout.radianceBlockBytes;
-	const auto normalRow = [&]( uint32_t y )
-	{ return layout.relight && y >= layout.count * band && ( y / band - layout.count ) % 2 == 1; };
-	for ( uint32_t y = radianceRows; y < layout.atlasHeight; ++y )
-		for ( uint32_t x = 0; x < layout.atlasWidth; ++x )
-			for ( int c = 0; c < 4; ++c )
-			{
-				const uint16_t half = U16(
-				    relight + ( uint64_t( y - radianceRows ) * layout.atlasWidth + x ) * 8 + 2 * c );
-				if ( ( half & 0x7c00u ) == 0x7c00u ||
-				     ( c < 3 && !normalRow( y ) && ( half & 0x8000u ) && ( half & 0x7fffu ) != 0 ) )
-					return ReflectionProbesError::InvalidTexels;
-			}
-	for ( uint32_t y = radianceRows; y < layout.atlasHeight; ++y )
-		for ( uint32_t x = 0; x < layout.atlasWidth; ++x )
+	// Every relight texel: finite; albedo (non-negative, at most 1, with a
+	// distance in (0, max]) in the albedo array; normals within the limit with
+	// alpha 1 in the normal array. The radiance (BC6H) decodes to finite,
+	// non-negative light for any block.
+	if ( layout.relight )
+	{
+		const unsigned char *albedo = p + layout.dataOffset + layout.radianceBlockBytes;
+		const uint64_t texels = HalfBytes( layout.count, face, layout.mipCount ) / 8;
+		const unsigned char *normals = albedo + texels * 8;
+		for ( uint64_t i = 0; i < texels; ++i )
 		{
-			const unsigned char *texel =
-			    relight + ( uint64_t( y - radianceRows ) * layout.atlasWidth + x ) * 8;
-			if ( InsideMip( x, y % band, width, layout.mipCount ) )
-			{
-				const bool albedoRow = y >= layout.count * band && !normalRow( y );
-				if ( albedoRow )
-				{
-					const float distance = HalfToFloat( U16( texel + 6 ) );
-					for ( int c = 0; c < 3; ++c )
-						if ( HalfToFloat( U16( texel + 2 * c ) ) > 1.0f )
-							return ReflectionProbesError::InvalidTexels;
-					if ( !( distance > 0.0f ) || distance > kReflectionProbesMaxDistance )
-						return ReflectionProbesError::InvalidTexels;
-				}
-				else if ( U16( texel + 6 ) != 0x3c00u )
+			const unsigned char *a = albedo + i * 8;
+			const unsigned char *n = normals + i * 8;
+			for ( int c = 0; c < 4; ++c )
+				if ( ( U16( a + 2 * c ) & 0x7c00u ) == 0x7c00u ||
+				     ( U16( n + 2 * c ) & 0x7c00u ) == 0x7c00u )
 					return ReflectionProbesError::InvalidTexels;
-				if ( normalRow( y ) )
-					for ( int c = 0; c < 3; ++c )
-						if ( std::fabs( HalfToFloat( U16( texel + 2 * c ) ) ) >
-						     kReflectionProbesNormalLimit )
-							return ReflectionProbesError::InvalidTexels;
-			}
-			else
+			for ( int c = 0; c < 3; ++c )
 			{
-				for ( int c = 0; c < 4; ++c )
-					if ( ( U16( texel + 2 * c ) & 0x7fffu ) != 0 )
-						return ReflectionProbesError::InvalidTexels;
+				const uint16_t half = U16( a + 2 * c );
+				if ( ( ( half & 0x8000u ) && ( half & 0x7fffu ) != 0 ) ||
+				     HalfToFloat( half ) > 1.0f ||
+				     std::fabs( HalfToFloat( U16( n + 2 * c ) ) ) > kReflectionProbesNormalLimit )
+					return ReflectionProbesError::InvalidTexels;
 			}
+			const float distance = HalfToFloat( U16( a + 6 ) );
+			if ( !( distance > 0.0f ) || distance > kReflectionProbesMaxDistance ||
+			     U16( n + 6 ) != 0x3c00u )
+				return ReflectionProbesError::InvalidTexels;
 		}
+	}
 	if ( pLayout )
 		*pLayout = layout;
 	return ReflectionProbesError::Ok;
@@ -349,43 +382,49 @@ ReflectionProbesError DecodeReflectionProbes( const void *pData, size_t size,
 	if ( error != ReflectionProbesError::Ok )
 		return error;
 	const unsigned char *p = static_cast<const unsigned char *>( pData );
-	const uint64_t rowBytes = uint64_t( layout.atlasWidth ) * 8;
-	const uint32_t band = layout.width / 2;
-	const uint32_t radianceRows = layout.count * band;
+	const uint64_t halfBytes = HalfBytes( layout.count, layout.faceSize, layout.mipCount );
+	const uint64_t relightBytes = layout.relight ? 2 * halfBytes : 0;
 	try
 	{
-		pOut->assign( size_t( layout.atlasOffset + rowBytes * layout.atlasHeight ), std::byte{ 0 } );
+		pOut->assign( size_t( layout.dataOffset + halfBytes + relightBytes ), std::byte{ 0 } );
 	}
 	catch ( ... )
 	{
 		return ReflectionProbesError::Truncated;
 	}
 	unsigned char *out = reinterpret_cast<unsigned char *>( pOut->data() );
-	std::memcpy( out, p, size_t( layout.atlasOffset ) );
-	unsigned char *atlas = out + layout.atlasOffset;
-	const unsigned char *blocks = p + layout.atlasOffset;
-	const uint32_t blocksAcross = layout.atlasWidth / 4;
-	for ( uint32_t by = 0; by < radianceRows / 4; ++by )
-		for ( uint32_t bx = 0; bx < blocksAcross; ++bx )
-		{
-			float light[16 * 3];
-			bcdec_bc6h_float( blocks + 16 * ( uint64_t( by ) * blocksAcross + bx ), light, 4 * 3, 0 );
-			for ( uint32_t t = 0; t < 16; ++t )
-			{
-				const uint32_t x = bx * 4 + t % 4;
-				const uint32_t y = by * 4 + t / 4;
-				if ( !InsideMip( x, y % band, layout.width, layout.mipCount ) )
-					continue; // every channel stays 0
-				unsigned char *texel = atlas + uint64_t( y ) * rowBytes + uint64_t( x ) * 8;
-				const uint16_t halves[4] = { FloatToHalf( light[t * 3 + 0] ),
-				    FloatToHalf( light[t * 3 + 1] ), FloatToHalf( light[t * 3 + 2] ), 0x3c00u };
-				std::memcpy( texel, halves, sizeof( halves ) );
-			}
-		}
-	std::memcpy( atlas + uint64_t( radianceRows ) * rowBytes, blocks + layout.radianceBlockBytes,
-	    size_t( rowBytes * ( layout.atlasHeight - radianceRows ) ) );
-	layout.atlasBytes = rowBytes * layout.atlasHeight;
+	std::memcpy( out, p, size_t( layout.dataOffset ) );
+	const unsigned char *blocks = p + layout.dataOffset;
+	unsigned char *radiance = out + layout.dataOffset;
+	for ( uint32_t level = 0; level < layout.mipCount; ++level )
+	{
+		const uint32_t mip = MipSize( layout.faceSize, level );
+		const uint32_t across = mip / 4;
+		for ( uint32_t slice = 0; slice < layout.count * 6; ++slice )
+			for ( uint32_t by = 0; by < across; ++by )
+				for ( uint32_t bx = 0; bx < across; ++bx )
+				{
+					float light[16 * 3];
+					bcdec_bc6h_float( blocks, light, 4 * 3, 0 );
+					blocks += 16;
+					for ( uint32_t t = 0; t < 16; ++t )
+					{
+						const uint32_t x = bx * 4 + t % 4;
+						const uint32_t y = by * 4 + t / 4;
+						unsigned char *texel =
+						    radiance + ( ( uint64_t( slice ) * mip + y ) * mip + x ) * 8;
+						const uint16_t halves[4] = { FloatToHalf( light[t * 3 + 0] ),
+						    FloatToHalf( light[t * 3 + 1] ), FloatToHalf( light[t * 3 + 2] ),
+						    0x3c00u };
+						std::memcpy( texel, halves, sizeof( halves ) );
+					}
+				}
+		radiance += uint64_t( layout.count ) * 6 * mip * mip * 8;
+	}
+	std::memcpy( radiance, blocks, size_t( relightBytes ) );
+	layout.dataBytes = halfBytes + relightBytes;
 	layout.radianceBlockBytes = 0;
+	layout.decoded = true;
 	if ( pLayout )
 		*pLayout = layout;
 	return ReflectionProbesError::Ok;
@@ -402,88 +441,93 @@ uint64_t ReflectionProbeCandidateBytes( uint32_t count ) noexcept
 	       8 * uint64_t( kReflectionProbeCandidateCells ) * ( ( count + 63 ) / 64 );
 }
 
-uint32_t ReflectionProbeTextureColumns( const ReflectionProbesLayout &layout ) noexcept
+uint32_t ReflectionProbeMipSize( const ReflectionProbesLayout &layout, uint32_t level ) noexcept
 {
-	const uint32_t bands = layout.count * ( layout.relight ? 3 : 1 );
-	uint32_t columns = 1;
-	while ( columns * columns * 4 < bands )
-		columns *= 2;
-	return columns;
+	return MipSize( layout.faceSize, level );
 }
 
-uint32_t ReflectionProbeTextureWidth( const ReflectionProbesLayout &layout ) noexcept
+void ReflectionProbeMipRange( const ReflectionProbesLayout &layout, ReflectionProbeArray array,
+    uint32_t level, uint64_t *pOffset, uint64_t *pBytes ) noexcept
 {
-	return layout.atlasWidth * ReflectionProbeTextureColumns( layout );
-}
-
-uint32_t ReflectionProbeTextureRows( const ReflectionProbesLayout &layout ) noexcept
-{
-	const uint32_t columns = ReflectionProbeTextureColumns( layout );
-	const uint32_t bands = layout.count * ( layout.relight ? 3 : 1 );
-	const uint32_t width = ReflectionProbeTextureWidth( layout );
-	return 1 + layout.count + ( ( bands + columns - 1 ) / columns ) * ( layout.width / 2 ) +
-	       ( 2 * kReflectionProbeCandidateCells * layout.candidateWords + width - 1 ) / width;
-}
-
-void WriteReflectionProbeTexture( const void *pData, const ReflectionProbesLayout &layout,
-    ReflectionProbeMode mode, uint16_t *pOut, bool relight ) noexcept
-{
-	const uint32_t width = ReflectionProbeTextureWidth( layout );
-	std::memset( pOut, 0, size_t( width ) * ReflectionProbeTextureRows( layout ) * 8 );
-	const float header[8] = { float( layout.count ), float( layout.mipCount ),
-	    float( layout.width ), kReflectionProbeTextureMarker, float( uint32_t( mode ) ),
-	    relight && layout.relight ? 1.0f : 0.0f, 0.0f, 0.0f };
-	for ( int k = 0; k < 8; ++k )
-		pOut[k] = FloatToHalf( header[k] );
-	const uint32_t columns = ReflectionProbeTextureColumns( layout );
-	pOut[8] = FloatToHalf( float( columns ) );
+	const bool blocks = array == ReflectionProbeArray::kRadiance;
+	// The relight arrays follow the radiance, whichever form it is in.
+	const uint64_t radianceBytes =
+	    layout.decoded ? HalfBytes( layout.count, layout.faceSize, layout.mipCount )
+	                   : BlockBytes( layout.count, layout.faceSize, layout.mipCount );
+	const uint64_t arrayBytes = HalfBytes( layout.count, layout.faceSize, layout.mipCount );
+	uint64_t base = 0;
+	if ( array == ReflectionProbeArray::kAlbedo )
+		base = radianceBytes;
+	else if ( array == ReflectionProbeArray::kNormal )
+		base = radianceBytes + arrayBytes;
+	uint64_t offset = 0;
+	uint64_t bytes = 0;
+	for ( uint32_t l = 0; l <= level && l < layout.mipCount; ++l )
 	{
-		const uint32_t rows =
-		    ( 2 * kReflectionProbeCandidateCells * layout.candidateWords + width - 1 ) / width;
-		const uint32_t start = ReflectionProbeTextureRows( layout ) - rows;
-		for ( int axis = 0; axis < 4; ++axis )
-			pOut[12 + axis] = FloatToHalf( axis == 3 ? float( layout.candidateWords )
-			                                         : float( kReflectionProbeCandidateDim ) );
-		const auto *grid = static_cast<const unsigned char *>( pData ) + layout.candidateOffset;
-		for ( int i = 0; i < 16; ++i )
-			pOut[16 + i] = FloatToHalf( float( grid[i] ) );
-		for ( int i = 0; i < 4; ++i )
-			pOut[32 + i] = FloatToHalf( float( ( start >> ( i * 8 ) ) & 255 ) );
-		for ( uint32_t i = 0; i < 8 * kReflectionProbeCandidateCells * layout.candidateWords; ++i )
-			pOut[size_t( start ) * width * 4 + i] =
-			    FloatToHalf( float( grid[kReflectionProbeCandidateHeaderBytes + i] ) );
+		const uint64_t mip = MipSize( layout.faceSize, l );
+		bytes = blocks ? uint64_t( layout.count ) * 6 * ( mip / 4 ) * ( mip / 4 ) * 16
+		               : uint64_t( layout.count ) * 6 * mip * mip * 8;
+		if ( l < level )
+			offset += bytes;
 	}
+	*pOffset = base + offset;
+	*pBytes = bytes;
+}
+
+uint32_t ReflectionProbeBaseMip( uint32_t mips, uint32_t drop ) noexcept
+{
+	return mips > 4 ? std::min( drop, mips - 4 ) : 0;
+}
+
+uint32_t ReflectionProbeBufferWords( const ReflectionProbesLayout &layout ) noexcept
+{
+	return kReflectionProbeBufferMasksWord +
+	       2 * kReflectionProbeCandidateCells * layout.candidateWords;
+}
+
+void WriteReflectionProbeBuffer( const void *pData, const ReflectionProbesLayout &layout,
+    ReflectionProbeMode mode, uint32_t *pOut, bool relight, uint32_t baseMip ) noexcept
+{
+	std::memset( pOut, 0, size_t( ReflectionProbeBufferWords( layout ) ) * 4 );
+	const auto bits = []( float value )
+	{
+		uint32_t word;
+		std::memcpy( &word, &value, sizeof( word ) );
+		return word;
+	};
+	pOut[0] = layout.count;
+	pOut[1] = layout.mipCount;
+	pOut[2] = layout.faceSize;
+	pOut[3] = layout.candidateWords;
+	pOut[4] = uint32_t( mode );
+	pOut[5] = relight && layout.relight ? 1u : 0u;
+	pOut[6] = kReflectionProbeCandidateDim;
+	pOut[7] = baseMip;
+	for ( int axis = 0; axis < 3; ++axis )
+		pOut[8 + axis] = bits( layout.candidateOrigin[axis] );
+	pOut[11] = bits( layout.candidateStep );
 	for ( uint32_t index = 0; index < layout.count; ++index )
 	{
 		const ReflectionProbeRecord &probe = layout.probes[index];
 		const float global = ( probe.flags & kReflectionProbeGlobal ) ? 1.0f : 0.0f;
-		const uint32_t rowUnit = layout.width / 2;
-		const float values[kReflectionProbeTableVec4][4] = {
+		const float values[5][4] = {
 		    { probe.capture[0], probe.capture[1], probe.capture[2], probe.fade },
-		    { probe.boxMin[0], probe.boxMin[1], probe.boxMin[2], float( probe.bandRow / rowUnit ) },
+		    { probe.boxMin[0], probe.boxMin[1], probe.boxMin[2], float( probe.layer ) },
 		    { probe.boxMax[0], probe.boxMax[1], probe.boxMax[2], global },
 		    { probe.influenceMin[0], probe.influenceMin[1], probe.influenceMin[2],
-		        float( probe.relightRow / rowUnit ) },
+		        float( probe.relightLayer ) },
 		    { probe.influenceMax[0], probe.influenceMax[1], probe.influenceMax[2], 0.0f } };
-		uint16_t *row = pOut + size_t( 1 + probe.rank ) * width * 4;
-		for ( uint32_t v = 0; v < kReflectionProbeTableVec4; ++v )
+		uint32_t *record = pOut + kReflectionProbeBufferProbesWord +
+		                   size_t( probe.rank ) * kReflectionProbeBufferRecordWords;
+		for ( int v = 0; v < 5; ++v )
 			for ( int c = 0; c < 4; ++c )
-			{
-				const uint16_t hi = FloatToHalf( values[v][c] );
-				row[( 2 * v ) * 4 + c] = hi;
-				row[( 2 * v + 1 ) * 4 + c] = FloatToHalf( values[v][c] - HalfToFloat( hi ) );
-			}
+				record[4 * v + c] = bits( values[v][c] );
 	}
-	const uint32_t band = layout.width / 2;
-	const unsigned char *atlas = static_cast<const unsigned char *>( pData ) + layout.atlasOffset;
-	for ( uint32_t row = 0; row < layout.atlasHeight; ++row )
-	{
-		const uint32_t index = row / band;
-		const uint32_t x = ( index % columns ) * layout.atlasWidth;
-		const uint32_t y = 1 + layout.count + ( index / columns ) * band + row % band;
-		std::memcpy( pOut + ( size_t( y ) * width + x ) * 4,
-		    atlas + size_t( row ) * layout.atlasWidth * 8, size_t( layout.atlasWidth ) * 8 );
-	}
+	// The masks are little-endian uint64, i.e. lo then hi word.
+	const unsigned char *grid = static_cast<const unsigned char *>( pData ) +
+	                            layout.candidateOffset + kReflectionProbeCandidateHeaderBytes;
+	for ( uint32_t i = 0; i < 2 * kReflectionProbeCandidateCells * layout.candidateWords; ++i )
+		pOut[kReflectionProbeBufferMasksWord + i] = U32( grid + 4 * size_t( i ) );
 }
 
 ReflectionProbesView::ReflectionProbesView(
@@ -580,33 +624,48 @@ void ReflectionProbesView::Weights( const float position[3], const float normal[
 		outWeights[top[1]] += weights[1] / total;
 }
 
-void ReflectionProbesView::SampleLevel(
-    uint32_t top, uint32_t level, const float uv[2], int channels, float *out ) const noexcept
+void ReflectionProbesView::SampleLevel( ReflectionProbeArray array, uint32_t layer, uint32_t level,
+    const float direction[3], int channels, float *out ) const noexcept
 {
-	const uint32_t columns = m_layout.width >> level;
-	const uint32_t rows = columns / 2;
-	const float extent[2] = { float( columns ), float( rows ) };
-	float texel[2];
-	for ( int k = 0; k < 2; ++k )
-		texel[k] = std::clamp( uv[k] * extent[k], 0.5f, extent[k] - 0.5f ) - 0.5f;
-	const uint32_t x0 = uint32_t( std::floor( texel[0] ) );
-	const uint32_t y0 = uint32_t( std::floor( texel[1] ) );
-	const float fx = texel[0] - float( x0 );
-	const float fy = texel[1] - float( y0 );
-	const uint32_t x1 = std::min( x0 + 1, columns - 1 );
-	const uint32_t y1 = std::min( y0 + 1, rows - 1 );
-	const uint32_t left = MipLeft( m_layout.width, level );
-	const unsigned char *atlas = m_bytes + m_layout.atlasOffset;
-	const auto fetch = [&]( uint32_t x, uint32_t y, int c )
-	{
-		return HalfToFloat(
-		    U16( atlas + ( uint64_t( top + y ) * m_layout.atlasWidth + left + x ) * 8 + 2 * c ) );
-	};
+	const uint32_t n = ReflectionProbeMipSize( m_layout, level );
+	uint64_t offset, bytes;
+	ReflectionProbeMipRange( m_layout, array, level, &offset, &bytes );
+	const unsigned char *mip = m_bytes + m_layout.dataOffset + offset;
+	uint32_t face;
+	float s, t;
+	CubeSelect( direction, &face, &s, &t );
+	const float x = s * float( n ) - 0.5f;
+	const float y = t * float( n ) - 0.5f;
+	const int x0 = int( std::floor( x ) );
+	const int y0 = int( std::floor( y ) );
+	const float fx = x - float( x0 );
+	const float fy = y - float( y0 );
 	for ( int c = 0; c < channels; ++c )
+		out[c] = 0.0f;
+	for ( int tap = 0; tap < 4; ++tap )
 	{
-		const float upper = fetch( x0, y0, c ) * ( 1 - fx ) + fetch( x1, y0, c ) * fx;
-		const float lower = fetch( x0, y1, c ) * ( 1 - fx ) + fetch( x1, y1, c ) * fx;
-		out[c] = upper * ( 1 - fy ) + lower * fy;
+		const int dx = tap & 1, dy = tap >> 1;
+		const float weight = ( dx ? fx : 1.0f - fx ) * ( dy ? fy : 1.0f - fy );
+		int cx = x0 + dx, cy = y0 + dy;
+		uint32_t tapFace = face;
+		if ( cx < 0 || cx >= int( n ) || cy < 0 || cy >= int( n ) )
+		{
+			// Beyond the face's edge: the tap's direction on the face's tangent
+			// plane, reselected (seamless filtering).
+			++m_seamTaps;
+			float vec[3], ns, nt;
+			CubeVector( face, ( float( cx ) + 0.5f ) / float( n ) * 2.0f - 1.0f,
+			    ( float( cy ) + 0.5f ) / float( n ) * 2.0f - 1.0f, vec );
+			CubeSelect( vec, &tapFace, &ns, &nt );
+			cx = std::clamp( int( ns * float( n ) ), 0, int( n ) - 1 );
+			cy = std::clamp( int( nt * float( n ) ), 0, int( n ) - 1 );
+		}
+		const unsigned char *texel =
+		    mip +
+		    ( ( ( uint64_t( layer ) * 6 + tapFace ) * n + uint32_t( cy ) ) * n + uint32_t( cx ) ) *
+		        8;
+		for ( int c = 0; c < channels; ++c )
+			out[c] += HalfToFloat( U16( texel + 2 * c ) ) * weight;
 	}
 }
 
@@ -709,29 +768,33 @@ void ReflectionProbesView::ProbeRadiance( uint32_t probe, const float position[3
 		for ( float &value : direction )
 			value /= length;
 	}
-	const float uv[2] = { 0.5f - std::atan2( direction[1], direction[0] ) / ( 2.0f * kPi ),
-	    0.5f - std::asin( std::clamp( direction[2], -1.0f, 1.0f ) ) / kPi };
-	const float lod = std::clamp( lookupRoughness, 0.0f, 1.0f ) * float( m_layout.mipCount - 1 );
-	const uint32_t lower = uint32_t( std::floor( lod ) );
-	const uint32_t upper = std::min( lower + 1, m_layout.mipCount - 1 );
-	const float blend = lod - float( lower );
-	const auto sample = [&]( uint32_t top, int channels, float *result )
+	const float lookupLod =
+	    std::clamp( lookupRoughness, 0.0f, 1.0f ) * float( m_layout.mipCount - 1 );
+	const auto sample =
+	    [&]( ReflectionProbeArray array, uint32_t layer, int channels, float *result )
 	{
+		// The radiance array may have dropped its top mips (a texture setting).
+		const float lod = array == ReflectionProbeArray::kRadianceHalf
+		                      ? std::max( lookupLod, float( m_baseMip ) )
+		                      : lookupLod;
+		const uint32_t lower = uint32_t( std::floor( lod ) );
+		const uint32_t upper = std::min( lower + 1, m_layout.mipCount - 1 );
+		const float blend = lod - float( lower );
 		float a[4], b[4];
-		SampleLevel( top, lower, uv, channels, a );
-		SampleLevel( top, upper, uv, channels, b );
+		SampleLevel( array, layer, lower, direction, channels, a );
+		SampleLevel( array, layer, upper, direction, channels, b );
 		for ( int c = 0; c < channels; ++c )
 			result[c] = a[c] * ( 1 - blend ) + b[c] * blend;
 	};
-	sample( record.bandRow, 3, out );
+	sample( ReflectionProbeArray::kRadianceHalf, record.layer, 3, out );
 	if ( !relight || !m_layout.relight )
 		return;
 	// Relight (RPRB v2): the point the capture saw along the lookup, or the
 	// face of a moving occluder in front of it.
 	float albedo[4], normal[3], seen[3], now[3], baked[3], t, face[3];
 	uint32_t hit;
-	sample( record.relightRow, 4, albedo );
-	sample( record.relightRow + m_layout.width / 2, 3, normal );
+	sample( ReflectionProbeArray::kAlbedo, record.relightLayer, 4, albedo );
+	sample( ReflectionProbeArray::kNormal, record.relightLayer, 3, normal );
 	const float length = std::max( std::sqrt( Dot( normal, normal ) ), 1e-12f );
 	for ( float &value : normal )
 		value /= length;

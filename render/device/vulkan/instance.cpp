@@ -211,6 +211,7 @@ DeviceResult<AdapterChoice> Evaluate( VkPhysicalDevice physical, bool host )
 	choice.anisotropy = features.features.samplerAnisotropy == VK_TRUE;
 	choice.textureCompressionBC = features.features.textureCompressionBC == VK_TRUE;
 	choice.multiDrawIndirect = features.features.multiDrawIndirect == VK_TRUE;
+	choice.imageCubeArray = features.features.imageCubeArray == VK_TRUE;
 	choice.drawIndirectFirstInstance = features.features.drawIndirectFirstInstance == VK_TRUE;
 	choice.drawIndirectCount = choice.core12 && features12.drawIndirectCount == VK_TRUE;
 	choice.memoryBudget = HasDeviceExtension( extensions, VK_EXT_MEMORY_BUDGET_EXTENSION_NAME );

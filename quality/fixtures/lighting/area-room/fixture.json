@@ -85,10 +85,10 @@
         },
         "radiosity": null,
         "reflection_probe": {
+          "cube_size": 256,
           "face_size": 128,
           "light_paths": "gi-reference",
-          "samples": 16,
-          "width": 512
+          "samples": 16
         },
         "sdf_volume": null
       },

@@ -97,7 +97,9 @@ class ReflectionProbeTest(unittest.TestCase):
 
     def test_cube_faces_resample_to_their_directions(self):
         import reflection_probe
-        equirect = reflection_probe.cube_to_equirect(self.faces(), 128)
-        expected = reflection_probe.equirect_directions(128)
-        cosine = np.sum(equirect * expected, axis=2) / np.linalg.norm(equirect, axis=2)
-        self.assertGreater(cosine.min(), np.cos(np.radians(4)))
+        directions = {name: self.faces()[name] for name in reflection_probe.FACES}
+        cube = reflection_probe.faces_to_cube(directions, 32)
+        for index, name in enumerate(reflection_probe.CUBE_FACES):
+            expected = reflection_probe.cube_face_directions(name, 32)
+            cosine = np.sum(cube[index] * expected, axis=2) / np.linalg.norm(cube[index], axis=2)
+            self.assertGreater(cosine.min(), np.cos(np.radians(4)), name)

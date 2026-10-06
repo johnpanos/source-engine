@@ -284,6 +284,44 @@ int main()
 		checks.That( facesLanded, "R7.every-face-lands-in-its-layer" );
 		checks.That( textures.Evict( "cube" ).HasValue(), "R7.the-cube-evicts" );
 		textures.Retire( cubeToken );
+
+		// R7: a cube array (12 layers, 2 mips: 2x2 then 1x1) stages each
+		// level's faces cube by cube, and every face lands in its own layer
+		// of its own mip; a layer count that is not a multiple of six fails.
+		device::TextureDesc cubeArray = cube;
+		cubeArray.depthOrLayers = 12;
+		cubeArray.mipLevels = 2;
+		std::vector<std::byte> arrayMip0, arrayMip1;
+		for ( std::uint8_t face = 0; face < 12; ++face )
+		{
+			const std::vector<std::byte> big = Bytes( 16, std::uint8_t( 60 + face ) );
+			const std::vector<std::byte> small = Bytes( 4, std::uint8_t( 90 + face ) );
+			arrayMip0.insert( arrayMip0.end(), big.begin(), big.end() );
+			arrayMip1.insert( arrayMip1.end(), small.begin(), small.end() );
+		}
+		const std::span<const std::byte> arrayLevels[] = { arrayMip0, arrayMip1 };
+		auto arrayEntry = textures.StageMips( "cube-array", cubeArray, arrayLevels );
+		checks.That( arrayEntry.HasValue() && arrayEntry.Value().residentBytes == 12 * 16 + 12 * 4,
+		    "R7.a-cube-array-stages-every-cubes-faces" );
+		device::TextureDesc oddArray = cubeArray;
+		oddArray.depthOrLayers = 7;
+		checks.That( !textures.StageMips( "odd-array", oddArray, arrayLevels ) &&
+		                 !textures.Find( "odd-array" ),
+		    "R7.a-cube-array-of-seven-layers-fails" );
+		auto arrayUpload = device->BeginEncoder( device::QueueKind::kGraphics ).Value();
+		(void)textures.RecordUploads( arrayUpload );
+		const device::CompletionToken arrayToken = Run( *device, arrayUpload );
+		control->CompleteThrough( arrayToken.queue, arrayToken.value );
+		textures.Retire( arrayToken );
+		bool arrayLanded = arrayEntry.HasValue();
+		for ( std::uint32_t face = 0; arrayLanded && face < 12; ++face )
+			arrayLanded = ReadTexture( *device, arrayEntry.Value().texture, 2, 2, 0, face ) ==
+			                  Bytes( 16, std::uint8_t( 60 + face ) ) &&
+			              ReadTexture( *device, arrayEntry.Value().texture, 1, 1, 1, face ) ==
+			                  Bytes( 4, std::uint8_t( 90 + face ) );
+		checks.That( arrayLanded, "R7.every-cube-array-face-lands-in-its-layer-and-mip" );
+		checks.That( textures.Evict( "cube-array" ).HasValue(), "R7.the-cube-array-evicts" );
+		textures.Retire( arrayToken );
 		const auto budgetLow = textures.Stage( "budget-low", desc, Bytes( 32, 1 ) );
 		const auto budgetHigh = textures.Stage( "budget-high", desc, Bytes( 32, 2 ) );
 		checks.That( budgetLow && budgetHigh && textures.ResidentBytes() == 64,

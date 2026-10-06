@@ -406,9 +406,7 @@ void CoreWorld::SetStage()
 	    m_RuntimeDirect.load( std::memory_order_relaxed ) && !stage->indirect.flat.empty(),
 	    std::memory_order_relaxed );
 	stage->probes = m_Capture.probes;
-	stage->reflectionWidth = m_Capture.reflectionWidth;
-	stage->reflectionHeight = m_Capture.reflectionHeight;
-	stage->reflectionProbes = m_Capture.reflection;
+	stage->reflection = m_Capture.reflection;
 	std::fprintf( stderr,
 	    "Render core: world stage: %zu meshlets, lightmap %ux%u%s%s%s, probes %s, reflection "
 	    "probes %s\n",
@@ -421,7 +419,7 @@ void CoreWorld::SetStage()
 	                                       : ", indirect layer (directional)",
 	    m_StageRuntimeDirect.load( std::memory_order_relaxed ) ? ", runtime direct light"
 	                                                           : ", baked direct light",
-	    stage->probes ? "yes" : "no", stage->reflectionProbes.empty() ? "no" : "yes" );
+	    stage->probes ? "yes" : "no", stage->reflection ? "yes" : "no" );
 	data.stage = std::move( stage );
 	const std::uint32_t materialBase = std::uint32_t( data.materials.size() );
 	for ( pass::world::WorldMaterial &material : m_StaticMaterials )
@@ -1182,14 +1180,34 @@ bool CoreWorld::StageCapture::UploadProbeVolume(
 bool CoreWorld::StageCapture::UploadReflectionProbes(
     const world_mesh_gpu::ReflectionProbesUploadRequest &request )
 {
-	reflectionWidth = request.texels ? request.width : 0;
-	reflectionHeight = request.texels ? request.height : 0;
-	reflection.clear();
-	if ( request.texels )
+	reflection.reset();
+	if ( !request.data )
+		return true; // the map's probes removed
+	if ( !request.buffer || request.radianceBytes > request.dataBytes || !request.probeCount ||
+	     !request.mipCount || !request.faceSize )
+		return false;
+	// Copies (the caller owns the request's bytes until the call returns);
+	// the BC6H radiance goes to the pass as stored.
+	pass::world::StageReflectionProbes probes;
+	probes.count = request.probeCount;
+	probes.mips = request.mipCount;
+	probes.face = request.faceSize;
+	probes.relight = request.relight;
+	probes.baseMip = std::min( request.baseMip, request.mipCount - 1 );
+	probes.buffer.assign( request.buffer, request.buffer + request.bufferWords );
+	// Only the mips from the base on are kept: the lump stores them mip-major.
+	std::uint64_t skipped = 0;
+	for ( std::uint32_t mip = 0; mip < probes.baseMip; ++mip )
 	{
-		const std::byte *texels = reinterpret_cast<const std::byte *>( request.texels );
-		reflection.assign( texels, texels + std::size_t( request.width ) * request.height * 8 );
+		const std::uint64_t blocks = ( ( request.faceSize >> mip ) + 3 ) / 4;
+		skipped += std::uint64_t( request.probeCount ) * 6 * blocks * blocks * 16;
 	}
+	if ( skipped > request.radianceBytes )
+		return false;
+	const std::byte *data = static_cast<const std::byte *>( request.data );
+	probes.radiance.assign( data + skipped, data + request.radianceBytes );
+	// The core does not relight probes, so the relight cubes are not kept.
+	reflection = std::move( probes );
 	return true;
 }
 
@@ -1202,8 +1220,7 @@ void CoreWorld::StageCapture::Release()
 	probes.reset();
 	change.clear();
 	table.reset();
-	reflectionWidth = reflectionHeight = 0;
-	reflection.clear();
+	reflection.reset();
 }
 
 namespace
@@ -1435,6 +1452,7 @@ std::shared_ptr<const pass::world::StageViewLights> CoreWorld::StageViewLightsFo
 		input.guardTexels = 4;
 		if ( pass::shadows::PlanShadows( input, plan ) )
 			plan = pass::shadows::ShadowPlan(); // refused: unshadowed
+		m_ShadowLightsUnshadowed.fetch_add( plan.unshadowed, std::memory_order_relaxed );
 	}
 	// A baked light's diffuse light is in the lightmap: the core adds its
 	// specular lobe alone (each light counts once per surface).
@@ -2209,14 +2227,17 @@ unsigned int CoreWorld::TakeGpuTimes( char *out, unsigned int size )
 	const std::uint64_t tilesKept = m_ShadowTilesKept.exchange( 0, std::memory_order_relaxed );
 	const std::uint64_t tilesShared =
 	    m_ShadowTilesShared.exchange( 0, std::memory_order_relaxed );
-	if ( tilesDrawn + tilesKept + tilesShared && used + 1 < size )
+	const std::uint64_t unshadowed =
+	    m_ShadowLightsUnshadowed.exchange( 0, std::memory_order_relaxed );
+	if ( tilesDrawn + tilesKept + tilesShared + unshadowed && used + 1 < size )
 	{
 		const int written = std::snprintf( out + used, size - used,
 		    "0 0 %.2f shadow tiles drawn (count; %.2f kept, %.2f shared across views, "
-		    "%.2f with movers per frame)\n",
+		    "%.2f with movers, %.2f shadowed lights without tiles per frame)\n",
 		    double( tilesDrawn ) / frames, double( tilesKept ) / frames,
 		    double( tilesShared ) / frames,
-		    double( m_ShadowTilesMoving.exchange( 0, std::memory_order_relaxed ) ) / frames );
+		    double( m_ShadowTilesMoving.exchange( 0, std::memory_order_relaxed ) ) / frames,
+		    double( unshadowed ) / frames );
 		if ( written > 0 )
 			used = std::min( std::size_t( size ) - 1, used + std::size_t( written ) );
 	}

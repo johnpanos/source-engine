@@ -821,7 +821,7 @@ def write_cookie(path):
 
 PREVIEW_BAKE = {"lightmap": {"samples": 64}, "probe_volume": {"samples": 256},
                 "radiosity": None, "sdf_volume": None}
-PREVIEW_PROBES = {"reflection_probe": {"width": 512, "face_size": 128, "samples": 16,
+PREVIEW_PROBES = {"reflection_probe": {"cube_size": 256, "face_size": 128, "samples": 16,
                                        "light_paths": "gi-reference"}}
 
 
@@ -2024,7 +2024,7 @@ def cmd_build(args):
 # The final bakes: the gi-fixture profile's samples (lightmap 2048, probe
 # volume 4096), the reflection-fixture profile's probes, and the profile's
 # radiosity transfer (RTRN) and SDF volume (SDFV), which the previews switch off.
-FINAL_PROBES = {"width": 1024, "face_size": 256, "samples": 64, "light_paths": "gi-reference"}
+FINAL_PROBES = {"cube_size": 512, "face_size": 256, "samples": 64, "light_paths": "gi-reference"}
 
 
 def final_overrides(preview):

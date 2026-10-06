@@ -11434,3 +11434,145 @@ the CPU culler bit for bit) and two queues in `render.graph` (waits, ownership
 moves, `kMissingQueueWait`). The CPU culler stays the product path by RFC
 0003's placement rule; evidence and timings in
 [RFC 0003's record](0003-progress.md#s4-gpu-culling-placement-and-the-two-queue-graph-model-2026-10-05-user-goal).
+
+## RPRB v8: reflection probes as a BC6H cube array (2026-10-06, user goal, R50/K11/K12)
+
+RPRB v7 packed every probe's equirect mip chain into one strip atlas
+(intro4: 119 probes at W0 = 512 made a 1024 x 30464 atlas, 31.7 MB, tiled
+on upload, with manual mip addressing, lod blending and equirect lookups in
+`reflection_probes.glsl`). v8 is the only version; v7 and earlier are refused.
+
+What changed:
+
+- **Format** ([RFC 0008's row](0008-canonical-world-data-and-runtime-formats.md#installed-encodings-2026-09-25),
+  `reflection_probe_set.py` is the one description): each probe is a cube in
+  the Vulkan cube convention (layer = probe index, sampled by the world
+  direction, no remap), prefiltered per mip by GGX over a cube pyramid
+  (`reflection_probe.py` `cube_mip_chain`), BC6H per face-mip encoded as one
+  tall image per mip (faces are whole block rows). Relight cubes stay RGBA16F.
+  Layout: header, records (unchanged), candidate grid (unchanged), radiance
+  cube array mips, relight arrays. `--face` / profile key `cube_size` (default
+  the capture `face_size`) replace the equirect `width`.
+- **Reader** (`mapcontainer/reflection_probes.*`): validates the lump,
+  `ReflectionProbeMipRange` gives each mip's bytes so a consumer uploads the
+  lump as it is, `WriteReflectionProbeBuffer` writes the probe metadata as a
+  float32/uint32 storage buffer (capture, boxes, fade, rank, layer, candidate
+  masks as lo/hi words) instead of hi/lo half texels, and the reference view
+  samples cubes the way the hardware does (bilinear, seamless, trilinear).
+  `world.reflection-probes`: 152 checks on g++ (shared corpus, texel
+  corruptions, 192 + 144 recorded Python samples reproduced to 1e-6, fuzz).
+- **Device**: `Capability::kCubeArrays` and clause D36 (a cube array's layer
+  index counts faces, copies land per layer in every mip; bad adapter
+  `kCollapsesCubeLayers`). The Vulkan adapter enables `imageCubeArray` and
+  fails a cube array without it; OpenGL claims it from core 4.0 (ES 3.2 or the
+  extension). `render.device.v2` null 631, Vulkan 1,276, GL 1,198, GLES 1,083
+  checks pass; the null, Vulkan, GL and GLES sensitivity lanes detect the new
+  defect. (D32 is RFC 0016's S5 reservation, so this is D36.)
+- **Core**: `TextureCache::StageMips` stages cube arrays (a level holds every
+  cube's faces); the surface program's frame group reads the radiance cube
+  array (binding 9) and the probe buffer (storage buffer, binding 13), with a
+  neutral cube array and a count-0 buffer without probes; the world pass
+  uploads the BC6H blocks as they are (one copy per mip, probe and face). A
+  device without BC6H and cube arrays refuses the stage by name; no CPU decode
+  exists in the core. The core does not relight probes (it never did); the
+  relight cubes stay in the lump for the lab's oracle.
+- **GLSL**: `render/shaders/common/reflection_probes.glsl` takes a probe-word
+  accessor and `textureLod` on `samplerCubeArray` (lod = roughness * (mips - 1),
+  layer from the record); the strip atlas addressing, hi/lo records and
+  texel-packed candidate masks are deleted. Parallax correction, distance
+  roughness, blend and relight arithmetic are unchanged.
+- **Frozen backend** (`Frozen-path: core progress`, user approval): it reads
+  the cube array natively through managed cube-array textures (BC6H, 6N layers,
+  mips) and an R32_UINT probe table at frame binding 7 (its descriptor model has
+  no buffers). It no longer relights probes (relight cubes are not uploaded;
+  the three PBR fragment shaders lose their relight adapters and the second
+  atlas binding), and a device without BC6H or cube arrays (iOS/tvOS, Mali)
+  declines the probes by name instead of being handed a CPU-decoded atlas. Its
+  duplicate GLSL check kernel and `render.reflection-probes.glsl` suite are
+  deleted: the lab's suite checks the same file.
+- **Deleted**: equirect `cube_to_equirect`/`mip_chain`/`ggx_prefilter`,
+  `atlas_layout`, band rows, `inside_mips`, the GPU texture table and its tiling
+  (`gpu_texture`, `WriteReflectionProbeTexture`), the marker texel, the 16384-row
+  banding for RPRB (the tall per-mip images still go through the generic encoder
+  bands), `mat_reflection_relight`.
+
+Evidence (Linux desktop, Vulkan validation clean):
+
+- `render.lab.reflection-probes --validate`: 40 checks, 0 failed. Interior
+  lookups agree with `ReflectionProbesView::Radiance` within 6e-3 + 1e-3
+  relative (fixed-point trilinear weights), lookups whose footprint crosses a
+  cube edge within 0.2 (the specification leaves the neighbour texel to the
+  implementation). `--sensitivity`: 7 of 7 (the three old seeded kernels and
+  wrong face, wrong lod, wrong layer) detected, control passes.
+  `reflection-candidates` 29, `map-terms` 39 (the surface program over the
+  fixture's cube array), `posed-model` 110 pass; 34 of 37 `render.lab.*` suites
+  pass, 3 unavailable (missing `build-fsr` and a gi map; not run).
+- `render.resources` 47 (cube-array staging per layer and mip), composition,
+  legacy-capabilities and material suites pass.
+- Python: `test_reflection_probe_set` 42 of 45 (the 3 placement failures
+  predate this work), the rest of the touched tools suites pass except
+  `test_vast_blender` (remote rprb policy, predates this) and the lighting
+  fixture stage-layer check (missing `quality-results` files).
+
+Open (not claimed): intro4 on v8 in game (matched game/lab captures through
+`sp_a1_intro4_relit`), the 1024x768 to 4K sweep (world-pass GPU time, probe
+memory, bake and pack time against v7: `build-p2-release-v7` is the v7 binary
+kept for it), Fold7 and Apple runs, and a hosted CI lane. Probe memory is
+computed, not measured, until then: 119 probes at a 256 px face with 7 mips
+are 119 x 6 x 87.3 KB = 62 MB of BC6H, about twice v7's 31.7 MB: a 256 px
+cube face has 0.35 degrees per texel at its centre against the 512-wide
+equirect's 0.7 at the equator (6 x 256^2 = 3x the texels). The profiles'
+`cube_size` is W0/2 as the target asked; a 128 px face matches v7's angular
+resolution at half its size (15.6 MB), and the sweep decides the default.
+
+## K7/K12: shadowed lights keep their tiles as the camera turns (2026-10-06, user report)
+
+User report: at 391.94 -412.03 (eye 74.27) on `sp_a1_intro4_relit`, the leaf
+shadows of the sun through the ceiling vanished at angles 4.6 -146.89 and came
+back at 0 -114.22.
+
+Cause (observed): the light is the unbounded `light_spot` at 557.9 -258.2
+522.9 (light-set index 26). Each view's shadow plan (`PlanShadows`) asked for
+3 projectors and 20 spots at 1024 texels and 14 point-light cubes in a 4096
+atlas, which holds sixteen 1024 tiles. `PlanShadowAtlas` served requests in
+rank order at their whole size and never reduced an earlier tile, so the later
+spots and every cube got nothing and were drawn unshadowed. Which lights reach
+a view changes their order, so the light's tile came and went as the camera
+turned. The core's stats counted 81-86 shadowed lights without tiles per frame
+across the frame's views.
+
+Fix:
+- `render.pass.shadows` `PlanShadowAtlas`: every request within the caster
+  budget keeps a tile while all fit at the minimum size. Short of room, the
+  lowest-ranked tile halves first; only with every tile at the minimum does
+  the lowest-ranked request lose its tile; reduced tiles grow back in rank
+  order. Tiles pack largest first.
+- `PlanShadows` ranks lights within a class by distance from the camera, so
+  the farthest get the smallest tiles. `ShadowPlan::unshadowed` counts the
+  lights left without tiles, and `cl_render_debug_stats` reports it on the
+  shadow-tiles line.
+
+Evidence (Linux, RADV Strix Halo, build-p2):
+- `render.shadows.atlas` 26 checks: the new S8 is the intro4 request set and
+  its prefixes; it fails against the greedy planner, and S2/S3 stay clean.
+  The sensitivity suite has 15 checks. `render.shadows.pixels` 42 (the
+  spot's setup now asks the two other lights for the same tile size, so the
+  spot still lands away from the atlas origin). `render.lab.shadowed-lights`
+  191 checks and its sensitivity suite 5; `render.composition` and its
+  capabilities suites (Vulkan, GL) pass.
+- `corpus.portal2.intro4-shadows` (new, `tools/quality/portal2_shadow_views.py`,
+  `quality/workloads/portal2-intro4-shadows-v1`), 10 checks: 0 shadowed
+  lights without tiles in all three held views; the turned view is 44% darker
+  than with shadows off (threshold 38%). The greedy planner fails it, at
+  81-86 lights without tiles per frame; its image measured 33%, and the
+  user's symptom 17%.
+- Unavailable: `render.debug-views.product.mode0/2` (no `build-rc-client`).
+
+Cost (open): with every light shadowed, the turned view's `core world view`
+GPU time is 15.5 ms instead of 10.6 ms (1600x900, offscreen, steady state, 0
+tiles redrawn). Of that, `cutout shadows` is 1.5 ms instead of 0.05 ms,
+because the pass draws every alpha-tested caster into every shadow view each
+frame with no per-view culling; `world surfaces` is 7.1 ms instead of 5.2 ms.
+Per-view cutout culling (it needs caster bounds) and caching static cutouts
+in the kept tiles are the follow-ups. This slice records no resolution sweep,
+and its performance acceptance stays open.

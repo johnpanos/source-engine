@@ -178,21 +178,23 @@ class IndirectLayerFitTest(unittest.TestCase):
 
 class ProbePrefilterTest(unittest.TestCase):
     def solid_angle_weights(self, image):
-        height = image.shape[0]
-        latitude = math.pi / 2 - (np.arange(height) + 0.5) / height * math.pi
-        return np.cos(latitude)[:, None]
+        # Cube texels differ in solid angle by at most 3x; weight by it.
+        size = image.shape[1]
+        s = (np.arange(size) + 0.5) / size * 2 - 1
+        x, y = np.meshgrid(s, s)
+        return (1.0 / (1.0 + x * x + y * y) ** 1.5)[None]
 
     def test_constant_environment_is_preserved(self):
-        chain = reflection_probe.mip_chain(np.full((64, 128, 3), 0.7), samples=64)
+        chain = reflection_probe.cube_mip_chain(np.full((6, 32, 32, 3), 0.7), samples=64)
         for mip in chain:
             np.testing.assert_allclose(mip, 0.7, atol=1e-9)
 
     def test_bright_spot_spreads_and_keeps_energy(self):
-        environment = np.zeros((64, 128, 3))
-        environment[30:32, 40:42] = 50.0
-        chain = reflection_probe.mip_chain(environment, samples=128)
+        environment = np.zeros((6, 32, 32, 3))
+        environment[0, 15:17, 15:17] = 50.0
+        chain = reflection_probe.cube_mip_chain(environment, samples=1024)
         energies = [float((mip[..., 0] * self.solid_angle_weights(mip)).sum() /
-                          (mip.shape[0] * mip.shape[1])) for mip in chain]
+                          (6 * self.solid_angle_weights(mip).sum())) for mip in chain]
         peaks = [float(mip.max()) for mip in chain]
         for energy in energies[1:4]:
             self.assertAlmostEqual(energy / energies[0], 1.0, delta=0.15)
@@ -201,10 +203,10 @@ class ProbePrefilterTest(unittest.TestCase):
     def test_box_filter_is_not_a_ggx_prefilter(self):
         # Negative control: the former box mips keep a small emitter far
         # brighter at roughness 1/7 than the GGX lobe does.
-        environment = np.zeros((128, 256, 3))
-        environment[60:62, 100:102] = 100.0
-        ggx = reflection_probe.mip_chain(environment, samples=128)[1]
-        box = reflection_probe.box_pyramid(environment, 4)[1]
+        environment = np.zeros((6, 64, 64, 3))
+        environment[0, 31:33, 31:33] = 100.0
+        ggx = reflection_probe.cube_mip_chain(environment, samples=128)[1]
+        box = reflection_probe.cube_pyramid(environment, 4)[1]
         self.assertGreater(float(box.max()), 2.0 * float(ggx.max()))
 
 

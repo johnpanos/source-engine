@@ -82,6 +82,15 @@ std::optional<std::string> PlanShadows( const ShadowPlanInput &input, ShadowPlan
 	out.lightLayouts.assign( input.lights.size(), RuntimeShadowLayout::kSingle );
 	out.areaTiles.assign( input.areas.size(), -1 );
 	out.projectorTiles.assign( input.projectors.size(), -1 );
+	// Within a class, nearer lights rank first (a bonus below 1 keeps the
+	// classes' order), so the atlas's shortest tiles go to the farthest.
+	math::float3 eye{ 0, 0, 0 };
+	if ( const auto fromView = math::Inverse( input.camera.view ) )
+		eye = { fromView->rows[0].w, fromView->rows[1].w, fromView->rows[2].w };
+	const auto nearer = [&]( const math::float3 &position )
+	{
+		return 1.0f / ( 1.0f + math::Length( position - eye ) / 512.0f );
+	};
 	std::vector<Pending> pending;
 	auto add = [&]( const ShadowView &view, bool orthographic, float coverage, float priority,
 	               int *slot, bool first )
@@ -136,7 +145,8 @@ std::optional<std::string> PlanShadows( const ShadowPlanInput &input, ShadowPlan
 		desc.farZ = light.farZ;
 		auto view = BuildFlashlightShadowView( desc );
 		if ( view )
-			add( view.Value(), false, 0.5f, 90.0f, &out.projectorTiles[i], true );
+			add( view.Value(), false, 0.5f, 90.0f + nearer( desc.position ), &out.projectorTiles[i],
+			    true );
 	}
 	for ( std::size_t i = 0; i < input.lights.size(); ++i )
 	{
@@ -156,7 +166,8 @@ std::optional<std::string> PlanShadows( const ShadowPlanInput &input, ShadowPlan
 			desc.range = far;
 			auto view = BuildSpotShadowView( desc );
 			if ( view )
-				add( view.Value(), false, 0.5f, 50.0f, &out.lightTiles[i], true );
+				add( view.Value(), false, 0.5f, 50.0f + nearer( position ), &out.lightTiles[i],
+				    true );
 			continue;
 		}
 		// A point light: the six faces of a cube.
@@ -175,7 +186,7 @@ std::optional<std::string> PlanShadows( const ShadowPlanInput &input, ShadowPlan
 			continue;
 		out.lightLayouts[i] = RuntimeShadowLayout::kWorldCube;
 		for ( std::size_t f = 0; f < faces.size(); ++f )
-			add( faces[f], false, 0.0625f, 10.0f, &out.lightTiles[i], f == 0 );
+			add( faces[f], false, 0.0625f, 10.0f + nearer( position ), &out.lightTiles[i], f == 0 );
 	}
 	for ( std::size_t i = 0; i < input.areas.size(); ++i )
 	{
@@ -204,7 +215,7 @@ std::optional<std::string> PlanShadows( const ShadowPlanInput &input, ShadowPlan
 		if ( faces.size() != directions.size() )
 			continue;
 		for ( std::size_t f = 0; f < faces.size(); ++f )
-			add( faces[f], false, 0.125f, 20.0f, &out.areaTiles[i], f == 0 );
+			add( faces[f], false, 0.125f, 20.0f + nearer( origin ), &out.areaTiles[i], f == 0 );
 	}
 	if ( pending.empty() )
 		return std::nullopt;
@@ -249,6 +260,8 @@ std::optional<std::string> PlanShadows( const ShadowPlanInput &input, ShadowPlan
 				out.views.push_back( { p.viewProjection, tile } );
 			}
 		}
+		else
+			++out.unshadowed;
 		i = end;
 	}
 	if ( sunSlot >= 0 )

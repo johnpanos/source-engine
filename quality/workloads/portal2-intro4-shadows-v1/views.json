@@ -1,0 +1,21 @@
+{
+  "schema": "portal2-shadow-views/v1",
+  "map": "sp_a1_intro4_relit",
+  "about": "User report 2026-10-06: standing at 391.94 -412.03 on sp_a1_intro4_relit, the sun-through-the-ceiling light (the light_spot at 557.9 -258.2 522.9 with its leaf shadows) lost its shadow when the camera turned to 4.6 -146.89 and came back at 0 -114.22. The view's shadow plan held more shadowed lights than its atlas had tiles at their wanted size; the light ranked late and lost its tile. Positions are the player's feet (cl_showpos reports the eye, 64 units higher).",
+  "engine_args": ["+sv_cheats", "1", "+r_core_world", "1", "+r_indirect_producer", "baked",
+                  "+mat_queue_mode", "2"],
+  "hold_frames": 240,
+  "views": [
+    {"name": "turned_first", "origin": [391.94, -412.03, 10.27], "angles": [4.6, -146.89]},
+    {"name": "facing", "origin": [391.94, -412.03, 10.27], "angles": [0.0, -114.22]},
+    {"name": "turned", "origin": [391.94, -412.03, 10.27], "angles": [4.6, -146.89]},
+    {"name": "turned_unshadowed", "origin": [391.94, -412.03, 10.27], "angles": [4.6, -146.89],
+     "before": "r_core_shadow_quality 0"}
+  ],
+  "checks": {
+    "unshadowed_lights_max": 0.0,
+    "shadowed_view": "turned",
+    "unshadowed_view": "turned_unshadowed",
+    "shadow_darkening_min": 0.38
+  }
+}

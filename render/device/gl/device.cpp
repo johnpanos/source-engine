@@ -327,6 +327,12 @@ void GlDevice::QueryFacts()
 	// record's firstInstance in the shaders' instance index, so
 	// kIndirectFirstInstance is not claimed.
 	have.Add( Capability::kMultiDrawIndirect );
+	// D36: ARB_texture_cube_map_array is core since GL 4.0; ES has them from 3.2
+	// or the extensions.
+	if ( !IsEs() || Integer( gl, GL_MINOR_VERSION ) >= 2 || Integer( gl, GL_MAJOR_VERSION ) > 3 ||
+	     HasExtension( gl, "GL_EXT_texture_cube_map_array" ) ||
+	     HasExtension( gl, "GL_OES_texture_cube_map_array" ) )
+		have.Add( Capability::kCubeArrays );
 	if ( !IsEs() && gl.MultiDrawElementsIndirectCount )
 		have.Add( Capability::kDrawIndirectCount );
 	CapabilitySet claimed;
@@ -604,6 +610,9 @@ DeviceResult<TextureId> GlDevice::CreateTexture( const TextureDesc &desc )
 	if ( IsBlockCompressed( desc.format ) &&
 	     !m_Facts.capabilities.Has( Capability::kTextureCompressionBC ) )
 		return Fail( DeviceStatus::kUnsupported, op );
+	if ( desc.dimension == TextureDimension::kCube && desc.depthOrLayers > 6 &&
+	     !m_Facts.capabilities.Has( Capability::kCubeArrays ) )
+		return Fail( DeviceStatus::kUnsupported, op );
 	const bool attachment = desc.usages.Has( ResourceUsage::kColorAttachment ) ||
 	                        desc.usages.Has( ResourceUsage::kDepthWrite ) ||
 	                        desc.usages.Has( ResourceUsage::kDepthRead ) ||
@@ -850,10 +859,10 @@ MemoryBudgetSnapshot GlDevice::ReadMemoryBudget() const
 	for ( const auto &entry : m_Textures )
 	{
 		const TextureDesc &desc = entry.second.desc;
-		const std::uint64_t layers = desc.dimension == TextureDimension::kCube
-		                                 ? 6u
-		                                 : ( desc.dimension == TextureDimension::k3D ? 1u
-		                                                                             : desc.depthOrLayers );
+		const std::uint64_t layers =
+		    desc.dimension == TextureDimension::kCube
+		        ? std::uint64_t( desc.depthOrLayers )
+		        : ( desc.dimension == TextureDimension::k3D ? 1u : desc.depthOrLayers );
 		for ( std::uint32_t mip = 0; mip < desc.mipLevels; ++mip )
 		{
 			const std::uint32_t width = std::max( 1u, desc.width >> mip );

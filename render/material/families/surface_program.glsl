@@ -207,14 +207,19 @@ layout( set = 1, binding = 15 ) uniform sampler sceneColorSampler;
 layout( set = 0, binding = 3 ) uniform texture2D ltcTexture;
 layout( set = 0, binding = 4 ) uniform sampler ltcSampler;
 // The map's probe volume (PRBV: its atlas and grid table) and reflection
-// probes (RPRB, WriteReflectionProbeTexture's form), read under
+// probes (RPRB v8: the BC6H radiance cube array and the probe buffer of
+// WriteReflectionProbeBuffer; the core does not relight probes), read under
 // kProbeVolume and kReflectionProbes.
 layout( set = 0, binding = 5 ) uniform texture2D probeAtlas;
 layout( set = 0, binding = 6 ) uniform sampler probeAtlasSampler;
 layout( set = 0, binding = 7 ) uniform texture2D probeGrids;
 layout( set = 0, binding = 8 ) uniform sampler probeGridsSampler;
-layout( set = 0, binding = 9 ) uniform texture2D reflectionProbes;
+layout( set = 0, binding = 9 ) uniform textureCubeArray reflectionProbes;
 layout( set = 0, binding = 10 ) uniform sampler reflectionProbesSampler;
+layout( std430, set = 0, binding = 13 ) readonly buffer ReflectionProbeBuffer
+{
+	uint reflectionProbeWords[];
+};
 // The projected lights' bounce: an atlas of the probe atlas's layout, with
 // its sampler (linear, clamped, as the probe atlas's).
 layout( set = 0, binding = 11 ) uniform texture2D probeSecondAtlas;
@@ -223,17 +228,17 @@ layout( set = 0, binding = 12 ) uniform sampler probeSecondSampler;
 #define PROBE_VOLUME_SECOND_SAMPLER probeSecondSampler
 #include "../../shaders/common/probe_volume.glsl"
 
-vec4 ReflectionProbesFetch( ivec2 texel )
+uint ReflectionProbesWord( uint index )
 {
-	return texelFetch( sampler2D( reflectionProbes, reflectionProbesSampler ), texel, 0 );
+	return reflectionProbeWords[index];
 }
 
-vec4 ReflectionProbesSample( vec2 texel )
+vec4 ReflectionProbesRadianceFetch( vec3 direction, float layer, float lod )
 {
-	return textureLod( sampler2D( reflectionProbes, reflectionProbesSampler ),
-	    texel / vec2( textureSize( sampler2D( reflectionProbes, reflectionProbesSampler ), 0 ) ),
-	    0.0 );
+	return textureLod( samplerCubeArray( reflectionProbes, reflectionProbesSampler ),
+	    vec4( direction, layer ), lod );
 }
+
 #include "../../shaders/common/reflection_probes.glsl"
 #include "surface_material.glsl"
 layout( set = 2, binding = 1 ) uniform texture2D baseTexture;
@@ -1337,12 +1342,11 @@ void PbrSurface( out float coverage )
 		vec3 radiance;
 		if ( ( kDebugView == 24 || kDebugView == 27 ) && !furnace && Term( kReflectionProbes ) )
 		{
-			const vec4 header = ReflectionProbesFetch( ivec2( 0, 0 ) );
-			const vec4 mode = ReflectionProbesFetch( ivec2( 1, 0 ) );
-			probeRankDivisor = header.x > 16.0 ? 128.0 : 32.0;
-			probeHeader = vec3( clamp( header.x / 64.0, 0.0, 1.0 ),
-			    clamp( mode.x / 7.0, 0.0, 1.0 ),
-			    header.w == kReflectionProbesMarker ? 1.0 : 0.0 );
+			const float count = float( ReflectionProbesWord( 0u ) );
+			const float mode = float( ReflectionProbesWord( 4u ) );
+			probeRankDivisor = count > 16.0 ? 128.0 : 32.0;
+			probeHeader = vec3( clamp( count / 64.0, 0.0, 1.0 ), clamp( mode / 7.0, 0.0, 1.0 ),
+			    count >= 1.0 ? 1.0 : 0.0 );
 		}
 		if ( furnace || !Term( kReflectionProbes ) )
 		{
@@ -1352,9 +1356,7 @@ void PbrSurface( out float coverage )
 		else if ( !ReflectionProbesRadianceDebug( worldPosition, smoothNormal, reflected,
 		              roughness, radiance, probeSelection ) )
 		{
-			const vec4 header = ReflectionProbesFetch( ivec2( 0, 0 ) );
-			if ( header.w == kReflectionProbesMarker )
-				probeSelection.x = header.x < 1.0 ? -3.0 : -4.0;
+			probeSelection.x = ReflectionProbesWord( 0u ) < 1u ? -3.0 : -4.0;
 			radiance = AmbientCube( reflected );
 		}
 		probeRadiance = radiance;

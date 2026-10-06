@@ -649,7 +649,7 @@ def door(out):
     # R50-PARALLAX: parallax-corrected, blended reflection probes (the
     # gi-fixture profile has none): placement gives each room its own probe,
     # rendered with the fixture's light paths.
-    manifest["reflection_probe"] = {"width": 512, "face_size": 256, "samples": 256,
+    manifest["reflection_probe"] = {"cube_size": 256, "face_size": 256, "samples": 256,
                                     "light_paths": "gi-reference"}
     write_json(directory / "map.json", manifest)
 

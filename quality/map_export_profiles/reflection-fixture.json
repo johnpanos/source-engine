@@ -12,7 +12,7 @@
   },
   "probe_volume": null,
   "reflection_probe": {
-    "width": 1024,
+    "cube_size": 512,
     "face_size": 256,
     "samples": 64,
     "light_paths": "gi-reference"

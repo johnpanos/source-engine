@@ -921,6 +921,15 @@ Keep the table concise and link details below or from the domain progress file.
     `sp_a1_intro4_probe64`. Core-world image and container checks pass;
     coverage and proxy-fit export checks still fail. R50 remains partial
     ([evidence](RFC/0007-progress.md#r50-intro4-artistic-probes-2026-10-01)).
+- R50-CUBE (RPRB v8): `partial` (2026-10-06, user goal; Frozen-path change
+  approved by the user), a bounded R50/K11/K12 slice. RPRB is one BC6H cube
+  array (a cube per probe, GGX mips, probe metadata in a storage buffer)
+  sampled natively by the render core, the lab and the frozen backend; the
+  v7 equirect strip atlas is deleted and v7 is refused. Device clause D36
+  (`kCubeArrays`); lab `reflection-probes` 40 checks, 7 of 7 seeded defects
+  detected. Open: game captures and the resolution sweep on intro4, mobile and
+  Apple runs. See the
+  [record](RFC/0016-progress.md#rprb-v8-reflection-probes-as-a-bc6h-cube-array-2026-10-06-user-goal-r50k11k12).
 - R50-RELIGHT: `partial` (2026-09-25, user goal; RFC 0011 decision 5), a
   bounded R50 slice. Baked probes are relit, so runtime light reaches
   specular:

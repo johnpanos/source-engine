@@ -371,9 +371,8 @@ private:
 		// which a stage set later starts from.
 		std::vector<std::byte> change;
 		std::optional<pass::world::StageProbeVolume> table;
-		std::uint32_t reflectionWidth = 0;
-		std::uint32_t reflectionHeight = 0;
-		std::vector<std::byte> reflection;
+		// The map's RPRB v8 probes: the probe buffer and the cube data as stored.
+		std::optional<pass::world::StageReflectionProbes> reflection;
 
 	private:
 		CoreWorld &m_Owner;
@@ -682,6 +681,8 @@ private:
 	std::atomic<std::uint64_t> m_ShadowTilesKept{ 0 };
 	std::atomic<std::uint64_t> m_ShadowTilesShared{ 0 };
 	std::atomic<std::uint64_t> m_ShadowTilesMoving{ 0 }; // tiles movers were drawn in
+	// Shadowed lights a view's atlas plan left without tiles (view thread).
+	std::atomic<std::uint64_t> m_ShadowLightsUnshadowed{ 0 };
 	const resources::MeshEntry *BoxCasterMesh();
 	std::vector<Atlas> m_Atlases;
 	std::size_t m_AtlasNext = 0;

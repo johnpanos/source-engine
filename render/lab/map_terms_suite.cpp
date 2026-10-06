@@ -510,13 +510,13 @@ std::optional<std::string> LightmapChecks( Lab &lab, Results &results )
 std::optional<std::string> ReflectionProbeChecks( Lab &lab, Results &results )
 {
 	const std::vector<unsigned char> bytes = Load( "quality/fixtures/reflection/rprb/valid.rprb" );
-	mapcontainer::ReflectionProbesLayout layout{};
-	std::vector<std::byte> decoded;
-	if ( std::optional<std::string> why =
-	         StageReflectionProbes( lab.textures, "mt/probes", std::as_bytes( std::span( bytes ) ),
-	             mapcontainer::ReflectionProbeMode::Blend, true, layout, &decoded ) )
+	StagedReflectionProbes staged;
+	if ( std::optional<std::string> why = StageReflectionProbes( lab.textures, staged.radiance,
+	         std::as_bytes( std::span( bytes ) ), mapcontainer::ReflectionProbeMode::Blend, true,
+	         staged ) )
 		return why;
-	const mapcontainer::ReflectionProbesView probes( decoded.data(), layout );
+	const mapcontainer::ReflectionProbesLayout &layout = staged.decodedLayout;
+	const mapcontainer::ReflectionProbesView probes( staged.decoded.data(), layout );
 	// The fixture room's floor (6 x 4 m), seen from above its middle.
 	const float low[2] = { 0.0f, 0.0f }, high[2] = { 236.0f, 157.0f };
 	const View view = MakeView( { 118, 78, 100 }, { 150, 78, 0 }, { 0, 0, 1 }, 1.0f );
@@ -532,22 +532,24 @@ std::optional<std::string> ReflectionProbeChecks( Lab &lab, Results &results )
 		s.textures.base = "mt/base";
 		s.textures.mrao = "mt/metal";
 		s.map.reflectionProbes = std::move( texture );
+		if ( !s.map.reflectionProbes.empty() )
+			s.map.reflectionBuffer = staged.buffer;
 		s.vertices = model ? ModelQuad( 0.0f, low, high ) : WorldQuad( 0.0f, low, high );
 		s.view = &view;
 		s.debug = specular;
 		return s;
 	};
 	CanvasImage lit, off, unmarked, modelLit, modelOff, modelShipped, modelGlass, modelMasked;
-	if ( std::optional<std::string> why = Render( lab, scene( true, "mt/probes" ), lit ) )
+	if ( std::optional<std::string> why = Render( lab, scene( true, staged.radiance ), lit ) )
 		return why;
-	if ( std::optional<std::string> why = Render( lab, scene( false, "mt/probes" ), off ) )
+	if ( std::optional<std::string> why = Render( lab, scene( false, staged.radiance ), off ) )
 		return why;
 	if ( std::optional<std::string> why = Render( lab, scene( true, "" ), unmarked ) )
 		return why;
 	CanvasImage selection, rawRadiance, probeWeight, probeHeader;
 	auto probeView = [&]( shaderlib::DebugView debug, CanvasImage &image )
 	{
-		Scene s = scene( true, "mt/probes" );
+		Scene s = scene( true, staged.radiance );
 		s.debug.view = std::uint32_t( debug );
 		return Render( lab, s, image );
 	};
@@ -593,12 +595,12 @@ std::optional<std::string> ReflectionProbeChecks( Lab &lab, Results &results )
 		    out[2] = first < 0 ? 1.0f : weights[first];
 	    } );
 	if ( std::optional<std::string> why =
-	         Render( lab, scene( true, "mt/probes", true ), modelLit ) )
+	         Render( lab, scene( true, staged.radiance, true ), modelLit ) )
 		return why;
 	if ( std::optional<std::string> why =
-	         Render( lab, scene( false, "mt/probes", true ), modelOff ) )
+	         Render( lab, scene( false, staged.radiance, true ), modelOff ) )
 		return why;
-	Scene shipped = scene( true, "mt/probes", true );
+	Scene shipped = scene( true, staged.radiance, true );
 	shipped.debug = {};
 	if ( std::optional<std::string> why = Render( lab, shipped, modelShipped ) )
 		return why;
@@ -608,7 +610,7 @@ std::optional<std::string> ReflectionProbeChecks( Lab &lab, Results &results )
 	glass.constants.tint[3] = 0.5f;
 	if ( std::optional<std::string> why = Render( lab, glass, modelGlass ) )
 		return why;
-	Scene masked = scene( true, "mt/probes", true );
+	Scene masked = scene( true, staged.radiance, true );
 	masked.constants.meshProbeColor[3] = 1.0f;
 	masked.textures.envmapMask = "mt/probe-mask";
 	if ( std::optional<std::string> why = Render( lab, masked, modelMasked ) )

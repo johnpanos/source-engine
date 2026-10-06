@@ -1,11 +1,10 @@
-# offset format value error (reflection_probe_set.RELIGHT_MALFORMATIONS)
+# offset format value error (reflection_probe_set.relight_malformations)
 52 I 3 UnsupportedVersion
-24 I 32 InvalidAtlas
-140 I 48 InvalidRecord
+20 I 8 InvalidAtlas
+140 I 1 InvalidRecord
 220 I 0 InvalidRecord
-268568 e 1.5 InvalidTexels
-268574 e 0.0 InvalidTexels
-268574 e -2.0 InvalidTexels
-276762 e 1.5 InvalidTexels
-276766 e 0.5 InvalidTexels
-269040 e 0.5 InvalidTexels
+266664 e 1.5 InvalidTexels
+266670 e 0.0 InvalidTexels
+266670 e -2.0 InvalidTexels
+297386 e 1.5 InvalidTexels
+297390 e 0.5 InvalidTexels

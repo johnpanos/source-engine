@@ -4568,6 +4568,11 @@ static float WorldMeshF32( const unsigned char *pBytes )
 	return value;
 }
 
+static ConVar r_reflection_probe_mip_drop( "r_reflection_probe_mip_drop", "-1", 0,
+    "Top mips of the map's reflection probe cube array left out at the next map load (each "
+    "halves the faces and quarters their memory): -1 follows mat_picmip, 0 keeps them all; at "
+    "least four mips stay" );
+
 // R50-PARALLAX: the map's RPRB reflection probes, uploaded in their GPU form.
 // Optional: a missing, malformed or unverifiable lump leaves the map playable
 // and its world samples the lightmap's legacy probe band, if any.
@@ -4600,12 +4605,11 @@ static void UploadWorldReflectionProbes( world_mesh_gpu::IWorldMeshUpload *uploa
 		remove();
 		return;
 	}
-	// v7's radiance bands are BC6H blocks; the GPU table takes the decoded
-	// RGBA16F atlas.
+	// RPRB v8: the probe buffer the shaders read, and the cube data (BC6H
+	// radiance, then the relight arrays) passed through as stored.
 	mapcontainer::ReflectionProbesLayout layout{};
-	std::vector<std::byte> decoded;
 	const mapcontainer::ReflectionProbesError error =
-	    mapcontainer::DecodeReflectionProbes( bytes.Base(), bytes.Count(), &decoded, &layout );
+	    mapcontainer::ValidateReflectionProbes( bytes.Base(), bytes.Count(), &layout );
 	if ( error != mapcontainer::ReflectionProbesError::Ok )
 	{
 		Warning( "Map %s: RPRB rejected (%s)\n", s_szMapName,
@@ -4619,26 +4623,32 @@ static void UploadWorldReflectionProbes( world_mesh_gpu::IWorldMeshUpload *uploa
 		remove();
 		return;
 	}
+	// The texture setting drops the cube array's top mips (mat_picmip 1 halves
+	// its faces, 2 quarters them), keeping at least four.
+	static ConVarRef mat_picmip( "mat_picmip" );
+	const int drop = r_reflection_probe_mip_drop.GetInt() >= 0
+	                     ? r_reflection_probe_mip_drop.GetInt()
+	                     : std::max( mat_picmip.GetInt(), 0 );
+	const uint32_t baseMip = mapcontainer::ReflectionProbeBaseMip( layout.mipCount, uint32_t( drop ) );
+	std::vector<uint32_t> buffer( mapcontainer::ReflectionProbeBufferWords( layout ) );
+	mapcontainer::WriteReflectionProbeBuffer( bytes.Base(), layout,
+	    mapcontainer::ReflectionProbeMode::Blend, buffer.data(), true, baseMip );
 	world_mesh_gpu::ReflectionProbesUploadRequest request;
-	request.width = mapcontainer::ReflectionProbeTextureWidth( layout );
-	request.height = mapcontainer::ReflectionProbeTextureRows( layout );
 	request.probeCount = layout.count;
-	const uint64 texelValues = uint64( request.width ) * request.height * 4;
-	if ( texelValues > INT_MAX )
-	{
-		Warning( "Map %s: RPRB GPU texture exceeds upload allocation range\n", s_szMapName );
-		remove();
-		return;
-	}
-	CUtlVector<uint16> texels;
-	texels.SetCount( int( texelValues ) );
-	mapcontainer::WriteReflectionProbeTexture(
-	    decoded.data(), layout, mapcontainer::ReflectionProbeMode::Blend, texels.Base() );
-	request.texels = texels.Base();
+	request.mipCount = layout.mipCount;
+	request.faceSize = layout.faceSize;
+	request.relight = layout.relight;
+	request.baseMip = baseMip;
+	request.buffer = buffer.data();
+	request.bufferWords = uint32_t( buffer.size() );
+	request.data = bytes.Base() + layout.dataOffset;
+	request.dataBytes = layout.dataBytes;
+	request.radianceBytes = layout.radianceBlockBytes;
 	if ( uploader->UploadReflectionProbes( request ) )
-		Msg( "Map %s: RPRB v%u, %u reflection probe%s, %u mips from %u wide%s\n", s_szMapName,
-		    lump.version, layout.count, layout.count == 1 ? "" : "s", layout.mipCount,
-		    layout.width, layout.relight ? ", relightable" : "" );
+		Msg( "Map %s: RPRB v%u, %u reflection probe%s, %u mips from %u-texel cube faces "
+		     "(uploaded from mip %u)%s\n",
+		    s_szMapName, lump.version, layout.count, layout.count == 1 ? "" : "s",
+		    layout.mipCount, layout.faceSize, baseMip, layout.relight ? ", relightable" : "" );
 	else
 		Warning( "Map %s: RPRB upload failed; no parallax-corrected probes\n", s_szMapName );
 }

@@ -320,10 +320,12 @@ public:
 	bool UploadReflectionProbes(
 	    const world_mesh_gpu::ReflectionProbesUploadRequest &request ) override
 	{
-		const bool accepted = m_pProvider->UploadReflectionProbes( request );
-		if ( accepted )
-			m_pStage->UploadReflectionProbes( request );
-		return accepted;
+		// Both take the probes on their own terms: the frozen backend may
+		// decline RPRB v8 (cube arrays) while the core draws them, so the core
+		// gets them whatever the backend answers. Accepted when either took them.
+		const bool provider = m_pProvider->UploadReflectionProbes( request );
+		const bool core = m_pStage->UploadReflectionProbes( request );
+		return provider || core;
 	}
 	bool DrawBatch( uint32_t firstIndex, uint32_t indexCount ) override
 	{

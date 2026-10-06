@@ -153,6 +153,26 @@ struct StageProbeVolume
 	std::vector<float> table; // RGBA32F texels
 };
 
+// The map's RPRB v8 reflection probes as the core reads them
+// (render/shaders/common/reflection_probes.glsl): a probe buffer (the
+// mapcontainer::WriteReflectionProbeBuffer words) and cube arrays whose
+// subresources are in the lump's order, mip-major, then probe layer, then
+// face: BC6H radiance blocks and, with `relight`, the RGBA16F albedo and
+// normal arrays (albedo rgb + ray distance; normal xyz + 1). The pass uploads
+// them as they are when the device samples BC6H cube arrays, else it expands
+// the blocks to RGBA16F by the same layout (a named fallback).
+struct StageReflectionProbes
+{
+	std::uint32_t count = 0;
+	std::uint32_t mips = 0;
+	std::uint32_t face = 0; // mip 0's face size
+	bool relight = false;
+	std::uint32_t baseMip = 0; // the first of `mips` that `radiance` holds (the probe buffer's word 7)
+	std::vector<std::uint32_t> buffer;
+	std::vector<std::byte> radiance;    // BC6H, count * 6 faces per mip
+	std::vector<std::byte> relightData; // RGBA16F albedo array, then normal array; empty without
+};
+
 // A world stage (RFC 0016 K12, "Draw what the lab draws"): a BSP2 map's world
 // mesh (WMSH), drawn as the lab draws it. Its surfaces are the mesh's
 // meshlets; its materials resolve with world pbr (the pbr point on the world
@@ -168,9 +188,7 @@ struct WorldStage
 	// when the bake wrote none), the same size and kind as the total's.
 	LightmapPages indirect;
 	std::optional<StageProbeVolume> probes;
-	std::uint32_t reflectionWidth = 0;
-	std::uint32_t reflectionHeight = 0;
-	std::vector<std::byte> reflectionProbes; // RGBA16F (WriteReflectionProbeTexture); empty without
+	std::optional<StageReflectionProbes> reflection; // the map's RPRB (v8); absent without
 };
 
 struct WorldData

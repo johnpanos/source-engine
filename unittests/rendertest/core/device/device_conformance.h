@@ -2465,6 +2465,77 @@ inline void MultisampleClauses( Suite &s, IRenderDevice2 &device )
 	Raster( s, right, "multisample", "the back-facing quad is culled (CCW front, Y up)" );
 }
 
+// D36 cube arrays: without kCubeArrays a kCube texture of more than six layers
+// fails kUnsupported, and a cube whose layers are not a multiple of six fails
+// kInvalidDescription. With it, a two-cube array (12 faces of 4x4 RGBA8, two
+// mips) takes every face by layer index: distinct bytes copied in face by face
+// and back read unchanged, so no layer aliases another.
+inline void CubeArrays( Suite &s )
+{
+	auto device = s.Create();
+	if ( !device )
+		return;
+	TextureDesc desc;
+	desc.dimension = TextureDimension::kCube;
+	desc.format = Format::kRGBA8Unorm;
+	desc.width = desc.height = 4;
+	desc.depthOrLayers = 12;
+	desc.mipLevels = 2;
+	desc.usages = {
+	    ResourceUsage::kSampled, ResourceUsage::kCopyDestination, ResourceUsage::kCopySource };
+	TextureDesc odd = desc;
+	odd.depthOrLayers = 7;
+	auto bad = device->CreateTexture( odd );
+	s.That( !bad && bad.Error().status == DeviceStatus::kInvalidDescription, "D36",
+	    "a cube of seven layers fails kInvalidDescription" );
+	if ( !device->Facts().capabilities.Has( Capability::kCubeArrays ) )
+	{
+		auto made = device->CreateTexture( desc );
+		s.That( !made && made.Error().status == DeviceStatus::kUnsupported, "D36",
+		    "without kCubeArrays a cube array fails kUnsupported" );
+		return;
+	}
+	auto texture = device->CreateTexture( desc );
+	if ( !s.That( texture.HasValue(), "D36", "a cube array is created" ) )
+		return;
+	const std::uint64_t face0 = 4 * 4 * 4, face1 = 2 * 2 * 4;
+	const std::uint64_t perMip0 = 12 * face0, bytes = perMip0 + 12 * face1;
+	const std::vector<std::byte> pattern = Pattern( bytes, 32 );
+	const BufferId source =
+	    s.Buffer( *device, bytes, { ResourceUsage::kCopyDestination, ResourceUsage::kCopySource } );
+	const BufferId out =
+	    s.Buffer( *device, bytes, { ResourceUsage::kCopyDestination, ResourceUsage::kCopySource } );
+	auto encoder = device->BeginEncoder( QueueKind::kGraphics );
+	if ( !encoder )
+		return;
+	CommandEncoder &e = encoder.Value();
+	const TextureId id = texture.Value();
+	e.TransitionBuffer( source, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+	e.WriteBuffer( source, 0, pattern );
+	e.TransitionBuffer( source, ResourceUsage::kCopyDestination, ResourceUsage::kCopySource );
+	e.TransitionTexture( id, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+	for ( std::uint32_t layer = 0; layer < 12; ++layer )
+	{
+		e.CopyBufferToTexture( source, id, { layer * face0, 0, layer, 4, 4 } );
+		e.CopyBufferToTexture( source, id, { perMip0 + layer * face1, 1, layer, 2, 2 } );
+	}
+	e.TransitionTexture( id, ResourceUsage::kCopyDestination, ResourceUsage::kCopySource );
+	e.TransitionBuffer( out, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+	for ( std::uint32_t layer = 0; layer < 12; ++layer )
+	{
+		e.CopyTextureToBuffer( id, out, { layer * face0, 0, layer, 4, 4 } );
+		e.CopyTextureToBuffer( id, out, { perMip0 + layer * face1, 1, layer, 2, 2 } );
+	}
+	e.TransitionBuffer( out, ResourceUsage::kCopyDestination, ResourceUsage::kCopySource );
+	const std::optional<CompletionToken> token = s.Run( *device, e );
+	const bool finished = token && s.Finish( *device, *token );
+	s.That( finished && s.ReadBack( *device, out, bytes ) == pattern, "D36",
+	    "all twelve faces of both mips copy in and back unchanged, by layer" );
+	(void)device->Release( id, token.value_or( CompletionToken{} ) );
+	(void)device->Release( source, token.value_or( CompletionToken{} ) );
+	(void)device->Release( out, token.value_or( CompletionToken{} ) );
+}
+
 // D30 multi-draw indirect and D31 indirect count. Every adapter: a claimed
 // capability accepts well-formed calls, and refuses records outside the
 // buffer, a short stride, a buffer not in kIndirect and (D31) a count outside
@@ -2708,6 +2779,7 @@ inline void RunDeviceConformance( testing::Checks &checks, const DeviceDriver &d
 	detail::RegionCopies( suite );
 	detail::Timestamps( suite );
 	detail::IndirectDraws( suite );
+	detail::CubeArrays( suite );
 	detail::ComparisonSampling( suite );
 	detail::CapabilityHonesty( suite );
 }

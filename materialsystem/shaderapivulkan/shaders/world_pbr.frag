@@ -61,15 +61,6 @@ layout( push_constant ) uniform Constants
 }
 consts;
 
-// R50-RELIGHT: with a change to relight by (the producer's change volume or
-// the unbaked lights), the map's probes that carry relight bands are relit
-// (ReflectionProbeDiffuseLight, below). Every lookup is relit, whatever its
-// weight: a matte dielectric reflects only a few percent of what it sees, but
-// where the room goes dark (a door closes) that unrelit few percent is all
-// the pixel shows.
-#if defined( DELTA_VOLUME ) || defined( DIRECT_LIGHTS )
-#define REFLECTION_PROBE_RELIGHT
-#endif
 #include "world_pbr_probe.glsl"
 #include "../../../render/shaders/common/lightmap_basis.glsl"
 
@@ -121,8 +112,6 @@ layout( set = 0, binding = 2 ) uniform sampler2D producerIndirect;
 layout( set = 0, binding = 2 ) uniform sampler2D probeAtlas; // the change, PRBV layout
 layout( set = 0, binding = 3 ) uniform sampler2D probeGrids; // grid table, RGBA32F
 // The published (runtime) volume, which relit probes read beside the change.
-layout( set = 0, binding = 6 ) uniform sampler2D probeSecondAtlas;
-#define PROBE_VOLUME_SECOND
 #include "probe_volume.glsl"
 
 // The producer's change of indirect diffuse light at `position` along `normal`.
@@ -312,46 +301,6 @@ vec3 DirectLightRadiance( vec3 normal, vec3 view, vec3 diffuseAlbedo, vec3 f0, f
 		total += lit;
 	}
 	return total;
-}
-#endif
-
-#ifdef REFLECTION_PROBE_RELIGHT
-// R50-RELIGHT: the diffuse light at a relight band's point now and as baked,
-// in the bake's unit. With the change volume: the published volume's total
-// (the producer's field, its direct light cut by moving occluders), and the
-// bake's as that less the total change. The unbaked lights' shadowed direct
-// light is light added now.
-void ReflectionProbeDiffuseLight( vec3 position, vec3 normal, out vec3 now, out vec3 baked )
-{
-	now = vec3( 0.0 );
-	baked = vec3( 0.0 );
-#ifdef DELTA_VOLUME
-	vec3 change;
-	if ( ProbeIrradiancePair( position, normal, 0, true, change, now ) )
-		baked = now - change;
-#endif
-#ifdef DIRECT_LIGHTS
-	now += DirectLightDiffuseAt( position, normal );
-#endif
-}
-
-int ReflectionProbeOccluderCount()
-{
-#ifdef DELTA_VOLUME
-	return ProbeOccluderCount();
-#else
-	return 0;
-#endif
-}
-
-void ReflectionProbeOccluder( int k, out vec3 lo, out vec3 hi, out float reflectance )
-{
-#ifdef DELTA_VOLUME
-	ProbeOccluder( k, lo, hi, reflectance );
-#else
-	lo = hi = vec3( 0.0 );
-	reflectance = 0.0;
-#endif
 }
 #endif
 

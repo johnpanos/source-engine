@@ -234,7 +234,11 @@ struct Resources
 	// buffer.
 	TextureId neutralWhite;
 	TextureId neutralCube;
-	TextureId neutralArray; // two layers, for a binding read as an array
+	TextureId neutralCubeArray; // two cubes, for a binding read as a cube array
+	TextureId neutralArray;     // two layers, for a binding read as an array
+	// The map's RPRB probe buffer (WriteReflectionProbeBuffer words), shared
+	// with every frame group request.
+	std::shared_ptr<const std::vector<std::byte>> reflectionBuffer;
 	TextureId neutralDepth; // far depth for an absent shadow atlas
 	BufferId neutralStaging;
 	bool uploaded = false;
@@ -275,7 +279,7 @@ std::uint32_t StageTerms( const WorldStage &stage, bool runtimeDirect )
 	inputs.indirectDirectionalLightmap = stage.indirect.Directional();
 	inputs.probeVolume = stage.probes.has_value();
 	inputs.probeBounce = stage.probes.has_value(); // the change atlas is always supplied
-	inputs.reflectionProbes = !stage.reflectionProbes.empty();
+	inputs.reflectionProbes = stage.reflection.has_value();
 	inputs.ambientOcclusion = true; // the neutral view binds one when AO is off
 	return material::SceneTerms( inputs );
 }
@@ -846,6 +850,8 @@ struct WorldPass::State
 				(void)device->Release( old.neutralWhite, after );
 			if ( old.neutralCube.IsValid() )
 				(void)device->Release( old.neutralCube, after );
+			if ( old.neutralCubeArray.IsValid() )
+				(void)device->Release( old.neutralCubeArray, after );
 			if ( old.neutralDepth.IsValid() )
 				(void)device->Release( old.neutralDepth, after );
 			if ( old.neutralArray.IsValid() )
@@ -894,13 +900,12 @@ void WorldPass::SetWorld( WorldData data )
 			claimed = std::move( mapped ).Value();
 			// Static meshes use the same surface program with model vertices,
 			// probes and clustered direct light instead of a lightmap page.
-			auto blend = source.mesh
-			                 ? material::ClaimForMesh( claimed.desc,
-			                       data.stage && !data.stage->reflectionProbes.empty(),
-			                       data.stage != nullptr )
-			                 : material::ClaimForDrawing( claimed.desc, data.stage != nullptr,
-			                       nullptr,
-			                       data.stage && !data.stage->reflectionProbes.empty() );
+			auto blend =
+			    source.mesh
+			        ? material::ClaimForMesh( claimed.desc,
+			              data.stage && data.stage->reflection.has_value(), data.stage != nullptr )
+			        : material::ClaimForDrawing( claimed.desc, data.stage != nullptr, nullptr,
+			              data.stage && data.stage->reflection.has_value() );
 			if ( !blend )
 				gap = claimed.desc.family + ": " + blend.Error();
 			else if ( !source.mesh && blend.Value() != BlendMode::kOpaque )
@@ -1277,11 +1282,11 @@ std::uint32_t WorldPass::QueueView( WorldView view )
 			bool requiresDepthAlpha = false;
 			auto claim = draw.material.mesh
 			                 ? material::ClaimForMesh( mapped.Value().desc,
-			                       s.world->stage && !s.world->stage->reflectionProbes.empty(),
+			                       s.world->stage && s.world->stage->reflection.has_value(),
 			                       s.world->stage != nullptr )
 			                 : material::ClaimForDrawing( mapped.Value().desc,
 			                       s.world->stage != nullptr, &requiresDepthAlpha,
-			                       s.world->stage && !s.world->stage->reflectionProbes.empty() );
+			                       s.world->stage && s.world->stage->reflection.has_value() );
 			if ( !claim )
 				why = claim.Error();
 			else if ( requiresDepthAlpha &&
@@ -2238,6 +2243,78 @@ void WorldPass::RecordBatch(
 		r.stageDescs[name] = desc;
 		return stageUpload( texture.Value(), desc, bytes, ResourceUsage::kUndefined );
 	};
+	// The map's reflection probes (RPRB v8): the BC6H radiance cube array,
+	// uploaded as the lump stores it (a copy per mip, probe and face, from one
+	// initialized upload buffer), and the probe buffer's bytes for the frame
+	// groups. A device without BC6H cube arrays refuses the stage by name.
+	auto stageMakeReflection = [&]( const StageReflectionProbes &probes ) -> bool
+	{
+		const CapabilitySet caps = device.Facts().capabilities;
+		if ( !caps.Has( Capability::kTextureCompressionBC ) ||
+		     !caps.Has( Capability::kCubeArrays ) )
+		{
+			s.Fail( "the map's reflection probes need BC6H cube arrays, which the device lacks" );
+			return false;
+		}
+		if ( probes.count == 0 || probes.count > 256 || probes.mips == 0 || probes.face == 0 ||
+		     ( probes.face >> ( probes.mips - 1 ) ) < 4 || probes.buffer.empty() ||
+		     probes.baseMip >= probes.mips )
+			return false;
+		// The array holds the mips from baseMip on (a texture setting drops the
+		// top ones); the probe buffer's word 7 shifts the shader's lods.
+		const std::uint32_t face = probes.face >> probes.baseMip;
+		const std::uint32_t mips = probes.mips - probes.baseMip;
+		std::uint64_t total = 0;
+		for ( std::uint32_t mip = 0; mip < mips; ++mip )
+			total += std::uint64_t( probes.count ) * 6 *
+			         device::RegionBytes( Format::kBC6HUfloat, face >> mip, face >> mip );
+		if ( probes.radiance.size() != total )
+			return false;
+		TextureDesc desc;
+		desc.dimension = TextureDimension::kCube;
+		desc.format = Format::kBC6HUfloat;
+		desc.width = desc.height = face;
+		// Two cubes at least: one probe's six layers would be a plain cube, not
+		// the cube array the program reads (the second cube is never indexed).
+		desc.depthOrLayers = 6 * std::max( probes.count, 2u );
+		desc.mipLevels = mips;
+		desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kSampled };
+		desc.debugName = "world reflection probes";
+		auto texture = device.CreateTexture( desc );
+		if ( !texture )
+			return false;
+		r.stageTextures[kStageReflection] = texture.Value();
+		desc.debugName = {};
+		r.stageDescs[kStageReflection] = desc;
+		auto buffer = device.CreateUploadBuffer( probes.radiance );
+		if ( !buffer )
+			return false;
+		s.retiredBuffers.emplace_back( target.frame, buffer.Value() );
+		encoder.TransitionTexture(
+		    texture.Value(), ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+		std::uint64_t offset = 0;
+		for ( std::uint32_t mip = 0; mip < mips; ++mip )
+		{
+			const std::uint32_t size = face >> mip;
+			const std::uint64_t faceBytes = device::RegionBytes( Format::kBC6HUfloat, size, size );
+			for ( std::uint32_t layer = 0; layer < 6 * probes.count; ++layer )
+			{
+				TextureBufferCopy copy;
+				copy.bufferOffset = offset;
+				copy.mip = mip;
+				copy.layer = layer;
+				copy.width = copy.height = size;
+				encoder.CopyBufferToTexture( buffer.Value(), texture.Value(), copy );
+				offset += faceBytes;
+			}
+		}
+		encoder.TransitionTexture(
+		    texture.Value(), ResourceUsage::kCopyDestination, ResourceUsage::kSampled );
+		const std::byte *words = reinterpret_cast<const std::byte *>( probes.buffer.data() );
+		r.reflectionBuffer = std::make_shared<const std::vector<std::byte>>(
+		    words, words + probes.buffer.size() * sizeof( std::uint32_t ) );
+		return true;
+	};
 	// The grid table's rows, with room for the moving occluders' rows.
 	auto paddedTable = []( const StageProbeVolume &table, std::uint32_t rows )
 	{
@@ -2275,9 +2352,8 @@ void WorldPass::RecordBatch(
 			       stageMake( kStageProbeGrids, Format::kRGBA32Float, probes.tableTexels,
 			           probes.rows + kStageOccluderRows, std::as_bytes( std::span( table ) ) );
 		}
-		if ( made && !stage.reflectionProbes.empty() )
-			made = stageMake( kStageReflection, Format::kRGBA16Float, stage.reflectionWidth,
-			    stage.reflectionHeight, stage.reflectionProbes );
+		if ( made && stage.reflection )
+			made = stageMakeReflection( *stage.reflection );
 		for ( const auto &[name, table] : { std::pair{ kStageSplitSum, material::SplitSumTable() },
 		          std::pair{ kStageLtc, material::LtcTable() } } )
 		{
@@ -2493,10 +2569,11 @@ void WorldPass::RecordBatch(
 	// term is off wherever its neutral texture is bound; filling it keeps it defined.
 	auto neutral = [&]( TextureDimension dimension, bool array, bool depth ) -> TextureId
 	{
-		TextureId &slot = depth                                  ? r.neutralDepth
-		                  : dimension == TextureDimension::kCube ? r.neutralCube
-		                  : array                                ? r.neutralArray
-		                                                         : r.neutralWhite;
+		TextureId &slot = depth ? r.neutralDepth
+		                  : dimension == TextureDimension::kCube
+		                      ? ( array ? r.neutralCubeArray : r.neutralCube )
+		                  : array ? r.neutralArray
+		                          : r.neutralWhite;
 		if ( slot.IsValid() )
 			return slot;
 		if ( !r.neutralStaging.IsValid() )
@@ -2511,11 +2588,14 @@ void WorldPass::RecordBatch(
 		desc.dimension = dimension;
 		desc.format = depth ? Format::kD32Float : Format::kRGBA8Unorm;
 		desc.width = desc.height = 1;
-		desc.depthOrLayers = dimension == TextureDimension::kCube ? 6 : array ? 2 : 1;
+		desc.depthOrLayers = dimension == TextureDimension::kCube ? ( array ? 12 : 6 )
+		                     : array                              ? 2
+		                                                          : 1;
 		desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kSampled };
-		desc.debugName = dimension == TextureDimension::kCube ? "world neutral cube"
-		                 : array                              ? "world neutral array"
-		                                                      : "world neutral white";
+		desc.debugName = dimension == TextureDimension::kCube
+		                     ? ( array ? "world neutral cube array" : "world neutral cube" )
+		                 : array ? "world neutral array"
+		                         : "world neutral white";
 		auto texture = device.CreateTexture( desc );
 		if ( !texture )
 			return {};
@@ -2848,8 +2928,11 @@ void WorldPass::RecordBatch(
 			terms.map.probeBounce = r.stageTextures[kStageChange];
 			terms.map.probeBounceDesc = r.stageDescs[kStageChange];
 		}
-		if ( !world->stage->reflectionProbes.empty() )
+		if ( world->stage->reflection )
+		{
 			terms.map.reflectionProbes = kStageReflection;
+			terms.map.reflectionBuffer = r.reflectionBuffer;
+		}
 		// The view's sun.
 		if ( view.lights )
 		{

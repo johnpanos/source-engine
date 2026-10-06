@@ -58,12 +58,13 @@ def stripes(points):
                      0.2 + 0.8 * ((phase // 4) % 2)), axis=1)
 
 
-def probe_chain(scene, capture, width=256):
-    """A probe's mirror mip (the only one a roughness-0 lookup reads)."""
-    directions = reflection_probe.equirect_directions(width).reshape(-1, 3)
+def probe_chain(scene, capture, face=128):
+    """A probe's mirror mip (the only one a roughness-0 lookup reads), a
+    (6, face, face, 3) cube."""
+    directions = rps.fixture_directions(face)
     distance, _ = scene(np.tile(capture, (len(directions), 1)), directions, 1e4)
     radiance = stripes(capture + distance[:, None] * directions)
-    return [radiance.reshape(width // 2, width, 3)]
+    return [radiance.reshape(6, face, face, 3)]
 
 
 class ParallaxLookupTest(unittest.TestCase):
@@ -186,8 +187,8 @@ def two_probe_layout(scene=None):
         {"capture": np.array((4.5, 2.0, 1.6)), "box_min": np.array(ROOM[0]),
          "box_max": np.array(ROOM[1]), "influence_min": np.array((-0.15, -0.15, -0.15)),
          "influence_max": np.array((6.15, 4.15, 3.15)), "fade": 0.5, "global": True}]
-    chains = [probe_chain(scene, probe["capture"], 64) * 1 for probe in probes]
-    chains = [reflection_probe.mip_chain(chain[0], samples=8) for chain in chains]
+    chains = [probe_chain(scene, probe["capture"], 32) * 1 for probe in probes]
+    chains = [reflection_probe.cube_mip_chain(chain[0], samples=8) for chain in chains]
     return probes, chains
 
 
@@ -195,50 +196,53 @@ class RprbFormatTest(unittest.TestCase):
     def test_round_trip(self):
         probes, chains = two_probe_layout()
         layout = rps.read(rps.build(probes, chains))
-        self.assertEqual((layout["count"], layout["width"]), (2, 64))
+        self.assertEqual((layout["count"], layout["face"]), (2, 32))
         self.assertEqual(layout["global_index"], 1)
         self.assertEqual([p["rank"] for p in layout["probes"]], [0, 1])
         np.testing.assert_allclose(layout["probes"][0]["capture"],
                                    probes[0]["capture"] * rps.SOURCE_UNITS_PER_METER, rtol=1e-6)
-        # v7: the radiance chains are the BC6H blocks decoded (as halves);
-        # this fixture's saturated checker is BC6H's worst case, so quality is
-        # judged on smooth light below.
+        # The radiance cubes are the BC6H blocks decoded (as halves), mip-
+        # major, then probe, then face; this fixture's saturated checker is
+        # BC6H's worst case, so quality is judged on smooth light below.
         data = rps.build(probes, chains)
-        blocks = data[layout["atlas_offset"]:layout["atlas_offset"] +
-                      rps.radiance_block_bytes(2, 64)]
-        decoded = bc_codec.decode_bc6h(blocks, 128, 64).astype("<f2").astype(np.float64)
+        self.assertEqual(len(data), layout["data_offset"] +
+                         rps.radiance_block_bytes(2, 32, len(chains[0])))
+        blocks = data[layout["data_offset"]:layout["data_offset"] +
+                      rps.radiance_block_bytes(2, 32, 1)]
+        self.assertEqual(blocks, data[layout["data_offset"]:][:len(blocks)])
+        decoded = bc_codec.decode_bc6h(blocks[:2 * 6 * 32 * 32], 32, 12 * 32)
+        decoded = decoded.astype("<f2").astype(np.float64).reshape(2, 6, 32, 32, 3)
         for index, chain in enumerate(layout["chains"]):
-            np.testing.assert_array_equal(chain[0], decoded[index * 32:(index + 1) * 32, :64])
-        texture = rps.gpu_texture(layout)
-        grid_rows = -(-rps.CANDIDATE_CELLS * 2 * rps.candidate_words(2) // 128)
-        self.assertEqual(texture.shape, (1 + 2 + 2 * 32 + grid_rows, 128, 4))
-        self.assertEqual(tuple(texture[0, 0]), (2, len(chains[0]), 64, rps.GPU_MARKER))
-        self.assertEqual(texture[0, 1, 0], rps.MODE_BLEND)
-        table = rps.texture_table(texture)
+            np.testing.assert_array_equal(chain[0], decoded[index])
+        buffer = rps.gpu_buffer(layout)
+        self.assertEqual(tuple(buffer[:4]), (2, len(chains[0]), 32, rps.candidate_words(2)))
+        self.assertEqual(buffer[4], rps.MODE_BLEND)
+        table = rps.buffer_table(buffer)
         self.assertEqual(table[1, 2, 3], 1.0)  # rank 1 is the global probe
-        # hi + lo keeps positions to ~0.01 Source units.
-        np.testing.assert_allclose(table[0, 0, :3], layout["probes"][0]["capture"], atol=0.02)
+        # Records are exact float32 (no hi/lo packing).
+        np.testing.assert_allclose(table[0, 0, :3], layout["probes"][0]["capture"], rtol=1e-6)
         np.testing.assert_allclose(table[1, 4, :3], layout["probes"][1]["influence_max"],
-                                   atol=0.02)
-        # The atlas follows the table, band by band.
-        np.testing.assert_array_equal(texture[3:3 + 32, :64, :3],
-                                      layout["chains"][0][0].astype(np.float16))
+                                   rtol=1e-6)
+        self.assertEqual(table[0, 1, 3], 0.0)  # probe 0's layer
+        self.assertEqual(table[1, 1, 3], 1.0)  # probe 1's layer
 
     def test_smooth_light_survives_the_block_encoding(self):
         probes, _ = two_probe_layout()
-        y, x = np.mgrid[0:32, 0:64] / 64.0
-        smooth = np.stack([0.5 + 4 * x, 0.3 + 2 * y, 0.2 + x * y], axis=2)
-        chains = [reflection_probe.mip_chain(smooth * (1 + i)) for i in range(2)]
+        y, x = np.mgrid[0:32, 0:32] / 32.0
+        smooth = np.broadcast_to(np.stack([0.5 + 4 * x, 0.3 + 2 * y, 0.2 + x * y], axis=2),
+                                 (6, 32, 32, 3))
+        chains = [reflection_probe.cube_mip_chain(smooth * (1 + i)) for i in range(2)]
         layout = rps.read(rps.build(probes, chains))
         # A steep ramp is harsher than real light (a 512-wide Portal 2 probe:
         # 0.7-4.5% mean per mip, at most 0.6 stops at mip 0's hard edges;
+        # this cube ramp reaches 0.31 stops at its smallest mip;
         # RFC/0016-progress.md); this ramp reaches 13% on its 4 x 2 mip. The
         # bounds catch gross breakage (misplaced or unpadded blocks).
         for chain, back in zip(chains, layout["chains"]):
             for level, (mip, decoded) in enumerate(zip(chain, back)):
                 error = bc_codec.hdr_error(mip, decoded)
                 self.assertLess(error["relative_mean"], 0.15 if level == len(chain) - 1 else 0.06)
-                self.assertLess(error["stops_max"], 0.3)
+                self.assertLess(error["stops_max"], 0.35)
 
     def mutate(self, offset, fmt, value, code):
         probes, chains = two_probe_layout()
@@ -346,7 +350,7 @@ class MirrorFloorOracleTest(unittest.TestCase):
         self.reflected = view * (1, 1, -1)
         distance, _ = self.scene(self.points, self.reflected, 1e4)
         self.truth = stripes(self.points + distance[:, None] * self.reflected)
-        self.chain = probe_chain(self.scene, self.capture, 512)
+        self.chain = probe_chain(self.scene, self.capture, 128)
 
     def error(self, box_min, box_max, parallax=True):
         probe = {"capture": self.capture, "box_min": np.asarray(box_min, float),
@@ -400,12 +404,12 @@ class RelightOracleTest(unittest.TestCase):
         distance, normal = self.scene(self.points, self.reflected, 1e4)
         hits = self.points + distance[:, None] * self.reflected
         self.truth = self.albedo(hits) * (self.BAKED + self.change(hits, normal))
-        width = 512
-        directions = reflection_probe.equirect_directions(width).reshape(-1, 3)
+        face = 128
+        directions = rps.fixture_directions(face)
         seen, normals = self.scene(np.tile(self.capture, (len(directions), 1)), directions, 1e4)
         points = self.capture + seen[:, None] * directions
         albedo = self.albedo(points)
-        shape = (width // 2, width)
+        shape = (6, face, face)
         self.chain = [(albedo * self.BAKED).reshape(*shape, 3)]
         first, second = rps.relight_chain(albedo.reshape(*shape, 3), normals.reshape(*shape, 3),
                                           seen.reshape(shape))
@@ -445,14 +449,14 @@ class RelightOracleTest(unittest.TestCase):
         the room's light drops to a tenth, the relit probe is the capture
         times the drop, beam included; adding albedo times the field's
         (negative) change instead leaves most of the beam lit."""
-        width = 512
-        directions = reflection_probe.equirect_directions(width).reshape(-1, 3)
+        face = 128
+        directions = rps.fixture_directions(face)
         seen, _ = self.scene(np.tile(self.capture, (len(directions), 1)), directions, 1e4)
         points = self.capture + seen[:, None] * directions
 
         def beam(hits):
             return 1.0 + 4.0 * ((hits[:, 0] > 6.0 - 1e-6) & (hits[:, 2] < 1.5))[:, None]
-        chain = [(self.albedo(points) * self.BAKED * beam(points)).reshape(width // 2, width, 3)]
+        chain = [(self.albedo(points) * self.BAKED * beam(points)).reshape(6, face, face, 3)]
 
         def dimmed(points, normals):
             baked = np.full((len(points), 3), self.BAKED)
@@ -494,7 +498,7 @@ class RelightOracleTest(unittest.TestCase):
                                                  self.probe["box_min"],
                                                  self.probe["box_max"])[0],
             self.reflected, np.zeros(len(self.points)))
-        albedo = rps.reflection_probe.sample_chain(self.bands[0], direction,
+        albedo = rps.reflection_probe.sample_cube_chain(self.bands[0], direction,
                                                    np.zeros(len(self.points)), channels=4)
         hidden, t, face, _ = rps.occluded_segment(self.capture, direction, albedo[:, 3], [slab])
         self.assertGreater(hidden.sum(), 20)
@@ -529,21 +533,20 @@ class RelightFormatTest(unittest.TestCase):
         layout = rps.read(data)
         self.assertEqual(struct.unpack_from("<I", data, 4)[0], rps.VERSION)
         self.assertEqual(len(layout["relight"]), 2)
-        texture = rps.gpu_texture(layout)
-        self.assertEqual(float(texture[0, 1, 1]), 1.0)
-        self.assertEqual(float(rps.gpu_texture(layout, relight=False)[0, 1, 1]), 0.0)
-        for offset, fmt, value, code in rps.RELIGHT_MALFORMATIONS:
+        self.assertEqual(int(rps.gpu_buffer(layout)[5]), 1)
+        self.assertEqual(int(rps.gpu_buffer(layout, relight=False)[5]), 0)
+        for offset, fmt, value, code in rps.relight_malformations(layout["data_offset"]):
             edited = bytearray(data)
             struct.pack_into(fmt, edited, offset, value)
             with self.assertRaises(rps.RprbError) as caught:
                 rps.read(bytes(edited))
             self.assertEqual(caught.exception.code, code, (offset, value))
 
-    def test_v1_stays_readable_without_bands(self):
+    def test_a_payload_without_relight_cubes_reads(self):
         probes, chains = rps.fixture_layout()
         layout = rps.read(rps.build(probes, chains))
         self.assertIsNone(layout["relight"])
-        self.assertEqual(float(rps.gpu_texture(layout)[0, 1, 1]), 0.0)
+        self.assertEqual(int(rps.gpu_buffer(layout)[5]), 0)
 
 
 class CapacityTest(unittest.TestCase):
@@ -554,37 +557,31 @@ class CapacityTest(unittest.TestCase):
                                                        (3, 99, True)]]
         self.assertEqual(rps.ranks(probes), [1, 0, 2])
 
-    def test_tiled_gpu_contains_every_band_without_loss(self):
+    def test_the_cube_array_holds_every_probe_in_its_layer(self):
         for relight in (False, True):
-            data = rps.capacity_fixture(relight)
-            layout = rps.read(data)
-            texture = rps.gpu_texture(layout)
-            columns = rps.gpu_columns(layout)
-            self.assertGreater(columns, 1)
-            # Independently reconstruct the serialized atlas one band at a time.
-            band, width = layout["width"] // 2, layout["atlas_width"]
-            restored = np.concatenate([
-                texture[65 + (i // columns) * band:65 + (i // columns + 1) * band,
-                        (i % columns) * width:(i % columns + 1) * width]
-                for i in range(layout["atlas_height"] // band)])
-            self.assertEqual(restored.tobytes(), layout["atlas"].astype("<f2").tobytes())
+            layout = rps.read(rps.capacity_fixture(relight))
+            buffer = rps.gpu_buffer(layout)
+            # Layers are probe indices; the capacity fixture scales each
+            # probe's light by its index, so a swapped layer is visible.
+            means = [float(chain[0].mean()) for chain in layout["chains"]]
+            self.assertTrue(all(b > a for a, b in zip(means[:62], means[1:62])))
             weights = rps.blend_weights(np.array([[1, 2, 0]]) * rps.SOURCE_UNITS_PER_METER,
                                        np.array([[0, 0, 1]]), layout["probes"])
             self.assertEqual(int(np.argmax(weights)), 62)
             self.assertEqual(float(weights[0, 62]), 1.0)
             self.assertEqual(layout["probes"][62]["rank"], 62)
             self.assertEqual(layout["probes"][63]["rank"], 63)
-            table = rps.texture_table(texture)
-            self.assertEqual(table[62, 1, 3], 62)  # band index, not a half-float row offset
+            table = rps.buffer_table(buffer)
+            self.assertEqual(table[62, 1, 3], 62)  # cube layer
             if relight:
-                self.assertEqual(table[63, 3, 3], 190)
+                self.assertEqual(table[63, 3, 3], 63)  # relight layer
 
 
 class VersionTest(unittest.TestCase):
-    def test_only_v6_is_read(self):
+    def test_only_v8_is_read(self):
         data = bytearray(rps.capacity_fixture())
         self.assertEqual(struct.unpack_from("<I", data, 4)[0], rps.VERSION)
-        for version in range(1, 6):
+        for version in range(1, 8):
             struct.pack_into("<I", data, 4, version)
             with self.assertRaises(rps.RprbError) as error:
                 rps.read(bytes(data))
@@ -621,7 +618,7 @@ class RegridTest(unittest.TestCase):
         base = (rps.HEADER_BYTES + rps.RECORD_BYTES * layout["count"] + 15) & ~15
         self.assertEqual(len(out), len(self.data))
         self.assertEqual(out[:base], self.data[:base])
-        self.assertEqual(out[layout["atlas_offset"]:], self.data[layout["atlas_offset"]:])
+        self.assertEqual(out[layout["data_offset"]:], self.data[layout["data_offset"]:])
 
     def test_bounded_masks_hold_every_weighted_probe(self):
         out = rps.read(rps.regrid(self.data, self.bounds))
@@ -656,7 +653,7 @@ class RegridTest(unittest.TestCase):
         regridded = rps.regrid(self.data, self.bounds)
         # The same records and grid; the atlas is the input's own blocks (a
         # rebuild re-encodes decoded light, which BC6H does not reproduce).
-        end = layout["atlas_offset"]
+        end = layout["data_offset"]
         self.assertEqual(baked[:end], regridded[:end])
         self.assertEqual(regridded[end:], self.data[end:])
 
