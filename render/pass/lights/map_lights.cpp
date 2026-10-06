@@ -22,6 +22,10 @@ namespace
 
 constexpr double kPi = 3.14159265358979323846;
 
+// Linear lightmap level below which a light's reach ends (about 3x the darkest
+// 8-bit sRGB step); it sets the froxel footprint of lights without a `_distance`.
+constexpr float kReachCutoff = 1e-3f;
+
 } // namespace
 
 // The values of a key as floats ( "a b c" ), padded with `fill`.
@@ -195,13 +199,13 @@ MapLights MapLightsFromEntities(
 				std::copy( attn, attn + 3, light.attenuation );
 			}
 			// The bake has no window: the radius where the light's diffuse
-			// light falls to 1e-4 of the lightmap unit, so the window's error
-			// is below that.
+			// light falls to kReachCutoff of the lightmap unit (about 3x
+			// the darkest 8-bit step), so the window's error is below that.
 			const float peak = std::max( { color.x, color.y, color.z } );
 			light.radius = Numbers( entity, "_distance", 1 )[0];
 			if ( inverseSquare && light.radius <= 0.0f )
 				light.radius = float( light_set::kInverseSquareReferenceDistance *
-				                      std::sqrt( std::max( peak, 1e-6f ) / 1e-4f ) );
+				                      std::sqrt( std::max( peak, 1e-6f ) / kReachCutoff ) );
 			if ( classname == "light_spot" )
 			{
 				const std::vector<float> angles = Numbers( entity, "angles", 3 );

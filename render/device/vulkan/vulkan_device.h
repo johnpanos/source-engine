@@ -387,6 +387,7 @@ enum class Op : std::uint8_t
 	kCopyBuffer,
 	kCopyTextureToBuffer,
 	kCopyBufferToTexture,
+	kCopyTexture,
 	kBeginRendering,
 	kEndRendering,
 	kSetPipeline,
@@ -480,6 +481,7 @@ public:
 	    TextureId source, BufferId destination, const TextureBufferCopy &copy ) override;
 	void CopyBufferToTexture(
 	    BufferId source, TextureId destination, const TextureBufferCopy &copy ) override;
+	void CopyTexture( TextureId source, TextureId destination, const TextureCopy &copy ) override;
 	void BeginRendering( const RenderingDesc &desc ) override;
 	void EndRendering() override;
 	void SetPipeline( PipelineId pipeline ) override;
@@ -553,6 +555,7 @@ private:
 struct DeviceDispatch
 {
 	PFN_vkCmdPipelineBarrier2 cmdPipelineBarrier2 = nullptr;
+	PFN_vkCmdDrawIndexedIndirectCount cmdDrawIndexedIndirectCount = nullptr;
 	PFN_vkQueueSubmit2 queueSubmit2 = nullptr;
 	PFN_vkCmdBeginRendering cmdBeginRendering = nullptr;
 	PFN_vkGetMemoryFdKHR getMemoryFd = nullptr; // with externalImages
@@ -637,6 +640,10 @@ public:
 	// FSR's mixed float dot extension was enabled (otherwise its portable prepass).
 	bool FsrMixedFloatDot() const { return m_FsrMixedFloatDot; }
 	const HostDeviceInfo &HostInfo() const { return m_HostInfo; }
+	void SetPipelineCache( VkPipelineCache cache )
+	{
+		m_PipelineCache.store( cache, std::memory_order_release );
+	}
 	MemoryAllocator &Memory() { return m_Memory; }
 	VkSemaphore TimelineSemaphore() const { return m_Timeline; }
 	std::uint64_t ReserveValue();
@@ -769,6 +776,9 @@ private:
 	// Everything below belongs to the logical device.
 	VkDevice m_Device = VK_NULL_HANDLE;
 	VkQueue m_Queue = VK_NULL_HANDLE;
+	// A host's pipeline cache (IHostDevice::SetPipelineCache), which every
+	// pipeline creation uses while set; the host owns, persists and destroys it.
+	std::atomic<VkPipelineCache> m_PipelineCache{ VK_NULL_HANDLE };
 	std::mutex m_QueueMutex; // the graphics queue's external synchronization
 	MemoryAllocator m_Memory;
 	VkSemaphore m_Timeline = VK_NULL_HANDLE;

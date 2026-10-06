@@ -183,6 +183,7 @@ enum class Op : std::uint8_t
 	kCopyBuffer,
 	kCopyTextureToBuffer,
 	kCopyBufferToTexture,
+	kCopyTexture,
 	kBeginRendering,
 	kEndRendering,
 	kSetPipeline,
@@ -255,6 +256,7 @@ public:
 	    TextureId source, BufferId destination, const TextureBufferCopy &copy ) override;
 	void CopyBufferToTexture(
 	    BufferId source, TextureId destination, const TextureBufferCopy &copy ) override;
+	void CopyTexture( TextureId source, TextureId destination, const TextureCopy &copy ) override;
 	void BeginRendering( const RenderingDesc &desc ) override;
 	void EndRendering() override;
 	void SetPipeline( PipelineId pipeline ) override;
@@ -480,6 +482,7 @@ private:
 	std::unordered_map<std::uint64_t, PipelineRecord> m_Pipelines;
 	std::map<std::string, Program> m_Programs;
 	std::map<std::vector<std::uint64_t>, GLuint> m_Framebuffers; // colors..., depth (0: none)
+	GLuint m_CopyFramebuffers[2] = {}; // D37's read and draw scratch framebuffers
 	std::vector<PendingRelease> m_Releases;
 	std::vector<Transient> m_Transients;
 	mutable std::deque<Fence> m_Fences;

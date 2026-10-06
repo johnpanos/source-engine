@@ -201,6 +201,12 @@ public:
 	// Releases still waiting for their value.
 	virtual std::size_t PendingReleases() const = 0;
 
+	// The host's pipeline cache, which the port's pipeline creations use from
+	// now on (VK_NULL_HANDLE: none). The host creates, persists and destroys
+	// it, and sets VK_NULL_HANDLE before destroying it; it must not be created
+	// externally synchronized, as port pipelines may be created on any thread.
+	virtual void SetPipelineCache( VkPipelineCache cache ) = 0;
+
 	// The graphics queue's external synchronization, for submissions made
 	// off the render sequence.
 	virtual void LockQueue() = 0;

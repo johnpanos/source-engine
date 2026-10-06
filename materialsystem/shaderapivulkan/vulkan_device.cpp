@@ -10361,6 +10361,10 @@ bool CVulkanContext::OpenPipelineStore( const std::string &directory, std::strin
 		return false;
 	}
 	m_pipelineStoreDirectory = directory;
+	// The render core's pipelines (the adapter's own creations) share the
+	// store's cache, so they persist with it and later launches hit it.
+	if ( m_hostDevice )
+		m_hostDevice->SetPipelineCache( m_pipelineCache );
 	Log( "pipeline store %s: %zu bytes of cache data\n", directory.c_str(),
 	    haveData ? data.size() : static_cast<size_t>( 0 ) );
 	return true;
@@ -11036,6 +11040,8 @@ void CVulkanContext::Shutdown()
 		}
 		if ( m_pipelineCache != VK_NULL_HANDLE )
 		{
+			if ( m_hostDevice )
+				m_hostDevice->SetPipelineCache( VK_NULL_HANDLE );
 			vkDestroyPipelineCache( m_device, m_pipelineCache, nullptr );
 			m_pipelineCache = VK_NULL_HANDLE;
 		}

@@ -25,10 +25,6 @@ std::optional<ResourceRef> CaptureSceneColor( GraphBuilder &builder, ResourceRef
 	     sourceDesc.height == 0 || device::IsDepthFormat( sourceDesc.format ) ||
 	     device::IsBlockCompressed( sourceDesc.format ) )
 		return std::nullopt;
-	const std::uint64_t bytes =
-	    device::RegionBytes( sourceDesc.format, sourceDesc.width, sourceDesc.height );
-	if ( bytes == 0 )
-		return std::nullopt;
 
 	ResourceRef captureSource = source;
 	if ( sourceDesc.sampleCount > 1 )
@@ -56,33 +52,21 @@ std::optional<ResourceRef> CaptureSceneColor( GraphBuilder &builder, ResourceRef
 			        context.Encoder().EndRendering();
 		        } );
 	}
-	device::BufferDesc stagingDesc;
-	stagingDesc.size = bytes;
-	stagingDesc.memory = device::MemoryKind::kDeviceLocal;
-	const ResourceRef staging = builder.CreateBuffer( "scene-color-staging", stagingDesc );
 	device::TextureDesc snapshotDesc = sourceDesc;
 	snapshotDesc.sampleCount = 1;
 	snapshotDesc.usages = {};
 	snapshotDesc.debugName = {};
 	const ResourceRef snapshot = builder.CreateTexture( "scene-color-snapshot", snapshotDesc );
-	const device::TextureBufferCopy region{ 0, 0, 0, sourceDesc.width, sourceDesc.height };
+	// One image-to-image copy (D37): no staging buffer round trip.
+	const device::TextureCopy region{ 0, 0, sourceDesc.width, sourceDesc.height };
 	builder.AddPass( "capture-scene-color", PassKind::kCopy )
 	    .Read( captureSource, device::ResourceUsage::kCopySource )
-	    .Write( staging, device::ResourceUsage::kCopyDestination )
-	    .Execute(
-	        [captureSource, staging, region]( RecordContext &context )
-	        {
-		        context.Encoder().CopyTextureToBuffer(
-		            context.Texture( captureSource ), context.Buffer( staging ), region );
-	        } );
-	builder.AddPass( "stage-scene-color", PassKind::kCopy )
-	    .Read( staging, device::ResourceUsage::kCopySource )
 	    .Write( snapshot, device::ResourceUsage::kCopyDestination )
 	    .Execute(
-	        [staging, snapshot, region]( RecordContext &context )
+	        [captureSource, snapshot, region]( RecordContext &context )
 	        {
-		        context.Encoder().CopyBufferToTexture(
-		            context.Buffer( staging ), context.Texture( snapshot ), region );
+		        context.Encoder().CopyTexture(
+		            context.Texture( captureSource ), context.Texture( snapshot ), region );
 	        } );
 	return snapshot;
 }

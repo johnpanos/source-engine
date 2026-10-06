@@ -235,6 +235,12 @@ void GlDevice::DestroyContextObjects()
 		gl.DeleteProgram( program.name );
 	for ( auto &[key, framebuffer] : m_Framebuffers )
 		gl.DeleteFramebuffers( 1, &framebuffer );
+	for ( GLuint &framebuffer : m_CopyFramebuffers )
+	{
+		if ( framebuffer )
+			gl.DeleteFramebuffers( 1, &framebuffer );
+		framebuffer = 0;
+	}
 	for ( const Transient &transient : m_Transients )
 	{
 		if ( transient.query )

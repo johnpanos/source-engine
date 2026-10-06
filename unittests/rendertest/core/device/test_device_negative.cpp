@@ -104,6 +104,13 @@ public:
 			region.layer %= 6;
 		m_Inner->CopyBufferToTexture( source, destination, region );
 	}
+	void CopyTexture( TextureId source, TextureId destination, const TextureCopy &copy ) override
+	{
+		TextureCopy region = copy;
+		if ( m_Defect == Defect::kDropsRegionOrigin )
+			region.x = region.y = 0;
+		m_Inner->CopyTexture( source, destination, region );
+	}
 	void BeginRendering( const RenderingDesc &desc ) override { m_Inner->BeginRendering( desc ); }
 	void EndRendering() override { m_Inner->EndRendering(); }
 	void SetPipeline( PipelineId pipeline ) override

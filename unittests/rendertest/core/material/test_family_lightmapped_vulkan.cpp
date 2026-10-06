@@ -182,6 +182,13 @@ int main()
 		    *device, device::Format::kRGBA8Srgb, device::Format::kUnknown );
 		if ( !checks.That( family.HasValue(), "family.creates" ) )
 			continue;
+		// Pipeline prewarming: the keys of every shipped pipeline the cases make.
+		std::vector<std::string> createdKeys;
+		family.Value()->Program().SetCreatedSink(
+		    [&]( const std::string &key )
+		    {
+			    createdKeys.push_back( key );
+		    } );
 
 		for ( const FamilyCase &testCase : set->cases )
 		{
@@ -472,6 +479,30 @@ int main()
 		checks.That( drawnCases == int( set->cases.size() ), "cases.every-case-drew" );
 		checks.That( fogChecked, "fog.an-opaque-case-was-fogged" );
 		checks.That( areaChecked, "area.an-opaque-world-case-was-lit" );
+		// A fresh program of the same formats recreates exactly those
+		// pipelines from their keys; one of other formats, or a damaged line,
+		// creates none.
+		auto fresh = LightmappedFamily::Create(
+		    *device, device::Format::kRGBA8Srgb, device::Format::kUnknown );
+		auto other = LightmappedFamily::Create(
+		    *device, device::Format::kRGBA16Float, device::Format::kUnknown );
+		if ( checks.That( fresh.HasValue() && other.HasValue(), "prewarm.families-create" ) )
+		{
+			std::vector<std::string> recreated;
+			fresh.Value()->Program().SetCreatedSink(
+			    [&]( const std::string &key )
+			    {
+				    recreated.push_back( key );
+			    } );
+			std::vector<std::string> keys = createdKeys;
+			keys.push_back( "surface-v1 garbage" );
+			const std::size_t made = fresh.Value()->Program().Prewarm( keys );
+			checks.That( !createdKeys.empty() && made == createdKeys.size() &&
+			                 recreated == createdKeys,
+			    "prewarm.keys-recreate-the-same-pipelines" );
+			checks.That( other.Value()->Program().Prewarm( createdKeys ) == 0,
+			    "prewarm.other-formats-are-skipped" );
+		}
 	}
 	return devices.Finish( checks );
 }

@@ -101,6 +101,20 @@ struct TextureBufferCopy
 	std::uint32_t y = 0;
 };
 
+// D37: one mip/layer region copied between two single-sample textures of the
+// same format, at the same texel (x, y) of both (a block-compressed region
+// starts on a block). The source is in kCopySource, the destination in
+// kCopyDestination; no buffer is involved.
+struct TextureCopy
+{
+	std::uint32_t mip = 0;
+	std::uint32_t layer = 0;
+	std::uint32_t width = 0;
+	std::uint32_t height = 0;
+	std::uint32_t x = 0;
+	std::uint32_t y = 0;
+};
+
 enum class IndexFormat : std::uint8_t
 {
 	kUint16,
@@ -156,6 +170,8 @@ public:
 	    TextureId source, BufferId destination, const TextureBufferCopy &copy ) = 0;
 	virtual void CopyBufferToTexture(
 	    BufferId source, TextureId destination, const TextureBufferCopy &copy ) = 0;
+	virtual void CopyTexture(
+	    TextureId source, TextureId destination, const TextureCopy &copy ) = 0;
 	virtual void BeginRendering( const RenderingDesc &desc ) = 0;
 	virtual void EndRendering() = 0;
 	virtual void SetPipeline( PipelineId pipeline ) = 0;
@@ -225,6 +241,7 @@ public:
 	    TextureId source, BufferId destination, const TextureBufferCopy &copy );
 	void CopyBufferToTexture(
 	    BufferId source, TextureId destination, const TextureBufferCopy &copy );
+	void CopyTexture( TextureId source, TextureId destination, const TextureCopy &copy );
 	void BeginRendering( const RenderingDesc &desc );
 	void EndRendering();
 	void SetPipeline( PipelineId pipeline );

@@ -339,6 +339,16 @@ public:
 		command.textureCopy = copy;
 		Push( std::move( command ) );
 	}
+	void CopyTexture( TextureId source, TextureId destination, const TextureCopy &copy ) override
+	{
+		NotRendering();
+		Command command;
+		command.op = RecordedOp::kCopyTexture;
+		command.a = source.value;
+		command.b = destination.value;
+		command.textureCopy = { 0, copy.mip, copy.layer, copy.width, copy.height, copy.x, copy.y };
+		Push( std::move( command ) );
+	}
 	void BeginRendering( const RenderingDesc &desc ) override
 	{
 		NotRendering();
@@ -1166,6 +1176,18 @@ private:
 				         command.textureCopy ) )
 					return false;
 				break;
+			case RecordedOp::kCopyTexture:
+			{
+				if ( !texture( command.a, ResourceUsage::kCopySource ) ||
+				     !texture( command.b, ResourceUsage::kCopyDestination ) || command.a == command.b )
+					return false;
+				const Texture &s = *LiveTexture( command.a );
+				const Texture &d = *LiveTexture( command.b );
+				if ( s.desc.format != d.desc.format || !TextureToTextureFits( s, command.textureCopy ) ||
+				     !TextureToTextureFits( d, command.textureCopy ) )
+					return false;
+				break;
+			}
 			case RecordedOp::kBeginRendering:
 				for ( const ColorAttachment &color : command.colors )
 				{
@@ -1257,6 +1279,14 @@ private:
 			return false;
 		const std::uint64_t bytes = RegionBytes( format, copy.width, copy.height );
 		return copy.bufferOffset + bytes <= buffer.data.size();
+	}
+
+	static bool TextureToTextureFits( const Texture &texture, const TextureBufferCopy &copy )
+	{
+		return copy.mip < texture.desc.mipLevels && copy.layer < texture.layers &&
+		       copy.width != 0 && copy.height != 0 && texture.desc.sampleCount == 1 &&
+		       CopyRegionAligned( texture.desc.format, texture.Width( copy.mip ),
+		           texture.Height( copy.mip ), copy.x, copy.y, copy.width, copy.height, 0 );
 	}
 
 	void Execute( Batch &batch )
@@ -1359,6 +1389,30 @@ private:
 					std::memcpy( linear, image, row );
 				else
 					std::memcpy( image, linear, row );
+			}
+			command.count = static_cast<std::uint64_t>( row ) * rows;
+			break;
+		}
+		case RecordedOp::kCopyTexture:
+		{
+			Texture *s = ExistingTexture( command.a );
+			Texture *d = ExistingTexture( command.b );
+			if ( !s || !d )
+				break;
+			const TextureBufferCopy &copy = command.textureCopy;
+			const FormatBlock block = BlockOf( s->desc.format );
+			const std::vector<std::byte> &from = s->Subresource( copy.mip, copy.layer );
+			std::vector<std::byte> &to = d->Subresource( copy.mip, copy.layer );
+			const std::size_t fromPitch = RegionBytes( s->desc.format, s->Width( copy.mip ), 1 );
+			const std::size_t toPitch = RegionBytes( d->desc.format, d->Width( copy.mip ), 1 );
+			const std::size_t row = RegionBytes( s->desc.format, copy.width, 1 );
+			const std::uint32_t rows = ( copy.height + block.height - 1 ) / block.height;
+			const std::size_t column = RegionBytes( s->desc.format, copy.x, 1 );
+			for ( std::uint32_t y = 0; y < rows; ++y )
+			{
+				const std::size_t blockRow = copy.y / block.height + y;
+				std::memcpy( to.data() + blockRow * toPitch + column,
+				    from.data() + blockRow * fromPitch + column, row );
 			}
 			command.count = static_cast<std::uint64_t>( row ) * rows;
 			break;

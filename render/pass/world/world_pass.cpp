@@ -21,15 +21,18 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cctype>
 #include <cstddef>
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 #include <deque>
 #include <functional>
 #include <limits>
 #include <map>
 #include <optional>
+#include <set>
 #include <mutex>
 #include <span>
 #include <tuple>
@@ -596,6 +599,12 @@ struct WorldPass::State
 
 	IModelLevelSource *levelSource = nullptr; // SetModelLevelSource; null retains staging
 
+	// Pipeline prewarming: the keys to create when a resolver is made, and the
+	// keys of the pipelines the resolvers created.
+	mutable std::mutex pipelineKeyLock;
+	std::vector<std::string> prewarmKeys;
+	std::set<std::string> createdKeys;
+
 	// Guarded by lock: the world the main thread set and the queued views.
 	mutable std::mutex lock;
 	std::shared_ptr<const WorldData> world;
@@ -1043,6 +1052,20 @@ void WorldPass::SetWorld( WorldData data )
 	s.stats.claimedSurfaces = counts.claimedSurfaces;
 	s.stats.gaps = std::move( ranked );
 	s.stats.claimed = std::move( claimedNames );
+}
+
+void WorldPass::SetPipelinePrewarm( std::vector<std::string> keys )
+{
+	State &s = *m_State;
+	std::lock_guard<std::mutex> guard( s.pipelineKeyLock );
+	s.prewarmKeys = std::move( keys );
+}
+
+std::vector<std::string> WorldPass::CreatedPipelineKeys() const
+{
+	const State &s = *m_State;
+	std::lock_guard<std::mutex> guard( s.pipelineKeyLock );
+	return { s.createdKeys.begin(), s.createdKeys.end() };
 }
 
 void WorldPass::ClearWorld()
@@ -2086,6 +2109,37 @@ void WorldPass::RecordBatch(
 		    s.ReleaseGroup( old.second, target.submitted, true );
 		    return true;
 	    } );
+	// A new resolver (a map load): record the pipelines its program creates,
+	// and create the previous runs' ones now, before any draw needs them, so
+	// their driver compiles land in the load instead of mid-play.
+	auto prewarmResolver = [&s]( material::ProgramResolver &resolver, const char *which )
+	{
+		material::SurfaceProgram &program = resolver.Program();
+		// Each key is tagged with its resolver: the two make different points.
+		const std::string tag = std::string( which ) + " ";
+		program.SetCreatedSink(
+		    [&s, tag]( const std::string &key )
+		    {
+			    std::lock_guard<std::mutex> guard( s.pipelineKeyLock );
+			    s.createdKeys.insert( tag + key );
+		    } );
+		std::vector<std::string> keys;
+		{
+			std::lock_guard<std::mutex> guard( s.pipelineKeyLock );
+			for ( const std::string &key : s.prewarmKeys )
+				if ( key.starts_with( tag ) )
+					keys.push_back( key.substr( tag.size() ) );
+		}
+		if ( keys.empty() )
+			return;
+		const auto started = std::chrono::steady_clock::now();
+		const std::size_t created = program.Prewarm( keys );
+		std::fprintf( stderr, "[render.pass.world] prewarmed %zu of %zu %s pipelines in %lld ms\n",
+		    created, keys.size(), which,
+		    static_cast<long long>( std::chrono::duration_cast<std::chrono::milliseconds>(
+		        std::chrono::steady_clock::now() - started )
+		                                .count() ) );
+	};
 	if ( !r.resolver )
 	{
 		auto resolver = material::ProgramResolver::Create( device, target.colorFormat,
@@ -2097,6 +2151,7 @@ void WorldPass::RecordBatch(
 			return;
 		}
 		r.resolver = std::move( resolver ).Value();
+		prewarmResolver( *r.resolver, "world" );
 		// The resolver's points draw with the scene terms the stage supports,
 		// and none without one, as the model resolver's do: a plain map's
 		// mesh handoff (VertexLitGeneric and Refract models) needs the mesh
@@ -2122,6 +2177,7 @@ void WorldPass::RecordBatch(
 		    true, world->stage ? StageTerms( *world->stage, target.runtimeDirect ) : 0 );
 		r.modelResolver->SetSceneColorAvailable( world->stage != nullptr );
 		r.modelMaterials.resize( world->materials.size() );
+		prewarmResolver( *r.modelResolver, "model" );
 	}
 	if ( !r.uploaded )
 	{

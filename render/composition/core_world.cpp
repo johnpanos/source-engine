@@ -111,6 +111,72 @@ bool OpaqueShadowMaterial( const pass::world::WorldMaterial &material )
 
 } // namespace
 
+namespace
+{
+constexpr char kPipelineKeysHeader[] = "core-pipeline-keys/v1";
+constexpr std::size_t kMaxPipelineKeys = 8192;
+} // namespace
+
+void CoreWorld::SetPipelineStore( const char *directory )
+{
+	const std::string path =
+	    directory && directory[0] ? std::string( directory ) + "/core_pipelines.keys" : std::string();
+	if ( path == m_PipelineKeysPath )
+		return;
+	SavePipelineKeys();
+	m_PipelineKeysPath = path;
+	m_PipelineKeys.clear();
+	if ( FILE *file = path.empty() ? nullptr : std::fopen( path.c_str(), "r" ) )
+	{
+		char line[1024];
+		bool headed = false;
+		while ( std::fgets( line, sizeof( line ), file ) && m_PipelineKeys.size() < kMaxPipelineKeys )
+		{
+			std::string text( line );
+			while ( !text.empty() && ( text.back() == '\n' || text.back() == '\r' ) )
+				text.pop_back();
+			if ( !headed )
+			{
+				headed = true;
+				if ( text != kPipelineKeysHeader )
+					break; // another format: start empty
+				continue;
+			}
+			if ( !text.empty() )
+				m_PipelineKeys.insert( text );
+		}
+		std::fclose( file );
+	}
+	m_Pass.SetPipelinePrewarm( { m_PipelineKeys.begin(), m_PipelineKeys.end() } );
+}
+
+void CoreWorld::SavePipelineKeys()
+{
+	if ( m_PipelineKeysPath.empty() )
+		return;
+	const std::size_t before = m_PipelineKeys.size();
+	for ( std::string &key : m_Pass.CreatedPipelineKeys() )
+	{
+		if ( m_PipelineKeys.size() >= kMaxPipelineKeys )
+			break;
+		m_PipelineKeys.insert( std::move( key ) );
+	}
+	if ( m_PipelineKeys.size() == before )
+		return;
+	// Replaced only once complete, so an interrupted save keeps the old list.
+	const std::string temporary = m_PipelineKeysPath + ".tmp";
+	FILE *file = std::fopen( temporary.c_str(), "w" );
+	if ( !file )
+		return;
+	bool written = std::fprintf( file, "%s\n", kPipelineKeysHeader ) > 0;
+	for ( const std::string &key : m_PipelineKeys )
+		written = written && std::fprintf( file, "%s\n", key.c_str() ) > 0;
+	if ( std::fclose( file ) != 0 || !written ||
+	     std::rename( temporary.c_str(), m_PipelineKeysPath.c_str() ) != 0 )
+		std::remove( temporary.c_str() );
+	m_Pass.SetPipelinePrewarm( { m_PipelineKeys.begin(), m_PipelineKeys.end() } );
+}
+
 void CoreWorld::SetWorld( const RenderCoreWorldVertex *vertices, unsigned int vertexCount,
     const unsigned int *indices, unsigned int indexCount, const RenderCoreWorldSurface *surfaces,
     unsigned int surfaceCount, const RenderCoreWorldMaterial *materials,

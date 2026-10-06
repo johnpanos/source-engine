@@ -164,6 +164,26 @@ bool GlDevice::Validate(
 				return false;
 			break;
 		}
+		case Op::kCopyTexture:
+		{
+			// Through a framebuffer blit, which copies no block-compressed
+			// texture: GL refuses those by name.
+			TextureRecord *s = texture( command.a, ResourceUsage::kCopySource );
+			TextureRecord *d = texture( command.b, ResourceUsage::kCopyDestination );
+			const TextureBufferCopy &copy = command.textureCopy;
+			auto fits = [&copy]( const TextureRecord &t )
+			{
+				return copy.mip < t.desc.mipLevels && copy.layer < t.layers &&
+				       t.desc.sampleCount == 1 && t.target != GL_TEXTURE_CUBE_MAP &&
+				       !IsBlockCompressed( t.desc.format ) &&
+				       CopyRegionAligned( t.desc.format, t.Width( copy.mip ), t.Height( copy.mip ),
+				           copy.x, copy.y, copy.width, copy.height, 0 );
+			};
+			if ( !s || !d || s == d || copy.width == 0 || copy.height == 0 ||
+			     s->desc.format != d->desc.format || !fits( *s ) || !fits( *d ) )
+				return false;
+			break;
+		}
 		case Op::kBeginRendering:
 		{
 			v.colors.clear();
@@ -532,6 +552,9 @@ private:
 		case Op::kCopyBufferToTexture:
 			CopyBufferToTexture( command );
 			break;
+		case Op::kCopyTexture:
+			CopyTexture( command );
+			break;
 		case Op::kBeginRendering:
 			BeginRendering( command );
 			break;
@@ -785,6 +808,55 @@ private:
 			    static_cast<GLint>( copy.layer ), static_cast<GLsizei>( copy.width ),
 			    static_cast<GLsizei>( copy.height ), 1, format.format, format.type, bytes, offset );
 		m_Gl.BindBuffer( GL_PIXEL_PACK_BUFFER, 0 );
+	}
+
+	// D37 as a blit between two scratch framebuffers, one per texture.
+	void CopyTexture( const Command &command )
+	{
+		const TextureRecord &s = *m_D.ExistingTexture( command.a );
+		const TextureRecord &d = *m_D.ExistingTexture( command.b );
+		const TextureBufferCopy &copy = command.textureCopy;
+		GLuint *framebuffers = m_D.m_CopyFramebuffers;
+		if ( !framebuffers[0] )
+			m_Gl.CreateFramebuffers( 2, framebuffers );
+		const bool depth = IsDepthFormat( s.desc.format );
+		const GLenum attachment = !depth                    ? GL_COLOR_ATTACHMENT0
+		                          : HasStencil( s.desc.format ) ? GL_DEPTH_STENCIL_ATTACHMENT
+		                                                        : GL_DEPTH_ATTACHMENT;
+		auto attach = [&]( GLuint framebuffer, const TextureRecord &t, GLuint name )
+		{
+			if ( t.target == GL_TEXTURE_2D || !name )
+				m_Gl.NamedFramebufferTexture(
+				    framebuffer, attachment, name, static_cast<GLint>( copy.mip ) );
+			else
+				m_Gl.NamedFramebufferTextureLayer( framebuffer, attachment, name,
+				    static_cast<GLint>( copy.mip ), static_cast<GLint>( copy.layer ) );
+		};
+		attach( framebuffers[0], s, s.name );
+		attach( framebuffers[1], d, d.name );
+		if ( !depth )
+		{
+			m_Gl.NamedFramebufferReadBuffer( framebuffers[0], GL_COLOR_ATTACHMENT0 );
+			const GLenum first = GL_COLOR_ATTACHMENT0;
+			m_Gl.NamedFramebufferDrawBuffers( framebuffers[1], 1, &first );
+		}
+		const bool scissor = m_Rendering != nullptr;
+		m_Gl.Disable( GL_SCISSOR_TEST );
+		const auto x0 = static_cast<GLint>( copy.x );
+		const auto y0 = static_cast<GLint>( copy.y );
+		const auto x1 = static_cast<GLint>( copy.x + copy.width );
+		const auto y1 = static_cast<GLint>( copy.y + copy.height );
+		m_Gl.BlitNamedFramebuffer( framebuffers[0], framebuffers[1], x0, y0, x1, y1, x0, y0, x1,
+		    y1,
+		    !depth                        ? GL_COLOR_BUFFER_BIT
+		    : HasStencil( s.desc.format ) ? GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT
+		                                  : GL_DEPTH_BUFFER_BIT,
+		    GL_NEAREST );
+		// Detach, so the scratch framebuffers hold no texture a release frees.
+		attach( framebuffers[0], s, 0 );
+		attach( framebuffers[1], d, 0 );
+		if ( scissor )
+			m_Gl.Enable( GL_SCISSOR_TEST );
 	}
 
 	void CopyBufferToTexture( const Command &command )

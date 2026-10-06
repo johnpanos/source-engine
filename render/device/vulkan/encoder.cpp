@@ -145,6 +145,18 @@ void VulkanEncoder::CopyBufferToTexture(
 	Push( std::move( command ) );
 }
 
+void VulkanEncoder::CopyTexture(
+    TextureId source, TextureId destination, const TextureCopy &copy )
+{
+	NotRendering();
+	Command command;
+	command.op = Op::kCopyTexture;
+	command.a = source.value;
+	command.b = destination.value;
+	command.textureCopy = { 0, copy.mip, copy.layer, copy.width, copy.height, copy.x, copy.y };
+	Push( std::move( command ) );
+}
+
 void VulkanEncoder::BeginRendering( const RenderingDesc &desc )
 {
 	NotRendering();
@@ -565,6 +577,23 @@ bool VulkanDevice::Validate(
 			BufferRecord *b = buffer( command.a, ResourceUsage::kCopySource );
 			TextureRecord *t = texture( command.b, ResourceUsage::kCopyDestination );
 			if ( !t || !b || !copyFits( *t, *b, command.textureCopy ) )
+				return false;
+			break;
+		}
+		case Op::kCopyTexture:
+		{
+			TextureRecord *s = texture( command.a, ResourceUsage::kCopySource );
+			TextureRecord *d = texture( command.b, ResourceUsage::kCopyDestination );
+			const TextureBufferCopy &copy = command.textureCopy;
+			auto fits = [&copy]( const TextureRecord &t )
+			{
+				return copy.mip < t.desc.mipLevels && copy.layer < t.layers &&
+				       t.desc.sampleCount == 1 &&
+				       CopyRegionAligned( t.desc.format, t.Width( copy.mip ), t.Height( copy.mip ),
+				           copy.x, copy.y, copy.width, copy.height, 0 );
+			};
+			if ( !s || !d || s == d || copy.width == 0 || copy.height == 0 ||
+			     s->desc.format != d->desc.format || !fits( *s ) || !fits( *d ) )
 				return false;
 			break;
 		}
@@ -1208,6 +1237,26 @@ private:
 		case Op::kCopyBufferToTexture:
 			TextureCopy( command, false );
 			break;
+		case Op::kCopyTexture:
+		{
+			const TextureRecord *source = m_D.LiveTexture( command.a );
+			const TextureRecord *destination = m_D.LiveTexture( command.b );
+			Access( command.a, false );
+			Access( command.b, true );
+			const TextureBufferCopy &copy = command.textureCopy;
+			VkImageCopy region{};
+			region.srcSubresource.aspectMask = CopyAspect( source->desc.format );
+			region.srcSubresource.mipLevel = copy.mip;
+			region.srcSubresource.baseArrayLayer = copy.layer;
+			region.srcSubresource.layerCount = 1;
+			region.dstSubresource = region.srcSubresource;
+			region.srcOffset = { std::int32_t( copy.x ), std::int32_t( copy.y ), 0 };
+			region.dstOffset = region.srcOffset;
+			region.extent = { copy.width, copy.height, 1 };
+			vkCmdCopyImage( m_Cmd, source->image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+			    destination->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region );
+			break;
+		}
 		case Op::kBeginRendering:
 			BeginRendering( commands, index );
 			break;
@@ -1264,7 +1313,12 @@ private:
 			break;
 		case Op::kDrawIndexedIndirectCount:
 			Flush( VK_PIPELINE_BIND_POINT_GRAPHICS );
-			vkCmdDrawIndexedIndirectCount( m_Cmd, m_D.LiveBuffer( command.a )->buffer,
+			if ( !m_D.m_Vk.cmdDrawIndexedIndirectCount )
+			{
+				m_Failed = true;
+				break;
+			}
+			m_D.m_Vk.cmdDrawIndexedIndirectCount( m_Cmd, m_D.LiveBuffer( command.a )->buffer,
 			    command.offset, m_D.LiveBuffer( command.b )->buffer, command.copy.destinationOffset,
 			    command.params[0], command.params[1] );
 			break;

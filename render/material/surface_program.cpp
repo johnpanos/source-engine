@@ -11,7 +11,10 @@
 #include "render/pbr_split_sum_table.h"
 #include "render/shaderlib/core_artifacts.h"
 
+#include <bit>
 #include <cmath>
+#include <cstdio>
+#include <cstring>
 #include <iterator>
 
 namespace render::material
@@ -450,8 +453,98 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::Pipeline(
 	}
 	m_Pipelines.emplace( key, pipeline.Value() );
 	if ( debug.IsNeutral() )
+	{
 		m_Shipped.emplace( pipeline.Value().value, variant );
+		if ( m_CreatedSink )
+			m_CreatedSink( VariantKey( variant ) );
+	}
 	return pipeline.Value();
+}
+
+namespace
+{
+constexpr const char *kVariantKeyTag = "surface-v1";
+} // namespace
+
+std::string SurfaceProgram::VariantKey( const SurfaceVariant &v ) const
+{
+	const SurfaceDrawState &d = v.drawState;
+	char line[512];
+	std::snprintf( line, sizeof( line ),
+	    "%s %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u "
+	    "%u %u %u %u %u %u %08x %08x %u %u %u %u %u %u %u %u %u %u",
+	    kVariantKeyTag, unsigned( m_ColorFormat ), unsigned( m_DepthFormat ), m_SampleCount,
+	    unsigned( v.blend ), unsigned( v.alphaWrite ), v.terms, v.detailMode, unsigned( v.layout ),
+	    unsigned( v.ignoreDepth ), unsigned( d.stencil.enabled ), unsigned( d.stencil.compare ),
+	    unsigned( d.stencil.fail ), unsigned( d.stencil.depthFail ), unsigned( d.stencil.pass ),
+	    unsigned( d.stencil.reference ), unsigned( d.stencil.readMask ),
+	    unsigned( d.stencil.writeMask ), unsigned( d.cull ), unsigned( d.overrideDepth ),
+	    unsigned( d.depthTest ), unsigned( d.depthWrite ), unsigned( d.depthCompare ),
+	    unsigned( d.colorWrite ), std::bit_cast<std::uint32_t>( d.depthBiasConstant ),
+	    std::bit_cast<std::uint32_t>( d.depthBiasSlope ), unsigned( v.portalMask ),
+	    unsigned( v.temporal ), v.materialFeatures, v.viewFeatures, v.treeSwayMode,
+	    unsigned( v.alphaToCoverage ), unsigned( v.decalModulate ), unsigned( v.cable ),
+	    unsigned( v.shadowDepth ), unsigned( v.instanced ) );
+	return line;
+}
+
+std::size_t SurfaceProgram::Prewarm( std::span<const std::string> keys )
+{
+	std::size_t created = 0;
+	for ( const std::string &key : keys )
+	{
+		char tag[16] = {};
+		unsigned f[35] = {};
+		if ( std::sscanf( key.c_str(),
+		         "%15s %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u "
+		         "%u %u %u %u %u %u %x %x %u %u %u %u %u %u %u %u %u %u",
+		         tag, &f[0], &f[1], &f[2], &f[3], &f[4], &f[5], &f[6], &f[7], &f[8], &f[9], &f[10],
+		         &f[11], &f[12], &f[13], &f[14], &f[15], &f[16], &f[17], &f[18], &f[19], &f[20],
+		         &f[21], &f[22], &f[23], &f[24], &f[25], &f[26], &f[27], &f[28], &f[29], &f[30],
+		         &f[31], &f[32], &f[33], &f[34] ) != 36 ||
+		     std::strcmp( tag, kVariantKeyTag ) != 0 )
+			continue;
+		if ( f[0] != unsigned( m_ColorFormat ) || f[1] != unsigned( m_DepthFormat ) ||
+		     f[2] != m_SampleCount || f[7] > unsigned( SurfaceVertexLayout::kModel ) )
+			continue;
+		SurfaceVariant v;
+		SurfaceDrawState &d = v.drawState;
+		v.blend = BlendMode( f[3] );
+		v.alphaWrite = f[4] != 0;
+		v.terms = f[5];
+		v.detailMode = f[6];
+		v.layout = SurfaceVertexLayout( f[7] );
+		v.ignoreDepth = f[8] != 0;
+		d.stencil.enabled = f[9] != 0;
+		d.stencil.compare = CompareOp( f[10] );
+		d.stencil.fail = StencilOp( f[11] );
+		d.stencil.depthFail = StencilOp( f[12] );
+		d.stencil.pass = StencilOp( f[13] );
+		d.stencil.reference = std::uint8_t( f[14] );
+		d.stencil.readMask = std::uint8_t( f[15] );
+		d.stencil.writeMask = std::uint8_t( f[16] );
+		d.cull = CullMode( f[17] );
+		d.overrideDepth = f[18] != 0;
+		d.depthTest = f[19] != 0;
+		d.depthWrite = f[20] != 0;
+		d.depthCompare = CompareOp( f[21] );
+		d.colorWrite = std::uint8_t( f[22] );
+		d.depthBiasConstant = std::bit_cast<float>( std::uint32_t( f[23] ) );
+		d.depthBiasSlope = std::bit_cast<float>( std::uint32_t( f[24] ) );
+		v.portalMask = f[25] != 0;
+		v.temporal = f[26] != 0;
+		v.materialFeatures = f[27];
+		v.viewFeatures = f[28];
+		v.treeSwayMode = f[29];
+		v.alphaToCoverage = f[30] != 0;
+		v.decalModulate = f[31] != 0;
+		v.cable = f[32] != 0;
+		v.shadowDepth = f[33] != 0;
+		v.instanced = f[34] != 0;
+		if ( Pipeline( v ) )
+			++created;
+	}
+	return created;
 }
 
 std::uint32_t SurfaceMaterialFeatures( const SurfaceConstants &constants )

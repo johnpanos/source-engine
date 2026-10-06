@@ -102,6 +102,13 @@ void CommandEncoder::CopyBufferToTexture(
 		backend->CopyBufferToTexture( source, destination, copy );
 }
 
+void CommandEncoder::CopyTexture(
+    TextureId source, TextureId destination, const TextureCopy &copy )
+{
+	if ( IEncoderBackend *backend = Enter() )
+		backend->CopyTexture( source, destination, copy );
+}
+
 void CommandEncoder::BeginRendering( const RenderingDesc &desc )
 {
 	if ( IEncoderBackend *backend = Enter() )

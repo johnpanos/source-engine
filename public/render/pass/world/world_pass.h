@@ -753,6 +753,12 @@ public:
 	// pass has uploaded them and set stagingReleased. Resets the flags.
 	std::vector<std::pair<std::uint32_t, std::uint32_t>> DrainReleasedStaging();
 	void ClearWorld();
+	// Pipeline prewarming (SurfaceProgram::VariantKey): keys whose pipelines
+	// each program resolver creates as it is made (a map load), before any
+	// draw asks for one; and the keys of every pipeline created since, for
+	// the root to persist. Thread-safe.
+	void SetPipelinePrewarm( std::vector<std::string> keys );
+	std::vector<std::string> CreatedPipelineKeys() const;
 	// render_lab's sensitivity runs: a replacement fragment module for the
 	// surface program (SPIR-V words the caller keeps alive), used by the
 	// color resolvers the pass creates after the call. Products never set it.

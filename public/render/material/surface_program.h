@@ -59,6 +59,7 @@
 #include "render/shaderlib/debug_view.h"
 
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <memory>
 #include <span>
@@ -685,6 +686,21 @@ public:
 	// not make or a point that cannot be instanced.
 	foundation::Expected<device::PipelineId, SurfaceStatus> InstancedPipeline(
 	    device::PipelineId pipeline );
+	// Pipeline prewarming (a driver compile in a frame is a visible hitch): a
+	// variant as one text line for this program's target formats and sample
+	// count, which the root persists and a later run's program (of the same
+	// formats) creates at map load before any draw asks for it.
+	std::string VariantKey( const SurfaceVariant &variant ) const;
+	// Called with each shipped (debug-neutral) variant's key when its pipeline
+	// is first created; empty: none. On the creating thread.
+	void SetCreatedSink( std::function<void( const std::string & )> sink )
+	{
+		m_CreatedSink = std::move( sink );
+	}
+	// Creates the pipeline of each key made for this program's formats;
+	// keys of other formats, unparsable lines and refused variants are
+	// skipped. Returns how many pipelines it created.
+	std::size_t Prewarm( std::span<const std::string> keys );
 	// A point as a MaterialPrograms request: the pipeline, the frame and draw
 	// layouts, and the material group (the constants, with state.x set from
 	// the variant, and the seven textures, one sampler description for all).
@@ -739,6 +755,7 @@ private:
 	    m_Pipelines;
 	// The variant behind each shipped (neutral) pipeline, for DebugPipeline.
 	std::map<std::uint64_t, SurfaceVariant> m_Shipped;
+	std::function<void( const std::string & )> m_CreatedSink;
 };
 
 // A family's view of the program: the family's claims are drawn as the

@@ -54,6 +54,7 @@ enum class RecordedOp : std::uint8_t
 	kCopyBuffer,
 	kCopyTextureToBuffer,
 	kCopyBufferToTexture,
+	kCopyTexture,
 	kBeginRendering,
 	kEndRendering,
 	kSetPipeline,

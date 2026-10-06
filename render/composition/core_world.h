@@ -45,6 +45,8 @@
 #include <cstddef>
 #include <map>
 #include <memory>
+#include <set>
+#include <string>
 #include <mutex>
 #include <optional>
 #include <set>
@@ -75,6 +77,7 @@ class CoreWorld final : public IRenderCoreWorld,
                         public pass::world::IWorldSceneColorCapture
 {
 public:
+	~CoreWorld() { SavePipelineKeys(); }
 	CoreWorld( legacy::ILegacyFrontend &frontend, const frame::IRenderer &renderer )
 	    : m_Frontend( frontend ), m_Renderer( renderer )
 	{
@@ -130,6 +133,7 @@ public:
 		m_ModelPoseSources.clear();
 		m_ModelBytes.clear();
 		m_Pass.SetModelLevelSource( nullptr );
+		SavePipelineKeys();
 		m_Pass.ClearWorld();
 	}
 	bool Draws( unsigned int material ) const override { return m_Pass.Draws( material ); }
@@ -165,6 +169,7 @@ public:
 	void SetGpuTimers( bool enabled ) override;
 	void SetQuality( const RenderCoreWorldQuality &quality ) override;
 	void SetFileSource( const RenderCoreFileSource &source ) override { m_Files = source; }
+	void SetPipelineStore( const char *directory ) override;
 	unsigned int TakeGpuTimes( char *out, unsigned int size ) override;
 	void ReadCosts( RenderCoreCostReport *out ) override;
 
@@ -612,6 +617,11 @@ private:
 	// decoded again only when the set of cookie names changes. A set that
 	// does not decode leaves the frame's projectors out, by name.
 	RenderCoreFileSource m_Files;
+	// The pipeline prewarm list (SetPipelineStore): its file, and the keys
+	// read from it or saved to it. Main thread.
+	void SavePipelineKeys();
+	std::string m_PipelineKeysPath;
+	std::set<std::string> m_PipelineKeys;
 	std::vector<std::string> m_CookieNames;
 	std::shared_ptr<const CookieImages> m_CookieImages;
 	std::string m_CookieRefusal;

@@ -414,6 +414,8 @@ DeviceResult<void> VulkanDevice::CreateLogical()
 		return Fail( StatusOf( result ), op, result );
 	}
 
+	m_Vk.cmdDrawIndexedIndirectCount = LoadDevice<PFN_vkCmdDrawIndexedIndirectCount>(
+	    m_Device, "vkCmdDrawIndexedIndirectCount", "vkCmdDrawIndexedIndirectCountKHR" );
 	m_Vk.cmdPipelineBarrier2 = LoadDevice<PFN_vkCmdPipelineBarrier2>(
 	    m_Device, "vkCmdPipelineBarrier2", "vkCmdPipelineBarrier2KHR" );
 	m_Vk.queueSubmit2 =

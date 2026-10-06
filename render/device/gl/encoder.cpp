@@ -211,6 +211,17 @@ void GlEncoder::CopyBufferToTexture(
 	Push( std::move( command ) );
 }
 
+void GlEncoder::CopyTexture( TextureId source, TextureId destination, const TextureCopy &copy )
+{
+	NotRendering();
+	Command command;
+	command.op = Op::kCopyTexture;
+	command.a = source.value;
+	command.b = destination.value;
+	command.textureCopy = { 0, copy.mip, copy.layer, copy.width, copy.height, copy.x, copy.y };
+	Push( std::move( command ) );
+}
+
 void GlEncoder::BeginRendering( const RenderingDesc &desc )
 {
 	NotRendering();

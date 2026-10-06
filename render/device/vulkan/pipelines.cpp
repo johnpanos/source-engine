@@ -17,6 +17,8 @@
 
 #include "vulkan_device.h"
 
+#include <chrono>
+#include <cstdio>
 #include <cstring>
 #include <iterator>
 
@@ -418,6 +420,7 @@ DeviceResult<BindGroupId> VulkanDevice::CreateBindGroup( const BindGroupDesc &de
 DeviceResult<PipelineId> VulkanDevice::CreatePipeline( const PipelineDesc &desc )
 {
 	const DeviceOperation op = DeviceOperation::kCreatePipeline;
+	const auto started = std::chrono::steady_clock::now();
 	if ( m_State != DeviceState::kAvailable )
 		return Fail( DeviceStatus::kDeviceLost, op );
 	auto valid = ValidatePipeline( desc, m_Facts,
@@ -573,8 +576,8 @@ DeviceResult<PipelineId> VulkanDevice::CreatePipeline( const PipelineDesc &desc 
 		info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
 		info.stage = stages[0];
 		info.layout = record.pipelineLayout;
-		result = vkCreateComputePipelines(
-		    m_Device, VK_NULL_HANDLE, 1, &info, nullptr, &record.pipeline );
+		result = vkCreateComputePipelines( m_Device,
+		    m_PipelineCache.load( std::memory_order_acquire ), 1, &info, nullptr, &record.pipeline );
 	}
 	else
 	{
@@ -709,10 +712,22 @@ DeviceResult<PipelineId> VulkanDevice::CreatePipeline( const PipelineDesc &desc 
 		info.pColorBlendState = &blend;
 		info.pDynamicState = &dynamic;
 		info.layout = record.pipelineLayout;
-		result = vkCreateGraphicsPipelines(
-		    m_Device, VK_NULL_HANDLE, 1, &info, nullptr, &record.pipeline );
+		result = vkCreateGraphicsPipelines( m_Device,
+		    m_PipelineCache.load( std::memory_order_acquire ), 1, &info, nullptr, &record.pipeline );
 	}
 	cleanup();
+	// A driver compile long enough to be a visible hitch when it lands
+	// mid-frame (no cache entry): named, so the frame that paid for it can be
+	// traced to the pipeline.
+	const auto compiled = std::chrono::steady_clock::now() - started;
+	if ( compiled >= std::chrono::milliseconds( 50 ) )
+		std::fprintf( stderr, "[render.device.vulkan] pipeline '%.*s' took %lld ms to create%s\n",
+		    int( desc.debugName.size() ), desc.debugName.data(),
+		    static_cast<long long>(
+		        std::chrono::duration_cast<std::chrono::milliseconds>( compiled ).count() ),
+		    m_PipelineCache.load( std::memory_order_relaxed ) != VK_NULL_HANDLE
+		        ? ""
+		        : " (no pipeline cache)" );
 	if ( result != VK_SUCCESS )
 	{
 		vkDestroyPipelineLayout( m_Device, record.pipelineLayout, nullptr );

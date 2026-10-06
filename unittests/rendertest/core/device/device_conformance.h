@@ -1936,6 +1936,94 @@ inline void RegionCopies( Suite &s )
 	(void)device->Release( out, token.value_or( CompletionToken{} ) );
 }
 
+// D37 texture copies: a region copied between two single-sample textures of
+// one format lands at the same (x, y) and writes nothing else; a format
+// mismatch or a region past the edge is refused.
+inline void TextureCopies( Suite &s )
+{
+	auto device = s.Create();
+	if ( !device )
+		return;
+	TextureDesc desc;
+	desc.format = Format::kRGBA8Unorm;
+	desc.width = 8;
+	desc.height = 8;
+	desc.usages = {
+	    ResourceUsage::kSampled, ResourceUsage::kCopyDestination, ResourceUsage::kCopySource };
+	auto from = device->CreateTexture( desc );
+	auto to = device->CreateTexture( desc );
+	TextureDesc otherDesc = desc;
+	otherDesc.format = Format::kRGBA16Float;
+	auto other = device->CreateTexture( otherDesc );
+	if ( !s.That( from.HasValue() && to.HasValue() && other.HasValue(), "D37",
+	         "the copy textures are created" ) )
+		return;
+	constexpr std::uint32_t kX = 4, kY = 5, kW = 3, kH = 2;
+	const std::vector<std::byte> source = Pattern( 8 * 8 * 4, 37 );
+	const std::vector<std::byte> target = Pattern( 8 * 8 * 4, 38 );
+	const BufferId upload = s.Buffer( *device, 2 * 8 * 8 * 4,
+	    { ResourceUsage::kCopyDestination, ResourceUsage::kCopySource } );
+	const BufferId out = s.Buffer(
+	    *device, 8 * 8 * 4, { ResourceUsage::kCopyDestination, ResourceUsage::kCopySource } );
+	auto encoder = device->BeginEncoder( QueueKind::kGraphics );
+	if ( !encoder )
+		return;
+	CommandEncoder &e = encoder.Value();
+	e.TransitionBuffer( upload, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+	e.WriteBuffer( upload, 0, source );
+	e.WriteBuffer( upload, 8 * 8 * 4, target );
+	e.TransitionBuffer( upload, ResourceUsage::kCopyDestination, ResourceUsage::kCopySource );
+	e.TransitionTexture( from.Value(), ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+	e.TransitionTexture( to.Value(), ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+	e.CopyBufferToTexture( upload, from.Value(), { 0, 0, 0, 8, 8 } );
+	e.CopyBufferToTexture( upload, to.Value(), { 8 * 8 * 4, 0, 0, 8, 8 } );
+	e.TransitionTexture(
+	    from.Value(), ResourceUsage::kCopyDestination, ResourceUsage::kCopySource );
+	TextureCopy region;
+	region.width = kW;
+	region.height = kH;
+	region.x = kX;
+	region.y = kY;
+	e.CopyTexture( from.Value(), to.Value(), region );
+	e.TransitionTexture( to.Value(), ResourceUsage::kCopyDestination, ResourceUsage::kCopySource );
+	e.TransitionBuffer( out, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+	e.CopyTextureToBuffer( to.Value(), out, { 0, 0, 0, 8, 8 } );
+	e.TransitionBuffer( out, ResourceUsage::kCopyDestination, ResourceUsage::kCopySource );
+	const std::optional<CompletionToken> token = s.Run( *device, e );
+	const bool finished = token && s.Finish( *device, *token );
+	const std::vector<std::byte> read = s.ReadBack( *device, out, 8 * 8 * 4 );
+	bool placed = finished && read.size() == 8 * 8 * 4;
+	for ( std::uint32_t y = 0; placed && y < 8; ++y )
+		for ( std::uint32_t x = 0; placed && x < 8; ++x )
+		{
+			const bool inside = x >= kX && x < kX + kW && y >= kY && y < kY + kH;
+			const std::byte *want = inside ? &source[( y * 8 + x ) * 4] : &target[( y * 8 + x ) * 4];
+			placed = std::memcmp( &read[( y * 8 + x ) * 4], want, 4 ) == 0;
+		}
+	s.That( placed, "D37", "a texture copy at (x, y) writes that rectangle of the source alone" );
+	auto refused = [&]( TextureId destination, const TextureCopy &copy )
+	{
+		auto bad = device->BeginEncoder( QueueKind::kGraphics );
+		if ( !bad )
+			return false;
+		bad.Value().TransitionTexture(
+		    destination, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+		bad.Value().CopyTexture( from.Value(), destination, copy );
+		auto submitted = device->Submit( QueueKind::kGraphics, { &bad.Value(), 1 }, {} );
+		return !submitted && submitted.Error().status == DeviceStatus::kInvalidState;
+	};
+	TextureCopy past = region;
+	past.x = 6; // 6 + 3 > 8
+	s.That( refused( other.Value(), region ), "D37", "a copy between two formats is refused" );
+	s.That( refused( to.Value(), past ), "D37", "a region past the mip's edge is refused" );
+	const CompletionToken done = token.value_or( CompletionToken{} );
+	(void)device->Release( from.Value(), done );
+	(void)device->Release( to.Value(), done );
+	(void)device->Release( other.Value(), done );
+	(void)device->Release( upload, done );
+	(void)device->Release( out, done );
+}
+
 // D23 timestamps: with kTimestamps, timestamps around work (one inside
 // rendering) land in their readback buffer once the submission completes,
 // do not decrease in recording order, and a later submission's are no
@@ -2777,6 +2865,7 @@ inline void RunDeviceConformance( testing::Checks &checks, const DeviceDriver &d
 	detail::BlockCompressedFormats( suite );
 	detail::PackedFloatTargets( suite );
 	detail::RegionCopies( suite );
+	detail::TextureCopies( suite );
 	detail::Timestamps( suite );
 	detail::IndirectDraws( suite );
 	detail::CubeArrays( suite );

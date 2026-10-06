@@ -256,7 +256,7 @@ void SceneColorCapture( testing::Checks &checks )
 	    .Execute( Noop );
 	const auto resolved = CaptureSceneColor( multisampled, msaa );
 	if ( !checks.That(
-	         resolved && multisampled.Passes().size() == 4 &&
+	         resolved && multisampled.Passes().size() == 3 &&
 	             multisampled.Passes()[1].accesses[1].usage == ResourceUsage::kResolveDestination,
 	         "G11.multisampled-scene-declares-resolve" ) )
 		return;
@@ -316,8 +316,8 @@ void SceneColorCapture( testing::Checks &checks )
 	auto graph = CompileGraph( std::move( builder ) );
 	if ( !checks.That( graph.HasValue(), "G11.capture-compiles" ) )
 		return;
-	checks.Equal( graph.Value().trace.kept.size(), std::size_t( 5 ),
-	    "G11.graph-keeps-opaque-capture-stage-consumer" );
+	checks.Equal( graph.Value().trace.kept.size(), std::size_t( 4 ),
+	    "G11.graph-keeps-opaque-capture-consumer" );
 	SerialGraphExecutor executor;
 	auto result = executor.Execute( graph.Value(), *device );
 	if ( !checks.That( result.HasValue(), "G11.capture-executes" ) )

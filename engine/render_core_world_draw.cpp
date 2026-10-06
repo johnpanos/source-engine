@@ -21,6 +21,7 @@
 #include "gl_lightmap.h"
 #include "gl_rmain.h"
 #include "host.h"
+#include "common.h"
 #include "materialsystem/imaterial.h"
 #include "materialsystem/imaterialvar.h"
 #include "materialsystem/IShader.h"
@@ -835,6 +836,8 @@ static void LevelInitWorld()
 		}
 		materialDescs.AddToTail( desc );
 	}
+	// The core's pipeline prewarm list lives with the game's files.
+	pWorld->SetPipelineStore( com_gamedir );
 	pWorld->SetWorld( vertices.Base(), vertices.Count(), indices.Base(), indices.Count(),
 	    surfaces.Base(), surfaces.Count(), materialDescs.Base(), materialDescs.Count() );
 

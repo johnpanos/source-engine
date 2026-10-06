@@ -23,6 +23,7 @@ public:
 
 	const HostDeviceInfo &Info() const override { return m_Device->HostInfo(); }
 	IRenderDevice2 &Port() override { return *m_Device; }
+	void SetPipelineCache( VkPipelineCache cache ) override { m_Device->SetPipelineCache( cache ); }
 
 	void RecordNative( CommandEncoder &encoder, NativeRecord record, void *user ) override
 	{

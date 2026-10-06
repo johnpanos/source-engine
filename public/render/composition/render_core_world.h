@@ -404,6 +404,11 @@ public:
 	// The game's files (projector cookies). Main thread, before the views
 	// that need them; without one the frame's projectors are refused.
 	virtual void SetFileSource( const RenderCoreFileSource & ) {}
+	// A writable directory (the game's) for the core's pipeline prewarm list:
+	// the pipelines a map load creates up front, before any draw asks for
+	// them, and to which the pipelines created since are added. Main thread,
+	// before SetWorld; without one nothing is prewarmed or persisted.
+	virtual void SetPipelineStore( const char * ) {}
 	// The sections' GPU time since the last call, over the frames read (the
 	// return value; 0 when none was), as "depth ms-per-frame
 	// count-per-frame name" lines in `out`. Main thread.
