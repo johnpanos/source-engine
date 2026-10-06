@@ -282,6 +282,8 @@ bool GlDevice::Validate(
 		case Op::kSetViewport:
 		case Op::kBeginLabel:
 		case Op::kEndLabel:
+		case Op::kDrawIndexedIndirect: // refused after validation (unclaimed)
+		case Op::kDrawIndexedIndirectCount:
 			break;
 		}
 	}
@@ -543,6 +545,8 @@ private:
 			Dispatch( command );
 			break;
 		case Op::kSetDrawConstants:
+		case Op::kDrawIndexedIndirect: // never reaches execution (unclaimed)
+		case Op::kDrawIndexedIndirectCount:
 			break;
 		case Op::kBeginLabel:
 			m_Gl.PushDebugGroup( GL_DEBUG_SOURCE_APPLICATION, 0,

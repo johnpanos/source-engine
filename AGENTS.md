@@ -1085,7 +1085,9 @@ Keep the table concise and link details below or from the domain progress file.
   per phase. Children of K5/K9; no row changes state. 2026-10-05: S4's
   `render.pass.cull` (equal to the CPU culler bit for bit; CPU stays the
   product path by RFC 0003's placement rule) and S8's two-queue graph model
-  (`render.graph.v1` G12) installed;
+  (`render.graph.v1` G12) installed; then the port's indirect draws (D30,
+  D31) and compaction of the mask into indirect commands, drawn equal to
+  direct draws;
   [record](RFC/0003-progress.md#s4-gpu-culling-placement-and-the-two-queue-graph-model-2026-10-05-user-goal).
 
 - R86/R88 memory follow-up (2026-10-02, user request): [audit and direct

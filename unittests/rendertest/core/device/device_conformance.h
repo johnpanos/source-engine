@@ -2465,6 +2465,203 @@ inline void MultisampleClauses( Suite &s, IRenderDevice2 &device )
 	Raster( s, right, "multisample", "the back-facing quad is culled (CCW front, Y up)" );
 }
 
+// D30 multi-draw indirect and D31 indirect count. Every adapter: a claimed
+// capability accepts well-formed calls, and refuses records outside the
+// buffer, a short stride, a buffer not in kIndirect and (D31) a count outside
+// its buffer with kInvalidState; an unclaimed one fails the submission
+// kUnsupported. Adapters that rasterize also check pixels: two records draw
+// both halves of the target, a count of 1 of at most 2 draws the left half,
+// and a draw count of zero draws nothing.
+inline void IndirectDraws( Suite &s )
+{
+	auto device = s.Create();
+	if ( !device )
+		return;
+	const CapabilitySet claimed = device->Facts().capabilities;
+	const bool multi = claimed.Has( Capability::kMultiDrawIndirect );
+	const bool counted = claimed.Has( Capability::kDrawIndirectCount );
+	static const BindingDesc material[] = {
+	    { 0, BindingKind::kUniformBuffer, 1, { ShaderStage::kFragment } } };
+	auto layout = device->CreateBindGroupLayout( { BindGroupRole::kMaterial, material } );
+	if ( !s.That( layout.HasValue(), "D30", "a material layout is created" ) )
+		return;
+	const BindGroupLayoutId layouts[] = { {}, {}, layout.Value() };
+	static const ReflectedBinding used[] = { { 2, 0, BindingKind::kUniformBuffer } };
+	const ShaderArtifactView stages[] = { { ShaderStage::kVertex, device->Facts().artifactFormat,
+	                                          s.Code( shaders::kPositionVertex ), "main", {} },
+	    { ShaderStage::kFragment, device->Facts().artifactFormat,
+	        s.Code( shaders::kColorFragment ), "main", used } };
+	const VertexAttribute attributes[] = { { 0, VertexFormat::kFloat2, 0, 0 } };
+	const VertexBufferLayout buffers[] = { { 8, false } };
+	const Format colors[] = { Format::kRGBA8Unorm };
+	PipelineDesc desc;
+	desc.stages = stages;
+	desc.layouts = layouts;
+	desc.vertex = { attributes, buffers };
+	desc.colorFormats = colors;
+	desc.raster.cull = CullMode::kNone;
+	auto pipeline = device->CreatePipeline( desc );
+	constexpr std::uint32_t kSize = 8;
+	TextureDesc target;
+	target.format = Format::kRGBA8Unorm;
+	target.width = kSize;
+	target.height = kSize;
+	target.usages = { ResourceUsage::kColorAttachment, ResourceUsage::kCopySource };
+	auto color = device->CreateTexture( target );
+	if ( !s.That( pipeline.HasValue() && color.HasValue(), "D30",
+	         "the pipeline and its target are created" ) )
+		return;
+
+	// The left half (indices 0-5) and the right half (6-11).
+	const float vertices[] = { -1, -1, 0, -1, 0, 1, -1, 1, 0, -1, 1, -1, 1, 1, 0, 1 };
+	const std::uint16_t indices[] = { 0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7 };
+	const DrawIndexedIndirectCommand records[] = { { 6, 1, 0, 0, 0 }, { 6, 1, 6, 0, 0 } };
+	const float red[4] = { 1.0f, 0.0f, 0.0f, 1.0f };
+	const UsageSet upload{ ResourceUsage::kCopyDestination };
+	const BufferId vertexBuffer =
+	    s.Buffer( *device, sizeof( vertices ), UsageSet( upload ).Add( ResourceUsage::kVertex ) );
+	const BufferId indexBuffer =
+	    s.Buffer( *device, sizeof( indices ), UsageSet( upload ).Add( ResourceUsage::kIndex ) );
+	const BufferId uniform =
+	    s.Buffer( *device, 256, UsageSet( upload ).Add( ResourceUsage::kUniform ) );
+	const BufferId indirect =
+	    s.Buffer( *device, sizeof( records ), UsageSet( upload ).Add( ResourceUsage::kIndirect ) );
+	const BufferId count = s.Buffer( *device, 4, UsageSet( upload ).Add( ResourceUsage::kIndirect ) );
+	const BindGroupEntry entry[] = { { 0, uniform, 0, 16, {}, {} } };
+	auto group = device->CreateBindGroup( { layout.Value(), entry } );
+	if ( !s.That( group.HasValue(), "D30", "the material group is created" ) )
+		return;
+
+	// Records one submission: uploads (the indirect buffer is left in
+	// kCopyDestination when `indirectReady` is false), one pass with `draw`,
+	// and optionally the target's readback. Returns the submission's status
+	// (kInternal for success) and the pixels.
+	auto run = [&]( std::uint32_t drawCountValue, bool indirectReady,
+	               const std::function<void( CommandEncoder & )> &draw,
+	               std::vector<std::byte> *pixels ) -> DeviceStatus
+	{
+		auto encoder = device->BeginEncoder( QueueKind::kGraphics );
+		if ( !encoder )
+			return DeviceStatus::kUnavailable;
+		CommandEncoder &e = encoder.Value();
+		auto fill = [&]( BufferId buffer, std::span<const std::byte> bytes, ResourceUsage usage )
+		{
+			e.TransitionBuffer( buffer, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+			e.WriteBuffer( buffer, 0, bytes );
+			if ( usage != ResourceUsage::kCopyDestination )
+				e.TransitionBuffer( buffer, ResourceUsage::kCopyDestination, usage );
+		};
+		fill( vertexBuffer, std::as_bytes( std::span( vertices ) ), ResourceUsage::kVertex );
+		fill( indexBuffer, std::as_bytes( std::span( indices ) ), ResourceUsage::kIndex );
+		fill( uniform, std::as_bytes( std::span( red ) ), ResourceUsage::kUniform );
+		fill( indirect, std::as_bytes( std::span( records ) ),
+		    indirectReady ? ResourceUsage::kIndirect : ResourceUsage::kCopyDestination );
+		fill( count, std::as_bytes( std::span( &drawCountValue, 1 ) ), ResourceUsage::kIndirect );
+		e.TransitionTexture(
+		    color.Value(), ResourceUsage::kUndefined, ResourceUsage::kColorAttachment );
+		const ColorAttachment attachments[] = {
+		    { color.Value(), LoadOp::kClear, StoreOp::kStore, { 0, 0, 0, 1 }, {} } };
+		RenderingDesc rendering;
+		rendering.colors = attachments;
+		rendering.width = kSize;
+		rendering.height = kSize;
+		e.BeginRendering( rendering );
+		e.SetPipeline( pipeline.Value() );
+		e.SetBindGroup( BindGroupRole::kMaterial, group.Value() );
+		e.SetVertexBuffer( 0, vertexBuffer );
+		e.SetIndexBuffer( indexBuffer, 0, IndexFormat::kUint16 );
+		draw( e );
+		e.EndRendering();
+		e.TransitionTexture(
+		    color.Value(), ResourceUsage::kColorAttachment, ResourceUsage::kCopySource );
+		if ( pixels )
+		{
+			*pixels = ReadTexture( s, *device, e, color.Value(), kSize );
+			return pixels->empty() ? DeviceStatus::kInvalidState : DeviceStatus::kInternal;
+		}
+		auto token = device->Submit( QueueKind::kGraphics, { &e, 1 }, {} );
+		if ( !token )
+			return token.Error().status;
+		return s.Finish( *device, token.Value() ) ? DeviceStatus::kInternal
+		                                          : DeviceStatus::kUnavailable;
+	};
+	auto direct = [&]( std::uint32_t n, std::uint32_t stride )
+	{
+		return [=]( CommandEncoder &e )
+		{
+			e.DrawIndexedIndirect( indirect, 0, n, stride );
+		};
+	};
+	auto viaCount = [&]( std::uint64_t countOffset )
+	{
+		return [=]( CommandEncoder &e )
+		{
+			e.DrawIndexedIndirectCount( indirect, 0, count, countOffset, 2, 20 );
+		};
+	};
+	constexpr DeviceStatus kOk = DeviceStatus::kInternal;
+
+	if ( multi )
+	{
+		s.That( run( 0, true, direct( 2, 20 ), nullptr ) == kOk, "D30",
+		    "two records in kIndirect submit" );
+		s.That( run( 0, true, direct( 0, 20 ), nullptr ) == kOk, "D30",
+		    "a draw count of zero submits" );
+		s.That( run( 0, true, direct( 3, 20 ), nullptr ) == DeviceStatus::kInvalidState, "D30",
+		    "records past the buffer's end fail kInvalidState" );
+		s.That( run( 0, true, direct( 1, 16 ), nullptr ) == DeviceStatus::kInvalidState, "D30",
+		    "a stride under 20 fails kInvalidState" );
+		s.That( run( 0, false, direct( 1, 20 ), nullptr ) == DeviceStatus::kInvalidState, "D30",
+		    "an indirect buffer not in kIndirect fails kInvalidState" );
+	}
+	else
+		s.That( run( 0, true, direct( 1, 20 ), nullptr ) == DeviceStatus::kUnsupported, "D30",
+		    "without the capability an indirect draw fails its submission kUnsupported" );
+	if ( counted )
+	{
+		s.That( run( 1, true, viaCount( 0 ), nullptr ) == kOk, "D31",
+		    "an indirect draw with a count in kIndirect submits" );
+		s.That( run( 1, true, viaCount( 4 ), nullptr ) == DeviceStatus::kInvalidState, "D31",
+		    "a count outside its buffer fails kInvalidState" );
+	}
+	else
+		s.That( run( 1, true, viaCount( 0 ), nullptr ) == DeviceStatus::kUnsupported, "D31",
+		    "without the capability a counted indirect draw fails kUnsupported" );
+
+	if ( !s.m_Driver.rasterizes )
+		return;
+	auto halves = [&]( const std::vector<std::byte> &pixels, bool left, bool right )
+	{
+		if ( pixels.size() != kSize * kSize * 4 )
+			return false;
+		bool ok = true;
+		for ( std::uint32_t y = 0; y < kSize; ++y )
+		{
+			for ( std::uint32_t x = 0; x < kSize; ++x )
+			{
+				const bool lit = x < kSize / 2 ? left : right;
+				ok = ok && Near( pixels[( y * kSize + x ) * 4], lit ? 255 : 0 );
+			}
+		}
+		return ok;
+	};
+	std::vector<std::byte> pixels;
+	if ( multi )
+	{
+		(void)run( 0, true, direct( 2, 20 ), &pixels );
+		s.That( halves( pixels, true, true ), "D30", "two records draw both halves" );
+		(void)run( 0, true, direct( 0, 20 ), &pixels );
+		s.That( halves( pixels, false, false ), "D30", "a draw count of zero draws nothing" );
+	}
+	if ( counted )
+	{
+		(void)run( 1, true, viaCount( 0 ), &pixels );
+		s.That( halves( pixels, true, false ), "D31",
+		    "a GPU count of 1 of at most 2 draws only the first record" );
+	}
+	(void)device->WaitIdle();
+}
+
 } // namespace detail
 
 // The raster clauses (compute, sampling, multisampling and facing) on one
@@ -2510,6 +2707,7 @@ inline void RunDeviceConformance( testing::Checks &checks, const DeviceDriver &d
 	detail::PackedFloatTargets( suite );
 	detail::RegionCopies( suite );
 	detail::Timestamps( suite );
+	detail::IndirectDraws( suite );
 	detail::ComparisonSampling( suite );
 	detail::CapabilityHonesty( suite );
 }

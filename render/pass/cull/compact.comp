@@ -1,0 +1,106 @@
+// render.pass.cull (RFC 0016 GPU-driven submission S3/S4): compaction of a
+// visibility mask (cull.comp's output) into indexed indirect draw commands,
+// the GPU path of public/render/pass/cull/cull.h's CompactReference.
+//
+// One workgroup scans the mask 256 words at a time: each invocation counts
+// its word's bits, a shared-memory prefix sum places them, and every kept
+// instance i writes { indexCount, 1, firstIndex, vertexOffset, i } from its
+// draw template, in instance order. The draw count goes to the first word of
+// the output; the commands start at byte 16 (cull.h kCommandsOffset), so one
+// buffer feeds DrawIndexedIndirectCount as both records and count. The order
+// is deterministic, so the oracle comparison is exact.
+//
+// SEEDED_COMPACT_DROPS_LAST and SEEDED_COMPACT_WRONG_INSTANCE build the
+// defective variants the render.cull suite must reject; no product uses them.
+#version 450
+
+layout( local_size_x = 256 ) in;
+
+struct DrawTemplate
+{
+	uint indexCount;
+	uint firstIndex;
+	int vertexOffset;
+	uint reserved;
+};
+
+layout( std430, set = 3, binding = 0 ) readonly buffer Visibility
+{
+	uint words[];
+};
+
+layout( std430, set = 3, binding = 1 ) readonly buffer Templates
+{
+	DrawTemplate templates[];
+};
+
+// The cull pass's view (CullView): y of viewBitAndCount is the instance count.
+layout( std430, set = 3, binding = 2 ) readonly buffer View
+{
+	vec4 planes[6];
+	uvec4 viewBitAndCount;
+};
+
+layout( std430, set = 3, binding = 3 ) writeonly buffer Commands
+{
+	uint drawCount;
+	uint pad[3];
+	uint commands[]; // five words per command
+};
+
+shared uint s_Scan[256];
+
+void main()
+{
+	const uint lane = gl_LocalInvocationID.x;
+	const uint instanceCount = viewBitAndCount.y;
+	const uint wordCount = ( instanceCount + 31u ) / 32u;
+	uint base = 0u;
+	for ( uint first = 0u; first < wordCount; first += 256u )
+	{
+		const uint word = first + lane;
+		uint bits = word < wordCount ? words[word] : 0u;
+		// Bits past the last instance are not instances.
+		if ( word == wordCount - 1u && ( instanceCount & 31u ) != 0u )
+			bits &= ( 1u << ( instanceCount & 31u ) ) - 1u;
+		const uint own = bitCount( bits );
+		s_Scan[lane] = own;
+		barrier();
+		for ( uint step = 1u; step < 256u; step <<= 1u )
+		{
+			const uint add = lane >= step ? s_Scan[lane - step] : 0u;
+			barrier();
+			s_Scan[lane] += add;
+			barrier();
+		}
+		uint at = base + s_Scan[lane] - own;
+		while ( bits != 0u )
+		{
+			const uint b = uint( findLSB( bits ) );
+			bits &= bits - 1u;
+			const uint instance = word * 32u + b;
+			const DrawTemplate t = templates[instance];
+			const uint o = at * 5u;
+			commands[o + 0u] = t.indexCount;
+			commands[o + 1u] = 1u;
+			commands[o + 2u] = t.firstIndex;
+			commands[o + 3u] = uint( t.vertexOffset );
+#ifdef SEEDED_COMPACT_WRONG_INSTANCE
+			commands[o + 4u] = word;
+#else
+			commands[o + 4u] = instance;
+#endif
+			++at;
+		}
+		base += s_Scan[255];
+		barrier();
+	}
+	if ( lane == 0u )
+	{
+#ifdef SEEDED_COMPACT_DROPS_LAST
+		drawCount = base > 0u ? base - 1u : 0u;
+#else
+		drawCount = base;
+#endif
+	}
+}

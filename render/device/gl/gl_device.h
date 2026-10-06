@@ -196,7 +196,11 @@ enum class Op : std::uint8_t
 	kSetDrawConstants,
 	kBeginLabel,
 	kEndLabel,
-	kWriteTimestamp // D23: buffer a, at offset
+	kWriteTimestamp, // D23: buffer a, at offset
+	// D30/D31: recorded so that a submission refuses them by name; the
+	// adapter claims neither capability yet (RFC 0016 GPU-driven submission).
+	kDrawIndexedIndirect,
+	kDrawIndexedIndirectCount
 };
 
 struct Command
@@ -258,6 +262,10 @@ public:
 	void SetVertexBuffer( std::uint32_t slot, BufferId buffer, std::uint64_t offset ) override;
 	void SetIndexBuffer( BufferId buffer, std::uint64_t offset, IndexFormat format ) override;
 	void SetViewport( const Viewport &viewport ) override;
+	void DrawIndexedIndirect( BufferId buffer, std::uint64_t offset, std::uint32_t drawCount,
+	    std::uint32_t stride ) override;
+	void DrawIndexedIndirectCount( BufferId buffer, std::uint64_t offset, BufferId countBuffer,
+	    std::uint64_t countOffset, std::uint32_t maxDrawCount, std::uint32_t stride ) override;
 	void Draw( std::uint32_t vertexCount, std::uint32_t instanceCount, std::uint32_t firstVertex,
 	    std::uint32_t firstInstance ) override;
 	void DrawIndexed( std::uint32_t indexCount, std::uint32_t instanceCount,

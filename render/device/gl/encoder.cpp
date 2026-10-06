@@ -310,6 +310,31 @@ void GlEncoder::DrawIndexed( std::uint32_t indexCount, std::uint32_t instanceCou
 	Push( std::move( command ) );
 }
 
+void GlEncoder::DrawIndexedIndirect(
+    BufferId buffer, std::uint64_t offset, std::uint32_t drawCount, std::uint32_t )
+{
+	Drawing();
+	Command command;
+	command.op = Op::kDrawIndexedIndirect;
+	command.a = buffer.value;
+	command.offset = offset;
+	command.count = drawCount;
+	Push( std::move( command ) );
+}
+
+void GlEncoder::DrawIndexedIndirectCount( BufferId buffer, std::uint64_t offset,
+    BufferId countBuffer, std::uint64_t, std::uint32_t maxDrawCount, std::uint32_t )
+{
+	Drawing();
+	Command command;
+	command.op = Op::kDrawIndexedIndirectCount;
+	command.a = buffer.value;
+	command.b = countBuffer.value;
+	command.offset = offset;
+	command.count = maxDrawCount;
+	Push( std::move( command ) );
+}
+
 void GlEncoder::Dispatch( std::uint32_t x, std::uint32_t y, std::uint32_t z )
 {
 	NotRendering();

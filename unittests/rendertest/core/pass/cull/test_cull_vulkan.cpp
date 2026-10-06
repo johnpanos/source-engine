@@ -37,6 +37,7 @@
 //=============================================================================//
 
 #include "spv/cull_defects_spv.h"
+#include "../../device/test_shaders.h"
 #include "render/device/null/provider.h"
 #include "render/device/vulkan/provider.h"
 #include "render/graph/compiled_graph.h"
@@ -53,6 +54,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <random>
 #include <span>
 #include <thread>
@@ -356,6 +358,447 @@ void Placement( testing::Checks &checks, IRenderDevice2 &device, CullKernel &ker
 	checks.That( ok, "placement.every-measured-run-completes" );
 }
 
+// Compaction and indirect draws (RFC 0016 GPU-driven submission S3/S4).
+// One graph uploads the scene, culls it, compacts the mask into indexed
+// indirect commands and, when `draw` is set, draws a 64x64 image from them
+// with DrawIndexedIndirectCount; `direct` instead draws the CPU culler's
+// kept instances one DrawIndexed each, in instance order. Each instance is a
+// 4x4-pixel quad in a 16x16 grid (instance i at cell i % 256), so the image
+// shows exactly which instances were drawn.
+class IndirectChain
+{
+public:
+	static constexpr std::uint32_t kSize = 64;
+
+	IndirectChain( IRenderDevice2 &device, CullKernel &cull, CompactKernel &compact )
+	    : m_Device( device ), m_Cull( cull ), m_Compact( compact )
+	{
+		static const BindingDesc material[] = {
+		    { 0, BindingKind::kUniformBuffer, 1, { ShaderStage::kFragment } } };
+		auto layout = device.CreateBindGroupLayout( { BindGroupRole::kMaterial, material } );
+		if ( !layout )
+			return;
+		m_Layout = layout.Value();
+		const BindGroupLayoutId layouts[] = { {}, {}, m_Layout };
+		static const ReflectedBinding used[] = { { 2, 0, BindingKind::kUniformBuffer } };
+		const ShaderArtifactView stages[] = {
+		    { ShaderStage::kVertex, ArtifactFormat::kSpirv,
+		        std::as_bytes( std::span( rendertest::shaders::kPositionVertex ) ), "main", {} },
+		    { ShaderStage::kFragment, ArtifactFormat::kSpirv,
+		        std::as_bytes( std::span( rendertest::shaders::kColorFragment ) ), "main",
+		        used } };
+		const VertexAttribute attributes[] = { { 0, VertexFormat::kFloat2, 0, 0 } };
+		const VertexBufferLayout buffers[] = { { 8, false } };
+		const Format colors[] = { Format::kRGBA8Unorm };
+		PipelineDesc desc;
+		desc.stages = stages;
+		desc.layouts = layouts;
+		desc.vertex = { attributes, buffers };
+		desc.colorFormats = colors;
+		desc.raster.cull = CullMode::kNone;
+		auto pipeline = device.CreatePipeline( desc );
+		if ( pipeline )
+			m_Pipeline = pipeline.Value();
+	}
+	~IndirectChain()
+	{
+		(void)m_Device.WaitIdle();
+		if ( m_Pipeline.IsValid() )
+			(void)m_Device.Release( m_Pipeline, CompletionToken() );
+		if ( m_Layout.IsValid() )
+			(void)m_Device.Release( m_Layout, CompletionToken() );
+		(void)m_Device.Poll();
+	}
+	bool Valid() const { return m_Pipeline.IsValid(); }
+
+	struct Output
+	{
+		std::uint32_t drawCount = 0;
+		std::vector<DrawIndexedIndirectCommand> commands; // the first drawCount
+		std::vector<std::byte> pixels;
+	};
+
+	// The quad grid's geometry for `count` instances: vertices, indices and
+	// each instance's template (its own six indices, vertex offset 0).
+	static void Grid( std::uint32_t count, std::vector<float> &vertices,
+	    std::vector<std::uint32_t> &indices, std::vector<DrawTemplate> &templates )
+	{
+		vertices.clear();
+		indices.clear();
+		templates.assign( count, {} );
+		for ( std::uint32_t i = 0; i < count; ++i )
+		{
+			const std::uint32_t cell = i % 256;
+			const float x0 = -1.0f + 0.125f * float( cell % 16 );
+			const float y0 = -1.0f + 0.125f * float( cell / 16 );
+			const float x1 = x0 + 0.125f;
+			const float y1 = y0 + 0.125f;
+			const std::uint32_t base = static_cast<std::uint32_t>( vertices.size() / 2 );
+			for ( float v : { x0, y0, x1, y0, x1, y1, x0, y1 } )
+				vertices.push_back( v );
+			templates[i] = { 6, static_cast<std::uint32_t>( indices.size() ), 0, 0 };
+			for ( std::uint32_t k : { 0u, 1u, 2u, 0u, 2u, 3u } )
+				indices.push_back( base + k );
+		}
+	}
+
+	// mode: 0 compaction only, 1 indirect draw, 2 direct draws of `kept`.
+	bool Run( const Scene &scene, std::span<const DrawTemplate> templates, int mode,
+	    const std::vector<std::uint32_t> &kept, Output &out )
+	{
+		const auto count = static_cast<std::uint32_t>( scene.snapshot.instances.size() );
+		const auto packed = PackInstances( scene.snapshot );
+		const CullView view = PackView( scene.view, count );
+		std::vector<float> vertices;
+		std::vector<std::uint32_t> indices;
+		std::vector<DrawTemplate> gridTemplates;
+		Grid( count, vertices, indices, gridTemplates );
+		const float color[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
+		std::vector<BufferId> made;
+		auto buffer = [&]( std::uint64_t size, UsageSet usages, BufferDesc &desc,
+		                  MemoryKind memory = MemoryKind::kDeviceLocal )
+		{
+			desc.size = std::max<std::uint64_t>( size, 16 );
+			desc.usages = usages;
+			desc.memory = memory;
+			auto created = m_Device.CreateBuffer( desc );
+			if ( !created )
+				return BufferId();
+			made.push_back( created.Value() );
+			return created.Value();
+		};
+		const UsageSet storageIn = { ResourceUsage::kCopyDestination, ResourceUsage::kStorageRead };
+		BufferDesc dInstances, dView, dMask, dTemplates, dCommands, dReadback, dVertices, dIndices,
+		    dUniform, dPixels;
+		const BufferId instances =
+		    buffer( packed.size() * sizeof( CullInstance ), storageIn, dInstances );
+		const BufferId viewBuffer = buffer( sizeof( CullView ), storageIn, dView );
+		const BufferId mask = buffer( std::uint64_t( MaskWords( count ) ) * 4,
+		    { ResourceUsage::kStorageWrite, ResourceUsage::kStorageRead }, dMask );
+		const BufferId templateBuffer =
+		    buffer( templates.size() * sizeof( DrawTemplate ), storageIn, dTemplates );
+		const std::uint64_t commandBytes = CommandBufferBytes( count );
+		const BufferId commands = buffer( commandBytes,
+		    { ResourceUsage::kStorageWrite, ResourceUsage::kIndirect, ResourceUsage::kCopySource },
+		    dCommands );
+		const BufferId readback = buffer(
+		    commandBytes, { ResourceUsage::kCopyDestination }, dReadback, MemoryKind::kReadback );
+		const BufferId vertexBuffer = buffer( vertices.size() * 4,
+		    { ResourceUsage::kCopyDestination, ResourceUsage::kVertex }, dVertices );
+		const BufferId indexBuffer = buffer( indices.size() * 4,
+		    { ResourceUsage::kCopyDestination, ResourceUsage::kIndex }, dIndices );
+		const BufferId uniform =
+		    buffer( 256, { ResourceUsage::kCopyDestination, ResourceUsage::kUniform }, dUniform );
+		const BufferId pixelBuffer = buffer( kSize * kSize * 4,
+		    { ResourceUsage::kCopyDestination }, dPixels, MemoryKind::kReadback );
+		TextureDesc target;
+		target.format = Format::kRGBA8Unorm;
+		target.width = kSize;
+		target.height = kSize;
+		target.usages = { ResourceUsage::kColorAttachment, ResourceUsage::kCopySource };
+		auto texture = m_Device.CreateTexture( target );
+		bool ok = texture.HasValue();
+		for ( BufferId id : made )
+			ok = ok && id.IsValid();
+		const BindGroupEntry entry[] = { { 0, uniform, 0, 16, {}, {} } };
+		BindGroupId group;
+		if ( ok )
+		{
+			auto created = m_Device.CreateBindGroup( { m_Layout, entry } );
+			ok = created.HasValue();
+			if ( ok )
+				group = created.Value();
+		}
+		if ( ok )
+		{
+			using graph::ResourceRef;
+			graph::GraphBuilder b;
+			auto import = [&]( const char *name, BufferId id, const BufferDesc &desc,
+			                  ResourceUsage final )
+			{
+				return b.ImportBuffer( name, id, desc, ResourceUsage::kUndefined, final );
+			};
+			const ResourceRef rInstances =
+			    import( "instances", instances, dInstances, ResourceUsage::kStorageRead );
+			const ResourceRef rView = import( "view", viewBuffer, dView, ResourceUsage::kStorageRead );
+			const ResourceRef rMask = import( "mask", mask, dMask, ResourceUsage::kStorageRead );
+			const ResourceRef rTemplates =
+			    import( "templates", templateBuffer, dTemplates, ResourceUsage::kStorageRead );
+			const ResourceRef rCommands =
+			    import( "commands", commands, dCommands, ResourceUsage::kCopySource );
+			const ResourceRef rReadback =
+			    import( "readback", readback, dReadback, ResourceUsage::kCopyDestination );
+			const ResourceRef rVertices =
+			    import( "vertices", vertexBuffer, dVertices, ResourceUsage::kVertex );
+			const ResourceRef rIndices =
+			    import( "indices", indexBuffer, dIndices, ResourceUsage::kIndex );
+			const ResourceRef rUniform =
+			    import( "uniform", uniform, dUniform, ResourceUsage::kUniform );
+			const ResourceRef rPixels =
+			    import( "pixels", pixelBuffer, dPixels, ResourceUsage::kCopyDestination );
+			const ResourceRef rColor = b.ImportTexture( "color", texture.Value(), target,
+			    ResourceUsage::kUndefined, ResourceUsage::kCopySource );
+			b.AddPass( "upload", graph::PassKind::kCopy )
+			    .Write( rInstances, ResourceUsage::kCopyDestination )
+			    .Write( rView, ResourceUsage::kCopyDestination )
+			    .Write( rTemplates, ResourceUsage::kCopyDestination )
+			    .Write( rVertices, ResourceUsage::kCopyDestination )
+			    .Write( rIndices, ResourceUsage::kCopyDestination )
+			    .Write( rUniform, ResourceUsage::kCopyDestination )
+			    .Execute(
+			        [&]( graph::RecordContext &c )
+			        {
+				        CommandEncoder &e = c.Encoder();
+				        if ( !packed.empty() )
+					        e.WriteBuffer( c.Buffer( rInstances ), 0, std::as_bytes( std::span( packed ) ) );
+				        e.WriteBuffer(
+				            c.Buffer( rView ), 0, std::as_bytes( std::span( &view, 1 ) ) );
+				        if ( !templates.empty() )
+					        e.WriteBuffer( c.Buffer( rTemplates ), 0, std::as_bytes( templates ) );
+				        if ( !vertices.empty() )
+					        e.WriteBuffer(
+					            c.Buffer( rVertices ), 0, std::as_bytes( std::span( vertices ) ) );
+				        if ( !indices.empty() )
+					        e.WriteBuffer(
+					            c.Buffer( rIndices ), 0, std::as_bytes( std::span( indices ) ) );
+				        e.WriteBuffer( c.Buffer( rUniform ), 0, std::as_bytes( std::span( color ) ) );
+			        } );
+			if ( mode != 2 )
+			{
+				AddCullPass( b, m_Cull, { rInstances, rView, rMask, count, false } );
+				AddCompactPass( b, m_Compact, { rMask, rTemplates, rView, rCommands, count, false } );
+			}
+			if ( mode != 0 )
+			{
+				graph::PassBuilder draw = b.AddPass( "draw", graph::PassKind::kRender );
+				if ( mode == 1 )
+					draw.Read( rCommands, ResourceUsage::kIndirect );
+				draw.Read( rVertices, ResourceUsage::kVertex )
+				    .Read( rIndices, ResourceUsage::kIndex )
+				    .Read( rUniform, ResourceUsage::kUniform )
+				    .Write( rColor, ResourceUsage::kColorAttachment )
+				    .Execute(
+				        [&]( graph::RecordContext &c )
+				        {
+					        CommandEncoder &e = c.Encoder();
+					        const ColorAttachment attachments[] = { { c.Texture( rColor ),
+					            LoadOp::kClear, StoreOp::kStore, { 0, 0, 0, 1 }, {} } };
+					        RenderingDesc rendering;
+					        rendering.colors = attachments;
+					        rendering.width = kSize;
+					        rendering.height = kSize;
+					        e.BeginRendering( rendering );
+					        e.SetPipeline( m_Pipeline );
+					        e.SetBindGroup( BindGroupRole::kMaterial, group );
+					        e.SetVertexBuffer( 0, c.Buffer( rVertices ) );
+					        e.SetIndexBuffer( c.Buffer( rIndices ), 0, IndexFormat::kUint32 );
+					        if ( mode == 1 )
+					        {
+						        const BufferId records = c.Buffer( rCommands );
+						        e.DrawIndexedIndirectCount( records, kCommandsOffset, records, 0,
+						            count, sizeof( DrawIndexedIndirectCommand ) );
+					        }
+					        else
+					        {
+						        for ( std::uint32_t i : kept )
+							        e.DrawIndexed( templates[i].indexCount, 1, templates[i].firstIndex,
+							            templates[i].vertexOffset, i );
+					        }
+					        e.EndRendering();
+				        } );
+				b.AddPass( "pixels", graph::PassKind::kCopy )
+				    .Read( rColor, ResourceUsage::kCopySource )
+				    .Write( rPixels, ResourceUsage::kCopyDestination )
+				    .SideEffect()
+				    .Execute(
+				        [&]( graph::RecordContext &c )
+				        {
+					        c.Encoder().CopyTextureToBuffer(
+					            c.Texture( rColor ), c.Buffer( rPixels ), { 0, 0, 0, kSize, kSize } );
+				        } );
+			}
+			if ( mode != 2 )
+				b.AddPass( "commands", graph::PassKind::kCopy )
+				    .Read( rCommands, ResourceUsage::kCopySource )
+				    .Write( rReadback, ResourceUsage::kCopyDestination )
+				    .SideEffect()
+				    .Execute(
+				        [&]( graph::RecordContext &c )
+				        {
+					        c.Encoder().CopyBuffer(
+					            c.Buffer( rCommands ), c.Buffer( rReadback ), { 0, 0, commandBytes } );
+				        } );
+			auto compiled = graph::CompileGraph( std::move( b ) );
+			ok = compiled.HasValue() && graph::ValidateCompiledGraph( compiled.Value() ).empty();
+			if ( ok )
+			{
+				graph::SerialGraphExecutor executor;
+				auto executed = executor.Execute( compiled.Value(), m_Device );
+				ok = executed.HasValue() && Wait( m_Device, executed.Value().token );
+				if ( executed )
+				{
+					m_Cull.Collect( executed.Value().token );
+					m_Compact.Collect( executed.Value().token );
+				}
+			}
+		}
+		if ( ok && mode != 2 )
+		{
+			std::vector<std::byte> bytes( commandBytes );
+			ok = m_Device.ReadBuffer( readback, 0, bytes ).HasValue();
+			std::memcpy( &out.drawCount, bytes.data(), 4 );
+			out.commands.resize( std::min( out.drawCount, count ) );
+			if ( !out.commands.empty() )
+				std::memcpy( out.commands.data(), bytes.data() + kCommandsOffset,
+				    out.commands.size() * sizeof( DrawIndexedIndirectCommand ) );
+		}
+		if ( ok && mode != 0 )
+		{
+			out.pixels.resize( kSize * kSize * 4 );
+			ok = m_Device.ReadBuffer( pixelBuffer, 0, out.pixels ).HasValue();
+		}
+		(void)m_Device.WaitIdle();
+		if ( group.IsValid() )
+			(void)m_Device.Release( group, CompletionToken() );
+		if ( texture )
+			(void)m_Device.Release( texture.Value(), CompletionToken() );
+		for ( BufferId id : made )
+			(void)m_Device.Release( id, CompletionToken() );
+		(void)m_Device.Poll();
+		return ok;
+	}
+
+private:
+	IRenderDevice2 &m_Device;
+	CullKernel &m_Cull;
+	CompactKernel &m_Compact;
+	BindGroupLayoutId m_Layout;
+	PipelineId m_Pipeline;
+};
+
+bool SameCommand( const DrawIndexedIndirectCommand &a, const DrawIndexedIndirectCommand &b )
+{
+	return a.indexCount == b.indexCount && a.instanceCount == b.instanceCount &&
+	       a.firstIndex == b.firstIndex && a.vertexOffset == b.vertexOffset &&
+	       a.firstInstance == b.firstInstance;
+}
+
+// Templates with varied counts, first indices and signed vertex offsets.
+std::vector<DrawTemplate> RandomTemplates( std::uint32_t seed, std::uint32_t count )
+{
+	std::mt19937 random( seed * 31 + 7 );
+	std::vector<DrawTemplate> out( count );
+	for ( DrawTemplate &t : out )
+		t = { static_cast<std::uint32_t>( 3 * ( 1 + random() % 100 ) ),
+		    static_cast<std::uint32_t>( random() % 100000 ),
+		    static_cast<std::int32_t>( random() % 2001 ) - 1000, 0 };
+	return out;
+}
+
+// Scenes whose compacted commands differ from CompactReference on the CPU
+// culler's mask; -1 when a device step failed.
+int CompactionDisagreements(
+    IRenderDevice2 &device, CullKernel &cull, CompactKernel &compact, int scenes )
+{
+	IndirectChain chain( device, cull, compact );
+	if ( !chain.Valid() )
+		return -1;
+	int differ = 0;
+	for ( int seed = 0; seed < scenes; ++seed )
+	{
+		const std::uint32_t count = seed == 0 ? 0 : 1 + ( std::uint32_t( seed ) * 7919 ) % 20000;
+		const Scene scene = RandomScene( 500 + seed, count );
+		const std::vector<DrawTemplate> templates = RandomTemplates( seed, count );
+		IndirectChain::Output out;
+		if ( !chain.Run( scene, templates, 0, {}, out ) )
+			return -1;
+		const auto expected = CompactReference( CpuMask( scene ), templates, count );
+		const bool same = out.drawCount == expected.size() &&
+		                  out.commands.size() == expected.size() &&
+		                  std::equal( out.commands.begin(), out.commands.end(), expected.begin(),
+		                      SameCommand );
+		if ( !same && ++differ <= 2 )
+			std::printf( "  scene %d: %u instances, gpu draws %u, cpu %zu\n", seed, count,
+			    out.drawCount, expected.size() );
+	}
+	return differ;
+}
+
+void Compaction( testing::Checks &checks, IRenderDevice2 &device, CullKernel &cull )
+{
+	auto compact = CompactKernel::Create( device );
+	if ( !checks.That( compact.HasValue(), "compact.kernel-is-created" ) )
+		return;
+	const int differ = CompactionDisagreements( device, cull, *compact.Value(), 60 );
+	checks.That( differ >= 0, "compact.every-dispatch-runs" );
+	checks.Equal( differ, 0,
+	    "compact.commands-and-count-equal-the-reference on 60 seeded scenes (0 to 20,000 "
+	    "instances), in instance order" );
+	struct Defect
+	{
+		const char *name;
+		std::span<const std::uint32_t> code;
+	};
+	const Defect defects[] = {
+	    { "drops-last", rendertest::cull::spirv::kCompactDropsLast },
+	    { "wrong-instance", rendertest::cull::spirv::kCompactWrongInstance },
+	};
+	int rejected = 0;
+	for ( const Defect &defect : defects )
+	{
+		auto seeded = CompactKernel::Create( device, defect.code );
+		const int seededDiffer =
+		    seeded ? CompactionDisagreements( device, cull, *seeded.Value(), 12 ) : -1;
+		std::printf( "INFO compact defect %s: %d of 12 scenes disagree\n", defect.name,
+		    seededDiffer );
+		rejected += seededDiffer > 0;
+	}
+	checks.Equal( rejected, 2, "compact.defects.each-seeded-kernel-disagrees (2 of 2)" );
+
+	// Draws: the image from the compacted commands equals the image from the
+	// CPU culler's kept instances drawn one by one.
+	const bool counted = device.Facts().capabilities.Has( Capability::kDrawIndirectCount );
+	if ( !counted )
+	{
+		std::printf( "SKIP compact.draw the device does not claim kDrawIndirectCount\n" );
+		return;
+	}
+	IndirectChain chain( device, cull, *compact.Value() );
+	int same = 0;
+	int lit = 0;
+	int mixed = 0;
+	constexpr int kImages = 8;
+	for ( int seed = 0; seed < kImages; ++seed )
+	{
+		const Scene scene = RandomScene( 900 + seed, 256 );
+		std::vector<float> vertices;
+		std::vector<std::uint32_t> indices;
+		std::vector<DrawTemplate> templates;
+		IndirectChain::Grid( 256, vertices, indices, templates );
+		const std::vector<std::uint32_t> mask = CpuMask( scene );
+		std::vector<std::uint32_t> kept;
+		for ( std::uint32_t i = 0; i < 256; ++i )
+		{
+			if ( ( mask[i / 32] >> ( i % 32 ) ) & 1u )
+				kept.push_back( i );
+		}
+		IndirectChain::Output indirect, direct;
+		const bool ran = chain.Valid() && chain.Run( scene, templates, 1, {}, indirect ) &&
+		                 chain.Run( scene, templates, 2, kept, direct );
+		same += ran && !indirect.pixels.empty() && indirect.pixels == direct.pixels &&
+		        indirect.drawCount == kept.size();
+		std::uint32_t white = 0;
+		for ( std::size_t p = 0; p < indirect.pixels.size(); p += 4 )
+			white += indirect.pixels[p] == std::byte( 255 );
+		lit += ran && white == kept.size() * 16;
+		mixed += !kept.empty() && kept.size() < 256;
+	}
+	checks.Equal( same, kImages,
+	    "draw.the-indirect-image-equals-direct-draws-of-the-cpu-kept-instances (8 scenes)" );
+	checks.Equal( lit, kImages, "draw.each-kept-instance-and-only-those-lights-its-16-pixels" );
+	checks.That( mixed >= kImages / 2, "draw.the-scenes-keep-some-instances-and-cull-others" );
+}
+
 } // namespace
 
 int main()
@@ -441,6 +884,7 @@ int main()
 			    "queue.both-placements-read-back-the-oracle-mask" );
 		}
 
+		Compaction( checks, *device, *kernel.Value() );
 		Placement( checks, *device, *kernel.Value() );
 		kernel.Value().reset();
 		(void)device->WaitIdle();

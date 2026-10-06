@@ -99,6 +99,10 @@ const char *CapabilityName( Capability capability )
 		return "texture-compression-bc";
 	case Capability::kTimestamps:
 		return "timestamps";
+	case Capability::kMultiDrawIndirect:
+		return "multi-draw-indirect";
+	case Capability::kDrawIndirectCount:
+		return "draw-indirect-count";
 	case Capability::kCount:
 		break;
 	}

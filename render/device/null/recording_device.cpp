@@ -420,6 +420,34 @@ public:
 		command.count = static_cast<std::uint64_t>( indexCount ) * instanceCount;
 		Push( std::move( command ) );
 	}
+	// D30/D31: a is the buffer, b the count buffer; copy.sourceOffset and
+	// copy.destinationOffset their offsets; slot the stride.
+	void DrawIndexedIndirect( BufferId buffer, std::uint64_t offset, std::uint32_t drawCount,
+	    std::uint32_t stride ) override
+	{
+		Drawing();
+		Command command;
+		command.op = RecordedOp::kDrawIndexedIndirect;
+		command.a = buffer.value;
+		command.copy.sourceOffset = offset;
+		command.count = drawCount;
+		command.slot = stride;
+		Push( std::move( command ) );
+	}
+	void DrawIndexedIndirectCount( BufferId buffer, std::uint64_t offset, BufferId countBuffer,
+	    std::uint64_t countOffset, std::uint32_t maxDrawCount, std::uint32_t stride ) override
+	{
+		Drawing();
+		Command command;
+		command.op = RecordedOp::kDrawIndexedIndirectCount;
+		command.a = buffer.value;
+		command.b = countBuffer.value;
+		command.copy.sourceOffset = offset;
+		command.copy.destinationOffset = countOffset;
+		command.count = maxDrawCount;
+		command.slot = stride;
+		Push( std::move( command ) );
+	}
 	void Dispatch( std::uint32_t x, std::uint32_t y, std::uint32_t z ) override
 	{
 		NotRendering();
@@ -1164,6 +1192,25 @@ private:
 				if ( !constants.Ready() )
 					return false;
 				break;
+			case RecordedOp::kDrawIndexedIndirect:
+			case RecordedOp::kDrawIndexedIndirectCount:
+			{
+				// D30/D31: records (and the count) in kIndirect buffers.
+				const bool counted = command.op == RecordedOp::kDrawIndexedIndirectCount;
+				if ( !constants.Ready() || !buffer( command.a, ResourceUsage::kIndirect ) ||
+				     !IndirectRecordsFit( LiveBuffer( command.a )->data.size(),
+				         command.copy.sourceOffset, std::uint32_t( command.count ), command.slot ) )
+					return false;
+				if ( counted )
+				{
+					const std::uint64_t at = command.copy.destinationOffset;
+					if ( !buffer( command.b, ResourceUsage::kIndirect ) || at % 4 != 0 ||
+					     at > LiveBuffer( command.b )->data.size() ||
+					     LiveBuffer( command.b )->data.size() - at < 4 )
+						return false;
+				}
+				break;
+			}
 			case RecordedOp::kSetBindGroup:
 				if ( !Live( m_BindGroups, command.a ) )
 					return false;
@@ -1424,6 +1471,12 @@ DeviceResult<CompletionToken> RecordingDevice::Submit(
 	{
 		for ( const Command &command : encoder->Commands() )
 		{
+			if ( command.op == RecordedOp::kDrawIndexedIndirect &&
+			     !m_Facts.capabilities.Has( Capability::kMultiDrawIndirect ) )
+				return Fail( DeviceStatus::kUnsupported, op );
+			if ( command.op == RecordedOp::kDrawIndexedIndirectCount &&
+			     !m_Facts.capabilities.Has( Capability::kDrawIndirectCount ) )
+				return Fail( DeviceStatus::kUnsupported, op );
 			if ( command.op != RecordedOp::kWriteTimestamp )
 				continue;
 			if ( !m_Facts.capabilities.Has( Capability::kTimestamps ) )

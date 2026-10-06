@@ -1340,8 +1340,15 @@ bit for bit), and `render.graph` places compute passes on a second queue
 with compiled cross-queue waits and ownership moves (`render.graph.v1`
 G12). By RFC 0003's placement rule the CPU culler stays the product path:
 product scenes (about 2k–5k instances) are below the measured crossover
-while the consumer is a CPU draw list. A real second queue in the Vulkan
-adapter, GPU compaction and indirect commands remain open.
+while the consumer is a CPU draw list. Same day: the port's indirect draws
+(D30 `DrawIndexedIndirect`, D31 `DrawIndexedIndirectCount`, claimed on
+Vulkan, refused by name on GL and ES) and `render.pass.cull`'s compaction
+of the mask into indirect commands with a GPU draw count, whose image
+equals direct draws of the CPU-kept instances
+([record](0003-progress.md#compaction-into-indirect-draw-commands-2026-10-05-user-goal)).
+Open: a product pass drawing from them (S3's shared geometry buffers and
+per-pipeline buckets), a real second queue, HiZ occlusion, GL/ES indirect
+draws.
 
 **Order:** S0; then S1, S2 and S5 (they reshape draw records and pipeline
 keys); then S3 (the main CPU gain) and S4; S6–S8 as their measurements

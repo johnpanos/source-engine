@@ -158,6 +158,34 @@ void CommandEncoder::DrawIndexed( std::uint32_t indexCount, std::uint32_t instan
 		backend->DrawIndexed( indexCount, instanceCount, firstIndex, vertexOffset, firstInstance );
 }
 
+bool IndirectRecordsFit(
+    std::uint64_t bufferSize, std::uint64_t offset, std::uint32_t drawCount, std::uint32_t stride )
+{
+	if ( offset % 4 != 0 || stride % 4 != 0 || stride < sizeof( DrawIndexedIndirectCommand ) )
+		return false;
+	if ( drawCount == 0 )
+		return offset <= bufferSize;
+	const std::uint64_t last = offset + std::uint64_t( drawCount - 1 ) * stride;
+	return last >= offset && last <= bufferSize &&
+	       bufferSize - last >= sizeof( DrawIndexedIndirectCommand );
+}
+
+void CommandEncoder::DrawIndexedIndirect(
+    BufferId buffer, std::uint64_t offset, std::uint32_t drawCount, std::uint32_t stride )
+{
+	if ( IEncoderBackend *backend = Enter() )
+		backend->DrawIndexedIndirect( buffer, offset, drawCount, stride );
+}
+
+void CommandEncoder::DrawIndexedIndirectCount( BufferId buffer, std::uint64_t offset,
+    BufferId countBuffer, std::uint64_t countOffset, std::uint32_t maxDrawCount,
+    std::uint32_t stride )
+{
+	if ( IEncoderBackend *backend = Enter() )
+		backend->DrawIndexedIndirectCount(
+		    buffer, offset, countBuffer, countOffset, maxDrawCount, stride );
+}
+
 void CommandEncoder::Dispatch( std::uint32_t x, std::uint32_t y, std::uint32_t z )
 {
 	if ( IEncoderBackend *backend = Enter() )

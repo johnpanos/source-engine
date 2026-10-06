@@ -117,6 +117,26 @@ struct Viewport
 	float maxDepth = 1.0f;
 };
 
+// One indexed draw's parameters in an indirect buffer (clauses D30, D31):
+// the layout of VkDrawIndexedIndirectCommand and GL's
+// DrawElementsIndirectCommand, tightly packed.
+struct DrawIndexedIndirectCommand
+{
+	std::uint32_t indexCount = 0;
+	std::uint32_t instanceCount = 0;
+	std::uint32_t firstIndex = 0;
+	std::int32_t vertexOffset = 0;
+	std::uint32_t firstInstance = 0;
+};
+static_assert( sizeof( DrawIndexedIndirectCommand ) == 20 );
+
+// The argument rules of D30/D31 that do not depend on device state: offset
+// and stride multiples of 4, stride at least 20, and `drawCount` records
+// from `offset` inside a buffer of `bufferSize` bytes. Every adapter's
+// validation uses this one rule.
+bool IndirectRecordsFit(
+    std::uint64_t bufferSize, std::uint64_t offset, std::uint32_t drawCount, std::uint32_t stride );
+
 // What an adapter records. Only the port's CommandEncoder calls it.
 class IEncoderBackend
 {
@@ -147,6 +167,11 @@ public:
 	    std::uint32_t firstVertex, std::uint32_t firstInstance ) = 0;
 	virtual void DrawIndexed( std::uint32_t indexCount, std::uint32_t instanceCount,
 	    std::uint32_t firstIndex, std::int32_t vertexOffset, std::uint32_t firstInstance ) = 0;
+	virtual void DrawIndexedIndirect(
+	    BufferId buffer, std::uint64_t offset, std::uint32_t drawCount, std::uint32_t stride ) = 0;
+	virtual void DrawIndexedIndirectCount( BufferId buffer, std::uint64_t offset,
+	    BufferId countBuffer, std::uint64_t countOffset, std::uint32_t maxDrawCount,
+	    std::uint32_t stride ) = 0;
 	virtual void Dispatch( std::uint32_t x, std::uint32_t y, std::uint32_t z ) = 0;
 	// D16: bytes of the bound pipeline's draw-constant block, at `offset`.
 	virtual void SetDrawConstants( std::uint32_t offset, std::span<const std::byte> bytes ) = 0;
@@ -212,6 +237,23 @@ public:
 	void DrawIndexed( std::uint32_t indexCount, std::uint32_t instanceCount = 1,
 	    std::uint32_t firstIndex = 0, std::int32_t vertexOffset = 0,
 	    std::uint32_t firstInstance = 0 );
+	// D30 (Capability::kMultiDrawIndirect): `drawCount` indexed draws whose
+	// DrawIndexedIndirectCommand records are read by the GPU from `buffer`,
+	// the first at `offset` and each next `stride` bytes on. Everything an
+	// indexed draw needs is bound as for DrawIndexed. The buffer is in
+	// kIndirect; offset and stride are multiples of 4, the stride at least
+	// 20, and every record lies inside the buffer. A draw count of zero
+	// draws nothing. Without the capability the submission fails
+	// (kUnsupported); an invalid call fails it (kInvalidState).
+	void DrawIndexedIndirect(
+	    BufferId buffer, std::uint64_t offset, std::uint32_t drawCount, std::uint32_t stride );
+	// D31 (Capability::kDrawIndirectCount): as D30, with the draw count read
+	// by the GPU as a 32-bit value at `countOffset` of `countBuffer` (also in
+	// kIndirect; it may be `buffer`), clamped to `maxDrawCount`, whose
+	// records must all lie inside the buffer. Without the capability the
+	// submission fails (kUnsupported).
+	void DrawIndexedIndirectCount( BufferId buffer, std::uint64_t offset, BufferId countBuffer,
+	    std::uint64_t countOffset, std::uint32_t maxDrawCount, std::uint32_t stride );
 	void Dispatch( std::uint32_t x, std::uint32_t y = 1, std::uint32_t z = 1 );
 	// D16: writes the bound pipeline's draw constants. Binding a pipeline
 	// leaves them undefined, so they are set after SetPipeline; a draw or

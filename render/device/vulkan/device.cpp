@@ -109,6 +109,11 @@ DeviceResult<void> VulkanDevice::Initialize()
 		m_Facts.capabilities.Add( Capability::kExternalImages );
 	if ( m_Adapter.textureCompressionBC )
 		m_Facts.capabilities.Add( Capability::kTextureCompressionBC );
+	// D30/D31: indirect draws where the device enables them.
+	if ( m_Adapter.multiDrawIndirect )
+		m_Facts.capabilities.Add( Capability::kMultiDrawIndirect );
+	if ( m_Adapter.drawIndirectCount )
+		m_Facts.capabilities.Add( Capability::kDrawIndirectCount );
 	// D23: timestamps where the queue family writes them.
 	{
 		std::uint32_t families = 0;
@@ -225,10 +230,16 @@ struct RequiredFeatures
 			head.features.samplerAnisotropy = VK_TRUE;
 		if ( adapter.textureCompressionBC )
 			head.features.textureCompressionBC = VK_TRUE;
+		if ( adapter.multiDrawIndirect )
+			head.features.multiDrawIndirect = VK_TRUE;
 		if ( auto *have =
 		         FindInChain( &head, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES ) )
-			reinterpret_cast<VkPhysicalDeviceVulkan12Features *>( have )->timelineSemaphore =
-			    VK_TRUE;
+		{
+			auto *features = reinterpret_cast<VkPhysicalDeviceVulkan12Features *>( have );
+			features->timelineSemaphore = VK_TRUE;
+			if ( adapter.drawIndirectCount )
+				features->drawIndirectCount = VK_TRUE;
+		}
 		else if ( auto *timeline = FindInChain(
 		              &head, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES ) )
 			reinterpret_cast<VkPhysicalDeviceTimelineSemaphoreFeatures *>( timeline )
@@ -238,6 +249,7 @@ struct RequiredFeatures
 			features12 = {};
 			features12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
 			features12.timelineSemaphore = VK_TRUE;
+			features12.drawIndirectCount = adapter.drawIndirectCount ? VK_TRUE : VK_FALSE;
 			Append( head, &features12 );
 		}
 		else

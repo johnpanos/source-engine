@@ -21,6 +21,7 @@
 
 #include "foundation/expected.h"
 #include "render/device/device.h"
+#include "render/device/encoder.h"
 #include "render/graph/graph_builder.h"
 #include "render/scene/snapshot.h"
 #include "render/scene/view.h"
@@ -117,6 +118,84 @@ struct CullPassResources
 
 void AddCullPass(
     graph::GraphBuilder &builder, CullKernel &kernel, const CullPassResources &resources );
+
+// Compaction (RFC 0016 GPU-driven submission S3/S4): the visibility mask
+// becomes indexed indirect draw commands, one per kept instance, in
+// instance order. compact.comp writes the draw count as the output's first
+// 32-bit word and the commands from kCommandsOffset, so one buffer feeds
+// CommandEncoder::DrawIndexedIndirectCount as both records and count:
+//   DrawIndexedIndirectCount( out, kCommandsOffset, out, 0, count, 20 ).
+// Each command is { indexCount, 1, firstIndex, vertexOffset, instance }:
+// the instance index arrives as the draw's first instance, so a shader
+// finds its per-instance data at gl_InstanceIndex.
+
+struct DrawTemplate // 16 bytes: what an instance draws
+{
+	std::uint32_t indexCount = 0;
+	std::uint32_t firstIndex = 0;
+	std::int32_t vertexOffset = 0;
+	std::uint32_t reserved = 0;
+};
+static_assert( sizeof( DrawTemplate ) == 16 );
+
+constexpr std::uint64_t kCommandsOffset = 16;
+constexpr std::uint64_t CommandBufferBytes( std::uint32_t count )
+{
+	return kCommandsOffset + std::uint64_t( count ) * sizeof( device::DrawIndexedIndirectCommand );
+}
+
+// The oracle: the commands compact.comp writes for `mask` (MaskWords(count)
+// words) and the instances' templates.
+std::vector<device::DrawIndexedIndirectCommand> CompactReference(
+    std::span<const std::uint32_t> mask, std::span<const DrawTemplate> templates,
+    std::uint32_t count );
+
+struct CompactBuffers
+{
+	device::BufferId visibility; // the cull pass's mask (at least one word), storage read
+	device::BufferId templates;  // DrawTemplate[max(count, 1)], storage read
+	device::BufferId view;       // the cull pass's CullView (its count), storage read
+	device::BufferId commands;   // CommandBufferBytes(count) bytes, storage write
+	std::uint32_t count = 0;
+};
+
+class CompactKernel
+{
+public:
+	// `code` replaces compact.comp's SPIR-V (the suite's seeded variants).
+	static foundation::Expected<std::unique_ptr<CompactKernel>, CullStatus> Create(
+	    device::IRenderDevice2 &device, std::span<const std::uint32_t> code = {} );
+	~CompactKernel();
+	CompactKernel( const CompactKernel & ) = delete;
+	CompactKernel &operator=( const CompactKernel & ) = delete;
+
+	foundation::Expected<void, CullStatus> Record(
+	    device::CommandEncoder &encoder, const CompactBuffers &buffers );
+	void Collect( device::CompletionToken token );
+	std::uint32_t RecordFailures() const { return m_RecordFailures; }
+
+private:
+	explicit CompactKernel( device::IRenderDevice2 &device );
+	device::IRenderDevice2 &m_Device;
+	device::BindGroupLayoutId m_Layout;
+	device::PipelineId m_Pipeline;
+	std::vector<device::BindGroupId> m_Pending;
+	device::CompletionToken m_LastToken;
+	std::uint32_t m_RecordFailures = 0;
+};
+
+struct CompactPassResources
+{
+	graph::ResourceRef visibility;
+	graph::ResourceRef templates;
+	graph::ResourceRef view;
+	graph::ResourceRef commands; // a later draw pass reads it as kIndirect
+	std::uint32_t count = 0;
+	bool asyncCompute = false;
+};
+
+void AddCompactPass(
+    graph::GraphBuilder &builder, CompactKernel &kernel, const CompactPassResources &resources );
 
 } // namespace render::pass::cull
 

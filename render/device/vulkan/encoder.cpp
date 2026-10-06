@@ -246,6 +246,35 @@ void VulkanEncoder::DrawIndexed( std::uint32_t indexCount, std::uint32_t instanc
 	Push( std::move( command ) );
 }
 
+void VulkanEncoder::DrawIndexedIndirect(
+    BufferId buffer, std::uint64_t offset, std::uint32_t drawCount, std::uint32_t stride )
+{
+	Drawing();
+	Command command;
+	command.op = Op::kDrawIndexedIndirect;
+	command.a = buffer.value;
+	command.offset = offset;
+	command.params[0] = drawCount;
+	command.params[1] = stride;
+	Push( std::move( command ) );
+}
+
+void VulkanEncoder::DrawIndexedIndirectCount( BufferId buffer, std::uint64_t offset,
+    BufferId countBuffer, std::uint64_t countOffset, std::uint32_t maxDrawCount,
+    std::uint32_t stride )
+{
+	Drawing();
+	Command command;
+	command.op = Op::kDrawIndexedIndirectCount;
+	command.a = buffer.value;
+	command.b = countBuffer.value;
+	command.offset = offset;
+	command.copy.destinationOffset = countOffset;
+	command.params[0] = maxDrawCount;
+	command.params[1] = stride;
+	Push( std::move( command ) );
+}
+
 void VulkanEncoder::Native( void ( *record )( void *, VkCommandBuffer ), void *user )
 {
 	// Host work runs outside the port's rendering and outside any section.
@@ -663,6 +692,26 @@ bool VulkanDevice::Validate(
 			if ( !ValidateDraw( v, command.op == Op::kDrawIndexed ) || !v.constants.Ready() )
 				return false;
 			break;
+		case Op::kDrawIndexedIndirect:
+		case Op::kDrawIndexedIndirectCount:
+		{
+			// D30/D31: records (and the count) in kIndirect buffers. The
+			// capability is checked after validation (kUnsupported).
+			const BufferRecord *records = buffer( command.a, ResourceUsage::kIndirect );
+			if ( !ValidateDraw( v, true ) || !v.constants.Ready() || !records ||
+			     !IndirectRecordsFit(
+			         records->desc.size, command.offset, command.params[0], command.params[1] ) )
+				return false;
+			if ( command.op == Op::kDrawIndexedIndirectCount )
+			{
+				const std::uint64_t at = command.copy.destinationOffset;
+				const BufferRecord *count = buffer( command.b, ResourceUsage::kIndirect );
+				if ( !count || at % 4 != 0 || at > count->desc.size ||
+				     count->desc.size - at < 4 )
+					return false;
+			}
+			break;
+		}
 		case Op::kDispatch:
 			if ( !v.pipeline || v.pipeline->kind != PipelineKind::kCompute || !GroupsMatch( v ) ||
 			     !v.constants.Ready() )
@@ -1184,6 +1233,18 @@ private:
 			vkCmdDrawIndexed( m_Cmd, command.params[0], command.params[1], command.params[2],
 			    command.vertexOffset, command.params[3] );
 			break;
+		case Op::kDrawIndexedIndirect:
+			Flush( VK_PIPELINE_BIND_POINT_GRAPHICS );
+			if ( command.params[0] > 0 )
+				vkCmdDrawIndexedIndirect( m_Cmd, m_D.LiveBuffer( command.a )->buffer,
+				    command.offset, command.params[0], command.params[1] );
+			break;
+		case Op::kDrawIndexedIndirectCount:
+			Flush( VK_PIPELINE_BIND_POINT_GRAPHICS );
+			vkCmdDrawIndexedIndirectCount( m_Cmd, m_D.LiveBuffer( command.a )->buffer,
+			    command.offset, m_D.LiveBuffer( command.b )->buffer, command.copy.destinationOffset,
+			    command.params[0], command.params[1] );
+			break;
 		case Op::kComputeInterop:
 		{
 			const auto &payload = command.compute;
@@ -1400,6 +1461,12 @@ DeviceResult<CompletionToken> VulkanDevice::Submit(
 	{
 		for ( const Command &command : encoder->Commands() )
 		{
+			if ( command.op == Op::kDrawIndexedIndirect &&
+			     !m_Facts.capabilities.Has( Capability::kMultiDrawIndirect ) )
+				return Fail( DeviceStatus::kUnsupported, op );
+			if ( command.op == Op::kDrawIndexedIndirectCount &&
+			     !m_Facts.capabilities.Has( Capability::kDrawIndirectCount ) )
+				return Fail( DeviceStatus::kUnsupported, op );
 			if ( command.op != Op::kWriteTimestamp )
 				continue;
 			if ( !m_Facts.capabilities.Has( Capability::kTimestamps ) )

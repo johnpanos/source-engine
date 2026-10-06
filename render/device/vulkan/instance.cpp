@@ -202,6 +202,8 @@ DeviceResult<AdapterChoice> Evaluate( VkPhysicalDevice physical, bool host )
 		choice.extensions.push_back( VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME );
 	choice.anisotropy = features.features.samplerAnisotropy == VK_TRUE;
 	choice.textureCompressionBC = features.features.textureCompressionBC == VK_TRUE;
+	choice.multiDrawIndirect = features.features.multiDrawIndirect == VK_TRUE;
+	choice.drawIndirectCount = choice.core12 && features12.drawIndirectCount == VK_TRUE;
 	choice.memoryBudget = HasDeviceExtension( extensions, VK_EXT_MEMORY_BUDGET_EXTENSION_NAME );
 	if ( choice.memoryBudget )
 		choice.extensions.push_back( VK_EXT_MEMORY_BUDGET_EXTENSION_NAME );

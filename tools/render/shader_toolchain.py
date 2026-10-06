@@ -163,13 +163,18 @@ GENERATED = {
         ("kSkinCompute", SKINNING + "/skin.comp", DEVICE_OPTIONS),)),
     "cull_spv.h": ("render::pass::cull::spirv",
         "the GPU culling pass (RFC 0016 GPU-driven submission S4)", (
-        ("kCullCompute", CULL + "/cull.comp", DEVICE_OPTIONS),)),
+        ("kCullCompute", CULL + "/cull.comp", DEVICE_OPTIONS),
+        ("kCompactCompute", CULL + "/compact.comp", DEVICE_OPTIONS))),
     "cull_defects_spv.h": ("rendertest::cull::spirv",
         "the culling suite's seeded kernels (render.cull sensitivity)", (
         ("kCullNearCorner", CULL + "/cull.comp", DEVICE_OPTIONS + ("-DSEEDED_NEAR_CORNER",)),
         ("kCullViewMaskIgnored", CULL + "/cull.comp",
          DEVICE_OPTIONS + ("-DSEEDED_VIEW_MASK_IGNORED",)),
-        ("kCullEmptyKept", CULL + "/cull.comp", DEVICE_OPTIONS + ("-DSEEDED_EMPTY_KEPT",)))),
+        ("kCullEmptyKept", CULL + "/cull.comp", DEVICE_OPTIONS + ("-DSEEDED_EMPTY_KEPT",)),
+        ("kCompactDropsLast", CULL + "/compact.comp",
+         DEVICE_OPTIONS + ("-DSEEDED_COMPACT_DROPS_LAST",)),
+        ("kCompactWrongInstance", CULL + "/compact.comp",
+         DEVICE_OPTIONS + ("-DSEEDED_COMPACT_WRONG_INSTANCE",)))),
     "families_spv.h": ("render::material::spirv",
         "the material families' programs (RFC 0016 K4, render.material)", (
         ("kSurfaceFlatVertex", FAMILIES + "/surface_flat.vert", DEVICE_OPTIONS),

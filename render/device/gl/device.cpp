@@ -909,6 +909,12 @@ DeviceResult<CompletionToken> GlDevice::Submit(
 	{
 		for ( const Command &command : encoder->Commands() )
 		{
+			// D30/D31: the GL adapter claims neither capability.
+			if ( ( command.op == Op::kDrawIndexedIndirect &&
+			         !m_Facts.capabilities.Has( Capability::kMultiDrawIndirect ) ) ||
+			     ( command.op == Op::kDrawIndexedIndirectCount &&
+			         !m_Facts.capabilities.Has( Capability::kDrawIndirectCount ) ) )
+				return Fail( DeviceStatus::kUnsupported, op );
 			if ( command.op != Op::kWriteTimestamp )
 				continue;
 			if ( !m_Facts.capabilities.Has( Capability::kTimestamps ) )

@@ -878,3 +878,40 @@ claim `kAsyncCompute`; executors still run every pass on graphics in
 compiled order, which satisfies every wait), queue-family ownership
 transfers in the adapter, GPU compaction into indirect commands (S3/S4),
 HiZ occlusion, Fold7 and Apple measurements, and a game frame using either.
+
+## Compaction into indirect draw commands (2026-10-05, user goal)
+
+User goal: "compacting the culled list into indirect draw commands", the
+open item of the S4 record above. Owner: this session.
+
+**Installed.**
+
+- Port (`render.device.v2`): `DrawIndexedIndirectCommand` (20 bytes),
+  `CommandEncoder::DrawIndexedIndirect` (D30, `Capability::kMultiDrawIndirect`)
+  and `DrawIndexedIndirectCount` (D31, `Capability::kDrawIndirectCount`),
+  with one argument rule, `IndirectRecordsFit`, every adapter uses. Vulkan
+  claims them where the device has `multiDrawIndirect` and Vulkan 1.2's
+  `drawIndirectCount` (enabled at device creation, also on a host's
+  chain); the null adapter validates them; GL and ES record the calls and
+  refuse the submission with `kUnsupported` (not claimed in this slice).
+- `render.pass.cull`: `compact.comp`, `CompactKernel`, `AddCompactPass` and
+  the oracle `CompactReference`. One workgroup prefix-scans the mask and
+  writes, in instance order, the kept-instance count and one
+  `{ indexCount, 1, firstIndex, vertexOffset, instance }` command per kept
+  instance from its `DrawTemplate`; one buffer is both records and count
+  for `DrawIndexedIndirectCount( out, kCommandsOffset, out, 0, count, 20 )`.
+
+**Evidence** (RADV Strix Halo, Mesa llvmpipe for GL/ES):
+
+| Suite | Result |
+| --- | --- |
+| `render.device.v2.*` | D30/D31 on null, Vulkan, GL and ES: claimed adapters accept well-formed calls and refuse out-of-range records, a short stride, a buffer not in `kIndirect` and a count outside its buffer (`kInvalidState`); GL/ES refuse `kUnsupported`; on Vulkan two records draw both halves, zero draws nothing, a GPU count of 1 draws the first record. Sensitivity: an adapter that clamps the records and one that ignores the count offset are each caught |
+| `render.cull` | compaction equals `CompactReference` on the CPU culler's mask on 60 seeded scenes (0 to 20,000 instances); seeded dropped-last and wrong-instance kernels disagree (2 of 2); on 8 scenes the image drawn by `DrawIndexedIndirectCount` from the compacted buffer equals direct draws of the CPU-kept instances byte for byte, each kept quad lighting exactly its pixels; validation layer silent |
+
+**Placement.** Unchanged: no product pass draws from the commands yet, so
+the CPU culler stays the product path. The decision is re-taken when S3
+gives the opaque, prepass and shadow passes shared geometry buffers and
+per-pipeline buckets that consume these commands without a readback.
+
+**Not done.** That product pass; GL 4.3/4.6 and ES indirect draws; per-pipeline
+bucketing in the compaction (one bucket today); a real second queue.

@@ -192,6 +192,8 @@ struct AdapterChoice
 	bool dynamicRendering = false;
 	bool anisotropy = false;
 	bool textureCompressionBC = false; // the kBC* formats (D19)
+	bool multiDrawIndirect = false;    // D30: drawCount above 1
+	bool drawIndirectCount = false;    // D31: Vulkan 1.2's drawIndirectCount
 	bool memoryBudget = false; // VK_EXT_memory_budget was enabled for VMA
 	// dmabuf export of LINEAR images (external memory fd, dma_buf, DRM
 	// format modifiers): the adapter claims kExternalImages.
@@ -389,6 +391,8 @@ enum class Op : std::uint8_t
 	kSetViewport,
 	kDraw,
 	kDrawIndexed,
+	kDrawIndexedIndirect,      // D30: buffer a at offset; params[0] draws, params[1] stride
+	kDrawIndexedIndirectCount, // D31: plus count buffer b at copy.destinationOffset
 	kDispatch,
 	kBeginLabel,
 	kEndLabel,
@@ -482,6 +486,10 @@ public:
 	    std::uint32_t firstInstance ) override;
 	void DrawIndexed( std::uint32_t indexCount, std::uint32_t instanceCount,
 	    std::uint32_t firstIndex, std::int32_t vertexOffset, std::uint32_t firstInstance ) override;
+	void DrawIndexedIndirect( BufferId buffer, std::uint64_t offset, std::uint32_t drawCount,
+	    std::uint32_t stride ) override;
+	void DrawIndexedIndirectCount( BufferId buffer, std::uint64_t offset, BufferId countBuffer,
+	    std::uint64_t countOffset, std::uint32_t maxDrawCount, std::uint32_t stride ) override;
 	void Dispatch( std::uint32_t x, std::uint32_t y, std::uint32_t z ) override;
 	void SetDrawConstants( std::uint32_t offset, std::span<const std::byte> bytes ) override;
 	void BeginLabel( std::string_view label ) override;

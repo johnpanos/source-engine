@@ -43,7 +43,9 @@ enum class Defect
 	kFillsDrawConstants,  // D16: zero-fills a bound pipeline's draw constants
 	kAttachesBlocks,      // D19: creates a block-compressed attachment without it
 	kDropsRegionOrigin,   // D22: copies every buffer-to-texture region to (0, 0)
-	kDropsTimestamps      // D23: records no timestamp
+	kDropsTimestamps,     // D23: records no timestamp
+	kClampsIndirectDraws, // D30: draws only the records that fit, instead of failing
+	kIgnoresCountOffset   // D31: reads the count at offset 0 whatever was asked
 };
 
 // Draw-constant block sizes by pipeline, for kFillsDrawConstants.
@@ -134,6 +136,21 @@ public:
 	    std::uint32_t e ) override
 	{
 		m_Inner->DrawIndexed( a, b, c, d, e );
+	}
+	void DrawIndexedIndirect( BufferId buffer, std::uint64_t offset, std::uint32_t drawCount,
+	    std::uint32_t stride ) override
+	{
+		if ( m_Defect == Defect::kClampsIndirectDraws && drawCount > 1 )
+			drawCount = 1;
+		m_Inner->DrawIndexedIndirect( buffer, offset, drawCount, stride );
+	}
+	void DrawIndexedIndirectCount( BufferId buffer, std::uint64_t offset, BufferId countBuffer,
+	    std::uint64_t countOffset, std::uint32_t maxDrawCount, std::uint32_t stride ) override
+	{
+		if ( m_Defect == Defect::kIgnoresCountOffset )
+			countOffset = 0;
+		m_Inner->DrawIndexedIndirectCount(
+		    buffer, offset, countBuffer, countOffset, maxDrawCount, stride );
 	}
 	void Dispatch( std::uint32_t x, std::uint32_t y, std::uint32_t z ) override
 	{
@@ -386,6 +403,8 @@ int main()
 	    { Defect::kDropsTimestamps, "under-test.D23 " },
 	    { Defect::kAcceptsBadComparison, "under-test.D24 " },
 	    { Defect::kDropsInitialUpload, "under-test.D25 " },
+	    { Defect::kClampsIndirectDraws, "under-test.D30 " },
+	    { Defect::kIgnoresCountOffset, "under-test.D31 " },
 	};
 	for ( const Case &c : cases )
 	{
