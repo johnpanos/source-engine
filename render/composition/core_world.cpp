@@ -2238,6 +2238,14 @@ std::uint32_t CoreWorld::QueueMesh( const legacy::CoreMeshDraw &draw )
 	if ( !draw.name || !draw.shader || !draw.vertices || !draw.indices || !draw.vertexCount ||
 	     !draw.indexCount || ( draw.variableCount && !draw.variables ) )
 		return 0;
+	// A static prop lit by its baked vertex color has no core term yet: a
+	// named refusal, never a draw lit by the wrong source.
+	if ( draw.staticVertexLighting )
+	{
+		m_Pass.NoteRefusal( std::string( "material " ) + draw.name +
+		                    ": a static prop's baked vertex lighting has no core term" );
+		return 0;
+	}
 	pass::world::WorldView view;
 	std::copy_n( draw.toClip, 16, view.toClip );
 	view.viewport = draw.viewport;
@@ -2278,6 +2286,18 @@ std::uint32_t CoreWorld::QueueMesh( const legacy::CoreMeshDraw &draw )
 	geometry.indices.assign( draw.indices, draw.indices + draw.indexCount );
 	geometry.lightmapPage = draw.lightmapPage;
 	geometry.capturedLightmap = draw.capturedLightmap;
+	if ( draw.modelLighting && draw.lightCount <= material::kMaxModelLights )
+	{
+		// The eye (legacy cEyePos) from the row-major world-to-view
+		// transform: -R^T t.
+		float eye[3];
+		for ( int c = 0; c < 3; ++c )
+			eye[c] = -( draw.worldToView[0 + c] * draw.worldToView[3] +
+			            draw.worldToView[4 + c] * draw.worldToView[7] +
+			            draw.worldToView[8 + c] * draw.worldToView[11] );
+		geometry.lighting = material::PackSourceModelLighting(
+		    eye, draw.ambientCube, std::span( draw.lights, draw.lightCount ) );
+	}
 	view.dynamicDraws.push_back( std::move( geometry ) );
 	const std::uint32_t tag = m_Pass.QueueView( std::move( view ) );
 	if ( tag )

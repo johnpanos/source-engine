@@ -280,6 +280,16 @@ struct CoreMeshDraw
 	int depthAlphaHandle = 0;
 	float depthAlphaRange = 0.0f;
 	bool mesh = false; // model/refraction point, rather than a lightmapped surface
+	// Source's model lighting at the draw (studiorender's ambient cube and
+	// enabled local lights, as SetAmbientLightCube and SetLight left them),
+	// for a mesh point that has no stage lights to read.
+	bool modelLighting = false;
+	float ambientCube[6][3] = {};
+	material::ModelLightDesc lights[material::kMaxModelLights];
+	std::uint32_t lightCount = 0;
+	// A static prop's baked vertex lighting (its color mesh, STATIC_LIGHT)
+	// lights the draw; the core has no term for it yet and refuses it by name.
+	bool staticVertexLighting = false;
 };
 
 // What records a slot's pass (the frontend's, bound by the composition root).

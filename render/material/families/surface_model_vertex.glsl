@@ -58,24 +58,6 @@ layout( location = 8 ) out float lightmapOffset;
 layout( location = 9 ) out vec4 lightAtten;
 layout( location = 10 ) out vec3 vertexLighting;
 
-// GetVertexAttenForLight: distance falloff, the spot cone, and 1 for
-// directional lights.
-float VertexAttenuation( int i, vec3 position )
-{
-	const ModelLight light = lighting.lights[i];
-	vec3 toLight = light.position.xyz - position;
-	const float distanceSquared = dot( toLight, toLight );
-	const float inverseDistance = inversesqrt( distanceSquared );
-	toLight *= inverseDistance;
-	const float distanceAtten = 1.0 / dot( light.attenuation.xyz,
-	                                      vec3( 1.0, distanceSquared * inverseDistance, distanceSquared ) );
-	const float cosTheta = -dot( light.direction.xyz, toLight );
-	float spot = ( cosTheta - light.spot.z ) * light.spot.w;
-	spot = clamp( pow( max( 0.0001, spot ), light.spot.x ), 0.0, 1.0 );
-	const float atten = distanceAtten + ( distanceAtten * spot - distanceAtten ) * light.direction.w;
-	return atten + ( 1.0 - atten ) * light.color.w;
-}
-
 // CosineTermInternal: Lambert, or half-Lambert squared.
 float CosineTerm( int i, vec3 position, vec3 normal )
 {
@@ -117,7 +99,7 @@ void main()
 	for ( int i = 0; i < 4; ++i )
 	{
 		if ( i < count )
-			atten[i] = VertexAttenuation( i, world.xyz );
+			atten[i] = ModelLightAttenuation( i, world.xyz );
 	}
 	lightAtten = atten;
 	vertexLighting = vec3( 0.0 );

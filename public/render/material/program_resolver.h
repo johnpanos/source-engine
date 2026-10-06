@@ -180,9 +180,12 @@ public:
 	// the view group, SurfaceProgram::ViewGroup).
 	SurfaceProgram &Program() const;
 	// The draw group a resolved program reads, with its inputs' textures by
-	// name (in drawInputs order); nullopt when the program reads none.
-	std::optional<GroupRequest> DrawGroup(
-	    const ResolvedProgram &program, const std::vector<std::string> &inputTextures ) const;
+	// name (in drawInputs order); nullopt when the program reads none. A mesh
+	// point without inputs takes `lighting` (Source's model lighting at the
+	// draw) when given, else the neutral block.
+	std::optional<GroupRequest> DrawGroup( const ResolvedProgram &program,
+	    const std::vector<std::string> &inputTextures,
+	    const ModelLighting *lighting = nullptr ) const;
 	// The program's pipeline under a debug specialization (RFC 0014): the
 	// shipped pipeline when it is neutral, else its debug variant (made on
 	// first use and kept); the reason when the program has no variant.

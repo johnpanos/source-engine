@@ -11285,3 +11285,67 @@ Open:
 Separate finding: on both maps many VertexLitGeneric model draws are refused
 by the core even though they have a mesh kind. That is lit-surface work
 outside this cohort.
+
+### R91/K12: model draws on plain maps reach the core (2026-10-05)
+
+User request: fix the VertexLitGeneric model draws the core refused on
+`testchmb_a_01` and `sp_a1_intro4` (the largest dropped-draw source in the
+census). On a map without a world stage the posed-model path is off, so
+studio models come through the mesh handoff. Three things kept them out or
+unlit:
+
+1. **Dormant pass controls.** The live material holds a zero for every
+   control of VertexLitGeneric's optional passes (`$emissiveblendscrollvector
+   [0 0]` against a `[0.11 0.124]` default, `$sheenmapmaskscalex 0`
+   against 1). The resolver refused them as unread variables. The shader
+   reads each pass's controls only when that pass's enable flag is set
+   (`vertexlitgeneric_dx9.cpp`). One table in `UnreadVariable` now names
+   the cloak, emissive blend, sheen and flesh passes with their controls, and
+   replaces the earlier cloak-only exemption.
+2. **Mesh points needed a stage.** The world pass's resolver enabled world
+   pbr only with a stage, so the mesh point failed at record time ("needs a
+   mesh scene", fatal under `r_core_world_strict`) after the claim had
+   passed. It now matches the model resolver: world pbr is on, with the
+   stage's scene terms or none. World pbr surfaces still need a stage,
+   because their claim asks for one.
+3. **No light.** Without a stage's terms the VertexLitGeneric and pbr mesh
+   points no longer take `kMeshDirect`. They take Source's model lighting at
+   the draw instead:
+   - the handoff (`CoreMeshDraw`, frozen-path plumbing) passes the ambient
+     cube and enabled lights studiorender set;
+   - the composition packs them (`PackSourceModelLighting`, with the eye
+     from the view transform);
+   - the world pass binds a per-draw lighting group, retired with the frame;
+   - the world vertex stage reads the lighting block and attenuates each
+     light per vertex. That is the model vertex's
+     `ModelLightAttenuation`, now one definition in
+     `surface_lighting.glsl`.
+   - Static props lit by a baked colour mesh have no core term yet and are
+     refused by name. Neither map has any.
+
+| Check | Evidence | Result |
+| --- | --- | --- |
+| Dormant passes | `render.world.null` W28: dormant emissive and sheen controls claim; an enabled emissive blend or sheen pass is a named gap | pass (159 checks) |
+| World vertex lighting | `render.family.pbr` (Vulkan, GL, cross-backend): every Source-lit model case drawn through the world vertex matches the model vertex | 0 levels on every case; the lights-removed control differs |
+| Regressions | 43 suites compiling the resolver, world pass or composition, plus every family suite, and `render.shader-artifacts` (SPIR-V, GL, GLES) | pass, except two below |
+| In game, Portal | `testchmb_a_01` under `r_core_world 1`: dynamic draws drawn 2,268 → 3,955 in a comparable run, refused 6,088 → 736; doors, autoportal frames, the pedestal and props are lit by their ambient cube and lights | drawn |
+| In game, Portal 2 | `sp_a1_intro4`: refused 9,290 → 288; the beams, railings, elevator, vines and debris draw | drawn |
+
+Not passing, unrelated to this change: `hammer.adapters.render.viewport.null`
+V8 fails identically with the change reverted (pre-existing). The
+`render.debug-views.product.*` suites need a `build-rc-client` install that
+isn't on this machine.
+
+Open:
+- `env_projectedtexture` light on dynamic mesh draws of a plain map. The
+  legacy flashlight pass lights intro4's debris pile; the core's projected
+  term reaches stage maps only, so the debris stays dark.
+- Portal 2's view model (`v_portalgun`) is claimed but does not appear.
+- static props with baked colour meshes (refused by name);
+- remaining named refusals: Refract glass without scene colour,
+  `$additive` frosted glass, the cable's `$vertexcolor`, the portal effect's
+  `$bluramount`, `$basetexturetransform` on model Refract, and `$envmap`
+  needing native probes;
+- frame time unmeasured.
+- The legacy `r_core_world 0` frame on `testchmb_a_01` is washed out, so it
+  could not serve as a brightness reference.

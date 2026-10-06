@@ -14,6 +14,9 @@ layout( location = 5 ) in vec3 inTangentS;
 // Tangent T in xyz and the bumped pages' offset in w (adjacent in the vertex).
 layout( location = 6 ) in vec4 inTangentTOffset;
 
+#ifndef SURFACE_SHADOW_DEPTH
+#include "surface_lighting.glsl"
+#endif
 #include "surface_material.glsl"
 #include "surface_frame.glsl"
 #include "../../shaders/common/tree_sway.glsl"
@@ -45,7 +48,7 @@ float lightmapOffset; // Lighting-only varying, absent from the depth interface.
 #else
 layout( location = 8 ) out float lightmapOffset;
 #endif
-layout( location = 9 ) out vec4 lightAtten; // the model lights' attenuations (none here)
+layout( location = 9 ) out vec4 lightAtten; // the model lights' attenuations
 layout( location = 10 ) out vec3 vertexLighting; // the vertexlit point's (none here)
 
 // Dynamic meshes are captured after the frontend transforms them. Animate in
@@ -81,6 +84,17 @@ void main()
 	tangentS = inTangentS;
 	tangentT = inTangentTOffset.xyz;
 	lightmapOffset = inTangentTOffset.w;
-	lightAtten = vec4( 0.0 );
+	// A dynamic mesh draw's model lights (the mesh handoff's, R91); the world
+	// pass's own surfaces bind the neutral block, which has none.
+	vec4 atten = vec4( 0.0 );
+#ifndef SURFACE_SHADOW_DEPTH
+	const int count = int( lighting.eye.w );
+	for ( int i = 0; i < 4; ++i )
+	{
+		if ( i < count )
+			atten[i] = ModelLightAttenuation( i, animated );
+	}
+#endif
+	lightAtten = atten;
 	vertexLighting = vec3( 0.0 );
 }

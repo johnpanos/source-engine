@@ -5312,6 +5312,44 @@ bool CEmptyMesh::EmitToCoreQueue()
 	    g_Viewport.m_flMaxZ };
 	draw.mesh = !V_stricmp( draw.shader, "VertexLitGeneric" ) ||
 	            !V_stricmp( draw.shader, "Refract" ) || !V_stricmp( draw.shader, "Refract_DX90" );
+	// Frozen-path: hand a mesh point Source's model lighting at the draw (the
+	// ambient cube and enabled lights studiorender set), as values.
+	if ( draw.mesh )
+	{
+		draw.staticVertexLighting = source.HasColorMesh() || HasColorMesh();
+		draw.modelLighting = true;
+		for ( int face = 0; face < 6; ++face )
+			for ( int c = 0; c < 3; ++c )
+				draw.ambientCube[face][c] = g_AmbientCube[face][c];
+		for ( int i = 0; i < kMaxLocalLights && draw.lightCount < render::material::kMaxModelLights;
+		    ++i )
+		{
+			if ( !g_LightEnabled[i] )
+				continue;
+			const LightDesc_t &desc = g_LightDescs[i];
+			render::material::ModelLightDesc &light = draw.lights[draw.lightCount++];
+			light.type = desc.m_Type == MATERIAL_LIGHT_SPOT
+			                 ? render::material::ModelLightType::kSpot
+			             : desc.m_Type == MATERIAL_LIGHT_DIRECTIONAL
+			                 ? render::material::ModelLightType::kDirectional
+			                 : render::material::ModelLightType::kPoint;
+			light.color[0] = desc.m_Color.x;
+			light.color[1] = desc.m_Color.y;
+			light.color[2] = desc.m_Color.z;
+			light.position[0] = desc.m_Position.x;
+			light.position[1] = desc.m_Position.y;
+			light.position[2] = desc.m_Position.z;
+			light.direction[0] = desc.m_Direction.x;
+			light.direction[1] = desc.m_Direction.y;
+			light.direction[2] = desc.m_Direction.z;
+			light.attenuation[0] = desc.m_Attenuation0;
+			light.attenuation[1] = desc.m_Attenuation1;
+			light.attenuation[2] = desc.m_Attenuation2;
+			light.theta = desc.m_Theta;
+			light.phi = desc.m_Phi;
+			light.falloff = desc.m_Falloff;
+		}
+	}
 	CaptureCoreMatrices( draw );
 	const std::uint32_t tag = g_VulkanContext.QueueCoreMesh( draw );
 	if ( !tag )

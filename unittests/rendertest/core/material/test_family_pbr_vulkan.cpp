@@ -451,6 +451,76 @@ int main()
 			++drawnCases;
 			devices.Compare( checks, entry, name, drawn );
 			JudgeCase( checks, testCase, drawn );
+			// The world vertex (R91: the mesh handoff's dynamic draws on a map
+			// without a stage): the case's quads placed in world space, the same
+			// model lighting in the draw group, attenuated per vertex as the model
+			// vertex attenuates it: the pixels match within one level. With the
+			// lights removed they must change wherever a light reached them.
+			{
+				SurfaceVariant worldVariant = claim.Variant();
+				worldVariant.layout = SurfaceVertexLayout::kWorld;
+				auto worldPipeline = family.Value()->Program().Pipeline( worldVariant );
+				std::vector<SurfaceWorldVertex> worldVertices;
+				const float *m = modelCase.modelMatrix;
+				for ( const SurfaceModelVertex &v : vertices )
+				{
+					SurfaceWorldVertex w;
+					const float p[3] = { v.position[0], v.position[1], v.position[2] };
+					for ( int r = 0; r < 3; ++r )
+					{
+						w.position[r] = m[r * 4] * p[0] + m[r * 4 + 1] * p[1] +
+						                m[r * 4 + 2] * p[2] + m[r * 4 + 3];
+						w.normal[r] = m[r * 4] * v.normal[0] + m[r * 4 + 1] * v.normal[1] +
+						              m[r * 4 + 2] * v.normal[2];
+						w.tangentS[r] = m[r * 4] * v.tangent[0] + m[r * 4 + 1] * v.tangent[1] +
+						                m[r * 4 + 2] * v.tangent[2];
+					}
+					for ( int r = 0; r < 3; ++r )
+						w.tangentT[r] = ( w.normal[( r + 1 ) % 3] * w.tangentS[( r + 2 ) % 3] -
+						                    w.normal[( r + 2 ) % 3] * w.tangentS[( r + 1 ) % 3] ) *
+						                v.tangent[3];
+					std::copy( v.uv, v.uv + 2, w.uv );
+					worldVertices.push_back( w );
+				}
+				FamilyDrawConstants worldConstants;
+				const std::array<float, 16> clip = CaseToClip();
+				std::copy( clip.begin(), clip.end(), worldConstants.toClip );
+				for ( int d = 0; d < 4; ++d )
+					worldConstants.world[d * 5] = 1.0f;
+				if ( checks.That( worldPipeline.HasValue(), "world-vertex.pipeline." + name ) )
+				{
+					CaseDraw worldDraw = draw;
+					worldDraw.pipeline = worldPipeline.Value();
+					worldDraw.vertices = std::as_bytes( std::span( worldVertices ) );
+					worldDraw.vertexCount = std::uint32_t( worldVertices.size() );
+					worldDraw.drawConstants = std::as_bytes( std::span( &worldConstants, 1 ) );
+					const Drawn world = DrawCase( *device, worldDraw );
+					int worst = 0;
+					std::size_t over = 0;
+					for ( std::size_t i = 0; world.ok && i < world.rgba.size(); ++i )
+					{
+						if ( i % 4 == 3 )
+							continue;
+						const int d = std::abs( int( world.rgba[i] ) - int( drawn.rgba[i] ) );
+						worst = std::max( worst, d );
+						over += d > 3;
+					}
+					std::printf( "INFO world-vertex %s: within %d levels, %zu channels over 3\n",
+					    name.c_str(), worst, over );
+					checks.That(
+					    world.ok && worst <= 1, "world-vertex.matches-the-model-vertex." + name );
+					if ( lighting.eye[3] > 0.0f )
+					{
+						ModelLighting dark = lighting;
+						dark.eye[3] = 0.0f;
+						CaseDraw darkDraw = worldDraw;
+						darkDraw.groups[2].constants = std::as_bytes( std::span( &dark, 1 ) );
+						const Drawn unlit = DrawCase( *device, darkDraw );
+						checks.That( unlit.ok && unlit.rgba != world.rgba,
+						    "world-vertex.the-model-lights-reach-it." + name );
+					}
+				}
+			}
 			// Compare against the raw uniform-driven pipeline above, with exactly
 			// the same bindings and geometry. Empty view lighting is specialized
 			// away; model/ambient lighting remains in the draw group.

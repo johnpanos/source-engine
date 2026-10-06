@@ -152,15 +152,54 @@ std::optional<std::string> UnreadVariable( const MaterialDesc &material )
 		}
 		return false;
 	};
-	bool cloakEnabled = false;
-	for ( const VmtPair &variable : material.variables )
+	// VertexLitGeneric's optional passes (vertexlitgeneric_dx9.cpp): each reads
+	// its controls only when its enable flag is set (SHADER_INIT_PARAMS,
+	// SHADER_FALLBACK and DRAW all test it), so with the pass off they are inert
+	// whatever the live material holds (the material system's zeros, or a
+	// dormant cloak factor of 1 on the cube).
+	struct DormantPass
 	{
-		if ( SameKey( variable.key, "$cloakpassenabled" ) )
+		const char *enable;
+		const char *controls[24]; // ends at the first null
+	};
+	static const DormantPass kVertexLitPasses[] = {
+	    { "$cloakpassenabled", { "$cloakpassenabled", "$cloakfactor", "$cloakcolortint",
+	                               "$cloaktint", "$refractamount" } },
+	    { "$emissiveblendenabled",
+	        { "$emissiveblendenabled", "$emissiveblendbasetexture", "$emissiveblendscrollvector",
+	            "$emissiveblendstrength", "$emissiveblendtexture", "$emissiveblendtint",
+	            "$emissiveblendflowtexture" } },
+	    { "$sheenpassenabled",
+	        { "$sheenpassenabled", "$sheenmap", "$sheenmapmask", "$sheenmapmaskframe",
+	            "$sheenmaptint", "$sheenmapmaskscalex", "$sheenmapmaskscaley",
+	            "$sheenmapmaskoffsetx", "$sheenmapmaskoffsety", "$sheenmapmaskdirection",
+	            "$sheenindex" } },
+	    { "$fleshinteriorenabled",
+	        { "$fleshinteriorenabled", "$fleshinteriortexture", "$fleshinteriornoisetexture",
+	            "$fleshbordertexture1d", "$fleshnormaltexture", "$fleshsubsurfacetexture",
+	            "$fleshcubetexture", "$fleshbordernoisescale", "$fleshdebugforcefleshon",
+	            "$fleshEffectCenterRadius1", "$fleshEffectCenterRadius2",
+	            "$fleshEffectCenterRadius3", "$fleshEffectCenterRadius4", "$fleshsubsurfacetint",
+	            "$fleshborderwidth", "$fleshbordersoftness", "$fleshbordertint",
+	            "$fleshglobalopacity", "$fleshglossbrightness", "$fleshscrollspeed" } } };
+	const auto dormant = [&]( std::string_view key )
+	{
+		if ( material.family != "vertexlit" )
+			return false;
+		for ( const DormantPass &pass : kVertexLitPasses )
 		{
-			const auto value = Numbers( variable.value );
-			cloakEnabled = !value || value->size() != 1 || value->front() != 0.0;
+			if ( enabled( pass.enable ) )
+				continue;
+			for ( const char *control : pass.controls )
+			{
+				if ( !control )
+					break;
+				if ( SameKey( key, control ) )
+					return true;
+			}
 		}
-	}
+		return false;
+	};
 	for ( const std::string &key : material.unmapped )
 	{
 		// LightmappedGeneric reads these values only inside the corresponding
@@ -173,12 +212,7 @@ std::optional<std::string> UnreadVariable( const MaterialDesc &material )
 		                 SameKey( key, "$outlinestart0" ) || SameKey( key, "$outlinestart1" ) ||
 		                 SameKey( key, "$outlineend0" ) || SameKey( key, "$outlineend1" ) ) ) ) )
 			continue;
-		// VertexLitGeneric only reads these controls inside its enabled cloak
-		// pass. A dormant factor of 1 on the cube does not request transmission.
-		if ( !cloakEnabled && material.family == "vertexlit" &&
-		     ( SameKey( key, "$cloakpassenabled" ) || SameKey( key, "$cloakfactor" ) ||
-		         SameKey( key, "$cloakcolortint" ) || SameKey( key, "$cloaktint" ) ||
-		         SameKey( key, "$refractamount" ) ) )
+		if ( dormant( key ) )
 			continue;
 		// VertexLitGeneric uploads $seamless_scale only when seamless mapping is
 		// on for the base or the detail texture (vertexlitgeneric_dx9_helper.cpp's
@@ -661,7 +695,8 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 		if ( !s.mesh && s.layout == SurfaceVertexLayout::kModel )
 			return foundation::MakeUnexpected(
 			    std::string( "the pbr world point needs the world vertex" ) );
-		variant.terms |= s.mesh ? ( ( s.sceneTerms & ~kSurfaceLightmapTerms ) | kSurfaceMeshDirect )
+		variant.terms |= s.mesh ? ( ( s.sceneTerms & ~kSurfaceLightmapTerms ) |
+		                              ( s.sceneTerms ? kSurfaceMeshDirect : 0u ) )
 		                        : ( kSurfaceBakedLightmap | s.sceneTerms );
 		SurfaceTextures textures;
 		textures.base = TextureOf( material, "basetexture" );
@@ -698,7 +733,10 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 			    std::string( "the modern mesh point needs the surface vertex" ) );
 		SurfaceVariant variant = claim.Variant();
 		variant.layout = s.layout;
-		variant.terms |= ( s.sceneTerms & ~kSurfaceLightmapTerms ) | kSurfaceMeshDirect;
+		// Without a stage's terms (a plain map) the point takes Source's model
+		// lighting at the draw: its ambient cube and lights.
+		variant.terms |=
+		    ( s.sceneTerms & ~kSurfaceLightmapTerms ) | ( s.sceneTerms ? kSurfaceMeshDirect : 0u );
 		out.foliage = variant.treeSwayMode != 0;
 		SurfaceTextures textures;
 		textures.base = TextureOf( material, "basetexture" );
@@ -937,8 +975,8 @@ foundation::Expected<ProgramResolver::Preview, std::string> ProgramResolver::Res
 	return out;
 }
 
-std::optional<GroupRequest> ProgramResolver::DrawGroup(
-    const ResolvedProgram &program, const std::vector<std::string> &inputTextures ) const
+std::optional<GroupRequest> ProgramResolver::DrawGroup( const ResolvedProgram &program,
+    const std::vector<std::string> &inputTextures, const ModelLighting *lighting ) const
 {
 	const State &s = *m_State;
 	if ( !program.request.drawLayout.IsValid() ||
@@ -950,7 +988,8 @@ std::optional<GroupRequest> ProgramResolver::DrawGroup(
 	if ( ( program.name == "pbr" || program.name == "refract" || program.name == "depth" ||
 	         program.name == "unlit" ) &&
 	     inputTextures.empty() )
-		return s.lightmapped->Program().DrawGroup( "", {}, {}, {}, {} );
+		return s.lightmapped->Program().DrawGroup(
+		    "", lighting ? *lighting : ModelLighting{}, {}, {}, {} );
 	if ( program.request.drawLayout == s.lightmapped->DrawLayout() && inputTextures.size() == 1 )
 		return s.lightmapped->LightmapGroup( inputTextures[0] );
 	return std::nullopt;

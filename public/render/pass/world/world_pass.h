@@ -521,6 +521,9 @@ struct WorldView
 		// Native page/UV pair captured by the frontend; never reinterpret these
 		// coordinates as the compiled stage atlas's coordinates.
 		bool capturedLightmap = false;
+		// Source's model lighting at the draw, for a mesh point without stage
+		// lights (a plain map); the neutral block when absent.
+		std::optional<material::ModelLighting> lighting;
 	};
 	std::vector<DynamicDraw> dynamicDraws;
 	// Captured ordered depth-copy input for soft particles; one-based importer
@@ -717,6 +720,9 @@ public:
 	    const std::optional<std::vector<std::uint32_t>> &surfaceSelection = std::nullopt ) const;
 	// The tag of the slot to mark for the view; 0 when there is nothing to draw.
 	std::uint32_t QueueView( WorldView view );
+	// A dynamic draw the frontend's handoff refused before queueing: counted
+	// and named in Stats() as QueueView's own refusals are.
+	void NoteRefusal( std::string reason );
 	// Render sequence: largest compatible opaque prefix (at least one for
 	// nonempty input). The caller supplies only slots with identical target
 	// state and no intervening observable commands. A later world cohort is

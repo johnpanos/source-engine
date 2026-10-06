@@ -35,6 +35,10 @@
 //			   groups again for the recording it draws: the cached list holds
 //			   indices, never this slot's bindings, and an unresolved one is
 //			   bound as "no group at all" and refused by the device.
+//			W28 VertexLitGeneric's optional passes' controls with the pass off
+//			   are inert and claim (the live [0 0] emissive scroll vector against
+//			   its [0.11 0.124] default, a sheen mask scale of 0 against 1); an
+//			   enabled emissive blend or sheen pass is a named gap.
 //			W10 Views of a host frame the backend never recorded are skipped,
 //			   not failed; a view whose slot never recorded while another slot
 //			   of its frame did is a failure.
@@ -1437,6 +1441,38 @@ int main()
 			named = named || reason.find( "does not read $seamless" ) != std::string::npos;
 		checks.That( seamless.Draws( 0 ), "W25.a-dormant-seamless-scale-is-claimed" );
 		checks.That( !seamless.Draws( 1 ) && named, "W25.an-enabled-seamless-pass-is-a-named-gap" );
+	}
+
+	// W28: VertexLitGeneric reads each optional pass's controls only inside
+	// that pass, so with it off the material system's zeros (an emissive
+	// scroll vector of [0 0], a sheen mask scale of 0) cannot change a pixel.
+	{
+		WorldData world = TestWorld();
+		world.materials[0].shader = "VertexLitGeneric";
+		world.materials[0].mesh = true;
+		world.materials[0].variables.push_back(
+		    { "$emissiveblendscrollvector", "[ 0.000000 0.000000 ]" } );
+		world.materials[0].variables.push_back( { "$sheenmapmaskscalex", "0.000000" } );
+		world.materials[0].defaults = {
+		    { "$emissiveblendscrollvector", "[0.11 0.124]" }, { "$sheenmapmaskscalex", "1" } };
+		world.materials[1] = world.materials[0];
+		world.materials[1].variables.push_back( { "$emissiveblendenabled", "1" } );
+		world.materials[1].defaults.push_back( { "$emissiveblendenabled", "0" } );
+		world.materials[2] = world.materials[0];
+		world.materials[2].variables.push_back( { "$sheenpassenabled", "1" } );
+		world.materials[2].defaults.push_back( { "$sheenpassenabled", "0" } );
+		WorldPass emissive;
+		emissive.SetWorld( std::move( world ) );
+		bool named = false;
+		for ( const auto &[reason, count] : emissive.Stats().gaps )
+			named = named || reason.find( "does not read $emissiveblend" ) != std::string::npos;
+		checks.That( emissive.Draws( 0 ), "W28.a-dormant-emissive-blend-is-claimed" );
+		bool sheen = false;
+		for ( const auto &[reason, count] : emissive.Stats().gaps )
+			sheen = sheen || reason.find( "does not read $sheen" ) != std::string::npos;
+		checks.That(
+		    !emissive.Draws( 1 ) && named, "W28.an-enabled-emissive-blend-pass-is-a-named-gap" );
+		checks.That( !emissive.Draws( 2 ) && sheen, "W28.an-enabled-sheen-pass-is-a-named-gap" );
 	}
 
 	// W26: the detail combine is drawn with a bump map. The port combines the

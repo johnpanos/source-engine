@@ -663,6 +663,23 @@ struct WorldPass::State
 		stats.lastFailure = why;
 	}
 
+	// A refused dynamic draw: counted, and named once per reason (the caller
+	// holds the lock).
+	void Refuse( std::string reason )
+	{
+		++stats.dynamicDrawsRefused;
+		stats.lastRefusal = std::move( reason );
+		auto gap = std::find_if( stats.gaps.begin(), stats.gaps.end(),
+		    [&]( const auto &entry )
+		    {
+			    return entry.first == stats.lastRefusal;
+		    } );
+		if ( gap != stats.gaps.end() )
+			++gap->second;
+		else if ( stats.gaps.size() < 256 )
+			stats.gaps.emplace_back( stats.lastRefusal, 1 );
+	}
+
 	void ReleaseGroup( Group &group, CompletionToken after, bool recycle = false )
 	{
 		if ( device )
@@ -1090,6 +1107,13 @@ bool WorldPass::DrawsPosedModel( std::uint32_t meshId, std::uint32_t skin,
 	return hasSurface || ( surfaceSelection && surfaceSelection->empty() );
 }
 
+void WorldPass::NoteRefusal( std::string reason )
+{
+	State &s = *m_State;
+	std::lock_guard<std::mutex> guard( s.lock );
+	s.Refuse( std::move( reason ) );
+}
+
 std::uint32_t WorldPass::QueueView( WorldView view )
 {
 	State &s = *m_State;
@@ -1157,17 +1181,7 @@ std::uint32_t WorldPass::QueueView( WorldView view )
 		}
 		if ( !why.empty() )
 		{
-			++s.stats.dynamicDrawsRefused;
-			s.stats.lastRefusal = "material " + draw.material.name + ": " + why;
-			auto gap = std::find_if( s.stats.gaps.begin(), s.stats.gaps.end(),
-			    [&]( const auto &entry )
-			    {
-				    return entry.first == s.stats.lastRefusal;
-			    } );
-			if ( gap != s.stats.gaps.end() )
-				++gap->second;
-			else if ( s.stats.gaps.size() < 256 )
-				s.stats.gaps.emplace_back( s.stats.lastRefusal, 1 );
+			s.Refuse( "material " + draw.material.name + ": " + why );
 			return 0;
 		}
 	}
@@ -1933,10 +1947,13 @@ void WorldPass::RecordBatch(
 			return;
 		}
 		r.resolver = std::move( resolver ).Value();
-		// A world stage draws with world pbr (the pbr point on the world
-		// vertex) and the scene terms its data supports.
-		if ( world->stage )
-			r.resolver->SetWorldPbr( true, StageTerms( *world->stage, target.runtimeDirect ) );
+		// The resolver's points draw with the scene terms the stage supports,
+		// and none without one, as the model resolver's do: a plain map's
+		// mesh handoff (VertexLitGeneric and Refract models) needs the mesh
+		// points too. World pbr surfaces stay a stage's alone; their claim
+		// (ClaimForDrawing's worldPbr) asks for the stage itself.
+		r.resolver->SetWorldPbr(
+		    true, world->stage ? StageTerms( *world->stage, target.runtimeDirect ) : 0 );
 		r.resolver->SetSceneColorAvailable( world->stage != nullptr );
 		r.materials.resize( world->materials.size() );
 	}
@@ -4324,8 +4341,12 @@ void WorldPass::RecordBatch(
 		std::uint32_t count;
 		int page;
 		const WorldView::DynamicDraw *source;
+		const Group *lit = nullptr; // the draw's own group, with its model lighting
 	};
 	std::vector<DynamicDraw> dynamicDraws;
+	// Draw groups holding one draw's model lighting: built per draw and
+	// retired with the frame, never cached.
+	std::deque<Group> litDrawGroups;
 	for ( const WorldView::DynamicDraw &draw : view.dynamicDraws )
 	{
 		std::string key;
@@ -4352,6 +4373,25 @@ void WorldPass::RecordBatch(
 		{
 			complete = false;
 			continue;
+		}
+		// A mesh point without draw inputs reads the draw's model lighting.
+		const Group *lit = nullptr;
+		if ( draw.lighting && m->program.drawInputs.empty() )
+		{
+			const std::optional<material::GroupRequest> request =
+			    m->resolver->DrawGroup( m->program, {}, &*draw.lighting );
+			litDrawGroups.emplace_back();
+			std::string why;
+			if ( !request || !buildGroup( *request, {}, litDrawGroups.back(), &why ) )
+			{
+				s.ReleaseGroup( litDrawGroups.back(), CompletionToken() );
+				litDrawGroups.pop_back();
+				note( "a model-lighting draw group: " +
+				      ( why.empty() ? std::string( "not resolved" ) : why ) );
+				complete = false;
+				continue;
+			}
+			lit = &litDrawGroups.back();
 		}
 		BufferDesc desc;
 		desc.size = draw.vertices.size() * sizeof( WorldVertex );
@@ -4386,7 +4426,7 @@ void WorldPass::RecordBatch(
 			s.retiredBuffers.emplace_back( target.frame, buffer );
 		}
 		dynamicDraws.push_back( { m, vertices.Value(), indices.Value(),
-		    std::uint32_t( draw.indices.size() ), draw.lightmapPage, &draw } );
+		    std::uint32_t( draw.indices.size() ), draw.lightmapPage, &draw, lit } );
 	}
 
 	preparation.End();
@@ -4677,7 +4717,8 @@ void WorldPass::RecordBatch(
 		encoder.SetBindGroup( BindGroupRole::kView, group->group );
 		encoder.SetBindGroup( BindGroupRole::kMaterial, m.group.group );
 		encoder.SetBindGroup( BindGroupRole::kDraw,
-		    r.drawGroups[drawKey( m, draw.page, draw.source->capturedLightmap )].group );
+		    draw.lit ? draw.lit->group
+		             : r.drawGroups[drawKey( m, draw.page, draw.source->capturedLightmap )].group );
 		material::FamilyDrawConstants dynamicConstants = constants;
 		std::copy_n( draw.source->modelToWorld, 16, dynamicConstants.world );
 		encoder.SetDrawConstants( 0, std::as_bytes( std::span( &dynamicConstants, 1 ) )
@@ -4699,6 +4740,8 @@ void WorldPass::RecordBatch(
 	encoder.EndLabel();
 	preparation.Select( "retire world view resources" );
 	for ( auto &group : transientLitViews )
+		s.retiredGroups.emplace_back( target.frame, std::move( group ) );
+	for ( auto &group : litDrawGroups )
 		s.retiredGroups.emplace_back( target.frame, std::move( group ) );
 	for ( auto &[layout, group] : sceneViews )
 		s.retiredGroups.emplace_back( target.frame, std::move( group ) );
