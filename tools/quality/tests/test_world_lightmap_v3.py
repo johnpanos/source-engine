@@ -35,7 +35,7 @@ class LightmapV3Test(unittest.TestCase):
         self.assertTrue(layout["sun"])
         back, beta_back, sun_back = lmap.decode_layer(data, layout, 0)
         self.assertLess(np.abs(back - flat).max() / flat.max(), 0.05)
-        self.assertLess(np.abs(beta_back - beta).max(), 0.05)
+        self.assertLess(np.abs(beta_back - beta).max(), 0.1)  # 4 / 255 steps, BC7
         self.assertLess(np.abs(sun_back - sun).max(), 0.02)
         # Every layer carries the sun (the indirect layer's gradient serves
         # runtime direct light).
@@ -44,7 +44,7 @@ class LightmapV3Test(unittest.TestCase):
 
     def test_beta_beyond_one_is_clamped_and_reported(self):
         flat, beta, _ = pages()
-        _, report = lmap.build(TOOL, [(flat, beta * 4)])
+        _, report = lmap.build(TOOL, [(flat, beta * 8)])
         self.assertGreater(report["layers"][0]["beta_clamped_share"], 0.0)
 
     def test_negative_and_overflowed_light_is_clamped_and_reported(self):

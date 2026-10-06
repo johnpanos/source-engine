@@ -70,14 +70,15 @@ int main()
 		    2 );
 		return half;
 	};
-	// Halves: 0.5 = 0x3800, 0.25 = 0x3400, 1 = 0x3c00; beta 255 -> 1, 128 -> ~0.0039,
-	// 0 -> -1 (0xbc00); sun 204/255 = 0.8 (0x3a66).
+	// Halves: 0.5 = 0x3800, 0.25 = 0x3400, 1 = 0x3c00; beta (( g * 2 - 1 ) * 2)
+	// 255 -> 2 (0x4000), 128 -> ~0.0078, 0 -> -2 (0xc000); sun 204/255 = 0.8
+	// (0x3a66).
 	check( texel( 0, 5, 4, 0 ) == 0x3800 && texel( 0, 5, 4, 1 ) == 0x3400 &&
 	           texel( 0, 5, 4, 2 ) == 0x3c00 && texel( 0, 5, 4, 3 ) == 0x3a66,
 	    "irradiance and the sun decode on layer 0" );
 	check( texel( 1, 0, 0, 3 ) == 0x3c00, "other layers carry alpha 1" );
-	check( texel( 2, 6, 0, 0 ) == 0x3c00 && texel( 2, 11, 4, 2 ) == 0xbc00 &&
-	           texel( 2, 6, 0, 1 ) > 0 && texel( 2, 6, 0, 1 ) < 0x2000 &&
+	check( texel( 2, 6, 0, 0 ) == 0x4000 && texel( 2, 11, 4, 2 ) == 0xc000 &&
+	           texel( 2, 6, 0, 1 ) > 0 && texel( 2, 6, 0, 1 ) < 0x2400 &&
 	           texel( 2, 6, 0, 3 ) == 0x3c00,
 	    "beta decodes on the right half" );
 

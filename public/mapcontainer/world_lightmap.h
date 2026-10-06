@@ -11,7 +11,7 @@
 // VkFormats BC6H_UFLOAT_BLOCK and BC7_UNORM_BLOCK, each page's bytes, the data
 // offset 64, 8 zero bytes), then per layer its BC6H irradiance blocks and its
 // BC7 gradient blocks. Every layer is directional: the gradient's RGB is the
-// world-space luminance gradient beta * 0.5 + 0.5 (beta in [-1, 1]).
+// world-space luminance gradient beta / 4 + 0.5 (beta in [-2, 2]).
 //
 // The layer roles are fixed by the layer count so a consumer never parses
 // metadata to decide what it samples: 1 total; 2 total, indirect; 3 total,
@@ -45,6 +45,9 @@ static const uint32_t kWorldLightmapMaxLayers = 3;
 static const uint64_t kWorldLightmapMaxBytes = 1024ull * 1024 * 1024;
 static const uint32_t kWorldLightmapMaxDimension = 16384;
 static const uint32_t kWorldLightmapTexelBytes = 8; // the decoded form's RGBA16F
+// The gradient page stores each beta component in [-range, range] as
+// beta / ( 2 * range ) + 0.5 (BC7 unorm); a reader takes ( g * 2 - 1 ) * range.
+static const float kWorldLightmapBetaRange = 2.0f;
 enum class WorldLightmapLayer : uint32_t
 {
 	Total = 0,

@@ -19,8 +19,9 @@ Little-endian, 64-byte header:
 
 then per layer: its irradiance blocks, then its gradient blocks (4x4 blocks,
 row-major, partial blocks padded; one mip level). The gradient's RGB is
-beta * 0.5 + 0.5 with beta clamped to [-1, 1] (|beta| <= 1 keeps the
-irradiance non-negative; the receipt reports the clamped share), its alpha the
+beta / 4 + 0.5 with each component clamped to [-2, 2] (BETA_RANGE: the
+directional fit bounds |beta| at 2; the receipt reports the clamped share,
+and a consumer reads beta = g * 4 - 2), its alpha the
 sun's [0, 1] visibility with the flag (on every layer, so a consumer that
 reads the indirect layer's gradient has it too), else 1.
 
@@ -43,6 +44,9 @@ HEADER_BYTES = 64
 FLAG_SUN = 1
 MAX_LAYERS = 3
 MAX_DIMENSION = 16384
+# Each beta component is stored in [-BETA_RANGE, BETA_RANGE]
+# (lightmap_directional.py bounds |beta| at BETA_MAX = 2).
+BETA_RANGE = 2.0
 BC6H_MAX = 65504.0
 IRRADIANCE_VKFORMAT = bc_codec.VK_FORMAT["bc6hu"]
 GRADIENT_VKFORMAT = bc_codec.VK_FORMAT["bc7"]
@@ -58,9 +62,10 @@ class LightmapError(Exception):
 def gradient_texels(beta, sun=None):
     """uint8 RGBA of the gradient page: beta biased into [0, 1], alpha the sun."""
     beta = np.asarray(beta, np.float64)
-    clamped = float(np.mean(np.abs(beta) > 1.0))
+    clamped = float(np.mean(np.abs(beta) > BETA_RANGE))
     rgba = np.empty(beta.shape[:2] + (4,), np.uint8)
-    rgba[..., :3] = np.round((np.clip(beta, -1.0, 1.0) * 0.5 + 0.5) * 255.0)
+    rgba[..., :3] = np.round((np.clip(beta, -BETA_RANGE, BETA_RANGE) / BETA_RANGE * 0.5 + 0.5) *
+                             255.0)
     rgba[..., 3] = 255 if sun is None else np.round(np.clip(sun, 0.0, 1.0) * 255.0)
     return rgba, clamped
 
@@ -98,15 +103,15 @@ def build(tool, layers, sun=None):
         gradient_blocks = bc_codec.encode_bc7(tool, texels)
         body += flat_blocks + gradient_blocks
         decoded = bc_codec.decode_bc7(gradient_blocks, width, height)
-        beta_back = decoded[..., :3].astype(np.float32) / 255.0 * 2.0 - 1.0
+        beta_back = (decoded[..., :3].astype(np.float32) / 255.0 * 2.0 - 1.0) * BETA_RANGE
         entry = {"role": ROLES[len(layers)][index],
                  "irradiance": bc_codec.hdr_error(
                      irradiance, bc_codec.decode_bc6h(flat_blocks, width, height)),
                  "beta_clamped_share": clamped,
                  "irradiance_negative_share": negative,
                  "irradiance_overflow_share": overflow,
-                 "beta_abs_error_mean": float(np.abs(beta_back - np.clip(beta, -1, 1)).mean()),
-                 "beta_abs_error_max": float(np.abs(beta_back - np.clip(beta, -1, 1)).max())}
+                 "beta_abs_error_mean": float(np.abs(beta_back - np.clip(beta, -BETA_RANGE, BETA_RANGE)).mean()),
+                 "beta_abs_error_max": float(np.abs(beta_back - np.clip(beta, -BETA_RANGE, BETA_RANGE)).max())}
         if sun is not None:
             sun_back = decoded[..., 3].astype(np.float32) / 255.0
             entry["sun_abs_error_mean"] = float(np.abs(sun_back - np.clip(sun, 0, 1)).mean())
@@ -157,6 +162,6 @@ def decode_layer(data, layout, index):
         w, h)
     gradient = bc_codec.decode_bc7(
         data[layer["gradient_offset"]:layer["gradient_offset"] + layout["gradient_bytes"]], w, h)
-    beta = gradient[..., :3].astype(np.float32) / 255.0 * 2.0 - 1.0
+    beta = (gradient[..., :3].astype(np.float32) / 255.0 * 2.0 - 1.0) * BETA_RANGE
     sun = gradient[..., 3].astype(np.float32) / 255.0 if layout["sun"] else None
     return flat, beta, sun

@@ -937,7 +937,7 @@ bool CoreWorld::StageCapture::UploadLightmap(
 						continue;
 					}
 					// A gradient texel arrives as signed beta: stored as
-					// beta * 0.5 + 0.5, the sun's alpha kept.
+					// beta / 4 + 0.5, the sun's alpha kept.
 					std::byte *page = lightmap.gradient.data() +
 					                  ( std::size_t( py ) * lightmap.width + px - lightmap.width ) * 8;
 					for ( int c = 0; c < 3; ++c )
@@ -945,7 +945,7 @@ bool CoreWorld::StageCapture::UploadLightmap(
 						std::uint16_t half;
 						std::memcpy( &half, texel + 2 * c, 2 );
 						half = mapcontainer::FloatToHalf( std::clamp(
-						    mapcontainer::HalfToFloat( half ) * 0.5f + 0.5f, 0.0f, 1.0f ) );
+						    mapcontainer::HalfToFloat( half ) * 0.25f + 0.5f, 0.0f, 1.0f ) );
 						std::memcpy( page + 2 * c, &half, 2 );
 					}
 				}

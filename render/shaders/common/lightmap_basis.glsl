@@ -11,9 +11,9 @@
 //   tools/quality/lightmap_directional.py): the flat light E0 on the smooth
 //   normal N, and at the same texel the signed world-space luminance
 //   gradient beta of the fitted irradiance E(n) = a + g . n relative to E0,
-//   staged as two pages of the same size. The gradient page stores beta *
-//   0.5 + 0.5 (LMAP v3's BC7 page, or its RGBA16F split), so
-//   LightmapGradientSample returns beta = g * 2 - 1; its alpha is the sun's
+//   staged as two pages of the same size. The gradient page stores beta /
+//   4 + 0.5, beta in [-2, 2] (LMAP v3's BC7 page, or its RGBA16F split), so
+//   LightmapGradientSample returns beta = g * 4 - 2; its alpha is the sun's
 //   baked visibility. A normal n receives E0 * clamp( 1 + beta . ( n - N ),
 //   0, 4 ), so n = N is the flat light bitwise (and a zero gradient, 0.5
 //   stored, on an RGBA16F page; BC7 stores it as 128 / 255);
@@ -41,13 +41,13 @@ vec3 LightmapPageSample( texture2D page, sampler pageSampler, vec2 uv )
 	return textureLod( sampler2D( page, pageSampler ), uv, 0.0 ).rgb;
 }
 
-// A gradient page's beta (stored beta * 0.5 + 0.5).
+// A gradient page's beta (stored beta / 4 + 0.5).
 vec3 LightmapGradientSample( texture2D page, sampler pageSampler, vec2 uv )
 {
 #ifdef SEEDED_LIGHTMAP_GRADIENT_UNBIASED
 	return textureLod( sampler2D( page, pageSampler ), uv, 0.0 ).rgb;
 #else
-	return textureLod( sampler2D( page, pageSampler ), uv, 0.0 ).rgb * 2.0 - 1.0;
+	return textureLod( sampler2D( page, pageSampler ), uv, 0.0 ).rgb * 4.0 - 2.0;
 #endif
 }
 

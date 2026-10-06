@@ -108,8 +108,8 @@ struct WorldSurface
 // so the halves become two pages of the same size.
 //
 // The pages are as LMAP v3 stores them (public/mapcontainer/world_lightmap.h):
-// the flat page linear light (alpha unused), the gradient page beta * 0.5 +
-// 0.5 in RGB (the shader takes beta = g * 2 - 1) and the sun's baked
+// the flat page linear light (alpha unused), the gradient page beta / 4 +
+// 0.5 in RGB (beta in [-2, 2]; the shader takes beta = g * 4 - 2) and the sun's baked
 // visibility in A (1 without a sun mask). They are either the lump's blocks
 // (BlockLightmapLayer: BC6H flat, BC7 gradient) or RGBA16F texels
 // (SplitLightmapLayer); only RGBA16F pages take region patches.

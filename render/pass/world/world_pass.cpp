@@ -484,15 +484,16 @@ LightmapPages SplitLightmapLayer(
 	{
 		const std::byte *from = layer.data() + std::size_t( y ) * row;
 		std::copy( from, from + half, pages.flat.data() + std::size_t( y ) * half );
-		// The stored convention: beta * 0.5 + 0.5, and the sun (the flat
-		// texel's alpha in the decoded form) in the gradient's alpha.
+		// The stored convention: beta / 4 + 0.5 (beta in [-2, 2]), and the
+		// sun (the flat texel's alpha in the decoded form) in the gradient's
+		// alpha.
 		for ( std::uint32_t x = 0; x < pages.width; ++x )
 		{
 			std::uint16_t flat[4], beta[4], out[4];
 			std::memcpy( flat, from + std::size_t( x ) * kTexel, sizeof( flat ) );
 			std::memcpy( beta, from + half + std::size_t( x ) * kTexel, sizeof( beta ) );
 			for ( int c = 0; c < 3; ++c )
-				out[c] = LightmapUnitToHalf( LightmapHalfToFloat( beta[c] ) * 0.5f + 0.5f );
+				out[c] = LightmapUnitToHalf( LightmapHalfToFloat( beta[c] ) * 0.25f + 0.5f );
 			out[3] = LightmapUnitToHalf( LightmapHalfToFloat( flat[3] ) );
 			std::memcpy(
 			    pages.gradient.data() + std::size_t( y ) * half + std::size_t( x ) * kTexel, out,

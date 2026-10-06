@@ -166,7 +166,8 @@ bool DecodeWorldLightmap( const void *pData, const WorldLightmapBlocks &blocks,
 						for ( int c = 0; c < 3; ++c )
 						{
 							left[c] = FloatToHalf( light[t * 3 + c] );
-							right[c] = FloatToHalf( gradient[t * 4 + c] / 255.0f * 2.0f - 1.0f );
+							right[c] = FloatToHalf( ( gradient[t * 4 + c] / 255.0f * 2.0f - 1.0f ) *
+							                        kWorldLightmapBetaRange );
 						}
 						left[3] = sun ? FloatToHalf( gradient[t * 4 + 3] / 255.0f ) : one;
 						right[3] = one;
