@@ -59,6 +59,13 @@ frame's contention. Render performance acceptance follows RFC 0016's
 a placement win cannot waive the complete-frame target. This amendment itself
 implements no GPU handoff.
 
+GPU culling for draw submission (plan, 2026-10-05) applies this rule:
+RFC 0016's [GPU-driven submission](0016-render-core.md#gpu-driven-submission-plan-2026-10-05-user-direction) phase S4 compares a compute
+culling pass against the pooled CPU culler at full cost, and the faster one
+becomes the product path; the serial CPU culler stays its oracle. Its phase
+S8 (async compute) needs queue assignment and cross-queue waits in the
+render graph, modelled by an extension of the independent graph model.
+
 ## Summary
 
 Source should execute suitable subsystem work through a dependency-aware job

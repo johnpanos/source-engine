@@ -11385,3 +11385,14 @@ In game, the gun now draws on `sp_a1_intro4`. It is dark: it is lit by its
 ambient cube and one weak light, and the projected light is still open.
 `testchmb_a_01` is unchanged outside animated areas (0.76% of pixels differ
 by more than 8 levels against the previous frame).
+
+## GPU-driven submission planned (2026-10-05, user direction)
+
+Planned, nothing implemented. [RFC 0016's GPU-driven submission](0016-render-core.md#gpu-driven-submission-plan-2026-10-05-user-direction)
+defines phases S0–S8 (baseline; bindless textures; per-draw data by
+address; multi-draw indirect; GPU culling with indirect count; dynamic
+pipeline state; push bindings; mobile lazy attachments; async compute),
+reserving device clauses D28–D35. Observed on the way: culling runs on the
+CPU (`scene.cpp` `CullRange`), every bind group is its own descriptor set,
+and the Vulkan adapter claims no async compute. The BC6H/BC7/B10G11R11
+formats (`90c219166`) are separate format work. Next: S0's baseline.

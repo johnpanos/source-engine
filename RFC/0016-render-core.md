@@ -1101,6 +1101,7 @@ missing capability. Nothing falls back silently or after partial setup.
 | Async compute and transfer queues | per device | no | work runs on the graphics queue |
 | Ray query | per device | no | RFC 0011 producers that need it are unavailable |
 | Sample counts, formats, limits | per device | per device | per feature rule |
+| Bindless textures, buffer address, multi-draw indirect, indirect count, dynamic pipeline state, push bindings, lazy attachments (planned, [GPU-driven submission](#gpu-driven-submission-plan-2026-10-05-user-direction)) | per device | multi-draw indirect (4.3) and indirect count (4.6) only | the phase's declared fallback in that section |
 
 ### Shader artifacts
 
@@ -1267,6 +1268,9 @@ A graph is built each frame on the render sequence:
   it: world translucency and renderables interleave per leaf, back to front.
   A native sort key replaces it only per cohort, as a recorded behavior
   change with an image oracle.
+- **Submission** moves to indirect draws and GPU culling in phases S1–S8
+  ([GPU-driven submission](#gpu-driven-submission-plan-2026-10-05-user-direction));
+  the serial CPU culler stays the oracle.
 - **Instancing** merges draws with the same mesh, material and pipeline
   where the family allows it. It is measured, not assumed.
 
@@ -1277,6 +1281,73 @@ A graph is built each frame on the render sequence:
 - The CPU path (`R_StudioSoftwareProcessMesh*`, today's emit skinning)
   stays as the oracle, as the fallback where compute is unavailable, and
   for materials that need software skinning.
+
+## GPU-driven submission (plan, 2026-10-05, user direction)
+
+This section is the one definition of how the core moves draw submission
+off the per-draw CPU loop. Other RFCs link here and do not restate it. It
+is a plan: nothing below is installed, and it closes no gate. It refines
+K5's "draw from the scene" and K9's "Recording scales"; its slices are
+children of R89 and R91, not a new row.
+
+### Observed starting point (2026-10-05)
+
+- **Binding:** every bind group is its own descriptor set, allocated from a
+  pool and written with `vkUpdateDescriptorSets` (`render/device/vulkan/pipelines.cpp`).
+  At draw time the encoder finds each group in a hash map and binds it
+  (`encoder.cpp` `Flush`). About 35 pass call sites create groups.
+- **Draws:** one `vkCmdDraw`/`vkCmdDrawIndexed` per draw, with push
+  constants and per-draw vertex-buffer binds. No indirect draws.
+- **Culling runs on the CPU:** `render/scene/scene.cpp` `CullRange` on the
+  borrowed compute pool (K5 pooled culling). The GPU scene does not cull.
+- **Extensions:** timeline semaphores, synchronization2 and dynamic
+  rendering are required; `memory_budget` is used; buffer device address is
+  queried but unused. No descriptor indexing, indirect count, extended
+  dynamic state or push descriptors.
+- **Attachments:** load/store ops are honoured, including `STORE_OP_NONE`
+  for read-only depth; no attachment uses transient or lazily allocated
+  memory.
+- **Async compute:** `Capability::kAsyncCompute` exists; the Vulkan
+  adapter does not claim it.
+- **Formats:** BC6H, BC7 and B10G11R11 entered the port on 2026-10-05
+  (`90c219166`, clauses D19 and D27). Converting lightmaps, probes and HDR
+  targets to them is separate format work, not part of this section.
+
+### Phases
+
+Each phase follows the binding rules: a backend-neutral port capability
+with a `render.device.v2` clause and bad adapters, proven in `render_lab`,
+then integrated in the game, with the replaced path deleted in the same
+change. The frozen legacy backend is not touched. Clause numbers are
+reserved here and may be renumbered when installed.
+
+| Phase | Work | Port capability (clause) | Vulkan | OpenGL 4.5 / GLES 3.1 | Proves |
+| --- | --- | --- | --- | --- | --- |
+| S0 | Baseline before any code: `demo_frames.py` on intro4, `frame_floor.py` (`linux-desktop-high-120`), the resolution sweep; `render_submission`, per-pass GPU timers, binds and draws per frame, pipeline-creation hitches; Fold7 rows or "unavailable" | — | — | — | the numbers every later phase is judged against |
+| S1 | Bindless material textures: a texture table returns stable indices; retirement behind completion tokens; material parameter blocks carry indices | `kBindlessTextures` (D28) | descriptor indexing: runtime arrays, partially bound, update-after-bind, nonuniform indexing | refused by name; per-material groups stay as the declared fallback | bad adapters: index reused before retirement, stale descriptor after update-after-bind, missing nonuniform qualifier; per-material set allocation and the hash lookup deleted for material groups |
+| S2 | Per-draw data by address: instance and draw records in one storage buffer per frame, read through `gl_DrawID`/`gl_BaseInstance` | `kBufferAddress` (D29) | buffer device address, scalar block layout | a bound storage buffer with the same base-instance indexing, behind one shader macro | records equal the bound-buffer path bit for bit |
+| S3 | Multi-draw indirect with CPU-written commands: passes sort by pipeline and write indexed indirect commands to the frame ring, one call per pipeline bucket; world, props and models share a few vertex/index buffers | `kMultiDrawIndirect` (D30) | `multiDrawIndirect` (1.0) | GL 4.3 core; ES 3.1 has single indirect draws only: one indirect call per command | lab gallery and K0 views bit-identical to the per-draw path, which is then deleted; `render_submission` against S0 |
+| S4 | GPU culling: a compute pass culls scene instances (frustum, then HiZ occlusion), compacts and writes commands and a count | `kDrawIndirectCount` (D31) | 1.2 `drawIndirectCount` | GL 4.6 core; ES none | visible sets equal the CPU culler on the K5 capture (351 views); without the capability, S3 with zero-instance commands. RFC 0003's placement rule decides the product path; the CPU culler stays as the oracle |
+| S5 | Dynamic pipeline state: cull, front face, depth test/write/compare and stencil become encoder state; pipeline keys drop them, so S3 has fewer buckets | `kDynamicPipelineState` (D32) | `extended_dynamic_state` 1–2 (preferred over `shader_object` for Adreno and MoltenVK coverage) | GL state is dynamic already | pipeline count and bind churn against S0; graphics pipeline library only if S0/S5 traces still show first-sight hitches |
+| S6 | Push bindings for the per-pass groups left after S1 (post, SSR, AO, volumetrics, skinning, temporal) | `PushBindings` encoder call with a pooled-set fallback inside the adapter (D33) | `VK_KHR_push_descriptor`; descriptor buffers rejected (not on MoltenVK or most mobile drivers; small gain after S1) | binding calls | per-pass set allocation deleted |
+| S7 | Mobile tile memory: graph-local transient attachments (MSAA colour, depth with no later read) use lazily allocated memory and don't-care stores | `kLazyAttachments` fact (D34) | `TRANSIENT_ATTACHMENT` + `LAZILY_ALLOCATED` | ignored | Fold7 GPU time and memory; desktop gains nothing (the 2026-09-23 render-pass merge showed no Adreno gain, so measure) |
+| S8 | Async compute: per-pass queue assignment, queue-family ownership transfers, cross-queue timeline waits; candidates GTAO, cluster assignment, fog froxels, S4 culling | `kAsyncCompute` claimed when a separate compute family exists (D35) | separate compute family | no | the independent graph model extended to two queues with bad graphs for missing waits; only after S0 shows those passes serialized with idle graphics |
+
+**Order:** S0; then S1, S2 and S5 (they reshape draw records and pipeline
+keys); then S3 (the main CPU gain) and S4; S6–S8 as their measurements
+justify. Mesh shaders wait for R63's dense-scene workload and S4's results;
+they are not on MoltenVK or most mobile drivers.
+
+**Profiles:** each phase records its fallback or refusal on GL and ES by
+name, so R92 and [RFC 0022](0022-opengl-es-3.1-compatibility-preset.md)
+do not regress. `host-only` Vulkan 1.1 devices (the Galaxy Tab S8 Ultra)
+are unaffected until K9's "Devices without dynamic rendering". MoltenVK
+support for S1 (argument buffers) and S4 (`drawIndirectCount`) must be
+queried per profile, not assumed; without S4 the S3 fallback applies.
+
+**Performance:** S0–S8 are judged by complete gameplay frames and the
+[resolution sweep](#optimization-resolution-sweep-user-decision-2026-10-03);
+isolated gains are diagnostic.
 
 ## Materials (`render.material.v2`)
 

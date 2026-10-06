@@ -245,6 +245,11 @@ The contract codifies P6 behavior and adds the missing obligations:
   extension list, memory types, measured frame time and memory. Nothing is
   selected on a vendor-name guess.
 
+  Lazily allocated multisampled attachments are one mechanism, owned by
+  RFC 0016's [GPU-driven submission](0016-render-core.md#gpu-driven-submission-plan-2026-10-05-user-direction) phase S7
+  (`kLazyAttachments`); this policy selects it per profile and does not
+  define a second one.
+
 ## Alpha to coverage (`render.alpha-coverage.v1`)
 
 **Rule.** Alpha to coverage is effective for a draw if and only if all of

@@ -1077,6 +1077,13 @@ Keep the table concise and link details below or from the domain progress file.
     profile before then.
   - See the [record](RFC/0016-progress.md#vulkan-11-host-devices-the-galaxy-tab-s8-ultra-2026-09-29).
 
+- R89/R91 GPU-driven submission: `planned` (2026-10-05, user direction).
+  [RFC 0016 phases S0–S8](RFC/0016-render-core.md#gpu-driven-submission-plan-2026-10-05-user-direction):
+  baseline, bindless textures, per-draw data by address, multi-draw
+  indirect, GPU culling with indirect count, dynamic pipeline state, push
+  bindings, mobile lazy attachments, async compute; GL/ES fallbacks named
+  per phase. Culling is CPU today. Children of K5/K9; no row changes state.
+
 - R86/R88 memory follow-up (2026-10-02, user request): [audit and direct
   texture uploads](RFC/0016-progress.md#k1k4-render-core-memory-and-cache-audit-2026-10-02)
   remove the intermediate GPU buffer copy and retain uploads after allocation

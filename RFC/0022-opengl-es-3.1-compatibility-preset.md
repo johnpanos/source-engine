@@ -113,6 +113,11 @@ or composition fails by name.
   illegal in ES. Such rows fail E0 and are listed.
 - Geometry, tessellation and layered rendering are not used by the core, so
   ES 3.1's lack of them costs nothing.
+- **GPU-driven submission (planned, 2026-10-05).** RFC 0016's
+  [phases S1–S8](0016-render-core.md#gpu-driven-submission-plan-2026-10-05-user-direction) need ES fallbacks: no bindless textures (per-material
+  groups stay), single indirect draws only (one call per command), no
+  indirect count (zero-instance commands), no lazy attachments or async
+  compute. Each phase records the ES refusal by name.
 
 ## Progress
 
