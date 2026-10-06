@@ -1574,6 +1574,17 @@ private:
 			return m_context.ManagedTextureSampler( handle - 1 );
 		}
 
+		// Frozen-path: a texture the material system made and has not filled
+		// (a picmip reload) is pending for the core, not a failed import.
+		bool Pending( int handle ) override
+		{
+			const int index = handle - 1;
+			if ( index < 0 || index >= int( m_context.m_managedTextures.size() ) )
+				return false;
+			const auto &texture = m_context.m_managedTextures[index];
+			return !texture.uploaded && !texture.renderTarget && !texture.storagePending;
+		}
+
 		std::uint64_t ContentRevision( int handle ) override
 		{
 			const int index = handle - 1;

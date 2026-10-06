@@ -313,6 +313,9 @@ public:
 	virtual device::TextureId Import( int handle, bool srgb ) = 0;
 	virtual device::SamplerDesc Sampler( int handle ) = 0;
 	virtual std::optional<MipInfo> MipDescription( int ) { return std::nullopt; }
+	// ICoreTextures::Pending: made but not filled yet; the pass skips the
+	// material for now and retries it, instead of failing the view.
+	virtual bool Pending( int ) { return false; }
 
 protected:
 	~IWorldTextures() = default;
@@ -677,6 +680,10 @@ struct WorldStats
 	std::uint64_t cutoutShadowIndirectDraws = 0;
 	std::uint64_t cutoutShadowRefused = 0;
 	std::uint64_t cutoutShadowNotResident = 0; // static props whose level is not on the device
+	// Material builds skipped because a texture was made but not filled yet (a
+	// picmip reload): retried at the material's next use, never a failure.
+	std::uint64_t pendingMaterials = 0;
+	std::uint64_t viewsPending = 0; // views left incomplete only by those
 	std::string lastRefusal;
 	std::string lastFailure;
 	// Unclaimed material names, reasons and counts, most frequent first.

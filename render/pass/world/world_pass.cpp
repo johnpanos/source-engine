@@ -2614,6 +2614,10 @@ void WorldPass::RecordBatch(
 	// imported by the names' handles, with the backend's samplers; an input
 	// the program names empty (a term that is off) or a handle of 0 (an
 	// absent input) takes the neutral texture of its dimension.
+	// Set by buildGroup when its failure is a texture the backend has made and
+	// not filled yet; prepareMaterial retries such a material next frame
+	// instead of failing its view.
+	bool texturePending = false;
 	auto buildGroup = [&]( const material::GroupRequest &request,
 	                      const std::map<std::string, int> &handles, Group &out,
 	                      std::string *why ) -> bool
@@ -2671,6 +2675,7 @@ void WorldPass::RecordBatch(
 			                              : textures.Import( handle->second, texture.srgb );
 			if ( !id.IsValid() )
 			{
+				texturePending = handle != handles.end() && textures.Pending( handle->second );
 				*why = handle == handles.end()
 				           ? "texture " + texture.name + " has no material system handle"
 				           : "texture " + texture.name + " did not import" +
@@ -2745,6 +2750,10 @@ void WorldPass::RecordBatch(
 		if ( failure.empty() )
 			failure = std::move( why );
 	};
+	// Set by prepareMaterial when its material waits on a texture still being
+	// filled (not a failure, so its caller notes nothing).
+	bool lastMaterialPending = false;
+	bool viewMaterialPending = false; // any in this view
 	auto prepareMaterial = [&]( material::ProgramResolver &resolver, Resources::Material &m,
 	                           const Claimed &claimed,
 	                           const WorldMaterial &source ) -> Resources::Material *
@@ -2766,6 +2775,18 @@ void WorldPass::RecordBatch(
 			why = "its program reads another vertex than its mesh";
 		else if ( !buildGroup( program.Value().request.material, claimed.handles, m.group, &why ) )
 			s.ReleaseGroup( m.group, CompletionToken() );
+		if ( texturePending )
+		{
+			// Not a failure: a texture is still being filled. The material stays
+			// unready and is built again at its next use.
+			texturePending = false;
+			lastMaterialPending = viewMaterialPending = true;
+			{
+				std::lock_guard<std::mutex> guard( s.lock );
+				++s.stats.pendingMaterials;
+			}
+			return nullptr;
+		}
 		if ( !why.empty() )
 		{
 			m.failed = true;
@@ -2808,6 +2829,7 @@ void WorldPass::RecordBatch(
 	auto materialReadyIn = [&]( material::ProgramResolver &resolver,
 	                           std::vector<Resources::Material> &materials, std::uint32_t index )
 	{
+		lastMaterialPending = false;
 		return prepareMaterial(
 		    resolver, materials[index], ( *claims )[index], world->materials[index] );
 	};
@@ -3208,7 +3230,7 @@ void WorldPass::RecordBatch(
 		    surface.material < claims->size() && ( *claims )[surface.material].draws
 		        ? materialReady( surface.material )
 		        : nullptr;
-		if ( !m && failure.empty() )
+		if ( !m && failure.empty() && !lastMaterialPending )
 			note( "world surface " + std::to_string( index ) + " names unclaimed material " +
 			      std::to_string( surface.material ) );
 		if ( !m ||
@@ -3292,7 +3314,7 @@ void WorldPass::RecordBatch(
 			    materialId < claims->size() && ( *claims )[materialId].draws
 			        ? materialReadyIn( *r.modelResolver, r.modelMaterials, materialId )
 			        : nullptr;
-			if ( !material && failure.empty() )
+			if ( !material && failure.empty() && !lastMaterialPending )
 				note( "static model " + std::to_string( instance.mesh ) + " surface " +
 				      std::to_string( surfaceId ) + " names unclaimed material " +
 				      std::to_string( materialId ) );
@@ -3379,7 +3401,7 @@ void WorldPass::RecordBatch(
 			    materialId < claims->size() && ( *claims )[materialId].draws
 			        ? materialReadyIn( *r.modelResolver, r.modelMaterials, materialId )
 			        : nullptr;
-			if ( !material && failure.empty() )
+			if ( !material && failure.empty() && !lastMaterialPending )
 				note( "posed model " + std::to_string( pose.mesh ) + " surface " +
 				      std::to_string( surfaceId ) + " names unclaimed material " +
 				      std::to_string( materialId ) );
@@ -5743,7 +5765,13 @@ void WorldPass::RecordBatch(
 	s.stats.cutoutShadowIndirectDraws += cutoutIndirectDraws;
 	s.stats.cutoutShadowRefused += cutoutRefused;
 	s.stats.cutoutShadowNotResident += cutoutNotResident;
-	if ( !complete )
+	if ( !complete && failure.empty() && viewMaterialPending )
+	{
+		// Incomplete only for materials waiting on a texture still being
+		// filled: drawn again once resident, not a failure.
+		++s.stats.viewsPending;
+	}
+	else if ( !complete )
 	{
 		++s.stats.viewsFailed;
 		s.stats.lastFailure =

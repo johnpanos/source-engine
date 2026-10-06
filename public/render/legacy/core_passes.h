@@ -148,6 +148,11 @@ public:
 	// Optional metadata for CPU mip demand. Unknown dimensions return an empty
 	// result; render targets and non-2D images need not provide it.
 	virtual std::optional<MipInfo> MipDescription( int ) { return std::nullopt; }
+	// True while the handle names a texture the material system has made but not
+	// filled (a reload after a texture setting change, a streamed texture's
+	// first upload): Import returns an invalid id for now and a valid one once
+	// it is resident, so the caller retries instead of treating it as a failure.
+	virtual bool Pending( int ) { return false; }
 
 protected:
 	~ICoreTextures() = default;

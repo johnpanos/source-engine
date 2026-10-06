@@ -11,13 +11,29 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 P2_STEAM_ROOT="${P2_STEAM_ROOT:-$HOME/.local/share/Steam/steamapps/common/Portal 2}"
-P2_RUNTIME="${P2_RUNTIME:-$ROOT/run/runtime-p2}"
-P2_BUILD_DIR="${P2_BUILD_DIR:-$ROOT/build-p2}"
-P2_WAFLOCK="${P2_WAFLOCK:-.lock-waf-p2}"
 P2_FSR="${P2_FSR:-0}"
 # RFC 0023: release is the optimized, low-instrumentation flavor (./play_p2_release).
 # Unset accepts the configured tree's own flavor (harnesses pass P2_BUILD_DIR only).
 P2_FLAVOR="${P2_FLAVOR:-}"
+# Leading --release/--dev/--fsr/--no-fsr pick the flavor and FSR; unless
+# P2_BUILD_DIR, P2_RUNTIME or P2_WAFLOCK is set, each combination gets its own
+# tree, runtime and lock (build-p2[-fsr][-release]), so swapping is one flag.
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --release) P2_FLAVOR=release ;;
+        --dev) P2_FLAVOR=dev ;;
+        --fsr) P2_FSR=1 ;;
+        --no-fsr) P2_FSR=0 ;;
+        *) break ;;
+    esac
+    shift
+done
+p2_suffix=""
+[[ "$P2_FSR" == 1 ]] && p2_suffix+="-fsr"
+[[ "$P2_FLAVOR" == release ]] && p2_suffix+="-release"
+P2_BUILD_DIR="${P2_BUILD_DIR:-$ROOT/build-p2$p2_suffix}"
+P2_RUNTIME="${P2_RUNTIME:-$ROOT/run/runtime-p2$p2_suffix}"
+P2_WAFLOCK="${P2_WAFLOCK:-.lock-waf-p2$p2_suffix}"
 if [[ -n "$P2_FLAVOR" && "$P2_FLAVOR" != dev && "$P2_FLAVOR" != release ]]; then
     echo "play_p2: P2_FLAVOR must be dev, release or unset" >&2
     exit 1

@@ -1,10 +1,4 @@
 #!/usr/bin/env bash
-# Build and run the experimental FSR-capable Portal 2 profile from this checkout.
-# The Video menu chooses Off or a reconstruction scale; Off is the saved default.
-set -euo pipefail
-FSR_CHECKOUT="$(cd "$(dirname "$0")" && pwd)"
-export P2_BUILD_DIR="$FSR_CHECKOUT/build-p2-fsr"
-export P2_RUNTIME="$FSR_CHECKOUT/run/runtime-p2-fsr"
-export P2_WAFLOCK=.lock-waf-p2-fsr
-export P2_FSR=1
-exec "$FSR_CHECKOUT/play_p2" "$@"
+# FSR-capable Portal 2 profile (build-p2-fsr); the Video menu chooses Off or a scale.
+# Arguments are ./play_p2's; see its header for --release/--dev/--fsr.
+exec "$(cd "$(dirname "$0")" && pwd)/play_p2" --fsr "$@"

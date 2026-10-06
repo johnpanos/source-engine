@@ -5293,6 +5293,14 @@ bool CEmptyMesh::EmitToCoreQueue()
 			bool found = false;
 			IMaterialVar *frame = g_pBoundMaterial->FindVar( frameKey, &found, false );
 			value.textureHandle = texture->GetTextureHandle( found ? frame->GetIntValue() : 0 );
+			{
+				uint32_t dbgW = 0, dbgH = 0;
+				g_VulkanContext.ManagedTextureSize( value.textureHandle - 1, &dbgW, &dbgH );
+				if ( dbgW == 0 )
+					std::fprintf( stderr, "DEBUGTEX %s %s handle %d error=%d\n",
+					    g_pBoundMaterial->GetName(), texture->GetName(), (int)value.textureHandle,
+					    (int)texture->IsError() );
+			}
 		}
 		variables.push_back( value );
 	}

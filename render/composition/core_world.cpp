@@ -69,6 +69,7 @@ public:
 		return m_Textures.Import( handle, srgb );
 	}
 	device::SamplerDesc Sampler( int handle ) override { return m_Textures.Sampler( handle ); }
+	bool Pending( int handle ) override { return m_Textures.Pending( handle ); }
 	std::optional<MipInfo> MipDescription( int handle ) override
 	{
 		const auto info = m_Textures.MipDescription( handle );
@@ -3487,8 +3488,11 @@ device::TextureId CoreWorld::DrawStageShadows( device::IRenderDevice2 &device,
 				// Match by light-space viewProjection only: the same light
 				// may be packed at a different tile position in this view's
 				// atlas because the sun cascades (camera-dependent) shifted
-				// the layout.
-				if ( std::memcmp( &source.drawn[heldIndex].viewProjection,
+				// the layout. A tile of another size is not this tile: the
+				// plan resizes a light's tile as other lights come and go, and
+				// the copy moves a tile's texels one for one.
+				if ( source.drawn[heldIndex].tile.size != view->tile.size ||
+				     std::memcmp( &source.drawn[heldIndex].viewProjection,
 				         &view->viewProjection, sizeof( view->viewProjection ) ) != 0 )
 					continue;
 				auto group = std::find_if( shared.begin(), shared.end(),
