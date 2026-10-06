@@ -357,7 +357,11 @@ Only these four changes are allowed on a frozen path:
    core supersedes; record what it loses in the progress record.
    This does not relax rule 2: a new feature still never lands on a frozen
    path. The test is where the work belongs, not whether the path is
-   touched.
+   touched. It does not retire a backend or profile either: the D3D9 backend
+   and its DXVK profiles, ToGL and the other declared profiles keep
+   building and running (AGENTS.md: retiring a profile is a user decision).
+   Core progress may change what they draw or how they load data; it may
+   not remove them.
 
 A commit that changes a frozen path names its exception in the message:
 `Frozen-path: defect <oracle>`, `Frozen-path: core plumbing <gate>`,

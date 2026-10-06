@@ -202,8 +202,9 @@ platform acceptance.
     render core's long-term gain: adopt the core's new formats and
     contracts, drop shims kept only for them, delete what the core
     replaces. Favor progress over preserving a frozen path; never put new
-    work in the wrong place. Each such commit carries a `Frozen-path:`
-    line.
+    work in the wrong place. This retires no backend or profile: D3D9 and
+    its DXVK profiles, ToGL and the others keep building and running. Each
+    such commit carries a `Frozen-path:` line.
   - New render work lands on the core in its owning module and is proven
     in `render_lab` before any integration.
   - The old copy is deleted in the change that replaces it.
