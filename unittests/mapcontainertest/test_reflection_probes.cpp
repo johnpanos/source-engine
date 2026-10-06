@@ -166,8 +166,12 @@ void CheckGpuTexture( const std::vector<char> &valid, const ReflectionProbesLayo
 {
 	const std::vector<char> expected = Load( "gpu-mode1.rgba16f" );
 	const uint32_t rows = ReflectionProbeTextureRows( layout );
-	Check( rows == 1 + 2 + 32, "texture rows: header, table, atlas" );
-	std::vector<uint16_t> texture( size_t( layout.atlasWidth ) * rows * 4 );
+	const uint32_t textureWidth = ReflectionProbeTextureWidth( layout );
+	const uint32_t gridRows =
+	    ( 2 * kReflectionProbeCandidateCells * layout.candidateWords + textureWidth - 1 ) /
+	    textureWidth;
+	Check( rows == 1 + 2 + 32 + gridRows, "texture rows: header, table, atlas, candidate grid" );
+	std::vector<uint16_t> texture( size_t( textureWidth ) * rows * 4 );
 	WriteReflectionProbeTexture( valid.data(), layout, ReflectionProbeMode::Blend, texture.data() );
 	Check( expected.size() == texture.size() * 2 &&
 	           std::memcmp( expected.data(), texture.data(), expected.size() ) == 0,
@@ -209,7 +213,8 @@ std::vector<char> PartialCandidateFixture()
 	const uint64_t gridOffset =
 	    ( kReflectionProbesHeaderBytes + count * kReflectionProbeRecordBytes + 15 ) &
 	    ~uint64_t( 15 );
-	const uint64_t atlasOffset = gridOffset + 32 + 32 * kReflectionProbeCandidateCells;
+	const uint32_t words = ( count + 63 ) / 64;
+	const uint64_t atlasOffset = gridOffset + ReflectionProbeCandidateBytes( count );
 	const uint64_t atlasBytes = uint64_t( original.atlasWidth ) * height * 8;
 	std::vector<char> bytes( atlasOffset + atlasBytes );
 	std::copy_n( source.begin(), kReflectionProbesHeaderBytes, bytes.begin() );
@@ -237,17 +242,28 @@ std::vector<char> PartialCandidateFixture()
 		std::copy_n( source.begin() + original.atlasOffset + index * bandBytes, bandBytes,
 		    bytes.begin() + atlasOffset + rank * bandBytes );
 	}
-	std::copy_n( source.begin() + original.candidateOffset, 32, bytes.begin() + gridOffset );
+	std::copy_n( source.begin() + original.candidateOffset, kReflectionProbeCandidateHeaderBytes,
+	    bytes.begin() + gridOffset );
+	Put( bytes, gridOffset + 20, &words, 4 );
 	for ( uint32_t cell = 0; cell < kReflectionProbeCandidateCells; ++cell )
 		for ( uint32_t rank = 0; rank < count; ++rank )
-			bytes[gridOffset + 32 + cell * 32 + rank / 8] |= char( 1u << ( rank % 8 ) );
+			bytes[gridOffset + kReflectionProbeCandidateHeaderBytes + size_t( cell ) * words * 8 +
+			      rank / 8] |= char( 1u << ( rank % 8 ) );
 	return bytes;
 }
 
 void CheckCandidates()
 {
-	Check( !ReflectionProbesVersionSupported( 0 ) && !ReflectionProbesVersionSupported( 6 ),
-	    "unknown directory versions are rejected" );
+	{
+		auto old = Load( "candidates64.rprb" );
+		for ( uint32_t version : { 0u, 1u, 2u, 3u, 4u, 5u, 7u } )
+		{
+			auto changed = old;
+			Put( changed, 4, &version, 4 );
+			Check( Validate( changed, nullptr ) == ReflectionProbesError::UnsupportedVersion,
+			    "RPRB v" + std::to_string( version ) + " is refused (v6 only)" );
+		}
+	}
 	for ( const char *name : { "candidates64.rprb", "candidates150", "candidates256.rprb" } )
 	{
 		const auto bytes =
@@ -257,9 +273,9 @@ void CheckCandidates()
 		Check( valid, std::string( name ) + " validates" );
 		if ( !valid )
 			continue;
-		const uint32_t words = layout.count == 64 ? 1 : 4;
+		const uint32_t words = ( layout.count + 63 ) / 64;
 		Check( layout.candidateOffset && layout.candidateWords == words,
-		    "candidate word count follows the serialized version" );
+		    "candidate word count follows the probe count" );
 		const uint32_t width = ReflectionProbeTextureWidth( layout );
 		const uint32_t rows = ReflectionProbeTextureRows( layout );
 		std::vector<uint16_t> texture( size_t( width ) * rows * 4 + 16, 0x1234 );
@@ -274,7 +290,8 @@ void CheckCandidates()
 		for ( size_t i = 0; matches && i < maskBytes; ++i )
 			matches =
 			    HalfToFloat( texture[size_t( start ) * width * 4 + i] ) ==
-			    static_cast<unsigned char>( bytes[size_t( layout.candidateOffset ) + 32 + i] );
+			    static_cast<unsigned char>(
+			        bytes[size_t( layout.candidateOffset ) + kReflectionProbeCandidateHeaderBytes + i] );
 		Check( matches, "all serialized candidate bytes survive GPU packing in cell order" );
 		Check( std::all_of( texture.end() - 16, texture.end(),
 		           []( uint16_t value )
@@ -289,7 +306,8 @@ void CheckCandidates()
 			auto missing = bytes;
 			// Remove this rank from every cell, independently of spatial indexing.
 			for ( uint32_t cell = 0; cell < kReflectionProbeCandidateCells; ++cell )
-				missing[size_t( layout.candidateOffset ) + 32 + ( size_t( cell ) * words * 8 ) +
+				missing[size_t( layout.candidateOffset ) + kReflectionProbeCandidateHeaderBytes +
+				        ( size_t( cell ) * words * 8 ) +
 				        rank / 8] &= char( ~( 1u << ( rank % 8 ) ) );
 			auto unchanged = layout;
 			Check( Validate( missing, &unchanged ) == ReflectionProbesError::InvalidCandidates,
@@ -297,27 +315,23 @@ void CheckCandidates()
 			Check( std::memcmp( &layout, &unchanged, sizeof( layout ) ) == 0,
 			    "failed validation preserves the caller's layout" );
 		}
-		if ( words == 4 )
+		if ( layout.count == 150 )
 		{
-			if ( layout.count < 256 )
+			for ( uint32_t rank : { 150u, 191u } )
 			{
-				for ( uint32_t rank : { 150u, 191u, 192u, 255u } )
-				{
-					auto extra = bytes;
-					extra[size_t( layout.candidateOffset ) + 32 + rank / 8] |=
-					    char( 1u << ( rank % 8 ) );
-					Check( Validate( extra, nullptr ) == ReflectionProbesError::InvalidCandidates,
-					    "partial mask rejects undeclared rank " + std::to_string( rank ) );
-				}
+				auto extra = bytes;
+				extra[size_t( layout.candidateOffset ) + kReflectionProbeCandidateHeaderBytes +
+				      rank / 8] |= char( 1u << ( rank % 8 ) );
+				Check( Validate( extra, nullptr ) == ReflectionProbesError::InvalidCandidates,
+				    "partial mask rejects undeclared rank " + std::to_string( rank ) );
 			}
-			for ( uint32_t version :
-			    { kReflectionProbesTiledVersion, kReflectionProbesCandidateVersion } )
-			{
-				auto old = bytes;
-				Put( old, 4, &version, 4 );
-				Check( Validate( old, nullptr ) == ReflectionProbesError::InvalidCounts,
-				    "older tiled formats retain the 64-probe limit" );
-			}
+		}
+		{
+			auto wrong = bytes;
+			const uint32_t badWords = words + 1;
+			Put( wrong, layout.candidateOffset + 20, &badWords, 4 );
+			Check( Validate( wrong, nullptr ) == ReflectionProbesError::InvalidCandidates,
+			    "a grid header naming the wrong word count is rejected" );
 		}
 	}
 }
@@ -501,13 +515,13 @@ void CheckRelight()
 	           layout.probes[1].relightRow == 64,
 	    "relight bands follow the radiance bands: albedo rows 32 and 64" );
 	const int cases = ApplyCorpus( relit, "relight-malformations.txt" );
-	Check( cases >= 11, "the relight corpus has its cases" );
+	Check( cases >= 10, "the relight corpus has its cases" );
 	// The GPU form: relight rows in the table, the switch in texel 1.
 	const std::vector<char> expected = Load( "gpu-relight-mode1.rgba16f" );
 	const uint32_t rows = ReflectionProbeTextureRows( layout );
-	std::vector<uint16_t> texture( size_t( layout.atlasWidth ) * rows * 4 );
+	std::vector<uint16_t> texture( size_t( ReflectionProbeTextureWidth( layout ) ) * rows * 4 );
 	WriteReflectionProbeTexture( relit.data(), layout, ReflectionProbeMode::Blend, texture.data() );
-	Check( rows == 1 + 2 + 96 && expected.size() == texture.size() * 2 &&
+	Check( expected.size() == texture.size() * 2 &&
 	           std::memcmp( expected.data(), texture.data(), expected.size() ) == 0,
 	    "the relight GPU texture is byte-identical to reflection_probe_set.gpu_texture" );
 	Check( HalfToFloat( texture[5] ) == 1.0f, "texel 1's y turns relighting on" );

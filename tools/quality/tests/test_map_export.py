@@ -16,6 +16,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import lightmap_directional  # noqa: E402
 import map_export_audit  # noqa: E402
+import reflection_probe_set  # noqa: E402
 import map_scene  # noqa: E402
 import reflection_probe  # noqa: E402
 
@@ -244,7 +245,8 @@ class AuditTest(unittest.TestCase):
             "lighting/atlas.ktx2.json": {"layout": "directional-2x1"},
             "lighting/reflection_probes.rprb.json": {
                 "status": "pass", "probes": 2, "width": 512, "max_mean_relative_residual": 0.08,
-                "candidate_grid": {"dimensions": [16, 16, 16], "bytes": 32800,
+                "candidate_grid": {"dimensions": [reflection_probe_set.CANDIDATE_DIM] * 3,
+                                   "bytes": reflection_probe_set.candidate_bytes(2),
                                    "max_candidates": 2},
                 "fits": [{"index": 0, "role": "room", "mean_relative_residual": 0.08},
                          {"index": 1, "role": "glossy", "mean_relative_residual": 0.03}],

@@ -4583,7 +4583,7 @@ static void UploadWorldReflectionProbes( world_mesh_gpu::IWorldMeshUpload *uploa
 		remove();
 		return;
 	}
-	if ( !mapcontainer::ReflectionProbesVersionSupported( lump.version ) || lump.flags != 0 ||
+	if ( lump.version != mapcontainer::kReflectionProbesVersion || lump.flags != 0 ||
 	     lump.storedSize < mapcontainer::kReflectionProbesHeaderBytes ||
 	     lump.storedSize > mapcontainer::kReflectionProbesMaxBytes || lump.storedSize > INT_MAX )
 	{

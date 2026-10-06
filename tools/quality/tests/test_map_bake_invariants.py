@@ -80,9 +80,9 @@ class CompiledCandidates(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         probes, chains = rprb.fixture_layout()
-        cls.data = rprb.build(probes, chains, candidates=True)
+        cls.data = rprb.build(probes, chains)
         cls.layout = rprb.read(cls.data)
-        cls.grid = cls.layout["atlas_offset"] - rprb.CANDIDATE_BYTES
+        cls.grid = cls.layout["atlas_offset"] - rprb.candidate_bytes(cls.layout["count"])
 
     def reject(self, offset, fmt, value):
         data = bytearray(self.data)
@@ -105,7 +105,8 @@ class CompiledCandidates(unittest.TestCase):
 
     def test_texture_contains_grid(self):
         texture = rprb.gpu_texture(self.layout, rprb.MODE_BLEND)
-        self.assertTrue(bool((texture[0, 3] == (16, 16, 16, 1)).all()))
+        dim = rprb.CANDIDATE_DIM
+        self.assertTrue(bool((texture[0, 3] == (dim, dim, dim, 1)).all()))
         start = struct.unpack("<I", bytes(int(x) for x in texture[0, 8]))[0]
         self.assertGreaterEqual(texture[start:].size, rprb.CANDIDATE_CELLS * 8)
         self.assertTrue(bool(rprb.np.isfinite(texture).all()))
@@ -119,7 +120,7 @@ class WideCandidates(unittest.TestCase):
 
     def test_high_ranks_and_gpu_storage(self):
         self.assertEqual(self.layout["count"], 256)
-        self.assertEqual(self.layout["candidates"]["masks"].shape, (4096, 4))
+        self.assertEqual(self.layout["candidates"]["masks"].shape, (rprb.CANDIDATE_CELLS, 4))
         texture = rprb.gpu_texture(self.layout)
         self.assertEqual(texture[0, 3, 3], 4)
         self.assertTrue(np.isfinite(texture).all())
@@ -131,10 +132,10 @@ class WideCandidates(unittest.TestCase):
         with self.assertRaisesRegex(rprb.RprbError, "InvalidCandidates"):
             rprb.read(data)
 
-    def test_old_version_cannot_claim_extended_count(self):
+    def test_older_versions_are_refused(self):
         data = bytearray(self.data)
-        struct.pack_into("<I", data, 4, rprb.CANDIDATE_VERSION)
-        with self.assertRaisesRegex(rprb.RprbError, "InvalidCounts"):
+        struct.pack_into("<I", data, 4, 5)
+        with self.assertRaisesRegex(rprb.RprbError, "UnsupportedVersion"):
             rprb.read(data)
 
     def test_unused_high_words_rejected(self):

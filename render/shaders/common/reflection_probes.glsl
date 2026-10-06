@@ -68,9 +68,9 @@
 // row: mip l of W_l x W_l / 2 at x = 2 W0 (1 - 2^-l). With relight bands,
 // influence min's w is the probe's albedo band row (rgb albedo, a distance;
 // the normal band follows at + W0 / 2), and texel 1's y is the relight
-// switch. Extended sets use texel (2, 0).x for the tile column count,
-// metadata band indices instead of row offsets, and complete bands tiled
-// below the table. Zero columns retains the old single-column form.
+// switch. Texel (2, 0).x is the tile column count, the table stores band
+// indices, and complete bands tile below it; texel (3, 0) is the candidate
+// grid (dim, dim, dim, uint64 words per cell). RPRB v6 is the only form.
 
 #ifdef REFLECTION_PROBE_RELIGHT
 void ReflectionProbeDiffuseLight( vec3 position, vec3 normal, out vec3 now, out vec3 baked );
@@ -97,9 +97,8 @@ vec4 ReflectionProbeRecord( int rank, int field )
 
 vec4 ReflectionProbeLevel( vec2 uv, float level, float width0, float top )
 {
-	// The GPU writer tiles whole bands for extended sets. Header/table
-	// addresses stay unchanged; old textures leave columns at zero.
-	float columns = max( ReflectionProbesFetch( ivec2( 2, 0 ) ).x, 1.0 );
+	// The GPU writer tiles whole bands in texel (2, 0).x columns (RPRB v6).
+	float columns = ReflectionProbesFetch( ivec2( 2, 0 ) ).x;
 	float base = 1.0 + ReflectionProbesFetch( ivec2( 0, 0 ) ).x;
 	float band = floor( ( top - base ) / ( width0 * 0.5 ) + 0.5 );
 	vec2 tile = vec2( mod( band, columns ) * 2.0 * width0,
@@ -207,9 +206,9 @@ vec3 ReflectionProbeSample( int rank, int count, vec3 header, vec3 position, vec
 	float lod = clamp( lookupRoughness, 0.0, 1.0 ) * ( mips - 1.0 );
 	float lower = floor( lod );
 	float upper = min( lower + 1.0, mips - 1.0 );
-	// Extended tables store band indices, keeping large atlases' addresses
-	// exactly representable in half floats. Old tables store row offsets.
-	float rowUnit = ReflectionProbesFetch( ivec2( 2, 0 ) ).x > 1.0 ? header.z * 0.5 : 1.0;
+	// Tables store band indices, keeping large atlases' addresses exactly
+	// representable in half floats.
+	float rowUnit = header.z * 0.5;
 	float top = float( 1 + count ) + boxMinBand.w * rowUnit;
 	vec3 radiance = mix( ReflectionProbeLevel( uv, lower, header.z, top ),
 	    ReflectionProbeLevel( uv, upper, header.z, top ), lod - lower ).rgb;
@@ -254,19 +253,21 @@ uvec2 ReflectionCandidates( vec3 position, int count, int group )
 	    remaining <= 32   ? 0u
 	    : remaining == 64 ? 0xffffffffu
 	                      : ( 1u << uint( remaining - 32 ) ) - 1u );
-	int groups = int( ReflectionProbesFetch( ivec2( 3, 0 ) ).w );
-	if ( groups != 1 && groups != 4 )
+	vec4 grid = ReflectionProbesFetch( ivec2( 3, 0 ) );
+	int dim = int( grid.x );
+	int groups = int( grid.w );
+	if ( groups < 1 || groups > 4 || dim < 1 )
 		return allRanks;
 	vec3 origin = vec3( uintBitsToFloat( ReflectionCandidateBytes( ivec2( 4, 0 ) ) ),
 	    uintBitsToFloat( ReflectionCandidateBytes( ivec2( 5, 0 ) ) ),
 	    uintBitsToFloat( ReflectionCandidateBytes( ivec2( 6, 0 ) ) ) );
 	float step = uintBitsToFloat( ReflectionCandidateBytes( ivec2( 7, 0 ) ) );
 	vec3 cell = floor( ( position - origin ) / step );
-	if ( any( lessThan( cell, vec3( 0.0 ) ) ) || any( greaterThanEqual( cell, vec3( 16.0 ) ) ) )
+	if ( any( lessThan( cell, vec3( 0.0 ) ) ) || any( greaterThanEqual( cell, vec3( float( dim ) ) ) ) )
 		return allRanks;
 	ivec3 index = ivec3( cell );
-	int offset = 2 * ( groups * ( index.x + 16 * ( index.y + 16 * index.z ) ) + group );
-	int columns = max( 1, int( ReflectionProbesFetch( ivec2( 2, 0 ) ).x ) );
+	int offset = 2 * ( groups * ( index.x + dim * ( index.y + dim * index.z ) ) + group );
+	int columns = int( ReflectionProbesFetch( ivec2( 2, 0 ) ).x );
 	int width = 2 * int( ReflectionProbesFetch( ivec2( 0, 0 ) ).z ) * columns;
 	int start = int( ReflectionCandidateBytes( ivec2( 8, 0 ) ) );
 	ivec2 texel = ivec2( offset % width, start + offset / width );

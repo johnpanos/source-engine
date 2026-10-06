@@ -253,7 +253,7 @@ void Compare( Device &d, ComputeResources &compute )
 		return;
 	const ReflectionProbesView view( bytes.data(), layout );
 	const std::vector<Case> cases = Cases();
-	const uint32_t width = layout.atlasWidth;
+	const uint32_t width = ReflectionProbeTextureWidth( layout );
 	const uint32_t height = ReflectionProbeTextureRows( layout );
 	const ReflectionProbeMode modes[] = { ReflectionProbeMode::Blend, ReflectionProbeMode::Nearest,
 	    ReflectionProbeMode::DirectionOnly, ReflectionProbeMode::BlendWeights };
@@ -330,7 +330,7 @@ void CompareRelight( Device &d, ComputeResources &compute )
 	const ReflectionProbeRelight relight = { FixtureLight, nullptr, &kFixtureOccluder, 1 };
 	const ReflectionProbeRelight open = { FixtureLight, nullptr, nullptr, 0 };
 	const std::vector<Case> cases = Cases();
-	const uint32_t width = layout.atlasWidth;
+	const uint32_t width = ReflectionProbeTextureWidth( layout );
 	const uint32_t height = ReflectionProbeTextureRows( layout );
 	const ReflectionProbeMode modes[] = { ReflectionProbeMode::Blend, ReflectionProbeMode::Nearest,
 	    ReflectionProbeMode::DirectionOnly };

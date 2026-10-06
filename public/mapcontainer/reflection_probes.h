@@ -37,19 +37,15 @@ namespace mapcontainer
 {
 
 static const uint32_t kLumpReflectionProbes = 0x42525052u; // "RPRB"
-static const uint32_t kReflectionProbesVersion = 1;
-static const uint32_t kReflectionProbesRelightVersion = 2;
-static const uint32_t kReflectionProbesTiledVersion = 3;
-// v4: conservative spatial rank masks; encoding owner is reflection_probe_set.py.
-static const uint32_t kReflectionProbesCandidateVersion = 4;
-static const uint32_t kReflectionProbesWideCandidateVersion = 5;
-static const uint32_t kReflectionProbeCandidateDim = 16;
+// RPRB v6 is the one version (2026-10-05); every earlier version is refused.
+// Its conservative spatial rank masks (encoding owner: reflection_probe_set.py)
+// are always present: a dim^3 grid of ceil(count / 64) uint64 words per cell.
+static const uint32_t kReflectionProbesVersion = 6;
+static const uint32_t kReflectionProbeCandidateDim = 32;
 static const uint32_t kReflectionProbeCandidateCells =
     kReflectionProbeCandidateDim * kReflectionProbeCandidateDim * kReflectionProbeCandidateDim;
-static const uint32_t kReflectionProbeCandidateBytes = 32 + 8 * kReflectionProbeCandidateCells;
-static const uint32_t kReflectionProbesLegacyMaxProbes = 16;
-static const uint32_t kReflectionProbesTiledMaxProbes = 64;
-static const uint32_t kReflectionProbesFlagRelight = 1; // header flags, v2 and later
+static const uint32_t kReflectionProbeCandidateHeaderBytes = 32;
+static const uint32_t kReflectionProbesFlagRelight = 1; // header flags
 static const float kReflectionProbesMaxDistance = 60000.0f;
 static const float kReflectionProbesNormalLimit = 1.001f;
 static const uint32_t kReflectionProbesHeaderBytes = 64;
@@ -60,9 +56,11 @@ static const uint32_t kReflectionProbesMinWidth = 8;
 static const uint32_t kReflectionProbesMaxWidth = 2048;
 static const uint32_t kReflectionProbesPrefilterVersion = 1;
 static const uint32_t kReflectionProbeGlobal = 1; // record flag
-static const float kReflectionProbesMaxCoordinate = 1.0e6f;
+// The GPU table stores each value as a float16 hi/lo pair.
+static const float kReflectionProbesMaxCoordinate = 65504.0f;
 static const uint64_t kReflectionProbesMaxBytes =
-    kReflectionProbesHeaderBytes + 4 * kReflectionProbeCandidateBytes +
+    kReflectionProbesHeaderBytes + kReflectionProbeCandidateHeaderBytes +
+    4 * 8 * uint64_t( kReflectionProbeCandidateCells ) +
     uint64_t( kReflectionProbesMaxProbes ) *
         ( kReflectionProbeRecordBytes + 16 +
             3 * uint64_t( kReflectionProbesMaxWidth ) * kReflectionProbesMaxWidth * 8 );
@@ -92,7 +90,8 @@ static const float kReflectionProbeWeightPalette[6][3] = { { 1.0f, 0.0f, 0.0f },
     { 0.0f, 1.0f, 1.0f } };
 // True for a mode the shaders accept (0..3, 5..7).
 bool ReflectionProbeModeValid( uint32_t mode ) noexcept;
-bool ReflectionProbesVersionSupported( uint32_t version ) noexcept;
+// The candidate section's bytes for `count` probes.
+uint64_t ReflectionProbeCandidateBytes( uint32_t count ) noexcept;
 
 enum class ReflectionProbesError
 {
@@ -136,9 +135,9 @@ struct ReflectionProbesLayout
 	uint64_t atlasOffset; // RGBA16F texels, rows top-left first
 	uint64_t atlasBytes;
 	ReflectionProbeRecord probes[kReflectionProbesMaxProbes];
-	// v4: immutable, validated conservative rank masks in the original payload.
+	// Immutable, validated conservative rank masks in the original payload.
 	uint64_t candidateOffset = 0;
-	uint32_t candidateWords = 0; // uint64 words per spatial cell: v4=1, v5=4
+	uint32_t candidateWords = 0; // uint64 words per spatial cell: ceil(count / 64)
 	float candidateOrigin[3] = {};
 	float candidateStep = 0;
 };

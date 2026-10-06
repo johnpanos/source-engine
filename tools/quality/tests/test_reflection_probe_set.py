@@ -203,7 +203,8 @@ class RprbFormatTest(unittest.TestCase):
             for mip, back in zip(chain, decoded):
                 np.testing.assert_allclose(back, mip, rtol=2e-3, atol=1e-4)
         texture = rps.gpu_texture(layout)
-        self.assertEqual(texture.shape, (1 + 2 + 2 * 32, 128, 4))
+        grid_rows = -(-rps.CANDIDATE_CELLS * 2 * rps.candidate_words(2) // 128)
+        self.assertEqual(texture.shape, (1 + 2 + 2 * 32 + grid_rows, 128, 4))
         self.assertEqual(tuple(texture[0, 0]), (2, len(chains[0]), 64, rps.GPU_MARKER))
         self.assertEqual(texture[0, 1, 0], rps.MODE_BLEND)
         table = rps.texture_table(texture)
@@ -512,7 +513,7 @@ class RelightFormatTest(unittest.TestCase):
         probes, chains = rps.fixture_layout()
         data = rps.build(probes, chains, relight=rps.fixture_relight(probes))
         layout = rps.read(data)
-        self.assertEqual(struct.unpack_from("<I", data, 4)[0], rps.RELIGHT_VERSION)
+        self.assertEqual(struct.unpack_from("<I", data, 4)[0], rps.VERSION)
         self.assertEqual(len(layout["relight"]), 2)
         texture = rps.gpu_texture(layout)
         self.assertEqual(float(texture[0, 1, 1]), 1.0)
@@ -538,18 +539,6 @@ class CapacityTest(unittest.TestCase):
                   for size, priority, global_probe in [(1, 0, False), (2, 1, False),
                                                        (3, 99, True)]]
         self.assertEqual(rps.ranks(probes), [1, 0, 2])
-
-    def test_extended_version_keeps_old_reader_limits(self):
-        data = rps.capacity_fixture()
-        self.assertEqual(struct.unpack_from("<I", data, 4)[0], rps.TILED_VERSION)
-        self.assertEqual(rps.read(data)["count"], 64)
-        for version in (rps.VERSION, rps.RELIGHT_VERSION):
-            legacy = bytearray(data)
-            struct.pack_into("<I", legacy, 4, version)
-            struct.pack_into("<I", legacy, 52, 1 if version == rps.RELIGHT_VERSION else 0)
-            with self.assertRaises(rps.RprbError) as error:
-                rps.read(legacy)
-            self.assertEqual(error.exception.code, "InvalidCounts")
 
     def test_tiled_gpu_contains_every_band_without_loss(self):
         for relight in (False, True):
@@ -577,6 +566,23 @@ class CapacityTest(unittest.TestCase):
                 self.assertEqual(table[63, 3, 3], 190)
 
 
+class VersionTest(unittest.TestCase):
+    def test_only_v6_is_read(self):
+        data = bytearray(rps.capacity_fixture())
+        self.assertEqual(struct.unpack_from("<I", data, 4)[0], rps.VERSION)
+        for version in range(1, 6):
+            struct.pack_into("<I", data, 4, version)
+            with self.assertRaises(rps.RprbError) as error:
+                rps.read(bytes(data))
+            self.assertEqual(error.exception.code, "UnsupportedVersion")
+
+    def test_every_lump_has_a_grid_of_the_right_width(self):
+        for count in (2, 64, 65, 256):
+            self.assertEqual(rps.candidate_words(count), (count + 63) // 64)
+        layout = rps.read(rps.capacity_fixture())
+        self.assertEqual(layout["candidates"]["masks"].shape, (rps.CANDIDATE_CELLS, 1))
+
+
 class RegridTest(unittest.TestCase):
     """A probe whose fitted box reaches past the world (a depth fit that saw
     the void) stretched the 16^3 candidate grid over the whole map."""
@@ -587,7 +593,7 @@ class RegridTest(unittest.TestCase):
         local = next(i for i, probe in enumerate(probes) if not probe["global"] and probe["rank"] >= 2)
         probes[local]["influence_min"] = probes[local]["influence_min"] - 40000.0
         probes[local]["influence_max"] = probes[local]["influence_max"] + 40000.0
-        self.data = rps.build(probes, layout["chains"], scale=1, candidates=True)
+        self.data = rps.build(probes, layout["chains"], scale=1)
         others = [p for p in probes if not p["global"] and p is not probes[local]]
         self.bounds = (np.min([p["influence_min"] for p in others], axis=0),
                        np.max([p["influence_max"] for p in others], axis=0))
@@ -622,7 +628,8 @@ class RegridTest(unittest.TestCase):
             cell = np.floor((point - grid["origin"]) / grid["step"]).astype(int)
             if np.any(cell < 0) or np.any(cell >= rps.CANDIDATE_DIM):
                 continue  # outside the grid every rank is a candidate
-            mask = masks[cell[0] + 16 * (cell[1] + 16 * cell[2])]
+            dim = rps.CANDIDATE_DIM
+            mask = masks[cell[0] + dim * (cell[1] + dim * cell[2])]
             for index in np.nonzero(row)[0]:
                 rank = probes[index]["rank"]
                 self.assertTrue(int(mask[rank // 64]) >> (rank % 64) & 1,
@@ -630,22 +637,9 @@ class RegridTest(unittest.TestCase):
 
     def test_the_bake_and_regrid_paths_agree(self):
         layout = rps.read(self.data)
-        baked = rps.build(layout["probes"], layout["chains"], scale=1, candidates=True,
+        baked = rps.build(layout["probes"], layout["chains"], scale=1,
                           candidate_bounds=self.bounds)
         self.assertEqual(baked, rps.regrid(self.data, self.bounds))
-
-    def test_a_v3_lump_gains_a_grid_with_identical_records_and_atlas(self):
-        data = rps.capacity_fixture()
-        layout = rps.read(data)
-        self.assertIsNone(layout.get("candidates"))
-        out = rps.add_candidates(data, self.bounds)
-        upgraded = rps.read(out)
-        self.assertIsNotNone(upgraded["candidates"])
-        records = slice(rps.HEADER_BYTES, rps.HEADER_BYTES + rps.RECORD_BYTES * layout["count"])
-        self.assertEqual(out[records], data[records])
-        self.assertEqual(out[upgraded["atlas_offset"]:], data[layout["atlas_offset"]:])
-        with self.assertRaises(rps.RprbError):
-            rps.add_candidates(out, self.bounds)  # already has one
 
     def test_bounds_missing_every_probe_are_refused(self):
         with self.assertRaises(rps.RprbError):

@@ -125,27 +125,16 @@ ReflectionProbesError ValidateReflectionProbes(
 		return ReflectionProbesError::Truncated;
 	if ( U32( p ) != kLumpReflectionProbes )
 		return ReflectionProbesError::BadMagic;
-	// v3 extends capacity; its optional relight flag preserves the band schema.
-	const uint32_t version = U32( p + 4 );
 	const uint32_t flags = U32( p + 52 );
-	if ( !ReflectionProbesVersionSupported( version ) ||
+	if ( U32( p + 4 ) != kReflectionProbesVersion ||
 	     U32( p + 48 ) != kReflectionProbesPrefilterVersion ||
-	     flags > kReflectionProbesFlagRelight ||
-	     ( version < kReflectionProbesTiledVersion &&
-	         flags != ( version == kReflectionProbesRelightVersion ? kReflectionProbesFlagRelight
-	                                                               : 0 ) ) ||
-	     U32( p + 60 ) != 0 )
+	     flags > kReflectionProbesFlagRelight || U32( p + 60 ) != 0 )
 		return ReflectionProbesError::UnsupportedVersion;
 	ReflectionProbesLayout layout = {};
 	layout.relight = ( flags & kReflectionProbesFlagRelight ) != 0;
 	layout.count = U32( p + 8 );
-	const uint32_t maximum =
-	    version == kReflectionProbesWideCandidateVersion
-	        ? kReflectionProbesMaxProbes
-	        : ( version >= kReflectionProbesTiledVersion ? kReflectionProbesTiledMaxProbes
-	                                                     : kReflectionProbesLegacyMaxProbes );
 	layout.mipCount = U32( p + 12 );
-	if ( layout.count < 1 || layout.count > maximum || layout.mipCount < 1 ||
+	if ( layout.count < 1 || layout.count > kReflectionProbesMaxProbes || layout.mipCount < 1 ||
 	     layout.mipCount > kReflectionProbesMaxMips )
 		return ReflectionProbesError::InvalidCounts;
 	layout.width = U32( p + 16 );
@@ -161,12 +150,8 @@ ReflectionProbesError ValidateReflectionProbes(
 	layout.atlasOffset = U64( p + 32 );
 	layout.atlasBytes = U64( p + 40 );
 	const uint64_t baseOffset = AtlasOffset( layout.count );
-	const bool candidates = version >= kReflectionProbesCandidateVersion;
-	layout.candidateWords =
-	    candidates ? ( version == kReflectionProbesWideCandidateVersion ? 4 : 1 ) : 0;
-	const uint32_t candidateBytes =
-	    candidates ? 32 + 8 * kReflectionProbeCandidateCells * layout.candidateWords : 0;
-	if ( layout.atlasOffset != baseOffset + candidateBytes ||
+	layout.candidateWords = ( layout.count + 63 ) / 64;
+	if ( layout.atlasOffset != baseOffset + ReflectionProbeCandidateBytes( layout.count ) ||
 	     layout.atlasBytes != uint64_t( layout.atlasWidth ) * layout.atlasHeight * 8 ||
 	     size != layout.atlasOffset + layout.atlasBytes )
 		return ReflectionProbesError::InvalidSections;
@@ -191,9 +176,8 @@ ReflectionProbesError ValidateReflectionProbes(
 		std::memcpy( probe.influenceMax, values + 13, sizeof( probe.influenceMax ) );
 		bool valid = probe.fade > 0.0f;
 		for ( float value : values )
-			valid =
-			    valid && foundation::IsFinite( value ) &&
-			    std::fabs( value ) <= ( candidates ? 65504.0f : kReflectionProbesMaxCoordinate );
+			valid = valid && foundation::IsFinite( value ) &&
+			        std::fabs( value ) <= kReflectionProbesMaxCoordinate;
 		for ( int axis = 0; axis < 3; ++axis )
 			valid = valid && probe.boxMin[axis] < probe.boxMax[axis] &&
 			        probe.influenceMin[axis] < probe.influenceMax[axis] &&
@@ -226,7 +210,6 @@ ReflectionProbesError ValidateReflectionProbes(
 	     !( layout.probes[layout.globalIndex].flags & kReflectionProbeGlobal ) ||
 	     layout.probes[layout.globalIndex].rank != layout.count - 1 )
 		return ReflectionProbesError::InvalidGlobal;
-	if ( candidates )
 	{
 		layout.candidateOffset = baseOffset;
 		for ( int axis = 0; axis < 3; ++axis )
@@ -241,12 +224,17 @@ ReflectionProbesError ValidateReflectionProbes(
 		if ( !foundation::IsFinite( layout.candidateStep ) || layout.candidateStep < 1 ||
 		     layout.candidateStep > 4e6f || std::frexp( layout.candidateStep, &exponent ) != 0.5f )
 			return ReflectionProbesError::InvalidCandidates;
-		for ( int i = 16; i < 32; ++i )
+		if ( U32( p + baseOffset + 16 ) != kReflectionProbeCandidateDim ||
+		     U32( p + baseOffset + 20 ) != layout.candidateWords )
+			return ReflectionProbesError::InvalidCandidates;
+		for ( int i = 24; i < 32; ++i )
 			if ( p[baseOffset + i] )
 				return ReflectionProbesError::InvalidCandidates;
+		const uint32_t dim = kReflectionProbeCandidateDim;
 		for ( uint32_t cell = 0; cell < kReflectionProbeCandidateCells; ++cell )
 		{
-			const unsigned char *masks = p + baseOffset + 32 + 8 * cell * layout.candidateWords;
+			const unsigned char *masks = p + baseOffset + kReflectionProbeCandidateHeaderBytes +
+			                             8 * uint64_t( cell ) * layout.candidateWords;
 			for ( uint32_t word = 0; word < layout.candidateWords; ++word )
 			{
 				const uint32_t ranks =
@@ -256,7 +244,7 @@ ReflectionProbesError ValidateReflectionProbes(
 				if ( U64( masks + 8 * word ) & ~valid )
 					return ReflectionProbesError::InvalidCandidates;
 			}
-			const uint32_t coordinates[] = { cell % 16, ( cell / 16 ) % 16, cell / 256 };
+			const uint32_t coordinates[] = { cell % dim, ( cell / dim ) % dim, cell / ( dim * dim ) };
 			for ( uint32_t i = 0; i < layout.count; ++i )
 			{
 				const auto &probe = layout.probes[i];
@@ -344,15 +332,14 @@ bool ReflectionProbeModeValid( uint32_t mode ) noexcept
 	return mode <= 7 && mode != kReflectionProbeModeWeights;
 }
 
-bool ReflectionProbesVersionSupported( uint32_t version ) noexcept
+uint64_t ReflectionProbeCandidateBytes( uint32_t count ) noexcept
 {
-	return version >= kReflectionProbesVersion && version <= kReflectionProbesWideCandidateVersion;
+	return kReflectionProbeCandidateHeaderBytes +
+	       8 * uint64_t( kReflectionProbeCandidateCells ) * ( ( count + 63 ) / 64 );
 }
 
 uint32_t ReflectionProbeTextureColumns( const ReflectionProbesLayout &layout ) noexcept
 {
-	if ( layout.count <= kReflectionProbesLegacyMaxProbes )
-		return 1;
 	const uint32_t bands = layout.count * ( layout.relight ? 3 : 1 );
 	uint32_t columns = 1;
 	while ( columns * columns * 4 < bands )
@@ -371,10 +358,7 @@ uint32_t ReflectionProbeTextureRows( const ReflectionProbesLayout &layout ) noex
 	const uint32_t bands = layout.count * ( layout.relight ? 3 : 1 );
 	const uint32_t width = ReflectionProbeTextureWidth( layout );
 	return 1 + layout.count + ( ( bands + columns - 1 ) / columns ) * ( layout.width / 2 ) +
-	       ( layout.candidateOffset
-	               ? ( 2 * kReflectionProbeCandidateCells * layout.candidateWords + width - 1 ) /
-	                     width
-	               : 0 );
+	       ( 2 * kReflectionProbeCandidateCells * layout.candidateWords + width - 1 ) / width;
 }
 
 void WriteReflectionProbeTexture( const void *pData, const ReflectionProbesLayout &layout,
@@ -388,9 +372,7 @@ void WriteReflectionProbeTexture( const void *pData, const ReflectionProbesLayou
 	for ( int k = 0; k < 8; ++k )
 		pOut[k] = FloatToHalf( header[k] );
 	const uint32_t columns = ReflectionProbeTextureColumns( layout );
-	if ( columns > 1 )
-		pOut[8] = FloatToHalf( float( columns ) );
-	if ( layout.candidateOffset )
+	pOut[8] = FloatToHalf( float( columns ) );
 	{
 		const uint32_t rows =
 		    ( 2 * kReflectionProbeCandidateCells * layout.candidateWords + width - 1 ) / width;
@@ -404,13 +386,14 @@ void WriteReflectionProbeTexture( const void *pData, const ReflectionProbesLayou
 		for ( int i = 0; i < 4; ++i )
 			pOut[32 + i] = FloatToHalf( float( ( start >> ( i * 8 ) ) & 255 ) );
 		for ( uint32_t i = 0; i < 8 * kReflectionProbeCandidateCells * layout.candidateWords; ++i )
-			pOut[size_t( start ) * width * 4 + i] = FloatToHalf( float( grid[32 + i] ) );
+			pOut[size_t( start ) * width * 4 + i] =
+			    FloatToHalf( float( grid[kReflectionProbeCandidateHeaderBytes + i] ) );
 	}
 	for ( uint32_t index = 0; index < layout.count; ++index )
 	{
 		const ReflectionProbeRecord &probe = layout.probes[index];
 		const float global = ( probe.flags & kReflectionProbeGlobal ) ? 1.0f : 0.0f;
-		const uint32_t rowUnit = columns > 1 ? layout.width / 2 : 1;
+		const uint32_t rowUnit = layout.width / 2;
 		const float values[kReflectionProbeTableVec4][4] = {
 		    { probe.capture[0], probe.capture[1], probe.capture[2], probe.fade },
 		    { probe.boxMin[0], probe.boxMin[1], probe.boxMin[2], float( probe.bandRow / rowUnit ) },

@@ -373,7 +373,7 @@ int main( int argc, char **argv )
 	const uint32_t fieldVersion = field.empty() ? kSdfVolumeVersion : ReadU32( field.data() + 4 );
 	const Bsp2LumpInput fieldLump{
 	    kLumpSdfVolume, fieldVersion, 0, kBsp2BulkAlignment, field };
-	// The lump version repeats the payload's own (v1, and v2 with relight bands).
+	// The lump version repeats the payload's own (RPRB v6).
 	const uint32_t reflectionVersion = reflectionProbes.empty()
 	                                       ? kReflectionProbesVersion
 	                                       : ReadU32( reflectionProbes.data() + 4 );
