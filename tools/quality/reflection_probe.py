@@ -54,7 +54,6 @@ FACES = {
     "py": ((0, 1, 0), (0, 0, 1)), "ny": ((0, -1, 0), (0, 0, 1)),
     "pz": ((0, 0, 1), (0, -1, 0)), "nz": ((0, 0, -1), (0, 1, 0)),
 }
-MARKER_ALPHA = -1.0
 
 
 def face_basis(name):
@@ -184,23 +183,6 @@ def mip_chain(equirect, minimum_width=4, samples=256):
         mips.append(ggx_prefilter(pyramid, pyramid[index].shape[1], index / (count - 1),
                                   samples))
     return mips
-
-
-def write_band(atlas, mips):
-    """Write the chain and marker into the atlas's top rows (in place)."""
-    rows = mips[0].shape[0]
-    width = atlas.shape[1]
-    # Check before writing: numpy slicing would silently truncate a mip.
-    if sum(mip.shape[1] for mip in mips) >= width or rows > atlas.shape[0]:
-        raise ValueError("probe mip chain does not fit the atlas")
-    x = 0
-    for mip in mips:
-        atlas[:mip.shape[0], x:x + mip.shape[1], :3] = mip
-        atlas[:mip.shape[0], x:x + mip.shape[1], 3] = 1.0
-        x += mip.shape[1]
-    atlas[0, width - 1] = (len(mips), mips[0].shape[1], rows, MARKER_ALPHA)
-    return {"mips": len(mips), "mip0_width": mips[0].shape[1], "band_rows": rows,
-            "marker_texel": [width - 1, 0]}
 
 
 # ------------------------------------------------------- parallax correction
