@@ -932,7 +932,9 @@ public:
 	}
 	bool Valid() const { return m_Pipeline.IsValid() && m_Sampler.IsValid(); }
 
-	Result Run( std::uint32_t seed, CullKernel &cull, OcclusionKernels &occlusion )
+	// flagEvery > 0: every flagEvery-th cube is flagged kCullNeverOcclude.
+	Result Run( std::uint32_t seed, CullKernel &cull, OcclusionKernels &occlusion,
+	    std::uint32_t flagEvery = 0 )
 	{
 		Result out;
 		std::mt19937 random( seed * 977 + 13 );
@@ -963,6 +965,8 @@ public:
 		for ( std::uint32_t i = 0; i < kCubes; ++i )
 			snapshot.instances[i].worldBounds = { boxes[i + 1].lo, boxes[i + 1].hi };
 		out.instances = PackInstances( snapshot );
+		for ( std::size_t i = 0; flagEvery && i < out.instances.size(); i += flagEvery )
+			out.instances[i].flags = kCullNeverOcclude;
 		const CullView cullView = PackView( view, kCubes );
 		out.view = MakeOcclusionView( view.viewProjection, kSize, kSize, kCubes );
 		std::vector<float> vertices;
@@ -1226,6 +1230,40 @@ void Occlusion( testing::Checks &checks, IRenderDevice2 &device, CullKernel &cul
 	checks.That( culled * 10 >= kept, "occlusion.at-least-a-tenth-of-the-kept-cubes-are-culled" );
 	checks.That( disagreements * 200 <= kept,
 	    "occlusion.gpu-and-cpu-reference-agree-on-at-least-99.5-percent" );
+
+	// kCullNeverOcclude: every third cube flagged; each flagged cube the
+	// frustum keeps stays, the rest are tested as before, and the image holds.
+	int flaggedKept = 0, flaggedDropped = 0, flaggedRan = 0, flaggedImages = 0;
+	int flaggedDisagree = 0, flaggedCulled = 0;
+	for ( int seed = 0; seed < kScenes; ++seed )
+	{
+		const OcclusionScene::Result r = scene.Run( seed, cull, *kernels.Value(), 3 );
+		if ( !r.ran )
+			continue;
+		++flaggedRan;
+		flaggedImages += r.culledImage == r.fullImage;
+		flaggedCulled += Bits( r.frustum ) - Bits( r.mask );
+		for ( std::size_t i = 0; i < r.instances.size(); i += 3 )
+		{
+			const bool inFrustum = ( r.frustum[i / 32] >> ( i % 32 ) ) & 1u;
+			const bool inMask = ( r.mask[i / 32] >> ( i % 32 ) ) & 1u;
+			flaggedKept += inFrustum && inMask;
+			flaggedDropped += inFrustum && !inMask;
+		}
+		const auto expected = OcclusionReference( r.instances, r.frustum, r.pyramid, r.view );
+		for ( std::size_t w = 0; w < expected.size(); ++w )
+			flaggedDisagree += std::popcount( expected[w] ^ r.mask[w] );
+	}
+	std::printf( "INFO occlusion never-occlude: %d flagged kept, %d dropped, %d culled, %d "
+	             "disagree\n",
+	    flaggedKept, flaggedDropped, flaggedCulled, flaggedDisagree );
+	checks.Equal( flaggedRan, kScenes, "occlusion.never-occlude.every-scene-runs" );
+	checks.That( flaggedKept > 0 && flaggedDropped == 0,
+	    "occlusion.never-occlude.every-flagged-frustum-kept-cube-stays" );
+	checks.That( flaggedCulled > 0 && flaggedCulled < culled,
+	    "occlusion.never-occlude.unflagged-cubes-are-still-culled" );
+	checks.Equal( flaggedDisagree, 0, "occlusion.never-occlude.the-reference-honours-the-flag" );
+	checks.Equal( flaggedImages, kScenes, "occlusion.never-occlude.the-image-holds" );
 
 	struct Defect
 	{

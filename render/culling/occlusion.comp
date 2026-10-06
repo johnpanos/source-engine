@@ -8,7 +8,8 @@
 // the camera (clip w above a small epsilon) and past the near plane, and the
 // nearest projected depth is farther than the pyramid's farthest depth over
 // the box's screen rectangle, read at the first level where that rectangle
-// spans at most 2x2 texels. Conventions (render.device.v2 D13): clip depth 0
+// spans at most 2x2 texels. An instance flagged kCullNeverOcclude (bit 0 of
+// its last word) is never occluded. Conventions (render.device.v2 D13): clip depth 0
 // near to 1 far, clip Y up, row 0 at the top.
 //
 // SEEDED_FAR_CORNER (tests the farthest corner) and SEEDED_ONE_TEXEL (reads
@@ -68,6 +69,8 @@ uvec2 LevelSize( uint level )
 
 bool Occluded( uint index )
 {
+	if ( ( floatBitsToUint( instances[index].maxPad.w ) & 1u ) != 0u ) // kCullNeverOcclude
+		return false;
 	const vec3 lo = instances[index].minMask.xyz;
 	const vec3 hi = instances[index].maxPad.xyz;
 	float minU = 1e30, minV = 1e30, maxU = -1e30, maxV = -1e30;

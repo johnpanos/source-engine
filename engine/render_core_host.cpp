@@ -121,7 +121,8 @@ ConVar r_core_depth_prepass( "r_core_depth_prepass", "1", FCVAR_ARCHIVE,
     "once (0 lights every fragment the depth test passes)." );
 ConVar r_core_world_gpu_submit( "r_core_world_gpu_submit", "0", FCVAR_ARCHIVE,
     "Render core: cull the world's surfaces on the GPU and draw them with one indirect draw per "
-    "material and lightmap page (RFC 0016 S3/S4; 0 draws them per surface)." );
+    "material and lightmap page (RFC 0016 S3/S4; 0 draws them per surface; 2 also occlusion-culls "
+    "them against the view's world depth)." );
 ConVar r_core_shadow_movers( "r_core_shadow_movers", "1", FCVAR_ARCHIVE,
     "Render core: moving objects cast shadows over the cached static shadow tiles." );
 ConVar r_core_runtime_direct( "r_core_runtime_direct", "1", FCVAR_ARCHIVE,

@@ -373,6 +373,13 @@ struct WorldTarget
 	// Needs Capability::kCompute, kStorageBuffers and kDrawIndirectCount;
 	// without them the per-surface path draws (counted in WorldStats).
 	bool gpuSubmission = false;
+	// With gpuSubmission: also occlusion-cull the view's opaque PBR surfaces
+	// (render.culling's pyramid test) against a depth pyramid built from the
+	// screen passes' prepass of this view's world surfaces, so a surface is
+	// dropped only where its own pixels would fail the depth test. Used where
+	// that prepass is drawn (or reused) for this view, over the whole target
+	// with an ordinary depth test; elsewhere frustum culling alone.
+	bool gpuOcclusion = false;
 	// Cutout casters to draw into the slot's shadow atlas before the view
 	// (null: none).
 	std::shared_ptr<const WorldCutoutShadows> cutoutShadows;
@@ -626,6 +633,10 @@ struct WorldStats
 	std::uint64_t gpuViews = 0;
 	std::uint64_t gpuIndirectDraws = 0;
 	std::uint64_t gpuFallbacks = 0;
+	// Of gpuViews, those occlusion-culled (gpuOcclusion), and the depth
+	// pyramids built for them.
+	std::uint64_t gpuOcclusionViews = 0;
+	std::uint64_t gpuPyramids = 0;
 	std::uint64_t staticInstancesQueued = 0;
 	std::uint64_t staticDrawsDrawn = 0;
 	std::uint64_t posedModelsQueued = 0;

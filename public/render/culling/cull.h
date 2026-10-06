@@ -41,8 +41,13 @@ struct CullInstance // 32 bytes
 	float min[3] = {};
 	std::uint32_t viewMask = 0;
 	float max[3] = {};
-	std::uint32_t reserved = 0;
+	std::uint32_t flags = 0; // kCullNeverOcclude
 };
+
+// The occlusion test keeps an instance with this flag whenever the frustum
+// culler keeps it: one whose draw does not rely on the depth test (no depth
+// test, or a state the pyramid's depth does not decide). cull.comp ignores it.
+constexpr std::uint32_t kCullNeverOcclude = 1u;
 
 struct CullView // 112 bytes
 {
@@ -239,7 +244,8 @@ void AddCompactPass(
 // box lie in front of the camera and past the near plane, and its nearest
 // projected depth is farther than the pyramid's farthest depth over its
 // screen rectangle, read at the first level where the rectangle spans at
-// most 2x2 texels. The test is conservative: what it removes is hidden by
+// most 2x2 texels; an instance flagged kCullNeverOcclude is never occluded.
+// The test is conservative: what it removes is hidden by
 // the depth the pyramid was built from.
 
 constexpr std::uint32_t kMaxPyramidLevels = 16;
@@ -302,6 +308,9 @@ public:
 	foundation::Expected<void, CullStatus> RecordOcclusion(
 	    device::CommandEncoder &encoder, const OcclusionBuffers &buffers );
 	void Collect( device::CompletionToken token );
+	// The recorded dispatches' bind groups, for an owner that retires them by
+	// frame (the world pass); Collect then has none.
+	std::vector<device::BindGroupId> TakeRecorded() { return std::exchange( m_Pending, {} ); }
 	std::uint32_t RecordFailures() const { return m_RecordFailures; }
 
 private:

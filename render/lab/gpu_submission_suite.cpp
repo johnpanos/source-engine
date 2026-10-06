@@ -11,7 +11,8 @@
 //          pass groups them by material, as for the per-surface path).
 //          Checks: the two images are identical, pixel for pixel; the GPU
 //          path drew the view with one indirect draw per material bucket and
-//          no fallback; the image is not trivial; validation is silent.
+//          no fallback; the image is not trivial; validation is silent;
+//          asking for occlusion without a stage prepass changes nothing.
 //
 //=============================================================================//
 
@@ -140,7 +141,8 @@ std::optional<std::string> RunChecks(
 	const auto buckets = static_cast<std::uint32_t>( listed.size() );
 	std::uint64_t frame = 0;
 	bool initialized = false;
-	auto render = [&]( bool gpu, CanvasImage &image ) -> std::optional<std::string>
+	auto render = [&]( bool gpu, CanvasImage &image,
+	                  bool occlusion = false ) -> std::optional<std::string>
 	{
 		WorldView view;
 		view.toClip[0] = view.toClip[5] = view.toClip[10] = view.toClip[15] = 1;
@@ -175,6 +177,7 @@ std::optional<std::string> RunChecks(
 			target.drawState.depthWrite = true;
 			target.drawState.depthCompare = CompareOp::kLess;
 			target.gpuSubmission = gpu;
+			target.gpuOcclusion = occlusion;
 			pass.Record( tag, encoder, target );
 			return std::nullopt;
 		};
@@ -202,6 +205,14 @@ std::optional<std::string> RunChecks(
 			const float *p = gpuDriven.At( x, y );
 			colours.insert( { int( p[0] > 0.5f ), int( p[1] > 0.5f ), int( p[2] > 0.5f ) } );
 		}
+	// Occlusion needs a world stage's screen prepass; without one the view
+	// is frustum-culled only, with the same image.
+	CanvasImage noStage;
+	if ( auto why = render( true, noStage, true ) )
+		return why;
+	results.That( noStage.rgba == gpuDriven.rgba && pass.Stats().gpuOcclusionViews == 0 &&
+	                  pass.Stats().gpuViews == after.gpuViews + 1,
+	    "gpu-submission.occlusion-without-a-stage-prepass-is-frustum-culling" );
 	results.That( colours.size() >= 7, "gpu-submission.the-image-shows-every-colour-and-clear",
 	    std::to_string( colours.size() ) );
 	results.That( buckets == 6, "gpu-submission.every-material-is-a-bucket" );

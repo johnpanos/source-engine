@@ -164,6 +164,8 @@ struct RenderCoreWorldQuality
 	// Nonzero: GPU-driven submission (RFC 0016 S3/S4): a stage view's world
 	// surfaces are culled and compacted on the GPU into one indirect draw per
 	// (material, lightmap page) bucket (render.pass.world's gpuSubmission).
+	// 2 also occlusion-culls them against the view's world depth
+	// (render.pass.world's gpuOcclusion).
 	// Opt-in until RFC 0003's placement measurement selects it.
 	int gpuSubmission = 0;
 };
@@ -258,6 +260,10 @@ struct RenderCoreWorldStats
 	unsigned long long gpuViews;
 	unsigned long long gpuIndirectDraws;
 	unsigned long long gpuFallbacks;
+	// Of gpuViews, those occlusion-culled (r_core_world_gpu_submit 2), and
+	// the depth pyramids built for them.
+	unsigned long long gpuOcclusionViews;
+	unsigned long long gpuPyramids;
 };
 
 // Debug-only snapshot of the latest completed core frame, ABI-safe across

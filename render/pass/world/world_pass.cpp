@@ -745,6 +745,19 @@ struct WorldPass::State
 	// bind groups of recorded dispatches.
 	std::unique_ptr<culling::CullKernel> gpuCull;
 	std::unique_ptr<culling::CompactKernel> gpuCompact;
+	// Occlusion (WorldTarget::gpuOcclusion): the kernels, their point
+	// sampler, and the latest pyramid with the frame, prepass depth and
+	// screen inputs it was built from (frame-retired like the cull buffers).
+	std::unique_ptr<culling::OcclusionKernels> gpuOcclusion;
+	SamplerId gpuPointSampler;
+	struct GpuPyramid
+	{
+		BufferId pyramid;
+		culling::OcclusionView view;
+		std::uint64_t frame = 0;
+		TextureId depth;
+		std::array<float, 48> inputs{};
+	} gpuPyramid;
 	const WorldData *gpuBoundsWorld = nullptr;
 	std::vector<culling::CullInstance> gpuBounds;
 	std::vector<std::pair<std::uint64_t, BindGroupId>> retiredBindGroups;
@@ -1665,6 +1678,11 @@ void WorldPass::ReleaseDevice( IRenderDevice2 &device )
 	s.retiredBindGroups.clear();
 	s.gpuCull.reset();
 	s.gpuCompact.reset();
+	s.gpuOcclusion.reset();
+	if ( s.gpuPointSampler.IsValid() )
+		(void)device.Release( s.gpuPointSampler, CompletionToken() );
+	s.gpuPointSampler = SamplerId();
+	s.gpuPyramid = State::GpuPyramid();
 	for ( const State::RetiredModelBuffer &retired : s.retiredModelBuffers )
 		(void)device.Release( retired.buffer, CompletionToken() );
 	s.retiredModelBuffers.clear();
@@ -1932,6 +1950,9 @@ void WorldPass::RecordBatch(
 		s.retiredBindGroups.clear();
 		s.gpuCull.reset();
 		s.gpuCompact.reset();
+		s.gpuOcclusion.reset();
+		s.gpuPointSampler = SamplerId();
+		s.gpuPyramid = State::GpuPyramid();
 		s.retiredGroups.clear();
 		s.retiredTextures.clear();
 		// The old device's model levels went with it; the world they belong to
@@ -4117,6 +4138,106 @@ void WorldPass::RecordBatch(
 	};
 	std::array<float, 48> screenInputs;
 	std::copy_n( view.toClip, 16, screenInputs.begin() );
+	auto viewToClip = [&]()
+	{
+		math::float4x4 toClip;
+		for ( int row = 0; row < 4; ++row )
+			toClip.rows[row] = { view.toClip[row * 4 + 0], view.toClip[row * 4 + 1],
+			    view.toClip[row * 4 + 2], view.toClip[row * 4 + 3] };
+		return toClip;
+	};
+	// GPU occlusion (WorldTarget::gpuOcclusion): the pyramid comes from the
+	// screen prepass's depth of the world surfaces, which covers the whole
+	// target in clip depth. A surface it removes must fail the lit pass's
+	// depth test at every pixel, so the view must test depth in the ordinary
+	// direction (or equal, after the depth prepass) and must not change the
+	// stencil where the test fails.
+	const CapabilitySet &gpuCaps = device.Facts().capabilities;
+	const bool gpuDeviceCapable = gpuCaps.Has( Capability::kCompute ) &&
+	                              gpuCaps.Has( Capability::kStorageBuffers ) &&
+	                              gpuCaps.Has( Capability::kDrawIndirectCount );
+	const auto &viewStencil = target.drawState.stencil;
+	const CompareOp viewCompare = target.drawState.depthCompare;
+	const bool occlusionWanted =
+	    target.gpuSubmission && target.gpuOcclusion && gpuDeviceCapable && world->stage &&
+	    view.viewport.x == 0.0f && view.viewport.y == 0.0f &&
+	    view.viewport.width == float( target.width ) &&
+	    view.viewport.height == float( target.height ) &&
+	    ( !target.drawState.overrideDepth ||
+	        ( target.drawState.depthTest &&
+	            ( viewCompare == CompareOp::kLess || viewCompare == CompareOp::kLessEqual ||
+	                viewCompare == CompareOp::kEqual ) ) ) &&
+	    ( !viewStencil.enabled || viewStencil.writeMask == 0 ||
+	        viewStencil.depthFail == StencilOp::kKeep );
+	// Records the pyramid of r.prepassDepth (in kDepthWrite, outside a
+	// rendering) and leaves the depth in kDepthWrite again.
+	auto buildPyramid = [&]() -> bool
+	{
+		using namespace render::culling;
+		if ( !s.gpuOcclusion )
+		{
+			auto kernels = OcclusionKernels::Create( device );
+			if ( kernels )
+				s.gpuOcclusion = std::move( kernels ).Value();
+		}
+		if ( !s.gpuPointSampler.IsValid() )
+		{
+			SamplerDesc desc;
+			desc.minFilter = desc.magFilter = desc.mipFilter = Filter::kNearest;
+			desc.address = AddressMode::kClampToEdge;
+			auto made = device.CreateSampler( desc );
+			if ( made )
+				s.gpuPointSampler = made.Value();
+		}
+		if ( !s.gpuOcclusion || !s.gpuPointSampler.IsValid() )
+			return false;
+		const OcclusionView occlusionView =
+		    MakeOcclusionView( viewToClip(), target.width, target.height, 0 );
+		BufferDesc viewDesc;
+		viewDesc.size = sizeof( OcclusionView );
+		viewDesc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kStorageRead };
+		BufferDesc pyramidDesc;
+		pyramidDesc.size = PyramidFloats( occlusionView ) * sizeof( float );
+		pyramidDesc.usages = { ResourceUsage::kStorageWrite, ResourceUsage::kStorageRead };
+		auto viewBuffer = device.CreateBuffer( viewDesc );
+		auto pyramid = device.CreateBuffer( pyramidDesc );
+		if ( viewBuffer )
+			s.retiredBuffers.emplace_back( target.frame, viewBuffer.Value() );
+		if ( pyramid )
+			s.retiredBuffers.emplace_back( target.frame, pyramid.Value() );
+		if ( !viewBuffer || !pyramid )
+			return false;
+		encoder.BeginLabel( "core world hiz" );
+		encoder.TransitionBuffer(
+		    viewBuffer.Value(), ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+		encoder.WriteBuffer(
+		    viewBuffer.Value(), 0, std::as_bytes( std::span( &occlusionView, 1 ) ) );
+		encoder.TransitionBuffer(
+		    viewBuffer.Value(), ResourceUsage::kCopyDestination, ResourceUsage::kStorageRead );
+		encoder.TransitionBuffer(
+		    pyramid.Value(), ResourceUsage::kUndefined, ResourceUsage::kStorageWrite );
+		encoder.TransitionTexture(
+		    r.prepassDepth, ResourceUsage::kDepthWrite, ResourceUsage::kSampled );
+		const bool recorded =
+		    s.gpuOcclusion
+		        ->RecordPyramid( encoder,
+		            { r.prepassDepth, s.gpuPointSampler, viewBuffer.Value(), pyramid.Value() },
+		            occlusionView )
+		        .HasValue();
+		encoder.TransitionTexture(
+		    r.prepassDepth, ResourceUsage::kSampled, ResourceUsage::kDepthWrite );
+		encoder.TransitionBuffer(
+		    pyramid.Value(), ResourceUsage::kStorageWrite, ResourceUsage::kStorageRead );
+		encoder.EndLabel();
+		for ( BindGroupId group : s.gpuOcclusion->TakeRecorded() )
+			s.retiredBindGroups.emplace_back( target.frame, group );
+		if ( !recorded )
+			return false;
+		s.gpuPyramid = {
+		    pyramid.Value(), occlusionView, target.frame, r.prepassDepth, screenInputs };
+		++s.stats.gpuPyramids;
+		return true;
+	};
 	screenInputs[16] = view.viewport.x;
 	screenInputs[17] = view.viewport.y;
 	screenInputs[18] = view.viewport.width;
@@ -4379,6 +4500,22 @@ void WorldPass::RecordBatch(
 				    }
 				    return surfaceStatePipeline( m, variant.Value(), material::SurfaceDrawState() );
 			    } );
+			if ( occlusionWanted )
+			{
+				// The pyramid holds the world surfaces only: the models'
+				// prepass levels need not be the levels this view shades.
+				encoder.EndRendering();
+				const bool built = buildPyramid();
+				if ( !built )
+					note( "the occlusion pyramid was not recorded" );
+				ColorAttachment resumed[] = { normal[0] };
+				resumed[0].load = LoadOp::kLoad;
+				prepassRendering.colors = resumed;
+				prepassRendering.depth =
+				    DepthAttachment{ r.prepassDepth, LoadOp::kLoad, StoreOp::kStore, 1.0f };
+				encoder.BeginRendering( prepassRendering );
+				encoder.SetViewport( prepassViewport );
+			}
 			for ( const StaticDraw &draw : *drawnPrepassModels )
 			{
 				const auto &m = r.prepassModelMaterials[draw.material];
@@ -4681,10 +4818,13 @@ void WorldPass::RecordBatch(
 	};
 	std::vector<GpuBucket> gpuBuckets;
 	BufferId gpuCommands;
-	const CapabilitySet &caps = device.Facts().capabilities;
-	const bool gpuCapable = caps.Has( Capability::kCompute ) &&
-	                        caps.Has( Capability::kStorageBuffers ) &&
-	                        caps.Has( Capability::kDrawIndirectCount );
+	const bool gpuCapable = gpuDeviceCapable;
+	// This view's pyramid: built from the same frame's screen prepass with
+	// the same camera, clip planes and viewport inputs.
+	const bool gpuOccluding = occlusionWanted && s.gpuPyramid.pyramid.IsValid() &&
+	                          s.gpuPyramid.frame == target.frame &&
+	                          s.gpuPyramid.depth == r.prepassDepth &&
+	                          s.gpuPyramid.inputs == screenInputs && s.gpuOcclusion;
 	if ( target.gpuSubmission && !gpuCapable )
 		++s.stats.gpuFallbacks;
 	if ( target.gpuSubmission && gpuCapable && !order.empty() &&
@@ -4744,14 +4884,23 @@ void WorldPass::RecordBatch(
 			++gpuBuckets.back().count;
 			++buckets.back().count;
 			instances[k] = s.gpuBounds[order[k]];
+			if ( gpuOccluding )
+			{
+				// A surface facing the camera rasterizes at its box's nearest
+				// depth up to rounding: one unit of margin keeps it from
+				// occluding itself. Only opaque PBR surfaces are tested.
+				for ( int c = 0; c < 3; ++c )
+				{
+					instances[k].min[c] -= 1.0f;
+					instances[k].max[c] += 1.0f;
+				}
+				instances[k].flags = opaquePbr( m ) ? 0u : kCullNeverOcclude;
+			}
 			templates[k] = { surface.indexCount, surface.firstIndex, 0,
 			    static_cast<std::uint32_t>( buckets.size() - 1 ) };
 		}
 		const auto bucketCount = static_cast<std::uint32_t>( buckets.size() );
-		math::float4x4 toClip;
-		for ( int row = 0; row < 4; ++row )
-			toClip.rows[row] = { view.toClip[row * 4 + 0], view.toClip[row * 4 + 1],
-			    view.toClip[row * 4 + 2], view.toClip[row * 4 + 3] };
+		const math::float4x4 toClip = viewToClip();
 		const CullView cullView = PackView( math::ExtractFrustum( toClip ), 32, count );
 		std::vector<BufferId> made;
 		auto make = [&]( std::uint64_t size, UsageSet usages )
@@ -4772,6 +4921,17 @@ void WorldPass::RecordBatch(
 		    { ResourceUsage::kStorageWrite, ResourceUsage::kStorageRead } );
 		const BufferId commands = make( CommandBufferBytes( count, bucketCount ),
 		    { ResourceUsage::kStorageWrite, ResourceUsage::kIndirect } );
+		OcclusionView occlusionView;
+		BufferId occlusionViewBuffer;
+		BufferId visibility;
+		if ( gpuOccluding )
+		{
+			occlusionView = s.gpuPyramid.view;
+			occlusionView.count = count;
+			occlusionViewBuffer = make( sizeof( OcclusionView ), in );
+			visibility = make( std::uint64_t( MaskWords( count ) ) * 4,
+			    { ResourceUsage::kStorageWrite, ResourceUsage::kStorageRead } );
+		}
 		const bool ready = s.gpuCull && std::all_of( made.begin(), made.end(),
 		                                    []( BufferId id )
 		                                    {
@@ -4797,13 +4957,31 @@ void WorldPass::RecordBatch(
 			    s.gpuCull->Record( encoder, { instanceBuffer, viewBuffer, mask, count } ).HasValue();
 			encoder.TransitionBuffer(
 			    mask, ResourceUsage::kStorageWrite, ResourceUsage::kStorageRead );
+			BufferId kept = mask;
+			bool occluded = true;
+			if ( gpuOccluding )
+			{
+				upload( occlusionViewBuffer, std::as_bytes( std::span( &occlusionView, 1 ) ) );
+				encoder.TransitionBuffer(
+				    visibility, ResourceUsage::kUndefined, ResourceUsage::kStorageWrite );
+				occluded = s.gpuOcclusion
+				               ->RecordOcclusion(
+				                   encoder, { instanceBuffer, occlusionViewBuffer,
+				                                s.gpuPyramid.pyramid, mask, visibility, count } )
+				               .HasValue();
+				encoder.TransitionBuffer(
+				    visibility, ResourceUsage::kStorageWrite, ResourceUsage::kStorageRead );
+				for ( BindGroupId group : s.gpuOcclusion->TakeRecorded() )
+					s.retiredBindGroups.emplace_back( target.frame, group );
+				kept = visibility;
+			}
 			encoder.TransitionBuffer(
 			    commands, ResourceUsage::kUndefined, ResourceUsage::kStorageWrite );
 			const bool compacted =
-			    s.gpuCompact
-			        ->Record( encoder, { mask, templateBuffer, viewBuffer, bucketBuffer, commands,
-			                               count, bucketCount } )
-			        .HasValue();
+			    occluded && s.gpuCompact
+			                    ->Record( encoder, { kept, templateBuffer, viewBuffer, bucketBuffer,
+			                                           commands, count, bucketCount } )
+			                    .HasValue();
 			encoder.TransitionBuffer(
 			    commands, ResourceUsage::kStorageWrite, ResourceUsage::kIndirect );
 			encoder.EndLabel();
@@ -4812,7 +4990,10 @@ void WorldPass::RecordBatch(
 			for ( BindGroupId group : s.gpuCompact->TakeRecorded() )
 				s.retiredBindGroups.emplace_back( target.frame, group );
 			if ( culled && compacted )
+			{
 				gpuCommands = commands;
+				s.stats.gpuOcclusionViews += gpuOccluding;
+			}
 			else
 				gpuBuckets.clear();
 		}

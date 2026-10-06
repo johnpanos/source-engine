@@ -426,6 +426,8 @@ std::vector<std::uint32_t> OcclusionReference( std::span<const CullInstance> ins
 	const auto &m = view.viewProjection;
 	auto occluded = [&]( const CullInstance &instance )
 	{
+		if ( instance.flags & kCullNeverOcclude )
+			return false;
 		float minU = 1e30f, minV = 1e30f, maxU = -1e30f, maxV = -1e30f, nearZ = 1e30f;
 		for ( std::uint32_t c = 0; c < 8; ++c )
 		{
