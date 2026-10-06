@@ -86,25 +86,25 @@ bool ReadWorldMesh( const char *pPath, std::vector<std::byte> *pBytes )
 	       ValidateWorldMesh( pBytes->data(), pBytes->size() ) == WorldMeshError::Ok;
 }
 
-// An LMAP v1 page or v2 layered page (world_lightmap.h owns the encoding);
-// `pVersion` receives the lump version the payload's layer count fixes.
+// An LMAP v3 lump (world_lightmap.h owns the encoding); `pVersion`
+// receives its lump version.
 bool ReadWorldLightmap( const char *pPath, std::vector<std::byte> *pBytes, uint32_t *pVersion )
 {
 	FileByteSource source( pPath );
-	if ( !source.IsOpen() || source.Size() < 80 || source.Size() > kWorldLightmapMaxBytes )
+	if ( !source.IsOpen() || source.Size() < kWorldLightmapHeaderBytes ||
+	     source.Size() > kWorldLightmapMaxBytes )
 		return false;
 	pBytes->resize( size_t( source.Size() ) );
 	if ( !source.ReadAt( 0, pBytes->data(), pBytes->size() ) )
 		return false;
-	WorldLightmapLayout layout{};
 	const WorldLightmapError error =
-	    ValidateWorldLightmap( pBytes->data(), pBytes->size(), 0, &layout );
+	    ValidateWorldLightmap( pBytes->data(), pBytes->size(), kWorldLightmapVersion );
 	if ( error != WorldLightmapError::Ok )
 	{
 		std::fprintf( stderr, "bsp2tool: LMAP %s\n", WorldLightmapErrorName( error ) );
 		return false;
 	}
-	*pVersion = layout.version;
+	*pVersion = kWorldLightmapVersion;
 	return true;
 }
 
@@ -319,10 +319,10 @@ int main( int argc, char **argv )
 		return 2;
 	}
 	std::vector<std::byte> lightmap;
-	uint32_t lightmapVersion = kWorldLightmapMinVersion;
+	uint32_t lightmapVersion = kWorldLightmapVersion;
 	if ( bPackWorldLit && !ReadWorldLightmap( argv[4], &lightmap, &lightmapVersion ) )
 	{
-		std::fprintf( stderr, "bsp2tool: invalid LMAP (linear RGBA16F KTX2) file %s\n", argv[4] );
+		std::fprintf( stderr, "bsp2tool: invalid LMAP v3 file %s\n", argv[4] );
 		return 2;
 	}
 	std::vector<std::byte> probeVolume;

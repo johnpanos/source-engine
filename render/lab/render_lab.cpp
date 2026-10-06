@@ -471,11 +471,16 @@ int Run( const Options &options )
 		return Fail( options.map.string() + " has no lightmap page (LMAP)" );
 	mapcontainer::MapLumpInfo lmapInfo{};
 	(void)container->FindLump( mapcontainer::kLumpWorldLightmap, &lmapInfo );
-	mapcontainer::WorldLightmapLayout layout{};
+	mapcontainer::WorldLightmapBlocks blocks{};
 	if ( const mapcontainer::WorldLightmapError error = mapcontainer::ValidateWorldLightmap(
-	         lmap->data(), lmap->size(), lmapInfo.version, &layout );
+	         lmap->data(), lmap->size(), lmapInfo.version, &blocks );
 	    error != mapcontainer::WorldLightmapError::Ok )
 		return Fail( std::string( "LMAP: " ) + mapcontainer::WorldLightmapErrorName( error ) );
+	// The lab's pages are the RGBA16F form (LMAP v3's CPU decode).
+	mapcontainer::WorldLightmapLayout layout{};
+	std::vector<std::byte> decoded;
+	if ( !mapcontainer::DecodeWorldLightmap( lmap->data(), blocks, &decoded, &layout ) )
+		return Fail( "LMAP: decode failed" );
 	// The layer the world's baked diffuse light comes from; a map without it
 	// cannot be drawn so (no silent fallback to the total layer). The
 	// indirect layer, when the map carries one, is what the view's ambient
@@ -557,8 +562,8 @@ int Run( const Options &options )
 		bool indirectPage = false;
 		{
 			const LightmapLayerPages pages = SplitLightmapLayer(
-			    std::as_bytes( std::span( lmap->data() + layout.layerOffset[bakedLayer],
-			        std::size_t( layout.layerBytes ) ) ),
+			    std::span<const std::byte>( decoded.data() + layout.layerOffset[bakedLayer],
+			        std::size_t( layout.layerBytes ) ),
 			    layout.width, layout.height );
 			if ( pages.flat.empty() )
 				return Fail( std::string( "LMAP's " ) +
@@ -577,8 +582,8 @@ int Run( const Options &options )
 			LightmapLayerPages indirect;
 			if ( indirectLayer >= 0 )
 				indirect = SplitLightmapLayer(
-				    std::as_bytes( std::span( lmap->data() + layout.layerOffset[indirectLayer],
-				        std::size_t( layout.layerBytes ) ) ),
+				    std::span<const std::byte>( decoded.data() + layout.layerOffset[indirectLayer],
+				        std::size_t( layout.layerBytes ) ),
 				    layout.width, layout.height );
 			const LightmapLayerPages &basis = options.coreDirect ? indirect : pages;
 			directional =

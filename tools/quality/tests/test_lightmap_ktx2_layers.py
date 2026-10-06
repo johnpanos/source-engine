@@ -104,6 +104,25 @@ class Ktx2LayerDirectionalTest(unittest.TestCase):
         self.assertEqual(record["separated_layers"]["indirect"]["directional_exr_sha256"],
                          sha256(self.indirect_beta))
 
+    def test_the_lmap_v3_lump_matches_the_master_pages(self):
+        lump = self.root / "atlas.lmap"
+        result, out = self.package(["--layer-directional", "indirect=%s" % self.indirect_beta,
+                                    "--lmap-out", str(lump)])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        sys.path.insert(0, str(HERE.parent))
+        import world_lightmap_v3
+        data = lump.read_bytes()
+        layout = world_lightmap_v3.read(data)
+        self.assertEqual([l["role"] for l in layout["layers"]], ["total", "indirect"])
+        for index in (0, 1):
+            master = self.layer(out, index).astype(np.float32)
+            flat, beta, _ = world_lightmap_v3.decode_layer(data, layout, index)
+            np.testing.assert_allclose(flat, master[:, :SIZE, :3], rtol=0.03, atol=1e-3)
+            np.testing.assert_allclose(beta, master[:, SIZE:, :3], atol=0.01)
+        receipt = json.loads(lump.with_name(lump.name + ".json").read_text())
+        self.assertEqual(receipt["version"], 3)
+        self.assertLess(receipt["bytes"], receipt["rgba16f_bytes"])
+
     def test_the_layers_gradient_alone_makes_a_directional_page(self):
         # Runtime direct light: the total page is flat (its gradient half
         # zero) and the indirect layer carries its own.

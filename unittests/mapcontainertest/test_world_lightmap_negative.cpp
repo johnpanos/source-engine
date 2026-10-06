@@ -19,22 +19,22 @@ namespace
 
 // Accepts anything the real validator rejects only for its layer count.
 WorldLightmapError AnyLayerCount(
-    const void *p, size_t size, uint32_t version, WorldLightmapLayout *layout )
+    const void *p, size_t size, uint32_t version, WorldLightmapBlocks *layout )
 {
 	const WorldLightmapError error = ValidateWorldLightmap( p, size, version, layout );
 	return error == WorldLightmapError::InvalidLayerCount ? WorldLightmapError::Ok : error;
 }
 
-// Ignores the lump version (a v1 lump may carry layers, and the reverse).
+// Ignores the lump version the map declares.
 WorldLightmapError IgnoresVersion(
-    const void *p, size_t size, uint32_t, WorldLightmapLayout *layout )
+    const void *p, size_t size, uint32_t, WorldLightmapBlocks *layout )
 {
 	return ValidateWorldLightmap( p, size, 0, layout );
 }
 
-// Checks only the identifier: truncated, compressed or 3D data passes.
+// Checks only the magic: truncated or wrongly sized blocks pass.
 WorldLightmapError IdentifierOnly(
-    const void *p, size_t size, uint32_t, WorldLightmapLayout *layout )
+    const void *p, size_t size, uint32_t, WorldLightmapBlocks *layout )
 {
 	const WorldLightmapError error = ValidateWorldLightmap( p, size, 0, layout );
 	return error == WorldLightmapError::BadIdentifier || error == WorldLightmapError::Truncated
@@ -44,7 +44,7 @@ WorldLightmapError IdentifierOnly(
 
 // Validates but reports every layer as the total page.
 WorldLightmapError AllTotal(
-    const void *p, size_t size, uint32_t version, WorldLightmapLayout *layout )
+    const void *p, size_t size, uint32_t version, WorldLightmapBlocks *layout )
 {
 	const WorldLightmapError error = ValidateWorldLightmap( p, size, version, layout );
 	if ( error == WorldLightmapError::Ok && layout )

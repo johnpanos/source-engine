@@ -4704,12 +4704,14 @@ void CModelLoader::Map_LoadWorldMesh()
 	const bool hasLightmap =
 	    s_pMapContainer->FindLump( mapcontainer::kLumpWorldLightmap, &lightmapLump );
 	CUtlVector<byte> lightmapBytes;
+	mapcontainer::WorldLightmapBlocks lightmapBlocks{};
 	mapcontainer::WorldLightmapLayout lightmapLayout{};
+	std::vector<std::byte> lightmapDecoded; // the RGBA16F form the uploaders take
 	if ( hasLightmap )
 	{
-		if ( lightmapLump.version < mapcontainer::kWorldLightmapMinVersion ||
-		     lightmapLump.version > mapcontainer::kWorldLightmapLayeredVersion ||
-		     lightmapLump.flags != 0 || lightmapLump.storedSize < 80 ||
+		if ( lightmapLump.version != mapcontainer::kWorldLightmapVersion ||
+		     lightmapLump.flags != 0 ||
+		     lightmapLump.storedSize < mapcontainer::kWorldLightmapHeaderBytes ||
 		     lightmapLump.storedSize > mapcontainer::kWorldLightmapMaxBytes )
 		{
 			Warning( "Map %s: LMAP version, flags or size unsupported\n", s_szMapName );
@@ -4728,11 +4730,18 @@ void CModelLoader::Map_LoadWorldMesh()
 			return;
 		}
 		const mapcontainer::WorldLightmapError lightmapError = mapcontainer::ValidateWorldLightmap(
-		    lightmapBytes.Base(), lightmapBytes.Count(), lightmapLump.version, &lightmapLayout );
+		    lightmapBytes.Base(), lightmapBytes.Count(), lightmapLump.version, &lightmapBlocks );
 		if ( lightmapError != mapcontainer::WorldLightmapError::Ok )
 		{
 			Warning( "Map %s: LMAP rejected (%s)\n", s_szMapName,
 			    mapcontainer::WorldLightmapErrorName( lightmapError ) );
+			m_WorldMeshBytes.Purge();
+			return;
+		}
+		if ( !mapcontainer::DecodeWorldLightmap(
+		         lightmapBytes.Base(), lightmapBlocks, &lightmapDecoded, &lightmapLayout ) )
+		{
+			Warning( "Map %s: LMAP decode failed\n", s_szMapName );
 			m_WorldMeshBytes.Purge();
 			return;
 		}
@@ -4772,7 +4781,7 @@ void CModelLoader::Map_LoadWorldMesh()
 		lightmapRequest.layerCount = lightmapLayout.layerCount;
 		for ( uint32_t i = 0; i < lightmapLayout.layerCount; ++i )
 		{
-			lightmapRequest.layers[i] = lightmapBytes.Base() + lightmapLayout.layerOffset[i];
+			lightmapRequest.layers[i] = lightmapDecoded.data() + lightmapLayout.layerOffset[i];
 			lightmapRequest.roles[i] =
 			    static_cast<world_mesh_gpu::WorldLightmapRole>( lightmapLayout.roles[i] );
 		}

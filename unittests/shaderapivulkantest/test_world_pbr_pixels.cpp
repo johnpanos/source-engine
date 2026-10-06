@@ -8,8 +8,6 @@
 #include "../../render/bridge/sdl3-vulkan/sdl3_vulkan_surface_host.h"
 #include "../../materialsystem/shaderapivulkan/vulkan_device.h"
 #include "../../materialsystem/shaderapivulkan/vulkan_world_lightmap.h"
-#include "../mapcontainertest/world_lightmap_cases.h"
-#include "mapcontainer/world_lightmap.h"
 #include "render/light_set.h"
 #include "render/pbr_brdf.h"
 #include "testing/conformance_result.h"
@@ -22,8 +20,6 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
-#include <fstream>
-#include <iterator>
 #include <memory>
 #include <string>
 #include <vector>
@@ -82,25 +78,31 @@ bool DrawWorld( render_vulkan::CVulkanContext &context, std::uint8_t *red, std::
 	return true;
 }
 
-bool UploadLmap( render_vulkan::CVulkanContext &context, const std::vector<char> &bytes,
-    std::uint32_t version, std::string *error )
+// The decoded LMAP form (mapcontainer::DecodeWorldLightmap): per layer
+// width x height RGBA16F halves, roles in LMAP's fixed order.
+struct LightmapPages
 {
-	mapcontainer::WorldLightmapLayout layout{};
-	const mapcontainer::WorldLightmapError validation =
-	    mapcontainer::ValidateWorldLightmap( bytes.data(), bytes.size(), version, &layout );
-	if ( validation != mapcontainer::WorldLightmapError::Ok )
-	{
-		*error = mapcontainer::WorldLightmapErrorName( validation );
-		return false;
-	}
+	std::uint32_t width = 1;
+	std::uint32_t height = 1;
+	std::vector<std::vector<std::uint16_t>> layers;
+};
+
+bool UploadLmap(
+    render_vulkan::CVulkanContext &context, const LightmapPages &pages, std::string *error )
+{
+	static const world_mesh_gpu::WorldLightmapRole kRoles[3][3] = {
+	    { world_mesh_gpu::WorldLightmapRole::Total },
+	    { world_mesh_gpu::WorldLightmapRole::Total, world_mesh_gpu::WorldLightmapRole::Indirect },
+	    { world_mesh_gpu::WorldLightmapRole::Total, world_mesh_gpu::WorldLightmapRole::Direct,
+	        world_mesh_gpu::WorldLightmapRole::Indirect } };
 	world_mesh_gpu::WorldLightmapUploadRequest request;
-	request.width = layout.width;
-	request.height = layout.height;
-	request.layerCount = layout.layerCount;
-	for ( std::uint32_t i = 0; i < layout.layerCount; ++i )
+	request.width = pages.width;
+	request.height = pages.height;
+	request.layerCount = std::uint32_t( pages.layers.size() );
+	for ( std::uint32_t i = 0; i < request.layerCount; ++i )
 	{
-		request.layers[i] = bytes.data() + layout.layerOffset[i];
-		request.roles[i] = static_cast<world_mesh_gpu::WorldLightmapRole>( layout.roles[i] );
+		request.layers[i] = pages.layers[i].data();
+		request.roles[i] = kRoles[request.layerCount - 1][i];
 	}
 	return render_vulkan::UploadWorldLightmapLayers( context, request, error );
 }
@@ -194,27 +196,12 @@ int main()
 		               mrao, dielectric.data(), dielectric.size(), &error ) &&
 		           context.UploadManagedTexture( normal, normalUp.data(), normalUp.size(), &error ),
 		    "PBR material texels upload" );
-		// LMAP v1: the checked-in single-page KTX2, through the map
-		// container's validator and the layered upload contract.
-		std::ifstream package( "quality/fixtures/ktx2/white-1x1-rgba16f.ktx2", std::ios::binary );
-		std::vector<char> packageBytes(
-		    std::istreambuf_iterator<char>{ package }, std::istreambuf_iterator<char>{} );
-		check( !packageBytes.empty(), "linear HDR lightmap KTX2 fixture exists" );
-		if ( !packageBytes.empty() )
-		{
-			auto damaged = packageBytes;
-			damaged[0] = 0;
-			check( mapcontainer::ValidateWorldLightmap( damaged.data(), damaged.size(), 1 ) ==
-			           mapcontainer::WorldLightmapError::BadIdentifier,
-			    "corrupt BSP2 lightmap package is rejected" );
-			check( mapcontainer::ValidateWorldLightmap( packageBytes.data(), packageBytes.size(),
-			           2 ) == mapcontainer::WorldLightmapError::VersionMismatch,
-			    "a single page is not accepted as a layered (v2) lump" );
-			error.clear();
-			check( UploadLmap( context, packageBytes, 1, &error ),
-			    "BSP2 lightmap KTX2 uploads as the map-scoped HDR image" );
-			check( context.WorldLightmapIndirectHandle() < 0, "a v1 page has no indirect layer" );
-		}
+		// A single white total page through the layered upload contract.
+		const LightmapPages packageBytes = { 1, 1, { { 0x3c00, 0x3c00, 0x3c00, 0x3c00 } } };
+		error.clear();
+		check( UploadLmap( context, packageBytes, &error ),
+		    "a single total page uploads as the map-scoped HDR image" );
+		check( context.WorldLightmapIndirectHandle() < 0, "a single page has no indirect layer" );
 		context.BindManagedTexture( base );
 		context.SelectDynamicColorSpace( render_vulkan::CVulkanContext::kColorSrgbReadBase |
 		                                 render_vulkan::CVulkanContext::kColorSrgbWrite );
@@ -239,9 +226,9 @@ int main()
 		// Compare mapped normals against each other so their view-angle PBR
 		// energy weighting cancels out of the directional-light check.
 		{
-			const std::vector<char> directional =
-			    lmap_cases::MakeLmap( 2, 1, 0, { { 0x3800, 0, 0, 0x3c00, 0x3c00, 0, 0, 0x3c00 } } );
-			check( UploadLmap( context, directional, 1, &error ), "directional 2:1 LMAP uploads" );
+			const LightmapPages directional = {
+			    2, 1, { { 0x3800, 0, 0, 0x3c00, 0x3c00, 0, 0, 0x3c00 } } };
+			check( UploadLmap( context, directional, &error ), "directional 2:1 LMAP uploads" );
 			std::uint8_t smooth = 0;
 			check( DrawWorld( context, &smooth, &error ) && smooth >= 140 && smooth <= 152,
 			    "smooth normal receives the flat half-light bake" );
@@ -253,10 +240,8 @@ int main()
 			std::uint8_t directionalLit = 0;
 			check( DrawWorld( context, &directionalLit, &error ),
 			    "mapped +X normal renders against the directional gradient" );
-			const std::vector<char> zeroGradient =
-			    lmap_cases::MakeLmap( 2, 1, 0, { { 0x3800, 0, 0, 0x3c00, 0, 0, 0, 0x3c00 } } );
-			check(
-			    UploadLmap( context, zeroGradient, 1, &error ), "zero-gradient control uploads" );
+			const LightmapPages zeroGradient = { 2, 1, { { 0x3800, 0, 0, 0x3c00, 0, 0, 0, 0x3c00 } } };
+			check( UploadLmap( context, zeroGradient, &error ), "zero-gradient control uploads" );
 			std::uint8_t zeroGradientLit = 0;
 			check( DrawWorld( context, &zeroGradientLit, &error ) &&
 			           directionalLit >= zeroGradientLit + 40 &&
@@ -266,12 +251,12 @@ int main()
 			    smooth, directionalLit, zeroGradientLit );
 			check(
 			    context.UploadManagedTexture( normal, normalUp.data(), normalUp.size(), &error ) &&
-			        UploadLmap( context, packageBytes, 1, &error ),
+			        UploadLmap( context, packageBytes, &error ),
 			    "flat normal and single-page lightmap are restored" );
 			scene.material[1] = 0.0f;
 			context.SetDynamicPbrWorldScene( scene );
 		}
-		// RFC 0011 indirect-light debug view. A v1 page has no indirect
+		// RFC 0011 indirect-light debug view. A single page has no indirect
 		// layer: the view is black rather than showing the total light.
 		{
 			const auto srgbByte = []( float linear )
@@ -285,20 +270,12 @@ int main()
 			context.SetIndirectLightView( 1, 1.0f );
 			check( DrawWorld( context, &viewed, &error ) && viewed <= 1,
 			    "indirect view of a map without an indirect layer is black" );
-			// LMAP v2: total 1.0, indirect 0.25 (red channel; halves 0x3400).
-			const std::vector<std::vector<std::uint16_t>> layers = {
-			    { 0x3c00, 0x3c00, 0x3c00, 0x3c00 }, { 0x3400, 0x3800, 0x3000, 0x3c00 } };
-			const std::vector<char> layered = lmap_cases::MakeLmap( 1, 1, 2, layers );
-			check( mapcontainer::ValidateWorldLightmap( layered.data(), layered.size(), 1 ) ==
-			           mapcontainer::WorldLightmapError::VersionMismatch,
-			    "a layered page is not accepted as a v1 lump" );
-			std::vector<char> truncated( layered.begin(), layered.end() - 8 );
-			check( mapcontainer::ValidateWorldLightmap( truncated.data(), truncated.size(), 2 ) ==
-			           mapcontainer::WorldLightmapError::InvalidLevelIndex,
-			    "a truncated layered page is rejected" );
-			check( UploadLmap( context, layered, 2, &error ) &&
+			// Total 1.0, indirect 0.25 (red channel; halves 0x3400).
+			const LightmapPages layered = { 1, 1,
+			    { { 0x3c00, 0x3c00, 0x3c00, 0x3c00 }, { 0x3400, 0x3800, 0x3000, 0x3c00 } } };
+			check( UploadLmap( context, layered, &error ) &&
 			           context.WorldLightmapIndirectHandle() >= 0,
-			    "LMAP v2 total and indirect layers upload" );
+			    "total and indirect layers upload" );
 			check( DrawWorld( context, &viewed, &error ), "indirect light view renders" );
 			std::fprintf(
 			    stderr, "indirect light view red %u (expected %.1f)\n", viewed, srgbByte( 0.25f ) );
@@ -324,9 +301,8 @@ int main()
 			// black bake so the pixel is theirs alone. The centre pixel is world
 			// (0, 0, 0.5), normal +Z, seen from the eye at (0, 0, 1).
 			check( context.DirectLightsSupported(), "WMSH PBR adds direct lights on this device" );
-			const std::vector<char> black =
-			    lmap_cases::MakeLmap( 1, 1, 2, { { 0, 0, 0, 0x3c00 }, { 0, 0, 0, 0x3c00 } } );
-			check( UploadLmap( context, black, 2, &error ), "a black lightmap uploads" );
+			const LightmapPages black = { 1, 1, { { 0, 0, 0, 0x3c00 }, { 0, 0, 0, 0x3c00 } } };
+			check( UploadLmap( context, black, &error ), "a black lightmap uploads" );
 			std::uint8_t dark = 255;
 			check( DrawWorld( context, &dark, &error ) && dark <= 1,
 			    "without lights a black bake is black" );
@@ -500,12 +476,12 @@ int main()
 			// the baked producer's indirect) matches Baked (the total layer);
 			// the seeded double count (the total layer under RuntimeIndirect)
 			// does not.
-			const std::vector<char> furnace = lmap_cases::MakeLmap( 1, 1, 3,
+			const LightmapPages furnace = { 1, 1,
 			    { { 0x3a00, 0x3a00, 0x3a00, 0x3c00 }, { 0x34cd, 0x34cd, 0x34cd, 0x3c00 },
-			        { 0x3733, 0x3733, 0x3733, 0x3c00 } } );
-			check( UploadLmap( context, furnace, 2, &error ) &&
+			        { 0x3733, 0x3733, 0x3733, 0x3c00 } } };
+			check( UploadLmap( context, furnace, &error ) &&
 			           context.WorldLightmapDirectHandle() >= 0,
-			    "a furnace-valued LMAP v2 with direct and indirect layers uploads" );
+			    "a furnace-valued lightmap with direct and indirect layers uploads" );
 			std::uint8_t baked = 0, runtime = 0, seeded = 0;
 			context.SetIndirectPolicy( 0, false );
 			check( DrawWorld( context, &baked, &error ), "Baked policy renders" );
@@ -520,12 +496,12 @@ int main()
 			    "RuntimeIndirect composes the furnace's total light as Baked does" );
 			check( seeded > baked + 10, "the seeded double count (total + indirect) is detected" );
 			context.SetIndirectPolicy( 0, false );
-			check( UploadLmap( context, layered, 2, &error ) &&
+			check( UploadLmap( context, layered, &error ) &&
 			           ( context.SetIndirectPolicy( 2, false ),
 			               context.EffectiveIndirectPolicy() ) == 0,
 			    "RuntimeIndirect is unavailable without a direct layer" );
 			context.SetIndirectPolicy( 0, false );
-			check( UploadLmap( context, layered, 2, &error ), "the layered lightmap is restored" );
+			check( UploadLmap( context, layered, &error ), "the layered lightmap is restored" );
 			check( DrawWorld( context, &restored, &error ) && restored == diffuse,
 			    "without direct lights the shading is the bake's again" );
 		}

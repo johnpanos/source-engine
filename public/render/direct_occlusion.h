@@ -68,11 +68,16 @@ public:
 	{
 		*this = DirectOcclusion();
 		mapcontainer::WorldMeshSummary mesh = {};
+		mapcontainer::WorldLightmapBlocks blocks = {};
 		mapcontainer::WorldLightmapLayout layout = {};
+		// LMAP v3 is block-compressed; recomposition works on its RGBA16F form.
 		if ( mapcontainer::ValidateWorldMesh( wmsh, wmshSize, &mesh ) !=
 		         mapcontainer::WorldMeshError::Ok ||
-		     mapcontainer::ValidateWorldLightmap( lmap, lmapSize, lmapVersion, &layout ) !=
-		         mapcontainer::WorldLightmapError::Ok )
+		     mapcontainer::ValidateWorldLightmap( lmap, lmapSize, lmapVersion, &blocks ) !=
+		         mapcontainer::WorldLightmapError::Ok ||
+		     mapcontainer::WorldLightmapLayerIndex(
+		         blocks, mapcontainer::WorldLightmapLayer::Direct ) < 0 ||
+		     !mapcontainer::DecodeWorldLightmap( lmap, blocks, &m_lmap, &layout ) )
 			return false;
 		const int total = mapcontainer::WorldLightmapLayerIndex(
 		    layout, mapcontainer::WorldLightmapLayer::Total );
@@ -94,14 +99,12 @@ public:
 		std::vector<uint32_t> indices( mesh.indexCount );
 		std::memcpy( indices.data(), base + mesh.sectionOffsets[1], indices.size() * 4 );
 
-		const unsigned char *bytes = static_cast<const unsigned char *>( lmap );
-		m_lmap.assign( bytes, bytes + lmapSize );
 		m_layout = layout;
 		m_totalIndex = total;
 		m_directIndex = direct;
 		return BuildLayers( positions, uvs, indices, layout.width, layout.height,
-		    m_lmap.data() + layout.layerOffset[total], m_lmap.data() + layout.layerOffset[direct],
-		    lights, only );
+		    Bytes() + layout.layerOffset[total], Bytes() + layout.layerOffset[direct], lights,
+		    only );
 	}
 
 	// The core, for any source of triangles: xyz positions, lightmap UVs in
@@ -191,7 +194,10 @@ public:
 	[[nodiscard]] bool Ready() const { return !m_texels.empty(); }
 	[[nodiscard]] const mapcontainer::WorldLightmapLayout &Layout() const { return m_layout; }
 	// The LMAP bytes (layer offsets per Layout()).
-	[[nodiscard]] const unsigned char *Bytes() const { return m_lmap.data(); }
+	[[nodiscard]] const unsigned char *Bytes() const
+	{
+		return reinterpret_cast<const unsigned char *>( m_lmap.data() );
+	}
 	[[nodiscard]] size_t CoveredTexels() const { return m_texels.size(); }
 
 	// The total layer for these occluders (RGBA16F, rows top first), in
@@ -1004,7 +1010,7 @@ private:
 	std::vector<Bounds> m_supers;
 	std::vector<LightBound> m_lightBounds;
 	std::vector<uint32_t> m_sampleGroup; // each sample's light group
-	std::vector<unsigned char> m_lmap; // Build's copy of the LMAP bytes
+	std::vector<std::byte> m_lmap;       // Build's RGBA16F decode of the LMAP
 	const unsigned char *m_total = nullptr;
 	const unsigned char *m_direct = nullptr;
 	size_t m_layerBytes = 0;

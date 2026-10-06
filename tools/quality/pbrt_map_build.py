@@ -588,6 +588,7 @@ class Pipeline:
             "directional_indirect": self.out / "lighting" / "indirect-directional.exr",
             "audit": self.out / "audit.json",
             "ktx2": self.out / "lighting" / "atlas.ktx2",
+            "lmap": self.out / "lighting" / "atlas.lmap",
             "seams": self.out / "lighting" / "seams.npz",
             "probe": self.out / "lighting" / "probe",
             "probe_placement": self.out / "lighting" / "probe-placement.json",
@@ -1204,13 +1205,15 @@ class Pipeline:
                   ([p["directional_indirect"]] if directional and "indirect" in denoised_layers
                    else [p["directional"]] if directional else []) + sun_inputs,
                   ktx2_settings,
-                  ["lightmap_ktx2.py"], [p["ktx2"]],
+                  ["lightmap_ktx2.py", "world_lightmap_v3.py", "../texture/bc_codec.py"],
+                  [p["ktx2"], p["lmap"]],
                   lambda: self.run("ktx2", [sys.executable, HERE / "lightmap_ktx2.py",
                                             "--exr", atlas, "--bake-evidence", atlas_receipt,
                                             "--lighting-stage", p["lighting_stage"],
                                             "--ktx-tool", self.tools["ktx"],
                                             "--preview-gain", str(self.lightmap["preview_gain"]),
-                                            "--expected-scope", scope, "--out", p["ktx2"]] +
+                                            "--expected-scope", scope, "--out", p["ktx2"],
+                                            "--lmap-out", p["lmap"]] +
                                            directional_args + layer_args + seam_args + sun_args))
         if probe:
             # Reflection probes (R50-PARALLAX): placed per room and per glossy
@@ -1361,7 +1364,7 @@ class Pipeline:
                       # A derived scene's lights are invisible, as the entities were.
                       (["--include-emitters"] if self.scene["emitters"] and not self.derived
                        else []) + [
-                      "--lightmap-ktx2", p["ktx2"], "--bsp2tool", self.tools["bsp2tool"],
+                      "--lightmap-ktx2", p["lmap"], "--bsp2tool", self.tools["bsp2tool"],
                       "--out", p["wmsh"], "--out-bsp2", p["bsp2"]] +
                       (["--weld-distance-source-units",
                         str(self.world_mesh["weld_distance_source_units"])]
@@ -1375,7 +1378,7 @@ class Pipeline:
                       (["--radiosity-transfer", p["rtrn"]] if radiosity else []) +
                       (["--sdf-volume", p["sdfv"]] if self.sdf_volume else []) +
                       (["--reflection-probes", p["rprb"]] if probe else []))
-        self.step("pack", [pack_stage, p["lighting_stage"], p["bsp"], p["ktx2"]] +
+        self.step("pack", [pack_stage, p["lighting_stage"], p["bsp"], p["lmap"]] +
                   ([p["prbv"]] if volume else []) + ([p["rtrn"]] if radiosity else []) +
                   ([p["sdfv"]] if self.sdf_volume else []) +
                   ([p["rprb"]] if probe else []) +

@@ -44,10 +44,12 @@ import hashlib
 import json
 import os
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
 import imageio.v3 as iio
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 import numpy as np
 
 
@@ -164,6 +166,9 @@ def main():
     parser.add_argument("--max-seam", type=float, default=DEFAULT_MAX_SEAM,
                         help="gate: stitched seam discontinuity maximum (relative)")
     parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--lmap-out", type=Path,
+                        help="also write the LMAP v3 lump (world_lightmap_v3.py): BC6H light "
+                             "and BC7 gradient pages, the sun in the gradient's alpha")
     args = parser.parse_args()
     stitch = seam_stitcher(args)
     separated = {}
@@ -344,6 +349,30 @@ def main():
             if extracted.read_bytes() != raw.read_bytes():
                 raise ValueError("KTX2 changed the authored half-float texels of layer %d" % index)
         os.replace(package, args.out)
+    lmap_receipt = None
+    if args.lmap_out:
+        import world_lightmap_v3
+        layers = []
+        for page in pages:
+            flat = page[:, :size, :3].astype(np.float32)
+            beta = (page[:, size:, :3].astype(np.float32) if width == 2 * size
+                    else np.zeros_like(flat))
+            # v3 has no probe band or marker texels (RPRB and the light
+            # environment own them): their reserved rows are not lightmap.
+            if probe:
+                flat[:band] = 0.0
+                beta[:band] = 0.0
+                beta[0, -3:] = 0.0  # the marker texels
+            layers.append((flat, beta))
+        sun_mask = rgba[:, :size, 3].astype(np.float32) if sun else None
+        lump, report = world_lightmap_v3.build(args.ktx_tool.resolve(), layers, sun_mask)
+        temporary = args.lmap_out.with_name(args.lmap_out.name + ".tmp")
+        temporary.write_bytes(lump)
+        os.replace(temporary, args.lmap_out)
+        lmap_receipt = dict(report, status="pass", version=world_lightmap_v3.VERSION,
+                            lmap_sha256=sha256(args.lmap_out), roles=["total"] + order)
+        args.lmap_out.with_name(args.lmap_out.name + ".json").write_text(
+            json.dumps(lmap_receipt, indent=2, sort_keys=True) + "\n")
     result = {"status": "pass", "scope": "cycles-l0-ktx2",
               "bake_scope": args.expected_scope,
               "atlas_exr_sha256": sha256(args.exr),
@@ -361,6 +390,8 @@ def main():
                   rgba[::-1][:rgba.shape[0] - band, :size, :3].astype(np.float32) -
                   pixels[:pixels.shape[0] - band, :, :3] * args.preview_gain))),
               "reflection_probe": probe,
+              "lmap_v3": {"sha256": lmap_receipt["lmap_sha256"], "bytes": lmap_receipt["bytes"]}
+              if lmap_receipt else None,
               "seams": stitch.record,
               "sun": {"texels": [[width - 2, 0], [width - 3, 0]],
                       "visibility_exr_sha256": sha256(args.sun_visibility),
