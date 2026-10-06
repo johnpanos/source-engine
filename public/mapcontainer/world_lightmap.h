@@ -6,8 +6,8 @@
 //
 // LMAP v3 is the one version (2026-10-05; v1 and v2 are refused). The
 // encoding is owned by tools/quality/world_lightmap_v3.py: a 64-byte header
-// ("LMP3", 3, page width, height, layer count 1..3, flags with bit 0 = layer
-// 0's gradient alpha is the sun's visibility, the irradiance and gradient
+// ("LMP3", 3, page width, height, layer count 1..3, flags with bit 0 = every
+// layer's gradient alpha is the sun's visibility, the irradiance and gradient
 // VkFormats BC6H_UFLOAT_BLOCK and BC7_UNORM_BLOCK, each page's bytes, the data
 // offset 64, 8 zero bytes), then per layer its BC6H irradiance blocks and its
 // BC7 gradient blocks. Every layer is directional: the gradient's RGB is the
@@ -71,7 +71,7 @@ struct WorldLightmapBlocks
 	uint32_t width = 0; // of each page
 	uint32_t height = 0;
 	uint32_t layerCount = 0;
-	bool sun = false;             // layer 0's gradient alpha is the sun's visibility
+	bool sun = false;             // every layer's gradient alpha is the sun's visibility
 	uint64_t irradianceBytes = 0; // BC6H, per layer
 	uint64_t gradientBytes = 0;   // BC7, per layer
 	uint64_t irradianceOffset[kWorldLightmapMaxLayers] = {};

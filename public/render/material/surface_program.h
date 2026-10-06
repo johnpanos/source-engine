@@ -318,7 +318,7 @@ struct SurfaceFrame
 	float sunColor[4] = {};
 	// x: the first of its cascade tiles in the view's list, or -1; y: the
 	// cascades' count; z: 1 when a world surface's visibility is the baked
-	// mask in its lightmap page's alpha (LMAP --sun-visibility); w: 0.
+	// mask in its gradient page's alpha (LMAP --sun-visibility); w: 0.
 	float sunShadow[4] = { -1.0f, 0.0f, 0.0f, 0.0f };
 	// The water point's frame terms: x the shaders' time in seconds (the
 	// backend's CurrentTime, which water_ps2x's flow reads); y the scale of

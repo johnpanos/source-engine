@@ -11,7 +11,7 @@ Little-endian, 64-byte header:
    0 u32 magic "LMP3"            4 u32 version (3)
    8 u32 page width              12 u32 page height (the two pages share it)
   16 u32 layer count (1..3: total, [direct,] indirect, as v2's roles)
-  20 u32 flags (bit 0: layer 0's gradient alpha is the sun's visibility)
+  20 u32 flags (bit 0: every layer's gradient alpha is the sun's visibility)
   24 u32 irradiance VkFormat (143, BC6H_UFLOAT_BLOCK)
   28 u32 gradient VkFormat (145, BC7_UNORM_BLOCK)
   32 u64 irradiance bytes per layer   40 u64 gradient bytes per layer
@@ -21,7 +21,8 @@ then per layer: its irradiance blocks, then its gradient blocks (4x4 blocks,
 row-major, partial blocks padded; one mip level). The gradient's RGB is
 beta * 0.5 + 0.5 with beta clamped to [-1, 1] (|beta| <= 1 keeps the
 irradiance non-negative; the receipt reports the clamped share), its alpha the
-sun's [0, 1] visibility on layer 0 with the flag, else 1.
+sun's [0, 1] visibility with the flag (on every layer, so a consumer that
+reads the indirect layer's gradient has it too), else 1.
 
 Unlike v1/v2 there is no probe band or marker texel: reflection probes are the
 RPRB lump and the sun is the map's light environment.
@@ -67,7 +68,7 @@ def build(tool, layers, sun=None):
     """LMAP v3 bytes and a quality report.
 
     `layers`: [(irradiance (h, w, 3) float, beta (h, w, 3) float), ...] in role
-    order; `sun`: layer 0's visibility (h, w) in [0, 1], or None."""
+    order; `sun`: the visibility (h, w) in [0, 1] every layer carries, or None."""
     if not 1 <= len(layers) <= MAX_LAYERS:
         raise LightmapError("InvalidLayerCount")
     height, width = np.asarray(layers[0][0]).shape[:2]
@@ -84,7 +85,7 @@ def build(tool, layers, sun=None):
         beta = np.asarray(beta, np.float32)
         if irradiance.shape != (height, width, 3) or beta.shape != (height, width, 3):
             raise LightmapError("InvalidDescriptor", "layer %d has different pages" % index)
-        texels, clamped = gradient_texels(beta, sun if index == 0 else None)
+        texels, clamped = gradient_texels(beta, sun)
         flat_blocks = bc_codec.encode_bc6h(tool, irradiance)
         gradient_blocks = bc_codec.encode_bc7(tool, texels)
         body += flat_blocks + gradient_blocks
@@ -96,7 +97,7 @@ def build(tool, layers, sun=None):
                  "beta_clamped_share": clamped,
                  "beta_abs_error_mean": float(np.abs(beta_back - np.clip(beta, -1, 1)).mean()),
                  "beta_abs_error_max": float(np.abs(beta_back - np.clip(beta, -1, 1)).max())}
-        if index == 0 and sun is not None:
+        if sun is not None:
             sun_back = decoded[..., 3].astype(np.float32) / 255.0
             entry["sun_abs_error_mean"] = float(np.abs(sun_back - np.clip(sun, 0, 1)).mean())
             entry["sun_abs_error_max"] = float(np.abs(sun_back - np.clip(sun, 0, 1)).max())
@@ -147,5 +148,5 @@ def decode_layer(data, layout, index):
     gradient = bc_codec.decode_bc7(
         data[layer["gradient_offset"]:layer["gradient_offset"] + layout["gradient_bytes"]], w, h)
     beta = gradient[..., :3].astype(np.float32) / 255.0 * 2.0 - 1.0
-    sun = gradient[..., 3].astype(np.float32) / 255.0 if index == 0 and layout["sun"] else None
+    sun = gradient[..., 3].astype(np.float32) / 255.0 if layout["sun"] else None
     return flat, beta, sun

@@ -9,6 +9,7 @@
 #include "render/device/vulkan/fsr.h"
 #endif
 
+#include "mapcontainer/probe_volume.h"
 #include "mapcontainer/world_lightmap.h"
 #include "mapcontainer/world_mesh_decode.h"
 #include "render/graph/compiled_graph.h"
@@ -390,31 +391,19 @@ void CoreWorld::SetStage()
 		return;
 	pass::world::WorldData data = *m_StageWorld;
 	auto stage = std::make_shared<pass::world::WorldStage>();
-	// The sun's baked visibility packed in the total page's alpha: any texel
-	// below one (render_lab's rule).
-	m_StageSunMask = false;
-	const std::vector<std::byte> &flat = m_Capture.lightmap.flat;
-	for ( std::size_t t = 0; t + 8 <= flat.size() && !m_StageSunMask; t += 8 )
-	{
-		std::uint16_t alpha;
-		std::memcpy( &alpha, flat.data() + t + 6, sizeof( alpha ) );
-		// Half 0.999 is 0x3BFE; any alpha below it (positive halves order as
-		// integers).
-		m_StageSunMask = ( alpha & 0x8000u ) == 0 && alpha < 0x3BFEu;
-	}
+	// The sun's baked visibility in the gradient page's alpha (the LMAP
+	// header's flag, or any texel below one in decoded pages).
+	m_StageSunMask = m_Capture.sunMask && m_Capture.lightmap.Directional();
 	stage->lightmap = m_Capture.lightmap;
-	if ( m_Capture.indirect.size() == m_Capture.lightmap.flat.size() )
-	{
+	if ( m_Capture.indirect.flat.size() == m_Capture.lightmap.flat.size() &&
+	     m_Capture.indirect.flatFormat == m_Capture.lightmap.flatFormat )
 		stage->indirect = m_Capture.indirect;
-		if ( m_Capture.indirectGradient.size() == m_Capture.indirect.size() )
-			stage->indirectGradient = m_Capture.indirectGradient;
-	}
 	// Runtime direct light (r_core_runtime_direct) needs the indirect layer;
 	// a map without one draws its total layer. The stage keeps both layers,
 	// so the setting changes between frames (SetQuality).
-	m_StageHasIndirect.store( !stage->indirect.empty(), std::memory_order_relaxed );
+	m_StageHasIndirect.store( !stage->indirect.flat.empty(), std::memory_order_relaxed );
 	m_StageRuntimeDirect.store(
-	    m_RuntimeDirect.load( std::memory_order_relaxed ) && !stage->indirect.empty(),
+	    m_RuntimeDirect.load( std::memory_order_relaxed ) && !stage->indirect.flat.empty(),
 	    std::memory_order_relaxed );
 	stage->probes = m_Capture.probes;
 	stage->reflectionWidth = m_Capture.reflectionWidth;
@@ -424,10 +413,12 @@ void CoreWorld::SetStage()
 	    "Render core: world stage: %zu meshlets, lightmap %ux%u%s%s%s, probes %s, reflection "
 	    "probes %s\n",
 	    data.surfaces.size(), stage->lightmap.width, stage->lightmap.height,
-	    stage->lightmap.Directional() ? " directional" : "",
-	    stage->indirect.empty()           ? ", no indirect layer"
-	    : stage->indirectGradient.empty() ? ", indirect layer (flat)"
-	                                      : ", indirect layer (directional)",
+	    stage->lightmap.Directional() ? stage->lightmap.Blocks() ? " directional (BC6H/BC7)"
+	                                                             : " directional"
+	                                  : "",
+	    stage->indirect.flat.empty()       ? ", no indirect layer"
+	    : !stage->indirect.Directional() ? ", indirect layer (flat)"
+	                                       : ", indirect layer (directional)",
 	    m_StageRuntimeDirect.load( std::memory_order_relaxed ) ? ", runtime direct light"
 	                                                           : ", baked direct light",
 	    stage->probes ? "yes" : "no", stage->reflectionProbes.empty() ? "no" : "yes" );
@@ -870,6 +861,27 @@ void CoreWorld::SetStaticProps( const RenderCoreStaticModel *models, unsigned in
 	}
 }
 
+namespace
+{
+
+// Decoded pages: the sun's mask is any gradient alpha below one (half 0.999
+// is 0x3BFE; positive halves order as integers).
+bool GradientHasSunMask( const pass::world::LightmapPages &pages )
+{
+	if ( pages.Blocks() )
+		return false;
+	for ( std::size_t t = 0; t + 8 <= pages.gradient.size(); t += 8 )
+	{
+		std::uint16_t alpha;
+		std::memcpy( &alpha, pages.gradient.data() + t + 6, sizeof( alpha ) );
+		if ( ( alpha & 0x8000u ) == 0 && alpha < 0x3BFEu )
+			return true;
+	}
+	return false;
+}
+
+} // namespace
+
 bool CoreWorld::StageCapture::UploadLightmap(
     const world_mesh_gpu::WorldLightmapUploadRequest &request )
 {
@@ -878,7 +890,15 @@ bool CoreWorld::StageCapture::UploadLightmap(
 		// A partial update of the total layer: rectangles of its flat page
 		// (a directional layer's left half), patched into this capture's
 		// copy and sent to the pass as they are. One in the gradient half
-		// sends the whole page.
+		// sends the whole page. Block pages take no texels: they become
+		// RGBA16F pages first, and the stage is set again with them.
+		if ( lightmap.Blocks() )
+		{
+			if ( !DecodePages() )
+				return false;
+			if ( m_Owner.m_StageSet )
+				m_Owner.SetStage();
+		}
 		if ( lightmap.flat.empty() || request.height != lightmap.height ||
 		     request.width != ( lightmap.Directional() ? 2 : 1 ) * lightmap.width )
 			return false;
@@ -908,11 +928,26 @@ bool CoreWorld::StageCapture::UploadLightmap(
 				for ( std::uint32_t x = 0; x < region.width; ++x )
 				{
 					const std::uint32_t px = region.x + x;
-					std::vector<std::byte> &page =
-					    px < lightmap.width ? lightmap.flat : lightmap.gradient;
-					const std::uint32_t pageX = px < lightmap.width ? px : px - lightmap.width;
-					std::memcpy( page.data() + ( std::size_t( py ) * lightmap.width + pageX ) * 8,
-					    texels + at + std::size_t( x ) * 8, 8 );
+					const std::byte *texel = texels + at + std::size_t( x ) * 8;
+					if ( px < lightmap.width )
+					{
+						std::memcpy(
+						    lightmap.flat.data() + ( std::size_t( py ) * lightmap.width + px ) * 8,
+						    texel, 8 );
+						continue;
+					}
+					// A gradient texel arrives as signed beta: stored as
+					// beta * 0.5 + 0.5, the sun's alpha kept.
+					std::byte *page = lightmap.gradient.data() +
+					                  ( std::size_t( py ) * lightmap.width + px - lightmap.width ) * 8;
+					for ( int c = 0; c < 3; ++c )
+					{
+						std::uint16_t half;
+						std::memcpy( &half, texel + 2 * c, 2 );
+						half = mapcontainer::FloatToHalf( std::clamp(
+						    mapcontainer::HalfToFloat( half ) * 0.5f + 0.5f, 0.0f, 1.0f ) );
+						std::memcpy( page + 2 * c, &half, 2 );
+					}
 				}
 			}
 		}
@@ -928,35 +963,98 @@ bool CoreWorld::StageCapture::UploadLightmap(
 	}
 	// The total layer's pages (the baked diffuse light, as render_lab draws
 	// it without runtime direct light) and the indirect layer's pages (its
-	// gradient page when the bake wrote its own).
-	const std::size_t layerBytes = std::size_t( request.width ) * request.height * 8;
+	// gradient page when the bake wrote its own): the LMAP v3 lump's blocks
+	// when the request carries it, else the decoded layers.
 	pass::world::LightmapPages total;
 	pass::world::LightmapPages indirect;
-	for ( std::uint32_t i = 0;
-	    i < request.layerCount && i < world_mesh_gpu::kWorldLightmapMaxUploadLayers; ++i )
+	std::vector<std::byte> lump;
+	bool lumpSun = false;
+	mapcontainer::WorldLightmapBlocks blocks;
+	if ( request.lmap &&
+	     mapcontainer::ValidateWorldLightmap( request.lmap, std::size_t( request.lmapBytes ),
+	         mapcontainer::kWorldLightmapVersion, &blocks ) == mapcontainer::WorldLightmapError::Ok )
 	{
-		if ( !request.layers[i] )
-			continue;
-		const std::span<const std::byte> layer(
-		    static_cast<const std::byte *>( request.layers[i] ), layerBytes );
-		if ( request.roles[i] == world_mesh_gpu::WorldLightmapRole::Total )
-			total = pass::world::SplitLightmapLayer( layer, request.width, request.height );
-		else if ( request.roles[i] == world_mesh_gpu::WorldLightmapRole::Indirect )
-			indirect = pass::world::SplitLightmapLayer( layer, request.width, request.height );
+		const std::byte *bytes = static_cast<const std::byte *>( request.lmap );
+		lump.assign( bytes, bytes + request.lmapBytes );
+		lumpSun = blocks.sun;
+		for ( std::uint32_t i = 0; i < blocks.layerCount; ++i )
+		{
+			pass::world::LightmapPages pages = pass::world::BlockLightmapLayer( blocks.width,
+			    blocks.height,
+			    std::span( bytes + blocks.irradianceOffset[i], blocks.irradianceBytes ),
+			    std::span( bytes + blocks.gradientOffset[i], blocks.gradientBytes ) );
+			if ( blocks.roles[i] == mapcontainer::WorldLightmapLayer::Total )
+				total = std::move( pages );
+			else if ( blocks.roles[i] == mapcontainer::WorldLightmapLayer::Indirect )
+				indirect = std::move( pages );
+		}
+	}
+	else
+	{
+		const std::size_t layerBytes = std::size_t( request.width ) * request.height * 8;
+		for ( std::uint32_t i = 0;
+		    i < request.layerCount && i < world_mesh_gpu::kWorldLightmapMaxUploadLayers; ++i )
+		{
+			if ( !request.layers[i] )
+				continue;
+			const std::span<const std::byte> layer(
+			    static_cast<const std::byte *>( request.layers[i] ), layerBytes );
+			if ( request.roles[i] == world_mesh_gpu::WorldLightmapRole::Total )
+				total = pass::world::SplitLightmapLayer( layer, request.width, request.height );
+			else if ( request.roles[i] == world_mesh_gpu::WorldLightmapRole::Indirect )
+				indirect = pass::world::SplitLightmapLayer( layer, request.width, request.height );
+		}
+		lumpSun = GradientHasSunMask( total );
 	}
 	if ( total.flat.empty() )
 		return false;
 	// Recomposed while a stage draws: the pass updates its pages in place.
-	if ( m_Owner.m_StageSet && !lightmap.flat.empty() )
+	if ( m_Owner.m_StageSet && !lightmap.flat.empty() && lightmap.flatFormat == total.flatFormat )
 	{
 		lightmap = total;
+		lmap = std::move( lump );
+		sunMask = lumpSun;
 		m_Owner.m_Pass.SetStageLightmap( std::move( total ) );
 		return true;
 	}
+	// A stage drawing pages of the other kind is set again with these.
+	const bool restage = m_Owner.m_StageSet && !lightmap.flat.empty();
 	lightmap = std::move( total );
-	this->indirect = std::move( indirect.flat );
-	indirectGradient = std::move( indirect.gradient );
+	this->indirect = std::move( indirect );
+	lmap = std::move( lump );
+	sunMask = lumpSun;
+	if ( restage )
+		m_Owner.SetStage();
 	return true;
+}
+
+bool CoreWorld::StageCapture::DecodePages()
+{
+	mapcontainer::WorldLightmapBlocks blocks;
+	std::vector<std::byte> decoded;
+	mapcontainer::WorldLightmapLayout layout;
+	if ( mapcontainer::ValidateWorldLightmap( lmap.data(), lmap.size(),
+	         mapcontainer::kWorldLightmapVersion, &blocks ) != mapcontainer::WorldLightmapError::Ok ||
+	     !mapcontainer::DecodeWorldLightmap( lmap.data(), blocks, &decoded, &layout ) )
+		return false;
+	for ( std::uint32_t i = 0; i < layout.layerCount; ++i )
+	{
+		pass::world::LightmapPages pages = pass::world::SplitLightmapLayer(
+		    std::span( decoded.data() + layout.layerOffset[i], std::size_t( layout.layerBytes ) ),
+		    layout.width, layout.height );
+		if ( layout.roles[i] == mapcontainer::WorldLightmapLayer::Total )
+			lightmap = std::move( pages );
+		else if ( layout.roles[i] == mapcontainer::WorldLightmapLayer::Indirect )
+			indirect = std::move( pages );
+	}
+	// The decoded form carries the sun on the total layer only; the block
+	// pages carry it on every layer's gradient, which runtime direct light
+	// reads from the indirect layer's.
+	if ( indirect.Directional() && indirect.gradient.size() == lightmap.gradient.size() )
+		for ( std::size_t t = 0; t + 8 <= indirect.gradient.size(); t += 8 )
+			std::memcpy( indirect.gradient.data() + t + 6, lightmap.gradient.data() + t + 6, 2 );
+	lmap.clear();
+	return !lightmap.Blocks();
 }
 
 bool CoreWorld::StageCapture::UploadProbeVolume(
@@ -1098,7 +1196,9 @@ bool CoreWorld::StageCapture::UploadReflectionProbes(
 void CoreWorld::StageCapture::Release()
 {
 	lightmap = pass::world::LightmapPages();
-	indirect.clear();
+	indirect = pass::world::LightmapPages();
+	lmap.clear();
+	sunMask = false;
 	probes.reset();
 	change.clear();
 	table.reset();

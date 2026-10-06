@@ -405,6 +405,8 @@ GENERATED = {
          DEVICE_OPTIONS + ("-DSEEDED_LIGHTMAP_NO_SMOOTH_NORMAL",)),
         ("kLightmapBasisNoGainClamp", LAB + "/lightmap_basis_check.comp",
          DEVICE_OPTIONS + ("-DSEEDED_LIGHTMAP_NO_GAIN_CLAMP",)),
+        ("kLightmapBasisGradientUnbiased", LAB + "/lightmap_basis_check.comp",
+         DEVICE_OPTIONS + ("-DSEEDED_LIGHTMAP_GRADIENT_UNBIASED",)),
         ("kLightmapBasisRnmUnsquared", LAB + "/lightmap_basis_check.comp",
          DEVICE_OPTIONS + ("-DSEEDED_LIGHTMAP_RNM_UNSQUARED",)),
         ("kLightmapBasisRnmOffsetFromZero", LAB + "/lightmap_basis_check.comp",

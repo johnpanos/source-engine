@@ -37,7 +37,9 @@ class LightmapV3Test(unittest.TestCase):
         self.assertLess(np.abs(back - flat).max() / flat.max(), 0.05)
         self.assertLess(np.abs(beta_back - beta).max(), 0.05)
         self.assertLess(np.abs(sun_back - sun).max(), 0.02)
-        self.assertIsNone(lmap.decode_layer(data, layout, 1)[2])
+        # Every layer carries the sun (the indirect layer's gradient serves
+        # runtime direct light).
+        self.assertLess(np.abs(lmap.decode_layer(data, layout, 1)[2] - sun).max(), 0.02)
         self.assertLess(report["bytes"], report["rgba16f_bytes"] / 5)
 
     def test_beta_beyond_one_is_clamped_and_reported(self):

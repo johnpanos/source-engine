@@ -267,9 +267,9 @@ std::uint32_t StageTerms( const WorldStage &stage, bool runtimeDirect )
 {
 	material::SceneTermInputs inputs;
 	inputs.runtimeDirect = runtimeDirect;
-	inputs.indirectLightmap = !stage.indirect.empty();
+	inputs.indirectLightmap = !stage.indirect.flat.empty();
 	inputs.totalDirectionalLightmap = stage.lightmap.Directional();
-	inputs.indirectDirectionalLightmap = !stage.indirectGradient.empty();
+	inputs.indirectDirectionalLightmap = stage.indirect.Directional();
 	inputs.probeVolume = stage.probes.has_value();
 	inputs.probeBounce = stage.probes.has_value(); // the change atlas is always supplied
 	inputs.reflectionProbes = !stage.reflectionProbes.empty();
@@ -408,6 +408,57 @@ bool LevelSurfaceDrawable(
 
 } // namespace
 
+namespace
+{
+
+float LightmapHalfToFloat( std::uint16_t half )
+{
+	const std::uint32_t sign = std::uint32_t( half & 0x8000u ) << 16;
+	std::uint32_t exponent = ( half >> 10 ) & 0x1fu;
+	std::uint32_t mantissa = half & 0x3ffu;
+	std::uint32_t bits;
+	if ( exponent == 0 )
+	{
+		if ( mantissa == 0 )
+			bits = sign;
+		else
+		{
+			// A subnormal: normalize it.
+			exponent = 113;
+			while ( !( mantissa & 0x400u ) )
+			{
+				mantissa <<= 1;
+				--exponent;
+			}
+			bits = sign | ( exponent << 23 ) | ( ( mantissa & 0x3ffu ) << 13 );
+		}
+	}
+	else if ( exponent == 31 )
+		bits = sign | 0x7f800000u | ( mantissa << 13 );
+	else
+		bits = sign | ( ( exponent + 112 ) << 23 ) | ( mantissa << 13 );
+	float value;
+	std::memcpy( &value, &bits, sizeof( value ) );
+	return value;
+}
+
+// A value in [0, 1] (the gradient page's channels), rounded to nearest.
+std::uint16_t LightmapUnitToHalf( float value )
+{
+	value = std::clamp( value, 0.0f, 1.0f );
+	if ( value < 6.103515625e-05f )
+		return std::uint16_t( std::lround( value * 16777216.0f ) ); // subnormal
+	std::uint32_t bits;
+	std::memcpy( &bits, &value, sizeof( bits ) );
+	const std::uint32_t exponent = ( bits >> 23 ) - 112;
+	std::uint32_t half = ( exponent << 10 ) | ( ( bits >> 13 ) & 0x3ffu );
+	if ( bits & 0x1000u )
+		++half;
+	return std::uint16_t( half );
+}
+
+} // namespace
+
 LightmapPages SplitLightmapLayer(
     std::span<const std::byte> layer, std::uint32_t width, std::uint32_t height )
 {
@@ -431,8 +482,37 @@ LightmapPages SplitLightmapLayer(
 	{
 		const std::byte *from = layer.data() + std::size_t( y ) * row;
 		std::copy( from, from + half, pages.flat.data() + std::size_t( y ) * half );
-		std::copy( from + half, from + row, pages.gradient.data() + std::size_t( y ) * half );
+		// The stored convention: beta * 0.5 + 0.5, and the sun (the flat
+		// texel's alpha in the decoded form) in the gradient's alpha.
+		for ( std::uint32_t x = 0; x < pages.width; ++x )
+		{
+			std::uint16_t flat[4], beta[4], out[4];
+			std::memcpy( flat, from + std::size_t( x ) * kTexel, sizeof( flat ) );
+			std::memcpy( beta, from + half + std::size_t( x ) * kTexel, sizeof( beta ) );
+			for ( int c = 0; c < 3; ++c )
+				out[c] = LightmapUnitToHalf( LightmapHalfToFloat( beta[c] ) * 0.5f + 0.5f );
+			out[3] = LightmapUnitToHalf( LightmapHalfToFloat( flat[3] ) );
+			std::memcpy(
+			    pages.gradient.data() + std::size_t( y ) * half + std::size_t( x ) * kTexel, out,
+			    sizeof( out ) );
+		}
 	}
+	return pages;
+}
+
+LightmapPages BlockLightmapLayer( std::uint32_t width, std::uint32_t height,
+    std::span<const std::byte> irradiance, std::span<const std::byte> gradient )
+{
+	LightmapPages pages;
+	const std::uint64_t bytes = device::RegionBytes( Format::kBC6HUfloat, width, height );
+	if ( width == 0 || height == 0 || irradiance.size() != bytes || gradient.size() != bytes )
+		return pages;
+	pages.width = width;
+	pages.height = height;
+	pages.flatFormat = Format::kBC6HUfloat;
+	pages.gradientFormat = Format::kBC7Unorm;
+	pages.flat.assign( irradiance.begin(), irradiance.end() );
+	pages.gradient.assign( gradient.begin(), gradient.end() );
 	return pages;
 }
 
@@ -2092,8 +2172,8 @@ void WorldPass::RecordBatch(
 	auto stageMake = [&]( const char *name, Format format, std::uint32_t width,
 	                     std::uint32_t height, std::span<const std::byte> bytes ) -> bool
 	{
-		const std::size_t texel = format == Format::kRGBA32Float ? 16 : 8;
-		if ( width == 0 || height == 0 || bytes.size() != std::size_t( width ) * height * texel )
+		if ( width == 0 || height == 0 ||
+		     bytes.size() != device::RegionBytes( format, width, height ) )
 			return false;
 		TextureDesc desc;
 		desc.format = format;
@@ -2121,17 +2201,18 @@ void WorldPass::RecordBatch(
 	{
 		const WorldStage &stage = *world->stage;
 		const LightmapPages &pages = stage.lightmap;
+		const LightmapPages &indirect = stage.indirect;
 		bool made = stageMake(
-		    kStageLightmap, Format::kRGBA16Float, pages.width, pages.height, pages.flat );
+		    kStageLightmap, pages.flatFormat, pages.width, pages.height, pages.flat );
 		if ( made && pages.Directional() )
 			made = stageMake(
-			    kStageGradient, Format::kRGBA16Float, pages.width, pages.height, pages.gradient );
-		if ( made && !stage.indirect.empty() )
+			    kStageGradient, pages.gradientFormat, pages.width, pages.height, pages.gradient );
+		if ( made && !indirect.flat.empty() )
 			made = stageMake(
-			    kStageIndirect, Format::kRGBA16Float, pages.width, pages.height, stage.indirect );
-		if ( made && !stage.indirectGradient.empty() )
-			made = stageMake( kStageIndirectGradient, Format::kRGBA16Float, pages.width,
-			    pages.height, stage.indirectGradient );
+			    kStageIndirect, indirect.flatFormat, pages.width, pages.height, indirect.flat );
+		if ( made && indirect.Directional() )
+			made = stageMake( kStageIndirectGradient, indirect.gradientFormat, pages.width,
+			    pages.height, indirect.gradient );
 		if ( made && stage.probes )
 		{
 			const StageProbeVolume &probes = *stage.probes;
@@ -2175,8 +2256,13 @@ void WorldPass::RecordBatch(
 			const bool whole = r.stageLightmapRevision < s.stageLightmapBaseRevision;
 			const LightmapPages &base = s.stageLightmap ? *s.stageLightmap : own;
 			bool fits = true;
-			if ( whole )
+			// Region patches are RGBA16F texels: block pages take none (the
+			// composition restages decoded pages before sending any).
+			if ( !s.stageLightmapPatches.empty() && base.Blocks() )
+				fits = false;
+			if ( whole && fits )
 				fits = base.width == desc.width && base.height == desc.height &&
+				       base.flatFormat == desc.format &&
 				       base.Directional() == own.Directional() &&
 				       stageUpload( r.stageTextures[kStageLightmap], desc, base.flat,
 				           ResourceUsage::kSampled ) &&
@@ -2628,10 +2714,10 @@ void WorldPass::RecordBatch(
 				else if ( input == "lightmap-gradient" )
 					inputs.push_back( stage.lightmap.Directional() ? kStageGradient : "" );
 				else if ( input == "lightmap-indirect" )
-					inputs.push_back( stage.indirect.empty() ? "" : kStageIndirect );
+					inputs.push_back( stage.indirect.flat.empty() ? "" : kStageIndirect );
 				else if ( input == "lightmap-indirect-gradient" )
 					inputs.push_back(
-					    stage.indirectGradient.empty() ? "" : kStageIndirectGradient );
+					    stage.indirect.Directional() ? kStageIndirectGradient : "" );
 				else
 				{
 					note( "a program reads draw input " + input + ", which the world stage lacks" );

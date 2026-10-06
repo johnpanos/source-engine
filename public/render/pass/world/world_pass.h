@@ -106,21 +106,39 @@ struct WorldSurface
 // texel the signed world-space luminance gradient beta of E(n) = a + g . n,
 // relative to E0. The world mesh's lightmap coordinates span the flat half,
 // so the halves become two pages of the same size.
+//
+// The pages are as LMAP v3 stores them (public/mapcontainer/world_lightmap.h):
+// the flat page linear light (alpha unused), the gradient page beta * 0.5 +
+// 0.5 in RGB (the shader takes beta = g * 2 - 1) and the sun's baked
+// visibility in A (1 without a sun mask). They are either the lump's blocks
+// (BlockLightmapLayer: BC6H flat, BC7 gradient) or RGBA16F texels
+// (SplitLightmapLayer); only RGBA16F pages take region patches.
 struct LightmapPages
 {
 	std::uint32_t width = 0; // of each page
 	std::uint32_t height = 0;
-	std::vector<std::byte> flat;     // RGBA16F texels, row 0 at the top
-	std::vector<std::byte> gradient; // RGBA16F beta; empty for a flat page
+	device::Format flatFormat = device::Format::kRGBA16Float;
+	device::Format gradientFormat = device::Format::kRGBA16Float;
+	std::vector<std::byte> flat;     // texels or blocks, row 0 at the top
+	std::vector<std::byte> gradient; // empty for a flat page
 
 	bool Directional() const { return !gradient.empty(); }
+	bool Blocks() const { return flatFormat != device::Format::kRGBA16Float; }
 };
 
-// Splits one layer of `width` x `height` RGBA16F texels; a page whose width
-// is twice its height is directional. No page (flat empty) when `layer` does
-// not hold exactly that many texels.
+// Splits one layer of the decoded form (mapcontainer::DecodeWorldLightmap:
+// `width` x `height` RGBA16F texels, a page twice as wide as tall holding
+// the flat light, the sun in its alpha, and signed beta) into RGBA16F pages
+// of the convention above. A square layer is a flat page (its alpha dropped).
+// No page (flat empty) when `layer` does not hold exactly that many texels.
 LightmapPages SplitLightmapLayer(
     std::span<const std::byte> layer, std::uint32_t width, std::uint32_t height );
+
+// One LMAP v3 layer's blocks as pages: `irradiance` BC6H and `gradient` BC7,
+// `width` x `height` texels each. No page (flat empty) when either span does
+// not hold exactly that many blocks.
+LightmapPages BlockLightmapLayer( std::uint32_t width, std::uint32_t height,
+    std::span<const std::byte> irradiance, std::span<const std::byte> gradient );
 
 // The probe volume as render/shaders/common/probe_volume.glsl reads it (RFC
 // 0011 render.probe-volume.v1): the atlas and the grid table rows
@@ -145,11 +163,10 @@ struct StageProbeVolume
 // covers (kSurfaceProbeBounce). A surface's lightmapPage is not read.
 struct WorldStage
 {
-	LightmapPages lightmap;          // the baked (total) layer's pages
-	std::vector<std::byte> indirect; // the indirect layer's flat page; empty without one
-	// The indirect layer's gradient page (its own directional half); empty
-	// when the bake wrote none.
-	std::vector<std::byte> indirectGradient;
+	LightmapPages lightmap; // the baked (total) layer's pages
+	// The indirect layer's pages (flat empty without one; its gradient empty
+	// when the bake wrote none), the same size and kind as the total's.
+	LightmapPages indirect;
 	std::optional<StageProbeVolume> probes;
 	std::uint32_t reflectionWidth = 0;
 	std::uint32_t reflectionHeight = 0;

@@ -358,9 +358,14 @@ private:
 		void Release() override;
 		bool IsResident() const override { return true; }
 
-		pass::world::LightmapPages lightmap;                 // the total layer's pages
-		std::vector<std::byte> indirect;                     // the indirect layer's flat page
-		std::vector<std::byte> indirectGradient;             // its gradient page, or empty
+		pass::world::LightmapPages lightmap; // the total layer's pages
+		pass::world::LightmapPages indirect; // the indirect layer's pages (flat empty: none)
+		// The LMAP v3 lump the pages are blocks of (empty once they are
+		// decoded for a region update), and whether it carries a sun mask.
+		std::vector<std::byte> lmap;
+		bool sunMask = false;
+		// Block pages become RGBA16F pages (a region update needs texels).
+		bool DecodePages();
 		std::optional<pass::world::StageProbeVolume> probes; // the bake
 		// The latest change from the bake (empty: none) and its grid table,
 		// which a stage set later starts from.

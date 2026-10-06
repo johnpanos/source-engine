@@ -37,8 +37,8 @@ enum class WorldLightmapRole : uint32_t
 static const uint32_t kWorldLightmapMaxUploadLayers = 3;
 
 // Linear RGBA16F texels, rows top-left first, one pointer per layer; layer 0
-// is the total page. The caller validated the LMAP lump and owns the bytes
-// until UploadLightmap returns.
+// is the total page (mapcontainer::DecodeWorldLightmap's form). The caller
+// validated the LMAP lump and owns the bytes until UploadLightmap returns.
 struct ProbeAtlasRegion;
 
 struct WorldLightmapUploadRequest
@@ -48,6 +48,10 @@ struct WorldLightmapUploadRequest
 	uint32_t layerCount = 0;
 	const void *layers[kWorldLightmapMaxUploadLayers] = {};
 	WorldLightmapRole roles[kWorldLightmapMaxUploadLayers] = {};
+	// The validated LMAP v3 lump `layers` were decoded from, when there is
+	// one: a provider may upload its BC6H/BC7 blocks instead of the layers.
+	const void *lmap = nullptr;
+	uint64_t lmapBytes = 0;
 	// A partial update of the provider's current lightmap (the last whole
 	// request's size and layers): `layers` are null, and `regionCount`
 	// rectangles of the total layer changed, their texels packed rectangle

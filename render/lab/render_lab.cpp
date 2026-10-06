@@ -501,11 +501,7 @@ int Run( const Options &options )
 	         lmap->data(), lmap->size(), lmapInfo.version, &blocks );
 	    error != mapcontainer::WorldLightmapError::Ok )
 		return Fail( std::string( "LMAP: " ) + mapcontainer::WorldLightmapErrorName( error ) );
-	// The lab's pages are the RGBA16F form (LMAP v3's CPU decode).
-	mapcontainer::WorldLightmapLayout layout{};
-	std::vector<std::byte> decoded;
-	if ( !mapcontainer::DecodeWorldLightmap( lmap->data(), blocks, &decoded, &layout ) )
-		return Fail( "LMAP: decode failed" );
+	// The lab uploads the lump's blocks (BC6H light, BC7 gradient).
 	// The layer the world's baked diffuse light comes from; a map without it
 	// cannot be drawn so (no silent fallback to the total layer). The
 	// indirect layer, when the map carries one, is what the view's ambient
@@ -513,13 +509,20 @@ int Run( const Options &options )
 	// (kSurfaceRuntimeDirect), and the total layer's page is still bound for
 	// the sun's baked mask.
 	const mapcontainer::WorldLightmapLayer bakedRole = BakedLightmapLayer( options.coreDirect );
-	if ( mapcontainer::WorldLightmapLayerIndex( layout, bakedRole ) < 0 )
+	if ( mapcontainer::WorldLightmapLayerIndex( blocks, bakedRole ) < 0 )
 		return Fail( std::string( "LMAP carries no " ) +
 		             mapcontainer::WorldLightmapLayerName( bakedRole ) + " layer" );
 	const int bakedLayer =
-	    mapcontainer::WorldLightmapLayerIndex( layout, mapcontainer::WorldLightmapLayer::Total );
+	    mapcontainer::WorldLightmapLayerIndex( blocks, mapcontainer::WorldLightmapLayer::Total );
 	const int indirectLayer =
-	    mapcontainer::WorldLightmapLayerIndex( layout, mapcontainer::WorldLightmapLayer::Indirect );
+	    mapcontainer::WorldLightmapLayerIndex( blocks, mapcontainer::WorldLightmapLayer::Indirect );
+	const auto layerPages = [&]( int layer )
+	{
+		const std::byte *bytes = reinterpret_cast<const std::byte *>( lmap->data() );
+		return pass::world::BlockLightmapLayer( blocks.width, blocks.height,
+		    std::span( bytes + blocks.irradianceOffset[layer], blocks.irradianceBytes ),
+		    std::span( bytes + blocks.gradientOffset[layer], blocks.gradientBytes ) );
+	};
 
 	// The entity lump: participating media and the frame's lights.
 	LabMedia media;
@@ -577,58 +580,41 @@ int Run( const Options &options )
 		resources::MeshCache meshes( *device );
 		material::GroupResidency groups( *device, cache );
 
-		// The lightmap pages: linear light, sampled as it is (scale 1). The
-		// flat page (its alpha the sun's baked visibility when the bake
-		// packed it), the gradient page the lightmap basis reads (a
-		// directional page's right half; zero for a flat page, which is the
-		// flat light bitwise), and the indirect layer's flat page.
+		// The lightmap pages: linear light, sampled as it is (scale 1), the
+		// lump's blocks. The flat page, the gradient page the lightmap basis
+		// reads (beta * 0.5 + 0.5, its alpha the sun's baked visibility when
+		// the bake packed it) and the indirect layer's flat page.
 		bool directional = false;
 		bool sunMask = false;
 		bool indirectPage = false;
 		{
-			const LightmapLayerPages pages = SplitLightmapLayer(
-			    std::span<const std::byte>( decoded.data() + layout.layerOffset[bakedLayer],
-			        std::size_t( layout.layerBytes ) ),
-			    layout.width, layout.height );
-			if ( pages.flat.empty() )
+			const LightmapLayerPages pages = layerPages( bakedLayer );
+			if ( pages.flat.empty() || !pages.Directional() )
 				return Fail( std::string( "LMAP's " ) +
 				             mapcontainer::WorldLightmapLayerName( bakedRole ) +
-				             " layer does not split into pages" );
+				             " layer's blocks do not make pages" );
 			TextureDesc desc;
-			desc.format = Format::kRGBA16Float;
+			desc.format = pages.flatFormat;
 			desc.width = pages.width;
 			desc.height = pages.height;
 			desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kSampled };
 			if ( !cache.Stage( kLightmapPage, desc, pages.flat ) )
 				return Fail( "the lightmap page was refused" );
-			const std::vector<std::byte> zero( pages.flat.size(), std::byte( 0 ) );
 			// The gradient page: the total's, or with --core-direct the
-			// indirect layer's own (zero when the bake wrote none).
+			// indirect layer's own (both carry the sun's mask).
 			LightmapLayerPages indirect;
 			if ( indirectLayer >= 0 )
-				indirect = SplitLightmapLayer(
-				    std::span<const std::byte>( decoded.data() + layout.layerOffset[indirectLayer],
-				        std::size_t( layout.layerBytes ) ),
-				    layout.width, layout.height );
+				indirect = layerPages( indirectLayer );
 			const LightmapLayerPages &basis = options.coreDirect ? indirect : pages;
-			directional =
-			    basis.Directional() && basis.width == pages.width && basis.height == pages.height;
-			if ( !cache.Stage( kLightmapGradient, desc,
-			         directional ? std::span<const std::byte>( basis.gradient )
-			                     : std::span<const std::byte>( zero ) ) )
+			directional = basis.Directional();
+			if ( !directional )
+				return Fail( "--core-direct needs the LMAP's indirect layer" );
+			TextureDesc gradientDesc = desc;
+			gradientDesc.format = basis.gradientFormat;
+			if ( !cache.Stage( kLightmapGradient, gradientDesc, basis.gradient ) )
 				return Fail( "the lightmap gradient page was refused" );
-			// The sun's mask: any texel of the total page's alpha below one.
-			if ( lights.sun )
-			{
-				for ( std::size_t t = 0; t + 8 <= pages.flat.size() && !sunMask; t += 8 )
-				{
-					std::uint16_t alpha;
-					std::memcpy( &alpha, pages.flat.data() + t + 6, sizeof( alpha ) );
-					sunMask = HalfToFloat( alpha ) < 0.999f;
-				}
-			}
-			if ( !indirect.flat.empty() && indirect.width == pages.width &&
-			     indirect.height == pages.height )
+			sunMask = lights.sun && blocks.sun;
+			if ( !indirect.flat.empty() )
 			{
 				if ( !cache.Stage( kLightmapIndirect, desc, indirect.flat ) )
 					return Fail( "the lightmap's indirect page was refused" );
@@ -636,9 +622,9 @@ int Run( const Options &options )
 			}
 			if ( options.coreDirect && !indirectPage )
 				return Fail( "--core-direct needs the LMAP's indirect layer" );
-			std::printf( "render_lab: LMAP v%u %ux%u, the %s layer%s%s%s\n", layout.version,
-			    layout.width, layout.height, mapcontainer::WorldLightmapLayerName( bakedRole ),
-			    directional ? ", directional" : "", sunMask ? ", sun mask" : "",
+			std::printf( "render_lab: LMAP v%u %ux%u BC6H/BC7, the %s layer%s%s%s\n",
+			    mapcontainer::kWorldLightmapVersion, blocks.width, blocks.height,
+			    mapcontainer::WorldLightmapLayerName( bakedRole ), directional ? ", directional" : "", sunMask ? ", sun mask" : "",
 			    indirectPage ? ", indirect layer" : "" );
 		}
 

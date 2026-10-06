@@ -4788,6 +4788,9 @@ void CModelLoader::Map_LoadWorldMesh()
 			lightmapRequest.roles[i] =
 			    static_cast<world_mesh_gpu::WorldLightmapRole>( lightmapLayout.roles[i] );
 		}
+		// The render core uploads the lump's blocks; the frozen backend the layers.
+		lightmapRequest.lmap = lightmapBytes.Base();
+		lightmapRequest.lmapBytes = uint64( lightmapBytes.Count() );
 		Msg( "Map %s: LMAP v%u %ux%u, %u layer%s\n", s_szMapName, lightmapLayout.version,
 		    lightmapLayout.width, lightmapLayout.height, lightmapLayout.layerCount,
 		    lightmapLayout.layerCount == 1 ? "" : "s" );

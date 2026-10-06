@@ -32,7 +32,7 @@ layout( set = 0, binding = 0 ) uniform Frame
 	// The sun: towards it (w the tangent of its disc's angular radius), its
 	// diffuse light (w 1 when that is in the baked light) and its shadow (x
 	// the first cascade tile or -1, y the cascades, z 1 to read the baked
-	// mask in the lightmap page's alpha).
+	// mask in the gradient page's alpha).
 	vec4 sunDirection;
 	vec4 sunColor;
 	vec4 sunShadow;

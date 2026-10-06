@@ -904,7 +904,7 @@ void PbrSurface( out float coverage )
 		            : LightmapPageSample( lightmap, lightmapSampler, lightmapUv );
 		if ( Term( kDirectionalLightmap ) )
 			baked = LightmapDirectional( baked,
-			    LightmapPageSample( lightmapGradient, lightmapGradientSampler, lightmapUv ), normal,
+			    LightmapGradientSample( lightmapGradient, lightmapGradientSampler, lightmapUv ), normal,
 			    smoothNormal );
 		baked = furnace ? vec3( 1.0 ) : baked * frame.light.x;
 	}
@@ -932,7 +932,7 @@ void PbrSurface( out float coverage )
 			    LightmapPageSample( lightmapIndirect, lightmapIndirectSampler, lightmapUv );
 			if ( Term( kDirectionalLightmap ) )
 				indirect = LightmapDirectional( indirect,
-				    LightmapPageSample( lightmapGradient, lightmapGradientSampler, lightmapUv ),
+				    LightmapGradientSample( lightmapGradient, lightmapGradientSampler, lightmapUv ),
 				    normal, smoothNormal );
 			light = max( baked - indirect * frame.light.x *
 			                         ( vec3( 1.0 ) - MultiBounceOcclusion( screenOcclusion,
@@ -1234,8 +1234,10 @@ void PbrSurface( out float coverage )
 			float visibility = 1.0;
 			if ( DebugTermOn( kDebugTermShadowVisibility ) && lightmapped && frame.sunShadow.z > 0.5 )
 				visibility = clamp(
-				    textureLod( sampler2D( lightmap, lightmapSampler ), lightmapUv, 0.0 ).a, 0.0,
-				    1.0 );
+				    textureLod( sampler2D( lightmapGradient, lightmapGradientSampler ), lightmapUv,
+				        0.0 )
+				        .a,
+				    0.0, 1.0 );
 			else if ( DebugTermOn( kDebugTermShadowVisibility ) && frame.sunShadow.x >= 0.0 )
 			{
 				// The first cascade holding the point.

@@ -32,7 +32,8 @@
 //			                directional, RNM) against its oracle, the
 //			                directional page split and the baked layer rule.
 //			                Seeded: no-smooth-normal, no-gain-clamp,
-//			                rnm-unsquared, rnm-offset-from-zero, whole-page.
+//			                gradient-unbiased, rnm-unsquared,
+//			                rnm-offset-from-zero, whole-page.
 //			probe-volume    RFC 0016 K11: the probe volume (probe_volume.glsl)
 //			                against mapcontainer::ProbeVolumeView over the
 //			                PRBV fixtures. Seeded: no-normal-bias,
@@ -78,6 +79,7 @@ int RunSpriteSuite( int argc, char **argv );
 int RunSoftParticleSuite( int argc, char **argv );
 int RunSelfIllumSuite( int argc, char **argv );
 int RunViewStateSuite( int argc, char **argv );
+int RunGpuSubmissionSuite( int argc, char **argv );
 int RunModelSelectionSuite( int argc, char **argv );
 
 int RunCostOverlaySuite( int argc, char **argv );

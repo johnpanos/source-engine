@@ -70,6 +70,9 @@ using math::float3;
 constexpr std::uint32_t kSize = 64;
 constexpr float kFlat[3] = { 0.4f, 0.6f, 0.8f };
 constexpr float kGradient[3] = { 0.5f, -0.3f, 0.2f };
+// The gradient page as LMAP v3 stores it: beta * 0.5 + 0.5.
+constexpr float kGradientStored[3] = { 0.5f * kGradient[0] + 0.5f, 0.5f * kGradient[1] + 0.5f,
+    0.5f * kGradient[2] + 0.5f };
 // The normal map's texel (RGBA8): a normal tilted toward +x and -y.
 constexpr int kNormalTexel[2] = { 200, 90 };
 constexpr float kConditioning = 0.01f;
@@ -182,7 +185,7 @@ std::optional<std::string> Prepare( Lab &lab )
 	page.width = page.height = 4;
 	page.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kSampled };
 	bool staged = lab.textures.Stage( "mt/flat", page, HalfPage( kFlat ) ).HasValue() &&
-	              lab.textures.Stage( "mt/gradient", page, HalfPage( kGradient ) ).HasValue();
+	              lab.textures.Stage( "mt/gradient", page, HalfPage( kGradientStored ) ).HasValue();
 	staged = staged && StageConstant( lab.textures, "mt/base", Format::kRGBA8Srgb,
 	                       ByteTexel( 255, 255, 255, 255 ) );
 	staged = staged && StageConstant( lab.textures, "mt/dielectric", Format::kRGBA8Unorm,
@@ -460,7 +463,7 @@ std::optional<std::string> LightmapChecks( Lab &lab, Results &results )
 	for ( int k = 0; k < 3; ++k )
 	{
 		flat[k] = Rounded( kFlat[k] );
-		gradient[k] = Rounded( kGradient[k] );
+		gradient[k] = Rounded( kGradientStored[k] ) * 2.0f - 1.0f;
 		flatLight[k] = flat[k] * scale;
 	}
 	// The mapped normal: the texel decoded, in the frame S = +x, T = +y, N = +z.

@@ -288,7 +288,8 @@ std::optional<std::string> BasisChecks( IRenderDevice2 &device,
 	// beta on the right, and the oracle's own copies of both.
 	std::vector<std::byte> e0Bytes, betaBytes, rnmBytes;
 	const Page e0 = MakePage( kPage, kPage, 0.05f, 2.0f, random, e0Bytes );
-	const Page beta = MakePage( kPage, kPage, -2.0f, 2.0f, random, betaBytes );
+	// LMAP v3 stores |beta| <= 1 (beta * 0.5 + 0.5 in the gradient page).
+	const Page beta = MakePage( kPage, kPage, -1.0f, 1.0f, random, betaBytes );
 	const Page rnm = MakePage( kRnmWidth, kPage, 0.0f, 3.0f, random, rnmBytes );
 	std::vector<std::byte> layer( std::size_t( 2 * kPage ) * kPage * 8 );
 	for ( std::uint32_t y = 0; y < kPage; ++y )
@@ -301,7 +302,23 @@ std::optional<std::string> BasisChecks( IRenderDevice2 &device,
 	results.That( pages.Directional() && pages.width == kPage && pages.height == kPage,
 	    "page-split.directional-halves", "the 2:1 layer did not split into two pages" );
 	results.That( pages.flat == e0Bytes, "page-split.flat-is-left-half" );
-	results.That( pages.gradient == betaBytes, "page-split.gradient-is-right-half" );
+	// The gradient page stores beta * 0.5 + 0.5; the oracle reads beta as the
+	// shader does (g * 2 - 1), from the stored halves.
+	Page stored{ kPage, kPage, {} };
+	stored.texels.resize( beta.texels.size() );
+	bool storedNear = pages.gradient.size() == betaBytes.size();
+	for ( std::size_t i = 0; storedNear && i < stored.texels.size(); ++i )
+	{
+		std::uint16_t half[4];
+		std::memcpy( half, pages.gradient.data() + i * 8, sizeof( half ) );
+		for ( std::size_t c = 0; c < 3; ++c )
+		{
+			stored.texels[i][c] = HalfToFloat( half[c] ) * 2.0f - 1.0f;
+			storedNear = storedNear && std::fabs( stored.texels[i][c] - beta.texels[i][c] ) < 2e-3f;
+		}
+		storedNear = storedNear && half[3] == 0x3c00u; // the flat texel's alpha, 1
+	}
+	results.That( storedNear, "page-split.gradient-is-right-half-biased" );
 	const LightmapLayerPages square = SplitLightmapLayer( e0Bytes, kPage, kPage );
 	results.That(
 	    !square.Directional() && square.flat == e0Bytes, "page-split.flat-page-unchanged" );
@@ -310,7 +327,13 @@ std::optional<std::string> BasisChecks( IRenderDevice2 &device,
 
 	resources::TextureCache cache( device );
 	TextureId flatPage, gradientPage, rnmPage, zeroPage;
-	const std::vector<std::byte> zeros( std::size_t( kPage ) * kPage * 8, std::byte( 0 ) );
+	// A zero gradient as stored: 0.5 in RGB (exact in half), alpha 1.
+	std::vector<std::byte> zeros( std::size_t( kPage ) * kPage * 8 );
+	for ( std::size_t i = 0; i < zeros.size(); i += 8 )
+	{
+		const std::uint16_t half[4] = { 0x3800u, 0x3800u, 0x3800u, 0x3c00u };
+		std::memcpy( zeros.data() + i, half, sizeof( half ) );
+	}
 	// The seeded loader defect stages the whole layer as the flat light.
 	if ( std::optional<std::string> why =
 	         wholePage ? Stage( cache, "flat", 2 * kPage, kPage, layer, flatPage )
@@ -411,7 +434,7 @@ std::optional<std::string> BasisChecks( IRenderDevice2 &device,
 			continue;
 		}
 		const std::array<float, 3> texel = e0.At( c.texelX, c.texelY );
-		const std::array<float, 3> gradient = beta.At( c.texelX, c.texelY );
+		const std::array<float, 3> gradient = stored.At( c.texelX, c.texelY );
 		bool ok = true;
 		for ( std::size_t k = 0; k < 3; ++k )
 			ok = ok && Near( texel[k], main.Flat( i )[k], kRelative, kAbsolute );
@@ -515,6 +538,7 @@ std::optional<std::string> RunOnce( bool validate, std::span<const std::uint32_t
 const Seeded kBasisSeeded[] = {
     { "no-smooth-normal", spirv::kLightmapBasisNoSmoothNormal, "directional." },
     { "no-gain-clamp", spirv::kLightmapBasisNoGainClamp, "directional." },
+    { "gradient-unbiased", spirv::kLightmapBasisGradientUnbiased, "directional." },
     { "rnm-unsquared", spirv::kLightmapBasisRnmUnsquared, "rnm." },
     { "rnm-offset-from-zero", spirv::kLightmapBasisRnmOffsetFromZero, "rnm." },
     { "whole-page", kWholePageMarker, "flat." } };
