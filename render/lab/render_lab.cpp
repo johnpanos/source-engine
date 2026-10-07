@@ -48,8 +48,11 @@
 //			Usage: render_lab --game <dir> --map <file.bsp> --eye x,y,z
 //			           --forward x,y,z --up x,y,z --hfov degrees --size WxH
 //			           --out <file.pfm> [--model <models/x.mdl> --model-origin
-//			           x,y,z] [--model-sequence label] [--model-no-shadow]
+//			           x,y,z] [--model-angles p,y,r] [--model-sequence label]
+//			           (repeatable)] [--model-no-shadow]
 //			           [--mover x0,y0,z0,x1,y1,z1,material]
+//			           [--transmission-defect skip-capture|before-opaque|
+//			           viewport-offset]
 //			           [--validate] [--dump-mesh] [--core-direct]
 //			           [--debug-view n] [--fog-scale s] [--no-volumetric]
 //			           [--output-peak p] [--entities portal|portal2] [--time n]
@@ -80,6 +83,7 @@
 #include "render/device/device.h"
 #include "render/device/vulkan/provider.h"
 #include "render/frame/debug_specialization.h"
+#include "render/graph/scene_color.h"
 #include "render/material/lightmapped_family.h"
 #include "render/material/material_programs.h"
 #include "render/material/program_resolver.h"
@@ -97,6 +101,7 @@
 #include "render/pass/volumetric/volumetric.h"
 #include "render/resources/texture_cache.h"
 #include "texturecontainer/texture_image.h"
+#include "texturecontainer/vtf_container.h"
 #include "texturecontainer/vtf_decompress.h"
 #include "texturecontainer/vtf_image_reader.h"
 
@@ -108,6 +113,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <functional>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -150,14 +156,22 @@ struct Options
 	fs::path assetPackage;
 	fs::path map;
 	fs::path out;
-	fs::path model;
+	// Studio models: each --model, its first body placed by the --model-origin,
+	// --model-angles and --model-sequence that follow it (a static prop's
+	// origin and Source angles, as the BSP's static prop lump places it).
+	struct ModelPlacement
+	{
+		fs::path path;
+		math::float3 origin{ 0, 0, 0 };
+		math::float3 angles{ 0, 0, 0 }; // pitch, yaw, roll in degrees
+		// The model's pose: the first frame of this sequence
+		// (mdl::PoseModel); empty for the reference pose.
+		std::string sequence;
+	};
+	std::vector<ModelPlacement> models;
 	math::float3 eye{ 0, 0, 0 };
 	math::float3 forward{ 1, 0, 0 };
 	math::float3 up{ 0, 0, 1 };
-	math::float3 modelOrigin{ 0, 0, 0 };
-	// The model's pose: the first frame of this sequence (mdl::PoseModel);
-	// empty for the reference pose.
-	std::string modelSequence;
 	float horizontalFov = 90.0f;
 	std::uint32_t width = 256;
 	std::uint32_t height = 192;
@@ -199,6 +213,10 @@ struct Options
 		std::string material;
 	};
 	std::vector<Mover> movers;
+	// A seeded defect of the transmission order, for render.lab.transmission's
+	// negative controls only: the capture skipped, taken before the opaque
+	// draws, or the transmitting draws recorded at an offset viewport.
+	std::string transmissionDefect;
 	std::uint32_t rsmSize = 128; // a projector's reflective shadow map, texels across
 	std::uint32_t timeRepeats = 0;
 	// The lit scene target's format (--scene-format).
@@ -289,16 +307,25 @@ std::optional<Options> ParseOptions( int argc, char **argv )
 		else if ( arg == "--out" )
 			options.out = take();
 		else if ( arg == "--model" )
-			options.model = take();
-		else if ( arg == "--model-sequence" )
-			options.modelSequence = take();
+			options.models.push_back( { take(), {}, {}, {} } );
+		else if ( arg == "--model-sequence" && !options.models.empty() )
+			options.models.back().sequence = take();
+		else if ( arg == "--model-angles" && !options.models.empty() &&
+		          ParseVector( value, options.models.back().angles ) )
+			take();
+		else if ( arg == "--transmission-defect" &&
+		          ( std::strcmp( value, "skip-capture" ) == 0 ||
+		              std::strcmp( value, "before-opaque" ) == 0 ||
+		              std::strcmp( value, "viewport-offset" ) == 0 ) )
+			options.transmissionDefect = take();
 		else if ( arg == "--eye" && ParseVector( value, options.eye ) )
 			take();
 		else if ( arg == "--forward" && ParseVector( value, options.forward ) )
 			take();
 		else if ( arg == "--up" && ParseVector( value, options.up ) )
 			take();
-		else if ( arg == "--model-origin" && ParseVector( value, options.modelOrigin ) )
+		else if ( arg == "--model-origin" && !options.models.empty() &&
+		          ParseVector( value, options.models.back().origin ) )
 			take();
 		else if ( arg == "--mover" )
 		{
@@ -386,6 +413,53 @@ std::optional<std::string> ImportMaterial(
 }
 
 // Stages the textures a resolved program's material group names.
+// Stages an authored environment cube (a cube binding: Refract's and
+// LightmappedGeneric's named $envmap) from its VTF: frame 0, every mip, the
+// six faces in the cache's order (+x, -x, +y, -y, +z, -z, the VTF's own).
+// HDR cubes (RGBA16161616F) only; another format is refused by name.
+std::optional<std::string> StageCube(
+    resources::TextureCache &cache, const std::string &name, const std::string &bytes )
+{
+	namespace vtf = texturecontainer::vtf;
+	const auto encoded = std::as_bytes( std::span( bytes.data(), bytes.size() ) );
+	auto header = vtf::ReadHeader( encoded );
+	if ( !header )
+		return "cube " + name + ": " + header.Error();
+	constexpr std::int32_t kRgba16161616F = 24;
+	if ( header.Value().format != kRgba16161616F )
+		return "cube " + name + " is not RGBA16161616F";
+	auto layout = vtf::ReadLayout( encoded, header.Value() );
+	if ( !layout )
+		return "cube " + name + ": " + layout.Error();
+	if ( layout.Value().faces < 6 || header.Value().width != header.Value().height )
+		return "cube " + name + " has no six square faces";
+	const std::uint32_t mips = header.Value().mips;
+	std::vector<std::vector<std::byte>> levels( mips );
+	for ( const vtf::Subresource &image : layout.Value().images )
+	{
+		if ( image.frame != 0 || image.face >= 6 || image.mip >= mips )
+			continue;
+		auto texels = vtf::ReadImage( encoded, layout.Value(), image, vtf::Decompress );
+		if ( !texels )
+			return "cube " + name + ": " + texels.Error();
+		std::vector<std::byte> &level = levels[image.mip];
+		const std::size_t faceBytes = texels.Value().size();
+		level.resize( faceBytes * 6 );
+		std::memcpy( level.data() + faceBytes * image.face, texels.Value().data(), faceBytes );
+	}
+	std::vector<std::span<const std::byte>> spans( levels.begin(), levels.end() );
+	TextureDesc desc;
+	desc.dimension = TextureDimension::kCube;
+	desc.format = Format::kRGBA16Float;
+	desc.width = desc.height = header.Value().width;
+	desc.depthOrLayers = 6;
+	desc.mipLevels = mips;
+	desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kSampled };
+	if ( !cache.StageMips( name, desc, spans ) )
+		return "cube " + name + " was refused";
+	return std::nullopt;
+}
+
 std::optional<std::string> StageProgramTextures(
     const GameFiles &files, resources::TextureCache &cache, const material::ResolvedProgram &program )
 {
@@ -396,8 +470,15 @@ std::optional<std::string> StageProgramTextures(
 		std::string bytes;
 		if ( !files.Read( texture.name + ".vtf", bytes ) )
 			return "texture " + texture.name + " is missing";
+		if ( texture.dimension == TextureDimension::kCube )
+		{
+			if ( std::optional<std::string> why = StageCube( cache, texture.name, bytes ) )
+				return why;
+			continue;
+		}
 		auto image = texturecontainer::ReadVtfImage(
-		    std::as_bytes( std::span( bytes.data(), bytes.size() ) ) );
+		    std::as_bytes( std::span( bytes.data(), bytes.size() ) ),
+		    texturecontainer::vtf::Decompress );
 		if ( !image )
 			return "texture " + texture.name + " does not decode";
 		if ( std::optional<std::string> why =
@@ -577,6 +658,10 @@ int Run( const Options &options )
 		    *device, colorFormat, depthFormat, 1, material::VertexLayout::kSurface );
 		if ( !resolver )
 			return Fail( "no programs: " + resolver.Error() );
+		// Transmission reads the view's scene color: the lit pass captures it
+		// through graph::RecordSceneColor between the opaque and the
+		// transmitting draws, as render.pass.world does.
+		resolver.Value()->SetSceneColorAvailable( true );
 		resources::TextureCache cache( *device );
 		resources::MeshCache meshes( *device );
 		material::GroupResidency groups( *device, cache );
@@ -747,23 +832,39 @@ int Run( const Options &options )
 		std::uint32_t modelFirstIndex = std::uint32_t( indices.size() );
 		std::uint32_t modelIndexCount = 0;
 
-		// The studio model: its first body at the origin, in world space on
-		// the world vertex. PBRMetalRough and the supported VertexLitGeneric
-		// subset use the same PBR mesh point with probes and clustered lights.
-		if ( !options.model.empty() )
+		// The studio models: each first body at its origin and yaw, in world
+		// space on the world vertex. PBRMetalRough and the supported
+		// VertexLitGeneric subset use the same PBR mesh point with probes and
+		// clustered lights.
+		for ( const Options::ModelPlacement &placement : options.models )
 		{
-			auto model = mdl::LoadModel( files, options.model.string(), 0 );
+			auto model = mdl::LoadModel( files, placement.path.string(), 0 );
 			if ( !model )
-				return Fail( "model " + options.model.string() + " does not load" );
+				return Fail( "model " + placement.path.string() + " does not load" );
 			mdl::Model posed = model.Value();
-			if ( !options.modelSequence.empty() )
+			if ( !placement.sequence.empty() )
 			{
-				const std::int32_t sequence = mdl::FindSequence( posed, options.modelSequence );
+				const std::int32_t sequence = mdl::FindSequence( posed, placement.sequence );
 				if ( sequence < 0 )
-					return Fail( "model " + options.model.string() + " has no sequence " +
-					             options.modelSequence );
+					return Fail( "model " + placement.path.string() + " has no sequence " +
+					             placement.sequence );
 				posed = mdl::PoseModel( posed, sequence );
 			}
+			// Source's AngleMatrix: columns forward, left, up.
+			const float toRadians = 3.14159265358979f / 180.0f;
+			const float sp = std::sin( placement.angles.x * toRadians );
+			const float cp = std::cos( placement.angles.x * toRadians );
+			const float sy = std::sin( placement.angles.y * toRadians );
+			const float cy = std::cos( placement.angles.y * toRadians );
+			const float sr = std::sin( placement.angles.z * toRadians );
+			const float cr = std::cos( placement.angles.z * toRadians );
+			const math::float3 forward{ cp * cy, cp * sy, -sp };
+			const math::float3 left{ sr * sp * cy - cr * sy, sr * sp * sy + cr * cy, sr * cp };
+			const math::float3 up{ cr * sp * cy + sr * sy, cr * sp * sy - sr * cy, cr * cp };
+			auto turn = [&]( const math::float3 &v )
+			{
+				return forward * v.x + left * v.y + up * v.z;
+			};
 			const mdl::Model &m = posed;
 			for ( const mdl::Mesh &part : m.meshes )
 			{
@@ -792,18 +893,20 @@ int Run( const Options &options )
 				for ( const mdl::Vertex &v : part.vertices )
 				{
 					material::SurfaceWorldVertex to;
-					to.position[0] = v.position.x + options.modelOrigin.x;
-					to.position[1] = v.position.y + options.modelOrigin.y;
-					to.position[2] = v.position.z + options.modelOrigin.z;
+					const math::float3 position =
+					    turn( { v.position.x, v.position.y, v.position.z } );
+					to.position[0] = position.x + placement.origin.x;
+					to.position[1] = position.y + placement.origin.y;
+					to.position[2] = position.z + placement.origin.z;
 					to.uv[0] = v.u;
 					to.uv[1] = v.v;
-					to.normal[0] = v.normal.x;
-					to.normal[1] = v.normal.y;
-					to.normal[2] = v.normal.z;
-					const math::float3 n{ v.normal.x, v.normal.y, v.normal.z };
+					const math::float3 n = turn( { v.normal.x, v.normal.y, v.normal.z } );
+					to.normal[0] = n.x;
+					to.normal[1] = n.y;
+					to.normal[2] = n.z;
 					const math::float3 t =
 					    v.tangentSign != 0.0f
-					        ? math::float3{ v.tangent.x, v.tangent.y, v.tangent.z }
+					        ? turn( { v.tangent.x, v.tangent.y, v.tangent.z } )
 					        : math::Normalize( math::Cross( n, std::fabs( n.z ) < 0.9f
 					                                               ? math::float3{ 0, 0, 1 }
 					                                               : math::float3{ 1, 0, 0 } ) );
@@ -929,7 +1032,10 @@ int Run( const Options &options )
 			{
 				const bool model = draw.firstIndex >= modelFirstIndex &&
 				                   draw.firstIndex < modelFirstIndex + modelIndexCount;
-				if ( materials[draw.material].sky || ( model && options.modelNoShadow ) )
+				// Transmitting surfaces cast no opaque shadow (render.pass.world
+				// leaves them out of its casters too).
+				if ( materials[draw.material].sky || materials[draw.material].program.sceneColor ||
+				     ( model && options.modelNoShadow ) )
 					continue;
 				casterIndices.insert( casterIndices.end(), indices.begin() + draw.firstIndex,
 				    indices.begin() + draw.firstIndex + draw.indexCount );
@@ -979,6 +1085,12 @@ int Run( const Options &options )
 		terms.splitSumTable = kSplitSumTable;
 		terms.ltcTable = kLtcTable;
 		terms.map = map;
+		// The view's viewport in the target: transmission maps its pixels to
+		// the scene-color snapshot through it (render.pass.world's terms).
+		terms.viewport[0] = 0.0f;
+		terms.viewport[1] = 0.0f;
+		terms.viewport[2] = 1.0f / float( options.width );
+		terms.viewport[3] = 1.0f / float( options.height );
 		for ( std::size_t i = 0; i < lights.areas.size(); ++i )
 			terms.areas.push_back( material::PackAreaLight( lights.areas[i], diffuseInBake,
 			    shadowing.areaTiles.empty() ? -1 : shadowing.areaTiles[i] ) );
@@ -1023,6 +1135,9 @@ int Run( const Options &options )
 			    int( i ), shadowing.projectorTiles.empty() ? -1 : shadowing.projectorTiles[i] ) );
 		std::unique_ptr<LabClusterLists> clusterLists;
 		std::optional<material::GroupRequest> viewGroupRequest;
+		// The same view group with the view's screen inputs: transmitting
+		// programs take it once the scene color is captured.
+		std::function<material::GroupRequest( const material::SurfaceScreenInputs & )> viewGroupFor;
 		{
 			pass::lights::ClusterViewDesc desc;
 			desc.view = view;
@@ -1076,9 +1191,16 @@ int Run( const Options &options )
 			material::SurfaceScreenInputs screen;
 			screen.ambientOcclusion = occlusion.Value();
 			screen.ambientOcclusionDesc = screenDesc;
-			viewGroupRequest = resolver.Value()->Program().ViewGroup(
-			    viewGpu, {}, {}, records, shadowInputs, projectorInputs, screen );
-			clusterLists->Bind( *viewGroupRequest );
+			viewGroupFor = [&program = resolver.Value()->Program(), lists = clusterLists.get(),
+			                   viewGpu, records, shadowInputs,
+			                   projectorInputs]( const material::SurfaceScreenInputs &inputs )
+			{
+				material::GroupRequest request = program.ViewGroup(
+				    viewGpu, {}, {}, records, shadowInputs, projectorInputs, inputs );
+				lists->Bind( request );
+				return request;
+			};
+			viewGroupRequest = viewGroupFor( screen );
 		}
 
 		// The groups of every material.
@@ -1087,6 +1209,8 @@ int Run( const Options &options )
 		std::map<std::uint64_t, std::uint64_t> pbrDrawGroup;  // mesh (0/1) -> group id
 		std::map<std::uint64_t, std::uint64_t> frameGroupOf;
 		std::map<std::uint64_t, std::uint64_t> viewGroupOf;
+		// Transmitting programs' view groups (by layout), set after the capture.
+		std::map<std::uint64_t, std::uint64_t> sceneViewGroupOf;
 		for ( std::size_t i = 0; i < materials.size(); ++i )
 		{
 			SceneMaterial &m = materials[i];
@@ -1122,7 +1246,14 @@ int Run( const Options &options )
 					return Fail( "the draw group was refused" );
 			}
 			const std::uint64_t viewLayout = m.program.request.viewLayout.value;
-			if ( m.program.request.viewLayout.IsValid() && !viewGroupOf.count( viewLayout ) )
+			if ( m.program.sceneColor )
+			{
+				if ( !m.program.request.viewLayout.IsValid() )
+					return Fail( "a transmitting program has no view layout" );
+				if ( !sceneViewGroupOf.count( viewLayout ) )
+					sceneViewGroupOf[viewLayout] = nextGroup++;
+			}
+			else if ( m.program.request.viewLayout.IsValid() && !viewGroupOf.count( viewLayout ) )
 			{
 				viewGroupOf[viewLayout] = nextGroup++;
 				if ( !groups.Set( viewGroupOf[viewLayout], *viewGroupRequest ) )
@@ -1285,6 +1416,22 @@ int Run( const Options &options )
 
 		// Record: uploads, the prepass, the occlusion, the lit frame, the
 		// reflections, the fog, the readback.
+		// The scene-color captures' graph resources, released once the device
+		// is idle (after the frame's submission, or on an early failure).
+		struct CaptureResources
+		{
+			IRenderDevice2 &device;
+			std::vector<graph::InlineGraphResources> held;
+			~CaptureResources()
+			{
+				if ( held.empty() )
+					return;
+				(void)device.WaitIdle();
+				for ( graph::InlineGraphResources &resources : held )
+					resources.Release( device, CompletionToken() );
+			}
+		} captures{ *device, {} };
+		std::vector<graph::InlineGraphResources> &sceneColorResources = captures.held;
 		auto encoded = device->BeginEncoder( QueueKind::kGraphics );
 		if ( !encoded )
 			return Fail( "no encoder" );
@@ -1319,12 +1466,33 @@ int Run( const Options &options )
 			kLit,
 			kReflective
 		};
-		auto drawAll = [&]( Pass which, const material::FamilyDrawConstants *override ) -> bool
+		// Which surfaces a lit draw list holds. Opaque ones write the SSR
+		// targets; blended ones draw after them over the color target alone
+		// (no SSR receivers; a blended pipeline over four targets would need
+		// independent blend); transmitting ones read the scene color the
+		// others drew, so they draw after its capture.
+		enum class Phase
+		{
+			kOpaque,
+			kBlended,
+			kTransmitting
+		};
+		auto phaseOf = []( const SceneMaterial &m )
+		{
+			return m.program.sceneColor                    ? Phase::kTransmitting
+			       : m.program.blend != BlendMode::kOpaque ? Phase::kBlended
+			                                               : Phase::kOpaque;
+		};
+		auto drawAll = [&]( Pass which, const material::FamilyDrawConstants *override,
+		                   Phase phase = Phase::kOpaque ) -> bool
 		{
 			const bool prepass = which != Pass::kLit;
 			for ( const Draw &draw : draws )
 			{
 				const SceneMaterial &m = materials[draw.material];
+				// The prepass's own filter (opaque surfaces) follows.
+				if ( !prepass && phaseOf( m ) != phase )
+					continue;
 				const material::ResidentGroup *group = groups.Group( m.groupId );
 				if ( !group )
 				{
@@ -1333,7 +1501,7 @@ int Run( const Options &options )
 				}
 				// The prepass draws opaque surfaces only, with its variant; the
 				// lit pass writes the SSR targets.
-				if ( prepass && m.program.blend != BlendMode::kOpaque )
+				if ( prepass && ( m.program.blend != BlendMode::kOpaque || m.program.sceneColor ) )
 					continue;
 				PipelineId pipelineId;
 				if ( prepass )
@@ -1352,7 +1520,7 @@ int Run( const Options &options )
 				else
 				{
 					material::ResolvedProgram lit = m.program;
-					if ( reflections )
+					if ( reflections && phase == Phase::kOpaque )
 					{
 						auto variant = resolver.Value()->VariantPipeline(
 						    m.program, material::kSurfaceSsrTargets, 0 );
@@ -1377,8 +1545,17 @@ int Run( const Options &options )
 					encoder.SetBindGroup( BindGroupRole::kFrame,
 					    groups.Group( frameGroupOf[m.program.request.frameLayout.value] )->group );
 				if ( m.program.request.viewLayout.IsValid() )
-					encoder.SetBindGroup( BindGroupRole::kView,
-					    groups.Group( viewGroupOf[m.program.request.viewLayout.value] )->group );
+				{
+					const std::uint64_t layout = m.program.request.viewLayout.value;
+					const material::ResidentGroup *viewGroup = groups.Group(
+					    m.program.sceneColor ? sceneViewGroupOf[layout] : viewGroupOf[layout] );
+					if ( !viewGroup )
+					{
+						status = Fail( "a view group is not resident" );
+						return false;
+					}
+					encoder.SetBindGroup( BindGroupRole::kView, viewGroup->group );
+				}
 				encoder.SetBindGroup( BindGroupRole::kMaterial, group->group );
 				if ( m.program.request.drawLayout.IsValid() )
 				{
@@ -1551,12 +1728,99 @@ int Run( const Options &options )
 			rendering.depth = DepthAttachment{ depth, LoadOp::kLoad, StoreOp::kStore, 1.0f };
 			rendering.width = options.width;
 			rendering.height = options.height;
+			const Viewport fullView{ 0, 0, float( options.width ), float( options.height ), 0, 1 };
+			// The scene color for transmitting surfaces: the opaque draws,
+			// then render.graph's capture (outside rendering), then the view
+			// groups that bind it, then the transmitting draws over a resumed
+			// pass, in render.pass.world's order.
+			const bool transmits = !sceneViewGroupOf.empty();
+			const std::string &defect = options.transmissionDefect;
+			auto capture = [&]() -> bool
+			{
+				TextureDesc sourceDesc;
+				sourceDesc.format = colorFormat;
+				sourceDesc.width = options.width;
+				sourceDesc.height = options.height;
+				sourceDesc.usages = { ResourceUsage::kColorAttachment, ResourceUsage::kCopySource };
+				auto captured = graph::RecordSceneColor( *device, encoder, color, sourceDesc );
+				if ( !captured )
+				{
+					status = Fail( "the scene-color capture was refused" );
+					return false;
+				}
+				graph::RecordedSceneColor value = std::move( captured ).Value();
+				material::SurfaceScreenInputs screen;
+				screen.ambientOcclusion = occlusion.Value();
+				screen.ambientOcclusionDesc = screenDesc;
+				screen.sceneColor = value.texture;
+				screen.sceneColorDesc = value.desc;
+				sceneColorResources.push_back( std::move( value.resources ) );
+				const material::GroupRequest request = viewGroupFor( screen );
+				for ( const auto &[layout, id] : sceneViewGroupOf )
+					if ( request.layout.value != layout || !groups.Set( id, request ) )
+					{
+						status = Fail( "a transmitting view group was refused" );
+						return false;
+					}
+				groups.RecordUploads( encoder );
+				return true;
+			};
+			auto resume = [&]( std::size_t colors )
+			{
+				ColorAttachment loaded[4];
+				for ( std::size_t i = 0; i < colors; ++i )
+				{
+					loaded[i] = rendering.colors[i];
+					loaded[i].load = LoadOp::kLoad;
+				}
+				RenderingDesc again = rendering;
+				again.colors = std::span<const ColorAttachment>( loaded, colors );
+				encoder.BeginRendering( again );
+				encoder.SetViewport( fullView );
+			};
 			encoder.BeginRendering( rendering );
-			encoder.SetViewport( { 0, 0, float( options.width ), float( options.height ), 0, 1 } );
-			const bool ok = drawAll( Pass::kLit, nullptr );
+			encoder.SetViewport( fullView );
+			bool captured = false;
+			if ( transmits && defect == "before-opaque" )
+			{
+				encoder.EndRendering();
+				captured = capture();
+				if ( !captured )
+					return status;
+				resume( rendering.colors.size() );
+			}
+			bool ok = drawAll( Pass::kLit, nullptr );
 			encoder.EndRendering();
 			if ( !ok )
 				return status;
+			if ( std::any_of( materials.begin(), materials.end(),
+			         [&]( const SceneMaterial &m )
+			         {
+				         return phaseOf( m ) == Phase::kBlended;
+			         } ) )
+			{
+				resume( 1 );
+				ok = drawAll( Pass::kLit, nullptr, Phase::kBlended );
+				encoder.EndRendering();
+				if ( !ok )
+					return status;
+			}
+			if ( transmits && defect != "skip-capture" )
+			{
+				if ( !captured && !capture() )
+					return status;
+				resume( 1 );
+				// The seeded defect: the transmitting draws rasterized at a
+				// viewport the frame's terms do not describe.
+				if ( defect == "viewport-offset" )
+					encoder.SetViewport( { float( options.width / 8 ), float( options.height / 8 ),
+					    float( options.width ), float( options.height ), 0, 1 } );
+				ok = drawAll( Pass::kLit, nullptr, Phase::kTransmitting );
+				encoder.EndRendering();
+				if ( !ok )
+					return status;
+				std::printf( "render_lab: scene color captured for transmission\n" );
+			}
 		}
 		encoder.TransitionTexture( depth, ResourceUsage::kDepthWrite, ResourceUsage::kSampled );
 		if ( reflections )
@@ -1735,7 +1999,7 @@ int Run( const Options &options )
 int ClaimBatch()
 {
 	const render::material::VmtProfile profile;
-	std::printf( "CLAIM-BATCH/3\tdx=%d\tps20b=%d\thdr=%d\tsrgb=%d\tgpu=%d\tlowfill=%d\tsymbols=",
+	std::printf( "CLAIM-BATCH/4\tdx=%d\tps20b=%d\thdr=%d\tsrgb=%d\tgpu=%d\tlowfill=%d\tsymbols=",
 	    profile.dxLevel, profile.pixelShader20b, profile.hdr, profile.srgbBlending,
 	    profile.gpuLevel, profile.reduceParticles );
 	for ( std::size_t i = 0; i < profile.symbols.size(); ++i )
@@ -1762,7 +2026,7 @@ int ClaimBatch()
 		{
 			for ( int i = 0; i < 6; ++i )
 				std::printf( "%sG\timport: %s", i ? "\t" : "", mapped.Error().detail.c_str() );
-			std::printf( "\t\t\t\n" );
+			std::printf( "\t\t\t\t\n" );
 			continue;
 		}
 		// Every row is the actual claim under a named scene-input combination.
@@ -1812,7 +2076,8 @@ int ClaimBatch()
 			std::printf( "%s%s", firstUnmapped ? "" : ",", key.c_str() );
 			firstUnmapped = false;
 		}
-		std::printf( "\t%s\n", mapped.Value().family.c_str() );
+		std::printf( "\t%s\t%s\n", mapped.Value().family.c_str(),
+		    render::material::MeshSpecularExponentSource( mapped.Value() ).c_str() );
 	}
 	return std::cin.bad() ? 2 : 0;
 }
@@ -1829,9 +2094,11 @@ int main( int argc, char **argv )
 		std::fprintf( stderr,
 		    "usage: render_lab --game <dir> --map <file.bsp> --eye x,y,z --forward x,y,z --up "
 		    "x,y,z --hfov degrees --size WxH --out <file.pfm> [--model <models/x.mdl> "
-		    "--model-origin x,y,z] [--model-sequence label] [--model-no-shadow] [--mover x0,y0,z0,x1,y1,z1,material] "
+		    "--model-origin x,y,z] [--model-angles p,y,r] [--model-sequence label] "
+		    "[--model-no-shadow] [--mover x0,y0,z0,x1,y1,z1,material] [--transmission-defect name] "
 		    "[--validate] [--dump-mesh] [--core-direct] [--debug-* ...]\n"
-		    "           [--fog-scale s] [--no-volumetric] [--output-peak p] [--entities portal|portal2] [--time n]\n"
+		    "           [--fog-scale s] [--no-volumetric] [--output-peak p] [--entities "
+		    "portal|portal2] [--time n]\n"
 		    "       render_lab suite <name> [--validate] [--seeded <defect>]\n"
 		    "       render_lab claim-batch < NUL-delimited-materials\n" );
 		return 2;

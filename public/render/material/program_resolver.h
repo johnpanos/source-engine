@@ -124,6 +124,11 @@ struct ResolvedProgram
 	// planar reflection, SurfaceScreenInputs::planarReflection): the pass
 	// imports the target each view, as the stream drew it before the slot.
 	std::vector<std::string> viewInputs;
+	// The view's refraction target the water point reads through the scene
+	// color binding (SurfaceScreenInputs::sceneColor; water reads no scene
+	// snapshot): $refracttexture, the image the client's refraction view
+	// drew with the water fog's depth in alpha. Empty for every other point.
+	std::string refractInput;
 };
 
 // Missing/nonfinite required frame inputs are refused even when the pass
@@ -245,6 +250,11 @@ bool SupportsOpaqueBatch( const MaterialDesc &material, bool mesh );
 // The mesh point's exact-variable claim without making a pipeline.
 foundation::Expected<device::BlendMode, std::string> ClaimForMesh( const MaterialDesc &material,
     bool nativeReflectionProbes = false, bool sceneColorAvailable = false );
+// The specular exponent a claimed VertexLitGeneric $phong mesh draws with:
+// "map" (each texel's 1 + 149 r of $phongexponenttexture) or the constant in
+// decimal; empty for any other material. For the claim inventory's
+// legacy-rule invariant.
+std::string MeshSpecularExponentSource( const MaterialDesc &material );
 
 // A SpriteCard material's card constants (render.sprite-card.v1), which the
 // unlit point's claim owns; nullopt for any other material or one whose

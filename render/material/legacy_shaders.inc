@@ -9,6 +9,7 @@ constexpr LegacyShaderName kLegacyShaders[] = {
 	{ "aftershock", "aftershock_dx9" },
 	{ "aftershock_dx9", "" },
 	{ "bik", "" },
+	{ "black", "" },
 	{ "bloom", "" },
 	{ "blurfilterx", "" },
 	{ "blurfiltery", "" },

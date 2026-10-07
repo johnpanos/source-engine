@@ -70,6 +70,12 @@ bool IsSpriteCard( const MaterialDesc &material )
 	return material.legacyShader == "spritecard_dx8";
 }
 
+// The Black shader's surfaces: the unlit point with a zero tint.
+bool IsBlack( const MaterialDesc &material )
+{
+	return material.legacyShader == "black";
+}
+
 // Wireframe, and Eyeball, whose SHADER_FALLBACK is Wireframe (eyeball.cpp).
 bool IsWireframe( const MaterialDesc &material )
 {
@@ -251,6 +257,13 @@ std::optional<std::string> UnreadVariable( const MaterialDesc &material )
 			continue;
 		if ( dormant( key ) )
 			continue;
+		// Refract never reads $alpha: refract_ps2x writes the normal map's
+		// alpha (times the vertex alpha with $vertexcolormodulate), and
+		// refract_dx9_helper.cpp enables no blend that $alpha modulates (only
+		// $masked's). A prop fading its $alpha (the breaking glass panes'
+		// glass_fracture_* proxies) draws the same pixels.
+		if ( material.family == "refract" && SameKey( key, "$alpha" ) )
+			continue;
 		// VertexLitGeneric uploads $seamless_scale only when seamless mapping is
 		// on for the base or the detail texture (vertexlitgeneric_dx9_helper.cpp's
 		// "if ( bSeamlessDetail || bSeamlessBase )"), and its declared default is
@@ -287,8 +300,11 @@ std::optional<std::string> UnreadVariable( const MaterialDesc &material )
 // keeps the material out.
 bool ViewRenderTarget( const MaterialDesc &material, const MaterialValue &value )
 {
-	return material.family == "water" && value.parameter == "reflecttexture" &&
-	       SameKey( value.text, "_rt_WaterReflection" );
+	return material.family == "water" &&
+	       ( ( value.parameter == "reflecttexture" &&
+	             SameKey( value.text, "_rt_WaterReflection" ) ) ||
+	           ( value.parameter == "refracttexture" &&
+	               SameKey( value.text, "_rt_WaterRefraction" ) ) );
 }
 
 // The material's block, with a stand-in for every texture it binds (a claim
@@ -533,6 +549,7 @@ foundation::Expected<device::BlendMode, std::string> ClaimForDrawing( const Mate
 		    : material.family == "decal-modulate" ? ClaimDecalModulate( *block )
 		    : IsSprite( material )                ? ClaimSprite( *block )
 		    : IsSpriteCard( material )            ? ClaimSpriteCard( *block )
+		    : IsBlack( material )                 ? ClaimBlack( *block )
 		    : IsWireframe( material )             ? ClaimWireframe( *block )
 		    : IsSky( material ) ? ClaimSky( *block, material.legacyShader == "sky_hdr_dx9" )
 		                        : ClaimUnlit( *block );
@@ -579,6 +596,24 @@ bool SupportsOpaqueBatch( const MaterialDesc &material, bool mesh )
 	}
 	return mesh ? material.family == "vertexlit"
 	            : material.family == "lightmapped" || material.family == "unlit";
+}
+
+std::string MeshSpecularExponentSource( const MaterialDesc &material )
+{
+	if ( material.family != "vertexlit" )
+		return {};
+	std::string why;
+	const std::optional<ParameterBlock> block = BlockFor( material, &why, false );
+	if ( !block )
+		return {};
+	const VertexLitMeshClaim claim = ClaimVertexLitMesh( *block );
+	if ( !claim.claimed || claim.constants.meshModes[2] <= 0.5f )
+		return {};
+	if ( claim.phongExponentFromMap )
+		return "map";
+	char text[32];
+	std::snprintf( text, sizeof( text ), "%g", claim.phongExponent );
+	return text;
 }
 
 foundation::Expected<device::BlendMode, std::string> ClaimForMesh(
@@ -723,6 +758,13 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 		textures.envmapMask = TextureOf( material, "envmapmask" );
 		textures.bump = TextureOf( material, "bumpmap" );
 		textures.detail = TextureOf( material, "detail" );
+		if ( claim.blendTexture2 )
+		{
+			// WorldVertexTransition's second layer (SurfaceVariant::blendTexture2).
+			textures.emission = TextureOf( material, "basetexture2" );
+			textures.mrao = TextureOf( material, "bumpmap2" );
+			textures.envmapMask = TextureOf( material, "blendmodulatetexture" );
+		}
 		auto request = s.lightmapped->Request( claim, textures, s.layout );
 		if ( !request )
 			return foundation::MakeUnexpected(
@@ -747,6 +789,7 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 		    : material.family == "decal-modulate" ? ClaimDecalModulate( *block )
 		    : IsSprite( material )                ? ClaimSprite( *block )
 		    : IsSpriteCard( material )            ? ClaimSpriteCard( *block )
+		    : IsBlack( material )                 ? ClaimBlack( *block )
 		    : IsWireframe( material )             ? ClaimWireframe( *block )
 		    : IsSky( material ) ? ClaimSky( *block, material.legacyShader == "sky_hdr_dx9" )
 		    : s.mesh            ? ClaimUnlitMesh( *block )
@@ -780,7 +823,8 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 		if ( claim.twoTexture )
 			textures.emission = TextureOf( material, "texture2" );
 		if ( s.mesh && s.worldPbr && !claim.twoTexture && !claim.cable && !claim.decalModulate &&
-		     !claim.energy && !claim.wireframe )
+		     !claim.energy && !claim.wireframe &&
+		     !IsBlack( material ) )
 		{
 			if ( detail::ReadFlag( *block, "vertexcolor" ) ||
 			     detail::ReadFlag( *block, "vertexalpha" ) ||
@@ -1003,9 +1047,11 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 			textures.flowNoise = TextureOf( material, "flow_noise_texture" );
 		}
 		SurfaceVariant variant = claim.Variant();
+		if ( claim.refractTarget )
+			out.refractInput = TextureOf( material, "refracttexture" );
 		if ( claim.reflectTarget )
 			out.viewInputs = { TextureOf( material, "reflecttexture" ) };
-		else if ( TextureOf( material, "envmap" ) == "env_cubemap" )
+		else if ( claim.envReflection && TextureOf( material, "envmap" ) == "env_cubemap" )
 		{
 			// The view's env_cubemap is the stage's reflection probes (RPRB).
 			if ( ( s.sceneTerms & kSurfaceReflectionProbes ) == 0 )
@@ -1013,8 +1059,9 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 				    std::string( "$envmap needs the stage's native reflection probes" ) );
 			variant.terms |= kSurfaceReflectionProbes;
 		}
-		else
+		else if ( claim.envReflection )
 			textures.envmap = TextureOf( material, "envmap" );
+		// Else nothing reflects: $reflecttint is zero and the env map neutral.
 		auto request = s.lightmapped->Program().Request( variant, claim.constants, textures );
 		if ( !request )
 			return foundation::MakeUnexpected( std::string( "a water pipeline was refused" ) );

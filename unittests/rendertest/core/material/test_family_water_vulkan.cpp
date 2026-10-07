@@ -407,10 +407,30 @@ int main()
 		That( checks, !c.claim.claimed && c.claim.reason.find( named ) != std::string::npos, check,
 		    c.claim.claimed ? std::string( "claimed" ) : c.claim.reason );
 	};
-	refused( With( kGooA2, "$refracttexture _rt_WaterRefraction" ), "refract",
-	    "claim.refuses-refraction" );
+	{
+		// water_ps2x's REFRACT: the refraction target is claimed with its
+		// tint (Source's GammaToLinear) and amount; below water too.
+		const Claimed r = ClaimVmt( *water,
+		    With( kGooA2, "$refracttexture _rt_WaterRefraction\n$refractamount 0.5\n"
+		                  "$refracttint \"{ 151 135 34 }\"" ) );
+		That( checks,
+		    r.claim.claimed && r.claim.refractTarget &&
+		        r.claim.constants.waterRefractMode[0] == 1.0f &&
+		        r.claim.constants.waterRefractMode[1] == 1.0f &&
+		        std::fabs( r.claim.constants.waterRefract[3] - 0.5f ) < 1e-6f &&
+		        r.claim.constants.waterRefract[0] > r.claim.constants.waterRefract[2],
+		    "claim.refraction-above-water", r.claim.claimed ? std::string() : r.claim.reason );
+		const std::string refracting = With( kGooA2, "$refracttexture _rt_WaterRefraction" );
+		const Claimed below = ClaimVmt(
+		    *water, Replaced( refracting.c_str(), "$abovewater 1", "$abovewater 0" ) );
+		That( checks,
+		    below.claim.claimed && below.claim.constants.waterRefractMode[0] == 1.0f &&
+		        below.claim.constants.waterRefractMode[1] == 0.0f,
+		    "claim.refraction-below-water",
+		    below.claim.claimed ? std::string() : below.claim.reason );
+	}
 	refused( Replaced( kGooA2, "$abovewater 1", "$abovewater 0" ), "below",
-	    "claim.refuses-water-seen-from-below" );
+	    "claim.refuses-water-seen-from-below-without-refraction" );
 	refused( With( kGooA2, "$forcecheap 1" ), "forcecheap", "claim.refuses-forced-cheap-water" );
 	refused( Replaced( kGooA2, "$flow_debug 0", "$flow_debug 1" ), "flow_debug",
 	    "claim.refuses-flow-debug-views" );

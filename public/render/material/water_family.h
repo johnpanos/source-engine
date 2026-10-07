@@ -6,8 +6,8 @@
 //			surface program (surface_program.h: kSurfaceWater), which owns the
 //			bind groups and pipelines.
 //
-//			The point is Portal 2's water_ps2x above water without refraction
-//			(Portal 2 ships no above-water material with $refracttexture):
+//			The point is Portal 2's water_ps2x (the CS:GO water_ps2x.fxc that
+//			has Portal 2's parameter set):
 //			- the normal: two layers of $normalmap scrolled along the flow
 //			  map's vectors ($flowmap, $flow_*), phased apart by the noise
 //			  texture, or $normalmap at the surface's coordinates without a
@@ -25,6 +25,16 @@
 //			  in the reflected direction; times $reflecttint; mixed in by the
 //			  fresnel term (0.2 + 0.8 (1 - N.V)^5, or $forcefresnel) where the
 //			  sludge is not above the water;
+//			- with $refracttexture (REFRACT): the view's refraction target
+//			  ($refracttexture, which the client's refraction view drew with
+//			  the water fog's depth factor in alpha), offset by the normal
+//			  times $refractamount; above water that depth scales the
+//			  offsets, tints by $refracttint at the water's edge, fogs the
+//			  refraction toward the (lightmapped) fog color, dims the
+//			  reflection and the fresnel term, and a warped texel of near-zero
+//			  depth (something in front of the water) falls back to the
+//			  unwarped one; below water ($abovewater 0) the refraction is
+//			  added to the fresnel-weighted reflection as it is;
 //			- the output alpha is $waterblendfactor; the view's range fog
 //			  follows, and no tone-map scale is applied to the reflection
 //			  (TONEMAP_SCALE_NONE).
@@ -33,9 +43,9 @@
 //			$color_flow_displacebynormalstrength and $forceenvmap and no
 //			$flow_timescale).
 //
-//			ClaimWater names what the point does not draw: refraction, water
-//			seen from below ($abovewater 0), the cheap path (no reflection
-//			target and no forced env map, or $forcecheap), a base texture
+//			ClaimWater names what the point does not draw: water seen from
+//			below without refraction, the cheap path (no reflection target,
+//			refraction target or forced env map, or $forcecheap), a base texture
 //			without a flow map (bumped-lightmap water), $flow_debug views,
 //			multi-textured normals ($scroll1) and a $bumptransform. $flowmap-
 //			scrollrate is read and, as retail's shader does, unused;
@@ -66,6 +76,8 @@ struct WaterClaim
 	// water); else opaque.
 	device::BlendMode blend = device::BlendMode::kOpaque;
 	bool reflectTarget = false; // the reflection is $reflecttexture (else the env map)
+	bool refractTarget = false; // $refracttexture, the view's refraction target
+	bool envReflection = false; // no reflection target: the env map reflects (when named)
 	bool sludge = false;        // $basetexture with a flow map
 	bool flow = false;          // a flow map
 	// The water constants (SurfaceConstants::water*).

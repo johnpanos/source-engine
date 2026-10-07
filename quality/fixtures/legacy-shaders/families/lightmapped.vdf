@@ -9,8 +9,15 @@
 // D3D9 bytecode) and records the port pixels the family suite compares with
 // (tools/render/family_port_pixels.py). Quads are in clip space (identity
 // transforms), so the eye is at the origin. The cases the family does not
-// claim yet (two base textures, bump masks, ssbump detail, fog through the
-// harness) stay in ../forced/lightmappedgeneric_native_combos.vdf.
+// claim yet (bump masks, masked blending, fog through the harness) stay in
+// ../forced/lightmappedgeneric_native_combos.vdf. WorldVertexTransition's two
+// layers are here: the vertex alpha's blend, $blendmodulatetexture's window,
+// and $bumpmap2 at $bumptransform's coordinates, flat and ssbump. The bumped
+// cases carry no $blendmodulatetexture: off the port's vertex fast path (any
+// $bumptransform) the D3D9 helper uploads the blend mask transform only with
+// $maskedblending, so the window is read through whatever that constant holds
+// (zero in the harness, the previous draw's value in a game): undefined, and
+// the core reads it at the base coordinates as the fast path defines.
 "LegacyShaderCases"
 {
 	"texture"
@@ -75,6 +82,35 @@
 		"width" "2"
 		"height" "2"
 		"texels" "54 42 162 255   96 121 102 255   69 133 128 255   65 50 172 255"
+	}
+	"texture"
+	{
+		"name" "conformance/legacy/lightmappedgeneric_base2"
+		"width" "4"
+		"height" "4"
+		"alpha" "1"
+		"texels" "137 128 112 44   240 244 131 221   229 206 122 150   113 249 145 208   156 159 32 219   29 151 173 230   152 51 240 154   62 30 236 40   198 110 238 89   74 201 132 185   93 149 41 84   39 132 241 69   141 76 181 215   144 116 196 90   132 163 64 181   153 69 94 200"
+	}
+	"texture"
+	{
+		"name" "conformance/legacy/lightmappedgeneric_bump2"
+		"width" "2"
+		"height" "2"
+		"texels" "106 106 227 66   121 179 237 175   128 65 177 173   106 202 186 21"
+	}
+	"texture"
+	{
+		"name" "conformance/legacy/lightmappedgeneric_ssbump2"
+		"width" "2"
+		"height" "2"
+		"texels" "120 60 140 255   40 150 110 255   90 90 160 255   150 70 90 255"
+	}
+	"texture"
+	{
+		"name" "conformance/legacy/lightmappedgeneric_blendmodulate"
+		"width" "2"
+		"height" "2"
+		"texels" "40 128 0 255   90 70 0 255   10 200 0 255   128 128 0 255"
 	}
 	"case"
 	{
@@ -387,6 +423,82 @@
 		"vertex" { "pos" "1 1 0.5" "uv0" "1 0" "uv1" "1 0" }
 		"vertex" { "pos" "1 -1 0.5" "uv0" "1 1" "uv1" "1 1" }
 		"vertex" { "pos" "-1 -1 0.5" "uv0" "0 1" "uv1" "0 1" }
+		"points" "0.125 0.125 0.375 0.125 0.625 0.375 0.875 0.375 0.125 0.625 0.375 0.875 0.6875 0.5625 0.875 0.875"
+	}
+	"case"
+	{
+		"name" "family_lightmapped_wvt_blend"
+		"shader" "WorldVertexTransition"
+		"clear" "30 60 120 255"
+		"lightmap" "conformance/legacy/lightmappedgeneric_lm"
+		"material"
+		{
+			"$basetexture" "conformance/legacy/lightmappedgeneric_base"
+			"$basetexture2" "conformance/legacy/lightmappedgeneric_base2"
+		}
+		"vertex" { "pos" "-1 1 0.5" "uv0" "0 0" "uv1" "0 0" "color" "255 200 120 0" }
+		"vertex" { "pos" "1 1 0.5" "uv0" "1 0" "uv1" "1 0" "color" "120 255 200 90" }
+		"vertex" { "pos" "1 -1 0.5" "uv0" "1 1" "uv1" "1 1" "color" "200 120 255 200" }
+		"vertex" { "pos" "-1 -1 0.5" "uv0" "0 1" "uv1" "0 1" "color" "255 255 160 255" }
+		"points" "0.125 0.125 0.375 0.125 0.625 0.375 0.875 0.375 0.125 0.625 0.375 0.875 0.6875 0.5625 0.875 0.875"
+	}
+	"case"
+	{
+		"name" "family_lightmapped_wvt_modulate"
+		"shader" "WorldVertexTransition"
+		"clear" "30 60 120 255"
+		"lightmap" "conformance/legacy/lightmappedgeneric_lm"
+		"material"
+		{
+			"$basetexture" "conformance/legacy/lightmappedgeneric_base"
+			"$basetexture2" "conformance/legacy/lightmappedgeneric_base2"
+			"$blendmodulatetexture" "conformance/legacy/lightmappedgeneric_blendmodulate"
+		}
+		"vertex" { "pos" "-1 1 0.5" "uv0" "0 0" "uv1" "0 0" "color" "255 200 120 0" }
+		"vertex" { "pos" "1 1 0.5" "uv0" "1 0" "uv1" "1 0" "color" "120 255 200 90" }
+		"vertex" { "pos" "1 -1 0.5" "uv0" "1 1" "uv1" "1 1" "color" "200 120 255 200" }
+		"vertex" { "pos" "-1 -1 0.5" "uv0" "0 1" "uv1" "0 1" "color" "255 255 160 255" }
+		"points" "0.125 0.125 0.375 0.125 0.625 0.375 0.875 0.375 0.125 0.625 0.375 0.875 0.6875 0.5625 0.875 0.875"
+	}
+	"case"
+	{
+		"name" "family_lightmapped_wvt_bump2_transform"
+		"shader" "WorldVertexTransition"
+		"clear" "30 60 120 255"
+		"lightmap" "conformance/legacy/lightmappedgeneric_lmbump"
+		"material"
+		{
+			"$basetexture" "conformance/legacy/lightmappedgeneric_base"
+			"$basetexture2" "conformance/legacy/lightmappedgeneric_base2"
+			"$bumpmap" "conformance/legacy/lightmappedgeneric_bump"
+			"$bumpmap2" "conformance/legacy/lightmappedgeneric_bump2"
+			"$bumptransform" "center .5 .5 scale 2 1.5 rotate 30 translate 0.1 0"
+		}
+		"vertex" { "pos" "-1 1 0.5" "uv0" "0 0" "uv1" "0 0" "uv2" "0.25 0" "normal" "0.2 0.3 -0.9" "tangents" "1 0.1 0" "tangentt" "0.1 1 0.2" "color" "255 200 120 0" }
+		"vertex" { "pos" "1 1 0.5" "uv0" "1 0" "uv1" "0.25 0" "uv2" "0.25 0" "normal" "-0.3 0.2 -0.95" "tangents" "0.9 -0.2 0.1" "tangentt" "0 1 0" "color" "120 255 200 90" }
+		"vertex" { "pos" "1 -1 0.5" "uv0" "1 1" "uv1" "0.25 1" "uv2" "0.25 0" "normal" "0.1 -0.4 -0.85" "tangents" "1 0 0.2" "tangentt" "-0.1 0.9 0" "color" "200 120 255 200" }
+		"vertex" { "pos" "-1 -1 0.5" "uv0" "0 1" "uv1" "0 1" "uv2" "0.25 0" "normal" "-0.2 -0.1 -1" "tangents" "0.95 0.1 -0.1" "tangentt" "0.2 1 0.1" "color" "255 255 160 255" }
+		"points" "0.125 0.125 0.375 0.125 0.625 0.375 0.875 0.375 0.125 0.625 0.375 0.875 0.6875 0.5625 0.875 0.875"
+	}
+	"case"
+	{
+		"name" "family_lightmapped_wvt_ssbump2"
+		"shader" "WorldVertexTransition"
+		"clear" "30 60 120 255"
+		"lightmap" "conformance/legacy/lightmappedgeneric_lmbump"
+		"material"
+		{
+			"$basetexture" "conformance/legacy/lightmappedgeneric_base"
+			"$basetexture2" "conformance/legacy/lightmappedgeneric_base2"
+			"$bumpmap" "conformance/legacy/lightmappedgeneric_ssbump"
+			"$bumpmap2" "conformance/legacy/lightmappedgeneric_ssbump2"
+			"$ssbump" "1"
+			"$bumptransform" "center 0 0 scale 5.25 5.25 rotate 90 translate 0 0"
+		}
+		"vertex" { "pos" "-1 1 0.5" "uv0" "0 0" "uv1" "0 0" "uv2" "0.25 0" "normal" "0.2 0.3 -0.9" "tangents" "1 0.1 0" "tangentt" "0.1 1 0.2" "color" "255 200 120 0" }
+		"vertex" { "pos" "1 1 0.5" "uv0" "1 0" "uv1" "0.25 0" "uv2" "0.25 0" "normal" "-0.3 0.2 -0.95" "tangents" "0.9 -0.2 0.1" "tangentt" "0 1 0" "color" "120 255 200 90" }
+		"vertex" { "pos" "1 -1 0.5" "uv0" "1 1" "uv1" "0.25 1" "uv2" "0.25 0" "normal" "0.1 -0.4 -0.85" "tangents" "1 0 0.2" "tangentt" "-0.1 0.9 0" "color" "200 120 255 200" }
+		"vertex" { "pos" "-1 -1 0.5" "uv0" "0 1" "uv1" "0 1" "uv2" "0.25 0" "normal" "-0.2 -0.1 -1" "tangents" "0.95 0.1 -0.1" "tangentt" "0.2 1 0.1" "color" "255 255 160 255" }
 		"points" "0.125 0.125 0.375 0.125 0.625 0.375 0.875 0.375 0.125 0.625 0.375 0.875 0.6875 0.5625 0.875 0.875"
 	}
 }

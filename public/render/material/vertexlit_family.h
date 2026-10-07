@@ -107,6 +107,9 @@ struct VertexLitMeshClaim
 	bool selfIllumMask = false;
 	bool selfIllumFresnel = false;
 	bool phongExponentTexture = false;
+	// The exponent comes from the map's red channel, not a constant.
+	bool phongExponentFromMap = false;
+	float phongExponent = 0.0f; // the constant when not from the map
 	bool envmapMask = false;
 	bool detail = false;
 	bool lightwarp = false;

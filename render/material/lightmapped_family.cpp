@@ -28,14 +28,15 @@ using detail::ReadParameter;
 using detail::TextureBound;
 
 // The parameters the family draws, and the ones the caller owns.
-constexpr std::array<std::string_view, 36> kClaimed = { "basetexture", "color", "alpha",
+constexpr std::array<std::string_view, 45> kClaimed = { "basetexture", "color", "alpha",
     "vertexcolor", "vertexalpha", "alphatest", "alphatestreference", "translucent", "model",
     "nofog", "nocull", "bumpmap", "ssbump", "nodiffusebumplighting", "envmap", "envmapmask",
     "basealphaenvmapmask", "normalmapalphaenvmapmask", "envmaptint", "envmapcontrast",
     "envmapsaturation", "fresnelreflection", "detail", "detailscale", "detailblendmode",
     "detailblendfactor", "detailtint", "selfillum", "selfillumtint", "ssbumpmathfix",
     "envmaplightscale", "envmaplightscaleminmax", "decal", "alpha2", "allowalphatocoverage",
-    "frame" };
+    "frame", "bumptransform", "basetexture2", "basetexturetransform2", "bumpmap2",
+    "blendmodulatetexture", "frame2", "bumpframe", "basetexturenoenvmap", "detail_ssbump" };
 
 // The detail modes the port's combos draw: every TextureCombine mode but the
 // self-illuminating ones (5, 6). 10 and 11 are the ssbump detail modes, which
@@ -90,7 +91,9 @@ LightmappedClaim ClaimLightmapped( const ParameterBlock &block )
 		claim.terms |= kSurfaceSelfIllum;
 	if ( TextureBound( block, "detail" ) )
 	{
-		const int mode = int( ReadParameter( block, "detailblendmode" ) );
+		// An ssbump detail texture overrides $detailblendmode.
+		const int mode = ReadFlag( block, "detail_ssbump" ) ? ( bump ? 10 : 11 )
+		                                                    : int( ReadParameter( block, "detailblendmode" ) );
 		if ( !DetailModeDrawn( mode ) )
 		{
 			claim.reason = "the family does not draw $detailblendmode " + std::to_string( mode );
@@ -102,6 +105,48 @@ LightmappedClaim ClaimLightmapped( const ParameterBlock &block )
 		claim.terms |= kSurfaceDetail;
 		claim.detailMode = std::uint32_t( mode );
 	}
+
+	// WorldVertexTransition's second layer (lightmappedgeneric_ps2_3_x.h).
+	const bool base2 = TextureBound( block, "basetexture2" );
+	const bool bump2 = TextureBound( block, "bumpmap2" );
+	const bool modulate = TextureBound( block, "blendmodulatetexture" );
+	if ( !base2 && ( bump2 || modulate ) )
+	{
+		claim.reason = "$bumpmap2 and $blendmodulatetexture need $basetexture2";
+		return claim;
+	}
+	if ( bump2 && !bump )
+	{
+		claim.reason = "$bumpmap2 needs $bumpmap"; // the port's SKIP: !$BUMPMAP && $BUMPMAP2
+		return claim;
+	}
+	if ( bump2 && ReadFlag( block, "normalmapalphaenvmapmask" ) )
+	{
+		claim.reason = "$bumpmap2 with $normalmapalphaenvmapmask needs the blended normal alpha";
+		return claim;
+	}
+	if ( bump2 && TextureBound( block, "envmapmask" ) )
+	{
+		claim.reason = "$bumpmap2 with $envmapmask"; // the port's SKIP line
+		return claim;
+	}
+	if ( base2 && ( ReadFlag( block, "basetexturenoenvmap" ) && envmap ) )
+	{
+		claim.reason = "$basetexturenoenvmap needs the second layer's env map mask";
+		return claim;
+	}
+	if ( ReadParameter( block, "frame2" ) != 0.0f || ReadParameter( block, "bumpframe" ) != 0.0f )
+	{
+		claim.reason = "the family draws frame 0 of $basetexture2 and $bumpmap";
+		return claim;
+	}
+	// The port's vertex alpha is the layers' blend there, not a coverage.
+	if ( base2 && ( ReadFlag( block, "vertexcolor" ) || ReadFlag( block, "vertexalpha" ) ) )
+	{
+		claim.reason = "$basetexture2 with $vertexcolor or $vertexalpha";
+		return claim;
+	}
+	claim.blendTexture2 = base2;
 
 	const bool alphaBlended = ReadFlag( block, "translucent" ) ||
 	                          ReadFlag( block, "vertexalpha" ) ||
@@ -172,6 +217,18 @@ LightmappedClaim ClaimLightmapped( const ParameterBlock &block )
 	constants.envLightScale[1] =
 	    ReadParameter( block, "envmaplightscaleminmax", 1 ) + lightScaleMin;
 	constants.envLightScale[2] = ReadParameter( block, "envmaplightscale" );
+	// $basetexture2 is read at the base coordinates: WorldVertexTransition's
+	// DX9 helper never binds $basetexturetransform2 (worldvertextransition.cpp
+	// passes $basetexturetransform), so the key has no effect.
+	// $bumpmap2's coordinates are $bumptransform's only without a detail
+	// texture; with one the port reads it at the base coordinates.
+	if ( !TextureBound( block, "detail" ) )
+	{
+		for ( std::size_t i = 0; i < 8; ++i )
+			constants.bumpTransform[i] = ReadParameter( block, "bumptransform", i );
+	}
+	constants.blendControls[0] = modulate ? 1.0f : 0.0f;
+	constants.blendControls[1] = bump2 ? 1.0f : 0.0f;
 	claim.claimed = true;
 	return claim;
 }

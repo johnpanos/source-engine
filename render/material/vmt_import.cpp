@@ -781,6 +781,23 @@ void MapValues( const VmtMappingTable &mapping, const VmtShaderRow *row, Materia
 		if ( ReadValue( *keyRow, variable.value, value, desc.diagnostics ) )
 			desc.values.push_back( std::move( value ) );
 	}
+	// A texture the legacy shader binds by default when the VMT leaves it
+	// unset (its SHADER_PARAM default, as Cable's "cable/cablenormalmap").
+	for ( const VmtKeyRow &keyRow : mapping.keys )
+	{
+		if ( !row || keyRow.family != row->family || keyRow.kind != ValueKind::kTexture ||
+		     keyRow.fallback.empty() )
+			continue;
+		bool set = false;
+		for ( const MaterialValue &value : desc.values )
+			set = set || value.parameter == keyRow.parameter;
+		if ( set )
+			continue;
+		MaterialValue value;
+		value.key = std::string( keyRow.key );
+		if ( ReadValue( keyRow, std::string( keyRow.fallback ), value, desc.diagnostics ) )
+			desc.values.push_back( std::move( value ) );
+	}
 }
 
 } // namespace

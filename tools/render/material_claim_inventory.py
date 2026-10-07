@@ -16,6 +16,7 @@ import argparse
 import collections
 import hashlib
 import json
+import math
 import os
 import re
 import subprocess
@@ -89,14 +90,14 @@ def verify_claim_profile(header, profile):
             raise ValueError("render_lab VMT profile differs from corpus parser")
         fields[key] = value
     symbols = fields.pop("symbols", "")
-    if parts[0] != "CLAIM-BATCH/3" or fields != expected or \
+    if parts[0] != "CLAIM-BATCH/4" or fields != expected or \
             sorted(symbols.lower().split(",")) != conditions["symbols"]:
         raise ValueError("render_lab VMT profile differs from corpus parser")
 
 
 def result_rows(fields):
-    if len(fields) != 15:
-        raise ValueError("malformed render_lab claim row: expected 15 fields")
+    if len(fields) != 16:
+        raise ValueError("malformed render_lab claim row: expected 16 fields")
     rows = [claim_result(fields[i], fields[i + 1]) for i in range(0, 12, 2)]
     mesh = []
     for (probes, scene_color), result in zip(MESH_INPUTS, rows[:4]):
@@ -106,6 +107,41 @@ def result_rows(fields):
     for stage, result in zip(WORLD_INPUTS, rows[4:]):
         world.append({"scene_inputs": {"world_stage": stage}, **result})
     return mesh, world
+
+
+def leading_float(text):
+    # MaterialVar's float conversion: atof, so trailing text is ignored and
+    # an unparsable value is 0.
+    match = re.match(r"\s*\[?\s*([-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)", text)
+    return float(match.group(1)) if match else 0.0
+
+
+def legacy_specular_exponent(variables):
+    """VertexLitGeneric's phong exponent (skin_dx9_helper.cpp, skin_ps20b.fxc),
+    computed from the VMT independently of the claim code: an authored
+    $phongexponent above 0 is the constant; otherwise each texel's comes from
+    $phongexponenttexture, or a white texture (1 + 149 = 150) without one."""
+    authored = variables.get("$phongexponent")
+    if authored is not None and leading_float(authored) > 0.0:
+        return leading_float(authored)
+    if variables.get("$phongexponenttexture", "").strip():
+        return "map"
+    return 150.0
+
+
+def check_specular_exponent(path, material, reported):
+    """The invariant: every claimed phong mesh draws legacy's exponent source."""
+    if not reported:
+        return False
+    expected = legacy_specular_exponent(material["vars"])
+    if reported == "map" or expected == "map":
+        same = reported == expected
+    else:
+        same = math.isclose(float(reported), expected, rel_tol=1e-5)
+    if not same:
+        raise ValueError(f"{path}: the core draws specular exponent {reported}, "
+                         f"legacy VertexLitGeneric {expected}")
+    return True
 
 
 # The shaders whose captured draws the native backend hands the core as mesh
@@ -266,6 +302,7 @@ def collect(game, render_lab, scope, profile_path=None):
     if len(answers) != len(records):
         raise ValueError(f"render_lab answered {len(answers)} of {len(records)} materials")
     results = {}
+    exponent_checks = 0
     for path, material in loaded.items():
         if "error" in material:
             results[path] = {"status": "unsupported", "gap": "VMT: " + material["error"]}
@@ -283,6 +320,7 @@ def collect(game, render_lab, scope, profile_path=None):
         item["mesh_claims"] = mesh
         item["world_claims"] = world
         item["family"] = fields[14]
+        exponent_checks += check_specular_exponent(path, material, fields[15])
         item["status"], item["candidates"] = classify(
             path, material, mesh, world, item["family"])
         if fields[12]:
@@ -342,6 +380,7 @@ def collect(game, render_lab, scope, profile_path=None):
         "refusal_features": feature_groups,
         "by_shader": dict(sorted(by_shader.items())),
         "materials": results,
+        "specular_exponent_checks": exponent_checks,
     }
 
 
@@ -374,6 +413,7 @@ def main():
             args.out.write_bytes(data)
         print(f"{args.game}: {report['total']} {args.scope} VMTs; "
               + ", ".join(f"{name}={count}" for name, count in report["status_counts"].items()))
+        print(f"specular exponent matches legacy on {report['specular_exponent_checks']} phong meshes")
         for feature, counts in sorted(report["refusal_features"].items(),
                                       key=lambda item: (-item[1]["refused_materials"], item[0]))[:15]:
             print(f"{counts['refused_materials']:4}  {feature}")

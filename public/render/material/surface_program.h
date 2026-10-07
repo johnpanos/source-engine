@@ -166,6 +166,21 @@ struct SurfaceConstants
 	// premultiplied texels, sky_hdr_compressed_rgbs_ps2x); its scale is
 	// surfaceControls.y. Neutral (0) for every other point.
 	float baseDecode[4] = {};
+	// The lightmapped point's $bumpmap2 UV rows ($bumptransform): the port
+	// reads the first normal map at the base coordinates and the second at
+	// these (lightmappedgeneric_ps2_3_x.h's bumpmapTexCoord).
+	float bumpTransform[8] = { 1, 0, 0, 0, 0, 1, 0, 0 };
+	// WorldVertexTransition's two-layer blend (SurfaceVariant::blendTexture2):
+	// x: 1 with $blendmodulatetexture (the vertex alpha's smoothstep window,
+	// green center, red half-width), y: 1 with $bumpmap2. Neutral (0) for
+	// every other point.
+	float blendControls[4] = {};
+	// The water point's refraction (kSurfaceWater with $refracttexture):
+	// rgb $refracttint (Source's GammaToLinear), w $refractamount.
+	float waterRefract[4] = { 1.0f, 1.0f, 1.0f, 0.0f };
+	// x: 1 with a refraction target (read at the view's scene color binding),
+	// y: 1 above water ($abovewater). Neutral (0) for every other point.
+	float waterRefractMode[4] = {};
 	// The pbr point's per-channel scale of its MRAO texture sample (P2:CE's
 	// $mraoscale); [1 1 1] is the texture unchanged.
 	float mraoScale[4] = { 1.0f, 1.0f, 1.0f, 0.0f };
@@ -193,7 +208,7 @@ struct SurfaceConstants
 	// adds 2 before the saturate), back faces included.
 	float projectorControls[4] = {};
 };
-static_assert( sizeof( SurfaceConstants ) == 960 );
+static_assert( sizeof( SurfaceConstants ) == 1040 );
 
 // An area light as the frame block holds it (render.area-light.v1: the
 // rectangle, its radiance and its reach).
@@ -648,6 +663,12 @@ struct SurfaceVariant
 	// read, and a baked light adds its specular lobe alone. (Every kSurface*
 	// term bit is in use.)
 	bool staticVertexLight = false;
+	// WorldVertexTransition on the lightmapped point (specialization constant
+	// 10): $basetexture2 at the emission binding (at the base coordinates),
+	// $bumpmap2 at the MRAO binding and $blendmodulatetexture at the env map
+	// mask's, blended by the vertex alpha (lightmappedgeneric_ps2_3_x.h's
+	// bBaseTexture2 and BUMPMAP2 paths).
+	bool blendTexture2 = false;
 
 	auto operator<=>( const SurfaceVariant & ) const = default;
 	bool operator==( const SurfaceVariant & ) const = default;

@@ -12310,6 +12310,111 @@ belongs to the native pipeline, yet it also runs in core-only frames, so the
 core sees no draw and names no refusal. A temporary print in
 `EmitToNativeQueue` (reverted) showed no warp draw entering it.
 
+## K12 glass cohort, sixth slice: scene color in `render_lab`'s map renderer and matched glass frames (2026-10-07, user goal)
+
+The fifth slice left glass without matched game/lab frames: the standalone
+map renderer (`render_lab --map`) had no scene-color capture, so every
+scene-color Refract model was refused there.
+
+- **Capture, one owner.** The map renderer's lit pass now draws opaque
+  surfaces (with the SSR targets when on), then blended surfaces over the
+  color target alone, then takes the view's scene color through
+  `graph::RecordSceneColor` (the game's capture owner), sets the transmitting
+  programs' view groups with it outside rendering, and draws the transmitting
+  surfaces over a resumed color-only pass: `render.pass.world`'s order. Its
+  resolver has `SetSceneColorAvailable( true )`. Transmitting surfaces are
+  not prepass, RSM or shadow casters (as in the world pass). The capture's
+  graph resources are released once the device is idle. All in
+  `render/lab/render_lab.cpp`; no engine dependency.
+- **The frame's viewport term.** The lab never set `FrameTerms::viewport`,
+  whose default `{0, 0, 1, 1}` made `RefractSceneColor` read one texel for
+  every pixel (found by the matched frames: a dark pane). It is now the
+  target's, as `world_pass.cpp` sets it.
+- **Lab inputs for the glass scenes.** `--model` is repeatable, each with
+  `--model-origin` and `--model-angles pitch,yaw,roll` (Source's
+  `AngleMatrix`, as the static-prop lump places props) and
+  `--model-sequence`. An authored `$envmap` cube (a `kCube` binding, the light
+  cover's `metal/black_wall_envmap_002a_hdr`) stages from its VTF through the
+  shared container reader (RGBA16161616F; other formats refused by name).
+- **Oracle: `render.lab.transmission`** (`tools/render/lab_transmission.py`,
+  checks-v1, 20 checks; manifest row added). A zero-warp Refract pane (mover
+  box, `$refractamount 0`, `$refracttint [0.5 0.75 1]`, `dev/flat_normal`, no
+  env map) over `sp_a1_intro4_relit`: inside the independently projected
+  pane, at least 99 % of pixels equal the same frame without the pane times
+  the tint through Source's 8-bit gamma table (`round(v·255)/255` to the 2.2:
+  0.2196, 0.5294, 1), per channel within 1 % + 2e-5 (worst pixel 0.08 of its
+  bound); outside it the frame is bitwise unchanged; no capture without a
+  transmitting program; validation and synchronization validation silent.
+  Seeded defects detected: capture skipped (3 % of pixels in bound), capture
+  before the opaque draws (3 %), transmitting draws at a viewport the frame's
+  term does not describe (67 %). Runs at the game's shipped terms (no SSR,
+  GTAO or projector bounce). Content: the user's `run/runtime-p2` and the
+  published map through a private loose overlay (VPK-only files extracted by
+  `vmt_corpus.py`'s reader). `render.lab.posed-model` still passes.
+- **Matched frames** (640×480, lab `--no-bounce --no-ssr --no-ao`; game
+  `portal_boot.py --runtime run/runtime-p2 --build build-p2 --game portal2
+  --renderer native-vulkan --headless`, `r_core_world 1`,
+  `mat_dynamic_tonemapping 0`, `mat_force_tonemap_scale 1`, a copied content
+  root without `published.json` and `sound`; lab overlay of
+  `run/runtime-p2/portal2` plus the map's materials). Per-region means by
+  `tools/quality/game_lab_regions.py` (lab samples Reinhard then sRGB; game
+  bytes as captured; game − lab in bytes):
+
+  | Scene | Region | Game | Lab | Game − lab |
+  | --- | --- | --- | --- | --- |
+  | Window, eye (−60, 260, 134) +y | window | 4.6 5.3 3.8 | 5.1 5.9 4.3 | −0.5 −0.6 −0.5 |
+  | | wall below | 15.3 13.5 8.4 | 17.3 15.4 10.0 | −2.0 −1.9 −1.6 |
+  | | wall left | 23.5 21.5 15.5 | 33.4 31.3 24.3 | −10.0 −9.8 −8.8 |
+  | Window, eye (−60, 520, 134) −y | window | 10.5 11.3 8.6 | 25.8 24.0 17.9 | −15.3 −12.8 −9.3 |
+  | | floor | 1.2 1.1 0.8 | 1.2 1.1 0.8 | 0.0 0.0 0.0 |
+  | Light covers, eye (−1008, 120, 120), pitch −60, +y | ribs between tubes | 45.4 51.1 60.9 | 42.9 47.0 54.0 | 2.5 4.1 7.0 |
+  | | ribs left | 20.6 27.8 30.1 | 20.7 27.7 30.0 | −0.1 0.1 0.1 |
+  | | wall left | 11.2 16.3 17.4 | 11.8 17.0 18.2 | −0.6 −0.8 −0.8 |
+  | | tubes (clipped) | 166–172 186–192 213–220 | 138–141 146–150 157–160 | 29–31 39–42 56–59 |
+
+- **Visual review.**
+  - *Light covers (`$localrefract`) match*: the same tube shapes, rib stripes,
+    walls and placement; ribs and walls within a few bytes. The lab's ribs
+    between the tubes are more streaked. The tubes' region means differ
+    because both are clipped highlights and the comparison's Reinhard curve
+    is not the game's BT.2390 output, so those numbers do not measure the
+    material.
+  - *Observation window does not match: the game does not draw its glass.*
+    The lab draws both static glass props through the shared Refract point
+    with scene color (cracks, tint, and `glasswindow_observation`'s ribbed
+    `glass/refract_light_normal` distortion). In the game the normal-map
+    debug view (`cl_render_debug_view 3`) shows the room behind the
+    observation window uncovered, while the lab's pane covers it. Cause:
+    `engine/render_core_world_draw.cpp` hands the core no static prop whose
+    model `IsTranslucent()` (`skin = -1`), so both glass props stay legacy,
+    and the native backend's render-core-only mode rejects their legacy draws
+    (`legacy shader draw rejected before conversion calls=736`). Their
+    materials are claimed (`cl_render_debug_claims`: the 8 unclaimed
+    materials are proxy-driven monitors and emitters). Translucent static
+    props on the core are the next glass slice; until then the window frames
+    compare the lab's glass against no glass in the game.
+  - *Other differences, not glass*: the lab draws the world and the named
+    props only, so the map's other static props (window mullions, vines,
+    foliage, the hanging ceiling slab) are absent there; they make the back
+    view's through-window region darker in the game. The front view's left
+    wall is brighter in the lab (a frame-shaped light pattern the game shows
+    fainter).
+- **Found on the way, not fixed:**
+  - The map renderer's projector bounce (`render.pass.bounce`, on unless
+    `--no-bounce`) leaves the whole `sp_a1_intro4_relit` frame zero. The game
+    has no bounce (moving-light GI is out of scope), so the matched runs pass
+    `--no-bounce`, as `game_lab_compare.py` does. Not bisected against the
+    pre-slice binary (older trees cannot read this map's RPRB v8).
+  - The surface program's SSR-targets variant gives attachment 0 an
+    alpha-masked write while the three SSR targets write every channel,
+    which needs `independentBlend`; the Vulkan adapter enables it only on
+    the FSR path, so every lab frame with SSR on reports one validation
+    message (`surface_program.cpp`, the `writes` array). The game ships
+    `r_core_ssr 0`.
+- Open: translucent static props on the core (then rematch the window
+  views), the bounce defect above, the SSR blend-state defect above, frame
+  time, and Fold7/Apple runs.
+
 ## Particles on the core: SpriteCard cards and warp particles drawn (2026-10-07)
 
 What landed, by the decisions above:
@@ -12414,6 +12519,55 @@ SpriteCard 129 of 143 claimed, 14 unsupported (`$cropfactor` 3,
 - the native SpriteCard pixel math (`demo_dyn_tex.frag` textured mode 3)
   stays while `r_core_world 0` uses it (K9);
 - no frame-time measurement (user direction for this slice).
+
+### K12/R91: every sp_a1_wakeup content material on the core (2026-10-07, user request)
+
+User request: "make sure every material for sp_a1_wakeup is supported in
+rendercore". Two censuses defined the set: the map's BSP texdata, entity
+material keys and every model's MDL materials (136 VMTs) against the checked-in
+`portal2-all-claims.json`, and an in-game tour (27 cubemap points, 4 yaws each,
+`r_core_world 1`, strict off, `cl_render_debug_claims` and `r_core_world_stats`).
+
+Gaps found and closed:
+
+| Material | Gap | Fix |
+| --- | --- | --- |
+| `metal/blendblackfloormetal_dirt02`, `nature/blenddirt_rust01` (WorldVertexTransition displacements, 2,845 refused draws on the tour) | the family did not draw `$basetexture2` | the lightmapped point's second layer: specialization constant 10 (`SurfaceVariant::blendTexture2`), `$basetexture2` at the emission binding read at the base coordinates, `$bumpmap2` at MRAO's through `$bumptransform`, `$blendmodulatetexture` at the env map mask's (smoothstep window); colour blends, output alpha stays the first layer's as the port writes it |
+| `nature/water_glados_01`, `nature/toxicslime002a_beneath` | `$refracttexture` not bound | water_ps2x's REFRACT path (CS:GO source): `_rt_WaterRefraction` imported per view like the reflection and bound at the scene-colour slot; fog-depth alpha scales offsets, edge tint, fog, reflection and fresnel above water; below water refraction plus fresnel reflection |
+| `tile/ceiling_tile002b` | `$detail_ssbump` unread | mapped: an ssbump detail texture selects detail mode 10/11 as `lightmappedgeneric_dx9_helper.cpp` does |
+| `models/props_destruction/glass_fracture_d_normal` | `$alpha` 0.22–0.29 unread | Refract never reads `$alpha` (refract_ps2x, no alpha-modulated blend): inert |
+| `models/npcs/glados/glados_temp`, `models/props_hub/glados_chamber_dest01` | shader Black unknown to the core | Black on the unlit point with a zero tint, fogged; `legacy_shaders.inc` regenerated |
+| `cable/cable` (SplineRope) | no `$bumpmap` | texture rows take the shader's declared default (`cable/cablenormalmap`) |
+
+The 8 model `$envmap` materials need native probes; the map's 31 cubemaps
+already serve as probes (`UploadCubemapProbes`), so they claim at runtime.
+
+Oracle: four WorldVertexTransition cases in
+`quality/fixtures/legacy-shaders/families/lightmapped.vdf` (blend, modulate,
+bump2 with a transform, ssbump2). The legacy port passes all 21 cases against
+the D3D9 bytecode (`legacy_shader_conformance.py`); `lightmapped-port-v1.vdf`
+re-recorded. Finding: off the port's vertex fast path the D3D9 helper uploads
+the blend-mask transform only with `$maskedblending`, so a bumped material with
+`$bumptransform` reads `$blendmodulatetexture` through an unset constant
+(zero in the harness, the previous draw's in a game). That is undefined; the
+core reads the window at the base coordinates (the fast path's rule), and the
+bumped cases carry no modulation texture so the oracle stays defined.
+
+| Check | Result |
+| --- | --- |
+| `render.family.lightmapped` (.gl, .gles) | pass, 241 checks; the four WVT cases 0 levels from the port |
+| `render.family.lightmapped.cross-backend` (-gles) | pass, 532; WVT GL/GLES byte-identical to Vulkan |
+| `render.family.water` (.gl, .gles, .cross-backend, seeded control) | pass, 42; refraction above and below water claimed |
+| unlit, vertexlit, world.null, material.programs, shader-artifacts | pass |
+| in-game census after | world 38/40 materials (the other two are blended and drawn in the translucent stage), dynamic refusals 4,145 → 1,236, views failed 0 |
+
+Remaining refusals on the map are engine passes, not map materials:
+`dev/motion_blur` and `dev/lumcompare` (post cohort) and `engine/shadowbuild`
+/`decals/rendershadow` (render-to-texture blob shadows). Open: a refraction
+pixel oracle (claims only), matched game/lab captures, frame time.
+`render.material.vmt-corpus` was already stale (families it predates) and now
+also counts Black as claimed; `render.family.pbr` and `render.material.v2` fail
+on another session's uncommitted `pbr_family.cpp` work.
 
 ### K12: unsupported-material sweep, first four gaps (2026-10-07, user request)
 

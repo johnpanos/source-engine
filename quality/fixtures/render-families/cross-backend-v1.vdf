@@ -31,6 +31,10 @@
 	"case" { "name" "family_lightmapped_vertexalpha_translucent" "limit" "2" "outliers" "0" }
 	"case" { "name" "family_lightmapped_vertexcolor" "limit" "2" "outliers" "0" }
 	"case" { "name" "family_lightmapped_vertexcolor_alpha" "limit" "2" "outliers" "0" }
+	"case" { "name" "family_lightmapped_wvt_blend" "limit" "2" "outliers" "0" }
+	"case" { "name" "family_lightmapped_wvt_bump2_transform" "limit" "2" "outliers" "0" }
+	"case" { "name" "family_lightmapped_wvt_modulate" "limit" "2" "outliers" "0" }
+	"case" { "name" "family_lightmapped_wvt_ssbump2" "limit" "2" "outliers" "0" }
 	"case" { "name" "family_unlit_additive" "limit" "2" "outliers" "0" }
 	"case" { "name" "family_unlit_alphatest" "limit" "2" "outliers" "0" }
 	"case" { "name" "family_unlit_base_color" "limit" "2" "outliers" "0" }

@@ -72,6 +72,10 @@ layout( constant_id = 8 ) const bool kShadowDepth = false;
 // A static prop's baked vertex lighting, in vertexLighting
 // (SurfaceVariant::staticVertexLight).
 layout( constant_id = 9 ) const bool kStaticVertexLight = false;
+// WorldVertexTransition's second layer on the lightmapped point
+// (SurfaceVariant::blendTexture2): $basetexture2 at the emission binding,
+// $bumpmap2 at MRAO's and $blendmodulatetexture at the env map mask's.
+layout( constant_id = 10 ) const bool kBlendTexture2 = false;
 // The energy point (SurfaceVariant::energy): SolidEnergy's fields, bridges
 // and beams, EnergySurface().
 layout( constant_id = 11 ) const bool kEnergy = false;
@@ -210,7 +214,8 @@ layout( set = 1, binding = 12 ) uniform texture2D reflectionTexture;
 layout( set = 1, binding = 13 ) uniform sampler reflectionSampler;
 // Captured scene behind transmission. The attachment already contains the
 // opaque surfaces' exposure and fog; unorm outputs may also be encoded.
-// The unlit soft-particle point binds the linear depth-alpha copy here.
+// The unlit soft-particle point binds the linear depth-alpha copy here, and
+// the water point its view's refraction target (fog depth in alpha).
 layout( set = 1, binding = 14 ) uniform texture2D sceneColorTexture;
 layout( set = 1, binding = 15 ) uniform sampler sceneColorSampler;
 
@@ -1319,6 +1324,7 @@ void PbrSurface( out float coverage )
 				    ShadowVisibilitySoft( shadowAtlas, shadowSampler, shadowComparisonSampler, shadowTiles[tile],
 				        worldPosition, ShadowReceiverOffset( geometricNormal, light ),
 				        max( runtime.cone.z, 0.5 ), rotation ) );
+			if ( maskCode != 0 && baked < 0.0 ) visibility = 0.0; // TEMP-PROBE
 			if ( moverNear && baked >= 0.0 && DebugTermOn( kDebugTermShadowVisibility ) )
 				visibility = min( visibility, baked );
 #endif
@@ -1943,9 +1949,9 @@ void VertexLitSurface()
 }
 
 // The water point: water_ps2x's main (Portal 2's; the CS:GO source has its
-// parameter set) with REFLECT or the forced env map, BASETEXTURE with
-// FLOWMAP or neither, LIGHTMAPWATERFOG, ABOVEWATER and no REFRACT. It
-// computes the shader's output (TONEMAP_SCALE_NONE: the reflection is not
+// parameter set) with REFLECT or the env map, BASETEXTURE with FLOWMAP or
+// neither, LIGHTMAPWATERFOG, REFRACT and ABOVEWATER. It computes the
+// shader's output (TONEMAP_SCALE_NONE: the reflection and refraction are not
 // scaled again) and hands Output its value before the tone-map scale.
 void WaterSurface()
 {
@@ -2007,20 +2013,36 @@ void WaterSurface()
 		normal = vec4( texel.xyz * 2.0 - 1.0, texel.a );
 	}
 
+	// The refraction (water_ps2x's REFRACT): the view's refraction target,
+	// bound at the scene color's slot, holds the water fog's depth factor in
+	// alpha. Above water the unwarped texel's depth scales the offsets of a
+	// water without a base texture.
+	const bool refract = material.waterRefractMode.x > 0.5;
+	const bool aboveRefract = refract && material.waterRefractMode.y > 0.5;
+	const vec2 view = ( gl_FragCoord.xy - frame.viewport.xy ) * frame.viewport.zw;
+	vec4 unwarped = vec4( 0.0, 0.0, 0.0, 1.0 );
+	float fogDepth = 1.0;
+	if ( aboveRefract )
+	{
+		unwarped = texture( sampler2D( sceneColorTexture, sceneColorSampler ), view );
+		fogDepth = unwarped.a;
+	}
+	const float offsetScale = material.waterMode.y != 0.0 ? 1.0 : fogDepth;
+	// The normal's offset along the camera's right and forward in the water
+	// plane, the reflection's and the refraction's.
+	const vec2 right = frame.water.zw;
+	const vec2 forward = vec2( -right.y, right.x );
+	const vec2 normalOffset =
+	    vec2( dot( right, normal.xy ), dot( forward, normal.xy ) ) * normal.a * offsetScale;
+
 	// The reflection: the view's reflection target at the fragment's view
-	// position (flipped vertically: the reflected view), offset along the
-	// camera's right and forward in the water plane by the normal; or the
-	// env map in the reflected direction.
+	// position (flipped vertically: the reflected view), offset by the
+	// normal; or the env map in the reflected direction.
 	vec3 reflection;
 	if ( material.waterMode.x != 0.0 )
 	{
-		const vec2 view = ( gl_FragCoord.xy - frame.viewport.xy ) * frame.viewport.zw;
-		const vec2 right = frame.water.zw;
-		const vec2 forward = vec2( -right.y, right.x );
-		const vec2 offset =
-		    vec2( dot( right, normal.xy ), dot( forward, normal.xy ) ) * normal.a * material.waterFog.a;
 		reflection = texture( sampler2D( reflectionTexture, reflectionSampler ),
-		    vec2( view.x, 1.0 - view.y ) + offset )
+		    vec2( view.x, 1.0 - view.y ) + normalOffset * material.waterFog.a )
 		                 .rgb;
 	}
 	else
@@ -2040,7 +2062,7 @@ void WaterSurface()
 	}
 	reflection *= material.waterReflect.rgb * frame.water.y;
 
-	const float fresnel =
+	float fresnel =
 	    material.waterMode.w != -1.0
 	        ? material.waterMode.w
 	        : 0.2 + 0.8 * pow( 1.0 - clamp( dot( toEye, normal.xyz ), 0.0, 1.0 ), 5.0 );
@@ -2054,15 +2076,43 @@ void WaterSurface()
 		        frame.light.y;
 		fog *= light;
 	}
+	vec3 refraction = fog;
+	if ( refract )
+	{
+		const vec4 warped = texture( sampler2D( sceneColorTexture, sceneColorSampler ),
+		    view + normalOffset * material.waterRefract.w );
+		refraction = warped.rgb;
+		if ( aboveRefract )
+		{
+			fogDepth = warped.a;
+			// Something in front of the water is not warped into it.
+			if ( warped.a < 0.05 )
+			{
+				refraction = unwarped.rgb;
+				fogDepth = unwarped.a;
+			}
+			const float edgeFade = clamp( 3.5 * fogDepth, 0.0, 1.0 );
+			refraction = mix( refraction, refraction * material.waterRefract.rgb, edgeFade );
+			reflection *= clamp( 2.0 * fogDepth, 0.0, 1.0 );
+			refraction = mix( refraction, fog, fogDepth );
+		}
+		if ( material.waterMode.y == 0.0 )
+			fresnel *= clamp( ( fogDepth - 0.05 ) * 20.0, 0.0, 1.0 );
+	}
 	vec3 lit;
 	if ( material.waterMode.y != 0.0 )
 	{
 		// The sludge's alpha: 0 to 0.5 its translucency in the water, 0.5
-		// to 0.7 floating above it, where nothing reflects.
+		// to 0.7 floating above it, where nothing reflects. Under it is the
+		// refraction, or the fog color without one.
 		const vec3 underWater =
-		    mix( fog, flowColor.rgb * light, clamp( flowColor.a * 2.0, 0.0, 1.0 ) );
+		    mix( refraction, flowColor.rgb * light, clamp( flowColor.a * 2.0, 0.0, 1.0 ) );
 		const float aboveWater = smoothstep( 0.5, 0.7, flowColor.a );
 		lit = mix( underWater, reflection, clamp( fresnel * ( 1.0 - aboveWater ), 0.0, 1.0 ) );
+	}
+	else if ( refract )
+	{
+		lit = refraction + fresnel * reflection;
 	}
 	else
 	{
@@ -2437,6 +2487,38 @@ void main()
 		normalSample = texture( sampler2D( bumpTexture, bumpSampler ), baseUv );
 	if ( bumpmap && !ssbump )
 		normalSample.xyz = normalSample.xyz * 2.0 - 1.0;
+	// The port blends the layers' color only; base.a stays the first layer's
+	// (output alpha, self-illumination), and the blended alpha masks the env
+	// map under $basealphaenvmapmask.
+	float blendedAlpha = base.a;
+	if ( kBlendTexture2 )
+	{
+		// lightmappedgeneric_ps2_3_x.h: the vertex alpha blends the layers,
+		// through $blendmodulatetexture's window (smoothstep from green minus
+		// red to green plus red) when it has one; the second base is read at
+		// the base coordinates, the second normal map at $bumptransform's.
+		float blend = color.a;
+		if ( material.blendControls.x > 0.5 )
+		{
+			const vec4 modt = texture( sampler2D( envmapMaskTexture, envmapMaskSampler ), baseUv );
+			const float minb = clamp( modt.g - modt.r, 0.0, 1.0 );
+			const float maxb = clamp( modt.g + modt.r, 0.0, 1.0 );
+			blend = maxb > minb ? smoothstep( minb, maxb, blend ) : step( minb, blend );
+		}
+		const vec4 base2 = texture( sampler2D( emissionTexture, emissionSampler ), BaseTextureUv() );
+		base.rgb = mix( base.rgb, base2.rgb, blend );
+		blendedAlpha = mix( base.a, base2.a, blend );
+		if ( bumpmap && material.blendControls.y > 0.5 )
+		{
+			const vec4 uv = vec4( baseUv, 0.0, 1.0 );
+			const vec2 bumpUv2 =
+			    vec2( dot( uv, material.bumpTransform[0] ), dot( uv, material.bumpTransform[1] ) );
+			vec4 normal2 = texture( sampler2D( mraoTexture, mraoSampler ), bumpUv2 );
+			if ( !ssbump )
+				normal2.xyz = normal2.xyz * 2.0 - 1.0;
+			normalSample.xyz = mix( normalSample.xyz, normal2.xyz, blend );
+		}
+	}
 
 	const bool furnace = DebugFurnace();
 	vec3 albedo = base.rgb;
@@ -2614,7 +2696,7 @@ void main()
 			specularFactor *=
 			    texture( sampler2D( envmapMaskTexture, envmapMaskSampler ), baseUv ).xyz;
 		if ( Term( kBaseAlphaEnvmapMask ) )
-			specularFactor *= 1.0 - base.a;
+			specularFactor *= 1.0 - blendedAlpha;
 		// mul( vNormal, tangentSpaceTranspose ): rows S, T, N.
 		const vec3 normal = normalSample.x * tangentS + normalSample.y * tangentT +
 		                    normalSample.z * worldNormal;

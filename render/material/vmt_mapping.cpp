@@ -53,6 +53,9 @@ constexpr VmtShaderRow kShaders[] = {
     { "wireframe_dx9", "unlit", "Wireframe's DirectX 9 implementation" },
     { "eyeball", "unlit",
         "Eyeball: a dead shader whose SHADER_FALLBACK is Wireframe (eyeball.cpp)" },
+    { "black", "unlit",
+        "Black (black.cpp): an opaque surface of no parameters drawn black and fogged to the "
+        "fog color; the unlit point with a zero tint" },
     { "decalmodulate", "decal-modulate",
         "dimensionless surface factors with modulate-2x blending" },
     { "decalmodulate_dx9", "decal-modulate", "DecalModulate DirectX 9 implementation" },
@@ -215,6 +218,10 @@ constexpr VmtKeyRow kLegacyDerivedKeys[] = {
     { "lightmapped", "$selfillumtint", "selfillumtint", ValueKind::kFloat3, "[1 1 1]" },
     { "lightmapped", "$masked", "masked", ValueKind::kBool, "0" },
     { "lightmapped", "$bumptransform", "bumptransform", ValueKind::kTransform, "" },
+    // Not a VMT key: the engine names it when $detail's texture carries
+    // TEXTUREFLAGS_SSBUMP, which selects detail mode 10 (with a bump map) or
+    // 11 (without) whatever $detailblendmode says (lightmappedgeneric_dx9_helper.cpp).
+    { "lightmapped", "$detail_ssbump", "detail_ssbump", ValueKind::kBool, "0" },
     { "lightmapped", "$basetexturetransform2", "basetexturetransform2", ValueKind::kTransform, "" },
     { "lightmapped", "$blendmasktransform", "blendmasktransform", ValueKind::kTransform, "" },
 
@@ -236,7 +243,7 @@ constexpr VmtKeyRow kLegacyDerivedKeys[] = {
     { "vertexlit", "$phong", "phong", ValueKind::kBool, "0" },
     { "vertexlit", "$forcephong", "forcephong", ValueKind::kBool, "0" },
     { "vertexlit", "$ignore_alpha_modulation", "ignore_alpha_modulation", ValueKind::kBool, "0" },
-    { "vertexlit", "$phongexponent", "phongexponent", ValueKind::kFloat, "5" },
+    { "vertexlit", "$phongexponent", "phongexponent", ValueKind::kFloat, "-1" },
     { "vertexlit", "$phongboost", "phongboost", ValueKind::kFloat, "1" },
     { "vertexlit", "$phongtint", "phongtint", ValueKind::kFloat3, "[1 1 1]" },
     { "vertexlit", "$phongfresnelranges", "phongfresnelranges", ValueKind::kFloat3, "[0 0.5 1]" },
@@ -337,7 +344,7 @@ constexpr VmtKeyRow kLegacyDerivedKeys[] = {
     { "energy", "$depthblendscale", "depthblendscale", ValueKind::kFloat, "50" },
     { "energy", "$time", "time", ValueKind::kFloat, "0" },
     { "energy", "$flowmapscrollrate", "flowmapscrollrate", ValueKind::kFloat2, "[0 0]" },
-    { "cable", "$bumpmap", "bumpmap", ValueKind::kTexture, "" },
+    { "cable", "$bumpmap", "bumpmap", ValueKind::kTexture, "cable/cablenormalmap" },
     { "cable", "$minlight", "minlight", ValueKind::kFloat, "0.1" },
     { "cable", "$maxlight", "maxlight", ValueKind::kFloat, "0.3" },
     { "unlit", "$color2", "color2", ValueKind::kFloat3, "[1 1 1]" },

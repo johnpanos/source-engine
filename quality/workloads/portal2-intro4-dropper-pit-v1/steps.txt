@@ -29,3 +29,13 @@ view no_shadow -150 64 40 55 0
 do cl_render_debug_term ,; r_core_runtime_direct 0
 wait 60
 view all_baked -150 64 40 55 0
+# Stationary lights' shadow maps: atlas resolution and filter.
+do r_core_runtime_direct 1; r_core_shadow_quality 3
+wait 60
+view atlas_8192 -150 64 40 55 0
+do r_core_shadow_quality 2; r_core_shadow_pcss 1
+wait 120
+view pcss -150 64 40 55 0
+do r_core_shadow_quality 3
+wait 60
+view pcss_atlas_8192 -150 64 40 55 0

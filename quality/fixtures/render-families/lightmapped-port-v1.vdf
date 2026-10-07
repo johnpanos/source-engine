@@ -4,10 +4,10 @@
 	"schema" "render-family-port-pixels/v1"
 	"family" "lightmapped"
 	"case_file" "quality/fixtures/legacy-shaders/families/lightmapped.vdf"
-	"case_file_sha256" "2e7ec6b2314c8d72955bf722946be725799ec422df0df079715d73c7e3128c58"
+	"case_file_sha256" "5f0b0183321f67c086a9c1e0d0f5b6cecd22e4cec405e41ddd2d7455ceb52f4e"
 	"renderer" "native-vulkan"
 	"hdr" "none"
-	"harness_sha256" "3cc71df12e94d90eeb26fc162ef7af8eda6b7ab60edcd518ee5919aeb01e7682"
+	"harness_sha256" "d1550f1a2bfed2668a54dfeed31c22ffe1498c4113614fb53259fa2cd0cf9a7e"
 	"port_tolerance" "2"
 	"case"
 	{
@@ -212,5 +212,53 @@
 		"pixel" "96 224 226 45 6 255"
 		"pixel" "176 144 143 96 102 255"
 		"pixel" "224 224 63 65 55 255"
+	}
+	"case"
+	{
+		"name" "family_lightmapped_wvt_blend"
+		"pixel" "32 32 49 6 61 140"
+		"pixel" "96 32 88 131 131 199"
+		"pixel" "160 96 59 116 68 183"
+		"pixel" "224 96 70 52 93 159"
+		"pixel" "32 160 54 45 54 233"
+		"pixel" "96 224 148 23 45 29"
+		"pixel" "176 144 96 50 113 114"
+		"pixel" "224 224 63 34 31 180"
+	}
+	"case"
+	{
+		"name" "family_lightmapped_wvt_modulate"
+		"pixel" "32 32 47 4 63 140"
+		"pixel" "96 32 35 106 136 199"
+		"pixel" "160 96 63 108 70 183"
+		"pixel" "224 96 57 44 103 159"
+		"pixel" "32 160 56 31 37 233"
+		"pixel" "96 224 124 22 51 29"
+		"pixel" "176 144 93 49 117 114"
+		"pixel" "224 224 68 32 33 180"
+	}
+	"case"
+	{
+		"name" "family_lightmapped_wvt_bump2_transform"
+		"pixel" "32 32 61 40 135 140"
+		"pixel" "96 32 71 93 62 199"
+		"pixel" "160 96 78 91 134 183"
+		"pixel" "224 96 38 35 64 159"
+		"pixel" "32 160 105 17 91 233"
+		"pixel" "96 224 50 33 108 29"
+		"pixel" "176 144 83 98 75 114"
+		"pixel" "224 224 42 45 55 180"
+	}
+	"case"
+	{
+		"name" "family_lightmapped_wvt_ssbump2"
+		"pixel" "32 32 62 47 137 140"
+		"pixel" "96 32 76 101 71 199"
+		"pixel" "160 96 84 98 135 183"
+		"pixel" "224 96 56 36 75 159"
+		"pixel" "32 160 125 21 101 233"
+		"pixel" "96 224 56 38 119 29"
+		"pixel" "176 144 80 92 77 114"
+		"pixel" "224 224 42 55 64 180"
 	}
 }

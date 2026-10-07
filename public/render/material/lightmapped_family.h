@@ -72,6 +72,10 @@ struct LightmappedClaim
 	bool alphaToCoverage = false; // only opaque cutouts on multisampled targets
 	std::uint32_t terms = 0;      // kSurface* bits
 	std::uint32_t detailMode = 0; // $detailblendmode, with kSurfaceDetail
+	// WorldVertexTransition's second layer (SurfaceVariant::blendTexture2):
+	// the caller binds $basetexture2 as the emission texture, $bumpmap2 as
+	// MRAO and $blendmodulatetexture as the env map mask.
+	bool blendTexture2 = false;
 	SurfaceConstants constants;
 
 	// The program's point for this claim on a vertex layout.
@@ -79,6 +83,7 @@ struct LightmappedClaim
 	{
 		SurfaceVariant variant{ blend, alphaWrite, terms, detailMode, layout };
 		variant.alphaToCoverage = alphaToCoverage;
+		variant.blendTexture2 = blendTexture2;
 		return variant;
 	}
 };

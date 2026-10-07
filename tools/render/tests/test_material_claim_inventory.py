@@ -77,18 +77,39 @@ class ClaimInventoryTest(unittest.TestCase):
         self.assertEqual(candidates[0]["geometry"], "model_mesh")
 
     def test_bad_protocol_and_blend_fail_closed(self):
-        with self.assertRaisesRegex(ValueError, "15 fields"):
+        with self.assertRaisesRegex(ValueError, "16 fields"):
             audit.result_rows(["C", "0"] * 3)
         with self.assertRaisesRegex(ValueError, "unknown.*blend"):
-            audit.result_rows(["C", "99"] * 6 + ["", "", "unlit"])
+            audit.result_rows(["C", "99"] * 6 + ["", "", "unlit", ""])
 
     def test_vmt_profile_drift_fails_closed(self):
         profile = audit.profile_record(audit.DEFAULT_PROFILES["portal2"], "portal2")
-        good = ("CLAIM-BATCH/3\tdx=95\tps20b=1\thdr=1\tsrgb=1\tgpu=3\tlowfill=0"
+        good = ("CLAIM-BATCH/4\tdx=95\tps20b=1\thdr=1\tsrgb=1\tgpu=3\tlowfill=0"
                 "\tsymbols=WIN32,LINUX,POSIX")
         audit.verify_claim_profile(good, profile)
         with self.assertRaisesRegex(ValueError, "profile differs"):
             audit.verify_claim_profile(good.replace("gpu=3", "gpu=2"), profile)
+
+    def test_specular_exponent_follows_legacy(self):
+        def check(variables, reported):
+            return audit.check_specular_exponent("m.vmt", {"vars": variables}, reported)
+        texture = {"$phongexponenttexture": "models/x_exponent"}
+        # An unset or nonpositive constant leaves the map in charge.
+        self.assertTrue(check(texture, "map"))
+        self.assertTrue(check({**texture, "$phongexponent": "0"}, "map"))
+        self.assertTrue(check({**texture, "$phongexponent": "25"}, "25"))
+        # Without a map the shader samples white: 1 + 149.
+        self.assertTrue(check({}, "150"))
+        self.assertTrue(check({"$phongexponent": "[20]"}, "20"))
+        self.assertFalse(check(texture, ""))
+        # Negative controls: the schema's "5" applied to an unset variable,
+        # and a constant that hides the map.
+        with self.assertRaisesRegex(ValueError, "legacy VertexLitGeneric map"):
+            check(texture, "5")
+        with self.assertRaisesRegex(ValueError, "legacy VertexLitGeneric 150"):
+            check({}, "5")
+        with self.assertRaisesRegex(ValueError, "legacy VertexLitGeneric 25"):
+            check({**texture, "$phongexponent": "25"}, "map")
 
     def test_game_profile_is_explicit(self):
         portal = audit.profile_record(audit.DEFAULT_PROFILES["portal"], "portal")
@@ -122,8 +143,8 @@ class ClaimInventoryTest(unittest.TestCase):
         }
         # Four mesh claims, two world gaps, two empty diagnostics and the family.
         answer = "\t".join(["C", "0"] * 4 + ["G", "no world", "G", "no world",
-                                       "", "", "vertexlit"]) + "\n"
-        header = ("CLAIM-BATCH/3\tdx=95\tps20b=1\thdr=1\tsrgb=1\tgpu=3\tlowfill=0"
+                                       "", "", "vertexlit", ""]) + "\n"
+        header = ("CLAIM-BATCH/4\tdx=95\tps20b=1\thdr=1\tsrgb=1\tgpu=3\tlowfill=0"
                   "\tsymbols=WIN32,LINUX,POSIX\n")
         process = SimpleNamespace(returncode=0, stdout=(header + answer).encode(), stderr=b"")
         with mock.patch.object(audit.vmt_corpus, "Game", return_value=game), \

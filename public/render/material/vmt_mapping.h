@@ -52,7 +52,8 @@ struct VmtKeyRow
 	std::string_view parameter; // the family parameter it sets
 	ValueKind kind = ValueKind::kFloat;
 	// The default as VMT text ("" is zero); for kEnum the names, '|'-separated,
-	// the first being the default.
+	// the first being the default; for kTexture the texture the legacy shader
+	// binds when the VMT leaves the key unset ("" binds none).
 	std::string_view fallback;
 };
 

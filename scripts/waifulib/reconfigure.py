@@ -38,7 +38,10 @@ def configure(conf):
 			store_data['ENVIRON'].update(environ)
 			store_data.store(store_path)
 		conf.environ = store_data['ENVIRON']
-		conf.options = optparse.Values(store_data['OPTIONS'])
+		# options added since the store was written keep their current defaults
+		merged = dict(options)
+		merged.update(store_data['OPTIONS'])
+		conf.options = optparse.Values(merged)
 	else:
 	    store_data['OPTIONS'] = vars(conf.options)
 	    store_data['ENVIRON'] = conf.environ

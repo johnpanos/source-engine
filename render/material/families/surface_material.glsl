@@ -39,6 +39,10 @@ layout( set = 2, binding = 0 ) uniform Material
 	vec4 treeWind;
 	vec4 baseTransform[2];
 	vec4 baseDecode; // x: 1 RGBS (rgb * a, premultiplied bilinear); the scale is surfaceControls.y
+	vec4 bumpTransform[2]; // the lightmapped point's $bumptransform rows ($bumpmap2's coordinates)
+	vec4 blendControls;    // WorldVertexTransition: x $blendmodulatetexture, y $bumpmap2
+	vec4 waterRefract;     // rgb: $refracttint (linear), w: $refractamount
+	vec4 waterRefractMode; // x: refraction target, y: $abovewater
 	vec4 mraoScale;        // rgb: the pbr point's MRAO sample scale (P2:CE's $mraoscale)
 	vec4 energy[14];       // the energy point's rows (SurfaceConstants::energy)
 	vec4 teeth[2];         // Teeth: $forward, $illumfactor; y row x: on

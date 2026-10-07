@@ -13052,6 +13052,38 @@
       "expect": "pass"
     },
     {
+      "id": "render.lab.transmission",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "migration": "R96",
+      "contract": "RFC/0016-render-core.md",
+      "profile": "linux-native-vulkan-gpu",
+      "kind": "positive",
+      "description": "RFC 0016 K11/K12 glass cohort, scene color in render_lab's map renderer (tools/render/lab_transmission.py): the map path draws its opaque, then blended surfaces, takes the view's scene color through render.graph's capture owner (graph::RecordSceneColor), binds it to the transmitting programs' view group and draws them, in render.pass.world's order. A zero-warp Refract pane ($refractamount 0, $refracttint [0.5 0.75 1], flat normal, no env map) drawn as a mover over sp_a1_intro4_relit is the same frame without it times the tint through Source's 8-bit gamma table, per channel within 1 percent + 2e-5 for at least 99 percent of the pane's interior (projected independently of the renderer); outside the pane the frame is bitwise unchanged; no capture without a transmitting program. Seeded defects detected: the capture skipped, the capture before the opaque draws, the transmitting draws at a viewport the frame's viewport term does not describe. The game's shipped terms (no SSR, GTAO or projector bounce); validation and synchronization validation silent. Content: the user's Portal 2 runtime and the published relit map, through a private loose-file overlay.",
+      "command": [
+        "{python}",
+        "tools/render/lab_transmission.py"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 20,
+      "timeout_seconds": 600,
+      "requires": [
+        "path:build-rc-lab/render/lab/render_lab",
+        "path:run/runtime-p2/portal2",
+        "path:run/maps/sp_a1_intro4_relit/maps/sp_a1_intro4_relit.bsp",
+        "vulkan-device:gpu"
+      ],
+      "sources": [
+        "render/lab/render_lab.cpp",
+        "render/graph/scene_color.cpp",
+        "render/material/refract_family.cpp",
+        "render/material/families/surface_program.glsl",
+        "tools/render/lab_transmission.py",
+        "tools/render/lab.py"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "render.lab.selfillum",
       "domain": "Q-PRESENTATION",
       "rfc": "0016",

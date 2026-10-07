@@ -166,14 +166,22 @@ VertexLitMeshClaim ClaimVertexLitMesh( const ParameterBlock &block )
 	// $lowqualityflashlightshadows is a legacy shader cost hint, not a light
 	// visibility term. The native point uses its profile's full shadow filter
 	// for either value; it never reduces the authored light or its coverage.
-	const float exponent = ReadParameter( block, "phongexponent" );
+	// VertexLitGeneric's exponent (skin_dx9_helper.cpp, skin_ps20b.fxc): an
+	// authored $phongexponent above 0 is the constant; otherwise each texel's
+	// is 1 + 149 r of $phongexponenttexture, a white texture without one (150).
+	// The schema's default is -1 (unset): Source never applies the shader's
+	// declared "5.0" to an undefined variable.
+	const float authoredExponent = ReadParameter( block, "phongexponent" );
 	const float boost = ReadParameter( block, "phongboost" );
-	if ( !std::isfinite( exponent ) ||
-	     ( exponent < 0.0f && !detail::TextureBound( block, "phongexponenttexture" ) ) )
+	if ( !std::isfinite( authoredExponent ) )
 	{
-		claim.reason = "$phongexponent needs a nonnegative constant or an exponent map";
+		claim.reason = "$phongexponent must be finite";
 		return claim;
 	}
+	const bool exponentMap = phong && detail::TextureBound( block, "phongexponenttexture" );
+	claim.phongExponentFromMap = exponentMap && authoredExponent <= 0.0f;
+	const float exponent = authoredExponent > 0.0f ? authoredExponent : 150.0f;
+	claim.phongExponent = exponent;
 	if ( !std::isfinite( boost ) || boost < 0.0f )
 	{
 		claim.reason = "$phongboost must be finite and nonnegative";
@@ -422,7 +430,8 @@ VertexLitMeshClaim ClaimVertexLitMesh( const ParameterBlock &block )
 	    phong ? std::clamp( std::sqrt( 2.0f / ( exponent + 2.0f ) ), 0.02f, 1.0f ) : 0.55f;
 	claim.constants.pbrFactors[2] = 1.0f;
 	claim.constants.pbrFactors[3] = 0.0f; // the material has no MRAO texture
-	if ( claim.phongExponentTexture )
+	// pbrFactors.w above 0 is the constant exponent; 0 reads the map per texel.
+	if ( claim.phongExponentTexture && !claim.phongExponentFromMap )
 		claim.constants.pbrFactors[3] = exponent;
 	// Dielectric F0 is a neutral 0.04 in the PBR point. Phong boost and tint
 	// become its bounded colored specular reflectance.
@@ -445,6 +454,7 @@ VertexLitMeshClaim ClaimVertexLitMesh( const ParameterBlock &block )
 	claim.claimed = true;
 	return claim;
 }
+
 
 TeethClaim ClaimTeeth( const ParameterBlock &block )
 {
@@ -491,6 +501,7 @@ TeethClaim ClaimTeeth( const ParameterBlock &block )
 	claim.claimed = true;
 	return claim;
 }
+
 
 EyesClaim ClaimEyes( const ParameterBlock &block )
 {

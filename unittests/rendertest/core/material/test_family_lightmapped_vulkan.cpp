@@ -79,7 +79,9 @@ int main()
 			ParameterBlock block( *lightmapped );
 			if ( !ApplyValues( imported.Value(), block ) )
 				return false;
-			(void)block.SetTexture( "basetexture", device::TextureId( 1 ) );
+			for ( const MaterialValue &value : imported.Value().values )
+				if ( value.kind == ValueKind::kTexture && !value.text.empty() )
+					(void)block.SetTexture( value.parameter, device::TextureId( 1 ) );
 			if ( const std::optional<std::size_t> index = lightmapped->IndexOf( named );
 			    index && lightmapped->layout[*index].type == ParameterType::kTexture )
 				(void)block.SetTexture( named, device::TextureId( 2 ) );
@@ -91,9 +93,10 @@ int main()
 		                 "bumpmap2" ),
 		    "claim.refuses-a-second-bump-map-by-name" );
 		checks.That( refused( "\"WorldVertexTransition\" { \"$basetexture\" \"a\" "
-		                      "\"$basetexture2\" \"b\" }",
-		                 "basetexture2" ),
-		    "claim.refuses-a-second-base-texture-by-name" );
+		                      "\"$basetexture2\" \"b\" \"$bumpmap\" \"c\" \"$bumpmap2\" \"d\" "
+		                      "\"$normalmapalphaenvmapmask\" \"1\" }",
+		                 "normalmapalphaenvmapmask" ),
+		    "claim.refuses-a-blended-normal-alpha-mask-by-name" );
 		checks.That(
 		    refused( "\"LightmappedGeneric\" { \"$basetexture\" \"a\" \"$additive\" \"1\" }",
 		        "additive" ),
@@ -242,14 +245,20 @@ int main()
 			const std::vector<const CaseTexture *> materialTextures = {
 			    bind( texture, device::Format::kRGBA8Srgb, false ),
 			    bind( textureOf( "envmap" ), device::Format::kRGBA8Srgb, true ),
-			    bind( textureOf( "envmapmask" ), device::Format::kRGBA8Unorm, false ),
+			    // WorldVertexTransition's $blendmodulatetexture sits in the mask's
+			    // slot, $bumpmap2 in MRAO's and $basetexture2 in emission's
+			    // (program_resolver.cpp).
+			    bind( textureOf( claim.blendTexture2 ? "blendmodulatetexture" : "envmapmask" ),
+			        device::Format::kRGBA8Unorm, false ),
 			    bind( textureOf( "bumpmap" ), device::Format::kRGBA8Unorm, false ),
 			    bind( textureOf( "detail" ),
 			        claim.detailMode == 1 ? device::Format::kRGBA8Srgb
 			                              : device::Format::kRGBA8Unorm,
 			        false ),
-			    bind( nullptr, device::Format::kRGBA8Unorm, false ),  // MRAO
-			    bind( nullptr, device::Format::kRGBA8Srgb, false ) }; // emission
+			    bind( claim.blendTexture2 ? textureOf( "bumpmap2" ) : nullptr,
+			        device::Format::kRGBA8Unorm, false ),
+			    bind( claim.blendTexture2 ? textureOf( "basetexture2" ) : nullptr,
+			        device::Format::kRGBA8Srgb, false ) };
 			// The frame's split-sum and LTC tables, which no lightmapped point reads.
 			const CaseTexture *splitSum = bind( nullptr, device::Format::kRGBA8Unorm, false );
 			// The draw's model lighting: neutral on a world surface.

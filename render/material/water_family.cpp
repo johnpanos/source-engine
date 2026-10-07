@@ -30,21 +30,22 @@ using detail::TextureBound;
 // $flowmapscrollrate: set by retail's shader, read by no instruction of it;
 // $fogstart/$fogend: the engine's fog volume; $flashlighttint: the frame's
 // projected lights; $nofog: the view's fog, the caller's).
-constexpr std::array<std::string_view, 34> kClaimed = { "basetexture", "frame", "normalmap",
+constexpr std::array<std::string_view, 37> kClaimed = { "basetexture", "frame", "normalmap",
     "bumpframe", "flowmap", "flowmapframe", "flowmapscrollrate", "flow_noise_texture",
     "flow_worlduvscale", "flow_normaluvscale", "flow_timeintervalinseconds",
     "flow_uvscrolldistance", "flow_bumpstrength", "flow_noise_scale", "flow_timescale",
     "color_flow_uvscale", "color_flow_timeintervalinseconds", "color_flow_uvscrolldistance",
     "color_flow_lerpexp", "color_flow_displacebynormalstrength", "reflecttexture", "reflectamount",
     "reflecttint", "envmap", "envmapframe", "forceenvmap", "fogcolor", "fogstart", "fogend",
-    "lightmapwaterfog", "abovewater", "forcefresnel", "waterblendfactor", "flashlighttint" };
-constexpr std::array<std::string_view, 36> kClaimedWithControls = []
+    "lightmapwaterfog", "abovewater", "forcefresnel", "waterblendfactor", "flashlighttint",
+    "refracttexture", "refractamount", "refracttint" };
+constexpr std::array<std::string_view, 39> kClaimedWithControls = []
 {
-	std::array<std::string_view, 36> all{};
+	std::array<std::string_view, 39> all{};
 	for ( std::size_t i = 0; i < kClaimed.size(); ++i )
 		all[i] = kClaimed[i];
-	all[34] = "forceexpensive";
-	all[35] = "nofog";
+	all[37] = "forceexpensive";
+	all[38] = "nofog";
 	return all;
 }();
 
@@ -67,15 +68,11 @@ WaterClaim ClaimWater( const ParameterBlock &block )
 		return claim;
 	}
 	// Named before the generic rule, so the reason says what the point lacks.
-	if ( TextureBound( block, "refracttexture" ) )
+	const bool refract = TextureBound( block, "refracttexture" );
+	const bool above = ReadFlag( block, "abovewater" );
+	if ( !above && !refract )
 	{
-		claim.reason = "water with $refracttexture: the point draws no refraction yet";
-		return claim;
-	}
-	if ( !ReadFlag( block, "abovewater" ) )
-	{
-		claim.reason = "water seen from below ($abovewater 0): the point draws the surface from "
-		               "above only";
+		claim.reason = "water seen from below ($abovewater 0) without $refracttexture";
 		return claim;
 	}
 	if ( ReadFlag( block, "forcecheap" ) )
@@ -96,7 +93,10 @@ WaterClaim ClaimWater( const ParameterBlock &block )
 	}
 	const bool reflect = TextureBound( block, "reflecttexture" );
 	const bool envmap = TextureBound( block, "envmap" ) && ReadFlag( block, "forceenvmap" );
-	if ( !reflect && !envmap )
+	// water.cpp's SHADER_DRAW: a refraction target alone selects the
+	// expensive path too; its reflection is then the env map (REFLECT 0),
+	// with $reflecttint zeroed when the material names no env map.
+	if ( !reflect && !envmap && !refract )
 	{
 		claim.reason = "water without $reflecttexture or a forced $envmap is water_ps2x's cheap "
 		               "path, which the point does not draw";
@@ -117,6 +117,8 @@ WaterClaim ClaimWater( const ParameterBlock &block )
 	}
 	claim.sludge = base && claim.flow;
 	claim.reflectTarget = reflect;
+	claim.refractTarget = refract;
+	claim.envReflection = !reflect && TextureBound( block, "envmap" );
 
 	SurfaceConstants &c = claim.constants;
 	c.waterFlow[0] = 1.0f / ReadParameter( block, "flow_worlduvscale" );
@@ -148,6 +150,20 @@ WaterClaim ClaimWater( const ParameterBlock &block )
 	c.waterMode[1] = claim.sludge ? 1.0f : 0.0f;
 	c.waterMode[2] = ReadFlag( block, "lightmapwaterfog" ) ? 1.0f : 0.0f;
 	c.waterMode[3] = ReadParameter( block, "forcefresnel" );
+	if ( !reflect && !claim.envReflection )
+	{
+		// water.cpp's InitParams: nothing to reflect, so no reflection.
+		for ( int k = 0; k < 3; ++k )
+			c.waterReflect[k] = 0.0f;
+	}
+	if ( refract )
+	{
+		for ( int k = 0; k < 3; ++k )
+			c.waterRefract[k] = SourceGammaToLinear( ReadParameter( block, "refracttint", k ) );
+		c.waterRefract[3] = ReadParameter( block, "refractamount" );
+		c.waterRefractMode[0] = 1.0f;
+		c.waterRefractMode[1] = above ? 1.0f : 0.0f;
+	}
 	claim.blend = c.waterReflect[3] < 1.0f ? device::BlendMode::kAlpha : device::BlendMode::kOpaque;
 	claim.claimed = true;
 	return claim;

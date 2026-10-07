@@ -53000,28 +53000,28 @@
       "input_sha256": "52f3cb314533c8e086a85f1e5a854986f031bcb3a4c634e1b75409c02cc133c3",
       "mesh_claims": [
         {
-          "gap": "the model does not read $mod2x",
+          "gap": "the family does not draw $mod2x",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $mod2x",
+          "gap": "the family does not draw $mod2x",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $mod2x",
+          "gap": "the family does not draw $mod2x",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $mod2x",
+          "gap": "the family does not draw $mod2x",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -53034,18 +53034,15 @@
       ],
       "shader": "unlittwotexture",
       "status": "dynamically_unresolved",
-      "unmapped_keys": [
-        "$mod2x"
-      ],
       "world_claims": [
         {
-          "gap": "the model does not read $mod2x",
+          "gap": "the family does not draw $mod2x",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $mod2x",
+          "gap": "the family does not draw $mod2x",
           "scene_inputs": {
             "world_stage": true
           }
@@ -69533,6 +69530,7 @@
   "rule": "render.material MapVariables + the actual world and mesh claim rules under six scene-input combinations",
   "schema": "rendercore-material-claims/v3",
   "scope": "materials/models/**/*.vmt in the game's ordered search path",
+  "specular_exponent_checks": 267,
   "status_counts": {
     "dynamically_unresolved": 44,
     "statically_supported": 848,

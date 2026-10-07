@@ -160,6 +160,8 @@ struct Resources
 		// reads through its view group (ResolvedProgram::viewInputs: the
 		// water point's planar reflection), or 0.
 		int viewInput = 0;
+		// The handle of its refraction target (ResolvedProgram::refractInput), or 0.
+		int refractInput = 0;
 	};
 	std::vector<Material> materials;
 	std::vector<Material> modelMaterials;
@@ -3043,6 +3045,21 @@ void WorldPass::RecordBatch(
 			}
 			m.viewInput = handle->second;
 		}
+		m.refractInput = 0;
+		if ( !m.program.refractInput.empty() )
+		{
+			const auto handle = claimed.handles.find( m.program.refractInput );
+			if ( handle == claimed.handles.end() || handle->second == 0 )
+			{
+				m.ready = false;
+				m.failed = true;
+				m.failure = "material " + name + ": its refraction target " +
+				            m.program.refractInput + " has no material system handle";
+				note( m.failure );
+				return nullptr;
+			}
+			m.refractInput = handle->second;
+		}
 		return &m;
 	};
 	auto materialReadyIn = [&]( material::ProgramResolver &resolver,
@@ -3269,6 +3286,10 @@ void WorldPass::RecordBatch(
 	// once the view's materials resolved), and the view groups that bind it
 	// for programs without the view's lights, retired behind this frame.
 	TextureId viewReflection;
+	// The view's water refraction (ResolvedProgram::refractInput), imported
+	// as the reflection is; its view groups bind it at the scene color's slot.
+	TextureId viewRefraction;
+	std::map<std::uint64_t, Group> refractViews;
 	TextureId viewSceneColor;
 	TextureDesc viewSceneColorDesc;
 	const TextureId viewDepthAlpha =
@@ -3294,17 +3315,23 @@ void WorldPass::RecordBatch(
 			note( "a program reads the view's planar reflection, which did not import" );
 			return nullptr;
 		}
+		if ( m.refractInput != 0 && !viewRefraction.IsValid() )
+		{
+			note( "a program reads the view's water refraction, which did not import" );
+			return nullptr;
+		}
 		if ( view.lights )
 		{
 			const bool model =
 			    m.resolver == r.modelResolver.get() || m.resolver == r.prepassModelResolver.get();
 			Group *&slot = model ? modelLitViews[layout] : litViews[layout];
-			Group *lit = m.program.depthBlend   ? &depthViews[layout]
-			             : m.program.sceneColor ? &sceneViews[layout]
-			                                    : slot;
+			Group *lit = m.program.depthBlend    ? &depthViews[layout]
+			             : m.program.sceneColor  ? &sceneViews[layout]
+			             : m.refractInput != 0   ? &refractViews[layout]
+			                                     : slot;
 			if ( lit && lit->group.IsValid() )
 				return lit;
-			if ( !m.program.sceneColor && !m.program.depthBlend )
+			if ( !m.program.sceneColor && !m.program.depthBlend && m.refractInput == 0 )
 			{
 				const auto cached = std::find_if( r.litViews.begin(), r.litViews.end(),
 				    [&]( const Resources::LitView &entry )
@@ -3368,6 +3395,8 @@ void WorldPass::RecordBatch(
 				screen.sceneColor = viewSceneColor;
 				screen.sceneColorDesc = viewSceneColorDesc;
 			}
+			else if ( m.refractInput != 0 )
+				screen.sceneColor = viewRefraction;
 			material::SurfaceProjectors projectors;
 			projectors.lights = lights.projectors;
 			projectors.cookies = lights.cookies;
@@ -3398,10 +3427,12 @@ void WorldPass::RecordBatch(
 			}
 			return lit;
 		}
-		if ( m.viewInput != 0 || m.program.sceneColor || m.program.depthBlend )
+		if ( m.viewInput != 0 || m.refractInput != 0 || m.program.sceneColor ||
+		     m.program.depthBlend )
 		{
 			Group &reflect = m.program.depthBlend   ? depthViews[layout]
 			                 : m.program.sceneColor ? sceneViews[layout]
+			                 : m.refractInput != 0  ? refractViews[layout]
 			                                        : reflectViews[layout];
 			if ( reflect.group.IsValid() )
 				return &reflect;
@@ -3416,6 +3447,8 @@ void WorldPass::RecordBatch(
 				screen.sceneColor = viewSceneColor;
 				screen.sceneColorDesc = viewSceneColorDesc;
 			}
+			else if ( m.refractInput != 0 )
+				screen.sceneColor = viewRefraction;
 			const material::GroupRequest request = m.resolver->Program().NeutralViewGroup( screen );
 			std::string why;
 			if ( request.layout != m.program.request.viewLayout ||
@@ -3721,6 +3754,19 @@ void WorldPass::RecordBatch(
 	}
 	if ( reflectionHandle != 0 )
 		viewReflection = textures.Import( reflectionHandle, true );
+	int refractionHandle = 0;
+	for ( const std::uint32_t index : order )
+	{
+		const Resources::Material &m = r.materials[world->surfaces[index].material];
+		if ( m.refractInput == 0 || m.refractInput == refractionHandle )
+			continue;
+		if ( refractionHandle != 0 )
+			note( "the view's programs read two water refractions" );
+		else
+			refractionHandle = m.refractInput;
+	}
+	if ( refractionHandle != 0 )
+		viewRefraction = textures.Import( refractionHandle, true );
 
 	// The view's draw constants. D3D9 puts pixel centers on integer
 	// coordinates: a D3D9 transform is shifted right and down by half a pixel
@@ -4075,10 +4121,12 @@ void WorldPass::RecordBatch(
 			const std::uint64_t layout = m.program.request.viewLayout.value;
 			const auto lit = litViews.find( layout );
 			const auto reflect = reflectViews.find( layout );
+			const auto refract = refractViews.find( layout );
 			encoder.SetBindGroup( BindGroupRole::kView,
-			    lit != litViews.end()                               ? lit->second->group
-			    : m.viewInput != 0 && reflect != reflectViews.end() ? reflect->second.group
-			                                                        : r.viewGroups[layout].group );
+			    m.refractInput != 0 && refract != refractViews.end() ? refract->second.group
+			    : lit != litViews.end()                               ? lit->second->group
+			    : m.viewInput != 0 && reflect != reflectViews.end()   ? reflect->second.group
+			                                                          : r.viewGroups[layout].group );
 		}
 		encoder.SetBindGroup( BindGroupRole::kMaterial, m.group.group );
 		encoder.SetVertexBuffer( 0, r.vertices, 0 );
@@ -5972,6 +6020,7 @@ void WorldPass::RecordBatch(
 		const auto layout = m.program.request.viewLayout.value;
 		const Group *group = m.program.depthBlend       ? &depthViews[layout]
 		                     : m.program.sceneColor     ? &sceneViews[layout]
+		                     : m.refractInput != 0      ? &refractViews[layout]
 		                     : litViews.count( layout ) ? litViews[layout]
 		                                                : &r.viewGroups[layout];
 		encoder.SetBindGroup( BindGroupRole::kView, group->group );
@@ -6008,6 +6057,8 @@ void WorldPass::RecordBatch(
 	for ( auto &[layout, group] : depthViews )
 		s.retiredGroups.emplace_back( target.frame, std::move( group ) );
 	for ( auto &[layout, group] : reflectViews )
+		s.retiredGroups.emplace_back( target.frame, std::move( group ) );
+	for ( auto &[layout, group] : refractViews )
 		s.retiredGroups.emplace_back( target.frame, std::move( group ) );
 
 	std::lock_guard<std::mutex> guard( s.lock );
