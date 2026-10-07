@@ -312,10 +312,15 @@ bool CFontTextureCache::GetTextureForChars( vgui::HFont font, vgui::FontDrawType
 						}
 					}
 
-					// upload the new sub texture 
-					// NOTE: both textureIDs reference the same ITexture, so we're ok)
-					g_MatSystemSurface.DrawSetTexture( m_PageList[newEntry.page].textureID[typePage] );
-					g_MatSystemSurface.DrawSetSubTextureRGBA( m_PageList[newEntry.page].textureID[typePage], newEntry.drawX, newEntry.drawY, pRGBA, newChar.fontWide, newChar.fontTall );
+					// upload the new sub texture. Both texture IDs reference the same
+					// ITexture, but each would install its own backing-bits regenerator
+					// on it, and the texture downloads from the last one installed: a
+					// page holding additive and non-additive glyphs then uploaded one
+					// kind as blank. Every glyph goes through the non-additive ID, the
+					// one the page was cleared through, so one regenerator owns the bits.
+					const int nWriteID = m_PageList[newEntry.page].textureID[(int)vgui::FONT_DRAW_NONADDITIVE - 1];
+					g_MatSystemSurface.DrawSetTexture( nWriteID );
+					g_MatSystemSurface.DrawSetSubTextureRGBA( nWriteID, newEntry.drawX, newEntry.drawY, pRGBA, newChar.fontWide, newChar.fontTall );
 				}
 			}
 		}
